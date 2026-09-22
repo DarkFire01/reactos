@@ -88,7 +88,219 @@ WdiFreeFrameMetadata(
                                 CONTAINING_RECORD(WiFiFrameMetaData, WDI_FRAME, Metadata));
 }
 
-/* Transmit; the upper edge queues nothing, so there is nothing to hand out */
+/* Send queue; frames wait here until the miniport pulls them with TxDequeue */
+
+VOID
+NTAPI
+WdiInitializeSendQueue(
+    _In_ PWDI_ADAPTER Adapter)
+{
+    KeInitializeSpinLock(&Adapter->TxLock);
+    InitializeListHead(&Adapter->TxQueue);
+    Adapter->TxQueued = 0;
+    Adapter->TxNextId = 0;
+    RtlZeroMemory(Adapter->TxOutstanding, sizeof(Adapter->TxOutstanding));
+}
+
+static
+PWDI_FRAME_METADATA
+NTAPI
+WdiAllocateSendFrame(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferList)
+{
+    PWDI_FRAME Frame;
+    PWDI_FRAME_METADATA Metadata;
+
+    Frame = ExAllocateFromNPagedLookasideList(&Adapter->FrameLookaside);
+    if (Frame == NULL)
+        return NULL;
+
+    RtlZeroMemory(Frame, Adapter->FrameSize);
+    Frame->Size = Adapter->FrameSize;
+    Metadata = &Frame->Metadata;
+    Metadata->pNBL = NetBufferList;
+    return Metadata;
+}
+
+static
+VOID
+NTAPI
+WdiFreeSendFrame(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PWDI_FRAME_METADATA Metadata)
+{
+    ExFreeToNPagedLookasideList(&Adapter->FrameLookaside,
+                                CONTAINING_RECORD(Metadata, WDI_FRAME, Metadata));
+}
+
+/* The EtherType a converted frame carries sits in the SNAP right after the
+   24 byte 802.11 header this edge builds */
+static
+UINT16
+NTAPI
+WdiFrameEthertype(
+    _In_ PNET_BUFFER_LIST NetBufferList)
+{
+    PNET_BUFFER NetBuffer = NET_BUFFER_LIST_FIRST_NB(NetBufferList);
+    UCHAR Storage[32];
+    PUCHAR Data;
+
+    if (NetBuffer == NULL)
+        return 0;
+
+    Data = NdisGetDataBuffer(NetBuffer, sizeof(Storage), Storage, 1, 0);
+    if (Data == NULL)
+        return 0;
+
+    return (UINT16)((Data[30] << 8) | Data[31]);
+}
+
+static
+VOID
+NTAPI
+WdiCompleteSend(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ NDIS_STATUS Status)
+{
+    NET_BUFFER_LIST_STATUS(NetBufferList) = Status;
+    NET_BUFFER_LIST_NEXT_NBL(NetBufferList) = NULL;
+    NdisMSendNetBufferListsComplete(Adapter->MiniportAdapterHandle,
+                                    NetBufferList,
+                                    0);
+}
+
+/**
+ * @brief
+ * Takes the sends NDIS handed the miniport, gives each one a frame id and
+ * queues it, then tells the miniport frames are waiting.
+ */
+VOID
+NTAPI
+WdiQueueSend(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG SendFlags)
+{
+    PNET_BUFFER_LIST NetBufferList;
+    PNET_BUFFER_LIST Next;
+    PWDI_FRAME_METADATA Metadata;
+    KIRQL OldIrql;
+    ULONG Queued = 0;
+    ULONG Id;
+
+    UNREFERENCED_PARAMETER(SendFlags);
+
+    for (NetBufferList = NetBufferLists; NetBufferList != NULL; NetBufferList = Next)
+    {
+        Next = NET_BUFFER_LIST_NEXT_NBL(NetBufferList);
+        NET_BUFFER_LIST_NEXT_NBL(NetBufferList) = NULL;
+
+        Metadata = WdiAllocateSendFrame(Adapter, NetBufferList);
+        if (Metadata == NULL)
+        {
+            WdiCompleteSend(Adapter, NetBufferList, NDIS_STATUS_RESOURCES);
+            continue;
+        }
+
+        Metadata->u.txMetaData.PortID = Adapter->Ports[0].PortId;
+        Metadata->u.txMetaData.PeerID = 0;
+        Metadata->u.txMetaData.ExTID = 0;
+        Metadata->u.txMetaData.IsUnicast = TRUE;
+        Metadata->u.txMetaData.Ethertype = WdiFrameEthertype(NetBufferList);
+        Metadata->u.txMetaData.bTxCompleteRequired = TRUE;
+        NET_BUFFER_LIST_MINIPORT_RESERVED(NetBufferList)[0] = Metadata;
+
+        KeAcquireSpinLock(&Adapter->TxLock, &OldIrql);
+
+        for (Id = 0; Id < WDI_MAX_TX_FRAMES; Id++)
+        {
+            ULONG Slot = (Adapter->TxNextId + Id) % WDI_MAX_TX_FRAMES;
+            if (Adapter->TxOutstanding[Slot] == NULL)
+            {
+                Adapter->TxOutstanding[Slot] = Metadata;
+                Metadata->FrameID = (WDI_FRAME_ID)Slot;
+                Adapter->TxNextId = (Slot + 1) % WDI_MAX_TX_FRAMES;
+                break;
+            }
+        }
+
+        if (Id == WDI_MAX_TX_FRAMES)
+        {
+            KeReleaseSpinLock(&Adapter->TxLock, OldIrql);
+            WdiFreeSendFrame(Adapter, Metadata);
+            WdiCompleteSend(Adapter, NetBufferList, NDIS_STATUS_RESOURCES);
+            continue;
+        }
+
+        InsertTailList(&Adapter->TxQueue, &Metadata->Linkage);
+        Adapter->TxQueued++;
+        Queued++;
+
+        KeReleaseSpinLock(&Adapter->TxLock, OldIrql);
+    }
+
+    if (Queued != 0 && Adapter->DataHandlers.TxDataSendHandler != NULL)
+    {
+        Adapter->DataHandlers.TxDataSendHandler(Adapter->TalTxRx,
+                                                Adapter->Ports[0].PortId,
+                                                0,
+                                                0,
+                                                (UINT16)Queued,
+                                                Adapter->TxQueued,
+                                                FALSE);
+    }
+}
+
+/**
+ * @brief
+ * Fails and completes every queued and outstanding send. Used when the data
+ * path stops.
+ */
+VOID
+NTAPI
+WdiFlushSends(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ NDIS_STATUS Status)
+{
+    PWDI_FRAME_METADATA Metadata;
+    PLIST_ENTRY Entry;
+    KIRQL OldIrql;
+    ULONG Id;
+
+    KeAcquireSpinLock(&Adapter->TxLock, &OldIrql);
+
+    while (!IsListEmpty(&Adapter->TxQueue))
+    {
+        Entry = RemoveHeadList(&Adapter->TxQueue);
+        Metadata = CONTAINING_RECORD(Entry, WDI_FRAME_METADATA, Linkage);
+        Adapter->TxOutstanding[Metadata->FrameID] = NULL;
+        Adapter->TxQueued--;
+
+        KeReleaseSpinLock(&Adapter->TxLock, OldIrql);
+        WdiCompleteSend(Adapter, Metadata->pNBL, Status);
+        WdiFreeSendFrame(Adapter, Metadata);
+        KeAcquireSpinLock(&Adapter->TxLock, &OldIrql);
+    }
+
+    for (Id = 0; Id < WDI_MAX_TX_FRAMES; Id++)
+    {
+        Metadata = Adapter->TxOutstanding[Id];
+        if (Metadata == NULL)
+            continue;
+
+        Adapter->TxOutstanding[Id] = NULL;
+        KeReleaseSpinLock(&Adapter->TxLock, OldIrql);
+        WdiCompleteSend(Adapter, Metadata->pNBL, Status);
+        WdiFreeSendFrame(Adapter, Metadata);
+        KeAcquireSpinLock(&Adapter->TxLock, &OldIrql);
+    }
+
+    KeReleaseSpinLock(&Adapter->TxLock, OldIrql);
+}
+
+/* Transmit indications from the miniport pulling and finishing frames */
 
 static
 VOID
@@ -100,12 +312,37 @@ WdiTxDequeue(
     _In_ UINT16 Credit,
     _Out_ PNET_BUFFER_LIST *NetBufferList)
 {
-    UNREFERENCED_PARAMETER(NdisMiniportDataPathHandle);
+    PWDI_ADAPTER Adapter = NdisMiniportDataPathHandle;
+    PWDI_FRAME_METADATA Metadata;
+    PNET_BUFFER_LIST Head = NULL;
+    PNET_BUFFER_LIST Tail = NULL;
+    PLIST_ENTRY Entry;
+    KIRQL OldIrql;
+    UINT8 Taken = 0;
+
     UNREFERENCED_PARAMETER(Quantum);
-    UNREFERENCED_PARAMETER(MaxNumFrames);
     UNREFERENCED_PARAMETER(Credit);
 
-    *NetBufferList = NULL;
+    KeAcquireSpinLock(&Adapter->TxLock, &OldIrql);
+
+    while (Taken < MaxNumFrames && !IsListEmpty(&Adapter->TxQueue))
+    {
+        Entry = RemoveHeadList(&Adapter->TxQueue);
+        Metadata = CONTAINING_RECORD(Entry, WDI_FRAME_METADATA, Linkage);
+        Adapter->TxQueued--;
+
+        NET_BUFFER_LIST_NEXT_NBL(Metadata->pNBL) = NULL;
+        if (Tail == NULL)
+            Head = Metadata->pNBL;
+        else
+            NET_BUFFER_LIST_NEXT_NBL(Tail) = Metadata->pNBL;
+        Tail = Metadata->pNBL;
+        Taken++;
+    }
+
+    KeReleaseSpinLock(&Adapter->TxLock, OldIrql);
+
+    *NetBufferList = Head;
 }
 
 static
@@ -117,8 +354,11 @@ WdiTxTransferComplete(
     _In_ PNET_BUFFER_LIST NetBufferList)
 {
     UNREFERENCED_PARAMETER(NdisMiniportDataPathHandle);
+    UNREFERENCED_PARAMETER(WifiTxFrameStatus);
+    UNREFERENCED_PARAMETER(NetBufferList);
 
-    DPRINT1("Transfer complete (%d) for %p, none was sent\n", WifiTxFrameStatus, NetBufferList);
+    /* The payload has been taken by the miniport; the send is completed to
+       NDIS only once its frame id comes back through TxSendComplete */
 }
 
 static
@@ -131,11 +371,35 @@ WdiTxSendComplete(
     _In_reads_(NumCompletedSends) WDI_FRAME_ID *WifiTxFrameIdList,
     _In_reads_opt_(NumCompletedSends) WDI_TX_COMPLETE_DATA *WifiTxCompleteList)
 {
-    UNREFERENCED_PARAMETER(NdisMiniportDataPathHandle);
-    UNREFERENCED_PARAMETER(WifiTxFrameIdList);
+    PWDI_ADAPTER Adapter = NdisMiniportDataPathHandle;
+    PWDI_FRAME_METADATA Metadata;
+    NDIS_STATUS Status;
+    KIRQL OldIrql;
+    UINT16 i;
+
     UNREFERENCED_PARAMETER(WifiTxCompleteList);
 
-    DPRINT1("Send complete (%d) for %u frames, none was sent\n", WifiTxFrameStatus, NumCompletedSends);
+    Status = (WifiTxFrameStatus == WDI_TxFrameStatus_Ok) ?
+             NDIS_STATUS_SUCCESS : NDIS_STATUS_FAILURE;
+
+    for (i = 0; i < NumCompletedSends; i++)
+    {
+        WDI_FRAME_ID FrameId = WifiTxFrameIdList[i];
+
+        if (FrameId >= WDI_MAX_TX_FRAMES)
+            continue;
+
+        KeAcquireSpinLock(&Adapter->TxLock, &OldIrql);
+        Metadata = Adapter->TxOutstanding[FrameId];
+        Adapter->TxOutstanding[FrameId] = NULL;
+        KeReleaseSpinLock(&Adapter->TxLock, OldIrql);
+
+        if (Metadata == NULL)
+            continue;
+
+        WdiCompleteSend(Adapter, Metadata->pNBL, Status);
+        WdiFreeSendFrame(Adapter, Metadata);
+    }
 }
 
 static
@@ -280,18 +544,38 @@ WdiRxInorderData(
 {
     PWDI_ADAPTER Adapter = NdisMiniportDataPathHandle;
     PNET_BUFFER_LIST Frames = NULL;
+    PNET_BUFFER_LIST Frame;
+    ULONG Count;
 
     UNREFERENCED_PARAMETER(IndicationLevel);
     UNREFERENCED_PARAMETER(RxThrottleParams);
 
     *WifiStatus = NDIS_STATUS_SUCCESS;
 
-    if (Adapter->DataHandlers.RxGetMpdusHandler == NULL)
+    if (Adapter->DataHandlers.RxGetMpdusHandler == NULL ||
+        Adapter->DataHandlers.RxReturnFramesHandler == NULL)
+    {
         return;
+    }
 
     Adapter->DataHandlers.RxGetMpdusHandler(Adapter->TalTxRx, PeerId, ExTid, &Frames);
-    if (Frames != NULL && Adapter->DataHandlers.RxReturnFramesHandler != NULL)
-        Adapter->DataHandlers.RxReturnFramesHandler(Adapter->TalTxRx, Frames);
+    if (Frames == NULL)
+        return;
+
+    Count = 0;
+    for (Frame = Frames; Frame != NULL; Frame = NET_BUFFER_LIST_NEXT_NBL(Frame))
+        Count++;
+
+    /* NDIS turns the 802.11 frames into Ethernet and copies them, since the
+       resources flag keeps ownership here so they go straight back below */
+    NdisMIndicateReceiveNetBufferLists(Adapter->MiniportAdapterHandle,
+                                       Frames,
+                                       NDIS_DEFAULT_PORT_NUMBER,
+                                       Count,
+                                       NDIS_RECEIVE_FLAGS_RESOURCES |
+                                       NDIS_RECEIVE_FLAGS_DISPATCH_LEVEL);
+
+    Adapter->DataHandlers.RxReturnFramesHandler(Adapter->TalTxRx, Frames);
 }
 
 static
