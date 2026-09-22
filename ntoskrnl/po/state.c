@@ -19,6 +19,9 @@ LIST_ENTRY PopIdleDetectList;
 ULONG PopIdleScanIntervalInSeconds = 1;
 BOOLEAN PopResumeAutomatic = FALSE;
 POWER_STATE_HANDLER PopDefaultPowerStateHandlers[PowerStateMaximum] = {0};
+LIST_ENTRY PopSleepDisableList;
+FAST_MUTEX PopSleepDisableLock;
+BOOLEAN PopVSyncEnabled = FALSE;
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -725,6 +728,139 @@ PopChangeSystemSystemStateCapability(
         default:
             break;
     }
+}
+
+/**
+ * @brief
+ * Clears the sleep states that drivers have vetoed through
+ * PoDisableSleepStates from a copy of the system power capabilities.
+ *
+ * @param[in,out] Capabilities
+ * The capabilities to filter.
+ */
+VOID
+NTAPI
+PopFilterSleepStateCapabilities(
+    _Inout_ PSYSTEM_POWER_CAPABILITIES Capabilities)
+{
+    PLIST_ENTRY Entry;
+    PPOP_SLEEP_DISABLE_ENTRY Disable;
+    ULONG Vetoed = 0;
+
+    PAGED_CODE();
+
+    ExAcquireFastMutex(&PopSleepDisableLock);
+    for (Entry = PopSleepDisableList.Flink;
+         Entry != &PopSleepDisableList;
+         Entry = Entry->Flink)
+    {
+        Disable = CONTAINING_RECORD(Entry, POP_SLEEP_DISABLE_ENTRY, Link);
+        Vetoed |= Disable->SleepMask;
+    }
+    ExReleaseFastMutex(&PopSleepDisableLock);
+
+    if (Vetoed & POP_SLEEP_DISABLE_S1)
+        Capabilities->SystemS1 = FALSE;
+
+    if (Vetoed & POP_SLEEP_DISABLE_S2)
+        Capabilities->SystemS2 = FALSE;
+
+    if (Vetoed & POP_SLEEP_DISABLE_S3)
+        Capabilities->SystemS3 = FALSE;
+
+    if (Vetoed & POP_SLEEP_DISABLE_S4)
+        Capabilities->SystemS4 = FALSE;
+
+    if (Vetoed & POP_SLEEP_DISABLE_FAST_S4)
+        Capabilities->FastSystemS4 = FALSE;
+
+    /* Hybrid sleep needs both S3 and S4 to be available */
+    if (!Capabilities->SystemS3 || !Capabilities->SystemS4)
+        Capabilities->FastSystemS4 = FALSE;
+}
+
+/**
+ * @brief
+ * Prevents the system from entering a set of sleep states until the
+ * returned token is handed to PoReenableSleepStates.
+ *
+ * @param[in] Reason
+ * The reason the caller vetoes the sleep states.
+ *
+ * @param[in] SleepMask
+ * The sleep states to veto. Bits 0 through 3 are S1 through S4 and
+ * bit 4 is hybrid sleep.
+ *
+ * @param[out] Token
+ * Receives the token that identifies this veto.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES if the veto could not
+ * be allocated.
+ */
+NTSTATUS
+NTAPI
+PoDisableSleepStates(
+    _In_ ULONG Reason,
+    _In_ ULONG SleepMask,
+    _Out_ PVOID *Token)
+{
+    PPOP_SLEEP_DISABLE_ENTRY Disable;
+
+    PAGED_CODE();
+
+    Disable = ExAllocatePoolWithTag(PagedPool, sizeof(*Disable), TAG_PO_SLEEP_DISABLE);
+    if (Disable == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Disable->Reason = Reason;
+    Disable->SleepMask = SleepMask;
+
+    ExAcquireFastMutex(&PopSleepDisableLock);
+    InsertTailList(&PopSleepDisableList, &Disable->Link);
+    ExReleaseFastMutex(&PopSleepDisableLock);
+
+    *Token = Disable;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Drops a sleep state veto taken with PoDisableSleepStates.
+ *
+ * @param[in] Token
+ * The token returned by PoDisableSleepStates.
+ */
+VOID
+NTAPI
+PoReenableSleepStates(
+    _In_ PVOID Token)
+{
+    PPOP_SLEEP_DISABLE_ENTRY Disable = Token;
+
+    PAGED_CODE();
+
+    ExAcquireFastMutex(&PopSleepDisableLock);
+    RemoveEntryList(&Disable->Link);
+    ExReleaseFastMutex(&PopSleepDisableLock);
+
+    ExFreePoolWithTag(Disable, TAG_PO_SLEEP_DISABLE);
+}
+
+/**
+ * @brief
+ * Tells the Power Manager whether the graphics stack has vertical sync
+ * interrupts turned on.
+ *
+ * @param[in] Enable
+ * TRUE if vertical sync interrupts are on, FALSE otherwise.
+ */
+VOID
+FASTCALL
+PoNotifyVSyncChange(
+    _In_ BOOLEAN Enable)
+{
+    PopVSyncEnabled = Enable;
 }
 
 /* EOF */

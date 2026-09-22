@@ -603,6 +603,7 @@ NtPowerInformation(
     PSYSTEM_BATTERY_STATE BatteryState;
     POWER_PLATFORM_INFORMATION LocalPlatformInfo;
     PPOWER_PLATFORM_INFORMATION PlatformInfo;
+    SYSTEM_POWER_CAPABILITIES LocalCapabilities;
     PSYSTEM_POWER_CAPABILITIES PowerCapabilities;
     PPOWER_STATE_HANDLER StateHandler;
     PSYSTEM_POWER_POLICY CurrentPolicy;
@@ -723,11 +724,14 @@ NtPowerInformation(
                 goto Quit;
             }
 
-            /* FIXME: We should filter the capabilities if the system has legacy stuff */
+            /* FIXME: We should also filter the capabilities if the system has legacy stuff */
+            RtlCopyMemory(&LocalCapabilities, &PopCapabilities, sizeof(LocalCapabilities));
+            PopFilterSleepStateCapabilities(&LocalCapabilities);
+
             _SEH2_TRY
             {
                 RtlCopyMemory(PowerCapabilities,
-                              &PopCapabilities,
+                              &LocalCapabilities,
                               sizeof(SYSTEM_POWER_CAPABILITIES));
 
                 Status = STATUS_SUCCESS;
