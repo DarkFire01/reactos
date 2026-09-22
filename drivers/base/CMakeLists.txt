@@ -1,6 +1,7 @@
 
 add_subdirectory(beep)
 add_subdirectory(bootvid)
+add_subdirectory(cea)
 add_subdirectory(condrv)
 add_subdirectory(kd_02_8086)
 add_subdirectory(kdnet)
