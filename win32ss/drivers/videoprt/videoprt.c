@@ -37,7 +37,6 @@ BOOLEAN VpBaseVideo = FALSE;
 BOOLEAN VpNoVesa = FALSE;
 
 PKPROCESS CsrProcess = NULL;
-static ULONG VideoPortMaxObjectNumber = -1;
 BOOLEAN VideoPortUseNewKey = FALSE;
 
 KSPIN_LOCK HwResetAdaptersLock;
@@ -101,12 +100,7 @@ IntVideoPortAddDeviceMapLink(
         return Status;
     }
 
-    Status = RtlWriteRegistryValue(RTL_REGISTRY_DEVICEMAP,
-                                   L"VIDEO",
-                                   L"MaxObjectNumber",
-                                   REG_DWORD,
-                                   &DeviceNumber,
-                                   sizeof(DeviceNumber));
+    Status = DMgrWriteDeviceCountToRegistry();
     if (!NT_SUCCESS(Status))
     {
         ERR_(VIDEOPRT, "Failed to write MaxObjectNumber: 0x%X\n", Status);
@@ -124,10 +118,29 @@ IntVideoPortAddDeviceMapLink(
         return Status;
     }
 
-    /* Update MaxObjectNumber */
-    VideoPortMaxObjectNumber = DeviceNumber;
-
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Undoes IntVideoPortAddDeviceMapLink for a device that is going away, so its
+ * number can be reused without colliding on the DISPLAY link.
+ */
+static
+VOID
+IntVideoPortRemoveDeviceMapLink(
+    _In_ PVIDEO_PORT_DEVICE_EXTENSION DeviceExtension)
+{
+    WCHAR DeviceBuffer[20];
+    WCHAR SymlinkBuffer[20];
+    UNICODE_STRING SymlinkName;
+
+    _swprintf(SymlinkBuffer, L"\\??\\DISPLAY%lu", DeviceExtension->DeviceNumber + 1);
+    RtlInitUnicodeString(&SymlinkName, SymlinkBuffer);
+    IoDeleteSymbolicLink(&SymlinkName);
+
+    _swprintf(DeviceBuffer, L"\\Device\\Video%lu", DeviceExtension->DeviceNumber);
+    RtlDeleteRegistryValue(RTL_REGISTRY_DEVICEMAP, L"VIDEO", DeviceBuffer);
 }
 
 PVOID
@@ -189,15 +202,12 @@ IntVideoPortCreateAdapterDeviceObject(
     if (DeviceObject == NULL)
         DeviceObject = &DeviceObject_;
 
-    /*
-     * Find the first free device number that can be used for video device
-     * object names and symlinks.
-     */
-    DeviceNumber = VideoPortMaxObjectNumber + 1;
-    if (DeviceNumber == (ULONG)-1)
+    /* Take the number from watchdog, dxgkrnl names its \Device\VideoN from the same pool */
+    Status = DMgrAcquireGdiViewId(&DeviceNumber);
+    if (!NT_SUCCESS(Status))
     {
         WARN_(VIDEOPRT, "Can't find free device number\n");
-        return STATUS_UNSUCCESSFUL;
+        return Status;
     }
 
     /*
@@ -225,6 +235,7 @@ IntVideoPortCreateAdapterDeviceObject(
     if (!NT_SUCCESS(Status))
     {
         WARN_(VIDEOPRT, "IoCreateDevice call failed with status 0x%08x\n", Status);
+        DMgrReleaseGdiViewId(DeviceNumber, TRUE);
         return Status;
     }
 
@@ -360,6 +371,7 @@ Failure:
         IoDetachDevice(DeviceExtension->NextDeviceObject);
     IoDeleteDevice(*DeviceObject);
     *DeviceObject = NULL;
+    DMgrReleaseGdiViewId(DeviceNumber, TRUE);
     return Status;
 }
 
@@ -725,6 +737,10 @@ Failure:
             }
         }
     }
+
+    /* The device goes away, so its number and DISPLAY link go back for reuse */
+    IntVideoPortRemoveDeviceMapLink(DeviceExtension);
+    DMgrReleaseGdiViewId(DeviceExtension->DeviceNumber, TRUE);
     IoDeleteDevice(DeviceObject);
     return Status;
 }
