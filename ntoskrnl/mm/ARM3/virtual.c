@@ -5484,6 +5484,9 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         if (AllocationType & MEM_COMMIT) Vad->u.VadFlags.MemCommit = 1;
         Vad->u.VadFlags.Protection = ProtectionMask;
         Vad->u.VadFlags.PrivateMemory = 1;
+
+        /* Long enough for MmSecureVirtualMemory to use u3 */
+        Vad->u2.VadFlags2.LongVad = 1;
         Vad->ControlArea = NULL; // For Memory-Area hack
 
         //
@@ -6256,6 +6259,7 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
                     NewVad->EndingVpn = Vad->EndingVpn;
                     NewVad->u.LongFlags = Vad->u.LongFlags;
                     NewVad->u.VadFlags.CommitCharge = 0;
+                    NewVad->u2.VadFlags2.LongVad = 1;
                     ASSERT(NewVad->EndingVpn >= NewVad->StartingVpn);
 
                     //
