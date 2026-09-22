@@ -335,6 +335,16 @@ ExpInitLookasideLists(VOID);
 CODE_SEG("INIT")
 VOID
 NTAPI
+ExpInitializeBootGraphicsInformation(VOID);
+
+NTSTATUS
+NTAPI
+ExpQueryBootGraphicsInformation(
+    _Out_ PSYSTEM_BOOT_GRAPHICS_INFORMATION Information);
+
+CODE_SEG("INIT")
+VOID
+NTAPI
 ExInitializeSystemLookasideList(
     IN PGENERAL_LOOKASIDE List,
     IN POOL_TYPE Type,

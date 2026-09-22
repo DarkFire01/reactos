@@ -2021,6 +2021,9 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Initialize the Process Manager at Phase 1 */
     if (!PsInitSystem(LoaderBlock)) KeBugCheck(PROCESS1_INITIALIZATION_FAILED);
 
+    /* The boot framebuffer description only lives in the loader block */
+    ExpInitializeBootGraphicsInformation();
+
     /* Make sure nobody touches the loader block again */
     if (LoaderBlock == KeLoaderBlock) KeLoaderBlock = NULL;
     MmFreeLoaderBlock(LoaderBlock);
