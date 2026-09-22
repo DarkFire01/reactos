@@ -378,11 +378,22 @@ WlanGetAvailableNetworkList(IN HANDLE hClientHandle,
                             PVOID pReserved,
                             OUT PWLAN_AVAILABLE_NETWORK_LIST *ppAvailableNetworkList)
 {
+    DWORD dwResult = ERROR_SUCCESS;
+
     if ((pReserved != NULL) || (pInterfaceGuid == NULL) || (hClientHandle == NULL) || (ppAvailableNetworkList == NULL))
         return ERROR_INVALID_PARAMETER;
 
-    UNIMPLEMENTED;
-    return ERROR_SUCCESS;
+    RpcTryExcept
+    {
+        dwResult = _RpcGetAvailableNetworkList(hClientHandle, pInterfaceGuid, dwFlags, ppAvailableNetworkList);
+    }
+    RpcExcept(EXCEPTION_EXECUTE_HANDLER)
+    {
+        dwResult = WlanRpcStatusToWinError(RpcExceptionCode());
+    }
+    RpcEndExcept;
+
+    return dwResult;
 }
 
 void __RPC_FAR * __RPC_USER
