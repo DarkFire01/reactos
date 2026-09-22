@@ -587,7 +587,7 @@
 @ stdcall KeBugCheck(long)
 @ stdcall KeBugCheckEx(long ptr ptr ptr ptr)
 @ stdcall KeCancelTimer(ptr)
-@ stdcall KeCapturePersistentThreadState(ptr long long long long long ptr)
+@ stdcall KeCapturePersistentThreadState(ptr ptr long ptr ptr ptr ptr ptr)
 @ stdcall KeClearEvent(ptr)
 @ stdcall KeConnectInterrupt(ptr)
 @ stdcall KeDelayExecutionThread(long long ptr)
