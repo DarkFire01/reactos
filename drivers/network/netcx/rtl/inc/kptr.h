@@ -19,6 +19,7 @@ Environment:
 #pragma once
 
 #include <cstddef>
+#include <ntintsafe.h>
 #include <wil\resource.h>
 #include "KDeletePolicy.h"
 #include <wil\wistd_type_traits.h>
@@ -31,22 +32,6 @@ using KPoolPtr = KPtr<T, KFreePool<T>>;
 
 template<typename T>
 using KPoolPtrNP = KPtr<T, KFreePoolNP<T>>;
-
-// Allocates 1 object from the nonpaged pool.
-template<typename T>
-PAGED KPoolPtr<T> MakePoolPtr(ULONG poolTag)
-{
-    PAGED_CODE();
-
-    return MakeSizedPoolPtr<T>(poolTag, sizeof(T));
-}
-
-// Allocates 1 object from the nonpaged pool.
-template<typename T>
-NONPAGED KPoolPtrNP<T> MakePoolPtrNP(ULONG poolTag)
-{
-    return MakeSizedPoolPtrNP<T>(poolTag, sizeof(T));
-}
 
 // Allocates `allocationSize` bytes to hold the object
 template<typename THeader>
@@ -114,6 +99,22 @@ NONPAGED KPoolPtrNP<THeader> MakeSizedPoolPtrNP(ULONG poolTag, size_t allocation
 
     // Still call the default constructor for the type in case of custom field initializers
     return KPoolPtrNP<THeader>(new (allocation) THeader());
+}
+
+// Allocates 1 object from the nonpaged pool.
+template<typename T>
+PAGED KPoolPtr<T> MakePoolPtr(ULONG poolTag)
+{
+    PAGED_CODE();
+
+    return MakeSizedPoolPtr<T>(poolTag, sizeof(T));
+}
+
+// Allocates 1 object from the nonpaged pool.
+template<typename T>
+NONPAGED KPoolPtrNP<T> MakePoolPtrNP(ULONG poolTag)
+{
+    return MakeSizedPoolPtrNP<T>(poolTag, sizeof(T));
 }
 
 // Allocates `payloadSize` extra bytes after the object
