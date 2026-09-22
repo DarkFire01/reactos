@@ -4880,6 +4880,12 @@ NdisGetSystemUpTime(
   OUT PULONG pSystemUpTime);
 #endif
 
+NDISAPI
+VOID
+NTAPI
+NdisGetSystemUpTimeEx(
+  _Out_ PLARGE_INTEGER pSystemUpTime);
+
 #if NDIS_SUPPORT_60_COMPATIBLE_API
 
 _IRQL_requires_max_(DISPATCH_LEVEL)

@@ -195,6 +195,37 @@ NdisSetTimerObject(
 
 /**
  * @brief
+ * Sets a timer object the kernel may fire late, within a tolerance, so it can
+ * batch it with other timers.
+ *
+ * @return
+ * TRUE if the timer was already set.
+ */
+_Use_decl_annotations_
+BOOLEAN
+NTAPI
+NdisSetCoalescableTimerObject(
+    NDIS_HANDLE TimerObject,
+    LARGE_INTEGER DueTime,
+    LONG MillisecondsPeriod,
+    PVOID FunctionContext,
+    ULONG TolerableDelay)
+{
+    PCORE_TIMER_OBJECT Timer = TimerObject;
+
+    Timer->CurrentContext = (FunctionContext != NULL) ? FunctionContext : Timer->DefaultContext;
+
+    if (MillisecondsPeriod != 0)
+        Timer->Periodic = TRUE;
+
+    if (TolerableDelay != 0)
+        return KeSetCoalescableTimer(&Timer->Timer, DueTime, MillisecondsPeriod, TolerableDelay, &Timer->Dpc);
+
+    return KeSetTimerEx(&Timer->Timer, DueTime, MillisecondsPeriod, &Timer->Dpc);
+}
+
+/**
+ * @brief
  * Stops a timer object. A periodic timer's function has also finished running
  * when this returns.
  *
