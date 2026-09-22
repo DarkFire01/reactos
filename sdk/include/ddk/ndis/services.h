@@ -49,6 +49,16 @@ NdisSetTimerObject(
 _IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN
 NTAPI
+NdisSetCoalescableTimerObject(
+    _In_ NDIS_HANDLE TimerObject,
+    _In_ LARGE_INTEGER DueTime,
+    _In_opt_ LONG MillisecondsPeriod,
+    _In_opt_ PVOID FunctionContext,
+    _In_ ULONG TolerableDelay);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+NTAPI
 NdisCancelTimerObject(
     _In_ NDIS_HANDLE TimerObject);
 

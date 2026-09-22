@@ -424,6 +424,25 @@ NdisGetSystemUpTime(OUT PULONG pSystemUpTime)
 /*
  * @implemented
  */
+VOID
+EXPORT
+NdisGetSystemUpTimeEx(OUT PLARGE_INTEGER pSystemUpTime)
+{
+    ULONG Increment;
+    LARGE_INTEGER TickCount;
+
+    /* The 64 bit form does not wrap after 49 days like NdisGetSystemUpTime */
+    Increment = KeQueryTimeIncrement();
+    KeQueryTickCount(&TickCount);
+
+    TickCount.QuadPart *= Increment;
+    TickCount.QuadPart /= (10 * 1000);
+    *pSystemUpTime = TickCount;
+}
+
+/*
+ * @implemented
+ */
 #undef NdisInterlockedDecrement
 LONG
 EXPORT
