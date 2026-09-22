@@ -27,6 +27,15 @@ struct _DOT11_SSID;
 struct _WLAN_DOT11_BYTE_ARRAY;
 
 DWORD
+WlanEnumWifiInterfaces(
+    _Outptr_result_maybenull_ PWLAN_INTERFACE_INFO_LIST *List);
+
+DWORD
+WlanGetAvailableNetworkList(
+    _In_ const GUID *InterfaceGuid,
+    _Outptr_result_maybenull_ PWLAN_AVAILABLE_NETWORK_LIST *NetworkList);
+
+DWORD
 WlanScan(
     _In_ const GUID *InterfaceGuid);
 
