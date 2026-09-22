@@ -660,6 +660,18 @@ typedef struct _DRIVER_FUNCTIONS
     PVOID                          Reserved10;
     PVOID                          Reserved11; /* 92 */
 
+    /* Vista and Windows 7, which the CDD drives the desktop through */
+    PVOID                          RenderHint;
+    PVOID                          CreateDeviceBitmapEx;
+    PVOID                          DeleteDeviceBitmapEx;
+    PVOID                          AssociateSharedSurface;
+    PVOID                          SynchronizeRedirectionBitmaps;
+    PVOID                          AccumulateD3DDirtyRect;
+    PVOID                          StartDxInterop;
+    PVOID                          EndDxInterop;
+    PVOID                          LockDisplayArea;
+    PVOID                          UnlockDisplayArea; /* 102 */
+
     /* ReactOS specify */
     PFN_DrvEnableDriver            EnableDriver; //ReactOS Extra
 } DRIVER_FUNCTIONS, *PDRIVER_FUNCTIONS;
@@ -752,5 +764,15 @@ ASSERT_PFN(QueryGlyphAttrs);
 ASSERT_PFN(Notify);
 ASSERT_PFN(SynchronizeSurface);
 ASSERT_PFN(ResetDevice);
+ASSERT_PFN(RenderHint);
+ASSERT_PFN(CreateDeviceBitmapEx);
+ASSERT_PFN(DeleteDeviceBitmapEx);
+ASSERT_PFN(AssociateSharedSurface);
+ASSERT_PFN(SynchronizeRedirectionBitmaps);
+ASSERT_PFN(AccumulateD3DDirtyRect);
+ASSERT_PFN(StartDxInterop);
+ASSERT_PFN(EndDxInterop);
+ASSERT_PFN(LockDisplayArea);
+ASSERT_PFN(UnlockDisplayArea);
 
 #endif
