@@ -966,7 +966,7 @@ UacpiBuildPciBusInterface(PUACPI_PDO Pdo, PIO_STACK_LOCATION sp)
     {
         return STATUS_INVALID_PARAMETER;
     }
-    if (sp->Parameters.QueryInterface.Version > (isV2 ? 2u : 1u))
+    if (sp->Parameters.QueryInterface.Version > PCI_BUS_INTERFACE_STANDARD_VERSION)
     {
         return STATUS_NOINTERFACE;
     }
@@ -1012,7 +1012,7 @@ UacpiBuildPciBusInterface(PUACPI_PDO Pdo, PIO_STACK_LOCATION sp)
     }
 
     bi->Size    = FIELD_OFFSET(PCI_BUS_INTERFACE_STANDARD, RootBusCapability);
-    bi->Version = isV2 ? 2 : 1;
+    bi->Version = PCI_BUS_INTERFACE_STANDARD_VERSION;
     bi->Context = Pdo;                // PUACPI_PDO, not Common.Self
     bi->InterfaceReference   = UacpiIfRef;
     bi->InterfaceDereference = UacpiIfDeref;
