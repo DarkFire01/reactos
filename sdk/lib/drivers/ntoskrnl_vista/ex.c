@@ -153,43 +153,4 @@ ExTryQueueWorkItem(
     return FALSE;
 }
 
-/**
- * @brief
- * Arms an executive timer object.
- *
- * @param[in] Timer
- * The timer object returned by ExAllocateTimer().
- *
- * @param[in] DueTime
- * Expiration time in 100 nanosecond units. Negative values are relative.
- *
- * @param[in] Period
- * Period of a recurring timer in 100 nanosecond units, or zero for a one shot
- * timer.
- *
- * @param[in] Parameters
- * Optional extended parameters.
- *
- * @return
- * FALSE, as the timer is never armed.
- *
- * @unimplemented
- */
-BOOLEAN
-NTAPI
-ExSetTimer(
-    _In_ PEX_TIMER Timer,
-    _In_ LONGLONG DueTime,
-    _In_ LONGLONG Period,
-    _In_opt_ PEXT_SET_PARAMETERS Parameters)
-{
-    UNREFERENCED_PARAMETER(Timer);
-    UNREFERENCED_PARAMETER(DueTime);
-    UNREFERENCED_PARAMETER(Period);
-    UNREFERENCED_PARAMETER(Parameters);
-
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
 /* EOF */
