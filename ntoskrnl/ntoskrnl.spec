@@ -1802,6 +1802,7 @@
 @ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
 @ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
 @ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)
+@ stdcall -version=0x601+ IoReportRootDevice(ptr)
 @ stdcall -version=0x602+ IoReportInterruptActive(ptr)
 @ stdcall -version=0x602+ IoReportInterruptInactive(ptr)
 @ stdcall -version=0x601+ IoRequestDeviceEjectEx(ptr ptr ptr ptr)
