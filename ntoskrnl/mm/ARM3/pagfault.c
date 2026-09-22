@@ -871,22 +871,8 @@ MiCompleteProtoPteFault(IN BOOLEAN StoreInstruction,
     /* Release the PFN lock */
     MiReleasePfnLock(OldIrql);
 
-    /* Remove special/caching bits */
+    /* Remove special/caching bits, the page itself knows its caching */
     Protection &= ~MM_PROTECT_SPECIAL;
-
-    /* Setup caching */
-    if (Pfn1->u3.e1.CacheAttribute == MiWriteCombined)
-    {
-        /* Write combining, no caching */
-        MI_PAGE_DISABLE_CACHE(&TempPte);
-        MI_PAGE_WRITE_COMBINED(&TempPte);
-    }
-    else if (Pfn1->u3.e1.CacheAttribute == MiNonCached)
-    {
-        /* Write through, no caching */
-        MI_PAGE_DISABLE_CACHE(&TempPte);
-        MI_PAGE_WRITE_THROUGH(&TempPte);
-    }
 
     /* Check if this is a kernel or user address */
     if (Address < MmSystemRangeStart)
@@ -898,6 +884,20 @@ MiCompleteProtoPteFault(IN BOOLEAN StoreInstruction,
     {
         /* Build the kernel PTE */
         MI_MAKE_HARDWARE_PTE(&TempPte, PointerPte, Protection, PageFrameIndex);
+    }
+
+    /* Setup caching, once the PTE is built so it is not overwritten */
+    if (Pfn1->u3.e1.CacheAttribute == MiWriteCombined)
+    {
+        /* Write combining, no caching */
+        MI_PAGE_DISABLE_CACHE(&TempPte);
+        MI_PAGE_WRITE_COMBINED(&TempPte);
+    }
+    else if (Pfn1->u3.e1.CacheAttribute == MiNonCached)
+    {
+        /* Write through, no caching */
+        MI_PAGE_DISABLE_CACHE(&TempPte);
+        MI_PAGE_WRITE_THROUGH(&TempPte);
     }
 
     /* Set the dirty flag if needed */
