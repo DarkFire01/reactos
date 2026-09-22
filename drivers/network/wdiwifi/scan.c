@@ -184,6 +184,9 @@ WdiScanWorker(
     WdiLogBssTable(Adapter);
 
 Done:
+    /* Tell whoever asked the scan is finished; the networks are read with
+       OID_DOT11_ENUM_BSS_LIST */
+    WdiIndicateScanConfirm(Adapter, NDIS_STATUS_SUCCESS);
     KeSetEvent(&Adapter->ScanIdle, IO_NO_INCREMENT, FALSE);
 }
 
@@ -197,7 +200,7 @@ Done:
 _Use_decl_annotations_
 VOID
 NTAPI
-WdiStartTestScan(
+WdiStartScan(
     PWDI_ADAPTER Adapter)
 {
     if (Adapter->ScanWorkItem == NULL)
@@ -205,6 +208,15 @@ WdiStartTestScan(
 
     KeClearEvent(&Adapter->ScanIdle);
     NdisQueueIoWorkItem(Adapter->ScanWorkItem, WdiScanWorker, Adapter);
+}
+
+_Use_decl_annotations_
+VOID
+NTAPI
+WdiStartTestScan(
+    PWDI_ADAPTER Adapter)
+{
+    WdiStartScan(Adapter);
 }
 
 /**
