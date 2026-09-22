@@ -620,7 +620,9 @@ WdiPeerCreate(
     {
         Adapter->ConnectedBssid = PeerAddr;
         Adapter->Connected = TRUE;
+        DPRINT1("DOT11TRACE: assoc indicate start\n");
         WdiIndicateAssociation(Adapter, &PeerAddr, DOT11_ASSOC_STATUS_SUCCESS);
+        DPRINT1("DOT11TRACE: assoc indicate done\n");
     }
 }
 
