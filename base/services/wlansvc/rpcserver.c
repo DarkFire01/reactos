@@ -265,23 +265,13 @@ DWORD _RpcScan(
         return ERROR_INVALID_HANDLE;
     }
 
-    /*
-    DWORD dwBytesReturned;
-    HANDLE hDevice;
-    ULONG OidCode = OID_802_11_BSSID_LIST_SCAN;
-    PNDIS_802_11_BSSID_LIST pBssIDList;
+    if (pInterfaceGuid == NULL)
+        return ERROR_INVALID_PARAMETER;
 
-    DeviceIoControl(hDevice,
-                    IOCTL_NDIS_QUERY_GLOBAL_STATS,
-                    &OidCode,
-                    sizeof(ULONG),
-                    NULL,
-                    0,
-                    &dwBytesReturned,
-                    NULL);
-*/
-    UNIMPLEMENTED;
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    UNREFERENCED_PARAMETER(pDot11Ssid);
+    UNREFERENCED_PARAMETER(pIeData);
+
+    return WlanScan(pInterfaceGuid);
 }
 
 DWORD _RpcGetAvailableNetworkList(
@@ -312,16 +302,32 @@ DWORD _RpcConnect(
     const GUID *pInterfaceGuid,
     const PWLAN_CONNECTION_PARAMETERS *pConnectionParameters)
 {
-    UNIMPLEMENTED;
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    PWLAN_CONNECTION_PARAMETERS Parameters;
+
+    if (WlanSvcGetHandleEntry(hClientHandle) == NULL)
+        return ERROR_INVALID_HANDLE;
+
+    if (pInterfaceGuid == NULL || pConnectionParameters == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    Parameters = *pConnectionParameters;
+    if (Parameters == NULL || Parameters->pDot11Ssid == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    return WlanConnect(pInterfaceGuid, Parameters->pDot11Ssid);
 }
 
 DWORD _RpcDisconnect(
     WLANSVC_RPC_HANDLE hClientHandle,
     const GUID *pInterfaceGUID)
 {
-    UNIMPLEMENTED;
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    if (WlanSvcGetHandleEntry(hClientHandle) == NULL)
+        return ERROR_INVALID_HANDLE;
+
+    if (pInterfaceGUID == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    return WlanDisconnect(pInterfaceGUID);
 }
 
 DWORD _RpcRegisterNotification(
