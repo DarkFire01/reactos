@@ -255,6 +255,23 @@ IntVideoPortMapPhysicalMemory(
    IN ULONG Protect,
    IN OUT PVOID *VirtualAddress  OPTIONAL);
 
+/* watchdog.sys, which hands out \Device\VideoN numbers for videoprt and dxgkrnl alike */
+
+NTSTATUS
+NTAPI
+DMgrAcquireGdiViewId(
+    _Out_ PULONG GdiViewId);
+
+VOID
+NTAPI
+DMgrReleaseGdiViewId(
+    _In_ ULONG GdiViewId,
+    _In_ BOOLEAN Rollback);
+
+NTSTATUS
+NTAPI
+DMgrWriteDeviceCountToRegistry(VOID);
+
 /* videoprt.c */
 
 extern PKPROCESS CsrProcess;

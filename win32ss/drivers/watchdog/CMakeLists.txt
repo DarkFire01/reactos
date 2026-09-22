@@ -7,4 +7,7 @@ add_library(watchdog MODULE
 
 set_module_type(watchdog kernelmodedriver)
 add_importlibs(watchdog ntoskrnl)
-#add_cd_file(TARGET watchdog DESTINATION reactos/system32/drivers FOR all)
+# amd64 ships the Windows watchdog.sys from modules/ instead
+if(NOT ARCH STREQUAL "amd64")
+    add_cd_file(TARGET watchdog DESTINATION reactos/system32/drivers FOR all)
+endif()
