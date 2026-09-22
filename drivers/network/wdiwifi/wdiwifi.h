@@ -151,6 +151,13 @@ typedef struct _WDI_BSS
 
 #define WDI_MAX_BSS                         64
 
+/* Packed lengths of the WDI wire structures a BSS entry and a connect carry.
+   The connection settings grew with the WDI version, so its length is picked
+   at build time and the buffer holds the largest form */
+#define WDI_SIGNAL_INFO_LENGTH              8
+#define WDI_CHANNEL_INFO_LENGTH             8
+#define WDI_CONNECTION_SETTINGS_MAX_LENGTH  15
+
 /* A received message, WDI header first */
 typedef struct _WDI_MESSAGE
 {
