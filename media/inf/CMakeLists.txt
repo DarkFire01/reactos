@@ -2,6 +2,7 @@
 list(APPEND INF_FILES
     audio.inf
     basicdisplay.inf
+    basicrender.inf
     battery.inf
     bda.inf
     bth.inf
