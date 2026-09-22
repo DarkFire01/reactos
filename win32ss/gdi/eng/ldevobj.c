@@ -191,6 +191,13 @@ LDEVOBJ_bEnableDriver(
     /* Fill the driver function array */
     for (i = 0; i < ded.c; i++)
     {
+        /* A newer driver may know indices we do not, and they would not fit */
+        if (ded.pdrvfn[i].iFunc >= INDEX_LAST)
+        {
+            WARN("Driver function index %lu is out of range\n", ded.pdrvfn[i].iFunc);
+            continue;
+        }
+
         pldev->apfn[ded.pdrvfn[i].iFunc] = ded.pdrvfn[i].pfn;
     }
 
