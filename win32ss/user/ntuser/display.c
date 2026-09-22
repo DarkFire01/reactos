@@ -86,7 +86,10 @@ InitDisplayDriver(
         return NULL;
     }
 
-    /* Query the diplay drivers */
+    /*
+     * Query the diplay drivers. A WDDM adapter names none, the CDD drives it instead,
+     * so leave the decision to EngpRegisterGraphicsDevice.
+     */
     cbSize = sizeof(awcBuffer) - 10;
     Status = RegQueryValue(hkey,
                            L"InstalledDisplayDrivers",
@@ -95,9 +98,8 @@ InitDisplayDriver(
                            &cbSize);
     if (!NT_SUCCESS(Status))
     {
-        ERR("Didn't find 'InstalledDisplayDrivers', status = 0x%lx\n", Status);
-        ZwClose(hkey);
-        return NULL;
+        TRACE("Didn't find 'InstalledDisplayDrivers', status = 0x%lx\n", Status);
+        cbSize = 0;
     }
 
     /* Initialize the UNICODE_STRING */
