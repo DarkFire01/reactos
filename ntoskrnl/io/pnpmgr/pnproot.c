@@ -817,7 +817,7 @@ EnumerateDevices(
 
             RtlAppendUnicodeToString(&DevicePath, REGSTR_KEY_ROOTENUM L"\\");
             RtlAppendUnicodeStringToString(&DevicePath, &SubKeyName);
-            DPRINT("Found device %wZ\\%S!\n", &DevicePath, SubKeyInfo->Name);
+            DPRINT1("PnpRoot: processing %wZ\\%S\n", &DevicePath, SubKeyInfo->Name);
 
             Status = IopShouldProcessDevice(SubKeyHandle, SubKeyInfo->Name);
             if (NT_SUCCESS(Status))
@@ -1086,6 +1086,10 @@ PdoQueryResources(
 
     DeviceExtension = (PPNPROOT_PDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
+    /* A removed PDO no longer owns any device info */
+    if (DeviceExtension->DeviceInfo == NULL)
+        return Irp->IoStatus.Status;
+
     if (DeviceExtension->DeviceInfo->ResourceList)
     {
         /* Copy existing resource requirement list */
@@ -1122,8 +1126,16 @@ PdoQueryResourceRequirements(
 
     DeviceExtension = (PPNPROOT_PDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
+    /* A removed PDO no longer owns any device info */
+    if (DeviceExtension->DeviceInfo == NULL)
+        return Irp->IoStatus.Status;
+
     if (DeviceExtension->DeviceInfo->ResourceRequirementsList)
     {
+        DPRINT1("PnpRoot: query resource requirements for '%wZ' list %p\n",
+                &DeviceExtension->DeviceInfo->DeviceID,
+                DeviceExtension->DeviceInfo->ResourceRequirementsList);
+
         /* Copy existing resource requirement list */
         ResourceList = ExAllocatePool(PagedPool, DeviceExtension->DeviceInfo->ResourceRequirementsList->ListSize);
         if (!ResourceList)
@@ -1334,6 +1346,13 @@ PnpRootPdoPnpControl(
             break;
 
         case IRP_MN_REMOVE_DEVICE:
+            /* Nothing to do if the device info is already gone */
+            if (DeviceExtension->DeviceInfo == NULL)
+            {
+                Status = STATUS_SUCCESS;
+                break;
+            }
+
             /* Remove the device from the device list and decrement the device count*/
             KeAcquireGuardedMutex(&FdoDeviceExtension->DeviceListLock);
             RemoveEntryList(&DeviceExtension->DeviceInfo->ListEntry);
@@ -1355,6 +1374,7 @@ PnpRootPdoPnpControl(
 
             /* Free the device info */
             ExFreePool(DeviceExtension->DeviceInfo);
+            DeviceExtension->DeviceInfo = NULL;
 
             /* Finally, delete the device object */
             IoDeleteDevice(DeviceObject);
