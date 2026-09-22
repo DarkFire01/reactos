@@ -605,10 +605,6 @@ WdiInitializeAdapter(
     if (Status != NDIS_STATUS_SUCCESS)
         goto Failed;
 
-    Status = WdiInitializeDataPath(Adapter);
-    if (Status != NDIS_STATUS_SUCCESS)
-        goto Failed;
-
     Step = WdiInitCapabilities;
     Status = WdiQueryCapabilities(Adapter);
     if (Status != NDIS_STATUS_SUCCESS)
@@ -616,6 +612,10 @@ WdiInitializeAdapter(
 
     Step = WdiInitConfiguration;
     Status = WdiConfigure(Adapter);
+    if (Status != NDIS_STATUS_SUCCESS)
+        goto Failed;
+
+    Status = WdiInitializeDataPath(Adapter);
     if (Status != NDIS_STATUS_SUCCESS)
         goto Failed;
 
