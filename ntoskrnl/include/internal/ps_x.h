@@ -59,28 +59,6 @@ PspRunCreateThreadNotifyRoutines(IN PETHREAD CurrentThread,
 
 FORCEINLINE
 VOID
-PspRunCreateProcessNotifyRoutines(IN PEPROCESS CurrentProcess,
-                                  IN BOOLEAN Create)
-{
-    ULONG i;
-
-    /* Check if we have registered routines */
-    if (PspProcessNotifyRoutineCount)
-    {
-        /* Loop callbacks */
-        for (i = 0; i < PSP_MAX_CREATE_PROCESS_NOTIFY; i++)
-        {
-            /* Do the callback */
-            ExDoCallBack(&PspProcessNotifyRoutine[i],
-                         CurrentProcess->InheritedFromUniqueProcessId,
-                         CurrentProcess->UniqueProcessId,
-                         (PVOID)(ULONG_PTR)Create);
-        }
-    }
-}
-
-FORCEINLINE
-VOID
 PspRunLoadImageNotifyRoutines(PUNICODE_STRING FullImageName,
                               HANDLE ProcessId,
                               PIMAGE_INFO ImageInfo)
