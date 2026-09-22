@@ -57,8 +57,9 @@ CoreSetGeneralAttributes(
     if (General->MacAddressLength > NDIS_MAX_PHYS_ADDRESS_LENGTH)
         return NDIS_STATUS_INVALID_PARAMETER;
 
-    /* Only Ethernet framing reaches the protocols in this tree */
-    if (General->MediaType != NdisMedium802_3)
+    /* Ethernet and native 802.11 are supported upward */
+    if (General->MediaType != NdisMedium802_3 &&
+        General->MediaType != NdisMediumNative802_11)
         return NDIS_STATUS_UNSUPPORTED_MEDIA;
 
     if (Adapter->NdisMiniportBlock.DriverHandle->Ndis6Driver &&
