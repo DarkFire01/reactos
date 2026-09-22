@@ -1735,6 +1735,7 @@
 @ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
 
 # Event Tracing for Windows
+@ stdcall -version=0x600+ EtwActivityIdControl(long ptr)
 @ stdcall -version=0x600+ EtwEventEnabled(int64 ptr)
 @ stdcall -version=0x600+ EtwRegister(ptr ptr ptr ptr)
 @ stdcall -version=0xa00+ EtwSetInformation(int64 long ptr long)
