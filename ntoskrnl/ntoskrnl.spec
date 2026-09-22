@@ -1814,6 +1814,7 @@
 @ stdcall -version=0x601+ IoUnregisterContainerNotification(ptr)
 @ stdcall -version=0x603+ KeCancelTimer2(ptr)
 @ stdcall -version=0x603+ KeInitializeTimer2(ptr)
+@ fastcall -version=0x600+ KeInvalidateRangeAllCaches(ptr long)
 @ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
 @ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
 @ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
