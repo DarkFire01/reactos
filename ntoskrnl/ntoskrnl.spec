@@ -1816,8 +1816,10 @@
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
 
 # Memory Manager
+@ stdcall -version=0x602+ MmAllocateContiguousNodeMemory(long int64 int64 int64 long long)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ stdcall -version=0xa00+ MmMapIoSpaceEx(int64 long long)
+@ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)
 
 # System information queries
 @ stdcall -version=0x602+ NtQuerySystemInformationEx(long ptr long ptr long ptr)
@@ -1862,6 +1864,10 @@
 @ stdcall -version=0x600+ RtlRunOnceComplete(ptr long ptr)
 @ stdcall -version=0x600+ RtlRunOnceExecuteOnce(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ RtlRunOnceInitialize(ptr)
+
+
+# Zw routines without a system call
+@ stdcall -version=0x602+ ZwSetInformationVirtualMemory(ptr long long ptr ptr long)
 
 # Windows Hardware Error Architecture
 @ stdcall -version=0x600+ WheaAddErrorSource(ptr ptr)
