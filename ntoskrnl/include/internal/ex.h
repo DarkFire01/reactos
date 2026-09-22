@@ -123,6 +123,14 @@ typedef struct _ETIMER
 } ETIMER, *PETIMER;
 
 // HACK: Copied from wdm.h as we don't have the required NTDDI_VERSION
+#if (NTDDI_VERSION < NTDDI_VISTA)
+#define EX_LOOKASIDE_LIST_EX_FLAGS_RAISE_ON_FAIL 0x00000001UL
+#define EX_LOOKASIDE_LIST_EX_FLAGS_FAIL_NO_RAISE 0x00000002UL
+#define EX_MAXIMUM_LOOKASIDE_DEPTH_BASE          256
+#define EX_MAXIMUM_LOOKASIDE_DEPTH_LIMIT         1024
+#endif
+
+// HACK: Copied from wdm.h as we don't have the required NTDDI_VERSION
 #if (NTDDI_VERSION < NTDDI_WINBLUE)
 #define EX_TIMER_HIGH_RESOLUTION 0x4
 #define EX_TIMER_NO_WAKE 0x8
