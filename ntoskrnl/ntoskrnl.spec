@@ -1857,6 +1857,8 @@
 @ stdcall -version=0x600+ PsSetProcessDxgProcess(ptr ptr)
 
 # Runtime Library
+@ stdcall -version=0x603+ RtlAvlInsertNodeEx(ptr ptr long ptr)
+@ stdcall -version=0x603+ RtlAvlRemoveNode(ptr ptr)
 @ stdcall -version=0x600+ RtlFindClosestEncodableLength(int64 ptr)
 @ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
