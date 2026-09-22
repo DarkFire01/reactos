@@ -63,7 +63,7 @@
 //
 #define PSP_MAX_CREATE_THREAD_NOTIFY            8
 #define PSP_MAX_LOAD_IMAGE_NOTIFY               8
-#define PSP_MAX_CREATE_PROCESS_NOTIFY           8
+#define PSP_MAX_CREATE_PROCESS_NOTIFY           64
 
 //
 // Job Scheduling Classes
@@ -190,6 +190,13 @@ NTAPI
 PsReferenceProcessFilePointer(
     _In_ PEPROCESS Process,
     _Outptr_ PFILE_OBJECT *FileObject
+);
+
+NTSTATUS
+NTAPI
+PspRunCreateProcessNotifyRoutines(
+    _In_ PEPROCESS Process,
+    _In_ BOOLEAN Create
 );
 
 //

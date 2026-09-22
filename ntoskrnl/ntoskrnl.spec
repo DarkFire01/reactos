@@ -1030,7 +1030,7 @@
 @ stdcall PsGetProcessSessionIdEx(ptr)
 @ stdcall PsGetProcessWin32Process(ptr)
 @ stdcall PsGetProcessWin32WindowStation(ptr)
-;@ cdecl -arch=x86_64 PsGetProcessWow64Process()
+@ stdcall -arch=x86_64 PsGetProcessWow64Process(ptr)
 @ stdcall PsGetThreadFreezeCount(ptr)
 @ stdcall PsGetThreadHardErrorsAreDisabled(ptr)
 @ stdcall PsGetThreadId(ptr)
@@ -1832,6 +1832,14 @@
 @ stdcall -version=0x603+ PoSetThermalActiveCooling(ptr long)
 @ stdcall -version=0x603+ PoSetThermalPassiveCooling(ptr long)
 
+# Process Manager
+@ stdcall -version=0x600+ PsGetProcessDxgProcess(ptr)
+@ stdcall -version=0x600+ PsIsProcessCommitRelinquished(ptr)
+@ stdcall -version=0x600+ PsIsProtectedProcess(ptr)
+@ stdcall -version=0x603+ PsIsProtectedProcessLight(ptr)
+@ stdcall -version=0x600+ PsSetCreateProcessNotifyRoutineEx(ptr long)
+@ stdcall -version=0x600+ PsSetProcessDxgProcess(ptr ptr)
+
 # Runtime Library
 @ stdcall -version=0x600+ RtlFindClosestEncodableLength(int64 ptr)
 @ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
@@ -1851,9 +1859,7 @@
 @ stdcall ObRegisterCallbacks()
 @ stdcall ObUnRegisterCallbacks()
 @ stdcall PsAcquireProcessExitSynchronization()
-@ stdcall PsGetProcessWow64Process()
 @ stdcall PsReferenceProcessFilePointer(ptr ptr)
 @ stdcall PsReleaseProcessExitSynchronization()
-@ stdcall PsSetCreateProcessNotifyRoutineEx()
 @ stdcall ZwQueryVirtualMemory(long ptr long ptr long ptr)
 @ stdcall wcscat_s(wstr long wstr)
