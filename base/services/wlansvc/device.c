@@ -97,10 +97,12 @@ WlanOpenInterface(
                      InterfaceGuid->Data4[4], InterfaceGuid->Data4[5],
                      InterfaceGuid->Data4[6], InterfaceGuid->Data4[7]);
 
+    /* NDISUIO matches this against the bound device name, which is a counted
+       string with no terminator, so the length must not include one */
     if (!DeviceIoControl(Device,
                          IOCTL_NDISUIO_OPEN_DEVICE,
                          Name,
-                         (DWORD)((wcslen(Name) + 1) * sizeof(WCHAR)),
+                         (DWORD)(wcslen(Name) * sizeof(WCHAR)),
                          NULL,
                          0,
                          &Returned,
@@ -313,11 +315,13 @@ WlanGuidFromDeviceName(
     return TRUE;
 }
 
-/* Opens NDISUIO bound to the adapter named exactly as a binding reports it */
+/* Opens NDISUIO bound to the adapter named exactly as a binding reports it.
+   The name is a counted string with no terminator, so its length is passed in */
 static
 HANDLE
 WlanOpenByName(
-    _In_ PCWSTR Name)
+    _In_reads_bytes_(NameLength) PCWSTR Name,
+    _In_ ULONG NameLength)
 {
     HANDLE Device;
     DWORD Returned;
@@ -329,7 +333,7 @@ WlanOpenByName(
         return NULL;
 
     if (!DeviceIoControl(Device, IOCTL_NDISUIO_OPEN_DEVICE,
-                         (PVOID)Name, (DWORD)((wcslen(Name) + 1) * sizeof(WCHAR)),
+                         (PVOID)Name, NameLength,
                          NULL, 0, &Returned, NULL))
     {
         CloseHandle(Device);
@@ -407,7 +411,7 @@ WlanEnumWifiInterfaces(
             continue;
         }
 
-        One = WlanOpenByName(Name);
+        One = WlanOpenByName(Name, Binding->DeviceNameLength);
         if (One == NULL)
         {
             DPRINT1("WLAN enum: could not open %S (error %lu)\n", Name, GetLastError());
