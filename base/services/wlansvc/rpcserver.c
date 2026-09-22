@@ -269,7 +269,7 @@ DWORD _RpcConnect(
     if (Parameters == NULL || Parameters->pDot11Ssid == NULL)
         return ERROR_INVALID_PARAMETER;
 
-    return WlanConnect(pInterfaceGuid, Parameters->pDot11Ssid);
+    return WlanConnectProfile(pInterfaceGuid, Parameters->pDot11Ssid, Parameters->strProfile);
 }
 
 DWORD _RpcDisconnect(
