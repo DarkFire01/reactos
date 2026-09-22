@@ -9,6 +9,7 @@
 
 #include <ndis.h>
 #include <netioddk.h>
+#include <windot11.h>
 #include <dot11wdi.h>
 #include <drivers/ndis/ndishook.h>
 
@@ -222,6 +223,23 @@ typedef struct _WDI_ADAPTER
     KSPIN_LOCK BssLock;
     ULONG BssCount;
     WDI_BSS Bss[WDI_MAX_BSS];
+
+    /* Native 802.11 control state, set through the dot11 OIDs */
+    ULONG OperationMode;
+    BOOLEAN HasDesiredSsid;
+    UCHAR DesiredSsidLength;
+    UCHAR DesiredSsid[32];
+    WDI_MAC_ADDRESS DesiredBssid;
+    BOOLEAN HasDesiredBssid;
+
+    /* Connects run on their own work item */
+    NDIS_HANDLE ConnectWorkItem;
+    KEVENT ConnectIdle;
+    BOOLEAN Connecting;
+
+    /* The AP once a peer for it exists */
+    BOOLEAN Connected;
+    WDI_MAC_ADDRESS ConnectedBssid;
 } WDI_ADAPTER, *PWDI_ADAPTER;
 
 /* Frames the IHV allocates metadata for, the metadata sits after this header */
@@ -369,11 +387,50 @@ WdiParseBssEntry(
     _In_ ULONG Length,
     _Out_ PWDI_BSS Bss);
 
+/* control.c */
+
+NDIS_STATUS
+NTAPI
+WdiHandleOidRequest(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PNDIS_OID_REQUEST OidRequest);
+
+VOID
+NTAPI
+WdiIndicateScanConfirm(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ NDIS_STATUS ScanStatus);
+
+VOID
+NTAPI
+WdiIndicateAssociation(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PCWDI_MAC_ADDRESS Bssid,
+    _In_ ULONG AssocStatus);
+
+VOID
+NTAPI
+WdiIndicateConnectionComplete(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ ULONG ConnectStatus);
+
+VOID
+NTAPI
+WdiIndicateDisassociation(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PCWDI_MAC_ADDRESS Bssid,
+    _In_ ULONG Reason);
+
 /* scan.c */
 
 VOID
 NTAPI
 WdiStartTestScan(
+    _In_ PWDI_ADAPTER Adapter);
+
+VOID
+NTAPI
+WdiStartScan(
     _In_ PWDI_ADAPTER Adapter);
 
 VOID

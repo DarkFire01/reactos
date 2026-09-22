@@ -582,13 +582,17 @@ WdiInitializeAdapter(
     WdiInitializeSendQueue(Adapter);
     KeInitializeEvent(&Adapter->OpenCloseDone, NotificationEvent, FALSE);
     KeInitializeEvent(&Adapter->ScanIdle, NotificationEvent, TRUE);
+    KeInitializeEvent(&Adapter->ConnectIdle, NotificationEvent, TRUE);
     KeInitializeSpinLock(&Adapter->BssLock);
     WdiReadKnobs(Adapter);
     WdiSetDataApi(&Adapter->DataApi);
 
     Adapter->StateWorkItem = NdisAllocateIoWorkItem(Adapter->MiniportAdapterHandle);
     Adapter->ScanWorkItem = NdisAllocateIoWorkItem(Adapter->MiniportAdapterHandle);
-    if (Adapter->StateWorkItem == NULL || Adapter->ScanWorkItem == NULL)
+    Adapter->ConnectWorkItem = NdisAllocateIoWorkItem(Adapter->MiniportAdapterHandle);
+    if (Adapter->StateWorkItem == NULL ||
+        Adapter->ScanWorkItem == NULL ||
+        Adapter->ConnectWorkItem == NULL)
     {
         Status = NDIS_STATUS_RESOURCES;
         goto Failed;
@@ -674,6 +678,7 @@ WdiHaltAdapter(
     PAGED_CODE();
 
     WdiWaitForScan(Adapter);
+    KeWaitForSingleObject(&Adapter->ConnectIdle, Executive, KernelMode, FALSE, NULL);
 
     if (Adapter->Progress & WDI_PROGRESS_OPERATING)
     {
@@ -738,6 +743,12 @@ WdiHaltAdapter(
     {
         NdisFreeIoWorkItem(Adapter->ScanWorkItem);
         Adapter->ScanWorkItem = NULL;
+    }
+
+    if (Adapter->ConnectWorkItem != NULL)
+    {
+        NdisFreeIoWorkItem(Adapter->ConnectWorkItem);
+        Adapter->ConnectWorkItem = NULL;
     }
 
     Adapter->Progress = 0;

@@ -4,6 +4,7 @@ add_definitions(-D_WIN32_WINNT=0x600)
 list(APPEND SOURCE
     adapter.c
     command.c
+    control.c
     datapath.c
     miniport.c
     scan.c
