@@ -1035,13 +1035,22 @@ ObQueryTypeInfo(
 
 /* PUBLIC FUNCTIONS **********************************************************/
 
+/**
+ * @brief
+ * Returns the type of an object.
+ *
+ * @param[in] Object
+ * Body of the object.
+ *
+ * @return
+ * The object type.
+ */
 POBJECT_TYPE
 FASTCALL
 ObGetObjectType(
     _In_ PVOID Object)
 {
-    UNIMPLEMENTED;
-    return NULL;
+    return OBJECT_TO_OBJECT_HEADER(Object)->Type;
 }
 
 NTSTATUS
