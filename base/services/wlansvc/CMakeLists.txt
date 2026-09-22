@@ -6,6 +6,7 @@ add_rpc_files(server ${REACTOS_SOURCE_DIR}/sdk/include/reactos/idl/wlansvc.idl)
 
 list(APPEND SOURCE
     device.c
+    supplicant.c
     wlansvc.c
     rpcserver.c
     precomp.h
@@ -22,6 +23,6 @@ if(NOT MSVC)
 endif()
 
 set_module_type(wlansvc win32cui UNICODE)
-add_importlibs(wlansvc advapi32 rpcrt4 iphlpapi msvcrt kernel32 ntdll)
+add_importlibs(wlansvc advapi32 rpcrt4 iphlpapi bcrypt msvcrt kernel32 ntdll)
 add_pch(wlansvc precomp.h SOURCE)
 add_cd_file(TARGET wlansvc DESTINATION reactos/system32 FOR all)
