@@ -1793,6 +1793,7 @@
 @ stdcall -version=0x601+ KeGetProcessorIndexFromNumber(ptr)
 @ stdcall -version=0x601+ KeGetProcessorNumberFromIndex(long ptr)
 @ stdcall -version=0x603+ KeInitializeTimer2(ptr)
+@ fastcall -version=0x600+ KeInvalidateRangeAllCaches(ptr long)
 @ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
 @ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
 @ stdcall -version=0x602+ KeQueryDpcWatchdogInformation(ptr)
