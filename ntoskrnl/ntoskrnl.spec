@@ -1818,6 +1818,8 @@
 @ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
 @ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
 @ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
+
+@ stdcall -version=0x600+ KeSetActualBasePriorityThread(ptr long)
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
