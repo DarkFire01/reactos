@@ -256,7 +256,7 @@ if(USE_DIBLIB)
     target_link_libraries(win32k diblib)
 endif()
 
-add_importlibs(win32k ntoskrnl hal ftfd)
+add_importlibs(win32k ntoskrnl hal ftfd watchdog)
 add_cd_file(TARGET win32k DESTINATION reactos/system32 FOR all)
 
 if(ARCH STREQUAL "amd64")
