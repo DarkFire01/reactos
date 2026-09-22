@@ -12,5 +12,6 @@ list(APPEND LIBCNTPR_PRINTF_SOURCE
     printf/streamout.c
     printf/vprintf.c
     printf/vsprintf.c
+    printf/vsprintf_s.c
     printf/wstreamout.c
 )

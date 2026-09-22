@@ -1722,6 +1722,7 @@
 @ cdecl strcpy_s()
 @ cdecl strncpy_s()
 @ cdecl strtok_s()
+@ cdecl vsprintf_s()
 @ cdecl wcscpy_s()
 @ cdecl wcsncpy_s()
 
