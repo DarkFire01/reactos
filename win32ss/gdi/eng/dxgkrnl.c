@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justinmiller100@gmail.com>
  *
  * Ported from Reference/win10/win32kbase.c (DlpLoadDxgkrnl:110414, DlInitDxgkrnl:110290). This is
- * the win32k side of WDDM: it loads dxgkrnl.sys, opens \Device\DxgKrnl, and sends
+ * the win32k side of WDDM: it opens \Device\DxgKrnl when a miniport has loaded dxgkrnl, and sends
  * IOCTL_VIDEO_GIVE_CALLSBACK (0x23E057, INTERNAL_DEVICE_CONTROL) with a 944-byte DXGKWIN32K_INTERFACE
  * (Version 22) that dxgkrnl fills with the D3DKMT entry points - the table win32k routes the
  * D3DKMT* APIs through (gDxgkInterface). DarkFire's WDDM upgrade to the otherwise-XPDM win32k.
@@ -43,44 +43,27 @@ PFILE_OBJECT             gpDxgkFileObject = NULL;
 DXGKWIN32K_INTERFACE_BUF gDxgkInterface = { 0 };
 BOOLEAN                  gbDxgkInitialized = FALSE;
 
+/* Exported by watchdog.sys */
+NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
+
+#define DL_SESSION_OPEN     0
+
 /**
- * @brief Load dxgkrnl.sys and open \Device\DxgKrnl. Reference win32kbase.c:110414 DlpLoadDxgkrnl.
+ * @brief Open \Device\DxgKrnl. Unlike Windows, win32k never loads dxgkrnl itself: only a WDDM
+ *        miniport does, so a boot without one stays on XDDM.
  */
 static NTSTATUS
-DlpLoadDxgkrnl(VOID)
+DlpOpenDxgkrnl(VOID)
 {
-    UNICODE_STRING ServiceName, DeviceName;
-    LARGE_INTEGER  Delay;
-    NTSTATUS       Status;
-    ULONG          Retries = 10;
+    UNICODE_STRING DeviceName;
 
-    RtlInitUnicodeString(&ServiceName,
-        L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\DXGKrnl");
-    Status = ZwLoadDriver(&ServiceName);
-    if (!NT_SUCCESS(Status) && Status != STATUS_IMAGE_ALREADY_LOADED)
-    {
-        DPRINT1("win32k: ZwLoadDriver(DXGKrnl) failed 0x%lX\n", Status);
-        return Status;
-    }
-
-    /* The device may appear a moment after the service starts - retry briefly (ref :110437). */
     RtlInitUnicodeString(&DeviceName, L"\\Device\\DxgKrnl");
-    for (;;)
-    {
-        Status = IoGetDeviceObjectPointer(&DeviceName, GENERIC_READ | GENERIC_WRITE,
-                                          &gpDxgkFileObject, &gpDxgkDeviceObject);
-        if (NT_SUCCESS(Status))
-            break;
-        Delay.QuadPart = -50000;   /* 5 ms */
-        KeDelayExecutionThread(KernelMode, FALSE, &Delay);
-        if (--Retries == 0)
-            return Status;
-    }
-    return STATUS_SUCCESS;
+    return IoGetDeviceObjectPointer(&DeviceName, GENERIC_READ | GENERIC_WRITE,
+                                    &gpDxgkFileObject, &gpDxgkDeviceObject);
 }
 
 /**
- * @brief Load dxgkrnl + acquire the DXGKWIN32K_INTERFACE. Reference win32kbase.c:110290 (DlInitDxgkrnl).
+ * @brief Open dxgkrnl + acquire the DXGKWIN32K_INTERFACE. Reference win32kbase.c:110290 (DlInitDxgkrnl).
  *        After this, gDxgkInterface.pfnDxgk* are the D3DKMT entry points win32k calls.
  */
 NTSTATUS NTAPI
@@ -94,7 +77,7 @@ DlInitDxgkrnl(VOID)
     if (gbDxgkInitialized)
         return STATUS_SUCCESS;
 
-    Status = DlpLoadDxgkrnl();
+    Status = DlpOpenDxgkrnl();
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -135,6 +118,24 @@ DlInitDxgkrnl(VOID)
         DPRINT1("win32k: IOCTL_VIDEO_GIVE_CALLSBACK failed 0x%lX\n", Status);
     }
     return Status;
+}
+
+/**
+ * @brief Report the console session to watchdog, which is what lets dxgkrnl start its adapters.
+ *        Must run in CSRSS. Reference win32kbase DrvNotifySessionStateChange.
+ */
+VOID NTAPI
+DlNotifySessionOpen(VOID)
+{
+    NTSTATUS Status;
+
+    /* dxgkrnl blocks here until an adapter has started, so only call when a miniport loaded it */
+    if (gpDxgkDeviceObject == NULL)
+        return;
+
+    Status = SMgrNotifySessionChange(DL_SESSION_OPEN);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("win32k: SMgrNotifySessionChange failed 0x%lX\n", Status);
 }
 
 /** @brief Release the dxgkrnl device (Reference DlpUnloadDxgkrnl). */
