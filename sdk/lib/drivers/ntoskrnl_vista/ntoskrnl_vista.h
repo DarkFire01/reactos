@@ -18,41 +18,6 @@
 
 /* EXECUTIVE ******************************************************************/
 
-typedef LONG EX_SPIN_LOCK, *PEX_SPIN_LOCK;
-
-/* Bit 31 of an EX_SPIN_LOCK is the writer, the low bits count the readers */
-#define EX_SPIN_LOCK_WRITER ((LONG)0x80000000)
-
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_saves_
-NTKRNLVISTAAPI
-KIRQL
-FASTCALL
-ExAcquireSpinLockExclusive(
-    _Inout_ PEX_SPIN_LOCK SpinLock);
-
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_saves_
-NTKRNLVISTAAPI
-KIRQL
-FASTCALL
-ExAcquireSpinLockShared(
-    _Inout_ PEX_SPIN_LOCK SpinLock);
-
-NTKRNLVISTAAPI
-VOID
-FASTCALL
-ExReleaseSpinLockExclusive(
-    _Inout_ PEX_SPIN_LOCK SpinLock,
-    _In_ _IRQL_restores_ KIRQL OldIrql);
-
-NTKRNLVISTAAPI
-VOID
-FASTCALL
-ExReleaseSpinLockShared(
-    _Inout_ PEX_SPIN_LOCK SpinLock,
-    _In_ _IRQL_restores_ KIRQL OldIrql);
-
 NTKRNLVISTAAPI
 BOOLEAN
 NTAPI
