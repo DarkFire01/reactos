@@ -8,8 +8,12 @@
 #include "precomp.h"
 
 #include <stdio.h>
+#include <wchar.h>
 #include <strsafe.h>
 #include <nuiouser.h>
+
+#define NDEBUG
+#include <debug.h>
 
 /* dot11 OIDs and structures the RPC header does not carry. The base dot11
    types come from wlansvc_s.h through precomp.h. */
@@ -309,6 +313,32 @@ WlanGuidFromDeviceName(
     return TRUE;
 }
 
+/* Opens NDISUIO bound to the adapter named exactly as a binding reports it */
+static
+HANDLE
+WlanOpenByName(
+    _In_ PCWSTR Name)
+{
+    HANDLE Device;
+    DWORD Returned;
+
+    Device = CreateFileW(L"\\\\.\\Ndisuio", GENERIC_READ | GENERIC_WRITE,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (Device == INVALID_HANDLE_VALUE)
+        return NULL;
+
+    if (!DeviceIoControl(Device, IOCTL_NDISUIO_OPEN_DEVICE,
+                         (PVOID)Name, (DWORD)((wcslen(Name) + 1) * sizeof(WCHAR)),
+                         NULL, 0, &Returned, NULL))
+    {
+        CloseHandle(Device);
+        return NULL;
+    }
+
+    return Device;
+}
+
 /**
  * @brief
  * Enumerates the native 802.11 adapters as a WLAN_INTERFACE_INFO_LIST, returned
@@ -345,6 +375,9 @@ WlanEnumWifiInterfaces(
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 
+    /* Let any pending protocol bindings settle before they are walked */
+    DeviceIoControl(Ndisuio, IOCTL_NDISUIO_BIND_WAIT, NULL, 0, NULL, 0, &Returned, NULL);
+
     for (Index = 0; Count < Capacity; Index++)
     {
         PWLAN_INTERFACE_INFO Info;
@@ -361,23 +394,36 @@ WlanEnumWifiInterfaces(
                              Binding, sizeof(Buffer), Binding, sizeof(Buffer),
                              &Returned, NULL))
         {
+            DPRINT1("WLAN enum: binding %lu ends the list (error %lu)\n", Index, GetLastError());
             break;
         }
 
         Name = (PCWSTR)(Buffer + Binding->DeviceNameOffset);
+        DPRINT1("WLAN enum: binding %lu is %S\n", Index, Name);
+
         if (!WlanGuidFromDeviceName(Name, &Guid))
+        {
+            DPRINT1("WLAN enum: no GUID in the binding name\n");
             continue;
+        }
 
-        One = WlanOpenInterface(&Guid);
+        One = WlanOpenByName(Name);
         if (One == NULL)
+        {
+            DPRINT1("WLAN enum: could not open %S (error %lu)\n", Name, GetLastError());
             continue;
+        }
 
+        Got = 0;
         if (WlanQueryOid(One, OID_GEN_PHYSICAL_MEDIUM, &Medium, sizeof(Medium), &Got) != ERROR_SUCCESS ||
             Got < sizeof(Medium) || Medium != WLAN_PHYSICAL_MEDIUM_NATIVE_80211)
         {
+            DPRINT1("WLAN enum: binding %lu physical medium %lu, not native 802.11\n", Index, Medium);
             CloseHandle(One);
             continue;
         }
+
+        DPRINT1("WLAN enum: binding %lu is a native 802.11 adapter\n", Index);
 
         Info = &Result->InterfaceInfo[Count];
         Info->InterfaceGuid = Guid;
@@ -406,6 +452,8 @@ WlanEnumWifiInterfaces(
     }
 
     CloseHandle(Ndisuio);
+
+    DPRINT1("WLAN enum: %lu native 802.11 adapter(s)\n", Count);
 
     Result->dwNumberOfItems = Count;
     Result->dwIndex = 0;
@@ -742,6 +790,61 @@ WlanConnect(
 
     CloseHandle(Interface);
     return ERROR_TIMEOUT;
+}
+
+/* Copies the text between two tags out of a profile, if it is there */
+static
+BOOL
+WlanProfileTag(
+    _In_ PCWSTR Xml,
+    _In_ PCWSTR Open,
+    _In_ PCWSTR Close,
+    _Out_writes_(Count) PWSTR Value,
+    _In_ int Count)
+{
+    PCWSTR Start = wcsstr(Xml, Open);
+    PCWSTR End;
+    SIZE_T Length;
+
+    if (Start == NULL)
+        return FALSE;
+    Start += wcslen(Open);
+    End = wcsstr(Start, Close);
+    if (End == NULL)
+        return FALSE;
+
+    Length = (SIZE_T)(End - Start);
+    if (Length >= (SIZE_T)Count)
+        Length = Count - 1;
+    RtlCopyMemory(Value, Start, Length * sizeof(WCHAR));
+    Value[Length] = L'\0';
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Connects using a temporary profile: a secured one runs the WPA handshake, an
+ * open one connects directly.
+ */
+DWORD
+WlanConnectProfile(
+    _In_ const GUID *InterfaceGuid,
+    _In_ PDOT11_SSID Ssid,
+    _In_opt_ PCWSTR Profile)
+{
+    WCHAR Authentication[32];
+    WCHAR Key[128];
+
+    if (Profile != NULL &&
+        WlanProfileTag(Profile, L"<authentication>", L"</authentication>",
+                       Authentication, ARRAYSIZE(Authentication)) &&
+        (_wcsicmp(Authentication, L"WPA2PSK") == 0 || _wcsicmp(Authentication, L"WPAPSK") == 0) &&
+        WlanProfileTag(Profile, L"<keyMaterial>", L"</keyMaterial>", Key, ARRAYSIZE(Key)))
+    {
+        return WlanConnectWpa(InterfaceGuid, Ssid, Key);
+    }
+
+    return WlanConnect(InterfaceGuid, Ssid);
 }
 
 /**
