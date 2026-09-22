@@ -250,6 +250,130 @@ SMgrNotifySessionChange(
     return STATUS_SUCCESS;
 }
 
+/* \Device\VideoN numbers, shared by videoprt and dxgkrnl so they never pick the same one */
+#define DMGR_MAX_GDI_VIEWS  256
+
+static KSPIN_LOCK DMgrGdiViewLock;
+static ULONG DMgrUsedGdiViews[DMGR_MAX_GDI_VIEWS];
+static ULONG DMgrUsedGdiViewCount;
+static ULONG DMgrNextGdiViewId;
+
+/**
+ * @brief
+ * Hands out the next display device number.
+ *
+ * @param[out] GdiViewId
+ * Receives the number, used as \Device\VideoN and DISPLAY(N+1).
+ *
+ * @return
+ * STATUS_QUOTA_EXCEEDED when every number is taken, otherwise STATUS_SUCCESS.
+ */
+NTSTATUS
+NTAPI
+DMgrAcquireGdiViewId(
+    _Out_ PULONG GdiViewId)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG Id = 0;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&DMgrGdiViewLock, &OldIrql);
+    if ((DMgrUsedGdiViewCount >= RTL_NUMBER_OF(DMgrUsedGdiViews)) ||
+        (DMgrNextGdiViewId == MAXULONG))
+    {
+        Status = STATUS_QUOTA_EXCEEDED;
+    }
+    else
+    {
+        Id = DMgrNextGdiViewId++;
+        DMgrUsedGdiViews[DMgrUsedGdiViewCount++] = Id;
+    }
+    KeReleaseSpinLock(&DMgrGdiViewLock, OldIrql);
+
+    if (NT_SUCCESS(Status))
+        *GdiViewId = Id;
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Gives back a number from DMgrAcquireGdiViewId.
+ *
+ * @param[in] GdiViewId
+ * The number to give back.
+ *
+ * @param[in] Rollback
+ * TRUE to hand the number out again next time, which only works for the
+ * newest one.
+ */
+VOID
+NTAPI
+DMgrReleaseGdiViewId(
+    _In_ ULONG GdiViewId,
+    _In_ BOOLEAN Rollback)
+{
+    KIRQL OldIrql;
+    ULONG Index;
+
+    KeAcquireSpinLock(&DMgrGdiViewLock, &OldIrql);
+    for (Index = 0; Index < DMgrUsedGdiViewCount; Index++)
+    {
+        if (DMgrUsedGdiViews[Index] != GdiViewId)
+            continue;
+
+        DMgrUsedGdiViewCount--;
+        RtlMoveMemory(&DMgrUsedGdiViews[Index],
+                      &DMgrUsedGdiViews[Index + 1],
+                      (DMgrUsedGdiViewCount - Index) * sizeof(ULONG));
+
+        if (Rollback && (DMgrNextGdiViewId == GdiViewId + 1))
+            DMgrNextGdiViewId = GdiViewId;
+        break;
+    }
+    KeReleaseSpinLock(&DMgrGdiViewLock, OldIrql);
+}
+
+/**
+ * @brief
+ * Publishes the display device numbers in use under DEVICEMAP\VIDEO.
+ *
+ * @return
+ * STATUS_SUCCESS, or the registry failure.
+ */
+NTSTATUS
+NTAPI
+DMgrWriteDeviceCountToRegistry(VOID)
+{
+    ULONG UsedGdiViews[DMGR_MAX_GDI_VIEWS];
+    ULONG UsedGdiViewCount;
+    ULONG MaxObjectNumber;
+    KIRQL OldIrql;
+    NTSTATUS Status;
+
+    KeAcquireSpinLock(&DMgrGdiViewLock, &OldIrql);
+    MaxObjectNumber = DMgrNextGdiViewId - 1;
+    UsedGdiViewCount = DMgrUsedGdiViewCount;
+    RtlCopyMemory(UsedGdiViews, DMgrUsedGdiViews, UsedGdiViewCount * sizeof(ULONG));
+    KeReleaseSpinLock(&DMgrGdiViewLock, OldIrql);
+
+    Status = RtlWriteRegistryValue(RTL_REGISTRY_DEVICEMAP,
+                                   L"VIDEO",
+                                   L"MaxObjectNumber",
+                                   REG_DWORD,
+                                   &MaxObjectNumber,
+                                   sizeof(MaxObjectNumber));
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    return RtlWriteRegistryValue(RTL_REGISTRY_DEVICEMAP,
+                                 L"VIDEO",
+                                 L"ObjectNumberList",
+                                 REG_BINARY,
+                                 UsedGdiViews,
+                                 UsedGdiViewCount * sizeof(ULONG));
+}
+
 
 
 
