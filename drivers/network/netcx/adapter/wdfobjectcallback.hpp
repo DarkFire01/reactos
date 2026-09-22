@@ -84,7 +84,7 @@ public:
         WDFTYPE TargetObject,
         PFn Callback
     )
-        : WdfObjectCallback(TargetObject, Callback)
+        : WdfObjectCallback<WDFTYPE, PFn, false>(TargetObject, Callback)
     {
     }
 };
@@ -98,7 +98,7 @@ public:
         WDFTYPE TargetObject,
         PFn Callback
     )
-        : WdfObjectCallback(TargetObject, Callback)
+        : WdfObjectCallback<WDFTYPE, PFn, true>(TargetObject, Callback)
     {
     }
 };

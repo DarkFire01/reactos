@@ -24,6 +24,7 @@
 WDFAPI
 _IRQL_requires_(PASSIVE_LEVEL)
 void
+NTAPI
 NETEXPORT(NetAdapterOffloadSetLsoCapabilities_2_1_1)(
     _In_ NET_DRIVER_GLOBALS *,
     _In_ NETADAPTER,

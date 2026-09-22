@@ -18,6 +18,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetTxQueueCreate)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _Inout_ NETTXQUEUE_INIT * NetTxQueueInit,
@@ -60,6 +61,7 @@ NETEXPORT(NetTxQueueCreate)(
 _IRQL_requires_max_(HIGH_LEVEL)
 WDFAPI
 void
+NTAPI
 NETEXPORT(NetTxQueueNotifyMoreCompletedPacketsAvailable)(
     _In_
     NET_DRIVER_GLOBALS * DriverGlobals,
@@ -76,6 +78,7 @@ NETEXPORT(NetTxQueueNotifyMoreCompletedPacketsAvailable)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 ULONG
+NTAPI
 NETEXPORT(NetTxQueueInitGetQueueId)(
     _In_
     NET_DRIVER_GLOBALS * DriverGlobals,
@@ -96,6 +99,7 @@ NETEXPORT(NetTxQueueInitGetQueueId)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NET_RING_COLLECTION const *
+NTAPI
 NETEXPORT(NetTxQueueGetRingCollection)(
     _In_
     NET_DRIVER_GLOBALS * DriverGlobals,
@@ -116,6 +120,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetRxQueueCreate)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _Inout_ NETRXQUEUE_INIT * NetRxQueueInit,
@@ -159,6 +164,7 @@ NETEXPORT(NetRxQueueCreate)(
 _IRQL_requires_max_(HIGH_LEVEL)
 WDFAPI
 void
+NTAPI
 NETEXPORT(NetRxQueueNotifyMoreReceivedPacketsAvailable)(
     _In_
     NET_DRIVER_GLOBALS * DriverGlobals,
@@ -177,6 +183,7 @@ NETEXPORT(NetRxQueueNotifyMoreReceivedPacketsAvailable)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 ULONG
+NTAPI
 NETEXPORT(NetRxQueueInitGetQueueId)(
     _In_
     NET_DRIVER_GLOBALS * DriverGlobals,
@@ -197,6 +204,7 @@ NETEXPORT(NetRxQueueInitGetQueueId)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NET_RING_COLLECTION const *
+NTAPI
 NETEXPORT(NetRxQueueGetRingCollection)(
     _In_
     NET_DRIVER_GLOBALS * DriverGlobals,
@@ -216,6 +224,7 @@ NETEXPORT(NetRxQueueGetRingCollection)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 void
+NTAPI
 NETEXPORT(NetTxQueueGetExtension)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _In_ NETPACKETQUEUE NetTxQueue,
@@ -249,6 +258,7 @@ NETEXPORT(NetTxQueueGetExtension)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 void
+NTAPI
 NETEXPORT(NetRxQueueGetExtension)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _In_ NETPACKETQUEUE NetRxQueue,
