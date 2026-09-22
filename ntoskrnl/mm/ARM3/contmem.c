@@ -618,6 +618,89 @@ MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
                                       CacheType);
 }
 
+/**
+ * @brief
+ * Allocates physically contiguous nonpaged memory, taking the caching
+ * behavior from a page protection instead of a cache type.
+ *
+ * @param[in] Protect
+ * PAGE_READWRITE or PAGE_EXECUTE_READWRITE, optionally combined with
+ * PAGE_NOCACHE or PAGE_WRITECOMBINE. Executable memory must be cached.
+ *
+ * @param[in] PreferredNode
+ * The NUMA node to allocate from. ReactOS has a single node, so it is ignored.
+ *
+ * @return
+ * The base address of the allocation, or NULL on failure.
+ */
+PVOID
+NTAPI
+MmAllocateContiguousNodeMemory(
+    _In_ SIZE_T NumberOfBytes,
+    _In_ PHYSICAL_ADDRESS LowestAcceptableAddress,
+    _In_ PHYSICAL_ADDRESS HighestAcceptableAddress,
+    _In_opt_ PHYSICAL_ADDRESS BoundaryAddressMultiple,
+    _In_ ULONG Protect,
+    _In_ NODE_REQUIREMENT PreferredNode)
+{
+    PFN_NUMBER LowestPfn, HighestPfn, BoundaryPfn;
+    MEMORY_CACHING_TYPE CacheType;
+    ULONG ProtectMask;
+    ULONG Access;
+
+    UNREFERENCED_PARAMETER(PreferredNode);
+
+    if (BYTE_OFFSET(BoundaryAddressMultiple.LowPart))
+        return NULL;
+
+    if (Protect & PAGE_GUARD)
+        return NULL;
+
+    ProtectMask = MiMakeProtectionMask(Protect);
+    if (ProtectMask == MM_INVALID_PROTECTION)
+        return NULL;
+
+    /* The pages have to be writable, and copy on write is meaningless here */
+    Access = ProtectMask & MM_PROTECT_ACCESS;
+    if ((Access != MM_READWRITE) && (Access != MM_EXECUTE_READWRITE))
+        return NULL;
+
+    switch (ProtectMask & MM_PROTECT_SPECIAL)
+    {
+        case MM_NOCACHE:
+            CacheType = MmNonCached;
+            break;
+
+        case MM_WRITECOMBINE:
+            CacheType = MmWriteCombined;
+            break;
+
+        default:
+            CacheType = MmCached;
+            break;
+    }
+
+    if ((Access == MM_EXECUTE_READWRITE) && (CacheType != MmCached))
+        return NULL;
+
+    LowestPfn = (PFN_NUMBER)(LowestAcceptableAddress.QuadPart >> PAGE_SHIFT);
+    if (BYTE_OFFSET(LowestAcceptableAddress.LowPart))
+        LowestPfn++;
+
+    HighestPfn = (PFN_NUMBER)(HighestAcceptableAddress.QuadPart >> PAGE_SHIFT);
+    HighestPfn = min(HighestPfn, MmHighestPhysicalPage);
+    if (LowestPfn > HighestPfn)
+        return NULL;
+
+    BoundaryPfn = (PFN_NUMBER)(BoundaryAddressMultiple.QuadPart >> PAGE_SHIFT);
+
+    return MiAllocateContiguousMemory(NumberOfBytes,
+                                      LowestPfn,
+                                      HighestPfn,
+                                      BoundaryPfn,
+                                      CacheType);
+}
+
 /*
  * @implemented
  */

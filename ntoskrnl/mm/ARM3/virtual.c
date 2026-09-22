@@ -3273,6 +3273,234 @@ MmUnsecureVirtualMemory(IN PVOID SecureMem)
     MmUnlockAddressSpace(&Process->Vm);
 }
 
+/**
+ * @brief
+ * Moves the pages behind a MEM_ROTATE view of the current process between
+ * regular memory and a frame buffer.
+ *
+ * @param[in] VirtualAddress
+ * The page aligned start of the range to rotate.
+ *
+ * @param[in,out] NumberOfBytes
+ * On input, the page aligned size of the range. On output, the number of
+ * bytes that were rotated.
+ *
+ * @param[in] NewMdl
+ * The frame buffer pages, used when rotating toward the frame buffer.
+ *
+ * @param[in] Direction
+ * Which way to rotate, and whether the contents are copied.
+ *
+ * @param[in] CopyFunction
+ * The routine that copies the contents between the two sets of pages.
+ *
+ * @param[in] Context
+ * Passed through to @p CopyFunction.
+ *
+ * @return
+ * STATUS_CONFLICTING_ADDRESSES if the range is not inside a rotate view,
+ * STATUS_ACCESS_VIOLATION if nothing is mapped there, or a parameter error.
+ *
+ * @remarks
+ * Rotate views cannot be created yet, so no range is ever rotated.
+ */
+NTSTATUS
+NTAPI
+MmRotatePhysicalView(
+    _In_ PVOID VirtualAddress,
+    _Inout_ PSIZE_T NumberOfBytes,
+    _In_opt_ PMDLX NewMdl,
+    _In_ MM_ROTATE_DIRECTION Direction,
+    _In_ PMM_ROTATE_COPY_CALLBACK_FUNCTION CopyFunction,
+    _In_opt_ PVOID Context)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+    ULONG_PTR LastAddress;
+    PMMVAD Vad;
+    NTSTATUS Status;
+
+    UNREFERENCED_PARAMETER(NewMdl);
+    UNREFERENCED_PARAMETER(CopyFunction);
+    UNREFERENCED_PARAMETER(Context);
+
+    PAGED_CODE();
+
+    if (BYTE_OFFSET(VirtualAddress))
+    {
+        Status = STATUS_INVALID_PARAMETER_1;
+        goto Quit;
+    }
+
+    LastAddress = (ULONG_PTR)VirtualAddress + *NumberOfBytes - 1;
+    if (BYTE_OFFSET(*NumberOfBytes) || (LastAddress <= (ULONG_PTR)VirtualAddress))
+    {
+        Status = STATUS_INVALID_PARAMETER_2;
+        goto Quit;
+    }
+
+    if (Direction >= MmMaximumRotateDirection)
+    {
+        Status = STATUS_INVALID_PARAMETER_3;
+        goto Quit;
+    }
+
+    MmLockAddressSpace(&Process->Vm);
+
+    Vad = MiLocateAddress(VirtualAddress);
+    if (Vad == NULL)
+        Status = STATUS_ACCESS_VIOLATION;
+    else if ((Vad->u.VadFlags.VadType != VadRotatePhysical) ||
+             (Vad->EndingVpn < (LastAddress >> PAGE_SHIFT)))
+        Status = STATUS_CONFLICTING_ADDRESSES;
+    else
+        Status = STATUS_NOT_IMPLEMENTED;
+
+    MmUnlockAddressSpace(&Process->Vm);
+
+Quit:
+    *NumberOfBytes = 0;
+    return Status;
+}
+
+/**
+ * @brief
+ * Checks that every range lies in user space, is not empty and does not wrap.
+ */
+static
+BOOLEAN
+MiAreMemoryRangesValid(
+    _In_reads_(Count) PMEMORY_RANGE_ENTRY Ranges,
+    _In_ ULONG_PTR Count)
+{
+    ULONG_PTR Index;
+    ULONG_PTR Start, Last;
+    ULONG_PTR Pages, TotalPages = 0;
+
+    for (Index = 0; Index < Count; Index++)
+    {
+        Start = (ULONG_PTR)Ranges[Index].VirtualAddress;
+        if ((Start > (ULONG_PTR)MmHighestUserAddress) || (Ranges[Index].NumberOfBytes == 0))
+            return FALSE;
+
+        Last = Start + Ranges[Index].NumberOfBytes - 1;
+        if ((Last < Start) || (Last > (ULONG_PTR)MmHighestUserAddress))
+            return FALSE;
+
+        Pages = ADDRESS_AND_SIZE_TO_SPAN_PAGES(Start, Ranges[Index].NumberOfBytes);
+        if (TotalPages + Pages < TotalPages)
+            return FALSE;
+
+        TotalPages += Pages;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Applies a memory manager hint to a set of ranges in a process.
+ *
+ * @param[in] ProcessHandle
+ * The process that owns the ranges. It needs PROCESS_VM_OPERATION access.
+ *
+ * @param[in] VmInformationClass
+ * VmPrefetchInformation, VmPagePriorityInformation or VmCfgCallTargetInformation.
+ *
+ * @param[in] NumberOfEntries
+ * The number of entries in @p VirtualAddresses.
+ *
+ * @param[in] VirtualAddresses
+ * The user mode ranges the hint applies to.
+ *
+ * @param[in] VmInformation
+ * The class specific input.
+ *
+ * @param[in] VmInformationLength
+ * The size of @p VmInformation, in bytes.
+ *
+ * @return
+ * STATUS_SUCCESS if the hint was accepted, or a parameter error.
+ *
+ * @remarks
+ * Prefetching and page priorities are accepted but not acted on yet, and
+ * control flow guard is not supported.
+ */
+NTSTATUS
+NTAPI
+ZwSetInformationVirtualMemory(
+    _In_ HANDLE ProcessHandle,
+    _In_ VIRTUAL_MEMORY_INFORMATION_CLASS VmInformationClass,
+    _In_ ULONG_PTR NumberOfEntries,
+    _In_reads_(NumberOfEntries) PMEMORY_RANGE_ENTRY VirtualAddresses,
+    _In_reads_bytes_(VmInformationLength) PVOID VmInformation,
+    _In_ ULONG VmInformationLength)
+{
+    PEPROCESS Process;
+    ULONG Value;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    switch (VmInformationClass)
+    {
+        case VmPrefetchInformation:
+        case VmPagePriorityInformation:
+            if (VmInformation == NULL)
+                return STATUS_INVALID_PARAMETER_5;
+
+            if (VmInformationLength != sizeof(ULONG))
+                return STATUS_INVALID_PARAMETER_6;
+            break;
+
+        case VmCfgCallTargetInformation:
+            if (VmInformationLength != (2 * sizeof(ULONG)) + (2 * sizeof(PVOID)))
+                return STATUS_INVALID_PARAMETER_6;
+            break;
+
+        default:
+            return STATUS_INVALID_PARAMETER_2;
+    }
+
+    if ((NumberOfEntries == 0) ||
+        (NumberOfEntries > (MAXULONG_PTR / sizeof(MEMORY_RANGE_ENTRY))))
+    {
+        return STATUS_INVALID_PARAMETER_3;
+    }
+
+    if (VmInformationClass == VmCfgCallTargetInformation)
+        return STATUS_NOT_SUPPORTED;
+
+    Value = *(PULONG)VmInformation;
+
+    if (ProcessHandle == NtCurrentProcess())
+    {
+        Process = PsGetCurrentProcess();
+    }
+    else
+    {
+        Status = ObReferenceObjectByHandle(ProcessHandle,
+                                           PROCESS_VM_OPERATION,
+                                           PsProcessType,
+                                           KernelMode,
+                                           (PVOID*)&Process,
+                                           NULL);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    if (!MiAreMemoryRangesValid(VirtualAddresses, NumberOfEntries))
+        Status = STATUS_INVALID_PARAMETER_4;
+    else if (VmInformationClass == VmPagePriorityInformation)
+        Status = (Value <= MI_MAXIMUM_PAGE_PRIORITY) ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER_5;
+    else
+        Status = (Value == 0) ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER_5;
+
+    if (ProcessHandle != NtCurrentProcess())
+        ObDereferenceObject(Process);
+
+    return Status;
+}
+
 /* SYSTEM CALLS ***************************************************************/
 
 NTSTATUS
