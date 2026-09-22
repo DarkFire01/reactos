@@ -1226,11 +1226,16 @@ MiResolveImageReferences(IN PVOID ImageBase,
         GdiLink = GdiLink ||
                   !(_strnicmp(ImportName, "win32k", sizeof("win32k") - 1));
 
-        /* We can also allow dxapi (for Windows compat, allow IRT and coverage) */
+        /*
+         * We can also allow dxapi (for Windows compat, allow IRT and coverage), and
+         * watchdog, which the WDDM display driver logs through. Windows 10 dropped
+         * this restriction entirely.
+         */
         NormalLink = NormalLink ||
                      ((_strnicmp(ImportName, "win32k", sizeof("win32k") - 1)) &&
-                      (_strnicmp(ImportName, "ntoskrnl", sizeof("ntoskrnl") - 1)) && 
+                      (_strnicmp(ImportName, "ntoskrnl", sizeof("ntoskrnl") - 1)) &&
                       (_strnicmp(ImportName, "dxapi", sizeof("dxapi") - 1)) &&
+                      (_strnicmp(ImportName, "watchdog", sizeof("watchdog") - 1)) &&
                       (_strnicmp(ImportName, "coverage", sizeof("coverage") - 1)) &&
                       (_strnicmp(ImportName, "irt", sizeof("irt") - 1)));
 
@@ -1238,6 +1243,7 @@ MiResolveImageReferences(IN PVOID ImageBase,
         if (GdiLink && NormalLink)
         {
             /* It's not, it's importing stuff it shouldn't be! */
+            DPRINT1("GDI driver imports '%s', which is not allowed\n", ImportName);
             Status = STATUS_PROCEDURE_NOT_FOUND;
             goto Failure;
         }
