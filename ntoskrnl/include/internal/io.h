@@ -53,6 +53,11 @@
 #define ENUM_ROOT L"\\Registry\\Machine\\System\\CurrentControlSet\\Enum"
 
 //
+// Driver object flag set once IoReportRootDevice created a device for the driver
+//
+#define DRVO_ROOT_DEVICE_REPORTED   0x00000800
+
+//
 // Returns the type of METHOD_ used in this IOCTL
 //
 #define IO_METHOD_FROM_CTL_CODE(c)                      (c & 0x00000003)
