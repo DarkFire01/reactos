@@ -359,7 +359,7 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     PVOID ExceptionPortObject;
     PDEBUG_OBJECT DebugObject;
     PSECTION SectionObject;
-    NTSTATUS Status, AccessStatus;
+    NTSTATUS Status, AccessStatus, NotifyStatus;
     ULONG_PTR DirectoryTableBase[2] = {0,0};
     KAFFINITY Affinity;
     HANDLE_TABLE_ENTRY CidEntry;
@@ -896,8 +896,14 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     }
     _SEH2_END;
 
-    /* Run the Notification Routines */
-    PspRunCreateProcessNotifyRoutines(Process, TRUE);
+    /* Run the Notification Routines, any of which may refuse the process */
+    NotifyStatus = PspRunCreateProcessNotifyRoutines(Process, TRUE);
+    if (!NT_SUCCESS(NotifyStatus))
+    {
+        ObCloseHandle(hProcess, PreviousMode);
+        PsTerminateProcess(Process, NotifyStatus);
+        Status = NotifyStatus;
+    }
 
     /* If 12 processes have been created, enough of user-mode is ready */
     if (++ProcessCount == 12) Ki386PerfEnd();
@@ -1223,6 +1229,120 @@ NTAPI
 PsGetProcessWin32Process(PEPROCESS Process)
 {
     return Process->Win32Process;
+}
+
+/**
+ * @brief
+ * Returns the DirectX graphics kernel state of a process.
+ *
+ * @param[in] Process
+ * The process to query.
+ *
+ * @return
+ * The pointer last stored with PsSetProcessDxgProcess(), or NULL.
+ */
+PVOID
+NTAPI
+PsGetProcessDxgProcess(
+    _In_ PEPROCESS Process)
+{
+    return Process->DxgProcess;
+}
+
+/**
+ * @brief
+ * Stores the DirectX graphics kernel state of a process.
+ *
+ * @param[in] Process
+ * The process to update.
+ *
+ * @param[in] DxgProcess
+ * The new state. The caller serializes updates.
+ */
+VOID
+NTAPI
+PsSetProcessDxgProcess(
+    _In_ PEPROCESS Process,
+    _In_opt_ PVOID DxgProcess)
+{
+    Process->DxgProcess = DxgProcess;
+}
+
+#ifdef _M_AMD64
+/**
+ * @brief
+ * Returns the WOW64 state of a process.
+ *
+ * @param[in] Process
+ * The process to query.
+ *
+ * @return
+ * The WOW64 state, or NULL for a native process.
+ */
+PVOID
+NTAPI
+PsGetProcessWow64Process(
+    _In_ PEPROCESS Process)
+{
+    return Process->Wow64Process;
+}
+#endif
+
+/**
+ * @brief
+ * Tells whether a process is protected.
+ *
+ * @param[in] Process
+ * The process to query.
+ *
+ * @return
+ * FALSE. Processes do not carry a protection level.
+ */
+BOOLEAN
+NTAPI
+PsIsProtectedProcess(
+    _In_ PEPROCESS Process)
+{
+    UNREFERENCED_PARAMETER(Process);
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Tells whether a process is a protected process light.
+ *
+ * @param[in] Process
+ * The process to query.
+ *
+ * @return
+ * FALSE. Processes do not carry a protection level.
+ */
+BOOLEAN
+NTAPI
+PsIsProtectedProcessLight(
+    _In_ PEPROCESS Process)
+{
+    UNREFERENCED_PARAMETER(Process);
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Tells whether a process gave up its commit charge while frozen.
+ *
+ * @param[in] Process
+ * The process to query.
+ *
+ * @return
+ * FALSE. Processes never relinquish their commit charge.
+ */
+BOOLEAN
+NTAPI
+PsIsProcessCommitRelinquished(
+    _In_ PEPROCESS Process)
+{
+    UNREFERENCED_PARAMETER(Process);
+    return FALSE;
 }
 
 /*
