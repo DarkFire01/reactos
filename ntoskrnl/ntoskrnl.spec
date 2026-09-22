@@ -1721,10 +1721,12 @@
 @ cdecl sscanf_s()
 @ cdecl strcpy_s()
 @ cdecl strncpy_s()
+@ cdecl -arch=i386 _chkstk()
 @ cdecl strtok_s()
 @ cdecl vsprintf_s()
 @ cdecl wcscpy_s()
 @ cdecl wcsncpy_s()
+@ cdecl wcsnlen()
 
 # Debugging
 @ stdcall -version=0x603+ DbgkWerCaptureLiveKernelDump(wstr long ptr ptr ptr ptr ptr ptr long)
@@ -1825,6 +1827,8 @@
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
 @ stdcall -version=0xA00+ KeShouldYieldProcessor()
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
+@ fastcall -arch=i386 KfAcquireSpinLock(ptr) hal.KfAcquireSpinLock
+@ fastcall -arch=i386 KfReleaseSpinLock(ptr long) hal.KfReleaseSpinLock
 
 # Loader
 @ stdcall -version=0x602+ LdrResFindResource(ptr ptr ptr ptr ptr ptr ptr ptr long)
@@ -1833,6 +1837,7 @@
 @ stdcall -version=0x602+ MmAllocateContiguousNodeMemory(long int64 int64 int64 long long)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ stdcall -version=0xa00+ MmMapIoSpaceEx(int64 long long)
+@ stdcall -version=0x600+ MmMapViewInSystemSpaceEx(ptr ptr ptr ptr long)
 @ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)
 
 # System information queries
@@ -1872,10 +1877,12 @@
 # Runtime Library
 @ stdcall -version=0x603+ RtlAvlInsertNodeEx(ptr ptr long ptr)
 @ stdcall -version=0x603+ RtlAvlRemoveNode(ptr ptr)
+@ stdcall -version=0x600+ RtlCompareUnicodeStrings(ptr long ptr long long)
 @ stdcall -version=0x600+ RtlFindClosestEncodableLength(int64 ptr)
 @ stdcall -version=0x602+ RtlGenerateClass5Guid(ptr ptr long ptr)
 @ stdcall -version=0xA00+ RtlGetActiveConsoleId()
 @ stdcall -version=0x600+ RtlGetNtProductType(ptr)
+@ stdcall -version=0x600+ RtlGetProductInfo(long long long long ptr)
 @ stdcall -version=0xA00+ RtlIsMultiSessionSku()
 @ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
@@ -1890,8 +1897,11 @@
 @ stdcall -version=0xA00+ TtmNotifyDeviceDeparture(long int64)
 
 # Zw routines without a system call
+@ stdcall -version=0x600+ ZwAllocateLocallyUniqueId(ptr)
 @ stdcall -version=0x600+ ZwQueryLicenseValue(ptr ptr ptr long ptr)
+@ stdcall -version=0x600+ ZwQueryVirtualMemory(ptr ptr long ptr long ptr)
 @ stdcall -version=0x602+ ZwSetInformationVirtualMemory(ptr long long ptr ptr long)
+@ stdcall -version=0x600+ ZwUnlockVirtualMemory(ptr ptr ptr long)
 @ stdcall -version=0xA00+ ZwUpdateWnfStateData(ptr ptr long ptr ptr long long)
 
 # Windows Hardware Error Architecture
