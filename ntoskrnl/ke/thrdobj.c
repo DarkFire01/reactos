@@ -1268,6 +1268,56 @@ KeSetBasePriorityThread(IN PKTHREAD Thread,
     return OldIncrement;
 }
 
+/**
+ * @brief
+ * Sets the base priority of a thread to an absolute value, ignoring the base
+ * priority of its process.
+ *
+ * @param[in] Thread
+ * The thread to change.
+ *
+ * @param[in] NewBase
+ * The new base priority.
+ *
+ * @return
+ * The previous base priority.
+ */
+KPRIORITY
+NTAPI
+KeSetActualBasePriorityThread(
+    _In_ PKTHREAD Thread,
+    _In_ KPRIORITY NewBase)
+{
+    KIRQL OldIrql;
+    KPRIORITY OldBasePriority;
+
+    ASSERT_THREAD(Thread);
+    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+    ASSERT((NewBase > LOW_PRIORITY) && (NewBase <= HIGH_PRIORITY));
+
+    /* Idle threads keep their priority */
+    if (Thread->ApcState.Process == &KiInitialProcess.Pcb)
+        return 1;
+
+    OldIrql = KiAcquireDispatcherLock();
+    KiAcquireThreadLock(Thread);
+
+    OldBasePriority = Thread->BasePriority;
+    Thread->BasePriority = (SCHAR)NewBase;
+    Thread->Saturation = 0;
+    Thread->PriorityDecrement = 0;
+
+    if (NewBase != Thread->Priority)
+    {
+        Thread->Quantum = Thread->QuantumReset;
+        KiSetPriorityThread(Thread, NewBase);
+    }
+
+    KiReleaseThreadLock(Thread);
+    KiReleaseDispatcherLock(OldIrql);
+    return OldBasePriority;
+}
+
 /*
  * @implemented
  */
