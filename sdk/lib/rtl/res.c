@@ -329,6 +329,69 @@ LdrFindResourceDirectory_U(IN PVOID BaseAddress,
     return status;
 }
 
+/* Directory lookups and the MUI redirection bits are not accepted here */
+#define LDR_RES_FIND_INVALID_FLAGS  0xC02
+
+/**
+ * @brief
+ * Finds a resource by type, name and language and returns its data.
+ *
+ * @param[in] Flags
+ * Search options. Any bit in LDR_RES_FIND_INVALID_FLAGS fails the call.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INVALID_PARAMETER for unsupported flags, or the
+ * failure from the resource lookup.
+ *
+ * @remarks
+ * MUI satellite lookups are not supported, so the culture outputs are left untouched.
+ */
+NTSTATUS
+NTAPI
+LdrResFindResource(
+    _In_ PVOID DllHandle,
+    _In_ ULONG_PTR Type,
+    _In_ ULONG_PTR Name,
+    _In_ ULONG_PTR Language,
+    _Out_opt_ PVOID *ResourceBuffer,
+    _Out_opt_ PSIZE_T ResourceLength,
+    _Out_writes_bytes_opt_(*CultureNameLength) PVOID CultureName,
+    _Inout_opt_ PULONG CultureNameLength,
+    _In_ ULONG Flags)
+{
+    LDR_RESOURCE_INFO Info;
+    PIMAGE_RESOURCE_DATA_ENTRY Entry;
+    PVOID Data;
+    ULONG Size;
+    NTSTATUS Status;
+
+    UNREFERENCED_PARAMETER(CultureName);
+    UNREFERENCED_PARAMETER(CultureNameLength);
+
+    if (Flags & LDR_RES_FIND_INVALID_FLAGS)
+        return STATUS_INVALID_PARAMETER;
+
+    Info.Type = Type;
+    Info.Name = Name;
+    Info.Language = Language;
+
+    Status = LdrFindResource_U(DllHandle, &Info, RESOURCE_DATA_LEVEL, &Entry);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = LdrAccessResource(DllHandle, Entry, &Data, &Size);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (ResourceBuffer)
+        *ResourceBuffer = Data;
+
+    if (ResourceLength)
+        *ResourceLength = Size;
+
+    return STATUS_SUCCESS;
+}
+
 
 #define NAME_FROM_RESOURCE_ENTRY(RootDirectory, Entry) \
     ((Entry)->NameIsString ? (ULONG_PTR)(RootDirectory) + (Entry)->NameOffset : (Entry)->Id)
