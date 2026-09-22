@@ -148,6 +148,7 @@
 #define TAG_PO_FX_WORK_ORDER                      'oWoP'
 #define TAG_PO_THERMAL_REQUEST                    'qRoP'
 #define TAG_PO_THERMAL_COOLING_INTERFACE          'iCoP'
+#define TAG_PO_SLEEP_DISABLE                      'dSoP'
 
 /* Process Manager Tags */
 #define TAG_CIDOBJECT           'ODIC'

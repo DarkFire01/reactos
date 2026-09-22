@@ -1833,10 +1833,15 @@
 # Power Manager
 @ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr long)
 @ stdcall -version=0x603+ PoDeleteThermalRequest(ptr)
+@ stdcall -version=0x600+ PoDisableSleepStates(long long ptr)
 @ stdcall -version=0xA00+ PoFxCompleteDirectedPowerDown(ptr)
 @ stdcall -version=0x602+ PoFxNotifySurprisePowerOn(ptr)
 @ stdcall -version=0x602+ PoFxPowerControl(ptr ptr ptr long ptr long ptr)
+@ stdcall -version=0x602+ PoFxSetComponentLatency(ptr long int64)
+@ stdcall -version=0x602+ PoFxSetComponentResidency(ptr long int64)
 @ stdcall -version=0x603+ PoGetThermalRequestSupport(ptr long)
+@ fastcall -version=0x602+ PoNotifyVSyncChange(long)
+@ stdcall -version=0x600+ PoReenableSleepStates(ptr)
 @ stdcall -version=0x603+ PoSetThermalActiveCooling(ptr long)
 @ stdcall -version=0x603+ PoSetThermalPassiveCooling(ptr long)
 

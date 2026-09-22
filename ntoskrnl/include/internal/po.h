@@ -290,6 +290,25 @@ typedef VOID
 (NTAPI *PPOP_SYSTEM_IDLE_WORKER) (
     VOID);
 
+//
+// Sleep states in a PoDisableSleepStates mask
+//
+#define POP_SLEEP_DISABLE_S1                                0x01
+#define POP_SLEEP_DISABLE_S2                                0x02
+#define POP_SLEEP_DISABLE_S3                                0x04
+#define POP_SLEEP_DISABLE_S4                                0x08
+#define POP_SLEEP_DISABLE_FAST_S4                           0x10
+
+//
+// A sleep state veto held through PoDisableSleepStates
+//
+typedef struct _POP_SLEEP_DISABLE_ENTRY
+{
+    LIST_ENTRY Link;
+    ULONG Reason;
+    ULONG SleepMask;
+} POP_SLEEP_DISABLE_ENTRY, *PPOP_SLEEP_DISABLE_ENTRY;
+
 /******************************************************************************
  *                             Data Structures & Enums                        *
  ******************************************************************************/
@@ -1932,6 +1951,28 @@ PopChangeSystemSystemStateCapability(
     _In_ PPOWER_STATE_HANDLER StateHandler,
     _In_ BOOLEAN Enable);
 
+VOID
+NTAPI
+PopFilterSleepStateCapabilities(
+    _Inout_ PSYSTEM_POWER_CAPABILITIES Capabilities);
+
+NTSTATUS
+NTAPI
+PoDisableSleepStates(
+    _In_ ULONG Reason,
+    _In_ ULONG SleepMask,
+    _Out_ PVOID *Token);
+
+VOID
+NTAPI
+PoReenableSleepStates(
+    _In_ PVOID Token);
+
+VOID
+FASTCALL
+PoNotifyVSyncChange(
+    _In_ BOOLEAN Enable);
+
 //
 // Notification routines
 //
@@ -2204,6 +2245,7 @@ extern ERESOURCE PopNotifyDeviceLock;
 extern ERESOURCE PopPowerPolicyLock;
 extern KSPIN_LOCK PopPowerPolicyWorkerLock;
 extern FAST_MUTEX PopPowerSettingLock;
+extern FAST_MUTEX PopSleepDisableLock;
 extern KSPIN_LOCK PopThermalZoneLock;
 extern KSPIN_LOCK PopPowerRequestLock;
 
@@ -2239,6 +2281,8 @@ extern ULONG PopVolumeFlushPolicy;
 extern POP_POWER_ACTION PopAction;
 extern SYSTEM_POWER_CAPABILITIES PopCapabilities;
 extern ADMINISTRATOR_POWER_POLICY PopAdminPowerPolicy;
+extern LIST_ENTRY PopSleepDisableList;
+extern BOOLEAN PopVSyncEnabled;
 
 /* Power Manager IRP constructs */
 extern LIST_ENTRY PopDispatchWorkerIrpList;

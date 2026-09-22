@@ -358,6 +358,24 @@ NTAPI
 PoFxReportDevicePoweredOn(
     _In_ POHANDLE Handle);
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+PoFxSetComponentLatency(
+    _In_ POHANDLE Handle,
+    _In_ ULONG Component,
+    _In_ ULONGLONG Latency);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+PoFxSetComponentResidency(
+    _In_ POHANDLE Handle,
+    _In_ ULONG Component,
+    _In_ ULONGLONG Residency);
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 NTKERNELAPI
 NTSTATUS
