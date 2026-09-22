@@ -66,6 +66,7 @@ list(APPEND SOURCE
     gdi/eng/clip.c
     gdi/eng/debug.c
     gdi/eng/device.c
+    gdi/eng/dxgkrnl.c
     gdi/eng/driverobj.c
     gdi/eng/error.c
     gdi/eng/float.c
@@ -83,6 +84,7 @@ list(APPEND SOURCE
     gdi/eng/paint.c
     gdi/eng/pathobj.c
     gdi/eng/pdevobj.c
+    gdi/eng/rgnobj.c
     gdi/eng/perfcnt.c
     gdi/eng/rlecomp.c
     gdi/eng/semaphor.c
