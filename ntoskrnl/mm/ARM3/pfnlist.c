@@ -1093,6 +1093,69 @@ MiInsertPageInList(IN PMMPFNLIST ListHead,
     }
 }
 
+/**
+ * @brief
+ * Gives a page that is being set up the caching its protection asks for.
+ *
+ * @param[in] PageFrameIndex
+ * The page, with the PFN lock held.
+ *
+ * @param[in] Protection
+ * The protection mask the page is set up with. MM_NOCACHE and
+ * MM_WRITECOMBINE select the caching, anything else makes the page cached.
+ *
+ * @remarks
+ * A page leaving cached use can still have lines in the caches. Those are
+ * written back first so they cannot land on top of later uncached writes.
+ */
+static
+VOID
+MiSetPfnCaching(
+    _In_ PFN_NUMBER PageFrameIndex,
+    _In_ ULONG Protection)
+{
+    MEMORY_CACHING_TYPE CacheType;
+    MI_PFN_CACHE_ATTRIBUTE CacheAttribute;
+    PMMPFN Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+    PMMPTE FlushPte;
+    MMPTE TempPte;
+
+    /* MM_NOACCESS and MM_OUTSWAPPED_KSTACK reuse the combined bits but are not combined */
+    if ((Protection & MM_PROTECT_SPECIAL) == MM_NOCACHE)
+        CacheType = MmNonCached;
+    else if (((Protection & MM_PROTECT_SPECIAL) == MM_WRITECOMBINE) &&
+             (Protection != MM_NOACCESS) &&
+             (Protection != MM_OUTSWAPPED_KSTACK))
+        CacheType = MmWriteCombined;
+    else
+        CacheType = MmCached;
+
+    CacheAttribute = MiPlatformCacheAttributes[FALSE][CacheType];
+    if (Pfn1->u3.e1.CacheAttribute == CacheAttribute)
+        return;
+
+    if ((Pfn1->u3.e1.CacheAttribute == MiCached) && (CacheAttribute != MiCached))
+    {
+        FlushPte = MiReserveSystemPtes(1, SystemPteSpace);
+        if (FlushPte)
+        {
+            TempPte = ValidKernelPte;
+            TempPte.u.Hard.PageFrameNumber = PageFrameIndex;
+            MI_WRITE_VALID_PTE(FlushPte, TempPte);
+
+            KeInvalidateRangeAllCaches(MiPteToAddress(FlushPte), PAGE_SIZE);
+
+            MiReleaseSystemPtes(FlushPte, 1, SystemPteSpace);
+        }
+        else
+        {
+            KeInvalidateAllCaches();
+        }
+    }
+
+    Pfn1->u3.e1.CacheAttribute = CacheAttribute;
+}
+
 VOID
 NTAPI
 MiInitializePfn(IN PFN_NUMBER PageFrameIndex,
@@ -1126,6 +1189,12 @@ MiInitializePfn(IN PFN_NUMBER PageFrameIndex,
         ASSERT(!((Pfn1->OriginalPte.u.Soft.Prototype == 0) &&
                  (Pfn1->OriginalPte.u.Soft.Transition == 1)));
     }
+
+    /* The page takes the caching of its protection, file pages have none in the PTE */
+    if (Pfn1->OriginalPte.u.Soft.Prototype == 0)
+        MiSetPfnCaching(PageFrameIndex, (ULONG)Pfn1->OriginalPte.u.Soft.Protection);
+    else
+        MiSetPfnCaching(PageFrameIndex, MM_READWRITE);
 
     /* Otherwise this is a fresh page -- set it up */
     ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
