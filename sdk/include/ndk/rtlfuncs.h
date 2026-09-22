@@ -866,6 +866,29 @@ RtlVirtualUnwind(
 
 #endif // _M_AMD64
 
+#ifndef NTOS_MODE_USER
+//
+// AVL Tree Functions
+//
+NTSYSAPI
+VOID
+NTAPI
+RtlAvlInsertNodeEx(
+    _Inout_ PRTL_AVL_TREE Tree,
+    _Inout_opt_ PRTL_BALANCED_NODE Parent,
+    _In_ BOOLEAN Right,
+    _Out_ PRTL_BALANCED_NODE Node
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlAvlRemoveNode(
+    _Inout_ PRTL_AVL_TREE Tree,
+    _Inout_ PRTL_BALANCED_NODE Node
+);
+#endif /* !NTOS_MODE_USER */
+
 //
 // Tracing Functions
 //
