@@ -467,9 +467,9 @@ WdiSetGeneralAttributes(
     General->MaxRcvLinkSpeed = 1000ULL * Caps->MaxRxRate;
     General->RcvLinkSpeed = NDIS_LINK_SPEED_UNKNOWN;
 
-    /* The NDIS link stays up; association state is the 802.11 side's business */
-    General->MediaConnectState = MediaConnectStateConnected;
-    General->MediaDuplexState = MediaDuplexStateHalf;
+    /* The link is down until the 802.11 side associates and says otherwise */
+    General->MediaConnectState = MediaConnectStateDisconnected;
+    General->MediaDuplexState = MediaDuplexStateFull;
     General->LookaheadSize = 220;
     General->MacOptions = NDIS_MAC_OPTION_COPY_LOOKAHEAD_DATA |
                           NDIS_MAC_OPTION_TRANSFERS_NOT_PEND |

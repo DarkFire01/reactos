@@ -395,6 +395,39 @@ Done:
  * @param[in] StatusIndication
  * The indication, a WDI header and TLVs in its status buffer.
  */
+/* Tells the protocols the 802.11 link came up or went down, the way the
+   Native WiFi side turns a connection into an Ethernet-style link state */
+static
+VOID
+NTAPI
+WdiIndicateLinkState(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ BOOLEAN Connected)
+{
+    NDIS_LINK_STATE LinkState;
+    NDIS_STATUS_INDICATION Indication;
+
+    RtlZeroMemory(&LinkState, sizeof(LinkState));
+    LinkState.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+    LinkState.Header.Revision = NDIS_LINK_STATE_REVISION_1;
+    LinkState.Header.Size = NDIS_SIZEOF_LINK_STATE_REVISION_1;
+    LinkState.MediaConnectState = Connected ? MediaConnectStateConnected : MediaConnectStateDisconnected;
+    LinkState.MediaDuplexState = MediaDuplexStateFull;
+    LinkState.XmitLinkSpeed = Connected ? 1000ULL * Adapter->Caps.MaxTxRate : NDIS_LINK_SPEED_UNKNOWN;
+    LinkState.RcvLinkSpeed = Connected ? 1000ULL * Adapter->Caps.MaxRxRate : NDIS_LINK_SPEED_UNKNOWN;
+
+    RtlZeroMemory(&Indication, sizeof(Indication));
+    Indication.Header.Type = NDIS_OBJECT_TYPE_STATUS_INDICATION;
+    Indication.Header.Revision = NDIS_STATUS_INDICATION_REVISION_1;
+    Indication.Header.Size = NDIS_SIZEOF_STATUS_INDICATION_REVISION_1;
+    Indication.SourceHandle = Adapter->MiniportAdapterHandle;
+    Indication.StatusCode = NDIS_STATUS_LINK_STATE;
+    Indication.StatusBuffer = &LinkState;
+    Indication.StatusBufferSize = sizeof(LinkState);
+
+    NdisMIndicateStatusEx(Adapter->MiniportAdapterHandle, &Indication);
+}
+
 _Use_decl_annotations_
 VOID
 NTAPI
@@ -419,6 +452,12 @@ WdiIndication(
                          (const UCHAR *)(Header + 1),
                          StatusIndication->StatusBufferSize - sizeof(*Header));
     }
+
+    /* A finished connection or a disconnection moves the reported link state */
+    if (MessageId == WDI_INDICATION_CONNECT_COMPLETE)
+        WdiIndicateLinkState(Adapter, TRUE);
+    else if (MessageId == WDI_INDICATION_DISASSOCIATION)
+        WdiIndicateLinkState(Adapter, FALSE);
 
     KeAcquireSpinLock(&Adapter->TaskLock, &OldIrql);
     if (Adapter->TaskArmed &&
