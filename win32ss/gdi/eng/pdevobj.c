@@ -60,6 +60,131 @@ DbgLookupDHPDEV(DHPDEV dhpdev)
 }
 #endif
 
+/**
+ * @brief Tell the CDD its surface is new, so it redraws the whole screen.
+ *
+ * The CDD does not track damage until win32k asserts its mode carrying this command, and that
+ * same assert is what seeds the damage region with the full screen. Until then the region stays
+ * empty and every present the CDD builds is thrown away, because it only reaches dxgkrnl when
+ * EngGetRgnData reports more than a bare RGNDATAHEADER. Reference win32kbase
+ * GreSuspendDirectDraw, which leaves the command on the PDEV across DrvAssertMode.
+ */
+VOID
+NTAPI
+PDEVOBJ_vResetGdiOutput(
+    _Inout_ PPDEVOBJ ppdev)
+{
+    if ((ppdev->flFlags & (PDEV_META_DEVICE | PDEV_DISABLED)) != 0)
+        return;
+
+    /* Only a WDDM device has a CDD behind it to tell */
+    if ((ppdev->pGraphicsDevice == NULL) || (ppdev->pGraphicsDevice->DxgAdapter == NULL))
+        return;
+
+    if (ppdev->pfn.AssertMode == NULL)
+        return;
+
+    ppdev->ulW32kCommand = W32KCMD_RESET_GDI_OUTPUT;
+    ppdev->pfn.AssertMode(ppdev->dhpdev, TRUE);
+    ppdev->ulW32kCommand = 0;
+}
+
+/** @brief Does this PDEV drive the given adapter's source, and is it in a state to be asserted? */
+static
+BOOL
+PDEVOBJ_bDrivesAdapterSource(
+    _In_ PPDEVOBJ ppdev,
+    _In_ PVOID pAdapter,
+    _In_ ULONG cSources)
+{
+    if ((ppdev->flFlags & (PDEV_META_DEVICE | PDEV_DISABLED)) != 0)
+        return FALSE;
+
+    if (ppdev->pGraphicsDevice == NULL)
+        return FALSE;
+
+    if (ppdev->pGraphicsDevice->DxgAdapter != pAdapter)
+        return FALSE;
+
+    return ppdev->pGraphicsDevice->VidPnSourceId < cSources;
+}
+
+/**
+ * @brief Assert the mode of every display the given adapter drives, telling the CDD why.
+ *
+ * dxgkrnl calls this through the engine interface when a video present source gains or loses its
+ * GDI output. Every matching source goes down first, then the ones the CDD owns come back up; the
+ * command left on the PDEV across each DrvAssertMode is what the CDD reads back through
+ * W32kCddGetWin32kCommand. Reference win32kbase DxgkEngAssertGdiOutput.
+ *
+ * @param[in] pAdapter
+ * dxgkrnl's adapter whose sources are being asserted.
+ *
+ * @param[in] pCddStates
+ * One byte per video present source, non-zero where the CDD drives the output.
+ *
+ * @param[in] cSources
+ * Number of entries in @p pCddStates.
+ *
+ * @param[out] pbResetPointer
+ * Non-zero when at least one source came back up, so the caller redraws the pointer.
+ *
+ * @return TRUE when every DrvAssertMode succeeded.
+ */
+BOOL
+NTAPI
+PDEVOBJ_bAssertGdiOutput(
+    _In_ PVOID pAdapter,
+    _In_reads_(cSources) const UCHAR *pCddStates,
+    _In_ ULONG cSources,
+    _Out_ PUCHAR pbResetPointer)
+{
+    PPDEVOBJ ppdev;
+    BOOL     bResult = TRUE;
+    BOOL     bEnabled = FALSE;
+    BOOL     bAsserted;
+
+    EngAcquireSemaphoreShared(ghsemPDEV);
+
+    for (ppdev = gppdevList; ppdev != NULL; ppdev = ppdev->ppdevNext)
+    {
+        if (!PDEVOBJ_bDrivesAdapterSource(ppdev, pAdapter, cSources))
+            continue;
+
+        ppdev->ulW32kCommand = pCddStates[ppdev->pGraphicsDevice->VidPnSourceId] ?
+                               W32KCMD_CDD_ENABLING : W32KCMD_CDD_DISABLING;
+
+        bAsserted = (ppdev->pfn.AssertMode != NULL) &&
+                    ppdev->pfn.AssertMode(ppdev->dhpdev, FALSE);
+
+        ppdev->ulW32kCommand = 0;
+        bResult = bResult && bAsserted;
+    }
+
+    for (ppdev = gppdevList; ppdev != NULL; ppdev = ppdev->ppdevNext)
+    {
+        if (!PDEVOBJ_bDrivesAdapterSource(ppdev, pAdapter, cSources))
+            continue;
+
+        if (!pCddStates[ppdev->pGraphicsDevice->VidPnSourceId])
+            continue;
+
+        ppdev->ulW32kCommand = W32KCMD_ASSERT_GDI_OUTPUT;
+
+        bAsserted = (ppdev->pfn.AssertMode != NULL) &&
+                    ppdev->pfn.AssertMode(ppdev->dhpdev, TRUE);
+
+        ppdev->ulW32kCommand = 0;
+        bResult = bResult && bAsserted;
+        bEnabled = TRUE;
+    }
+
+    EngReleaseSemaphore(ghsemPDEV);
+
+    *pbResetPointer = bEnabled ? 1 : 0;
+    return bResult;
+}
+
 PPDEVOBJ
 PDEVOBJ_AllocPDEV(VOID)
 {
@@ -330,6 +455,9 @@ PDEVOBJ_pSurface(
         /* Get a reference to the surface */
         ppdev->pSurface = SURFACE_ShareLockSurface(hsurf);
         NT_ASSERT(ppdev->pSurface != NULL);
+
+        /* The CDD starts tracking damage only once its mode is asserted for a fresh surface */
+        PDEVOBJ_vResetGdiOutput(ppdev);
     }
 
     /* Increment reference count */
