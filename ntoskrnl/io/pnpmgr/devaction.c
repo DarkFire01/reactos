@@ -786,6 +786,19 @@ PiCallDriverAddDevice(
             Status = STATUS_UNSUCCESSFUL;
         }
 
+        /*
+         * A miniport whose DriverEntry handed its driver object to a port driver has that
+         * port driver's AddDevice by now, so this says both whether one was installed and
+         * what it made of the device.
+         */
+        if (driverObject != NULL)
+        {
+            DPRINT1("AddDevice: %wZ %s -> 0x%08lx\n",
+                    &driverObject->DriverName,
+                    driverObject->DriverExtension->AddDevice ? "called" : "has none",
+                    Status);
+        }
+
         // for filter drivers we don't care about the AddDevice result
         if (driverEntry->DriverType == DeviceDriver)
         {

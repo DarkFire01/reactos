@@ -187,6 +187,54 @@ IopCopyCriticalDeviceParameters(
     ZwClose(SourceKey);
 }
 
+/**
+ * @brief
+ * Names a critical device from its database entry, since the INF that would
+ * otherwise describe it does not run until well after the device is started.
+ */
+static
+VOID
+IopCopyCriticalDeviceDescription(
+    _In_ HANDLE DatabaseEntryKey,
+    _In_ HANDLE InstanceKey)
+{
+    UNICODE_STRING DeviceDescU = RTL_CONSTANT_STRING(L"DeviceDesc");
+    PKEY_VALUE_PARTIAL_INFORMATION PartialInfo;
+    ULONG NeededLength;
+    NTSTATUS Status;
+
+    Status = ZwQueryValueKey(DatabaseEntryKey,
+                             &DeviceDescU,
+                             KeyValuePartialInformation,
+                             NULL,
+                             0,
+                             &NeededLength);
+    if ((Status != STATUS_BUFFER_OVERFLOW) && (Status != STATUS_BUFFER_TOO_SMALL))
+        return;
+
+    PartialInfo = ExAllocatePool(PagedPool, NeededLength);
+    if (!PartialInfo)
+        return;
+
+    Status = ZwQueryValueKey(DatabaseEntryKey,
+                             &DeviceDescU,
+                             KeyValuePartialInformation,
+                             PartialInfo,
+                             NeededLength,
+                             &NeededLength);
+    if (NT_SUCCESS(Status))
+    {
+        ZwSetValueKey(InstanceKey,
+                      &DeviceDescU,
+                      0,
+                      REG_SZ,
+                      PartialInfo->Data,
+                      PartialInfo->DataLength);
+    }
+
+    ExFreePool(PartialInfo);
+}
+
 VOID
 NTAPI
 IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
@@ -507,6 +555,7 @@ IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
                         DPRINT1("Installed NULL service for critical device '%wZ'\n", &ChildIdNameU);
                     }
 
+                    IopCopyCriticalDeviceDescription(ChildKeyHandle, InstanceKey);
                     IopCopyCriticalDeviceParameters(ChildKeyHandle, InstanceKey);
 
                     ExFreePool(OriginalIdBuffer);
