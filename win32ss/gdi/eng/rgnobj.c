@@ -415,6 +415,24 @@ EngGetRgnData(
         }
         else
         {
+            /*
+             * Leave a valid empty region behind rather than the caller's uninitialized buffer.
+             * A driver that ignores the return value would otherwise read a rectangle count and
+             * rectangles out of uninitialized pool, and the CDD is such a caller: it allocates
+             * this buffer unzeroed and takes the count straight out of it (Reference cdd.c
+             * CddPresentBlt:21503). A region that grew between the sizing call and this one is
+             * the case that reaches here, and dropping the frame is the right answer to that.
+             */
+            if (nCount >= sizeof(RGNDATAHEADER))
+            {
+                RtlCopyMemory(lpRgnData, &prgn->rdh, sizeof(RGNDATAHEADER));
+                lpRgnData->rdh.iType = RDH_RECTANGLES;
+                lpRgnData->rdh.nCount = 0;
+                lpRgnData->rdh.nRgnSize = 0;
+            }
+
+            DPRINT1("EngGetRgnData: buffer %lu too small for %lu, reporting no rectangles\n",
+                    nCount, cjSize);
             EngSetLastError(ERROR_INVALID_PARAMETER);
             cjSize = 0;
         }

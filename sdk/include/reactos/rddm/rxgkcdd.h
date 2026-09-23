@@ -3,18 +3,7 @@
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     DXGKCDD_INTERFACE - the dxgkrnl <-> CDD (Canonical Display Driver) interface
  * COPYRIGHT:   Copyright 2026 Justin Miller <justinmiller100@gmail.com>
- *
- * The CDD (cdd.dll, loaded by win32k as the GDI display driver) opens \Device\DxgKrnl and sends
- * IOCTL_VIDEO_QUERY_CDD_INTERFACE (0x23E05B) with a DXGKCDD_INTERFACE buffer; dxgkrnl fills it.
- * The CDD then drives the desktop onto the screen: Enable a source, CreateAllocation (the GDI
- * primary), Lock/Unlock (CPU draw access), Present (scan out). Verified against the decompiled CDD
- * (Reference/win10/cdd.c OpenDxgkrnl:1443) and dxgkrnl (struct _DXGKCDD_INTERFACE :53486).
- *
- * THE LAYOUT IS ABI-EXACT: the CDD calls members BY OFFSET, so every member is present in the
- * reference order and the whole table is exactly 248 (0xF8) bytes on i386 - the size the CDD's
- * IOCTL passes. Members dxgkrnl does not implement yet are NULL pointers (the CDD null-checks most
- * before calling). Uses real D3DKMT/D3DKMDT types (this is a dxgkrnl-internal table).
- */
+*/
 
 #pragma once
 
@@ -49,6 +38,59 @@ typedef struct _CDDDXGK_INTERFACE
 
 /* The GDI sysmem-allocator callback the CDD hands to CreateAllocation (Reference :53511). */
 typedef VOID *(NTAPI *PFN_CDD_ALLOCATE_SYSMEM)(const VOID *, UINT);
+
+/* DxgkCddQueryInterface accepts only this version (Reference :179867, "Size == 248 && Version == 5") */
+#define DXGKCDD_INTERFACE_VERSION 5
+
+/* Reference enum _DXGCDD_PRESENT_ON_SCREEN_TYPE :6313. */
+typedef enum _DXGCDD_PRESENT_ON_SCREEN_TYPE
+{
+    DXGCDD_PRESENT_ON_SCREEN_TYPE_COLOR_FILL       = 0,
+    DXGCDD_PRESENT_ON_SCREEN_TYPE_COPY_TO_SCREEN   = 1,
+    DXGCDD_PRESENT_ON_SCREEN_TYPE_COPY_FROM_SCREEN = 2,
+    DXGCDD_PRESENT_ON_SCREEN_TYPE_SCREEN_TO_SCREEN = 3,
+} DXGCDD_PRESENT_ON_SCREEN_TYPE;
+
+/*
+ * What the CDD hands pfnDxgkCddPresentOnScreen: the shadow it drew into plus the damaged
+ * rectangles. This is the desktop present path (Reference struct _DXGKCDD_PRESENT_ON_SCREEN
+ * :53121, filled by CddPresentBlt).
+ */
+typedef struct _DXGKCDD_PRESENT_ON_SCREEN
+{
+    DXGCDD_PRESENT_ON_SCREEN_TYPE PresentType;
+    VOID  *Adapter;
+    UINT   VidPnSourceId;
+    UINT   Color;
+    VOID  *pShadow;
+    UINT   ShadowWidth;
+    UINT   ShadowHeight;
+    UINT   ShadowStride;
+    RECT   ScreenCopyRects[2];
+    UINT   NumberRects;
+    RECT  *pSubRects;
+} DXGKCDD_PRESENT_ON_SCREEN, *PDXGKCDD_PRESENT_ON_SCREEN;
+
+/*
+ * A stock CDD fills this, so every offset has to land where dxgkrnl reads it. ScreenCopyRects is
+ * the one to watch: it starts at an offset that is 4-aligned but not 8-aligned, and the fields
+ * after it only stay put because RECT needs no more than 4-byte alignment.
+ */
+#ifndef _WIN64
+C_ASSERT(sizeof(DXGKCDD_PRESENT_ON_SCREEN) == 72);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, Adapter)         == 4);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, pShadow)         == 16);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, ScreenCopyRects) == 32);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, NumberRects)     == 64);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, pSubRects)       == 68);
+#else
+C_ASSERT(sizeof(DXGKCDD_PRESENT_ON_SCREEN) == 88);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, Adapter)         == 8);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, pShadow)         == 24);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, ScreenCopyRects) == 44);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, NumberRects)     == 76);
+C_ASSERT(FIELD_OFFSET(DXGKCDD_PRESENT_ON_SCREEN, pSubRects)       == 80);
+#endif
 
 /*
  * The dxgkrnl->CDD interface, ABI-EXACT (Reference struct _DXGKCDD_INTERFACE :53486). Every slot
@@ -131,7 +173,11 @@ typedef struct _DXGKCDD_INTERFACE
     PVOID pfnDxgkCddOpenSynchronizationObject;
     int  (NTAPI *pfnDxgkCddNotifyGdiRendering)(VOID *, UINT);
     PVOID pfnDxgkCddIssueSyncObjectOpForDevice;
-    PVOID pfnDxgkCddPresentOnScreen;
+    /*
+     * The desktop present. The CDD's worker thread calls this from CddPresentBlt once its damage
+     * region holds at least one rectangle, and it is what reaches DxgkDdiPresentDisplayOnly.
+     */
+    NTSTATUS (NTAPI *pfnDxgkCddPresentOnScreen)(DXGKCDD_PRESENT_ON_SCREEN *pPresentOnScreen);
     PVOID pfnDxgkCddSubscribeWnfStateChange;
     PVOID pfnDxgkCddUnsubscribeWnfStateChange;
     PVOID pfnDxgkCddMakeResident;
@@ -148,9 +194,17 @@ typedef struct _DXGKCDD_INTERFACE
     PVOID pfnDxgkIsPrimarySource;
 } DXGKCDD_INTERFACE, *PDXGKCDD_INTERFACE;
 
+/*
+ * DxgkCddQueryInterface refuses anything but these, so the layout is pinned on both arches:
+ * 6 header fields then 57 slots, which is 20 + 57*4 on x86 and 40 + 57*8 on x64.
+ */
 #ifndef _WIN64
-C_ASSERT(sizeof(DXGKCDD_INTERFACE) == 0xF8);   /* the CDD's IOCTL passes exactly 0xF8 bytes */
+C_ASSERT(sizeof(DXGKCDD_INTERFACE) == 0xF8);
+#else
+C_ASSERT(sizeof(DXGKCDD_INTERFACE) == 0x1F0);
 #endif
+C_ASSERT(FIELD_OFFSET(DXGKCDD_INTERFACE, pfnDxgkCddEtwLoggerEnabled) == 5 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKCDD_INTERFACE, pfnDxgkIsPrimarySource) == 61 * sizeof(PVOID));
 
 /**
  * @brief Fill a caller-supplied DXGKCDD_INTERFACE with dxgkrnl's CDD entry points (Reference :179858).
