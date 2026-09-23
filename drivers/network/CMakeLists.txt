@@ -4,7 +4,11 @@ add_subdirectory(dd)
 add_subdirectory(ndis)
 add_subdirectory(ndisuio)
 add_subdirectory(netio)
-add_subdirectory(netcx)
+
+if(NETCX)
+    add_subdirectory(netcx)
+endif()
+
 add_subdirectory(tcpip)
 add_subdirectory(tdi)
 add_subdirectory(wdiwifi)
