@@ -169,6 +169,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/config.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/devqueue.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/dpc.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/ksr.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/eventobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/except.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/freeze.c

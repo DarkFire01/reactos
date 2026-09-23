@@ -26,14 +26,6 @@ KeQueryActiveProcessorCount(OUT PKAFFINITY ActiveProcessors OPTIONAL)
     return RtlNumberOfSetBits(&Bitmap);
 }
 
-NTKRNLVISTAAPI
-USHORT
-NTAPI
-KeQueryHighestNodeNumber()
-{
-	return 0;
-}
-
 /**
  * @brief
  * Returns how many processors the system can ever run.
@@ -367,39 +359,6 @@ KeRevertToUserGroupAffinityThread(
     {
         KeRevertToUserAffinityThread();
     }
-}
-
-/**
- * @brief
- * Registers a callback for processors that come and go at run time.
- *
- * @param[in] CallbackFunction
- * The callback to register.
- *
- * @param[in] CallbackContext
- * Optional context handed to the callback.
- *
- * @param[in] Flags
- * Registration flags.
- *
- * @return
- * NULL, as nothing is registered.
- *
- * @unimplemented
- */
-NTKRNLVISTAAPI
-PVOID
-NTAPI
-KeRegisterProcessorChangeCallback(
-    _In_ PPROCESSOR_CALLBACK_FUNCTION CallbackFunction,
-    _In_opt_ PVOID CallbackContext,
-    _In_ ULONG Flags)
-{
-    UNREFERENCED_PARAMETER(CallbackFunction);
-    UNREFERENCED_PARAMETER(CallbackContext);
-    UNREFERENCED_PARAMETER(Flags);
-
-    return NULL;
 }
 
 /**
