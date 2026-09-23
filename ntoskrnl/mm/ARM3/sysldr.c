@@ -1140,6 +1140,25 @@ MiResolveKernelApiSet(
     return FALSE;
 }
 
+/* Does a directory path already end in the given folder, so it must not be appended twice? */
+static
+BOOLEAN
+MiEndsWithFolder(
+    _In_ PCUNICODE_STRING Directory,
+    _In_ PCUNICODE_STRING Folder)
+{
+    UNICODE_STRING Tail;
+
+    if (Directory->Length < Folder->Length)
+        return FALSE;
+
+    Tail.Length = Folder->Length;
+    Tail.MaximumLength = Folder->Length;
+    Tail.Buffer = (PWSTR)((PUCHAR)Directory->Buffer + Directory->Length - Folder->Length);
+
+    return RtlEqualUnicodeString(&Tail, Folder, TRUE);
+}
+
 NTSTATUS
 NTAPI
 MiResolveImageReferences(IN PVOID ImageBase,
@@ -1368,9 +1387,14 @@ CheckDllState:
                                        (PVOID *)&DllEntry,
                                        &DllBase);
 
-            /* win32k / GDI drivers can also import from system32 folder */
+            /*
+             * win32k / GDI drivers can also import from the drivers folder. An image that is
+             * already there must not get a second one appended: the retry would look for
+             * drivers\drivers\ and its failure would then be reported in place of the real one.
+             */
             if ((Status == STATUS_OBJECT_NAME_NOT_FOUND) &&
-                (MI_IS_SESSION_ADDRESS(ImageBase) || 1)) // HACK
+                (MI_IS_SESSION_ADDRESS(ImageBase) || 1) && // HACK
+                !MiEndsWithFolder(ImageFileDirectory, &DriversFolderName))
             {
                 /* Free the old name buffer */
                 ExFreePoolWithTag(DllName.Buffer, TAG_LDR_WSTR);
