@@ -8,6 +8,8 @@
 #include "opengl32.h"
 
 #include <winreg.h>
+#include <d3dkmthk.h>
+#include <strsafe.h>
 
 WINE_DEFAULT_DEBUG_CHANNEL(opengl32);
 
@@ -58,6 +60,77 @@ extern INT APIENTRY GdiDescribePixelFormat(HDC hdc, INT ipfd, UINT cjpfd, PPIXEL
 extern BOOL APIENTRY GdiSetPixelFormat(HDC hdc, INT ipfd);
 extern BOOL APIENTRY GdiSwapBuffers(HDC hdc);
 
+/**
+ * @brief Asks a WDDM adapter for the ICD it wants loaded.
+ *
+ * A WDDM driver does not answer the OPENGL_GETINFO escape and has no entry under
+ * OpenGLDrivers. The adapter names its ICD outright, so the display is opened through
+ * D3DKMT and asked, and the answer is a file name to load rather than something to
+ * look up.
+ *
+ * @param hdc The device context whose display is asked.
+ * @param DllName Receives the ICD file name.
+ * @param cchDllName Its size, in characters.
+ * @param pVersion Receives the driver interface version the ICD reports.
+ *
+ * @return TRUE when a WDDM adapter named an ICD.
+ */
+static BOOL IntGetWddmIcd(HDC hdc, LPWSTR DllName, DWORD cchDllName, PULONG pVersion)
+{
+    D3DKMT_OPENADAPTERFROMHDC OpenAdapter;
+    D3DKMT_QUERYADAPTERINFO QueryInfo;
+    D3DKMT_CLOSEADAPTER CloseAdapter;
+    D3DKMT_OPENGLINFO OpenGlInfo;
+    NTSTATUS Status;
+
+    ZeroMemory(&OpenAdapter, sizeof(OpenAdapter));
+    OpenAdapter.hDc = hdc;
+
+    Status = D3DKMTOpenAdapterFromHdc(&OpenAdapter);
+    if (!NT_SUCCESS(Status))
+    {
+        TRACE("No WDDM adapter behind this DC (0x%08lx).\n", Status);
+        return FALSE;
+    }
+
+    ZeroMemory(&OpenGlInfo, sizeof(OpenGlInfo));
+    ZeroMemory(&QueryInfo, sizeof(QueryInfo));
+    QueryInfo.hAdapter = OpenAdapter.hAdapter;
+    QueryInfo.Type = KMTQAITYPE_UMOPENGLINFO;
+    QueryInfo.pPrivateDriverData = &OpenGlInfo;
+    QueryInfo.PrivateDriverDataSize = sizeof(OpenGlInfo);
+
+    Status = D3DKMTQueryAdapterInfo(&QueryInfo);
+
+    ZeroMemory(&CloseAdapter, sizeof(CloseAdapter));
+    CloseAdapter.hAdapter = OpenAdapter.hAdapter;
+    D3DKMTCloseAdapter(&CloseAdapter);
+
+    if (!NT_SUCCESS(Status))
+    {
+        TRACE("The adapter reports no OpenGL ICD (0x%08lx).\n", Status);
+        return FALSE;
+    }
+
+    OpenGlInfo.UmdOpenGlIcdFileName[RTL_NUMBER_OF(OpenGlInfo.UmdOpenGlIcdFileName) - 1] = 0;
+    if (OpenGlInfo.UmdOpenGlIcdFileName[0] == 0)
+    {
+        TRACE("The adapter named no OpenGL ICD.\n");
+        return FALSE;
+    }
+
+    if (FAILED(StringCchCopyW(DllName, cchDllName, OpenGlInfo.UmdOpenGlIcdFileName)))
+    {
+        ERR("ICD name does not fit: %S.\n", OpenGlInfo.UmdOpenGlIcdFileName);
+        return FALSE;
+    }
+
+    *pVersion = OpenGlInfo.Version;
+    TRACE("WDDM adapter wants ICD %S, version %lu.\n", DllName, OpenGlInfo.Version);
+
+    return TRUE;
+}
+
 /* Retrieves the ICD data (driver version + relevant DLL entry points) for a device context */
 struct ICD_Data* IntGetIcdData(HDC hdc)
 {
@@ -69,6 +142,7 @@ struct ICD_Data* IntGetIcdData(HDC hdc)
     HKEY OglKey = NULL;
     HKEY DrvKey, CustomKey;
     WCHAR DllName[MAX_PATH];
+    BOOL bWddmIcd = FALSE;
     BOOL (WINAPI *DrvValidateVersion)(DWORD);
     void (WINAPI *DrvSetCallbackProcs)(int nProcs, PROC* pProcs);
 
@@ -136,6 +210,14 @@ custom_end:
     {
         return NULL;
     }
+    else if(IntGetWddmIcd(hdc, DllName, RTL_NUMBER_OF(DllName), &DrvInfo.Version))
+    {
+        /* The adapter named its ICD, so that name is also what identifies it here */
+        bWddmIcd = TRUE;
+        DrvInfo.DriverVersion = 0;
+        StringCchCopyW(DrvInfo.DriverName, RTL_NUMBER_OF(DrvInfo.DriverName), DllName);
+        pDrvInfo = &DrvInfo;
+    }
     else
     {
         /* First, see if the driver supports this */
@@ -174,6 +256,14 @@ custom_end:
             return data;
         }
         data = data->next;
+    }
+
+    /* A WDDM adapter already named the file, so there is nothing to look up */
+    if(bWddmIcd)
+    {
+        Version = DrvInfo.Version;
+        DriverVersion = Flags = 0;
+        goto LoadIcd;
     }
 
     /* It was still not loaded, look for it in the registry */
@@ -256,6 +346,7 @@ custom_end:
     /* No need for this anymore */
     RegCloseKey(OglKey);
 
+LoadIcd:
     /* So far so good, allocate data */
     data = HeapAlloc(GetProcessHeap(), 0, sizeof(*data));
     if(!data)
