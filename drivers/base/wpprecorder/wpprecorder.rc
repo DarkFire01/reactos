@@ -1,0 +1,11 @@
+#include <winver.h>
+#include <ntverp.h>
+
+/* Version Data */
+#define VER_FILETYPE             VFT_DRV
+#define VER_FILESUBTYPE          VFT2_DRV_SYSTEM
+#define VER_FILEDESCRIPTION_STR  "WPP trace recorder"
+#define VER_INTERNALNAME_STR     "wpprecorder.sys"
+#define VER_ORIGINALFILENAME_STR "wpprecorder.sys"
+#define VER_LANGNEUTRAL
+#include <common.ver>
