@@ -757,3 +757,7 @@
     SVC_(GdiDdDDIQueryVidPnExclusiveOwnership, 1)
     SVC_(GdiDdDDISetHwProtectionTeardownRecovery, 1)
     SVC_(GdiDdDDISetVidPnSourceHwProtection, 1)
+    SVC_(BindCompositionSurface, 6)
+    SVC_(UnBindCompositionSurface, 4)
+    SVC_(QueryCompositionSurfaceStatistics, 3)
+    SVC_(SetCompositionSurfaceHDRMetaData, 6)

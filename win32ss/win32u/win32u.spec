@@ -672,4 +672,7 @@
 @ stdcall NtGdiBRUSHOBJ_DeleteRbrush(ptr ptr)
 @ stdcall NtGdiUMPDEngFreeUserMem(ptr)
 @ stdcall NtGdiDrawStream(ptr long ptr)
-
+@ stdcall NtBindCompositionSurface(ptr long long ptr int64)
+@ stdcall NtUnBindCompositionSurface(ptr long int64)
+@ stdcall NtQueryCompositionSurfaceStatistics(ptr int64)
+@ stdcall NtSetCompositionSurfaceHDRMetaData(ptr ptr int64 int64)
