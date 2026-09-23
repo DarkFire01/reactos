@@ -677,3 +677,6 @@
 @ stdcall -version=0x600+ D3DKMTQueryVidPnExclusiveOwnership(ptr) NtGdiDdDDIQueryVidPnExclusiveOwnership
 @ stdcall -version=0x600+ D3DKMTSetHwProtectionTeardownRecovery(ptr) NtGdiDdDDISetHwProtectionTeardownRecovery
 @ stdcall -version=0x600+ D3DKMTSetVidPnSourceHwProtection(ptr) NtGdiDdDDISetVidPnSourceHwProtection
+@ stdcall -version=0x600+ D3DKMTEnumAdapters2(ptr) NtGdiDdDDIEnumAdapters2
+@ stdcall -version=0x600+ D3DKMTSetVidPnSourceOwner1(ptr) NtGdiDdDDISetVidPnSourceOwner1
+@ stdcall -version=0x600+ D3DKMTSubmitPresentToHwQueue(ptr) NtGdiDdDDISubmitPresentToHwQueue
