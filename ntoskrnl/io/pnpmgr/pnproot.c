@@ -117,6 +117,13 @@ PnpRootRegisterDevice(
     Device = ExAllocatePoolWithTag(PagedPool, sizeof(PNPROOT_DEVICE), TAG_PNP_ROOT);
     if (!Device) return STATUS_NO_MEMORY;
 
+    /*
+     * Only a few fields are filled in below, and the rest are read later as though they had been:
+     * PdoQueryResourceRequirements tests ResourceRequirementsList for NULL and then dereferences
+     * it, so pool garbage there is a non-NULL pointer it will follow.
+     */
+    RtlZeroMemory(Device, sizeof(PNPROOT_DEVICE));
+
     DeviceNode = IopGetDeviceNode(DeviceObject);
     if (!RtlCreateUnicodeString(&InstancePathCopy, DeviceNode->InstancePath.Buffer))
     {
@@ -840,9 +847,13 @@ EnumerateDevices(
             else if (Status == STATUS_NO_SUCH_DEVICE)
             {
                 DPRINT("Skipping device %wZ\\%S (not reported yet)\n", &DevicePath, SubKeyInfo->Name);
+
+                /* Only the branch above hands the name over, so a skipped device still owns it */
+                RtlFreeUnicodeString(&DevicePath);
             }
             else
             {
+                RtlFreeUnicodeString(&DevicePath);
                 goto cleanup;
             }
 
