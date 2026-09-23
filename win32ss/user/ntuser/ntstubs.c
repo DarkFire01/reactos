@@ -897,3 +897,74 @@ NtDxEngGetRedirectionBitmap(
 }
 
 /* EOF */
+
+/*
+ * The composition surfaces DirectComposition binds a swapchain to. Nothing here
+ * composites, so each one is refused; the entry points exist because a module built
+ * against win32u resolves them when it loads, long before it would call one.
+ *
+ * The shapes are the ones the Reference declares.
+ */
+NTSTATUS
+APIENTRY
+NtBindCompositionSurface(
+    _In_opt_ PVOID Param1,
+    _In_ INT Param2,
+    _In_ INT Param3,
+    _In_opt_ PVOID Param4,
+    _In_ ULONGLONG Param5)
+{
+    UNREFERENCED_PARAMETER(Param1);
+    UNREFERENCED_PARAMETER(Param2);
+    UNREFERENCED_PARAMETER(Param3);
+    UNREFERENCED_PARAMETER(Param4);
+    UNREFERENCED_PARAMETER(Param5);
+
+    TRACE("NtBindCompositionSurface is UNIMPLEMENTED\n");
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+APIENTRY
+NtUnBindCompositionSurface(
+    _In_opt_ PVOID Param1,
+    _In_ INT Param2,
+    _In_ ULONGLONG Param3)
+{
+    UNREFERENCED_PARAMETER(Param1);
+    UNREFERENCED_PARAMETER(Param2);
+    UNREFERENCED_PARAMETER(Param3);
+
+    TRACE("NtUnBindCompositionSurface is UNIMPLEMENTED\n");
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+APIENTRY
+NtQueryCompositionSurfaceStatistics(
+    _In_opt_ PVOID Param1,
+    _In_ ULONGLONG Param2)
+{
+    UNREFERENCED_PARAMETER(Param1);
+    UNREFERENCED_PARAMETER(Param2);
+
+    TRACE("NtQueryCompositionSurfaceStatistics is UNIMPLEMENTED\n");
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+APIENTRY
+NtSetCompositionSurfaceHDRMetaData(
+    _In_opt_ PVOID Param1,
+    _In_opt_ PVOID Param2,
+    _In_ ULONGLONG Param3,
+    _In_ ULONGLONG Param4)
+{
+    UNREFERENCED_PARAMETER(Param1);
+    UNREFERENCED_PARAMETER(Param2);
+    UNREFERENCED_PARAMETER(Param3);
+    UNREFERENCED_PARAMETER(Param4);
+
+    TRACE("NtSetCompositionSurfaceHDRMetaData is UNIMPLEMENTED\n");
+    return STATUS_NOT_IMPLEMENTED;
+}
