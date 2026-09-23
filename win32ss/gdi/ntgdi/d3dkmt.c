@@ -1602,3 +1602,64 @@ NtGdiDdDDISetVidPnSourceHwProtection(_Inout_ PVOID unnamedParam1)
 
     return pfn(unnamedParam1);
 }
+
+/*
+ * The argument is described by the caller and read by dxgkrnl, never here, so it
+ * travels as a plain pointer rather than a shape win32k would have to agree on.
+ */
+NTSTATUS
+APIENTRY
+NtGdiDdDDIEnumAdapters2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_EnumAdapters2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("EnumAdapters2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+/*
+ * The argument is described by the caller and read by dxgkrnl, never here, so it
+ * travels as a plain pointer rather than a shape win32k would have to agree on.
+ */
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetVidPnSourceOwner1(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SetVidPnSourceOwner1);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SetVidPnSourceOwner1");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+/*
+ * The argument is described by the caller and read by dxgkrnl, never here, so it
+ * travels as a plain pointer rather than a shape win32k would have to agree on.
+ */
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitPresentToHwQueue(_Inout_ PVOID unnamedParam1)
+{
+    UNREFERENCED_PARAMETER(unnamedParam1);
+
+    /* No slot in the interface serves this one */
+    DXGKMT_TRACE_NOPROC("SubmitPresentToHwQueue");
+    return STATUS_PROCEDURE_NOT_FOUND;
+}
