@@ -87,3 +87,70 @@ typedef struct _DXGK_SESSION_USAGE
     ULONG Succeeded;
 } DXGK_SESSION_USAGE, *PDXGK_SESSION_USAGE;
 
+/*
+ * The pointer index of each D3DKMT entry point in the DXGKWIN32K interface. This is how
+ * win32kbase addresses them, one global per slot, rather than by a named field.
+ */
+#define DXGK_SLOT_CheckExclusiveOwnership              67
+#define DXGK_SLOT_CheckMonitorPowerState               66
+#define DXGK_SLOT_CheckOcclusion                       64
+#define DXGK_SLOT_CloseAdapter                         12
+#define DXGK_SLOT_CreateAllocation                     13
+#define DXGK_SLOT_CreateContext                        26
+#define DXGK_SLOT_CreateDevice                         24
+#define DXGK_SLOT_CreateOverlay                        45
+#define DXGK_SLOT_CreateSynchronizationObject          28
+#define DXGK_SLOT_DestroyAllocation                    21
+#define DXGK_SLOT_DestroyContext                       27
+#define DXGK_SLOT_DestroyDevice                        25
+#define DXGK_SLOT_DestroyOverlay                       48
+#define DXGK_SLOT_DestroySynchronizationObject         30
+#define DXGK_SLOT_Escape                               41
+#define DXGK_SLOT_FlipOverlay                          47
+#define DXGK_SLOT_GetContextSchedulingPriority         56
+#define DXGK_SLOT_GetDeviceState                       54
+#define DXGK_SLOT_GetDisplayModeList                   36
+#define DXGK_SLOT_GetMultisampleMethodList             38
+#define DXGK_SLOT_GetPresentHistory                    51
+#define DXGK_SLOT_GetProcessSchedulingPriorityClass    58
+#define DXGK_SLOT_GetRuntimeData                       39
+#define DXGK_SLOT_GetScanLine                          60
+#define DXGK_SLOT_GetSharedPrimaryHandle               44
+#define DXGK_SLOT_InvalidateActiveVidPn                63
+#define DXGK_SLOT_Lock                                 33
+#define DXGK_SLOT_OpenResource                         19
+#define DXGK_SLOT_PollDisplayChildren                  62
+#define DXGK_SLOT_Present                              43
+#define DXGK_SLOT_QueryAdapterInfo                     40
+#define DXGK_SLOT_QueryAllocationResidency             23
+#define DXGK_SLOT_QueryResourceInfo                    14
+#define DXGK_SLOT_QueryStatistics                      42
+#define DXGK_SLOT_ReleaseProcessVidPnSourceOwners      59
+#define DXGK_SLOT_Render                               35
+#define DXGK_SLOT_SetAllocationPriority                22
+#define DXGK_SLOT_SetContextSchedulingPriority         55
+#define DXGK_SLOT_SetDisplayMode                       37
+#define DXGK_SLOT_SetDisplayPrivateDriverFormat        68
+#define DXGK_SLOT_SetGammaRamp                         53
+#define DXGK_SLOT_SetProcessSchedulingPriorityClass    57
+#define DXGK_SLOT_SetQueuedLimit                       61
+#define DXGK_SLOT_SetVidPnSourceOwner                  49
+#define DXGK_SLOT_SignalSynchronizationObject          32
+#define DXGK_SLOT_Unlock                               34
+#define DXGK_SLOT_UpdateOverlay                        46
+#define DXGK_SLOT_WaitForIdle                          65
+#define DXGK_SLOT_WaitForSynchronizationObject         31
+#define DXGK_SLOT_WaitForVerticalBlankEvent            52
+
+#define DXGK_SLOT_CheckSharedResourceAccess            97
+#define DXGK_SLOT_AdjustFullscreenGamma                213
+#define DXGK_SLOT_CheckMultiPlaneOverlaySupport3       226
+#define DXGK_SLOT_PresentMultiPlaneOverlay3            227
+#define DXGK_SLOT_QueryVidPnExclusiveOwnership         206
+#define DXGK_SLOT_SetVidPnSourceHwProtection           217
+#define DXGK_SLOT_OpenAdapterFromLuid                  11
+/* Every one of them takes a single pointer, so one shape covers the whole table. */
+typedef NTSTATUS (NTAPI *PFN_DXGK_D3DKMT)(PVOID);
+
+/* Returns the entry point dxgkrnl put in that slot, or NULL when it filled none. */
+PFN_DXGK_D3DKMT NTAPI DxgkGetD3DKMTSlot(_In_ ULONG Slot);
