@@ -263,6 +263,47 @@ failure:
     INFO_(I8042PRT, "Mouse not detected\n");
 }
 
+/*
+ * Both interrupts synchronize on one spin lock, so both must run at the same
+ * IRQL. Whichever device starts first only knows its own DIRQL, so the second
+ * one to arrive lifts the first to the new maximum before connecting itself.
+ */
+static NTSTATUS
+i8042RaiseSynchronizeIrql(
+    _In_ PPORT_DEVICE_EXTENSION PortDeviceExtension,
+    _Inout_ PINTERRUPT_DATA Interrupt,
+    _In_ PKSERVICE_ROUTINE ServiceRoutine,
+    _In_ PVOID ServiceContext,
+    _In_ KIRQL DirqlMax)
+{
+    PKINTERRUPT StaleObject = Interrupt->Object;
+    NTSTATUS Status;
+
+    if (!StaleObject || DirqlMax <= Interrupt->Dirql)
+        return STATUS_SUCCESS;
+
+    INFO_(I8042PRT, "Reconnecting vector %lu at synchronize IRQL %lu\n",
+        Interrupt->Vector, DirqlMax);
+
+    IoDisconnectInterrupt(StaleObject);
+    Interrupt->Object = NULL;
+
+    Status = IoConnectInterrupt(
+        &Interrupt->Object,
+        ServiceRoutine,
+        ServiceContext, &PortDeviceExtension->SpinLock,
+        Interrupt->Vector, Interrupt->Dirql, DirqlMax,
+        Interrupt->InterruptMode, Interrupt->ShareInterrupt,
+        Interrupt->Affinity, FALSE);
+    if (!NT_SUCCESS(Status))
+        WARN_(I8042PRT, "IoConnectInterrupt() failed with status 0x%08x\n", Status);
+
+    if (PortDeviceExtension->HighestDIRQLInterrupt == StaleObject)
+        PortDeviceExtension->HighestDIRQLInterrupt = Interrupt->Object;
+
+    return Status;
+}
+
 static NTSTATUS
 i8042ConnectKeyboardInterrupt(
     IN PI8042_KEYBOARD_EXTENSION DeviceExtension)
@@ -281,6 +322,14 @@ i8042ConnectKeyboardInterrupt(
     DirqlMax = MAX(
         PortDeviceExtension->KeyboardInterrupt.Dirql,
         PortDeviceExtension->MouseInterrupt.Dirql);
+
+    Status = i8042RaiseSynchronizeIrql(PortDeviceExtension,
+                                       &PortDeviceExtension->MouseInterrupt,
+                                       i8042MouInterruptService,
+                                       PortDeviceExtension->MouseExtension,
+                                       DirqlMax);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     INFO_(I8042PRT, "KeyboardInterrupt.Vector         %lu\n",
         PortDeviceExtension->KeyboardInterrupt.Vector);
@@ -331,6 +380,14 @@ i8042ConnectMouseInterrupt(
     DirqlMax = MAX(
         PortDeviceExtension->KeyboardInterrupt.Dirql,
         PortDeviceExtension->MouseInterrupt.Dirql);
+
+    Status = i8042RaiseSynchronizeIrql(PortDeviceExtension,
+                                       &PortDeviceExtension->KeyboardInterrupt,
+                                       i8042KbdInterruptService,
+                                       PortDeviceExtension->KeyboardExtension,
+                                       DirqlMax);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     INFO_(I8042PRT, "MouseInterrupt.Vector         %lu\n",
         PortDeviceExtension->MouseInterrupt.Vector);
