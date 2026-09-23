@@ -3,11 +3,6 @@
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     The engine interface dxgkrnl calls win32k back through
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
- *
- * win32k hands this table to dxgkrnl for every GUI process (gdi/eng/dxgkrnl.c, the process
- * callout) and to the CDD when it enables a PDEV. dxgkrnl calls most of these without checking
- * them for NULL, so every slot is filled. The ones that answer a question return nothing and
- * zero what they were asked to fill, which keeps the caller on its "not available" path.
  */
 
 #include <win32k.h>
@@ -639,21 +634,56 @@ DxgkEngGetRedirectedWindowOrigin(
     return 0;
 }
 
+/**
+ * @brief Move a set of monitor rectangles so the primary sits at the origin.
+ *        Reference win32kbase DxgkEngAdjustMonitorPosition:101517, which is a forward to
+ *        AlignRects:101523.
+ *
+ * Every coordinate the display stack goes on to use is relative to this, so leaving the
+ * rectangles where they came in leaves the desktop origin wherever the monitor happened to be
+ * enumerated, and the damage rectangles built from it land outside the surface.
+ *
+ * @param ulFlags   Passed through by the Reference and not read by AlignRects.
+ * @param prc       The monitor rectangles, adjusted in place.
+ * @param cRects    How many; the Reference refuses more than 16.
+ * @param iPrimary  Index of the primary, which is the one moved to (0,0).
+ * @return Nonzero when the rectangles were adjusted.
+ */
 static
 LONG
 APIENTRY
 DxgkEngAdjustMonitorPosition(
-    _Inout_ LPRECT prcl,
-    _In_ ULONG ulFlags1,
-    _In_ ULONG ulFlags2)
+    _In_ ULONG ulFlags,
+    _Inout_updates_(cRects) LPRECT prc,
+    _In_ ULONG cRects,
+    _In_ ULONG iPrimary)
 {
-    UNIMPLEMENTED_ONCE;
+    LONG  dx, dy;
+    ULONG i;
 
-    UNREFERENCED_PARAMETER(prcl);
-    UNREFERENCED_PARAMETER(ulFlags1);
-    UNREFERENCED_PARAMETER(ulFlags2);
+    UNREFERENCED_PARAMETER(ulFlags);
 
-    return 0;
+    /* Reference :101527 - beyond this it does not lay them out at all. */
+    if ((prc == NULL) || (cRects == 0) || (cRects > 16) || (iPrimary >= cRects))
+        return 0;
+
+    /*
+     * The Reference also removes overlaps and gaps first, but only for more than one monitor.
+     * That layout pass is not ported; a single monitor never needs it.
+     */
+
+    dx = -prc[iPrimary].left;
+    dy = -prc[iPrimary].top;
+
+    for (i = 0; i < cRects; i++)
+    {
+        prc[i].left   += dx;
+        prc[i].right  += dx;
+        prc[i].top    += dy;
+        prc[i].bottom += dy;
+    }
+
+    return 1;
 }
 
 static
