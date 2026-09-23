@@ -26,6 +26,41 @@
 #include <debug.h>
 
 /**
+ * @brief Take hold of a driver's region.
+ *
+ * Two things differ from the user-mode region path, and both follow the Reference, where every
+ * EngXxxRgn entry point opens with GreGetObjectOwner and RGNOBJAPI holds the region by refcount:
+ *
+ * - Only a region a driver made (GDI_OBJ_HMGR_PUBLIC) is accepted, so the DDI can never reach a
+ *   region that belongs to a process.
+ * - It takes a reference rather than the ordered exclusive lock. A driver calls these from inside
+ *   a Drv* callback that already runs with its surface locked, and RGN sorts below SURF, so the
+ *   exclusive lock would report a lock order violation for what is really a private object.
+ *   Serializing a driver region is the driver's own business; the CDD holds its device lock
+ *   across every one of these calls.
+ *
+ * @return The region, or NULL when the handle is not a driver region.
+ */
+static
+PREGION
+RGNOBJ_pLockDriverRgn(
+    _In_ HANDLE hrgn)
+{
+    if (GreGetObjectOwner((HGDIOBJ)hrgn) != GDI_OBJ_HMGR_PUBLIC)
+        return NULL;
+
+    return (PREGION)GDIOBJ_ReferenceObjectByHandle((HGDIOBJ)hrgn, GDIObjType_RGN_TYPE);
+}
+
+static
+VOID
+RGNOBJ_vUnlockDriverRgn(
+    _In_ PREGION prgn)
+{
+    GDIOBJ_vDereferenceObject((POBJ)prgn);
+}
+
+/**
  * @brief Create a rectangular region owned by the calling driver.
  * @return An HRGN-shaped handle, or NULL on failure.
  */
@@ -65,12 +100,11 @@ APIENTRY
 EngDeleteRgn(
     _In_ HANDLE hrgn)
 {
-    PREGION prgn = REGION_LockRgn((HRGN)hrgn);
-
-    if (prgn == NULL)
+    if (GreGetObjectOwner((HGDIOBJ)hrgn) != GDI_OBJ_HMGR_PUBLIC)
         return;
 
-    REGION_UnlockRgn(prgn);
+    /* GreDeleteObject refuses a public object, so take the region back before dropping it */
+    GreSetObjectOwner((HGDIOBJ)hrgn, GDI_OBJ_HMGR_POWNED);
     GreDeleteObject((HRGN)hrgn);
 }
 
@@ -84,7 +118,7 @@ EngSetRectRgn(
     _In_ INT right,
     _In_ INT bottom)
 {
-    PREGION prgn = REGION_LockRgn((HRGN)hrgn);
+    PREGION prgn = RGNOBJ_pLockDriverRgn(hrgn);
 
     if (prgn == NULL)
     {
@@ -93,7 +127,7 @@ EngSetRectRgn(
     }
 
     REGION_SetRectRgn(prgn, left, top, right, bottom);
-    REGION_UnlockRgn(prgn);
+    RGNOBJ_vUnlockDriverRgn(prgn);
     return TRUE;
 }
 
@@ -113,17 +147,17 @@ EngCombineRgn(
     PREGION prgnTrg, prgnSrc1, prgnSrc2 = NULL;
     INT     iResult = ERROR;
 
-    prgnTrg = REGION_LockRgn((HRGN)hrgnTrg);
+    prgnTrg = RGNOBJ_pLockDriverRgn(hrgnTrg);
     if (prgnTrg == NULL)
     {
         EngSetLastError(ERROR_INVALID_HANDLE);
         return ERROR;
     }
 
-    prgnSrc1 = REGION_LockRgn((HRGN)hrgnSrc1);
+    prgnSrc1 = RGNOBJ_pLockDriverRgn(hrgnSrc1);
     if (prgnSrc1 == NULL)
     {
-        REGION_UnlockRgn(prgnTrg);
+        RGNOBJ_vUnlockDriverRgn(prgnTrg);
         EngSetLastError(ERROR_INVALID_HANDLE);
         return ERROR;
     }
@@ -131,11 +165,11 @@ EngCombineRgn(
     /* RGN_COPY takes a single source; every other mode needs both. */
     if (iMode != RGN_COPY)
     {
-        prgnSrc2 = REGION_LockRgn((HRGN)hrgnSrc2);
+        prgnSrc2 = RGNOBJ_pLockDriverRgn(hrgnSrc2);
         if (prgnSrc2 == NULL)
         {
-            REGION_UnlockRgn(prgnSrc1);
-            REGION_UnlockRgn(prgnTrg);
+            RGNOBJ_vUnlockDriverRgn(prgnSrc1);
+            RGNOBJ_vUnlockDriverRgn(prgnTrg);
             EngSetLastError(ERROR_INVALID_HANDLE);
             return ERROR;
         }
@@ -144,9 +178,9 @@ EngCombineRgn(
     iResult = IntGdiCombineRgn(prgnTrg, prgnSrc1, prgnSrc2, iMode);
 
     if (prgnSrc2 != NULL)
-        REGION_UnlockRgn(prgnSrc2);
-    REGION_UnlockRgn(prgnSrc1);
-    REGION_UnlockRgn(prgnTrg);
+        RGNOBJ_vUnlockDriverRgn(prgnSrc2);
+    RGNOBJ_vUnlockDriverRgn(prgnSrc1);
+    RGNOBJ_vUnlockDriverRgn(prgnTrg);
 
     return iResult;
 }
@@ -222,7 +256,7 @@ EngGetRgnBox(
     if (prcl == NULL)
         return ERROR;
 
-    prgn = REGION_LockRgn((HRGN)hrgn);
+    prgn = RGNOBJ_pLockDriverRgn(hrgn);
     if (prgn == NULL)
     {
         EngSetLastError(ERROR_INVALID_HANDLE);
@@ -230,7 +264,7 @@ EngGetRgnBox(
     }
 
     iComplexity = REGION_GetRgnBox(prgn, (RECTL *)prcl);
-    REGION_UnlockRgn(prgn);
+    RGNOBJ_vUnlockDriverRgn(prgn);
 
     return iComplexity;
 }
@@ -246,7 +280,7 @@ EngOffsetRgn(
     PREGION prgn;
     INT     iComplexity;
 
-    prgn = REGION_LockRgn((HRGN)hrgn);
+    prgn = RGNOBJ_pLockDriverRgn(hrgn);
     if (prgn == NULL)
     {
         EngSetLastError(ERROR_INVALID_HANDLE);
@@ -255,12 +289,12 @@ EngOffsetRgn(
 
     if (!REGION_bOffsetRgn(prgn, x, y))
     {
-        REGION_UnlockRgn(prgn);
+        RGNOBJ_vUnlockDriverRgn(prgn);
         return ERROR;
     }
 
     iComplexity = REGION_Complexity(prgn);
-    REGION_UnlockRgn(prgn);
+    RGNOBJ_vUnlockDriverRgn(prgn);
 
     return iComplexity;
 }
@@ -279,7 +313,7 @@ EngRectInRgn(
     if (prcl == NULL)
         return FALSE;
 
-    prgn = REGION_LockRgn((HRGN)hrgn);
+    prgn = RGNOBJ_pLockDriverRgn(hrgn);
     if (prgn == NULL)
     {
         EngSetLastError(ERROR_INVALID_HANDLE);
@@ -287,7 +321,7 @@ EngRectInRgn(
     }
 
     bResult = REGION_RectInRegion(prgn, (const RECTL *)prcl);
-    REGION_UnlockRgn(prgn);
+    RGNOBJ_vUnlockDriverRgn(prgn);
 
     return bResult;
 }
@@ -303,17 +337,17 @@ EngEqualRgn(
     BOOL    bEqual = FALSE;
     ULONG   i;
 
-    prgn1 = REGION_LockRgn((HRGN)hrgn1);
+    prgn1 = RGNOBJ_pLockDriverRgn(hrgn1);
     if (prgn1 == NULL)
     {
         EngSetLastError(ERROR_INVALID_HANDLE);
         return FALSE;
     }
 
-    prgn2 = REGION_LockRgn((HRGN)hrgn2);
+    prgn2 = RGNOBJ_pLockDriverRgn(hrgn2);
     if (prgn2 == NULL)
     {
-        REGION_UnlockRgn(prgn1);
+        RGNOBJ_vUnlockDriverRgn(prgn1);
         EngSetLastError(ERROR_INVALID_HANDLE);
         return FALSE;
     }
@@ -332,8 +366,8 @@ EngEqualRgn(
         }
     }
 
-    REGION_UnlockRgn(prgn2);
-    REGION_UnlockRgn(prgn1);
+    RGNOBJ_vUnlockDriverRgn(prgn2);
+    RGNOBJ_vUnlockDriverRgn(prgn1);
 
     return bEqual;
 }
@@ -360,7 +394,7 @@ EngGetRgnData(
     PREGION prgn;
     ULONG   cjRects, cjSize;
 
-    prgn = REGION_LockRgn((HRGN)hrgn);
+    prgn = RGNOBJ_pLockDriverRgn(hrgn);
     if (prgn == NULL)
     {
         EngSetLastError(ERROR_INVALID_HANDLE);
@@ -386,7 +420,7 @@ EngGetRgnData(
         }
     }
 
-    REGION_UnlockRgn(prgn);
+    RGNOBJ_vUnlockDriverRgn(prgn);
     return cjSize;
 }
 
