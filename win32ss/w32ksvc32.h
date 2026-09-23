@@ -750,6 +750,13 @@
     SVC_(GdiDdDDISharedPrimaryUnLockNotification, 1)
     SVC_(GdiDdDDISignalSynchronizationObject, 1)
     SVC_(GdiDdDDIWaitForSynchronizationObject, 1)
+    SVC_(GdiDdDDICheckSharedResourceAccess, 1)
+    SVC_(GdiDdDDIAdjustFullscreenGamma, 1)
+    SVC_(GdiDdDDICheckMultiPlaneOverlaySupport3, 1)
+    SVC_(GdiDdDDIPresentMultiPlaneOverlay3, 1)
+    SVC_(GdiDdDDIQueryVidPnExclusiveOwnership, 1)
+    SVC_(GdiDdDDISetHwProtectionTeardownRecovery, 1)
+    SVC_(GdiDdDDISetVidPnSourceHwProtection, 1)
 // NT6
     SVC_(GdiGetFontFileData, 5)
     SVC_(GdiGetFontFileInfo, 5)
