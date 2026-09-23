@@ -63,6 +63,25 @@ EngCopyBits(
     psurfSource = CONTAINING_RECORD(psoSource, SURFACE, SurfObj);
     psurfDest = CONTAINING_RECORD(psoDest, SURFACE, SurfObj);
 
+    /*
+     * Bring a destination rectangle that starts off the surface back to the origin, walking the
+     * source point along with it. A window parked at a large negative coordinate (see
+     * WinPosFindIconPos, which uses -32000) otherwise reaches the driver with a negative origin,
+     * and a driver that takes the rectangle at face value computes a source address far outside
+     * its surface. IntEngBitBlt clips all four edges through RECTL_bClipRectBySize; this path
+     * only ever clipped right and bottom.
+     */
+    if (rclDest.left < 0)
+    {
+        ptlSrc.x -= rclDest.left;
+        rclDest.left = 0;
+    }
+    if (rclDest.top < 0)
+    {
+        ptlSrc.y -= rclDest.top;
+        rclDest.top = 0;
+    }
+
     /* Clip dest rect against source surface size / source point */
     if (psoSource->sizlBitmap.cx - ptlSrc.x < rclDest.right - rclDest.left)
         rclDest.right = rclDest.left + psoSource->sizlBitmap.cx - ptlSrc.x;
@@ -92,7 +111,7 @@ EngCopyBits(
             if (psurfDest->flags & HOOK_COPYBITS)
             {
                 ret = GDIDEVFUNCS(psoDest).CopyBits(
-                          psoDest, psoSource, Clip, ColorTranslation, DestRect, SourcePoint);
+                          psoDest, psoSource, Clip, ColorTranslation, DestRect, &ptlSrc);
 
                 goto cleanup;
             }
@@ -105,7 +124,7 @@ EngCopyBits(
             if (psurfSource->flags & HOOK_COPYBITS)
             {
                 ret = GDIDEVFUNCS(psoSource).CopyBits(
-                          psoDest, psoSource, Clip, ColorTranslation, DestRect, SourcePoint);
+                          psoDest, psoSource, Clip, ColorTranslation, DestRect, &ptlSrc);
 
                 goto cleanup;
             }
@@ -113,7 +132,7 @@ EngCopyBits(
 
         // If CopyBits wasn't hooked, BitBlt must be
         ret = IntEngBitBlt(psoDest, psoSource,
-                           NULL, Clip, ColorTranslation, DestRect, SourcePoint,
+                           NULL, Clip, ColorTranslation, DestRect, &ptlSrc,
                            NULL, NULL, NULL, ROP4_FROM_INDEX(R3_OPINDEX_SRCCOPY));
 
         goto cleanup;
@@ -140,7 +159,7 @@ EngCopyBits(
         case DC_TRIVIAL:
             DPRINT("DC_TRIVIAL.\n");
             BltInfo.DestRect = *DestRect;
-            BltInfo.SourcePoint = *SourcePoint;
+            BltInfo.SourcePoint = ptlSrc;
 
             /* Now we set the Dest Rect top and bottom based on Top Down/flip */
             if (bTopToBottom)
@@ -158,8 +177,8 @@ EngCopyBits(
             // Clip the blt to the clip rectangle
             RECTL_bIntersectRect(&BltInfo.DestRect, DestRect, &Clip->rclBounds);
 
-            BltInfo.SourcePoint.x = SourcePoint->x + BltInfo.DestRect.left - DestRect->left;
-            BltInfo.SourcePoint.y = SourcePoint->y + BltInfo.DestRect.top  - DestRect->top;
+            BltInfo.SourcePoint.x = ptlSrc.x + BltInfo.DestRect.left - DestRect->left;
+            BltInfo.SourcePoint.y = ptlSrc.y + BltInfo.DestRect.top  - DestRect->top;
 
             /* Now we set the Dest Rect top and bottom based on Top Down/flip */
             if (bTopToBottom)
@@ -189,8 +208,8 @@ EngCopyBits(
                     {
                         RECTL_bIntersectRect(&BltInfo.DestRect, prcl, DestRect);
 
-                        BltInfo.SourcePoint.x = SourcePoint->x + BltInfo.DestRect.left - DestRect->left;
-                        BltInfo.SourcePoint.y = SourcePoint->y + BltInfo.DestRect.top - DestRect->top;
+                        BltInfo.SourcePoint.x = ptlSrc.x + BltInfo.DestRect.left - DestRect->left;
+                        BltInfo.SourcePoint.y = ptlSrc.y + BltInfo.DestRect.top - DestRect->top;
 
                         /* Now we set the Dest Rect top and bottom based on Top Down/flip */
                         if (bTopToBottom)

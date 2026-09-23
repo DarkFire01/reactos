@@ -91,7 +91,16 @@ IntEngPaint(
 {
     SURFACE *psurf = CONTAINING_RECORD(pso, SURFACE, SurfObj);
 
-    /* Is the surface's Paint function hooked? */
+    /* Nothing of this lands on the surface, so the driver must not see it */
+    if ((pco != NULL) && RECTL_bIsOffSurface(&pco->rclBounds, &pso->sizlBitmap))
+    {
+        DPRINT1("IntEngPaint: rect (%ld,%ld)-(%ld,%ld) is off the %ldx%ld surface\n",
+                pco->rclBounds.left, pco->rclBounds.top,
+                pco->rclBounds.right, pco->rclBounds.bottom,
+                pso->sizlBitmap.cx, pso->sizlBitmap.cy);
+        return TRUE;
+    }
+
     if ((pso->iType != STYPE_BITMAP) && (psurf->flags & HOOK_PAINT))
     {
         /* Call the driver's DrvPaint */

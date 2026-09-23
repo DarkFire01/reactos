@@ -11,6 +11,27 @@
 #define NDEBUG
 #include <debug.h>
 
+/*
+ * A clip region may name area the destination bitmap does not have, so every write is
+ * bounded by the surface first. The DIB routines index the bits with no checking.
+ */
+static VOID FASTCALL
+PutPixelClipped(
+    _In_ SURFOBJ *OutputObj,
+    _In_ LONG x,
+    _In_ LONG y,
+    _In_ ULONG Pixel)
+{
+    if ((x < 0) || (y < 0) ||
+        (x >= OutputObj->sizlBitmap.cx) || (y >= OutputObj->sizlBitmap.cy))
+    {
+        return;
+    }
+
+    DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_PutPixel(
+        OutputObj, x, y, Pixel);
+}
+
 static void FASTCALL
 TranslateRects(RECT_ENUM *RectEnum, POINTL* Translate)
 {
@@ -137,8 +158,7 @@ NWtoSE(SURFOBJ* OutputObj, CLIPOBJ* Clip,
         {
             if ((ClipRect->left <= x && ClipRect->top <= y) && ((iStyle & 1) == 0))
             {
-                DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_PutPixel(
-                    OutputObj, x, y, Pixel);
+                PutPixelClipped(OutputObj, x, y, Pixel);
             }
             if (deltax < deltay)
             {
@@ -225,8 +245,7 @@ SWtoNE(SURFOBJ* OutputObj, CLIPOBJ* Clip,
         {
             if ((ClipRect->left <= x && y < ClipRect->bottom) && ((iStyle & 1) == 0))
             {
-                DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_PutPixel(
-                    OutputObj, x, y, Pixel);
+                PutPixelClipped(OutputObj, x, y, Pixel);
             }
             if (deltax < deltay)
             {
@@ -313,8 +332,7 @@ NEtoSW(SURFOBJ* OutputObj, CLIPOBJ* Clip,
         {
             if ((x < ClipRect->right && ClipRect->top <= y) && ((iStyle & 1) == 0))
             {
-                DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_PutPixel(
-                    OutputObj, x, y, Pixel);
+                PutPixelClipped(OutputObj, x, y, Pixel);
             }
             if (deltax < deltay)
             {
@@ -401,8 +419,7 @@ SEtoNW(SURFOBJ* OutputObj, CLIPOBJ* Clip,
         {
             if ((x < ClipRect->right && y < ClipRect->bottom) && ((iStyle & 1) == 0))
             {
-                DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_PutPixel(
-                    OutputObj, x, y, Pixel);
+                PutPixelClipped(OutputObj, x, y, Pixel);
             }
             if (deltax < deltay)
             {
@@ -558,11 +575,18 @@ EngLineTo(
                         max(hx, RectEnum.arcl[i].left + Translate.x) <
                         min(hx + deltax, RectEnum.arcl[i].right + Translate.x))
                 {
-                    DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_HLine(
-                        OutputObj,
-                        max(hx, RectEnum.arcl[i].left + Translate.x),
-                        min(hx + deltax, RectEnum.arcl[i].right + Translate.x),
-                        y1, Pixel);
+                    /* Same bounding as the vertical case below. */
+                    LONG xStart = max(hx, RectEnum.arcl[i].left + Translate.x);
+                    LONG xEnd = min(hx + deltax, RectEnum.arcl[i].right + Translate.x);
+
+                    xStart = max(xStart, 0);
+                    xEnd = min(xEnd, OutputObj->sizlBitmap.cx);
+
+                    if ((y1 >= 0) && (y1 < OutputObj->sizlBitmap.cy) && (xStart < xEnd))
+                    {
+                        DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_HLine(
+                            OutputObj, xStart, xEnd, y1, Pixel);
+                    }
                 }
             }
         }
@@ -581,11 +605,22 @@ EngLineTo(
                         RectEnum.arcl[i].top + Translate.y <= vy + deltay &&
                         vy < RectEnum.arcl[i].bottom + Translate.y)
                 {
-                    DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_VLine(
-                        OutputObj, x1,
-                        max(vy, RectEnum.arcl[i].top + Translate.y),
-                        min(vy + deltay, RectEnum.arcl[i].bottom + Translate.y),
-                        Pixel);
+                    /*
+                     * The span comes from the clip region, which can describe area the surface
+                     * does not have, so it is bounded by the surface before anything is written:
+                     * DIB_VLine addresses the bits directly and does no checking of its own.
+                     */
+                    LONG yStart = max(vy, RectEnum.arcl[i].top + Translate.y);
+                    LONG yEnd = min(vy + deltay, RectEnum.arcl[i].bottom + Translate.y);
+
+                    yStart = max(yStart, 0);
+                    yEnd = min(yEnd, OutputObj->sizlBitmap.cy);
+
+                    if ((x1 >= 0) && (x1 < OutputObj->sizlBitmap.cx) && (yStart < yEnd))
+                    {
+                        DibFunctionsForBitmapFormat[OutputObj->iBitmapFormat].DIB_VLine(
+                            OutputObj, x1, yStart, yEnd, Pixel);
+                    }
                 }
             }
         }
@@ -684,6 +719,24 @@ IntEngLineTo(SURFOBJ *psoDest,
     b.bottom = max(y1, y2);
     if (b.left == b.right) b.right++;
     if (b.top == b.bottom) b.bottom++;
+
+    /* Nothing of this lands on the surface, so the driver must not see it */
+    if (RECTL_bIsOffSurface(&b, &psoDest->sizlBitmap))
+    {
+        DPRINT1("IntEngLineTo: rect (%ld,%ld)-(%ld,%ld) is off the %ldx%ld surface\n",
+                b.left, b.top, b.right, b.bottom,
+                psoDest->sizlBitmap.cx, psoDest->sizlBitmap.cy);
+        return TRUE;
+    }
+
+    /*
+     * The driver reads this as the area the call damaged, and a display driver turns it
+     * straight into a copy out of its own surface, so it may not name area that is not there.
+     */
+    if (b.left < 0)                         b.left = 0;
+    if (b.top < 0)                          b.top = 0;
+    if (b.right > psoDest->sizlBitmap.cx)   b.right = psoDest->sizlBitmap.cx;
+    if (b.bottom > psoDest->sizlBitmap.cy)  b.bottom = psoDest->sizlBitmap.cy;
 
     if (psurfDest->flags & HOOK_LINETO)
     {
