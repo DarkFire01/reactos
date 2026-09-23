@@ -8,4 +8,4 @@ list(APPEND SOURCE
 add_library(cea MODULE ${SOURCE} cea.rc)
 set_module_type(cea kernelmodedriver)
 add_importlibs(cea ntoskrnl)
-add_cd_file(TARGET cea DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET cea DESTINATION reactos/system32/drivers FOR all)
