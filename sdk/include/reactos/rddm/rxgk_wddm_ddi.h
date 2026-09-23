@@ -308,6 +308,14 @@ typedef struct _RXGK_ARG_SETPOINTERPOSITION
     DXGK_SETPOINTERPOSITIONFLAGS   Flags;
 } RXGK_ARG_SETPOINTERPOSITION;
 
+/*
+ * The DDK declares PDXGKDDI_SETPALETTE as a UINT32* placeholder, so the table entry cannot be
+ * called through. DXGKARG_SETPALETTE itself is real (psdk/d3dkmdt.h) and matches the reference,
+ * so only the function type is missing.
+ */
+typedef NTSTATUS (NTAPI *RXGK_PFN_SETPALETTE)(
+    _In_ const PVOID MiniportDeviceContext, _In_ const DXGKARG_SETPALETTE *pSetPalette);
+
 typedef NTSTATUS (NTAPI *RXGK_PFN_SETPOINTERSHAPE)(
     _In_ const PVOID MiniportDeviceContext, _In_ const RXGK_ARG_SETPOINTERSHAPE *pSetPointerShape);
 typedef NTSTATUS (NTAPI *RXGK_PFN_SETPOINTERPOSITION)(
