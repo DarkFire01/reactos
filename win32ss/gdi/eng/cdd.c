@@ -51,13 +51,16 @@ static BOOLEAN gbGammaIdentityReady = FALSE;
 
 /**
  * @brief
- * Answers a "what does win32k want" poll from cdd.
+ * Answers a "why am I being asserted" poll from cdd.
+ *
+ * cdd calls this from DrvAssertMode, so the answer is whatever PDEVOBJ_bAssertGdiOutput left on
+ * the PDEV for the duration of that call, and zero at any other time.
  *
  * @param[in] hdev
  * The PDEV cdd drives.
  *
  * @return
- * The pending command flags, none of which ReactOS raises yet.
+ * The command flags, or zero when win32k is not asserting the mode.
  */
 static
 ULONG
@@ -65,9 +68,12 @@ APIENTRY
 W32kCddGetWin32kCommand(
     _In_ HDEV hdev)
 {
-    UNREFERENCED_PARAMETER(hdev);
+    PPDEVOBJ ppdev = (PPDEVOBJ)hdev;
 
-    return 0;
+    if (ppdev == NULL)
+        return 0;
+
+    return ppdev->ulW32kCommand;
 }
 
 /**
