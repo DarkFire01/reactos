@@ -388,25 +388,30 @@ DxgkEngAcquireWin32kAndPDEVLocks(
     UNREFERENCED_PARAMETER(ulFlags);
 }
 
+/*
+ * Hands the adapter's sources to or from the CDD. This is what starts the CDD presenting: it
+ * asserts each display's mode with a command on the PDEV that the CDD reads back through
+ * W32kCddGetWin32kCommand.
+ */
 static
 LONG
 APIENTRY
 DxgkEngAssertGdiOutput(
-    _In_ PVOID pvDev,
-    _In_ PVOID pvData,
-    _In_ ULONG ulSize,
-    _Out_ PUCHAR pbResult)
+    _In_ PVOID pAdapter,
+    _In_reads_(cSources) const UCHAR *pCddStates,
+    _In_ ULONG cSources,
+    _Out_ PUCHAR pbResetPointer)
 {
-    UNIMPLEMENTED_ONCE;
+    UCHAR bResetPointer = 0;
+    BOOL  bResult;
 
-    UNREFERENCED_PARAMETER(pvDev);
-    UNREFERENCED_PARAMETER(pvData);
-    UNREFERENCED_PARAMETER(ulSize);
+    if ((pCddStates == NULL) || (pbResetPointer == NULL))
+        return 0;
 
-    if (pbResult != NULL)
-        *pbResult = 0;
+    bResult = PDEVOBJ_bAssertGdiOutput(pAdapter, pCddStates, cSources, &bResetPointer);
 
-    return 0;
+    *pbResetPointer = bResetPointer;
+    return bResult;
 }
 
 static
