@@ -150,6 +150,7 @@ InitDisplayDriver(
 
 /* WDDM bootstrap (win32ss/gdi/eng/dxgkrnl.c) - loads dxgkrnl + acquires the D3DKMT callback table. */
 NTSTATUS NTAPI DlInitDxgkrnl(VOID);
+VOID NTAPI DlApplyDisplayConfig(VOID);
 
 NTSTATUS
 NTAPI
@@ -180,6 +181,9 @@ InitVideo(VOID)
     Status = EngpUpdateGraphicsDeviceList();
     if (!NT_SUCCESS(Status))
         return Status;
+
+    /* The session owns its adapters now, so dxgkrnl can commit a VidPn for them */
+    DlApplyDisplayConfig();
 
     InitSysParams();
 
