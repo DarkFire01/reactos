@@ -670,3 +670,10 @@
 @ stdcall -version=0x600+ D3DKMTWaitForIdle(ptr) NtGdiDdDDIWaitForIdle
 @ stdcall -version=0x600+ D3DKMTWaitForSynchronizationObject(ptr) NtGdiDdDDIWaitForSynchronizationObject
 @ stdcall -version=0x600+ D3DKMTWaitForVerticalBlankEvent(ptr) NtGdiDdDDIWaitForVerticalBlankEvent
+@ stdcall -version=0x600+ D3DKMTCheckSharedResourceAccess(ptr) NtGdiDdDDICheckSharedResourceAccess
+@ stdcall -version=0x600+ D3DKMTAdjustFullscreenGamma(ptr) NtGdiDdDDIAdjustFullscreenGamma
+@ stdcall -version=0x600+ D3DKMTCheckMultiPlaneOverlaySupport3(ptr) NtGdiDdDDICheckMultiPlaneOverlaySupport3
+@ stdcall -version=0x600+ D3DKMTPresentMultiPlaneOverlay3(ptr) NtGdiDdDDIPresentMultiPlaneOverlay3
+@ stdcall -version=0x600+ D3DKMTQueryVidPnExclusiveOwnership(ptr) NtGdiDdDDIQueryVidPnExclusiveOwnership
+@ stdcall -version=0x600+ D3DKMTSetHwProtectionTeardownRecovery(ptr) NtGdiDdDDISetHwProtectionTeardownRecovery
+@ stdcall -version=0x600+ D3DKMTSetVidPnSourceHwProtection(ptr) NtGdiDdDDISetVidPnSourceHwProtection

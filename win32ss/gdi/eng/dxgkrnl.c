@@ -3,12 +3,6 @@
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     win32k <-> dxgkrnl bootstrap - load DxgKrnl + acquire the win32k callback table
  * COPYRIGHT:   Copyright 2026 Justin Miller <justinmiller100@gmail.com>
- *
- * Ported from Reference/win10/win32kbase.c (DlpLoadDxgkrnl:110414, DlInitDxgkrnl:110290). This is
- * the win32k side of WDDM: it opens \Device\DxgKrnl when a miniport has loaded dxgkrnl, and sends
- * IOCTL_VIDEO_GIVE_CALLSBACK (0x23E057, INTERNAL_DEVICE_CONTROL) with a DXGKWIN32K_INTERFACE
- * (Version 22) that dxgkrnl fills with the D3DKMT entry points - the table win32k routes the
- * D3DKMT* APIs through (gDxgkInterface). DarkFire's WDDM upgrade to the otherwise-XPDM win32k.
  */
 
 #include <win32k.h>
@@ -41,6 +35,9 @@ typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
 #define DL_MODALITY_NO_OPTIMIZE     0x00004000
 #define DL_MODALITY_APPLY           0x00020000
 
+/* The only flags Functionalize is given, whatever the caller asked Get for (Reference :87385). */
+#define DL_MODALITY_FUNCTIONALIZE   0x00028000
+
 /*
  * The display configuration dxgkrnl applies to an adapter: this header followed by PathArraySize
  * entries of DL_MODALITY_PATH_SIZE bytes. AppliedCount/AppliedPaths are filled by the apply.
@@ -67,6 +64,14 @@ typedef NTSTATUS (NTAPI *PFN_DxgkPathsModality)(
     _In_ ULONG Flags,
     _Inout_ PD3DKMT_GETPATHSMODALITY Modality,
     _Out_opt_ PUSHORT RequiredPaths);
+
+/*
+ * Choosing a source mode for each path, which is a separate step from enumerating them: the paths
+ * come back from Get as candidates, and Apply only commits a mode that this put there.
+ */
+typedef NTSTATUS (NTAPI *PFN_DxgkFunctionalizePathsModality)(
+    _In_ ULONG Flags,
+    _Inout_ PD3DKMT_GETPATHSMODALITY Modality);
 
 typedef NTSTATUS (NTAPI *PFN_DxgkApplyPathsModality)(
     _In_ ULONG Flags,
@@ -96,7 +101,7 @@ typedef struct _DXGKWIN32K_INTERFACE_BUF
     PFN_DxgkProcessCallout pfnDxgkProcessCallout;       /* 4 */
     PVOID Reserved5[70];                                /* 5..74 */
     PFN_DxgkPathsModality pfnDxgkGetPathsModality;      /* 75 */
-    PVOID pfnDxgkFunctionalizePathsModality;            /* 76, takes four arguments, unused here */
+    PFN_DxgkFunctionalizePathsModality pfnDxgkFunctionalizePathsModality; /* 76 */
     PFN_DxgkApplyPathsModality pfnDxgkApplyPathsModality; /* 77 */
     PFN_DxgkFinalizePathsModality pfnDxgkFinalizePathsModality; /* 78 */
     PVOID Reserved79;                                   /* 79 */
@@ -108,6 +113,7 @@ C_ASSERT(sizeof(DXGKWIN32K_INTERFACE_BUF) == 236 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkGetPathsModality) == 75 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkFreePathsModality) == 80 * sizeof(PVOID));
 
+
 /* Fills the NtGdiDdDDI* D3DKMT callback table (gdi/ntgdi/d3dkmt.c) via IOCTL_VIDEO_REGISTER_RXGK. */
 NTSTATUS NTAPI DxgRegisterAdapterCallbacks(_In_ PDEVICE_OBJECT pDxgkrnl);
 
@@ -116,6 +122,27 @@ PDEVICE_OBJECT           gpDxgkDeviceObject = NULL;
 PFILE_OBJECT             gpDxgkFileObject = NULL;
 DXGKWIN32K_INTERFACE_BUF gDxgkInterface = { 0 };
 BOOLEAN                  gbDxgkInitialized = FALSE;
+
+/**
+ * @brief Hands out a D3DKMT entry point from the interface dxgkrnl filled.
+ *
+ * @param Slot The pointer index of the entry point (DXGK_SLOT_*).
+ *
+ * @return The routine, or NULL when the interface is not up or dxgkrnl left the slot empty.
+ */
+PFN_DXGK_D3DKMT
+NTAPI
+DxgkGetD3DKMTSlot(
+    _In_ ULONG Slot)
+{
+    if (!gbDxgkInitialized)
+        return NULL;
+
+    if (Slot >= sizeof(gDxgkInterface) / sizeof(PVOID))
+        return NULL;
+
+    return (PFN_DXGK_D3DKMT)(((PVOID *)&gDxgkInterface)[Slot]);
+}
 
 /* Exported by watchdog.sys */
 NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
@@ -283,6 +310,7 @@ static NTSTATUS
 DlpApplyDisplayConfig(VOID)
 {
     PD3DKMT_GETPATHSMODALITY Modality = NULL;
+    ULONG                    Flags = DL_MODALITY_PERSISTED;
     NTSTATUS                 Status;
 
     if ((gDxgkInterface.pfnDxgkGetPathsModality == NULL) ||
@@ -290,7 +318,7 @@ DlpApplyDisplayConfig(VOID)
         return STATUS_NOT_SUPPORTED;
 
     /* The saved configuration first, then whatever the adapter can drive */
-    Status = DlpQueryPathsModality(DL_MODALITY_PERSISTED, &Modality);
+    Status = DlpQueryPathsModality(Flags, &Modality);
     if (NT_SUCCESS(Status) && (Modality->PathCount == 0))
     {
         DlpFreePathsModality(Modality);
@@ -300,7 +328,8 @@ DlpApplyDisplayConfig(VOID)
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("win32k: no saved display configuration (0x%lX), enumerating paths\n", Status);
-        Status = DlpQueryPathsModality(DL_MODALITY_ALL_PATHS, &Modality);
+        Flags = DL_MODALITY_ALL_PATHS;
+        Status = DlpQueryPathsModality(Flags, &Modality);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("win32k: DxgkGetPathsModality failed 0x%lX\n", Status);
@@ -310,12 +339,22 @@ DlpApplyDisplayConfig(VOID)
 
     DPRINT1("win32k: display configuration has %u path(s)\n", Modality->PathCount);
 
-    /* This one marks the paths for the apply, it does not query again */
-    Status = gDxgkInterface.pfnDxgkGetPathsModality(DL_MODALITY_NO_OPTIMIZE, Modality, NULL);
-    if (!NT_SUCCESS(Status))
+    /*
+     * Pick a source mode for each path. Enumerating a path says the adapter could drive it, not
+     * what it should drive, so the mode fields stay empty until this runs. Apply then commits
+     * what is there, and dxgkrnl compares that against the CDD's surface to decide whether it can
+     * present the CDD shadow directly or has to blit through an allocation of its own
+     * (ADAPTER_DISPLAY::IsIdenticalMode). Skip this and the comparison fails on an empty mode.
+     */
+    if (gDxgkInterface.pfnDxgkFunctionalizePathsModality != NULL)
     {
-        DPRINT1("win32k: DxgkGetPathsModality(NoOptimize) failed 0x%lX\n", Status);
-        goto Cleanup;
+        Status = gDxgkInterface.pfnDxgkFunctionalizePathsModality(
+                     Flags & DL_MODALITY_FUNCTIONALIZE, Modality);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("win32k: DxgkFunctionalizePathsModality failed 0x%lX\n", Status);
+            goto Cleanup;
+        }
     }
 
     Status = gDxgkInterface.pfnDxgkApplyPathsModality(DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY,
