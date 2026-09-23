@@ -620,6 +620,68 @@ PeLdrCheckForLoadedDll(
     return FALSE;
 }
 
+/* The api sets a boot driver may import, and the module serving each (kernel: MiKernelApiSets) */
+static const struct
+{
+    PCSTR ApiSet;
+    PCSTR Host;
+} PeLdrApiSets[] =
+{
+    { "ext-ms-win-ntos-ksr-l1-1", NULL },
+    { "ext-ms-win-ntos-werkernel-l1-1", "werkernel.sys" },
+};
+
+/**
+ * @brief Resolves an api set name to the module that serves it.
+ *
+ * An api set names a contract rather than a file, so an import of one is followed to whichever
+ * module implements it. A known set with no module is served by the kernel itself, and its
+ * imports are left as the image built them.
+ *
+ * @param ImportName The name out of the import descriptor.
+ * @param Host Receives the serving module, or NULL when nothing here serves the set.
+ *
+ * @return TRUE when the name is an api set, FALSE when it names a real module.
+ */
+static
+BOOLEAN
+PeLdrpResolveApiSet(
+    IN PCSTR ImportName,
+    OUT PCSTR *Host)
+{
+    SIZE_T Stem;
+    ULONG Index;
+
+    *Host = NULL;
+
+    if ((_strnicmp(ImportName, "api-", 4) != 0) &&
+        (_strnicmp(ImportName, "ext-", 4) != 0))
+    {
+        return FALSE;
+    }
+
+    /* Drop the minor version and the extension behind the last hyphen */
+    Stem = strlen(ImportName);
+    while ((Stem > 1) && (ImportName[Stem - 1] != '-'))
+        Stem--;
+
+    if (Stem <= 1)
+        return FALSE;
+    Stem--;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(PeLdrApiSets); Index++)
+    {
+        if ((strlen(PeLdrApiSets[Index].ApiSet) == Stem) &&
+            (_strnicmp(ImportName, PeLdrApiSets[Index].ApiSet, Stem) == 0))
+        {
+            *Host = PeLdrApiSets[Index].Host;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
 BOOLEAN
 PeLdrScanImportDescriptorTable(
     IN OUT PLIST_ENTRY ModuleListHead,
@@ -630,6 +692,7 @@ PeLdrScanImportDescriptorTable(
     PIMAGE_IMPORT_DESCRIPTOR ImportTable;
     ULONG ImportTableSize;
     PCH ImportName;
+    PCSTR HostName;
     BOOLEAN Success;
 
     /* Get a pointer to the import table of this image */
@@ -667,6 +730,19 @@ PeLdrScanImportDescriptorTable(
         /* In case we get a reference to ourselves - just skip it */
         if (PeLdrpCompareDllName(ImportName, &ScanDTE->BaseDllName))
             continue;
+
+        /* An api set is served by its host module, or by nothing at all */
+        if (PeLdrpResolveApiSet(ImportName, &HostName))
+        {
+            if (HostName == NULL)
+            {
+                TRACE("Api set %s has no host, keeping its fallbacks\n", ImportName);
+                continue;
+            }
+
+            TRACE("Api set %s is hosted by %s\n", ImportName, HostName);
+            ImportName = (PCH)HostName;
+        }
 
         /* Load the DLL if it is not already loaded */
         if (!PeLdrCheckForLoadedDll(ModuleListHead, ImportName, &DataTableEntry))
