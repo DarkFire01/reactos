@@ -149,6 +149,8 @@ typedef struct _DXGK_SESSION_USAGE
 #define DXGK_SLOT_QueryVidPnExclusiveOwnership         206
 #define DXGK_SLOT_SetVidPnSourceHwProtection           217
 #define DXGK_SLOT_OpenAdapterFromLuid                  11
+#define DXGK_SLOT_EnumAdapters2                        9
+#define DXGK_SLOT_SetVidPnSourceOwner1                 50
 /* Every one of them takes a single pointer, so one shape covers the whole table. */
 typedef NTSTATUS (NTAPI *PFN_DXGK_D3DKMT)(PVOID);
 

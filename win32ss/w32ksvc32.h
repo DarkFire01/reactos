@@ -761,6 +761,9 @@
     SVC_(UnBindCompositionSurface, 4)
     SVC_(QueryCompositionSurfaceStatistics, 3)
     SVC_(SetCompositionSurfaceHDRMetaData, 6)
+    SVC_(GdiDdDDIEnumAdapters2, 1)
+    SVC_(GdiDdDDISetVidPnSourceOwner1, 1)
+    SVC_(GdiDdDDISubmitPresentToHwQueue, 1)
 // NT6
     SVC_(GdiGetFontFileData, 5)
     SVC_(GdiGetFontFileInfo, 5)
