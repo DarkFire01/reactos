@@ -755,3 +755,6 @@
     SVC_(UnBindCompositionSurface, 3)
     SVC_(QueryCompositionSurfaceStatistics, 2)
     SVC_(SetCompositionSurfaceHDRMetaData, 4)
+    SVC_(GdiDdDDIEnumAdapters2, 1)
+    SVC_(GdiDdDDISetVidPnSourceOwner1, 1)
+    SVC_(GdiDdDDISubmitPresentToHwQueue, 1)
