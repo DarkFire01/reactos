@@ -273,20 +273,41 @@ NtGdiDdDDIOpenAdapterFromGdiDisplayName(_Inout_ D3DKMT_OPENADAPTERFROMGDIDISPLAY
     if (DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromGdiDisplayName)
         return DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromGdiDisplayName(unnamedParam1);
 
+    WCHAR DeviceName[RTL_NUMBER_OF(unnamedParam1->DeviceName) + 1];
+    D3DKMT_HANDLE hAdapter = 0;
+    LUID AdapterLuid = { 0, 0 };
+    ULONG VidPnSourceId = 0;
+    UNICODE_STRING ustrDevice;
+
+    /* Take a copy before anything is decided on it, so it cannot change underneath */
     _SEH2_TRY
     {
-        UNICODE_STRING ustrDevice;
-        WCHAR DeviceName[RTL_NUMBER_OF(unnamedParam1->DeviceName) + 1];
-
         RtlCopyMemory(DeviceName, unnamedParam1->DeviceName,
                       sizeof(unnamedParam1->DeviceName));
-        DeviceName[RTL_NUMBER_OF(DeviceName) - 1] = UNICODE_NULL;
-        RtlInitUnicodeString(&ustrDevice, DeviceName);
+        Status = STATUS_SUCCESS;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
 
-        Status = DxgkpOpenAdapterForDevice(EngpFindGraphicsDevice(&ustrDevice, 0),
-                                           &unnamedParam1->hAdapter,
-                                           &unnamedParam1->AdapterLuid,
-                                           &unnamedParam1->VidPnSourceId);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    DeviceName[RTL_NUMBER_OF(DeviceName) - 1] = UNICODE_NULL;
+    RtlInitUnicodeString(&ustrDevice, DeviceName);
+
+    Status = DxgkpOpenAdapterForDevice(EngpFindGraphicsDevice(&ustrDevice, 0),
+                                       &hAdapter, &AdapterLuid, &VidPnSourceId);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    _SEH2_TRY
+    {
+        unnamedParam1->hAdapter = hAdapter;
+        unnamedParam1->AdapterLuid = AdapterLuid;
+        unnamedParam1->VidPnSourceId = VidPnSourceId;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -309,27 +330,52 @@ NtGdiDdDDIOpenAdapterFromHdc(_Inout_ D3DKMT_OPENADAPTERFROMHDC* unnamedParam1)
     if (DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromHdc)
         return DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromHdc(unnamedParam1);
 
+    D3DKMT_HANDLE hAdapter = 0;
+    LUID AdapterLuid = { 0, 0 };
+    ULONG VidPnSourceId = 0;
+    HDC hDc;
+    PDC pdc;
+
+    /* Take a copy before anything is decided on it, so it cannot change underneath */
     _SEH2_TRY
     {
-        PDC pdc = DC_LockDc(unnamedParam1->hDc);
+        hDc = unnamedParam1->hDc;
+        Status = STATUS_SUCCESS;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
 
-        if (pdc == NULL)
-        {
-            Status = STATUS_INVALID_PARAMETER;
-        }
-        else
-        {
-            PGRAPHICS_DEVICE pGraphicsDevice = NULL;
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-            if (pdc->ppdev != NULL)
-                pGraphicsDevice = pdc->ppdev->pGraphicsDevice;
+    pdc = DC_LockDc(hDc);
+    if (pdc == NULL)
+        return STATUS_INVALID_PARAMETER;
 
-            Status = DxgkpOpenAdapterForDevice(pGraphicsDevice,
-                                               &unnamedParam1->hAdapter,
-                                               &unnamedParam1->AdapterLuid,
-                                               &unnamedParam1->VidPnSourceId);
-            DC_UnlockDc(pdc);
-        }
+    if (pdc->ppdev == NULL)
+    {
+        DC_UnlockDc(pdc);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* The display is held still while it is resolved, as a mode change would move it */
+    EngAcquireSemaphore(pdc->ppdev->hsemDevLock);
+    Status = DxgkpOpenAdapterForDevice(pdc->ppdev->pGraphicsDevice,
+                                       &hAdapter, &AdapterLuid, &VidPnSourceId);
+    EngReleaseSemaphore(pdc->ppdev->hsemDevLock);
+    DC_UnlockDc(pdc);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    _SEH2_TRY
+    {
+        unnamedParam1->hAdapter = hAdapter;
+        unnamedParam1->AdapterLuid = AdapterLuid;
+        unnamedParam1->VidPnSourceId = VidPnSourceId;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
