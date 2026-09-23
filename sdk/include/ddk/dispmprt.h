@@ -1704,6 +1704,11 @@ typedef struct _KMDDOD_INITIALIZATION_DATA {
     PDXGKDDI_SYSTEM_DISPLAY_ENABLE DxgkDdiSystemDisplayEnable;
     PDXGKDDI_SYSTEM_DISPLAY_WRITE DxgkDdiSystemDisplayWrite;
     PDXGKDDI_GET_CHILD_CONTAINER_ID DxgkDdiGetChildContainerId;
+    /*
+     * This entry was missing, which shifted every member below it one pointer earlier and made
+     * the tail of the table disagree with what a display-only miniport actually fills in.
+     */
+    PDXGKDDI_CONTROLINTERRUPT DxgkDdiControlInterrupt;
     PDXGKDDISETPOWERCOMPONENTFSTATE DxgkDdiSetPowerComponentFState;
     PDXGKDDIPOWERRUNTIMECONTROLREQUEST DxgkDdiPowerRuntimeControlRequest;
     PDXGKDDI_NOTIFY_SURPRISE_REMOVAL DxgkDdiNotifySurpriseRemoval;
