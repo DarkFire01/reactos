@@ -79,6 +79,16 @@ typedef struct _GRAPHICS_DEVICE
     ULONG            VidPnSourceId;
 } GRAPHICS_DEVICE, *PGRAPHICS_DEVICE;
 
+/*
+ * The command win32k leaves on a PDEV across DrvAssertMode, which the CDD reads back through
+ * W32kCddGetWin32kCommand to tell a mode change apart from a GDI output handover.
+ * Reference win32kbase DxgkEngAssertGdiOutput.
+ */
+#define W32KCMD_RESET_GDI_OUTPUT    0x00000001  /* redraw everything, the surface is new */
+#define W32KCMD_ASSERT_GDI_OUTPUT   0x80000000  /* coming up, the CDD drives the output */
+#define W32KCMD_CDD_ENABLING        0x80000002  /* going down, the CDD is about to own it */
+#define W32KCMD_CDD_DISABLING       0x80000003  /* going down, the CDD is giving it up */
+
 typedef struct _PDEVOBJ
 {
     BASEOBJECT                BaseObject;
@@ -150,6 +160,9 @@ typedef struct _PDEVOBJ
     UINT SafetyRemoveCount;
     struct _EDD_DIRECTDRAW_GLOBAL * pEDDgpl;
 
+    /* Why the CDD's mode is being asserted, read back by W32kCddGetWin32kCommand */
+    ULONG ulW32kCommand;
+
     /* What cdd.dll handed over in EngQueryW32kCddInterface */
     PVOID pfnCddW32kAddD3DDirtyRgn;
     PVOID pfnCddW32kCloseProcess;
@@ -164,6 +177,19 @@ PPDEVOBJ
 NTAPI
 EngpGetPDEV(
     _In_opt_ PUNICODE_STRING pustrDevice);
+
+VOID
+NTAPI
+PDEVOBJ_vResetGdiOutput(
+    _Inout_ PPDEVOBJ ppdev);
+
+BOOL
+NTAPI
+PDEVOBJ_bAssertGdiOutput(
+    _In_ PVOID pAdapter,
+    _In_reads_(cSources) const UCHAR *pCddStates,
+    _In_ ULONG cSources,
+    _Out_ PUCHAR pbResetPointer);
 
 FORCEINLINE
 VOID
