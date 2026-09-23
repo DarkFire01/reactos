@@ -67,6 +67,26 @@ RECTL_bIsWellOrdered(
             (prcl->top  <= prcl->bottom));
 }
 
+/**
+ * @brief Does none of this rectangle land on a surface of the given size?
+ *
+ * A display driver works out where to read and write from the coordinates it is handed, so a
+ * rectangle that lies entirely off the surface must never reach one: a negative coordinate meets
+ * an unsigned pitch and turns into a multi-gigabyte offset. The window manager parks minimised
+ * windows at -32000 (WinPosFindIconPos), which is exactly such a rectangle.
+ */
+FORCEINLINE
+BOOL
+RECTL_bIsOffSurface(
+    _In_ const RECTL *prcl,
+    _In_ const SIZEL *pszl)
+{
+    return ((prcl->right  <= 0) ||
+            (prcl->bottom <= 0) ||
+            (prcl->left   >= pszl->cx) ||
+            (prcl->top    >= pszl->cy));
+}
+
 FORCEINLINE
 BOOL
 RECTL_bClipRectBySize(

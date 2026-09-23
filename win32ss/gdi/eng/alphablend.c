@@ -226,6 +226,15 @@ IntEngAlphaBlend(
 
     psurfDest = CONTAINING_RECORD(psoDest, SURFACE, SurfObj);
 
+    /* Nothing of this lands on the surface, so the driver must not see it */
+    if (RECTL_bIsOffSurface(prclDest, &psoDest->sizlBitmap))
+    {
+        DPRINT1("IntEngAlphaBlend: rect (%ld,%ld)-(%ld,%ld) is off the %ldx%ld surface\n",
+                prclDest->left, prclDest->top, prclDest->right, prclDest->bottom,
+                psoDest->sizlBitmap.cx, psoDest->sizlBitmap.cy);
+        return TRUE;
+    }
+
     /* Call the driver's DrvAlphaBlend if available */
     if (psurfDest->flags & HOOK_ALPHABLEND)
     {

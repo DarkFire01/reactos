@@ -568,10 +568,31 @@ IntEngGradientFill(
 {
     BOOL Ret;
     SURFACE *psurf;
+    RECTL rclExtents;
     ASSERT(psoDest);
 
     psurf = CONTAINING_RECORD(psoDest, SURFACE, SurfObj);
     ASSERT(psurf);
+
+    /* Nothing of this lands on the surface, so the driver must not see it */
+    if (RECTL_bIsOffSurface(prclExtents, &psoDest->sizlBitmap))
+    {
+        DPRINT1("IntEngGradientFill: rect (%ld,%ld)-(%ld,%ld) is off the %ldx%ld surface\n",
+                prclExtents->left, prclExtents->top, prclExtents->right, prclExtents->bottom,
+                psoDest->sizlBitmap.cx, psoDest->sizlBitmap.cy);
+        return TRUE;
+    }
+
+    /*
+     * The extents only bound the mesh, and the driver takes them as the area the call
+     * damaged, so they are trimmed to what the surface actually has. The vertices are left
+     * alone: the clip region still decides which pixels the fill reaches.
+     */
+    rclExtents = *prclExtents;
+    if (rclExtents.left < 0)                        rclExtents.left = 0;
+    if (rclExtents.top < 0)                         rclExtents.top = 0;
+    if (rclExtents.right > psoDest->sizlBitmap.cx)  rclExtents.right = psoDest->sizlBitmap.cx;
+    if (rclExtents.bottom > psoDest->sizlBitmap.cy) rclExtents.bottom = psoDest->sizlBitmap.cy;
 
     if (psurf->flags & HOOK_GRADIENTFILL)
     {
@@ -582,7 +603,7 @@ IntEngGradientFill(
                                                 nVertex,
                                                 pMesh,
                                                 nMesh,
-                                                prclExtents,
+                                                &rclExtents,
                                                 pptlDitherOrg,
                                                 ulMode);
     }
