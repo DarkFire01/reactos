@@ -1,0 +1,20 @@
+;
+; wpprecorder.def - export definition file for ReactOS
+;
+@ stdcall DllInitialize(ptr)
+@ stdcall DllUnload()
+@ stdcall WppAutoLogStart(ptr ptr)
+@ stdcall WppAutoLogStop(ptr)
+@ stdcall WppAutoLogTrace(ptr long ptr)
+@ stdcall imp_WppRecorderConfigure(ptr)
+@ stdcall imp_WppRecorderDumpLiveDriverData(ptr ptr ptr)
+@ stdcall imp_WppRecorderGetCounterHandle(ptr ptr)
+@ stdcall imp_WppRecorderGetTriageInfo()
+@ stdcall imp_WppRecorderIsDefaultLogAvailable()
+@ stdcall imp_WppRecorderLinkCounters(ptr ptr)
+@ stdcall imp_WppRecorderLogCreate(ptr ptr)
+@ stdcall imp_WppRecorderLogDelete(ptr)
+@ stdcall imp_WppRecorderLogDumpLiveData(ptr ptr ptr)
+@ stdcall imp_WppRecorderLogGetDefault()
+@ stdcall imp_WppRecorderLogSetIdentifier(ptr ptr)
+@ stdcall imp_WppRecorderReplay(ptr long long)
