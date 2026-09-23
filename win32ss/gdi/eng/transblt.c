@@ -271,6 +271,15 @@ IntEngTransparentBlt(
         OutputRect = InputClippedRect;
     }
 
+    /* Nothing of this lands on the surface, so the driver must not see it */
+    if (RECTL_bIsOffSurface(&OutputRect, &psoDest->sizlBitmap))
+    {
+        DPRINT1("IntEngTransparentBlt: rect (%ld,%ld)-(%ld,%ld) is off the %ldx%ld surface\n",
+                OutputRect.left, OutputRect.top, OutputRect.right, OutputRect.bottom,
+                psoDest->sizlBitmap.cx, psoDest->sizlBitmap.cy);
+        return TRUE;
+    }
+
     if (psurfDest->flags & HOOK_TRANSPARENTBLT)
     {
         Ret = GDIDEVFUNCS(psoDest).TransparentBlt(psoDest,

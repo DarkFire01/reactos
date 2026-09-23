@@ -793,6 +793,15 @@ IntEngStretchBlt(SURFOBJ *psoDest,
         //psurfSource = CONTAINING_RECORD(psoSource, SURFACE, SurfObj);
     }
 
+    /* Nothing of this lands on the surface, so the driver must not see it */
+    if (RECTL_bIsOffSurface(&OutputRect, &psoDest->sizlBitmap))
+    {
+        DPRINT1("IntEngStretchBltROP: rect (%ld,%ld)-(%ld,%ld) is off the %ldx%ld surface\n",
+                OutputRect.left, OutputRect.top, OutputRect.right, OutputRect.bottom,
+                psoDest->sizlBitmap.cx, psoDest->sizlBitmap.cy);
+        return TRUE;
+    }
+
     /* Call the driver's DrvStretchBlt if available */
     if (psurfDest->flags & HOOK_STRETCHBLTROP)
     {

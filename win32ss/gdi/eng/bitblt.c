@@ -810,6 +810,17 @@ IntEngBitBlt(
 
     // FIXME: cleanup temp surface!
 
+    /*
+     * A device managed target has no bits of its own, so there is nothing to fall back to:
+     * the operation is simply lost, and the screen keeps whatever was there before.
+     */
+    if (!bResult && pfnBitBlt != EngBitBlt)
+    {
+        DPRINT1("IntEngBitBlt: driver declined (%ld,%ld)-(%ld,%ld) rop 0x%lx, nothing drawn\n",
+                rclClipped.left, rclClipped.top, rclClipped.right, rclClipped.bottom,
+                (ULONG)Rop4);
+    }
+
     return bResult;
 }
 
