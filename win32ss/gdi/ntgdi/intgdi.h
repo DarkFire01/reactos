@@ -147,6 +147,11 @@ NtGdiDdDDIEnumAdapters2(
 
 NTSTATUS
 APIENTRY
+NtGdiDdDDIOpenAdapterFromLuid(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
 NtGdiDdDDISetVidPnSourceOwner1(
     _Inout_ PVOID unnamedParam1);
 
