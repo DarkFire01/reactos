@@ -372,11 +372,28 @@ SystemTimerProc(HWND hwnd,
   IntKillTimer(pWnd, idEvent, TRUE);
 }
 
+/* How often display drivers that ask for GCAPS2_SYNCTIMER get to catch up on GDI output */
+#define GDI_SYNC_TIMER_RATE 50
+
+static
+VOID
+CALLBACK
+GdiSyncTimerProc(
+    _In_opt_ HWND hwnd,
+    _In_ UINT uMsg,
+    _In_ UINT_PTR idEvent,
+    _In_ DWORD dwTime)
+{
+    PDEVOBJ_vSynchronizeDrivers(GCAPS2_SYNCTIMER);
+}
+
 VOID
 FASTCALL
 StartTheTimers(VOID)
 {
-  // Need to start gdi syncro timers then start timer with Hang App proc
+  IntSetTimer(NULL, 0, GDI_SYNC_TIMER_RATE, GdiSyncTimerProc, TMRF_RIT);
+
+  // Start timer with Hang App proc
   // that calles Idle process so the screen savers will know to run......
   IntSetTimer(NULL, 0, 1000, HungAppSysTimerProc, TMRF_RIT);
 // Test Timers

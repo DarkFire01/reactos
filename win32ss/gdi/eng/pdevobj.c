@@ -185,6 +185,55 @@ PDEVOBJ_bAssertGdiOutput(
     return bResult;
 }
 
+/**
+ * @brief Let each display driver that asked for it catch up on GDI output, the way the
+ *        periodic sync timer and GdiFlush do. CDD only presents what it drew when told to.
+ *
+ * @param flCaps2 GCAPS2_SYNCTIMER or GCAPS2_SYNCFLUSH, the reason for the call.
+ */
+VOID
+NTAPI
+PDEVOBJ_vSynchronizeDrivers(
+    _In_ FLONG flCaps2)
+{
+    PPDEVOBJ ppdev;
+    PSURFACE psurf;
+    FLONG fl;
+    BOOL bLock;
+
+    fl = (flCaps2 & GCAPS2_SYNCTIMER) ? DSS_TIMER_EVENT : DSS_FLUSH_EVENT;
+
+    EngAcquireSemaphoreShared(ghsemPDEV);
+
+    for (ppdev = gppdevList; ppdev != NULL; ppdev = ppdev->ppdevNext)
+    {
+        if (!(ppdev->devinfo.flGraphicsCaps2 & flCaps2))
+            continue;
+
+        if (ppdev->flFlags & PDEV_DISABLED)
+            continue;
+
+        psurf = ppdev->pSurface;
+        if ((psurf == NULL) || !(psurf->flags & HOOK_SYNCHRONIZE))
+            continue;
+
+        /* A surface open to shared access is synchronized by its driver */
+        bLock = !(psurf->flags & SHAREACCESS_SURFACE);
+        if (bLock)
+            EngAcquireSemaphore(ppdev->hsemDevLock);
+
+        if (ppdev->pfn.SynchronizeSurface)
+            ppdev->pfn.SynchronizeSurface(&psurf->SurfObj, NULL, fl);
+        else if (ppdev->pfn.Synchronize)
+            ppdev->pfn.Synchronize(ppdev->dhpdev, NULL);
+
+        if (bLock)
+            EngReleaseSemaphore(ppdev->hsemDevLock);
+    }
+
+    EngReleaseSemaphore(ghsemPDEV);
+}
+
 PPDEVOBJ
 PDEVOBJ_AllocPDEV(VOID)
 {

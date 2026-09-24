@@ -191,6 +191,11 @@ PDEVOBJ_bAssertGdiOutput(
     _In_ ULONG cSources,
     _Out_ PUCHAR pbResetPointer);
 
+VOID
+NTAPI
+PDEVOBJ_vSynchronizeDrivers(
+    _In_ FLONG flCaps2);
+
 FORCEINLINE
 VOID
 PDEVOBJ_vReference(
