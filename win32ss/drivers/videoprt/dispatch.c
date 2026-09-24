@@ -24,6 +24,7 @@
 #include <ndk/inbvfuncs.h>
 #include <ndk/obfuncs.h>
 #include <ndk/psfuncs.h>
+#include <reactos/rddm/rddm_private.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -43,13 +44,8 @@ VideoPortWin32kCallout(
     if (!Win32kCallout)
         return;
 
-    /* Perform the call in the CSRSS context */
-    if (!CsrProcess)
-        return;
-
-    KeAttachProcess(CsrProcess);
-    Win32kCallout(CallbackParams);
-    KeDetachProcess();
+    /* watchdog finds the console session's CSRSS and waits for win32k to finish */
+    SMgrGdiCallout(CallbackParams, FALSE, TRUE, NULL, NULL, NULL);
 }
 
 /*
@@ -260,8 +256,8 @@ InbvMonitorThread(
         InbvNotifyDisplayOwnershipLost(IntVideoPortResetDisplayParameters);
 
         /* Tell Win32k to reset the display */
+        RtlZeroMemory(&CallbackParams, sizeof(CallbackParams));
         CallbackParams.CalloutType = VideoFindAdapterCallout;
-        // CallbackParams.PhysDisp = NULL;
         CallbackParams.Param = (ULONG_PTR)TRUE; // TRUE: Re-enable display; FALSE: Disable display.
         VideoPortWin32kCallout(&CallbackParams);
     }
@@ -751,6 +747,48 @@ VideoPortForwardDeviceControl(
         default:
             return STATUS_UNSUCCESSFUL;
     }
+}
+
+/**
+ * @brief
+ * Answers the internal requests win32k sends. It registers its callout here the way it does
+ * with Windows videoprt and dxgkrnl.
+ *
+ * @param[in] DeviceObject
+ * The \Device\VideoN device object.
+ *
+ * @param[in,out] Irp
+ * The request.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED for anything but IOCTL_VIDEO_GDI_INIT_WIN32K_CALLBACKS.
+ */
+NTSTATUS
+NTAPI
+IntVideoPortDispatchInternalDeviceControl(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp)
+{
+    PIO_STACK_LOCATION IrpStack = IoGetCurrentIrpStackLocation(Irp);
+    NTSTATUS Status;
+
+    switch (IrpStack->Parameters.DeviceIoControl.IoControlCode)
+    {
+        case IOCTL_VIDEO_GDI_INIT_WIN32K_CALLBACKS:
+            Status = VideoPortInitWin32kCallbacks(DeviceObject,
+                                                  IrpStack->Parameters.DeviceIoControl.Type3InputBuffer,
+                                                  IrpStack->Parameters.DeviceIoControl.InputBufferLength,
+                                                  &Irp->IoStatus.Information);
+            break;
+
+        default:
+            Status = STATUS_NOT_SUPPORTED;
+            break;
+    }
+
+    Irp->IoStatus.Status = Status;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return Status;
 }
 
 /*
