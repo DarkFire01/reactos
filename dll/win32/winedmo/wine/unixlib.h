@@ -25,8 +25,8 @@ struct dispatch_callback_params
     UINT64 callback;
 };
 
-extern NTSTATUS _seek_callback( void *args, ULONG size );
-extern NTSTATUS _read_callback( void *args, ULONG size );
+extern NTSTATUS WINAPI _seek_callback( void *args, ULONG size );
+extern NTSTATUS WINAPI _read_callback( void *args, ULONG size );
 extern BOOL LoadFFmpeg();
 
 static inline int __reactos_call_unix_process_attach(PVOID args)
