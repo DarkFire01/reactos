@@ -35,8 +35,14 @@ CsrClientCallServer(IN OUT PCSR_API_MESSAGE ApiMessage,
 #define ST_RIT              (1<<0)
 #define ST_DESKTOP_THREAD   (1<<1)
 #define ST_GHOST_THREAD     (1<<2)
+#define ST_VIDEO_CALLOUT    (1<<3)
 
 DWORD UserSystemThreadProc(BOOL bRemoteProcess);
 BOOL UserCreateSystemThread(DWORD Type);
+
+NTSTATUS
+UserQueueSystemThread(
+    _In_ DWORD Type,
+    _In_opt_ PVOID Param);
 
 /* EOF */

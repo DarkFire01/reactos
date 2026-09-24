@@ -276,21 +276,11 @@ co_IntInitializeDesktopGraphics(VOID)
     TEXTMETRICW tmw;
     UNICODE_STRING DriverName = RTL_CONSTANT_STRING(L"DISPLAY");
     PDESKTOP pdesk;
-    LONG lRet;
 
-    lRet = PDEVOBJ_lChangeDisplaySettings(NULL, NULL, NULL, &gpmdev, TRUE);
-    if (lRet != DISP_CHANGE_SUCCESSFUL && !gbBaseVideo)
+    /* InitVideo built the desktop's MDEV already, this brings up what USER draws with */
+    if (gpmdev == NULL)
     {
-        ERR("Failed to initialize graphics, switching to base video\n");
-        gbBaseVideo = TRUE;
-        EngpUpdateGraphicsDeviceList();
-        lRet = PDEVOBJ_lChangeDisplaySettings(NULL, NULL, NULL, &gpmdev, TRUE);
-        gbBaseVideo = FALSE;
-        EngpUpdateGraphicsDeviceList();
-    }
-    if (lRet != DISP_CHANGE_SUCCESSFUL)
-    {
-        ERR("PDEVOBJ_lChangeDisplaySettings() failed.\n");
+        ERR("No desktop MDEV, InitVideo did not set up the displays\n");
         return FALSE;
     }
 
@@ -368,6 +358,10 @@ co_IntInitializeDesktopGraphics(VOID)
 
         for (iDevNum = 1; (pGraphicsDevice = EngpFindGraphicsDevice(NULL, iDevNum)) != NULL; iDevNum++)
         {
+            /* A device the display configuration left off the desktop has nothing to paint */
+            if (!(pGraphicsDevice->StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP))
+                continue;
+
             RtlInitUnicodeString(&DisplayName, pGraphicsDevice->szWinDeviceName);
             hdc = IntGdiCreateDC(&DriverName, &DisplayName, NULL, NULL, FALSE);
             IntPaintDesktop(hdc);
