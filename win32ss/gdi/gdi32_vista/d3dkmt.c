@@ -23,6 +23,12 @@ typedef struct _D3DKMT_OPENADAPTERFROMLUID
 } D3DKMT_OPENADAPTERFROMLUID;
 #endif
 
+/* NT6.2 syscall, appended to w32ksvc so ntgdi.h (Vista) does not declare it */
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenAdapterFromLuid(
+    _Inout_ D3DKMT_OPENADAPTERFROMLUID* unnamedParam1);
+
 #if (DXGKDDI_INTERFACE_VERSION < DXGKDDI_INTERFACE_VERSION_WDDM2_2)
 typedef struct _D3DKMT_QUERYVIDEOMEMORYINFO
 {
@@ -59,6 +65,10 @@ typedef struct _D3DKMT_EMU_DEVICE
 
 static D3DKMT_EMU_ADAPTER D3DKMTEmuAdapters[D3DKMT_EMU_MAX_ADAPTERS];
 static D3DKMT_EMU_DEVICE D3DKMTEmuDevices[D3DKMT_EMU_MAX_DEVICES];
+
+/* Emulated handles never reach dxgkrnl, and dxgkrnl handles never reach the emulation */
+#define D3DKMT_EMU_IS_ADAPTER(h) (((h) & ~D3DKMT_EMU_INDEX_MASK) == D3DKMT_EMU_ADAPTER_TAG)
+#define D3DKMT_EMU_IS_DEVICE(h)  (((h) & ~D3DKMT_EMU_INDEX_MASK) == D3DKMT_EMU_DEVICE_TAG)
 
 static
 D3DKMT_EMU_ADAPTER*
@@ -146,6 +156,10 @@ D3DKMTOpenAdapterFromGdiDisplayName(_Inout_ D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
+    /* A display driven by WDDM gets its real dxgkrnl adapter */
+    if (NT_SUCCESS(NtGdiDdDDIOpenAdapterFromGdiDisplayName(unnamedParam1)))
+        return STATUS_SUCCESS;
+
     /* Locate the GDI display device with this name to obtain its index, which
        doubles as the VidPN source ID */
     DisplayDevice.cb = sizeof(DisplayDevice);
@@ -199,6 +213,9 @@ D3DKMTOpenAdapterFromLuid(_Inout_ CONST D3DKMT_OPENADAPTERFROMLUID* unnamedParam
     }
     else
     {
+        if (NT_SUCCESS(NtGdiDdDDIOpenAdapterFromLuid(Desc)))
+            return STATUS_SUCCESS;
+
         VidPnSourceId = 0;
     }
 
@@ -216,14 +233,12 @@ WINAPI
 D3DKMTCloseAdapter(_In_ const D3DKMT_CLOSEADAPTER* unnamedParam1)
 {
     D3DKMT_EMU_ADAPTER* Adapter;
-    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
-    Status = NtGdiDdDDICloseAdapter(unnamedParam1);
-    if (Status != STATUS_PROCEDURE_NOT_FOUND)
-        return Status;
+    if (!D3DKMT_EMU_IS_ADAPTER(unnamedParam1->hAdapter))
+        return NtGdiDdDDICloseAdapter(unnamedParam1);
 
     Adapter = D3DKMTEmuGetAdapter(unnamedParam1->hAdapter);
     if (!Adapter)
@@ -238,15 +253,13 @@ NTSTATUS
 WINAPI
 D3DKMTCreateDevice(_Inout_ D3DKMT_CREATEDEVICE* unnamedParam1)
 {
-    NTSTATUS Status;
     ULONG Index;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
-    Status = NtGdiDdDDICreateDevice(unnamedParam1);
-    if (Status != STATUS_PROCEDURE_NOT_FOUND)
-        return Status;
+    if (!D3DKMT_EMU_IS_ADAPTER(unnamedParam1->hAdapter))
+        return NtGdiDdDDICreateDevice(unnamedParam1);
 
     if (!D3DKMTEmuGetAdapter(unnamedParam1->hAdapter))
         return STATUS_INVALID_PARAMETER;
@@ -277,14 +290,12 @@ WINAPI
 D3DKMTDestroyDevice(_In_ const D3DKMT_DESTROYDEVICE* unnamedParam1)
 {
     D3DKMT_EMU_DEVICE* Device;
-    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
-    Status = NtGdiDdDDIDestroyDevice(unnamedParam1);
-    if (Status != STATUS_PROCEDURE_NOT_FOUND)
-        return Status;
+    if (!D3DKMT_EMU_IS_DEVICE(unnamedParam1->hDevice))
+        return NtGdiDdDDIDestroyDevice(unnamedParam1);
 
     Device = D3DKMTEmuGetDevice(unnamedParam1->hDevice);
     if (!Device)
@@ -299,14 +310,11 @@ NTSTATUS
 WINAPI
 D3DKMTSetVidPnSourceOwner(_In_ const D3DKMT_SETVIDPNSOURCEOWNER* unnamedParam1)
 {
-    NTSTATUS Status;
-
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
-    Status = NtGdiDdDDISetVidPnSourceOwner(unnamedParam1);
-    if (Status != STATUS_PROCEDURE_NOT_FOUND)
-        return Status;
+    if (!D3DKMT_EMU_IS_DEVICE(unnamedParam1->hDevice))
+        return NtGdiDdDDISetVidPnSourceOwner(unnamedParam1);
 
     /* A zero VidPnSourceCount releases ownership, which always succeeds. */
     if (unnamedParam1->VidPnSourceCount == 0)
