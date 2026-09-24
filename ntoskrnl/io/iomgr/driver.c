@@ -1252,6 +1252,7 @@ FASTCALL
 IopInitializeSystemDrivers(VOID)
 {
     PUNICODE_STRING *DriverList, *SavedList;
+    NTSTATUS Status;
 
     PiPerformSyncDeviceAction(IopRootDeviceNode->PhysicalDeviceObject, PiActionEnumDeviceTree);
 
@@ -1266,7 +1267,9 @@ IopInitializeSystemDrivers(VOID)
     while (*DriverList)
     {
         /* Load the driver */
-        ZwLoadDriver(*DriverList);
+        Status = ZwLoadDriver(*DriverList);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("System driver '%wZ' failed to load, status 0x%08lx\n", *DriverList, Status);
 
         /* Free the entry */
         RtlFreeUnicodeString(*DriverList);
