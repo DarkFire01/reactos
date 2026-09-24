@@ -3138,6 +3138,9 @@ NtUserSwitchDesktop(HDESK hdesk)
     /* Set the global state */
     gpdeskInputDesktop = pdesk;
 
+    /* Display callouts held back for want of an input desktop can run now */
+    UserSignalVideoPortCalloutReady();
+
     /* Show the new desktop window */
     co_IntShowDesktop(pdesk, UserGetSystemMetrics(SM_CXSCREEN), UserGetSystemMetrics(SM_CYSCREEN), bRedrawDesktop);
 

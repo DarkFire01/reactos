@@ -198,6 +198,98 @@ CsrClientCallServer(IN OUT PCSR_API_MESSAGE ApiMessage,
     return ApiMessage->Status;
 }
 
+/* A system thread winsrv was asked for, and what it is to run once it enters win32k */
+typedef struct _USER_PENDING_SYSTEM_THREAD
+{
+    DWORD Type;
+    PVOID Param;
+} USER_PENDING_SYSTEM_THREAD, *PUSER_PENDING_SYSTEM_THREAD;
+
+#define USER_MAX_PENDING_SYSTEM_THREADS 30
+
+static USER_PENDING_SYSTEM_THREAD gPendingSystemThreads[USER_MAX_PENDING_SYSTEM_THREADS];
+
+_Requires_lock_held_(UserLock)
+static
+BOOL
+UserpPushPendingSystemThread(
+    _In_ DWORD Type,
+    _In_opt_ PVOID Param)
+{
+    ULONG i;
+
+    for (i = 0; i < RTL_NUMBER_OF(gPendingSystemThreads); i++)
+    {
+        if (gPendingSystemThreads[i].Type == 0)
+        {
+            gPendingSystemThreads[i].Type = Type;
+            gPendingSystemThreads[i].Param = Param;
+            gdwPendingSystemThreads |= Type;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+_Requires_lock_held_(UserLock)
+static
+VOID
+UserpUpdatePendingSystemThreadTypes(VOID)
+{
+    ULONG i;
+
+    gdwPendingSystemThreads = 0;
+    for (i = 0; i < RTL_NUMBER_OF(gPendingSystemThreads); i++)
+        gdwPendingSystemThreads |= gPendingSystemThreads[i].Type;
+}
+
+_Requires_lock_held_(UserLock)
+static
+BOOL
+UserpPopPendingSystemThread(
+    _Out_ PDWORD Type,
+    _Out_ PVOID *Param)
+{
+    ULONG i;
+
+    for (i = 0; i < RTL_NUMBER_OF(gPendingSystemThreads); i++)
+    {
+        if (gPendingSystemThreads[i].Type != 0)
+        {
+            *Type = gPendingSystemThreads[i].Type;
+            *Param = gPendingSystemThreads[i].Param;
+            gPendingSystemThreads[i].Type = 0;
+            gPendingSystemThreads[i].Param = NULL;
+            UserpUpdatePendingSystemThreadTypes();
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+_Requires_lock_held_(UserLock)
+static
+VOID
+UserpRemovePendingSystemThread(
+    _In_ DWORD Type,
+    _In_opt_ PVOID Param)
+{
+    ULONG i;
+
+    for (i = 0; i < RTL_NUMBER_OF(gPendingSystemThreads); i++)
+    {
+        if ((gPendingSystemThreads[i].Type == Type) && (gPendingSystemThreads[i].Param == Param))
+        {
+            gPendingSystemThreads[i].Type = 0;
+            gPendingSystemThreads[i].Param = NULL;
+            UserpUpdatePendingSystemThreadTypes();
+            return;
+        }
+    }
+}
+
 /*
  * UserSystemThreadProc
  *
@@ -207,25 +299,14 @@ CsrClientCallServer(IN OUT PCSR_API_MESSAGE ApiMessage,
 DWORD UserSystemThreadProc(BOOL bRemoteProcess)
 {
     DWORD Type;
+    PVOID Param;
 
-    if (!gdwPendingSystemThreads)
+    /* Whichever request was queued first is the one this thread runs */
+    if (!UserpPopPendingSystemThread(&Type, &Param))
     {
-        ERR("gdwPendingSystemThreads is 0!\n");
+        ERR("No system thread is pending!\n");
         return 0;
     }
-
-    /* Decide which thread this will be */
-    if (gdwPendingSystemThreads & ST_RIT)
-        Type = ST_RIT;
-    else if (gdwPendingSystemThreads & ST_DESKTOP_THREAD)
-        Type = ST_DESKTOP_THREAD;
-    else
-        Type = ST_GHOST_THREAD;
-
-    ASSERT(Type);
-
-    /* We will handle one of these threads right here so unmark it as pending */
-    gdwPendingSystemThreads &= ~Type;
 
     UserLeave();
 
@@ -236,6 +317,7 @@ DWORD UserSystemThreadProc(BOOL bRemoteProcess)
         case ST_RIT: RawInputThreadMain(); break;
         case ST_DESKTOP_THREAD: DesktopThreadMain(); break;
         case ST_GHOST_THREAD: UserGhostThreadEntry(); break;
+        case ST_VIDEO_CALLOUT: UserVideoPortCalloutThread(Param); break;
         default: ERR("Wrong type: %x\n", Type);
     }
 
@@ -244,11 +326,56 @@ DWORD UserSystemThreadProc(BOOL bRemoteProcess)
     return 0;
 }
 
-BOOL UserCreateSystemThread(DWORD Type)
+/**
+ * @brief
+ * Asks winsrv for a thread in CSRSS that enters win32k and runs the given request.
+ *
+ * @param[in] Type
+ * One of the ST_* values.
+ *
+ * @param[in] Param
+ * Handed to the thread when it runs the request.
+ *
+ * @return
+ * STATUS_SUCCESS once winsrv has the request.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+NTSTATUS
+UserQueueSystemThread(
+    _In_ DWORD Type,
+    _In_opt_ PVOID Param)
 {
     USER_API_MESSAGE ApiMessage;
     PUSER_CREATE_SYSTEM_THREAD pCreateThreadRequest = &ApiMessage.Data.CreateSystemThreadRequest;
+    NTSTATUS Status;
 
+    ASSERT(UserIsEnteredExclusive());
+
+    if (!UserpPushPendingSystemThread(Type, Param))
+    {
+        ERR("Too many system threads pending, dropping 0x%x\n", Type);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Ask winsrv to create a new system thread. This new thread will enter win32k again calling UserSystemThreadProc */
+    pCreateThreadRequest->bRemote = FALSE;
+    ApiMessage.Status = STATUS_SUCCESS;
+    Status = CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
+                                 NULL,
+                                 CSR_CREATE_API_NUMBER(USERSRV_SERVERDLL_INDEX, UserpCreateSystemThreads),
+                                 sizeof(USER_CREATE_SYSTEM_THREAD));
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("Csr call failed 0x%lx\n", Status);
+        UserpRemovePendingSystemThread(Type, Param);
+        return Status;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+BOOL UserCreateSystemThread(DWORD Type)
+{
     TRACE("UserCreateSystemThread: %d\n", Type);
 
     ASSERT(UserIsEnteredExclusive());
@@ -259,22 +386,7 @@ BOOL UserCreateSystemThread(DWORD Type)
         return TRUE;
     }
 
-    /* We can't pass a parameter to the new thread so mark what the new thread needs to do */
-    gdwPendingSystemThreads |= Type;
-
-    /* Ask winsrv to create a new system thread. This new thread will enter win32k again calling UserSystemThreadProc */
-    pCreateThreadRequest->bRemote = FALSE;
-    CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
-                        NULL,
-                        CSR_CREATE_API_NUMBER(USERSRV_SERVERDLL_INDEX, UserpCreateSystemThreads),
-                        sizeof(USER_CREATE_SYSTEM_THREAD));
-    if (!NT_SUCCESS(ApiMessage.Status))
-    {
-        ERR("Csr call failed!\n");
-        return FALSE;
-    }
-
-    return TRUE;
+    return NT_SUCCESS(UserQueueSystemThread(Type, NULL));
 }
 
 /* EOF */
