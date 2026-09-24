@@ -78,22 +78,74 @@ W32kCddGetWin32kCommand(
 
 /**
  * @brief
- * Clips a region against a CLIPOBJ on cdd's behalf. Not implemented yet.
+ * Clips a region against a CLIPOBJ on cdd's behalf. cdd calls this for complex clips to work
+ * out which part of the screen a drawing call changed, and presents only that part.
+ *
+ * @param[in] hDstRgn
+ * Receives the clipped region.
+ *
+ * @param[in] hSrcRgn
+ * The area the call drew to.
+ *
+ * @param[in] pco
+ * The clip the call was made with.
+ *
+ * @return
+ * The complexity of the result, or ERROR.
  */
 static
-BOOL
+INT
 APIENTRY
 W32kCddClipRegion(
     _In_ HANDLE hDstRgn,
     _In_ HANDLE hSrcRgn,
     _In_ const CLIPOBJ *pco)
 {
-    UNREFERENCED_PARAMETER(hDstRgn);
-    UNREFERENCED_PARAMETER(hSrcRgn);
-    UNREFERENCED_PARAMETER(pco);
+    const XCLIPOBJ *pxco = (const XCLIPOBJ *)pco;
+    const RECTL *prcl;
+    HANDLE hClipRgn, hRectRgn;
+    ULONG i;
+    INT iResult = ERROR;
 
-    UNIMPLEMENTED;
-    return FALSE;
+    if ((pco == NULL) || (pco->iDComplexity == DC_TRIVIAL))
+        return EngCopyRgn(hDstRgn, hSrcRgn);
+
+    hClipRgn = EngCreateRectRgn(0, 0, 0, 0);
+    hRectRgn = EngCreateRectRgn(0, 0, 0, 0);
+    if ((hClipRgn == NULL) || (hRectRgn == NULL))
+        goto Cleanup;
+
+    /* Read the rectangles directly so the caller's enumeration is left alone */
+    if (pco->iDComplexity == DC_COMPLEX)
+    {
+        for (i = 0; i < pxco->RectCount; i++)
+        {
+            prcl = &pxco->Rects[i];
+            if (!EngSetRectRgn(hRectRgn, prcl->left, prcl->top, prcl->right, prcl->bottom) ||
+                (EngCombineRgn(hClipRgn, hClipRgn, hRectRgn, RGN_OR) == ERROR))
+            {
+                goto Cleanup;
+            }
+        }
+    }
+    else if (!EngSetRectRgn(hClipRgn,
+                            pco->rclBounds.left,
+                            pco->rclBounds.top,
+                            pco->rclBounds.right,
+                            pco->rclBounds.bottom))
+    {
+        goto Cleanup;
+    }
+
+    iResult = EngCombineRgn(hDstRgn, hSrcRgn, hClipRgn, RGN_AND);
+
+Cleanup:
+    if (hRectRgn != NULL)
+        EngDeleteRgn(hRectRgn);
+    if (hClipRgn != NULL)
+        EngDeleteRgn(hClipRgn);
+
+    return iResult;
 }
 
 /**
@@ -425,21 +477,22 @@ EngIsCddDeviceBitmap(
  * @param[in] pso
  * The device surface.
  *
- * @param[out] ppco
- * Receives the clip region, NULL while nothing restricts drawing.
+ * @param[in,out] ppco
+ * The clip the caller draws with. Left as it is, since no thread here ever holds a
+ * visible region older than the one published.
  *
  * @return
- * TRUE.
+ * TRUE, so the caller goes ahead with the draw.
  */
 BOOL
 APIENTRY
 EngUpdateDeviceSurface(
     _In_ SURFOBJ *pso,
-    _Out_ CLIPOBJ **ppco)
+    _Inout_ CLIPOBJ **ppco)
 {
     UNREFERENCED_PARAMETER(pso);
+    UNREFERENCED_PARAMETER(ppco);
 
-    *ppco = NULL;
     return TRUE;
 }
 
