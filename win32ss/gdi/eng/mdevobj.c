@@ -65,6 +65,7 @@ MDEVOBJ_Create(
     PDEVMODEW localPdm;
     ULONG iDevNum = 0;
     ULONG dwAccelerationLevel = 0;
+    BOOLEAN bDisplayConfig;
 
     TRACE("MDEVOBJ_Create('%wZ' '%dx%dx%d (%d Hz)')\n",
         pustrDeviceName,
@@ -81,6 +82,12 @@ MDEVOBJ_Create(
     }
 
     pmdev->cDev = 0;
+
+    /*
+     * With a display configuration applied, the desktop is the sources it turned on, each in the
+     * mode dxgkrnl gave it, primary first. Reference win32kbase DrvCreateMDEV walking the paths.
+     */
+    bDisplayConfig = !pustrDeviceName && !pdm && EngpIsDisplayConfigApplied();
 
     while (TRUE)
     {
@@ -105,10 +112,26 @@ MDEVOBJ_Create(
             dmDefault.dmSize = sizeof(dmDefault);
         }
 
+        if (bDisplayConfig && (pGraphicsDevice->pdmDisplayConfig == NULL))
+        {
+            TRACE("'%S' has no path in the display configuration\n", pGraphicsDevice->szWinDeviceName);
+            continue;
+        }
+
         dwAccelerationLevel = EngpGetDisplayDriverAccelerationLevel(pGraphicsDevice);
 
         /* Get or create a PDEV for these settings */
-        if (LDEVOBJ_bProbeAndCaptureDevmode(pGraphicsDevice, pdm ? pdm : &dmDefault, &localPdm, !pdm))
+        if (bDisplayConfig)
+        {
+            /* The mode is dxgkrnl's, but the driver still gets the device's mode list when it enables */
+            LDEVOBJ_bBuildDevmodeList(pGraphicsDevice);
+
+            ppdev = PDEVOBJ_Create(pGraphicsDevice,
+                                   pGraphicsDevice->pdmDisplayConfig,
+                                   dwAccelerationLevel,
+                                   LDEV_DEVICE_DISPLAY);
+        }
+        else if (LDEVOBJ_bProbeAndCaptureDevmode(pGraphicsDevice, pdm ? pdm : &dmDefault, &localPdm, !pdm))
         {
             ppdev = PDEVOBJ_Create(pGraphicsDevice, localPdm, dwAccelerationLevel, LDEV_DEVICE_DISPLAY);
         }

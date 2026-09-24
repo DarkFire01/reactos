@@ -32,6 +32,52 @@ NTAPI
 EngpFindGraphicsDeviceByHandle(
     _In_ HANDLE hDevObj);
 
+BOOLEAN
+NTAPI
+EngpQueryDeviceDescription(
+    _In_ HANDLE hKey,
+    _In_ BOOLEAN bDriverKey,
+    _Out_writes_bytes_(cbDescription) PWSTR pwszDescription,
+    _In_ ULONG cbDescription);
+
+BOOLEAN
+NTAPI
+EngpGetPruneFlag(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice);
+
+PGRAPHICS_DEVICE
+NTAPI
+EngpFindGraphicsDeviceByNtName(
+    _In_ PCUNICODE_STRING pustrNtDeviceName);
+
+/* One active path of the display configuration dxgkrnl applied */
+typedef struct _ENGP_DISPLAY_PATH
+{
+    LUID AdapterLuid;
+    ULONG VidPnSourceId;
+    PDEVMODEW pdm;
+} ENGP_DISPLAY_PATH, *PENGP_DISPLAY_PATH;
+
+NTSTATUS
+NTAPI
+EngpSetDisplayConfig(
+    _In_ ULONG cPaths,
+    _In_reads_(cPaths) const ENGP_DISPLAY_PATH *pPaths);
+
+BOOLEAN
+NTAPI
+EngpIsDisplayConfigApplied(VOID);
+
+BOOLEAN
+NTAPI
+EngpMarkGraphicsDevicesRemoved(
+    _In_ PVOID PhysDisp);
+
+VOID
+NTAPI
+EngpCleanupGraphicsDevices(
+    _In_ PVOID PhysDisp);
+
 PGRAPHICS_DEVICE
 NTAPI
 EngpRegisterGraphicsDevice(
