@@ -177,6 +177,7 @@
 @ stdcall -version=0x600+ LdrRegisterDllNotification(long ptr ptr ptr)
 @ stdcall -stub -version=0x600+ LdrRemoveLoadAsDataTable(ptr ptr ptr long)
 @ stdcall -version=0x600+ LdrResFindResource(ptr ptr ptr ptr ptr ptr ptr ptr long)
+@ stdcall -version=0x600+ LdrResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long)
 @ stdcall -stub -version=0x600+ LdrResFindResourceDirectory(ptr long long long long long long)
 @ stdcall -stub -version=0x600+ LdrResRelease(ptr ptr long long)
 @ stdcall -stub -version=0x600+ LdrResSearchResource(wstr wstr long long long ptr long long)
@@ -1381,6 +1382,7 @@
 @ stdcall -stub -version=0x600+ WerReportSQMEvent(long long long)
 @ stdcall -stub -version=0x600+ WerReportWatsonEvent(long long long long) ; doesn't exist in win11
 @ stdcall -stub -version=0x600+ WinSqmAddToStream(ptr long long long) ; stub on Win11?
+@ stdcall -version=0x600+ WinSqmAddToStreamEx(ptr long long ptr long)
 @ stdcall -stub -version=0x600+ WinSqmEndSession(ptr) ; stub on Win11?
 @ stdcall -stub -version=0x600+ WinSqmEventEnabled(long ptr) ; stub on Win11?
 @ stdcall -stub -version=0x600+ WinSqmEventWrite(long long long) ; stub on Win11?
