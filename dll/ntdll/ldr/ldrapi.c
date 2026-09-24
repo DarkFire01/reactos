@@ -10,6 +10,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <ntdll.h>
+#include <delayloadhandler.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -1720,6 +1721,137 @@ LdrInitShimEngineDynamic(IN PVOID BaseAddress)
         return TRUE;
     }
     return FALSE;
+}
+
+/**
+ * @brief Resolves one delay-load import thunk, loading its DLL on first use.
+ */
+PVOID
+NTAPI
+LdrResolveDelayLoadedAPI(
+    _In_ PVOID ParentModuleBase,
+    _In_ PCIMAGE_DELAYLOAD_DESCRIPTOR DelayloadDescriptor,
+    _In_opt_ PDELAYLOAD_FAILURE_DLL_CALLBACK FailureDllHook,
+    _In_opt_ PDELAYLOAD_FAILURE_SYSTEM_ROUTINE FailureSystemHook,
+    _Inout_ PIMAGE_THUNK_DATA ThunkAddress,
+    _Reserved_ ULONG Flags)
+{
+    PUCHAR ImageBase = ParentModuleBase;
+    PIMAGE_THUNK_DATA IatBase, NameThunk;
+    PIMAGE_IMPORT_BY_NAME ImportByName = NULL;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    ANSI_STRING DllNameA, ProcName;
+    UNICODE_STRING DllNameW;
+    DELAYLOAD_INFO Info;
+    LPCSTR DllName;
+    PVOID *ModuleSlot;
+    PVOID TargetBase;
+    PVOID Procedure = NULL;
+    ULONG Ordinal = 0;
+    ULONG_PTR Cookie;
+    NTSTATUS Status;
+
+    if (Flags || !ImageBase || !DelayloadDescriptor->Attributes.RvaBased)
+        return NULL;
+
+    DllName = (LPCSTR)(ImageBase + DelayloadDescriptor->DllNameRVA);
+    ModuleSlot = (PVOID *)(ImageBase + DelayloadDescriptor->ModuleHandleRVA);
+    IatBase = (PIMAGE_THUNK_DATA)(ImageBase + DelayloadDescriptor->ImportAddressTableRVA);
+    NameThunk = (PIMAGE_THUNK_DATA)(ImageBase + DelayloadDescriptor->ImportNameTableRVA) +
+                (ThunkAddress - IatBase);
+
+    if (IMAGE_SNAP_BY_ORDINAL(NameThunk->u1.Ordinal))
+        Ordinal = IMAGE_ORDINAL(NameThunk->u1.Ordinal);
+    else
+        ImportByName = (PIMAGE_IMPORT_BY_NAME)(ImageBase + NameThunk->u1.AddressOfData);
+
+    TargetBase = *ModuleSlot;
+
+    /* Both the caller and any cached target must be live modules */
+    Status = LdrLockLoaderLock(0, NULL, &Cookie);
+    if (NT_SUCCESS(Status))
+    {
+        if (!LdrpCheckForLoadedDllHandle(ParentModuleBase, &LdrEntry) ||
+            (TargetBase && !LdrpCheckForLoadedDllHandle(TargetBase, &LdrEntry)))
+        {
+            Status = STATUS_DLL_NOT_FOUND;
+        }
+        LdrUnlockLoaderLock(0, Cookie);
+    }
+
+    if (NT_SUCCESS(Status) && !TargetBase)
+    {
+        RtlInitAnsiString(&DllNameA, DllName);
+        Status = RtlAnsiStringToUnicodeString(&DllNameW, &DllNameA, TRUE);
+        if (NT_SUCCESS(Status))
+        {
+            Status = LdrLoadDll(NULL, NULL, &DllNameW, &TargetBase);
+            RtlFreeUnicodeString(&DllNameW);
+        }
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        if (ImportByName)
+        {
+            RtlInitAnsiString(&ProcName, (PCSZ)ImportByName->Name);
+            Status = LdrGetProcedureAddress(TargetBase, &ProcName, 0, &Procedure);
+        }
+        else
+        {
+            Status = LdrGetProcedureAddress(TargetBase, NULL, Ordinal, &Procedure);
+        }
+
+        /* Report a missing export the way Windows does */
+        if (Status == STATUS_PROCEDURE_NOT_FOUND)
+            Status = ImportByName ? STATUS_ENTRYPOINT_NOT_FOUND : STATUS_ORDINAL_NOT_FOUND;
+
+        if (NT_SUCCESS(Status) && !*ModuleSlot)
+            *ModuleSlot = TargetBase;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        Procedure = NULL;
+
+        if (FailureDllHook)
+        {
+            RtlZeroMemory(&Info, sizeof(Info));
+            Info.Size = sizeof(Info);
+            Info.DelayloadDescriptor = DelayloadDescriptor;
+            Info.ThunkAddress = ThunkAddress;
+            Info.TargetDllName = DllName;
+            Info.TargetModuleBase = TargetBase;
+            Info.LastError = RtlNtStatusToDosErrorNoTeb(Status);
+            if (ImportByName)
+            {
+                Info.TargetApiDescriptor.ImportDescribedByName = TRUE;
+                Info.TargetApiDescriptor.Description.Name = (LPCSTR)ImportByName->Name;
+            }
+            else
+            {
+                Info.TargetApiDescriptor.Description.Ordinal = Ordinal;
+            }
+            Procedure = FailureDllHook(DELAYLOAD_GPA_FAILURE, &Info);
+        }
+
+        if (!Procedure && FailureSystemHook)
+        {
+            Procedure = FailureSystemHook(DllName,
+                                          ImportByName ? (LPCSTR)ImportByName->Name
+                                                       : (LPCSTR)(ULONG_PTR)Ordinal);
+        }
+
+        /* Only a missing export gets its fallback cached in the IAT */
+        if (!Procedure ||
+            (Status != STATUS_ENTRYPOINT_NOT_FOUND && Status != STATUS_ORDINAL_NOT_FOUND))
+        {
+            return Procedure;
+        }
+    }
+
+    ThunkAddress->u1.Function = (ULONG_PTR)Procedure;
+    return Procedure;
 }
 
 /* EOF */
