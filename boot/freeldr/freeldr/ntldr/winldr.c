@@ -371,10 +371,10 @@ WinLdrLoadDeviceDriver(PLIST_ENTRY LoadOrderListHead,
         return FALSE;
     }
 
-    // Allocate a DTE for it
+    // Allocate a DTE for it, named by full path like the imports it pulls in
     Success = PeLdrAllocateDataTableEntry(LoadOrderListHead,
                                           DllName,
-                                          DllName,
+                                          FullPath,
                                           PaToVa(DriverBase),
                                           DriverDTE);
     if (!Success)
