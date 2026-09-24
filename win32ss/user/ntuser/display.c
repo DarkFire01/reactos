@@ -7,10 +7,17 @@
  */
 
 #include <win32k.h>
+#include <reactos/rddm/rddm_private.h>
 DBG_DEFAULT_CHANNEL(UserDisplay);
 
 BOOL gbBaseVideo = FALSE;
 static PPROCESSINFO gpFullscreen = NULL;
+
+/* TRUE once InitVideo succeeded. Display callouts before that are turned away */
+BOOL gbVideoInitialized = FALSE;
+
+/* Signaled once the input desktop exists, which PnP and display switch callouts wait for */
+static KEVENT gVideoPortCalloutReady;
 
 static const PWCHAR KEY_VIDEO = L"\\Registry\\Machine\\HARDWARE\\DEVICEMAP\\VIDEO";
 
@@ -111,21 +118,11 @@ InitDisplayDriver(
     ustrDescription.Buffer = awcBuffer + (cbSize / sizeof(WCHAR));
     cbSize = sizeof(awcBuffer) - cbSize;
 
-    /* Query the device string */
-    Status = RegQueryValue(hkey,
-                           L"Device Description",
-                           REG_SZ,
-                           ustrDescription.Buffer,
-                           &cbSize);
-    if (NT_SUCCESS(Status))
-    {
-        ustrDescription.MaximumLength = (USHORT)cbSize;
-        ustrDescription.Length = (USHORT)cbSize;
-    }
+    /* Query the device string. A PnP adapter's driver key takes precedence once it is known */
+    if (EngpQueryDeviceDescription(hkey, FALSE, ustrDescription.Buffer, cbSize))
+        RtlInitUnicodeString(&ustrDescription, ustrDescription.Buffer);
     else
-    {
         RtlInitUnicodeString(&ustrDescription, L"<unknown>");
-    }
 
     /* Query if this is a VGA compatible driver */
     cbSize = sizeof(DWORD);
@@ -150,7 +147,46 @@ InitDisplayDriver(
 
 /* WDDM bootstrap (win32ss/gdi/eng/dxgkrnl.c) - loads dxgkrnl + acquires the D3DKMT callback table. */
 NTSTATUS NTAPI DlInitDxgkrnl(VOID);
-VOID NTAPI DlApplyDisplayConfig(VOID);
+NTSTATUS NTAPI DlApplyDisplayConfig(_Out_ PMDEVOBJ *ppmdev);
+
+/**
+ * @brief
+ * Builds the desktop's first MDEV. With WDDM it comes out of the display configuration dxgkrnl
+ * applies, otherwise from the display drivers, falling back to base video when those fail.
+ * Reference win32kbase InitVideo calling DrvSetDisplayConfig.
+ */
+static
+NTSTATUS
+UserpCreateDesktopMdev(VOID)
+{
+    PMDEVOBJ pmdev = NULL;
+    LONG lRet;
+
+    /* The session owns its adapters now, so dxgkrnl can commit a VidPn for them */
+    if (NT_SUCCESS(DlApplyDisplayConfig(&pmdev)) && (pmdev != NULL))
+    {
+        gpmdev = pmdev;
+        return STATUS_SUCCESS;
+    }
+
+    lRet = PDEVOBJ_lChangeDisplaySettings(NULL, NULL, NULL, &gpmdev, TRUE);
+    if (lRet != DISP_CHANGE_SUCCESSFUL && !gbBaseVideo)
+    {
+        ERR("Failed to initialize graphics, switching to base video\n");
+        gbBaseVideo = TRUE;
+        EngpUpdateGraphicsDeviceList();
+        lRet = PDEVOBJ_lChangeDisplaySettings(NULL, NULL, NULL, &gpmdev, TRUE);
+        gbBaseVideo = FALSE;
+        EngpUpdateGraphicsDeviceList();
+    }
+    if (lRet != DISP_CHANGE_SUCCESSFUL)
+    {
+        ERR("PDEVOBJ_lChangeDisplaySettings() failed %ld\n", lRet);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return STATUS_SUCCESS;
+}
 
 NTSTATUS
 NTAPI
@@ -160,6 +196,8 @@ InitVideo(VOID)
     HKEY hkey;
 
     TRACE("----------------------------- InitVideo() -------------------------------\n");
+
+    KeInitializeEvent(&gVideoPortCalloutReady, NotificationEvent, FALSE);
 
     /* Check if VGA mode is requested, by finding the special volatile key created by VIDEOPRT */
     Status = RegOpenKey(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\GraphicsDrivers\\BaseVideo", &hkey);
@@ -182,8 +220,12 @@ InitVideo(VOID)
     if (!NT_SUCCESS(Status))
         return Status;
 
-    /* The session owns its adapters now, so dxgkrnl can commit a VidPn for them */
-    DlApplyDisplayConfig();
+    /* The desktop's displays are settled here, before the first GUI thread needs them */
+    Status = UserpCreateDesktopMdev();
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    PDEVOBJ_vGetDeviceCaps(gpmdev->ppdevGlobal, &GdiHandleTable->DevCaps);
 
     InitSysParams();
 
@@ -303,7 +345,12 @@ UserEnumDisplayDevices(
     {
         RtlStringCbCopyW(pdispdev->DeviceName, sizeof(pdispdev->DeviceName), pGraphicsDevice->szWinDeviceName);
         RtlStringCbCopyW(pdispdev->DeviceString, sizeof(pdispdev->DeviceString), pGraphicsDevice->pwszDescription);
-        pdispdev->StateFlags = pGraphicsDevice->StateFlags;
+
+        /* Only the public bits leave win32k, with whether modes are pruned. Reference win32kbase DrvEnumDisplayDevices */
+        pdispdev->StateFlags = pGraphicsDevice->StateFlags & ~DISPLAY_DEVICE_MODESPRUNED;
+        if (EngpGetPruneFlag(pGraphicsDevice))
+            pdispdev->StateFlags |= DISPLAY_DEVICE_MODESPRUNED;
+        pdispdev->StateFlags &= (dwFlags & 2) ? 0x0FFFFFFF : 0x0F2FFFFF;
     }
     else
     {
@@ -735,6 +782,91 @@ UserUpdateFullscreen(
         gpFullscreen = NULL;
 }
 
+/* Brings the metrics and SERVERINFO in line with the primary display's current mode */
+static
+VOID
+UserpUpdateDisplayMetrics(
+    _In_ PPDEVOBJ ppdev,
+    _In_ DWORD flags)
+{
+    TEXTMETRICW tmw;
+
+    UserUpdateFullscreen(flags);
+
+    /* Update the system metrics */
+    InitMetrics();
+
+    /* Set new size of the monitor */
+    UserUpdateMonitorSize((HDEV)ppdev);
+
+    /* Update the SERVERINFO */
+    gpsi->dmLogPixels = ppdev->gdiinfo.ulLogPixelsY;
+    gpsi->Planes      = ppdev->gdiinfo.cPlanes;
+    gpsi->BitsPixel   = ppdev->gdiinfo.cBitsPixel;
+    gpsi->BitCount    = gpsi->Planes * gpsi->BitsPixel;
+    gpsi->aiSysMet[SM_CXSCREEN] = ppdev->gdiinfo.ulHorzRes;
+    gpsi->aiSysMet[SM_CYSCREEN] = ppdev->gdiinfo.ulVertRes;
+    if (ppdev->gdiinfo.flRaster & RC_PALETTE)
+    {
+        gpsi->PUSIFlags |= PUSIF_PALETTEDISPLAY;
+    }
+    else
+    {
+        gpsi->PUSIFlags &= ~PUSIF_PALETTEDISPLAY;
+    }
+    // Font is realized and this dc was previously set to internal DC_ATTR.
+    gpsi->cxSysFontChar = IntGetCharDimensions(hSystemBM, &tmw, (DWORD*)&gpsi->cySysFontChar);
+    gpsi->tmSysFont     = tmw;
+}
+
+/* Tells every window the display changed and redraws the desktop */
+static
+VOID
+UserpBroadcastDisplayChange(
+    _In_ PPDEVOBJ ppdev,
+    _In_ DWORD flags,
+    _In_ WORD OrigBC)
+{
+    ULONG_PTR ulResult;
+
+    /* Remove all cursor clipping */
+    UserClipCursor(NULL);
+
+    //pdesk = IntGetActiveDesktop();
+    //IntHideDesktop(pdesk);
+
+    /* Send WM_DISPLAYCHANGE to all toplevel windows */
+    co_IntSendMessageTimeout( HWND_BROADCAST,
+                              WM_DISPLAYCHANGE,
+                              gpsi->BitCount,
+                              MAKELONG(gpsi->aiSysMet[SM_CXSCREEN], gpsi->aiSysMet[SM_CYSCREEN]),
+                              SMTO_NORMAL,
+                              100,
+                              &ulResult );
+
+    ERR("BitCount New %d Orig %d ChkNew %d\n",gpsi->BitCount,OrigBC,ppdev->gdiinfo.cBitsPixel);
+
+    /* Not full screen and different bit count, send messages */
+    if (!(flags & CDS_FULLSCREEN) &&
+        gpsi->BitCount != OrigBC)
+    {
+        ERR("Detect settings changed.\n");
+        UserSendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, 0, 0);
+        UserSendNotifyMessage(HWND_BROADCAST, WM_SYSCOLORCHANGE, 0, 0);
+    }
+
+    //co_IntShowDesktop(pdesk, ppdev->gdiinfo.ulHorzRes, ppdev->gdiinfo.ulVertRes);
+
+    UserRedrawDesktop();
+}
+
+static
+LONG
+UserpChangeDisplaySettingsWddm(
+    _In_ PPDEVOBJ ppdev,
+    _In_opt_ PDEVMODEW pdm,
+    _In_ DWORD flags);
+
 LONG
 APIENTRY
 UserChangeDisplaySettings(
@@ -751,6 +883,27 @@ UserChangeDisplaySettings(
     WORD OrigBC;
     //PDESKTOP pdesk;
     PDEVMODEW newDevMode = NULL;
+
+    if ((pdm != NULL) && (pdm->dmSize < FIELD_OFFSET(DEVMODEW, dmFields)))
+        return DISP_CHANGE_BADMODE; /* This is what WinXP SP3 returns */
+
+    /*
+     * A WDDM source changes mode through the display configuration, never by swapping the CDD's
+     * PDEV alone: that leaves dxgkrnl presenting the old source mode out of a shadow of the new
+     * size. Reference win32kbase DrvChangeDisplaySettings.
+     */
+    ppdev = EngpGetPDEV(pustrDevice);
+    if ((ppdev != NULL) &&
+        (ppdev->pGraphicsDevice != NULL) &&
+        (ppdev->pGraphicsDevice->DxgAdapter != NULL) &&
+        !gbBaseVideo)
+    {
+        lResult = UserpChangeDisplaySettingsWddm(ppdev, pdm, flags);
+        PDEVOBJ_vRelease(ppdev);
+        return lResult;
+    }
+    if (ppdev != NULL)
+        PDEVOBJ_vRelease(ppdev);
 
     /* If no DEVMODE is given, use registry settings */
     if (!pdm)
@@ -848,7 +1001,6 @@ UserChangeDisplaySettings(
     {
         ULONG_PTR ulResult;
         PVOID pvOldCursor;
-        TEXTMETRICW tmw;
 
         /* Remove mouse pointer */
         pvOldCursor = UserSetCursor(NULL, TRUE);
@@ -879,68 +1031,14 @@ UserChangeDisplaySettings(
             ExFreePoolWithTag(ppdev->pdmwDev, GDITAG_DEVMODE);
             ppdev->pdmwDev = newDevMode;
 
-            UserUpdateFullscreen(flags);
-
-            /* Update the system metrics */
-            InitMetrics();
-
-            /* Set new size of the monitor */
-            UserUpdateMonitorSize((HDEV)ppdev);
-
-            /* Update the SERVERINFO */
-            gpsi->dmLogPixels = ppdev->gdiinfo.ulLogPixelsY;
-            gpsi->Planes      = ppdev->gdiinfo.cPlanes;
-            gpsi->BitsPixel   = ppdev->gdiinfo.cBitsPixel;
-            gpsi->BitCount    = gpsi->Planes * gpsi->BitsPixel;
-            gpsi->aiSysMet[SM_CXSCREEN] = ppdev->gdiinfo.ulHorzRes;
-            gpsi->aiSysMet[SM_CYSCREEN] = ppdev->gdiinfo.ulVertRes;
-            if (ppdev->gdiinfo.flRaster & RC_PALETTE)
-            {
-                gpsi->PUSIFlags |= PUSIF_PALETTEDISPLAY;
-            }
-            else
-            {
-                gpsi->PUSIFlags &= ~PUSIF_PALETTEDISPLAY;
-            }
-            // Font is realized and this dc was previously set to internal DC_ATTR.
-            gpsi->cxSysFontChar = IntGetCharDimensions(hSystemBM, &tmw, (DWORD*)&gpsi->cySysFontChar);
-            gpsi->tmSysFont     = tmw;
+            UserpUpdateDisplayMetrics(ppdev, flags);
         }
 
         /*
          * Refresh the display on success and even on failure,
          * since the display may have been messed up.
          */
-
-        /* Remove all cursor clipping */
-        UserClipCursor(NULL);
-
-        //pdesk = IntGetActiveDesktop();
-        //IntHideDesktop(pdesk);
-
-        /* Send WM_DISPLAYCHANGE to all toplevel windows */
-        co_IntSendMessageTimeout( HWND_BROADCAST,
-                                  WM_DISPLAYCHANGE,
-                                  gpsi->BitCount,
-                                  MAKELONG(gpsi->aiSysMet[SM_CXSCREEN], gpsi->aiSysMet[SM_CYSCREEN]),
-                                  SMTO_NORMAL,
-                                  100,
-                                  &ulResult );
-
-        ERR("BitCount New %d Orig %d ChkNew %d\n",gpsi->BitCount,OrigBC,ppdev->gdiinfo.cBitsPixel);
-
-        /* Not full screen and different bit count, send messages */
-        if (!(flags & CDS_FULLSCREEN) &&
-            gpsi->BitCount != OrigBC)
-        {
-            ERR("Detect settings changed.\n");
-            UserSendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, 0, 0);
-            UserSendNotifyMessage(HWND_BROADCAST, WM_SYSCOLORCHANGE, 0, 0);
-        }
-
-        //co_IntShowDesktop(pdesk, ppdev->gdiinfo.ulHorzRes, ppdev->gdiinfo.ulVertRes);
-
-        UserRedrawDesktop();
+        UserpBroadcastDisplayChange(ppdev, flags, OrigBC);
     }
 
 leave:
@@ -1069,4 +1167,392 @@ NtUserChangeDisplaySettings(
     UserLeave();
 
     return lRet;
+}
+
+/* Display callouts from watchdog ********************************************/
+
+/* A callout handed to a CSRSS system thread, and how the caller learns it ran */
+typedef struct _USER_VIDEO_CALLOUT
+{
+    PVIDEO_WIN32K_CALLBACKS_PARAMS Params;
+    KEVENT Done;
+} USER_VIDEO_CALLOUT, *PUSER_VIDEO_CALLOUT;
+
+NTSTATUS NTAPI DlSetDisplayConfig(_In_ PMDEVOBJ pmdevOld, _Out_ PMDEVOBJ *ppmdevNew);
+
+LONG NTAPI
+DlChangeDisplaySettings(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice,
+    _In_opt_ PDEVMODEW pdmRequest,
+    _In_ BOOLEAN bTryClosest,
+    _In_ BOOLEAN bSetMode,
+    _In_ BOOLEAN bUpdateRegistry,
+    _In_ BOOLEAN bFullScreen,
+    _In_ PMDEVOBJ pmdevOld,
+    _Out_ PMDEVOBJ *ppmdevNew);
+
+VOID
+UserSignalVideoPortCalloutReady(VOID)
+{
+    KeSetEvent(&gVideoPortCalloutReady, IO_NO_INCREMENT, FALSE);
+}
+
+/**
+ * @brief
+ * Holds a callout that rebuilds the desktop until there is an input desktop to rebuild.
+ * Reference win32kbase xxxWaitForVideoPortCalloutReady.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+static
+VOID
+UserpWaitForVideoPortCalloutReady(
+    _In_ VIDEO_WIN32K_CALLBACKS_PARAMS_TYPE CalloutType)
+{
+    if ((CalloutType < VideoPnpNotifyCallout) || (CalloutType > VideoDxgkFindAdapterTdrCallout))
+        return;
+
+    if (gpdeskInputDesktop != NULL)
+        return;
+
+    UserLeave();
+    KeWaitForSingleObject(&gVideoPortCalloutReady, WrUserRequest, KernelMode, FALSE, NULL);
+    UserEnterExclusive();
+}
+
+/**
+ * @brief
+ * Moves the desktop onto a new MDEV. The live PDEV stays the one every DC holds, it takes over
+ * the new display's driver instance.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED when either side spans more than one display.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+static
+NTSTATUS
+UserpInstallMdev(
+    _In_ PMDEVOBJ pmdevOld,
+    _In_ PMDEVOBJ pmdevNew)
+{
+    PPDEVOBJ ppdevLive = pmdevOld->ppdevGlobal;
+    PPDEVOBJ ppdevNext;
+
+    if ((pmdevOld->cDev != 1) || (pmdevNew->cDev != 1))
+    {
+        ERR("Moving the desktop from %lu to %lu displays is not supported\n",
+            pmdevOld->cDev, pmdevNew->cDev);
+        MDEVOBJ_vDestroy(pmdevNew);
+        MDEVOBJ_vEnable(pmdevOld);
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    ppdevNext = pmdevNew->dev[0].ppdev;
+    if (ppdevNext == ppdevLive)
+    {
+        /* The same display kept its mode, so the old desktop simply comes back */
+        MDEVOBJ_vDestroy(pmdevNew);
+        MDEVOBJ_vEnable(pmdevOld);
+        return STATUS_SUCCESS;
+    }
+
+    TRACE("Desktop moves from %S to %S\n",
+          ppdevLive->pGraphicsDevice->szNtDeviceName,
+          ppdevNext->pGraphicsDevice->szNtDeviceName);
+
+    PDEVOBJ_vSwitchGraphicsDevice(ppdevLive, ppdevNext);
+
+    /* ppdevNext now holds the driver instance the desktop left behind */
+    MDEVOBJ_vDestroy(pmdevNew);
+    if (ppdevNext->cPdevRefs == 1)
+        PDEVOBJ_vRelease(ppdevNext);
+
+    PDEVOBJ_vGetDeviceCaps(ppdevLive, &GdiHandleTable->DevCaps);
+    return STATUS_SUCCESS;
+}
+
+/* user32 asks for the closest listed mode with this ChangeDisplaySettings flag (Reference win32kbase :15129) */
+#define USERP_CDS_TRY_CLOSEST   0x00000080
+
+/**
+ * @brief
+ * Changes the mode of a WDDM source, the way Windows does for a legacy ChangeDisplaySettings
+ * caller: dxgkrnl puts the mode into the display configuration and the desktop is rebuilt from it.
+ * Reference win32kbase xxxUserChangeDisplaySettingsInternal and DrvChangeDisplaySettings.
+ *
+ * @param[in] ppdev
+ * The PDEV of the source.
+ *
+ * @param[in] pdm
+ * The mode asked for, NULL to go back to the saved configuration.
+ *
+ * @param[in] flags
+ * The CDS_* flags.
+ *
+ * @return
+ * A DISP_CHANGE_* value.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+static
+LONG
+UserpChangeDisplaySettingsWddm(
+    _In_ PPDEVOBJ ppdev,
+    _In_opt_ PDEVMODEW pdm,
+    _In_ DWORD flags)
+{
+    PMDEVOBJ pmdevNew = NULL;
+    PVOID pvOldCursor = NULL;
+    BOOLEAN bSetMode;
+    WORD OrigBC;
+    LONG lResult;
+
+    /* CDS_TEST only checks the mode, CDS_NORESET stores it for a later change */
+    bSetMode = !(flags & (CDS_TEST | CDS_NORESET));
+    OrigBC = gpsi->BitCount;
+
+    if (bSetMode)
+        pvOldCursor = UserSetCursor(NULL, TRUE);
+
+    lResult = DlChangeDisplaySettings(ppdev->pGraphicsDevice,
+                                      pdm,
+                                      (flags & USERP_CDS_TRY_CLOSEST) != 0,
+                                      bSetMode,
+                                      (flags & CDS_UPDATEREGISTRY) != 0,
+                                      (flags & CDS_FULLSCREEN) != 0,
+                                      gpmdev,
+                                      &pmdevNew);
+    if (!bSetMode)
+        return lResult;
+
+    if ((lResult == DISP_CHANGE_SUCCESSFUL) && (pmdevNew != NULL))
+    {
+        if (!NT_SUCCESS(UserpInstallMdev(gpmdev, pmdevNew)))
+            lResult = DISP_CHANGE_FAILED;
+    }
+
+    pvOldCursor = UserSetCursor(pvOldCursor, TRUE);
+    ASSERT(pvOldCursor == NULL);
+
+    if (lResult == DISP_CHANGE_SUCCESSFUL)
+        UserpUpdateDisplayMetrics(gpmdev->ppdevGlobal, flags);
+    else
+        ERR("WDDM mode change failed %ld\n", lResult);
+
+    /* Refresh even on failure, the display may have been left in a bad state */
+    UserpBroadcastDisplayChange(gpmdev->ppdevGlobal, flags, OrigBC);
+    return lResult;
+}
+
+/**
+ * @brief
+ * Applies the display configuration again and moves the desktop onto what it turned on.
+ * Reference win32kbase xxxUserSetDisplayConfig with SDC_USE_DATABASE_CURRENT | SDC_APPLY, and
+ * xxxResetDisplayDevice for the USER side.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+static
+NTSTATUS
+UserpSetDisplayConfig(VOID)
+{
+    PMDEVOBJ pmdevNew;
+    PVOID pvOldCursor;
+    WORD OrigBC;
+    NTSTATUS Status;
+
+    /* InitVideo builds the first desktop, so there is one by the time a callout gets here */
+    if (gpmdev == NULL)
+        return UserpCreateDesktopMdev();
+
+    OrigBC = gpsi->BitCount;
+    pvOldCursor = UserSetCursor(NULL, TRUE);
+
+    Status = DlSetDisplayConfig(gpmdev, &pmdevNew);
+    if (NT_SUCCESS(Status))
+        Status = UserpInstallMdev(gpmdev, pmdevNew);
+
+    pvOldCursor = UserSetCursor(pvOldCursor, TRUE);
+    ASSERT(pvOldCursor == NULL);
+
+    if (NT_SUCCESS(Status))
+        UserpUpdateDisplayMetrics(gpmdev->ppdevGlobal, 0);
+    else
+        ERR("Applying the display configuration failed 0x%lx\n", Status);
+
+    UserpBroadcastDisplayChange(gpmdev->ppdevGlobal, 0, OrigBC);
+    return Status;
+}
+
+/**
+ * @brief
+ * An adapter came or went. The device list picks up what dxgkrnl started, and the desktop is
+ * rebuilt from the display configuration. Reference win32kbase Win32kPnpNotify.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+static
+NTSTATUS
+UserpVideoPnpNotify(
+    _In_ PVIDEO_WIN32K_CALLBACKS_PARAMS Params)
+{
+    NTSTATUS Status;
+
+    if (gpdeskInputDesktop == NULL)
+        return STATUS_UNSUCCESSFUL;
+
+    if (Params->Param)
+    {
+        TRACE("Display adapter arrived\n");
+        EngpUpdateGraphicsDeviceList();
+        return UserpSetDisplayConfig();
+    }
+
+    TRACE("Display adapter %p left, surprise removal %u\n", Params->PhysDisp, Params->SurpriseRemoval);
+
+    EngpMarkGraphicsDevicesRemoved(Params->PhysDisp);
+
+    Status = UserpSetDisplayConfig();
+    if (NT_SUCCESS(Status))
+        EngpCleanupGraphicsDevices(Params->PhysDisp);
+
+    if (Params->LockUserSession)
+        UserPostMessage(hwndSAS, WM_LOGONNOTIFY, LN_LOCK_WORKSTATION, 0);
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Runs one display callout on a CSRSS thread, inside the user lock.
+ * Reference win32kbase VideoPortCalloutThread.
+ *
+ * @param[in] Param
+ * The USER_VIDEO_CALLOUT the caller of VideoPortCallout waits on.
+ */
+VOID
+UserVideoPortCalloutThread(
+    _In_ PVOID Param)
+{
+    PUSER_VIDEO_CALLOUT pRequest = Param;
+    PVIDEO_WIN32K_CALLBACKS_PARAMS Params = pRequest->Params;
+    PSMGR_GDI_CALLOUT_PARAM pWrapped;
+    PTHREADINFO pti;
+
+    /* watchdog pointed Param at its own record for the call, the caller's value is inside */
+    pWrapped = (PSMGR_GDI_CALLOUT_PARAM)Params->Param;
+    Params->Param = pWrapped->Param;
+
+    pti = PsGetCurrentThreadWin32Thread();
+    if (pti != NULL)
+    {
+        pti->TIF_flags |= TIF_SYSTEMTHREAD;
+        pti->pClientInfo->dwTIFlags = pti->TIF_flags;
+    }
+
+    UserEnterExclusive();
+
+    UserpWaitForVideoPortCalloutReady(Params->CalloutType);
+
+    switch (Params->CalloutType)
+    {
+        case VideoFindAdapterCallout:
+        case VideoDxgkFindAdapterTdrCallout:
+        {
+            if (gpmdev == NULL)
+            {
+                Params->Status = STATUS_SUCCESS;
+                break;
+            }
+
+            if (Params->Param)
+            {
+                /* The adapter is back, re-enable the display and redraw everything */
+                MDEVOBJ_vEnable(gpmdev);
+                UserRefreshDisplay(gpmdev->ppdevGlobal);
+            }
+            else
+            {
+                MDEVOBJ_bDisable(gpmdev);
+            }
+
+            Params->Status = STATUS_SUCCESS;
+            break;
+        }
+
+        case VideoPnpNotifyCallout:
+            Params->Status = UserpVideoPnpNotify(Params);
+            break;
+
+        case VideoDxgkDisplaySwitchCallout:
+        {
+            if (Params->Param == 0)
+            {
+                Params->Status = UserpSetDisplayConfig();
+            }
+            else
+            {
+                /* The paths and modes come from SetDisplayConfig, which win32k does not have */
+                ERR("Display switch with a supplied configuration is not supported\n");
+                Params->Status = STATUS_NOT_SUPPORTED;
+            }
+            break;
+        }
+
+        case VideoDxgkMonitorEventCallout:
+            ERR("Monitor event callouts are not supported\n");
+            Params->Status = STATUS_NOT_SUPPORTED;
+            break;
+
+        case VideoDxgkHardwareProtectionTeardown:
+            /* Only a compositor has protected content to drop */
+            break;
+
+        default:
+            ERR("Unknown display callout 0x%x\n", Params->CalloutType);
+            Params->Status = STATUS_UNSUCCESSFUL;
+            break;
+    }
+
+    UserLeave();
+
+    KeSetEvent(&pRequest->Done, IO_NO_INCREMENT, FALSE);
+}
+
+/**
+ * @brief
+ * The GDI callout watchdog delivers adapter arrival, removal, display switch and TDR through.
+ * The work runs on a CSRSS system thread inside the user lock, this waits for it.
+ * Reference win32kbase VideoPortCallout.
+ *
+ * @param[in,out] Params
+ * A VIDEO_WIN32K_CALLBACKS_PARAMS. Status receives the result.
+ */
+VOID
+NTAPI
+VideoPortCallout(
+    _In_ PVOID Params)
+{
+    PVIDEO_WIN32K_CALLBACKS_PARAMS CallbackParams = Params;
+    USER_VIDEO_CALLOUT Request;
+    NTSTATUS Status;
+
+    /* Before InitVideo there is no display to act on, and the user lock may be held by the
+     * CSRSS thread whose session open made dxgkrnl start the adapter */
+    if (!gbVideoInitialized)
+    {
+        CallbackParams->Status = STATUS_UNSUCCESSFUL;
+        return;
+    }
+
+    Request.Params = CallbackParams;
+    KeInitializeEvent(&Request.Done, SynchronizationEvent, FALSE);
+
+    UserEnterExclusive();
+    Status = UserQueueSystemThread(ST_VIDEO_CALLOUT, &Request);
+    UserLeave();
+
+    if (!NT_SUCCESS(Status))
+    {
+        CallbackParams->Status = Status;
+        return;
+    }
+
+    KeWaitForSingleObject(&Request.Done, WrUserRequest, KernelMode, FALSE, NULL);
 }
