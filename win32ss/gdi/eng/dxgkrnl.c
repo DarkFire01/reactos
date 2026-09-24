@@ -21,7 +21,8 @@ typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
     _In_ BOOLEAN Create);
 
 #define DL_MODALITY_PATH_SIZE       216
-#define DL_MODALITY_HEADER_SIZE     48
+/* The fixed fields plus the applied paths pointer, so the header is narrower on a 32 bit build */
+#define DL_MODALITY_HEADER_SIZE     (40 + sizeof(PVOID))
 #define DL_MODALITY_INITIAL_PATHS   8
 #define DL_MODALITY_MAX_PATHS       64
 
@@ -58,6 +59,10 @@ C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, PathArraySize) == 22);
 C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, AppliedCount) == 36);
 C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, AppliedPaths) == 40);
 C_ASSERT(sizeof(D3DKMT_GETPATHSMODALITY) == DL_MODALITY_HEADER_SIZE);
+#ifdef _WIN64
+/* The Reference is 64 bit, where the header comes to 48 bytes */
+C_ASSERT(DL_MODALITY_HEADER_SIZE == 48);
+#endif
 
 /* RequiredPaths takes the path count dxgkrnl found, which is how it reports the array too small */
 typedef NTSTATUS (NTAPI *PFN_DxgkPathsModality)(
