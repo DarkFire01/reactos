@@ -1079,8 +1079,12 @@ HciInitialize(
     if (HciHasFeature(Radio, LMP_FEATURE_SIMPLE_PAIRING))
         Mask |= HCI_EVENT_MASK_SIMPLE_PAIRING;
 
+    /* Shifted by a constant, so this needs no 64 bit shift helper from the runtime */
     for (Index = 0; Index < 8; Index++)
-        Params[Index] = (UCHAR)(Mask >> (Index * 8));
+    {
+        Params[Index] = (UCHAR)Mask;
+        Mask >>= 8;
+    }
 
     HciOptional(Radio, "Set Event Mask", HCI_SET_EVENT_MASK, Params, 8);
 
