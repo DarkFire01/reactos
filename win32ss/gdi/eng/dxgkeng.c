@@ -70,9 +70,40 @@ C_ASSERT(sizeof(DXGKWIN32KENG_INTERFACE) == 49 * sizeof(PVOID));
 
 #define DXGKWIN32KENG_INTERFACE_VERSION     5
 
+/* Request codes dxgkrnl passes to DxgkEngQueryWin32Info */
+typedef enum _DXGKENG_QUERY_TYPE
+{
+    DxgkEngQueryDpiOverride = 0,
+    DxgkEngQueryScaleFactors = 1,
+    DxgkEngQuerySessionProtocol = 2,
+    DxgkEngQueryTtmSupport = 3
+} DXGKENG_QUERY_TYPE;
+
+typedef struct _DXGKENG_QUERY
+{
+    DXGKENG_QUERY_TYPE Type;
+    ULONG DataSize;
+    PVOID Data;
+} DXGKENG_QUERY, *PDXGKENG_QUERY;
+
+/* Desktop scale factor table dxgkrnl picks its default DPI from */
+typedef struct _DXGKENG_SCALE_FACTORS
+{
+    SIZE MinResolution;
+    ULONG Count;
+    const ULONG *Factors;
+    const ULONG *Cutoffs;
+} DXGKENG_SCALE_FACTORS, *PDXGKENG_SCALE_FACTORS;
+
+/* Session protocol value dxgkrnl expects for a local console session */
+#define DXGKENG_PROTOCOL_CONSOLE    0
+
 static ULONG gulVisRgnUniq = 0;
 static ULONG gulSpriteUniq = 0;
 static volatile LONG glAdapterUniqueness = 0;
+
+static const ULONG gaulScaleFactors[] = { 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500 };
+static const ULONG gaulScaleCutoffs[] = { 120, 139, 178, 178, 232, 232, 275, 325, 375, 375, 450 };
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -711,17 +742,50 @@ DxgkEngIncSpritetUniq(VOID)
     gulSpriteUniq++;
 }
 
+/**
+ * @brief Answer dxgkrnl's session queries. ReactOS only has console sessions, no per-driver
+ *        DPI override and no TTM, so every answer is the local console default.
+ */
 static
-LONG
+NTSTATUS
 APIENTRY
 DxgkEngQueryWin32Info(
-    _Inout_ PVOID pInfo)
+    _Inout_ PDXGKENG_QUERY pQuery)
 {
-    UNIMPLEMENTED_ONCE;
+    PDXGKENG_SCALE_FACTORS Scale;
 
-    UNREFERENCED_PARAMETER(pInfo);
+    switch (pQuery->Type)
+    {
+        case DxgkEngQueryDpiOverride:
+            ASSERT(pQuery->DataSize == sizeof(ULONG));
+            *(PULONG)pQuery->Data = 0;
+            return STATUS_SUCCESS;
 
-    return 0;
+        case DxgkEngQueryScaleFactors:
+            ASSERT(pQuery->DataSize == sizeof(*Scale));
+            Scale = pQuery->Data;
+            Scale->MinResolution.cx = 800;
+            Scale->MinResolution.cy = 600;
+            Scale->Count = RTL_NUMBER_OF(gaulScaleFactors);
+            Scale->Factors = gaulScaleFactors;
+            Scale->Cutoffs = gaulScaleCutoffs;
+            return STATUS_SUCCESS;
+
+        case DxgkEngQuerySessionProtocol:
+            if (pQuery->DataSize != sizeof(ULONG))
+                return STATUS_INVALID_PARAMETER;
+            *(PULONG)pQuery->Data = DXGKENG_PROTOCOL_CONSOLE;
+            return STATUS_SUCCESS;
+
+        case DxgkEngQueryTtmSupport:
+            if (pQuery->DataSize != sizeof(BOOLEAN))
+                return STATUS_INVALID_PARAMETER;
+            *(PBOOLEAN)pQuery->Data = FALSE;
+            return STATUS_SUCCESS;
+
+        default:
+            return STATUS_NOT_IMPLEMENTED;
+    }
 }
 
 static
