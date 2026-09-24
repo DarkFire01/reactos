@@ -9,60 +9,6 @@ BOOL APIENTRY IntExtTextOutW(IN PDC,IN INT,IN INT,IN UINT,IN OPTIONAL PRECTL,IN 
 
 
 //
-// Gdi Batch Flush support functions.
-//
-
-//
-// DoDeviceSync
-//
-// based on IntEngEnter from eng/engmisc.c
-//
-VOID
-FASTCALL
-DoDeviceSync( SURFOBJ *Surface, PRECTL Rect, FLONG fl)
-{
-  PPDEVOBJ Device = (PDEVOBJ*)Surface->hdev;
-// No punting and "Handle to a surface, provided that the surface is device-managed.
-// Otherwise, dhsurf is zero".
-  if (!(Device->flFlags & PDEV_DRIVER_PUNTED_CALL) && (Surface->dhsurf))
-  {
-     if (Device->DriverFunctions.SynchronizeSurface)
-     {
-       Device->DriverFunctions.SynchronizeSurface(Surface, Rect, fl);
-     }
-     else
-     {
-       if (Device->DriverFunctions.Synchronize)
-       {
-         Device->DriverFunctions.Synchronize(Surface->dhpdev, Rect);
-       }
-     }
-  }
-}
-
-VOID
-FASTCALL
-SynchronizeDriver(FLONG Flags)
-{
-  SURFOBJ *SurfObj;
-  //PPDEVOBJ Device;
-
-  if (Flags & GCAPS2_SYNCFLUSH)
-      Flags = DSS_FLUSH_EVENT;
-  if (Flags & GCAPS2_SYNCTIMER)
-      Flags = DSS_TIMER_EVENT;
-
-  //Device = IntEnumHDev();
-//  UNIMPLEMENTED;
-//ASSERT(FALSE);
-  SurfObj = 0;// EngLockSurface( Device->pSurface );
-  if(!SurfObj) return;
-  DoDeviceSync( SurfObj, NULL, Flags);
-  EngUnlockSurface(SurfObj);
-  return;
-}
-
-//
 // Process the batch.
 //
 ULONG
@@ -471,7 +417,7 @@ APIENTRY
 NtGdiFlush(
     VOID)
 {
-    SynchronizeDriver(GCAPS2_SYNCFLUSH);
+    PDEVOBJ_vSynchronizeDrivers(GCAPS2_SYNCFLUSH);
     return STATUS_SUCCESS;
 }
 
