@@ -155,6 +155,24 @@ NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
 #define DL_SESSION_OPEN     0
 
 /**
+ * @brief Can a WDDM adapter start on this boot? The kernel only admits BasicDisplay and
+ *        BasicRender on UEFI, and dxgkrnl blocks the session open until both have started.
+ */
+static BOOLEAN
+DlpIsWddmBoot(VOID)
+{
+    SYSTEM_BOOT_ENVIRONMENT_INFORMATION BootInfo;
+    NTSTATUS Status;
+
+    Status = ZwQuerySystemInformation(SystemBootEnvironmentInformation,
+                                      &BootInfo, sizeof(BootInfo), NULL);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    return (BootInfo.FirmwareType == FirmwareTypeUefi);
+}
+
+/**
  * @brief Open \Device\DxgKrnl. Unlike Windows, win32k never loads dxgkrnl itself: only a WDDM
  *        miniport does, so a boot without one stays on XDDM.
  */
@@ -197,6 +215,10 @@ DlInitDxgkrnl(VOID)
 
     if (gbDxgkInitialized)
         return STATUS_SUCCESS;
+
+    /* dxgkrnl is boot start, so it being loaded does not mean an adapter can ever start */
+    if (!DlpIsWddmBoot())
+        return STATUS_NOT_SUPPORTED;
 
     Status = DlpOpenDxgkrnl();
     if (!NT_SUCCESS(Status))
@@ -397,6 +419,7 @@ DlNotifySessionOpen(VOID)
     if (!gbDxgkInitialized || (ppi == NULL) || (ppi->DxProcess == NULL))
         return;
 
+    DPRINT1("win32k: opening session, dxgkrnl waits for its display and render adapters to start\n");
     Status = SMgrNotifySessionChange(DL_SESSION_OPEN);
     if (!NT_SUCCESS(Status))
         DPRINT1("win32k: SMgrNotifySessionChange failed 0x%lX\n", Status);
