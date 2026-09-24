@@ -682,6 +682,59 @@ PeLdrpResolveApiSet(
     return FALSE;
 }
 
+/**
+ * @brief Stops the base relocations covering a bound api set's thunks from firing again.
+ *
+ * Api set thunks come prefilled with fallbacks into the image, so the linker emits relocations
+ * for them. Once bound to the host they hold a final address that a later move of the image
+ * must not rebase.
+ *
+ * @param ImageBase The image owning the thunks.
+ * @param ImportTable The import descriptor that was just bound.
+ */
+static
+VOID
+PeLdrpDropThunkRelocations(
+    _In_ PVOID ImageBase,
+    _In_ PIMAGE_IMPORT_DESCRIPTOR ImportTable)
+{
+    PIMAGE_BASE_RELOCATION Block;
+    PIMAGE_THUNK_DATA ThunkName;
+    PUSHORT Entry;
+    ULONG RelocSize, Count, Index, Rva, StartRva, EndRva;
+
+    StartRva = ImportTable->FirstThunk;
+    ThunkName = VaToPa(RVA(ImageBase, ImportTable->OriginalFirstThunk));
+    for (Count = 0; ThunkName[Count].u1.AddressOfData != 0; Count++);
+    EndRva = StartRva + Count * sizeof(*ThunkName);
+
+    Block = RtlImageDirectoryEntryToData(VaToPa(ImageBase),
+                                         TRUE,
+                                         IMAGE_DIRECTORY_ENTRY_BASERELOC,
+                                         &RelocSize);
+    if (!Block)
+        return;
+
+    while ((RelocSize >= sizeof(*Block)) &&
+           (Block->SizeOfBlock >= sizeof(*Block)) &&
+           (Block->SizeOfBlock <= RelocSize))
+    {
+        Entry = (PUSHORT)(Block + 1);
+        Count = (Block->SizeOfBlock - sizeof(*Block)) / sizeof(*Entry);
+
+        for (Index = 0; Index < Count; Index++)
+        {
+            /* A zero type is an absolute entry, which relocation skips */
+            Rva = Block->VirtualAddress + (Entry[Index] & 0xFFF);
+            if (Rva >= StartRva && Rva < EndRva)
+                Entry[Index] &= 0xFFF;
+        }
+
+        RelocSize -= Block->SizeOfBlock;
+        Block = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)Block + Block->SizeOfBlock);
+    }
+}
+
 BOOLEAN
 PeLdrScanImportDescriptorTable(
     IN OUT PLIST_ENTRY ModuleListHead,
@@ -773,6 +826,10 @@ PeLdrScanImportDescriptorTable(
                 ImportName, DirectoryPath);
             return Success;
         }
+
+        /* The kernel moves boot drivers later, keep it from rebasing the host's addresses */
+        if (HostName != NULL)
+            PeLdrpDropThunkRelocations(ScanDTE->DllBase, ImportTable);
     }
 
     return TRUE;
