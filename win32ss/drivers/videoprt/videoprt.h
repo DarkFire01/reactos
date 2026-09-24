@@ -202,6 +202,12 @@ IntVideoPortDispatchDeviceControl(
    IN PDEVICE_OBJECT DeviceObject,
    IN PIRP Irp);
 
+NTSTATUS
+NTAPI
+IntVideoPortDispatchInternalDeviceControl(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp);
+
 NTSTATUS NTAPI
 IntVideoPortDispatchPnp(
    IN PDEVICE_OBJECT DeviceObject,
