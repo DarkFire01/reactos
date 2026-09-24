@@ -1626,6 +1626,58 @@ NtGdiDdDDIEnumAdapters2(_Inout_ PVOID unnamedParam1)
     return pfn(unnamedParam1);
 }
 
+/* dxgkrnl writes the handle back unprobed, so it only ever sees a kernel copy */
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenAdapterFromLuid(_Inout_ PVOID unnamedParam1)
+{
+    D3DKMT_OPENADAPTERFROMLUID *UserOpen = unnamedParam1;
+    D3DKMT_OPENADAPTERFROMLUID Open;
+    PFN_DXGK_D3DKMT pfn;
+    NTSTATUS Status;
+
+    if (!UserOpen)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenAdapterFromLuid);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenAdapterFromLuid");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    _SEH2_TRY
+    {
+        ProbeForWrite(UserOpen, sizeof(*UserOpen), sizeof(ULONG));
+        Open = *UserOpen;
+        Status = STATUS_SUCCESS;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = pfn(&Open);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    _SEH2_TRY
+    {
+        UserOpen->hAdapter = Open.hAdapter;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
+}
+
 /*
  * The argument is described by the caller and read by dxgkrnl, never here, so it
  * travels as a plain pointer rather than a shape win32k would have to agree on.
