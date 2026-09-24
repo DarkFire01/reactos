@@ -639,16 +639,25 @@ KiCaptureContextFrames(
 
         FunctionEntry = RtlLookupFunctionEntry(Unwind.Rip, &ImageBase, NULL);
         if (FunctionEntry == NULL)
-            return Index + 1;
+        {
+            /* Only the faulting frame can be a leaf or a bad call target */
+            if (Index != 0)
+                return Index + 1;
 
-        RtlVirtualUnwind(UNW_FLAG_NHANDLER,
-                         ImageBase,
-                         Unwind.Rip,
-                         FunctionEntry,
-                         &Unwind,
-                         &HandlerData,
-                         &EstablisherFrame,
-                         NULL);
+            Unwind.Rip = *(PULONG64)Unwind.Rsp;
+            Unwind.Rsp += sizeof(ULONG64);
+        }
+        else
+        {
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+                             ImageBase,
+                             Unwind.Rip,
+                             FunctionEntry,
+                             &Unwind,
+                             &HandlerData,
+                             &EstablisherFrame,
+                             NULL);
+        }
 
         if (Unwind.Rip == 0)
             return Index + 1;
@@ -681,7 +690,7 @@ KiDisplayBacktrace(VOID)
     {
         ULONG_PTR Address = KiBugCheckFrames[Index];
 
-        if (Address == 0)
+        if (Address == 0 && Index != 0)
             break;
 
         if (KiPcToFileHeader((PVOID)Address, &LdrEntry, FALSE, &InSystem))
@@ -858,6 +867,25 @@ KeBugCheckWithTf(IN ULONG BugCheckCode,
         {
             KiBugCheckFrameCount =
                 KiCaptureContextFrames((PCONTEXT)BugCheckParameter4,
+                                       KiBugCheckFrames,
+                                       RTL_NUMBER_OF(KiBugCheckFrames));
+        }
+        else if (BugCheckCode == KMODE_EXCEPTION_NOT_HANDLED &&
+                 BugCheckParameter3 != 0)
+        {
+            PKTRAP_FRAME FaultFrame = (PKTRAP_FRAME)BugCheckParameter3;
+
+            /* Parameter 3 is the trap frame, so walk from where it faulted */
+            RtlZeroMemory(&Context, sizeof(Context));
+            Context.Rip = FaultFrame->Rip;
+            Context.Rsp = FaultFrame->Rsp;
+            Context.Rbp = FaultFrame->Rbp;
+            Context.Rbx = FaultFrame->Rbx;
+            Context.Rsi = FaultFrame->Rsi;
+            Context.Rdi = FaultFrame->Rdi;
+
+            KiBugCheckFrameCount =
+                KiCaptureContextFrames(&Context,
                                        KiBugCheckFrames,
                                        RTL_NUMBER_OF(KiBugCheckFrames));
         }
