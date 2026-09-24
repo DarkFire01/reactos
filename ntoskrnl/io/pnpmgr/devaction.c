@@ -234,6 +234,11 @@ IopCreateDeviceInstancePath(
                                &IoStatusBlock,
                                IRP_MN_QUERY_ID,
                                &Stack);
+
+    /* Success with no ID counts as no answer */
+    if (NT_SUCCESS(Status) && (IoStatusBlock.Information == 0))
+        Status = STATUS_NOT_SUPPORTED;
+
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("IopInitiatePnpIrp(BusQueryDeviceID) failed (Status %x)\n", Status);
@@ -1005,7 +1010,17 @@ IopQueryHardwareIds(PDEVICE_NODE DeviceNode,
                                &IoStatusBlock,
                                IRP_MN_QUERY_ID,
                                &Stack);
-    if (NT_SUCCESS(Status) && IoStatusBlock.Information)
+
+    /* Success with no list counts as no answer */
+    if (NT_SUCCESS(Status) && (IoStatusBlock.Information == 0))
+    {
+        DPRINT1("%wZ returned no HardwareIDs for PDO %p\n",
+                &DeviceNode->PhysicalDeviceObject->DriverObject->DriverName,
+                DeviceNode->PhysicalDeviceObject);
+        Status = STATUS_NOT_SUPPORTED;
+    }
+
+    if (NT_SUCCESS(Status))
     {
         IsValidID = IopValidateID((PWCHAR)IoStatusBlock.Information, BusQueryHardwareIDs);
 
