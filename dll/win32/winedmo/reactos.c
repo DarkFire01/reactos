@@ -23,6 +23,9 @@
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 
+struct SwsContext;
+struct SwsFilter;
+
 HMODULE AVUtilLibrary = NULL;
 HMODULE AVCodecLibrary = NULL;
 HMODULE AVFormatLibrary = NULL;

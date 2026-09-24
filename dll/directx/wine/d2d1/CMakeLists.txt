@@ -36,12 +36,13 @@ add_library(d2d1 MODULE
 
 if(MSVC)
     # C5286: implicit conversion between enum types
-    target_compile_options(d2d1 PRIVATE /wd5286)
+    # C4267: conversion from size_t to smaller type
+    target_compile_options(d2d1 PRIVATE /wd5286 /wd4267)
 endif()
 
 set_module_type(d2d1 win32dll UNICODE ENTRYPOINT 0)
 add_delay_importlibs(d2d1 dwrite xmllite ole32)
-target_link_libraries(d2d1 wine dxguid dx10guid uuid oldnames)
+target_link_libraries(d2d1 wine dxguid dx10guid uuid oldnames chkstk)
 add_importlibs(d2d1 d3d10_1 d3dcompiler_47 gdi32 advapi32 advapi32_vista kernel32_vista user32 ucrtbase kernel32 ntdll)
 add_dependencies(d2d1 wineheaders d3d_idl_headers)
 add_cd_file(TARGET d2d1 DESTINATION reactos/system32 FOR all)

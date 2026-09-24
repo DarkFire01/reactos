@@ -20,6 +20,10 @@
 # error You must include config.h to use this header
 #endif
 
+#ifdef __REACTOS__
+#define WIN32_NO_STATUS
+#endif
+
 #include <stdint.h>
 
 #ifdef HAVE_FFMPEG
