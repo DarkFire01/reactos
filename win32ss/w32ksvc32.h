@@ -768,3 +768,5 @@
     SVC_(GdiGetFontFileData, 5)
     SVC_(GdiGetFontFileInfo, 5)
     SVC_(GdiGetFontRealizationInfo, 2)
+// NT6.2
+    SVC_(GdiDdDDIOpenAdapterFromLuid, 1)
