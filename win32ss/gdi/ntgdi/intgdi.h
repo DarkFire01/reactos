@@ -103,6 +103,90 @@ APIENTRY
 NtDxEngGetRedirectionBitmap(
     DWORD Unknown0);
 
+/* D3DKMT calls newer than the psdk ntgdi.h, forwarded untyped to dxgkrnl */
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICheckSharedResourceAccess(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAdjustFullscreenGamma(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICheckMultiPlaneOverlaySupport3(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIPresentMultiPlaneOverlay3(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryVidPnExclusiveOwnership(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetHwProtectionTeardownRecovery(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetVidPnSourceHwProtection(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIEnumAdapters2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetVidPnSourceOwner1(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitPresentToHwQueue(
+    _Inout_ PVOID unnamedParam1);
+
+/* Composition surface stubs, see ntuser/ntstubs.c */
+
+NTSTATUS
+APIENTRY
+NtBindCompositionSurface(
+    _In_opt_ PVOID Param1,
+    _In_ INT Param2,
+    _In_ INT Param3,
+    _In_opt_ PVOID Param4,
+    _In_ ULONGLONG Param5);
+
+NTSTATUS
+APIENTRY
+NtUnBindCompositionSurface(
+    _In_opt_ PVOID Param1,
+    _In_ INT Param2,
+    _In_ ULONGLONG Param3);
+
+NTSTATUS
+APIENTRY
+NtQueryCompositionSurfaceStatistics(
+    _In_opt_ PVOID Param1,
+    _In_ ULONGLONG Param2);
+
+NTSTATUS
+APIENTRY
+NtSetCompositionSurfaceHDRMetaData(
+    _In_opt_ PVOID Param1,
+    _In_opt_ PVOID Param2,
+    _In_ ULONGLONG Param3,
+    _In_ ULONGLONG Param4);
+
 HBITMAP
 FASTCALL
 IntCreateCompatibleBitmap(
