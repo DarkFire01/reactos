@@ -1025,7 +1025,7 @@ HciInitialize(
 {
     UCHAR Return[HCI_EVENT_READ_SIZE];
     UCHAR Params[BTH_MAX_NAME_SIZE];
-    ULONGLONG Mask;
+    ULARGE_INTEGER Mask;
     ULONG Length;
     UCHAR Status;
     ULONG Index;
@@ -1073,17 +1073,17 @@ HciInitialize(
     }
 
     /* Events outside the reset default have to be asked for */
-    Mask = HCI_EVENT_MASK_DEFAULT;
+    Mask.QuadPart = HCI_EVENT_MASK_DEFAULT;
     if (HciHasFeature(Radio, LMP_FEATURE_EXTENDED_INQUIRY))
-        Mask |= HCI_EVENT_MASK_EXTENDED_INQUIRY;
+        Mask.QuadPart |= HCI_EVENT_MASK_EXTENDED_INQUIRY;
     if (HciHasFeature(Radio, LMP_FEATURE_SIMPLE_PAIRING))
-        Mask |= HCI_EVENT_MASK_SIMPLE_PAIRING;
+        Mask.QuadPart |= HCI_EVENT_MASK_SIMPLE_PAIRING;
 
-    /* Shifted by a constant, so this needs no 64 bit shift helper from the runtime */
-    for (Index = 0; Index < 8; Index++)
+    /* Shift the halves separately, a 64 bit shift pulls in __aullshr */
+    for (Index = 0; Index < 4; Index++)
     {
-        Params[Index] = (UCHAR)Mask;
-        Mask >>= 8;
+        Params[Index] = (UCHAR)(Mask.LowPart >> (Index * 8));
+        Params[Index + 4] = (UCHAR)(Mask.HighPart >> (Index * 8));
     }
 
     HciOptional(Radio, "Set Event Mask", HCI_SET_EVENT_MASK, Params, 8);
