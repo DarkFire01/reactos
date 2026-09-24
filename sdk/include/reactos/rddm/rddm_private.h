@@ -57,6 +57,16 @@
 	CTL_CODE( FILE_DEVICE_VIDEO, 0x817, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA )
 
 /*
+ * How win32k registers VideoPortCallout with \Device\VideoN and learns the adapter's physical
+ * device object: one VIDEO_WIN32K_CALLBACKS serves as input and output, sent as an internal device
+ * control. dxgkrnl and Windows' videoprt answer only this, not the public
+ * IOCTL_VIDEO_INIT_WIN32K_CALLBACKS. EXACT value 0x23201F (Reference win32kbase.c:58330,
+ * dxgkrnl.c:88719).
+ */
+#define IOCTL_VIDEO_GDI_INIT_WIN32K_CALLBACKS \
+	CTL_CODE( FILE_DEVICE_VIDEO, 0x807, METHOD_NEITHER, FILE_ANY_ACCESS )
+
+/*
  * win32k sends this to \Device\VideoN (INTERNAL_DEVICE_CONTROL, buffer in Irp->UserBuffer).
  * dxgkrnl answers it for a WDDM adapter, and win32k drives those with the CDD instead of the
  * display driver named by InstalledDisplayDrivers (Reference win32kbase.c:58372,
@@ -86,6 +96,33 @@ typedef struct _DXGK_SESSION_USAGE
     ULONG Enable;
     ULONG Succeeded;
 } DXGK_SESSION_USAGE, *PDXGK_SESSION_USAGE;
+
+/*
+ * watchdog's SMgrGdiCallout does not hand win32k the caller's Param as is. For the length of the
+ * call it points Param at one of these, which carries the original value and the caller's display
+ * scenario context (Reference watchdog.c:4149, SMgrGdiCalloutInternal). The callout puts Param back.
+ */
+typedef struct _SMGR_GDI_CALLOUT_PARAM
+{
+    ULONG_PTR Param;
+    PVOID ScenarioContext;
+} SMGR_GDI_CALLOUT_PARAM, *PSMGR_GDI_CALLOUT_PARAM;
+
+/* Exported by watchdog.sys */
+NTSTATUS
+NTAPI
+SMgrGdiCallout(
+    _In_ PVOID Params,
+    _In_ BOOLEAN AllSessions,
+    _In_ BOOLEAN Synchronous,
+    _In_opt_ PVOID Filter,
+    _In_opt_ PVOID FilterContext,
+    _In_opt_ PVOID ScenarioContext);
+
+NTSTATUS
+NTAPI
+SMgrRegisterGdiCallout(
+    _In_ PVOID Callout);
 
 /*
  * The pointer index of each D3DKMT entry point in the DXGKWIN32K interface. This is how
