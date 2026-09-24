@@ -2397,6 +2397,58 @@ MiLocateKernelSections(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
     }
 }
 
+/**
+ * @brief Name a boot loaded image the way a later load of it asks for it, so that
+ *        MmLoadSystemImage finds it instead of mapping a second copy.
+ *
+ * @param BootPath The ARC boot device and system path the loader prefixed names with.
+ * @param LoaderName The name the loader recorded.
+ * @param FullName Receives the \SystemRoot\ form, or a copy when the name has no such prefix.
+ */
+CODE_SEG("INIT")
+static
+NTSTATUS
+MiCopyBootImageFullName(
+    _In_ PCUNICODE_STRING BootPath,
+    _In_ PCUNICODE_STRING LoaderName,
+    _Out_ PUNICODE_STRING FullName)
+{
+    UNICODE_STRING SystemRoot = RTL_CONSTANT_STRING(L"\\SystemRoot\\");
+    UNICODE_STRING Remainder = *LoaderName;
+    USHORT Length;
+
+    if ((BootPath->Length != 0) && RtlPrefixUnicodeString(BootPath, LoaderName, TRUE))
+    {
+        Remainder.Buffer += BootPath->Length / sizeof(WCHAR);
+        Remainder.Length -= BootPath->Length;
+
+        /* The boot path may or may not end in a separator */
+        if ((Remainder.Length != 0) && (Remainder.Buffer[0] == L'\\'))
+        {
+            Remainder.Buffer++;
+            Remainder.Length -= sizeof(WCHAR);
+        }
+    }
+    else
+    {
+        SystemRoot.Length = 0;
+    }
+    Remainder.MaximumLength = Remainder.Length;
+
+    Length = SystemRoot.Length + Remainder.Length;
+    FullName->Buffer = ExAllocatePoolWithTag(PagedPool, Length + sizeof(UNICODE_NULL), TAG_LDR_WSTR);
+    if (!FullName->Buffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    FullName->Length = 0;
+    FullName->MaximumLength = Length + sizeof(UNICODE_NULL);
+    RtlAppendUnicodeStringToString(FullName, &SystemRoot);
+    RtlAppendUnicodeStringToString(FullName, &Remainder);
+    FullName->Buffer[Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    return STATUS_SUCCESS;
+}
+
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
@@ -2405,6 +2457,24 @@ MiInitializeLoadedModuleList(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     PLDR_DATA_TABLE_ENTRY LdrEntry, NewEntry;
     PLIST_ENTRY ListHead, NextEntry;
     ULONG EntrySize;
+    CHAR BootPathBuffer[256];
+    ANSI_STRING BootPathAnsi;
+    UNICODE_STRING BootPath = { 0, 0, NULL };
+    NTSTATUS Status;
+
+    /* The loader names its images by ARC path, a runtime load uses \SystemRoot\ */
+    Status = RtlStringCbPrintfA(BootPathBuffer,
+                                sizeof(BootPathBuffer),
+                                "%s%s",
+                                LoaderBlock->ArcBootDeviceName,
+                                LoaderBlock->NtBootPathName);
+    if (NT_SUCCESS(Status))
+    {
+        RtlInitAnsiString(&BootPathAnsi, BootPathBuffer);
+        Status = RtlAnsiStringToUnicodeString(&BootPath, &BootPathAnsi, TRUE);
+        if (!NT_SUCCESS(Status))
+            RtlInitEmptyUnicodeString(&BootPath, NULL, 0);
+    }
 
     /* Setup the loaded module list and locks */
     ExInitializeResourceLite(&PsLoadedModuleResource);
@@ -2443,30 +2513,28 @@ MiInitializeLoadedModuleList(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     LdrEntry->BaseDllName.MaximumLength +
                     sizeof(UNICODE_NULL);
         NewEntry = ExAllocatePoolWithTag(NonPagedPool, EntrySize, TAG_MODULE_OBJECT);
-        if (!NewEntry) return FALSE;
+        if (!NewEntry)
+        {
+            RtlFreeUnicodeString(&BootPath);
+            return FALSE;
+        }
 
         /* Copy the entry over */
         *NewEntry = *LdrEntry;
 
-        /* Allocate the name */
-        NewEntry->FullDllName.Buffer =
-            ExAllocatePoolWithTag(PagedPool,
-                                  LdrEntry->FullDllName.MaximumLength +
-                                      sizeof(UNICODE_NULL),
-                                  TAG_LDR_WSTR);
-        if (!NewEntry->FullDllName.Buffer)
+        /* Copy the full name */
+        Status = MiCopyBootImageFullName(&BootPath, &LdrEntry->FullDllName, &NewEntry->FullDllName);
+        if (!NT_SUCCESS(Status))
         {
             ExFreePoolWithTag(NewEntry, TAG_MODULE_OBJECT);
+            RtlFreeUnicodeString(&BootPath);
             return FALSE;
         }
 
         /* Set the base name */
         NewEntry->BaseDllName.Buffer = (PVOID)(NewEntry + 1);
 
-        /* Copy the full and base name */
-        RtlCopyMemory(NewEntry->FullDllName.Buffer,
-                      LdrEntry->FullDllName.Buffer,
-                      LdrEntry->FullDllName.MaximumLength);
+        /* Copy the base name */
         RtlCopyMemory(NewEntry->BaseDllName.Buffer,
                       LdrEntry->BaseDllName.Buffer,
                       LdrEntry->BaseDllName.MaximumLength);
@@ -2479,6 +2547,8 @@ MiInitializeLoadedModuleList(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         InsertTailList(&PsLoadedModuleList, &NewEntry->InLoadOrderLinks);
         NextEntry = NextEntry->Flink;
     }
+
+    RtlFreeUnicodeString(&BootPath);
 
     /* Build the import lists for the boot drivers */
     MiBuildImportsForBootDrivers();
