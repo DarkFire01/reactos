@@ -250,6 +250,60 @@ SMgrNotifySessionChange(
     return STATUS_SUCCESS;
 }
 
+static PVOID SMgrWin32kCallout;
+
+/**
+ * @brief
+ * Records the routine win32k wants GDI callouts delivered to.
+ *
+ * @param[in] Callout
+ * The win32k callout.
+ *
+ * @return
+ * STATUS_INVALID_PARAMETER when a different callout is already registered.
+ */
+NTSTATUS
+NTAPI
+SMgrRegisterGdiCallout(
+    _In_ PVOID Callout)
+{
+    PVOID Previous;
+
+    Previous = InterlockedCompareExchangePointer(&SMgrWin32kCallout, Callout, NULL);
+    if ((Previous != NULL) && (Previous != Callout))
+        return STATUS_INVALID_PARAMETER;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Delivers a GDI callout to the sessions. Only the Windows watchdog implements the delivery.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED.
+ */
+NTSTATUS
+NTAPI
+SMgrGdiCallout(
+    _In_ PVOID Params,
+    _In_ BOOLEAN AllSessions,
+    _In_ BOOLEAN Synchronous,
+    _In_opt_ PVOID Filter,
+    _In_opt_ PVOID FilterContext,
+    _In_opt_ PVOID ScenarioContext)
+{
+    UNREFERENCED_PARAMETER(Params);
+    UNREFERENCED_PARAMETER(AllSessions);
+    UNREFERENCED_PARAMETER(Synchronous);
+    UNREFERENCED_PARAMETER(Filter);
+    UNREFERENCED_PARAMETER(FilterContext);
+    UNREFERENCED_PARAMETER(ScenarioContext);
+
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 /* \Device\VideoN numbers, shared by videoprt and dxgkrnl so they never pick the same one */
 #define DMGR_MAX_GDI_VIEWS  256
 
