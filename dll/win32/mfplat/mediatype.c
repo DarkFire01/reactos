@@ -3836,7 +3836,7 @@ HRESULT WINAPI MFInitMediaTypeFromMFVideoFormat(IMFMediaType *media_type, const 
         if (video_format && (stride = mf_get_stride_for_format(video_format, format->videoInfo.dwWidth)))
         {
             if (!video_format->yuv && (format->videoInfo.VideoFlags & MFVideoFlag_BottomUpLinearRep))
-                stride = -stride;
+                stride = (UINT32)-(LONG)stride;
             mediatype_set_uint32(media_type, &MF_MT_DEFAULT_STRIDE, stride, &hr);
         }
 
