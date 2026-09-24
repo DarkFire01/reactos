@@ -77,6 +77,8 @@ typedef struct _GRAPHICS_DEVICE
     PVOID            DxgAdapter;                     /* dxgkrnl's adapter, NULL if not WDDM */
     LUID             DxgAdapterLuid;
     ULONG            VidPnSourceId;
+    PDEVMODEW        pdmDisplayConfig;               /* mode of this source in the applied display configuration, NULL when it has no path */
+    BOOLEAN          bRemoved;                       /* dxgkrnl reported the adapter gone */
 } GRAPHICS_DEVICE, *PGRAPHICS_DEVICE;
 
 /*
@@ -195,6 +197,17 @@ VOID
 NTAPI
 PDEVOBJ_vSynchronizeDrivers(
     _In_ FLONG flCaps2);
+
+VOID
+NTAPI
+PDEVOBJ_vSwitchGraphicsDevice(
+    _Inout_ PPDEVOBJ ppdev,
+    _Inout_ PPDEVOBJ ppdev2);
+
+BOOLEAN
+NTAPI
+PDEVOBJ_bIsGraphicsDeviceInUse(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice);
 
 FORCEINLINE
 VOID

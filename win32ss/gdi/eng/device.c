@@ -21,6 +21,13 @@ static PGRAPHICS_DEVICE gpGraphicsDeviceLast = NULL;
 static HSEMAPHORE ghsemGraphicsDeviceList;
 static ULONG giDevNum = 1;
 
+/* \Device\VideoN numbers that failed to open. They are not tried again, the way Windows skips them */
+#define ENGP_MAX_VIDEO_NUMBERS  256
+static RTL_BITMAP gFailedVideoNumbers;
+static ULONG gFailedVideoNumberBits[ENGP_MAX_VIDEO_NUMBERS / 32];
+
+/* TRUE once dxgkrnl applied a display configuration, which then decides the desktop's displays */
+static BOOLEAN gbDisplayConfigApplied;
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
@@ -29,6 +36,9 @@ InitDeviceImpl(VOID)
     ghsemGraphicsDeviceList = EngCreateSemaphore();
     if (!ghsemGraphicsDeviceList)
         return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlInitializeBitMap(&gFailedVideoNumbers, gFailedVideoNumberBits, ENGP_MAX_VIDEO_NUMBERS);
+    RtlClearAllBits(&gFailedVideoNumbers);
 
     return STATUS_SUCCESS;
 }
@@ -183,7 +193,7 @@ NTSTATUS
 EngpUpdateGraphicsDeviceList(VOID)
 {
     ULONG iDevNum, ulMaxObjectNumber = 0;
-    WCHAR awcDeviceName[20], awcWinDeviceName[20];
+    WCHAR awcDeviceName[20];
     UNICODE_STRING ustrDeviceName;
     WCHAR awcBuffer[256];
     NTSTATUS Status;
@@ -210,19 +220,17 @@ EngpUpdateGraphicsDeviceList(VOID)
     /* Loop through all adapters, to detect new ones */
     for (iDevNum = 0; iDevNum <= ulMaxObjectNumber; iDevNum++)
     {
+        /* A number that failed once stays skipped, same as a WDDM adapter nobody started */
+        if ((iDevNum < ENGP_MAX_VIDEO_NUMBERS) && RtlCheckBit(&gFailedVideoNumbers, iDevNum))
+            continue;
+
         /* Create the adapter's key name */
         _swprintf(awcDeviceName, L"\\Device\\Video%lu", iDevNum);
-
-        /* Create the display device name */
-        _swprintf(awcWinDeviceName, L"\\\\.\\DISPLAY%lu", iDevNum + 1);
-        RtlInitUnicodeString(&ustrDeviceName, awcWinDeviceName);
+        RtlInitUnicodeString(&ustrDeviceName, awcDeviceName);
 
         /* Check if the device exists already */
-        pGraphicsDevice = EngpFindGraphicsDevice(&ustrDeviceName, iDevNum);
-        if (pGraphicsDevice != NULL)
-        {
+        if (EngpFindGraphicsDeviceByNtName(&ustrDeviceName) != NULL)
             continue;
-        }
 
         /* Read the reg key name */
         cbValue = sizeof(awcBuffer);
@@ -235,7 +243,12 @@ EngpUpdateGraphicsDeviceList(VOID)
 
         /* Initialize the driver for this device */
         pGraphicsDevice = InitDisplayDriver(awcDeviceName, awcBuffer);
-        if (!pGraphicsDevice) continue;
+        if (!pGraphicsDevice)
+        {
+            if (iDevNum < ENGP_MAX_VIDEO_NUMBERS)
+                RtlSetBit(&gFailedVideoNumbers, iDevNum);
+            continue;
+        }
     }
 
     /* Close the device map registry key */
@@ -371,6 +384,95 @@ EngpGetRegistryHandleFromDeviceMap(
     return hKey;
 }
 
+/**
+ * @brief
+ * Reads the name an adapter shows as. The PnP driver key is tried first with DriverDesc, the
+ * \Device\VideoN key starts at Device Description. First non-empty string wins.
+ * Reference win32kbase DrvGetDeviceConfigurationInformation.
+ *
+ * @param[in] hKey
+ * The PnP driver key, or the key DEVICEMAP\VIDEO names.
+ *
+ * @param[in] bDriverKey
+ * TRUE for the PnP driver key.
+ *
+ * @param[out] pwszDescription
+ * Receives the NUL terminated name.
+ *
+ * @param[in] cbDescription
+ * Size of pwszDescription in bytes.
+ *
+ * @return
+ * TRUE when a name was found.
+ */
+BOOLEAN
+NTAPI
+EngpQueryDeviceDescription(
+    _In_ HANDLE hKey,
+    _In_ BOOLEAN bDriverKey,
+    _Out_writes_bytes_(cbDescription) PWSTR pwszDescription,
+    _In_ ULONG cbDescription)
+{
+    static const PCWSTR apwszValueNames[] =
+    {
+        L"DriverDesc",
+        L"Device Description",
+        L"HardwareInformation.AdapterString",
+        L"HardwareInformation.ChipType"
+    };
+    NTSTATUS Status;
+    ULONG cbValue;
+    ULONG i;
+
+    if (cbDescription < 2 * sizeof(WCHAR))
+        return FALSE;
+
+    for (i = bDriverKey ? 0 : 1; i < RTL_NUMBER_OF(apwszValueNames); i++)
+    {
+        cbValue = cbDescription - sizeof(WCHAR);
+        Status = RegQueryValue(hKey, apwszValueNames[i], REG_SZ, pwszDescription, &cbValue);
+        if (Status == STATUS_OBJECT_TYPE_MISMATCH)
+        {
+            cbValue = cbDescription - sizeof(WCHAR);
+            Status = RegQueryValue(hKey, apwszValueNames[i], REG_MULTI_SZ, pwszDescription, &cbValue);
+        }
+
+        if (!NT_SUCCESS(Status) || (cbValue < sizeof(WCHAR)) || (pwszDescription[0] == UNICODE_NULL))
+            continue;
+
+        pwszDescription[cbValue / sizeof(WCHAR)] = UNICODE_NULL;
+        return TRUE;
+    }
+
+    pwszDescription[0] = UNICODE_NULL;
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Does EnumDisplaySettings hide the modes the monitor cannot show? Only an explicit
+ * PruningMode of 0 turns it off. Reference win32kbase DrvGetPruneFlag.
+ */
+BOOLEAN
+NTAPI
+EngpGetPruneFlag(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice)
+{
+    DWORD dwPruningMode;
+    HKEY hKey;
+    BOOLEAN bPrune = TRUE;
+
+    hKey = EngpGetRegistryHandleFromDeviceMap(pGraphicsDevice);
+    if (hKey == NULL)
+        return TRUE;
+
+    if (RegReadDWORD(hKey, L"PruningMode", &dwPruningMode) && (dwPruningMode == 0))
+        bPrune = FALSE;
+
+    ZwClose(hKey);
+    return bPrune;
+}
+
 NTSTATUS
 EngpGetDisplayDriverParameters(
     _In_ PGRAPHICS_DEVICE pGraphicsDevice,
@@ -447,70 +549,6 @@ EngpGetDisplayDriverAccelerationLevel(
     ZwClose(hKey);
 
     return dwAccelerationLevel;
-}
-
-extern VOID
-UserRefreshDisplay(IN PPDEVOBJ ppdev);
-
-// PVIDEO_WIN32K_CALLOUT
-VOID
-NTAPI
-VideoPortCallout(
-    _In_ PVOID Params)
-{
-/*
- * IMPORTANT NOTICE!! On Windows XP/2003 this function triggers the creation of
- * a specific VideoPortCalloutThread() system thread using the same mechanism
- * as the RIT/desktop/Ghost system threads.
- */
-
-    PVIDEO_WIN32K_CALLBACKS_PARAMS CallbackParams = (PVIDEO_WIN32K_CALLBACKS_PARAMS)Params;
-
-    TRACE("VideoPortCallout(0x%p, 0x%x)\n",
-          CallbackParams, CallbackParams ? CallbackParams->CalloutType : -1);
-
-    if (!CallbackParams)
-        return;
-
-    switch (CallbackParams->CalloutType)
-    {
-        case VideoFindAdapterCallout:
-        {
-            TRACE("VideoPortCallout: VideoFindAdapterCallout called - Param = %s\n",
-                  CallbackParams->Param ? "TRUE" : "FALSE");
-            if (CallbackParams->Param == TRUE)
-            {
-                /* Re-enable the display */
-                UserRefreshDisplay(gpmdev->ppdevGlobal);
-            }
-            else
-            {
-                /* Disable the display */
-                NOTHING; // Nothing to do for the moment...
-            }
-
-            CallbackParams->Status = STATUS_SUCCESS;
-            break;
-        }
-
-        case VideoPowerNotifyCallout:
-        case VideoDisplaySwitchCallout:
-        case VideoEnumChildPdoNotifyCallout:
-        case VideoWakeupCallout:
-        case VideoChangeDisplaySettingsCallout:
-        case VideoPnpNotifyCallout:
-        case VideoDxgkDisplaySwitchCallout:
-        case VideoDxgkMonitorEventCallout:
-        case VideoDxgkFindAdapterTdrCallout:
-            ERR("VideoPortCallout: CalloutType 0x%x is UNIMPLEMENTED!\n", CallbackParams->CalloutType);
-            CallbackParams->Status = STATUS_NOT_IMPLEMENTED;
-            break;
-
-        default:
-            ERR("VideoPortCallout: Unknown CalloutType 0x%x\n", CallbackParams->CalloutType);
-            CallbackParams->Status = STATUS_UNSUCCESSFUL;
-            break;
-    }
 }
 
 /* Sends a TargetDeviceRelation request to PDO
@@ -709,6 +747,54 @@ EngpQueryWddmAdapter(
 
 /**
  * @brief
+ * Registers VideoPortCallout with a display device and learns its physical device object, the way
+ * Windows win32k does. Reference win32kbase DrvUpdateGraphicsDeviceList.
+ *
+ * @param[in] pDeviceObject
+ * The \Device\VideoN device object.
+ *
+ * @param[in,out] pWin32kCallbacks
+ * Carries the callout in, receives what the device reports.
+ *
+ * @return
+ * The status the device completed the request with.
+ */
+static
+NTSTATUS
+EngpInitWin32kCallbacks(
+    _In_ PDEVICE_OBJECT pDeviceObject,
+    _Inout_ PVIDEO_WIN32K_CALLBACKS pWin32kCallbacks)
+{
+    KEVENT Event;
+    IO_STATUS_BLOCK Iosb;
+    PIRP pIrp;
+    NTSTATUS Status;
+
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    pIrp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_GDI_INIT_WIN32K_CALLBACKS,
+                                         pDeviceObject,
+                                         pWin32kCallbacks,
+                                         sizeof(*pWin32kCallbacks),
+                                         pWin32kCallbacks,
+                                         sizeof(*pWin32kCallbacks),
+                                         TRUE,
+                                         &Event,
+                                         &Iosb);
+    if (pIrp == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = IoCallDriver(pDeviceObject, pIrp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Iosb.Status;
+    }
+
+    return Status;
+}
+
+/**
+ * @brief
  * Claims a WDDM display device for this session, or gives it back.
  *
  * @param[in] pDeviceObject
@@ -773,7 +859,9 @@ EngpRegisterGraphicsDevice(
     PFILE_OBJECT pFileObject;
     NTSTATUS Status;
     VIDEO_WIN32K_CALLBACKS Win32kCallbacks;
-    ULONG ulReturn;
+    UNICODE_STRING ustrDriverDescription;
+    WCHAR awcDescription[128];
+    HANDLE hDriverKey;
     PWSTR pwsz;
     ULONG cj;
 
@@ -812,22 +900,34 @@ EngpRegisterGraphicsDevice(
     Win32kCallbacks.bACPI = FALSE;
     Win32kCallbacks.pPhysDeviceObject = NULL;
     Win32kCallbacks.DualviewFlags = 0;
-    Status = (NTSTATUS)EngDeviceIoControl((HANDLE)pDeviceObject,
-                                          IOCTL_VIDEO_INIT_WIN32K_CALLBACKS,
-                                          &Win32kCallbacks,
-                                          sizeof(Win32kCallbacks),
-                                          &Win32kCallbacks,
-                                          sizeof(Win32kCallbacks),
-                                          &ulReturn);
-    if (Status != ERROR_SUCCESS)
+    Status = EngpInitWin32kCallbacks(pDeviceObject, &Win32kCallbacks);
+    if (!NT_SUCCESS(Status))
     {
-        ERR("EngDeviceIoControl(0x%p, IOCTL_VIDEO_INIT_WIN32K_CALLBACKS) failed, Status 0x%lx\n",
-            pDeviceObject, Status);
+        ERR("IOCTL_VIDEO_GDI_INIT_WIN32K_CALLBACKS to %wZ failed, Status 0x%lx\n",
+            pustrDeviceName, Status);
     }
     // TODO: Set flags according to the results.
     // if (Win32kCallbacks.bACPI)
     // if (Win32kCallbacks.DualviewFlags & ???)
     pGraphicsDevice->PhysDeviceHandle = Win32kCallbacks.pPhysDeviceObject;
+
+    /* A PnP adapter is named after its driver key, DriverDesc first, like Windows does */
+    if (pGraphicsDevice->PhysDeviceHandle != NULL)
+    {
+        Status = IoOpenDeviceRegistryKey(pGraphicsDevice->PhysDeviceHandle,
+                                         PLUGPLAY_REGKEY_DRIVER,
+                                         KEY_READ,
+                                         &hDriverKey);
+        if (NT_SUCCESS(Status))
+        {
+            if (EngpQueryDeviceDescription(hDriverKey, TRUE, awcDescription, sizeof(awcDescription)))
+            {
+                RtlInitUnicodeString(&ustrDriverDescription, awcDescription);
+                pustrDescription = &ustrDriverDescription;
+            }
+            ZwClose(hDriverKey);
+        }
+    }
 
     /* A WDDM adapter names no display driver of its own, the CDD drives it */
     if (EngpQueryWddmAdapter(pDeviceObject, &ViewInformation))
@@ -901,8 +1001,9 @@ EngpRegisterGraphicsDevice(
     /* Unlock loader */
     EngReleaseSemaphore(ghsemGraphicsDeviceList);
 
-    /* HACK: already in graphic mode; display wallpaper on this new display */
-    if (ScreenDeviceContext)
+    /* HACK: already in graphic mode; display wallpaper on this new display. A WDDM device waits
+     * for the display configuration to put it on the desktop instead. */
+    if (ScreenDeviceContext && (pGraphicsDevice->DxgAdapter == NULL))
     {
         UNICODE_STRING DriverName = RTL_CONSTANT_STRING(L"DISPLAY");
         UNICODE_STRING DisplayName;
@@ -1001,6 +1102,363 @@ EngpFindGraphicsDevice(
     EngReleaseSemaphore(ghsemGraphicsDeviceList);
 
     return pGraphicsDevice;
+}
+
+/**
+ * @brief
+ * Finds a graphics device by the \Device\VideoN object it was opened from.
+ *
+ * @param[in] pustrNtDeviceName
+ * The \Device\VideoN name.
+ *
+ * @return
+ * The graphics device, or NULL.
+ */
+PGRAPHICS_DEVICE
+NTAPI
+EngpFindGraphicsDeviceByNtName(
+    _In_ PCUNICODE_STRING pustrNtDeviceName)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    UNICODE_STRING ustrCurrent;
+
+    EngAcquireSemaphoreShared(ghsemGraphicsDeviceList);
+
+    for (pGraphicsDevice = gpGraphicsDeviceFirst;
+         pGraphicsDevice;
+         pGraphicsDevice = pGraphicsDevice->pNextGraphicsDevice)
+    {
+        RtlInitUnicodeString(&ustrCurrent, pGraphicsDevice->szNtDeviceName);
+        if (RtlEqualUnicodeString(&ustrCurrent, pustrNtDeviceName, TRUE))
+            break;
+    }
+
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
+
+    return pGraphicsDevice;
+}
+
+/**
+ * @brief
+ * Has dxgkrnl applied a display configuration that now decides which devices make up the desktop?
+ */
+BOOLEAN
+NTAPI
+EngpIsDisplayConfigApplied(VOID)
+{
+    return gbDisplayConfigApplied && !gbBaseVideo;
+}
+
+_Requires_lock_held_(ghsemGraphicsDeviceList)
+static
+PGRAPHICS_DEVICE
+EngpFindDisplayConfigDevice(
+    _In_ const ENGP_DISPLAY_PATH *pPath)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+
+    for (pGraphicsDevice = gpGraphicsDeviceFirst;
+         pGraphicsDevice;
+         pGraphicsDevice = pGraphicsDevice->pNextGraphicsDevice)
+    {
+        if ((pGraphicsDevice->DxgAdapter == NULL) || pGraphicsDevice->bRemoved)
+            continue;
+
+        if ((pGraphicsDevice->DxgAdapterLuid.LowPart == pPath->AdapterLuid.LowPart) &&
+            (pGraphicsDevice->DxgAdapterLuid.HighPart == pPath->AdapterLuid.HighPart) &&
+            (pGraphicsDevice->VidPnSourceId == pPath->VidPnSourceId))
+        {
+            return pGraphicsDevice;
+        }
+    }
+
+    return NULL;
+}
+
+_Requires_lock_held_(ghsemGraphicsDeviceList)
+static
+VOID
+EngpMoveGraphicsDeviceToFront(
+    _In_ PGRAPHICS_DEVICE pToMove)
+{
+    PGRAPHICS_DEVICE pPrevious = NULL;
+    PGRAPHICS_DEVICE pGraphicsDevice;
+
+    for (pGraphicsDevice = gpGraphicsDeviceFirst;
+         pGraphicsDevice && (pGraphicsDevice != pToMove);
+         pGraphicsDevice = pGraphicsDevice->pNextGraphicsDevice)
+    {
+        pPrevious = pGraphicsDevice;
+    }
+
+    if ((pGraphicsDevice == NULL) || (pPrevious == NULL))
+        return;
+
+    pPrevious->pNextGraphicsDevice = pToMove->pNextGraphicsDevice;
+    if (gpGraphicsDeviceLast == pToMove)
+        gpGraphicsDeviceLast = pPrevious;
+
+    pToMove->pNextGraphicsDevice = gpGraphicsDeviceFirst;
+    gpGraphicsDeviceFirst = pToMove;
+}
+
+static
+BOOLEAN
+EngpIsDisplayConfigOrigin(
+    _In_ PDEVMODEW pdm)
+{
+    if (!(pdm->dmFields & DM_POSITION))
+        return TRUE;
+
+    return (pdm->dmPosition.x == 0) && (pdm->dmPosition.y == 0);
+}
+
+/**
+ * @brief
+ * Records which WDDM sources the display configuration dxgkrnl applied turned on, and in what mode.
+ * The desktop is then built from exactly those, with the source at the desktop origin as primary.
+ * Reference win32kbase DrvCreateMDEV, walking the functionalized paths.
+ *
+ * @param[in] cPaths
+ * Number of entries in pPaths.
+ *
+ * @param[in] pPaths
+ * The active paths, one per clone group, in dxgkrnl's order.
+ *
+ * @return
+ * STATUS_UNSUCCESSFUL when no path reaches a device GDI knows, which leaves the previous
+ * configuration in place.
+ */
+NTSTATUS
+NTAPI
+EngpSetDisplayConfig(
+    _In_ ULONG cPaths,
+    _In_reads_(cPaths) const ENGP_DISPLAY_PATH *pPaths)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    PGRAPHICS_DEVICE pPrimary = NULL;
+    PGRAPHICS_DEVICE pOrigin = NULL;
+    PGRAPHICS_DEVICE pFirst = NULL;
+    PDEVMODEW *ppdmNew;
+    ULONG cAttached = 0;
+    ULONG cjDevMode;
+    ULONG i;
+
+    ppdmNew = ExAllocatePoolZero(PagedPool, (cPaths ? cPaths : 1) * sizeof(*ppdmNew), GDITAG_TEMP);
+    if (ppdmNew == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    EngAcquireSemaphore(ghsemGraphicsDeviceList);
+
+    /* Copy each mode first, so a failure leaves the devices as they were */
+    for (i = 0; i < cPaths; i++)
+    {
+        pGraphicsDevice = EngpFindDisplayConfigDevice(&pPaths[i]);
+        if (pGraphicsDevice == NULL)
+        {
+            WARN("No graphics device for adapter %lx:%lx source %lu\n",
+                 pPaths[i].AdapterLuid.HighPart, pPaths[i].AdapterLuid.LowPart,
+                 pPaths[i].VidPnSourceId);
+            continue;
+        }
+
+        cjDevMode = pPaths[i].pdm->dmSize + pPaths[i].pdm->dmDriverExtra;
+        ppdmNew[i] = ExAllocatePoolWithTag(PagedPool, cjDevMode, GDITAG_DEVMODE);
+        if (ppdmNew[i] == NULL)
+            break;
+
+        RtlCopyMemory(ppdmNew[i], pPaths[i].pdm, cjDevMode);
+        cAttached++;
+    }
+
+    if ((i < cPaths) || (cAttached == 0))
+    {
+        EngReleaseSemaphore(ghsemGraphicsDeviceList);
+
+        for (i = 0; i < cPaths; i++)
+        {
+            if (ppdmNew[i] != NULL)
+                ExFreePoolWithTag(ppdmNew[i], GDITAG_DEVMODE);
+        }
+        ExFreePoolWithTag(ppdmNew, GDITAG_TEMP);
+
+        return (cAttached == 0) ? STATUS_UNSUCCESSFUL : STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Every WDDM source starts out off the desktop, the paths turn theirs back on */
+    for (pGraphicsDevice = gpGraphicsDeviceFirst;
+         pGraphicsDevice;
+         pGraphicsDevice = pGraphicsDevice->pNextGraphicsDevice)
+    {
+        if (pGraphicsDevice->DxgAdapter == NULL)
+            continue;
+
+        if (pGraphicsDevice->StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE)
+            pPrimary = pGraphicsDevice;
+
+        if (pGraphicsDevice->pdmDisplayConfig != NULL)
+        {
+            ExFreePoolWithTag(pGraphicsDevice->pdmDisplayConfig, GDITAG_DEVMODE);
+            pGraphicsDevice->pdmDisplayConfig = NULL;
+        }
+
+        pGraphicsDevice->StateFlags &= ~(DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE);
+    }
+
+    for (i = 0; i < cPaths; i++)
+    {
+        if (ppdmNew[i] == NULL)
+            continue;
+
+        pGraphicsDevice = EngpFindDisplayConfigDevice(&pPaths[i]);
+        pGraphicsDevice->pdmDisplayConfig = ppdmNew[i];
+
+        if (pFirst == NULL)
+            pFirst = pGraphicsDevice;
+        if ((pOrigin == NULL) && EngpIsDisplayConfigOrigin(ppdmNew[i]))
+            pOrigin = pGraphicsDevice;
+    }
+
+    /* The primary stays where it was if it kept a path, otherwise it moves to the desktop origin */
+    if ((pPrimary == NULL) || (pPrimary->pdmDisplayConfig == NULL))
+        pPrimary = (pOrigin != NULL) ? pOrigin : pFirst;
+
+    if (gpPrimaryGraphicsDevice != NULL)
+        gpPrimaryGraphicsDevice->StateFlags &= ~DISPLAY_DEVICE_PRIMARY_DEVICE;
+
+    pPrimary->StateFlags |= DISPLAY_DEVICE_PRIMARY_DEVICE;
+    gpPrimaryGraphicsDevice = pPrimary;
+    EngpMoveGraphicsDeviceToFront(pPrimary);
+
+    gbDisplayConfigApplied = TRUE;
+
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
+
+    ExFreePoolWithTag(ppdmNew, GDITAG_TEMP);
+
+    TRACE("Display configuration: %lu source(s), primary %S\n", cAttached, pPrimary->szNtDeviceName);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Marks every graphics device of an adapter dxgkrnl reported gone, so the next display
+ * configuration leaves them out. Reference win32kbase Win32kPnpNotify.
+ *
+ * @param[in] PhysDisp
+ * The adapter's physical device object, as the callout names it.
+ *
+ * @return
+ * TRUE when at least one device was marked.
+ */
+BOOLEAN
+NTAPI
+EngpMarkGraphicsDevicesRemoved(
+    _In_ PVOID PhysDisp)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    BOOLEAN bFound = FALSE;
+
+    EngAcquireSemaphore(ghsemGraphicsDeviceList);
+
+    for (pGraphicsDevice = gpGraphicsDeviceFirst;
+         pGraphicsDevice;
+         pGraphicsDevice = pGraphicsDevice->pNextGraphicsDevice)
+    {
+        if (pGraphicsDevice->PhysDeviceHandle == PhysDisp)
+        {
+            pGraphicsDevice->bRemoved = TRUE;
+            bFound = TRUE;
+        }
+    }
+
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
+
+    return bFound;
+}
+
+static
+VOID
+EngpFreeGraphicsDevice(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice)
+{
+    ULONG i;
+
+    if (pGraphicsDevice->DxgAdapter != NULL)
+        EngpSetDeviceSessionUsage(pGraphicsDevice->DeviceObject, FALSE);
+
+    if (pGraphicsDevice->pvMonDev != NULL)
+    {
+        for (i = 0; i < pGraphicsDevice->dwMonCnt; i++)
+            ObDereferenceObject(pGraphicsDevice->pvMonDev[i].pdo);
+        ExFreePoolWithTag(pGraphicsDevice->pvMonDev, GDITAG_GDEVICE);
+    }
+
+    if (pGraphicsDevice->pdmDisplayConfig != NULL)
+        ExFreePoolWithTag(pGraphicsDevice->pdmDisplayConfig, GDITAG_DEVMODE);
+
+    if (pGraphicsDevice->pDiplayDrivers != NULL)
+        ExFreePoolWithTag(pGraphicsDevice->pDiplayDrivers, GDITAG_DRVSUP);
+
+    if (pGraphicsDevice->FileObject != NULL)
+        ObDereferenceObject(pGraphicsDevice->FileObject);
+
+    ExFreePoolWithTag(pGraphicsDevice, GDITAG_GDEVICE);
+}
+
+/**
+ * @brief
+ * Drops the graphics devices of an adapter that is gone, once the desktop no longer uses them.
+ * Reference win32kbase DrvCleanupGraphicsDevices.
+ *
+ * @param[in] PhysDisp
+ * The adapter's physical device object.
+ */
+VOID
+NTAPI
+EngpCleanupGraphicsDevices(
+    _In_ PVOID PhysDisp)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    PGRAPHICS_DEVICE pPrevious = NULL;
+    PGRAPHICS_DEVICE pNext;
+
+    EngAcquireSemaphore(ghsemGraphicsDeviceList);
+
+    for (pGraphicsDevice = gpGraphicsDeviceFirst; pGraphicsDevice; pGraphicsDevice = pNext)
+    {
+        pNext = pGraphicsDevice->pNextGraphicsDevice;
+
+        if (pGraphicsDevice->PhysDeviceHandle != PhysDisp)
+        {
+            pPrevious = pGraphicsDevice;
+            continue;
+        }
+
+        /* A PDEV still pointing at it keeps it alive, it is only taken off the list */
+        if (pPrevious != NULL)
+            pPrevious->pNextGraphicsDevice = pNext;
+        else
+            gpGraphicsDeviceFirst = pNext;
+        if (gpGraphicsDeviceLast == pGraphicsDevice)
+            gpGraphicsDeviceLast = pPrevious;
+
+        if (gpPrimaryGraphicsDevice == pGraphicsDevice)
+            gpPrimaryGraphicsDevice = NULL;
+        if (gpVgaGraphicsDevice == pGraphicsDevice)
+            gpVgaGraphicsDevice = NULL;
+
+        if (PDEVOBJ_bIsGraphicsDeviceInUse(pGraphicsDevice))
+        {
+            WARN("%S is gone but a PDEV still uses it\n", pGraphicsDevice->szNtDeviceName);
+            continue;
+        }
+
+        TRACE("Dropping graphics device %S\n", pGraphicsDevice->szNtDeviceName);
+        EngpFreeGraphicsDevice(pGraphicsDevice);
+    }
+
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
 }
 
 static

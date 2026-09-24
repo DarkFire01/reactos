@@ -136,6 +136,9 @@ UserInitialize(VOID)
         KeBugCheckEx(VIDEO_DRIVER_INIT_FAILURE, Status, 0, 0, USER_VERSION);
     }
 
+    /* Display callouts can reach a desktop from here on */
+    gbVideoInitialized = TRUE;
+
 // {
 //     DrvInitConsole.
 //     DrvChangeDisplaySettings.

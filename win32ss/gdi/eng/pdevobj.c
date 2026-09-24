@@ -650,8 +650,12 @@ PDEVOBJ_vRefreshModeList(
         ExFreePoolWithTag(pdminfo, GDITAG_DEVMODE);
     }
     pGraphicsDevice->pdevmodeInfo = NULL;
-    ExFreePoolWithTag(pGraphicsDevice->pDevModeList, GDITAG_GDEVICE);
+
+    /* A device the display configuration put on the desktop was never probed, so it has no list yet */
+    if (pGraphicsDevice->pDevModeList != NULL)
+        ExFreePoolWithTag(pGraphicsDevice->pDevModeList, GDITAG_GDEVICE);
     pGraphicsDevice->pDevModeList = NULL;
+    pGraphicsDevice->cDevModes = 0;
 
     /* Update available display mode list */
     LDEVOBJ_bBuildDevmodeList(pGraphicsDevice);
@@ -908,6 +912,129 @@ PDEVOBJ_bDynamicModeChange(
     PDEVOBJ_vSwitchDirectDraw(ppdev, ppdev2);
 
     return TRUE;
+}
+
+/**
+ * @brief
+ * Moves a display driver instance of another graphics device into a live PDEV, and the live
+ * one's instance out, so the DCs and surfaces that hold the live PDEV follow the desktop onto the
+ * other adapter. Reference win32kbase swaps in a new MDEV instead, whose HDEVs nothing else holds.
+ *
+ * @param[in,out] ppdev
+ * The PDEV the desktop uses.
+ *
+ * @param[in,out] ppdev2
+ * The PDEV of the device the desktop moves to. It ends up with the old instance.
+ */
+VOID
+NTAPI
+PDEVOBJ_vSwitchGraphicsDevice(
+    _Inout_ PPDEVOBJ ppdev,
+    _Inout_ PPDEVOBJ ppdev2)
+{
+    union
+    {
+        DRIVER_FUNCTIONS pfn;
+        GDIINFO gdiinfo;
+        DEVINFO devinfo;
+        POINTL ptl;
+        DWORD dw;
+        FLONG fl;
+    } temp;
+
+    EngAcquireSemaphore(ppdev->hsemDevLock);
+    EngAcquireSemaphore(ghsemPDEV);
+
+    PDEVOBJ_vSuspendDirectDraw(ppdev);
+    PDEVOBJ_vSuspendDirectDraw(ppdev2);
+
+    temp.pfn = ppdev->pfn;
+    ppdev->pfn = ppdev2->pfn;
+    ppdev2->pfn = temp.pfn;
+
+    SwitchPointer(&ppdev->pldev, &ppdev2->pldev);
+    SwitchPointer(&ppdev->dhpdev, &ppdev2->dhpdev);
+    SwitchPointer(&ppdev->ppalSurf, &ppdev2->ppalSurf);
+    SwitchPointer(&ppdev->pfnMovePointer, &ppdev2->pfnMovePointer);
+
+    SwitchPointer(&ppdev->pSurface, &ppdev2->pSurface);
+    ppdev->pSurface->SurfObj.hdev = (HDEV)ppdev;
+    ppdev2->pSurface->SurfObj.hdev = (HDEV)ppdev2;
+
+    temp.devinfo = ppdev->devinfo;
+    ppdev->devinfo = ppdev2->devinfo;
+    ppdev2->devinfo = temp.devinfo;
+
+    temp.gdiinfo = ppdev->gdiinfo;
+    ppdev->gdiinfo = ppdev2->gdiinfo;
+    ppdev2->gdiinfo = temp.gdiinfo;
+
+    SwitchPointer(&ppdev->pdmwDev, &ppdev2->pdmwDev);
+
+    /* The physical device goes with the driver instance that drives it */
+    SwitchPointer(&ppdev->pGraphicsDevice, &ppdev2->pGraphicsDevice);
+    SwitchPointer(&ppdev->hSpooler, &ppdev2->hSpooler);
+
+    temp.ptl = ppdev->ptlOrigion;
+    ppdev->ptlOrigion = ppdev2->ptlOrigion;
+    ppdev2->ptlOrigion = temp.ptl;
+
+    temp.dw = ppdev->dwAccelerationLevel;
+    ppdev->dwAccelerationLevel = ppdev2->dwAccelerationLevel;
+    ppdev2->dwAccelerationLevel = temp.dw;
+
+    /* Whether the display is asserted belongs to the driver instance too */
+    temp.fl = ppdev->flFlags & PDEV_DISABLED;
+    ppdev->flFlags = (ppdev->flFlags & ~PDEV_DISABLED) | (ppdev2->flFlags & PDEV_DISABLED);
+    ppdev2->flFlags = (ppdev2->flFlags & ~PDEV_DISABLED) | temp.fl;
+
+    SwitchPointer(&ppdev->pfnCddW32kAddD3DDirtyRgn, &ppdev2->pfnCddW32kAddD3DDirtyRgn);
+    SwitchPointer(&ppdev->pfnCddW32kCloseProcess, &ppdev2->pfnCddW32kCloseProcess);
+    SwitchPointer(&ppdev->pfnCddW32kDeleteDeviceBitmapEx, &ppdev2->pfnCddW32kDeleteDeviceBitmapEx);
+    SwitchPointer(&ppdev->pfnCddW32kDriverSupportsLiteModeChange, &ppdev2->pfnCddW32kDriverSupportsLiteModeChange);
+    SwitchPointer(&ppdev->pfnCddW32kUpdateDevMode, &ppdev2->pfnCddW32kUpdateDevMode);
+
+    /* Notify each driver instance of its new HDEV association */
+    ppdev->pfn.CompletePDEV(ppdev->dhpdev, (HDEV)ppdev);
+    ppdev2->pfn.CompletePDEV(ppdev2->dhpdev, (HDEV)ppdev2);
+
+    PDEVOBJ_vSwitchDirectDraw(ppdev, ppdev2);
+
+    PDEVOBJ_vResumeDirectDraw(ppdev);
+    PDEVOBJ_vResumeDirectDraw(ppdev2);
+
+    if (ppdev->pEDDgpl)
+    {
+        ppdev->pEDDgpl->hDev = (HDEV)ppdev;
+        ppdev->pEDDgpl->dhpdev = ppdev->dhpdev;
+    }
+
+    EngReleaseSemaphore(ghsemPDEV);
+    EngReleaseSemaphore(ppdev->hsemDevLock);
+}
+
+/**
+ * @brief
+ * Does a PDEV still refer to this graphics device?
+ */
+BOOLEAN
+NTAPI
+PDEVOBJ_bIsGraphicsDeviceInUse(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice)
+{
+    PPDEVOBJ ppdev;
+
+    EngAcquireSemaphoreShared(ghsemPDEV);
+
+    for (ppdev = gppdevList; ppdev != NULL; ppdev = ppdev->ppdevNext)
+    {
+        if (ppdev->pGraphicsDevice == pGraphicsDevice)
+            break;
+    }
+
+    EngReleaseSemaphore(ghsemPDEV);
+
+    return (ppdev != NULL);
 }
 
 
