@@ -226,6 +226,7 @@ extern ULONG MmCompatibleProtectionMask[8];
 // Number of initial session IDs
 //
 #define MI_INITIAL_SESSION_IDS  64
+#define MI_SESSION_ID_GROWTH    128
 
 #define LIST_HEAD ULONG_PTR_MAX
 
