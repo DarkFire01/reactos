@@ -967,6 +967,39 @@ Quickie:
     return Status;
 }
 
+/**
+ * @brief
+ * Tells whether a session page table already exists.
+ *
+ * @param[in] PointerPde
+ * The PDE of the address, in the current process.
+ *
+ * @param[in] Index
+ * The index of that PDE from the start of session space.
+ *
+ * @return
+ * TRUE if the session has a page table there.
+ *
+ * @remarks
+ * On x86 the PDEs live in each process and are filled in lazily, so the
+ * session copy is the one to ask. On amd64 the page directory belongs to
+ * the session and is the same in every process.
+ */
+FORCEINLINE
+BOOLEAN
+MiSessionHasPageTable(
+    _In_ PMMPDE PointerPde,
+    _In_ ULONG Index)
+{
+#ifdef _M_AMD64
+    UNREFERENCED_PARAMETER(Index);
+    return (PointerPde->u.Hard.Valid != 0);
+#else
+    UNREFERENCED_PARAMETER(PointerPde);
+    return (MmSessionSpace->PageTables[Index].u.Long != 0);
+#endif
+}
+
 static
 NTSTATUS
 MiSessionCommitPageTables(IN PVOID StartVa,
@@ -987,13 +1020,12 @@ MiSessionCommitPageTables(IN PVOID StartVa,
     /* Get the start and end PDE, then loop each one */
     StartPde = MiAddressToPde(StartVa);
     EndPde = MiAddressToPde((PVOID)((ULONG_PTR)EndVa - 1));
-    Index = ((ULONG_PTR)StartVa - (ULONG_PTR)MmSessionBase) >> 22;
+    Index = (ULONG)(((ULONG_PTR)StartVa - (ULONG_PTR)MmSessionBase) / PDE_MAPPED_VA);
     while (StartPde <= EndPde)
     {
-#ifndef _M_AMD64
         /* If we don't already have a page table for it, increment count */
-        if (MmSessionSpace->PageTables[Index].u.Long == 0) PageCount++;
-#endif
+        if (!MiSessionHasPageTable(StartPde, Index)) PageCount++;
+
         /* Move to the next one */
         StartPde++;
         Index++;
@@ -1004,24 +1036,15 @@ MiSessionCommitPageTables(IN PVOID StartVa,
 
     /* Reset the start PDE and index */
     StartPde = MiAddressToPde(StartVa);
-    Index = ((ULONG_PTR)StartVa - (ULONG_PTR)MmSessionBase) >> 22;
+    Index = (ULONG)(((ULONG_PTR)StartVa - (ULONG_PTR)MmSessionBase) / PDE_MAPPED_VA);
 
     /* Loop each PDE while holding the working set lock */
 //  MiLockWorkingSet(PsGetCurrentThread(),
 //                   &MmSessionSpace->GlobalVirtualAddress->Vm);
-#ifdef _M_AMD64
-_WARN("MiSessionCommitPageTables halfplemented for amd64")
-    DBG_UNREFERENCED_LOCAL_VARIABLE(OldIrql);
-    DBG_UNREFERENCED_LOCAL_VARIABLE(Color);
-    DBG_UNREFERENCED_LOCAL_VARIABLE(TempPde);
-    DBG_UNREFERENCED_LOCAL_VARIABLE(Pfn1);
-    DBG_UNREFERENCED_LOCAL_VARIABLE(PageFrameNumber);
-    ASSERT(FALSE);
-#else
     while (StartPde <= EndPde)
     {
         /* Check if we already have a page table */
-        if (MmSessionSpace->PageTables[Index].u.Long == 0)
+        if (!MiSessionHasPageTable(StartPde, Index))
         {
             /* We don't, so the PDE shouldn't be ready yet */
             ASSERT(StartPde->u.Hard.Valid == 0);
@@ -1038,9 +1061,11 @@ _WARN("MiSessionCommitPageTables halfplemented for amd64")
             TempPde.u.Hard.PageFrameNumber = PageFrameNumber;
             MI_WRITE_VALID_PDE(StartPde, TempPde);
 
+#ifndef _M_AMD64
             /* Write the page table in session space structure */
             ASSERT(MmSessionSpace->PageTables[Index].u.Long == 0);
             MmSessionSpace->PageTables[Index] = TempPde;
+#endif
 
             /* Initialize the PFN */
             MiInitializePfnForOtherProcess(PageFrameNumber,
@@ -1062,7 +1087,6 @@ _WARN("MiSessionCommitPageTables halfplemented for amd64")
         StartPde++;
         Index++;
     }
-#endif
 
     /* Make sure we didn't do more pages than expected */
     ASSERT(ActualPages <= PageCount);
