@@ -1915,6 +1915,12 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     PGENERAL_LOOKASIDE LookasideList;
 
     //
+    // Nonpaged pool has no separate no execute part yet, and the pool header
+    // has no room for the bit, so these requests share the regular pool
+    //
+    PoolType &= ~POOL_NX_ALLOCATION;
+
+    //
     // Some sanity checks
     //
     ASSERT(Tag != 0);
