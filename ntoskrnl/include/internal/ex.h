@@ -1485,7 +1485,8 @@ VOID
 _ExAcquireFastMutex(IN PFAST_MUTEX FastMutex)
 {
     KIRQL OldIrql;
-    ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
+
+    /* No IRQL check, like Windows. Some drivers take one at DISPATCH_LEVEL, where it only works uncontended */
 
     /* Raise IRQL to APC */
     KeRaiseIrql(APC_LEVEL, &OldIrql);
