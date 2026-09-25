@@ -162,6 +162,41 @@ MiInitializeSessionIds(VOID)
     }
 }
 
+/**
+ * @brief
+ * Makes room for more session IDs.
+ *
+ * @return
+ * TRUE if the bitmap grew, FALSE if there was no memory for it.
+ *
+ * @remarks
+ * Called with the session ID mutex held.
+ */
+static
+BOOLEAN
+MiGrowSessionIdBitmap(VOID)
+{
+    PRTL_BITMAP NewBitmap;
+    ULONG NewSize, OldBytes;
+
+    NewSize = MiSessionIdBitmap->SizeOfBitMap + MI_SESSION_ID_GROWTH;
+    NewBitmap = ExAllocatePoolWithTag(PagedPool,
+                                      sizeof(RTL_BITMAP) + ((NewSize + 31) / 32) * sizeof(ULONG),
+                                      TAG_MM);
+    if (NewBitmap == NULL)
+        return FALSE;
+
+    /* Keep the IDs in use, the new ones start out free */
+    RtlInitializeBitMap(NewBitmap, (PULONG)(NewBitmap + 1), NewSize);
+    RtlClearAllBits(NewBitmap);
+    OldBytes = ((MiSessionIdBitmap->SizeOfBitMap + 31) / 32) * sizeof(ULONG);
+    RtlCopyMemory(NewBitmap->Buffer, MiSessionIdBitmap->Buffer, OldBytes);
+
+    ExFreePoolWithTag(MiSessionIdBitmap, TAG_MM);
+    MiSessionIdBitmap = NewBitmap;
+    return TRUE;
+}
+
 VOID
 NTAPI
 MiSessionLeader(IN PEPROCESS Process)
@@ -375,9 +410,13 @@ MiDereferenceSession(VOID)
             (PsGetCurrentProcess()->Vm.Flags.SessionLeader == 1) &&
             (MmSessionSpace->ReferenceCount == 1)));
 
-    /* The session bit must be set */
+    /* The session bit must be set, the bitmap can be replaced when it grows */
     SessionId = MmSessionSpace->SessionId;
+#if DBG
+    KeAcquireGuardedMutex(&MiSessionIdMutex);
     ASSERT(RtlCheckBit(MiSessionIdBitmap, SessionId));
+    KeReleaseGuardedMutex(&MiSessionIdMutex);
+#endif
 
     /* Get the current process */
     Process = PsGetCurrentProcess();
@@ -685,20 +724,23 @@ MiSessionCreateInternal(OUT PULONG SessionId)
     /* Lock the session ID creation mutex */
     KeAcquireGuardedMutex(&MiSessionIdMutex);
 
-    /* Allocate a new Session ID */
+    /* Allocate a new Session ID, making room for more when they are all taken */
     *SessionId = RtlFindClearBitsAndSet(MiSessionIdBitmap, 1, 0);
-    if (*SessionId == 0xFFFFFFFF)
-    {
-        /* We ran out of session IDs, we should expand */
-        DPRINT1("Too many sessions created. Expansion not yet supported\n");
-#if (_MI_PAGING_LEVELS < 3)
-        ExFreePoolWithTag(PageTables, 'tHmM');
-#endif // (_MI_PAGING_LEVELS < 3)
-        return STATUS_NO_MEMORY;
-    }
+    if ((*SessionId == 0xFFFFFFFF) && MiGrowSessionIdBitmap())
+        *SessionId = RtlFindClearBitsAndSet(MiSessionIdBitmap, 1, 0);
 
     /* Unlock the session ID creation mutex */
     KeReleaseGuardedMutex(&MiSessionIdMutex);
+
+    if (*SessionId == 0xFFFFFFFF)
+    {
+        DPRINT1("No session ID left\n");
+#if (_MI_PAGING_LEVELS < 3)
+        ExFreePoolWithTag(PageTables, 'tHmM');
+#endif // (_MI_PAGING_LEVELS < 3)
+        PspClearProcessFlag(Process, PSF_SESSION_CREATION_UNDERWAY_BIT);
+        return STATUS_NO_MEMORY;
+    }
 
     /* Reserve the global PTEs */
     SessionPte = MiReserveSystemPtes(MiSessionDataPages, SystemPteSpace);
