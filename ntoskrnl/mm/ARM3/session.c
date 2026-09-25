@@ -239,6 +239,194 @@ MmGetSessionIdEx(IN PEPROCESS Process)
     return SessionGlobal->SessionId;
 }
 
+/**
+ * @brief
+ * Frees a session page table or page directory whose entries are all gone.
+ *
+ * @param[in] PageFrameIndex
+ * The table page, with the PFN lock held.
+ *
+ * @remarks
+ * A table at the top of a session is its own parent and holds a share on
+ * itself. The parent has to be freed after its children.
+ */
+static
+VOID
+MiFreeSessionTablePage(
+    _In_ PFN_NUMBER PageFrameIndex)
+{
+    PMMPFN Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+    PFN_NUMBER ParentIndex = Pfn1->u4.PteFrame;
+
+    MI_ASSERT_PFN_LOCK_HELD();
+
+    MI_SET_PFN_DELETED(Pfn1);
+    if (ParentIndex == PageFrameIndex)
+    {
+        ASSERT(Pfn1->u2.ShareCount == 2);
+        MiDecrementShareCount(Pfn1, PageFrameIndex);
+    }
+    else
+    {
+        ASSERT(Pfn1->u2.ShareCount == 1);
+        MiDecrementShareCount(MI_PFN_ELEMENT(ParentIndex), ParentIndex);
+    }
+    MiDecrementShareCount(Pfn1, PageFrameIndex);
+}
+
+/**
+ * @brief
+ * Deletes one PTE of a session that is going away.
+ *
+ * @param[in] PointerPte
+ * The PTE, in a mapped session page table.
+ *
+ * @param[in] PageTableIndex
+ * The page table holding the PTE.
+ *
+ * @remarks
+ * The whole session working set goes at once, so pages are not taken out
+ * of it one by one.
+ */
+static
+VOID
+MiDeleteSessionPte(
+    _In_ PMMPTE PointerPte,
+    _In_ PFN_NUMBER PageTableIndex)
+{
+    PMMPFN Pfn1, PageTablePfn = MI_PFN_ELEMENT(PageTableIndex);
+    PFN_NUMBER PageFrameIndex;
+    MMPTE TempPte = *PointerPte;
+
+    MI_ASSERT_PFN_LOCK_HELD();
+
+    if (TempPte.u.Long == 0)
+        return;
+
+    if (TempPte.u.Hard.Valid)
+    {
+        PageFrameIndex = PFN_FROM_PTE(&TempPte);
+        Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+        MI_ERASE_PTE(PointerPte);
+        MiDecrementShareCount(PageTablePfn, PageTableIndex);
+
+        if (Pfn1->u3.e1.PrototypePte)
+        {
+            /* A shared page, only this mapping of it goes */
+            if (MI_IS_PAGE_DIRTY(&TempPte))
+                Pfn1->u3.e1.Modified = 1;
+        }
+        else
+        {
+            /* A page of the session itself */
+            ASSERT((PMMPTE)((ULONG_PTR)Pfn1->PteAddress & ~0x1) == PointerPte);
+            ASSERT(Pfn1->u4.PteFrame == PageTableIndex);
+            Pfn1->u1.WsIndex = 0;
+            MI_SET_PFN_DELETED(Pfn1);
+        }
+        MiDecrementShareCount(Pfn1, PageFrameIndex);
+    }
+    else if (TempPte.u.Soft.Prototype)
+    {
+        /* Nothing is charged for a PTE that points to a prototype */
+        MI_ERASE_PTE(PointerPte);
+    }
+    else if (TempPte.u.Soft.Transition)
+    {
+        PageFrameIndex = PFN_FROM_PTE(&TempPte);
+        Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+        ASSERT((PMMPTE)((ULONG_PTR)Pfn1->PteAddress & ~0x1) == PointerPte);
+
+        MI_ERASE_PTE(PointerPte);
+        MiDecrementShareCount(PageTablePfn, PageTableIndex);
+        MI_SET_PFN_DELETED(Pfn1);
+
+        /* A page still being written is freed when the write is done */
+        if (Pfn1->u3.e2.ReferenceCount == 0)
+        {
+            MiUnlinkPageFromList(Pfn1);
+            Pfn1->u3.e2.ReferenceCount++;
+            MiDecrementReferenceCount(Pfn1, PageFrameIndex);
+        }
+    }
+    else
+    {
+        /* Demand zero, or paged out */
+        if (TempPte.u.Soft.PageFileHigh != 0)
+            MiReleasePageFileSpace(TempPte);
+        MI_ERASE_PTE(PointerPte);
+    }
+}
+
+/**
+ * @brief
+ * Frees the pages and page tables of a session whose last process is leaving.
+ *
+ * @remarks
+ * Runs in that process with the session still mapped. The session data
+ * pages and the tables above them stay, they go with the last reference to
+ * the data pages, see MiReleaseProcessReferenceToSessionDataPage.
+ */
+static
+VOID
+MiDeleteSessionSpace(VOID)
+{
+    PMMPDE PointerPde;
+    PMMPTE PointerPte, LastPte, DataPte, LastDataPte;
+    PFN_NUMBER PageTableIndex, SessionPageTable;
+    PCHAR Va;
+    ULONG Index;
+    KIRQL OldIrql;
+
+    ASSERT(((ULONG_PTR)MmSessionBase & (PDE_MAPPED_VA - 1)) == 0);
+
+    DataPte = MiAddressToPte(MmSessionSpace);
+    LastDataPte = DataPte + MiSessionDataPages;
+    SessionPageTable = PFN_FROM_PTE(MiAddressToPde(MmSessionSpace));
+
+    OldIrql = MiAcquirePfnLock();
+
+    for (Va = MmSessionBase, Index = 0;
+         Va < (PCHAR)MiSessionSpaceEnd;
+         Va += PDE_MAPPED_VA, Index++)
+    {
+        PointerPde = MiAddressToPde(Va);
+#ifdef _M_AMD64
+        if (PointerPde->u.Hard.Valid == 0)
+            continue;
+#else
+        /* This process may not have faulted in every session PDE yet */
+        if (MmSessionSpace->PageTables[Index].u.Long == 0)
+            continue;
+        if (PointerPde->u.Hard.Valid == 0)
+            MI_WRITE_VALID_PDE(PointerPde, MmSessionSpace->PageTables[Index]);
+#endif
+        PageTableIndex = PFN_FROM_PTE(PointerPde);
+
+        PointerPte = MiAddressToPte(Va);
+        LastPte = PointerPte + PTE_PER_PAGE;
+        for (; PointerPte < LastPte; PointerPte++)
+        {
+            if ((PointerPte >= DataPte) && (PointerPte < LastDataPte))
+                continue;
+            MiDeleteSessionPte(PointerPte, PageTableIndex);
+        }
+
+        /* The page table of the session structure goes with the structure */
+        if (PageTableIndex == SessionPageTable)
+            continue;
+
+        MI_ERASE_PTE((PMMPTE)PointerPde);
+#ifndef _M_AMD64
+        MmSessionSpace->PageTables[Index].u.Long = 0;
+#endif
+        MiFreeSessionTablePage(PageTableIndex);
+    }
+
+    MiReleasePfnLock(OldIrql);
+    KeFlushEntireTb(TRUE, TRUE);
+}
+
 VOID
 NTAPI
 MiReleaseProcessReferenceToSessionDataPage(IN PMM_SESSION_SPACE SessionGlobal)
@@ -246,6 +434,10 @@ MiReleaseProcessReferenceToSessionDataPage(IN PMM_SESSION_SPACE SessionGlobal)
     ULONG i, SessionId;
     PMMPTE PointerPte;
     PFN_NUMBER PageFrameIndex[MI_SESSION_DATA_PAGES_MAXIMUM];
+    PFN_NUMBER SessionPageTable;
+#if (_MI_PAGING_LEVELS == 4)
+    PFN_NUMBER PageDirectory, PageParent;
+#endif
     PMMPFN Pfn1;
     KIRQL OldIrql;
 
@@ -269,6 +461,9 @@ MiReleaseProcessReferenceToSessionDataPage(IN PMM_SESSION_SPACE SessionGlobal)
         PageFrameIndex[i] = PFN_FROM_PTE(PointerPte + i);
     }
 
+    /* Nothing maps session space anymore, the tables are found through the PFNs */
+    SessionPageTable = MI_PFN_ELEMENT(PageFrameIndex[0])->u4.PteFrame;
+
     /* Release them */
     MiReleaseSystemPtes(PointerPte, MiSessionDataPages, SystemPteSpace);
 
@@ -287,8 +482,23 @@ MiReleaseProcessReferenceToSessionDataPage(IN PMM_SESSION_SPACE SessionGlobal)
         Pfn1 = MI_PFN_ELEMENT(PageFrameIndex[i]);
         ASSERT(Pfn1->u2.ShareCount == 1);
         ASSERT(Pfn1->u3.e2.ReferenceCount == 1);
+        ASSERT(Pfn1->u4.PteFrame == SessionPageTable);
         MiDecrementShareCount(Pfn1, PageFrameIndex[i]);
+
+        /* And the share its session mapping held on the page table */
+        MiDecrementShareCount(MI_PFN_ELEMENT(SessionPageTable), SessionPageTable);
     }
+
+    /* Then the tables above the data pages, children first */
+#if (_MI_PAGING_LEVELS == 4)
+    PageDirectory = MI_PFN_ELEMENT(SessionPageTable)->u4.PteFrame;
+    PageParent = MI_PFN_ELEMENT(PageDirectory)->u4.PteFrame;
+#endif
+    MiFreeSessionTablePage(SessionPageTable);
+#if (_MI_PAGING_LEVELS == 4)
+    MiFreeSessionTablePage(PageDirectory);
+    MiFreeSessionTablePage(PageParent);
+#endif
 
     /* Done playing with pages, release the lock */
     MiReleasePfnLock(OldIrql);
@@ -366,6 +576,21 @@ MiDereferenceSessionFinal(VOID)
         /* Call it */
         SessionGlobal->Win32KDriverUnload(NULL);
     }
+
+    /* Views left behind keep their sections referenced */
+    if (SessionGlobal->Session.SystemSpaceHashEntries != 0)
+    {
+        DPRINT1("Session %lu leaks %lu views\n",
+                SessionGlobal->SessionId,
+                SessionGlobal->Session.SystemSpaceHashEntries);
+    }
+
+    /* Free the session view space bookkeeping */
+    ExFreePoolWithTag(SessionGlobal->Session.SystemSpaceViewTable, TAG_MM);
+    ExFreePoolWithTag(SessionGlobal->Session.SystemSpaceBitMap, TAG_MM);
+
+    /* And everything that is still mapped in session space */
+    MiDeleteSessionSpace();
 }
 
 
