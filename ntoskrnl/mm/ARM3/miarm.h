@@ -1932,8 +1932,6 @@ InitializePool(           //
     IN ULONG Threshold    //
 );                        //
 
-// FIXFIX: THIS ONE TOO
-CODE_SEG("INIT")
 VOID
 NTAPI
 ExInitializePoolDescriptor(

@@ -874,9 +874,8 @@ ExpInsertPoolTracker(IN ULONG Key,
     if (ExStopBadTags) ASSERT(Key & 0xFFFFFF00);
 
     //
-    // ASSERT on ReactOS features not yet supported
+    // Session pool is counted in the regular table, with the pool of its kind
     //
-    ASSERT(!(PoolType & SESSION_POOL_MASK));
 
     //
     // Why the double indirection? Because normally this function is also used
@@ -963,7 +962,6 @@ ExpInsertPoolTracker(IN ULONG Key,
     DPRINT1("Out of pool tag space, ignoring...\n");
 }
 
-CODE_SEG("INIT")
 VOID
 NTAPI
 ExInitializePoolDescriptor(IN PPOOL_DESCRIPTOR PoolDescriptor,
@@ -1007,11 +1005,6 @@ ExInitializePoolDescriptor(IN PPOOL_DESCRIPTOR PoolDescriptor,
         ExpInitializePoolListHead(NextEntry);
         NextEntry++;
     }
-
-    //
-    // Note that ReactOS does not support Session Pool Yet
-    //
-    ASSERT(PoolType != PagedPoolSession);
 }
 
 CODE_SEG("INIT")
@@ -1929,14 +1922,17 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     ExpCheckPoolIrqlLevel(PoolType, NumberOfBytes, NULL);
 
     //
-    // Not supported in ReactOS
+    // Only paged pool is per session, session nonpaged pool is the regular one
     //
-    ASSERT(!(PoolType & SESSION_POOL_MASK));
+    if ((PoolType & SESSION_POOL_MASK) && ((PoolType & BASE_POOL_TYPE_MASK) == NonPagedPool))
+        PoolType &= ~SESSION_POOL_MASK;
+    ASSERT(!(PoolType & SESSION_POOL_MASK) || PsGetCurrentProcess()->ProcessInSession);
 
     //
     // Check if verifier or special pool is enabled
     //
-    if (ExpPoolFlags & (EXP_POOL_FLAG_VERIFIER | EXP_POOL_FLAG_SPECIAL_POOL))
+    if ((ExpPoolFlags & (EXP_POOL_FLAG_VERIFIER | EXP_POOL_FLAG_SPECIAL_POOL)) &&
+        !(PoolType & SESSION_POOL_MASK))
     {
         //
         // For verifier, we should call the verification routine
@@ -1971,7 +1967,7 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     //
     OriginalType = PoolType;
     PoolType = PoolType & BASE_POOL_TYPE_MASK;
-    PoolDesc = PoolVector[PoolType];
+    PoolDesc = (OriginalType & SESSION_POOL_MASK) ? &MmSessionSpace->PagedPool : PoolVector[PoolType];
     ASSERT(PoolDesc != NULL);
 
     //
@@ -2052,6 +2048,12 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
         InterlockedIncrement((PLONG)&PoolDesc->RunningAllocs);
 
         //
+        // The big page table is keyed by address, and a session address is
+        // not unique across sessions, so session blocks are not tracked there
+        //
+        if (OriginalType & SESSION_POOL_MASK) return Entry;
+
+        //
         // Add a tag for the big page allocation and switch to the generic "BIG"
         // tag if we failed to do so, then insert a tracker for this alloation.
         //
@@ -2087,9 +2089,10 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     ASSERT(i < POOL_LISTS_PER_PAGE);
 
     //
-    // Handle lookaside list optimization for both paged and nonpaged pool
+    // Handle lookaside list optimization for both paged and nonpaged pool,
+    // the lists are global so session blocks stay out of them
     //
-    if (i <= NUMBER_POOL_LOOKASIDE_LISTS)
+    if ((i <= NUMBER_POOL_LOOKASIDE_LISTS) && !(OriginalType & SESSION_POOL_MASK))
     {
         //
         // Try popping it from the per-CPU lookaside list
@@ -2506,7 +2509,7 @@ ExFreePoolWithTag(IN PVOID P,
     POOL_TYPE PoolType;
     PPOOL_DESCRIPTOR PoolDesc;
     ULONG Tag;
-    BOOLEAN Combined = FALSE;
+    BOOLEAN Combined = FALSE, SessionBlock;
     PFN_NUMBER PageCount, RealPageCount;
     PKPRCB Prcb = KeGetCurrentPrcb();
     PGENERAL_LOOKASIDE LookasideList;
@@ -2592,6 +2595,22 @@ ExFreePoolWithTag(IN PVOID P,
         //
         PoolType = MmDeterminePoolType(P);
         ExpCheckPoolIrqlLevel(PoolType, 0, P);
+
+        //
+        // Session blocks are not in the big page table, the session pool
+        // bitmap knows their size
+        //
+        if (PoolType & SESSION_POOL_MASK)
+        {
+            PoolDesc = &MmSessionSpace->PagedPool;
+            RealPageCount = MiFreePoolPages(P);
+            InterlockedIncrement((PLONG)&PoolDesc->RunningDeAllocs);
+            InterlockedExchangeAddSizeT(&PoolDesc->TotalBytes,
+                                        -(LONG_PTR)(RealPageCount << PAGE_SHIFT));
+            InterlockedExchangeAdd((PLONG)&PoolDesc->TotalBigPages, -(LONG)RealPageCount);
+            return;
+        }
+
         Tag = ExpFindAndRemoveTagBigPages(P, &PageCount, PoolType);
         if (!Tag)
         {
@@ -2677,7 +2696,8 @@ ExFreePoolWithTag(IN PVOID P,
     //
     BlockSize = Entry->BlockSize;
     PoolType = (Entry->PoolType - 1) & BASE_POOL_TYPE_MASK;
-    PoolDesc = PoolVector[PoolType];
+    SessionBlock = ((Entry->PoolType - 1) & SESSION_POOL_MASK) != 0;
+    PoolDesc = SessionBlock ? &MmSessionSpace->PagedPool : PoolVector[PoolType];
 
     //
     // Make sure that the IRQL makes sense
@@ -2734,7 +2754,7 @@ ExFreePoolWithTag(IN PVOID P,
     //
     // Is this allocation small enough to have come from a lookaside list?
     //
-    if (BlockSize <= NUMBER_POOL_LOOKASIDE_LISTS)
+    if ((BlockSize <= NUMBER_POOL_LOOKASIDE_LISTS) && !SessionBlock)
     {
         //
         // Try pushing it into the per-CPU lookaside list
