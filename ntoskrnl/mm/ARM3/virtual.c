@@ -282,10 +282,13 @@ MiDeleteSystemPageableVm(IN PMMPTE PointerPte,
     PMMPFN Pfn1, Pfn2;
     PFN_NUMBER PageFrameIndex, PageTableIndex;
     KIRQL OldIrql;
+    PMMSUPPORT WorkingSet;
     ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
 
-    /* Lock the system working set */
-    MiLockWorkingSet(CurrentThread, &MmSystemCacheWs);
+    /* Session pages are faulted in under the session working set lock */
+    WorkingSet = MI_IS_SESSION_PTE(PointerPte) ?
+                 &MmSessionSpace->GlobalVirtualAddress->Vm : &MmSystemCacheWs;
+    MiLockWorkingSet(CurrentThread, WorkingSet);
 
     /* Loop all pages */
     while (PageCount)
@@ -355,7 +358,7 @@ MiDeleteSystemPageableVm(IN PMMPTE PointerPte,
     }
 
     /* Release the working set */
-    MiUnlockWorkingSet(CurrentThread, &MmSystemCacheWs);
+    MiUnlockWorkingSet(CurrentThread, WorkingSet);
 
     /* Flush the entire TLB */
     KeFlushEntireTb(TRUE, TRUE);

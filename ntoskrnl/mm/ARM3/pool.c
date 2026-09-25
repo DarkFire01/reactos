@@ -403,14 +403,162 @@ MiInitializeNonPagedPool(VOID)
                            NonPagedPoolExpansion);
 }
 
+/**
+ * @brief
+ * Allocates pages from the paged pool of the current session.
+ *
+ * @param[in] SizeInPages
+ * Number of pages.
+ *
+ * @return
+ * The address of the pages, or NULL when the session pool is full.
+ *
+ * @remarks
+ * The pages start out demand zero and are faulted in through the session
+ * working set. Page tables are added one at a time as the pool grows.
+ */
+static
+PVOID
+MiAllocateSessionPoolPages(
+    _In_ PFN_COUNT SizeInPages)
+{
+    PMM_PAGED_POOL_INFO PagedPoolInfo = &MmSessionSpace->PagedPoolInfo;
+    PKGUARDED_MUTEX PoolMutex = &MmSessionSpace->GlobalVirtualAddress->PagedPoolMutex;
+    PMMPDE PointerPde;
+    PMMPTE PointerPte, LastPte;
+    PFN_NUMBER PageFrameIndex;
+    NTSTATUS Status;
+    MMPTE TempPte;
+    ULONG i;
+#ifndef _M_AMD64
+    ULONG Index;
+#endif
+
+    KeAcquireGuardedMutex(PoolMutex);
+
+    i = RtlFindClearBitsAndSet(PagedPoolInfo->PagedPoolAllocationMap,
+                               SizeInPages,
+                               PagedPoolInfo->PagedPoolHint);
+    while (i == 0xFFFFFFFF)
+    {
+        /* Grow the pool by one page table */
+        PointerPde = PagedPoolInfo->NextPdeForPagedPoolExpansion;
+        if (PointerPde > MiPteToPde(PagedPoolInfo->LastPteForPagedPool))
+        {
+            KeReleaseGuardedMutex(PoolMutex);
+            DPRINT1("Session %lu is out of paged pool\n", MmSessionSpace->SessionId);
+            return NULL;
+        }
+
+        /* The pool mutex is held, nobody else can have made this PDE valid */
+        Status = MiInitializeAndChargePfn(&PageFrameIndex,
+                                          PointerPde,
+                                          MmSessionSpace->SessionPageDirectoryIndex,
+                                          TRUE);
+        ASSERT(Status == STATUS_SUCCESS);
+
+#ifndef _M_AMD64
+        /* Other processes of the session pick up the PDE from here */
+        Index = (ULONG)(((ULONG_PTR)MiPteToAddress(MiPdeToPte(PointerPde)) -
+                         (ULONG_PTR)MmSessionBase) / PDE_MAPPED_VA);
+        ASSERT(MmSessionSpace->PageTables[Index].u.Long == 0);
+        MmSessionSpace->PageTables[Index] = *PointerPde;
+#endif
+        InterlockedIncrementSizeT(&MmSessionSpace->NonPageablePages);
+        InterlockedIncrementSizeT(&MmSessionSpace->CommittedPages);
+
+        RtlClearBits(PagedPoolInfo->PagedPoolAllocationMap,
+                     (ULONG)(PointerPde - MiPteToPde(PagedPoolInfo->FirstPteForPagedPool)) * PTE_PER_PAGE,
+                     PTE_PER_PAGE);
+        PagedPoolInfo->NextPdeForPagedPoolExpansion++;
+
+        i = RtlFindClearBitsAndSet(PagedPoolInfo->PagedPoolAllocationMap, SizeInPages, 0);
+    }
+
+    if (SizeInPages == 1) PagedPoolInfo->PagedPoolHint = i + 1;
+    RtlSetBit(PagedPoolInfo->EndOfPagedPoolBitmap, i + SizeInPages - 1);
+    PagedPoolInfo->AllocatedPagedPool += SizeInPages;
+
+    KeReleaseGuardedMutex(PoolMutex);
+
+    MI_MAKE_SOFTWARE_PTE(&TempPte, MM_READWRITE);
+    PointerPte = PagedPoolInfo->FirstPteForPagedPool + i;
+    LastPte = PointerPte + SizeInPages;
+    do
+    {
+        MI_WRITE_INVALID_PTE(PointerPte, TempPte);
+    } while (++PointerPte < LastPte);
+
+    return MiPteToAddress(PagedPoolInfo->FirstPteForPagedPool + i);
+}
+
+/**
+ * @brief
+ * Frees pages of the paged pool of the current session.
+ *
+ * @param[in] StartingVa
+ * The address MiAllocateSessionPoolPages returned.
+ *
+ * @return
+ * The number of pages freed.
+ */
+static
+ULONG
+MiFreeSessionPoolPages(
+    _In_ PVOID StartingVa)
+{
+    PMM_PAGED_POOL_INFO PagedPoolInfo = &MmSessionSpace->PagedPoolInfo;
+    PKGUARDED_MUTEX PoolMutex = &MmSessionSpace->GlobalVirtualAddress->PagedPoolMutex;
+    PFN_COUNT FreePages;
+    ULONG i, End, NumberOfPages;
+#ifndef _M_AMD64
+    PMMPTE PointerPte;
+#endif
+
+    i = (ULONG)(((ULONG_PTR)StartingVa - (ULONG_PTR)MmSessionSpace->PagedPoolStart) >> PAGE_SHIFT);
+    End = i;
+    while (!RtlTestBit(PagedPoolInfo->EndOfPagedPoolBitmap, End)) End++;
+    NumberOfPages = End - i + 1;
+
+#ifndef _M_AMD64
+    /* This process may lack a session PDE, fault it in before the working set is locked */
+    for (PointerPte = PagedPoolInfo->FirstPteForPagedPool + i;
+         PointerPte <= PagedPoolInfo->FirstPteForPagedPool + End;
+         PointerPte++)
+    {
+        *(volatile ULONG_PTR *)PointerPte;
+    }
+#endif
+
+    FreePages = MiDeleteSystemPageableVm(PagedPoolInfo->FirstPteForPagedPool + i,
+                                         NumberOfPages,
+                                         0,
+                                         NULL);
+    ASSERT(FreePages == NumberOfPages);
+
+    KeAcquireGuardedMutex(PoolMutex);
+    RtlClearBit(PagedPoolInfo->EndOfPagedPoolBitmap, End);
+    RtlClearBits(PagedPoolInfo->PagedPoolAllocationMap, i, NumberOfPages);
+    if (i < PagedPoolInfo->PagedPoolHint) PagedPoolInfo->PagedPoolHint = i;
+    PagedPoolInfo->AllocatedPagedPool -= NumberOfPages;
+    KeReleaseGuardedMutex(PoolMutex);
+
+    return NumberOfPages;
+}
+
 POOL_TYPE
 NTAPI
 MmDeterminePoolType(IN PVOID PoolAddress)
 {
     //
-    // Use a simple bounds check
+    // Use a simple bounds check, session space first since on x86 it lies
+    // between the start and the end of nonpaged pool
     //
-    if (PoolAddress >= MmPagedPoolStart && PoolAddress <= MmPagedPoolEnd)
+    if (MI_IS_SESSION_ADDRESS(PoolAddress) &&
+        (PoolAddress >= MmSessionSpace->PagedPoolStart) &&
+        (PoolAddress <= MmSessionSpace->PagedPoolEnd))
+        return PagedPoolSession;
+    else if (PoolAddress >= MmPagedPoolStart && PoolAddress <= MmPagedPoolEnd)
         return PagedPool;
     else if (PoolAddress >= MmNonPagedPoolStart && PoolAddress <= MmNonPagedPoolEnd)
         return NonPagedPool;
@@ -451,6 +599,12 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
         //
         return NULL;
     }
+
+    //
+    // Session paged pool lives in session space
+    //
+    if ((PoolType & SESSION_POOL_MASK) && ((PoolType & BASE_POOL_TYPE_MASK) == PagedPool))
+        return MiAllocateSessionPoolPages(SizeInPages);
 
     //
     // Handle paged pool
@@ -924,6 +1078,12 @@ MiFreePoolPages(IN PVOID StartingVa)
     PMMFREE_POOL_ENTRY FreeEntry, NextEntry, LastEntry;
     ULONG i, End;
     ULONG_PTR Offset;
+
+    //
+    // Handle session paged pool
+    //
+    if (MI_IS_SESSION_ADDRESS(StartingVa))
+        return MiFreeSessionPoolPages(StartingVa);
 
     //
     // Handle paged pool
