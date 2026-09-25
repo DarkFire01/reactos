@@ -159,13 +159,24 @@ NtGdiDdDDICheckExclusiveOwnership(VOID)
 }
 
 
+/* What dxgkrnl's kernel side adapter open takes: the adapter's device object in, a handle and LUID out */
+typedef struct _DL_OPEN_ADAPTER
+{
+    PDEVICE_OBJECT DeviceObject;
+    D3DKMT_HANDLE hAdapter;
+    LUID AdapterLuid;
+} DL_OPEN_ADAPTER, *PDL_OPEN_ADAPTER;
+
+C_ASSERT(FIELD_OFFSET(DL_OPEN_ADAPTER, hAdapter) == sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DL_OPEN_ADAPTER, AdapterLuid) == sizeof(PVOID) + sizeof(D3DKMT_HANDLE));
+
+typedef NTSTATUS (NTAPI *PFN_DL_OPEN_ADAPTER)(_Inout_ PDL_OPEN_ADAPTER);
+
 /**
  * @brief Opens the dxgkrnl adapter that drives a graphics device.
  *
- * The Reference resolves the display itself and only then asks dxgkrnl for a handle, which is
- * why the interface carries no OpenAdapterFrom* of its own. The answer is already on the
- * device: EngpRegisterGraphicsDevice recorded the adapter and its LUID when the device was
- * registered.
+ * The adapter is found from the device object behind the display. The D3DKMT style entry points
+ * of dxgkrnl take user buffers only, so a structure of ours has to go through the kernel side one.
  *
  * @param pGraphicsDevice The display in question.
  * @param phAdapter Receives the adapter handle.
@@ -182,29 +193,49 @@ DxgkpOpenAdapterForDevice(
     _Out_ LUID *pAdapterLuid,
     _Out_ ULONG *pVidPnSourceId)
 {
-    D3DKMT_OPENADAPTERFROMLUID Open;
-    PFN_DXGK_D3DKMT pfn;
+    PFN_DL_OPEN_ADAPTER pfnOpenAdapter;
+    PDEVICE_OBJECT DeviceObject;
+    PFILE_OBJECT FileObject;
+    UNICODE_STRING ustrDevice;
+    DL_OPEN_ADAPTER Open;
     NTSTATUS Status;
 
     if ((pGraphicsDevice == NULL) || (pGraphicsDevice->DxgAdapter == NULL))
         return STATUS_NOT_SUPPORTED;
 
-    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenAdapterFromLuid);
-    if (pfn == NULL)
+    pfnOpenAdapter = (PFN_DL_OPEN_ADAPTER)DxgkGetD3DKMTSlot(DXGK_SLOT_OpenAdapter);
+    if (pfnOpenAdapter == NULL)
     {
-        DXGKMT_TRACE_NOPROC("OpenAdapterFromLuid");
+        DXGKMT_TRACE_NOPROC("OpenAdapter");
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    RtlZeroMemory(&Open, sizeof(Open));
-    Open.AdapterLuid = pGraphicsDevice->DxgAdapterLuid;
-
-    Status = pfn(&Open);
+    RtlInitUnicodeString(&ustrDevice, pGraphicsDevice->szNtDeviceName);
+    Status = IoGetDeviceObjectPointer(&ustrDevice, 0, &FileObject, &DeviceObject);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("win32k: no device object for %wZ, 0x%lX\n", &ustrDevice, Status);
         return Status;
+    }
+
+    /* Only the device object is needed, and it has to stay while dxgkrnl looks at it */
+    ObReferenceObject(DeviceObject);
+    ObDereferenceObject(FileObject);
+
+    RtlZeroMemory(&Open, sizeof(Open));
+    Open.DeviceObject = DeviceObject;
+    Status = pfnOpenAdapter(&Open);
+
+    ObDereferenceObject(DeviceObject);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("win32k: dxgkrnl could not open the adapter of %wZ, 0x%lX\n", &ustrDevice, Status);
+        return Status;
+    }
 
     *phAdapter = Open.hAdapter;
-    *pAdapterLuid = pGraphicsDevice->DxgAdapterLuid;
+    *pAdapterLuid = Open.AdapterLuid;
     *pVidPnSourceId = pGraphicsDevice->VidPnSourceId;
 
     return STATUS_SUCCESS;

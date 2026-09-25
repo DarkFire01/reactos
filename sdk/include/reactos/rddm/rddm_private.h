@@ -185,6 +185,7 @@ SMgrRegisterGdiCallout(
 #define DXGK_SLOT_PresentMultiPlaneOverlay3            227
 #define DXGK_SLOT_QueryVidPnExclusiveOwnership         206
 #define DXGK_SLOT_SetVidPnSourceHwProtection           217
+#define DXGK_SLOT_OpenAdapter                          7
 #define DXGK_SLOT_OpenAdapterFromLuid                  11
 #define DXGK_SLOT_EnumAdapters2                        9
 #define DXGK_SLOT_SetVidPnSourceOwner1                 50
