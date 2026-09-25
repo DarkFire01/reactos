@@ -92,11 +92,12 @@ MiInitializeSessionSpaceLayout(VOID)
     /* And it all begins here */
     MmSessionBase = MiSessionPoolStart;
 
-    /* System view space ends at session space, so now that we know where
-     * this is, we can compute the base address of system view space itself. */
+    /* System view space is the top of the system cache region, see the kernel VA layout */
     MmSystemViewSize = MI_SYSTEM_VIEW_SIZE;
-    MiSystemViewStart = (PUCHAR)MmSessionBase - MmSystemViewSize;
+    MiSystemViewStart = Add2Ptr(MiSystemVaRegions[AssignedRegionSystemCache].BaseAddress,
+                                MiSystemVaRegions[AssignedRegionSystemCache].NumberOfBytes);
     ASSERT(IS_PAGE_ALIGNED(MiSystemViewStart));
+    ASSERT(MiAddressToPxi(MiSystemViewStart) != MiAddressToPxi(MmSessionBase));
 
     /* Sanity checks */
     ASSERT(Add2Ptr(MmSessionBase, MmSessionSize) == MiSessionSpaceEnd);
@@ -292,7 +293,7 @@ MiInitializePageTable(VOID)
     MiMapPPEs((PVOID)HYPER_SPACE, (PVOID)HYPER_SPACE_END);
 
     /* Setup PPEs for system space view */
-    MiMapPPEs(MiSystemViewStart, (PCHAR)MiSystemViewStart + MmSystemViewSize);
+    MiMapPPEs(MiSystemViewStart, (PCHAR)MiSystemViewStart + MmSystemViewSize - 1);
 
     /* Setup the mapping PDEs */
     MiMapPDEs((PVOID)MI_MAPPING_RANGE_START, (PVOID)MI_MAPPING_RANGE_END);
