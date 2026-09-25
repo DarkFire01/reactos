@@ -213,6 +213,10 @@ MiInitializeKernelVaLayout(
                         PDE_MAPPED_VA);
 
     MiRandomizeVaRegion(AssignedRegionSystemCache, 2 * _1TB, 512 * _1GB);
+
+    /* System view space is global, so it takes the top of the cache region instead of session space */
+    MiSystemVaRegions[AssignedRegionSystemCache].NumberOfBytes -= MI_SYSTEM_VIEW_SIZE;
+
     MiRandomizeVaRegion(AssignedRegionPagedPool, 128 * _1GB, PDE_MAPPED_VA);
 
     /*
