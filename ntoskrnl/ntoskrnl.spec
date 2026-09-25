@@ -627,6 +627,7 @@
 @ stdcall KeInsertQueueApc(ptr ptr ptr long)
 @ stdcall KeInsertQueueDpc(ptr ptr ptr)
 @ stdcall KeInvalidateAllCaches()
+@ fastcall -arch=i386,x86_64 KeInvalidateRangeAllCaches(ptr long)
 @ stdcall KeIpiGenericCall(ptr ptr)
 @ stdcall KeIsAttachedProcess()
 @ stdcall -arch=i386,arm KeIsExecutingDpc()

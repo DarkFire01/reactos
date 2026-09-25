@@ -111,6 +111,13 @@ __INTRIN_INLINE void _mm_lfence(void)
 }
 #endif
 
+#if !HAS_BUILTIN(_mm_clflush) && !defined(__clang__)
+__INTRIN_INLINE void _mm_clflush(void const *p)
+{
+	__asm__ __volatile__("clflush %0" : : "m"(*(volatile char *)p) : "memory");
+}
+#endif
+
 #if defined(__x86_64__) && !HAS_BUILTIN(__faststorefence)
 __INTRIN_INLINE void __faststorefence(void)
 {

@@ -8,6 +8,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <ntoskrnl.h>
+#include <emmintrin.h>
 #include <x86x64/Cpuid.h>
 #define NDEBUG
 #include <debug.h>
@@ -143,4 +144,42 @@ KiGetCpuSignature(
 
     /* Get the stepping */
     *Stepping = VersionInfo.Eax.Bits.SteppingId;
+}
+
+/*!
+ * \brief Writes back and invalidates the cache lines of a range on every processor
+ *
+ * \param[in] BaseAddress - Start of the range
+ * \param[in] Length - Size of the range in bytes
+ *
+ * \remarks CLFLUSH reaches the caches of all processors. Without it only the
+ *          whole cache of the current processor can be written back.
+ */
+VOID
+FASTCALL
+KeInvalidateRangeAllCaches(
+    _In_ PVOID BaseAddress,
+    _In_ ULONG Length)
+{
+    CPUID_VERSION_INFO_REGS VersionInfo;
+    ULONG_PTR Address, EndAddress;
+    ULONG LineSize;
+
+    /* CLFLUSH reports its line size in units of 8 bytes */
+    __cpuid(VersionInfo.AsInt32, 1);
+    LineSize = VersionInfo.Ebx.Bits.CacheLineSize * 8;
+    if (!VersionInfo.Edx.Bits.CLFSH || (LineSize == 0))
+    {
+        KeInvalidateAllCaches();
+        return;
+    }
+
+    EndAddress = (ULONG_PTR)BaseAddress + Length;
+    for (Address = ALIGN_DOWN_BY(BaseAddress, LineSize); Address < EndAddress; Address += LineSize)
+    {
+        _mm_clflush((PVOID)Address);
+    }
+
+    /* The flushes must be done before the caller changes the caching */
+    _mm_mfence();
 }
