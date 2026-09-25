@@ -288,7 +288,8 @@ MiInitializePageTable(VOID)
     {
         PMI_SYSTEM_VA_ASSIGNMENT Region = &MiSystemVaRegions[i];
 
-        if (Region->BaseAddress == NULL)
+        /* Session space is mapped per process, each session brings its own */
+        if ((Region->BaseAddress == NULL) || (i == AssignedRegionSession))
             continue;
 
         MiMapPXEs(Region->BaseAddress,
