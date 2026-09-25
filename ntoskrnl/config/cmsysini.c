@@ -543,6 +543,83 @@ done:
     return Status;
 }
 
+/**
+ * @brief
+ * Publishes the docking state the loader found under IDConfigDB\CurrentDockInfo. Display
+ * drivers read DockingState from there through dxgkrnl, which fails their start without it.
+ *
+ * @param[in] ConfigHandle
+ * The IDConfigDB key of the current control set.
+ *
+ * @param[in] Profile
+ * The hardware profile block the loader filled.
+ *
+ * @return
+ * The first registry failure, otherwise STATUS_SUCCESS.
+ */
+CODE_SEG("INIT")
+static
+NTSTATUS
+CmpRecordDockingState(
+    _In_ HANDLE ConfigHandle,
+    _In_ PPROFILE_PARAMETER_BLOCK Profile)
+{
+    UNICODE_STRING KeyName = RTL_CONSTANT_STRING(L"CurrentDockInfo");
+    UNICODE_STRING ValueName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    HANDLE DockHandle;
+    ULONG Disposition;
+    ULONG Value;
+    NTSTATUS Status;
+
+    /* It describes this boot only, so it does not survive it */
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &KeyName,
+                               OBJ_CASE_INSENSITIVE,
+                               ConfigHandle,
+                               NULL);
+    Status = NtCreateKey(&DockHandle,
+                         KEY_READ | KEY_SET_VALUE | KEY_CREATE_SUB_KEY,
+                         &ObjectAttributes,
+                         0,
+                         NULL,
+                         REG_OPTION_VOLATILE,
+                         &Disposition);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to create CurrentDockInfo: 0x%lx\n", Status);
+        return Status;
+    }
+
+    RtlInitUnicodeString(&ValueName, L"DockingState");
+    Value = Profile->DockingState;
+    Status = NtSetValueKey(DockHandle, &ValueName, 0, REG_DWORD, &Value, sizeof(Value));
+
+    if (NT_SUCCESS(Status))
+    {
+        RtlInitUnicodeString(&ValueName, L"Capabilities");
+        Value = Profile->Capabilities;
+        Status = NtSetValueKey(DockHandle, &ValueName, 0, REG_DWORD, &Value, sizeof(Value));
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        RtlInitUnicodeString(&ValueName, L"DockID");
+        Value = Profile->DockID;
+        Status = NtSetValueKey(DockHandle, &ValueName, 0, REG_DWORD, &Value, sizeof(Value));
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        RtlInitUnicodeString(&ValueName, L"SerialNumber");
+        Value = Profile->SerialNumber;
+        Status = NtSetValueKey(DockHandle, &ValueName, 0, REG_DWORD, &Value, sizeof(Value));
+    }
+
+    NtClose(DockHandle);
+    return Status;
+}
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
@@ -682,7 +759,9 @@ CmpCreateControlSet(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                OBJ_CASE_INSENSITIVE,
                                KeyHandle,
                                NULL);
-    Status = NtOpenKey(&ConfigHandle, KEY_READ, &ObjectAttributes);
+    Status = NtOpenKey(&ConfigHandle,
+                       KEY_READ | KEY_SET_VALUE | KEY_CREATE_SUB_KEY,
+                       &ObjectAttributes);
 
     /* Check if we don't have one */
     if (!NT_SUCCESS(Status))
@@ -722,6 +801,19 @@ CmpCreateControlSet(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         HwProfile = *(PULONG)((PUCHAR)ValueInfo + ValueInfo->DataOffset);
     }
 
+    /*
+     * Once the loader matched a hardware profile, its docking state is the current one. It only
+     * needs IDConfigDB, so it goes in before the profile key, which the default hive lacks.
+     */
+    LoaderExtension = LoaderBlock->Extension;
+    if (LoaderExtension &&
+        (LoaderExtension->Size >= RTL_SIZEOF_THROUGH_FIELD(LOADER_PARAMETER_EXTENSION, Profile)))
+    {
+        /* 1 alias match, 2 true match, 3 pristine match */
+        if ((LoaderExtension->Profile.Status >= 1) && (LoaderExtension->Profile.Status <= 3))
+            CmpRecordDockingState(ConfigHandle, &LoaderExtension->Profile);
+    }
+
     /* Open the hardware profile key */
     RtlInitUnicodeString(&KeyName,
                          L"\\Registry\\Machine\\System\\CurrentControlSet"
@@ -758,13 +850,6 @@ CmpCreateControlSet(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         /* Cleanup and exit */
         Status = STATUS_SUCCESS;
         goto Cleanup;
-    }
-
-    /* Check if we have a loader block extension */
-    LoaderExtension = LoaderBlock->Extension;
-    if (LoaderExtension)
-    {
-        DPRINT("ReactOS doesn't support NTLDR Profiles yet!\n");
     }
 
     /* Create the current hardware profile key */
