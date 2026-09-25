@@ -1629,8 +1629,8 @@ PsSetJobUIRestrictionsClass(
  *     been registered (i.e. the win32 subsystem is not loaded yet).
  *
  * @remarks
- *     FIXME: TODO: We do not attach to the session of the job, as win32k is only ever
- *     loaded in one session.
+ *     Win32k lives in session space, so the callout runs attached to the session
+ *     of the job. A job whose session is gone has nothing left in win32k.
  */
 NTSTATUS
 NTAPI
@@ -1641,6 +1641,9 @@ PspInvokeW32JobCallout(
 )
 {
     WIN32_JOBCALLOUT_PARAMETERS Parameters;
+    PVOID SessionEntry = NULL;
+    KAPC_STATE ApcState;
+    NTSTATUS Status;
 
     /* Nothing to do if win32k has not registered a callout */
     if (PspW32JobCallout == NULL)
@@ -1652,7 +1655,30 @@ PspInvokeW32JobCallout(
     Parameters.CalloutType = CalloutType;
     Parameters.Data = Data;
 
-    return PspW32JobCallout(&Parameters);
+    if (!PsGetCurrentProcess()->ProcessInSession ||
+        (PsGetCurrentProcessSessionId() != Job->SessionId))
+    {
+        SessionEntry = MmGetSessionById(Job->SessionId);
+        if (SessionEntry == NULL)
+            return STATUS_SUCCESS;
+
+        Status = MmAttachSession(SessionEntry, &ApcState);
+        if (!NT_SUCCESS(Status))
+        {
+            MmQuitNextSession(SessionEntry);
+            return Status;
+        }
+    }
+
+    Status = PspW32JobCallout(&Parameters);
+
+    if (SessionEntry != NULL)
+    {
+        MmDetachSession(SessionEntry, &ApcState);
+        MmQuitNextSession(SessionEntry);
+    }
+
+    return Status;
 }
 
 /*!
