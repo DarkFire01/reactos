@@ -1355,9 +1355,10 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
         ASSERT(VadTree->NumberGenericTableElements >= 1);
         MiRemoveNode((PMMADDRESS_NODE)Vad, VadTree);
 
-        /* Only regular, image and physical memory VADs supported for now */
+        /* Only regular, image, rotate and physical memory VADs supported for now */
         ASSERT((Vad->u.VadFlags.VadType == VadNone) ||
                (Vad->u.VadFlags.VadType == VadImageMap) ||
+               (Vad->u.VadFlags.VadType == VadRotatePhysical) ||
                (Vad->u.VadFlags.VadType == VadDevicePhysicalMemory));
 
         /* Pages mapped from physical memory or locked MDLs are not ours to free */
