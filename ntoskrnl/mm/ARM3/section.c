@@ -1007,8 +1007,8 @@ MiSessionHasPageTable(
 #endif
 }
 
-static
 NTSTATUS
+NTAPI
 MiSessionCommitPageTables(IN PVOID StartVa,
                           IN PVOID EndVa)
 {
