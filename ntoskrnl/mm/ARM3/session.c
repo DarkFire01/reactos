@@ -527,7 +527,7 @@ MiSessionInitializeWorkingSetList(VOID)
         MI_WRITE_VALID_PDE(PointerPde, TempPde);
 
         /* Add this into the list */
-        Index = ((ULONG_PTR)WorkingSetList - (ULONG_PTR)MmSessionBase) >> 22;
+        Index = ((ULONG_PTR)WorkingSetList - (ULONG_PTR)MmSessionBase) / PDE_MAPPED_VA;
 #ifndef _M_AMD64
         MmSessionSpace->PageTables[Index] = TempPde;
 #endif
@@ -612,7 +612,11 @@ MiSessionCreateInternal(OUT PULONG SessionId)
     MMPDE TempPde;
     NTSTATUS Status;
     BOOLEAN Result;
-    PFN_NUMBER SessionPageDirIndex;
+    PFN_NUMBER SessionPageDirIndex, SessionPageTable;
+#if (_MI_PAGING_LEVELS == 4)
+    PMMPTE PointerPxe, PointerPpe;
+    PFN_NUMBER PageParent[2];
+#endif
     PFN_NUMBER TagPage[MI_SESSION_TAG_PAGES_MAXIMUM];
     PFN_NUMBER DataPage[MI_SESSION_DATA_PAGES_MAXIMUM];
 
@@ -710,30 +714,69 @@ MiSessionCreateInternal(OUT PULONG SessionId)
     /* Get a zeroed colored zero page */
     MI_SET_USAGE(MI_USAGE_INIT_MEMORY);
     Color = MI_GET_NEXT_COLOR();
-    SessionPageDirIndex = MiRemoveZeroPageSafe(Color);
-    if (!SessionPageDirIndex)
+    SessionPageTable = MiRemoveZeroPageSafe(Color);
+    if (!SessionPageTable)
     {
         /* No zero pages, grab a free one */
-        SessionPageDirIndex = MiRemoveAnyPage(Color);
+        SessionPageTable = MiRemoveAnyPage(Color);
 
         /* Zero it outside the PFN lock */
         MiReleasePfnLock(OldIrql);
-        MiZeroPhysicalPage(SessionPageDirIndex);
+        MiZeroPhysicalPage(SessionPageTable);
         OldIrql = MiAcquirePfnLock();
     }
 
+#if (_MI_PAGING_LEVELS == 4)
+    /* The session owns its page directory parent and directory, only the PXE is per process */
+    ASSERT(MiAddressToPpe(MmSessionBase) == MiAddressToPpe((PCHAR)MiSessionSpaceEnd - 1));
+    for (i = 0; i < RTL_NUMBER_OF(PageParent); i++)
+    {
+        MI_SET_USAGE(MI_USAGE_PAGE_DIRECTORY);
+        Color = MI_GET_NEXT_COLOR();
+        PageParent[i] = MiRemoveZeroPageSafe(Color);
+        if (!PageParent[i])
+        {
+            /* No zero pages, grab a free one */
+            PageParent[i] = MiRemoveAnyPage(Color);
+
+            /* Zero it outside the PFN lock */
+            MiReleasePfnLock(OldIrql);
+            MiZeroPhysicalPage(PageParent[i]);
+            OldIrql = MiAcquirePfnLock();
+        }
+    }
+
+    TempPde = ValidKernelPdeLocal;
+    PointerPxe = MiAddressToPxe(MmSessionBase);
+    ASSERT(PointerPxe->u.Long == 0);
+    TempPde.u.Hard.PageFrameNumber = PageParent[0];
+    MI_WRITE_VALID_PTE(PointerPxe, TempPde);
+    MiInitializePfnForOtherProcess(PageParent[0], PointerPxe, PageParent[0]);
+
+    PointerPpe = MiAddressToPpe(MmSessionBase);
+    TempPde.u.Hard.PageFrameNumber = PageParent[1];
+    MI_WRITE_VALID_PPE(PointerPpe, TempPde);
+    MiInitializePfnForOtherProcess(PageParent[1], PointerPpe, PageParent[0]);
+
+    /* Session page tables hang off the session page directory */
+    SessionPageDirIndex = PageParent[1];
+#else
+    /* The page table of the session structure doubles as the parent of the others */
+    SessionPageDirIndex = SessionPageTable;
+#endif
+
     /* Fill the PTE out */
     TempPde = ValidKernelPdeLocal;
-    TempPde.u.Hard.PageFrameNumber = SessionPageDirIndex;
+    TempPde.u.Hard.PageFrameNumber = SessionPageTable;
 
     /* Setup, allocate, fill out the MmSessionSpace PTE */
     PointerPde = MiAddressToPde(MmSessionSpace);
     ASSERT(PointerPde->u.Long == 0);
     MI_WRITE_VALID_PDE(PointerPde, TempPde);
-    MiInitializePfnForOtherProcess(SessionPageDirIndex,
+    MiInitializePfnForOtherProcess(SessionPageTable,
                                    PointerPde,
                                    SessionPageDirIndex);
-    ASSERT(MI_PFN_ELEMENT(SessionPageDirIndex)->u1.WsIndex == 0);
+    ASSERT(MI_PFN_ELEMENT(SessionPageTable)->u1.WsIndex == 0);
 
      /* Loop all the local PTEs for it */
     TempPte = ValidKernelPteLocal;
