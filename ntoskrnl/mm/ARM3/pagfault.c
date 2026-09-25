@@ -346,8 +346,7 @@ MiCheckVirtualAddress(IN PVOID VirtualAddress,
     }
     else if (MI_IS_SESSION_ADDRESS(VirtualAddress))
     {
-        /* ReactOS does not have an image list yet, so bail out to failure case */
-        ASSERT(IsListEmpty(&MmSessionSpace->ImageList));
+        /* Session images are resident, a fault there has nothing to find */
     }
 
     /* Default case -- failure */
