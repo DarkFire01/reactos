@@ -2367,6 +2367,21 @@ MiReleaseProcessReferenceToSessionDataPage(
     IN PMM_SESSION_SPACE SessionGlobal
 );
 
+extern PFN_NUMBER MiSessionDataPages, MiSessionTagPages;
+
+NTSTATUS
+NTAPI
+MiSessionCommitPageTables(
+    _In_ PVOID StartVa,
+    _In_ PVOID EndVa
+);
+
+VOID
+NTAPI
+MiSessionUnloadAllImages(
+    VOID
+);
+
 VOID
 NTAPI
 MiSessionAddProcess(

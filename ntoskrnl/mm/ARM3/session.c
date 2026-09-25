@@ -577,6 +577,9 @@ MiDereferenceSessionFinal(VOID)
         SessionGlobal->Win32KDriverUnload(NULL);
     }
 
+    /* Unload the session images, their list lives in session pool */
+    MiSessionUnloadAllImages();
+
     /* Views left behind keep their sections referenced */
     if (SessionGlobal->Session.SystemSpaceHashEntries != 0)
     {

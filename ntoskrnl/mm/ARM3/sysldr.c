@@ -44,6 +44,378 @@ ULONG_PTR MmPteCodeStart, MmPteCodeEnd;
 #define DEFAULT_SECURITY_COOKIE 0xBB40E64E
 #endif
 
+/* An image loaded in the current session, see MmSessionSpace->ImageList */
+typedef struct _MI_SESSION_IMAGE
+{
+    LIST_ENTRY Link;
+    PLDR_DATA_TABLE_ENTRY DataTableEntry;
+} MI_SESSION_IMAGE, *PMI_SESSION_IMAGE;
+
+/* A session image as it was before its entry point first ran */
+typedef struct _MI_SESSION_IMAGE_TEMPLATE
+{
+    LIST_ENTRY Link;
+    PLDR_DATA_TABLE_ENTRY DataTableEntry;
+    PVOID Copy;
+} MI_SESSION_IMAGE_TEMPLATE, *PMI_SESSION_IMAGE_TEMPLATE;
+
+/* Session images get the same address in every session, both are under MmSystemLoadLock */
+static LIST_ENTRY MiSessionImageTemplates = { &MiSessionImageTemplates, &MiSessionImageTemplates };
+static RTL_BITMAP MiSessionImageBitMap;
+static PVOID MiSessionImageAllocationStart;
+
+/* SESSION IMAGES *************************************************************/
+
+/**
+ * @brief
+ * Reserves the address a session image gets in every session.
+ *
+ * @param[in] PageCount
+ * Size of the image in pages.
+ *
+ * @param[out] ImageBase
+ * Receives the address.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_NO_MEMORY when the session image range is full.
+ */
+static
+NTSTATUS
+MiReserveSessionImageAddress(
+    _In_ PFN_COUNT PageCount,
+    _Out_ PVOID *ImageBase)
+{
+    ULONG_PTR Start;
+    PULONG Buffer;
+    ULONG Pages, Index;
+
+    if (MiSessionImageBitMap.Buffer == NULL)
+    {
+        /* The session structure may sit at the bottom of the image range */
+        Start = (ULONG_PTR)MiSessionImageStart;
+        if (((PVOID)MmSessionSpace >= MiSessionImageStart) &&
+            ((PVOID)MmSessionSpace < MiSessionImageEnd))
+        {
+            Start = (ULONG_PTR)MmSessionSpace +
+                    ((MiSessionDataPages + MiSessionTagPages) << PAGE_SHIFT);
+        }
+
+        /* Leave the last page out, session page tables are committed below the end */
+        Pages = (ULONG)(((ULONG_PTR)MiSessionImageEnd - Start) >> PAGE_SHIFT) - 1;
+        Buffer = ExAllocatePoolWithTag(PagedPool, ((Pages + 31) / 32) * sizeof(ULONG), TAG_MM);
+        if (Buffer == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        RtlInitializeBitMap(&MiSessionImageBitMap, Buffer, Pages);
+        RtlClearAllBits(&MiSessionImageBitMap);
+        MiSessionImageAllocationStart = (PVOID)Start;
+    }
+
+    Index = RtlFindClearBitsAndSet(&MiSessionImageBitMap, PageCount, 0);
+    if (Index == 0xFFFFFFFF)
+        return STATUS_NO_MEMORY;
+
+    *ImageBase = (PVOID)((ULONG_PTR)MiSessionImageAllocationStart + ((ULONG_PTR)Index << PAGE_SHIFT));
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Gives back the address of a session image nobody has loaded anymore.
+ */
+static
+VOID
+MiReleaseSessionImageAddress(
+    _In_ PVOID ImageBase,
+    _In_ PFN_COUNT PageCount)
+{
+    ULONG Index;
+
+    Index = (ULONG)(((ULONG_PTR)ImageBase - (ULONG_PTR)MiSessionImageAllocationStart) >> PAGE_SHIFT);
+    RtlClearBits(&MiSessionImageBitMap, Index, PageCount);
+}
+
+/**
+ * @brief
+ * Backs the range of a session image in the current session with fresh pages.
+ *
+ * @param[in] ImageBase
+ * The address reserved for the image.
+ *
+ * @param[in] PageCount
+ * Size of the image in pages.
+ *
+ * @remarks
+ * The pages stay resident, they go away with the image or the session.
+ */
+static
+NTSTATUS
+MiMapSessionImagePages(
+    _In_ PVOID ImageBase,
+    _In_ PFN_COUNT PageCount)
+{
+    PMMPTE PointerPte, LastPte;
+    PFN_NUMBER PageFrameIndex;
+    MMPTE TempPte;
+    KIRQL OldIrql;
+    NTSTATUS Status;
+
+    Status = MiSessionCommitPageTables(ImageBase,
+                                       (PVOID)((ULONG_PTR)ImageBase + ((SIZE_T)PageCount << PAGE_SHIFT)));
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    PointerPte = MiAddressToPte(ImageBase);
+    LastPte = PointerPte + PageCount;
+
+#ifndef _M_AMD64
+    /* Pick up session PDEs this process lacks now, not with the PFN lock held */
+    for (; PointerPte < LastPte; PointerPte++)
+    {
+        *(volatile ULONG_PTR *)PointerPte;
+    }
+    PointerPte = MiAddressToPte(ImageBase);
+#endif
+
+    /* Session pages must not be global, each session maps its own */
+    TempPte = ValidKernelPteLocal;
+
+    OldIrql = MiAcquirePfnLock();
+    for (; PointerPte < LastPte; PointerPte++)
+    {
+        ASSERT(PointerPte->u.Hard.Valid == 0);
+
+        MI_SET_USAGE(MI_USAGE_DRIVER_PAGE);
+        PageFrameIndex = MiRemoveAnyPageOrWait(MI_GET_NEXT_COLOR(), OldIrql);
+        MiInitializePfn(PageFrameIndex, PointerPte, TRUE);
+
+        TempPte.u.Hard.PageFrameNumber = PageFrameIndex;
+        MI_WRITE_VALID_PTE(PointerPte, TempPte);
+    }
+    MiReleasePfnLock(OldIrql);
+
+    InterlockedExchangeAddSizeT(&MmSessionSpace->NonPageablePages, PageCount);
+    InterlockedExchangeAddSizeT(&MmSessionSpace->CommittedPages, PageCount);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Frees the pages of a session image in the current session.
+ */
+static
+VOID
+MiUnmapSessionImagePages(
+    _In_ PVOID ImageBase,
+    _In_ PFN_COUNT PageCount)
+{
+    MiDeleteSystemPageableVm(MiAddressToPte(ImageBase), PageCount, 0, NULL);
+
+    InterlockedExchangeAddSizeT(&MmSessionSpace->NonPageablePages, -(SSIZE_T)PageCount);
+    InterlockedExchangeAddSizeT(&MmSessionSpace->CommittedPages, -(SSIZE_T)PageCount);
+}
+
+/**
+ * @brief
+ * Finds the entry of an image in the image list of the current session.
+ */
+static
+PMI_SESSION_IMAGE
+MiFindSessionImage(
+    _In_ PLDR_DATA_TABLE_ENTRY LdrEntry)
+{
+    PLIST_ENTRY NextEntry;
+    PMI_SESSION_IMAGE SessionImage;
+
+    for (NextEntry = MmSessionSpace->ImageList.Flink;
+         NextEntry != &MmSessionSpace->ImageList;
+         NextEntry = NextEntry->Flink)
+    {
+        SessionImage = CONTAINING_RECORD(NextEntry, MI_SESSION_IMAGE, Link);
+        if (SessionImage->DataTableEntry == LdrEntry)
+            return SessionImage;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Finds the pristine copy of a session image.
+ */
+static
+PMI_SESSION_IMAGE_TEMPLATE
+MiFindSessionImageTemplate(
+    _In_ PLDR_DATA_TABLE_ENTRY LdrEntry)
+{
+    PLIST_ENTRY NextEntry;
+    PMI_SESSION_IMAGE_TEMPLATE Template;
+
+    for (NextEntry = MiSessionImageTemplates.Flink;
+         NextEntry != &MiSessionImageTemplates;
+         NextEntry = NextEntry->Flink)
+    {
+        Template = CONTAINING_RECORD(NextEntry, MI_SESSION_IMAGE_TEMPLATE, Link);
+        if (Template->DataTableEntry == LdrEntry)
+            return Template;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Frees what the first load of a session image allocated ahead.
+ */
+static
+VOID
+MiFreeSessionImageLoadData(
+    _In_opt_ PMI_SESSION_IMAGE_TEMPLATE Template,
+    _In_opt_ PMI_SESSION_IMAGE SessionImage)
+{
+    if (Template)
+    {
+        if (Template->Copy)
+            ExFreePoolWithTag(Template->Copy, TAG_MM);
+        ExFreePoolWithTag(Template, TAG_MM);
+    }
+
+    if (SessionImage)
+        ExFreePoolWithTag(SessionImage, TAG_MM);
+}
+
+/**
+ * @brief
+ * Maps a session image into the current session.
+ *
+ * @param[in] Section
+ * The image section, for the first load of the image.
+ *
+ * @param[out] ImageBase
+ * Receives the address of the image, the same in every session.
+ *
+ * @param[in] LdrEntry
+ * The loader entry, when another session loaded the image already.
+ *
+ * @remarks
+ * The first load copies the section through a view in the current process,
+ * the System process has no session to copy it into. Later sessions copy
+ * the template taken before the entry point first ran, so they get the
+ * relocated image with its imports already bound.
+ */
+static
+NTSTATUS
+MiLoadSessionImage(
+    _In_opt_ PSECTION Section,
+    _Out_ PVOID *ImageBase,
+    _In_opt_ PLDR_DATA_TABLE_ENTRY LdrEntry)
+{
+    PMI_SESSION_IMAGE_TEMPLATE Template;
+    LARGE_INTEGER SectionOffset = {{0, 0}};
+    PVOID View = NULL, Source, Base;
+    SIZE_T ViewSize = 0;
+    PFN_COUNT PageCount;
+    NTSTATUS Status;
+
+    if (LdrEntry)
+    {
+        Template = MiFindSessionImageTemplate(LdrEntry);
+        if (Template == NULL)
+            return STATUS_NOT_FOUND;
+
+        Base = LdrEntry->DllBase;
+        PageCount = BYTES_TO_PAGES(LdrEntry->SizeOfImage);
+        Source = Template->Copy;
+    }
+    else
+    {
+        Status = MmMapViewOfSection(Section,
+                                    PsGetCurrentProcess(),
+                                    &View,
+                                    0,
+                                    0,
+                                    &SectionOffset,
+                                    &ViewSize,
+                                    ViewUnmap,
+                                    0,
+                                    PAGE_EXECUTE);
+        if (Status == STATUS_IMAGE_MACHINE_TYPE_MISMATCH)
+            Status = STATUS_INVALID_IMAGE_FORMAT;
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        PageCount = (PFN_COUNT)(Section->Segment->SizeOfSegment >> PAGE_SHIFT);
+        Status = MiReserveSessionImageAddress(PageCount, &Base);
+        if (!NT_SUCCESS(Status))
+        {
+            MmUnmapViewOfSection(PsGetCurrentProcess(), View);
+            return Status;
+        }
+        Source = View;
+    }
+
+    Status = MiMapSessionImagePages(Base, PageCount);
+    if (NT_SUCCESS(Status))
+    {
+        RtlCopyMemory(Base, Source, (SIZE_T)PageCount << PAGE_SHIFT);
+        DPRINT1("Session %lu maps an image at %p with %lx pages\n",
+                MmSessionSpace->SessionId, Base, PageCount);
+        *ImageBase = Base;
+    }
+
+    if (View)
+    {
+        MmUnmapViewOfSection(PsGetCurrentProcess(), View);
+        if (!NT_SUCCESS(Status))
+            MiReleaseSessionImageAddress(Base, PageCount);
+    }
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Takes the copy of a session image out of the current session.
+ *
+ * @param[in] LdrEntry
+ * The image, called with MmSystemLoadLock held.
+ */
+static
+VOID
+MiRemoveSessionImage(
+    _In_ PLDR_DATA_TABLE_ENTRY LdrEntry)
+{
+    PMI_SESSION_IMAGE SessionImage;
+
+    SessionImage = MiFindSessionImage(LdrEntry);
+    if (SessionImage == NULL)
+        return;
+
+    RemoveEntryList(&SessionImage->Link);
+    ExFreePoolWithTag(SessionImage, TAG_MM);
+    MiUnmapSessionImagePages(LdrEntry->DllBase, BYTES_TO_PAGES(LdrEntry->SizeOfImage));
+}
+
+/**
+ * @brief
+ * Unloads every image of a session whose last process is leaving.
+ *
+ * @remarks
+ * Runs in that process with the session still mapped.
+ */
+VOID
+NTAPI
+MiSessionUnloadAllImages(VOID)
+{
+    PMI_SESSION_IMAGE SessionImage;
+
+    while (!IsListEmpty(&MmSessionSpace->ImageList))
+    {
+        SessionImage = CONTAINING_RECORD(MmSessionSpace->ImageList.Flink, MI_SESSION_IMAGE, Link);
+        MmUnloadSystemImage(SessionImage->DataTableEntry);
+    }
+}
+
 /* FUNCTIONS ******************************************************************/
 
 PVOID
@@ -97,13 +469,9 @@ MiLoadImageSection(_Inout_ PSECTION *SectionPtr,
     PFN_NUMBER PageFrameIndex;
     PAGED_CODE();
 
-    /* Detect session load */
+    /* Session images go into session space */
     if (SessionLoad)
-    {
-        /* Fail */
-        UNIMPLEMENTED_DBGBREAK("Session loading not yet supported!\n");
-        return STATUS_NOT_IMPLEMENTED;
-    }
+        return MiLoadSessionImage(Section, ImageBase, LdrEntry);
 
     /* Not session load, shouldn't have an entry */
     ASSERT(LdrEntry == NULL);
@@ -236,9 +604,16 @@ MiUnmapSystemImage(
     PMMPTE BasePte = MiAddressToPte(ImageBase);
     PFN_COUNT NumberOfPages = BYTES_TO_PAGES(ImageSize);
 
-    /* TODO: Support large-page and session image mappings */
+    /* A session image failing its first load, nobody else has it */
+    if (MI_IS_SESSION_IMAGE_ADDRESS(ImageBase))
+    {
+        MiUnmapSessionImagePages(ImageBase, NumberOfPages);
+        MiReleaseSessionImageAddress(ImageBase, NumberOfPages);
+        return;
+    }
+
+    /* TODO: Support large-page mappings */
     NT_ASSERT(!MI_IS_PHYSICAL_ADDRESS(ImageBase));
-    NT_ASSERT(!MI_IS_SESSION_ADDRESS(ImageBase));
 
     /* Free the pages, then give the reserved PTEs back */
     MiDeleteSystemPageableVm(BasePte, NumberOfPages, 0, NULL);
@@ -996,6 +1371,24 @@ MmUnloadSystemImage(IN PVOID ImageHandle)
     ASSERT(LdrEntry->LoadCount != 0);
     LdrEntry->LoadCount--;
 
+    /* A session image has a copy per session, this one goes now */
+    if (MI_IS_SESSION_IMAGE_ADDRESS(BaseAddress))
+    {
+        MiRemoveSessionImage(LdrEntry);
+        if (LdrEntry->LoadCount == 0)
+        {
+            PMI_SESSION_IMAGE_TEMPLATE Template = MiFindSessionImageTemplate(LdrEntry);
+
+            if (Template)
+            {
+                RemoveEntryList(&Template->Link);
+                ExFreePoolWithTag(Template->Copy, TAG_MM);
+                ExFreePoolWithTag(Template, TAG_MM);
+            }
+            MiReleaseSessionImageAddress(BaseAddress, BYTES_TO_PAGES(LdrEntry->SizeOfImage));
+        }
+    }
+
     /* Check if we're still loaded */
     if (LdrEntry->LoadCount) goto Done;
 
@@ -1022,7 +1415,11 @@ MmUnloadSystemImage(IN PVOID ImageHandle)
      * space can be released this way; the boot drivers that the latter had
      * to skip still sit wherever the bootloader placed them.
      */
-    if (LdrEntry->Flags & LDRP_SYSTEM_MAPPED)
+    if (MI_IS_SESSION_IMAGE_ADDRESS(BaseAddress))
+    {
+        /* Its pages and address are gone already */
+    }
+    else if (LdrEntry->Flags & LDRP_SYSTEM_MAPPED)
     {
         MiUnmapSystemImage(LdrEntry->DllBase, LdrEntry->SizeOfImage);
     }
@@ -3013,6 +3410,8 @@ MmLoadSystemImage(IN PUNICODE_STRING FileName,
     BOOLEAN LockOwned = FALSE;
     PLIST_ENTRY NextEntry;
     IMAGE_INFO ImageInfo;
+    PMI_SESSION_IMAGE_TEMPLATE Template = NULL;
+    PMI_SESSION_IMAGE SessionImage = NULL;
 
     PAGED_CODE();
 
@@ -3169,18 +3568,45 @@ LoaderScan:
         }
 
         /* Check if this was supposed to be a session load */
-        if (!Flags)
+        if (!Flags ||
+            !MI_IS_SESSION_IMAGE_ADDRESS(LdrEntry->DllBase) ||
+            MiFindSessionImage(LdrEntry))
         {
-            /* It wasn't, so just return the data */
+            /* Loaded outside session space or in this session already, just return the data */
             *ModuleObject = LdrEntry;
             *ImageBaseAddress = LdrEntry->DllBase;
             Status = STATUS_IMAGE_ALREADY_LOADED;
         }
         else
         {
-            /* We don't support session loading yet */
-            UNIMPLEMENTED_DBGBREAK("Unsupported Session-Load!\n");
-            Status = STATUS_NOT_IMPLEMENTED;
+            PMI_SESSION_IMAGE SessionImage;
+
+            /* Another session has it, this one gets its own copy */
+            SessionImage = ExAllocatePoolWithTag(PagedPoolSession, sizeof(*SessionImage), TAG_MM);
+            if (SessionImage == NULL)
+            {
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto Quickie;
+            }
+
+            Status = MiLoadImageSection(&Section, &ModuleLoadBase, FileName, TRUE, LdrEntry);
+            if (!NT_SUCCESS(Status))
+            {
+                ExFreePoolWithTag(SessionImage, TAG_MM);
+                ModuleLoadBase = NULL;
+                goto Quickie;
+            }
+
+            SessionImage->DataTableEntry = LdrEntry;
+            InsertTailList(&MmSessionSpace->ImageList, &SessionImage->Link);
+            LdrEntry->LoadCount++;
+
+            /* The template holds the cookie of the first session */
+            LdrpInitSecurityCookie(LdrEntry);
+
+            *ModuleObject = LdrEntry;
+            *ImageBaseAddress = LdrEntry->DllBase;
+            ModuleLoadBase = NULL;
         }
 
         /* Do cleanup */
@@ -3276,14 +3702,6 @@ LoaderScan:
         ZwClose(SectionHandle);
         if (!NT_SUCCESS(Status)) goto Quickie;
 
-        /* Check if this was supposed to be a session-load */
-        if (Flags)
-        {
-            /* We don't support session loading yet */
-            UNIMPLEMENTED_DBGBREAK("Unsupported Session-Load!\n");
-            goto Quickie;
-        }
-
         /* Check the loader list again, we should end up in the path below */
         goto LoaderScan;
     }
@@ -3297,7 +3715,7 @@ LoaderScan:
     Status = MiLoadImageSection(&Section,
                                 &ModuleLoadBase,
                                 FileName,
-                                FALSE,
+                                Flags != 0,
                                 NULL);
     ASSERT(Status != STATUS_ALREADY_COMMITTED);
 
@@ -3318,6 +3736,12 @@ LoaderScan:
         }
 
         /* Dereference the section */
+        ObDereferenceObject(Section);
+        Section = NULL;
+    }
+    else
+    {
+        /* Later sessions copy the template, not the section */
         ObDereferenceObject(Section);
         Section = NULL;
     }
@@ -3357,6 +3781,23 @@ LoaderScan:
         /* Fail */
         Status = STATUS_INSUFFICIENT_RESOURCES;
         goto Quickie;
+    }
+
+    /* A session image also needs its template and list entry, get them while failing is simple */
+    if (Flags)
+    {
+        Template = ExAllocatePoolWithTag(PagedPool, sizeof(*Template), TAG_MM);
+        if (Template)
+            Template->Copy = ExAllocatePoolWithTag(PagedPool, DriverSize, TAG_MM);
+        SessionImage = ExAllocatePoolWithTag(PagedPoolSession, sizeof(*SessionImage), TAG_MM);
+        if (!Template || !Template->Copy || !SessionImage)
+        {
+            MiFreeSessionImageLoadData(Template, SessionImage);
+            ExFreePoolWithTag(LdrEntry, TAG_MODULE_OBJECT);
+            LdrEntry = NULL;
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Quickie;
+        }
     }
 
     /* Setup the entry */
@@ -3461,6 +3902,7 @@ LoaderScan:
         /* Free the entry itself */
         ExFreePoolWithTag(LdrEntry, TAG_MODULE_OBJECT);
         LdrEntry = NULL;
+        MiFreeSessionImageLoadData(Template, SessionImage);
         goto Quickie;
     }
 
@@ -3473,8 +3915,21 @@ LoaderScan:
 
     /* FIXME: Call driver verifier's loader function */
 
-    /* Write-protect the system image */
-    MiWriteProtectSystemImage(LdrEntry->DllBase);
+    if (Flags)
+    {
+        /* Later sessions start from the image as it is now, before its entry point runs */
+        RtlCopyMemory(Template->Copy, LdrEntry->DllBase, DriverSize);
+        Template->DataTableEntry = LdrEntry;
+        InsertTailList(&MiSessionImageTemplates, &Template->Link);
+
+        SessionImage->DataTableEntry = LdrEntry;
+        InsertTailList(&MmSessionSpace->ImageList, &SessionImage->Link);
+    }
+    else
+    {
+        /* Write-protect the system image, session images are written per session */
+        MiWriteProtectSystemImage(LdrEntry->DllBase);
+    }
 
     /* Initialize the security cookie (Win7 is not doing this yet!) */
     LdrpInitSecurityCookie(LdrEntry);
@@ -3536,9 +3991,9 @@ LoaderScan:
         LdrEntry->Flags |= LDRP_DEBUG_SYMBOLS_LOADED;
     }
 
-    /* Page the driver */
+    /* Page the driver, session images stay resident */
     ASSERT(Section == NULL);
-    MiEnablePagingOfDriver(LdrEntry);
+    if (!Flags) MiEnablePagingOfDriver(LdrEntry);
 
     /* Return pointers */
     *ModuleObject = LdrEntry;
@@ -3629,8 +4084,10 @@ MmPageEntireDriver(IN PVOID AddressWithinSection)
     LdrEntry = MiLookupDataTableEntry(AddressWithinSection);
     if (!LdrEntry) return NULL;
 
-    /* Check if paging of kernel mode is disabled or if the driver is mapped as an image */
-    if ((MmDisablePagingExecutive) || (LdrEntry->SectionPointer))
+    /* Check if paging of kernel mode is disabled, if the driver is mapped as an image or is a session image */
+    if ((MmDisablePagingExecutive) ||
+        (LdrEntry->SectionPointer) ||
+        MI_IS_SESSION_IMAGE_ADDRESS(LdrEntry->DllBase))
     {
         /* Don't do anything, just return the base address */
         return LdrEntry->DllBase;
