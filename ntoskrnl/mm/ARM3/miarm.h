@@ -1635,6 +1635,24 @@ MI_PFN_ELEMENT(IN PFN_NUMBER Pfn)
     return &MmPfnDatabase[Pfn];
 };
 
+/**
+ * @brief Tells whether a valid PTE maps a page that some other owner keeps,
+ * like the frame buffer behind a MEM_ROTATE view.
+ */
+FORCEINLINE
+BOOLEAN
+MiIsPteMappingForeignPage(
+    _In_ PMMPTE PointerPte,
+    _In_ PMMPTE TempPte)
+{
+    PMMPFN Pfn1 = MiGetPfnEntry(PFN_FROM_PTE(TempPte));
+
+    if (Pfn1 == NULL)
+        return TRUE;
+
+    return ((PMMPTE)((ULONG_PTR)Pfn1->PteAddress & ~(ULONG_PTR)1) != PointerPte);
+}
+
 //
 // Drops a locked page without dereferencing it
 //
@@ -2402,6 +2420,19 @@ NTAPI
 MiDeletePhysicalViewAddresses(
     _In_ ULONG_PTR StartingAddress,
     _In_ ULONG_PTR EndingAddress
+);
+
+PVOID
+NTAPI
+MiReferenceRotatingRange(
+    _In_ PEPROCESS Process,
+    _In_ PVOID Address
+);
+
+VOID
+NTAPI
+MiWaitForRotatingRange(
+    _In_ PVOID Rotate
 );
 
 ULONG

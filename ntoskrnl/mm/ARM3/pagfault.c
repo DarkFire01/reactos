@@ -2380,6 +2380,19 @@ UserFault:
     /* Now capture the PTE. */
     TempPte = *PointerPte;
 
+    /* A range another thread is rotating has no pages until that is done */
+    if (!TempPte.u.Hard.Valid)
+    {
+        PVOID Rotate = MiReferenceRotatingRange(CurrentProcess, Address);
+
+        if (Rotate != NULL)
+        {
+            MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);
+            MiWaitForRotatingRange(Rotate);
+            goto UserFault;
+        }
+    }
+
     /* Check if the PTE is valid */
     if (TempPte.u.Hard.Valid)
     {
