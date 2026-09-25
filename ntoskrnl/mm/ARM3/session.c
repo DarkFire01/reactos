@@ -334,6 +334,33 @@ MiDereferenceSessionFinal(VOID)
 }
 
 
+/**
+ * @brief
+ * Takes session space out of the address space of the current process.
+ *
+ * @remarks
+ * Only the mapping goes away. The session page tables belong to the
+ * session and stay in use by its other processes.
+ */
+static
+VOID
+MiUnmapSessionSpace(VOID)
+{
+#if (_MI_PAGING_LEVELS == 4)
+    /* Every session page table hangs off the one per process PXE */
+    MiAddressToPxe(MmSessionBase)->u.Long = 0;
+#else
+    PMMPDE FirstPde, LastPde;
+
+    FirstPde = MiAddressToPde(MmSessionBase);
+    LastPde = MiAddressToPde((PCHAR)MiSessionSpaceEnd - 1);
+    RtlZeroMemory(FirstPde, (LastPde - FirstPde + 1) * sizeof(MMPDE));
+#endif
+
+    /* Other threads of the process may run on other processors */
+    KeFlushEntireTb(TRUE, TRUE);
+}
+
 VOID
 NTAPI
 MiDereferenceSession(VOID)
@@ -358,27 +385,23 @@ MiDereferenceSession(VOID)
     /* Decrement the process count */
     InterlockedDecrement(&MmSessionSpace->ResidentProcessCount);
 
+    /* Get the global session address before we kill the session mapping */
+    SessionGlobal = MmSessionSpace->GlobalVirtualAddress;
+
     /* Decrement the reference count and check if was the last reference */
     ReferenceCount = InterlockedDecrement(&MmSessionSpace->ReferenceCount);
     if (ReferenceCount == 0)
     {
         /* No more references left, kill the session completely */
         MiDereferenceSessionFinal();
-        return;
     }
 
-    /* Check if this is the session leader */
+    /* The process keeps no view of the session, not even a dead one */
+    MiUnmapSessionSpace();
+
+    /* The leader has no Session pointer, its data page reference goes here */
     if (Process->Vm.Flags.SessionLeader)
     {
-        /* Get the global session address before we kill the session mapping */
-        SessionGlobal = MmSessionSpace->GlobalVirtualAddress;
-
-        /* Delete all session PDEs and flush the TB */
-        //RtlZeroMemory(MiAddressToPde(MmSessionBase),
-        //              BYTES_TO_PAGES(MmSessionSize) * sizeof(MMPDE));
-        KeFlushEntireTb(FALSE, FALSE);
-
-        /* Clean up the references here. */
         ASSERT(Process->Session == NULL);
         MiReleaseProcessReferenceToSessionDataPage(SessionGlobal);
     }
