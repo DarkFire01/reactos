@@ -585,9 +585,19 @@ MiDereferenceSessionFinal(VOID)
                 SessionGlobal->Session.SystemSpaceHashEntries);
     }
 
-    /* Free the session view space bookkeeping */
+    /* Pool left behind goes with the session pages, but it is a leak */
+    if (MmSessionSpace->PagedPoolInfo.AllocatedPagedPool != 0)
+    {
+        DPRINT1("Session %lu leaks %Iu pages of paged pool\n",
+                SessionGlobal->SessionId,
+                MmSessionSpace->PagedPoolInfo.AllocatedPagedPool);
+    }
+
+    /* Free the session view space and pool bookkeeping */
     ExFreePoolWithTag(SessionGlobal->Session.SystemSpaceViewTable, TAG_MM);
     ExFreePoolWithTag(SessionGlobal->Session.SystemSpaceBitMap, TAG_MM);
+    ExFreePoolWithTag(MmSessionSpace->PagedPoolInfo.PagedPoolAllocationMap, TAG_MM);
+    ExFreePoolWithTag(MmSessionSpace->PagedPoolInfo.EndOfPagedPoolBitmap, TAG_MM);
 
     /* And everything that is still mapped in session space */
     MiDeleteSessionSpace();
@@ -1128,8 +1138,7 @@ MiSessionCreateInternal(OUT PULONG SessionId)
             *SessionId, MmSessionSpace, SessionGlobal, SessionPageDirIndex, PageTables);
 
     /* Initialize session pool */
-    //Status = MiInitializeSessionPool();
-    Status = STATUS_SUCCESS;
+    Status = MiInitializeSessionPool();
     ASSERT(NT_SUCCESS(Status) == TRUE);
 
     /* Initialize system space */
