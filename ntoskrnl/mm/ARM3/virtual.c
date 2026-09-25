@@ -561,13 +561,16 @@ MiDeleteVirtualAddresses(
     MMPTE TempPte;
     PEPROCESS CurrentProcess;
     KIRQL OldIrql;
-    BOOLEAN SectionVad;
+    BOOLEAN SectionVad, RotateVad;
 
     /* Get the current process */
     CurrentProcess = PsGetCurrentProcess();
 
     /* Check if this is a section VAD or a VM VAD */
     SectionVad = (BOOLEAN)((Vad) && !(Vad->u.VadFlags.PrivateMemory) && (Vad->FirstPrototypePte));
+
+    /* A rotate view can map frame buffer pages that are not the process' to free */
+    RotateVad = (BOOLEAN)((Vad) && (Vad->u.VadFlags.VadType == VadRotatePhysical));
 
     /* In all cases, we don't support fork() yet */
     ASSERT(CurrentProcess->CloneRoot == NULL);
@@ -651,6 +654,16 @@ MiDeleteVirtualAddresses(
                     {
                         /* Just nuke it */
                         MI_ERASE_PTE(PointerPte);
+                    }
+                    else if (RotateVad &&
+                             (TempPte.u.Hard.Valid == 1) &&
+                             MiIsPteMappingForeignPage(PointerPte, &TempPte))
+                    {
+                        /* Only the mapping goes, the page stays with its owner */
+                        MI_ERASE_PTE(PointerPte);
+                        MiDecrementShareCount(MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber),
+                                              PointerPde->u.Hard.PageFrameNumber);
+                        KeFlushProcessTb();
                     }
                     else
                     {
@@ -1743,11 +1756,20 @@ MiQueryAddressState(IN PVOID Va,
 
                 /* We don't support these */
                 ASSERT(Vad->u.VadFlags.VadType != VadDevicePhysicalMemory);
-                ASSERT(Vad->u.VadFlags.VadType != VadRotatePhysical);
                 ASSERT(Vad->u.VadFlags.VadType != VadAwe);
 
-                /* Get protection state of this page */
-                Protect = MiGetPageProtection(PointerPte);
+                /* A rotated frame buffer page has no PFN of ours, the view says what it is */
+                if ((Vad->u.VadFlags.VadType == VadRotatePhysical) &&
+                    (TempPte.u.Hard.Valid == 1) &&
+                    MiIsPteMappingForeignPage(PointerPte, &TempPte))
+                {
+                    Protect = MmProtectToValue[Vad->u.VadFlags.Protection];
+                }
+                else
+                {
+                    /* Get protection state of this page */
+                    Protect = MiGetPageProtection(PointerPte);
+                }
             }
         }
     }
@@ -2584,10 +2606,11 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
         goto FailPath;
     }
 
-    /* These kinds of VADs are not supported atm  */
+    /* These kinds of VADs are not supported atm, and a rotate view keeps the protection it was made with */
     if ((Vad->u.VadFlags.VadType == VadAwe) ||
         (Vad->u.VadFlags.VadType == VadDevicePhysicalMemory) ||
-        (Vad->u.VadFlags.VadType == VadLargePages))
+        (Vad->u.VadFlags.VadType == VadLargePages) ||
+        (Vad->u.VadFlags.VadType == VadRotatePhysical))
     {
         DPRINT1("Illegal VAD for attempting to set protection\n");
         Status = STATUS_CONFLICTING_ADDRESSES;
@@ -2615,14 +2638,6 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
     {
         /* Not yet supported */
         if (Vad->u.VadFlags.VadType == VadLargePageSection)
-        {
-            DPRINT1("Illegal VAD for attempting to set protection\n");
-            Status = STATUS_CONFLICTING_ADDRESSES;
-            goto FailPath;
-        }
-
-        /* Rotate VADs are not yet supported */
-        if (Vad->u.VadFlags.VadType == VadRotatePhysical)
         {
             DPRINT1("Illegal VAD for attempting to set protection\n");
             Status = STATUS_CONFLICTING_ADDRESSES;
@@ -3273,6 +3288,754 @@ MmUnsecureVirtualMemory(IN PVOID SecureMem)
     MmUnlockAddressSpace(&Process->Vm);
 }
 
+/* A rotate that is running, faults and frees inside its view wait for it */
+typedef struct _MI_ACTIVE_ROTATE
+{
+    LIST_ENTRY Links;
+    PEPROCESS Process;
+    PETHREAD Thread;
+    ULONG_PTR StartingVpn;
+    ULONG_PTR EndingVpn;
+    LONG References;
+    KEVENT Done;
+} MI_ACTIVE_ROTATE, *PMI_ACTIVE_ROTATE;
+
+static LIST_ENTRY MiActiveRotateList = { &MiActiveRotateList, &MiActiveRotateList };
+static KSPIN_LOCK MiActiveRotateLock;
+static volatile LONG MiActiveRotateCount;
+
+#define TAG_ROTATE      'rRmM'
+#define TAG_ROTATE_MDL  'lRmM'
+
+static
+VOID
+MiDereferenceActiveRotate(
+    _In_ PMI_ACTIVE_ROTATE Rotate)
+{
+    if (InterlockedDecrement(&Rotate->References) == 0)
+        ExFreePoolWithTag(Rotate, TAG_ROTATE);
+}
+
+/**
+ * @brief Finds a rotate that another thread runs on the view holding an address.
+ *
+ * @return A referenced rotate to hand to MiWaitForRotatingRange, or NULL.
+ */
+PVOID
+NTAPI
+MiReferenceRotatingRange(
+    _In_ PEPROCESS Process,
+    _In_ PVOID Address)
+{
+    PMI_ACTIVE_ROTATE Rotate;
+    PLIST_ENTRY Entry;
+    ULONG_PTR Vpn = (ULONG_PTR)Address >> PAGE_SHIFT;
+    KIRQL OldIrql;
+
+    if (MiActiveRotateCount == 0)
+        return NULL;
+
+    KeAcquireSpinLock(&MiActiveRotateLock, &OldIrql);
+
+    for (Entry = MiActiveRotateList.Flink; Entry != &MiActiveRotateList; Entry = Entry->Flink)
+    {
+        Rotate = CONTAINING_RECORD(Entry, MI_ACTIVE_ROTATE, Links);
+        if ((Rotate->Process == Process) &&
+            (Rotate->Thread != PsGetCurrentThread()) &&
+            (Vpn >= Rotate->StartingVpn) &&
+            (Vpn <= Rotate->EndingVpn))
+        {
+            InterlockedIncrement(&Rotate->References);
+            KeReleaseSpinLock(&MiActiveRotateLock, OldIrql);
+            return Rotate;
+        }
+    }
+
+    KeReleaseSpinLock(&MiActiveRotateLock, OldIrql);
+    return NULL;
+}
+
+/**
+ * @brief Waits for a rotate from MiReferenceRotatingRange to finish and drops the reference.
+ *
+ * @remarks No Mm lock may be held.
+ */
+VOID
+NTAPI
+MiWaitForRotatingRange(
+    _In_ PVOID Rotate)
+{
+    PMI_ACTIVE_ROTATE ActiveRotate = Rotate;
+
+    KeWaitForSingleObject(&ActiveRotate->Done, Executive, KernelMode, FALSE, NULL);
+    MiDereferenceActiveRotate(ActiveRotate);
+}
+
+static
+PMI_ACTIVE_ROTATE
+MiStartRotate(
+    _In_ PEPROCESS Process,
+    _In_ PMMVAD Vad)
+{
+    PMI_ACTIVE_ROTATE Rotate;
+    KIRQL OldIrql;
+
+    Rotate = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Rotate), TAG_ROTATE);
+    if (Rotate == NULL)
+        return NULL;
+
+    Rotate->Process = Process;
+    Rotate->Thread = PsGetCurrentThread();
+    Rotate->StartingVpn = Vad->StartingVpn;
+    Rotate->EndingVpn = Vad->EndingVpn;
+    Rotate->References = 1;
+    KeInitializeEvent(&Rotate->Done, NotificationEvent, FALSE);
+
+    KeAcquireSpinLock(&MiActiveRotateLock, &OldIrql);
+    InsertTailList(&MiActiveRotateList, &Rotate->Links);
+    InterlockedIncrement(&MiActiveRotateCount);
+    KeReleaseSpinLock(&MiActiveRotateLock, OldIrql);
+
+    return Rotate;
+}
+
+static
+VOID
+MiFinishRotate(
+    _In_ PMI_ACTIVE_ROTATE Rotate)
+{
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&MiActiveRotateLock, &OldIrql);
+    RemoveEntryList(&Rotate->Links);
+    InterlockedDecrement(&MiActiveRotateCount);
+    KeReleaseSpinLock(&MiActiveRotateLock, OldIrql);
+
+    KeSetEvent(&Rotate->Done, IO_NO_INCREMENT, FALSE);
+    MiDereferenceActiveRotate(Rotate);
+}
+
+/**
+ * @brief Gets the caching a rotate view was created with.
+ */
+static
+MEMORY_CACHING_TYPE
+MiGetRotateViewCaching(
+    _In_ PMMVAD Vad)
+{
+    ULONG Protection = (ULONG)Vad->u.VadFlags.Protection;
+
+    if (((Protection & MM_PROTECT_SPECIAL) == MM_WRITECOMBINE) &&
+        (Protection & MM_PROTECT_ACCESS))
+    {
+        return MmWriteCombined;
+    }
+
+    if ((Protection & MM_PROTECT_SPECIAL) == MM_NOCACHE)
+        return MmNonCached;
+
+    return MmCached;
+}
+
+/**
+ * @brief Gets the caching a page of a rotate is mapped with. RAM keeps the caching it already has.
+ */
+static
+MI_PFN_CACHE_ATTRIBUTE
+MiGetRotatePageCaching(
+    _In_ PFN_NUMBER PageFrameIndex,
+    _In_ MEMORY_CACHING_TYPE CacheType)
+{
+    PMMPFN Pfn1 = MiGetPfnEntry(PageFrameIndex);
+
+    if ((Pfn1 != NULL) && (Pfn1->u3.e1.CacheAttribute != MiNotMapped))
+        return (MI_PFN_CACHE_ATTRIBUTE)Pfn1->u3.e1.CacheAttribute;
+
+    return MiPlatformCacheAttributes[Pfn1 == NULL][CacheType];
+}
+
+static
+VOID
+MiSetRotatePteCaching(
+    _Inout_ PMMPTE TempPte,
+    _In_ MI_PFN_CACHE_ATTRIBUTE CacheAttribute)
+{
+    if (CacheAttribute == MiNonCached)
+    {
+        MI_PAGE_DISABLE_CACHE(TempPte);
+        MI_PAGE_WRITE_THROUGH(TempPte);
+    }
+    else if (CacheAttribute == MiWriteCombined)
+    {
+        MI_PAGE_DISABLE_CACHE(TempPte);
+        MI_PAGE_WRITE_COMBINED(TempPte);
+    }
+}
+
+static
+PMDL
+MiAllocateRotateMdl(
+    _In_ PVOID Address,
+    _In_ SIZE_T Size)
+{
+    PMDL Mdl;
+
+    Mdl = ExAllocatePoolWithTag(NonPagedPool, MmSizeOfMdl(Address, Size), TAG_ROTATE_MDL);
+    if (Mdl != NULL)
+        MmInitializeMdl(Mdl, Address, Size);
+
+    return Mdl;
+}
+
+/**
+ * @brief Removes a system mapping a copy routine left on an MDL of ours.
+ */
+static
+VOID
+MiUnmapRotateMdl(
+    _In_ PMDL Mdl)
+{
+    if (Mdl->MdlFlags & MDL_MAPPED_TO_SYSTEM_VA)
+        MmUnmapLockedPages(Mdl->MappedSystemVa, Mdl);
+}
+
+/**
+ * @brief Copies pages with the processor, for when the caller's copy routine could not.
+ */
+static
+VOID
+MiCopyRotatePages(
+    _In_ PMDL DestinationMdl,
+    _In_ PMDL SourceMdl,
+    _In_ PFN_COUNT PageCount,
+    _In_ MEMORY_CACHING_TYPE CacheType)
+{
+    PPFN_NUMBER DestinationPages = MmGetMdlPfnArray(DestinationMdl);
+    PPFN_NUMBER SourcePages = MmGetMdlPfnArray(SourceMdl);
+    PMMPTE SystemPtes;
+    MMPTE TempPte;
+
+    while (PageCount != 0)
+    {
+        SystemPtes = MiReserveSystemPtes(2, SystemPteSpace);
+        if (SystemPtes == NULL)
+        {
+            DPRINT1("No system PTEs to copy a rotated range\n");
+            return;
+        }
+
+        TempPte = ValidKernelPte;
+        TempPte.u.Hard.PageFrameNumber = *DestinationPages;
+        MiSetRotatePteCaching(&TempPte, MiGetRotatePageCaching(*DestinationPages, CacheType));
+        MI_WRITE_VALID_PTE(&SystemPtes[0], TempPte);
+
+        TempPte = ValidKernelPte;
+        TempPte.u.Hard.PageFrameNumber = *SourcePages;
+        MiSetRotatePteCaching(&TempPte, MiGetRotatePageCaching(*SourcePages, CacheType));
+        MI_WRITE_VALID_PTE(&SystemPtes[1], TempPte);
+
+        RtlCopyMemory(MiPteToAddress(&SystemPtes[0]), MiPteToAddress(&SystemPtes[1]), PAGE_SIZE);
+
+        MiReleaseSystemPtes(SystemPtes, 2, SystemPteSpace);
+
+        DestinationPages++;
+        SourcePages++;
+        PageCount--;
+    }
+}
+
+/**
+ * @brief Tells whether a page of a rotate view is backed by a frame buffer right now.
+ *
+ * @remarks The working set lock of the current process must be held.
+ */
+static
+BOOLEAN
+MiIsRotatedToFrameBuffer(
+    _In_ ULONG_PTR Address)
+{
+    PMMPTE PointerPte;
+    MMPTE TempPte;
+
+#if (_MI_PAGING_LEVELS == 4)
+    if (MiAddressToPxe((PVOID)Address)->u.Hard.Valid == 0)
+        return FALSE;
+#endif
+#if (_MI_PAGING_LEVELS >= 3)
+    if (MiAddressToPpe((PVOID)Address)->u.Hard.Valid == 0)
+        return FALSE;
+#endif
+    if (MiAddressToPde((PVOID)Address)->u.Hard.Valid == 0)
+        return FALSE;
+
+    PointerPte = MiAddressToPte((PVOID)Address);
+    TempPte = *PointerPte;
+
+    return (TempPte.u.Hard.Valid == 1) && MiIsPteMappingForeignPage(PointerPte, &TempPte);
+}
+
+/**
+ * @brief Takes away the page behind a PTE of a rotate view and leaves a demand zero PTE,
+ * which faults of other threads wait on until the rotate is done.
+ *
+ * @remarks The working set lock and the PFN lock must be held, the page table must exist.
+ */
+static
+VOID
+MiRotateClearPte(
+    _In_ PMMPTE PointerPte,
+    _In_ PVOID Address,
+    _In_ PEPROCESS Process,
+    _In_ ULONG Protection)
+{
+    MMPTE TempPte = *PointerPte;
+    PMMPDE PointerPde;
+
+    if (TempPte.u.Long == 0)
+    {
+        /* Committed but never touched, one more entry of the page table is used now */
+        MiIncrementPageTableReferences(Address);
+    }
+    else if (TempPte.u.Hard.Valid == 1)
+    {
+        if (MiIsPteMappingForeignPage(PointerPte, &TempPte))
+        {
+            /* A frame buffer page, its owner keeps it */
+            PointerPde = MiPteToPde(PointerPte);
+            MI_ERASE_PTE(PointerPte);
+            MiDecrementShareCount(MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber),
+                                  PointerPde->u.Hard.PageFrameNumber);
+        }
+        else
+        {
+            MiDeletePte(PointerPte, Address, Process, NULL);
+        }
+    }
+    else if ((TempPte.u.Soft.Transition == 1) || (TempPte.u.Soft.PageFileHigh != 0))
+    {
+        MiDeletePte(PointerPte, Address, Process, NULL);
+    }
+
+    MI_MAKE_SOFTWARE_PTE(&TempPte, Protection);
+    MI_WRITE_INVALID_PTE(PointerPte, TempPte);
+}
+
+/**
+ * @brief Makes a PTE of a rotate view map a frame buffer page.
+ *
+ * @remarks The working set lock and the PFN lock must be held.
+ */
+static
+VOID
+MiRotateMapFramePage(
+    _In_ PMMPTE PointerPte,
+    _In_ PFN_NUMBER PageFrameIndex,
+    _In_ ULONG Protection,
+    _In_ MEMORY_CACHING_TYPE CacheType)
+{
+    PMMPDE PointerPde = MiPteToPde(PointerPte);
+    MMPTE TempPte;
+
+    MI_MAKE_HARDWARE_PTE_USER(&TempPte, PointerPte, Protection & MM_PROTECT_ACCESS, PageFrameIndex);
+    MiSetRotatePteCaching(&TempPte, MiGetRotatePageCaching(PageFrameIndex, CacheType));
+    MI_WRITE_VALID_PTE(PointerPte, TempPte);
+
+    /* The page is not ours, only the page table counts one more valid entry */
+    MI_PFN_ELEMENT(PointerPde->u.Hard.PageFrameNumber)->u2.ShareCount++;
+}
+
+/**
+ * @brief Takes a free page and holds it the way pages of an MDL are held,
+ * so it can be given back if the rotate cannot finish.
+ *
+ * @remarks The PFN lock must be held and a page must be available.
+ */
+static
+PFN_NUMBER
+MiHoldRotatePage(
+    _In_ PEPROCESS Process)
+{
+    PFN_NUMBER PageFrameIndex;
+    PMMPFN Pfn1;
+
+    PageFrameIndex = MiRemoveAnyPage(MI_GET_NEXT_PROCESS_COLOR(Process));
+    ASSERT(PageFrameIndex != 0);
+
+    Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+    ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
+    Pfn1->u3.e2.ReferenceCount = 1;
+    Pfn1->u2.ShareCount = 1;
+    Pfn1->u3.e1.PageLocation = ActiveAndValid;
+    MI_SET_PFN_DELETED(Pfn1);
+
+    return PageFrameIndex;
+}
+
+/**
+ * @brief Gives back a page from MiHoldRotatePage.
+ *
+ * @remarks The PFN lock must be held.
+ */
+static
+VOID
+MiReleaseRotatePage(
+    _In_ PFN_NUMBER PageFrameIndex)
+{
+    PMMPFN Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+
+    Pfn1->u3.e1.PageLocation = StandbyPageList;
+    Pfn1->u2.ShareCount = 0;
+    MiDecrementReferenceCount(Pfn1, PageFrameIndex);
+}
+
+/**
+ * @brief Makes a page from MiHoldRotatePage a private page of the process behind a PTE.
+ *
+ * @remarks The working set lock and the PFN lock must be held, the PTE must hold the
+ * demand zero PTE MiRotateClearPte left.
+ */
+static
+VOID
+MiRotateMapPrivatePage(
+    _In_ PMMPTE PointerPte,
+    _In_ PFN_NUMBER PageFrameIndex,
+    _In_ ULONG Protection)
+{
+    PMMPFN Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+    MMPTE TempPte;
+
+    Pfn1->u2.ShareCount = 0;
+    Pfn1->u3.e2.ReferenceCount = 0;
+    MiInitializePfn(PageFrameIndex, PointerPte, TRUE);
+
+    MI_MAKE_HARDWARE_PTE_USER(&TempPte, PointerPte, Protection, PageFrameIndex);
+    if (MI_IS_PAGE_WRITEABLE(&TempPte))
+        MI_MAKE_DIRTY_PAGE(&TempPte);
+    MI_WRITE_VALID_PTE(PointerPte, TempPte);
+}
+
+/**
+ * @brief Moves a range of a rotate view onto the frame buffer pages of an MDL.
+ */
+static
+NTSTATUS
+MiRotateToFrameBuffer(
+    _In_ ULONG_PTR StartAddress,
+    _In_ SIZE_T Size,
+    _In_opt_ PMDL NewMdl,
+    _In_ BOOLEAN CopyContents,
+    _In_opt_ PMM_ROTATE_COPY_CALLBACK_FUNCTION CopyFunction,
+    _In_opt_ PVOID Context,
+    _In_ ULONG Protection,
+    _In_ MEMORY_CACHING_TYPE CacheType)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+    PETHREAD Thread = PsGetCurrentThread();
+    ULONG_PTR Address, LastAddress = StartAddress + Size - 1;
+    ULONG DemandZeroProtection = MM_READWRITE | (Protection & MM_PROTECT_SPECIAL);
+    PFN_COUNT PageCount;
+    PPFN_NUMBER NewPages;
+    PMMPTE PointerPte;
+    PMDL OldMdl;
+    KIRQL OldIrql;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    if (Size > MAXULONG)
+        return STATUS_INVALID_BUFFER_SIZE;
+
+    PageCount = (PFN_COUNT)(Size >> PAGE_SHIFT);
+    if ((NewMdl == NULL) ||
+        (ADDRESS_AND_SIZE_TO_SPAN_PAGES(MmGetMdlVirtualAddress(NewMdl), MmGetMdlByteCount(NewMdl)) < PageCount))
+    {
+        return STATUS_INVALID_PARAMETER_3;
+    }
+
+    OldMdl = MiAllocateRotateMdl((PVOID)StartAddress, Size);
+    if (OldMdl == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* The pages there are now stay around until their contents are copied */
+    _SEH2_TRY
+    {
+        MmProbeAndLockPages(OldMdl, UserMode, IoReadAccess);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(OldMdl, TAG_ROTATE_MDL);
+        return Status;
+    }
+
+    MmLockAddressSpace(&Process->Vm);
+    if (Process->VmDeleted)
+    {
+        MmUnlockAddressSpace(&Process->Vm);
+        Status = STATUS_PROCESS_IS_TERMINATING;
+        goto Cleanup;
+    }
+
+    MiLockProcessWorkingSetUnsafe(Process, Thread);
+
+    for (Address = StartAddress; Address <= LastAddress; Address += PAGE_SIZE)
+    {
+        PointerPte = MiAddressToPte((PVOID)Address);
+        if ((Address == StartAddress) || MiIsPteOnPdeBoundary(PointerPte))
+            MiMakePdeExistAndMakeValid(MiAddressToPde((PVOID)Address), Process, MM_NOIRQL);
+
+        OldIrql = MiAcquirePfnLock();
+        MiRotateClearPte(PointerPte, (PVOID)Address, Process, DemandZeroProtection);
+        MiReleasePfnLock(OldIrql);
+    }
+
+    KeFlushProcessTb();
+    MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+    MmUnlockAddressSpace(&Process->Vm);
+
+    if (CopyContents)
+    {
+        OldMdl->MdlFlags |= MDL_MAPPING_CAN_FAIL;
+        if ((CopyFunction == NULL) || !NT_SUCCESS(CopyFunction(NewMdl, OldMdl, Context)))
+            MiCopyRotatePages(NewMdl, OldMdl, PageCount, CacheType);
+    }
+
+    MmLockAddressSpace(&Process->Vm);
+    if (Process->VmDeleted)
+    {
+        /* The address space went away while copying, nothing is left to map */
+        Status = STATUS_PROCESS_IS_TERMINATING;
+    }
+    else
+    {
+        MiLockProcessWorkingSetUnsafe(Process, Thread);
+
+        NewPages = MmGetMdlPfnArray(NewMdl);
+        for (Address = StartAddress; Address <= LastAddress; Address += PAGE_SIZE)
+        {
+            OldIrql = MiAcquirePfnLock();
+            MiRotateMapFramePage(MiAddressToPte((PVOID)Address), *NewPages++, Protection, CacheType);
+            MiReleasePfnLock(OldIrql);
+        }
+
+        MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+    }
+    MmUnlockAddressSpace(&Process->Vm);
+
+Cleanup:
+    MmUnlockPages(OldMdl);
+    ExFreePoolWithTag(OldMdl, TAG_ROTATE_MDL);
+    return Status;
+}
+
+/**
+ * @brief Moves the frame buffer pages of a range of a rotate view back to fresh
+ * private pages, copying their contents. Pages that are regular memory stay.
+ *
+ * @param[out] Done
+ * Bytes from the start of the range that are regular memory now.
+ */
+static
+NTSTATUS
+MiRotateToRegularMemory(
+    _In_ ULONG_PTR StartAddress,
+    _In_ SIZE_T Size,
+    _In_opt_ PMM_ROTATE_COPY_CALLBACK_FUNCTION CopyFunction,
+    _In_opt_ PVOID Context,
+    _In_ ULONG Protection,
+    _In_ MEMORY_CACHING_TYPE CacheType,
+    _Out_ PSIZE_T Done)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+    PETHREAD Thread = PsGetCurrentThread();
+    ULONG_PTR Address = StartAddress, RunStart, LastAddress = StartAddress + Size - 1;
+    ULONG DemandZeroProtection = MM_READWRITE | (Protection & MM_PROTECT_SPECIAL);
+    SIZE_T MdlSize = (Size > (MAXULONG & ~(PAGE_SIZE - 1))) ? (MAXULONG & ~(PAGE_SIZE - 1)) : Size;
+    PFN_COUNT RunPages, Index, MaxRunPages = (PFN_COUNT)(MdlSize >> PAGE_SHIFT);
+    PPFN_NUMBER SourcePages, DestinationPages;
+    PMDL SourceMdl, DestinationMdl;
+    PMMPTE PointerPte;
+    KIRQL OldIrql;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    *Done = 0;
+
+    SourceMdl = MiAllocateRotateMdl((PVOID)StartAddress, MdlSize);
+    DestinationMdl = MiAllocateRotateMdl((PVOID)StartAddress, MdlSize);
+    if ((SourceMdl == NULL) || (DestinationMdl == NULL))
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Cleanup;
+    }
+
+    while (Address <= LastAddress)
+    {
+        MmLockAddressSpace(&Process->Vm);
+        if (Process->VmDeleted)
+        {
+            MmUnlockAddressSpace(&Process->Vm);
+            Status = STATUS_PROCESS_IS_TERMINATING;
+            break;
+        }
+
+        MiLockProcessWorkingSetUnsafe(Process, Thread);
+
+        while ((Address <= LastAddress) && !MiIsRotatedToFrameBuffer(Address))
+            Address += PAGE_SIZE;
+
+        RunStart = Address;
+        RunPages = 0;
+        while ((Address <= LastAddress) && (RunPages < MaxRunPages) && MiIsRotatedToFrameBuffer(Address))
+        {
+            Address += PAGE_SIZE;
+            RunPages++;
+        }
+
+        if (RunPages == 0)
+        {
+            MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+            MmUnlockAddressSpace(&Process->Vm);
+            *Done = Size;
+            break;
+        }
+
+        OldIrql = MiAcquirePfnLock();
+
+        /* Without the pages, the caller comes back for the rest later */
+        if (MmAvailablePages < RunPages)
+        {
+            MiReleasePfnLock(OldIrql);
+            MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+            MmUnlockAddressSpace(&Process->Vm);
+            *Done = RunStart - StartAddress;
+            Status = STATUS_WAS_LOCKED;
+            break;
+        }
+
+        MmInitializeMdl(SourceMdl, (PVOID)RunStart, (SIZE_T)RunPages << PAGE_SHIFT);
+        MmInitializeMdl(DestinationMdl, (PVOID)RunStart, (SIZE_T)RunPages << PAGE_SHIFT);
+        SourceMdl->MdlFlags |= MDL_PAGES_LOCKED | MDL_MAPPING_CAN_FAIL;
+        DestinationMdl->MdlFlags |= MDL_PAGES_LOCKED | MDL_MAPPING_CAN_FAIL;
+        SourcePages = MmGetMdlPfnArray(SourceMdl);
+        DestinationPages = MmGetMdlPfnArray(DestinationMdl);
+
+        for (Index = 0; Index < RunPages; Index++)
+        {
+            PointerPte = MiAddressToPte((PVOID)(RunStart + ((ULONG_PTR)Index << PAGE_SHIFT)));
+
+            SourcePages[Index] = PFN_FROM_PTE(PointerPte);
+            if (MiGetPfnEntry(SourcePages[Index]) == NULL)
+                SourceMdl->MdlFlags |= MDL_IO_SPACE;
+
+            MiRotateClearPte(PointerPte,
+                             (PVOID)(RunStart + ((ULONG_PTR)Index << PAGE_SHIFT)),
+                             Process,
+                             DemandZeroProtection);
+            DestinationPages[Index] = MiHoldRotatePage(Process);
+        }
+
+        MiReleasePfnLock(OldIrql);
+        KeFlushProcessTb();
+        MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+        MmUnlockAddressSpace(&Process->Vm);
+
+        /* The fresh pages can still have cache lines from their last use */
+        if (CacheType != MmCached)
+            KeInvalidateAllCaches();
+
+        if ((CopyFunction == NULL) || !NT_SUCCESS(CopyFunction(DestinationMdl, SourceMdl, Context)))
+            MiCopyRotatePages(DestinationMdl, SourceMdl, RunPages, CacheType);
+
+        MiUnmapRotateMdl(SourceMdl);
+        MiUnmapRotateMdl(DestinationMdl);
+
+        MmLockAddressSpace(&Process->Vm);
+        if (Process->VmDeleted)
+        {
+            /* The address space went away while copying, give the pages back */
+            OldIrql = MiAcquirePfnLock();
+            for (Index = 0; Index < RunPages; Index++)
+                MiReleaseRotatePage(DestinationPages[Index]);
+            MiReleasePfnLock(OldIrql);
+
+            MmUnlockAddressSpace(&Process->Vm);
+            *Done = RunStart - StartAddress;
+            Status = STATUS_PROCESS_IS_TERMINATING;
+            break;
+        }
+
+        MiLockProcessWorkingSetUnsafe(Process, Thread);
+
+        for (Index = 0; Index < RunPages; Index++)
+        {
+            PVOID PageAddress = (PVOID)(RunStart + ((ULONG_PTR)Index << PAGE_SHIFT));
+
+            OldIrql = MiAcquirePfnLock();
+            MiRotateMapPrivatePage(MiAddressToPte(PageAddress), DestinationPages[Index], Protection);
+            MiReleasePfnLock(OldIrql);
+
+            MiAddValidPageToWorkingSet(PageAddress, 0);
+        }
+
+        MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+        MmUnlockAddressSpace(&Process->Vm);
+
+        *Done = Address - StartAddress;
+    }
+
+Cleanup:
+    if (SourceMdl != NULL)
+        ExFreePoolWithTag(SourceMdl, TAG_ROTATE_MDL);
+    if (DestinationMdl != NULL)
+        ExFreePoolWithTag(DestinationMdl, TAG_ROTATE_MDL);
+    return Status;
+}
+
+/**
+ * @brief Drops the frame buffer pages of a range of a rotate view, leaving demand zero memory.
+ * Pages that are regular memory stay.
+ */
+static
+NTSTATUS
+MiRotateToDemandZero(
+    _In_ ULONG_PTR StartAddress,
+    _In_ SIZE_T Size,
+    _In_ ULONG Protection)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+    PETHREAD Thread = PsGetCurrentThread();
+    ULONG_PTR Address, LastAddress = StartAddress + Size - 1;
+    ULONG DemandZeroProtection = MM_READWRITE | (Protection & MM_PROTECT_SPECIAL);
+    KIRQL OldIrql;
+
+    MmLockAddressSpace(&Process->Vm);
+    if (Process->VmDeleted)
+    {
+        MmUnlockAddressSpace(&Process->Vm);
+        return STATUS_PROCESS_IS_TERMINATING;
+    }
+
+    MiLockProcessWorkingSetUnsafe(Process, Thread);
+
+    for (Address = StartAddress; Address <= LastAddress; Address += PAGE_SIZE)
+    {
+        if (!MiIsRotatedToFrameBuffer(Address))
+            continue;
+
+        OldIrql = MiAcquirePfnLock();
+        MiRotateClearPte(MiAddressToPte((PVOID)Address), (PVOID)Address, Process, DemandZeroProtection);
+        MiReleasePfnLock(OldIrql);
+    }
+
+    KeFlushProcessTb();
+    MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+    MmUnlockAddressSpace(&Process->Vm);
+    return STATUS_SUCCESS;
+}
+
 /**
  * @brief
  * Moves the pages behind a MEM_ROTATE view of the current process between
@@ -3298,11 +4061,10 @@ MmUnsecureVirtualMemory(IN PVOID SecureMem)
  * Passed through to @p CopyFunction.
  *
  * @return
- * STATUS_CONFLICTING_ADDRESSES if the range is not inside a rotate view,
- * STATUS_ACCESS_VIOLATION if nothing is mapped there, or a parameter error.
- *
- * @remarks
- * Rotate views cannot be created yet, so no range is ever rotated.
+ * STATUS_SUCCESS, STATUS_WAS_LOCKED when only part of the range could be
+ * moved back to regular memory for now, STATUS_CONFLICTING_ADDRESSES if the
+ * range is not inside a rotate view, STATUS_ACCESS_VIOLATION if nothing is
+ * mapped there, or a parameter error.
  */
 NTSTATUS
 NTAPI
@@ -3315,24 +4077,27 @@ MmRotatePhysicalView(
     _In_opt_ PVOID Context)
 {
     PEPROCESS Process = PsGetCurrentProcess();
+    ULONG_PTR StartAddress = (ULONG_PTR)VirtualAddress;
     ULONG_PTR LastAddress;
+    SIZE_T Size = *NumberOfBytes;
+    SIZE_T Done = 0;
+    PMI_ACTIVE_ROTATE Rotate;
+    PVOID OtherRotate;
+    MEMORY_CACHING_TYPE CacheType;
+    ULONG Protection;
     PMMVAD Vad;
     NTSTATUS Status;
 
-    UNREFERENCED_PARAMETER(NewMdl);
-    UNREFERENCED_PARAMETER(CopyFunction);
-    UNREFERENCED_PARAMETER(Context);
-
     PAGED_CODE();
 
-    if (BYTE_OFFSET(VirtualAddress))
+    if (BYTE_OFFSET(StartAddress))
     {
         Status = STATUS_INVALID_PARAMETER_1;
         goto Quit;
     }
 
-    LastAddress = (ULONG_PTR)VirtualAddress + *NumberOfBytes - 1;
-    if (BYTE_OFFSET(*NumberOfBytes) || (LastAddress <= (ULONG_PTR)VirtualAddress))
+    LastAddress = StartAddress + Size - 1;
+    if (BYTE_OFFSET(Size) || (LastAddress <= StartAddress))
     {
         Status = STATUS_INVALID_PARAMETER_2;
         goto Quit;
@@ -3344,19 +4109,85 @@ MmRotatePhysicalView(
         goto Quit;
     }
 
+Retry:
     MmLockAddressSpace(&Process->Vm);
+
+    if (Process->VmDeleted)
+    {
+        Status = STATUS_PROCESS_IS_TERMINATING;
+        goto QuitUnlock;
+    }
 
     Vad = MiLocateAddress(VirtualAddress);
     if (Vad == NULL)
+    {
         Status = STATUS_ACCESS_VIOLATION;
-    else if ((Vad->u.VadFlags.VadType != VadRotatePhysical) ||
-             (Vad->EndingVpn < (LastAddress >> PAGE_SHIFT)))
-        Status = STATUS_CONFLICTING_ADDRESSES;
-    else
-        Status = STATUS_NOT_IMPLEMENTED;
+        goto QuitUnlock;
+    }
 
+    if ((Vad->u.VadFlags.VadType != VadRotatePhysical) ||
+        (Vad->EndingVpn < (LastAddress >> PAGE_SHIFT)))
+    {
+        Status = STATUS_CONFLICTING_ADDRESSES;
+        goto QuitUnlock;
+    }
+
+    /* One rotate at a time in a view */
+    OtherRotate = MiReferenceRotatingRange(Process, VirtualAddress);
+    if (OtherRotate != NULL)
+    {
+        MmUnlockAddressSpace(&Process->Vm);
+        MiWaitForRotatingRange(OtherRotate);
+        goto Retry;
+    }
+
+    Rotate = MiStartRotate(Process, Vad);
+    if (Rotate == NULL)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto QuitUnlock;
+    }
+
+    Protection = (ULONG)Vad->u.VadFlags.Protection;
+    CacheType = MiGetRotateViewCaching(Vad);
     MmUnlockAddressSpace(&Process->Vm);
 
+    if (Direction <= MmToFrameBufferNoCopy)
+    {
+        Status = MiRotateToFrameBuffer(StartAddress,
+                                       Size,
+                                       NewMdl,
+                                       (BOOLEAN)(Direction == MmToFrameBuffer),
+                                       CopyFunction,
+                                       Context,
+                                       Protection,
+                                       CacheType);
+        if (NT_SUCCESS(Status))
+            Done = Size;
+    }
+    else if (Direction == MmToRegularMemory)
+    {
+        Status = MiRotateToRegularMemory(StartAddress,
+                                         Size,
+                                         CopyFunction,
+                                         Context,
+                                         Protection,
+                                         CacheType,
+                                         &Done);
+    }
+    else
+    {
+        Status = MiRotateToDemandZero(StartAddress, Size, Protection);
+        if (NT_SUCCESS(Status))
+            Done = Size;
+    }
+
+    MiFinishRotate(Rotate);
+    *NumberOfBytes = Done;
+    return Status;
+
+QuitUnlock:
+    MmUnlockAddressSpace(&Process->Vm);
 Quit:
     *NumberOfBytes = 0;
     return Status;
@@ -5215,10 +6046,26 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
 
     /* Check for valid Allocation Types */
     if ((AllocationType & ~(MEM_COMMIT | MEM_RESERVE | MEM_RESET | MEM_PHYSICAL |
-                    MEM_TOP_DOWN | MEM_WRITE_WATCH | MEM_LARGE_PAGES)))
+                    MEM_TOP_DOWN | MEM_WRITE_WATCH | MEM_LARGE_PAGES | MEM_ROTATE)))
     {
         DPRINT1("Invalid Allocation Type\n");
         return STATUS_INVALID_PARAMETER_5;
+    }
+
+    /* A rotate view is plain readable or writable memory, with any caching */
+    if (AllocationType & MEM_ROTATE)
+    {
+        if (AllocationType & (MEM_RESET | MEM_PHYSICAL | MEM_WRITE_WATCH | MEM_LARGE_PAGES))
+        {
+            DPRINT1("Using illegal flags with MEM_ROTATE\n");
+            return STATUS_INVALID_PARAMETER_5;
+        }
+
+        if (Protect & ~(PAGE_READONLY | PAGE_READWRITE | PAGE_NOCACHE | PAGE_WRITECOMBINE))
+        {
+            DPRINT1("MEM_ROTATE used with protection 0x%lx\n", Protect);
+            return STATUS_INVALID_PAGE_PROTECTION;
+        }
     }
 
     /* Check for at least one of these Allocation Types to be set */
@@ -5484,6 +6331,7 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         if (AllocationType & MEM_COMMIT) Vad->u.VadFlags.MemCommit = 1;
         Vad->u.VadFlags.Protection = ProtectionMask;
         Vad->u.VadFlags.PrivateMemory = 1;
+        if (AllocationType & MEM_ROTATE) Vad->u.VadFlags.VadType = VadRotatePhysical;
 
         /* Long enough for MmSecureVirtualMemory to use u3 */
         Vad->u2.VadFlags2.LongVad = 1;
@@ -5736,14 +6584,10 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
     }
 
     //
-    // This is a specific ReactOS check because we only use normal VADs
+    // This is a specific ReactOS check because we only use normal and rotate VADs
     //
-    ASSERT(FoundVad->u.VadFlags.VadType == VadNone);
-
-    //
-    // While this is an actual Windows check
-    //
-    ASSERT(FoundVad->u.VadFlags.VadType != VadRotatePhysical);
+    ASSERT((FoundVad->u.VadFlags.VadType == VadNone) ||
+           (FoundVad->u.VadFlags.VadType == VadRotatePhysical));
 
     //
     // Throw out attempts to use copy-on-write through this API path
@@ -5753,6 +6597,37 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         DPRINT1("Write copy attempted when not allowed\n");
         Status = STATUS_INVALID_PAGE_PROTECTION;
         goto FailPath;
+    }
+
+    /* Pages of a rotate view are readable or writable, and cached like the view */
+    if (FoundVad->u.VadFlags.VadType == VadRotatePhysical)
+    {
+        Protect &= ~(PAGE_NOCACHE | PAGE_WRITECOMBINE);
+        if (Protect & ~(PAGE_READONLY | PAGE_READWRITE))
+        {
+            DPRINT1("Invalid page protection for rotate VAD\n");
+            Status = STATUS_INVALID_PAGE_PROTECTION;
+            goto FailPath;
+        }
+
+        switch (MiGetRotateViewCaching(FoundVad))
+        {
+            case MmWriteCombined:
+                Protect |= PAGE_WRITECOMBINE;
+                break;
+            case MmNonCached:
+                Protect |= PAGE_NOCACHE;
+                break;
+            default:
+                break;
+        }
+
+        ProtectionMask = MiMakeProtectionMask(Protect);
+        if (ProtectionMask == MM_INVALID_PROTECTION)
+        {
+            Status = STATUS_INVALID_PAGE_PROTECTION;
+            goto FailPath;
+        }
     }
 
     //
@@ -5834,7 +6709,9 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
             //
             MI_WRITE_INVALID_PTE(PointerPte, TempPte);
         }
-        else if (!(ChangeProtection) && (Protect != MiGetPageProtection(PointerPte)))
+        else if (!(ChangeProtection) &&
+                 (FoundVad->u.VadFlags.VadType != VadRotatePhysical) &&
+                 (Protect != MiGetPageProtection(PointerPte)))
         {
             /* Private memory, possibly paged out, never a prototype PTE */
             ASSERT((PointerPte->u.Soft.Valid == 1) || (PointerPte->u.Soft.Prototype == 0));
@@ -5940,6 +6817,8 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
     ULONG_PTR StartingAddress, EndingAddress;
     PMMVAD Vad;
     PMMVAD NewVad;
+    PMMVAD RotateVad = NULL;
+    PVOID Rotate;
     NTSTATUS Status;
     PEPROCESS Process;
     PMMSUPPORT AddressSpace;
@@ -6042,6 +6921,9 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
     AddressSpace = MmGetCurrentAddressSpace();
     MmLockAddressSpace(AddressSpace);
 
+FindVad:
+    RotateVad = NULL;
+
     //
     // If the address space is being deleted, fail the de-allocation since it's
     // too late to do anything about it
@@ -6064,6 +6946,21 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
         DPRINT1("Unable to find VAD for address 0x%p\n", StartingAddress);
         Status = STATUS_MEMORY_NOT_ALLOCATED;
         goto FailPath;
+    }
+
+    /* A view being rotated by another thread can only go once that is done */
+    if (Vad->u.VadFlags.VadType == VadRotatePhysical)
+    {
+        Rotate = MiReferenceRotatingRange(Process, (PVOID)StartingAddress);
+        if (Rotate != NULL)
+        {
+            MmUnlockAddressSpace(AddressSpace);
+            MiWaitForRotatingRange(Rotate);
+            MmLockAddressSpace(AddressSpace);
+            goto FindVad;
+        }
+
+        RotateVad = Vad;
     }
 
     //
@@ -6104,9 +7001,10 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
     if (FreeType & MEM_RELEASE)
     {
         //
-        // ARM3 only supports this VAD in this path
+        // ARM3 only supports these VADs in this path
         //
-        ASSERT(Vad->u.VadFlags.VadType == VadNone);
+        ASSERT((Vad->u.VadFlags.VadType == VadNone) ||
+               (Vad->u.VadFlags.VadType == VadRotatePhysical));
 
         //
         // Is the caller trying to remove the whole VAD, or remove only a portion
@@ -6308,7 +7206,7 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
         // to do that and then release the working set, since we're done messing
         // around with process pages.
         //
-        MiDeleteVirtualAddresses(StartingAddress, EndingAddress, NULL);
+        MiDeleteVirtualAddresses(StartingAddress, EndingAddress, RotateVad);
         MiUnlockProcessWorkingSetUnsafe(Process, CurrentThread);
         Status = STATUS_SUCCESS;
 
