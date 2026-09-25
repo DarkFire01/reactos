@@ -2007,11 +2007,11 @@ SSI_DEF(SystemExtendServiceTableInformation)
                                       sizeof(Win32kName));
     }
 
-    /* Load the image */
+    /* Load the image into the session of the caller, every session has its own copy */
     Status = MmLoadSystemImage((PUNICODE_STRING)Buffer,
                                NULL,
                                NULL,
-                               0,
+                               1,
                                (PVOID)&ModuleObject,
                                &ImageBase);
 
