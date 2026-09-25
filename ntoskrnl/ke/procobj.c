@@ -913,6 +913,16 @@ KeAddSystemServiceTable(IN PULONG_PTR Base,
 {
     PAGED_CODE();
 
+    /* A session image registers the same table from every session */
+    if ((Index <= SSDT_MAX_ENTRIES - 1) &&
+        !KeServiceDescriptorTable[Index].Base &&
+        (KeServiceDescriptorTableShadow[Index].Base == Base) &&
+        (KeServiceDescriptorTableShadow[Index].Limit == Limit) &&
+        (KeServiceDescriptorTableShadow[Index].Number == Number))
+    {
+        return TRUE;
+    }
+
     /* Check if descriptor table entry is free */
     if ((Index > SSDT_MAX_ENTRIES - 1) ||
         (KeServiceDescriptorTable[Index].Base) ||
