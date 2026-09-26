@@ -112,12 +112,10 @@ RtlUnregisterFeatureConfigurationChangeNotification(
 NTSTATUS
 NTAPI
 RtlRegisterFeatureUsageProvider(
-    _In_ PVOID Provider,
     _In_ PVOID Callback,
     _In_opt_ PVOID Context,
     _Out_opt_ PVOID *ProviderHandle)
 {
-    UNREFERENCED_PARAMETER(Provider);
     UNREFERENCED_PARAMETER(Callback);
     UNREFERENCED_PARAMETER(Context);
 
@@ -139,9 +137,11 @@ RtlUnregisterFeatureUsageProvider(
 VOID
 NTAPI
 RtlArmFeatureUsageProviderFlushNotification(
-    _In_ PVOID ProviderHandle)
+    _In_ PVOID ProviderHandle,
+    _In_ ULONG64 Flags)
 {
     UNREFERENCED_PARAMETER(ProviderHandle);
+    UNREFERENCED_PARAMETER(Flags);
 }
 
 /**

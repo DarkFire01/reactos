@@ -1621,11 +1621,9 @@ BOOLEAN
 NTAPI
 ExUnblockPushLockEx(
     _Inout_ PVOID PushLock,
-    _In_opt_ PVOID WaitBlock,
-    _In_ ULONG Flags)
+    _In_opt_ PVOID WaitBlock)
 {
     UNREFERENCED_PARAMETER(WaitBlock);
-    UNREFERENCED_PARAMETER(Flags);
 
     return ExUnblockOnAddressPushLockEx(PushLock, NULL);
 }

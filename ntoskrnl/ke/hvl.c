@@ -368,16 +368,49 @@ HvlUnregisterInterruptCallback(
 
 /**
  * @brief
- * Tells the hypervisor that a virtual processor is about to be dispatched.
+ * Reports what a virtual processor dispatch has to take care of.
+ *
+ * @param[in] Flags
+ * What the caller is about to dispatch.
+ *
+ * @param[out] FlushTlb
+ * Whether the dispatch has to flush the address space behind it.
+ *
+ * @param[out] FlushCache
+ * Whether it has to write the caches back.
+ *
+ * @param[out] FlushBranchPredictor
+ * Whether it has to clear the branch predictor.
+ *
+ * @param[out] RestoreSpeculationControl
+ * Whether the caller has to put the speculation control register back
+ * afterwards, using the value in @p SpeculationControl.
+ *
+ * @param[in,out] SpeculationControl
+ * The speculation control value to put back.
  *
  * @remarks
- * A scheduling hint, and the hypervisor is free to be told nothing.
+ * The kernel keeps no per dispatch mitigation state, so nothing is asked of
+ * the caller. Every answer still has to be written, because the caller reads
+ * all of them and never sets them itself.
  */
 VOID
 NTAPI
-KePrepareToDispatchVirtualProcessor(VOID)
+KePrepareToDispatchVirtualProcessor(
+    _In_ ULONG Flags,
+    _Out_ PBOOLEAN FlushTlb,
+    _Out_ PBOOLEAN FlushCache,
+    _Out_ PBOOLEAN FlushBranchPredictor,
+    _Out_ PBOOLEAN RestoreSpeculationControl,
+    _Inout_ PULONG64 SpeculationControl)
 {
-    NOTHING;
+    UNREFERENCED_PARAMETER(Flags);
+    UNREFERENCED_PARAMETER(SpeculationControl);
+
+    *FlushTlb = FALSE;
+    *FlushCache = FALSE;
+    *FlushBranchPredictor = FALSE;
+    *RestoreSpeculationControl = FALSE;
 }
 
 /**
