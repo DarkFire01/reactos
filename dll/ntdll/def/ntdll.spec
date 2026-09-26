@@ -1943,3 +1943,6 @@
 @ stdcall -arch=arm __rt_udiv()
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
+@ stdcall -version=0x602+ RtlRbInsertNodeEx(ptr ptr long ptr)
+@ stdcall -version=0x602+ RtlRbRemoveNode(ptr ptr)
+@ cdecl -version=0x600+ wcscpy_s(ptr long wstr)

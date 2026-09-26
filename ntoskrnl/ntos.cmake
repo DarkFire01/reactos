@@ -297,7 +297,6 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/feature.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/libsupp.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/misc.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/rbtree.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/access.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/accesschk.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/acl.c
