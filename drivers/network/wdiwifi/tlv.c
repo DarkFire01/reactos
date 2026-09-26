@@ -11,9 +11,6 @@
 #define NDEBUG
 #include <debug.h>
 
-/* A TLV is a 16-bit type and a 16-bit value length, then the value */
-#define WDI_TLV_HEADER_LENGTH               4
-
 /* Packed WDI_TLV_INTERFACE_CAPABILITIES lengths, by the WDI version that grew it */
 #define WDI_INTERFACE_CAPS_V1_1_8           54
 #define WDI_INTERFACE_CAPS_V1_0_20          51

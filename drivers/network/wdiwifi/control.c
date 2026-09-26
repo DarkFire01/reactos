@@ -526,6 +526,7 @@ WdiConnectWorker(
     KeAcquireSpinLock(&Adapter->AssocLock, &OldIrql);
     Adapter->Association.Valid = FALSE;
     KeReleaseSpinLock(&Adapter->AssocLock, OldIrql);
+    Adapter->PairwiseKeyInstalled = FALSE;
 
     DPRINT1("WLAN connecting to a %u byte SSID on port %u, candidate %s\n",
             Adapter->DesiredSsidLength, Port->PortId, HaveTarget ? "found" : "none");
@@ -859,8 +860,69 @@ WdiSet(
                 return Status;
 
             OidRequest->DATA.SET_INFORMATION.BytesRead = FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer) + Array->uNumOfBytes;
-            return WdiInstallCipherKey(Adapter, Port->PortId, WDI_CIPHER_KEY_TYPE_PAIRWISE_KEY,
-                                       Key->AlgorithmId, Key->PeerMacAddr, 0, &Material);
+            Status = WdiInstallCipherKey(Adapter, Port->PortId, WDI_CIPHER_KEY_TYPE_PAIRWISE_KEY,
+                                         Key->AlgorithmId, Key->PeerMacAddr, 0, &Material);
+            if (Status == NDIS_STATUS_SUCCESS)
+                Adapter->PairwiseKeyInstalled = TRUE;
+            return Status;
+        }
+
+        case OID_DOT11_PRIVACY_EXEMPTION_LIST:
+        {
+            PDOT11_PRIVACY_EXEMPTION_LIST List = Buffer;
+            PWDI_PORT Port = WdiDefaultPort(Adapter);
+            PUCHAR Tlvs;
+            UCHAR Entry[10];
+            ULONG Needed;
+            ULONG Length = 0;
+            ULONG i;
+            NDIS_STATUS Status;
+
+            if (BufferLength < FIELD_OFFSET(DOT11_PRIVACY_EXEMPTION_LIST, PrivacyExemptionEntries) ||
+                List->Header.Type != NDIS_OBJECT_TYPE_DEFAULT ||
+                List->Header.Revision < DOT11_PRIVACY_EXEMPTION_LIST_REVISION_1 ||
+                List->uNumOfEntries > 64)
+            {
+                return NDIS_STATUS_INVALID_DATA;
+            }
+            if (Port == NULL)
+                return NDIS_STATUS_INVALID_STATE;
+
+            Needed = FIELD_OFFSET(DOT11_PRIVACY_EXEMPTION_LIST, PrivacyExemptionEntries) +
+                     List->uNumOfEntries * sizeof(DOT11_PRIVACY_EXEMPTION);
+            if (BufferLength < Needed)
+            {
+                OidRequest->DATA.SET_INFORMATION.BytesNeeded = Needed;
+                return NDIS_STATUS_INVALID_LENGTH;
+            }
+
+            Tlvs = ExAllocatePoolWithTag(NonPagedPool,
+                                         List->uNumOfEntries * (WDI_TLV_HEADER_LENGTH + sizeof(Entry)) + 1,
+                                         WDI_TAG);
+            if (Tlvs == NULL)
+                return NDIS_STATUS_RESOURCES;
+
+            /* Each entry packs the EtherType as given, then the action and the
+               packet type as 32-bit values */
+            for (i = 0; i < List->uNumOfEntries; i++)
+            {
+                PDOT11_PRIVACY_EXEMPTION Exemption = &List->PrivacyExemptionEntries[i];
+                USHORT PacketType = Exemption->usExemptionPacketType;
+
+                if (PacketType != DOT11_EXEMPT_UNICAST && PacketType != DOT11_EXEMPT_MULTICAST)
+                    PacketType = DOT11_EXEMPT_BOTH;
+
+                Entry[0] = (UCHAR)Exemption->usEtherType;
+                Entry[1] = (UCHAR)(Exemption->usEtherType >> 8);
+                WdiPutLe32(Entry + 2, Exemption->usExemptionActionType);
+                WdiPutLe32(Entry + 6, PacketType);
+                Length += WdiTlvPut(Tlvs + Length, WDI_TLV_PRIVACY_EXEMPTION_ENTRY, Entry, sizeof(Entry));
+            }
+
+            OidRequest->DATA.SET_INFORMATION.BytesRead = Needed;
+            Status = WdiSendCommand(Adapter, WDI_SET_PRIVACY_EXEMPTION_LIST, Port->PortId, Tlvs, Length, FALSE, NULL);
+            ExFreePoolWithTag(Tlvs, WDI_TAG);
+            return Status;
         }
 
         case OID_DOT11_CIPHER_DEFAULT_KEY:

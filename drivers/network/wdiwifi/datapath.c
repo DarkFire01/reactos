@@ -156,6 +156,29 @@ WdiFrameEthertype(
     return (UINT16)((Data[30] << 8) | Data[31]);
 }
 
+/* The exemption the Native WiFi layer asked for in the send's ExtSTA context.
+   One that only holds while the pairwise key is missing turns into always
+   until that key is in */
+static
+WDI_EXEMPTION_ACTION_TYPE
+WdiSendExemption(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferList)
+{
+    PDOT11_EXTSTA_SEND_CONTEXT Context = NET_BUFFER_LIST_INFO(NetBufferList, MediaSpecificInformation);
+
+    if (Context == NULL)
+        return WDI_EXEMPT_NO_EXEMPTION;
+
+    if (Context->usExemptionActionType == DOT11_EXEMPT_ON_KEY_MAPPING_KEY_UNAVAILABLE &&
+        !Adapter->PairwiseKeyInstalled)
+    {
+        return WDI_EXEMPT_ALWAYS;
+    }
+
+    return (WDI_EXEMPTION_ACTION_TYPE)Context->usExemptionActionType;
+}
+
 static
 VOID
 NTAPI
@@ -209,6 +232,7 @@ WdiQueueSend(
         Metadata->u.txMetaData.ExTID = 0;
         Metadata->u.txMetaData.IsUnicast = TRUE;
         Metadata->u.txMetaData.Ethertype = WdiFrameEthertype(NetBufferList);
+        Metadata->u.txMetaData.ExemptionAction = WdiSendExemption(Adapter, NetBufferList);
         Metadata->u.txMetaData.bTxCompleteRequired = TRUE;
         NET_BUFFER_LIST_MINIPORT_RESERVED(NetBufferList)[0] = Metadata;
 
@@ -641,6 +665,7 @@ WdiPeerDelete(
     if (Adapter->Connected)
     {
         Adapter->Connected = FALSE;
+        Adapter->PairwiseKeyInstalled = FALSE;
         WdiIndicateDisassociation(Adapter, &Adapter->ConnectedBssid, DOT11_ASSOC_STATUS_DISASSOCIATED_BY_OS);
     }
 

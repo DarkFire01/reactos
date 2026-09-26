@@ -168,6 +168,9 @@ typedef struct _WDI_BSS
 #define WDI_CHANNEL_INFO_LENGTH             8
 #define WDI_CONNECTION_SETTINGS_MAX_LENGTH  15
 
+/* A TLV is a 16-bit type and a 16-bit length ahead of its value */
+#define WDI_TLV_HEADER_LENGTH               4
+
 /* The bytes of the packed WDI_TLV_CONNECTION_SETTINGS this edge fills */
 #define WDI_CONNECTION_HIDDEN_NETWORK       1
 #define WDI_CONNECTION_EXCLUDE_UNENCRYPTED  2
@@ -279,6 +282,9 @@ typedef struct _WDI_ADAPTER
     /* Set through OID_DOT11_EXCLUDE_UNENCRYPTED and OID_DOT11_HIDDEN_NETWORK_ENABLED */
     BOOLEAN ExcludeUnencrypted;
     BOOLEAN HiddenNetwork;
+
+    /* Whether the AP's pairwise key is in, for sends exempt only until it is */
+    BOOLEAN PairwiseKeyInstalled;
 
     /* Connects run on their own work item */
     NDIS_HANDLE ConnectWorkItem;
