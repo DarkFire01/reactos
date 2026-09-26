@@ -1,6 +1,7 @@
 
 add_subdirectory(arbiter)
 add_subdirectory(aux_klib)
+add_subdirectory(bcryptk)
 add_subdirectory(copysup)
 add_subdirectory(csq)
 add_subdirectory(hidparser)
