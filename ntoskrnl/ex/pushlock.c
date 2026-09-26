@@ -19,6 +19,25 @@ ULONG ExPushLockSpinCount = 0;
 #undef EX_PUSH_LOCK
 #undef PEX_PUSH_LOCK
 
+/* BLOCK ON ADDRESS **********************************************************/
+
+/*
+ * A waiter parks here until the memory it is watching stops matching what it
+ * last read. The list is global rather than hung off the push lock, because a
+ * push lock is one pointer with no room to hang anything from.
+ */
+typedef struct _EX_ADDRESS_WAIT_BLOCK
+{
+    LIST_ENTRY ListEntry;
+    PVOID PushLock;
+    PVOID Address;
+    BOOLEAN Waiting;
+    KEVENT Event;
+} EX_ADDRESS_WAIT_BLOCK, *PEX_ADDRESS_WAIT_BLOCK;
+
+static KSPIN_LOCK ExpAddressWaitLock;
+static LIST_ENTRY ExpAddressWaitList;
+
 /* PRIVATE FUNCTIONS *********************************************************/
 
 #ifdef _WIN64
@@ -49,6 +68,9 @@ ExpInitializePushLocks(VOID)
     if (KeNumberProcessors > 1)
         ExPushLockSpinCount = 1024;
 #endif
+
+    KeInitializeSpinLock(&ExpAddressWaitLock);
+    InitializeListHead(&ExpAddressWaitList);
 }
 
 /*++
@@ -1470,4 +1492,123 @@ ExReleasePushLockEx(
     ExpValidatePushLockFlags(PushLock, Flags);
 
     ExReleasePushLock((PEX_PUSH_LOCK)PushLock);
+}
+
+/**
+ * @brief
+ * Waits until the memory at an address stops matching what the caller last
+ * read from it.
+ *
+ * @param[in] PushLock
+ * Names the group of waiters to be woken together. It is not acquired.
+ *
+ * @param[in] Address
+ * The memory to watch.
+ *
+ * @param[in] CompareAddress
+ * What the caller last read. The wait ends once the two differ.
+ *
+ * @param[in] Size
+ * How much of the two to compare, in bytes.
+ *
+ * @param[in] Timeout
+ * How long to wait, or NULL to wait for as long as it takes.
+ *
+ * @remarks
+ * The comparison happens under the same lock the waker takes, so a change that
+ * lands between the compare and the wait cannot be missed.
+ */
+VOID
+NTAPI
+ExBlockOnAddressPushLock(
+    _Inout_ PVOID PushLock,
+    _In_ volatile VOID *Address,
+    _In_ PVOID CompareAddress,
+    _In_ SIZE_T Size,
+    _In_opt_ PLARGE_INTEGER Timeout)
+{
+    EX_ADDRESS_WAIT_BLOCK WaitBlock;
+    KIRQL OldIrql;
+
+    KeInitializeEvent(&WaitBlock.Event, SynchronizationEvent, FALSE);
+    WaitBlock.PushLock = PushLock;
+    WaitBlock.Address = (PVOID)Address;
+    WaitBlock.Waiting = TRUE;
+
+    KeAcquireSpinLock(&ExpAddressWaitLock, &OldIrql);
+
+    if (RtlCompareMemory((PVOID)Address, CompareAddress, Size) != Size)
+    {
+        /* Already moved on, so there is nothing to wait for */
+        KeReleaseSpinLock(&ExpAddressWaitLock, OldIrql);
+        return;
+    }
+
+    InsertTailList(&ExpAddressWaitList, &WaitBlock.ListEntry);
+    KeReleaseSpinLock(&ExpAddressWaitLock, OldIrql);
+
+    KeWaitForSingleObject(&WaitBlock.Event,
+                          Executive,
+                          KernelMode,
+                          FALSE,
+                          Timeout);
+
+    KeAcquireSpinLock(&ExpAddressWaitLock, &OldIrql);
+    if (WaitBlock.Waiting)
+    {
+        /* Timed out, so take it back off the list ourselves */
+        RemoveEntryList(&WaitBlock.ListEntry);
+        WaitBlock.Waiting = FALSE;
+    }
+    KeReleaseSpinLock(&ExpAddressWaitLock, OldIrql);
+}
+
+/**
+ * @brief
+ * Wakes what is waiting on a push lock through ExBlockOnAddressPushLock.
+ *
+ * @param[in] PushLock
+ * The group of waiters to wake.
+ *
+ * @param[in] Address
+ * Wake only the waiters watching this address, or NULL for all of them.
+ *
+ * @return
+ * TRUE when at least one waiter was woken.
+ */
+BOOLEAN
+NTAPI
+ExUnblockOnAddressPushLockEx(
+    _Inout_ PVOID PushLock,
+    _In_opt_ PVOID Address)
+{
+    PLIST_ENTRY Entry, Next;
+    PEX_ADDRESS_WAIT_BLOCK WaitBlock;
+    BOOLEAN Woken = FALSE;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&ExpAddressWaitLock, &OldIrql);
+
+    for (Entry = ExpAddressWaitList.Flink;
+         Entry != &ExpAddressWaitList;
+         Entry = Next)
+    {
+        Next = Entry->Flink;
+        WaitBlock = CONTAINING_RECORD(Entry, EX_ADDRESS_WAIT_BLOCK, ListEntry);
+
+        if (WaitBlock->PushLock != PushLock)
+            continue;
+
+        if ((Address != NULL) && (WaitBlock->Address != Address))
+            continue;
+
+        RemoveEntryList(&WaitBlock->ListEntry);
+        WaitBlock->Waiting = FALSE;
+        KeSetEvent(&WaitBlock->Event, IO_NO_INCREMENT, FALSE);
+        Woken = TRUE;
+    }
+
+    KeReleaseSpinLock(&ExpAddressWaitLock, OldIrql);
+
+    return Woken;
 }

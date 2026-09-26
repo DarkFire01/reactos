@@ -1943,4 +1943,39 @@ MmMapMemoryDumpMdl(IN PMDL Mdl)
     UNIMPLEMENTED;
 }
 
+/**
+ * @brief
+ * Allocates physical pages and describes them with an MDL, preferring a node.
+ *
+ * @param[in] IdealNode
+ * The NUMA node the caller would rather have the pages from.
+ *
+ * @return
+ * The MDL, or NULL when the pages could not be found.
+ *
+ * @remarks
+ * The node is a preference, and memory here is one node, so it is noted and
+ * the allocation is served the same way MmAllocatePagesForMdlEx serves it.
+ */
+PMDL
+NTAPI
+MmAllocateNodePagesForMdlEx(
+    _In_ PHYSICAL_ADDRESS LowAddress,
+    _In_ PHYSICAL_ADDRESS HighAddress,
+    _In_ PHYSICAL_ADDRESS SkipBytes,
+    _In_ SIZE_T TotalBytes,
+    _In_ MEMORY_CACHING_TYPE CacheType,
+    _In_ ULONG IdealNode,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(IdealNode);
+
+    return MmAllocatePagesForMdlEx(LowAddress,
+                                   HighAddress,
+                                   SkipBytes,
+                                   TotalBytes,
+                                   CacheType,
+                                   Flags);
+}
+
 /* EOF */
