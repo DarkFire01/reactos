@@ -93,6 +93,11 @@ KsecGenRandom(
 
 VOID
 NTAPI
+KsecInitializeRandomSupport(
+    VOID);
+
+VOID
+NTAPI
 KsecInitializeEncryptionSupport (
     VOID);
 
