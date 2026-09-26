@@ -93,4 +93,10 @@ WlanConnectWpa(
     _In_ struct _DOT11_SSID *Ssid,
     _In_ PCWSTR Passphrase);
 
+DWORD
+WlanConnectSae(
+    _In_ const GUID *InterfaceGuid,
+    _In_ struct _DOT11_SSID *Ssid,
+    _In_ PCWSTR Passphrase);
+
 #endif /* _WLANSVC_PCH_ */

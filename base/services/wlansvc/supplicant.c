@@ -54,6 +54,7 @@
 
 /* dot11 values equal the WDI ones, so these carry straight down */
 #define WLAN_AUTH_RSNA_PSK                          7
+#define WLAN_AUTH_WPA3_SAE                          9
 #define WLAN_CIPHER_NONE                            0
 #define WLAN_CIPHER_TKIP                            2
 #define WLAN_CIPHER_CCMP                            4
@@ -61,6 +62,51 @@
 
 /* The dot11 association completion the Native WiFi filter queues for us */
 #define WLAN_STATUS_ASSOCIATION_COMPLETION          0x40030003
+
+/* A WDI miniport asking the host for an SAE step, and the OID answering it */
+#define WLAN_STATUS_SAE_PARAMS_NEEDED               0x40050086
+#define OID_WDI_SET_SAE_AUTH_PARAMS                 0xE4400087
+
+/* The WDI TLVs of those two */
+#define WDI_TLV_BSSID                               0x0002
+#define WDI_TLV_SAE_INDICATION_TYPE                 0x014B
+#define WDI_TLV_SAE_STATUS                          0x014C
+#define WDI_TLV_SAE_COMMIT_RESPONSE                 0x014D
+#define WDI_TLV_SAE_CONFIRM_RESPONSE                0x014E
+#define WDI_TLV_SAE_REQUEST_TYPE                    0x014F
+#define WDI_TLV_SAE_COMMIT_REQUEST                  0x0150
+#define WDI_TLV_SAE_CONFIRM_REQUEST                 0x0151
+#define WDI_TLV_SAE_FINITE_CYCLIC_GROUP             0x0152
+#define WDI_TLV_SAE_SCALAR                          0x0153
+#define WDI_TLV_SAE_ELEMENT                         0x0154
+#define WDI_TLV_SAE_ANTI_CLOGGING_TOKEN             0x0155
+#define WDI_TLV_SAE_SEND_CONFIRM                    0x0156
+#define WDI_TLV_SAE_CONFIRM                         0x0157
+
+/* WDI_SAE_INDICATION_TYPE and WDI_SAE_REQUEST_TYPE */
+#define SAE_NEED_COMMIT                             0
+#define SAE_GOT_COMMIT                              1
+#define SAE_GOT_CONFIRM                             2
+#define SAE_GOT_ERROR                               3
+#define SAE_RESEND_CONFIRM                          4
+
+#define SAE_SEND_COMMIT                             0
+#define SAE_SEND_CONFIRM                            1
+#define SAE_SEND_FAILURE                            2
+#define SAE_SEND_SUCCESS                            3
+#define SAE_SEND_COMMIT_H2E                         4
+
+/* WDI_SAE_STATUS values sent back with a failure */
+#define SAE_STATUS_COMMIT_MALFORMED                 11
+#define SAE_STATUS_COMMIT_UNSUPPORTED_GROUP         14
+#define SAE_STATUS_CONFIRM_VERIFICATION_FAILED      34
+
+/* 802.11 SAE authentication fields and status codes */
+#define SAE_AUTH_ALGORITHM                          3
+#define SAE_STATUS_SUCCESS                          0
+#define SAE_STATUS_ANTI_CLOGGING_TOKEN              76
+#define SAE_STATUS_HASH_TO_ELEMENT                  126
+#define SAE_MAX_TOKEN                               256
 #define WLAN_ASSOC_STATUS_SUCCESS                   0
 #define WLAN_INDICATION_MAX                         2048
 
@@ -216,6 +262,18 @@ typedef struct _WLAN_KEY_SESSION
     ULONG IgtkKeyId;
     ULONG IgtkLength;
     UCHAR Igtk[32];
+
+    /* SAE, while the miniport authenticates through us */
+    BOOLEAN UseSae;
+    BOOLEAN SaeHashToElement;
+    BOOLEAN SaeDone;
+    BOOLEAN SaeFailed;
+    USHORT SaeSendConfirm;
+    WLAN_SAE Sae;
+    ULONG PasswordLength;
+    UCHAR Password[64];
+    ULONG SsidLength;
+    UCHAR Ssid[32];
 } WLAN_KEY_SESSION, *PWLAN_KEY_SESSION;
 
 /* Big-endian helpers, since EAPOL fields are on the wire big-endian */
@@ -612,7 +670,311 @@ NextIndication(
            Indication->Length <= Got - FIELD_OFFSET(NWIFI_INDICATION, Data);
 }
 
-/* Waits for the open association, keeping what its completion reports */
+/* SAE through a WDI miniport. The miniport sends and receives the
+   authentication frames; the host makes and checks their contents */
+
+static
+USHORT
+ReadLe16(
+    _In_reads_bytes_(2) const UCHAR *Buffer)
+{
+    return (USHORT)(Buffer[0] | (Buffer[1] << 8));
+}
+
+/* Finds a TLV: a 16-bit type, a 16-bit length, then the value */
+static
+const UCHAR *
+FindTlv(
+    _In_reads_bytes_(Length) const UCHAR *Tlvs,
+    _In_ ULONG Length,
+    _In_ USHORT Type,
+    _Out_ PULONG ValueLength)
+{
+    ULONG Offset = 0;
+
+    *ValueLength = 0;
+    while (Offset + 4 <= Length)
+    {
+        ULONG ThisLength = ReadLe16(Tlvs + Offset + 2);
+
+        if (ThisLength > Length - Offset - 4)
+            break;
+        if (ReadLe16(Tlvs + Offset) == Type)
+        {
+            *ValueLength = ThisLength;
+            return Tlvs + Offset + 4;
+        }
+        Offset += 4 + ThisLength;
+    }
+
+    return NULL;
+}
+
+static
+VOID
+PutTlv(
+    _Inout_updates_bytes_(Size) PUCHAR Buffer,
+    _In_ ULONG Size,
+    _Inout_ PULONG Length,
+    _In_ USHORT Type,
+    _In_reads_bytes_(ValueLength) const VOID *Value,
+    _In_ ULONG ValueLength)
+{
+    PUCHAR At = Buffer + *Length;
+
+    if (*Length + 4 + ValueLength > Size)
+        return;
+
+    At[0] = (UCHAR)Type;
+    At[1] = (UCHAR)(Type >> 8);
+    At[2] = (UCHAR)ValueLength;
+    At[3] = (UCHAR)(ValueLength >> 8);
+    RtlCopyMemory(At + 4, Value, ValueLength);
+    *Length += 4 + ValueLength;
+}
+
+/* Sends one SAE step down: the peer, the kind of step, then its contents */
+static
+DWORD
+SaeAnswer(
+    _In_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Bssid,
+    _In_ ULONG RequestType,
+    _In_reads_bytes_opt_(ContentLength) const UCHAR *Content,
+    _In_ ULONG ContentLength,
+    _In_ USHORT ContentType)
+{
+    UCHAR Buffer[512];
+    ULONG Length = 0;
+
+    PutTlv(Buffer, sizeof(Buffer), &Length, WDI_TLV_BSSID, Bssid, 6);
+    PutTlv(Buffer, sizeof(Buffer), &Length, WDI_TLV_SAE_REQUEST_TYPE, &RequestType, sizeof(RequestType));
+    if (Content != NULL)
+        PutTlv(Buffer, sizeof(Buffer), &Length, ContentType, Content, ContentLength);
+
+    return WlanSetOid(Session->Interface, OID_WDI_SET_SAE_AUTH_PARAMS, Buffer, Length);
+}
+
+static
+VOID
+SaeFail(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Bssid,
+    _In_ ULONG Status)
+{
+    Session->SaeFailed = TRUE;
+    SaeAnswer(Session, Bssid, SAE_SEND_FAILURE, (const UCHAR *)&Status, sizeof(Status), WDI_TLV_SAE_STATUS);
+}
+
+/* Starts over with a fresh commit, echoing an anti-clogging token if the AP gave one */
+static
+VOID
+SaeSendCommit(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Bssid,
+    _In_reads_bytes_opt_(TokenLength) const UCHAR *Token,
+    _In_ ULONG TokenLength)
+{
+    UCHAR Commit[4 + 2 + 4 + WLAN_SAE_SCALAR_LENGTH + 4 + WLAN_SAE_ELEMENT_LENGTH + 4 + SAE_MAX_TOKEN];
+    USHORT Group = WLAN_SAE_GROUP;
+    ULONG Length = 0;
+
+    WlanSaeFinish(&Session->Sae);
+    if (!WlanSaeStart(&Session->Sae, Session->OwnMac, Bssid, Session->Password, Session->PasswordLength,
+                      Session->Ssid, Session->SsidLength, Session->SaeHashToElement, NULL, NULL))
+    {
+        SaeFail(Session, Bssid, SAE_STATUS_COMMIT_MALFORMED);
+        return;
+    }
+
+    PutTlv(Commit, sizeof(Commit), &Length, WDI_TLV_SAE_FINITE_CYCLIC_GROUP, &Group, sizeof(Group));
+    PutTlv(Commit, sizeof(Commit), &Length, WDI_TLV_SAE_SCALAR, Session->Sae.Scalar, WLAN_SAE_SCALAR_LENGTH);
+    PutTlv(Commit, sizeof(Commit), &Length, WDI_TLV_SAE_ELEMENT, Session->Sae.Element, WLAN_SAE_ELEMENT_LENGTH);
+    if (Token != NULL && TokenLength <= SAE_MAX_TOKEN)
+        PutTlv(Commit, sizeof(Commit), &Length, WDI_TLV_SAE_ANTI_CLOGGING_TOKEN, Token, TokenLength);
+
+    SaeAnswer(Session, Bssid, Session->SaeHashToElement ? SAE_SEND_COMMIT_H2E : SAE_SEND_COMMIT,
+              Commit, Length, WDI_TLV_SAE_COMMIT_REQUEST);
+}
+
+static
+VOID
+SaeSendConfirm(
+    _In_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Bssid)
+{
+    UCHAR Confirm[4 + 2 + 4 + WLAN_SAE_CONFIRM_LENGTH];
+    UCHAR Value[WLAN_SAE_CONFIRM_LENGTH];
+    ULONG Length = 0;
+
+    WlanSaeConfirm(&Session->Sae, Session->SaeSendConfirm, Value);
+    PutTlv(Confirm, sizeof(Confirm), &Length, WDI_TLV_SAE_SEND_CONFIRM,
+           &Session->SaeSendConfirm, sizeof(Session->SaeSendConfirm));
+    PutTlv(Confirm, sizeof(Confirm), &Length, WDI_TLV_SAE_CONFIRM, Value, sizeof(Value));
+
+    SaeAnswer(Session, Bssid, SAE_SEND_CONFIRM, Confirm, Length, WDI_TLV_SAE_CONFIRM_REQUEST);
+}
+
+/* A received commit or confirm may still start with the authentication
+   header: the SAE algorithm, the sequence number and the status */
+static
+const UCHAR *
+SaeBody(
+    _In_reads_bytes_(Length) const UCHAR *Frame,
+    _In_ ULONG Length,
+    _In_ USHORT Sequence,
+    _In_ ULONG BareLength,
+    _Out_ PUSHORT Status,
+    _Out_ PULONG BodyLength)
+{
+    *Status = SAE_STATUS_SUCCESS;
+
+    if (Length >= 6 && Length != BareLength &&
+        ReadLe16(Frame) == SAE_AUTH_ALGORITHM && ReadLe16(Frame + 2) == Sequence)
+    {
+        *Status = ReadLe16(Frame + 4);
+        Frame += 6;
+        Length -= 6;
+    }
+
+    *BodyLength = Length;
+    return Frame;
+}
+
+/* The peer's commit: finish the key exchange and send our confirm */
+static
+VOID
+SaeTakeCommit(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Bssid,
+    _In_reads_bytes_(Length) const UCHAR *Frame,
+    _In_ ULONG Length)
+{
+    const ULONG Bare = 2 + WLAN_SAE_SCALAR_LENGTH + WLAN_SAE_ELEMENT_LENGTH;
+    const UCHAR *Body;
+    ULONG BodyLength;
+    USHORT Status;
+
+    Body = SaeBody(Frame, Length, 1, Bare, &Status, &BodyLength);
+
+    /* The AP is loaded: commit again with the token it handed out */
+    if (Status == SAE_STATUS_ANTI_CLOGGING_TOKEN && BodyLength > 2)
+    {
+        SaeSendCommit(Session, Bssid, Body + 2, BodyLength - 2);
+        return;
+    }
+
+    /* The AP runs hash-to-element; make our element that way too */
+    if (Status == SAE_STATUS_HASH_TO_ELEMENT && !Session->SaeHashToElement)
+    {
+        Session->SaeHashToElement = TRUE;
+        SaeSendCommit(Session, Bssid, NULL, 0);
+        return;
+    }
+
+    if ((Status != SAE_STATUS_SUCCESS && Status != SAE_STATUS_HASH_TO_ELEMENT) || BodyLength < Bare)
+    {
+        SaeFail(Session, Bssid, SAE_STATUS_COMMIT_MALFORMED);
+        return;
+    }
+
+    if (ReadLe16(Body) != WLAN_SAE_GROUP)
+    {
+        SaeFail(Session, Bssid, SAE_STATUS_COMMIT_UNSUPPORTED_GROUP);
+        return;
+    }
+
+    /* The scalar and element follow the group; elements may come after them */
+    Body += 2;
+    if (!WlanSaeTakeCommit(&Session->Sae, Body, Body + WLAN_SAE_SCALAR_LENGTH))
+    {
+        SaeFail(Session, Bssid, SAE_STATUS_COMMIT_MALFORMED);
+        return;
+    }
+
+    Session->SaeSendConfirm = 1;
+    SaeSendConfirm(Session, Bssid);
+}
+
+/* The peer's confirm: proof it had the password, after which the PMK is ours */
+static
+VOID
+SaeTakeConfirm(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Bssid,
+    _In_reads_bytes_(Length) const UCHAR *Frame,
+    _In_ ULONG Length)
+{
+    const ULONG Bare = 2 + WLAN_SAE_CONFIRM_LENGTH;
+    const UCHAR *Body;
+    ULONG BodyLength;
+    USHORT Status;
+
+    Body = SaeBody(Frame, Length, 2, Bare, &Status, &BodyLength);
+    if (Status != SAE_STATUS_SUCCESS || BodyLength < Bare ||
+        !WlanSaeCheckConfirm(&Session->Sae, ReadLe16(Body), Body + 2))
+    {
+        SaeFail(Session, Bssid, SAE_STATUS_CONFIRM_VERIFICATION_FAILED);
+        return;
+    }
+
+    RtlCopyMemory(Session->Pmk, Session->Sae.Pmk, WLAN_PMK_LENGTH);
+    Session->SaeDone = TRUE;
+    SaeAnswer(Session, Bssid, SAE_SEND_SUCCESS, NULL, 0, 0);
+}
+
+/* One SAE step the miniport asked for */
+static
+VOID
+SaeRequest(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(Length) const UCHAR *Tlvs,
+    _In_ ULONG Length)
+{
+    const UCHAR *Bssid;
+    const UCHAR *Type;
+    const UCHAR *Frame;
+    ULONG BssidLength;
+    ULONG TypeLength;
+    ULONG FrameLength;
+
+    Bssid = FindTlv(Tlvs, Length, WDI_TLV_BSSID, &BssidLength);
+    Type = FindTlv(Tlvs, Length, WDI_TLV_SAE_INDICATION_TYPE, &TypeLength);
+    if (!Session->UseSae || Bssid == NULL || BssidLength < 6 || Type == NULL || TypeLength < 4)
+        return;
+
+    switch (Type[0])
+    {
+        case SAE_NEED_COMMIT:
+            Session->SaeDone = FALSE;
+            SaeSendCommit(Session, Bssid, NULL, 0);
+            break;
+
+        case SAE_GOT_COMMIT:
+            Frame = FindTlv(Tlvs, Length, WDI_TLV_SAE_COMMIT_RESPONSE, &FrameLength);
+            if (Frame != NULL)
+                SaeTakeCommit(Session, Bssid, Frame, FrameLength);
+            break;
+
+        case SAE_GOT_CONFIRM:
+            Frame = FindTlv(Tlvs, Length, WDI_TLV_SAE_CONFIRM_RESPONSE, &FrameLength);
+            if (Frame != NULL)
+                SaeTakeConfirm(Session, Bssid, Frame, FrameLength);
+            break;
+
+        case SAE_RESEND_CONFIRM:
+            Session->SaeSendConfirm++;
+            SaeSendConfirm(Session, Bssid);
+            break;
+
+        default:
+            Session->SaeFailed = TRUE;
+            break;
+    }
+}
+
+/* Waits for the open association, keeping what its completion reports and
+   running SAE when the miniport asks for it */
 static
 DWORD
 WaitForAssociation(
@@ -631,7 +993,12 @@ WaitForAssociation(
         {
             if (Indication->StatusCode == WLAN_STATUS_ASSOCIATION_COMPLETION)
                 TakeAssociation(Session, Indication->Data, Indication->Length);
+            else if (Indication->StatusCode == WLAN_STATUS_SAE_PARAMS_NEEDED)
+                SaeRequest(Session, Indication->Data, Indication->Length);
         }
+
+        if (Session->SaeFailed)
+            return ERROR_ACCESS_DENIED;
 
         if (WlanQueryOid(Session->Interface, OID_GEN_MEDIA_CONNECT_STATUS,
                          &Status, sizeof(Status), &Got) == ERROR_SUCCESS &&
@@ -1358,6 +1725,7 @@ FreeSession(
     if (Session->Device != NULL)
         CloseHandle(Session->Device);
 
+    WlanSaeFinish(&Session->Sae);
     WlanCryptoWipe(Session, sizeof(*Session));
     HeapFree(GetProcessHeap(), 0, Session);
 }
@@ -1403,16 +1771,16 @@ WlanStopSupplicant(
     FreeSession(Session);
 }
 
-/**
- * @brief
- * Connects to a WPA2-PSK network: associates open, runs the host handshake,
- * installs the keys, and stays to answer the AP's later key updates.
- */
+/* Connects to a WPA2 or WPA3 personal network: authenticates, the host
+   running SAE for WPA3, runs the 4-way handshake, installs the keys, and
+   stays to answer the AP's later key updates */
+static
 DWORD
-WlanConnectWpa(
+ConnectPersonal(
     _In_ const GUID *InterfaceGuid,
     _In_ PDOT11_SSID Ssid,
-    _In_ PCWSTR Passphrase)
+    _In_ PCWSTR Passphrase,
+    _In_ BOOL Sae)
 {
     UCHAR IndicationBuffer[FIELD_OFFSET(NWIFI_INDICATION, Data) + WLAN_INDICATION_MAX];
     PWLAN_KEY_SESSION Session;
@@ -1444,8 +1812,18 @@ WlanConnectWpa(
 
     WlanCryptoInitialize();
     Error = ERROR_GEN_FAILURE;
-    if (!WlanCryptoPbkdf2Sha1(PassphraseBytes, PassphraseLength, Ssid->ucSSID, Ssid->uSSIDLength,
-                              4096, Session->Pmk, WLAN_PMK_LENGTH))
+    if (Sae)
+    {
+        /* The PMK comes out of the SAE exchange once the miniport starts it */
+        Session->UseSae = TRUE;
+        Session->Akm = WLAN_AKM_SAE;
+        Session->PasswordLength = PassphraseLength;
+        RtlCopyMemory(Session->Password, PassphraseBytes, PassphraseLength);
+        Session->SsidLength = min(Ssid->uSSIDLength, sizeof(Session->Ssid));
+        RtlCopyMemory(Session->Ssid, Ssid->ucSSID, Session->SsidLength);
+    }
+    else if (!WlanCryptoPbkdf2Sha1(PassphraseBytes, PassphraseLength, Ssid->ucSSID, Ssid->uSSIDLength,
+                                   4096, Session->Pmk, WLAN_PMK_LENGTH))
     {
         goto Cleanup;
     }
@@ -1488,7 +1866,7 @@ WlanConnectWpa(
     WlanSetOid(Session->Interface, OID_DOT11_PRIVACY_EXEMPTION_LIST, &Exemptions, sizeof(Exemptions));
     WlanSetOid(Session->Interface, OID_DOT11_EXCLUDE_UNENCRYPTED, &Exclude, sizeof(Exclude));
 
-    Algo.AlgorithmIds[0] = WLAN_AUTH_RSNA_PSK;
+    Algo.AlgorithmIds[0] = Sae ? WLAN_AUTH_WPA3_SAE : WLAN_AUTH_RSNA_PSK;
     WlanSetOid(Session->Interface, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM, &Algo, sizeof(Algo));
     Algo.AlgorithmIds[0] = WLAN_CIPHER_CCMP;
     WlanSetOid(Session->Interface, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM, &Algo, sizeof(Algo));
@@ -1517,10 +1895,16 @@ WlanConnectWpa(
         goto Cleanup;
 
     Error = WaitForAssociation(Session);
+    if (Error == ERROR_SUCCESS && Session->UseSae && !Session->SaeDone)
+        Error = ERROR_ACCESS_DENIED;
     if (Error == ERROR_SUCCESS)
         Error = FourWayHandshake(Session);
     if (Error != ERROR_SUCCESS)
         goto Cleanup;
+
+    /* Only the PMK is kept from SAE */
+    WlanSaeFinish(&Session->Sae);
+    WlanCryptoWipe(Session->Password, sizeof(Session->Password));
 
     Session->Thread = CreateThread(NULL, 0, SupplicantThread, Session, 0, NULL);
     if (Session->Thread == NULL)
@@ -1540,4 +1924,31 @@ Cleanup:
     if (Session != NULL)
         FreeSession(Session);
     return Error;
+}
+
+/**
+ * @brief
+ * Connects to a WPA2-PSK network.
+ */
+DWORD
+WlanConnectWpa(
+    _In_ const GUID *InterfaceGuid,
+    _In_ PDOT11_SSID Ssid,
+    _In_ PCWSTR Passphrase)
+{
+    return ConnectPersonal(InterfaceGuid, Ssid, Passphrase, FALSE);
+}
+
+/**
+ * @brief
+ * Connects to a WPA3 personal network, the host running SAE for a WDI
+ * miniport that asks for it.
+ */
+DWORD
+WlanConnectSae(
+    _In_ const GUID *InterfaceGuid,
+    _In_ PDOT11_SSID Ssid,
+    _In_ PCWSTR Passphrase)
+{
+    return ConnectPersonal(InterfaceGuid, Ssid, Passphrase, TRUE);
 }
