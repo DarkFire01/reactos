@@ -264,6 +264,13 @@ Pro5IndicateLookahead(
     ExFreePoolWithTag(Frame, NDIS_TAG);
 }
 
+/*
+ * How many protocols still hold a delivered packet. Delivery keeps one count
+ * of its own until every protocol has seen the packet, so an early return
+ * from one of them cannot finish it.
+ */
+#define PRO5_PACKET_HOLDS(_Packet) (*(volatile LONG *)(_Packet)->WrapperReserved)
+
 static
 VOID
 Pro5DeliverPackets(
@@ -289,9 +296,10 @@ Pro5DeliverPackets(
             if (Binding->ProtocolBinding->Chars.ReceivePacketHandler != NULL &&
                 NDIS_GET_PACKET_STATUS(Packet) != NDIS_STATUS_RESOURCES)
             {
-                Packet->WrapperReserved[0] += Binding->ProtocolBinding->Chars.ReceivePacketHandler(
-                    Binding->NdisOpenBlock.ProtocolBindingContext,
-                    Packet);
+                InterlockedExchangeAdd(&PRO5_PACKET_HOLDS(Packet),
+                                       Binding->ProtocolBinding->Chars.ReceivePacketHandler(
+                                           Binding->NdisOpenBlock.ProtocolBindingContext,
+                                           Packet));
             }
             else if (Binding->ProtocolBinding->Chars.ReceiveHandler != NULL)
             {
@@ -369,8 +377,12 @@ Pro5IndicateReceive(
             else
             {
                 Packet->Reserved[1] = (ULONG_PTR)Adapter;
-                Packet->WrapperReserved[0] = 0;
+                PRO5_PACKET_HOLDS(Packet) = 1;
                 NDIS_SET_PACKET_STATUS(Packet, PacketStatus);
+
+                /* A protocol may return it before delivery to the rest is over */
+                if (!Pro5IsCorePacket(Adapter, Packet))
+                    CORE_PACKET_OWNER_NBL(Packet) = NetBufferList;
 
                 Packets[Count] = Packet;
                 Lists[Count] = NetBufferList;
@@ -389,13 +401,9 @@ Pro5IndicateReceive(
         {
             Packet = Packets[i];
 
-            if (Packet->WrapperReserved[0] != 0)
-            {
-                /* Held: NdisReturnPackets finds the list again from the packet */
-                if (!Pro5IsCorePacket(Adapter, Packet))
-                    CORE_PACKET_OWNER_NBL(Packet) = Lists[i];
+            /* Held: NdisReturnPackets finds the list again from the packet */
+            if (InterlockedDecrement(&PRO5_PACKET_HOLDS(Packet)) != 0)
                 continue;
-            }
 
             if (Pro5IsCorePacket(Adapter, Packet))
                 CoreFreeNetBufferPacket(Packet);
@@ -436,7 +444,7 @@ NdisReturnPackets(
     {
         Packet = PacketsToReturn[i];
 
-        if (--Packet->WrapperReserved[0] != 0)
+        if (InterlockedDecrement(&PRO5_PACKET_HOLDS(Packet)) != 0)
             continue;
 
         Adapter = (PLOGICAL_ADAPTER)Packet->Reserved[1];
