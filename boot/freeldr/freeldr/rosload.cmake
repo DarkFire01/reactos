@@ -84,6 +84,12 @@ if(ARCH STREQUAL "i386")
     target_link_libraries(rosload mini_hal)
 endif()
 
+# Pull in the ReactV hypervisor when it is present next to the source root
+if(TARGET reactv_shim_freeldr)
+    target_link_libraries(rosload reactv_shim_freeldr reactv_core_freeldr)
+    target_compile_definitions(rosload PRIVATE REACTV_PRESENT)
+endif()
+
 add_importlibs(rosload freeldr)
 
 # dynamic analysis switches
