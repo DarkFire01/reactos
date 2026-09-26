@@ -1,0 +1,8 @@
+; Native WiFi filter, attached by NDIS to every native 802.11 adapter
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\NativeWifiP","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\NativeWifiP","Group",0x00000000,"NDIS"
+HKLM,"SYSTEM\CurrentControlSet\Services\NativeWifiP","ImagePath",0x00020000,"system32\drivers\nwifi.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\NativeWifiP","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\NativeWifiP","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4d36e974-e325-11ce-bfc1-08002be10318}\{E475CF9A-60CD-4439-A75F-0079CE0E18A1}\Ndi\Interfaces","FilterMediaTypes",0x00000000,"wlan"

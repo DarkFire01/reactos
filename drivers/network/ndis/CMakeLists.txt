@@ -46,7 +46,6 @@ list(APPEND SOURCE
     ndis/mpsvc.c
     ndis/mpwdf.c
     ndis/mpwmi.c
-    ndis/native80211.c
     ndis/nbl.c
     ndis/pro5shim.c
     ndis/protocol.c
