@@ -1934,6 +1934,21 @@ HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","ImagePath",0x00020000,"system32\
 HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Type",0x00010001,0x00000001
 
+; Virtualization infrastructure driver, root enumerated the way Hyper-V has it
+HKLM,"SYSTEM\CurrentControlSet\Services\vid","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vid","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\vid","ImagePath",0x00020000,"system32\drivers\Vid.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\vid","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vid","Tag",0x00010001,0x0000002b
+HKLM,"SYSTEM\CurrentControlSet\Services\vid","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vid\Parameters","ExoDeviceEnabledClient",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vid\Parameters\Wdf","WdfMajorVersion",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vid\Parameters\Wdf","WdfMinorVersion",0x00010001,0x0000000f
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","DeviceDesc",0x00000000,"Virtualization Infrastructure Driver"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","Service",0x00000000,"vid"
+
 ; Audio Service
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","DisplayName",0x00000000,%AUDIO_SERVICE%
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Description",0x00000000,%AUDIO_SERVICE_DESCRIPTION%
