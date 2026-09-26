@@ -187,6 +187,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/semphobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/spinlock.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/thrdobj.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/triage.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/thrdschd.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/time.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/timerobj.c

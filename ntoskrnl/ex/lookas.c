@@ -504,4 +504,58 @@ ExDeleteLookasideListEx(
     ExFlushLookasideListEx(Lookaside);
 }
 
+/**
+ * @brief
+ * Takes an entry from a non paged lookaside list, allocating one when the list
+ * is empty.
+ *
+ * @param[in,out] Lookaside
+ * The list to take from.
+ *
+ * @return
+ * The entry, or NULL when one could not be allocated.
+ */
+PVOID
+NTAPI
+ExiAllocateFromNPagedLookasideList(
+    _Inout_ PNPAGED_LOOKASIDE_LIST Lookaside)
+{
+    PVOID Entry;
+
+    Lookaside->L.TotalAllocates++;
+    Entry = InterlockedPopEntrySList(&Lookaside->L.ListHead);
+    if (Entry == NULL)
+    {
+        Lookaside->L.AllocateMisses++;
+        Entry = (Lookaside->L.Allocate)(Lookaside->L.Type,
+                                        Lookaside->L.Size,
+                                        Lookaside->L.Tag);
+    }
+
+    return Entry;
+}
+
+/**
+ * @brief
+ * Returns an entry to a non paged lookaside list, or to the pool when the list
+ * is already as deep as it is allowed to be.
+ */
+VOID
+NTAPI
+ExiFreeToNPagedLookasideList(
+    _Inout_ PNPAGED_LOOKASIDE_LIST Lookaside,
+    _In_ PVOID Entry)
+{
+    Lookaside->L.TotalFrees++;
+    if (ExQueryDepthSList(&Lookaside->L.ListHead) >= Lookaside->L.Depth)
+    {
+        Lookaside->L.FreeMisses++;
+        (Lookaside->L.Free)(Entry);
+    }
+    else
+    {
+        InterlockedPushEntrySList(&Lookaside->L.ListHead, (PSLIST_ENTRY)Entry);
+    }
+}
+
 /* EOF */

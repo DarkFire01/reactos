@@ -1754,9 +1754,12 @@
 @ stdcall -version=0x600+ ExAcquireSpinLockSharedAtDpcLevel(ptr)
 @ stdcall -version=0x603+ ExAllocateTimer(ptr ptr long)
 @ stdcall -version=0x603+ ExCancelTimer(ptr ptr)
+@ stdcall -version=0xA00+ ExAllocateFromNPagedLookasideList(ptr) ExiAllocateFromNPagedLookasideList
+@ stdcall -version=0xA00+ ExBlockOnAddressPushLock(ptr ptr ptr long ptr)
 @ stdcall -version=0x600+ ExDeleteLookasideListEx(ptr)
 @ stdcall -version=0x603+ ExDeleteTimer(ptr long long ptr)
 @ stdcall -version=0x600+ ExFlushLookasideListEx(ptr)
+@ stdcall -version=0xA00+ ExFreeToNPagedLookasideList(ptr ptr) ExiFreeToNPagedLookasideList
 @ stdcall -version=0x602+ ExGetFirmwareEnvironmentVariable(ptr ptr ptr ptr ptr)
 @ stdcall -version=0x600+ ExInitializeLookasideListEx(ptr ptr ptr long long long long long)
 @ stdcall -version=0x602+ ExQueryWnfStateData(ptr ptr ptr ptr)
@@ -1766,9 +1769,15 @@
 @ stdcall -version=0x600+ ExReleaseSpinLockSharedFromDpcLevel(ptr)
 @ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
 @ stdcall -version=0xA00+ ExShareAddressSpaceWithDevice(ptr ptr)
+@ stdcall -version=0xA00+ ExUnblockOnAddressPushLockEx(ptr ptr)
 @ stdcall -version=0x602+ ExSubscribeWnfStateChange(ptr ptr long long ptr ptr)
 @ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
 @ stdcall -version=0x602+ ExUnsubscribeWnfStateChange(ptr)
+
+@ stdcall -version=0xA00+ KeAddTriageDumpDataBlock(ptr ptr long)
+@ stdcall -version=0xA00+ KeInitializeTriageDumpDataArray(ptr long)
+@ stdcall -version=0x601+ KeQueryTotalCycleTimeThread(ptr ptr)
+@ stdcall -version=0xA00+ MmAllocateNodePagesForMdlEx(int64 int64 int64 long long long long)
 
 # Hypervisor Library
 @ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
