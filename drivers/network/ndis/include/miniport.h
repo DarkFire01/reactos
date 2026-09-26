@@ -126,6 +126,7 @@ struct _CORE_OID_REQUEST;
 /* Why a data path is held paused. Restart waits until none is left. */
 #define CORE_PAUSE_WDF              0x00000001
 #define CORE_PAUSE_LOW_POWER        0x00000002
+#define CORE_PAUSE_FILTER           0x00000004
 
 /*
  * The NDIS 6 view of an adapter. The core drives a miniport only through
@@ -146,6 +147,12 @@ typedef struct _MINIPORT_CORE
     KSPIN_LOCK Lock;
     CORE_MINIPORT_STATE State;
     BOOLEAN GeneralAttributesSet;
+
+    /* Filter modules, the first nearest the protocols. See mpfilter.c. */
+    LIST_ENTRY FilterStack;
+
+    /* Every layer restarted, so the protocols may send and receive */
+    BOOLEAN DataPathOpen;
 
     /* A pause or restart waiting on its completion */
     PKEVENT OperationEvent;
@@ -456,6 +463,12 @@ CoreIndicateStatus(
 
 VOID
 NTAPI
+CoreIndicateStatusToProtocols(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNDIS_STATUS_INDICATION StatusIndication);
+
+VOID
+NTAPI
 CoreIndicateStatusCode(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ NDIS_STATUS StatusCode);
@@ -510,6 +523,12 @@ CoreOidRequest(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ PCORE_OID_REQUEST CoreRequest);
 
+NDIS_STATUS
+NTAPI
+CoreStackOidRequest(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PCORE_OID_REQUEST CoreRequest);
+
 VOID
 NTAPI
 CoreOidRequestComplete(
@@ -554,6 +573,105 @@ CoreSendNetBufferLists(
     _In_ PNET_BUFFER_LIST NetBufferLists,
     _In_ NDIS_PORT_NUMBER PortNumber,
     _In_ ULONG SendFlags);
+
+VOID
+NTAPI
+CoreSendToMiniport(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG SendFlags);
+
+VOID
+NTAPI
+CoreReturnToMiniport(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ PNET_BUFFER_LIST NetBufferLists);
+
+VOID
+NTAPI
+CoreIndicateToProtocols(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG ReceiveFlags);
+
+/* mpfilter.c */
+
+struct _CORE_FILTER_MODULE;
+
+VOID
+NTAPI
+CoreFilterInitialize(VOID);
+
+VOID
+NTAPI
+CoreFilterAttachAll(
+    _In_ PLOGICAL_ADAPTER Adapter);
+
+VOID
+NTAPI
+CoreFilterDetachAll(
+    _In_ PLOGICAL_ADAPTER Adapter);
+
+VOID
+NTAPI
+CoreFilterPauseStack(
+    _In_ PLOGICAL_ADAPTER Adapter);
+
+NDIS_STATUS
+NTAPI
+CoreFilterRestartStack(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ PNDIS_RESTART_ATTRIBUTES RestartAttributes);
+
+VOID
+NTAPI
+CoreFilterSend(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ struct _CORE_FILTER_MODULE *From,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG SendFlags);
+
+VOID
+NTAPI
+CoreFilterSendComplete(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ struct _CORE_FILTER_MODULE *From,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG SendCompleteFlags);
+
+VOID
+NTAPI
+CoreFilterIndicateReceive(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ struct _CORE_FILTER_MODULE *From,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG NumberOfNetBufferLists,
+    _In_ ULONG ReceiveFlags);
+
+VOID
+NTAPI
+CoreFilterReturn(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ struct _CORE_FILTER_MODULE *From,
+    _In_opt_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG ReturnFlags);
+
+VOID
+NTAPI
+CoreFilterIndicateStatus(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ struct _CORE_FILTER_MODULE *From,
+    _In_ PNDIS_STATUS_INDICATION StatusIndication);
+
+NDIS_STATUS
+NTAPI
+CoreFilterNetPnPEvent(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_opt_ struct _CORE_FILTER_MODULE *From,
+    _In_ PNET_PNP_EVENT_NOTIFICATION NetPnPEventNotification);
 
 VOID
 NTAPI

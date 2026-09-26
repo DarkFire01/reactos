@@ -28,6 +28,7 @@ CoreInitializeAdapterBlock(
     KeInitializeEvent(&Core->SendsDrained, NotificationEvent, TRUE);
     InitializeListHead(&Core->OidQueue);
     InitializeListHead(&Core->PortList);
+    InitializeListHead(&Core->FilterStack);
     Core->State = CoreMiniportHalted;
 }
 
@@ -212,15 +213,25 @@ CoreRestart(
     Status = Core->Dispatch->RestartHandler(CORE_DISPATCH_CONTEXT(Adapter), &Parameters);
     Status = CoreWaitForOperation(Adapter, &Event, Status);
 
-    ExFreePoolWithTag(Attributes, NDIS_TAG);
-
     /* A miniport that failed to restart stays paused and sends keep failing */
     KeAcquireSpinLock(&Core->Lock, &OldIrql);
     Core->State = (Status == NDIS_STATUS_SUCCESS) ? CoreMiniportRunning : CoreMiniportPaused;
     KeReleaseSpinLock(&Core->Lock, OldIrql);
 
     if (Status != NDIS_STATUS_SUCCESS)
+    {
         NDIS_DbgPrint(MIN_TRACE, ("MiniportRestart failed with 0x%x\n", Status));
+    }
+    else
+    {
+        Status = CoreFilterRestartStack(Adapter, Attributes);
+    }
+
+    ExFreePoolWithTag(Attributes, NDIS_TAG);
+
+    /* The protocols only get the data path once every layer below them runs */
+    if (Status == NDIS_STATUS_SUCCESS)
+        Core->DataPathOpen = TRUE;
 
     return Status;
 }
@@ -244,8 +255,12 @@ CorePause(
     }
 
     /* From here on new sends are refused */
+    Core->DataPathOpen = FALSE;
     Core->State = CoreMiniportPausing;
     KeReleaseSpinLock(&Core->Lock, OldIrql);
+
+    /* Filters pause before the miniport, nearest the protocols first */
+    CoreFilterPauseStack(Adapter);
 
     /* Anything already handed to the miniport finishes before it is paused */
     CoreWaitForSends(Adapter);
@@ -530,6 +545,8 @@ CoreCompleteInitialization(
     /* Initialization leaves every miniport paused */
     Core->State = CoreMiniportPaused;
 
+    CoreFilterAttachAll(Adapter);
+
     if (Core->PauseReasons != 0)
         return NDIS_STATUS_SUCCESS;
 
@@ -596,6 +613,7 @@ CoreInitializeAdapter(
     if (Status != NDIS_STATUS_SUCCESS)
     {
         /* Paused or never restarted, the miniport still needs its halt */
+        CoreFilterDetachAll(Adapter);
         Core->Dispatch->HaltHandlerEx(CORE_DISPATCH_CONTEXT(Adapter), NdisHaltDeviceInitializationFailed);
         Core->State = CoreMiniportHalted;
         CoreFreeResources(Adapter);
@@ -626,6 +644,7 @@ CoreHaltAdapter(
         return;
 
     CorePause(Adapter);
+    CoreFilterDetachAll(Adapter);
 
     Core->Dispatch->HaltHandlerEx(CORE_DISPATCH_CONTEXT(Adapter), HaltAction);
 
@@ -659,7 +678,27 @@ CoreShutdownAdapter(
 
 /**
  * @brief
- * The one path every status indication takes up from a miniport.
+ * The one path every status indication takes up from a miniport, through the
+ * adapter's filters.
+ *
+ * @param[in] Adapter
+ * The indicating adapter.
+ *
+ * @param[in] StatusIndication
+ * The status code and its buffer.
+ */
+VOID
+NTAPI
+CoreIndicateStatus(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNDIS_STATUS_INDICATION StatusIndication)
+{
+    CoreFilterIndicateStatus(Adapter, NULL, StatusIndication);
+}
+
+/**
+ * @brief
+ * Hands a status indication to the protocols, at the top of the filter stack.
  *
  * NDIS 5 protocols only learn about link changes through media connect and
  * disconnect, and only on an actual transition. Statuses that only mean
@@ -673,7 +712,7 @@ CoreShutdownAdapter(
  */
 VOID
 NTAPI
-CoreIndicateStatus(
+CoreIndicateStatusToProtocols(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ PNDIS_STATUS_INDICATION StatusIndication)
 {

@@ -618,7 +618,7 @@ ProRequest(
     OidRequest->DATA.QUERY_INFORMATION.InformationBufferLength =
         NdisRequest->DATA.QUERY_INFORMATION.InformationBufferLength;
 
-    Status = CoreOidRequest(Binding->Adapter, &Request->Core);
+    Status = CoreStackOidRequest(Binding->Adapter, &Request->Core);
     if (Status != NDIS_STATUS_PENDING)
     {
         Pro5CopyRequestBack(Request);

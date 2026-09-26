@@ -37,6 +37,7 @@ list(APPEND SOURCE
     ndis/mpcore.c
     ndis/mpdata.c
     ndis/mpdma.c
+    ndis/mpfilter.c
     ndis/mphook.c
     ndis/mpif.c
     ndis/mpintr.c

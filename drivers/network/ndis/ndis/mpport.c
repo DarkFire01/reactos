@@ -409,7 +409,7 @@ NdisMNetPnPEvent(
         case NetEventNDKEnable:
         case NetEventNDKDisable:
         case NetEventSwitchActivate:
-            return CoreNotifyProtocols(Adapter, PnPEvent);
+            return CoreFilterNetPnPEvent(Adapter, NULL, NetPnPEventNotification);
 
         case NetEventPortActivation:
             return CoreActivatePorts(Adapter, PnPEvent->Buffer);

@@ -129,7 +129,10 @@ CoreCompleteSendsNow(
         NET_BUFFER_LIST_STATUS(NetBufferList) = Status;
     }
 
-    Pro5SendComplete(Adapter, NetBufferLists);
+    CoreFilterSendComplete(Adapter,
+                           NULL,
+                           NetBufferLists,
+                           (KeGetCurrentIrql() == DISPATCH_LEVEL) ? NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL : 0);
 }
 
 /*
@@ -166,26 +169,27 @@ CoreLoopbackNetBufferList(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ PNET_BUFFER_LIST NetBufferList)
 {
-    PNET_BUFFER_LIST Unheld;
     KIRQL OldIrql;
 
     KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
 
-    /* The sender still owns the data, so the protocols are told to copy it */
-    Pro5IndicateReceive(Adapter,
-                        NetBufferList,
-                        NDIS_RECEIVE_FLAGS_RESOURCES | NDIS_RECEIVE_FLAGS_DISPATCH_LEVEL,
-                        &Unheld);
+    /* The sender still owns the data, so the layers above are told to copy it */
+    CoreFilterIndicateReceive(Adapter,
+                              NULL,
+                              NetBufferList,
+                              NDIS_DEFAULT_PORT_NUMBER,
+                              1,
+                              NDIS_RECEIVE_FLAGS_RESOURCES | NDIS_RECEIVE_FLAGS_DISPATCH_LEVEL);
 
     NET_BUFFER_LIST_STATUS(NetBufferList) = NDIS_STATUS_SUCCESS;
-    Pro5SendComplete(Adapter, NetBufferList);
+    CoreFilterSendComplete(Adapter, NULL, NetBufferList, NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL);
 
     KeLowerIrql(OldIrql);
 }
 
 /**
  * @brief
- * The one path every send takes on its way to a miniport.
+ * Where the protocols' sends enter the adapter, at the top of its filter stack.
  *
  * @param[in] Adapter
  * The adapter to send on.
@@ -202,6 +206,48 @@ CoreLoopbackNetBufferList(
 VOID
 NTAPI
 CoreSendNetBufferLists(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG SendFlags)
+{
+    PNET_BUFFER_LIST NetBufferList;
+
+    if (!Adapter->Core.DataPathOpen)
+    {
+        for (NetBufferList = NetBufferLists;
+             NetBufferList != NULL;
+             NetBufferList = NET_BUFFER_LIST_NEXT_NBL(NetBufferList))
+        {
+            NET_BUFFER_LIST_STATUS(NetBufferList) = NDIS_STATUS_PAUSED;
+        }
+
+        Pro5SendComplete(Adapter, NetBufferLists);
+        return;
+    }
+
+    CoreFilterSend(Adapter, NULL, NetBufferLists, PortNumber, SendFlags);
+}
+
+/**
+ * @brief
+ * The one path every send takes on its way into a miniport, below any filter.
+ *
+ * @param[in] Adapter
+ * The adapter to send on.
+ *
+ * @param[in] NetBufferLists
+ * The chain to send.
+ *
+ * @param[in] PortNumber
+ * The NDIS port.
+ *
+ * @param[in] SendFlags
+ * NDIS_SEND_FLAGS_*.
+ */
+VOID
+NTAPI
+CoreSendToMiniport(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ PNET_BUFFER_LIST NetBufferLists,
     _In_ NDIS_PORT_NUMBER PortNumber,
@@ -301,7 +347,10 @@ NdisMSendNetBufferListsComplete(
     if (!(SendCompleteFlags & NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL))
         KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
 
-    Pro5SendComplete(Adapter, NetBufferList);
+    CoreFilterSendComplete(Adapter,
+                           NULL,
+                           NetBufferList,
+                           SendCompleteFlags | NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL);
 
     KeAcquireSpinLockAtDpcLevel(&Core->Lock);
     Core->OutstandingSends -= Count;
@@ -333,8 +382,18 @@ CoreWaitForSends(
 
 /* Receive */
 
-static
+/**
+ * @brief
+ * Gives received lists back to the miniport, below any filter.
+ *
+ * @param[in] Adapter
+ * The adapter.
+ *
+ * @param[in] NetBufferLists
+ * The lists, or NULL for none.
+ */
 VOID
+NTAPI
 CoreReturnToMiniport(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_opt_ PNET_BUFFER_LIST NetBufferLists)
@@ -383,11 +442,7 @@ NdisMIndicateReceiveNetBufferLists(
     ULONG ReceiveFlags)
 {
     PLOGICAL_ADAPTER Adapter = (PLOGICAL_ADAPTER)MiniportAdapterHandle;
-    PNET_BUFFER_LIST Unheld = NULL;
     KIRQL OldIrql = DISPATCH_LEVEL;
-
-    UNREFERENCED_PARAMETER(PortNumber);
-    UNREFERENCED_PARAMETER(NumberOfNetBufferLists);
 
     if (!(ReceiveFlags & NDIS_RECEIVE_FLAGS_DISPATCH_LEVEL))
     {
@@ -395,20 +450,19 @@ NdisMIndicateReceiveNetBufferLists(
         ReceiveFlags |= NDIS_RECEIVE_FLAGS_DISPATCH_LEVEL;
     }
 
-    if (Adapter->Core.State == CoreMiniportRunning)
+    if (Adapter->Core.State == CoreMiniportRunning && Adapter->Core.DataPathOpen)
     {
         /* Native 802.11 frames become Ethernet before a protocol sees them */
         if (NdisDot11Active(Adapter))
             NdisDot11ReceiveToEthernet(Adapter, NetBufferList);
 
-        Pro5IndicateReceive(Adapter, NetBufferList, ReceiveFlags, &Unheld);
+        CoreFilterIndicateReceive(Adapter, NULL, NetBufferList, PortNumber, NumberOfNetBufferLists, ReceiveFlags);
     }
-    else
-        Unheld = NetBufferList;
-
-    /* Under NDIS_RECEIVE_FLAGS_RESOURCES the lists never left the miniport */
-    if (!(ReceiveFlags & NDIS_RECEIVE_FLAGS_RESOURCES))
-        CoreReturnToMiniport(Adapter, Unheld);
+    else if (!(ReceiveFlags & NDIS_RECEIVE_FLAGS_RESOURCES))
+    {
+        /* Under NDIS_RECEIVE_FLAGS_RESOURCES the lists never left the miniport */
+        CoreReturnToMiniport(Adapter, NetBufferList);
+    }
 
     if (OldIrql != DISPATCH_LEVEL)
         KeLowerIrql(OldIrql);
@@ -435,6 +489,36 @@ CoreReturnNetBufferList(
     NET_BUFFER_LIST_NEXT_NBL(NetBufferList) = NULL;
 
     KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
-    CoreReturnToMiniport(Adapter, NetBufferList);
+    CoreFilterReturn(Adapter, NULL, NetBufferList, NDIS_RETURN_FLAGS_DISPATCH_LEVEL);
     KeLowerIrql(OldIrql);
+}
+
+/**
+ * @brief
+ * Hands received lists to the protocols, at the top of the filter stack, and
+ * returns the ones no protocol held on to.
+ *
+ * @param[in] Adapter
+ * The receiving adapter.
+ *
+ * @param[in] NetBufferLists
+ * The received chain.
+ *
+ * @param[in] ReceiveFlags
+ * NDIS_RECEIVE_FLAGS_*. With NDIS_RECEIVE_FLAGS_RESOURCES the layer below
+ * keeps the chain once this returns.
+ */
+VOID
+NTAPI
+CoreIndicateToProtocols(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG ReceiveFlags)
+{
+    PNET_BUFFER_LIST Unheld = NULL;
+
+    Pro5IndicateReceive(Adapter, NetBufferLists, ReceiveFlags, &Unheld);
+
+    if (!(ReceiveFlags & NDIS_RECEIVE_FLAGS_RESOURCES))
+        CoreFilterReturn(Adapter, NULL, Unheld, NDIS_RETURN_FLAGS_DISPATCH_LEVEL);
 }
