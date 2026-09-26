@@ -643,6 +643,7 @@ WlanParseSuites(
     USHORT PairwiseCount;
     USHORT AkmCount;
     BOOLEAN Psk = FALSE;
+    BOOLEAN Sae = FALSE;
     USHORT i;
 
     *Cipher = DOT11_CIPHER_ALGO_CCMP;
@@ -668,14 +669,19 @@ WlanParseSuites(
 
     for (i = 0; i < AkmCount && Offset + 4 <= Length; i++)
     {
-        if (Body[Offset + 3] == 2)
+        /* PSK and PSK-SHA256, then SAE */
+        if (Body[Offset + 3] == 2 || Body[Offset + 3] == 6)
             Psk = TRUE;
+        else if (Body[Offset + 3] == 8)
+            Sae = TRUE;
         Offset += 4;
     }
 
 Done:
     if (Wpa)
         *Auth = Psk ? DOT11_AUTH_ALGO_WPA_PSK : DOT11_AUTH_ALGO_WPA;
+    else if (Sae)
+        *Auth = DOT11_AUTH_ALGO_WPA3_SAE;
     else
         *Auth = Psk ? DOT11_AUTH_ALGO_RSNA_PSK : DOT11_AUTH_ALGO_RSNA;
 }
@@ -918,10 +924,27 @@ WlanProfileTag(
     return TRUE;
 }
 
+/* Whether a profile sets a flag element to true. The element may carry a
+   namespace, as transitionMode does */
+static
+BOOL
+WlanProfileFlag(
+    _In_ PCWSTR Xml,
+    _In_ PCWSTR Open)
+{
+    PCWSTR Start = wcsstr(Xml, Open);
+
+    if (Start == NULL)
+        return FALSE;
+    Start = wcschr(Start, L'>');
+    return Start != NULL && _wcsnicmp(Start + 1, L"true", 4) == 0;
+}
+
 /**
  * @brief
  * Connects using a temporary profile: a secured one runs the WPA handshake, an
- * open one connects directly.
+ * open one connects directly. A WPA3 profile in transition mode falls back to
+ * WPA2 when SAE does not get through.
  */
 DWORD
 WlanConnectProfile(
@@ -931,19 +954,35 @@ WlanConnectProfile(
 {
     WCHAR Authentication[32];
     WCHAR Key[128];
+    DWORD Error;
 
     WlanStopSupplicant(InterfaceGuid);
 
-    if (Profile != NULL &&
-        WlanProfileTag(Profile, L"<authentication>", L"</authentication>",
-                       Authentication, ARRAYSIZE(Authentication)) &&
-        (_wcsicmp(Authentication, L"WPA2PSK") == 0 || _wcsicmp(Authentication, L"WPAPSK") == 0) &&
-        WlanProfileTag(Profile, L"<keyMaterial>", L"</keyMaterial>", Key, ARRAYSIZE(Key)))
+    if (Profile == NULL ||
+        !WlanProfileTag(Profile, L"<authentication>", L"</authentication>",
+                        Authentication, ARRAYSIZE(Authentication)) ||
+        !WlanProfileTag(Profile, L"<keyMaterial>", L"</keyMaterial>", Key, ARRAYSIZE(Key)))
     {
-        return WlanConnectWpa(InterfaceGuid, Ssid, Key);
+        return WlanConnect(InterfaceGuid, Ssid);
     }
 
-    return WlanConnect(InterfaceGuid, Ssid);
+    if (_wcsicmp(Authentication, L"WPA3SAE") == 0)
+    {
+        Error = WlanConnectSae(InterfaceGuid, Ssid, Key);
+        if (Error != ERROR_SUCCESS && WlanProfileFlag(Profile, L"<transitionMode"))
+            Error = WlanConnectWpa(InterfaceGuid, Ssid, Key);
+    }
+    else if (_wcsicmp(Authentication, L"WPA2PSK") == 0 || _wcsicmp(Authentication, L"WPAPSK") == 0)
+    {
+        Error = WlanConnectWpa(InterfaceGuid, Ssid, Key);
+    }
+    else
+    {
+        Error = WlanConnect(InterfaceGuid, Ssid);
+    }
+
+    SecureZeroMemory(Key, sizeof(Key));
+    return Error;
 }
 
 /**
