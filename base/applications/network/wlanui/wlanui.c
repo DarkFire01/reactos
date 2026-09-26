@@ -49,6 +49,7 @@ SecurityText(
 
     switch (Network->dot11DefaultAuthAlgorithm)
     {
+        case DOT11_AUTH_ALGO_WPA3_SAE: return L"WPA3-Personal";
         case DOT11_AUTH_ALGO_RSNA_PSK: return L"WPA2-Personal";
         case DOT11_AUTH_ALGO_WPA_PSK:  return L"WPA-Personal";
         case DOT11_AUTH_ALGO_RSNA:     return L"WPA2-Enterprise";
@@ -208,9 +209,17 @@ BuildProfileXml(
 {
     PCWSTR Authentication = L"WPA2PSK";
     PCWSTR Encryption = L"AES";
+    PCWSTR Transition = L"";
 
     if (Network->dot11DefaultAuthAlgorithm == DOT11_AUTH_ALGO_WPA_PSK)
         Authentication = L"WPAPSK";
+
+    /* WPA3 in transition mode, so WPA2 is still tried when SAE fails */
+    if (Network->dot11DefaultAuthAlgorithm == DOT11_AUTH_ALGO_WPA3_SAE)
+    {
+        Authentication = L"WPA3SAE";
+        Transition = L"<transitionMode xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v4\">true</transitionMode>";
+    }
     if (Network->dot11DefaultCipherAlgorithm == DOT11_CIPHER_ALGO_TKIP)
         Encryption = L"TKIP";
 
@@ -225,6 +234,7 @@ BuildProfileXml(
         L"<authentication>%s</authentication>"
         L"<encryption>%s</encryption>"
         L"<useOneX>false</useOneX>"
+        L"%s"
         L"</authEncryption>"
         L"<sharedKey>"
         L"<keyType>passPhrase</keyType>"
@@ -233,7 +243,7 @@ BuildProfileXml(
         L"</sharedKey>"
         L"</security></MSM>"
         L"</WLANProfile>",
-        Ssid, Ssid, Authentication, Encryption, Key);
+        Ssid, Ssid, Authentication, Encryption, Transition, Key);
 }
 
 static
