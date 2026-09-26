@@ -135,6 +135,13 @@ NwifiFinishRequest(
         case NdisRequestSetInformation:
             Out->BytesRead = OidRequest->DATA.SET_INFORMATION.BytesRead;
             Out->BytesNeeded = OidRequest->DATA.SET_INFORMATION.BytesNeeded;
+            if (Status == NDIS_STATUS_SUCCESS &&
+                OidRequest->DATA.SET_INFORMATION.Oid == OID_DOT11_PRIVACY_EXEMPTION_LIST)
+            {
+                NwifiTrackExemptions(Request->Module,
+                                     OidRequest->DATA.SET_INFORMATION.InformationBuffer,
+                                     OidRequest->DATA.SET_INFORMATION.InformationBufferLength);
+            }
             break;
 
         default:

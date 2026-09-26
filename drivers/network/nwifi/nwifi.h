@@ -22,6 +22,23 @@
 
 #define DOT11_ADDRESS_LENGTH    6
 
+/* Privacy exemptions kept from the list the WLAN service sets */
+#define NWIFI_EXEMPTIONS_MAX    8
+
+/* The context area of every list of ours: what it belongs to, and for a
+   send the ExtSTA send context the miniport reads through the list info */
+typedef struct _NWIFI_FRAME_CONTEXT
+{
+    PVOID Owner;
+    DOT11_EXTSTA_SEND_CONTEXT SendContext;
+} NWIFI_FRAME_CONTEXT, *PNWIFI_FRAME_CONTEXT;
+
+#define NWIFI_FRAME_CONTEXT_SIZE \
+    ALIGN_UP_BY(sizeof(NWIFI_FRAME_CONTEXT), MEMORY_ALLOCATION_ALIGNMENT)
+
+#define NWIFI_FRAME_CONTEXT_OF(_Nbl) \
+    ((PNWIFI_FRAME_CONTEXT)NET_BUFFER_LIST_CONTEXT_DATA_START(_Nbl))
+
 typedef struct _NWIFI_QUEUED_INDICATION
 {
     ULONG StatusCode;
@@ -46,6 +63,10 @@ typedef struct _NWIFI_MODULE
     /* Kept current by the dot11 association indications */
     BOOLEAN Associated;
     UCHAR Bssid[DOT11_ADDRESS_LENGTH];
+
+    /* The privacy exemption list that last went down, under Lock */
+    ULONG ExemptionCount;
+    DOT11_PRIVACY_EXEMPTION Exemptions[NWIFI_EXEMPTIONS_MAX];
 
     /* Our own NET_BUFFER_LISTs, one per frame, still owned by another layer */
     NDIS_HANDLE NblPool;
@@ -91,6 +112,13 @@ NTAPI
 NwifiTrackStatus(
     _In_ PNWIFI_MODULE Module,
     _In_ PNDIS_STATUS_INDICATION StatusIndication);
+
+VOID
+NTAPI
+NwifiTrackExemptions(
+    _In_ PNWIFI_MODULE Module,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Length);
 
 /* control.c */
 

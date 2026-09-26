@@ -18,7 +18,7 @@ typedef struct _NWIFI_SEND
     NDIS_STATUS Status;
 } NWIFI_SEND, *PNWIFI_SEND;
 
-#define NWIFI_SEND_OF(_Nbl) (*(PNWIFI_SEND *)NET_BUFFER_LIST_CONTEXT_DATA_START(_Nbl))
+#define NWIFI_SEND_OF(_Nbl) (*(PNWIFI_SEND *)&NWIFI_FRAME_CONTEXT_OF(_Nbl)->Owner)
 
 /* Every NDIS_STATUS_DOT11_* sits in this range */
 #define NWIFI_IS_DOT11_STATUS(_Status) (((ULONG)(_Status) & 0xFFFF0000) == 0x40030000)
@@ -192,7 +192,7 @@ NwifiAttach(
     PoolParameters.Header.Revision = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
     PoolParameters.Header.Size = NDIS_SIZEOF_NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
     PoolParameters.fAllocateNetBuffer = TRUE;
-    PoolParameters.ContextSize = 16;
+    PoolParameters.ContextSize = NWIFI_FRAME_CONTEXT_SIZE;
     PoolParameters.PoolTag = NWIFI_TAG;
     PoolParameters.DataSize = NWIFI_FRAME_SIZE;
     Module->NblPool = NdisAllocateNetBufferListPool(NdisFilterHandle, &PoolParameters);

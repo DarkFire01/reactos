@@ -116,7 +116,7 @@ NwifiAllocateFrame(
     if (Length > NWIFI_FRAME_SIZE)
         return NULL;
 
-    NetBufferList = NdisAllocateNetBufferList(Module->NblPool, sizeof(PVOID), 0);
+    NetBufferList = NdisAllocateNetBufferList(Module->NblPool, NWIFI_FRAME_CONTEXT_SIZE, 0);
     if (NetBufferList == NULL)
         return NULL;
 
@@ -146,6 +146,33 @@ NwifiAllocateFrame(
  * @return
  * A list of ours carrying the frame, or NULL when it cannot be built.
  */
+/* The exemption the list gives a frame of this EtherType and destination */
+static
+USHORT
+NwifiExemptionFor(
+    _In_ PNWIFI_MODULE Module,
+    _In_ const DOT11_ETHERNET_HEADER *Ethernet)
+{
+    USHORT PacketType = (Ethernet->Destination[0] & 0x01) ? DOT11_EXEMPT_MULTICAST : DOT11_EXEMPT_UNICAST;
+    USHORT Action = DOT11_EXEMPT_NO_EXEMPTION;
+    KIRQL OldIrql;
+    ULONG i;
+
+    KeAcquireSpinLock(&Module->Lock, &OldIrql);
+    for (i = 0; i < Module->ExemptionCount; i++)
+    {
+        if (Module->Exemptions[i].usEtherType == Ethernet->Type &&
+            (Module->Exemptions[i].usExemptionPacketType & PacketType))
+        {
+            Action = Module->Exemptions[i].usExemptionActionType;
+            break;
+        }
+    }
+    KeReleaseSpinLock(&Module->Lock, OldIrql);
+
+    return Action;
+}
+
 PNET_BUFFER_LIST
 NTAPI
 NwifiBuildNative(
@@ -155,6 +182,7 @@ NwifiBuildNative(
     ULONG Length = NET_BUFFER_DATA_LENGTH(NetBuffer);
     DOT11_ETHERNET_HEADER Ethernet;
     PNET_BUFFER_LIST NetBufferList;
+    PDOT11_EXTSTA_SEND_CONTEXT SendContext;
     PDOT11_DATA_HEADER Dot11;
     PDOT11_LLC_SNAP Snap;
     PUCHAR Data;
@@ -196,6 +224,15 @@ NwifiBuildNative(
         NdisFreeNetBufferList(NetBufferList);
         return NULL;
     }
+
+    /* The miniport learns from this whether the frame may go out unencrypted */
+    SendContext = &NWIFI_FRAME_CONTEXT_OF(NetBufferList)->SendContext;
+    RtlZeroMemory(SendContext, sizeof(*SendContext));
+    SendContext->Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+    SendContext->Header.Revision = DOT11_EXTSTA_SEND_CONTEXT_REVISION_1;
+    SendContext->Header.Size = sizeof(*SendContext);
+    SendContext->usExemptionActionType = NwifiExemptionFor(Module, &Ethernet);
+    NET_BUFFER_LIST_INFO(NetBufferList, MediaSpecificInformation) = SendContext;
 
     return NetBufferList;
 }
@@ -307,6 +344,38 @@ NwifiBuildEthernet(
  * Follows the dot11 association indications, so sends know the BSSID and go
  * nowhere without one.
  */
+/**
+ * @brief
+ * Keeps the privacy exemption list the WLAN service set, so sends can be
+ * marked with it.
+ */
+VOID
+NTAPI
+NwifiTrackExemptions(
+    _In_ PNWIFI_MODULE Module,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Length)
+{
+    PDOT11_PRIVACY_EXEMPTION_LIST List = Buffer;
+    ULONG Count;
+    KIRQL OldIrql;
+
+    if (Length < FIELD_OFFSET(DOT11_PRIVACY_EXEMPTION_LIST, PrivacyExemptionEntries))
+        return;
+
+    Count = min(List->uNumOfEntries, NWIFI_EXEMPTIONS_MAX);
+    if (Count > (Length - FIELD_OFFSET(DOT11_PRIVACY_EXEMPTION_LIST, PrivacyExemptionEntries)) /
+                sizeof(DOT11_PRIVACY_EXEMPTION))
+    {
+        return;
+    }
+
+    KeAcquireSpinLock(&Module->Lock, &OldIrql);
+    RtlCopyMemory(Module->Exemptions, List->PrivacyExemptionEntries, Count * sizeof(DOT11_PRIVACY_EXEMPTION));
+    Module->ExemptionCount = Count;
+    KeReleaseSpinLock(&Module->Lock, OldIrql);
+}
+
 VOID
 NTAPI
 NwifiTrackStatus(
