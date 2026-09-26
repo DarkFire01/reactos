@@ -73,6 +73,9 @@ DebugInit(
     memset(DbgChannels, 0, DBG_CHANNELS_COUNT);
 #endif
 
+    /* The hypervisor launch is quiet unless it was asked for, so leave it on */
+    DbgChannels[DPRINT_HYPERVISOR] = MAX_LEVEL;
+
 #if defined (DEBUG_INIFILE)
     DbgChannels[DPRINT_INIFILE] = MAX_LEVEL;
 #elif defined (DEBUG_REACTOS)
@@ -351,6 +354,7 @@ DbgAddDebugChannel(CHAR* channel, CHAR* level, CHAR op)
     else if (strcmp(channel, "peloader"  ) == 0) iChannel = DPRINT_PELOADER;
     else if (strcmp(channel, "scsiport"  ) == 0) iChannel = DPRINT_SCSIPORT;
     else if (strcmp(channel, "heap"      ) == 0) iChannel = DPRINT_HEAP;
+    else if (strcmp(channel, "hypervisor") == 0) iChannel = DPRINT_HYPERVISOR;
     else if (strcmp(channel, "all"       ) == 0)
     {
         int i;
