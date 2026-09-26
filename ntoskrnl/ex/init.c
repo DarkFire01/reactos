@@ -691,6 +691,9 @@ ExpInitSystemPhase1(VOID)
         return FALSE;
     }
 
+    /* The hypervisor's own events, now that there is an event to make */
+    HvlInitSystemEvents();
+
     /* Initialize mutants */
     if (ExpInitializeMutantImplementation() == FALSE)
     {

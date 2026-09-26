@@ -411,6 +411,11 @@ VOID
 NTAPI
 HvlInitSystem(VOID);
 
+CODE_SEG("INIT")
+VOID
+NTAPI
+HvlInitSystemEvents(VOID);
+
 extern BOOLEAN HvlpHypervisorPresent;
 
 VOID

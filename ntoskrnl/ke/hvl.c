@@ -74,6 +74,7 @@ static ULONG HvlpMaximumLeaf;
 static ULONG HvlpPrivileges;
 static PVOID HvlpHypercallPage;
 static PMDL HvlpHypercallMdl;
+static PKEVENT HvlpWithdrawAllowedEvent;
 static HVL_INTERRUPT_CALLBACK HvlpInterruptCallbacks[HVL_MAXIMUM_INTERRUPT_CALLBACKS];
 static PVOID HvlpWheaCallback;
 
@@ -125,6 +126,57 @@ HvlpDetectHypervisor(VOID)
     HvlpHypervisorPresent = TRUE;
     DPRINT1("Hvl: hypervisor found, leaves to %lx, privileges %lx\n",
             HvlpMaximumLeaf, HvlpPrivileges);
+}
+
+/**
+ * @brief
+ * Publishes the event that says memory may be taken back from the hypervisor.
+ *
+ * @remarks
+ * The virtualization stack waits on this before it withdraws memory it had
+ * deposited, and refuses to start if it is not there to wait on. Nothing here
+ * ever defers a withdrawal, so it starts signalled and stays that way.
+ */
+CODE_SEG("INIT")
+VOID
+NTAPI
+HvlInitSystemEvents(VOID)
+{
+    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"\\KernelObjects\\HvlWithdrawAllowed");
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    HANDLE Handle;
+    NTSTATUS Status;
+
+    if (!HvlpHypervisorPresent)
+        return;
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &Name,
+                               OBJ_KERNEL_HANDLE | OBJ_PERMANENT,
+                               NULL,
+                               NULL);
+
+    Status = ZwCreateEvent(&Handle,
+                           EVENT_ALL_ACCESS,
+                           &ObjectAttributes,
+                           NotificationEvent,
+                           TRUE);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Hvl: could not publish the withdraw event, status %lx\n", Status);
+        return;
+    }
+
+    Status = ObReferenceObjectByHandle(Handle,
+                                       EVENT_MODIFY_STATE,
+                                       ExEventObjectType,
+                                       KernelMode,
+                                       (PVOID *)&HvlpWithdrawAllowedEvent,
+                                       NULL);
+    ZwClose(Handle);
+
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Hvl: the withdraw event would not be referenced, status %lx\n", Status);
 }
 
 /**
