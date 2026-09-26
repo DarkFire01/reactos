@@ -16,11 +16,8 @@
 #include <winnls.h>
 #include <strsafe.h>
 #include <nuiouser.h>
-#include <bcrypt.h>
 
-#ifndef BCRYPT_SUCCESS
-#define BCRYPT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
-#endif
+#include "wlcrypto.h"
 
 /* dot11 and generic OIDs the handshake drives the adapter with */
 #define OID_GEN_CURRENT_PACKET_FILTER               0x0001010E
@@ -137,201 +134,6 @@ WriteBe16(
 {
     Buffer[0] = (UCHAR)(Value >> 8);
     Buffer[1] = (UCHAR)Value;
-}
-
-/* Crypto over bcrypt */
-
-static
-BOOL
-DerivePmk(
-    _In_reads_bytes_(PassphraseLength) const UCHAR *Passphrase,
-    _In_ ULONG PassphraseLength,
-    _In_reads_bytes_(SsidLength) const UCHAR *Ssid,
-    _In_ ULONG SsidLength,
-    _Out_writes_bytes_(WLAN_PMK_LENGTH) PUCHAR Pmk)
-{
-    BCRYPT_ALG_HANDLE Algorithm;
-    NTSTATUS Status;
-
-    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&Algorithm, BCRYPT_SHA1_ALGORITHM,
-                                                    NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG)))
-        return FALSE;
-
-    Status = BCryptDeriveKeyPBKDF2(Algorithm, (PUCHAR)Passphrase, PassphraseLength,
-                                   (PUCHAR)Ssid, SsidLength, 4096, Pmk, WLAN_PMK_LENGTH, 0);
-
-    BCryptCloseAlgorithmProvider(Algorithm, 0);
-    return BCRYPT_SUCCESS(Status);
-}
-
-static
-BOOL
-HmacSha1(
-    _In_reads_bytes_(KeyLength) const UCHAR *Key,
-    _In_ ULONG KeyLength,
-    _In_reads_bytes_(DataLength) const UCHAR *Data,
-    _In_ ULONG DataLength,
-    _Out_writes_bytes_(20) PUCHAR Mac)
-{
-    BCRYPT_ALG_HANDLE Algorithm;
-    BCRYPT_HASH_HANDLE Hash;
-    BOOL Ok = FALSE;
-
-    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&Algorithm, BCRYPT_SHA1_ALGORITHM,
-                                                    NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG)))
-        return FALSE;
-
-    if (BCRYPT_SUCCESS(BCryptCreateHash(Algorithm, &Hash, NULL, 0, (PUCHAR)Key, KeyLength, 0)))
-    {
-        if (BCRYPT_SUCCESS(BCryptHashData(Hash, (PUCHAR)Data, DataLength, 0)) &&
-            BCRYPT_SUCCESS(BCryptFinishHash(Hash, Mac, 20, 0)))
-        {
-            Ok = TRUE;
-        }
-        BCryptDestroyHash(Hash);
-    }
-
-    BCryptCloseAlgorithmProvider(Algorithm, 0);
-    return Ok;
-}
-
-/* The 802.11 PRF built on HMAC-SHA1 */
-static
-BOOL
-Prf(
-    _In_reads_bytes_(KeyLength) const UCHAR *Key,
-    _In_ ULONG KeyLength,
-    _In_ PCSTR Label,
-    _In_reads_bytes_(DataLength) const UCHAR *Data,
-    _In_ ULONG DataLength,
-    _Out_writes_bytes_(OutputLength) PUCHAR Output,
-    _In_ ULONG OutputLength)
-{
-    UCHAR Block[128];
-    UCHAR Digest[20];
-    ULONG LabelLength = (ULONG)strlen(Label);
-    ULONG Offset = 0;
-    UCHAR Counter = 0;
-
-    if (LabelLength + 1 + DataLength + 1 > sizeof(Block))
-        return FALSE;
-
-    while (Offset < OutputLength)
-    {
-        ULONG Take;
-
-        RtlCopyMemory(Block, Label, LabelLength);
-        Block[LabelLength] = 0;
-        RtlCopyMemory(Block + LabelLength + 1, Data, DataLength);
-        Block[LabelLength + 1 + DataLength] = Counter;
-
-        if (!HmacSha1(Key, KeyLength, Block, LabelLength + 1 + DataLength + 1, Digest))
-            return FALSE;
-
-        Take = min(20, OutputLength - Offset);
-        RtlCopyMemory(Output + Offset, Digest, Take);
-        Offset += Take;
-        Counter++;
-    }
-
-    return TRUE;
-}
-
-static
-BOOL
-AesEcbDecryptBlock(
-    _In_ BCRYPT_KEY_HANDLE Key,
-    _In_reads_bytes_(16) const UCHAR *In,
-    _Out_writes_bytes_(16) PUCHAR Out)
-{
-    ULONG Done = 0;
-
-    return BCRYPT_SUCCESS(BCryptDecrypt(Key, (PUCHAR)In, 16, NULL, NULL, 0, Out, 16, &Done, 0)) &&
-           Done == 16;
-}
-
-/* RFC 3394 AES key unwrap, on AES-128 ECB. Output is InputLength - 8 bytes */
-static
-BOOL
-AesKeyUnwrap(
-    _In_reads_bytes_(16) const UCHAR *Kek,
-    _In_reads_bytes_(InputLength) const UCHAR *Input,
-    _In_ ULONG InputLength,
-    _Out_writes_bytes_(InputLength - 8) PUCHAR Output)
-{
-    BCRYPT_ALG_HANDLE Algorithm;
-    BCRYPT_KEY_HANDLE Key;
-    UCHAR A[8];
-    UCHAR Buffer[16];
-    ULONG Blocks;
-    BOOL Ok = FALSE;
-    LONG j;
-    ULONG i;
-
-    if (InputLength < 24 || (InputLength % 8) != 0)
-        return FALSE;
-    Blocks = InputLength / 8 - 1;
-
-    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&Algorithm, BCRYPT_AES_ALGORITHM, NULL, 0)))
-        return FALSE;
-    if (!BCRYPT_SUCCESS(BCryptSetProperty(Algorithm, BCRYPT_CHAINING_MODE,
-                                          (PUCHAR)BCRYPT_CHAIN_MODE_ECB,
-                                          sizeof(BCRYPT_CHAIN_MODE_ECB), 0)) ||
-        !BCRYPT_SUCCESS(BCryptGenerateSymmetricKey(Algorithm, &Key, NULL, 0, (PUCHAR)Kek, 16, 0)))
-    {
-        BCryptCloseAlgorithmProvider(Algorithm, 0);
-        return FALSE;
-    }
-
-    RtlCopyMemory(A, Input, 8);
-    RtlCopyMemory(Output, Input + 8, InputLength - 8);
-
-    for (j = 5; j >= 0; j--)
-    {
-        for (i = Blocks; i >= 1; i--)
-        {
-            ULONGLONG T = (ULONGLONG)Blocks * (ULONG)j + i;
-            LONG b;
-
-            RtlCopyMemory(Buffer, A, 8);
-            RtlCopyMemory(Buffer + 8, Output + (i - 1) * 8, 8);
-
-            /* A ^= T, over the trailing 8 bytes, big-endian */
-            for (b = 0; b < 8; b++)
-                Buffer[7 - b] ^= (UCHAR)(T >> (8 * b));
-
-            if (!AesEcbDecryptBlock(Key, Buffer, Buffer))
-                goto Done;
-
-            RtlCopyMemory(A, Buffer, 8);
-            RtlCopyMemory(Output + (i - 1) * 8, Buffer + 8, 8);
-        }
-    }
-
-    /* The integrity check value RFC 3394 fixes */
-    Ok = TRUE;
-    for (i = 0; i < 8; i++)
-    {
-        if (A[i] != 0xA6)
-        {
-            Ok = FALSE;
-            break;
-        }
-    }
-
-Done:
-    BCryptDestroyKey(Key);
-    BCryptCloseAlgorithmProvider(Algorithm, 0);
-    return Ok;
-}
-
-static
-BOOL
-GenerateNonce(
-    _Out_writes_bytes_(WLAN_NONCE_LENGTH) PUCHAR Nonce)
-{
-    return BCRYPT_SUCCESS(BCryptGenRandom(NULL, Nonce, WLAN_NONCE_LENGTH,
-                                          BCRYPT_USE_SYSTEM_PREFERRED_RNG));
 }
 
 /* Overlapped adapter I/O on one exclusive handle */
@@ -707,16 +509,15 @@ FourWayHandshake(
     RtlCopyMemory(Bssid, Frame + 6, 6);
     RtlCopyMemory(ANonce, Eapol + 17, WLAN_NONCE_LENGTH);
 
-    if (!GenerateNonce(SNonce))
+    if (!WlanCryptoRandom(SNonce, sizeof(SNonce)))
         return ERROR_GEN_FAILURE;
 
     /* PTK = PRF(PMK, "Pairwise key expansion", min||max MAC, min||max nonce) */
     At = PtkInput;
     AppendOrdered(&At, OwnMac, Bssid, 6);
     AppendOrdered(&At, ANonce, SNonce, WLAN_NONCE_LENGTH);
-    if (!Prf(Pmk, WLAN_PMK_LENGTH, "Pairwise key expansion", PtkInput, sizeof(PtkInput),
-             Ptk, WLAN_PTK_LENGTH))
-        return ERROR_GEN_FAILURE;
+    WlanCryptoPrfSha1(Pmk, WLAN_PMK_LENGTH, "Pairwise key expansion", PtkInput, sizeof(PtkInput),
+                      Ptk, WLAN_PTK_LENGTH);
 
     /* Message 2: our nonce and RSN element, signed with the KCK */
     RtlZeroMemory(Message2, sizeof(Message2));
@@ -736,8 +537,7 @@ FourWayHandshake(
     RtlCopyMemory(Eapol + 17, SNonce, WLAN_NONCE_LENGTH);
     WriteBe16(Eapol + 97, (USHORT)RsnLength);
 
-    if (!HmacSha1(Key, WLAN_KCK_LENGTH, Eapol, EAPOL_FIXED_LENGTH + RsnLength, Mic))
-        return ERROR_GEN_FAILURE;
+    WlanCryptoHmacSha1(Key, WLAN_KCK_LENGTH, Eapol, EAPOL_FIXED_LENGTH + RsnLength, Mic);
     RtlCopyMemory(Eapol + 81, Mic, WLAN_MIC_LENGTH);
 
     Error = SupplicantSendFrame(Device, Message2, ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH + RsnLength);
@@ -767,8 +567,7 @@ FourWayHandshake(
 
         RtlCopyMemory(Received, Eapol + 81, WLAN_MIC_LENGTH);
         RtlZeroMemory(Eapol + 81, WLAN_MIC_LENGTH);
-        if (!HmacSha1(Key, WLAN_KCK_LENGTH, Eapol, EAPOL_FIXED_LENGTH + KeyDataLength, Mic))
-            return ERROR_GEN_FAILURE;
+        WlanCryptoHmacSha1(Key, WLAN_KCK_LENGTH, Eapol, EAPOL_FIXED_LENGTH + KeyDataLength, Mic);
         if (!RtlEqualMemory(Received, Mic, WLAN_MIC_LENGTH))
             return ERROR_ACCESS_DENIED;
     }
@@ -776,9 +575,11 @@ FourWayHandshake(
     /* The group key rides in the encrypted key data, unwrapped with the KEK */
     if (KeyInfo & KEY_INFO_ENCRYPTED)
     {
-        if (!AesKeyUnwrap(Ptk + WLAN_KCK_LENGTH, Eapol + 99, KeyDataLength, KeyData))
+        if (!WlanCryptoAesUnwrap(Ptk + WLAN_KCK_LENGTH, WLAN_KEK_LENGTH, Eapol + 99, KeyDataLength,
+                                 KeyData, sizeof(KeyData), &KeyDataLength))
+        {
             return ERROR_ACCESS_DENIED;
-        KeyDataLength -= 8;
+        }
     }
     else
     {
@@ -803,8 +604,7 @@ FourWayHandshake(
     RtlCopyMemory(Eapol + 9, Frame + ETH_HEADER_LENGTH + 9, 8);               /* replay counter from M3 */
     WriteBe16(Eapol + 97, 0);
 
-    if (!HmacSha1(Key, WLAN_KCK_LENGTH, Eapol, EAPOL_FIXED_LENGTH, Mic))
-        return ERROR_GEN_FAILURE;
+    WlanCryptoHmacSha1(Key, WLAN_KCK_LENGTH, Eapol, EAPOL_FIXED_LENGTH, Mic);
     RtlCopyMemory(Eapol + 81, Mic, WLAN_MIC_LENGTH);
 
     Error = SupplicantSendFrame(Device, Message4, ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH);
@@ -849,8 +649,12 @@ WlanConnectWpa(
         return ERROR_INVALID_PARAMETER;
     PassphraseLength = (ULONG)Converted - 1;
 
-    if (!DerivePmk(PassphraseBytes, PassphraseLength, Ssid->ucSSID, Ssid->uSSIDLength, Pmk))
+    WlanCryptoInitialize();
+    if (!WlanCryptoPbkdf2Sha1(PassphraseBytes, PassphraseLength, Ssid->ucSSID, Ssid->uSSIDLength,
+                              4096, Pmk, WLAN_PMK_LENGTH))
+    {
         return ERROR_GEN_FAILURE;
+    }
 
     /* EAPOL frames go through NDISUIO, the dot11 OIDs through the Native WiFi filter */
     Device = SupplicantOpen(InterfaceGuid);
@@ -916,6 +720,7 @@ WlanConnectWpa(
         Error = FourWayHandshake(Device, Interface, Pmk, OwnMac);
 
 Cleanup:
+    WlanCryptoWipe(Pmk, sizeof(Pmk));
     CloseHandle(Interface);
     CloseHandle(Device);
     return Error;
