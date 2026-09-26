@@ -1,5 +1,5 @@
 /*
- * PROJECT:     ReactOS Kernel
+ * PROJECT:     ReactOS Runtime Library
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Red black trees
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
@@ -12,10 +12,52 @@
  * at least four byte aligned and the low bits are free.
  */
 
-#include <ntoskrnl.h>
+#include <rtl.h>
 
 #define NDEBUG
 #include <debug.h>
+
+/*
+ * This library is built against the user mode headers, where neither the node
+ * nor the tree is declared. The layouts are the published ones, kept here
+ * until a header this can reach carries them.
+ */
+#ifdef _MSC_VER
+ #pragma warning(push)
+ #pragma warning(disable:4214) /* Bit fields of other types than int */
+#endif
+typedef struct _RTL_BALANCED_NODE
+{
+    _ANONYMOUS_UNION union
+    {
+        struct _RTL_BALANCED_NODE *Children[2];
+        _ANONYMOUS_STRUCT struct
+        {
+            struct _RTL_BALANCED_NODE *Left;
+            struct _RTL_BALANCED_NODE *Right;
+        } DUMMYSTRUCTNAME;
+    } DUMMYUNIONNAME;
+    _ANONYMOUS_UNION union
+    {
+        UCHAR Red : 1;
+        UCHAR Balance : 2;
+        ULONG_PTR ParentValue;
+    } DUMMYUNIONNAME2;
+} RTL_BALANCED_NODE, *PRTL_BALANCED_NODE;
+#ifdef _MSC_VER
+ #pragma warning(pop)
+#endif
+
+#define RTL_BALANCED_NODE_RESERVED_PARENT_MASK 3
+
+#define RTL_BALANCED_NODE_GET_PARENT_POINTER(Node) \
+    ((PRTL_BALANCED_NODE)((Node)->ParentValue & ~RTL_BALANCED_NODE_RESERVED_PARENT_MASK))
+
+typedef struct _RTL_RB_TREE
+{
+    PRTL_BALANCED_NODE Root;
+    PRTL_BALANCED_NODE Min;
+} RTL_RB_TREE, *PRTL_RB_TREE;
 
 /* PRIVATE FUNCTIONS **********************************************************/
 

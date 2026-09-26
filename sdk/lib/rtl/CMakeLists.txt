@@ -74,6 +74,7 @@ list(APPEND SOURCE
     processor.c
     propvar.c
     random.c
+    rbtree.c
     rangelist.c
     registry.c
     res.c
