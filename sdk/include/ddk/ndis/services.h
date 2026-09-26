@@ -430,6 +430,60 @@ NTAPI
 NdisGroupActiveProcessorCount(
     _In_ USHORT Group);
 
+ULONG
+NTAPI
+NdisSystemActiveProcessorCount(
+    _Out_ PKAFFINITY ActiveProcessors);
+
+USHORT
+NTAPI
+NdisActiveGroupCount(VOID);
+
+USHORT
+NTAPI
+NdisMaxGroupCount(VOID);
+
+ULONG
+NTAPI
+NdisGroupMaxProcessorCount(
+    _In_ USHORT Group);
+
+KAFFINITY
+NTAPI
+NdisGroupActiveProcessorMask(
+    _In_ USHORT Group);
+
+PROCESSOR_NUMBER
+NTAPI
+NdisCurrentGroupAndProcessor(VOID);
+
+_IRQL_requires_max_(HIGH_LEVEL)
+ULONG
+NTAPI
+NdisProcessorNumberToIndex(
+    _In_ PROCESSOR_NUMBER ProcNum);
+
+_IRQL_requires_max_(HIGH_LEVEL)
+NTSTATUS
+NTAPI
+NdisProcessorIndexToNumber(
+    _In_ ULONG ProcIndex,
+    _Out_ PPROCESSOR_NUMBER ProcNum);
+
+/* Windows 7 drivers get it inline; the export is for the ones built without it */
+#if NDIS_WRAPPER || (NTDDI_VERSION < NTDDI_WIN7)
+ULONG
+NTAPI
+NdisCurrentProcessorIndex(VOID);
+#else
+FORCEINLINE
+ULONG
+NdisCurrentProcessorIndex(VOID)
+{
+    return KeGetCurrentProcessorIndex();
+}
+#endif
+
 _IRQL_requires_max_(DISPATCH_LEVEL)
 NDIS_STATUS
 NTAPI

@@ -1064,6 +1064,101 @@ NdisGroupActiveProcessorCount(
 
 /**
  * @brief
+ * The active processors of group 0, the only ones an NDIS 6.0 driver knows of.
+ *
+ * @param[out] ActiveProcessors
+ * Receives their affinity.
+ *
+ * @return
+ * How many there are.
+ */
+_Use_decl_annotations_
+ULONG
+NTAPI
+NdisSystemActiveProcessorCount(
+    PKAFFINITY ActiveProcessors)
+{
+    KAFFINITY Affinity = KeQueryGroupAffinity(0);
+    ULONG Count = 0;
+
+    *ActiveProcessors = Affinity;
+
+    for (; Affinity != 0; Affinity &= Affinity - 1)
+        Count++;
+
+    return Count;
+}
+
+USHORT
+NTAPI
+NdisActiveGroupCount(VOID)
+{
+    return KeQueryActiveGroupCount();
+}
+
+USHORT
+NTAPI
+NdisMaxGroupCount(VOID)
+{
+    return KeQueryMaximumGroupCount();
+}
+
+_Use_decl_annotations_
+ULONG
+NTAPI
+NdisGroupMaxProcessorCount(
+    USHORT Group)
+{
+    return KeQueryMaximumProcessorCountEx(Group);
+}
+
+_Use_decl_annotations_
+KAFFINITY
+NTAPI
+NdisGroupActiveProcessorMask(
+    USHORT Group)
+{
+    return KeQueryGroupAffinity(Group);
+}
+
+PROCESSOR_NUMBER
+NTAPI
+NdisCurrentGroupAndProcessor(VOID)
+{
+    PROCESSOR_NUMBER Number;
+
+    KeGetCurrentProcessorNumberEx(&Number);
+    return Number;
+}
+
+ULONG
+NTAPI
+NdisCurrentProcessorIndex(VOID)
+{
+    return KeGetCurrentProcessorIndex();
+}
+
+_Use_decl_annotations_
+ULONG
+NTAPI
+NdisProcessorNumberToIndex(
+    PROCESSOR_NUMBER ProcNum)
+{
+    return KeGetProcessorIndexFromNumber(&ProcNum);
+}
+
+_Use_decl_annotations_
+NTSTATUS
+NTAPI
+NdisProcessorIndexToNumber(
+    ULONG ProcIndex,
+    PPROCESSOR_NUMBER ProcNum)
+{
+    return KeGetProcessorNumberFromIndex(ProcIndex, ProcNum);
+}
+
+/**
+ * @brief
  * Describes the system's processors. Every processor is reported as its own
  * core in socket 0 and node 0.
  *
