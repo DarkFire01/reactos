@@ -1893,6 +1893,17 @@
 @ stdcall -version=0x600+ RtlRunOnceExecuteOnce(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ RtlRunOnceInitialize(ptr)
 
+# Feature staging
+@ stdcall -version=0xA00+ RtlArmFeatureUsageProviderFlushNotification(ptr)
+@ stdcall -version=0xA00+ RtlNotifyFeatureUsage(ptr)
+@ stdcall -version=0xA00+ RtlQueryFeatureConfiguration(long long ptr ptr)
+@ stdcall -version=0xA00+ RtlQueryFeatureConfigurationChangeStamp()
+@ stdcall -version=0xA00+ RtlRecordFeatureUsage(ptr int64)
+@ stdcall -version=0xA00+ RtlRegisterFeatureConfigurationChangeNotification(ptr ptr ptr ptr)
+@ stdcall -version=0xA00+ RtlRegisterFeatureUsageProvider(ptr ptr ptr ptr)
+@ stdcall -version=0xA00+ RtlUnregisterFeatureConfigurationChangeNotification(ptr)
+@ stdcall -version=0xA00+ RtlUnregisterFeatureUsageProvider(ptr)
+
 # Terminal Topology Manager
 @ stdcall -version=0xA00+ TtmNotifyDeviceArrival(long int64 ptr long ptr)
 @ stdcall -version=0xA00+ TtmNotifyDeviceDeparture(long int64)
