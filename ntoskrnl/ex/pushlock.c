@@ -1612,3 +1612,20 @@ ExUnblockOnAddressPushLockEx(
 
     return Woken;
 }
+
+/**
+ * @brief
+ * Wakes what is waiting on a push lock, whatever address it watches.
+ */
+BOOLEAN
+NTAPI
+ExUnblockPushLockEx(
+    _Inout_ PVOID PushLock,
+    _In_opt_ PVOID WaitBlock,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(WaitBlock);
+    UNREFERENCED_PARAMETER(Flags);
+
+    return ExUnblockOnAddressPushLockEx(PushLock, NULL);
+}

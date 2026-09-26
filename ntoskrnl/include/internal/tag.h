@@ -31,6 +31,7 @@
 #define TAG_ERR                     ' rrE'
 #define TAG_SMBIOS                  'BTMS'
 #define TAG_EX_TIMER                'mTxE'
+#define TAG_EX_DPC_EVENT            'eDxE'
 #define TAG_TTM_DEVICE              'DmtT'
 
 /* User Mode Debugging Manager Tag */

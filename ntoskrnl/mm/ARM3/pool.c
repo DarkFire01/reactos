@@ -1850,3 +1850,22 @@ MmFreeMappingAddress(
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * Reserves address space to map into later, on a given NUMA node.
+ *
+ * @param[in] PreferredNode
+ * Noted, and there is one node here.
+ */
+PVOID
+NTAPI
+MmAllocateMappingAddressEx(
+    _In_ SIZE_T NumberOfBytes,
+    _In_ ULONG PoolTag,
+    _In_ ULONG PreferredNode)
+{
+    UNREFERENCED_PARAMETER(PreferredNode);
+
+    return MmAllocateMappingAddress(NumberOfBytes, PoolTag);
+}

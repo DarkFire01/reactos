@@ -988,3 +988,63 @@ SeReleaseSidAndAttributesArray(
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * Tells whether a token carries a given security identifier.
+ *
+ * @param[in] TokenHandle
+ * The token to look in, or NULL for the one the calling thread acts under.
+ *
+ * @param[in] SidToCheck
+ * The identifier to look for.
+ *
+ * @param[out] IsMember
+ * Receives whether the token carries it.
+ *
+ * @return
+ * STATUS_SUCCESS, or a failure from referencing the token.
+ */
+NTSTATUS
+NTAPI
+RtlCheckTokenMembership(
+    _In_opt_ HANDLE TokenHandle,
+    _In_ PSID SidToCheck,
+    _Out_ PBOOLEAN IsMember)
+{
+    PACCESS_TOKEN Token;
+    SECURITY_SUBJECT_CONTEXT SubjectContext;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    *IsMember = FALSE;
+
+    if (TokenHandle != NULL)
+    {
+        Status = ObReferenceObjectByHandle(TokenHandle,
+                                           TOKEN_QUERY,
+                                           SeTokenObjectType,
+                                           KeGetPreviousMode(),
+                                           (PVOID *)&Token,
+                                           NULL);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        *IsMember = SepSidInToken(Token, SidToCheck);
+
+        ObDereferenceObject(Token);
+        return Status;
+    }
+
+    /* No token named, so the one the caller is acting under answers */
+    SeCaptureSubjectContext(&SubjectContext);
+    SeLockSubjectContext(&SubjectContext);
+
+    Token = SeQuerySubjectContextToken(&SubjectContext);
+    if (Token != NULL)
+        *IsMember = SepSidInToken(Token, SidToCheck);
+
+    SeUnlockSubjectContext(&SubjectContext);
+    SeReleaseSubjectContext(&SubjectContext);
+
+    return Status;
+}

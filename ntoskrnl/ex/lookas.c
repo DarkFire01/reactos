@@ -559,3 +559,50 @@ ExiFreeToNPagedLookasideList(
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * Takes an entry from a lookaside list of either kind.
+ */
+PVOID
+NTAPI
+ExAllocateFromLookasideListEx(
+    _Inout_ PLOOKASIDE_LIST_EX Lookaside)
+{
+    PVOID Entry;
+
+    Lookaside->L.TotalAllocates++;
+    Entry = InterlockedPopEntrySList(&Lookaside->L.ListHead);
+    if (Entry == NULL)
+    {
+        Lookaside->L.AllocateMisses++;
+        Entry = (Lookaside->L.AllocateEx)(Lookaside->L.Type,
+                                          Lookaside->L.Size,
+                                          Lookaside->L.Tag,
+                                          Lookaside);
+    }
+
+    return Entry;
+}
+
+/**
+ * @brief
+ * Returns an entry to a lookaside list of either kind.
+ */
+VOID
+NTAPI
+ExFreeToLookasideListEx(
+    _Inout_ PLOOKASIDE_LIST_EX Lookaside,
+    _In_ PVOID Entry)
+{
+    Lookaside->L.TotalFrees++;
+    if (ExQueryDepthSList(&Lookaside->L.ListHead) >= Lookaside->L.Depth)
+    {
+        Lookaside->L.FreeMisses++;
+        (Lookaside->L.FreeEx)(Entry, Lookaside);
+    }
+    else
+    {
+        InterlockedPushEntrySList(&Lookaside->L.ListHead, (PSLIST_ENTRY)Entry);
+    }
+}
