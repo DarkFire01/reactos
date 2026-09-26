@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS WLAN service
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     Driving a native 802.11 adapter through NDISUIO and the dot11 OIDs
+ * PURPOSE:     Driving a native 802.11 adapter through the Native WiFi filter
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
@@ -11,6 +11,8 @@
 #include <wchar.h>
 #include <strsafe.h>
 #include <nuiouser.h>
+#include <winioctl.h>
+#include <drivers/nwifi/nwifictl.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -63,23 +65,35 @@ typedef struct _WLAN_DOT11_BYTE_ARRAY
 
 /* How long a scan is given before its results are read */
 #define WLAN_SCAN_SETTLE_MS         4000
+#define WLAN_SCAN_POLL_MS           100
+
+/* NDIS_STATUS_DOT11_SCAN_CONFIRM, as the Native WiFi filter queues it */
+#define WLAN_STATUS_DOT11_SCAN_CONFIRM              0x40030000
 /* How long a connection attempt is polled before it is called a failure */
 #define WLAN_CONNECT_TIMEOUT_MS     8000
 #define WLAN_CONNECT_POLL_MS        250
 
 /**
  * @brief
- * Opens NDISUIO bound to one adapter by its interface GUID.
+ * Opens the Native WiFi filter's control device for one adapter by its
+ * interface GUID. The dot11 OIDs reach the adapter through it.
  */
 HANDLE
 WlanOpenInterface(
     _In_ const GUID *InterfaceGuid)
 {
-    WCHAR Name[64];
+    WCHAR Name[80];
     HANDLE Device;
-    DWORD Returned;
 
-    Device = CreateFileW(L"\\\\.\\Ndisuio",
+    StringCchPrintfW(Name, ARRAYSIZE(Name),
+                     NWIFI_WIN32_NAME L"\\{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+                     InterfaceGuid->Data1, InterfaceGuid->Data2, InterfaceGuid->Data3,
+                     InterfaceGuid->Data4[0], InterfaceGuid->Data4[1],
+                     InterfaceGuid->Data4[2], InterfaceGuid->Data4[3],
+                     InterfaceGuid->Data4[4], InterfaceGuid->Data4[5],
+                     InterfaceGuid->Data4[6], InterfaceGuid->Data4[7]);
+
+    Device = CreateFileW(Name,
                          GENERIC_READ | GENERIC_WRITE,
                          FILE_SHARE_READ | FILE_SHARE_WRITE,
                          NULL,
@@ -89,35 +103,78 @@ WlanOpenInterface(
     if (Device == INVALID_HANDLE_VALUE)
         return NULL;
 
-    StringCchPrintfW(Name, ARRAYSIZE(Name),
-                     L"\\DEVICE\\{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-                     InterfaceGuid->Data1, InterfaceGuid->Data2, InterfaceGuid->Data3,
-                     InterfaceGuid->Data4[0], InterfaceGuid->Data4[1],
-                     InterfaceGuid->Data4[2], InterfaceGuid->Data4[3],
-                     InterfaceGuid->Data4[4], InterfaceGuid->Data4[5],
-                     InterfaceGuid->Data4[6], InterfaceGuid->Data4[7]);
+    return Device;
+}
 
-    /* NDISUIO matches this against the bound device name, which is a counted
-       string with no terminator, so the length must not include one */
-    if (!DeviceIoControl(Device,
-                         IOCTL_NDISUIO_OPEN_DEVICE,
-                         Name,
-                         (DWORD)(wcslen(Name) * sizeof(WCHAR)),
-                         NULL,
-                         0,
-                         &Returned,
-                         NULL))
+/*
+ * One OID request through the filter. Input goes in first, the answer comes
+ * back in the same buffer, and the NDIS status is mapped to a Win32 error.
+ */
+static
+DWORD
+WlanOidRequest(
+    _In_ HANDLE Interface,
+    _In_ ULONG RequestType,
+    _In_ NDIS_OID Oid,
+    _In_reads_bytes_opt_(InputLength) const VOID *Input,
+    _In_ ULONG InputLength,
+    _Out_writes_bytes_to_opt_(OutputLength, *Returned) PVOID Output,
+    _In_ ULONG OutputLength,
+    _Out_opt_ PULONG Returned)
+{
+    PNWIFI_OID_REQUEST Request;
+    DWORD Size, Got;
+    DWORD Error;
+
+    if (Returned != NULL)
+        *Returned = 0;
+
+    Size = FIELD_OFFSET(NWIFI_OID_REQUEST, Data) + max(InputLength, OutputLength);
+    Request = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+    if (Request == NULL)
+        return ERROR_NOT_ENOUGH_MEMORY;
+
+    Request->RequestType = RequestType;
+    Request->Oid = Oid;
+    Request->InputLength = InputLength;
+    Request->OutputLength = OutputLength;
+    if (InputLength != 0 && Input != NULL)
+        RtlCopyMemory(Request->Data, Input, InputLength);
+
+    if (!DeviceIoControl(Interface, IOCTL_NWIFI_OID_REQUEST, Request, Size, Request, Size, &Got, NULL))
     {
-        CloseHandle(Device);
-        return NULL;
+        Error = GetLastError();
+        HeapFree(GetProcessHeap(), 0, Request);
+        return Error;
     }
 
-    return Device;
+    if (Request->Status == 0)
+    {
+        if (Output != NULL && OutputLength != 0)
+            RtlCopyMemory(Output, Request->Data, min(Request->BytesWritten, OutputLength));
+        if (Returned != NULL)
+            *Returned = Request->BytesWritten;
+        Error = ERROR_SUCCESS;
+    }
+    else if (Request->BytesNeeded > OutputLength && RequestType != NWIFI_REQUEST_SET)
+    {
+        /* Past the answer it did not fit, the size to retry with */
+        if (Returned != NULL)
+            *Returned = Request->BytesNeeded;
+        Error = ERROR_MORE_DATA;
+    }
+    else
+    {
+        Error = RtlNtStatusToDosError((NTSTATUS)Request->Status);
+    }
+
+    HeapFree(GetProcessHeap(), 0, Request);
+    return Error;
 }
 
 /**
  * @brief
- * Sets one OID on the bound adapter.
+ * Sets one OID on the adapter.
  */
 DWORD
 WlanSetOid(
@@ -126,43 +183,44 @@ WlanSetOid(
     _In_reads_bytes_opt_(Length) PVOID Data,
     _In_ ULONG Length)
 {
-    PNDISUIO_SET_OID Set;
-    ULONG Size;
-    DWORD Returned;
-    DWORD Error = ERROR_SUCCESS;
-
-    Size = FIELD_OFFSET(NDISUIO_SET_OID, Data) + Length;
-    Set = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Size);
-    if (Set == NULL)
-        return ERROR_NOT_ENOUGH_MEMORY;
-
-    Set->Oid = Oid;
-    if (Length != 0 && Data != NULL)
-        RtlCopyMemory(Set->Data, Data, Length);
-
-    if (!DeviceIoControl(Interface,
-                         IOCTL_NDISUIO_SET_OID_VALUE,
-                         Set,
-                         Size,
-                         Set,
-                         Size,
-                         &Returned,
-                         NULL))
-    {
-        Error = GetLastError();
-    }
-
-    HeapFree(GetProcessHeap(), 0, Set);
-    return Error;
+    return WlanOidRequest(Interface, NWIFI_REQUEST_SET, Oid, Data, Length, NULL, 0, NULL);
 }
 
 /**
  * @brief
- * Queries one OID from the bound adapter into a caller buffer.
+ * Queries one OID from the adapter into a caller buffer.
  */
 DWORD
 WlanQueryOid(
     _In_ HANDLE Interface,
+    _In_ NDIS_OID Oid,
+    _Out_writes_bytes_to_(Length, *Returned) PVOID Data,
+    _In_ ULONG Length,
+    _Out_ PULONG Returned)
+{
+    return WlanOidRequest(Interface, NWIFI_REQUEST_QUERY, Oid, NULL, 0, Data, Length, Returned);
+}
+
+/**
+ * @brief
+ * Runs one method OID on the adapter with no input.
+ */
+DWORD
+WlanMethodOid(
+    _In_ HANDLE Interface,
+    _In_ NDIS_OID Oid,
+    _Out_writes_bytes_to_(Length, *Returned) PVOID Data,
+    _In_ ULONG Length,
+    _Out_ PULONG Returned)
+{
+    return WlanOidRequest(Interface, NWIFI_REQUEST_METHOD, Oid, NULL, 0, Data, Length, Returned);
+}
+
+/* Queries a generic OID through NDISUIO, for telling the WLAN adapters apart */
+static
+DWORD
+WlanUioQueryOid(
+    _In_ HANDLE Device,
     _In_ NDIS_OID Oid,
     _Out_writes_bytes_to_(Length, *Returned) PVOID Data,
     _In_ ULONG Length,
@@ -182,37 +240,47 @@ WlanQueryOid(
 
     Query->Oid = Oid;
 
-    if (DeviceIoControl(Interface,
-                        IOCTL_NDISUIO_QUERY_OID_VALUE,
-                        Query,
-                        Size,
-                        Query,
-                        Size,
-                        &Got,
-                        NULL))
+    if (DeviceIoControl(Device, IOCTL_NDISUIO_QUERY_OID_VALUE, Query, Size, Query, Size, &Got, NULL) &&
+        Got >= FIELD_OFFSET(NDISUIO_QUERY_OID, Data))
     {
-        if (Got >= FIELD_OFFSET(NDISUIO_QUERY_OID, Data))
-        {
-            *Returned = Got - FIELD_OFFSET(NDISUIO_QUERY_OID, Data);
-            RtlCopyMemory(Data, Query->Data, min(*Returned, Length));
-        }
+        *Returned = Got - FIELD_OFFSET(NDISUIO_QUERY_OID, Data);
+        RtlCopyMemory(Data, Query->Data, min(*Returned, Length));
     }
     else
     {
         Error = GetLastError();
-        /* An overflow reports, past the header, the buffer size to retry with */
-        if (Error == ERROR_MORE_DATA && Got > FIELD_OFFSET(NDISUIO_QUERY_OID, Data))
-            *Returned = Got - FIELD_OFFSET(NDISUIO_QUERY_OID, Data);
     }
 
     HeapFree(GetProcessHeap(), 0, Query);
     return Error;
 }
 
+/* Waits for the adapter's scan confirm, or the settle time when none comes */
+static
+VOID
+WlanWaitForScan(
+    _In_ HANDLE Interface)
+{
+    UCHAR Buffer[FIELD_OFFSET(NWIFI_INDICATION, Data) + 2048];
+    PNWIFI_INDICATION Indication = (PNWIFI_INDICATION)Buffer;
+    ULONG Elapsed;
+    DWORD Got;
+
+    for (Elapsed = 0; Elapsed < WLAN_SCAN_SETTLE_MS; Elapsed += WLAN_SCAN_POLL_MS)
+    {
+        while (DeviceIoControl(Interface, IOCTL_NWIFI_GET_INDICATION, NULL, 0, Buffer, sizeof(Buffer), &Got, NULL))
+        {
+            if (Indication->StatusCode == WLAN_STATUS_DOT11_SCAN_CONFIRM)
+                return;
+        }
+
+        Sleep(WLAN_SCAN_POLL_MS);
+    }
+}
+
 /**
  * @brief
- * Starts a scan and waits long enough for it to settle before the caller
- * reads the results.
+ * Starts a scan and waits for it to finish before the caller reads the results.
  */
 DWORD
 WlanScan(
@@ -232,11 +300,10 @@ WlanScan(
     Request.dot11ScanType = dot11_scan_type_auto;
 
     Error = WlanSetOid(Interface, OID_DOT11_SCAN_REQUEST, &Request, sizeof(Request));
-    CloseHandle(Interface);
-
     if (Error == ERROR_SUCCESS)
-        Sleep(WLAN_SCAN_SETTLE_MS);
+        WlanWaitForScan(Interface);
 
+    CloseHandle(Interface);
     return Error;
 }
 
@@ -275,7 +342,7 @@ WlanGetBssList(
         }
 
         Returned = 0;
-        Error = WlanQueryOid(Interface, OID_DOT11_ENUM_BSS_LIST, Array, Size, &Returned);
+        Error = WlanMethodOid(Interface, OID_DOT11_ENUM_BSS_LIST, Array, Size, &Returned);
 
         if (Error == ERROR_SUCCESS && Returned >= FIELD_OFFSET(WLAN_DOT11_BYTE_ARRAY, ucBuffer))
         {
@@ -439,7 +506,7 @@ WlanEnumWifiInterfaces(
         }
 
         Got = 0;
-        if (WlanQueryOid(One, OID_GEN_PHYSICAL_MEDIUM, &Medium, sizeof(Medium), &Got) != ERROR_SUCCESS ||
+        if (WlanUioQueryOid(One, OID_GEN_PHYSICAL_MEDIUM, &Medium, sizeof(Medium), &Got) != ERROR_SUCCESS ||
             Got < sizeof(Medium) || Medium != WLAN_PHYSICAL_MEDIUM_NATIVE_80211)
         {
             DPRINT1("WLAN enum: binding %lu physical medium %lu, not native 802.11\n", Index, Medium);
@@ -461,7 +528,7 @@ WlanEnumWifiInterfaces(
                            ARRAYSIZE(Info->strInterfaceDescription),
                            L"Wireless Network Adapter");
 
-        if (WlanQueryOid(One, OID_GEN_MEDIA_CONNECT_STATUS, &Status, sizeof(Status), &Got) == ERROR_SUCCESS &&
+        if (WlanUioQueryOid(One, OID_GEN_MEDIA_CONNECT_STATUS, &Status, sizeof(Status), &Got) == ERROR_SUCCESS &&
             Got >= sizeof(Status) && Status == NdisMediaStateConnected)
         {
             Info->isState = wlan_interface_state_connected;

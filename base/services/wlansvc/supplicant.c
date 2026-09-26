@@ -448,32 +448,6 @@ SupplicantSetOid(
 
 static
 DWORD
-SupplicantQueryOid(
-    _In_ HANDLE Device,
-    _In_ NDIS_OID Oid,
-    _Out_writes_bytes_(Length) PVOID Data,
-    _In_ ULONG Length)
-{
-    PNDISUIO_QUERY_OID Query;
-    ULONG Size = FIELD_OFFSET(NDISUIO_QUERY_OID, Data) + Length;
-    DWORD Returned;
-    DWORD Error;
-
-    Query = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Size);
-    if (Query == NULL)
-        return ERROR_NOT_ENOUGH_MEMORY;
-
-    Query->Oid = Oid;
-    Error = SupplicantIoctl(Device, IOCTL_NDISUIO_QUERY_OID_VALUE, Query, Size, &Returned);
-    if (Error == ERROR_SUCCESS && Returned >= FIELD_OFFSET(NDISUIO_QUERY_OID, Data))
-        RtlCopyMemory(Data, Query->Data, Length);
-
-    HeapFree(GetProcessHeap(), 0, Query);
-    return Error;
-}
-
-static
-DWORD
 SupplicantSendFrame(
     _In_ HANDLE Device,
     _In_reads_bytes_(Length) const UCHAR *Frame,
@@ -645,7 +619,7 @@ FindGtk(
 static
 DWORD
 InstallKeys(
-    _In_ HANDLE Device,
+    _In_ HANDLE Interface,
     _In_reads_bytes_(6) const UCHAR *Bssid,
     _In_reads_bytes_(WLAN_TK_LENGTH) const UCHAR *Tk,
     _In_reads_bytes_(GtkLength) const UCHAR *Gtk,
@@ -664,8 +638,8 @@ InstallKeys(
     Pairwise.usKeyLength = WLAN_TK_LENGTH;
     RtlCopyMemory(Pairwise.ucKey, Tk, WLAN_TK_LENGTH);
 
-    Error = SupplicantSetOid(Device, OID_DOT11_CIPHER_KEY_MAPPING_KEY, &Pairwise,
-                             FIELD_OFFSET(WLAN_KEY_MAPPING_KEY, ucKey) + WLAN_TK_LENGTH);
+    Error = WlanSetOid(Interface, OID_DOT11_CIPHER_KEY_MAPPING_KEY, &Pairwise,
+                       FIELD_OFFSET(WLAN_KEY_MAPPING_KEY, ucKey) + WLAN_TK_LENGTH);
     if (Error != ERROR_SUCCESS)
         return Error;
 
@@ -679,12 +653,12 @@ InstallKeys(
     Group.usKeyLength = (USHORT)GtkLength;
     RtlCopyMemory(Group.ucKey, Gtk, GtkLength);
 
-    Error = SupplicantSetOid(Device, OID_DOT11_CIPHER_DEFAULT_KEY, &Group,
-                             FIELD_OFFSET(WLAN_DEFAULT_KEY, ucKey) + GtkLength);
+    Error = WlanSetOid(Interface, OID_DOT11_CIPHER_DEFAULT_KEY, &Group,
+                       FIELD_OFFSET(WLAN_DEFAULT_KEY, ucKey) + GtkLength);
     if (Error != ERROR_SUCCESS)
         return Error;
 
-    return SupplicantSetOid(Device, OID_DOT11_CIPHER_DEFAULT_KEY_ID, &KeyId, sizeof(KeyId));
+    return WlanSetOid(Interface, OID_DOT11_CIPHER_DEFAULT_KEY_ID, &KeyId, sizeof(KeyId));
 }
 
 /* Runs the 4-way handshake to completion and installs the derived keys */
@@ -692,6 +666,7 @@ static
 DWORD
 FourWayHandshake(
     _In_ HANDLE Device,
+    _In_ HANDLE Interface,
     _In_reads_bytes_(WLAN_PMK_LENGTH) const UCHAR *Pmk,
     _In_reads_bytes_(6) const UCHAR *OwnMac)
 {
@@ -836,7 +811,7 @@ FourWayHandshake(
     if (Error != ERROR_SUCCESS)
         return Error;
 
-    return InstallKeys(Device, Bssid, Ptk + WLAN_KCK_LENGTH + WLAN_KEK_LENGTH,
+    return InstallKeys(Interface, Bssid, Ptk + WLAN_KCK_LENGTH + WLAN_KEK_LENGTH,
                        Gtk, GtkLength, GtkKeyId);
 }
 
@@ -852,6 +827,7 @@ WlanConnectWpa(
     _In_ PCWSTR Passphrase)
 {
     HANDLE Device;
+    HANDLE Interface;
     UCHAR Pmk[WLAN_PMK_LENGTH];
     UCHAR OwnMac[6];
     UCHAR PassphraseBytes[64];
@@ -863,6 +839,7 @@ WlanConnectWpa(
     ULONG Mode = DOT11_OPERATION_MODE_EXTENSIBLE_STATION;
     ULONG Connect = 0;
     ULONG Elapsed;
+    ULONG Got;
     int Converted;
     DWORD Error;
 
@@ -875,12 +852,20 @@ WlanConnectWpa(
     if (!DerivePmk(PassphraseBytes, PassphraseLength, Ssid->ucSSID, Ssid->uSSIDLength, Pmk))
         return ERROR_GEN_FAILURE;
 
+    /* EAPOL frames go through NDISUIO, the dot11 OIDs through the Native WiFi filter */
     Device = SupplicantOpen(InterfaceGuid);
     if (Device == NULL)
         return ERROR_BAD_UNIT;
 
+    Interface = WlanOpenInterface(InterfaceGuid);
+    if (Interface == NULL)
+    {
+        CloseHandle(Device);
+        return ERROR_BAD_UNIT;
+    }
+
     SupplicantSetOid(Device, OID_GEN_CURRENT_PACKET_FILTER, &Filter, sizeof(Filter));
-    SupplicantSetOid(Device, OID_DOT11_CURRENT_OPERATION_MODE, &Mode, sizeof(Mode));
+    WlanSetOid(Interface, OID_DOT11_CURRENT_OPERATION_MODE, &Mode, sizeof(Mode));
 
     RtlZeroMemory(&Algo, sizeof(Algo));
     Algo.Header.Type = NDIS_WLAN_OBJECT_TYPE_DEFAULT;
@@ -890,10 +875,10 @@ WlanConnectWpa(
     Algo.uTotalNumOfEntries = 1;
 
     Algo.AlgorithmIds[0] = WLAN_AUTH_RSNA_PSK;
-    SupplicantSetOid(Device, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM, &Algo, sizeof(Algo));
+    WlanSetOid(Interface, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM, &Algo, sizeof(Algo));
     Algo.AlgorithmIds[0] = WLAN_CIPHER_CCMP;
-    SupplicantSetOid(Device, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM, &Algo, sizeof(Algo));
-    SupplicantSetOid(Device, OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM, &Algo, sizeof(Algo));
+    WlanSetOid(Interface, OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM, &Algo, sizeof(Algo));
+    WlanSetOid(Interface, OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM, &Algo, sizeof(Algo));
 
     RtlZeroMemory(ListBuffer, sizeof(ListBuffer));
     List->Header.Type = NDIS_WLAN_OBJECT_TYPE_DEFAULT;
@@ -902,13 +887,13 @@ WlanConnectWpa(
     List->uNumOfEntries = 1;
     List->uTotalNumOfEntries = 1;
     List->SSIDs[0] = *Ssid;
-    SupplicantSetOid(Device, OID_DOT11_DESIRED_SSID_LIST, List, sizeof(ListBuffer));
+    WlanSetOid(Interface, OID_DOT11_DESIRED_SSID_LIST, List, sizeof(ListBuffer));
 
-    Error = SupplicantQueryOid(Device, OID_802_3_CURRENT_ADDRESS, OwnMac, sizeof(OwnMac));
+    Error = WlanQueryOid(Interface, OID_802_3_CURRENT_ADDRESS, OwnMac, sizeof(OwnMac), &Got);
     if (Error != ERROR_SUCCESS)
         goto Cleanup;
 
-    Error = SupplicantSetOid(Device, OID_DOT11_CONNECT_REQUEST, &Connect, sizeof(Connect));
+    Error = WlanSetOid(Interface, OID_DOT11_CONNECT_REQUEST, &Connect, sizeof(Connect));
     if (Error != ERROR_SUCCESS)
         goto Cleanup;
 
@@ -918,7 +903,7 @@ WlanConnectWpa(
     {
         ULONG Status = 0;
 
-        if (SupplicantQueryOid(Device, OID_GEN_MEDIA_CONNECT_STATUS, &Status, sizeof(Status)) == ERROR_SUCCESS &&
+        if (WlanQueryOid(Interface, OID_GEN_MEDIA_CONNECT_STATUS, &Status, sizeof(Status), &Got) == ERROR_SUCCESS &&
             Status == NdisMediaStateConnected)
         {
             Error = ERROR_SUCCESS;
@@ -928,9 +913,10 @@ WlanConnectWpa(
     }
 
     if (Error == ERROR_SUCCESS)
-        Error = FourWayHandshake(Device, Pmk, OwnMac);
+        Error = FourWayHandshake(Device, Interface, Pmk, OwnMac);
 
 Cleanup:
+    CloseHandle(Interface);
     CloseHandle(Device);
     return Error;
 }
