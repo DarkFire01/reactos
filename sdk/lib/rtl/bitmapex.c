@@ -203,4 +203,171 @@ RtlInterlockedClearBitRunEx(
         InterlockedAnd(Word, (LONG)~RtlpBitRunMask(NumberToClear));
 }
 
+BOOLEAN
+NTAPI
+RtlTestBitEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 BitNumber)
+{
+    return RtlTestBit64(AS_BITMAP64(BitMapHeader), BitNumber);
+}
+
+BOOLEAN
+NTAPI
+RtlAreBitsClearEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length)
+{
+    return RtlAreBitsClear64(AS_BITMAP64(BitMapHeader), StartingIndex, Length);
+}
+
+BOOLEAN
+NTAPI
+RtlAreBitsSetEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length)
+{
+    return RtlAreBitsSet64(AS_BITMAP64(BitMapHeader), StartingIndex, Length);
+}
+
+ULONG64
+NTAPI
+RtlFindClearBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex)
+{
+    return RtlFindClearBits64(AS_BITMAP64(BitMapHeader), NumberToFind, HintIndex);
+}
+
+ULONG64
+NTAPI
+RtlFindNextForwardRunClearEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 FromIndex,
+    _Out_ PULONG64 StartingRunIndex)
+{
+    return RtlFindNextForwardRunClear64(AS_BITMAP64(BitMapHeader),
+                                        FromIndex,
+                                        StartingRunIndex);
+}
+
+ULONG64
+NTAPI
+RtlFindNextForwardRunSetEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 FromIndex,
+    _Out_ PULONG64 StartingRunIndex)
+{
+    return RtlFindNextForwardRunSet64(AS_BITMAP64(BitMapHeader),
+                                      FromIndex,
+                                      StartingRunIndex);
+}
+
+/**
+ * @brief
+ * Counts the bits that are set in part of a bitmap.
+ *
+ * @param[in] StartingIndex
+ * First bit of the range.
+ *
+ * @param[in] Length
+ * How many bits the range covers. A range running past the end of the map is
+ * cut short at the end.
+ *
+ * @return
+ * How many of those bits are set.
+ */
+ULONG64
+NTAPI
+RtlNumberOfSetBitsInRangeEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length)
+{
+    ULONG64 Count = 0;
+    ULONG64 Index;
+
+    if (StartingIndex >= BitMapHeader->SizeOfBitMap)
+        return 0;
+
+    if (Length > (BitMapHeader->SizeOfBitMap - StartingIndex))
+        Length = BitMapHeader->SizeOfBitMap - StartingIndex;
+
+    for (Index = 0; Index < Length; Index++)
+    {
+        if (RtlTestBit64(AS_BITMAP64(BitMapHeader), StartingIndex + Index))
+            Count++;
+    }
+
+    return Count;
+}
+
+/**
+ * @brief
+ * Copies a whole bitmap into another one, starting at a given bit.
+ *
+ * @remarks
+ * A bit at a time, which is as fast as this needs to be and leaves no doubt
+ * about what happens at either end of the range.
+ */
+VOID
+NTAPI
+RtlCopyBitMapEx(
+    _In_ PRTL_BITMAP_EX Source,
+    _In_ PRTL_BITMAP_EX Destination,
+    _In_ ULONG64 TargetBit)
+{
+    ULONG64 Length = Source->SizeOfBitMap;
+    ULONG64 Index;
+
+    if (TargetBit >= Destination->SizeOfBitMap)
+        return;
+
+    if (Length > (Destination->SizeOfBitMap - TargetBit))
+        Length = Destination->SizeOfBitMap - TargetBit;
+
+    for (Index = 0; Index < Length; Index++)
+    {
+        if (RtlTestBit64(AS_BITMAP64(Source), Index))
+            RtlSetBitEx(Destination, TargetBit + Index);
+        else
+            RtlClearBitEx(Destination, TargetBit + Index);
+    }
+}
+
+/**
+ * @brief
+ * Copies part of a bitmap into the beginning of another one.
+ */
+VOID
+NTAPI
+RtlExtractBitMapEx(
+    _In_ PRTL_BITMAP_EX Source,
+    _In_ PRTL_BITMAP_EX Destination,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberOfBits)
+{
+    ULONG64 Index;
+
+    if (StartingIndex >= Source->SizeOfBitMap)
+        return;
+
+    if (NumberOfBits > (Source->SizeOfBitMap - StartingIndex))
+        NumberOfBits = Source->SizeOfBitMap - StartingIndex;
+
+    if (NumberOfBits > Destination->SizeOfBitMap)
+        NumberOfBits = Destination->SizeOfBitMap;
+
+    for (Index = 0; Index < NumberOfBits; Index++)
+    {
+        if (RtlTestBit64(AS_BITMAP64(Source), StartingIndex + Index))
+            RtlSetBitEx(Destination, Index);
+        else
+            RtlClearBitEx(Destination, Index);
+    }
+}
+
 /* EOF */
