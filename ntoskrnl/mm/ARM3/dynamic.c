@@ -124,3 +124,45 @@ MmGetPhysicalMemoryRanges(VOID)
     MiReleasePfnLock(OldIrql);
     return Buffer;
 }
+
+/**
+ * @brief
+ * Returns the physical memory the machine has, for a given partition.
+ *
+ * @param[in] PartitionObject
+ * The partition being asked about. Only the system partition exists here.
+ *
+ * @return
+ * The ranges, which the caller frees, or NULL.
+ */
+PPHYSICAL_MEMORY_RANGE
+NTAPI
+MmGetPhysicalMemoryRangesEx(
+    _In_opt_ PVOID PartitionObject,
+    _Out_opt_ PULONG NumberOfRuns)
+{
+    PPHYSICAL_MEMORY_RANGE Ranges;
+
+    if (PartitionObject != NULL)
+        return NULL;
+
+    Ranges = MmGetPhysicalMemoryRanges();
+
+    if (NumberOfRuns != NULL)
+    {
+        ULONG Count = 0;
+
+        if (Ranges != NULL)
+        {
+            while ((Ranges[Count].NumberOfBytes.QuadPart != 0) ||
+                   (Ranges[Count].BaseAddress.QuadPart != 0))
+            {
+                Count++;
+            }
+        }
+
+        *NumberOfRuns = Count;
+    }
+
+    return Ranges;
+}

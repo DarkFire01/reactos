@@ -130,3 +130,25 @@ IoUninitializeWorkItem(
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * Queues a work item, asking for it to run on a given NUMA node.
+ *
+ * @remarks
+ * Memory here is one node, so the node is noted and the item is queued the
+ * ordinary way.
+ */
+VOID
+NTAPI
+IoQueueWorkItemToNode(
+    _Inout_ PIO_WORKITEM IoWorkItem,
+    _In_ PIO_WORKITEM_ROUTINE WorkerRoutine,
+    _In_ WORK_QUEUE_TYPE QueueType,
+    _In_opt_ PVOID Context,
+    _In_ USHORT NodeNumber)
+{
+    UNREFERENCED_PARAMETER(NodeNumber);
+
+    IoQueueWorkItem(IoWorkItem, WorkerRoutine, QueueType, Context);
+}

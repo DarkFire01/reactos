@@ -752,3 +752,33 @@ ObfDereferenceObjectWithTag(
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * References the object a handle names, and tags the reference with what
+ * asked for it.
+ *
+ * @remarks
+ * The tag is for tracking who holds what, which ReactOS does not track, so it
+ * is taken and dropped.
+ */
+NTSTATUS
+NTAPI
+ObReferenceObjectByHandleWithTag(
+    _In_ HANDLE Handle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_TYPE ObjectType,
+    _In_ KPROCESSOR_MODE AccessMode,
+    _In_ ULONG Tag,
+    _Out_ PVOID *Object,
+    _Out_opt_ POBJECT_HANDLE_INFORMATION HandleInformation)
+{
+    UNREFERENCED_PARAMETER(Tag);
+
+    return ObReferenceObjectByHandle(Handle,
+                                     DesiredAccess,
+                                     ObjectType,
+                                     AccessMode,
+                                     Object,
+                                     HandleInformation);
+}

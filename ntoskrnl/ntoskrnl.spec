@@ -1924,6 +1924,23 @@
 @ stdcall -version=0xA00+ -arch=x86_64 RtlNumberOfSetBitsInRangeEx(ptr int64 int64)
 @ stdcall -version=0xA00+ -arch=x86_64 RtlTestBitEx(ptr int64)
 
+@ stdcall -version=0xA00+ ExGetSystemFirmwareTable(long long ptr long ptr)
+@ stdcall -version=0x600+ MmCopyVirtualMemory(ptr ptr ptr ptr long long ptr)
+@ stdcall -version=0x600+ ObIsKernelHandle(ptr)
+@ stdcall -version=0x600+ RtlDuplicateUnicodeString(long ptr ptr)
+@ stdcall -version=0xA00+ IoQueueWorkItemToNode(ptr ptr long ptr long)
+@ stdcall -version=0xA00+ KeGetCurrentNodeNumber()
+@ stdcall -version=0x601+ KeQueryLogicalProcessorRelationship(ptr long ptr ptr)
+@ stdcall -version=0xA00+ KeReenterRetpolinedCode(ptr)
+@ stdcall -version=0xA00+ KeRemoveQueueDpcEx(ptr long)
+@ stdcall -version=0xA00+ MmAllocatePartitionNodePagesForMdlEx(int64 int64 int64 long long long long ptr)
+@ stdcall -version=0xA00+ MmFreePagesFromMdlEx(ptr long)
+@ stdcall -version=0xA00+ MmGetPhysicalMemoryRangesEx(ptr ptr)
+@ stdcall -version=0xA00+ ObOpenObjectByPointerWithTag(ptr long ptr long ptr long long ptr)
+@ stdcall -version=0xA00+ ObReferenceObjectByHandleWithTag(ptr long ptr long long ptr ptr)
+@ stdcall -version=0xA00+ PsGetProcessProtection(ptr ptr)
+@ stdcall -version=0xA00+ VslRetrieveMailbox(long ptr ptr)
+
 # Feature staging
 @ stdcall -version=0xA00+ RtlArmFeatureUsageProviderFlushNotification(ptr)
 @ stdcall -version=0xA00+ RtlNotifyFeatureUsage(ptr)
