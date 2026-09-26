@@ -289,6 +289,47 @@ NTAPI
 RtlNumberOfSetBits64(
     _In_ PRTL_BITMAP64 BitMapHeader);
 
+BOOLEAN
+NTAPI
+RtlTestBit64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 BitNumber);
+
+BOOLEAN
+NTAPI
+RtlAreBitsClear64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length);
+
+BOOLEAN
+NTAPI
+RtlAreBitsSet64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length);
+
+ULONG64
+NTAPI
+RtlFindClearBits64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex);
+
+ULONG64
+NTAPI
+RtlFindNextForwardRunClear64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 FromIndex,
+    _Out_ PULONG64 StartingRunIndex);
+
+ULONG64
+NTAPI
+RtlFindNextForwardRunSet64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 FromIndex,
+    _Out_ PULONG64 StartingRunIndex);
+
 /* Tags for the String Allocators */
 #define TAG_USTR        'RTSU'
 #define TAG_ASTR        'RTSA'
