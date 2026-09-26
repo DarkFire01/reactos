@@ -20,10 +20,27 @@ NdisGenericIrpHandler(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_ PIRP Irp);
 
+/* The 6.x minor versions a miniport may register as */
+static
+BOOLEAN
+NdispKnownMinorVersion(
+    _In_ UCHAR Minor)
+{
+    static const UCHAR Known[] = { 0, 1, 20, 30, 40, 50, 51, 60, 70, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89 };
+    ULONG i;
+
+    for (i = 0; i < RTL_NUMBER_OF(Known); i++)
+    {
+        if (Known[i] == Minor)
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
 /*
- * Every one of these is mandatory for a 6.0 miniport. Registering without one
- * would only move the fault to the first call that needs it, which is a far
- * worse place to find out.
+ * Every one of these is mandatory for a 6.x miniport. A missing OID handler is
+ * allowed, a CoNDIS miniport registers its own from SetOptions.
  */
 static
 BOOLEAN
@@ -33,9 +50,9 @@ NdispValidateCharacteristics6(
 {
     if (Characteristics->InitializeHandlerEx == NULL ||
         Characteristics->HaltHandlerEx == NULL ||
+        Characteristics->UnloadHandler == NULL ||
         Characteristics->PauseHandler == NULL ||
         Characteristics->RestartHandler == NULL ||
-        Characteristics->OidRequestHandler == NULL ||
         Characteristics->SendNetBufferListsHandler == NULL ||
         Characteristics->ReturnNetBufferListsHandler == NULL ||
         Characteristics->CancelSendHandler == NULL ||
@@ -46,7 +63,29 @@ NdispValidateCharacteristics6(
         return FALSE;
     }
 
+    /* From 6.1 on, direct OID requests come with a way to cancel them or not at all */
+    if (Characteristics->MinorNdisVersion != 0 &&
+        (Characteristics->DirectOidRequestHandler == NULL) !=
+        (Characteristics->CancelDirectOidRequestHandler == NULL))
+    {
+        return FALSE;
+    }
+
     return TRUE;
+}
+
+/* The miniport's unload handler, reached through NDIS's own */
+static
+VOID
+NTAPI
+NdispUnloadMiniportDriver(
+    _In_ PDRIVER_OBJECT DriverObject)
+{
+    PNDIS_M_DRIVER_BLOCK *MiniportPtr;
+
+    MiniportPtr = IoGetDriverObjectExtension(DriverObject, (PVOID)'NMID');
+    if (MiniportPtr != NULL && *MiniportPtr != NULL)
+        (*MiniportPtr)->Characteristics6.UnloadHandler(DriverObject);
 }
 
 _Use_decl_annotations_
@@ -68,27 +107,28 @@ NdisMRegisterMiniportDriver(
 
     *NdisMiniportDriverHandle = NULL;
 
-    if (MiniportDriverCharacteristics->Header.Type !=
-        NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS)
-    {
-        NDIS_DbgPrint(MIN_TRACE, ("Bad characteristics object type.\n"));
-        return NDIS_STATUS_BAD_CHARACTERISTICS;
-    }
-
-    if (MiniportDriverCharacteristics->Header.Size <
-        NDIS_SIZEOF_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_1)
-    {
-        NDIS_DbgPrint(MIN_TRACE, ("Bad characteristics length.\n"));
-        return NDIS_STATUS_BAD_CHARACTERISTICS;
-    }
-
     /* This entry point is 6.x only. A 5.x driver belongs on NdisMRegisterMiniport. */
-    if (MiniportDriverCharacteristics->MajorNdisVersion != 6)
+    if (MiniportDriverCharacteristics->MajorNdisVersion != 6 ||
+        !NdispKnownMinorVersion(MiniportDriverCharacteristics->MinorNdisVersion))
     {
         NDIS_DbgPrint(MIN_TRACE, ("Bad miniport characteristics version %u.%u\n",
                                   MiniportDriverCharacteristics->MajorNdisVersion,
                                   MiniportDriverCharacteristics->MinorNdisVersion));
         return NDIS_STATUS_BAD_VERSION;
+    }
+
+    /* A 6.0 miniport is only held to the first layout, later ones to the second */
+    if (MiniportDriverCharacteristics->MinorNdisVersion == 0)
+    {
+        if (MiniportDriverCharacteristics->Header.Size < NDIS_SIZEOF_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_1)
+            return NDIS_STATUS_BAD_CHARACTERISTICS;
+    }
+    else if (MiniportDriverCharacteristics->Header.Type != NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS ||
+             MiniportDriverCharacteristics->Header.Revision < NDIS_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_2 ||
+             MiniportDriverCharacteristics->Header.Size < NDIS_SIZEOF_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_2)
+    {
+        NDIS_DbgPrint(MIN_TRACE, ("Bad characteristics header.\n"));
+        return NDIS_STATUS_BAD_CHARACTERISTICS;
     }
 
     if (!NdispValidateCharacteristics6(MiniportDriverCharacteristics))
@@ -166,6 +206,7 @@ NdisMRegisterMiniportDriver(
             DriverObject->MajorFunction[i] = NdisGenericIrpHandler;
 
         DriverObject->DriverExtension->AddDevice = NdisIAddDevice;
+        DriverObject->DriverUnload = NdispUnloadMiniportDriver;
     }
 
     ExInterlockedInsertTailList(&MiniportListHead, &Miniport->ListEntry, &MiniportListLock);
