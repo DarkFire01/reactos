@@ -137,6 +137,7 @@ MmInitSystem(IN ULONG Phase,
     MiDbgDumpAddressSpace();
 
     MmInitSectionImplementation();
+    MmInitPartitionImplementation();
     MmInitPagingFile();
 
     //

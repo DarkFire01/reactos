@@ -110,6 +110,7 @@
 /* Memory Manager Tags */
 #define TAG_NONE                'enoN'
 #define TAG_MM                  '  mM'
+#define TAG_MM_PARTITION        'traP'
 
 /* Object Manager Tags */
 #define OB_NAME_TAG             'mNbO'

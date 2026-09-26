@@ -2022,7 +2022,17 @@ MmAllocatePartitionNodePagesForMdlEx(
     _In_opt_ PVOID PartitionObject)
 {
     if (PartitionObject != NULL)
-        return NULL;
+    {
+        /* Everything about where the pages come from is the partition's */
+        UNREFERENCED_PARAMETER(LowAddress);
+        UNREFERENCED_PARAMETER(HighAddress);
+        UNREFERENCED_PARAMETER(SkipBytes);
+        UNREFERENCED_PARAMETER(CacheType);
+        UNREFERENCED_PARAMETER(IdealNode);
+        UNREFERENCED_PARAMETER(Flags);
+
+        return MmpAllocatePartitionPages(PartitionObject, TotalBytes);
+    }
 
     return MmAllocateNodePagesForMdlEx(LowAddress,
                                        HighAddress,

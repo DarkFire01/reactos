@@ -218,6 +218,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/modwrite.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/ncache.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/pagfault.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/partition.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/pfnlist.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/pool.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/procsup.c

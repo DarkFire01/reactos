@@ -750,6 +750,39 @@ NTSTATUS
 NTAPI
 MmInitSectionImplementation(VOID);
 
+/* partition.c *************************************************************/
+
+typedef struct _MM_PARTITION_BLOCK
+{
+    LIST_ENTRY ListEntry;
+    PMDL Mdl;
+    PFN_NUMBER PageCount;
+    PFN_NUMBER HandedOut;
+} MM_PARTITION_BLOCK, *PMM_PARTITION_BLOCK;
+
+typedef struct _MM_PARTITION
+{
+    ULONG PartitionId;
+    ULONG Flags;
+    KSPIN_LOCK Lock;
+    LIST_ENTRY BlockListHead;
+    PFN_NUMBER TotalPages;
+    PFN_NUMBER AvailablePages;
+} MM_PARTITION, *PMM_PARTITION;
+
+extern PVOID MmSystemPartition;
+
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+MmInitPartitionImplementation(VOID);
+
+PMDL
+NTAPI
+MmpAllocatePartitionPages(
+    _Inout_ PMM_PARTITION Partition,
+    _In_ SIZE_T TotalBytes);
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
