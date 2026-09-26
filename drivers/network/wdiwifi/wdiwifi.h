@@ -176,6 +176,23 @@ typedef struct _WDI_MESSAGE
     PUCHAR Buffer;
 } WDI_MESSAGE, *PWDI_MESSAGE;
 
+/* An association request or beacon body, the part the supplicant reads */
+#define WDI_ASSOC_FRAME_MAX                 512
+
+/* What a WDI association result reports, kept for the dot11 completion */
+typedef struct _WDI_ASSOCIATION
+{
+    BOOLEAN Valid;
+    BOOLEAN Reassociation;
+    ULONG Auth;
+    ULONG UnicastCipher;
+    ULONG MulticastCipher;
+    USHORT RequestLength;
+    USHORT BeaconLength;
+    UCHAR Request[WDI_ASSOC_FRAME_MAX];
+    UCHAR Beacon[WDI_ASSOC_FRAME_MAX];
+} WDI_ASSOCIATION, *PWDI_ASSOCIATION;
+
 typedef struct _WDI_ADAPTER
 {
     LIST_ENTRY Link;
@@ -262,6 +279,10 @@ typedef struct _WDI_ADAPTER
     /* The AP once a peer for it exists */
     BOOLEAN Connected;
     WDI_MAC_ADDRESS ConnectedBssid;
+
+    /* The last successful WDI association result, under AssocLock */
+    KSPIN_LOCK AssocLock;
+    WDI_ASSOCIATION Association;
 } WDI_ADAPTER, *PWDI_ADAPTER;
 
 /* Frames the IHV allocates metadata for, the metadata sits after this header */
@@ -429,6 +450,13 @@ WdiIndicateAssociation(
     _In_ PWDI_ADAPTER Adapter,
     _In_ PCWDI_MAC_ADDRESS Bssid,
     _In_ ULONG AssocStatus);
+
+VOID
+NTAPI
+WdiRecordAssociation(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_reads_bytes_(Length) const UCHAR *Tlvs,
+    _In_ ULONG Length);
 
 VOID
 NTAPI

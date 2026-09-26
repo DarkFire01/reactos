@@ -58,6 +58,83 @@ WdiIndicateScanConfirm(
     WdiIndicateDot11(Adapter, NDIS_STATUS_DOT11_SCAN_CONFIRM, &ByteArray, sizeof(ByteArray));
 }
 
+/* The packed WDI_TLV_ASSOCIATION_RESULT_PARAMETERS fields used here */
+#define WDI_ASSOC_RESULT_STATUS             0
+#define WDI_ASSOC_RESULT_REASSOCIATION      8
+#define WDI_ASSOC_RESULT_AUTH               9
+#define WDI_ASSOC_RESULT_UNICAST_CIPHER     13
+#define WDI_ASSOC_RESULT_MULTICAST_CIPHER   17
+#define WDI_ASSOC_RESULT_MIN_LENGTH         21
+
+static
+UINT32
+WdiGetLe32(
+    _In_reads_bytes_(4) const UCHAR *Buffer)
+{
+    return Buffer[0] | (Buffer[1] << 8) | (Buffer[2] << 16) | ((UINT32)Buffer[3] << 24);
+}
+
+/**
+ * @brief
+ * Keeps the frames and algorithms of the successful association in a WDI
+ * association result, so the dot11 association completion can carry them.
+ */
+_Use_decl_annotations_
+VOID
+NTAPI
+WdiRecordAssociation(
+    PWDI_ADAPTER Adapter,
+    const UCHAR *Tlvs,
+    ULONG Length)
+{
+    PWDI_ASSOCIATION Record = &Adapter->Association;
+    const UCHAR *Result;
+    const UCHAR *Value;
+    ULONG Offset = 0;
+    USHORT ResultLength;
+    USHORT ValueLength;
+    USHORT Type;
+    KIRQL OldIrql;
+
+    while (WdiTlvNext(Tlvs, Length, &Offset, &Type, &Result, &ResultLength))
+    {
+        if (Type != WDI_TLV_ASSOCIATION_RESULT)
+            continue;
+
+        if (!WdiTlvFind(Result, ResultLength, WDI_TLV_ASSOCIATION_RESULT_PARAMETERS, &Value, &ValueLength) ||
+            ValueLength < WDI_ASSOC_RESULT_MIN_LENGTH ||
+            WdiGetLe32(Value + WDI_ASSOC_RESULT_STATUS) != WDI_ASSOC_STATUS_SUCCESS)
+        {
+            continue;
+        }
+
+        KeAcquireSpinLock(&Adapter->AssocLock, &OldIrql);
+
+        RtlZeroMemory(Record, sizeof(*Record));
+        Record->Valid = TRUE;
+        Record->Reassociation = (Value[WDI_ASSOC_RESULT_REASSOCIATION] != 0);
+        Record->Auth = WdiGetLe32(Value + WDI_ASSOC_RESULT_AUTH);
+        Record->UnicastCipher = WdiGetLe32(Value + WDI_ASSOC_RESULT_UNICAST_CIPHER);
+        Record->MulticastCipher = WdiGetLe32(Value + WDI_ASSOC_RESULT_MULTICAST_CIPHER);
+
+        if (WdiTlvFind(Result, ResultLength, WDI_TLV_ASSOCIATION_REQUEST_FRAME, &Value, &ValueLength) &&
+            ValueLength <= sizeof(Record->Request))
+        {
+            RtlCopyMemory(Record->Request, Value, ValueLength);
+            Record->RequestLength = ValueLength;
+        }
+
+        if (WdiTlvFind(Result, ResultLength, WDI_TLV_BEACON_PROBE_RESPONSE, &Value, &ValueLength) &&
+            ValueLength <= sizeof(Record->Beacon))
+        {
+            RtlCopyMemory(Record->Beacon, Value, ValueLength);
+            Record->BeaconLength = ValueLength;
+        }
+
+        KeReleaseSpinLock(&Adapter->AssocLock, OldIrql);
+    }
+}
+
 _Use_decl_annotations_
 VOID
 NTAPI
@@ -66,17 +143,49 @@ WdiIndicateAssociation(
     PCWDI_MAC_ADDRESS Bssid,
     ULONG AssocStatus)
 {
-    DOT11_ASSOCIATION_COMPLETION_PARAMETERS Params;
+    PDOT11_ASSOCIATION_COMPLETION_PARAMETERS Params;
+    PWDI_ASSOCIATION Record = &Adapter->Association;
+    ULONG Size;
+    KIRQL OldIrql;
 
-    RtlZeroMemory(&Params, sizeof(Params));
-    Params.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
-    Params.Header.Revision = DOT11_ASSOCIATION_COMPLETION_PARAMETERS_REVISION_1;
-    Params.Header.Size = sizeof(Params);
-    RtlCopyMemory(Params.MacAddr, Bssid->Address, sizeof(Params.MacAddr));
-    Params.uStatus = AssocStatus;
-    Params.bPortAuthorized = (AssocStatus == DOT11_ASSOC_STATUS_SUCCESS);
+    Params = ExAllocatePoolWithTag(NonPagedPool,
+                                   sizeof(*Params) + sizeof(Record->Request) + sizeof(Record->Beacon),
+                                   WDI_TAG);
+    if (Params == NULL)
+        return;
 
-    WdiIndicateDot11(Adapter, NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION, &Params, sizeof(Params));
+    RtlZeroMemory(Params, sizeof(*Params));
+    Params->Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+    Params->Header.Revision = DOT11_ASSOCIATION_COMPLETION_PARAMETERS_REVISION_1;
+    Params->Header.Size = sizeof(*Params);
+    RtlCopyMemory(Params->MacAddr, Bssid->Address, sizeof(Params->MacAddr));
+    Params->uStatus = AssocStatus;
+    Params->bPortAuthorized = (AssocStatus == DOT11_ASSOC_STATUS_SUCCESS);
+    Size = sizeof(*Params);
+
+    /* The frame bodies follow the fixed part, found through their offsets */
+    KeAcquireSpinLock(&Adapter->AssocLock, &OldIrql);
+    if (Record->Valid && AssocStatus == DOT11_ASSOC_STATUS_SUCCESS)
+    {
+        Params->bReAssocReq = Record->Reassociation;
+        Params->AuthAlgo = Record->Auth;
+        Params->UnicastCipher = Record->UnicastCipher;
+        Params->MulticastCipher = Record->MulticastCipher;
+
+        Params->uAssocReqOffset = Size;
+        Params->uAssocReqSize = Record->RequestLength;
+        RtlCopyMemory((PUCHAR)Params + Size, Record->Request, Record->RequestLength);
+        Size += Record->RequestLength;
+
+        Params->uBeaconOffset = Size;
+        Params->uBeaconSize = Record->BeaconLength;
+        RtlCopyMemory((PUCHAR)Params + Size, Record->Beacon, Record->BeaconLength);
+        Size += Record->BeaconLength;
+    }
+    KeReleaseSpinLock(&Adapter->AssocLock, OldIrql);
+
+    WdiIndicateDot11(Adapter, NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION, Params, Size);
+    ExFreePoolWithTag(Params, WDI_TAG);
 }
 
 _Use_decl_annotations_
@@ -335,6 +444,7 @@ WdiConnectWorker(
     UINT32 Cipher;
     WDI_BSS Target;
     BOOLEAN HaveTarget;
+    KIRQL OldIrql;
     ULONG i;
 
     UNREFERENCED_PARAMETER(NdisIoWorkItemHandle);
@@ -412,6 +522,11 @@ WdiConnectWorker(
         MessageLength += WdiTlvPut(Message + MessageLength, WDI_TLV_CONNECT_BSS_ENTRY,
                                    Entry, (UINT16)EntryLength);
     }
+
+    /* The association this connect makes reports its own frames */
+    KeAcquireSpinLock(&Adapter->AssocLock, &OldIrql);
+    Adapter->Association.Valid = FALSE;
+    KeReleaseSpinLock(&Adapter->AssocLock, OldIrql);
 
     DPRINT1("WLAN connecting to a %u byte SSID on port %u, candidate %s\n",
             Adapter->DesiredSsidLength, Port->PortId, HaveTarget ? "found" : "none");

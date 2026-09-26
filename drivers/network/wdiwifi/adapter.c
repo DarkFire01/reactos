@@ -584,6 +584,7 @@ WdiInitializeAdapter(
     KeInitializeEvent(&Adapter->ScanIdle, NotificationEvent, TRUE);
     KeInitializeEvent(&Adapter->ConnectIdle, NotificationEvent, TRUE);
     KeInitializeSpinLock(&Adapter->BssLock);
+    KeInitializeSpinLock(&Adapter->AssocLock);
 
     /* An open network until the dot11 OIDs ask for something else */
     Adapter->DesiredAuth = DOT11_AUTH_ALGO_80211_OPEN;
