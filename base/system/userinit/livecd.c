@@ -16,6 +16,7 @@ WCHAR Installer[MAX_PATH];
 typedef struct _LIVECD_UNATTEND
 {
     BOOL bEnabled;
+    BOOL bRunLiveCd;
     LCID LocaleID;
 } LIVECD_UNATTEND;
 
@@ -185,7 +186,7 @@ CreateLanguagesList(HWND hwnd, PSTATE pState)
     bSpain = FALSE;
     EnumSystemLocalesW(LocalesEnumProc, LCID_SUPPORTED);
 
-    if (pState->Unattend->bEnabled)
+    if (pState->Unattend->bEnabled || pState->Unattend->bRunLiveCd)
         Locale = pState->Unattend->LocaleID;
 
     if (!Locale)
@@ -606,7 +607,7 @@ LocaleDlgProc(
             CreateKeyboardLayoutList(GetDlgItem(hwndDlg, IDC_LAYOUTLIST));
 
             /* In unattended mode, advance to the next page */
-            if (pState->Unattend->bEnabled)
+            if (pState->Unattend->bEnabled || pState->Unattend->bRunLiveCd)
                 SendMessageW(hwndDlg, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), 0);
             return TRUE;
         }
@@ -746,6 +747,11 @@ StartDlgProc(
                 EnableWindow(GetDlgItem(hwndDlg, IDC_INSTALL), FALSE);
                 SendMessageW(hwndDlg, WM_COMMAND, MAKEWPARAM(IDC_RUN, BN_CLICKED), 0);
             }
+            else if (pState->Unattend->bRunLiveCd)
+            {
+                /* Click on "Run LiveCD", which was asked for over installing */
+                SendMessageW(hwndDlg, WM_COMMAND, MAKEWPARAM(IDC_RUN, BN_CLICKED), 0);
+            }
             else if (pState->Unattend->bEnabled)
             {
                 /* Click on "Install" */
@@ -817,6 +823,8 @@ ParseUnattend(
     WCHAR Buffer[MAX_PATH];
 
     pUnattend->bEnabled = FALSE;
+    pUnattend->bRunLiveCd = FALSE;
+    pUnattend->LocaleID = 0;
 
     if (!GetPrivateProfileStringW(L"Unattend", L"Signature", L"", Buffer, _countof(Buffer), UnattendInf))
     {
@@ -830,17 +838,6 @@ ParseUnattend(
         return;
     }
 
-    if (!GetPrivateProfileStringW(L"Unattend", L"UnattendSetupEnabled", L"", Buffer, _countof(Buffer), UnattendInf))
-    {
-        ERR("Unable to parse UnattendSetupEnabled\n");
-        return;
-    }
-
-    if (_wcsicmp(Buffer, L"yes") != 0)
-    {
-        TRACE("Unattended setup is not enabled\n");
-        return;
-    }
     /* If the user presses Ctrl+Shift+F10, disable unattended setup */
     if ((GetKeyState(VK_CONTROL) & GetKeyState(VK_SHIFT) & GetKeyState(VK_F10)) < 0)
     {
@@ -848,8 +845,28 @@ ParseUnattend(
         return;
     }
 
-    pUnattend->bEnabled = TRUE;
-    pUnattend->LocaleID = 0;
+    /* Going straight to the desktop is a separate question from installing */
+    if (GetPrivateProfileStringW(L"Unattend", L"LiveCdRunEnabled", L"", Buffer, _countof(Buffer), UnattendInf) &&
+        (_wcsicmp(Buffer, L"yes") == 0))
+    {
+        pUnattend->bRunLiveCd = TRUE;
+    }
+
+    if (!GetPrivateProfileStringW(L"Unattend", L"UnattendSetupEnabled", L"", Buffer, _countof(Buffer), UnattendInf))
+    {
+        ERR("Unable to parse UnattendSetupEnabled\n");
+    }
+    else if (_wcsicmp(Buffer, L"yes") == 0)
+    {
+        pUnattend->bEnabled = TRUE;
+    }
+    else
+    {
+        TRACE("Unattended setup is not enabled\n");
+    }
+
+    if (!pUnattend->bEnabled && !pUnattend->bRunLiveCd)
+        return;
 
     if (GetPrivateProfileStringW(L"Unattend", L"LocaleID", L"", Buffer, _countof(Buffer), UnattendInf) && Buffer[0])
     {
