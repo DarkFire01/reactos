@@ -114,15 +114,18 @@ KeRemoveQueueDpcEx(
  * @remarks
  * ReactOS runs no process protected, so every process reads back as none.
  */
-VOID
+PS_PROTECTION
 NTAPI
 PsGetProcessProtection(
-    _In_ PEPROCESS Process,
-    _Out_ PPS_PROTECTION Protection)
+    _In_ PEPROCESS Process)
 {
+    PS_PROTECTION Protection;
+
     UNREFERENCED_PARAMETER(Process);
 
-    Protection->Level = 0;
+    Protection.Level = 0;
+
+    return Protection;
 }
 
 /**
@@ -163,10 +166,14 @@ NTSTATUS
 NTAPI
 VslRetrieveMailbox(
     _In_ ULONG MailboxKey,
-    _Inout_ PULONG Size,
-    _Out_writes_bytes_opt_(*Size) PVOID Buffer)
+    _In_opt_ PVOID Context,
+    _In_ ULONG Index,
+    _Out_writes_bytes_opt_(*Size) PVOID Buffer,
+    _Inout_opt_ PULONG64 Size)
 {
     UNREFERENCED_PARAMETER(MailboxKey);
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Index);
     UNREFERENCED_PARAMETER(Buffer);
 
     if (Size != NULL)

@@ -1795,7 +1795,7 @@
 @ stdcall -version=0xa00+ HvlQueryActiveHypervisorProcessorCount()
 @ stdcall -version=0xa00+ HvlRegisterInterruptCallback(long ptr ptr)
 @ stdcall -version=0xa00+ HvlUnregisterInterruptCallback(long ptr)
-@ stdcall -version=0xa00+ KePrepareToDispatchVirtualProcessor()
+@ stdcall -version=0xa00+ KePrepareToDispatchVirtualProcessor(long ptr ptr ptr ptr ptr)
 
 # Boot Video
 @ stdcall -version=0x602+ InbvNotifyDisplayOwnershipChange(long ptr)
@@ -1936,11 +1936,11 @@
 @ stdcall -version=0xA00+ KeRemoveQueueDpcEx(ptr long)
 @ stdcall -version=0xA00+ MmAllocatePartitionNodePagesForMdlEx(int64 int64 int64 long long long long ptr)
 @ stdcall -version=0xA00+ MmFreePagesFromMdlEx(ptr long)
-@ stdcall -version=0xA00+ MmGetPhysicalMemoryRangesEx(ptr ptr)
+@ stdcall -version=0xA00+ MmGetPhysicalMemoryRangesEx(ptr)
 @ stdcall -version=0xA00+ ObOpenObjectByPointerWithTag(ptr long ptr long ptr long long ptr)
 @ stdcall -version=0xA00+ ObReferenceObjectByHandleWithTag(ptr long ptr long long ptr ptr)
-@ stdcall -version=0xA00+ PsGetProcessProtection(ptr ptr)
-@ stdcall -version=0xA00+ VslRetrieveMailbox(long ptr ptr)
+@ stdcall -version=0xA00+ PsGetProcessProtection(ptr)
+@ stdcall -version=0xA00+ VslRetrieveMailbox(long ptr long ptr ptr)
 
 @ stdcall -version=0xA00+ ExAllocateFromLookasideListEx(ptr)
 @ stdcall -version=0xA00+ ExCancelDpcEventWait(ptr)
@@ -1949,7 +1949,7 @@
 @ stdcall -version=0xA00+ ExFreeToLookasideListEx(ptr ptr)
 @ stdcall -version=0xA00+ ExQueueDpcEventWait(ptr ptr)
 @ stdcall -version=0xA00+ ExRegisterExtension(ptr long ptr)
-@ stdcall -version=0xA00+ ExUnblockPushLockEx(ptr ptr long)
+@ stdcall -version=0xA00+ ExUnblockPushLockEx(ptr ptr)
 @ stdcall -version=0xA00+ ExUnregisterExtension(ptr)
 @ stdcall -version=0xA00+ FsRtlKernelFsControlFile(ptr long ptr long ptr long ptr)
 @ stdcall -version=0xA00+ FsRtlQueryCachedVdl(ptr ptr)
@@ -1967,7 +1967,7 @@
 @ stdcall -version=0x602+ -arch=x86_64 RtlRbRemoveNode(ptr ptr)
 
 # Feature staging
-@ stdcall -version=0xA00+ RtlArmFeatureUsageProviderFlushNotification(ptr)
+@ stdcall -version=0xA00+ RtlArmFeatureUsageProviderFlushNotification(ptr int64)
 @ stdcall -version=0x600+ RtlCheckTokenMembership(ptr ptr ptr)
 @ stdcall -version=0xA00+ RtlInitializeSidEx(ptr ptr long)
 @ stdcall -version=0xA00+ RtlNotifyFeatureUsage(ptr)
@@ -1975,7 +1975,7 @@
 @ stdcall -version=0xA00+ RtlQueryFeatureConfigurationChangeStamp()
 @ stdcall -version=0xA00+ RtlRecordFeatureUsage(ptr int64)
 @ stdcall -version=0xA00+ RtlRegisterFeatureConfigurationChangeNotification(ptr ptr ptr ptr)
-@ stdcall -version=0xA00+ RtlRegisterFeatureUsageProvider(ptr ptr ptr ptr)
+@ stdcall -version=0xA00+ RtlRegisterFeatureUsageProvider(ptr ptr ptr)
 @ stdcall -version=0xA00+ RtlUnregisterFeatureConfigurationChangeNotification(ptr)
 @ stdcall -version=0xA00+ RtlUnregisterFeatureUsageProvider(ptr)
 

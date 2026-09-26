@@ -127,42 +127,24 @@ MmGetPhysicalMemoryRanges(VOID)
 
 /**
  * @brief
- * Returns the physical memory the machine has, for a given partition.
+ * Returns the physical memory of one partition.
  *
  * @param[in] PartitionObject
- * The partition being asked about. Only the system partition exists here.
+ * The partition being asked about, or NULL for the whole machine. Memory that
+ * was moved into a partition still shows up in the ranges of the system
+ * partition, which is the only one that owns any.
  *
  * @return
- * The ranges, which the caller frees, or NULL.
+ * The ranges, which the caller frees, or NULL when the partition is not one
+ * memory was ever moved into.
  */
 PPHYSICAL_MEMORY_RANGE
 NTAPI
 MmGetPhysicalMemoryRangesEx(
-    _In_opt_ PVOID PartitionObject,
-    _Out_opt_ PULONG NumberOfRuns)
+    _In_opt_ PVOID PartitionObject)
 {
-    PPHYSICAL_MEMORY_RANGE Ranges;
-
-    if (PartitionObject != NULL)
+    if ((PartitionObject != NULL) && (PartitionObject != MmSystemPartition))
         return NULL;
 
-    Ranges = MmGetPhysicalMemoryRanges();
-
-    if (NumberOfRuns != NULL)
-    {
-        ULONG Count = 0;
-
-        if (Ranges != NULL)
-        {
-            while ((Ranges[Count].NumberOfBytes.QuadPart != 0) ||
-                   (Ranges[Count].BaseAddress.QuadPart != 0))
-            {
-                Count++;
-            }
-        }
-
-        *NumberOfRuns = Count;
-    }
-
-    return Ranges;
+    return MmGetPhysicalMemoryRanges();
 }
