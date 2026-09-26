@@ -3,6 +3,8 @@ output-*
 modules/optional
 modules/bootcd_extras
 modules/livecd_extras
+modules/x64
+modules/x86
 modules/3rdparty
 modules/[Aa][Hh][Kk]_[Tt]ests
 DarkFiresReactOSModules
@@ -16,3 +18,4 @@ DarkFiresReactOSModules
 .vscode
 sdk/tools/winesync/winesync.cfg
 drivers/usb/usb3-reactos
+
