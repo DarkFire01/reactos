@@ -23,6 +23,10 @@
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 
+#include <wine/debug.h>
+
+WINE_DEFAULT_DEBUG_CHANNEL(dmo);
+
 struct SwsContext;
 struct SwsFilter;
 
@@ -73,11 +77,12 @@ end:
 
     if (!Result)
     {
-        MessageBoxW(
-            GetActiveWindow(), 
-            L"FFMpeg is required to view this media.\nPlease install FFmpeg from RAPPS to proceed", 
-            L"ReactOS - Media Foundation Error", MB_ICONERROR
-        );
+        /*
+         * Anything that reads media asks for this, so a window here interrupts
+         * whatever the user was doing. The caller gets FALSE and reports the
+         * failure itself.
+         */
+        ERR("FFmpeg is not installed, so there is nothing to decode media with\n");
     }
     return Result;
 }
