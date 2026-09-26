@@ -57,6 +57,7 @@
 #define WLAN_CIPHER_NONE                            0
 #define WLAN_CIPHER_TKIP                            2
 #define WLAN_CIPHER_CCMP                            4
+#define WLAN_CIPHER_BIP                             6
 
 /* The dot11 association completion the Native WiFi filter queues for us */
 #define WLAN_STATUS_ASSOCIATION_COMPLETION          0x40030003
@@ -68,6 +69,7 @@
 #define WLAN_IE_VENDOR                              221
 #define WLAN_RSN_MAX_LENGTH                         (2 + 255)
 #define WLAN_KDE_GTK                                1
+#define WLAN_KDE_IGTK                               9
 #define WLAN_AKM_PSK                                2
 #define WLAN_AKM_PSK_SHA256                         6
 
@@ -205,6 +207,11 @@ typedef struct _WLAN_KEY_SESSION
     ULONG GtkKeyId;
     ULONG GtkLength;
     UCHAR Gtk[32];
+
+    /* The IGTK in use when management frames are protected */
+    ULONG IgtkKeyId;
+    ULONG IgtkLength;
+    UCHAR Igtk[32];
 } WLAN_KEY_SESSION, *PWLAN_KEY_SESSION;
 
 /* Big-endian helpers, since EAPOL fields are on the wire big-endian */
@@ -792,6 +799,40 @@ TakeGtk(
     return TRUE;
 }
 
+/* The IGTK KDE, there when management frames are protected: the key id (4
+   or 5), the 48-bit IPN, then the key */
+static
+BOOL
+TakeIgtk(
+    _In_reads_bytes_(Length) const UCHAR *KeyData,
+    _In_ ULONG Length,
+    _Out_writes_bytes_(6) PUCHAR Ipn,
+    _Out_writes_bytes_to_(32, *IgtkLength) PUCHAR Igtk,
+    _Out_ PULONG IgtkLength,
+    _Out_ PULONG KeyId)
+{
+    const UCHAR *Payload;
+    ULONG PayloadLength;
+
+    *IgtkLength = 0;
+    *KeyId = 0;
+
+    if (!FindKde(KeyData, Length, WLAN_KDE_IGTK, &Payload, &PayloadLength) ||
+        PayloadLength <= 8 || PayloadLength - 8 > 32)
+    {
+        return FALSE;
+    }
+
+    *KeyId = Payload[0] | (Payload[1] << 8);
+    if (*KeyId != 4 && *KeyId != 5)
+        return FALSE;
+
+    RtlCopyMemory(Ipn, Payload + 2, 6);
+    *IgtkLength = PayloadLength - 8;
+    RtlCopyMemory(Igtk, Payload + 8, *IgtkLength);
+    return TRUE;
+}
+
 /* Unwraps or copies the key data of a received EAPOL-Key frame */
 static
 BOOL
@@ -912,6 +953,46 @@ InstallGroupKey(
     return ERROR_SUCCESS;
 }
 
+/* Installs the IGTK as a BIP default key, again only when it is a new one */
+static
+DWORD
+InstallIgtk(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Ipn,
+    _In_reads_bytes_(IgtkLength) const UCHAR *Igtk,
+    _In_ ULONG IgtkLength,
+    _In_ ULONG IgtkKeyId)
+{
+    WLAN_DEFAULT_KEY Group;
+    DWORD Error;
+
+    if (Session->IgtkLength == IgtkLength && Session->IgtkKeyId == IgtkKeyId &&
+        RtlEqualMemory(Session->Igtk, Igtk, IgtkLength))
+    {
+        return ERROR_SUCCESS;
+    }
+
+    RtlZeroMemory(&Group, sizeof(Group));
+    Group.Header.Type = NDIS_WLAN_OBJECT_TYPE_DEFAULT;
+    Group.Header.Revision = 1;
+    Group.Header.Size = sizeof(Group);
+    Group.uKeyIndex = IgtkKeyId;
+    Group.AlgorithmId = WLAN_CIPHER_BIP;
+    RtlFillMemory(Group.MacAddr, 6, 0xFF);
+    Group.usKeyLength = PackKey(Group.ucKey, Ipn, Igtk, IgtkLength);
+
+    Error = WlanSetOid(Session->Interface, OID_DOT11_CIPHER_DEFAULT_KEY, &Group,
+                       FIELD_OFFSET(WLAN_DEFAULT_KEY, ucKey) + Group.usKeyLength);
+    WlanCryptoWipe(&Group, sizeof(Group));
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    RtlCopyMemory(Session->Igtk, Igtk, IgtkLength);
+    Session->IgtkLength = IgtkLength;
+    Session->IgtkKeyId = IgtkKeyId;
+    return ERROR_SUCCESS;
+}
+
 /* The exchanges */
 
 /* Fills the Ethernet and EAPOL-Key headers of a frame to the AP */
@@ -1013,10 +1094,15 @@ PairwiseMessage3(
     UCHAR Reply[ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH];
     UCHAR KeyData[WLAN_MAX_FRAME];
     UCHAR Gtk[32];
+    UCHAR Igtk[32];
+    UCHAR Ipn[6];
     const UCHAR *ApRsn;
     ULONG KeyDataLength;
     ULONG GtkLength;
     ULONG GtkKeyId;
+    ULONG IgtkLength;
+    ULONG IgtkKeyId;
+    BOOL HaveIgtk;
     DWORD Error;
 
     if (!Session->TptkValid || !RtlEqualMemory(Eapol + 17, Session->ANonce, WLAN_NONCE_LENGTH))
@@ -1047,6 +1133,7 @@ PairwiseMessage3(
         WlanCryptoWipe(KeyData, sizeof(KeyData));
         return ERROR_ACCESS_DENIED;
     }
+    HaveIgtk = TakeIgtk(KeyData, KeyDataLength, Ipn, Igtk, &IgtkLength, &IgtkKeyId);
     WlanCryptoWipe(KeyData, sizeof(KeyData));
 
     BuildKeyFrame(Session, Reply, KEY_INFO_PAIRWISE | KEY_INFO_MIC | KEY_INFO_SECURE, Eapol + 9,
@@ -1066,8 +1153,11 @@ PairwiseMessage3(
     /* The Key RSC field starts the group key's receive counter */
     if (Error == ERROR_SUCCESS)
         Error = InstallGroupKey(Session, Eapol + 65, Gtk, GtkLength, GtkKeyId);
+    if (Error == ERROR_SUCCESS && HaveIgtk)
+        Error = InstallIgtk(Session, Ipn, Igtk, IgtkLength, IgtkKeyId);
 
     WlanCryptoWipe(Gtk, sizeof(Gtk));
+    WlanCryptoWipe(Igtk, sizeof(Igtk));
     return Error;
 }
 
@@ -1082,9 +1172,14 @@ GroupMessage1(
     UCHAR Reply[ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH];
     UCHAR KeyData[WLAN_MAX_FRAME];
     UCHAR Gtk[32];
+    UCHAR Igtk[32];
+    UCHAR Ipn[6];
     ULONG KeyDataLength;
     ULONG GtkLength;
     ULONG GtkKeyId;
+    ULONG IgtkLength;
+    ULONG IgtkKeyId;
+    BOOL HaveIgtk;
     DWORD Error;
 
     if (!Session->PairwiseInstalled || !(ReadBe16(Eapol + 5) & KEY_INFO_ENCRYPTED))
@@ -1102,14 +1197,18 @@ GroupMessage1(
         WlanCryptoWipe(KeyData, sizeof(KeyData));
         return ERROR_ACCESS_DENIED;
     }
+    HaveIgtk = TakeIgtk(KeyData, KeyDataLength, Ipn, Igtk, &IgtkLength, &IgtkKeyId);
     WlanCryptoWipe(KeyData, sizeof(KeyData));
 
     BuildKeyFrame(Session, Reply, KEY_INFO_MIC | KEY_INFO_SECURE, Eapol + 9, NULL, NULL, 0);
     Error = SendKeyFrame(Session, Session->Ptk, Reply, 0);
     if (Error == ERROR_SUCCESS)
         Error = InstallGroupKey(Session, Eapol + 65, Gtk, GtkLength, GtkKeyId);
+    if (Error == ERROR_SUCCESS && HaveIgtk)
+        Error = InstallIgtk(Session, Ipn, Igtk, IgtkLength, IgtkKeyId);
 
     WlanCryptoWipe(Gtk, sizeof(Gtk));
+    WlanCryptoWipe(Igtk, sizeof(Igtk));
     return Error;
 }
 
