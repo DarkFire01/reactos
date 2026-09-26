@@ -36,6 +36,7 @@ list(APPEND INF_FILES
     usbhub3.inf
     usbport.inf
     usbxhci.inf
+    vid.inf
     volume.inf
     wdmaudio.inf
     netrtwlane601.inf

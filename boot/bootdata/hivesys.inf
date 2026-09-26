@@ -1947,6 +1947,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\vid\Parameters\Wdf","WdfMinorVersion",0x
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","ConfigFlags",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","DeviceDesc",0x00000000,"Virtualization Infrastructure Driver"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","HardwareID",0x00010000,"ROOT\VID"
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","Service",0x00000000,"vid"
 
 ; Audio Service
