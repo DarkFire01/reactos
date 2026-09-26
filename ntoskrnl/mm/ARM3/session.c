@@ -828,7 +828,7 @@ MiSessionInitializeWorkingSetList(VOID)
 
         /* Add this into the list */
         Index = ((ULONG_PTR)WorkingSetList - (ULONG_PTR)MmSessionBase) / PDE_MAPPED_VA;
-#if !defined(_M_AMD64) \&\& !defined(_M_ARM64)
+#if !defined(_M_AMD64) && !defined(_M_ARM64)
         MmSessionSpace->PageTables[Index] = TempPde;
 #endif
         /* Initialize the page directory page, and now zero the working set list itself */
