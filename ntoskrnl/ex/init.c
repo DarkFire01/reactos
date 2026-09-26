@@ -694,6 +694,13 @@ ExpInitSystemPhase1(VOID)
     /* The hypervisor's own events, now that there is an event to make */
     HvlInitSystemEvents();
 
+    /* Publish the hosts a driver may bind itself into */
+    if (ExpInitializeExtensions() == FALSE)
+    {
+        DPRINT1("Executive: Extension initialization failed\n");
+        return FALSE;
+    }
+
     /* Initialize mutants */
     if (ExpInitializeMutantImplementation() == FALSE)
     {

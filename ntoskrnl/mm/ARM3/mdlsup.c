@@ -536,17 +536,25 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
     }
 
     //
-    // Only these flags are allowed
+    // Only these flags are allowed. Preferring contiguous pages is a hint, so
+    // it is taken and not acted on; the rest change what the caller gets back
+    // and are refused until they are honoured.
     //
     if (Flags & ~(MM_DONT_ZERO_ALLOCATION |
                   MM_ALLOCATE_FROM_LOCAL_NODE_ONLY |
-                  MM_ALLOCATE_FULLY_REQUIRED))
+                  MM_ALLOCATE_FULLY_REQUIRED |
+                  MM_ALLOCATE_PREFER_CONTIGUOUS))
     {
         //
         // Silently fail
         //
         return NULL;
     }
+
+    //
+    // The internal routine does not know the hint
+    //
+    Flags &= ~MM_ALLOCATE_PREFER_CONTIGUOUS;
 
     //
     // Call the internal routine

@@ -53,6 +53,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/efi.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/dpcevent.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/event.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/exthost.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/evtpair.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/exintrin.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/fmutex.c
