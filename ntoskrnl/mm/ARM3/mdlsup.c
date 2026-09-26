@@ -515,6 +515,7 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
                         IN ULONG Flags)
 {
     MI_PFN_CACHE_ATTRIBUTE CacheAttribute;
+    PMDL Mdl;
 
     //
     // Check for invalid cache type
@@ -537,7 +538,9 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
     //
     // Only these flags are allowed
     //
-    if (Flags & ~(MM_DONT_ZERO_ALLOCATION | MM_ALLOCATE_FROM_LOCAL_NODE_ONLY))
+    if (Flags & ~(MM_DONT_ZERO_ALLOCATION |
+                  MM_ALLOCATE_FROM_LOCAL_NODE_ONLY |
+                  MM_ALLOCATE_FULLY_REQUIRED))
     {
         //
         // Silently fail
@@ -548,12 +551,26 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
     //
     // Call the internal routine
     //
-    return MiAllocatePagesForMdl(LowAddress,
-                                 HighAddress,
-                                 SkipBytes,
-                                 TotalBytes,
-                                 CacheAttribute,
-                                 Flags);
+    Mdl = MiAllocatePagesForMdl(LowAddress,
+                                HighAddress,
+                                SkipBytes,
+                                TotalBytes,
+                                CacheAttribute,
+                                Flags);
+
+    //
+    // A caller that asked for all of it does not want part of it
+    //
+    if ((Mdl != NULL) &&
+        (Flags & MM_ALLOCATE_FULLY_REQUIRED) &&
+        (Mdl->ByteCount < TotalBytes))
+    {
+        MmFreePagesFromMdl(Mdl);
+        ExFreePool(Mdl);
+        return NULL;
+    }
+
+    return Mdl;
 }
 
 /*
