@@ -362,6 +362,20 @@ typedef struct DOT11_DISASSOCIATION_PARAMETERS
     ULONG uIHVDataOffset, uIHVDataSize;
 } DOT11_DISASSOCIATION_PARAMETERS, *PDOT11_DISASSOCIATION_PARAMETERS;
 
+/* DOT11_STATUS_INDICATION::uStatusType */
+#define DOT11_STATUS_SUCCESS                        0x00000001
+#define DOT11_STATUS_SCAN_CONFIRM                   1
+#define DOT11_STATUS_JOIN_CONFIRM                   2
+#define DOT11_STATUS_START_CONFIRM                  3
+#define DOT11_STATUS_RESET_CONFIRM                  4
+
+/* What a method OID_DOT11_RESET_REQUEST hands back */
+typedef struct _DOT11_STATUS_INDICATION
+{
+    ULONG uStatusType;
+    NDIS_STATUS ndisStatus;
+} DOT11_STATUS_INDICATION, *PDOT11_STATUS_INDICATION;
+
 
 #endif
 
