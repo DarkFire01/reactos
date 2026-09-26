@@ -1074,6 +1074,64 @@ extern SIZE_T MmHeapDeCommitFreeBlockThreshold;
 //
 extern POBJECT_TYPE NTSYSAPI MmSectionObjectType;
 
+//
+// Memory Partitions
+//
+#define MEMORY_PARTITION_QUERY_ACCESS  0x0001
+#define MEMORY_PARTITION_MODIFY_ACCESS 0x0002
+#define MEMORY_PARTITION_ALL_ACCESS     (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE |      MEMORY_PARTITION_QUERY_ACCESS | MEMORY_PARTITION_MODIFY_ACCESS)
+
+typedef enum _MEMORY_PARTITION_INFORMATION_CLASS
+{
+    SystemMemoryPartitionInformation = 0,
+    SystemMemoryPartitionMoveMemory,
+    SystemMemoryPartitionAddPagefile,
+    SystemMemoryPartitionCombineMemory,
+    SystemMemoryPartitionInitialAddMemory,
+    SystemMemoryPartitionGetMemoryEvents,
+    SystemMemoryPartitionSetAttributes,
+    SystemMemoryPartitionNodeInformation,
+    SystemMemoryPartitionCreateLargePages,
+    SystemMemoryPartitionDedicatedMemoryInformation,
+    SystemMemoryPartitionOpenDedicatedMemory,
+    SystemMemoryPartitionMemoryChargeAttributes,
+    SystemMemoryPartitionClearAttributes,
+    SystemMemoryPartitionSetMemoryThresholds,
+    SystemMemoryPartitionMemoryListCommand,
+    SystemMemoryPartitionMax
+} MEMORY_PARTITION_INFORMATION_CLASS;
+
+typedef struct _MEMORY_PARTITION_CONFIGURATION_INFORMATION
+{
+    ULONG Flags;
+    ULONG NumaNode;
+    ULONG Channel;
+    ULONG NumberOfNumaNodes;
+    ULONG_PTR ResidentAvailablePages;
+    ULONG_PTR CommittedPages;
+    ULONG_PTR CommitLimit;
+    ULONG_PTR PeakCommitment;
+    ULONG_PTR TotalNumberOfPages;
+    ULONG_PTR AvailablePages;
+    ULONG_PTR ZeroPages;
+    ULONG_PTR FreePages;
+    ULONG_PTR StandbyPages;
+    ULONG_PTR StandbyPageCountByPriority[8];
+    ULONG_PTR RepurposedPagesByPriority[8];
+    ULONG_PTR MaximumCommitLimit;
+    ULONG_PTR DonatedPagesToPartitions;
+    ULONG PartitionId;
+} MEMORY_PARTITION_CONFIGURATION_INFORMATION, *PMEMORY_PARTITION_CONFIGURATION_INFORMATION;
+
+typedef struct _MEMORY_PARTITION_TRANSFER_INFORMATION
+{
+    ULONG_PTR NumberOfPages;
+    ULONG NumaNode;
+    ULONG Flags;
+} MEMORY_PARTITION_TRANSFER_INFORMATION, *PMEMORY_PARTITION_TRANSFER_INFORMATION;
+
+extern POBJECT_TYPE NTSYSAPI PsPartitionType;
+
 #ifdef __cplusplus
 }; // extern "C"
 #endif

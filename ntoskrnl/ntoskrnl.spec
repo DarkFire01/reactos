@@ -836,6 +836,7 @@
 @ stdcall MmRemovePhysicalMemory(ptr ptr)
 @ stdcall MmResetDriverPaging(ptr)
 @ extern MmSectionObjectType
+@ extern PsPartitionType
 @ stdcall MmSecureVirtualMemory(ptr long long)
 @ stdcall MmSetAddressRangeModified(ptr long)
 @ stdcall MmSetBankedSection(long long long long long long)
@@ -1959,6 +1960,9 @@
 
 # Zw routines without a system call
 @ stdcall -version=0x600+ ZwAllocateLocallyUniqueId(ptr)
+@ stdcall -version=0xA00+ ZwCreatePartition(ptr ptr long ptr long)
+@ stdcall -version=0xA00+ ZwManagePartition(ptr ptr long ptr long)
+@ stdcall -version=0xA00+ ZwOpenPartition(ptr long ptr)
 @ stdcall -version=0x600+ ZwQueryLicenseValue(ptr ptr ptr long ptr)
 @ stdcall -version=0x600+ ZwQueryVirtualMemory(ptr ptr long ptr long ptr)
 @ stdcall -version=0x602+ ZwSetInformationVirtualMemory(ptr long long ptr ptr long)
