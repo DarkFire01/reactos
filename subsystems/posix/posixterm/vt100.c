@@ -98,6 +98,7 @@ static int ProcessBuffer(void);
  * of 'puts()', and it'll pass the output through the vt100 emulator.
  */
 
+int
 vtputs(char *f)
 {
     char cbuf[1024];
@@ -117,6 +118,7 @@ vtputs(char *f)
  * through the vt-100 emulator.
  */
 
+int
 vtprintf(char *format, ...)
 {
     char cbuf[1024];
@@ -138,10 +140,9 @@ vtprintf(char *format, ...)
  * the VT-100 emulator will most likely roll over and die.
  */
 
-vtInitVT100(void)
+int
+vtInitVT100(VOID)
 {
-    int i=0;
-
     cBuffer[0]='\0';
     BufLen=0;
 
@@ -655,7 +656,6 @@ static int ProcessBracket(int Start)
 static int ProcessEscape(int Start)
 {
     int End;
-    int left;
     int fore, back;
     int i;
 
@@ -670,9 +670,6 @@ static int ProcessEscape(int Start)
     /* At this point, if the sequence is <esc> x, 'End' points at
      * x
      */
-
-    /* left = number of characters left unparsed in the buffer. */
-    left =  BufLen - End -1;
 
     /* Main switch statement - parse the escape sequence according to the
      * next character we see.

@@ -904,12 +904,8 @@ beDeleteText(
     )
 {
     CONSOLE_SCREEN_BUFFER_INFO csbi;
-    COORD dest, saveCursor;
-    CHAR_INFO fillChar;
 
     GetConsoleScreenBufferInfo(hConOut, &csbi);
-
-    saveCursor = csbi.dwCursorPosition;
 
     if (rowFrom == CUR_ROW)
         rowFrom = csbi.dwCursorPosition.Y;
@@ -939,18 +935,7 @@ beDeleteText(
     else
         colTo -= 1;
 
-    fillChar.Char.AsciiChar=' ';
-    fillChar.Attributes = csbi.wAttributes;
-
-    /* Now that we've got the from and to positions
-     * set correctly, we need to delete appropriate
-     * rows and columns.
-     */
-
-    dest.X = colFrom;
-    dest.Y = rowFrom;
-
-    /* BUGBUG - need to implement this. What can I say, I'm lazy :) */
+    /* FIXME: Delete the requested rows and columns */
 
     return(0);
 }
