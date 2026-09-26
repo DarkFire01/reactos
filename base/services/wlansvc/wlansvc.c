@@ -80,6 +80,8 @@ ServiceMain(DWORD argc, LPWSTR *argv)
                                                         ServiceControlHandler,
                                                         NULL);
 
+    WlanSupplicantInitialize();
+
     UpdateServiceStatus(ServiceStatusHandle, SERVICE_RUNNING, 0);
 
     hThread = CreateThread(NULL,

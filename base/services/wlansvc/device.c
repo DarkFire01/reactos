@@ -926,6 +926,8 @@ WlanConnectProfile(
     WCHAR Authentication[32];
     WCHAR Key[128];
 
+    WlanStopSupplicant(InterfaceGuid);
+
     if (Profile != NULL &&
         WlanProfileTag(Profile, L"<authentication>", L"</authentication>",
                        Authentication, ARRAYSIZE(Authentication)) &&
@@ -949,6 +951,8 @@ WlanDisconnect(
     HANDLE Interface;
     ULONG Reason = 0;
     DWORD Error;
+
+    WlanStopSupplicant(InterfaceGuid);
 
     Interface = WlanOpenInterface(InterfaceGuid);
     if (Interface == NULL)

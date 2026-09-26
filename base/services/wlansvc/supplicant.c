@@ -96,6 +96,8 @@
 
 /* Timeouts */
 #define HANDSHAKE_STEP_TIMEOUT_MS                   3000
+#define HANDSHAKE_TIMEOUT_MS                        10000
+#define SESSION_POLL_MS                             1000
 #define CONNECT_TIMEOUT_MS                          10000
 #define CONNECT_POLL_MS                             250
 
@@ -143,6 +145,11 @@ typedef struct _WLAN_DEFAULT_KEY
 /* One connection's keys and the handles they are driven through */
 typedef struct _WLAN_KEY_SESSION
 {
+    LIST_ENTRY ListEntry;
+    GUID InterfaceGuid;
+    HANDLE Thread;
+    HANDLE StopEvent;
+
     HANDLE Device;          /* NDISUIO, for the EAPOL frames */
     HANDLE Interface;       /* nativewifip, for the dot11 OIDs */
     UCHAR OwnMac[6];
@@ -159,6 +166,20 @@ typedef struct _WLAN_KEY_SESSION
 
     UCHAR Pmk[WLAN_PMK_LENGTH];
     UCHAR Ptk[WLAN_PTK_LENGTH];     /* KCK, KEK, then TK */
+    BOOLEAN PairwiseInstalled;
+
+    /* The handshake in progress, its PTK unused until message 3 checks out */
+    UCHAR ANonce[WLAN_NONCE_LENGTH];
+    UCHAR SNonce[WLAN_NONCE_LENGTH];
+    UCHAR Tptk[WLAN_PTK_LENGTH];
+    BOOLEAN TptkValid;
+
+    /* The last signed frame taken, and the group key in use */
+    BOOLEAN ReplayValid;
+    UCHAR ReplayCounter[8];
+    ULONG GtkKeyId;
+    ULONG GtkLength;
+    UCHAR Gtk[32];
 } WLAN_KEY_SESSION, *PWLAN_KEY_SESSION;
 
 /* Big-endian helpers, since EAPOL fields are on the wire big-endian */
@@ -597,6 +618,7 @@ static
 BOOL
 ComputeMic(
     _In_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(WLAN_KCK_LENGTH) const UCHAR *Kck,
     _In_reads_bytes_(Length) const UCHAR *Eapol,
     _In_ ULONG Length,
     _Out_writes_bytes_(WLAN_MIC_LENGTH) PUCHAR Mic)
@@ -604,9 +626,9 @@ ComputeMic(
     UCHAR Digest[WLAN_SHA1_LENGTH];
 
     if (Session->Akm == WLAN_AKM_PSK_SHA256)
-        return WlanCryptoAesCmac(Session->Ptk, Eapol, Length, Mic);
+        return WlanCryptoAesCmac(Kck, Eapol, Length, Mic);
 
-    WlanCryptoHmacSha1(Session->Ptk, WLAN_KCK_LENGTH, Eapol, Length, Digest);
+    WlanCryptoHmacSha1(Kck, WLAN_KCK_LENGTH, Eapol, Length, Digest);
     RtlCopyMemory(Mic, Digest, WLAN_MIC_LENGTH);
     return TRUE;
 }
@@ -617,6 +639,7 @@ static
 BOOL
 CheckMic(
     _In_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(WLAN_KCK_LENGTH) const UCHAR *Kck,
     _Inout_updates_bytes_(Length) PUCHAR Eapol,
     _In_ ULONG Length)
 {
@@ -625,7 +648,7 @@ CheckMic(
 
     RtlCopyMemory(Received, Eapol + 81, WLAN_MIC_LENGTH);
     RtlZeroMemory(Eapol + 81, WLAN_MIC_LENGTH);
-    if (!ComputeMic(Session, Eapol, Length, Mic))
+    if (!ComputeMic(Session, Kck, Eapol, Length, Mic))
         return FALSE;
 
     return RtlEqualMemory(Received, Mic, WLAN_MIC_LENGTH);
@@ -650,28 +673,27 @@ AppendOrdered(
     *At += Length;
 }
 
-/* PTK = PRF or KDF(PMK, "Pairwise key expansion", min||max MAC, min||max nonce) */
+/* PTK = PRF or KDF(PMK, "Pairwise key expansion", min||max MAC, min||max nonce),
+   derived into the temporary PTK until message 3 proves it */
 static
 BOOL
 DerivePtk(
-    _Inout_ PWLAN_KEY_SESSION Session,
-    _In_reads_bytes_(WLAN_NONCE_LENGTH) const UCHAR *ANonce,
-    _In_reads_bytes_(WLAN_NONCE_LENGTH) const UCHAR *SNonce)
+    _Inout_ PWLAN_KEY_SESSION Session)
 {
     UCHAR Input[2 * 6 + 2 * WLAN_NONCE_LENGTH];
     PUCHAR At = Input;
 
     AppendOrdered(&At, Session->OwnMac, Session->Bssid, 6);
-    AppendOrdered(&At, ANonce, SNonce, WLAN_NONCE_LENGTH);
+    AppendOrdered(&At, Session->ANonce, Session->SNonce, WLAN_NONCE_LENGTH);
 
     if (Session->Akm == WLAN_AKM_PSK_SHA256)
     {
         return WlanCryptoKdfSha256(Session->Pmk, WLAN_PMK_LENGTH, "Pairwise key expansion",
-                                   Input, sizeof(Input), Session->Ptk, WLAN_PTK_LENGTH);
+                                   Input, sizeof(Input), Session->Tptk, WLAN_PTK_LENGTH);
     }
 
     return WlanCryptoPrfSha1(Session->Pmk, WLAN_PMK_LENGTH, "Pairwise key expansion",
-                             Input, sizeof(Input), Session->Ptk, WLAN_PTK_LENGTH);
+                             Input, sizeof(Input), Session->Tptk, WLAN_PTK_LENGTH);
 }
 
 /* Key data */
@@ -749,7 +771,7 @@ TakeGtk(
 static
 BOOL
 TakeKeyData(
-    _In_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(WLAN_KEK_LENGTH) const UCHAR *Kek,
     _In_reads_bytes_(Length) const UCHAR *Eapol,
     _In_ ULONG Length,
     _Out_writes_bytes_to_(Size, *KeyDataLength) PUCHAR KeyData,
@@ -769,8 +791,7 @@ TakeKeyData(
         return TRUE;
     }
 
-    return WlanCryptoAesUnwrap(Session->Ptk + WLAN_KCK_LENGTH, WLAN_KEK_LENGTH,
-                               Eapol + EAPOL_FIXED_LENGTH, Wrapped,
+    return WlanCryptoAesUnwrap(Kek, WLAN_KEK_LENGTH, Eapol + EAPOL_FIXED_LENGTH, Wrapped,
                                KeyData, Size, KeyDataLength);
 }
 
@@ -796,10 +817,12 @@ InstallPairwiseKey(
     return Error;
 }
 
+/* Installs a group key, unless it is the one already in use, so a replayed
+   message cannot reset the receive counters that go with it */
 static
 DWORD
 InstallGroupKey(
-    _In_ PWLAN_KEY_SESSION Session,
+    _Inout_ PWLAN_KEY_SESSION Session,
     _In_reads_bytes_(GtkLength) const UCHAR *Gtk,
     _In_ ULONG GtkLength,
     _In_ ULONG GtkKeyId)
@@ -807,6 +830,12 @@ InstallGroupKey(
     WLAN_DEFAULT_KEY Group;
     ULONG KeyId = GtkKeyId;
     DWORD Error;
+
+    if (Session->GtkLength == GtkLength && Session->GtkKeyId == GtkKeyId &&
+        RtlEqualMemory(Session->Gtk, Gtk, GtkLength))
+    {
+        return ERROR_SUCCESS;
+    }
 
     RtlZeroMemory(&Group, sizeof(Group));
     Group.Header.Type = NDIS_WLAN_OBJECT_TYPE_DEFAULT;
@@ -821,18 +850,22 @@ InstallGroupKey(
     Error = WlanSetOid(Session->Interface, OID_DOT11_CIPHER_DEFAULT_KEY, &Group,
                        FIELD_OFFSET(WLAN_DEFAULT_KEY, ucKey) + GtkLength);
     WlanCryptoWipe(&Group, sizeof(Group));
+    if (Error == ERROR_SUCCESS)
+        Error = WlanSetOid(Session->Interface, OID_DOT11_CIPHER_DEFAULT_KEY_ID, &KeyId, sizeof(KeyId));
     if (Error != ERROR_SUCCESS)
         return Error;
 
-    return WlanSetOid(Session->Interface, OID_DOT11_CIPHER_DEFAULT_KEY_ID, &KeyId, sizeof(KeyId));
+    RtlCopyMemory(Session->Gtk, Gtk, GtkLength);
+    Session->GtkLength = GtkLength;
+    Session->GtkKeyId = GtkKeyId;
+    return ERROR_SUCCESS;
 }
 
-/* The handshake */
+/* The exchanges */
 
-/* Fills the Ethernet and EAPOL-Key headers of a frame to the AP. The MIC is
-   left for the caller to compute over the finished frame */
+/* Fills the Ethernet and EAPOL-Key headers of a frame to the AP */
 static
-PUCHAR
+VOID
 BuildKeyFrame(
     _In_ PWLAN_KEY_SESSION Session,
     _Out_writes_bytes_(ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH + KeyDataLength) PUCHAR Frame,
@@ -860,61 +893,37 @@ BuildKeyFrame(
     WriteBe16(Eapol + 97, (USHORT)KeyDataLength);
     if (KeyDataLength != 0)
         RtlCopyMemory(Eapol + EAPOL_FIXED_LENGTH, KeyData, KeyDataLength);
-
-    return Eapol;
 }
 
-/* Signs a built frame and sends it */
+/* Signs a built frame with the given KCK and sends it */
 static
 DWORD
 SendKeyFrame(
     _In_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(WLAN_KCK_LENGTH) const UCHAR *Kck,
     _Inout_updates_bytes_(ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH + KeyDataLength) PUCHAR Frame,
     _In_ ULONG KeyDataLength)
 {
     PUCHAR Eapol = Frame + ETH_HEADER_LENGTH;
 
-    if (!ComputeMic(Session, Eapol, EAPOL_FIXED_LENGTH + KeyDataLength, Eapol + 81))
+    if (!ComputeMic(Session, Kck, Eapol, EAPOL_FIXED_LENGTH + KeyDataLength, Eapol + 81))
         return ERROR_GEN_FAILURE;
 
     return SupplicantSendFrame(Session->Device, Frame, ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH + KeyDataLength);
 }
 
-/* Runs the 4-way handshake to completion and installs the derived keys */
+/* Message 1 of the 4-way handshake: the AP's nonce. Answered with message 2 */
 static
 DWORD
-FourWayHandshake(
-    _Inout_ PWLAN_KEY_SESSION Session)
+PairwiseMessage1(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(Length) const UCHAR *Eapol,
+    _In_ ULONG Length)
 {
-    UCHAR Frame[WLAN_MAX_FRAME];
     UCHAR Reply[ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH + WLAN_RSN_MAX_LENGTH];
-    UCHAR ANonce[WLAN_NONCE_LENGTH];
-    UCHAR SNonce[WLAN_NONCE_LENGTH];
-    UCHAR KeyData[WLAN_MAX_FRAME];
-    UCHAR Gtk[32];
-    const UCHAR *ApRsn;
-    PUCHAR Eapol;
-    ULONG Length;
-    ULONG KeyDataLength;
-    ULONG GtkLength;
-    ULONG GtkKeyId;
-    USHORT KeyInfo;
-    DWORD Error;
+    USHORT KeyInfo = ReadBe16(Eapol + 5);
 
-    /* Message 1: the AP sends its nonce */
-    Error = SupplicantReadEapol(Session->Device, Frame, sizeof(Frame), &Length, HANDSHAKE_STEP_TIMEOUT_MS);
-    if (Error != ERROR_SUCCESS)
-        return Error;
-    if (Length < ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH)
-        return ERROR_INVALID_DATA;
-
-    Eapol = Frame + ETH_HEADER_LENGTH;
-    KeyInfo = ReadBe16(Eapol + 5);
-    if (!(KeyInfo & KEY_INFO_ACK) || (KeyInfo & KEY_INFO_MIC))
-        return ERROR_INVALID_DATA;
-
-    RtlCopyMemory(Session->Bssid, Frame + 6, 6);
-    RtlCopyMemory(ANonce, Eapol + 17, WLAN_NONCE_LENGTH);
+    UNREFERENCED_PARAMETER(Length);
 
     /* Without the association request to go by, the descriptor version the AP
        chose says which of the two PSK AKMs it runs */
@@ -927,39 +936,48 @@ FourWayHandshake(
     if ((KeyInfo & KEY_INFO_VERSION_MASK) != KeyVersion(Session))
         return ERROR_INVALID_DATA;
 
-    if (!WlanCryptoRandom(SNonce, sizeof(SNonce)) || !DerivePtk(Session, ANonce, SNonce))
-        return ERROR_GEN_FAILURE;
+    /* A retransmitted message 1 keeps our nonce, a new one starts over */
+    if (!Session->TptkValid || !RtlEqualMemory(Session->ANonce, Eapol + 17, WLAN_NONCE_LENGTH))
+    {
+        RtlCopyMemory(Session->ANonce, Eapol + 17, WLAN_NONCE_LENGTH);
+        if (!WlanCryptoRandom(Session->SNonce, sizeof(Session->SNonce)) || !DerivePtk(Session))
+            return ERROR_GEN_FAILURE;
+        Session->TptkValid = TRUE;
+    }
 
-    /* Message 2: our nonce and RSN element, signed with the KCK */
     BuildKeyFrame(Session, Reply, KEY_INFO_PAIRWISE | KEY_INFO_MIC, Eapol + 9,
-                  SNonce, Session->Rsn, Session->RsnLength);
-    Error = SendKeyFrame(Session, Reply, Session->RsnLength);
-    if (Error != ERROR_SUCCESS)
-        return Error;
+                  Session->SNonce, Session->Rsn, Session->RsnLength);
+    return SendKeyFrame(Session, Session->Tptk, Reply, Session->RsnLength);
+}
 
-    /* Message 3: the AP's keys, signed and with the group key wrapped */
-    Error = SupplicantReadEapol(Session->Device, Frame, sizeof(Frame), &Length, HANDSHAKE_STEP_TIMEOUT_MS);
-    if (Error != ERROR_SUCCESS)
-        return Error;
-    if (Length < ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH)
+/* Message 3 of the 4-way handshake: the AP's proof and the group key.
+   Answered with message 4, then the keys go in */
+static
+DWORD
+PairwiseMessage3(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _Inout_updates_bytes_(Length) PUCHAR Eapol,
+    _In_ ULONG Length)
+{
+    UCHAR Reply[ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH];
+    UCHAR KeyData[WLAN_MAX_FRAME];
+    UCHAR Gtk[32];
+    const UCHAR *ApRsn;
+    ULONG KeyDataLength;
+    ULONG GtkLength;
+    ULONG GtkKeyId;
+    DWORD Error;
+
+    if (!Session->TptkValid || !RtlEqualMemory(Eapol + 17, Session->ANonce, WLAN_NONCE_LENGTH))
         return ERROR_INVALID_DATA;
 
-    Eapol = Frame + ETH_HEADER_LENGTH;
-    Length -= ETH_HEADER_LENGTH;
-    KeyInfo = ReadBe16(Eapol + 5);
-    if (!(KeyInfo & KEY_INFO_MIC) || !(KeyInfo & KEY_INFO_ACK) ||
-        !RtlEqualMemory(Eapol + 17, ANonce, WLAN_NONCE_LENGTH))
-    {
-        return ERROR_INVALID_DATA;
-    }
-
-    if (EAPOL_FIXED_LENGTH + ReadBe16(Eapol + 97) > Length ||
-        !CheckMic(Session, Eapol, EAPOL_FIXED_LENGTH + ReadBe16(Eapol + 97)))
-    {
+    if (!CheckMic(Session, Session->Tptk, Eapol, Length))
         return ERROR_ACCESS_DENIED;
-    }
 
-    if (!TakeKeyData(Session, Eapol, Length, KeyData, sizeof(KeyData), &KeyDataLength))
+    RtlCopyMemory(Session->ReplayCounter, Eapol + 9, 8);
+    Session->ReplayValid = TRUE;
+
+    if (!TakeKeyData(Session->Tptk + WLAN_KCK_LENGTH, Eapol, Length, KeyData, sizeof(KeyData), &KeyDataLength))
         return ERROR_ACCESS_DENIED;
 
     /* The AP repeats its RSN element here. It has to match the beacon, or
@@ -969,30 +987,252 @@ FourWayHandshake(
         (ApRsn == NULL || (ULONG)ApRsn[1] + 2 != Session->ApRsnLength ||
          !RtlEqualMemory(ApRsn, Session->ApRsn, Session->ApRsnLength)))
     {
+        WlanCryptoWipe(KeyData, sizeof(KeyData));
         return ERROR_ACCESS_DENIED;
     }
 
     if (!TakeGtk(KeyData, KeyDataLength, Gtk, &GtkLength, &GtkKeyId))
+    {
+        WlanCryptoWipe(KeyData, sizeof(KeyData));
         return ERROR_ACCESS_DENIED;
+    }
+    WlanCryptoWipe(KeyData, sizeof(KeyData));
 
-    /* Message 4: acknowledge, signed with the KCK */
     BuildKeyFrame(Session, Reply, KEY_INFO_PAIRWISE | KEY_INFO_MIC | KEY_INFO_SECURE, Eapol + 9,
                   NULL, NULL, 0);
-    Error = SendKeyFrame(Session, Reply, 0);
-    if (Error == ERROR_SUCCESS)
+    Error = SendKeyFrame(Session, Session->Tptk, Reply, 0);
+
+    /* A retransmitted message 3 is answered again, but the key it carries is
+       already in and is not installed twice */
+    if (Error == ERROR_SUCCESS &&
+        (!Session->PairwiseInstalled || !RtlEqualMemory(Session->Ptk, Session->Tptk, WLAN_PTK_LENGTH)))
+    {
+        RtlCopyMemory(Session->Ptk, Session->Tptk, WLAN_PTK_LENGTH);
         Error = InstallPairwiseKey(Session);
+        Session->PairwiseInstalled = (Error == ERROR_SUCCESS);
+    }
+
     if (Error == ERROR_SUCCESS)
         Error = InstallGroupKey(Session, Gtk, GtkLength, GtkKeyId);
 
     WlanCryptoWipe(Gtk, sizeof(Gtk));
-    WlanCryptoWipe(KeyData, sizeof(KeyData));
     return Error;
+}
+
+/* Message 1 of the group key handshake: a new group key. Answered with message 2 */
+static
+DWORD
+GroupMessage1(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _Inout_updates_bytes_(Length) PUCHAR Eapol,
+    _In_ ULONG Length)
+{
+    UCHAR Reply[ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH];
+    UCHAR KeyData[WLAN_MAX_FRAME];
+    UCHAR Gtk[32];
+    ULONG KeyDataLength;
+    ULONG GtkLength;
+    ULONG GtkKeyId;
+    DWORD Error;
+
+    if (!Session->PairwiseInstalled || !(ReadBe16(Eapol + 5) & KEY_INFO_ENCRYPTED))
+        return ERROR_INVALID_DATA;
+
+    if (!CheckMic(Session, Session->Ptk, Eapol, Length))
+        return ERROR_ACCESS_DENIED;
+
+    RtlCopyMemory(Session->ReplayCounter, Eapol + 9, 8);
+    Session->ReplayValid = TRUE;
+
+    if (!TakeKeyData(Session->Ptk + WLAN_KCK_LENGTH, Eapol, Length, KeyData, sizeof(KeyData), &KeyDataLength) ||
+        !TakeGtk(KeyData, KeyDataLength, Gtk, &GtkLength, &GtkKeyId))
+    {
+        WlanCryptoWipe(KeyData, sizeof(KeyData));
+        return ERROR_ACCESS_DENIED;
+    }
+    WlanCryptoWipe(KeyData, sizeof(KeyData));
+
+    BuildKeyFrame(Session, Reply, KEY_INFO_MIC | KEY_INFO_SECURE, Eapol + 9, NULL, NULL, 0);
+    Error = SendKeyFrame(Session, Session->Ptk, Reply, 0);
+    if (Error == ERROR_SUCCESS)
+        Error = InstallGroupKey(Session, Gtk, GtkLength, GtkKeyId);
+
+    WlanCryptoWipe(Gtk, sizeof(Gtk));
+    return Error;
+}
+
+/* Hands a received EAPOL-Key frame to the step of the exchange it belongs to */
+static
+DWORD
+ProcessKeyFrame(
+    _Inout_ PWLAN_KEY_SESSION Session,
+    _Inout_updates_bytes_(Length) PUCHAR Frame,
+    _In_ ULONG Length)
+{
+    static const UCHAR ZeroMac[6] = { 0 };
+    PUCHAR Eapol = Frame + ETH_HEADER_LENGTH;
+    USHORT KeyInfo;
+    ULONG EapolLength;
+
+    if (Length < ETH_HEADER_LENGTH + EAPOL_FIXED_LENGTH)
+        return ERROR_INVALID_DATA;
+
+    /* The MIC covers the key frame itself, not any padding after it */
+    EapolLength = EAPOL_FIXED_LENGTH + ReadBe16(Eapol + 97);
+    if (EapolLength > Length - ETH_HEADER_LENGTH || Eapol[4] != EAPOL_KEY_DESCRIPTOR_RSN)
+        return ERROR_INVALID_DATA;
+
+    /* Only the AP we associated with, which the completion may not have named */
+    if (RtlEqualMemory(Session->Bssid, ZeroMac, 6))
+        RtlCopyMemory(Session->Bssid, Frame + 6, 6);
+    else if (!RtlEqualMemory(Frame + 6, Session->Bssid, 6))
+        return ERROR_INVALID_DATA;
+
+    /* Once a signed frame was taken, anything not newer is a replay */
+    if (Session->ReplayValid && memcmp(Eapol + 9, Session->ReplayCounter, 8) <= 0)
+        return ERROR_INVALID_DATA;
+
+    KeyInfo = ReadBe16(Eapol + 5);
+    if (!(KeyInfo & KEY_INFO_ACK))
+        return ERROR_INVALID_DATA;
+
+    if (KeyInfo & KEY_INFO_PAIRWISE)
+    {
+        if (!(KeyInfo & KEY_INFO_MIC))
+            return PairwiseMessage1(Session, Eapol, EapolLength);
+        return PairwiseMessage3(Session, Eapol, EapolLength);
+    }
+
+    if (KeyInfo & KEY_INFO_MIC)
+        return GroupMessage1(Session, Eapol, EapolLength);
+
+    return ERROR_INVALID_DATA;
+}
+
+/* Runs the 4-way handshake until the keys are in. Frames that fit no step are
+   dropped, a failed MIC ends it */
+static
+DWORD
+FourWayHandshake(
+    _Inout_ PWLAN_KEY_SESSION Session)
+{
+    UCHAR Frame[WLAN_MAX_FRAME];
+    ULONG Deadline = GetTickCount() + HANDSHAKE_TIMEOUT_MS;
+    ULONG Length;
+    DWORD Error;
+
+    while (!Session->PairwiseInstalled || Session->GtkLength == 0)
+    {
+        ULONG Now = GetTickCount();
+
+        if ((LONG)(Deadline - Now) <= 0)
+            return ERROR_TIMEOUT;
+
+        Error = SupplicantReadEapol(Session->Device, Frame, sizeof(Frame), &Length, Deadline - Now);
+        if (Error != ERROR_SUCCESS)
+            return Error;
+
+        Error = ProcessKeyFrame(Session, Frame, Length);
+        if (Error != ERROR_SUCCESS && Error != ERROR_INVALID_DATA)
+            return Error;
+    }
+
+    return ERROR_SUCCESS;
+}
+
+/* Sessions */
+
+static CRITICAL_SECTION SessionLock;
+static LIST_ENTRY SessionList;
+
+/* Answers the AP for as long as the connection lasts: group key updates,
+   PTK rekeys and a message 3 whose message 4 got lost */
+static
+DWORD
+WINAPI
+SupplicantThread(
+    _In_ LPVOID Context)
+{
+    PWLAN_KEY_SESSION Session = Context;
+    UCHAR Frame[WLAN_MAX_FRAME];
+    ULONG Length;
+    DWORD Error;
+
+    while (WaitForSingleObject(Session->StopEvent, 0) == WAIT_TIMEOUT)
+    {
+        Error = SupplicantReadEapol(Session->Device, Frame, sizeof(Frame), &Length, SESSION_POLL_MS);
+        if (Error == ERROR_SUCCESS)
+            ProcessKeyFrame(Session, Frame, Length);
+        else if (Error != ERROR_TIMEOUT)
+            WaitForSingleObject(Session->StopEvent, SESSION_POLL_MS);
+    }
+
+    return 0;
+}
+
+static
+VOID
+FreeSession(
+    _In_ _Post_invalid_ PWLAN_KEY_SESSION Session)
+{
+    if (Session->Thread != NULL)
+        CloseHandle(Session->Thread);
+    if (Session->StopEvent != NULL)
+        CloseHandle(Session->StopEvent);
+    if (Session->Interface != NULL)
+        CloseHandle(Session->Interface);
+    if (Session->Device != NULL)
+        CloseHandle(Session->Device);
+
+    WlanCryptoWipe(Session, sizeof(*Session));
+    HeapFree(GetProcessHeap(), 0, Session);
+}
+
+VOID
+WlanSupplicantInitialize(VOID)
+{
+    InitializeCriticalSection(&SessionLock);
+    InitializeListHead(&SessionList);
 }
 
 /**
  * @brief
- * Connects to a WPA2-PSK network: associates open, runs the host handshake and
- * installs the keys.
+ * Ends the supplicant session of an interface, if it has one, before the
+ * interface disconnects or connects somewhere else.
+ */
+VOID
+WlanStopSupplicant(
+    _In_ const GUID *InterfaceGuid)
+{
+    PWLAN_KEY_SESSION Session = NULL;
+    PLIST_ENTRY Entry;
+
+    EnterCriticalSection(&SessionLock);
+    for (Entry = SessionList.Flink; Entry != &SessionList; Entry = Entry->Flink)
+    {
+        PWLAN_KEY_SESSION This = CONTAINING_RECORD(Entry, WLAN_KEY_SESSION, ListEntry);
+
+        if (IsEqualGUID(&This->InterfaceGuid, InterfaceGuid))
+        {
+            RemoveEntryList(&This->ListEntry);
+            Session = This;
+            break;
+        }
+    }
+    LeaveCriticalSection(&SessionLock);
+
+    if (Session == NULL)
+        return;
+
+    SetEvent(Session->StopEvent);
+    WaitForSingleObject(Session->Thread, INFINITE);
+    FreeSession(Session);
+}
+
+/**
+ * @brief
+ * Connects to a WPA2-PSK network: associates open, runs the host handshake,
+ * installs the keys, and stays to answer the AP's later key updates.
  */
 DWORD
 WlanConnectWpa(
@@ -1023,13 +1263,14 @@ WlanConnectWpa(
     Session = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*Session));
     if (Session == NULL)
         return ERROR_NOT_ENOUGH_MEMORY;
+    Session->InterfaceGuid = *InterfaceGuid;
     Session->GroupCipher = WLAN_CIPHER_CCMP;
 
     WlanCryptoInitialize();
+    Error = ERROR_GEN_FAILURE;
     if (!WlanCryptoPbkdf2Sha1(PassphraseBytes, PassphraseLength, Ssid->ucSSID, Ssid->uSSIDLength,
                               4096, Session->Pmk, WLAN_PMK_LENGTH))
     {
-        Error = ERROR_GEN_FAILURE;
         goto Cleanup;
     }
 
@@ -1041,6 +1282,11 @@ WlanConnectWpa(
 
     Session->Interface = WlanOpenInterface(InterfaceGuid);
     if (Session->Interface == NULL)
+        goto Cleanup;
+
+    Error = ERROR_NOT_ENOUGH_MEMORY;
+    Session->StopEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (Session->StopEvent == NULL)
         goto Cleanup;
 
     SupplicantSetOid(Session->Device, OID_GEN_CURRENT_PACKET_FILTER, &Filter, sizeof(Filter));
@@ -1084,14 +1330,25 @@ WlanConnectWpa(
     Error = WaitForAssociation(Session);
     if (Error == ERROR_SUCCESS)
         Error = FourWayHandshake(Session);
+    if (Error != ERROR_SUCCESS)
+        goto Cleanup;
+
+    Session->Thread = CreateThread(NULL, 0, SupplicantThread, Session, 0, NULL);
+    if (Session->Thread == NULL)
+    {
+        /* The keys are in, only later rekeys go unanswered */
+        Error = ERROR_SUCCESS;
+        goto Cleanup;
+    }
+
+    EnterCriticalSection(&SessionLock);
+    InsertTailList(&SessionList, &Session->ListEntry);
+    LeaveCriticalSection(&SessionLock);
+    Session = NULL;
 
 Cleanup:
-    if (Session->Interface != NULL)
-        CloseHandle(Session->Interface);
-    if (Session->Device != NULL)
-        CloseHandle(Session->Device);
     WlanCryptoWipe(PassphraseBytes, sizeof(PassphraseBytes));
-    WlanCryptoWipe(Session, sizeof(*Session));
-    HeapFree(GetProcessHeap(), 0, Session);
+    if (Session != NULL)
+        FreeSession(Session);
     return Error;
 }

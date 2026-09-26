@@ -80,6 +80,13 @@ WlanDisconnect(
 
 /* supplicant.c: the host WPA2-PSK 4-way handshake */
 
+VOID
+WlanSupplicantInitialize(VOID);
+
+VOID
+WlanStopSupplicant(
+    _In_ const GUID *InterfaceGuid);
+
 DWORD
 WlanConnectWpa(
     _In_ const GUID *InterfaceGuid,
