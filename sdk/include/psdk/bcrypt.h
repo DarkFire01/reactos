@@ -50,6 +50,7 @@ typedef NTSTATUS *PNTSTATUS;
 #define BCRYPT_HASH_LENGTH          L"HashDigestLength"
 #define BCRYPT_HASH_OID_LIST        L"HashOIDList"
 #define BCRYPT_KEY_LENGTH           L"KeyLength"
+#define BCRYPT_MESSAGE_BLOCK_LENGTH L"MessageBlockLength"
 #define BCRYPT_KEY_LENGTHS          L"KeyLengths"
 #define BCRYPT_KEY_OBJECT_LENGTH    L"KeyObjectLength"
 #define BCRYPT_KEY_STRENGTH         L"KeyStrength"
@@ -438,6 +439,7 @@ typedef PVOID BCRYPT_SECRET_HANDLE;
 #define BCRYPT_USE_SYSTEM_PREFERRED_RNG  0x00000002
 
 /* Flags for BCryptOpenAlgorithmProvider */
+#define BCRYPT_PROV_DISPATCH        0x00000001
 #define BCRYPT_ALG_HANDLE_HMAC_FLAG 0x00000008
 
 /* Flags for BCryptEncrypt/BCryptDecrypt */
