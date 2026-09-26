@@ -1313,3 +1313,15 @@
 @ stdcall -version=0x602+ WaitOnAddress(ptr ptr long long)
 @ stdcall -version=0x602+ WakeByAddressAll(ptr)
 @ stdcall -version=0x602+ WakeByAddressSingle(ptr)
+@ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
+@ stdcall -version=0x600+ EventSetInformation(int64 long ptr long) ntdll.EtwEventSetInformation
+@ stdcall -version=0x600+ EventUnregister(int64) ntdll.EtwEventUnregister
+@ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr) ntdll.EtwEventWriteTransfer
+@ stdcall -version=0x600+ GetNumaProcessorNodeEx(ptr ptr)
+@ stdcall -version=0x600+ GetThreadIdealProcessorEx(long ptr)
+@ stdcall -version=0x600+ PerfCreateInstance(ptr ptr wstr long)
+@ stdcall -version=0x600+ PerfDeleteInstance(ptr ptr)
+@ stdcall -version=0x600+ PerfSetCounterRefValue(ptr ptr long ptr)
+@ stdcall -version=0x600+ PerfSetCounterSetInfo(ptr ptr long)
+@ stdcall -version=0x600+ PerfStartProvider(ptr ptr ptr)
+@ stdcall -version=0x600+ PerfStopProvider(ptr)
