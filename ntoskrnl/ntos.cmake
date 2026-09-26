@@ -168,6 +168,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/clock.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/config.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/devqueue.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/hvl.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/dpc.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/ksr.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/eventobj.c

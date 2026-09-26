@@ -25,18 +25,6 @@ ExTryQueueWorkItem(
     _Inout_ PWORK_QUEUE_ITEM WorkItem,
     _In_ WORK_QUEUE_TYPE QueueType);
 
-/* HYPERVISOR LIBRARY *********************************************************/
-
-NTKRNLVISTAAPI
-BOOLEAN
-NTAPI
-HvlIsAnyHypervisorPresent(VOID);
-
-NTKRNLVISTAAPI
-ULONG
-NTAPI
-HvlQueryActiveHypervisorProcessorCount(VOID);
-
 /* ERRATA MANAGER *************************************************************/
 
 NTKRNLVISTAAPI
