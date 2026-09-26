@@ -1863,7 +1863,6 @@
 
 # Memory Manager
 @ stdcall -version=0x602+ MmAllocateContiguousNodeMemory(long int64 int64 int64 long long)
-@ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ stdcall -version=0xa00+ MmMapIoSpaceEx(int64 long long)
 @ stdcall -version=0x600+ MmMapViewInSystemSpaceEx(ptr ptr ptr ptr long)
 @ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)
