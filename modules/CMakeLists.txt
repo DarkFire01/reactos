@@ -17,7 +17,7 @@ endif()
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/AHK_Tests/)
     add_subdirectory(AHK_Tests)
-endif()
+endif()#
 
 ## Extra files for the Boot/Live CD. You need to put them under "[boot|live]cd_extras"
 ## using the same layout as you want them to be in the CD.
