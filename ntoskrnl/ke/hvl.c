@@ -75,6 +75,7 @@ static ULONG HvlpPrivileges;
 static PVOID HvlpHypercallPage;
 static PMDL HvlpHypercallMdl;
 static HVL_INTERRUPT_CALLBACK HvlpInterruptCallbacks[HVL_MAXIMUM_INTERRUPT_CALLBACKS];
+static PVOID HvlpWheaCallback;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -377,6 +378,185 @@ NTAPI
 KePrepareToDispatchVirtualProcessor(VOID)
 {
     NOTHING;
+}
+
+/**
+ * @brief
+ * Returns the processors the hypervisor is running on.
+ *
+ * @param[out] ActiveProcessors
+ * Receives the affinity of the processors that are up.
+ *
+ * @param[in] Group
+ * The processor group being asked about.
+ */
+NTSTATUS
+NTAPI
+HvlQueryActiveProcessors(
+    _Out_ PKAFFINITY ActiveProcessors,
+    _In_ ULONG Group)
+{
+    if (!HvlpHypervisorPresent)
+        return STATUS_NOT_SUPPORTED;
+
+    if (Group != 0)
+        return STATUS_INVALID_PARAMETER;
+
+    /* Every processor that exists is one the hypervisor is running on */
+    if (KeNumberProcessors >= (sizeof(KAFFINITY) * 8))
+        *ActiveProcessors = (KAFFINITY)~0;
+    else
+        *ActiveProcessors = ((KAFFINITY)1 << KeNumberProcessors) - 1;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Returns the cost of reaching one node's memory from another.
+ *
+ * @return
+ * STATUS_SUCCESS with the distance every node has to itself, because there is
+ * only ever one node here.
+ */
+NTSTATUS
+NTAPI
+HvlQueryNumaDistance(
+    _In_ USHORT FromNode,
+    _In_ USHORT ToNode,
+    _Out_ PULONG Distance)
+{
+    if (!HvlpHypervisorPresent)
+        return STATUS_NOT_SUPPORTED;
+
+    if ((FromNode != 0) || (ToNode != 0))
+        return STATUS_INVALID_PARAMETER;
+
+    /* The ACPI SLIT calls a node's distance to itself ten */
+    *Distance = 10;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Returns where a processor sits in the topology of the machine.
+ *
+ * @param[in] ProcessorIndex
+ * The processor being asked about.
+ *
+ * @param[in] Flags
+ * Reserved.
+ *
+ * @param[out] NodeNumber
+ * Receives the node the processor belongs to.
+ *
+ * @param[out] ApicId
+ * Receives the identifier the interrupt controller knows it by.
+ */
+NTSTATUS
+NTAPI
+HvlQueryProcessorTopology(
+    _In_ ULONG ProcessorIndex,
+    _In_ ULONG Flags,
+    _Out_ PUSHORT NodeNumber,
+    _Out_ PULONG ApicId)
+{
+    PKPRCB Prcb;
+
+    UNREFERENCED_PARAMETER(Flags);
+
+    if (!HvlpHypervisorPresent)
+        return STATUS_NOT_SUPPORTED;
+
+    if (ProcessorIndex >= (ULONG)KeNumberProcessors)
+        return STATUS_INVALID_PARAMETER;
+
+    Prcb = KiProcessorBlock[ProcessorIndex];
+    if (Prcb == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    *NodeNumber = 0;
+    *ApicId = Prcb->InitialApicId;
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+HvlQueryProcessorTopologyEx(
+    _In_ ULONG ProcessorIndex,
+    _Out_ PUSHORT NodeNumber,
+    _Out_opt_ PULONG ApicId,
+    _Out_opt_ PUSHORT Group,
+    _Out_opt_ PULONG GroupIndex)
+{
+    ULONG Identifier = 0;
+    NTSTATUS Status;
+
+    Status = HvlQueryProcessorTopology(ProcessorIndex, 0, NodeNumber, &Identifier);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (ApicId != NULL)
+        *ApicId = Identifier;
+
+    if (Group != NULL)
+        *Group = 0;
+
+    if (GroupIndex != NULL)
+        *GroupIndex = ProcessorIndex;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Returns the highest processor and node the machine has.
+ */
+NTSTATUS
+NTAPI
+HvlQueryProcessorTopologyHighestId(
+    _Out_ PULONG HighestProcessor,
+    _Out_ PUSHORT HighestNode)
+{
+    if (!HvlpHypervisorPresent)
+        return STATUS_NOT_SUPPORTED;
+
+    *HighestProcessor = (ULONG)KeNumberProcessors - 1;
+    *HighestNode = 0;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Asks to be told when the hypervisor reports a hardware error.
+ *
+ * @remarks
+ * Remembered and never called, as nothing routes hypervisor error reports yet.
+ */
+NTSTATUS
+NTAPI
+HvlRegisterWheaErrorNotification(
+    _In_ PVOID Callback)
+{
+    if (!HvlpHypervisorPresent)
+        return STATUS_NOT_SUPPORTED;
+
+    HvlpWheaCallback = Callback;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+HvlUnregisterWheaErrorNotification(
+    _In_ PVOID Callback)
+{
+    if (HvlpWheaCallback != Callback)
+        return STATUS_NOT_FOUND;
+
+    HvlpWheaCallback = NULL;
+    return STATUS_SUCCESS;
 }
 
 /* EOF */
