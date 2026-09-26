@@ -1871,21 +1871,13 @@ MmAccessFault(IN ULONG FaultCode,
             }
         }
 
-#if defined(_M_AMD64)
         /* An instruction fetch from a valid but non-executable page is a real
-           fault. The page is present, so returning success would re-run the
-           same address and spin forever, so surface the caller and fail. */
-        if (TrapInformation != NULL &&
-            ((PKTRAP_FRAME)TrapInformation)->Rip == (ULONG64)Address)
+           fault, returning success would only run into it again */
+        if (MI_IS_INSTRUCTION_FETCH(FaultCode))
         {
-            PKTRAP_FRAME TrapFrame = TrapInformation;
-            PULONG_PTR Stack = (PULONG_PTR)TrapFrame->Rsp;
-            DbgPrint("MM: execute fault at IRQL %u on non-executable %p\n", OldIrql, Address);
-            DbgPrint("MM: RSP %p stack %p %p %p %p\n",
-                     TrapFrame->Rsp, Stack[0], Stack[1], Stack[2], Stack[3]);
+            DPRINT1("Execute fault at IRQL %u on non-executable %p\n", OldIrql, Address);
             return STATUS_IN_PAGE_ERROR | 0x10000000;
         }
-#endif
 
         /* Nothing is actually wrong */
         DPRINT1("Fault at IRQL %u is ok (%p)\n", OldIrql, Address);
