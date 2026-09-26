@@ -172,3 +172,19 @@ else()
 endif()
 
 add_dependencies(symcrypt psdk)
+
+# The same library for drivers, with the kernel mode environment in place of
+# the user mode one.
+set(KM_SOURCE ${SOURCE})
+list(REMOVE_ITEM KM_SOURCE lib/env_windowsUserModeWin8_1.c lib/cpuid_um.c)
+list(APPEND KM_SOURCE lib/env_reactosKernelmode.c)
+
+add_library(symcryptk ${KM_SOURCE})
+
+if(MSVC)
+    target_compile_options(symcryptk PRIVATE /wd4068)
+else()
+    target_compile_options(symcryptk PRIVATE -Wno-pointer-sign -Wno-unused-function -Wno-missing-braces -Wno-unused-but-set-variable -Wno-comment -Wno-parentheses)
+endif()
+
+add_dependencies(symcryptk psdk)
