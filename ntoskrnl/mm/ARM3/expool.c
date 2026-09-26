@@ -2634,6 +2634,10 @@ ExFreePoolWithTag(IN PVOID P,
                 DPRINT1("Verifier not yet supported\n");
             }
 
+            /* A timer still queued in the pages would be run after they are gone */
+            if (ExpPoolFlags & EXP_POOL_FLAG_CHECK_TIMERS)
+                KeCheckForTimer(P, PageCount << PAGE_SHIFT);
+
             //
             // FIXME: Many debugging checks go here
             //
@@ -2701,6 +2705,10 @@ ExFreePoolWithTag(IN PVOID P,
     ExpRemovePoolTracker(Tag,
                          BlockSize * POOL_BLOCK_SIZE,
                          Entry->PoolType - 1);
+
+    /* A timer still queued in the block would be run after it is gone */
+    if (ExpPoolFlags & EXP_POOL_FLAG_CHECK_TIMERS)
+        KeCheckForTimer(Entry, BlockSize * POOL_BLOCK_SIZE);
 
     //
     // Release pool quota, if any

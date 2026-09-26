@@ -135,6 +135,7 @@ extern LIST_ENTRY KeBugcheckCallbackListHead, KeBugcheckReasonCallbackListHead;
 extern KSPIN_LOCK BugCheckCallbackLock;
 extern KDPC KiTimerExpireDpc;
 extern KTIMER_TABLE_ENTRY KiTimerTableListHead[TIMER_TABLE_SIZE];
+extern ULONG KeTimerCheckFlags;
 extern FAST_MUTEX KiGenericCallDpcMutex;
 extern LIST_ENTRY KiProfileListHead, KiProfileSourceListHead;
 extern KSPIN_LOCK KiProfileLock;
@@ -298,6 +299,13 @@ FASTCALL
 KiInsertTreeTimer(
     IN PKTIMER Timer,
     IN LARGE_INTEGER Interval
+);
+
+VOID
+NTAPI
+KeCheckForTimer(
+    _In_ PVOID BlockStart,
+    _In_ SIZE_T BlockSize
 );
 
 VOID

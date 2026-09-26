@@ -689,6 +689,29 @@ LoadSetupInf(
 }
 
 /**
+ * @brief   Tells whether a UEFI firmware can start the loader off the install partition.
+ *
+ * The loader goes under the default boot path, which the firmware looks up on
+ * any FAT volume of an MBR disk, not only on one typed as a system partition.
+ **/
+static
+BOOLEAN
+CanUefiBootFromPartition(
+    _In_ PPARTENTRY PartEntry)
+{
+    PVOLENTRY Volume = PartEntry->Volume;
+
+    if (!PartEntry->IsPartitioned || !Volume)
+        return FALSE;
+
+    if (PartEntry->DiskEntry->DiskStyle != PARTITION_STYLE_MBR)
+        return FALSE;
+
+    return (_wcsicmp(Volume->Info.FileSystem, L"FAT") == 0) ||
+           (_wcsicmp(Volume->Info.FileSystem, L"FAT32") == 0);
+}
+
+/**
  * @brief   Find or set the active system partition.
  **/
 BOOLEAN
@@ -720,6 +743,14 @@ InitSystemPartition(
         {
             SystemPartition = FindEfiSystemPartition(PartitionList,
                                                      InstallPartition->DiskEntry);
+
+            /* With no room for a system partition, the install partition has to do */
+            if (!SystemPartition && CanUefiBootFromPartition(InstallPartition))
+            {
+                DPRINT1("No EFI system partition, starting off install partition %lu\n",
+                        InstallPartition->PartitionNumber);
+                SystemPartition = InstallPartition;
+            }
         }
         else
         {
