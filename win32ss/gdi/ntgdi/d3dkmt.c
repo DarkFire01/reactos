@@ -200,8 +200,18 @@ DxgkpOpenAdapterForDevice(
     DL_OPEN_ADAPTER Open;
     NTSTATUS Status;
 
-    if ((pGraphicsDevice == NULL) || (pGraphicsDevice->DxgAdapter == NULL))
+    if (pGraphicsDevice == NULL)
+    {
+        DPRINT1("win32k: D3DKMT adapter open on a display with no graphics device\n");
         return STATUS_NOT_SUPPORTED;
+    }
+
+    if (pGraphicsDevice->DxgAdapter == NULL)
+    {
+        DPRINT1("win32k: D3DKMT adapter open on %S, which WDDM does not drive\n",
+                pGraphicsDevice->szNtDeviceName);
+        return STATUS_NOT_SUPPORTED;
+    }
 
     pfnOpenAdapter = (PFN_DL_OPEN_ADAPTER)DxgkGetD3DKMTSlot(DXGK_SLOT_OpenAdapter);
     if (pfnOpenAdapter == NULL)
@@ -384,10 +394,14 @@ NtGdiDdDDIOpenAdapterFromHdc(_Inout_ D3DKMT_OPENADAPTERFROMHDC* unnamedParam1)
 
     pdc = DC_LockDc(hDc);
     if (pdc == NULL)
+    {
+        DPRINT1("win32k: D3DKMTOpenAdapterFromHdc on invalid DC %p\n", hDc);
         return STATUS_INVALID_PARAMETER;
+    }
 
     if (pdc->ppdev == NULL)
     {
+        DPRINT1("win32k: D3DKMTOpenAdapterFromHdc on DC %p with no PDEV\n", hDc);
         DC_UnlockDc(pdc);
         return STATUS_INVALID_PARAMETER;
     }
@@ -1657,17 +1671,14 @@ NtGdiDdDDIEnumAdapters2(_Inout_ PVOID unnamedParam1)
     return pfn(unnamedParam1);
 }
 
-/* dxgkrnl writes the handle back unprobed, so it only ever sees a kernel copy */
+/* dxgkrnl reads and writes the caller's buffer itself, clamped to user space, so it gets it as is */
 NTSTATUS
 APIENTRY
 NtGdiDdDDIOpenAdapterFromLuid(_Inout_ PVOID unnamedParam1)
 {
-    D3DKMT_OPENADAPTERFROMLUID *UserOpen = unnamedParam1;
-    D3DKMT_OPENADAPTERFROMLUID Open;
     PFN_DXGK_D3DKMT pfn;
-    NTSTATUS Status;
 
-    if (!UserOpen)
+    if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
     pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenAdapterFromLuid);
@@ -1677,36 +1688,7 @@ NtGdiDdDDIOpenAdapterFromLuid(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    _SEH2_TRY
-    {
-        ProbeForWrite(UserOpen, sizeof(*UserOpen), sizeof(ULONG));
-        Open = *UserOpen;
-        Status = STATUS_SUCCESS;
-    }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-    {
-        Status = _SEH2_GetExceptionCode();
-    }
-    _SEH2_END;
-
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    Status = pfn(&Open);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    _SEH2_TRY
-    {
-        UserOpen->hAdapter = Open.hAdapter;
-    }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-    {
-        Status = _SEH2_GetExceptionCode();
-    }
-    _SEH2_END;
-
-    return Status;
+    return pfn(unnamedParam1);
 }
 
 /*
