@@ -714,6 +714,51 @@ WdiSet(
     }
 }
 
+/*
+ * The dot11 method OIDs. A method request carries its input and output in one
+ * buffer, and its results land in the method fields, not the set ones.
+ */
+static
+NDIS_STATUS
+NTAPI
+WdiMethod(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PNDIS_OID_REQUEST OidRequest)
+{
+    PVOID Buffer = OidRequest->DATA.METHOD_INFORMATION.InformationBuffer;
+    ULONG OutputLength = OidRequest->DATA.METHOD_INFORMATION.OutputBufferLength;
+    PDOT11_STATUS_INDICATION Confirm;
+
+    OidRequest->DATA.METHOD_INFORMATION.BytesRead = OidRequest->DATA.METHOD_INFORMATION.InputBufferLength;
+
+    switch (OidRequest->DATA.METHOD_INFORMATION.Oid)
+    {
+        case OID_DOT11_ENUM_BSS_LIST:
+            return WdiQueryBssList(Adapter,
+                                   Buffer,
+                                   OutputLength,
+                                   &OidRequest->DATA.METHOD_INFORMATION.BytesWritten,
+                                   &OidRequest->DATA.METHOD_INFORMATION.BytesNeeded);
+
+        case OID_DOT11_RESET_REQUEST:
+            if (OutputLength < sizeof(*Confirm))
+            {
+                OidRequest->DATA.METHOD_INFORMATION.BytesNeeded = sizeof(*Confirm);
+                return NDIS_STATUS_BUFFER_TOO_SHORT;
+            }
+
+            /* The upper edge keeps no state a reset has to clear */
+            Confirm = Buffer;
+            Confirm->uStatusType = DOT11_STATUS_RESET_CONFIRM;
+            Confirm->ndisStatus = NDIS_STATUS_SUCCESS;
+            OidRequest->DATA.METHOD_INFORMATION.BytesWritten = sizeof(*Confirm);
+            return NDIS_STATUS_SUCCESS;
+
+        default:
+            return NDIS_STATUS_NOT_SUPPORTED;
+    }
+}
+
 /**
  * @brief
  * The dot11 OIDs the management service sends the adapter.
@@ -735,11 +780,7 @@ WdiHandleOidRequest(
             return WdiSet(Adapter, OidRequest);
 
         case NdisRequestMethod:
-            /* The method OIDs here read from and write to the same buffer */
-            OidRequest->DATA.SET_INFORMATION.Oid = OidRequest->DATA.METHOD_INFORMATION.Oid;
-            OidRequest->DATA.SET_INFORMATION.InformationBuffer = OidRequest->DATA.METHOD_INFORMATION.InformationBuffer;
-            OidRequest->DATA.SET_INFORMATION.InformationBufferLength = OidRequest->DATA.METHOD_INFORMATION.InputBufferLength;
-            return WdiSet(Adapter, OidRequest);
+            return WdiMethod(Adapter, OidRequest);
 
         default:
             return NDIS_STATUS_NOT_SUPPORTED;
