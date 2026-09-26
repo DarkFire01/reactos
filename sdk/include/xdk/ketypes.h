@@ -330,6 +330,34 @@ typedef struct _KBUGCHECK_ADD_PAGES {
   _Out_ ULONG_PTR Count;
 } KBUGCHECK_ADD_PAGES, *PKBUGCHECK_ADD_PAGES;
 
+typedef struct _KADDRESS_RANGE {
+  _Field_size_bytes_(Size) PVOID Address;
+  SIZE_T Size;
+} KADDRESS_RANGE, *PKADDRESS_RANGE;
+
+typedef struct _KADDRESS_RANGE_DESCRIPTOR {
+  _Field_size_(AddressRangeCount) CONST KADDRESS_RANGE *AddressRanges;
+  SIZE_T AddressRangeCount;
+} KADDRESS_RANGE_DESCRIPTOR, *PKADDRESS_RANGE_DESCRIPTOR;
+
+/* Largest span of memory a triage dump data array may describe */
+#define KE_MAX_TRIAGE_DUMP_DATA_MEMORY_SIZE (0x2000000)
+
+typedef struct _KTRIAGE_DUMP_DATA_ARRAY {
+  LIST_ENTRY List;
+  _Field_range_(0, NumBlocksTotal)
+  ULONG NumBlocksUsed;
+  ULONG NumBlocksTotal;
+  ULONG DataSize;
+  ULONG MaxDataSize;
+  ULONG ComponentNameBufferLength;
+  PUCHAR ComponentName;
+  _Field_size_part_(NumBlocksTotal, NumBlocksUsed)
+  KADDRESS_RANGE Blocks[ANYSIZE_ARRAY];
+} KTRIAGE_DUMP_DATA_ARRAY, *PKTRIAGE_DUMP_DATA_ARRAY;
+
+#define KB_TRIAGE_DUMP_DATA_FLAG_BUGCHECK_ACTIVE 0x00000001ul
+
 typedef struct _KBUGCHECK_SECONDARY_DUMP_DATA {
   _In_ PVOID InBuffer;
   _In_ ULONG InBufferLength;
