@@ -127,3 +127,77 @@ BOOL WINAPI InitializeCriticalSectionEx(OUT LPCRITICAL_SECTION lpCriticalSection
     return TRUE;
 }
 
+
+/**
+ * @brief
+ * Waits for the value at an address to change.
+ *
+ * @param[in] Address
+ * The value to watch.
+ *
+ * @param[in] CompareAddress
+ * The value it currently holds. The wait returns at once if the two already
+ * differ.
+ *
+ * @param[in] AddressSize
+ * How wide the value is, which may be one, two, four or eight bytes.
+ *
+ * @param[in] Milliseconds
+ * How long to wait, or INFINITE to wait for as long as it takes.
+ *
+ * @return
+ * TRUE once the value changed, FALSE with the last error set otherwise.
+ */
+BOOL
+WINAPI
+WaitOnAddress(
+    _In_ volatile VOID *Address,
+    _In_ PVOID CompareAddress,
+    _In_ SIZE_T AddressSize,
+    _In_ DWORD Milliseconds)
+{
+    LARGE_INTEGER Timeout;
+    NTSTATUS Status;
+
+    if (Milliseconds == INFINITE)
+    {
+        Status = RtlWaitOnAddress((PVOID)Address, CompareAddress, AddressSize, NULL);
+    }
+    else
+    {
+        Timeout.QuadPart = Milliseconds * -10000LL;
+        Status = RtlWaitOnAddress((PVOID)Address, CompareAddress, AddressSize, &Timeout);
+    }
+
+    if (Status != STATUS_SUCCESS)
+    {
+        SetLastError(RtlNtStatusToDosError(Status));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Wakes one waiter on an address.
+ */
+VOID
+WINAPI
+WakeByAddressSingle(
+    _In_ PVOID Address)
+{
+    RtlWakeAddressSingle(Address);
+}
+
+/**
+ * @brief
+ * Wakes every waiter on an address.
+ */
+VOID
+WINAPI
+WakeByAddressAll(
+    _In_ PVOID Address)
+{
+    RtlWakeAddressAll(Address);
+}

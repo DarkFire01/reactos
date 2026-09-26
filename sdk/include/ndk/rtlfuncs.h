@@ -5018,6 +5018,30 @@ NTAPI
 RtlReleaseSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
 
 //
+// Address Wait Functions
+//
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlWaitOnAddress(
+    _In_ PVOID Address,
+    _In_ PVOID CompareAddress,
+    _In_ SIZE_T AddressSize,
+    _In_opt_ PLARGE_INTEGER Timeout);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlWakeAddressSingle(
+    _In_ PVOID Address);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlWakeAddressAll(
+    _In_ PVOID Address);
+
+//
 // Secure Memory Functions
 //
 #ifdef NTOS_MODE_USER
