@@ -6,6 +6,12 @@ Signature = "$ReactOS$"
 ; no - unattend setup disabled
 UnattendSetupEnabled = no
 
+; Set LiveCdRunEnabled to yes to take the live environment straight to the
+; desktop, without asking and without installing anything.
+; yes - go to the desktop
+; no - ask
+LiveCdRunEnabled = yes
+
 ; Install to \Device\Harddisk0\Partition1\ReactOS
 DestinationDiskNumber = 0
 DestinationPartitionNumber = 1
