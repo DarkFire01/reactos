@@ -223,13 +223,6 @@ WdiQuery(
 
     switch (Oid)
     {
-        case OID_DOT11_ENUM_BSS_LIST:
-            return WdiQueryBssList(Adapter,
-                                   Buffer,
-                                   BufferLength,
-                                   &OidRequest->DATA.QUERY_INFORMATION.BytesWritten,
-                                   &OidRequest->DATA.QUERY_INFORMATION.BytesNeeded);
-
         case OID_DOT11_CURRENT_OPERATION_MODE:
         {
             DOT11_CURRENT_OPERATION_MODE Mode;
@@ -704,7 +697,6 @@ WdiSet(
             return NDIS_STATUS_SUCCESS;
         }
 
-        case OID_DOT11_RESET_REQUEST:
         case OID_DOT11_FLUSH_BSS_LIST:
             OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
             return NDIS_STATUS_SUCCESS;
