@@ -805,6 +805,7 @@
 @ extern MmHighestUserAddress
 @ stdcall MmIsAddressValid(ptr)
 @ stdcall MmIsDriverVerifying(ptr)
+@ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ stdcall MmIsIoSpaceActive(long long ptr)
 @ stdcall MmIsNonPagedSystemAddressValid(ptr)
 @ stdcall MmIsRecursiveIoFault()
