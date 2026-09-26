@@ -30,6 +30,8 @@
 #define OID_DOT11_CURRENT_OPERATION_MODE            (OID_DOT11_NDIS_START + 8)
 #define OID_DOT11_OP(Seq)                           ((0x0E000000U) | (0x01U << 16) | (0x01U << 8) | (Seq))
 #define OID_DOT11_DESIRED_SSID_LIST                 OID_DOT11_OP(0x7C)
+#define OID_DOT11_EXCLUDE_UNENCRYPTED               OID_DOT11_OP(130)
+#define OID_DOT11_PRIVACY_EXEMPTION_LIST            OID_DOT11_OP(132)
 #define OID_DOT11_CONNECT_REQUEST                   OID_DOT11_OP(0x81)
 #define OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM  OID_DOT11_OP(133)
 #define OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM  OID_DOT11_OP(135)
@@ -46,6 +48,9 @@
 #define NDIS_PACKET_TYPE_BROADCAST                  0x0004
 
 #define DOT11_DIR_BOTH                              3
+
+#define WLAN_EXEMPT_ON_KEY_MAPPING_KEY_UNAVAILABLE  2
+#define WLAN_EXEMPT_BOTH                            3
 
 /* dot11 values equal the WDI ones, so these carry straight down */
 #define WLAN_AUTH_RSNA_PSK                          7
@@ -116,6 +121,17 @@ typedef struct _WLAN_ALGO_LIST
     ULONG uTotalNumOfEntries;
     ULONG AlgorithmIds[1];
 } WLAN_ALGO_LIST;
+
+/* DOT11_PRIVACY_EXEMPTION_LIST with one entry */
+typedef struct _WLAN_EXEMPTION_LIST
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG uNumOfEntries;
+    ULONG uTotalNumOfEntries;
+    USHORT usEtherType;
+    USHORT usExemptionActionType;
+    USHORT usExemptionPacketType;
+} WLAN_EXEMPTION_LIST;
 
 /* A key in the layout the dot11 key values take for CCMP and BIP: the 48-bit
    receive counter, padding, the key length, then the key */
@@ -1282,6 +1298,8 @@ WlanConnectWpa(
     UCHAR ListBuffer[FIELD_OFFSET(WLAN_SSID_LIST, SSIDs) + sizeof(DOT11_SSID)];
     PWLAN_SSID_LIST List = (PWLAN_SSID_LIST)ListBuffer;
     WLAN_ALGO_LIST Algo;
+    WLAN_EXEMPTION_LIST Exemptions;
+    BOOLEAN Exclude = TRUE;
     ULONG PassphraseLength;
     ULONG Filter = NDIS_PACKET_TYPE_DIRECTED | NDIS_PACKET_TYPE_MULTICAST | NDIS_PACKET_TYPE_BROADCAST;
     ULONG Mode = DOT11_OPERATION_MODE_EXTENSIBLE_STATION;
@@ -1334,6 +1352,19 @@ WlanConnectWpa(
     Algo.Header.Size = sizeof(Algo);
     Algo.uNumOfEntries = 1;
     Algo.uTotalNumOfEntries = 1;
+
+    /* Plaintext data is dropped, except EAPOL until the pairwise key is in */
+    RtlZeroMemory(&Exemptions, sizeof(Exemptions));
+    Exemptions.Header.Type = NDIS_WLAN_OBJECT_TYPE_DEFAULT;
+    Exemptions.Header.Revision = 1;
+    Exemptions.Header.Size = sizeof(Exemptions);
+    Exemptions.uNumOfEntries = 1;
+    Exemptions.uTotalNumOfEntries = 1;
+    WriteBe16((PUCHAR)&Exemptions.usEtherType, ETHERTYPE_EAPOL);
+    Exemptions.usExemptionActionType = WLAN_EXEMPT_ON_KEY_MAPPING_KEY_UNAVAILABLE;
+    Exemptions.usExemptionPacketType = WLAN_EXEMPT_BOTH;
+    WlanSetOid(Session->Interface, OID_DOT11_PRIVACY_EXEMPTION_LIST, &Exemptions, sizeof(Exemptions));
+    WlanSetOid(Session->Interface, OID_DOT11_EXCLUDE_UNENCRYPTED, &Exclude, sizeof(Exclude));
 
     Algo.AlgorithmIds[0] = WLAN_AUTH_RSNA_PSK;
     WlanSetOid(Session->Interface, OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM, &Algo, sizeof(Algo));

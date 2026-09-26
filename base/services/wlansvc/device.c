@@ -30,6 +30,8 @@
     ((0x0E000000U) | (0x01U << 16) | (0x01U << 8) | 0x81)
 #define OID_DOT11_DISCONNECT_REQUEST \
     ((0x0E000000U) | (0x01U << 16) | (0x01U << 8) | 0x8E)
+#define OID_DOT11_EXCLUDE_UNENCRYPTED \
+    ((0x0E000000U) | (0x01U << 16) | (0x01U << 8) | 130)
 
 #define OID_GEN_MEDIA_CONNECT_STATUS                0x00010114
 #define OID_GEN_PHYSICAL_MEDIUM                     0x00010202
@@ -836,6 +838,7 @@ WlanConnect(
     DOT11_CURRENT_OPERATION_MODE Mode;
     UCHAR ListBuffer[FIELD_OFFSET(WLAN_DOT11_SSID_LIST, SSIDs) + sizeof(DOT11_SSID)];
     PWLAN_DOT11_SSID_LIST List = (PWLAN_DOT11_SSID_LIST)ListBuffer;
+    BOOLEAN Exclude = FALSE;
     ULONG Connect = 0;
     ULONG Elapsed;
     DWORD Error;
@@ -847,6 +850,9 @@ WlanConnect(
     RtlZeroMemory(&Mode, sizeof(Mode));
     Mode.uCurrentOpMode = DOT11_OPERATION_MODE_EXTENSIBLE_STATION;
     WlanSetOid(Interface, OID_DOT11_CURRENT_OPERATION_MODE, &Mode, sizeof(Mode));
+
+    /* An open network carries plaintext data */
+    WlanSetOid(Interface, OID_DOT11_EXCLUDE_UNENCRYPTED, &Exclude, sizeof(Exclude));
 
     RtlZeroMemory(ListBuffer, sizeof(ListBuffer));
     List->Header.Type = NDIS_WLAN_OBJECT_TYPE_DEFAULT;
