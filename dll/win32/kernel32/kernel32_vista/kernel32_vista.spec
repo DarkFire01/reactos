@@ -88,3 +88,6 @@
 @ stdcall WaitForThreadpoolTimerCallbacks(ptr long) ntdll_vista.TpWaitForTimer
 @ stdcall WaitForThreadpoolWaitCallbacks(ptr long) ntdll_vista.TpWaitForWait
 @ stdcall WaitForThreadpoolWorkCallbacks(ptr long) ntdll_vista.TpWaitForWork
+@ stdcall WaitOnAddress(ptr ptr long long)
+@ stdcall WakeByAddressAll(ptr)
+@ stdcall WakeByAddressSingle(ptr)

@@ -1310,3 +1310,6 @@
 ;@ stdcall -arch=x86_64 uaw_wcsicmp(wstr wstr)
 ;@ stdcall -arch=x86_64 uaw_wcslen(wstr)
 ;@ stdcall -arch=x86_64 uaw_wcsrchr(wstr long)
+@ stdcall -version=0x602+ WaitOnAddress(ptr ptr long long)
+@ stdcall -version=0x602+ WakeByAddressAll(ptr)
+@ stdcall -version=0x602+ WakeByAddressSingle(ptr)
