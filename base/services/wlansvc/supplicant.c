@@ -117,18 +117,28 @@ typedef struct _WLAN_ALGO_LIST
     ULONG AlgorithmIds[1];
 } WLAN_ALGO_LIST;
 
-#include <pshpack1.h>
+/* A key in the layout the dot11 key values take for CCMP and BIP: the 48-bit
+   receive counter, padding, the key length, then the key */
+#define WLAN_KEY_ALGO_LENGTH_OFFSET                 8
+#define WLAN_KEY_ALGO_KEY_OFFSET                    12
+#define WLAN_KEY_ALGO_MAX                           (WLAN_KEY_ALGO_KEY_OFFSET + 32)
+
+/* DOT11_BYTE_ARRAY around one DOT11_CIPHER_KEY_MAPPING_KEY_VALUE */
 typedef struct _WLAN_KEY_MAPPING_KEY
 {
+    NDIS_OBJECT_HEADER Header;
+    ULONG uNumOfBytes;
+    ULONG uTotalNumOfBytes;
     UCHAR PeerMacAddr[6];
     ULONG AlgorithmId;
     ULONG Direction;
     BOOLEAN bDelete;
     BOOLEAN bStatic;
     USHORT usKeyLength;
-    UCHAR ucKey[32];
+    UCHAR ucKey[WLAN_KEY_ALGO_MAX];
 } WLAN_KEY_MAPPING_KEY;
 
+/* DOT11_CIPHER_DEFAULT_KEY_VALUE */
 typedef struct _WLAN_DEFAULT_KEY
 {
     NDIS_OBJECT_HEADER Header;
@@ -138,9 +148,8 @@ typedef struct _WLAN_DEFAULT_KEY
     BOOLEAN bDelete;
     BOOLEAN bStatic;
     USHORT usKeyLength;
-    UCHAR ucKey[32];
+    UCHAR ucKey[WLAN_KEY_ALGO_MAX];
 } WLAN_DEFAULT_KEY;
-#include <poppack.h>
 
 /* One connection's keys and the handles they are driven through */
 typedef struct _WLAN_KEY_SESSION
@@ -795,6 +804,26 @@ TakeKeyData(
                                KeyData, Size, KeyDataLength);
 }
 
+/* Lays a key out the way the CCMP and BIP key values carry it */
+static
+USHORT
+PackKey(
+    _Out_writes_bytes_(WLAN_KEY_ALGO_MAX) PUCHAR Value,
+    _In_reads_bytes_opt_(6) const UCHAR *Rsc,
+    _In_reads_bytes_(KeyLength) const UCHAR *Key,
+    _In_ ULONG KeyLength)
+{
+    RtlZeroMemory(Value, WLAN_KEY_ALGO_KEY_OFFSET);
+    if (Rsc != NULL)
+        RtlCopyMemory(Value, Rsc, 6);
+
+    Value[WLAN_KEY_ALGO_LENGTH_OFFSET + 0] = (UCHAR)KeyLength;
+    Value[WLAN_KEY_ALGO_LENGTH_OFFSET + 1] = (UCHAR)(KeyLength >> 8);
+    RtlCopyMemory(Value + WLAN_KEY_ALGO_KEY_OFFSET, Key, KeyLength);
+
+    return (USHORT)(WLAN_KEY_ALGO_KEY_OFFSET + KeyLength);
+}
+
 static
 DWORD
 InstallPairwiseKey(
@@ -804,14 +833,20 @@ InstallPairwiseKey(
     DWORD Error;
 
     RtlZeroMemory(&Pairwise, sizeof(Pairwise));
+    Pairwise.Header.Type = NDIS_WLAN_OBJECT_TYPE_DEFAULT;
+    Pairwise.Header.Revision = 1;
+    Pairwise.Header.Size = sizeof(Pairwise);
     RtlCopyMemory(Pairwise.PeerMacAddr, Session->Bssid, 6);
     Pairwise.AlgorithmId = WLAN_CIPHER_CCMP;
     Pairwise.Direction = DOT11_DIR_BOTH;
-    Pairwise.usKeyLength = WLAN_TK_LENGTH;
-    RtlCopyMemory(Pairwise.ucKey, Session->Ptk + WLAN_KCK_LENGTH + WLAN_KEK_LENGTH, WLAN_TK_LENGTH);
+    Pairwise.usKeyLength = PackKey(Pairwise.ucKey, NULL,
+                                   Session->Ptk + WLAN_KCK_LENGTH + WLAN_KEK_LENGTH, WLAN_TK_LENGTH);
+    Pairwise.uNumOfBytes = FIELD_OFFSET(WLAN_KEY_MAPPING_KEY, ucKey) -
+                           FIELD_OFFSET(WLAN_KEY_MAPPING_KEY, PeerMacAddr) + Pairwise.usKeyLength;
+    Pairwise.uTotalNumOfBytes = Pairwise.uNumOfBytes;
 
     Error = WlanSetOid(Session->Interface, OID_DOT11_CIPHER_KEY_MAPPING_KEY, &Pairwise,
-                       FIELD_OFFSET(WLAN_KEY_MAPPING_KEY, ucKey) + WLAN_TK_LENGTH);
+                       FIELD_OFFSET(WLAN_KEY_MAPPING_KEY, ucKey) + Pairwise.usKeyLength);
 
     WlanCryptoWipe(&Pairwise, sizeof(Pairwise));
     return Error;
@@ -823,6 +858,7 @@ static
 DWORD
 InstallGroupKey(
     _Inout_ PWLAN_KEY_SESSION Session,
+    _In_reads_bytes_(6) const UCHAR *Rsc,
     _In_reads_bytes_(GtkLength) const UCHAR *Gtk,
     _In_ ULONG GtkLength,
     _In_ ULONG GtkKeyId)
@@ -844,11 +880,10 @@ InstallGroupKey(
     Group.uKeyIndex = GtkKeyId;
     Group.AlgorithmId = Session->GroupCipher;
     RtlFillMemory(Group.MacAddr, 6, 0xFF);
-    Group.usKeyLength = (USHORT)GtkLength;
-    RtlCopyMemory(Group.ucKey, Gtk, GtkLength);
+    Group.usKeyLength = PackKey(Group.ucKey, Rsc, Gtk, GtkLength);
 
     Error = WlanSetOid(Session->Interface, OID_DOT11_CIPHER_DEFAULT_KEY, &Group,
-                       FIELD_OFFSET(WLAN_DEFAULT_KEY, ucKey) + GtkLength);
+                       FIELD_OFFSET(WLAN_DEFAULT_KEY, ucKey) + Group.usKeyLength);
     WlanCryptoWipe(&Group, sizeof(Group));
     if (Error == ERROR_SUCCESS)
         Error = WlanSetOid(Session->Interface, OID_DOT11_CIPHER_DEFAULT_KEY_ID, &KeyId, sizeof(KeyId));
@@ -1012,8 +1047,9 @@ PairwiseMessage3(
         Session->PairwiseInstalled = (Error == ERROR_SUCCESS);
     }
 
+    /* The Key RSC field starts the group key's receive counter */
     if (Error == ERROR_SUCCESS)
-        Error = InstallGroupKey(Session, Gtk, GtkLength, GtkKeyId);
+        Error = InstallGroupKey(Session, Eapol + 65, Gtk, GtkLength, GtkKeyId);
 
     WlanCryptoWipe(Gtk, sizeof(Gtk));
     return Error;
@@ -1055,7 +1091,7 @@ GroupMessage1(
     BuildKeyFrame(Session, Reply, KEY_INFO_MIC | KEY_INFO_SECURE, Eapol + 9, NULL, NULL, 0);
     Error = SendKeyFrame(Session, Session->Ptk, Reply, 0);
     if (Error == ERROR_SUCCESS)
-        Error = InstallGroupKey(Session, Gtk, GtkLength, GtkKeyId);
+        Error = InstallGroupKey(Session, Eapol + 65, Gtk, GtkLength, GtkKeyId);
 
     WlanCryptoWipe(Gtk, sizeof(Gtk));
     return Error;

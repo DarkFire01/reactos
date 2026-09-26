@@ -563,7 +563,90 @@ WdiDefaultPort(
     return NULL;
 }
 
-/* Installs one temporal key the host handshake derived, as WDI_SET_ADD_CIPHER_KEYS */
+/* Key material as a dot11 key value carries it */
+typedef struct _WDI_KEY_MATERIAL
+{
+    const UCHAR *Rsc;
+    const UCHAR *Key;
+    ULONG KeyLength;
+    const UCHAR *Mic;
+    ULONG MicLength;
+} WDI_KEY_MATERIAL, *PWDI_KEY_MATERIAL;
+
+/* Finds the key and its receive counter in the ucKey of a dot11 key value.
+   WEP keys are raw, the rest come in the DOT11_KEY_ALGO layout of the cipher */
+static
+NDIS_STATUS
+WdiUnpackKey(
+    _In_ ULONG Cipher,
+    _In_reads_bytes_(Length) const UCHAR *Value,
+    _In_ ULONG Length,
+    _Out_ PWDI_KEY_MATERIAL Material)
+{
+    ULONG KeyOffset;
+    ULONG KeyLength;
+    ULONG MicLength = 0;
+
+    RtlZeroMemory(Material, sizeof(*Material));
+
+    switch (Cipher)
+    {
+        case DOT11_CIPHER_ALGO_WEP40:
+        case DOT11_CIPHER_ALGO_WEP104:
+        case DOT11_CIPHER_ALGO_WEP:
+            Material->Key = Value;
+            Material->KeyLength = Length;
+            return NDIS_STATUS_SUCCESS;
+
+        case DOT11_CIPHER_ALGO_TKIP:
+            KeyOffset = FIELD_OFFSET(DOT11_KEY_ALGO_TKIP_MIC, ucTKIPMICKeys);
+            if (Length < KeyOffset)
+                return NDIS_STATUS_INVALID_LENGTH;
+            KeyLength = ((const DOT11_KEY_ALGO_TKIP_MIC UNALIGNED *)Value)->ulTKIPKeyLength;
+            MicLength = ((const DOT11_KEY_ALGO_TKIP_MIC UNALIGNED *)Value)->ulMICKeyLength;
+            break;
+
+        case DOT11_CIPHER_ALGO_CCMP:
+            KeyOffset = FIELD_OFFSET(DOT11_KEY_ALGO_CCMP, ucCCMPKey);
+            if (Length < KeyOffset)
+                return NDIS_STATUS_INVALID_LENGTH;
+            KeyLength = ((const DOT11_KEY_ALGO_CCMP UNALIGNED *)Value)->ulCCMPKeyLength;
+            break;
+
+        case DOT11_CIPHER_ALGO_GCMP:
+            KeyOffset = FIELD_OFFSET(DOT11_KEY_ALGO_GCMP, ucGCMPKey);
+            if (Length < KeyOffset)
+                return NDIS_STATUS_INVALID_LENGTH;
+            KeyLength = ((const DOT11_KEY_ALGO_GCMP UNALIGNED *)Value)->ulGCMPKeyLength;
+            break;
+
+        case DOT11_CIPHER_ALGO_BIP:
+            KeyOffset = FIELD_OFFSET(DOT11_KEY_ALGO_BIP, ucBIPKey);
+            if (Length < KeyOffset)
+                return NDIS_STATUS_INVALID_LENGTH;
+            KeyLength = ((const DOT11_KEY_ALGO_BIP UNALIGNED *)Value)->ulBIPKeyLength;
+            break;
+
+        default:
+            return NDIS_STATUS_NOT_SUPPORTED;
+    }
+
+    if (KeyLength > Length - KeyOffset || MicLength > Length - KeyOffset - KeyLength)
+        return NDIS_STATUS_INVALID_LENGTH;
+
+    /* Every one of these layouts starts with the 48-bit receive counter */
+    Material->Rsc = Value;
+    Material->Key = Value + KeyOffset;
+    Material->KeyLength = KeyLength;
+    if (MicLength != 0)
+    {
+        Material->Mic = Value + KeyOffset + KeyLength;
+        Material->MicLength = MicLength;
+    }
+    return NDIS_STATUS_SUCCESS;
+}
+
+/* Installs one key the host handshake derived, as WDI_SET_ADD_CIPHER_KEYS */
 static
 NDIS_STATUS
 WdiInstallCipherKey(
@@ -573,18 +656,16 @@ WdiInstallCipherKey(
     _In_ ULONG Cipher,
     _In_reads_bytes_opt_(6) const UCHAR *PeerMac,
     _In_ ULONG KeyId,
-    _In_reads_bytes_(KeyLength) const UCHAR *Key,
-    _In_ ULONG KeyLength)
+    _In_ PWDI_KEY_MATERIAL Material)
 {
-    UCHAR Container[128];
-    UCHAR Message[160];
+    UCHAR Container[192];
+    UCHAR Message[224];
     UCHAR TypeInfo[13];
-    UCHAR Rsc[6];
     UINT32 KeyIdValue = KeyId;
     ULONG ContainerLength = 0;
     ULONG MessageLength = 0;
 
-    if (KeyLength == 0 || KeyLength > 32)
+    if (Material->KeyLength == 0 || Material->KeyLength > 32 || Material->MicLength > 16)
         return NDIS_STATUS_INVALID_LENGTH;
 
     if (PeerMac != NULL)
@@ -601,25 +682,47 @@ WdiInstallCipherKey(
     ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_TYPE_INFO,
                                  TypeInfo, sizeof(TypeInfo));
 
-    RtlZeroMemory(Rsc, sizeof(Rsc));
-    ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_RECEIVE_SEQUENCE_COUNT,
-                                 Rsc, sizeof(Rsc));
-
-    if (Cipher == WDI_CIPHER_ALGO_TKIP && KeyLength >= 32)
+    if (Material->Rsc != NULL)
     {
-        UCHAR TkipInfo[64];
-        ULONG TkipLength = 0;
-
-        /* A TKIP key is the 16 byte key then the two 8 byte MICs */
-        TkipLength += WdiTlvPut(TkipInfo + TkipLength, WDI_TLV_CIPHER_KEY_TKIP_KEY, Key, 16);
-        TkipLength += WdiTlvPut(TkipInfo + TkipLength, WDI_TLV_CIPHER_KEY_TKIP_MIC, Key + 16, 16);
-        ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_TKIP_INFO,
-                                     TkipInfo, (UINT16)TkipLength);
+        ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_RECEIVE_SEQUENCE_COUNT,
+                                     Material->Rsc, 6);
     }
-    else
+
+    switch (Cipher)
     {
-        ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_CCMP_KEY,
-                                     Key, (UINT16)KeyLength);
+        case DOT11_CIPHER_ALGO_TKIP:
+        {
+            UCHAR TkipInfo[64];
+            ULONG TkipLength = 0;
+
+            TkipLength += WdiTlvPut(TkipInfo + TkipLength, WDI_TLV_CIPHER_KEY_TKIP_KEY,
+                                    Material->Key, (UINT16)Material->KeyLength);
+            TkipLength += WdiTlvPut(TkipInfo + TkipLength, WDI_TLV_CIPHER_KEY_TKIP_MIC,
+                                    Material->Mic, (UINT16)Material->MicLength);
+            ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_TKIP_INFO,
+                                         TkipInfo, (UINT16)TkipLength);
+            break;
+        }
+
+        case DOT11_CIPHER_ALGO_CCMP:
+            ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_CCMP_KEY,
+                                         Material->Key, (UINT16)Material->KeyLength);
+            break;
+
+        case DOT11_CIPHER_ALGO_GCMP:
+            ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_GCMP_KEY,
+                                         Material->Key, (UINT16)Material->KeyLength);
+            break;
+
+        case DOT11_CIPHER_ALGO_BIP:
+            ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_BIP_KEY,
+                                         Material->Key, (UINT16)Material->KeyLength);
+            break;
+
+        default:
+            ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_WEP_KEY,
+                                         Material->Key, (UINT16)Material->KeyLength);
+            break;
     }
 
     MessageLength += WdiTlvPut(Message, WDI_TLV_SET_CIPHER_KEY_INFO, Container, (UINT16)ContainerLength);
@@ -721,26 +824,41 @@ WdiSet(
 
         case OID_DOT11_CIPHER_KEY_MAPPING_KEY:
         {
-            PDOT11_CIPHER_KEY_MAPPING_KEY_VALUE Key = Buffer;
+            /* A byte array around one key mapping key */
+            PDOT11_BYTE_ARRAY Array = Buffer;
+            PDOT11_CIPHER_KEY_MAPPING_KEY_VALUE Key;
             PWDI_PORT Port = WdiDefaultPort(Adapter);
+            WDI_KEY_MATERIAL Material;
+            NDIS_STATUS Status;
 
-            if (BufferLength < FIELD_OFFSET(DOT11_CIPHER_KEY_MAPPING_KEY_VALUE, ucKey))
+            if (BufferLength < FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer) ||
+                Array->uNumOfBytes > BufferLength - FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer) ||
+                Array->uNumOfBytes < FIELD_OFFSET(DOT11_CIPHER_KEY_MAPPING_KEY_VALUE, ucKey))
+            {
                 return NDIS_STATUS_INVALID_LENGTH;
+            }
             if (Port == NULL)
                 return NDIS_STATUS_INVALID_STATE;
-            if (FIELD_OFFSET(DOT11_CIPHER_KEY_MAPPING_KEY_VALUE, ucKey) + Key->usKeyLength > BufferLength)
+
+            Key = (PDOT11_CIPHER_KEY_MAPPING_KEY_VALUE)Array->ucBuffer;
+            if (Key->usKeyLength > Array->uNumOfBytes - FIELD_OFFSET(DOT11_CIPHER_KEY_MAPPING_KEY_VALUE, ucKey))
                 return NDIS_STATUS_INVALID_LENGTH;
 
-            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            Status = WdiUnpackKey(Key->AlgorithmId, Key->ucKey, Key->usKeyLength, &Material);
+            if (Status != NDIS_STATUS_SUCCESS)
+                return Status;
+
+            OidRequest->DATA.SET_INFORMATION.BytesRead = FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer) + Array->uNumOfBytes;
             return WdiInstallCipherKey(Adapter, Port->PortId, WDI_CIPHER_KEY_TYPE_PAIRWISE_KEY,
-                                       Key->AlgorithmId, Key->PeerMacAddr, 0,
-                                       Key->ucKey, Key->usKeyLength);
+                                       Key->AlgorithmId, Key->PeerMacAddr, 0, &Material);
         }
 
         case OID_DOT11_CIPHER_DEFAULT_KEY:
         {
             PDOT11_CIPHER_DEFAULT_KEY_VALUE Key = Buffer;
             PWDI_PORT Port = WdiDefaultPort(Adapter);
+            WDI_KEY_MATERIAL Material;
+            NDIS_STATUS Status;
 
             if (BufferLength < FIELD_OFFSET(DOT11_CIPHER_DEFAULT_KEY_VALUE, ucKey))
                 return NDIS_STATUS_INVALID_LENGTH;
@@ -749,10 +867,16 @@ WdiSet(
             if (FIELD_OFFSET(DOT11_CIPHER_DEFAULT_KEY_VALUE, ucKey) + Key->usKeyLength > BufferLength)
                 return NDIS_STATUS_INVALID_LENGTH;
 
+            Status = WdiUnpackKey(Key->AlgorithmId, Key->ucKey, Key->usKeyLength, &Material);
+            if (Status != NDIS_STATUS_SUCCESS)
+                return Status;
+
+            /* A BIP key is the IGTK that protects the group management frames */
             OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
-            return WdiInstallCipherKey(Adapter, Port->PortId, WDI_CIPHER_KEY_TYPE_GROUP_KEY,
-                                       Key->AlgorithmId, NULL, Key->uKeyIndex,
-                                       Key->ucKey, Key->usKeyLength);
+            return WdiInstallCipherKey(Adapter, Port->PortId,
+                                       Key->AlgorithmId == DOT11_CIPHER_ALGO_BIP ?
+                                       WDI_CIPHER_KEY_TYPE_IGTK : WDI_CIPHER_KEY_TYPE_GROUP_KEY,
+                                       Key->AlgorithmId, NULL, Key->uKeyIndex, &Material);
         }
 
         case OID_DOT11_CIPHER_DEFAULT_KEY_ID:
