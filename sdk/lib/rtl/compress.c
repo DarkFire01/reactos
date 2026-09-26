@@ -437,3 +437,31 @@ RtlReserveChunk(IN USHORT CompressionFormat,
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * Decompresses a buffer, taking the engine's workspace from the caller.
+ *
+ * @param[in] WorkSpace
+ * Scratch for the engine. Nothing here needs any, so it is taken and ignored.
+ */
+NTSTATUS
+NTAPI
+RtlDecompressBufferEx(
+    _In_ USHORT CompressionFormat,
+    _Out_writes_bytes_to_(UncompressedBufferSize, *FinalUncompressedSize) PUCHAR UncompressedBuffer,
+    _In_ ULONG UncompressedBufferSize,
+    _In_reads_bytes_(CompressedBufferSize) PUCHAR CompressedBuffer,
+    _In_ ULONG CompressedBufferSize,
+    _Out_ PULONG FinalUncompressedSize,
+    _In_ PVOID WorkSpace)
+{
+    UNREFERENCED_PARAMETER(WorkSpace);
+
+    return RtlDecompressBuffer(CompressionFormat,
+                               UncompressedBuffer,
+                               UncompressedBufferSize,
+                               CompressedBuffer,
+                               CompressedBufferSize,
+                               FinalUncompressedSize);
+}

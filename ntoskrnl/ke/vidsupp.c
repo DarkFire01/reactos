@@ -175,4 +175,252 @@ VslRetrieveMailbox(
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/**
+ * @brief
+ * Registers a driver extension, which is a table of routines one driver
+ * publishes for another to call through.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED. ReactOS has no extension host, so nothing can
+ * publish and nothing can be found.
+ */
+NTSTATUS
+NTAPI
+ExRegisterExtension(
+    _Out_ PVOID *Extension,
+    _In_ ULONG ExtensionId,
+    _In_ PVOID RegistrationInfo)
+{
+    UNREFERENCED_PARAMETER(ExtensionId);
+    UNREFERENCED_PARAMETER(RegistrationInfo);
+
+    *Extension = NULL;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+VOID
+NTAPI
+ExUnregisterExtension(
+    _In_ PVOID Extension)
+{
+    UNREFERENCED_PARAMETER(Extension);
+}
+
+/**
+ * @brief
+ * Reads how much of a file has ever been written, as the cache manager knows
+ * it.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED, which leaves the caller to read the file itself.
+ */
+NTSTATUS
+NTAPI
+FsRtlQueryCachedVdl(
+    _In_ PFILE_OBJECT FileObject,
+    _Out_ PLONGLONG Vdl)
+{
+    UNREFERENCED_PARAMETER(FileObject);
+
+    if (Vdl != NULL)
+        *Vdl = 0;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Sends a file system control straight to a file system from the kernel.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED.
+ */
+NTSTATUS
+NTAPI
+FsRtlKernelFsControlFile(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ ULONG FsControlCode,
+    _In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_opt_(OutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _Out_opt_ PULONG RetOutputBufferSize)
+{
+    UNREFERENCED_PARAMETER(FileObject);
+    UNREFERENCED_PARAMETER(FsControlCode);
+    UNREFERENCED_PARAMETER(InputBuffer);
+    UNREFERENCED_PARAMETER(InputBufferLength);
+    UNREFERENCED_PARAMETER(OutputBuffer);
+    UNREFERENCED_PARAMETER(OutputBufferLength);
+
+    if (RetOutputBufferSize != NULL)
+        *RetOutputBufferSize = 0;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Describes the memory the machine has, as ranges.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED. MmGetPhysicalMemoryRanges answers the same question
+ * in the form ReactOS keeps it.
+ */
+NTSTATUS
+NTAPI
+MmQueryMemoryRanges(
+    _Inout_ PVOID MemoryRangesInformation)
+{
+    UNREFERENCED_PARAMETER(MemoryRangesInformation);
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+NTAPI
+MmAllocateMemoryRanges(
+    _Inout_ PVOID MemoryRangesInformation)
+{
+    UNREFERENCED_PARAMETER(MemoryRangesInformation);
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+VOID
+NTAPI
+MmFreeMemoryRanges(
+    _In_ PVOID MemoryRangesInformation)
+{
+    UNREFERENCED_PARAMETER(MemoryRangesInformation);
+}
+
+/**
+ * @brief
+ * Describes a section object.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED.
+ */
+NTSTATUS
+NTAPI
+MmGetSectionInformation(
+    _In_ PVOID SectionObject,
+    _Out_writes_bytes_(Length) PVOID SectionInformation,
+    _In_ ULONG Length)
+{
+    UNREFERENCED_PARAMETER(SectionObject);
+    UNREFERENCED_PARAMETER(SectionInformation);
+    UNREFERENCED_PARAMETER(Length);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Takes a token that covers a run of non volatile memory, so that writes to
+ * it can be flushed to where they survive a reset.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED. No memory here is non volatile.
+ */
+NTSTATUS
+NTAPI
+RtlGetNonVolatileToken(
+    _In_ PVOID Buffer,
+    _In_ SIZE_T Size,
+    _Out_ PVOID *NonVolatileToken)
+{
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Size);
+
+    *NonVolatileToken = NULL;
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS
+NTAPI
+RtlFreeNonVolatileToken(
+    _In_ PVOID NonVolatileToken)
+{
+    UNREFERENCED_PARAMETER(NonVolatileToken);
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS
+NTAPI
+RtlFlushNonVolatileMemory(
+    _In_ PVOID NonVolatileToken,
+    _In_ PVOID Buffer,
+    _In_ SIZE_T Size,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(NonVolatileToken);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Size);
+    UNREFERENCED_PARAMETER(Flags);
+
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief
+ * Reserves or commits memory, taking the extended parameters of a newer
+ * caller.
+ *
+ * @param[in] ExtendedParameters
+ * Attributes for the memory, none of which ReactOS acts on. A caller that
+ * asked for one gets told so rather than silently getting memory without it.
+ */
+NTSTATUS
+NTAPI
+ZwAllocateVirtualMemoryEx(
+    _In_ HANDLE ProcessHandle,
+    _Inout_ PVOID *BaseAddress,
+    _Inout_ PSIZE_T RegionSize,
+    _In_ ULONG AllocationType,
+    _In_ ULONG PageProtection,
+    _Inout_updates_opt_(ParameterCount) PVOID ExtendedParameters,
+    _In_ ULONG ParameterCount)
+{
+    if ((ExtendedParameters != NULL) && (ParameterCount != 0))
+        return STATUS_NOT_SUPPORTED;
+
+    return ZwAllocateVirtualMemory(ProcessHandle,
+                                   BaseAddress,
+                                   0,
+                                   RegionSize,
+                                   AllocationType,
+                                   PageProtection);
+}
+
+/**
+ * @brief
+ * Reads the data behind a notification name.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED. ReactOS publishes no notification state.
+ */
+NTSTATUS
+NTAPI
+ZwQueryWnfStateData(
+    _In_ PVOID StateName,
+    _In_opt_ PVOID TypeId,
+    _In_opt_ PVOID ExplicitScope,
+    _Out_ PULONG ChangeStamp,
+    _Out_writes_bytes_opt_(*BufferSize) PVOID Buffer,
+    _Inout_ PULONG BufferSize)
+{
+    UNREFERENCED_PARAMETER(StateName);
+    UNREFERENCED_PARAMETER(TypeId);
+    UNREFERENCED_PARAMETER(ExplicitScope);
+    UNREFERENCED_PARAMETER(Buffer);
+
+    if (ChangeStamp != NULL)
+        *ChangeStamp = 0;
+
+    if (BufferSize != NULL)
+        *BufferSize = 0;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 /* EOF */

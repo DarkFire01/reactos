@@ -419,3 +419,35 @@ RtlCreateServiceSid(
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * Fills out the header of a security identifier, refusing one that will not
+ * fit in the room the caller has.
+ *
+ * @param[in] SidLength
+ * How many bytes the buffer holds.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_BUFFER_TOO_SMALL when the identifier would not
+ * fit, which is the whole reason this form of the call exists.
+ */
+NTSTATUS
+NTAPI
+RtlInitializeSidEx(
+    _Out_ PSID Sid_,
+    _In_ PSID_IDENTIFIER_AUTHORITY IdentifierAuthority,
+    _In_ UCHAR SubAuthorityCount)
+{
+    PISID Sid = Sid_;
+    PAGED_CODE_RTL();
+
+    if (SubAuthorityCount > SID_MAX_SUB_AUTHORITIES)
+        return STATUS_INVALID_PARAMETER;
+
+    Sid->Revision = SID_REVISION;
+    Sid->SubAuthorityCount = SubAuthorityCount;
+    Sid->IdentifierAuthority = *IdentifierAuthority;
+
+    return STATUS_SUCCESS;
+}
