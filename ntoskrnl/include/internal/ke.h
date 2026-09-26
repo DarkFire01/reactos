@@ -1177,6 +1177,15 @@ KeBugCheckUnicodeToAnsi(
     IN ULONG Length
 );
 
+// HACK: Copied from ketypes.h as we don't have the required NTDDI_VERSION
+#if (NTDDI_VERSION < NTDDI_WIN8)
+typedef struct _RTL_RB_TREE
+{
+    PRTL_BALANCED_NODE Root;
+    PRTL_BALANCED_NODE Min;
+} RTL_RB_TREE, *PRTL_RB_TREE;
+#endif
+
 // HACK: Copied from wdm.h as we don't have the required NTDDI_VERSION
 _IRQL_requires_max_(APC_LEVEL)
 _IRQL_requires_min_(PASSIVE_LEVEL)
