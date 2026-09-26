@@ -643,3 +643,112 @@ CoreSetInformation(
 {
     return CoreSyncRequest(Adapter, NdisRequestSetInformation, Oid, Buffer, Length, BytesRead, NULL);
 }
+
+/* Clones */
+
+/**
+ * @brief
+ * Makes a copy of an OID request for its holder to pass down as its own.
+ *
+ * @param[in] SourceHandle
+ * The handle of the driver making the copy.
+ *
+ * @param[in] OidRequest
+ * The request to copy. Only what describes the request is carried over, the
+ * results stay zero.
+ *
+ * @param[in] PoolTag
+ * The tag the copy is allocated with.
+ *
+ * @param[out] ClonedOidRequest
+ * Receives the copy, which NdisFreeCloneOidRequest releases.
+ *
+ * @return
+ * NDIS_STATUS_SUCCESS or NDIS_STATUS_RESOURCES.
+ */
+_Use_decl_annotations_
+NDIS_STATUS
+NTAPI
+NdisAllocateCloneOidRequest(
+    NDIS_HANDLE SourceHandle,
+    PNDIS_OID_REQUEST OidRequest,
+    UINT PoolTag,
+    PNDIS_OID_REQUEST *ClonedOidRequest)
+{
+    PNDIS_OID_REQUEST Clone;
+
+    UNREFERENCED_PARAMETER(SourceHandle);
+
+    *ClonedOidRequest = NULL;
+
+    Clone = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Clone), PoolTag);
+    if (Clone == NULL)
+        return NDIS_STATUS_RESOURCES;
+
+    RtlZeroMemory(Clone, sizeof(*Clone));
+    Clone->Header.Type = NDIS_OBJECT_TYPE_OID_REQUEST;
+
+    /* The copy is as new as the request it was made from */
+    if (OidRequest->Header.Revision >= NDIS_OID_REQUEST_REVISION_2 &&
+        OidRequest->Header.Size >= NDIS_SIZEOF_OID_REQUEST_REVISION_2)
+    {
+        Clone->Header.Revision = NDIS_OID_REQUEST_REVISION_2;
+        Clone->Header.Size = NDIS_SIZEOF_OID_REQUEST_REVISION_2;
+        Clone->SwitchId = OidRequest->SwitchId;
+        Clone->VPortId = OidRequest->VPortId;
+        Clone->Flags = OidRequest->Flags;
+    }
+    else
+    {
+        Clone->Header.Revision = NDIS_OID_REQUEST_REVISION_1;
+        Clone->Header.Size = NDIS_SIZEOF_OID_REQUEST_REVISION_1;
+    }
+
+    Clone->RequestType = OidRequest->RequestType;
+    Clone->PortNumber = OidRequest->PortNumber;
+    Clone->Timeout = OidRequest->Timeout;
+    Clone->RequestId = OidRequest->RequestId;
+    Clone->RequestHandle = OidRequest->RequestHandle;
+    Clone->SupportedRevision = OidRequest->SupportedRevision;
+
+    if (OidRequest->RequestType == NdisRequestMethod)
+    {
+        Clone->DATA.METHOD_INFORMATION.Oid = OidRequest->DATA.METHOD_INFORMATION.Oid;
+        Clone->DATA.METHOD_INFORMATION.InformationBuffer = OidRequest->DATA.METHOD_INFORMATION.InformationBuffer;
+        Clone->DATA.METHOD_INFORMATION.InputBufferLength = OidRequest->DATA.METHOD_INFORMATION.InputBufferLength;
+        Clone->DATA.METHOD_INFORMATION.OutputBufferLength = OidRequest->DATA.METHOD_INFORMATION.OutputBufferLength;
+        Clone->DATA.METHOD_INFORMATION.MethodId = OidRequest->DATA.METHOD_INFORMATION.MethodId;
+    }
+    else
+    {
+        /* Query and set share the layout up to the results */
+        Clone->DATA.QUERY_INFORMATION.Oid = OidRequest->DATA.QUERY_INFORMATION.Oid;
+        Clone->DATA.QUERY_INFORMATION.InformationBuffer = OidRequest->DATA.QUERY_INFORMATION.InformationBuffer;
+        Clone->DATA.QUERY_INFORMATION.InformationBufferLength = OidRequest->DATA.QUERY_INFORMATION.InformationBufferLength;
+    }
+
+    *ClonedOidRequest = Clone;
+    return NDIS_STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Releases a request made by NdisAllocateCloneOidRequest.
+ *
+ * @param[in] SourceHandle
+ * The handle of the driver that made it.
+ *
+ * @param[in] Request
+ * The copy.
+ */
+_Use_decl_annotations_
+VOID
+NTAPI
+NdisFreeCloneOidRequest(
+    NDIS_HANDLE SourceHandle,
+    PNDIS_OID_REQUEST Request)
+{
+    UNREFERENCED_PARAMETER(SourceHandle);
+
+    ExFreePoolWithTag(Request, 0);
+}
