@@ -1979,3 +1979,56 @@ MmAllocateNodePagesForMdlEx(
 }
 
 /* EOF */
+
+/**
+ * @brief
+ * Frees the pages an MDL describes, taking the flags a newer caller passes.
+ *
+ * @param[in] Flags
+ * Reserved. Nothing is done differently for any value of it.
+ */
+VOID
+NTAPI
+MmFreePagesFromMdlEx(
+    _In_ PMDL Mdl,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(Flags);
+
+    MmFreePagesFromMdl(Mdl);
+}
+
+/**
+ * @brief
+ * Allocates pages out of a memory partition and describes them with an MDL.
+ *
+ * @param[in] PartitionObject
+ * The partition to take from. ReactOS has one partition, the system one, so a
+ * request for any other cannot be served.
+ *
+ * @return
+ * The MDL, or NULL.
+ */
+PMDL
+NTAPI
+MmAllocatePartitionNodePagesForMdlEx(
+    _In_ PHYSICAL_ADDRESS LowAddress,
+    _In_ PHYSICAL_ADDRESS HighAddress,
+    _In_ PHYSICAL_ADDRESS SkipBytes,
+    _In_ SIZE_T TotalBytes,
+    _In_ MEMORY_CACHING_TYPE CacheType,
+    _In_ ULONG IdealNode,
+    _In_ ULONG Flags,
+    _In_opt_ PVOID PartitionObject)
+{
+    if (PartitionObject != NULL)
+        return NULL;
+
+    return MmAllocateNodePagesForMdlEx(LowAddress,
+                                       HighAddress,
+                                       SkipBytes,
+                                       TotalBytes,
+                                       CacheType,
+                                       IdealNode,
+                                       Flags);
+}

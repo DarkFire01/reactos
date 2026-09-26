@@ -41,14 +41,6 @@ KeQueryMaximumProcessorCount(VOID)
     return KeQueryActiveProcessorCount(NULL);
 }
 
-NTKRNLVISTAAPI
-USHORT
-NTAPI
-KeGetCurrentNodeNumber()
-{
-	return 0;
-}
-
 /*
  * ReactOS runs the single processor group model, so every logical processor
  * lives in group 0 and the group aware APIs below sit on the plain ones.
