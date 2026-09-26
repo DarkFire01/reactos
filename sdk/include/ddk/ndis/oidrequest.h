@@ -81,6 +81,22 @@ typedef struct _NDIS_OID_REQUEST
     RTL_SIZEOF_THROUGH_FIELD(NDIS_OID_REQUEST, Flags)
 #endif
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisAllocateCloneOidRequest(
+    _In_ NDIS_HANDLE SourceHandle,
+    _In_ PNDIS_OID_REQUEST OidRequest,
+    _In_ UINT PoolTag,
+    _Out_ PNDIS_OID_REQUEST *ClonedOidRequest);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFreeCloneOidRequest(
+    _In_ NDIS_HANDLE SourceHandle,
+    _In_ PNDIS_OID_REQUEST Request);
+
 #ifdef __cplusplus
 }
 #endif

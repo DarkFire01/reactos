@@ -6548,6 +6548,7 @@ typedef	NDIS_WAN_MAC_CHARACTERISTICS    *PNDIS_WAN_MAC_CHARACTERISTICS;
 #include <ndis/sgdma.h>
 #include <ndis/services.h>
 #include <ndis/port.h>
+#include <ndis/filter.h>
 #endif /* NDIS_SUPPORT_NDIS6 */
 
 #ifdef __cplusplus

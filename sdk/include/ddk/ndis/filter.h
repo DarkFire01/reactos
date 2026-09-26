@@ -1,0 +1,595 @@
+/*
+ * PROJECT:     ReactOS NDIS 6 support
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     NDIS light-weight filter drivers
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define NDIS_OBJECT_TYPE_FILTER_DRIVER_CHARACTERISTICS      0x8B
+#define NDIS_OBJECT_TYPE_FILTER_PARTIAL_CHARACTERISTICS     0x8C
+#define NDIS_OBJECT_TYPE_FILTER_ATTRIBUTES                  0x8D
+#define NDIS_OBJECT_TYPE_FILTER_ATTACH_PARAMETERS           0x99
+#define NDIS_OBJECT_TYPE_FILTER_PAUSE_PARAMETERS            0x9A
+#define NDIS_OBJECT_TYPE_FILTER_RESTART_PARAMETERS          0x9B
+
+/* Only ever passed by pointer here */
+struct _NDIS_HD_SPLIT_CURRENT_CONFIG;
+struct _NDIS_RECEIVE_FILTER_CAPABILITIES;
+struct _NDIS_NIC_SWITCH_CAPABILITIES;
+struct _NDIS_SRIOV_CAPABILITIES;
+struct _NDIS_NIC_SWITCH_INFO_ARRAY;
+struct _NDIS_SWITCH_OPTIONAL_HANDLERS;
+
+typedef PVOID NDIS_SWITCH_CONTEXT, *PNDIS_SWITCH_CONTEXT;
+
+/* Attach */
+
+#define NDIS_FILTER_ATTACH_FLAGS_IGNORE_MANDATORY           0x00000001
+
+#define NDIS_FILTER_ATTACH_PARAMETERS_REVISION_1            1
+#if (NDIS_SUPPORT_NDIS61)
+#define NDIS_FILTER_ATTACH_PARAMETERS_REVISION_2            2
+#endif
+#if (NDIS_SUPPORT_NDIS620)
+#define NDIS_FILTER_ATTACH_PARAMETERS_REVISION_3            3
+#endif
+#if (NDIS_SUPPORT_NDIS630)
+#define NDIS_FILTER_ATTACH_PARAMETERS_REVISION_4            4
+#endif
+
+typedef struct _NDIS_FILTER_ATTACH_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    NET_IFINDEX IfIndex;
+    NET_LUID NetLuid;
+    PNDIS_STRING FilterModuleGuidName;
+    NET_IFINDEX BaseMiniportIfIndex;
+    PNDIS_STRING BaseMiniportInstanceName;
+    PNDIS_STRING BaseMiniportName;
+    NDIS_MEDIA_CONNECT_STATE MediaConnectState;
+    NET_IF_MEDIA_DUPLEX_STATE MediaDuplexState;
+    ULONG64 XmitLinkSpeed;
+    ULONG64 RcvLinkSpeed;
+    NDIS_MEDIUM MiniportMediaType;
+    NDIS_PHYSICAL_MEDIUM MiniportPhysicalMediaType;
+    NDIS_HANDLE MiniportMediaSpecificAttributes;
+    PNDIS_OFFLOAD DefaultOffloadConfiguration;
+    USHORT MacAddressLength;
+    UCHAR CurrentMacAddress[NDIS_MAX_PHYS_ADDRESS_LENGTH];
+    NET_LUID BaseMiniportNetLuid;
+    NET_IFINDEX LowerIfIndex;
+    NET_LUID LowerIfNetLuid;
+    ULONG Flags;
+#if (NDIS_SUPPORT_NDIS61)
+    struct _NDIS_HD_SPLIT_CURRENT_CONFIG *HDSplitCurrentConfig;
+#endif
+#if (NDIS_SUPPORT_NDIS620)
+    struct _NDIS_RECEIVE_FILTER_CAPABILITIES *ReceiveFilterCapabilities;
+    PDEVICE_OBJECT MiniportPhysicalDeviceObject;
+    struct _NDIS_NIC_SWITCH_CAPABILITIES *NicSwitchCapabilities;
+#endif
+#if (NDIS_SUPPORT_NDIS630)
+    BOOLEAN BaseMiniportIfConnectorPresent;
+    struct _NDIS_SRIOV_CAPABILITIES *SriovCapabilities;
+    struct _NDIS_NIC_SWITCH_INFO_ARRAY *NicSwitchArray;
+#endif
+} NDIS_FILTER_ATTACH_PARAMETERS, *PNDIS_FILTER_ATTACH_PARAMETERS;
+
+#define NDIS_SIZEOF_FILTER_ATTACH_PARAMETERS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_ATTACH_PARAMETERS, Flags)
+#if (NDIS_SUPPORT_NDIS61)
+#define NDIS_SIZEOF_FILTER_ATTACH_PARAMETERS_REVISION_2 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_ATTACH_PARAMETERS, HDSplitCurrentConfig)
+#endif
+#if (NDIS_SUPPORT_NDIS620)
+#define NDIS_SIZEOF_FILTER_ATTACH_PARAMETERS_REVISION_3 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_ATTACH_PARAMETERS, NicSwitchCapabilities)
+#endif
+#if (NDIS_SUPPORT_NDIS630)
+#define NDIS_SIZEOF_FILTER_ATTACH_PARAMETERS_REVISION_4 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_ATTACH_PARAMETERS, NicSwitchArray)
+#endif
+
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(FILTER_ATTACH)
+NDIS_STATUS
+(NTAPI FILTER_ATTACH)(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ NDIS_HANDLE FilterDriverContext,
+    _In_ PNDIS_FILTER_ATTACH_PARAMETERS AttachParameters);
+typedef FILTER_ATTACH *FILTER_ATTACH_HANDLER;
+
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(FILTER_DETACH)
+VOID
+(NTAPI FILTER_DETACH)(
+    _In_ NDIS_HANDLE FilterModuleContext);
+typedef FILTER_DETACH *FILTER_DETACH_HANDLER;
+
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(FILTER_SET_MODULE_OPTIONS)
+NDIS_STATUS
+(NTAPI FILTER_SET_MODULE_OPTIONS)(
+    _In_ NDIS_HANDLE FilterModuleContext);
+typedef FILTER_SET_MODULE_OPTIONS *FILTER_SET_FILTER_MODULE_OPTIONS_HANDLER;
+
+/* Restart and pause */
+
+#define NDIS_FILTER_RESTART_PARAMETERS_REVISION_1           1
+
+typedef struct _NDIS_FILTER_RESTART_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    NDIS_MEDIUM MiniportMediaType;
+    NDIS_PHYSICAL_MEDIUM MiniportPhysicalMediaType;
+    PNDIS_RESTART_ATTRIBUTES RestartAttributes;
+    NET_IFINDEX LowerIfIndex;
+    NET_LUID LowerIfNetLuid;
+    ULONG Flags;
+} NDIS_FILTER_RESTART_PARAMETERS, *PNDIS_FILTER_RESTART_PARAMETERS;
+
+#define NDIS_SIZEOF__FILTER_RESTART_PARAMETERS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_RESTART_PARAMETERS, Flags)
+
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(FILTER_RESTART)
+NDIS_STATUS
+(NTAPI FILTER_RESTART)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_FILTER_RESTART_PARAMETERS RestartParameters);
+typedef FILTER_RESTART *FILTER_RESTART_HANDLER;
+
+#define NDIS_FILTER_PAUSE_PARAMETERS_REVISION_1             1
+
+typedef struct _NDIS_FILTER_PAUSE_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    ULONG PauseReason;
+} NDIS_FILTER_PAUSE_PARAMETERS, *PNDIS_FILTER_PAUSE_PARAMETERS;
+
+#define NDIS_SIZEOF_FILTER_PAUSE_PARAMETERS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_PAUSE_PARAMETERS, PauseReason)
+
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(FILTER_PAUSE)
+NDIS_STATUS
+(NTAPI FILTER_PAUSE)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_FILTER_PAUSE_PARAMETERS PauseParameters);
+typedef FILTER_PAUSE *FILTER_PAUSE_HANDLER;
+
+/* Requests and data */
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_OID_REQUEST)
+NDIS_STATUS
+(NTAPI FILTER_OID_REQUEST)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_OID_REQUEST OidRequest);
+typedef FILTER_OID_REQUEST *FILTER_OID_REQUEST_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_CANCEL_OID_REQUEST)
+VOID
+(NTAPI FILTER_CANCEL_OID_REQUEST)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PVOID RequestId);
+typedef FILTER_CANCEL_OID_REQUEST *FILTER_CANCEL_OID_REQUEST_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_SEND_NET_BUFFER_LISTS)
+VOID
+(NTAPI FILTER_SEND_NET_BUFFER_LISTS)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG SendFlags);
+typedef FILTER_SEND_NET_BUFFER_LISTS *FILTER_SEND_NET_BUFFER_LISTS_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_CANCEL_SEND_NET_BUFFER_LISTS)
+VOID
+(NTAPI FILTER_CANCEL_SEND_NET_BUFFER_LISTS)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PVOID CancelId);
+typedef FILTER_CANCEL_SEND_NET_BUFFER_LISTS *FILTER_CANCEL_SEND_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_RETURN_NET_BUFFER_LISTS)
+VOID
+(NTAPI FILTER_RETURN_NET_BUFFER_LISTS)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG ReturnFlags);
+typedef FILTER_RETURN_NET_BUFFER_LISTS *FILTER_RETURN_NET_BUFFER_LISTS_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_SEND_NET_BUFFER_LISTS_COMPLETE)
+VOID
+(NTAPI FILTER_SEND_NET_BUFFER_LISTS_COMPLETE)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ ULONG SendCompleteFlags);
+typedef FILTER_SEND_NET_BUFFER_LISTS_COMPLETE *FILTER_SEND_NET_BUFFER_LISTS_COMPLETE_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_RECEIVE_NET_BUFFER_LISTS)
+VOID
+(NTAPI FILTER_RECEIVE_NET_BUFFER_LISTS)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG NumberOfNetBufferLists,
+    _In_ ULONG ReceiveFlags);
+typedef FILTER_RECEIVE_NET_BUFFER_LISTS *FILTER_RECEIVE_NET_BUFFER_LISTS_HANDLER;
+
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(FILTER_DEVICE_PNP_EVENT_NOTIFY)
+VOID
+(NTAPI FILTER_DEVICE_PNP_EVENT_NOTIFY)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNET_DEVICE_PNP_EVENT NetDevicePnPEvent);
+typedef FILTER_DEVICE_PNP_EVENT_NOTIFY *FILTER_DEVICE_PNP_EVENT_NOTIFY_HANDLER;
+
+typedef
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(FILTER_NET_PNP_EVENT)
+NDIS_STATUS
+(NTAPI FILTER_NET_PNP_EVENT)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNET_PNP_EVENT_NOTIFICATION NetPnPEventNotification);
+typedef FILTER_NET_PNP_EVENT *FILTER_NET_PNP_EVENT_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_STATUS)
+VOID
+(NTAPI FILTER_STATUS)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_STATUS_INDICATION StatusIndication);
+typedef FILTER_STATUS *FILTER_STATUS_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_OID_REQUEST_COMPLETE)
+VOID
+(NTAPI FILTER_OID_REQUEST_COMPLETE)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_OID_REQUEST OidRequest,
+    _In_ NDIS_STATUS Status);
+typedef FILTER_OID_REQUEST_COMPLETE *FILTER_OID_REQUEST_COMPLETE_HANDLER;
+
+#if (NDIS_SUPPORT_NDIS61)
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_DIRECT_OID_REQUEST)
+NDIS_STATUS
+(NTAPI FILTER_DIRECT_OID_REQUEST)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_OID_REQUEST OidRequest);
+typedef FILTER_DIRECT_OID_REQUEST *FILTER_DIRECT_OID_REQUEST_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_DIRECT_OID_REQUEST_COMPLETE)
+VOID
+(NTAPI FILTER_DIRECT_OID_REQUEST_COMPLETE)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_OID_REQUEST OidRequest,
+    _In_ NDIS_STATUS Status);
+typedef FILTER_DIRECT_OID_REQUEST_COMPLETE *FILTER_DIRECT_OID_REQUEST_COMPLETE_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(FILTER_CANCEL_DIRECT_OID_REQUEST)
+VOID
+(NTAPI FILTER_CANCEL_DIRECT_OID_REQUEST)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PVOID RequestId);
+typedef FILTER_CANCEL_DIRECT_OID_REQUEST *FILTER_CANCEL_DIRECT_OID_REQUEST_HANDLER;
+#endif
+
+#if (NDIS_SUPPORT_NDIS680)
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_same_
+_Function_class_(FILTER_SYNCHRONOUS_OID_REQUEST)
+NDIS_STATUS
+(NTAPI FILTER_SYNCHRONOUS_OID_REQUEST)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _Inout_ PNDIS_OID_REQUEST OidRequest,
+    _Outptr_result_maybenull_ PVOID *CallContext);
+typedef FILTER_SYNCHRONOUS_OID_REQUEST *FILTER_SYNCHRONOUS_OID_REQUEST_HANDLER;
+
+typedef
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_same_
+_Function_class_(FILTER_SYNCHRONOUS_OID_REQUEST_COMPLETE)
+VOID
+(NTAPI FILTER_SYNCHRONOUS_OID_REQUEST_COMPLETE)(
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _Inout_ PNDIS_OID_REQUEST OidRequest,
+    _Inout_ PNDIS_STATUS Status,
+    _In_ PVOID CallContext);
+typedef FILTER_SYNCHRONOUS_OID_REQUEST_COMPLETE *FILTER_SYNCHRONOUS_OID_REQUEST_COMPLETE_HANDLER;
+#endif
+
+/* Registration */
+
+#define NDIS_FILTER_PARTIAL_CHARACTERISTICS_REVISION_1      1
+
+typedef struct _NDIS_FILTER_PARTIAL_CHARACTERISTICS
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    FILTER_SEND_NET_BUFFER_LISTS_HANDLER SendNetBufferListsHandler;
+    FILTER_SEND_NET_BUFFER_LISTS_COMPLETE_HANDLER SendNetBufferListsCompleteHandler;
+    FILTER_CANCEL_SEND_HANDLER CancelSendNetBufferListsHandler;
+    FILTER_RECEIVE_NET_BUFFER_LISTS_HANDLER ReceiveNetBufferListsHandler;
+    FILTER_RETURN_NET_BUFFER_LISTS_HANDLER ReturnNetBufferListsHandler;
+} NDIS_FILTER_PARTIAL_CHARACTERISTICS, *PNDIS_FILTER_PARTIAL_CHARACTERISTICS;
+
+#define NDIS_SIZEOF_FILTER_PARTIAL_CHARACTERISTICS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_PARTIAL_CHARACTERISTICS, ReturnNetBufferListsHandler)
+
+#define NDIS_FILTER_DRIVER_MANDATORY                                0x00000001
+#if (NDIS_SUPPORT_NDIS650)
+#define NDIS_FILTER_DRIVER_SUPPORTS_CURRENT_MAC_ADDRESS_CHANGE      0x00000002
+#define NDIS_FILTER_DRIVER_SUPPORTS_L2_MTU_SIZE_CHANGE              0x00000004
+#endif
+
+#define NDIS_FILTER_CHARACTERISTICS_REVISION_1              1
+#if (NDIS_SUPPORT_NDIS61)
+#define NDIS_FILTER_CHARACTERISTICS_REVISION_2              2
+#endif
+#if (NDIS_SUPPORT_NDIS680)
+#define NDIS_FILTER_CHARACTERISTICS_REVISION_3              3
+#endif
+
+typedef struct _NDIS_FILTER_DRIVER_CHARACTERISTICS
+{
+    NDIS_OBJECT_HEADER Header;
+    UCHAR MajorNdisVersion;
+    UCHAR MinorNdisVersion;
+    UCHAR MajorDriverVersion;
+    UCHAR MinorDriverVersion;
+    ULONG Flags;
+    NDIS_STRING FriendlyName;
+    NDIS_STRING UniqueName;
+    NDIS_STRING ServiceName;
+    SET_OPTIONS_HANDLER SetOptionsHandler;
+    FILTER_SET_FILTER_MODULE_OPTIONS_HANDLER SetFilterModuleOptionsHandler;
+    FILTER_ATTACH_HANDLER AttachHandler;
+    FILTER_DETACH_HANDLER DetachHandler;
+    FILTER_RESTART_HANDLER RestartHandler;
+    FILTER_PAUSE_HANDLER PauseHandler;
+    FILTER_SEND_NET_BUFFER_LISTS_HANDLER SendNetBufferListsHandler;
+    FILTER_SEND_NET_BUFFER_LISTS_COMPLETE_HANDLER SendNetBufferListsCompleteHandler;
+    FILTER_CANCEL_SEND_HANDLER CancelSendNetBufferListsHandler;
+    FILTER_RECEIVE_NET_BUFFER_LISTS_HANDLER ReceiveNetBufferListsHandler;
+    FILTER_RETURN_NET_BUFFER_LISTS_HANDLER ReturnNetBufferListsHandler;
+    FILTER_OID_REQUEST_HANDLER OidRequestHandler;
+    FILTER_OID_REQUEST_COMPLETE_HANDLER OidRequestCompleteHandler;
+    FILTER_CANCEL_OID_REQUEST_HANDLER CancelOidRequestHandler;
+    FILTER_DEVICE_PNP_EVENT_NOTIFY_HANDLER DevicePnPEventNotifyHandler;
+    FILTER_NET_PNP_EVENT_HANDLER NetPnPEventHandler;
+    FILTER_STATUS_HANDLER StatusHandler;
+#if (NDIS_SUPPORT_NDIS61)
+    FILTER_DIRECT_OID_REQUEST_HANDLER DirectOidRequestHandler;
+    FILTER_DIRECT_OID_REQUEST_COMPLETE_HANDLER DirectOidRequestCompleteHandler;
+    FILTER_CANCEL_DIRECT_OID_REQUEST_HANDLER CancelDirectOidRequestHandler;
+#endif
+#if (NDIS_SUPPORT_NDIS680)
+    FILTER_SYNCHRONOUS_OID_REQUEST_HANDLER SynchronousOidRequestHandler;
+    FILTER_SYNCHRONOUS_OID_REQUEST_COMPLETE_HANDLER SynchronousOidRequestCompleteHandler;
+#endif
+} NDIS_FILTER_DRIVER_CHARACTERISTICS, *PNDIS_FILTER_DRIVER_CHARACTERISTICS;
+
+#define NDIS_SIZEOF_FILTER_DRIVER_CHARACTERISTICS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_DRIVER_CHARACTERISTICS, StatusHandler)
+#if (NDIS_SUPPORT_NDIS61)
+#define NDIS_SIZEOF_FILTER_DRIVER_CHARACTERISTICS_REVISION_2 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_DRIVER_CHARACTERISTICS, CancelDirectOidRequestHandler)
+#endif
+#if (NDIS_SUPPORT_NDIS680)
+#define NDIS_SIZEOF_FILTER_DRIVER_CHARACTERISTICS_REVISION_3 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_DRIVER_CHARACTERISTICS, SynchronousOidRequestCompleteHandler)
+#endif
+
+#define NDIS_FILTER_ATTRIBUTES_REVISION_1                   1
+
+typedef struct _NDIS_FILTER_ATTRIBUTES
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+} NDIS_FILTER_ATTRIBUTES, *PNDIS_FILTER_ATTRIBUTES;
+
+#define NDIS_SIZEOF_FILTER_ATTRIBUTES_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_FILTER_ATTRIBUTES, Flags)
+
+/* Exports */
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisFRegisterFilterDriver(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ NDIS_HANDLE FilterDriverContext,
+    _In_ PNDIS_FILTER_DRIVER_CHARACTERISTICS FilterDriverCharacteristics,
+    _Out_ PNDIS_HANDLE NdisFilterDriverHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+VOID
+NTAPI
+NdisFDeregisterFilterDriver(
+    _In_ NDIS_HANDLE NdisFilterDriverHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisFSetAttributes(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ NDIS_HANDLE FilterModuleContext,
+    _In_ PNDIS_FILTER_ATTRIBUTES FilterAttributes);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisFRestartFilter(
+    _In_ NDIS_HANDLE NdisFilterHandle);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFSendNetBufferLists(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG SendFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFReturnNetBufferLists(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG ReturnFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFSendNetBufferListsComplete(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ ULONG SendCompleteFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFIndicateReceiveNetBufferLists(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG NumberOfNetBufferLists,
+    _In_ ULONG ReceiveFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisFOidRequest(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNDIS_OID_REQUEST OidRequest);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFOidRequestComplete(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNDIS_OID_REQUEST OidRequest,
+    _In_ NDIS_STATUS Status);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFIndicateStatus(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNDIS_STATUS_INDICATION StatusIndication);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFRestartComplete(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ NDIS_STATUS Status);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFPauseComplete(
+    _In_ NDIS_HANDLE NdisFilterHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+VOID
+NTAPI
+NdisFDevicePnPEventNotify(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNET_DEVICE_PNP_EVENT NetDevicePnPEvent);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisFNetPnPEvent(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNET_PNP_EVENT_NOTIFICATION NetPnPEventNotification);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFCancelSendNetBufferLists(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PVOID CancelId);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFCancelOidRequest(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PVOID RequestId);
+
+#if (NDIS_SUPPORT_NDIS61)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisFDirectOidRequest(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNDIS_OID_REQUEST OidRequest);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFDirectOidRequestComplete(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PNDIS_OID_REQUEST OidRequest,
+    _In_ NDIS_STATUS Status);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFCancelDirectOidRequest(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _In_ PVOID RequestId);
+#endif
+
+#if (NDIS_SUPPORT_NDIS630)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisFGetOptionalSwitchHandlers(
+    _In_ NDIS_HANDLE NdisFilterHandle,
+    _Out_ PNDIS_SWITCH_CONTEXT NdisSwitchContext,
+    _Inout_ struct _NDIS_SWITCH_OPTIONAL_HANDLERS *NdisSwitchHandlers);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
