@@ -3105,6 +3105,25 @@ QSI_DEF(SystemPhysicalMemoryInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 91 - Hypervisor Information */
+SSI_DEF(SystemHypervisorInformation)
+{
+    UNREFERENCED_PARAMETER(Buffer);
+
+    /*
+     * The virtualization stack sets this to say it is taking the hypervisor
+     * over. It carries nothing, so there is nothing to read, and it only means
+     * anything when there is a hypervisor underneath to take over.
+     */
+    if (Size != 0)
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    if (!HvlpHypervisorPresent)
+        return STATUS_NOT_SUPPORTED;
+
+    return STATUS_SUCCESS;
+}
+
 /* Query/Set Calls Table */
 typedef
 struct _QSSI_CALLS
@@ -3216,6 +3235,7 @@ CallQS[] =
 
     // Windows 10 and later
     SI_QX(SystemPhysicalMemoryInformation),
+    SI_XS(SystemHypervisorInformation),
 };
 
 C_ASSERT(SystemBasicInformation == 0);
