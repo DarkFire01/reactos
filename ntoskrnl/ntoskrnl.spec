@@ -1889,6 +1889,16 @@
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
 @ stdcall -version=0x602+ RtlQueryRegistryValuesEx(long wstr ptr ptr ptr)
 
+@ stdcall -version=0xA00+ -arch=x86_64 RtlAreBitsClearEx(ptr int64 int64)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlAreBitsSetEx(ptr int64 int64)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlCopyBitMapEx(ptr ptr int64)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlExtractBitMapEx(ptr ptr int64 int64)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlFindClearBitsEx(ptr int64 int64)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlFindNextForwardRunClearEx(ptr int64 ptr)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlFindNextForwardRunSetEx(ptr int64 ptr)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlNumberOfSetBitsInRangeEx(ptr int64 int64)
+@ stdcall -version=0xA00+ -arch=x86_64 RtlTestBitEx(ptr int64)
+
 # Feature staging
 @ stdcall -version=0xA00+ RtlArmFeatureUsageProviderFlushNotification(ptr)
 @ stdcall -version=0xA00+ RtlNotifyFeatureUsage(ptr)

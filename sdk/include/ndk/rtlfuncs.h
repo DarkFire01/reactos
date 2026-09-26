@@ -3737,6 +3737,87 @@ RtlInterlockedClearBitRunEx(
     _In_ ULONG64 NumberToClear
 );
 
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlTestBitEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 BitNumber
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlAreBitsClearEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlAreBitsSetEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindClearBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindNextForwardRunClearEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 FromIndex,
+    _Out_ PULONG64 StartingRunIndex
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindNextForwardRunSetEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 FromIndex,
+    _Out_ PULONG64 StartingRunIndex
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlNumberOfSetBitsInRangeEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 Length
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlCopyBitMapEx(
+    _In_ PRTL_BITMAP_EX Source,
+    _In_ PRTL_BITMAP_EX Destination,
+    _In_ ULONG64 TargetBit
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlExtractBitMapEx(
+    _In_ PRTL_BITMAP_EX Source,
+    _In_ PRTL_BITMAP_EX Destination,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberOfBits
+);
+
 #endif /* _WIN64 */
 
 #endif // NTOS_MODE_USER
