@@ -1,0 +1,49 @@
+; VID.INF
+;
+; Installation file for the virtualization infrastructure driver
+;
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = System
+ClassGUID  = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 09/26/2026,1.00
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%StdMfg% = StdMfg
+
+; The device the kernel reports for the root partition
+[StdMfg]
+%Vid.DeviceDesc% = Vid_Inst,ROOT\VID
+
+;----------------------- VIRTUALIZATION INFRASTRUCTURE ------------------
+
+[Vid_Inst.NT.Services]
+AddService = vid, 0x00000002, Vid_Service_Inst
+
+[Vid_Service_Inst]
+ServiceType    = 1
+StartType      = 1
+ErrorControl   = 1
+ServiceBinary  = %12%\Vid.sys
+LoadOrderGroup = Extended Base
+AddReg         = Vid_Service_AddReg
+
+; The framework reads the version its client was built against from here
+[Vid_Service_AddReg]
+HKR,Parameters\Wdf,WdfMajorVersion,0x00010001,1
+HKR,Parameters\Wdf,WdfMinorVersion,0x00010001,15
+
+;-------------------------------- STRINGS -------------------------------
+
+[Strings]
+; Non-localizable
+ReactOS = "ReactOS Project"
+
+; Localizable
+StdMfg = "(Standard system devices)"
+Vid.DeviceDesc = "Virtualization Infrastructure Driver"
