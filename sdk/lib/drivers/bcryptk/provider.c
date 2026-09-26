@@ -126,12 +126,13 @@ BcryptkAllocateObject(
 {
     PVOID Object;
 
+    *Allocated = FALSE;
+
     if (Caller != NULL)
     {
         if (CallerLength < Length)
             return NULL;
 
-        *Allocated = FALSE;
         RtlZeroMemory(Caller, Length);
 
         return Caller;
