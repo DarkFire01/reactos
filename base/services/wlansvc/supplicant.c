@@ -72,6 +72,10 @@
 #define WLAN_KDE_IGTK                               9
 #define WLAN_AKM_PSK                                2
 #define WLAN_AKM_PSK_SHA256                         6
+#define WLAN_AKM_SAE                                8
+
+/* RSN capabilities, low byte: management frame protection capable */
+#define WLAN_RSN_CAP_MFPC                           0x80
 
 /* The fixed fields ahead of the elements in these frame bodies */
 #define WLAN_ASSOC_REQ_FIXED_LENGTH                 4
@@ -527,7 +531,9 @@ BuildRsnElement(
     RtlCopyMemory(At, Oui, 3); At += 3;
     *At++ = (UCHAR)Akm;
 
-    *At++ = 0; *At++ = 0;                   /* RSN capabilities */
+    /* RSN capabilities. WPA3 requires management frame protection */
+    *At++ = (Akm == WLAN_AKM_SAE) ? WLAN_RSN_CAP_MFPC : 0;
+    *At++ = 0;
     return (ULONG)(At - Element);
 }
 
@@ -559,10 +565,15 @@ TakeAssociation(
                               Params->uAssocReqSize - Fixed, WLAN_IE_RSN);
         if (Element != NULL &&
             ParseRsnElement(Element, Element[1] + 2, &Session->GroupCipher, &Mask) &&
-            (Mask & ((1UL << WLAN_AKM_PSK_SHA256) | (1UL << WLAN_AKM_PSK))))
+            (Mask & ((1UL << WLAN_AKM_SAE) | (1UL << WLAN_AKM_PSK_SHA256) | (1UL << WLAN_AKM_PSK))))
         {
             /* The association request names exactly one AKM */
-            Session->Akm = (Mask & (1UL << WLAN_AKM_PSK_SHA256)) ? WLAN_AKM_PSK_SHA256 : WLAN_AKM_PSK;
+            if (Mask & (1UL << WLAN_AKM_SAE))
+                Session->Akm = WLAN_AKM_SAE;
+            else if (Mask & (1UL << WLAN_AKM_PSK_SHA256))
+                Session->Akm = WLAN_AKM_PSK_SHA256;
+            else
+                Session->Akm = WLAN_AKM_PSK;
             Session->RsnLength = Element[1] + 2;
             RtlCopyMemory(Session->Rsn, Element, Session->RsnLength);
         }
@@ -637,12 +648,23 @@ WaitForAssociation(
 
 /* The key hierarchy the AKM selects */
 
-/* The key descriptor version: HMAC-SHA1 for PSK, AES-CMAC for PSK-SHA256 */
+/* PSK keeps the SHA-1 hierarchy, PSK-SHA256 and SAE use SHA-256 and AES-CMAC */
+static
+BOOL
+UsesSha256(
+    _In_ PWLAN_KEY_SESSION Session)
+{
+    return Session->Akm == WLAN_AKM_PSK_SHA256 || Session->Akm == WLAN_AKM_SAE;
+}
+
+/* The key descriptor version. SAE leaves it to the AKM, which makes it 0 */
 static
 USHORT
 KeyVersion(
     _In_ PWLAN_KEY_SESSION Session)
 {
+    if (Session->Akm == WLAN_AKM_SAE)
+        return 0;
     return (Session->Akm == WLAN_AKM_PSK_SHA256) ? 3 : 2;
 }
 
@@ -657,7 +679,7 @@ ComputeMic(
 {
     UCHAR Digest[WLAN_SHA1_LENGTH];
 
-    if (Session->Akm == WLAN_AKM_PSK_SHA256)
+    if (UsesSha256(Session))
         return WlanCryptoAesCmac(Kck, Eapol, Length, Mic);
 
     WlanCryptoHmacSha1(Kck, WLAN_KCK_LENGTH, Eapol, Length, Digest);
@@ -718,7 +740,7 @@ DerivePtk(
     AppendOrdered(&At, Session->OwnMac, Session->Bssid, 6);
     AppendOrdered(&At, Session->ANonce, Session->SNonce, WLAN_NONCE_LENGTH);
 
-    if (Session->Akm == WLAN_AKM_PSK_SHA256)
+    if (UsesSha256(Session))
     {
         return WlanCryptoKdfSha256(Session->Pmk, WLAN_PMK_LENGTH, "Pairwise key expansion",
                                    Input, sizeof(Input), Session->Tptk, WLAN_PTK_LENGTH);
@@ -1058,10 +1080,11 @@ PairwiseMessage1(
     UNREFERENCED_PARAMETER(Length);
 
     /* Without the association request to go by, the descriptor version the AP
-       chose says which of the two PSK AKMs it runs */
+       chose says which of the two PSK AKMs it runs. SAE knows its AKM already */
     if (Session->RsnLength == 0)
     {
-        Session->Akm = ((KeyInfo & KEY_INFO_VERSION_MASK) == 3) ? WLAN_AKM_PSK_SHA256 : WLAN_AKM_PSK;
+        if (Session->Akm != WLAN_AKM_SAE)
+            Session->Akm = ((KeyInfo & KEY_INFO_VERSION_MASK) == 3) ? WLAN_AKM_PSK_SHA256 : WLAN_AKM_PSK;
         Session->RsnLength = BuildRsnElement(Session->GroupCipher, Session->Akm, Session->Rsn);
     }
 
