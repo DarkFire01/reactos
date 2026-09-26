@@ -40,4 +40,4 @@ target_link_libraries(opengl32 mesa wine ${PSEH_LIB})
 
 set_module_type(opengl32 win32dll)
 add_importlibs(opengl32 gdi32 user32 advapi32 msvcrt kernel32 ntdll)
-add_cd_file(TARGET opengl32 DESTINATION reactos/system32 FOR all)
+#add_cd_file(TARGET opengl32 DESTINATION reactos/system32 FOR all)
