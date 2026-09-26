@@ -676,6 +676,9 @@ ExpInitSystemPhase1(VOID)
     /* Initialize pushlocks */
     ExpInitializePushLocks();
 
+    /* Find the hypervisor, if there is one, and take its hypercall page */
+    HvlInitSystem();
+
     /* Initialize events and event pairs */
     if (ExpInitializeEventImplementation() == FALSE)
     {

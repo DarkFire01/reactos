@@ -1780,8 +1780,13 @@
 @ stdcall -version=0xA00+ MmAllocateNodePagesForMdlEx(int64 int64 int64 long long long long)
 
 # Hypervisor Library
+@ stdcall -version=0xa00+ HvlInvokeFastExtendedHypercall(int64 ptr long ptr long)
+@ stdcall -version=0xa00+ HvlInvokeHypercall(int64 int64 int64)
 @ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
 @ stdcall -version=0xa00+ HvlQueryActiveHypervisorProcessorCount()
+@ stdcall -version=0xa00+ HvlRegisterInterruptCallback(long ptr ptr)
+@ stdcall -version=0xa00+ HvlUnregisterInterruptCallback(long ptr)
+@ stdcall -version=0xa00+ KePrepareToDispatchVirtualProcessor()
 
 # Boot Video
 @ stdcall -version=0x602+ InbvNotifyDisplayOwnershipChange(long ptr)

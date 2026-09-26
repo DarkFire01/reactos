@@ -404,6 +404,15 @@ KeFindNextRightSetAffinity(
     IN KAFFINITY Set
 );
 
+/* hvl.c ********************************************************************/
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+HvlInitSystem(VOID);
+
+extern BOOLEAN HvlpHypervisorPresent;
+
 VOID
 NTAPI
 KeInitializeProfile(
