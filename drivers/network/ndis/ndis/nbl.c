@@ -557,22 +557,24 @@ NdisAllocateNetBufferListContext(
     USHORT ContextBackFill,
     ULONG PoolTag)
 {
-    PNET_BUFFER_LIST_CONTEXT Context;
-    USHORT Total = ContextSize + ContextBackFill;
+    PNET_BUFFER_LIST_CONTEXT Context = NetBufferList->Context;
 
-    /*
-     * A context already laid out by the pool can absorb the request if it is
-     * big enough, which keeps the common case allocation free.
-     */
-    if (NetBufferList->Context != NULL &&
-        NetBufferList->Context->Offset >= Total)
+    if (ContextSize == 0)
+        return NDIS_STATUS_SUCCESS;
+
+    /* Contexts stay 4 byte aligned */
+    if (((ContextSize | ContextBackFill) & 3) != 0)
+        return NDIS_STATUS_INVALID_LENGTH;
+
+    /* Room left in front of the current block's data is used first */
+    if (Context != NULL && Context->Offset >= ContextSize)
     {
-        NetBufferList->Context->Offset -= Total;
+        Context->Offset -= ContextSize;
         return NDIS_STATUS_SUCCESS;
     }
 
     Context = ExAllocatePoolWithTag(NonPagedPool,
-                                    sizeof(*Context) + ALIGN_UP_BY(Total, MEMORY_ALLOCATION_ALIGNMENT),
+                                    sizeof(*Context) + ContextSize + ContextBackFill,
                                     PoolTag);
     if (Context == NULL)
         return NDIS_STATUS_RESOURCES;
@@ -582,6 +584,17 @@ NdisAllocateNetBufferListContext(
     return NDIS_STATUS_SUCCESS;
 }
 
+/* The pool lays out a context block right behind the NET_BUFFER_LIST */
+static
+BOOLEAN
+NdispIsPoolContext(
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ PNET_BUFFER_LIST_CONTEXT Context)
+{
+    return (PUCHAR)Context == (PUCHAR)NetBufferList +
+                              ALIGN_UP_BY(sizeof(NET_BUFFER_LIST), MEMORY_ALLOCATION_ALIGNMENT);
+}
+
 _Use_decl_annotations_
 VOID
 NTAPI
@@ -589,18 +602,20 @@ NdisFreeNetBufferListContext(
     PNET_BUFFER_LIST NetBufferList,
     USHORT ContextSize)
 {
-    PNET_BUFFER_LIST_CONTEXT Context = NetBufferList->Context;
+    PNET_BUFFER_LIST_CONTEXT Context;
 
-    if (Context == NULL)
-        return;
+    /* Freeing can run past a block into the one it was pushed onto */
+    while (ContextSize != 0 && (Context = NetBufferList->Context) != NULL)
+    {
+        Context->Offset += ContextSize;
 
-    Context->Offset += ContextSize;
+        if (NdispIsPoolContext(NetBufferList, Context) || Context->Offset < Context->Size)
+            break;
 
-    if (Context->Offset < Context->Size)
-        return;
-
-    /* The whole block is unused again, so hand it back to whoever owns it. */
-    NetBufferList->Context = Context->Next;
+        ContextSize = Context->Offset - Context->Size;
+        NetBufferList->Context = Context->Next;
+        ExFreePoolWithTag(Context, 0);
+    }
 }
 
 _Use_decl_annotations_
