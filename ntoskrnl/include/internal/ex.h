@@ -359,6 +359,40 @@ BOOLEAN
 NTAPI
 ExpInitializeCallbacks(VOID);
 
+/* Extension hosts ***********************************************************/
+
+/*
+ * What a driver hands the kernel to bind itself into a host. The layout is the
+ * one ExRegisterExtension takes for version 1, which is the only one defined.
+ */
+typedef struct _EX_EXTENSION_REGISTRATION_1
+{
+    USHORT ExtensionId;
+    USHORT ExtensionVersion;
+    USHORT FunctionCount;
+    PVOID *FunctionTable;
+    PVOID **HostInterface;
+    PVOID DriverObject;
+} EX_EXTENSION_REGISTRATION_1, *PEX_EXTENSION_REGISTRATION_1;
+
+typedef struct _EX_EXTENSION *PEX_EXTENSION;
+
+/* One interface the kernel publishes, and the driver bound into it */
+typedef struct _EXP_EXTENSION_HOST
+{
+    LIST_ENTRY ListEntry;
+    USHORT ExtensionId;
+    USHORT ExtensionVersion;
+    USHORT FunctionCount;
+    PVOID *HostTable;
+    PVOID *FunctionTable;
+} EXP_EXTENSION_HOST, *PEXP_EXTENSION_HOST;
+
+CODE_SEG("INIT")
+BOOLEAN
+NTAPI
+ExpInitializeExtensions(VOID);
+
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI

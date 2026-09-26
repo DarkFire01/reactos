@@ -184,37 +184,6 @@ VslRetrieveMailbox(
 
 /**
  * @brief
- * Registers a driver extension, which is a table of routines one driver
- * publishes for another to call through.
- *
- * @return
- * STATUS_NOT_IMPLEMENTED. ReactOS has no extension host, so nothing can
- * publish and nothing can be found.
- */
-NTSTATUS
-NTAPI
-ExRegisterExtension(
-    _Out_ PVOID *Extension,
-    _In_ ULONG ExtensionId,
-    _In_ PVOID RegistrationInfo)
-{
-    UNREFERENCED_PARAMETER(ExtensionId);
-    UNREFERENCED_PARAMETER(RegistrationInfo);
-
-    *Extension = NULL;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-VOID
-NTAPI
-ExUnregisterExtension(
-    _In_ PVOID Extension)
-{
-    UNREFERENCED_PARAMETER(Extension);
-}
-
-/**
- * @brief
  * Reads how much of a file has ever been written, as the cache manager knows
  * it.
  *
