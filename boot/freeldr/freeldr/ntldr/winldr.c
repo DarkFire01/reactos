@@ -15,6 +15,10 @@
 
 #include <drivers/bootvid/framebuf.h> // For CM_FRAMEBUF_DEVICE_DATA
 
+#ifdef REACTV_PRESENT
+#include <reactv_freeldr.h>
+#endif
+
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WINDOWS);
 
@@ -1503,6 +1507,11 @@ LoadAndBootWindowsCommon(
 
     /* Do the machine specific initialization */
     WinLdrSetupMachineDependent(LoaderBlock);
+
+#ifdef REACTV_PRESENT
+    /* Slide the hypervisor under us, while the loader still owns the machine */
+    ReactVFreeLdrLaunch(BootOptions);
+#endif
 
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);

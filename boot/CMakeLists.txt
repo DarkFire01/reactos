@@ -2,6 +2,12 @@
 include(boot_images.cmake)
 
 add_subdirectory(bootdata)
+
+# ReactV lives next to the source root and links into the boot loader
+if(EXISTS "${REACTOS_SOURCE_DIR}/../ReactV/CMakeLists.txt")
+    add_subdirectory("${REACTOS_SOURCE_DIR}/../ReactV" reactv)
+endif()
+
 add_subdirectory(freeldr)
 add_subdirectory(rtl)
 
