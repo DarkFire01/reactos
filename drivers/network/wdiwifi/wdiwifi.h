@@ -168,6 +168,11 @@ typedef struct _WDI_BSS
 #define WDI_CHANNEL_INFO_LENGTH             8
 #define WDI_CONNECTION_SETTINGS_MAX_LENGTH  15
 
+/* The bytes of the packed WDI_TLV_CONNECTION_SETTINGS this edge fills */
+#define WDI_CONNECTION_HIDDEN_NETWORK       1
+#define WDI_CONNECTION_EXCLUDE_UNENCRYPTED  2
+#define WDI_CONNECTION_MFP_ENABLED          3
+
 /* A received message, WDI header first */
 typedef struct _WDI_MESSAGE
 {
@@ -270,6 +275,10 @@ typedef struct _WDI_ADAPTER
     ULONG DesiredAuth;
     ULONG DesiredUnicastCipher;
     ULONG DesiredMulticastCipher;
+
+    /* Set through OID_DOT11_EXCLUDE_UNENCRYPTED and OID_DOT11_HIDDEN_NETWORK_ENABLED */
+    BOOLEAN ExcludeUnencrypted;
+    BOOLEAN HiddenNetwork;
 
     /* Connects run on their own work item */
     NDIS_HANDLE ConnectWorkItem;

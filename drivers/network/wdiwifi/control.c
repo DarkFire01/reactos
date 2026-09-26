@@ -465,9 +465,7 @@ WdiConnectWorker(
     }
 
     /* WDI_TLV_CONNECT_PARAMETERS holds the connection settings, the SSID and
-       the auth and cipher lists. A fresh connect to an open network for now,
-       so the settings are all left clear. The packed settings grew with the
-       WDI version */
+       the auth and cipher lists. The packed settings grew with the WDI version */
     if (Adapter->PeerVersion >= WDI_VERSION_1_1_13)
         SettingsLength = 15;
     else if (Adapter->PeerVersion >= WDI_VERSION_1_0_1)
@@ -475,12 +473,13 @@ WdiConnectWorker(
     else
         SettingsLength = 13;
 
+    /* Management frame protection is offered, and used whenever the AP takes
+       it. The dot11 and WDI auth and cipher values are the same, so they carry
+       across unchanged */
     RtlZeroMemory(Settings, sizeof(Settings));
-    /* Byte 1 is ExcludeUnencrypted: on for a secured network, so plaintext data
-       is dropped until the host handshake installs the keys. The dot11 and WDI
-       auth and cipher values are the same, so they carry across unchanged */
-    if (Adapter->DesiredAuth != DOT11_AUTH_ALGO_80211_OPEN)
-        Settings[1] = 1;
+    Settings[WDI_CONNECTION_HIDDEN_NETWORK] = Adapter->HiddenNetwork;
+    Settings[WDI_CONNECTION_EXCLUDE_UNENCRYPTED] = Adapter->ExcludeUnencrypted;
+    Settings[WDI_CONNECTION_MFP_ENABLED] = TRUE;
     ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_CONNECTION_SETTINGS,
                                   Settings, (UINT16)SettingsLength);
 
@@ -785,6 +784,17 @@ WdiSet(
             OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
             return NDIS_STATUS_SUCCESS;
         }
+
+        case OID_DOT11_EXCLUDE_UNENCRYPTED:
+        case OID_DOT11_HIDDEN_NETWORK_ENABLED:
+            if (BufferLength < sizeof(BOOLEAN))
+                return NDIS_STATUS_INVALID_LENGTH;
+            if (Oid == OID_DOT11_EXCLUDE_UNENCRYPTED)
+                Adapter->ExcludeUnencrypted = (*(PBOOLEAN)Buffer != FALSE);
+            else
+                Adapter->HiddenNetwork = (*(PBOOLEAN)Buffer != FALSE);
+            OidRequest->DATA.SET_INFORMATION.BytesRead = sizeof(BOOLEAN);
+            return NDIS_STATUS_SUCCESS;
 
         case OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM:
         {
