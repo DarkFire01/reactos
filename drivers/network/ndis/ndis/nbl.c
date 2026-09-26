@@ -32,6 +32,7 @@ C_ASSERT(RTL_FIELD_SIZE(NET_BUFFER_LIST, NetBufferListInfo) ==
 #define NDIS_TAG_NB_POOL    'PBNn'
 #define NDIS_TAG_NBL_POOL   'PLNn'
 #define NDIS_TAG_NBL_CTX    'CLNn'
+#define NDIS_TAG_NB_MDL     'MBNn'
 
 /*
  * One pool serves both NET_BUFFERs and NET_BUFFER_LISTs. BlockSize covers the
@@ -723,6 +724,34 @@ NdisGetDataBuffer(
     return Storage;
 }
 
+/* The MDL and the memory it describes share one allocation */
+static
+PMDL
+NTAPI
+NdispAllocateMdl(
+    _Inout_ PULONG BufferSize)
+{
+    ULONG MdlSize = ALIGN_UP_BY(MmSizeOfMdl((PVOID)(PAGE_SIZE - 1), *BufferSize), MEMORY_ALLOCATION_ALIGNMENT);
+    PMDL Mdl;
+
+    Mdl = ExAllocatePoolWithTag(NonPagedPool, MdlSize + *BufferSize, NDIS_TAG_NB_MDL);
+    if (Mdl == NULL)
+        return NULL;
+
+    MmInitializeMdl(Mdl, (PUCHAR)Mdl + MdlSize, *BufferSize);
+    MmBuildMdlForNonPagedPool(Mdl);
+    return Mdl;
+}
+
+static
+VOID
+NTAPI
+NdispFreeMdl(
+    _In_ PMDL Mdl)
+{
+    ExFreePoolWithTag(Mdl, NDIS_TAG_NB_MDL);
+}
+
 _Use_decl_annotations_
 NDIS_STATUS
 NTAPI
@@ -732,6 +761,7 @@ NdisRetreatNetBufferDataStart(
     ULONG DataBackFill,
     NET_BUFFER_ALLOCATE_MDL_HANDLER AllocateMdlHandler)
 {
+    ULONG Size;
     PMDL Mdl;
 
     /* Room already reserved in front of the data needs no new MDL. */
@@ -743,19 +773,18 @@ NdisRetreatNetBufferDataStart(
         return NDIS_STATUS_SUCCESS;
     }
 
-    if (AllocateMdlHandler == NULL)
-        return NDIS_STATUS_RESOURCES;
-
-    Mdl = AllocateMdlHandler(DataOffsetDelta, DataBackFill);
+    /* The new MDL covers what is missing plus the backfill asked for */
+    Size = DataBackFill + DataOffsetDelta - NET_BUFFER_DATA_OFFSET(NetBuffer);
+    Mdl = (AllocateMdlHandler != NULL) ? AllocateMdlHandler(&Size) : NdispAllocateMdl(&Size);
     if (Mdl == NULL)
         return NDIS_STATUS_RESOURCES;
 
     Mdl->Next = NET_BUFFER_FIRST_MDL(NetBuffer);
     NET_BUFFER_FIRST_MDL(NetBuffer) = Mdl;
-    NET_BUFFER_CURRENT_MDL(NetBuffer) = Mdl;
-    NET_BUFFER_CURRENT_MDL_OFFSET(NetBuffer) = MmGetMdlByteCount(Mdl) - DataOffsetDelta;
-    NET_BUFFER_DATA_OFFSET(NetBuffer) = NET_BUFFER_CURRENT_MDL_OFFSET(NetBuffer);
+    NET_BUFFER_DATA_OFFSET(NetBuffer) += Size - DataOffsetDelta;
     NET_BUFFER_DATA_LENGTH(NetBuffer) += DataOffsetDelta;
+    NET_BUFFER_CURRENT_MDL(NetBuffer) = Mdl;
+    NET_BUFFER_CURRENT_MDL_OFFSET(NetBuffer) = NET_BUFFER_DATA_OFFSET(NetBuffer);
 
     return NDIS_STATUS_SUCCESS;
 }
@@ -769,6 +798,7 @@ NdisAdvanceNetBufferDataStart(
     BOOLEAN FreeMdl,
     NET_BUFFER_FREE_MDL_HANDLER FreeMdlHandler)
 {
+    PMDL Inline;
     PMDL Mdl;
     PMDL Next;
 
@@ -776,22 +806,30 @@ NdisAdvanceNetBufferDataStart(
 
     NET_BUFFER_DATA_OFFSET(NetBuffer) += DataOffsetDelta;
     NET_BUFFER_DATA_LENGTH(NetBuffer) -= DataOffsetDelta;
-    NdisAdjustNetBufferCurrentMdl(NetBuffer);
 
-    if (!FreeMdl || FreeMdlHandler == NULL)
-        return;
-
-    /* Drop the MDLs the new data start has moved past. */
-    Mdl = NET_BUFFER_FIRST_MDL(NetBuffer);
-    while (Mdl != NULL && Mdl != NET_BUFFER_CURRENT_MDL(NetBuffer))
+    if (FreeMdl)
     {
-        Next = Mdl->Next;
-        NET_BUFFER_DATA_OFFSET(NetBuffer) -= MmGetMdlByteCount(Mdl);
-        FreeMdlHandler(Mdl);
-        Mdl = Next;
+        /* The MDLs the data start moved past go, but not one the pool built in */
+        Inline = (PMDL)((PUCHAR)NetBuffer + ALIGN_UP_BY(sizeof(NET_BUFFER), MEMORY_ALLOCATION_ALIGNMENT));
+
+        Mdl = NET_BUFFER_FIRST_MDL(NetBuffer);
+        while (Mdl != NULL && Mdl != Inline && MmGetMdlByteCount(Mdl) <= NET_BUFFER_DATA_OFFSET(NetBuffer))
+        {
+            Next = Mdl->Next;
+            NET_BUFFER_DATA_OFFSET(NetBuffer) -= MmGetMdlByteCount(Mdl);
+
+            if (FreeMdlHandler != NULL)
+                FreeMdlHandler(Mdl);
+            else
+                NdispFreeMdl(Mdl);
+
+            Mdl = Next;
+        }
+
+        NET_BUFFER_FIRST_MDL(NetBuffer) = Mdl;
     }
 
-    NET_BUFFER_FIRST_MDL(NetBuffer) = Mdl;
+    NdisAdjustNetBufferCurrentMdl(NetBuffer);
 }
 
 _Use_decl_annotations_

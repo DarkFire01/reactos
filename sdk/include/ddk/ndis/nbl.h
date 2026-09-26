@@ -201,10 +201,10 @@ typedef struct _NET_BUFFER_LIST
     PVOID NetBufferListInfo[MaxNetBufferListInfo];
 } NET_BUFFER_LIST, *PNET_BUFFER_LIST;
 
+/* Asked for at least *BufferSize bytes; may hand back more and says how many */
 typedef PMDL
 (NTAPI NET_BUFFER_ALLOCATE_MDL_HANDLER)(
-    _In_ ULONG DataOffsetDelta,
-    _In_ ULONG DataBackFill);
+    _Inout_ PULONG BufferSize);
 
 typedef NET_BUFFER_ALLOCATE_MDL_HANDLER *PNET_BUFFER_ALLOCATE_MDL_HANDLER;
 
