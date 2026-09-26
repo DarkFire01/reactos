@@ -8,6 +8,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "ksecdd.h"
+#include <bcryptk.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -52,6 +53,8 @@ DriverEntry(
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = KsecDdDispatch;
 
     /* Initialize */
+    BcryptkInitialize();
+    KsecInitializeRandomSupport();
     KsecInitializeEncryptionSupport();
 
     return STATUS_SUCCESS;

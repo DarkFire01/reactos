@@ -2,7 +2,9 @@
 spec2def(ksecdd.sys ksecdd.spec)
 
 include_directories(
-    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/drivers/ksecdd)
+    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/drivers/ksecdd
+    ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/bcryptk
+    ${REACTOS_SOURCE_DIR}/sdk/lib/3rdparty/symcrypt/inc)
 
 list(APPEND SOURCE
     ksecdd.c
@@ -15,7 +17,7 @@ list(APPEND SOURCE
     ${CMAKE_CURRENT_BINARY_DIR}/ksecdd.def)
 
 add_library(ksecdd MODULE ${SOURCE})
-target_link_libraries(ksecdd cryptlib pseh)
+target_link_libraries(ksecdd bcryptk symcryptk cryptlib pseh)
 set_module_type(ksecdd kernelmodedriver)
 add_importlibs(ksecdd ntoskrnl hal)
 add_cd_file(TARGET ksecdd DESTINATION reactos/system32/drivers NO_CAB FOR all)
