@@ -6,6 +6,7 @@
  */
 
 #include "nwifi.h"
+#include <dot11wdi.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -491,9 +492,13 @@ NwifiStatus(
 
     NwifiTrackStatus(Module, StatusIndication);
 
-    /* The WLAN service learns about scans and connections from these */
-    if (NWIFI_IS_DOT11_STATUS(StatusIndication->StatusCode))
+    /* The WLAN service learns about scans and connections from these, and
+       runs SAE for a WDI miniport that asks for it */
+    if (NWIFI_IS_DOT11_STATUS(StatusIndication->StatusCode) ||
+        StatusIndication->StatusCode == NDIS_STATUS_WDI_INDICATION_SAE_AUTH_PARAMS_NEEDED)
+    {
         NwifiQueueIndication(Module, StatusIndication);
+    }
 
     NdisFIndicateStatus(Module->FilterHandle, StatusIndication);
 }
