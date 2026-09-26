@@ -453,6 +453,13 @@ WdiIndication(
                          StatusIndication->StatusBufferSize - sizeof(*Header));
     }
 
+    if (MessageId == WDI_INDICATION_SAE_AUTH_PARAMS_NEEDED)
+    {
+        WdiIndicateSaeRequest(Adapter,
+                              (const UCHAR *)(Header + 1),
+                              StatusIndication->StatusBufferSize - sizeof(*Header));
+    }
+
     if (MessageId == WDI_INDICATION_ASSOCIATION_RESULT)
     {
         WdiRecordAssociation(Adapter,

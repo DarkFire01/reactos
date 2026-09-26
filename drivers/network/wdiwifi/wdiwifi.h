@@ -468,6 +468,13 @@ WdiIndicateAssociation(
 
 VOID
 NTAPI
+WdiIndicateSaeRequest(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_reads_bytes_(Length) const UCHAR *Tlvs,
+    _In_ ULONG Length);
+
+VOID
+NTAPI
 WdiRecordAssociation(
     _In_ PWDI_ADAPTER Adapter,
     _In_reads_bytes_(Length) const UCHAR *Tlvs,

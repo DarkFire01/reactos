@@ -58,6 +58,22 @@ WdiIndicateScanConfirm(
     WdiIndicateDot11(Adapter, NDIS_STATUS_DOT11_SCAN_CONFIRM, &ByteArray, sizeof(ByteArray));
 }
 
+/**
+ * @brief
+ * Hands an SAE step the miniport wants from the host up to the WLAN service,
+ * its TLVs unchanged. The answer comes back as OID_WDI_SET_SAE_AUTH_PARAMS.
+ */
+_Use_decl_annotations_
+VOID
+NTAPI
+WdiIndicateSaeRequest(
+    PWDI_ADAPTER Adapter,
+    const UCHAR *Tlvs,
+    ULONG Length)
+{
+    WdiIndicateDot11(Adapter, NDIS_STATUS_WDI_INDICATION_SAE_AUTH_PARAMS_NEEDED, (PVOID)Tlvs, Length);
+}
+
 /* The packed WDI_TLV_ASSOCIATION_RESULT_PARAMETERS fields used here */
 #define WDI_ASSOC_RESULT_STATUS             0
 #define WDI_ASSOC_RESULT_REASSOCIATION      8
@@ -784,6 +800,17 @@ WdiSet(
             Adapter->HasDesiredBssid = TRUE;
             OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
             return NDIS_STATUS_SUCCESS;
+        }
+
+        case OID_WDI_SET_SAE_AUTH_PARAMS:
+        {
+            PWDI_PORT Port = WdiDefaultPort(Adapter);
+
+            if (Port == NULL)
+                return NDIS_STATUS_INVALID_STATE;
+
+            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            return WdiSendCommand(Adapter, WDI_SET_SAE_AUTH_PARAMS, Port->PortId, Buffer, BufferLength, FALSE, NULL);
         }
 
         case OID_DOT11_EXCLUDE_UNENCRYPTED:
