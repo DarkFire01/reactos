@@ -47,8 +47,7 @@ Catch_RTC_Failure(
     const wchar_t *format,
     ...)
 {
-    /* FIXME: better failure routine */
-    __debugbreak();
+    /* Report nothing */
     return 0;
 }
 
