@@ -36,7 +36,8 @@
 #define DPRINT_PELOADER     13  // messages from PE images loader
 #define DPRINT_SCSIPORT     14  // messages from SCSI miniport
 #define DPRINT_HEAP         15  // messages in a bottle
-#define DBG_CHANNELS_COUNT  16
+#define DPRINT_HYPERVISOR   16  // hypervisor launch messages
+#define DBG_CHANNELS_COUNT  17
 
 #if DBG
 
