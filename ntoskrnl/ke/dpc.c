@@ -59,7 +59,14 @@ KiCheckTimerTable(IN ULARGE_INTEGER CurrentTime)
                     !(*((volatile PULONG*)(&KiTimerExpireDpc.DpcData))))
                 {
                     /* This is bad, breakpoint! */
-                    DPRINT1("Invalid timer state!\n");
+                    DPRINT1("Invalid timer state! Timer %p in bucket %lu (hand %u) due %I64u, now %I64u, Dpc %p routine %p\n",
+                            Timer,
+                            i,
+                            Timer->Header.Hand,
+                            Timer->DueTime.QuadPart,
+                            CurrentTime.QuadPart,
+                            Timer->Dpc,
+                            Timer->Dpc ? Timer->Dpc->DeferredRoutine : NULL);
                     DbgBreakPoint();
                 }
             }
