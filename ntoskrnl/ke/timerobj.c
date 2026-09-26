@@ -19,7 +19,71 @@ LARGE_INTEGER KiTimeIncrementReciprocal;
 UCHAR KiTimeIncrementShiftCount;
 BOOLEAN KiEnableTimerWatchdog = FALSE;
 
+/* Bit 0 lets KeCheckForTimer look, Session Manager\Kernel\TimerCheckFlags */
+ULONG KeTimerCheckFlags = 1;
+
 /* PRIVATE FUNCTIONS *********************************************************/
+
+/**
+ * @brief Bugchecks when a queued timer, its DPC or the DPC routine lies in a block that is going away.
+ *
+ * @param[in] BlockStart
+ * First byte of the block.
+ *
+ * @param[in] BlockSize
+ * Size of the block in bytes.
+ */
+VOID
+NTAPI
+KeCheckForTimer(
+    _In_ PVOID BlockStart,
+    _In_ SIZE_T BlockSize)
+{
+    ULONG_PTR Start = (ULONG_PTR)BlockStart;
+    ULONG_PTR End = Start + BlockSize;
+    PLIST_ENTRY ListHead, NextEntry;
+    PKSPIN_LOCK_QUEUE LockQueue;
+    ULONG_PTR Routine;
+    PKTIMER Timer;
+    PKDPC Dpc;
+    KIRQL OldIrql;
+    ULONG Hand;
+
+    if (!(KeTimerCheckFlags & 1))
+        return;
+
+    KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
+
+    for (Hand = 0; Hand < TIMER_TABLE_SIZE; Hand++)
+    {
+        LockQueue = KiAcquireTimerLock(Hand);
+
+        ListHead = &KiTimerTableListHead[Hand].Entry;
+        for (NextEntry = ListHead->Flink; NextEntry != ListHead; NextEntry = NextEntry->Flink)
+        {
+            Timer = CONTAINING_RECORD(NextEntry, KTIMER, TimerListEntry);
+
+            /* Any overlap with the block counts, the object would be cut in half */
+            if (((ULONG_PTR)(Timer + 1) > Start) && ((ULONG_PTR)Timer < End))
+                KeBugCheckEx(TIMER_OR_DPC_INVALID, 0, (ULONG_PTR)Timer, Start, End);
+
+            Dpc = Timer->Dpc;
+            if (Dpc == NULL)
+                continue;
+
+            if (((ULONG_PTR)(Dpc + 1) > Start) && ((ULONG_PTR)Dpc < End))
+                KeBugCheckEx(TIMER_OR_DPC_INVALID, 1, (ULONG_PTR)Dpc, Start, End);
+
+            Routine = (ULONG_PTR)Dpc->DeferredRoutine;
+            if ((Routine >= Start) && (Routine < End))
+                KeBugCheckEx(TIMER_OR_DPC_INVALID, 2, Routine, Start, End);
+        }
+
+        KiReleaseTimerLock(LockQueue);
+    }
+
+    KeLowerIrql(OldIrql);
+}
 
 BOOLEAN
 FASTCALL

@@ -544,6 +544,13 @@ DATA_SEG("INITDATA") CM_SYSTEM_CONTROL_VECTOR CmControlVector[] =
     },
     {
         L"Session Manager\\Kernel",
+        L"TimerCheckFlags",
+        &KeTimerCheckFlags,
+        NULL,
+        NULL
+    },
+    {
+        L"Session Manager\\Kernel",
         L"ObCaseInsensitive",
         &ObpCaseInsensitive,
         NULL,
