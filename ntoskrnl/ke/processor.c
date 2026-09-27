@@ -129,7 +129,7 @@ KiNotifyProcessorChange(
 }
 
 /**
- * rief Registers a callback to be told when a processor is added to the system.
+ * \brief Registers a callback to be told when a processor is added to the system.
  *
  * \param CallbackFunction The routine to call.
  * \param CallbackContext Passed back to the routine untouched.
@@ -199,7 +199,7 @@ KeRegisterProcessorChangeCallback(
 }
 
 /**
- * rief Drops a registration made by KeRegisterProcessorChangeCallback.
+ * \brief Drops a registration made by KeRegisterProcessorChangeCallback.
  *
  * \param CallbackHandle The handle that registration returned.
  */
@@ -222,7 +222,7 @@ KeDeregisterProcessorChangeCallback(
 }
 
 /**
- * rief Returns the highest NUMA node number in the system.
+ * \brief Returns the highest NUMA node number in the system.
  *
  * eturn The highest node number, which is one less than the count of nodes.
  */
@@ -234,7 +234,7 @@ KeQueryHighestNodeNumber(VOID)
 }
 
 /**
- * rief Converts a reading of the auxiliary counter into the performance counter timebase.
+ * \brief Converts a reading of the auxiliary counter into the performance counter timebase.
  *
  * \param AuxiliaryCounterValue The reading to convert.
  * \param PerformanceCounterValue Receives the same instant on the performance counter.
