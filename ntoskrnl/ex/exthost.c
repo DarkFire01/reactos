@@ -34,11 +34,7 @@ static KSPIN_LOCK ExpHostListLock;
 #define EXP_HOST_SLAT_ID      8
 #define EXP_HOST_SLAT_VERSION 1
 
-/* Larger than the highest slot the virtualization stack reaches for */
-#define EXP_HOST_SLAT_ROUTINES 32
-
 static EXP_EXTENSION_HOST ExpSlatHost;
-static PVOID ExpSlatHostTable[EXP_HOST_SLAT_ROUTINES];
 
 /* FUNCTIONS ******************************************************************/
 
@@ -61,6 +57,48 @@ ExpHostRoutineNotImplemented(VOID)
 {
     return STATUS_NOT_IMPLEMENTED;
 }
+
+/*
+ * The host in the order it publishes its routines, because the driver reaches
+ * for them by slot. A slot the kernel has nothing behind still has to answer,
+ * so it gets the stub and the driver takes its own path from the status.
+ */
+static PVOID ExpSlatHostTable[] =
+{
+    ExpHostRoutineNotImplemented,       /* VmCreateMemoryRange */
+    ExpHostRoutineNotImplemented,       /* VmDeleteMemoryRange */
+    ExpHostRoutineNotImplemented,       /* VmSplitMemoryRange */
+    ExpHostRoutineNotImplemented,       /* VmMergeMemoryRanges */
+    ExpHostRoutineNotImplemented,       /* VmPreallocateForRangeCreate */
+    ExpHostRoutineNotImplemented,       /* VmFreePreallocationForRangeCreate */
+    ExpHostRoutineNotImplemented,       /* VmAccessFault */
+    ExpHostRoutineNotImplemented,       /* VmPauseResumeNotify */
+    ExpHostRoutineNotImplemented,       /* VmColdPagesHint */
+    ExpHostRoutineNotImplemented,       /* VmCreateMemoryProcess */
+    ExpHostRoutineNotImplemented,       /* VmSetThreadSchedulerAssist */
+    ExpHostRoutineNotImplemented,       /* VmProbeAndLockPages */
+    ExpHostRoutineNotImplemented,       /* VmUnlockPages */
+    ExpHostRoutineNotImplemented,       /* VmSecureBackingMemory */
+    ExpHostRoutineNotImplemented,       /* VmUnsecureBackingMemory */
+    ExpHostRoutineNotImplemented,       /* VmCallSkSvc */
+    ExpHostRoutineNotImplemented,       /* VmTerminateMemoryProcess */
+    ExpHostRoutineNotImplemented,       /* VmSetVpHostProcess */
+    ExpHostRoutineNotImplemented,       /* KeAbPreAcquire */
+    ExpHostRoutineNotImplemented,       /* KeAbPreWait */
+    ExpHostRoutineNotImplemented,       /* KeAbPostReleaseEx */
+    ExpHostRoutineNotImplemented,       /* KeAbPostAcquire */
+    ExpHostRoutineNotImplemented,       /* KeAbPostRelease */
+    ExpHostRoutineNotImplemented,       /* MmIsMdlPageDanging */
+    ExpHostRoutineNotImplemented,       /* VmPinMemoryRange */
+    ExpHostRoutineNotImplemented,       /* VmUnpinMemoryRange */
+    ExpHostRoutineNotImplemented,       /* VmSetTestMode */
+    ExpHostRoutineNotImplemented,       /* VmUpdateCommitMemoryRange */
+    PsGetJobMemoryPartition,
+    PsReferencePartitionSystemProcess,
+    PsGetProcessPartition,
+    VmMapSectionExecuteNoAcg,
+    ExpHostRoutineNotImplemented,       /* EtwpWriteProcessorTrace */
+};
 
 /**
  * @brief
@@ -104,13 +142,8 @@ BOOLEAN
 NTAPI
 ExpInitializeExtensions(VOID)
 {
-    ULONG Index;
-
     InitializeListHead(&ExpHostListHead);
     KeInitializeSpinLock(&ExpHostListLock);
-
-    for (Index = 0; Index < EXP_HOST_SLAT_ROUTINES; Index++)
-        ExpSlatHostTable[Index] = ExpHostRoutineNotImplemented;
 
     ExpSlatHost.ExtensionId = EXP_HOST_SLAT_ID;
     ExpSlatHost.ExtensionVersion = EXP_HOST_SLAT_VERSION;
