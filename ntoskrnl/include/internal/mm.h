@@ -772,6 +772,34 @@ typedef struct _MM_PARTITION
 
 extern PVOID MmSystemPartition;
 
+/* What the translation host publishes about memory, in vmhost.c */
+
+NTSTATUS
+NTAPI
+VmMapSectionExecuteNoAcg(
+    _In_ HANDLE SectionHandle,
+    _Inout_ PVOID *BaseAddress,
+    _Inout_ PLARGE_INTEGER SectionOffset,
+    _Inout_ PSIZE_T ViewSize);
+
+/* What the translation host publishes about partitions, in partition.c */
+
+PVOID
+NTAPI
+PsGetJobMemoryPartition(
+    _In_ PEJOB Job);
+
+PVOID
+NTAPI
+PsGetProcessPartition(
+    _In_ PEPROCESS Process);
+
+NTSTATUS
+NTAPI
+PsReferencePartitionSystemProcess(
+    _In_ PVOID Partition,
+    _Out_ PEPROCESS *Process);
+
 /*
  * What a caller can ask of memory beyond its size and protection. The layout
  * is the published one, kept here because the kernel header set has no copy of
