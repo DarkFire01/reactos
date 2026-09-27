@@ -774,6 +774,69 @@ extern PVOID MmSystemPartition;
 
 /* What the translation host publishes about memory, in vmhost.c */
 
+CODE_SEG("INIT")
+VOID
+NTAPI
+MiInitializeVmHost(VOID);
+
+NTSTATUS
+NTAPI
+VmPreallocateForRangeCreate(
+    _Out_ PVOID *Preallocation,
+    _In_ PEPROCESS Process);
+
+VOID
+NTAPI
+VmFreePreallocationForRangeCreate(
+    _In_opt_ PVOID Preallocation);
+
+NTSTATUS
+NTAPI
+VmCreateMemoryRange(
+    _In_ ULONG64 BaseVa,
+    _In_ ULONG64 GuestBase,
+    _In_ ULONG64 PageCount,
+    _In_ ULONG64 PartitionId,
+    _In_opt_ PVOID Preallocation,
+    _In_ ULONG Flags);
+
+NTSTATUS
+NTAPI
+VmDeleteMemoryRange(
+    _In_ ULONG64 BaseVa,
+    _In_ ULONG64 GuestBase,
+    _In_ ULONG64 PageCount,
+    _In_ ULONG64 PartitionId);
+
+NTSTATUS
+NTAPI
+VmSplitMemoryRange(
+    _In_ ULONG64 SplitVa,
+    _In_ ULONG64 PartitionId);
+
+NTSTATUS
+NTAPI
+VmMergeMemoryRanges(
+    _In_ ULONG64 BaseVa,
+    _In_ ULONG64 PartitionId);
+
+NTSTATUS
+NTAPI
+VmPinMemoryRange(
+    _In_ ULONG64 BaseVa,
+    _In_ ULONG64 GuestBase,
+    _In_ ULONG64 PageCount,
+    _In_ ULONG Flags,
+    _In_ ULONG64 PartitionId);
+
+NTSTATUS
+NTAPI
+VmUnpinMemoryRange(
+    _In_ ULONG64 BaseVa,
+    _In_ ULONG64 GuestBase,
+    _In_ ULONG64 PageCount,
+    _In_ ULONG64 PartitionId);
+
 NTSTATUS
 NTAPI
 VmMapSectionExecuteNoAcg(

@@ -138,6 +138,7 @@ MmInitSystem(IN ULONG Phase,
 
     MmInitSectionImplementation();
     MmInitPartitionImplementation();
+    MiInitializeVmHost();
     MmInitPagingFile();
 
     //

@@ -65,12 +65,12 @@ ExpHostRoutineNotImplemented(VOID)
  */
 static PVOID ExpSlatHostTable[] =
 {
-    ExpHostRoutineNotImplemented,       /* VmCreateMemoryRange */
-    ExpHostRoutineNotImplemented,       /* VmDeleteMemoryRange */
-    ExpHostRoutineNotImplemented,       /* VmSplitMemoryRange */
-    ExpHostRoutineNotImplemented,       /* VmMergeMemoryRanges */
-    ExpHostRoutineNotImplemented,       /* VmPreallocateForRangeCreate */
-    ExpHostRoutineNotImplemented,       /* VmFreePreallocationForRangeCreate */
+    VmCreateMemoryRange,
+    VmDeleteMemoryRange,
+    VmSplitMemoryRange,
+    VmMergeMemoryRanges,
+    VmPreallocateForRangeCreate,
+    VmFreePreallocationForRangeCreate,
     ExpHostRoutineNotImplemented,       /* VmAccessFault */
     ExpHostRoutineNotImplemented,       /* VmPauseResumeNotify */
     ExpHostRoutineNotImplemented,       /* VmColdPagesHint */
@@ -89,8 +89,8 @@ static PVOID ExpSlatHostTable[] =
     ExpHostRoutineNotImplemented,       /* KeAbPostAcquire */
     ExpHostRoutineNotImplemented,       /* KeAbPostRelease */
     ExpHostRoutineNotImplemented,       /* MmIsMdlPageDanging */
-    ExpHostRoutineNotImplemented,       /* VmPinMemoryRange */
-    ExpHostRoutineNotImplemented,       /* VmUnpinMemoryRange */
+    VmPinMemoryRange,
+    VmUnpinMemoryRange,
     ExpHostRoutineNotImplemented,       /* VmSetTestMode */
     ExpHostRoutineNotImplemented,       /* VmUpdateCommitMemoryRange */
     PsGetJobMemoryPartition,
