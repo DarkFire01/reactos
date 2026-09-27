@@ -21,6 +21,39 @@ extern "C" {
 
 typedef VOID *WHV_PARTITION_HANDLE;
 typedef UINT64 WHV_GUEST_PHYSICAL_ADDRESS;
+typedef UINT64 WHV_GUEST_VIRTUAL_ADDRESS;
+
+/* What a client means to do with an address it is having followed */
+typedef enum _WHV_TRANSLATE_GVA_FLAGS
+{
+    WHvTranslateGvaFlagNone = 0x00000000,
+    WHvTranslateGvaFlagValidateRead = 0x00000001,
+    WHvTranslateGvaFlagValidateWrite = 0x00000002,
+    WHvTranslateGvaFlagValidateExecute = 0x00000004,
+    WHvTranslateGvaFlagPrivilegeExempt = 0x00000008,
+    WHvTranslateGvaFlagSetPageTableBits = 0x00000010
+} WHV_TRANSLATE_GVA_FLAGS;
+
+typedef enum _WHV_TRANSLATE_GVA_RESULT_CODE
+{
+    WHvTranslateGvaResultSuccess = 0x00000000,
+    WHvTranslateGvaResultPageNotPresent = 0x00000001,
+    WHvTranslateGvaResultPrivilegeViolation = 0x00000002,
+    WHvTranslateGvaResultInvalidPageTableFlags = 0x00000003,
+    WHvTranslateGvaResultGpaUnmapped = 0x00000004,
+    WHvTranslateGvaResultGpaNoReadAccess = 0x00000005,
+    WHvTranslateGvaResultGpaNoWriteAccess = 0x00000006,
+    WHvTranslateGvaResultGpaIllegalOverlayAccess = 0x00000007,
+    WHvTranslateGvaResultIntercept = 0x00000008
+} WHV_TRANSLATE_GVA_RESULT_CODE;
+
+typedef struct _WHV_TRANSLATE_GVA_RESULT
+{
+    WHV_TRANSLATE_GVA_RESULT_CODE ResultCode;
+    UINT32 Reserved;
+} WHV_TRANSLATE_GVA_RESULT;
+
+C_ASSERT(sizeof(WHV_TRANSLATE_GVA_RESULT) == 8);
 
 /*
  * Aligned, and every register value with it, because the platform moves a
@@ -129,6 +162,22 @@ typedef enum _WHV_REGISTER_NAME
     WHvX64RegisterTr = 0x00000019,
     WHvX64RegisterIdtr = 0x0000001A,
     WHvX64RegisterGdtr = 0x0000001B,
+    WHvX64RegisterCr0 = 0x0000001C,
+    WHvX64RegisterCr2 = 0x0000001D,
+    WHvX64RegisterCr3 = 0x0000001E,
+    WHvX64RegisterCr4 = 0x0000001F,
+    WHvX64RegisterCr8 = 0x00000020,
+    WHvX64RegisterDr7 = 0x00000026,
+    WHvX64RegisterXCr0 = 0x00000027,
+    WHvX64RegisterXmm0 = 0x00001000,
+    WHvX64RegisterXmm15 = 0x0000100F,
+    WHvX64RegisterFpControlStatus = 0x00001018,
+    WHvX64RegisterXmmControlStatus = 0x00001019,
+    WHvX64RegisterTsc = 0x00002000,
+    WHvX64RegisterEfer = 0x00002001,
+    WHvX64RegisterKernelGsBase = 0x00002002,
+    WHvX64RegisterApicBase = 0x00002003,
+    WHvX64RegisterPat = 0x00002004,
     /* What a client gives a processor, and what it asks to be told about */
     WHvRegisterPendingInterruption = 0x80000000,
     WHvRegisterInterruptState = 0x80000001,
@@ -247,6 +296,7 @@ typedef enum _WHV_RUN_VP_EXIT_REASON
     WHvRunVpExitReasonX64ApicEoi = 0x00000009,
     WHvRunVpExitReasonX64MsrAccess = 0x00001000,
     WHvRunVpExitReasonX64Cpuid = 0x00001001,
+    WHvRunVpExitReasonHypercall = 0x00001005,
     WHvRunVpExitReasonException = 0x00001002,
     WHvRunVpExitReasonCanceled = 0x00002001
 } WHV_RUN_VP_EXIT_REASON;
@@ -353,6 +403,23 @@ typedef struct _WHV_X64_MSR_ACCESS_CONTEXT
 
 C_ASSERT(sizeof(WHV_X64_MSR_ACCESS_CONTEXT) == 24);
 
+/* What a guest asked the hypervisor for, which a client may answer itself */
+typedef struct _WHV_HYPERCALL_CONTEXT
+{
+    UINT64 Rax;
+    UINT64 Rbx;
+    UINT64 Rcx;
+    UINT64 Rdx;
+    UINT64 R8;
+    UINT64 Rsi;
+    UINT64 Rdi;
+    UINT64 Reserved0;
+    WHV_UINT128 XmmRegisters[6];
+    UINT64 Reserved1[2];
+} WHV_HYPERCALL_CONTEXT;
+
+C_ASSERT(sizeof(WHV_HYPERCALL_CONTEXT) == 176);
+
 /* What the processor could now be given, which is what the client asked about */
 typedef struct _WHV_X64_INTERRUPTION_DELIVERABLE_CONTEXT
 {
@@ -370,6 +437,7 @@ typedef struct _WHV_RUN_VP_EXIT_CONTEXT
         WHV_X64_CPUID_ACCESS_CONTEXT CpuidAccess;
         WHV_X64_MSR_ACCESS_CONTEXT MsrAccess;
         WHV_X64_INTERRUPTION_DELIVERABLE_CONTEXT InterruptWindow;
+        WHV_HYPERCALL_CONTEXT Hypercall;
         UINT64 AsUINT64[22];
     } DUMMYUNIONNAME;
 } WHV_RUN_VP_EXIT_CONTEXT;
@@ -455,6 +523,16 @@ WHvSetVirtualProcessorRegisters(
     _In_reads_(RegisterCount) const WHV_REGISTER_NAME *RegisterNames,
     _In_ UINT32 RegisterCount,
     _In_reads_(RegisterCount) const WHV_REGISTER_VALUE *RegisterValues);
+
+HRESULT
+WINAPI
+WHvTranslateGva(
+    _In_ WHV_PARTITION_HANDLE Partition,
+    _In_ UINT32 VpIndex,
+    _In_ WHV_GUEST_VIRTUAL_ADDRESS Gva,
+    _In_ WHV_TRANSLATE_GVA_FLAGS TranslateFlags,
+    _Out_ WHV_TRANSLATE_GVA_RESULT *TranslationResult,
+    _Out_ WHV_GUEST_PHYSICAL_ADDRESS *Gpa);
 
 HRESULT
 WINAPI
