@@ -277,16 +277,21 @@ HvlIsAnyHypervisorPresent(VOID)
 
 /**
  * @brief
- * Returns the count of processors the hypervisor keeps active.
+ * Returns how many processors the hypervisor keeps active.
+ *
+ * @param[out] Count
+ * Receives the count.
  */
-ULONG
+NTSTATUS
 NTAPI
-HvlQueryActiveHypervisorProcessorCount(VOID)
+HvlQueryActiveHypervisorProcessorCount(
+    _Out_ PULONG Count)
 {
     if (!HvlpHypervisorPresent)
-        return 0;
+        return STATUS_UNSUCCESSFUL;
 
-    return KeNumberProcessors;
+    *Count = (ULONG)KeNumberProcessors;
+    return STATUS_SUCCESS;
 }
 
 /**
@@ -467,33 +472,48 @@ KePrepareToDispatchVirtualProcessor(
 
 /**
  * @brief
- * Returns the processors the hypervisor is running on.
+ * Lists the processors the hypervisor is running on.
  *
- * @param[out] ActiveProcessors
- * Receives the affinity of the processors that are up.
+ * @param[in,out] Count
+ * How many entries @p ProcessorIndexes holds on the way in, and how many
+ * processors there are on the way out.
  *
- * @param[in] Group
- * The processor group being asked about.
+ * @param[out] ProcessorIndexes
+ * Receives the index of each of them, or NULL to only ask how many there are.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_BUFFER_TOO_SMALL when there was room for only
+ * some of them, which the caller answers by asking again with more.
  */
 NTSTATUS
 NTAPI
 HvlQueryActiveProcessors(
-    _Out_ PKAFFINITY ActiveProcessors,
-    _In_ ULONG Group)
+    _Inout_ PULONG Count,
+    _Out_writes_opt_(*Count) PULONG ProcessorIndexes)
 {
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG Active = (ULONG)KeNumberProcessors;
+    ULONG Index;
+
     if (!HvlpHypervisorPresent)
         return STATUS_NOT_SUPPORTED;
 
-    if (Group != 0)
+    if (Count == NULL)
         return STATUS_INVALID_PARAMETER;
 
-    /* Every processor that exists is one the hypervisor is running on */
-    if (KeNumberProcessors >= (sizeof(KAFFINITY) * 8))
-        *ActiveProcessors = (KAFFINITY)~0;
-    else
-        *ActiveProcessors = ((KAFFINITY)1 << KeNumberProcessors) - 1;
+    if (ProcessorIndexes != NULL)
+    {
+        /* Every processor that exists is one the hypervisor is running on */
+        for (Index = 0; (Index < *Count) && (Index < Active); Index++)
+            ProcessorIndexes[Index] = Index;
 
-    return STATUS_SUCCESS;
+        if (*Count < Active)
+            Status = STATUS_BUFFER_TOO_SMALL;
+    }
+
+    *Count = Active;
+
+    return Status;
 }
 
 /**
@@ -509,7 +529,7 @@ NTAPI
 HvlQueryNumaDistance(
     _In_ USHORT FromNode,
     _In_ USHORT ToNode,
-    _Out_ PULONG Distance)
+    _Out_ PULONGLONG Distance)
 {
     if (!HvlpHypervisorPresent)
         return STATUS_NOT_SUPPORTED;
@@ -529,26 +549,28 @@ HvlQueryNumaDistance(
  * @param[in] ProcessorIndex
  * The processor being asked about.
  *
- * @param[in] Flags
- * Reserved.
- *
  * @param[out] NodeNumber
  * Receives the node the processor belongs to.
  *
- * @param[out] ApicId
- * Receives the identifier the interrupt controller knows it by.
+ * @param[out] PackageId
+ * Receives the index of the first processor of its package.
+ *
+ * @param[out] CoreId
+ * Receives the index of the first processor of its core.
+ *
+ * @param[out] Index
+ * Receives the index of the processor itself.
  */
 NTSTATUS
 NTAPI
-HvlQueryProcessorTopology(
+HvlQueryProcessorTopologyEx(
     _In_ ULONG ProcessorIndex,
-    _In_ ULONG Flags,
-    _Out_ PUSHORT NodeNumber,
-    _Out_ PULONG ApicId)
+    _Out_opt_ PUSHORT NodeNumber,
+    _Out_opt_ PULONG PackageId,
+    _Out_opt_ PULONG CoreId,
+    _Out_opt_ PULONG Index)
 {
     PKPRCB Prcb;
-
-    UNREFERENCED_PARAMETER(Flags);
 
     if (!HvlpHypervisorPresent)
         return STATUS_NOT_SUPPORTED;
@@ -560,38 +582,40 @@ HvlQueryProcessorTopology(
     if (Prcb == NULL)
         return STATUS_INVALID_PARAMETER;
 
-    *NodeNumber = 0;
-    *ApicId = Prcb->InitialApicId;
+    if (NodeNumber != NULL)
+        *NodeNumber = 0;
+
+    /* The machine is one package, so the first processor of it stands for it */
+    if (PackageId != NULL)
+        *PackageId = 0;
+
+    /* A core is known by the thread of it that leads the rest */
+    if (CoreId != NULL)
+        *CoreId = Prcb->MultiThreadSetMaster->Number;
+
+    if (Index != NULL)
+        *Index = ProcessorIndex;
 
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Returns where a processor sits in the topology of the machine.
+ */
 NTSTATUS
 NTAPI
-HvlQueryProcessorTopologyEx(
+HvlQueryProcessorTopology(
     _In_ ULONG ProcessorIndex,
-    _Out_ PUSHORT NodeNumber,
-    _Out_opt_ PULONG ApicId,
-    _Out_opt_ PUSHORT Group,
-    _Out_opt_ PULONG GroupIndex)
+    _Out_opt_ PUSHORT NodeNumber,
+    _Out_opt_ PULONG PackageId,
+    _Out_opt_ PULONG CoreId)
 {
-    ULONG Identifier = 0;
-    NTSTATUS Status;
-
-    Status = HvlQueryProcessorTopology(ProcessorIndex, 0, NodeNumber, &Identifier);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    if (ApicId != NULL)
-        *ApicId = Identifier;
-
-    if (Group != NULL)
-        *Group = 0;
-
-    if (GroupIndex != NULL)
-        *GroupIndex = ProcessorIndex;
-
-    return STATUS_SUCCESS;
+    return HvlQueryProcessorTopologyEx(ProcessorIndex,
+                                       NodeNumber,
+                                       PackageId,
+                                       CoreId,
+                                       NULL);
 }
 
 /**
@@ -601,14 +625,17 @@ HvlQueryProcessorTopologyEx(
 NTSTATUS
 NTAPI
 HvlQueryProcessorTopologyHighestId(
-    _Out_ PULONG HighestProcessor,
-    _Out_ PUSHORT HighestNode)
+    _Out_opt_ PULONG HighestProcessor,
+    _Out_opt_ PULONG HighestNode)
 {
     if (!HvlpHypervisorPresent)
         return STATUS_NOT_SUPPORTED;
 
-    *HighestProcessor = (ULONG)KeNumberProcessors - 1;
-    *HighestNode = 0;
+    if (HighestProcessor != NULL)
+        *HighestProcessor = (ULONG)KeNumberProcessors - 1;
+
+    if (HighestNode != NULL)
+        *HighestNode = 0;
 
     return STATUS_SUCCESS;
 }
