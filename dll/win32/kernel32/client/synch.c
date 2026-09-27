@@ -18,6 +18,13 @@
 #undef InterlockedExchangeAdd
 #undef InterlockedCompareExchange
 
+/* What CreateEventEx and CreateMutexEx take, which this is built too old for */
+#ifndef CREATE_EVENT_MANUAL_RESET
+#define CREATE_EVENT_MANUAL_RESET   0x1
+#define CREATE_EVENT_INITIAL_SET    0x2
+#define CREATE_MUTEX_INITIAL_OWNER  0x1
+#endif
+
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -532,6 +539,51 @@ CreateMutexW(IN LPSECURITY_ATTRIBUTES lpMutexAttributes  OPTIONAL,
                                bInitialOwner);
 }
 
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateMutexExW(IN LPSECURITY_ATTRIBUTES lpMutexAttributes  OPTIONAL,
+               IN LPCWSTR lpName  OPTIONAL,
+               IN DWORD dwFlags  OPTIONAL,
+               IN DWORD dwDesiredAccess  OPTIONAL)
+{
+    CreateNtObjectFromWin32Api(Mutex, Mutant, dwDesiredAccess,
+                               lpMutexAttributes,
+                               lpName,
+                               (dwFlags & CREATE_MUTEX_INITIAL_OWNER) != 0);
+}
+
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateMutexExA(IN LPSECURITY_ATTRIBUTES lpMutexAttributes  OPTIONAL,
+               IN LPCSTR lpName  OPTIONAL,
+               IN DWORD dwFlags  OPTIONAL,
+               IN DWORD dwDesiredAccess  OPTIONAL)
+{
+    ConvertAnsiToUnicodePrologue
+
+    if (!lpName)
+    {
+        return CreateMutexExW(lpMutexAttributes,
+                              NULL,
+                              dwFlags,
+                              dwDesiredAccess);
+    }
+
+    ConvertAnsiToUnicodeBody(lpName)
+
+    if (NT_SUCCESS(Status))
+    {
+        return CreateMutexExW(lpMutexAttributes,
+                              UnicodeCache->Buffer,
+                              dwFlags,
+                              dwDesiredAccess);
+    }
+
+    ConvertAnsiToUnicodeEpilogue
+}
+
 /*
  * @implemented
  */
@@ -594,6 +646,53 @@ CreateEventW(IN LPSECURITY_ATTRIBUTES lpEventAttributes  OPTIONAL,
                                lpName,
                                bManualReset ? NotificationEvent : SynchronizationEvent,
                                bInitialState);
+}
+
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateEventExW(IN LPSECURITY_ATTRIBUTES lpEventAttributes  OPTIONAL,
+               IN LPCWSTR lpName  OPTIONAL,
+               IN DWORD dwFlags  OPTIONAL,
+               IN DWORD dwDesiredAccess  OPTIONAL)
+{
+    CreateNtObjectFromWin32Api(Event, Event, dwDesiredAccess,
+                               lpEventAttributes,
+                               lpName,
+                               (dwFlags & CREATE_EVENT_MANUAL_RESET) ?
+                                   NotificationEvent : SynchronizationEvent,
+                               (dwFlags & CREATE_EVENT_INITIAL_SET) != 0);
+}
+
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateEventExA(IN LPSECURITY_ATTRIBUTES lpEventAttributes  OPTIONAL,
+               IN LPCSTR lpName  OPTIONAL,
+               IN DWORD dwFlags  OPTIONAL,
+               IN DWORD dwDesiredAccess  OPTIONAL)
+{
+    ConvertAnsiToUnicodePrologue
+
+    if (!lpName)
+    {
+        return CreateEventExW(lpEventAttributes,
+                              NULL,
+                              dwFlags,
+                              dwDesiredAccess);
+    }
+
+    ConvertAnsiToUnicodeBody(lpName)
+
+    if (NT_SUCCESS(Status))
+    {
+        return CreateEventExW(lpEventAttributes,
+                              UnicodeCache->Buffer,
+                              dwFlags,
+                              dwDesiredAccess);
+    }
+
+    ConvertAnsiToUnicodeEpilogue
 }
 
 /*
