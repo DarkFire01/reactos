@@ -772,6 +772,52 @@ typedef struct _MM_PARTITION
 
 extern PVOID MmSystemPartition;
 
+/*
+ * What a caller can ask of memory beyond its size and protection. The layout
+ * is the published one, kept here because the kernel header set has no copy of
+ * its own and the guard steps aside for the one user mode has.
+ */
+#ifndef MEM_EXTENDED_PARAMETER_TYPE_BITS
+#define MEM_EXTENDED_PARAMETER_TYPE_BITS 8
+
+typedef enum MEM_EXTENDED_PARAMETER_TYPE
+{
+    MemExtendedParameterInvalidType,
+    MemExtendedParameterAddressRequirements,
+    MemExtendedParameterNumaNode,
+    MemExtendedParameterPartitionHandle,
+    MemExtendedParameterUserPhysicalHandle,
+    MemExtendedParameterAttributeFlags,
+    MemExtendedParameterImageMachine,
+    MemExtendedParameterMax
+} MEM_EXTENDED_PARAMETER_TYPE, *PMEM_EXTENDED_PARAMETER_TYPE;
+
+typedef struct _MEM_ADDRESS_REQUIREMENTS
+{
+    PVOID LowestStartingAddress;
+    PVOID HighestEndingAddress;
+    SIZE_T Alignment;
+} MEM_ADDRESS_REQUIREMENTS, *PMEM_ADDRESS_REQUIREMENTS;
+
+typedef struct DECLSPEC_ALIGN(8) MEM_EXTENDED_PARAMETER
+{
+    struct
+    {
+        ULONG64 Type : MEM_EXTENDED_PARAMETER_TYPE_BITS;
+        ULONG64 Reserved : 64 - MEM_EXTENDED_PARAMETER_TYPE_BITS;
+    } DUMMYSTRUCTNAME;
+
+    union
+    {
+        ULONG64 ULong64;
+        PVOID Pointer;
+        SIZE_T Size;
+        HANDLE Handle;
+        ULONG ULong;
+    } DUMMYUNIONNAME;
+} MEM_EXTENDED_PARAMETER, *PMEM_EXTENDED_PARAMETER;
+#endif
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
