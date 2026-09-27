@@ -160,7 +160,8 @@ void CDECL __DestructExceptionObject(EXCEPTION_RECORD*);
 void** __cdecl __current_exception(void);
 int* __cdecl __processing_throw(void);
 
-#if defined(__x86_64__) && _MSVCR_VER>=140
+/* As in handler4.c, the universal runtime has the handler and carries no version */
+#if defined(__x86_64__) && (_MSVCR_VER>=140 || defined(__UCRTSUPPORT__))
 BOOL msvcrt_init_handler4(void);
 void msvcrt_attach_handler4(void);
 void msvcrt_free_handler4(void);
