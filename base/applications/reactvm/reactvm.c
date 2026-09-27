@@ -47,6 +47,8 @@ typedef HRESULT (WINAPI *PFN_WHV_GET_VP_REGISTERS)(WHV_PARTITION_HANDLE, UINT32,
 typedef HRESULT (WINAPI *PFN_WHV_TRANSLATE_GVA)(WHV_PARTITION_HANDLE, UINT32, WHV_GUEST_VIRTUAL_ADDRESS, WHV_TRANSLATE_GVA_FLAGS, WHV_TRANSLATE_GVA_RESULT *, WHV_GUEST_PHYSICAL_ADDRESS *);
 typedef HRESULT (WINAPI *PFN_WHV_POST_SYNIC_MESSAGE)(WHV_PARTITION_HANDLE, UINT32, UINT32, const VOID *, UINT32);
 typedef HRESULT (WINAPI *PFN_WHV_GET_XSAVE_STATE)(WHV_PARTITION_HANDLE, UINT32, VOID *, UINT32, UINT32 *);
+typedef HRESULT (WINAPI *PFN_WHV_CREATE_PORT)(WHV_PARTITION_HANDLE, const WHV_NOTIFICATION_PORT_PARAMETERS *, HANDLE, WHV_NOTIFICATION_PORT_HANDLE *);
+typedef HRESULT (WINAPI *PFN_WHV_DELETE_PORT)(WHV_PARTITION_HANDLE, WHV_NOTIFICATION_PORT_HANDLE);
 
 static PFN_WHV_GET_CAPABILITY VmGetCapability;
 static PFN_WHV_CREATE_PARTITION VmCreatePartition;
@@ -64,6 +66,8 @@ static PFN_WHV_TRANSLATE_GVA VmTranslateGva;
 /* Not every platform has these, so they are bound without insisting on them */
 static PFN_WHV_POST_SYNIC_MESSAGE VmPostSynicMessage;
 static PFN_WHV_GET_XSAVE_STATE VmGetXsaveState;
+static PFN_WHV_CREATE_PORT VmCreateNotificationPort;
+static PFN_WHV_DELETE_PORT VmDeleteNotificationPort;
 
 /* The machine: a megabyte of memory, a console port, and nothing else yet */
 #define VM_RAM_SIZE         0x100000
@@ -74,6 +78,24 @@ static PFN_WHV_GET_XSAVE_STATE VmGetXsaveState;
 
 /* How many exits one program may take before it is called a runaway */
 #define VM_EXIT_LIMIT       4096
+
+/* How long to wait for a processor of its own to finish, in milliseconds */
+#define VM_PROCESSOR_PATIENCE 30000
+
+/*
+ * How long a processor that says nothing at all is run for. It is well short of
+ * the wait above on purpose: the thread running a processor has to have given up
+ * before the machine it belongs to is taken apart.
+ */
+#define VM_PROCESSOR_QUIET  8000
+
+/*
+ * How long a processor is run for at all. A processor that waits on another one
+ * leaves the machine as often as it likes, so counting how many times it does
+ * says nothing about whether it is getting anywhere, and this is short of the
+ * wait above on purpose.
+ */
+#define VM_PROCESSOR_SPAN   15000
 
 /* What the guest is expected to find out, per the interface it asks through */
 #define VM_HV_LEAF_VENDOR   0x40000000
@@ -250,6 +272,84 @@ static const UCHAR VmHypercallProgram[] =
     0xF4                                    /* hlt                      */
 };
 
+/*
+ * A guest setting a flag on a port it knows by the name of a connection. The
+ * call takes a page of the guest's own memory rather than registers, because a
+ * real mode guest has no register to put the second half of it in.
+ */
+#define VM_PORT_CONNECTION  0x00001357
+/* The one the platform library keeps room for, counted from its own base */
+#define VM_PORT_FLAG        0
+#define VM_PORT_INPUT       0x4000
+#define VM_PORT_PATIENCE    5000
+#define VM_CALL_SIGNAL_EVENT 0x5D
+
+static const UCHAR VmSignalProgram[] =
+{
+    0xC7, 0x06, 0x00, 0x40, 0x57, 0x13,     /* mov word [4000h], 1357h  */
+    0xC7, 0x06, 0x02, 0x40, 0x00, 0x00,     /* mov word [4002h], 0      */
+    0xC7, 0x06, 0x04, 0x40, 0x00, 0x00,     /* mov word [4004h], 0      */
+    0x66, 0xB9, 0x5D, 0x00, 0x00, 0x00,     /* mov ecx, 5Dh             */
+    0x66, 0xBA, 0x00, 0x40, 0x00, 0x00,     /* mov edx, 4000h           */
+    0x0F, 0x01, 0xD9,                       /* vmmcall                  */
+    0x66, 0xA3, 0x00, 0x20,                 /* mov [2000h], eax         */
+    0xF4                                    /* hlt                      */
+};
+
+/*
+ * A guest reaching its own controller through the registers the hypervisor
+ * gives it numbers for. It puts its priority up, asks itself for an interrupt
+ * of a lower class, leaves the machine twice to prove nothing arrives, and then
+ * puts the priority back down and waits for it.
+ */
+#define VM_SYNTHETIC_VECTOR     0x51
+#define VM_SYNTHETIC_LETTER     'D'
+#define VM_SYNTHETIC_PRIORITY   0x60
+#define VM_SYNTHETIC_HELD_AT    0x2004
+#define VM_SYNTHETIC_TAKEN_AT   0x2010
+
+static const UCHAR VmSyntheticApicProgram[] =
+{
+    0x66, 0xB9, 0x72, 0x00, 0x00, 0x40,     /* mov ecx, 40000072h       */
+    0x66, 0xB8, 0x60, 0x00, 0x00, 0x00,     /* mov eax, 60h             */
+    0x66, 0x31, 0xD2,                       /* xor edx, edx             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0x66, 0x31, 0xC0,                       /* xor eax, eax             */
+    0x0F, 0x32,                             /* rdmsr                    */
+    0x66, 0xA3, 0x00, 0x20,                 /* mov [2000h], eax         */
+    0xFB,                                   /* sti                      */
+    0x66, 0xB9, 0x71, 0x00, 0x00, 0x40,     /* mov ecx, 40000071h       */
+    0x66, 0xB8, 0x51, 0x00, 0x04, 0x00,     /* mov eax, 40051h          */
+    0x66, 0x31, 0xD2,                       /* xor edx, edx             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xA0, 0x10, 0x20,                       /* mov al, [2010h]          */
+    0xA2, 0x04, 0x20,                       /* mov [2004h], al          */
+    0x66, 0xB9, 0x72, 0x00, 0x00, 0x40,     /* mov ecx, 40000072h       */
+    0x66, 0x31, 0xC0,                       /* xor eax, eax             */
+    0x66, 0x31, 0xD2,                       /* xor edx, edx             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xA0, 0x10, 0x20,                       /* mov al, [2010h]          */
+    0x3C, 0x00,                             /* cmp al, 0                */
+    0x74, 0xF7,                             /* je back to the port      */
+    0xF4                                    /* hlt                      */
+};
+
+/* Says so, leaves its mark, and ends the interrupt through its own register */
+static const UCHAR VmSyntheticApicHandler[] =
+{
+    0xB0, 0x44,                             /* mov al, 44h              */
+    0xE6, 0xE9,                             /* out 0E9h, al             */
+    0xC6, 0x06, 0x10, 0x20, 0x01,           /* mov byte [2010h], 1      */
+    0x66, 0xB9, 0x70, 0x00, 0x00, 0x40,     /* mov ecx, 40000070h       */
+    0x66, 0x31, 0xC0,                       /* xor eax, eax             */
+    0x66, 0x31, 0xD2,                       /* xor edx, edx             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xCF                                    /* iret                     */
+};
+
 /* One vector register into another, to prove the guest has its own */
 static const UCHAR VmVectorProgram[] =
 {
@@ -324,6 +424,13 @@ VmPrint(
 /* How many checks were made and how many of them held */
 static ULONG VmChecks;
 static ULONG VmFailures;
+
+/*
+ * Set when a thread is left inside a processor that never came back. Nothing
+ * after that can be trusted, because the machine it belongs to cannot be taken
+ * apart while a thread is still in it.
+ */
+static BOOLEAN VmStuck;
 
 static
 VOID
@@ -410,6 +517,12 @@ VmBindPlatform(VOID)
 
     VmGetXsaveState = (PFN_WHV_GET_XSAVE_STATE)
         GetProcAddress(Platform, "WHvGetVirtualProcessorXsaveState");
+
+    VmCreateNotificationPort = (PFN_WHV_CREATE_PORT)
+        GetProcAddress(Platform, "WHvCreateNotificationPort");
+
+    VmDeleteNotificationPort = (PFN_WHV_DELETE_PORT)
+        GetProcAddress(Platform, "WHvDeleteNotificationPort");
 
     return TRUE;
 }
@@ -1660,6 +1773,109 @@ static const UCHAR VmTimerHandler[] =
     0xCF                                    /* iret                     */
 };
 
+/* TWO PROCESSORS TALKING ******************************************************/
+
+/*
+ * What a machine with more than one processor really has to do: the first
+ * processor starts the second one, and then the two of them interrupt each
+ * other. Both go through the local controller, in the form where every register
+ * is a model specific one, which is the form a hypervisor can answer without
+ * having to work out what instruction touched a page.
+ *
+ * The second processor starts at the top of the segment the startup command
+ * names, which is where every machine has started one since the first machine
+ * that had two.
+ */
+#define VM_AP_CODE_BASE     0x10000
+#define VM_AP_START_VECTOR  0x10
+#define VM_AP_HANDLER       0x1200
+#define VM_AP_IPI_VECTOR    0x41
+#define VM_AP_STACK_TOP     0x9000
+#define VM_AP_STARTED_AT    0x2010
+#define VM_AP_TAKEN_AT      0x2011
+
+/*
+ * Both of these wait by counting a register down and then leaving the machine,
+ * because a processor that waits without ever leaving it keeps the thread it was
+ * handed and the other processor never gets one of its own. Counting down first
+ * is what keeps the leaving cheap.
+ */
+static const UCHAR VmBspProgram[] =
+{
+    0x66, 0xB9, 0x1B, 0x00, 0x00, 0x00,     /* mov ecx, 1Bh             */
+    0x0F, 0x32,                             /* rdmsr                    */
+    0x66, 0x0D, 0x00, 0x0C, 0x00, 0x00,     /* or eax, 0C00h            */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0x66, 0xB9, 0x30, 0x08, 0x00, 0x00,     /* mov ecx, 830h            */
+    0x66, 0xB8, 0x00, 0x05, 0x00, 0x00,     /* mov eax, 500h            */
+    0x66, 0xBA, 0x01, 0x00, 0x00, 0x00,     /* mov edx, 1               */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0x66, 0xB8, 0x10, 0x06, 0x00, 0x00,     /* mov eax, 610h            */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xB0, 0x41,                             /* mov al, 41h              */
+    0xE6, 0xE9,                             /* out 0E9h, al             */
+    0xB9, 0xFF, 0xFF,                       /* mov cx, 0FFFFh           */
+    0xE2, 0xFE,                             /* loop to itself           */
+    0xA0, 0x10, 0x20,                       /* mov al, [2010h]          */
+    0x3C, 0x00,                             /* cmp al, 0                */
+    0x75, 0x04,                             /* jne the interrupt        */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xEB, 0xF0,                             /* jmp back to the count    */
+    0x66, 0xB9, 0x30, 0x08, 0x00, 0x00,     /* mov ecx, 830h            */
+    0x66, 0xB8, 0x41, 0x00, 0x00, 0x00,     /* mov eax, 41h             */
+    0x66, 0xBA, 0x01, 0x00, 0x00, 0x00,     /* mov edx, 1               */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xB9, 0xFF, 0xFF,                       /* mov cx, 0FFFFh           */
+    0xE2, 0xFE,                             /* loop to itself           */
+    0xA0, 0x11, 0x20,                       /* mov al, [2011h]          */
+    0x3C, 0x00,                             /* cmp al, 0                */
+    0x75, 0x04,                             /* jne the halt             */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xEB, 0xF0,                             /* jmp back to the count    */
+    0xF4                                    /* hlt                      */
+};
+
+/*
+ * What the second processor runs once it has been started. It is given nothing
+ * but the segment the startup command named, so a stack of its own is the first
+ * thing it makes.
+ */
+static const UCHAR VmApProgram[] =
+{
+    0x31, 0xC0,                             /* xor ax, ax               */
+    0x8E, 0xD0,                             /* mov ss, ax               */
+    0xBC, 0x00, 0x90,                       /* mov sp, 9000h            */
+    0x66, 0xB9, 0x1B, 0x00, 0x00, 0x00,     /* mov ecx, 1Bh             */
+    0x0F, 0x32,                             /* rdmsr                    */
+    0x66, 0x0D, 0x00, 0x0C, 0x00, 0x00,     /* or eax, 0C00h            */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xB0, 0x42,                             /* mov al, 42h              */
+    0xE6, 0xE9,                             /* out 0E9h, al             */
+    0xC6, 0x06, 0x10, 0x20, 0x01,           /* mov byte [2010h], 1      */
+    0xFB,                                   /* sti                      */
+    0xB9, 0xFF, 0xFF,                       /* mov cx, 0FFFFh           */
+    0xE2, 0xFE,                             /* loop to itself           */
+    0xA0, 0x11, 0x20,                       /* mov al, [2011h]          */
+    0x3C, 0x00,                             /* cmp al, 0                */
+    0x75, 0x04,                             /* jne the halt             */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xEB, 0xF0,                             /* jmp back to the count    */
+    0xF4                                    /* hlt                      */
+};
+
+/* What the second processor runs when the first one interrupts it */
+static const UCHAR VmApHandler[] =
+{
+    0xB0, 0x43,                             /* mov al, 43h              */
+    0xE6, 0xE9,                             /* out 0E9h, al             */
+    0xC6, 0x06, 0x11, 0x20, 0x01,           /* mov byte [2011h], 1      */
+    0x66, 0xB9, 0x0B, 0x08, 0x00, 0x00,     /* mov ecx, 80Bh            */
+    0x66, 0x31, 0xC0,                       /* xor eax, eax             */
+    0x66, 0x31, 0xD2,                       /* xor edx, edx             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xCF                                    /* iret                     */
+};
+
 /* MORE THAN ONE PROCESSOR *****************************************************/
 
 /*
@@ -1693,6 +1909,8 @@ typedef struct _VM_PROCESSOR
     ULONG Exits;
     CHAR Letter;
     BOOLEAN Halted;
+    /* Whether this one has to be started by another before it is run */
+    BOOLEAN WaitForStartup;
     HRESULT Result;
 } VM_PROCESSOR, *PVM_PROCESSOR;
 
@@ -1733,6 +1951,56 @@ VmSetRealModeSegmentOn(
     return VmSetRegisters(Vm->Partition, VpIndex, &Name, 1, &Value);
 }
 
+/* Bit for bit what the register says holds a processor that is not running */
+#define VM_ACTIVITY_STARTUP_SUSPEND 0x0000000000000001ULL
+
+/**
+ * @brief
+ * Waits until a processor has been started by whoever was going to start it.
+ *
+ * @remarks
+ * A processor of a machine that has more than one comes up waiting, and running
+ * it before it has been started is a thread handed over for nothing. Asking
+ * what holds it is what a client has the register for.
+ */
+static
+BOOLEAN
+VmWaitForStartup(
+    _In_ PVM Vm,
+    _In_ UINT32 VpIndex)
+{
+    WHV_REGISTER_NAME Name = WHvRegisterInternalActivityState;
+    ULONG Started = GetTickCount();
+
+    for (;;)
+    {
+        WHV_REGISTER_VALUE Value;
+        HRESULT Result;
+
+        ZeroMemory(&Value, sizeof(Value));
+
+        Result = VmGetRegisters(Vm->Partition, VpIndex, &Name, 1, &Value);
+        if (FAILED(Result))
+        {
+            VmPrint("  what holds processor %lu could not be read, %08lx\n",
+                    VpIndex,
+                    (ULONG)Result);
+            return FALSE;
+        }
+
+        if (!(Value.Reg64 & VM_ACTIVITY_STARTUP_SUSPEND))
+            return TRUE;
+
+        if ((GetTickCount() - Started) > VM_PROCESSOR_QUIET)
+        {
+            VmPrint("  processor %lu was never started\n", VpIndex);
+            return FALSE;
+        }
+
+        Sleep(1);
+    }
+}
+
 /**
  * @brief
  * Runs one processor of the machine until it halts.
@@ -1751,11 +2019,28 @@ VmRunProcessor(
     PVM_PROCESSOR Processor = Context;
     WHV_RUN_VP_EXIT_CONTEXT Exit;
     PVM Vm = Processor->Vm;
+    ULONG Started;
+    ULONG Quiet;
+
+    if (Processor->WaitForStartup && !VmWaitForStartup(Vm, Processor->Index))
+    {
+        Processor->Result = E_ABORT;
+        return 0;
+    }
+
+    Started = GetTickCount();
+    Quiet = Started;
 
     for (;;)
     {
-        if (Processor->Exits >= VM_EXIT_LIMIT)
+        if ((GetTickCount() - Started) > VM_PROCESSOR_SPAN)
         {
+            VmPrint("  processor %lu is not getting anywhere at rip %I64x, "
+                    "%lu stops in\n",
+                    Processor->Index,
+                    Exit.VpContext.Rip,
+                    Processor->Exits);
+
             Processor->Result = E_ABORT;
             return 0;
         }
@@ -1765,15 +2050,43 @@ VmRunProcessor(
                                                  &Exit,
                                                  sizeof(Exit));
         if (FAILED(Processor->Result))
+        {
+            VmPrint("  processor %lu could not be run, %08lx\n",
+                    Processor->Index,
+                    (ULONG)Processor->Result);
             return 0;
-
-        Processor->Exits++;
+        }
 
         if (Exit.ExitReason == WHvRunVpExitReasonX64Halt)
         {
             Processor->Halted = TRUE;
             return 0;
         }
+
+        /*
+         * A processor that is waiting to be started, or that was taken away
+         * before it did anything, has nothing to say. Running it again is what
+         * a client does about it, and the clock is what stops that being
+         * forever, since a run that says nothing is not an exit to count.
+         */
+        if ((Exit.ExitReason == WHvRunVpExitReasonNone) ||
+            (Exit.ExitReason == WHvRunVpExitReasonCanceled))
+        {
+            if ((GetTickCount() - Quiet) > VM_PROCESSOR_QUIET)
+            {
+                VmPrint("  processor %lu has had nothing to say at rip %I64x\n",
+                        Processor->Index,
+                        Exit.VpContext.Rip);
+
+                Processor->Result = E_ABORT;
+                return 0;
+            }
+
+            continue;
+        }
+
+        Quiet = GetTickCount();
+        Processor->Exits++;
 
         if (Exit.ExitReason == WHvRunVpExitReasonX64IoPortAccess)
         {
@@ -1801,7 +2114,54 @@ VmRunProcessor(
     }
 }
 
-/* Puts one processor of the machine at the start of its own program */
+/* Puts one processor of the machine where it is to start, with a stack of its own */
+static
+BOOLEAN
+VmPlaceProcessor(
+    _In_ PVM Vm,
+    _In_ UINT32 VpIndex,
+    _In_ ULONG CodeBase,
+    _In_ ULONG StackTop)
+{
+    HRESULT Result;
+
+    Result = VmSetRealModeSegmentOn(Vm, VpIndex, WHvX64RegisterCs, TRUE);
+    if (SUCCEEDED(Result))
+        Result = VmSetRealModeSegmentOn(Vm, VpIndex, WHvX64RegisterDs, FALSE);
+    if (SUCCEEDED(Result))
+        Result = VmSetRealModeSegmentOn(Vm, VpIndex, WHvX64RegisterSs, FALSE);
+    if (SUCCEEDED(Result))
+        Result = VmSetRegisterOn(Vm, VpIndex, WHvX64RegisterRflags, 2);
+    if (SUCCEEDED(Result))
+        Result = VmSetRegisterOn(Vm, VpIndex, WHvX64RegisterRsp, StackTop);
+    if (SUCCEEDED(Result))
+        Result = VmSetRegisterOn(Vm, VpIndex, WHvX64RegisterRip, CodeBase);
+
+    /*
+     * A processor put somewhere by whoever runs the machine is one that has been
+     * started, however it came up. Every processor of a machine but the first
+     * comes up waiting to be told where to begin, and this is the telling.
+     */
+    if (SUCCEEDED(Result))
+    {
+        Result = VmSetRegisterOn(Vm,
+                                 VpIndex,
+                                 WHvRegisterInternalActivityState,
+                                 0);
+    }
+
+    if (FAILED(Result))
+    {
+        VmPrint("  processor %lu could not be started, %08lx\n",
+                VpIndex,
+                (ULONG)Result);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/* Puts one processor at the start of a program of its own */
 static
 BOOLEAN
 VmStartProcessor(
@@ -1813,7 +2173,6 @@ VmStartProcessor(
     _In_ ULONG Where)
 {
     PUCHAR At = Vm->Ram + CodeBase;
-    HRESULT Result;
 
     CopyMemory(At, VmProcessorProgram, sizeof(VmProcessorProgram));
 
@@ -1825,27 +2184,7 @@ VmStartProcessor(
     At[VM_PROCESSOR_WHERE + 0] = (UCHAR)Where;
     At[VM_PROCESSOR_WHERE + 1] = (UCHAR)(Where >> 8);
 
-    Result = VmSetRealModeSegmentOn(Vm, VpIndex, WHvX64RegisterCs, TRUE);
-    if (SUCCEEDED(Result))
-        Result = VmSetRealModeSegmentOn(Vm, VpIndex, WHvX64RegisterDs, FALSE);
-    if (SUCCEEDED(Result))
-        Result = VmSetRealModeSegmentOn(Vm, VpIndex, WHvX64RegisterSs, FALSE);
-    if (SUCCEEDED(Result))
-        Result = VmSetRegisterOn(Vm, VpIndex, WHvX64RegisterRflags, 2);
-    if (SUCCEEDED(Result))
-        Result = VmSetRegisterOn(Vm, VpIndex, WHvX64RegisterRsp, VM_STACK_TOP);
-    if (SUCCEEDED(Result))
-        Result = VmSetRegisterOn(Vm, VpIndex, WHvX64RegisterRip, CodeBase);
-
-    if (FAILED(Result))
-    {
-        VmPrint("  processor %lu could not be started, %08lx\n",
-                VpIndex,
-                (ULONG)Result);
-        return FALSE;
-    }
-
-    return TRUE;
+    return VmPlaceProcessor(Vm, VpIndex, CodeBase, VM_STACK_TOP);
 }
 
 /**
@@ -1900,7 +2239,21 @@ VmStageTwoProcessors(VOID)
 
     VmRunProcessor(&First);
 
-    WaitForSingleObject(Thread, INFINITE);
+    /*
+     * Not forever: a processor that is never started is one this waits on, and
+     * a test that hangs says nothing at all.
+     */
+    if (WaitForSingleObject(Thread, VM_PROCESSOR_PATIENCE) != WAIT_OBJECT_0)
+    {
+        VmPrint("  the second processor is still going, so its machine is left "
+                "standing and the rest of this is not run\n");
+
+        CloseHandle(Thread);
+        Vm.Partition = NULL;
+        VmStuck = TRUE;
+        goto Done;
+    }
+
     CloseHandle(Thread);
 
     VmCheck("the first processor halted", First.Halted && SUCCEEDED(First.Result));
@@ -2076,6 +2429,243 @@ Done:
     VmDestroy(&Vm);
 }
 
+/**
+ * @brief
+ * A machine whose first processor starts the second one and then interrupts it.
+ *
+ * @remarks
+ * The second processor is never put anywhere. It comes up waiting to be started,
+ * the way every processor of a machine but the first one does, so reaching its
+ * own program at all is the startup command having worked.
+ *
+ * @param[in] Parked
+ * Whether the thread for the second processor is handed over before it has been
+ * started. That is what a client with a thread for each processor does, and the
+ * thread only comes back if the hypervisor says when the processor may run. The
+ * other way round the client asks what holds the processor and waits itself.
+ */
+static
+VOID
+VmStageProcessorsTalking(
+    _In_ BOOLEAN Parked)
+{
+    VM_PROCESSOR First;
+    VM_PROCESSOR Second;
+    PUCHAR Entry;
+    HANDLE Thread;
+    VM Vm;
+
+    VmPrint(Parked
+            ? "\nthe second processor is run before it is started\n"
+            : "\nthe first processor starts the second and interrupts it\n");
+
+    if (!VmCreateWith(&Vm, NULL, 0, FALSE, FALSE, 2))
+        goto Done;
+
+    ZeroMemory(Vm.Ram + VM_RESULT_BASE, 0x1000);
+
+    if (FAILED(VmCreateVirtualProcessor(Vm.Partition, 1, 0)))
+    {
+        VmPrint("  a second processor could not be made\n");
+        goto Done;
+    }
+
+    CopyMemory(Vm.Ram + VM_CODE_BASE, VmBspProgram, sizeof(VmBspProgram));
+    CopyMemory(Vm.Ram + VM_AP_CODE_BASE, VmApProgram, sizeof(VmApProgram));
+    CopyMemory(Vm.Ram + VM_AP_HANDLER, VmApHandler, sizeof(VmApHandler));
+
+    /* Where the second processor looks for what to run when it is interrupted */
+    Entry = Vm.Ram + (VM_AP_IPI_VECTOR * 4);
+    Entry[0] = (UCHAR)VM_AP_HANDLER;
+    Entry[1] = (UCHAR)(VM_AP_HANDLER >> 8);
+    Entry[2] = 0;
+    Entry[3] = 0;
+
+    if (!VmPlaceProcessor(&Vm, 0, VM_CODE_BASE, VM_STACK_TOP))
+        goto Done;
+
+    ZeroMemory(&First, sizeof(First));
+    ZeroMemory(&Second, sizeof(Second));
+
+    First.Vm = &Vm;
+    First.Index = 0;
+    Second.Vm = &Vm;
+    Second.Index = 1;
+
+    /* Whether this client waits for the startup itself or leaves it to the core */
+    Second.WaitForStartup = !Parked;
+
+    Thread = CreateThread(NULL, 0, VmRunProcessor, &Second, 0, NULL);
+    if (Thread == NULL)
+    {
+        VmPrint("  the second processor has no thread to run on\n");
+        goto Done;
+    }
+
+    VmRunProcessor(&First);
+
+    /*
+     * Not forever: a processor that is never started is one this waits on, and
+     * a test that hangs says nothing at all.
+     */
+    if (WaitForSingleObject(Thread, VM_PROCESSOR_PATIENCE) != WAIT_OBJECT_0)
+    {
+        VmPrint("  the second processor is still going, so its machine is left "
+                "standing and the rest of this is not run\n");
+
+        CloseHandle(Thread);
+        Vm.Partition = NULL;
+        VmStuck = TRUE;
+        goto Done;
+    }
+
+    CloseHandle(Thread);
+
+    VmCheck("the first processor halted", First.Halted && SUCCEEDED(First.Result));
+    VmCheck("the second processor halted", Second.Halted && SUCCEEDED(Second.Result));
+    VmCheckValue("the second was started where it was told",
+                 1, Vm.Ram[VM_AP_STARTED_AT]);
+    VmCheckValue("and took the interrupt the first sent it",
+                 1, Vm.Ram[VM_AP_TAKEN_AT]);
+
+    VmDeleteVirtualProcessor(Vm.Partition, 1);
+
+Done:
+    VmDestroy(&Vm);
+}
+
+/**
+ * @brief
+ * A guest that sets a flag on a port the monitor made for itself.
+ *
+ * @remarks
+ * This is the shape every channel between a guest and whoever runs it is built
+ * on: the monitor owns a port, the guest knows a connection, and what arrives
+ * comes out as an event the monitor was already waiting on.
+ */
+static
+VOID
+VmStagePortAndConnection(VOID)
+{
+    WHV_NOTIFICATION_PORT_PARAMETERS Parameters;
+    WHV_NOTIFICATION_PORT_HANDLE Port = NULL;
+    HANDLE Event = NULL;
+    HRESULT Result;
+    VM Vm;
+
+    VmPrint("\nthe guest sets a flag on a port of the monitor's own\n");
+
+    if ((VmCreateNotificationPort == NULL) || (VmDeleteNotificationPort == NULL))
+    {
+        VmPrint("  this platform has no ports to make\n");
+        return;
+    }
+
+    if (!VmCreateWith(&Vm, NULL, 0, FALSE, FALSE, 1))
+        goto Done;
+
+    Event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (Event == NULL)
+    {
+        VmPrint("  there is no event for the port to signal\n");
+        goto Done;
+    }
+
+    ZeroMemory(&Parameters, sizeof(Parameters));
+    Parameters.NotificationPortType = WHvNotificationPortTypeEvent;
+    Parameters.Event.ConnectionId = VM_PORT_CONNECTION;
+
+    Result = VmCreateNotificationPort(Vm.Partition, &Parameters, Event, &Port);
+    if (FAILED(Result))
+    {
+        VmPrint("  the port could not be made, %08lx\n", (ULONG)Result);
+        goto Done;
+    }
+
+    if (!VmLoad(&Vm, VmSignalProgram, sizeof(VmSignalProgram)))
+        goto Done;
+
+    /*
+     * The guest writes what it hands the hypervisor itself, which is also what
+     * puts the page behind the address: a page nothing has touched is not one
+     * the machine has been given yet.
+     */
+    ZeroMemory(Vm.Ram + VM_PORT_INPUT, 0x1000);
+
+    if (!VmRun(&Vm))
+        goto Done;
+
+    VmCheckValue("the guest was told the flag was taken", 0, VmResult(&Vm, 0));
+    VmCheck("and the monitor's event says so",
+            WaitForSingleObject(Event, VM_PORT_PATIENCE) == WAIT_OBJECT_0);
+
+Done:
+    if (Port != NULL)
+        VmDeleteNotificationPort(Vm.Partition, Port);
+
+    if (Event != NULL)
+        CloseHandle(Event);
+
+    VmDestroy(&Vm);
+}
+
+/**
+ * @brief
+ * A guest that reaches its own controller through the registers the hypervisor
+ * gives it numbers for, rather than through the page a real one lives in.
+ *
+ * @remarks
+ * This is the path an enlightened guest takes on every interrupt it ends, so it
+ * is worth more than it looks: the monitor does nothing at all here, and the
+ * whole of it is answered inside the core.
+ */
+static
+VOID
+VmStageSyntheticApic(VOID)
+{
+    PUCHAR Entry;
+    VM Vm;
+
+    VmPrint("\nthe guest works its controller through the hypervisor\n");
+
+    if (!VmCreate(&Vm, NULL, 0, FALSE))
+        goto Done;
+
+    if (!VmLoad(&Vm, VmSyntheticApicProgram, sizeof(VmSyntheticApicProgram)))
+        goto Done;
+
+    CopyMemory(Vm.Ram + VM_HANDLER_ADDRESS,
+               VmSyntheticApicHandler,
+               sizeof(VmSyntheticApicHandler));
+
+    Entry = Vm.Ram + (VM_SYNTHETIC_VECTOR * 4);
+    Entry[0] = (UCHAR)VM_HANDLER_ADDRESS;
+    Entry[1] = (UCHAR)(VM_HANDLER_ADDRESS >> 8);
+    Entry[2] = 0;
+    Entry[3] = 0;
+
+    if (!VmRun(&Vm))
+        goto Done;
+
+    Vm.Console[Vm.ConsoleLength] = ANSI_NULL;
+
+    VmCheckValue("the priority came back as it was set",
+                 VM_SYNTHETIC_PRIORITY,
+                 VmResult(&Vm, 0));
+    VmCheckValue("nothing arrived while the priority was up",
+                 0,
+                 Vm.Ram[VM_SYNTHETIC_HELD_AT]);
+    VmCheckValue("and it arrived once the priority came down",
+                 1,
+                 Vm.Ram[VM_SYNTHETIC_TAKEN_AT]);
+    VmCheckValue("the handler said so on the console",
+                 VM_SYNTHETIC_LETTER,
+                 (ULONG)(UCHAR)Vm.Console[0]);
+
+Done:
+    VmDestroy(&Vm);
+}
+
 int
 __cdecl
 main(void)
@@ -2100,18 +2690,85 @@ main(void)
     }
 
     VmStageWhatTheHypervisorSays();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageWhatTheMonitorSays();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageMonitorAnswersMsr();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageInterrupt(FALSE);
+
+    if (VmStuck)
+        goto Done;
+
     VmStageInterrupt(TRUE);
+
+    if (VmStuck)
+        goto Done;
+
     VmStageFollowGuestAddresses();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageStringPort();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageVectorRegisters();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageTwoProcessors();
+
+    if (VmStuck)
+        goto Done;
+
+
     VmStageSynicMessage();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageSynicTimer();
+
+    if (VmStuck)
+        goto Done;
+
     VmStageGuestHypercall();
 
+    if (VmStuck)
+        goto Done;
+
+    VmStagePortAndConnection();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageSyntheticApic();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageProcessorsTalking(FALSE);
+
+    if (VmStuck)
+        goto Done;
+
+    /* Last, because a processor that is never started leaves a thread behind */
+    VmStageProcessorsTalking(TRUE);
+
+Done:
     VmPrint("\n%lu checks, %lu of them failed\n", VmChecks, VmFailures);
 
     return (VmFailures == 0) ? 0 : 1;

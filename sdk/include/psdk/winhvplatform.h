@@ -543,6 +543,72 @@ WHvGetVirtualProcessorRegisters(
     _In_ UINT32 RegisterCount,
     _Out_writes_(RegisterCount) WHV_REGISTER_VALUE *RegisterValues);
 
+/* A PORT OF THE HOST'S OWN ***************************************************/
+
+typedef VOID *WHV_NOTIFICATION_PORT_HANDLE;
+
+typedef enum WHV_NOTIFICATION_PORT_TYPE
+{
+    WHvNotificationPortTypeEvent = 2,
+    WHvNotificationPortTypeDoorbell = 4
+} WHV_NOTIFICATION_PORT_TYPE;
+
+typedef struct WHV_DOORBELL_MATCH_DATA
+{
+    WHV_GUEST_PHYSICAL_ADDRESS GuestAddress;
+    UINT64 Value;
+    UINT32 Length;
+    UINT32 MatchOnValue : 1;
+    UINT32 MatchOnLength : 1;
+    UINT32 Reserved : 30;
+} WHV_DOORBELL_MATCH_DATA;
+
+typedef struct WHV_NOTIFICATION_PORT_PARAMETERS
+{
+    WHV_NOTIFICATION_PORT_TYPE NotificationPortType;
+    UINT32 Reserved;
+    union
+    {
+        struct
+        {
+            UINT32 ConnectionId;
+        } Event;
+        WHV_DOORBELL_MATCH_DATA Doorbell;
+    };
+} WHV_NOTIFICATION_PORT_PARAMETERS;
+
+C_ASSERT(FIELD_OFFSET(WHV_NOTIFICATION_PORT_PARAMETERS, Event) == 0x08);
+
+typedef enum WHV_NOTIFICATION_PORT_PROPERTY_CODE
+{
+    WHvNotificationPortPropertyPreferredTargetVp = 1,
+    WHvNotificationPortPropertyPreferredTargetDuration = 5
+} WHV_NOTIFICATION_PORT_PROPERTY_CODE;
+
+typedef UINT64 WHV_NOTIFICATION_PORT_PROPERTY;
+
+HRESULT
+WINAPI
+WHvCreateNotificationPort(
+    _In_ WHV_PARTITION_HANDLE Partition,
+    _In_ const WHV_NOTIFICATION_PORT_PARAMETERS *Parameters,
+    _In_ HANDLE EventHandle,
+    _Out_ WHV_NOTIFICATION_PORT_HANDLE *PortHandle);
+
+HRESULT
+WINAPI
+WHvSetNotificationPortProperty(
+    _In_ WHV_PARTITION_HANDLE Partition,
+    _In_ WHV_NOTIFICATION_PORT_HANDLE PortHandle,
+    _In_ WHV_NOTIFICATION_PORT_PROPERTY_CODE PropertyCode,
+    _In_ WHV_NOTIFICATION_PORT_PROPERTY PropertyValue);
+
+HRESULT
+WINAPI
+WHvDeleteNotificationPort(
+    _In_ WHV_PARTITION_HANDLE Partition,
+    _In_ WHV_NOTIFICATION_PORT_HANDLE PortHandle);
+
 #ifdef __cplusplus
 }
 #endif
