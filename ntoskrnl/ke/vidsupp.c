@@ -140,30 +140,6 @@ KeGetCurrentNodeNumber(VOID)
 
 /**
  * @brief
- * Describes how the logical processors of the machine relate to each other.
- *
- * @return
- * STATUS_NOT_IMPLEMENTED. Callers treat that as a machine with nothing worth
- * describing, which is what a flat single node looks like anyway.
- */
-NTSTATUS
-NTAPI
-KeQueryLogicalProcessorRelationship(
-    _In_opt_ PPROCESSOR_NUMBER ProcessorNumber,
-    _In_ LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
-    _Out_writes_bytes_opt_(*Length) PVOID Information,
-    _Inout_ PULONG Length)
-{
-    UNREFERENCED_PARAMETER(ProcessorNumber);
-    UNREFERENCED_PARAMETER(RelationshipType);
-    UNREFERENCED_PARAMETER(Information);
-    UNREFERENCED_PARAMETER(Length);
-
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-/**
- * @brief
  * Puts a return that was diverted for a retpoline back on its way.
  *
  * @remarks

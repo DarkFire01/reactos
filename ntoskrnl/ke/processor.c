@@ -268,3 +268,246 @@ KeConvertAuxiliaryCounterToPerformanceCounter(
                                                                PerformanceCounterValue,
                                                                ConversionError);
 }
+
+/* PROCESSOR RELATIONSHIPS ***************************************************/
+
+/*
+ * The machine is one processor group, so a relationship between processors
+ * always covers processors of group zero and one group affinity describes it.
+ */
+#define KI_PROCESSOR_RELATION_SIZE                                             \
+    (FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor.GroupMask) \
+     + sizeof(GROUP_AFFINITY))
+
+#define KI_NUMA_RELATION_SIZE                                                  \
+    (FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, NumaNode.GroupMask)  \
+     + sizeof(GROUP_AFFINITY))
+
+#define KI_GROUP_RELATION_SIZE                                                 \
+    (FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Group.GroupInfo)     \
+     + sizeof(PROCESSOR_GROUP_INFO))
+
+#ifdef _WIN64
+C_ASSERT(KI_PROCESSOR_RELATION_SIZE == 48);
+C_ASSERT(KI_NUMA_RELATION_SIZE == 48);
+C_ASSERT(KI_GROUP_RELATION_SIZE == 80);
+#endif
+
+typedef struct _KI_RELATION_BUFFER
+{
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Entry;
+    ULONG Length;
+    ULONG Used;
+    BOOLEAN Overflow;
+} KI_RELATION_BUFFER, *PKI_RELATION_BUFFER;
+
+/* Starts an entry, or only counts what one would have taken when it does not fit */
+static
+PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX
+KiTakeRelation(
+    _Inout_ PKI_RELATION_BUFFER Buffer,
+    _In_ LOGICAL_PROCESSOR_RELATIONSHIP Relationship,
+    _In_ ULONG Size)
+{
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Entry;
+
+    Buffer->Used += Size;
+    if (Buffer->Used > Buffer->Length)
+    {
+        Buffer->Overflow = TRUE;
+        return NULL;
+    }
+
+    Entry = Buffer->Entry;
+    RtlZeroMemory(Entry, Size);
+    Entry->Relationship = Relationship;
+    Entry->Size = Size;
+    Buffer->Entry = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)((PUCHAR)Entry + Size);
+
+    return Entry;
+}
+
+/* Reports a run of processors, which is what a core and a package both are */
+static
+VOID
+KiAddProcessorRelation(
+    _Inout_ PKI_RELATION_BUFFER Buffer,
+    _In_ LOGICAL_PROCESSOR_RELATIONSHIP Relationship,
+    _In_ KAFFINITY Processors,
+    _In_ UCHAR Flags)
+{
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Entry;
+
+    Entry = KiTakeRelation(Buffer, Relationship, KI_PROCESSOR_RELATION_SIZE);
+    if (Entry == NULL)
+        return;
+
+    Entry->Processor.Flags = Flags;
+    Entry->Processor.GroupCount = 1;
+    Entry->Processor.GroupMask[0].Mask = Processors;
+}
+
+/* Reports one NUMA node and the processors that belong to it */
+static
+VOID
+KiAddNumaRelation(
+    _Inout_ PKI_RELATION_BUFFER Buffer,
+    _In_ USHORT NodeNumber,
+    _In_ KAFFINITY Processors)
+{
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Entry;
+
+    Entry = KiTakeRelation(Buffer, RelationNumaNode, KI_NUMA_RELATION_SIZE);
+    if (Entry == NULL)
+        return;
+
+    Entry->NumaNode.NodeNumber = NodeNumber;
+    Entry->NumaNode.GroupCount = 1;
+    Entry->NumaNode.GroupMasks[0].Mask = Processors;
+}
+
+/* Reports the one group the machine runs in */
+static
+VOID
+KiAddGroupRelation(
+    _Inout_ PKI_RELATION_BUFFER Buffer)
+{
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Entry;
+
+    Entry = KiTakeRelation(Buffer, RelationGroup, KI_GROUP_RELATION_SIZE);
+    if (Entry == NULL)
+        return;
+
+    Entry->Group.MaximumGroupCount = 1;
+    Entry->Group.ActiveGroupCount = 1;
+    Entry->Group.GroupInfo[0].MaximumProcessorCount = KeNumberProcessors;
+    Entry->Group.GroupInfo[0].ActiveProcessorCount = KeNumberProcessors;
+    Entry->Group.GroupInfo[0].ActiveProcessorMask = KeActiveProcessors;
+}
+
+/**
+ * @brief
+ * Describes how the logical processors of the machine relate to each other.
+ *
+ * @param[in] ProcessorNumber
+ * Narrows the answer to the relationships one processor takes part in, or
+ * NULL for all of them.
+ *
+ * @param[in] RelationshipType
+ * The kind of relationship being asked about, or RelationAll for every kind
+ * the kernel keeps.
+ *
+ * @param[out] Information
+ * Receives the relationships, one entry each.
+ *
+ * @param[in,out] Length
+ * The room in @p Information on the way in, and how much of it the answer
+ * needs on the way out.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INFO_LENGTH_MISMATCH when there was more to say than
+ * there was room for, STATUS_INVALID_PARAMETER for a processor that is not
+ * running, or STATUS_UNSUCCESSFUL when there was nothing to say at all.
+ *
+ * @remarks
+ * Caches, dies and modules are not tracked, so asking about one of those is
+ * answered with nothing.
+ */
+NTSTATUS
+NTAPI
+KeQueryLogicalProcessorRelationship(
+    _In_opt_ PPROCESSOR_NUMBER ProcessorNumber,
+    _In_ LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
+    _Out_writes_bytes_opt_(*Length) PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Information,
+    _Inout_ PULONG Length)
+{
+    KI_RELATION_BUFFER Buffer;
+    KAFFINITY Wanted, Processors;
+    PKPRCB Prcb;
+    UCHAR Flags;
+    LONG Index;
+    USHORT Node;
+    BOOLEAN All;
+
+    if (Length == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    if (ProcessorNumber != NULL)
+    {
+        if ((ProcessorNumber->Group != 0) ||
+            (ProcessorNumber->Number >= (UCHAR)KeNumberProcessors))
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        Wanted = AFFINITY_MASK(ProcessorNumber->Number);
+    }
+    else
+    {
+        Wanted = KeActiveProcessors;
+    }
+
+    All = (RelationshipType == RelationAll);
+
+    Buffer.Entry = Information;
+    Buffer.Length = (Information != NULL) ? *Length : 0;
+    Buffer.Used = 0;
+    Buffer.Overflow = FALSE;
+
+    /* A package is the whole machine, as nothing here ever divides one up */
+    if (All || (RelationshipType == RelationProcessorPackage))
+        KiAddProcessorRelation(&Buffer, RelationProcessorPackage, KeActiveProcessors, 0);
+
+    if (All || (RelationshipType == RelationProcessorCore))
+    {
+        for (Index = 0; Index < KeNumberProcessors; Index++)
+        {
+            Prcb = KiProcessorBlock[Index];
+
+            /* One entry for each core, which the first of its threads stands for */
+            if (Prcb->MultiThreadSetMaster != Prcb)
+                continue;
+
+            Processors = Prcb->MultiThreadProcessorSet;
+            if ((Processors & Wanted) == 0)
+                continue;
+
+            /* A core holding more than this one thread is a core that threads */
+            Flags = (Prcb->SetMember != Processors) ? LTP_PC_SMT : 0;
+
+            KiAddProcessorRelation(&Buffer, RelationProcessorCore, Processors, Flags);
+        }
+    }
+
+    /* Both kinds of node question are answered the same way, in groups */
+    if (All ||
+        (RelationshipType == RelationNumaNode) ||
+        (RelationshipType == RelationNumaNodeEx))
+    {
+        for (Node = 0; Node < KeNumberNodes; Node++)
+        {
+            Processors = KeNodeBlock[Node]->ProcessorMask;
+            if ((Processors & Wanted) == 0)
+                continue;
+
+            KiAddNumaRelation(&Buffer, Node, Processors);
+        }
+    }
+
+    /* The groups belong to the machine rather than to a processor in it */
+    if ((RelationshipType == RelationGroup) ||
+        (All && (ProcessorNumber == NULL)))
+    {
+        KiAddGroupRelation(&Buffer);
+    }
+
+    *Length = Buffer.Used;
+
+    if (Buffer.Overflow)
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    if (Buffer.Used == 0)
+        return STATUS_UNSUCCESSFUL;
+
+    return STATUS_SUCCESS;
+}
