@@ -341,12 +341,19 @@ HvlInvokeHypercall(
     _In_ ULONG64 InputPa,
     _In_ ULONG64 OutputPa)
 {
+    ULONG64 Result;
+
     if (HvlpHypercallPage == NULL)
         return HV_STATUS_INVALID_HYPERCALL_CODE;
 
-    return ((PHVL_HYPERCALL_ROUTINE)HvlpHypercallPage)(InputValue,
-                                                       InputPa,
-                                                       OutputPa);
+    Result = ((PHVL_HYPERCALL_ROUTINE)HvlpHypercallPage)(InputValue,
+                                                        InputPa,
+                                                        OutputPa);
+
+    if ((Result & HV_HYPERCALL_STATUS_MASK) != HV_STATUS_SUCCESS)
+        DPRINT1("Hvl: call %I64x answered %I64x\n", InputValue, Result);
+
+    return Result;
 }
 
 /**
@@ -418,10 +425,13 @@ HvlInvokeFastExtendedHypercall(
                                    Extended,
                                    HvlpHypercallPage);
 
-    if (OutputSize == 0)
-        return Result;
-
     if ((Result & HV_HYPERCALL_STATUS_MASK) != HV_STATUS_SUCCESS)
+    {
+        DPRINT1("Hvl: call %I64x answered %I64x\n", InputValue, Result);
+        return Result;
+    }
+
+    if (OutputSize == 0)
         return Result;
 
     /*
