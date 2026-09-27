@@ -208,6 +208,7 @@ ExGetSystemFirmwareTable(
     _In_ ULONG BufferLength,
     _Out_opt_ PULONG ReturnLength)
 {
+    UNIMPLEMENTED;
     UNREFERENCED_PARAMETER(FirmwareTableProviderSignature);
     UNREFERENCED_PARAMETER(FirmwareTableId);
     UNREFERENCED_PARAMETER(Buffer);
@@ -235,6 +236,7 @@ VslRetrieveMailbox(
     _Out_writes_bytes_opt_(*Size) PVOID Buffer,
     _Inout_opt_ PULONG64 Size)
 {
+    UNIMPLEMENTED;
     UNREFERENCED_PARAMETER(MailboxKey);
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(Index);
@@ -260,6 +262,7 @@ FsRtlQueryCachedVdl(
     _In_ PFILE_OBJECT FileObject,
     _Out_ PLONGLONG Vdl)
 {
+    UNIMPLEMENTED;
     UNREFERENCED_PARAMETER(FileObject);
 
     if (Vdl != NULL)
@@ -286,6 +289,7 @@ FsRtlKernelFsControlFile(
     _In_ ULONG OutputBufferLength,
     _Out_opt_ PULONG RetOutputBufferSize)
 {
+    UNIMPLEMENTED;
     UNREFERENCED_PARAMETER(FileObject);
     UNREFERENCED_PARAMETER(FsControlCode);
     UNREFERENCED_PARAMETER(InputBuffer);
@@ -451,6 +455,7 @@ MmGetSectionInformation(
     _Out_writes_bytes_(Length) PVOID SectionInformation,
     _In_ ULONG Length)
 {
+    UNIMPLEMENTED;
     UNREFERENCED_PARAMETER(SectionObject);
     UNREFERENCED_PARAMETER(SectionInformation);
     UNREFERENCED_PARAMETER(Length);
@@ -522,6 +527,7 @@ ZwQueryWnfStateData(
     _Out_writes_bytes_opt_(*BufferSize) PVOID Buffer,
     _Inout_ PULONG BufferSize)
 {
+    UNIMPLEMENTED;
     UNREFERENCED_PARAMETER(StateName);
     UNREFERENCED_PARAMETER(TypeId);
     UNREFERENCED_PARAMETER(ExplicitScope);

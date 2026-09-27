@@ -3382,6 +3382,11 @@ NtQuerySystemInformation(
             if (ReturnLength)
                 *ReturnLength = CapturedResultLength;
         }
+        else
+        {
+            DPRINT1("NtQuerySystemInformation: class %d has no handler\n",
+                    SystemInformationClass);
+        }
     }
     _SEH2_EXCEPT(ExSystemExceptionFilter())
     {
