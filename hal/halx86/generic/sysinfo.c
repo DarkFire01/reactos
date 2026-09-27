@@ -16,6 +16,9 @@ typedef unsigned int UINT;
 #define NDEBUG
 #include <debug.h>
 
+/* The memory range table, which HAL_QUERY_INFORMATION_CLASS has no name for */
+#define HAL_NUMA_RANGE_TABLE_CLASS 30
+
 HAL_AMLI_BAD_IO_ADDRESS_LIST HalAMLIBadIOAddressList[] =
 {
     { 0x0000, 0x10, 1, NULL }, // DMA controller
@@ -101,6 +104,21 @@ HaliQuerySystemInformation(IN HAL_QUERY_INFORMATION_CLASS InformationClass,
                            IN OUT PVOID Buffer,
                            OUT PULONG ReturnedLength)
 {
+    /*
+     * The table of memory ranges and the node each belongs to comes after the
+     * last class HAL_QUERY_INFORMATION_CLASS names, so it is answered by its
+     * number. There is no such table here, and a caller reads none of them as
+     * one node that holds all of the memory.
+     */
+    if ((ULONG)InformationClass == HAL_NUMA_RANGE_TABLE_CLASS)
+    {
+        if (ReturnedLength == NULL)
+            return STATUS_NOT_FOUND;
+
+        *ReturnedLength = 0;
+        return STATUS_SUCCESS;
+    }
+
 #define REPORT_THIS_CASE(X) case X: DPRINT1("Unhandled case: %s\n", #X); break
     switch (InformationClass)
     {
