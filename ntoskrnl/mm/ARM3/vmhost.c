@@ -31,14 +31,12 @@
 
 /* TYPES **********************************************************************/
 
-/* What one process has handed to a guest */
+/* What one process has handed to the guests it keeps, of which there may be several */
 typedef struct _MI_VM_CONTEXT
 {
     LIST_ENTRY ListEntry;
     PEPROCESS Process;
     LIST_ENTRY RangeListHead;
-    /* A process backs one partition, which is settled by its first range */
-    ULONG64 PartitionId;
 } MI_VM_CONTEXT, *PMI_VM_CONTEXT;
 
 /* One run of virtual addresses standing behind one run of guest physical ones */
@@ -126,19 +124,19 @@ MiVmContextForProcess(
         return NULL;
 
     Context->Process = Process;
-    Context->PartitionId = 0;
     InitializeListHead(&Context->RangeListHead);
     InsertTailList(&MiVmContextListHead, &Context->ListEntry);
 
     return Context;
 }
 
-/* Finds the range a page of virtual address falls in */
+/* Finds the range of one partition that a page of virtual address falls in */
 static
 PMI_VM_RANGE
 NTAPI
 MiVmRangeForPage(
     _In_ PMI_VM_CONTEXT Context,
+    _In_ ULONG64 PartitionId,
     _In_ ULONG64 BasePage)
 {
     PLIST_ENTRY Entry;
@@ -150,7 +148,8 @@ MiVmRangeForPage(
     {
         Range = CONTAINING_RECORD(Entry, MI_VM_RANGE, ListEntry);
 
-        if ((BasePage >= Range->BasePage) &&
+        if ((Range->PartitionId == PartitionId) &&
+            (BasePage >= Range->BasePage) &&
             (BasePage < (Range->BasePage + Range->PageCount)))
         {
             return Range;
@@ -160,12 +159,13 @@ MiVmRangeForPage(
     return NULL;
 }
 
-/* Finds the range a guest physical page falls in */
+/* Finds the range of one partition that a guest physical page falls in */
 static
 PMI_VM_RANGE
 NTAPI
 MiVmRangeForGuestPage(
     _In_ PMI_VM_CONTEXT Context,
+    _In_ ULONG64 PartitionId,
     _In_ ULONG64 GuestPage)
 {
     PLIST_ENTRY Entry;
@@ -177,7 +177,8 @@ MiVmRangeForGuestPage(
     {
         Range = CONTAINING_RECORD(Entry, MI_VM_RANGE, ListEntry);
 
-        if ((GuestPage >= Range->GuestBasePage) &&
+        if ((Range->PartitionId == PartitionId) &&
+            (GuestPage >= Range->GuestBasePage) &&
             (GuestPage < (Range->GuestBasePage + Range->PageCount)))
         {
             return Range;
@@ -408,20 +409,12 @@ VmCreateMemoryRange(
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;
     }
-    else if ((Context->PartitionId != 0) &&
-             (Context->PartitionId != PartitionId))
-    {
-        /* A process stands behind one guest, not several */
-        Status = STATUS_INVALID_PARAMETER;
-    }
-    else if (MiVmRangeForPage(Context, BaseVa / PAGE_SIZE) != NULL)
+    else if (MiVmRangeForPage(Context, PartitionId, BaseVa / PAGE_SIZE) != NULL)
     {
         Status = STATUS_CONFLICTING_ADDRESSES;
     }
     else
     {
-        Context->PartitionId = PartitionId;
-
         Range->BasePage = BaseVa / PAGE_SIZE;
         Range->GuestBasePage = GuestBase / PAGE_SIZE;
         Range->PageCount = PageCount;
@@ -466,7 +459,7 @@ VmDeleteMemoryRange(
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
     if (Context != NULL)
     {
-        Range = MiVmRangeForGuestPage(Context, GuestBase / PAGE_SIZE);
+        Range = MiVmRangeForGuestPage(Context, PartitionId, GuestBase / PAGE_SIZE);
         if ((Range != NULL) && (Range->PartitionId == PartitionId))
         {
             RemoveEntryList(&Range->ListEntry);
@@ -518,7 +511,7 @@ VmSplitMemoryRange(
     KeAcquireGuardedMutex(&MiVmContextLock);
 
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-    Range = (Context != NULL) ? MiVmRangeForPage(Context, SplitPage) : NULL;
+    Range = (Context != NULL) ? MiVmRangeForPage(Context, PartitionId, SplitPage) : NULL;
 
     if ((Range == NULL) || (Range->PartitionId != PartitionId))
     {
@@ -583,7 +576,7 @@ VmMergeMemoryRanges(
     KeAcquireGuardedMutex(&MiVmContextLock);
 
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-    Range = (Context != NULL) ? MiVmRangeForPage(Context, BaseVa / PAGE_SIZE) : NULL;
+    Range = (Context != NULL) ? MiVmRangeForPage(Context, PartitionId, BaseVa / PAGE_SIZE) : NULL;
 
     if ((Range == NULL) || (Range->PartitionId != PartitionId))
     {
@@ -654,7 +647,7 @@ VmPinMemoryRange(
     KeAcquireGuardedMutex(&MiVmContextLock);
 
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBase / PAGE_SIZE)
+    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, PartitionId, GuestBase / PAGE_SIZE)
                               : NULL;
 
     if ((Range == NULL) || (Range->PartitionId != PartitionId))
@@ -744,7 +737,7 @@ VmUnpinMemoryRange(
     KeAcquireGuardedMutex(&MiVmContextLock);
 
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBase / PAGE_SIZE)
+    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, PartitionId, GuestBase / PAGE_SIZE)
                               : NULL;
 
     if ((Range == NULL) || (Range->PartitionId != PartitionId))
@@ -813,7 +806,7 @@ MiVmBackGuestPages(
     KeAcquireGuardedMutex(&MiVmContextLock);
 
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBasePage) : NULL;
+    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, PartitionId, GuestBasePage) : NULL;
 
     if ((Range == NULL) || (Range->PartitionId != PartitionId))
     {
@@ -844,7 +837,7 @@ MiVmBackGuestPages(
         KeAcquireGuardedMutex(&MiVmContextLock);
 
         Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-        Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBasePage)
+        Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, PartitionId, GuestBasePage)
                                   : NULL;
 
         if ((Range == NULL) ||
