@@ -15,7 +15,13 @@ BOOL FASTCALL RegisterControlAtoms(VOID);
 PTHREADINFO gptiCurrent = NULL;
 PPROCESSINFO gppiInputProvider = NULL;
 BOOL g_AlwaysDisplayVersion = FALSE;
-ERESOURCE UserLock;
+/*
+ * Out of non paged pool and not in this image, because the image is mapped
+ * in the session and the kernel threads every resource onto one global list.
+ * A thread that is not attached to the session walks that list with a spin
+ * lock held, which faults on anything that is only mapped for a session.
+ */
+PERESOURCE UserLock = NULL;
 ATOM AtomMessage;       // Window Message atom.
 ATOM AtomWndObj;        // Window Object atom.
 ATOM AtomLayer;         // Window Layer atom.
@@ -227,31 +233,36 @@ RETURN
 */
 BOOL FASTCALL UserIsEntered(VOID)
 {
-    return ExIsResourceAcquiredExclusiveLite(&UserLock) ||
-           ExIsResourceAcquiredSharedLite(&UserLock);
+    return ExIsResourceAcquiredExclusiveLite(UserLock) ||
+           ExIsResourceAcquiredSharedLite(UserLock);
 }
 
 BOOL FASTCALL UserIsEnteredExclusive(VOID)
 {
-    return ExIsResourceAcquiredExclusiveLite(&UserLock);
+    return ExIsResourceAcquiredExclusiveLite(UserLock);
 }
 
 VOID FASTCALL CleanupUserImpl(VOID)
 {
-    ExDeleteResourceLite(&UserLock);
+    if (UserLock == NULL)
+        return;
+
+    ExDeleteResourceLite(UserLock);
+    ExFreePoolWithTag(UserLock, TAG_INTERNAL_SYNC);
+    UserLock = NULL;
 }
 
 VOID FASTCALL UserEnterShared(VOID)
 {
     KeEnterCriticalRegion();
-    ExAcquireResourceSharedLite(&UserLock, TRUE);
+    ExAcquireResourceSharedLite(UserLock, TRUE);
 }
 
 VOID FASTCALL UserEnterExclusive(VOID)
 {
     ASSERT_NOGDILOCKS();
     KeEnterCriticalRegion();
-    ExAcquireResourceExclusiveLite(&UserLock, TRUE);
+    ExAcquireResourceExclusiveLite(UserLock, TRUE);
     gptiCurrent = PsGetCurrentThreadWin32Thread();
 }
 
@@ -259,7 +270,7 @@ VOID FASTCALL UserLeave(VOID)
 {
     ASSERT_NOGDILOCKS();
     ASSERT(UserIsEntered());
-    ExReleaseResourceLite(&UserLock);
+    ExReleaseResourceLite(UserLock);
     KeLeaveCriticalRegion();
 }
 
