@@ -703,6 +703,32 @@ PUBLIC KiIpiInterrupt
 .ENDP
 
 
+/* The level of the vector the hypervisor raises its own interrupt on */
+HVL_LEVEL = 3
+
+EXTERN HvlInterruptHandler:PROC
+PUBLIC HvlInterrupt
+.PROC HvlInterrupt
+    /* No error code */
+    EnterTrap (TF_SAVE_ALL or TF_IRQL)
+
+    /* Raise to the level this vector belongs to */
+    mov rax, HVL_LEVEL
+    mov cr8, rax
+
+    /* End the interrupt */
+    mov dword ptr [APIC_EOI], 0
+
+    call HvlInterruptHandler
+
+    movzx rax, byte ptr [rbp + KTRAP_FRAME_PreviousIrql]
+    mov cr8, rax
+
+    /* Return */
+    ExitTrap (TF_SAVE_ALL or TF_IRQL)
+.ENDP
+
+
 PUBLIC KiUnexpectedInterrupt
 FUNC KiUnexpectedInterrupt
     /* The error code is the vector */
