@@ -22,7 +22,11 @@ extern "C" {
 typedef VOID *WHV_PARTITION_HANDLE;
 typedef UINT64 WHV_GUEST_PHYSICAL_ADDRESS;
 
-typedef struct _WHV_UINT128
+/*
+ * Aligned, and every register value with it, because the platform moves a
+ * register value with an instruction that faults on anything less.
+ */
+typedef struct DECLSPEC_ALIGN(16) _WHV_UINT128
 {
     UINT64 Low64;
     UINT64 High64;
@@ -124,8 +128,63 @@ typedef enum _WHV_REGISTER_NAME
     WHvX64RegisterLdtr = 0x00000018,
     WHvX64RegisterTr = 0x00000019,
     WHvX64RegisterIdtr = 0x0000001A,
-    WHvX64RegisterGdtr = 0x0000001B
+    WHvX64RegisterGdtr = 0x0000001B,
+    /* What a client gives a processor, and what it asks to be told about */
+    WHvRegisterPendingInterruption = 0x80000000,
+    WHvRegisterInterruptState = 0x80000001,
+    WHvRegisterPendingEvent = 0x80000002,
+    WHvX64RegisterDeliverabilityNotifications = 0x80000004,
+    WHvRegisterInternalActivityState = 0x80000005
 } WHV_REGISTER_NAME;
+
+typedef union _WHV_X64_PENDING_INTERRUPTION_REGISTER
+{
+    struct
+    {
+        UINT32 InterruptionPending:1;
+        UINT32 InterruptionType:3;
+        UINT32 DeliverErrorCode:1;
+        UINT32 InstructionLength:4;
+        UINT32 NestedEvent:1;
+        UINT32 Reserved:6;
+        UINT32 InterruptionVector:16;
+        UINT32 ErrorCode;
+    } DUMMYSTRUCTNAME;
+    UINT64 AsUINT64;
+} WHV_X64_PENDING_INTERRUPTION_REGISTER;
+
+C_ASSERT(sizeof(WHV_X64_PENDING_INTERRUPTION_REGISTER) == 8);
+
+typedef union _WHV_X64_INTERRUPT_STATE_REGISTER
+{
+    struct
+    {
+        UINT64 InterruptShadow:1;
+        UINT64 NmiMasked:1;
+        UINT64 Reserved:62;
+    } DUMMYSTRUCTNAME;
+    UINT64 AsUINT64;
+} WHV_X64_INTERRUPT_STATE_REGISTER;
+
+typedef union _WHV_X64_DELIVERABILITY_NOTIFICATIONS_REGISTER
+{
+    struct
+    {
+        UINT64 NmiNotification:1;
+        UINT64 InterruptNotification:1;
+        UINT64 InterruptPriority:4;
+        UINT64 Reserved:58;
+    } DUMMYSTRUCTNAME;
+    UINT64 AsUINT64;
+} WHV_X64_DELIVERABILITY_NOTIFICATIONS_REGISTER;
+
+/* What kind of event a pending interruption is, numbered as the processor does */
+typedef enum _WHV_X64_PENDING_INTERRUPTION_TYPE
+{
+    WHvX64PendingInterrupt = 0,
+    WHvX64PendingNmi = 2,
+    WHvX64PendingException = 3
+} WHV_X64_PENDING_INTERRUPTION_TYPE;
 
 typedef struct _WHV_X64_SEGMENT_REGISTER
 {
@@ -171,6 +230,7 @@ typedef union _WHV_REGISTER_VALUE
 } WHV_REGISTER_VALUE;
 
 C_ASSERT(sizeof(WHV_REGISTER_VALUE) == 16);
+C_ASSERT(TYPE_ALIGNMENT(WHV_REGISTER_VALUE) == 16);
 
 /* EXITS *********************************************************************/
 
@@ -293,6 +353,12 @@ typedef struct _WHV_X64_MSR_ACCESS_CONTEXT
 
 C_ASSERT(sizeof(WHV_X64_MSR_ACCESS_CONTEXT) == 24);
 
+/* What the processor could now be given, which is what the client asked about */
+typedef struct _WHV_X64_INTERRUPTION_DELIVERABLE_CONTEXT
+{
+    WHV_X64_PENDING_INTERRUPTION_TYPE DeliverableType;
+} WHV_X64_INTERRUPTION_DELIVERABLE_CONTEXT;
+
 typedef struct _WHV_RUN_VP_EXIT_CONTEXT
 {
     WHV_RUN_VP_EXIT_REASON ExitReason;
@@ -303,6 +369,7 @@ typedef struct _WHV_RUN_VP_EXIT_CONTEXT
         WHV_X64_IO_PORT_ACCESS_CONTEXT IoPortAccess;
         WHV_X64_CPUID_ACCESS_CONTEXT CpuidAccess;
         WHV_X64_MSR_ACCESS_CONTEXT MsrAccess;
+        WHV_X64_INTERRUPTION_DELIVERABLE_CONTEXT InterruptWindow;
         UINT64 AsUINT64[22];
     } DUMMYUNIONNAME;
 } WHV_RUN_VP_EXIT_CONTEXT;
