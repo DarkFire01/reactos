@@ -12,6 +12,9 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Where the shared page keeps the time the system spent asleep */
+#define KI_INTERRUPT_TIME_BIAS_OFFSET 0x3B0
+
 /* GLOBALS *******************************************************************/
 
 LARGE_INTEGER KeBootTime;
@@ -209,6 +212,43 @@ KeQueryInterruptTime(VOID)
     return CurrentTime.QuadPart;
 }
 #endif
+
+/**
+ * @brief
+ * Returns the interrupt time with the time spent asleep taken out of it.
+ *
+ * @remarks
+ * Read the way the shared page has to be read on a processor that cannot take
+ * all eight bytes at once, which is also how the value is read back to tell
+ * whether it changed underneath. The bias is newer than the interface the kernel
+ * builds against, so where it sits in the page is named here rather than taken
+ * from a field: it is where every version since Vista has kept it.
+ *
+ * @implemented
+ */
+ULONGLONG
+NTAPI
+KeQueryUnbiasedInterruptTime(VOID)
+{
+    LARGE_INTEGER Time;
+    ULONGLONG Bias;
+
+    for (;;)
+    {
+        Time.HighPart = SharedUserData->InterruptTime.High1Time;
+        Time.LowPart = SharedUserData->InterruptTime.LowPart;
+
+        if (Time.HighPart == SharedUserData->InterruptTime.High2Time)
+            break;
+
+        YieldProcessor();
+    }
+
+    Bias = *(volatile ULONGLONG *)((PUCHAR)SharedUserData +
+                                   KI_INTERRUPT_TIME_BIAS_OFFSET);
+
+    return Time.QuadPart - Bias;
+}
 
 /**
  * @brief

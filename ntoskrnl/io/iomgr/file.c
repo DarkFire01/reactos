@@ -4264,4 +4264,70 @@ IoReplaceFileObjectName(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Turns a handle to a file into one of the kernel's own.
+ *
+ * @param[in] AccessMode
+ * Whose handle table @p FileHandle is in.
+ *
+ * @param[in] DesiredAccess
+ * What the new handle is to allow, which the old one has to allow already
+ * unless @p SkipAccessCheck says not to look.
+ *
+ * @remarks
+ * A driver handed a handle by whoever called it cannot keep it, because the
+ * handle belongs to that process and means nothing once the call is over. This
+ * gives it one of its own onto the same file.
+ *
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+IoConvertFileHandleToKernelHandle(
+    _In_ HANDLE FileHandle,
+    _In_ KPROCESSOR_MODE AccessMode,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ BOOLEAN SkipAccessCheck,
+    _Out_ PHANDLE KernelHandle)
+{
+    OBJECT_HANDLE_INFORMATION HandleInformation;
+    PFILE_OBJECT FileObject;
+    NTSTATUS Status;
+
+    *KernelHandle = NULL;
+
+    if (FileHandle == NULL)
+        return STATUS_SUCCESS;
+
+    Status = ObReferenceObjectByHandle(FileHandle,
+                                       0,
+                                       IoFileObjectType,
+                                       AccessMode,
+                                       (PVOID *)&FileObject,
+                                       &HandleInformation);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* The new handle may allow no more than the one it is taken from */
+    if (!SkipAccessCheck &&
+        ((HandleInformation.GrantedAccess & DesiredAccess) != DesiredAccess))
+    {
+        ObDereferenceObject(FileObject);
+        return STATUS_ACCESS_DENIED;
+    }
+
+    Status = ObOpenObjectByPointer(FileObject,
+                                   OBJ_KERNEL_HANDLE,
+                                   NULL,
+                                   DesiredAccess,
+                                   IoFileObjectType,
+                                   KernelMode,
+                                   KernelHandle);
+
+    ObDereferenceObject(FileObject);
+
+    return Status;
+}
+
 /* EOF */

@@ -639,6 +639,58 @@ IopFreeReserveIrp(IN CCHAR PriorityBoost)
 
 /* FUNCTIONS *****************************************************************/
 
+/**
+ * @brief
+ * Allocates a request the way IoAllocateIrp does, for a caller that also names
+ * the device the request is for.
+ *
+ * @remarks
+ * What the device object is for is the attribution the kernel keeps about who
+ * asked for an operation, and nothing here keeps any, so the request is the
+ * same one the older call gives out.
+ *
+ * @implemented
+ */
+PIRP
+NTAPI
+IoAllocateIrpEx(
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_ CCHAR StackSize,
+    _In_ BOOLEAN ChargeQuota)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    return IoAllocateIrp(StackSize, ChargeQuota);
+}
+
+/**
+ * @brief
+ * Says which request an operation is to be attributed to.
+ *
+ * @param[in] Flags
+ * Which of the two ways the caller is naming it: the low bit says the source is
+ * a handle rather than another request, and no other bit means anything.
+ *
+ * @return
+ * STATUS_NOT_FOUND, because nothing here attributes an operation to anything,
+ * which is what a caller sees on a system where nothing is being attributed.
+ */
+NTSTATUS
+NTAPI
+IoSetIoAttributionIrp(
+    _In_ PIRP Irp,
+    _In_ PVOID Source,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(Source);
+
+    if ((Flags == 0) || ((Flags & ~0x3) != 0) || ((Flags & 0x3) == 0x3))
+        return STATUS_INVALID_PARAMETER;
+
+    return STATUS_NOT_FOUND;
+}
+
 /*
  * @implemented
  */
