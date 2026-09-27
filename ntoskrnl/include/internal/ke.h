@@ -418,6 +418,13 @@ HvlInitSystemEvents(VOID);
 
 extern BOOLEAN HvlpHypervisorPresent;
 
+ULONG64
+NTAPI
+HvlInvokeHypercall(
+    _In_ ULONG64 InputValue,
+    _In_ ULONG64 InputPa,
+    _In_ ULONG64 OutputPa);
+
 VOID
 NTAPI
 KeInitializeProfile(

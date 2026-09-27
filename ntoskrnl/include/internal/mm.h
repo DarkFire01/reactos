@@ -793,8 +793,8 @@ VmFreePreallocationForRangeCreate(
 NTSTATUS
 NTAPI
 VmCreateMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
     _In_ ULONG64 PartitionId,
     _In_opt_ PVOID Preallocation,
@@ -803,8 +803,8 @@ VmCreateMemoryRange(
 NTSTATUS
 NTAPI
 VmDeleteMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
     _In_ ULONG64 PartitionId);
 
@@ -823,8 +823,8 @@ VmMergeMemoryRanges(
 NTSTATUS
 NTAPI
 VmPinMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
     _In_ ULONG Flags,
     _In_ ULONG64 PartitionId);
@@ -832,9 +832,20 @@ VmPinMemoryRange(
 NTSTATUS
 NTAPI
 VmUnpinMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
+    _In_ ULONG64 PartitionId);
+
+NTSTATUS
+NTAPI
+VmAccessFault(
+    _In_reads_(RangeCount) PVOID RangeList,
+    _Out_opt_ PVOID Result,
+    _In_ ULONG64 RangeCount,
+    _In_ ULONG Access,
+    _In_ ULONG Flags,
+    _In_ ULONG Reserved,
     _In_ ULONG64 PartitionId);
 
 NTSTATUS

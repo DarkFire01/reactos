@@ -71,7 +71,7 @@ static PVOID ExpSlatHostTable[] =
     VmMergeMemoryRanges,
     VmPreallocateForRangeCreate,
     VmFreePreallocationForRangeCreate,
-    ExpHostRoutineNotImplemented,       /* VmAccessFault */
+    VmAccessFault,
     ExpHostRoutineNotImplemented,       /* VmPauseResumeNotify */
     ExpHostRoutineNotImplemented,       /* VmColdPagesHint */
     ExpHostRoutineNotImplemented,       /* VmCreateMemoryProcess */
