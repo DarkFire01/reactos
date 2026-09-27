@@ -1989,6 +1989,7 @@
 
 # Zw routines without a system call
 @ stdcall -version=0x600+ ZwAllocateLocallyUniqueId(ptr)
+@ stdcall -version=0xA00+ NtAllocateVirtualMemoryEx(ptr ptr ptr long long ptr long)
 @ stdcall -version=0xA00+ ZwAllocateVirtualMemoryEx(ptr ptr ptr long long ptr long)
 @ stdcall -version=0xA00+ ZwCreatePartition(ptr ptr long ptr long)
 @ stdcall -version=0x600+ ZwLockVirtualMemory(ptr ptr ptr long)

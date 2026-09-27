@@ -507,37 +507,6 @@ RtlFlushNonVolatileMemory(
 
 /**
  * @brief
- * Reserves or commits memory, taking the extended parameters of a newer
- * caller.
- *
- * @param[in] ExtendedParameters
- * Attributes for the memory, none of which ReactOS acts on. A caller that
- * asked for one gets told so rather than silently getting memory without it.
- */
-NTSTATUS
-NTAPI
-ZwAllocateVirtualMemoryEx(
-    _In_ HANDLE ProcessHandle,
-    _Inout_ PVOID *BaseAddress,
-    _Inout_ PSIZE_T RegionSize,
-    _In_ ULONG AllocationType,
-    _In_ ULONG PageProtection,
-    _Inout_updates_opt_(ParameterCount) PVOID ExtendedParameters,
-    _In_ ULONG ParameterCount)
-{
-    if ((ExtendedParameters != NULL) && (ParameterCount != 0))
-        return STATUS_NOT_SUPPORTED;
-
-    return ZwAllocateVirtualMemory(ProcessHandle,
-                                   BaseAddress,
-                                   0,
-                                   RegionSize,
-                                   AllocationType,
-                                   PageProtection);
-}
-
-/**
- * @brief
  * Reads the data behind a notification name.
  *
  * @return

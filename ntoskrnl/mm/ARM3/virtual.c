@@ -6009,17 +6009,31 @@ NtQueryVirtualMemory(IN HANDLE ProcessHandle,
     return Status;
 }
 
-/*
- * @implemented
+/**
+ * @brief
+ * Reserves or commits a range of a process's address space.
+ *
+ * @param[in] Alignment
+ * What the start of a reserved range has to be a multiple of. Every caller
+ * gets the granularity unless one asked for more.
+ *
+ * @param[in] LimitAddress
+ * The highest address the range may end at, or zero for the highest there is.
+ *
+ * @remarks
+ * The last two are what NtAllocateVirtualMemoryEx passes on from the
+ * requirements a caller handed it, and are the only difference between the two.
  */
+static
 NTSTATUS
-NTAPI
-NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
+MiAllocateVirtualMemory(IN HANDLE ProcessHandle,
                         IN OUT PVOID* UBaseAddress,
                         IN ULONG_PTR ZeroBits,
                         IN OUT PSIZE_T URegionSize,
                         IN ULONG AllocationType,
-                        IN ULONG Protect)
+                        IN ULONG Protect,
+                        IN ULONG_PTR Alignment,
+                        IN ULONG_PTR LimitAddress)
 {
     PEPROCESS Process;
     PMMVAD Vad = NULL, FoundVad;
@@ -6039,6 +6053,19 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
     PMMPDE PointerPde;
     TABLE_SEARCH_RESULT Result;
     PAGED_CODE();
+
+    /* A range cannot start on less than the granularity every range starts on */
+    if ((Alignment < MM_VIRTMEM_GRANULARITY) ||
+        ((Alignment & (Alignment - 1)) != 0))
+    {
+        DPRINT1("Alignment %p is not a power of two of at least the granularity\n",
+                (PVOID)Alignment);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* A caller that named a limit gets the lower of it and the highest there is */
+    if ((LimitAddress != 0) && (LimitAddress < HighestAddress))
+        HighestAddress = LimitAddress;
 
     /* Check for valid Zero bits */
     if (ZeroBits > MI_MAX_ZERO_BITS)
@@ -6295,6 +6322,10 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
                     Status = STATUS_INVALID_PARAMETER_3;
                     goto FailPathNoLock;
                 }
+
+                /* A limit the caller named still holds over the zero bits */
+                if ((LimitAddress != 0) && (LimitAddress < HighestAddress))
+                    HighestAddress = LimitAddress;
             }
         }
         else
@@ -6347,7 +6378,7 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
                                &StartingAddress,
                                PRegionSize,
                                HighestAddress,
-                               MM_VIRTMEM_GRANULARITY,
+                               Alignment,
                                AllocationType);
         if (!NT_SUCCESS(Status))
         {
@@ -6799,6 +6830,167 @@ FailPathNoLock:
     {
         PsReturnProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
     }
+
+    return Status;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
+                        IN OUT PVOID* UBaseAddress,
+                        IN ULONG_PTR ZeroBits,
+                        IN OUT PSIZE_T URegionSize,
+                        IN ULONG AllocationType,
+                        IN ULONG Protect)
+{
+    return MiAllocateVirtualMemory(ProcessHandle,
+                                   UBaseAddress,
+                                   ZeroBits,
+                                   URegionSize,
+                                   AllocationType,
+                                   Protect,
+                                   MM_VIRTMEM_GRANULARITY,
+                                   0);
+}
+
+/**
+ * @brief
+ * Reserves or commits a range of a process's address space, taking the
+ * attributes a newer caller asks for.
+ *
+ * @param[in,out] ExtendedParameters
+ * What the caller wants of the memory beyond its size and protection.
+ *
+ * @param[in] ParameterCount
+ * How many of them there are.
+ *
+ * @return
+ * What NtAllocateVirtualMemory would return, or STATUS_INVALID_PARAMETER for an
+ * attribute this kernel cannot honour. A caller is told rather than quietly
+ * given memory that does not have what it asked for.
+ */
+NTSTATUS
+NTAPI
+NtAllocateVirtualMemoryEx(
+    _In_ HANDLE ProcessHandle,
+    _Inout_ PVOID *UBaseAddress,
+    _Inout_ PSIZE_T URegionSize,
+    _In_ ULONG AllocationType,
+    _In_ ULONG Protect,
+    _Inout_updates_opt_(ParameterCount) PMEM_EXTENDED_PARAMETER ExtendedParameters,
+    _In_ ULONG ParameterCount)
+{
+    MEM_ADDRESS_REQUIREMENTS Requirements;
+    PMEM_ADDRESS_REQUIREMENTS Asked;
+    ULONG_PTR Alignment = MM_VIRTMEM_GRANULARITY;
+    ULONG_PTR LimitAddress = 0;
+    ULONG Index;
+
+    PAGED_CODE();
+
+    if ((ParameterCount != 0) && (ExtendedParameters == NULL))
+        return STATUS_INVALID_PARAMETER;
+
+    for (Index = 0; Index < ParameterCount; Index++)
+    {
+        switch (ExtendedParameters[Index].Type)
+        {
+            case MemExtendedParameterAddressRequirements:
+
+                Asked = ExtendedParameters[Index].Pointer;
+                if (Asked == NULL)
+                    return STATUS_INVALID_PARAMETER;
+
+                Requirements = *Asked;
+
+                /*
+                 * The lowest address is only a floor to search from, and the
+                 * search always starts at the bottom, so asking for one that
+                 * is not the bottom is asking for something this cannot do.
+                 */
+                if (Requirements.LowestStartingAddress != NULL)
+                {
+                    DPRINT1("A lowest starting address is not honoured\n");
+                    return STATUS_INVALID_PARAMETER;
+                }
+
+                if (Requirements.Alignment != 0)
+                    Alignment = Requirements.Alignment;
+
+                if (Requirements.HighestEndingAddress != NULL)
+                    LimitAddress = (ULONG_PTR)Requirements.HighestEndingAddress;
+
+                break;
+
+            case MemExtendedParameterNumaNode:
+
+                /* Memory here is one node, so every node that exists is this one */
+                if (ExtendedParameters[Index].ULong64 != 0)
+                {
+                    DPRINT1("Node %I64u is not a node this machine has\n",
+                            ExtendedParameters[Index].ULong64);
+                    return STATUS_INVALID_PARAMETER;
+                }
+
+                break;
+
+            default:
+
+                DPRINT1("Memory attribute %u is not one that can be honoured\n",
+                        (ULONG)ExtendedParameters[Index].Type);
+                return STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    return MiAllocateVirtualMemory(ProcessHandle,
+                                   UBaseAddress,
+                                   0,
+                                   URegionSize,
+                                   AllocationType,
+                                   Protect,
+                                   Alignment,
+                                   LimitAddress);
+}
+
+/**
+ * @brief
+ * Reserves or commits memory on the kernel's own behalf.
+ *
+ * @remarks
+ * A Zw call means the buffers belong to the kernel, which is what the system
+ * service stubs arrange for the calls that have one. This one has no stub,
+ * because nothing outside the kernel can reach it, so the mode is put right
+ * here instead.
+ */
+NTSTATUS
+NTAPI
+ZwAllocateVirtualMemoryEx(
+    _In_ HANDLE ProcessHandle,
+    _Inout_ PVOID *UBaseAddress,
+    _Inout_ PSIZE_T URegionSize,
+    _In_ ULONG AllocationType,
+    _In_ ULONG Protect,
+    _Inout_updates_opt_(ParameterCount) PMEM_EXTENDED_PARAMETER ExtendedParameters,
+    _In_ ULONG ParameterCount)
+{
+    PKTHREAD Thread = KeGetCurrentThread();
+    KPROCESSOR_MODE PreviousMode = Thread->PreviousMode;
+    NTSTATUS Status;
+
+    Thread->PreviousMode = KernelMode;
+
+    Status = NtAllocateVirtualMemoryEx(ProcessHandle,
+                                       UBaseAddress,
+                                       URegionSize,
+                                       AllocationType,
+                                       Protect,
+                                       ExtendedParameters,
+                                       ParameterCount);
+
+    Thread->PreviousMode = PreviousMode;
 
     return Status;
 }
