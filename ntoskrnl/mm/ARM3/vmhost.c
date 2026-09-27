@@ -55,12 +55,42 @@ typedef struct _MI_VM_RANGE
     LONG PinCount;
 } MI_VM_RANGE, *PMI_VM_RANGE;
 
+/* One run of addresses a caller wants made ready */
+typedef struct _MI_VM_RANGE_REQUEST
+{
+    ULONG64 BaseVa;
+    ULONG64 Length;
+} MI_VM_RANGE_REQUEST, *PMI_VM_RANGE_REQUEST;
+
 /* GLOBALS ********************************************************************/
 
 #define MI_VM_HOST_TAG 'HmVM'
 
+/*
+ * What it takes to tell the hypervisor where a guest physical page is. The
+ * kernel owns the translations of a range it was given, so it is the one
+ * that fills them in, and that is a hypercall with its input in a page.
+ */
+#define MI_VM_MAP_GPA_PAGES         0x004B
+#define MI_VM_HYPERCALL_REP_SHIFT   32
+#define MI_VM_HYPERCALL_STATUS_MASK 0xFFFF
+#define MI_VM_MAP_GPA_FULL_ACCESS   0x0000000F
+
+typedef struct _MI_VM_MAP_GPA_INPUT
+{
+    ULONG64 TargetPartitionId;
+    ULONG64 TargetGpaBase;
+    ULONG MapFlags;
+    ULONG Reserved;
+    ULONG64 SourcePageList[ANYSIZE_ARRAY];
+} MI_VM_MAP_GPA_INPUT, *PMI_VM_MAP_GPA_INPUT;
+
 /* The only flag a caller may ask for, which says the range is written through */
 #define MI_VM_RANGE_FLAGS 0x00000001
+
+/* One page for a hypercall input, and where the processor sees it */
+static PMI_VM_MAP_GPA_INPUT MiVmHypercallInput;
+static ULONG64 MiVmHypercallInputPa;
 
 static LIST_ENTRY MiVmContextListHead;
 static KGUARDED_MUTEX MiVmContextLock;
@@ -122,6 +152,33 @@ MiVmRangeForPage(
 
         if ((BasePage >= Range->BasePage) &&
             (BasePage < (Range->BasePage + Range->PageCount)))
+        {
+            return Range;
+        }
+    }
+
+    return NULL;
+}
+
+/* Finds the range a guest physical page falls in */
+static
+PMI_VM_RANGE
+NTAPI
+MiVmRangeForGuestPage(
+    _In_ PMI_VM_CONTEXT Context,
+    _In_ ULONG64 GuestPage)
+{
+    PLIST_ENTRY Entry;
+    PMI_VM_RANGE Range;
+
+    for (Entry = Context->RangeListHead.Flink;
+         Entry != &Context->RangeListHead;
+         Entry = Entry->Flink)
+    {
+        Range = CONTAINING_RECORD(Entry, MI_VM_RANGE, ListEntry);
+
+        if ((GuestPage >= Range->GuestBasePage) &&
+            (GuestPage < (Range->GuestBasePage + Range->PageCount)))
         {
             return Range;
         }
@@ -211,8 +268,31 @@ VOID
 NTAPI
 MiInitializeVmHost(VOID)
 {
+    PHYSICAL_ADDRESS Low, High, Boundary;
+
     InitializeListHead(&MiVmContextListHead);
     KeInitializeGuardedMutex(&MiVmContextLock);
+
+    /*
+     * A hypercall reads its input by physical address, so the page it is
+     * written in has to be one whose address does not move.
+     */
+    Low.QuadPart = 0;
+    High.QuadPart = MAXLONGLONG;
+    Boundary.QuadPart = 0;
+
+    MiVmHypercallInput = MmAllocateContiguousMemorySpecifyCache(PAGE_SIZE,
+                                                                Low,
+                                                                High,
+                                                                Boundary,
+                                                                MmCached);
+    if (MiVmHypercallInput == NULL)
+    {
+        DPRINT1("Mm: no page to fill a guest map from\n");
+        return;
+    }
+
+    MiVmHypercallInputPa = MmGetPhysicalAddress(MiVmHypercallInput).QuadPart;
 }
 
 /**
@@ -297,8 +377,8 @@ VmFreePreallocationForRangeCreate(
 NTSTATUS
 NTAPI
 VmCreateMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
     _In_ ULONG64 PartitionId,
     _In_opt_ PVOID Preallocation,
@@ -369,8 +449,8 @@ VmCreateMemoryRange(
 NTSTATUS
 NTAPI
 VmDeleteMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
     _In_ ULONG64 PartitionId)
 {
@@ -378,7 +458,7 @@ VmDeleteMemoryRange(
     PMI_VM_RANGE Range = NULL;
     NTSTATUS Status = STATUS_NOT_FOUND;
 
-    UNREFERENCED_PARAMETER(GuestBase);
+    UNREFERENCED_PARAMETER(BaseVa);
     UNREFERENCED_PARAMETER(PageCount);
 
     KeAcquireGuardedMutex(&MiVmContextLock);
@@ -386,7 +466,7 @@ VmDeleteMemoryRange(
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
     if (Context != NULL)
     {
-        Range = MiVmRangeForPage(Context, BaseVa / PAGE_SIZE);
+        Range = MiVmRangeForGuestPage(Context, GuestBase / PAGE_SIZE);
         if ((Range != NULL) && (Range->PartitionId == PartitionId))
         {
             RemoveEntryList(&Range->ListEntry);
@@ -555,8 +635,8 @@ VmMergeMemoryRanges(
 NTSTATUS
 NTAPI
 VmPinMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
     _In_ ULONG Flags,
     _In_ ULONG64 PartitionId)
@@ -566,16 +646,16 @@ VmPinMemoryRange(
     PMDL Mdl;
     NTSTATUS Status = STATUS_SUCCESS;
 
-    UNREFERENCED_PARAMETER(GuestBase);
     UNREFERENCED_PARAMETER(Flags);
 
-    if (!MiVmRangeIsSane(BaseVa, BaseVa, PageCount))
+    if (!MiVmRangeIsSane(BaseVa, GuestBase, PageCount))
         return STATUS_INVALID_PARAMETER;
 
     KeAcquireGuardedMutex(&MiVmContextLock);
 
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-    Range = (Context != NULL) ? MiVmRangeForPage(Context, BaseVa / PAGE_SIZE) : NULL;
+    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBase / PAGE_SIZE)
+                              : NULL;
 
     if ((Range == NULL) || (Range->PartitionId != PartitionId))
     {
@@ -649,8 +729,8 @@ VmPinMemoryRange(
 NTSTATUS
 NTAPI
 VmUnpinMemoryRange(
-    _In_ ULONG64 BaseVa,
     _In_ ULONG64 GuestBase,
+    _In_ ULONG64 BaseVa,
     _In_ ULONG64 PageCount,
     _In_ ULONG64 PartitionId)
 {
@@ -658,13 +738,14 @@ VmUnpinMemoryRange(
     PMI_VM_RANGE Range;
     PMDL Mdl = NULL;
 
-    UNREFERENCED_PARAMETER(GuestBase);
+    UNREFERENCED_PARAMETER(BaseVa);
     UNREFERENCED_PARAMETER(PageCount);
 
     KeAcquireGuardedMutex(&MiVmContextLock);
 
     Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
-    Range = (Context != NULL) ? MiVmRangeForPage(Context, BaseVa / PAGE_SIZE) : NULL;
+    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBase / PAGE_SIZE)
+                              : NULL;
 
     if ((Range == NULL) || (Range->PartitionId != PartitionId))
     {
@@ -686,6 +767,182 @@ VmUnpinMemoryRange(
         IoFreeMdl(Mdl);
     }
 
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Puts the pages behind a run of guest physical addresses into the guest map.
+ *
+ * @param[in] GuestBasePage
+ * The first guest physical page of the run.
+ *
+ * @param[in] PageCount
+ * How many pages it covers.
+ *
+ * @param[in] PartitionId
+ * Whose map to fill in.
+ *
+ * @remarks
+ * The range record says which of this process's addresses stand behind
+ * those guest ones, and a pinned range is already where it is going to stay,
+ * so the page numbers can be handed straight over.
+ */
+static
+NTSTATUS
+NTAPI
+MiVmBackGuestPages(
+    _In_ ULONG64 GuestBasePage,
+    _In_ ULONG64 PageCount,
+    _In_ ULONG64 PartitionId)
+{
+    PMI_VM_CONTEXT Context;
+    PMI_VM_RANGE Range;
+    PPFN_NUMBER Pages;
+    ULONG64 Index, Offset, Count, Result;
+
+    if (PageCount == 0)
+        PageCount = 1;
+
+    if (PageCount > ((PAGE_SIZE - FIELD_OFFSET(MI_VM_MAP_GPA_INPUT, SourcePageList)) /
+                     sizeof(ULONG64)))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    KeAcquireGuardedMutex(&MiVmContextLock);
+
+    Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
+    Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBasePage) : NULL;
+
+    if ((Range == NULL) || (Range->PartitionId != PartitionId))
+    {
+        DPRINT1("Mm: nothing of this process stands behind guest page %I64x\n",
+                GuestBasePage);
+        KeReleaseGuardedMutex(&MiVmContextLock);
+        return STATUS_NOT_FOUND;
+    }
+
+    /*
+     * A guest is about to reach these pages, so they have to be held where
+     * they are whether the caller asked for that or not. Pinning waits, so
+     * the record is let go of first and looked up again after.
+     */
+    if (Range->Mdl == NULL)
+    {
+        ULONG64 BaseVa = Range->BasePage * PAGE_SIZE;
+        ULONG64 GuestBase = Range->GuestBasePage * PAGE_SIZE;
+        ULONG64 Pages = Range->PageCount;
+        NTSTATUS Locked;
+
+        KeReleaseGuardedMutex(&MiVmContextLock);
+
+        Locked = VmPinMemoryRange(GuestBase, BaseVa, Pages, 0, PartitionId);
+        if (!NT_SUCCESS(Locked))
+            return Locked;
+
+        KeAcquireGuardedMutex(&MiVmContextLock);
+
+        Context = MiVmContextForProcess(PsGetCurrentProcess(), FALSE);
+        Range = (Context != NULL) ? MiVmRangeForGuestPage(Context, GuestBasePage)
+                                  : NULL;
+
+        if ((Range == NULL) ||
+            (Range->PartitionId != PartitionId) ||
+            (Range->Mdl == NULL))
+        {
+            KeReleaseGuardedMutex(&MiVmContextLock);
+            return STATUS_NOT_FOUND;
+        }
+    }
+
+    Offset = GuestBasePage - Range->GuestBasePage;
+    Count = Range->PageCount - Offset;
+    if (Count > PageCount)
+        Count = PageCount;
+
+    Pages = MmGetMdlPfnArray(Range->Mdl);
+
+    MiVmHypercallInput->TargetPartitionId = PartitionId;
+    MiVmHypercallInput->TargetGpaBase = GuestBasePage;
+    MiVmHypercallInput->MapFlags = MI_VM_MAP_GPA_FULL_ACCESS;
+    MiVmHypercallInput->Reserved = 0;
+
+    for (Index = 0; Index < Count; Index++)
+        MiVmHypercallInput->SourcePageList[Index] = Pages[Offset + Index];
+
+    KeReleaseGuardedMutex(&MiVmContextLock);
+
+    Result = HvlInvokeHypercall(MI_VM_MAP_GPA_PAGES |
+                                   (Count << MI_VM_HYPERCALL_REP_SHIFT),
+                               MiVmHypercallInputPa,
+                               0);
+    if ((Result & MI_VM_HYPERCALL_STATUS_MASK) != 0)
+    {
+        DPRINT1("Mm: guest page %I64x was refused, %I64x\n",
+                GuestBasePage,
+                Result);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Makes a run of this process's addresses ready for a guest to reach.
+ *
+ * @param[in] RangeList
+ * The runs to make ready, as base and length pairs.
+ *
+ * @param[out] Result
+ * Where the caller wants to be told what came of it. Nothing is written,
+ * because nothing here has anything to add.
+ *
+ * @param[in] RangeCount
+ * How many runs @p RangeList holds.
+ *
+ * @remarks
+ * A guest reaches a page without the kernel seeing it, so the page has to be
+ * there before the guest is let at it. Touching each one is what brings it in,
+ * and a range that is pinned is already there and stays.
+ */
+NTSTATUS
+NTAPI
+VmAccessFault(
+    _In_reads_(RangeCount) PVOID RangeList,
+    _Out_opt_ PVOID Result,
+    _In_ ULONG64 RangeCount,
+    _In_ ULONG Access,
+    _In_ ULONG Flags,
+    _In_ ULONG Reserved,
+    _In_ ULONG64 PartitionId)
+{
+    PMI_VM_RANGE_REQUEST Ranges = RangeList;
+    ULONG64 Index;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    UNREFERENCED_PARAMETER(Result);
+    UNREFERENCED_PARAMETER(Access);
+    UNREFERENCED_PARAMETER(Flags);
+    UNREFERENCED_PARAMETER(Reserved);
+
+    if ((RangeList == NULL) || (RangeCount == 0))
+        return STATUS_INVALID_PARAMETER;
+
+    if (MiVmHypercallInput == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    for (Index = 0; Index < RangeCount; Index++)
+    {
+        Status = MiVmBackGuestPages(Ranges[Index].BaseVa,
+                                    Ranges[Index].Length,
+                                    PartitionId);
+        if (!NT_SUCCESS(Status))
+            break;
+    }
+
+    return Status;
     return STATUS_SUCCESS;
 }
 
