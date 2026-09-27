@@ -1545,6 +1545,11 @@ VmStageVectorRegisters(VOID)
             VmCheckValue("and the first register is in it",
                          VM_VECTOR_LOW,
                          *(const ULONG64 *)(Saved + 0xA0));
+
+            VmPrint("    %lu bytes, control %04x, note %I64x\n",
+                    Written,
+                    *(const USHORT *)Saved,
+                    *(const ULONG64 *)(Saved + 0x200));
         }
         else
         {
