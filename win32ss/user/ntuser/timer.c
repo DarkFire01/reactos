@@ -28,7 +28,8 @@ static RTL_BITMAP     WindowLessTimersBitMap;
 static PVOID          WindowLessTimersBitMapBuffer;
 static ULONG          HintIndex = HINTINDEX_BEGIN_VALUE;
 
-ERESOURCE TimerLock;
+/* Out of non paged pool, for the reason the user lock is */
+static PERESOURCE TimerLock = NULL;
 
 #define IntLockWindowlessTimerBitmap() \
   ExEnterCriticalRegionAndAcquireFastMutexUnsafe(Mutex)
@@ -39,12 +40,12 @@ ERESOURCE TimerLock;
 #define TimerEnterExclusive() \
 { \
   KeEnterCriticalRegion(); \
-  ExAcquireResourceExclusiveLite(&TimerLock, TRUE); \
+  ExAcquireResourceExclusiveLite(TimerLock, TRUE); \
 }
 
 #define TimerLeave() \
 { \
-  ExReleaseResourceLite(&TimerLock); \
+  ExReleaseResourceLite(TimerLock); \
   KeLeaveCriticalRegion(); \
 }
 
@@ -644,7 +645,15 @@ InitTimerImpl(VOID)
    /* Yes we need this, since ExAllocatePoolWithTag isn't supposed to zero out allocated memory */
    RtlClearAllBits(&WindowLessTimersBitMap);
 
-   ExInitializeResourceLite(&TimerLock);
+   TimerLock = ExAllocatePoolWithTag(NonPagedPool,
+                                     sizeof(*TimerLock),
+                                     TAG_INTERNAL_SYNC);
+   if (TimerLock == NULL)
+   {
+      return STATUS_INSUFFICIENT_RESOURCES;
+   }
+
+   ExInitializeResourceLite(TimerLock);
    InitializeListHead(&TimersListHead);
 
    return STATUS_SUCCESS;
