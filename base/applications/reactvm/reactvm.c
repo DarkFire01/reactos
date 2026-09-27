@@ -61,6 +61,7 @@ static PFN_WHV_GET_VP_REGISTERS VmGetRegisters;
 #define VM_RAM_SIZE         0x100000
 #define VM_CODE_BASE        0x1000
 #define VM_RESULT_BASE      0x2000
+#define VM_STACK_TOP        0x8000
 #define VM_CONSOLE_PORT     0xE9
 
 /* How many exits one program may take before it is called a runaway */
@@ -100,6 +101,10 @@ typedef struct _VM
     ULONG MsrWrites;
     ULONG MsrNumber;
     ULONG64 MsrValue;
+    /* Whether the monitor waits to be told the guest could take an interrupt */
+    BOOLEAN AskForWindow;
+    ULONG Windows;
+    ULONG Injections;
     /* Whatever the guest wrote to the console port, in order */
     CHAR Console[256];
     ULONG ConsoleLength;
@@ -146,6 +151,65 @@ static const UCHAR VmWrmsrProgram[] =
     0x66, 0xBA, 0x00, 0x00, 0x00, 0x00,     /* mov edx, <high>          */
     0x0F, 0x30,                             /* wrmsr                    */
     0xF4                                    /* hlt                      */
+};
+
+/*
+ * Two programs that wait for an interrupt. Both tell the monitor they are
+ * ready by writing to the console port, then spin on a flag the handler sets,
+ * so neither of them halts until the interrupt has been taken. The difference
+ * is where interrupts are enabled: the first is already open when the monitor
+ * hears from it, the second is not, which is what makes the monitor ask to be
+ * told when the processor could take one.
+ */
+static const UCHAR VmInterruptProgram[] =
+{
+    0xFB,                                   /* sti                      */
+    0xE6, 0xE9,                             /* out 0E9h, al             */
+    0xA0, 0x10, 0x20,                       /* mov al, [2010h]          */
+    0x3C, 0x00,                             /* cmp al, 0                */
+    0x75, 0x04,                             /* jne the halt             */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xEB, 0xF5,                             /* jmp back to the load     */
+    0xF4                                    /* hlt                      */
+};
+
+static const UCHAR VmWindowProgram[] =
+{
+    0xE6, 0xE9,                             /* out 0E9h, al             */
+    0xFB,                                   /* sti                      */
+    0xA0, 0x10, 0x20,                       /* mov al, [2010h]          */
+    0x3C, 0x00,                             /* cmp al, 0                */
+    0x75, 0x04,                             /* jne the halt             */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xEB, 0xF5,                             /* jmp back to the load     */
+    0xF4                                    /* hlt                      */
+};
+
+/*
+ * The port the wait loop touches every time round, which is what keeps the
+ * monitor in the picture while the guest is waiting. A guest that spins on
+ * memory alone never comes out, and a machine has nothing to say about it.
+ */
+#define VM_YIELD_PORT       0x80
+
+/*
+ * What both of them run when the interrupt arrives: it says so on the console,
+ * leaves a word behind for the monitor to find, and sets the flag the program
+ * is waiting on.
+ */
+#define VM_HANDLER_ADDRESS  0x1100
+#define VM_HANDLER_VECTOR   0x33
+#define VM_HANDLER_MARK     0xDEADBEEF
+#define VM_HANDLER_LETTER   'B'
+
+static const UCHAR VmInterruptHandler[] =
+{
+    0xB0, 0x42,                             /* mov al, 42h              */
+    0xE6, 0xE9,                             /* out 0E9h, al             */
+    0x66, 0xB8, 0xEF, 0xBE, 0xAD, 0xDE,     /* mov eax, 0DEADBEEFh      */
+    0x66, 0xA3, 0x00, 0x20,                 /* mov [2000h], eax         */
+    0xC6, 0x06, 0x10, 0x20, 0x01,           /* mov byte [2010h], 1      */
+    0xCF                                    /* iret                     */
 };
 
 /*
@@ -439,6 +503,8 @@ VmCreate(
         Result = VmSetRegister(Vm, WHvX64RegisterRflags, 2);
     if (SUCCEEDED(Result))
         Result = VmSetRegister(Vm, WHvX64RegisterRip, VM_CODE_BASE);
+    if (SUCCEEDED(Result))
+        Result = VmSetRegister(Vm, WHvX64RegisterRsp, VM_STACK_TOP);
 
     if (FAILED(Result))
     {
@@ -495,6 +561,8 @@ VmLoad(
     Vm->MsrWrites = 0;
     Vm->MsrNumber = 0;
     Vm->MsrValue = 0;
+    Vm->Windows = 0;
+    Vm->Injections = 0;
     Vm->ConsoleLength = 0;
 
     Result = VmSetRegister(Vm, WHvX64RegisterRip, VM_CODE_BASE);
@@ -629,6 +697,48 @@ VmAnswerMsr(
     return VmStepOver(Vm, Exit);
 }
 
+/* Gives the guest the interrupt this monitor has been holding for it */
+static
+HRESULT
+VmGiveInterrupt(
+    _In_ PVM Vm)
+{
+    WHV_X64_PENDING_INTERRUPTION_REGISTER Pending;
+    WHV_REGISTER_NAME Name = WHvRegisterPendingInterruption;
+    WHV_REGISTER_VALUE Value;
+
+    Pending.AsUINT64 = 0;
+    Pending.InterruptionPending = 1;
+    Pending.InterruptionType = WHvX64PendingInterrupt;
+    Pending.InterruptionVector = VM_HANDLER_VECTOR;
+
+    ZeroMemory(&Value, sizeof(Value));
+    Value.Reg64 = Pending.AsUINT64;
+
+    Vm->Injections++;
+
+    return VmSetRegisters(Vm->Partition, 0, &Name, 1, &Value);
+}
+
+/* Asks to be told the moment the guest could take one */
+static
+HRESULT
+VmAskForWindow(
+    _In_ PVM Vm)
+{
+    WHV_X64_DELIVERABILITY_NOTIFICATIONS_REGISTER Wanted;
+    WHV_REGISTER_NAME Name = WHvX64RegisterDeliverabilityNotifications;
+    WHV_REGISTER_VALUE Value;
+
+    Wanted.AsUINT64 = 0;
+    Wanted.InterruptNotification = 1;
+
+    ZeroMemory(&Value, sizeof(Value));
+    Value.Reg64 = Wanted.AsUINT64;
+
+    return VmSetRegisters(Vm->Partition, 0, &Name, 1, &Value);
+}
+
 /**
  * @brief
  * Runs the guest until it halts, answering everything it asks for on the way.
@@ -649,7 +759,16 @@ VmRun(
     {
         if (Vm->Exits >= VM_EXIT_LIMIT)
         {
-            VmPrint("  the guest is not getting anywhere, %lu exits\n", Vm->Exits);
+            Vm->Console[Vm->ConsoleLength] = ANSI_NULL;
+
+            VmPrint("  the guest is not getting anywhere: %lu exits, rip %I64x, "
+                    "flag %lx, windows %lu, given %lu, console '%s'\n",
+                    Vm->Exits,
+                    Exit.VpContext.Rip,
+                    VmResult(Vm, 4),
+                    Vm->Windows,
+                    Vm->Injections,
+                    Vm->Console);
             return FALSE;
         }
 
@@ -668,13 +787,40 @@ VmRun(
                 return TRUE;
 
             case WHvRunVpExitReasonX64IoPortAccess:
-                if ((Exit.IoPortAccess.PortNumber == VM_CONSOLE_PORT) &&
-                    (Vm->ConsoleLength < (sizeof(Vm->Console) - 1)))
+                if (Exit.IoPortAccess.PortNumber != VM_CONSOLE_PORT)
                 {
-                    Vm->Console[Vm->ConsoleLength++] = (CHAR)Exit.IoPortAccess.Rax;
+                    Result = VmStepOver(Vm, &Exit);
+                    break;
                 }
 
+                /*
+                 * A zero is the guest saying it is ready for the interrupt
+                 * rather than anything worth printing, so the monitor either
+                 * gives it one or asks to be told when it could take one.
+                 */
+                if ((Exit.IoPortAccess.Rax & 0xFF) == 0)
+                {
+                    Result = VmStepOver(Vm, &Exit);
+
+                    if (SUCCEEDED(Result) && (Vm->Injections == 0))
+                    {
+                        Result = Vm->AskForWindow ? VmAskForWindow(Vm)
+                                                  : VmGiveInterrupt(Vm);
+                    }
+
+                    break;
+                }
+
+                if (Vm->ConsoleLength < (sizeof(Vm->Console) - 1))
+                    Vm->Console[Vm->ConsoleLength++] = (CHAR)Exit.IoPortAccess.Rax;
+
                 Result = VmStepOver(Vm, &Exit);
+                break;
+
+            case WHvRunVpExitReasonX64InterruptWindow:
+                /* The processor could take one now, so it gets one */
+                Vm->Windows++;
+                Result = VmGiveInterrupt(Vm);
                 break;
 
             case WHvRunVpExitReasonX64Cpuid:
@@ -861,6 +1007,67 @@ Done:
     VmDestroy(&Vm);
 }
 
+/**
+ * @brief
+ * A guest that waits for an interrupt and a monitor that gives it one.
+ *
+ * @param[in] AskForWindow
+ * Whether the guest has interrupts closed when the monitor first hears from
+ * it, so that the monitor has to ask to be told when they open.
+ */
+static
+VOID
+VmStageInterrupt(
+    _In_ BOOLEAN AskForWindow)
+{
+    PUCHAR Entry;
+    VM Vm;
+
+    VmPrint(AskForWindow ? "\nthe monitor waits for the guest to open up\n"
+                         : "\nthe monitor gives the guest an interrupt\n");
+
+    if (!VmCreate(&Vm, NULL, 0, FALSE))
+        goto Done;
+
+    Vm.AskForWindow = AskForWindow;
+
+    if (!VmLoad(&Vm,
+                AskForWindow ? VmWindowProgram : VmInterruptProgram,
+                AskForWindow ? sizeof(VmWindowProgram) : sizeof(VmInterruptProgram)))
+    {
+        goto Done;
+    }
+
+    CopyMemory(Vm.Ram + VM_HANDLER_ADDRESS,
+               VmInterruptHandler,
+               sizeof(VmInterruptHandler));
+
+    /* Where a real mode processor looks for the handler, offset then segment */
+    Entry = Vm.Ram + (VM_HANDLER_VECTOR * 4);
+    Entry[0] = (UCHAR)VM_HANDLER_ADDRESS;
+    Entry[1] = (UCHAR)(VM_HANDLER_ADDRESS >> 8);
+    Entry[2] = 0;
+    Entry[3] = 0;
+
+    if (!VmRun(&Vm))
+        goto Done;
+
+    Vm.Console[Vm.ConsoleLength] = ANSI_NULL;
+
+    if (AskForWindow)
+        VmCheckValue("the monitor was told once that it could", 1, Vm.Windows);
+    else
+        VmCheck("the monitor did not have to wait to be told", Vm.Windows == 0);
+
+    VmCheckValue("the interrupt was given once", 1, Vm.Injections);
+    VmCheck("the handler ran", Vm.Console[0] == VM_HANDLER_LETTER);
+    VmCheckValue("and left its mark behind", VM_HANDLER_MARK, VmResult(&Vm, 0));
+    VmCheckValue("and the guest carried on where it left off", 1, VmResult(&Vm, 4));
+
+Done:
+    VmDestroy(&Vm);
+}
+
 int
 __cdecl
 main(void)
@@ -887,6 +1094,8 @@ main(void)
     VmStageWhatTheHypervisorSays();
     VmStageWhatTheMonitorSays();
     VmStageMonitorAnswersMsr();
+    VmStageInterrupt(FALSE);
+    VmStageInterrupt(TRUE);
 
     VmPrint("\n%lu checks, %lu of them failed\n", VmChecks, VmFailures);
 
