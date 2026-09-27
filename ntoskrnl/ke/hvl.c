@@ -37,8 +37,19 @@
 
 #define HV_X64_MSR_HYPERCALL_ENABLE               0x0000000000000001ULL
 
+#define HV_STATUS_SUCCESS                         0x0000
 #define HV_STATUS_INVALID_HYPERCALL_CODE          0x0002
 #define HV_STATUS_INVALID_HYPERCALL_INPUT         0x0003
+
+#define HV_HYPERCALL_STATUS_MASK                  0x000000000000FFFFULL
+
+/*
+ * A hypercall that travels in registers carries sixteen bytes in two general
+ * ones and sixteen more in each of XMM0 through XMM5, so seven units in all.
+ */
+#define HVL_FAST_UNIT_SIZE                        16
+#define HVL_FAST_EXTENDED_UNITS                   6
+#define HVL_FAST_PAYLOAD_UNITS                    (HVL_FAST_EXTENDED_UNITS + 1)
 
 /*
  * Who is calling, per the specification's guest identity layout. The top bit
@@ -73,6 +84,18 @@ BOOLEAN HvlpHypervisorPresent;
 static ULONG HvlpMaximumLeaf;
 static ULONG HvlpPrivileges;
 static PVOID HvlpHypercallPage;
+
+#ifdef _M_AMD64
+/* ke/amd64/hvlcall.S, which is where the registers can be reached from */
+ULONG64
+NTAPI
+HvlpExtendedHypercall(
+    _In_ ULONG64 InputValue,
+    _In_ PVOID Payload,
+    _In_ ULONG64 Units,
+    _Out_writes_bytes_(HVL_FAST_EXTENDED_UNITS * HVL_FAST_UNIT_SIZE) PVOID Extended,
+    _In_ PVOID HypercallPage);
+#endif
 static PMDL HvlpHypercallMdl;
 static PKEVENT HvlpWithdrawAllowedEvent;
 static HVL_INTERRUPT_CALLBACK HvlpInterruptCallbacks[HVL_MAXIMUM_INTERRUPT_CALLBACKS];
@@ -328,15 +351,33 @@ HvlInvokeHypercall(
 
 /**
  * @brief
- * Makes a fast hypercall that carries its input and output in registers.
+ * Makes a hypercall that carries its input and output in registers.
+ *
+ * @param[in] InputValue
+ * The control value, which has to have the fast bit set for the hypervisor to
+ * look in the registers at all.
+ *
+ * @param[in] InputBuffer
+ * The payload. Its first sixteen bytes travel in two general registers and
+ * each further sixteen in one of XMM0 through XMM5, which is as much as the
+ * form can carry.
+ *
+ * @param[in] InputSize
+ * How long the payload is, in bytes.
+ *
+ * @param[out] OutputBuffer
+ * Receives the answer.
+ *
+ * @param[in] OutputSize
+ * How long the answer is, in whole sixteen byte units.
  *
  * @return
  * What the hypervisor returned, or HV_STATUS_INVALID_HYPERCALL_INPUT for a
- * call that would need the register form this does not implement yet.
+ * payload or an answer too long for the registers to hold.
  *
  * @remarks
- * Two input values fit in registers. Anything longer, and any output at all,
- * belongs in the XMM registers the extended form uses, which is not here yet.
+ * The answer comes back in the registers that follow the ones the payload
+ * used, so how long the payload was decides where to read it from.
  */
 ULONG64
 NTAPI
@@ -347,28 +388,72 @@ HvlInvokeFastExtendedHypercall(
     _Out_writes_bytes_opt_(OutputSize) PVOID OutputBuffer,
     _In_ SIZE_T OutputSize)
 {
-    PULONG64 Input = InputBuffer;
-    ULONG64 First = 0;
-    ULONG64 Second = 0;
+#ifdef _M_AMD64
+    ULONG64 Payload[HVL_FAST_PAYLOAD_UNITS * 2];
+    ULONG64 Extended[HVL_FAST_EXTENDED_UNITS * 2];
+    ULONG64 Units, First, Result;
 
     if (HvlpHypercallPage == NULL)
         return HV_STATUS_INVALID_HYPERCALL_CODE;
 
-    if ((InputSize > (2 * sizeof(ULONG64))) || (OutputSize != 0))
+    if ((InputSize > sizeof(Payload)) || (OutputSize > sizeof(Extended)))
+        return HV_STATUS_INVALID_HYPERCALL_INPUT;
+
+    if ((InputSize != 0) && (InputBuffer == NULL))
+        return HV_STATUS_INVALID_HYPERCALL_INPUT;
+
+    if ((OutputSize != 0) && (OutputBuffer == NULL))
+        return HV_STATUS_INVALID_HYPERCALL_INPUT;
+
+    /* A unit that is only partly used still travels whole, so it is padded */
+    RtlZeroMemory(Payload, sizeof(Payload));
+    if (InputSize != 0)
+        RtlCopyMemory(Payload, InputBuffer, InputSize);
+
+    Units = (InputSize + (HVL_FAST_UNIT_SIZE - 1)) / HVL_FAST_UNIT_SIZE;
+
+    Result = HvlpExtendedHypercall(InputValue,
+                                   Payload,
+                                   Units,
+                                   Extended,
+                                   HvlpHypercallPage);
+
+    if (OutputSize == 0)
+        return Result;
+
+    if ((Result & HV_HYPERCALL_STATUS_MASK) != HV_STATUS_SUCCESS)
+        return Result;
+
+    /*
+     * The first unit of the answer is in the register the payload's last unit
+     * travelled in. A payload short enough to need no XMM register at all
+     * would have its answer back in the two general ones, which nothing asks
+     * for, so it is refused rather than read from the wrong place.
+     */
+    if (Units == 0)
+        return HV_STATUS_INVALID_HYPERCALL_INPUT;
+
+    First = Units - 1;
+
+    if ((First + ((OutputSize + HVL_FAST_UNIT_SIZE - 1) / HVL_FAST_UNIT_SIZE)) >
+        HVL_FAST_EXTENDED_UNITS)
     {
-        UNREFERENCED_PARAMETER(OutputBuffer);
         return HV_STATUS_INVALID_HYPERCALL_INPUT;
     }
 
-    if ((Input != NULL) && (InputSize >= sizeof(ULONG64)))
-        First = Input[0];
+    RtlCopyMemory(OutputBuffer, &Extended[First * 2], OutputSize);
 
-    if ((Input != NULL) && (InputSize >= (2 * sizeof(ULONG64))))
-        Second = Input[1];
+    return Result;
+#else
+    UNREFERENCED_PARAMETER(InputValue);
+    UNREFERENCED_PARAMETER(InputBuffer);
+    UNREFERENCED_PARAMETER(InputSize);
+    UNREFERENCED_PARAMETER(OutputBuffer);
+    UNREFERENCED_PARAMETER(OutputSize);
 
-    return ((PHVL_HYPERCALL_ROUTINE)HvlpHypercallPage)(InputValue,
-                                                       First,
-                                                       Second);
+    /* The registers this form uses are not part of the 32 bit calling convention */
+    return HV_STATUS_INVALID_HYPERCALL_INPUT;
+#endif
 }
 
 /**
