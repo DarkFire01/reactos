@@ -87,12 +87,11 @@ ULONG64
 typedef
 VOID
 (NTAPI *PHVL_INTERRUPT_ROUTINE)(
-    _In_opt_ PVOID Context);
+    _In_ ULONG Type);
 
 typedef struct _HVL_INTERRUPT_CALLBACK
 {
     PVOID Callback;
-    PVOID Context;
 } HVL_INTERRUPT_CALLBACK, *PHVL_INTERRUPT_CALLBACK;
 
 /* GLOBALS ********************************************************************/
@@ -240,9 +239,14 @@ HvlInterruptHandler(VOID)
 
     HvlpInterrupts++;
 
-    if (HvlpInterrupts <= 2)
-        DPRINT1("Hvl: the hypervisor raised its interrupt\n");
+    if (HvlpInterrupts <= 64)
+        DPRINT1("Hvl: the hypervisor raised its interrupt, %lu so far\n", HvlpInterrupts);
 
+    /*
+     * Every kind that was registered, because one vector carries all of them and
+     * nothing here says which of them arrived. A routine is told which kind it is
+     * being called as, which is the only thing it is given.
+     */
     for (Index = 0; Index < HVL_MAXIMUM_INTERRUPT_CALLBACKS; Index++)
     {
         PHVL_INTERRUPT_ROUTINE Routine;
@@ -250,7 +254,7 @@ HvlInterruptHandler(VOID)
         Routine = (PHVL_INTERRUPT_ROUTINE)HvlpInterruptCallbacks[Index].Callback;
 
         if (Routine != NULL)
-            Routine(HvlpInterruptCallbacks[Index].Context);
+            Routine(Index);
     }
 }
 
@@ -565,17 +569,24 @@ HvlInvokeFastExtendedHypercall(
  * @return
  * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES when there is no slot left.
  *
+ * @param[in] Type
+ * What the caller is registering for, which is also what it may unregister and
+ * what its routine is told when it is called.
+ *
+ * @param[out] Vector
+ * Receives the vector the routine will be called from, so that a caller with
+ * synthetic interrupts of its own can point them at it.
+ *
  * @remarks
  * Every registered routine is called on the hypervisor's own interrupt, however
- * many there are, because one vector carries all of it. The type is what the
- * caller is registering for and what it may unregister.
+ * many there are, because one vector carries all of it.
  */
 NTSTATUS
 NTAPI
 HvlRegisterInterruptCallback(
     _In_ ULONG Type,
     _In_ PVOID Callback,
-    _In_opt_ PVOID Context)
+    _Out_opt_ PUCHAR Vector)
 {
     if (Type >= HVL_MAXIMUM_INTERRUPT_CALLBACKS)
         return STATUS_INVALID_PARAMETER;
@@ -583,8 +594,10 @@ HvlRegisterInterruptCallback(
     if (HvlpInterruptCallbacks[Type].Callback != NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    HvlpInterruptCallbacks[Type].Context = Context;
     HvlpInterruptCallbacks[Type].Callback = Callback;
+
+    if (Vector != NULL)
+        *Vector = HVL_INTERRUPT_VECTOR;
 
     DPRINT1("Hvl: %p takes the hypervisor's interrupt, kind %lu\n", Callback, Type);
 
@@ -608,7 +621,6 @@ HvlUnregisterInterruptCallback(
         return STATUS_NOT_FOUND;
 
     HvlpInterruptCallbacks[Type].Callback = NULL;
-    HvlpInterruptCallbacks[Type].Context = NULL;
 
     return STATUS_SUCCESS;
 }
@@ -859,6 +871,37 @@ HvlUnregisterWheaErrorNotification(
 
     HvlpWheaCallback = NULL;
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Tells whether the hypervisor helps the root schedule its processors.
+ *
+ * @remarks
+ * Nothing here offers that, so a caller that asks goes the long way round,
+ * which is the way it would on a hypervisor without the feature.
+ */
+BOOLEAN
+NTAPI
+HvlIsSchedulerAssistAvailable(VOID)
+{
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Ends the hypervisor's own interrupt.
+ *
+ * @remarks
+ * There is nothing left to do by the time a driver asks: the interrupt is ended
+ * on the way into the handler, because the entry for that vector does it
+ * whether or not anything was registered for what arrived.
+ */
+VOID
+NTAPI
+HvlPerformEndOfInterrupt(VOID)
+{
+    NOTHING;
 }
 
 /* EOF */
