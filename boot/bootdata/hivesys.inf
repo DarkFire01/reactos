@@ -1950,6 +1950,21 @@ HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","DeviceDesc",0x00000000,"Virt
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","HardwareID",0x00010000,"ROOT\VID"
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VID\0000","Service",0x00000000,"vid"
 
+; Virtual machine bus, root side, enumerated the way Hyper-V has it
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","ImagePath",0x00020000,"system32\drivers\vmbusr.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","Tag",0x00010001,0x0000000c
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr\Parameters\Wdf","WdfMajorVersion",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr\Parameters\Wdf","WdfMinorVersion",0x00010001,0x0000000f
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","DeviceDesc",0x00000000,"Virtual Machine Bus Provider"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","HardwareID",0x00010000,"ROOT\VMBus"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","Service",0x00000000,"vmbusr"
+
 ; Audio Service
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","DisplayName",0x00000000,%AUDIO_SERVICE%
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Description",0x00000000,%AUDIO_SERVICE_DESCRIPTION%
