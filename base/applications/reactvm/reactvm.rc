@@ -1,0 +1,10 @@
+#include <windef.h>
+#include <winuser.h>
+
+#define REACTOS_STR_FILE_DESCRIPTION   "ReactOS Virtual Machine Monitor"
+#define REACTOS_STR_INTERNAL_NAME      "reactvm"
+#define REACTOS_STR_ORIGINAL_FILENAME  "reactvm.exe"
+#include <reactos/version.rc>
+
+/* Application manifest */
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "reactvm.manifest"

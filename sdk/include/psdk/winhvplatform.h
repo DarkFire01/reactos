@@ -66,6 +66,24 @@ typedef enum _WHV_PARTITION_PROPERTY_CODE
     WHvPartitionPropertyCodeProcessorCount = 0x00001FFF
 } WHV_PARTITION_PROPERTY_CODE;
 
+typedef union _WHV_EXTENDED_VM_EXITS
+{
+    struct
+    {
+        UINT64 X64CpuidExit:1;
+        UINT64 X64MsrExit:1;
+        UINT64 ExceptionExit:1;
+        UINT64 X64RdtscExit:1;
+        UINT64 X64ApicSmiExitTrap:1;
+        UINT64 HypercallExit:1;
+        UINT64 X64ApicInitSipiExitTrap:1;
+        UINT64 Reserved:57;
+    } DUMMYSTRUCTNAME;
+    UINT64 AsUINT64;
+} WHV_EXTENDED_VM_EXITS;
+
+C_ASSERT(sizeof(WHV_EXTENDED_VM_EXITS) == 8);
+
 typedef enum _WHV_MAP_GPA_RANGE_FLAGS
 {
     WHvMapGpaRangeFlagNone = 0x00000000,
@@ -237,6 +255,44 @@ typedef struct _WHV_X64_IO_PORT_ACCESS_CONTEXT
 
 C_ASSERT(sizeof(WHV_X64_IO_PORT_ACCESS_CONTEXT) == 96);
 
+/*
+ * What a processor was asked, and what the hypervisor would have answered on
+ * its own. A client with nothing of its own to say puts the default back.
+ */
+typedef struct _WHV_X64_CPUID_ACCESS_CONTEXT
+{
+    UINT64 Rax;
+    UINT64 Rcx;
+    UINT64 Rdx;
+    UINT64 Rbx;
+    UINT64 DefaultResultRax;
+    UINT64 DefaultResultRcx;
+    UINT64 DefaultResultRdx;
+    UINT64 DefaultResultRbx;
+} WHV_X64_CPUID_ACCESS_CONTEXT;
+
+C_ASSERT(sizeof(WHV_X64_CPUID_ACCESS_CONTEXT) == 64);
+
+typedef union _WHV_X64_MSR_ACCESS_INFO
+{
+    struct
+    {
+        UINT32 IsWrite:1;
+        UINT32 Reserved:31;
+    } DUMMYSTRUCTNAME;
+    UINT32 AsUINT32;
+} WHV_X64_MSR_ACCESS_INFO;
+
+typedef struct _WHV_X64_MSR_ACCESS_CONTEXT
+{
+    WHV_X64_MSR_ACCESS_INFO AccessInfo;
+    UINT32 MsrNumber;
+    UINT64 Rax;
+    UINT64 Rdx;
+} WHV_X64_MSR_ACCESS_CONTEXT;
+
+C_ASSERT(sizeof(WHV_X64_MSR_ACCESS_CONTEXT) == 24);
+
 typedef struct _WHV_RUN_VP_EXIT_CONTEXT
 {
     WHV_RUN_VP_EXIT_REASON ExitReason;
@@ -245,6 +301,8 @@ typedef struct _WHV_RUN_VP_EXIT_CONTEXT
     union
     {
         WHV_X64_IO_PORT_ACCESS_CONTEXT IoPortAccess;
+        WHV_X64_CPUID_ACCESS_CONTEXT CpuidAccess;
+        WHV_X64_MSR_ACCESS_CONTEXT MsrAccess;
         UINT64 AsUINT64[22];
     } DUMMYUNIONNAME;
 } WHV_RUN_VP_EXIT_CONTEXT;
