@@ -1437,6 +1437,67 @@ HalGetVectorInput(
     return STATUS_SUCCESS;
 }
 
+/* A single processor taking everything physically, and no message interrupts */
+NTSTATUS
+NTAPI
+HalGetInterruptTargetInformation(
+    _In_ INTERRUPT_TARGET_TYPE Type,
+    _In_ ULONG Id,
+    _Out_ PHAL_INTERRUPT_TARGET_DESCRIPTOR Information)
+{
+    RtlZeroMemory(Information, sizeof(*Information));
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    if ((Type != TargetGlobal) && (Type != TargetApic))
+#else
+    if (Type != TargetApic)
+#endif
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Information->TargetType = Type;
+    Information->Capabilities = HAL_TARGET_FIXED_DESTINATIONS;
+    Information->ApicRouting.DestinationFormat = ApicDestinationModePhysical;
+
+    /* Processor 0 carries ID 0, and the processor field is zeroed already */
+    if ((Type == TargetApic) && (Id != 0))
+    {
+        return STATUS_NOT_FOUND;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/* The PIC cannot deliver a message-signaled interrupt */
+NTSTATUS
+NTAPI
+HalGetMessageRoutingInfo(
+    _In_ PHAL_MESSAGE_SIGNAL_TARGET_REQUEST Request,
+    _Out_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    UNREFERENCED_PARAMETER(Request);
+
+    ConnectionData->Count = 0;
+    return STATUS_NOT_SUPPORTED;
+}
+
+/* Processor 0 is the only one, and it carries ID 0 */
+NTSTATUS
+NTAPI
+HalGetProcessorIdByNtNumber(
+    _In_ ULONG ProcessorNumber,
+    _Out_ PULONG ProcessorId)
+{
+    if (ProcessorNumber != 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *ProcessorId = 0;
+    return STATUS_SUCCESS;
+}
+
 /* ACPI POWER MANAGEMENT ******************************************************/
 
 /* There is no I/O APIC to report */
