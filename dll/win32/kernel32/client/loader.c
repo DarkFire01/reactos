@@ -1078,11 +1078,26 @@ LoadModule(LPCSTR lpModuleName,
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
-FARPROC WINAPI DelayLoadFailureHook(LPCSTR pszDllName, LPCSTR pszProcName)
+FARPROC
+WINAPI
+DelayLoadFailureHook(
+    _In_ LPCSTR pszDllName,
+    _In_opt_ LPCSTR pszProcName)
 {
-    STUB;
+    ULONG_PTR Arguments[2];
+
+    /* An import by ordinal arrives as the ordinal itself and not as a string */
+    if ((ULONG_PTR)pszProcName > MAXUSHORT)
+        DPRINT1("Delay load of %s!%s failed\n", pszDllName, pszProcName);
+    else
+        DPRINT1("Delay load of %s ordinal %lu failed\n", pszDllName, (ULONG)(ULONG_PTR)pszProcName);
+
+    /* Nothing can stand in for the missing routine, so do not let the caller reach zero */
+    Arguments[0] = (ULONG_PTR)pszDllName;
+    Arguments[1] = (ULONG_PTR)pszProcName;
+    RaiseException(ERROR_DELAY_LOAD_FAILED, EXCEPTION_NONCONTINUABLE, 2, Arguments);
     return NULL;
 }
 
