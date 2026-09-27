@@ -20,8 +20,32 @@
 #include "windef.h"
 #include "winbase.h"
 #include "ntsecapi.h"
+#include "guiddef.h"
 
 BOOL WINAPI ProcessPrng(BYTE *data, SIZE_T size)
 {
     return RtlGenRandom(data, size);
+}
+
+/**
+ * @brief Draws a version 4 random GUID from the process PRNG.
+ *
+ * @param[out] Guid Receives the generated value.
+ *
+ * @return TRUE on success.
+ */
+BOOL
+WINAPI
+ProcessPrngGuid(
+    _Out_ GUID *Guid)
+{
+    PUCHAR Bytes = (PUCHAR)Guid;
+
+    if (!ProcessPrng(Bytes, sizeof(*Guid)))
+        return FALSE;
+
+    /* Variant 1, then version 4 */
+    Bytes[8] = (Bytes[8] & 0x3F) | 0x80;
+    Guid->Data3 = (Guid->Data3 & 0x0FFF) | 0x4000;
+    return TRUE;
 }
