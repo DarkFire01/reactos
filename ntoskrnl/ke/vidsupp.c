@@ -34,7 +34,95 @@ typedef struct _PS_PROTECTION
     };
 } PS_PROTECTION, *PPS_PROTECTION;
 
+/*
+ * The request the memory range routines read and answer in. A range is
+ * counted in blocks of BlockSize bytes, which is also what an entry of the
+ * answer is scaled by: an entry is the first block of a run of them times the
+ * block size, plus one less than the number of blocks the run covers.
+ */
+typedef struct _MM_RANGE_REQUEST
+{
+    ULONG Version;
+    ULONG Flags;
+    ULONG_PTR Partition;
+    ULONGLONG BlockCount;
+    ULONGLONG BlockSize;
+    ULONG NodeNumber;
+    ULONG Reserved;
+    ULONGLONG RangeCount;
+    PULONGLONG Ranges;
+} MM_RANGE_REQUEST, *PMM_RANGE_REQUEST;
+
+#ifdef _WIN64
+C_ASSERT(FIELD_OFFSET(MM_RANGE_REQUEST, BlockCount) == 0x10);
+C_ASSERT(FIELD_OFFSET(MM_RANGE_REQUEST, BlockSize) == 0x18);
+C_ASSERT(FIELD_OFFSET(MM_RANGE_REQUEST, NodeNumber) == 0x20);
+C_ASSERT(FIELD_OFFSET(MM_RANGE_REQUEST, RangeCount) == 0x28);
+C_ASSERT(FIELD_OFFSET(MM_RANGE_REQUEST, Ranges) == 0x30);
+C_ASSERT(sizeof(MM_RANGE_REQUEST) == 0x38);
+#endif
+
+/* GLOBALS ********************************************************************/
+
+#define MM_RANGE_VERSION            1
+
+/* The one block size a request may ask to be answered in */
+#define MM_RANGE_BLOCK_SIZE         0x40000000ULL
+
+/* Every request carries this, and then one bit for each kind of memory */
+#define MM_RANGE_FLAG_PRESENT       0x01
+#define MM_RANGE_FLAGS_KIND         0x3E
+#define MM_RANGE_FLAGS_KNOWN        0x3F
+
+/* A node number reads as any node with this set */
+#define MM_RANGE_ANY_NODE           0x80000000
+
+#define MM_RANGE_CURRENT_PARTITION  ((ULONG_PTR)-1)
+#define MM_RANGE_ANY_PARTITION      ((ULONG_PTR)-2)
+
+#define MM_RANGE_TAG                'nRmM'
+
 /* FUNCTIONS ******************************************************************/
+
+/* Reads a range request over, before anything is done about it */
+static
+NTSTATUS
+MiValidateRangeRequest(
+    _In_ PMM_RANGE_REQUEST Request)
+{
+    if (Request->Version != MM_RANGE_VERSION)
+        return STATUS_INVALID_PARAMETER;
+
+    /* The answer goes in these two, so a request arrives with them empty */
+    if (Request->RangeCount != 0)
+        return STATUS_INVALID_PARAMETER;
+
+    if ((Request->Flags > MM_RANGE_FLAGS_KNOWN) ||
+        ((Request->Flags & MM_RANGE_FLAG_PRESENT) == 0))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (Request->BlockSize != MM_RANGE_BLOCK_SIZE)
+        return STATUS_INVALID_PARAMETER;
+
+    if ((Request->NodeNumber & ~MM_RANGE_ANY_NODE) >= KeNumberNodes)
+        return STATUS_INVALID_PARAMETER;
+
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+        return STATUS_INVALID_PARAMETER;
+
+    /* Memory only ever belongs to the one partition that owns all of it */
+    if ((Request->Partition != MM_RANGE_ANY_PARTITION) &&
+        (Request->Partition != MM_RANGE_CURRENT_PARTITION) &&
+        (Request->Partition != 0) &&
+        ((PVOID)Request->Partition != MmSystemPartition))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return STATUS_SUCCESS;
+}
 
 /**
  * @brief
@@ -237,36 +325,140 @@ FsRtlKernelFsControlFile(
 
 /**
  * @brief
- * Describes the memory the machine has, as ranges.
+ * Describes the memory the machine has, in blocks of the size the request
+ * asks for.
+ *
+ * @param[in,out] MemoryRangesInformation
+ * The request. It receives a count of ranges and an array of them, which the
+ * caller frees from pool.
  *
  * @return
- * STATUS_NOT_IMPLEMENTED. MmGetPhysicalMemoryRanges answers the same question
- * in the form ReactOS keeps it.
+ * STATUS_SUCCESS, STATUS_INVALID_PARAMETER when the request does not read
+ * back as one, or STATUS_INSUFFICIENT_RESOURCES.
+ *
+ * @remarks
+ * A block that holds any memory at all is reported, so the ranges cover more
+ * than the memory that is really there whenever a block is only partly
+ * filled. That is what a block sized answer means.
  */
 NTSTATUS
 NTAPI
 MmQueryMemoryRanges(
     _Inout_ PVOID MemoryRangesInformation)
 {
-    UNREFERENCED_PARAMETER(MemoryRangesInformation);
-    return STATUS_NOT_IMPLEMENTED;
+    PMM_RANGE_REQUEST Request = (PMM_RANGE_REQUEST)MemoryRangesInformation;
+    PPHYSICAL_MEMORY_RANGE Physical;
+    PULONGLONG Ranges;
+    ULONGLONG First, Last, Start = 0, End = 0;
+    ULONG Index, Number, Count = 0;
+    NTSTATUS Status;
+
+    Status = MiValidateRangeRequest(Request);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Request->RangeCount = 0;
+    Request->Ranges = NULL;
+
+    /* All memory here is of the one kind, so asking for no kind of it answers nothing */
+    if ((Request->Flags & MM_RANGE_FLAGS_KIND) == 0)
+        return STATUS_SUCCESS;
+
+    Physical = MmGetPhysicalMemoryRanges();
+    if (Physical == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    for (Number = 0; Physical[Number].NumberOfBytes.QuadPart != 0; Number++)
+        ;
+
+    if (Number == 0)
+    {
+        ExFreePoolWithTag(Physical, 'hPmM');
+        return STATUS_SUCCESS;
+    }
+
+    /* Ranges only ever run together, so one per memory range is always enough */
+    Ranges = ExAllocatePoolZero(NonPagedPool,
+                                Number * sizeof(*Ranges),
+                                MM_RANGE_TAG);
+    if (Ranges == NULL)
+    {
+        ExFreePoolWithTag(Physical, 'hPmM');
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    for (Index = 0; Index < Number; Index++)
+    {
+        First = (ULONGLONG)Physical[Index].BaseAddress.QuadPart / MM_RANGE_BLOCK_SIZE;
+        Last = ((ULONGLONG)Physical[Index].BaseAddress.QuadPart +
+                (ULONGLONG)Physical[Index].NumberOfBytes.QuadPart - 1) /
+               MM_RANGE_BLOCK_SIZE;
+
+        /* Carry the run being built on when this memory lands in it or next to it */
+        if ((Count != 0) && (First <= End + 1))
+        {
+            if (Last <= End)
+                continue;
+
+            End = Last;
+        }
+        else
+        {
+            Start = First;
+            End = Last;
+            Count++;
+        }
+
+        Ranges[Count - 1] = Start * MM_RANGE_BLOCK_SIZE + (End - Start);
+    }
+
+    Request->RangeCount = Count;
+    Request->Ranges = Ranges;
+
+    ExFreePoolWithTag(Physical, 'hPmM');
+
+    return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Takes memory for a caller that wants it whole blocks at a time.
+ *
+ * @return
+ * STATUS_INVALID_PARAMETER for a request this kernel cannot read, otherwise
+ * STATUS_INSUFFICIENT_RESOURCES. Nothing here hands out memory a gigabyte at
+ * a time.
+ */
 NTSTATUS
 NTAPI
 MmAllocateMemoryRanges(
     _Inout_ PVOID MemoryRangesInformation)
 {
-    UNREFERENCED_PARAMETER(MemoryRangesInformation);
-    return STATUS_NOT_IMPLEMENTED;
+    PMM_RANGE_REQUEST Request = (PMM_RANGE_REQUEST)MemoryRangesInformation;
+    NTSTATUS Status;
+
+    Status = MiValidateRangeRequest(Request);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    return STATUS_INSUFFICIENT_RESOURCES;
 }
 
-VOID
+/**
+ * @brief
+ * Gives back memory that was taken in blocks.
+ *
+ * @return
+ * STATUS_INVALID_PARAMETER, since nothing was ever taken to give back.
+ */
+NTSTATUS
 NTAPI
 MmFreeMemoryRanges(
-    _In_ PVOID MemoryRangesInformation)
+    _Inout_ PVOID MemoryRangesInformation)
 {
     UNREFERENCED_PARAMETER(MemoryRangesInformation);
+
+    return STATUS_INVALID_PARAMETER;
 }
 
 /**
