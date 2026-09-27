@@ -7,8 +7,9 @@
 
 /*
  * ReactOS has no notification facility yet. Publishing is accepted and
- * dropped, since nothing could subscribe to the data, and subscribing fails
- * so callers know no callback will ever arrive.
+ * dropped, since nothing reads the data. A subscription is taken and kept,
+ * because a caller that cannot subscribe gives up on work it would otherwise
+ * do, and a state nothing publishes to is a state that never changes.
  */
 
 /* INCLUDES *******************************************************************/
@@ -16,6 +17,23 @@
 #include <ntoskrnl.h>
 #define NDEBUG
 #include <debug.h>
+
+/* TYPES **********************************************************************/
+
+/*
+ * What a subscription holds. Nothing publishes, so it is kept only to be
+ * handed back and to be recognised when it is dropped.
+ */
+typedef struct _EXP_WNF_SUBSCRIPTION
+{
+    ULONG64 StateName;
+    ULONG EventMask;
+    ULONG ChangeStamp;
+    PVOID Callback;
+    PVOID CallbackContext;
+} EXP_WNF_SUBSCRIPTION, *PEXP_WNF_SUBSCRIPTION;
+
+#define EXP_WNF_TAG 'fnWE'
 
 /* PUBLIC FUNCTIONS ***********************************************************/
 
@@ -74,44 +92,57 @@ ZwUpdateWnfStateData(
  * Registers a callback for changes of a notification state.
  *
  * @param[out] Subscription
- * Receives the subscription. It is set to NULL.
+ * Receives the subscription, which the caller drops with
+ * ExUnsubscribeWnfStateChange().
  *
  * @param[in] StateName
  * The state to watch.
  *
- * @param[in] DeliveryOption
+ * @param[in] EventMask
  * Which changes to deliver.
  *
- * @param[in] OriginalChangeStamp
+ * @param[in] ChangeStamp
  * The change stamp the caller has already seen.
  *
  * @param[in] Callback
- * The routine to call on a change.
+ * The routine to call on a change. It is never called.
  *
  * @param[in] CallbackContext
  * Passed through to @p Callback.
  *
  * @return
- * STATUS_NOT_SUPPORTED.
+ * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES.
  */
 NTSTATUS
 NTAPI
 ExSubscribeWnfStateChange(
     _Out_ PVOID *Subscription,
     _In_ const VOID *StateName,
-    _In_ ULONG DeliveryOption,
-    _In_ ULONG OriginalChangeStamp,
+    _In_ ULONG EventMask,
+    _In_ ULONG ChangeStamp,
     _In_ PVOID Callback,
     _In_opt_ PVOID CallbackContext)
 {
-    UNREFERENCED_PARAMETER(StateName);
-    UNREFERENCED_PARAMETER(DeliveryOption);
-    UNREFERENCED_PARAMETER(OriginalChangeStamp);
-    UNREFERENCED_PARAMETER(Callback);
-    UNREFERENCED_PARAMETER(CallbackContext);
+    PEXP_WNF_SUBSCRIPTION Entry;
+
+    if ((Subscription == NULL) || (StateName == NULL) || (Callback == NULL))
+        return STATUS_INVALID_PARAMETER;
 
     *Subscription = NULL;
-    return STATUS_NOT_SUPPORTED;
+
+    Entry = ExAllocatePoolZero(NonPagedPool, sizeof(*Entry), EXP_WNF_TAG);
+    if (Entry == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlCopyMemory(&Entry->StateName, StateName, sizeof(Entry->StateName));
+    Entry->EventMask = EventMask;
+    Entry->ChangeStamp = ChangeStamp;
+    Entry->Callback = Callback;
+    Entry->CallbackContext = CallbackContext;
+
+    *Subscription = Entry;
+
+    return STATUS_SUCCESS;
 }
 
 /**
@@ -131,7 +162,7 @@ ExSubscribeWnfStateChange(
  * The size of @p Buffer on input, the size of the data on output.
  *
  * @return
- * STATUS_OBJECT_NAME_NOT_FOUND, since no subscription can exist.
+ * STATUS_OBJECT_NAME_NOT_FOUND, since nothing was ever published to the state.
  */
 NTSTATUS
 NTAPI
@@ -161,7 +192,10 @@ NTAPI
 ExUnsubscribeWnfStateChange(
     _In_opt_ PVOID Subscription)
 {
-    UNREFERENCED_PARAMETER(Subscription);
+    if (Subscription == NULL)
+        return;
+
+    ExFreePoolWithTag(Subscription, EXP_WNF_TAG);
 }
 
 /* EOF */
