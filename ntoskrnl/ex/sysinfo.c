@@ -3105,6 +3105,75 @@ QSI_DEF(SystemPhysicalMemoryInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 138 - Memory Topology Information */
+typedef struct _PHYSICAL_CHANNEL_RUN
+{
+    ULONG NodeNumber;
+    ULONG ChannelNumber;
+    ULONGLONG BasePage;
+    ULONGLONG PageCount;
+    ULONG Flags;
+} PHYSICAL_CHANNEL_RUN, *PPHYSICAL_CHANNEL_RUN;
+
+typedef struct _SYSTEM_MEMORY_TOPOLOGY_INFORMATION
+{
+    ULONGLONG NumberOfRuns;
+    ULONG NumberOfNodes;
+    ULONG NumberOfChannels;
+    PHYSICAL_CHANNEL_RUN Run[ANYSIZE_ARRAY];
+} SYSTEM_MEMORY_TOPOLOGY_INFORMATION, *PSYSTEM_MEMORY_TOPOLOGY_INFORMATION;
+
+QSI_DEF(SystemMemoryTopologyInformation)
+{
+    PSYSTEM_MEMORY_TOPOLOGY_INFORMATION Topology = Buffer;
+    PPHYSICAL_MEMORY_RANGE Ranges;
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG Runs = 0;
+    ULONG Index;
+
+    Ranges = MmGetPhysicalMemoryRanges();
+    if (Ranges == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* The list ends on an empty range */
+    while (Ranges[Runs].NumberOfBytes.QuadPart != 0)
+        Runs++;
+
+    *ReqSize = FIELD_OFFSET(SYSTEM_MEMORY_TOPOLOGY_INFORMATION, Run) +
+               Runs * sizeof(PHYSICAL_CHANNEL_RUN);
+
+    if (Size < *ReqSize)
+    {
+        /* The length varies with the machine, so a caller sizes it first */
+        Status = STATUS_BUFFER_TOO_SMALL;
+    }
+    else
+    {
+        /*
+         * One node and one channel, because nothing here tells memory apart
+         * by where it is attached. The runs are what the machine has.
+         */
+        Topology->NumberOfRuns = Runs;
+        Topology->NumberOfNodes = 1;
+        Topology->NumberOfChannels = 1;
+
+        for (Index = 0; Index < Runs; Index++)
+        {
+            Topology->Run[Index].NodeNumber = 0;
+            Topology->Run[Index].ChannelNumber = 0;
+            Topology->Run[Index].BasePage =
+                (ULONGLONG)Ranges[Index].BaseAddress.QuadPart >> PAGE_SHIFT;
+            Topology->Run[Index].PageCount =
+                (ULONGLONG)Ranges[Index].NumberOfBytes.QuadPart >> PAGE_SHIFT;
+            Topology->Run[Index].Flags = 0;
+        }
+    }
+
+    ExFreePool(Ranges);
+
+    return Status;
+}
+
 /* Class 91 - Hypervisor Information */
 SSI_DEF(SystemHypervisorInformation)
 {
@@ -3236,6 +3305,7 @@ CallQS[] =
     // Windows 10 and later
     SI_QX(SystemPhysicalMemoryInformation),
     SI_XS(SystemHypervisorInformation),
+    SI_QX(SystemMemoryTopologyInformation),
 };
 
 C_ASSERT(SystemBasicInformation == 0);
