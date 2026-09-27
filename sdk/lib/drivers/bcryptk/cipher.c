@@ -41,10 +41,14 @@ BcryptkCreateKey(
     _In_ ULONG SecretLength)
 {
     PBCRYPTK_KEY Key;
+    SYMCRYPT_ERROR Error;
     BOOLEAN Allocated;
 
-    if (Provider->Algorithm->Class != BcryptkClassCipher)
+    if (Provider->Algorithm->Class != BcryptkClassCipher &&
+        Provider->Algorithm->Class != BcryptkClassXts)
+    {
         return STATUS_NOT_SUPPORTED;
+    }
 
     if (!BcryptkKeyLengthAllowed(Provider->Algorithm, SecretLength))
         return STATUS_INVALID_PARAMETER;
@@ -63,9 +67,14 @@ BcryptkCreateKey(
     Key->Allocated = Allocated;
     Key->ExpandedKey = BcryptkAlign(&Key->Storage[0]);
 
-    if ((*Key->Algorithm->Cipher)->expandKeyFunc(Key->ExpandedKey,
-                                                 Secret,
-                                                 SecretLength) != SYMCRYPT_NO_ERROR)
+    if (Key->Algorithm->Class == BcryptkClassXts)
+        Error = SymCryptXtsAesExpandKey(Key->ExpandedKey, Secret, SecretLength);
+    else
+        Error = (*Key->Algorithm->Cipher)->expandKeyFunc(Key->ExpandedKey,
+                                                        Secret,
+                                                        SecretLength);
+
+    if (Error != SYMCRYPT_NO_ERROR)
     {
         BcryptkFreeObject(Key, Allocated);
         return STATUS_INVALID_PARAMETER;
@@ -276,6 +285,68 @@ BCryptDestroyKey(
 }
 
 /*
+ * Runs one XTS request. The chaining value is the number of the first data
+ * unit of the run, and each unit after it takes the next number, so a whole
+ * run of them goes out in one call.
+ */
+static
+NTSTATUS
+BcryptkXtsRun(
+    _In_ PBCRYPTK_KEY Key,
+    _In_reads_bytes_opt_(InputLength) PUCHAR Input,
+    _In_ ULONG InputLength,
+    _In_reads_bytes_opt_(IvLength) PUCHAR Iv,
+    _In_ ULONG IvLength,
+    _Out_writes_bytes_opt_(OutputLength) PUCHAR Output,
+    _In_ ULONG OutputLength,
+    _Out_ ULONG *ResultLength,
+    _In_ BOOLEAN Encrypt)
+{
+    ULONG64 Tweak;
+
+    /* The data unit size has to have been set, as there is no guessing one */
+    if (Key->MessageBlockLength == 0)
+        return STATUS_INVALID_PARAMETER;
+
+    if ((Input == NULL) || (Iv == NULL) || (IvLength != BCRYPTK_XTS_TWEAK_LENGTH))
+        return STATUS_INVALID_PARAMETER;
+
+    if ((InputLength % Key->MessageBlockLength) != 0)
+        return STATUS_INVALID_PARAMETER;
+
+    *ResultLength = InputLength;
+
+    if (Output == NULL)
+        return STATUS_SUCCESS;
+
+    if (OutputLength < InputLength)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    RtlCopyMemory(&Tweak, Iv, sizeof(Tweak));
+
+    if (Encrypt)
+    {
+        SymCryptXtsAesEncrypt(Key->ExpandedKey,
+                              Key->MessageBlockLength,
+                              Tweak,
+                              Input,
+                              Output,
+                              InputLength);
+    }
+    else
+    {
+        SymCryptXtsAesDecrypt(Key->ExpandedKey,
+                              Key->MessageBlockLength,
+                              Tweak,
+                              Input,
+                              Output,
+                              InputLength);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/*
  * Works out how much room a run needs and checks that the caller may ask for
  * it at all. Padding is only offered for the modes that work a block at a
  * time.
@@ -406,8 +477,25 @@ BCryptEncrypt(
     if (ResultLength == NULL || (Input == NULL && InputLength != 0))
         return STATUS_INVALID_PARAMETER;
 
-    if ((Flags & ~BCRYPT_BLOCK_PADDING) != 0)
+    if ((Flags & ~(BCRYPT_BLOCK_PADDING | BCRYPT_BUFFERS_LOCKED_FLAG)) != 0)
         return STATUS_INVALID_PARAMETER;
+
+    if (Object->Algorithm->Class == BcryptkClassXts)
+    {
+        /* XTS works in whole data units, so there is nothing left to pad */
+        if (Padding)
+            return STATUS_INVALID_PARAMETER;
+
+        return BcryptkXtsRun(Object,
+                             Input,
+                             InputLength,
+                             Iv,
+                             IvLength,
+                             Output,
+                             OutputLength,
+                             ResultLength,
+                             TRUE);
+    }
 
     Status = BcryptkCipherResultLength(Object, InputLength, Padding, &Required);
     if (!NT_SUCCESS(Status))
@@ -540,8 +628,24 @@ BCryptDecrypt(
     if (ResultLength == NULL || (Input == NULL && InputLength != 0))
         return STATUS_INVALID_PARAMETER;
 
-    if ((Flags & ~BCRYPT_BLOCK_PADDING) != 0)
+    if ((Flags & ~(BCRYPT_BLOCK_PADDING | BCRYPT_BUFFERS_LOCKED_FLAG)) != 0)
         return STATUS_INVALID_PARAMETER;
+
+    if (Object->Algorithm->Class == BcryptkClassXts)
+    {
+        if (Padding)
+            return STATUS_INVALID_PARAMETER;
+
+        return BcryptkXtsRun(Object,
+                             Input,
+                             InputLength,
+                             Iv,
+                             IvLength,
+                             Output,
+                             OutputLength,
+                             ResultLength,
+                             FALSE);
+    }
 
     BlockSize = (ULONG)(*Object->Algorithm->Cipher)->blockSize;
 

@@ -25,6 +25,7 @@
 typedef enum _BCRYPTK_CLASS
 {
     BcryptkClassCipher,
+    BcryptkClassXts,
     BcryptkClassHash,
     BcryptkClassRandom
 } BCRYPTK_CLASS;
@@ -123,5 +124,24 @@ BcryptkAlign(
 {
     return (PVOID)(((ULONG_PTR)Address + BCRYPTK_ALIGNMENT - 1) & ~(ULONG_PTR)(BCRYPTK_ALIGNMENT - 1));
 }
+
+/* XTS carries its own pair of keys rather than a block cipher description */
+FORCEINLINE
+ULONG
+BcryptkBlockLength(
+    _In_ PCBCRYPTK_ALGORITHM Algorithm)
+{
+    if (Algorithm->Class == BcryptkClassXts)
+        return SYMCRYPT_AES_BLOCK_SIZE;
+
+    return (ULONG)(*Algorithm->Cipher)->blockSize;
+}
+
+/* The smallest and largest run XTS encrypts in one piece */
+#define BCRYPTK_XTS_MINIMUM_DATA_UNIT SYMCRYPT_AES_BLOCK_SIZE
+#define BCRYPTK_XTS_MAXIMUM_DATA_UNIT (1UL << 24)
+
+/* The tweak an XTS run starts from arrives as the whole of the chaining value */
+#define BCRYPTK_XTS_TWEAK_LENGTH sizeof(ULONG64)
 
 /* EOF */

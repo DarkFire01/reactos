@@ -107,6 +107,7 @@ typedef NTSTATUS *PNTSTATUS;
 #define BCRYPT_SHA384_ALGORITHM     L"SHA384"
 #define BCRYPT_SHA512_ALGORITHM     L"SHA512"
 #define BCRYPT_PBKDF2_ALGORITHM     L"PBKDF2"
+#define BCRYPT_XTS_AES_ALGORITHM    L"XTS-AES"
 
 #define BCRYPT_CHAIN_MODE_NA        L"ChainingModeN/A"
 #define BCRYPT_CHAIN_MODE_CBC       L"ChainingModeCBC"
@@ -444,6 +445,7 @@ typedef PVOID BCRYPT_SECRET_HANDLE;
 
 /* Flags for BCryptEncrypt/BCryptDecrypt */
 #define BCRYPT_BLOCK_PADDING        0x00000001
+#define BCRYPT_BUFFERS_LOCKED_FLAG  0x00000040
 
 /* Flags for BCryptCreateHash */
 #define BCRYPT_HASH_REUSABLE_FLAG   0x00000020

@@ -19,6 +19,9 @@ static const BCRYPTK_ALGORITHM BcryptkAlgorithms[] =
 {
     { BCRYPT_AES_ALGORITHM, BcryptkClassCipher,
       &SymCryptAesBlockCipher, NULL, NULL, 128, 256, 64 },
+    /* An XTS key is a pair of AES keys, so its lengths are twice those */
+    { BCRYPT_XTS_AES_ALGORITHM, BcryptkClassXts,
+      NULL, NULL, NULL, 256, 512, 256 },
     { BCRYPT_DES_ALGORITHM, BcryptkClassCipher,
       &SymCryptDesBlockCipher, NULL, NULL, 64, 64, 0 },
     { BCRYPT_3DES_ALGORITHM, BcryptkClassCipher,
@@ -79,8 +82,14 @@ ULONG
 BcryptkKeyObjectLength(
     _In_ PCBCRYPTK_ALGORITHM Algorithm)
 {
-    return (ULONG)(FIELD_OFFSET(BCRYPTK_KEY, Storage) +
-                   (*Algorithm->Cipher)->expandedKeySize + BCRYPTK_ALIGNMENT);
+    SIZE_T Expanded;
+
+    if (Algorithm->Class == BcryptkClassXts)
+        Expanded = sizeof(SYMCRYPT_XTS_AES_EXPANDED_KEY);
+    else
+        Expanded = (*Algorithm->Cipher)->expandedKeySize;
+
+    return (ULONG)(FIELD_OFFSET(BCRYPTK_KEY, Storage) + Expanded + BCRYPTK_ALIGNMENT);
 }
 
 /**
@@ -387,22 +396,31 @@ BCryptGetProperty(
         if (Algorithm->Class == BcryptkClassRandom)
             return STATUS_NOT_SUPPORTED;
 
-        if (Algorithm->Class == BcryptkClassCipher)
+        if (Algorithm->Class == BcryptkClassCipher ||
+            Algorithm->Class == BcryptkClassXts)
+        {
             Value = BcryptkKeyObjectLength(Algorithm);
+        }
         else
+        {
             Value = BcryptkHashObjectLength(Algorithm, Mac);
+        }
 
         return BcryptkReturnUlong(Value, Output, OutputLength, ResultLength);
     }
 
     if (_wcsicmp(Property, BCRYPT_BLOCK_LENGTH) == 0)
     {
-        if (Algorithm->Class != BcryptkClassCipher)
+        if (Algorithm->Class != BcryptkClassCipher &&
+            Algorithm->Class != BcryptkClassXts)
+        {
             return STATUS_NOT_SUPPORTED;
+        }
 
-        Value = (ULONG)(*Algorithm->Cipher)->blockSize;
-
-        return BcryptkReturnUlong(Value, Output, OutputLength, ResultLength);
+        return BcryptkReturnUlong(BcryptkBlockLength(Algorithm),
+                                  Output,
+                                  OutputLength,
+                                  ResultLength);
     }
 
     if (_wcsicmp(Property, BCRYPT_CHAINING_MODE) == 0)
@@ -415,8 +433,11 @@ BCryptGetProperty(
 
     if (_wcsicmp(Property, BCRYPT_KEY_LENGTHS) == 0)
     {
-        if (Algorithm->Class != BcryptkClassCipher)
+        if (Algorithm->Class != BcryptkClassCipher &&
+            Algorithm->Class != BcryptkClassXts)
+        {
             return STATUS_NOT_SUPPORTED;
+        }
 
         *ResultLength = sizeof(KeyLengths);
 
@@ -460,8 +481,11 @@ BCryptGetProperty(
 
     if (_wcsicmp(Property, BCRYPT_MESSAGE_BLOCK_LENGTH) == 0)
     {
-        if (Algorithm->Class != BcryptkClassCipher)
+        if (Algorithm->Class != BcryptkClassCipher &&
+            Algorithm->Class != BcryptkClassXts)
+        {
             return STATUS_NOT_SUPPORTED;
+        }
 
         if (Provider->Tag == BCRYPTK_PROVIDER_TAG)
             Value = Provider->MessageBlockLength;
@@ -553,17 +577,32 @@ BCryptSetProperty(
 
     if (_wcsicmp(Property, BCRYPT_MESSAGE_BLOCK_LENGTH) == 0)
     {
-        if (Algorithm->Class != BcryptkClassCipher)
+        if (Algorithm->Class != BcryptkClassCipher &&
+            Algorithm->Class != BcryptkClassXts)
+        {
             return STATUS_NOT_SUPPORTED;
+        }
 
         if (InputLength != sizeof(Value))
             return STATUS_INVALID_PARAMETER;
 
         RtlCopyMemory(&Value, Input, sizeof(Value));
 
-        /* A CFB run shifts by one byte or by a whole block, nothing between */
-        if (Value != 1 && Value != (*Algorithm->Cipher)->blockSize)
+        if (Algorithm->Class == BcryptkClassXts)
+        {
+            /* For XTS this is the data unit each tweak covers */
+            if ((Value < BCRYPTK_XTS_MINIMUM_DATA_UNIT) ||
+                (Value > BCRYPTK_XTS_MAXIMUM_DATA_UNIT) ||
+                ((Value % SYMCRYPT_AES_BLOCK_SIZE) != 0))
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+        }
+        else if (Value != 1 && Value != (*Algorithm->Cipher)->blockSize)
+        {
+            /* A CFB run shifts by one byte or by a whole block, nothing between */
             return STATUS_INVALID_PARAMETER;
+        }
 
         *MessageBlockLength = Value;
 
