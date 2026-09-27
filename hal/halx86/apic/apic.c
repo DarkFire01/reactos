@@ -1171,6 +1171,10 @@ HalDisableSystemInterrupt(
         ReDirReg.Mask = 1;
         ApicWriteIORedirectionEntry(Index, ReDirReg);
     }
+    else
+    {
+        HalpReleaseMessageMark(Vector);
+    }
 
     HalpReleaseVectorLock(OldIrql);
 }
@@ -1241,96 +1245,6 @@ HalEndSystemInterrupt(
 
 
 /* INTERRUPT CONNECTION *******************************************************/
-
-/* Flat logical mode holds one bit per processor, so it only covers 8 of them */
-static
-HAL_APIC_DESTINATION_MODE
-NTAPI
-HalpGetApicDestinationMode(VOID)
-{
-    ULONG Count = max(HalpApicInfoTable.ProcessorCount, (ULONG)KeNumberProcessors);
-
-    return (Count > 8) ? ApicDestinationModePhysical : ApicDestinationModeLogicalFlat;
-}
-
-static
-NTSTATUS
-NTAPI
-HalpGetLocalApicIdForProcessor(
-    _In_ ULONG ProcessorNumber,
-    _Out_ PULONG ApicId)
-{
-    if (ProcessorNumber == KeGetCurrentProcessorNumber())
-    {
-        *ApicId = ApicRead(APIC_ID) >> 24;
-        return STATUS_SUCCESS;
-    }
-
-    if ((ProcessorNumber >= HalpApicInfoTable.ProcessorCount) ||
-        (ProcessorNumber >= MAXIMUM_PROCESSORS))
-    {
-        return STATUS_NOT_FOUND;
-    }
-
-    *ApicId = HalpProcessorIdentity[ProcessorNumber].LapicId;
-    return STATUS_SUCCESS;
-}
-
-/**
- * @brief
- * Turns a processor set into an APIC destination. A lone processor is named by
- * its physical APIC ID, a set of them by the flat logical IDs of its members.
- *
- * @param[in] TargetProcessors
- * Processors the interrupt should reach.
- *
- * @param[out] Logical
- * Receives TRUE when the destination holds logical IDs.
- *
- * @param[out] Destination
- * Receives the destination field of a redirection entry or message address.
- */
-static
-NTSTATUS
-NTAPI
-HalpBuildInterruptDestination(
-    _In_ KAFFINITY TargetProcessors,
-    _Out_ PBOOLEAN Logical,
-    _Out_ PUCHAR Destination)
-{
-    ULONG Processor, ApicId;
-    NTSTATUS Status;
-
-    if (TargetProcessors == 0)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    if ((TargetProcessors & (TargetProcessors - 1)) == 0)
-    {
-        BitScanForwardAffinity(&Processor, TargetProcessors);
-        Status = HalpGetLocalApicIdForProcessor(Processor, &ApicId);
-        if (!NT_SUCCESS(Status))
-        {
-            return Status;
-        }
-
-        *Logical = FALSE;
-        *Destination = (UCHAR)ApicId;
-        return STATUS_SUCCESS;
-    }
-
-    /* Bit N of a flat logical ID belongs to processor N */
-    if ((HalpGetApicDestinationMode() != ApicDestinationModeLogicalFlat) ||
-        (TargetProcessors > 0xFF))
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    *Logical = TRUE;
-    *Destination = (UCHAR)TargetProcessors;
-    return STATUS_SUCCESS;
-}
 
 /* Physical mode names one processor, so a line settles for the lowest of the set */
 static
@@ -1451,6 +1365,22 @@ HalEnableInterrupt(
 
     switch (VectorData->Type)
     {
+        case InterruptTypeXapicMessage:
+        case InterruptTypeHypertransport:
+        case InterruptTypeMessageRequest:
+        {
+            /* The vector has to be free or already carrying messages */
+            Status = STATUS_SUCCESS;
+            OldIrql = HalpAcquireVectorLock();
+            Index = HalpVectorToIndex[Vector];
+            if (Index == APIC_FREE_VECTOR)
+                HalpVectorToIndex[Vector] = APIC_MSI_VECTOR;
+            else if (Index != APIC_MSI_VECTOR)
+                Status = STATUS_INVALID_PARAMETER;
+            HalpReleaseVectorLock(OldIrql);
+            return Status;
+        }
+
         case InterruptTypeControllerInput:
         {
             Input = VectorData->ControllerInput.Gsiv;
@@ -1508,7 +1438,8 @@ HalEnableInterrupt(
 
 /**
  * @brief
- * Turns off an interrupt enabled through HalEnableInterrupt.
+ * Turns off an interrupt enabled through HalEnableInterrupt. A message vector
+ * from a HAL message block stays allocated until its owner gives it back.
  */
 NTSTATUS
 NTAPI
@@ -1536,6 +1467,14 @@ HalDisableInterrupt(
 
     switch (VectorData->Type)
     {
+        case InterruptTypeXapicMessage:
+        case InterruptTypeHypertransport:
+        case InterruptTypeMessageRequest:
+            OldIrql = HalpAcquireVectorLock();
+            HalpReleaseMessageMark(Vector);
+            HalpReleaseVectorLock(OldIrql);
+            return STATUS_SUCCESS;
+
         case InterruptTypeControllerInput:
         {
             Input = VectorData->ControllerInput.Gsiv;
