@@ -83,6 +83,49 @@ EtwpFieldIsAnsiString(
     return TRUE;
 }
 
+/*
+ * An event that describes itself carries its own name and the names of its
+ * fields packed as a run of strings, which is the only thing that says what
+ * the numbers beside them mean.
+ */
+static
+VOID
+EtwpPrintNames(
+    _In_reads_bytes_(Length) PCSTR Field,
+    _In_ ULONG Length)
+{
+    CHAR Line[ETWP_MAXIMUM_FIELD];
+    ULONG Index = 0;
+    ULONG Used = 0;
+
+    while (Index < Length)
+    {
+        ULONG Start = Index;
+        ULONG Count;
+
+        while ((Index < Length) && (Field[Index] >= 0x20) && (Field[Index] <= 0x7E))
+            Index++;
+
+        Count = Index - Start;
+        if ((Count >= 3) && ((Used + Count + 2) < sizeof(Line)))
+        {
+            if (Used != 0)
+                Line[Used++] = ' ';
+
+            RtlCopyMemory(&Line[Used], &Field[Start], Count);
+            Used += Count;
+        }
+
+        Index++;
+    }
+
+    if (Used == 0)
+        return;
+
+    Line[Used] = ANSI_NULL;
+    DPRINT1("  [%s]\n", Line);
+}
+
 /* Writes one field of an event out in whatever shape it turns out to have */
 static
 VOID
@@ -120,6 +163,7 @@ EtwpPrintField(
 
         default:
             DPRINT1("  %lu bytes\n", Data->Size);
+            EtwpPrintNames(Field, Data->Size);
             break;
     }
 }
