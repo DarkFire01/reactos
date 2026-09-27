@@ -270,6 +270,71 @@ MmpQueryPartitionConfiguration(
 
 /* PUBLIC FUNCTIONS ***********************************************************/
 
+/*
+ * What the second level address translation host publishes about partitions.
+ * The virtualization stack asks these to find out whose memory a partition
+ * holds, so that it can allocate and lock a guest memory in that context.
+ */
+
+/**
+ * @brief
+ * Reports the partition a job confines its memory to.
+ *
+ * @return
+ * NULL. Nothing here puts a job in a partition of its own, and a caller that
+ * gets none goes on to the system partition.
+ */
+PVOID
+NTAPI
+PsGetJobMemoryPartition(
+    _In_ PEJOB Job)
+{
+    UNREFERENCED_PARAMETER(Job);
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Reports the partition a process takes its memory from.
+ */
+PVOID
+NTAPI
+PsGetProcessPartition(
+    _In_ PEPROCESS Process)
+{
+    UNREFERENCED_PARAMETER(Process);
+
+    return MmSystemPartition;
+}
+
+/**
+ * @brief
+ * Takes a reference to the process a partition keeps its memory in.
+ *
+ * @remarks
+ * A partition here holds pages the system took out of its own free list rather
+ * than memory of its own, so every partition answers with the system process.
+ *
+ * @return
+ * STATUS_SUCCESS with a referenced process, or STATUS_INVALID_PARAMETER.
+ */
+NTSTATUS
+NTAPI
+PsReferencePartitionSystemProcess(
+    _In_ PVOID Partition,
+    _Out_ PEPROCESS *Process)
+{
+    if ((Partition == NULL) || (Process == NULL))
+        return STATUS_INVALID_PARAMETER;
+
+    ObReferenceObject(PsInitialSystemProcess);
+    *Process = PsInitialSystemProcess;
+
+    return STATUS_SUCCESS;
+}
+
+
 /**
  * @brief
  * Creates the partition object type and the partition the system itself is.
