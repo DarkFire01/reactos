@@ -29,11 +29,23 @@
 #define HV_VENDOR_EDX                             0x76482074
 #define HV_INTERFACE_SIGNATURE                    0x31237648
 
+#define HV_PARTITION_PRIVILEGE_ACCESS_SYNIC_REGS  0x00000004
 #define HV_PARTITION_PRIVILEGE_ACCESS_HYPERCALL_MSRS 0x00000020
 
 #define HV_X64_MSR_GUEST_OS_ID                    0x40000000
 #define HV_X64_MSR_HYPERCALL                      0x40000001
 #define HV_X64_MSR_VP_INDEX                       0x40000002
+#define HV_X64_MSR_SCONTROL                       0x40000080
+#define HV_X64_MSR_SINT0                          0x40000090
+
+#define HV_SYNIC_CONTROL_ENABLE                   0x0000000000000001ULL
+
+/*
+ * The vector the hypervisor's own interrupt arrives on. It is the lowest of a
+ * priority class of its own: above the software interrupts, and below anything
+ * a device is ever given.
+ */
+#define HVL_INTERRUPT_VECTOR                      0x30
 
 #define HV_X64_MSR_HYPERCALL_ENABLE               0x0000000000000001ULL
 
@@ -72,6 +84,11 @@ ULONG64
     _In_ ULONG64 InputPa,
     _In_ ULONG64 OutputPa);
 
+typedef
+VOID
+(NTAPI *PHVL_INTERRUPT_ROUTINE)(
+    _In_opt_ PVOID Context);
+
 typedef struct _HVL_INTERRUPT_CALLBACK
 {
     PVOID Callback;
@@ -100,6 +117,7 @@ static PMDL HvlpHypercallMdl;
 static PKEVENT HvlpWithdrawAllowedEvent;
 static HVL_INTERRUPT_CALLBACK HvlpInterruptCallbacks[HVL_MAXIMUM_INTERRUPT_CALLBACKS];
 static PVOID HvlpWheaCallback;
+static ULONG HvlpInterrupts;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -202,6 +220,76 @@ HvlInitSystemEvents(VOID)
         DPRINT1("Hvl: the withdraw event would not be referenced, status %lx\n", Status);
 }
 
+#ifdef _M_AMD64
+/**
+ * @brief
+ * What the hypervisor's own interrupt does, which is to let whoever registered
+ * for it look at what arrived.
+ *
+ * @remarks
+ * One vector covers everything the hypervisor has to say to this processor, so
+ * which of it matters is for the registered routines to work out. The pages the
+ * messages are written in belong to them rather than to this library, which is
+ * why nothing here reads one.
+ */
+VOID
+NTAPI
+HvlInterruptHandler(VOID)
+{
+    ULONG Index;
+
+    HvlpInterrupts++;
+
+    if (HvlpInterrupts <= 2)
+        DPRINT1("Hvl: the hypervisor raised its interrupt\n");
+
+    for (Index = 0; Index < HVL_MAXIMUM_INTERRUPT_CALLBACKS; Index++)
+    {
+        PHVL_INTERRUPT_ROUTINE Routine;
+
+        Routine = (PHVL_INTERRUPT_ROUTINE)HvlpInterruptCallbacks[Index].Callback;
+
+        if (Routine != NULL)
+            Routine(HvlpInterruptCallbacks[Index].Context);
+    }
+}
+
+/**
+ * @brief
+ * Turns this processor's synthetic controller on and gives the hypervisor a
+ * vector to raise its own interrupt on.
+ *
+ * @remarks
+ * Only the first of the sixteen interrupts is this library's, because that is
+ * the one the hypervisor's own messages arrive on. Where those messages are
+ * written is not set here: a root is given its pages by the hypervisor, and
+ * whoever reads a message maps them for itself.
+ */
+CODE_SEG("INIT")
+static
+VOID
+NTAPI
+HvlpConnectSynic(VOID)
+{
+    ULONG64 Control;
+
+    if (!(HvlpPrivileges & HV_PARTITION_PRIVILEGE_ACCESS_SYNIC_REGS))
+    {
+        DPRINT1("Hvl: the controller registers are not ours to touch\n");
+        return;
+    }
+
+    Control = __readmsr(HV_X64_MSR_SCONTROL);
+    __writemsr(HV_X64_MSR_SCONTROL, Control | HV_SYNIC_CONTROL_ENABLE);
+
+    /* The vector alone, so the interrupt is neither masked nor ended for us */
+    __writemsr(HV_X64_MSR_SINT0, HVL_INTERRUPT_VECTOR);
+
+    DPRINT1("Hvl: the controller is on, its own interrupt is vector %x\n",
+            HVL_INTERRUPT_VECTOR);
+}
+#endif
+
 /**
  * @brief
  * Tells the hypervisor who we are and takes the hypercall page it offers.
@@ -285,6 +373,10 @@ HvlInitSystem(VOID)
 
     DPRINT1("Hvl: hypercall page at %p, physical %I64x\n",
             HvlpHypercallPage, PageAddress.QuadPart);
+
+#ifdef _M_AMD64
+    HvlpConnectSynic();
+#endif
 }
 
 /**
@@ -474,8 +566,9 @@ HvlInvokeFastExtendedHypercall(
  * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES when there is no slot left.
  *
  * @remarks
- * The synthetic interrupt controller is not wired up yet, so a registered
- * callback is remembered and never called.
+ * Every registered routine is called on the hypervisor's own interrupt, however
+ * many there are, because one vector carries all of it. The type is what the
+ * caller is registering for and what it may unregister.
  */
 NTSTATUS
 NTAPI
@@ -492,6 +585,8 @@ HvlRegisterInterruptCallback(
 
     HvlpInterruptCallbacks[Type].Context = Context;
     HvlpInterruptCallbacks[Type].Callback = Callback;
+
+    DPRINT1("Hvl: %p takes the hypervisor's interrupt, kind %lu\n", Callback, Type);
 
     return STATUS_SUCCESS;
 }

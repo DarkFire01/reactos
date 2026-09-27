@@ -441,6 +441,10 @@ VOID KiDpcInterrupt(VOID);
 VOID KiIpiInterrupt(VOID);
 VOID NTAPI KiIpiInterruptHandler(VOID);
 
+/* ke/hvl.c, on the vector the hypervisor raises its own interrupt on */
+VOID HvlInterrupt(VOID);
+VOID NTAPI HvlInterruptHandler(VOID);
+
 VOID
 NTAPI
 KiIpiSendSynchRequest(
