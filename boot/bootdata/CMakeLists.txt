@@ -122,8 +122,8 @@ add_livecd_shortcut("Install ReactOS"
     DESTINATION "${dir_allusers_desktop}")
 
 # Runs at logon so a boot with no display still leaves its result in the debug log
-add_livecd_shortcut("Hypervisor Platform Test"
-    "shell:system\\vmtest.exe" ICON_INDEX 0
+add_livecd_shortcut("Virtual Machine Monitor"
+    "shell:system\\reactvm.exe" ICON_INDEX 0
     DESTINATION "${dir_startmenu_startup}")
 
 add_livecd_shortcut("Read Me"
