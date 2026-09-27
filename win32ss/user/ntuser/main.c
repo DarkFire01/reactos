@@ -1062,8 +1062,17 @@ DriverEntry(
         return STATUS_UNSUCCESSFUL;
     }
 
-    /* Init the global user lock */
-    ExInitializeResourceLite(&UserLock);
+    /* Init the global user lock, which cannot live in this image */
+    UserLock = ExAllocatePoolWithTag(NonPagedPool,
+                                     sizeof(*UserLock),
+                                     TAG_INTERNAL_SYNC);
+    if (UserLock == NULL)
+    {
+        DPRINT1("Failed to allocate the global user lock!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    ExInitializeResourceLite(UserLock);
 
     /* Lock while we use the heap (UserHeapAlloc asserts on this) */
     UserEnterExclusive();
