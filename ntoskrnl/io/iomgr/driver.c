@@ -2475,4 +2475,38 @@ NtUnloadDriver(IN PUNICODE_STRING DriverServiceName)
     return IopUnloadDriver(DriverServiceName, FALSE);
 }
 
+/**
+ * @brief
+ * Gives back the path the image behind a driver was loaded from.
+ *
+ * @param[out] FullPath
+ * Receives a string the caller frees, holding the path the loader recorded.
+ *
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+IoQueryFullDriverPath(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _Out_ PUNICODE_STRING FullPath)
+{
+    PLDR_DATA_TABLE_ENTRY Entry = DriverObject->DriverSection;
+
+    if (Entry == NULL)
+        return STATUS_NOT_FOUND;
+
+    FullPath->Buffer = ExAllocatePoolWithTag(PagedPool,
+                                             Entry->FullDllName.MaximumLength,
+                                             TAG_IO);
+    if (FullPath->Buffer == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    FullPath->Length = 0;
+    FullPath->MaximumLength = Entry->FullDllName.MaximumLength;
+
+    RtlCopyUnicodeString(FullPath, &Entry->FullDllName);
+
+    return STATUS_SUCCESS;
+}
+
 /* EOF */

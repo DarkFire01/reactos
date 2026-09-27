@@ -635,6 +635,49 @@ PsCreateSystemThread(OUT PHANDLE ThreadHandle,
                            StartContext);
 }
 
+/**
+ * @brief
+ * Creates a thread of the system's the way PsCreateSystemThread does, for a
+ * caller that also says where it would rather the thread ran.
+ *
+ * @param[in] Affinity
+ * The group and the processors within it the thread is to be kept to, or NULL
+ * for wherever it lands.
+ *
+ * @param[in] IdealProcessor
+ * The processor of that group the thread would rather have, or NULL.
+ *
+ * @remarks
+ * Both of the last two are asked for rather than required, and neither is kept
+ * here, so a thread created this way runs wherever the scheduler puts it.
+ *
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+PsCreateSystemThreadEx(
+    _Out_ PHANDLE ThreadHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_opt_ HANDLE ProcessHandle,
+    _Out_opt_ PCLIENT_ID ClientId,
+    _In_ PKSTART_ROUTINE StartRoutine,
+    _In_opt_ PVOID StartContext,
+    _In_opt_ PGROUP_AFFINITY Affinity,
+    _In_opt_ PULONG IdealProcessor)
+{
+    UNREFERENCED_PARAMETER(Affinity);
+    UNREFERENCED_PARAMETER(IdealProcessor);
+
+    return PsCreateSystemThread(ThreadHandle,
+                                DesiredAccess,
+                                ObjectAttributes,
+                                ProcessHandle,
+                                ClientId,
+                                StartRoutine,
+                                StartContext);
+}
+
 /*
  * @implemented
  */
