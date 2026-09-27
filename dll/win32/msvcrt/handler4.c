@@ -20,15 +20,27 @@
 
 #include <corecrt.h>
 
-#if defined(__x86_64__) && _MSVCR_VER>=140
+/*
+ * The handler belongs to the runtime of Visual Studio 2015 and later, which is
+ * both the versioned runtime from 140 on and the universal one. The shared
+ * library the universal runtime is built from carries no version, and says so
+ * the way the rest of these sources test for it.
+ */
+#if defined(__x86_64__) && (_MSVCR_VER>=140 || defined(__UCRTSUPPORT__))
 
 #include <stdarg.h>
 #include <stdlib.h>
 
+/* The Windows types come first, because the Wine headers below are written in them */
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
+#include "windef.h"
+#include "winbase.h"
+#include "winternl.h"
+#include "msvcrt.h"
 #include "wine/exception.h"
 #include "wine/debug.h"
 #include "cppexcept.h"
-#include "msvcrt.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
 
