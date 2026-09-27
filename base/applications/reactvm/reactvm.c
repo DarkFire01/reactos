@@ -1612,6 +1612,54 @@ static const UCHAR VmSynicHandler[] =
     0xCF                                    /* iret                     */
 };
 
+/*
+ * A guest that sets a timer for itself and counts what it is told. The setting
+ * up is the same as for a posted message, and then one more pair of registers
+ * arms the timer: what it is (periodic, on interrupt zero) and how long.
+ */
+#define VM_TIMER_PERIOD     100000      /* ten milliseconds, in hundreds of ns */
+#define VM_TIMER_WANTED     3
+#define VM_TIMER_COUNT_AT   0x2014
+
+static const UCHAR VmTimerProgram[] =
+{
+    0xC6, 0x06, 0x00, 0x30, 0x00,           /* mov byte [3000h], 0      */
+    0x66, 0xB9, 0x83, 0x00, 0x00, 0x40,     /* mov ecx, 40000083h       */
+    0x66, 0xB8, 0x01, 0x30, 0x00, 0x00,     /* mov eax, 3001h           */
+    0x66, 0x31, 0xD2,                       /* xor edx, edx             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0x66, 0xB9, 0x90, 0x00, 0x00, 0x40,     /* mov ecx, 40000090h       */
+    0x66, 0xB8, 0x33, 0x00, 0x00, 0x00,     /* mov eax, 33h             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0x66, 0xB9, 0x80, 0x00, 0x00, 0x40,     /* mov ecx, 40000080h       */
+    0x66, 0xB8, 0x01, 0x00, 0x00, 0x00,     /* mov eax, 1               */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0x66, 0xB9, 0xB0, 0x00, 0x00, 0x40,     /* mov ecx, 400000B0h       */
+    0x66, 0xB8, 0x03, 0x00, 0x00, 0x00,     /* mov eax, 3               */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0x66, 0xB9, 0xB1, 0x00, 0x00, 0x40,     /* mov ecx, 400000B1h       */
+    0x66, 0xB8, 0xA0, 0x86, 0x01, 0x00,     /* mov eax, <period>        */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xFB,                                   /* sti                      */
+    0xA0, 0x14, 0x20,                       /* mov al, [2014h]          */
+    0x3C, 0x03,                             /* cmp al, 3                */
+    0x73, 0x04,                             /* jae the halt             */
+    0xE6, 0x80,                             /* out 80h, al              */
+    0xEB, 0xF5,                             /* jmp back to the load     */
+    0xF4                                    /* hlt                      */
+};
+
+/* Counts one message, empties the slot and says it is finished with it */
+static const UCHAR VmTimerHandler[] =
+{
+    0xFE, 0x06, 0x14, 0x20,                 /* inc byte [2014h]         */
+    0x66, 0xB9, 0x84, 0x00, 0x00, 0x40,     /* mov ecx, 40000084h       */
+    0x66, 0x31, 0xC0,                       /* xor eax, eax             */
+    0x66, 0x31, 0xD2,                       /* xor edx, edx             */
+    0x0F, 0x30,                             /* wrmsr                    */
+    0xCF                                    /* iret                     */
+};
+
 /* MORE THAN ONE PROCESSOR *****************************************************/
 
 /*
@@ -1976,6 +2024,58 @@ Done:
     VmDestroy(&Vm);
 }
 
+/**
+ * @brief
+ * A guest that sets a timer for itself, and a hypervisor that tells it when the
+ * timer runs out.
+ *
+ * @remarks
+ * The monitor does nothing here beyond letting the guest run. Everything the
+ * guest sees comes from the core, which is the point: a guest measures time
+ * through its own controller rather than through whoever is emulating it.
+ */
+static
+VOID
+VmStageSynicTimer(VOID)
+{
+    PUCHAR Entry;
+    VM Vm;
+
+    VmPrint("\nthe guest sets a timer for itself\n");
+
+    if (!VmCreate(&Vm, NULL, 0, FALSE))
+        goto Done;
+
+    if (!VmLoad(&Vm, VmTimerProgram, sizeof(VmTimerProgram)))
+        goto Done;
+
+    CopyMemory(Vm.Ram + VM_HANDLER_ADDRESS, VmTimerHandler, sizeof(VmTimerHandler));
+    ZeroMemory(Vm.Ram + VM_SYNIC_MESSAGE_PAGE, 0x1000);
+
+    Entry = Vm.Ram + (VM_SYNIC_VECTOR * 4);
+    Entry[0] = (UCHAR)VM_HANDLER_ADDRESS;
+    Entry[1] = (UCHAR)(VM_HANDLER_ADDRESS >> 8);
+    Entry[2] = 0;
+    Entry[3] = 0;
+
+    if (!VmRun(&Vm))
+        goto Done;
+
+    VmCheckValue("the guest was told as many times as it waited for",
+                 VM_TIMER_WANTED,
+                 Vm.Ram[VM_TIMER_COUNT_AT]);
+
+    /* What the last message said about itself, out of the guest's own page */
+    VmCheckValue("and told which timer it was",
+                 0,
+                 *(const ULONG *)(Vm.Ram + VM_SYNIC_MESSAGE_PAGE + 16));
+    VmCheck("with a time in it",
+            *(const ULONG64 *)(Vm.Ram + VM_SYNIC_MESSAGE_PAGE + 24) != 0);
+
+Done:
+    VmDestroy(&Vm);
+}
+
 int
 __cdecl
 main(void)
@@ -2009,6 +2109,7 @@ main(void)
     VmStageVectorRegisters();
     VmStageTwoProcessors();
     VmStageSynicMessage();
+    VmStageSynicTimer();
     VmStageGuestHypercall();
 
     VmPrint("\n%lu checks, %lu of them failed\n", VmChecks, VmFailures);
