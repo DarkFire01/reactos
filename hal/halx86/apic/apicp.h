@@ -367,3 +367,18 @@ HalpInitApicInfo(IN PLOADER_PARAMETER_BLOCK KeLoaderBlock);
 
 VOID __cdecl ApicSpuriousService(VOID);
 VOID __cdecl ApicErrorService(VOID);
+
+/* apic.c */
+KIRQL
+NTAPI
+HalpAcquireVectorLock(VOID);
+
+VOID
+NTAPI
+HalpReleaseVectorLock(
+    _In_ KIRQL OldIrql);
+
+BOOLEAN
+NTAPI
+HalpIsVectorGranted(
+    _In_ ULONG Vector);
