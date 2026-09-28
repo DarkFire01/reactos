@@ -106,6 +106,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fsrtl/stackovf.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fsrtl/tunnel.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fsrtl/unc.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/fsrtl/volume.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fstub/disksup.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fstub/fstubex.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fstub/halstub.c
@@ -132,7 +133,9 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/activity.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/iowork.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/irp.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/irpext.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/irq.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/priority.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/ramdisk.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/rawfs.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/remlock.c

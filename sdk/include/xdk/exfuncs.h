@@ -455,6 +455,50 @@ ExReleasePushLockEx(
   _In_ ULONG Flags);
 
 #endif /* (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__) */
+
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExInitializeAutoExpandPushLock(
+  _Out_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExAcquireAutoExpandPushLockExclusive(
+  _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExAcquireAutoExpandPushLockShared(
+  _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExReleaseAutoExpandPushLockExclusive(
+  _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExReleaseAutoExpandPushLockShared(
+  _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+  _In_ ULONG Flags);
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__) */
 $endif (_NTIFS_)
 
 #if (NTDDI_VERSION >= NTDDI_WIN2K)

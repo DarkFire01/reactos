@@ -270,4 +270,39 @@ FsRtlIsNonEmptyDirectoryReparsePointAllowed(
             (ReparseTag == IO_REPARSE_TAG_WCI));
 }
 
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+FsRtlGetEcpListFromIrp(
+    _In_ PIRP Irp,
+    _Outptr_result_maybenull_ PECP_LIST *EcpList)
+{
+    /* Only a create carries one, and only a create leaves the room for it free */
+    if (!(Irp->Flags & IRP_CREATE_OPERATION))
+        return STATUS_INVALID_PARAMETER;
+
+    *EcpList = Irp->UserBuffer;
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+FsRtlSetEcpListIntoIrp(
+    _Inout_ PIRP Irp,
+    _In_ PECP_LIST EcpList)
+{
+    if (!(Irp->Flags & IRP_CREATE_OPERATION))
+        return STATUS_INVALID_PARAMETER;
+
+    Irp->UserBuffer = EcpList;
+
+    return STATUS_SUCCESS;
+}
+
 /* EOF */

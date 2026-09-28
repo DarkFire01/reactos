@@ -417,6 +417,30 @@ $if (_NTIFS_)
 
 #define EX_PUSH_LOCK ULONG_PTR
 #define PEX_PUSH_LOCK PULONG_PTR
+
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
+
+typedef struct _EX_PUSH_LOCK_AUTO_EXPAND_STATE {
+  _ANONYMOUS_UNION union {
+    _ANONYMOUS_STRUCT struct {
+      ULONG Expanded:1;
+      ULONG Transitioning:1;
+      ULONG Pageable:1;
+    } DUMMYSTRUCTNAME;
+    ULONG GlobalState;
+  } DUMMYUNIONNAME;
+} EX_PUSH_LOCK_AUTO_EXPAND_STATE, *PEX_PUSH_LOCK_AUTO_EXPAND_STATE;
+
+typedef struct _EX_PUSH_LOCK_AUTO_EXPAND {
+  _ANONYMOUS_UNION union {
+    PVOID CacheAware;
+    EX_PUSH_LOCK PushLock;
+  } DUMMYUNIONNAME;
+  EX_PUSH_LOCK_AUTO_EXPAND_STATE State;
+  ULONG Stats;
+} EX_PUSH_LOCK_AUTO_EXPAND, *PEX_PUSH_LOCK_AUTO_EXPAND;
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__) */
 $endif (_NTIFS_)
 
 $if (_WINNT_ || _WDMDDK_)

@@ -299,6 +299,14 @@ Quit:
     if (NT_SUCCESS(Status))
     {
         DPRINT1("Loaded FS mini-filter %wZ\n", &DriverObject->DriverExtension->ServiceKeyName);
+
+        /* Now anything may ask for this filter by the name it registered under */
+        KeEnterCriticalRegion();
+        ExAcquireResourceExclusiveLite(&FilterListLock, TRUE);
+        InsertTailList(&FilterList, &Filter->Base.PrimaryLink);
+        ExReleaseResourceLite(&FilterListLock);
+        KeLeaveCriticalRegion();
+
         *RetFilter = Filter;
     }
     else
@@ -330,6 +338,13 @@ FltUnregisterFilter(_In_ PFLT_FILTER Filter)
         FltObjectDereference(&Filter->Base);
         return;
     }
+
+    /* Nothing new may ask for it by name from here on */
+    KeEnterCriticalRegion();
+    ExAcquireResourceExclusiveLite(&FilterListLock, TRUE);
+    RemoveEntryList(&Filter->Base.PrimaryLink);
+    ExReleaseResourceLite(&FilterListLock);
+    KeLeaveCriticalRegion();
 
     /* Lock the instance list */
     KeEnterCriticalRegion();
@@ -403,10 +418,39 @@ NTAPI
 FltGetFilterFromName(_In_ PCUNICODE_STRING FilterName,
                      _Out_ PFLT_FILTER *RetFilter)
 {
-   UNIMPLEMENTED;
-    UNREFERENCED_PARAMETER(FilterName);
+    PLIST_ENTRY CurrentEntry;
+    PFLT_FILTER Filter;
+    NTSTATUS Status = STATUS_FLT_FILTER_NOT_FOUND;
+
+    PAGED_CODE();
+
     *RetFilter = NULL;
-    return STATUS_NOT_IMPLEMENTED;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&FilterListLock, TRUE);
+
+    for (CurrentEntry = FilterList.Flink;
+         CurrentEntry != &FilterList;
+         CurrentEntry = CurrentEntry->Flink)
+    {
+        Filter = CONTAINING_RECORD(CurrentEntry, FLT_FILTER, Base.PrimaryLink);
+
+        /* A filter name is a service name, so it is matched without case */
+        if (!RtlEqualUnicodeString(&Filter->Name, FilterName, TRUE))
+            continue;
+
+        /* One on its way out is not there to be handed to anybody */
+        Status = FltObjectReference(&Filter->Base);
+        if (NT_SUCCESS(Status))
+            *RetFilter = Filter;
+
+        break;
+    }
+
+    ExReleaseResourceLite(&FilterListLock);
+    KeLeaveCriticalRegion();
+
+    return Status;
 }
 
 

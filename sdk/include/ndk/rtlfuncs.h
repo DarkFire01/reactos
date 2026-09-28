@@ -5116,6 +5116,15 @@ RtlStringFromGUID(
   _Out_ _At_(GuidString->Buffer, __drv_allocatesMem(Mem))
     PUNICODE_STRING GuidString);
 
+_Must_inspect_result_
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlStringFromGUIDEx(
+  _In_ REFGUID Guid,
+  _Inout_ PUNICODE_STRING GuidString,
+  _In_ BOOLEAN AllocateGuidString);
+
 NTSYSAPI
 NTSTATUS
 NTAPI

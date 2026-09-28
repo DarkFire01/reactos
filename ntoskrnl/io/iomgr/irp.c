@@ -1773,6 +1773,9 @@ IoFreeIrp(IN PIRP Irp)
     ASSERT(IsListEmpty(&Irp->ThreadListEntry));
     ASSERT(Irp->CurrentLocation >= Irp->StackCount);
 
+    /* Anything the IRP was carrying past its stack locations goes first */
+    IopFreeIrpExtension(Irp);
+
     /* Get the PRCB */
     Prcb = KeGetCurrentPrcb();
 
@@ -2075,6 +2078,9 @@ IoReuseIrp(IN OUT PIRP Irp,
     /* Make sure it's OK to reuse it */
     ASSERT(!Irp->CancelRoutine);
     ASSERT(IsListEmpty(&Irp->ThreadListEntry));
+
+    /* The next use of the packet gets none of what this one was carrying */
+    IopFreeIrpExtension(Irp);
 
     /* Get the old flags */
     AllocationFlags = Irp->AllocationFlags;
