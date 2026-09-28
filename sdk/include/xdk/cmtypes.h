@@ -124,12 +124,14 @@ typedef int CM_RESOURCE_TYPE;
 #define REG_NOTIFY_CHANGE_ATTRIBUTES    (0x00000002L)
 #define REG_NOTIFY_CHANGE_LAST_SET      (0x00000004L)
 #define REG_NOTIFY_CHANGE_SECURITY      (0x00000008L)
+#define REG_NOTIFY_THREAD_AGNOSTIC      (0x10000000L)
 
 #define REG_LEGAL_CHANGE_FILTER                 \
                 (REG_NOTIFY_CHANGE_NAME          |\
                  REG_NOTIFY_CHANGE_ATTRIBUTES    |\
                  REG_NOTIFY_CHANGE_LAST_SET      |\
-                 REG_NOTIFY_CHANGE_SECURITY)
+                 REG_NOTIFY_CHANGE_SECURITY      |\
+                 REG_NOTIFY_THREAD_AGNOSTIC)
 
 #include <pshpack4.h>
 typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
