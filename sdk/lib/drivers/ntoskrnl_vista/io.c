@@ -67,15 +67,6 @@ IoQueueWorkItemEx(
 }
 
 NTKRNLVISTAAPI
-IO_PRIORITY_HINT
-NTAPI
-IoGetIoPriorityHint(
-    _In_ PIRP Irp)
-{
-    return IoPriorityNormal;
-}
-
-NTKRNLVISTAAPI
 VOID
 IoSetMasterIrpStatus(
     _Inout_ PIRP MasterIrp,
