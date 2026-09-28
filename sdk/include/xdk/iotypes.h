@@ -2823,6 +2823,8 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
         } DUMMYUNIONNAME;
       } DUMMYSTRUCTNAME;
       struct _FILE_OBJECT *OriginalFileObject;
+      /* Fits in the room the APC form of this union already takes */
+      PVOID IrpExtension;
     } Overlay;
     KAPC Apc;
     PVOID CompletionKey;
@@ -7475,7 +7477,7 @@ extern NTKERNELAPI LARGE_INTEGER IoOtherTransferCount;
 #define IO_FILE_OBJECT_NON_PAGED_POOL_CHARGE    64
 #define IO_FILE_OBJECT_PAGED_POOL_CHARGE        1024
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
 typedef struct _IO_PRIORITY_INFO {
   ULONG Size;
   ULONG ThreadPriority;

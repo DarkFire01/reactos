@@ -1627,3 +1627,99 @@ ExUnblockPushLockEx(
 
     return ExUnblockOnAddressPushLockEx(PushLock, NULL);
 }
+
+/* AUTO EXPANDING PUSH LOCKS *************************************************/
+
+/*
+ * An auto expanding push lock is a reader writer lock that grows itself into
+ * one slot per processor once it has seen enough contention to be worth the
+ * memory. Who may hold it at the same time is the same either way, so one
+ * plain push lock stands in for both shapes and the lock never expands. The
+ * count of uncontended releases that would drive that decision is therefore
+ * not kept.
+ */
+
+/* Set when the lock must never be paged out */
+#define EXP_AUTO_EXPAND_NON_PAGED 0x01
+
+/**
+ * @brief
+ * Prepares an auto expanding push lock for use.
+ */
+VOID
+NTAPI
+ExInitializeAutoExpandPushLock(
+    _Out_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+    _In_ ULONG Flags)
+{
+    PushLock->State.GlobalState = 0;
+    PushLock->Stats = 0;
+
+    if (!(Flags & EXP_AUTO_EXPAND_NON_PAGED))
+        PushLock->State.Pageable = TRUE;
+
+    /* Held by nobody, and never yet grown into anything larger */
+    PushLock->PushLock = 0;
+}
+
+/**
+ * @brief
+ * Takes an auto expanding push lock for the one caller that may write.
+ */
+VOID
+NTAPI
+ExAcquireAutoExpandPushLockExclusive(
+    _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(Flags);
+
+    ExAcquirePushLockExclusive((PEX_PUSH_LOCK)&PushLock->PushLock);
+}
+
+/**
+ * @brief
+ * Takes an auto expanding push lock alongside any other reader.
+ */
+VOID
+NTAPI
+ExAcquireAutoExpandPushLockShared(
+    _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(Flags);
+
+    ExAcquirePushLockShared((PEX_PUSH_LOCK)&PushLock->PushLock);
+}
+
+/**
+ * @brief
+ * Gives back an auto expanding push lock held for writing.
+ */
+VOID
+NTAPI
+ExReleaseAutoExpandPushLockExclusive(
+    _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(Flags);
+
+    ExReleasePushLockExclusive((PEX_PUSH_LOCK)&PushLock->PushLock);
+}
+
+/**
+ * @brief
+ * Gives back an auto expanding push lock held for reading.
+ */
+VOID
+NTAPI
+ExReleaseAutoExpandPushLockShared(
+    _Inout_ PEX_PUSH_LOCK_AUTO_EXPAND PushLock,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(Flags);
+
+    ExReleasePushLockShared((PEX_PUSH_LOCK)&PushLock->PushLock);
+}
+
+/* EOF */

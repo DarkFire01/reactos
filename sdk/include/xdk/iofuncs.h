@@ -2498,6 +2498,31 @@ IoInitializePriorityInfo(
 $endif (_NTIFS_)
 #endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
 
+$if (_NTIFS_)
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoRetrievePriorityInfo(
+  _In_opt_ PIRP Irp,
+  _In_opt_ PFILE_OBJECT FileObject,
+  _In_opt_ PETHREAD Thread,
+  _Inout_ PIO_PRIORITY_INFO PriorityInfo);
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoApplyPriorityInfoThread(
+  _In_ PIO_PRIORITY_INFO InputPriorityInfo,
+  _Out_opt_ PIO_PRIORITY_INFO OutputPriorityInfo,
+  _Inout_ PETHREAD Thread);
+
+#endif /* (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__) */
+$endif (_NTIFS_)
+
 $if (_WDMDDK_)
 #define IoCallDriverStackSafeDefault(a, b) IoCallDriver(a, b)
 
@@ -2723,6 +2748,71 @@ IoWMIDeviceObjectToProviderId(
  */
 #define IoSizeOfIrp(_StackSize) \
   ((USHORT) (sizeof(IRP) + ((_StackSize) * (sizeof(IO_STACK_LOCATION)))))
+
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
+
+NTKERNELAPI
+LPCGUID
+NTAPI
+IoGetActivityIdThread(VOID);
+
+NTKERNELAPI
+LPCGUID
+NTAPI
+IoSetActivityIdThread(
+  _In_opt_ LPCGUID ActivityId);
+
+NTKERNELAPI
+VOID
+NTAPI
+IoClearActivityIdThread(
+  _In_opt_ LPCGUID PreviousActivityId);
+
+NTKERNELAPI
+USHORT
+NTAPI
+IoSizeOfIrpEx(
+  _In_opt_ PDEVICE_OBJECT DeviceObject,
+  _In_ CCHAR StackSize);
+
+NTKERNELAPI
+VOID
+NTAPI
+IoInitializeIrpEx(
+  _Out_ PIRP Irp,
+  _In_opt_ PDEVICE_OBJECT DeviceObject,
+  _In_ USHORT PacketSize,
+  _In_ CCHAR StackSize);
+
+NTKERNELAPI
+VOID
+NTAPI
+IoCleanupIrp(
+  _Inout_ PIRP Irp);
+
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoGetActivityIdIrp(
+  _In_ PIRP Irp,
+  _Out_ LPGUID Guid);
+
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoSetActivityIdIrp(
+  _Inout_ PIRP Irp,
+  _In_opt_ LPCGUID Guid);
+
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoPropagateIrpExtension(
+  _In_ PIRP SourceIrp,
+  _Inout_ PIRP TargetIrp,
+  _In_ ULONG Flags);
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__) */
 
 FORCEINLINE
 VOID

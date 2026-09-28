@@ -1381,6 +1381,14 @@ ULONG
 NTAPI
 FsRtlQueryMaximumVirtualDiskNestingLevel(VOID);
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+FsRtlGetSupportedFeatures(
+  _In_ PDEVICE_OBJECT DeviceObject,
+  _Out_ PULONG FeatureSupportFlags);
+
 NTKERNELAPI
 NTSTATUS
 NTAPI

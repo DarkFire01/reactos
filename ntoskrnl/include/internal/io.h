@@ -1264,6 +1264,15 @@ IoInitCancelHandling(
 );
 
 //
+// IRP Extensions
+//
+VOID
+NTAPI
+IopFreeIrpExtension(
+    _Inout_ PIRP Irp
+);
+
+//
 // I/O Completion
 //
 VOID

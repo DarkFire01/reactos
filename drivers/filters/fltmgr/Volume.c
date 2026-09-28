@@ -248,4 +248,98 @@ FltGetVolumeName(
 }
 
 
+NTSTATUS
+FLTAPI
+FltGetVolumeFromFileObject(
+    _In_ PFLT_FILTER Filter,
+    _In_ PFILE_OBJECT FileObject,
+    _Outptr_ PFLT_VOLUME *RetVolume)
+{
+    PDEVICE_OBJECT DeviceObject;
+
+    PAGED_CODE();
+
+    /*
+     * What a file object belongs to is the file system that mounted the media,
+     * which is the device a volume is known by here.
+     */
+    if (FileObject->Vpb != NULL && FileObject->Vpb->DeviceObject != NULL)
+        DeviceObject = FileObject->Vpb->DeviceObject;
+    else
+        DeviceObject = FileObject->DeviceObject;
+
+    return FltGetVolumeFromDeviceObject(Filter, DeviceObject, RetVolume);
+}
+
+NTSTATUS
+FLTAPI
+FltGetVolumeFromDeviceObject(
+    _In_ PFLT_FILTER Filter,
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Outptr_ PFLT_VOLUME *RetVolume)
+{
+    PFLTP_FRAME Frame;
+    PFLT_VOLUME Volume;
+    PLIST_ENTRY ListEntry;
+    NTSTATUS Status = STATUS_FLT_VOLUME_NOT_FOUND;
+
+    PAGED_CODE();
+
+    *RetVolume = NULL;
+
+    Frame = Filter->Frame;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&Frame->AttachedVolumes.rLock, TRUE);
+
+    for (ListEntry = Frame->AttachedVolumes.rList.Flink;
+         ListEntry != &Frame->AttachedVolumes.rList;
+         ListEntry = ListEntry->Flink)
+    {
+        Volume = CONTAINING_RECORD(ListEntry, FLT_VOLUME, Base.PrimaryLink);
+
+        if (Volume->DeviceObject != DeviceObject &&
+            Volume->DiskDeviceObject != DeviceObject)
+        {
+            continue;
+        }
+
+        /* One on its way out is not there to be handed to anybody */
+        Status = FltObjectReference(Volume);
+        if (NT_SUCCESS(Status))
+            *RetVolume = Volume;
+
+        break;
+    }
+
+    ExReleaseResourceLite(&Frame->AttachedVolumes.rLock);
+    KeLeaveCriticalRegion();
+
+    return Status;
+}
+
+NTSTATUS
+FLTAPI
+FltGetFileSystemType(
+    _In_ PVOID FltObject,
+    _Out_ PFLT_FILESYSTEM_TYPE FileSystemType)
+{
+    PFLT_OBJECT Object = FltObject;
+    PFLT_VOLUME Volume;
+
+    PAGED_CODE();
+
+    /* Either the volume itself, or one attachment to it, says what it is */
+    if (Object->Flags & FLT_OBFL_TYPE_VOLUME)
+        Volume = FltObject;
+    else if (Object->Flags & FLT_OBFL_TYPE_INSTANCE)
+        Volume = ((PFLT_INSTANCE)FltObject)->Volume;
+    else
+        return STATUS_INVALID_PARAMETER;
+
+    *FileSystemType = Volume->FileSystemType;
+
+    return STATUS_SUCCESS;
+}
+
 /* INTERNAL FUNCTIONS ******************************************************/

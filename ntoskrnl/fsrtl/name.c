@@ -230,3 +230,100 @@ FsRtlDoesNameContainWildCards(IN PUNICODE_STRING Name)
     /* Nothing Found */
     return FALSE;
 }
+
+/**
+ * @brief
+ * Takes a path down to what it names, dropping every component that names
+ * where it already is and every one that steps back out of the one before it.
+ *
+ * @return
+ * STATUS_IO_REPARSE_DATA_INVALID for a path that steps back past its own
+ * start, since there is nothing above it to name.
+ *
+ * @remarks
+ * The path is rewritten where it lies, which it always has room for because
+ * dropping anything leaves the path shorter than it was.
+ */
+NTSTATUS
+NTAPI
+FsRtlRemoveDotsFromPath(
+    _Inout_updates_bytes_(PathLength) PWSTR OriginalString,
+    _In_ USHORT PathLength,
+    _Out_ USHORT *NewLength)
+{
+    ULONG Count = PathLength / sizeof(WCHAR);
+    ULONG Read = 0;
+    ULONG Root = 0;
+    ULONG Out;
+    ULONG Depth = 0;
+
+    /* A path that starts at a root keeps that root whatever it goes on to say */
+    if (Count != 0 && OriginalString[0] == L'\\')
+    {
+        Root = 1;
+        Read = 1;
+    }
+
+    Out = Root;
+
+    while (Read < Count)
+    {
+        ULONG NameStart = Read;
+        ULONG NameLength;
+
+        while (Read < Count && OriginalString[Read] != L'\\')
+            Read++;
+
+        NameLength = Read - NameStart;
+
+        /* Step over what ended the component, so the next turn starts a name */
+        if (Read < Count)
+            Read++;
+
+        if (NameLength == 1 && OriginalString[NameStart] == L'.')
+            continue;
+
+        if (NameLength == 2 &&
+            OriginalString[NameStart] == L'.' &&
+            OriginalString[NameStart + 1] == L'.')
+        {
+            if (Depth == 0)
+                return STATUS_IO_REPARSE_DATA_INVALID;
+
+            Depth--;
+
+            if (Depth == 0)
+            {
+                Out = Root;
+            }
+            else
+            {
+                /* Back over the component, then over what joined it on */
+                while (Out > Root && OriginalString[Out - 1] != L'\\')
+                    Out--;
+
+                Out--;
+            }
+
+            continue;
+        }
+
+        if (Depth != 0)
+            OriginalString[Out++] = L'\\';
+
+        RtlMoveMemory(&OriginalString[Out],
+                      &OriginalString[NameStart],
+                      NameLength * sizeof(WCHAR));
+
+        Out += NameLength;
+        Depth++;
+    }
+
+    /* Anything dropped leaves room to say where the path now ends */
+    if (Out < Count)
+        OriginalString[Out] = UNICODE_NULL;
+
+    *NewLength = (USHORT)(Out * sizeof(WCHAR));
+
+    return STATUS_SUCCESS;
+}

@@ -1365,6 +1365,9 @@ NtInitializeRegistry(IN USHORT Flag)
     if (!CmFirstTime) return STATUS_ACCESS_DENIED;
     CmFirstTime = FALSE;
 
+    /* Getting here means the session manager is past what it runs first */
+    FsRtlSetVolumeStartupApplicationsComplete();
+
     /* Lock the registry exclusively */
     CmpLockRegistryExclusive();
 

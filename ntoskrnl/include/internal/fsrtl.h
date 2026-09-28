@@ -184,3 +184,7 @@ VOID
 NTAPI
 FsRtlReleaseFileForModWrite(IN PFILE_OBJECT FileObject,
                             IN PERESOURCE ResourceToRelease);
+
+VOID
+NTAPI
+FsRtlSetVolumeStartupApplicationsComplete(VOID);

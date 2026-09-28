@@ -640,6 +640,13 @@ KeSetPriorityAndQuantumProcess(
     IN UCHAR Quantum OPTIONAL
 );
 
+KPRIORITY
+NTAPI
+KeSetActualBasePriorityThread(
+    _In_ PKTHREAD Thread,
+    _In_ KPRIORITY NewBase
+);
+
 ULONG
 NTAPI
 KeForceResumeThread(IN PKTHREAD Thread);

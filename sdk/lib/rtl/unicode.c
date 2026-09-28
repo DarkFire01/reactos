@@ -2168,6 +2168,48 @@ RtlStringFromGUID (IN REFGUID Guid,
 
 /*
  * @implemented
+ */
+NTSTATUS
+NTAPI
+RtlStringFromGUIDEx(
+    _In_ REFGUID Guid,
+    _Inout_ PUNICODE_STRING GuidString,
+    _In_ BOOLEAN AllocateGuidString)
+{
+    /* Two braces, four dashes, thirty two digits, and room for the null */
+    const USHORT Needed = 38 * sizeof(WCHAR) + sizeof(UNICODE_NULL);
+
+    if (AllocateGuidString)
+    {
+        GuidString->MaximumLength = Needed;
+        GuidString->Buffer = RtlpAllocateStringMemory(Needed, TAG_USTR);
+        if (!GuidString->Buffer) return STATUS_NO_MEMORY;
+    }
+    else if (GuidString->MaximumLength < Needed)
+    {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    GuidString->Length = 38 * sizeof(WCHAR);
+
+    _swprintf(GuidString->Buffer,
+              L"{%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}",
+              Guid->Data1,
+              Guid->Data2,
+              Guid->Data3,
+              Guid->Data4[0],
+              Guid->Data4[1],
+              Guid->Data4[2],
+              Guid->Data4[3],
+              Guid->Data4[4],
+              Guid->Data4[5],
+              Guid->Data4[6],
+              Guid->Data4[7]);
+    return STATUS_SUCCESS;
+}
+
+/*
+ * @implemented
  *
  * RETURNS
  *  Bytes calculated including nullterm

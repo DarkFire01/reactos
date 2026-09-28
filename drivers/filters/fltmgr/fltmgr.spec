@@ -22,4 +22,7 @@
  @ stdcall FltAttachVolume(ptr ptr ptr ptr)
  @ stdcall FltGetDestinationFileNameInformation(ptr ptr ptr ptr long long ptr)
  @ stdcall FltReleaseFileNameInformation(ptr)
-
+ @ stdcall FltGetFilterFromName(ptr ptr)
+ @ stdcall FltGetFileSystemType(ptr ptr)
+ @ stdcall FltGetVolumeFromFileObject(ptr ptr ptr)
+ @ stdcall FltGetVolumeFromDeviceObject(ptr ptr ptr)
