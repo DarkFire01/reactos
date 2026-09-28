@@ -1179,7 +1179,9 @@ HalEnableSystemInterrupt(
         return (ReDirReg.Vector == Vector);
     }
 
-    InterruptMode = HalpGetInputMode(Index, InterruptMode);
+    /* The ACPI driver already applied the MADT to the inputs it describes */
+    if (!NT_SUCCESS(Status))
+        InterruptMode = HalpGetInputMode(Index, InterruptMode);
 
     /* Set up the redirection entry */
     ReDirReg.Vector = Vector;
