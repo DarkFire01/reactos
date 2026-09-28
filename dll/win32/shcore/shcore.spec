@@ -31,7 +31,7 @@
 # @ stub IsProcessInIsolatedContainer
 # @ stub IsProcessInWDAGContainer
 # @ stub RecordFeatureError
-# @ stub RecordFeatureUsage
+@ stdcall RecordFeatureUsage(long long long wstr)
 @ stdcall RegisterScaleChangeEvent(ptr ptr)
 @ stdcall RegisterScaleChangeNotifications(long ptr long ptr)
 @ stub RevokeScaleChangeNotifications
@@ -94,7 +94,7 @@
 @ stdcall SetProcessReference(ptr)
 @ stdcall SubscribeFeatureStateChangeNotification(ptr ptr ptr)
 @ stub UnregisterScaleChangeEvent
-# @ stub UnsubscribeFeatureStateChangeNotification
+@ stdcall UnsubscribeFeatureStateChangeNotification(ptr)
 
 100 stub -noname SHManagedCreateStreamOnFile
 101 stub -noname SHManagedCreateFile

@@ -1871,6 +1871,132 @@ static HRESULT unmarshal_ORPCTHAT(RPC_MESSAGE *msg, ORPCTHAT *orpcthat,
     return S_OK;
 }
 
+/*
+ * What a server is told about the call it is answering. A server that means to
+ * act as whoever called it asks for this first, so without it every such server
+ * is told no call is in progress while it is inside one, and gives up.
+ */
+struct server_security
+{
+    IServerSecurity IServerSecurity_iface;
+    LONG refcount;
+    BOOL impersonating;
+};
+
+static struct server_security *impl_from_IServerSecurity(IServerSecurity *iface)
+{
+    return CONTAINING_RECORD(iface, struct server_security, IServerSecurity_iface);
+}
+
+static HRESULT WINAPI server_security_QueryInterface(IServerSecurity *iface, REFIID riid, void **obj)
+{
+    if (!obj)
+        return E_POINTER;
+
+    if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_IServerSecurity))
+    {
+        IServerSecurity_AddRef(iface);
+        *obj = iface;
+        return S_OK;
+    }
+
+    *obj = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI server_security_AddRef(IServerSecurity *iface)
+{
+    struct server_security *security = impl_from_IServerSecurity(iface);
+
+    return InterlockedIncrement(&security->refcount);
+}
+
+static ULONG WINAPI server_security_Release(IServerSecurity *iface)
+{
+    struct server_security *security = impl_from_IServerSecurity(iface);
+
+    /* The context belongs to the call, which outlives every reference to it */
+    return InterlockedDecrement(&security->refcount);
+}
+
+static HRESULT WINAPI server_security_QueryBlanket(IServerSecurity *iface, DWORD *authn_svc,
+        DWORD *authz_svc, OLECHAR **principal, DWORD *authn_level, DWORD *imp_level,
+        void **privs, DWORD *caps)
+{
+    TRACE("%p\n", iface);
+
+    /* A call that got this far came from this machine, carrying its own identity */
+    if (authn_svc)
+        *authn_svc = RPC_C_AUTHN_WINNT;
+    if (authz_svc)
+        *authz_svc = RPC_C_AUTHZ_NONE;
+    if (principal)
+        *principal = NULL;
+    if (authn_level)
+        *authn_level = RPC_C_AUTHN_LEVEL_PKT_PRIVACY;
+    if (imp_level)
+        *imp_level = RPC_C_IMP_LEVEL_IMPERSONATE;
+    if (privs)
+        *privs = NULL;
+    if (caps)
+        *caps = EOAC_NONE;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI server_security_ImpersonateClient(IServerSecurity *iface)
+{
+    struct server_security *security = impl_from_IServerSecurity(iface);
+    RPC_STATUS status;
+
+    TRACE("%p\n", iface);
+
+    status = RpcImpersonateClient(NULL);
+    if (status != RPC_S_OK)
+    {
+        WARN("RpcImpersonateClient gave %ld\n", status);
+        return HRESULT_FROM_WIN32(status);
+    }
+
+    security->impersonating = TRUE;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI server_security_RevertToSelf(IServerSecurity *iface)
+{
+    struct server_security *security = impl_from_IServerSecurity(iface);
+    RPC_STATUS status;
+
+    TRACE("%p\n", iface);
+
+    status = RpcRevertToSelf();
+    if (status != RPC_S_OK)
+        return HRESULT_FROM_WIN32(status);
+
+    security->impersonating = FALSE;
+
+    return S_OK;
+}
+
+static BOOL WINAPI server_security_IsImpersonating(IServerSecurity *iface)
+{
+    struct server_security *security = impl_from_IServerSecurity(iface);
+
+    return security->impersonating;
+}
+
+static const IServerSecurityVtbl server_security_vtbl =
+{
+    server_security_QueryInterface,
+    server_security_AddRef,
+    server_security_Release,
+    server_security_QueryBlanket,
+    server_security_ImpersonateClient,
+    server_security_RevertToSelf,
+    server_security_IsImpersonating
+};
+
 void rpc_execute_call(struct dispatch_params *params)
 {
     struct message_state *message_state = NULL;
@@ -1880,6 +2006,8 @@ void rpc_execute_call(struct dispatch_params *params)
     ORPC_EXTENT_ARRAY orpc_ext_array;
     WIRE_ORPC_EXTENT *first_wire_orpc_extent;
     GUID old_causality_id;
+    struct server_security security;
+    IUnknown *old_call_state;
     struct tlsdata *tlsdata;
     struct apartment *apt;
 
@@ -1975,7 +2103,20 @@ void rpc_execute_call(struct dispatch_params *params)
     old_causality_id = tlsdata->causality_id;
     tlsdata->causality_id = orpcthis.cid;
     tlsdata->pending_call_count_server++;
+
+    security.IServerSecurity_iface.lpVtbl = &server_security_vtbl;
+    security.refcount = 1;
+    security.impersonating = FALSE;
+    old_call_state = tlsdata->call_state;
+    tlsdata->call_state = (IUnknown *)&security.IServerSecurity_iface;
+
     params->hr = IRpcStubBuffer_Invoke(params->stub, params->msg, params->chan);
+
+    /* A server that left itself impersonating must not have the next call inherit it */
+    if (security.impersonating)
+        RpcRevertToSelf();
+
+    tlsdata->call_state = old_call_state;
     tlsdata->pending_call_count_server--;
     tlsdata->causality_id = old_causality_id;
 

@@ -1018,6 +1018,189 @@ RPC_STATUS RPC_ENTRY RpcBindingReset(RPC_BINDING_HANDLE Binding)
 }
 
 /***********************************************************************
+ *             RpcBindingCreateW (RPCRT4.@)
+ *
+ * Makes a binding from a filled in template rather than from a string, which
+ * is the same binding either way: the template is turned into the string form
+ * and handed to the routine that already reads it.
+ */
+RPC_STATUS WINAPI RpcBindingCreateW(RPC_BINDING_HANDLE_TEMPLATE_V1_W *Template,
+                                    RPC_BINDING_HANDLE_SECURITY_V1_W *Security,
+                                    RPC_BINDING_HANDLE_OPTIONS_V1 *Options,
+                                    RPC_BINDING_HANDLE *Binding)
+{
+    static const WCHAR *Sequences[] =
+    {
+        NULL,
+        L"ncacn_ip_tcp",
+        L"ncacn_np",
+        L"ncalrpc",
+        L"ncacn_http"
+    };
+    RPC_WSTR ObjectUuid = NULL;
+    RPC_WSTR StringBinding = NULL;
+    RPC_STATUS Status;
+
+    TRACE("(%p, %p, %p, %p)\n", Template, Security, Options, Binding);
+
+    if ((Template == NULL) || (Binding == NULL))
+        return RPC_S_INVALID_ARG;
+
+    if (Template->Version != 0)
+        return RPC_S_INVALID_ARG;
+
+    if ((Template->ProtocolSequence >= (sizeof(Sequences) / sizeof(Sequences[0]))) ||
+        (Sequences[Template->ProtocolSequence] == NULL))
+    {
+        return RPC_S_INVALID_RPC_PROTSEQ;
+    }
+
+    if ((Security != NULL) && (Security->Version != 0))
+        return RPC_S_INVALID_ARG;
+
+    if ((Options != NULL) && (Options->Version != 0))
+        return RPC_S_INVALID_ARG;
+
+    /* A template carries the object as a uuid, the string form as its text */
+    if (!UuidIsNil(&Template->ObjectUuid, &Status))
+    {
+        Status = UuidToStringW(&Template->ObjectUuid, &ObjectUuid);
+        if (Status != RPC_S_OK)
+            return Status;
+    }
+
+    Status = RpcStringBindingComposeW(ObjectUuid,
+                                     (RPC_WSTR)Sequences[Template->ProtocolSequence],
+                                     Template->NetworkAddress,
+                                     Template->StringEndpoint,
+                                     NULL,
+                                     &StringBinding);
+    if (ObjectUuid != NULL)
+        RpcStringFreeW(&ObjectUuid);
+
+    if (Status != RPC_S_OK)
+        return Status;
+
+    Status = RpcBindingFromStringBindingW(StringBinding, Binding);
+    RpcStringFreeW(&StringBinding);
+
+    if (Status != RPC_S_OK)
+        return Status;
+
+    if (Security != NULL)
+    {
+        Status = RpcBindingSetAuthInfoExW(*Binding,
+                                         Security->ServerPrincName,
+                                         Security->AuthnLevel,
+                                         Security->AuthnSvc,
+                                         Security->AuthIdentity,
+                                         RPC_C_AUTHZ_NONE,
+                                         Security->SecurityQos);
+        if (Status != RPC_S_OK)
+        {
+            RpcBindingFree(Binding);
+            return Status;
+        }
+    }
+
+    if ((Options != NULL) && (Options->ComTimeout != 0))
+    {
+        Status = RpcMgmtSetComTimeout(*Binding, Options->ComTimeout);
+        if (Status != RPC_S_OK)
+        {
+            RpcBindingFree(Binding);
+            return Status;
+        }
+    }
+
+    return RPC_S_OK;
+}
+
+/***********************************************************************
+ *             RpcBindingCreateA (RPCRT4.@)
+ */
+RPC_STATUS WINAPI RpcBindingCreateA(RPC_BINDING_HANDLE_TEMPLATE_V1_A *Template,
+                                    RPC_BINDING_HANDLE_SECURITY_V1_A *Security,
+                                    RPC_BINDING_HANDLE_OPTIONS_V1 *Options,
+                                    RPC_BINDING_HANDLE *Binding)
+{
+    RPC_BINDING_HANDLE_TEMPLATE_V1_W TemplateW;
+    RPC_BINDING_HANDLE_SECURITY_V1_W SecurityW;
+    RPC_STATUS Status;
+
+    TRACE("(%p, %p, %p, %p)\n", Template, Security, Options, Binding);
+
+    if (Template == NULL)
+        return RPC_S_INVALID_ARG;
+
+    memset(&TemplateW, 0, sizeof(TemplateW));
+    TemplateW.Version = Template->Version;
+    TemplateW.Flags = Template->Flags;
+    TemplateW.ProtocolSequence = Template->ProtocolSequence;
+    TemplateW.ObjectUuid = Template->ObjectUuid;
+    TemplateW.NetworkAddress = RPCRT4_strdupAtoW(Template->NetworkAddress);
+    TemplateW.StringEndpoint = RPCRT4_strdupAtoW(Template->StringEndpoint);
+
+    if (Security != NULL)
+    {
+        memset(&SecurityW, 0, sizeof(SecurityW));
+        SecurityW.Version = Security->Version;
+        SecurityW.AuthnLevel = Security->AuthnLevel;
+        SecurityW.AuthnSvc = Security->AuthnSvc;
+        SecurityW.SecurityQos = Security->SecurityQos;
+        SecurityW.ServerPrincName = RPCRT4_strdupAtoW(Security->ServerPrincName);
+    }
+
+    /* The identity is left alone: it is the caller's and is not ours to widen */
+    Status = RpcBindingCreateW(&TemplateW,
+                               (Security != NULL) ? &SecurityW : NULL,
+                               Options,
+                               Binding);
+
+    if (Security != NULL)
+        free(SecurityW.ServerPrincName);
+
+    free(TemplateW.NetworkAddress);
+    free(TemplateW.StringEndpoint);
+
+    return Status;
+}
+
+/***********************************************************************
+ *             RpcBindingBind (RPCRT4.@)
+ *
+ * Asks for the association behind a binding to be made now rather than when
+ * the first call needs it. Bindings here connect when they are used, so there
+ * is nothing to do ahead of time and the binding is left as it was.
+ */
+RPC_STATUS WINAPI RpcBindingBind(struct _RPC_ASYNC_STATE *pAsync,
+                                 RPC_BINDING_HANDLE Binding,
+                                 RPC_IF_HANDLE IfSpec)
+{
+    TRACE("(%p, %p, %p)\n", pAsync, Binding, IfSpec);
+
+    if (Binding == NULL)
+        return RPC_S_INVALID_BINDING;
+
+    return RPC_S_OK;
+}
+
+/***********************************************************************
+ *             RpcBindingUnbind (RPCRT4.@)
+ *
+ * Lets go of the association behind a binding without freeing the binding.
+ */
+RPC_STATUS WINAPI RpcBindingUnbind(RPC_BINDING_HANDLE Binding)
+{
+    TRACE("(%p)\n", Binding);
+
+    if (Binding == NULL)
+        return RPC_S_INVALID_BINDING;
+
+    return RPC_S_OK;
+}
+
+/***********************************************************************
  *             RpcImpersonateClient (RPCRT4.@)
  *
  * Impersonates the client connected via a binding handle so that security
@@ -1048,6 +1231,19 @@ RPC_STATUS WINAPI RpcImpersonateClient(RPC_BINDING_HANDLE BindingHandle)
     if (bind->FromConn)
         return rpcrt4_conn_impersonate_client(bind->FromConn);
     return RPC_S_WRONG_KIND_OF_BINDING;
+}
+
+/***********************************************************************
+ *             RpcImpersonateClient2 (RPCRT4.@)
+ *
+ * As RpcImpersonateClient. The flags select how much of the client's context
+ * to take on, and nothing here keeps any of it apart, so they are ignored.
+ */
+RPC_STATUS WINAPI RpcImpersonateClient2(RPC_BINDING_HANDLE BindingHandle, ULONG Flags)
+{
+    TRACE("(%p, %lx)\n", BindingHandle, Flags);
+
+    return RpcImpersonateClient(BindingHandle);
 }
 
 /***********************************************************************
