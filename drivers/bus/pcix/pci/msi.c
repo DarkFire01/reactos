@@ -534,9 +534,7 @@ PciGetMessageAddressAndData(
     Request.ApicTarget.TargetProcessors = VectorData->TargetProcessors;
     Request.ApicTarget.InterruptRemapInfo = VectorData->IntRemapInfo;
 #else
-    /* Before processor groups the request only carries a mask */
-    ASSERT(VectorData->TargetProcessors.Group == 0);
-    Request.ApicTarget.TargetProcessors = VectorData->TargetProcessors.Mask;
+    Request.ApicTarget.TargetProcessors = VectorData->TargetProcessors;
 #endif
 
     RtlZeroMemory(&Routed, sizeof(Routed));
