@@ -101,6 +101,7 @@ Signature = "$Windows NT$"
 78 = winsxs\arm64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.2600.2982_none_deadbeef
 79 = winsxs\arm64_microsoft.windows.gdiplus_6595b64144ccf1df_1.1.7601.23038_none_deadbeef
 81 = winsxs\arm64_microsoft.windows.gdiplus_6595b64144ccf1df_1.0.14393.0_none_deadbeef
+82 = system32\tools
 
 .InfEnd
 
@@ -161,5 +162,9 @@ Signature = "$Windows NT$"
 "modules/optional/avutil-60.dll"                     2  optional
 "modules/optional/swresample-6.dll"                     2  optional
 "modules/optional/swscale-9.dll"                     2  optional
+"modules/optional/system.vhd"                            2  optional
+"modules/optional/kernel"                                82  optional
+"modules/optional/modules.vhd"                           82  optional
+"modules/optional/initrd.img"                            82  optional
 "boot/bootdata/bootcdregtest/AHKAppTests.cmd"         7  optional
 ; DON'T REMOVE THE FOLLOWING NEW LINE ! THIS MEANS YOU !
