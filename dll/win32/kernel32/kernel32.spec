@@ -564,6 +564,7 @@
 @ stdcall -version=0x602+ GetProcessMitigationPolicy(long long ptr long)
 @ stdcall -version=0x602+ SetProcessMitigationPolicy(long ptr long)
 @ stdcall -version=0x601+ QueryUnbiasedInterruptTime(ptr)
+@ stdcall -version=0x602+ QueryUnbiasedInterruptTimePrecise(ptr)
 @ stdcall -version=0x600+ EventActivityIdControl(long ptr) ntdll.EtwEventActivityIdControl
 @ stdcall -version=0x600+ EventEnabled(int64 ptr) ntdll.EtwEventEnabled
 @ stdcall -version=0x600+ EventWrite(int64 ptr long ptr) ntdll.EtwEventWrite

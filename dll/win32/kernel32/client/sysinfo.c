@@ -539,6 +539,26 @@ QueryUnbiasedInterruptTime(
     return TRUE;
 }
 
+/**
+ * @brief
+ * Returns the same time, for a caller that wants it closer than the tick it
+ * was last updated on.
+ *
+ * @remarks
+ * Getting nearer than the published time means interpolating from the
+ * performance counter, which nothing here does, so the answer is the one the
+ * page holds. It is no less true, only no more recent.
+ *
+ * @implemented
+ */
+VOID
+WINAPI
+QueryUnbiasedInterruptTimePrecise(
+    _Out_ PULONGLONG UnbiasedTime)
+{
+    QueryUnbiasedInterruptTime(UnbiasedTime);
+}
+
 _Success_(return > 0)
 DWORD
 WINAPI

@@ -1512,6 +1512,50 @@ NtUpdateWnfStateData(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Answers a question about a file named rather than held open.
+ *
+ * @remarks
+ * The kernel has no call of its own for this, so the name is opened for long
+ * enough to ask and then let go. What a caller sees is the same answer; what
+ * it does not get is the atomicity of never having had a handle at all.
+ *
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+NtQueryInformationByName(
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _Out_ PIO_STATUS_BLOCK IoStatusBlock,
+    _Out_writes_bytes_(Length) PVOID FileInformation,
+    _In_ ULONG Length,
+    _In_ FILE_INFORMATION_CLASS FileInformationClass)
+{
+    HANDLE Handle;
+    NTSTATUS Status;
+
+    Status = NtOpenFile(&Handle,
+                        FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                        ObjectAttributes,
+                        IoStatusBlock,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        FILE_SYNCHRONOUS_IO_NONALERT |
+                        FILE_OPEN_FOR_BACKUP_INTENT);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = NtQueryInformationFile(Handle,
+                                    IoStatusBlock,
+                                    FileInformation,
+                                    Length,
+                                    FileInformationClass);
+
+    NtClose(Handle);
+
+    return Status;
+}
+
 /* FIXME: code duplication with kernel32/client/time.c */
 ULONG
 NTAPI

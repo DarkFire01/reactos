@@ -442,6 +442,7 @@
 @ stdcall NtQueryFullAttributesFile(ptr ptr)
 @ stdcall NtQueryInformationAtom(long long ptr long ptr)
 @ stdcall -stub -version=0x600+ NtQueryInformationEnlistment(ptr long ptr long ptr)
+@ stdcall -version=0x600+ NtQueryInformationByName(ptr ptr ptr long long)
 @ stdcall NtQueryInformationFile(ptr ptr ptr long long)
 @ stdcall NtQueryInformationJobObject(ptr long ptr long ptr)
 @ stdcall NtQueryInformationPort(ptr long ptr long ptr)
