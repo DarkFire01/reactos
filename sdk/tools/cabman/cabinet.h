@@ -114,6 +114,13 @@ extern ULONG DebugTraceLevel;
 #define CAB_VERSION          0x0103
 #define CAB_BLOCKSIZE        32768
 
+/*
+ * What a block may hold before it is compressed. Data that does not compress
+ * comes back about eleven bytes longer than it went in, and the room for a
+ * block is fixed, so a full CAB_BLOCKSIZE of it would have nowhere to go.
+ */
+#define CAB_MAX_UNCOMP       (CAB_BLOCKSIZE - 16)
+
 #define CAB_COMP_MASK        0x00FF
 #define CAB_COMP_NONE        0x0000
 #define CAB_COMP_MSZIP       0x0001
