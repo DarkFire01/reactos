@@ -81,6 +81,49 @@ RtlInitializeSid(IN PSID Sid_,
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Fills out a sid, taking its subauthorities as further arguments.
+ *
+ * @param[in] SubAuthorityCount
+ * How many subauthorities follow.
+ *
+ * @remarks
+ * RtlInitializeSid leaves the subauthorities to the caller to write one at a
+ * time. This one writes them as well, which is the whole of the difference.
+ *
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+RtlInitializeSidEx(
+    _Out_ PSID Sid_,
+    _In_ PSID_IDENTIFIER_AUTHORITY IdentifierAuthority,
+    _In_ UCHAR SubAuthorityCount,
+    ...)
+{
+    PISID Sid = Sid_;
+    va_list Arguments;
+    UCHAR Index;
+
+    PAGED_CODE_RTL();
+
+    if (SubAuthorityCount > SID_MAX_SUB_AUTHORITIES)
+        return STATUS_INVALID_PARAMETER;
+
+    Sid->Revision = SID_REVISION;
+    Sid->SubAuthorityCount = SubAuthorityCount;
+    Sid->IdentifierAuthority = *IdentifierAuthority;
+
+    /* The subauthorities follow the count, however many it named */
+    va_start(Arguments, SubAuthorityCount);
+    for (Index = 0; Index < SubAuthorityCount; Index++)
+        Sid->SubAuthority[Index] = va_arg(Arguments, ULONG);
+    va_end(Arguments);
+
+    return STATUS_SUCCESS;
+}
+
 /*
  * @implemented
  */
@@ -419,35 +462,3 @@ RtlCreateServiceSid(
 }
 
 /* EOF */
-
-/**
- * @brief
- * Fills out the header of a security identifier, refusing one that will not
- * fit in the room the caller has.
- *
- * @param[in] SidLength
- * How many bytes the buffer holds.
- *
- * @return
- * STATUS_SUCCESS, or STATUS_BUFFER_TOO_SMALL when the identifier would not
- * fit, which is the whole reason this form of the call exists.
- */
-NTSTATUS
-NTAPI
-RtlInitializeSidEx(
-    _Out_ PSID Sid_,
-    _In_ PSID_IDENTIFIER_AUTHORITY IdentifierAuthority,
-    _In_ UCHAR SubAuthorityCount)
-{
-    PISID Sid = Sid_;
-    PAGED_CODE_RTL();
-
-    if (SubAuthorityCount > SID_MAX_SUB_AUTHORITIES)
-        return STATUS_INVALID_PARAMETER;
-
-    Sid->Revision = SID_REVISION;
-    Sid->SubAuthorityCount = SubAuthorityCount;
-    Sid->IdentifierAuthority = *IdentifierAuthority;
-
-    return STATUS_SUCCESS;
-}

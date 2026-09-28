@@ -132,6 +132,24 @@ RtlFindSetBitsAndClearEx(
 
 ULONG64
 NTAPI
+RtlNumberOfClearBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader)
+{
+    return RtlNumberOfClearBits64(AS_BITMAP64(BitMapHeader));
+}
+
+ULONG64
+NTAPI
+RtlFindClearBitsAndSetEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex)
+{
+    return RtlFindClearBitsAndSet64(AS_BITMAP64(BitMapHeader), NumberToFind, HintIndex);
+}
+
+ULONG64
+NTAPI
 RtlNumberOfSetBitsEx(
     _In_ PRTL_BITMAP_EX BitMapHeader)
 {

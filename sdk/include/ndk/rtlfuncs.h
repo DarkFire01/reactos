@@ -3638,6 +3638,96 @@ RtlCheckBit(
 #ifdef _WIN64
 
 NTSYSAPI
+BOOLEAN
+NTAPI
+RtlCreateHashTable(
+    _Inout_ PRTL_DYNAMIC_HASH_TABLE *HashTable,
+    _In_ ULONG Shift,
+    _In_ ULONG Flags
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlDeleteHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlInsertEntryHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable,
+    _In_ PRTL_DYNAMIC_HASH_TABLE_ENTRY Entry,
+    _In_ ULONG_PTR Signature,
+    _Inout_opt_ PRTL_DYNAMIC_HASH_TABLE_CONTEXT Context
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlRemoveEntryHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable,
+    _In_ PRTL_DYNAMIC_HASH_TABLE_ENTRY Entry,
+    _Inout_opt_ PRTL_DYNAMIC_HASH_TABLE_CONTEXT Context
+);
+
+NTSYSAPI
+PRTL_DYNAMIC_HASH_TABLE_ENTRY
+NTAPI
+RtlLookupEntryHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable,
+    _In_ ULONG_PTR Signature,
+    _Out_opt_ PRTL_DYNAMIC_HASH_TABLE_CONTEXT Context
+);
+
+NTSYSAPI
+PRTL_DYNAMIC_HASH_TABLE_ENTRY
+NTAPI
+RtlGetNextEntryHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable,
+    _In_ PRTL_DYNAMIC_HASH_TABLE_CONTEXT Context
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlInitEnumerationHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable,
+    _Out_ PRTL_DYNAMIC_HASH_TABLE_ENUMERATOR Enumerator
+);
+
+NTSYSAPI
+PRTL_DYNAMIC_HASH_TABLE_ENTRY
+NTAPI
+RtlEnumerateEntryHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable,
+    _Inout_ PRTL_DYNAMIC_HASH_TABLE_ENUMERATOR Enumerator
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlEndEnumerationHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable,
+    _Inout_ PRTL_DYNAMIC_HASH_TABLE_ENUMERATOR Enumerator
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlExpandHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlContractHashTable(
+    _In_ PRTL_DYNAMIC_HASH_TABLE HashTable
+);
+
+NTSYSAPI
 VOID
 NTAPI
 RtlInitializeBitMapEx(
@@ -3770,6 +3860,22 @@ RtlFindClearBitsEx(
     _In_ PRTL_BITMAP_EX BitMapHeader,
     _In_ ULONG64 NumberToFind,
     _In_ ULONG64 HintIndex
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindClearBitsAndSetEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlNumberOfClearBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader
 );
 
 NTSYSAPI

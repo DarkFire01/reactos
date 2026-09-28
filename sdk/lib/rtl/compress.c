@@ -436,8 +436,6 @@ RtlReserveChunk(IN USHORT CompressionFormat,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-/* EOF */
-
 /**
  * @brief
  * Decompresses a buffer, taking the engine's workspace from the caller.
@@ -465,3 +463,5 @@ RtlDecompressBufferEx(
                                CompressedBufferSize,
                                FinalUncompressedSize);
 }
+
+/* EOF */

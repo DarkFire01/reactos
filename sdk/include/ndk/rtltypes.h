@@ -763,6 +763,45 @@ typedef struct _RTL_BITMAP_EX
 #endif
 
 //
+// A hash table that grows and shrinks a bucket at a time. The driver kit calls
+// these the dynamic hash table, and the entries are the caller's own.
+//
+#define RTL_HASH_ALLOCATED_HEADER 0x00000001
+
+typedef struct _RTL_DYNAMIC_HASH_TABLE_ENTRY
+{
+    LIST_ENTRY Linkage;
+    ULONG_PTR Signature;
+} RTL_DYNAMIC_HASH_TABLE_ENTRY, *PRTL_DYNAMIC_HASH_TABLE_ENTRY;
+
+typedef struct _RTL_DYNAMIC_HASH_TABLE_CONTEXT
+{
+    PLIST_ENTRY ChainHead;
+    PLIST_ENTRY PrevLinkage;
+    ULONG_PTR Signature;
+} RTL_DYNAMIC_HASH_TABLE_CONTEXT, *PRTL_DYNAMIC_HASH_TABLE_CONTEXT;
+
+typedef struct _RTL_DYNAMIC_HASH_TABLE_ENUMERATOR
+{
+    RTL_DYNAMIC_HASH_TABLE_ENTRY HashEntry;
+    PLIST_ENTRY ChainHead;
+    ULONG BucketIndex;
+} RTL_DYNAMIC_HASH_TABLE_ENUMERATOR, *PRTL_DYNAMIC_HASH_TABLE_ENUMERATOR;
+
+typedef struct _RTL_DYNAMIC_HASH_TABLE
+{
+    ULONG Flags;
+    ULONG Shift;
+    ULONG TableSize;
+    ULONG Pivot;
+    ULONG DivisorMask;
+    ULONG NumEntries;
+    ULONG NonEmptyBuckets;
+    ULONG NumEnumerators;
+    PVOID Directory;
+} RTL_DYNAMIC_HASH_TABLE, *PRTL_DYNAMIC_HASH_TABLE;
+
+//
 // RtlGenerateXxxName context
 //
 typedef struct _GENERATE_NAME_CONTEXT
