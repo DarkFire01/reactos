@@ -11,6 +11,19 @@
 //
 #define _FSRTL_DEBUG_                                   0x00
 
+#if (NTDDI_VERSION < NTDDI_VISTA)
+//
+// HACK: Copied from ntifs.h as we don't have the required NTDDI_VERSION
+//
+typedef VOID
+(*PFSRTL_EXTRA_CREATE_PARAMETER_CLEANUP_CALLBACK)(
+    _Inout_ PVOID EcpContext,
+    _In_ LPCGUID EcpType);
+
+typedef ULONG FSRTL_ALLOCATE_ECPLIST_FLAGS;
+typedef ULONG FSRTL_ALLOCATE_ECP_FLAGS;
+#endif
+
 //
 // These define the Debug Masks Supported
 //
