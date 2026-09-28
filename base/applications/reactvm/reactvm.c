@@ -105,8 +105,14 @@ static PFN_WHV_DELETE_PORT VmDeleteNotificationPort;
 #define VM_WSL              L"\\wsl.exe"
 #define VM_WSL_VERSION      L"--version"
 #define VM_WSL_STATUS       L"--status"
-/* Runs in the machine's own distribution, so it needs no installed one */
+/* Opens a pipe the service only makes once a machine of its own is up */
 #define VM_WSL_DEBUG_SHELL  L"--debug-shell"
+/* Where the service looks for what it boots in a machine, and what it counts */
+#define VM_WSL_KERNEL       L"\\tools\\kernel"
+#define VM_WSL_INITRD       L"\\tools\\initrd.img"
+#define VM_WSL_MODULES      L"\\tools\\modules.vhd"
+#define VM_WSL_SYSTEM_DISK  L"\\system.vhd"
+#define VM_WSL_LXSS_KEY     L"Software\\Microsoft\\Windows\\CurrentVersion\\Lxss"
 #define VM_WSL_SERVICE_NAME L"WslService"
 #define VM_WSL_HOST         L"\\wslhost.exe"
 #define VM_WSL_RELAY        L"\\wslrelay.exe"
@@ -3070,6 +3076,50 @@ VmStageUnderneathAMachine(VOID)
             VmStartService(VM_DISK_SERVER));
 }
 
+/* Whether something the service needs is where it looks for it */
+static
+BOOLEAN
+VmSystemFileIsThere(
+    _In_z_ PCWSTR Name)
+{
+    WCHAR Path[MAX_PATH + 64];
+    ULONG Length;
+
+    Length = GetSystemDirectoryW(Path, MAX_PATH);
+    if ((Length == 0) || (Length + wcslen(Name) >= MAX_PATH))
+        return FALSE;
+
+    wcscat(Path, Name);
+
+    return (GetFileAttributesW(Path) != INVALID_FILE_ATTRIBUTES);
+}
+
+/**
+ * @brief
+ * How many distributions are registered for whoever is running.
+ *
+ * @remarks
+ * Every call that ends in a machine counts these first and refuses when there
+ * are none, so this is what decides whether a machine can be asked for at all.
+ */
+static
+ULONG
+VmDistributionCount(VOID)
+{
+    HKEY Key;
+    ULONG Count = 0;
+
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, VM_WSL_LXSS_KEY, 0, KEY_READ, &Key) != ERROR_SUCCESS)
+        return 0;
+
+    RegQueryInfoKeyW(Key, NULL, NULL, NULL, &Count,
+                     NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+    RegCloseKey(Key);
+
+    return Count;
+}
+
 /**
  * @brief
  * Brings up the Linux subsystem's own service and its command, which are what
@@ -3085,6 +3135,8 @@ static
 VOID
 VmStageSubsystemForLinux(VOID)
 {
+    ULONG Registered;
+
     VmPrint("\nthe Linux subsystem above it\n");
 
     VmCheck("the compute service is there", VmStartService(VM_COMPUTE_SERVICE));
@@ -3095,12 +3147,30 @@ VmStageSubsystemForLinux(VOID)
     VmCheck("and asks the service what it has", VmRunImage(VM_WSL, VM_WSL_STATUS));
 
     /*
-     * The first thing here that wants a machine rather than an answer. Nothing
-     * is installed to run, so the shell is asked for in the distribution the
-     * subsystem carries for itself, which is the shortest way to make the
-     * compute service build a machine and start the kernel in it.
+     * What the service starts in a machine. It builds all four paths from the
+     * directory its own image sits in, so they belong beside it rather than
+     * wherever a setting points, and it reaches for them before it asks the
+     * compute service for anything.
      */
-    VmCheck("and a machine is built for its own shell",
+    VmCheck("the kernel it boots is there", VmSystemFileIsThere(VM_WSL_KERNEL));
+    VmCheck("and the first disk it loads", VmSystemFileIsThere(VM_WSL_INITRD));
+    VmCheck("and the modules it attaches", VmSystemFileIsThere(VM_WSL_MODULES));
+    VmCheck("and the disk it puts underneath", VmSystemFileIsThere(VM_WSL_SYSTEM_DISK));
+
+    /*
+     * With none registered nothing below can reach a machine at all, whatever
+     * else is in place, so this is the one to read first when they all fail.
+     */
+    Registered = VmDistributionCount();
+    VmPrint("  the subsystem has %lu distribution(s) registered\n", Registered);
+    VmCheck("one is registered to run", Registered != 0);
+
+    /*
+     * The pipe this opens is one the service makes while it brings a machine up,
+     * and it asks for an existing one rather than for a machine. So it answers
+     * only once something else has one running.
+     */
+    VmCheck("and a machine is up to take its own shell",
             VmRunImage(VM_WSL, VM_WSL_DEBUG_SHELL));
 
     /*
