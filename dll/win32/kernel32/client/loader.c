@@ -1161,4 +1161,29 @@ BaseProcessInitPostImport(VOID)
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Says whether one of a module's optional delay loaded imports can be had.
+ *
+ * @remarks
+ * Answering properly means reading the module's delay load descriptor, which
+ * nothing here does, so every optional import is reported as absent. A caller
+ * asking this is prepared for that answer, which is the point of asking.
+ */
+BOOL
+WINAPI
+QueryOptionalDelayLoadedAPI(
+    _In_ HMODULE ParentModule,
+    _In_ LPCSTR DllName,
+    _In_ LPCSTR ProcedureName,
+    _Reserved_ DWORD Reserved)
+{
+    UNREFERENCED_PARAMETER(ParentModule);
+    UNREFERENCED_PARAMETER(DllName);
+    UNREFERENCED_PARAMETER(ProcedureName);
+    UNREFERENCED_PARAMETER(Reserved);
+
+    return FALSE;
+}
+
 /* EOF */

@@ -1045,4 +1045,25 @@ GetLastError(VOID)
     return NtCurrentTeb()->LastErrorValue;
 }
 
+/**
+ * @brief
+ * Records a name and value to be sent with a report about a crash.
+ *
+ * @remarks
+ * Nothing here reports crashes anywhere, so the pair is taken and dropped. The
+ * caller is told it was kept, because failing this would stop a process that is
+ * only annotating itself.
+ */
+HRESULT
+WINAPI
+WerRegisterCustomMetadata(
+    _In_ PCWSTR Key,
+    _In_ PCWSTR Value)
+{
+    UNREFERENCED_PARAMETER(Key);
+    UNREFERENCED_PARAMETER(Value);
+
+    return S_OK;
+}
+
 /* EOF */

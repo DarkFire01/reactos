@@ -1307,6 +1307,89 @@ OpenProcess(IN DWORD dwDesiredAccess,
     return ProcessHandle;
 }
 
+/**
+ * @brief
+ * Opens the access token of a process.
+ *
+ * @remarks
+ * Advapi32 offers the same call, and this one is here so that a module built
+ * against the process and thread contract finds it where those name it.
+ */
+BOOL
+WINAPI
+BaseOpenProcessToken(
+    _In_ HANDLE ProcessHandle,
+    _In_ DWORD DesiredAccess,
+    _Out_ PHANDLE TokenHandle)
+{
+    NTSTATUS Status;
+
+    Status = NtOpenProcessToken(ProcessHandle, DesiredAccess, TokenHandle);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Opens the access token of a thread.
+ *
+ * @remarks
+ * Here for the same reason as BaseOpenProcessToken.
+ */
+BOOL
+WINAPI
+BaseOpenThreadToken(
+    _In_ HANDLE ThreadHandle,
+    _In_ DWORD DesiredAccess,
+    _In_ BOOL OpenAsSelf,
+    _Out_ PHANDLE TokenHandle)
+{
+    NTSTATUS Status;
+
+    Status = NtOpenThreadToken(ThreadHandle,
+                               DesiredAccess,
+                               OpenAsSelf,
+                               TokenHandle);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Gives a thread a token to act under, or takes the one it has away.
+ */
+BOOL
+WINAPI
+BaseSetThreadToken(
+    _In_opt_ PHANDLE ThreadHandle,
+    _In_opt_ HANDLE TokenHandle)
+{
+    NTSTATUS Status;
+
+    Status = NtSetInformationThread((ThreadHandle != NULL) ? *ThreadHandle
+                                                           : NtCurrentThread(),
+                                    ThreadImpersonationToken,
+                                    &TokenHandle,
+                                    sizeof(TokenHandle));
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 /*
  * @implemented
  */
@@ -4511,6 +4594,39 @@ CreateProcessW(LPCWSTR lpApplicationName,
                                   lpCurrentDirectory,
                                   lpStartupInfo,
                                   lpProcessInformation,
+                                  NULL);
+}
+
+/**
+ * @brief
+ * Starts a process under a token other than the caller's own.
+ */
+BOOL
+WINAPI
+BaseCreateProcessAsUserW(
+    _In_opt_ HANDLE TokenHandle,
+    _In_opt_ LPCWSTR ApplicationName,
+    _Inout_opt_ LPWSTR CommandLine,
+    _In_opt_ LPSECURITY_ATTRIBUTES ProcessAttributes,
+    _In_opt_ LPSECURITY_ATTRIBUTES ThreadAttributes,
+    _In_ BOOL InheritHandles,
+    _In_ DWORD CreationFlags,
+    _In_opt_ LPVOID Environment,
+    _In_opt_ LPCWSTR CurrentDirectory,
+    _In_ LPSTARTUPINFOW StartupInfo,
+    _Out_ LPPROCESS_INFORMATION ProcessInformation)
+{
+    return CreateProcessInternalW(TokenHandle,
+                                  ApplicationName,
+                                  CommandLine,
+                                  ProcessAttributes,
+                                  ThreadAttributes,
+                                  InheritHandles,
+                                  CreationFlags,
+                                  Environment,
+                                  CurrentDirectory,
+                                  StartupInfo,
+                                  ProcessInformation,
                                   NULL);
 }
 

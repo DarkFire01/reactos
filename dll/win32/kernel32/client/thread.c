@@ -151,6 +151,41 @@ CreateThread(IN LPSECURITY_ATTRIBUTES lpThreadAttributes,
                               lpThreadId);
 }
 
+/**
+ * @brief
+ * Creates a thread in another process the way CreateRemoteThread does, for a
+ * caller that also says how it would like the thread placed.
+ *
+ * @param[in] lpAttributeList
+ * What the caller would rather the thread had: which group, which processors,
+ * how big a stack. All of it is asked for rather than required, and none of it
+ * is kept, so the thread runs wherever the scheduler puts it.
+ *
+ * @implemented
+ */
+HANDLE
+WINAPI
+CreateRemoteThreadEx(
+    _In_ HANDLE hProcess,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes,
+    _In_ SIZE_T dwStackSize,
+    _In_ LPTHREAD_START_ROUTINE lpStartAddress,
+    _In_opt_ LPVOID lpParameter,
+    _In_ DWORD dwCreationFlags,
+    _In_opt_ LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
+    _Out_opt_ LPDWORD lpThreadId)
+{
+    UNREFERENCED_PARAMETER(lpAttributeList);
+
+    return CreateRemoteThread(hProcess,
+                              lpThreadAttributes,
+                              (DWORD)dwStackSize,
+                              lpStartAddress,
+                              lpParameter,
+                              dwCreationFlags,
+                              lpThreadId);
+}
+
 /*
  * @implemented
  */

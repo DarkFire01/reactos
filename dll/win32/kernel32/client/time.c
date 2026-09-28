@@ -135,14 +135,24 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
     lpFileTime->dwHighDateTime = SystemTime.HighPart;
 }
 
-/*
- * @unimplemented
+/**
+ * @brief
+ * Returns the current time of day.
+ *
+ * @remarks
+ * The name promises a finer resolution than the clock tick, which is had by
+ * interpolating from a baseline taken against the performance counter. Nothing
+ * here keeps such a baseline, so the answer is the clock's own and is as coarse
+ * as GetSystemTimeAsFileTime. It is the right time either way, which is what a
+ * caller reading this cannot do without.
+ *
+ * @implemented
  */
 VOID
 WINAPI
 GetSystemTimePreciseAsFileTime(OUT PFILETIME lpFileTime)
 {
-    STUB;
+    GetSystemTimeAsFileTime(lpFileTime);
 }
 
 /*
