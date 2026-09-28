@@ -1369,26 +1369,25 @@ static HRESULT WINAPI ProxyCliSec_QueryBlanket(IClientSecurity *iface,
                                                void **pAuthInfo,
                                                DWORD *pCapabilities)
 {
-    FIXME("(%p, %p, %p, %p, %p, %p, %p, %p): stub\n", pProxy, pAuthnSvc,
-          pAuthzSvc, ppServerPrincName, pAuthnLevel, pImpLevel, pAuthInfo,
-          pCapabilities);
+    TRACE("(%p, %p)\n", iface, pProxy);
 
+    /* The proxy speaks local rpc, which carries the caller's own identity */
     if (pAuthnSvc)
-        *pAuthnSvc = 0;
+        *pAuthnSvc = RPC_C_AUTHN_WINNT;
     if (pAuthzSvc)
-        *pAuthzSvc = 0;
+        *pAuthzSvc = RPC_C_AUTHZ_NONE;
     if (ppServerPrincName)
         *ppServerPrincName = NULL;
     if (pAuthnLevel)
-        *pAuthnLevel = RPC_C_AUTHN_LEVEL_DEFAULT;
+        *pAuthnLevel = RPC_C_AUTHN_LEVEL_PKT_PRIVACY;
     if (pImpLevel)
-        *pImpLevel = RPC_C_IMP_LEVEL_DEFAULT;
+        *pImpLevel = RPC_C_IMP_LEVEL_IMPERSONATE;
     if (pAuthInfo)
         *pAuthInfo = NULL;
     if (pCapabilities)
         *pCapabilities = EOAC_NONE;
 
-    return E_NOTIMPL;
+    return S_OK;
 }
 
 static HRESULT WINAPI ProxyCliSec_SetBlanket(IClientSecurity *iface,
@@ -1399,10 +1398,39 @@ static HRESULT WINAPI ProxyCliSec_SetBlanket(IClientSecurity *iface,
                                              void *pAuthInfo,
                                              DWORD Capabilities)
 {
-    FIXME("%p, %ld, %ld, %s, %ld, %ld, %p, %#lx: stub\n", pProxy, AuthnSvc, AuthzSvc,
+    TRACE("%p, %ld, %ld, %s, %ld, %ld, %p, %#lx\n", pProxy, AuthnSvc, AuthzSvc,
           pServerPrincName == COLE_DEFAULT_PRINCIPAL ? "<default principal>" : debugstr_w(pServerPrincName),
           AuthnLevel, ImpLevel, pAuthInfo, Capabilities);
-    return E_NOTIMPL;
+
+    /*
+     * Nothing is negotiated for a local proxy, so a request is met when what it
+     * asks for is no more than the connection already carries. Anything above
+     * that, delegation in particular, would be answered by saying yes to
+     * something that does not happen.
+     */
+    if ((AuthnSvc != RPC_C_AUTHN_WINNT) &&
+        (AuthnSvc != RPC_C_AUTHN_DEFAULT) &&
+        (AuthnSvc != RPC_C_AUTHN_NONE))
+    {
+        FIXME("authentication service %ld is not served here\n", AuthnSvc);
+        return E_INVALIDARG;
+    }
+
+    if ((AuthnLevel > RPC_C_AUTHN_LEVEL_PKT_PRIVACY) &&
+        (AuthnLevel != RPC_C_AUTHN_LEVEL_DEFAULT))
+    {
+        FIXME("authentication level %ld is above what is carried\n", AuthnLevel);
+        return E_INVALIDARG;
+    }
+
+    if ((ImpLevel > RPC_C_IMP_LEVEL_IMPERSONATE) &&
+        (ImpLevel != RPC_C_IMP_LEVEL_DEFAULT))
+    {
+        FIXME("impersonation level %ld is above what is carried\n", ImpLevel);
+        return E_INVALIDARG;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI ProxyCliSec_CopyProxy(IClientSecurity *iface,
