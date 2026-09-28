@@ -93,6 +93,45 @@ PsGetCurrentServerSilo(VOID)
 /*
  * @implemented
  */
+PESILO
+NTAPI
+PsGetHostSilo(VOID)
+{
+    /* The host silo is the one everything is already in, and it is named by nothing */
+    return NULL;
+}
+
+/*
+ * @implemented
+ */
+PESILO
+NTAPI
+PsAttachSiloToCurrentThread(
+    _In_ PESILO Silo)
+{
+    UNREFERENCED_PARAMETER(Silo);
+
+    /*
+     * Attaching gives back the silo the thread was in so the caller can put it
+     * back. A thread here is never in one, so that is what it gets back.
+     */
+    return NULL;
+}
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+PsDetachSiloFromCurrentThread(
+    _In_ PESILO Silo)
+{
+    UNREFERENCED_PARAMETER(Silo);
+}
+
+/*
+ * @implemented
+ */
 PGUID
 NTAPI
 PsGetSiloContainerId(
