@@ -1302,6 +1302,22 @@ IopFreeIrpExtension(
 );
 
 //
+// Wait Completion Packets
+//
+extern POBJECT_TYPE IoWaitCompletionPacketType;
+
+VOID
+NTAPI
+IopDeleteWaitCompletionPacket(
+    _In_ PVOID Object
+);
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+IopInitWaitCompletionPackets(VOID);
+
+//
 // I/O Completion
 //
 VOID
