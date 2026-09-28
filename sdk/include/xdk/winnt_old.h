@@ -3999,6 +3999,29 @@ typedef union _FILE_SEGMENT_ELEMENT {
 #define JOB_OBJECT_IMPERSONATE              32
 #define JOB_OBJECT_ALL_ACCESS               (STANDARD_RIGHTS_REQUIRED|SYNCHRONIZE|31)
 
+typedef enum _PROCESS_MITIGATION_POLICY {
+  ProcessDEPPolicy,
+  ProcessASLRPolicy,
+  ProcessDynamicCodePolicy,
+  ProcessStrictHandleCheckPolicy,
+  ProcessSystemCallDisablePolicy,
+  ProcessMitigationOptionsMask,
+  ProcessExtensionPointDisablePolicy,
+  ProcessControlFlowGuardPolicy,
+  ProcessSignaturePolicy,
+  ProcessFontDisablePolicy,
+  ProcessImageLoadPolicy,
+  ProcessSystemCallFilterPolicy,
+  ProcessPayloadRestrictionPolicy,
+  ProcessChildProcessPolicy,
+  ProcessSideChannelIsolationPolicy,
+  ProcessUserShadowStackPolicy,
+  ProcessRedirectionTrustPolicy,
+  ProcessUserPointerAuthPolicy,
+  ProcessSEHOPPolicy,
+  MaxProcessMitigationPolicy
+} PROCESS_MITIGATION_POLICY, *PPROCESS_MITIGATION_POLICY;
+
 typedef enum _JOBOBJECTINFOCLASS {
   JobObjectBasicAccountingInformation = 1,
   JobObjectBasicLimitInformation,

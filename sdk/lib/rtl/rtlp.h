@@ -286,7 +286,19 @@ RtlFindSetBitsAndClear64(
 
 ULONG64
 NTAPI
+RtlFindClearBitsAndSet64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex);
+
+ULONG64
+NTAPI
 RtlNumberOfSetBits64(
+    _In_ PRTL_BITMAP64 BitMapHeader);
+
+ULONG64
+NTAPI
+RtlNumberOfClearBits64(
     _In_ PRTL_BITMAP64 BitMapHeader);
 
 BOOLEAN

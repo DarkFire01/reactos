@@ -1255,6 +1255,263 @@ RtlpSafeCopyMemory(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Sets what a symbolic link object reports about itself.
+ *
+ * @remarks
+ * There is no such service in the kernel here, so the caller is told the call
+ * is not there rather than being told its request was carried out.
+ */
+NTSTATUS
+NTAPI
+NtSetInformationSymbolicLink(
+    _In_ HANDLE LinkHandle,
+    _In_ ULONG InformationClass,
+    _In_reads_bytes_(Length) PVOID Information,
+    _In_ ULONG Length)
+{
+    UNREFERENCED_PARAMETER(LinkHandle);
+    UNREFERENCED_PARAMETER(InformationClass);
+    UNREFERENCED_PARAMETER(Information);
+    UNREFERENCED_PARAMETER(Length);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Names the family of device this is, and the form it takes.
+ *
+ * @remarks
+ * Nothing here records either, so no name is given for them.
+ */
+NTSTATUS
+NTAPI
+RtlConvertDeviceFamilyInfoToString(
+    _Inout_ PULONG FamilySize,
+    _Inout_ PULONG FormSize,
+    _Out_opt_ PWSTR Family,
+    _Out_opt_ PWSTR Form)
+{
+    UNREFERENCED_PARAMETER(Family);
+    UNREFERENCED_PARAMETER(Form);
+
+    if (FamilySize != NULL)
+        *FamilySize = 0;
+
+    if (FormSize != NULL)
+        *FormSize = 0;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/*
+ * App containers and the packages they come from. Nothing here has either, so a
+ * caller is told there is nothing to tell rather than being given an answer
+ * about a container that does not exist.
+ */
+
+NTSTATUS
+NTAPI
+RtlGetAppContainerParent(
+    _In_ PSID AppContainerSid,
+    _Out_ PSID *AppContainerSidParent)
+{
+    UNREFERENCED_PARAMETER(AppContainerSid);
+
+    if (AppContainerSidParent != NULL)
+        *AppContainerSidParent = NULL;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+NTAPI
+RtlGetAppContainerSidType(
+    _In_ PSID AppContainerSid,
+    _Out_ PULONG AppContainerSidType)
+{
+    UNREFERENCED_PARAMETER(AppContainerSid);
+
+    if (AppContainerSidType != NULL)
+        *AppContainerSidType = 0;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+NTAPI
+RtlQueryPackageClaims(
+    _In_ HANDLE TokenHandle,
+    _Out_writes_bytes_opt_(*PackageSize) PWSTR PackageFullName,
+    _Inout_opt_ PSIZE_T PackageSize,
+    _Out_writes_bytes_opt_(*AppIdSize) PWSTR AppId,
+    _Inout_opt_ PSIZE_T AppIdSize,
+    _Out_opt_ LPGUID DynamicId,
+    _Out_opt_ PULONG64 PkgClaim,
+    _Out_opt_ PULONG64 AttributesPresent)
+{
+    UNREFERENCED_PARAMETER(TokenHandle);
+    UNREFERENCED_PARAMETER(PackageFullName);
+    UNREFERENCED_PARAMETER(AppId);
+    UNREFERENCED_PARAMETER(DynamicId);
+
+    if (PackageSize != NULL)
+        *PackageSize = 0;
+
+    if (AppIdSize != NULL)
+        *AppIdSize = 0;
+
+    if (PkgClaim != NULL)
+        *PkgClaim = 0;
+
+    if (AttributesPresent != NULL)
+        *AttributesPresent = 0;
+
+    return STATUS_NOT_FOUND;
+}
+
+/**
+ * @brief
+ * Says whether an api set contract is one this machine carries.
+ *
+ * @param[in] Namespace
+ * The contract, without its extension.
+ *
+ * @remarks
+ * A caller asks this before binding a name it can live without, so the answer
+ * comes from the same table the loader redirects through.
+ */
+NTSTATUS
+NTAPI
+ApiSetQueryApiSetPresence(
+    _In_ PCUNICODE_STRING Namespace,
+    _Out_ PBOOLEAN Present)
+{
+    UNICODE_STRING Host;
+    BOOLEAN Resolved = FALSE;
+    NTSTATUS Status;
+
+    if ((Namespace == NULL) || (Present == NULL))
+        return STATUS_INVALID_PARAMETER;
+
+    Status = ApiSetResolveToHost(LdrpApisetVersion(),
+                                 Namespace,
+                                 &Resolved,
+                                 &Host);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *Present = Resolved;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Reads the data last published to a notification state.
+ *
+ * @param[in] StateName
+ * The state to read.
+ *
+ * @param[in] TypeId
+ * Optional GUID the data is expected to be described by.
+ *
+ * @param[in] ExplicitScope
+ * Optional scope, such as a session or a process.
+ *
+ * @param[out] ChangeStamp
+ * Receives how many times the state has changed.
+ *
+ * @param[out] Buffer
+ * Receives the data.
+ *
+ * @param[in,out] BufferSize
+ * The size of @p Buffer going in, the size of the data coming out.
+ *
+ * @return
+ * STATUS_OBJECT_NAME_NOT_FOUND. There is no notification facility here, so no
+ * state has ever been published to.
+ *
+ * @remarks
+ * Saying so is something a caller can act on. Answering success and leaving the
+ * size alone hands it whatever its own stack happened to hold.
+ */
+NTSTATUS
+NTAPI
+NtQueryWnfStateData(
+    _In_ const VOID *StateName,
+    _In_opt_ LPCGUID TypeId,
+    _In_opt_ const VOID *ExplicitScope,
+    _Out_ PULONG ChangeStamp,
+    _Out_writes_bytes_to_opt_(*BufferSize, *BufferSize) PVOID Buffer,
+    _Inout_ PULONG BufferSize)
+{
+    UNREFERENCED_PARAMETER(StateName);
+    UNREFERENCED_PARAMETER(TypeId);
+    UNREFERENCED_PARAMETER(ExplicitScope);
+    UNREFERENCED_PARAMETER(Buffer);
+
+    if (ChangeStamp != NULL)
+        *ChangeStamp = 0;
+
+    if (BufferSize != NULL)
+        *BufferSize = 0;
+
+    return STATUS_OBJECT_NAME_NOT_FOUND;
+}
+
+/**
+ * @brief
+ * Publishes new data for a notification state.
+ *
+ * @param[in] StateName
+ * The state to publish to.
+ *
+ * @param[in] Buffer
+ * The new data.
+ *
+ * @param[in] Length
+ * The size of @p Buffer, in bytes.
+ *
+ * @param[in] TypeId
+ * Optional GUID describing the data.
+ *
+ * @param[in] ExplicitScope
+ * Optional scope, such as a session or a process.
+ *
+ * @param[in] MatchingChangeStamp
+ * The stamp the state must carry when @p CheckStamp is set.
+ *
+ * @param[in] CheckStamp
+ * Whether @p MatchingChangeStamp is compared at all.
+ *
+ * @return
+ * STATUS_SUCCESS. Nothing subscribes, so the data is taken and dropped.
+ */
+NTSTATUS
+NTAPI
+NtUpdateWnfStateData(
+    _In_ const VOID *StateName,
+    _In_reads_bytes_opt_(Length) const VOID *Buffer,
+    _In_opt_ ULONG Length,
+    _In_opt_ LPCGUID TypeId,
+    _In_opt_ const VOID *ExplicitScope,
+    _In_ ULONG MatchingChangeStamp,
+    _In_ LOGICAL CheckStamp)
+{
+    UNREFERENCED_PARAMETER(StateName);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Length);
+    UNREFERENCED_PARAMETER(TypeId);
+    UNREFERENCED_PARAMETER(ExplicitScope);
+    UNREFERENCED_PARAMETER(MatchingChangeStamp);
+    UNREFERENCED_PARAMETER(CheckStamp);
+
+    return STATUS_SUCCESS;
+}
+
 /* FIXME: code duplication with kernel32/client/time.c */
 ULONG
 NTAPI
