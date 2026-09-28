@@ -134,6 +134,20 @@ typedef enum _APIC_REGISTER
 #define APIC_CLOCK_INDEX 8
 #define ApicLogicalId(Cpu) ((UCHAR)(1<< Cpu))
 
+/* x2apic.c, and the registers it reaches the controller through */
+#define X2APIC_MSR_BASE 0x00000800
+#define X2APIC_MSR_ICR 0x00000830
+
+extern BOOLEAN HalpX2ApicEnabled;
+
+BOOLEAN
+NTAPI
+X2ApicIsSupported(VOID);
+
+VOID
+NTAPI
+X2ApicEnable(VOID);
+
 /* The following definitions are based on AMD documentation.
    They differ slightly in Intel documentation. */
 
@@ -354,6 +368,10 @@ FORCEINLINE
 ULONG
 ApicRead(APIC_REGISTER Register)
 {
+    /* In the newer mode the same registers are MSRs, sixteen bytes apart */
+    if (HalpX2ApicEnabled)
+        return (ULONG)__readmsr(X2APIC_MSR_BASE + (Register >> 4));
+
     return READ_REGISTER_ULONG((PULONG)(APIC_BASE + Register));
 }
 
@@ -361,7 +379,60 @@ FORCEINLINE
 VOID
 ApicWrite(APIC_REGISTER Register, ULONG Value)
 {
+    if (HalpX2ApicEnabled)
+    {
+        __writemsr(X2APIC_MSR_BASE + (Register >> 4), Value);
+        return;
+    }
+
     WRITE_REGISTER_ULONG((PULONG)(APIC_BASE + Register), Value);
+}
+
+/* The identifier the other processors are addressed by */
+FORCEINLINE
+ULONG
+ApicGetId(VOID)
+{
+    /* The older mode keeps it in the top byte, the newer one uses the lot */
+    if (HalpX2ApicEnabled)
+        return ApicRead(APIC_ID);
+
+    return ApicRead(APIC_ID) >> 24;
+}
+
+/**
+ * @brief
+ * Sends what the command register was filled in for.
+ *
+ * @remarks
+ * The older mode takes two writes and the high half has to land first, with
+ * the controller idle before either. The newer one is a single register, wide
+ * enough for the whole command and for a destination larger than a byte, and
+ * it reports nothing to wait on.
+ */
+FORCEINLINE
+VOID
+ApicWriteIcr(
+    _In_ APIC_INTERRUPT_COMMAND_REGISTER Icr)
+{
+    APIC_INTERRUPT_COMMAND_REGISTER Status;
+
+    if (HalpX2ApicEnabled)
+    {
+        /* Delivery status is not a bit of this register any more */
+        __writemsr(X2APIC_MSR_ICR,
+                   ((ULONG64)Icr.Destination << 32) |
+                   (Icr.Long0 & ~(1UL << 12)));
+        return;
+    }
+
+    do
+    {
+        Status.Long0 = ApicRead(APIC_ICR0);
+    } while (Status.DeliveryStatus);
+
+    ApicWrite(APIC_ICR1, Icr.Long1);
+    ApicWrite(APIC_ICR0, Icr.Long0);
 }
 
 VOID

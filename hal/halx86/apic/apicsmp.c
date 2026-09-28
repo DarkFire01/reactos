@@ -71,12 +71,6 @@ ApicRequestGlobalInterrupt(
     Flags = __readeflags();
     _disable();
 
-    /* Wait for the APIC to be idle */
-    do
-    {
-        Icr.Long0 = ApicRead(APIC_ICR0);
-    } while (Icr.DeliveryStatus);
-
     /* Setup the command register */
     Icr.LongLong = 0;
     Icr.Vector = Vector;
@@ -89,9 +83,8 @@ ApicRequestGlobalInterrupt(
     Icr.DestinationShortHand = DestinationShortHand;
     Icr.Destination = DestinationProcessor;
 
-    /* Write the low dword last to send the interrupt */
-    ApicWrite(APIC_ICR1, Icr.Long1);
-    ApicWrite(APIC_ICR0, Icr.Long0);
+    /* Send it, which waits for the controller where that is still a thing */
+    ApicWriteIcr(Icr);
 
     /* Finally, restore the original interrupt state */
     if (Flags & EFLAGS_INTERRUPT_MASK)

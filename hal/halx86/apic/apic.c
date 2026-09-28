@@ -232,7 +232,6 @@ ApicRequestSelfInterrupt(IN UCHAR Vector)
 {
     ULONG Flags;
     APIC_INTERRUPT_COMMAND_REGISTER Icr;
-    APIC_INTERRUPT_COMMAND_REGISTER IcrStatus;
 
     /*
      * The IRR registers are spaced 16 bytes apart and hold 32 status bits each.
@@ -255,15 +254,8 @@ ApicRequestSelfInterrupt(IN UCHAR Vector)
     Flags = __readeflags();
     _disable();
 
-    /* Wait for the APIC to be idle */
-    do
-    {
-        IcrStatus.Long0 = ApicRead(APIC_ICR0);
-    } while (IcrStatus.DeliveryStatus);
-
-    /* Write high dword first, then low dword to send the interrupt */
-    ApicWrite(APIC_ICR1, Icr.Long1);
-    ApicWrite(APIC_ICR0, Icr.Long0);
+    /* Send it, which waits for the controller where that is a thing */
+    ApicWriteIcr(Icr);
 
     /* Wait until we see the interrupt request.
      * It will stay in requested state until we re-enable interrupts.
@@ -394,6 +386,14 @@ ApicInitializeLocalApic(
     BaseRegister.BootStrapCPUCore = (Cpu == 0);
     __writemsr(MSR_APIC_BASE, BaseRegister.LongLong);
 
+    /*
+     * Take the newer mode wherever the processor has it. Every processor has
+     * to be in the same mode, so the first one decides and the rest follow it
+     * rather than asking again.
+     */
+    if ((Cpu == 0) ? X2ApicIsSupported() : HalpX2ApicEnabled)
+        X2ApicEnable();
+
     /* Set spurious vector and SoftwareEnable to 1 */
     SpIntRegister.Long = ApicRead(APIC_SIVR);
     SpIntRegister.Vector = APIC_SPURIOUS_VECTOR;
@@ -418,8 +418,15 @@ ApicInitializeLocalApic(
      * leaves a processor that looks addressable and is not.  Be explicit:
      * those processors have no logical id, and nothing may try to use one.
      */
-    ApicWrite(APIC_DFR, APIC_DF_Flat);
-    ApicWrite(APIC_LDR, (Cpu < 8) ? ((ULONG)ApicLogicalId(Cpu) << 24) : 0);
+    /*
+     * Neither register exists in the newer mode: the format is fixed and the
+     * logical id is the processor's own, which it works out for itself.
+     */
+    if (!HalpX2ApicEnabled)
+    {
+        ApicWrite(APIC_DFR, APIC_DF_Flat);
+        ApicWrite(APIC_LDR, (Cpu < 8) ? ((ULONG)ApicLogicalId(Cpu) << 24) : 0);
+    }
 
     /* Set the spurious ISR */
     KeRegisterInterruptHandler(APIC_SPURIOUS_VECTOR, ApicSpuriousService);
@@ -501,7 +508,7 @@ HalpAllocateSystemInterrupt(
     /*
      * Set up a masked redirection entry aimed at this processor.
      *
-     * Destination below is ApicRead(APIC_ID) >> 24 - a physical APIC id - so
+     * Destination below is ApicGetId() - a physical APIC id - so
      * the mode has to say physical.  Declaring logical made the field a flat
      * bitmask of logical ids instead, which for the boot processor (APIC id 0)
      * is the encoding that matches no processor at all.  It went unnoticed
@@ -520,7 +527,7 @@ HalpAllocateSystemInterrupt(
     ReDirReg.TriggerMode = APIC_TGM_Edge;
     ReDirReg.Mask = 1;
     ReDirReg.Reserved = 0;
-    ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+    ReDirReg.Destination = ApicGetId();
 
     /* Initialize entry */
     ApicWriteIORedirectionEntry(Irq, ReDirReg);
@@ -693,7 +700,7 @@ ApicInitializeIOApic(VOID)
     ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.TriggerMode = APIC_TGM_Edge;
     ReDirReg.Mask = 1;
-    ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+    ReDirReg.Destination = ApicGetId();
 
     /* Initialize all entries of all I/O APICs */
     for (Unit = HalpIoApics; Unit < HalpIoApics + HalpIoApicCount; Unit++)
@@ -717,7 +724,7 @@ ApicInitializeIOApic(VOID)
     ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.TriggerMode = APIC_TGM_Level;
     ReDirReg.Mask = 1;
-    ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+    ReDirReg.Destination = ApicGetId();
     ApicWriteIORedirectionEntry(APIC_CLOCK_INDEX, ReDirReg);
 }
 
@@ -1139,7 +1146,7 @@ HalEnableSystemInterrupt(
     {
         ReDirReg.MessageType = APIC_MT_Fixed;
         ReDirReg.DestinationMode = APIC_DM_Physical;
-        ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+        ReDirReg.Destination = ApicGetId();
     }
     ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ?
         APIC_TGM_Level : APIC_TGM_Edge;
