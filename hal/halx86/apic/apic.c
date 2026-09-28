@@ -1099,6 +1099,7 @@ HalEnableSystemInterrupt(
     NTSTATUS Status;
     ULONG Input;
     UCHAR Index;
+    UCHAR Previous;
     KIRQL OldIrql;
     ASSERT(Irql <= HIGH_LEVEL);
     ASSERT((IrqlToTpr(Irql) & 0xF0) == (Vector & 0xF0));
@@ -1135,7 +1136,18 @@ HalEnableSystemInterrupt(
             return TRUE;
         }
 
-        /* Don't take over an input that belongs to another vector */
+        /* The ACPI driver owns the input, so a vector the HAL gave it and never enabled is dropped */
+        if (NT_SUCCESS(Status))
+        {
+            Previous = HalpGsivToVector[Input];
+            if ((Previous != APIC_FREE_VECTOR) && ApicReadIORedirectionEntry(Input).Mask)
+            {
+                HalpVectorToIndex[Previous] = APIC_FREE_VECTOR;
+                HalpGsivToVector[Input] = APIC_FREE_VECTOR;
+            }
+        }
+
+        /* Don't take over an input another vector is using */
         if (!NT_SUCCESS(Status) || (HalpGsivToVector[Input] != APIC_FREE_VECTOR))
         {
             HalpReleaseVectorLock(OldIrql);
