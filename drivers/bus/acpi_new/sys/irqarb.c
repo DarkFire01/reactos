@@ -1457,11 +1457,19 @@ NTSTATUS
 NTAPI
 UacpiNtIrqTestAllocation(
     _In_ PARBITER_INSTANCE Arbiter,
+#if (NTDDI_VERSION >= NTDDI_VISTA)
     _Inout_ PARBITER_TEST_ALLOCATION_PARAMETERS Parameters)
+#else
+    _Inout_ PLIST_ENTRY ArbitrationList)
+#endif
 {
     NTSTATUS Status;
 
+#if (NTDDI_VERSION >= NTDDI_VISTA)
     Status = ArbiterLibTestAllocation(Arbiter, Parameters);
+#else
+    Status = ArbiterLibTestAllocation(Arbiter, ArbitrationList);
+#endif
 
     /* Misses are routine probes, only passes are traced */
     if (UacpiNtIrqArbVerbose && NT_SUCCESS(Status))
