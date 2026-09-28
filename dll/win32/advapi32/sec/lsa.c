@@ -2255,4 +2255,26 @@ done:
     return Status;
 }
 
+/*
+ * @unimplemented
+ *
+ * Adds, changes or removes a mapping between a sid and a name. Nothing here
+ * keeps such mappings, so there is nothing to change.
+ */
+NTSTATUS
+WINAPI
+LsaManageSidNameMapping(
+    _In_ DWORD OperationType,
+    _In_ PVOID OperationInput,
+    _Out_ PVOID *OperationOutput)
+{
+    TRACE("LsaManageSidNameMapping(%lu %p %p)\n",
+          OperationType, OperationInput, OperationOutput);
+
+    if (OperationOutput != NULL)
+        *OperationOutput = NULL;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 /* EOF */

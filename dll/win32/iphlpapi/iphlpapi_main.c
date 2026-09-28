@@ -3419,3 +3419,150 @@ NhGetGuidFromInterfaceName(_In_ PWCHAR pInterfaceName,
 
     return bFound ? ERROR_SUCCESS : ERROR_NOT_FOUND;
 }
+
+/*
+ * The newer interface and neighbour calls. Nothing here keeps the tables they
+ * read, so each says it cannot do the work rather than reporting an empty
+ * table, which a caller would take for a machine with no network at all.
+ *
+ * The structures are passed through untouched, so they are taken as pointers
+ * rather than by the types of a header this does not have.
+ */
+
+DWORD
+WINAPI
+GetIfStackTable(
+    _Out_ PVOID *Table)
+{
+    TRACE("GetIfStackTable(%p)\n", Table);
+
+    if (Table != NULL)
+        *Table = NULL;
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+DWORD
+WINAPI
+GetIpInterfaceEntry(
+    _Inout_ PVOID Row)
+{
+    TRACE("GetIpInterfaceEntry(%p)\n", Row);
+
+    if (Row == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    return ERROR_NOT_FOUND;
+}
+
+/*
+ * The row is left as the caller had it. Clearing it would mean knowing how big
+ * it is, which is the caller's business here, and the entry this would prepare
+ * a row for cannot be read anyway.
+ */
+VOID
+WINAPI
+InitializeIpInterfaceEntry(
+    _Out_ PVOID Row)
+{
+    TRACE("InitializeIpInterfaceEntry(%p)\n", Row);
+}
+
+DWORD
+WINAPI
+ResolveIpNetEntry2(
+    _Inout_ PVOID Row,
+    _In_opt_ PVOID SourceAddress)
+{
+    TRACE("ResolveIpNetEntry2(%p, %p)\n", Row, SourceAddress);
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+DWORD
+WINAPI
+NotifyUnicastIpAddressChange(
+    _In_ ULONG Family,
+    _In_ PVOID Callback,
+    _In_opt_ PVOID CallerContext,
+    _In_ BOOLEAN InitialNotification,
+    _Inout_ HANDLE *NotificationHandle)
+{
+    TRACE("NotifyUnicastIpAddressChange(%lu, %p, %p, %u, %p)\n",
+          Family, Callback, CallerContext, InitialNotification,
+          NotificationHandle);
+
+    if (NotificationHandle != NULL)
+        *NotificationHandle = NULL;
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+DWORD
+WINAPI
+GetNetworkConnectivityHint(
+    _Out_ PVOID ConnectivityHint)
+{
+    TRACE("GetNetworkConnectivityHint(%p)\n", ConnectivityHint);
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+DWORD
+WINAPI
+GetNetworkConnectivityHintForInterface(
+    _In_ ULONG InterfaceIndex,
+    _Out_ PVOID ConnectivityHint)
+{
+    TRACE("GetNetworkConnectivityHintForInterface(%lu, %p)\n",
+          InterfaceIndex, ConnectivityHint);
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+DWORD
+WINAPI
+NotifyNetworkConnectivityHintChange(
+    _In_ PVOID Callback,
+    _In_opt_ PVOID CallerContext,
+    _In_ BOOLEAN InitialNotification,
+    _Inout_ HANDLE *NotificationHandle)
+{
+    TRACE("NotifyNetworkConnectivityHintChange(%p, %p, %u, %p)\n",
+          Callback, CallerContext, InitialNotification, NotificationHandle);
+
+    if (NotificationHandle != NULL)
+        *NotificationHandle = NULL;
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+/*
+ * A compartment is a routing table of its own that a job can be confined to.
+ * There is one here and everything lives in it, so a job is always reported as
+ * being in it and cannot be moved out.
+ */
+
+NET_IF_COMPARTMENT_ID
+WINAPI
+GetJobCompartmentId(
+    _In_ HANDLE JobHandle)
+{
+    TRACE("GetJobCompartmentId(%p)\n", JobHandle);
+
+    return NET_IF_COMPARTMENT_ID_PRIMARY;
+}
+
+DWORD
+WINAPI
+SetJobCompartmentId(
+    _In_ HANDLE JobHandle,
+    _In_ NET_IF_COMPARTMENT_ID CompartmentId)
+{
+    TRACE("SetJobCompartmentId(%p, %lu)\n", JobHandle, CompartmentId);
+
+    if (CompartmentId == NET_IF_COMPARTMENT_ID_PRIMARY)
+        return NO_ERROR;
+
+    return ERROR_NOT_SUPPORTED;
+}

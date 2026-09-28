@@ -377,6 +377,13 @@
 @ stub LsaICLookupSidsWithCreds
 @ stdcall LsaLookupNames2(ptr long long ptr ptr ptr)
 @ stdcall LsaLookupNames(ptr long ptr ptr ptr)
+@ stdcall -version=0x600+ LsaManageSidNameMapping(long ptr ptr)
+@ stdcall -version=0x600+ EventActivityIdControl(long ptr) ntdll.EtwEventActivityIdControl
+@ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
+@ stdcall -version=0x600+ EventSetInformation(int64 long ptr long) ntdll.EtwEventSetInformation
+@ stdcall -version=0x600+ EventUnregister(int64) ntdll.EtwEventUnregister
+@ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr) ntdll.EtwEventWriteTransfer
+@ stdcall -version=0x600+ EventWriteEx(int64 ptr int64 long ptr ptr long ptr) ntdll.EtwEventWriteEx
 @ stdcall LsaLookupPrivilegeDisplayName(ptr ptr ptr ptr)
 @ stdcall LsaLookupPrivilegeName(ptr ptr ptr)
 @ stdcall LsaLookupPrivilegeValue(ptr ptr ptr)
@@ -489,6 +496,7 @@
 @ stdcall RegCreateKeyA(long str ptr)
 @ stdcall RegCreateKeyExA(long str long ptr long long ptr ptr ptr)
 @ stdcall RegCreateKeyExW(long wstr long ptr long long ptr ptr ptr)
+@ stdcall -version=0x600+ RegCreateKeyTransactedW(long wstr long ptr long long ptr ptr ptr long ptr)
 @ stdcall RegCreateKeyW(long wstr ptr)
 @ stdcall RegDeleteKeyA(long str)
 @ stdcall RegDeleteKeyExA(long str long long)

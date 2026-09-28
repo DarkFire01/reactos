@@ -9628,3 +9628,87 @@ CM_Unregister_Device_Interface_ExW(
 
     return ret;
 }
+
+/***********************************************************************
+ * CM_MapCrToWin32Err [SETUPAPI.@]
+ *
+ * Turns a configuration manager result into the Win32 error a caller of the
+ * Win32 API would have seen, or into the default it offers for the ones that
+ * have no counterpart.
+ */
+DWORD WINAPI
+CM_MapCrToWin32Err(
+    _In_ CONFIGRET CmReturnCode,
+    _In_ DWORD DefaultError)
+{
+    switch (CmReturnCode)
+    {
+        case CR_SUCCESS:
+            return ERROR_SUCCESS;
+        case CR_OUT_OF_MEMORY:
+            return ERROR_NOT_ENOUGH_MEMORY;
+        case CR_INVALID_POINTER:
+            return ERROR_INVALID_USER_BUFFER;
+        case CR_INVALID_FLAG:
+            return ERROR_INVALID_FLAGS;
+        case CR_INVALID_DEVNODE:
+        case CR_INVALID_DEVICE_ID:
+        case CR_INVALID_MACHINENAME:
+        case CR_INVALID_PROPERTY:
+        case CR_INVALID_REFERENCE_STRING:
+            return ERROR_INVALID_DATA;
+        case CR_NO_SUCH_DEVNODE:
+        case CR_NO_SUCH_VALUE:
+            return ERROR_NOT_FOUND;
+        case CR_ALREADY_SUCH_DEVINST:
+            return ERROR_DEVINST_ALREADY_EXISTS;
+        case CR_BUFFER_SMALL:
+            return ERROR_INSUFFICIENT_BUFFER;
+        case CR_NO_REGISTRY_HANDLE:
+        case CR_REGISTRY_ERROR:
+            return ERROR_REGISTRY_CORRUPT;
+        case CR_ACCESS_DENIED:
+            return ERROR_ACCESS_DENIED;
+        case CR_CALL_NOT_IMPLEMENTED:
+            return ERROR_CALL_NOT_IMPLEMENTED;
+        case CR_REMOVE_VETOED:
+            return ERROR_CANCELLED;
+        default:
+            return DefaultError;
+    }
+}
+
+/***********************************************************************
+ * CM_Register_Notification [SETUPAPI.@]
+ *
+ * Nothing here delivers device notifications through this interface, so a
+ * caller is told the call is not there rather than being given a handle that
+ * would never report anything.
+ */
+CONFIGRET WINAPI
+CM_Register_Notification(
+    _In_ PVOID pFilter,
+    _In_opt_ PVOID pContext,
+    _In_ PVOID pCallback,
+    _Out_ PHCMNOTIFICATION pNotifyContext)
+{
+    FIXME("CM_Register_Notification(%p %p %p %p)\n",
+          pFilter, pContext, pCallback, pNotifyContext);
+
+    if (pNotifyContext != NULL)
+        *pNotifyContext = NULL;
+
+    return CR_CALL_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
+ * CM_Unregister_Notification [SETUPAPI.@]
+ */
+CONFIGRET WINAPI
+CM_Unregister_Notification(
+    _In_ HCMNOTIFICATION NotifyContext)
+{
+    FIXME("CM_Unregister_Notification(%p)\n", NotifyContext);
+
+    return CR_CALL_NOT_IMPLEMENTED;
+}

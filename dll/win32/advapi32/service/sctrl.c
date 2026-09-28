@@ -209,8 +209,11 @@ ScServiceMainStubW(LPVOID Context)
     Teb->SubProcessTag = UlongToPtr(ThreadParams->dwServiceTag);
 
     /* Call the main service routine and free the arguments vector */
+    ERR("ServiceMain(%p) entered with %lu arguments\n",
+        ThreadParams->lpServiceMain, ThreadParams->dwArgCount);
     (ThreadParams->lpServiceMain)(ThreadParams->dwArgCount,
                                   ThreadParams->lpArgVector);
+    ERR("ServiceMain returned\n");
 
     /* Reset service tag */
     Teb->SubProcessTag = 0;
@@ -658,7 +661,8 @@ ScServiceDispatcher(HANDLE hPipe,
         }
 
         lpServiceName = (LPWSTR)((PBYTE)ControlPacket + ControlPacket->dwServiceNameOffset);
-        TRACE("Service: %S\n", lpServiceName);
+        ERR("dispatcher: control %lu for service '%S'\n",
+            ControlPacket->dwControl, lpServiceName);
 
         if ((ControlPacket->dwControl == SERVICE_CONTROL_STOP) &&
             (lpServiceName[0] == UNICODE_NULL))
@@ -673,6 +677,8 @@ ScServiceDispatcher(HANDLE hPipe,
                 lpActiveServices[0].bOwnProcess = TRUE;
 
             lpService = ScLookupServiceByServiceName(lpServiceName);
+            ERR("dispatcher: service %s\n",
+                (lpService != NULL) ? "found" : "NOT FOUND");
             if (lpService != NULL)
             {
                 /* Execute command */
@@ -682,6 +688,7 @@ ScServiceDispatcher(HANDLE hPipe,
                     case SERVICE_CONTROL_START_OWN:
                         TRACE("Start command - received SERVICE_CONTROL_START\n");
                         dwError = ScStartService(lpService, ControlPacket);
+                        ERR("dispatcher: starting it gave %lu\n", dwError);
                         break;
 
                     case SERVICE_CONTROL_STOP:
@@ -834,10 +841,12 @@ RegisterServiceCtrlHandlerExW(LPCWSTR lpServiceName,
 {
     PACTIVE_SERVICE Service;
 
-    TRACE("RegisterServiceCtrlHandlerExW(%s %p %p)\n",
-          debugstr_w(lpServiceName), lpHandlerProc, lpContext);
+    ERR("RegisterServiceCtrlHandlerExW(%s %p %p)\n",
+        debugstr_w(lpServiceName), lpHandlerProc, lpContext);
 
     Service = ScLookupServiceByServiceName(lpServiceName);
+    ERR("RegisterServiceCtrlHandlerExW: service %s\n",
+        (Service != NULL) ? "found" : "NOT FOUND");
     if (Service == NULL)
     {
         SetLastError(ERROR_SERVICE_NOT_IN_EXE);
@@ -1018,8 +1027,10 @@ SetServiceStatus(SERVICE_STATUS_HANDLE hServiceStatus,
 {
     DWORD dwError;
 
-    TRACE("SetServiceStatus(%lu %p)\n",
-          hServiceStatus, lpServiceStatus);
+    ERR("SetServiceStatus(%lu): state %lu, exit %lu\n",
+        hServiceStatus,
+        (lpServiceStatus != NULL) ? lpServiceStatus->dwCurrentState : 0,
+        (lpServiceStatus != NULL) ? lpServiceStatus->dwWin32ExitCode : 0);
 
     RpcTryExcept
     {
@@ -1096,6 +1107,7 @@ StartServiceCtrlDispatcherA(const SERVICE_TABLE_ENTRYA *lpServiceStartTable)
     dwError = ScConnectControlPipe(&hPipe);
     if (dwError != ERROR_SUCCESS)
     {
+        ERR("ScConnectControlPipe() failed with %lu\n", dwError);
         bRet = FALSE;
         goto done;
     }
@@ -1159,8 +1171,8 @@ StartServiceCtrlDispatcherW(const SERVICE_TABLE_ENTRYW *lpServiceStartTable)
     DWORD dwBufSize;
     BOOL bRet = TRUE;
 
-    TRACE("StartServiceCtrlDispatcherW(%p)\n",
-          lpServiceStartTable);
+    ERR("StartServiceCtrlDispatcherW(%p)\n",
+        lpServiceStartTable);
 
     i = 0;
     while (lpServiceStartTable[i].lpServiceProc != NULL)
@@ -1195,6 +1207,7 @@ StartServiceCtrlDispatcherW(const SERVICE_TABLE_ENTRYW *lpServiceStartTable)
     dwError = ScConnectControlPipe(&hPipe);
     if (dwError != ERROR_SUCCESS)
     {
+        ERR("ScConnectControlPipe() failed with %lu\n", dwError);
         bRet = FALSE;
         goto done;
     }

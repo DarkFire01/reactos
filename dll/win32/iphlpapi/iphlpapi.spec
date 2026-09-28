@@ -75,6 +75,16 @@
 @ stdcall -stub -version=0x600+ GetIpNetTable2(long ptr)
 @ stub GetIpNetTableFromStack
 @ stdcall GetIpStatistics(ptr)
+@ stdcall GetIfStackTable(ptr)
+@ stdcall GetIpInterfaceEntry(ptr)
+@ stdcall GetJobCompartmentId(ptr)
+@ stdcall GetNetworkConnectivityHint(ptr)
+@ stdcall GetNetworkConnectivityHintForInterface(long ptr)
+@ stdcall InitializeIpInterfaceEntry(ptr)
+@ stdcall NotifyNetworkConnectivityHintChange(ptr ptr long ptr)
+@ stdcall NotifyUnicastIpAddressChange(long ptr ptr long ptr)
+@ stdcall ResolveIpNetEntry2(ptr ptr)
+@ stdcall SetJobCompartmentId(ptr long)
 @ stdcall GetIpStatisticsEx(ptr long)
 @ stub GetIpStatsFromStack
 @ stub GetIpStatsFromStackEx

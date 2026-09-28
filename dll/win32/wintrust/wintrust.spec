@@ -87,7 +87,7 @@
 @ stub TrustOpenStores
 #@ stub WTGetBioSignatureInfo
 #@ stub WTGetPluginSignatureInfo
-#@ stub WTGetSignatureInfo
+@ stdcall WTGetSignatureInfo(wstr long long ptr ptr ptr)
 @ stdcall WTHelperCertCheckValidSignature(ptr)
 @ stub WTHelperCertFindIssuerCertificate
 @ stub WTHelperCertIsSelfSigned

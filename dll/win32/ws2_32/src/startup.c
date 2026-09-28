@@ -214,14 +214,17 @@ WSAStartup(IN WORD wVersionRequested,
 
         /* Setup the process object support */
         ErrorCode = WsProcStartup();
+        DPRINT1("WsProcStartup() returned %lu\n", ErrorCode);
         if (ErrorCode != ERROR_SUCCESS) break;
 
         /* Setup the process object support */
         ErrorCode = WsSockStartup();
+        DPRINT1("WsSockStartup() returned %lu\n", ErrorCode);
         if (ErrorCode != ERROR_SUCCESS) break;
 
         /* Setup the process object support */
         ErrorCode = WsThreadStartup();
+        DPRINT1("WsThreadStartup() returned %lu\n", ErrorCode);
         if (ErrorCode != ERROR_SUCCESS) break;
 
         /* Try getting the process now */
@@ -254,6 +257,8 @@ WSAStartup(IN WORD wVersionRequested,
 
     /* Leave the startup lock */
     WsStartupUnlock();
+
+    DPRINT1("WSAStartup(%x) returning %lu\n", wVersionRequested, ErrorCode);
 
     /* Return any Error */
     return ErrorCode;
