@@ -177,8 +177,8 @@ CmpCloseKeyObject(IN PEPROCESS Process OPTIONAL,
         /* Don't do anything if we don't have a notify block */
         if (!KeyBody->NotifyBlock) return;
 
-        /* This shouldn't happen yet */
-        ASSERT(FALSE);
+        /* The last handle is going, so nobody can be told about changes anymore */
+        CmpFlushNotify(KeyBody, FALSE);
     }
 }
 
@@ -1751,6 +1751,9 @@ CmInitSystem1(VOID)
     ExInitializePushLock(&CmpHiveListHeadLock);
     ExInitializePushLock(&CmpLoadHiveLock);
 
+    /* Initialize the change notification lock */
+    ExInitializePushLock(&CmpNotifyLock);
+
     /* Initialize registry lock */
     ExInitializeResourceLite(&CmpRegistryLock);
 
@@ -2407,6 +2410,24 @@ CmpSetVersionData(VOID)
                   REG_SZ,
                   ValueData.Buffer,
                   ValueData.Length + sizeof(WCHAR));
+
+    /* Set the 'CurrentMajorVersionNumber' value */
+    RtlInitUnicodeString(&ValueName, L"CurrentMajorVersionNumber");
+    NtSetValueKey(CurrentVersionKeyHandle,
+                  &ValueName,
+                  0,
+                  REG_DWORD,
+                  &NtMajorVersion,
+                  sizeof(NtMajorVersion));
+
+    /* Set the 'CurrentMinorVersionNumber' value */
+    RtlInitUnicodeString(&ValueName, L"CurrentMinorVersionNumber");
+    NtSetValueKey(CurrentVersionKeyHandle,
+                  &ValueName,
+                  0,
+                  REG_DWORD,
+                  &NtMinorVersion,
+                  sizeof(NtMinorVersion));
 
     /* Set the 'BuildLab' value */
     RtlInitUnicodeString(&ValueName, L"BuildLab");
