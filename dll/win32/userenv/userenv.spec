@@ -121,3 +121,5 @@
 175 stub -noname CheckXForestLogon                                    #stdcall -noname CheckXForestLogon(4)
 200 stub -noname CreateURLFile                                        #stdcall -noname CreateURLFile(36)
 201 stub -noname DeleteURLFile                                        #stdcall -noname DeleteURLFile(16)
+
+@ stdcall DeleteAppContainerProfile(wstr)

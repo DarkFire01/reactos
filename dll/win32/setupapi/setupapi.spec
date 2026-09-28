@@ -707,3 +707,6 @@
 @ stub pSetupWriteLogError
 @ stub -version=0x600 pSpAddInboxDriverPackage # Vista only
 @ stub -version=0x600 pSpDeleteInboxDriverPackage # Vista only
+@ stdcall CM_MapCrToWin32Err(long long)
+@ stdcall CM_Register_Notification(ptr ptr ptr ptr)
+@ stdcall CM_Unregister_Notification(ptr)

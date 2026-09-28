@@ -1140,6 +1140,24 @@ HRESULT WINAPI WTHelperCertCheckValidSignature(CRYPT_PROVIDER_DATA *pProvData)
 }
 
 /***********************************************************************
+ *              WTGetSignatureInfo
+ *
+ * Nothing here reads a signature out of a file, so the caller is told there is
+ * none rather than being told about one that was never looked at.
+ */
+HRESULT WINAPI WTGetSignatureInfo(PCWSTR pszFile, HANDLE hFile, DWORD sigInfoFlags,
+                                  void *psiginfo, void *ppCertContext, HANDLE *phWVTStateData)
+{
+    FIXME("(%s, %p, %lx, %p, %p, %p) stub\n", debugstr_w(pszFile), hFile,
+          sigInfoFlags, psiginfo, ppCertContext, phWVTStateData);
+
+    if (phWVTStateData)
+        *phWVTStateData = NULL;
+
+    return TRUST_E_NOSIGNATURE;
+}
+
+/***********************************************************************
  *              IsCatalogFile
  */
 BOOL WINAPI IsCatalogFile(HANDLE hFile, WCHAR *pwszFileName)

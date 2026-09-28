@@ -218,3 +218,6 @@
 @ stub CM_Remove_Unmarked_Children_Ex # setupapi.CM_Remove_Unmarked_Children_Ex
 @ stub CM_Reset_Children_Marks # setupapi.CM_Reset_Children_Marks
 @ stub CM_Reset_Children_Marks_Ex # setupapi.CM_Reset_Children_Marks_Ex
+@ stdcall CM_MapCrToWin32Err(long long) setupapi.CM_MapCrToWin32Err
+@ stdcall CM_Register_Notification(ptr ptr ptr ptr) setupapi.CM_Register_Notification
+@ stdcall CM_Unregister_Notification(ptr) setupapi.CM_Unregister_Notification
