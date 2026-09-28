@@ -3027,6 +3027,58 @@ IoCheckQuotaBufferValidity(IN PFILE_QUOTA_INFORMATION QuotaBuffer,
  */
 NTSTATUS
 NTAPI
+IoCreateFileEx(OUT PHANDLE FileHandle,
+               IN ACCESS_MASK DesiredAccess,
+               IN POBJECT_ATTRIBUTES ObjectAttributes,
+               OUT PIO_STATUS_BLOCK IoStatusBlock,
+               IN PLARGE_INTEGER AllocationSize OPTIONAL,
+               IN ULONG FileAttributes,
+               IN ULONG ShareAccess,
+               IN ULONG Disposition,
+               IN ULONG CreateOptions,
+               IN PVOID EaBuffer OPTIONAL,
+               IN ULONG EaLength,
+               IN CREATE_FILE_TYPE CreateFileType,
+               IN PVOID InternalParameters OPTIONAL,
+               IN ULONG Options,
+               IN PIO_DRIVER_CREATE_CONTEXT DriverContext OPTIONAL)
+{
+    PDEVICE_OBJECT DeviceObject = NULL;
+
+    PAGED_CODE();
+
+    /*
+     * The context says which device the create is meant for, which is the part
+     * of it this can act on. What it carries for a transaction, and the extra
+     * parameters it may hold, are for a file system to read off the request,
+     * and nothing here puts them there yet.
+     */
+    if (DriverContext != NULL)
+        DeviceObject = DriverContext->DeviceObjectHint;
+
+    return IopCreateFile(FileHandle,
+                         DesiredAccess,
+                         ObjectAttributes,
+                         IoStatusBlock,
+                         AllocationSize,
+                         FileAttributes,
+                         ShareAccess,
+                         Disposition,
+                         CreateOptions,
+                         EaBuffer,
+                         EaLength,
+                         CreateFileType,
+                         InternalParameters,
+                         Options,
+                         0,
+                         DeviceObject);
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
 IoCreateFile(OUT PHANDLE FileHandle,
              IN ACCESS_MASK DesiredAccess,
              IN POBJECT_ATTRIBUTES ObjectAttributes,

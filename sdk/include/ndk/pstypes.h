@@ -1391,6 +1391,8 @@ typedef struct _ETHREAD
 #ifndef _WIN64
     volatile ULONG CycleTimeHigh;
 #endif
+    // What a thread says its work belongs to, for anything tracing it
+    PGUID ActivityId;
 #endif
 } ETHREAD;
 
