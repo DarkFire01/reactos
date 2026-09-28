@@ -2380,7 +2380,7 @@ IoQueueWorkItemEx(
   _In_ WORK_QUEUE_TYPE QueueType,
   _In_opt_ __drv_aliasesMem PVOID Context);
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 IO_PRIORITY_HINT
 NTAPI
 IoGetIoPriorityHint(
