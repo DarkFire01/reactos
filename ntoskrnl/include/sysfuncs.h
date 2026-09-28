@@ -299,4 +299,7 @@
 
 #ifndef SYSFUNCS_NT5_ONLY
     SVC_(GetCurrentProcessorNumberEx, 1)
+    SVC_(CreateWaitCompletionPacket, 3)
+    SVC_(AssociateWaitCompletionPacket, 8)
+    SVC_(CancelWaitCompletionPacket, 2)
 #endif

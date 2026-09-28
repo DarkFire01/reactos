@@ -309,6 +309,19 @@ IopCreateObjectTypes(VOID)
                                        NULL,
                                        &IoCompletionType))) return FALSE;
 
+    /* Initialize what a pending post on one of those is named by */
+    RtlInitUnicodeString(&Name, L"WaitCompletionPacket");
+    ObjectTypeInitializer.DefaultNonPagedPoolCharge = 0;
+    ObjectTypeInitializer.ValidAccessMask = STANDARD_RIGHTS_ALL | SYNCHRONIZE;
+    ObjectTypeInitializer.GenericMapping = IopCompletionMapping;
+    ObjectTypeInitializer.DeleteProcedure = IopDeleteWaitCompletionPacket;
+    if (!NT_SUCCESS(ObCreateObjectType(&Name,
+                                       &ObjectTypeInitializer,
+                                       NULL,
+                                       &IoWaitCompletionPacketType))) return FALSE;
+
+    IopInitWaitCompletionPackets();
+
     /* Initialize the File object type  */
     RtlInitUnicodeString(&Name, L"File");
     ObjectTypeInitializer.DefaultNonPagedPoolCharge = sizeof(FILE_OBJECT);

@@ -142,6 +142,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/symlink.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/util.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/volume.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/waitpkt.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/pnpmgr/arb/arbbus.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/pnpmgr/arb/arbdma.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/pnpmgr/arb/arbirq.c
