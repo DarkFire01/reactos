@@ -2010,7 +2010,11 @@ HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp\Parameters\PnpInterface","5",0x000
 HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Group",0x00000000,"Extended Base"
 HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","ImagePath",0x00020000,"\SystemRoot\system32\drivers\storvsp.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Start",0x00010001,0x00000003
+; Windows leaves this on demand and lets its own installer bring the device up.
+; Nothing here installs a root device from an inf, so the driver is loaded with
+; the system and is already there when the device is enumerated, which is what
+; the rest of the root enumerated drivers here do.
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Start",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Tag",0x00010001,0x0000000b
 HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\storvsp\Parameters\Wdf","WdfMajorVersion",0x00010001,0x00000001
