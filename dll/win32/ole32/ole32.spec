@@ -277,7 +277,36 @@
 @ stub MonikerRelativePathTo
 # NdrOleInitializeExtension
 # NdrProxyForwardingFunction3...32
-# ObjectStublessClient3...32
+@ cdecl ObjectStublessClient3() rpcrt4.ObjectStublessClient3
+@ cdecl ObjectStublessClient4() rpcrt4.ObjectStublessClient4
+@ cdecl ObjectStublessClient5() rpcrt4.ObjectStublessClient5
+@ cdecl ObjectStublessClient6() rpcrt4.ObjectStublessClient6
+@ cdecl ObjectStublessClient7() rpcrt4.ObjectStublessClient7
+@ cdecl ObjectStublessClient8() rpcrt4.ObjectStublessClient8
+@ cdecl ObjectStublessClient9() rpcrt4.ObjectStublessClient9
+@ cdecl ObjectStublessClient10() rpcrt4.ObjectStublessClient10
+@ cdecl ObjectStublessClient11() rpcrt4.ObjectStublessClient11
+@ cdecl ObjectStublessClient12() rpcrt4.ObjectStublessClient12
+@ cdecl ObjectStublessClient13() rpcrt4.ObjectStublessClient13
+@ cdecl ObjectStublessClient14() rpcrt4.ObjectStublessClient14
+@ cdecl ObjectStublessClient15() rpcrt4.ObjectStublessClient15
+@ cdecl ObjectStublessClient16() rpcrt4.ObjectStublessClient16
+@ cdecl ObjectStublessClient17() rpcrt4.ObjectStublessClient17
+@ cdecl ObjectStublessClient18() rpcrt4.ObjectStublessClient18
+@ cdecl ObjectStublessClient19() rpcrt4.ObjectStublessClient19
+@ cdecl ObjectStublessClient20() rpcrt4.ObjectStublessClient20
+@ cdecl ObjectStublessClient21() rpcrt4.ObjectStublessClient21
+@ cdecl ObjectStublessClient22() rpcrt4.ObjectStublessClient22
+@ cdecl ObjectStublessClient23() rpcrt4.ObjectStublessClient23
+@ cdecl ObjectStublessClient24() rpcrt4.ObjectStublessClient24
+@ cdecl ObjectStublessClient25() rpcrt4.ObjectStublessClient25
+@ cdecl ObjectStublessClient26() rpcrt4.ObjectStublessClient26
+@ cdecl ObjectStublessClient27() rpcrt4.ObjectStublessClient27
+@ cdecl ObjectStublessClient28() rpcrt4.ObjectStublessClient28
+@ cdecl ObjectStublessClient29() rpcrt4.ObjectStublessClient29
+@ cdecl ObjectStublessClient30() rpcrt4.ObjectStublessClient30
+@ cdecl ObjectStublessClient31() rpcrt4.ObjectStublessClient31
+@ cdecl ObjectStublessClient32() rpcrt4.ObjectStublessClient32
 @ stdcall Ole32DllGetClassObject(ptr ptr ptr)
 @ stdcall OleBuildVersion()
 @ stdcall OleConvertIStorageToOLESTREAM(ptr ptr)
