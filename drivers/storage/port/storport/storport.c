@@ -1408,7 +1408,7 @@ StorPortGetDeviceBase(
 
 
 /*
- * @unimplemented
+ * @implemented
  */
 STORPORT_API
 PVOID
@@ -1419,9 +1419,28 @@ StorPortGetLogicalUnit(
     _In_ UCHAR TargetId,
     _In_ UCHAR Lun)
 {
-    DPRINT1("StorPortGetLogicalUnit()\n");
-    UNIMPLEMENTED;
-    return NULL;
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension;
+    PPDO_DEVICE_EXTENSION PdoExtension;
+
+    DPRINT("StorPortGetLogicalUnit(%p %u %u %u)\n",
+           HwDeviceExtension, PathId, TargetId, Lun);
+
+    if (HwDeviceExtension == NULL)
+        return NULL;
+
+    MiniportExtension = CONTAINING_RECORD(HwDeviceExtension,
+                                          MINIPORT_DEVICE_EXTENSION,
+                                          HwDeviceExtension);
+
+    /* A unit nothing ever found has nothing kept about it */
+    PdoExtension = FdoFindLun(MiniportExtension->Miniport->DeviceExtension,
+                              PathId,
+                              TargetId,
+                              Lun);
+    if (PdoExtension == NULL)
+        return NULL;
+
+    return PdoExtension->LunExtension;
 }
 
 
@@ -1868,6 +1887,21 @@ StorPortNotification(
             /* Insert DPC for delayed completion */
             KeInsertQueueDpc(&FdoExtension->Device->Dpc, NULL, NULL);
             
+            break;
+
+        case BusChangeDetected:
+            DPRINT1("BusChangeDetected\n");
+
+            /*
+             * What the miniport has to say about is a unit appearing or going
+             * away, which is a question only the bus above can ask. Telling it
+             * the answer it holds is stale is how the scan gets run again.
+             */
+            if (FdoExtension != NULL && FdoExtension->PhysicalDevice != NULL)
+            {
+                IoInvalidateDeviceRelations(FdoExtension->PhysicalDevice,
+                                            BusRelations);
+            }
             break;
 
         case GetExtendedFunctionTable:

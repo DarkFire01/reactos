@@ -1065,23 +1065,19 @@ FdoFindLun(
 
     KeAcquireInStackQueuedSpinLock(&FdoExtension->PdoListLock, &LockHandle);
 
-    if (!IsListEmpty(&FdoExtension->PdoListHead))
+    /* Walking off the end means there is none, not that the last one will do */
+    for (PdoEntry = PdoListHead->Flink;
+         PdoEntry != PdoListHead;
+         PdoEntry = PdoEntry->Flink)
     {
-        PdoEntry = PdoListHead->Flink;
+        PPDO_DEVICE_EXTENSION Entry =
+            CONTAINING_RECORD(PdoEntry, PDO_DEVICE_EXTENSION, PdoListEntry);
 
-        do
+        if (Entry->Bus == Bus && Entry->Target == Target && Entry->Lun == Lun)
         {
-            PdoExtension = CONTAINING_RECORD(PdoEntry, PDO_DEVICE_EXTENSION, PdoListEntry);
-
-            if (PdoExtension->Bus == Bus && PdoExtension->Target == Target &&
-                PdoExtension->Lun == Lun)
-            {
-                break;
-            }
-
-            PdoEntry = PdoEntry->Flink;
+            PdoExtension = Entry;
+            break;
         }
-        while (PdoEntry != PdoListHead);
     }
 
     KeReleaseInStackQueuedSpinLock(&LockHandle);
