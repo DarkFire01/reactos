@@ -33,7 +33,13 @@ typedef struct _HALP_APIC_INFO_TABLE
     ULONG IoApicIrqBase[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER]; // Global system interrupt base
     ULONG IsaIrqGsi[HALP_ISA_IRQ_COUNT];                     // Interrupt source override target
     KINTERRUPT_POLARITY IsaIrqPolarity[HALP_ISA_IRQ_COUNT];  // Unknown when conforming to the bus
+    UCHAR IsaIrqTrigger[HALP_ISA_IRQ_COUNT];                 // HALP_ISA_TRIGGER_*
 } HALP_APIC_INFO_TABLE, *PHALP_APIC_INFO_TABLE;
+
+/* HALP_APIC_INFO_TABLE.IsaIrqTrigger values */
+#define HALP_ISA_TRIGGER_CONFORMS 0
+#define HALP_ISA_TRIGGER_EDGE     1
+#define HALP_ISA_TRIGGER_LEVEL    2
 
 /* HALP_APIC_INFO_TABLE.ApicMode values */
 // TODO: What are the other modes/values?
