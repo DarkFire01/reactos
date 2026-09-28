@@ -768,7 +768,8 @@ IopSaveFailedTranslation(
  * Translates an assigned resource to the resource the processor uses, with the
  * translators cached on the device node and above it. When the root is
  * reached, the translation continues from the bus that provides the legacy bus
- * of the resource, unless the resource was reported by the HAL.
+ * of the resource. HAL reported resources start at the root, and skip the
+ * legacy bus when internal.
  *
  * @param[in] DeviceNode
  * The device the resource is assigned to, or NULL to start at the legacy bus.
@@ -792,21 +793,23 @@ IopTranslateResourceToRoot(
     CM_PARTIAL_RESOURCE_DESCRIPTOR Current = *Raw;
     CM_PARTIAL_RESOURCE_DESCRIPTOR Next;
     PDEVICE_OBJECT PhysicalDeviceObject = NULL;
-    BOOLEAN DidVisitLegacyBus = (RequestSource == ArbiterRequestHalReported);
+    BOOLEAN IsHalReported = (RequestSource == ArbiterRequestHalReported);
+    BOOLEAN DidVisitLegacyBus = IsHalReported && InterfaceType == Internal;
     NTSTATUS Status = STATUS_SUCCESS;
     PDEVICE_NODE Node;
 
     PAGED_CODE();
 
     if (DeviceNode != NULL)
-    {
-        Node = DeviceNode;
         PhysicalDeviceObject = DeviceNode->PhysicalDeviceObject;
-    }
+
+    /* HAL reported resources were arbitrated at the root, so they are translated from there */
+    if (IsHalReported)
+        Node = IopRootDeviceNode;
+    else if (DeviceNode != NULL)
+        Node = DeviceNode;
     else
-    {
         Node = IopLookupLegacyBus(InterfaceType, BusNumber);
-    }
 
     while (Node != NULL)
     {
