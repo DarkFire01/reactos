@@ -269,6 +269,59 @@ GetOverlappedResult(IN HANDLE hFile,
     return TRUE;
 }
 
+/**
+ * @brief
+ * Reports what came of an overlapped operation, waiting as long as the caller
+ * says rather than either not at all or forever.
+ *
+ * @implemented
+ */
+BOOL
+WINAPI
+GetOverlappedResultEx(
+    _In_ HANDLE hFile,
+    _In_ LPOVERLAPPED lpOverlapped,
+    _Out_ LPDWORD lpNumberOfBytesTransferred,
+    _In_ DWORD dwMilliseconds,
+    _In_ BOOL bAlertable)
+{
+    DWORD WaitStatus;
+    HANDLE hObject;
+
+    if (lpOverlapped->Internal == STATUS_PENDING)
+    {
+        hObject = lpOverlapped->hEvent ? lpOverlapped->hEvent : hFile;
+
+        WaitStatus = WaitForSingleObjectEx(hObject, dwMilliseconds, bAlertable);
+
+        if (WaitStatus == WAIT_TIMEOUT)
+        {
+            SetLastError(ERROR_IO_INCOMPLETE);
+            return FALSE;
+        }
+
+        /* An alertable wait that was interrupted is not a failure of the I/O */
+        if (WaitStatus == WAIT_IO_COMPLETION)
+        {
+            SetLastError(WAIT_IO_COMPLETION);
+            return FALSE;
+        }
+
+        if (WaitStatus != WAIT_OBJECT_0)
+            return FALSE;
+    }
+
+    *lpNumberOfBytesTransferred = lpOverlapped->InternalHigh;
+
+    if (!NT_SUCCESS(lpOverlapped->Internal))
+    {
+        BaseSetLastNTError(lpOverlapped->Internal);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 /*
  * @implemented
  */

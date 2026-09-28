@@ -694,8 +694,31 @@ GetUILanguageInfo(
 }
 
 
-/*
- * @unimplemented
+/**
+ * @brief
+ * Retrieves the languages the user would rather read, most wanted first.
+ *
+ * @param[in] dwFlags
+ * Whether the list is wanted as names or as language identifiers. Exactly one
+ * of MUI_LANGUAGE_NAME and MUI_LANGUAGE_ID has to be asked for.
+ *
+ * @param[out] pulNumLanguages
+ * Receives how many languages the list holds.
+ *
+ * @param[out] pwszLanguagesBuffer
+ * Receives the list, each entry terminated and the list terminated again. NULL
+ * asks for the size instead.
+ *
+ * @param[in,out] pcchLanguagesBuffer
+ * The size of the buffer in characters going in, what was needed coming out.
+ *
+ * @return
+ * TRUE, or FALSE with a last error set.
+ *
+ * @remarks
+ * There is one language here, the user's own, because nothing records an order
+ * of preference to report. A caller that is handed no languages at all takes it
+ * for the locale being unreadable, so saying one is the useful answer.
  */
 BOOL
 WINAPI
@@ -705,9 +728,67 @@ GetUserPreferredUILanguages(
     PZZWSTR pwszLanguagesBuffer,
     PULONG pcchLanguagesBuffer)
 {
-    DPRINT1("%x %p %p %p\n", dwFlags, pulNumLanguages, pwszLanguagesBuffer, pcchLanguagesBuffer);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return FALSE;
+    WCHAR szLanguage[LOCALE_NAME_MAX_LENGTH];
+    ULONG cchNeeded;
+    INT cchLanguage;
+
+    if ((pulNumLanguages == NULL) || (pcchLanguagesBuffer == NULL))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* One form or the other, never both and never neither */
+    if (((dwFlags & (MUI_LANGUAGE_NAME | MUI_LANGUAGE_ID)) == 0) ||
+        ((dwFlags & (MUI_LANGUAGE_NAME | MUI_LANGUAGE_ID)) ==
+         (MUI_LANGUAGE_NAME | MUI_LANGUAGE_ID)))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (dwFlags & MUI_LANGUAGE_ID)
+    {
+        cchLanguage = swprintf(szLanguage,
+                               ARRAYSIZE(szLanguage),
+                               L"%04hX",
+                               GetUserDefaultUILanguage());
+    }
+    else
+    {
+        cchLanguage = GetUserDefaultLocaleName(szLanguage, ARRAYSIZE(szLanguage));
+        if (cchLanguage == 0)
+            return FALSE;
+
+        /* The count it gives back leaves out the terminator */
+        cchLanguage--;
+    }
+
+    /* Each entry is terminated, and the list is terminated after the last one */
+    cchNeeded = cchLanguage + 2;
+
+    if ((pwszLanguagesBuffer == NULL) || (*pcchLanguagesBuffer == 0))
+    {
+        *pulNumLanguages = 1;
+        *pcchLanguagesBuffer = cchNeeded;
+        return TRUE;
+    }
+
+    if (*pcchLanguagesBuffer < cchNeeded)
+    {
+        *pcchLanguagesBuffer = cchNeeded;
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    RtlCopyMemory(pwszLanguagesBuffer, szLanguage, cchLanguage * sizeof(WCHAR));
+    pwszLanguagesBuffer[cchLanguage] = UNICODE_NULL;
+    pwszLanguagesBuffer[cchLanguage + 1] = UNICODE_NULL;
+
+    *pulNumLanguages = 1;
+    *pcchLanguagesBuffer = cchNeeded;
+
+    return TRUE;
 }
 
 /*

@@ -3300,4 +3300,77 @@ SetLastConsoleEventActive(VOID)
                                sizeof(*NotifyLastCloseRequest));
 }
 
+#if (NTDDI_VERSION < NTDDI_WIN10_RS5) && !defined(_KERNELBASE_)
+/* Declared in wincon.h above the version this builds at */
+typedef VOID *HPCON;
+#endif
+
+/*
+ * A pseudoconsole is a console served by whoever asked for it rather than by
+ * the console server. Nothing here serves one, so one is never handed out, and
+ * the two calls that would work on one have nothing that could reach them.
+ */
+
+HRESULT
+WINAPI
+CreatePseudoConsole(
+    _In_ COORD Size,
+    _In_ HANDLE Input,
+    _In_ HANDLE Output,
+    _In_ DWORD Flags,
+    _Out_ HPCON *PseudoConsole)
+{
+    UNREFERENCED_PARAMETER(Size);
+    UNREFERENCED_PARAMETER(Input);
+    UNREFERENCED_PARAMETER(Output);
+    UNREFERENCED_PARAMETER(Flags);
+
+    if (PseudoConsole != NULL)
+        *PseudoConsole = NULL;
+
+    return E_NOTIMPL;
+}
+
+HRESULT
+WINAPI
+CreatePseudoConsoleAsUser(
+    _In_ HANDLE Token,
+    _In_ COORD Size,
+    _In_ HANDLE Input,
+    _In_ HANDLE Output,
+    _In_ DWORD Flags,
+    _Out_ HPCON *PseudoConsole)
+{
+    UNREFERENCED_PARAMETER(Token);
+    UNREFERENCED_PARAMETER(Size);
+    UNREFERENCED_PARAMETER(Input);
+    UNREFERENCED_PARAMETER(Output);
+    UNREFERENCED_PARAMETER(Flags);
+
+    if (PseudoConsole != NULL)
+        *PseudoConsole = NULL;
+
+    return E_NOTIMPL;
+}
+
+VOID
+WINAPI
+ClosePseudoConsole(
+    _In_ HPCON PseudoConsole)
+{
+    UNREFERENCED_PARAMETER(PseudoConsole);
+}
+
+HRESULT
+WINAPI
+ResizePseudoConsole(
+    _In_ HPCON PseudoConsole,
+    _In_ COORD Size)
+{
+    UNREFERENCED_PARAMETER(Size);
+    UNREFERENCED_PARAMETER(PseudoConsole);
+
+    return E_HANDLE;
+}
+
 /* EOF */

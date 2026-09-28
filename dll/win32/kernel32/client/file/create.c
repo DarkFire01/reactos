@@ -14,6 +14,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <k32.h>
+#include <fileapi.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -568,6 +569,52 @@ ReOpenFile(IN HANDLE hOriginalFile,
 {
    STUB;
    return INVALID_HANDLE_VALUE;
+}
+
+/**
+ * @brief
+ * Opens or creates a file, taking everything past the access and share modes
+ * from a structure instead of from its own parameters.
+ *
+ * @remarks
+ * The flags and the attributes travel together in the one argument CreateFileW
+ * takes for both, which is what this has to put back together.
+ */
+HANDLE
+WINAPI
+CreateFile2(
+    _In_ LPCWSTR FileName,
+    _In_ DWORD DesiredAccess,
+    _In_ DWORD ShareMode,
+    _In_ DWORD CreationDisposition,
+    _In_opt_ LPCREATEFILE2_EXTENDED_PARAMETERS ExtendedParameters)
+{
+    LPSECURITY_ATTRIBUTES SecurityAttributes = NULL;
+    HANDLE TemplateFile = NULL;
+    DWORD FlagsAndAttributes = 0;
+
+    if (ExtendedParameters != NULL)
+    {
+        if (ExtendedParameters->dwSize != sizeof(*ExtendedParameters))
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return INVALID_HANDLE_VALUE;
+        }
+
+        FlagsAndAttributes = ExtendedParameters->dwFileAttributes |
+                             ExtendedParameters->dwFileFlags |
+                             ExtendedParameters->dwSecurityQosFlags;
+        SecurityAttributes = ExtendedParameters->lpSecurityAttributes;
+        TemplateFile = ExtendedParameters->hTemplateFile;
+    }
+
+    return CreateFileW(FileName,
+                       DesiredAccess,
+                       ShareMode,
+                       SecurityAttributes,
+                       CreationDisposition,
+                       FlagsAndAttributes,
+                       TemplateFile);
 }
 
 /* EOF */

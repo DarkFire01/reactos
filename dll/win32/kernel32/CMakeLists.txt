@@ -37,6 +37,8 @@ list(APPEND SOURCE
     client/proc.c
     client/procansi.c
     client/resntfy.c
+    client/charstr.c
+    client/resstr.c
     client/session.c
     client/synch.c
     client/synchansi.c

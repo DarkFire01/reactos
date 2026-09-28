@@ -9,6 +9,7 @@ add_definitions(
 include_directories(BEFORE ${REACTOS_SOURCE_DIR}/sdk/include/wine)
 
 add_subdirectory(wine)
+add_subdirectory(fwd)
 
 spec2def(kernelbase_ros.dll kernelbase_ros.spec ADD_IMPORTLIB)
 

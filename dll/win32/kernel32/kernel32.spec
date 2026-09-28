@@ -71,6 +71,8 @@
 @ stdcall ClearCommError(long ptr ptr)
 @ stdcall CloseConsoleHandle(long)
 @ stdcall CloseHandle(long)
+@ stdcall -version=0xA00+ ClosePseudoConsole(ptr)
+@ stdcall -version=0xA00+ CreatePseudoConsole(long long long long ptr)
 @ stdcall -stub -version=0x600+ ClosePrivateNamespace(ptr long)
 @ stdcall CloseProfileUserMapping()
 @ stdcall -version=0x600+ CloseThreadpool(ptr) ntdll.TpReleasePool
@@ -103,6 +105,7 @@
 @ stdcall CopyFileA(str str long)
 @ stdcall CopyFileExA(str str ptr ptr ptr long)
 @ stdcall CopyFileExW(wstr wstr ptr ptr ptr long)
+@ stdcall -version=0x602+ CopyFile2(wstr wstr ptr)
 @ stdcall -stub -version=0x600+ CopyFileTransactedA(str str ptr ptr ptr long ptr)
 @ stdcall -stub -version=0x600+ CopyFileTransactedW(wstr wstr ptr ptr ptr long ptr)
 @ stdcall CopyFileW(wstr wstr long)
@@ -132,6 +135,7 @@
 @ stdcall -stub -version=0x600+ CreateFileTransactedA(str long long ptr long long ptr ptr ptr ptr)
 @ stdcall -stub -version=0x600+ CreateFileTransactedW(wstr long long ptr long long ptr ptr ptr ptr)
 @ stdcall CreateFileW(wstr long long ptr long long long)
+@ stdcall -version=0x602+ CreateFile2(wstr long long long ptr)
 @ stdcall CreateHardLinkA(str str ptr)
 @ stdcall -stub -version=0x600+ CreateHardLinkTransactedA(str str ptr ptr)
 @ stdcall -stub -version=0x600+ CreateHardLinkTransactedW(wstr wstr ptr ptr)
@@ -157,7 +161,9 @@
 @ stdcall CreateProcessInternalA(ptr str str ptr ptr long long ptr str ptr ptr long)
 @ stdcall CreateProcessInternalW(ptr wstr wstr ptr ptr long long ptr wstr ptr ptr long)
 @ stdcall CreateProcessW(wstr wstr ptr ptr long long ptr wstr ptr ptr)
+@ stdcall -version=0xA00+ CreatePseudoConsoleAsUser(long long long long long ptr)
 @ stdcall CreateRemoteThread(long ptr long ptr long long ptr)
+@ stdcall -version=0x600+ CreateRemoteThreadEx(long ptr long ptr ptr long ptr ptr)
 @ stdcall CreateSemaphoreA(ptr long long str)
 @ stdcall -version=0x600+ CreateSemaphoreExA(ptr long long str long long)
 @ stdcall -version=0x600+ CreateSemaphoreExW(ptr long long wstr long long)
@@ -385,6 +391,7 @@
 @ stdcall GetComputerNameExA(long ptr ptr)
 @ stdcall GetComputerNameExW(long ptr ptr)
 @ stdcall GetComputerNameW(ptr ptr)
+@ stdcall -version=0x600+ DnsHostnameToComputerNameExW(wstr ptr ptr)
 @ stdcall GetConsoleAliasA(str str long str)
 @ stdcall GetConsoleAliasExesA(str long)
 @ stdcall GetConsoleAliasExesLengthA()
@@ -434,6 +441,9 @@
 @ stdcall GetCurrentDirectoryA(long ptr)
 @ stdcall GetCurrentDirectoryW(long ptr)
 @ stdcall -version=0x602+ GetCurrentPackageId(ptr ptr)
+@ stdcall -version=0x602+ GetCurrentPackagePath(ptr ptr)
+@ stdcall -version=0x602+ GetPackageFamilyName(long ptr ptr)
+@ stdcall -version=0x602+ GetPackagesByPackageFamily(wstr ptr ptr ptr ptr)
 @ stdcall -norelay GetCurrentProcess()
 @ stdcall -norelay GetCurrentProcessId()
 @ stdcall GetCurrentProcessorNumber() ntdll.RtlGetCurrentProcessorNumber
@@ -507,6 +517,9 @@
 @ stdcall -version=0x600+ GetLocaleInfoEx(wstr long ptr long)
 @ stdcall GetLocaleInfoW(long long ptr long)
 @ stdcall -version=0x600+ IsValidLocaleName(wstr)
+@ stdcall -version=0x600+ ResolveLocaleName(wstr ptr long)
+@ stdcall -version=0xA00+ GetUserDefaultGeoName(ptr long)
+@ stdcall -version=0x600+ FindStringOrdinal(long wstr long wstr long long)
 @ stdcall GetLogicalDriveStringsA(long ptr)
 @ stdcall GetLogicalDriveStringsW(long ptr)
 @ stdcall GetLogicalDrives()
@@ -540,11 +553,21 @@
 @ stdcall GetNextVDMCommand(long)
 @ stdcall -version=0x500-0x502 GetNlsSectionName(long long long str str long)
 @ stdcall GetNumaAvailableMemoryNode(long ptr)
+@ stdcall -version=0x601+ GetNumaAvailableMemoryNodeEx(long ptr)
 @ stdcall GetNumaHighestNodeNumber(ptr)
 @ stdcall -stub -version=0x601+ GetNumaNodeProcessorMaskEx(long ptr)
 @ stdcall GetNumaNodeProcessorMask(long ptr)
 @ stdcall GetNumaProcessorNode(long ptr)
 @ stub -version=0x600+ GetNumaProximityNode
+@ stdcall -version=0x601+ GetNumaProximityNodeEx(long ptr)
+@ stdcall -version=0x601+ SetProcessGroupAffinity(long ptr ptr)
+@ stdcall -version=0x602+ GetProcessMitigationPolicy(long long ptr long)
+@ stdcall -version=0x602+ SetProcessMitigationPolicy(long ptr long)
+@ stdcall -version=0x601+ QueryUnbiasedInterruptTime(ptr)
+@ stdcall -version=0x600+ EventActivityIdControl(long ptr) ntdll.EtwEventActivityIdControl
+@ stdcall -version=0x600+ EventEnabled(int64 ptr) ntdll.EtwEventEnabled
+@ stdcall -version=0x600+ EventWrite(int64 ptr long ptr) ntdll.EtwEventWrite
+@ stdcall -version=0xA00+ EventWriteEx(int64 ptr int64 long ptr ptr long ptr) ntdll.EtwEventWriteEx
 @ stdcall GetNumberFormatA(long long str ptr ptr long)
 @ stdcall -version=0x600+ GetNumberFormatEx(wstr long wstr ptr wstr long)
 @ stdcall GetNumberFormatW(long long wstr ptr ptr long)
@@ -553,6 +576,7 @@
 @ stdcall GetNumberOfConsoleMouseButtons(ptr)
 @ stdcall GetOEMCP()
 @ stdcall GetOverlappedResult(long ptr ptr long)
+@ stdcall -version=0x602+ GetOverlappedResultEx(long ptr ptr long long)
 @ stdcall -stub -version=0x600+ GetPhysicallyInstalledSystemMemory(ptr)
 @ stdcall GetPriorityClass(long)
 @ stdcall GetPrivateProfileIntA(str str long str)
@@ -629,6 +653,8 @@
 @ stdcall GetTempFileNameW(wstr wstr long ptr)
 @ stdcall GetTempPathA(long ptr)
 @ stdcall GetTempPathW(long ptr)
+@ stdcall -version=0xA00+ GetTempPath2A(long ptr)
+@ stdcall -version=0xA00+ GetTempPath2W(long ptr)
 @ stdcall GetThreadContext(long ptr)
 @ stdcall -stub -version=0x600+ GetThreadErrorMode()
 @ stdcall -version=0x601+ GetThreadGroupAffinity(ptr ptr)
@@ -823,6 +849,11 @@
 @ stdcall LocalAlloc(long long)
 @ stdcall LocalCompact(long)
 @ stdcall LocalFileTimeToFileTime(ptr ptr)
+@ stdcall -private CharNextA(str) BaseCharNextA
+@ stdcall -private CharNextW(wstr) BaseCharNextW
+@ stdcall -private CharPrevA(str str) BaseCharPrevA
+@ stdcall -private CharPrevW(wstr wstr) BaseCharPrevW
+@ stdcall -private LoadStringW(long long ptr long) BaseLoadStringW
 @ stdcall LocalFlags(long)
 @ stdcall LocalFree(long)
 @ stdcall LocalHandle(ptr)
@@ -881,6 +912,10 @@
 @ stub -version=0x600+ OpenPrivateNamespaceA
 @ stub -version=0x600+ OpenPrivateNamespaceW
 @ stdcall OpenProcess(long long long)
+@ stdcall -private OpenProcessToken(long long ptr) BaseOpenProcessToken
+@ stdcall -private OpenThreadToken(long long long ptr) BaseOpenThreadToken
+@ stdcall -private SetThreadToken(ptr long) BaseSetThreadToken
+@ stdcall -private CreateProcessAsUserW(long wstr wstr ptr ptr long long ptr wstr ptr ptr) BaseCreateProcessAsUserW
 @ stdcall OpenProfileUserMapping()
 @ stdcall OpenSemaphoreA(long long str)
 @ stdcall OpenSemaphoreW(long long wstr)
@@ -1129,10 +1164,14 @@
 @ stdcall -version=0x600+ SetThreadpoolThreadMaximum(ptr long) ntdll.TpSetPoolMaxThreads
 @ stdcall -version=0x600+ SetThreadpoolThreadMinimum(ptr long) ntdll.TpSetPoolMinThreads
 @ stdcall -version=0x600+ SetThreadpoolTimer(ptr ptr long long) ntdll.TpSetTimer
+@ stdcall -version=0x602+ SetThreadpoolTimerEx(ptr ptr long long) ntdll.TpSetTimerEx
 @ stdcall -version=0x600+ SetThreadpoolWait(ptr long ptr) ntdll.TpSetWait
 @ stdcall SetTimeZoneInformation(ptr)
 @ stdcall SetTimerQueueTimer(long ptr ptr long long long)
 @ stdcall SetUnhandledExceptionFilter(ptr)
+@ stdcall -version=0x602+ WerRegisterCustomMetadata(wstr wstr)
+@ stdcall -version=0xA00+ ResizePseudoConsole(ptr long)
+@ stdcall -version=0x602+ QueryOptionalDelayLoadedAPI(ptr str str long)
 @ stdcall SetUserGeoID(long)
 @ stdcall SetVDMCurrentDirectories(long long)
 @ stdcall SetVolumeLabelA(str str)
@@ -1322,6 +1361,8 @@
 @ stdcall -version=0x600+ PerfCreateInstance(ptr ptr wstr long)
 @ stdcall -version=0x600+ PerfDeleteInstance(ptr ptr)
 @ stdcall -version=0x600+ PerfSetCounterRefValue(ptr ptr long ptr)
+@ stdcall -version=0x600+ PerfSetULongCounterValue(ptr ptr long long)
+@ stdcall -version=0x600+ PerfSetULongLongCounterValue(ptr ptr long int64)
 @ stdcall -version=0x600+ PerfSetCounterSetInfo(ptr ptr long)
 @ stdcall -version=0x600+ PerfStartProvider(ptr ptr ptr)
 @ stdcall -version=0x600+ PerfStopProvider(ptr)

@@ -431,4 +431,50 @@ PrivCopyFileExW(IN LPCWSTR lpExistingFileName,
     return Ret;
 }
 
+/**
+ * @brief
+ * Copies a file, reporting progress through the routine in a structure rather
+ * than through its own parameters, and answering with an HRESULT.
+ *
+ * @remarks
+ * The progress routine of the extended form is not the one CopyFileExW takes:
+ * it is called with a different record and answers differently, so a caller
+ * that asks for progress is told this cannot be done rather than being given
+ * calls it would misread.
+ */
+HRESULT
+WINAPI
+CopyFile2(
+    _In_ PCWSTR ExistingFileName,
+    _In_ PCWSTR NewFileName,
+    _In_opt_ COPYFILE2_EXTENDED_PARAMETERS *ExtendedParameters)
+{
+    DWORD CopyFlags = 0;
+    BOOL *Cancel = NULL;
+
+    if (ExtendedParameters != NULL)
+    {
+        if (ExtendedParameters->dwSize != sizeof(*ExtendedParameters))
+            return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+
+        if (ExtendedParameters->pProgressRoutine != NULL)
+            return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+
+        CopyFlags = ExtendedParameters->dwCopyFlags;
+        Cancel = ExtendedParameters->pfCancel;
+    }
+
+    if (!CopyFileExW(ExistingFileName,
+                     NewFileName,
+                     NULL,
+                     NULL,
+                     Cancel,
+                     CopyFlags))
+    {
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    return S_OK;
+}
+
 /* EOF */

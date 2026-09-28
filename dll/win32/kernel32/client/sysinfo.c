@@ -15,6 +15,9 @@
 
 #include <k32.h>
 
+/* Where the page the kernel publishes keeps the time the system spent asleep */
+#define K32_INTERRUPT_TIME_BIAS_OFFSET 0x3B0
+
 #define NDEBUG
 #include <debug.h>
 
@@ -414,6 +417,128 @@ GetNumaAvailableMemoryNode(IN UCHAR Node,
     return TRUE;
 }
 
+/**
+ * @brief
+ * Reports the memory available on one node, named by group and number rather
+ * than by number alone.
+ *
+ * @remarks
+ * There is one group here, so a node of any other group has no memory to
+ * report and saying so is the answer.
+ *
+ * @implemented
+ */
+BOOL
+WINAPI
+GetNumaAvailableMemoryNodeEx(
+    _In_ USHORT Node,
+    _Out_ PULONGLONG AvailableBytes)
+{
+    if (Node > MAXUCHAR)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    return GetNumaAvailableMemoryNode((UCHAR)Node, AvailableBytes);
+}
+
+/**
+ * @brief
+ * Says which node a proximity identifier belongs to.
+ *
+ * @remarks
+ * Every processor here is on the one node, so that is the answer for any
+ * identifier the firmware handed out.
+ *
+ * @implemented
+ */
+BOOL
+WINAPI
+GetNumaProximityNodeEx(
+    _In_ ULONG ProximityId,
+    _Out_ PUSHORT NodeNumber)
+{
+    UNREFERENCED_PARAMETER(ProximityId);
+
+    *NodeNumber = 0;
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Keeps a process to the processors of one group.
+ *
+ * @param[out] PreviousGroupAffinity
+ * Where the affinity that was in force is written, when the caller asked for it.
+ *
+ * @remarks
+ * There is one group, so what a process is being asked to keep to is what it
+ * already has, and the answer is the group it is in.
+ *
+ * @implemented
+ */
+BOOL
+WINAPI
+SetProcessGroupAffinity(
+    _In_ HANDLE hProcess,
+    _In_ const GROUP_AFFINITY *GroupAffinity,
+    _Out_opt_ PGROUP_AFFINITY PreviousGroupAffinity)
+{
+    UNREFERENCED_PARAMETER(hProcess);
+
+    if (GroupAffinity->Group != 0)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (PreviousGroupAffinity != NULL)
+    {
+        RtlZeroMemory(PreviousGroupAffinity, sizeof(*PreviousGroupAffinity));
+        PreviousGroupAffinity->Mask = GroupAffinity->Mask;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Returns the interrupt time with the time spent asleep taken out of it.
+ *
+ * @remarks
+ * Read out of the page the kernel publishes, the way it has to be read on a
+ * processor that cannot take all eight bytes at once. Where the bias sits is
+ * named here because the interface this builds against has no field for it.
+ *
+ * @implemented
+ */
+BOOL
+WINAPI
+QueryUnbiasedInterruptTime(
+    _Out_ PULONGLONG UnbiasedTime)
+{
+    volatile KUSER_SHARED_DATA *Shared = SharedUserData;
+    LARGE_INTEGER Time;
+
+    for (;;)
+    {
+        Time.HighPart = Shared->InterruptTime.High1Time;
+        Time.LowPart = Shared->InterruptTime.LowPart;
+
+        if (Time.HighPart == Shared->InterruptTime.High2Time)
+            break;
+
+        YieldProcessor();
+    }
+
+    *UnbiasedTime = Time.QuadPart -
+                    *(volatile ULONGLONG *)((PUCHAR)Shared +
+                                            K32_INTERRUPT_TIME_BIAS_OFFSET);
+
+    return TRUE;
+}
+
 _Success_(return > 0)
 DWORD
 WINAPI
@@ -605,4 +730,71 @@ GetCurrentPackageId(UINT32 *BufferLength,
 {
     STUB;
     return APPMODEL_ERROR_NO_PACKAGE;
+}
+
+/*
+ * Packaged applications. Nothing here installs packages, so no process runs
+ * inside one and none of these has anything to name.
+ *
+ * @implemented
+ */
+LONG
+WINAPI
+GetCurrentPackagePath(
+    _Inout_ UINT32 *PathLength,
+    _Out_writes_opt_(*PathLength) PWSTR Path)
+{
+    UNREFERENCED_PARAMETER(Path);
+
+    if (PathLength != NULL)
+        *PathLength = 0;
+
+    return APPMODEL_ERROR_NO_PACKAGE;
+}
+
+/*
+ * @implemented
+ */
+LONG
+WINAPI
+GetPackageFamilyName(
+    _In_ HANDLE Process,
+    _Inout_ UINT32 *NameLength,
+    _Out_writes_opt_(*NameLength) PWSTR Name)
+{
+    UNREFERENCED_PARAMETER(Process);
+    UNREFERENCED_PARAMETER(Name);
+
+    if (NameLength != NULL)
+        *NameLength = 0;
+
+    return APPMODEL_ERROR_NO_PACKAGE;
+}
+
+/*
+ * @implemented
+ */
+LONG
+WINAPI
+GetPackagesByPackageFamily(
+    _In_ PCWSTR PackageFamilyName,
+    _Inout_ UINT32 *Count,
+    _Out_writes_opt_(*Count) PWSTR *FullNames,
+    _Inout_ UINT32 *BufferLength,
+    _Out_writes_opt_(*BufferLength) PWSTR Buffer)
+{
+    UNREFERENCED_PARAMETER(FullNames);
+    UNREFERENCED_PARAMETER(Buffer);
+
+    if (PackageFamilyName == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    /* No package bears any family name, so the answer is a count of none */
+    if (Count != NULL)
+        *Count = 0;
+
+    if (BufferLength != NULL)
+        *BufferLength = 0;
+
+    return ERROR_SUCCESS;
 }

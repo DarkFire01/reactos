@@ -13,6 +13,63 @@
 
 /* PUBLIC FUNCTIONS ***********************************************************/
 
+/**
+ * @brief
+ * Reads back one of the ways a process can be hardened.
+ *
+ * @remarks
+ * None of them is applied here, so every policy reads as the default, which is
+ * what a caller sees for a policy it never set.
+ *
+ * @implemented
+ */
+BOOL
+WINAPI
+GetProcessMitigationPolicy(
+    _In_ HANDLE hProcess,
+    _In_ PROCESS_MITIGATION_POLICY MitigationPolicy,
+    _Out_writes_bytes_(dwLength) PVOID lpBuffer,
+    _In_ SIZE_T dwLength)
+{
+    UNREFERENCED_PARAMETER(hProcess);
+
+    if ((MitigationPolicy >= MaxProcessMitigationPolicy) ||
+        (lpBuffer == NULL) || (dwLength == 0))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    RtlZeroMemory(lpBuffer, dwLength);
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Asks for the calling process to be hardened one of the ways it can be.
+ *
+ * @remarks
+ * Nothing is applied, and the caller is told it was: a process that asks to be
+ * hardened runs the same either way, and treating the request as a failure
+ * would stop callers that harden themselves on the way up.
+ */
+BOOL
+WINAPI
+SetProcessMitigationPolicy(
+    _In_ PROCESS_MITIGATION_POLICY MitigationPolicy,
+    _In_reads_bytes_(dwLength) PVOID lpBuffer,
+    _In_ SIZE_T dwLength)
+{
+    if ((MitigationPolicy >= MaxProcessMitigationPolicy) ||
+        (lpBuffer == NULL) || (dwLength == 0))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 /*
  * @implemented
  */

@@ -2465,4 +2465,40 @@ GetSystemWow64DirectoryA(OUT LPSTR lpBuffer,
 #endif
 }
 
+/**
+ * @brief
+ * Returns the directory to put temporary files in.
+ *
+ * @remarks
+ * The newer form of GetTempPathW. It differs only for a caller running as the
+ * system, which is given a directory of its own so that a user cannot reach
+ * what the system left there. Nothing here keeps that directory apart, so both
+ * forms answer the same.
+ *
+ * @implemented
+ */
+DWORD
+WINAPI
+GetTempPath2W(
+    _In_ DWORD BufferLength,
+    _Out_writes_opt_(BufferLength) LPWSTR Buffer)
+{
+    return GetTempPathW(BufferLength, Buffer);
+}
+
+/**
+ * @brief
+ * Returns the directory to put temporary files in, in the ANSI code page.
+ *
+ * @implemented
+ */
+DWORD
+WINAPI
+GetTempPath2A(
+    _In_ DWORD BufferLength,
+    _Out_writes_opt_(BufferLength) LPSTR Buffer)
+{
+    return GetTempPathA(BufferLength, Buffer);
+}
+
 /* EOF */

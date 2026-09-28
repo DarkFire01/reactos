@@ -830,5 +830,52 @@ SetLocalPrimaryComputerNameW(IN DWORD Unknown1,
     return FALSE;
 }
 
+/**
+ * @brief
+ * Turns a host name into a computer name.
+ *
+ * @param[in,out] Size
+ * On the way in, how many characters the buffer holds. On the way out, how many
+ * were written, or how many are needed when there was not enough room.
+ *
+ * @remarks
+ * A computer name is the first label of the host name and no longer than a
+ * computer name may be, so this is where the rest is cut off.
+ */
+BOOL
+WINAPI
+DnsHostnameToComputerNameExW(
+    _In_ LPCWSTR Hostname,
+    _Out_writes_to_opt_(*Size, *Size + 1) LPWSTR ComputerName,
+    _Inout_ LPDWORD Size)
+{
+    SIZE_T Length;
+    PCWSTR Dot;
+
+    if ((Hostname == NULL) || (Size == NULL))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Dot = wcschr(Hostname, L'.');
+    Length = (Dot != NULL) ? (SIZE_T)(Dot - Hostname) : wcslen(Hostname);
+
+    if (Length > MAX_COMPUTERNAME_LENGTH)
+        Length = MAX_COMPUTERNAME_LENGTH;
+
+    if ((ComputerName == NULL) || (*Size <= Length))
+    {
+        *Size = (DWORD)Length + 1;
+        SetLastError(ERROR_MORE_DATA);
+        return FALSE;
+    }
+
+    RtlCopyMemory(ComputerName, Hostname, Length * sizeof(WCHAR));
+    ComputerName[Length] = UNICODE_NULL;
+    *Size = (DWORD)Length;
+
+    return TRUE;
+}
 
 /* EOF */

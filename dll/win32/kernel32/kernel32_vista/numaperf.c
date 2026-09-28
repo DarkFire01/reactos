@@ -157,6 +157,38 @@ PerfDeleteInstance(
 
 ULONG
 WINAPI
+PerfSetULongCounterValue(
+    _In_ PVOID Provider,
+    _Inout_ PVOID Instance,
+    _In_ ULONG CounterId,
+    _In_ ULONG Value)
+{
+    UNREFERENCED_PARAMETER(Provider);
+    UNREFERENCED_PARAMETER(Instance);
+    UNREFERENCED_PARAMETER(CounterId);
+    UNREFERENCED_PARAMETER(Value);
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+ULONG
+WINAPI
+PerfSetULongLongCounterValue(
+    _In_ PVOID Provider,
+    _Inout_ PVOID Instance,
+    _In_ ULONG CounterId,
+    _In_ ULONGLONG Value)
+{
+    UNREFERENCED_PARAMETER(Provider);
+    UNREFERENCED_PARAMETER(Instance);
+    UNREFERENCED_PARAMETER(CounterId);
+    UNREFERENCED_PARAMETER(Value);
+
+    return ERROR_NOT_SUPPORTED;
+}
+
+ULONG
+WINAPI
 PerfSetCounterRefValue(
     _In_ PVOID Provider,
     _Inout_ PVOID Instance,
