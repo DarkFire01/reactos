@@ -1251,8 +1251,8 @@ ULONG CCabinet::WriteFileToScratchStorage(PCFFILE_NODE FileNode)
     {
         do
         {
-            if (TotalBytesLeft > (ULONG)CAB_BLOCKSIZE - CurrentIBufferSize)
-                BytesToRead = CAB_BLOCKSIZE - CurrentIBufferSize;
+            if (TotalBytesLeft > (ULONG)CAB_MAX_UNCOMP - CurrentIBufferSize)
+                BytesToRead = CAB_MAX_UNCOMP - CurrentIBufferSize;
             else
                 BytesToRead = TotalBytesLeft;
 
@@ -1266,7 +1266,7 @@ ULONG CCabinet::WriteFileToScratchStorage(PCFFILE_NODE FileNode)
             CurrentIBuffer = (unsigned char*)CurrentIBuffer + BytesRead;
             CurrentIBufferSize += (USHORT)BytesRead;
 
-            if (CurrentIBufferSize == CAB_BLOCKSIZE)
+            if (CurrentIBufferSize == CAB_MAX_UNCOMP)
             {
                 Status = WriteDataBlock();
                 if (Status != CAB_STATUS_SUCCESS)
@@ -2765,6 +2765,14 @@ ULONG CCabinet::WriteDataBlock()
             InputBuffer,
             CurrentIBufferSize,
             &TotalCompSize);
+
+        /* A block that was not compressed has no size worth writing down */
+        if (Status != CS_SUCCESS)
+        {
+            DPRINT(MIN_TRACE, ("Cannot compress block of %u bytes (%u).\n",
+                (UINT)CurrentIBufferSize, (UINT)Status));
+            return CAB_STATUS_FAILURE;
+        }
 
         DPRINT(MAX_TRACE, ("Block compressed. CurrentIBufferSize (%u)  TotalCompSize(%u).\n",
             (UINT)CurrentIBufferSize, (UINT)TotalCompSize));

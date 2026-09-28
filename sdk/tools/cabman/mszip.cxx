@@ -75,7 +75,13 @@ ULONG CMSZipCodec::Compress(void* OutputBuffer,
     ZStream.next_in   = (unsigned char*)InputBuffer;
     ZStream.avail_in  = InputLength;
     ZStream.next_out  = ((unsigned char *)OutputBuffer + 2);
-    ZStream.avail_out = CAB_BLOCKSIZE + 12;
+
+    /*
+     * The buffer holds CAB_BLOCKSIZE + 12 bytes in all, and the magic above has
+     * taken the first two of them. Data that does not compress is stored whole,
+     * which is what fills this to the end and what makes the difference matter.
+     */
+    ZStream.avail_out = CAB_BLOCKSIZE + 12 - 2;
 
     /* WindowBits is passed < 0 to tell that there is no zlib header */
     Status = deflateInit2(&ZStream,
@@ -90,8 +96,9 @@ ULONG CMSZipCodec::Compress(void* OutputBuffer,
         return CS_NOMEMORY;
     }
 
+    /* Anything short of the end means it wanted more room, and the block would be a stump */
     Status = deflate(&ZStream, Z_FINISH);
-    if ((Status != Z_OK) && (Status != Z_STREAM_END))
+    if (Status != Z_STREAM_END)
     {
         DPRINT(MIN_TRACE, ("deflate() returned (%d) (%s).\n", Status, ZStream.msg));
         if (Status == Z_MEM_ERROR)
