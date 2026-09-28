@@ -29,6 +29,7 @@ class CDeviceView
     CAtlList<CClassNode *> m_ClassNodeList;
     CAtlList<CDeviceNode *> m_DeviceNodeList;
     SP_CLASSIMAGELIST_DATA m_ImageListData;
+    CRITICAL_SECTION m_RefreshLock;
 
 public:
     CDeviceView(

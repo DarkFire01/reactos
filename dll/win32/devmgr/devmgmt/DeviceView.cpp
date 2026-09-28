@@ -44,10 +44,12 @@ CDeviceView::CDeviceView(
     m_RootNode(NULL)
 {
     ZeroMemory(&m_ImageListData, sizeof(SP_CLASSIMAGELIST_DATA));
+    InitializeCriticalSection(&m_RefreshLock);
 }
 
 CDeviceView::~CDeviceView(void)
 {
+    DeleteCriticalSection(&m_RefreshLock);
 }
 
 bool
@@ -386,6 +388,9 @@ unsigned int __stdcall CDeviceView::RefreshThread(void *Param)
     RefreshThreadData *ThreadData = (RefreshThreadData *)Param;
     CDeviceView *This = ThreadData->This;
 
+    // Back to back device changes start overlapping refreshes that free each other's nodes
+    EnterCriticalSection(&This->m_RefreshLock);
+
     // Get a copy of the currently selected node
     CNode *LastSelectedNode = This->GetSelectedNode();
     if (LastSelectedNode == nullptr || (LastSelectedNode->GetNodeType() == RootNode))
@@ -412,7 +417,11 @@ unsigned int __stdcall CDeviceView::RefreshThread(void *Param)
 
     // Re-add the root node to the tree
     if (This->AddRootDevice() == false)
+    {
+        LeaveCriticalSection(&This->m_RefreshLock);
+        delete ThreadData;
         return 0;
+    }
 
     // display the type of view the user wants
     switch (This->m_ViewType)
@@ -435,6 +444,7 @@ unsigned int __stdcall CDeviceView::RefreshThread(void *Param)
 
     This->SelectNode(LastSelectedNode);
 
+    LeaveCriticalSection(&This->m_RefreshLock);
     delete ThreadData;
 
     return 0;
