@@ -25,7 +25,7 @@ target_link_libraries(rtl_um apisets ${PSEH_LIB})
 add_dependencies(rtl_um psdk)
 
 # On NT6+ this is used by advapi32
-add_library(etwtrace etw/trace.c)
+add_library(etwtrace etw/trace.c etw/provider.c)
 target_link_libraries(etwtrace ${PSEH_LIB})
 add_dependencies(etwtrace psdk)
 
