@@ -1,0 +1,7 @@
+#include <winver.h>
+
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION  "Trace Data Helper"
+#define REACTOS_STR_INTERNAL_NAME     "tdh"
+#define REACTOS_STR_ORIGINAL_FILENAME "tdh.dll"
+#include <reactos/version.rc>
