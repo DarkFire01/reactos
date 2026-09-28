@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* GLOBALS ********************************************************************/
@@ -96,6 +97,30 @@ static PFN_WHV_DELETE_PORT VmDeleteNotificationPort;
  * wait above on purpose.
  */
 #define VM_PROCESSOR_SPAN   15000
+
+/* Microsoft's worker process, its proxy, and how long the worker is given */
+#define VM_WORKER           L"\\vmwp.exe"
+#define VM_COMPUTE          L"\\vmcompute.exe"
+#define VM_WSL_SERVICE      L"\\wslservice.exe"
+#define VM_WSL              L"\\wsl.exe"
+#define VM_WSL_VERSION      L"--version"
+#define VM_WSL_STATUS       L"--status"
+#define VM_WSL_SERVICE_NAME L"WslService"
+#define VM_WSL_HOST         L"\\wslhost.exe"
+#define VM_WSL_RELAY        L"\\wslrelay.exe"
+#define VM_WSL_DEVICE_HOST  L"wsldevicehost.dll"
+#define VM_WSL_LIBRARY      L"libwsl.dll"
+#define VM_COMPUTE_SERVICE  L"vmcompute"
+
+/* How long a service is given to settle, and how often it is looked at */
+#define VM_SERVICE_WAIT     20000
+#define VM_SERVICE_STEP     500
+
+/* How many reads in a row say a service really did stay stopped */
+#define VM_SERVICE_SETTLED  4
+#define VM_PROXY            L"vmprox.dll"
+#define VM_WORKER_EMBEDDING L"-embedding"
+#define VM_WORKER_WAIT      10000
 
 /* What the guest is expected to find out, per the interface it asks through */
 #define VM_HV_LEAF_VENDOR   0x40000000
@@ -2536,6 +2561,513 @@ Done:
 
 /**
  * @brief
+ * Runs one of the root stack's images once, with the arguments it is given.
+ *
+ * @param[in] Image
+ * The image to run, named the way it sits in the system directory.
+ *
+ * @param[in] Arguments
+ * What follows the image name. The worker takes a machine identity and an
+ * inherited handle, or one of the words it registers itself by.
+ *
+ * @return
+ * Whether the image ran, meaning it started and did not die on the way in. An
+ * image that is still going when its time is up counts, since one that serves
+ * interfaces is meant to stay.
+ *
+ * @remarks
+ * The error mode is handed down so that a loader failure leaves through the
+ * exit code. Left alone it puts a message box up instead, and the image then
+ * looks like it is running when it has not started at all.
+ */
+static
+BOOLEAN
+VmRunImage(
+    _In_z_ PCWSTR Image,
+    _In_z_ PCWSTR Arguments)
+{
+    WCHAR Command[MAX_PATH + 64];
+    PROCESS_INFORMATION Process;
+    STARTUPINFOW Startup;
+    ULONG Length;
+    DWORD Code = 0;
+
+    Length = GetSystemDirectoryW(Command, MAX_PATH);
+    if ((Length == 0) || (Length + wcslen(Image) >= MAX_PATH))
+    {
+        VmPrint("  there is no path to start %ls from\n", Image);
+        return FALSE;
+    }
+
+    wcscat(Command, Image);
+    if (*Arguments != UNICODE_NULL)
+    {
+        wcscat(Command, L" ");
+        wcscat(Command, Arguments);
+    }
+
+    RtlZeroMemory(&Startup, sizeof(Startup));
+    Startup.cb = sizeof(Startup);
+    RtlZeroMemory(&Process, sizeof(Process));
+
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+
+    if (!CreateProcessW(NULL,
+                        Command,
+                        NULL,
+                        NULL,
+                        FALSE,
+                        CREATE_NO_WINDOW,
+                        NULL,
+                        NULL,
+                        &Startup,
+                        &Process))
+    {
+        VmPrint("  starting %ls gave error %lu\n", Image, GetLastError());
+        return FALSE;
+    }
+
+    if (WaitForSingleObject(Process.hProcess, VM_WORKER_WAIT) == WAIT_OBJECT_0)
+    {
+        GetExitCodeProcess(Process.hProcess, &Code);
+        VmPrint("  %ls %ls left with %08lx\n", Image, Arguments, Code);
+    }
+    else
+    {
+        VmPrint("  %ls %ls is still running, so it is being stopped\n",
+                Image, Arguments);
+        TerminateProcess(Process.hProcess, 0);
+        Code = 0;
+    }
+
+    CloseHandle(Process.hThread);
+    CloseHandle(Process.hProcess);
+
+    /* An image that never got its imports leaves through the loader's status */
+    return (BOOLEAN)((Code & 0xC0000000) != 0xC0000000);
+}
+
+/**
+ * @brief
+ * Brings up Microsoft's own worker process, which is where a Hyper-V machine is
+ * built on Windows.
+ *
+ * @remarks
+ * Nothing here drives a machine through it yet. What this asks is whether its
+ * image and its proxy can be brought up at all, which the whole user mode side
+ * of the root stack is gated on. The worker is asked twice: once with nothing,
+ * which stops after it has set itself up, and once the way a launcher asks for
+ * it, which carries on into serving its interfaces. The compute service, which
+ * is what asks the worker for a machine, is asked for last.
+ */
+static
+VOID
+VmStageWorkerProcess(VOID)
+{
+    HMODULE Module;
+    BOOLEAN Started;
+
+    VmPrint("\nthe worker process of the root stack\n");
+
+    /*
+     * The proxy is a library, so it can be brought up here and its imports are
+     * answered on the way in. The worker is an image of its own and is only
+     * asked for as a process, which is the loader doing the same for it.
+     */
+    Module = LoadLibraryW(VM_PROXY);
+    if (Module != NULL)
+    {
+        VmPrint("  %ls loaded at %p\n", VM_PROXY, Module);
+        VmCheck("the proxy resolves its imports", TRUE);
+        FreeLibrary(Module);
+    }
+    else
+    {
+        VmPrint("  %ls gave error %lu\n", VM_PROXY, GetLastError());
+        VmCheck("the proxy resolves its imports", FALSE);
+    }
+
+    Started = VmRunImage(VM_WORKER, L"");
+    VmCheck("the worker process starts", Started);
+
+    if (!Started)
+        return;
+
+    VmCheck("and starts the way a launcher asks for it",
+            VmRunImage(VM_WORKER, VM_WORKER_EMBEDDING));
+
+    VmCheck("the compute service starts", VmRunImage(VM_COMPUTE, L""));
+}
+
+/**
+ * @brief
+ * Asks the controller to start one of the root stack's services, and says where
+ * it got to.
+ *
+ * @return
+ * Whether the service is running by the time this gives up waiting. A service
+ * that was already running counts, since something else will have started it.
+ *
+ * @remarks
+ * Starting the image by hand is not the same thing: a service reaches its own
+ * controller for its status and registers what it serves only once the
+ * controller has started it, so this is the only way to see it do that.
+ */
+static
+BOOLEAN
+VmStartService(
+    _In_z_ PCWSTR Name)
+{
+    SC_HANDLE Manager;
+    SC_HANDLE Service;
+    SERVICE_STATUS Status = { 0 };
+    ULONG Waited;
+    ULONG Stopped;
+    BOOLEAN Running = FALSE;
+
+    Manager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+    if (Manager == NULL)
+    {
+        VmPrint("  there is no controller to ask, error %lu\n", GetLastError());
+        return FALSE;
+    }
+
+    Service = OpenServiceW(Manager,
+                           Name,
+                           SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG);
+    if (Service == NULL)
+    {
+        VmPrint("  %ls is not registered, error %lu\n", Name, GetLastError());
+        CloseServiceHandle(Manager);
+        return FALSE;
+    }
+
+    /* What the controller made of the registration, which is where 1058 lives */
+    {
+        UCHAR Room[4096];
+        LPQUERY_SERVICE_CONFIGW Config = (LPQUERY_SERVICE_CONFIGW)Room;
+        DWORD Needed = 0;
+
+        if (QueryServiceConfigW(Service, Config, sizeof(Room), &Needed))
+        {
+            VmPrint("  %ls is type %lx start %lu at %ls\n",
+                    Name,
+                    Config->dwServiceType,
+                    Config->dwStartType,
+                    (Config->lpBinaryPathName != NULL) ? Config->lpBinaryPathName
+                                                       : L"nowhere");
+        }
+        else
+        {
+            VmPrint("  reading the registration of %ls gave error %lu\n",
+                    Name, GetLastError());
+        }
+    }
+
+    if (!StartServiceW(Service, 0, NULL))
+    {
+        DWORD Error = GetLastError();
+
+        VmPrint("  asking for %ls gave error %lu\n", Name, Error);
+
+        if (Error != ERROR_SERVICE_ALREADY_RUNNING)
+        {
+            CloseServiceHandle(Service);
+            CloseServiceHandle(Manager);
+            return FALSE;
+        }
+    }
+    else
+    {
+        VmPrint("  %ls was asked for\n", Name);
+    }
+
+    /*
+     * The controller answers the start before the service has settled, and a
+     * record it has not touched yet still reads as stopped with the code it was
+     * created holding. So stopped is only believed once it has been read that
+     * way several times over.
+     */
+    Stopped = 0;
+    for (Waited = 0; Waited < VM_SERVICE_WAIT; Waited += VM_SERVICE_STEP)
+    {
+        if (!QueryServiceStatus(Service, &Status))
+        {
+            VmPrint("  asking after %ls gave error %lu\n", Name, GetLastError());
+            break;
+        }
+
+        if (Status.dwCurrentState == SERVICE_RUNNING)
+        {
+            Running = TRUE;
+            break;
+        }
+
+        if (Status.dwCurrentState == SERVICE_STOPPED)
+        {
+            if (++Stopped >= VM_SERVICE_SETTLED)
+            {
+                VmPrint("  %ls stayed stopped, leaving %lu\n",
+                        Name, Status.dwWin32ExitCode);
+                break;
+            }
+        }
+        else
+        {
+            Stopped = 0;
+        }
+
+        Sleep(VM_SERVICE_STEP);
+    }
+
+    VmPrint("  %ls is %s, last state %lu\n",
+            Name, Running ? "running" : "not running", Status.dwCurrentState);
+
+    CloseServiceHandle(Service);
+    CloseServiceHandle(Manager);
+
+    return Running;
+}
+
+/*
+ * Brings a library up on its own, which is the loader answering everything it
+ * imports. An image can only be asked for as a process, so this is the nearest
+ * thing to the same question for a library.
+ */
+static
+BOOLEAN
+VmLoadLibrary(
+    _In_z_ PCWSTR Name)
+{
+    HMODULE Module;
+
+    Module = LoadLibraryW(Name);
+    if (Module == NULL)
+    {
+        VmPrint("  %ls gave error %lu\n", Name, GetLastError());
+        return FALSE;
+    }
+
+    VmPrint("  %ls loaded at %p\n", Name, Module);
+    FreeLibrary(Module);
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Proves the registry tells a watcher when something under it moved.
+ *
+ * @remarks
+ * Everything above this depends on it: a service that cannot be told its own
+ * configuration changed gives up before it starts. Both shapes are checked, the
+ * one tied to the asking thread and the one that outlives it, and so is the
+ * change that arrives before anyone is waiting for it.
+ *
+ * Each watch takes a handle of its own, because what a handle watches is settled
+ * the first time it is asked and a second request on it joins the first rather
+ * than replacing it.
+ */
+static
+VOID
+VmStageRegistryNotifications(VOID)
+{
+    static const WCHAR Path[] = L"Software\\ReactOS\\VmNotifyProof";
+    HANDLE Event[2] = { NULL, NULL };
+    HKEY Key = NULL;
+    HKEY Watch[2] = { NULL, NULL };
+    HKEY Child = NULL;
+    DWORD Value = 1;
+    LONG Error;
+    ULONG Index;
+
+    VmPrint("\nwhat the registry says when it changes\n");
+
+    Error = RegCreateKeyExW(HKEY_CURRENT_USER, Path, 0, NULL, 0,
+                            KEY_ALL_ACCESS, NULL, &Key, NULL);
+    VmCheckValue("a key to watch", ERROR_SUCCESS, (ULONG64)Error);
+    if (Error != ERROR_SUCCESS)
+        return;
+
+    for (Index = 0; Index < 2; Index++)
+    {
+        Event[Index] = CreateEventW(NULL, TRUE, FALSE, NULL);
+        RegOpenKeyExW(HKEY_CURRENT_USER, Path, 0, KEY_ALL_ACCESS, &Watch[Index]);
+
+        if ((Event[Index] == NULL) || (Watch[Index] == NULL))
+        {
+            VmCheck("a handle and an event for each watch", FALSE);
+            goto Done;
+        }
+    }
+
+    /* A value set on the key itself */
+    Error = RegNotifyChangeKeyValue(Watch[0], FALSE, REG_NOTIFY_CHANGE_LAST_SET,
+                                    Event[0], TRUE);
+    VmCheckValue("the key is being watched", ERROR_SUCCESS, (ULONG64)Error);
+
+    RegSetValueExW(Key, L"Proof", 0, REG_DWORD, (const BYTE *)&Value, sizeof(Value));
+    VmCheckValue("and a value set is reported",
+                 WAIT_OBJECT_0,
+                 (ULONG64)WaitForSingleObject(Event[0], 5000));
+
+    /* A key created below it, seen only by a watcher that asked for the tree */
+    Error = RegNotifyChangeKeyValue(Watch[1], TRUE,
+                                    REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_THREAD_AGNOSTIC,
+                                    Event[1], TRUE);
+    VmCheckValue("the tree is being watched", ERROR_SUCCESS, (ULONG64)Error);
+
+    RegCreateKeyExW(Key, L"Below", 0, NULL, 0, KEY_ALL_ACCESS, NULL, &Child, NULL);
+    VmCheckValue("and a key below it is reported",
+                 WAIT_OBJECT_0,
+                 (ULONG64)WaitForSingleObject(Event[1], 5000));
+
+    /*
+     * A change made between one request and the next is held rather than lost,
+     * which is what a watcher that rearms after every change depends on. What is
+     * held belongs to the handle that was already watching, so this asks again
+     * on the first one.
+     */
+    Value = 2;
+    RegSetValueExW(Key, L"Proof", 0, REG_DWORD, (const BYTE *)&Value, sizeof(Value));
+
+    ResetEvent(Event[0]);
+    Error = RegNotifyChangeKeyValue(Watch[0], FALSE, REG_NOTIFY_CHANGE_LAST_SET,
+                                    Event[0], TRUE);
+    VmCheckValue("asking again is told what it missed",
+                 WAIT_OBJECT_0,
+                 (ULONG64)WaitForSingleObject(Event[0], 5000));
+
+Done:
+    if (Child != NULL)
+    {
+        RegCloseKey(Child);
+        RegDeleteKeyW(Key, L"Below");
+    }
+
+    for (Index = 0; Index < 2; Index++)
+    {
+        if (Watch[Index] != NULL)
+            RegCloseKey(Watch[Index]);
+
+        if (Event[Index] != NULL)
+            CloseHandle(Event[Index]);
+    }
+
+    RegCloseKey(Key);
+    RegDeleteKeyW(HKEY_CURRENT_USER, Path);
+}
+
+/**
+ * @brief
+ * Says which build the system claims to be, both ways a caller can ask.
+ *
+ * @remarks
+ * The subsystem will not serve a build below 22000, and it takes that number
+ * from the registry rather than from the version call, so both are printed. A
+ * disagreement between them is the interesting outcome.
+ */
+static
+VOID
+VmStageWhichBuildThisIs(VOID)
+{
+    OSVERSIONINFOW Info = { 0 };
+    WCHAR Text[32] = { 0 };
+    DWORD Size = sizeof(Text);
+    DWORD Type = 0;
+    ULONG FromText = 0;
+    LONG Error;
+
+    VmPrint("\nwhich build the system says it is\n");
+
+    Info.dwOSVersionInfoSize = sizeof(Info);
+    if (GetVersionExW(&Info))
+    {
+        VmPrint("  the version call says %lu.%lu build %lu\n",
+                Info.dwMajorVersion,
+                Info.dwMinorVersion,
+                Info.dwBuildNumber);
+    }
+    else
+    {
+        VmPrint("  the version call gave error %lu\n", GetLastError());
+    }
+
+    Error = RegGetValueW(HKEY_LOCAL_MACHINE,
+                         L"Software\\Microsoft\\Windows NT\\CurrentVersion",
+                         L"CurrentBuildNumber",
+                         RRF_RT_REG_SZ,
+                         &Type,
+                         Text,
+                         &Size);
+    if (Error == ERROR_SUCCESS)
+    {
+        FromText = wcstoul(Text, NULL, 10);
+        VmPrint("  the registry says '%ls', which reads as %lu\n", Text, FromText);
+    }
+    else
+    {
+        VmPrint("  the registry gave error %ld\n", Error);
+    }
+
+    VmCheck("the build is one the subsystem serves", FromText >= 22000);
+
+    /*
+     * The subsystem asks with these two type flags together and no request to
+     * keep an expandable string unexpanded, so that combination has to be
+     * answered rather than called a bad parameter.
+     */
+    Size = sizeof(Text);
+    Error = RegGetValueW(HKEY_LOCAL_MACHINE,
+                         L"Software\\Microsoft\\Windows NT\\CurrentVersion",
+                         L"CurrentBuildNumber",
+                         RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ,
+                         &Type,
+                         Text,
+                         &Size);
+    if (Error != ERROR_SUCCESS)
+        VmPrint("  asking the way the subsystem does gave error %ld\n", Error);
+
+    VmCheck("and it answers the way the subsystem asks", Error == ERROR_SUCCESS);
+}
+
+/**
+ * @brief
+ * Brings up the Linux subsystem's own service and its command, which are what
+ * ask the compute service for a machine.
+ *
+ * @remarks
+ * The service is asked for with nothing, which is not how a service is meant to
+ * be started, so it gets as far as looking for the controller and leaves. What
+ * that proves is that its image and everything under it came up. The command is
+ * asked for its own account of itself, which it answers without a machine.
+ */
+static
+VOID
+VmStageSubsystemForLinux(VOID)
+{
+    VmPrint("\nthe Linux subsystem above it\n");
+
+    VmCheck("the compute service is there", VmStartService(VM_COMPUTE_SERVICE));
+    VmCheck("the subsystem service is there", VmStartService(VM_WSL_SERVICE_NAME));
+    VmCheck("and its command starts", VmRunImage(VM_WSL, VM_WSL_VERSION));
+
+    /* Unlike the version, this one has to reach the service to answer at all */
+    VmCheck("and asks the service what it has", VmRunImage(VM_WSL, VM_WSL_STATUS));
+
+    /*
+     * The rest of the subsystem is what the service reaches for once it has a
+     * machine to put a distribution in. They are asked for here on their own, so
+     * that what each of them wants is known before anything needs them at once.
+     */
+    VmCheck("its own library loads", VmLoadLibrary(VM_WSL_LIBRARY));
+    VmCheck("the device host loads", VmLoadLibrary(VM_WSL_DEVICE_HOST));
+    VmCheck("the host process starts", VmRunImage(VM_WSL_HOST, L""));
+    VmCheck("and the relay starts", VmRunImage(VM_WSL_RELAY, L""));
+}
+
+/**
+ * @brief
  * A guest that sets a flag on a port the monitor made for itself.
  *
  * @remarks
@@ -2676,8 +3208,15 @@ main(void)
 
     VmPrint("ReactOS virtual machine monitor\n");
 
+    /* These answer without a hypervisor, so they are asked first and always */
+    VmStageWhichBuildThisIs();
+
+    VmStageRegistryNotifications();
+
+    VmStageSubsystemForLinux();
+
     if (!VmBindPlatform())
-        return 1;
+        goto Done;
 
     Result = VmGetCapability(WHvCapabilityCodeHypervisorPresent,
                              &Capability,
@@ -2686,8 +3225,51 @@ main(void)
     if (FAILED(Result) || !Capability.HypervisorPresent)
     {
         VmPrint("\nNo hypervisor platform here, so there is no machine to build.\n");
-        return 1;
+        goto Done;
     }
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageWorkerProcess();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStagePortAndConnection();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageSyntheticApic();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageProcessorsTalking(FALSE);
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageTwoProcessors();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageSynicMessage();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageSynicTimer();
+
+    if (VmStuck)
+        goto Done;
+
+    VmStageGuestHypercall();
+
+    if (VmStuck)
+        goto Done;
 
     VmStageWhatTheHypervisorSays();
 
@@ -2698,6 +3280,7 @@ main(void)
 
     if (VmStuck)
         goto Done;
+
 
     VmStageMonitorAnswersMsr();
 
@@ -2725,42 +3308,6 @@ main(void)
         goto Done;
 
     VmStageVectorRegisters();
-
-    if (VmStuck)
-        goto Done;
-
-    VmStageTwoProcessors();
-
-    if (VmStuck)
-        goto Done;
-
-
-    VmStageSynicMessage();
-
-    if (VmStuck)
-        goto Done;
-
-    VmStageSynicTimer();
-
-    if (VmStuck)
-        goto Done;
-
-    VmStageGuestHypercall();
-
-    if (VmStuck)
-        goto Done;
-
-    VmStagePortAndConnection();
-
-    if (VmStuck)
-        goto Done;
-
-    VmStageSyntheticApic();
-
-    if (VmStuck)
-        goto Done;
-
-    VmStageProcessorsTalking(FALSE);
 
     if (VmStuck)
         goto Done;
