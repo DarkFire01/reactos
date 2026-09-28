@@ -7248,8 +7248,12 @@ typedef struct _REPARSE_GUID_DATA_BUFFER {
                   ((tag) > IO_REPARSE_TAG_RESERVED_RANGE)      \
                 )
 
+/* Set on a tag that may be put on a directory which still has something in it */
+#define IO_REPARSE_TAG_DIRECTORY_MASK           (0x10000000L)
+
 /* MicroSoft reparse point tags */
 #define IO_REPARSE_TAG_MOUNT_POINT              (0xA0000003L)
+#define IO_REPARSE_TAG_WCI                      (0x80000018L)
 #define IO_REPARSE_TAG_HSM                      (0xC0000004L)
 #define IO_REPARSE_TAG_DRIVE_EXTENDER           (0x80000005L)
 #define IO_REPARSE_TAG_HSM2                     (0x80000006L)
