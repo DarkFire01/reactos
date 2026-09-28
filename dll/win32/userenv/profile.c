@@ -4,7 +4,7 @@
  * FILE:            dll/win32/userenv/profile.c
  * PURPOSE:         User profile code
  * PROGRAMMERS:     Eric Kohl
- *                  Hervé Poussineau
+ *                  Hervï¿½ Poussineau
  */
 
 #include "precomp.h"
@@ -1838,7 +1838,7 @@ GetUserProfileDirectoryW(
                           &hKey);
     if (Error != ERROR_SUCCESS)
     {
-        DPRINT1("Error: %lu\n", Error);
+        DPRINT1("Cannot open '%S': %lu\n", szKeyName, Error);
         SetLastError((DWORD)Error);
         return FALSE;
     }
@@ -2000,6 +2000,75 @@ cleanup:
 }
 
 
+/*
+ * The profile list is what records where a profile lives, so a profile already
+ * on disk still needs an entry: without one nothing can find it again.
+ */
+static
+BOOL
+RegisterUserProfile(
+    _In_ PSID pSid,
+    _In_ PCWSTR lpProfilePath)
+{
+    WCHAR szKeyName[MAX_PATH];
+    LPWSTR SidString = NULL;
+    HKEY hKey;
+    LONG Error;
+
+    if (!ConvertSidToStringSidW(pSid, &SidString))
+        return FALSE;
+
+    StringCbCopyW(szKeyName, sizeof(szKeyName),
+                  L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\");
+    StringCbCatW(szKeyName, sizeof(szKeyName), SidString);
+
+    LocalFree((HLOCAL)SidString);
+
+    Error = RegCreateKeyExW(HKEY_LOCAL_MACHINE,
+                            szKeyName,
+                            0,
+                            NULL,
+                            REG_OPTION_NON_VOLATILE,
+                            KEY_SET_VALUE,
+                            NULL,
+                            &hKey,
+                            NULL);
+    if (Error != ERROR_SUCCESS)
+    {
+        DPRINT1("Cannot create '%S': %lu\n", szKeyName, Error);
+        SetLastError((DWORD)Error);
+        return FALSE;
+    }
+
+    Error = RegSetValueExW(hKey,
+                           L"ProfileImagePath",
+                           0,
+                           REG_EXPAND_SZ,
+                           (LPBYTE)lpProfilePath,
+                           (wcslen(lpProfilePath) + 1) * sizeof(WCHAR));
+    if (Error == ERROR_SUCCESS)
+    {
+        Error = RegSetValueExW(hKey,
+                               L"Sid",
+                               0,
+                               REG_BINARY,
+                               pSid,
+                               GetLengthSid(pSid));
+    }
+
+    RegCloseKey(hKey);
+
+    if (Error != ERROR_SUCCESS)
+    {
+        DPRINT1("Cannot fill '%S': %lu\n", szKeyName, Error);
+        SetLastError((DWORD)Error);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+
 BOOL
 WINAPI
 LoadUserProfileW(
@@ -2085,31 +2154,31 @@ LoadUserProfileW(
         StringCbCatW(szUserHivePath, sizeof(szUserHivePath), L"\\ntuser.dat");
         DPRINT("szUserHivePath: %S\n", szUserHivePath);
 
+        /* Get user sid */
+        if (GetTokenInformation(hToken, TokenUser, NULL, 0, &dwLength) ||
+            GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        {
+            DPRINT1("GetTokenInformation() failed\n");
+            goto cleanup;
+        }
+
+        UserSid = (PTOKEN_USER)HeapAlloc(GetProcessHeap(), 0, dwLength);
+        if (!UserSid)
+        {
+            dwError = ERROR_NOT_ENOUGH_MEMORY;
+            DPRINT1("HeapAlloc() failed\n");
+            goto cleanup;
+        }
+
+        if (!GetTokenInformation(hToken, TokenUser, UserSid, dwLength, &dwLength))
+        {
+            DPRINT1("GetTokenInformation() failed\n");
+            goto cleanup;
+        }
+
         /* Create user profile directory if needed */
         if (GetFileAttributesW(szUserHivePath) == INVALID_FILE_ATTRIBUTES)
         {
-            /* Get user sid */
-            if (GetTokenInformation(hToken, TokenUser, NULL, 0, &dwLength) ||
-                GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-            {
-                DPRINT1("GetTokenInformation() failed\n");
-                goto cleanup;
-            }
-
-            UserSid = (PTOKEN_USER)HeapAlloc(GetProcessHeap(), 0, dwLength);
-            if (!UserSid)
-            {
-                dwError = ERROR_NOT_ENOUGH_MEMORY;
-                DPRINT1("HeapAlloc() failed\n");
-                goto cleanup;
-            }
-
-            if (!GetTokenInformation(hToken, TokenUser, UserSid, dwLength, &dwLength))
-            {
-                DPRINT1("GetTokenInformation() failed\n");
-                goto cleanup;
-            }
-
             /* Create profile */
             ret = CreateUserProfileW(UserSid->User.Sid, lpProfileInfo->lpUserName);
             if (!ret)
@@ -2118,6 +2187,27 @@ LoadUserProfileW(
                 goto cleanup;
             }
             ret = FALSE;
+        }
+        else
+        {
+            /*
+             * A profile shipped on the image is never created here, so nothing
+             * has ever written down where it is. Do that now, because a logon
+             * that skips it leaves every later caller unable to find the profile.
+             */
+            WCHAR szProfilePath[MAX_PATH];
+            PWCHAR pszFileName;
+
+            StringCbCopyW(szProfilePath, sizeof(szProfilePath), szUserHivePath);
+
+            pszFileName = wcsrchr(szProfilePath, L'\\');
+            if (pszFileName != NULL)
+            {
+                *pszFileName = UNICODE_NULL;
+
+                if (!RegisterUserProfile(UserSid->User.Sid, szProfilePath))
+                    DPRINT1("Could not record the profile at '%S'\n", szProfilePath);
+            }
         }
 
         /* Acquire restore privilege */
@@ -2370,6 +2460,22 @@ cleanup:
     DPRINT("UnloadUserProfile() done\n");
 
     return bRet;
+}
+
+/*
+ * @implemented
+ *
+ * Nothing here keeps app container profiles, so there is never one to delete
+ * and the caller is told the profile was not found.
+ */
+HRESULT
+WINAPI
+DeleteAppContainerProfile(
+    _In_ PCWSTR AppContainerName)
+{
+    DPRINT("DeleteAppContainerProfile(%S)\n", AppContainerName);
+
+    return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 
 /* EOF */
