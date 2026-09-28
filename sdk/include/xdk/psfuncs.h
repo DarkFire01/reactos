@@ -359,4 +359,69 @@ PsSetCreateProcessNotifyRoutineEx(
   IN PCREATE_PROCESS_NOTIFY_ROUTINE_EX NotifyRoutine,
   IN BOOLEAN Remove);
 #endif /* (NTDDI_VERSION >= NTDDI_VISTASP1) */
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1)
+
+typedef NTSTATUS
+(NTAPI *SILO_MONITOR_CREATE_CALLBACK)(
+  _In_ PESILO Silo);
+
+typedef VOID
+(NTAPI *SILO_MONITOR_TERMINATE_CALLBACK)(
+  _In_ PESILO Silo);
+
+typedef struct _SILO_MONITOR_REGISTRATION {
+  UCHAR Version;
+  BOOLEAN MonitorHost;
+  BOOLEAN MonitorExistingSilos;
+  UCHAR Reserved[5];
+  PCUNICODE_STRING DriverObjectName;
+  SILO_MONITOR_CREATE_CALLBACK CreateCallback;
+  SILO_MONITOR_TERMINATE_CALLBACK TerminateCallback;
+} SILO_MONITOR_REGISTRATION, *PSILO_MONITOR_REGISTRATION;
+
+NTKERNELAPI
+PESILO
+NTAPI
+PsGetCurrentServerSilo(VOID);
+
+NTKERNELAPI
+PESILO
+NTAPI
+PsGetProcessServerSilo(
+  _In_ PEPROCESS Process);
+
+NTKERNELAPI
+PESILO
+NTAPI
+PsGetThreadServerSilo(
+  _In_ PETHREAD Thread);
+
+/* Points into the silo, and at nothing at all for the host one */
+NTKERNELAPI
+PGUID
+NTAPI
+PsGetSiloContainerId(
+  _In_ PESILO Silo);
+
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PsRegisterSiloMonitor(
+  _In_ PSILO_MONITOR_REGISTRATION Registration,
+  _Outptr_ PSERVER_SILO_MONITOR *ReturnedMonitor);
+
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PsStartSiloMonitor(
+  _In_ PSERVER_SILO_MONITOR Monitor);
+
+NTKERNELAPI
+VOID
+NTAPI
+PsUnregisterSiloMonitor(
+  _In_ PSERVER_SILO_MONITOR Monitor);
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN10_RS1) */
 $endif (_NTDDK_)

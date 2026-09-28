@@ -11,6 +11,30 @@
 //
 #define _PS_DEBUG_                                      0x00
 
+#if (NTDDI_VERSION < NTDDI_WIN10_RS1)
+//
+// HACK: Copied from ntddk.h as we don't have the required NTDDI_VERSION
+//
+typedef NTSTATUS
+(NTAPI *SILO_MONITOR_CREATE_CALLBACK)(
+    _In_ PESILO Silo);
+
+typedef VOID
+(NTAPI *SILO_MONITOR_TERMINATE_CALLBACK)(
+    _In_ PESILO Silo);
+
+typedef struct _SILO_MONITOR_REGISTRATION
+{
+    UCHAR Version;
+    BOOLEAN MonitorHost;
+    BOOLEAN MonitorExistingSilos;
+    UCHAR Reserved[5];
+    PCUNICODE_STRING DriverObjectName;
+    SILO_MONITOR_CREATE_CALLBACK CreateCallback;
+    SILO_MONITOR_TERMINATE_CALLBACK TerminateCallback;
+} SILO_MONITOR_REGISTRATION, *PSILO_MONITOR_REGISTRATION;
+#endif
+
 //
 // These define the Debug Masks Supported
 //

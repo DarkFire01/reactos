@@ -164,6 +164,7 @@
 #define TAG_QUOTA_BLOCK         'bQsP'
 #define TAG_THREAD_NAME         'mNhT'
 #define TAG_PS_WOW64            'oWsP'
+#define TAG_PS_SILO             'lSsP' /* PsSl - Ps silo */
 
 /* Run-Time Library Tags */
 #define TAG_HDTB    'BTDH'
