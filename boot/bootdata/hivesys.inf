@@ -1958,7 +1958,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","Start",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","Tag",0x00010001,0x0000000c
 HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr\Parameters\Wdf","WdfMajorVersion",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr\Parameters\Wdf","WdfMinorVersion",0x00010001,0x0000000f
+HKLM,"SYSTEM\CurrentControlSet\Services\vmbusr\Parameters\Wdf","WdfMinorVersion",0x00010001,0x00000021
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","ConfigFlags",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","DeviceDesc",0x00000000,"Virtual Machine Bus Provider"
