@@ -907,6 +907,10 @@ IopCmToFixedRequirement(
     ULONGLONG Start;
     ULONGLONG Length;
 
+    /* The caller may not have room for Io when there is no requirement */
+    if (Cm->Type == CmResourceTypeDeviceSpecific)
+        return FALSE;
+
     RtlZeroMemory(Io, sizeof(*Io));
     Io->Option = IO_RESOURCE_PREFERRED;
     Io->Type = Cm->Type;
@@ -915,9 +919,6 @@ IopCmToFixedRequirement(
 
     switch (Cm->Type)
     {
-        case CmResourceTypeDeviceSpecific:
-            return FALSE;
-
         case CmResourceTypeInterrupt:
             if (Cm->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
             {
@@ -3968,16 +3969,15 @@ IopGetDeviceRequirements(
         {
             PIO_RESOURCE_REQUIREMENTS_LIST Merged = IopMergeRequirementsLists(Filtered,
                                                                              Requirements);
+            BOOLEAN IsMergeFailed = (Merged == NULL &&
+                                     ((Filtered != NULL && Filtered->AlternativeLists != 0) ||
+                                      (Requirements != NULL && Requirements->AlternativeLists != 0)));
 
             if (Filtered != NULL)
                 ExFreePoolWithTag(Filtered, TAG_IO_ARBITER);
 
-            if (Merged == NULL &&
-                ((Filtered != NULL && Filtered->AlternativeLists != 0) ||
-                 (Requirements != NULL && Requirements->AlternativeLists != 0)))
-            {
+            if (IsMergeFailed)
                 return STATUS_INSUFFICIENT_RESOURCES;
-            }
 
             Filtered = Merged;
         }
