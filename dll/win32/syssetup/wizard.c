@@ -2737,7 +2737,12 @@ ProcessPageDlgProc(HWND hwndDlg,
             else
             {
                 SendDlgItemMessage(hwndDlg, IDC_CHECK1 + wParam, STM_SETIMAGE, IMAGE_ICON, (LPARAM)s_hCrossIcon);
-                ShowItemError(hwndDlg, (DWORD)lParam);
+
+                /* An unattended install has nobody to dismiss a message box */
+                if (SetupData->UnattendSetup)
+                    DPRINT1("Item %u failed, error %lu\n", (UINT)wParam, (DWORD)lParam);
+                else
+                    ShowItemError(hwndDlg, (DWORD)lParam);
             }
             break;
 
@@ -2754,7 +2759,18 @@ ProcessPageDlgProc(HWND hwndDlg,
             SendDlgItemMessage(hwndDlg, IDC_PROCESSPROGRESS, PBM_SETPOS, RegistrationNotify->Progress, 0);
             if (RegistrationNotify->LastError != ERROR_SUCCESS)
             {
-                ShowStepError(hwndDlg, RegistrationNotify);
+                /* An unattended install has nobody to dismiss a message box */
+                if (SetupData->UnattendSetup)
+                {
+                    DPRINT1("Step %S failed, message %u, error %lu\n",
+                            (RegistrationNotify->CurrentItem != NULL) ? RegistrationNotify->CurrentItem : L"",
+                            RegistrationNotify->MessageID,
+                            RegistrationNotify->LastError);
+                }
+                else
+                {
+                    ShowStepError(hwndDlg, RegistrationNotify);
+                }
             }
             break;
 
