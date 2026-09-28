@@ -463,7 +463,9 @@ uacpi_kernel_uninstall_interrupt_handler(
     _In_ uacpi_interrupt_handler Handler,
     _In_opt_ uacpi_handle IrqHandle)
 {
+#if (NTDDI_VERSION >= NTDDI_VISTA)
     IO_DISCONNECT_INTERRUPT_PARAMETERS Parameters;
+#endif
     PUACPINT_HOST_INTERRUPT Block = IrqHandle;
 
     UNREFERENCED_PARAMETER(Handler);
@@ -473,10 +475,14 @@ uacpi_kernel_uninstall_interrupt_handler(
 
     if (Block->InterruptObject)
     {
+#if (NTDDI_VERSION >= NTDDI_VISTA)
         RtlZeroMemory(&Parameters, sizeof(Parameters));
         Parameters.Version = CONNECT_FULLY_SPECIFIED;
         Parameters.ConnectionContext.InterruptObject = Block->InterruptObject;
         IoDisconnectInterruptEx(&Parameters);
+#else
+        IoDisconnectInterrupt(Block->InterruptObject);
+#endif
 
         /* Drain the deferral DPC before the block goes away */
         KeFlushQueuedDpcs();
