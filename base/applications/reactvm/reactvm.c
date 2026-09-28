@@ -105,12 +105,20 @@ static PFN_WHV_DELETE_PORT VmDeleteNotificationPort;
 #define VM_WSL              L"\\wsl.exe"
 #define VM_WSL_VERSION      L"--version"
 #define VM_WSL_STATUS       L"--status"
+/* Runs in the machine's own distribution, so it needs no installed one */
+#define VM_WSL_DEBUG_SHELL  L"--debug-shell"
 #define VM_WSL_SERVICE_NAME L"WslService"
 #define VM_WSL_HOST         L"\\wslhost.exe"
 #define VM_WSL_RELAY        L"\\wslrelay.exe"
 #define VM_WSL_DEVICE_HOST  L"wsldevicehost.dll"
 #define VM_WSL_LIBRARY      L"libwsl.dll"
 #define VM_COMPUTE_SERVICE  L"vmcompute"
+
+/* What a machine is talked to over, and what it reads its disk out of */
+#define VM_SOCKET_CONTROL   L"hvsocketcontrol"
+#define VM_DEPENDS_SERVICE  L"FsDepends"
+#define VM_VIRTUAL_DISK     L"vhdmp"
+#define VM_DISK_SERVER      L"storvsp"
 
 /* How long a service is given to settle, and how often it is looked at */
 #define VM_SERVICE_WAIT     20000
@@ -3033,6 +3041,37 @@ VmStageWhichBuildThisIs(VOID)
 
 /**
  * @brief
+ * Brings up what a machine stands on: how it is spoken to, and where its disk
+ * comes from.
+ *
+ * @remarks
+ * Each of these is asked for on its own so that the one that stops is named.
+ * Loading a driver is the loader answering every import it has, so a driver
+ * that starts has said that everything under it is there too: the socket
+ * control brings the transport, the disk server brings the machine bus client,
+ * and the virtual disk brings what says what it is made of.
+ */
+static
+VOID
+VmStageUnderneathAMachine(VOID)
+{
+    VmPrint("\nwhat a machine stands on\n");
+
+    VmCheck("it can be spoken to over a socket",
+            VmStartService(VM_SOCKET_CONTROL));
+
+    VmCheck("what a virtual disk is made of is tracked",
+            VmStartService(VM_DEPENDS_SERVICE));
+
+    VmCheck("a file can be made into a disk",
+            VmStartService(VM_VIRTUAL_DISK));
+
+    VmCheck("and a guest can be served one",
+            VmStartService(VM_DISK_SERVER));
+}
+
+/**
+ * @brief
  * Brings up the Linux subsystem's own service and its command, which are what
  * ask the compute service for a machine.
  *
@@ -3054,6 +3093,15 @@ VmStageSubsystemForLinux(VOID)
 
     /* Unlike the version, this one has to reach the service to answer at all */
     VmCheck("and asks the service what it has", VmRunImage(VM_WSL, VM_WSL_STATUS));
+
+    /*
+     * The first thing here that wants a machine rather than an answer. Nothing
+     * is installed to run, so the shell is asked for in the distribution the
+     * subsystem carries for itself, which is the shortest way to make the
+     * compute service build a machine and start the kernel in it.
+     */
+    VmCheck("and a machine is built for its own shell",
+            VmRunImage(VM_WSL, VM_WSL_DEBUG_SHELL));
 
     /*
      * The rest of the subsystem is what the service reaches for once it has a
@@ -3212,6 +3260,8 @@ main(void)
     VmStageWhichBuildThisIs();
 
     VmStageRegistryNotifications();
+
+    VmStageUnderneathAMachine();
 
     VmStageSubsystemForLinux();
 

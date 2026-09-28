@@ -1965,6 +1965,88 @@ HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","DeviceDesc",0x00000000,"Vi
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","HardwareID",0x00010000,"ROOT\VMBus"
 HKLM,"SYSTEM\CurrentControlSet\Enum\Root\VMBus\0000","Service",0x00000000,"vmbusr"
 
+; The sockets a machine and whoever runs it talk over. The transport itself is
+; brought in as what this one is built on, which is why it has no registration
+; of its own here or on Windows.
+HKLM,"SYSTEM\CurrentControlSet\Services\hvsocketcontrol","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\hvsocketcontrol","ImagePath",0x00020000,"system32\drivers\hvsocketcontrol.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\hvsocketcontrol","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\hvsocketcontrol","Type",0x00010001,0x00000001
+
+; What a virtual disk is made of, so that nothing dismounts the volume holding
+; the file a running machine is reading its disk out of. Windows starts this
+; when the storage stack first wants it; nothing here asks for it that way, so
+; it comes up with the system and waits.
+HKLM,"SYSTEM\CurrentControlSet\Services\FsDepends","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\FsDepends","Group",0x00000000,"FSFilter Top"
+HKLM,"SYSTEM\CurrentControlSet\Services\FsDepends","ImagePath",0x00020000,"system32\drivers\fsdepends.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\FsDepends","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\FsDepends","Tag",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\FsDepends","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\FsDepends\Parameters","VirtualDiskMaxTreeDepth",0x00010001,0x00000002
+
+; The virtual disk itself, which is a storage miniport over an ordinary file
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp","Group",0x00000000,"SCSI Miniport"
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp","ImagePath",0x00020000,"system32\drivers\vhdmp.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp","Tag",0x00010001,0x00000022
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp\Parameters","BusType",0x00010001,0x0000000f
+HKLM,"SYSTEM\CurrentControlSet\Services\vhdmp\Parameters\PnpInterface","5",0x00010001,0x00000001
+
+; The storage side of the machine bus, which is what serves a guest its disks,
+; root enumerated the way Hyper-V has it
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","ImagePath",0x00020000,"system32\drivers\storvsp.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Tag",0x00010001,0x0000000b
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp\Parameters\Wdf","WdfMajorVersion",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\storvsp\Parameters\Wdf","WdfMinorVersion",0x00010001,0x0000000f
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\storvsp\0000","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\storvsp\0000","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\storvsp\0000","DeviceDesc",0x00000000,"Virtual Disk Server"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\storvsp\0000","HardwareID",0x00010000,"ROOT\storvsp"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\storvsp\0000","Service",0x00000000,"storvsp"
+
+; Host compute service, which is what builds a machine out of the root stack
+HKLM,"SYSTEM\CurrentControlSet\Services\vmcompute","DisplayName",0x00000000,"Hyper-V Host Compute Service"
+HKLM,"SYSTEM\CurrentControlSet\Services\vmcompute","ImagePath",0x00020000,"%SystemRoot%\system32\vmcompute.exe"
+HKLM,"SYSTEM\CurrentControlSet\Services\vmcompute","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\vmcompute","ObjectName",0x00000000,"LocalSystem"
+HKLM,"SYSTEM\CurrentControlSet\Services\vmcompute","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\vmcompute","Type",0x00010001,0x00000010
+
+; The Linux subsystem. Its command reaches it by asking for the class
+; below, which the service registers once the controller has started it.
+HKLM,"SYSTEM\CurrentControlSet\Services\WslService","DisplayName",0x00000000,"WSL Service"
+HKLM,"SYSTEM\CurrentControlSet\Services\WslService","ImagePath",0x00020000,"%SystemRoot%\system32\wslservice.exe"
+HKLM,"SYSTEM\CurrentControlSet\Services\WslService","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\WslService","ObjectName",0x00000000,"LocalSystem"
+HKLM,"SYSTEM\CurrentControlSet\Services\WslService","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\WslService","Type",0x00010001,0x00000010
+HKLM,"SOFTWARE\Classes\AppID\{370121D2-AA7E-4608-A86D-0BBAB9DA1A60}","LocalService",0x00000000,"WslService"
+HKLM,"SOFTWARE\Classes\CLSID\{a9b7a1b9-0671-405c-95f1-e0612cb4ce7e}",,0x00000000,"LxssUserSession"
+HKLM,"SOFTWARE\Classes\CLSID\{a9b7a1b9-0671-405c-95f1-e0612cb4ce7e}","AppID",0x00000000,"{370121D2-AA7E-4608-A86D-0BBAB9DA1A60}"
+
+; The Linux subsystem's own interfaces. Its service reads the first of these
+; back before it will run at all: an absent registration is how it is told
+; the subsystem was never installed, and it then reports itself disabled.
+HKLM,"SOFTWARE\Classes\Interface\{46f3c96d-ffa3-42f0-b052-52f5e7ecbb08}",,0x00000000,"IWslSupport"
+HKLM,"SOFTWARE\Classes\Interface\{46f3c96d-ffa3-42f0-b052-52f5e7ecbb08}\ProxyStubClsid32",,0x00000000,"{e66b0f30-e7b4-4f8c-acfd-d100c46c6278}"
+HKLM,"SOFTWARE\Classes\Interface\{38541BDC-F54F-4CEB-85D0-37F0F3D2617E}",,0x00000000,"ILxssUserSession"
+HKLM,"SOFTWARE\Classes\Interface\{38541BDC-F54F-4CEB-85D0-37F0F3D2617E}\ProxyStubClsid32",,0x00000000,"{4EA0C6DD-E9FF-48E7-994E-13A31D10DC60}"
+
+; and the two marshallers those interfaces are carried by
+HKLM,"SOFTWARE\Classes\CLSID\{e66b0f30-e7b4-4f8c-acfd-d100c46c6278}",,0x00000000,"PSFactoryBuffer"
+HKLM,"SOFTWARE\Classes\CLSID\{e66b0f30-e7b4-4f8c-acfd-d100c46c6278}\InProcServer32",,0x00020000,"%SystemRoot%\system32\lxss\wslsupport.dll"
+HKLM,"SOFTWARE\Classes\CLSID\{e66b0f30-e7b4-4f8c-acfd-d100c46c6278}\InProcServer32","ThreadingModel",0x00000000,"Both"
+HKLM,"SOFTWARE\Classes\CLSID\{4EA0C6DD-E9FF-48E7-994E-13A31D10DC60}",,0x00000000,"PSFactoryBuffer"
+HKLM,"SOFTWARE\Classes\CLSID\{4EA0C6DD-E9FF-48E7-994E-13A31D10DC60}\InProcServer32",,0x00020000,"%SystemRoot%\system32\wslserviceproxystub.dll"
+HKLM,"SOFTWARE\Classes\CLSID\{4EA0C6DD-E9FF-48E7-994E-13A31D10DC60}\InProcServer32","ThreadingModel",0x00000000,"Both"
+
 ; Audio Service
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","DisplayName",0x00000000,%AUDIO_SERVICE%
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Description",0x00000000,%AUDIO_SERVICE_DESCRIPTION%
