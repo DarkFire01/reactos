@@ -50,6 +50,7 @@ ApiSetpResolveBySibling(
     _Out_ PUNICODE_STRING Output)
 {
     UNICODE_STRING Stem = *Name;
+    UNICODE_STRING AnyGeneration = { 0, 0, NULL };
     LONG LBnd, UBnd, Index, First;
 
     /* Drop the last version component, and the hyphen ahead of it */
@@ -123,12 +124,24 @@ ApiSetpResolveBySibling(
             continue;
         }
 
-        if ((g_Apisets[Index].dwOsVersions & ApisetVersion) &&
-            (g_Apisets[Index].Target.Length != 0))
+        if (g_Apisets[Index].Target.Length == 0)
+            continue;
+
+        if (g_Apisets[Index].dwOsVersions & ApisetVersion)
         {
             *Output = g_Apisets[Index].Target;
             return TRUE;
         }
+
+        if (AnyGeneration.Length == 0)
+            AnyGeneration = g_Apisets[Index].Target;
+    }
+
+    /* One host serves the contract whatever generation names it, so take it */
+    if (AnyGeneration.Length != 0)
+    {
+        *Output = AnyGeneration;
+        return TRUE;
     }
 
     return FALSE;
