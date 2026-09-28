@@ -1,63 +1,63 @@
-@ stub ObjectStublessClient3
-@ stub ObjectStublessClient4
-@ stub ObjectStublessClient5
-@ stub ObjectStublessClient6
-@ stub ObjectStublessClient7
-@ stub ObjectStublessClient8
-@ stub ObjectStublessClient9
-@ stub ObjectStublessClient10
-@ stub ObjectStublessClient11
-@ stub ObjectStublessClient12
-@ stub ObjectStublessClient13
-@ stub ObjectStublessClient14
-@ stub ObjectStublessClient15
-@ stub ObjectStublessClient16
-@ stub ObjectStublessClient17
-@ stub ObjectStublessClient18
-@ stub ObjectStublessClient19
-@ stub ObjectStublessClient20
-@ stub ObjectStublessClient21
-@ stub ObjectStublessClient22
-@ stub ObjectStublessClient23
-@ stub ObjectStublessClient24
-@ stub ObjectStublessClient25
-@ stub ObjectStublessClient26
-@ stub ObjectStublessClient27
-@ stub ObjectStublessClient28
-@ stub ObjectStublessClient29
-@ stub ObjectStublessClient30
-@ stub ObjectStublessClient31
-@ stub ObjectStublessClient32
-@ stub NdrProxyForwardingFunction3
-@ stub NdrProxyForwardingFunction4
-@ stub NdrProxyForwardingFunction5
-@ stub NdrProxyForwardingFunction6
-@ stub NdrProxyForwardingFunction7
-@ stub NdrProxyForwardingFunction8
-@ stub NdrProxyForwardingFunction9
-@ stub NdrProxyForwardingFunction10
-@ stub NdrProxyForwardingFunction11
-@ stub NdrProxyForwardingFunction12
-@ stub NdrProxyForwardingFunction13
-@ stub NdrProxyForwardingFunction14
-@ stub NdrProxyForwardingFunction15
-@ stub NdrProxyForwardingFunction16
-@ stub NdrProxyForwardingFunction17
-@ stub NdrProxyForwardingFunction18
-@ stub NdrProxyForwardingFunction19
-@ stub NdrProxyForwardingFunction20
-@ stub NdrProxyForwardingFunction21
-@ stub NdrProxyForwardingFunction22
-@ stub NdrProxyForwardingFunction23
-@ stub NdrProxyForwardingFunction24
-@ stub NdrProxyForwardingFunction25
-@ stub NdrProxyForwardingFunction26
-@ stub NdrProxyForwardingFunction27
-@ stub NdrProxyForwardingFunction28
-@ stub NdrProxyForwardingFunction29
-@ stub NdrProxyForwardingFunction30
-@ stub NdrProxyForwardingFunction31
-@ stub NdrProxyForwardingFunction32
+@ cdecl ObjectStublessClient3() rpcrt4.ObjectStublessClient3
+@ cdecl ObjectStublessClient4() rpcrt4.ObjectStublessClient4
+@ cdecl ObjectStublessClient5() rpcrt4.ObjectStublessClient5
+@ cdecl ObjectStublessClient6() rpcrt4.ObjectStublessClient6
+@ cdecl ObjectStublessClient7() rpcrt4.ObjectStublessClient7
+@ cdecl ObjectStublessClient8() rpcrt4.ObjectStublessClient8
+@ cdecl ObjectStublessClient9() rpcrt4.ObjectStublessClient9
+@ cdecl ObjectStublessClient10() rpcrt4.ObjectStublessClient10
+@ cdecl ObjectStublessClient11() rpcrt4.ObjectStublessClient11
+@ cdecl ObjectStublessClient12() rpcrt4.ObjectStublessClient12
+@ cdecl ObjectStublessClient13() rpcrt4.ObjectStublessClient13
+@ cdecl ObjectStublessClient14() rpcrt4.ObjectStublessClient14
+@ cdecl ObjectStublessClient15() rpcrt4.ObjectStublessClient15
+@ cdecl ObjectStublessClient16() rpcrt4.ObjectStublessClient16
+@ cdecl ObjectStublessClient17() rpcrt4.ObjectStublessClient17
+@ cdecl ObjectStublessClient18() rpcrt4.ObjectStublessClient18
+@ cdecl ObjectStublessClient19() rpcrt4.ObjectStublessClient19
+@ cdecl ObjectStublessClient20() rpcrt4.ObjectStublessClient20
+@ cdecl ObjectStublessClient21() rpcrt4.ObjectStublessClient21
+@ cdecl ObjectStublessClient22() rpcrt4.ObjectStublessClient22
+@ cdecl ObjectStublessClient23() rpcrt4.ObjectStublessClient23
+@ cdecl ObjectStublessClient24() rpcrt4.ObjectStublessClient24
+@ cdecl ObjectStublessClient25() rpcrt4.ObjectStublessClient25
+@ cdecl ObjectStublessClient26() rpcrt4.ObjectStublessClient26
+@ cdecl ObjectStublessClient27() rpcrt4.ObjectStublessClient27
+@ cdecl ObjectStublessClient28() rpcrt4.ObjectStublessClient28
+@ cdecl ObjectStublessClient29() rpcrt4.ObjectStublessClient29
+@ cdecl ObjectStublessClient30() rpcrt4.ObjectStublessClient30
+@ cdecl ObjectStublessClient31() rpcrt4.ObjectStublessClient31
+@ cdecl ObjectStublessClient32() rpcrt4.ObjectStublessClient32
+@ cdecl NdrProxyForwardingFunction3() rpcrt4.NdrProxyForwardingFunction3
+@ cdecl NdrProxyForwardingFunction4() rpcrt4.NdrProxyForwardingFunction4
+@ cdecl NdrProxyForwardingFunction5() rpcrt4.NdrProxyForwardingFunction5
+@ cdecl NdrProxyForwardingFunction6() rpcrt4.NdrProxyForwardingFunction6
+@ cdecl NdrProxyForwardingFunction7() rpcrt4.NdrProxyForwardingFunction7
+@ cdecl NdrProxyForwardingFunction8() rpcrt4.NdrProxyForwardingFunction8
+@ cdecl NdrProxyForwardingFunction9() rpcrt4.NdrProxyForwardingFunction9
+@ cdecl NdrProxyForwardingFunction10() rpcrt4.NdrProxyForwardingFunction10
+@ cdecl NdrProxyForwardingFunction11() rpcrt4.NdrProxyForwardingFunction11
+@ cdecl NdrProxyForwardingFunction12() rpcrt4.NdrProxyForwardingFunction12
+@ cdecl NdrProxyForwardingFunction13() rpcrt4.NdrProxyForwardingFunction13
+@ cdecl NdrProxyForwardingFunction14() rpcrt4.NdrProxyForwardingFunction14
+@ cdecl NdrProxyForwardingFunction15() rpcrt4.NdrProxyForwardingFunction15
+@ cdecl NdrProxyForwardingFunction16() rpcrt4.NdrProxyForwardingFunction16
+@ cdecl NdrProxyForwardingFunction17() rpcrt4.NdrProxyForwardingFunction17
+@ cdecl NdrProxyForwardingFunction18() rpcrt4.NdrProxyForwardingFunction18
+@ cdecl NdrProxyForwardingFunction19() rpcrt4.NdrProxyForwardingFunction19
+@ cdecl NdrProxyForwardingFunction20() rpcrt4.NdrProxyForwardingFunction20
+@ cdecl NdrProxyForwardingFunction21() rpcrt4.NdrProxyForwardingFunction21
+@ cdecl NdrProxyForwardingFunction22() rpcrt4.NdrProxyForwardingFunction22
+@ cdecl NdrProxyForwardingFunction23() rpcrt4.NdrProxyForwardingFunction23
+@ cdecl NdrProxyForwardingFunction24() rpcrt4.NdrProxyForwardingFunction24
+@ cdecl NdrProxyForwardingFunction25() rpcrt4.NdrProxyForwardingFunction25
+@ cdecl NdrProxyForwardingFunction26() rpcrt4.NdrProxyForwardingFunction26
+@ cdecl NdrProxyForwardingFunction27() rpcrt4.NdrProxyForwardingFunction27
+@ cdecl NdrProxyForwardingFunction28() rpcrt4.NdrProxyForwardingFunction28
+@ cdecl NdrProxyForwardingFunction29() rpcrt4.NdrProxyForwardingFunction29
+@ cdecl NdrProxyForwardingFunction30() rpcrt4.NdrProxyForwardingFunction30
+@ cdecl NdrProxyForwardingFunction31() rpcrt4.NdrProxyForwardingFunction31
+@ cdecl NdrProxyForwardingFunction32() rpcrt4.NdrProxyForwardingFunction32
 @ stub NdrOleInitializeExtension
 @ stdcall CLIPFORMAT_UserFree(ptr ptr)
 @ stdcall CLIPFORMAT_UserMarshal(ptr ptr ptr)

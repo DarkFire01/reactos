@@ -2594,3 +2594,73 @@ HRESULT __RPC_STUB IQuickActivate_QuickActivate_Stub(
     FIXME("not implemented\n");
     return E_NOTIMPL;
 }
+#ifdef _WIN64
+
+/*
+ * The same marshalling, under the names a sixty four bit stub imports. What the
+ * two sets of names are for is the size and the alignment of the structures the
+ * caller holds, and those are already the sixty four bit ones in this build, so
+ * each of these is the routine beside it.
+ */
+
+ULONG WINAPI BSTR_UserSize64(ULONG *pFlags, ULONG Start, BSTR *pstr)
+{
+    return BSTR_UserSize(pFlags, Start, pstr);
+}
+
+unsigned char * WINAPI BSTR_UserMarshal64(ULONG *pFlags, unsigned char *Buffer, BSTR *pstr)
+{
+    return BSTR_UserMarshal(pFlags, Buffer, pstr);
+}
+
+unsigned char * WINAPI BSTR_UserUnmarshal64(ULONG *pFlags, unsigned char *Buffer, BSTR *pstr)
+{
+    return BSTR_UserUnmarshal(pFlags, Buffer, pstr);
+}
+
+void WINAPI BSTR_UserFree64(ULONG *pFlags, BSTR *pstr)
+{
+    BSTR_UserFree(pFlags, pstr);
+}
+
+ULONG WINAPI VARIANT_UserSize64(ULONG *pFlags, ULONG Start, VARIANT *pvar)
+{
+    return VARIANT_UserSize(pFlags, Start, pvar);
+}
+
+unsigned char * WINAPI VARIANT_UserMarshal64(ULONG *pFlags, unsigned char *Buffer, VARIANT *pvar)
+{
+    return VARIANT_UserMarshal(pFlags, Buffer, pvar);
+}
+
+unsigned char * WINAPI VARIANT_UserUnmarshal64(ULONG *pFlags, unsigned char *Buffer, VARIANT *pvar)
+{
+    return VARIANT_UserUnmarshal(pFlags, Buffer, pvar);
+}
+
+void WINAPI VARIANT_UserFree64(ULONG *pFlags, VARIANT *pvar)
+{
+    VARIANT_UserFree(pFlags, pvar);
+}
+
+ULONG WINAPI LPSAFEARRAY_UserSize64(ULONG *pFlags, ULONG Start, LPSAFEARRAY *ppsa)
+{
+    return LPSAFEARRAY_UserSize(pFlags, Start, ppsa);
+}
+
+unsigned char * WINAPI LPSAFEARRAY_UserMarshal64(ULONG *pFlags, unsigned char *Buffer, LPSAFEARRAY *ppsa)
+{
+    return LPSAFEARRAY_UserMarshal(pFlags, Buffer, ppsa);
+}
+
+unsigned char * WINAPI LPSAFEARRAY_UserUnmarshal64(ULONG *pFlags, unsigned char *Buffer, LPSAFEARRAY *ppsa)
+{
+    return LPSAFEARRAY_UserUnmarshal(pFlags, Buffer, ppsa);
+}
+
+void WINAPI LPSAFEARRAY_UserFree64(ULONG *pFlags, LPSAFEARRAY *ppsa)
+{
+    LPSAFEARRAY_UserFree(pFlags, ppsa);
+}
+
+#endif /* _WIN64 */

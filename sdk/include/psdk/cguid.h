@@ -70,6 +70,7 @@ extern const CLSID CLSID_ComBinding;
 extern const CLSID CLSID_StdEvent;
 extern const CLSID CLSID_ManualResetEvent;
 extern const CLSID CLSID_SynchronizeContainer;
+extern const CLSID CLSID_ContextSwitcher;
 extern const CLSID CLSID_CCDFormKrnl;
 extern const CLSID CLSID_CCDPropertyPage;
 extern const CLSID CLSID_CCDFormDialog;

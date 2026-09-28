@@ -526,6 +526,29 @@ void RPC_ENTRY NdrMesTypeEncode2(handle_t Handle, const MIDL_TYPE_PICKLING_INFO 
     FIXME("(%p, %p, %p, %p, %p)\n", Handle, pPicklingInfo, pStubDesc, pFormatString, pObject);
 }
 
+/*
+ * As NdrMesTypeEncode2, for a proxy that keeps its types in one table and names
+ * the wanted one by index. The stub description and the format string come out
+ * of the proxy, so this picks them out and hands the rest on.
+ */
+void RPC_ENTRY NdrMesTypeEncode3(handle_t Handle, const MIDL_TYPE_PICKLING_INFO *pPicklingInfo,
+    const MIDL_STUBLESS_PROXY_INFO *pProxyInfo, const unsigned int *ArrTypeOffset,
+    unsigned int nTypeIndex, void *pObject)
+{
+    const MIDL_STUB_DESC *pStubDesc;
+
+    TRACE("(%p, %p, %p, %p, %u, %p)\n", Handle, pPicklingInfo, pProxyInfo,
+          ArrTypeOffset, nTypeIndex, pObject);
+
+    if ((pProxyInfo == NULL) || (ArrTypeOffset == NULL))
+        return;
+
+    pStubDesc = pProxyInfo->pStubDesc;
+    NdrMesTypeEncode2(Handle, pPicklingInfo, pStubDesc,
+                      pStubDesc->pFormatTypes + ArrTypeOffset[nTypeIndex],
+                      pObject);
+}
+
 void RPC_ENTRY NdrMesTypeFree2(handle_t Handle, const MIDL_TYPE_PICKLING_INFO *pPicklingInfo,
     const MIDL_STUB_DESC *pStubDesc, PFORMAT_STRING pFormatString, void *pObject)
 {

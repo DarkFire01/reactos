@@ -348,6 +348,94 @@ RPCRTAPI RPC_STATUS RPC_ENTRY
 RPCRTAPI RPC_STATUS RPC_ENTRY
   RpcObjectSetType( UUID* ObjUuid, UUID* TypeUuid );
 
+typedef struct _RPC_BINDING_HANDLE_TEMPLATE_V1_W
+{
+    ULONG Version;
+    ULONG Flags;
+    ULONG ProtocolSequence;
+    unsigned short *NetworkAddress;
+    unsigned short *StringEndpoint;
+    union
+    {
+        unsigned short *Reserved;
+    } u1;
+    UUID ObjectUuid;
+} RPC_BINDING_HANDLE_TEMPLATE_V1_W, *PRPC_BINDING_HANDLE_TEMPLATE_V1_W;
+
+typedef struct _RPC_BINDING_HANDLE_TEMPLATE_V1_A
+{
+    ULONG Version;
+    ULONG Flags;
+    ULONG ProtocolSequence;
+    unsigned char *NetworkAddress;
+    unsigned char *StringEndpoint;
+    union
+    {
+        unsigned char *Reserved;
+    } u1;
+    UUID ObjectUuid;
+} RPC_BINDING_HANDLE_TEMPLATE_V1_A, *PRPC_BINDING_HANDLE_TEMPLATE_V1_A;
+
+typedef struct _RPC_BINDING_HANDLE_SECURITY_V1_W
+{
+    ULONG Version;
+    unsigned short *ServerPrincName;
+    ULONG AuthnLevel;
+    ULONG AuthnSvc;
+    SEC_WINNT_AUTH_IDENTITY_W *AuthIdentity;
+    RPC_SECURITY_QOS *SecurityQos;
+} RPC_BINDING_HANDLE_SECURITY_V1_W, *PRPC_BINDING_HANDLE_SECURITY_V1_W;
+
+typedef struct _RPC_BINDING_HANDLE_SECURITY_V1_A
+{
+    ULONG Version;
+    unsigned char *ServerPrincName;
+    ULONG AuthnLevel;
+    ULONG AuthnSvc;
+    SEC_WINNT_AUTH_IDENTITY_A *AuthIdentity;
+    RPC_SECURITY_QOS *SecurityQos;
+} RPC_BINDING_HANDLE_SECURITY_V1_A, *PRPC_BINDING_HANDLE_SECURITY_V1_A;
+
+typedef struct _RPC_BINDING_HANDLE_OPTIONS_V1
+{
+    ULONG Version;
+    ULONG Flags;
+    ULONG ComTimeout;
+    ULONG CallTimeout;
+} RPC_BINDING_HANDLE_OPTIONS_V1, *PRPC_BINDING_HANDLE_OPTIONS_V1;
+
+#ifdef UNICODE
+#define RPC_BINDING_HANDLE_TEMPLATE_V1 RPC_BINDING_HANDLE_TEMPLATE_V1_W
+#define PRPC_BINDING_HANDLE_TEMPLATE_V1 PRPC_BINDING_HANDLE_TEMPLATE_V1_W
+#define RPC_BINDING_HANDLE_SECURITY_V1 RPC_BINDING_HANDLE_SECURITY_V1_W
+#define PRPC_BINDING_HANDLE_SECURITY_V1 PRPC_BINDING_HANDLE_SECURITY_V1_W
+#define RpcBindingCreate RpcBindingCreateW
+#else
+#define RPC_BINDING_HANDLE_TEMPLATE_V1 RPC_BINDING_HANDLE_TEMPLATE_V1_A
+#define PRPC_BINDING_HANDLE_TEMPLATE_V1 PRPC_BINDING_HANDLE_TEMPLATE_V1_A
+#define RPC_BINDING_HANDLE_SECURITY_V1 RPC_BINDING_HANDLE_SECURITY_V1_A
+#define PRPC_BINDING_HANDLE_SECURITY_V1 PRPC_BINDING_HANDLE_SECURITY_V1_A
+#define RpcBindingCreate RpcBindingCreateA
+#endif
+
+RPCRTAPI RPC_STATUS RPC_ENTRY
+  RpcBindingCreateA( RPC_BINDING_HANDLE_TEMPLATE_V1_A* Template,
+                     RPC_BINDING_HANDLE_SECURITY_V1_A* Security,
+                     RPC_BINDING_HANDLE_OPTIONS_V1* Options,
+                     RPC_BINDING_HANDLE* Binding );
+RPCRTAPI RPC_STATUS RPC_ENTRY
+  RpcBindingCreateW( RPC_BINDING_HANDLE_TEMPLATE_V1_W* Template,
+                     RPC_BINDING_HANDLE_SECURITY_V1_W* Security,
+                     RPC_BINDING_HANDLE_OPTIONS_V1* Options,
+                     RPC_BINDING_HANDLE* Binding );
+struct _RPC_ASYNC_STATE;
+
+RPCRTAPI RPC_STATUS RPC_ENTRY
+  RpcBindingBind( struct _RPC_ASYNC_STATE* pAsync, RPC_BINDING_HANDLE Binding,
+                  RPC_IF_HANDLE IfSpec );
+RPCRTAPI RPC_STATUS RPC_ENTRY
+  RpcBindingUnbind( RPC_BINDING_HANDLE Binding );
+
 RPCRTAPI RPC_STATUS RPC_ENTRY
   RpcBindingFromStringBindingA( RPC_CSTR StringBinding, RPC_BINDING_HANDLE* Binding );
 RPCRTAPI RPC_STATUS RPC_ENTRY

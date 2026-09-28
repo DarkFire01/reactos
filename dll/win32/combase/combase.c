@@ -588,10 +588,34 @@ static const IClassFactoryVtbl global_options_factory_vtbl =
 
 static IClassFactory global_options_factory = { &global_options_factory_vtbl };
 
+static HRESULT WINAPI context_switcher_CreateInstance(IClassFactory *iface, IUnknown *outer, REFIID riid, void **ppv)
+{
+    TRACE("%p, %s, %p.\n", outer, debugstr_guid(riid), ppv);
+
+    if (outer)
+        return CLASS_E_NOAGGREGATION;
+
+    /* The switcher a caller asks for is the context that caller is already in */
+    return CoGetObjectContext(riid, ppv);
+}
+
+static const IClassFactoryVtbl context_switcher_factory_vtbl =
+{
+    class_factory_QueryInterface,
+    class_factory_AddRef,
+    class_factory_Release,
+    context_switcher_CreateInstance,
+    class_factory_LockServer
+};
+
+static IClassFactory context_switcher_factory = { &context_switcher_factory_vtbl };
+
 static HRESULT get_builtin_class_factory(REFCLSID rclsid, REFIID riid, void **obj)
 {
     if (IsEqualCLSID(rclsid, &CLSID_GlobalOptions))
         return IClassFactory_QueryInterface(&global_options_factory, riid, obj);
+    if (IsEqualCLSID(rclsid, &CLSID_ContextSwitcher))
+        return IClassFactory_QueryInterface(&context_switcher_factory, riid, obj);
     return E_UNEXPECTED;
 }
 
@@ -1737,15 +1761,19 @@ static HRESULT com_get_class_object(REFCLSID rclsid, DWORD clscontext,
     {
         if (IsEqualCLSID(rclsid, &CLSID_InProcFreeMarshaler) ||
                 IsEqualCLSID(rclsid, &CLSID_GlobalOptions) ||
+                IsEqualCLSID(rclsid, &CLSID_ContextSwitcher) ||
                 (!(clscontext & CLSCTX_APPCONTAINER) && IsEqualCLSID(rclsid, &CLSID_ManualResetEvent)) ||
                 IsEqualCLSID(rclsid, &CLSID_StdGlobalInterfaceTable))
         {
             apartment_release(apt);
 
-            if (IsEqualCLSID(rclsid, &CLSID_GlobalOptions))
+            if (IsEqualCLSID(rclsid, &CLSID_GlobalOptions) ||
+                IsEqualCLSID(rclsid, &CLSID_ContextSwitcher))
+            {
                 return get_builtin_class_factory(rclsid, riid, obj);
-            else
-                return Ole32DllGetClassObject(rclsid, riid, obj);
+            }
+
+            return Ole32DllGetClassObject(rclsid, riid, obj);
         }
     }
 
@@ -2550,9 +2578,13 @@ static ULONG WINAPI thread_context_callback_Release(IContextCallback *iface)
 static HRESULT WINAPI thread_context_callback_ContextCallback(IContextCallback *iface,
         PFNCONTEXTCALL callback, ComCallData *param, REFIID riid, int method, IUnknown *punk)
 {
-    FIXME("%p, %p, %p, %s, %d, %p\n", iface, callback, param, debugstr_guid(riid), method, punk);
+    TRACE("%p, %p, %p, %s, %d, %p\n", iface, callback, param, debugstr_guid(riid), method, punk);
 
-    return E_NOTIMPL;
+    if (!callback)
+        return E_POINTER;
+
+    /* This object belongs to the calling thread, so its context is already entered */
+    return callback(param);
 }
 
 static const IContextCallbackVtbl thread_context_callback_vtbl =
@@ -3409,8 +3441,11 @@ HRESULT WINAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void **obj)
 
     *obj = NULL;
 
-    if (IsEqualCLSID(rclsid, &CLSID_GlobalOptions))
-        return IClassFactory_QueryInterface(&global_options_factory, riid, obj);
+    if (IsEqualCLSID(rclsid, &CLSID_GlobalOptions) ||
+        IsEqualCLSID(rclsid, &CLSID_ContextSwitcher))
+    {
+        return get_builtin_class_factory(rclsid, riid, obj);
+    }
 
     return CLASS_E_CLASSNOTAVAILABLE;
 }

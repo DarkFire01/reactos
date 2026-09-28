@@ -2562,6 +2562,22 @@ void WINAPI SubscribeFeatureStateChangeNotification(FEATURE_STATE_CHANGE_SUBSCRI
 }
 
 /*************************************************************************
+ * UnsubscribeFeatureStateChangeNotification        [SHCORE.@]
+ */
+void WINAPI UnsubscribeFeatureStateChangeNotification(FEATURE_STATE_CHANGE_SUBSCRIPTION *subscription)
+{
+    FIXME("(%p) stub\n", subscription);
+}
+
+/*************************************************************************
+ * RecordFeatureUsage        [SHCORE.@]
+ */
+void WINAPI RecordFeatureUsage(UINT32 feature, UINT32 kind, UINT32 addend, const char *origin)
+{
+    FIXME("(%u, %u, %u, %s) stub\n", feature, kind, addend, debugstr_a(origin));
+}
+
+/*************************************************************************
  * GetFeatureEnabledState        [SHCORE.@]
  */
 FEATURE_ENABLED_STATE WINAPI GetFeatureEnabledState(UINT32 feature, FEATURE_CHANGE_TIME change_time)
