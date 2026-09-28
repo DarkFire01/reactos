@@ -15,6 +15,7 @@
 
 #include <hal.h>
 #include "apicp.h"
+#include <smp.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -26,6 +27,8 @@
 
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];
+
+extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 #ifndef _M_AMD64
 const UCHAR
@@ -667,6 +670,42 @@ HalClearSoftwareInterrupt(
 
 /* SYSTEM INTERRUPTS **********************************************************/
 
+/**
+ * @brief
+ * Picks the trigger mode to program for an input.
+ *
+ * @param[in] Input
+ * The global system interrupt being enabled.
+ *
+ * @param[in] Mode
+ * The trigger mode the caller asked for.
+ *
+ * @return
+ * The trigger mode of an MADT interrupt source override targeting the input,
+ * else Mode.
+ */
+static
+KINTERRUPT_MODE
+NTAPI
+HalpGetInputMode(
+    _In_ ULONG Input,
+    _In_ KINTERRUPT_MODE Mode)
+{
+    ULONG Irq;
+
+    for (Irq = 0; Irq < HALP_ISA_IRQ_COUNT; Irq++)
+    {
+        if ((HalpApicInfoTable.IsaIrqTrigger[Irq] != HALP_ISA_TRIGGER_CONFORMS) &&
+            (HalpApicInfoTable.IsaIrqGsi[Irq] == Input))
+        {
+            return (HalpApicInfoTable.IsaIrqTrigger[Irq] == HALP_ISA_TRIGGER_LEVEL) ?
+                LevelSensitive : Latched;
+        }
+    }
+
+    return Mode;
+}
+
 BOOLEAN
 NTAPI
 HalEnableSystemInterrupt(
@@ -699,6 +738,8 @@ HalEnableSystemInterrupt(
            otherwise something is wrong. */
         return (ReDirReg.Vector == Vector);
     }
+
+    InterruptMode = HalpGetInputMode(Index, InterruptMode);
 
     /* Set up the redirection entry */
     ReDirReg.Vector = Vector;

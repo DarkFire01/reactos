@@ -21,6 +21,7 @@ extern PROCESSOR_IDENTITY HalpProcessorIdentity[MAXIMUM_PROCESSORS];
 
 /* This table is counter of the overall APIC constants acquired from madt */
 #define HALP_APIC_INFO_TABLE_IOAPIC_NUMBER 256 // ACPI_MADT_IO_APIC.Id is a UINT8.
+#define HALP_ISA_IRQ_COUNT 16
 typedef struct _HALP_APIC_INFO_TABLE
 {
     ULONG ApicMode;
@@ -30,7 +31,14 @@ typedef struct _HALP_APIC_INFO_TABLE
     ULONG IoApicVA[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];
     ULONG IoApicPA[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];
     ULONG IoApicIrqBase[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER]; // Global system interrupt base
+    ULONG IsaIrqGsi[HALP_ISA_IRQ_COUNT];                     // Interrupt source override target
+    UCHAR IsaIrqTrigger[HALP_ISA_IRQ_COUNT];                 // HALP_ISA_TRIGGER_*
 } HALP_APIC_INFO_TABLE, *PHALP_APIC_INFO_TABLE;
+
+/* HALP_APIC_INFO_TABLE.IsaIrqTrigger values */
+#define HALP_ISA_TRIGGER_CONFORMS 0
+#define HALP_ISA_TRIGGER_EDGE     1
+#define HALP_ISA_TRIGGER_LEVEL    2
 
 /* HALP_APIC_INFO_TABLE.ApicMode values */
 // TODO: What are the other modes/values?
