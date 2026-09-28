@@ -1769,9 +1769,17 @@ StorPortInitialize(
     }
     else
     {
-        DPRINT1("Not a virtual miniport: size %lu features 0x%08lx\n",
-                HwInitializationData->HwInitializationDataSize,
-                HwInitializationData->FeatureSupport);
+        /* Only the full form has a feature word to read, so only it is read */
+        if (HwInitializationData->HwInitializationDataSize == sizeof(HW_INITIALIZATION_DATA))
+        {
+            DPRINT1("Not a virtual miniport: features 0x%08lx\n",
+                    HwInitializationData->FeatureSupport);
+        }
+        else
+        {
+            DPRINT1("Not a virtual miniport: size %lu is short of the feature word\n",
+                    HwInitializationData->HwInitializationDataSize);
+        }
     }
 
     DPRINT1("StorPortInitialize() done (Status 0x%08lx)\n", Status);
