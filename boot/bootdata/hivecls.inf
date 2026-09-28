@@ -845,6 +845,21 @@ HKCR,"CLSID\{da4e3da0-d07d-11d0-bd50-00a0c911ce86}\Instance\{33D9A760-90C8-11D0-
 
 ;-------------------------------- STRINGS -------------------------------
 
+; Runtime classes, which are found by name rather than by a class id. The
+; root has to be here even when nothing is under it, because a caller that
+; cannot open it is told the registry is unreadable rather than that the
+; class it wanted is absent, and it gives up on the runtime entirely.
+HKLM,"SOFTWARE\Microsoft\WindowsRuntime",,0x00000012
+HKLM,"SOFTWARE\Microsoft\WindowsRuntime\ActivatableClassId",,0x00000012
+; How an application was started. One answer is that it was not activated,
+; which is what anything run from a command line needs to hear.
+HKLM,"SOFTWARE\Microsoft\WindowsRuntime\ActivatableClassId\Windows.ApplicationModel.AppInstance",,0x00000012
+HKLM,"SOFTWARE\Microsoft\WindowsRuntime\ActivatableClassId\Windows.ApplicationModel.AppInstance","DllPath",0x00020000,"%SystemRoot%\system32\execmodelclient.dll"
+HKLM,"SOFTWARE\Microsoft\WindowsRuntime\ActivatableClassId\Windows.ApplicationModel.AppInstance","ActivationType",0x00010001,0x00000000
+HKLM,"SOFTWARE\Microsoft\WindowsRuntime\ActivatableClassId\Windows.ApplicationModel.AppInstance","Threading",0x00010001,0x00000000
+HKLM,"SOFTWARE\Microsoft\WindowsRuntime\ActivatableClassId\Windows.ApplicationModel.AppInstance","TrustLevel",0x00010001,0x00000000
+
+
 [Strings]
 ;; In shell32.dll
 CPLFILE_OPENWITH="Open with Control Panel"
