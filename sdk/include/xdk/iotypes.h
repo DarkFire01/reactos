@@ -4429,6 +4429,15 @@ typedef enum _CONFIGURATION_TYPE {
 #define IRP_MN_UNLOCK_ALL_BY_KEY          0x04
 
 #define IRP_MN_FLUSH_AND_PURGE          0x01
+#define IRP_MN_FLUSH_DATA_ONLY          0x02
+#define IRP_MN_FLUSH_NO_SYNC            0x03
+#define IRP_MN_FLUSH_DATA_SYNC_ONLY     0x04
+
+/* What a caller of NtFlushBuffersFileEx says it cares about */
+#define FLUSH_FLAGS_FILE_DATA_ONLY      0x00000001
+#define FLUSH_FLAGS_NO_SYNC             0x00000002
+#define FLUSH_FLAGS_FILE_DATA_SYNC_ONLY 0x00000004
+#define FLUSH_FLAGS_FLUSH_AND_PURGE     0x00000008
 
 #define IRP_MN_NORMAL                     0x00
 #define IRP_MN_DPC                        0x01

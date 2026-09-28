@@ -1482,10 +1482,11 @@ NtFsControlFile(IN HANDLE DeviceHandle,
                                 FALSE);
 }
 
+static
 NTSTATUS
-NTAPI
-NtFlushBuffersFile(IN HANDLE FileHandle,
-                   OUT PIO_STATUS_BLOCK IoStatusBlock)
+IopFlushBuffersFile(IN HANDLE FileHandle,
+                    OUT PIO_STATUS_BLOCK IoStatusBlock,
+                    IN UCHAR MinorFunction)
 {
     PFILE_OBJECT FileObject;
     PIRP Irp;
@@ -1587,6 +1588,7 @@ NtFlushBuffersFile(IN HANDLE FileHandle,
     /* Set up Stack Data */
     StackPtr = IoGetNextIrpStackLocation(Irp);
     StackPtr->MajorFunction = IRP_MJ_FLUSH_BUFFERS;
+    StackPtr->MinorFunction = MinorFunction;
     StackPtr->FileObject = FileObject;
 
     /* Call the Driver */
@@ -1612,6 +1614,48 @@ NtFlushBuffersFile(IN HANDLE FileHandle,
 
     /* Return the Status */
     return Status;
+}
+
+NTSTATUS
+NTAPI
+NtFlushBuffersFile(IN HANDLE FileHandle,
+                   OUT PIO_STATUS_BLOCK IoStatusBlock)
+{
+    return IopFlushBuffersFile(FileHandle, IoStatusBlock, 0);
+}
+
+/**
+ * @brief
+ * Flushes a file, saying how much of it the caller cares about.
+ *
+ * @remarks
+ * Nothing is carried beyond the flags themselves, so a caller that brings
+ * parameters is told they mean nothing here rather than having them ignored.
+ */
+NTSTATUS
+NTAPI
+NtFlushBuffersFileEx(IN HANDLE FileHandle,
+                     IN ULONG Flags,
+                     IN PVOID Parameters,
+                     IN ULONG ParametersSize,
+                     OUT PIO_STATUS_BLOCK IoStatusBlock)
+{
+    UCHAR MinorFunction;
+
+    if (Parameters != NULL || ParametersSize != 0)
+        return STATUS_INVALID_PARAMETER;
+
+    /* The first of these the caller asked for is the one it gets */
+    if (Flags & FLUSH_FLAGS_FILE_DATA_ONLY)
+        MinorFunction = IRP_MN_FLUSH_DATA_ONLY;
+    else if (Flags & FLUSH_FLAGS_NO_SYNC)
+        MinorFunction = IRP_MN_FLUSH_NO_SYNC;
+    else if (Flags & FLUSH_FLAGS_FILE_DATA_SYNC_ONLY)
+        MinorFunction = IRP_MN_FLUSH_DATA_SYNC_ONLY;
+    else
+        MinorFunction = (UCHAR)((Flags >> 3) & 1);
+
+    return IopFlushBuffersFile(FileHandle, IoStatusBlock, MinorFunction);
 }
 
 /*
