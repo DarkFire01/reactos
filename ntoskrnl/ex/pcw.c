@@ -31,6 +31,7 @@ typedef struct _PCW_REGISTRATION *PPCW_REGISTRATION;
 typedef struct _PCW_REGISTRATION_INFORMATION *PPCW_REGISTRATION_INFORMATION;
 typedef struct _PCW_BUFFER *PPCW_BUFFER;
 typedef struct _PCW_DATA *PPCW_DATA;
+typedef struct _PCW_INSTANCE *PPCW_INSTANCE;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -103,6 +104,49 @@ PcwAddInstance(
     UNREFERENCED_PARAMETER(Data);
 
     return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief
+ * Makes one instance of a set, for a driver that counts more than one thing.
+ *
+ * @remarks
+ * Nothing collects these, so the instance is nothing to hold. A driver that
+ * is told its instance was made goes on working and simply goes unmeasured,
+ * which is what happens on a machine where no collector is registered.
+ */
+NTSTATUS
+NTAPI
+PcwCreateInstance(
+    _Outptr_ PPCW_INSTANCE *Instance,
+    _In_ PPCW_REGISTRATION Registration,
+    _In_ PCUNICODE_STRING Name,
+    _In_ ULONG Count,
+    _In_reads_(Count) PPCW_DATA Data)
+{
+    UNREFERENCED_PARAMETER(Registration);
+    UNREFERENCED_PARAMETER(Name);
+    UNREFERENCED_PARAMETER(Count);
+    UNREFERENCED_PARAMETER(Data);
+
+    if (Instance == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    *Instance = NULL;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Takes back an instance, of which there was never anything to take.
+ */
+VOID
+NTAPI
+PcwCloseInstance(
+    _In_ PPCW_INSTANCE Instance)
+{
+    UNREFERENCED_PARAMETER(Instance);
 }
 
 /* EOF */

@@ -59,6 +59,26 @@ IoQueueWorkItem(IN PIO_WORKITEM IoWorkItem,
 /*
  * @implemented
  */
+BOOLEAN
+NTAPI
+IoTryQueueWorkItem(
+    _In_ PIO_WORKITEM IoWorkItem,
+    _In_ PIO_WORKITEM_ROUTINE WorkerRoutine,
+    _In_ WORK_QUEUE_TYPE QueueType,
+    _In_opt_ PVOID Context)
+{
+    /*
+     * The same as queueing one outright, except that a driver on its way out
+     * is told so rather than having the item taken. Nothing here holds a
+     * driver open against unload yet, so there is nothing to refuse for.
+     */
+    IoQueueWorkItem(IoWorkItem, WorkerRoutine, QueueType, Context);
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
 VOID
 NTAPI
 IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
