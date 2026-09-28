@@ -1087,6 +1087,47 @@ Exit:
 
 
 /************************************************************************
+ *  RegCreateKeyTransactedW
+ *
+ * Creates a key as part of a transaction. Nothing here carries registry
+ * transactions, so a caller that names one is refused, and one that names
+ * none gets the untransacted call it would otherwise have made.
+ *
+ * @implemented
+ */
+LONG
+WINAPI
+RegCreateKeyTransactedW(
+    _In_ HKEY hKey,
+    _In_ LPCWSTR lpSubKey,
+    _In_ DWORD Reserved,
+    _In_opt_ LPWSTR lpClass,
+    _In_ DWORD dwOptions,
+    _In_ REGSAM samDesired,
+    _In_opt_ CONST LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+    _Out_ PHKEY phkResult,
+    _Out_opt_ LPDWORD lpdwDisposition,
+    _In_ HANDLE hTransaction,
+    _Reserved_ PVOID pExtendedParemeter)
+{
+    UNREFERENCED_PARAMETER(pExtendedParemeter);
+
+    if (hTransaction != NULL)
+        return ERROR_NOT_SUPPORTED;
+
+    return RegCreateKeyExW(hKey,
+                           lpSubKey,
+                           Reserved,
+                           lpClass,
+                           dwOptions,
+                           samDesired,
+                           lpSecurityAttributes,
+                           phkResult,
+                           lpdwDisposition);
+}
+
+
+/************************************************************************
  *  RegCreateKeyExW
  *
  * @implemented
@@ -1946,9 +1987,13 @@ RegGetValueW(HKEY hKey,
 
     if (pvData && !pcbData)
         return ERROR_INVALID_PARAMETER;
-    if ((dwFlags & RRF_RT_REG_EXPAND_SZ) && !(dwFlags & RRF_NOEXPAND) &&
-            ((dwFlags & RRF_RT_ANY) != RRF_RT_ANY))
-        return ERROR_INVALID_PARAMETER;
+
+    /*
+     * Asking for an expandable string without asking to keep it unexpanded is
+     * left to the type restriction below, which rejects it as an unsupported
+     * type. Refusing it here instead turns a caller that also allows REG_SZ,
+     * and would have been answered, into a parameter error.
+     */
 
     if (pszSubKey && pszSubKey[0])
     {
@@ -2052,9 +2097,8 @@ RegGetValueA(HKEY hKey,
 
     if (pvData && !pcbData)
         return ERROR_INVALID_PARAMETER;
-    if ((dwFlags & RRF_RT_REG_EXPAND_SZ) && !(dwFlags & RRF_NOEXPAND) &&
-            ((dwFlags & RRF_RT_ANY) != RRF_RT_ANY))
-        return ERROR_INVALID_PARAMETER;
+
+    /* See RegGetValueW on why the expandable string case is not refused here */
 
     if (pszSubKey && pszSubKey[0])
     {
@@ -3143,10 +3187,16 @@ Cleanup:
 }
 
 
+/*
+ * An asynchronous request is completed long after this function has returned,
+ * so the status block it is given has to outlive the call.
+ */
+static IO_STATUS_BLOCK LocalIoStatusBlock;
+
 /************************************************************************
  *  RegNotifyChangeKeyValue
  *
- * @unimplemented
+ * @implemented
  */
 LONG WINAPI
 RegNotifyChangeKeyValue(HKEY hKey,
@@ -3155,7 +3205,6 @@ RegNotifyChangeKeyValue(HKEY hKey,
                         HANDLE hEvent,
                         BOOL fAsynchronous)
 {
-    IO_STATUS_BLOCK IoStatusBlock;
     HANDLE KeyHandle;
     NTSTATUS Status;
     LONG ErrorCode = ERROR_SUCCESS;
@@ -3181,12 +3230,12 @@ RegNotifyChangeKeyValue(HKEY hKey,
 
     Status = NtNotifyChangeKey(KeyHandle,
                                hEvent,
-                               0,
-                               0,
-                               &IoStatusBlock,
+                               NULL,
+                               NULL,
+                               &LocalIoStatusBlock,
                                dwNotifyFilter,
                                bWatchSubtree,
-                               0,
+                               NULL,
                                0,
                                fAsynchronous);
     if (!NT_SUCCESS(Status) && Status != STATUS_TIMEOUT)
