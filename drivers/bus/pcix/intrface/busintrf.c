@@ -20,7 +20,8 @@ PCI_INTERFACE BusHandlerInterface =
     &GUID_BUS_INTERFACE_STANDARD,
     sizeof(BUS_INTERFACE_STANDARD),
     1,
-    1,
+    /* Callers that pass the PCI bus interface version get the same layout */
+    PCI_BUS_INTERFACE_STANDARD_VERSION,
     PCI_INTERFACE_PDO,
     0,
     PciInterface_BusHandler,
