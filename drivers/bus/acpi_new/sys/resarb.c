@@ -555,7 +555,7 @@ VOID
 NTAPI
 UacpiNtDumpFailure(
     _In_ PARBITER_INSTANCE Arbiter,
-    _In_opt_ PARBITER_TEST_ALLOCATION_PARAMETERS Parameters)
+    _In_opt_ PLIST_ENTRY ArbitrationList)
 {
     PIO_RESOURCE_DESCRIPTOR Descriptor;
     PARBITER_LIST_ENTRY Entry;
@@ -566,10 +566,10 @@ UacpiNtDumpFailure(
     ULONGLONG Alignment;
     ULONG Index;
 
-    if (Parameters && Parameters->ArbitrationList)
+    if (ArbitrationList)
     {
-        for (Link = Parameters->ArbitrationList->Flink;
-             Link != Parameters->ArbitrationList;
+        for (Link = ArbitrationList->Flink;
+             Link != ArbitrationList;
              Link = Link->Flink)
         {
             Entry = CONTAINING_RECORD(Link, ARBITER_LIST_ENTRY, ListEntry);
@@ -640,20 +640,31 @@ NTSTATUS
 NTAPI
 UacpiNtResTestAllocation(
     _In_ PARBITER_INSTANCE Arbiter,
+#if (NTDDI_VERSION >= NTDDI_VISTA)
     _Inout_ PARBITER_TEST_ALLOCATION_PARAMETERS Parameters)
+#else
+    _Inout_ PLIST_ENTRY ArbitrationList)
+#endif
 {
     NTSTATUS Status;
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+    PLIST_ENTRY ArbitrationList = Parameters->ArbitrationList;
+#endif
 
     /* A failure dump covers only this arbitration */
     UacpiNtResTryIndex = 0;
 
+#if (NTDDI_VERSION >= NTDDI_VISTA)
     Status = ArbiterLibTestAllocation(Arbiter, Parameters);
+#else
+    Status = ArbiterLibTestAllocation(Arbiter, ArbitrationList);
+#endif
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("uACPI-NT: %ws TestAllocation failed 0x%lx, no placement\n",
                 UacpiNtArbiterName(Arbiter),
                 Status);
-        UacpiNtDumpFailure(Arbiter, Parameters);
+        UacpiNtDumpFailure(Arbiter, ArbitrationList);
     }
     else if (UacpiNtResVerbose)
     {
