@@ -1425,6 +1425,7 @@ HalEnableInterrupt(
     PHALP_IOAPIC_UNIT Unit;
     ULONG Vector, Input;
     UCHAR Index, Previous, Destination;
+    KAFFINITY Targets;
     BOOLEAN Logical;
     NTSTATUS Status;
     KIRQL OldIrql;
@@ -1453,16 +1454,20 @@ HalEnableInterrupt(
         case InterruptTypeControllerInput:
         {
             Input = VectorData->ControllerInput.Gsiv;
-            if (!HalpFindIoApicInput(Input, &Unit) ||
-                (VectorData->TargetProcessors.Group != 0))
-            {
+            if (!HalpFindIoApicInput(Input, &Unit))
                 return STATUS_INVALID_PARAMETER;
-            }
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+            if (VectorData->TargetProcessors.Group != 0)
+                return STATUS_INVALID_PARAMETER;
+
+            Targets = VectorData->TargetProcessors.Mask;
+#else
+            Targets = VectorData->TargetProcessors;
+#endif
 
             /* Settle the destination before anything is committed */
-            Status = HalpBuildLineDestination(VectorData->TargetProcessors.Mask,
-                                              &Logical,
-                                              &Destination);
+            Status = HalpBuildLineDestination(Targets, &Logical, &Destination);
             if (!NT_SUCCESS(Status))
                 return Status;
 
