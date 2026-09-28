@@ -589,6 +589,26 @@ NdisGetVersion(VOID)
 /*
  * @implemented
  */
+COMPARTMENT_ID
+EXPORT
+NdisGetProcessObjectCompartmentId(
+    IN PEPROCESS ProcessObject)
+{
+    NDIS_DbgPrint(MAX_TRACE, ("Called.\n"));
+
+    UNREFERENCED_PARAMETER(ProcessObject);
+
+    /*
+     * A process is put in a compartment by the job it belongs to, or failing
+     * that by its session. Nothing here puts either of them anywhere, so every
+     * process is where a process starts, which is the first compartment.
+     */
+    return NET_IF_COMPARTMENT_ID_PRIMARY;
+}
+
+/*
+ * @implemented
+ */
 UCHAR
 EXPORT
 NdisGeneratePartialCancelId(VOID)
