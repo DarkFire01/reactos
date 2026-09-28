@@ -105,8 +105,7 @@ CmpInitializeHive(
     Hive->UseCountLog.Next = 0;
     Hive->LockHiveLog.Next = 0;
     Hive->FileObject = NULL;
-    Hive->NotifyList.Flink = NULL;
-    Hive->NotifyList.Blink = NULL;
+    InitializeListHead(&Hive->NotifyList);
 
     /* Set the loading flag */
     Hive->HiveIsLoading = TRUE;

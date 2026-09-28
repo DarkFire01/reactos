@@ -1470,8 +1470,25 @@ NtNotifyChangeMultipleKeys(IN HANDLE MasterKeyHandle,
                            IN ULONG Length,
                            IN BOOLEAN Asynchronous)
 {
-    UNIMPLEMENTED_ONCE;
-    return STATUS_NOT_IMPLEMENTED;
+    /* The registry does not report anything through the buffer */
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Length);
+
+    /* Watching more than the one key is not supported */
+    if ((Count != 0) || (SlaveObjects != NULL))
+    {
+        UNIMPLEMENTED_ONCE;
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    return CmpNotifyChangeKey(MasterKeyHandle,
+                              Event,
+                              ApcRoutine,
+                              ApcContext,
+                              IoStatusBlock,
+                              CompletionFilter,
+                              WatchTree,
+                              Asynchronous);
 }
 
 NTSTATUS

@@ -37,6 +37,7 @@ ULONG CmpConfigurationAreaSize = PAGE_SIZE * 4;
 PCM_FULL_RESOURCE_DESCRIPTOR CmpConfigurationData;
 
 EX_PUSH_LOCK CmpHiveListHeadLock, CmpLoadHiveLock;
+EX_PUSH_LOCK CmpNotifyLock;
 
 HIVE_LIST_ENTRY CmpMachineHiveList[] =
 {
