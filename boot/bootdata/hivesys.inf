@@ -1934,6 +1934,16 @@ HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","ImagePath",0x00020000,"system32\
 HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Type",0x00010001,0x00000001
 
+; The driver framework itself. A driver written against it asks the loader for
+; this by name the first time it binds, so without a registration here every
+; framework driver fails before its own code has run. Its loader comes in as
+; what this is built on, which is why it has no registration of its own.
+HKLM,"SYSTEM\CurrentControlSet\Services\Wdf01000","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\Wdf01000","Group",0x00000000,"WdfLoadGroup"
+HKLM,"SYSTEM\CurrentControlSet\Services\Wdf01000","ImagePath",0x00020000,"system32\drivers\Wdf01000.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\Wdf01000","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\Wdf01000","Type",0x00010001,0x00000001
+
 ; Virtualization infrastructure driver, root enumerated the way Hyper-V has it
 HKLM,"SYSTEM\CurrentControlSet\Services\vid","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\vid","Group",0x00000000,"Extended Base"
