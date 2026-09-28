@@ -293,6 +293,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/query.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/quota.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/security.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/silo.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/state.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/thread.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/win32.c
@@ -308,6 +309,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/objtype.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/priv.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/sd.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/se/sddl.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/semgr.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/sid.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/sqos.c

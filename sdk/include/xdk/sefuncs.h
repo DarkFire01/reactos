@@ -589,4 +589,15 @@ SeLocateProcessImageName(
 
 extern NTKERNELAPI PSE_EXPORTS SeExports;
 
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+SeConvertStringSecurityDescriptorToSecurityDescriptor(
+  _In_ PCWSTR StringSecurityDescriptor,
+  _In_ ULONG StringSDRevision,
+  _Outptr_ PSECURITY_DESCRIPTOR *SecurityDescriptor,
+  _Out_opt_ PULONG SecurityDescriptorSize);
+#endif
 $endif (_NTIFS_)
