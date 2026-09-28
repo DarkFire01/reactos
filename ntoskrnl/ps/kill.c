@@ -537,6 +537,9 @@ PspExitThread(IN NTSTATUS ExitStatus)
     /* Cleanup the power request of this thread */
     PoRundownPowerRequestThread(Thread);
 
+    /* Drop the registry notifications this thread was still owed */
+    CmNotifyRunDown(Thread);
+
     /* Call the WMI Callback for Threads */
     //WmiTraceThread(Thread, NULL, FALSE);
 

@@ -329,10 +329,37 @@ typedef struct _CM_NOTIFY_BLOCK
     LIST_ENTRY PostList;
     PCM_KEY_CONTROL_BLOCK KeyControlBlock;
     PCM_KEY_BODY KeyBody;
-    ULONG Filter:29;
-    ULONG WatchTree:30;
-    ULONG NotifyPending:31;
+    ULONG Filter:30;
+    ULONG WatchTree:1;
+    ULONG NotifyPending:1;
 } CM_NOTIFY_BLOCK, *PCM_NOTIFY_BLOCK;
+
+//
+// How a pending notification is handed back to whoever asked for it
+//
+typedef enum _POST_BLOCK_TYPE
+{
+    PostSynchronous = 1,
+    PostAsyncUser,
+    PostAsyncKernel
+} POST_BLOCK_TYPE;
+
+//
+// Post Block
+//
+typedef struct _CM_POST_BLOCK
+{
+    LIST_ENTRY NotifyList;
+    LIST_ENTRY ThreadList;
+    POST_BLOCK_TYPE NotifyType;
+    NTSTATUS Status;
+    PCM_NOTIFY_BLOCK NotifyBlock;
+    PETHREAD Thread;
+    PKEVENT UserEvent;
+    PIO_STATUS_BLOCK IoStatusBlock;
+    KEVENT SystemEvent;
+    KAPC Apc;
+} CM_POST_BLOCK, *PCM_POST_BLOCK;
 
 //
 // Re-map Block
@@ -638,6 +665,23 @@ CmpFlushNotify(
     IN PCM_KEY_BODY KeyBody,
     IN BOOLEAN LockHeld
 );
+
+NTSTATUS
+NTAPI
+CmpNotifyChangeKey(
+    _In_ HANDLE KeyHandle,
+    _In_opt_ HANDLE EventHandle,
+    _In_opt_ PIO_APC_ROUTINE ApcRoutine,
+    _In_opt_ PVOID ApcContext,
+    _Out_ PIO_STATUS_BLOCK IoStatusBlock,
+    _In_ ULONG CompletionFilter,
+    _In_ BOOLEAN WatchTree,
+    _In_ BOOLEAN Asynchronous);
+
+VOID
+NTAPI
+CmNotifyRunDown(
+    _In_ PETHREAD Thread);
 
 CODE_SEG("INIT")
 VOID
@@ -1422,6 +1466,7 @@ extern BOOLEAN CmpShareSystemHives;
 extern BOOLEAN CmpMiniNTBoot;
 extern BOOLEAN CmpNoVolatileCreates;
 extern EX_PUSH_LOCK CmpHiveListHeadLock, CmpLoadHiveLock;
+extern EX_PUSH_LOCK CmpNotifyLock;
 extern LIST_ENTRY CmpHiveListHead;
 extern POBJECT_TYPE CmpKeyObjectType;
 extern ERESOURCE CmpRegistryLock;
