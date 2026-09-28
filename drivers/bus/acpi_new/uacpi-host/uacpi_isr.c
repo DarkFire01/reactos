@@ -117,20 +117,32 @@ UacpiNtHostWorkRoutine(
     _In_ PVOID Parameter)
 {
     PUACPINT_HOST_WORK_ITEM WorkItem = Parameter;
+#if (NTDDI_VERSION >= NTDDI_VISTA)
     KAFFINITY OldAffinity = 0;
+#endif
     BOOLEAN Pinned = FALSE;
 
     /* Some firmware expects GPE methods on CPU0 because of SMI handling */
     if (WorkItem->Type == UACPI_WORK_GPE_EXECUTION)
     {
+#if (NTDDI_VERSION >= NTDDI_VISTA)
         OldAffinity = KeSetSystemAffinityThreadEx((KAFFINITY)1);
+#else
+        KeSetSystemAffinityThread((KAFFINITY)1);
+#endif
         Pinned = TRUE;
     }
 
     WorkItem->Handler(WorkItem->Context);
 
     if (Pinned)
+    {
+#if (NTDDI_VERSION >= NTDDI_VISTA)
         KeRevertToUserAffinityThreadEx(OldAffinity);
+#else
+        KeRevertToUserAffinityThread();
+#endif
+    }
 
     ExFreePoolWithTag(WorkItem, UACPINT_HOST_POOL_TAG);
     UacpiNtHostWorkDone();
