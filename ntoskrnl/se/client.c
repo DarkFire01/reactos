@@ -328,4 +328,26 @@ SeImpersonateClient(
     SeImpersonateClientEx(ClientContext, ServerThread);
 }
 
+/*
+ * The header offers this as a macro for anything built against it, so the
+ * name is taken back here to give the kernel one to export as well.
+ */
+#undef SeDeleteClientSecurity
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+SeDeleteClientSecurity(
+    _In_ PSECURITY_CLIENT_CONTEXT ClientContext)
+{
+    PAGED_CODE();
+
+    /* Which way to let go of it depends on what kind of token it is */
+    if (SeTokenType(ClientContext->ClientToken) == TokenPrimary)
+        PsDereferencePrimaryToken(ClientContext->ClientToken);
+    else
+        PsDereferenceImpersonationToken(ClientContext->ClientToken);
+}
 /* EOF */

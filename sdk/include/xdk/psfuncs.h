@@ -388,6 +388,24 @@ PsGetCurrentServerSilo(VOID);
 NTKERNELAPI
 PESILO
 NTAPI
+PsGetHostSilo(VOID);
+
+/* Gives back the silo the thread was in, so the caller can put it back */
+NTKERNELAPI
+PESILO
+NTAPI
+PsAttachSiloToCurrentThread(
+  _In_ PESILO Silo);
+
+NTKERNELAPI
+VOID
+NTAPI
+PsDetachSiloFromCurrentThread(
+  _In_ PESILO Silo);
+
+NTKERNELAPI
+PESILO
+NTAPI
 PsGetProcessServerSilo(
   _In_ PEPROCESS Process);
 
