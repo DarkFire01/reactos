@@ -4,7 +4,7 @@ Signature = "$ReactOS$"
 ; Set UnattendSetupEnabled to yes in order to get unattended setup working.
 ; yes - unattend setup enabled
 ; no - unattend setup disabled
-UnattendSetupEnabled = no
+UnattendSetupEnabled = yes
 
 ; Set LiveCdRunEnabled to yes to take the live environment straight to the
 ; desktop, without asking and without installing anything.
@@ -25,8 +25,8 @@ BootLoaderLocation=2
 
 FullName="MyName"
 ;OrgName="MyOrg"
-ComputerName="MYCOMPUTERNAME"
-;AdminPassword="MyPassword"
+ComputerName="REACTOS"
+AdminPassword="reactos"
 
 ; TimeZone is set to GMT as default.
 TimeZoneIndex=85
@@ -78,9 +78,12 @@ InstallationType = 0
 ; Run a program at the end of 2nd-stage setup.
 ;UserExecute="cmd.exe /C echo.End of 2nd-stage setup...&choice>nul /N /T:Y,5"
 
-; Enable this section to automatically launch programs after 3rd boot.
-;[GuiRunOnce]
-;%SystemRoot%\system32\cmd.exe
+; The harness is asked for on this boot and put where every later boot will
+; ask for it too. Neither line carries a comma or a space inside an argument,
+; because a line here is read as inf fields and would be cut at the first one.
+[GuiRunOnce]
+%SystemRoot%\system32\reg.exe add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v ReactVM /d %SystemRoot%\system32\reactvm.exe /f
+%SystemRoot%\system32\reactvm.exe
 
 ; Enable this section to change resolution / bpp.
 ; Setting a value to 0 or skipping it will leave it unchanged.
