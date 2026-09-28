@@ -10,7 +10,8 @@ list(APPEND HAL_APIC_SOURCE
     apic/msi.c
     apic/processor.c
     apic/rtctimer.c
-    apic/tsc.c)
+    apic/tsc.c
+    x2apic/x2apic.c)
 
 add_asm_files(lib_hal_apic_asm ${HAL_APIC_ASM_SOURCE})
 add_library(lib_hal_apic OBJECT ${HAL_APIC_SOURCE} ${lib_hal_apic_asm})
