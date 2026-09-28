@@ -99,6 +99,12 @@ CreateFreeLoaderReactOSEntries(
     BootEntry->FriendlyName = L"\"ReactOS (RosDbg)\"";
     Options->OsLoadOptions  = L"/DEBUG /DEBUGPORT=COM1 /BAUDRATE=115200 /SOS /KDSERIAL";
     AddBootStoreEntry(BootStoreHandle, BootEntry, MAKESTRKEY(L"ReactOS_KdSerial"));
+
+    /* ReactOS_ReactV */
+    // BootEntry->BootEntryKey = MAKESTRKEY(L"ReactOS_ReactV");
+    BootEntry->FriendlyName = L"\"ReactOS (RosDbg, ReactV)\"";
+    Options->OsLoadOptions  = L"/DEBUG /DEBUGPORT=COM1 /BAUDRATE=115200 /SOS /KDSERIAL /HYPERVISORLAUNCHTYPE=AUTO";
+    AddBootStoreEntry(BootStoreHandle, BootEntry, MAKESTRKEY(L"ReactOS_ReactV"));
 #endif
 
     /* ReactOS_Screen */
@@ -133,7 +139,7 @@ CreateFreeLoaderReactOSEntries(
 #if DBG && !defined(_WINKD_)
     if (IsUnattendedSetup)
     {
-        BootOptions.NextBootEntryKey = MAKESTRKEY(L"ReactOS_KdSerial");
+        BootOptions.NextBootEntryKey = MAKESTRKEY(L"ReactOS_ReactV");
     }
     else
 #endif
