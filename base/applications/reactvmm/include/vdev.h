@@ -205,7 +205,13 @@ DECLARE_INTERFACE_(IVndMmioHandler, IUnknown)
 DEFINE_GUID(IID_IVmTimerHandler,
             0xfe96de2e, 0xbb67, 0x4c7e, 0x84, 0x5f, 0xf3, 0xe3, 0x06, 0x9d, 0xfc, 0xab);
 
-/* A device that asked to be woken at a time, being woken */
+struct IVmTimer;
+
+/*
+ * A device that asked to be woken at a time, being woken. Which of its timers
+ * went off is named, because a device may hold several and the display holds
+ * four.
+ */
 #undef INTERFACE
 #define INTERFACE IVmTimerHandler
 DECLARE_INTERFACE_(IVmTimerHandler, IUnknown)
@@ -215,7 +221,7 @@ DECLARE_INTERFACE_(IVmTimerHandler, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
-    STDMETHOD(OnTimerExpired)(THIS) PURE;
+    STDMETHOD(OnTimerExpired)(THIS_ _In_ struct IVmTimer *Which) PURE;
 };
 
 /* WHAT ONE DEVICE OFFERS ANOTHER *********************************************/
@@ -865,6 +871,69 @@ DEFINE_GUID(IID_IProxiedPciVgaDevice,
 
 DEFINE_GUID(IID_IVmTimeSource,
             0xe162fe7a, 0x72c6, 0x4d0e, 0x93, 0xdd, 0x7d, 0xf9, 0x1a, 0x5b, 0x97, 0x9d);
+
+/*
+ * THE CLOCK, AND WHAT IS ASKED OF IT
+ *
+ * A device that has anything to do over time does not keep a thread. It asks
+ * the clock for a timer of its own, hands over something to be called back
+ * through, and says when it wants to hear from it. Several kinds cannot come up
+ * at all without one: the interval timer, the clock of the machine itself, the
+ * transfer controller and the display all name it.
+ *
+ * What a tick is worth is not stated anywhere. The one thing that is is that the
+ * same clock says what the time is now and is told when to go off, so whoever
+ * provides it decides, as long as it is consistent with itself.
+ */
+
+/* One timer, as the device that asked for it sees it */
+#undef INTERFACE
+#define INTERFACE IVmTimer
+DECLARE_INTERFACE_(IVmTimer, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /* What the time is now, in whatever the clock counts in */
+    STDMETHOD(GetTime)(THIS_ _Out_ PULONG64 Now) PURE;
+
+    STDMETHOD(Reserved4)(THIS) PURE;
+    STDMETHOD(Reserved5)(THIS) PURE;
+    STDMETHOD(Reserved6)(THIS) PURE;
+    STDMETHOD(Reserved7)(THIS) PURE;
+
+    /* When to go off, and how often after that */
+    STDMETHOD(Arm)(THIS_ _In_ ULONG64 Kind,
+                   _In_ ULONG64 Period,
+                   _In_ ULONG64 Due,
+                   _In_ ULONG Repeating) PURE;
+
+    STDMETHOD(Reserved9)(THIS) PURE;
+    STDMETHOD(Reserved10)(THIS) PURE;
+
+    STDMETHOD(Cancel)(THIS_ _In_ ULONG64 Why) PURE;
+};
+
+#undef INTERFACE
+#define INTERFACE IVmTimeSource
+DECLARE_INTERFACE_(IVmTimeSource, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(Reserved3)(THIS) PURE;
+    STDMETHOD(Reserved4)(THIS) PURE;
+
+    STDMETHOD(CreateTimer)(THIS_ _In_ IVmTimerHandler *Handler,
+                           _Outptr_ IVmTimer **Timer) PURE;
+};
+
+/* What the clock here counts in, being ten million of them to the second */
+#define VDEV_TICKS_A_SECOND 10000000ull
 DEFINE_GUID(IID_IVmPowerServices,
             0x3ee9144c, 0x27d7, 0x4c8e, 0xa0, 0x7e, 0x5d, 0xd5, 0xf7, 0xa0, 0x20, 0x7d);
 
