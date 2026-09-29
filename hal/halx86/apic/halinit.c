@@ -13,10 +13,6 @@
 #define NDEBUG
 #include <debug.h>
 
-VOID
-NTAPI
-ApicInitializeLocalApic(ULONG Cpu);
-
 /* FUNCTIONS ****************************************************************/
 
 VOID
@@ -25,6 +21,8 @@ HalpInitProcessor(
     IN ULONG ProcessorNumber,
     IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    BOOLEAN UseX2Apic;
+
     if (ProcessorNumber == 0)
     {
         /* Silence the legacy controller while LINT0 still accepts it. An input
@@ -33,12 +31,19 @@ HalpInitProcessor(
         HalpInitializeLegacyPICs();
 
         HalpParseApicTables(LoaderBlock);
+
+        /* Every processor has to be in the same mode, so the first one decides */
+        UseX2Apic = X2ApicCheckPolicy(LoaderBlock);
+    }
+    else
+    {
+        UseX2Apic = HalpX2ApicEnabled;
     }
 
     HalpSetupProcessorsTable(ProcessorNumber);
 
     /* Initialize the local APIC for this cpu */
-    ApicInitializeLocalApic(ProcessorNumber);
+    ApicInitializeLocalApic(ProcessorNumber, UseX2Apic);
 
     /* Initialize profiling data (but don't start it) */
     HalInitializeProfiling();

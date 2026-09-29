@@ -51,6 +51,24 @@ NoUserApcPending:
 ENDM
 
 APIC_EOI = HEX(0FFFFFFFFFFFE00B0)
+X2APIC_EOI_MSR = HEX(80B)
+
+// Ends the interrupt in the mode the local APIC is in. Clobbers rax, rcx, rdx.
+// Only the kernel expands this, it owns KiX2ApicEnabled.
+MACRO(SEND_APIC_EOI)
+    LOCAL MmioEoi
+    LOCAL EoiSent
+    cmp byte ptr KiX2ApicEnabled[rip], 0
+    jz MmioEoi
+    mov ecx, X2APIC_EOI_MSR
+    xor eax, eax
+    xor edx, edx
+    wrmsr
+    jmp EoiSent
+MmioEoi:
+    mov dword ptr [APIC_EOI], 0
+EoiSent:
+ENDM
 
 TF_SEGMENTS             = HEX(08)
 TF_DEBUG                = HEX(10)
@@ -225,6 +243,11 @@ MACRO(ExitTrap, Flags)
 
 kernel_mode_return:
 
+    if (Flags AND TF_SEND_EOI)
+        /* Interrupts are off, and the volatiles are about to be reloaded */
+        SEND_APIC_EOI
+    endif
+
     /* Restore volatile registers */
     mov rax, [rbp + KTRAP_FRAME_Rax]
     mov rcx, [rbp + KTRAP_FRAME_Rcx]
@@ -250,11 +273,6 @@ kernel_mode_return:
 
     /* Adjust stack pointer */
     add rsp, KTRAP_FRAME_Rip
-
-    if (Flags AND TF_SEND_EOI)
-        /* Write 0 to the local APIC EOI register */
-        mov dword ptr [APIC_EOI], 0
-    endif
 
     /* Return from the trap */
     iretq

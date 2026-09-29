@@ -66,6 +66,11 @@ FASTCALL
 HalpProfileInterruptHandler(_In_ PKTRAP_FRAME TrapFrame)
 {
     KeProfileInterruptWithSource(TrapFrame, ProfileTime);
+
+#ifdef _M_AMD64
+    /* The trap exit no longer does this, it cannot tell the APIC mode */
+    ApicWrite(APIC_EOI, 0);
+#endif
 }
 
 

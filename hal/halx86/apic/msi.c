@@ -66,6 +66,10 @@ HalpGetApicDestinationMode(VOID)
 {
     ULONG Count = max(HalpApicInfoTable.ProcessorCount, (ULONG)KeNumberProcessors);
 
+    /* x2APIC has no flat model, only clusters derived from the APIC id */
+    if (HalpX2ApicEnabled)
+        return ApicDestinationModePhysical;
+
     return (Count > 8) ? ApicDestinationModePhysical : ApicDestinationModeLogicalFlat;
 }
 
@@ -78,7 +82,7 @@ HalpGetLocalApicIdForProcessor(
 {
     if (ProcessorNumber == KeGetCurrentProcessorNumber())
     {
-        *ApicId = ApicRead(APIC_ID) >> 24;
+        *ApicId = ApicGetId();
         return STATUS_SUCCESS;
     }
 
@@ -101,7 +105,7 @@ HalpGetProcessorForLocalApicId(
 {
     ULONG Index;
 
-    if (ApicId == (ApicRead(APIC_ID) >> 24))
+    if (ApicId == ApicGetId())
     {
         *ProcessorNumber = KeGetCurrentProcessorNumber();
         return STATUS_SUCCESS;
