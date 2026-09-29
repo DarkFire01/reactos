@@ -354,6 +354,9 @@ DECLARE_INTERFACE_(IVmAmd64EmulationServices, IUnknown)
 /* Every access size there is, which is what a device asks for */
 #define VDEV_WIDTH_ANY 31
 
+/* What a memory window is counted in, because it is never counted in bytes */
+#define VDEV_PAGE_SIZE 0x1000
+
 DEFINE_GUID(IID_IVmProcessorServices,
             0x5f662e9d, 0x2097, 0x4eb5, 0x85, 0x27, 0x65, 0x8b, 0xa5, 0x4a, 0xc0, 0x49);
 

@@ -8,6 +8,7 @@
 #include "vdevhost.h"
 
 #include <winhvplatform.h>
+#include <winhvemulation.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -33,6 +34,17 @@ namespace platform
     HRESULT (WINAPI *CancelRunVirtualProcessor)(WHV_PARTITION_HANDLE, UINT32, UINT32);
     HRESULT (WINAPI *SetRegisters)(WHV_PARTITION_HANDLE, UINT32, const WHV_REGISTER_NAME *, UINT32, const WHV_REGISTER_VALUE *);
     HRESULT (WINAPI *GetRegisters)(WHV_PARTITION_HANDLE, UINT32, const WHV_REGISTER_NAME *, UINT32, WHV_REGISTER_VALUE *);
+    HRESULT (WINAPI *TranslateGva)(WHV_PARTITION_HANDLE, UINT32, WHV_GUEST_VIRTUAL_ADDRESS, WHV_TRANSLATE_GVA_FLAGS, WHV_TRANSLATE_GVA_RESULT *, WHV_GUEST_PHYSICAL_ADDRESS *);
+
+    /*
+     * Carrying out the instruction that faulted on a window a device answers
+     * for. The processor says which instruction it was and nothing about what
+     * it meant, so something has to read it, and that something is here rather
+     * than in this project.
+     */
+    HRESULT (WINAPI *CreateEmulator)(const WHV_EMULATOR_CALLBACKS *, WHV_EMULATOR_HANDLE *);
+    HRESULT (WINAPI *DestroyEmulator)(WHV_EMULATOR_HANDLE);
+    HRESULT (WINAPI *TryMmioEmulation)(WHV_EMULATOR_HANDLE, VOID *, const WHV_VP_EXIT_CONTEXT *, const WHV_MEMORY_ACCESS_CONTEXT *, WHV_EMULATOR_STATUS *);
 }
 
 /*
@@ -55,6 +67,9 @@ Machine::Machine()
 
 Machine::~Machine()
 {
+    if ((m_Emulator != nullptr) && (platform::DestroyEmulator != nullptr))
+        platform::DestroyEmulator(m_Emulator);
+
     /* The devices go before the partition they were answering for */
     m_Devices.Reset();
 
@@ -69,6 +84,100 @@ Machine::~Machine()
 
     DeleteCriticalSection(&m_ChipLock);
 }
+
+
+/* CARRYING OUT THE INSTRUCTION THAT FAULTED **********************************/
+
+/*
+ * What the instruction reader is given so it can reach the machine, and which
+ * of its processors faulted.
+ */
+struct Faulted
+{
+    Machine *Owner;
+    ULONG Index;
+};
+
+static HRESULT CALLBACK EmulatedMemory(VOID *Context,
+                                       WHV_EMULATOR_MEMORY_ACCESS_INFO *Access)
+{
+    auto *Where = static_cast<Faulted *>(Context);
+
+    /*
+     * Direction is which way the instruction meant to move it: nothing for a
+     * read, because the device is being asked, and something for a write.
+     */
+    if (Access->Direction == 0)
+    {
+        return Where->Owner->SystemBus().ReadMemory(Access->GpaAddress,
+                                                    Access->AccessSize,
+                                                    Access->Data)
+             ? S_OK
+             : S_OK;
+    }
+
+    Where->Owner->SystemBus().WriteMemory(Access->GpaAddress,
+                                          Access->AccessSize,
+                                          Access->Data);
+    return S_OK;
+}
+
+static HRESULT CALLBACK EmulatedIoPort(VOID *Context,
+                                       WHV_EMULATOR_IO_ACCESS_INFO *Access)
+{
+    auto *Where = static_cast<Faulted *>(Context);
+
+    if (Access->Direction == 0)
+    {
+        Access->Data = Where->Owner->ReadPort(Access->Port, Access->AccessSize);
+        return S_OK;
+    }
+
+    Where->Owner->WritePort(Access->Port, Access->AccessSize, Access->Data);
+    return S_OK;
+}
+
+static HRESULT CALLBACK EmulatedGetRegisters(VOID *Context,
+                                             const WHV_REGISTER_NAME *Names,
+                                             UINT32 Count,
+                                             WHV_REGISTER_VALUE *Values)
+{
+    auto *Where = static_cast<Faulted *>(Context);
+
+    return Where->Owner->ReadRegisters(Where->Index, Names, Count, Values);
+}
+
+static HRESULT CALLBACK EmulatedSetRegisters(VOID *Context,
+                                             const WHV_REGISTER_NAME *Names,
+                                             UINT32 Count,
+                                             const WHV_REGISTER_VALUE *Values)
+{
+    auto *Where = static_cast<Faulted *>(Context);
+
+    return Where->Owner->WriteRegisters(Where->Index, Names, Count, Values);
+}
+
+static HRESULT CALLBACK EmulatedTranslate(VOID *Context,
+                                          WHV_GUEST_VIRTUAL_ADDRESS Gva,
+                                          WHV_TRANSLATE_GVA_FLAGS Flags,
+                                          WHV_TRANSLATE_GVA_RESULT_CODE *Result,
+                                          WHV_GUEST_PHYSICAL_ADDRESS *Gpa)
+{
+    auto *Where = static_cast<Faulted *>(Context);
+
+    return Where->Owner->Translate(Where->Index, Gva, Flags, Result, Gpa);
+}
+
+static const WHV_EMULATOR_CALLBACKS EmulatorCallbacks =
+{
+    sizeof(EmulatorCallbacks),
+    0,
+    EmulatedIoPort,
+    EmulatedMemory,
+    EmulatedGetRegisters,
+    EmulatedSetRegisters,
+    EmulatedTranslate
+};
 
 bool Machine::BindPlatform()
 {
@@ -113,8 +222,31 @@ bool Machine::BindPlatform()
 
     /* Only needed to stop a processor early, so its absence is not fatal */
     BIND(CancelRunVirtualProcessor, "WHvCancelRunVirtualProcessor", false);
+    BIND(TranslateGva, "WHvTranslateGva", false);
 
 #undef BIND
+
+    /*
+     * The part that reads instructions lives in a library of its own. A machine
+     * whose devices all answer for ports rather than memory never needs it, so
+     * not having it is only a reason to refuse a device that wants a window.
+     */
+    HMODULE Emulator = LoadLibraryA("WinHvEmulation.dll");
+
+    if (Emulator != nullptr)
+    {
+        platform::CreateEmulator = reinterpret_cast<decltype(platform::CreateEmulator)>(
+            reinterpret_cast<void *>(GetProcAddress(Emulator, "WHvEmulatorCreateEmulator")));
+        platform::DestroyEmulator = reinterpret_cast<decltype(platform::DestroyEmulator)>(
+            reinterpret_cast<void *>(GetProcAddress(Emulator, "WHvEmulatorDestroyEmulator")));
+        platform::TryMmioEmulation = reinterpret_cast<decltype(platform::TryMmioEmulation)>(
+            reinterpret_cast<void *>(GetProcAddress(Emulator, "WHvEmulatorTryMmioEmulation")));
+    }
+    else
+    {
+        Log(RtvmLogWarning,
+            "no instruction reader, so nothing may answer for a window\n");
+    }
 
     return Complete;
 }
@@ -506,6 +638,21 @@ bool Machine::Build(const Configuration &Config)
      * the older ones, because the older ones raise lines on the interrupt
      * controller and it has to be there first.
      */
+    /*
+     * The instruction reader, made before any device asks for a window, so
+     * that one asking is either given it or refused rather than given a
+     * window nothing can answer for.
+     */
+    if (platform::CreateEmulator != nullptr)
+    {
+        WHV_EMULATOR_HANDLE Made = nullptr;
+
+        if (SUCCEEDED(platform::CreateEmulator(&EmulatorCallbacks, &Made)))
+            m_Emulator = Made;
+        else
+            Log(RtvmLogWarning, "the instruction reader would not start\n");
+    }
+
     m_Vdevs.Reset(new VdevHost(*this));
 
     if (!m_Vdevs)
@@ -653,6 +800,69 @@ void Machine::PostInput(RTVM_INPUT_KIND Kind, ULONG Value)
 {
     if (m_Devices)
         m_Devices->PostInput(Kind, Value);
+}
+
+HRESULT Machine::ReadRegisters(ULONG Index, const WHV_REGISTER_NAME *Names,
+                               ULONG Count, WHV_REGISTER_VALUE *Values)
+{
+    return platform::GetRegisters(m_Partition, Index, Names, Count, Values);
+}
+
+HRESULT Machine::WriteRegisters(ULONG Index, const WHV_REGISTER_NAME *Names,
+                                ULONG Count, const WHV_REGISTER_VALUE *Values)
+{
+    return platform::SetRegisters(m_Partition, Index, Names, Count, Values);
+}
+
+HRESULT Machine::Translate(ULONG Index, ULONG64 Gva, ULONG Flags,
+                           WHV_TRANSLATE_GVA_RESULT_CODE *Result, ULONG64 *Gpa)
+{
+    if (platform::TranslateGva == nullptr)
+        return E_NOTIMPL;
+
+    WHV_TRANSLATE_GVA_RESULT Answer = {};
+    const HRESULT Status = platform::TranslateGva(m_Partition, Index, Gva,
+                                                  (WHV_TRANSLATE_GVA_FLAGS)Flags,
+                                                  &Answer, Gpa);
+
+    if (Result != nullptr)
+        *Result = Answer.ResultCode;
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Carries out the instruction that faulted on a window a device answers for.
+ *
+ * @remarks
+ * The processor says which instruction it was and nothing about what it meant:
+ * there is no register holding what a write was going to write. Reading the
+ * instruction is the only way to find out, and that is what this hands off.
+ */
+bool Machine::EmulateAccess(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
+{
+    if ((m_Emulator == nullptr) || (platform::TryMmioEmulation == nullptr))
+        return false;
+
+    Faulted Where = { this, Index };
+    WHV_EMULATOR_STATUS Status = {};
+
+    const HRESULT Result = platform::TryMmioEmulation(m_Emulator, &Where,
+                                                      &Exit.VpContext,
+                                                      &Exit.MemoryAccess,
+                                                      &Status);
+
+    if (FAILED(Result) || !Status.EmulationSuccessful)
+    {
+        Log(RtvmLogWarning,
+            "%04x:%08llx would not be read, %08lx, why %08lx\n",
+            Exit.VpContext.Cs.Selector, Exit.VpContext.Rip,
+            Result, Status.AsUINT32);
+        return false;
+    }
+
+    return true;
 }
 
 IVmDmaController *Machine::Channels() const
@@ -1066,17 +1276,27 @@ StopReason Machine::RunProcessor(ULONG Index)
                 if (Length == 0)
                     Length = Exit.MemoryAccess.InstructionByteCount;
 
-                if (m_Bus.MemoryClaimed(Address) && (Length != 0))
+                if (m_Bus.MemoryClaimed(Address))
                 {
                     /*
-                     * A device answers for this. Carrying out the faulting
-                     * instruction against it is what belongs here, and until
-                     * something needs that, stepping over keeps the machine
-                     * going rather than wedging it.
+                     * A device answers for this, so the instruction has to be
+                     * carried out against it rather than skipped: a write that
+                     * never happened and a read that gave back nothing are
+                     * both worse than not having the device at all.
                      */
-                    StepOver(Index, Exit.VpContext.Rip, Length);
-                    Stray = 0;
-                    break;
+                    if (EmulateAccess(Index, Exit))
+                    {
+                        Stray = 0;
+                        break;
+                    }
+
+                    /* It could not be read, and stepping over is all that is left */
+                    if (Length != 0)
+                    {
+                        StepOver(Index, Exit.VpContext.Rip, Length);
+                        Stray = 0;
+                        break;
+                    }
                 }
 
                 /*

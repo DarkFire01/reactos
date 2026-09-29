@@ -28,8 +28,37 @@ STDMETHODIMP LegacyPortAdapter::QueryInterface(REFIID Interface, void **Object)
         return S_OK;
     }
 
+    if (IsEqualIID(Interface, IID_IVndMmioHandler))
+    {
+        *Object = static_cast<IVndMmioHandler *>(this);
+        AddRef();
+        return S_OK;
+    }
+
     *Object = nullptr;
     return E_NOINTERFACE;
+}
+
+STDMETHODIMP LegacyPortAdapter::NotifyMmioRead(ULONG64 Address, ULONG Length,
+                                               void *Buffer)
+{
+    if ((m_Device->Vtable == nullptr) || (m_Device->Vtable->MemoryRead == nullptr))
+        return E_NOTIMPL;
+
+    return (m_Device->Vtable->MemoryRead(m_Device, Address, Length, Buffer) == RtvmOk)
+         ? S_OK
+         : E_FAIL;
+}
+
+STDMETHODIMP LegacyPortAdapter::NotifyMmioWrite(ULONG64 Address, ULONG Length,
+                                                const void *Buffer)
+{
+    if ((m_Device->Vtable == nullptr) || (m_Device->Vtable->MemoryWrite == nullptr))
+        return E_NOTIMPL;
+
+    return (m_Device->Vtable->MemoryWrite(m_Device, Address, Length, Buffer) == RtvmOk)
+         ? S_OK
+         : E_FAIL;
 }
 
 STDMETHODIMP LegacyPortAdapter::NotifyIoPortRead(USHORT Port, ULONG Width,
@@ -128,14 +157,36 @@ STDMETHODIMP EmulationServices::RegisterMmioHandler(ULONG64 FirstPage,
     if ((Handler == nullptr) || (PageCount == 0))
         return E_INVALIDARG;
 
-    Log(RtvmLogWarning,
-        "a device wants the %llu page(s) at %llx, which is not answered yet\n",
-        PageCount, FirstPage * 0x1000);
+    const ULONG64 Base = FirstPage * VDEV_PAGE_SIZE;
+    const ULONG64 Length = PageCount * VDEV_PAGE_SIZE;
+
+    if (!m_Owner.Owner().SystemBus().ClaimMemory(Handler, Base, Length))
+    {
+        Log(RtvmLogError, "%llx to %llx is answered for already\n",
+            Base, Base + Length - 1);
+        return E_ACCESSDENIED;
+    }
+
+    Log(RtvmLogTrace, "%llu page(s) at %llx taken\n", PageCount, Base);
+
+    /*
+     * The window is claimed before the machine decides what to map, so nothing
+     * has to be taken back out of the guest afterwards. A device that reserves
+     * one once the machine is running is asking for a page the guest already
+     * has, and is refused.
+     */
+    if (m_Owner.Owner().Running())
+    {
+        m_Owner.Owner().SystemBus().ForgetMemory(Handler);
+        Log(RtvmLogError, "%llx is already the guest's, so it cannot be taken\n",
+            Base);
+        return E_NOT_VALID_STATE;
+    }
 
     if (Registration != nullptr)
-        *Registration = nullptr;
+        *Registration = Handler;
 
-    return E_NOTIMPL;
+    return S_OK;
 }
 
 /* THE PROCESSORS, AS A DEVICE SEES THEM **************************************/
