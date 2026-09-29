@@ -791,9 +791,14 @@ HvlQueryProcessorTopologyEx(
     if (PackageId != NULL)
         *PackageId = 0;
 
-    /* A core is known by the thread of it that leads the rest */
+    /* A core is known by the thread of it that leads the rest. A processor
+       still coming up has not claimed one yet, and stands for itself */
     if (CoreId != NULL)
-        *CoreId = Prcb->MultiThreadSetMaster->Number;
+    {
+        *CoreId = (Prcb->MultiThreadSetMaster != NULL)
+                ? Prcb->MultiThreadSetMaster->Number
+                : ProcessorIndex;
+    }
 
     if (Index != NULL)
         *Index = ProcessorIndex;
