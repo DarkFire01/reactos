@@ -500,8 +500,13 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     FrLdrDbgPrint = LoaderBlock->u.I386.CommonDataArea;
     //FrLdrDbgPrint("Hello from KiSystemStartup!!!\n");
 
-    /* Get the current CPU number */
-    Cpu = KeNumberProcessors++; // FIXME
+    /*
+     * Claim a number, but do not raise the count with it yet. Everything that
+     * walks the processors reads the count and then trusts every block below
+     * it, so the block has to be in the array first. Processors are started
+     * one at a time, which is what makes reading the count here enough.
+     */
+    Cpu = KeNumberProcessors;
 
     /* LoaderBlock initialization for Cpu 0 */
     if (Cpu == 0)
@@ -518,6 +523,10 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     /* Set the PRCB for this Processor */
     KiProcessorBlock[Cpu] = &Pcr->Prcb;
+
+    /* And only now does the processor exist as far as anyone else is concerned */
+    KeMemoryBarrier();
+    KeNumberProcessors++;
 
     /* Save the initial thread */
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
