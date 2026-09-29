@@ -121,6 +121,20 @@ typedef union _WHV_EXTENDED_VM_EXITS
 
 C_ASSERT(sizeof(WHV_EXTENDED_VM_EXITS) == 8);
 
+/*
+ * One setting of a partition, whichever it is. A client sets a property by
+ * handing over the member that matches the code, and the length it passes is
+ * what says which one it filled in.
+ */
+typedef union _WHV_PARTITION_PROPERTY
+{
+    UINT32 ProcessorCount;
+    WHV_EXTENDED_VM_EXITS ExtendedVmExits;
+    UINT64 AsUINT64;
+} WHV_PARTITION_PROPERTY;
+
+C_ASSERT(sizeof(WHV_PARTITION_PROPERTY) == 8);
+
 typedef enum _WHV_MAP_GPA_RANGE_FLAGS
 {
     WHvMapGpaRangeFlagNone = 0x00000000,
@@ -276,6 +290,7 @@ typedef union _WHV_REGISTER_VALUE
     UINT8 Reg8;
     WHV_X64_SEGMENT_REGISTER Segment;
     WHV_X64_TABLE_REGISTER Table;
+    WHV_X64_PENDING_INTERRUPTION_REGISTER PendingInterruption;
 } WHV_REGISTER_VALUE;
 
 C_ASSERT(sizeof(WHV_REGISTER_VALUE) == 16);
@@ -346,6 +361,44 @@ typedef union _WHV_X64_IO_PORT_ACCESS_INFO
     } DUMMYSTRUCTNAME;
     UINT32 AsUINT32;
 } WHV_X64_IO_PORT_ACCESS_INFO;
+
+/* What the processor was doing to the address it could not reach */
+typedef enum _WHV_MEMORY_ACCESS_TYPE
+{
+    WHvMemoryAccessRead = 0,
+    WHvMemoryAccessWrite = 1,
+    WHvMemoryAccessExecute = 2
+} WHV_MEMORY_ACCESS_TYPE;
+
+typedef union _WHV_MEMORY_ACCESS_INFO
+{
+    struct
+    {
+        UINT32 AccessType:2;
+        UINT32 GpaUnmapped:1;
+        UINT32 GvaValid:1;
+        UINT32 Reserved:28;
+    } DUMMYSTRUCTNAME;
+    UINT32 AsUINT32;
+} WHV_MEMORY_ACCESS_INFO;
+
+C_ASSERT(sizeof(WHV_MEMORY_ACCESS_INFO) == 4);
+
+/*
+ * An access to an address the partition has nothing mapped at. The instruction
+ * comes with it, because the client is the one that has to carry it out.
+ */
+typedef struct _WHV_MEMORY_ACCESS_CONTEXT
+{
+    UINT8 InstructionByteCount;
+    UINT8 Reserved[3];
+    UINT8 InstructionBytes[16];
+    WHV_MEMORY_ACCESS_INFO AccessInfo;
+    WHV_GUEST_PHYSICAL_ADDRESS Gpa;
+    WHV_GUEST_VIRTUAL_ADDRESS Gva;
+} WHV_MEMORY_ACCESS_CONTEXT;
+
+C_ASSERT(sizeof(WHV_MEMORY_ACCESS_CONTEXT) == 40);
 
 typedef struct _WHV_X64_IO_PORT_ACCESS_CONTEXT
 {
@@ -433,6 +486,7 @@ typedef struct _WHV_RUN_VP_EXIT_CONTEXT
     WHV_VP_EXIT_CONTEXT VpContext;
     union
     {
+        WHV_MEMORY_ACCESS_CONTEXT MemoryAccess;
         WHV_X64_IO_PORT_ACCESS_CONTEXT IoPortAccess;
         WHV_X64_CPUID_ACCESS_CONTEXT CpuidAccess;
         WHV_X64_MSR_ACCESS_CONTEXT MsrAccess;

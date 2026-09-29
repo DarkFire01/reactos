@@ -1,0 +1,5 @@
+add_library(rtvmserial MODULE rtvmserial.c rtvmserial.rc)
+set_module_type(rtvmserial win32dll ENTRYPOINT DllMain 12)
+add_importlibs(rtvmserial msvcrt kernel32 ntdll)
+add_dependencies(rtvmserial psdk)
+add_cd_file(TARGET rtvmserial DESTINATION reactos/system32 FOR all)
