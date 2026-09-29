@@ -91,6 +91,14 @@ public:
 
     bool MemoryClaimed(ULONG64 Address) const;
 
+    /* So that the manager can leave a hole where each of these sits */
+    ULONG ClaimedCount() const { return m_Memory.Count(); }
+    void ClaimedAt(ULONG Index, ULONG64 &Base, ULONG64 &Length) const
+    {
+        Base = m_Memory[Index].Base;
+        Length = m_Memory[Index].Length;
+    }
+
 private:
     struct MemoryRange
     {
@@ -101,6 +109,7 @@ private:
 
     RTVM_DEVICE **m_Ports = nullptr;
     Array<MemoryRange, MaximumMemoryRanges> m_Memory;
+
 };
 
 /*
@@ -238,6 +247,7 @@ private:
     bool CreatePartition(const Configuration &Config);
     bool LoadFirmware(const char *Path);
     bool DescribeMachine(const Configuration &Config);
+    bool MapMemory();
     bool PrepareProcessor(ULONG Index);
     StopReason RunProcessor(ULONG Index);
 
