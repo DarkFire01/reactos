@@ -35,6 +35,8 @@ static HRESULT (WINAPI *SetPartitionProperty)(WHV_PARTITION_HANDLE,
 static HRESULT (WINAPI *MapGpaRange)(WHV_PARTITION_HANDLE, VOID *,
                                      WHV_GUEST_PHYSICAL_ADDRESS, UINT64,
                                      WHV_MAP_GPA_RANGE_FLAGS);
+static HRESULT (WINAPI *UnmapGpaRange)(WHV_PARTITION_HANDLE,
+                                       WHV_GUEST_PHYSICAL_ADDRESS, UINT64);
 static HRESULT (WINAPI *CreateVirtualProcessor)(WHV_PARTITION_HANDLE, UINT32,
                                                 UINT32);
 static HRESULT (WINAPI *DeleteVirtualProcessor)(WHV_PARTITION_HANDLE, UINT32);
@@ -72,6 +74,7 @@ static bool FindPlatform()
     BIND(SetupPartition, "WHvSetupPartition");
     BIND(SetPartitionProperty, "WHvSetPartitionProperty");
     BIND(MapGpaRange, "WHvMapGpaRange");
+    BIND(UnmapGpaRange, "WHvUnmapGpaRange");
     BIND(CreateVirtualProcessor, "WHvCreateVirtualProcessor");
     BIND(DeleteVirtualProcessor, "WHvDeleteVirtualProcessor");
     BIND(RunVirtualProcessor, "WHvRunVirtualProcessor");
@@ -166,6 +169,149 @@ static void SayRegisters(WHV_PARTITION_HANDLE Partition, ULONG64 *Rsp)
 
     if (Rsp != nullptr)
         *Rsp = Held[6].Reg64;
+}
+
+/* A MACHINE SOMETHING CAN BE PUT INTO ****************************************/
+
+/*
+ * The same machine as below, taken apart so that the other half of this program
+ * can put real hardware into it. What that half has is the contract; what this
+ * half has is the processor and the memory, and neither needs to know how the
+ * other works.
+ */
+static WHV_PARTITION_HANDLE TheMachine = nullptr;
+static UCHAR *TheMemory = nullptr;
+static ULONG64 TheExtent = 0;
+
+bool Open(ULONG64 Ram)
+{
+    if (!FindPlatform())
+    {
+        printf("this machine cannot make machines\n");
+        return false;
+    }
+
+    if (FAILED(CreatePartition(&TheMachine)))
+        return false;
+
+    WHV_PARTITION_PROPERTY Property = {};
+
+    Property.ProcessorCount = 1;
+    SetPartitionProperty(TheMachine, WHvPartitionPropertyCodeProcessorCount,
+                         &Property, sizeof(Property));
+
+    if (FAILED(SetupPartition(TheMachine)))
+        return false;
+
+    TheMemory = static_cast<UCHAR *>(VirtualAlloc(nullptr, (SIZE_T)Ram,
+                                                  MEM_COMMIT | MEM_RESERVE,
+                                                  PAGE_READWRITE));
+
+    if (TheMemory == nullptr)
+        return false;
+
+    const auto Whole = static_cast<WHV_MAP_GPA_RANGE_FLAGS>(
+        WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagWrite |
+        WHvMapGpaRangeFlagExecute);
+
+    if (FAILED(MapGpaRange(TheMachine, TheMemory, 0, Ram, Whole)))
+        return false;
+
+    TheExtent = Ram;
+    return FAILED(CreateVirtualProcessor(TheMachine, 0, 0)) ? false : true;
+}
+
+/* Where a device that answers for memory of its own has its window taken out */
+bool Hollow(ULONG64 Where, ULONG64 Length)
+{
+    if ((TheMachine == nullptr) || (Where + Length > TheExtent))
+        return false;
+
+    return SUCCEEDED(UnmapGpaRange(TheMachine, Where, Length));
+}
+
+bool Place(const void *Image, ULONG Length, ULONG64 Where)
+{
+    if ((TheMemory == nullptr) || ((Where + Length) > TheExtent))
+        return false;
+
+    memcpy(TheMemory + Where, Image, Length);
+    return true;
+}
+
+/*
+ * Put where a processor of this kind is when it comes out of reset, except that
+ * the segment it starts in is given rather than assumed: a firmware that lives
+ * in the last of the first megabyte is reached through a base that says so,
+ * and is not the same as one that answers from the top of everything.
+ */
+bool Start(USHORT Selector, ULONG64 Base, ULONG64 Rip)
+{
+    static const WHV_REGISTER_NAME Named[] =
+    {
+        WHvX64RegisterCs, WHvX64RegisterRip, WHvX64RegisterRflags
+    };
+
+    WHV_REGISTER_VALUE Values[ARRAYSIZE(Named)] = {};
+
+    Values[0].Segment.Base = Base;
+    Values[0].Segment.Limit = 0xFFFF;
+    Values[0].Segment.Selector = Selector;
+    Values[0].Segment.Attributes = 0x009B;
+
+    Values[1].Reg64 = Rip;
+    Values[2].Reg64 = 0x0002;
+
+    return SUCCEEDED(SetRegisters(TheMachine, 0, Named, ARRAYSIZE(Named),
+                                  Values));
+}
+
+bool Step(WHV_RUN_VP_EXIT_CONTEXT *Exit)
+{
+    return SUCCEEDED(RunVirtualProcessor(TheMachine, 0, Exit, sizeof(*Exit)));
+}
+
+bool Poke(WHV_REGISTER_NAME Which, ULONG64 Value)
+{
+    WHV_REGISTER_VALUE Held = {};
+
+    Held.Reg64 = Value;
+
+    return SUCCEEDED(SetRegisters(TheMachine, 0, &Which, 1, &Held));
+}
+
+ULONG64 Peek(WHV_REGISTER_NAME Which)
+{
+    WHV_REGISTER_VALUE Held = {};
+
+    if (FAILED(GetRegisters(TheMachine, 0, &Which, 1, &Held)))
+        return 0;
+
+    return Held.Reg64;
+}
+
+void *Guest(ULONG64 Where, ULONG Length)
+{
+    if ((TheMemory == nullptr) || ((Where + Length) > TheExtent))
+        return nullptr;
+
+    return TheMemory + Where;
+}
+
+void Tell()
+{
+    if (TheMachine != nullptr)
+        SayRegisters(TheMachine, nullptr);
+}
+
+void Close()
+{
+    if (TheMachine == nullptr)
+        return;
+
+    DeleteVirtualProcessor(TheMachine, 0);
+    DeletePartition(TheMachine);
+    TheMachine = nullptr;
 }
 
 static void SayExit(const WHV_RUN_VP_EXIT_CONTEXT &Exit, ULONG64 Count)
