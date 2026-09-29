@@ -82,16 +82,16 @@ bool Bus::Initialize()
      * port access in the machine goes through it, and half a megabyte of
      * zeroes is cheaper than deciding which pages are worth having.
      */
-    m_Ports = static_cast<RTVM_DEVICE **>(
+    m_Ports = static_cast<IVndIoPortHandler **>(
         VirtualAlloc(nullptr,
-                     PortCount * sizeof(RTVM_DEVICE *),
+                     PortCount * sizeof(*m_Ports),
                      MEM_COMMIT | MEM_RESERVE,
                      PAGE_READWRITE));
 
     return m_Ports != nullptr;
 }
 
-bool Bus::ClaimPorts(RTVM_DEVICE *Device, USHORT First, USHORT Count)
+bool Bus::ClaimPorts(IVndIoPortHandler *Handler, USHORT First, USHORT Count)
 {
     const ULONG Last = static_cast<ULONG>(First) + Count;
 
@@ -106,7 +106,7 @@ bool Bus::ClaimPorts(RTVM_DEVICE *Device, USHORT First, USHORT Count)
     }
 
     for (ULONG Port = First; Port < Last; Port++)
-        m_Ports[Port] = Device;
+        m_Ports[Port] = Handler;
 
     return true;
 }
@@ -125,16 +125,20 @@ bool Bus::ClaimMemory(RTVM_DEVICE *Device, ULONG64 Base, ULONG64 Length)
     return m_Memory.Add({ Base, Length, Device });
 }
 
+void Bus::ForgetPorts(IVndIoPortHandler *Handler)
+{
+    if (m_Ports == nullptr)
+        return;
+
+    for (ULONG Port = 0; Port < PortCount; Port++)
+    {
+        if (m_Ports[Port] == Handler)
+            m_Ports[Port] = nullptr;
+    }
+}
+
 void Bus::Forget(RTVM_DEVICE *Device)
 {
-    if (m_Ports != nullptr)
-    {
-        for (ULONG Port = 0; Port < PortCount; Port++)
-        {
-            if (m_Ports[Port] == Device)
-                m_Ports[Port] = nullptr;
-        }
-    }
 
     Array<MemoryRange, MaximumMemoryRanges> Kept;
 
@@ -152,17 +156,14 @@ ULONG Bus::ReadPort(USHORT Port, ULONG Width)
     if (m_Ports == nullptr)
         return Floating;
 
-    RTVM_DEVICE *Device = m_Ports[Port];
+    IVndIoPortHandler *Handler = m_Ports[Port];
 
-    if ((Device == nullptr) || (Device->Vtable == nullptr) ||
-        (Device->Vtable->IoRead == nullptr))
-    {
+    if (Handler == nullptr)
         return Floating;
-    }
 
     ULONG Value = Floating;
 
-    if (Device->Vtable->IoRead(Device, Port, Width, &Value) != RtvmOk)
+    if (FAILED(Handler->NotifyIoPortRead(Port, Width, &Value)))
         return Floating;
 
     return Value;
@@ -173,15 +174,10 @@ void Bus::WritePort(USHORT Port, ULONG Width, ULONG Value)
     if (m_Ports == nullptr)
         return;
 
-    RTVM_DEVICE *Device = m_Ports[Port];
+    IVndIoPortHandler *Handler = m_Ports[Port];
 
-    if ((Device == nullptr) || (Device->Vtable == nullptr) ||
-        (Device->Vtable->IoWrite == nullptr))
-    {
-        return;
-    }
-
-    Device->Vtable->IoWrite(Device, Port, Width, Value);
+    if (Handler != nullptr)
+        Handler->NotifyIoPortWrite(Port, Width, Value);
 }
 
 bool Bus::MemoryClaimed(ULONG64 Address) const

@@ -5,6 +5,8 @@ add_executable(reactvmm
     pic.cpp
     dma.cpp
     devicehost.cpp
+    vdevhost.cpp
+    vdevguid.cpp
     panel.cpp
     newdelete.cpp
     reactvmm.rc)

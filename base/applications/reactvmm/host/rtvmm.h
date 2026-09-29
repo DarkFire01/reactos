@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <winhvplatform.h>
 
+#include "vdev.h"
 #include "rtvm_util.h"
 
 extern "C" {
@@ -79,8 +80,9 @@ public:
 
     bool Initialize();
 
-    bool ClaimPorts(RTVM_DEVICE *Device, USHORT First, USHORT Count);
+    bool ClaimPorts(IVndIoPortHandler *Handler, USHORT First, USHORT Count);
     bool ClaimMemory(RTVM_DEVICE *Device, ULONG64 Base, ULONG64 Length);
+    void ForgetPorts(IVndIoPortHandler *Handler);
     void Forget(RTVM_DEVICE *Device);
 
     ULONG ReadPort(USHORT Port, ULONG Width);
@@ -107,7 +109,7 @@ private:
         RTVM_DEVICE *Device = nullptr;
     };
 
-    RTVM_DEVICE **m_Ports = nullptr;
+    IVndIoPortHandler **m_Ports = nullptr;
     Array<MemoryRange, MaximumMemoryRanges> m_Memory;
 
 };
@@ -217,6 +219,7 @@ private:
 };
 
 class Machine;
+class LegacyPortAdapter;
 
 /*
  * Somewhere for the operator to look. A device that owns a display hands pages
@@ -247,6 +250,9 @@ public:
     bool Load(const char *FileName);
     bool Create(const char *ClassName, const char *Parameters);
 
+    /* What stands in for a device on the bus, made when the device was */
+    LegacyPortAdapter *AdapterFor(RTVM_DEVICE *Device) const;
+
     bool StartAll();
     void ResetAll();
     void StopAll();
@@ -269,6 +275,9 @@ private:
 
     Array<LoadedModule, MaximumModules> m_Modules;
     Array<RTVM_DEVICE *, MaximumDevices> m_Devices;
+
+    /* One per device, so that the bus sees every device the same way */
+    Array<LegacyPortAdapter *, MaximumDevices> m_Adapters;
 };
 
 /* One piece of hardware as it was asked for, kind and settings together */
@@ -341,6 +350,9 @@ public:
     Bus &SystemBus() noexcept { return m_Bus; }
     Pic &Controller() noexcept { return m_Pic; }
     Dma &Transfers() noexcept { return m_Dma; }
+
+    /* Reached from the device interface, to find what stands in for a device */
+    DeviceHost &Devices() noexcept { return *m_Devices; }
 
     /* Where pages of text go from now on, or nullptr for nowhere */
     void Attach(Display *Screen) noexcept { m_Display = Screen; }
