@@ -54,18 +54,73 @@ void Pic::Reset()
     m_Chip[1].Base = 0x70;
 }
 
+/**
+ * @brief
+ * Follows a device's line, and remembers that it went up.
+ *
+ * @remarks
+ * The request register latches. A device that pulses its line, which is what
+ * the interval timer does, is gone again long before anything looks, so a
+ * register that only mirrored the wire would show nothing and the interrupt
+ * would be lost. The latch is what makes a pulse into something that can be
+ * delivered later.
+ *
+ * The state of the wire itself is kept alongside it, because the two are not
+ * the same question: the latch says an interrupt is owed, and the wire says
+ * whether the device is still asking. A device that holds its line up wants
+ * another interrupt after each one is answered, and one that pulsed does not.
+ */
 void Pic::SetLine(ULONG Line, bool Asserted)
 {
     if (Line > 15)
         return;
 
     Chip &Chip = m_Chip[Line >= 8 ? 1 : 0];
-    UCHAR Bit = (UCHAR)(1u << (Line & 7));
+    const UCHAR Bit = (UCHAR)(1u << (Line & 7));
 
     if (Asserted)
-        Chip.Request |= Bit;
+    {
+        /* Only a rising edge latches, so holding a line up is not a stream */
+        if (!(Chip.Level & Bit))
+            Chip.Request |= Bit;
+
+        Chip.Level |= Bit;
+    }
     else
-        Chip.Request &= (UCHAR)~Bit;
+    {
+        Chip.Level &= (UCHAR)~Bit;
+    }
+
+    if (Line >= 8)
+        UpdateCascade();
+}
+
+/**
+ * @brief
+ * Carries the second chip's answer up to the line it is wired to on the first.
+ *
+ * @remarks
+ * The two are not peers. Only the first one is wired to the processor, and the
+ * second reaches it by holding the first one's line two. Without this every
+ * line from eight upward is latched and then never looked at, which is every
+ * interrupt from the clock and the disk.
+ */
+void Pic::UpdateCascade()
+{
+    const bool Asking = (m_Chip[1].Request & ~m_Chip[1].Mask) != 0;
+    const UCHAR Bit = (UCHAR)(1u << PIC_CASCADE_LINE);
+
+    if (Asking)
+    {
+        if (!(m_Chip[0].Level & Bit))
+            m_Chip[0].Request |= Bit;
+
+        m_Chip[0].Level |= Bit;
+    }
+    else
+    {
+        m_Chip[0].Level &= (UCHAR)~Bit;
+    }
 }
 
 int Pic::HighestPending(const Chip &Chip) const
@@ -105,10 +160,14 @@ int Pic::Acknowledge()
     m_Chip[0].Service |= (UCHAR)(1u << Line);
 
     /*
-     * An edge triggered line drops as it is taken. A device that still wants
-     * attention raises it again, which is what its own status register is for.
+     * Taking it clears what was owed. If the device is still holding its line
+     * up it is owed another straight away, which is what keeps a level like
+     * the serial port's being served until the device itself lets go.
      */
     m_Chip[0].Request &= (UCHAR)~(1u << Line);
+
+    if (m_Chip[0].Level & (UCHAR)(1u << Line))
+        m_Chip[0].Request |= (UCHAR)(1u << Line);
 
     if (m_Chip[0].AutoEnd)
         m_Chip[0].Service &= (UCHAR)~(1u << Line);
@@ -127,6 +186,9 @@ int Pic::Acknowledge()
 
     m_Chip[1].Service |= (UCHAR)(1u << Slave);
     m_Chip[1].Request &= (UCHAR)~(1u << Slave);
+
+    if (m_Chip[1].Level & (UCHAR)(1u << Slave))
+        m_Chip[1].Request |= (UCHAR)(1u << Slave);
 
     if (m_Chip[1].AutoEnd)
         m_Chip[1].Service &= (UCHAR)~(1u << Slave);
@@ -214,6 +276,9 @@ void Pic::WritePort(USHORT Port, ULONG Value)
 
         default:
             Chip.Mask = Byte;
+
+            /* Unmasking on the second chip may be it starting to ask */
+            UpdateCascade();
             break;
     }
 }
