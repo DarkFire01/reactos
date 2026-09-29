@@ -153,6 +153,19 @@ typedef struct _RTVM_HOST_INTERFACE
     (RTVMAPI *PresentText)(
         _In_ PVOID Context,
         _In_ const RTVM_TEXT_PAGE *Page);
+
+    /*
+     * Move a device's data through one of the transfer channels. The device
+     * never learns where in memory it went, which is the whole point of the
+     * channel having been programmed by somebody else.
+     */
+    RTVM_STATUS
+    (RTVMAPI *MoveThroughChannel)(
+        _In_ PVOID Context,
+        _In_ ULONG Channel,
+        _Inout_updates_bytes_(Length) PVOID Buffer,
+        _In_ ULONG Length,
+        _Out_ PULONG Moved);
 } RTVM_HOST_INTERFACE, *PRTVM_HOST_INTERFACE;
 
 /*

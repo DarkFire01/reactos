@@ -3,6 +3,7 @@ add_executable(reactvmm
     machine.cpp
     bus.cpp
     pic.cpp
+    dma.cpp
     devicehost.cpp
     panel.cpp
     newdelete.cpp

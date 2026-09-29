@@ -50,7 +50,7 @@ constexpr ULONG64 MachineDescription = 0x00000500;
 
 Machine::Machine()
 {
-    InitializeCriticalSection(&m_PicLock);
+    InitializeCriticalSection(&m_ChipLock);
 }
 
 Machine::~Machine()
@@ -67,7 +67,7 @@ Machine::~Machine()
         m_Partition = nullptr;
     }
 
-    DeleteCriticalSection(&m_PicLock);
+    DeleteCriticalSection(&m_ChipLock);
 }
 
 bool Machine::BindPlatform()
@@ -501,6 +501,7 @@ bool Machine::Build(const Configuration &Config)
         return false;
 
     m_Pic.Reset();
+    m_Dma.Reset();
     m_Devices.Reset(new DeviceHost(*this));
 
     if (!m_Devices)
@@ -566,10 +567,51 @@ bool Machine::Build(const Configuration &Config)
     return true;
 }
 
+/*
+ * The two chips the board has of its own answer before the bus does, because
+ * nothing loadable is allowed to take their addresses away from them.
+ */
+void Machine::WritePort(USHORT Port, ULONG Width, ULONG Value)
+{
+    if (Pic::Owns(Port) || Dma::Owns(Port))
+    {
+        Locked Held(m_ChipLock);
+
+        if (Pic::Owns(Port))
+            m_Pic.WritePort(Port, Value);
+        else
+            m_Dma.WritePort(Port, Value);
+
+        return;
+    }
+
+    m_Bus.WritePort(Port, Width, Value);
+}
+
+ULONG Machine::ReadPort(USHORT Port, ULONG Width)
+{
+    if (Pic::Owns(Port) || Dma::Owns(Port))
+    {
+        Locked Held(m_ChipLock);
+
+        return Pic::Owns(Port) ? m_Pic.ReadPort(Port) : m_Dma.ReadPort(Port);
+    }
+
+    return m_Bus.ReadPort(Port, Width);
+}
+
+RTVM_STATUS Machine::MoveThroughChannel(ULONG Channel, void *Buffer,
+                                        ULONG Length, ULONG &Moved)
+{
+    Locked Held(m_ChipLock);
+
+    return m_Dma.Transfer(m_Memory, Channel, Buffer, Length, Moved);
+}
+
 void Machine::SetInterruptLine(ULONG Line, bool Asserted)
 {
     {
-        Locked Held(m_PicLock);
+        Locked Held(m_ChipLock);
 
         m_Pic.SetLine(Line, Asserted);
     }
@@ -688,31 +730,13 @@ void Machine::StringPort(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
             if (!m_Memory.Read(Address, &Value, Width))
                 break;
 
-            if (Pic::Owns(Port))
-            {
-                Locked Held(m_PicLock);
-
-                m_Pic.WritePort(Port, Value);
-            }
-            else
-            {
-                m_Bus.WritePort(Port, Width, Value);
-            }
+            WritePort(Port, Width, Value);
         }
         else
         {
             ULONG Value;
 
-            if (Pic::Owns(Port))
-            {
-                Locked Held(m_PicLock);
-
-                Value = m_Pic.ReadPort(Port);
-            }
-            else
-            {
-                Value = m_Bus.ReadPort(Port, Width);
-            }
+            Value = ReadPort(Port, Width);
 
             if (!m_Memory.Write(Address, &Value, Width))
                 break;
@@ -795,7 +819,7 @@ void Machine::DeliverInterrupt(ULONG Index)
     int Vector;
 
     {
-        Locked Held(m_PicLock);
+        Locked Held(m_ChipLock);
 
         Vector = m_Pic.Acknowledge();
     }
@@ -899,7 +923,7 @@ void Machine::ReportProcessor(ULONG Index)
 /* Whether the controller has anything for a processor that will take it */
 bool Machine::Pending()
 {
-    Locked Held(m_PicLock);
+    Locked Held(m_ChipLock);
 
     return m_Pic.Pending();
 }
@@ -957,31 +981,13 @@ StopReason Machine::RunProcessor(ULONG Index)
                 {
                     const ULONG Value = static_cast<ULONG>(Exit.IoPortAccess.Rax);
 
-                    if (Pic::Owns(Port))
-                    {
-                        Locked Held(m_PicLock);
-
-                        m_Pic.WritePort(Port, Value);
-                    }
-                    else
-                    {
-                        m_Bus.WritePort(Port, Width, Value);
-                    }
+                    WritePort(Port, Width, Value);
                 }
                 else
                 {
                     ULONG Value;
 
-                    if (Pic::Owns(Port))
-                    {
-                        Locked Held(m_PicLock);
-
-                        Value = m_Pic.ReadPort(Port);
-                    }
-                    else
-                    {
-                        Value = m_Bus.ReadPort(Port, Width);
-                    }
+                    Value = ReadPort(Port, Width);
 
                     /*
                      * Only the bytes the access asked for are replaced, which
