@@ -87,6 +87,34 @@ private:
 };
 
 /*
+ * The processors, as a device with something for them sees them.
+ *
+ * The interrupt controller offers a vector and is told, when it next asks,
+ * whether it was taken. Nothing here decides whether the guest is willing: that
+ * is the machine's to know and it knows it only at the moment it runs.
+ */
+class ProcessorServices : public IVmProcessorServices, private Permanent
+{
+public:
+    explicit ProcessorServices(VdevHost &Owner) noexcept : m_Owner(Owner) {}
+
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override;
+    STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }
+    STDMETHODIMP_(ULONG) Release() override { return Drop(); }
+
+    STDMETHODIMP Unknown3() override { return E_NOTIMPL; }
+    STDMETHODIMP Unknown4() override { return E_NOTIMPL; }
+    STDMETHODIMP Unknown5() override { return E_NOTIMPL; }
+
+    STDMETHODIMP SetPendingInterrupt(ULONG64 Kind, ULONG64 Reserved,
+                                     ULONG Vector) override;
+    STDMETHODIMP TakePendingInterrupt() override;
+
+private:
+    VdevHost &m_Owner;
+};
+
+/*
  * How a device reaches everything else. A device names the services it wants
  * and is given them one at a time through here.
  */
@@ -142,6 +170,10 @@ public:
 
     Machine &Owner() noexcept { return m_Machine; }
     EmulationServices &Emulation() noexcept { return m_Emulation; }
+    ProcessorServices &Processors() noexcept { return m_Processors; }
+
+    /* The interrupt controller, once one has come up, or nothing */
+    IVmPicService *Interrupts() const noexcept { return m_Interrupts; }
     ServiceAccess &Services() noexcept { return m_Services; }
 
     /* Whatever a device asked for that the manager has, or nothing */
@@ -156,6 +188,7 @@ private:
 
     Machine &m_Machine;
     EmulationServices m_Emulation;
+    ProcessorServices m_Processors;
     ServiceAccess m_Services;
 
     Array<HMODULE, MaximumLibraries> m_Libraries;
@@ -164,6 +197,9 @@ private:
     /* What a device published for other devices to be given */
     Array<IUnknown *, MaximumVdevs> m_Published;
     Array<GUID, MaximumVdevs> m_PublishedAs;
+
+    /* Kept apart because everything that raises a line goes through it */
+    IVmPicService *m_Interrupts = nullptr;
 };
 
 } /* namespace rtvm */

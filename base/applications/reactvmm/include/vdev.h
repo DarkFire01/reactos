@@ -235,6 +235,48 @@ DECLARE_INTERFACE_(IVmAmd64EmulationServices, IUnknown)
 
 DEFINE_GUID(IID_IVmProcessorServices,
             0x5f662e9d, 0x2097, 0x4eb5, 0x85, 0x27, 0x65, 0x8b, 0xa5, 0x4a, 0xc0, 0x49);
+
+/*
+ * The processors, as a device that has something for them sees them. The
+ * interrupt controller works out which vector is owed and says so through here;
+ * whether the guest is willing to take one is not its problem.
+ */
+#undef INTERFACE
+#define INTERFACE IVmProcessorServices
+DECLARE_INTERFACE_(IVmProcessorServices, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /* Not yet understood, and here so that the one below keeps its slot */
+    STDMETHOD(Unknown3)(THIS) PURE;
+    STDMETHOD(Unknown4)(THIS) PURE;
+    STDMETHOD(Unknown5)(THIS) PURE;
+
+    /*
+     * What the processor should take when it next will. Kind is seven for a
+     * line arriving through the interrupt controller, and a vector of all ones
+     * means there is nothing owed any more.
+     */
+    STDMETHOD(SetPendingInterrupt)(THIS_ _In_ ULONG64 Kind,
+                                   _In_ ULONG64 Reserved,
+                                   _In_ ULONG Vector) PURE;
+
+    /*
+     * Whether the vector last offered has been taken. Succeeding is what tells
+     * the controller to put it in service, which is the handshake a real one
+     * gets from the cycle that acknowledges an interrupt.
+     */
+    STDMETHOD(TakePendingInterrupt)(THIS) PURE;
+};
+
+/* What the interrupt controller says it is when it offers a vector */
+#define VDEV_INTERRUPT_FROM_PIC 7
+
+/* That there is nothing owed */
+#define VDEV_NO_VECTOR ((ULONG)-1)
 DEFINE_GUID(IID_IVmIoApic,
             0x9d33829b, 0x58be, 0x4bbf, 0xab, 0x6e, 0x3b, 0x16, 0xdb, 0xce, 0xf9, 0x54);
 DEFINE_GUID(IID_IVmTimeSource,

@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "rtvmm.h"
+#include "vdevhost.h"
 
 #include <winhvplatform.h>
 
@@ -502,6 +502,28 @@ bool Machine::Build(const Configuration &Config)
 
     m_Pic.Reset();
     m_Dma.Reset();
+
+    /*
+     * The devices that come out of a class server. They are brought up before
+     * the older ones, because the older ones raise lines on the interrupt
+     * controller and it has to be there first.
+     */
+    m_Vdevs.Reset(new VdevHost(*this));
+
+    if (!m_Vdevs)
+        return false;
+
+    if (m_Vdevs->Load("rtvmemulateddevices.dll"))
+    {
+        if (!m_Vdevs->Create(CLSID_PicDevice, "interrupt controller"))
+            return false;
+    }
+    else
+    {
+        Log(RtvmLogWarning,
+            "no emulated devices library, so the built in chips are used\n");
+    }
+
     m_Devices.Reset(new DeviceHost(*this));
 
     if (!m_Devices)
@@ -548,6 +570,9 @@ bool Machine::Build(const Configuration &Config)
     if (!m_Devices->StartAll())
         return false;
 
+    if (!m_Vdevs->PowerOnAll())
+        return false;
+
     /* Now that every window is claimed, the rest of it becomes memory */
     if (!MapMemory())
         return false;
@@ -571,9 +596,23 @@ bool Machine::Build(const Configuration &Config)
  * The two chips the board has of its own answer before the bus does, because
  * nothing loadable is allowed to take their addresses away from them.
  */
+/*
+ * Whether the chip built into the manager still answers for its own addresses.
+ * A device that has taken them over reserved them on the bus, and the built in
+ * one has to stand aside or the guest programs one chip and is answered by the
+ * other.
+ */
+bool Machine::BuiltInAnswers(USHORT Port) const
+{
+    if (Pic::Owns(Port))
+        return !(m_Vdevs && (m_Vdevs->Interrupts() != nullptr));
+
+    return Dma::Owns(Port);
+}
+
 void Machine::WritePort(USHORT Port, ULONG Width, ULONG Value)
 {
-    if (Pic::Owns(Port) || Dma::Owns(Port))
+    if (BuiltInAnswers(Port))
     {
         Locked Held(m_ChipLock);
 
@@ -590,7 +629,7 @@ void Machine::WritePort(USHORT Port, ULONG Width, ULONG Value)
 
 ULONG Machine::ReadPort(USHORT Port, ULONG Width)
 {
-    if (Pic::Owns(Port) || Dma::Owns(Port))
+    if (BuiltInAnswers(Port))
     {
         Locked Held(m_ChipLock);
 
@@ -610,6 +649,16 @@ RTVM_STATUS Machine::MoveThroughChannel(ULONG Channel, void *Buffer,
 
 void Machine::SetInterruptLine(ULONG Line, bool Asserted)
 {
+    IVmPicService *Controller = m_Vdevs ? m_Vdevs->Interrupts() : nullptr;
+
+    if (Controller != nullptr)
+    {
+        if (Asserted)
+            Controller->AssertIrq(Line);
+        else
+            Controller->DeassertIrq(Line);
+    }
+    else
     {
         Locked Held(m_ChipLock);
 
@@ -818,6 +867,24 @@ void Machine::DeliverInterrupt(ULONG Index)
 
     int Vector;
 
+    if (m_Vdevs && (m_Vdevs->Interrupts() != nullptr))
+    {
+        const ULONG Offered = m_Offered;
+
+        if (Offered == VDEV_NO_VECTOR)
+            return;
+
+        Vector = (int)Offered;
+
+        /*
+         * Taken here and not offered again. The controller is told only when it
+         * next asks, which is on the write that ends the interrupt, and until
+         * then there is nothing left for the processor to be given.
+         */
+        InterlockedExchange(&m_Taken, 1);
+        InterlockedExchange((volatile LONG *)&m_Offered, (LONG)VDEV_NO_VECTOR);
+    }
+    else
     {
         Locked Held(m_ChipLock);
 
@@ -923,9 +990,24 @@ void Machine::ReportProcessor(ULONG Index)
 /* Whether the controller has anything for a processor that will take it */
 bool Machine::Pending()
 {
+    if (m_Vdevs && (m_Vdevs->Interrupts() != nullptr))
+        return m_Offered != VDEV_NO_VECTOR;
+
     Locked Held(m_ChipLock);
 
     return m_Pic.Pending();
+}
+
+/* What a controller has for the processors, until it says otherwise */
+void Machine::OfferVector(ULONG Vector)
+{
+    InterlockedExchange((volatile LONG *)&m_Offered, (LONG)Vector);
+    InterlockedExchange(&m_Taken, 0);
+}
+
+bool Machine::VectorWasTaken()
+{
+    return InterlockedExchange(&m_Taken, 0) != 0;
 }
 
 StopReason Machine::RunProcessor(ULONG Index)

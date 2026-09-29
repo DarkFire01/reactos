@@ -1,0 +1,7 @@
+#include <windef.h>
+#include <winuser.h>
+
+#define REACTOS_STR_FILE_DESCRIPTION   "ReacTVmm emulated devices"
+#define REACTOS_STR_INTERNAL_NAME      "rtvmemulateddevices"
+#define REACTOS_STR_ORIGINAL_FILENAME  "rtvmemulateddevices.dll"
+#include <reactos/version.rc>

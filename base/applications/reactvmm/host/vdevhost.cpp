@@ -137,6 +137,48 @@ STDMETHODIMP EmulationServices::RegisterGpaRange(ULONG64 FirstPage,
     return E_NOTIMPL;
 }
 
+/* THE PROCESSORS, AS A DEVICE SEES THEM **************************************/
+
+STDMETHODIMP ProcessorServices::QueryInterface(REFIID Interface, void **Object)
+{
+    if (Object == nullptr)
+        return E_POINTER;
+
+    if (IsEqualIID(Interface, IID_IUnknown) ||
+        IsEqualIID(Interface, IID_IVmProcessorServices))
+    {
+        *Object = static_cast<IVmProcessorServices *>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    *Object = nullptr;
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP ProcessorServices::SetPendingInterrupt(ULONG64 Kind,
+                                                    ULONG64 Reserved,
+                                                    ULONG Vector)
+{
+    UNREFERENCED_PARAMETER(Reserved);
+
+    if (Kind != VDEV_INTERRUPT_FROM_PIC)
+        return E_NOTIMPL;
+
+    m_Owner.Owner().OfferVector(Vector);
+    return S_OK;
+}
+
+STDMETHODIMP ProcessorServices::TakePendingInterrupt()
+{
+    /*
+     * Failing is what says it has not been taken. A controller tests this for
+     * success rather than against a particular code, so anything that is not a
+     * failure would have it put a vector in service that never went anywhere.
+     */
+    return m_Owner.Owner().VectorWasTaken() ? S_OK : E_PENDING;
+}
+
 /* HOW A DEVICE REACHES EVERYTHING ELSE ***************************************/
 
 STDMETHODIMP ServiceAccess::QueryInterface(REFIID Interface, void **Object)
@@ -164,7 +206,7 @@ STDMETHODIMP ServiceAccess::GetService(REFIID Service, void **Object)
 /* THE HOST *******************************************************************/
 
 VdevHost::VdevHost(Machine &Owner)
-    : m_Machine(Owner), m_Emulation(*this), m_Services(*this)
+    : m_Machine(Owner), m_Emulation(*this), m_Processors(*this), m_Services(*this)
 {
 }
 
@@ -224,6 +266,13 @@ HRESULT VdevHost::FindService(REFIID Service, void **Object)
     {
         *Object = static_cast<IVmAmd64EmulationServices *>(&m_Emulation);
         m_Emulation.AddRef();
+        return S_OK;
+    }
+
+    if (IsEqualIID(Service, IID_IVmProcessorServices))
+    {
+        *Object = static_cast<IVmProcessorServices *>(&m_Processors);
+        m_Processors.AddRef();
         return S_OK;
     }
 
@@ -375,6 +424,10 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
         {
             m_Published.Add(Published);
             m_PublishedAs.Add(*Which);
+
+            /* The one everything that raises a line needs to reach */
+            if (IsEqualIID(*Which, IID_IVmPicService))
+                m_Interrupts = static_cast<IVmPicService *>(Published);
         }
     }
 
