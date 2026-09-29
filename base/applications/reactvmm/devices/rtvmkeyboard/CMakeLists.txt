@@ -1,0 +1,5 @@
+add_library(rtvmkeyboard MODULE rtvmkeyboard.c rtvmkeyboard.rc)
+set_module_type(rtvmkeyboard win32dll ENTRYPOINT DllMain 12)
+add_importlibs(rtvmkeyboard msvcrt kernel32 ntdll)
+add_dependencies(rtvmkeyboard psdk)
+add_cd_file(TARGET rtvmkeyboard DESTINATION reactos/system32 FOR all)

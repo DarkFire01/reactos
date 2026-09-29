@@ -1,0 +1,7 @@
+#include <windef.h>
+#include <winuser.h>
+
+#define REACTOS_STR_FILE_DESCRIPTION   "ReacTVmm keyboard controller"
+#define REACTOS_STR_INTERNAL_NAME      "rtvmkeyboard"
+#define REACTOS_STR_ORIGINAL_FILENAME  "rtvmkeyboard.dll"
+#include <reactos/version.rc>
