@@ -242,6 +242,23 @@ StorageFail(
     _Inout_ PSTORAGE_DEVICE Storage,
     _In_ UCHAR Reason)
 {
+    const RTVM_HOST_INTERFACE *Host = Storage->Device.Host;
+
+    /*
+     * Said out loud. A refused read is the one failure whose cause is never
+     * visible from the guest: it is told only that the sector was not there,
+     * and which sector it asked for is the whole question.
+     */
+    Host->Log(Host->Context, RtvmLogWarning,
+              "%s: refused %s of %lu at %s %lu, of %llu, reason %02x\n",
+              Storage->Device.Name,
+              Storage->Writing ? "a write" : "a read",
+              (Storage->Count == 0) ? 256 : Storage->Count,
+              (Storage->Drive & DRIVE_LBA) ? "block" : "the place",
+              (ULONG)StorageTargetSector(Storage),
+              Storage->SectorCount,
+              Reason);
+
     Storage->Error = Reason;
     Storage->Status = STATUS_READY | STATUS_SEEK_DONE | STATUS_ERROR;
     Storage->BufferLength = 0;
@@ -431,14 +448,29 @@ StorageCommand(
 {
     const RTVM_HOST_INTERFACE *Host = Storage->Device.Host;
 
-    /* A command aimed at the other drive on the cable is not this one's */
+    /*
+     * A command aimed at the other drive on the cable is not this one's, and
+     * this one keeps its own state while the other is being spoken to.
+     *
+     * Clearing the status here looks harmless and is not: with the ready bit
+     * gone every later wait for this drive times out, so one probe of an
+     * absent second drive stops the first one answering for the rest of the
+     * machine's life. Reads of the registers already give nothing back while
+     * another drive is selected, which is the whole of what is owed.
+     */
     if (!StorageSelected(Storage))
-    {
-        Storage->Status = 0;
         return;
-    }
 
     StorageSetLine(Storage, FALSE);
+
+    Host->Log(Host->Context, RtvmLogTrace,
+              "%s: command %02x, %lu at %s %lu, drive %02x\n",
+              Storage->Device.Name,
+              Command,
+              (Storage->Count == 0) ? 256 : Storage->Count,
+              (Storage->Drive & DRIVE_LBA) ? "block" : "the place",
+              (ULONG)StorageTargetSector(Storage),
+              Storage->Drive);
 
     switch (Command)
     {
