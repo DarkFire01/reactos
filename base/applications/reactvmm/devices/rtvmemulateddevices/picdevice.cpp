@@ -267,13 +267,22 @@ void PicDevice::Offer()
     m_Offered = Vector;
     m_OfferedLine = Line;
 
-    LeaveCriticalSection(&m_Lock);
-
+    /*
+     * Told while the lock is still held. Three threads reach this, and one
+     * that worked out an answer and then let go before giving it can be
+     * overtaken by another that worked out a different one, leaving the
+     * processors holding the older of the two and this holding the newer.
+     *
+     * Nothing the processors do in here comes back this way, so holding it
+     * across the call costs nothing.
+     */
     if (Changed && (Processors() != nullptr))
     {
         Processors()->SetPendingInterrupt(VDEV_INTERRUPT_FROM_PIC, 0, Vector);
         m_Outstanding = (Vector != VDEV_NO_VECTOR);
     }
+
+    LeaveCriticalSection(&m_Lock);
 }
 
 /**
@@ -292,14 +301,14 @@ void PicDevice::Offer()
  */
 void PicDevice::Settle()
 {
-    if (!m_Outstanding || (Processors() == nullptr))
-        return;
-
-    if (FAILED(Processors()->TakePendingInterrupt()))
-        return;
-
     EnterCriticalSection(&m_Lock);
-    Service();
+
+    if (m_Outstanding && (Processors() != nullptr) &&
+        SUCCEEDED(Processors()->TakePendingInterrupt()))
+    {
+        Service();
+    }
+
     LeaveCriticalSection(&m_Lock);
 }
 
@@ -382,15 +391,26 @@ STDMETHODIMP PicDevice::EndOfInterrupt(ULONG Line)
     return S_OK;
 }
 
+/**
+ * @brief
+ * Moves a line from being owed to being served.
+ *
+ * @remarks
+ * What is owed is cleared and is not owed again until the wire goes up afresh,
+ * however long it stays up in the meantime. That is what being triggered by an
+ * edge means, and a device that holds its line down while it is being dealt
+ * with is the ordinary case rather than a reason to interrupt again.
+ *
+ * Putting it back because the wire was still held is what a chip wired for
+ * levels would do, and on a machine of this kind it means a device that takes
+ * a moment to finish is asked about a million times on the way.
+ */
 void PicDevice::Take(Chip &Chip, int Line)
 {
     const UCHAR Bit = (UCHAR)(1u << Line);
 
     Chip.Service |= Bit;
     Chip.Request &= (UCHAR)~Bit;
-
-    if (Chip.Level & Bit)
-        Chip.Request |= Bit;
 
     if (Chip.AutoEnd)
         Chip.Service &= (UCHAR)~Bit;

@@ -844,6 +844,9 @@ void Machine::DeliverInterrupt(ULONG Index)
 
     m_Delivered++;
 
+    if (Vector < (int)RTL_NUMBER_OF(m_VectorCount))
+        m_VectorCount[Vector]++;
+
     /* Taken, so there is nothing left to be told about for now */
     RequestInterruptWindow(Index, false);
 }
@@ -1187,6 +1190,16 @@ StopReason Machine::Run()
         {
             Log(RtvmLogInfo, "    line %2lu raised %lu time(s)\n",
                 Line, m_LineCount[Line]);
+        }
+    }
+
+    /* And what was put in, which is not always one for one with the above */
+    for (ULONG Vector = 0; Vector < RTL_NUMBER_OF(m_VectorCount); Vector++)
+    {
+        if (m_VectorCount[Vector] != 0)
+        {
+            Log(RtvmLogInfo, "    vector %02lx taken %lu time(s)\n",
+                Vector, m_VectorCount[Vector]);
         }
     }
 
