@@ -24,6 +24,9 @@ namespace rtvm
 constexpr ULONG MaximumModules = 16;
 constexpr ULONG MaximumDevices = 32;
 constexpr ULONG MaximumMemoryRanges = 32;
+
+/* How many pieces of memory a device may be given a place for */
+constexpr ULONG MaximumApertures = 4;
 constexpr ULONG MaximumRequests = 16;
 
 void Log(RTVM_LOG_LEVEL Level, const char *Format, ...);
@@ -184,6 +187,26 @@ struct Configuration
 
     /* Where to leave a picture of that window when it goes */
     Text<MAX_PATH> CapturePath;
+
+    /* A run of the machine's own memory to write out once it has stopped */
+    ULONG64 DumpBase = 0;
+    ULONG DumpLength = 0;
+    Text<MAX_PATH> DumpPath;
+
+    /*
+     * Keys to press at it, so that a guest that asks a question can be
+     * answered by something other than an operator. Written as a wait in
+     * milliseconds and the code of a key, over and over.
+     */
+    Text<256> Keys;
+
+    /* A run of ports to say out loud as they are used, for finding a device */
+    USHORT WatchFirst = 1;
+    USHORT WatchLast = 0;
+
+    /* A window to say every use of out loud, for a device in memory */
+    ULONG64 SeeFirst = 1;
+    ULONG64 SeeLast = 0;
 };
 
 /* Why the machine stopped */
@@ -230,6 +253,9 @@ public:
     StopReason Run();
     void Stop();
 
+    /* A run of its memory written out as it stands, for reading elsewhere */
+    bool DumpMemory(const char *Path, ULONG64 Base, ULONG Length);
+
     Memory &MemoryBlock() noexcept { return m_Memory; }
     Bus &SystemBus() noexcept { return m_Bus; }
 
@@ -238,6 +264,14 @@ public:
 
     /* Something the operator did, offered to whichever devices take input */
     void PostInput(RTVM_INPUT_KIND Kind, ULONG Value);
+
+    /* Says a use of a watched window out loud, for finding a device */
+    void WatchMemory(ULONG64 Address, ULONG Width, bool Writing,
+                     const void *Data);
+
+    /* Hands one to the controller a processor has of its own */
+    bool RequestVector(ULONG Destination, ULONG Vector, bool Lowest,
+                       bool Logical, bool Level);
 
     void Snapshot(MachineStatus &Status) const;
 
@@ -253,6 +287,13 @@ public:
     bool VectorWasTaken();
     bool ReadGuest(ULONG64 Address, void *Buffer, ULONG Length);
     bool WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length);
+
+    /*
+     * Host memory put where the guest reaches it as ordinary memory. For a
+     * device that is written to far too often to be faulted into, which so far
+     * means a screen made of pixels and nothing else.
+     */
+    bool CreateAperture(ULONG64 Base, ULONG64 Length, void **Where);
 
     /* The transfer controller, once one has come up, or nothing */
     IVmDmaController *Channels() const;
@@ -272,6 +313,7 @@ public:
                           ULONG Count, WHV_REGISTER_VALUE *Values);
     HRESULT WriteRegisters(ULONG Index, const WHV_REGISTER_NAME *Names,
                            ULONG Count, const WHV_REGISTER_VALUE *Values);
+    bool Reachable(ULONG Index, ULONG64 Address, bool Writing, ULONG64 *Where);
     HRESULT Translate(ULONG Index, ULONG64 Gva, ULONG Flags,
                       WHV_TRANSLATE_GVA_RESULT_CODE *Result, ULONG64 *Gpa);
 
@@ -296,6 +338,9 @@ private:
 
     /* Where a processor is, for when it has stopped getting anywhere */
     void ReportProcessor(ULONG Index);
+    void AnswerMsr(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit);
+    static DWORD WINAPI Watching(LPVOID Parameter);
+    bool Watched(USHORT Port);
 
     /* Ask to be told the moment the guest would accept an interrupt */
     void RequestInterruptWindow(ULONG Index, bool Wanted);
@@ -311,6 +356,19 @@ private:
     /* Whoever is looking, set before the machine runs and not changed after */
     IMonitorDevice *m_Monitor = nullptr;
 
+    /* Whether the firmware that was loaded is the one built alongside this */
+    bool m_OwnFirmware = true;
+
+    /* Memory a device owns, which the guest was given a place to reach it at */
+    struct Aperture
+    {
+        void *Where;
+        ULONG64 Base;
+        ULONG64 Length;
+    };
+
+    Array<Aperture, MaximumApertures> m_Apertures;
+
     /* What the controller device last offered, and whether it has been put in */
     volatile ULONG m_Offered = (ULONG)-1;
     volatile LONG m_Taken = 0;
@@ -321,6 +379,19 @@ private:
     void *m_Emulator = nullptr;
     ULONG m_ProcessorCount = 1;
     volatile LONG m_Stopping = 0;
+
+    /* How often a guest reached for a window nothing answers for */
+    ULONG m_Holes = 0;
+
+    /* The run of ports the operator asked to be told about, and how many so far */
+    USHORT m_WatchFirst = 1;
+    USHORT m_WatchLast = 0;
+    ULONG m_Watched = 0;
+
+    /* And the same for a window reached through memory */
+    ULONG64 m_SeeFirst = 1;
+    ULONG64 m_SeeLast = 0;
+    ULONG m_Seen = 0;
 
 
     /* Where the processor was the last time it came out, for the panel */
@@ -337,6 +408,16 @@ private:
 
     /* When to stop of its own accord, or zero to keep going */
     ULONG m_Deadline = 0;
+
+    /* How long it was told to run for, counted from when it starts */
+    ULONG m_Seconds = 0;
+
+    /* Whether the hypervisor answers for each processor's own controller */
+    bool m_HaveLocalApic = false;
+
+    /* How many went to one of those controllers, and how many would not go */
+    ULONG m_Handed = 0;
+    ULONG m_NotHanded = 0;
 
     /* What the hardware did, reported when the machine stops */
     ULONG m_Delivered = 0;

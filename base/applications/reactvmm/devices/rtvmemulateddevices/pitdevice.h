@@ -55,6 +55,9 @@ private:
         bool ReadHigh;
         bool WriteHigh;
         bool Running;
+
+        /* When it was last set going, read off the host's own counter */
+        ULONGLONG Started;
     };
 
     void Clear();
@@ -62,8 +65,14 @@ private:
     static DWORD WINAPI Ticking(LPVOID Parameter);
     void Tick();
 
+    ULONGLONG Since(const Counter &One) const;
+    USHORT Reading(const Counter &One) const;
+
     CRITICAL_SECTION m_Lock = {};
     Counter m_Counter[3] = {};
+
+    /* How fast the host's own counter runs, which is asked once */
+    ULONGLONG m_Rate = 0;
 
     /* How often the first of them was set up to fire */
     volatile LONG m_Hertz = 18;

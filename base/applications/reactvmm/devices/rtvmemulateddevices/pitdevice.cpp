@@ -46,6 +46,11 @@ namespace rtvm
 
 PitDevice::PitDevice()
 {
+    LARGE_INTEGER Rate = {};
+
+    QueryPerformanceFrequency(&Rate);
+    m_Rate = (ULONGLONG)Rate.QuadPart;
+
     InitializeCriticalSection(&m_Lock);
     Clear();
 }
@@ -218,6 +223,56 @@ void PitDevice::Tick()
     m_Lines->DeassertIrq(PIT_LINE);
 }
 
+/* WHERE A COUNTER HAS GOT TO *************************************************/
+
+/* Crystal counts since a counter was last set going */
+ULONGLONG PitDevice::Since(const Counter &One) const
+{
+    LARGE_INTEGER Now = {};
+
+    if ((m_Rate == 0) || (One.Started == 0))
+        return 0;
+
+    QueryPerformanceCounter(&Now);
+
+    if ((ULONGLONG)Now.QuadPart <= One.Started)
+        return 0;
+
+    return (((ULONGLONG)Now.QuadPart - One.Started) * PIT_FREQUENCY) / m_Rate;
+}
+
+/**
+ * @brief
+ * What a counter would read if it were read right now.
+ *
+ * @remarks
+ * Nothing here runs at the crystal's speed, so the count is worked out from
+ * how long ago the counter was loaded rather than kept and decremented. What
+ * matters to a guest is that it falls, and that it comes back round at the
+ * reload value, because that is how a guest measures how fast it is running.
+ */
+USHORT PitDevice::Reading(const Counter &One) const
+{
+    const ULONG Which = One.Mode & PIT_MODE_MASK;
+    ULONGLONG Gone = Since(One);
+    ULONG Reload = One.Reload;
+
+    /* Zero stands for one past the top, being the whole range */
+    if (Reload == 0)
+        Reload = 65536;
+
+    /* The one that is high for half its period falls twice as fast */
+    if ((Which == 3) || (Which == 7))
+        Gone *= 2;
+
+    /* The ones that are counted down once run on past the bottom */
+    if ((Which == 0) || (Which == 1) || (Which == 4) || (Which == 5))
+        return (USHORT)((Reload - Gone) & 0xFFFF);
+
+    /* And the rest come back round, never resting on the bottom itself */
+    return (USHORT)((Reload - (ULONG)(Gone % Reload)) & 0xFFFF);
+}
+
 /* How often the first counter was set up to fire */
 void PitDevice::RateChanged()
 {
@@ -255,10 +310,9 @@ STDMETHODIMP PitDevice::EnableSpeakerTimer(BOOL Enabled)
  * reads instead of counting itself.
  *
  * @remarks
- * Nothing here counts between ticks, so the answer is worked out from the
- * clock rather than from a count: a counter of a given reload is high for the
- * second half of each of its periods. That is what the third one is asked for,
- * and it is asked to find out how loud rather than how long.
+ * Taken from where the count has got to, so a counter of a given reload is
+ * high for the first half of each of its periods. That is what the third one
+ * is asked for, and it is asked to find out how loud rather than how long.
  */
 STDMETHODIMP PitDevice::GetTimerOutputSignal(ULONG Counter, BOOL *High)
 {
@@ -268,15 +322,14 @@ STDMETHODIMP PitDevice::GetTimerOutputSignal(ULONG Counter, BOOL *High)
     EnterCriticalSection(&m_Lock);
 
     ULONG Reload = m_Counter[Counter].Reload;
+    const USHORT Value = Reading(m_Counter[Counter]);
 
     LeaveCriticalSection(&m_Lock);
 
     if (Reload == 0)
         Reload = 65536;
 
-    const ULONGLONG Ticks = (ULONGLONG)GetTickCount() * (PIT_FREQUENCY / 1000);
-
-    *High = ((Ticks % Reload) >= (Reload / 2)) ? TRUE : FALSE;
+    *High = (Value > (Reload / 2)) ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -298,14 +351,7 @@ STDMETHODIMP PitDevice::NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value)
 
     Counter &One = m_Counter[Port - PIT_COUNTER0];
 
-    /*
-     * Never the same twice. A guest measuring how fast it runs counts how far
-     * this moves between two reads, and one that never moved would be taken
-     * for a machine of no speed at all.
-     */
-    USHORT Now = One.Latch
-               ? One.Latched
-               : (USHORT)(GetTickCount() * (PIT_FREQUENCY / 1000));
+    const USHORT Now = One.Latch ? One.Latched : Reading(One);
 
     switch (One.Access)
     {
@@ -357,7 +403,7 @@ STDMETHODIMP PitDevice::NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value)
         if (Access == PIT_ACCESS_LATCH)
         {
             /* Held still so that both halves of it agree with each other */
-            One.Latched = (USHORT)(GetTickCount() * (PIT_FREQUENCY / 1000));
+            One.Latched = Reading(One);
             One.Latch = true;
             One.ReadHigh = false;
         }
@@ -376,24 +422,25 @@ STDMETHODIMP PitDevice::NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value)
     }
 
     Counter &One = m_Counter[Port - PIT_COUNTER0];
+    bool Loaded = false;
 
     switch (One.Access)
     {
         case PIT_ACCESS_LOW:
             One.Reload = (USHORT)((One.Reload & 0xFF00) | Byte);
-            One.Running = true;
+            Loaded = true;
             break;
 
         case PIT_ACCESS_HIGH:
             One.Reload = (USHORT)((One.Reload & 0x00FF) | (Byte << 8));
-            One.Running = true;
+            Loaded = true;
             break;
 
         default:
             if (One.WriteHigh)
             {
                 One.Reload = (USHORT)((One.Reload & 0x00FF) | (Byte << 8));
-                One.Running = true;
+                Loaded = true;
             }
             else
             {
@@ -402,6 +449,16 @@ STDMETHODIMP PitDevice::NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value)
 
             One.WriteHigh = !One.WriteHigh;
             break;
+    }
+
+    /* A whole count having arrived is what starts it falling */
+    if (Loaded)
+    {
+        LARGE_INTEGER Now = {};
+
+        QueryPerformanceCounter(&Now);
+        One.Started = (ULONGLONG)Now.QuadPart;
+        One.Running = true;
     }
 
     const bool First = ((Port - PIT_COUNTER0) == 0) && One.Running;

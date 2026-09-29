@@ -90,6 +90,17 @@
 /* What the real part holds, and so what a driver counting on it expects */
 #define UART_QUEUE_SIZE     16
 
+/*
+ * How much may be waiting to go out. The wire is far slower than the machine
+ * writing to it, so something has to hold the difference; when even this is
+ * full the oldest of it goes, because a port whose writes block would stop the
+ * processor for as long as whatever is reading took to come back.
+ */
+#define UART_SEND_SIZE      8192
+
+/* How long to leave a pipe between one look for something plugging in and the next */
+#define UART_LISTEN_PAUSE   500
+
 /* Where the two ports a PC has always had live */
 #define SERIAL_COM1_PORT    0x03F8
 #define SERIAL_COM1_LINE    4
@@ -141,6 +152,49 @@ typedef struct _SERIAL_DEVICE
     HANDLE Input;
     HANDLE Reader;
     volatile LONG Stopping;
+
+    /*
+     * Whether the other end is a pipe waiting to be plugged into, and whether
+     * anything is plugged in yet. A port with nothing on the other end still
+     * works: the bytes go nowhere, which is what a real one does.
+     */
+    BOOLEAN Listening;
+    volatile LONG Attached;
+
+    /* Whether the machine is held until something plugs in */
+    BOOLEAN HoldForAttach;
+
+    /*
+     * One place each for a read, a write and a wait for something to plug in.
+     * Both directions of a pipe go through the one handle, and two waits on a
+     * handle are taken one at a time unless each carries its own: without
+     * these, the write saying what the machine is doing would queue behind a
+     * read of something nobody has typed yet, which never comes back.
+     */
+    HANDLE ReadDone;
+    HANDLE WriteDone;
+    HANDLE AttachDone;
+
+    /*
+     * What has come in and not reached the queue the guest reads yet. The
+     * queue on a part of this kind is sixteen bytes and whatever is on the
+     * other end arrives in far larger lumps than that: without somewhere to
+     * hold the rest, everything past the sixteenth byte of every lump is lost,
+     * which a debugger on the other end sees as a machine that answers a
+     * fraction of what it is asked.
+     */
+    UCHAR Incoming[UART_SEND_SIZE];
+    ULONG InCount;
+    ULONG InRead;
+    ULONG InWrite;
+
+    /* What is waiting to go out, and the one that takes it there */
+    UCHAR Sending[UART_SEND_SIZE];
+    ULONG SendCount;
+    ULONG SendRead;
+    ULONG SendWrite;
+    HANDLE Writer;
+    HANDLE Ready;
 
     CHAR Backend[MAX_PATH];
 } SERIAL_DEVICE, *PSERIAL_DEVICE;
@@ -307,8 +361,180 @@ SerialSend(
         return;
     }
 
-    if (Serial->Output != INVALID_HANDLE_VALUE)
-        WriteFile(Serial->Output, &Value, 1, &Written, NULL);
+    if (Serial->Output == INVALID_HANDLE_VALUE)
+        return;
+
+    /* A pipe with nothing plugged into it swallows bytes, as a plug would */
+    if (Serial->Listening &&
+        (InterlockedCompareExchange(&Serial->Attached, 0, 0) == 0))
+    {
+        return;
+    }
+
+    /* Put where the thread that writes will find it, rather than written here */
+    if (Serial->SendCount >= UART_SEND_SIZE)
+    {
+        Serial->SendRead = (Serial->SendRead + 1) % UART_SEND_SIZE;
+        Serial->SendCount--;
+    }
+
+    Serial->Sending[Serial->SendWrite] = Value;
+    Serial->SendWrite = (Serial->SendWrite + 1) % UART_SEND_SIZE;
+    Serial->SendCount++;
+
+    UNREFERENCED_PARAMETER(Written);
+
+    if (Serial->Ready != NULL)
+        SetEvent(Serial->Ready);
+}
+
+/**
+ * @brief
+ * Moves what has come in into the queue the guest reads, as far as it fits.
+ *
+ * @remarks
+ * Called both when something arrives and every time the guest takes a byte,
+ * because a queue of sixteen empties one byte at a time and the only moment
+ * there is room for more is just after one has gone. The lock is held by the
+ * caller either way.
+ */
+static
+VOID
+SerialTopUp(
+    _Inout_ PSERIAL_DEVICE Serial)
+{
+    const ULONG Limit = Serial->QueuesEnabled ? UART_QUEUE_SIZE : 1;
+
+    while ((Serial->InCount != 0) && (Serial->Received.Count < Limit))
+    {
+        if (!SerialQueuePut(&Serial->Received, Serial->Incoming[Serial->InRead],
+                            Limit))
+        {
+            break;
+        }
+
+        Serial->InRead = (Serial->InRead + 1) % UART_SEND_SIZE;
+        Serial->InCount--;
+    }
+
+    if (Serial->Received.Count != 0)
+        Serial->LineStatus |= LSR_DATA_READY;
+}
+
+/**
+ * @brief
+ * Waits for something started on a pipe to finish.
+ *
+ * @remarks
+ * Checked rather than simply waited on, so that a machine being taken down
+ * does not have to wait for a read of something nobody is ever going to type.
+ */
+static
+BOOLEAN
+SerialAwait(
+    _Inout_ PSERIAL_DEVICE Serial,
+    _In_ HANDLE Done,
+    _Inout_ LPOVERLAPPED Overlapped,
+    _Out_ PDWORD Moved)
+{
+    *Moved = 0;
+
+    /* Finished on the spot, which a pipe is allowed to do */
+    if (GetLastError() != ERROR_IO_PENDING)
+        return FALSE;
+
+    while (WaitForSingleObject(Done, 200) != WAIT_OBJECT_0)
+    {
+        if (InterlockedCompareExchange(&Serial->Stopping, 0, 0) != 0)
+            return FALSE;
+    }
+
+    return GetOverlappedResult(Serial->Input, Overlapped, Moved, FALSE) != FALSE;
+}
+
+/* Waits for something to plug into the pipe. False means it never did */
+static
+BOOLEAN
+SerialAwaitClient(
+    _Inout_ PSERIAL_DEVICE Serial)
+{
+    OVERLAPPED Waiting;
+    DWORD Moved;
+
+    RtlZeroMemory(&Waiting, sizeof(Waiting));
+    Waiting.hEvent = Serial->AttachDone;
+
+    if (ConnectNamedPipe(Serial->Input, &Waiting))
+        return TRUE;
+
+    if (GetLastError() == ERROR_PIPE_CONNECTED)
+        return TRUE;
+
+    return SerialAwait(Serial, Serial->AttachDone, &Waiting, &Moved);
+}
+
+/**
+ * @brief
+ * Takes what is waiting out to wherever the port goes.
+ *
+ * @remarks
+ * Not on the thread running the processor. Whatever is on the other end reads
+ * when it feels like it, and a machine that stopped until it did would be a
+ * machine whose speed was set by whoever was watching it.
+ */
+static
+DWORD
+WINAPI
+SerialWriter(
+    _In_ LPVOID Parameter)
+{
+    PSERIAL_DEVICE Serial = (PSERIAL_DEVICE)Parameter;
+    UCHAR Buffer[256];
+    DWORD Written;
+    ULONG Count;
+
+    while (InterlockedCompareExchange(&Serial->Stopping, 0, 0) == 0)
+    {
+        WaitForSingleObject(Serial->Ready, 100);
+
+        for (;;)
+        {
+            EnterCriticalSection(&Serial->Lock);
+
+            for (Count = 0; (Count < sizeof(Buffer)) && (Serial->SendCount != 0);
+                 Count++)
+            {
+                Buffer[Count] = Serial->Sending[Serial->SendRead];
+                Serial->SendRead = (Serial->SendRead + 1) % UART_SEND_SIZE;
+                Serial->SendCount--;
+            }
+
+            LeaveCriticalSection(&Serial->Lock);
+
+            if (Count == 0)
+                break;
+
+            if (Serial->Listening)
+            {
+                OVERLAPPED Going;
+
+                RtlZeroMemory(&Going, sizeof(Going));
+                Going.hEvent = Serial->WriteDone;
+
+                if (!WriteFile(Serial->Output, Buffer, Count, &Written, &Going) &&
+                    !SerialAwait(Serial, Serial->WriteDone, &Going, &Written))
+                {
+                    break;
+                }
+            }
+            else if (!WriteFile(Serial->Output, Buffer, Count, &Written, NULL))
+            {
+                break;
+            }
+        }
+    }
+
+    return 0;
 }
 
 /**
@@ -327,30 +553,87 @@ SerialReader(
     _In_ LPVOID Parameter)
 {
     PSERIAL_DEVICE Serial = (PSERIAL_DEVICE)Parameter;
+    const RTVM_HOST_INTERFACE *Host = Serial->Device.Host;
     UCHAR Buffer[64];
     DWORD Read;
     DWORD Index;
 
     while (InterlockedCompareExchange(&Serial->Stopping, 0, 0) == 0)
     {
-        if (!ReadFile(Serial->Input, Buffer, sizeof(Buffer), &Read, NULL) || (Read == 0))
-            break;
+        /*
+         * A pipe answers nothing until something plugs into it, so waiting for
+         * that is the first thing done and the thing gone back to whenever
+         * whatever was plugged in goes away again.
+         */
+        if (Serial->Listening &&
+            (InterlockedCompareExchange(&Serial->Attached, 0, 0) == 0))
+        {
+            if (!SerialAwaitClient(Serial))
+            {
+                if (InterlockedCompareExchange(&Serial->Stopping, 0, 0) != 0)
+                    break;
 
+                Sleep(UART_LISTEN_PAUSE);
+                continue;
+            }
+
+            InterlockedExchange(&Serial->Attached, 1);
+
+            Host->Log(Host->Context, RtvmLogInfo,
+                      "%s: something is on the other end now\n",
+                      Serial->Device.Name);
+        }
+
+        if (Serial->Listening)
+        {
+            OVERLAPPED Coming;
+
+            RtlZeroMemory(&Coming, sizeof(Coming));
+            Coming.hEvent = Serial->ReadDone;
+
+            if (!ReadFile(Serial->Input, Buffer, sizeof(Buffer), &Read, &Coming))
+                SerialAwait(Serial, Serial->ReadDone, &Coming, &Read);
+        }
+        else if (!ReadFile(Serial->Input, Buffer, sizeof(Buffer), &Read, NULL))
+        {
+            Read = 0;
+        }
+
+        if (Read == 0)
+        {
+            if (!Serial->Listening)
+                break;
+
+            /* Unplugged. Put the pipe back to listening and wait again */
+            InterlockedExchange(&Serial->Attached, 0);
+            DisconnectNamedPipe(Serial->Input);
+
+            Host->Log(Host->Context, RtvmLogInfo,
+                      "%s: the other end went away\n", Serial->Device.Name);
+            continue;
+        }
+
+        /*
+         * Held here rather than pushed straight at the guest's queue. What
+         * arrives comes in lumps far bigger than that queue, and the guest
+         * only makes room a byte at a time.
+         */
         EnterCriticalSection(&Serial->Lock);
 
         for (Index = 0; Index < Read; Index++)
         {
-            if (!SerialQueuePut(&Serial->Received, Buffer[Index],
-                                Serial->QueuesEnabled ? UART_QUEUE_SIZE : 1))
+            if (Serial->InCount >= UART_SEND_SIZE)
             {
                 Serial->LineStatus |= LSR_OVERRUN;
                 break;
             }
+
+            Serial->Incoming[Serial->InWrite] = Buffer[Index];
+            Serial->InWrite = (Serial->InWrite + 1) % UART_SEND_SIZE;
+            Serial->InCount++;
         }
 
-        if (Serial->Received.Count != 0)
-            Serial->LineStatus |= LSR_DATA_READY;
-
+        SerialTopUp(Serial);
         SerialUpdateLine(Serial);
 
         LeaveCriticalSection(&Serial->Lock);
@@ -385,6 +668,29 @@ SerialStart(
         return Status;
     }
 
+    /*
+     * Held here until something plugs in, when that was asked for. A machine
+     * that came up before anything was listening would have said everything it
+     * had to say about coming up before there was anything to say it to, and
+     * what it says then is usually the whole reason for watching.
+     */
+    if (Serial->Listening)
+    {
+        Serial->ReadDone = CreateEventA(NULL, TRUE, FALSE, NULL);
+        Serial->WriteDone = CreateEventA(NULL, TRUE, FALSE, NULL);
+        Serial->AttachDone = CreateEventA(NULL, TRUE, FALSE, NULL);
+    }
+
+    if (Serial->HoldForAttach)
+    {
+        Host->Log(Host->Context, RtvmLogInfo,
+                  "%s: held until something plugs into the other end\n",
+                  Device->Name);
+
+        if (SerialAwaitClient(Serial))
+            InterlockedExchange(&Serial->Attached, 1);
+    }
+
     if (Serial->Input != INVALID_HANDLE_VALUE)
     {
         Serial->Reader = CreateThread(NULL, 0, SerialReader, Serial, 0, NULL);
@@ -392,6 +698,19 @@ SerialStart(
         {
             Host->Log(Host->Context, RtvmLogWarning,
                       "%s: nothing will be read back, the reader would not start\n",
+                      Device->Name);
+        }
+    }
+
+    if (Serial->Output != INVALID_HANDLE_VALUE)
+    {
+        Serial->Ready = CreateEventA(NULL, FALSE, FALSE, NULL);
+        Serial->Writer = CreateThread(NULL, 0, SerialWriter, Serial, 0, NULL);
+
+        if (Serial->Writer == NULL)
+        {
+            Host->Log(Host->Context, RtvmLogWarning,
+                      "%s: nothing will be written out, the writer would not start\n",
                       Device->Name);
         }
     }
@@ -416,14 +735,45 @@ SerialStop(
 
     InterlockedExchange(&Serial->Stopping, 1);
 
+    /* The one taking bytes out goes first, so the last of them still get out */
+    if (Serial->Writer != NULL)
+    {
+        if (Serial->Ready != NULL)
+            SetEvent(Serial->Ready);
+
+        WaitForSingleObject(Serial->Writer, 2000);
+        CloseHandle(Serial->Writer);
+        Serial->Writer = NULL;
+    }
+
+    if (Serial->Ready != NULL)
+    {
+        CloseHandle(Serial->Ready);
+        Serial->Ready = NULL;
+    }
+
+    if (Serial->WriteDone != NULL)
+    {
+        CloseHandle(Serial->WriteDone);
+        Serial->WriteDone = NULL;
+    }
+
     /*
-     * The reader is sitting in a read that will not come back on its own, so
-     * the handle is closed under it. That is what ends the read.
+     * The reader is sitting in a read, or in a wait for something to plug in,
+     * and neither comes back on its own. The handle is closed under it, which
+     * is what ends either one.
      */
     if (Serial->Input != INVALID_HANDLE_VALUE)
     {
+        if (Serial->Listening)
+            DisconnectNamedPipe(Serial->Input);
+
         CloseHandle(Serial->Input);
         Serial->Input = INVALID_HANDLE_VALUE;
+
+        /* The same handle both ways when it is a pipe, and now closed */
+        if (Serial->Listening)
+            Serial->Output = INVALID_HANDLE_VALUE;
     }
 
     if (Serial->Reader != NULL)
@@ -431,6 +781,18 @@ SerialStop(
         WaitForSingleObject(Serial->Reader, 2000);
         CloseHandle(Serial->Reader);
         Serial->Reader = NULL;
+    }
+
+    if (Serial->ReadDone != NULL)
+    {
+        CloseHandle(Serial->ReadDone);
+        Serial->ReadDone = NULL;
+    }
+
+    if (Serial->AttachDone != NULL)
+    {
+        CloseHandle(Serial->AttachDone);
+        Serial->AttachDone = NULL;
     }
 }
 
@@ -456,6 +818,9 @@ SerialReset(
     Serial->Divisor = 12;
 
     SerialQueueReset(&Serial->Received);
+    Serial->InCount = 0;
+    Serial->InRead = 0;
+    Serial->InWrite = 0;
     SerialUpdateLine(Serial);
 
     LeaveCriticalSection(&Serial->Lock);
@@ -510,6 +875,9 @@ SerialIoRead(
 
             if (SerialQueueTake(&Serial->Received, &Taken))
                 Result = Taken;
+
+            /* A byte has gone, so there is room for the next of what arrived */
+            SerialTopUp(Serial);
 
             if (Serial->Received.Count == 0)
                 Serial->LineStatus &= ~LSR_DATA_READY;
@@ -646,6 +1014,12 @@ SerialIoWrite(
             if (Byte & FCR_CLEAR_RECEIVE)
             {
                 SerialQueueReset(&Serial->Received);
+    Serial->InCount = 0;
+    Serial->InRead = 0;
+    Serial->InWrite = 0;
+                Serial->InCount = 0;
+                Serial->InRead = 0;
+                Serial->InWrite = 0;
                 Serial->LineStatus &= ~LSR_DATA_READY;
             }
 
@@ -790,7 +1164,7 @@ SerialOpenBackend(
         StringCchPrintfA(Name, sizeof(Name), "\\\\.\\pipe\\%s", Path);
 
         Handle = CreateNamedPipeA(Name,
-                                  PIPE_ACCESS_DUPLEX,
+                                  PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                                   PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
                                   1,
                                   4096,
@@ -801,8 +1175,10 @@ SerialOpenBackend(
         {
             Serial->Output = Handle;
             Serial->Input = Handle;
+            Serial->Listening = TRUE;
+            Serial->HoldForAttach = (SerialSetting(Parameters, "wait") != NULL);
             StringCchPrintfA(Serial->Backend, sizeof(Serial->Backend),
-                             "listening on %s", Name);
+                             "waiting for something on %s", Name);
             return;
         }
     }

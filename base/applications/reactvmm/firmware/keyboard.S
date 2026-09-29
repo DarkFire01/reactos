@@ -21,15 +21,27 @@
 /* The bit in a code that says the key came back up */
 #define KBD_RELEASED        HEX(80)
 
+/* The byte that says the next one belongs to a key the wire numbers twice */
+#define KBD_PREFIX          HEX(E0)
+
+/* The three that only turn a light on and off, which are nobody's keystroke */
+#define KBD_CAPS_LOCK       HEX(3A)
+#define KBD_NUM_LOCK        HEX(45)
+#define KBD_SCROLL_LOCK     HEX(46)
+
 /* How far the table below reaches, which is as far as a key makes a character */
 #define KeyTableLength      HEX(3A)
 
 /* TAKING ONE *****************************************************************/
 
 /*
- * A key moved. What it turns into is kept for whoever asks next, and anything
- * that is not a character is dropped: a firmware that handed back a zero for
- * every shift press would have a caller take it for a key.
+ * A key moved. What it turns into is kept for whoever asks next.
+ *
+ * A key that stands for no character is still a key, and goes over with a
+ * character of zero beside its code: that is the only thing a caller wanting
+ * the arrows or the ones along the top has to go on. Only the keys that change
+ * what another key means are dropped, because a caller handed one of those
+ * would take it for a keystroke of its own.
  */
 Int09Handler:
     push ax
@@ -41,10 +53,32 @@ Int09Handler:
 
     in al, KBD_DATA
 
-    /* Either half of a shift, which is a state rather than a character */
+    /* Says nothing by itself, only that the next one is numbered twice */
+    cmp al, KBD_PREFIX
+    jne Int09Whole
+    mov byte ptr ds:[KeyExtended], 1
+    jmp Int09Done
+
+Int09Whole:
     mov bl, al
     and bl, NOT KBD_RELEASED
 
+    /* The one before it said this is the second half of a pair */
+    cmp byte ptr ds:[KeyExtended], 0
+    je Int09Single
+
+    mov byte ptr ds:[KeyExtended], 0
+
+    test al, KBD_RELEASED
+    jnz Int09Done
+
+    /* None of them stands for a character, so the code goes over alone */
+    mov byte ptr ds:[KeyCode], bl
+    xor al, al
+    jmp Int09Held
+
+Int09Single:
+    /* Either half of a shift, which is a state rather than a character */
     cmp bl, KBD_LEFT_SHIFT
     je Int09Shift
     cmp bl, KBD_RIGHT_SHIFT
@@ -58,31 +92,40 @@ Int09Handler:
     test al, KBD_RELEASED
     jnz Int09Done
 
-    /* Past the end of what the table describes */
+    cmp bl, KBD_CAPS_LOCK
+    je Int09Done
+    cmp bl, KBD_NUM_LOCK
+    je Int09Done
+    cmp bl, KBD_SCROLL_LOCK
+    je Int09Done
+
+    /*
+     * Kept before the table is looked at, because looking needs the register
+     * the code is in and the code is what goes over either way.
+     */
+    mov byte ptr ds:[KeyCode], bl
+
+    /* Past the end of what the table describes, so the code goes over alone */
     cmp al, KeyTableLength
-    jae Int09Done
+    jae Int09Bare
 
     movzx bx, al
     cmp byte ptr ds:[KeyShift], 0
     jne Int09Shifted
 
     mov al, byte ptr ds:[bx + OFFSET KeyPlain]
-    jmp Int09Made
+    jmp Int09Held
 
 Int09Shifted:
     mov al, byte ptr ds:[bx + OFFSET KeyShifted]
+    jmp Int09Held
 
-Int09Made:
-    test al, al
-    jz Int09Done
+Int09Bare:
+    xor al, al
 
-    /*
-     * Held for whoever asks, which is one key deep and always has been enough.
-     * The code is kept beside the character, because a caller that wants a key
-     * with no character of its own has nothing else to go on.
-     */
+/* Held for whoever asks, which is one key deep and always has been enough */
+Int09Held:
     mov byte ptr ds:[KeyHeld], al
-    mov byte ptr ds:[KeyCode], bl
     mov byte ptr ds:[KeyWaiting], 1
 
 Int09Done:
@@ -148,4 +191,8 @@ KeyCode:
 KeyShift:
     .byte 0
 KeyControl:
+    .byte 0
+
+/* Whether the byte before this one said a pair was coming */
+KeyExtended:
     .byte 0

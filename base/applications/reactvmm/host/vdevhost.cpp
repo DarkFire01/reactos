@@ -221,14 +221,34 @@ STDMETHODIMP ProcessorServices::AssertVirtualProcessorInterrupt(ULONG64 Delivery
                                                                 ULONG64 Reserved,
                                                                 ULONG Vector)
 {
-    UNREFERENCED_PARAMETER(Reserved);
+    /*
+     * The old pair of chips has no say in where an interrupt goes: it holds
+     * one up and whichever processor is listening takes it. Everything since
+     * says which processor and how, and that goes to the controller each
+     * processor has of its own rather than through the line the pair share.
+     */
+    if (Delivery == VDEV_DELIVERY_EXTERNAL)
+    {
+        m_Owner.Owner().OfferVector(Vector);
+        return S_OK;
+    }
 
-    /* The only way anything here delivers, and the only one the chips use */
-    if (Delivery != VDEV_DELIVERY_EXTERNAL)
+    /*
+     * The two that name a vector. Which processor takes one of the second
+     * kind is the controllers' business between them, and saying which is
+     * what a router does when it has no reason to prefer one.
+     */
+    if ((Delivery != VDEV_DELIVERY_FIXED) && (Delivery != VDEV_DELIVERY_LOWEST))
         return E_NOTIMPL;
 
-    m_Owner.Owner().OfferVector(Vector);
-    return S_OK;
+    const ULONG Where = (ULONG)(Reserved & 0xFF);
+    const bool Lowest = (Delivery == VDEV_DELIVERY_LOWEST);
+    const bool Logical = (Reserved & IOAPIC_SAID_LOGICAL) != 0;
+    const bool Level = (Reserved & IOAPIC_SAID_LEVEL) != 0;
+
+    return m_Owner.Owner().RequestVector(Where, Vector, Lowest, Logical, Level)
+         ? S_OK
+         : E_NOTIMPL;
 }
 
 STDMETHODIMP ProcessorServices::ClearVirtualProcessorInterrupt()
@@ -256,8 +276,25 @@ STDMETHODIMP GuestMemoryAccess::QueryInterface(REFIID Interface, void **Object)
         return S_OK;
     }
 
+    if (IsEqualIID(Interface, IID_IRtvmApertureServices))
+    {
+        *Object = static_cast<IRtvmApertureServices *>(this);
+        AddRef();
+        return S_OK;
+    }
+
     *Object = nullptr;
     return E_NOINTERFACE;
+}
+
+STDMETHODIMP GuestMemoryAccess::CreateAperture(ULONG64 Base, ULONG64 Length,
+                                               void **Where)
+{
+    if (Where == nullptr)
+        return E_POINTER;
+
+    return m_Owner.Owner().CreateAperture(Base, Length, Where) ? S_OK
+                                                               : E_FAIL;
 }
 
 STDMETHODIMP GuestMemoryAccess::ReadRamBytes(ULONG64 Address, void *Buffer,
@@ -398,6 +435,13 @@ HRESULT VdevHost::FindService(REFIID Service, void **Object)
     if (IsEqualIID(Service, IID_IVmGuestMemoryAccess))
     {
         *Object = static_cast<IVmGuestMemoryAccess *>(&m_Memory);
+        m_Memory.AddRef();
+        return S_OK;
+    }
+
+    if (IsEqualIID(Service, IID_IRtvmApertureServices))
+    {
+        *Object = static_cast<IRtvmApertureServices *>(&m_Memory);
         m_Memory.AddRef();
         return S_OK;
     }

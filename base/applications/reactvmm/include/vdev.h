@@ -282,9 +282,88 @@ DECLARE_INTERFACE_(IVmPitService, IUnknown)
                                     _Out_ PBOOL High) PURE;
 };
 
-/* The rest of these, named but not yet laid out */
+DEFINE_GUID(IID_IVmPciConfigAccessHandler,
+            0x8d181706, 0xcb35, 0x49a4, 0x95, 0x25, 0x7d, 0x14, 0x99, 0x18, 0x61, 0x71);
+
+/*
+ * A guest reading or writing the bytes that describe one device on the bus.
+ *
+ * The bus never holds those bytes. It works out which device is being asked
+ * about and passes the question on, which is why a device that moves to a
+ * different place on the bus needs nothing changed inside it.
+ *
+ * Offset is always a whole four bytes in, and the value is always four bytes
+ * wide. A narrower access is widened by the bus before it arrives here, and a
+ * narrower write is read back and merged there too, so a device is never asked
+ * to take a register apart.
+ */
+#undef INTERFACE
+#define INTERFACE IVmPciConfigAccessHandler
+DECLARE_INTERFACE_(IVmPciConfigAccessHandler, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(NotifyPciConfigAccess)(THIS_ _In_ UCHAR Bus,
+                                     _In_ UCHAR Device,
+                                     _In_ UCHAR Function,
+                                     _In_ USHORT Offset,
+                                     _In_ UCHAR Writing,
+                                     _Inout_ PULONG Value) PURE;
+};
+
+DEFINE_GUID(IID_IVmInstalledPciDevice,
+            0x57040f7e, 0xab05, 0x4191, 0x8a, 0xb2, 0x25, 0x84, 0xec, 0xd6, 0x89, 0x6a);
+
+/*
+ * What a device is given back once it is on the bus. A line raised through
+ * this is the one the guest routed to that place on the bus, which is not
+ * something the device is ever told.
+ */
+#undef INTERFACE
+#define INTERFACE IVmInstalledPciDevice
+DECLARE_INTERFACE_(IVmInstalledPciDevice, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(AssertPciIrq)(THIS_ _In_ UCHAR Pin, _In_ ULONG64 Reserved) PURE;
+    STDMETHOD(DeassertPciIrq)(THIS_ _In_ UCHAR Pin, _In_ ULONG64 Reserved) PURE;
+};
+
 DEFINE_GUID(IID_IVmPciBusService,
             0xd90779f1, 0x0fbe, 0x4d28, 0xb4, 0x2d, 0x16, 0xfc, 0xeb, 0x5e, 0xa7, 0x0c);
+
+/*
+ * The bus, as a device that wants to be found on it sees it. A device asks for
+ * a place and hands over what answers for the bytes that describe it; where
+ * those two ports are and how a question arrives at them is not its business.
+ */
+#undef INTERFACE
+#define INTERFACE IVmPciBusService
+DECLARE_INTERFACE_(IVmPciBusService, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(InstallPciDevice)(THIS_ _In_ IVmPciConfigAccessHandler *Handler,
+                                _In_ UCHAR Device,
+                                _In_ UCHAR Function,
+                                _Outptr_opt_ IVmInstalledPciDevice **Installed) PURE;
+};
+
+/* Where the two ports every one of these questions goes through answer */
+#define VDEV_PCI_ADDRESS_PORT   0x0CF8
+#define VDEV_PCI_RESET_PORT     0x0CF9
+#define VDEV_PCI_DATA_PORT      0x0CFC
+
+/* The rest of these, named but not yet laid out */
 DEFINE_GUID(IID_IVmSuperIo,
             0x060604ae, 0x6a0b, 0x4e03, 0x8a, 0xfe, 0x25, 0xfc, 0xa6, 0x8c, 0xb5, 0xd1);
 DEFINE_GUID(IID_IVmInputController,
@@ -415,6 +494,15 @@ DECLARE_INTERFACE_(IVmProcessorServices, IUnknown)
 #define VDEV_DELIVERY_NMI       4
 #define VDEV_DELIVERY_INIT      5
 #define VDEV_DELIVERY_EXTERNAL  7
+
+/*
+ * What the spare argument of the call that asserts one carries besides who
+ * it goes to. The call has three arguments and a line needs five things said
+ * about it, so the two that do not fit ride in the high bits of that one.
+ * Ours, and read back only by something that put them there.
+ */
+#define IOAPIC_SAID_LOGICAL     0x0100
+#define IOAPIC_SAID_LEVEL       0x0200
 
 /* That there is nothing owed */
 #define VDEV_NO_VECTOR ((ULONG)-1)
@@ -605,8 +693,47 @@ DECLARE_INTERFACE_(IVideoVdev, IUnknown)
 DEFINE_GUID(IID_IRtvmDeviceSettings,
             0x41b6e0c7, 0x9d52, 0x4f83, 0xb1, 0x0e, 0x37, 0x8a, 0x2c, 0x64, 0xd9, 0x1f);
 
+DEFINE_GUID(IID_IRtvmApertureServices,
+            0x6f2ad814, 0x73be, 0x4c05, 0x9e, 0x21, 0x84, 0x0d, 0x5b, 0x37, 0xc6, 0x92);
+
+/*
+ * Memory a device owns that the guest reaches as ordinary memory rather than
+ * by faulting into the device for every access.
+ *
+ * The reference has this among the calls that build the memory a guest has,
+ * and none of those are laid out here yet, so this stands in for the one of
+ * them a display needs. A screen made of pixels is written a whole frame at a
+ * time, and a window that took an exit for every pixel would never draw one.
+ */
+#undef INTERFACE
+#define INTERFACE IRtvmApertureServices
+DECLARE_INTERFACE_(IRtvmApertureServices, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /* Somewhere above everything the guest was given as memory */
+    STDMETHOD(CreateAperture)(THIS_ _In_ ULONG64 Base,
+                              _In_ ULONG64 Length,
+                              _Outptr_result_maybenull_ PVOID *Where) PURE;
+};
+
 DEFINE_GUID(IID_IRtvmTextSurface,
             0x8d2f4a61, 0x5c3e, 0x4b17, 0x9a, 0x44, 0x1e, 0x7d, 0x62, 0x0b, 0xc8, 0x35);
+
+DEFINE_GUID(IID_IRtvmPixelSurface,
+            0x2c7a90e4, 0x6b18, 0x4d5a, 0xa3, 0x61, 0x9f, 0x04, 0xe8, 0x35, 0x71, 0xda);
+
+/*
+ * What the first of the four numbers means here. The reference writes it from
+ * a field whose meaning is not yet known, so these are this project's own and
+ * are only ever read back by something that asked for one of our interfaces.
+ */
+#define VDEV_SURFACE_TEXT       0
+#define VDEV_SURFACE_INDEXED    1
+#define VDEV_SURFACE_DIRECT     2
 
 #undef INTERFACE
 #define INTERFACE IRtvmDeviceSettings
@@ -635,6 +762,36 @@ DECLARE_INTERFACE_(IRtvmTextSurface, IUnknown)
                          _In_ ULONG Length,
                          _Out_ PULONG CursorColumn,
                          _Out_ PULONG CursorRow) PURE;
+};
+
+/*
+ * The same again for a screen made of pixels rather than characters. What is
+ * handed over is one byte per pixel whatever the guest arranged behind it,
+ * because how the parts of a colour are laid out in the device is the device's
+ * own business and no display has ever wanted to know.
+ */
+#undef INTERFACE
+#define INTERFACE IRtvmPixelSurface
+DECLARE_INTERFACE_(IRtvmPixelSurface, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /*
+     * A run of rows, each of them the surface's own pitch long. One byte to a
+     * pixel where the surface says its colours are named below, and four where
+     * it says each pixel carries its own.
+     */
+    STDMETHOD(ReadRows)(THIS_ _In_ ULONG First,
+                        _In_ ULONG Count,
+                        _Out_writes_bytes_(Length) PVOID Rows,
+                        _In_ ULONG Length) PURE;
+
+    /* And what each of those bytes stands for, as three parts of six bits */
+    STDMETHOD(ReadPalette)(THIS_ _Out_writes_bytes_(Length) PVOID Colours,
+                           _In_ ULONG Length) PURE;
 };
 
 DEFINE_GUID(IID_IProxiedPciVgaDevice,

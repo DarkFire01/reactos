@@ -28,6 +28,18 @@
 #define BDA_DISPLAY_MODE    HEX(0049)
 #define BDA_DISPLAY_COLUMNS HEX(004A)
 #define BDA_DISPLAY_PAGE    HEX(0062)
+#define BDA_DISPLAY_ROWS    HEX(0084)
+
+/* The clock, and the registers of it that say what the time and date are */
+#define CMOS_ADDRESS        HEX(70)
+#define CMOS_DATA           HEX(71)
+#define CMOS_SECONDS        HEX(00)
+#define CMOS_MINUTES        HEX(02)
+#define CMOS_HOURS          HEX(04)
+#define CMOS_DAY            HEX(07)
+#define CMOS_MONTH          HEX(08)
+#define CMOS_YEAR           HEX(09)
+#define CMOS_CENTURY        HEX(32)
 #define BDA_TICKS           HEX(006C)
 
 /* The serial port this talks through, and the registers it uses */
@@ -69,6 +81,59 @@
 /* Where the boot sector is read to, and where this hands control over */
 #define BOOT_SEGMENT        HEX(0000)
 #define BOOT_OFFSET         HEX(7C00)
+
+/* The two ports everything on the bus is asked about through */
+#define PCI_ADDRESS_PORT    HEX(0CF8)
+#define PCI_DATA_PORT       HEX(0CFC)
+
+/* Where in a device's description each of the things this reads is */
+#define PCI_WHO             HEX(00)
+#define PCI_DOING           HEX(04)
+#define PCI_WHAT            HEX(08)
+#define PCI_LAYOUT          HEX(0C)
+#define PCI_FIRST_RANGE     HEX(10)
+#define PCI_PAST_RANGES     HEX(28)
+
+/* What a place with nothing in it says when it is asked who is there */
+#define PCI_NOBODY          HEX(FFFF)
+
+/* That a place has more to it than its first part */
+#define PCI_HAS_MORE        HEX(80)
+
+/* The two kinds of address a device is told it may answer at */
+#define PCI_DECODE          HEX(03)
+
+/* And where this starts handing each of them out */
+#define PCI_FIRST_PORT      HEX(C000)
+#define PCI_FIRST_MEMORY    HEX(E0000000)
+
+/*
+ * The disk controller, and the pair of registers that says it may answer at
+ * the addresses it has always had. Nothing on the bus says where those are:
+ * a controller in this mode is found by asking and then driven at numbers
+ * everything already knows, and this bit is what connects the two.
+ */
+#define PCI_IS_DISK         HEX(0101)
+#define PCI_DISK_TIMING     HEX(40)
+#define PCI_DISK_DECODES    HEX(80008000)
+
+/*
+ * The shape of the removable drive a disc pretends to be, by which kind it
+ * named, and how many of its sectors fit in one of the disc.
+ */
+#define CD_PRETEND_NONE     0
+#define CD_PRETEND_SMALL    1
+#define CD_PRETEND_USUAL    2
+#define CD_PRETEND_LARGE    3
+
+#define CD_SMALL_SECTORS    15
+#define CD_USUAL_SECTORS    18
+#define CD_LARGE_SECTORS    36
+#define CD_PRETEND_TRACKS   80
+#define CD_PRETEND_SIDES    2
+
+#define CD_PRETEND_SECTOR   512
+#define CD_PER_DISC_SECTOR  4
 
 /* The two chips, and where this puts their vectors */
 #define PIC_MASTER_COMMAND  HEX(0020)
@@ -123,6 +188,39 @@ SerialReady:
     ret
 
 /* Writes the string DS:SI points at, up to its terminator */
+/*
+ * Puts the number in EAX out of the serial port, as eight characters with the
+ * top one first. For seeing what something asked this firmware to do, which is
+ * the only way to tell a caller that is getting on with it from one that is
+ * asking for the same thing over and over.
+ */
+SerialWriteHex:
+    push eax
+    push ebx
+    push cx
+
+    mov ebx, eax
+    mov cx, 8
+
+SerialWriteHexNext:
+    rol ebx, 4
+    mov al, bl
+    and al, HEX(0F)
+    add al, HEX(30)
+    cmp al, HEX(39)
+    jbe SerialWriteHexDigit
+    add al, 7
+
+SerialWriteHexDigit:
+    call SerialWrite
+    dec cx
+    jnz SerialWriteHexNext
+
+    pop cx
+    pop ebx
+    pop eax
+    ret
+
 SerialWriteString:
     push ax
     push si
@@ -178,15 +276,29 @@ Int10Handler:
     je Int10QueryMode
     cmp ah, HEX(12)
     je Int10Subsystem
+    cmp ah, HEX(13)
+    je Int10WriteString
+    cmp ah, HEX(4F)
+    je Int10Vbe
     cmp ah, HEX(1A)
     je Int10DisplayCode
     iret
 
 Int10SetMode:
     /*
-     * Taken, and the screen cleared, because that is what setting a mode does
-     * and something that sets one is entitled to find it empty afterwards.
+     * The display is actually put into the mode, not merely told which one was
+     * asked for. Anything that asks for a mode and then writes pixels is
+     * entitled to find the display arranged for pixels; one still arranged for
+     * characters throws every one of those writes away and shows nothing.
+     *
+     * The top bit says not to clear what is there, which is the one thing
+     * about this call that has nothing to do with the mode.
      */
+    push ax
+    and al, HEX(7F)
+    call VgaSetMode
+    pop ax
+
     push ds
     push bx
     mov bx, BDA_SEGMENT
@@ -196,7 +308,23 @@ Int10SetMode:
     pop bx
     pop ds
 
+    test al, HEX(80)
+    jnz Int10ModeDone
+
+    /* A mode made of pixels has nothing to clear that characters would */
+    push ax
+    and al, HEX(7F)
+    cmp al, HEX(12)
+    je Int10ClearPixels
     call VideoClear
+    pop ax
+    iret
+
+Int10ClearPixels:
+    call VgaClearPlanes
+    pop ax
+
+Int10ModeDone:
     iret
 
 Int10SetShape:
@@ -316,6 +444,200 @@ Int10WriteCellNext:
     pop bx
     pop ax
     iret
+
+/*
+ * A whole line at once, put where it is told rather than where the cursor is.
+ *
+ * What draws a menu uses this and almost nothing else: it clears the screen,
+ * paints the bar over the choice that is picked, and then puts every line of
+ * words down with one of these. A firmware without it shows the clearing and
+ * the bar and none of the words, which looks like a menu that went wrong
+ * rather than like a call that is missing.
+ *
+ * AL says how it is being asked: the low bit whether the cursor is left where
+ * the line ended, and the one above it whether the caller's string carries a
+ * colour with every character or one colour in BL for the whole of it.
+ */
+Int10WriteString:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push bp
+    push ds
+    push es
+
+    /* Where it goes, which is a row and a column rather than an offset */
+    push ax
+    mov ax, dx
+    call VideoPlaceOffset
+    mov di, ax
+    pop ax
+
+    /* The caller's string, and the page this firmware draws */
+    mov si, bp
+    push es
+    pop ds
+
+    push ax
+    mov ax, VIDEO_SEGMENT
+    mov es, ax
+    pop ax
+
+    /* Kept, because the loop below needs both halves of it and AX is in use */
+    mov byte ptr cs:[StringManner], al
+    mov byte ptr cs:[StringColour], bl
+
+    test cx, cx
+    jz Int10WriteStringDone
+
+Int10WriteStringNext:
+    lodsb
+
+    /*
+     * Said out of the serial port as well, the way every other character this
+     * firmware draws is. A machine with nothing looking at its screen is
+     * watched through that port, and a menu put down with this call rather
+     * than one character at a time would otherwise say nothing there at all.
+     */
+    call SerialWrite
+
+    /* The few that mean something rather than standing for themselves */
+    cmp al, 13
+    je Int10WriteStringReturn
+    cmp al, 10
+    je Int10WriteStringFeed
+    cmp al, 8
+    je Int10WriteStringBack
+    cmp al, 7
+    je Int10WriteStringSkip
+
+    mov byte ptr es:[di], al
+
+    /* A colour of its own follows each character, or one covers them all */
+    test byte ptr cs:[StringManner], 2
+    jz Int10WriteStringOneColour
+
+    lodsb
+    mov byte ptr es:[di + 1], al
+    jmp Int10WriteStringOn
+
+Int10WriteStringOneColour:
+    mov al, byte ptr cs:[StringColour]
+    mov byte ptr es:[di + 1], al
+
+Int10WriteStringOn:
+    add di, 2
+
+Int10WriteStringSkip:
+    dec cx
+    jnz Int10WriteStringNext
+    jmp Int10WriteStringDone
+
+/* Back to the start of the row this one is on */
+Int10WriteStringReturn:
+    push ax
+    push dx
+    mov ax, di
+    xor dx, dx
+    div word ptr cs:[StringRowBytes]
+    mul word ptr cs:[StringRowBytes]
+    mov di, ax
+    pop dx
+    pop ax
+    jmp Int10WriteStringSkip
+
+/* On by one whole row, leaving the column where it is */
+Int10WriteStringFeed:
+    add di, VIDEO_COLUMNS * 2
+    jmp Int10WriteStringSkip
+
+/* Back by one cell, but never off the front of the page */
+Int10WriteStringBack:
+    cmp di, 2
+    jb Int10WriteStringSkip
+    sub di, 2
+    jmp Int10WriteStringSkip
+
+Int10WriteStringDone:
+    /*
+     * Left where the line ended, but only if the caller asked for that. The
+     * low bit of how it asked is the whole of the difference: a menu draws
+     * every line where it says and never looks at the cursor, and something
+     * printing a run of text carries on from where the last one stopped.
+     */
+    test byte ptr cs:[StringManner], 1
+    jz Int10WriteStringLeave
+
+    push ax
+    push bx
+    push cx
+    push dx
+    push ds
+
+    /* Which row and column that offset is, which is how a cursor is kept */
+    mov ax, di
+    shr ax, 1
+    xor dx, dx
+    mov cx, VIDEO_COLUMNS
+    div cx
+
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+    mov byte ptr ds:[BDA_CURSOR], dl
+    mov byte ptr ds:[BDA_CURSOR + 1], al
+
+    pop ds
+    call VideoPlaceCursor
+
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+Int10WriteStringLeave:
+    pop es
+    pop ds
+    pop bp
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    iret
+
+StringManner:
+    .byte HEX(00)
+
+StringColour:
+    .byte HEX(07)
+
+StringSpare:
+    .byte HEX(00)
+
+StringRowBytes:
+    .word VIDEO_COLUMNS * 2
+
+/*
+ * Where the row in AH and the column in AL land in the page, in bytes.
+ */
+VideoPlaceOffset:
+    push bx
+    push dx
+
+    movzx bx, al
+    movzx ax, ah
+    mov dx, VIDEO_COLUMNS
+    mul dx
+    add ax, bx
+    shl ax, 1
+
+    pop dx
+    pop bx
+    ret
 
 /*
  * One character, at the cursor, and the cursor moves. This is the call almost
@@ -566,11 +888,53 @@ Int13Handler:
      * removable one and goes to the controller that has those; the fixed disk
      * is the only other thing here.
      */
+    cmp dl, HEX(E0)
+    je Int13Disc
     cmp dl, HEX(80)
     je Int13OurDrive
     test dl, HEX(80)
     jz Int13Removable
     jmp Int13NotOurDrive
+
+/*
+ * The drive a disc is in, which is asked for by number rather than by shape
+ * and answers a different handful of calls from everything else.
+ */
+Int13Disc:
+    cmp ah, HEX(00)
+    je Int13DiscReset
+    cmp ah, HEX(41)
+    je Int13DiscExtensions
+    cmp ah, HEX(42)
+    je Int13CdExtendedRead
+    cmp ah, HEX(48)
+    je Int13CdParameters
+    cmp ah, HEX(4B)
+    je Int13DiscBootSpec
+    cmp ah, HEX(15)
+    je Int13DiscType
+    jmp Int13NotSupported
+
+Int13DiscReset:
+    xor ah, ah
+    jmp Int13Succeeded
+
+Int13DiscExtensions:
+    /* The word anything asks for before believing the answer */
+    mov bx, HEX(AA55)
+    mov ah, HEX(21)
+    mov cx, HEX(0005)
+    jmp Int13Succeeded
+
+Int13DiscBootSpec:
+    cmp al, HEX(01)
+    jne Int13NotSupported
+    jmp Int13CdSpec
+
+Int13DiscType:
+    /* One that can tell it has been changed, which is what the two means */
+    mov ah, HEX(02)
+    jmp Int13Succeeded
 
 Int13OurDrive:
 
@@ -601,6 +965,25 @@ Int13Removable:
     cmp dl, 0
     jne Int13NotOurDrive
 
+    /*
+     * A disc that is pretending to be this drive answers for it instead. What
+     * asks is entitled to find a drive of this number there, and whether the
+     * bytes come off a removable disk or off a disc is not its business.
+     */
+    call CdIsPretending
+    jc Int13FloppyItself
+
+    cmp ah, HEX(00)
+    je Int13PretendReset
+    cmp ah, HEX(02)
+    je Int13PretendRead
+    cmp ah, HEX(08)
+    je Int13PretendParameters
+    cmp ah, HEX(15)
+    je Int13PretendType
+    jmp Int13NotSupported
+
+Int13FloppyItself:
     cmp ah, HEX(00)
     je Int13FloppyReset
     cmp ah, HEX(02)
@@ -610,6 +993,102 @@ Int13Removable:
     cmp ah, HEX(15)
     je Int13FloppyType
     jmp Int13NotSupported
+
+Int13PretendReset:
+    xor ah, ah
+    jmp Int13Succeeded
+
+/* One that can tell it has been changed, which is what the two means */
+Int13PretendType:
+    mov ah, HEX(02)
+    jmp Int13Succeeded
+
+/*
+ * The shape of the drive being pretended. What asks for this believes every
+ * number in it and then asks for sectors that far round, so the shape said
+ * here has to be the one the sums in the reader are done with.
+ */
+Int13PretendParameters:
+    push cx
+    push dx
+
+    call CdPretendRound
+    mov cl, al
+    and cl, HEX(3F)
+    mov ch, CD_PRETEND_TRACKS - 1
+    mov dh, CD_PRETEND_SIDES - 1
+    mov dl, 1
+
+    mov word ptr cs:[PretendShape], cx
+    mov word ptr cs:[PretendSides], dx
+
+    pop dx
+    pop cx
+
+    mov cx, word ptr cs:[PretendShape]
+    mov dx, word ptr cs:[PretendSides]
+
+    mov bl, HEX(04)
+    xor ah, ah
+    jmp Int13Succeeded
+
+/*
+ * A run of its sectors into ES:BX. Every one of them is a quarter of one of
+ * the disc's and is fetched on its own, because a run that was asked for in
+ * one go would still be four separate places on the disc.
+ */
+Int13PretendRead:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    movzx si, al
+
+Int13PretendNext:
+    test si, si
+    jz Int13PretendDone
+
+    /*
+     * Which sector it is comes back in the pair of registers that also hold
+     * which side of the drive is being read, so where it was has to be put
+     * away first or the sector after this one is looked for on a side the
+     * drive does not have.
+     */
+    push cx
+    push dx
+    call CdPretendPlace
+
+    call CdPretendRead
+    pop dx
+    pop cx
+    jc Int13PretendFailed
+
+    /* On by one of its sectors, and round to the next place on the drive */
+    add bx, CD_PRETEND_SECTOR
+    call CdPretendStep
+
+    dec si
+    jmp Int13PretendNext
+
+Int13PretendDone:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    xor ah, ah
+    jmp Int13Succeeded
+
+Int13PretendFailed:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    mov ah, HEX(04)
+    jmp Int13Failed
 
 Int13FloppyReset:
     call FloppyStart
@@ -872,6 +1351,8 @@ Int13Failed:
 Int15Handler:
     cmp ax, HEX(E820)
     je Int15MemoryMap
+    cmp ax, HEX(E801)
+    je Int15SizeInParts
     cmp ah, HEX(88)
     je Int15ExtendedSize
 
@@ -880,16 +1361,95 @@ Int15Handler:
     mov ah, HEX(86)
     retf 2
 
+/*
+ * Kilobytes above the first megabyte as one number, which stops at the largest
+ * a word holds. A machine with more than that is why the other two calls are
+ * here at all, so clamping rather than wrapping is the only honest answer.
+ */
 Int15ExtendedSize:
-    /* Kilobytes above the first megabyte, which the manager filled in */
-    push ds
-    push bx
-    mov bx, BDA_SEGMENT
-    mov ds, bx
-    mov ax, word ptr ds:[BDA_MEMORY_SIZE]
-    pop bx
-    pop ds
+    push edx
+
+    mov eax, dword ptr cs:[MemorySizeLow]
+    mov edx, dword ptr cs:[MemorySizeHigh]
+    sub eax, HEX(00100000)
+    sbb edx, 0
+    jc Int15ExtendedNone
+
+    shr eax, 10
+    test edx, edx
+    jnz Int15ExtendedFull
+    cmp eax, HEX(0000FFFF)
+    jbe Int15ExtendedReady
+
+Int15ExtendedFull:
+    mov eax, HEX(0000FFFF)
+
+Int15ExtendedReady:
+    pop edx
     clc
+    retf 2
+
+Int15ExtendedNone:
+    pop edx
+    xor ax, ax
+    stc
+    mov ah, HEX(86)
+    retf 2
+
+/*
+ * The same size told in two parts: kilobytes up to sixteen megabytes, then
+ * blocks of sixty four above it. Both pairs of registers get the same pair of
+ * numbers, which is what a caller that prefers either one of them expects.
+ */
+Int15SizeInParts:
+    push esi
+    push edi
+
+    mov eax, dword ptr cs:[MemorySizeLow]
+    mov edx, dword ptr cs:[MemorySizeHigh]
+
+    /* Anything past four gigabytes is told as being just short of it */
+    test edx, edx
+    jz Int15PartsHave
+    mov eax, HEX(FFFF0000)
+
+Int15PartsHave:
+    cmp eax, HEX(00100000)
+    jbe Int15PartsNone
+
+    /* What of it falls below sixteen megabytes, counted in kilobytes */
+    mov esi, eax
+    cmp esi, HEX(01000000)
+    jbe Int15PartsLowReady
+    mov esi, HEX(01000000)
+
+Int15PartsLowReady:
+    sub esi, HEX(00100000)
+    shr esi, 10
+
+    /* And what of it lies above, counted in the larger unit */
+    xor edi, edi
+    cmp eax, HEX(01000000)
+    jbe Int15PartsHighReady
+    mov edi, eax
+    sub edi, HEX(01000000)
+    shr edi, 16
+
+Int15PartsHighReady:
+    mov ax, si
+    mov cx, si
+    mov bx, di
+    mov dx, di
+    pop edi
+    pop esi
+    clc
+    retf 2
+
+Int15PartsNone:
+    pop edi
+    pop esi
+    stc
+    mov ah, HEX(86)
     retf 2
 
 /*
@@ -908,6 +1468,7 @@ Int15MemoryMap:
     push ds
     push si
     push cx
+    push di
 
     push cs
     pop ds
@@ -918,20 +1479,20 @@ Int15MemoryMap:
     mul cx
     add si, ax
 
+    /* Forwards, whichever way round the caller happened to leave it */
+    cld
     mov cx, 20
-    push di
 Int15MapCopy:
     lodsb
     stosb
     loop Int15MapCopy
-    pop di
 
+    pop di
     pop cx
     pop si
     pop ds
 
-    mov eax, HEX(534D4150)
-    mov ecx, 20
+    /* Which one to ask for next, counted before anything is returned in it */
     inc bx
     movzx ax, byte ptr cs:[MemoryMapCount]
     cmp bx, ax
@@ -939,13 +1500,22 @@ Int15MapCopy:
 
     /* The last one is answered with zero, which says not to ask again */
     xor bx, bx
+
+/*
+ * The name goes back last because the count was worked out in the same
+ * register, and a caller that does not see it there stops reading the map.
+ */
 Int15MapMore:
+    mov eax, HEX(534D4150)
+    mov ecx, 20
     clc
     retf 2
 
+/* Asked for one past the end, which is refused rather than answered */
 Int15MapDone:
+    mov eax, HEX(534D4150)
     xor bx, bx
-    clc
+    stc
     retf 2
 
 Int15MapRefused:
@@ -1057,6 +1627,9 @@ Int16Peek:
     mov dx, COM1_BASE + UART_DATA
     in al, dx
     mov byte ptr cs:[KeyHeld], al
+
+    /* No scan code to give, and a stale one reads as a key of its own */
+    mov byte ptr cs:[KeyCode], 0
     mov byte ptr cs:[KeyWaiting], 1
     pop dx
 
@@ -1090,7 +1663,20 @@ Int16Flags:
 Int1AHandler:
     cmp ah, HEX(00)
     je Int1AReadTicks
-    iret
+    cmp ah, HEX(02)
+    je Int1AReadTime
+    cmp ah, HEX(04)
+    je Int1AReadDate
+    cmp ah, HEX(01)
+    je Int1AWriteTicks
+
+    /* Setting either half of the clock, which nothing here lets a guest do */
+    cmp ah, HEX(03)
+    je Int1ASucceeded
+    cmp ah, HEX(05)
+    je Int1ASucceeded
+
+    jmp Int1AFailed
 
 Int1AReadTicks:
     push ds
@@ -1105,6 +1691,96 @@ Int1AReadTicks:
     pop bx
     pop ds
     iret
+
+Int1AWriteTicks:
+    push ds
+    push bx
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+    mov word ptr ds:[BDA_TICKS], dx
+    mov word ptr ds:[BDA_TICKS + 2], cx
+    pop bx
+    pop ds
+    jmp Int1ASucceeded
+
+/*
+ * What the clock says, which is asked of the clock rather than remembered.
+ *
+ * Anything counting down a menu watches the seconds here, so a handler that
+ * answered with the second the machine started in would have it count nothing
+ * down at all.
+ */
+Int1AReadTime:
+    push ax
+
+    mov al, CMOS_HOURS
+    call CmosTake
+    mov ch, al
+
+    mov al, CMOS_MINUTES
+    call CmosTake
+    mov cl, al
+
+    mov al, CMOS_SECONDS
+    call CmosTake
+    mov dh, al
+
+    /* Nothing here moves the clock for the summer */
+    xor dl, dl
+
+    pop ax
+    jmp Int1ASucceeded
+
+Int1AReadDate:
+    push ax
+
+    mov al, CMOS_CENTURY
+    call CmosTake
+    mov ch, al
+
+    mov al, CMOS_YEAR
+    call CmosTake
+    mov cl, al
+
+    mov al, CMOS_MONTH
+    call CmosTake
+    mov dh, al
+
+    mov al, CMOS_DAY
+    call CmosTake
+    mov dl, al
+
+    pop ax
+    jmp Int1ASucceeded
+
+/*
+ * One of the clock's own registers, named first and then read.
+ *
+ * The saved flags are what the caller ends up with, so clearing the carry in
+ * the register itself would be lost the moment this returns through the gate.
+ */
+Int1ASucceeded:
+    push bp
+    mov bp, sp
+    and word ptr [bp + 6], NOT 1
+    pop bp
+    iret
+
+Int1AFailed:
+    push bp
+    mov bp, sp
+    or word ptr [bp + 6], 1
+    pop bp
+    iret
+
+CmosTake:
+    out CMOS_ADDRESS, al
+
+    /* A moment between naming one and reading it, which the part wants */
+    jmp CmosSettled
+CmosSettled:
+    in al, CMOS_DATA
+    ret
 
 /* DRIVING THE DISK ***********************************************************/
 
@@ -1450,7 +2126,14 @@ SpuriousSlaveHandler:
     pop ax
     iret
 
+/* BOOTING FROM A DISC ********************************************************/
+
+#include "cdrom.S"
+
 /* TAKING KEYS ****************************************************************/
+
+#include "vga.S"
+#include "vesa.S"
 
 #include "keyboard.S"
 
@@ -1488,6 +2171,9 @@ Start:
     call DataAreaSetup
     call VideoClear
     call ControllerSetup
+
+    /* Before anything is driven, because nothing on the bus answers until it */
+    call BusSetup
 
     /* Ask the drive what it is, so the shape reported later is its own */
     call AtaIdentify
@@ -1757,7 +2443,8 @@ DataAreaSetup:
 DataAreaNoDrive:
 
     /* Six hundred and forty kilobytes, as there always are */
-    mov word ptr ds:[BDA_MEMORY_SIZE], 640
+    /* One short of the round number, the last kilobyte being spoken for */
+    mov word ptr ds:[BDA_MEMORY_SIZE], 639
 
     mov byte ptr ds:[BDA_KEYBOARD_FLAGS], 0
     mov word ptr ds:[BDA_KEYBOARD_HEAD], HEX(001E)
@@ -1766,6 +2453,9 @@ DataAreaNoDrive:
     mov byte ptr ds:[BDA_DISPLAY_MODE], 3
     mov word ptr ds:[BDA_DISPLAY_COLUMNS], 80
     mov byte ptr ds:[BDA_DISPLAY_PAGE], 0
+
+    /* Held one short, which is how everything that reads it expects it */
+    mov byte ptr ds:[BDA_DISPLAY_ROWS], VIDEO_ROWS - 1
 
     mov word ptr ds:[BDA_TICKS], 0
     mov word ptr ds:[BDA_TICKS + 2], 0
@@ -1820,6 +2510,251 @@ ControllerSetup:
     pop ax
     ret
 
+/* THE BUS *******************************************************************/
+
+/*
+ * Everything on the bus comes up answering nowhere. A device says how much of
+ * each kind of address it wants, and until something has read that and written
+ * back where it may answer, it is on the bus and unreachable.
+ *
+ * That is this firmware's to do. What runs later finds the same device at the
+ * same place and keeps what was handed out, because a device that has already
+ * been given somewhere to answer is one less thing for it to decide.
+ */
+
+/*
+ * The four bytes at the register in AL of whatever ESI is pointing at, into
+ * EAX. ESI carries which place on the bus is meant and is left alone.
+ */
+PciRead:
+    push dx
+    push ebx
+
+    movzx ebx, al
+    and bl, HEX(FC)
+    or ebx, esi
+
+    mov eax, ebx
+    mov dx, PCI_ADDRESS_PORT
+    out dx, eax
+
+    mov dx, PCI_DATA_PORT
+    in eax, dx
+
+    pop ebx
+    pop dx
+    ret
+
+/* And ECX into that same register */
+PciWrite:
+    push eax
+    push dx
+    push ebx
+
+    movzx ebx, al
+    and bl, HEX(FC)
+    or ebx, esi
+
+    mov eax, ebx
+    mov dx, PCI_ADDRESS_PORT
+    out dx, eax
+
+    mov dx, PCI_DATA_PORT
+    mov eax, ecx
+    out dx, eax
+
+    pop ebx
+    pop dx
+    pop eax
+    ret
+
+/* Where the device in CX and the part of it in DX are, packed into ESI */
+PciAddress:
+    push eax
+
+    movzx esi, cx
+    shl esi, 11
+    movzx eax, dx
+    shl eax, 8
+    or esi, eax
+    or esi, HEX(80000000)
+
+    pop eax
+    ret
+
+/*
+ * Gives one device somewhere to answer and turns it on.
+ *
+ * How much of each kind it wants is not written down: a device is written all
+ * ones and read back, and what comes back has zeroes wherever the address is
+ * fixed. The lowest bit still standing is both how much there is of it and how
+ * far apart two of them have to be, which is why the same number does for
+ * rounding up and for moving on.
+ *
+ * DI is where the next run of ports goes and EBP the next run of memory. Both
+ * are carried through, so the whole bus is handed out from one pair of numbers.
+ */
+PciPlace:
+    push eax
+    push ebx
+    push ecx
+    push dx
+
+    mov bl, PCI_FIRST_RANGE
+
+PciRange:
+    mov al, bl
+    mov ecx, HEX(FFFFFFFF)
+    call PciWrite
+
+    mov al, bl
+    call PciRead
+    mov ecx, eax
+
+    /* Nothing asked for at all */
+    test ecx, ecx
+    jz PciNextRange
+
+    test cl, 1
+    jz PciRangeMemory
+
+    /* A run of ports, whose lowest two bits are not part of the answer */
+    and ecx, HEX(0000FFFC)
+    jz PciNextRange
+
+    mov ax, cx
+    neg ax
+    and ax, cx
+    mov dx, ax
+
+    dec ax
+    add di, ax
+    not ax
+    and di, ax
+
+    movzx ecx, di
+    or ecx, 1
+    mov al, bl
+    call PciWrite
+
+    add di, dx
+    jmp PciNextRange
+
+PciRangeMemory:
+    and ecx, HEX(FFFFFFF0)
+    jz PciNextRange
+
+    mov eax, ecx
+    neg eax
+    and eax, ecx
+    push eax
+
+    dec eax
+    add ebp, eax
+    not eax
+    and ebp, eax
+
+    mov ecx, ebp
+    mov al, bl
+    call PciWrite
+
+    pop eax
+    add ebp, eax
+
+PciNextRange:
+    add bl, 4
+    cmp bl, PCI_PAST_RANGES
+    jb PciRange
+
+    /* Now that it has somewhere to answer, it is told it may */
+    mov al, PCI_DOING
+    call PciRead
+    mov ecx, eax
+    or cl, PCI_DECODE
+    mov al, PCI_DOING
+    call PciWrite
+
+    /* And the one thing this board knows that the bus does not say */
+    mov al, PCI_WHAT
+    call PciRead
+    shr eax, 16
+    cmp ax, PCI_IS_DISK
+    jne PciPlaced
+
+    mov ecx, PCI_DISK_DECODES
+    mov al, PCI_DISK_TIMING
+    call PciWrite
+
+PciPlaced:
+    pop dx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+
+BusSetup:
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+    push ebp
+
+    mov di, PCI_FIRST_PORT
+    mov ebp, PCI_FIRST_MEMORY
+
+    xor cx, cx
+
+BusDevice:
+    xor dx, dx
+    call PciAddress
+
+    mov al, PCI_WHO
+    call PciRead
+    cmp ax, PCI_NOBODY
+    je BusNextDevice
+
+    call PciPlace
+
+    /* Whether there is more to this place than the part just dealt with */
+    mov al, PCI_LAYOUT
+    call PciRead
+    shr eax, 16
+    test al, PCI_HAS_MORE
+    jz BusNextDevice
+
+    mov dx, 1
+
+BusPart:
+    call PciAddress
+
+    mov al, PCI_WHO
+    call PciRead
+    cmp ax, PCI_NOBODY
+    je BusNextPart
+
+    call PciPlace
+
+BusNextPart:
+    inc dx
+    cmp dx, 8
+    jb BusPart
+
+BusNextDevice:
+    inc cx
+    cmp cx, 16
+    jb BusDevice
+
+    pop ebp
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+
 /*
  * Going looking for something to boot: read the first sector of the disk to
  * seven C zero zero and, if it ends the way a boot sector does, jump into it.
@@ -1833,10 +2768,13 @@ Int19Handler:
     sti
 
     /*
-     * The removable drive first, the way a machine of this kind has always
-     * been asked to. Something left in the drive is what the operator wanted
-     * booted, and the fixed disk is what is there the rest of the time.
+     * A disc first, then the removable drive, then the fixed disk. Something
+     * an operator put in the machine is what they wanted booted, and the fixed
+     * disk is what is there the rest of the time.
      */
+    call CdBoot
+    jnc Int19FromDisc
+
     mov byte ptr cs:[BootDrive], HEX(00)
     call Int19TryDrive
     jnc Int19Bootable
@@ -1847,6 +2785,24 @@ Int19Handler:
     mov byte ptr cs:[BootDrive], HEX(80)
     call Int19TryDrive
     jc Int19NotBootable
+
+Int19FromDisc:
+    /*
+     * What came off a disc is entered with the number a drive of that kind is
+     * given, because that is the one thing it is entitled to assume and the
+     * only way it can ask for the rest of itself.
+     *
+     * Unless the disc was pretending to be a removable drive, in which case
+     * what was loaded was written long before discs and knows only that
+     * number. Handing it the disc's would have it ask a drive it has never
+     * heard of for tracks and sides, and be told there are none.
+     */
+    mov byte ptr cs:[BootDrive], HEX(E0)
+
+    call CdIsPretending
+    jc Int19Bootable
+
+    mov byte ptr cs:[BootDrive], HEX(00)
 
 Int19Bootable:
     push cs
@@ -1972,6 +2928,12 @@ NotBootableMessage:
 .align 2
 DiskPresent:
     .byte 0
+PretendShape:
+    .word HEX(0000)
+
+PretendSides:
+    .word HEX(0000)
+
 BootDrive:
     .byte HEX(80)
 KeyWaiting:

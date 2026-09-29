@@ -30,6 +30,43 @@
 #define SYSTEM_CONTROL      0x0092
 #define SYSTEM_A20          0x02
 
+/*
+ * The part that handles power, which is where everything written since the
+ * clock stopped being enough looks for a count of how long the machine has
+ * been running. Where each of these answers is fixed by nothing: it is
+ * whatever the tables the machine describes itself with say, and this is what
+ * those tables say.
+ */
+#define POWER_EVENT         0x0400
+#define POWER_CONTROL       0x0404
+#define POWER_TIMER         0x0408
+#define POWER_GENERAL       0x0420
+#define POWER_GENERAL_LENGTH 4
+
+/* The run of them below the general ones, which is claimed in one go */
+#define POWER_FIRST         POWER_EVENT
+#define POWER_COUNT         12
+
+/* How fast the count runs, which is the same on every machine that has one */
+#define POWER_TIMER_RATE    3579545
+
+/* The bit of the control register saying the system is handling this itself */
+#define POWER_TAKEN_OVER    0x0001
+
+/*
+ * What the clock's own three status registers mean. The one thing the clock
+ * does besides hold the date is raise its line over and over at a rate the
+ * guest picks, which is how anything works out how fast the processor runs:
+ * it counts the processor's own ticks between two of these.
+ */
+#define CLOCK_RATE_MASK     0x0F
+#define CLOCK_PERIODIC_ON   0x40
+#define CLOCK_HAPPENED      0x40
+#define CLOCK_RAISED        0x80
+
+/* What the rate is counted down from, which no clock of this kind changes */
+#define CLOCK_CRYSTAL       32768
+
 
 /* Which of the locations behind the clock mean something */
 #define CMOS_SECONDS        0x00
@@ -77,6 +114,19 @@ typedef struct _CHIPSET_DEVICE
 
     volatile LONG Stopping;
 
+    /* The one that raises the clock's line over and over, and whether it is up */
+    HANDLE Ticking;
+    volatile LONG Raised;
+
+    /* What the part handling power was last told, and where its count began */
+    USHORT PowerStatus;
+    USHORT PowerEnable;
+    USHORT PowerControl;
+    USHORT GeneralStatus;
+    USHORT GeneralEnable;
+    ULONG64 PowerStarted;
+    ULONG64 PowerRate;
+
     CRITICAL_SECTION Lock;
 } CHIPSET_DEVICE, *PCHIPSET_DEVICE;
 
@@ -97,6 +147,118 @@ ChipsetToPacked(
 
 /**
  * @brief
+ * Raises the clock's line over and over, as often as the guest asked.
+ *
+ * @remarks
+ * This is what everything written for a machine of this kind measures the
+ * processor against: it counts the processor's own ticks between two of these
+ * and works out how fast it runs from the difference. A clock that never
+ * raises its line leaves that measurement waiting for a sample that never
+ * arrives, and the whole system stops there before it has started.
+ *
+ * The line stays up until the guest reads the register that says what
+ * happened, which is what a clock of this kind does and what lets a guest tell
+ * one of these apart from anything else sharing the line.
+ */
+static
+DWORD
+WINAPI
+ChipsetTicking(
+    _In_ LPVOID Parameter)
+{
+    PCHIPSET_DEVICE Chipset = (PCHIPSET_DEVICE)Parameter;
+    const RTVM_HOST_INTERFACE *Host = Chipset->Device.Host;
+
+    while (InterlockedCompareExchange(&Chipset->Stopping, 0, 0) == 0)
+    {
+        ULONG Rate;
+        ULONG Every;
+        BOOLEAN Wanted;
+
+        EnterCriticalSection(&Chipset->Lock);
+
+        Wanted = (Chipset->Cmos[CMOS_STATUS_B] & CLOCK_PERIODIC_ON) != 0;
+        Rate = Chipset->Cmos[CMOS_STATUS_A] & CLOCK_RATE_MASK;
+
+        LeaveCriticalSection(&Chipset->Lock);
+
+        /* Nothing asked for, so there is nothing to raise */
+        if (!Wanted || (Rate == 0))
+        {
+            Sleep(10);
+            continue;
+        }
+
+        /*
+         * The rate names a division of the crystal rather than a frequency.
+         * The slowest two are the two the counter starts at, which is why the
+         * count below begins where it does.
+         */
+        {
+            const ULONG Divided = CLOCK_CRYSTAL >> (Rate - 1);
+
+            Every = (Divided != 0) ? (1000 / Divided) : 10;
+        }
+
+        if (Every == 0)
+            Every = 1;
+
+        Sleep(Every);
+
+        if (InterlockedCompareExchange(&Chipset->Stopping, 0, 0) != 0)
+            break;
+
+        EnterCriticalSection(&Chipset->Lock);
+
+        /* Still wanted, and not already waiting to be looked at */
+        Wanted = (Chipset->Cmos[CMOS_STATUS_B] & CLOCK_PERIODIC_ON) != 0;
+
+        if (Wanted)
+            Chipset->Cmos[CMOS_STATUS_C] |= (CLOCK_HAPPENED | CLOCK_RAISED);
+
+        LeaveCriticalSection(&Chipset->Lock);
+
+        if (Wanted && (Host->SetInterruptLine != NULL) &&
+            (InterlockedExchange(&Chipset->Raised, 1) == 0))
+        {
+            Host->SetInterruptLine(Host->Context, CMOS_LINE, TRUE);
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @brief
+ * How far the count that never stops has got.
+ *
+ * @remarks
+ * Worked out from the host's own counter rather than kept, because nothing
+ * here runs at the rate this is meant to. What matters to a guest is that it
+ * moves and that it moves at the stated rate: one that stood still would have
+ * anything measuring itself against it measure forever.
+ */
+static
+ULONG
+ChipsetPowerTimer(
+    _In_ PCHIPSET_DEVICE Chipset)
+{
+    LARGE_INTEGER Now;
+
+    if ((Chipset->PowerRate == 0) || (Chipset->PowerStarted == 0))
+        return 0;
+
+    QueryPerformanceCounter(&Now);
+
+    if ((ULONG64)Now.QuadPart <= Chipset->PowerStarted)
+        return 0;
+
+    return (ULONG)((((ULONG64)Now.QuadPart - Chipset->PowerStarted) *
+                    POWER_TIMER_RATE) / Chipset->PowerRate);
+}
+
+/**
+ * @brief
  * Fills in what the clock holds, from the time the machine was started.
  *
  * @remarks
@@ -106,12 +268,10 @@ ChipsetToPacked(
  */
 static
 VOID
-ChipsetFillCmos(
+ChipsetFillTime(
     _Inout_ PCHIPSET_DEVICE Chipset)
 {
     SYSTEMTIME Time;
-    ULONG64 Kilobytes;
-    ULONG64 Extended;
 
     GetLocalTime(&Time);
 
@@ -123,6 +283,17 @@ ChipsetFillCmos(
     Chipset->Cmos[CMOS_MONTH] = ChipsetToPacked(Time.wMonth);
     Chipset->Cmos[CMOS_YEAR] = ChipsetToPacked(Time.wYear % 100);
     Chipset->Cmos[CMOS_CENTURY] = ChipsetToPacked(Time.wYear / 100);
+}
+
+static
+VOID
+ChipsetFillCmos(
+    _Inout_ PCHIPSET_DEVICE Chipset)
+{
+    ULONG64 Kilobytes;
+    ULONG64 Extended;
+
+    ChipsetFillTime(Chipset);
 
     /* Counting in the usual way, and the clock is running */
     Chipset->Cmos[CMOS_STATUS_A] = 0x26;
@@ -186,7 +357,40 @@ ChipsetStart(
     if (!RTVM_SUCCESS(Status))
         return Status;
 
+    Status = Host->ClaimPortRange(Host->Context, Device, POWER_FIRST,
+                                  POWER_COUNT);
+    if (!RTVM_SUCCESS(Status))
+        return Status;
+
+    Status = Host->ClaimPortRange(Host->Context, Device, POWER_GENERAL,
+                                  POWER_GENERAL_LENGTH);
+    if (!RTVM_SUCCESS(Status))
+        return Status;
+
+    /* The count starts the moment the machine does, and never stops */
+    {
+        LARGE_INTEGER Rate;
+        LARGE_INTEGER Now;
+
+        QueryPerformanceFrequency(&Rate);
+        QueryPerformanceCounter(&Now);
+
+        Chipset->PowerRate = (ULONG64)Rate.QuadPart;
+        Chipset->PowerStarted = (ULONG64)Now.QuadPart;
+    }
+
     ChipsetFillCmos(Chipset);
+
+    /* The one that raises its line over and over once the guest asks */
+    InterlockedExchange(&Chipset->Stopping, 0);
+    Chipset->Ticking = CreateThread(NULL, 0, ChipsetTicking, Chipset, 0, NULL);
+
+    if (Chipset->Ticking == NULL)
+    {
+        Host->Log(Host->Context, RtvmLogWarning,
+                  "%s: its line will never be raised, the ticker would not start\n",
+                  Device->Name);
+    }
 
     Host->Log(Host->Context, RtvmLogInfo,
               "%s: clock at %04x, gate at %04x, %llu MB reported\n",
@@ -207,6 +411,13 @@ ChipsetStop(
     PCHIPSET_DEVICE Chipset = (PCHIPSET_DEVICE)Device->DeviceContext;
 
     InterlockedExchange(&Chipset->Stopping, 1);
+
+    if (Chipset->Ticking != NULL)
+    {
+        WaitForSingleObject(Chipset->Ticking, 2000);
+        CloseHandle(Chipset->Ticking);
+        Chipset->Ticking = NULL;
+    }
 }
 
 static
@@ -250,7 +461,9 @@ ChipsetIoRead(
     _Out_ PULONG Value)
 {
     PCHIPSET_DEVICE Chipset = (PCHIPSET_DEVICE)Device->DeviceContext;
+    const RTVM_HOST_INTERFACE *Host = Device->Host;
     UCHAR Result = 0xFF;
+    BOOLEAN Dropping = FALSE;
 
     UNREFERENCED_PARAMETER(Width);
 
@@ -264,22 +477,94 @@ ChipsetIoRead(
             break;
 
         case CMOS_DATA:
+            /*
+             * The clock is running, so what it says is worked out when it is
+             * asked rather than written down once. A guest counting a menu
+             * down watches the seconds, and a clock that answered with the
+             * second the machine started in counts nothing down at all.
+             */
+            ChipsetFillTime(Chipset);
+
             Result = Chipset->Cmos[Chipset->CmosAddress & CMOS_ADDRESS_MASK];
 
             /*
              * Reading the third status register is how a guest finds out what
-             * the clock wanted, and doing so clears it.
+             * the clock wanted, and doing so clears it and lets the line go.
+             * Until it is read the line stays up, which is what tells a guest
+             * sharing that line that this is the one that raised it.
              */
             if ((Chipset->CmosAddress & CMOS_ADDRESS_MASK) == CMOS_STATUS_C)
+            {
                 Chipset->Cmos[CMOS_STATUS_C] = 0;
+                Dropping = TRUE;
+            }
             break;
 
         case SYSTEM_CONTROL:
             Result = Chipset->A20Enabled ? SYSTEM_A20 : 0;
             break;
+
+        default:
+            break;
+    }
+
+    /*
+     * The part that handles power is read whole rather than a byte at a time,
+     * because the count is four bytes and a guest reading it in halves would
+     * get two halves of two different moments.
+     */
+    if ((Port >= POWER_FIRST) && (Port < (POWER_FIRST + POWER_COUNT)))
+    {
+        ULONG Whole = 0;
+
+        switch (Port)
+        {
+            case POWER_EVENT:
+                Whole = Chipset->PowerStatus;
+                break;
+
+            case POWER_EVENT + 2:
+                Whole = Chipset->PowerEnable;
+                break;
+
+            case POWER_CONTROL:
+                Whole = Chipset->PowerControl;
+                break;
+
+            case POWER_TIMER:
+                Whole = ChipsetPowerTimer(Chipset);
+                break;
+
+            default:
+                break;
+        }
+
+        LeaveCriticalSection(&Chipset->Lock);
+
+        *Value = Whole;
+        return RtvmOk;
+    }
+
+    if ((Port >= POWER_GENERAL) && (Port < (POWER_GENERAL + POWER_GENERAL_LENGTH)))
+    {
+        const ULONG Whole = (Port < (POWER_GENERAL + 2))
+                          ? Chipset->GeneralStatus
+                          : Chipset->GeneralEnable;
+
+        LeaveCriticalSection(&Chipset->Lock);
+
+        *Value = Whole;
+        return RtvmOk;
     }
 
     LeaveCriticalSection(&Chipset->Lock);
+
+    /* Let go outside the lock, because where the line goes is not this to hold */
+    if (Dropping && (Host->SetInterruptLine != NULL) &&
+        (InterlockedExchange(&Chipset->Raised, 0) != 0))
+    {
+        Host->SetInterruptLine(Host->Context, CMOS_LINE, FALSE);
+    }
 
     *Value = Result;
     return RtvmOk;
@@ -346,6 +631,55 @@ ChipsetIoWrite(
             }
             break;
         }
+
+        default:
+            break;
+    }
+
+    /*
+     * The two halves of what has happened are cleared by writing back the
+     * bits that are set, not by writing what they should become. Everything
+     * else here is simply kept.
+     */
+    if ((Port >= POWER_FIRST) && (Port < (POWER_FIRST + POWER_COUNT)))
+    {
+        const USHORT Half = (USHORT)(Value & 0xFFFF);
+
+        switch (Port)
+        {
+            case POWER_EVENT:
+                Chipset->PowerStatus &= (USHORT)~Half;
+                break;
+
+            case POWER_EVENT + 2:
+                Chipset->PowerEnable = Half;
+                break;
+
+            case POWER_CONTROL:
+                Chipset->PowerControl = Half;
+
+                if ((Half & POWER_TAKEN_OVER) != 0)
+                {
+                    Host->Log(Host->Context, RtvmLogTrace,
+                              "%s: the system is handling power itself now\n",
+                              Device->Name);
+                }
+                break;
+
+            default:
+                /* The count is not the guest's to set */
+                break;
+        }
+    }
+    else if ((Port >= POWER_GENERAL) &&
+             (Port < (POWER_GENERAL + POWER_GENERAL_LENGTH)))
+    {
+        const USHORT Half = (USHORT)(Value & 0xFFFF);
+
+        if (Port < (POWER_GENERAL + 2))
+            Chipset->GeneralStatus &= (USHORT)~Half;
+        else
+            Chipset->GeneralEnable = Half;
     }
 
     LeaveCriticalSection(&Chipset->Lock);
