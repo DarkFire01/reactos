@@ -166,6 +166,7 @@ VideoPainter(
     _In_ LPVOID Parameter)
 {
     PVIDEO_DEVICE Video = (PVIDEO_DEVICE)Parameter;
+    const RTVM_HOST_INTERFACE *Host = Video->Device.Host;
 
     while (InterlockedCompareExchange(&Video->Stopping, 0, 0) == 0)
     {
@@ -173,13 +174,31 @@ VideoPainter(
 
         EnterCriticalSection(&Video->Lock);
 
-        if (Video->Dirty &&
-            ((GetTickCount() - Video->DirtyAt) >= VIDEO_SETTLE_MS))
+        /* Whatever the guest has put there since the last look */
+        if (Host->ReadGuestMemory(Host->Context, VIDEO_TEXT_BASE,
+                                  Video->Text, VIDEO_PAGE_SIZE) == RtvmOk)
         {
             if (memcmp(Video->Sent, Video->Text, VIDEO_PAGE_SIZE) != 0)
-                VideoPaint(Video);
+            {
+                /*
+                 * Changed, but not drawn straight away: a screen being
+                 * rewritten changes constantly, and one drawn per change would
+                 * be unreadable. It is drawn once it holds still.
+                 */
+                if (!Video->Dirty)
+                {
+                    Video->Dirty = TRUE;
+                    Video->DirtyAt = GetTickCount();
+                }
+                else if ((GetTickCount() - Video->DirtyAt) >= VIDEO_SETTLE_MS)
+                {
+                    VideoPaint(Video);
+                }
+            }
             else
+            {
                 Video->Dirty = FALSE;
+            }
         }
 
         LeaveCriticalSection(&Video->Lock);
@@ -200,15 +219,18 @@ VideoStart(
     const RTVM_HOST_INTERFACE *Host = Device->Host;
     RTVM_STATUS Status;
 
-    Status = Host->ClaimMemoryRange(Host->Context, Device,
-                                    VIDEO_TEXT_BASE, VIDEO_TEXT_SIZE);
-    if (!RTVM_SUCCESS(Status))
-    {
-        Host->Log(Host->Context, RtvmLogError,
-                  "%s: the text page is already answered for\n", Device->Name);
-        return Status;
-    }
-
+    /*
+     * The page is deliberately not claimed. Claiming it would turn every write
+     * into an exit for the manager to carry out, and a guest clears a screen
+     * with one repeated store of two thousand cells: without an instruction
+     * decoder behind it nothing would be written at all, and the instruction
+     * would never finish.
+     *
+     * Reading the page instead costs one copy per repaint and works with
+     * whatever the guest chooses to write it with. A display that had to know
+     * the moment a pixel changed would need something cleverer; a page of text
+     * does not.
+     */
     Status = Host->ClaimPortRange(Host->Context, Device, VIDEO_CRTC_ADDRESS, 2);
     if (!RTVM_SUCCESS(Status))
         return Status;
@@ -250,8 +272,12 @@ VideoStop(
     /* Whatever is on it when the machine stops is worth having */
     EnterCriticalSection(&Video->Lock);
 
-    if (memcmp(Video->Sent, Video->Text, VIDEO_PAGE_SIZE) != 0)
-        VideoPaint(Video);
+    if (Device->Host->ReadGuestMemory(Device->Host->Context, VIDEO_TEXT_BASE,
+                                      Video->Text, VIDEO_PAGE_SIZE) == RtvmOk)
+    {
+        if (memcmp(Video->Sent, Video->Text, VIDEO_PAGE_SIZE) != 0)
+            VideoPaint(Video);
+    }
 
     LeaveCriticalSection(&Video->Lock);
 }
@@ -299,56 +325,6 @@ VideoDestroy(
 
     DeleteCriticalSection(&Video->Lock);
     free(Video);
-}
-
-static
-RTVM_STATUS
-RTVMAPI
-VideoMemoryRead(
-    _In_ PRTVM_DEVICE Device,
-    _In_ ULONG64 Address,
-    _In_ ULONG Width,
-    _Out_writes_bytes_(Width) PVOID Buffer)
-{
-    PVIDEO_DEVICE Video = (PVIDEO_DEVICE)Device->DeviceContext;
-    ULONG64 Offset = Address - VIDEO_TEXT_BASE;
-
-    if ((Offset >= VIDEO_TEXT_SIZE) || (Width > (VIDEO_TEXT_SIZE - Offset)))
-        return RtvmNotClaimed;
-
-    EnterCriticalSection(&Video->Lock);
-    memcpy(Buffer, &Video->Text[Offset], Width);
-    LeaveCriticalSection(&Video->Lock);
-
-    return RtvmOk;
-}
-
-static
-RTVM_STATUS
-RTVMAPI
-VideoMemoryWrite(
-    _In_ PRTVM_DEVICE Device,
-    _In_ ULONG64 Address,
-    _In_ ULONG Width,
-    _In_reads_bytes_(Width) const VOID *Buffer)
-{
-    PVIDEO_DEVICE Video = (PVIDEO_DEVICE)Device->DeviceContext;
-    ULONG64 Offset = Address - VIDEO_TEXT_BASE;
-
-    if ((Offset >= VIDEO_TEXT_SIZE) || (Width > (VIDEO_TEXT_SIZE - Offset)))
-        return RtvmNotClaimed;
-
-    EnterCriticalSection(&Video->Lock);
-
-    memcpy(&Video->Text[Offset], Buffer, Width);
-
-    /* The clock starts again on every write, so a burst counts as one change */
-    Video->Dirty = TRUE;
-    Video->DirtyAt = GetTickCount();
-
-    LeaveCriticalSection(&Video->Lock);
-
-    return RtvmOk;
 }
 
 static
@@ -435,8 +411,8 @@ static const RTVM_DEVICE_VTABLE VideoVtable =
     VideoDestroy,
     VideoIoRead,
     VideoIoWrite,
-    VideoMemoryRead,
-    VideoMemoryWrite,
+    NULL,
+    NULL,
     NULL
 };
 
