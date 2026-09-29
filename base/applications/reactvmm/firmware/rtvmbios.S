@@ -277,8 +277,14 @@ Int10WriteCell:
     mov di, ax
     pop ax
 
-    mov bx, VIDEO_SEGMENT
-    mov es, bx
+    /*
+     * The segment goes in through AX, not BX. BL is the colour the caller asked
+     * for and there is nowhere else it is kept.
+     */
+    push ax
+    mov ax, VIDEO_SEGMENT
+    mov es, ax
+    pop ax
 
     /* At least one, however little CX says */
     test cx, cx
@@ -364,6 +370,7 @@ Int10LineFeed:
 
     /* Off the bottom, so everything moves up and the last line is the new one */
     mov byte ptr ds:[BDA_CURSOR + 1], VIDEO_ROWS - 1
+    mov bh, HEX(07)
     call VideoScroll
     jmp Int10TeletypeDone
 
@@ -398,6 +405,7 @@ Int10TeletypeDone:
  * wanted it rather than asked for here.
  */
 Int10ScrollUp:
+    /* BH is already the colour the caller wants the new line in */
     call VideoScroll
     iret
 
@@ -490,7 +498,7 @@ VideoClear:
     pop ax
     ret
 
-/* Everything up one line, and the last one emptied */
+/* Everything up one line, the last one emptied in the colour BH names */
 VideoScroll:
     push ax
     push cx
@@ -511,7 +519,8 @@ VideoScroll:
 
     /* The line that has just been made room for */
     mov cx, VIDEO_COLUMNS
-    mov ax, HEX(0720)
+    mov ah, bh
+    mov al, HEX(20)
     rep stosw
 
     pop es
