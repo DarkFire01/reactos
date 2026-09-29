@@ -164,6 +164,8 @@ Int10Handler:
     je Int10SetPage
     cmp ah, HEX(06)
     je Int10ScrollUp
+    cmp ah, HEX(07)
+    je Int10ScrollDown
     cmp ah, HEX(08)
     je Int10ReadCell
     cmp ah, HEX(09)
@@ -401,15 +403,7 @@ Int10TeletypeDone:
     pop ax
     iret
 
-/*
- * Moving the screen up. Only the whole screen is answered, because that is what
- * a scroll is asked for, and a window scroll of part of it is drawn by whatever
- * wanted it rather than asked for here.
- */
-Int10ScrollUp:
-    /* BH is already the colour the caller wants the new line in */
-    call VideoScroll
-    iret
+#include "scroll.S"
 
 /* WHERE THE CURSOR IS ********************************************************/
 
