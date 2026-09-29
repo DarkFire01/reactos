@@ -151,6 +151,14 @@ KiSystemStartupBootStack(VOID)
     Prcb->ParentNode = KeNodeBlock[0];
     Prcb->ParentNode->ProcessorMask |= Prcb->SetMember;
 
+    /*
+     * Every processor leads its own core until something works out that two of
+     * them share one. This is not optional: callers read the leader's number
+     * without checking, so a processor that has none takes them through a null
+     * pointer instead.
+     */
+    Prcb->MultiThreadSetMaster = Prcb;
+
     /* Initialize the Power Management Support for this PRCB */
     PoInitializePrcb(Prcb);
 
@@ -235,9 +243,6 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
     /* Initialize 8/16 bit SList support */
     RtlpUse16ByteSLists = (KeFeatureBits & KF_CMPXCHG16B) ? TRUE : FALSE;
-
-    /* Set the current MP Master KPRCB to the Boot PRCB */
-    Prcb->MultiThreadSetMaster = Prcb;
 
     /* Initialize Bugcheck Callback data */
     InitializeListHead(&KeBugcheckCallbackListHead);
