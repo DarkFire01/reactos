@@ -1075,9 +1075,9 @@ void Machine::SetInterruptLine(ULONG Line, bool Asserted)
     IVmIoApic *Router = m_Vdevs->Lines();
 
     if (Asserted)
-        Router->AssertIrq(Line);
+        Router->AssertIrq((UCHAR)Line, VDEV_IRQ_SOURCE_ONLY);
     else
-        Router->DeassertIrq(Line);
+        Router->DeassertIrq((UCHAR)Line, VDEV_IRQ_SOURCE_ONLY);
 
 }
 

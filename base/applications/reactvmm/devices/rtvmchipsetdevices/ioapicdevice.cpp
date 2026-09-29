@@ -71,7 +71,7 @@ STDMETHODIMP IoApicDevice::QueryInterface(REFIID Interface, void **Object)
 }
 
 STDMETHODIMP IoApicDevice::GetDependencies(void *Repository, ULONG *Count,
-                                           GUID **Services, ULONG *Optional)
+                                           GUID **Services, ULONG *Required)
 {
     static const GUID *const Wanted[] =
     {
@@ -82,17 +82,13 @@ STDMETHODIMP IoApicDevice::GetDependencies(void *Repository, ULONG *Count,
 
     UNREFERENCED_PARAMETER(Repository);
 
-    const HRESULT Status = PublishDependencies(Wanted, ARRAYSIZE(Wanted),
-                                               Count, Services, Optional);
-
-    /* The last of them is one this will come up without */
-    if (SUCCEEDED(Status) && (Optional != nullptr))
-        *Optional = 1u << 2;
+    const HRESULT Status = PublishDependencies(Wanted, ARRAYSIZE(Wanted), 1,
+                                               Count, Services, Required);
 
     return Status;
 }
 
-STDMETHODIMP IoApicDevice::PowerOnCold()
+STDMETHODIMP IoApicDevice::PowerOnCold(VDEV_STATE State)
 {
     /*
      * Asked for here rather than when the services arrived, because the chips
@@ -108,11 +104,13 @@ STDMETHODIMP IoApicDevice::PowerOnCold()
                     reinterpret_cast<void **>(&m_Processors));
     }
 
-    return Reset();
+    return Reset(State);
 }
 
-STDMETHODIMP IoApicDevice::Reset()
+STDMETHODIMP IoApicDevice::Reset(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     EnterCriticalSection(&m_Lock);
 
     for (Entry &Line : m_Line)
@@ -186,9 +184,9 @@ void IoApicDevice::Deliver(ULONG Line)
  * masked goes to the chips as it did before: that is how a guest part way
  * through setting this up keeps a clock.
  */
-STDMETHODIMP IoApicDevice::AssertIrq(ULONG Line)
+STDMETHODIMP IoApicDevice::AssertIrq(UCHAR Line, UCHAR Source)
 {
-    if (Line >= IOAPIC_LINE_COUNT)
+    if ((Line >= IOAPIC_LINE_COUNT) || (Source >= VDEV_IRQ_SOURCES))
         return E_INVALIDARG;
 
     /*
@@ -199,11 +197,11 @@ STDMETHODIMP IoApicDevice::AssertIrq(ULONG Line)
      * finished setting up.
      */
     if ((Line < IOAPIC_LEGACY_LINES) && (m_Legacy != nullptr))
-        m_Legacy->AssertIrq(Line);
+        m_Legacy->AssertIrq(Line, Source);
 
     EnterCriticalSection(&m_Lock);
 
-    m_Line[Line].Held = true;
+    m_Line[Line].Held |= 1UL << Source;
 
     /* And this one carries it as well, unless its own entry says not to */
     if ((m_Line[Line].Redirection & IOAPIC_IS_MASKED) == 0)
@@ -213,16 +211,21 @@ STDMETHODIMP IoApicDevice::AssertIrq(ULONG Line)
     return S_OK;
 }
 
-STDMETHODIMP IoApicDevice::DeassertIrq(ULONG Line)
+/*
+ * Several devices can be wired to one line, so the line only falls once the
+ * last of them has let go. Letting go on behalf of all of them would lose an
+ * interrupt for whichever of the others was still waiting to be looked at.
+ */
+STDMETHODIMP IoApicDevice::DeassertIrq(UCHAR Line, UCHAR Source)
 {
-    if (Line >= IOAPIC_LINE_COUNT)
+    if ((Line >= IOAPIC_LINE_COUNT) || (Source >= VDEV_IRQ_SOURCES))
         return E_INVALIDARG;
 
     if ((Line < IOAPIC_LEGACY_LINES) && (m_Legacy != nullptr))
-        m_Legacy->DeassertIrq(Line);
+        m_Legacy->DeassertIrq(Line, Source);
 
     EnterCriticalSection(&m_Lock);
-    m_Line[Line].Held = false;
+    m_Line[Line].Held &= ~(1UL << Source);
     LeaveCriticalSection(&m_Lock);
 
     return S_OK;
@@ -244,21 +247,30 @@ STDMETHODIMP IoApicDevice::WaitForIrqAssert(ULONG Line)
  * and nothing done, because a machine this size gains nothing by it and a
  * device that asked will tick the ordinary way instead.
  */
-STDMETHODIMP IoApicDevice::RequestTimerAssist(ULONG Line)
+STDMETHODIMP IoApicDevice::RequestTimerAssist(UCHAR Line, ULONG64 Period,
+                                              int *Assisted, int *StillWanted)
 {
     UNREFERENCED_PARAMETER(Line);
+    UNREFERENCED_PARAMETER(Period);
 
-    return S_FALSE;
+    if ((Assisted == nullptr) || (StillWanted == nullptr))
+        return E_POINTER;
+
+    /* Nothing will be raised on its behalf, so it has to go on raising it */
+    *Assisted = 0;
+    *StillWanted = 1;
+
+    return S_OK;
 }
 
-STDMETHODIMP IoApicDevice::DeclineTimerAssist(ULONG Line)
+STDMETHODIMP IoApicDevice::DeclineTimerAssist(UCHAR Line)
 {
     UNREFERENCED_PARAMETER(Line);
 
     return S_OK;
 }
 
-STDMETHODIMP IoApicDevice::RegisterRteChangeCallback(ULONG Line,
+STDMETHODIMP IoApicDevice::RegisterRteChangeCallback(UCHAR Line,
                                                      IUnknown *Callback)
 {
     if ((Line >= IOAPIC_LINE_COUNT) || (Callback == nullptr))
@@ -276,15 +288,14 @@ STDMETHODIMP IoApicDevice::RegisterRteChangeCallback(ULONG Line,
     return S_OK;
 }
 
-STDMETHODIMP IoApicDevice::UnregisterRteChangeCallback(ULONG Line,
-                                                       IUnknown *Callback)
+STDMETHODIMP IoApicDevice::UnregisterRteChangeCallback(UCHAR Line)
 {
     if (Line >= IOAPIC_LINE_COUNT)
         return E_INVALIDARG;
 
     EnterCriticalSection(&m_Lock);
 
-    if (m_Line[Line].Watcher == Callback)
+    if (m_Line[Line].Watcher != nullptr)
     {
         m_Line[Line].Watcher->Release();
         m_Line[Line].Watcher = nullptr;
@@ -294,7 +305,7 @@ STDMETHODIMP IoApicDevice::UnregisterRteChangeCallback(ULONG Line,
     return S_OK;
 }
 
-STDMETHODIMP IoApicDevice::SetIoApicBaseAddress(ULONG64 Address)
+STDMETHODIMP IoApicDevice::SetIoApicBaseAddress(ULONG Address)
 {
     EnterCriticalSection(&m_Lock);
     m_Base = Address;
@@ -305,16 +316,15 @@ STDMETHODIMP IoApicDevice::SetIoApicBaseAddress(ULONG64 Address)
 
 /* THE REGISTERS **************************************************************/
 
-STDMETHODIMP IoApicDevice::StartReservingResources()
+STDMETHODIMP IoApicDevice::StartReservingResources(void *Repository, VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(Repository);
+    UNREFERENCED_PARAMETER(State);
+
     if (Emulation() == nullptr)
         return E_UNEXPECTED;
 
-    void *Registration = nullptr;
-
-    return Emulation()->RegisterMmioHandler(m_Base / VDEV_PAGE_SIZE,
-                                            IOAPIC_WINDOW_SIZE / VDEV_PAGE_SIZE,
-                                            this, TRUE, &Registration);
+    return ReserveMemory(m_Base, IOAPIC_WINDOW_SIZE, this);
 }
 
 /*
@@ -379,7 +389,7 @@ void IoApicDevice::Write(ULONG Which, ULONG Value)
      * to go there now. Nothing is going to raise it again: it was raised once
      * and has been waiting ever since for somewhere to be sent.
      */
-    if (m_Line[Line].Held && ((Entry & IOAPIC_IS_MASKED) == 0))
+    if ((m_Line[Line].Held != 0) && ((Entry & IOAPIC_IS_MASKED) == 0))
         Deliver(Line);
 }
 

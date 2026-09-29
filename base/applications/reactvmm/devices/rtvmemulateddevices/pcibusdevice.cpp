@@ -89,7 +89,7 @@ STDMETHODIMP PciBusDevice::QueryInterface(REFIID Interface, void **Object)
 }
 
 STDMETHODIMP PciBusDevice::GetDependencies(void *Repository, ULONG *Count,
-                                           GUID **Services, ULONG *Optional)
+                                           GUID **Services, ULONG *Required)
 {
     static const GUID *const Wanted[] =
     {
@@ -98,8 +98,8 @@ STDMETHODIMP PciBusDevice::GetDependencies(void *Repository, ULONG *Count,
 
     UNREFERENCED_PARAMETER(Repository);
 
-    return PublishDependencies(Wanted, ARRAYSIZE(Wanted),
-                               Count, Services, Optional);
+    return PublishDependencies(Wanted, ARRAYSIZE(Wanted), 0,
+                               Count, Services, Required);
 }
 
 /*
@@ -111,13 +111,18 @@ STDMETHODIMP PciBusDevice::GetDependencies(void *Repository, ULONG *Count,
  * board where two things answer the same port is a board where one of them
  * never hears the question.
  */
-STDMETHODIMP PciBusDevice::StartReservingResources()
+STDMETHODIMP PciBusDevice::StartReservingResources(void *Repository, VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(Repository);
+    UNREFERENCED_PARAMETER(State);
+
     return ReservePorts(PCI_BUS_FIRST_PORT, PCI_BUS_LAST_PORT, this);
 }
 
-STDMETHODIMP PciBusDevice::Reset()
+STDMETHODIMP PciBusDevice::Reset(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     EnterCriticalSection(&m_Lock);
     m_Address = 0;
     LeaveCriticalSection(&m_Lock);
@@ -299,7 +304,7 @@ bool PciBusDevice::Addressed(USHORT Port, ULONG Width)
     return Width == 1;
 }
 
-STDMETHODIMP PciBusDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
+STDMETHODIMP PciBusDevice::NotifyIoPortRead(USHORT Port, USHORT Width,
                                             ULONG *Value)
 {
     if (Value == nullptr)
@@ -339,7 +344,7 @@ STDMETHODIMP PciBusDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
     return S_OK;
 }
 
-STDMETHODIMP PciBusDevice::NotifyIoPortWrite(USHORT Port, ULONG Width,
+STDMETHODIMP PciBusDevice::NotifyIoPortWrite(USHORT Port, USHORT Width,
                                              ULONG Value)
 {
     EnterCriticalSection(&m_Lock);

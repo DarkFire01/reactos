@@ -57,7 +57,7 @@ PitDevice::PitDevice()
 
 PitDevice::~PitDevice()
 {
-    PowerOff();
+    PowerOff(VDEV_STATE_NONE);
     DeleteCriticalSection(&m_Lock);
 }
 
@@ -90,7 +90,7 @@ STDMETHODIMP PitDevice::QueryInterface(REFIID Interface, void **Object)
 }
 
 STDMETHODIMP PitDevice::GetDependencies(void *Repository, ULONG *Count,
-                                        GUID **Services, ULONG *Optional)
+                                        GUID **Services, ULONG *Required)
 {
     static const GUID *const Wanted[] =
     {
@@ -101,18 +101,17 @@ STDMETHODIMP PitDevice::GetDependencies(void *Repository, ULONG *Count,
 
     UNREFERENCED_PARAMETER(Repository);
 
-    const HRESULT Status = PublishDependencies(Wanted, ARRAYSIZE(Wanted),
-                                               Count, Services, Optional);
-
-    /* Nothing here keeps time from anywhere but the host, so the last is spare */
-    if (SUCCEEDED(Status) && (Optional != nullptr))
-        *Optional = 1u << 2;
+    const HRESULT Status = PublishDependencies(Wanted, ARRAYSIZE(Wanted), 1,
+                                               Count, Services, Required);
 
     return Status;
 }
 
-STDMETHODIMP PitDevice::StartReservingResources()
+STDMETHODIMP PitDevice::StartReservingResources(void *Repository, VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(Repository);
+    UNREFERENCED_PARAMETER(State);
+
     return ReservePorts(PIT_COUNTER0, PIT_COUNTER0 + PIT_REGISTER_COUNT - 1,
                         this);
 }
@@ -128,8 +127,10 @@ void PitDevice::Clear()
     m_Speaker = false;
 }
 
-STDMETHODIMP PitDevice::Reset()
+STDMETHODIMP PitDevice::Reset(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     EnterCriticalSection(&m_Lock);
     Clear();
     LeaveCriticalSection(&m_Lock);
@@ -139,8 +140,10 @@ STDMETHODIMP PitDevice::Reset()
 
 /* KEEPING TIME ***************************************************************/
 
-STDMETHODIMP PitDevice::PowerOnCold()
+STDMETHODIMP PitDevice::PowerOnCold(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     /*
      * Where its line goes, asked for now rather than when it was initialised:
      * the thing that decides is a device too, and one device coming up says
@@ -159,8 +162,10 @@ STDMETHODIMP PitDevice::PowerOnCold()
     return (m_Thread != nullptr) ? S_OK : E_FAIL;
 }
 
-STDMETHODIMP PitDevice::PowerOff()
+STDMETHODIMP PitDevice::PowerOff(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     if (m_Thread == nullptr)
         return S_OK;
 
@@ -219,8 +224,8 @@ void PitDevice::Tick()
     if (m_Lines == nullptr)
         return;
 
-    m_Lines->AssertIrq(PIT_LINE);
-    m_Lines->DeassertIrq(PIT_LINE);
+    m_Lines->AssertIrq(PIT_LINE, VDEV_IRQ_SOURCE_ONLY);
+    m_Lines->DeassertIrq(PIT_LINE, VDEV_IRQ_SOURCE_ONLY);
 }
 
 /* WHERE A COUNTER HAS GOT TO *************************************************/
@@ -335,7 +340,7 @@ STDMETHODIMP PitDevice::GetTimerOutputSignal(ULONG Counter, BOOL *High)
 
 /* THE REGISTERS **************************************************************/
 
-STDMETHODIMP PitDevice::NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value)
+STDMETHODIMP PitDevice::NotifyIoPortRead(USHORT Port, USHORT Width, ULONG *Value)
 {
     UNREFERENCED_PARAMETER(Width);
 
@@ -378,7 +383,7 @@ STDMETHODIMP PitDevice::NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value)
     return S_OK;
 }
 
-STDMETHODIMP PitDevice::NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value)
+STDMETHODIMP PitDevice::NotifyIoPortWrite(USHORT Port, USHORT Width, ULONG Value)
 {
     const UCHAR Byte = (UCHAR)(Value & 0xFF);
 

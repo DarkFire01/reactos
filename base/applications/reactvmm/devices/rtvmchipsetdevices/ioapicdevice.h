@@ -59,23 +59,23 @@ public:
     STDMETHODIMP_(ULONG) Release() override { return VirtualDeviceBase::Release(); }
 
     STDMETHODIMP GetDependencies(void *Repository, ULONG *Count,
-                                 GUID **Services, ULONG *Optional) override;
-    STDMETHODIMP PowerOnCold() override;
-    STDMETHODIMP Reset() override;
+                                 GUID **Services, ULONG *Required) override;
+    STDMETHODIMP PowerOnCold(VDEV_STATE State) override;
+    STDMETHODIMP Reset(VDEV_STATE State) override;
 
     /* What every device that has a line calls */
     STDMETHODIMP WaitForIrqAssert(ULONG Line) override;
-    STDMETHODIMP AssertIrq(ULONG Line) override;
-    STDMETHODIMP DeassertIrq(ULONG Line) override;
-    STDMETHODIMP RequestTimerAssist(ULONG Line) override;
-    STDMETHODIMP DeclineTimerAssist(ULONG Line) override;
-    STDMETHODIMP RegisterRteChangeCallback(ULONG Line,
+    STDMETHODIMP AssertIrq(UCHAR Line, UCHAR Source) override;
+    STDMETHODIMP DeassertIrq(UCHAR Line, UCHAR Source) override;
+    STDMETHODIMP RequestTimerAssist(UCHAR Line, ULONG64 Period,
+                                    int *Assisted, int *StillWanted) override;
+    STDMETHODIMP DeclineTimerAssist(UCHAR Line) override;
+    STDMETHODIMP RegisterRteChangeCallback(UCHAR Line,
                                            IUnknown *Callback) override;
-    STDMETHODIMP UnregisterRteChangeCallback(ULONG Line,
-                                             IUnknown *Callback) override;
-    STDMETHODIMP SetIoApicBaseAddress(ULONG64 Address) override;
+    STDMETHODIMP UnregisterRteChangeCallback(UCHAR Line) override;
+    STDMETHODIMP SetIoApicBaseAddress(ULONG Address) override;
 
-    STDMETHODIMP StartReservingResources() override;
+    STDMETHODIMP StartReservingResources(void *Repository, VDEV_STATE State) override;
 
     STDMETHODIMP NotifyUnregistered() override { return S_OK; }
     STDMETHODIMP NotifyMmioRead(ULONG64 Address, ULONG Length,
@@ -92,8 +92,8 @@ private:
         /* Who wants to know when that changes */
         IUnknown *Watcher;
 
-        /* Whether the device holding it has let go yet */
-        bool Held;
+        /* Which of the devices on it are holding it, one bit each */
+        ULONG Held;
     };
 
     ULONG Register(ULONG Which) const;

@@ -179,7 +179,7 @@ STDMETHODIMP IdeControllerDevice::QueryInterface(REFIID Interface, void **Object
 }
 
 STDMETHODIMP IdeControllerDevice::GetDependencies(void *Repository, ULONG *Count,
-                                                  GUID **Services, ULONG *Optional)
+                                                  GUID **Services, ULONG *Required)
 {
     static const GUID *const Wanted[] =
     {
@@ -190,12 +190,15 @@ STDMETHODIMP IdeControllerDevice::GetDependencies(void *Repository, ULONG *Count
 
     UNREFERENCED_PARAMETER(Repository);
 
-    return PublishDependencies(Wanted, ARRAYSIZE(Wanted),
-                               Count, Services, Optional);
+    return PublishDependencies(Wanted, ARRAYSIZE(Wanted), 0,
+                               Count, Services, Required);
 }
 
-STDMETHODIMP IdeControllerDevice::StartReservingResources()
+STDMETHODIMP IdeControllerDevice::StartReservingResources(void *Repository, VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(Repository);
+    UNREFERENCED_PARAMETER(State);
+
     for (Channel &One : m_Channel)
     {
         bool Anything = false;
@@ -235,24 +238,28 @@ STDMETHODIMP IdeControllerDevice::StartReservingResources()
     return S_OK;
 }
 
-STDMETHODIMP IdeControllerDevice::PowerOnCold()
+STDMETHODIMP IdeControllerDevice::PowerOnCold(VDEV_STATE State)
 {
     if (m_Lines == nullptr)
         FindService(IID_IVmIoApic, reinterpret_cast<void **>(&m_Lines));
 
-    return Reset();
+    return Reset(State);
 }
 
-STDMETHODIMP IdeControllerDevice::PowerOff()
+STDMETHODIMP IdeControllerDevice::PowerOff(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     for (Channel &One : m_Channel)
         SetLine(One, false);
 
     return S_OK;
 }
 
-STDMETHODIMP IdeControllerDevice::Reset()
+STDMETHODIMP IdeControllerDevice::Reset(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     EnterCriticalSection(&m_Lock);
 
     for (Channel &One : m_Channel)
@@ -534,7 +541,7 @@ void IdeControllerDevice::SetLine(Channel &On, bool Asserted)
             return;
 
         if (m_Lines != nullptr)
-            m_Lines->DeassertIrq(On.Line);
+            m_Lines->DeassertIrq((UCHAR)On.Line, VDEV_IRQ_SOURCE_ONLY);
 
         On.LineAsserted = false;
     }
@@ -545,9 +552,9 @@ void IdeControllerDevice::SetLine(Channel &On, bool Asserted)
         return;
 
     if (Asserted)
-        m_Lines->AssertIrq(On.Line);
+        m_Lines->AssertIrq((UCHAR)On.Line, VDEV_IRQ_SOURCE_ONLY);
     else
-        m_Lines->DeassertIrq(On.Line);
+        m_Lines->DeassertIrq((UCHAR)On.Line, VDEV_IRQ_SOURCE_ONLY);
 }
 
 void IdeControllerDevice::Fail(Channel &On, UCHAR Why)
@@ -1044,7 +1051,7 @@ void IdeControllerDevice::RunCommand(Channel &On, UCHAR What)
 
 /* THE REGISTERS **************************************************************/
 
-STDMETHODIMP IdeControllerDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
+STDMETHODIMP IdeControllerDevice::NotifyIoPortRead(USHORT Port, USHORT Width,
                                                    ULONG *Value)
 {
     ULONG Register = 0;
@@ -1168,7 +1175,7 @@ STDMETHODIMP IdeControllerDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
     return S_OK;
 }
 
-STDMETHODIMP IdeControllerDevice::NotifyIoPortWrite(USHORT Port, ULONG Width,
+STDMETHODIMP IdeControllerDevice::NotifyIoPortWrite(USHORT Port, USHORT Width,
                                                     ULONG Value)
 {
     ULONG Register = 0;

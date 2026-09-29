@@ -68,9 +68,9 @@ public:
     STDMETHODIMP_(ULONG) Release() override { return VirtualDeviceBase::Release(); }
 
     STDMETHODIMP GetDependencies(void *Repository, ULONG *Count,
-                                 GUID **Services, ULONG *Optional) override;
-    STDMETHODIMP StartReservingResources() override;
-    STDMETHODIMP Reset() override;
+                                 GUID **Services, ULONG *Required) override;
+    STDMETHODIMP StartReservingResources(void *Repository, VDEV_STATE State) override;
+    STDMETHODIMP Reset(VDEV_STATE State) override;
 
     /* Where a device asks for a place on it */
     STDMETHODIMP InstallPciDevice(IVmPciConfigAccessHandler *Handler,
@@ -78,8 +78,8 @@ public:
                                   IVmInstalledPciDevice **Installed) override;
 
     STDMETHODIMP NotifyUnregistered() override { return S_OK; }
-    STDMETHODIMP NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value) override;
-    STDMETHODIMP NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value) override;
+    STDMETHODIMP NotifyIoPortRead(USHORT Port, USHORT Width, ULONG *Value) override;
+    STDMETHODIMP NotifyIoPortWrite(USHORT Port, USHORT Width, ULONG Value) override;
 
 private:
     /* Whether an access of that width at that port reaches the data register */
