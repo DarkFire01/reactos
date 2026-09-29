@@ -636,8 +636,21 @@ DECLARE_INTERFACE_(IVmGuestMemoryAccess, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
-    /* Making memory, and the windows onto it */
-    STDMETHOD(CreateDeviceMemoryBlock)(THIS) PURE;
+    /*
+     * A window of the guest's memory that a device holds the contents of.
+     *
+     * The device hands over a buffer of its own and the run of pages it is to
+     * appear at, and from then on the guest reads and writes that buffer with
+     * nothing stopping to ask the device about it. The display asks for the
+     * page at 0xB0000 this way, which is how a screen of text is written to at
+     * the speed of memory rather than one fault to a character.
+     */
+    STDMETHOD(CreateGpaRange)(THIS_ _In_ ULONG64 FirstPage,
+                              _In_ ULONG64 PageCount,
+                              _In_ PVOID Backing,
+                              _In_ BOOL ReadOnly,
+                              _Outptr_ PVOID *Registration) PURE;
+
     STDMETHOD(CreateRamGpaRange)(THIS) PURE;
     STDMETHOD(CreateRamApertureFromByteRange)(THIS) PURE;
     STDMETHOD(CreateSectionBackedGpaRange)(THIS) PURE;
@@ -683,13 +696,27 @@ DECLARE_INTERFACE_(IVmBios, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
+    /* A device saying it has done something the firmware should know about */
     STDMETHOD(NotifyEmulatedActivity)(THIS) PURE;
-    STDMETHOD(RegisterBootDevice)(THIS) PURE;
-    STDMETHOD(EnableSerialController)(THIS) PURE;
-    STDMETHOD(GetDefaultCmosValues)(THIS) PURE;
-    STDMETHOD(IsGuestHibernateEnabled)(THIS) PURE;
-    STDMETHOD(SaveShutdownType)(THIS) PURE;
+
+    /* A drive saying it is one of the places this machine can be booted from */
+    STDMETHOD(RegisterBootDevice)(THIS_ _In_ ULONG Kind) PURE;
+
+    /* And a serial controller saying which of the ports is there */
+    STDMETHOD(EnableSerialController)(THIS_ _In_ UCHAR Which) PURE;
+
+    /*
+     * What the clock of the machine holds before the guest has written any of
+     * it, which the firmware decided and the clock itself does not know.
+     */
+    STDMETHOD(GetDefaultCmosValues)(THIS_ _Out_ PUCHAR Values) PURE;
+
+    STDMETHOD(IsGuestHibernateEnabled)(THIS_ _Out_ PINT Enabled) PURE;
+    STDMETHOD(SaveShutdownType)(THIS_ _In_ ULONG Why) PURE;
 };
+
+/* How much of the clock of the machine the firmware has an opinion about */
+#define VDEV_CMOS_DEFAULTS 128
 
 DEFINE_GUID(IID_IMonitorDevice,
             0x0cf78153, 0xff01, 0x4af8, 0x8e, 0xe0, 0x1b, 0x3b, 0x44, 0x54, 0xfc, 0x11);

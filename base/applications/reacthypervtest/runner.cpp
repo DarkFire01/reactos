@@ -35,6 +35,10 @@ static HRESULT (WINAPI *SetPartitionProperty)(WHV_PARTITION_HANDLE,
 static HRESULT (WINAPI *MapGpaRange)(WHV_PARTITION_HANDLE, VOID *,
                                      WHV_GUEST_PHYSICAL_ADDRESS, UINT64,
                                      WHV_MAP_GPA_RANGE_FLAGS);
+static HRESULT (WINAPI *TranslateGva)(WHV_PARTITION_HANDLE, UINT32, UINT64,
+                                      WHV_TRANSLATE_GVA_FLAGS,
+                                      WHV_TRANSLATE_GVA_RESULT *,
+                                      WHV_GUEST_PHYSICAL_ADDRESS *);
 static HRESULT (WINAPI *UnmapGpaRange)(WHV_PARTITION_HANDLE,
                                        WHV_GUEST_PHYSICAL_ADDRESS, UINT64);
 static HRESULT (WINAPI *CreateVirtualProcessor)(WHV_PARTITION_HANDLE, UINT32,
@@ -75,6 +79,7 @@ static bool FindPlatform()
     BIND(SetPartitionProperty, "WHvSetPartitionProperty");
     BIND(MapGpaRange, "WHvMapGpaRange");
     BIND(UnmapGpaRange, "WHvUnmapGpaRange");
+    BIND(TranslateGva, "WHvTranslateGva");
     BIND(CreateVirtualProcessor, "WHvCreateVirtualProcessor");
     BIND(DeleteVirtualProcessor, "WHvDeleteVirtualProcessor");
     BIND(RunVirtualProcessor, "WHvRunVirtualProcessor");
@@ -228,6 +233,45 @@ bool Hollow(ULONG64 Where, ULONG64 Length)
         return false;
 
     return SUCCEEDED(UnmapGpaRange(TheMachine, Where, Length));
+}
+
+/*
+ * A device's own memory, put where the guest will find it. What was mapped
+ * there before has to be taken out first, which is the caller's business
+ * because only it knows whether it meant to cover something.
+ */
+bool Fill(ULONG64 Where, ULONG64 Length, void *Backing, bool ReadOnly)
+{
+    if ((TheMachine == nullptr) || (Backing == nullptr))
+        return false;
+
+    ULONG Allowed = WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagExecute;
+
+    if (!ReadOnly)
+        Allowed |= WHvMapGpaRangeFlagWrite;
+
+    return SUCCEEDED(MapGpaRange(TheMachine, Backing, Where, Length,
+                                 (WHV_MAP_GPA_RANGE_FLAGS)Allowed));
+}
+
+/* Where a guest address really is, asked of the processor holding the tables */
+bool Reachable(ULONG64 Address, ULONG64 *Physical)
+{
+    WHV_TRANSLATE_GVA_RESULT Went = {};
+    WHV_GUEST_PHYSICAL_ADDRESS Found = 0;
+
+    if ((TheMachine == nullptr) || (TranslateGva == nullptr))
+        return false;
+
+    const HRESULT Status = TranslateGva(TheMachine, 0, Address,
+                                        WHvTranslateGvaFlagValidateRead,
+                                        &Went, &Found);
+
+    if (FAILED(Status) || (Went.ResultCode != WHvTranslateGvaResultSuccess))
+        return false;
+
+    *Physical = Found;
+    return true;
 }
 
 bool Place(const void *Image, ULONG Length, ULONG64 Where)
