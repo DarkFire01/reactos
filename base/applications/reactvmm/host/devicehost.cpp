@@ -78,6 +78,18 @@ HostPresentText(PVOID Context, const RTVM_TEXT_PAGE *Page)
 }
 
 static RTVM_STATUS RTVMAPI
+HostMoveThroughChannel(PVOID Context, ULONG Channel, PVOID Buffer,
+                       ULONG Length, PULONG Moved)
+{
+    auto *Owner = static_cast<Machine *>(Context);
+
+    if ((Buffer == nullptr) || (Moved == nullptr))
+        return RtvmBadParameter;
+
+    return Owner->MoveThroughChannel(Channel, Buffer, Length, *Moved);
+}
+
+static RTVM_STATUS RTVMAPI
 HostSetTimer(PVOID Context, PRTVM_DEVICE Device, ULONG64 Nanoseconds)
 {
     UNREFERENCED_PARAMETER(Context);
@@ -117,6 +129,7 @@ DeviceHost::DeviceHost(Machine &Owner)
     m_Interface.WriteGuestMemory = HostWriteGuestMemory;
     m_Interface.SetTimer = HostSetTimer;
     m_Interface.PresentText = HostPresentText;
+    m_Interface.MoveThroughChannel = HostMoveThroughChannel;
     m_Interface.Log = HostLog;
 }
 

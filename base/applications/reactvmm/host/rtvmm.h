@@ -168,6 +168,54 @@ private:
     Chip m_Chip[2] = {};
 };
 
+/*
+ * The pair of transfer controllers, for a device that moves data without the
+ * processor. It is the manager's own for the same reason the interrupt
+ * controller is: more than one device is wired to it.
+ */
+class Dma
+{
+public:
+    void Reset();
+
+    static bool Owns(USHORT Port) noexcept;
+
+    ULONG ReadPort(USHORT Port);
+    void WritePort(USHORT Port, ULONG Value);
+
+    RTVM_STATUS Transfer(Memory &Block, ULONG Channel, void *Buffer,
+                         ULONG Length, ULONG &Moved);
+
+private:
+    bool Decode(USHORT Port, ULONG &Which, ULONG &Register) const;
+
+    struct ChannelState
+    {
+        /* What is programmed, and how far through it the transfer is */
+        USHORT BaseAddress;
+        USHORT BaseCount;
+        USHORT Address;
+        USHORT Count;
+        UCHAR Page;
+        UCHAR Mode;
+        bool Masked;
+    };
+
+    struct Chip
+    {
+        UCHAR Command;
+        /* Which channels have run out, and which are asking to move */
+        UCHAR Reached;
+        UCHAR Asking;
+
+        /* Whether the next half of an address or count is the high one */
+        bool HighByte;
+    };
+
+    ChannelState m_Channel[8] = {};
+    Chip m_Chip[2] = {};
+};
+
 class Machine;
 
 /*
@@ -292,6 +340,7 @@ public:
     Memory &MemoryBlock() noexcept { return m_Memory; }
     Bus &SystemBus() noexcept { return m_Bus; }
     Pic &Controller() noexcept { return m_Pic; }
+    Dma &Transfers() noexcept { return m_Dma; }
 
     /* Where pages of text go from now on, or nullptr for nowhere */
     void Attach(Display *Screen) noexcept { m_Display = Screen; }
@@ -310,6 +359,12 @@ public:
     bool ReadGuest(ULONG64 Address, void *Buffer, ULONG Length);
     bool WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length);
     bool PresentText(const RTVM_TEXT_PAGE &Page);
+    RTVM_STATUS MoveThroughChannel(ULONG Channel, void *Buffer, ULONG Length,
+                                   ULONG &Moved);
+
+    /* Where a port access goes, whichever exit brought it */
+    void WritePort(USHORT Port, ULONG Width, ULONG Value);
+    ULONG ReadPort(USHORT Port, ULONG Width);
 
 private:
     bool BindPlatform();
@@ -336,6 +391,7 @@ private:
     Memory m_Memory;
     Bus m_Bus;
     Pic m_Pic;
+    Dma m_Dma;
     Owned<DeviceHost> m_Devices;
 
     void *m_Partition = nullptr;
@@ -351,10 +407,11 @@ private:
     volatile LONG m_Running = 0;
 
     /*
-     * The controller is reached from the processor's thread and from whichever
-     * thread a device keeps time on, so it is held while it is touched.
+     * The board's own chips are reached from the processor's thread and from
+     * whichever thread a device keeps time on, so one is held while any of
+     * them is touched.
      */
-    CRITICAL_SECTION m_PicLock = {};
+    CRITICAL_SECTION m_ChipLock = {};
 
     /* When to stop of its own accord, or zero to keep going */
     ULONG m_Deadline = 0;
