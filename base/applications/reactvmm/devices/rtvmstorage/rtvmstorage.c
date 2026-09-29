@@ -83,7 +83,24 @@
 #define COMMAND_FLUSH_EXT       0xEA
 #define COMMAND_IDENTIFY        0xEC
 
+/* What a drive that takes whole commands rather than register writes answers */
+#define COMMAND_PACKET          0xA0
+#define COMMAND_IDENTIFY_PACKET 0xA1
+
 #define SECTOR_SIZE             512
+
+/* What one of those carries at a time, which has never been the same size */
+#define MEDIUM_SECTOR_SIZE      2048
+
+/* The commands inside a packet, of which only these are ever sent to boot */
+#define PACKET_TEST_UNIT_READY  0x00
+#define PACKET_REQUEST_SENSE    0x03
+#define PACKET_INQUIRY          0x12
+#define PACKET_READ_CAPACITY    0x25
+#define PACKET_READ_10          0x28
+
+/* How long a packet is, which the drive says and the caller then sends */
+#define PACKET_LENGTH           12
 
 /* The shape reported for a disk whose real one nothing can ask about */
 #define GEOMETRY_HEADS          16
@@ -120,6 +137,16 @@ typedef struct _STORAGE_DEVICE
 
     /* Whether this is the sort of medium that comes out of the machine */
     BOOLEAN Removable;
+
+    /*
+     * Whether it is driven by whole commands rather than by register writes.
+     * A drive of that kind is told what to do in a packet written through the
+     * data register, and everything about the request is inside it.
+     */
+    BOOLEAN Packet;
+    BOOLEAN WaitingForPacket;
+    UCHAR Command[PACKET_LENGTH];
+    ULONG CommandLength;
 
     /* The registers, as last written */
     UCHAR Features;
@@ -403,6 +430,32 @@ StorageIdentify(
 
     memset(Storage->Buffer, 0, SECTOR_SIZE);
 
+    /*
+     * A drive told in whole commands says so here, along with how long one of
+     * those is. Everything below about a shape means nothing to it, because it
+     * has no shape a caller may address it by.
+     */
+    if (Storage->Packet)
+    {
+        Words[0] = 0x85C0;
+
+        StorageIdentifyText(&Storage->Buffer[20], "0", 20);
+        StorageIdentifyText(&Storage->Buffer[46], "1.0", 8);
+        StorageIdentifyText(&Storage->Buffer[54], "ReacTVmm optical drive", 40);
+
+        Words[49] = 0x0200;
+        Words[53] = 0x0006;
+
+        Storage->BufferLength = SECTOR_SIZE;
+        Storage->BufferOffset = 0;
+        Storage->Writing = FALSE;
+        Storage->Error = 0;
+        Storage->Status = STATUS_READY | STATUS_SEEK_DONE | STATUS_READY_DATA;
+
+        StorageSetLine(Storage, TRUE);
+        return;
+    }
+
     /* A fixed disk, which is what the top bits of the first word say */
     Words[0] = 0x0040;
     Words[1] = (USHORT)Storage->Cylinders;
@@ -438,6 +491,174 @@ StorageIdentify(
     Storage->Status = STATUS_READY | STATUS_SEEK_DONE | STATUS_READY_DATA;
 
     StorageSetLine(Storage, TRUE);
+}
+
+/* WHOLE COMMANDS *************************************************************/
+
+/*
+ * Says how much is waiting and lets the caller come and take it.
+ *
+ * A drive of this kind reports the amount in the two registers that carry the
+ * middle of an address on one that is not, because the two were never used at
+ * the same time and the wire only has so many lines.
+ */
+static
+VOID
+StorageOfferPacketData(
+    _Inout_ PSTORAGE_DEVICE Storage,
+    _In_ ULONG Length)
+{
+    Storage->BufferLength = Length;
+    Storage->BufferOffset = 0;
+
+    Storage->LbaMid = (UCHAR)(Length & 0xFF);
+    Storage->LbaHigh = (UCHAR)((Length >> 8) & 0xFF);
+
+    Storage->Status = STATUS_READY | STATUS_SEEK_DONE | STATUS_READY_DATA;
+    Storage->Error = 0;
+
+    StorageSetLine(Storage, TRUE);
+}
+
+/* Nothing to come back with, which is most of what is ever asked */
+static
+VOID
+StoragePacketDone(
+    _Inout_ PSTORAGE_DEVICE Storage)
+{
+    Storage->BufferLength = 0;
+    Storage->BufferOffset = 0;
+    Storage->Status = STATUS_READY | STATUS_SEEK_DONE;
+    Storage->Error = 0;
+
+    StorageSetLine(Storage, TRUE);
+}
+
+/**
+ * @brief
+ * Carries out whatever the twelve bytes asked for.
+ *
+ * @remarks
+ * Only the handful a machine needs to find out what is in the drive and read
+ * it. Everything else is refused plainly, which is what a drive that cannot do
+ * something has always answered and what stops a caller waiting for it.
+ */
+static
+VOID
+StorageRunPacket(
+    _Inout_ PSTORAGE_DEVICE Storage)
+{
+    const UCHAR What = Storage->Command[0];
+
+    switch (What)
+    {
+        case PACKET_TEST_UNIT_READY:
+            StoragePacketDone(Storage);
+            break;
+
+        case PACKET_REQUEST_SENSE:
+        {
+            /* Nothing is wrong, which is what an empty sense says */
+            memset(Storage->Buffer, 0, 18);
+            Storage->Buffer[0] = 0x70;
+            Storage->Buffer[7] = 10;
+
+            StorageOfferPacketData(Storage, 18);
+            break;
+        }
+
+        case PACKET_INQUIRY:
+        {
+            ULONG Wanted = Storage->Command[4];
+
+            memset(Storage->Buffer, 0, 36);
+
+            /* A drive that reads one kind of medium and cannot be written to */
+            Storage->Buffer[0] = 0x05;
+            Storage->Buffer[1] = 0x80;
+            Storage->Buffer[2] = 0x00;
+            Storage->Buffer[3] = 0x21;
+            Storage->Buffer[4] = 31;
+
+            memcpy(&Storage->Buffer[8], "ReacTVmm", 8);
+            memcpy(&Storage->Buffer[16], "Optical Drive   ", 16);
+            memcpy(&Storage->Buffer[32], "0001", 4);
+
+            if ((Wanted == 0) || (Wanted > 36))
+                Wanted = 36;
+
+            StorageOfferPacketData(Storage, Wanted);
+            break;
+        }
+
+        case PACKET_READ_CAPACITY:
+        {
+            const ULONG Last = (ULONG)(Storage->SectorCount - 1);
+
+            /* Both of these are the wrong way round from everything else here */
+            Storage->Buffer[0] = (UCHAR)((Last >> 24) & 0xFF);
+            Storage->Buffer[1] = (UCHAR)((Last >> 16) & 0xFF);
+            Storage->Buffer[2] = (UCHAR)((Last >> 8) & 0xFF);
+            Storage->Buffer[3] = (UCHAR)(Last & 0xFF);
+            Storage->Buffer[4] = (UCHAR)((MEDIUM_SECTOR_SIZE >> 24) & 0xFF);
+            Storage->Buffer[5] = (UCHAR)((MEDIUM_SECTOR_SIZE >> 16) & 0xFF);
+            Storage->Buffer[6] = (UCHAR)((MEDIUM_SECTOR_SIZE >> 8) & 0xFF);
+            Storage->Buffer[7] = (UCHAR)(MEDIUM_SECTOR_SIZE & 0xFF);
+
+            StorageOfferPacketData(Storage, 8);
+            break;
+        }
+
+        case PACKET_READ_10:
+        {
+            const ULONG64 First = ((ULONG64)Storage->Command[2] << 24) |
+                                  ((ULONG64)Storage->Command[3] << 16) |
+                                  ((ULONG64)Storage->Command[4] << 8) |
+                                  (ULONG64)Storage->Command[5];
+            ULONG Count = ((ULONG)Storage->Command[7] << 8) |
+                          (ULONG)Storage->Command[8];
+            LARGE_INTEGER Where;
+            DWORD Read = 0;
+
+            if (Count == 0)
+            {
+                StoragePacketDone(Storage);
+                break;
+            }
+
+            /* As much as fits, because the buffer is what the wire is here */
+            if ((Count * MEDIUM_SECTOR_SIZE) > sizeof(Storage->Buffer))
+                Count = sizeof(Storage->Buffer) / MEDIUM_SECTOR_SIZE;
+
+            if ((First + Count) > Storage->SectorCount)
+            {
+                StorageFail(Storage, ATA_ERROR_NOT_FOUND);
+                break;
+            }
+
+            Where.QuadPart = (LONGLONG)(First * MEDIUM_SECTOR_SIZE);
+            SetFilePointerEx(Storage->Image, Where, NULL, FILE_BEGIN);
+
+            if (!ReadFile(Storage->Image, Storage->Buffer,
+                          Count * MEDIUM_SECTOR_SIZE, &Read, NULL) ||
+                (Read == 0))
+            {
+                StorageFail(Storage, ATA_ERROR_UNCORRECTABLE);
+                break;
+            }
+
+            StorageOfferPacketData(Storage, Read);
+            break;
+        }
+
+        default:
+            Storage->Device.Host->Log(Storage->Device.Host->Context,
+                                      RtvmLogWarning,
+                                      "%s: %02x is not a command this has\n",
+                                      Storage->Device.Name, What);
+            StorageFail(Storage, ATA_ERROR_ABORTED);
+            break;
+    }
 }
 
 static
@@ -484,6 +705,36 @@ StorageCommand(
         case COMMAND_WRITE_NO_RETRY:
         case COMMAND_WRITE_MULTIPLE:
             StorageBeginWrite(Storage);
+            break;
+
+        case COMMAND_IDENTIFY_PACKET:
+            if (!Storage->Packet)
+            {
+                /* Not one of those, and saying so is what makes a driver stop */
+                StorageFail(Storage, ATA_ERROR_ABORTED);
+                break;
+            }
+
+            StorageIdentify(Storage);
+            break;
+
+        case COMMAND_PACKET:
+            if (!Storage->Packet)
+            {
+                StorageFail(Storage, ATA_ERROR_ABORTED);
+                break;
+            }
+
+            /*
+             * Nothing happens yet. What to do arrives as twelve bytes through
+             * the data register, and the drive waits for all of them.
+             */
+            Storage->WaitingForPacket = TRUE;
+            Storage->CommandLength = 0;
+            Storage->BufferOffset = 0;
+            Storage->BufferLength = 0;
+            Storage->Status = STATUS_READY | STATUS_READY_DATA;
+            Storage->Error = 0;
             break;
 
         case COMMAND_IDENTIFY:
@@ -752,6 +1003,27 @@ StorageIoWrite(
         {
             ULONG Index;
 
+            /* A drive waiting to be told what to do is being told, not written to */
+            if (Storage->WaitingForPacket)
+            {
+                for (Index = 0; Index < Width; Index++)
+                {
+                    if (Storage->CommandLength < PACKET_LENGTH)
+                    {
+                        Storage->Command[Storage->CommandLength++] =
+                            (UCHAR)((Value >> (Index * 8)) & 0xFF);
+                    }
+                }
+
+                if (Storage->CommandLength >= PACKET_LENGTH)
+                {
+                    Storage->WaitingForPacket = FALSE;
+                    StorageRunPacket(Storage);
+                }
+
+                break;
+            }
+
             for (Index = 0; Index < Width; Index++)
             {
                 if (Storage->BufferOffset < sizeof(Storage->Buffer))
@@ -933,6 +1205,19 @@ StorageCreate(
 
     Storage->ReadOnly = (StorageSetting(Parameters, "readonly") != NULL);
 
+    /*
+     * A drive that is told what to do in whole commands, holds a medium of a
+     * different sector size, and is never written to. It also answers on the
+     * second pair of addresses unless told otherwise, because that is where a
+     * machine of this kind has always put one.
+     */
+    if (StorageSetting(Parameters, "cdrom") != NULL)
+    {
+        Storage->Packet = TRUE;
+        Storage->ReadOnly = TRUE;
+        Storage->Removable = TRUE;
+    }
+
     Value = StorageSetting(Parameters, "heads");
     if ((Value != NULL) && (*Value != '\0'))
         Storage->ForcedHeads = strtoul(Value, NULL, 0);
@@ -1000,7 +1285,16 @@ StorageCreate(
     }
 
     Storage->SectorCount = (ULONG64)Size.QuadPart / SECTOR_SIZE;
-    Storage->Removable = (Storage->SectorCount == FLOPPY_1440_SECTORS);
+    if (Storage->Packet)
+    {
+        /* Counted in the size this medium really uses */
+        Storage->SectorCount = (ULONG64)Size.QuadPart / MEDIUM_SECTOR_SIZE;
+        Storage->Removable = TRUE;
+    }
+    else
+    {
+        Storage->Removable = (Storage->SectorCount == FLOPPY_1440_SECTORS);
+    }
     StorageDescribe(Storage);
     StorageReset(&Storage->Device);
 

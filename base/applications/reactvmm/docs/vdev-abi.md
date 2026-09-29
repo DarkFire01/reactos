@@ -163,6 +163,27 @@ Each entry of that map is six pointers: the identifier, nothing, the routine
 that makes the class object, a routine called as the library goes away, and the
 two that write the class into the registry and take it out again.
 
+## The drives
+
+The emulated storage library offers two, and each is a **controller** that owns
+whatever is attached to it rather than one device per medium:
+
+| Class                     | Identifier                               |
+|---------------------------|------------------------------------------|
+| IDE controller            | `{83f8638b-8dca-4152-9eda-2ca8b33039b4}` |
+| floppy controller         | `{8f0d2762-0b00-4e04-af4f-19010527cb93}` |
+
+The IDE one publishes `IVirtualStorage`, `IVndIoPortHandler` and
+`IVmPciConfigAccessHandler`, along with a run of interfaces for moving a machine
+while it runs: `ISnapshottableStorage`, `IVirtualDeviceMigration`,
+`ITransferableHandles`, `IDeferredPowerOnDevice`, `IVmRecoverableDevice`,
+`IVmResourcePoolConsumer`, `IVmMetricDevice`, `IOnlineCompatibilityInfo`. The
+floppy one publishes only `IVirtualStorage` and `IVndIoPortHandler`.
+
+This project has one device per medium, which is the wrong shape: a drive that
+takes whole commands and one that does not are two drives on one controller,
+not two controllers.
+
 ## How a device is given its services
 
 `Initialize` is handed the device's configuration, a reserved word, and an
