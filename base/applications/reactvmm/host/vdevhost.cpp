@@ -388,6 +388,13 @@ HRESULT VdevHost::FindService(REFIID Service, void **Object)
         return S_OK;
     }
 
+    /* Whoever is looking at the machine, which is not a device at all */
+    if (IsEqualIID(Service, IID_IMonitorDevice) &&
+        (m_Machine.Monitor() != nullptr))
+    {
+        return m_Machine.Monitor()->QueryInterface(Service, Object);
+    }
+
     if (IsEqualIID(Service, IID_IVmGuestMemoryAccess))
     {
         *Object = static_cast<IVmGuestMemoryAccess *>(&m_Memory);
@@ -530,6 +537,7 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
         &IID_IVmPicService,
         &IID_IVmDmaController,
         &IID_IVmIoApic,
+        &IID_IVideoVdev,
         &IID_IVmPitService,
         &IID_IVmPciBusService,
         &IID_IVmSuperIo,
@@ -553,6 +561,8 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
                 m_Transfers = static_cast<IVmDmaController *>(Published);
             else if (IsEqualIID(*Which, IID_IVmIoApic))
                 m_Lines = static_cast<IVmIoApic *>(Published);
+            else if (IsEqualIID(*Which, IID_IVideoVdev))
+                m_Screen = static_cast<IVideoVdev *>(Published);
         }
     }
 

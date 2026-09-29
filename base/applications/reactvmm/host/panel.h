@@ -25,7 +25,7 @@ constexpr ULONG PanelRows = 60;
  * brought up is watched rather than administered, and the question is never
  * which machine it is, it is which line just went up.
  */
-class Panel : public Display
+class Panel : public IMonitorDevice
 {
 public:
     Panel() = default;
@@ -51,8 +51,20 @@ public:
     /* Draws and reads input until the window closes */
     void Pump();
 
-    /* Called from whichever thread the display device keeps */
-    void Present(const RTVM_TEXT_PAGE &Page) override;
+    /*
+     * Told by the display device that part of what it holds stopped being what
+     * it was. Called from whichever thread that device keeps, and it fetches
+     * rather than being handed anything.
+     */
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override;
+    STDMETHODIMP_(ULONG) AddRef() override;
+    STDMETHODIMP_(ULONG) Release() override;
+
+    STDMETHODIMP OnVideoDirt(const RECT *Changed) override;
+    STDMETHODIMP OnPointerShapeChanged() override { return E_NOTIMPL; }
+    STDMETHODIMP OnPointerPositionChanged() override { return E_NOTIMPL; }
+    STDMETHODIMP OnActivationRequested() override { return S_OK; }
+    STDMETHODIMP OnDeactivationRequested() override { return S_OK; }
 
 private:
     static LRESULT CALLBACK Dispatch(HWND Window, UINT Message,
@@ -72,6 +84,7 @@ private:
     void Capture();
 
     Machine *m_Machine = nullptr;
+    volatile LONG m_Count = 1;
     bool m_CloseWhenStopped = false;
     Text<MAX_PATH> m_CapturePath;
     HWND m_Window = nullptr;

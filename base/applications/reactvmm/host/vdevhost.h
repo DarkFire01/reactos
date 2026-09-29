@@ -233,6 +233,7 @@ public:
     IVmPicService *Interrupts() const noexcept { return m_Interrupts; }
     IVmDmaController *Transfers() const noexcept { return m_Transfers; }
     IVmIoApic *Lines() const noexcept { return m_Lines; }
+    IVideoVdev *Screen() const noexcept { return m_Screen; }
     ServiceAccess &Services() noexcept { return m_Services; }
 
     /* Whatever a device asked for that the manager has, or nothing */
@@ -262,6 +263,7 @@ private:
     IVmPicService *m_Interrupts = nullptr;
     IVmDmaController *m_Transfers = nullptr;
     IVmIoApic *m_Lines = nullptr;
+    IVideoVdev *m_Screen = nullptr;
 };
 
 } /* namespace rtvm */

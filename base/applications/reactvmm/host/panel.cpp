@@ -169,8 +169,6 @@ bool Panel::Open(Machine &Subject, const char *Title)
         return false;
     }
 
-    Subject.Attach(this);
-
     ShowWindow(m_Window, SW_SHOW);
     SetTimer(m_Window, RedrawTimer, RedrawInterval, nullptr);
     return true;
@@ -178,26 +176,91 @@ bool Panel::Open(Machine &Subject, const char *Title)
 
 /* THE PAGE COMING UP *********************************************************/
 
-void Panel::Present(const RTVM_TEXT_PAGE &Page)
+STDMETHODIMP Panel::QueryInterface(REFIID Interface, void **Object)
 {
-    if ((Page.Columns == 0) || (Page.Columns > PanelColumns) ||
-        (Page.Rows == 0) || (Page.Rows > PanelRows))
+    if (Object == nullptr)
+        return E_POINTER;
+
+    if (IsEqualIID(Interface, IID_IUnknown) ||
+        IsEqualIID(Interface, IID_IMonitorDevice))
     {
-        return;
+        *Object = static_cast<IMonitorDevice *>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    *Object = nullptr;
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP_(ULONG) Panel::AddRef()
+{
+    return (ULONG)InterlockedIncrement(&m_Count);
+}
+
+STDMETHODIMP_(ULONG) Panel::Release()
+{
+    /* The window outlives everything holding one of these, so nothing is freed */
+    return (ULONG)InterlockedDecrement(&m_Count);
+}
+
+/**
+ * @brief
+ * Told that part of what the display holds is no longer what it was.
+ *
+ * @remarks
+ * What changed is not handed over. The whole page is fetched instead, because
+ * a screen of eighty by twenty five is four thousand bytes and working out
+ * which of them to copy costs more than copying all of them.
+ */
+STDMETHODIMP Panel::OnVideoDirt(const RECT *Changed)
+{
+    UNREFERENCED_PARAMETER(Changed);
+
+    IVideoVdev *Display = m_Machine->Screen();
+
+    if (Display == nullptr)
+        return E_UNEXPECTED;
+
+    VDEV_SURFACE_DATA Surface = {};
+
+    if (FAILED(Display->GetSurfaceData(&Surface)))
+        return E_FAIL;
+
+    if ((Surface.Width == 0) || (Surface.Width > PanelColumns) ||
+        (Surface.Height == 0) || (Surface.Height > PanelRows))
+    {
+        return E_INVALIDARG;
+    }
+
+    IRtvmTextSurface *Characters = nullptr;
+
+    if (FAILED(Display->QueryInterface(IID_IRtvmTextSurface,
+                                       reinterpret_cast<void **>(&Characters))))
+    {
+        /* A display that draws pixels, which this has no way of showing yet */
+        return E_NOINTERFACE;
     }
 
     EnterCriticalSection(&m_Lock);
 
-    m_Columns = Page.Columns;
-    m_Rows = Page.Rows;
-    m_CursorColumn = Page.CursorColumn;
-    m_CursorRow = Page.CursorRow;
-    m_CursorVisible = (Page.CursorVisible != FALSE);
-    m_HavePage = true;
+    m_Columns = Surface.Width;
+    m_Rows = Surface.Height;
 
-    memcpy(m_Cells, Page.Cells, Page.Columns * Page.Rows * 2);
+    const HRESULT Status = Characters->ReadCells(m_Cells,
+                                                 Surface.Width * Surface.Height * 2,
+                                                 &m_CursorColumn, &m_CursorRow);
+
+    if (SUCCEEDED(Status))
+    {
+        m_CursorVisible = true;
+        m_HavePage = true;
+    }
 
     LeaveCriticalSection(&m_Lock);
+
+    Characters->Release();
+    return Status;
 }
 
 /* DRAWING ********************************************************************/

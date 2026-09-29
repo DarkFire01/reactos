@@ -77,17 +77,6 @@ HostWriteGuestMemory(PVOID Context, ULONG64 Address, const VOID *Buffer, ULONG L
 }
 
 static RTVM_STATUS RTVMAPI
-HostPresentText(PVOID Context, const RTVM_TEXT_PAGE *Page)
-{
-    auto *Owner = static_cast<Machine *>(Context);
-
-    if ((Page == nullptr) || (Page->Cells == nullptr))
-        return RtvmBadParameter;
-
-    return Owner->PresentText(*Page) ? RtvmOk : RtvmNotSupported;
-}
-
-static RTVM_STATUS RTVMAPI
 HostRequestChannel(PVOID Context, ULONG Channel, ULONG Length,
                    PULONG Direction, PULONG64 Address, PULONG Count)
 {
@@ -160,7 +149,6 @@ DeviceHost::DeviceHost(Machine &Owner)
     m_Interface.ReadGuestMemory = HostReadGuestMemory;
     m_Interface.WriteGuestMemory = HostWriteGuestMemory;
     m_Interface.SetTimer = HostSetTimer;
-    m_Interface.PresentText = HostPresentText;
     m_Interface.RequestChannel = HostRequestChannel;
     m_Interface.ChannelFinished = HostChannelFinished;
     m_Interface.Log = HostLog;

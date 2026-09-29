@@ -232,9 +232,34 @@ int main(int argc, char **argv)
      * On the heap rather than the stack: the port table alone is half a
      * megabyte, and the default stack is not a great deal more than that.
      */
+    /*
+     * The window is declared before the machine and opened before it is built.
+     * A device asks for whoever is looking while it comes up, and holds on to
+     * it until it goes; a window that went first would be let go of after it
+     * had already gone.
+     */
+    rtvm::Owned<rtvm::Panel> Front;
+
     rtvm::Owned<rtvm::Machine> Machine(new rtvm::Machine());
 
-    if (!Machine || !Machine->Build(Config))
+    if (!Machine)
+        return 1;
+
+    if (Config.Window)
+    {
+        Front.Reset(new rtvm::Panel());
+
+        if (!Front || !Front->Open(*Machine, "ReacTVmm"))
+            return 1;
+
+        Machine->Watch(Front.Get());
+        Front->CloseWhenStopped(Config.RunSeconds != 0);
+
+        if (!Config.CapturePath.Empty())
+            Front->CaptureTo(Config.CapturePath.Get());
+    }
+
+    if (!Machine->Build(Config))
         return 1;
 
     RunningMachine = Machine.Get();
@@ -244,16 +269,6 @@ int main(int argc, char **argv)
 
     if (Config.Window)
     {
-        rtvm::Owned<rtvm::Panel> Front(new rtvm::Panel());
-
-        if (!Front || !Front->Open(*Machine, "ReacTVmm"))
-            return 1;
-
-        Front->CloseWhenStopped(Config.RunSeconds != 0);
-
-        if (!Config.CapturePath.Empty())
-            Front->CaptureTo(Config.CapturePath.Get());
-
         RunRequest Request = { Machine.Get(), Front->Window(),
                                rtvm::StopReason::Cancelled };
         HANDLE Thread = CreateThread(nullptr, 0, RunThread, &Request, 0, nullptr);
