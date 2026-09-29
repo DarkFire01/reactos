@@ -27,18 +27,18 @@
 
 #define KEYBOARD_DATA       0x0060
 #define KEYBOARD_STATUS     0x0064   /* Read */
-#define KEYBOARD_COMMAND    0x0064   /* Write */
+#define CONTROLLER_COMMAND  0x0064   /* Write */
 
 #define KEYBOARD_LINE       1
 #define MOUSE_LINE          12
 
 /* What the status register says */
-#define STATUS_OUTPUT_FULL  0x01
-#define STATUS_INPUT_FULL   0x02
-#define STATUS_SYSTEM       0x04
-#define STATUS_COMMAND      0x08
-#define STATUS_TIMEOUT      0x40
-#define STATUS_PARITY       0x80
+#define STATUS_BIT_OUTPUT_FULL   0x01
+#define STATUS_BIT_INPUT_FULL    0x02
+#define STATUS_BIT_SYSTEM        0x04
+#define STATUS_BIT_COMMAND       0x08
+#define STATUS_BIT_TIMEOUT       0x40
+#define STATUS_BIT_PARITY        0x80
 
 /* Commands the controller itself takes */
 #define COMMAND_READ_CONFIG     0x20
@@ -170,7 +170,7 @@ KeyboardPut(
     Keyboard->Write = (Keyboard->Write + 1) % QUEUE_SIZE;
     Keyboard->Count++;
 
-    Keyboard->Status |= STATUS_OUTPUT_FULL;
+    Keyboard->Status |= STATUS_BIT_OUTPUT_FULL;
     KeyboardSetLine(Keyboard);
 }
 
@@ -299,7 +299,7 @@ KeyboardReset(
      * Empty, and saying so. This is the value that matters: all ones would say
      * a key is waiting, and something polling for one would never stop.
      */
-    Keyboard->Status = STATUS_SYSTEM;
+    Keyboard->Status = STATUS_BIT_SYSTEM;
 
     /* Interrupts on for the keyboard, and the translation everything expects */
     Keyboard->Config = 0x45;
@@ -354,7 +354,7 @@ KeyboardIoRead(
         }
 
         if (Keyboard->Count == 0)
-            Keyboard->Status &= (UCHAR)~STATUS_OUTPUT_FULL;
+            Keyboard->Status &= (UCHAR)~STATUS_BIT_OUTPUT_FULL;
 
         KeyboardSetLine(Keyboard);
     }
@@ -382,7 +382,7 @@ KeyboardIoWrite(
 
     EnterCriticalSection(&Keyboard->Lock);
 
-    if (Port == KEYBOARD_COMMAND)
+    if (Port == CONTROLLER_COMMAND)
     {
         switch (Byte)
         {
@@ -521,6 +521,48 @@ KeyboardIoWrite(
     return RtvmOk;
 }
 
+/**
+ * @brief
+ * A key the operator pressed or let go of, put straight into the queue.
+ *
+ * @remarks
+ * Nothing is translated here. What arrives is already the code the wire carries,
+ * and a release is the same code with its top bit set, which is what the set
+ * itself says a release is. A prefixed key arrives as both of its bytes and
+ * goes in as both, in the order the wire sends them.
+ */
+static
+RTVM_STATUS
+RTVMAPI
+KeyboardInput(
+    _In_ PRTVM_DEVICE Device,
+    _In_ RTVM_INPUT_KIND Kind,
+    _In_ ULONG Value)
+{
+    PKEYBOARD_DEVICE Keyboard = (PKEYBOARD_DEVICE)Device->DeviceContext;
+    UCHAR Prefix = (UCHAR)(Value >> 8);
+    UCHAR Code = (UCHAR)(Value & 0xFF);
+
+    if ((Kind != RtvmInputKeyDown) && (Kind != RtvmInputKeyUp))
+        return RtvmNotSupported;
+
+    if (Code == 0)
+        return RtvmBadParameter;
+
+    if (Kind == RtvmInputKeyUp)
+        Code |= 0x80;
+
+    EnterCriticalSection(&Keyboard->Lock);
+
+    if (Prefix != 0)
+        KeyboardPut(Keyboard, Prefix);
+
+    KeyboardPut(Keyboard, Code);
+
+    LeaveCriticalSection(&Keyboard->Lock);
+    return RtvmOk;
+}
+
 static const RTVM_DEVICE_VTABLE KeyboardVtable =
 {
     sizeof(KeyboardVtable),
@@ -532,7 +574,8 @@ static const RTVM_DEVICE_VTABLE KeyboardVtable =
     KeyboardIoWrite,
     NULL,
     NULL,
-    NULL
+    NULL,
+    KeyboardInput
 };
 
 /* MAKING ONE *****************************************************************/
