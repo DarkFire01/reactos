@@ -371,7 +371,8 @@ HalpSendEOI(VOID)
 VOID
 NTAPI
 ApicInitializeLocalApic(
-    _In_ ULONG Cpu)
+    _In_ ULONG Cpu,
+    _In_ BOOLEAN UseX2Apic)
 {
     APIC_BASE_ADDRESS_REGISTER BaseRegister;
     APIC_SPURIOUS_INERRUPT_REGISTER SpIntRegister;
@@ -386,12 +387,7 @@ ApicInitializeLocalApic(
     BaseRegister.BootStrapCPUCore = (Cpu == 0);
     __writemsr(MSR_APIC_BASE, BaseRegister.LongLong);
 
-    /*
-     * Take the newer mode wherever the processor has it. Every processor has
-     * to be in the same mode, so the first one decides and the rest follow it
-     * rather than asking again.
-     */
-    if ((Cpu == 0) ? X2ApicIsSupported() : HalpX2ApicEnabled)
+    if (UseX2Apic)
         X2ApicEnable();
 
     /* Set spurious vector and SoftwareEnable to 1 */
@@ -484,6 +480,9 @@ ApicInitializeLocalApic(
     KeRegisterInterruptHandler(APIC_ERROR_VECTOR, ApicErrorService);
     LvtEntry.Vector = APIC_ERROR_VECTOR;
     LvtEntry.MessageType = APIC_MT_Fixed;
+
+    /* Reserved in this LVT, and a set reserved bit faults in x2APIC mode */
+    LvtEntry.TriggerMode = APIC_TGM_Edge;
     ApicWrite(APIC_ERRLVTR, LvtEntry.Long);
 
     /* Set the IRQL from the PCR */

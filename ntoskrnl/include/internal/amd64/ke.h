@@ -86,10 +86,16 @@ extern "C" {
 #define AMD64_TSS 9
 
 #define APIC_EOI_REGISTER 0xFFFFFFFFFFFE00B0ULL
+#define APIC_BASE_MSR 0x0000001B
+#define APIC_BASE_X2APIC_MODE 0x00000400
+#define X2APIC_EOI_MSR 0x0000080B
 
 #ifndef __ASM__
 
 extern SIZE_T KeXStateLength;
+
+/* The local APIC mode the HAL chose, so interrupt exits can end the interrupt */
+extern BOOLEAN KiX2ApicEnabled;
 
 #include "intrin_i.h"
 
@@ -372,7 +378,10 @@ VOID
 KiSendEOI(VOID)
 {
     /* Write 0 to the apic EOI register */
-    *((volatile ULONG*)APIC_EOI_REGISTER) = 0;
+    if (KiX2ApicEnabled)
+        __writemsr(X2APIC_EOI_MSR, 0);
+    else
+        *((volatile ULONG*)APIC_EOI_REGISTER) = 0;
 }
 
 FORCEINLINE

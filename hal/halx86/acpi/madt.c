@@ -26,6 +26,9 @@ PROCESSOR_IDENTITY HalpProcessorIdentity[MAXIMUM_PROCESSORS];
 
 extern ULONG HalpPicVectorRedirect[HALP_ISA_IRQ_COUNT];
 
+/* Defined in x2apic/x2apic.c */
+extern BOOLEAN HalpX2ApicFirmwareAllowed;
+
 /* The table is parsed before debug output works, so problems are reported later */
 static ULONG HalpMadtIgnoredEntries;
 static BOOLEAN HalpMadtTruncated;
@@ -296,6 +299,15 @@ HalpParseApicTables(
     _In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     ACPI_TABLE_MADT *MadtTable;
+    ACPI_TABLE_DMAR *DmarTable;
+
+    /* The firmware hands x2APIC over only with remapping reported and no opt-out */
+    DmarTable = HalAcpiGetTable(LoaderBlock, 'RAMD');
+    if (DmarTable && (DmarTable->Header.Length > FIELD_OFFSET(ACPI_TABLE_DMAR, Flags)))
+    {
+        HalpX2ApicFirmwareAllowed = (DmarTable->Flags & ACPI_DMAR_INTR_REMAP) &&
+                                    !(DmarTable->Flags & ACPI_DMAR_X2APIC_OPT_OUT);
+    }
 
     MadtTable = HalAcpiGetTable(LoaderBlock, APIC_SIGNATURE);
     if (MadtTable && (MadtTable->Header.Length >= sizeof(*MadtTable)))

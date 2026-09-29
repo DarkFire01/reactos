@@ -27,6 +27,7 @@ KSPIN_LOCK KiFreezeExecutionLock;
 
 
 KIPCR KiInitialPcr;
+BOOLEAN KiX2ApicEnabled;
 
 /* Boot and double-fault/NMI/DPC stack */
 UCHAR DECLSPEC_ALIGN(16) KiP0BootStackData[KERNEL_STACK_SIZE] = {0};
@@ -555,6 +556,10 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
+
+    /* The HAL puts every processor in the mode it picked for the first one */
+    if (Cpu == 0)
+        KiX2ApicEnabled = (__readmsr(APIC_BASE_MSR) & APIC_BASE_X2APIC_MODE) != 0;
 
     /* Set processor as active */
     KeActiveProcessors |= 1ULL << Cpu;

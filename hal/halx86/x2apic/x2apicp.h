@@ -12,6 +12,7 @@
 #define X2APIC_MSR_ICR 0x00000830
 #define X2APIC_MSR_SELF_IPI 0x0000083F
 #define CPUID_X2APIC_FEATURE_BIT 21
+#define CPUID_HYPERVISOR_PRESENT_BIT 31
 
 #include <pshpack1.h>
 typedef union _X2APIC_BASE_ADDRESS_REGISTER
@@ -95,6 +96,11 @@ X2ApicWriteIcr(
 BOOLEAN
 NTAPI
 X2ApicIsSupported(VOID);
+
+BOOLEAN
+NTAPI
+X2ApicCheckPolicy(
+    _In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock);
 
 VOID
 NTAPI

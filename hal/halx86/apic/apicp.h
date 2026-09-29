@@ -144,9 +144,20 @@ BOOLEAN
 NTAPI
 X2ApicIsSupported(VOID);
 
+BOOLEAN
+NTAPI
+X2ApicCheckPolicy(
+    _In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock);
+
 VOID
 NTAPI
 X2ApicEnable(VOID);
+
+VOID
+NTAPI
+ApicInitializeLocalApic(
+    _In_ ULONG Cpu,
+    _In_ BOOLEAN UseX2Apic);
 
 /* The following definitions are based on AMD documentation.
    They differ slightly in Intel documentation. */
