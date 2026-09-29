@@ -40,7 +40,7 @@ public:
     STDMETHODIMP EnableSpeakerTimer(BOOL Enabled) override;
     STDMETHODIMP GetTimerOutputSignal(ULONG Counter, BOOL *High) override;
 
-    STDMETHODIMP Unknown3() override { return E_NOTIMPL; }
+    STDMETHODIMP NotifyUnregistered() override { return S_OK; }
     STDMETHODIMP NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value) override;
     STDMETHODIMP NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value) override;
 

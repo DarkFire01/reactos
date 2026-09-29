@@ -136,8 +136,8 @@ DECLARE_INTERFACE_(IVndIoPortHandler, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
-    /* Not yet understood, and here so that the two below keep their slots */
-    STDMETHOD(Unknown3)(THIS) PURE;
+    /* The range this was reserved for has been given up */
+    STDMETHOD(NotifyUnregistered)(THIS) PURE;
 
     STDMETHOD(NotifyIoPortRead)(THIS_ _In_ USHORT Port,
                                 _In_ ULONG Width,
@@ -145,6 +145,49 @@ DECLARE_INTERFACE_(IVndIoPortHandler, IUnknown)
     STDMETHOD(NotifyIoPortWrite)(THIS_ _In_ USHORT Port,
                                  _In_ ULONG Width,
                                  _In_ ULONG Value) PURE;
+};
+
+DEFINE_GUID(IID_IVndMmioHandler,
+            0xdcf3c21f, 0xa132, 0x4220, 0xa2, 0x15, 0x48, 0x3e, 0xcb, 0x01, 0xc0, 0x0a);
+
+/*
+ * The same for a window of guest memory. A device that owns one is not handed
+ * the memory: the window is left out of what the guest has, and every access
+ * to it arrives here instead.
+ */
+#undef INTERFACE
+#define INTERFACE IVndMmioHandler
+DECLARE_INTERFACE_(IVndMmioHandler, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(NotifyUnregistered)(THIS) PURE;
+
+    STDMETHOD(NotifyMmioRead)(THIS_ _In_ ULONG64 Address,
+                              _In_ ULONG Length,
+                              _Out_writes_bytes_(Length) PVOID Buffer) PURE;
+    STDMETHOD(NotifyMmioWrite)(THIS_ _In_ ULONG64 Address,
+                               _In_ ULONG Length,
+                               _In_reads_bytes_(Length) const VOID *Buffer) PURE;
+};
+
+DEFINE_GUID(IID_IVmTimerHandler,
+            0xfe96de2e, 0xbb67, 0x4c7e, 0x84, 0x5f, 0xf3, 0xe3, 0x06, 0x9d, 0xfc, 0xab);
+
+/* A device that asked to be woken at a time, being woken */
+#undef INTERFACE
+#define INTERFACE IVmTimerHandler
+DECLARE_INTERFACE_(IVmTimerHandler, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(OnTimerExpired)(THIS) PURE;
 };
 
 /* WHAT ONE DEVICE OFFERS ANOTHER *********************************************/
@@ -281,15 +324,15 @@ DECLARE_INTERFACE_(IVmAmd64EmulationServices, IUnknown)
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
     /* A window of guest memory, counted in pages rather than bytes */
-    STDMETHOD(RegisterGpaRange)(THIS_ _In_ ULONG64 FirstPage,
-                                _In_ ULONG64 PageCount,
-                                _In_ PVOID Handler,
-                                _In_ BOOL Enabled,
-                                _Outptr_ PVOID *Registration) PURE;
+    STDMETHOD(RegisterMmioHandler)(THIS_ _In_ ULONG64 FirstPage,
+                                   _In_ ULONG64 PageCount,
+                                   _In_ IVndMmioHandler *Handler,
+                                   _In_ BOOL Enabled,
+                                   _Outptr_ PVOID *Registration) PURE;
 
-    /* Not yet understood, and here so that the one below keeps its slot */
-    STDMETHOD(Unknown4)(THIS) PURE;
-    STDMETHOD(Unknown5)(THIS) PURE;
+    /* The mailbox, and the cycle that says an interrupt has been finished */
+    STDMETHOD(RegisterMbHandler)(THIS) PURE;
+    STDMETHOD(RegisterApicEoiHandler)(THIS) PURE;
 
     /*
      * A run of ports, from the first to the last inclusive. Widths is a mask of
@@ -302,6 +345,10 @@ DECLARE_INTERFACE_(IVmAmd64EmulationServices, IUnknown)
                                      _In_ IVndIoPortHandler *Handler,
                                      _In_ ULONG Flags,
                                      _Outptr_ PVOID *Registration) PURE;
+
+    /* A machine specific register, and a fault, taken by a device */
+    STDMETHOD(RegisterMsrHandler)(THIS) PURE;
+    STDMETHOD(RegisterExceptionHandler)(THIS) PURE;
 };
 
 /* Every access size there is, which is what a device asks for */
@@ -324,30 +371,41 @@ DECLARE_INTERFACE_(IVmProcessorServices, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
-    /* Not yet understood, and here so that the one below keeps its slot */
-    STDMETHOD(Unknown3)(THIS) PURE;
-    STDMETHOD(Unknown4)(THIS) PURE;
-    STDMETHOD(Unknown5)(THIS) PURE;
+    STDMETHOD(GetVirtualProcessorCount)(THIS_ _Out_ PULONG Count) PURE;
+    STDMETHOD(SetVirtualProcessorState)(THIS) PURE;
+    STDMETHOD(GetVirtualProcessorState)(THIS) PURE;
 
     /*
-     * What the processor should take when it next will. Kind is seven for a
-     * line arriving through the interrupt controller, and a vector of all ones
-     * means there is nothing owed any more.
+     * A vector the processors should take. Delivery is how it arrives, and a
+     * vector of all ones means there is nothing owed any more.
      */
-    STDMETHOD(SetPendingInterrupt)(THIS_ _In_ ULONG64 Kind,
-                                   _In_ ULONG64 Reserved,
-                                   _In_ ULONG Vector) PURE;
+    STDMETHOD(AssertVirtualProcessorInterrupt)(THIS_ _In_ ULONG64 Delivery,
+                                               _In_ ULONG64 Reserved,
+                                               _In_ ULONG Vector) PURE;
 
     /*
-     * Whether the vector last offered has been taken. Succeeding is what tells
-     * the controller to put it in service, which is the handshake a real one
-     * gets from the cycle that acknowledges an interrupt.
+     * Clears what was asserted, and succeeds only if it had been taken. That
+     * is the handshake a real controller gets from the cycle that acknowledges
+     * an interrupt, and what tells it to put the vector in service.
      */
-    STDMETHOD(TakePendingInterrupt)(THIS) PURE;
+    STDMETHOD(ClearVirtualProcessorInterrupt)(THIS) PURE;
+
+    STDMETHOD(ConfigureInterceptThrottlingExclusion)(THIS) PURE;
+    STDMETHOD(StopAllVirtualProcessors)(THIS) PURE;
+    STDMETHOD(StartAllVirtualProcessors)(THIS) PURE;
 };
 
-/* What the interrupt controller says it is when it offers a vector */
-#define VDEV_INTERRUPT_FROM_PIC 7
+/*
+ * How an interrupt is delivered, as the local controller in a processor numbers
+ * it. The pair of chips arrives as the outside one, which is what makes the
+ * processor ask for a vector rather than be given one.
+ */
+#define VDEV_DELIVERY_FIXED     0
+#define VDEV_DELIVERY_LOWEST    1
+#define VDEV_DELIVERY_SMI       2
+#define VDEV_DELIVERY_NMI       4
+#define VDEV_DELIVERY_INIT      5
+#define VDEV_DELIVERY_EXTERNAL  7
 
 /* That there is nothing owed */
 #define VDEV_NO_VECTOR ((ULONG)-1)

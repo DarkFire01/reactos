@@ -117,10 +117,11 @@ STDMETHODIMP EmulationServices::RegisterIoPortHandler(USHORT FirstPort,
     return S_OK;
 }
 
-STDMETHODIMP EmulationServices::RegisterGpaRange(ULONG64 FirstPage,
-                                                 ULONG64 PageCount,
-                                                 void *Handler, BOOL Enabled,
-                                                 void **Registration)
+STDMETHODIMP EmulationServices::RegisterMmioHandler(ULONG64 FirstPage,
+                                                    ULONG64 PageCount,
+                                                    IVndMmioHandler *Handler,
+                                                    BOOL Enabled,
+                                                    void **Registration)
 {
     UNREFERENCED_PARAMETER(Enabled);
 
@@ -156,20 +157,30 @@ STDMETHODIMP ProcessorServices::QueryInterface(REFIID Interface, void **Object)
     return E_NOINTERFACE;
 }
 
-STDMETHODIMP ProcessorServices::SetPendingInterrupt(ULONG64 Kind,
-                                                    ULONG64 Reserved,
-                                                    ULONG Vector)
+STDMETHODIMP ProcessorServices::GetVirtualProcessorCount(ULONG *Count)
+{
+    if (Count == nullptr)
+        return E_POINTER;
+
+    *Count = m_Owner.Owner().ProcessorCount();
+    return S_OK;
+}
+
+STDMETHODIMP ProcessorServices::AssertVirtualProcessorInterrupt(ULONG64 Delivery,
+                                                                ULONG64 Reserved,
+                                                                ULONG Vector)
 {
     UNREFERENCED_PARAMETER(Reserved);
 
-    if (Kind != VDEV_INTERRUPT_FROM_PIC)
+    /* The only way anything here delivers, and the only one the chips use */
+    if (Delivery != VDEV_DELIVERY_EXTERNAL)
         return E_NOTIMPL;
 
     m_Owner.Owner().OfferVector(Vector);
     return S_OK;
 }
 
-STDMETHODIMP ProcessorServices::TakePendingInterrupt()
+STDMETHODIMP ProcessorServices::ClearVirtualProcessorInterrupt()
 {
     /*
      * Failing is what says it has not been taken. A controller tests this for

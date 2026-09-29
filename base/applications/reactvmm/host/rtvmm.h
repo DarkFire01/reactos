@@ -274,6 +274,8 @@ public:
     /* The transfer controller, once one has come up, or nothing */
     IVmDmaController *Channels() const;
 
+    ULONG ProcessorCount() const noexcept { return m_ProcessorCount; }
+
     /* Where a port access goes, whichever exit brought it */
     void WritePort(USHORT Port, ULONG Width, ULONG Value);
     ULONG ReadPort(USHORT Port, ULONG Width);
