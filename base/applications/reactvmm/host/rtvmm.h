@@ -115,62 +115,6 @@ private:
 };
 
 /*
- * The interrupt controller, as the pair of chips a PC has. It is the manager's
- * own rather than a loadable module: firmware cannot come up without it, and a
- * machine that cannot deliver an interrupt is not worth starting.
- */
-class Pic
-{
-public:
-    void Reset();
-
-    /* Whether this is one of the four addresses the pair answers at */
-    static constexpr bool Owns(USHORT Port) noexcept
-    {
-        return (Port == 0x20) || (Port == 0x21) || (Port == 0xA0) || (Port == 0xA1);
-    }
-
-    void SetLine(ULONG Line, bool Asserted);
-
-    /* The vector to deliver, or -1 when nothing is pending */
-    int Acknowledge();
-    bool Pending() const;
-
-    ULONG ReadPort(USHORT Port);
-    void WritePort(USHORT Port, ULONG Value);
-
-    /* Reads out what each chip is holding, for when nothing is getting through */
-    void State(ULONG Which, UCHAR &Request, UCHAR &Level,
-               UCHAR &Service, UCHAR &Mask) const
-    {
-        Request = m_Chip[Which].Request;
-        Level = m_Chip[Which].Level;
-        Service = m_Chip[Which].Service;
-        Mask = m_Chip[Which].Mask;
-    }
-
-private:
-    struct Chip
-    {
-        /* What is owed, latched, and what the wire is doing right now */
-        UCHAR Request;
-        UCHAR Level;
-        UCHAR Service;
-        UCHAR Mask;
-        UCHAR Base;
-        UCHAR InitStep;
-        bool Cascade;
-        bool AutoEnd;
-        bool ReadService;
-    };
-
-    int HighestPending(const Chip &Chip) const;
-    void UpdateCascade();
-
-    Chip m_Chip[2] = {};
-};
-
-/*
  * The pair of transfer controllers, for a device that moves data without the
  * processor. It is the manager's own for the same reason the interrupt
  * controller is: more than one device is wired to it.
@@ -349,7 +293,6 @@ public:
 
     Memory &MemoryBlock() noexcept { return m_Memory; }
     Bus &SystemBus() noexcept { return m_Bus; }
-    Pic &Controller() noexcept { return m_Pic; }
     Dma &Transfers() noexcept { return m_Dma; }
 
     /* Reached from the device interface, to find what stands in for a device */
@@ -383,8 +326,6 @@ public:
     void WritePort(USHORT Port, ULONG Width, ULONG Value);
     ULONG ReadPort(USHORT Port, ULONG Width);
 
-    /* Whether one of the manager's own chips still answers for an address */
-    bool BuiltInAnswers(USHORT Port) const;
 
 private:
     bool BindPlatform();
@@ -410,7 +351,6 @@ private:
 
     Memory m_Memory;
     Bus m_Bus;
-    Pic m_Pic;
     Dma m_Dma;
     Owned<DeviceHost> m_Devices;
     Owned<VdevHost> m_Vdevs;
