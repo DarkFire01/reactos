@@ -15,7 +15,76 @@
 
 KSPIN_LOCK KiIpiSpinLock;
 
+/*
+ * How long a processor waits on the rest of them before it says so. Long
+ * enough that one which is merely busy still gets there, and short enough that
+ * a request nobody ever answered does not take the machine down with it in
+ * silence.
+ */
+#define KI_IPI_WAIT_SPINS 0x20000000
+
 /* FUNCTIONS *****************************************************************/
+
+/*!
+ * \brief Waits until every processor of the target set has cleared its bit.
+ *
+ * \param Prcb - The block whose target set the others are clearing.
+ * \param Reason - What the wait is for, for the report.
+ *
+ * \remarks A processor that never answers is not recoverable from here: the
+ *          caller is holding the machine still and cannot go on without it. So
+ *          this keeps waiting, and only says who it is waiting on - which is
+ *          the one thing a hang like that otherwise never tells anyone.
+ */
+static
+VOID
+KiIpiWaitForTargets(
+    _In_ PKPRCB Prcb,
+    _In_ PCSTR Reason)
+{
+    KAFFINITY Remaining;
+    PKPRCB TargetPrcb;
+    ULONG64 Spins = 0;
+    ULONG Index;
+
+    while (Prcb->TargetSet != 0)
+    {
+        YieldProcessor();
+        KeMemoryBarrierWithoutFence();
+
+        if (++Spins % KI_IPI_WAIT_SPINS != 0)
+            continue;
+
+        DPRINT1("Ki: processor %u is still waiting on %I64x to %s, active %I64x\n",
+                Prcb->Number, Prcb->TargetSet, Reason, KeActiveProcessors);
+
+        /*
+         * Which half of the handshake is missing. A processor that still has
+         * this one announced in its own summary never ran the service routine,
+         * so the interrupt never got to it. One that has taken the packet and
+         * not cleared its bit is in the routine and not coming back.
+         */
+        Remaining = Prcb->TargetSet;
+        while (BitScanForwardAffinity(&Index, Remaining))
+        {
+            Remaining &= ~AFFINITY_MASK(Index);
+
+            TargetPrcb = KiProcessorBlock[Index];
+            if (TargetPrcb == NULL)
+            {
+                DPRINT1("Ki:   processor %lu has no block\n", Index);
+                continue;
+            }
+
+            DPRINT1("Ki:   processor %lu senders %I64x packet %I64x irql %u halted %u\n",
+                    Index,
+                    TargetPrcb->SenderSummary,
+                    TargetPrcb->RequestMailbox[Prcb->Number].RequestSummary,
+                    TargetPrcb->CurrentThread ? TargetPrcb->CurrentThread->WaitIrql : 0xFF,
+                    TargetPrcb->IdleHalt);
+        }
+    }
+}
 
 static PKIPI_BROADCAST_WORKER KiIpiBroadcastWorkerTable[] =
 {
@@ -116,6 +185,15 @@ KiIpiSendRequestPacket(
 
         /* Set up the request packet in the request mailbox */
         TargetPrcb->RequestMailbox[SenderIndex].RequestPacket = *RequestPacket;
+
+        /*
+         * This form carries a routine of four arguments, which is not one of
+         * the two KiIpiInterruptHandler serves. Nothing asks for it, and the
+         * summary is left at a value the handler will not act on rather than
+         * one it would act on wrongly: a target that answered this with the
+         * one argument form would call the routine with three registers of
+         * whatever happened to be in them.
+         */
         TargetPrcb->RequestMailbox[SenderIndex].RequestSummary = 1;
 
         /* Set the sender summary bit */
@@ -137,10 +215,7 @@ KiIpiSendRequestPacket(
     }
 
     /* Wait for acknowledgement */
-    while (CurrentPrcb->TargetSet != 0)
-    {
-        KeMemoryBarrier();
-    }
+    KiIpiWaitForTargets(CurrentPrcb, "take a request packet");
 
     /* Lower to IRQL */
     KeReleaseSpinLockFromDpcLevel(&KiIpiSpinLock);
@@ -337,11 +412,7 @@ KiIpiSendSynchRequest(
     Function(Argument);
 
     /* IPI_LEVEL is above SYNCH_LEVEL, so requests aimed at us still get served */
-    while (Prcb->TargetSet != 0)
-    {
-        YieldProcessor();
-        KeMemoryBarrierWithoutFence();
-    }
+    KiIpiWaitForTargets(Prcb, "run a synchronous request");
 }
 
 ULONG_PTR
@@ -374,11 +445,7 @@ KeIpiGenericCall(
         KiIpiSendPackets(TargetSet, IPI_PACKET_READY, BroadcastFunction, Argument);
 
         /* Nothing may still be running elsewhere once the routine starts */
-        while (Prcb->TargetSet != 0)
-        {
-            YieldProcessor();
-            KeMemoryBarrierWithoutFence();
-        }
+        KiIpiWaitForTargets(Prcb, "park for a generic call");
     }
 
     /* Everybody is parked, so go up and run the routine */
@@ -396,11 +463,7 @@ KeIpiGenericCall(
     if (TargetSet != 0)
     {
         /* The routine has to have finished everywhere before we return */
-        while (Prcb->TargetSet != 0)
-        {
-            YieldProcessor();
-            KeMemoryBarrierWithoutFence();
-        }
+        KiIpiWaitForTargets(Prcb, "finish a generic call");
     }
 
     KeLowerIrql(DpcIrql);
