@@ -70,7 +70,8 @@ bool ParseCommandLine(int argc, char **argv, Configuration &Config)
         const bool NeedsValue = (strcmp(Argument, "--firmware") == 0) ||
                                 (strcmp(Argument, "--memory") == 0) ||
                                 (strcmp(Argument, "--processors") == 0) ||
-                                (strcmp(Argument, "--device") == 0);
+                                (strcmp(Argument, "--device") == 0) ||
+                                (strcmp(Argument, "--seconds") == 0);
 
         if (NeedsValue && (Index + 1 >= argc))
         {
@@ -124,6 +125,10 @@ bool ParseCommandLine(int argc, char **argv, Configuration &Config)
                 printf("that is more hardware than this can build\n");
                 return false;
             }
+        }
+        else if (strcmp(Argument, "--seconds") == 0)
+        {
+            Config.RunSeconds = strtoul(argv[++Index], nullptr, 0);
         }
         else if (strcmp(Argument, "--quiet") == 0)
         {

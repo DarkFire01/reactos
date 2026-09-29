@@ -137,10 +137,22 @@ public:
     ULONG ReadPort(USHORT Port);
     void WritePort(USHORT Port, ULONG Value);
 
+    /* Reads out what each chip is holding, for when nothing is getting through */
+    void State(ULONG Which, UCHAR &Request, UCHAR &Level,
+               UCHAR &Service, UCHAR &Mask) const
+    {
+        Request = m_Chip[Which].Request;
+        Level = m_Chip[Which].Level;
+        Service = m_Chip[Which].Service;
+        Mask = m_Chip[Which].Mask;
+    }
+
 private:
     struct Chip
     {
+        /* What is owed, latched, and what the wire is doing right now */
         UCHAR Request;
+        UCHAR Level;
         UCHAR Service;
         UCHAR Mask;
         UCHAR Base;
@@ -151,6 +163,7 @@ private:
     };
 
     int HighestPending(const Chip &Chip) const;
+    void UpdateCascade();
 
     Chip m_Chip[2] = {};
 };
@@ -202,6 +215,9 @@ struct Configuration
     Text<MAX_PATH> FirmwarePath;
     Array<DeviceRequest, MaximumRequests> Requests;
     RTVM_LOG_LEVEL LogLevel = RtvmLogInfo;
+
+    /* How long to run for, or zero to run until something stops it */
+    ULONG RunSeconds = 0;
 };
 
 /* Why the machine stopped */
@@ -223,7 +239,7 @@ enum class StopReason
 class Machine
 {
 public:
-    Machine() = default;
+    Machine();
     ~Machine();
 
     Machine(const Machine &) = delete;
@@ -252,6 +268,15 @@ private:
     StopReason RunProcessor(ULONG Index);
 
     void DeliverInterrupt(ULONG Index);
+
+    /* Whether the controller has anything for a processor that will take it */
+    bool Pending();
+
+    /* Where a processor is, for when it has stopped getting anywhere */
+    void ReportProcessor(ULONG Index);
+
+    /* Ask to be told the moment the guest would accept an interrupt */
+    void RequestInterruptWindow(ULONG Index, bool Wanted);
     void StringPort(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit);
     void StepOver(ULONG Index, ULONG64 Rip, ULONG Length);
 
@@ -264,8 +289,22 @@ private:
     ULONG m_ProcessorCount = 1;
     volatile LONG m_Stopping = 0;
 
-    /* Set while a line is up and nothing has taken the vector yet */
-    volatile LONG m_InterruptPending = 0;
+    /*
+     * The controller is reached from the processor's thread and from whichever
+     * thread a device keeps time on, so it is held while it is touched.
+     */
+    CRITICAL_SECTION m_PicLock = {};
+
+    /* When to stop of its own accord, or zero to keep going */
+    ULONG m_Deadline = 0;
+
+    /* What the hardware did, reported when the machine stops */
+    ULONG m_Delivered = 0;
+    ULONG m_LineCount[16] = {};
+    ULONG m_Refused = 0;
+
+    /* Whether the processor has been asked to stop when it can take one */
+    bool m_WindowWanted = false;
 };
 
 /* Reads the command line into a configuration. False means it said why */
