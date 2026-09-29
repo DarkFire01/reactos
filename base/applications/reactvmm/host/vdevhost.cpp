@@ -241,6 +241,55 @@ STDMETHODIMP ProcessorServices::ClearVirtualProcessorInterrupt()
     return m_Owner.Owner().VectorWasTaken() ? S_OK : E_PENDING;
 }
 
+/* THE GUEST'S MEMORY, AS A DEVICE SEES IT ************************************/
+
+STDMETHODIMP GuestMemoryAccess::QueryInterface(REFIID Interface, void **Object)
+{
+    if (Object == nullptr)
+        return E_POINTER;
+
+    if (IsEqualIID(Interface, IID_IUnknown) ||
+        IsEqualIID(Interface, IID_IVmGuestMemoryAccess))
+    {
+        *Object = static_cast<IVmGuestMemoryAccess *>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    *Object = nullptr;
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP GuestMemoryAccess::ReadRamBytes(ULONG64 Address, void *Buffer,
+                                             ULONG Length)
+{
+    if (Buffer == nullptr)
+        return E_POINTER;
+
+    return m_Owner.Owner().ReadGuest(Address, Buffer, Length) ? S_OK : E_BOUNDS;
+}
+
+STDMETHODIMP GuestMemoryAccess::WriteRamBytes(ULONG64 Address,
+                                              const void *Buffer, ULONG Length)
+{
+    if (Buffer == nullptr)
+        return E_POINTER;
+
+    return m_Owner.Owner().WriteGuest(Address, Buffer, Length) ? S_OK : E_BOUNDS;
+}
+
+STDMETHODIMP GuestMemoryAccess::TranslateGvaToGpa(ULONG64 Address,
+                                                  ULONG64 *Physical)
+{
+    if (Physical == nullptr)
+        return E_POINTER;
+
+    WHV_TRANSLATE_GVA_RESULT_CODE Result = WHvTranslateGvaResultSuccess;
+
+    /* The first processor's, because nothing here has asked about another */
+    return m_Owner.Owner().Translate(0, Address, 0, &Result, Physical);
+}
+
 /* HOW A DEVICE REACHES EVERYTHING ELSE ***************************************/
 
 STDMETHODIMP ServiceAccess::QueryInterface(REFIID Interface, void **Object)
@@ -268,7 +317,8 @@ STDMETHODIMP ServiceAccess::GetService(REFIID Service, void **Object)
 /* THE HOST *******************************************************************/
 
 VdevHost::VdevHost(Machine &Owner)
-    : m_Machine(Owner), m_Emulation(*this), m_Processors(*this), m_Services(*this)
+    : m_Machine(Owner), m_Emulation(*this), m_Processors(*this),
+      m_Memory(*this), m_Services(*this)
 {
 }
 
@@ -335,6 +385,13 @@ HRESULT VdevHost::FindService(REFIID Service, void **Object)
     {
         *Object = static_cast<IVmProcessorServices *>(&m_Processors);
         m_Processors.AddRef();
+        return S_OK;
+    }
+
+    if (IsEqualIID(Service, IID_IVmGuestMemoryAccess))
+    {
+        *Object = static_cast<IVmGuestMemoryAccess *>(&m_Memory);
+        m_Memory.AddRef();
         return S_OK;
     }
 

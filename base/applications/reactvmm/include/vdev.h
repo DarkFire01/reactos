@@ -450,6 +450,66 @@ DECLARE_INTERFACE_(IVmIoApic, IUnknown)
 
 /* Where the redirection table answers unless the guest moves it */
 #define VDEV_IOAPIC_DEFAULT_BASE 0xFEC00000ull
+DEFINE_GUID(IID_IVmGuestMemoryAccess,
+            0x2461c824, 0x4e2a, 0x4848, 0xbb, 0x65, 0x57, 0x08, 0xb2, 0x7f, 0x06, 0xd9);
+
+/*
+ * The guest's memory, as a device that has to reach into it sees it. A device
+ * that moves whole sectors or paints whole screens goes through here rather
+ * than faulting on every byte.
+ *
+ * Most of what is here is for building the memory a guest has rather than for
+ * reading it, and only a manager that lets its devices do that answers them.
+ */
+#undef INTERFACE
+#define INTERFACE IVmGuestMemoryAccess
+DECLARE_INTERFACE_(IVmGuestMemoryAccess, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /* Making memory, and the windows onto it */
+    STDMETHOD(CreateDeviceMemoryBlock)(THIS) PURE;
+    STDMETHOD(CreateRamGpaRange)(THIS) PURE;
+    STDMETHOD(CreateRamApertureFromByteRange)(THIS) PURE;
+    STDMETHOD(CreateSectionBackedGpaRange)(THIS) PURE;
+    STDMETHOD(CreateDaxFileBackedGpaRange)(THIS) PURE;
+    STDMETHOD(RegisterForVtl2Access)(THIS) PURE;
+
+    /* Reading and writing it, which is what an ordinary device wants */
+    STDMETHOD(ReadRamBytes)(THIS_ _In_ ULONG64 Address,
+                            _Out_writes_bytes_(Length) PVOID Buffer,
+                            _In_ ULONG Length) PURE;
+    STDMETHOD(WriteRamBytes)(THIS_ _In_ ULONG64 Address,
+                             _In_reads_bytes_(Length) const VOID *Buffer,
+                             _In_ ULONG Length) PURE;
+    STDMETHOD(ReadRamBytesEx)(THIS) PURE;
+    STDMETHOD(WriteRamBytesEx)(THIS) PURE;
+
+    STDMETHOD(CreateNotificationWithHandler)(THIS) PURE;
+    STDMETHOD(GetHclErrorPageLocations)(THIS) PURE;
+
+    STDMETHOD(TranslateGvaToGpa)(THIS_ _In_ ULONG64 Address,
+                                 _Out_ PULONG64 Physical) PURE;
+
+    STDMETHOD(CreateMemoryBlockPageAperture)(THIS) PURE;
+    STDMETHOD(DestroyAperture)(THIS) PURE;
+    STDMETHOD(RegisterForEmulationOnMemoryWrite)(THIS) PURE;
+    STDMETHOD(UnregisterEmulationOnMemoryWrite)(THIS) PURE;
+};
+
+/* Named, and waiting for the devices that publish them */
+DEFINE_GUID(IID_IVmBios,
+            0x9be0b79f, 0x68df, 0x4c59, 0x9d, 0x88, 0x4b, 0xfc, 0x1b, 0xf7, 0xa7, 0x3d);
+DEFINE_GUID(IID_IMonitorDevice,
+            0x0cf78153, 0xff01, 0x4af8, 0x8e, 0xe0, 0x1b, 0x3b, 0x44, 0x54, 0xfc, 0x11);
+DEFINE_GUID(IID_IVideoVdev,
+            0x1401754a, 0xf009, 0x4b06, 0xb8, 0xf4, 0xef, 0x08, 0xeb, 0x57, 0x2d, 0x98);
+DEFINE_GUID(IID_IProxiedPciVgaDevice,
+            0xfcb3759f, 0xd139, 0x46be, 0x85, 0x00, 0x5c, 0x50, 0xa6, 0xfb, 0xff, 0x9b);
+
 DEFINE_GUID(IID_IVmTimeSource,
             0xe162fe7a, 0x72c6, 0x4d0e, 0x93, 0xdd, 0x7d, 0xf9, 0x1a, 0x5b, 0x97, 0x9d);
 DEFINE_GUID(IID_IVmPowerServices,
