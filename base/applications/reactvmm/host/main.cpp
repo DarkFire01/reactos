@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "rtvmm.h"
+#include "panel.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -52,6 +52,9 @@ void PrintUsage()
         "  --processors <n>     How many processors it has, 1 by default\n"
         "  --device <kind>[:<settings>]\n"
         "                       Add a piece of hardware, more than once if wanted\n"
+        "  --seconds <n>        Stop of its own accord after this long\n"
+        "  --window             Open a window and watch the machine in it\n"
+        "  --capture <file>     Leave a picture of that window behind when it goes\n"
         "  --quiet              Only say what went wrong\n"
         "  --verbose            Say everything\n"
         "\n"
@@ -71,7 +74,8 @@ bool ParseCommandLine(int argc, char **argv, Configuration &Config)
                                 (strcmp(Argument, "--memory") == 0) ||
                                 (strcmp(Argument, "--processors") == 0) ||
                                 (strcmp(Argument, "--device") == 0) ||
-                                (strcmp(Argument, "--seconds") == 0);
+                                (strcmp(Argument, "--seconds") == 0) ||
+                                (strcmp(Argument, "--capture") == 0);
 
         if (NeedsValue && (Index + 1 >= argc))
         {
@@ -130,6 +134,20 @@ bool ParseCommandLine(int argc, char **argv, Configuration &Config)
         {
             Config.RunSeconds = strtoul(argv[++Index], nullptr, 0);
         }
+        else if (strcmp(Argument, "--window") == 0)
+        {
+            Config.Window = true;
+        }
+        else if (strcmp(Argument, "--capture") == 0)
+        {
+            if (!Config.CapturePath.Set(argv[++Index]))
+            {
+                printf("that path is longer than this can hold\n");
+                return false;
+            }
+
+            Config.Window = true;
+        }
         else if (strcmp(Argument, "--quiet") == 0)
         {
             Config.LogLevel = RtvmLogError;
@@ -174,6 +192,35 @@ static BOOL WINAPI ConsoleHandler(DWORD Event)
     return TRUE;
 }
 
+/* What the thread that runs the machine needs while the window is drawing */
+struct RunRequest
+{
+    rtvm::Machine *Machine;
+    HWND Window;
+    rtvm::StopReason Reason;
+};
+
+/*
+ * The machine runs here while the window pumps messages. The processor blocks
+ * inside the platform library for as long as the guest keeps going, so the two
+ * cannot share a thread, and the window is the one that has to stay answering.
+ */
+static DWORD WINAPI RunThread(LPVOID Parameter)
+{
+    auto *Request = static_cast<RunRequest *>(Parameter);
+
+    Request->Reason = Request->Machine->Run();
+
+    /*
+     * The window stays up afterwards so the last screen can be read, unless it
+     * has already gone, in which case there is nothing to tell.
+     */
+    if (IsWindow(Request->Window))
+        PostMessageA(Request->Window, WM_APP, 0, 0);
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     rtvm::Configuration Config;
@@ -193,7 +240,43 @@ int main(int argc, char **argv)
     RunningMachine = Machine.Get();
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 
-    const rtvm::StopReason Reason = Machine->Run();
+    rtvm::StopReason Reason;
+
+    if (Config.Window)
+    {
+        rtvm::Owned<rtvm::Panel> Front(new rtvm::Panel());
+
+        if (!Front || !Front->Open(*Machine, "ReacTVmm"))
+            return 1;
+
+        Front->CloseWhenStopped(Config.RunSeconds != 0);
+
+        if (!Config.CapturePath.Empty())
+            Front->CaptureTo(Config.CapturePath.Get());
+
+        RunRequest Request = { Machine.Get(), Front->Window(),
+                               rtvm::StopReason::Cancelled };
+        HANDLE Thread = CreateThread(nullptr, 0, RunThread, &Request, 0, nullptr);
+
+        if (Thread == nullptr)
+        {
+            rtvm::Log(RtvmLogError, "the machine could not be given a thread\n");
+            return 1;
+        }
+
+        Front->Pump();
+
+        /* Closing the window stopped it, so this is only waiting for it to go */
+        Machine->Stop();
+        WaitForSingleObject(Thread, INFINITE);
+        CloseHandle(Thread);
+
+        Reason = Request.Reason;
+    }
+    else
+    {
+        Reason = Machine->Run();
+    }
 
     RunningMachine = nullptr;
     SetConsoleCtrlHandler(ConsoleHandler, FALSE);
