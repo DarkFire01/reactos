@@ -177,7 +177,19 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }
     STDMETHODIMP_(ULONG) Release() override { return Drop(); }
 
-    STDMETHODIMP CreateDeviceMemoryBlock() override { return E_NOTIMPL; }
+    /* Nothing here holds a window of the guest's memory for it to reach */
+    STDMETHODIMP CreateGpaRange(ULONG64 FirstPage, ULONG64 PageCount,
+                                void *Backing, BOOL ReadOnly,
+                                void **Registration) override
+    {
+        UNREFERENCED_PARAMETER(FirstPage);
+        UNREFERENCED_PARAMETER(PageCount);
+        UNREFERENCED_PARAMETER(Backing);
+        UNREFERENCED_PARAMETER(ReadOnly);
+        UNREFERENCED_PARAMETER(Registration);
+        return E_NOTIMPL;
+    }
+
     STDMETHODIMP CreateRamGpaRange() override { return E_NOTIMPL; }
     STDMETHODIMP CreateRamApertureFromByteRange() override { return E_NOTIMPL; }
     STDMETHODIMP CreateSectionBackedGpaRange() override { return E_NOTIMPL; }
