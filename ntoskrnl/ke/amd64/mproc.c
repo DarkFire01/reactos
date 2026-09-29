@@ -12,9 +12,18 @@
 #define NDEBUG
 #include <debug.h>
 
+/*
+ * The interrupt table is missing from here on purpose. Every processor runs on
+ * the one KiIdt: KeRegisterInterruptHandler only ever writes the table of the
+ * processor it is called on, so a private copy would stop at whatever was
+ * registered when this processor started and never see a vector added later.
+ * Which is every device interrupt, and the one the hypervisor signals on.
+ *
+ * Nothing in an entry is per processor. The stack a fault is taken on is named
+ * by an index into the task state, and each processor has its own of those.
+ */
 typedef struct _APINFO
 {
-    DECLSPEC_ALIGN(PAGE_SIZE) KIDTENTRY64 Idt[256];
     DECLSPEC_ALIGN(PAGE_SIZE) KGDTENTRY64 Gdt[128];
     //DECLSPEC_ALIGN(16) UINT8 NMIStackData[DOUBLE_FAULT_STACK_SIZE];
     KIPCR Pcr;
@@ -28,6 +37,9 @@ VOID
 NTAPI
 KiSaveProcessorControlState(OUT PKPROCESSOR_STATE ProcessorState);
 
+/* How long a processor is given to arrive before it is written off */
+#define KE_START_PROCESSOR_SPINS 0x10000000
+
 /* FUNCTIONS *****************************************************************/
 
 CODE_SEG("INIT")
@@ -39,6 +51,7 @@ KeStartAllProcessors(VOID)
     ULONG ProcessorCount = 0;
     PAPINFO APInfo;
     PKPROCESSOR_STATE ProcessorState;
+    ULONG64 Spins;
 
     //__debugbreak();
     //if (KeNumberProcessors <= 2) return;
@@ -95,16 +108,15 @@ KeStartAllProcessors(VOID)
         /* Zero the APInfo */
         RtlZeroMemory(APInfo, sizeof(APINFO));
 
-        /* Copy the GDT and IDT */
+        /* Copy the GDT, which does hold this processor's own descriptors */
         PKIPCR CurrentPcr = (PKIPCR)KeGetPcr();
         RtlCopyMemory(APInfo->Gdt, CurrentPcr->GdtBase, sizeof(APInfo->Gdt));
-        RtlCopyMemory(APInfo->Idt, CurrentPcr->IdtBase, sizeof(APInfo->Idt));
 
         /* Initialize PCR and TSS */
         KiInitializeProcessorBootStructures(ProcessorCount,
                                             &APInfo->Pcr,
                                             APInfo->Gdt,
-                                            APInfo->Idt,
+                                            KiIdt,
                                             &APInfo->Tss,
                                             &APInfo->Thread.Tcb,
                                             KernelStack,
@@ -119,8 +131,8 @@ KeStartAllProcessors(VOID)
         /* Set up GDT and IDT in the ProcessorState */
         ProcessorState->SpecialRegisters.Gdtr.Base = APInfo->Gdt;
         ProcessorState->SpecialRegisters.Gdtr.Limit = sizeof(APInfo->Gdt) - 1;
-        ProcessorState->SpecialRegisters.Idtr.Base = APInfo->Idt;
-        ProcessorState->SpecialRegisters.Idtr.Limit = sizeof(APInfo->Idt) - 1;
+        ProcessorState->SpecialRegisters.Idtr.Base = KiIdt;
+        ProcessorState->SpecialRegisters.Idtr.Limit = KiIdtDescriptor.Limit;
 
         /* Set up parameters for entry point */
         ProcessorState->ContextFrame.Rsp = (ULONG64)KernelStack - 5 * 8;
@@ -141,12 +153,41 @@ KeStartAllProcessors(VOID)
             break;
         }
 
-        /* Wait for it to start */
+        /* Wait for it to start, which it says by clearing the block */
+        Spins = 0;
         while (KeLoaderBlock->Prcb)
         {
-            //TODO: Add a time out so we don't wait forever
             KeMemoryBarrier();
             YieldProcessor();
+
+            if (++Spins == KE_START_PROCESSOR_SPINS)
+            {
+                /*
+                 * The controller took the startup and the processor never
+                 * arrived. Going on without it would leave a processor the
+                 * rest of the system counts as active and waits on forever,
+                 * so this one is given up on and the count stops here.
+                 */
+                DPRINT1("Processor #%u took the startup and never arrived\n",
+                        ProcessorCount);
+                break;
+            }
+        }
+
+        if (KeLoaderBlock->Prcb)
+        {
+            /*
+             * Everything handed to it stays where it is. A processor that is
+             * only late still comes up on this stack and in this block, and
+             * giving either back now would put them under something else.
+             */
+            KeLoaderBlock->Prcb = 0;
+            KernelStack = NULL;
+            DpcStack = NULL;
+            DoubleFaultStack = NULL;
+            NmiStack = NULL;
+            APInfo = NULL;
+            break;
         }
     }
 
