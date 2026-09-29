@@ -82,6 +82,8 @@ static const Part TheParts[] =
     { "vmemulateddevices.dll", "84535fad-4d98-4a6a-bdcd-21d5720dc430", nullptr },
     { "vmchipset.dll",         "72682fc4-040a-430a-be0b-224574b953fe", nullptr },
     { "vmemulateddevices.dll", "a28e4d02-3323-4148-9569-565930a5cb39", nullptr },
+    { "vmemulateddevices.dll", "35b0b12f-a0d7-482f-80a0-f52f1ab3da2e", nullptr },
+    { "vmemulateddevices.dll", "655bc5c5-a784-46b7-81bc-e26328f7eb0e", nullptr },
     { "vmemulateddevices.dll", "87045ce9-5323-438f-93bb-1e83dcbce18e", nullptr },
     { "vmemulateddevices.dll", "7d80d3db-61ee-4879-8879-5609f1100ad0", nullptr },
     { "vmemulatedstorage.dll", "83f8638b-8dca-4152-9eda-2ca8b33039b4", nullptr }
@@ -188,6 +190,10 @@ static const COLORREF TheInk[16] =
 };
 
 /* As wide and as tall a page as anything of this kind draws */
+/* What a page of text is, whatever size the display it is drawn on has */
+#define GUI_PAGE_COLUMNS    80
+#define GUI_PAGE_ROWS       25
+
 #define GUI_COLUMNS         132
 #define GUI_ROWS            60
 
@@ -195,28 +201,45 @@ static const COLORREF TheInk[16] =
 #define GUI_PIXEL_WIDTH     1600
 #define GUI_PIXEL_HEIGHT    1200
 
+/* Where a page of text has always been, for a machine with no display in it */
+#define GUI_TEXT_PAGE   0x000B8000ull
+
 static void DrawText(HDC Target, const RECT &Where)
 {
     IRtvmTextSurface *Screen = VmText();
-
-    if (Screen == nullptr)
-        return;
 
     /* Two bytes to a cell: what it is, and what it is drawn in */
     static UCHAR Cells[GUI_COLUMNS * GUI_ROWS * 2];
     ULONG Column = 0;
     ULONG Row = 0;
 
-    if (FAILED(Screen->ReadCells(Cells, sizeof(Cells), &Column, &Row)))
-        return;
+    if (Screen != nullptr)
+    {
+        if (FAILED(Screen->ReadCells(Cells, sizeof(Cells), &Column, &Row)))
+            return;
+    }
+    else
+    {
+        /*
+         * Straight out of the machine's memory. A display device that keeps
+         * the page itself offers somewhere to read it from; one that leaves it
+         * where the guest wrote it does not, and the page is still there.
+         */
+        const void *Page = VmGuest(GUI_TEXT_PAGE, 80 * 25 * 2);
+
+        if (Page == nullptr)
+            return;
+
+        memcpy(Cells, Page, 80 * 25 * 2);
+    }
 
     /*
      * How many of those are the screen rather than the buffer is not said, so
      * what is drawn is as much as fits where there is room for it. A cell whose
      * character and colour are both zero was never written and is left alone.
      */
-    const ULONG Columns = 80;
-    const ULONG Rows = 25;
+    const ULONG Columns = GUI_PAGE_COLUMNS;
+    const ULONG Rows = GUI_PAGE_ROWS;
 
     HFONT Old = (HFONT)SelectObject(Target, TheGui.Cells);
 
@@ -371,17 +394,28 @@ static void DrawFoot(HDC Target, const RECT &Where)
 
 static void Measure()
 {
+    /* Made again whenever the display is a different size than it was */
     if (TheGui.Cells != nullptr)
-        return;
+    {
+        DeleteObject(TheGui.Cells);
+        TheGui.Cells = nullptr;
+    }
 
     /*
      * A fixed pitch face, asked for by what it is rather than by name where
      * that can be helped: a system that has not got the one named still has to
      * draw something every cell of which is the same width.
      */
+    /*
+     * Sized so that the page fits across the display rather than by however
+     * many points look right. A page is eighty by twenty five whatever the
+     * display is, so the cell is the display divided by that and the face is
+     * asked for at exactly that size.
+     */
     LOGFONTW Wanted = {};
 
-    Wanted.lfHeight = -16;
+    Wanted.lfWidth = (LONG)(TheGui.Width / GUI_PAGE_COLUMNS);
+    Wanted.lfHeight = -(LONG)(TheGui.Height / GUI_PAGE_ROWS);
     Wanted.lfWeight = FW_NORMAL;
     Wanted.lfCharSet = DEFAULT_CHARSET;
     Wanted.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
@@ -397,14 +431,20 @@ static void Measure()
     SelectObject(Screen, Old);
     ReleaseDC(nullptr, Screen);
 
-    TheGui.CellWidth = About.tmAveCharWidth;
-    TheGui.CellHeight = About.tmHeight;
+    /*
+     * Laid out on the cell that was asked for rather than the one the face
+     * came back with. A face that did not give exactly what was wanted still
+     * draws each character inside its own cell, and a page laid out on the
+     * cell it was asked for is the one that fits across the display.
+     */
+    TheGui.CellWidth = (LONG)(TheGui.Width / GUI_PAGE_COLUMNS);
+    TheGui.CellHeight = (LONG)(TheGui.Height / GUI_PAGE_ROWS);
 
     if (TheGui.CellWidth <= 0)
-        TheGui.CellWidth = 8;
+        TheGui.CellWidth = About.tmAveCharWidth;
 
     if (TheGui.CellHeight <= 0)
-        TheGui.CellHeight = 16;
+        TheGui.CellHeight = About.tmHeight;
 }
 
 static void Paint(HWND Window)
@@ -575,6 +615,7 @@ static void Command(HWND Window, ULONG What)
     {
         TheGui.Width = TheScreens[What - IdScreenFirst].Width;
         TheGui.Height = TheScreens[What - IdScreenFirst].Height;
+        Measure();
         Resize();
         Tune(TheGui.Bar);
         InvalidateRect(Window, nullptr, FALSE);
@@ -661,6 +702,28 @@ static LRESULT CALLBACK Dispatch(HWND Window, UINT Message, WPARAM First,
             BeginPaint(Window, &About);
             Paint(Window);
             EndPaint(Window, &About);
+            return 0;
+        }
+
+        /*
+         * Straight through as the number the key sends, which is what the
+         * window was given and what a keyboard of that kind would have sent.
+         * Translating it to a character and back would lose every key that is
+         * not one, and the firmware wants exactly those.
+         */
+        case WM_KEYDOWN:
+        case WM_SYSKEYDOWN:
+        case WM_KEYUP:
+        case WM_SYSKEYUP:
+        {
+            const USHORT Code = (USHORT)((Second >> 16) & 0xFF);
+            const bool Extended = ((Second & 0x01000000) != 0);
+            const bool Down = ((Message == WM_KEYDOWN) ||
+                               (Message == WM_SYSKEYDOWN));
+
+            if (Code != 0)
+                VmKey(Code, Down, Extended);
+
             return 0;
         }
 

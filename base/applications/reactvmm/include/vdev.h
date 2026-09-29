@@ -797,6 +797,57 @@ DECLARE_INTERFACE_(IMonitorDevice, IUnknown)
     STDMETHOD(OnDisplaySettingsChanged)(THIS) PURE;
 };
 
+DEFINE_GUID(IID_IVmKeyboardDevice,
+            0x7acc77f4, 0xdaca, 0x4d2e, 0xa0, 0xce, 0x83, 0x9a, 0xb6, 0xab, 0x42, 0x2f);
+
+/*
+ * One keystroke, as the wire between a keyboard and a machine carries it.
+ *
+ * The number is the one the key sends rather than anything about what is
+ * printed on it, and whether it is going down or coming up is a flag rather
+ * than a separate number, which is how a keyboard of this kind has always
+ * said it.
+ */
+typedef struct _VDEV_KEYSTROKE
+{
+    USHORT Unit;
+    USHORT Code;
+    USHORT Flags;
+    USHORT Reserved;
+    ULONG Extra;
+} VDEV_KEYSTROKE, *PVDEV_KEYSTROKE;
+
+/* Going down is nothing at all, and the rest say the key is not a plain one */
+#define VDEV_KEY_DOWN       0x0000
+#define VDEV_KEY_UP         0x0001
+#define VDEV_KEY_EXTENDED   0x0002
+#define VDEV_KEY_EXTENDED1  0x0004
+
+/*
+ * The keyboard, as whatever the operator is typing at reaches it. A controller
+ * of this kind offers one of these for each of the things plugged into it.
+ */
+#undef INTERFACE
+#define INTERFACE IVmKeyboardDevice
+DECLARE_INTERFACE_(IVmKeyboardDevice, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(DeviceClass)(THIS_ _Out_ PULONG Class) PURE;
+    STDMETHOD(DeviceState)(THIS_ _Out_ PULONG State) PURE;
+    STDMETHOD(IsUnicodeSupported)(THIS_ _Out_ PINT Supported) PURE;
+    STDMETHOD(LedState)(THIS_ _Out_ PUCHAR Lamps) PURE;
+
+    /* The one that matters, being a key going down or coming up */
+    STDMETHOD(SendKeystroke)(THIS_ _In_ PVDEV_KEYSTROKE Key) PURE;
+
+    /* How many more it will take before it has nowhere to put them */
+    STDMETHOD(GetOutputBufferFreeSpace)(THIS_ _Out_ PULONG Free) PURE;
+};
+
 DEFINE_GUID(IID_IRtvmVideoWatcher,
             0x9c3a5f21, 0x7d84, 0x4e0b, 0xb1, 0xf6, 0x2a, 0x55, 0xc8, 0xd1, 0x04, 0x73);
 

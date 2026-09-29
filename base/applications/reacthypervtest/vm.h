@@ -19,7 +19,7 @@
 #include "vdev.h"
 
 /* As many kinds of device as one machine is worth putting together from */
-#define MACHINE_PARTS   8
+#define MACHINE_PARTS   12
 
 /* One kind of device, named by the library it is in and what it is called */
 struct Part
@@ -65,6 +65,12 @@ void VmClose();
 
 /* What the firmware has said on the first serial port, as far as it has got */
 const char *VmSaid();
+
+/* Straight at the guest.s memory, for a front end that draws it itself */
+const void *VmGuest(_In_ ULONG64 Where, _In_ ULONG Length);
+
+/* A key going down or coming up, for whichever part turns out to be a keyboard */
+bool VmKey(_In_ USHORT Code, _In_ bool Down, _In_ bool Extended);
 
 /* WHAT THERE IS TO LOOK AT ***************************************************/
 
