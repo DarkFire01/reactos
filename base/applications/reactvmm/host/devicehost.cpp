@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "rtvmm.h"
+#include "vdevhost.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -24,7 +24,12 @@ HostClaimPortRange(PVOID Context, PRTVM_DEVICE Device, USHORT First, USHORT Coun
     if ((Device == nullptr) || (Count == 0))
         return RtvmBadParameter;
 
-    return Owner->SystemBus().ClaimPorts(Device, First, Count) ? RtvmOk : RtvmInUse;
+    LegacyPortAdapter *Stand = Owner->Devices().AdapterFor(Device);
+
+    if (Stand == nullptr)
+        return RtvmFailed;
+
+    return Owner->SystemBus().ClaimPorts(Stand, First, Count) ? RtvmOk : RtvmInUse;
 }
 
 static RTVM_STATUS RTVMAPI
@@ -142,6 +147,11 @@ DeviceHost::~DeviceHost()
 
     while (m_Devices.Take(Device))
     {
+        LegacyPortAdapter *Stand = AdapterFor(Device);
+
+        if (Stand != nullptr)
+            m_Machine.SystemBus().ForgetPorts(Stand);
+
         m_Machine.SystemBus().Forget(Device);
 
         if ((Device->Vtable != nullptr) && (Device->Vtable->Destroy != nullptr))
@@ -241,6 +251,16 @@ bool DeviceHost::Create(const char *ClassName, const char *Parameters)
 
             /* The module fills in its own half, the manager fills in the rest */
             Device->Host = &m_Interface;
+
+            LegacyPortAdapter *Stand = new LegacyPortAdapter(Device);
+
+            if ((Stand == nullptr) || !m_Adapters.Add(Stand))
+            {
+                Log(RtvmLogError, "nothing to stand in for %s on the bus\n",
+                    ClassName);
+                return false;
+            }
+
             return m_Devices.Add(Device);
         }
     }
@@ -273,6 +293,17 @@ void DeviceHost::ResetAll()
         if ((Device->Vtable != nullptr) && (Device->Vtable->Reset != nullptr))
             Device->Vtable->Reset(Device);
     }
+}
+
+LegacyPortAdapter *DeviceHost::AdapterFor(RTVM_DEVICE *Device) const
+{
+    for (ULONG Index = 0; Index < m_Adapters.Count(); Index++)
+    {
+        if (m_Adapters[Index]->Device() == Device)
+            return m_Adapters[Index];
+    }
+
+    return nullptr;
 }
 
 void DeviceHost::PostInput(RTVM_INPUT_KIND Kind, ULONG Value)
