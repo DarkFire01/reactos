@@ -157,6 +157,34 @@ DECLARE_INTERFACE_(IVmPicService, IUnknown)
     STDMETHOD(DeassertIrq)(THIS_ _In_ ULONG Line) PURE;
 };
 
+DEFINE_GUID(IID_IVmDmaController,
+            0xbce7fce2, 0x3bc8, 0x4c2c, 0xa2, 0xc8, 0x27, 0x6f, 0x51, 0x1a, 0x24, 0x24);
+
+/*
+ * The transfer controller, as a device that moves data without the processor
+ * sees it. The device never learns where in memory anything went: that is the
+ * whole point of the channel having been programmed by somebody else.
+ */
+#undef INTERFACE
+#define INTERFACE IVmDmaController
+DECLARE_INTERFACE_(IVmDmaController, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(GetDmaChannelCount)(THIS_ _Out_ PULONG Count) PURE;
+
+    /* Moves as much as the channel was told to, and says how much that was */
+    STDMETHOD(RequestDma)(THIS_ _In_ ULONG Channel,
+                          _Inout_updates_bytes_(Length) PVOID Buffer,
+                          _In_ ULONG Length,
+                          _Out_ PULONG Moved) PURE;
+
+    STDMETHOD(ReportDmaComplete)(THIS_ _In_ ULONG Channel) PURE;
+};
+
 /* The rest of these, named but not yet laid out */
 DEFINE_GUID(IID_IVmPitService,
             0xc8d6e99d, 0xae82, 0x4b49, 0xa9, 0xb0, 0x7f, 0xc7, 0x5a, 0x04, 0x7c, 0x62);

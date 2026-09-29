@@ -500,7 +500,6 @@ bool Machine::Build(const Configuration &Config)
     if (!CreatePartition(Config))
         return false;
 
-    m_Pic.Reset();
     m_Dma.Reset();
 
     /*
@@ -597,30 +596,17 @@ bool Machine::Build(const Configuration &Config)
  * nothing loadable is allowed to take their addresses away from them.
  */
 /*
- * Whether the chip built into the manager still answers for its own addresses.
- * A device that has taken them over reserved them on the bus, and the built in
- * one has to stand aside or the guest programs one chip and is answered by the
- * other.
+ * The transfer controller is still the manager's own, so it answers for its own
+ * addresses before the bus does. Everything else on the bus was reserved by a
+ * device and reaches that device.
  */
-bool Machine::BuiltInAnswers(USHORT Port) const
-{
-    if (Pic::Owns(Port))
-        return !(m_Vdevs && (m_Vdevs->Interrupts() != nullptr));
-
-    return Dma::Owns(Port);
-}
-
 void Machine::WritePort(USHORT Port, ULONG Width, ULONG Value)
 {
-    if (BuiltInAnswers(Port))
+    if (Dma::Owns(Port))
     {
         Locked Held(m_ChipLock);
 
-        if (Pic::Owns(Port))
-            m_Pic.WritePort(Port, Value);
-        else
-            m_Dma.WritePort(Port, Value);
-
+        m_Dma.WritePort(Port, Value);
         return;
     }
 
@@ -629,11 +615,11 @@ void Machine::WritePort(USHORT Port, ULONG Width, ULONG Value)
 
 ULONG Machine::ReadPort(USHORT Port, ULONG Width)
 {
-    if (BuiltInAnswers(Port))
+    if (Dma::Owns(Port))
     {
         Locked Held(m_ChipLock);
 
-        return Pic::Owns(Port) ? m_Pic.ReadPort(Port) : m_Dma.ReadPort(Port);
+        return m_Dma.ReadPort(Port);
     }
 
     return m_Bus.ReadPort(Port, Width);
@@ -649,21 +635,12 @@ RTVM_STATUS Machine::MoveThroughChannel(ULONG Channel, void *Buffer,
 
 void Machine::SetInterruptLine(ULONG Line, bool Asserted)
 {
-    IVmPicService *Controller = m_Vdevs ? m_Vdevs->Interrupts() : nullptr;
+    IVmPicService *Controller = m_Vdevs->Interrupts();
 
-    if (Controller != nullptr)
-    {
-        if (Asserted)
-            Controller->AssertIrq(Line);
-        else
-            Controller->DeassertIrq(Line);
-    }
+    if (Asserted)
+        Controller->AssertIrq(Line);
     else
-    {
-        Locked Held(m_ChipLock);
-
-        m_Pic.SetLine(Line, Asserted);
-    }
+        Controller->DeassertIrq(Line);
 
     /*
      * Counted rather than logged. A busy line buries a quiet one in a log, and
@@ -865,34 +842,20 @@ void Machine::DeliverInterrupt(ULONG Index)
         return;
     }
 
-    int Vector;
+    const ULONG Offered = m_Offered;
 
-    if (m_Vdevs && (m_Vdevs->Interrupts() != nullptr))
-    {
-        const ULONG Offered = m_Offered;
-
-        if (Offered == VDEV_NO_VECTOR)
-            return;
-
-        Vector = (int)Offered;
-
-        /*
-         * Taken here and not offered again. The controller is told only when it
-         * next asks, which is on the write that ends the interrupt, and until
-         * then there is nothing left for the processor to be given.
-         */
-        InterlockedExchange(&m_Taken, 1);
-        InterlockedExchange((volatile LONG *)&m_Offered, (LONG)VDEV_NO_VECTOR);
-    }
-    else
-    {
-        Locked Held(m_ChipLock);
-
-        Vector = m_Pic.Acknowledge();
-    }
-
-    if (Vector < 0)
+    if (Offered == VDEV_NO_VECTOR)
         return;
+
+    const int Vector = (int)Offered;
+
+    /*
+     * Taken here and not offered again. The controller is told only when it
+     * next asks, which is on the write that ends the interrupt, and until then
+     * there is nothing left for the processor to be given.
+     */
+    InterlockedExchange(&m_Taken, 1);
+    InterlockedExchange((volatile LONG *)&m_Offered, (LONG)VDEV_NO_VECTOR);
 
     const WHV_REGISTER_NAME Interrupt = WHvRegisterPendingInterruption;
     WHV_REGISTER_VALUE Pending = {};
@@ -990,12 +953,7 @@ void Machine::ReportProcessor(ULONG Index)
 /* Whether the controller has anything for a processor that will take it */
 bool Machine::Pending()
 {
-    if (m_Vdevs && (m_Vdevs->Interrupts() != nullptr))
-        return m_Offered != VDEV_NO_VECTOR;
-
-    Locked Held(m_ChipLock);
-
-    return m_Pic.Pending();
+    return m_Offered != VDEV_NO_VECTOR;
 }
 
 /* What a controller has for the processors, until it says otherwise */
@@ -1246,20 +1204,6 @@ StopReason Machine::Run()
 
     /* What the hardware actually did, which is worth knowing either way */
     Log(RtvmLogInfo, "%lu interrupt(s) taken\n", m_Delivered);
-
-    for (ULONG Which = 0; Which < 2; Which++)
-    {
-        UCHAR Request = 0;
-        UCHAR Level = 0;
-        UCHAR Service = 0;
-        UCHAR Mask = 0;
-
-        m_Pic.State(Which, Request, Level, Service, Mask);
-
-        Log(RtvmLogInfo,
-            "    controller %lu: owed %02x, wires %02x, in service %02x, masked %02x\n",
-            Which, Request, Level, Service, Mask);
-    }
 
     for (ULONG Line = 0; Line < RTL_NUMBER_OF(m_LineCount); Line++)
     {

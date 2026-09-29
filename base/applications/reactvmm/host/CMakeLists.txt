@@ -2,7 +2,6 @@ add_executable(reactvmm
     main.cpp
     machine.cpp
     bus.cpp
-    pic.cpp
     dma.cpp
     devicehost.cpp
     vdevhost.cpp
