@@ -30,6 +30,9 @@
 #define CONTROLLER_COMMAND  0x0064   /* Write */
 
 #define KEYBOARD_LINE       1
+
+/* How long a machine is given to be listening before anything is typed at it */
+#define KEYBOARD_STARTUP_WAIT 6000
 #define MOUSE_LINE          12
 
 /* What the status register says */
@@ -97,6 +100,13 @@ typedef struct _KEYBOARD_DEVICE
     BOOLEAN KeyboardEnabled;
     BOOLEAN LineAsserted;
 
+    /*
+     * What to type on its own once the machine is up, for one that nobody is
+     * sitting in front of. A boot that waits at a menu is not a boot.
+     */
+    CHAR Startup[128];
+    ULONG StartupDelay;
+
     /* Where keys come from, if anywhere */
     HANDLE Input;
     HANDLE Reader;
@@ -157,6 +167,26 @@ KeyboardSetLine(
         Host->SetInterruptLine(Host->Context, KEYBOARD_LINE, Wanted);
 }
 
+/*
+ * Lets the line go without asking whether anything is still waiting, so that
+ * raising it afterwards is a fresh edge rather than nothing at all.
+ */
+static
+VOID
+KeyboardDropLine(
+    _Inout_ PKEYBOARD_DEVICE Keyboard)
+{
+    const RTVM_HOST_INTERFACE *Host = Keyboard->Device.Host;
+
+    if (!Keyboard->LineAsserted)
+        return;
+
+    Keyboard->LineAsserted = FALSE;
+
+    if (Host->SetInterruptLine != NULL)
+        Host->SetInterruptLine(Host->Context, KEYBOARD_LINE, FALSE);
+}
+
 static
 VOID
 KeyboardPut(
@@ -206,6 +236,26 @@ KeyboardReader(
     DWORD Read;
     DWORD Index;
 
+    /*
+     * Whatever was asked for before anything else, once the machine has had
+     * long enough to be listening. Typing into a machine that is still reading
+     * its boot sector goes nowhere.
+     */
+    if (Keyboard->Startup[0] != '\0')
+    {
+        Sleep(Keyboard->StartupDelay);
+
+        EnterCriticalSection(&Keyboard->Lock);
+
+        for (Index = 0; Keyboard->Startup[Index] != '\0'; Index++)
+            KeyboardType(Keyboard, (UCHAR)Keyboard->Startup[Index]);
+
+        LeaveCriticalSection(&Keyboard->Lock);
+    }
+
+    if (Keyboard->Input == INVALID_HANDLE_VALUE)
+        return 0;
+
     while (InterlockedCompareExchange(&Keyboard->Stopping, 0, 0) == 0)
     {
         if (!ReadFile(Keyboard->Input, Buffer, sizeof(Buffer), &Read, NULL) ||
@@ -245,8 +295,11 @@ KeyboardStart(
     if (!RTVM_SUCCESS(Status))
         return Status;
 
-    if (Keyboard->Input != INVALID_HANDLE_VALUE)
+    if ((Keyboard->Input != INVALID_HANDLE_VALUE) ||
+        (Keyboard->Startup[0] != '\0'))
+    {
         Keyboard->Reader = CreateThread(NULL, 0, KeyboardReader, Keyboard, 0, NULL);
+    }
 
     Host->Log(Host->Context, RtvmLogInfo,
               "%s: controller at %04x on line %u, %s\n",
@@ -356,6 +409,13 @@ KeyboardIoRead(
         if (Keyboard->Count == 0)
             Keyboard->Status &= (UCHAR)~STATUS_BIT_OUTPUT_FULL;
 
+        /*
+         * Let the line go whatever is left behind it. What carries it is
+         * triggered by an edge, so a line held up across a byte being taken
+         * makes no second interrupt and everything still queued sits there
+         * unasked for. Raising it again below is what makes that edge.
+         */
+        KeyboardDropLine(Keyboard);
         KeyboardSetLine(Keyboard);
     }
 
@@ -625,7 +685,41 @@ KeyboardCreate(
     Keyboard->Device.Host = Host;
     Keyboard->Device.DeviceContext = Keyboard;
     Keyboard->Input = INVALID_HANDLE_VALUE;
+    Keyboard->StartupDelay = KEYBOARD_STARTUP_WAIT;
     StringCchCopyA(Keyboard->Device.Name, sizeof(Keyboard->Device.Name), "keyboard");
+
+    /*
+     * What to type once the machine is up. A backslash before an n stands for
+     * the key that finishes a line, because that is the one a machine left to
+     * itself needs most and a command line is no place for a real one.
+     */
+    Value = KeyboardSetting(Parameters, "keys");
+    if ((Value != NULL) && (*Value != '\0'))
+    {
+        SIZE_T Out = 0;
+        SIZE_T Index;
+
+        for (Index = 0;
+             (Value[Index] != '\0') && (Value[Index] != ',') &&
+             (Out + 1 < sizeof(Keyboard->Startup));
+             Index++)
+        {
+            if ((Value[Index] == '\\') && (Value[Index + 1] == 'n'))
+            {
+                Keyboard->Startup[Out++] = '\r';
+                Index++;
+                continue;
+            }
+
+            Keyboard->Startup[Out++] = Value[Index];
+        }
+
+        Keyboard->Startup[Out] = '\0';
+    }
+
+    Value = KeyboardSetting(Parameters, "after");
+    if ((Value != NULL) && (*Value != '\0'))
+        Keyboard->StartupDelay = strtoul(Value, NULL, 0);
 
     Value = KeyboardSetting(Parameters, "pipe");
     if ((Value != NULL) && (*Value != '\0'))
