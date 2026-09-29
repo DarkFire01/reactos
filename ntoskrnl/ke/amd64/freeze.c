@@ -127,7 +127,10 @@ KxFreezeExecution(
     for (ULONG i = 0; i < KeNumberProcessors; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb != CurrentPrcb)
+
+        /* A processor that has not published its block yet runs nothing the
+           debugger cares about, and cannot be asked to stop */
+        if ((TargetPrcb != NULL) && (TargetPrcb != CurrentPrcb))
         {
             /* Only the active processor is allowed to change IpiFrozen */
             ASSERT(TargetPrcb->IpiFrozen == IPI_FROZEN_STATE_RUNNING);
@@ -144,7 +147,10 @@ KxFreezeExecution(
     for (ULONG i = 0; i < KeNumberProcessors; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb != CurrentPrcb)
+
+        /* A processor that has not published its block yet runs nothing the
+           debugger cares about, and cannot be asked to stop */
+        if ((TargetPrcb != NULL) && (TargetPrcb != CurrentPrcb))
         {
             /* Wait for the target to be frozen */
             while (TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_FROZEN)
@@ -170,7 +176,10 @@ KxThawExecution(
     for (ULONG i = 0; i < KeNumberProcessors; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb != CurrentPrcb)
+
+        /* A processor that has not published its block yet runs nothing the
+           debugger cares about, and cannot be asked to stop */
+        if ((TargetPrcb != NULL) && (TargetPrcb != CurrentPrcb))
         {
             /* Make sure they are still frozen */
             ASSERT(TargetPrcb->IpiFrozen == IPI_FROZEN_STATE_FROZEN);
@@ -184,7 +193,10 @@ KxThawExecution(
     for (ULONG i = 0; i < KeNumberProcessors; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb != CurrentPrcb)
+
+        /* A processor that has not published its block yet runs nothing the
+           debugger cares about, and cannot be asked to stop */
+        if ((TargetPrcb != NULL) && (TargetPrcb != CurrentPrcb))
         {
             /* Wait for the target to be running again */
             while (TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_RUNNING)
