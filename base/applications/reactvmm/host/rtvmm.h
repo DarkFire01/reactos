@@ -220,6 +220,7 @@ private:
 
 class Machine;
 class LegacyPortAdapter;
+class VdevHost;
 
 /*
  * Somewhere for the operator to look. A device that owns a display hands pages
@@ -368,6 +369,10 @@ public:
 
     /* Called through the device interface, which is why these are public */
     void SetInterruptLine(ULONG Line, bool Asserted);
+
+    /* What a controller device has for the processors, and whether it went */
+    void OfferVector(ULONG Vector);
+    bool VectorWasTaken();
     bool ReadGuest(ULONG64 Address, void *Buffer, ULONG Length);
     bool WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length);
     bool PresentText(const RTVM_TEXT_PAGE &Page);
@@ -377,6 +382,9 @@ public:
     /* Where a port access goes, whichever exit brought it */
     void WritePort(USHORT Port, ULONG Width, ULONG Value);
     ULONG ReadPort(USHORT Port, ULONG Width);
+
+    /* Whether one of the manager's own chips still answers for an address */
+    bool BuiltInAnswers(USHORT Port) const;
 
 private:
     bool BindPlatform();
@@ -405,6 +413,11 @@ private:
     Pic m_Pic;
     Dma m_Dma;
     Owned<DeviceHost> m_Devices;
+    Owned<VdevHost> m_Vdevs;
+
+    /* What the controller device last offered, and whether it has been put in */
+    volatile ULONG m_Offered = (ULONG)-1;
+    volatile LONG m_Taken = 0;
 
     void *m_Partition = nullptr;
     ULONG m_ProcessorCount = 1;

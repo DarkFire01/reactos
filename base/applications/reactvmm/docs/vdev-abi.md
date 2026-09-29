@@ -187,6 +187,33 @@ one:
 | `IVmSuperIo`                | `{060604ae-6a0b-4e03-8afe-25fca68cb5d1}` |
 | `IVmInputController`        | `{5a753463-f272-4d06-a553-fb47c1362838}` |
 
+## How an interrupt reaches a processor
+
+The interrupt controller does not wait to be asked. It works out which vector is
+owed and says so through slot six of `IVmProcessorServices`:
+
+    HRESULT (IVmProcessorServices *Service,
+             ULONG64 Kind,
+             ULONG64 Reserved,
+             ULONG Vector)
+
+`Kind` is seven for a line arriving through the controller and `Reserved` is
+zero. A vector of all ones means there is nothing owed any more. Only a change
+is reported, so a controller that says nothing is a controller whose answer has
+not moved.
+
+Putting that vector in service is a separate step, because on real hardware it
+happens in the cycle that acknowledges the interrupt and there is no such cycle
+here. The controller asks slot seven, which takes nothing:
+
+    HRESULT (IVmProcessorServices *Service)
+
+and puts the vector in service if the answer is a success. It is tested for
+success rather than against a particular code, so a host that has not delivered
+the interrupt yet has to answer with a failure. Answering `S_FALSE` puts every
+offered vector straight into service, which blocks the line it came in on and
+delivers nothing ever again.
+
 ## What is known of the emulation service
 
 Slot three takes a window of guest memory, counted in pages:
