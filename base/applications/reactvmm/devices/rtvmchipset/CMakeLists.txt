@@ -1,0 +1,5 @@
+add_library(rtvmchipset MODULE rtvmchipset.c rtvmchipset.rc)
+set_module_type(rtvmchipset win32dll ENTRYPOINT DllMain 12)
+add_importlibs(rtvmchipset msvcrt kernel32 ntdll)
+add_dependencies(rtvmchipset psdk)
+add_cd_file(TARGET rtvmchipset DESTINATION reactos/system32 FOR all)
