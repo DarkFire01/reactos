@@ -100,6 +100,41 @@ VideoWrite(
 
 /**
  * @brief
+ * Hands the page to whatever the manager has for a display.
+ *
+ * @remarks
+ * Every look, not only the ones that settle: a window is watched while it
+ * changes, and a screen being rewritten is exactly what the operator wants to
+ * see happening. The log is the one that waits for it to hold still.
+ */
+static
+VOID
+VideoPresent(
+    _Inout_ PVIDEO_DEVICE Video)
+{
+    const RTVM_HOST_INTERFACE *Host = Video->Device.Host;
+    RTVM_TEXT_PAGE Page;
+    ULONG Offset;
+
+    if (!RTVM_CARRIES(Host, RTVM_HOST_INTERFACE, PresentText))
+        return;
+
+    Offset = ((ULONG)Video->Crtc[CRTC_CURSOR_HIGH] << 8) |
+             Video->Crtc[CRTC_CURSOR_LOW];
+
+    Page.Size = sizeof(Page);
+    Page.Columns = VIDEO_COLUMNS;
+    Page.Rows = VIDEO_ROWS;
+    Page.CursorColumn = Offset % VIDEO_COLUMNS;
+    Page.CursorRow = Offset / VIDEO_COLUMNS;
+    Page.CursorVisible = (Page.CursorRow < VIDEO_ROWS);
+    Page.Cells = Video->Text;
+
+    Host->PresentText(Host->Context, &Page);
+}
+
+/**
+ * @brief
  * Turns the page back into lines and sends them.
  *
  * @remarks
@@ -178,6 +213,8 @@ VideoPainter(
         if (Host->ReadGuestMemory(Host->Context, VIDEO_TEXT_BASE,
                                   Video->Text, VIDEO_PAGE_SIZE) == RtvmOk)
         {
+            VideoPresent(Video);
+
             if (memcmp(Video->Sent, Video->Text, VIDEO_PAGE_SIZE) != 0)
             {
                 /*
