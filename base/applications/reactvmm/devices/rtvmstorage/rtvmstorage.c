@@ -89,6 +89,11 @@
 #define GEOMETRY_HEADS          16
 #define GEOMETRY_SECTORS        63
 
+/* The one removable size that still matters, and the shape it always had */
+#define FLOPPY_1440_SECTORS             2880
+#define FLOPPY_1440_HEADS               2
+#define FLOPPY_1440_SECTORS_PER_TRACK   18
+
 /* TYPES **********************************************************************/
 
 typedef struct _STORAGE_DEVICE
@@ -108,6 +113,13 @@ typedef struct _STORAGE_DEVICE
     ULONG Cylinders;
     ULONG Heads;
     ULONG Sectors;
+
+    /* Set only when the operator gave a shape rather than letting it be worked out */
+    ULONG ForcedHeads;
+    ULONG ForcedSectors;
+
+    /* Whether this is the sort of medium that comes out of the machine */
+    BOOLEAN Removable;
 
     /* The registers, as last written */
     UCHAR Features;
@@ -814,10 +826,32 @@ VOID
 StorageDescribe(
     _Inout_ PSTORAGE_DEVICE Storage)
 {
-    Storage->Heads = GEOMETRY_HEADS;
-    Storage->Sectors = GEOMETRY_SECTORS;
+    /*
+     * A removable medium has a shape that is not negotiable: whatever wrote it
+     * put the numbers in its own first sector and every boot sector on it
+     * addresses by them. Guessing a different pair would send each read to the
+     * wrong place, so the size is taken as saying which one it is.
+     */
+    if (Storage->SectorCount == FLOPPY_1440_SECTORS)
+    {
+        Storage->Heads = FLOPPY_1440_HEADS;
+        Storage->Sectors = FLOPPY_1440_SECTORS_PER_TRACK;
+    }
+    else
+    {
+        Storage->Heads = GEOMETRY_HEADS;
+        Storage->Sectors = GEOMETRY_SECTORS;
+    }
+
+    /* Told outright, for a medium that is neither */
+    if (Storage->ForcedHeads != 0)
+        Storage->Heads = Storage->ForcedHeads;
+
+    if (Storage->ForcedSectors != 0)
+        Storage->Sectors = Storage->ForcedSectors;
+
     Storage->Cylinders = (ULONG)(Storage->SectorCount /
-                                 (GEOMETRY_HEADS * GEOMETRY_SECTORS));
+                                 (Storage->Heads * Storage->Sectors));
 
     if (Storage->Cylinders == 0)
         Storage->Cylinders = 1;
@@ -866,6 +900,14 @@ StorageCreate(
     }
 
     Storage->ReadOnly = (StorageSetting(Parameters, "readonly") != NULL);
+
+    Value = StorageSetting(Parameters, "heads");
+    if ((Value != NULL) && (*Value != '\0'))
+        Storage->ForcedHeads = strtoul(Value, NULL, 0);
+
+    Value = StorageSetting(Parameters, "sectors");
+    if ((Value != NULL) && (*Value != '\0'))
+        Storage->ForcedSectors = strtoul(Value, NULL, 0);
 
     Value = StorageSetting(Parameters, "image");
     if ((Value == NULL) || (*Value == '\0'))
@@ -926,6 +968,7 @@ StorageCreate(
     }
 
     Storage->SectorCount = (ULONG64)Size.QuadPart / SECTOR_SIZE;
+    Storage->Removable = (Storage->SectorCount == FLOPPY_1440_SECTORS);
     StorageDescribe(Storage);
     StorageReset(&Storage->Device);
 

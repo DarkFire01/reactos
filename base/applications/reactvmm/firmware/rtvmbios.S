@@ -233,8 +233,19 @@ Int12Handler:
  * reads nothing still believes it has a kernel.
  */
 Int13Handler:
+    /*
+     * The one drive answers to both names. Which name it is called by depends
+     * on what was put in it: a boot sector that came off a removable medium
+     * was handed a zero and will keep using it, and one off a fixed disk was
+     * handed eighty. Refusing either would mean refusing half the things that
+     * can boot.
+     */
     cmp dl, HEX(80)
+    je Int13OurDrive
+    cmp dl, HEX(00)
     jne Int13NotOurDrive
+
+Int13OurDrive:
 
     cmp ah, HEX(00)
     je Int13Reset
@@ -831,6 +842,20 @@ AtaIdentify:
 
     mov byte ptr cs:[DiskPresent], 1
 
+    /*
+     * Eighteen sectors on each of two tracks is the shape of the one removable
+     * size that still matters, and nothing else has it. A medium that looks
+     * like that is handed over as the first floppy, because that is the name
+     * whatever is on it will expect to be given.
+     */
+    mov byte ptr cs:[BootDrive], HEX(80)
+    cmp word ptr cs:[DiskHeads], 2
+    jne AtaIdentifyFixed
+    cmp word ptr cs:[DiskSectors], 18
+    jne AtaIdentifyFixed
+    mov byte ptr cs:[BootDrive], HEX(00)
+
+AtaIdentifyFixed:
     pop es
     pop di
     pop dx
@@ -1198,8 +1223,16 @@ DataAreaSetup:
     /* Where the first serial port is, which is how anything else finds it */
     mov word ptr ds:[BDA_COM1], COM1_BASE
 
-    /* One serial port, no disks, no display worth naming */
+    /*
+     * One serial port, and a drive if one answered. The lowest bit says there
+     * is something to boot from at all, which is the first thing anything
+     * counting drives looks at.
+     */
     mov word ptr ds:[BDA_EQUIPMENT], HEX(0200)
+    cmp byte ptr cs:[DiskPresent], 0
+    je DataAreaNoDrive
+    or word ptr ds:[BDA_EQUIPMENT], HEX(0001)
+DataAreaNoDrive:
 
     /* Six hundred and forty kilobytes, as there always are */
     mov word ptr ds:[BDA_MEMORY_SIZE], 640
@@ -1295,7 +1328,7 @@ Int19Handler:
     mov ch, 0
     mov cl, 1
     mov dh, 0
-    mov dl, HEX(80)
+    mov dl, byte ptr cs:[BootDrive]
     int HEX(13)
     jc Int19ReadFailed
 
@@ -1320,7 +1353,7 @@ Int19Handler:
     mov ss, ax
     mov sp, BOOT_OFFSET
 
-    mov dl, HEX(80)
+    mov dl, byte ptr cs:[BootDrive]
 
     ljmp16 BOOT_SEGMENT, BOOT_OFFSET
 
@@ -1396,6 +1429,8 @@ NotBootableMessage:
 .align 2
 DiskPresent:
     .byte 0
+BootDrive:
+    .byte HEX(80)
 AtaUseLba:
     .byte 0
 AtaSectorCount:
