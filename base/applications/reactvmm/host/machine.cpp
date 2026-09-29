@@ -677,6 +677,9 @@ bool Machine::Build(const Configuration &Config)
     if (!m_Vdevs->Create(CLSID_PitDevice, "interval timer"))
         return false;
 
+    if (!m_Vdevs->Create(CLSID_VideoS3Device, "display"))
+        return false;
+
     m_Devices.Reset(new DeviceHost(*this));
 
     if (!m_Devices)
@@ -691,7 +694,6 @@ bool Machine::Build(const Configuration &Config)
         "rtvmserial.dll",
         "rtvmstorage.dll",
         "rtvmchipset.dll",
-        "rtvmvideo.dll",
         "rtvmkeyboard.dll",
         "rtvmfloppy.dll"
     };
@@ -787,14 +789,6 @@ bool Machine::WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length)
     return m_Memory.Write(Address, Buffer, Length);
 }
 
-bool Machine::PresentText(const RTVM_TEXT_PAGE &Page)
-{
-    if (m_Display == nullptr)
-        return false;
-
-    m_Display->Present(Page);
-    return true;
-}
 
 void Machine::PostInput(RTVM_INPUT_KIND Kind, ULONG Value)
 {
@@ -868,6 +862,11 @@ bool Machine::EmulateAccess(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
 IVmDmaController *Machine::Channels() const
 {
     return m_Vdevs ? m_Vdevs->Transfers() : nullptr;
+}
+
+IVideoVdev *Machine::Screen() const
+{
+    return m_Vdevs ? m_Vdevs->Screen() : nullptr;
 }
 
 ULONG Machine::DeviceCount() const

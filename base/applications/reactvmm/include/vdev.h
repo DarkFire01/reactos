@@ -552,6 +552,22 @@ DECLARE_INTERFACE_(IMonitorDevice, IUnknown)
 DEFINE_GUID(IID_IVideoVdev,
             0x1401754a, 0xf009, 0x4b06, 0xb8, 0xf4, 0xef, 0x08, 0xeb, 0x57, 0x2d, 0x98);
 
+/*
+ * What a display is told about the surface it is drawing. Four numbers, of
+ * which the middle two are certainly how big it is; the first and last are
+ * written from fields whose meaning is not yet known, and are named for what
+ * a surface of this shape would carry there.
+ */
+typedef struct _VDEV_SURFACE_DATA
+{
+    ULONG Format;
+    ULONG Width;
+    ULONG Height;
+    ULONG Pitch;
+} VDEV_SURFACE_DATA, *PVDEV_SURFACE_DATA;
+
+C_ASSERT(sizeof(VDEV_SURFACE_DATA) == 16);
+
 /* The display, as whatever draws it asks after being told something changed */
 #undef INTERFACE
 #define INTERFACE IVideoVdev
@@ -564,7 +580,33 @@ DECLARE_INTERFACE_(IVideoVdev, IUnknown)
 
     STDMETHOD(IsVideoEnabled)(THIS_ _Out_ PBOOL Enabled) PURE;
     STDMETHOD(Activate)(THIS) PURE;
-    STDMETHOD(GetSurfaceData)(THIS_ _Out_ PVOID Surface) PURE;
+    STDMETHOD(GetSurfaceData)(THIS_ _Out_ PVDEV_SURFACE_DATA Surface) PURE;
+};
+
+/*
+ * Ours, and past everything the reference has. A display here draws characters
+ * rather than pixels, and there is no call in any of the above that hands one
+ * over: the reference reaches the memory behind a surface another way, which
+ * is not yet worked out. Anything built against the reference ignores this,
+ * because it is asked for by an identifier nothing there has.
+ */
+DEFINE_GUID(IID_IRtvmTextSurface,
+            0x8d2f4a61, 0x5c3e, 0x4b17, 0x9a, 0x44, 0x1e, 0x7d, 0x62, 0x0b, 0xc8, 0x35);
+
+#undef INTERFACE
+#define INTERFACE IRtvmTextSurface
+DECLARE_INTERFACE_(IRtvmTextSurface, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /* A character and the colour it is drawn in, per cell, row by row */
+    STDMETHOD(ReadCells)(THIS_ _Out_writes_bytes_(Length) PVOID Cells,
+                         _In_ ULONG Length,
+                         _Out_ PULONG CursorColumn,
+                         _Out_ PULONG CursorRow) PURE;
 };
 
 DEFINE_GUID(IID_IProxiedPciVgaDevice,

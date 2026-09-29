@@ -119,19 +119,6 @@ class LegacyPortAdapter;
 class VdevHost;
 
 /*
- * Somewhere for the operator to look. A device that owns a display hands pages
- * up rather than drawing them, because where they are drawn is the manager's
- * business and there may be nowhere at all.
- */
-class Display
-{
-public:
-    virtual ~Display() = default;
-
-    virtual void Present(const RTVM_TEXT_PAGE &Page) = 0;
-};
-
-/*
  * Loads modules and makes devices out of them. It also holds the interface the
  * devices call back through, because that interface has to reach the machine.
  */
@@ -249,9 +236,6 @@ public:
     /* Reached from the device interface, to find what stands in for a device */
     DeviceHost &Devices() noexcept { return *m_Devices; }
 
-    /* Where pages of text go from now on, or nullptr for nowhere */
-    void Attach(Display *Screen) noexcept { m_Display = Screen; }
-
     /* Something the operator did, offered to whichever devices take input */
     void PostInput(RTVM_INPUT_KIND Kind, ULONG Value);
 
@@ -269,10 +253,16 @@ public:
     bool VectorWasTaken();
     bool ReadGuest(ULONG64 Address, void *Buffer, ULONG Length);
     bool WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length);
-    bool PresentText(const RTVM_TEXT_PAGE &Page);
 
     /* The transfer controller, once one has come up, or nothing */
     IVmDmaController *Channels() const;
+
+    /* The display, once one has come up, or nothing */
+    IVideoVdev *Screen() const;
+
+    /* Whoever is looking at the machine, or nothing */
+    void Watch(IMonitorDevice *Monitor) noexcept { m_Monitor = Monitor; }
+    IMonitorDevice *Monitor() const noexcept { return m_Monitor; }
 
     ULONG ProcessorCount() const noexcept { return m_ProcessorCount; }
     bool Running() const noexcept { return m_Running != 0; }
@@ -318,6 +308,9 @@ private:
     Owned<DeviceHost> m_Devices;
     Owned<VdevHost> m_Vdevs;
 
+    /* Whoever is looking, set before the machine runs and not changed after */
+    IMonitorDevice *m_Monitor = nullptr;
+
     /* What the controller device last offered, and whether it has been put in */
     volatile ULONG m_Offered = (ULONG)-1;
     volatile LONG m_Taken = 0;
@@ -329,8 +322,6 @@ private:
     ULONG m_ProcessorCount = 1;
     volatile LONG m_Stopping = 0;
 
-    /* Whose it is to draw, set before the machine runs and not changed after */
-    Display *m_Display = nullptr;
 
     /* Where the processor was the last time it came out, for the panel */
     volatile ULONG64 m_LastRip = 0;
