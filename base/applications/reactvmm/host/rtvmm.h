@@ -237,6 +237,7 @@ private:
     bool BindPlatform();
     bool CreatePartition(const Configuration &Config);
     bool LoadFirmware(const char *Path);
+    bool DescribeMachine(const Configuration &Config);
     bool PrepareProcessor(ULONG Index);
     StopReason RunProcessor(ULONG Index);
 

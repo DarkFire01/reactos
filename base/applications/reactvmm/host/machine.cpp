@@ -45,6 +45,9 @@ constexpr ULONG64 FirmwareSize = 0x00010000;
 constexpr USHORT ResetSegment = 0xF000;
 constexpr USHORT ResetOffset = 0xFFF0;
 
+/* Where the manager leaves the firmware a note about the machine */
+constexpr ULONG64 MachineDescription = 0x00000500;
+
 Machine::~Machine()
 {
     /* The devices go before the partition they were answering for */
@@ -332,6 +335,47 @@ bool Machine::PrepareProcessor(ULONG Index)
     return true;
 }
 
+/**
+ * @brief
+ * Leaves the firmware a description of the machine it woke up in.
+ *
+ * @remarks
+ * Firmware on real hardware reads the board to find out what it is running
+ * on. There is no board here, so the manager writes down what it built and the
+ * firmware reads it from a fixed place.
+ *
+ * It goes at five hundred because that is the one part of low memory nothing
+ * else has ever claimed: the interrupt table is below it and the data area is
+ * above it, and it is free again the moment the firmware has read it.
+ */
+bool Machine::DescribeMachine(const Configuration &Config)
+{
+    struct Description
+    {
+        ULONG Magic;
+        ULONG Version;
+        ULONG64 MemorySize;
+        ULONG ProcessorCount;
+        ULONG Reserved;
+    };
+
+    Description Written = {};
+
+    /* Spells the manager's name, so the firmware can tell it was written */
+    Written.Magic = 0x4D565452;
+    Written.Version = 1;
+    Written.MemorySize = Config.MemorySize;
+    Written.ProcessorCount = Config.ProcessorCount;
+
+    if (!m_Memory.Write(MachineDescription, &Written, sizeof(Written)))
+    {
+        Log(RtvmLogError, "the machine is too small to describe itself\n");
+        return false;
+    }
+
+    return true;
+}
+
 bool Machine::Build(const Configuration &Config)
 {
     SetLogLevel(Config.LogLevel);
@@ -361,7 +405,8 @@ bool Machine::Build(const Configuration &Config)
     static const char *const Modules[] =
     {
         "rtvmserial.dll",
-        "rtvmstorage.dll"
+        "rtvmstorage.dll",
+        "rtvmchipset.dll"
     };
 
     for (const char *Name : Modules)
@@ -393,6 +438,9 @@ bool Machine::Build(const Configuration &Config)
         return false;
 
     if (!LoadFirmware(Config.FirmwarePath.Get()))
+        return false;
+
+    if (!DescribeMachine(Config))
         return false;
 
     for (ULONG Index = 0; Index < m_ProcessorCount; Index++)
