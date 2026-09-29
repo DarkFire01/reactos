@@ -97,8 +97,26 @@ interrupt controller asks only for `IVmAmd64EmulationServices` and
 | 5    | `NotifyIoPortWrite`   |
 
 Which ports reach it is not asked for through this interface. Each device class
-carries a static table of handler specifications, and the reservation slots above
-are where it is handed over.
+carries a static table of port ranges, a pair of sixteen bit numbers per entry
+being the first and last port of one range. The device walks that table when it
+comes up and reserves each range in turn through the emulation service, handing
+over a pointer to its own `IVndIoPortHandler` sub-object and keeping what comes
+back so it can be given up later.
+
+The call is slot six of `IVmAmd64EmulationServices`:
+
+    HRESULT (IVmAmd64EmulationServices *Service,
+             USHORT FirstPort,
+             USHORT LastPort,
+             ULONG Widths,
+             IVndIoPortHandler *Handler,
+             ULONG Flags,
+             PVOID *Registration)
+
+`Widths` is a mask of the access sizes the device will answer for, and every
+device seen so far passes 31, which is all of them. `Flags` is zero everywhere.
+The transfer controller registers eighteen ranges this way and the video device
+two, each into its own slot of an array the device keeps.
 
 `IVndMmioHandler` is the same idea for a window of memory.
 
