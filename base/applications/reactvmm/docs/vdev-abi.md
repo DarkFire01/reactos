@@ -143,6 +143,65 @@ The others of this kind, not yet laid out here: `IVmPitService`,
 `ISerialDevice`, `ISerialPortDevice`, `IVmBios`, `IVmBattery`, `IVmPsp`,
 `IVmPowerManagementDevice`, `IVmTimerHandler`, `IVmPciConfigAccessHandler`.
 
+## What each device is called
+
+The class map in the shipped emulated device library, in the order it lists them:
+
+| Class                     | Identifier                               |
+|---------------------------|------------------------------------------|
+| interrupt controller      | `{9edd1639-9bca-40dc-b3a2-07c828da60b5}` |
+| PCI bus                   | `{84535fad-4d98-4a6a-bdcd-21d5720dc430}` |
+| ISA bus                   | `{4d42d9f7-6531-4f6c-9e46-1f0477876104}` |
+| speaker                   | `{4d46d139-7821-4dc4-98a3-01e98a586a44}` |
+| super IO                  | `{35b0b12f-a0d7-482f-80a0-f52f1ab3da2e}` |
+| interval timer            | `{a28e4d02-3323-4148-9569-565930a5cb39}` |
+| transfer controller       | `{87045ce9-5323-438f-93bb-1e83dcbce18e}` |
+| video                     | `{7d80d3db-61ee-4879-8879-5609f1100ad0}` |
+| keyboard controller       | `{655bc5c5-a784-46b7-81bc-e26328f7eb0e}` |
+
+Each entry of that map is six pointers: the identifier, nothing, the routine
+that makes the class object, a routine called as the library goes away, and the
+two that write the class into the registry and take it out again.
+
+## How a device is given its services
+
+`Initialize` is handed the device's configuration, a reserved word, and an
+unknown. The device asks that unknown for `IVmServiceAccess`
+`{20beef08-c3ab-44d8-92c3-03ec0cf398dc}`, whose slot three takes an interface
+identifier and gives back the service behind it. It then asks for each service
+in its own dependency list in turn, and fails to come up if a service it called
+for is missing and was not marked as one it could do without.
+
+The identifiers, read out of four different devices' lists and agreeing in every
+one:
+
+| Service                     | Identifier                               |
+|-----------------------------|------------------------------------------|
+| `IVmAmd64EmulationServices` | `{fcace8d2-ab0d-480d-b979-55c2da5f9579}` |
+| `IVmProcessorServices`      | `{5f662e9d-2097-4eb5-8527-658ba54ac049}` |
+| `IVmIoApic`                 | `{9d33829b-58be-4bbf-ab6e-3b16dbcef954}` |
+| `IVmTimeSource`             | `{e162fe7a-72c6-4d0e-93dd-7df91a5b979d}` |
+| `IVmPciBusService`          | `{d90779f1-0fbe-4d28-b42d-16fceb5ea70c}` |
+| `IVmPitService`             | `{c8d6e99d-ae82-4b49-a9b0-7fc75a047c62}` |
+| `IVmPowerServices`          | `{3ee9144c-27d7-4c8e-a07e-5dd5f7a0207d}` |
+| `IVmSuperIo`                | `{060604ae-6a0b-4e03-8afe-25fca68cb5d1}` |
+| `IVmInputController`        | `{5a753463-f272-4d06-a553-fb47c1362838}` |
+
+## What is known of the emulation service
+
+Slot three takes a window of guest memory, counted in pages:
+
+    HRESULT (IVmAmd64EmulationServices *Service,
+             ULONG64 FirstPage,
+             ULONG64 PageCount,
+             IVndMmioHandler *Handler,
+             BOOL Enabled,
+             PVOID *Registration)
+
+The video device reserves page 176 through it, which is the text window at
+0xB0000. Slot six is the port call written out above. Slots four and five are
+not yet understood and nothing seen so far calls them.
+
 ## What the host owes a device
 
 These are named in the dependency lists and are the host's to implement. Until
