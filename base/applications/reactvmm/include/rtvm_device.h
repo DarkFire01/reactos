@@ -43,6 +43,11 @@ typedef struct _RTVM_DEVICE RTVM_DEVICE, *PRTVM_DEVICE;
      ((Table)->Size >= FIELD_OFFSET(Type, Member) + sizeof((Table)->Member)) &&\
      ((Table)->Member != NULL))
 
+/* Which way a channel was programmed to move data, for RequestChannel below */
+#define RTVM_CHANNEL_IDLE           0
+#define RTVM_CHANNEL_TO_MEMORY      1
+#define RTVM_CHANNEL_FROM_MEMORY    2
+
 /* Lines the interrupt controller knows about, for SetInterruptLine below */
 #define RTVM_LINE_NONE  ((ULONG)-1)
 
@@ -155,17 +160,24 @@ typedef struct _RTVM_HOST_INTERFACE
         _In_ const RTVM_TEXT_PAGE *Page);
 
     /*
-     * Move a device's data through one of the transfer channels. The device
-     * never learns where in memory it went, which is the whole point of the
-     * channel having been programmed by somebody else.
+     * Ask for a turn on one of the transfer channels. Nothing is moved: what
+     * comes back is where in guest memory the transfer goes and how much of it
+     * may go, and the device does the moving itself through the two calls
+     * above. Once it has, it says so, and only then does the channel move on.
      */
     RTVM_STATUS
-    (RTVMAPI *MoveThroughChannel)(
+    (RTVMAPI *RequestChannel)(
         _In_ PVOID Context,
         _In_ ULONG Channel,
-        _Inout_updates_bytes_(Length) PVOID Buffer,
         _In_ ULONG Length,
-        _Out_ PULONG Moved);
+        _Out_ PULONG Direction,
+        _Out_ PULONG64 Address,
+        _Out_ PULONG Count);
+
+    RTVM_STATUS
+    (RTVMAPI *ChannelFinished)(
+        _In_ PVOID Context,
+        _In_ ULONG Channel);
 } RTVM_HOST_INTERFACE, *PRTVM_HOST_INTERFACE;
 
 /*

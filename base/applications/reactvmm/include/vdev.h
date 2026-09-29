@@ -176,11 +176,23 @@ DECLARE_INTERFACE_(IVmDmaController, IUnknown)
 
     STDMETHOD(GetDmaChannelCount)(THIS_ _Out_ PULONG Count) PURE;
 
-    /* Moves as much as the channel was told to, and says how much that was */
+    /*
+     * Asks for a turn on a channel. Nothing is moved here: what comes back is
+     * where in guest memory the transfer goes and how much of it the channel
+     * was programmed to carry, and the device that asked does the moving. That
+     * is why a controller needs no way of its own to reach memory.
+     *
+     * The third argument is passed in a floating point register and nothing
+     * yet says what it is for. It is declared so that everything after it
+     * lands where it belongs.
+     */
     STDMETHOD(RequestDma)(THIS_ _In_ ULONG Channel,
-                          _Inout_updates_bytes_(Length) PVOID Buffer,
+                          _In_ double Unknown,
                           _In_ ULONG Length,
-                          _Out_ PULONG Moved) PURE;
+                          _Out_ PULONG Direction,
+                          _Out_ PULONG64 Address,
+                          _Out_ PULONG Count,
+                          _Out_ PULONG Result) PURE;
 
     STDMETHOD(ReportDmaComplete)(THIS_ _In_ ULONG Channel) PURE;
 };

@@ -26,7 +26,14 @@
 /* DEFINES ********************************************************************/
 
 #define FLOPPY_BASE             0x03F0
-#define FLOPPY_REGISTER_COUNT   8
+
+/*
+ * Six of them, and then one more past a gap. The register in that gap belongs
+ * to the fixed disk controller and always has: the two were wired next to each
+ * other and the board gave that one address to the other chip.
+ */
+#define FLOPPY_LOW_COUNT        6
+#define FLOPPY_HIGH_PORT        0x03F7
 #define FLOPPY_LINE             6
 #define FLOPPY_CHANNEL          2
 
@@ -305,6 +312,8 @@ FloppyMoveData(
     LARGE_INTEGER Offset;
     ULONG Wanted;
     ULONG Moved = 0;
+    ULONG Direction = RTVM_CHANNEL_IDLE;
+    ULONG64 Where = 0;
     DWORD Carried = 0;
 
     Status[0] = (UCHAR)(Drive | (Head << 2));
@@ -352,39 +361,57 @@ FloppyMoveData(
 
     Wanted *= FLOPPY_SECTOR_SIZE;
 
-    if (Reading)
+    /*
+     * The controller says where in memory the transfer goes and how much of it
+     * may go. Carrying it is this device's own work, because the channel has
+     * no way of reaching memory and this does.
+     */
+    if (Host->RequestChannel(Host->Context, FLOPPY_CHANNEL, Wanted,
+                             &Direction, &Where, &Moved) != RtvmOk)
+    {
+        Moved = 0;
+    }
+
+    if ((Moved != 0) && Reading && (Direction == RTVM_CHANNEL_TO_MEMORY))
     {
         SetFilePointerEx(Floppy->Image, Offset, NULL, FILE_BEGIN);
 
-        if (!ReadFile(Floppy->Image, Floppy->Buffer, Wanted, &Carried, NULL))
+        if (!ReadFile(Floppy->Image, Floppy->Buffer, Moved, &Carried, NULL))
             Carried = 0;
 
         /* Past the end of a short image reads as an empty sector would */
-        if (Carried < Wanted)
-            memset(&Floppy->Buffer[Carried], 0, Wanted - Carried);
+        if (Carried < Moved)
+            memset(&Floppy->Buffer[Carried], 0, Moved - Carried);
 
-        if (Host->MoveThroughChannel != NULL)
+        if (Host->WriteGuestMemory(Host->Context, Where,
+                                   Floppy->Buffer, Moved) != RtvmOk)
         {
-            Host->MoveThroughChannel(Host->Context, FLOPPY_CHANNEL,
-                                     Floppy->Buffer, Wanted, &Moved);
+            Moved = 0;
         }
     }
-    else
+    else if ((Moved != 0) && !Reading && (Direction == RTVM_CHANNEL_FROM_MEMORY))
     {
-        if (Host->MoveThroughChannel != NULL)
-        {
-            Host->MoveThroughChannel(Host->Context, FLOPPY_CHANNEL,
-                                     Floppy->Buffer, Wanted, &Moved);
-        }
-
-        if (Moved != 0)
+        if (Host->ReadGuestMemory(Host->Context, Where,
+                                  Floppy->Buffer, Moved) == RtvmOk)
         {
             SetFilePointerEx(Floppy->Image, Offset, NULL, FILE_BEGIN);
 
             if (!WriteFile(Floppy->Image, Floppy->Buffer, Moved, &Carried, NULL))
                 Carried = 0;
         }
+        else
+        {
+            Moved = 0;
+        }
     }
+    else
+    {
+        /* The channel is pointing the other way from what was asked for */
+        Moved = 0;
+    }
+
+    if (Moved != 0)
+        Host->ChannelFinished(Host->Context, FLOPPY_CHANNEL);
 
     if (Moved == 0)
     {
@@ -598,9 +625,19 @@ FloppyIoRead(
                 *Value = Floppy->Result[Floppy->ResultRead];
                 Floppy->ResultRead++;
 
-                /* The last byte taken is what ends the command */
+                /*
+                 * The last byte taken is what ends the command, and what lets
+                 * the line go. A command that answers with bytes has already
+                 * said everything it has to say by the time they have been
+                 * read, and one that kept holding its line would be asking for
+                 * an interrupt nobody has anything left to do about.
+                 */
                 if (Floppy->ResultRead >= Floppy->ResultLength)
+                {
                     FloppyIdle(Floppy);
+                    Floppy->Pending = FALSE;
+                    FloppySetLine(Floppy, FALSE);
+                }
             }
             else
             {
@@ -748,17 +785,29 @@ FloppyStart(
     const RTVM_HOST_INTERFACE *Host = Device->Host;
     RTVM_STATUS Status;
 
-    if (!RTVM_CARRIES(Host, RTVM_HOST_INTERFACE, MoveThroughChannel))
+    if (!RTVM_CARRIES(Host, RTVM_HOST_INTERFACE, RequestChannel))
     {
         FloppyLog(Floppy, RtvmLogError,
-                  "floppy: the manager has no transfer channels to move through\n");
+                  "floppy: the manager has no transfer channels to ask for\n");
         return RtvmNotSupported;
     }
 
     Status = Host->ClaimPortRange(Host->Context, Device,
-                                  FLOPPY_BASE, FLOPPY_REGISTER_COUNT);
+                                  FLOPPY_BASE, FLOPPY_LOW_COUNT);
     if (Status != RtvmOk)
+    {
+        FloppyLog(Floppy, RtvmLogError,
+                  "floppy: %04x is answered for already\n", FLOPPY_BASE);
         return Status;
+    }
+
+    Status = Host->ClaimPortRange(Host->Context, Device, FLOPPY_HIGH_PORT, 1);
+    if (Status != RtvmOk)
+    {
+        FloppyLog(Floppy, RtvmLogError,
+                  "floppy: %04x is answered for already\n", FLOPPY_HIGH_PORT);
+        return Status;
+    }
 
     FloppyReset(Device);
 

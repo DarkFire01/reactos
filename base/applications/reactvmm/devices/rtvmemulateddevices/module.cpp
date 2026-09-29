@@ -20,6 +20,7 @@
 #include <objbase.h>
 
 #include "picdevice.h"
+#include "dmadevice.h"
 
 namespace rtvm
 {
@@ -33,6 +34,11 @@ static IVirtualDevice *MakePicDevice(void)
     return static_cast<IVirtualDevice *>(new PicDevice());
 }
 
+static IVirtualDevice *MakeDmaDevice(void)
+{
+    return static_cast<IVirtualDevice *>(new DmaDevice());
+}
+
 /*
  * Every kind this library has. A manager walks nothing but this, and adding a
  * device is adding a line to it.
@@ -44,7 +50,8 @@ static const struct
     const char *Name;
 } DeviceMap[] =
 {
-    { &CLSID_PicDevice, MakePicDevice, "interrupt controller" }
+    { &CLSID_PicDevice, MakePicDevice, "interrupt controller" },
+    { &CLSID_DmaControllerDevice, MakeDmaDevice, "transfer controller" }
 };
 
 /**

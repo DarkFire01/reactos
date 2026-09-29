@@ -47,6 +47,8 @@
 
 /* Where the cursor for the first page is kept */
 #define BDA_CURSOR          HEX(0050)
+/* Ours, in the part of the area nothing else was given */
+#define BDA_FLOPPY_DONE     HEX(003E)
 
 /* Where the manager left a note saying what this machine is */
 #define DESCRIPTION_BASE    HEX(0500)
@@ -566,16 +568,15 @@ Int12Handler:
  */
 Int13Handler:
     /*
-     * The one drive answers to both names. Which name it is called by depends
-     * on what was put in it: a boot sector that came off a removable medium
-     * was handed a zero and will keep using it, and one off a fixed disk was
-     * handed eighty. Refusing either would mean refusing half the things that
-     * can boot.
+     * Which drive is being asked for. Anything with the top bit down is a
+     * removable one and goes to the controller that has those; the fixed disk
+     * is the only other thing here.
      */
     cmp dl, HEX(80)
     je Int13OurDrive
-    cmp dl, HEX(00)
-    jne Int13NotOurDrive
+    test dl, HEX(80)
+    jz Int13Removable
+    jmp Int13NotOurDrive
 
 Int13OurDrive:
 
@@ -599,6 +600,97 @@ Int13NotSupported:
 Int13NotOurDrive:
     mov ah, HEX(80)
     jmp Int13Failed
+
+/* THE REMOVABLE DRIVE ********************************************************/
+
+Int13Removable:
+    cmp dl, 0
+    jne Int13NotOurDrive
+
+    cmp ah, HEX(00)
+    je Int13FloppyReset
+    cmp ah, HEX(02)
+    je Int13FloppyRead
+    cmp ah, HEX(08)
+    je Int13FloppyParameters
+    cmp ah, HEX(15)
+    je Int13FloppyType
+    jmp Int13NotSupported
+
+Int13FloppyReset:
+    call FloppyStart
+    jc Int13Failed
+    xor ah, ah
+    jmp Int13Succeeded
+
+Int13FloppyRead:
+    push bx
+    push cx
+    push dx
+
+    call FloppyStart
+    jc Int13FloppyGone
+
+    call FloppyReadSectors
+    jc Int13FloppyGone
+
+    call FloppyStop
+
+    pop dx
+    pop cx
+    pop bx
+
+    /* AL comes back saying how many were moved, which is all of them or none */
+    xor ah, ah
+    jmp Int13Succeeded
+
+Int13FloppyGone:
+    call FloppyStop
+
+    pop dx
+    pop cx
+    pop bx
+
+    mov ah, HEX(04)
+    jmp Int13Failed
+
+/*
+ * The shape of the medium, which is the one shape anything still makes. The
+ * numbers are one less than the count, the way this call has always given them.
+ */
+Int13FloppyParameters:
+    mov ah, HEX(00)
+    mov bl, HEX(04)
+    mov ch, 79
+    mov cl, 18
+    mov dh, 1
+    mov dl, 1
+    push cs
+    pop es
+    mov di, OFFSET FloppyParameterTable
+    jmp Int13Succeeded
+
+Int13FloppyType:
+    /* One that can tell it has been changed, which is what the two means */
+    mov ah, HEX(02)
+    jmp Int13Succeeded
+
+/*
+ * What a driver reads instead of asking. Everything in it is what the medium
+ * above is written with.
+ */
+FloppyParameterTable:
+    .byte HEX(AF)
+    .byte HEX(02)
+    .byte HEX(25)
+    .byte HEX(02)
+    .byte 18
+    .byte HEX(1B)
+    .byte HEX(FF)
+    .byte HEX(6C)
+    .byte HEX(F6)
+    .byte HEX(0F)
+    .byte HEX(08)
 
 Int13Reset:
     call AtaWaitReady
@@ -1312,6 +1404,26 @@ Int08Handler:
  * here is done by asking and waiting rather than by being told, but the
  * controller still has to be answered.
  */
+/*
+ * The removable drive saying it has finished. Nothing is read here: what the
+ * command left behind is taken by whoever asked for it, and all this does is
+ * let them stop waiting.
+ */
+Int0EHandler:
+    push ax
+    push ds
+
+    mov ax, BDA_SEGMENT
+    mov ds, ax
+    mov byte ptr ds:[BDA_FLOPPY_DONE], 1
+
+    mov al, HEX(20)
+    out HEX(20), al
+
+    pop ds
+    pop ax
+    iret
+
 Int76Handler:
     push ax
     mov al, HEX(20)
@@ -1343,6 +1455,10 @@ SpuriousSlaveHandler:
     out PIC_MASTER_COMMAND, al
     pop ax
     iret
+
+/* DRIVING THE REMOVABLE DRIVE ************************************************/
+
+#include "floppy.S"
 
 /* COMING UP ******************************************************************/
 
@@ -1539,6 +1655,10 @@ VectorFill:
     mov ax, OFFSET Int76Handler
     call VectorSet
 
+    mov bx, PIC_MASTER_VECTOR + 6
+    mov ax, OFFSET Int0EHandler
+    call VectorSet
+
     mov bx, HEX(10)
     mov ax, OFFSET Int10Handler
     call VectorSet
@@ -1684,11 +1804,11 @@ ControllerSetup:
 
     /*
      * Open the lines something is actually listening for: the timer, the way
-     * the second controller arrives, and the serial port. A line nothing
-     * answers is worse than no line at all, because the controller is left
-     * holding it and never delivers another.
+     * the second controller arrives, the serial port and the removable drive.
+     * A line nothing answers is worse than no line at all, because the
+     * controller is left holding it and never delivers another.
      */
-    mov al, HEX(EA)
+    mov al, HEX(AA)
     out PIC_MASTER_DATA, al
 
     /* On the second one, the disk */
@@ -1710,9 +1830,34 @@ ControllerSetup:
 Int19Handler:
     sti
 
+    /*
+     * The removable drive first, the way a machine of this kind has always
+     * been asked to. Something left in the drive is what the operator wanted
+     * booted, and the fixed disk is what is there the rest of the time.
+     */
+    mov byte ptr cs:[BootDrive], HEX(00)
+    call Int19TryDrive
+    jnc Int19Bootable
+
     cmp byte ptr cs:[DiskPresent], 0
     je Int19NoDisk
 
+    mov byte ptr cs:[BootDrive], HEX(80)
+    call Int19TryDrive
+    jc Int19NotBootable
+
+Int19Bootable:
+    push cs
+    pop ds
+    mov si, OFFSET HandOverMessage
+    call SerialWriteString
+    jmp Int19HandOver
+
+/*
+ * Reads the first sector off whichever drive BootDrive names, and says whether
+ * what came back is something worth jumping into.
+ */
+Int19TryDrive:
     push cs
     pop ds
     mov si, OFFSET BootingMessage
@@ -1730,18 +1875,22 @@ Int19Handler:
     mov dh, 0
     mov dl, byte ptr cs:[BootDrive]
     int HEX(13)
-    jc Int19ReadFailed
+    jc Int19TryFailed
 
     /* Is it one */
     mov ax, BOOT_SEGMENT
     mov es, ax
     cmp word ptr es:[BOOT_OFFSET + 510], HEX(AA55)
-    jne Int19NotBootable
+    jne Int19TryFailed
 
-    push cs
-    pop ds
-    mov si, OFFSET HandOverMessage
-    call SerialWriteString
+    clc
+    ret
+
+Int19TryFailed:
+    stc
+    ret
+
+Int19HandOver:
 
     /*
      * Into it. Everything a boot sector is entitled to expect is set: the
@@ -1756,13 +1905,6 @@ Int19Handler:
     mov dl, byte ptr cs:[BootDrive]
 
     ljmp16 BOOT_SEGMENT, BOOT_OFFSET
-
-Int19ReadFailed:
-    push cs
-    pop ds
-    mov si, OFFSET ReadFailedMessage
-    call SerialWriteString
-    jmp HaltForever
 
 Int19NotBootable:
     push cs
@@ -1810,10 +1952,6 @@ BootingMessage:
 
 HandOverMessage:
     .ascii "handing over"
-    .byte 13, 10, 0
-
-ReadFailedMessage:
-    .ascii "the boot sector would not read"
     .byte 13, 10, 0
 
 CrLfMessage:
