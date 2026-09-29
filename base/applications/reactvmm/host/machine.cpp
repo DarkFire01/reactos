@@ -592,6 +592,43 @@ bool Machine::WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length)
     return m_Memory.Write(Address, Buffer, Length);
 }
 
+bool Machine::PresentText(const RTVM_TEXT_PAGE &Page)
+{
+    if (m_Display == nullptr)
+        return false;
+
+    m_Display->Present(Page);
+    return true;
+}
+
+void Machine::PostInput(RTVM_INPUT_KIND Kind, ULONG Value)
+{
+    if (m_Devices)
+        m_Devices->PostInput(Kind, Value);
+}
+
+ULONG Machine::DeviceCount() const
+{
+    return m_Devices ? m_Devices->Count() : 0;
+}
+
+const char *Machine::DeviceName(ULONG Index) const
+{
+    return m_Devices->NameAt(Index);
+}
+
+void Machine::Snapshot(MachineStatus &Status) const
+{
+    Status.Rip = m_LastRip;
+    Status.Cs = (USHORT)m_LastCs;
+    Status.Delivered = m_Delivered;
+    Status.Refused = m_Refused;
+    Status.Running = (m_Running != 0);
+
+    for (ULONG Line = 0; Line < RTL_NUMBER_OF(Status.LineCount); Line++)
+        Status.LineCount[Line] = m_LineCount[Line];
+}
+
 void Machine::Stop()
 {
     InterlockedExchange(&m_Stopping, 1);
@@ -899,6 +936,10 @@ StopReason Machine::RunProcessor(ULONG Index)
             return StopReason::Refused;
         }
 
+        /* Left behind for the panel, which has no other way to see it move */
+        m_LastRip = Exit.VpContext.Rip;
+        m_LastCs = Exit.VpContext.Cs.Selector;
+
         switch (Exit.ExitReason)
         {
             case WHvRunVpExitReasonX64IoPortAccess:
@@ -1106,8 +1147,12 @@ StopReason Machine::Run()
 {
     Log(RtvmLogInfo, "running\n");
 
+    InterlockedExchange(&m_Running, 1);
+
     /* One processor for now. The rest are made and wait to be started */
     const StopReason Reason = RunProcessor(0);
+
+    InterlockedExchange(&m_Running, 0);
 
     m_Devices->StopAll();
 

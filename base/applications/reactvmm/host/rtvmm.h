@@ -171,6 +171,19 @@ private:
 class Machine;
 
 /*
+ * Somewhere for the operator to look. A device that owns a display hands pages
+ * up rather than drawing them, because where they are drawn is the manager's
+ * business and there may be nowhere at all.
+ */
+class Display
+{
+public:
+    virtual ~Display() = default;
+
+    virtual void Present(const RTVM_TEXT_PAGE &Page) = 0;
+};
+
+/*
  * Loads modules and makes devices out of them. It also holds the interface the
  * devices call back through, because that interface has to reach the machine.
  */
@@ -189,6 +202,12 @@ public:
     bool StartAll();
     void ResetAll();
     void StopAll();
+
+    /* Offered to every device that takes input, because any of them may want it */
+    void PostInput(RTVM_INPUT_KIND Kind, ULONG Value);
+
+    ULONG Count() const { return m_Devices.Count(); }
+    const char *NameAt(ULONG Index) const { return m_Devices[Index]->Name; }
 
 private:
     struct LoadedModule
@@ -218,6 +237,12 @@ struct Configuration
 
     /* How long to run for, or zero to run until something stops it */
     ULONG RunSeconds = 0;
+
+    /* Whether the operator gets a window, or only the log */
+    bool Window = false;
+
+    /* Where to leave a picture of that window when it goes */
+    Text<MAX_PATH> CapturePath;
 };
 
 /* Why the machine stopped */
@@ -228,6 +253,21 @@ enum class StopReason
     TripleFault,
     Refused,
     Cancelled
+};
+
+/*
+ * What the machine is doing, read rather than followed. Nothing here is held
+ * under a lock: a panel redrawing twenty times a second does not need a
+ * consistent set, it needs a recent one.
+ */
+struct MachineStatus
+{
+    ULONG64 Rip;
+    USHORT Cs;
+    ULONG Delivered;
+    ULONG Refused;
+    ULONG LineCount[16];
+    bool Running;
 };
 
 /*
@@ -253,10 +293,23 @@ public:
     Bus &SystemBus() noexcept { return m_Bus; }
     Pic &Controller() noexcept { return m_Pic; }
 
+    /* Where pages of text go from now on, or nullptr for nowhere */
+    void Attach(Display *Screen) noexcept { m_Display = Screen; }
+
+    /* Something the operator did, offered to whichever devices take input */
+    void PostInput(RTVM_INPUT_KIND Kind, ULONG Value);
+
+    void Snapshot(MachineStatus &Status) const;
+
+    /* The names of the devices, for a panel that lists what the machine has */
+    ULONG DeviceCount() const;
+    const char *DeviceName(ULONG Index) const;
+
     /* Called through the device interface, which is why these are public */
     void SetInterruptLine(ULONG Line, bool Asserted);
     bool ReadGuest(ULONG64 Address, void *Buffer, ULONG Length);
     bool WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length);
+    bool PresentText(const RTVM_TEXT_PAGE &Page);
 
 private:
     bool BindPlatform();
@@ -288,6 +341,14 @@ private:
     void *m_Partition = nullptr;
     ULONG m_ProcessorCount = 1;
     volatile LONG m_Stopping = 0;
+
+    /* Whose it is to draw, set before the machine runs and not changed after */
+    Display *m_Display = nullptr;
+
+    /* Where the processor was the last time it came out, for the panel */
+    volatile ULONG64 m_LastRip = 0;
+    volatile LONG m_LastCs = 0;
+    volatile LONG m_Running = 0;
 
     /*
      * The controller is reached from the processor's thread and from whichever

@@ -67,6 +67,17 @@ HostWriteGuestMemory(PVOID Context, ULONG64 Address, const VOID *Buffer, ULONG L
 }
 
 static RTVM_STATUS RTVMAPI
+HostPresentText(PVOID Context, const RTVM_TEXT_PAGE *Page)
+{
+    auto *Owner = static_cast<Machine *>(Context);
+
+    if ((Page == nullptr) || (Page->Cells == nullptr))
+        return RtvmBadParameter;
+
+    return Owner->PresentText(*Page) ? RtvmOk : RtvmNotSupported;
+}
+
+static RTVM_STATUS RTVMAPI
 HostSetTimer(PVOID Context, PRTVM_DEVICE Device, ULONG64 Nanoseconds)
 {
     UNREFERENCED_PARAMETER(Context);
@@ -105,6 +116,7 @@ DeviceHost::DeviceHost(Machine &Owner)
     m_Interface.ReadGuestMemory = HostReadGuestMemory;
     m_Interface.WriteGuestMemory = HostWriteGuestMemory;
     m_Interface.SetTimer = HostSetTimer;
+    m_Interface.PresentText = HostPresentText;
     m_Interface.Log = HostLog;
 }
 
@@ -247,6 +259,15 @@ void DeviceHost::ResetAll()
     {
         if ((Device->Vtable != nullptr) && (Device->Vtable->Reset != nullptr))
             Device->Vtable->Reset(Device);
+    }
+}
+
+void DeviceHost::PostInput(RTVM_INPUT_KIND Kind, ULONG Value)
+{
+    for (RTVM_DEVICE *Device : m_Devices)
+    {
+        if (RTVM_CARRIES(Device->Vtable, RTVM_DEVICE_VTABLE, Input))
+            Device->Vtable->Input(Device, Kind, Value);
     }
 }
 
