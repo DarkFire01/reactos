@@ -97,6 +97,10 @@ extern SIZE_T KeXStateLength;
 /* The local APIC mode the HAL chose, so interrupt exits can end the interrupt */
 extern BOOLEAN KiX2ApicEnabled;
 
+/* The one interrupt table, which every processor runs on */
+extern KIDTENTRY64 KiIdt[256];
+extern KDESCRIPTOR KiIdtDescriptor;
+
 #include "intrin_i.h"
 
 typedef struct _KIDT_INIT
