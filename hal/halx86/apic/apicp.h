@@ -137,6 +137,7 @@ typedef enum _APIC_REGISTER
 /* x2apic.c, and the registers it reaches the controller through */
 #define X2APIC_MSR_BASE 0x00000800
 #define X2APIC_MSR_ICR 0x00000830
+#define X2APIC_MSR_SELF_IPI 0x0000083F
 
 extern BOOLEAN HalpX2ApicEnabled;
 
@@ -413,23 +414,55 @@ ApicGetId(VOID)
 
 /**
  * @brief
+ * Waits until the local APIC has finished delivering the last command.
+ *
+ * @remarks
+ * A command written while the controller is still busy with the one before it
+ * is dropped, which is why a startup sequence waits here between messages. The
+ * newer mode has no such bit and nothing to wait for.
+ */
+FORCEINLINE
+VOID
+ApicWaitForIdle(VOID)
+{
+    APIC_INTERRUPT_COMMAND_REGISTER Status;
+
+    if (HalpX2ApicEnabled)
+        return;
+
+    do
+    {
+        Status.Long0 = ApicRead(APIC_ICR0);
+    } while (Status.DeliveryStatus);
+}
+
+/**
+ * @brief
  * Sends what the command register was filled in for.
  *
  * @remarks
  * The older mode takes two writes and the high half has to land first, with
- * the controller idle before either. The newer one is a single register, wide
- * enough for the whole command and for a destination larger than a byte, and
- * it reports nothing to wait on.
+ * the controller idle before either. A short hand carries the destination in
+ * the command itself, and the half that would hold one is left alone.
+ *
+ * The newer one is a single register, wide enough for the whole command and
+ * for a destination larger than a byte, and it reports nothing to wait on. An
+ * interrupt a processor sends itself has a register of its own there, which
+ * takes only the vector and needs no round trip through the command register.
  */
 FORCEINLINE
 VOID
 ApicWriteIcr(
     _In_ APIC_INTERRUPT_COMMAND_REGISTER Icr)
 {
-    APIC_INTERRUPT_COMMAND_REGISTER Status;
-
     if (HalpX2ApicEnabled)
     {
+        if (Icr.DestinationShortHand == APIC_DSH_Self)
+        {
+            __writemsr(X2APIC_MSR_SELF_IPI, Icr.Vector);
+            return;
+        }
+
         /* Delivery status is not a bit of this register any more */
         __writemsr(X2APIC_MSR_ICR,
                    ((ULONG64)Icr.Destination << 32) |
@@ -437,12 +470,11 @@ ApicWriteIcr(
         return;
     }
 
-    do
-    {
-        Status.Long0 = ApicRead(APIC_ICR0);
-    } while (Status.DeliveryStatus);
+    ApicWaitForIdle();
 
-    ApicWrite(APIC_ICR1, Icr.Long1);
+    if (Icr.DestinationShortHand == APIC_DSH_Destination)
+        ApicWrite(APIC_ICR1, Icr.Long1);
+
     ApicWrite(APIC_ICR0, Icr.Long0);
 }
 
