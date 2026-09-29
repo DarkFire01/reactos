@@ -130,7 +130,7 @@ STDMETHODIMP VideoDevice::GetDependencies(void *Repository, ULONG *Count,
     static const GUID *const Wanted[] =
     {
         &IID_IVmAmd64EmulationServices,
-        &IID_IMonitorDevice
+        &IID_IRtvmVideoWatcher
     };
 
     UNREFERENCED_PARAMETER(Repository);
@@ -240,7 +240,7 @@ STDMETHODIMP VideoDevice::PowerOnCold(VDEV_STATE State)
     UNREFERENCED_PARAMETER(State);
 
     if (m_Monitor == nullptr)
-        FindService(IID_IMonitorDevice, reinterpret_cast<void **>(&m_Monitor));
+        FindService(IID_IRtvmVideoWatcher, reinterpret_cast<void **>(&m_Monitor));
 
     /*
      * The whole of what is drawn out of, put where the guest reaches it as
@@ -414,7 +414,7 @@ void VideoDevice::Tell()
     LeaveCriticalSection(&m_Lock);
 
     if (m_Monitor != nullptr)
-        m_Monitor->OnVideoDirt(&Changed);
+        m_Monitor->OnVideoDirt(VDEV_VIDEO_S3);
 }
 
 /* WHAT IS DRAWN **************************************************************/

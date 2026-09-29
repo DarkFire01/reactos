@@ -494,7 +494,7 @@ HRESULT VdevHost::FindService(REFIID Service, void **Object)
     }
 
     /* Whoever is looking at the machine, which is not a device at all */
-    if (IsEqualIID(Service, IID_IMonitorDevice) &&
+    if (IsEqualIID(Service, IID_IRtvmVideoWatcher) &&
         (m_Machine.Monitor() != nullptr))
     {
         return m_Machine.Monitor()->QueryInterface(Service, Object);

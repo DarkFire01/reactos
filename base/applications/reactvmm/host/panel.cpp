@@ -184,9 +184,9 @@ STDMETHODIMP Panel::QueryInterface(REFIID Interface, void **Object)
         return E_POINTER;
 
     if (IsEqualIID(Interface, IID_IUnknown) ||
-        IsEqualIID(Interface, IID_IMonitorDevice))
+        IsEqualIID(Interface, IID_IRtvmVideoWatcher))
     {
-        *Object = static_cast<IMonitorDevice *>(this);
+        *Object = static_cast<IRtvmVideoWatcher *>(this);
         AddRef();
         return S_OK;
     }
@@ -215,9 +215,9 @@ STDMETHODIMP_(ULONG) Panel::Release()
  * a screen of eighty by twenty five is four thousand bytes and working out
  * which of them to copy costs more than copying all of them.
  */
-STDMETHODIMP Panel::OnVideoDirt(const RECT *Changed)
+STDMETHODIMP Panel::OnVideoDirt(VDEV_VIDEO_KIND Which)
 {
-    UNREFERENCED_PARAMETER(Changed);
+    UNREFERENCED_PARAMETER(Which);
 
     IVideoVdev *Display = m_Machine->Screen();
 

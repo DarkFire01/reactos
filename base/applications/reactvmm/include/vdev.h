@@ -721,10 +721,28 @@ DECLARE_INTERFACE_(IVmBios, IUnknown)
 DEFINE_GUID(IID_IMonitorDevice,
             0x0cf78153, 0xff01, 0x4af8, 0x8e, 0xe0, 0x1b, 0x3b, 0x44, 0x54, 0xfc, 0x11);
 
+struct IVideoVdev;
+struct IVmMemoryBlock;
+struct IVmMouseDevice;
+
+/* Which of the displays a machine may have is being talked about */
+typedef ULONG VDEV_VIDEO_KIND;
+
+/* The one this machine has, being the card rather than anything synthetic */
+#define VDEV_VIDEO_S3 1
+
 /*
- * Whatever the operator is looking at, as the video device tells it what has
- * changed. The display is not handed a screen: it is told which part of one
- * stopped being what it was, and fetches as much of it as it wants to draw.
+ * What a display device is given to work against.
+ *
+ * Not a callback, which is what the name suggests and what this was taken for
+ * at first. It is the other way round: the thing looking at the machine owns
+ * the memory the picture is in, and a display device asks it for that memory,
+ * tells it how much of it the card is supposed to have, and then draws into it.
+ * The S3 device asks for four megabytes and will not come up without them.
+ *
+ * The slots past the ones named are what the shipped monitor has and nothing
+ * here calls, kept so that a device reaching one of them is reaching the right
+ * place rather than off the end of the table.
  */
 #undef INTERFACE
 #define INTERFACE IMonitorDevice
@@ -735,11 +753,72 @@ DECLARE_INTERFACE_(IMonitorDevice, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
-    STDMETHOD(OnVideoDirt)(THIS_ _In_ const RECT *Changed) PURE;
-    STDMETHOD(OnPointerShapeChanged)(THIS) PURE;
-    STDMETHOD(OnPointerPositionChanged)(THIS) PURE;
-    STDMETHOD(OnActivationRequested)(THIS) PURE;
-    STDMETHOD(OnDeactivationRequested)(THIS) PURE;
+    STDMETHOD(GetThumbnailImage)(THIS_ _In_opt_ PVOID Repository,
+                                 _In_ USHORT Width,
+                                 _In_ USHORT Height,
+                                 _In_ ULONG Flags,
+                                 _Outptr_ PVOID *Image) PURE;
+    STDMETHOD(RequestBitmap)(THIS_ _In_ RECT Where,
+                             _In_ ULONG Pitch,
+                             _In_ int Depth,
+                             _Out_ PUCHAR Pixels,
+                             _In_ ULONG Length,
+                             _In_ int Which) PURE;
+
+    /* The memory the picture lives in, which the display device draws into */
+    STDMETHOD(GetVramBaseAddress)(THIS_ _Outptr_ PUCHAR *Base) PURE;
+    STDMETHOD(GetVramSize)(THIS_ _Out_ PULONG Size) PURE;
+    STDMETHOD(GetVramMemoryBlock)(THIS_ _Outptr_ IVmMemoryBlock **Block) PURE;
+    STDMETHOD(IsVramAllocated)(THIS) PURE;
+    STDMETHOD(ClearVram)(THIS) PURE;
+
+    /* How much of it the card is supposed to have, said before it is asked for */
+    STDMETHOD(SetMemoryRequired)(THIS_ _In_ ULONG Bytes) PURE;
+    STDMETHOD(SetMemoryForSave)(THIS_ _In_ ULONG Bytes) PURE;
+
+    STDMETHOD(RegisterVideoSource)(THIS_ _In_ IVideoVdev *Display,
+                                   _In_ int Which) PURE;
+
+    STDMETHOD(GetDisplaySettings)(THIS_ _Out_ PULONG Width,
+                                  _Out_ PULONG Height,
+                                  _Out_ PULONG Depth) PURE;
+
+    STDMETHOD(GetPointerPosition)(THIS_ _Out_ PINT Across,
+                                  _Out_ PINT Down) PURE;
+    STDMETHOD(GetPointerShape)(THIS_ _Out_ PVOID Shape) PURE;
+
+    STDMETHOD(GetActiveDeviceType)(THIS_ _Out_ VDEV_VIDEO_KIND *Which) PURE;
+    STDMETHOD(GetClientCount)(THIS_ _Out_ PULONG Count) PURE;
+
+    STDMETHOD(SetMonitorVideoActive)(THIS_ _In_ int Active,
+                                     _In_ ULONG Which) PURE;
+    STDMETHOD(RegisterSyntheticMouse)(THIS_ _In_ IVmMouseDevice *Mouse) PURE;
+
+    STDMETHOD(OnClientCountChanged)(THIS) PURE;
+    STDMETHOD(OnDisplaySettingsChanged)(THIS) PURE;
+};
+
+DEFINE_GUID(IID_IRtvmVideoWatcher,
+            0x9c3a5f21, 0x7d84, 0x4e0b, 0xb1, 0xf6, 0x2a, 0x55, 0xc8, 0xd1, 0x04, 0x73);
+
+/*
+ * Ours, and nobody else's: being told that a display stopped being what it was.
+ *
+ * The shipped display device does not do this. It is handed memory and writes
+ * into it, and whatever is looking at that memory works out for itself when to
+ * draw. Ours says so instead, because a window that redraws only when something
+ * changed costs nothing to write and a great deal less to run.
+ */
+#undef INTERFACE
+#define INTERFACE IRtvmVideoWatcher
+DECLARE_INTERFACE_(IRtvmVideoWatcher, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(OnVideoDirt)(THIS_ _In_ VDEV_VIDEO_KIND Which) PURE;
 };
 
 DEFINE_GUID(IID_IVideoVdev,

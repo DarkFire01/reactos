@@ -280,7 +280,7 @@ private:
     volatile LONG m_Stopping = 0;
 
     /* Where what is drawn goes, which is not this device's to decide */
-    IMonitorDevice *m_Monitor = nullptr;
+    IRtvmVideoWatcher *m_Monitor = nullptr;
 };
 
 } /* namespace rtvm */

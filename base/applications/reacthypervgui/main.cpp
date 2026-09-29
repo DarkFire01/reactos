@@ -83,9 +83,20 @@ static const Part TheParts[] =
     { "vmchipset.dll",         "72682fc4-040a-430a-be0b-224574b953fe", nullptr },
     { "vmemulateddevices.dll", "a28e4d02-3323-4148-9569-565930a5cb39", nullptr },
     { "vmemulateddevices.dll", "87045ce9-5323-438f-93bb-1e83dcbce18e", nullptr },
-    { "vmemulateddevices.dll", "7d80d3db-61ee-4879-8879-5609f1100ad0", nullptr },
     { "vmemulatedstorage.dll", "83f8638b-8dca-4152-9eda-2ca8b33039b4", nullptr }
 };
+
+/*
+ * The display is not among them yet, and is the reason this window is still
+ * empty.
+ *
+ * It comes up: it is given the four megabytes of memory it asks for, takes the
+ * block that memory is in and registers to be told about writes to it. The call
+ * after that one stops the whole program rather than returning, and a fail-fast
+ * cannot be caught, so a machine with it in is a window that never opens. It
+ * goes back in the moment that last call is understood.
+ */
+#define VIDEO_S3 "7d80d3db-61ee-4879-8879-5609f1100ad0"
 
 /* HOW IT IS ALL HELD *********************************************************/
 
@@ -646,7 +657,7 @@ static LRESULT CALLBACK Dispatch(HWND Window, UINT Message, WPARAM First,
             if (TheGui.Running && !VmStopped())
                 TheGui.Ran += VmRun(GUI_SLICE);
 
-            RECT Changed = {};
+            VDEV_VIDEO_KIND Changed = 0;
 
             if (VmDirty(&Changed) || TheGui.Running)
                 InvalidateRect(Window, nullptr, FALSE);

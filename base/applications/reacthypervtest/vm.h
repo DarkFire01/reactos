@@ -77,7 +77,7 @@ IRtvmTextSurface *VmText();
 IRtvmPixelSurface *VmPixels();
 
 /* Whether anything has changed since this was last asked, and what */
-bool VmDirty(_Out_ RECT *Changed);
+bool VmDirty(_Out_ VDEV_VIDEO_KIND *Which);
 
 /* HOW THE MACHINE IS PUT TOGETHER ********************************************/
 
