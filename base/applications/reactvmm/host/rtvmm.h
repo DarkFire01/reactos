@@ -302,8 +302,8 @@ public:
     IVideoVdev *Screen() const;
 
     /* Whoever is looking at the machine, or nothing */
-    void Watch(IMonitorDevice *Monitor) noexcept { m_Monitor = Monitor; }
-    IMonitorDevice *Monitor() const noexcept { return m_Monitor; }
+    void Watch(IRtvmVideoWatcher *Monitor) noexcept { m_Monitor = Monitor; }
+    IRtvmVideoWatcher *Monitor() const noexcept { return m_Monitor; }
 
     ULONG ProcessorCount() const noexcept { return m_ProcessorCount; }
     bool Running() const noexcept { return m_Running != 0; }
@@ -354,7 +354,7 @@ private:
     Owned<VdevHost> m_Vdevs;
 
     /* Whoever is looking, set before the machine runs and not changed after */
-    IMonitorDevice *m_Monitor = nullptr;
+    IRtvmVideoWatcher *m_Monitor = nullptr;
 
     /* Whether the firmware that was loaded is the one built alongside this */
     bool m_OwnFirmware = true;

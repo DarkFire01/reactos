@@ -583,6 +583,12 @@ static HRESULT STDMETHODCALLTYPE RepositorySlot(void *This, void *First,
          * named by what is handed to it. Guarded, since nothing here knows
          * that the thing handed over is a pointer at all.
          */
+        if (Second == nullptr)
+        {
+            printf("      about: nothing\n");
+            return RepositoryAnswer;
+        }
+
         __try
         {
             const auto *Bytes = static_cast<const UCHAR *>(Second);
@@ -610,6 +616,32 @@ static HRESULT STDMETHODCALLTYPE RepositorySlot(void *This, void *First,
     }
 
     return RepositoryAnswer;
+}
+
+/*
+ * Which version of its own contract a device is being driven through.
+ *
+ * It names the oldest and newest it can work to, and what is written back is
+ * the one it is going to get. A device keeps that and behaves differently by
+ * it, so the newest it offers is the honest answer from something that has
+ * only ever been written against the newest.
+ */
+static HRESULT STDMETHODCALLTYPE RepositoryVersion(void *This, ULONG64 Least,
+                                                   ULONG64 Most, ULONG *Chosen)
+{
+    UNREFERENCED_PARAMETER(This);
+    UNREFERENCED_PARAMETER(Least);
+
+    if (Chosen != nullptr)
+        *Chosen = (ULONG)Most;
+
+    if (!RepositoryQuiet)
+    {
+        printf("    store: asked which version, between %llu and %llu\n",
+               (unsigned long long)Least, (unsigned long long)Most);
+    }
+
+    return S_OK;
 }
 
 /*
@@ -835,7 +867,8 @@ static const void *RepositoryVtable[REPOSITORY_SLOTS] =
     reinterpret_cast<const void *>(&RepositoryHold),
     reinterpret_cast<const void *>(&RepositoryDrop),
     reinterpret_cast<const void *>(&RepositoryKind),
-    SLOT(4),  SLOT(5),  SLOT(6),  SLOT(7),
+    SLOT(4),  SLOT(5),  SLOT(6),
+    reinterpret_cast<const void *>(&RepositoryVersion),
     SLOT(8),  SLOT(9),  SLOT(10),
     reinterpret_cast<const void *>(&RepositoryName),
     SLOT(12), SLOT(13), SLOT(14), SLOT(15),
@@ -1204,11 +1237,97 @@ static void *StandIn(REFIID Service)
  * was, and it is the front end's business to come back and fetch as much of
  * that as it wants to draw, whenever it next has time to.
  */
+/*
+ * A block of memory a device was given, as that device sees it.
+ *
+ * What the display device does with the one it is handed is not yet known: it
+ * wraps it in something of its own and asks that to watch for writes. So this
+ * answers nothing and writes down every slot it is asked for, which is how the
+ * rest of it gets found out.
+ */
+#define BLOCK_SLOTS 32
+
+struct BlockObject
+{
+    const void **Vtable;
+    volatile LONG Count;
+};
+
+template <int Slot>
+static HRESULT STDMETHODCALLTYPE BlockSlot(void *This, void *First,
+                                           void *Second, void *Third)
+{
+    UNREFERENCED_PARAMETER(This);
+
+    if (!RepositoryQuiet)
+    {
+        printf("    the vram block was asked for slot %d (%p %p %p)\n",
+               Slot, First, Second, Third);
+    }
+
+    return S_OK;
+}
+
+static HRESULT STDMETHODCALLTYPE BlockQuery(void *This, REFIID Interface,
+                                            void **Object)
+{
+    UNREFERENCED_PARAMETER(Interface);
+
+    if (Object == nullptr)
+        return E_POINTER;
+
+    InterlockedIncrement(&static_cast<BlockObject *>(This)->Count);
+    *Object = This;
+    return S_OK;
+}
+
+static ULONG STDMETHODCALLTYPE BlockHold(void *This)
+{
+    return (ULONG)InterlockedIncrement(&static_cast<BlockObject *>(This)->Count);
+}
+
+static ULONG STDMETHODCALLTYPE BlockDrop(void *This)
+{
+    return (ULONG)InterlockedDecrement(&static_cast<BlockObject *>(This)->Count);
+}
+
+#undef SLOT
+#define SLOT(n) reinterpret_cast<const void *>(&BlockSlot<n>)
+
+static const void *BlockVtable[BLOCK_SLOTS] =
+{
+    reinterpret_cast<const void *>(&BlockQuery),
+    reinterpret_cast<const void *>(&BlockHold),
+    reinterpret_cast<const void *>(&BlockDrop),
+    SLOT(3),  SLOT(4),  SLOT(5),  SLOT(6),  SLOT(7),
+    SLOT(8),  SLOT(9),  SLOT(10), SLOT(11), SLOT(12), SLOT(13),
+    SLOT(14), SLOT(15), SLOT(16), SLOT(17), SLOT(18), SLOT(19),
+    SLOT(20), SLOT(21), SLOT(22), SLOT(23), SLOT(24), SLOT(25),
+    SLOT(26), SLOT(27), SLOT(28), SLOT(29), SLOT(30), SLOT(31)
+};
+
+static BlockObject TheVram = { BlockVtable, 1 };
+
+/*
+ * What the operator is looking at, as a display device works against it.
+ *
+ * The memory the picture lives in is this side's, not the device's. The device
+ * says how much of it the card is supposed to have, asks for it, and from then
+ * on writes the screen into it directly; what draws a window from it is another
+ * matter entirely and happens on whichever thread has time for it.
+ */
 class Monitor : public IMonitorDevice
 {
 public:
     Monitor() { InitializeCriticalSection(&m_Lock); }
-    ~Monitor() { DeleteCriticalSection(&m_Lock); }
+
+    ~Monitor()
+    {
+        if (m_Vram != nullptr)
+            VirtualFree(m_Vram, 0, MEM_RELEASE);
+
+        DeleteCriticalSection(&m_Lock);
+    }
 
     STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
     {
@@ -1237,57 +1356,203 @@ public:
         return (ULONG)InterlockedDecrement(&m_Count);
     }
 
-    /*
-     * Gathered rather than answered. The device says this from wherever it was
-     * working, which is not somewhere anything can be drawn from, so what
-     * happens here is that the smallest rectangle covering everything said
-     * since the front end last looked is grown to take this one in as well.
-     */
-    STDMETHODIMP OnVideoDirt(const RECT *Changed) override
+    STDMETHODIMP GetThumbnailImage(void *Repository, USHORT Width,
+                                   USHORT Height, ULONG Flags,
+                                   void **Image) override
     {
-        if (Changed == nullptr)
+        UNREFERENCED_PARAMETER(Repository);
+        UNREFERENCED_PARAMETER(Width);
+        UNREFERENCED_PARAMETER(Height);
+        UNREFERENCED_PARAMETER(Flags);
+
+        if (Image != nullptr)
+            *Image = nullptr;
+
+        return E_NOTIMPL;
+    }
+
+    STDMETHODIMP RequestBitmap(RECT Where, ULONG Pitch, int Depth,
+                               UCHAR *Pixels, ULONG Length, int Which) override
+    {
+        UNREFERENCED_PARAMETER(Where);
+        UNREFERENCED_PARAMETER(Pitch);
+        UNREFERENCED_PARAMETER(Depth);
+        UNREFERENCED_PARAMETER(Pixels);
+        UNREFERENCED_PARAMETER(Length);
+        UNREFERENCED_PARAMETER(Which);
+        return E_NOTIMPL;
+    }
+
+    /*
+     * Made the first time it is asked for, at whatever size was last said. It
+     * is committed rather than reserved because the device writes into it the
+     * moment it has the address and never asks again.
+     */
+    STDMETHODIMP GetVramBaseAddress(UCHAR **Base) override
+    {
+        if (Base == nullptr)
             return E_POINTER;
 
-        EnterCriticalSection(&m_Lock);
+        *Base = Allocate();
 
-        if (!m_Dirty)
-        {
-            m_Changed = *Changed;
-            m_Dirty = true;
-        }
-        else
-        {
-            if (Changed->left < m_Changed.left)
-                m_Changed.left = Changed->left;
+        if (!RepositoryQuiet)
+            printf("    the vram is at %p\n", (void *)*Base);
 
-            if (Changed->top < m_Changed.top)
-                m_Changed.top = Changed->top;
+        return (*Base != nullptr) ? S_OK : E_OUTOFMEMORY;
+    }
 
-            if (Changed->right > m_Changed.right)
-                m_Changed.right = Changed->right;
+    STDMETHODIMP GetVramSize(ULONG *Size) override
+    {
+        if (Size == nullptr)
+            return E_POINTER;
 
-            if (Changed->bottom > m_Changed.bottom)
-                m_Changed.bottom = Changed->bottom;
-        }
-
-        LeaveCriticalSection(&m_Lock);
+        *Size = m_Wanted;
         return S_OK;
     }
 
-    STDMETHODIMP OnPointerShapeChanged() override { return S_OK; }
-    STDMETHODIMP OnPointerPositionChanged() override { return S_OK; }
-    STDMETHODIMP OnActivationRequested() override { return S_OK; }
-    STDMETHODIMP OnDeactivationRequested() override { return S_OK; }
+    STDMETHODIMP GetVramMemoryBlock(IVmMemoryBlock **Block) override
+    {
+        if (Block == nullptr)
+            return E_POINTER;
 
-    /* What has changed, and nothing has after this until it changes again */
-    bool Take(RECT *Changed)
+        Allocate();
+        InterlockedIncrement(&TheVram.Count);
+        *Block = reinterpret_cast<IVmMemoryBlock *>(&TheVram);
+
+        if (!RepositoryQuiet)
+            printf("    the vram was asked for as a block\n");
+
+        return S_OK;
+    }
+
+    STDMETHODIMP IsVramAllocated() override
+    {
+        return (m_Vram != nullptr) ? S_OK : S_FALSE;
+    }
+
+    STDMETHODIMP ClearVram() override
+    {
+        if (m_Vram != nullptr)
+            memset(m_Vram, 0, m_Wanted);
+
+        return S_OK;
+    }
+
+    STDMETHODIMP SetMemoryRequired(ULONG Bytes) override
+    {
+        if (!RepositoryQuiet)
+            printf("    the card is to have %lu byte(s) of vram\n", Bytes);
+
+        m_Wanted = Bytes;
+        return S_OK;
+    }
+
+    STDMETHODIMP SetMemoryForSave(ULONG Bytes) override
+    {
+        UNREFERENCED_PARAMETER(Bytes);
+        return S_OK;
+    }
+
+    /* Kept, because it is the only way back to the screen that is drawn from */
+    STDMETHODIMP RegisterVideoSource(IVideoVdev *Display, int Which) override
+    {
+        UNREFERENCED_PARAMETER(Which);
+
+        if (!RepositoryQuiet)
+            printf("    a display offered itself to be drawn\n");
+
+        m_Display = Display;
+        return S_OK;
+    }
+
+    STDMETHODIMP GetDisplaySettings(ULONG *Width, ULONG *Height,
+                                    ULONG *Depth) override
+    {
+        if ((Width == nullptr) || (Height == nullptr) || (Depth == nullptr))
+            return E_POINTER;
+
+        *Width = m_Width;
+        *Height = m_Height;
+        *Depth = m_Depth;
+        return S_OK;
+    }
+
+    STDMETHODIMP GetPointerPosition(int *Across, int *Down) override
+    {
+        if ((Across == nullptr) || (Down == nullptr))
+            return E_POINTER;
+
+        *Across = 0;
+        *Down = 0;
+        return S_OK;
+    }
+
+    STDMETHODIMP GetPointerShape(void *Shape) override
+    {
+        UNREFERENCED_PARAMETER(Shape);
+        return E_NOTIMPL;
+    }
+
+    STDMETHODIMP GetActiveDeviceType(VDEV_VIDEO_KIND *Which) override
+    {
+        if (Which == nullptr)
+            return E_POINTER;
+
+        *Which = VDEV_VIDEO_S3;
+        return S_OK;
+    }
+
+    /* One, because a machine nobody is watching need not draw anything */
+    STDMETHODIMP GetClientCount(ULONG *Count) override
+    {
+        if (Count == nullptr)
+            return E_POINTER;
+
+        *Count = 1;
+        return S_OK;
+    }
+
+    STDMETHODIMP SetMonitorVideoActive(int Active, ULONG Which) override
+    {
+        UNREFERENCED_PARAMETER(Which);
+
+        if (!RepositoryQuiet)
+            printf("    the picture is %s\n", Active ? "on" : "off");
+
+        return S_OK;
+    }
+
+    STDMETHODIMP RegisterSyntheticMouse(IVmMouseDevice *Mouse) override
+    {
+        UNREFERENCED_PARAMETER(Mouse);
+        return S_OK;
+    }
+
+    STDMETHODIMP OnClientCountChanged() override { return S_OK; }
+    STDMETHODIMP OnDisplaySettingsChanged() override { return S_OK; }
+
+    /* What the front end draws from, and how big it is */
+    const UCHAR *Vram() const noexcept { return m_Vram; }
+    ULONG VramSize() const noexcept { return m_Wanted; }
+    IVideoVdev *Display() const noexcept { return m_Display; }
+
+    /* Told by our own devices, which say so rather than leaving it to be found */
+    void Dirty(VDEV_VIDEO_KIND Which)
+    {
+        EnterCriticalSection(&m_Lock);
+        m_Dirty = true;
+        m_Which = Which;
+        LeaveCriticalSection(&m_Lock);
+    }
+
+    bool Take(VDEV_VIDEO_KIND *Which)
     {
         EnterCriticalSection(&m_Lock);
 
         const bool Was = m_Dirty;
 
-        if (Was && (Changed != nullptr))
-            *Changed = m_Changed;
+        if (Was && (Which != nullptr))
+            *Which = m_Which;
 
         m_Dirty = false;
 
@@ -1296,9 +1561,30 @@ public:
     }
 
 private:
+    UCHAR *Allocate()
+    {
+        if ((m_Vram == nullptr) && (m_Wanted != 0))
+        {
+            m_Vram = static_cast<UCHAR *>(VirtualAlloc(nullptr, m_Wanted,
+                                                       MEM_COMMIT | MEM_RESERVE,
+                                                       PAGE_READWRITE));
+        }
+
+        return m_Vram;
+    }
+
     volatile LONG m_Count = 1;
     CRITICAL_SECTION m_Lock = {};
-    RECT m_Changed = {};
+
+    UCHAR *m_Vram = nullptr;
+    ULONG m_Wanted = 0;
+    IVideoVdev *m_Display = nullptr;
+
+    ULONG m_Width = 640;
+    ULONG m_Height = 480;
+    ULONG m_Depth = 32;
+
+    VDEV_VIDEO_KIND m_Which = 0;
     bool m_Dirty = false;
 };
 
@@ -1517,8 +1803,23 @@ public:
                    ReadOnly ? "read only" : "written to as well");
         }
 
-        if ((Backing == nullptr) || (PageCount == 0))
+        if (PageCount == 0)
             return E_INVALIDARG;
+
+        /*
+         * Backed by this side when the device did not bring memory of its own.
+         * What the slot really takes is not settled, so a device that appears
+         * to be handing over nothing is given somewhere real to work in rather
+         * than an error, which is the answer that keeps it moving.
+         */
+        if (Backing == nullptr)
+        {
+            Backing = VirtualAlloc(nullptr, (SIZE_T)Length,
+                                   MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+            if (Backing == nullptr)
+                return E_OUTOFMEMORY;
+        }
 
         hv::Hollow(Where, Length);
 
@@ -2033,7 +2334,23 @@ static IVirtualDevice *Fit(const Part &What, Probe &Handed)
     Device->StartReservingResources(&TheRepository, VDEV_STATE_NONE);
     Device->FinishReservingResources(VDEV_STATE_NONE);
 
-    Status = Device->PowerOnCold(VDEV_STATE_NONE);
+    /*
+     * Guarded, because this is somebody else's code being driven through a
+     * contract that was worked out by reading. One kind that goes wrong should
+     * cost the machine that kind and nothing else: a window that dies outright
+     * says only that something was wrong, where a machine that comes up without
+     * one part says which.
+     */
+    __try
+    {
+        Status = Device->PowerOnCold(VDEV_STATE_NONE);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        printf("  it came apart on the way up, %08lx\n",
+               (ULONG)GetExceptionCode());
+        return nullptr;
+    }
 
     if (FAILED(Status))
     {
@@ -2442,12 +2759,12 @@ const char *VmSaid()
 IRtvmTextSurface *VmText() { return TheVm.Text; }
 IRtvmPixelSurface *VmPixels() { return TheVm.Pixels; }
 
-bool VmDirty(RECT *Changed)
+bool VmDirty(VDEV_VIDEO_KIND *Which)
 {
     if (TheVm.Screen == nullptr)
         return false;
 
-    return TheVm.Screen->Take(Changed);
+    return TheVm.Screen->Take(Which);
 }
 
 bool VmStopped() { return TheVm.Stopped; }

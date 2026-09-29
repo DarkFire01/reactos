@@ -30,7 +30,7 @@ constexpr ULONG PanelColourCount = 256;
  * brought up is watched rather than administered, and the question is never
  * which machine it is, it is which line just went up.
  */
-class Panel : public IMonitorDevice
+class Panel : public IRtvmVideoWatcher
 {
 public:
     Panel() = default;
@@ -65,11 +65,7 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override;
     STDMETHODIMP_(ULONG) Release() override;
 
-    STDMETHODIMP OnVideoDirt(const RECT *Changed) override;
-    STDMETHODIMP OnPointerShapeChanged() override { return E_NOTIMPL; }
-    STDMETHODIMP OnPointerPositionChanged() override { return E_NOTIMPL; }
-    STDMETHODIMP OnActivationRequested() override { return S_OK; }
-    STDMETHODIMP OnDeactivationRequested() override { return S_OK; }
+    STDMETHODIMP OnVideoDirt(VDEV_VIDEO_KIND Which) override;
 
 private:
     static LRESULT CALLBACK Dispatch(HWND Window, UINT Message,
