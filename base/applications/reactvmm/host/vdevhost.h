@@ -177,16 +177,18 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }
     STDMETHODIMP_(ULONG) Release() override { return Drop(); }
 
-    /* Nothing here holds a window of the guest's memory for it to reach */
-    STDMETHODIMP CreateGpaRange(ULONG64 FirstPage, ULONG64 PageCount,
-                                void *Backing, BOOL ReadOnly,
-                                void **Registration) override
+    /* Nothing here keeps memory of its own for a device to be given */
+    STDMETHODIMP CreateDeviceMemoryBlock(ULONG64 Pages, ULONG Kind,
+                                         ULONG Flags,
+                                         IVmMemoryBlock **Block) override
     {
-        UNREFERENCED_PARAMETER(FirstPage);
-        UNREFERENCED_PARAMETER(PageCount);
-        UNREFERENCED_PARAMETER(Backing);
-        UNREFERENCED_PARAMETER(ReadOnly);
-        UNREFERENCED_PARAMETER(Registration);
+        UNREFERENCED_PARAMETER(Pages);
+        UNREFERENCED_PARAMETER(Kind);
+        UNREFERENCED_PARAMETER(Flags);
+
+        if (Block != nullptr)
+            *Block = nullptr;
+
         return E_NOTIMPL;
     }
 

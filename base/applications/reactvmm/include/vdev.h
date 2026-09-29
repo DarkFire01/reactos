@@ -23,6 +23,11 @@
 extern "C" {
 #endif
 
+/* The ones named before they are laid out, because something wants them first */
+struct IVideoVdev;
+struct IVmMemoryBlock;
+struct IVmMouseDevice;
+
 /* THE DEVICES A LIBRARY OFFERS ***********************************************/
 
 /* The interrupt controllers, the timer, the transfer controller and the rest */
@@ -637,19 +642,17 @@ DECLARE_INTERFACE_(IVmGuestMemoryAccess, IUnknown)
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
     /*
-     * A window of the guest's memory that a device holds the contents of.
+     * A run of memory for a device to keep its own contents in.
      *
-     * The device hands over a buffer of its own and the run of pages it is to
-     * appear at, and from then on the guest reads and writes that buffer with
-     * nothing stopping to ask the device about it. The display asks for the
-     * page at 0xB0000 this way, which is how a screen of text is written to at
-     * the speed of memory rather than one fault to a character.
+     * What comes back is not memory the device can write to directly: it is a
+     * thing standing for that memory, which the device then asks to be put
+     * somewhere the guest can see. The display asks for one of these before it
+     * asks for anything else, and will not come up without it.
      */
-    STDMETHOD(CreateGpaRange)(THIS_ _In_ ULONG64 FirstPage,
-                              _In_ ULONG64 PageCount,
-                              _In_ PVOID Backing,
-                              _In_ BOOL ReadOnly,
-                              _Outptr_ PVOID *Registration) PURE;
+    STDMETHOD(CreateDeviceMemoryBlock)(THIS_ _In_ ULONG64 Pages,
+                                       _In_ ULONG Kind,
+                                       _In_ ULONG Flags,
+                                       _Outptr_ IVmMemoryBlock **Block) PURE;
 
     STDMETHOD(CreateRamGpaRange)(THIS) PURE;
     STDMETHOD(CreateRamApertureFromByteRange)(THIS) PURE;
@@ -720,10 +723,6 @@ DECLARE_INTERFACE_(IVmBios, IUnknown)
 
 DEFINE_GUID(IID_IMonitorDevice,
             0x0cf78153, 0xff01, 0x4af8, 0x8e, 0xe0, 0x1b, 0x3b, 0x44, 0x54, 0xfc, 0x11);
-
-struct IVideoVdev;
-struct IVmMemoryBlock;
-struct IVmMouseDevice;
 
 /* Which of the displays a machine may have is being talked about */
 typedef ULONG VDEV_VIDEO_KIND;

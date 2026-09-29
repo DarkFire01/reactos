@@ -11,7 +11,19 @@
  * image is what a machine of this kind has always loaded to and jumped into.
  */
 
-#define CD_BASE             HEX(0170)
+#define CD_PRIMARY          HEX(01F0)
+#define CD_SECONDARY        HEX(0170)
+
+/* What each of the registers is, counted from whichever channel it is on */
+#define CD_AT_DATA          0
+#define CD_AT_ERROR         1
+#define CD_AT_COUNT         2
+#define CD_AT_LBA_LOW       3
+#define CD_AT_LBA_MID       4
+#define CD_AT_LBA_HIGH      5
+#define CD_AT_SELECT        6
+#define CD_AT_STATUS        7
+#define CD_AT_COMMAND       7
 #define CD_DATA             HEX(0170)
 #define CD_ERROR            HEX(0171)
 #define CD_COUNT            HEX(0172)
@@ -54,7 +66,8 @@ CdWaitReady:
     push dx
 
     mov cx, HEX(FFFF)
-    mov dx, CD_STATUS
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_STATUS
 
 CdWaitReadyLoop:
     in al, dx
@@ -82,7 +95,8 @@ CdWaitData:
     push dx
 
     mov cx, HEX(FFFF)
-    mov dx, CD_STATUS
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_STATUS
 
 CdWaitDataLoop:
     in al, dx
@@ -113,16 +127,33 @@ CdWaitDataReady:
 /* FINDING ONE ****************************************************************/
 
 /*
- * Whether there is a drive of this kind on the second pair of addresses.
+ * Whether there is a drive of this kind on either channel.
  *
- * Asked the way an ordinary drive is asked, which one of these refuses while
- * leaving two registers holding what it really is. That refusal is the answer.
+ * Both are tried because a machine may put a disc on either and the boards
+ * this runs on do not agree about which. The one that answers is remembered,
+ * and everything after this talks to that one.
  */
 CdPresent:
+    mov word ptr cs:[CdBase], CD_PRIMARY
+    call CdPresentHere
+    jnc CdPresentDone
+
+    mov word ptr cs:[CdBase], CD_SECONDARY
+    call CdPresentHere
+    jnc CdPresentDone
+
+    stc
+
+CdPresentDone:
+    ret
+
+/* And whether the one it is pointed at just now is that drive */
+CdPresentHere:
     push ax
     push dx
 
-    mov dx, CD_SELECT
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_SELECT
     mov al, HEX(A0)
     out dx, al
 
@@ -130,18 +161,21 @@ CdPresent:
     jc CdPresentNo
 
     /* Asked what it is, in the way that only an ordinary drive answers */
-    mov dx, CD_COMMAND
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_COMMAND
     mov al, HEX(EC)
     out dx, al
 
     call CdWaitReady
 
-    mov dx, CD_LBA_MID
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_LBA_MID
     in al, dx
     cmp al, CD_SIGNATURE_MID
     jne CdPresentNo
 
-    mov dx, CD_LBA_HIGH
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_LBA_HIGH
     in al, dx
     cmp al, CD_SIGNATURE_HIGH
     jne CdPresentNo
@@ -173,7 +207,8 @@ CdReadSector:
     push si
     push ds
 
-    mov dx, CD_SELECT
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_SELECT
     mov al, HEX(A0)
     out dx, al
 
@@ -181,14 +216,17 @@ CdReadSector:
     jc CdReadFailed
 
     /* How much this is willing to take back, which is one whole sector */
-    mov dx, CD_LBA_MID
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_LBA_MID
     mov al, CD_SECTOR_SIZE AND HEX(FF)
     out dx, al
-    mov dx, CD_LBA_HIGH
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_LBA_HIGH
     mov al, CD_SECTOR_SIZE SHR 8
     out dx, al
 
-    mov dx, CD_COMMAND
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_COMMAND
     mov al, CD_PACKET
     out dx, al
 
@@ -199,7 +237,7 @@ CdReadSector:
     push cs
     pop ds
     mov si, OFFSET CdCommand
-    mov dx, CD_DATA
+    mov dx, word ptr cs:[CdBase]
     mov cx, 6
     cld
     rep outsw
@@ -208,7 +246,7 @@ CdReadSector:
     jc CdReadFailed
 
     /* And the sector back, a word at a time */
-    mov dx, CD_DATA
+    mov dx, word ptr cs:[CdBase]
     mov di, bx
     mov cx, CD_SECTOR_SIZE / 2
     cld
@@ -253,7 +291,8 @@ CdCapacity:
     push ds
     push es
 
-    mov dx, CD_SELECT
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_SELECT
     mov al, HEX(A0)
     out dx, al
 
@@ -261,14 +300,17 @@ CdCapacity:
     jc CdCapacityFailed
 
     /* Eight bytes is the whole of what it has to say */
-    mov dx, CD_LBA_MID
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_LBA_MID
     mov al, 8
     out dx, al
-    mov dx, CD_LBA_HIGH
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_LBA_HIGH
     xor al, al
     out dx, al
 
-    mov dx, CD_COMMAND
+    mov dx, word ptr cs:[CdBase]
+    add dx, CD_AT_COMMAND
     mov al, CD_PACKET
     out dx, al
 
@@ -278,7 +320,7 @@ CdCapacity:
     push cs
     pop ds
     mov si, OFFSET CdCapacityCommand
-    mov dx, CD_DATA
+    mov dx, word ptr cs:[CdBase]
     mov cx, 6
     cld
     rep outsw
@@ -289,7 +331,7 @@ CdCapacity:
     push cs
     pop es
     mov di, OFFSET CdCapacityAnswer
-    mov dx, CD_DATA
+    mov dx, word ptr cs:[CdBase]
     mov cx, 4
     cld
     rep insw
@@ -547,6 +589,18 @@ CdBootNone:
     pop bx
     stc
     ret
+
+/* WHERE THE DRIVE IS *******************************************************/
+
+/*
+ * Which channel the drive answering as a disc turned out to be on.
+ *
+ * Not settled in advance. A machine may put a disc on either channel and the
+ * two kinds of board this runs on do not agree about which, so it is looked
+ * for on both and this remembers which one answered.
+ */
+CdBase:
+    .word CD_PRIMARY
 
 /* WHAT IS SENT AND WHERE IT GOES *********************************************/
 

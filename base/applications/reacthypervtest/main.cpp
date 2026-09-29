@@ -48,6 +48,7 @@ int main(int argc, char **argv)
     const char *Class = nullptr;
     const char *Firmware = nullptr;
     const char *Bios = nullptr;
+    const char *Media = nullptr;
     ULONG Steps = 20000;
     ULONG64 Ram = 0;
 
@@ -71,6 +72,14 @@ int main(int argc, char **argv)
             VmStoreAnswers(E_NOTIMPL);
         else if (strcmp(argv[Index], "--stand-in") == 0)
             VmAllowStandIns(true);
+        else if ((strcmp(argv[Index], "--settings") == 0) && ((Index + 1) < argc))
+            Media = argv[++Index];
+        else if ((strcmp(argv[Index], "--watch") == 0) && ((Index + 2) < argc))
+        {
+            const ULONG First = (ULONG)strtoul(argv[++Index], nullptr, 0);
+
+            VmWatch(First, (ULONG)strtoul(argv[++Index], nullptr, 0));
+        }
         else if ((strcmp(argv[Index], "--configuration") == 0) && ((Index + 1) < argc))
         {
             /* Read whole, because what it says is one document */
@@ -146,5 +155,5 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    return One(Library, Class);
+    return One(Library, Class, Media);
 }

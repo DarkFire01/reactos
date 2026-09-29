@@ -93,6 +93,9 @@ void VmConfiguration(_In_ const char *Xml);
 /* Whether every call into the machine is written down as it happens */
 void VmQuiet(_In_ bool Quiet);
 
+/* A run of ports to write down every access to, for watching a disagreement */
+void VmWatch(_In_ ULONG First, _In_ ULONG Last);
+
 /* THE TERMINAL FRONT END'S OWN WAY *******************************************/
 
 /* Built, run to the end, taken apart, and an account of it printed */
@@ -106,7 +109,9 @@ int Assemble(_In_ const char *Bios,
 bool ReadGuid(_In_ const char *Text, _Out_ GUID &Which);
 
 /* One kind of device, driven on its own with nothing else in the machine */
-int One(_In_ const char *Library, _In_ const char *Class);
+int One(_In_ const char *Library,
+        _In_ const char *Class,
+        _In_opt_ const char *Settings);
 
 namespace hv
 {
