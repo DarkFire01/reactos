@@ -76,8 +76,8 @@ private:
     ULONG m_Offered = VDEV_NO_VECTOR;
     int m_OfferedLine = -1;
 
-    /* Whether that offer has still to be answered */
-    volatile bool m_Outstanding = false;
+    /* Whether that offer has still to be answered, held under the lock */
+    bool m_Outstanding = false;
 };
 
 } /* namespace rtvm */

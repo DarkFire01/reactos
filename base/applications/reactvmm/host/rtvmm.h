@@ -335,6 +335,7 @@ private:
     /* What the hardware did, reported when the machine stops */
     ULONG m_Delivered = 0;
     ULONG m_LineCount[16] = {};
+    ULONG m_VectorCount[256] = {};
     ULONG m_Refused = 0;
 
     /* Whether the processor has been asked to stop when it can take one */

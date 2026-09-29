@@ -214,6 +214,19 @@ the interrupt yet has to answer with a failure. Answering `S_FALSE` puts every
 offered vector straight into service, which blocks the line it came in on and
 delivers nothing ever again.
 
+### What the line does after it is taken
+
+A line is triggered by an edge. What is owed is cleared when the processor
+takes it and is not owed again until the wire goes up afresh, however long it
+stays up in the meantime. A device that holds its line down while it is still
+busy is the ordinary case: the removable drive holds its own from the moment a
+command finishes until the bytes it left behind are read.
+
+Putting the request back because the wire is still held is what a chip wired
+for levels does, and it costs more than it looks. Measured on one boot from a
+removable drive: one raise of line six delivered its vector 1,032,246 times,
+against 239 with the request latched on the edge alone.
+
 ## What is known of the emulation service
 
 Slot three takes a window of guest memory, counted in pages:
