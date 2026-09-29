@@ -1,0 +1,5 @@
+add_library(rtvmstorage MODULE rtvmstorage.c rtvmstorage.rc)
+set_module_type(rtvmstorage win32dll ENTRYPOINT DllMain 12)
+add_importlibs(rtvmstorage msvcrt kernel32 ntdll)
+add_dependencies(rtvmstorage psdk)
+add_cd_file(TARGET rtvmstorage DESTINATION reactos/system32 FOR all)
