@@ -33,8 +33,45 @@ extern "C" {
 
 typedef struct _RTVM_DEVICE RTVM_DEVICE, *PRTVM_DEVICE;
 
+/*
+ * Whether one of the tables below reaches far enough to carry the named entry,
+ * and has one. Anything past what Size says belongs to a newer version of this
+ * file than whoever filled the table in was built against.
+ */
+#define RTVM_CARRIES(Table, Type, Member)                                     \
+    (((Table) != NULL) &&                                                     \
+     ((Table)->Size >= FIELD_OFFSET(Type, Member) + sizeof((Table)->Member)) &&\
+     ((Table)->Member != NULL))
+
 /* Lines the interrupt controller knows about, for SetInterruptLine below */
 #define RTVM_LINE_NONE  ((ULONG)-1)
+
+/*
+ * A screenful of characters, as the device that owns the display has it. Cells
+ * is Columns * Rows pairs of a character and the colour it is drawn in, which
+ * is the order the hardware itself keeps them in.
+ */
+typedef struct _RTVM_TEXT_PAGE
+{
+    ULONG Size;
+    ULONG Columns;
+    ULONG Rows;
+    ULONG CursorColumn;
+    ULONG CursorRow;
+    BOOLEAN CursorVisible;
+    const UCHAR *Cells;
+} RTVM_TEXT_PAGE, *PRTVM_TEXT_PAGE;
+
+/*
+ * What the operator did, for Input below. A key arrives as the code set one
+ * numbers it by, with the byte the wire prefixes it with, if any, in the high
+ * half, so that both bytes reach the controller as one event.
+ */
+typedef enum _RTVM_INPUT_KIND
+{
+    RtvmInputKeyDown = 0,
+    RtvmInputKeyUp
+} RTVM_INPUT_KIND;
 
 /*
  * What the manager hands a device so it can reach back out. It belongs to the
@@ -106,6 +143,16 @@ typedef struct _RTVM_HOST_INTERFACE
         _In_ RTVM_LOG_LEVEL Level,
         _In_ PCSTR Format,
         ...);
+
+    /*
+     * Put a page of text in front of the operator. Refused when the manager has
+     * nothing to draw on, which leaves the device to do whatever else it would
+     * have done with the page.
+     */
+    RTVM_STATUS
+    (RTVMAPI *PresentText)(
+        _In_ PVOID Context,
+        _In_ const RTVM_TEXT_PAGE *Page);
 } RTVM_HOST_INTERFACE, *PRTVM_HOST_INTERFACE;
 
 /*
@@ -163,6 +210,16 @@ typedef struct _RTVM_DEVICE_VTABLE
 
     /* The time asked for through SetTimer has passed */
     VOID (RTVMAPI *Timer)(_In_ PRTVM_DEVICE Device);
+
+    /*
+     * The operator did something. Only a device standing in for a thing they can
+     * touch offers this, and the manager passes each event to all of them.
+     */
+    RTVM_STATUS
+    (RTVMAPI *Input)(
+        _In_ PRTVM_DEVICE Device,
+        _In_ RTVM_INPUT_KIND Kind,
+        _In_ ULONG Value);
 } RTVM_DEVICE_VTABLE, *PRTVM_DEVICE_VTABLE;
 
 /*

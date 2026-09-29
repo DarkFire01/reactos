@@ -155,6 +155,31 @@ private:
 };
 
 /*
+ * The same for a run of them. It is its own thing rather than a flag on the one
+ * above, because the two are freed by different operators and getting that
+ * wrong is not something the compiler will mention.
+ */
+template<typename T>
+class OwnedArray
+{
+public:
+    OwnedArray() noexcept : m_Pointer(nullptr) {}
+    explicit OwnedArray(T *Pointer) noexcept : m_Pointer(Pointer) {}
+
+    ~OwnedArray() { delete[] m_Pointer; }
+
+    OwnedArray(const OwnedArray &) = delete;
+    OwnedArray &operator=(const OwnedArray &) = delete;
+
+    T *Get() const noexcept { return m_Pointer; }
+    T &operator[](ULONG Index) const noexcept { return m_Pointer[Index]; }
+    explicit operator bool() const noexcept { return m_Pointer != nullptr; }
+
+private:
+    T *m_Pointer;
+};
+
+/*
  * A list with its room decided when it is declared. A machine's hardware is
  * counted in tens, so growing is a problem it does not have, and a fixed one
  * cannot fail to grow at an awkward moment.
