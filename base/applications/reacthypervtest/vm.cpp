@@ -624,7 +624,69 @@ static HRESULT STDMETHODCALLTYPE RepositorySlot(void *This, void *First,
  * formed, so a kind whose settings are all optional comes up on it, and one
  * whose are not says so, which is how the rest of them get found out.
  */
-static const char *TheConfiguration = "<configuration/>";
+static const char *TheConfiguration = nullptr;
+
+/*
+ * Which kind is being fitted, and whatever it was told to take for itself.
+ *
+ * The configuration is asked for without saying which device is asking, so what
+ * says that is which one is being brought up at the time.
+ */
+static const char *TheFitting = "?";
+static const char *TheFittingSettings = nullptr;
+
+/* The kinds whose configuration is known, by the identifier they answer to */
+#define CLASS_VIDEO "7d80d3db-61ee-4879-8879-5609f1100ad0"
+#define CLASS_IDE   "83f8638b-8dca-4152-9eda-2ca8b33039b4"
+
+/*
+ * What one kind is told.
+ *
+ * Every one of these begins with the two numbers the schema of any device
+ * carries, and then whatever that kind has of its own. The display wants an
+ * address written the way it scans it back, which is four hex digits that have
+ * to be one of two particular values, then eight, then two. The disk controller
+ * wants a drive inside a controller, and the drive is where the disc goes.
+ */
+static const char *ConfigurationFor(const char *Class, const char *Settings)
+{
+    static char Made[2048];
+
+    if (TheConfiguration != nullptr)
+        return TheConfiguration;
+
+    if ((Class != nullptr) && (_stricmp(Class, CLASS_VIDEO) == 0))
+    {
+        return "<VDEVVersion>512</VDEVVersion>"
+               "<version>2</version>"
+               "<address>5353,00000000,00</address>";
+    }
+
+    if ((Class != nullptr) && (_stricmp(Class, CLASS_IDE) == 0))
+    {
+        /* A controller with nothing in it, for a machine with no disc in it */
+        if ((Settings == nullptr) || (Settings[0] == '\0'))
+        {
+            return "<VDEVVersion>512</VDEVVersion>"
+                   "<version>2</version>"
+                   "<controller/>";
+        }
+
+        _snprintf(Made, sizeof(Made) - 1,
+                  "<VDEVVersion>512</VDEVVersion>"
+                  "<version>2</version>"
+                  "<controller>"
+                  "<drive><pathname>%s</pathname><type>ISO</type></drive>"
+                  "</controller>",
+                  Settings);
+
+        Made[sizeof(Made) - 1] = '\0';
+        return Made;
+    }
+
+    /* And nothing at all for a kind whose settings are all its own defaults */
+    return "";
+}
 
 static HRESULT STDMETHODCALLTYPE RepositoryConfiguration(void *This,
                                                          ISequentialStream *Writer,
@@ -638,8 +700,13 @@ static HRESULT STDMETHODCALLTYPE RepositoryConfiguration(void *This,
     if (Writer == nullptr)
         return E_POINTER;
 
+    const char *Xml = ConfigurationFor(TheFitting, TheFittingSettings);
+
+    if (Xml[0] == 0)
+        return S_OK;
+
     WCHAR Wide[4096];
-    const int Length = MultiByteToWideChar(CP_ACP, 0, TheConfiguration, -1,
+    const int Length = MultiByteToWideChar(CP_ACP, 0, Xml, -1,
                                            Wide, ARRAYSIZE(Wide));
 
     if (Length <= 1)
@@ -651,8 +718,22 @@ static HRESULT STDMETHODCALLTYPE RepositoryConfiguration(void *This,
                                          (ULONG)((Length - 1) * sizeof(WCHAR)),
                                          &Written);
 
+    /*
+     * And what it made of it. The thing written into is a string with the text
+     * in it, and what the device does next is take that string straight back
+     * out, so a write that said it worked and left the string empty is the one
+     * failure that would otherwise look exactly like a bad document.
+     */
     if (!RepositoryQuiet)
-        printf("    it was told its configuration, %08lx\n", Status);
+    {
+        const ULONG64 *Held = static_cast<const ULONG64 *>(
+            static_cast<void *>(Writer));
+
+        printf("    it was told its configuration, %08lx, %lu of %lu byte(s)\n",
+               Status, Written, (ULONG)((Length - 1) * sizeof(WCHAR)));
+        printf("    and what it is holding is %llu long\n",
+               (unsigned long long)Held[4]);
+    }
 
     return Status;
 }
@@ -910,7 +991,6 @@ static ULONG TheTimerCount = 0;
  * Where a device gets one. Which device is asking is not said anywhere in the
  * call, so what it is called is taken from whichever one is being fitted.
  */
-static const char *TheFitting = "?";
 
 class Clock : public IVmTimeSource
 {
@@ -1114,6 +1194,113 @@ static void *StandIn(REFIID Service)
     return Self;
 }
 
+
+/* WHAT THE OPERATOR IS LOOKING AT ********************************************/
+
+/*
+ * The display, as the video device sees it.
+ *
+ * It is not handed a screen. It is told which part of one stopped being what it
+ * was, and it is the front end's business to come back and fetch as much of
+ * that as it wants to draw, whenever it next has time to.
+ */
+class Monitor : public IMonitorDevice
+{
+public:
+    Monitor() { InitializeCriticalSection(&m_Lock); }
+    ~Monitor() { DeleteCriticalSection(&m_Lock); }
+
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
+    {
+        if (Object == nullptr)
+            return E_POINTER;
+
+        if (IsEqualIID(Interface, IID_IUnknown) ||
+            IsEqualIID(Interface, IID_IMonitorDevice))
+        {
+            *Object = static_cast<IMonitorDevice *>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        *Object = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return (ULONG)InterlockedIncrement(&m_Count);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        return (ULONG)InterlockedDecrement(&m_Count);
+    }
+
+    /*
+     * Gathered rather than answered. The device says this from wherever it was
+     * working, which is not somewhere anything can be drawn from, so what
+     * happens here is that the smallest rectangle covering everything said
+     * since the front end last looked is grown to take this one in as well.
+     */
+    STDMETHODIMP OnVideoDirt(const RECT *Changed) override
+    {
+        if (Changed == nullptr)
+            return E_POINTER;
+
+        EnterCriticalSection(&m_Lock);
+
+        if (!m_Dirty)
+        {
+            m_Changed = *Changed;
+            m_Dirty = true;
+        }
+        else
+        {
+            if (Changed->left < m_Changed.left)
+                m_Changed.left = Changed->left;
+
+            if (Changed->top < m_Changed.top)
+                m_Changed.top = Changed->top;
+
+            if (Changed->right > m_Changed.right)
+                m_Changed.right = Changed->right;
+
+            if (Changed->bottom > m_Changed.bottom)
+                m_Changed.bottom = Changed->bottom;
+        }
+
+        LeaveCriticalSection(&m_Lock);
+        return S_OK;
+    }
+
+    STDMETHODIMP OnPointerShapeChanged() override { return S_OK; }
+    STDMETHODIMP OnPointerPositionChanged() override { return S_OK; }
+    STDMETHODIMP OnActivationRequested() override { return S_OK; }
+    STDMETHODIMP OnDeactivationRequested() override { return S_OK; }
+
+    /* What has changed, and nothing has after this until it changes again */
+    bool Take(RECT *Changed)
+    {
+        EnterCriticalSection(&m_Lock);
+
+        const bool Was = m_Dirty;
+
+        if (Was && (Changed != nullptr))
+            *Changed = m_Changed;
+
+        m_Dirty = false;
+
+        LeaveCriticalSection(&m_Lock);
+        return Was;
+    }
+
+private:
+    volatile LONG m_Count = 1;
+    CRITICAL_SECTION m_Lock = {};
+    RECT m_Changed = {};
+    bool m_Dirty = false;
+};
 
 /* THE FIRMWARE, AS A DEVICE IN IT SEES IT ************************************/
 
@@ -1546,8 +1733,8 @@ public:
                 }
             }
 
-            /* And a stand-in for the rest, if one was asked for */
-            void *Instead = StandIn(Service);
+            /* And a stand-in for the rest, unless it said it can do without */
+            void *Instead = IsSpare(Service) ? nullptr : StandIn(Service);
 
             if (Instead != nullptr)
             {
@@ -1571,6 +1758,34 @@ public:
     /* And whatever is looking at the machine, for a display device to tell */
     void Watch(IMonitorDevice *Screen) noexcept { m_Screen = Screen; }
 
+    /*
+     * One this device said it would come up without.
+     *
+     * Those are never stood in for. A stand-in is there to get a device past
+     * something it cannot do without, and it lies about everything it is asked;
+     * a device that was told it has something optional goes and uses it, and
+     * what it gets back is whatever was on the stack. Refusing is both honest
+     * and what the device is already written to survive.
+     */
+    void Spare(REFIID Service) noexcept
+    {
+        if (m_Spares < ARRAYSIZE(m_Spare))
+            m_Spare[m_Spares++] = Service;
+    }
+
+    void Forget() noexcept { m_Spares = 0; }
+
+    bool IsSpare(REFIID Service) const noexcept
+    {
+        for (ULONG Index = 0; Index < m_Spares; Index++)
+        {
+            if (IsEqualGUID(Service, m_Spare[Index]))
+                return true;
+        }
+
+        return false;
+    }
+
     ULONG Asked() const noexcept { return m_Asked; }
     const Emulation &Addresses() const noexcept { return m_Emulation; }
     const Lines &Wires() const noexcept { return m_Lines; }
@@ -1588,6 +1803,9 @@ private:
     IVirtualDevice *m_Device[MACHINE_PARTS] = {};
     ULONG m_Offered = 0;
     IMonitorDevice *m_Screen = nullptr;
+
+    GUID m_Spare[8] = {};
+    ULONG m_Spares = 0;
 };
 
 /* DRIVING ONE ****************************************************************/
@@ -1754,6 +1972,27 @@ static IVirtualDevice *Fit(const Part &What, Probe &Handed)
     {
         printf("it would not make one, %08lx\n", Status);
         return nullptr;
+    }
+
+    /*
+     * Which of what it wants it can do without, asked before it is handed any
+     * of them. The answer is ordered, with those last, so where the break is
+     * says which ones are not worth standing in for.
+     */
+    ULONG Count = 0;
+    ULONG Required = 0;
+    GUID *Services = nullptr;
+
+    Handed.Forget();
+
+    if (SUCCEEDED(Device->GetDependencies(nullptr, &Count, &Services,
+                                          &Required)) &&
+        (Services != nullptr))
+    {
+        for (ULONG Index = Required; Index < Count; Index++)
+            Handed.Spare(Services[Index]);
+
+        CoTaskMemFree(Services);
     }
 
     Status = Device->Initialize(&TheRepository, 0,
@@ -1962,7 +2201,11 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
      * talks to have reserved anything reads a machine with nothing in it and
      * decides there is nothing in it.
      */
+    /* With somewhere to draw, because a display device will not come up without */
     Probe Handed;
+    Monitor Screen;
+
+    Handed.Watch(&Screen);
     IVirtualDevice *Fitted[MACHINE_PARTS] = {};
     ULONG Fittings = 0;
 
@@ -1972,6 +2215,7 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
 
         RepositoryQuiet = true;
         TheFitting = Parts[Index].Class;
+        TheFittingSettings = Parts[Index].Settings;
 
         IVirtualDevice *One = Fit(Parts[Index], Handed);
 
@@ -2154,113 +2398,6 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
 }
 
 
-/* WHAT THE OPERATOR IS LOOKING AT ********************************************/
-
-/*
- * The display, as the video device sees it.
- *
- * It is not handed a screen. It is told which part of one stopped being what it
- * was, and it is the front end's business to come back and fetch as much of
- * that as it wants to draw, whenever it next has time to.
- */
-class Monitor : public IMonitorDevice
-{
-public:
-    Monitor() { InitializeCriticalSection(&m_Lock); }
-    ~Monitor() { DeleteCriticalSection(&m_Lock); }
-
-    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
-    {
-        if (Object == nullptr)
-            return E_POINTER;
-
-        if (IsEqualIID(Interface, IID_IUnknown) ||
-            IsEqualIID(Interface, IID_IMonitorDevice))
-        {
-            *Object = static_cast<IMonitorDevice *>(this);
-            AddRef();
-            return S_OK;
-        }
-
-        *Object = nullptr;
-        return E_NOINTERFACE;
-    }
-
-    STDMETHODIMP_(ULONG) AddRef() override
-    {
-        return (ULONG)InterlockedIncrement(&m_Count);
-    }
-
-    STDMETHODIMP_(ULONG) Release() override
-    {
-        return (ULONG)InterlockedDecrement(&m_Count);
-    }
-
-    /*
-     * Gathered rather than answered. The device says this from wherever it was
-     * working, which is not somewhere anything can be drawn from, so what
-     * happens here is that the smallest rectangle covering everything said
-     * since the front end last looked is grown to take this one in as well.
-     */
-    STDMETHODIMP OnVideoDirt(const RECT *Changed) override
-    {
-        if (Changed == nullptr)
-            return E_POINTER;
-
-        EnterCriticalSection(&m_Lock);
-
-        if (!m_Dirty)
-        {
-            m_Changed = *Changed;
-            m_Dirty = true;
-        }
-        else
-        {
-            if (Changed->left < m_Changed.left)
-                m_Changed.left = Changed->left;
-
-            if (Changed->top < m_Changed.top)
-                m_Changed.top = Changed->top;
-
-            if (Changed->right > m_Changed.right)
-                m_Changed.right = Changed->right;
-
-            if (Changed->bottom > m_Changed.bottom)
-                m_Changed.bottom = Changed->bottom;
-        }
-
-        LeaveCriticalSection(&m_Lock);
-        return S_OK;
-    }
-
-    STDMETHODIMP OnPointerShapeChanged() override { return S_OK; }
-    STDMETHODIMP OnPointerPositionChanged() override { return S_OK; }
-    STDMETHODIMP OnActivationRequested() override { return S_OK; }
-    STDMETHODIMP OnDeactivationRequested() override { return S_OK; }
-
-    /* What has changed, and nothing has after this until it changes again */
-    bool Take(RECT *Changed)
-    {
-        EnterCriticalSection(&m_Lock);
-
-        const bool Was = m_Dirty;
-
-        if (Was && (Changed != nullptr))
-            *Changed = m_Changed;
-
-        m_Dirty = false;
-
-        LeaveCriticalSection(&m_Lock);
-        return Was;
-    }
-
-private:
-    volatile LONG m_Count = 1;
-    CRITICAL_SECTION m_Lock = {};
-    RECT m_Changed = {};
-    bool m_Dirty = false;
-};
-
 /* A MACHINE A FRONT END KEEPS ************************************************/
 
 /*
@@ -2382,6 +2519,7 @@ bool VmOpen(const VmWanted &What)
          Index++)
     {
         TheFitting = What.Parts[Index].Class;
+        TheFittingSettings = What.Parts[Index].Settings;
 
         IVirtualDevice *One = Fit(What.Parts[Index], *TheVm.Handed);
 
@@ -2541,6 +2679,8 @@ void VmClose()
  */
 int One(const char *Library, const char *Class)
 {
+    /* The one being driven, so that it is told the configuration of its kind */
+    TheFitting = Class;
 
     GUID Wanted = {};
 
@@ -2629,7 +2769,11 @@ int One(const char *Library, const char *Class)
     }
 
     /* And then what it actually goes looking for once it is brought up */
+    /* With somewhere to draw, because a display device will not come up without */
     Probe Handed;
+    Monitor Screen;
+
+    Handed.Watch(&Screen);
 
     printf("bringing it up:\n");
 
