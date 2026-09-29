@@ -129,28 +129,22 @@ static ULONG Gather(Part *Into, ULONG Room)
 {
     const Part *From = TheParts;
     const ULONG Many = ARRAYSIZE(TheParts);
-    static char Settings[MAX_PATH + 32];
     ULONG Count = 0;
-
-    Settings[0] = '\0';
-
-    if (TheGui.Cd[0] != '\0')
-    {
-        _snprintf(Settings, sizeof(Settings) - 1, "primary-master=%s,cdrom",
-                  TheGui.Cd);
-        Settings[sizeof(Settings) - 1] = '\0';
-    }
 
     for (ULONG Index = 0; (Index < Many) && (Count < Room); Index++)
     {
         Into[Count] = From[Index];
 
-        /* The disk controller is the one that is told what is in the drive */
-        if ((Settings[0] != '\0') &&
+        /*
+         * The disk controller is the one that is told what is in the drive,
+         * and what it is told is the path on its own. What goes around that to
+         * make it a configuration is the machine's business, not the window's.
+         */
+        if ((TheGui.Cd[0] != '\0') &&
             (strcmp(From[Index].Class,
                     "83f8638b-8dca-4152-9eda-2ca8b33039b4") == 0))
         {
-            Into[Count].Settings = Settings;
+            Into[Count].Settings = TheGui.Cd;
         }
 
         Count++;
