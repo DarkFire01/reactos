@@ -211,9 +211,29 @@ DECLARE_INTERFACE_(IVmDmaController, IUnknown)
     STDMETHOD(ReportDmaComplete)(THIS_ _In_ ULONG Channel) PURE;
 };
 
-/* The rest of these, named but not yet laid out */
 DEFINE_GUID(IID_IVmPitService,
             0xc8d6e99d, 0xae82, 0x4b49, 0xa9, 0xb0, 0x7f, 0xc7, 0x5a, 0x04, 0x7c, 0x62);
+
+/*
+ * The counters, as something wired to one of them sees them. Nothing asks what
+ * a count is: what a speaker or a rate measurement wants to know is whether an
+ * output is high, and that is the only question this answers.
+ */
+#undef INTERFACE
+#define INTERFACE IVmPitService
+DECLARE_INTERFACE_(IVmPitService, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(EnableSpeakerTimer)(THIS_ _In_ BOOL Enabled) PURE;
+    STDMETHOD(GetTimerOutputSignal)(THIS_ _In_ ULONG Counter,
+                                    _Out_ PBOOL High) PURE;
+};
+
+/* The rest of these, named but not yet laid out */
 DEFINE_GUID(IID_IVmPciBusService,
             0xd90779f1, 0x0fbe, 0x4d28, 0xb4, 0x2d, 0x16, 0xfc, 0xeb, 0x5e, 0xa7, 0x0c);
 DEFINE_GUID(IID_IVmSuperIo,
