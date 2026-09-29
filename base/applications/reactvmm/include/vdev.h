@@ -500,13 +500,73 @@ DECLARE_INTERFACE_(IVmGuestMemoryAccess, IUnknown)
     STDMETHOD(UnregisterEmulationOnMemoryWrite)(THIS) PURE;
 };
 
-/* Named, and waiting for the devices that publish them */
 DEFINE_GUID(IID_IVmBios,
             0x9be0b79f, 0x68df, 0x4c59, 0x9d, 0x88, 0x4b, 0xfc, 0x1b, 0xf7, 0xa7, 0x3d);
+
+/*
+ * The firmware, as a device that has to be in it sees it. A drive says it can
+ * be booted from, a serial controller says it is there, and the clock's
+ * contents come from here because the firmware is what decided them.
+ */
+#undef INTERFACE
+#define INTERFACE IVmBios
+DECLARE_INTERFACE_(IVmBios, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(NotifyEmulatedActivity)(THIS) PURE;
+    STDMETHOD(RegisterBootDevice)(THIS) PURE;
+    STDMETHOD(EnableSerialController)(THIS) PURE;
+    STDMETHOD(GetDefaultCmosValues)(THIS) PURE;
+    STDMETHOD(IsGuestHibernateEnabled)(THIS) PURE;
+    STDMETHOD(SaveShutdownType)(THIS) PURE;
+};
+
 DEFINE_GUID(IID_IMonitorDevice,
             0x0cf78153, 0xff01, 0x4af8, 0x8e, 0xe0, 0x1b, 0x3b, 0x44, 0x54, 0xfc, 0x11);
+
+/*
+ * Whatever the operator is looking at, as the video device tells it what has
+ * changed. The display is not handed a screen: it is told which part of one
+ * stopped being what it was, and fetches as much of it as it wants to draw.
+ */
+#undef INTERFACE
+#define INTERFACE IMonitorDevice
+DECLARE_INTERFACE_(IMonitorDevice, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(OnVideoDirt)(THIS_ _In_ const RECT *Changed) PURE;
+    STDMETHOD(OnPointerShapeChanged)(THIS) PURE;
+    STDMETHOD(OnPointerPositionChanged)(THIS) PURE;
+    STDMETHOD(OnActivationRequested)(THIS) PURE;
+    STDMETHOD(OnDeactivationRequested)(THIS) PURE;
+};
+
 DEFINE_GUID(IID_IVideoVdev,
             0x1401754a, 0xf009, 0x4b06, 0xb8, 0xf4, 0xef, 0x08, 0xeb, 0x57, 0x2d, 0x98);
+
+/* The display, as whatever draws it asks after being told something changed */
+#undef INTERFACE
+#define INTERFACE IVideoVdev
+DECLARE_INTERFACE_(IVideoVdev, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(IsVideoEnabled)(THIS_ _Out_ PBOOL Enabled) PURE;
+    STDMETHOD(Activate)(THIS) PURE;
+    STDMETHOD(GetSurfaceData)(THIS_ _Out_ PVOID Surface) PURE;
+};
+
 DEFINE_GUID(IID_IProxiedPciVgaDevice,
             0xfcb3759f, 0xd139, 0x46be, 0x85, 0x00, 0x5c, 0x50, 0xa6, 0xfb, 0xff, 0x9b);
 

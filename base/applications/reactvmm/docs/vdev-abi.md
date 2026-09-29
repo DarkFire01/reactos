@@ -242,6 +242,54 @@ The video device reserves page 176 through it, which is the text window at
 0xB0000. Slot six is the port call written out above. Slots four and five are
 not yet understood and nothing seen so far calls them.
 
+## The display
+
+A video device is not asked for a screen and does not hand one over. It is given
+whatever the operator is looking at as `IMonitorDevice`
+`{0cf78153-ff01-4af8-8ee0-1b3b4454fc11}` and tells it what stopped being what it
+was:
+
+| Slot | Method                       |
+|------|------------------------------|
+| 3    | `OnVideoDirt`                |
+| 4    | `OnPointerShapeChanged`      |
+| 5    | `OnPointerPositionChanged`   |
+| 6    | `OnActivationRequested`      |
+| 7    | `OnDeactivationRequested`    |
+
+Whatever is drawing then asks the device for as much of it as it wants, through
+`IVideoVdev` `{1401754a-f009-4b06-b8f4-ef08eb572d98}`, whose slots are
+`IsVideoEnabled`, `Activate` and `GetSurfaceData`.
+
+That is the way round this project had it backwards. The page was handed up
+whole and often; the display is meant to be told a rectangle and to come back
+for it when it is ready.
+
+## The firmware
+
+`IVmBios` `{9be0b79f-68df-4c59-9d88-4bfc1bf7a73d}`, which a device that has to
+be in the firmware's tables asks for:
+
+| Slot | Method                     |
+|------|----------------------------|
+| 3    | `NotifyEmulatedActivity`   |
+| 4    | `RegisterBootDevice`       |
+| 5    | `EnableSerialController`   |
+| 6    | `GetDefaultCmosValues`     |
+| 7    | `IsGuestHibernateEnabled`  |
+| 8    | `SaveShutdownType`         |
+
+A drive says here that it can be booted from, and the clock's contents come from
+here because the firmware is what decided them.
+
+## Reaching the guest's memory
+
+`IVmGuestMemoryAccess` `{2461c824-4e2a-4848-bb65-5708b27f06d9}`, seventeen
+methods. Most of them build the memory a guest has, which is the manager's work;
+the ones a device uses are `ReadRamBytes` and `WriteRamBytes` at slots nine and
+ten, each taking an address, a buffer and a length, and `TranslateGvaToGpa` at
+slot fifteen.
+
 ## What the host owes a device
 
 These are named in the dependency lists and are the host's to implement. Until
