@@ -500,7 +500,6 @@ bool Machine::Build(const Configuration &Config)
     if (!CreatePartition(Config))
         return false;
 
-    m_Dma.Reset();
 
     /*
      * The devices that come out of a class server. They are brought up before
@@ -512,16 +511,14 @@ bool Machine::Build(const Configuration &Config)
     if (!m_Vdevs)
         return false;
 
-    if (m_Vdevs->Load("rtvmemulateddevices.dll"))
-    {
-        if (!m_Vdevs->Create(CLSID_PicDevice, "interrupt controller"))
-            return false;
-    }
-    else
-    {
-        Log(RtvmLogWarning,
-            "no emulated devices library, so the built in chips are used\n");
-    }
+    if (!m_Vdevs->Load("rtvmemulateddevices.dll"))
+        return false;
+
+    if (!m_Vdevs->Create(CLSID_PicDevice, "interrupt controller"))
+        return false;
+
+    if (!m_Vdevs->Create(CLSID_DmaControllerDevice, "transfer controller"))
+        return false;
 
     m_Devices.Reset(new DeviceHost(*this));
 
@@ -538,7 +535,8 @@ bool Machine::Build(const Configuration &Config)
         "rtvmstorage.dll",
         "rtvmchipset.dll",
         "rtvmvideo.dll",
-        "rtvmkeyboard.dll"
+        "rtvmkeyboard.dll",
+        "rtvmfloppy.dll"
     };
 
     for (const char *Name : Modules)
@@ -595,42 +593,15 @@ bool Machine::Build(const Configuration &Config)
  * The two chips the board has of its own answer before the bus does, because
  * nothing loadable is allowed to take their addresses away from them.
  */
-/*
- * The transfer controller is still the manager's own, so it answers for its own
- * addresses before the bus does. Everything else on the bus was reserved by a
- * device and reaches that device.
- */
+/* Everything on the bus was reserved by a device and reaches that device */
 void Machine::WritePort(USHORT Port, ULONG Width, ULONG Value)
 {
-    if (Dma::Owns(Port))
-    {
-        Locked Held(m_ChipLock);
-
-        m_Dma.WritePort(Port, Value);
-        return;
-    }
-
     m_Bus.WritePort(Port, Width, Value);
 }
 
 ULONG Machine::ReadPort(USHORT Port, ULONG Width)
 {
-    if (Dma::Owns(Port))
-    {
-        Locked Held(m_ChipLock);
-
-        return m_Dma.ReadPort(Port);
-    }
-
     return m_Bus.ReadPort(Port, Width);
-}
-
-RTVM_STATUS Machine::MoveThroughChannel(ULONG Channel, void *Buffer,
-                                        ULONG Length, ULONG &Moved)
-{
-    Locked Held(m_ChipLock);
-
-    return m_Dma.Transfer(m_Memory, Channel, Buffer, Length, Moved);
 }
 
 void Machine::SetInterruptLine(ULONG Line, bool Asserted)
@@ -673,6 +644,11 @@ void Machine::PostInput(RTVM_INPUT_KIND Kind, ULONG Value)
 {
     if (m_Devices)
         m_Devices->PostInput(Kind, Value);
+}
+
+IVmDmaController *Machine::Channels() const
+{
+    return m_Vdevs ? m_Vdevs->Transfers() : nullptr;
 }
 
 ULONG Machine::DeviceCount() const

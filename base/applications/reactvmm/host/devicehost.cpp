@@ -83,15 +83,37 @@ HostPresentText(PVOID Context, const RTVM_TEXT_PAGE *Page)
 }
 
 static RTVM_STATUS RTVMAPI
-HostMoveThroughChannel(PVOID Context, ULONG Channel, PVOID Buffer,
-                       ULONG Length, PULONG Moved)
+HostRequestChannel(PVOID Context, ULONG Channel, ULONG Length,
+                   PULONG Direction, PULONG64 Address, PULONG Count)
 {
     auto *Owner = static_cast<Machine *>(Context);
 
-    if ((Buffer == nullptr) || (Moved == nullptr))
+    if ((Direction == nullptr) || (Address == nullptr) || (Count == nullptr))
         return RtvmBadParameter;
 
-    return Owner->MoveThroughChannel(Channel, Buffer, Length, *Moved);
+    IVmDmaController *Channels = Owner->Channels();
+
+    if (Channels == nullptr)
+        return RtvmNotSupported;
+
+    ULONG Result = 0;
+
+    return SUCCEEDED(Channels->RequestDma(Channel, 0.0, Length, Direction,
+                                          Address, Count, &Result))
+         ? RtvmOk
+         : RtvmNotClaimed;
+}
+
+static RTVM_STATUS RTVMAPI
+HostChannelFinished(PVOID Context, ULONG Channel)
+{
+    auto *Owner = static_cast<Machine *>(Context);
+    IVmDmaController *Channels = Owner->Channels();
+
+    if (Channels == nullptr)
+        return RtvmNotSupported;
+
+    return SUCCEEDED(Channels->ReportDmaComplete(Channel)) ? RtvmOk : RtvmFailed;
 }
 
 static RTVM_STATUS RTVMAPI
@@ -134,7 +156,8 @@ DeviceHost::DeviceHost(Machine &Owner)
     m_Interface.WriteGuestMemory = HostWriteGuestMemory;
     m_Interface.SetTimer = HostSetTimer;
     m_Interface.PresentText = HostPresentText;
-    m_Interface.MoveThroughChannel = HostMoveThroughChannel;
+    m_Interface.RequestChannel = HostRequestChannel;
+    m_Interface.ChannelFinished = HostChannelFinished;
     m_Interface.Log = HostLog;
 }
 

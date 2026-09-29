@@ -1,0 +1,5 @@
+add_library(rtvmfloppy MODULE rtvmfloppy.c rtvmfloppy.rc)
+set_module_type(rtvmfloppy win32dll ENTRYPOINT DllMain 12)
+add_importlibs(rtvmfloppy msvcrt kernel32 ntdll)
+add_dependencies(rtvmfloppy psdk)
+add_cd_file(TARGET rtvmfloppy DESTINATION reactos/system32 FOR all)

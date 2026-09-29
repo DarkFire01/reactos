@@ -409,6 +409,7 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
     static const IID *const Offered[] =
     {
         &IID_IVmPicService,
+        &IID_IVmDmaController,
         &IID_IVmPitService,
         &IID_IVmPciBusService,
         &IID_IVmSuperIo,
@@ -425,9 +426,11 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
             m_Published.Add(Published);
             m_PublishedAs.Add(*Which);
 
-            /* The one everything that raises a line needs to reach */
+            /* The ones everything else needs to be able to reach */
             if (IsEqualIID(*Which, IID_IVmPicService))
                 m_Interrupts = static_cast<IVmPicService *>(Published);
+            else if (IsEqualIID(*Which, IID_IVmDmaController))
+                m_Transfers = static_cast<IVmDmaController *>(Published);
         }
     }
 

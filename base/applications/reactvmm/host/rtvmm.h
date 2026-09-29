@@ -114,54 +114,6 @@ private:
 
 };
 
-/*
- * The pair of transfer controllers, for a device that moves data without the
- * processor. It is the manager's own for the same reason the interrupt
- * controller is: more than one device is wired to it.
- */
-class Dma
-{
-public:
-    void Reset();
-
-    static bool Owns(USHORT Port) noexcept;
-
-    ULONG ReadPort(USHORT Port);
-    void WritePort(USHORT Port, ULONG Value);
-
-    RTVM_STATUS Transfer(Memory &Block, ULONG Channel, void *Buffer,
-                         ULONG Length, ULONG &Moved);
-
-private:
-    bool Decode(USHORT Port, ULONG &Which, ULONG &Register) const;
-
-    struct ChannelState
-    {
-        /* What is programmed, and how far through it the transfer is */
-        USHORT BaseAddress;
-        USHORT BaseCount;
-        USHORT Address;
-        USHORT Count;
-        UCHAR Page;
-        UCHAR Mode;
-        bool Masked;
-    };
-
-    struct Chip
-    {
-        UCHAR Command;
-        /* Which channels have run out, and which are asking to move */
-        UCHAR Reached;
-        UCHAR Asking;
-
-        /* Whether the next half of an address or count is the high one */
-        bool HighByte;
-    };
-
-    ChannelState m_Channel[8] = {};
-    Chip m_Chip[2] = {};
-};
-
 class Machine;
 class LegacyPortAdapter;
 class VdevHost;
@@ -293,7 +245,6 @@ public:
 
     Memory &MemoryBlock() noexcept { return m_Memory; }
     Bus &SystemBus() noexcept { return m_Bus; }
-    Dma &Transfers() noexcept { return m_Dma; }
 
     /* Reached from the device interface, to find what stands in for a device */
     DeviceHost &Devices() noexcept { return *m_Devices; }
@@ -319,8 +270,9 @@ public:
     bool ReadGuest(ULONG64 Address, void *Buffer, ULONG Length);
     bool WriteGuest(ULONG64 Address, const void *Buffer, ULONG Length);
     bool PresentText(const RTVM_TEXT_PAGE &Page);
-    RTVM_STATUS MoveThroughChannel(ULONG Channel, void *Buffer, ULONG Length,
-                                   ULONG &Moved);
+
+    /* The transfer controller, once one has come up, or nothing */
+    IVmDmaController *Channels() const;
 
     /* Where a port access goes, whichever exit brought it */
     void WritePort(USHORT Port, ULONG Width, ULONG Value);
@@ -351,7 +303,6 @@ private:
 
     Memory m_Memory;
     Bus m_Bus;
-    Dma m_Dma;
     Owned<DeviceHost> m_Devices;
     Owned<VdevHost> m_Vdevs;
 
