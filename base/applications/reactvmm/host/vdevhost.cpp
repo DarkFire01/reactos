@@ -456,7 +456,8 @@ bool VdevHost::Load(const char *FileName)
  * of is not the manager's business and does not appear anywhere it decides
  * anything.
  */
-bool VdevHost::Create(REFCLSID Class, const char *Name)
+bool VdevHost::Create(REFCLSID Class, const char *Name,
+                      const char *Settings)
 {
     if (m_Vdevs.Full())
     {
@@ -505,8 +506,33 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
     }
 
     /*
+     * Told what to be before it is initialised, because what it depends on
+     * and what addresses it wants both follow from that.
+     */
+    if (Settings != nullptr)
+    {
+        IRtvmDeviceSettings *Told = nullptr;
+
+        if (SUCCEEDED(Device->QueryInterface(IID_IRtvmDeviceSettings,
+                                             reinterpret_cast<void **>(&Told))))
+        {
+            const HRESULT Taken = Told->SetSettings(Settings);
+
+            Told->Release();
+
+            if (FAILED(Taken))
+            {
+                Log(RtvmLogError, "%s would not take %s, %08lx\n",
+                    Name, Settings, Taken);
+                Device->Release();
+                return false;
+            }
+        }
+    }
+
+    /*
      * Handed the manager itself, which is where it goes looking for the
-     * services it named. Its configuration is nothing yet.
+     * services it named.
      */
     HRESULT Status = Device->Initialize(nullptr, 0, static_cast<IUnknown *>(this));
 

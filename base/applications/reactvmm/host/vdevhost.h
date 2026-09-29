@@ -218,7 +218,8 @@ public:
     bool Load(const char *FileName);
 
     /* Makes one of a kind the loaded libraries offer, and brings it up */
-    bool Create(REFCLSID Class, const char *Name);
+    bool Create(REFCLSID Class, const char *Name,
+                const char *Settings = nullptr);
 
     bool PowerOnAll();
     void PowerOffAll();

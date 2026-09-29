@@ -680,6 +680,25 @@ bool Machine::Build(const Configuration &Config)
     if (!m_Vdevs->Create(CLSID_VideoS3Device, "display"))
         return false;
 
+    /*
+     * The disks, which are one controller and not one device each. What hangs
+     * off it came in on the command line as a request for a kind called after
+     * the controller rather than after any one drive.
+     */
+    for (const DeviceRequest &Request : Config.Requests)
+    {
+        const char *Text = Request.Get();
+
+        if (strncmp(Text, "ide:", 4) != 0)
+            continue;
+
+        if (!m_Vdevs->Create(CLSID_IdeControllerDevice, "disk controller",
+                             Text + 4))
+        {
+            return false;
+        }
+    }
+
     m_Devices.Reset(new DeviceHost(*this));
 
     if (!m_Devices)
@@ -692,7 +711,6 @@ bool Machine::Build(const Configuration &Config)
     static const char *const Modules[] =
     {
         "rtvmserial.dll",
-        "rtvmstorage.dll",
         "rtvmchipset.dll",
         "rtvmkeyboard.dll",
         "rtvmfloppy.dll"
@@ -709,6 +727,10 @@ bool Machine::Build(const Configuration &Config)
         Text<64> ClassName;
         const char *Text = Request.Get();
         const char *Colon = strchr(Text, ':');
+
+        /* Already made, by the kind that comes out of a class server */
+        if (strncmp(Text, "ide:", 4) == 0)
+            continue;
 
         if (!ClassName.SetUpTo(Text, ':'))
         {
