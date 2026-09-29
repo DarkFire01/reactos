@@ -3016,6 +3016,47 @@ const char *VmSaid()
     return TheSaid;
 }
 
+const void *VmGuest(ULONG64 Where, ULONG Length)
+{
+    return hv::Guest(Where, Length);
+}
+
+/*
+ * A key going down or coming up, handed to whichever part is a keyboard.
+ *
+ * Which part that is is not known in advance and is not worth remembering: a
+ * machine has one keyboard and finding it is asking each part whether it is
+ * one, which is the same question the parts ask each other.
+ */
+bool VmKey(USHORT Code, bool Down, bool Extended)
+{
+    bool Went = false;
+
+    for (ULONG Index = 0; Index < TheVm.Fittings; Index++)
+    {
+        IVmKeyboardDevice *Keyboard = nullptr;
+
+        if (FAILED(TheVm.Fitted[Index]->QueryInterface(
+                IID_IVmKeyboardDevice,
+                reinterpret_cast<void **>(&Keyboard))))
+            continue;
+
+        VDEV_KEYSTROKE Key = {};
+
+        Key.Code = Code;
+        Key.Flags = (USHORT)((Down ? VDEV_KEY_DOWN : VDEV_KEY_UP) |
+                             (Extended ? VDEV_KEY_EXTENDED : 0));
+
+        Went = SUCCEEDED(Keyboard->SendKeystroke(&Key));
+        Keyboard->Release();
+
+        if (Went)
+            break;
+    }
+
+    return Went;
+}
+
 IRtvmTextSurface *VmText() { return TheVm.Text; }
 IRtvmPixelSurface *VmPixels() { return TheVm.Pixels; }
 
