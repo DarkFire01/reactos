@@ -171,4 +171,12 @@ if(RUNTIME_CHECKS)
     target_link_libraries(uefildr runtmchk)
 endif()
 
+# This loader boots the same winldr as rosload does, so it slides the
+# hypervisor under the machine the same way. Without this the call is compiled
+# out and a UEFI boot has no hypervisor and says nothing about why.
+if(TARGET reactv_shim_uefildr)
+    target_link_libraries(uefildr reactv_shim_uefildr reactv_core_freeldr)
+    target_compile_definitions(uefildr PRIVATE REACTV_PRESENT)
+endif()
+
 add_dependencies(uefildr xdk)
