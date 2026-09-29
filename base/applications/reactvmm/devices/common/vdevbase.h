@@ -101,8 +101,16 @@ protected:
     /* Handed the ports this device answers for, and the handler to reach it by */
     HRESULT ReservePorts(USHORT First, USHORT Last, IVndIoPortHandler *Handler);
 
+    /*
+     * Anything else the manager has, asked for after the fact. A device that
+     * leans on another device asks here rather than when it was initialised,
+     * because one device coming up is no promise that another already has.
+     */
+    HRESULT FindService(REFIID Service, void **Object);
+
 private:
     volatile LONG m_Count = 1;
+    IVmServiceAccess *m_Access = nullptr;
     IVmAmd64EmulationServices *m_Emulation = nullptr;
     IVmProcessorServices *m_Processors = nullptr;
 };

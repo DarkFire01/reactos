@@ -172,9 +172,10 @@ public:
     EmulationServices &Emulation() noexcept { return m_Emulation; }
     ProcessorServices &Processors() noexcept { return m_Processors; }
 
-    /* The two every other device leans on, once they have come up */
+    /* The ones every other device leans on, once they have come up */
     IVmPicService *Interrupts() const noexcept { return m_Interrupts; }
     IVmDmaController *Transfers() const noexcept { return m_Transfers; }
+    IVmIoApic *Lines() const noexcept { return m_Lines; }
     ServiceAccess &Services() noexcept { return m_Services; }
 
     /* Whatever a device asked for that the manager has, or nothing */
@@ -202,6 +203,7 @@ private:
     /* Kept apart because everything that raises a line goes through it */
     IVmPicService *m_Interrupts = nullptr;
     IVmDmaController *m_Transfers = nullptr;
+    IVmIoApic *m_Lines = nullptr;
 };
 
 } /* namespace rtvm */

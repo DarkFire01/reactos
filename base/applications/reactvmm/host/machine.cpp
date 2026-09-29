@@ -520,6 +520,12 @@ bool Machine::Build(const Configuration &Config)
     if (!m_Vdevs->Create(CLSID_DmaControllerDevice, "transfer controller"))
         return false;
 
+    if (!m_Vdevs->Load("rtvmchipsetdevices.dll"))
+        return false;
+
+    if (!m_Vdevs->Create(CLSID_IoApicDevice, "line router"))
+        return false;
+
     m_Devices.Reset(new DeviceHost(*this));
 
     if (!m_Devices)
@@ -606,12 +612,17 @@ ULONG Machine::ReadPort(USHORT Port, ULONG Width)
 
 void Machine::SetInterruptLine(ULONG Line, bool Asserted)
 {
-    IVmPicService *Controller = m_Vdevs->Interrupts();
+    /*
+     * Not straight at the interrupt controller. Where a line goes is not the
+     * manager's to decide and not the raising device's either, so it goes to
+     * the one thing that does decide.
+     */
+    IVmIoApic *Router = m_Vdevs->Lines();
 
     if (Asserted)
-        Controller->AssertIrq(Line);
+        Router->AssertIrq(Line);
     else
-        Controller->DeassertIrq(Line);
+        Router->DeassertIrq(Line);
 
     /*
      * Counted rather than logged. A busy line buries a quiet one in a log, and
