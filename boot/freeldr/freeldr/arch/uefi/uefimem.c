@@ -26,6 +26,14 @@ DBG_DEFAULT_CHANNEL(WARNING);
 /* Enough pages below 1 MB for the HAL's real-mode AP startup trampoline (5 pages on amd64, 3 on i386) */
 #define LOW_STUB_RESERVE_PAGES 8
 
+/*
+ * Where that room ended up. The firmware is the only thing that can hand out
+ * memory this low, and it stops answering once boot services are left, so
+ * anything else needing a page down here has to be told where this one is
+ * rather than go asking afterwards.
+ */
+ULONG_PTR UefiLowStubBase = 0;
+
 ULONG
 AddMemoryDescriptor(
     _Inout_ PFREELDR_MEMORY_DESCRIPTOR List,
@@ -270,6 +278,8 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
                                                                  &LowMemory);
         if (Status != EFI_SUCCESS)
             WARN("Failed to reserve low memory for the AP startup trampoline: %d\n", Status);
+        else
+            UefiLowStubBase = (ULONG_PTR)LowMemory;
     }
 
     MapEntry = EfiMemoryMap;
