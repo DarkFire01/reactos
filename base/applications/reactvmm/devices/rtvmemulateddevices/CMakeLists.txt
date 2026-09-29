@@ -9,6 +9,7 @@ add_library(rtvmemulateddevices MODULE
     dmadevice.cpp
     pitdevice.cpp
     videodevice.cpp
+    idedevice.cpp
     rtvmemulateddevices.rc
     ${CMAKE_CURRENT_BINARY_DIR}/rtvmemulateddevices.def)
 set_module_type(rtvmemulateddevices win32dll ENTRYPOINT DllMain 12)

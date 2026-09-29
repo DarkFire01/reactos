@@ -596,8 +596,30 @@ DECLARE_INTERFACE_(IVideoVdev, IUnknown)
  * is not yet worked out. Anything built against the reference ignores this,
  * because it is asked for by an identifier nothing there has.
  */
+/*
+ * How a device here is told what to be. The reference hands a device a
+ * repository in Initialize and it reads what it needs out of that; there is no
+ * such thing here yet, so this stands in. Anything built against the reference
+ * never sees it, because it is asked for by an identifier nothing there has.
+ */
+DEFINE_GUID(IID_IRtvmDeviceSettings,
+            0x41b6e0c7, 0x9d52, 0x4f83, 0xb1, 0x0e, 0x37, 0x8a, 0x2c, 0x64, 0xd9, 0x1f);
+
 DEFINE_GUID(IID_IRtvmTextSurface,
             0x8d2f4a61, 0x5c3e, 0x4b17, 0x9a, 0x44, 0x1e, 0x7d, 0x62, 0x0b, 0xc8, 0x35);
+
+#undef INTERFACE
+#define INTERFACE IRtvmDeviceSettings
+DECLARE_INTERFACE_(IRtvmDeviceSettings, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /* Whatever followed the kind on the command line, before it comes up */
+    STDMETHOD(SetSettings)(THIS_ _In_ PCSTR Settings) PURE;
+};
 
 #undef INTERFACE
 #define INTERFACE IRtvmTextSurface
