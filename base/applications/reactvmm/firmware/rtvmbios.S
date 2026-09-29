@@ -39,6 +39,11 @@
 #define UART_MODEM_CONTROL  4
 #define UART_LINE_STATUS    5
 
+/* Where the manager left a note saying what this machine is */
+#define DESCRIPTION_BASE    HEX(0500)
+#define DESCRIPTION_MAGIC   HEX(4D565452)
+#define DESCRIPTION_MEMORY  8
+
 /* The disk, and the registers this firmware drives it through */
 #define ATA_PRIMARY_BASE    HEX(01F0)
 #define ATA_DATA            0
@@ -466,7 +471,8 @@ Int15MemoryMap:
     cmp edx, HEX(534D4150)
     jne Int15MapRefused
 
-    cmp bx, 2
+    movzx ax, byte ptr cs:[MemoryMapCount]
+    cmp bx, ax
     jae Int15MapDone
 
     /* Twenty bytes, whatever was asked for, because that is what is written */
@@ -498,7 +504,8 @@ Int15MapCopy:
     mov eax, HEX(534D4150)
     mov ecx, 20
     inc bx
-    cmp bx, 2
+    movzx ax, byte ptr cs:[MemoryMapCount]
+    cmp bx, ax
     jb Int15MapMore
 
     /* The last one is answered with zero, which says not to ask again */
@@ -844,6 +851,51 @@ AtaIdentifyFailed:
     stc
     ret
 
+/*
+ * The timer, eighteen or so times a second. It keeps the count anything asking
+ * the time of day reads, hands on to whoever wants to know, and tells the
+ * controller it is done.
+ *
+ * That last part is not optional. A controller left holding an interrupt
+ * never delivers another one, so a handler that returns without saying so
+ * stops the clock for the whole machine.
+ */
+Int08Handler:
+    push ax
+    push ds
+    push bx
+
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+
+    add word ptr ds:[BDA_TICKS], 1
+    adc word ptr ds:[BDA_TICKS + 2], 0
+
+    pop bx
+    pop ds
+
+    /* Anything that wants to know gets told before this returns */
+    int HEX(1C)
+
+    mov al, HEX(20)
+    out PIC_MASTER_COMMAND, al
+
+    pop ax
+    iret
+
+/*
+ * The disk saying it has finished. Nothing waits on it, because every read
+ * here is done by asking and waiting rather than by being told, but the
+ * controller still has to be answered.
+ */
+Int76Handler:
+    push ax
+    mov al, HEX(20)
+    out PIC_SLAVE_COMMAND, al
+    out PIC_MASTER_COMMAND, al
+    pop ax
+    iret
+
 /* Anything pointed here is known about and deliberately does nothing */
 IgnoreHandler:
     iret
@@ -894,6 +946,7 @@ Start:
     call SerialWriteString
 
     call VectorSetup
+    call ReadDescription
     call DataAreaSetup
     call ControllerSetup
 
@@ -927,6 +980,61 @@ StartReady:
 
     /* Which does not come back */
     jmp HaltForever
+
+/*
+ * Reads what the manager wrote about this machine and builds the memory map
+ * out of it.
+ *
+ * Without this the map would describe the first megabyte and nothing else, and
+ * anything that believed it would use a megabyte of a machine that has far
+ * more. The note is read once and the map is then the firmware's own.
+ */
+ReadDescription:
+    push ax
+    push bx
+    push cx
+    push dx
+    push ds
+    push es
+
+    xor ax, ax
+    mov ds, ax
+    push cs
+    pop es
+
+    /* Is there a note there at all */
+    mov eax, dword ptr ds:[DESCRIPTION_BASE]
+    cmp eax, DESCRIPTION_MAGIC
+    jne DescriptionMissing
+
+    /* How much memory, of which only the low half is used here */
+    mov eax, dword ptr ds:[DESCRIPTION_BASE + DESCRIPTION_MEMORY]
+    mov dword ptr es:[MemorySizeLow], eax
+    mov eax, dword ptr ds:[DESCRIPTION_BASE + DESCRIPTION_MEMORY + 4]
+    mov dword ptr es:[MemorySizeHigh], eax
+
+    /*
+     * The range above the first megabyte, which is where everything the
+     * machine really has lives. It starts at one megabyte and runs to the end.
+     */
+    mov eax, dword ptr es:[MemorySizeLow]
+    sub eax, HEX(00100000)
+    mov dword ptr es:[MemoryMap + 40 + 8], eax
+    mov eax, dword ptr es:[MemorySizeHigh]
+    sbb eax, 0
+    mov dword ptr es:[MemoryMap + 40 + 12], eax
+
+    /* Which makes three ranges rather than two */
+    mov byte ptr es:[MemoryMapCount], 3
+
+DescriptionMissing:
+    pop es
+    pop ds
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
 
 /*
  * The port, put into the state everything afterwards assumes: eight bits, no
@@ -997,6 +1105,14 @@ VectorFill:
     mov ax, cs
     stosw
     loop VectorFill
+
+    mov bx, PIC_MASTER_VECTOR
+    mov ax, OFFSET Int08Handler
+    call VectorSet
+
+    mov bx, PIC_SLAVE_VECTOR + 6
+    mov ax, OFFSET Int76Handler
+    call VectorSet
 
     mov bx, HEX(10)
     mov ax, OFFSET Int10Handler
@@ -1134,13 +1250,16 @@ ControllerSetup:
     out PIC_SLAVE_DATA, al
 
     /*
-     * Everything masked but the line the serial port is on and the one the
-     * other controller arrives through. A line nothing is listening for is
-     * worse than no line at all.
+     * Open the lines something is actually listening for: the timer, the way
+     * the second controller arrives, and the serial port. A line nothing
+     * answers is worse than no line at all, because the controller is left
+     * holding it and never delivers another.
      */
-    mov al, HEX(EB)
+    mov al, HEX(EA)
     out PIC_MASTER_DATA, al
-    mov al, HEX(FF)
+
+    /* On the second one, the disk */
+    mov al, HEX(BF)
     out PIC_SLAVE_DATA, al
 
     pop ax
@@ -1324,6 +1443,21 @@ MemoryMap:
     .long HEX(0009FC00), HEX(00000000)
     .long HEX(00060400), HEX(00000000)
     .long 2
+
+    /* And everything above it, whose length the note above filled in */
+    .long HEX(00100000), HEX(00000000)
+    .long HEX(00000000), HEX(00000000)
+    .long 1
+
+/* How many of the three are real, which depends on what the note said */
+MemoryMapCount:
+    .byte 2
+    .byte 0
+
+MemorySizeLow:
+    .long 0
+MemorySizeHigh:
+    .long 0
 
 /* THE RESET VECTOR ***********************************************************/
 
