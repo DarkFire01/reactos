@@ -704,13 +704,25 @@ static const char *ConfigurationFor(const char *Class, const char *Settings)
                    "<controller/>";
         }
 
+        /*
+         * A controller is a channel and both of them repeat, so the first
+         * controller is the primary pair and the second the secondary, and
+         * the drives inside each are master then slave. Nothing says which is
+         * which: the order is the whole of it.
+         *
+         * One on each, because which channel a firmware looks at for a disc is
+         * its own business and they do not agree about it.
+         */
         _snprintf(Made, sizeof(Made) - 1,
                   "<VDEVVersion>512</VDEVVersion>"
                   "<version>2</version>"
                   "<controller>"
                   "<drive><pathname>%s</pathname><type>ISO</type></drive>"
+                  "</controller>"
+                  "<controller>"
+                  "<drive><pathname>%s</pathname><type>ISO</type></drive>"
                   "</controller>",
-                  Settings);
+                  Settings, Settings);
 
         Made[sizeof(Made) - 1] = '\0';
         return Made;
@@ -1251,6 +1263,10 @@ struct BlockObject
 {
     const void **Vtable;
     volatile LONG Count;
+
+    /* What the block stands for, which is memory on this side */
+    UCHAR *Memory;
+    ULONG64 Length;
 };
 
 template <int Slot>
@@ -1263,6 +1279,45 @@ static HRESULT STDMETHODCALLTYPE BlockSlot(void *This, void *First,
     {
         printf("    the vram block was asked for slot %d (%p %p %p)\n",
                Slot, First, Second, Third);
+    }
+
+    return S_OK;
+}
+
+/*
+ * A run of the block, made reachable and handed back as an address.
+ *
+ * This is how a device gets at the memory it was given: it names a run of pages
+ * within the block and is told where that run is. The display asks for eight
+ * pages of it under a name of its own and writes the screen straight in.
+ */
+static HRESULT STDMETHODCALLTYPE BlockAperture(void *This, ULONG64 Offset,
+                                               ULONG64 Pages, ULONG Flags,
+                                               const WCHAR *Name,
+                                               void **Mapped, void **Handle)
+{
+    auto *Self = static_cast<BlockObject *>(This);
+    const ULONG64 Where = Offset * VDEV_PAGE_SIZE;
+    const ULONG64 Length = Pages * VDEV_PAGE_SIZE;
+
+    UNREFERENCED_PARAMETER(Flags);
+    UNREFERENCED_PARAMETER(Name);
+
+    if ((Self->Memory == nullptr) || ((Where + Length) > Self->Length))
+        return E_INVALIDARG;
+
+    if (Mapped != nullptr)
+        *Mapped = Self->Memory + Where;
+
+    /* Something to give the run up by, which is the block it came out of */
+    if (Handle != nullptr)
+        *Handle = Self;
+
+    if (!RepositoryQuiet)
+    {
+        printf("    %llu page(s) of the block, from %llu, are at %p\n",
+               (unsigned long long)Pages, (unsigned long long)Offset,
+               (void *)(Self->Memory + Where));
     }
 
     return S_OK;
@@ -1299,14 +1354,42 @@ static const void *BlockVtable[BLOCK_SLOTS] =
     reinterpret_cast<const void *>(&BlockQuery),
     reinterpret_cast<const void *>(&BlockHold),
     reinterpret_cast<const void *>(&BlockDrop),
-    SLOT(3),  SLOT(4),  SLOT(5),  SLOT(6),  SLOT(7),
+    SLOT(3),
+    reinterpret_cast<const void *>(&BlockAperture),
+    SLOT(5),  SLOT(6),  SLOT(7),
     SLOT(8),  SLOT(9),  SLOT(10), SLOT(11), SLOT(12), SLOT(13),
     SLOT(14), SLOT(15), SLOT(16), SLOT(17), SLOT(18), SLOT(19),
     SLOT(20), SLOT(21), SLOT(22), SLOT(23), SLOT(24), SLOT(25),
     SLOT(26), SLOT(27), SLOT(28), SLOT(29), SLOT(30), SLOT(31)
 };
 
-static BlockObject TheVram = { BlockVtable, 1 };
+/* As many as the devices in one machine ask for between them */
+static BlockObject TheBlocks[8];
+static ULONG TheBlockCount = 0;
+
+static BlockObject TheVram = { BlockVtable, 1, nullptr, 0 };
+
+/* One, with memory behind it for whatever asked to be given it */
+static IVmMemoryBlock *MakeBlock(ULONG64 Length)
+{
+    if (TheBlockCount >= ARRAYSIZE(TheBlocks))
+        return nullptr;
+
+    BlockObject *One = &TheBlocks[TheBlockCount];
+
+    One->Vtable = BlockVtable;
+    One->Count = 1;
+    One->Length = Length;
+    One->Memory = static_cast<UCHAR *>(VirtualAlloc(nullptr, (SIZE_T)Length,
+                                                    MEM_COMMIT | MEM_RESERVE,
+                                                    PAGE_READWRITE));
+
+    if (One->Memory == nullptr)
+        return nullptr;
+
+    TheBlockCount++;
+    return reinterpret_cast<IVmMemoryBlock *>(One);
+}
 
 /*
  * What the operator is looking at, as a display device works against it.
@@ -1789,62 +1872,29 @@ public:
      * because two things cannot answer for one page and the one that was there
      * is the ordinary memory nothing is using.
      */
-    STDMETHODIMP CreateGpaRange(ULONG64 FirstPage, ULONG64 PageCount,
-                                void *Backing, BOOL ReadOnly,
-                                void **Registration) override
+    /*
+     * Memory for a device to keep its own contents in.
+     *
+     * What is handed back stands for that memory rather than being it. The
+     * device puts it somewhere the guest can see through the thing itself, so
+     * nothing is mapped here: this only has to exist and answer.
+     */
+    STDMETHODIMP CreateDeviceMemoryBlock(ULONG64 Pages, ULONG Kind,
+                                         ULONG Flags,
+                                         IVmMemoryBlock **Block) override
     {
-        const ULONG64 Where = FirstPage * VDEV_PAGE_SIZE;
-        const ULONG64 Length = PageCount * VDEV_PAGE_SIZE;
-
         if (!RepositoryQuiet)
         {
-            printf("    a window of %llu page(s) at %08llx, %s\n",
-                   (unsigned long long)PageCount, (unsigned long long)Where,
-                   ReadOnly ? "read only" : "written to as well");
+            printf("    a block of %llu page(s), kind %lu, flags %lu\n",
+                   (unsigned long long)Pages, Kind, Flags);
         }
 
-        if (PageCount == 0)
-            return E_INVALIDARG;
+        if (Block == nullptr)
+            return E_POINTER;
 
-        /*
-         * Backed by this side when the device did not bring memory of its own.
-         * What the slot really takes is not settled, so a device that appears
-         * to be handing over nothing is given somewhere real to work in rather
-         * than an error, which is the answer that keeps it moving.
-         */
-        if (Backing == nullptr)
-        {
-            Backing = VirtualAlloc(nullptr, (SIZE_T)Length,
-                                   MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        *Block = MakeBlock(Pages * VDEV_PAGE_SIZE);
 
-            if (Backing == nullptr)
-                return E_OUTOFMEMORY;
-        }
-
-        hv::Hollow(Where, Length);
-
-        if (!hv::Fill(Where, Length, Backing, ReadOnly != FALSE))
-        {
-            if (!RepositoryQuiet)
-                printf("    which would not go there\n");
-
-            return E_FAIL;
-        }
-
-        if (Registration != nullptr)
-        {
-            auto *One = new Window(Where, Length);
-
-            if (One == nullptr)
-            {
-                hv::Hollow(Where, Length);
-                return E_OUTOFMEMORY;
-            }
-
-            *Registration = static_cast<IVndRegistration *>(One);
-        }
-
-        return S_OK;
+        return (*Block != nullptr) ? S_OK : E_OUTOFMEMORY;
     }
 
     STDMETHODIMP CreateRamGpaRange() override { return E_NOTIMPL; }
@@ -2157,6 +2207,70 @@ static void DrivePic(const Emulation &Addresses)
         printf("which is not what was written\n");
 }
 
+/* Where a disk controller of this kind answers, and what it is asked */
+#define IDE_DATA        0x01F0
+#define IDE_LBA_MID     0x01F4
+#define IDE_LBA_HIGH    0x01F5
+#define IDE_SELECT      0x01F6
+#define IDE_COMMAND     0x01F7
+#define IDE_IDENTIFY    0xEC
+
+/* What a drive that is not an ordinary one says when asked the ordinary way */
+#define IDE_PACKET_MID  0x14
+#define IDE_PACKET_HIGH 0xEB
+
+/*
+ * The one thing a firmware asks a disk controller before anything else.
+ *
+ * A drive that takes packets refuses to say what it is the ordinary way, and
+ * leaves two particular bytes in the address registers instead. Every firmware
+ * there has ever been looks for exactly those two bytes, so a controller that
+ * hands them back has a disc in it as far as anything is concerned.
+ */
+static void DriveOneChannel(const Emulation &Addresses, USHORT Base,
+                            UCHAR Which)
+{
+    IVndIoPortHandler *Select = Addresses.Claimed(Base + 6);
+    IVndIoPortHandler *Command = Addresses.Claimed(Base + 7);
+    IVndIoPortHandler *Mid = Addresses.Claimed(Base + 4);
+    IVndIoPortHandler *High = Addresses.Claimed(Base + 5);
+
+    if ((Select == nullptr) || (Command == nullptr) || (Mid == nullptr) ||
+        (High == nullptr))
+    {
+        printf("  %04x is not answered for at all\n", Base);
+        return;
+    }
+
+    ULONG Status = 0;
+    ULONG Low = 0;
+    ULONG Top = 0;
+
+    Select->NotifyIoPortWrite((USHORT)(Base + 6), 1, Which);
+    Command->NotifyIoPortWrite((USHORT)(Base + 7), 1, IDE_IDENTIFY);
+    Command->NotifyIoPortRead((USHORT)(Base + 7), 1, &Status);
+    Mid->NotifyIoPortRead((USHORT)(Base + 4), 1, &Low);
+    High->NotifyIoPortRead((USHORT)(Base + 5), 1, &Top);
+
+    const bool Disc = (((Low & 0xFF) == IDE_PACKET_MID) &&
+                       ((Top & 0xFF) == IDE_PACKET_HIGH));
+
+    printf("  %04x %s: status %02lx, left %02lx %02lx%s\n", Base,
+           (Which == 0xA0) ? "master" : "slave ",
+           Status & 0xFF, Low & 0xFF, Top & 0xFF,
+           Disc ? "   a disc" : "");
+}
+
+static void DriveIde(const Emulation &Addresses)
+{
+    printf("what is in each of the four places a drive can be:\n");
+
+    DriveOneChannel(Addresses, 0x01F0, 0xA0);
+    DriveOneChannel(Addresses, 0x01F0, 0xB0);
+    DriveOneChannel(Addresses, 0x0170, 0xA0);
+    DriveOneChannel(Addresses, 0x0170, 0xB0);
+}
+
 /*
  * Whatever can be asked of the kind that was loaded. Only the pair of chips
  * has an answer worth checking; for anything else, reading the first port it
@@ -2172,6 +2286,12 @@ static void Drive(const Probe &Handed, const GUID &Which)
     if (IsEqualGUID(Which, CLSID_PicDevice))
     {
         DrivePic(Addresses);
+        return;
+    }
+
+    if (IsEqualGUID(Which, CLSID_IdeControllerDevice))
+    {
+        DriveIde(Addresses);
         return;
     }
 
@@ -2404,6 +2524,43 @@ static void NoteUnclaimed(USHORT Port)
 static ULONG64 TheAnswered = 0;
 
 /*
+ * A run of ports to write down every access to.
+ *
+ * A firmware and a device that disagree do it one port at a time, and the whole
+ * of the disagreement is in the order and the values. Nothing else here shows
+ * that, because everything else counts accesses rather than reading them.
+ */
+static ULONG TheWatchFirst = 1;
+static ULONG TheWatchLast = 0;
+static ULONG TheWatched = 0;
+
+void VmWatch(ULONG First, ULONG Last)
+{
+    TheWatchFirst = First;
+    TheWatchLast = Last;
+    TheWatched = 0;
+}
+
+/* How many are worth seeing before it is the same thing over and over */
+#define WATCH_ENOUGH 400
+
+static void Watch(USHORT Port, USHORT Width, ULONG Value, bool Writing,
+                  bool Answered)
+{
+    if ((Port < TheWatchFirst) || (Port > TheWatchLast))
+        return;
+
+    if (TheWatched++ >= WATCH_ENOUGH)
+        return;
+
+    const ULONG Mask = (Width == 1) ? 0xFFu : ((Width == 2) ? 0xFFFFu : ~0u);
+
+    printf("  %04x %s %0*lx%s\n", Port, Writing ? "<-" : "->",
+           (Width == 1) ? 2 : ((Width == 2) ? 4 : 8), Value & Mask,
+           Answered ? "" : "  (nothing answers for it)");
+}
+
+/*
  * What a firmware said on its way through.
  *
  * The first serial port is where anything of this age says what it is doing,
@@ -2444,6 +2601,104 @@ static const char *WhyStopped(ULONG Reason)
     }
 }
 
+/*
+ * A whole run of accesses to one port, carried out.
+ *
+ * A firmware moves a sector this way rather than one word at a time, and the
+ * processor stops once for the whole run rather than once for each. Doing one
+ * and calling it the run leaves the guest's pointer and count wrong, so all of
+ * it is done here and the registers are put where the instruction would have
+ * left them.
+ *
+ * Which way the pointer moves is the direction flag, which is the one thing
+ * about the instruction that is not in what the processor handed over.
+ */
+static bool Run(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
+{
+    const USHORT Port = Exit.IoPortAccess.PortNumber;
+    const USHORT Width = (USHORT)Exit.IoPortAccess.AccessInfo.AccessSize;
+    const bool Writing = (Exit.IoPortAccess.AccessInfo.IsWrite != 0);
+    IVndIoPortHandler *Handler = On.Claimed(Port);
+
+    ULONG64 Count = 1;
+
+    if (Exit.IoPortAccess.AccessInfo.RepPrefix)
+        Count = Exit.IoPortAccess.Rcx;
+
+    /* Backwards when the guest said so, which is rare but is allowed */
+    const bool Backwards = ((Exit.VpContext.Rflags & 0x400) != 0);
+    const LONG64 Step = Backwards ? -(LONG64)Width : (LONG64)Width;
+
+    ULONG64 From = Exit.IoPortAccess.Ds.Base + Exit.IoPortAccess.Rsi;
+    ULONG64 To = Exit.IoPortAccess.Es.Base + Exit.IoPortAccess.Rdi;
+
+    for (ULONG64 Index = 0; Index < Count; Index++)
+    {
+        if (Writing)
+        {
+            const void *Where = hv::Guest(From, Width);
+            ULONG Value = 0;
+
+            if (Where == nullptr)
+                return false;
+
+            memcpy(&Value, Where, Width);
+
+            if (Handler != nullptr)
+            {
+                Handler->NotifyIoPortWrite(Port, Width, Value);
+                TheAnswered++;
+            }
+            else
+            {
+                NoteUnclaimed(Port);
+            }
+
+            From += Step;
+        }
+        else
+        {
+            void *Where = hv::Guest(To, Width);
+            ULONG Value = 0xFFFFFFFF;
+
+            if (Where == nullptr)
+                return false;
+
+            if (Handler != nullptr)
+            {
+                if (FAILED(Handler->NotifyIoPortRead(Port, Width, &Value)))
+                    Value = 0xFFFFFFFF;
+
+                TheAnswered++;
+            }
+            else
+            {
+                NoteUnclaimed(Port);
+            }
+
+            memcpy(Where, &Value, Width);
+            To += Step;
+        }
+    }
+
+    /* Where the instruction would have left them, had it been carried out */
+    if (Writing)
+    {
+        hv::Poke(WHvX64RegisterRsi,
+                 Exit.IoPortAccess.Rsi + (ULONG64)(Step * (LONG64)Count));
+    }
+    else
+    {
+        hv::Poke(WHvX64RegisterRdi,
+                 Exit.IoPortAccess.Rdi + (ULONG64)(Step * (LONG64)Count));
+    }
+
+    if (Exit.IoPortAccess.AccessInfo.RepPrefix)
+        hv::Poke(WHvX64RegisterRcx, 0);
+
+    return true;
+}
+
 static void Dispatch(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
 {
     const USHORT Port = Exit.IoPortAccess.PortNumber;
@@ -2458,6 +2713,8 @@ static void Dispatch(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
             Value &= 0xFF;
         else if (Width == 2)
             Value &= 0xFFFF;
+
+        Watch(Port, Width, Value, true, Handler != nullptr);
 
         if (Handler != nullptr)
         {
@@ -2488,6 +2745,8 @@ static void Dispatch(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
     {
         NoteUnclaimed(Port);
     }
+
+    Watch(Port, Width, Value, false, Handler != nullptr);
 
     /* Only as much of the register as was asked for, the rest left alone */
     ULONG64 Rax = Exit.IoPortAccess.Rax;
@@ -2616,21 +2875,22 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
 
         if (Exit.ExitReason == WHvRunVpExitReasonX64IoPortAccess)
         {
-            /*
-             * A run of them at once, which a firmware uses to move a sector,
-             * is not carried out here: doing one and saying it was the whole
-             * run leaves the guest's pointer and count wrong, and going on
-             * from there is worse than stopping.
-             */
+            /* A whole run at once, which is how a sector is moved */
             if (Exit.IoPortAccess.AccessInfo.StringOp ||
                 Exit.IoPortAccess.AccessInfo.RepPrefix)
             {
-                printf("a run of accesses to %04x at once, which is not done "
-                       "here\n", Exit.IoPortAccess.PortNumber);
-                break;
+                if (!Run(Exit, Handed.Addresses()))
+                {
+                    printf("a run of accesses to %04x went outside the memory "
+                           "it has\n", Exit.IoPortAccess.PortNumber);
+                    break;
+                }
+            }
+            else
+            {
+                Dispatch(Exit, Handed.Addresses());
             }
 
-            Dispatch(Exit, Handed.Addresses());
             Ports++;
         }
         else if (Exit.ExitReason != WHvRunVpExitReasonMemoryAccess)
@@ -2890,11 +3150,16 @@ ULONG VmRun(ULONG Steps)
             if (TheVm.Exit.IoPortAccess.AccessInfo.StringOp ||
                 TheVm.Exit.IoPortAccess.AccessInfo.RepPrefix)
             {
-                TheVm.Stopped = true;
-                break;
+                if (!Run(TheVm.Exit, TheVm.Handed->Addresses()))
+                {
+                    TheVm.Stopped = true;
+                    break;
+                }
             }
-
-            Dispatch(TheVm.Exit, TheVm.Handed->Addresses());
+            else
+            {
+                Dispatch(TheVm.Exit, TheVm.Handed->Addresses());
+            }
             TheVm.Ports++;
         }
         else if ((TheVm.Exit.ExitReason != WHvRunVpExitReasonMemoryAccess) &&
@@ -2994,10 +3259,11 @@ void VmClose()
  * is right, and the answer to that is in what the device reaches for on its way
  * up rather than in anything it does afterwards.
  */
-int One(const char *Library, const char *Class)
+int One(const char *Library, const char *Class, const char *Settings)
 {
     /* The one being driven, so that it is told the configuration of its kind */
     TheFitting = Class;
+    TheFittingSettings = Settings;
 
     GUID Wanted = {};
 
