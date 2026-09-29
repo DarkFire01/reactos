@@ -39,6 +39,15 @@
 #define UART_MODEM_CONTROL  4
 #define UART_LINE_STATUS    5
 
+/* The display, its page and the registers that say where the cursor is */
+#define VIDEO_SEGMENT       HEX(0B800)
+#define VIDEO_COLUMNS       80
+#define VIDEO_ROWS          25
+#define VIDEO_CRTC_ADDRESS  HEX(03D4)
+
+/* Where the cursor for the first page is kept */
+#define BDA_CURSOR          HEX(0050)
+
 /* Where the manager left a note saying what this machine is */
 #define DESCRIPTION_BASE    HEX(0500)
 #define DESCRIPTION_MAGIC   HEX(4D565452)
@@ -126,68 +135,108 @@ SerialDone:
     pop ax
     ret
 
-/* Writes AL as two hexadecimal digits */
-SerialWriteByte:
-    push ax
-    push bx
-
-    mov bl, al
-    shr al, 4
-    call SerialWriteDigit
-    mov al, bl
-    and al, HEX(0F)
-    call SerialWriteDigit
-
-    pop bx
-    pop ax
-    ret
-
-SerialWriteDigit:
-    and al, HEX(0F)
-    add al, HEX(30)
-    cmp al, HEX(39)
-    jbe SerialDigitReady
-    add al, 7
-SerialDigitReady:
-    call SerialWrite
-    ret
-
 /* THE SERVICES ***************************************************************/
 
 /*
- * Video, of which only the one call that prints a character is answered. A
- * machine with no display still has somewhere to put its output, and anything
- * that boots this way announces itself through this call before it has any
- * idea what the display is.
+ * The video calls, answered against the text page as well as the serial port.
+ *
+ * Everything an operating system prints goes through here. The teletype call
+ * alone is enough for a banner, because a banner is only ever appended; a
+ * prompt is not, and neither is anything that draws. Those need the cursor to
+ * be somewhere, to be readable, and to move where it is put, which is what the
+ * rest of these do.
+ *
+ * Every character goes to the serial port too, so that a machine with nothing
+ * looking at its screen can still be watched.
  */
 Int10Handler:
+    cmp ah, HEX(00)
+    je Int10SetMode
+    cmp ah, HEX(01)
+    je Int10SetShape
+    cmp ah, HEX(02)
+    je Int10SetCursor
+    cmp ah, HEX(03)
+    je Int10GetCursor
+    cmp ah, HEX(05)
+    je Int10SetPage
+    cmp ah, HEX(06)
+    je Int10ScrollUp
+    cmp ah, HEX(08)
+    je Int10ReadCell
+    cmp ah, HEX(09)
+    je Int10WriteCell
+    cmp ah, HEX(0A)
+    je Int10WriteCell
     cmp ah, HEX(0E)
     je Int10Teletype
     cmp ah, HEX(0F)
     je Int10QueryMode
-    cmp ah, HEX(00)
-    je Int10SetMode
-    iret
-
-Int10Teletype:
-    push ax
-    call SerialWrite
-    pop ax
+    cmp ah, HEX(12)
+    je Int10Subsystem
+    cmp ah, HEX(1A)
+    je Int10DisplayCode
     iret
 
 Int10SetMode:
-    /* Taken and ignored, because there is only one thing to be in */
+    /*
+     * Taken, and the screen cleared, because that is what setting a mode does
+     * and something that sets one is entitled to find it empty afterwards.
+     */
     push ds
     push bx
     mov bx, BDA_SEGMENT
     mov ds, bx
     mov byte ptr ds:[BDA_DISPLAY_MODE], al
+    mov word ptr ds:[BDA_CURSOR], 0
     pop bx
     pop ds
+
+    call VideoClear
+    iret
+
+Int10SetShape:
+Int10SetPage:
+Int10Subsystem:
+    /* Nothing to set, and saying so plainly is better than not answering */
+    iret
+
+Int10DisplayCode:
+    /* A colour display of the usual kind, which is the only answer worth giving */
+    mov al, HEX(1A)
+    mov bl, HEX(08)
+    mov bh, HEX(00)
+    iret
+
+Int10SetCursor:
+    push ds
+    push bx
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+    mov byte ptr ds:[BDA_CURSOR], dl
+    mov byte ptr ds:[BDA_CURSOR + 1], dh
+    pop bx
+    pop ds
+
+    call VideoPlaceCursor
+    iret
+
+Int10GetCursor:
+    push ds
+    push bx
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+    mov dl, byte ptr ds:[BDA_CURSOR]
+    mov dh, byte ptr ds:[BDA_CURSOR + 1]
+    pop bx
+    pop ds
+
+    /* The shape it is drawn with, which nothing here varies */
+    mov ch, 6
+    mov cl, 7
     iret
 
 Int10QueryMode:
-    /* Eighty columns of the mode that was last set, on page zero */
     mov ah, 80
     mov bh, 0
     push ds
@@ -198,6 +247,280 @@ Int10QueryMode:
     pop bx
     pop ds
     iret
+
+/* What is under the cursor, which something drawing a box asks before it draws */
+Int10ReadCell:
+    push ds
+    push si
+    call VideoCursorOffset
+    mov si, ax
+    mov ax, VIDEO_SEGMENT
+    mov ds, ax
+    mov ax, word ptr ds:[si]
+    pop si
+    pop ds
+    iret
+
+/*
+ * A character put where the cursor is, without moving it. The count in CX is
+ * how many times, which is how a line of one character is drawn.
+ */
+Int10WriteCell:
+    push ax
+    push bx
+    push cx
+    push di
+    push es
+
+    push ax
+    call VideoCursorOffset
+    mov di, ax
+    pop ax
+
+    mov bx, VIDEO_SEGMENT
+    mov es, bx
+
+    /* At least one, however little CX says */
+    test cx, cx
+    jnz Int10WriteCellLoop
+    mov cx, 1
+
+Int10WriteCellLoop:
+    mov byte ptr es:[di], al
+
+    /*
+     * The colour is only taken from BL by the form that carries one. The other
+     * leaves whatever the cell already had, which is what it is for.
+     */
+    cmp ah, HEX(09)
+    jne Int10WriteCellNext
+    mov byte ptr es:[di + 1], bl
+
+Int10WriteCellNext:
+    add di, 2
+    loop Int10WriteCellLoop
+
+    pop es
+    pop di
+    pop cx
+    pop bx
+    pop ax
+    iret
+
+/*
+ * One character, at the cursor, and the cursor moves. This is the call almost
+ * everything uses, and the only one that has to understand what a newline is.
+ */
+Int10Teletype:
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+    push ds
+    push es
+
+    /* Out of the port as well, so the machine can be watched */
+    push ax
+    call SerialWrite
+    pop ax
+
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+
+    cmp al, 13
+    je Int10Return
+    cmp al, 10
+    je Int10LineFeed
+    cmp al, 8
+    je Int10Backspace
+    cmp al, 7
+    je Int10Bell
+
+    /* An ordinary character goes in the cell the cursor is on */
+    push ax
+    call VideoCursorOffset
+    mov di, ax
+    pop ax
+
+    mov bx, VIDEO_SEGMENT
+    mov es, bx
+    mov byte ptr es:[di], al
+    mov byte ptr es:[di + 1], HEX(07)
+
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+
+    /* On one, and round onto the next line at the edge */
+    inc byte ptr ds:[BDA_CURSOR]
+    cmp byte ptr ds:[BDA_CURSOR], VIDEO_COLUMNS
+    jb Int10TeletypeDone
+
+Int10LineFeed:
+    mov byte ptr ds:[BDA_CURSOR], 0
+    inc byte ptr ds:[BDA_CURSOR + 1]
+    cmp byte ptr ds:[BDA_CURSOR + 1], VIDEO_ROWS
+    jb Int10TeletypeDone
+
+    /* Off the bottom, so everything moves up and the last line is the new one */
+    mov byte ptr ds:[BDA_CURSOR + 1], VIDEO_ROWS - 1
+    call VideoScroll
+    jmp Int10TeletypeDone
+
+Int10Return:
+    mov byte ptr ds:[BDA_CURSOR], 0
+    jmp Int10TeletypeDone
+
+Int10Backspace:
+    cmp byte ptr ds:[BDA_CURSOR], 0
+    je Int10TeletypeDone
+    dec byte ptr ds:[BDA_CURSOR]
+    jmp Int10TeletypeDone
+
+Int10Bell:
+    /* Nothing to ring */
+
+Int10TeletypeDone:
+    call VideoPlaceCursor
+
+    pop es
+    pop ds
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    iret
+
+/*
+ * Moving the screen up. Only the whole screen is answered, because that is what
+ * a scroll is asked for, and a window scroll of part of it is drawn by whatever
+ * wanted it rather than asked for here.
+ */
+Int10ScrollUp:
+    call VideoScroll
+    iret
+
+/* WHERE THE CURSOR IS ********************************************************/
+
+/* Answers in AX with the offset into the page of the cell the cursor is on */
+VideoCursorOffset:
+    push bx
+    push cx
+    push dx
+    push ds
+
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+
+    movzx ax, byte ptr ds:[BDA_CURSOR + 1]
+    mov cx, VIDEO_COLUMNS
+    mul cx
+    movzx bx, byte ptr ds:[BDA_CURSOR]
+    add ax, bx
+    shl ax, 1
+
+    pop ds
+    pop dx
+    pop cx
+    pop bx
+    ret
+
+/* Tells the display where to draw the cursor, which it keeps in two registers */
+VideoPlaceCursor:
+    push ax
+    push bx
+    push cx
+    push dx
+    push ds
+
+    mov bx, BDA_SEGMENT
+    mov ds, bx
+
+    movzx ax, byte ptr ds:[BDA_CURSOR + 1]
+    mov cx, VIDEO_COLUMNS
+    mul cx
+    movzx bx, byte ptr ds:[BDA_CURSOR]
+    add ax, bx
+
+    mov dx, VIDEO_CRTC_ADDRESS
+    mov al, HEX(0E)
+    out dx, al
+    inc dx
+    mov al, ah
+    out dx, al
+
+    dec dx
+    mov al, HEX(0F)
+    out dx, al
+    inc dx
+    /* The low half, which the multiply left in AL before AH was taken */
+    movzx ax, byte ptr ds:[BDA_CURSOR + 1]
+    mov cx, VIDEO_COLUMNS
+    mul cx
+    movzx bx, byte ptr ds:[BDA_CURSOR]
+    add ax, bx
+    out dx, al
+
+    pop ds
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+/* Empties the page, in the colour a screen comes up in */
+VideoClear:
+    push ax
+    push cx
+    push di
+    push es
+
+    mov ax, VIDEO_SEGMENT
+    mov es, ax
+    xor di, di
+    mov cx, VIDEO_COLUMNS * VIDEO_ROWS
+    mov ax, HEX(0720)
+    cld
+    rep stosw
+
+    pop es
+    pop di
+    pop cx
+    pop ax
+    ret
+
+/* Everything up one line, and the last one emptied */
+VideoScroll:
+    push ax
+    push cx
+    push si
+    push di
+    push ds
+    push es
+
+    mov ax, VIDEO_SEGMENT
+    mov ds, ax
+    mov es, ax
+
+    mov si, VIDEO_COLUMNS * 2
+    xor di, di
+    mov cx, VIDEO_COLUMNS * (VIDEO_ROWS - 1)
+    cld
+    rep movsw
+
+    /* The line that has just been made room for */
+    mov cx, VIDEO_COLUMNS
+    mov ax, HEX(0720)
+    rep stosw
+
+    pop es
+    pop ds
+    pop di
+    pop si
+    pop cx
+    pop ax
+    ret
 
 /*
  * What the machine has. Nothing but the serial port, which is what the low
@@ -546,11 +869,46 @@ Int16Handler:
     je Int16Peek
     cmp ah, HEX(02)
     je Int16Flags
+
+    /*
+     * The wider forms of the same three calls. Anything written since keys had
+     * more of them on the keyboard asks for these, and a handler that simply
+     * returns from one leaves the flags holding whatever they held: the caller
+     * reads that as a key being ready and then asks for a key that is not
+     * there, which is a wait that never ends.
+     */
+    cmp ah, HEX(10)
+    je Int16Read
+    cmp ah, HEX(11)
+    je Int16Peek
+    cmp ah, HEX(12)
+    je Int16Flags
+
+    /* Setting the rate keys repeat at, which there is nothing to set */
+    cmp ah, HEX(03)
+    je Int16Accepted
+
+    /* Anything else is refused plainly rather than by saying nothing */
+    xor ax, ax
+    jmp Int16Empty
+
+Int16Accepted:
     iret
 
+/*
+ * Taking a character, waiting for one if there is none.
+ *
+ * A character that was already looked at is handed over from where the look
+ * left it, because a port read takes the byte off the wire and there is
+ * nowhere else for it to go.
+ */
 Int16Read:
     push dx
+
 Int16Wait:
+    cmp byte ptr cs:[KeyWaiting], 0
+    jne Int16FromHeld
+
     mov dx, COM1_BASE + UART_LINE_STATUS
     in al, dx
     test al, HEX(01)
@@ -570,31 +928,56 @@ Int16Take:
     mov ah, 0
     iret
 
+Int16FromHeld:
+    mov al, byte ptr cs:[KeyHeld]
+    mov byte ptr cs:[KeyWaiting], 0
+    pop dx
+    mov ah, 0
+    iret
+
+/*
+ * Looking without taking. The port has no way to be read without taking, so
+ * the byte is taken and held here until the read that follows asks for it.
+ * Answering this by reading and discarding is how a menu that polls before
+ * reading loses every key that is pressed at it.
+ */
 Int16Peek:
+    /*
+     * Interrupts back on first. The gate this arrived through turned them off,
+     * and something polling this in a loop would then spend nearly all its time
+     * unable to take a clock tick, which is a machine whose time stands still
+     * for as long as it is waiting for a key.
+     */
+    sti
+
+    cmp byte ptr cs:[KeyWaiting], 0
+    jne Int16HaveOne
+
     push dx
     mov dx, COM1_BASE + UART_LINE_STATUS
     in al, dx
-    pop dx
-
     test al, HEX(01)
-    jz Int16Empty
+    jz Int16PeekEmpty
 
-    /*
-     * Something is waiting. It is not read here, because this call is only
-     * meant to look, and the read that follows is the one that takes it.
-     */
-    push dx
     mov dx, COM1_BASE + UART_DATA
     in al, dx
+    mov byte ptr cs:[KeyHeld], al
+    mov byte ptr cs:[KeyWaiting], 1
     pop dx
+
+Int16HaveOne:
+    mov al, byte ptr cs:[KeyHeld]
     mov ah, 0
 
-    /* Said to be there, and the flag says so */
+    /* Clear, meaning there is one */
     push bp
     mov bp, sp
     and word ptr [bp + 6], NOT HEX(40)
     pop bp
     iret
+
+Int16PeekEmpty:
+    pop dx
 
 Int16Empty:
     push bp
@@ -604,6 +987,7 @@ Int16Empty:
     iret
 
 Int16Flags:
+    sti
     xor al, al
     iret
 
@@ -715,10 +1099,13 @@ AtaRead:
     push dx
     push di
 
-    call AtaWaitReady
-    jc AtaReadFailed
-
-    /* Which drive, and which way the address is being given */
+    /*
+     * Which drive, first of all. Waiting before selecting asks whichever drive
+     * was last spoken to whether it is ready, and the registers of a drive
+     * that is not there read as nothing: the ready bit never appears and the
+     * wait times out forever. Something else probing the other drive on the
+     * cable is enough to leave it selected, so this order is not optional.
+     */
     mov dx, ATA_PRIMARY_BASE + ATA_DRIVE
     mov al, byte ptr cs:[AtaHead]
     and al, HEX(0F)
@@ -728,6 +1115,9 @@ AtaRead:
     or al, HEX(40)
 AtaDriveReady:
     out dx, al
+
+    call AtaWaitReady
+    jc AtaReadFailed
 
     mov dx, ATA_PRIMARY_BASE + ATA_SECTOR_COUNT
     mov al, byte ptr cs:[AtaSectorCount]
@@ -806,12 +1196,12 @@ AtaIdentify:
     push cs
     pop es
 
-    call AtaWaitReady
-    jc AtaIdentifyFailed
-
     mov dx, ATA_PRIMARY_BASE + ATA_DRIVE
     mov al, HEX(A0)
     out dx, al
+
+    call AtaWaitReady
+    jc AtaIdentifyFailed
 
     mov dx, ATA_PRIMARY_BASE + ATA_COMMAND
     mov al, HEX(EC)
@@ -973,6 +1363,7 @@ Start:
     call VectorSetup
     call ReadDescription
     call DataAreaSetup
+    call VideoClear
     call ControllerSetup
 
     /* Ask the drive what it is, so the shape reported later is its own */
@@ -1416,6 +1807,9 @@ ReadFailedMessage:
     .ascii "the boot sector would not read"
     .byte 13, 10, 0
 
+CrLfMessage:
+    .byte 13, 10, 0
+
 NotBootableMessage:
     .ascii "there is no boot sector on that disk"
     .byte 13, 10, 0
@@ -1431,6 +1825,10 @@ DiskPresent:
     .byte 0
 BootDrive:
     .byte HEX(80)
+KeyWaiting:
+    .byte 0
+KeyHeld:
+    .byte 0
 AtaUseLba:
     .byte 0
 AtaSectorCount:
