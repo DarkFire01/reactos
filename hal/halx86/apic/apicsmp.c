@@ -44,6 +44,10 @@
         APIC_TGM_Edge - The interrupt is edge triggered.
         APIC_TGM_Level - The interrupt is level triggered.
 
+    \param Level - APIC_LEVEL_Assert, or APIC_LEVEL_Deassert. Only an INIT is
+        ever de-asserted, and only together with APIC_TGM_Level; everything
+        else is sent asserted and edge triggered.
+
     \param DestinationShortHand - Specifies where to send the interrupt.
         APIC_DSH_Destination
         APIC_DSH_Self
@@ -62,6 +66,7 @@ ApicRequestGlobalInterrupt(
     _In_ UCHAR Vector,
     _In_ APIC_MT MessageType,
     _In_ APIC_TGM TriggerMode,
+    _In_ APIC_LEVEL Level,
     _In_ APIC_DSH DestinationShortHand)
 {
     ULONG Flags;
@@ -77,7 +82,7 @@ ApicRequestGlobalInterrupt(
     Icr.MessageType = MessageType;
     Icr.DestinationMode = APIC_DM_Physical;
     Icr.DeliveryStatus = 0;
-    Icr.Level = 0;
+    Icr.Level = Level;
     Icr.TriggerMode = TriggerMode;
     Icr.RemoteReadStatus = 0;
     Icr.DestinationShortHand = DestinationShortHand;
@@ -96,46 +101,73 @@ ApicRequestGlobalInterrupt(
 
 /* SMP SUPPORT FUNCTIONS ******************************************************/
 
+/*!
+ *  \brief Brings a processor out of reset and points it at a startup page.
+ *
+ *  \param NTProcessorNumber - The processor to start, by its NT index.
+ *  \param StartupLoc - Physical address of the page it begins at, which has to
+ *      be below one megabyte and page aligned, because it begins in real mode.
+ *
+ *  \remarks An INIT is what puts a processor back into the state where it is
+ *      waiting to be told where to start, and a processor the firmware has
+ *      already used is not in it. So the reset is asserted, released, and only
+ *      then is the address sent. It goes twice: the first one is lost on a
+ *      processor that has not finished coming out of reset, and a processor
+ *      that took the first ignores the second.
+ *
+ *      The waits are the ones the multiprocessor specification asks for, and
+ *      they are not decoration - the local APIC will drop a command that
+ *      arrives while it is still delivering the last one.
+ */
 VOID
 ApicStartApplicationProcessor(
     _In_ ULONG NTProcessorNumber,
     _In_ PHYSICAL_ADDRESS StartupLoc)
 {
+    UCHAR LApicId = HalpProcessorIdentity[NTProcessorNumber].LapicId;
+    UCHAR StartupVector;
     APIC_VERSION_REGISTER ApicVersion;
 
     ASSERT(StartupLoc.HighPart == 0);
     ASSERT((StartupLoc.QuadPart & 0xFFF) == 0);
     ASSERT((StartupLoc.QuadPart & 0xFFF00FFF) == 0);
 
-    /* Init IPI */
-    ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, 0,
-        APIC_MT_INIT, APIC_TGM_Edge, APIC_DSH_Destination);
+    StartupVector = (UCHAR)(StartupLoc.LowPart >> 12);
 
-    /* De-Assert Init IPI */
-    ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, 0,
-        APIC_MT_INIT, APIC_TGM_Level, APIC_DSH_Destination);
+    KeStallExecutionProcessor(200);
+    ApicWaitForIdle();
+
+    /* Hold the processor in reset */
+    ApicRequestGlobalInterrupt(LApicId, 0, APIC_MT_INIT,
+                               APIC_TGM_Level, APIC_LEVEL_Assert,
+                               APIC_DSH_Destination);
+    KeStallExecutionProcessor(10);
+
+    /* And let it go, which leaves it waiting to be told where to start */
+    ApicRequestGlobalInterrupt(LApicId, 0, APIC_MT_INIT,
+                               APIC_TGM_Level, APIC_LEVEL_Deassert,
+                               APIC_DSH_Destination);
 
     /* Give the APIC time to latch INIT before the first SIPI: MPS Spec - B.4 */
     KeStallExecutionProcessor(10000);
 
     /* 82489DX APICs don't support the STARTUP IPI: MPS Spec - B.4 */
     ApicVersion.Long = ApicRead(APIC_VER);
-    if (ApicVersion.Version >= 0x10)
-    {
-        /* First Startup IPI */
-        ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, (StartupLoc.LowPart) >> 12,
-            APIC_MT_Startup, APIC_TGM_Edge, APIC_DSH_Destination);
+    if (ApicVersion.Version < 0x10)
+        return;
 
-        /* Stall between SIPIs: MPS Spec - B.4 */
-        KeStallExecutionProcessor(200);
+    ApicRequestGlobalInterrupt(LApicId, StartupVector, APIC_MT_Startup,
+                               APIC_TGM_Edge, APIC_LEVEL_Assert,
+                               APIC_DSH_Destination);
+    KeStallExecutionProcessor(200);
 
-        /* Second Startup IPI, required unconditionally by the MP Spec */
-        ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, (StartupLoc.LowPart) >> 12,
-            APIC_MT_Startup, APIC_TGM_Edge, APIC_DSH_Destination);
+    ApicWaitForIdle();
+    KeStallExecutionProcessor(100);
 
-        /* Give the AP time to come up before returning */
-        KeStallExecutionProcessor(200);
-    }
+    ApicRequestGlobalInterrupt(LApicId, StartupVector, APIC_MT_Startup,
+                               APIC_TGM_Edge, APIC_LEVEL_Assert,
+                               APIC_DSH_Destination);
+    KeStallExecutionProcessor(200);
 }
 
 /* HAL IPI FUNCTIONS **********************************************************/
@@ -160,6 +192,7 @@ HalpBroadcastIpiSpecifyVector(
                                Vector,
                                APIC_MT_Fixed,
                                APIC_TGM_Edge,
+                               APIC_LEVEL_Assert,
                                DestinationShortHand);
 }
 
@@ -216,6 +249,7 @@ HalRequestIpiSpecifyVector(
                                    Vector,
                                    APIC_MT_Fixed,
                                    APIC_TGM_Edge,
+                                   APIC_LEVEL_Assert,
                                    APIC_DSH_Destination);
     }
 }
@@ -301,6 +335,7 @@ HalpSendNMI(
                                    0,
                                    APIC_MT_NMI,
                                    APIC_TGM_Edge,
+                                   APIC_LEVEL_Assert,
                                    APIC_DSH_Destination);
     }
 }
