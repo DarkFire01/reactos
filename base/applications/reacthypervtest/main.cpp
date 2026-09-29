@@ -25,6 +25,7 @@
 #include <initguid.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "vdev.h"
 
@@ -246,6 +247,154 @@ private:
     volatile LONG m_Count = 1;
 };
 
+/* WHAT A DEVICE READS ITSELF OUT OF ******************************************/
+
+/*
+ * The store a device is told what it is by.
+ *
+ * Nothing is known about the shape of this one: it is not named in anything
+ * that has been read, and a device reaches into it before it does anything
+ * else. So it is built the other way round, as a run of slots that each say
+ * they were called and hand back nothing. What a device asks for, and in what
+ * order, comes out of running it.
+ *
+ * Laid out by hand rather than declared, because a table whose shape is the
+ * thing being discovered cannot be written as a class.
+ */
+#define REPOSITORY_SLOTS 48
+
+struct RepositoryObject
+{
+    const void **Vtable;
+    volatile LONG Count;
+};
+
+static bool RepositoryQuiet = false;
+
+/* What a slot nobody has worked out yet answers, which is worth trying both ways */
+static HRESULT RepositoryAnswer = S_OK;
+
+template <int Slot>
+static HRESULT STDMETHODCALLTYPE RepositorySlot(void *This, void *First,
+                                                void *Second, void *Third)
+{
+    UNREFERENCED_PARAMETER(This);
+
+    if (!RepositoryQuiet)
+    {
+        printf("    store slot %d (%p %p %p)\n", Slot, First, Second, Third);
+
+        /*
+         * And whatever it was asked about, because a slot nobody has named is
+         * named by what is handed to it. Guarded, since nothing here knows
+         * that the thing handed over is a pointer at all.
+         */
+        __try
+        {
+            const auto *Bytes = static_cast<const UCHAR *>(Second);
+
+            printf("      about:");
+
+            for (ULONG Index = 0; Index < 32; Index++)
+                printf(" %02x", Bytes[Index]);
+
+            printf("\n            ");
+
+            for (ULONG Index = 0; Index < 32; Index++)
+            {
+                const UCHAR One = Bytes[Index];
+
+                printf("%c", ((One >= 0x20) && (One < 0x7F)) ? (char)One : '.');
+            }
+
+            printf("\n");
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            printf("      about: not something that can be read\n");
+        }
+    }
+
+    return RepositoryAnswer;
+}
+
+/*
+ * The one slot that is known: what this device is called. A device walks what
+ * comes back looking for the end of it, so handing back nothing is handing
+ * back a walk off the end of memory.
+ */
+static HRESULT STDMETHODCALLTYPE RepositoryName(void *This, wchar_t **Name,
+                                                const GUID *Which)
+{
+    UNREFERENCED_PARAMETER(This);
+    UNREFERENCED_PARAMETER(Which);
+
+    static wchar_t Called[] = L"ReactHypervTest";
+
+    printf("    store: asked what this device is called\n");
+
+    if (Name != nullptr)
+        *Name = Called;
+
+    return S_OK;
+}
+
+static HRESULT STDMETHODCALLTYPE RepositoryQuery(void *This, REFIID Interface,
+                                                 void **Object)
+{
+    auto *Self = static_cast<RepositoryObject *>(This);
+
+    if (Object == nullptr)
+        return E_POINTER;
+
+    printf("    store: asked for ");
+    SayGuid(Interface);
+    printf("\n");
+
+    if (IsEqualIID(Interface, IID_IUnknown))
+    {
+        InterlockedIncrement(&Self->Count);
+        *Object = This;
+        return S_OK;
+    }
+
+    *Object = nullptr;
+    return E_NOINTERFACE;
+}
+
+static ULONG STDMETHODCALLTYPE RepositoryHold(void *This)
+{
+    return (ULONG)InterlockedIncrement(&static_cast<RepositoryObject *>(This)->Count);
+}
+
+static ULONG STDMETHODCALLTYPE RepositoryDrop(void *This)
+{
+    return (ULONG)InterlockedDecrement(&static_cast<RepositoryObject *>(This)->Count);
+}
+
+#define SLOT(n) reinterpret_cast<const void *>(&RepositorySlot<n>)
+
+static const void *RepositoryVtable[REPOSITORY_SLOTS] =
+{
+    reinterpret_cast<const void *>(&RepositoryQuery),
+    reinterpret_cast<const void *>(&RepositoryHold),
+    reinterpret_cast<const void *>(&RepositoryDrop),
+    SLOT(3),  SLOT(4),  SLOT(5),  SLOT(6),  SLOT(7),
+    SLOT(8),  SLOT(9),  SLOT(10),
+    reinterpret_cast<const void *>(&RepositoryName),
+    SLOT(12), SLOT(13), SLOT(14), SLOT(15),
+    SLOT(16), SLOT(17), SLOT(18), SLOT(19),
+    SLOT(20), SLOT(21), SLOT(22), SLOT(23),
+    SLOT(24), SLOT(25), SLOT(26), SLOT(27),
+    SLOT(28), SLOT(29), SLOT(30), SLOT(31),
+    SLOT(32), SLOT(33), SLOT(34), SLOT(35),
+    SLOT(36), SLOT(37), SLOT(38), SLOT(39),
+    SLOT(40), SLOT(41), SLOT(42), SLOT(43),
+    SLOT(44), SLOT(45), SLOT(46), SLOT(47)
+};
+
+static RepositoryObject TheRepository = { RepositoryVtable, 1 };
+
 /* WHAT THE DEVICE IS HANDED **************************************************/
 
 /*
@@ -361,6 +510,8 @@ static bool ReadGuid(const char *Text, GUID &Which)
     return true;
 }
 
+namespace hv { int Run(const char *Path, ULONG Steps); }
+
 static void Usage()
 {
     printf(
@@ -380,6 +531,8 @@ int main(int argc, char **argv)
 {
     const char *Library = nullptr;
     const char *Class = nullptr;
+    const char *Firmware = nullptr;
+    ULONG Steps = 20000;
 
     /*
      * Said the moment it is said. What is being driven here is somebody else's
@@ -394,12 +547,21 @@ int main(int argc, char **argv)
             Library = argv[++Index];
         else if ((strcmp(argv[Index], "--class") == 0) && ((Index + 1) < argc))
             Class = argv[++Index];
+        else if (strcmp(argv[Index], "--store-refuses") == 0)
+            RepositoryAnswer = E_NOTIMPL;
+        else if ((strcmp(argv[Index], "--firmware") == 0) && ((Index + 1) < argc))
+            Firmware = argv[++Index];
+        else if ((strcmp(argv[Index], "--steps") == 0) && ((Index + 1) < argc))
+            Steps = (ULONG)strtoul(argv[++Index], nullptr, 0);
         else
         {
             Usage();
             return 1;
         }
     }
+
+    if (Firmware != nullptr)
+        return hv::Run(Firmware, Steps);
 
     if ((Library == nullptr) || (Class == nullptr))
     {
@@ -497,7 +659,8 @@ int main(int argc, char **argv)
     Probe Handed;
 
     printf("bringing it up:\n");
-    Status = Device->Initialize(nullptr, 0, static_cast<IUnknown *>(&Handed));
+    Status = Device->Initialize(&TheRepository, 0,
+                                static_cast<IUnknown *>(&Handed));
 
     printf("it came up with %08lx after asking for %lu\n", Status,
            Handed.Asked());
