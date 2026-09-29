@@ -48,6 +48,11 @@ constexpr USHORT ResetOffset = 0xFFF0;
 /* Where the manager leaves the firmware a note about the machine */
 constexpr ULONG64 MachineDescription = 0x00000500;
 
+Machine::Machine()
+{
+    InitializeCriticalSection(&m_PicLock);
+}
+
 Machine::~Machine()
 {
     /* The devices go before the partition they were answering for */
@@ -61,6 +66,8 @@ Machine::~Machine()
         platform::DeletePartition(m_Partition);
         m_Partition = nullptr;
     }
+
+    DeleteCriticalSection(&m_PicLock);
 }
 
 bool Machine::BindPlatform()
@@ -478,6 +485,9 @@ bool Machine::Build(const Configuration &Config)
 {
     SetLogLevel(Config.LogLevel);
 
+    if (Config.RunSeconds != 0)
+        m_Deadline = GetTickCount() + (Config.RunSeconds * 1000);
+
     if (!BindPlatform())
         return false;
 
@@ -505,7 +515,8 @@ bool Machine::Build(const Configuration &Config)
         "rtvmserial.dll",
         "rtvmstorage.dll",
         "rtvmchipset.dll",
-        "rtvmvideo.dll"
+        "rtvmvideo.dll",
+        "rtvmkeyboard.dll"
     };
 
     for (const char *Name : Modules)
@@ -557,10 +568,18 @@ bool Machine::Build(const Configuration &Config)
 
 void Machine::SetInterruptLine(ULONG Line, bool Asserted)
 {
-    m_Pic.SetLine(Line, Asserted);
+    {
+        Locked Held(m_PicLock);
 
-    if (m_Pic.Pending())
-        InterlockedExchange(&m_InterruptPending, 1);
+        m_Pic.SetLine(Line, Asserted);
+    }
+
+    /*
+     * Counted rather than logged. A busy line buries a quiet one in a log, and
+     * which lines moved at all is the question worth being able to answer.
+     */
+    if (Asserted && (Line < RTL_NUMBER_OF(m_LineCount)))
+        m_LineCount[Line]++;
 }
 
 bool Machine::ReadGuest(ULONG64 Address, void *Buffer, ULONG Length)
@@ -633,15 +652,30 @@ void Machine::StringPort(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
                 break;
 
             if (Pic::Owns(Port))
+            {
+                Locked Held(m_PicLock);
+
                 m_Pic.WritePort(Port, Value);
+            }
             else
+            {
                 m_Bus.WritePort(Port, Width, Value);
+            }
         }
         else
         {
-            const ULONG Value = Pic::Owns(Port)
-                              ? m_Pic.ReadPort(Port)
-                              : m_Bus.ReadPort(Port, Width);
+            ULONG Value;
+
+            if (Pic::Owns(Port))
+            {
+                Locked Held(m_PicLock);
+
+                Value = m_Pic.ReadPort(Port);
+            }
+            else
+            {
+                Value = m_Bus.ReadPort(Port, Width);
+            }
 
             if (!m_Memory.Write(Address, &Value, Width))
                 break;
@@ -690,7 +724,13 @@ void Machine::StepOver(ULONG Index, ULONG64 Rip, ULONG Length)
  */
 void Machine::DeliverInterrupt(ULONG Index)
 {
-    if (InterlockedCompareExchange(&m_InterruptPending, 0, 0) == 0)
+    /*
+     * Asked of the controller every time rather than remembered. A remembered
+     * answer goes stale the moment the guest says an interrupt is finished:
+     * nothing moved a line, so nothing would set the flag again, and every
+     * interrupt still latched would wait forever.
+     */
+    if (!Pending())
         return;
 
     const WHV_REGISTER_NAME Name = WHvX64RegisterRflags;
@@ -699,17 +739,32 @@ void Machine::DeliverInterrupt(ULONG Index)
     if (FAILED(platform::GetRegisters(m_Partition, Index, &Name, 1, &Value)))
         return;
 
-    /* Not while the guest has them off. It will be offered again */
+    /*
+     * Not while the guest has them off. Rather than look again at whatever
+     * moment the next exit happens to be, the processor is asked to come back
+     * the moment it would accept one.
+     *
+     * Sampling was not enough. A guest sitting in a firmware call polls with
+     * interrupts off for almost the whole call, because the gate it came
+     * through cleared them, so nearly every exit is seen at a moment when
+     * nothing can be delivered and the interrupt waits for a coincidence.
+     */
     if ((Value.Reg64 & 0x200) == 0)
-        return;
-
-    const int Vector = m_Pic.Acknowledge();
-
-    if (Vector < 0)
     {
-        InterlockedExchange(&m_InterruptPending, 0);
+        RequestInterruptWindow(Index, true);
         return;
     }
+
+    int Vector;
+
+    {
+        Locked Held(m_PicLock);
+
+        Vector = m_Pic.Acknowledge();
+    }
+
+    if (Vector < 0)
+        return;
 
     const WHV_REGISTER_NAME Interrupt = WHvRegisterPendingInterruption;
     WHV_REGISTER_VALUE Pending = {};
@@ -720,8 +775,96 @@ void Machine::DeliverInterrupt(ULONG Index)
 
     platform::SetRegisters(m_Partition, Index, &Interrupt, 1, &Pending);
 
-    if (!m_Pic.Pending())
-        InterlockedExchange(&m_InterruptPending, 0);
+    m_Delivered++;
+
+    /* Taken, so there is nothing left to be told about for now */
+    RequestInterruptWindow(Index, false);
+}
+
+/**
+ * @brief
+ * Asks the processor to stop as soon as it would accept an interrupt, or stops
+ * asking.
+ *
+ * @remarks
+ * Set while something is owed and the guest has interrupts off. The processor
+ * then comes back with an interrupt window exit at the first instruction
+ * boundary where one could be taken, which is the only way to deliver into a
+ * guest that spends its time inside calls made through a gate.
+ */
+void Machine::RequestInterruptWindow(ULONG Index, bool Wanted)
+{
+    if (Wanted == m_WindowWanted)
+        return;
+
+    const WHV_REGISTER_NAME Name = WHvX64RegisterDeliverabilityNotifications;
+    WHV_REGISTER_VALUE Value = {};
+
+    Value.DeliverabilityNotifications.InterruptNotification = Wanted ? 1 : 0;
+
+    if (SUCCEEDED(platform::SetRegisters(m_Partition, Index, &Name, 1, &Value)))
+        m_WindowWanted = Wanted;
+}
+
+/**
+ * @brief
+ * Says where a processor is and what it is holding.
+ *
+ * @remarks
+ * For when a machine has stopped making progress. Where it is spinning is the
+ * whole question, and without this the only answer available is that it is not
+ * getting anywhere.
+ */
+void Machine::ReportProcessor(ULONG Index)
+{
+    const WHV_REGISTER_NAME Names[] =
+    {
+        WHvX64RegisterCs, WHvX64RegisterRip, WHvX64RegisterRflags,
+        WHvX64RegisterRax, WHvX64RegisterRbx, WHvX64RegisterRcx,
+        WHvX64RegisterRdx, WHvX64RegisterSs, WHvX64RegisterRsp
+    };
+
+    WHV_REGISTER_VALUE Values[RTL_NUMBER_OF(Names)] = {};
+
+    if (FAILED(platform::GetRegisters(m_Partition, Index, Names,
+                                      RTL_NUMBER_OF(Names), Values)))
+    {
+        return;
+    }
+
+    Log(RtvmLogInfo, "    processor %lu at %04x:%04llx, flags %04llx%s\n",
+        Index,
+        Values[0].Segment.Selector,
+        static_cast<unsigned long long>(Values[1].Reg64 & 0xFFFF),
+        static_cast<unsigned long long>(Values[2].Reg64 & 0xFFFF),
+        ((Values[2].Reg64 & 0x200) != 0) ? "" : ", interrupts off");
+
+    Log(RtvmLogInfo, "    ax %04llx bx %04llx cx %04llx dx %04llx, stack %04x:%04llx\n",
+        static_cast<unsigned long long>(Values[3].Reg64 & 0xFFFF),
+        static_cast<unsigned long long>(Values[4].Reg64 & 0xFFFF),
+        static_cast<unsigned long long>(Values[5].Reg64 & 0xFFFF),
+        static_cast<unsigned long long>(Values[6].Reg64 & 0xFFFF),
+        Values[7].Segment.Selector,
+        static_cast<unsigned long long>(Values[8].Reg64 & 0xFFFF));
+
+    /* The instruction it is sitting on, which usually settles what it is doing */
+    const ULONG64 Where = Values[0].Segment.Base + (Values[1].Reg64 & 0xFFFF);
+    UCHAR Code[8] = {};
+
+    if (m_Memory.Read(Where, Code, sizeof(Code)))
+    {
+        Log(RtvmLogInfo, "    code %02x %02x %02x %02x %02x %02x %02x %02x\n",
+            Code[0], Code[1], Code[2], Code[3],
+            Code[4], Code[5], Code[6], Code[7]);
+    }
+}
+
+/* Whether the controller has anything for a processor that will take it */
+bool Machine::Pending()
+{
+    Locked Held(m_PicLock);
+
+    return m_Pic.Pending();
 }
 
 StopReason Machine::RunProcessor(ULONG Index)
@@ -734,6 +877,18 @@ StopReason Machine::RunProcessor(ULONG Index)
 
     while (InterlockedCompareExchange(&m_Stopping, 0, 0) == 0)
     {
+        /*
+         * A machine asked to run for a while stops itself. Being killed from
+         * outside works, but it takes the summary below with it, and what the
+         * hardware did is usually the reason for running it at all.
+         */
+        if ((m_Deadline != 0) && (GetTickCount() >= m_Deadline))
+        {
+            Log(RtvmLogInfo, "the time it was given is up\n");
+            ReportProcessor(Index);
+            return StopReason::Shutdown;
+        }
+
         DeliverInterrupt(Index);
 
         const HRESULT Result = platform::RunVirtualProcessor(m_Partition, Index,
@@ -762,15 +917,30 @@ StopReason Machine::RunProcessor(ULONG Index)
                     const ULONG Value = static_cast<ULONG>(Exit.IoPortAccess.Rax);
 
                     if (Pic::Owns(Port))
+                    {
+                        Locked Held(m_PicLock);
+
                         m_Pic.WritePort(Port, Value);
+                    }
                     else
+                    {
                         m_Bus.WritePort(Port, Width, Value);
+                    }
                 }
                 else
                 {
-                    const ULONG Value = Pic::Owns(Port)
-                                      ? m_Pic.ReadPort(Port)
-                                      : m_Bus.ReadPort(Port, Width);
+                    ULONG Value;
+
+                    if (Pic::Owns(Port))
+                    {
+                        Locked Held(m_PicLock);
+
+                        Value = m_Pic.ReadPort(Port);
+                    }
+                    else
+                    {
+                        Value = m_Bus.ReadPort(Port, Width);
+                    }
 
                     /*
                      * Only the bytes the access asked for are replaced, which
@@ -795,15 +965,27 @@ StopReason Machine::RunProcessor(ULONG Index)
             {
                 const ULONG64 Address = Exit.MemoryAccess.Gpa;
 
-                if (m_Bus.MemoryClaimed(Address))
+                /*
+                 * A memory access exit does not always say how long the
+                 * instruction was: the length comes with the bytes instead.
+                 * Stepping by a length of zero moves nothing, and a processor
+                 * that faults on the same instruction forever looks exactly
+                 * like a machine that has hung, with nothing said about why.
+                 */
+                ULONG Length = Exit.VpContext.InstructionLength;
+
+                if (Length == 0)
+                    Length = Exit.MemoryAccess.InstructionByteCount;
+
+                if (m_Bus.MemoryClaimed(Address) && (Length != 0))
                 {
                     /*
-                     * A device answers for this, and carrying out the faulting
-                     * instruction against it is what belongs here. Until one
-                     * needs it, stepping over is enough to keep going.
+                     * A device answers for this. Carrying out the faulting
+                     * instruction against it is what belongs here, and until
+                     * something needs that, stepping over keeps the machine
+                     * going rather than wedging it.
                      */
-                    StepOver(Index, Exit.VpContext.Rip,
-                             Exit.VpContext.InstructionLength);
+                    StepOver(Index, Exit.VpContext.Rip, Length);
                     Stray = 0;
                     break;
                 }
@@ -836,8 +1018,7 @@ StopReason Machine::RunProcessor(ULONG Index)
                     return StopReason::Refused;
                 }
 
-                StepOver(Index, Exit.VpContext.Rip,
-                         Exit.VpContext.InstructionLength);
+                StepOver(Index, Exit.VpContext.Rip, Length);
                 break;
             }
 
@@ -847,7 +1028,7 @@ StopReason Machine::RunProcessor(ULONG Index)
                  * loop goes straight back round and delivers it; otherwise this
                  * is where the machine sits while it is idle.
                  */
-                if (InterlockedCompareExchange(&m_InterruptPending, 0, 0) == 0)
+                if (!Pending())
                     Sleep(1);
                 break;
 
@@ -889,6 +1070,14 @@ StopReason Machine::RunProcessor(ULONG Index)
                 break;
             }
 
+            case WHvRunVpExitReasonX64InterruptWindow:
+                /*
+                 * The moment that was asked for. Nothing else to do here: the
+                 * top of the loop delivers, and the guest will now take it.
+                 */
+                Stray = 0;
+                break;
+
             case WHvRunVpExitReasonCanceled:
                 return StopReason::Cancelled;
 
@@ -921,6 +1110,33 @@ StopReason Machine::Run()
     const StopReason Reason = RunProcessor(0);
 
     m_Devices->StopAll();
+
+    /* What the hardware actually did, which is worth knowing either way */
+    Log(RtvmLogInfo, "%lu interrupt(s) taken\n", m_Delivered);
+
+    for (ULONG Which = 0; Which < 2; Which++)
+    {
+        UCHAR Request = 0;
+        UCHAR Level = 0;
+        UCHAR Service = 0;
+        UCHAR Mask = 0;
+
+        m_Pic.State(Which, Request, Level, Service, Mask);
+
+        Log(RtvmLogInfo,
+            "    controller %lu: owed %02x, wires %02x, in service %02x, masked %02x\n",
+            Which, Request, Level, Service, Mask);
+    }
+
+    for (ULONG Line = 0; Line < RTL_NUMBER_OF(m_LineCount); Line++)
+    {
+        if (m_LineCount[Line] != 0)
+        {
+            Log(RtvmLogInfo, "    line %2lu raised %lu time(s)\n",
+                Line, m_LineCount[Line]);
+        }
+    }
+
     return Reason;
 }
 
