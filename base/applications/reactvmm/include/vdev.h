@@ -45,6 +45,20 @@ DEFINE_GUID(CLSID_PciBusDevice,
 DEFINE_GUID(CLSID_VideoS3Device,
             0x7d80d3db, 0x61ee, 0x4879, 0x88, 0x79, 0x56, 0x09, 0xf1, 0x10, 0x0a, 0xd0);
 
+/* And the ones the chipset library has */
+DEFINE_GUID(CLSID_IoApicDevice,
+            0x72682fc4, 0x040a, 0x430a, 0xbe, 0x0b, 0x22, 0x45, 0x74, 0xb9, 0x53, 0xfe);
+DEFINE_GUID(CLSID_RealTimeClockDevice,
+            0xe51b7ef6, 0x4a7f, 0x4780, 0xaa, 0xae, 0xd4, 0xb2, 0x91, 0xaa, 0xcd, 0x2e);
+DEFINE_GUID(CLSID_BiosLoaderDevice,
+            0xac6b8dc1, 0x3257, 0x4a70, 0xb1, 0xb2, 0xa9, 0xc9, 0x21, 0x56, 0x59, 0xad);
+DEFINE_GUID(CLSID_PowerManagementDevice,
+            0xdb8b9818, 0xb4bb, 0x4725, 0xb9, 0x9d, 0xb4, 0x61, 0x27, 0x16, 0xb6, 0xb4);
+DEFINE_GUID(CLSID_BatteryDevice,
+            0xd465d87d, 0x6339, 0x4ff4, 0x93, 0xd9, 0x73, 0x53, 0xe3, 0x88, 0xd8, 0x89);
+DEFINE_GUID(CLSID_GuestEmulationDevice,
+            0x455c0f1b, 0xd51b, 0x40b1, 0xbe, 0xac, 0x87, 0x37, 0x7f, 0xe6, 0xe0, 0x41);
+
 /* WHAT EVERY DEVICE IS *******************************************************/
 
 DEFINE_GUID(IID_IVirtualDevice,
@@ -319,6 +333,42 @@ DECLARE_INTERFACE_(IVmProcessorServices, IUnknown)
 #define VDEV_NO_VECTOR ((ULONG)-1)
 DEFINE_GUID(IID_IVmIoApic,
             0x9d33829b, 0x58be, 0x4bbf, 0xab, 0x6e, 0x3b, 0x16, 0xdb, 0xce, 0xf9, 0x54);
+
+/*
+ * What a device raises its line on. Not the interrupt controller directly:
+ * where a line goes depends on what the guest has set up, and only this knows.
+ * On a machine whose guest has never set anything up it goes to the pair of
+ * chips, which is why that pair is one of the things this asks for and is
+ * content to be told it cannot have.
+ */
+#undef INTERFACE
+#define INTERFACE IVmIoApic
+DECLARE_INTERFACE_(IVmIoApic, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(WaitForIrqAssert)(THIS_ _In_ ULONG Line) PURE;
+    STDMETHOD(AssertIrq)(THIS_ _In_ ULONG Line) PURE;
+    STDMETHOD(DeassertIrq)(THIS_ _In_ ULONG Line) PURE;
+
+    /* For a device whose line is a clock and would rather not be woken for it */
+    STDMETHOD(RequestTimerAssist)(THIS_ _In_ ULONG Line) PURE;
+    STDMETHOD(DeclineTimerAssist)(THIS_ _In_ ULONG Line) PURE;
+
+    /* Being told when the guest changes where a line goes */
+    STDMETHOD(RegisterRteChangeCallback)(THIS_ _In_ ULONG Line,
+                                         _In_ IUnknown *Callback) PURE;
+    STDMETHOD(UnregisterRteChangeCallback)(THIS_ _In_ ULONG Line,
+                                           _In_ IUnknown *Callback) PURE;
+
+    STDMETHOD(SetIoApicBaseAddress)(THIS_ _In_ ULONG64 Address) PURE;
+};
+
+/* Where the redirection table answers unless the guest moves it */
+#define VDEV_IOAPIC_DEFAULT_BASE 0xFEC00000ull
 DEFINE_GUID(IID_IVmTimeSource,
             0xe162fe7a, 0x72c6, 0x4d0e, 0x93, 0xdd, 0x7d, 0xf9, 0x1a, 0x5b, 0x97, 0x9d);
 DEFINE_GUID(IID_IVmPowerServices,

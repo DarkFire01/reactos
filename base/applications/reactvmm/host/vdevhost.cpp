@@ -410,6 +410,7 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
     {
         &IID_IVmPicService,
         &IID_IVmDmaController,
+        &IID_IVmIoApic,
         &IID_IVmPitService,
         &IID_IVmPciBusService,
         &IID_IVmSuperIo,
@@ -431,6 +432,8 @@ bool VdevHost::Create(REFCLSID Class, const char *Name)
                 m_Interrupts = static_cast<IVmPicService *>(Published);
             else if (IsEqualIID(*Which, IID_IVmDmaController))
                 m_Transfers = static_cast<IVmDmaController *>(Published);
+            else if (IsEqualIID(*Which, IID_IVmIoApic))
+                m_Lines = static_cast<IVmIoApic *>(Published);
         }
     }
 

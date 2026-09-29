@@ -58,25 +58,36 @@ STDMETHODIMP VirtualDeviceBase::Initialize(void *Repository, ULONG_PTR Reserved,
     if (Provider == nullptr)
         return E_POINTER;
 
-    IVmServiceAccess *Access = nullptr;
     HRESULT Status = Provider->QueryInterface(IID_IVmServiceAccess,
-                                              reinterpret_cast<void **>(&Access));
+                                              reinterpret_cast<void **>(&m_Access));
 
     if (FAILED(Status))
         return Status;
 
-    Status = Access->GetService(IID_IVmAmd64EmulationServices,
-                                reinterpret_cast<void **>(&m_Emulation));
+    Status = m_Access->GetService(IID_IVmAmd64EmulationServices,
+                                  reinterpret_cast<void **>(&m_Emulation));
 
     if (SUCCEEDED(Status))
     {
         /* Not every device is given one, and none of them fail for want of it */
-        Access->GetService(IID_IVmProcessorServices,
-                           reinterpret_cast<void **>(&m_Processors));
+        m_Access->GetService(IID_IVmProcessorServices,
+                             reinterpret_cast<void **>(&m_Processors));
     }
 
-    Access->Release();
     return Status;
+}
+
+HRESULT VirtualDeviceBase::FindService(REFIID Service, void **Object)
+{
+    if (Object == nullptr)
+        return E_POINTER;
+
+    *Object = nullptr;
+
+    if (m_Access == nullptr)
+        return E_UNEXPECTED;
+
+    return m_Access->GetService(Service, Object);
 }
 
 STDMETHODIMP VirtualDeviceBase::Teardown()
@@ -91,6 +102,12 @@ STDMETHODIMP VirtualDeviceBase::Teardown()
     {
         m_Emulation->Release();
         m_Emulation = nullptr;
+    }
+
+    if (m_Access != nullptr)
+    {
+        m_Access->Release();
+        m_Access = nullptr;
     }
 
     return S_OK;

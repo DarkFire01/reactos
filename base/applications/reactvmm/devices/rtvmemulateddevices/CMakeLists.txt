@@ -1,8 +1,10 @@
 spec2def(rtvmemulateddevices.dll rtvmemulateddevices.spec)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common)
+
 add_library(rtvmemulateddevices MODULE
     module.cpp
-    vdevbase.cpp
+    ../common/vdevbase.cpp
     picdevice.cpp
     dmadevice.cpp
     rtvmemulateddevices.rc
