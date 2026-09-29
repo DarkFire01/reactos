@@ -1,0 +1,5 @@
+add_library(rtvmvideo MODULE rtvmvideo.c rtvmvideo.rc)
+set_module_type(rtvmvideo win32dll ENTRYPOINT DllMain 12)
+add_importlibs(rtvmvideo msvcrt kernel32 ntdll)
+add_dependencies(rtvmvideo psdk)
+add_cd_file(TARGET rtvmvideo DESTINATION reactos/system32 FOR all)
