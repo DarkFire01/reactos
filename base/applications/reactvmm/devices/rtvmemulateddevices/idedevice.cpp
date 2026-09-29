@@ -70,6 +70,19 @@ namespace rtvm
 #define COMMAND_FLUSH           0xE7
 #define COMMAND_IDENTIFY        0xEC
 
+/*
+ * What the register that counts sectors carries on a drive told in whole
+ * commands. It has no sectors to count there, so it says instead which way
+ * the next run of bytes is going and whether that run is the command itself.
+ * Anything driving one of these reads it at every stop and will not carry on
+ * until it agrees with what the drive was asked for.
+ */
+#define REASON_COMMAND          0x01
+#define REASON_TO_HOST          0x02
+
+/* The most a drive hands over at once when it was not told a smaller number */
+#define REASON_ANY_AMOUNT       0xFFFE
+
 /* The commands inside a whole one, of which only these are ever sent */
 #define PACKET_TEST_UNIT_READY  0x00
 #define PACKET_REQUEST_SENSE    0x03
@@ -94,6 +107,18 @@ IdeControllerDevice::IdeControllerDevice()
     m_Channel[1].Base = IDE_SECONDARY_BASE;
     m_Channel[1].Control = IDE_SECONDARY_CONTROL;
     m_Channel[1].Line = IDE_SECONDARY_LINE;
+
+    m_Doing = IDE_DOING_AT_REST;
+
+    /*
+     * The lowest bit of where the part that moves data answers is not a bit of
+     * an address: it says that what follows is a run of ports rather than a
+     * run of memory, and it is wired that way. Starting it at nothing reads as
+     * a run of memory, and whatever is walking the bus then works out one kind
+     * from how wide the run is and the other from this, disagrees with itself,
+     * and stops.
+     */
+    m_MoverPorts = IDE_MOVER_IS_PORTS;
 
     for (Channel &One : m_Channel)
     {
@@ -135,6 +160,10 @@ STDMETHODIMP IdeControllerDevice::QueryInterface(REFIID Interface, void **Object
     {
         *Object = static_cast<IVndIoPortHandler *>(this);
     }
+    else if (IsEqualIID(Interface, IID_IVmPciConfigAccessHandler))
+    {
+        *Object = static_cast<IVmPciConfigAccessHandler *>(this);
+    }
     else if (IsEqualIID(Interface, IID_IRtvmDeviceSettings))
     {
         *Object = static_cast<IRtvmDeviceSettings *>(this);
@@ -155,7 +184,8 @@ STDMETHODIMP IdeControllerDevice::GetDependencies(void *Repository, ULONG *Count
     static const GUID *const Wanted[] =
     {
         &IID_IVmAmd64EmulationServices,
-        &IID_IVmIoApic
+        &IID_IVmIoApic,
+        &IID_IVmPciBusService
     };
 
     UNREFERENCED_PARAMETER(Repository);
@@ -185,6 +215,21 @@ STDMETHODIMP IdeControllerDevice::StartReservingResources()
 
         if (FAILED(Status))
             return Status;
+    }
+
+    /*
+     * And a place on the bus, so that a system which will not look at an
+     * address it was not told about finds this controller there. The registers
+     * above stay where they have always been: a controller in this mode is
+     * found by asking, and then driven at the addresses it always had.
+     */
+    IVmPciBusService *Bus = nullptr;
+
+    if (SUCCEEDED(FindService(IID_IVmPciBusService,
+                              reinterpret_cast<void **>(&Bus))))
+    {
+        Bus->InstallPciDevice(this, IDE_BUS_DEVICE, IDE_BUS_FUNCTION, nullptr);
+        Bus->Release();
     }
 
     return S_OK;
@@ -222,6 +267,218 @@ STDMETHODIMP IdeControllerDevice::Reset()
         One.Expecting = false;
         One.CommandLength = 0;
         One.Remaining = 0;
+        One.PacketTotal = 0;
+        One.PacketLimit = 0;
+    }
+
+    m_Doing = IDE_DOING_AT_REST;
+    m_MoverPorts = IDE_MOVER_IS_PORTS;
+    m_Timing[0] = 0;
+    m_Timing[1] = 0;
+    m_Timing[2] = 0;
+
+    for (ULONG Which = 0; Which < 2; Which++)
+    {
+        m_MoverCommand[Which] = 0;
+        m_MoverStatus[Which] = 0;
+        m_MoverList[Which] = 0;
+    }
+
+    LeaveCriticalSection(&m_Lock);
+    return S_OK;
+}
+
+/* WHAT IT SAYS IT IS *********************************************************/
+
+/*
+ * The part of a controller of this kind that moves data without asking the
+ * processor for every word. Its registers are here because the description
+ * says the controller has them and a system will read them either way; nothing
+ * ever starts it, because no drive on this controller says it can be moved
+ * from that way and so nothing asks. A guest that asked anyway is told the
+ * transfer failed rather than being left waiting for one that will not happen.
+ */
+bool IdeControllerDevice::Moving(USHORT Port, ULONG &Which,
+                                 ULONG &Register) const
+{
+    const USHORT Base = (USHORT)(m_MoverPorts & 0xFFF0);
+
+    if (!m_MoverPlaced || (Base == 0))
+        return false;
+
+    if ((Port < Base) || (Port >= (Base + IDE_MOVER_LENGTH)))
+        return false;
+
+    const ULONG Offset = (ULONG)(Port - Base);
+
+    Which = Offset / IDE_MOVER_CHANNEL;
+    Register = Offset % IDE_MOVER_CHANNEL;
+    return true;
+}
+
+void IdeControllerDevice::PlaceMover()
+{
+    const USHORT Base = (USHORT)(m_MoverPorts & 0xFFF0);
+
+    if (m_MoverPlaced || (Base == 0) || ((m_Doing & IDE_DECODES_PORTS) == 0))
+        return;
+
+    if (SUCCEEDED(ReservePorts(Base, (USHORT)(Base + IDE_MOVER_LENGTH - 1), this)))
+        m_MoverPlaced = true;
+}
+
+UCHAR IdeControllerDevice::MoverRead(ULONG Which, ULONG Register) const
+{
+    if (Register == IDE_MOVER_COMMAND)
+        return m_MoverCommand[Which];
+
+    if (Register == IDE_MOVER_STATUS)
+        return m_MoverStatus[Which];
+
+    if (Register >= IDE_MOVER_LIST)
+    {
+        const ULONG Shift = 8 * (Register - IDE_MOVER_LIST);
+
+        return (UCHAR)((m_MoverList[Which] >> Shift) & 0xFF);
+    }
+
+    return 0;
+}
+
+void IdeControllerDevice::MoverWrite(ULONG Which, ULONG Register, UCHAR Byte)
+{
+    if (Register == IDE_MOVER_COMMAND)
+    {
+        m_MoverCommand[Which] = (UCHAR)(Byte & IDE_MOVER_DIRECTION);
+
+        /* Asked to run, and there is nothing here that runs */
+        if ((Byte & IDE_MOVER_STARTED) != 0)
+        {
+            m_MoverStatus[Which] =
+                (UCHAR)((m_MoverStatus[Which] & ~IDE_MOVER_RUNNING) |
+                        IDE_MOVER_FAILED);
+        }
+
+        return;
+    }
+
+    if (Register == IDE_MOVER_STATUS)
+    {
+        /* The two that say what happened are put out by writing them back */
+        m_MoverStatus[Which] &=
+            (UCHAR)~(Byte & (IDE_MOVER_FAILED | IDE_MOVER_FINISHED));
+        return;
+    }
+
+    if (Register >= IDE_MOVER_LIST)
+    {
+        const ULONG Shift = 8 * (Register - IDE_MOVER_LIST);
+        const ULONG Mask = 0xFFul << Shift;
+
+        m_MoverList[Which] = (m_MoverList[Which] & ~Mask) |
+                             (((ULONG)Byte << Shift) & Mask);
+
+        /* A list of what to move is always on a four byte boundary */
+        m_MoverList[Which] &= 0xFFFFFFFC;
+    }
+}
+
+STDMETHODIMP IdeControllerDevice::NotifyPciConfigAccess(UCHAR Bus, UCHAR Device,
+                                                        UCHAR Function,
+                                                        USHORT Offset,
+                                                        UCHAR Writing,
+                                                        ULONG *Value)
+{
+    UNREFERENCED_PARAMETER(Bus);
+    UNREFERENCED_PARAMETER(Device);
+    UNREFERENCED_PARAMETER(Function);
+
+    if (Value == nullptr)
+        return E_POINTER;
+
+    EnterCriticalSection(&m_Lock);
+
+    if (Writing)
+    {
+        switch (Offset)
+        {
+            case IDE_PCI_DOING:
+                /*
+                 * The two bits that say whether it answers at all and whether
+                 * it may move data of its own accord are the guest's. The ones
+                 * above them say what has gone wrong and are put out by being
+                 * written back.
+                 */
+                m_Doing &= ~(*Value & IDE_DOING_CLEARED);
+                m_Doing = (m_Doing & ~IDE_DOING_KEPT) |
+                          (*Value & IDE_DOING_KEPT);
+                PlaceMover();
+                break;
+
+            case IDE_PCI_MOVER:
+                m_MoverPorts = (*Value & 0xFFF0) | IDE_MOVER_IS_PORTS;
+                PlaceMover();
+                break;
+
+            case IDE_PCI_TIMING:
+                m_Timing[0] = *Value;
+                break;
+
+            case IDE_PCI_TIMING + 4:
+                m_Timing[1] = *Value;
+                break;
+
+            case IDE_PCI_TIMING + 8:
+                m_Timing[2] = *Value;
+                break;
+
+            default:
+                break;
+        }
+
+        LeaveCriticalSection(&m_Lock);
+        return S_OK;
+    }
+
+    switch (Offset)
+    {
+        case IDE_PCI_WHO:
+            *Value = IDE_WHO_IT_IS;
+            break;
+
+        case IDE_PCI_DOING:
+            *Value = m_Doing;
+            break;
+
+        case IDE_PCI_WHAT:
+            *Value = IDE_WHAT_IT_IS;
+            break;
+
+        case IDE_PCI_MOVER:
+            *Value = m_MoverPorts;
+            break;
+
+        case IDE_PCI_TIMING:
+            *Value = m_Timing[0];
+            break;
+
+        case IDE_PCI_TIMING + 4:
+            *Value = m_Timing[1];
+            break;
+
+        case IDE_PCI_TIMING + 8:
+            *Value = m_Timing[2];
+            break;
+
+        default:
+            /*
+             * Everything else, the place where a line would be named among it.
+             * A controller left in the older mode has none: both channels
+             * raise the two numbers they have always raised, and a system that
+             * read a line here would go looking for interrupts that never come.
+             */
+            *Value = 0;
+            break;
     }
 
     LeaveCriticalSection(&m_Lock);
@@ -295,12 +552,21 @@ void IdeControllerDevice::SetLine(Channel &On, bool Asserted)
 
 void IdeControllerDevice::Fail(Channel &On, UCHAR Why)
 {
+    const Drive *What = Selected(On);
+
     On.Error = Why;
     On.Status = STATUS_READY | STATUS_SEEK_DONE | STATUS_ERROR;
     On.Length = 0;
     On.Offset = 0;
     On.Remaining = 0;
     On.Writing = false;
+
+    /* A drive told in whole commands says a failed one is over the same way */
+    if ((What != nullptr) && What->Packet)
+    {
+        On.PacketTotal = 0;
+        On.Count = REASON_COMMAND | REASON_TO_HOST;
+    }
 
     SetLine(On, true);
 }
@@ -509,8 +775,38 @@ void IdeControllerDevice::FinishWrite(Channel &On)
 
 void IdeControllerDevice::OfferPacketData(Channel &On, ULONG Length)
 {
-    On.Length = Length;
+    On.PacketTotal = Length;
     On.Offset = 0;
+    On.Writing = false;
+
+    OfferPacketBlock(On);
+}
+
+/*
+ * As much of an answer as the caller said it would take at once.
+ *
+ * A drive told in whole commands is told beforehand how long a run it may hand
+ * back in one go, and an answer longer than that comes back in several. Each
+ * one is announced the same way and the next carries on where the last
+ * stopped, which is why what is left is counted in the buffer rather than
+ * moved down it.
+ */
+void IdeControllerDevice::OfferPacketBlock(Channel &On)
+{
+    /* A run is always a whole number of words, so an odd limit is one less */
+    ULONG Limit = On.PacketLimit & ~1u;
+
+    if (Limit == 0)
+        Limit = REASON_ANY_AMOUNT;
+
+    ULONG End = On.Offset + Limit;
+
+    if (End > On.PacketTotal)
+        End = On.PacketTotal;
+
+    const ULONG Carrying = End - On.Offset;
+
+    On.Length = End;
     On.Writing = false;
 
     /*
@@ -518,8 +814,11 @@ void IdeControllerDevice::OfferPacketData(Channel &On, ULONG Length)
      * place on a drive that has one. The two were never wanted at once, and
      * the wire only ever had so many lines.
      */
-    On.LbaMid = (UCHAR)(Length & 0xFF);
-    On.LbaHigh = (UCHAR)((Length >> 8) & 0xFF);
+    On.LbaMid = (UCHAR)(Carrying & 0xFF);
+    On.LbaHigh = (UCHAR)((Carrying >> 8) & 0xFF);
+
+    /* Bytes, and they are coming this way */
+    On.Count = REASON_TO_HOST;
 
     On.Status = STATUS_READY | STATUS_SEEK_DONE | STATUS_DATA;
     On.Error = 0;
@@ -531,6 +830,11 @@ void IdeControllerDevice::PacketDone(Channel &On)
 {
     On.Length = 0;
     On.Offset = 0;
+    On.PacketTotal = 0;
+
+    /* Nothing more either way, which is what both of them being set says */
+    On.Count = REASON_COMMAND | REASON_TO_HOST;
+
     On.Status = STATUS_READY | STATUS_SEEK_DONE;
     On.Error = 0;
 
@@ -693,12 +997,23 @@ void IdeControllerDevice::RunCommand(Channel &On, UCHAR What)
             /*
              * Nothing happens yet. What to do arrives as twelve bytes through
              * the data register, and the drive waits for all of them.
+             *
+             * How much of the answer the caller will take at once was written
+             * into the two registers that carry a place before this arrived,
+             * and is the one thing here worth keeping out of them.
              */
+            On.PacketLimit = (ULONG)On.LbaMid | ((ULONG)On.LbaHigh << 8);
+            On.PacketTotal = 0;
+
             On.Expecting = true;
             On.CommandLength = 0;
             On.Length = 0;
             On.Offset = 0;
             On.Error = 0;
+
+            /* What is wanted next is the command, and it comes the other way */
+            On.Count = REASON_COMMAND;
+
             On.Status = STATUS_READY | STATUS_DATA;
             break;
 
@@ -742,6 +1057,26 @@ STDMETHODIMP IdeControllerDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
 
     EnterCriticalSection(&m_Lock);
 
+    ULONG Which = 0;
+    ULONG Mover = 0;
+
+    if (Moving(Port, Which, Mover))
+    {
+        ULONG Taken = 0;
+
+        for (ULONG Index = 0; Index < Width; Index++)
+        {
+            const ULONG At = Mover + Index;
+
+            if (At < IDE_MOVER_CHANNEL)
+                Taken |= (ULONG)MoverRead(Which, At) << (Index * 8);
+        }
+
+        *Value = Taken;
+        LeaveCriticalSection(&m_Lock);
+        return S_OK;
+    }
+
     Channel *Where = Find(Port, &Register, &IsControl);
 
     if (Where == nullptr)
@@ -776,6 +1111,7 @@ STDMETHODIMP IdeControllerDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
     {
         case IDE_DATA:
         {
+            const Drive *What = Selected(On);
             ULONG Taken = 0;
 
             for (ULONG Index = 0; Index < Width; Index++)
@@ -789,7 +1125,25 @@ STDMETHODIMP IdeControllerDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
             }
 
             if (On.Offset >= On.Length)
-                On.Status = STATUS_READY | STATUS_SEEK_DONE;
+            {
+                /*
+                 * A drive told in whole commands says at every stop what it
+                 * wants next, and says so again here: another run of the
+                 * answer, or that there is none and the command is over.
+                 * Anything driving one waits to be told either way.
+                 */
+                if ((What != nullptr) && What->Packet)
+                {
+                    if (On.Offset < On.PacketTotal)
+                        OfferPacketBlock(On);
+                    else
+                        PacketDone(On);
+                }
+                else
+                {
+                    On.Status = STATUS_READY | STATUS_SEEK_DONE;
+                }
+            }
 
             *Value = Taken;
             break;
@@ -821,6 +1175,23 @@ STDMETHODIMP IdeControllerDevice::NotifyIoPortWrite(USHORT Port, ULONG Width,
     bool IsControl = false;
 
     EnterCriticalSection(&m_Lock);
+
+    ULONG Which = 0;
+    ULONG Mover = 0;
+
+    if (Moving(Port, Which, Mover))
+    {
+        for (ULONG Index = 0; Index < Width; Index++)
+        {
+            const ULONG At = Mover + Index;
+
+            if (At < IDE_MOVER_CHANNEL)
+                MoverWrite(Which, At, (UCHAR)((Value >> (Index * 8)) & 0xFF));
+        }
+
+        LeaveCriticalSection(&m_Lock);
+        return S_OK;
+    }
 
     Channel *Where = Find(Port, &Register, &IsControl);
 
@@ -889,13 +1260,22 @@ STDMETHODIMP IdeControllerDevice::NotifyIoPortWrite(USHORT Port, ULONG Width,
                 break;
             }
 
+            /*
+             * A drive that is not waiting to be written to takes nothing. What
+             * arrives here otherwise is the tail of a caller that wrote more
+             * of a whole command than the command is long, and letting it
+             * through would put it over the answer that was just prepared.
+             */
+            if (!On.Writing)
+                break;
+
             for (ULONG Index = 0; Index < Width; Index++)
             {
                 if (On.Offset < sizeof(On.Buffer))
                     On.Buffer[On.Offset++] = (UCHAR)((Value >> (Index * 8)) & 0xFF);
             }
 
-            if (On.Writing && (On.Offset >= On.Length))
+            if (On.Offset >= On.Length)
                 FinishWrite(On);
 
             break;

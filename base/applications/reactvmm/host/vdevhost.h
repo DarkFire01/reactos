@@ -133,10 +133,16 @@ private:
  * be faulted into. Only the two that read and write it are answered: the rest
  * build the memory a guest has, and that is the manager's to do.
  */
-class GuestMemoryAccess : public IVmGuestMemoryAccess, private Permanent
+class GuestMemoryAccess : public IVmGuestMemoryAccess,
+                          public IRtvmApertureServices,
+                          private Permanent
 {
 public:
     explicit GuestMemoryAccess(VdevHost &Owner) noexcept : m_Owner(Owner) {}
+
+    /* Ours, standing in for the reference call that builds a device's memory */
+    STDMETHODIMP CreateAperture(ULONG64 Base, ULONG64 Length,
+                                void **Where) override;
 
     STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override;
     STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }

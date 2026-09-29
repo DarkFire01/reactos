@@ -6,6 +6,7 @@
  */
 
 #include "vdevhost.h"
+#include "acpi.h"
 
 #include <winhvplatform.h>
 #include <winhvemulation.h>
@@ -27,6 +28,9 @@ namespace platform
     HRESULT (WINAPI *DeletePartition)(WHV_PARTITION_HANDLE);
     HRESULT (WINAPI *SetupPartition)(WHV_PARTITION_HANDLE);
     HRESULT (WINAPI *SetPartitionProperty)(WHV_PARTITION_HANDLE, WHV_PARTITION_PROPERTY_CODE, const VOID *, UINT32);
+
+    /* Handing one to a processor's own controller, when there is one */
+    HRESULT (WINAPI *RequestInterrupt)(WHV_PARTITION_HANDLE, const WHV_INTERRUPT_CONTROL *, UINT32);
     HRESULT (WINAPI *MapGpaRange)(WHV_PARTITION_HANDLE, VOID *, WHV_GUEST_PHYSICAL_ADDRESS, UINT64, WHV_MAP_GPA_RANGE_FLAGS);
     HRESULT (WINAPI *CreateVirtualProcessor)(WHV_PARTITION_HANDLE, UINT32, UINT32);
     HRESULT (WINAPI *DeleteVirtualProcessor)(WHV_PARTITION_HANDLE, UINT32);
@@ -52,13 +56,42 @@ namespace platform
  * four kilobytes below a megabyte are the firmware's, and the processor comes
  * out of reset sixteen bytes from the top of them.
  */
-constexpr ULONG64 FirmwareBase = 0x000F0000;
-constexpr ULONG64 FirmwareSize = 0x00010000;
+/*
+ * Where a firmware image is put, and the most of one this machine has room
+ * for. The processor comes out of reset at the top of this, so an image is
+ * always laid against the end of it rather than the start: what matters is
+ * that the last sixteen bytes of the image are the last sixteen bytes here.
+ *
+ * Ours is a single segment and wants only the last sixty four thousand of
+ * this. One written for a machine of this kind and not for this one is
+ * usually twice that, and brings its own answers to everything this manager
+ * would otherwise have had to describe.
+ */
+constexpr ULONG64 FirmwareBase = 0x000E0000;
+constexpr ULONG64 FirmwareSize = 0x00020000;
+
+/* Past this much of one, a firmware is taken to be somebody else's */
+constexpr ULONG64 OwnFirmwareSize = 0x00010000;
+/*
+ * Where the processor starts, which is the top of the first megabyte however
+ * much of a firmware is laid out below it. The segment it starts in is not
+ * where the image begins: an image twice this long reaches back past it.
+ */
+/* Where addressing stops, which is where a firmware answers itself from */
+constexpr ULONG64 TopOfMemory = 0x100000000ull;
+
+constexpr ULONG64 ResetBase = 0x000F0000;
 constexpr USHORT ResetSegment = 0xF000;
 constexpr USHORT ResetOffset = 0xFFF0;
 
 /* Where the manager leaves the firmware a note about the machine */
 constexpr ULONG64 MachineDescription = 0x00000500;
+
+/* How many things nothing answers for are worth naming, the rest being counted */
+constexpr ULONG HolesToName = 8;
+
+/* And how much port traffic is worth saying out loud before it is only noise */
+constexpr ULONG WatchLimit = 20000;
 
 Machine::Machine()
 {
@@ -82,6 +115,13 @@ Machine::~Machine()
         m_Partition = nullptr;
     }
 
+    /* After the partition, which was the only thing still reaching into them */
+    for (const Aperture &One : m_Apertures)
+    {
+        if (One.Where != nullptr)
+            VirtualFree(One.Where, 0, MEM_RELEASE);
+    }
+
     DeleteCriticalSection(&m_ChipLock);
 }
 
@@ -101,24 +141,49 @@ struct Faulted
 static HRESULT CALLBACK EmulatedMemory(VOID *Context,
                                        WHV_EMULATOR_MEMORY_ACCESS_INFO *Access)
 {
-    auto *Where = static_cast<Faulted *>(Context);
+    Machine &Owner = *static_cast<Faulted *>(Context)->Owner;
+
 
     /*
      * Direction is which way the instruction meant to move it: nothing for a
-     * read, because the device is being asked, and something for a write.
+     * read, because whatever is there is being asked, and something for a
+     * write.
+     *
+     * Both halves of an instruction come through here, not only the one that
+     * faulted, because what reads the instruction cannot reach the machine's
+     * memory by itself. One that moves a run of bytes from memory into a
+     * device window asks here for the memory as well, and answering only for
+     * the device leaves it carrying nothing.
      */
     if (Access->Direction == 0)
     {
-        return Where->Owner->SystemBus().ReadMemory(Access->GpaAddress,
-                                                    Access->AccessSize,
-                                                    Access->Data)
-             ? S_OK
-             : S_OK;
+        if (!Owner.SystemBus().ReadMemory(Access->GpaAddress,
+                                          Access->AccessSize,
+                                          Access->Data) &&
+            !Owner.MemoryBlock().Read(Access->GpaAddress, Access->Data,
+                                      Access->AccessSize))
+        {
+            /* Nothing is there, and a bus with nothing on it reads as ones */
+            memset(Access->Data, 0xFF, Access->AccessSize);
+        }
+
+        Owner.WatchMemory(Access->GpaAddress, Access->AccessSize, false,
+                          Access->Data);
+        return S_OK;
     }
 
-    Where->Owner->SystemBus().WriteMemory(Access->GpaAddress,
-                                          Access->AccessSize,
-                                          Access->Data);
+    Owner.WatchMemory(Access->GpaAddress, Access->AccessSize, true,
+                      Access->Data);
+
+    if (Owner.SystemBus().WriteMemory(Access->GpaAddress, Access->AccessSize,
+                                      Access->Data))
+    {
+        return S_OK;
+    }
+
+    /* And a write into a hole is swallowed, rather than refused */
+    Owner.MemoryBlock().Write(Access->GpaAddress, Access->Data,
+                              Access->AccessSize);
     return S_OK;
 }
 
@@ -222,6 +287,7 @@ bool Machine::BindPlatform()
 
     /* Only needed to stop a processor early, so its absence is not fatal */
     BIND(CancelRunVirtualProcessor, "WHvCancelRunVirtualProcessor", false);
+    BIND(RequestInterrupt, "WHvRequestInterrupt", false);
     BIND(TranslateGva, "WHvTranslateGva", false);
 
 #undef BIND
@@ -303,6 +369,28 @@ bool Machine::CreatePartition(const Configuration &Config)
                                    WHvPartitionPropertyCodeExtendedVmExits,
                                    &Property, sizeof(Property));
 
+    /*
+     * Each processor's own controller, answered for by the hypervisor rather
+     * than here. A system written since the pair of controllers stopped being
+     * enough programs one whether or not anything has said it is there, so a
+     * machine without one is a machine such a system stops on.
+     */
+    Property = {};
+    Property.LocalApicEmulationMode = WHvX64LocalApicEmulationModeXApic;
+
+    if (SUCCEEDED(platform::SetPartitionProperty(
+            Partition, WHvPartitionPropertyCodeLocalApicEmulationMode,
+            &Property, sizeof(Property))))
+    {
+        m_HaveLocalApic = true;
+    }
+    else
+    {
+        Log(RtvmLogWarning,
+            "this hypervisor answers for no local controller, so the pair of "
+            "them is all there is\n");
+    }
+
     Result = platform::SetupPartition(Partition);
     if (FAILED(Result))
     {
@@ -352,16 +440,41 @@ bool Machine::LoadFirmware(const char *Path)
 
     LARGE_INTEGER Size = {};
 
-    if (!GetFileSizeEx(File.Get(), &Size) || (Size.QuadPart == 0) ||
-        (static_cast<ULONG64>(Size.QuadPart) > FirmwareSize))
+    if (!GetFileSizeEx(File.Get(), &Size) || (Size.QuadPart == 0))
     {
         Log(RtvmLogError, "%s is %lld bytes, which is not a firmware image\n",
             Path, static_cast<long long>(Size.QuadPart));
         return false;
     }
 
-    const ULONG64 Length = static_cast<ULONG64>(Size.QuadPart);
+    ULONG64 Whole = static_cast<ULONG64>(Size.QuadPart);
+
+    /*
+     * An image bigger than there is room for is one built for a board that
+     * answers it at the top of everything as well as down here. Only the end
+     * of it is reachable at this address, and the end of it is the part with
+     * the place the processor starts in, so the front is skipped.
+     */
+    if (Whole > FirmwareSize)
+    {
+        LARGE_INTEGER Skip = {};
+
+        Skip.QuadPart = static_cast<LONGLONG>(Whole - FirmwareSize);
+
+        if (!SetFilePointerEx(File.Get(), Skip, nullptr, FILE_BEGIN))
+        {
+            Log(RtvmLogError, "%s would not be read from the end\n", Path);
+            return false;
+        }
+
+        Whole = FirmwareSize;
+    }
+
+    const ULONG64 Length = Whole;
     const ULONG64 Base = (FirmwareBase + FirmwareSize) - Length;
+
+    /* Anything this big describes the machine itself and needs no help */
+    m_OwnFirmware = (Length <= OwnFirmwareSize);
     void *Target = m_Memory.At(Base, Length);
 
     if (Target == nullptr)
@@ -383,6 +496,36 @@ bool Machine::LoadFirmware(const char *Path)
         Path,
         static_cast<unsigned long long>(Length),
         static_cast<unsigned long long>(Base));
+
+    /*
+     * And the same bytes again at the very top of what can be addressed.
+     *
+     * A board of this kind answers its firmware in two places: down here,
+     * where a processor still in the mode it starts in can reach it, and up
+     * there, where the part of it that has already moved on expects to find
+     * itself. Ours has only ever wanted the first. One written for a board
+     * rather than for this manager reads itself back out of the second, and
+     * finding nothing there is the end of it.
+     */
+    if (!m_OwnFirmware && (platform::MapGpaRange != nullptr))
+    {
+        const ULONG64 High = TopOfMemory - Length;
+        const auto Flags = static_cast<WHV_MAP_GPA_RANGE_FLAGS>(
+            WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagExecute);
+
+        if (FAILED(platform::MapGpaRange(m_Partition, Target, High, Length,
+                                         Flags)))
+        {
+            Log(RtvmLogWarning,
+                "the firmware could not also be put at %012llx\n",
+                static_cast<unsigned long long>(High));
+        }
+        else
+        {
+            Log(RtvmLogTrace, "firmware again at %012llx\n",
+                static_cast<unsigned long long>(High));
+        }
+    }
 
     return true;
 }
@@ -424,7 +567,7 @@ bool Machine::PrepareProcessor(ULONG Index)
 
     WHV_X64_SEGMENT_REGISTER Code = {};
 
-    Code.Base = FirmwareBase;
+    Code.Base = ResetBase;
     Code.Limit = 0xFFFF;
     Code.Selector = ResetSegment;
     Code.SegmentType = 0x0B;
@@ -496,6 +639,62 @@ bool Machine::PrepareProcessor(ULONG Index)
  * the devices were started and the gaps between them have to be walked from
  * the bottom up.
  */
+/**
+ * @brief
+ * Gives a device a piece of memory and the guest somewhere to reach it.
+ *
+ * @remarks
+ * Not a window a device answers for: the guest reads and writes it without
+ * this manager hearing about any of it, which is the whole point. A screen is
+ * written far too often for anything else, and a device that asked to be told
+ * about every pixel would be told about several million a second.
+ */
+bool Machine::CreateAperture(ULONG64 Base, ULONG64 Length, void **Where)
+{
+    if ((Where == nullptr) || (Length == 0))
+        return false;
+
+    *Where = nullptr;
+
+    /* Above everything the guest was given, so that nothing is taken away */
+    if (Base < m_Memory.Size())
+        return false;
+
+    if (m_Apertures.Full() || (m_Partition == nullptr))
+        return false;
+
+    void *Block = VirtualAlloc(nullptr, static_cast<SIZE_T>(Length),
+                               MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+    if (Block == nullptr)
+        return false;
+
+    const auto Flags = static_cast<WHV_MAP_GPA_RANGE_FLAGS>(
+        WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagWrite);
+
+    if (FAILED(platform::MapGpaRange(m_Partition, Block, Base, Length, Flags)))
+    {
+        Log(RtvmLogError, "%012llx for %llx would not be given out\n",
+            static_cast<unsigned long long>(Base),
+            static_cast<unsigned long long>(Length));
+        VirtualFree(Block, 0, MEM_RELEASE);
+        return false;
+    }
+
+    if (!m_Apertures.Add({ Block, Base, Length }))
+    {
+        VirtualFree(Block, 0, MEM_RELEASE);
+        return false;
+    }
+
+    Log(RtvmLogTrace, "aperture %012llx to %012llx\n",
+        static_cast<unsigned long long>(Base),
+        static_cast<unsigned long long>(Base + Length - 1));
+
+    *Where = Block;
+    return true;
+}
+
 bool Machine::MapMemory()
 {
     struct Hole
@@ -617,8 +816,17 @@ bool Machine::Build(const Configuration &Config)
 {
     SetLogLevel(Config.LogLevel);
 
-    if (Config.RunSeconds != 0)
-        m_Deadline = GetTickCount() + (Config.RunSeconds * 1000);
+    /*
+     * Counted from when it starts running rather than from here. Building it
+     * can wait on something outside, and a machine told to run for a minute
+     * should get its minute however long it waited to be let go.
+     */
+    m_Seconds = Config.RunSeconds;
+
+    m_WatchFirst = Config.WatchFirst;
+    m_WatchLast = Config.WatchLast;
+    m_SeeFirst = Config.SeeFirst;
+    m_SeeLast = Config.SeeLast;
 
     if (!BindPlatform())
         return false;
@@ -665,6 +873,13 @@ bool Machine::Build(const Configuration &Config)
         return false;
 
     if (!m_Vdevs->Create(CLSID_DmaControllerDevice, "transfer controller"))
+        return false;
+
+    /*
+     * The bus before anything that wants a place on it, because a device asks
+     * for that place while it is reserving what else it answers for.
+     */
+    if (!m_Vdevs->Create(CLSID_PciBusDevice, "bus"))
         return false;
 
     if (!m_Vdevs->Load("rtvmchipsetdevices.dll"))
@@ -761,6 +976,21 @@ bool Machine::Build(const Configuration &Config)
     if (!DescribeMachine(Config))
         return false;
 
+    /*
+     * And the tables it describes itself with, which a system of any age
+     * looks for before it will start at all.
+     */
+    /*
+     * A firmware of somebody else's builds these for itself and puts them
+     * where this manager would have, so writing ours over it would be writing
+     * over the firmware that is about to run.
+     */
+    if (m_OwnFirmware && !DescribeWithTables(m_Memory, m_ProcessorCount))
+    {
+        Log(RtvmLogError, "the tables would not go where they are looked for\n");
+        return false;
+    }
+
     for (ULONG Index = 0; Index < m_ProcessorCount; Index++)
     {
         if (!PrepareProcessor(Index))
@@ -775,14 +1005,64 @@ bool Machine::Build(const Configuration &Config)
  * nothing loadable is allowed to take their addresses away from them.
  */
 /* Everything on the bus was reserved by a device and reaches that device */
+/*
+ * Whether a port is one the operator asked to be told about, and how many
+ * they have been told about already. A device that is not being talked to at
+ * all looks exactly like one that is being talked to and answering wrongly,
+ * and this is the only thing that tells the two apart.
+ */
+/*
+ * The same for a window rather than a port, which is the only way to see a
+ * device reached through memory being talked to.
+ */
+void Machine::WatchMemory(ULONG64 Address, ULONG Width, bool Writing,
+                          const void *Data)
+{
+    if ((m_SeeLast < m_SeeFirst) || (Address < m_SeeFirst) ||
+        (Address > m_SeeLast) || (m_Seen >= WatchLimit))
+    {
+        return;
+    }
+
+    ULONG64 Value = 0;
+
+    memcpy(&Value, Data, (Width > sizeof(Value)) ? sizeof(Value) : Width);
+    m_Seen++;
+
+    Log(RtvmLogInfo, "    %012llx %s %0*llx\n",
+        static_cast<unsigned long long>(Address),
+        Writing ? "<-" : "->", (int)(Width * 2),
+        static_cast<unsigned long long>(Value));
+}
+
+bool Machine::Watched(USHORT Port)
+{
+    if ((m_WatchLast < m_WatchFirst) || (Port < m_WatchFirst) ||
+        (Port > m_WatchLast) || (m_Watched >= WatchLimit))
+    {
+        return false;
+    }
+
+    m_Watched++;
+    return true;
+}
+
 void Machine::WritePort(USHORT Port, ULONG Width, ULONG Value)
 {
+    if (Watched(Port))
+        Log(RtvmLogInfo, "    %04x <- %0*lx\n", Port, Width * 2, Value);
+
     m_Bus.WritePort(Port, Width, Value);
 }
 
 ULONG Machine::ReadPort(USHORT Port, ULONG Width)
 {
-    return m_Bus.ReadPort(Port, Width);
+    const ULONG Value = m_Bus.ReadPort(Port, Width);
+
+    if (Watched(Port))
+        Log(RtvmLogInfo, "    %04x -> %0*lx\n", Port, Width * 2, Value);
+
+    return Value;
 }
 
 void Machine::SetInterruptLine(ULONG Line, bool Asserted)
@@ -951,6 +1231,32 @@ void Machine::Stop()
  * three go back changed, because the instruction is being carried out here
  * rather than re-executed.
  */
+/**
+ * @brief
+ * Where an address a guest instruction was using is in this machine's memory.
+ *
+ * @remarks
+ * A guest that has never built tables of its own is already saying where in
+ * memory it means, and asking would be answered with the same number. One that
+ * has is saying where in its own arrangement of it, and only the processor
+ * knows how to turn that into the other.
+ */
+bool Machine::Reachable(ULONG Index, ULONG64 Address, bool Writing,
+                        ULONG64 *Where)
+{
+    WHV_TRANSLATE_GVA_RESULT_CODE Result = WHvTranslateGvaResultSuccess;
+    const ULONG Flags = Writing ? WHvTranslateGvaFlagValidateWrite
+                                : WHvTranslateGvaFlagValidateRead;
+
+    if (FAILED(Translate(Index, Address, Flags, &Result, Where)) ||
+        (Result != WHvTranslateGvaResultSuccess))
+    {
+        return false;
+    }
+
+    return true;
+}
+
 void Machine::StringPort(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
 {
     const USHORT Port = Exit.IoPortAccess.PortNumber;
@@ -967,23 +1273,62 @@ void Machine::StringPort(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
                                   :  static_cast<LONG64>(Width);
 
     /*
+     * How much of the pointer counts. A guest running the way this machine
+     * comes out of reset carries sixteen bits of it and the rest is somebody
+     * else's; one that has moved on carries all of it, and taking only the
+     * low half would leave the pointer somewhere near the bottom of memory
+     * and the transfer landing on whatever is there.
+     */
+    const bool Wide = (Exit.VpContext.Cs.Long != 0) ||
+                      (Exit.VpContext.Cs.Default != 0);
+    const ULONG64 Reach = Wide ? 0xFFFFFFFFull : 0xFFFFull;
+
+    /*
      * Reads land through the extra segment and writes come out of the data
-     * one, and in real mode the segment is the base the processor is using
-     * rather than the selector, so the exit's own copy is what counts.
+     * one, and the segment is the base the processor is using rather than the
+     * selector, so the exit's own copy is what counts.
      */
     ULONG64 Address = IsWrite
-                    ? (Exit.IoPortAccess.Ds.Base + (Exit.IoPortAccess.Rsi & 0xFFFF))
-                    : (Exit.IoPortAccess.Es.Base + (Exit.IoPortAccess.Rdi & 0xFFFF));
+                    ? (Exit.IoPortAccess.Ds.Base + (Exit.IoPortAccess.Rsi & Reach))
+                    : (Exit.IoPortAccess.Es.Base + (Exit.IoPortAccess.Rdi & Reach));
 
     ULONG64 Moved = 0;
 
+    /*
+     * Where the last page asked about turned out to be. A run of these stays
+     * in one page for most of its length, and asking again for every word
+     * would cost more than the exit this is here to avoid.
+     */
+    ULONG64 Page = ~0ull;
+    ULONG64 Behind = 0;
+
     while (Moved < Count)
     {
+        ULONG64 Where = 0;
+
+        /* A run that reaches the end of a page carries on in another */
+        if ((Address & ~(VDEV_PAGE_SIZE - 1ull)) != Page)
+        {
+            if (!Reachable(Index, Address, IsWrite, &Where))
+                break;
+
+            Page = Address & ~(VDEV_PAGE_SIZE - 1ull);
+            Behind = Where - Address;
+        }
+        else
+        {
+            Where = Address + Behind;
+        }
+
+        /* One that steps over the edge in the middle of a word is refused */
+        if (((Address & (VDEV_PAGE_SIZE - 1ull)) + Width) > VDEV_PAGE_SIZE)
+            break;
+
         if (IsWrite)
         {
             ULONG Value = 0;
 
-            if (!m_Memory.Read(Address, &Value, Width))
+            if (!m_Memory.Read(Where, &Value, Width))
                 break;
 
             WritePort(Port, Width, Value);
@@ -994,7 +1339,7 @@ void Machine::StringPort(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
 
             Value = ReadPort(Port, Width);
 
-            if (!m_Memory.Write(Address, &Value, Width))
+            if (!m_Memory.Write(Where, &Value, Width))
                 break;
         }
 
@@ -1156,23 +1501,43 @@ void Machine::ReportProcessor(ULONG Index)
         return;
     }
 
-    Log(RtvmLogInfo, "    processor %lu at %04x:%04llx, flags %04llx%s\n",
+    /*
+     * Whole registers, not the low halves of them. A guest that has gone into
+     * protected mode is past the point where the low half means anything, and
+     * one narrowed to it reads as an address the guest has never been at.
+     */
+    Log(RtvmLogInfo, "    processor %lu at %04x:%08llx, flags %04llx%s\n",
         Index,
         Values[0].Segment.Selector,
-        static_cast<unsigned long long>(Values[1].Reg64 & 0xFFFF),
+        static_cast<unsigned long long>(Values[1].Reg64),
         static_cast<unsigned long long>(Values[2].Reg64 & 0xFFFF),
         ((Values[2].Reg64 & 0x200) != 0) ? "" : ", interrupts off");
 
-    Log(RtvmLogInfo, "    ax %04llx bx %04llx cx %04llx dx %04llx, stack %04x:%04llx\n",
-        static_cast<unsigned long long>(Values[3].Reg64 & 0xFFFF),
-        static_cast<unsigned long long>(Values[4].Reg64 & 0xFFFF),
-        static_cast<unsigned long long>(Values[5].Reg64 & 0xFFFF),
-        static_cast<unsigned long long>(Values[6].Reg64 & 0xFFFF),
+    Log(RtvmLogInfo, "    ax %08llx bx %08llx cx %08llx dx %08llx, stack %04x:%08llx\n",
+        static_cast<unsigned long long>(Values[3].Reg64),
+        static_cast<unsigned long long>(Values[4].Reg64),
+        static_cast<unsigned long long>(Values[5].Reg64),
+        static_cast<unsigned long long>(Values[6].Reg64),
         Values[7].Segment.Selector,
-        static_cast<unsigned long long>(Values[8].Reg64 & 0xFFFF));
+        static_cast<unsigned long long>(Values[8].Reg64));
 
-    /* The instruction it is sitting on, which usually settles what it is doing */
-    const ULONG64 Where = Values[0].Segment.Base + (Values[1].Reg64 & 0xFFFF);
+    /*
+     * The instruction it is sitting on, which usually settles what it is
+     * doing. A guest that has turned paging on is not where it says it is,
+     * so the address is put through its own tables first: reading the number
+     * straight gives whatever happens to sit at that place in memory, which
+     * is never the instruction and usually nothing at all.
+     */
+    ULONG64 Where = Values[0].Segment.Base + Values[1].Reg64;
+    WHV_TRANSLATE_GVA_RESULT_CODE Result = WHvTranslateGvaResultSuccess;
+    ULONG64 Behind = 0;
+
+    if (SUCCEEDED(Translate(Index, Where, WHvTranslateGvaFlagValidateRead,
+                            &Result, &Behind)) &&
+        (Result == WHvTranslateGvaResultSuccess))
+    {
+        Where = Behind;
+    }
     UCHAR Code[8] = {};
 
     if (m_Memory.Read(Where, Code, sizeof(Code)))
@@ -1181,6 +1546,275 @@ void Machine::ReportProcessor(ULONG Index)
             Code[0], Code[1], Code[2], Code[3],
             Code[4], Code[5], Code[6], Code[7]);
     }
+}
+
+/**
+ * @brief
+ * Writes out a run of the machine's memory as it stands.
+ *
+ * @remarks
+ * Taken straight rather than through a processor, so it is what is there and
+ * not what one of them can reach. A guest that has gone into protected mode
+ * with paging off reads the same either way, which is when this is of use.
+ *
+ * A window a device answers for is asked of the device, because the memory
+ * behind one of those has not been written to since the device took it over.
+ */
+bool Machine::DumpMemory(const char *Path, ULONG64 Base, ULONG Length)
+{
+    if ((Path == nullptr) || (Length == 0))
+        return false;
+
+    UniqueFile Output(CreateFileA(Path, GENERIC_WRITE, 0, nullptr,
+                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                                  nullptr));
+
+    if (!Output)
+    {
+        Log(RtvmLogError, "%s could not be written, %lu\n", Path,
+            GetLastError());
+        return false;
+    }
+
+    /* A page at a time, so that nothing has to be held twice over */
+    UCHAR Page[VDEV_PAGE_SIZE];
+    ULONG Done = 0;
+
+    while (Done < Length)
+    {
+        const ULONG Part = min((ULONG)sizeof(Page), Length - Done);
+        DWORD Written = 0;
+
+        if (m_Bus.MemoryClaimed(Base + Done))
+        {
+            for (ULONG Byte = 0; Byte < Part; Byte++)
+            {
+                if (!m_Bus.ReadMemory(Base + Done + Byte, 1, &Page[Byte]))
+                    Page[Byte] = 0xFF;
+            }
+        }
+        else if (!m_Memory.Read(Base + Done, Page, Part))
+        {
+            Log(RtvmLogError, "the machine has nothing at %llx\n",
+                static_cast<unsigned long long>(Base + Done));
+            return false;
+        }
+
+        if (!WriteFile(Output.Get(), Page, Part, &Written, nullptr) ||
+            (Written != Part))
+        {
+            Log(RtvmLogError, "%s was only part written\n", Path);
+            return false;
+        }
+
+        Done += Part;
+    }
+
+    Log(RtvmLogInfo, "%lx bytes from %llx are in %s\n", Length,
+        static_cast<unsigned long long>(Base), Path);
+
+    return true;
+}
+
+/* THE REGISTERS THAT ARE NOT REGISTERS ***************************************/
+
+/* The handful a machine of this kind is asked for by name */
+#define MSR_TIME_STAMP          0x00000010
+#define MSR_APIC_BASE           0x0000001B
+#define MSR_RANGE_KINDS         0x000000FE
+#define MSR_MISC_ENABLE         0x000001A0
+#define MSR_RANGE_DEFAULT       0x000002FF
+#define MSR_PAGE_KINDS          0x00000277
+
+/* Where the processor's own controller answers, and which one is the first */
+#define APIC_DEFAULT_BASE       0xFEE00000
+#define APIC_IS_FIRST           0x00000100
+#define APIC_ENABLED            0x00000800
+
+/* How many kinds of range the processor can be told about, and none set */
+#define RANGE_KIND_COUNT        8
+
+/* What the eight parts of the page table's own kinds come up as */
+#define PAGE_KINDS_AT_RESET     0x0007040600070406ull
+
+/**
+ * @brief
+ * Answers one of the registers a processor is asked for by number.
+ *
+ * @remarks
+ * Answering every one of them with nothing is worse than not answering at
+ * all. The first of them counts how long the processor has been running, and
+ * a guest working out how fast it goes by reading that twice would find it had
+ * not moved: the same standing still that a clock which never ticks and a
+ * counter which never counts down both cause, and just as hard to see.
+ */
+void Machine::AnswerMsr(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
+{
+    const ULONG Which = Exit.MsrAccess.MsrNumber;
+    const bool Writing = (Exit.MsrAccess.AccessInfo.AsUINT32 & 1) != 0;
+
+    WHV_REGISTER_NAME Names[3];
+    WHV_REGISTER_VALUE Values[3] = {};
+    ULONG Count = 0;
+    ULONG64 Shown = 0;
+
+    if (Writing)
+    {
+        const ULONG64 Value = ((Exit.MsrAccess.Rdx & 0xFFFFFFFF) << 32) |
+                              (Exit.MsrAccess.Rax & 0xFFFFFFFF);
+
+        Shown = Value;
+
+        /* The only one worth taking, because a guest may set where it counts from */
+        if (Which == MSR_TIME_STAMP)
+        {
+            Names[Count] = WHvX64RegisterTsc;
+            Values[Count].Reg64 = Value;
+            Count++;
+        }
+        else if (m_Holes < HolesToName)
+        {
+            Log(RtvmLogTrace, "processor %lu set %08lx, which is not kept\n",
+                Index, Which);
+        }
+    }
+    else
+    {
+        ULONG64 Value = 0;
+
+        switch (Which)
+        {
+            case MSR_TIME_STAMP:
+            {
+                /*
+                 * The same count the processor's own instruction for reading
+                 * it gives back, which is the hypervisor's to keep and not
+                 * this. Asking anything else would have the two disagree, and
+                 * a guest that read the count one way and then the other
+                 * would see it jump.
+                 */
+                WHV_REGISTER_NAME Name = WHvX64RegisterTsc;
+                WHV_REGISTER_VALUE Held = {};
+                const HRESULT Got = platform::GetRegisters(m_Partition, Index,
+                                                           &Name, 1, &Held);
+
+                if (SUCCEEDED(Got))
+                {
+                    Value = Held.Reg64;
+                    break;
+                }
+
+                /*
+                 * Said out loud rather than answered with nothing. A count
+                 * that reads as zero every time is a processor that never
+                 * runs, and everything that measures itself against one waits
+                 * forever without saying what it is waiting for.
+                 */
+                if (m_Holes < HolesToName)
+                {
+                    Log(RtvmLogWarning,
+                        "the count of how long the processor has run cannot "
+                        "be read, %08lx\n", Got);
+                    m_Holes++;
+                }
+
+                break;
+            }
+
+            case MSR_APIC_BASE:
+                Value = APIC_DEFAULT_BASE | APIC_ENABLED;
+
+                /* Only one of them is the one the machine started on */
+                if (Index == 0)
+                    Value |= APIC_IS_FIRST;
+
+                break;
+
+            case MSR_RANGE_KINDS:
+                /* As many as can be described, and none of them fixed */
+                Value = RANGE_KIND_COUNT;
+                break;
+
+            case MSR_PAGE_KINDS:
+                Value = PAGE_KINDS_AT_RESET;
+                break;
+
+            case MSR_RANGE_DEFAULT:
+            case MSR_MISC_ENABLE:
+            default:
+                Value = 0;
+                break;
+        }
+
+        Shown = Value;
+
+        Names[Count] = WHvX64RegisterRax;
+        Values[Count].Reg64 = Value & 0xFFFFFFFF;
+        Count++;
+
+        Names[Count] = WHvX64RegisterRdx;
+        Values[Count].Reg64 = (Value >> 32) & 0xFFFFFFFF;
+        Count++;
+    }
+
+    /*
+     * The first few said out loud. Which of these a guest asks for, and what
+     * it was told, is the only way to tell a register answered wrongly from
+     * one the hypervisor was answering all along.
+     */
+    if (m_Watched < WatchLimit)
+    {
+        Log(RtvmLogTrace, "    msr %08lx %s %016llx\n", Which,
+            Writing ? "<-" : "->",
+            static_cast<unsigned long long>(Shown));
+        m_Watched++;
+    }
+
+    /* And on past it either way, because the instruction has been answered */
+    Names[Count] = WHvX64RegisterRip;
+    Values[Count].Reg64 = Exit.VpContext.Rip + Exit.VpContext.InstructionLength;
+    Count++;
+
+    platform::SetRegisters(m_Partition, Index, Names, Count, Values);
+}
+
+/**
+ * @brief
+ * Hands one to the controller a processor has of its own.
+ *
+ * @remarks
+ * Not the same thing as holding up the line the old pair share. That line is
+ * one wire into one processor and whatever is on it waits its turn; this says
+ * which processor and which vector, and the hypervisor puts it where that
+ * processor will find it.
+ */
+bool Machine::RequestVector(ULONG Destination, ULONG Vector, bool Lowest,
+                            bool Logical, bool Level)
+{
+    if (!m_HaveLocalApic || (platform::RequestInterrupt == nullptr))
+        return false;
+
+    WHV_INTERRUPT_CONTROL Asking = {};
+
+    Asking.Type = Lowest ? WHvX64InterruptTypeLowestPriority
+                         : WHvX64InterruptTypeFixed;
+    Asking.DestinationMode = Logical
+                           ? WHvX64InterruptDestinationModeLogical
+                           : WHvX64InterruptDestinationModePhysical;
+    Asking.TriggerMode = Level ? WHvX64InterruptTriggerModeLevel
+                               : WHvX64InterruptTriggerModeEdge;
+    Asking.Destination = Destination;
+    Asking.Vector = Vector;
+
+    const bool Given = SUCCEEDED(platform::RequestInterrupt(m_Partition,
+                                                            &Asking,
+                                                            sizeof(Asking)));
+    if (Given)
+        m_Handed++;
+    else
+        m_NotHanded++;
+
+    return Given;
 }
 
 /* Whether the controller has anything for a processor that will take it */
@@ -1211,18 +1845,6 @@ StopReason Machine::RunProcessor(ULONG Index)
 
     while (InterlockedCompareExchange(&m_Stopping, 0, 0) == 0)
     {
-        /*
-         * A machine asked to run for a while stops itself. Being killed from
-         * outside works, but it takes the summary below with it, and what the
-         * hardware did is usually the reason for running it at all.
-         */
-        if ((m_Deadline != 0) && (GetTickCount() >= m_Deadline))
-        {
-            Log(RtvmLogInfo, "the time it was given is up\n");
-            ReportProcessor(Index);
-            return StopReason::Shutdown;
-        }
-
         DeliverInterrupt(Index);
 
         const HRESULT Result = platform::RunVirtualProcessor(m_Partition, Index,
@@ -1252,9 +1874,18 @@ StopReason Machine::RunProcessor(ULONG Index)
 
                 if (Exit.IoPortAccess.AccessInfo.IsWrite)
                 {
-                    const ULONG Value = static_cast<ULONG>(Exit.IoPortAccess.Rax);
+                    /*
+                     * Only as much of it as the instruction meant to write.
+                     * The rest of the register is whatever the guest happened
+                     * to leave there, and a device that takes it whole acts on
+                     * bytes nobody sent it.
+                     */
+                    const ULONG Mask = (Width >= 4)
+                                     ? 0xFFFFFFFFu
+                                     : ((1u << (Width * 8)) - 1);
 
-                    WritePort(Port, Width, Value);
+                    WritePort(Port, Width,
+                              static_cast<ULONG>(Exit.IoPortAccess.Rax) & Mask);
                 }
                 else
                 {
@@ -1297,41 +1928,53 @@ StopReason Machine::RunProcessor(ULONG Index)
                 if (Length == 0)
                     Length = Exit.MemoryAccess.InstructionByteCount;
 
-                if (m_Bus.MemoryClaimed(Address))
+                /*
+                 * Carried out rather than skipped, whether or not a device
+                 * answers for the window. A write that never happened and a
+                 * read that gave back nothing are both worse than not having
+                 * the device at all, and a window nothing answers for is not a
+                 * failure either: a bus with nothing on it reads as ones and
+                 * lets a write go, and a guest touching a hole and carrying on
+                 * is the whole reason it does.
+                 */
+                /*
+                 * Said out loud for the first few, because a guest writing
+                 * into a hole loses what it wrote and reads it back as ones,
+                 * and nothing about what happens afterwards points at where.
+                 */
+                if (!m_Bus.MemoryClaimed(Address))
                 {
-                    /*
-                     * A device answers for this, so the instruction has to be
-                     * carried out against it rather than skipped: a write that
-                     * never happened and a read that gave back nothing are
-                     * both worse than not having the device at all.
-                     */
-                    if (EmulateAccess(Index, Exit))
+                    if (m_Holes < HolesToName)
                     {
-                        Stray = 0;
-                        break;
+                        Log(RtvmLogWarning,
+                            "nothing answers for %012llx, reached from "
+                            "%04x:%08llx\n",
+                            static_cast<unsigned long long>(Address),
+                            Exit.VpContext.Cs.Selector,
+                            static_cast<unsigned long long>(Exit.VpContext.Rip));
                     }
 
-                    /* It could not be read, and stepping over is all that is left */
-                    if (Length != 0)
-                    {
-                        StepOver(Index, Exit.VpContext.Rip, Length);
-                        Stray = 0;
-                        break;
-                    }
+                    m_Holes++;
+                }
+
+                if (EmulateAccess(Index, Exit))
+                {
+                    Stray = 0;
+                    break;
                 }
 
                 /*
-                 * Nothing is there at all. Stepping over an instruction that
-                 * never ran gets nowhere, and a processor fetching from a hole
-                 * will do it again immediately, so this is counted and given
-                 * up on rather than spun on. A machine that cannot execute is
-                 * better off saying so than filling a log.
+                 * It could not be carried out at all, which is what a
+                 * processor fetching from a hole looks like: stepping over an
+                 * instruction that was never read gets nowhere, and it would
+                 * do the same again at once. So this is counted and given up
+                 * on rather than spun on.
                  */
                 if (Stray == 0)
                 {
                     Log(RtvmLogError,
                         "processor %lu touched %012llx at %04x:%08llx, "
-                        "where there is nothing\n",
+                        "and could not be told what is there\n",
                         Index,
                         static_cast<unsigned long long>(Address),
                         Exit.VpContext.Cs.Selector,
@@ -1385,20 +2028,9 @@ StopReason Machine::RunProcessor(ULONG Index)
             }
 
             case WHvRunVpExitReasonX64MsrAccess:
-            {
-                /* Nothing here has model specific registers worth the name */
-                const WHV_REGISTER_NAME Names[] =
-                {
-                    WHvX64RegisterRax, WHvX64RegisterRdx, WHvX64RegisterRip
-                };
-                WHV_REGISTER_VALUE Values[RTL_NUMBER_OF(Names)] = {};
-
-                Values[2].Reg64 = Exit.VpContext.Rip + Exit.VpContext.InstructionLength;
-
-                platform::SetRegisters(m_Partition, Index, Names,
-                                       RTL_NUMBER_OF(Names), Values);
+                AnswerMsr(Index, Exit);
+                Stray = 0;
                 break;
-            }
 
             case WHvRunVpExitReasonX64InterruptWindow:
                 /*
@@ -1432,14 +2064,60 @@ StopReason Machine::RunProcessor(ULONG Index)
     return StopReason::Shutdown;
 }
 
+/**
+ * @brief
+ * Stops the machine once the time it was given is up.
+ *
+ * @remarks
+ * The loop that runs a processor only looks at the clock between two of its
+ * turns, and a guest that has stopped coming back never gives it one: a
+ * machine told to run for a minute would then run until something killed it,
+ * taking the summary of what its hardware did with it.
+ */
+DWORD WINAPI Machine::Watching(LPVOID Parameter)
+{
+    auto *Self = static_cast<Machine *>(Parameter);
+
+    while (InterlockedCompareExchange(&Self->m_Stopping, 0, 0) == 0)
+    {
+        if (GetTickCount() >= Self->m_Deadline)
+        {
+            Log(RtvmLogInfo, "the time it was given is up\n");
+            Self->ReportProcessor(0);
+            Self->Stop();
+            break;
+        }
+
+        Sleep(100);
+    }
+
+    return 0;
+}
+
 StopReason Machine::Run()
 {
     Log(RtvmLogInfo, "running\n");
 
     InterlockedExchange(&m_Running, 1);
 
+    HANDLE Watchdog = nullptr;
+
+    if (m_Seconds != 0)
+    {
+        m_Deadline = GetTickCount() + (m_Seconds * 1000);
+        Watchdog = CreateThread(nullptr, 0, Watching, this, 0, nullptr);
+    }
+
     /* One processor for now. The rest are made and wait to be started */
     const StopReason Reason = RunProcessor(0);
+
+    InterlockedExchange(&m_Stopping, 1);
+
+    if (Watchdog != nullptr)
+    {
+        WaitForSingleObject(Watchdog, 2000);
+        CloseHandle(Watchdog);
+    }
 
     InterlockedExchange(&m_Running, 0);
 
@@ -1447,6 +2125,17 @@ StopReason Machine::Run()
 
     /* What the hardware actually did, which is worth knowing either way */
     Log(RtvmLogInfo, "%lu interrupt(s) taken\n", m_Delivered);
+
+    /*
+     * And what went the other way, to the controller each processor has of
+     * its own. None of that is counted above, because it never passes through
+     * the pair of chips and nothing here sees it arrive.
+     */
+    if ((m_Handed != 0) || (m_NotHanded != 0))
+    {
+        Log(RtvmLogInfo, "%lu handed to a local controller, %lu refused\n",
+            m_Handed, m_NotHanded);
+    }
 
 
     /* And what was put in, which is not always one for one with the above */

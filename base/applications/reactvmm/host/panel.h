@@ -16,6 +16,11 @@ namespace rtvm
 constexpr ULONG PanelColumns = 132;
 constexpr ULONG PanelRows = 60;
 
+/* And as big a screen of pixels as this will show, with its table of colours */
+constexpr ULONG PanelPixelWidth = 1600;
+constexpr ULONG PanelPixelHeight = 1200;
+constexpr ULONG PanelColourCount = 256;
+
 /*
  * The front panel: the guest's screen on the left, and on the right what the
  * machine is doing while it draws it.
@@ -73,6 +78,8 @@ private:
 
     void Paint(HDC Target);
     void PaintScreen(HDC Target);
+    void PaintPixels(HDC Target);
+    HRESULT TakePixels(IVideoVdev *Display, const VDEV_SURFACE_DATA &Surface);
     void PaintStatus(HDC Target);
     void Measure();
     void Key(WPARAM First, LPARAM Second, bool Down);
@@ -114,6 +121,18 @@ private:
     ULONG m_CursorRow = 0;
     bool m_CursorVisible = true;
     bool m_HavePage = false;
+
+    /* The same again for a guest that has asked for pixels instead */
+    /* Four bytes to a pixel, which is as much as any of them ever carries */
+    UCHAR m_Pixels[PanelPixelWidth * PanelPixelHeight * 4] = {};
+    UCHAR m_Palette[PanelColourCount][3] = {};
+    ULONG m_PixelWidth = 0;
+    ULONG m_PixelHeight = 0;
+
+    /* How long a row of it is, and how much of one pixel of it is */
+    ULONG m_PixelPitch = 0;
+    ULONG m_PixelDepth = 8;
+    bool m_Drawing = false;
 
     /* What the lamps were showing, so that only a change lights one */
     ULONG m_SeenCount[16] = {};

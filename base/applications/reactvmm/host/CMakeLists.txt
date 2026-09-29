@@ -1,6 +1,7 @@
 add_executable(reactvmm
     main.cpp
     machine.cpp
+    acpi.cpp
     bus.cpp
 
     devicehost.cpp
