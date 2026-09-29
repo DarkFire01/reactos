@@ -1031,9 +1031,9 @@ Int16Take:
 
 Int16FromHeld:
     mov al, byte ptr cs:[KeyHeld]
+    mov ah, byte ptr cs:[KeyCode]
     mov byte ptr cs:[KeyWaiting], 0
     pop dx
-    mov ah, 0
     iret
 
 /*
@@ -1068,7 +1068,7 @@ Int16Peek:
 
 Int16HaveOne:
     mov al, byte ptr cs:[KeyHeld]
-    mov ah, 0
+    mov ah, byte ptr cs:[KeyCode]
 
     /* Clear, meaning there is one */
     push bp
@@ -1456,6 +1456,10 @@ SpuriousSlaveHandler:
     pop ax
     iret
 
+/* TAKING KEYS ****************************************************************/
+
+#include "keyboard.S"
+
 /* DRIVING THE REMOVABLE DRIVE ************************************************/
 
 #include "floppy.S"
@@ -1659,6 +1663,10 @@ VectorFill:
     mov ax, OFFSET Int0EHandler
     call VectorSet
 
+    mov bx, PIC_MASTER_VECTOR + 1
+    mov ax, OFFSET Int09Handler
+    call VectorSet
+
     mov bx, HEX(10)
     mov ax, OFFSET Int10Handler
     call VectorSet
@@ -1803,12 +1811,12 @@ ControllerSetup:
     out PIC_SLAVE_DATA, al
 
     /*
-     * Open the lines something is actually listening for: the timer, the way
-     * the second controller arrives, the serial port and the removable drive.
-     * A line nothing answers is worse than no line at all, because the
-     * controller is left holding it and never delivers another.
+     * Open the lines something is actually listening for: the timer, the
+     * keys, the way the second controller arrives, the serial port and the
+     * removable drive. A line nothing answers is worse than no line at all,
+     * because the controller is left holding it and never delivers another.
      */
-    mov al, HEX(AA)
+    mov al, HEX(A8)
     out PIC_MASTER_DATA, al
 
     /* On the second one, the disk */
