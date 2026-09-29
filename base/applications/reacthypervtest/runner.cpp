@@ -43,6 +43,9 @@ static HRESULT (WINAPI *RunVirtualProcessor)(WHV_PARTITION_HANDLE, UINT32,
 static HRESULT (WINAPI *SetRegisters)(WHV_PARTITION_HANDLE, UINT32,
                                       const WHV_REGISTER_NAME *, UINT32,
                                       const WHV_REGISTER_VALUE *);
+static HRESULT (WINAPI *GetRegisters)(WHV_PARTITION_HANDLE, UINT32,
+                                      const WHV_REGISTER_NAME *, UINT32,
+                                      WHV_REGISTER_VALUE *);
 
 static bool FindPlatform()
 {
@@ -73,6 +76,7 @@ static bool FindPlatform()
     BIND(DeleteVirtualProcessor, "WHvDeleteVirtualProcessor");
     BIND(RunVirtualProcessor, "WHvRunVirtualProcessor");
     BIND(SetRegisters, "WHvSetVirtualProcessorRegisters");
+    BIND(GetRegisters, "WHvGetVirtualProcessorRegisters");
 #undef BIND
 
     return true;
@@ -82,6 +86,9 @@ static bool FindPlatform()
 
 /* As much memory as a firmware of this kind expects to find below it */
 #define RUNNER_MEMORY   0x20000000ull
+
+/* And how far past the top of it is still there to be landed on */
+#define RUNNER_SLACK    0x01000000ull
 
 /* And where everything stops, which is where a firmware answers itself from */
 #define RUNNER_TOP      0x100000000ull
@@ -94,6 +101,72 @@ static bool FindPlatform()
 #define RESET_SEGMENT   0xF000
 #define RESET_OFFSET    0xFFF0
 #define RESET_BASE      0xFFFF0000ull
+
+/*
+ * What it was holding when it stopped. A value that was worked out rather than
+ * read from somewhere is still in a register, so this is what says where an
+ * address the firmware jumped to came from.
+ */
+/*
+ * What is under the stack pointer. The firmware is running its own code with
+ * its own stack in the memory it was given, so the addresses on it are the run
+ * of calls that led to wherever it stopped, and every one of them is a place
+ * in the image that can be looked at.
+ */
+static void SayStack(const void *Ram, ULONG64 Extent, ULONG64 Rsp)
+{
+    if ((Rsp + 64) > Extent)
+        return;
+
+    const auto *Frame =
+        reinterpret_cast<const ULONG *>((const UCHAR *)Ram + Rsp);
+
+    printf("  stack at %08llx:", (unsigned long long)Rsp);
+
+    for (ULONG Index = 0; Index < 16; Index++)
+    {
+        if ((Index % 8) == 0)
+            printf("\n   ");
+
+        printf(" %08lx", Frame[Index]);
+    }
+
+    printf("\n");
+}
+
+static void SayRegisters(WHV_PARTITION_HANDLE Partition, ULONG64 *Rsp)
+{
+    static const WHV_REGISTER_NAME Wanted[] =
+    {
+        WHvX64RegisterRax, WHvX64RegisterRbx, WHvX64RegisterRcx,
+        WHvX64RegisterRdx, WHvX64RegisterRsi, WHvX64RegisterRdi,
+        WHvX64RegisterRsp, WHvX64RegisterRbp, WHvX64RegisterCr0,
+        WHvX64RegisterCr3, WHvX64RegisterCr4
+    };
+
+    static const char *const Called[] =
+    {
+        "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
+        "rsp", "rbp", "cr0", "cr3", "cr4"
+    };
+
+    WHV_REGISTER_VALUE Held[ARRAYSIZE(Wanted)] = {};
+
+    if (FAILED(GetRegisters(Partition, 0, Wanted, ARRAYSIZE(Wanted), Held)))
+        return;
+
+    for (ULONG Index = 0; Index < ARRAYSIZE(Wanted); Index++)
+    {
+        printf("  %s %016llx%s", Called[Index],
+               (unsigned long long)Held[Index].Reg64,
+               ((Index % 3) == 2) ? "\n" : "");
+    }
+
+    printf("\n");
+
+    if (Rsp != nullptr)
+        *Rsp = Held[6].Reg64;
+}
 
 static void SayExit(const WHV_RUN_VP_EXIT_CONTEXT &Exit, ULONG64 Count)
 {
@@ -166,7 +239,7 @@ static void SayExit(const WHV_RUN_VP_EXIT_CONTEXT &Exit, ULONG64 Count)
  * Anything it reaches for that is not there is said out loud rather than
  * answered, which is the whole point of running it here.
  */
-int Run(const char *Path, ULONG Steps)
+int Run(const char *Path, ULONG Steps, ULONG64 Ram)
 {
     if (!FindPlatform())
     {
@@ -227,9 +300,19 @@ int Run(const char *Path, ULONG Steps)
         return 1;
     }
 
-    /* The memory it has, and the firmware above everything it has */
-    void *Ram = VirtualAlloc(nullptr, (SIZE_T)RUNNER_MEMORY,
-                             MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    /*
+     * The memory it has, and the firmware above everything it has.
+     *
+     * More is mapped than is said to be there. A firmware of this kind works
+     * out where the top is and then puts the memory it keeps for good at that
+     * address, so the top itself is landed on rather than stopped at, and a
+     * machine whose last byte is the last byte is one it falls off.
+     */
+    const ULONG64 Extent = (Ram != 0) ? Ram : RUNNER_MEMORY;
+    const ULONG64 Mapped = Extent + RUNNER_SLACK;
+
+    void *Below = VirtualAlloc(nullptr, (SIZE_T)Mapped,
+                               MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
     const auto Whole = static_cast<WHV_MAP_GPA_RANGE_FLAGS>(
         WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagWrite |
@@ -244,15 +327,16 @@ int Run(const char *Path, ULONG Steps)
         WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagWrite |
         WHvMapGpaRangeFlagExecute);
 
-    if ((Ram == nullptr) ||
-        FAILED(MapGpaRange(Partition, Ram, 0, RUNNER_MEMORY, Whole)))
+    if ((Below == nullptr) ||
+        FAILED(MapGpaRange(Partition, Below, 0, Mapped, Whole)))
     {
         printf("the machine has no memory\n");
         return 1;
     }
 
-    printf("memory 000000000000 to %012llx\n",
-           (unsigned long long)(RUNNER_MEMORY - 1));
+    printf("memory 000000000000 to %012llx, and %012llx past it\n",
+           (unsigned long long)(Extent - 1),
+           (unsigned long long)RUNNER_SLACK);
 
     const ULONG64 Where = RUNNER_TOP - Length;
 
@@ -353,6 +437,11 @@ int Run(const char *Path, ULONG Steps)
            (unsigned long long)Exit.VpContext.Rip);
     printf("  it reached for %llu port(s) and %llu place(s) in memory\n",
            (unsigned long long)Ports, (unsigned long long)Memory);
+
+    ULONG64 Stack = 0;
+
+    SayRegisters(Partition, &Stack);
+    SayStack(Below, Mapped, Stack);
 
     DeleteVirtualProcessor(Partition, 0);
     DeletePartition(Partition);

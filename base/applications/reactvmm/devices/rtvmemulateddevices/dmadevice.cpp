@@ -96,7 +96,7 @@ STDMETHODIMP DmaDevice::QueryInterface(REFIID Interface, void **Object)
 }
 
 STDMETHODIMP DmaDevice::GetDependencies(void *Repository, ULONG *Count,
-                                        GUID **Services, ULONG *Optional)
+                                        GUID **Services, ULONG *Required)
 {
     static const GUID *const Wanted[] =
     {
@@ -106,12 +106,15 @@ STDMETHODIMP DmaDevice::GetDependencies(void *Repository, ULONG *Count,
 
     UNREFERENCED_PARAMETER(Repository);
 
-    return PublishDependencies(Wanted, ARRAYSIZE(Wanted),
-                               Count, Services, Optional);
+    return PublishDependencies(Wanted, ARRAYSIZE(Wanted), 0,
+                               Count, Services, Required);
 }
 
-STDMETHODIMP DmaDevice::StartReservingResources()
+STDMETHODIMP DmaDevice::StartReservingResources(void *Repository, VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(Repository);
+    UNREFERENCED_PARAMETER(State);
+
     HRESULT Status = ReservePorts(DMA_FIRST_BASE, DMA_FIRST_LAST, this);
 
     if (SUCCEEDED(Status))
@@ -123,13 +126,15 @@ STDMETHODIMP DmaDevice::StartReservingResources()
     return Status;
 }
 
-STDMETHODIMP DmaDevice::PowerOnCold()
+STDMETHODIMP DmaDevice::PowerOnCold(VDEV_STATE State)
 {
-    return Reset();
+    return Reset(State);
 }
 
-STDMETHODIMP DmaDevice::Reset()
+STDMETHODIMP DmaDevice::Reset(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     EnterCriticalSection(&m_Lock);
     Clear();
     LeaveCriticalSection(&m_Lock);
@@ -177,7 +182,7 @@ bool DmaDevice::Decode(USHORT Port, ULONG &Which, ULONG &Register) const
     return false;
 }
 
-STDMETHODIMP DmaDevice::NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value)
+STDMETHODIMP DmaDevice::NotifyIoPortRead(USHORT Port, USHORT Width, ULONG *Value)
 {
     ULONG Which = 0;
     ULONG Register = 0;
@@ -231,7 +236,7 @@ STDMETHODIMP DmaDevice::NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value)
     return S_OK;
 }
 
-STDMETHODIMP DmaDevice::NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value)
+STDMETHODIMP DmaDevice::NotifyIoPortWrite(USHORT Port, USHORT Width, ULONG Value)
 {
     ULONG Which = 0;
     ULONG Register = 0;

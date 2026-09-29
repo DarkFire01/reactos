@@ -51,8 +51,8 @@ public:
 
     STDMETHODIMP NotifyUnregistered() override { return S_OK; }
 
-    STDMETHODIMP NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value) override;
-    STDMETHODIMP NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value) override;
+    STDMETHODIMP NotifyIoPortRead(USHORT Port, USHORT Width, ULONG *Value) override;
+    STDMETHODIMP NotifyIoPortWrite(USHORT Port, USHORT Width, ULONG Value) override;
 
     STDMETHODIMP NotifyMmioRead(ULONG64 Address, ULONG Length,
                                 void *Buffer) override;
@@ -66,6 +66,34 @@ private:
 };
 
 class VdevHost;
+
+/*
+ * What a device is handed for a range it reserved, and gives back to let the
+ * range go. One is made for each reservation and lives until the device lets
+ * go of it, which is after it has revoked and so after the bus is clear.
+ */
+class Reservation : public IVndRegistration
+{
+public:
+    Reservation(Bus &On, IVndIoPortHandler *Ports) noexcept
+        : m_Bus(On), m_Ports(Ports) {}
+    Reservation(Bus &On, IVndMmioHandler *Memory) noexcept
+        : m_Bus(On), m_Memory(Memory) {}
+
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override;
+    STDMETHODIMP_(ULONG) AddRef() override;
+    STDMETHODIMP_(ULONG) Release() override;
+
+    STDMETHODIMP Revoke() override;
+
+private:
+    ~Reservation() = default;
+
+    Bus &m_Bus;
+    IVndIoPortHandler *m_Ports = nullptr;
+    IVndMmioHandler *m_Memory = nullptr;
+    volatile LONG m_Count = 1;
+};
 
 /*
  * Where a device asks for the ports and the memory it answers for. Everything
@@ -82,12 +110,13 @@ public:
 
     STDMETHODIMP RegisterMmioHandler(ULONG64 FirstPage, ULONG64 PageCount,
                                      IVndMmioHandler *Handler, BOOL Enabled,
-                                     void **Registration) override;
+                                     IVndRegistration **Registration) override;
     STDMETHODIMP RegisterMbHandler() override { return E_NOTIMPL; }
     STDMETHODIMP RegisterApicEoiHandler() override { return E_NOTIMPL; }
     STDMETHODIMP RegisterIoPortHandler(USHORT FirstPort, USHORT LastPort,
                                        ULONG Widths, IVndIoPortHandler *Handler,
-                                       ULONG Flags, void **Registration) override;
+                                       ULONG Flags,
+                                       IVndRegistration **Registration) override;
     STDMETHODIMP RegisterMsrHandler() override { return E_NOTIMPL; }
     STDMETHODIMP RegisterExceptionHandler() override { return E_NOTIMPL; }
 

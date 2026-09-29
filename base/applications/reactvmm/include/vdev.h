@@ -71,6 +71,18 @@ DEFINE_GUID(IID_IVirtualDevice,
             0x0693ed7d, 0x8a8a, 0x4d87, 0xa4, 0x68, 0x11, 0x03, 0xb8, 0xc6, 0x3d, 0x9c);
 
 /*
+ * Carried into every step of the lifecycle below. Most devices never read it;
+ * the ones that do test single bits, so it is a mask and not a count.
+ */
+typedef ULONG VDEV_STATE;
+
+/* Nothing special is being asked for, which is what a cold start passes */
+#define VDEV_STATE_NONE 0x00000000
+
+/* The step is being taken for a machine that saves and comes back */
+#define VDEV_STATE_PERSISTENT 0x00000020
+
+/*
  * How a device is brought up, run and put away. The manager holds one of these
  * for every device it has and drives nothing else through anything but this.
  *
@@ -87,11 +99,18 @@ DECLARE_INTERFACE_(IVirtualDevice, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
-    /* Which services it cannot come up without, as a list of their identifiers */
+    /*
+     * Which services it wants, as a list of their identifiers.
+     *
+     * The list is ordered: the ones it cannot come up without come first and
+     * the ones it will do without come last, and Required says where the break
+     * between them is. It is a count and not a mask of which, so a device that
+     * wants more than a mask would hold is still answered properly.
+     */
     STDMETHOD(GetDependencies)(THIS_ _In_opt_ PVOID Repository,
                                _Out_ PULONG Count,
                                _Outptr_ GUID **Services,
-                               _Out_ PULONG Optional) PURE;
+                               _Out_ PULONG Required) PURE;
 
     /* Handed its configuration and something to reach those services through */
     STDMETHOD(Initialize)(THIS_ _In_opt_ PVOID Repository,
@@ -100,27 +119,30 @@ DECLARE_INTERFACE_(IVirtualDevice, IUnknown)
     STDMETHOD(Teardown)(THIS) PURE;
 
     /* Where it asks for the ports, the memory and the lines it answers for */
-    STDMETHOD(StartReservingResources)(THIS) PURE;
-    STDMETHOD(FinishReservingResources)(THIS) PURE;
+    STDMETHOD(StartReservingResources)(THIS_ _In_opt_ PVOID Repository,
+                                       _In_ VDEV_STATE State) PURE;
+    STDMETHOD(FinishReservingResources)(THIS_ _In_ VDEV_STATE State) PURE;
     STDMETHOD(FreeReservedResources)(THIS) PURE;
-    STDMETHOD(SaveReservedResources)(THIS) PURE;
+    STDMETHOD(SaveReservedResources)(THIS_ _In_opt_ PVOID Repository) PURE;
 
     /* Coming up from nothing, or into a state that was written out before */
-    STDMETHOD(PowerOnCold)(THIS) PURE;
-    STDMETHOD(PowerOnRestore)(THIS) PURE;
-    STDMETHOD(PowerOff)(THIS) PURE;
-    STDMETHOD(Save)(THIS) PURE;
-    STDMETHOD(Resume)(THIS) PURE;
-    STDMETHOD(Pause)(THIS) PURE;
+    STDMETHOD(PowerOnCold)(THIS_ _In_ VDEV_STATE State) PURE;
+    STDMETHOD(PowerOnRestore)(THIS_ _In_opt_ PVOID Repository,
+                              _In_ VDEV_STATE State) PURE;
+    STDMETHOD(PowerOff)(THIS_ _In_ VDEV_STATE State) PURE;
+    STDMETHOD(Save)(THIS_ _In_opt_ PVOID Repository,
+                    _In_ VDEV_STATE State) PURE;
+    STDMETHOD(Resume)(THIS_ _In_ VDEV_STATE State) PURE;
+    STDMETHOD(Pause)(THIS_ _In_ VDEV_STATE State) PURE;
 
-    STDMETHOD(EnableOptimizations)(THIS) PURE;
-    STDMETHOD(StartDisableOptimizations)(THIS) PURE;
-    STDMETHOD(FinishDisableOptimizations)(THIS) PURE;
+    STDMETHOD(EnableOptimizations)(THIS_ _In_ VDEV_STATE State) PURE;
+    STDMETHOD(StartDisableOptimizations)(THIS_ _In_ VDEV_STATE State) PURE;
+    STDMETHOD(FinishDisableOptimizations)(THIS_ _In_ VDEV_STATE State) PURE;
 
-    STDMETHOD(Reset)(THIS) PURE;
+    STDMETHOD(Reset)(THIS_ _In_ VDEV_STATE State) PURE;
 
     /* Once every other device has reset as well */
-    STDMETHOD(PostReset)(THIS) PURE;
+    STDMETHOD(PostReset)(THIS_ _In_ VDEV_STATE State) PURE;
 };
 
 /* HOW A DEVICE IS REACHED ****************************************************/
@@ -146,10 +168,10 @@ DECLARE_INTERFACE_(IVndIoPortHandler, IUnknown)
     STDMETHOD(NotifyUnregistered)(THIS) PURE;
 
     STDMETHOD(NotifyIoPortRead)(THIS_ _In_ USHORT Port,
-                                _In_ ULONG Width,
+                                _In_ USHORT Width,
                                 _Out_ PULONG Value) PURE;
     STDMETHOD(NotifyIoPortWrite)(THIS_ _In_ USHORT Port,
-                                 _In_ ULONG Width,
+                                 _In_ USHORT Width,
                                  _In_ ULONG Value) PURE;
 };
 
@@ -205,6 +227,10 @@ DEFINE_GUID(IID_IVmPicService,
  * The interrupt controller, as everything that raises a line sees it. A device
  * is handed one of these among its services and never learns anything else
  * about where its line goes.
+ *
+ * A line is shared, so raising it names both the line and which of the devices
+ * on it is raising it. The line only falls once the last of them has let go,
+ * which is why letting go names the raiser as well.
  */
 #undef INTERFACE
 #define INTERFACE IVmPicService
@@ -215,10 +241,19 @@ DECLARE_INTERFACE_(IVmPicService, IUnknown)
     STDMETHOD_(ULONG, AddRef)(THIS) PURE;
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
-    STDMETHOD(EndOfInterrupt)(THIS_ _In_ ULONG Line) PURE;
-    STDMETHOD(AssertIrq)(THIS_ _In_ ULONG Line) PURE;
-    STDMETHOD(DeassertIrq)(THIS_ _In_ ULONG Line) PURE;
+    STDMETHOD(EndOfInterrupt)(THIS) PURE;
+    STDMETHOD(AssertIrq)(THIS_ _In_ UCHAR Line,
+                         _In_ UCHAR Source) PURE;
+    STDMETHOD(DeassertIrq)(THIS_ _In_ UCHAR Line,
+                           _In_ UCHAR Source) PURE;
 };
+
+/* How many devices can hold one line up at once, and the one nothing shares */
+#define VDEV_IRQ_SOURCES 32
+#define VDEV_IRQ_SOURCE_ONLY 0
+
+/* The line the second controller hangs off, which nothing else may raise */
+#define VDEV_IRQ_CASCADE 2
 
 DEFINE_GUID(IID_IVmDmaController,
             0xbce7fce2, 0x3bc8, 0x4c2c, 0xa2, 0xc8, 0x27, 0x6f, 0x51, 0x1a, 0x24, 0x24);
@@ -395,6 +430,27 @@ DEFINE_GUID(IID_IVmAmd64EmulationServices,
             0xfcace8d2, 0xab0d, 0x480d, 0xb9, 0x79, 0x55, 0xc2, 0xda, 0x5f, 0x95, 0x79);
 
 /*
+ * What comes back from reserving ports or memory, and the only thing that
+ * gives the reservation up again.
+ *
+ * A device holds one of these for as long as it answers for what it reserved.
+ * When it is switched off it revokes and then lets go, in that order, and
+ * whatever it was handed has to survive both: handing it back its own handler
+ * makes the second of those two calls the one that frees the device.
+ */
+#undef INTERFACE
+#define INTERFACE IVndRegistration
+DECLARE_INTERFACE_(IVndRegistration, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(Revoke)(THIS) PURE;
+};
+
+/*
  * The one every device wants, and where the addresses it answers for are asked
  * for. What comes back from either of the two registering calls is what gives
  * the reservation up again.
@@ -413,7 +469,7 @@ DECLARE_INTERFACE_(IVmAmd64EmulationServices, IUnknown)
                                    _In_ ULONG64 PageCount,
                                    _In_ IVndMmioHandler *Handler,
                                    _In_ BOOL Enabled,
-                                   _Outptr_ PVOID *Registration) PURE;
+                                   _Outptr_ IVndRegistration **Registration) PURE;
 
     /* The mailbox, and the cycle that says an interrupt has been finished */
     STDMETHOD(RegisterMbHandler)(THIS) PURE;
@@ -429,7 +485,7 @@ DECLARE_INTERFACE_(IVmAmd64EmulationServices, IUnknown)
                                      _In_ ULONG Widths,
                                      _In_ IVndIoPortHandler *Handler,
                                      _In_ ULONG Flags,
-                                     _Outptr_ PVOID *Registration) PURE;
+                                     _Outptr_ IVndRegistration **Registration) PURE;
 
     /* A machine specific register, and a fault, taken by a device */
     STDMETHOD(RegisterMsrHandler)(THIS) PURE;
@@ -526,20 +582,30 @@ DECLARE_INTERFACE_(IVmIoApic, IUnknown)
     STDMETHOD_(ULONG, Release)(THIS) PURE;
 
     STDMETHOD(WaitForIrqAssert)(THIS_ _In_ ULONG Line) PURE;
-    STDMETHOD(AssertIrq)(THIS_ _In_ ULONG Line) PURE;
-    STDMETHOD(DeassertIrq)(THIS_ _In_ ULONG Line) PURE;
 
-    /* For a device whose line is a clock and would rather not be woken for it */
-    STDMETHOD(RequestTimerAssist)(THIS_ _In_ ULONG Line) PURE;
-    STDMETHOD(DeclineTimerAssist)(THIS_ _In_ ULONG Line) PURE;
+    /* Shared the same way the pair of chips shares them, and for the same reason */
+    STDMETHOD(AssertIrq)(THIS_ _In_ UCHAR Line,
+                         _In_ UCHAR Source) PURE;
+    STDMETHOD(DeassertIrq)(THIS_ _In_ UCHAR Line,
+                           _In_ UCHAR Source) PURE;
+
+    /*
+     * For a device whose line is a clock and would rather not be woken for it.
+     * Assisted comes back saying the line will be raised without the device,
+     * and StillWanted saying it has to keep raising it anyway.
+     */
+    STDMETHOD(RequestTimerAssist)(THIS_ _In_ UCHAR Line,
+                                  _In_ ULONG64 Period,
+                                  _Out_ PINT Assisted,
+                                  _Out_ PINT StillWanted) PURE;
+    STDMETHOD(DeclineTimerAssist)(THIS_ _In_ UCHAR Line) PURE;
 
     /* Being told when the guest changes where a line goes */
-    STDMETHOD(RegisterRteChangeCallback)(THIS_ _In_ ULONG Line,
+    STDMETHOD(RegisterRteChangeCallback)(THIS_ _In_ UCHAR Line,
                                          _In_ IUnknown *Callback) PURE;
-    STDMETHOD(UnregisterRteChangeCallback)(THIS_ _In_ ULONG Line,
-                                           _In_ IUnknown *Callback) PURE;
+    STDMETHOD(UnregisterRteChangeCallback)(THIS_ _In_ UCHAR Line) PURE;
 
-    STDMETHOD(SetIoApicBaseAddress)(THIS_ _In_ ULONG64 Address) PURE;
+    STDMETHOD(SetIoApicBaseAddress)(THIS_ _In_ ULONG Address) PURE;
 };
 
 /* Where the redirection table answers unless the guest moves it */
@@ -801,6 +867,64 @@ DEFINE_GUID(IID_IVmTimeSource,
             0xe162fe7a, 0x72c6, 0x4d0e, 0x93, 0xdd, 0x7d, 0xf9, 0x1a, 0x5b, 0x97, 0x9d);
 DEFINE_GUID(IID_IVmPowerServices,
             0x3ee9144c, 0x27d7, 0x4c8e, 0xa0, 0x7e, 0x5d, 0xd5, 0xf7, 0xa0, 0x20, 0x7d);
+
+/*
+ * THE REST OF WHAT A MACHINE OF THIS KIND HAS
+ *
+ * None of these is asked for by anything here. They are the services the parts
+ * that do the most on such a machine cannot come up without, and a device that
+ * names one and is refused it says so and stops, so they are worth naming even
+ * while there is nothing behind them: a list of what is missing is the list of
+ * what has to be built.
+ */
+
+/* What the memory of a machine looks like, before the guest and after */
+DEFINE_GUID(IID_IVmBootMemoryTopology,
+            0xb80fe14e, 0xb5f6, 0x43d4, 0xb2, 0x06, 0x40, 0xb3, 0xbf, 0x51, 0x19, 0x59);
+DEFINE_GUID(IID_IVmMemoryTopology,
+            0x4f99e8b7, 0x37bc, 0x4ee4, 0xb5, 0x39, 0x50, 0x26, 0x3b, 0x47, 0x83, 0xb6);
+DEFINE_GUID(IID_IVmMemoryManagement,
+            0xe7bb1d35, 0xad97, 0x464b, 0x8a, 0x3f, 0x95, 0xf4, 0x3e, 0x0f, 0x43, 0x89);
+
+/* The channel a guest reaches everything synthetic through */
+DEFINE_GUID(IID_IVmbusServices,
+            0xece3f556, 0xf87f, 0x4120, 0x9e, 0x37, 0xaa, 0xa5, 0x5e, 0x5e, 0x0c, 0xa9);
+DEFINE_GUID(IID_IVpciServices,
+            0xc8769be0, 0x2c2b, 0x4ded, 0xbd, 0x3c, 0xff, 0x75, 0x15, 0xd7, 0x4e, 0x90);
+
+/* The partition itself, and who is allowed to ask it for what */
+DEFINE_GUID(IID_IVmPartitionServices,
+            0x773e9a95, 0x1b2d, 0x4479, 0x95, 0x5f, 0x40, 0x20, 0x00, 0xeb, 0xe6, 0xc2);
+DEFINE_GUID(IID_ISecurityManager,
+            0x5315507b, 0x19f0, 0x4e86, 0xab, 0x51, 0x18, 0xf1, 0x59, 0xf1, 0xa1, 0x97);
+DEFINE_GUID(IID_IVmManagementAccess,
+            0xbb011455, 0xa4f6, 0x4e08, 0x99, 0x82, 0x09, 0xaf, 0xd3, 0x03, 0xdf, 0x20);
+DEFINE_GUID(IID_IVmHandleBrokerServices,
+            0xe9e61d12, 0xa2c3, 0x4e55, 0xac, 0x35, 0xb8, 0xf2, 0x6d, 0x21, 0x6a, 0x69);
+
+/* Coming back into a state that was written out, and writing one out */
+DEFINE_GUID(IID_IVmBootStateImporter,
+            0x034e6428, 0x672e, 0x403a, 0xa3, 0x42, 0x4f, 0x4c, 0x8d, 0x6a, 0x70, 0x5c);
+DEFINE_GUID(IID_IVmGuestStateAccess,
+            0x96ddf97a, 0x0b79, 0x4966, 0x8b, 0x56, 0x74, 0x0f, 0x0d, 0x76, 0x6e, 0x2e);
+DEFINE_GUID(IID_IVmGuestStateRawStorage,
+            0xf299b139, 0x1550, 0x4327, 0x84, 0xf7, 0xc1, 0xf4, 0x33, 0x25, 0x8e, 0xef);
+
+/* What is kept when a guest stops the way it should not have */
+DEFINE_GUID(IID_IVmGuestCrashServices,
+            0x4f80e76e, 0x0d0f, 0x44e8, 0x87, 0xbd, 0x02, 0x80, 0xe1, 0x79, 0x93, 0x51);
+DEFINE_GUID(IID_IVmCrashRegisterServices,
+            0xf0109dc7, 0x3f96, 0x41b1, 0xb0, 0xbc, 0x5a, 0xea, 0x91, 0x1c, 0x40, 0x4c);
+
+/* And the parts a machine has whether or not anything is using them */
+DEFINE_GUID(IID_IVmPowerManagementDevice,
+            0x3f60da8b, 0xe8ef, 0x403a, 0x81, 0x73, 0x9e, 0xf5, 0xc6, 0xee, 0x01, 0x52);
+DEFINE_GUID(IID_IVmBattery,
+            0x2a811607, 0xc21c, 0x47da, 0x84, 0xa0, 0x3c, 0x3b, 0x29, 0xaa, 0xd4, 0xe4);
+DEFINE_GUID(IID_IVpmemController,
+            0x521087ab, 0x2963, 0x4859, 0xb6, 0xd9, 0xd6, 0xf1, 0xec, 0x9f, 0x33, 0x82);
+DEFINE_GUID(IID_IVmPsp,
+            0xb0c36d19, 0x3f91, 0x4b3d, 0xb8, 0xdc, 0xee, 0xe5, 0xbb, 0x2c, 0x9a, 0xba);
 
 #undef INTERFACE
 

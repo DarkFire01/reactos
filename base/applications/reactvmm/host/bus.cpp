@@ -163,7 +163,7 @@ ULONG Bus::ReadPort(USHORT Port, ULONG Width)
 
     ULONG Value = Floating;
 
-    if (FAILED(Handler->NotifyIoPortRead(Port, Width, &Value)))
+    if (FAILED(Handler->NotifyIoPortRead(Port, (USHORT)Width, &Value)))
         return Floating;
 
     return Value;
@@ -177,7 +177,7 @@ void Bus::WritePort(USHORT Port, ULONG Width, ULONG Value)
     IVndIoPortHandler *Handler = m_Ports[Port];
 
     if (Handler != nullptr)
-        Handler->NotifyIoPortWrite(Port, Width, Value);
+        Handler->NotifyIoPortWrite(Port, (USHORT)Width, Value);
 }
 
 bool Bus::MemoryClaimed(ULONG64 Address) const

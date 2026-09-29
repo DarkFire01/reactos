@@ -61,6 +61,25 @@ static const struct
     { &IID_IVmBios, "IVmBios" },
     { &IID_IVmTimeSource, "IVmTimeSource" },
     { &IID_IVmPowerServices, "IVmPowerServices" },
+    { &IID_IVmBootMemoryTopology, "IVmBootMemoryTopology" },
+    { &IID_IVmMemoryTopology, "IVmMemoryTopology" },
+    { &IID_IVmMemoryManagement, "IVmMemoryManagement" },
+    { &IID_IVmbusServices, "IVmbusServices" },
+    { &IID_IVpciServices, "IVpciServices" },
+    { &IID_IVmPartitionServices, "IVmPartitionServices" },
+    { &IID_ISecurityManager, "ISecurityManager" },
+    { &IID_IVmManagementAccess, "IVmManagementAccess" },
+    { &IID_IVmHandleBrokerServices, "IVmHandleBrokerServices" },
+    { &IID_IVmBootStateImporter, "IVmBootStateImporter" },
+    { &IID_IVmGuestStateAccess, "IVmGuestStateAccess" },
+    { &IID_IVmGuestStateRawStorage, "IVmGuestStateRawStorage" },
+    { &IID_IVmGuestCrashServices, "IVmGuestCrashServices" },
+    { &IID_IVmCrashRegisterServices, "IVmCrashRegisterServices" },
+    { &IID_IVmPowerManagementDevice, "IVmPowerManagementDevice" },
+    { &IID_IVmBattery, "IVmBattery" },
+    { &IID_IVpmemController, "IVpmemController" },
+    { &IID_IVmPsp, "IVmPsp" },
+    { &IID_IProxiedPciVgaDevice, "IProxiedPciVgaDevice" },
     { &IID_IMonitorDevice, "IMonitorDevice" },
     { &IID_IVideoVdev, "IVideoVdev" },
     { &IID_IVndIoPortHandler, "IVndIoPortHandler" },
@@ -84,6 +103,60 @@ static void SayGuid(const GUID &Which)
            Which.Data4[0], Which.Data4[1], Which.Data4[2], Which.Data4[3],
            Which.Data4[4], Which.Data4[5], Which.Data4[6], Which.Data4[7]);
 }
+
+/*
+ * What a device is handed for a range it reserved.
+ *
+ * It has to be its own object. A device that is switched off revokes through
+ * this and then lets go of it, so handing back the device's own handler makes
+ * that second call a Release on the device itself and frees it underneath the
+ * manager still driving it.
+ */
+class Reservation : public IVndRegistration
+{
+public:
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
+    {
+        if (Object == nullptr)
+            return E_POINTER;
+
+        if (IsEqualIID(Interface, IID_IUnknown))
+        {
+            *Object = static_cast<IVndRegistration *>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        *Object = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return (ULONG)InterlockedIncrement(&m_Count);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        const ULONG Left = (ULONG)InterlockedDecrement(&m_Count);
+
+        if (Left == 0)
+            delete this;
+
+        return Left;
+    }
+
+    STDMETHODIMP Revoke() override
+    {
+        printf("    gives a range back\n");
+        return S_OK;
+    }
+
+private:
+    ~Reservation() = default;
+
+    volatile LONG m_Count = 1;
+};
 
 /*
  * Where a device asks for the addresses it answers for.
@@ -126,7 +199,7 @@ public:
 
     STDMETHODIMP RegisterMmioHandler(ULONG64 FirstPage, ULONG64 PageCount,
                                      IVndMmioHandler *Handler, BOOL Enabled,
-                                     void **Registration) override
+                                     IVndRegistration **Registration) override
     {
         printf("    memory: %llu page(s) at %012llx, handler %p, %s\n",
                (unsigned long long)PageCount,
@@ -134,7 +207,7 @@ public:
                (void *)Handler, Enabled ? "on" : "off");
 
         if (Registration != nullptr)
-            *Registration = Handler;
+            *Registration = new Reservation();
 
         return S_OK;
     }
@@ -153,13 +226,24 @@ public:
 
     STDMETHODIMP RegisterIoPortHandler(USHORT FirstPort, USHORT LastPort,
                                        ULONG Widths, IVndIoPortHandler *Handler,
-                                       ULONG Flags, void **Registration) override
+                                       ULONG Flags,
+                                       IVndRegistration **Registration) override
     {
         printf("    ports: %04x to %04x, widths %lx, handler %p, flags %lx\n",
                FirstPort, LastPort, Widths, (void *)Handler, Flags);
 
+        if (m_Ports < (ULONG)(sizeof(m_Port) / sizeof(*m_Port)))
+        {
+            m_Port[m_Ports].First = FirstPort;
+            m_Port[m_Ports].Last = LastPort;
+            m_Port[m_Ports].Widths = Widths;
+            m_Port[m_Ports].Handler = Handler;
+        }
+
+        m_Ports++;
+
         if (Registration != nullptr)
-            *Registration = Handler;
+            *Registration = new Reservation();
 
         return S_OK;
     }
@@ -176,8 +260,146 @@ public:
         return E_NOTIMPL;
     }
 
+    /* A run of ports somebody asked to answer for, kept to be driven later */
+    struct Reserved
+    {
+        USHORT First;
+        USHORT Last;
+        ULONG Widths;
+        IVndIoPortHandler *Handler;
+    };
+
+    /* What was asked for, and what there was room to write down */
+    ULONG Ports() const noexcept { return m_Ports; }
+    ULONG Kept() const noexcept
+    {
+        const ULONG Room = (ULONG)(sizeof(m_Port) / sizeof(*m_Port));
+
+        return (m_Ports < Room) ? m_Ports : Room;
+    }
+
+    const Reserved &Port(ULONG Which) const noexcept { return m_Port[Which]; }
+
+    /* Whoever answers for a port, or nothing if it was never asked for */
+    IVndIoPortHandler *Claimed(USHORT Port) const noexcept
+    {
+        for (ULONG Index = 0; Index < Kept(); Index++)
+        {
+            if ((Port >= m_Port[Index].First) && (Port <= m_Port[Index].Last))
+                return m_Port[Index].Handler;
+        }
+
+        return nullptr;
+    }
+
 private:
     volatile LONG m_Count = 1;
+
+    Reserved m_Port[32] = {};
+    ULONG m_Ports = 0;
+};
+
+/*
+ * Where a device raises its line.
+ *
+ * Nothing is delivered. A device that raises the line its kind has always had,
+ * and names itself as the one raising it, says the slots here were read right
+ * in the same way the ports do: the line number is the answer.
+ */
+class Lines : public IVmIoApic
+{
+public:
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
+    {
+        if (Object == nullptr)
+            return E_POINTER;
+
+        if (IsEqualIID(Interface, IID_IUnknown) ||
+            IsEqualIID(Interface, IID_IVmIoApic))
+        {
+            *Object = static_cast<IVmIoApic *>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        *Object = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return (ULONG)InterlockedIncrement(&m_Count);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        return (ULONG)InterlockedDecrement(&m_Count);
+    }
+
+    STDMETHODIMP WaitForIrqAssert(ULONG Line) override
+    {
+        UNREFERENCED_PARAMETER(Line);
+        return E_NOTIMPL;
+    }
+
+    STDMETHODIMP AssertIrq(UCHAR Line, UCHAR Source) override
+    {
+        printf("    line %u up, raised by %u\n", Line, Source);
+        m_Raised++;
+        return S_OK;
+    }
+
+    STDMETHODIMP DeassertIrq(UCHAR Line, UCHAR Source) override
+    {
+        printf("    line %u down, let go by %u\n", Line, Source);
+        return S_OK;
+    }
+
+    STDMETHODIMP RequestTimerAssist(UCHAR Line, ULONG64 Period,
+                                    int *Assisted, int *StillWanted) override
+    {
+        printf("    line %u asks to be left alone for %llu\n", Line,
+               (unsigned long long)Period);
+
+        if ((Assisted == nullptr) || (StillWanted == nullptr))
+            return E_POINTER;
+
+        *Assisted = 0;
+        *StillWanted = 1;
+        return S_OK;
+    }
+
+    STDMETHODIMP DeclineTimerAssist(UCHAR Line) override
+    {
+        UNREFERENCED_PARAMETER(Line);
+        return S_OK;
+    }
+
+    STDMETHODIMP RegisterRteChangeCallback(UCHAR Line,
+                                           IUnknown *Callback) override
+    {
+        UNREFERENCED_PARAMETER(Callback);
+        printf("    wants telling where line %u goes\n", Line);
+        return S_OK;
+    }
+
+    STDMETHODIMP UnregisterRteChangeCallback(UCHAR Line) override
+    {
+        UNREFERENCED_PARAMETER(Line);
+        return S_OK;
+    }
+
+    STDMETHODIMP SetIoApicBaseAddress(ULONG Address) override
+    {
+        printf("    moves the table to %08lx\n", Address);
+        return S_OK;
+    }
+
+    ULONG Raised() const noexcept { return m_Raised; }
+
+private:
+    volatile LONG m_Count = 1;
+    ULONG m_Raised = 0;
 };
 
 /*
@@ -323,18 +545,47 @@ static HRESULT STDMETHODCALLTYPE RepositorySlot(void *This, void *First,
  * comes back looking for the end of it, so handing back nothing is handing
  * back a walk off the end of memory.
  */
-static HRESULT STDMETHODCALLTYPE RepositoryName(void *This, wchar_t **Name,
+static HRESULT STDMETHODCALLTYPE RepositoryName(void *This, BSTR *Name,
                                                 const GUID *Which)
 {
     UNREFERENCED_PARAMETER(This);
     UNREFERENCED_PARAMETER(Which);
 
-    static wchar_t Called[] = L"ReactHypervTest";
-
     printf("    store: asked what this device is called\n");
 
-    if (Name != nullptr)
-        *Name = Called;
+    if (Name == nullptr)
+        return E_POINTER;
+
+    /*
+     * Allocated the way the caller will free it. What comes back here is let
+     * go of with the call that frees a string of that kind, so handing back
+     * anything else is handing back something that will be freed as though it
+     * were one, and the whole process goes down rather than the call failing.
+     */
+    *Name = SysAllocString(L"ReactHypervTest");
+
+    return (*Name != nullptr) ? S_OK : E_OUTOFMEMORY;
+}
+
+/*
+ * And the kind of device it is, which is a second identifier beside the one it
+ * was made under. Nothing here has more than one machine's worth of devices,
+ * so they are all of the same kind and it does not matter which; what matters
+ * is that one is written, because the caller turns it into a string straight
+ * after and a caller reading uninitialised memory is a caller doing anything.
+ */
+static HRESULT STDMETHODCALLTYPE RepositoryKind(void *This, void *Spare,
+                                                GUID *Kind)
+{
+    UNREFERENCED_PARAMETER(This);
+
+    printf("    store: asked what kind of device this is\n");
+
+    if (Spare != nullptr)
+        memset(Spare, 0, 16);
+
+    if (Kind != nullptr)
+        memset(Kind, 0, sizeof(*Kind));
 
     return S_OK;
 }
@@ -379,7 +630,8 @@ static const void *RepositoryVtable[REPOSITORY_SLOTS] =
     reinterpret_cast<const void *>(&RepositoryQuery),
     reinterpret_cast<const void *>(&RepositoryHold),
     reinterpret_cast<const void *>(&RepositoryDrop),
-    SLOT(3),  SLOT(4),  SLOT(5),  SLOT(6),  SLOT(7),
+    reinterpret_cast<const void *>(&RepositoryKind),
+    SLOT(4),  SLOT(5),  SLOT(6),  SLOT(7),
     SLOT(8),  SLOT(9),  SLOT(10),
     reinterpret_cast<const void *>(&RepositoryName),
     SLOT(12), SLOT(13), SLOT(14), SLOT(15),
@@ -468,6 +720,14 @@ public:
                 *Object = static_cast<IVmProcessorServices *>(&m_Processors);
                 return S_OK;
             }
+
+            if (IsEqualIID(Service, IID_IVmIoApic))
+            {
+                printf(" (given)\n");
+                m_Lines.AddRef();
+                *Object = static_cast<IVmIoApic *>(&m_Lines);
+                return S_OK;
+            }
         }
 
         printf("\n");
@@ -475,18 +735,95 @@ public:
     }
 
     ULONG Asked() const noexcept { return m_Asked; }
+    const Emulation &Addresses() const noexcept { return m_Emulation; }
+    const Lines &Wires() const noexcept { return m_Lines; }
 
 private:
     volatile LONG m_Count = 1;
     ULONG m_Asked = 0;
     Emulation m_Emulation;
     Processors m_Processors;
+    Lines m_Lines;
 };
 
 /* DRIVING ONE ****************************************************************/
 
 typedef HRESULT (STDAPICALLTYPE *PFN_GET_CLASS_OBJECT)(REFCLSID, REFIID,
                                                        void **);
+
+/* What the pair of chips is set up with, and a mask picked to be unmistakable */
+#define PIC_START           0x11
+#define PIC_FIRST_VECTOR    0x08
+#define PIC_SECOND_ON_LINE  0x04
+#define PIC_LIKE_AN_8086    0x01
+#define PIC_A_MASK          0xAB
+
+/*
+ * Writes what an interrupt controller is set up with and reads back the mask.
+ *
+ * A device that hands back the byte it was given has kept state across two
+ * calls it decoded itself, through ports it asked for through a slot nobody
+ * documented. Nothing short of the whole chain being right answers correctly.
+ */
+static void DrivePic(const Emulation &Addresses)
+{
+    IVndIoPortHandler *Command = Addresses.Claimed(0x20);
+    IVndIoPortHandler *Data = Addresses.Claimed(0x21);
+
+    if ((Command == nullptr) || (Data == nullptr))
+    {
+        printf("it never asked for 0020 and 0021, so there is nothing to "
+               "drive\n");
+        return;
+    }
+
+    Command->NotifyIoPortWrite(0x20, 1, PIC_START);
+    Data->NotifyIoPortWrite(0x21, 1, PIC_FIRST_VECTOR);
+    Data->NotifyIoPortWrite(0x21, 1, PIC_SECOND_ON_LINE);
+    Data->NotifyIoPortWrite(0x21, 1, PIC_LIKE_AN_8086);
+    Data->NotifyIoPortWrite(0x21, 1, PIC_A_MASK);
+
+    ULONG Value = 0xFFFFFFFF;
+    const HRESULT Status = Data->NotifyIoPortRead(0x21, 1, &Value);
+
+    printf("set it up and read the mask back: %08lx, %02lx\n", Status, Value);
+
+    if ((SUCCEEDED(Status)) && ((Value & 0xFF) == PIC_A_MASK))
+        printf("which is what was written, so it is running\n");
+    else
+        printf("which is not what was written\n");
+}
+
+/*
+ * Whatever can be asked of the kind that was loaded. Only the pair of chips
+ * has an answer worth checking; for anything else, reading the first port it
+ * asked for at least says it decodes rather than faults.
+ */
+static void Drive(const Probe &Handed, const GUID &Which)
+{
+    const Emulation &Addresses = Handed.Addresses();
+
+    if (Addresses.Ports() == 0)
+        return;
+
+    if (IsEqualGUID(Which, CLSID_PicDevice))
+    {
+        DrivePic(Addresses);
+        return;
+    }
+
+    for (ULONG Index = 0; Index < Addresses.Kept(); Index++)
+    {
+        const Emulation::Reserved &One = Addresses.Port(Index);
+        ULONG Value = 0xFFFFFFFF;
+
+        const HRESULT Status = One.Handler->NotifyIoPortRead(One.First, 1,
+                                                             &Value);
+
+        printf("reading %04x: %08lx, %02lx\n", One.First, Status,
+               Value & 0xFF);
+    }
+}
 
 static bool ReadGuid(const char *Text, GUID &Which)
 {
@@ -510,7 +847,7 @@ static bool ReadGuid(const char *Text, GUID &Which)
     return true;
 }
 
-namespace hv { int Run(const char *Path, ULONG Steps); }
+namespace hv { int Run(const char *Path, ULONG Steps, ULONG64 Ram); }
 
 static void Usage()
 {
@@ -533,6 +870,7 @@ int main(int argc, char **argv)
     const char *Class = nullptr;
     const char *Firmware = nullptr;
     ULONG Steps = 20000;
+    ULONG64 Ram = 0;
 
     /*
      * Said the moment it is said. What is being driven here is somebody else's
@@ -553,6 +891,8 @@ int main(int argc, char **argv)
             Firmware = argv[++Index];
         else if ((strcmp(argv[Index], "--steps") == 0) && ((Index + 1) < argc))
             Steps = (ULONG)strtoul(argv[++Index], nullptr, 0);
+        else if ((strcmp(argv[Index], "--memory") == 0) && ((Index + 1) < argc))
+            Ram = strtoull(argv[++Index], nullptr, 0);
         else
         {
             Usage();
@@ -561,7 +901,7 @@ int main(int argc, char **argv)
     }
 
     if (Firmware != nullptr)
-        return hv::Run(Firmware, Steps);
+        return hv::Run(Firmware, Steps, Ram);
 
     if ((Library == nullptr) || (Class == nullptr))
     {
@@ -632,9 +972,9 @@ int main(int argc, char **argv)
     /* What it says it cannot come up without, before it is asked for anything */
     ULONG Count = 0;
     GUID *Services = nullptr;
-    ULONG Optional = 0;
+    ULONG Required = 0;
 
-    Status = Device->GetDependencies(nullptr, &Count, &Services, &Optional);
+    Status = Device->GetDependencies(nullptr, &Count, &Services, &Required);
 
     if (SUCCEEDED(Status) && (Services != nullptr))
     {
@@ -643,7 +983,7 @@ int main(int argc, char **argv)
         for (ULONG Index = 0; Index < Count; Index++)
         {
             printf("  %2lu %s ", Index,
-                   ((Optional >> Index) & 1) ? "may have" : "must have");
+                   (Index < Required) ? "must have" : "may have");
             SayGuid(Services[Index]);
             printf("\n");
         }
@@ -659,29 +999,58 @@ int main(int argc, char **argv)
     Probe Handed;
 
     printf("bringing it up:\n");
-    Status = Device->Initialize(&TheRepository, 0,
-                                static_cast<IUnknown *>(&Handed));
 
-    printf("it came up with %08lx after asking for %lu\n", Status,
+    const HRESULT Came = Device->Initialize(&TheRepository, 0,
+                                            static_cast<IUnknown *>(&Handed));
+
+    printf("it came up with %08lx after asking for %lu\n", Came,
            Handed.Asked());
 
     /*
-     * And then where it wants to answer, which is asked for separately and is
-     * the whole point: a device naming the addresses its kind has always had
-     * says the call it named them through was read right, argument order and
-     * all. Asked even when bringing it up did not finish, because what it
-     * needs to reserve addresses it already has.
+     * And then the rest of the way up. Reserving comes first and on most kinds
+     * does nothing but move a state along; the addresses are asked for when the
+     * machine is switched on, which is why that step is here and not skipped.
      */
     printf("asking where it answers:\n");
-    Status = Device->StartReservingResources();
-    printf("it asked for what it wanted with %08lx\n", Status);
+    Status = Device->StartReservingResources(&TheRepository, VDEV_STATE_NONE);
+    printf("it started with %08lx\n", Status);
 
     if (SUCCEEDED(Status))
     {
-        Status = Device->FinishReservingResources();
+        Status = Device->FinishReservingResources(VDEV_STATE_NONE);
         printf("and settled with %08lx\n", Status);
     }
 
+    /*
+     * Only if it came up. A device that was refused something it said it could
+     * not do without has nothing to switch on, and most of them go straight at
+     * whatever they were refused rather than checking again.
+     */
+    if (FAILED(Came))
+    {
+        printf("it was refused something it must have, so it is not driven\n");
+        Device->Teardown();
+        Device->Release();
+        return 0;
+    }
+
+    printf("switching it on:\n");
+    Status = Device->PowerOnCold(VDEV_STATE_NONE);
+    printf("it came on with %08lx, having asked for %lu run(s) of ports\n",
+           Status, Handed.Addresses().Ports());
+
+    /*
+     * And then whether it answers. A device that hands back what its kind has
+     * always had, for a port it asked for itself, is running: nothing short of
+     * every slot in every interface being right gets this far.
+     */
+    Drive(Handed, Wanted);
+
+    if (Handed.Wires().Raised() != 0)
+        printf("and it raised its line %lu time(s)\n", Handed.Wires().Raised());
+
+    Device->PowerOff(VDEV_STATE_NONE);
+    Device->Teardown();
     Device->Release();
     return 0;
 }

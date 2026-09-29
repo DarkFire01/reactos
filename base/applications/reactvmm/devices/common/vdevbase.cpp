@@ -12,15 +12,26 @@ namespace rtvm
 
 volatile LONG g_Outstanding = 0;
 
-HRESULT PublishDependencies(const GUID *const *Wanted, ULONG Count,
-                            ULONG *Answered, GUID **Services, ULONG *Optional)
+/**
+ * @brief
+ * Hands back the services a device wants, with the ones it needs first.
+ *
+ * @param Spare
+ * How many of the trailing entries the device will come up without. The caller
+ * puts those last, which is the order the answer has to be in.
+ */
+HRESULT PublishDependencies(const GUID *const *Wanted, ULONG Count, ULONG Spare,
+                            ULONG *Answered, GUID **Services, ULONG *Required)
 {
-    if ((Answered == nullptr) || (Services == nullptr) || (Optional == nullptr))
+    if ((Answered == nullptr) || (Services == nullptr) || (Required == nullptr))
         return E_POINTER;
 
     *Answered = 0;
     *Services = nullptr;
-    *Optional = 0;
+    *Required = 0;
+
+    if (Spare > Count)
+        return E_INVALIDARG;
 
     /*
      * The manager frees this, so it has to come from the allocator both ends
@@ -36,6 +47,7 @@ HRESULT PublishDependencies(const GUID *const *Wanted, ULONG Count,
 
     *Services = List;
     *Answered = Count;
+    *Required = Count - Spare;
     return S_OK;
 }
 
@@ -92,6 +104,8 @@ HRESULT VirtualDeviceBase::FindService(REFIID Service, void **Object)
 
 STDMETHODIMP VirtualDeviceBase::Teardown()
 {
+    FreeReservations();
+
     if (m_Processors != nullptr)
     {
         m_Processors->Release();
@@ -119,10 +133,62 @@ HRESULT VirtualDeviceBase::ReservePorts(USHORT First, USHORT Last,
     if (m_Emulation == nullptr)
         return E_UNEXPECTED;
 
-    void *Registration = nullptr;
+    if (m_Reservations >= MaxReservations)
+        return E_OUTOFMEMORY;
 
-    return m_Emulation->RegisterIoPortHandler(First, Last, VDEV_WIDTH_ANY,
-                                              Handler, 0, &Registration);
+    IVndRegistration *Registration = nullptr;
+
+    const HRESULT Status = m_Emulation->RegisterIoPortHandler(First, Last,
+                                                              VDEV_WIDTH_ANY,
+                                                              Handler, 0,
+                                                              &Registration);
+
+    if (SUCCEEDED(Status) && (Registration != nullptr))
+        m_Reserved[m_Reservations++] = Registration;
+
+    return Status;
+}
+
+HRESULT VirtualDeviceBase::ReserveMemory(ULONG64 Base, ULONG64 Length,
+                                         IVndMmioHandler *Handler)
+{
+    if (m_Emulation == nullptr)
+        return E_UNEXPECTED;
+
+    if (m_Reservations >= MaxReservations)
+        return E_OUTOFMEMORY;
+
+    IVndRegistration *Registration = nullptr;
+
+    const HRESULT Status = m_Emulation->RegisterMmioHandler(
+        Base / VDEV_PAGE_SIZE, Length / VDEV_PAGE_SIZE, Handler, TRUE,
+        &Registration);
+
+    if (SUCCEEDED(Status) && (Registration != nullptr))
+        m_Reserved[m_Reservations++] = Registration;
+
+    return Status;
+}
+
+/*
+ * Revoked and then let go, in that order. Revoking is what clears the bus;
+ * letting go is only this device saying it has finished with the token, and
+ * doing it the other way round hands the bus a range nobody answers for.
+ */
+void VirtualDeviceBase::FreeReservations()
+{
+    while (m_Reservations > 0)
+    {
+        IVndRegistration *One = m_Reserved[--m_Reservations];
+
+        m_Reserved[m_Reservations] = nullptr;
+
+        if (One == nullptr)
+            continue;
+
+        One->Revoke();
+        One->Release();
+    }
 }
 
 } /* namespace rtvm */

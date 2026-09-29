@@ -75,12 +75,12 @@ namespace rtvm
 VideoDevice::VideoDevice()
 {
     InitializeCriticalSection(&m_Lock);
-    Reset();
+    Reset(VDEV_STATE_NONE);
 }
 
 VideoDevice::~VideoDevice()
 {
-    PowerOff();
+    PowerOff(VDEV_STATE_NONE);
     DeleteCriticalSection(&m_Lock);
 }
 
@@ -125,7 +125,7 @@ STDMETHODIMP VideoDevice::QueryInterface(REFIID Interface, void **Object)
 }
 
 STDMETHODIMP VideoDevice::GetDependencies(void *Repository, ULONG *Count,
-                                          GUID **Services, ULONG *Optional)
+                                          GUID **Services, ULONG *Required)
 {
     static const GUID *const Wanted[] =
     {
@@ -135,18 +135,17 @@ STDMETHODIMP VideoDevice::GetDependencies(void *Repository, ULONG *Count,
 
     UNREFERENCED_PARAMETER(Repository);
 
-    const HRESULT Status = PublishDependencies(Wanted, ARRAYSIZE(Wanted),
-                                               Count, Services, Optional);
-
-    /* A machine with nothing looking at it still has a page to write into */
-    if (SUCCEEDED(Status) && (Optional != nullptr))
-        *Optional = 1u << 1;
+    const HRESULT Status = PublishDependencies(Wanted, ARRAYSIZE(Wanted), 1,
+                                               Count, Services, Required);
 
     return Status;
 }
 
-STDMETHODIMP VideoDevice::StartReservingResources()
+STDMETHODIMP VideoDevice::StartReservingResources(void *Repository, VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(Repository);
+    UNREFERENCED_PARAMETER(State);
+
     HRESULT Status = ReservePorts(VIDEO_FIRST_PORT, VIDEO_LAST_PORT, this);
 
     if (SUCCEEDED(Status))
@@ -162,20 +161,18 @@ STDMETHODIMP VideoDevice::StartReservingResources()
     if (Emulation() == nullptr)
         return E_UNEXPECTED;
 
-    void *Registration = nullptr;
-
     /*
      * The whole window rather than the part the characters sit in, because
      * where inside it a guest is answered for is the guest's own choice and it
      * makes that choice by writing a register this device owns.
      */
-    return Emulation()->RegisterMmioHandler(VIDEO_WINDOW_BASE / VDEV_PAGE_SIZE,
-                                            VIDEO_WINDOW_SIZE / VDEV_PAGE_SIZE,
-                                            this, TRUE, &Registration);
+    return ReserveMemory(VIDEO_WINDOW_BASE, VIDEO_WINDOW_SIZE, this);
 }
 
-STDMETHODIMP VideoDevice::Reset()
+STDMETHODIMP VideoDevice::Reset(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     EnterCriticalSection(&m_Lock);
 
     /* Every cell a space in the colour a screen comes up in */
@@ -238,8 +235,10 @@ STDMETHODIMP VideoDevice::Reset()
     return S_OK;
 }
 
-STDMETHODIMP VideoDevice::PowerOnCold()
+STDMETHODIMP VideoDevice::PowerOnCold(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     if (m_Monitor == nullptr)
         FindService(IID_IMonitorDevice, reinterpret_cast<void **>(&m_Monitor));
 
@@ -282,8 +281,10 @@ STDMETHODIMP VideoDevice::PowerOnCold()
     return (m_Thread != nullptr) ? S_OK : E_FAIL;
 }
 
-STDMETHODIMP VideoDevice::PowerOff()
+STDMETHODIMP VideoDevice::PowerOff(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     if (m_Thread != nullptr)
     {
         InterlockedExchange(&m_Stopping, 1);
@@ -1116,7 +1117,7 @@ STDMETHODIMP VideoDevice::NotifyMmioWrite(ULONG64 Address, ULONG Length,
     return S_OK;
 }
 
-STDMETHODIMP VideoDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
+STDMETHODIMP VideoDevice::NotifyIoPortRead(USHORT Port, USHORT Width,
                                            ULONG *Value)
 {
     UNREFERENCED_PARAMETER(Width);
@@ -1247,7 +1248,7 @@ STDMETHODIMP VideoDevice::NotifyIoPortRead(USHORT Port, ULONG Width,
  * two ports, which is what the wire does with a wide one and what everything
  * naming a register and setting it in a single instruction relies on.
  */
-STDMETHODIMP VideoDevice::NotifyIoPortWrite(USHORT Port, ULONG Width,
+STDMETHODIMP VideoDevice::NotifyIoPortWrite(USHORT Port, USHORT Width,
                                             ULONG Value)
 {
     HRESULT Status = S_OK;

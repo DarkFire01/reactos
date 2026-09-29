@@ -92,18 +92,18 @@ public:
     STDMETHODIMP_(ULONG) Release() override { return VirtualDeviceBase::Release(); }
 
     STDMETHODIMP GetDependencies(void *Repository, ULONG *Count,
-                                 GUID **Services, ULONG *Optional) override;
-    STDMETHODIMP StartReservingResources() override;
-    STDMETHODIMP PowerOnCold() override;
-    STDMETHODIMP PowerOff() override;
-    STDMETHODIMP Reset() override;
+                                 GUID **Services, ULONG *Required) override;
+    STDMETHODIMP StartReservingResources(void *Repository, VDEV_STATE State) override;
+    STDMETHODIMP PowerOnCold(VDEV_STATE State) override;
+    STDMETHODIMP PowerOff(VDEV_STATE State) override;
+    STDMETHODIMP Reset(VDEV_STATE State) override;
 
     /* What the machine was told to put in the drives */
     STDMETHODIMP SetSettings(const char *Settings) override;
 
     STDMETHODIMP NotifyUnregistered() override { return S_OK; }
-    STDMETHODIMP NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value) override;
-    STDMETHODIMP NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value) override;
+    STDMETHODIMP NotifyIoPortRead(USHORT Port, USHORT Width, ULONG *Value) override;
+    STDMETHODIMP NotifyIoPortWrite(USHORT Port, USHORT Width, ULONG Value) override;
 
     /* What it says it is to whatever is walking the bus */
     STDMETHODIMP NotifyPciConfigAccess(UCHAR Bus, UCHAR Device, UCHAR Function,

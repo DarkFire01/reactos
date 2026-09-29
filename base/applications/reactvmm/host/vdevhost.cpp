@@ -61,7 +61,7 @@ STDMETHODIMP LegacyPortAdapter::NotifyMmioWrite(ULONG64 Address, ULONG Length,
          : E_FAIL;
 }
 
-STDMETHODIMP LegacyPortAdapter::NotifyIoPortRead(USHORT Port, ULONG Width,
+STDMETHODIMP LegacyPortAdapter::NotifyIoPortRead(USHORT Port, USHORT Width,
                                                  ULONG *Value)
 {
     if (Value == nullptr)
@@ -81,7 +81,7 @@ STDMETHODIMP LegacyPortAdapter::NotifyIoPortRead(USHORT Port, ULONG Width,
     return S_OK;
 }
 
-STDMETHODIMP LegacyPortAdapter::NotifyIoPortWrite(USHORT Port, ULONG Width,
+STDMETHODIMP LegacyPortAdapter::NotifyIoPortWrite(USHORT Port, USHORT Width,
                                                   ULONG Value)
 {
     if ((m_Device->Vtable == nullptr) || (m_Device->Vtable->IoWrite == nullptr))
@@ -111,12 +111,68 @@ STDMETHODIMP EmulationServices::QueryInterface(REFIID Interface, void **Object)
     return E_NOINTERFACE;
 }
 
+/* WHAT A RESERVATION IS ******************************************************/
+
+STDMETHODIMP Reservation::QueryInterface(REFIID Interface, void **Object)
+{
+    if (Object == nullptr)
+        return E_POINTER;
+
+    if (IsEqualIID(Interface, IID_IUnknown))
+    {
+        *Object = static_cast<IVndRegistration *>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    *Object = nullptr;
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP_(ULONG) Reservation::AddRef()
+{
+    return (ULONG)InterlockedIncrement(&m_Count);
+}
+
+STDMETHODIMP_(ULONG) Reservation::Release()
+{
+    const ULONG Left = (ULONG)InterlockedDecrement(&m_Count);
+
+    if (Left == 0)
+        delete this;
+
+    return Left;
+}
+
+/*
+ * Giving the range back. A device that is switched off and on again reserves
+ * afresh, so nothing is kept here to reserve again with.
+ */
+STDMETHODIMP Reservation::Revoke()
+{
+    if (m_Ports != nullptr)
+    {
+        m_Bus.ForgetPorts(m_Ports);
+        m_Ports = nullptr;
+    }
+
+    if (m_Memory != nullptr)
+    {
+        m_Bus.ForgetMemory(m_Memory);
+        m_Memory = nullptr;
+    }
+
+    return S_OK;
+}
+
+/* WHERE A DEVICE ASKS FOR ONE ************************************************/
+
 STDMETHODIMP EmulationServices::RegisterIoPortHandler(USHORT FirstPort,
                                                       USHORT LastPort,
                                                       ULONG Widths,
                                                       IVndIoPortHandler *Handler,
                                                       ULONG Flags,
-                                                      void **Registration)
+                                                      IVndRegistration **Registration)
 {
     UNREFERENCED_PARAMETER(Widths);
     UNREFERENCED_PARAMETER(Flags);
@@ -136,12 +192,16 @@ STDMETHODIMP EmulationServices::RegisterIoPortHandler(USHORT FirstPort,
 
     Log(RtvmLogTrace, "ports %04x to %04x taken\n", FirstPort, LastPort);
 
-    /*
-     * What comes back is only ever handed straight back to give the range up,
-     * so the handler itself is as good a token as any and needs nothing kept.
-     */
     if (Registration != nullptr)
-        *Registration = Handler;
+    {
+        *Registration = new Reservation(m_Owner.Owner().SystemBus(), Handler);
+
+        if (*Registration == nullptr)
+        {
+            m_Owner.Owner().SystemBus().ForgetPorts(Handler);
+            return E_OUTOFMEMORY;
+        }
+    }
 
     return S_OK;
 }
@@ -150,7 +210,7 @@ STDMETHODIMP EmulationServices::RegisterMmioHandler(ULONG64 FirstPage,
                                                     ULONG64 PageCount,
                                                     IVndMmioHandler *Handler,
                                                     BOOL Enabled,
-                                                    void **Registration)
+                                                    IVndRegistration **Registration)
 {
     UNREFERENCED_PARAMETER(Enabled);
 
@@ -184,7 +244,15 @@ STDMETHODIMP EmulationServices::RegisterMmioHandler(ULONG64 FirstPage,
     }
 
     if (Registration != nullptr)
-        *Registration = Handler;
+    {
+        *Registration = new Reservation(m_Owner.Owner().SystemBus(), Handler);
+
+        if (*Registration == nullptr)
+        {
+            m_Owner.Owner().SystemBus().ForgetMemory(Handler);
+            return E_OUTOFMEMORY;
+        }
+    }
 
     return S_OK;
 }
@@ -587,10 +655,10 @@ bool VdevHost::Create(REFCLSID Class, const char *Name,
         return false;
     }
 
-    Status = Device->StartReservingResources();
+    Status = Device->StartReservingResources(nullptr, VDEV_STATE_NONE);
 
     if (SUCCEEDED(Status))
-        Status = Device->FinishReservingResources();
+        Status = Device->FinishReservingResources(VDEV_STATE_NONE);
 
     if (FAILED(Status))
     {
@@ -650,7 +718,7 @@ bool VdevHost::PowerOnAll()
 {
     for (const LoadedVdev &Kept : m_Vdevs)
     {
-        const HRESULT Status = Kept.Device->PowerOnCold();
+        const HRESULT Status = Kept.Device->PowerOnCold(VDEV_STATE_NONE);
 
         if (FAILED(Status))
         {
@@ -666,16 +734,16 @@ void VdevHost::PowerOffAll()
 {
     /* Backwards, so that a device goes before whatever it leans on */
     for (ULONG Index = m_Vdevs.Count(); Index > 0; Index--)
-        m_Vdevs[Index - 1].Device->PowerOff();
+        m_Vdevs[Index - 1].Device->PowerOff(VDEV_STATE_NONE);
 }
 
 void VdevHost::ResetAll()
 {
     for (const LoadedVdev &Kept : m_Vdevs)
-        Kept.Device->Reset();
+        Kept.Device->Reset(VDEV_STATE_NONE);
 
     for (const LoadedVdev &Kept : m_Vdevs)
-        Kept.Device->PostReset();
+        Kept.Device->PostReset(VDEV_STATE_NONE);
 }
 
 } /* namespace rtvm */

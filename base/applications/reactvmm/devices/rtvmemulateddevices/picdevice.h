@@ -30,20 +30,20 @@ public:
     STDMETHODIMP_(ULONG) Release() override { return VirtualDeviceBase::Release(); }
 
     STDMETHODIMP GetDependencies(void *Repository, ULONG *Count,
-                                 GUID **Services, ULONG *Optional) override;
-    STDMETHODIMP StartReservingResources() override;
-    STDMETHODIMP PowerOnCold() override;
-    STDMETHODIMP Reset() override;
+                                 GUID **Services, ULONG *Required) override;
+    STDMETHODIMP StartReservingResources(void *Repository, VDEV_STATE State) override;
+    STDMETHODIMP PowerOnCold(VDEV_STATE State) override;
+    STDMETHODIMP Reset(VDEV_STATE State) override;
 
     /* What a device raising a line sees */
-    STDMETHODIMP EndOfInterrupt(ULONG Line) override;
-    STDMETHODIMP AssertIrq(ULONG Line) override;
-    STDMETHODIMP DeassertIrq(ULONG Line) override;
+    STDMETHODIMP EndOfInterrupt() override;
+    STDMETHODIMP AssertIrq(UCHAR Line, UCHAR Source) override;
+    STDMETHODIMP DeassertIrq(UCHAR Line, UCHAR Source) override;
 
     /* The four addresses the pair answers at */
     STDMETHODIMP NotifyUnregistered() override { return S_OK; }
-    STDMETHODIMP NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value) override;
-    STDMETHODIMP NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value) override;
+    STDMETHODIMP NotifyIoPortRead(USHORT Port, USHORT Width, ULONG *Value) override;
+    STDMETHODIMP NotifyIoPortWrite(USHORT Port, USHORT Width, ULONG Value) override;
 
 private:
     struct Chip
@@ -58,10 +58,13 @@ private:
         bool Cascade;
         bool AutoEnd;
         bool ReadService;
+
+        /* Which devices are holding each of its eight lines, one bit each */
+        ULONG Held[8];
     };
 
     void Clear();
-    void Follow(ULONG Line, bool Asserted);
+    void Follow(UCHAR Line, UCHAR Source, bool Asserted);
     void Cascade();
     void Offer();
     void Settle();

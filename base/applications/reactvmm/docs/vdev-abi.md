@@ -58,30 +58,47 @@ three slots are `IUnknown`.
 | 0    | `QueryInterface`              |                                                       |
 | 1    | `AddRef`                      |                                                       |
 | 2    | `Release`                     |                                                       |
-| 3    | `GetDependencies`             | Which services the device cannot do without           |
-| 4    | `Initialize`                  | Handed those services                                 |
-| 5    | `Teardown`                    | Gives them back                                       |
-| 6    | `StartReservingResources`     | Asks for its ports, memory windows and lines          |
-| 7    | `FinishReservingResources`    | They are now its own                                  |
-| 8    | `FreeReservedResources`       |                                                       |
-| 9    | `SaveReservedResources`       |                                                       |
-| 10   | `PowerOnCold`                 | Coming up from nothing                                |
-| 11   | `PowerOnRestore`              | Coming up into a state that was saved                 |
-| 12   | `PowerOff`                    |                                                       |
-| 13   | `Save`                        | Writes its state out                                  |
-| 14   | `Resume`                      |                                                       |
-| 15   | `Pause`                       |                                                       |
-| 16   | `EnableOptimizations`         |                                                       |
-| 17   | `StartDisableOptimizations`   |                                                       |
-| 18   | `FinishDisableOptimizations`  |                                                       |
-| 19   | `Reset`                       |                                                       |
-| 20   | `PostReset`                   | Once everything else has reset too                    |
+| 3    | `GetDependencies(repo, *count, **services, *required)` | Which services it wants     |
+| 4    | `Initialize(repo, reserved, provider)` | Handed those services                |
+| 5    | `Teardown()`                  | Gives them back                                       |
+| 6    | `StartReservingResources(repo, state)` | Moves a state along, mostly          |
+| 7    | `FinishReservingResources(state)` |                                                   |
+| 8    | `FreeReservedResources()`     |                                                       |
+| 9    | `SaveReservedResources(repo)`  |                                                      |
+| 10   | `PowerOnCold(state)`          | Coming up from nothing, and where ports are asked for |
+| 11   | `PowerOnRestore(repo, state)` | Coming up into a state that was saved                 |
+| 12   | `PowerOff(state)`             | Revokes every reservation and lets it go              |
+| 13   | `Save(repo, state)`           | Writes its state out                                  |
+| 14   | `Resume(state)`               |                                                       |
+| 15   | `Pause(state)`                |                                                       |
+| 16   | `EnableOptimizations(state)`  |                                                       |
+| 17   | `StartDisableOptimizations(state)` |                                                  |
+| 18   | `FinishDisableOptimizations(state)` |                                                |
+| 19   | `Reset(state)`                |                                                       |
+| 20   | `PostReset(state)`            | Once everything else has reset too                    |
 | 21   | vector deleting destructor    |                                                       |
+
+The slot order was read off the interrupt controller's own table, and every entry
+above is the method that binary has in that slot.
+
+`state` is a mask carried into every step. Almost nothing reads it, and the two
+places that do test one bit each, so a machine that has never been saved passes
+nothing.
+
+Nothing is reserved at slot 6. The base class there only records which state the
+device was in and moves it on; the ports and memory windows are asked for at slot
+10, and given back at slot 12. A host that stops after slot 7 sees a device that
+answered for nothing and reports success.
 
 The dependency list is part of the type, not of the object: a device names the
 services it wants in its own declaration, and `GetDependencies` reports them. The
-interrupt controller asks only for `IVmAmd64EmulationServices` and
-`IVmProcessorServices`. The firmware loader asks for around twenty.
+interrupt controller asks for `IVmAmd64EmulationServices` and
+`IVmProcessorServices`. The firmware loader asks for twenty.
+
+`required` is a count and not a mask of which. The answer is ordered, with the
+services the device cannot come up without first and the ones it will do without
+last, and `required` says where the break is. The optional ones are filled in from
+the back, so they come out in the reverse of the order the device declared them.
 
 ## How a port reaches a device
 
@@ -111,12 +128,27 @@ The call is slot six of `IVmAmd64EmulationServices`:
              ULONG Widths,
              IVndIoPortHandler *Handler,
              ULONG Flags,
-             PVOID *Registration)
+             IVndRegistration **Registration)
 
 `Widths` is a mask of the access sizes the device will answer for, and every
 device seen so far passes 31, which is all of them. `Flags` is zero everywhere.
 The transfer controller registers eighteen ranges this way and the video device
 two, each into its own slot of an array the device keeps.
+
+What comes back is an object of its own, with `IUnknown` and then one more slot
+that gives the range up:
+
+| Slot | Method           |
+|------|------------------|
+| 0    | `QueryInterface` |
+| 1    | `AddRef`         |
+| 2    | `Release`        |
+| 3    | `Revoke`         |
+
+A device being switched off calls slot 3 and then slot 2, in that order, on each
+one it holds. Handing it back its own handler instead of a separate object makes
+that second call a `Release` on the device, which frees it while the host is
+still driving it.
 
 `IVndMmioHandler` is the same idea for a window of memory.
 
@@ -133,9 +165,26 @@ dependencies. The interrupt controller is the clearest case.
 | 0    | `QueryInterface`   |
 | 1    | `AddRef`           |
 | 2    | `Release`          |
-| 3    | `EndOfInterrupt`   |
-| 4    | `AssertIrq`        |
-| 5    | `DeassertIrq`      |
+| 3    | `EndOfInterrupt()`             |
+| 4    | `AssertIrq(line, source)`      |
+| 5    | `DeassertIrq(line, source)`    |
+
+Both of the last two take a line and a source, each one byte. A line is shared, so
+`source` says which of the devices on it is raising it: the controller keeps a
+32-bit mask per line and the line only falls once the last of them has let go.
+Letting go without naming the raiser drops the line for whichever of the others
+was still waiting to be looked at.
+
+`EndOfInterrupt` names nothing. Each of the two chips finishes whichever of its
+lines it had in service, which is the lowest numbered one.
+
+Line two is where the second chip hangs off the first, so nothing else may raise
+it: a device that did would look to the first chip exactly like the second one
+asking. The shipped controller asserts on that line rather than carrying it.
+
+`IVmIoApic` takes a line and a source the same way. Its `WaitForIrqAssert` takes a
+whole word, its `RequestTimerAssist` takes a line, a period and two places to
+write to, and its `UnregisterRteChangeCallback` takes only the line.
 
 The others of this kind, not yet laid out here: `IVmPitService`,
 `IVmDmaController`, `IVmIoApic`, `IVmPciBusService`, `IVmSuperIo`,
@@ -324,7 +373,37 @@ and memory windows are reserved. After it, by how often they are asked for:
 `IVmHandleBrokerServices`, `IVmbusServices`.
 
 A dependency may be wrapped in `OptionalService<>`, which is how a device says it
-will come up without one.
+will come up without one. Those are the ones that come last in the answer and are
+not counted in `required`.
+
+The identifiers for those, read off the two devices that want the most of them by
+matching the answer against the list in their own declaration:
+
+| Service                    | Identifier                               |
+|----------------------------|------------------------------------------|
+| `IVmbusServices`           | `{ece3f556-f87f-4120-9e37-aaa55e5e0ca9}` |
+| `IVmBootMemoryTopology`    | `{b80fe14e-b5f6-43d4-b206-40b3bf511959}` |
+| `IVmMemoryTopology`        | `{4f99e8b7-37bc-4ee4-b539-50263b4783b6}` |
+| `IVmMemoryManagement`      | `{e7bb1d35-ad97-464b-8a3f-95f43e0f4389}` |
+| `IVmBootStateImporter`     | `{034e6428-672e-403a-a342-4f4c8d6a705c}` |
+| `IVmPowerManagementDevice` | `{3f60da8b-e8ef-403a-8173-9ef5c6ee0152}` |
+| `IVmManagementAccess`      | `{bb011455-a4f6-4e08-9982-09afd303df20}` |
+| `ISecurityManager`         | `{5315507b-19f0-4e86-ab51-18f159f1a197}` |
+| `IVmPartitionServices`     | `{773e9a95-1b2d-4479-955f-402000ebe6c2}` |
+| `IVmHandleBrokerServices`  | `{e9e61d12-a2c3-4e55-ac35-b8f26d216a69}` |
+| `IVmGuestCrashServices`    | `{4f80e76e-0d0f-44e8-87bd-0280e1799351}` |
+| `IVmCrashRegisterServices` | `{f0109dc7-3f96-41b1-b0bc-5aea911c404c}` |
+| `IVmGuestStateRawStorage`  | `{f299b139-1550-4327-84f7-c1f433258eef}` |
+| `IVmGuestStateAccess`      | `{96ddf97a-0b79-4966-8b56-740f0d766e2e}` |
+| `IVpciServices`            | `{c8769be0-2c2b-4ded-bd3c-ff7515d74e90}` |
+| `IVpmemController`         | `{521087ab-2963-4859-b6d9-d6f1ec9f3382}` |
+| `IVmBattery`               | `{2a811607-c21c-47da-84a0-3c3b29aad4e4}` |
+| `IVmPsp`                   | `{b0c36d19-3f91-4b3d-b8dc-eee5bb2c9aba}` |
+
+Two devices name overlapping sets in different orders, and both agree on every
+identifier they share. The last slot of the guest emulation device's answer comes
+out as `IProxiedPciVgaDevice`, whose identifier was already known from elsewhere,
+which is what says the ordering was read the right way round.
 
 ## Which devices live where
 

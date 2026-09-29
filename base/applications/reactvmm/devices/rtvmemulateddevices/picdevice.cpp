@@ -81,7 +81,7 @@ STDMETHODIMP PicDevice::QueryInterface(REFIID Interface, void **Object)
 /* BEING BROUGHT UP ***********************************************************/
 
 STDMETHODIMP PicDevice::GetDependencies(void *Repository, ULONG *Count,
-                                        GUID **Services, ULONG *Optional)
+                                        GUID **Services, ULONG *Required)
 {
     static const GUID *const Wanted[] =
     {
@@ -91,12 +91,15 @@ STDMETHODIMP PicDevice::GetDependencies(void *Repository, ULONG *Count,
 
     UNREFERENCED_PARAMETER(Repository);
 
-    return PublishDependencies(Wanted, ARRAYSIZE(Wanted),
-                               Count, Services, Optional);
+    return PublishDependencies(Wanted, ARRAYSIZE(Wanted), 0,
+                               Count, Services, Required);
 }
 
-STDMETHODIMP PicDevice::StartReservingResources()
+STDMETHODIMP PicDevice::StartReservingResources(void *Repository, VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(Repository);
+    UNREFERENCED_PARAMETER(State);
+
     HRESULT Status = ReservePorts(PIC_MASTER_COMMAND, PIC_MASTER_DATA, this);
 
     if (SUCCEEDED(Status))
@@ -105,14 +108,16 @@ STDMETHODIMP PicDevice::StartReservingResources()
     return Status;
 }
 
-STDMETHODIMP PicDevice::PowerOnCold()
+STDMETHODIMP PicDevice::PowerOnCold(VDEV_STATE State)
 {
-    Reset();
+    Reset(State);
     return S_OK;
 }
 
-STDMETHODIMP PicDevice::Reset()
+STDMETHODIMP PicDevice::Reset(VDEV_STATE State)
 {
+    UNREFERENCED_PARAMETER(State);
+
     EnterCriticalSection(&m_Lock);
     Clear();
     LeaveCriticalSection(&m_Lock);
@@ -154,14 +159,21 @@ void PicDevice::Clear()
  * question: the latch says an interrupt is owed, and the wire says whether the
  * device is still asking. One that holds its line up wants another interrupt
  * after each is answered, and one that pulsed does not.
+ *
+ * More than one device can be wired to a line, so what is followed is which of
+ * them are holding it rather than whether anything is. The wire is up while any
+ * of them is, and the one that lets go last is the one that drops it.
  */
-void PicDevice::Follow(ULONG Line, bool Asserted)
+void PicDevice::Follow(UCHAR Line, UCHAR Source, bool Asserted)
 {
     Chip &Chip = m_Chip[Line >= 8 ? 1 : 0];
-    const UCHAR Bit = (UCHAR)(1u << (Line & 7));
+    const ULONG Which = Line & 7;
+    const UCHAR Bit = (UCHAR)(1u << Which);
 
     if (Asserted)
     {
+        Chip.Held[Which] |= 1UL << Source;
+
         /* Only a rising edge latches, so holding a line up is not a stream */
         if (!(Chip.Level & Bit))
             Chip.Request |= Bit;
@@ -170,7 +182,10 @@ void PicDevice::Follow(ULONG Line, bool Asserted)
     }
     else
     {
-        Chip.Level &= (UCHAR)~Bit;
+        Chip.Held[Which] &= ~(1UL << Source);
+
+        if (Chip.Held[Which] == 0)
+            Chip.Level &= (UCHAR)~Bit;
     }
 
     if (Line >= 8)
@@ -334,30 +349,37 @@ void PicDevice::Service()
     m_Offered = VDEV_NO_VECTOR;
 }
 
-STDMETHODIMP PicDevice::AssertIrq(ULONG Line)
+/*
+ * Line two is where the second chip hangs, so nothing else may raise it: a
+ * device that did would look to the first chip exactly like the second one
+ * asking, and be answered with whichever vector the second chip owed.
+ */
+STDMETHODIMP PicDevice::AssertIrq(UCHAR Line, UCHAR Source)
 {
-    if (Line > 15)
+    if ((Line > 15) || (Line == VDEV_IRQ_CASCADE) ||
+        (Source >= VDEV_IRQ_SOURCES))
         return E_INVALIDARG;
 
     Settle();
 
     EnterCriticalSection(&m_Lock);
-    Follow(Line, true);
+    Follow(Line, Source, true);
     LeaveCriticalSection(&m_Lock);
 
     Offer();
     return S_OK;
 }
 
-STDMETHODIMP PicDevice::DeassertIrq(ULONG Line)
+STDMETHODIMP PicDevice::DeassertIrq(UCHAR Line, UCHAR Source)
 {
-    if (Line > 15)
+    if ((Line > 15) || (Line == VDEV_IRQ_CASCADE) ||
+        (Source >= VDEV_IRQ_SOURCES))
         return E_INVALIDARG;
 
     Settle();
 
     EnterCriticalSection(&m_Lock);
-    Follow(Line, false);
+    Follow(Line, Source, false);
     LeaveCriticalSection(&m_Lock);
 
     Offer();
@@ -372,19 +394,33 @@ STDMETHODIMP PicDevice::DeassertIrq(ULONG Line)
  * Taking one clears what was owed. If the device is still holding its line up
  * it is owed another straight away, which is what keeps a level like the serial
  * port's being served until the device itself lets go.
+ *
+ * Which line is not named, so what finishes is whatever each chip was busiest
+ * with: the lowest numbered of the ones it has in service, that being the one
+ * it would have been serving.
  */
-STDMETHODIMP PicDevice::EndOfInterrupt(ULONG Line)
+STDMETHODIMP PicDevice::EndOfInterrupt()
 {
-    if (Line > 15)
-        return E_INVALIDARG;
-
     Settle();
 
     EnterCriticalSection(&m_Lock);
 
-    Chip &Chip = m_Chip[Line >= 8 ? 1 : 0];
+    for (Chip &One : m_Chip)
+    {
+        if (One.Service == 0)
+            continue;
 
-    Chip.Service &= (UCHAR)~(1u << (Line & 7));
+        for (ULONG Which = 0; Which < 8; Which++)
+        {
+            const UCHAR Bit = (UCHAR)(1u << Which);
+
+            if ((One.Service & Bit) != 0)
+            {
+                One.Service &= (UCHAR)~Bit;
+                break;
+            }
+        }
+    }
 
     LeaveCriticalSection(&m_Lock);
 
@@ -419,7 +455,7 @@ void PicDevice::Take(Chip &Chip, int Line)
 
 /* THE REGISTERS **************************************************************/
 
-STDMETHODIMP PicDevice::NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value)
+STDMETHODIMP PicDevice::NotifyIoPortRead(USHORT Port, USHORT Width, ULONG *Value)
 {
     UNREFERENCED_PARAMETER(Width);
 
@@ -441,7 +477,7 @@ STDMETHODIMP PicDevice::NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value)
     return S_OK;
 }
 
-STDMETHODIMP PicDevice::NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value)
+STDMETHODIMP PicDevice::NotifyIoPortWrite(USHORT Port, USHORT Width, ULONG Value)
 {
     const UCHAR Byte = (UCHAR)(Value & 0xFF);
     const bool IsCommand = (Port == PIC_MASTER_COMMAND) ||

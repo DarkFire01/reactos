@@ -53,7 +53,7 @@ public:
      * ones that want something override this.
      */
     STDMETHODIMP GetDependencies(void *Repository, ULONG *Count,
-                                 GUID **Services, ULONG *Optional) override
+                                 GUID **Services, ULONG *Required) override
     {
         UNREFERENCED_PARAMETER(Repository);
 
@@ -63,8 +63,8 @@ public:
         if (Count != nullptr)
             *Count = 0;
 
-        if (Optional != nullptr)
-            *Optional = 0;
+        if (Required != nullptr)
+            *Required = 0;
 
         return S_OK;
     }
@@ -73,25 +73,103 @@ public:
                             IUnknown *Provider) override;
     STDMETHODIMP Teardown() override;
 
-    STDMETHODIMP StartReservingResources() override { return S_OK; }
-    STDMETHODIMP FinishReservingResources() override { return S_OK; }
-    STDMETHODIMP FreeReservedResources() override { return S_OK; }
-    STDMETHODIMP SaveReservedResources() override { return S_OK; }
+    STDMETHODIMP StartReservingResources(void *Repository,
+                                         VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(Repository);
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
 
-    STDMETHODIMP PowerOnCold() override { return S_OK; }
-    STDMETHODIMP PowerOnRestore() override { return S_OK; }
-    STDMETHODIMP PowerOff() override { return S_OK; }
-    STDMETHODIMP Save() override { return S_OK; }
-    STDMETHODIMP Resume() override { return S_OK; }
-    STDMETHODIMP Pause() override { return S_OK; }
+    STDMETHODIMP FinishReservingResources(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
 
-    /* Nothing here is fast enough to be worth an optimisation to turn off */
-    STDMETHODIMP EnableOptimizations() override { return S_OK; }
-    STDMETHODIMP StartDisableOptimizations() override { return S_OK; }
-    STDMETHODIMP FinishDisableOptimizations() override { return S_OK; }
+    STDMETHODIMP FreeReservedResources() override
+    {
+        FreeReservations();
+        return S_OK;
+    }
 
-    STDMETHODIMP Reset() override { return S_OK; }
-    STDMETHODIMP PostReset() override { return S_OK; }
+    STDMETHODIMP SaveReservedResources(void *Repository) override
+    {
+        UNREFERENCED_PARAMETER(Repository);
+        return S_OK;
+    }
+
+    STDMETHODIMP PowerOnCold(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    /*
+     * Nothing here keeps anything worth writing out, so coming back into a
+     * state that was saved is the same as coming up from nothing.
+     */
+    STDMETHODIMP PowerOnRestore(void *Repository, VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(Repository);
+        return PowerOnCold(State);
+    }
+
+    STDMETHODIMP PowerOff(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    STDMETHODIMP Save(void *Repository, VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(Repository);
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    STDMETHODIMP Resume(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    STDMETHODIMP Pause(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    /* Nothing here is fast enough to be worth an optimization to turn off */
+    STDMETHODIMP EnableOptimizations(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    STDMETHODIMP StartDisableOptimizations(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    STDMETHODIMP FinishDisableOptimizations(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    STDMETHODIMP Reset(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
+
+    STDMETHODIMP PostReset(VDEV_STATE State) override
+    {
+        UNREFERENCED_PARAMETER(State);
+        return S_OK;
+    }
 
 protected:
     /* Whatever the manager gave, from the moment Initialize was called */
@@ -101,6 +179,10 @@ protected:
     /* Handed the ports this device answers for, and the handler to reach it by */
     HRESULT ReservePorts(USHORT First, USHORT Last, IVndIoPortHandler *Handler);
 
+    /* And the same for a window of memory, which is counted in pages */
+    HRESULT ReserveMemory(ULONG64 Base, ULONG64 Length,
+                          IVndMmioHandler *Handler);
+
     /*
      * Anything else the manager has, asked for after the fact. A device that
      * leans on another device asks here rather than when it was initialised,
@@ -108,18 +190,28 @@ protected:
      */
     HRESULT FindService(REFIID Service, void **Object);
 
+    /* Gives every range this device reserved back, in the order it took them */
+    void FreeReservations();
+
 private:
+    /* As many runs of ports as any one device here asks for */
+    static const ULONG MaxReservations = 8;
+
     volatile LONG m_Count = 1;
     IVmServiceAccess *m_Access = nullptr;
     IVmAmd64EmulationServices *m_Emulation = nullptr;
     IVmProcessorServices *m_Processors = nullptr;
+
+    IVndRegistration *m_Reserved[MaxReservations] = {};
+    ULONG m_Reservations = 0;
 };
 
 /* Fills in a list of identifiers for GetDependencies, allocated as it must be */
 HRESULT PublishDependencies(_In_reads_(Count) const GUID *const *Wanted,
                             _In_ ULONG Count,
+                            _In_ ULONG Spare,
                             _Out_ ULONG *Answered,
                             _Outptr_ GUID **Services,
-                            _Out_ ULONG *Optional);
+                            _Out_ ULONG *Required);
 
 } /* namespace rtvm */
