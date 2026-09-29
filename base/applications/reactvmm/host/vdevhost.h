@@ -47,7 +47,7 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }
     STDMETHODIMP_(ULONG) Release() override { return Drop(); }
 
-    STDMETHODIMP Unknown3() override { return E_NOTIMPL; }
+    STDMETHODIMP NotifyUnregistered() override { return S_OK; }
 
     STDMETHODIMP NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value) override;
     STDMETHODIMP NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value) override;
@@ -73,14 +73,16 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }
     STDMETHODIMP_(ULONG) Release() override { return Drop(); }
 
-    STDMETHODIMP RegisterGpaRange(ULONG64 FirstPage, ULONG64 PageCount,
-                                  void *Handler, BOOL Enabled,
-                                  void **Registration) override;
-    STDMETHODIMP Unknown4() override { return E_NOTIMPL; }
-    STDMETHODIMP Unknown5() override { return E_NOTIMPL; }
+    STDMETHODIMP RegisterMmioHandler(ULONG64 FirstPage, ULONG64 PageCount,
+                                     IVndMmioHandler *Handler, BOOL Enabled,
+                                     void **Registration) override;
+    STDMETHODIMP RegisterMbHandler() override { return E_NOTIMPL; }
+    STDMETHODIMP RegisterApicEoiHandler() override { return E_NOTIMPL; }
     STDMETHODIMP RegisterIoPortHandler(USHORT FirstPort, USHORT LastPort,
                                        ULONG Widths, IVndIoPortHandler *Handler,
                                        ULONG Flags, void **Registration) override;
+    STDMETHODIMP RegisterMsrHandler() override { return E_NOTIMPL; }
+    STDMETHODIMP RegisterExceptionHandler() override { return E_NOTIMPL; }
 
 private:
     VdevHost &m_Owner;
@@ -102,13 +104,18 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }
     STDMETHODIMP_(ULONG) Release() override { return Drop(); }
 
-    STDMETHODIMP Unknown3() override { return E_NOTIMPL; }
-    STDMETHODIMP Unknown4() override { return E_NOTIMPL; }
-    STDMETHODIMP Unknown5() override { return E_NOTIMPL; }
+    STDMETHODIMP GetVirtualProcessorCount(ULONG *Count) override;
+    STDMETHODIMP SetVirtualProcessorState() override { return E_NOTIMPL; }
+    STDMETHODIMP GetVirtualProcessorState() override { return E_NOTIMPL; }
 
-    STDMETHODIMP SetPendingInterrupt(ULONG64 Kind, ULONG64 Reserved,
-                                     ULONG Vector) override;
-    STDMETHODIMP TakePendingInterrupt() override;
+    STDMETHODIMP AssertVirtualProcessorInterrupt(ULONG64 Delivery,
+                                                 ULONG64 Reserved,
+                                                 ULONG Vector) override;
+    STDMETHODIMP ClearVirtualProcessorInterrupt() override;
+
+    STDMETHODIMP ConfigureInterceptThrottlingExclusion() override { return E_NOTIMPL; }
+    STDMETHODIMP StopAllVirtualProcessors() override { return E_NOTIMPL; }
+    STDMETHODIMP StartAllVirtualProcessors() override { return E_NOTIMPL; }
 
 private:
     VdevHost &m_Owner;

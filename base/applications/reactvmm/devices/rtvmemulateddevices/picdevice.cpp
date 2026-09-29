@@ -278,7 +278,8 @@ void PicDevice::Offer()
      */
     if (Changed && (Processors() != nullptr))
     {
-        Processors()->SetPendingInterrupt(VDEV_INTERRUPT_FROM_PIC, 0, Vector);
+        Processors()->AssertVirtualProcessorInterrupt(VDEV_DELIVERY_EXTERNAL,
+                                                     0, Vector);
         m_Outstanding = (Vector != VDEV_NO_VECTOR);
     }
 
@@ -304,7 +305,7 @@ void PicDevice::Settle()
     EnterCriticalSection(&m_Lock);
 
     if (m_Outstanding && (Processors() != nullptr) &&
-        SUCCEEDED(Processors()->TakePendingInterrupt()))
+        SUCCEEDED(Processors()->ClearVirtualProcessorInterrupt()))
     {
         Service();
     }
