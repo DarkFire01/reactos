@@ -21,16 +21,6 @@
 
 /* DEFINES ********************************************************************/
 
-/* The interval timer: three counters and the register that picks one */
-#define PIT_COUNTER0        0x0040
-#define PIT_COUNTER1        0x0041
-#define PIT_COUNTER2        0x0042
-#define PIT_CONTROL         0x0043
-#define PIT_LINE            0
-
-/* What it counts at, which is a third of the old colour burst and always has been */
-#define PIT_FREQUENCY       1193182
-
 /* The clock, reached by naming a location and then reading it */
 #define CMOS_ADDRESS        0x0070
 #define CMOS_DATA           0x0071
@@ -40,13 +30,6 @@
 #define SYSTEM_CONTROL      0x0092
 #define SYSTEM_A20          0x02
 
-/* The port a machine writes to say which of the two chips it is talking to */
-#define PIT_SELECT_SHIFT    6
-#define PIT_ACCESS_SHIFT    4
-#define PIT_ACCESS_LATCH    0
-#define PIT_ACCESS_LOW      1
-#define PIT_ACCESS_HIGH     2
-#define PIT_ACCESS_BOTH     3
 
 /* Which of the locations behind the clock mean something */
 #define CMOS_SECONDS        0x00
@@ -79,23 +62,9 @@
 
 /* TYPES **********************************************************************/
 
-typedef struct _PIT_COUNTER
-{
-    USHORT Reload;
-    USHORT Latched;
-    UCHAR Access;
-    UCHAR Mode;
-    BOOLEAN Latch;
-    BOOLEAN ReadHigh;
-    BOOLEAN WriteHigh;
-    BOOLEAN Running;
-} PIT_COUNTER, *PPIT_COUNTER;
-
 typedef struct _CHIPSET_DEVICE
 {
     RTVM_DEVICE Device;
-
-    PIT_COUNTER Counter[3];
 
     /* Where the clock is pointing, and what is behind it */
     UCHAR CmosAddress;
@@ -106,11 +75,7 @@ typedef struct _CHIPSET_DEVICE
 
     BOOLEAN A20Enabled;
 
-    /* The tick, kept by a thread because nothing else here has a clock */
-    HANDLE Ticker;
     volatile LONG Stopping;
-    ULONG TickHertz;
-    volatile LONG LineUp;
 
     CRITICAL_SECTION Lock;
 } CHIPSET_DEVICE, *PCHIPSET_DEVICE;
@@ -201,76 +166,6 @@ ChipsetFillCmos(
     }
 }
 
-/**
- * @brief
- * Holds the timer's line up for as long as nothing has taken the interrupt.
- *
- * @remarks
- * The counter is not really counting: what matters to anything waiting on it
- * is that the line goes up at about the right rate, and a thread asleep for
- * the right number of milliseconds does that without burning a processor
- * pretending to be a crystal.
- */
-static
-DWORD
-WINAPI
-ChipsetTicker(
-    _In_ LPVOID Parameter)
-{
-    PCHIPSET_DEVICE Chipset = (PCHIPSET_DEVICE)Parameter;
-    const RTVM_HOST_INTERFACE *Host = Chipset->Device.Host;
-
-    while (InterlockedCompareExchange(&Chipset->Stopping, 0, 0) == 0)
-    {
-        ULONG Hertz = Chipset->TickHertz;
-        DWORD Wait;
-
-        if (Hertz == 0)
-            Hertz = 18;
-
-        Wait = 1000 / Hertz;
-        if (Wait == 0)
-            Wait = 1;
-
-        Sleep(Wait);
-
-        if (InterlockedCompareExchange(&Chipset->Stopping, 0, 0) != 0)
-            break;
-
-        /*
-         * Raised and let go at once. The controller latches the edge, so a
-         * guest that is slow to answer still gets exactly one interrupt
-         * rather than a line held up until it looks.
-         */
-        Host->SetInterruptLine(Host->Context, PIT_LINE, TRUE);
-        Host->SetInterruptLine(Host->Context, PIT_LINE, FALSE);
-    }
-
-    return 0;
-}
-
-/* How often counter zero was set up to fire */
-static
-VOID
-ChipsetRateChanged(
-    _Inout_ PCHIPSET_DEVICE Chipset)
-{
-    ULONG Reload = Chipset->Counter[0].Reload;
-
-    /* Zero means the whole range, which is the slowest it will go */
-    if (Reload == 0)
-        Reload = 65536;
-
-    Chipset->TickHertz = PIT_FREQUENCY / Reload;
-
-    if (Chipset->TickHertz == 0)
-        Chipset->TickHertz = 1;
-
-    /* Faster than this costs more in exits than it is worth to anything */
-    if (Chipset->TickHertz > 1000)
-        Chipset->TickHertz = 1000;
-}
-
 /* THE DEVICE *****************************************************************/
 
 static
@@ -283,10 +178,6 @@ ChipsetStart(
     const RTVM_HOST_INTERFACE *Host = Device->Host;
     RTVM_STATUS Status;
 
-    Status = Host->ClaimPortRange(Host->Context, Device, PIT_COUNTER0, 4);
-    if (!RTVM_SUCCESS(Status))
-        return Status;
-
     Status = Host->ClaimPortRange(Host->Context, Device, CMOS_ADDRESS, 2);
     if (!RTVM_SUCCESS(Status))
         return Status;
@@ -297,20 +188,11 @@ ChipsetStart(
 
     ChipsetFillCmos(Chipset);
 
-    Chipset->Ticker = CreateThread(NULL, 0, ChipsetTicker, Chipset, 0, NULL);
-    if (Chipset->Ticker == NULL)
-    {
-        Host->Log(Host->Context, RtvmLogWarning,
-                  "%s: nothing will keep time, the ticker would not start\n",
-                  Device->Name);
-    }
-
     Host->Log(Host->Context, RtvmLogInfo,
-              "%s: timer at %04x on line %u, clock at %04x, %llu MB reported\n",
+              "%s: clock at %04x, gate at %04x, %llu MB reported\n",
               Device->Name,
-              PIT_COUNTER0,
-              PIT_LINE,
               CMOS_ADDRESS,
+              SYSTEM_CONTROL,
               Chipset->MemorySize / (1024 * 1024));
 
     return RtvmOk;
@@ -325,13 +207,6 @@ ChipsetStop(
     PCHIPSET_DEVICE Chipset = (PCHIPSET_DEVICE)Device->DeviceContext;
 
     InterlockedExchange(&Chipset->Stopping, 1);
-
-    if (Chipset->Ticker != NULL)
-    {
-        WaitForSingleObject(Chipset->Ticker, 2000);
-        CloseHandle(Chipset->Ticker);
-        Chipset->Ticker = NULL;
-    }
 }
 
 static
@@ -341,17 +216,6 @@ ChipsetReset(
     _In_ PRTVM_DEVICE Device)
 {
     PCHIPSET_DEVICE Chipset = (PCHIPSET_DEVICE)Device->DeviceContext;
-    ULONG Index;
-
-    for (Index = 0; Index < RTL_NUMBER_OF(Chipset->Counter); Index++)
-    {
-        memset(&Chipset->Counter[Index], 0, sizeof(Chipset->Counter[Index]));
-        Chipset->Counter[Index].Access = PIT_ACCESS_BOTH;
-    }
-
-    /* What the firmware sets it to, and what it is left at if nothing does */
-    Chipset->Counter[0].Reload = 0;
-    Chipset->TickHertz = 18;
 
     Chipset->CmosAddress = 0;
 
@@ -394,41 +258,6 @@ ChipsetIoRead(
 
     switch (Port)
     {
-        case PIT_COUNTER0:
-        case PIT_COUNTER1:
-        case PIT_COUNTER2:
-        {
-            PPIT_COUNTER Counter = &Chipset->Counter[Port - PIT_COUNTER0];
-            USHORT Reading = Counter->Latch ? Counter->Latched : Counter->Reload;
-
-            switch (Counter->Access)
-            {
-                case PIT_ACCESS_LOW:
-                    Result = (UCHAR)(Reading & 0xFF);
-                    break;
-
-                case PIT_ACCESS_HIGH:
-                    Result = (UCHAR)(Reading >> 8);
-                    break;
-
-                default:
-                    /* Both halves, and which one is next alternates */
-                    if (Counter->ReadHigh)
-                    {
-                        Result = (UCHAR)(Reading >> 8);
-                        Counter->Latch = FALSE;
-                    }
-                    else
-                    {
-                        Result = (UCHAR)(Reading & 0xFF);
-                    }
-
-                    Counter->ReadHigh = !Counter->ReadHigh;
-                    break;
-            }
-            break;
-        }
-
         case CMOS_ADDRESS:
             /* Reading this back was never guaranteed, and nothing relies on it */
             Result = Chipset->CmosAddress;
@@ -475,66 +304,6 @@ ChipsetIoWrite(
 
     switch (Port)
     {
-        case PIT_COUNTER0:
-        case PIT_COUNTER1:
-        case PIT_COUNTER2:
-        {
-            ULONG Which = Port - PIT_COUNTER0;
-            PPIT_COUNTER Counter = &Chipset->Counter[Which];
-
-            switch (Counter->Access)
-            {
-                case PIT_ACCESS_LOW:
-                    Counter->Reload = (USHORT)((Counter->Reload & 0xFF00) | Byte);
-                    break;
-
-                case PIT_ACCESS_HIGH:
-                    Counter->Reload = (USHORT)((Counter->Reload & 0x00FF) | (Byte << 8));
-                    break;
-
-                default:
-                    if (Counter->WriteHigh)
-                        Counter->Reload = (USHORT)((Counter->Reload & 0x00FF) | (Byte << 8));
-                    else
-                        Counter->Reload = (USHORT)((Counter->Reload & 0xFF00) | Byte);
-
-                    Counter->WriteHigh = !Counter->WriteHigh;
-                    break;
-            }
-
-            Counter->Running = TRUE;
-
-            if (Which == 0)
-                ChipsetRateChanged(Chipset);
-            break;
-        }
-
-        case PIT_CONTROL:
-        {
-            ULONG Which = (Byte >> PIT_SELECT_SHIFT) & 3;
-            ULONG Access = (Byte >> PIT_ACCESS_SHIFT) & 3;
-
-            /* The fourth is not a counter, it is a way of asking about them */
-            if (Which == 3)
-                break;
-
-            if (Access == PIT_ACCESS_LATCH)
-            {
-                /* Freeze what it says now, so it can be read without moving */
-                Chipset->Counter[Which].Latched = Chipset->Counter[Which].Reload;
-                Chipset->Counter[Which].Latch = TRUE;
-                Chipset->Counter[Which].ReadHigh = FALSE;
-                break;
-            }
-
-            Chipset->Counter[Which].Access = (UCHAR)Access;
-            Chipset->Counter[Which].Mode = (UCHAR)((Byte >> 1) & 7);
-            Chipset->Counter[Which].ReadHigh = FALSE;
-            Chipset->Counter[Which].WriteHigh = FALSE;
-            Chipset->Counter[Which].Latch = FALSE;
-            break;
-        }
-
         case CMOS_ADDRESS:
             Chipset->CmosAddress = Byte;
             break;

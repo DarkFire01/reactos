@@ -526,6 +526,10 @@ bool Machine::Build(const Configuration &Config)
     if (!m_Vdevs->Create(CLSID_IoApicDevice, "line router"))
         return false;
 
+    /* Last of these, because its line has to have somewhere to go */
+    if (!m_Vdevs->Create(CLSID_PitDevice, "interval timer"))
+        return false;
+
     m_Devices.Reset(new DeviceHost(*this));
 
     if (!m_Devices)
@@ -624,12 +628,6 @@ void Machine::SetInterruptLine(ULONG Line, bool Asserted)
     else
         Router->DeassertIrq(Line);
 
-    /*
-     * Counted rather than logged. A busy line buries a quiet one in a log, and
-     * which lines moved at all is the question worth being able to answer.
-     */
-    if (Asserted && (Line < RTL_NUMBER_OF(m_LineCount)))
-        m_LineCount[Line]++;
 }
 
 bool Machine::ReadGuest(ULONG64 Address, void *Buffer, ULONG Length)
@@ -680,8 +678,22 @@ void Machine::Snapshot(MachineStatus &Status) const
     Status.Refused = m_Refused;
     Status.Running = (m_Running != 0);
 
+    /*
+     * Worked out from what was delivered rather than from what was raised.
+     * A device raises its line on the router, which is a device too, so the
+     * manager no longer sees every line that moves; what it does see is every
+     * vector that went in.
+     *
+     * Which line a vector came from is only knowable by where the firmware put
+     * the two chips' bases. A guest that moved them lights the wrong lamp,
+     * which is a smaller price than lighting none.
+     */
     for (ULONG Line = 0; Line < RTL_NUMBER_OF(Status.LineCount); Line++)
-        Status.LineCount[Line] = m_LineCount[Line];
+    {
+        const ULONG Vector = (Line < 8) ? (0x08 + Line) : (0x70 + (Line - 8));
+
+        Status.LineCount[Line] = m_VectorCount[Vector];
+    }
 }
 
 void Machine::Stop()
@@ -1195,14 +1207,6 @@ StopReason Machine::Run()
     /* What the hardware actually did, which is worth knowing either way */
     Log(RtvmLogInfo, "%lu interrupt(s) taken\n", m_Delivered);
 
-    for (ULONG Line = 0; Line < RTL_NUMBER_OF(m_LineCount); Line++)
-    {
-        if (m_LineCount[Line] != 0)
-        {
-            Log(RtvmLogInfo, "    line %2lu raised %lu time(s)\n",
-                Line, m_LineCount[Line]);
-        }
-    }
 
     /* And what was put in, which is not always one for one with the above */
     for (ULONG Vector = 0; Vector < RTL_NUMBER_OF(m_VectorCount); Vector++)

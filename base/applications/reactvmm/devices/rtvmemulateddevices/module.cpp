@@ -21,6 +21,7 @@
 
 #include "picdevice.h"
 #include "dmadevice.h"
+#include "pitdevice.h"
 
 namespace rtvm
 {
@@ -39,6 +40,11 @@ static IVirtualDevice *MakeDmaDevice(void)
     return static_cast<IVirtualDevice *>(new DmaDevice());
 }
 
+static IVirtualDevice *MakePitDevice(void)
+{
+    return static_cast<IVirtualDevice *>(new PitDevice());
+}
+
 /*
  * Every kind this library has. A manager walks nothing but this, and adding a
  * device is adding a line to it.
@@ -51,7 +57,8 @@ static const struct
 } DeviceMap[] =
 {
     { &CLSID_PicDevice, MakePicDevice, "interrupt controller" },
-    { &CLSID_DmaControllerDevice, MakeDmaDevice, "transfer controller" }
+    { &CLSID_DmaControllerDevice, MakeDmaDevice, "transfer controller" },
+    { &CLSID_PitDevice, MakePitDevice, "interval timer" }
 };
 
 /**
