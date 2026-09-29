@@ -129,6 +129,48 @@ private:
 };
 
 /*
+ * The guest's memory, for a device that reaches into it rather than waiting to
+ * be faulted into. Only the two that read and write it are answered: the rest
+ * build the memory a guest has, and that is the manager's to do.
+ */
+class GuestMemoryAccess : public IVmGuestMemoryAccess, private Permanent
+{
+public:
+    explicit GuestMemoryAccess(VdevHost &Owner) noexcept : m_Owner(Owner) {}
+
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override;
+    STDMETHODIMP_(ULONG) AddRef() override { return Hold(); }
+    STDMETHODIMP_(ULONG) Release() override { return Drop(); }
+
+    STDMETHODIMP CreateDeviceMemoryBlock() override { return E_NOTIMPL; }
+    STDMETHODIMP CreateRamGpaRange() override { return E_NOTIMPL; }
+    STDMETHODIMP CreateRamApertureFromByteRange() override { return E_NOTIMPL; }
+    STDMETHODIMP CreateSectionBackedGpaRange() override { return E_NOTIMPL; }
+    STDMETHODIMP CreateDaxFileBackedGpaRange() override { return E_NOTIMPL; }
+    STDMETHODIMP RegisterForVtl2Access() override { return E_NOTIMPL; }
+
+    STDMETHODIMP ReadRamBytes(ULONG64 Address, void *Buffer,
+                              ULONG Length) override;
+    STDMETHODIMP WriteRamBytes(ULONG64 Address, const void *Buffer,
+                               ULONG Length) override;
+    STDMETHODIMP ReadRamBytesEx() override { return E_NOTIMPL; }
+    STDMETHODIMP WriteRamBytesEx() override { return E_NOTIMPL; }
+
+    STDMETHODIMP CreateNotificationWithHandler() override { return E_NOTIMPL; }
+    STDMETHODIMP GetHclErrorPageLocations() override { return E_NOTIMPL; }
+
+    STDMETHODIMP TranslateGvaToGpa(ULONG64 Address, ULONG64 *Physical) override;
+
+    STDMETHODIMP CreateMemoryBlockPageAperture() override { return E_NOTIMPL; }
+    STDMETHODIMP DestroyAperture() override { return E_NOTIMPL; }
+    STDMETHODIMP RegisterForEmulationOnMemoryWrite() override { return E_NOTIMPL; }
+    STDMETHODIMP UnregisterEmulationOnMemoryWrite() override { return E_NOTIMPL; }
+
+private:
+    VdevHost &m_Owner;
+};
+
+/*
  * How a device reaches everything else. A device names the services it wants
  * and is given them one at a time through here.
  */
@@ -185,6 +227,7 @@ public:
     Machine &Owner() noexcept { return m_Machine; }
     EmulationServices &Emulation() noexcept { return m_Emulation; }
     ProcessorServices &Processors() noexcept { return m_Processors; }
+    GuestMemoryAccess &GuestMemory() noexcept { return m_Memory; }
 
     /* The ones every other device leans on, once they have come up */
     IVmPicService *Interrupts() const noexcept { return m_Interrupts; }
@@ -205,6 +248,7 @@ private:
     Machine &m_Machine;
     EmulationServices m_Emulation;
     ProcessorServices m_Processors;
+    GuestMemoryAccess m_Memory;
     ServiceAccess m_Services;
 
     Array<HMODULE, MaximumLibraries> m_Libraries;
