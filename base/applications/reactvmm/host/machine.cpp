@@ -178,17 +178,12 @@ bool Machine::CreatePartition(const Configuration &Config)
         return false;
     }
 
-    const auto Flags = static_cast<WHV_MAP_GPA_RANGE_FLAGS>(
-        WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagWrite | WHvMapGpaRangeFlagExecute);
-
-    Result = platform::MapGpaRange(Partition, m_Memory.Base(), 0,
-                                   m_Memory.Size(), Flags);
-    if (FAILED(Result))
-    {
-        Log(RtvmLogError, "the memory would not map, %08lx\n", Result);
-        return false;
-    }
-
+    /*
+     * The memory is allocated here but not mapped. Mapping waits until the
+     * devices have said which windows they answer for, because a window that
+     * is mapped as memory is one the guest writes straight into and the device
+     * behind it never hears about.
+     */
     Log(RtvmLogInfo, "%llu MB of memory, %lu processor(s)\n",
         static_cast<unsigned long long>(Config.MemorySize / (1024 * 1024)),
         Config.ProcessorCount);
@@ -348,6 +343,109 @@ bool Machine::PrepareProcessor(ULONG Index)
  * else has ever claimed: the interrupt table is below it and the data area is
  * above it, and it is free again the moment the firmware has read it.
  */
+/**
+ * @brief
+ * Maps the guest's memory, leaving a hole wherever a device answers.
+ *
+ * @remarks
+ * A window that is mapped as memory is one the guest writes straight into, and
+ * the device behind it is never told. So the ranges devices claimed are left
+ * unmapped: an access to one of them has nowhere to land and comes back to the
+ * manager as an exit, which is what gets it to the device.
+ *
+ * The claims are put in order first, because they are made in whatever order
+ * the devices were started and the gaps between them have to be walked from
+ * the bottom up.
+ */
+bool Machine::MapMemory()
+{
+    struct Hole
+    {
+        ULONG64 Base;
+        ULONG64 Length;
+    };
+
+    Array<Hole, MaximumMemoryRanges> Holes;
+
+    for (ULONG Index = 0; Index < m_Bus.ClaimedCount(); Index++)
+    {
+        Hole One = {};
+
+        m_Bus.ClaimedAt(Index, One.Base, One.Length);
+
+        /* Anything past the end of memory is not a hole in it */
+        if (One.Base >= m_Memory.Size())
+            continue;
+
+        Holes.Add(One);
+    }
+
+    /* In order, by where they start */
+    for (ULONG Outer = 0; Outer + 1 < Holes.Count(); Outer++)
+    {
+        for (ULONG Inner = 0; Inner + 1 < Holes.Count() - Outer; Inner++)
+        {
+            if (Holes[Inner].Base > Holes[Inner + 1].Base)
+            {
+                const Hole Swap = Holes[Inner];
+
+                Holes[Inner] = Holes[Inner + 1];
+                Holes[Inner + 1] = Swap;
+            }
+        }
+    }
+
+    const auto Flags = static_cast<WHV_MAP_GPA_RANGE_FLAGS>(
+        WHvMapGpaRangeFlagRead | WHvMapGpaRangeFlagWrite | WHvMapGpaRangeFlagExecute);
+
+    ULONG64 Next = 0;
+
+    for (ULONG Index = 0; Index <= Holes.Count(); Index++)
+    {
+        const ULONG64 Until = (Index < Holes.Count()) ? Holes[Index].Base
+                                                      : m_Memory.Size();
+
+        if (Until > Next)
+        {
+            const ULONG64 Length = Until - Next;
+            void *Where = m_Memory.At(Next, Length);
+
+            if (Where == nullptr)
+                return false;
+
+            const HRESULT Result = platform::MapGpaRange(m_Partition, Where,
+                                                         Next, Length, Flags);
+            if (FAILED(Result))
+            {
+                Log(RtvmLogError, "%llx for %llx would not map, %08lx\n",
+                    static_cast<unsigned long long>(Next),
+                    static_cast<unsigned long long>(Length),
+                    Result);
+                return false;
+            }
+
+            Log(RtvmLogTrace, "memory %012llx to %012llx\n",
+                static_cast<unsigned long long>(Next),
+                static_cast<unsigned long long>(Next + Length - 1));
+        }
+
+        if (Index < Holes.Count())
+        {
+            const ULONG64 End = Holes[Index].Base + Holes[Index].Length;
+
+            Log(RtvmLogTrace, "device %012llx to %012llx\n",
+                static_cast<unsigned long long>(Holes[Index].Base),
+                static_cast<unsigned long long>(End - 1));
+
+            /* Overlapping claims were refused, so this only ever moves forward */
+            if (End > Next)
+                Next = End;
+        }
+    }
+
+    return true;
+}
+
 bool Machine::DescribeMachine(const Configuration &Config)
 {
     struct Description
@@ -406,7 +504,8 @@ bool Machine::Build(const Configuration &Config)
     {
         "rtvmserial.dll",
         "rtvmstorage.dll",
-        "rtvmchipset.dll"
+        "rtvmchipset.dll",
+        "rtvmvideo.dll"
     };
 
     for (const char *Name : Modules)
@@ -435,6 +534,10 @@ bool Machine::Build(const Configuration &Config)
     }
 
     if (!m_Devices->StartAll())
+        return false;
+
+    /* Now that every window is claimed, the rest of it becomes memory */
+    if (!MapMemory())
         return false;
 
     if (!LoadFirmware(Config.FirmwarePath.Get()))
@@ -623,7 +726,11 @@ void Machine::DeliverInterrupt(ULONG Index)
 
 StopReason Machine::RunProcessor(ULONG Index)
 {
+    /* How many accesses to nothing are tolerated before the machine is stopped */
+    constexpr ULONG StrayLimit = 64;
+
     WHV_RUN_VP_EXIT_CONTEXT Exit = {};
+    ULONG Stray = 0;
 
     while (InterlockedCompareExchange(&m_Stopping, 0, 0) == 0)
     {
@@ -680,6 +787,7 @@ StopReason Machine::RunProcessor(ULONG Index)
                 }
 
                 StepOver(Index, Exit.VpContext.Rip, Exit.VpContext.InstructionLength);
+                Stray = 0;
                 break;
             }
 
@@ -687,20 +795,49 @@ StopReason Machine::RunProcessor(ULONG Index)
             {
                 const ULONG64 Address = Exit.MemoryAccess.Gpa;
 
-                if (!m_Bus.MemoryClaimed(Address))
+                if (m_Bus.MemoryClaimed(Address))
                 {
-                    Log(RtvmLogWarning,
-                        "processor %lu touched %012llx, where there is nothing\n",
-                        Index, static_cast<unsigned long long>(Address));
+                    /*
+                     * A device answers for this, and carrying out the faulting
+                     * instruction against it is what belongs here. Until one
+                     * needs it, stepping over is enough to keep going.
+                     */
+                    StepOver(Index, Exit.VpContext.Rip,
+                             Exit.VpContext.InstructionLength);
+                    Stray = 0;
+                    break;
                 }
 
                 /*
-                 * Carrying out the faulting instruction is what belongs here.
-                 * Until a device sits behind a window, stepping over it is
-                 * honest: nothing claimed the address, so nothing was going to
-                 * answer for it either way.
+                 * Nothing is there at all. Stepping over an instruction that
+                 * never ran gets nowhere, and a processor fetching from a hole
+                 * will do it again immediately, so this is counted and given
+                 * up on rather than spun on. A machine that cannot execute is
+                 * better off saying so than filling a log.
                  */
-                StepOver(Index, Exit.VpContext.Rip, Exit.VpContext.InstructionLength);
+                if (Stray == 0)
+                {
+                    Log(RtvmLogError,
+                        "processor %lu touched %012llx at %04x:%08llx, "
+                        "where there is nothing\n",
+                        Index,
+                        static_cast<unsigned long long>(Address),
+                        Exit.VpContext.Cs.Selector,
+                        static_cast<unsigned long long>(Exit.VpContext.Rip));
+                }
+
+                Stray++;
+
+                if (Stray > StrayLimit)
+                {
+                    Log(RtvmLogError,
+                        "processor %lu is getting nowhere, so it is stopped\n",
+                        Index);
+                    return StopReason::Refused;
+                }
+
+                StepOver(Index, Exit.VpContext.Rip,
+                         Exit.VpContext.InstructionLength);
                 break;
             }
 
