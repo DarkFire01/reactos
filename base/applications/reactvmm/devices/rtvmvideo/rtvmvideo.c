@@ -71,6 +71,9 @@ typedef struct _VIDEO_DEVICE
     BOOLEAN Dirty;
     ULONG DirtyAt;
 
+    /* Whether the page is this device's rather than ordinary memory */
+    BOOLEAN Owned;
+
     HANDLE Output;
     HANDLE Painter;
     volatile LONG Stopping;
@@ -210,8 +213,9 @@ VideoPainter(
         EnterCriticalSection(&Video->Lock);
 
         /* Whatever the guest has put there since the last look */
-        if (Host->ReadGuestMemory(Host->Context, VIDEO_TEXT_BASE,
-                                  Video->Text, VIDEO_PAGE_SIZE) == RtvmOk)
+        if (Video->Owned ||
+            (Host->ReadGuestMemory(Host->Context, VIDEO_TEXT_BASE,
+                                   Video->Text, VIDEO_PAGE_SIZE) == RtvmOk))
         {
             VideoPresent(Video);
 
@@ -242,6 +246,59 @@ VideoPainter(
     }
 
     return 0;
+}
+
+/* THE PAGE ITSELF ************************************************************/
+
+/*
+ * The text page, when the manager gives it to this device rather than leaving
+ * it as memory. Every character written by the guest arrives here, which is
+ * slow and is what the hardware does: the page is not memory, it is a device
+ * that happens to remember what was put in it.
+ */
+static
+RTVM_STATUS
+RTVMAPI
+VideoMemoryRead(
+    _In_ PRTVM_DEVICE Device,
+    _In_ ULONG64 Address,
+    _In_ ULONG Width,
+    _Out_writes_bytes_(Width) PVOID Buffer)
+{
+    PVIDEO_DEVICE Video = (PVIDEO_DEVICE)Device->DeviceContext;
+    ULONG64 Offset = Address - VIDEO_TEXT_BASE;
+
+    if ((Offset + Width) > VIDEO_TEXT_SIZE)
+        return RtvmBadParameter;
+
+    EnterCriticalSection(&Video->Lock);
+    memcpy(Buffer, &Video->Text[Offset], Width);
+    LeaveCriticalSection(&Video->Lock);
+
+    return RtvmOk;
+}
+
+static
+RTVM_STATUS
+RTVMAPI
+VideoMemoryWrite(
+    _In_ PRTVM_DEVICE Device,
+    _In_ ULONG64 Address,
+    _In_ ULONG Width,
+    _In_reads_bytes_(Width) const VOID *Buffer)
+{
+    PVIDEO_DEVICE Video = (PVIDEO_DEVICE)Device->DeviceContext;
+    ULONG64 Offset = Address - VIDEO_TEXT_BASE;
+
+    if ((Offset + Width) > VIDEO_TEXT_SIZE)
+        return RtvmBadParameter;
+
+    EnterCriticalSection(&Video->Lock);
+    memcpy(&Video->Text[Offset], Buffer, Width);
+    Video->Owned = TRUE;
+    LeaveCriticalSection(&Video->Lock);
+
+    return RtvmOk;
 }
 
 /* THE DEVICE *****************************************************************/
@@ -275,6 +332,18 @@ VideoStart(
     Status = Host->ClaimPortRange(Host->Context, Device, VIDEO_STATUS, 1);
     if (!RTVM_SUCCESS(Status))
         return Status;
+
+    if (Host->ClaimMemoryRange(Host->Context, Device,
+                               VIDEO_TEXT_BASE, VIDEO_TEXT_SIZE) == RtvmOk)
+    {
+        Video->Owned = TRUE;
+    }
+    else
+    {
+        Host->Log(Host->Context, RtvmLogWarning,
+                  "%s: the page is not this device's, so it is watched instead\n",
+                  Device->Name);
+    }
 
     Video->Painter = CreateThread(NULL, 0, VideoPainter, Video, 0, NULL);
 
@@ -448,7 +517,8 @@ static const RTVM_DEVICE_VTABLE VideoVtable =
     VideoDestroy,
     VideoIoRead,
     VideoIoWrite,
-    NULL,
+    VideoMemoryRead,
+    VideoMemoryWrite,
     NULL,
     NULL
 };

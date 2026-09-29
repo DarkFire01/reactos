@@ -81,9 +81,9 @@ public:
     bool Initialize();
 
     bool ClaimPorts(IVndIoPortHandler *Handler, USHORT First, USHORT Count);
-    bool ClaimMemory(RTVM_DEVICE *Device, ULONG64 Base, ULONG64 Length);
+    bool ClaimMemory(IVndMmioHandler *Handler, ULONG64 Base, ULONG64 Length);
     void ForgetPorts(IVndIoPortHandler *Handler);
-    void Forget(RTVM_DEVICE *Device);
+    void ForgetMemory(IVndMmioHandler *Handler);
 
     ULONG ReadPort(USHORT Port, ULONG Width);
     void WritePort(USHORT Port, ULONG Width, ULONG Value);
@@ -106,7 +106,7 @@ private:
     {
         ULONG64 Base = 0;
         ULONG64 Length = 0;
-        RTVM_DEVICE *Device = nullptr;
+        IVndMmioHandler *Handler = nullptr;
     };
 
     IVndIoPortHandler **m_Ports = nullptr;
@@ -275,6 +275,15 @@ public:
     IVmDmaController *Channels() const;
 
     ULONG ProcessorCount() const noexcept { return m_ProcessorCount; }
+    bool Running() const noexcept { return m_Running != 0; }
+
+    /* Reached from the instruction reader, which is why these are public */
+    HRESULT ReadRegisters(ULONG Index, const WHV_REGISTER_NAME *Names,
+                          ULONG Count, WHV_REGISTER_VALUE *Values);
+    HRESULT WriteRegisters(ULONG Index, const WHV_REGISTER_NAME *Names,
+                           ULONG Count, const WHV_REGISTER_VALUE *Values);
+    HRESULT Translate(ULONG Index, ULONG64 Gva, ULONG Flags,
+                      WHV_TRANSLATE_GVA_RESULT_CODE *Result, ULONG64 *Gpa);
 
     /* Where a port access goes, whichever exit brought it */
     void WritePort(USHORT Port, ULONG Width, ULONG Value);
@@ -301,6 +310,7 @@ private:
     /* Ask to be told the moment the guest would accept an interrupt */
     void RequestInterruptWindow(ULONG Index, bool Wanted);
     void StringPort(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit);
+    bool EmulateAccess(ULONG Index, const WHV_RUN_VP_EXIT_CONTEXT &Exit);
     void StepOver(ULONG Index, ULONG64 Rip, ULONG Length);
 
     Memory m_Memory;
@@ -313,6 +323,9 @@ private:
     volatile LONG m_Taken = 0;
 
     void *m_Partition = nullptr;
+
+    /* What reads an instruction that faulted, or nothing if there is none */
+    void *m_Emulator = nullptr;
     ULONG m_ProcessorCount = 1;
     volatile LONG m_Stopping = 0;
 

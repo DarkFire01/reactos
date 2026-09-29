@@ -40,7 +40,12 @@ HostClaimMemoryRange(PVOID Context, PRTVM_DEVICE Device, ULONG64 Base, ULONG64 L
     if ((Device == nullptr) || (Length == 0))
         return RtvmBadParameter;
 
-    return Owner->SystemBus().ClaimMemory(Device, Base, Length) ? RtvmOk : RtvmInUse;
+    LegacyPortAdapter *Stand = Owner->Devices().AdapterFor(Device);
+
+    if (Stand == nullptr)
+        return RtvmFailed;
+
+    return Owner->SystemBus().ClaimMemory(Stand, Base, Length) ? RtvmOk : RtvmInUse;
 }
 
 static RTVM_STATUS RTVMAPI
@@ -173,9 +178,10 @@ DeviceHost::~DeviceHost()
         LegacyPortAdapter *Stand = AdapterFor(Device);
 
         if (Stand != nullptr)
+        {
             m_Machine.SystemBus().ForgetPorts(Stand);
-
-        m_Machine.SystemBus().Forget(Device);
+            m_Machine.SystemBus().ForgetMemory(Stand);
+        }
 
         if ((Device->Vtable != nullptr) && (Device->Vtable->Destroy != nullptr))
             Device->Vtable->Destroy(Device);

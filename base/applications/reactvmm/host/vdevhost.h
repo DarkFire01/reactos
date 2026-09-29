@@ -38,7 +38,9 @@ private:
  * one at a time. Each one that becomes a real device takes its adapter with it,
  * and when the last one has gone so does this.
  */
-class LegacyPortAdapter : public IVndIoPortHandler, private Permanent
+class LegacyPortAdapter : public IVndIoPortHandler,
+                          public IVndMmioHandler,
+                          private Permanent
 {
 public:
     explicit LegacyPortAdapter(RTVM_DEVICE *Device) noexcept : m_Device(Device) {}
@@ -51,6 +53,11 @@ public:
 
     STDMETHODIMP NotifyIoPortRead(USHORT Port, ULONG Width, ULONG *Value) override;
     STDMETHODIMP NotifyIoPortWrite(USHORT Port, ULONG Width, ULONG Value) override;
+
+    STDMETHODIMP NotifyMmioRead(ULONG64 Address, ULONG Length,
+                                void *Buffer) override;
+    STDMETHODIMP NotifyMmioWrite(ULONG64 Address, ULONG Length,
+                                 const void *Buffer) override;
 
     RTVM_DEVICE *Device() const noexcept { return m_Device; }
 

@@ -111,9 +111,9 @@ bool Bus::ClaimPorts(IVndIoPortHandler *Handler, USHORT First, USHORT Count)
     return true;
 }
 
-bool Bus::ClaimMemory(RTVM_DEVICE *Device, ULONG64 Base, ULONG64 Length)
+bool Bus::ClaimMemory(IVndMmioHandler *Handler, ULONG64 Base, ULONG64 Length)
 {
-    if (Length == 0)
+    if ((Handler == nullptr) || (Length == 0))
         return false;
 
     for (const MemoryRange &Range : m_Memory)
@@ -122,7 +122,20 @@ bool Bus::ClaimMemory(RTVM_DEVICE *Device, ULONG64 Base, ULONG64 Length)
             return false;
     }
 
-    return m_Memory.Add({ Base, Length, Device });
+    return m_Memory.Add({ Base, Length, Handler });
+}
+
+void Bus::ForgetMemory(IVndMmioHandler *Handler)
+{
+    Array<MemoryRange, MaximumMemoryRanges> Kept;
+
+    for (const MemoryRange &Range : m_Memory)
+    {
+        if (Range.Handler != Handler)
+            Kept.Add(Range);
+    }
+
+    m_Memory = Kept;
 }
 
 void Bus::ForgetPorts(IVndIoPortHandler *Handler)
@@ -137,19 +150,6 @@ void Bus::ForgetPorts(IVndIoPortHandler *Handler)
     }
 }
 
-void Bus::Forget(RTVM_DEVICE *Device)
-{
-
-    Array<MemoryRange, MaximumMemoryRanges> Kept;
-
-    for (const MemoryRange &Range : m_Memory)
-    {
-        if (Range.Device != Device)
-            Kept.Add(Range);
-    }
-
-    m_Memory = Kept;
-}
 
 ULONG Bus::ReadPort(USHORT Port, ULONG Width)
 {
@@ -198,12 +198,10 @@ bool Bus::ReadMemory(ULONG64 Address, ULONG Width, void *Buffer)
         if ((Address < Range.Base) || (Address >= (Range.Base + Range.Length)))
             continue;
 
-        RTVM_DEVICE *Device = Range.Device;
+        if (SUCCEEDED(Range.Handler->NotifyMmioRead(Address, Width, Buffer)))
+            return true;
 
-        if ((Device->Vtable == nullptr) || (Device->Vtable->MemoryRead == nullptr))
-            break;
-
-        return Device->Vtable->MemoryRead(Device, Address, Width, Buffer) == RtvmOk;
+        break;
     }
 
     /* Nothing there, and a read of nothing is all ones */
@@ -218,12 +216,7 @@ bool Bus::WriteMemory(ULONG64 Address, ULONG Width, const void *Buffer)
         if ((Address < Range.Base) || (Address >= (Range.Base + Range.Length)))
             continue;
 
-        RTVM_DEVICE *Device = Range.Device;
-
-        if ((Device->Vtable == nullptr) || (Device->Vtable->MemoryWrite == nullptr))
-            break;
-
-        return Device->Vtable->MemoryWrite(Device, Address, Width, Buffer) == RtvmOk;
+        return SUCCEEDED(Range.Handler->NotifyMmioWrite(Address, Width, Buffer));
     }
 
     return false;
