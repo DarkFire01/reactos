@@ -121,10 +121,13 @@ add_livecd_shortcut("Install ReactOS"
     MINIMIZE
     DESTINATION "${dir_allusers_desktop}")
 
-# Runs at logon so a boot with no display still leaves its result in the debug log
-add_livecd_shortcut("Virtual Machine Monitor"
-    "shell:system\\reactvm.exe" ICON_INDEX 0
-    DESTINATION "${dir_startmenu_startup}")
+# Started by hand rather than at logon, so a boot is a boot and nothing else,
+# and only where the thing it starts is built at all
+if(ARCH STREQUAL "amd64")
+    add_livecd_shortcut("Virtual Machine Monitor"
+        "shell:system\\reactvm.exe" ICON_INDEX 0
+        DESTINATION "${dir_startmenu_systemtools}")
+endif()
 
 add_livecd_shortcut("Read Me"
     "shell:windows\\readme.txt"
