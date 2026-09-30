@@ -50,6 +50,7 @@
 #define UART_LINE_CONTROL   3
 #define UART_MODEM_CONTROL  4
 #define UART_LINE_STATUS    5
+#define UART_SCRATCH        7
 
 /* The display, its page and the registers that say where the cursor is */
 #define VIDEO_SEGMENT       HEX(0B800)
@@ -183,6 +184,51 @@ SerialReady:
     out dx, al
 
     pop cx
+    pop dx
+    pop ax
+    ret
+
+/* WHETHER THERE IS A PORT THERE AT ALL ***************************************/
+
+/*
+ * A port nobody answers for reads back with every bit set, and every bit set is
+ * what a port says when it has a character waiting. So a firmware that believes
+ * the line status of a port that is not there believes a character has arrived,
+ * over and over, forever: anything asking it for a key is handed one that was
+ * never typed and never sees the keys that were.
+ *
+ * So it is asked once whether it is there. The last of its registers is the one
+ * the chip keeps nothing of its own in, which makes it the one that can be
+ * written and read back, and a port that does not hold what was put in it is
+ * not a port.
+ */
+Com1There:
+    .byte 0
+
+SerialProbe:
+    push ax
+    push dx
+
+    mov byte ptr cs:[Com1There], 0
+
+    mov dx, COM1_BASE + UART_SCRATCH
+    mov al, HEX(5A)
+    out dx, al
+    in al, dx
+    cmp al, HEX(5A)
+    jne SerialProbeDone
+
+    /* And again with the other half of the byte, so that a bus which happens
+       to be holding the first pattern is not mistaken for a chip */
+    mov al, HEX(A5)
+    out dx, al
+    in al, dx
+    cmp al, HEX(A5)
+    jne SerialProbeDone
+
+    mov byte ptr cs:[Com1There], 1
+
+SerialProbeDone:
     pop dx
     pop ax
     ret
@@ -1574,11 +1620,16 @@ Int16Wait:
     cmp byte ptr cs:[KeyWaiting], 0
     jne Int16FromHeld
 
+    /* Nothing arrives that way on a machine with no port there */
+    cmp byte ptr cs:[Com1There], 0
+    je Int16Rest
+
     mov dx, COM1_BASE + UART_LINE_STATUS
     in al, dx
     test al, HEX(01)
     jnz Int16Take
 
+Int16Rest:
     /* Nothing yet. Let anything else that was waiting have a turn */
     sti
     hlt
@@ -1619,6 +1670,11 @@ Int16Peek:
     jne Int16HaveOne
 
     push dx
+
+    /* The same, because a port that is not there always says it has one */
+    cmp byte ptr cs:[Com1There], 0
+    je Int16PeekEmpty
+
     mov dx, COM1_BASE + UART_LINE_STATUS
     in al, dx
     test al, HEX(01)
@@ -2171,6 +2227,7 @@ Start:
     call DataAreaSetup
     call VideoClear
     call ControllerSetup
+    call SerialProbe
 
     /* Before anything is driven, because nothing on the bus answers until it */
     call BusSetup
