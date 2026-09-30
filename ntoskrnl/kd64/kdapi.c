@@ -2687,6 +2687,21 @@ KdRefreshDebuggerNotPresent(VOID)
         return TRUE;
     }
 
+    /*
+     * And the same where it was never brought up. What refreshing costs is every
+     * processor stopped where it stands and a string put out of a port: on a
+     * machine with one processor that is only slow, and on a machine with
+     * several it is every one of them waiting on the one doing it. A caller that
+     * asks this on a timer, as the display watchdog does, pays that over and
+     * over for an answer that cannot change, because a debugger that was not
+     * there when the machine came up does not arrive later.
+     */
+    if (!KdDebuggerEnabled)
+    {
+        /* Nothing to refresh, and nothing was ever there */
+        return TRUE;
+    }
+
     /* Enter the debugger */
     Enable = KdEnterDebugger(NULL, NULL);
 
