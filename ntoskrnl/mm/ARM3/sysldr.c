@@ -1249,6 +1249,21 @@ MiSnapThunk(IN PVOID DllBase,
         /* Resolve the address and write it */
         ExportTable = (PULONG)((ULONG_PTR)DllBase +
                                ExportDirectory->AddressOfFunctions);
+
+        /*
+         * A hole in the table, which is not an address. Writing it through gives
+         * the importer the image base where it wanted a function, and that is
+         * only ever found later, by calling it. A module that cannot be given
+         * what it asked for is refused here, where there is still a name to say
+         * it with.
+         */
+        if (ExportTable[Ordinal] == 0)
+        {
+            DPRINT1("Warning: Driver failed to load, %s is exported as nothing\n",
+                    *MissingApi);
+            return STATUS_DRIVER_ENTRYPOINT_NOT_FOUND;
+        }
+
         Address->u1.Function = (ULONG_PTR)DllBase + ExportTable[Ordinal];
 
         /* Assume success from now on */
