@@ -99,6 +99,21 @@ void VmConfiguration(_In_ const char *Xml);
 /* Whether every call into the machine is written down as it happens */
 void VmQuiet(_In_ bool Quiet);
 
+/* Whether the faults the guest takes stop it, for watching one go wrong */
+void VmFaults(_In_ bool Watching);
+
+/* Where the memory is written out to when a run is over, for reading by hand */
+void VmDump(_In_ const char *Path);
+
+/* Where everything the guest says on the first serial port is written */
+void VmSaidTo(_In_ const char *Path);
+
+/*
+ * A key a run with nobody at it presses itself, named by how far in. What waits
+ * to be told which of several things to do has to be told by somebody.
+ */
+bool VmPress(_In_ ULONG64 After, _In_ USHORT Code, _In_ bool Extended);
+
 /* A run of ports to write down every access to, for watching a disagreement */
 void VmWatch(_In_ ULONG First, _In_ ULONG Last);
 

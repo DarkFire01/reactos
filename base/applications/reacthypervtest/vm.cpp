@@ -24,6 +24,7 @@
 #include <objbase.h>
 #include <initguid.h>
 #include <winhvplatform.h>
+#include <winhvemulation.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -42,15 +43,50 @@ bool Hollow(ULONG64 Where, ULONG64 Length);
 bool Place(const void *Image, ULONG Length, ULONG64 Where);
 bool Fill(ULONG64 Where, ULONG64 Length, void *Backing, bool ReadOnly);
 bool Reachable(ULONG64 Address, ULONG64 *Physical);
+bool Many(const WHV_REGISTER_NAME *Names, ULONG Count,
+          WHV_REGISTER_VALUE *Values);
+bool Put(const WHV_REGISTER_NAME *Names, ULONG Count,
+         const WHV_REGISTER_VALUE *Values);
+bool Walk(ULONG64 Address, WHV_TRANSLATE_GVA_FLAGS Flags,
+          WHV_TRANSLATE_GVA_RESULT_CODE *Result,
+          WHV_GUEST_PHYSICAL_ADDRESS *Physical);
+bool Reader(const WHV_EMULATOR_CALLBACKS *Ways, WHV_EMULATOR_HANDLE *Made);
+bool Mmio(WHV_EMULATOR_HANDLE Made, const WHV_VP_EXIT_CONTEXT *Where,
+          const WHV_MEMORY_ACCESS_CONTEXT *What, WHV_EMULATOR_STATUS *How);
+bool Io(WHV_EMULATOR_HANDLE Made, const WHV_VP_EXIT_CONTEXT *Where,
+        const WHV_X64_IO_PORT_ACCESS_CONTEXT *What, WHV_EMULATOR_STATUS *How);
 bool Start(USHORT Selector, ULONG64 Base, ULONG64 Rip);
 bool Step(WHV_RUN_VP_EXIT_CONTEXT *Exit);
 bool Poke(WHV_REGISTER_NAME Which, ULONG64 Value);
 ULONG64 Peek(WHV_REGISTER_NAME Which);
 void *Guest(ULONG64 Where, ULONG Length);
+ULONG64 Extent();
 void Tell();
+void Faults(bool Watching);
 void Close();
 
 } /* namespace hv */
+
+/* Whether every call into the machine is written down as it happens */
+static bool RepositoryQuiet = false;
+
+/*
+ * How much of the interrupt traffic is worth saying out loud. A machine sitting
+ * at a prompt raises a line a few hundred times; one running an operating system
+ * raises one every millisecond for as long as it is up, and a log of that is a
+ * log of nothing.
+ */
+#define WIRES_ENOUGH 200
+
+static ULONG TheWireSaid = 0;
+
+static bool WorthSaying()
+{
+    if (RepositoryQuiet)
+        return false;
+
+    return (TheWireSaid++ < WIRES_ENOUGH);
+}
 
 /* WHAT A GUID IS CALLED ******************************************************/
 
@@ -240,10 +276,23 @@ public:
                                      IVndMmioHandler *Handler, BOOL Enabled,
                                      IVndRegistration **Registration) override
     {
-        printf("    memory: %llu page(s) at %012llx, handler %p, %s\n",
-               (unsigned long long)PageCount,
-               (unsigned long long)(FirstPage * VDEV_PAGE_SIZE),
-               (void *)Handler, Enabled ? "on" : "off");
+        if (!RepositoryQuiet)
+        {
+            printf("    memory: %llu page(s) at %012llx, handler %p, %s\n",
+                   (unsigned long long)PageCount,
+                   (unsigned long long)(FirstPage * VDEV_PAGE_SIZE),
+                   (void *)Handler, Enabled ? "on" : "off");
+        }
+
+        if (m_Windows < (ULONG)(sizeof(m_Window) / sizeof(*m_Window)))
+        {
+            m_Window[m_Windows].First = FirstPage * VDEV_PAGE_SIZE;
+            m_Window[m_Windows].Last =
+                m_Window[m_Windows].First + (PageCount * VDEV_PAGE_SIZE) - 1;
+            m_Window[m_Windows].Handler = Handler;
+            m_Window[m_Windows].Held = true;
+            m_Windows++;
+        }
 
         if (Registration != nullptr)
             *Registration = new Reservation(this, Handler);
@@ -300,6 +349,15 @@ public:
         return E_NOTIMPL;
     }
 
+    /* A window of memory somebody asked to answer for */
+    struct Window
+    {
+        ULONG64 First;
+        ULONG64 Last;
+        IVndMmioHandler *Handler;
+        bool Held;
+    };
+
     /* A run of ports somebody asked to answer for, kept to be driven later */
     struct Reserved
     {
@@ -338,6 +396,22 @@ public:
         return nullptr;
     }
 
+    /* Whoever answers for a place in memory, or nothing */
+    IVndMmioHandler *Covering(ULONG64 Where) const noexcept
+    {
+        for (ULONG Index = 0; Index < m_Windows; Index++)
+        {
+            if (!m_Window[Index].Held)
+                continue;
+
+            if ((Where >= m_Window[Index].First) &&
+                (Where <= m_Window[Index].Last))
+                return m_Window[Index].Handler;
+        }
+
+        return nullptr;
+    }
+
     /*
      * A range given back. It has to stop being dispatched to at once: a device
      * whose coming up failed part way through gives back what it had already
@@ -351,6 +425,12 @@ public:
             if (m_Port[Index].Handler == Handler)
                 m_Port[Index].Held = false;
         }
+
+        for (ULONG Index = 0; Index < m_Windows; Index++)
+        {
+            if (m_Window[Index].Handler == Handler)
+                m_Window[Index].Held = false;
+        }
     }
 
 private:
@@ -358,6 +438,9 @@ private:
 
     Reserved m_Port[32] = {};
     ULONG m_Ports = 0;
+
+    Window m_Window[16] = {};
+    ULONG m_Windows = 0;
 };
 
 /* Told once the device that reserved it has finished with it */
@@ -374,13 +457,38 @@ STDMETHODIMP Reservation::Revoke()
 /*
  * Where a device raises its line.
  *
- * Nothing is delivered. A device that raises the line its kind has always had,
- * and names itself as the one raising it, says the slots here were read right
- * in the same way the ports do: the line number is the answer.
+ * A line is not an interrupt. What a line does depends on the chip it goes to,
+ * and that chip is one of the parts in the machine rather than anything here:
+ * it holds which lines are masked, which of them outrank which, and what vector
+ * each one turns into. So a line raised here is passed straight to it, and what
+ * comes back out is its business.
+ *
+ * Nothing happens to a line before the chip is in. A machine put together with
+ * no interrupt controller in it is a machine where raising a line does nothing,
+ * which is what the hardware would do as well.
  */
 class Lines : public IVmIoApic
 {
 public:
+    ~Lines()
+    {
+        if (m_Chip != nullptr)
+            m_Chip->Release();
+    }
+
+    /* Which of the parts turned out to be the interrupt controller */
+    void Through(IVmPicService *Chip) noexcept
+    {
+        if (m_Chip != nullptr)
+            m_Chip->Release();
+
+        m_Chip = Chip;
+
+        if (m_Chip != nullptr)
+            m_Chip->AddRef();
+    }
+
+    bool Wired() const noexcept { return (m_Chip != nullptr); }
     STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
     {
         if (Object == nullptr)
@@ -416,15 +524,26 @@ public:
 
     STDMETHODIMP AssertIrq(UCHAR Line, UCHAR Source) override
     {
-        printf("    line %u up, raised by %u\n", Line, Source);
+        if (WorthSaying())
+            printf("    line %u up, raised by %u\n", Line, Source);
+
         m_Raised++;
-        return S_OK;
+
+        if (m_Chip == nullptr)
+            return S_OK;
+
+        return m_Chip->AssertIrq(Line, Source);
     }
 
     STDMETHODIMP DeassertIrq(UCHAR Line, UCHAR Source) override
     {
-        printf("    line %u down, let go by %u\n", Line, Source);
-        return S_OK;
+        if (WorthSaying())
+            printf("    line %u down, let go by %u\n", Line, Source);
+
+        if (m_Chip == nullptr)
+            return S_OK;
+
+        return m_Chip->DeassertIrq(Line, Source);
     }
 
     STDMETHODIMP RequestTimerAssist(UCHAR Line, ULONG64 Period,
@@ -472,6 +591,7 @@ public:
 private:
     volatile LONG m_Count = 1;
     ULONG m_Raised = 0;
+    IVmPicService *m_Chip = nullptr;
 };
 
 /*
@@ -479,6 +599,9 @@ private:
  * and nothing to offer it: what is being checked here is whether a device that
  * is handed this is satisfied by it, not what it does with it afterwards.
  */
+/* A vector of all ones, which is how the chip says there is nothing owed */
+#define PROCESSOR_NOTHING_OWED  0xFFFFFFFFul
+
 class Processors : public IVmProcessorServices
 {
 public:
@@ -522,23 +645,56 @@ public:
     STDMETHODIMP SetVirtualProcessorState() override { return E_NOTIMPL; }
     STDMETHODIMP GetVirtualProcessorState() override { return E_NOTIMPL; }
 
+    /*
+     * A vector the processor is to take. Nothing is put into it here: the
+     * processor is running when this is called, and the only moment it can be
+     * made to take anything is between one stop and the next. So the vector is
+     * only written down, and the run puts it in when it can.
+     */
     STDMETHODIMP AssertVirtualProcessorInterrupt(ULONG64 Delivery,
                                                  ULONG64 Reserved,
                                                  ULONG Vector) override
     {
-        printf("    a vector is owed: %lx, delivery %llx, spare %llx\n",
-               Vector, (unsigned long long)Delivery,
-               (unsigned long long)Reserved);
+        UNREFERENCED_PARAMETER(Delivery);
+        UNREFERENCED_PARAMETER(Reserved);
+
+        if (WorthSaying())
+            printf("    a vector is owed: %02lx\n", Vector);
+
+        m_Owed = Vector;
+        m_Took = false;
         return S_OK;
     }
 
-    STDMETHODIMP ClearVirtualProcessorInterrupt() override { return S_OK; }
+    /*
+     * And the chip asking whether it went in yet, which is the only answer it
+     * gets: a processor that takes an interrupt does not tell anybody, so the
+     * cycle that would have acknowledged it is this call coming back.
+     */
+    STDMETHODIMP ClearVirtualProcessorInterrupt() override
+    {
+        if (!m_Took)
+            return S_FALSE;
+
+        m_Owed = PROCESSOR_NOTHING_OWED;
+        m_Took = false;
+        return S_OK;
+    }
+
+    /* Whichever vector is waiting to go in, or nothing */
+    ULONG Owed() const noexcept { return m_Took ? PROCESSOR_NOTHING_OWED
+                                                : m_Owed; }
+
+    void Took() noexcept { m_Took = true; }
     STDMETHODIMP ConfigureInterceptThrottlingExclusion() override { return E_NOTIMPL; }
     STDMETHODIMP StopAllVirtualProcessors() override { return E_NOTIMPL; }
     STDMETHODIMP StartAllVirtualProcessors() override { return E_NOTIMPL; }
 
 private:
     volatile LONG m_Count = 1;
+
+    ULONG m_Owed = PROCESSOR_NOTHING_OWED;
+    bool m_Took = false;
 };
 
 /* WHAT A DEVICE READS ITSELF OUT OF ******************************************/
@@ -563,7 +719,6 @@ struct RepositoryObject
     volatile LONG Count;
 };
 
-static bool RepositoryQuiet = false;
 
 /* What a slot nobody has worked out yet answers, which is worth trying both ways */
 static HRESULT RepositoryAnswer = S_OK;
@@ -2104,6 +2259,9 @@ public:
     {
         if (m_Offered < ARRAYSIZE(m_Device))
             m_Device[m_Offered++] = One;
+
+        if (!m_Lines.Wired())
+            Wire(One);
     }
 
     /* And whatever is looking at the machine, for a display device to tell */
@@ -2140,6 +2298,24 @@ public:
     ULONG Asked() const noexcept { return m_Asked; }
     const Emulation &Addresses() const noexcept { return m_Emulation; }
     const Lines &Wires() const noexcept { return m_Lines; }
+    Processors &Cpus() noexcept { return m_Processors; }
+
+    /*
+     * Which of the parts a line goes to, worked out as they are offered rather
+     * than named: an interrupt controller is whichever part answers for one.
+     */
+    void Wire(IVirtualDevice *One) noexcept
+    {
+        IVmPicService *Chip = nullptr;
+
+        if (SUCCEEDED(One->QueryInterface(IID_IVmPicService,
+                                          reinterpret_cast<void **>(&Chip))))
+        {
+            printf("  lines go to this one\n");
+            m_Lines.Through(Chip);
+            Chip->Release();
+        }
+    }
 
 private:
     volatile LONG m_Count = 1;
@@ -2574,10 +2750,29 @@ static void Watch(USHORT Port, USHORT Width, ULONG Value, bool Writing,
 static char TheSaid[SERIAL_SAID];
 static ULONG TheSaidCount = 0;
 
+/*
+ * And a file it is written to as it arrives, for a guest that says more than
+ * the run is worth holding. What is kept above is the beginning of a boot;
+ * what a kernel says afterwards is megabytes of it.
+ */
+static FILE *TheSaidTo = nullptr;
+
+void VmSaidTo(const char *Path)
+{
+    if (TheSaidTo != nullptr)
+        fclose(TheSaidTo);
+
+    TheSaidTo = nullptr;
+    fopen_s(&TheSaidTo, Path, "wb");
+}
+
 static void Overheard(UCHAR One)
 {
     if (TheSaidCount < (SERIAL_SAID - 1))
         TheSaid[TheSaidCount++] = (char)One;
+
+    if (TheSaidTo != nullptr)
+        fputc(One, TheSaidTo);
 }
 
 /* What each way of stopping is called, for the ones worth naming */
@@ -2601,102 +2796,264 @@ static const char *WhyStopped(ULONG Reason)
     }
 }
 
+
+/* WHAT AN INSTRUCTION WAS DOING **********************************************/
+
+/*
+ * A processor stopped on a place in memory is not told what it was doing there.
+ * It is handed the address and left to work the rest out, which means reading
+ * the instruction back and carrying it out by hand.
+ *
+ * None of that is done here. The platform ships the same instruction reader its
+ * own machines use, and it is given a way to reach memory, ports and registers
+ * and left to it. What this side supplies is those ways.
+ */
+static WHV_EMULATOR_HANDLE TheReader = nullptr;
+
+/* Whichever machine is being run just now, for the callbacks to reach */
+static const Emulation *TheAddresses = nullptr;
+
+static HRESULT CALLBACK ReaderPort(void *Context,
+                                   WHV_EMULATOR_IO_ACCESS_INFO *Access)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    if ((Access == nullptr) || (TheAddresses == nullptr))
+        return E_POINTER;
+
+    IVndIoPortHandler *Handler = TheAddresses->Claimed(Access->Port);
+
+    if (Access->Direction != 0)
+    {
+        Watch(Access->Port, Access->AccessSize, Access->Data, true,
+              Handler != nullptr);
+
+        if (Handler != nullptr)
+        {
+            Handler->NotifyIoPortWrite(Access->Port, Access->AccessSize,
+                                       Access->Data);
+            TheAnswered++;
+        }
+        else
+        {
+            NoteUnclaimed(Access->Port);
+
+            if (Access->Port == SERIAL_PORT)
+                Overheard((UCHAR)Access->Data);
+        }
+
+        return S_OK;
+    }
+
+    ULONG Value = 0xFFFFFFFF;
+
+    if (Handler != nullptr)
+    {
+        if (FAILED(Handler->NotifyIoPortRead(Access->Port,
+                                             Access->AccessSize, &Value)))
+            Value = 0xFFFFFFFF;
+
+        TheAnswered++;
+    }
+    else
+    {
+        NoteUnclaimed(Access->Port);
+    }
+
+    Watch(Access->Port, Access->AccessSize, Value, false, Handler != nullptr);
+
+    Access->Data = Value;
+    return S_OK;
+}
+
+/*
+ * A place in memory, given to whichever device answers for it.
+ *
+ * A place nobody answers for is still the machine's own memory, so it is read
+ * and written there. That is not a fallback: a device may take a window out of
+ * the middle of memory and leave the rest of the page alone, and what is around
+ * it has to keep working.
+ */
+static HRESULT CALLBACK ReaderMemory(void *Context,
+                                     WHV_EMULATOR_MEMORY_ACCESS_INFO *Access)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    if ((Access == nullptr) || (TheAddresses == nullptr))
+        return E_POINTER;
+
+    IVndMmioHandler *Handler = TheAddresses->Covering(Access->GpaAddress);
+    const bool Writing = (Access->Direction != 0);
+
+    if (Handler != nullptr)
+    {
+        TheAnswered++;
+
+        if (Writing)
+        {
+            return Handler->NotifyMmioWrite(Access->GpaAddress,
+                                            Access->AccessSize, Access->Data);
+        }
+
+        return Handler->NotifyMmioRead(Access->GpaAddress, Access->AccessSize,
+                                       Access->Data);
+    }
+
+    void *Where = hv::Guest(Access->GpaAddress, Access->AccessSize);
+
+    if (Where == nullptr)
+    {
+        /* Outside everything, which reads as a bus nobody is driving */
+        if (!Writing)
+            memset(Access->Data, 0xFF, Access->AccessSize);
+
+        return S_OK;
+    }
+
+    if (Writing)
+        memcpy(Where, Access->Data, Access->AccessSize);
+    else
+        memcpy(Access->Data, Where, Access->AccessSize);
+
+    return S_OK;
+}
+
+static HRESULT CALLBACK ReaderGet(void *Context,
+                                  const WHV_REGISTER_NAME *Names,
+                                  UINT32 Count, WHV_REGISTER_VALUE *Values)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    return hv::Many(Names, Count, Values) ? S_OK : E_FAIL;
+}
+
+static HRESULT CALLBACK ReaderSet(void *Context,
+                                  const WHV_REGISTER_NAME *Names,
+                                  UINT32 Count,
+                                  const WHV_REGISTER_VALUE *Values)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    return hv::Put(Names, Count, Values) ? S_OK : E_FAIL;
+}
+
+static HRESULT CALLBACK ReaderTranslate(void *Context,
+                                        WHV_GUEST_VIRTUAL_ADDRESS Address,
+                                        WHV_TRANSLATE_GVA_FLAGS Flags,
+                                        WHV_TRANSLATE_GVA_RESULT_CODE *Result,
+                                        WHV_GUEST_PHYSICAL_ADDRESS *Physical)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    return hv::Walk(Address, Flags, Result, Physical) ? S_OK : E_FAIL;
+}
+
+static bool Reading()
+{
+    if (TheReader != nullptr)
+        return true;
+
+    WHV_EMULATOR_CALLBACKS Ways = {};
+
+    Ways.Size = sizeof(Ways);
+    Ways.WHvEmulatorIoPortCallback = ReaderPort;
+    Ways.WHvEmulatorMemoryCallback = ReaderMemory;
+    Ways.WHvEmulatorGetVirtualProcessorRegisters = ReaderGet;
+    Ways.WHvEmulatorSetVirtualProcessorRegisters = ReaderSet;
+    Ways.WHvEmulatorTranslateGvaPage = ReaderTranslate;
+
+    return hv::Reader(&Ways, &TheReader);
+}
+
+/*
+ * A stop on a place in memory, carried out.
+ *
+ * Whether it worked is not the same question as whether the instruction did
+ * what the guest wanted: the reader says it is done, and the processor carries
+ * on from wherever the reader left it.
+ */
+static bool Reach(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
+{
+    if (!Reading())
+    {
+        printf("    there is no instruction reader to ask\n");
+        return false;
+    }
+
+    TheAddresses = &On;
+
+    WHV_EMULATOR_STATUS How = {};
+    const bool Went = hv::Mmio(TheReader, &Exit.VpContext,
+                               &Exit.MemoryAccess, &How);
+
+    TheAddresses = nullptr;
+
+    if (!Went)
+    {
+        printf("    the reader would not look at it\n");
+        return false;
+    }
+
+    if (How.EmulationSuccessful == 0)
+    {
+        printf("    the reader made nothing of it, %08lx, at %012llx\n",
+               How.AsUINT32, (unsigned long long)Exit.MemoryAccess.Gpa);
+        printf("      it was a %lu, from %012llx%s, and the bytes were",
+               (ULONG)Exit.MemoryAccess.AccessInfo.AccessType,
+               (unsigned long long)Exit.MemoryAccess.Gva,
+               Exit.MemoryAccess.AccessInfo.GvaValid ? "" : " (no address)");
+
+        for (ULONG Index = 0;
+             Index < Exit.MemoryAccess.InstructionByteCount; Index++)
+            printf(" %02x", Exit.MemoryAccess.InstructionBytes[Index]);
+
+        printf("\n");
+    }
+
+    return (How.EmulationSuccessful != 0);
+}
 /*
  * A whole run of accesses to one port, carried out.
  *
  * A firmware moves a sector this way rather than one word at a time, and the
- * processor stops once for the whole run rather than once for each. Doing one
- * and calling it the run leaves the guest's pointer and count wrong, so all of
- * it is done here and the registers are put where the instruction would have
- * left them.
+ * processor stops once for the whole run rather than once for each.
  *
- * Which way the pointer moves is the direction flag, which is the one thing
- * about the instruction that is not in what the processor handed over.
+ * How far the pointer moves, and at what it wraps, belongs to the instruction:
+ * the same bytes move DI within a segment where the addresses are sixteen bits
+ * wide and EDI across the whole of memory where they are thirty two, and
+ * putting the wide answer back where the narrow one belongs leaves the high
+ * half of the register set for good. So the same reader that works out a place
+ * in memory is asked to work this out as well, and nothing here counts.
  */
 static bool Run(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
 {
-    const USHORT Port = Exit.IoPortAccess.PortNumber;
-    const USHORT Width = (USHORT)Exit.IoPortAccess.AccessInfo.AccessSize;
-    const bool Writing = (Exit.IoPortAccess.AccessInfo.IsWrite != 0);
-    IVndIoPortHandler *Handler = On.Claimed(Port);
-
-    ULONG64 Count = 1;
-
-    if (Exit.IoPortAccess.AccessInfo.RepPrefix)
-        Count = Exit.IoPortAccess.Rcx;
-
-    /* Backwards when the guest said so, which is rare but is allowed */
-    const bool Backwards = ((Exit.VpContext.Rflags & 0x400) != 0);
-    const LONG64 Step = Backwards ? -(LONG64)Width : (LONG64)Width;
-
-    ULONG64 From = Exit.IoPortAccess.Ds.Base + Exit.IoPortAccess.Rsi;
-    ULONG64 To = Exit.IoPortAccess.Es.Base + Exit.IoPortAccess.Rdi;
-
-    for (ULONG64 Index = 0; Index < Count; Index++)
+    if (!Reading())
     {
-        if (Writing)
-        {
-            const void *Where = hv::Guest(From, Width);
-            ULONG Value = 0;
-
-            if (Where == nullptr)
-                return false;
-
-            memcpy(&Value, Where, Width);
-
-            if (Handler != nullptr)
-            {
-                Handler->NotifyIoPortWrite(Port, Width, Value);
-                TheAnswered++;
-            }
-            else
-            {
-                NoteUnclaimed(Port);
-            }
-
-            From += Step;
-        }
-        else
-        {
-            void *Where = hv::Guest(To, Width);
-            ULONG Value = 0xFFFFFFFF;
-
-            if (Where == nullptr)
-                return false;
-
-            if (Handler != nullptr)
-            {
-                if (FAILED(Handler->NotifyIoPortRead(Port, Width, &Value)))
-                    Value = 0xFFFFFFFF;
-
-                TheAnswered++;
-            }
-            else
-            {
-                NoteUnclaimed(Port);
-            }
-
-            memcpy(Where, &Value, Width);
-            To += Step;
-        }
+        printf("    there is no instruction reader to ask\n");
+        return false;
     }
 
-    /* Where the instruction would have left them, had it been carried out */
-    if (Writing)
+    TheAddresses = &On;
+
+    WHV_EMULATOR_STATUS How = {};
+    const bool Went = hv::Io(TheReader, &Exit.VpContext, &Exit.IoPortAccess,
+                             &How);
+
+    TheAddresses = nullptr;
+
+    if (!Went)
     {
-        hv::Poke(WHvX64RegisterRsi,
-                 Exit.IoPortAccess.Rsi + (ULONG64)(Step * (LONG64)Count));
-    }
-    else
-    {
-        hv::Poke(WHvX64RegisterRdi,
-                 Exit.IoPortAccess.Rdi + (ULONG64)(Step * (LONG64)Count));
+        printf("    the reader would not look at the run\n");
+        return false;
     }
 
-    if (Exit.IoPortAccess.AccessInfo.RepPrefix)
-        hv::Poke(WHvX64RegisterRcx, 0);
+    if (How.EmulationSuccessful == 0)
+    {
+        printf("    the reader made nothing of the run, %08lx, at %04x\n",
+               How.AsUINT32, Exit.IoPortAccess.PortNumber);
+    }
 
-    return true;
+    return (How.EmulationSuccessful != 0);
 }
 
 static void Dispatch(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
@@ -2761,6 +3118,217 @@ static void Dispatch(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
     hv::Poke(WHvX64RegisterRax, Rax);
 }
 
+/* A KEY, GIVEN TO WHICHEVER PART TURNS OUT TO BE A KEYBOARD ******************/
+
+/*
+ * Whichever of the parts answers for a keyboard is handed the key. Which one
+ * that is is not named anywhere: a machine is put together out of whatever was
+ * asked for, and a keyboard is whatever in it says it is one.
+ */
+static bool Typed(IVirtualDevice *const *Fitted, ULONG Count, USHORT Code,
+                  bool Down, bool Extended)
+{
+    for (ULONG Index = 0; Index < Count; Index++)
+    {
+        IVmKeyboardDevice *Keyboard = nullptr;
+
+        if (FAILED(Fitted[Index]->QueryInterface(
+                IID_IVmKeyboardDevice,
+                reinterpret_cast<void **>(&Keyboard))))
+            continue;
+
+        VDEV_KEYSTROKE Key = {};
+
+        Key.Code = Code;
+        Key.Flags = (USHORT)((Down ? VDEV_KEY_DOWN : VDEV_KEY_UP) |
+                             (Extended ? VDEV_KEY_EXTENDED : 0));
+
+        const bool Went = SUCCEEDED(Keyboard->SendKeystroke(&Key));
+
+        Keyboard->Release();
+
+        if (Went)
+            return true;
+    }
+
+    return false;
+}
+
+/* HOW A VECTOR GETS INTO THE PROCESSOR ***************************************/
+
+/*
+ * Between one stop and the next, which is the only moment a processor can be
+ * made to take anything.
+ *
+ * It cannot always be made to take it. A guest with interrupts turned off is
+ * not interruptible, and neither is one part way through the single instruction
+ * after turning them back on: a vector forced in there is not deferred, it is
+ * lost, and a controller waiting for the acknowledge that never comes stops
+ * raising anything again. So when it will not go in the processor is asked to
+ * stop the moment it would, and it goes in then.
+ */
+static void Deliver(Processors &Which, const WHV_RUN_VP_EXIT_CONTEXT &Exit)
+{
+    const ULONG Vector = Which.Owed();
+
+    if (Vector == PROCESSOR_NOTHING_OWED)
+        return;
+
+    const bool Willing =
+        ((Exit.VpContext.Rflags & 0x200) != 0) &&
+        (Exit.VpContext.ExecutionState.InterruptShadow == 0) &&
+        (Exit.VpContext.ExecutionState.InterruptionPending == 0);
+
+    if (!Willing)
+    {
+        WHV_X64_DELIVERABILITY_NOTIFICATIONS_REGISTER Tell = {};
+
+        Tell.InterruptNotification = 1;
+        hv::Poke(WHvX64RegisterDeliverabilityNotifications, Tell.AsUINT64);
+        return;
+    }
+
+    WHV_X64_PENDING_INTERRUPTION_REGISTER Taking = {};
+
+    Taking.InterruptionPending = 1;
+    Taking.InterruptionType = WHvX64PendingInterrupt;
+    Taking.InterruptionVector = (Vector & 0xFF);
+
+    if (hv::Poke(WHvRegisterPendingInterruption, Taking.AsUINT64))
+        Which.Took();
+}
+
+/* And the standing request to be stopped, once there is nothing to stop for */
+static void Unwatch()
+{
+    hv::Poke(WHvX64RegisterDeliverabilityNotifications, 0);
+}
+
+/* WHAT THE MACHINE IS, LEFT WHERE THE FIRMWARE LOOKS *************************/
+
+/*
+ * A firmware has no way of its own to find out how much memory there is.
+ * Nothing on the bus answers for it, and reading upwards until it stops
+ * answering is not something a machine with holes in it comes back from. So it
+ * is told, in a note left low down where it knows to look, and what spells the
+ * note is what it checks before believing any of it.
+ */
+#define MACHINE_NOTE        0x00000500ull
+#define MACHINE_NOTE_MAGIC  0x4D565452ul
+
+static bool Describe(ULONG64 Ram, ULONG Processors)
+{
+    struct Note
+    {
+        ULONG Magic;
+        ULONG Version;
+        ULONG64 MemorySize;
+        ULONG ProcessorCount;
+        ULONG Reserved;
+    };
+
+    Note Written = {};
+
+    Written.Magic = MACHINE_NOTE_MAGIC;
+    Written.Version = 1;
+    Written.MemorySize = Ram;
+    Written.ProcessorCount = Processors;
+
+    void *Where = hv::Guest(MACHINE_NOTE, sizeof(Written));
+
+    if (Where == nullptr)
+        return false;
+
+    memcpy(Where, &Written, sizeof(Written));
+    return true;
+}
+
+/* KEYS A RUN WITH NOBODY AT IT PRESSES ITSELF ********************************/
+
+/*
+ * A firmware that waits to be told which of several things to do waits forever
+ * on a machine with nobody watching it. So a run can be told what would have
+ * been pressed and when, which is what makes booting one of them something that
+ * can be left to run.
+ */
+#define PRESSES_AT_MOST 8
+
+struct Press
+{
+    ULONG64 After;
+    USHORT Code;
+    bool Extended;
+};
+
+static Press ThePresses[PRESSES_AT_MOST];
+static ULONG ThePressCount = 0;
+
+bool VmPress(ULONG64 After, USHORT Code, bool Extended)
+{
+    if (ThePressCount >= ARRAYSIZE(ThePresses))
+        return false;
+
+    ThePresses[ThePressCount].After = After;
+    ThePresses[ThePressCount].Code = Code;
+    ThePresses[ThePressCount].Extended = Extended;
+    ThePressCount++;
+    return true;
+}
+
+/* Whichever of them has come due, pressed and let go of in the one go */
+static void Pressing(ULONG64 Count, IVirtualDevice *const *Fitted,
+                     ULONG Fittings)
+{
+    for (ULONG Index = 0; Index < ThePressCount; Index++)
+    {
+        if (ThePresses[Index].After != Count)
+            continue;
+
+        const bool Down = Typed(Fitted, Fittings, ThePresses[Index].Code, true,
+                               ThePresses[Index].Extended);
+        const bool Up = Typed(Fitted, Fittings, ThePresses[Index].Code, false,
+                             ThePresses[Index].Extended);
+
+        printf("%6llu  pressing %02x, %s\n", (unsigned long long)Count,
+               ThePresses[Index].Code,
+               (Down && Up) ? "taken" : "nothing here took it");
+    }
+}
+
+/* Where the memory is written out to when the run is over, or nowhere */
+static const char *TheDumpTo = nullptr;
+
+void VmDump(const char *Path) { TheDumpTo = Path; }
+
+/*
+ * The whole of the memory, as one file. Nothing here reads it: what it is for is
+ * finding out by hand where something ended up, which guessing cannot do.
+ */
+static void Keep(const char *Path)
+{
+    FILE *File = nullptr;
+
+    if (fopen_s(&File, Path, "wb") != 0)
+        return;
+
+    ULONG64 Done = 0;
+
+    while (Done < hv::Extent())
+    {
+        const ULONG Chunk = 0x10000;
+        const void *From = hv::Guest(Done, Chunk);
+
+        if (From == nullptr)
+            break;
+
+        fwrite(From, 1, Chunk, File);
+        Done += Chunk;
+    }
+
+    fclose(File);
+    printf("  the memory as it stands is in %s\n", Path);
+}
+
 int Assemble(const char *Bios, const Part *Parts, ULONG Many,
                     ULONG64 Ram, ULONG Steps)
 {
@@ -2771,6 +3339,13 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
     }
 
     printf("%llu MB of memory\n", (unsigned long long)(Ram / (1024 * 1024)));
+
+    /* Which the firmware is told, because it cannot find out for itself */
+    if (!Describe(Ram, 1))
+    {
+        printf("the machine is too small to describe itself\n");
+        return 1;
+    }
 
     /*
      * The hardware first, because a firmware that starts before the devices it
@@ -2802,6 +3377,9 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
             printf("  it is in\n");
         }
     }
+
+    /* Which is as far as the quiet went: what the run does is worth seeing */
+    RepositoryQuiet = false;
 
     printf("%lu of %lu part(s) are in, answering for %lu run(s) of ports\n",
            Fittings, Many, Handed.Addresses().Ports());
@@ -2865,6 +3443,10 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
 
     while (Count < Steps)
     {
+        /* Anything the hardware is owed, before it is let go of again */
+        Deliver(Handed.Cpus(), Exit);
+        Pressing(Count, Fitted, Fittings);
+
         if (!hv::Step(&Exit))
         {
             printf("the processor would not run\n");
@@ -2881,19 +3463,56 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
             {
                 if (!Run(Exit, Handed.Addresses()))
                 {
-                    printf("a run of accesses to %04x went outside the memory "
-                           "it has\n", Exit.IoPortAccess.PortNumber);
+                    printf("a run of accesses to %04x could not be carried "
+                           "out\n", Exit.IoPortAccess.PortNumber);
                     break;
                 }
-            }
-            else
-            {
-                Dispatch(Exit, Handed.Addresses());
+
+                /* The reader carried the whole instruction out, RIP and all */
+                Ports++;
+                Rings += Ring();
+                continue;
             }
 
+            Dispatch(Exit, Handed.Addresses());
             Ports++;
         }
-        else if (Exit.ExitReason != WHvRunVpExitReasonMemoryAccess)
+        else if (Exit.ExitReason == WHvRunVpExitReasonX64InterruptWindow)
+        {
+            /*
+             * It would take one now. The standing request goes away, because
+             * what it was standing for is about to happen.
+             */
+            Unwatch();
+            Rings += Ring();
+            continue;
+        }
+        else if (Exit.ExitReason == WHvRunVpExitReasonException)
+        {
+            printf("%6llu  %04x:%04llx  fault %u, code %08lx, at %012llx\n",
+                   (unsigned long long)Count, Exit.VpContext.Cs.Selector,
+                   (unsigned long long)Exit.VpContext.Rip,
+                   Exit.VpException.ExceptionType,
+                   Exit.VpException.ErrorCode,
+                   (unsigned long long)Exit.VpException.ExceptionParameter);
+            break;
+        }
+        else if (Exit.ExitReason == WHvRunVpExitReasonMemoryAccess)
+        {
+            /* Worked out and carried out, because nothing else can go past it */
+            if (!Reach(Exit, Handed.Addresses()))
+            {
+                printf("%6llu  %04x:%04llx  a place in memory, and what was "
+                       "wanted from it could not be worked out\n",
+                       (unsigned long long)Count, Exit.VpContext.Cs.Selector,
+                       (unsigned long long)Exit.VpContext.Rip);
+                break;
+            }
+
+            /* The reader moved it on, so nothing here should as well */
+            continue;
+        }
+        else
         {
             printf("%6llu  %04x:%04llx  stopped for %s\n",
                    (unsigned long long)Count, Exit.VpContext.Cs.Selector,
@@ -2963,6 +3582,10 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
 
     hv::Tell();
 
+    /* And the memory as it stands, for working out what was where in it */
+    if (TheDumpTo != nullptr)
+        Keep(TheDumpTo);
+
     for (ULONG Index = 0; Index < Fittings; Index++)
     {
         Fitted[Index]->PowerOff(VDEV_STATE_NONE);
@@ -3006,6 +3629,7 @@ static struct
 void VmAllowStandIns(bool Allowed) { StrangersAllowed = Allowed; }
 void VmStoreAnswers(HRESULT What) { RepositoryAnswer = What; }
 void VmQuiet(bool Quiet) { RepositoryQuiet = Quiet; }
+void VmFaults(bool Watching) { hv::Faults(Watching); }
 
 const char *VmSaid()
 {
@@ -3030,31 +3654,7 @@ const void *VmGuest(ULONG64 Where, ULONG Length)
  */
 bool VmKey(USHORT Code, bool Down, bool Extended)
 {
-    bool Went = false;
-
-    for (ULONG Index = 0; Index < TheVm.Fittings; Index++)
-    {
-        IVmKeyboardDevice *Keyboard = nullptr;
-
-        if (FAILED(TheVm.Fitted[Index]->QueryInterface(
-                IID_IVmKeyboardDevice,
-                reinterpret_cast<void **>(&Keyboard))))
-            continue;
-
-        VDEV_KEYSTROKE Key = {};
-
-        Key.Code = Code;
-        Key.Flags = (USHORT)((Down ? VDEV_KEY_DOWN : VDEV_KEY_UP) |
-                             (Extended ? VDEV_KEY_EXTENDED : 0));
-
-        Went = SUCCEEDED(Keyboard->SendKeystroke(&Key));
-        Keyboard->Release();
-
-        if (Went)
-            break;
-    }
-
-    return Went;
+    return Typed(TheVm.Fitted, TheVm.Fittings, Code, Down, Extended);
 }
 
 IRtvmTextSurface *VmText() { return TheVm.Text; }
@@ -3105,6 +3705,27 @@ static bool Load(const char *Bios)
 
     const bool Went = hv::Place(Image, Read, 0x00100000ull - Read);
 
+    /*
+     * And again at the very top of the address space, which is where a board
+     * of this kind has always answered from as well. A processor comes out of
+     * reset reading up there, and anything that reaches for the top of memory
+     * afterwards finds the same bytes rather than nothing at all.
+     *
+     * Its own memory, on a page boundary and left behind on purpose: what is
+     * mapped is this memory rather than a copy of it, so it has to outlive the
+     * call, and memory handed to a machine has to start where a page does.
+     */
+    void *Above = VirtualAlloc(nullptr, Read, MEM_COMMIT | MEM_RESERVE,
+                               PAGE_READWRITE);
+
+    if (Above != nullptr)
+    {
+        memcpy(Above, Image, Read);
+
+        if (!hv::Fill(0x100000000ull - Read, Read, Above, true))
+            VirtualFree(Above, 0, MEM_RELEASE);
+    }
+
     free(Image);
     return Went;
 }
@@ -3125,10 +3746,16 @@ bool VmOpen(const VmWanted &What)
     TheUnclaimedCount = 0;
     TheAnswered = 0;
 
-    if (!hv::Open((What.Ram != 0) ? What.Ram : 0x08000000ull))
+    const ULONG64 Ram = (What.Ram != 0) ? What.Ram : 0x08000000ull;
+
+    if (!hv::Open(Ram))
         return false;
 
     TheVm.Open = true;
+
+    /* Which the firmware is told, because it cannot find out for itself */
+    if (!Describe(Ram, 1))
+        return false;
 
     /* Offered first, so that a display device asking for one is given it */
     TheVm.Handed->Watch(TheVm.Screen);
@@ -3177,6 +3804,9 @@ ULONG VmRun(ULONG Steps)
 
     while (Done < Steps)
     {
+        /* Anything the hardware is owed, before it is let go of again */
+        Deliver(TheVm.Handed->Cpus(), TheVm.Exit);
+
         if (!hv::Step(&TheVm.Exit))
         {
             TheVm.Stopped = true;
@@ -3196,15 +3826,36 @@ ULONG VmRun(ULONG Steps)
                     TheVm.Stopped = true;
                     break;
                 }
+
+                /* The reader carried the whole instruction out, RIP and all */
+                TheVm.Ports++;
+                Ring();
+                continue;
             }
-            else
-            {
-                Dispatch(TheVm.Exit, TheVm.Handed->Addresses());
-            }
+
+            Dispatch(TheVm.Exit, TheVm.Handed->Addresses());
             TheVm.Ports++;
         }
-        else if ((TheVm.Exit.ExitReason != WHvRunVpExitReasonMemoryAccess) &&
-                 (TheVm.Exit.ExitReason != WHvRunVpExitReasonX64Cpuid))
+        else if (TheVm.Exit.ExitReason == WHvRunVpExitReasonMemoryAccess)
+        {
+            if (!Reach(TheVm.Exit, TheVm.Handed->Addresses()))
+            {
+                TheVm.Stopped = true;
+                break;
+            }
+
+            Ring();
+            continue;
+        }
+        else if (TheVm.Exit.ExitReason ==
+                 WHvRunVpExitReasonX64InterruptWindow)
+        {
+            /* It would take one now, so what was waiting on that is done */
+            Unwatch();
+            Ring();
+            continue;
+        }
+        else if (TheVm.Exit.ExitReason != WHvRunVpExitReasonX64Cpuid)
         {
             TheVm.Stopped = true;
             break;
