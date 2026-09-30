@@ -132,3 +132,11 @@ extern KD_DISPATCH_TABLE DispatchTable[KdMax];
 
 /* The KD Native Provider List */
 extern LIST_ENTRY KdProviders;
+
+VOID
+KdpRegisterProvider(
+    _In_ PKD_DISPATCH_TABLE DispatchTable);
+
+VOID
+KdpUnregisterProvider(
+    _In_ PKD_DISPATCH_TABLE DispatchTable);
