@@ -1125,7 +1125,7 @@ NTAPI
 KeRevertToUserAffinityThreadEx(
   _In_ KAFFINITY Affinity);
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 ULONG
 NTAPI
 KeQueryActiveProcessorCount(
@@ -1137,7 +1137,7 @@ NTAPI
 KeQueryMaximumProcessorCount(VOID);
 $endif (_WDMDDK_)
 $if (_NTDDK_)
-NTKRNLVISTAAPI
+NTKERNELAPI
 ULONG
 NTAPI
 KeQueryActiveProcessorCount(

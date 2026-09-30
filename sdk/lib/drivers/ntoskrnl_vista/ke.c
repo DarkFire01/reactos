@@ -9,38 +9,6 @@
 
 #include "ntoskrnl_vista.h"
 
-NTKRNLVISTAAPI
-ULONG
-NTAPI
-KeQueryActiveProcessorCount(OUT PKAFFINITY ActiveProcessors OPTIONAL)
-{
-    RTL_BITMAP Bitmap;
-    KAFFINITY ActiveMap = KeQueryActiveProcessors();
-
-    if (ActiveProcessors != NULL)
-    {
-        *ActiveProcessors = ActiveMap;
-    }
-
-    RtlInitializeBitMap(&Bitmap, (PULONG)&ActiveMap,  sizeof(ActiveMap) * 8);
-    return RtlNumberOfSetBits(&Bitmap);
-}
-
-/**
- * @brief
- * Returns how many processors the system can ever run.
- *
- * @return
- * The count of processors that are online. ReactOS never brings a processor
- * up after boot, so this is also the most it will ever run.
- */
-ULONG
-NTAPI
-KeQueryMaximumProcessorCount(VOID)
-{
-    return KeQueryActiveProcessorCount(NULL);
-}
-
 /*
  * ReactOS runs the single processor group model, so every logical processor
  * lives in group 0 and the group aware APIs below sit on the plain ones.
