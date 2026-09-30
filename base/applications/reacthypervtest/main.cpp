@@ -39,6 +39,8 @@ static void Usage()
         "                     this does not have, rather than refusing it\n"
         "  --dump <file>      Write the memory out when the run is over\n"
         "  --said <file>      Write everything said on the first serial port\n"
+        "  --pipe <name>      What the first serial port is a pipe called, so\n"
+        "                     that a debugger can attach to it\n"
         "  --press <n>:<s>    Press scan code <s> once <n> stops have gone by,\n"
         "                     repeated. Prefix the code with e0 for the ones a\n"
         "                     keyboard sends two bytes for\n"
@@ -76,10 +78,14 @@ int main(int argc, char **argv)
             Class = argv[++Index];
         else if (strcmp(argv[Index], "--store-refuses") == 0)
             VmStoreAnswers(E_NOTIMPL);
+        else if (strcmp(argv[Index], "--loud") == 0)
+            VmLoud(true);
         else if (strcmp(argv[Index], "--stand-in") == 0)
             VmAllowStandIns(true);
         else if ((strcmp(argv[Index], "--dump") == 0) && ((Index + 1) < argc))
             VmDump(argv[++Index]);
+        else if ((strcmp(argv[Index], "--pipe") == 0) && ((Index + 1) < argc))
+            VmPipe(argv[++Index]);
         else if ((strcmp(argv[Index], "--said") == 0) && ((Index + 1) < argc))
             VmSaidTo(argv[++Index]);
         else if ((strcmp(argv[Index], "--press") == 0) && ((Index + 1) < argc))

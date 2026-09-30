@@ -1212,6 +1212,67 @@ DEFINE_GUID(IID_IVmManagementAccess,
 DEFINE_GUID(IID_IVmHandleBrokerServices,
             0xe9e61d12, 0xa2c3, 0x4e55, 0xac, 0x35, 0xb8, 0xf2, 0x6d, 0x21, 0x6a, 0x69);
 
+/*
+ * What a device is allowed to do, as whoever started the machine decided.
+ *
+ * Only the one slot below is known. A device asks it a yes or no question and
+ * keeps the answer for the rest of its life; what the question is has not been
+ * worked out, and answering no is what a machine with nothing held back would
+ * answer.
+ */
+#undef INTERFACE
+#define INTERFACE ISecurityManager
+DECLARE_INTERFACE_(ISecurityManager, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(Reserved3)(THIS) PURE;
+    STDMETHOD(Reserved4)(THIS) PURE;
+    STDMETHOD(Reserved5)(THIS) PURE;
+    STDMETHOD(Reserved6)(THIS) PURE;
+    STDMETHOD(Reserved7)(THIS) PURE;
+    STDMETHOD(Reserved8)(THIS) PURE;
+    STDMETHOD(Reserved9)(THIS) PURE;
+    STDMETHOD(Reserved10)(THIS) PURE;
+    STDMETHOD(Reserved11)(THIS) PURE;
+    STDMETHOD(Reserved12)(THIS) PURE;
+
+    STDMETHOD(IsHeldBack)(THIS_ _Out_ PULONG Held) PURE;
+};
+
+/*
+ * Something the manager is holding open, handed to a device.
+ *
+ * A device is never told the name of anything outside the machine. What is
+ * outside belongs to whoever started the machine, and a device is handed it
+ * already open: it asks for one by which of its own it is for, and what comes
+ * back says what kind of thing it is and what it is.
+ */
+typedef struct _VDEV_HANDLE
+{
+    ULONG Kind;
+    ULONG Reserved;
+    HANDLE What;
+} VDEV_HANDLE, *PVDEV_HANDLE;
+
+/* Where one comes from, being the only thing that knows what is outside */
+#undef INTERFACE
+#define INTERFACE IVmHandleBrokerServices
+DECLARE_INTERFACE_(IVmHandleBrokerServices, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    /* Which of the device's own it is for, named the way the device counts them */
+    STDMETHOD(GetHandle)(THIS_ _In_ PCWSTR Which,
+                         _Out_ PVDEV_HANDLE Held) PURE;
+};
+
 /* Coming back into a state that was written out, and writing one out */
 DEFINE_GUID(IID_IVmBootStateImporter,
             0x034e6428, 0x672e, 0x403a, 0xa3, 0x42, 0x4f, 0x4c, 0x8d, 0x6a, 0x70, 0x5c);
