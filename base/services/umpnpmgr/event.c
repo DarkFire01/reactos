@@ -33,7 +33,23 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Per-window limit so one hung window cannot stall the PnP event thread */
+#define DEVICE_CHANGE_SEND_TIMEOUT 5000
+
 /* FUNCTIONS *****************************************************************/
+
+static
+VOID
+BroadcastDevNodesChanged(VOID)
+{
+    SendMessageTimeoutW(HWND_BROADCAST,
+                        WM_DEVICECHANGE,
+                        DBT_DEVNODES_CHANGED,
+                        0,
+                        SMTO_ABORTIFHUNG,
+                        DEVICE_CHANGE_SEND_TIMEOUT,
+                        NULL);
+}
 
 static
 VOID
@@ -56,7 +72,7 @@ ProcessTargetDeviceEvent(
 //                               WM_DEVICECHANGE,
 //                               DBT_DEVNODES_CHANGED,
 //                               0);
-        SendMessageW(HWND_BROADCAST, WM_DEVICECHANGE, DBT_DEVNODES_CHANGED, 0);
+        BroadcastDevNodesChanged();
     }
     else if (UuidEqual(&PnpEvent->EventGuid, (UUID*)&GUID_DEVICE_EJECT_VETOED, &RpcStatus))
     {
@@ -78,7 +94,7 @@ ProcessTargetDeviceEvent(
 //                                WM_DEVICECHANGE,
 //                                DBT_DEVNODES_CHANGED,
 //                                0);
-        SendMessageW(HWND_BROADCAST, WM_DEVICECHANGE, DBT_DEVNODES_CHANGED, 0);
+        BroadcastDevNodesChanged();
     }
     else if (UuidEqual(&PnpEvent->EventGuid, (UUID*)&GUID_DEVICE_SURPRISE_REMOVAL, &RpcStatus))
     {
@@ -92,7 +108,7 @@ ProcessTargetDeviceEvent(
 //                                WM_DEVICECHANGE,
 //                                DBT_DEVNODES_CHANGED,
 //                                0);
-        SendMessageW(HWND_BROADCAST, WM_DEVICECHANGE, DBT_DEVNODES_CHANGED, 0);
+        BroadcastDevNodesChanged();
     }
     else if (UuidEqual(&PnpEvent->EventGuid, (UUID*)&GUID_DEVICE_REMOVAL_VETOED, &RpcStatus))
     {
@@ -170,7 +186,13 @@ ProcessDeviceClassChangeEvent(
 
             if ((pNotifyData->ulFlags & DEVICE_NOTIFY_SERVICE_HANDLE) == DEVICE_NOTIFY_WINDOW_HANDLE)
             {
-                SendMessageW((HANDLE)pNotifyData->hRecipient, WM_DEVICECHANGE, (WPARAM)dwEventType, (LPARAM)pEventData);
+                SendMessageTimeoutW((HWND)pNotifyData->hRecipient,
+                                    WM_DEVICECHANGE,
+                                    (WPARAM)dwEventType,
+                                    (LPARAM)pEventData,
+                                    SMTO_ABORTIFHUNG,
+                                    DEVICE_CHANGE_SEND_TIMEOUT,
+                                    NULL);
             }
             else if ((pNotifyData->ulFlags & DEVICE_NOTIFY_SERVICE_HANDLE) == DEVICE_NOTIFY_SERVICE_HANDLE)
             {
@@ -227,7 +249,7 @@ ProcessDeviceInstallEvent(
 //                                    WM_DEVICECHANGE,
 //                                    DBT_DEVNODES_CHANGED,
 //                                    0);
-            SendMessageW(HWND_BROADCAST, WM_DEVICECHANGE, DBT_DEVNODES_CHANGED, 0);
+            BroadcastDevNodesChanged();
         }
     }
 }
