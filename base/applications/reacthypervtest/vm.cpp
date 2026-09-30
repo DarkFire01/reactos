@@ -82,9 +82,6 @@ static ULONG TheWireSaid = 0;
 
 static bool WorthSaying()
 {
-    if (RepositoryQuiet)
-        return false;
-
     return (TheWireSaid++ < WIRES_ENOUGH);
 }
 
@@ -599,6 +596,121 @@ private:
  * and nothing to offer it: what is being checked here is whether a device that
  * is handed this is satisfied by it, not what it does with it afterwards.
  */
+/*
+ * Where the keyboard and the pointer in the machine end up.
+ *
+ * A controller does not take keys, and asking one for a keyboard gets nowhere:
+ * the parts of it that are a keyboard and a pointer are its own, and it hands
+ * them over as it comes up rather than answering for them. So they are kept as
+ * they arrive, and asked which kind each is.
+ */
+class Input : public IVmInputController
+{
+public:
+    ~Input()
+    {
+        if (m_Keyboard != nullptr)
+            m_Keyboard->Release();
+
+        if (m_Mouse != nullptr)
+            m_Mouse->Release();
+    }
+
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
+    {
+        if (Object == nullptr)
+            return E_POINTER;
+
+        if (IsEqualIID(Interface, IID_IUnknown) ||
+            IsEqualIID(Interface, IID_IVmInputController))
+        {
+            *Object = static_cast<IVmInputController *>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        *Object = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return (ULONG)InterlockedIncrement(&m_Count);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        return (ULONG)InterlockedDecrement(&m_Count);
+    }
+
+    STDMETHODIMP RegisterInputDevice(IUnknown *Device) override
+    {
+        if (Device == nullptr)
+            return E_POINTER;
+
+        IVmKeyboardDevice *Keys = nullptr;
+        IVmMouseDevice *Pointer = nullptr;
+
+        if (SUCCEEDED(Device->QueryInterface(
+                IID_IVmKeyboardDevice, reinterpret_cast<void **>(&Keys))))
+        {
+            if (m_Keyboard != nullptr)
+                m_Keyboard->Release();
+
+            m_Keyboard = Keys;
+            printf("    a keyboard is plugged in\n");
+            return S_OK;
+        }
+
+        if (SUCCEEDED(Device->QueryInterface(
+                IID_IVmMouseDevice, reinterpret_cast<void **>(&Pointer))))
+        {
+            if (m_Mouse != nullptr)
+                m_Mouse->Release();
+
+            m_Mouse = Pointer;
+            printf("    a pointer is plugged in\n");
+            return S_OK;
+        }
+
+        printf("    something was plugged in that is neither\n");
+        return S_OK;
+    }
+
+    STDMETHODIMP UnregisterInputDevice(IUnknown *Device) override
+    {
+        UNREFERENCED_PARAMETER(Device);
+        return S_OK;
+    }
+
+    STDMETHODIMP Reserved5() override { return E_NOTIMPL; }
+
+    STDMETHODIMP NotifyDeviceIdle(IUnknown *Device, ULONG64 When) override
+    {
+        UNREFERENCED_PARAMETER(Device);
+        UNREFERENCED_PARAMETER(When);
+        return S_OK;
+    }
+
+    STDMETHODIMP NotifyDeviceClass(IUnknown *Device, ULONG Class) override
+    {
+        UNREFERENCED_PARAMETER(Device);
+
+        if (WorthSaying())
+            printf("    an input device says it is a %lu\n", Class);
+
+        return S_OK;
+    }
+
+    IVmKeyboardDevice *Keyboard() const noexcept { return m_Keyboard; }
+    IVmMouseDevice *Pointer() const noexcept { return m_Mouse; }
+
+private:
+    volatile LONG m_Count = 1;
+    IVmKeyboardDevice *m_Keyboard = nullptr;
+    IVmMouseDevice *m_Mouse = nullptr;
+};
+
 /* A vector of all ones, which is how the chip says there is nothing owed */
 #define PROCESSOR_NOTHING_OWED  0xFFFFFFFFul
 
@@ -1113,11 +1225,18 @@ public:
         UNREFERENCED_PARAMETER(Kind);
 
         m_Period = Period;
-        m_Due = Due;
         m_Repeating = (Repeating != 0);
         m_Armed = true;
         m_Arms++;
 
+        /*
+         * No time at all means the period is the wait rather than a moment to
+         * wait until. Taking it for a moment puts the first one at the beginning
+         * of time, and a clock that has been running for hours then owes the
+         * device every tick since, which it hands over one at a time and gets
+         * nowhere near the present.
+         */
+        m_Due = (Due != 0) ? Due : (Ticks() + Period);
         return S_OK;
     }
 
@@ -1135,13 +1254,28 @@ public:
     /* Goes off if it is due, and sets itself again if that is what was asked */
     bool Ring()
     {
-        if (!m_Armed || (Ticks() < m_Due))
+        const ULONG64 Now = Ticks();
+
+        if (!m_Armed || (Now < m_Due))
             return false;
 
         if (m_Repeating && (m_Period != 0))
+        {
             m_Due += m_Period;
+
+            /*
+             * And if that is still behind, it is set from now instead. A machine
+             * whose processor was held up for longer than the period owes the
+             * device more than one tick, and handing them all over is a run that
+             * spends the rest of its life catching up on a clock it cannot catch.
+             */
+            if (m_Due <= Now)
+                m_Due = Now + m_Period;
+        }
         else
+        {
             m_Armed = false;
+        }
 
         m_Rings++;
 
@@ -2191,6 +2325,14 @@ public:
                 return S_OK;
             }
 
+            if (IsEqualIID(Service, IID_IVmInputController))
+            {
+                printf(" (given)\n");
+                m_Input.AddRef();
+                *Object = static_cast<IVmInputController *>(&m_Input);
+                return S_OK;
+            }
+
             if (IsEqualIID(Service, IID_IVmTimeSource))
             {
                 printf(" (given)\n");
@@ -2299,6 +2441,7 @@ public:
     const Emulation &Addresses() const noexcept { return m_Emulation; }
     const Lines &Wires() const noexcept { return m_Lines; }
     Processors &Cpus() noexcept { return m_Processors; }
+    Input &Typing() noexcept { return m_Input; }
 
     /*
      * Which of the parts a line goes to, worked out as they are offered rather
@@ -2323,6 +2466,7 @@ private:
     Emulation m_Emulation;
     Processors m_Processors;
     Lines m_Lines;
+    Input m_Input;
     Clock m_Clock;
     Bios m_Bios;
     GuestMemory m_Memory;
@@ -2656,6 +2800,18 @@ static IVirtualDevice *Fit(const Part &What, Probe &Handed)
         Device->Release();
         return nullptr;
     }
+
+    /*
+     * And let go of, which is a step of its own. A device that has been powered
+     * on has everything it needs and still does nothing: it holds a state of its
+     * own and acts on nothing until it is told the machine is running. One that
+     * counts its own ticks gets away with that; one waiting to be typed at sits
+     * there taking keys and dropping them.
+     */
+    Status = Device->Resume(VDEV_STATE_NONE);
+
+    if (FAILED(Status))
+        printf("  it would not be let go of, %08lx\n", Status);
 
     return Device;
 }
@@ -3118,40 +3274,51 @@ static void Dispatch(const WHV_RUN_VP_EXIT_CONTEXT &Exit, const Emulation &On)
     hv::Poke(WHvX64RegisterRax, Rax);
 }
 
-/* A KEY, GIVEN TO WHICHEVER PART TURNS OUT TO BE A KEYBOARD ******************/
+/* A KEY, AND WHERE THE POINTER IS ********************************************/
 
 /*
- * Whichever of the parts answers for a keyboard is handed the key. Which one
- * that is is not named anywhere: a machine is put together out of whatever was
- * asked for, and a keyboard is whatever in it says it is one.
+ * Handed to the keyboard the controller plugged in. Which part that came from
+ * is not asked: a keyboard is whatever was put on the other side of the
+ * controller, and a machine with nothing there is a machine nothing can be
+ * typed at.
  */
-static bool Typed(IVirtualDevice *const *Fitted, ULONG Count, USHORT Code,
-                  bool Down, bool Extended)
+static bool Typed(Input &Where, USHORT Code, bool Down, bool Extended)
 {
-    for (ULONG Index = 0; Index < Count; Index++)
-    {
-        IVmKeyboardDevice *Keyboard = nullptr;
+    IVmKeyboardDevice *Keyboard = Where.Keyboard();
 
-        if (FAILED(Fitted[Index]->QueryInterface(
-                IID_IVmKeyboardDevice,
-                reinterpret_cast<void **>(&Keyboard))))
-            continue;
+    if (Keyboard == nullptr)
+        return false;
 
-        VDEV_KEYSTROKE Key = {};
+    VDEV_KEYSTROKE Key = {};
 
-        Key.Code = Code;
-        Key.Flags = (USHORT)((Down ? VDEV_KEY_DOWN : VDEV_KEY_UP) |
-                             (Extended ? VDEV_KEY_EXTENDED : 0));
+    Key.Code = Code;
+    Key.Flags = (USHORT)((Down ? VDEV_KEY_DOWN : VDEV_KEY_UP) |
+                         (Extended ? VDEV_KEY_EXTENDED : 0));
 
-        const bool Went = SUCCEEDED(Keyboard->SendKeystroke(&Key));
+    return SUCCEEDED(Keyboard->SendKeystroke(&Key));
+}
 
-        Keyboard->Release();
+/*
+ * And the pointer, said either as how far it moved or as where on the screen it
+ * is. A window only knows the second, so that is what it says, and the device
+ * turns it into what the wire would have carried.
+ */
+static bool Pointed(Input &Where, SHORT X, SHORT Y, USHORT Buttons,
+                    bool Absolute)
+{
+    IVmMouseDevice *Mouse = Where.Pointer();
 
-        if (Went)
-            return true;
-    }
+    if (Mouse == nullptr)
+        return false;
 
-    return false;
+    VDEV_MOUSE_EVENT Event = {};
+
+    Event.Flags = Absolute ? VDEV_MOUSE_ABSOLUTE : 0;
+    Event.X = X;
+    Event.Y = Y;
+    Event.Buttons = Buttons;
+
+    return SUCCEEDED(Mouse->PostEvent(&Event));
 }
 
 /* HOW A VECTOR GETS INTO THE PROCESSOR ***************************************/
@@ -3276,18 +3443,17 @@ bool VmPress(ULONG64 After, USHORT Code, bool Extended)
 }
 
 /* Whichever of them has come due, pressed and let go of in the one go */
-static void Pressing(ULONG64 Count, IVirtualDevice *const *Fitted,
-                     ULONG Fittings)
+static void Pressing(ULONG64 Count, Input &Where)
 {
     for (ULONG Index = 0; Index < ThePressCount; Index++)
     {
         if (ThePresses[Index].After != Count)
             continue;
 
-        const bool Down = Typed(Fitted, Fittings, ThePresses[Index].Code, true,
-                               ThePresses[Index].Extended);
-        const bool Up = Typed(Fitted, Fittings, ThePresses[Index].Code, false,
-                             ThePresses[Index].Extended);
+        const bool Down = Typed(Where, ThePresses[Index].Code, true,
+                                ThePresses[Index].Extended);
+        const bool Up = Typed(Where, ThePresses[Index].Code, false,
+                              ThePresses[Index].Extended);
 
         printf("%6llu  pressing %02x, %s\n", (unsigned long long)Count,
                ThePresses[Index].Code,
@@ -3445,7 +3611,7 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
     {
         /* Anything the hardware is owed, before it is let go of again */
         Deliver(Handed.Cpus(), Exit);
-        Pressing(Count, Fitted, Fittings);
+        Pressing(Count, Handed.Typing());
 
         if (!hv::Step(&Exit))
         {
@@ -3588,6 +3754,7 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
 
     for (ULONG Index = 0; Index < Fittings; Index++)
     {
+        Fitted[Index]->Pause(VDEV_STATE_NONE);
         Fitted[Index]->PowerOff(VDEV_STATE_NONE);
         Fitted[Index]->Teardown();
         Fitted[Index]->Release();
@@ -3654,7 +3821,18 @@ const void *VmGuest(ULONG64 Where, ULONG Length)
  */
 bool VmKey(USHORT Code, bool Down, bool Extended)
 {
-    return Typed(TheVm.Fitted, TheVm.Fittings, Code, Down, Extended);
+    if (TheVm.Handed == nullptr)
+        return false;
+
+    return Typed(TheVm.Handed->Typing(), Code, Down, Extended);
+}
+
+bool VmPointer(SHORT X, SHORT Y, USHORT Buttons, bool Absolute)
+{
+    if (TheVm.Handed == nullptr)
+        return false;
+
+    return Pointed(TheVm.Handed->Typing(), X, Y, Buttons, Absolute);
 }
 
 IRtvmTextSurface *VmText() { return TheVm.Text; }
@@ -3914,6 +4092,7 @@ void VmClose()
         if (One == nullptr)
             continue;
 
+        One->Pause(VDEV_STATE_NONE);
         One->PowerOff(VDEV_STATE_NONE);
         One->Teardown();
         One->Release();
@@ -4097,13 +4276,20 @@ int One(const char *Library, const char *Class, const char *Settings)
      * answered for by something that is no longer there.
      */
     if (SUCCEEDED(Status))
+    {
+        Status = Device->Resume(VDEV_STATE_NONE);
+        printf("and it was let go of with %08lx\n", Status);
         Drive(Handed, Wanted);
+    }
     else
+    {
         printf("so there is nothing left of it to drive\n");
+    }
 
     if (Handed.Wires().Raised() != 0)
         printf("and it raised its line %lu time(s)\n", Handed.Wires().Raised());
 
+    Device->Pause(VDEV_STATE_NONE);
     Device->PowerOff(VDEV_STATE_NONE);
     Device->Teardown();
     Device->Release();
