@@ -26,7 +26,7 @@ PROCESSOR_IDENTITY HalpProcessorIdentity[MAXIMUM_PROCESSORS];
 
 extern ULONG HalpPicVectorRedirect[HALP_ISA_IRQ_COUNT];
 
-/* Defined in x2apic/x2apic.c */
+/* Defined in generic/misc.c, which every variant builds */
 extern BOOLEAN HalpX2ApicFirmwareAllowed;
 
 /* The table is parsed before debug output works, so problems are reported later */
