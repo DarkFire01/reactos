@@ -209,6 +209,7 @@
 @ stdcall ElfReportEventW(long long long long ptr long long ptr ptr long ptr ptr)
 @ stdcall -version=0x502 EnableTrace(long long long ptr double) ntdll.EtwEnableTrace
 @ stdcall -version=0x600+ EnableTrace(long long long ptr double) EtwEnableTrace
+@ stdcall -version=0x601+ EnableTraceEx2(int64 ptr long long int64 int64 long ptr) ntdll.EtwEnableTraceEx2
 @ stdcall EncryptFileA(str)
 @ stdcall EncryptFileW(wstr)
 @ stub EncryptedFileKeyInfo
@@ -379,7 +380,9 @@
 @ stdcall LsaLookupNames(ptr long ptr ptr ptr)
 @ stdcall -version=0x600+ LsaManageSidNameMapping(long ptr ptr)
 @ stdcall -version=0x600+ EventActivityIdControl(long ptr) ntdll.EtwEventActivityIdControl
+@ stdcall -version=0x600+ EventEnabled(int64 ptr) ntdll.EtwEventEnabled
 @ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
+@ stdcall -version=0x600+ EventWrite(int64 ptr long ptr) ntdll.EtwEventWrite
 @ stdcall -version=0x600+ EventSetInformation(int64 long ptr long) ntdll.EtwEventSetInformation
 @ stdcall -version=0x600+ EventUnregister(int64) ntdll.EtwEventUnregister
 @ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr) ntdll.EtwEventWriteTransfer

@@ -67,6 +67,7 @@
 @ stdcall -stub EtwCreateTraceInstanceId(ptr ptr)
 @ stdcall -stub -version=0x600+ EtwDeliverDataBlock(long)
 @ stdcall -version=0x502 EtwEnableTrace(long long long ptr double)
+@ stdcall -version=0x601+ EtwEnableTraceEx2(int64 ptr long long int64 int64 long ptr)
 @ stdcall -stub -version=0x600+ EtwEnumerateProcessRegGuids(ptr long ptr)
 @ stdcall -stub -version=0x502 EtwEnumerateTraceGuids(ptr long ptr)
 @ stdcall -version=0x600+ EtwEventActivityIdControl(long ptr)

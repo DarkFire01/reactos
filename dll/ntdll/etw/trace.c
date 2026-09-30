@@ -176,6 +176,20 @@ ULONG WINAPI EtwEnableTrace( ULONG enable, ULONG flag, ULONG level, LPCGUID guid
 }
 
 /******************************************************************************
+ * EtwEnableTraceEx2 [NTDLL.@]
+ */
+ULONG WINAPI EtwEnableTraceEx2( TRACEHANDLE hSession, LPCGUID ProviderId, ULONG ControlCode,
+                                UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
+                                ULONG Timeout, PENABLE_TRACE_PARAMETERS EnableParameters )
+{
+    FIXME("(%I64x, %p, %d, %d, %I64x, %I64x, %d, %p): stub
+", hSession, ProviderId, ControlCode,
+            Level, MatchAnyKeyword, MatchAllKeyword, Timeout, EnableParameters);
+
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
  * EtwQueryAllTracesW [NTDLL.@]
  *
  * Query information for started event trace sessions
