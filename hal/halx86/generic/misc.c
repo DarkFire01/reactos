@@ -300,4 +300,11 @@ KeReleaseSpinLock(PKSPIN_LOCK SpinLock,
     KfReleaseSpinLock(SpinLock, NewIrql);
 }
 
+/*
+ * Set from the DMAR table, which only the ACPI HALs parse, and read by the
+ * x2apic support, which only the APIC HALs build. No one variant has both,
+ * so it lives here where every one of them does.
+ */
+BOOLEAN HalpX2ApicFirmwareAllowed = FALSE;
+
 #endif /* _M_IX86 */

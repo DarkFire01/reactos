@@ -18,8 +18,8 @@
 
 BOOLEAN HalpX2ApicEnabled = FALSE;
 
-/* Set from the DMAR table, which only the ACPI HALs parse */
-BOOLEAN HalpX2ApicFirmwareAllowed = FALSE;
+/* Set from the DMAR table, which the ACPI HALs parse in madt.c */
+extern BOOLEAN HalpX2ApicFirmwareAllowed;
 
 /* FUNCTIONS ******************************************************************/
 
