@@ -48,6 +48,39 @@ KDP_DEBUG_MODE KdpDebugMode;
 LIST_ENTRY KdProviders = {&KdProviders, &KdProviders};
 KD_DISPATCH_TABLE DispatchTable[KdMax] = {0};
 
+/*
+ * Puts a provider on the list, once.
+ *
+ * Phase 0 runs again every time the debugger is enabled from a bug check, and
+ * a table that is already on the list would have the links it is holding
+ * overwritten by a second insert, which drops the providers between it and the
+ * head and leaves the walk in KdIoPrintString running through whatever the
+ * stale links now point at.
+ */
+VOID
+KdpRegisterProvider(
+    _In_ PKD_DISPATCH_TABLE DispatchTable)
+{
+    /* The tables are zeroed, so no link means it has never been on the list */
+    if (DispatchTable->KdProvidersList.Flink != NULL)
+        return;
+
+    InsertTailList(&KdProviders, &DispatchTable->KdProvidersList);
+}
+
+/* Takes a provider off the list and leaves it able to go back on */
+VOID
+KdpUnregisterProvider(
+    _In_ PKD_DISPATCH_TABLE DispatchTable)
+{
+    if (DispatchTable->KdProvidersList.Flink == NULL)
+        return;
+
+    RemoveEntryList(&DispatchTable->KdProvidersList);
+    DispatchTable->KdProvidersList.Flink = NULL;
+    DispatchTable->KdProvidersList.Blink = NULL;
+}
+
 PKDP_INIT_ROUTINE InitRoutines[KdMax] =
 {
     KdpScreenInit,
@@ -211,7 +244,7 @@ KdpDebugLogInit(
 
         /* Register for BootPhase 1 initialization and as a Provider */
         DispatchTable->KdpInitRoutine = KdpDebugLogInit;
-        InsertTailList(&KdProviders, &DispatchTable->KdProvidersList);
+        KdpRegisterProvider(DispatchTable);
     }
     else if (BootPhase == 1)
     {
@@ -222,7 +255,7 @@ KdpDebugLogInit(
         if (!KdpDebugBuffer)
         {
             KdpDebugMode.File = FALSE;
-            RemoveEntryList(&DispatchTable->KdProvidersList);
+            KdpUnregisterProvider(DispatchTable);
             return STATUS_NO_MEMORY;
         }
         KdpFreeBytes = KdpBufferSize;
@@ -353,7 +386,7 @@ Failure:
         ExFreePoolWithTag(KdpDebugBuffer, TAG_KDBG);
         KdpDebugBuffer = NULL;
         KdpDebugMode.File = FALSE;
-        RemoveEntryList(&DispatchTable->KdProvidersList);
+        KdpUnregisterProvider(DispatchTable);
     }
 
     return Status;
@@ -415,7 +448,7 @@ KdpSerialInit(
 
         /* Register for BootPhase 1 initialization and as a Provider */
         DispatchTable->KdpInitRoutine = KdpSerialInit;
-        InsertTailList(&KdProviders, &DispatchTable->KdProvidersList);
+        KdpRegisterProvider(DispatchTable);
     }
     else if (BootPhase == 1)
     {
@@ -527,7 +560,7 @@ KdpScreenInit(
 
         /* Register for BootPhase 1 initialization and as a Provider */
         DispatchTable->KdpInitRoutine = KdpScreenInit;
-        InsertTailList(&KdProviders, &DispatchTable->KdProvidersList);
+        KdpRegisterProvider(DispatchTable);
     }
     else if (BootPhase == 1)
     {
@@ -561,7 +594,10 @@ KdIoPrintString(
                                          KD_DISPATCH_TABLE,
                                          KdProvidersList);
 
-        CurrentTable->KdpPrintRoutine(String, Length);
+        /* A provider is on the list before it is fully set up, so it is
+           checked here the way the init walk checks its own routine */
+        if (CurrentTable->KdpPrintRoutine)
+            CurrentTable->KdpPrintRoutine(String, Length);
     }
 }
 
