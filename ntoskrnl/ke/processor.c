@@ -44,6 +44,48 @@ KeQueryActiveProcessors(VOID)
 }
 
 /**
+ * @brief
+ * Counts the processors that are running, and optionally hands back which.
+ *
+ * @param[out] ActiveProcessors
+ * Receives the affinity of the running processors, when asked for.
+ *
+ * @return
+ * How many processors are running.
+ */
+ULONG
+NTAPI
+KeQueryActiveProcessorCount(
+    _Out_opt_ PKAFFINITY ActiveProcessors)
+{
+    RTL_BITMAP Bitmap;
+    KAFFINITY ActiveMap = KeQueryActiveProcessors();
+
+    if (ActiveProcessors != NULL)
+    {
+        *ActiveProcessors = ActiveMap;
+    }
+
+    RtlInitializeBitMap(&Bitmap, (PULONG)&ActiveMap, sizeof(ActiveMap) * 8);
+    return RtlNumberOfSetBits(&Bitmap);
+}
+
+/**
+ * @brief
+ * Returns how many processors the system can ever run.
+ *
+ * @return
+ * The count of processors that are online. ReactOS never brings a processor
+ * up after boot, so this is also the most it will ever run.
+ */
+ULONG
+NTAPI
+KeQueryMaximumProcessorCount(VOID)
+{
+    return KeQueryActiveProcessorCount(NULL);
+}
+
+/**
  * Retrieves the number of the current processor.
  *
  * \param ProcessorNumber Pointer to a PROCESSOR_NUMBER structure that receives the processor number.

@@ -1772,6 +1772,7 @@
 # =========================================================================
 
 # C runtime helpers
+@ cdecl _snprintf_s()
 @ cdecl _strtoui64()
 @ cdecl memcpy_s()
 @ cdecl sscanf_s()
@@ -1780,9 +1781,14 @@
 @ cdecl -arch=i386 _chkstk()
 @ cdecl strtok_s()
 @ cdecl vsprintf_s()
+@ cdecl wcscat_s()
 @ cdecl wcscpy_s()
 @ cdecl wcsncpy_s()
 @ cdecl wcsnlen()
+
+# Configuration Manager
+@ stdcall -version=0x600+ CmCallbackGetKeyObjectID(ptr ptr ptr ptr)
+@ stdcall -version=0x600+ CmRegisterCallbackEx(ptr ptr ptr ptr ptr ptr)
 
 # Debugging
 @ stdcall -version=0x603+ DbgkWerCaptureLiveKernelDump(wstr long ptr ptr ptr ptr ptr ptr long)
@@ -1885,11 +1891,13 @@
 @ stdcall -version=0x603+ KeInitializeTimer2(ptr)
 @ fastcall -version=0x600+ KeInvalidateRangeAllCaches(ptr long)
 @ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
+@ stdcall -version=0x600+ KeQueryActiveProcessorCount(ptr)
 @ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
 @ stdcall -version=0x602+ KeQueryDpcWatchdogInformation(ptr)
 @ stdcall -version=0x601+ KeQueryGroupAffinity(long)
 @ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
 @ stdcall -version=0x601+ KeQueryMaximumGroupCount()
+@ stdcall -version=0x600+ KeQueryMaximumProcessorCount()
 @ stdcall -version=0x601+ KeQueryMaximumProcessorCountEx(long)
 @ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
 @ stdcall -version=0x602+ KeQuerySystemTimePrecise(ptr)
