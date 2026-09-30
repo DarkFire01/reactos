@@ -49,7 +49,62 @@ DWORD
 CreatePnpInstallEventSecurity(
     _Out_ PSECURITY_DESCRIPTOR *EventSd);
 
+/* How long a silent (no wizard) install may run before we stop waiting on it */
+#define SILENT_INSTALL_TIMEOUT (5 * 60 * 1000)
+
 /* FUNCTIONS *****************************************************************/
+
+/**
+ * @brief
+ * Waits for pending I/O on the install pipe, giving up if the client process exits.
+ */
+static
+BOOL
+WaitForInstallPipeIo(
+    _In_ HANDLE Pipe,
+    _In_ LPOVERLAPPED Overlapped,
+    _In_ HANDLE Process)
+{
+    HANDLE WaitHandles[2];
+    DWORD Transferred;
+
+    WaitHandles[0] = Overlapped->hEvent;
+    WaitHandles[1] = Process;
+
+    if (WaitForMultipleObjects(ARRAYSIZE(WaitHandles), WaitHandles, FALSE, INFINITE) != WAIT_OBJECT_0)
+    {
+        /* The OVERLAPPED lives on the caller's stack, so the IRP must be gone before we return */
+        CancelIo(Pipe);
+        GetOverlappedResult(Pipe, Overlapped, &Transferred, TRUE);
+        return FALSE;
+    }
+
+    return GetOverlappedResult(Pipe, Overlapped, &Transferred, FALSE);
+}
+
+static
+BOOL
+WriteInstallPipe(
+    _In_ HANDLE Pipe,
+    _In_ HANDLE IoEvent,
+    _In_ HANDLE Process,
+    _In_reads_bytes_(Length) LPCVOID Buffer,
+    _In_ DWORD Length)
+{
+    OVERLAPPED Overlapped;
+    DWORD Written;
+
+    ZeroMemory(&Overlapped, sizeof(Overlapped));
+    Overlapped.hEvent = IoEvent;
+
+    if (WriteFile(Pipe, Buffer, Length, &Written, &Overlapped))
+        return TRUE;
+
+    if (GetLastError() != ERROR_IO_PENDING)
+        return FALSE;
+
+    return WaitForInstallPipeIo(Pipe, &Overlapped, Process);
+}
 
 static BOOL
 InstallDevice(PCWSTR DeviceInstance, BOOL ShowWizard)
@@ -59,7 +114,9 @@ InstallDevice(PCWSTR DeviceInstance, BOOL ShowWizard)
     DWORD Value;
     DWORD ErrCode;
     HANDLE hInstallEvent;
+    HANDLE hIoEvent = NULL;
     HANDLE hPipe = INVALID_HANDLE_VALUE;
+    OVERLAPPED Overlapped;
     LPVOID Environment = NULL;
     PROCESS_INFORMATION ProcessInfo;
     STARTUPINFOW StartupInfo;
@@ -151,10 +208,17 @@ InstallDevice(PCWSTR DeviceInstance, BOOL ShowWizard)
     /* Create the named pipe */
     wcscpy(PipeName, L"\\\\.\\pipe\\PNP_Device_Install_Pipe_0.");
     wcscat(PipeName, UuidString);
-    hPipe = CreateNamedPipeW(PipeName, PIPE_ACCESS_OUTBOUND, PIPE_TYPE_BYTE, 1, 512, 512, 0, NULL);
+    hPipe = CreateNamedPipeW(PipeName, PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED, PIPE_TYPE_BYTE, 1, 512, 512, 0, NULL);
     if (hPipe == INVALID_HANDLE_VALUE)
     {
         DPRINT1("CreateNamedPipeW failed with error %u\n", GetLastError());
+        goto cleanup;
+    }
+
+    hIoEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!hIoEvent)
+    {
+        DPRINT1("CreateEventW failed with error %lu\n", GetLastError());
         goto cleanup;
     }
 
@@ -195,38 +259,67 @@ InstallDevice(PCWSTR DeviceInstance, BOOL ShowWizard)
         }
     }
 
-    /* Wait for the function to connect to our pipe */
-    if (!ConnectNamedPipe(hPipe, NULL))
+    /* Wait for the function to connect to our pipe, or for it to die trying */
+    ZeroMemory(&Overlapped, sizeof(Overlapped));
+    Overlapped.hEvent = hIoEvent;
+    if (!ConnectNamedPipe(hPipe, &Overlapped))
     {
-        if (GetLastError() != ERROR_PIPE_CONNECTED)
+        ErrCode = GetLastError();
+        if (ErrCode == ERROR_IO_PENDING)
         {
-            DPRINT1("ConnectNamedPipe failed with error %u\n", GetLastError());
+            if (!WaitForInstallPipeIo(hPipe, &Overlapped, ProcessInfo.hProcess))
+            {
+                DPRINT1("rundll32 exited before connecting to the install pipe\n");
+                goto cleanup;
+            }
+        }
+        else if (ErrCode != ERROR_PIPE_CONNECTED)
+        {
+            DPRINT1("ConnectNamedPipe failed with error %u\n", ErrCode);
             goto cleanup;
         }
     }
 
     /* Pass the data. The following output is partly compatible to Windows XP SP2 (researched using a modified newdev.dll to log this stuff) */
     Value = sizeof(InstallEventName);
-    WriteFile(hPipe, &Value, sizeof(Value), &BytesWritten, NULL);
-    WriteFile(hPipe, InstallEventName, Value, &BytesWritten, NULL);
+    if (!WriteInstallPipe(hPipe, hIoEvent, ProcessInfo.hProcess, &Value, sizeof(Value)) ||
+        !WriteInstallPipe(hPipe, hIoEvent, ProcessInfo.hProcess, InstallEventName, Value))
+    {
+        goto PipeWriteFailed;
+    }
 
     /* I couldn't figure out what the following value means under WinXP. It's usually 0 in my tests, but was also 5 once.
        Therefore the following line is entirely ReactOS-specific. We use the value here to pass the ShowWizard variable. */
-    WriteFile(hPipe, &ShowWizard, sizeof(ShowWizard), &BytesWritten, NULL);
+    if (!WriteInstallPipe(hPipe, hIoEvent, ProcessInfo.hProcess, &ShowWizard, sizeof(ShowWizard)))
+        goto PipeWriteFailed;
 
     Value = (wcslen(DeviceInstance) + 1) * sizeof(WCHAR);
-    WriteFile(hPipe, &Value, sizeof(Value), &BytesWritten, NULL);
-    WriteFile(hPipe, DeviceInstance, Value, &BytesWritten, NULL);
+    if (!WriteInstallPipe(hPipe, hIoEvent, ProcessInfo.hProcess, &Value, sizeof(Value)) ||
+        !WriteInstallPipe(hPipe, hIoEvent, ProcessInfo.hProcess, DeviceInstance, Value))
+    {
+        goto PipeWriteFailed;
+    }
 
-    /* Wait for newdev.dll to finish processing */
-    WaitForSingleObject(ProcessInfo.hProcess, INFINITE);
+    /* Wait for newdev.dll to finish processing. Only a wizard waiting on the user gets unlimited time */
+    if (WaitForSingleObject(ProcessInfo.hProcess,
+                            ShowWizard ? INFINITE : SILENT_INSTALL_TIMEOUT) == WAIT_TIMEOUT)
+    {
+        DPRINT1("Silent install of '%ws' did not finish in time, no longer waiting on it\n", DeviceInstance);
+    }
 
     /* If the event got signalled, this is success */
     DeviceInstalled = WaitForSingleObject(hInstallEvent, 0) == WAIT_OBJECT_0;
+    goto cleanup;
+
+PipeWriteFailed:
+    DPRINT1("Writing the install pipe failed with error %lu\n", GetLastError());
 
 cleanup:
     if (hInstallEvent)
         CloseHandle(hInstallEvent);
+
+    if (hIoEvent)
+        CloseHandle(hIoEvent);
 
     if (hPipe != INVALID_HANDLE_VALUE)
         CloseHandle(hPipe);
