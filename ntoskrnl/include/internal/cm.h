@@ -318,6 +318,11 @@ typedef struct _CM_KEY_CONTROL_BLOCK
          ULONG Flags : 16;
     };
     ULONG InDelayClose;
+
+    /* ReactOS specific -- the name handed to registry callbacks. A caller does
+       not free what it is given, so it is built once and kept until the block
+       itself goes away. */
+    PUNICODE_STRING CallbackName;
 } CM_KEY_CONTROL_BLOCK, *PCM_KEY_CONTROL_BLOCK;
 
 //

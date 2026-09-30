@@ -60,6 +60,13 @@ CmpFreeKeyControlBlock(IN PCM_KEY_CONTROL_BLOCK Kcb)
     ASSERT(IsListEmpty(&Kcb->KeyBodyListHead) == TRUE);
     for (i = 0; i < 4; i++) ASSERT(Kcb->KeyBodyArray[i] == NULL);
 
+    /* Let go of the name a registry callback was given, if one ever asked */
+    if (Kcb->CallbackName != NULL)
+    {
+        ExFreePoolWithTag(Kcb->CallbackName, TAG_CM);
+        Kcb->CallbackName = NULL;
+    }
+
     /* Check if it wasn't privately allocated */
     if (!Kcb->PrivateAlloc)
     {

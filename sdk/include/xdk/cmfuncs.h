@@ -21,7 +21,8 @@ CmUnRegisterCallback(
   _In_ LARGE_INTEGER Cookie);
 #endif
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+/* The kernel builds for an older target than these, and implements them */
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
 
 _IRQL_requires_max_(APC_LEVEL)
 NTKERNELAPI
@@ -71,7 +72,7 @@ CmGetBoundTransaction(
   _In_ PLARGE_INTEGER Cookie,
   _In_ PVOID Object);
 
-#endif // NTDDI_VERSION >= NTDDI_VISTA
+#endif // NTDDI_VERSION >= NTDDI_VISTA || __REACTOS__
 
 $endif (_WDMDDK_)
 
