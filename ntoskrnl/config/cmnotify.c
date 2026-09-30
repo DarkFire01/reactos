@@ -205,8 +205,17 @@ CmpPostNotifyBlock(
         PostBlock = CONTAINING_RECORD(Entry, CM_POST_BLOCK, NotifyList);
         InitializeListHead(&PostBlock->NotifyList);
 
-        RemoveEntryList(&PostBlock->ThreadList);
-        InitializeListHead(&PostBlock->ThreadList);
+        /*
+         * Only a block that asked to be told by an APC was ever put on the list
+         * the thread keeps, and taking an entry out of no list at all is not the
+         * same as taking it out of an empty one: an entry pointing at itself is
+         * what this kernel treats as a list that has been trodden on.
+         */
+        if (!IsListEmpty(&PostBlock->ThreadList))
+        {
+            RemoveEntryList(&PostBlock->ThreadList);
+            InitializeListHead(&PostBlock->ThreadList);
+        }
 
         PostBlock->Status = Status;
 
@@ -352,8 +361,12 @@ CmNotifyRunDown(
         PostBlock = CONTAINING_RECORD(Entry, CM_POST_BLOCK, ThreadList);
         InitializeListHead(&PostBlock->ThreadList);
 
-        RemoveEntryList(&PostBlock->NotifyList);
-        InitializeListHead(&PostBlock->NotifyList);
+        /* The same the other way round, for one already handed over */
+        if (!IsListEmpty(&PostBlock->NotifyList))
+        {
+            RemoveEntryList(&PostBlock->NotifyList);
+            InitializeListHead(&PostBlock->NotifyList);
+        }
 
         CmpFreePostBlock(PostBlock);
     }
