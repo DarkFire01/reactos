@@ -12,7 +12,9 @@
 // Information in this file is not part of the API and can change at any time.
 //
 
+#ifdef __GNUC__
 #pragma GCC diagnostic ignored "-Wunknown-pragmas"
+#endif
 
 //
 // We use Prefast pragmas, but they are not recognized by the compiler.
