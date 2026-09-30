@@ -244,6 +244,71 @@ KiPrepareUserDebugData(void)
     _disable();
 }
 
+/*
+ * Nothing is ever mapped this low, so an address under it is not somewhere the
+ * processor was sent on purpose. A routine pointer that was never written reads
+ * as nothing at all; one read out of the wrong place in a structure reads as
+ * whatever was there, which is usually a small count or a flag.
+ */
+#define KI_NOWHERE_AT_ALL   0x10000
+
+/* How far either side of the stack pointer is worth printing, in pointers */
+#define KI_NOWHERE_WINDOW   4
+
+/*
+ * Where a jump to nowhere came from, or nothing.
+ *
+ * A call pushes where it came from before it jumps, so the top of the stack
+ * names the caller and is returned for the bug check to carry. A return that
+ * picked up a bad address instead leaves the caller nowhere on the stack, and
+ * the two cannot be told apart from the registers, so the stack either side of
+ * the pointer is printed and the thread's own bounds are printed with it: a
+ * pointer sitting at the top of the stack means it was run off the end.
+ */
+static
+ULONG_PTR
+KiWhoJumpedToNowhere(
+    _In_ PEXCEPTION_RECORD ExceptionRecord,
+    _In_opt_ PKTRAP_FRAME TrapFrame)
+{
+    PKTHREAD Thread;
+    PULONG_PTR Stack;
+    LONG Index;
+
+    if (((ULONG_PTR)ExceptionRecord->ExceptionAddress >= KI_NOWHERE_AT_ALL) ||
+        (TrapFrame == NULL))
+    {
+        return 0;
+    }
+
+    /* The stack may be the thing that is wrong, so it is asked about first */
+    if (!MmIsAddressValid((PVOID)TrapFrame->Rsp))
+        return 0;
+
+    Thread = KeGetCurrentThread();
+    Stack = (PULONG_PTR)TrapFrame->Rsp;
+
+    DbgPrint("KE:***JUMPED TO NOWHERE %p, Rsp %p, stack %p-%p, top holds %p\n",
+             ExceptionRecord->ExceptionAddress,
+             (PVOID)TrapFrame->Rsp,
+             (PVOID)(ULONG_PTR)Thread->StackLimit,
+             Thread->InitialStack,
+             MmIsAddressValid(Thread->InitialStack) ?
+                 *(PVOID *)Thread->InitialStack : NULL);
+
+    for (Index = -KI_NOWHERE_WINDOW; Index <= KI_NOWHERE_WINDOW; Index++)
+    {
+        if (MmIsAddressValid(&Stack[Index]))
+        {
+            DbgPrint("KE:***  Rsp%+d %p\n",
+                     Index * (LONG)sizeof(*Stack),
+                     (PVOID)Stack[Index]);
+        }
+    }
+
+    return Stack[0];
+}
+
 VOID
 NTAPI
 KiDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
@@ -327,7 +392,7 @@ KiDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
                      ExceptionRecord->ExceptionCode,
                      (ULONG_PTR)ExceptionRecord->ExceptionAddress,
                      (ULONG_PTR)TrapFrame,
-                     0);
+                     KiWhoJumpedToNowhere(ExceptionRecord, TrapFrame));
     }
     else
     {
@@ -396,7 +461,7 @@ KiDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
                      ExceptionRecord->ExceptionCode,
                      (ULONG_PTR)ExceptionRecord->ExceptionAddress,
                      (ULONG_PTR)TrapFrame,
-                     0);
+                     KiWhoJumpedToNowhere(ExceptionRecord, TrapFrame));
     }
 
 Handled:
