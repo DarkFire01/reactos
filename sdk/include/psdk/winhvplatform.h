@@ -100,6 +100,7 @@ typedef enum _WHV_PARTITION_PROPERTY_CODE
     WHvPartitionPropertyCodeProcessorFeatures = 0x00001001,
     WHvPartitionPropertyCodeProcessorClFlushSize = 0x00001002,
     WHvPartitionPropertyCodeCpuidExitList = 0x00001003,
+    WHvPartitionPropertyCodeLocalApicEmulationMode = 0x00001005,
     WHvPartitionPropertyCodeProcessorCount = 0x00001FFF
 } WHV_PARTITION_PROPERTY_CODE;
 
@@ -126,14 +127,62 @@ C_ASSERT(sizeof(WHV_EXTENDED_VM_EXITS) == 8);
  * handing over the member that matches the code, and the length it passes is
  * what says which one it filled in.
  */
+/* Whether the hypervisor answers for each processor's own controller */
+typedef enum _WHV_X64_LOCAL_APIC_EMULATION_MODE
+{
+    WHvX64LocalApicEmulationModeNone,
+    WHvX64LocalApicEmulationModeXApic,
+    WHvX64LocalApicEmulationModeX2Apic
+} WHV_X64_LOCAL_APIC_EMULATION_MODE;
+
 typedef union _WHV_PARTITION_PROPERTY
 {
     UINT32 ProcessorCount;
     WHV_EXTENDED_VM_EXITS ExtendedVmExits;
+
+    /* One bit per fault, saying which of them stop the processor */
+    UINT64 ExceptionExitBitmap;
+    WHV_X64_LOCAL_APIC_EMULATION_MODE LocalApicEmulationMode;
     UINT64 AsUINT64;
 } WHV_PARTITION_PROPERTY;
 
 C_ASSERT(sizeof(WHV_PARTITION_PROPERTY) == 8);
+
+/* What kind of thing is being asked of a processor's own controller */
+typedef enum _WHV_INTERRUPT_TYPE
+{
+    WHvX64InterruptTypeFixed = 0,
+    WHvX64InterruptTypeLowestPriority = 1,
+    WHvX64InterruptTypeNmi = 4,
+    WHvX64InterruptTypeInit = 5,
+    WHvX64InterruptTypeSipi = 6,
+    WHvX64InterruptTypeLocalInt1 = 9
+} WHV_INTERRUPT_TYPE;
+
+typedef enum _WHV_INTERRUPT_DESTINATION_MODE
+{
+    WHvX64InterruptDestinationModePhysical,
+    WHvX64InterruptDestinationModeLogical
+} WHV_INTERRUPT_DESTINATION_MODE;
+
+typedef enum _WHV_INTERRUPT_TRIGGER_MODE
+{
+    WHvX64InterruptTriggerModeEdge,
+    WHvX64InterruptTriggerModeLevel
+} WHV_INTERRUPT_TRIGGER_MODE;
+
+typedef struct _WHV_INTERRUPT_CONTROL
+{
+    UINT64 Type : 8;
+    UINT64 DestinationMode : 4;
+    UINT64 TriggerMode : 4;
+    UINT64 TargetVtl : 8;
+    UINT64 Reserved : 40;
+    UINT32 Destination;
+    UINT32 Vector;
+} WHV_INTERRUPT_CONTROL;
+
+C_ASSERT(sizeof(WHV_INTERRUPT_CONTROL) == 16);
 
 typedef enum _WHV_MAP_GPA_RANGE_FLAGS
 {
@@ -474,6 +523,27 @@ typedef struct _WHV_HYPERCALL_CONTEXT
 
 C_ASSERT(sizeof(WHV_HYPERCALL_CONTEXT) == 176);
 
+/* A fault the guest took, for a client that asked to be stopped on it */
+typedef struct _WHV_VP_EXCEPTION_CONTEXT
+{
+    UINT8 InstructionByteCount;
+    UINT8 Reserved[3];
+    UINT8 InstructionBytes[16];
+    union
+    {
+        UINT8 AsUINT8;
+        struct
+        {
+            UINT8 ErrorCodeValid : 1;
+            UINT8 Reserved : 7;
+        };
+    } ExceptionInfo;
+    UINT8 ExceptionType;
+    UINT8 Reserved2[2];
+    UINT32 ErrorCode;
+    UINT64 ExceptionParameter;
+} WHV_VP_EXCEPTION_CONTEXT;
+
 /* What the processor could now be given, which is what the client asked about */
 typedef struct _WHV_X64_INTERRUPTION_DELIVERABLE_CONTEXT
 {
@@ -493,6 +563,7 @@ typedef struct _WHV_RUN_VP_EXIT_CONTEXT
         WHV_X64_MSR_ACCESS_CONTEXT MsrAccess;
         WHV_X64_INTERRUPTION_DELIVERABLE_CONTEXT InterruptWindow;
         WHV_HYPERCALL_CONTEXT Hypercall;
+        WHV_VP_EXCEPTION_CONTEXT VpException;
         UINT64 AsUINT64[22];
     } DUMMYUNIONNAME;
 } WHV_RUN_VP_EXIT_CONTEXT;

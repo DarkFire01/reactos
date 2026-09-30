@@ -35,6 +35,16 @@ static HRESULT (WINAPI *SetPartitionProperty)(WHV_PARTITION_HANDLE,
 static HRESULT (WINAPI *MapGpaRange)(WHV_PARTITION_HANDLE, VOID *,
                                      WHV_GUEST_PHYSICAL_ADDRESS, UINT64,
                                      WHV_MAP_GPA_RANGE_FLAGS);
+static HRESULT (WINAPI *EmulatorCreate)(const WHV_EMULATOR_CALLBACKS *,
+                                       WHV_EMULATOR_HANDLE *);
+static HRESULT (WINAPI *EmulatorMmio)(WHV_EMULATOR_HANDLE, VOID *,
+                                      const WHV_VP_EXIT_CONTEXT *,
+                                      const WHV_MEMORY_ACCESS_CONTEXT *,
+                                      WHV_EMULATOR_STATUS *);
+static HRESULT (WINAPI *EmulatorIo)(WHV_EMULATOR_HANDLE, VOID *,
+                                    const WHV_VP_EXIT_CONTEXT *,
+                                    const WHV_X64_IO_PORT_ACCESS_CONTEXT *,
+                                    WHV_EMULATOR_STATUS *);
 static HRESULT (WINAPI *TranslateGva)(WHV_PARTITION_HANDLE, UINT32, UINT64,
                                       WHV_TRANSLATE_GVA_FLAGS,
                                       WHV_TRANSLATE_GVA_RESULT *,
@@ -55,7 +65,7 @@ static HRESULT (WINAPI *GetRegisters)(WHV_PARTITION_HANDLE, UINT32,
 
 static bool FindPlatform()
 {
-    const HMODULE Library = LoadLibraryA("WinHvPlatform.dll");
+    HMODULE Library = LoadLibraryA("WinHvPlatform.dll");
 
     if (Library == nullptr)
         return false;
@@ -85,6 +95,26 @@ static bool FindPlatform()
     BIND(RunVirtualProcessor, "WHvRunVirtualProcessor");
     BIND(SetRegisters, "WHvSetVirtualProcessorRegisters");
     BIND(GetRegisters, "WHvGetVirtualProcessorRegisters");
+
+    /*
+     * The thing that reads an instruction and carries it out, which lives in a
+     * library of its own. A processor stopped on a place in memory is not told
+     * what it was doing there, so without this there is no way to know what to
+     * hand back or where to put it.
+     */
+    const HMODULE Emulation = LoadLibraryA("WinHvEmulation.dll");
+
+    if (Emulation == nullptr)
+    {
+        printf("this machine cannot work out what an instruction was doing\n");
+        return false;
+    }
+
+    Library = Emulation;
+
+    BIND(EmulatorCreate, "WHvEmulatorCreateEmulator");
+    BIND(EmulatorMmio, "WHvEmulatorTryMmioEmulation");
+    BIND(EmulatorIo, "WHvEmulatorTryIoEmulation");
 #undef BIND
 
     return true;
@@ -185,6 +215,11 @@ static void SayRegisters(WHV_PARTITION_HANDLE Partition, ULONG64 *Rsp)
  * other works.
  */
 static WHV_PARTITION_HANDLE TheMachine = nullptr;
+
+/* Whether the faults a guest takes stop it, which is for watching one go wrong */
+static bool TheWatchFaults = false;
+
+void Faults(bool Watching) { TheWatchFaults = Watching; }
 static UCHAR *TheMemory = nullptr;
 static ULONG64 TheExtent = 0;
 
@@ -204,6 +239,24 @@ bool Open(ULONG64 Ram)
     Property.ProcessorCount = 1;
     SetPartitionProperty(TheMachine, WHvPartitionPropertyCodeProcessorCount,
                          &Property, sizeof(Property));
+
+    /*
+     * The faults a guest takes are its own business and never stop the
+     * processor, which is right until a guest starts taking one over and over.
+     * Asking for these to stop it as well is the only way to see that at all,
+     * and they are the ones a guest going wrong takes.
+     */
+    if (TheWatchFaults)
+    {
+        WHV_PARTITION_PROPERTY Taken = {};
+
+        Taken.ExceptionExitBitmap =
+            (1u << 6) | (1u << 13) | (1u << 14) | (1u << 8);
+
+        SetPartitionProperty(TheMachine,
+                             WHvPartitionPropertyCodeExceptionExitBitmap,
+                             &Taken, sizeof(Taken));
+    }
 
     if (FAILED(SetupPartition(TheMachine)))
         return false;
@@ -225,6 +278,9 @@ bool Open(ULONG64 Ram)
     TheExtent = Ram;
     return FAILED(CreateVirtualProcessor(TheMachine, 0, 0)) ? false : true;
 }
+
+/* How much memory there is, for anything that walks the whole of it */
+ULONG64 Extent() { return TheExtent; }
 
 /* Where a device that answers for memory of its own has its window taken out */
 bool Hollow(ULONG64 Where, ULONG64 Length)
@@ -313,6 +369,56 @@ bool Start(USHORT Selector, ULONG64 Base, ULONG64 Rip)
 bool Step(WHV_RUN_VP_EXIT_CONTEXT *Exit)
 {
     return SUCCEEDED(RunVirtualProcessor(TheMachine, 0, Exit, sizeof(*Exit)));
+}
+
+/* Several at once, which is how the instruction reader asks for them */
+bool Many(const WHV_REGISTER_NAME *Names, ULONG Count,
+          WHV_REGISTER_VALUE *Values)
+{
+    return SUCCEEDED(GetRegisters(TheMachine, 0, Names, Count, Values));
+}
+
+bool Put(const WHV_REGISTER_NAME *Names, ULONG Count,
+         const WHV_REGISTER_VALUE *Values)
+{
+    return SUCCEEDED(SetRegisters(TheMachine, 0, Names, Count, Values));
+}
+
+/* And a page of it, which the reader wants in its own shape */
+bool Walk(ULONG64 Address, WHV_TRANSLATE_GVA_FLAGS Flags,
+          WHV_TRANSLATE_GVA_RESULT_CODE *Result,
+          WHV_GUEST_PHYSICAL_ADDRESS *Physical)
+{
+    WHV_TRANSLATE_GVA_RESULT Went = {};
+
+    if (FAILED(TranslateGva(TheMachine, 0, Address, Flags, &Went, Physical)))
+        return false;
+
+    *Result = Went.ResultCode;
+    return true;
+}
+
+bool Reader(const WHV_EMULATOR_CALLBACKS *Ways, WHV_EMULATOR_HANDLE *Made)
+{
+    return SUCCEEDED(EmulatorCreate(Ways, Made));
+}
+
+bool Mmio(WHV_EMULATOR_HANDLE Made, const WHV_VP_EXIT_CONTEXT *Where,
+          const WHV_MEMORY_ACCESS_CONTEXT *What, WHV_EMULATOR_STATUS *How)
+{
+    return SUCCEEDED(EmulatorMmio(Made, nullptr, Where, What, How));
+}
+
+/*
+ * A port access the same way, which is what a run of them needs. How far the
+ * pointers move and where they wrap is the instruction's business and depends
+ * on how wide the addresses are where it is running, so it is not worked out
+ * here.
+ */
+bool Io(WHV_EMULATOR_HANDLE Made, const WHV_VP_EXIT_CONTEXT *Where,
+        const WHV_X64_IO_PORT_ACCESS_CONTEXT *What, WHV_EMULATOR_STATUS *How)
+{
+    return SUCCEEDED(EmulatorIo(Made, nullptr, Where, What, How));
 }
 
 bool Poke(WHV_REGISTER_NAME Which, ULONG64 Value)

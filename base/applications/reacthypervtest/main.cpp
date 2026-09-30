@@ -37,6 +37,12 @@ static void Usage()
         "  --steps <n>        How many times to stop before giving up\n"
         "  --stand-in         Hand a device a logged stand-in for any service\n"
         "                     this does not have, rather than refusing it\n"
+        "  --dump <file>      Write the memory out when the run is over\n"
+        "  --said <file>      Write everything said on the first serial port\n"
+        "  --press <n>:<s>    Press scan code <s> once <n> stops have gone by,\n"
+        "                     repeated. Prefix the code with e0 for the ones a\n"
+        "                     keyboard sends two bytes for\n"
+        "  --watch-faults     Stop the processor on the faults the guest takes\n"
         "\n"
         "What the device asks for on the way up is printed. That list is what\n"
         "has to exist before the real hardware will run against this.\n");
@@ -72,6 +78,31 @@ int main(int argc, char **argv)
             VmStoreAnswers(E_NOTIMPL);
         else if (strcmp(argv[Index], "--stand-in") == 0)
             VmAllowStandIns(true);
+        else if ((strcmp(argv[Index], "--dump") == 0) && ((Index + 1) < argc))
+            VmDump(argv[++Index]);
+        else if ((strcmp(argv[Index], "--said") == 0) && ((Index + 1) < argc))
+            VmSaidTo(argv[++Index]);
+        else if ((strcmp(argv[Index], "--press") == 0) && ((Index + 1) < argc))
+        {
+            /* How far in, then which key, because the wait is the hard part */
+            char *Text = argv[++Index];
+            char *Colon = strchr(Text, ':');
+
+            if (Colon == nullptr)
+            {
+                Usage();
+                return 1;
+            }
+
+            *Colon = '\0';
+
+            const ULONG64 After = strtoull(Text, nullptr, 0);
+            const ULONG Code = (ULONG)strtoul(Colon + 1, nullptr, 16);
+
+            VmPress(After, (USHORT)(Code & 0xFF), (Code & 0xE000) == 0xE000);
+        }
+        else if (strcmp(argv[Index], "--watch-faults") == 0)
+            VmFaults(true);
         else if ((strcmp(argv[Index], "--settings") == 0) && ((Index + 1) < argc))
             Media = argv[++Index];
         else if ((strcmp(argv[Index], "--watch") == 0) && ((Index + 2) < argc))
