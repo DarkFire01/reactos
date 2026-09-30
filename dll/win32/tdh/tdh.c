@@ -30,6 +30,34 @@ DllMain(
 
 /**
  * @brief
+ * Describes an event that has already been collected, out of the manifest the
+ * provider that wrote it registered.
+ *
+ * @return
+ * ERROR_NOT_FOUND, because no manifest is kept to look in.
+ */
+ULONG
+WINAPI
+TdhGetEventInformation(
+    _In_ PVOID Event,
+    _In_ ULONG TdhContextCount,
+    _In_opt_ PVOID TdhContext,
+    _Out_ PVOID Buffer,
+    _Inout_ PULONG BufferSize)
+{
+    UNREFERENCED_PARAMETER(Event);
+    UNREFERENCED_PARAMETER(TdhContextCount);
+    UNREFERENCED_PARAMETER(TdhContext);
+    UNREFERENCED_PARAMETER(Buffer);
+
+    if (BufferSize != NULL)
+        *BufferSize = 0;
+
+    return ERROR_NOT_FOUND;
+}
+
+/**
+ * @brief
  * Describes one event of a provider's manifest.
  *
  * @return
