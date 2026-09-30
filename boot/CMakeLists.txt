@@ -3,8 +3,10 @@ include(boot_images.cmake)
 
 add_subdirectory(bootdata)
 
-# ReactV lives next to the source root and links into the boot loader
-if(EXISTS "${REACTOS_SOURCE_DIR}/../ReactV/CMakeLists.txt")
+# ReactV lives next to the source root and links into the boot loader, on the
+# wide machine only: what it brings up is a hypervisor, and there is no narrow
+# one to bring up.
+if(ARCH STREQUAL "amd64" AND EXISTS "${REACTOS_SOURCE_DIR}/../ReactV/CMakeLists.txt")
     add_subdirectory("${REACTOS_SOURCE_DIR}/../ReactV" reactv)
 endif()
 
