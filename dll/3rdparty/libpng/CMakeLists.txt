@@ -30,5 +30,6 @@ target_include_directories(libpng PUBLIC ${REACTOS_SOURCE_DIR}/sdk/include/react
 set_module_type(libpng win32dll)
 target_link_libraries(libpng zlib ${PSEH_LIB})
 add_importlibs(libpng msvcrt kernel32 ntdll)
-add_pch(libpng pngpriv.h SOURCE)
+# No precompiled header here: pngpriv.h refuses to be included a second time, and
+# a precompiled one is fed to every source that already includes it itself.
 add_cd_file(TARGET libpng DESTINATION reactos/system32 FOR all)
