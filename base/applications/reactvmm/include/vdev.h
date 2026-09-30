@@ -848,6 +848,91 @@ DECLARE_INTERFACE_(IVmKeyboardDevice, IUnknown)
     STDMETHOD(GetOutputBufferFreeSpace)(THIS_ _Out_ PULONG Free) PURE;
 };
 
+DEFINE_GUID(IID_IVmMouseDevice,
+            0x411f3a1e, 0xa309, 0x462d, 0xb8, 0xe8, 0x43, 0x1b, 0x2a, 0x54, 0x7b, 0x52);
+
+/*
+ * One movement of the pointer, or one button of it changing.
+ *
+ * Where it is may be said either way round: as how far it has moved since the
+ * last one, which is how the wire between a mouse and a machine has always said
+ * it, or as where on the screen it is, which is the only thing something looking
+ * at a window can know. Which of the two it is saying is a flag.
+ */
+typedef struct _VDEV_MOUSE_EVENT
+{
+    ULONG Flags;
+    SHORT X;
+    SHORT Y;
+    USHORT Buttons;
+    USHORT Reserved;
+    ULONG Extra[2];
+} VDEV_MOUSE_EVENT, *PVDEV_MOUSE_EVENT;
+
+/* Where it is rather than how far it moved */
+#define VDEV_MOUSE_ABSOLUTE 0x00000100
+
+/* Which button, in the order they are numbered on the wire */
+#define VDEV_MOUSE_LEFT     0x0001
+#define VDEV_MOUSE_RIGHT    0x0002
+#define VDEV_MOUSE_MIDDLE   0x0004
+
+/* The pointer, the same way round as the keyboard above */
+#undef INTERFACE
+#define INTERFACE IVmMouseDevice
+DECLARE_INTERFACE_(IVmMouseDevice, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(DeviceClass)(THIS_ _Out_ PULONG Class) PURE;
+    STDMETHOD(DeviceState)(THIS_ _Out_ PULONG State) PURE;
+
+    /* The one that matters */
+    STDMETHOD(PostEvent)(THIS_ _In_ PVDEV_MOUSE_EVENT Event) PURE;
+
+    /* Which of the two ways round it wants to be told where the pointer is */
+    STDMETHOD(PositionDataType)(THIS_ _Out_ PUCHAR Kind) PURE;
+
+    STDMETHOD(OnDisplaySettingsChanged)(THIS) PURE;
+};
+
+/* What a device says it is when it is asked which kind it is */
+#define VDEV_INPUT_KEYBOARD 1
+#define VDEV_INPUT_MOUSE    2
+
+/*
+ * Where a device puts the keyboard and the pointer it has, so that whatever the
+ * operator is at can reach them.
+ *
+ * A controller does not take keys. It holds the parts of itself that do, and
+ * hands them over here as it comes up; what is on the other side of this works
+ * out which is which by asking each one. So a machine that does not answer for
+ * this is a machine nothing can be typed at, however many keyboards are in it.
+ */
+#undef INTERFACE
+#define INTERFACE IVmInputController
+DECLARE_INTERFACE_(IVmInputController, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ _In_ REFIID Interface,
+                              _Outptr_ PVOID *Object) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+
+    STDMETHOD(RegisterInputDevice)(THIS_ _In_ IUnknown *Device) PURE;
+    STDMETHOD(UnregisterInputDevice)(THIS_ _In_ IUnknown *Device) PURE;
+
+    STDMETHOD(Reserved5)(THIS) PURE;
+
+    /* Told as a device goes quiet, and as it says which kind it is */
+    STDMETHOD(NotifyDeviceIdle)(THIS_ _In_ IUnknown *Device,
+                                _In_ ULONG64 When) PURE;
+    STDMETHOD(NotifyDeviceClass)(THIS_ _In_ IUnknown *Device,
+                                 _In_ ULONG Class) PURE;
+};
+
 DEFINE_GUID(IID_IRtvmVideoWatcher,
             0x9c3a5f21, 0x7d84, 0x4e0b, 0xb1, 0xf6, 0x2a, 0x55, 0xc8, 0xd1, 0x04, 0x73);
 

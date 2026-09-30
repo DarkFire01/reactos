@@ -69,8 +69,17 @@ const char *VmSaid();
 /* Straight at the guest.s memory, for a front end that draws it itself */
 const void *VmGuest(_In_ ULONG64 Where, _In_ ULONG Length);
 
-/* A key going down or coming up, for whichever part turns out to be a keyboard */
+/* A key going down or coming up, for whichever keyboard the machine plugged in */
 bool VmKey(_In_ USHORT Code, _In_ bool Down, _In_ bool Extended);
+
+/*
+ * And where the pointer is, either as how far it moved or as where on the screen
+ * it is. A window knows only the second, so that is what it says.
+ */
+bool VmPointer(_In_ SHORT X,
+               _In_ SHORT Y,
+               _In_ USHORT Buttons,
+               _In_ bool Absolute);
 
 /* WHAT THERE IS TO LOOK AT ***************************************************/
 
