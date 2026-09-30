@@ -773,8 +773,8 @@ public:
         if (WorthSaying())
             printf("    a vector is owed: %02lx\n", Vector);
 
-        m_Owed = Vector;
-        m_Took = false;
+        InterlockedExchange(&m_Took, 0);
+        InterlockedExchange((volatile LONG *)&m_Owed, (LONG)Vector);
         return S_OK;
     }
 
@@ -785,19 +785,31 @@ public:
      */
     STDMETHODIMP ClearVirtualProcessorInterrupt() override
     {
-        if (!m_Took)
+        if (InterlockedCompareExchange(&m_Took, 0, 1) != 1)
             return S_FALSE;
 
-        m_Owed = PROCESSOR_NOTHING_OWED;
-        m_Took = false;
+        InterlockedExchange((volatile LONG *)&m_Owed,
+                            (LONG)PROCESSOR_NOTHING_OWED);
         return S_OK;
     }
 
-    /* Whichever vector is waiting to go in, or nothing */
-    ULONG Owed() const noexcept { return m_Took ? PROCESSOR_NOTHING_OWED
-                                                : m_Owed; }
+    /*
+     * Whichever vector is waiting to go in, or nothing. Asked by the processor's
+     * own thread while the chip that owes it runs on another, so it is read the
+     * once rather than looked at twice.
+     */
+    ULONG Owed() const noexcept
+    {
+        if (InterlockedCompareExchange(
+                const_cast<volatile LONG *>(&m_Took), 0, 0) != 0)
+            return PROCESSOR_NOTHING_OWED;
 
-    void Took() noexcept { m_Took = true; }
+        return (ULONG)InterlockedCompareExchange(
+            const_cast<volatile LONG *>(reinterpret_cast<const volatile LONG *>(
+                &m_Owed)), 0, 0);
+    }
+
+    void Took() noexcept { InterlockedExchange(&m_Took, 1); }
     STDMETHODIMP ConfigureInterceptThrottlingExclusion() override { return E_NOTIMPL; }
     STDMETHODIMP StopAllVirtualProcessors() override { return E_NOTIMPL; }
     STDMETHODIMP StartAllVirtualProcessors() override { return E_NOTIMPL; }
@@ -805,8 +817,8 @@ public:
 private:
     volatile LONG m_Count = 1;
 
-    ULONG m_Owed = PROCESSOR_NOTHING_OWED;
-    bool m_Took = false;
+    volatile ULONG m_Owed = PROCESSOR_NOTHING_OWED;
+    volatile LONG m_Took = 0;
 };
 
 /* WHAT A DEVICE READS ITSELF OUT OF ******************************************/
@@ -1407,6 +1419,64 @@ static ULONG Ring()
     }
 
     return Rang;
+}
+
+/*
+ * And a thread of its own to do it on.
+ *
+ * Between one stop of the processor and the next looks like the safe moment for
+ * this, and it is not. A device handed its own timer is written for a machine
+ * that has a thread for them, and one of them waits inside its callback for the
+ * next tick to come round: called from the processor's own thread that is a
+ * machine which stops dead for ten milliseconds every ten milliseconds. They
+ * lock what they share, because where they came from this was always another
+ * thread, so it is made one here as well.
+ */
+static volatile LONG TheRingingOn = 0;
+static HANDLE TheRinger = nullptr;
+static volatile LONG TheRings = 0;
+
+static DWORD WINAPI Ringing(void *Nothing)
+{
+    UNREFERENCED_PARAMETER(Nothing);
+
+    while (InterlockedCompareExchange(&TheRingingOn, 1, 1) != 0)
+    {
+        const ULONG Rang = Ring();
+
+        if (Rang != 0)
+            InterlockedExchangeAdd(&TheRings, (LONG)Rang);
+
+        /*
+         * A millisecond, which is finer than anything asks for and is what keeps
+         * this off a processor of its own.
+         */
+        Sleep(1);
+    }
+
+    return 0;
+}
+
+static void StartRinging()
+{
+    if (TheRinger != nullptr)
+        return;
+
+    InterlockedExchange(&TheRingingOn, 1);
+    TheRinger = CreateThread(nullptr, 0, Ringing, nullptr, 0, nullptr);
+}
+
+static ULONG StopRinging()
+{
+    if (TheRinger != nullptr)
+    {
+        InterlockedExchange(&TheRingingOn, 0);
+        WaitForSingleObject(TheRinger, 5000);
+        CloseHandle(TheRinger);
+        TheRinger = nullptr;
+    }
+
+    return (ULONG)InterlockedCompareExchange(&TheRings, 0, 0);
 }
 
 /* A SERVICE NOBODY HAS LAID OUT YET ******************************************/
@@ -2802,11 +2872,27 @@ static IVirtualDevice *Fit(const Part &What, Probe &Handed)
     }
 
     /*
+     * Then put where a machine that has just been switched on would have it.
+     * Power is not the same thing as reset: a device that has only been switched
+     * on holds none of the registers it would hold coming out of one, and the
+     * ones it reads to decide whether to do anything are among them.
+     */
+    Status = Device->Reset(VDEV_STATE_NONE);
+
+    if (FAILED(Status))
+        printf("  it would not reset, %08lx\n", Status);
+
+    Status = Device->PostReset(VDEV_STATE_NONE);
+
+    if (FAILED(Status))
+        printf("  it would not settle after the reset, %08lx\n", Status);
+
+    /*
      * And let go of, which is a step of its own. A device that has been powered
-     * on has everything it needs and still does nothing: it holds a state of its
-     * own and acts on nothing until it is told the machine is running. One that
-     * counts its own ticks gets away with that; one waiting to be typed at sits
-     * there taking keys and dropping them.
+     * on and reset has everything it needs and still does nothing: it holds a
+     * state of its own and acts on nothing until it is told the machine is
+     * running. One that counts its own ticks gets away with that; one waiting to
+     * be typed at sits there taking keys and dropping them.
      */
     Status = Device->Resume(VDEV_STATE_NONE);
 
@@ -3605,7 +3691,9 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
     WHV_RUN_VP_EXIT_CONTEXT Exit = {};
     ULONG64 Count = 0;
     ULONG64 Ports = 0;
-    ULONG64 Rings = 0;
+
+    /* And the thread that rings whatever the parts asked to be woken by */
+    StartRinging();
 
     while (Count < Steps)
     {
@@ -3636,7 +3724,6 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
 
                 /* The reader carried the whole instruction out, RIP and all */
                 Ports++;
-                Rings += Ring();
                 continue;
             }
 
@@ -3650,7 +3737,6 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
              * what it was standing for is about to happen.
              */
             Unwatch();
-            Rings += Ring();
             continue;
         }
         else if (Exit.ExitReason == WHvRunVpExitReasonException)
@@ -3705,7 +3791,6 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
          * one stop and the next is the only safe moment for it: a device being
          * called back in the middle of answering a port would be re-entered.
          */
-        Rings += Ring();
     }
 
     printf("\nstopped after %llu, at %04x:%04llx\n",
@@ -3728,8 +3813,10 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
         printf("\nwhat the firmware said:\n%s\n", TheSaid);
     }
 
+    const ULONG Rings = StopRinging();
+
     if (Rings != 0)
-        printf("  timers went off %llu time(s)\n", (unsigned long long)Rings);
+        printf("  timers went off %lu time(s)\n", Rings);
 
     if (Handed.Wires().Raised() != 0)
         printf("  a line was raised %lu time(s)\n", Handed.Wires().Raised());
@@ -3969,6 +4056,9 @@ bool VmOpen(const VmWanted &What)
     if (!Load(What.Bios))
         return false;
 
+    /* And the thread that rings whatever the parts asked to be woken by */
+    StartRinging();
+
     memset(&TheVm.Exit, 0, sizeof(TheVm.Exit));
     return hv::Start(BIOS_SEGMENT, BIOS_BASE, BIOS_ENTRY);
 }
@@ -4007,7 +4097,6 @@ ULONG VmRun(ULONG Steps)
 
                 /* The reader carried the whole instruction out, RIP and all */
                 TheVm.Ports++;
-                Ring();
                 continue;
             }
 
@@ -4022,7 +4111,6 @@ ULONG VmRun(ULONG Steps)
                 break;
             }
 
-            Ring();
             continue;
         }
         else if (TheVm.Exit.ExitReason ==
@@ -4030,7 +4118,6 @@ ULONG VmRun(ULONG Steps)
         {
             /* It would take one now, so what was waiting on that is done */
             Unwatch();
-            Ring();
             continue;
         }
         else if (TheVm.Exit.ExitReason != WHvRunVpExitReasonX64Cpuid)
@@ -4049,7 +4136,6 @@ ULONG VmRun(ULONG Steps)
                  TheVm.Exit.VpContext.Rip +
                  TheVm.Exit.VpContext.InstructionLength);
 
-        Ring();
     }
 
     return Done;
@@ -4070,6 +4156,9 @@ bool VmReset()
 
 void VmClose()
 {
+    /* The thread first, so nothing is woken while it is being taken apart */
+    StopRinging();
+
     if (TheVm.Text != nullptr)
     {
         TheVm.Text->Release();
@@ -4277,8 +4366,12 @@ int One(const char *Library, const char *Class, const char *Settings)
      */
     if (SUCCEEDED(Status))
     {
+        Status = Device->Reset(VDEV_STATE_NONE);
+        printf("it reset with %08lx", Status);
+        Status = Device->PostReset(VDEV_STATE_NONE);
+        printf(", settled with %08lx", Status);
         Status = Device->Resume(VDEV_STATE_NONE);
-        printf("and it was let go of with %08lx\n", Status);
+        printf(", and was let go of with %08lx\n", Status);
         Drive(Handed, Wanted);
     }
     else
