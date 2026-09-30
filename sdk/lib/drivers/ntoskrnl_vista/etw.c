@@ -49,6 +49,9 @@ typedef struct _ETWP_PROVIDER
 /* How much of one field is worth reading */
 #define ETWP_MAXIMUM_FIELD 256
 
+/* Set from the debugger to print events; each driver links its own copy */
+BOOLEAN EtwTraceEvents = FALSE;
+
 /* FUNCTIONS ******************************************************************/
 
 static
@@ -237,6 +240,9 @@ EtwWrite(
     ULONG Index;
 
     UNREFERENCED_PARAMETER(ActivityId);
+
+    if (!EtwTraceEvents)
+        return STATUS_SUCCESS;
 
     if (!EtwEventEnabled(RegHandle, EventDescriptor))
         return STATUS_SUCCESS;
