@@ -133,3 +133,29 @@ LogicalToPhysicalPoint(
     return TRUE;
 }
 
+/*
+ * @implemented
+ *
+ * Nothing here scales a window against the screen it is on, so a physical
+ * point and a logical one are the same point, as LogicalToPhysicalPoint
+ * handing back what it was given already says.
+ */
+BOOL
+WINAPI
+GetPhysicalCursorPos(
+    _Out_ LPPOINT lpPoint)
+{
+    return GetCursorPos(lpPoint);
+}
+
+/*
+ * @implemented
+ */
+HWND
+WINAPI
+WindowFromPhysicalPoint(
+    _In_ POINT Point)
+{
+    return WindowFromPoint(Point);
+}
+

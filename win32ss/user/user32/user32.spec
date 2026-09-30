@@ -280,6 +280,7 @@
 @ stdcall GetCursorFrameInfo(long long long long long)
 @ stdcall GetCursorInfo(ptr) NtUserGetCursorInfo
 @ stdcall GetCursorPos(ptr)
+@ stdcall -version=0x600+ GetPhysicalCursorPos(ptr)
 @ stdcall GetDC(long) NtUserGetDC
 @ stdcall GetDCEx(long long long) NtUserGetDCEx
 # GetDbgTagFlags
@@ -795,6 +796,7 @@
 @ stdcall WinHelpW(long wstr long long)
 @ stdcall WindowFromDC(long)
 @ stdcall WindowFromPoint(double)
+@ stdcall -version=0x600+ WindowFromPhysicalPoint(double)
 @ stdcall keybd_event(long long long long)
 @ stdcall mouse_event(long long long long long)
 @ varargs wsprintfA(ptr str)
