@@ -70,6 +70,9 @@ void Close();
 /* Whether every call into the machine is written down as it happens */
 static bool RepositoryQuiet = false;
 
+/* And whether the way up is written down too, which is otherwise kept quiet */
+static bool TheLoud = false;
+
 /*
  * How much of the interrupt traffic is worth saying out loud. A machine sitting
  * at a prompt raises a line a few hundred times; one running an operating system
@@ -513,10 +516,18 @@ public:
         return (ULONG)InterlockedDecrement(&m_Count);
     }
 
+    /*
+     * Nothing waits here. A line raised is passed on the moment it is raised, so
+     * there is never anything outstanding to wait for, and saying so is the
+     * truth: refusing instead is what a device treats as the machine having no
+     * interrupt controller at all.
+     */
     STDMETHODIMP WaitForIrqAssert(ULONG Line) override
     {
-        UNREFERENCED_PARAMETER(Line);
-        return E_NOTIMPL;
+        if (WorthSaying())
+            printf("    line %lu is waited on\n", Line);
+
+        return S_OK;
     }
 
     STDMETHODIMP AssertIrq(UCHAR Line, UCHAR Source) override
@@ -709,6 +720,192 @@ private:
     volatile LONG m_Count = 1;
     IVmKeyboardDevice *m_Keyboard = nullptr;
     IVmMouseDevice *m_Mouse = nullptr;
+};
+
+/* WHAT IS OUTSIDE THE MACHINE, HELD OPEN ************************************/
+
+/*
+ * A device that talks to something outside is never told what that something is.
+ * It asks for whichever of its own it is for, by the number it counts them by,
+ * and is handed it already open.
+ *
+ * Here that is a pipe with a name, because a pipe is the one thing a debugger on
+ * this side of the machine knows how to attach to. It is made as the listening
+ * end and left waiting: nothing has to be at the other end for the machine to
+ * start, and whatever connects later finds the port already there.
+ */
+#define HANDLES_AT_MOST 4
+
+class Handles : public IVmHandleBrokerServices
+{
+public:
+    ~Handles()
+    {
+        for (ULONG Index = 0; Index < m_Count; Index++)
+        {
+            if (m_Held[Index].What != nullptr)
+                CloseHandle(m_Held[Index].What);
+        }
+    }
+
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
+    {
+        if (Object == nullptr)
+            return E_POINTER;
+
+        if (IsEqualIID(Interface, IID_IUnknown) ||
+            IsEqualIID(Interface, IID_IVmHandleBrokerServices))
+        {
+            *Object = static_cast<IVmHandleBrokerServices *>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        *Object = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return (ULONG)InterlockedIncrement(&m_Refs);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        return (ULONG)InterlockedDecrement(&m_Refs);
+    }
+
+    STDMETHODIMP GetHandle(PCWSTR Which, PVDEV_HANDLE Held) override
+    {
+        if ((Which == nullptr) || (Held == nullptr))
+            return E_POINTER;
+
+        printf("    something outside is asked for, called %ls\n", Which);
+
+        for (ULONG Index = 0; Index < m_Count; Index++)
+        {
+            if (wcscmp(m_Held[Index].Which, Which) != 0)
+                continue;
+
+            Held->Kind = 0;
+            Held->Reserved = 0;
+            Held->What = m_Held[Index].What;
+
+            printf("      it is %s\n", m_Held[Index].Name);
+            return S_OK;
+        }
+
+        printf("      nothing here is that\n");
+        return E_INVALIDARG;
+    }
+
+    /* A pipe with a name, made as the end that waits to be connected to */
+    bool Listen(PCWSTR Which, const char *Name)
+    {
+        if (m_Count >= ARRAYSIZE(m_Held))
+            return false;
+
+        WCHAR Wide[MAX_PATH] = {};
+
+        if (MultiByteToWideChar(CP_UTF8, 0, Name, -1, Wide,
+                                ARRAYSIZE(Wide)) == 0)
+            return false;
+
+        const HANDLE Made = CreateNamedPipeW(
+            Wide, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE, 1, 4096, 4096, 0, nullptr);
+
+        if (Made == INVALID_HANDLE_VALUE)
+        {
+            printf("%s would not be made, %lu\n", Name, GetLastError());
+            return false;
+        }
+
+        wcscpy_s(m_Held[m_Count].Which,
+                 ARRAYSIZE(m_Held[m_Count].Which), Which);
+        strcpy_s(m_Held[m_Count].Name, ARRAYSIZE(m_Held[m_Count].Name), Name);
+        m_Held[m_Count].What = Made;
+        m_Count++;
+
+        printf("%s is waiting to be connected to\n", Name);
+        return true;
+    }
+
+private:
+    struct Held
+    {
+        WCHAR Which[16];
+        char Name[MAX_PATH];
+        HANDLE What;
+    };
+
+    volatile LONG m_Refs = 1;
+    Held m_Held[HANDLES_AT_MOST] = {};
+    ULONG m_Count = 0;
+};
+
+/*
+ * And what a device is allowed to do, which is everything: nothing here is a
+ * machine somebody else owns, so there is nothing to hold back.
+ */
+class Allowed : public ISecurityManager
+{
+public:
+    STDMETHODIMP QueryInterface(REFIID Interface, void **Object) override
+    {
+        if (Object == nullptr)
+            return E_POINTER;
+
+        if (IsEqualIID(Interface, IID_IUnknown) ||
+            IsEqualIID(Interface, IID_ISecurityManager))
+        {
+            *Object = static_cast<ISecurityManager *>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        *Object = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return (ULONG)InterlockedIncrement(&m_Refs);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        return (ULONG)InterlockedDecrement(&m_Refs);
+    }
+
+    /*
+     * Allowed, whatever it was. Every one of these is a question about what a
+     * device may do, and this is not a machine anybody is being kept out of, so
+     * the answer is yes. Refusing instead is what stops a device dead: one of
+     * them asks something here before it will come on at all.
+     */
+    STDMETHODIMP Reserved3() override { return S_OK; }
+    STDMETHODIMP Reserved4() override { return S_OK; }
+    STDMETHODIMP Reserved5() override { return S_OK; }
+    STDMETHODIMP Reserved6() override { return S_OK; }
+    STDMETHODIMP Reserved7() override { return S_OK; }
+    STDMETHODIMP Reserved8() override { return S_OK; }
+    STDMETHODIMP Reserved9() override { return S_OK; }
+    STDMETHODIMP Reserved10() override { return S_OK; }
+    STDMETHODIMP Reserved11() override { return S_OK; }
+    STDMETHODIMP Reserved12() override { return S_OK; }
+
+    STDMETHODIMP IsHeldBack(ULONG *Held) override
+    {
+        if (Held == nullptr)
+            return E_POINTER;
+
+        *Held = 0;
+        return S_OK;
+    }
+
+private:
+    volatile LONG m_Refs = 1;
 };
 
 /* A vector of all ones, which is how the chip says there is nothing owed */
@@ -948,7 +1145,8 @@ static const char *TheFittingSettings = nullptr;
 
 /* The kinds whose configuration is known, by the identifier they answer to */
 #define CLASS_VIDEO "7d80d3db-61ee-4879-8879-5609f1100ad0"
-#define CLASS_IDE   "83f8638b-8dca-4152-9eda-2ca8b33039b4"
+#define CLASS_IDE    "83f8638b-8dca-4152-9eda-2ca8b33039b4"
+#define CLASS_SERIAL "8e3a359f-559a-4b6a-98a9-1690a6100ed7"
 
 /*
  * What one kind is told.
@@ -1005,6 +1203,24 @@ static const char *ConfigurationFor(const char *Class, const char *Settings)
 
         Made[sizeof(Made) - 1] = '\0';
         return Made;
+    }
+
+    if ((Class != nullptr) && (_stricmp(Class, CLASS_SERIAL) == 0))
+    {
+        /*
+         * One port, and the name of what it is connected to is not in here. A
+         * port says only which of its own it is, and asks for that one already
+         * open; what it is a pipe called is the machine's business and nobody
+         * inside it is told.
+         */
+        return "<VDEVVersion>512</VDEVVersion>"
+               "<version>2</version>"
+               "<port>"
+               "<connection>0</connection>"
+               "<DebuggerMode>false</DebuggerMode>"
+               "<ForceEnable>true</ForceEnable>"
+               "<InputBufferSize>4096</InputBufferSize>"
+               "</port>";
     }
 
     /* And nothing at all for a kind whose settings are all its own defaults */
@@ -2403,6 +2619,22 @@ public:
                 return S_OK;
             }
 
+            if (IsEqualIID(Service, IID_IVmHandleBrokerServices))
+            {
+                printf(" (given)\n");
+                m_Outside.AddRef();
+                *Object = static_cast<IVmHandleBrokerServices *>(&m_Outside);
+                return S_OK;
+            }
+
+            if (IsEqualIID(Service, IID_ISecurityManager))
+            {
+                printf(" (given)\n");
+                m_Allowed.AddRef();
+                *Object = static_cast<ISecurityManager *>(&m_Allowed);
+                return S_OK;
+            }
+
             if (IsEqualIID(Service, IID_IVmTimeSource))
             {
                 printf(" (given)\n");
@@ -2512,6 +2744,7 @@ public:
     const Lines &Wires() const noexcept { return m_Lines; }
     Processors &Cpus() noexcept { return m_Processors; }
     Input &Typing() noexcept { return m_Input; }
+    Handles &Outside() noexcept { return m_Outside; }
 
     /*
      * Which of the parts a line goes to, worked out as they are offered rather
@@ -2537,6 +2770,8 @@ private:
     Processors m_Processors;
     Lines m_Lines;
     Input m_Input;
+    Handles m_Outside;
+    Allowed m_Allowed;
     Clock m_Clock;
     Bios m_Bios;
     GuestMemory m_Memory;
@@ -3547,6 +3782,11 @@ static void Pressing(ULONG64 Count, Input &Where)
     }
 }
 
+/* What the first serial port is a pipe called, or nothing and no port at all */
+static const char *ThePipe = nullptr;
+
+void VmPipe(const char *Name) { ThePipe = Name; }
+
 /* Where the memory is written out to when the run is over, or nowhere */
 static const char *TheDumpTo = nullptr;
 
@@ -3609,6 +3849,11 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
     Monitor Screen;
 
     Handed.Watch(&Screen);
+
+    /* And whatever is outside it, held open before anything asks for it */
+    if (ThePipe != nullptr)
+        Handed.Outside().Listen(L"0", ThePipe);
+
     IVirtualDevice *Fitted[MACHINE_PARTS] = {};
     ULONG Fittings = 0;
 
@@ -3616,7 +3861,7 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
     {
         printf("fitting %s:\n", Parts[Index].Class);
 
-        RepositoryQuiet = true;
+        RepositoryQuiet = !TheLoud;
         TheFitting = Parts[Index].Class;
         TheFittingSettings = Parts[Index].Settings;
 
@@ -3882,6 +4127,7 @@ static struct
 
 void VmAllowStandIns(bool Allowed) { StrangersAllowed = Allowed; }
 void VmStoreAnswers(HRESULT What) { RepositoryAnswer = What; }
+void VmLoud(bool Loud) { TheLoud = Loud; }
 void VmQuiet(bool Quiet) { RepositoryQuiet = Quiet; }
 void VmFaults(bool Watching) { hv::Faults(Watching); }
 
@@ -4317,6 +4563,10 @@ int One(const char *Library, const char *Class, const char *Settings)
     Monitor Screen;
 
     Handed.Watch(&Screen);
+
+    /* And whatever is outside it, held open before anything asks for it */
+    if (ThePipe != nullptr)
+        Handed.Outside().Listen(L"0", ThePipe);
 
     printf("bringing it up:\n");
 

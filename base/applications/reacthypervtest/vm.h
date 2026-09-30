@@ -108,11 +108,17 @@ void VmConfiguration(_In_ const char *Xml);
 /* Whether every call into the machine is written down as it happens */
 void VmQuiet(_In_ bool Quiet);
 
+/* And whether the way up is written down as well, which is otherwise quiet */
+void VmLoud(_In_ bool Loud);
+
 /* Whether the faults the guest takes stop it, for watching one go wrong */
 void VmFaults(_In_ bool Watching);
 
 /* Where the memory is written out to when a run is over, for reading by hand */
 void VmDump(_In_ const char *Path);
+
+/* What the first serial port is a pipe called, for a debugger to attach to */
+void VmPipe(_In_ const char *Name);
 
 /* Where everything the guest says on the first serial port is written */
 void VmSaidTo(_In_ const char *Path);
