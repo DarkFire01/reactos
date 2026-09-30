@@ -61,6 +61,7 @@ bool Poke(WHV_REGISTER_NAME Which, ULONG64 Value);
 ULONG64 Peek(WHV_REGISTER_NAME Which);
 void *Guest(ULONG64 Where, ULONG Length);
 ULONG64 Extent();
+bool Interrupt();
 void Tell();
 void Faults(bool Watching);
 void Close();
@@ -537,6 +538,9 @@ public:
 
         m_Raised++;
 
+        if (Line < ARRAYSIZE(m_Lines))
+            m_Lines[Line]++;
+
         if (m_Chip == nullptr)
             return S_OK;
 
@@ -596,9 +600,20 @@ public:
 
     ULONG Raised() const noexcept { return m_Raised; }
 
+    /* And which of them, because a line nobody raised is the usual fault */
+    void SayLines() const
+    {
+        for (ULONG Index = 0; Index < ARRAYSIZE(m_Lines); Index++)
+        {
+            if (m_Lines[Index] != 0)
+                printf("    line %lu, %lu time(s)\n", Index, m_Lines[Index]);
+        }
+    }
+
 private:
     volatile LONG m_Count = 1;
     ULONG m_Raised = 0;
+    ULONG m_Lines[16] = {};
     IVmPicService *m_Chip = nullptr;
 };
 
@@ -972,6 +987,10 @@ public:
 
         InterlockedExchange(&m_Took, 0);
         InterlockedExchange((volatile LONG *)&m_Owed, (LONG)Vector);
+
+        if (Vector < ARRAYSIZE(m_Asked))
+            InterlockedIncrement(&m_Asked[Vector]);
+
         return S_OK;
     }
 
@@ -1006,7 +1025,30 @@ public:
                 &m_Owed)), 0, 0);
     }
 
-    void Took() noexcept { InterlockedExchange(&m_Took, 1); }
+    void Took() noexcept
+    {
+        InterlockedExchange(&m_Took, 1);
+
+        const ULONG Vector = (ULONG)InterlockedCompareExchange(
+            const_cast<volatile LONG *>(reinterpret_cast<const volatile LONG *>(
+                &m_Owed)), 0, 0);
+
+        if (Vector < ARRAYSIZE(m_Given))
+            InterlockedIncrement(&m_Given[Vector]);
+    }
+
+    /* Which vectors were asked for, and which of them the processor took */
+    void SayVectors() const
+    {
+        for (ULONG Index = 0; Index < ARRAYSIZE(m_Asked); Index++)
+        {
+            if ((m_Asked[Index] == 0) && (m_Given[Index] == 0))
+                continue;
+
+            printf("    vector %02lx, owed %ld time(s), taken %ld\n", Index,
+                   m_Asked[Index], m_Given[Index]);
+        }
+    }
     STDMETHODIMP ConfigureInterceptThrottlingExclusion() override { return E_NOTIMPL; }
     STDMETHODIMP StopAllVirtualProcessors() override { return E_NOTIMPL; }
     STDMETHODIMP StartAllVirtualProcessors() override { return E_NOTIMPL; }
@@ -1016,6 +1058,9 @@ private:
 
     volatile ULONG m_Owed = PROCESSOR_NOTHING_OWED;
     volatile LONG m_Took = 0;
+
+    volatile LONG m_Asked[256] = {};
+    volatile LONG m_Given[256] = {};
 };
 
 /* WHAT A DEVICE READS ITSELF OUT OF ******************************************/
@@ -1652,6 +1697,22 @@ static volatile LONG TheRingingOn = 0;
 static HANDLE TheRinger = nullptr;
 static volatile LONG TheRings = 0;
 
+/*
+ * And when the processor was last let go of, so that one which has not come back
+ * can be made to. A guest looping on nothing but its own memory never stops, and
+ * the thread that let it go is inside that call and cannot time itself out.
+ */
+static volatile LONG TheWentAt = 0;
+static volatile LONG TheOverstayed = 0;
+
+/* How long a single go is allowed to last before it is reached into */
+#define RUNNING_TOO_LONG 2000
+
+static void Going() { InterlockedExchange(&TheWentAt, (LONG)GetTickCount()); }
+static void Stopped() { InterlockedExchange(&TheWentAt, 0); }
+
+ULONG Overstayed() { return (ULONG)InterlockedCompareExchange(&TheOverstayed, 0, 0); }
+
 static DWORD WINAPI Ringing(void *Nothing)
 {
     UNREFERENCED_PARAMETER(Nothing);
@@ -1662,6 +1723,17 @@ static DWORD WINAPI Ringing(void *Nothing)
 
         if (Rang != 0)
             InterlockedExchangeAdd(&TheRings, (LONG)Rang);
+
+        /* And whether the one that was let go of has been gone too long */
+        const LONG Went = InterlockedCompareExchange(&TheWentAt, 0, 0);
+
+        if ((Went != 0) &&
+            (((LONG)GetTickCount() - Went) > RUNNING_TOO_LONG))
+        {
+            InterlockedIncrement(&TheOverstayed);
+            InterlockedExchange(&TheWentAt, 0);
+            hv::Interrupt();
+        }
 
         /*
          * A millisecond, which is finer than anything asks for and is what keeps
@@ -3746,6 +3818,7 @@ struct Press
     ULONG64 After;
     USHORT Code;
     bool Extended;
+    bool Done;
 };
 
 static Press ThePresses[PRESSES_AT_MOST];
@@ -3759,28 +3832,44 @@ bool VmPress(ULONG64 After, USHORT Code, bool Extended)
     ThePresses[ThePressCount].After = After;
     ThePresses[ThePressCount].Code = Code;
     ThePresses[ThePressCount].Extended = Extended;
+    ThePresses[ThePressCount].Done = false;
     ThePressCount++;
     return true;
 }
 
 /* Whichever of them has come due, pressed and let go of in the one go */
-static void Pressing(ULONG64 Count, Input &Where)
+static void Pressing(ULONG64 Since, Input &Where)
 {
     for (ULONG Index = 0; Index < ThePressCount; Index++)
     {
-        if (ThePresses[Index].After != Count)
+        if (ThePresses[Index].Done || (Since < ThePresses[Index].After))
             continue;
+
+        ThePresses[Index].Done = true;
 
         const bool Down = Typed(Where, ThePresses[Index].Code, true,
                                 ThePresses[Index].Extended);
         const bool Up = Typed(Where, ThePresses[Index].Code, false,
                               ThePresses[Index].Extended);
 
-        printf("%6llu  pressing %02x, %s\n", (unsigned long long)Count,
+        printf("%6llu ms  pressing %02x, %s\n", (unsigned long long)Since,
                ThePresses[Index].Code,
                (Down && Up) ? "taken" : "nothing here took it");
     }
 }
+
+/*
+ * How long a run is given, in milliseconds, or nothing and it is only bounded by
+ * how often the processor stops.
+ *
+ * Stops are the wrong thing to bound a run by on their own. A guest doing what it
+ * was asked stops rarely: one waiting to be typed at asks the firmware for a key
+ * over and over and never leaves the machine at all, so a run counted in stops
+ * gets slower the better the machine works.
+ */
+static ULONG TheMilliseconds = 0;
+
+void VmSeconds(ULONG Many) { TheMilliseconds = Many * 1000; }
 
 /* What the first serial port is a pipe called, or nothing and no port at all */
 static const char *ThePipe = nullptr;
@@ -3936,23 +4025,56 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
     WHV_RUN_VP_EXIT_CONTEXT Exit = {};
     ULONG64 Count = 0;
     ULONG64 Ports = 0;
+    ULONG64 Halts = 0;
 
     /* And the thread that rings whatever the parts asked to be woken by */
     StartRinging();
 
+    const ULONG Began = GetTickCount();
+
     while (Count < Steps)
     {
+        const ULONG64 Since = (ULONG64)(GetTickCount() - Began);
+
+        if ((TheMilliseconds != 0) && (Since >= TheMilliseconds))
+        {
+            printf("\nits time is up after %llu stop(s)\n",
+                   (unsigned long long)Count);
+            break;
+        }
+
         /* Anything the hardware is owed, before it is let go of again */
         Deliver(Handed.Cpus(), Exit);
-        Pressing(Count, Handed.Typing());
+        Pressing(Since, Handed.Typing());
 
-        if (!hv::Step(&Exit))
+        Going();
+
+        const bool Went = hv::Step(&Exit);
+
+        Stopped();
+
+        if (!Went)
         {
             printf("the processor would not run\n");
             break;
         }
 
         Count++;
+
+        /*
+         * Reached into from outside, because it had been gone too long. Nothing
+         * happened that the machine has to answer for: what it says is where the
+         * guest had got to, which for one going round on its own is the only
+         * thing there is to say about it.
+         */
+        if (Exit.ExitReason == WHvRunVpExitReasonCanceled)
+        {
+            printf("%6llu  %04x:%04llx  going round on its own, asking nothing "
+                   "of anything outside\n", (unsigned long long)Count,
+                   Exit.VpContext.Cs.Selector,
+                   (unsigned long long)Exit.VpContext.Rip);
+            continue;
+        }
 
         if (Exit.ExitReason == WHvRunVpExitReasonX64IoPortAccess)
         {
@@ -3982,6 +4104,23 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
              * what it was standing for is about to happen.
              */
             Unwatch();
+            continue;
+        }
+        else if (Exit.ExitReason == WHvRunVpExitReasonX64Halt)
+        {
+            /*
+             * Stopped on purpose, waiting to be interrupted. That is not the end
+             * of a run: something is going to raise a line, and the guest is
+             * meant to carry on from the instruction after this one when it does.
+             *
+             * So it is carried on from there. Anything with nothing to do waits
+             * this way, which means a firmware waiting to be typed at spends the
+             * whole of its wait here, and treating it as having stopped is a
+             * machine that goes dead the moment it asks for a key.
+             */
+            Halts++;
+            hv::Poke(WHvX64RegisterRip,
+                     Exit.VpContext.Rip + Exit.VpContext.InstructionLength);
             continue;
         }
         else if (Exit.ExitReason == WHvRunVpExitReasonException)
@@ -4044,6 +4183,12 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
     printf("  %llu of those were ports, and the hardware answered for %llu\n",
            (unsigned long long)Ports, (unsigned long long)TheAnswered);
 
+    if (Halts != 0)
+    {
+        printf("  and %llu were it waiting to be interrupted\n",
+               (unsigned long long)Halts);
+    }
+
     for (ULONG Index = 0; Index < TheTimerCount; Index++)
     {
         printf("  %s set a timer %lu time(s), and it went off %lu\n",
@@ -4064,7 +4209,11 @@ int Assemble(const char *Bios, const Part *Parts, ULONG Many,
         printf("  timers went off %lu time(s)\n", Rings);
 
     if (Handed.Wires().Raised() != 0)
+    {
         printf("  a line was raised %lu time(s)\n", Handed.Wires().Raised());
+        Handed.Wires().SayLines();
+        Handed.Cpus().SayVectors();
+    }
 
     if (TheUnclaimedCount != 0)
     {
@@ -4364,6 +4513,20 @@ ULONG VmRun(ULONG Steps)
         {
             /* It would take one now, so what was waiting on that is done */
             Unwatch();
+            continue;
+        }
+        else if (TheVm.Exit.ExitReason == WHvRunVpExitReasonX64Halt)
+        {
+            /*
+             * Stopped on purpose, waiting to be interrupted, which is where a
+             * firmware waiting to be typed at spends the whole of its wait. It
+             * carries on from the instruction after this one, because something
+             * is going to raise a line; treating it as having stopped is a
+             * machine that goes dead the moment it asks for a key.
+             */
+            hv::Poke(WHvX64RegisterRip,
+                     TheVm.Exit.VpContext.Rip +
+                     TheVm.Exit.VpContext.InstructionLength);
             continue;
         }
         else if (TheVm.Exit.ExitReason != WHvRunVpExitReasonX64Cpuid)

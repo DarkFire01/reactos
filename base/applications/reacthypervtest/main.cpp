@@ -41,9 +41,10 @@ static void Usage()
         "  --said <file>      Write everything said on the first serial port\n"
         "  --pipe <name>      What the first serial port is a pipe called, so\n"
         "                     that a debugger can attach to it\n"
-        "  --press <n>:<s>    Press scan code <s> once <n> stops have gone by,\n"
-        "                     repeated. Prefix the code with e0 for the ones a\n"
-        "                     keyboard sends two bytes for\n"
+        "  --seconds <n>      How long to run for, however often it stops\n"
+        "  --press <n>:<s>    Press scan code <s> once <n> millisecond(s) have\n"
+        "                     gone by, repeated. Prefix the code with e0 for\n"
+        "                     the ones a keyboard sends two bytes for\n"
         "  --watch-faults     Stop the processor on the faults the guest takes\n"
         "\n"
         "What the device asks for on the way up is printed. That list is what\n"
@@ -84,6 +85,8 @@ int main(int argc, char **argv)
             VmAllowStandIns(true);
         else if ((strcmp(argv[Index], "--dump") == 0) && ((Index + 1) < argc))
             VmDump(argv[++Index]);
+        else if ((strcmp(argv[Index], "--seconds") == 0) && ((Index + 1) < argc))
+            VmSeconds((ULONG)strtoul(argv[++Index], nullptr, 0));
         else if ((strcmp(argv[Index], "--pipe") == 0) && ((Index + 1) < argc))
             VmPipe(argv[++Index]);
         else if ((strcmp(argv[Index], "--said") == 0) && ((Index + 1) < argc))

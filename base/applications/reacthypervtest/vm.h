@@ -124,10 +124,14 @@ void VmPipe(_In_ const char *Name);
 void VmSaidTo(_In_ const char *Path);
 
 /*
- * A key a run with nobody at it presses itself, named by how far in. What waits
- * to be told which of several things to do has to be told by somebody.
+ * A key a run with nobody at it presses itself, named by how many milliseconds
+ * in. What waits to be told which of several things to do has to be told by
+ * somebody, and when is a matter of time rather than of how often it stopped.
  */
 bool VmPress(_In_ ULONG64 After, _In_ USHORT Code, _In_ bool Extended);
+
+/* How long a run is given, or nothing and it runs until it stops on its own */
+void VmSeconds(_In_ ULONG Many);
 
 /* A run of ports to write down every access to, for watching a disagreement */
 void VmWatch(_In_ ULONG First, _In_ ULONG Last);

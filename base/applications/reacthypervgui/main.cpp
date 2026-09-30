@@ -722,7 +722,13 @@ static LRESULT CALLBACK Dispatch(HWND Window, UINT Message, WPARAM First,
                                (Message == WM_SYSKEYDOWN));
 
             if (Code != 0)
-                VmKey(Code, Down, Extended);
+            {
+                const bool Went = VmKey(Code, Down, Extended);
+
+                printf("a key: %02x %s%s, %s\n", Code, Down ? "down" : "up",
+                       Extended ? " (extended)" : "",
+                       Went ? "taken" : "nothing took it");
+            }
 
             return 0;
         }

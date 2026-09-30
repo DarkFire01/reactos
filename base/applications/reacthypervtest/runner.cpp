@@ -45,6 +45,7 @@ static HRESULT (WINAPI *EmulatorIo)(WHV_EMULATOR_HANDLE, VOID *,
                                     const WHV_VP_EXIT_CONTEXT *,
                                     const WHV_X64_IO_PORT_ACCESS_CONTEXT *,
                                     WHV_EMULATOR_STATUS *);
+static HRESULT (WINAPI *CancelRun)(WHV_PARTITION_HANDLE, UINT32, UINT32);
 static HRESULT (WINAPI *TranslateGva)(WHV_PARTITION_HANDLE, UINT32, UINT64,
                                       WHV_TRANSLATE_GVA_FLAGS,
                                       WHV_TRANSLATE_GVA_RESULT *,
@@ -93,6 +94,7 @@ static bool FindPlatform()
     BIND(CreateVirtualProcessor, "WHvCreateVirtualProcessor");
     BIND(DeleteVirtualProcessor, "WHvDeleteVirtualProcessor");
     BIND(RunVirtualProcessor, "WHvRunVirtualProcessor");
+    BIND(CancelRun, "WHvCancelRunVirtualProcessor");
     BIND(SetRegisters, "WHvSetVirtualProcessorRegisters");
     BIND(GetRegisters, "WHvGetVirtualProcessorRegisters");
 
@@ -277,6 +279,22 @@ bool Open(ULONG64 Ram)
 
     TheExtent = Ram;
     return FAILED(CreateVirtualProcessor(TheMachine, 0, 0)) ? false : true;
+}
+
+/*
+ * Made to come back out, from another thread.
+ *
+ * A processor let go of does not have to stop. A guest in a loop that reaches
+ * for nothing outside itself runs forever without the machine hearing anything
+ * of it, and whoever let it go is inside the call the whole time: no count of
+ * stops bounds that, because there are none. So something else has to reach in.
+ */
+bool Interrupt()
+{
+    if ((TheMachine == nullptr) || (CancelRun == nullptr))
+        return false;
+
+    return SUCCEEDED(CancelRun(TheMachine, 0, 0));
 }
 
 /* How much memory there is, for anything that walks the whole of it */
