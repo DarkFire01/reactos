@@ -1246,12 +1246,12 @@ NTAPI
 KeQueryNodeMaximumProcessorCount(
   _In_ USHORT NodeNumber);
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 USHORT
 NTAPI
 KeQueryHighestNodeNumber(VOID);
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 USHORT
 NTAPI
 KeGetCurrentNodeNumber(VOID);
