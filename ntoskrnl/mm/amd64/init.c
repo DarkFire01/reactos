@@ -449,9 +449,15 @@ MiSetupPfnForPageTable(
     /* Get the pfn entry for this page */
     Pfn = MiGetPfnEntry(PageFrameIndex);
 
-    /* Check if it's valid memory */
+    /*
+     * Check if it's valid memory. An entry is 48 bytes and the database is
+     * mapped a page at a time, so one that starts near the end of a page runs
+     * on into the next, and at the edge of a mapped run that next page is not
+     * there. Asking about the entry after this one covers both.
+     */
     if ((PageFrameIndex <= MmHighestPhysicalPage) &&
         (MmIsAddressValid(Pfn)) &&
+        (MmIsAddressValid(Pfn + 1)) &&
         (Pfn->u3.e1.PageLocation == ActiveAndValid))
     {
         /* Setup the PFN entry */
@@ -468,7 +474,10 @@ MiSetupPfnForPageTable(
     /* Increase the shared count of the PFN entry for the PDE */
     PointerPde = MiAddressToPde(MiPteToAddress(PointerPte));
     Pfn = MiGetPfnEntry(PFN_FROM_PTE(PointerPde));
-    Pfn->u2.ShareCount++;
+    if ((MmIsAddressValid(Pfn)) && (MmIsAddressValid(Pfn + 1)))
+    {
+        Pfn->u2.ShareCount++;
+    }
 }
 
 CODE_SEG("INIT")
