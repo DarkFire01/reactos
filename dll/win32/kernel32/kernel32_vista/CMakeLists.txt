@@ -8,19 +8,12 @@ spec2def(kernel32_vista.dll kernel32_vista.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
     CancelIoEx.c
-    EnumSystemLocalesEx.c
     firmware.c
-    GetLocaleInfoEx.c
     GetFileInformationByHandleEx.c
     GetFinalPathNameByHandle.c
     GetNamedPipeClientProcessId.c
-    GetSystemDefaultLocaleName.c
     GetTickCount64.c
-    GetUserDefaultLocaleName.c
     InitOnce.c
-    IsValidLocaleName.c
-    LCIDToLocaleName.c
-    LocaleNameToLCID.c
     sync.c
     ThreadDescription.c
     threadpool.c
