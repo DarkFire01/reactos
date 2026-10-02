@@ -11,7 +11,6 @@ list(APPEND SOURCE
     ex.c
     fsrtl.c
     io.c
-    ke.c
     nt.c
     rtl.c
     string.c

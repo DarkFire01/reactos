@@ -1223,6 +1223,44 @@ KiFindIdealProcessor(
     _In_ UCHAR OriginalIdealProcessor);
 #endif // CONFIG_SMP
 
+/*
+ * The kernel builds for an older target than these, so the XDK hides them, and
+ * the copy that used to stand in for them went with the routines when they
+ * moved out of the ntoskrnl_vista library and into the kernel proper.
+ */
+KAFFINITY
+NTAPI
+KeProcessorGroupAffinity(
+    _In_ USHORT GroupNumber);
+
+ULONGLONG
+NTAPI
+KeQueryInterruptTimePrecise(
+    _Out_ PULONGLONG PerfCounter);
+
+VOID
+NTAPI
+KeInitializeTimer2(
+    _Out_ PKTIMER Timer);
+
+BOOLEAN
+NTAPI
+KeSetTimer2(
+    _Inout_ PKTIMER Timer,
+    _In_ LARGE_INTEGER DueTime,
+    _In_ LONGLONG Period,
+    _In_opt_ PKDPC Dpc);
+
+BOOLEAN
+NTAPI
+KeCancelTimer2(
+    _Inout_ PKTIMER Timer);
+
+NTSTATUS
+NTAPI
+KeStartDynamicProcessor(
+    _In_ PVOID ProcessorState);
+
 #ifdef __cplusplus
 } // extern "C"
 
