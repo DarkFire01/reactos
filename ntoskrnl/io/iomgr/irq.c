@@ -1367,6 +1367,12 @@ IoConnectInterruptEx(
     if (NT_SUCCESS(Status))
         return Status;
 
+    /* The fallback's own failure is what the caller is told, and for a device
+       with no line input that is always the same unhelpful answer, so say why
+       the messages were refused while it is still known */
+    DPRINT1("Message interrupts refused for PDO %p (0x%08lx), falling back to a line\n",
+            MessageBased->PhysicalDeviceObject, Status);
+
     if (MessageBased->FallBackServiceRoutine == NULL)
         return STATUS_NOT_SUPPORTED;
 
