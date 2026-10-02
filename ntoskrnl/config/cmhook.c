@@ -135,7 +135,7 @@ CmpAltitudeToNumber(
             return FALSE;
 
         /* Far past anything a real altitude uses, so it is a bad string */
-        if (Value > (MAXULONGLONG / 10))
+        if (Value > (0xFFFFFFFFFFFFFFFFULL / 10))
             return FALSE;
 
         Value = (Value * 10) + (Digit - L'0');

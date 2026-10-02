@@ -176,6 +176,7 @@ SearchKcbList:
                 /* Set it up */
                 CurrentKcb->PrivateAlloc = TRUE;
                 CurrentKcb->DelayCloseEntry = NULL;
+                CurrentKcb->CallbackName = NULL;
                 InsertTailList(&CmpFreeKCBListHead,
                                &CurrentKcb->FreeListEntry);
             }
@@ -195,6 +196,7 @@ SearchKcbList:
         /* Set it up */
         CurrentKcb->PrivateAlloc = 0;
         CurrentKcb->DelayCloseEntry = NULL;
+        CurrentKcb->CallbackName = NULL;
     }
 
     /* Return it */
