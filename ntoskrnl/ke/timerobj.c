@@ -341,3 +341,130 @@ KeSetTimerEx(IN OUT PKTIMER Timer,
     return Inserted;
 }
 
+/**
+ * @brief
+ * Sets a timer that may fire up to a given delay late, so it can share an
+ * expiration with other timers.
+ *
+ * @param[in,out] Timer
+ * The timer to set.
+ *
+ * @param[in] DueTime
+ * Absolute or relative expiration time.
+ *
+ * @param[in] Period
+ * Period in milliseconds, or zero for a one shot timer.
+ *
+ * @param[in] TolerableDelay
+ * How late the expiration may run, in milliseconds.
+ *
+ * @param[in] Dpc
+ * Optional DPC to queue when the timer expires.
+ *
+ * @return
+ * TRUE if the timer was already in the timer queue.
+ */
+BOOLEAN
+NTAPI
+KeSetCoalescableTimer(
+    _Inout_ PKTIMER Timer,
+    _In_ LARGE_INTEGER DueTime,
+    _In_ ULONG Period,
+    _In_ ULONG TolerableDelay,
+    _In_opt_ PKDPC Dpc)
+{
+    /* Timers are never coalesced, so every one expires on time */
+    UNREFERENCED_PARAMETER(TolerableDelay);
+
+    return KeSetTimerEx(Timer, DueTime, (LONG)Period, Dpc);
+}
+
+/**
+ * @brief
+ * Returns the interrupt time along with the performance counter reading that
+ * goes with it.
+ *
+ * @param[out] PerfCounter
+ * Receives the performance counter value.
+ *
+ * @return
+ * The interrupt time, in 100 nanosecond units.
+ */
+ULONGLONG
+NTAPI
+KeQueryInterruptTimePrecise(
+    _Out_ PULONGLONG PerfCounter)
+{
+    LARGE_INTEGER Counter;
+
+    Counter = KeQueryPerformanceCounter(NULL);
+    *PerfCounter = (ULONGLONG)Counter.QuadPart;
+
+    return (ULONGLONG)KeQueryInterruptTime();
+}
+
+/**
+ * @brief
+ * Initializes a timer through the KTIMER2 entry point.
+ *
+ * @param[out] Timer
+ * The timer to initialize.
+ *
+ * @remarks
+ * The KTIMER2 family maps onto the classic dispatcher timer on ReactOS.
+ */
+VOID
+NTAPI
+KeInitializeTimer2(
+    _Out_ PKTIMER Timer)
+{
+    KeInitializeTimerEx(Timer, NotificationTimer);
+}
+
+/**
+ * @brief
+ * Arms a timer through the KTIMER2 entry point.
+ *
+ * @param[in,out] Timer
+ * The timer to arm.
+ *
+ * @param[in] DueTime
+ * Expiration time, in 100 nanosecond units.
+ *
+ * @param[in] Period
+ * Period of a recurring timer, in milliseconds, or zero for a one shot timer.
+ *
+ * @param[in] Dpc
+ * Optional DPC to queue on expiration.
+ *
+ * @return
+ * TRUE when the timer was already armed, FALSE otherwise.
+ */
+BOOLEAN
+NTAPI
+KeSetTimer2(
+    _Inout_ PKTIMER Timer,
+    _In_ LARGE_INTEGER DueTime,
+    _In_ LONGLONG Period,
+    _In_opt_ PKDPC Dpc)
+{
+    return KeSetTimerEx(Timer, DueTime, (LONG)Period, Dpc);
+}
+
+/**
+ * @brief
+ * Cancels a timer through the KTIMER2 entry point.
+ *
+ * @param[in,out] Timer
+ * The timer to cancel.
+ *
+ * @return
+ * TRUE when the timer was pending, FALSE otherwise.
+ */
+BOOLEAN
+NTAPI
+KeCancelTimer2(
+    _Inout_ PKTIMER Timer)
+{
+    return KeCancelTimer(Timer);
+}

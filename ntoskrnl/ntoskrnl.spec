@@ -1795,3 +1795,8 @@
 @ stdcall ZwQueryVirtualMemory(long ptr long ptr long ptr)
 @ stdcall KeQueryMaximumProcessorCount()
 @ stdcall ObDereferenceObjectDeferDelete(ptr)
+@ stdcall -version=0x600+ KeDeregisterProcessorChangeCallback(ptr)
+@ stdcall -version=0x601+ KeGetCurrentNodeNumber()
+@ stdcall -version=0x601+ KeQueryHighestNodeNumber()
+@ stdcall -version=0x601+ KeSetCoalescableTimer(ptr int64 long long ptr)
+@ stdcall -version=0x601+ KeSetTargetProcessorDpcEx(ptr ptr)

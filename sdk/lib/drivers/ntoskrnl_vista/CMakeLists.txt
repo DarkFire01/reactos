@@ -12,7 +12,6 @@ list(APPEND SOURCE
     fsrtl.c
     hvl.c
     io.c
-    ke.c
     mm.c
     nt.c
     rtl.c
