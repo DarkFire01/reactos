@@ -24,7 +24,8 @@ list(APPEND SOURCE
     sync.c
     ThreadDescription.c
     threadpool.c
-    vista.c)
+    vista.c
+    ../winnls/string/locale.c)
 
 # These functions are not exported from kernel32_vista (yet).
 # They are only used when NT6 exports in kernel32 are enabled.
@@ -34,7 +35,7 @@ if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
 endif()
 
 add_library(kernel32_vista_static ${SOURCE})
-target_link_libraries(kernel32_vista_static ${PSEH_LIB})
+target_link_libraries(kernel32_vista_static win32_registry wine ${PSEH_LIB}) # wine needed for win32_registry
 add_dependencies(kernel32_vista_static psdk)
 
 add_library(kernel32_vista MODULE
