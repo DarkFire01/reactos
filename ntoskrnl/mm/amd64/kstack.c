@@ -226,6 +226,9 @@ MiReleaseKernelStackPtes(
 
     RtlZeroMemory(FirstPte, MI_STACK_PAGES * sizeof(MMPTE));
 
+    /* The pages are already freed, flush before the slot can be handed out again */
+    KeFlushEntireTb(TRUE, TRUE);
+
     KeAcquireSpinLock(&MiStackPteLock, &OldIrql);
 
     PointerPte = MiNextFreeStackPteByLevel[0];
