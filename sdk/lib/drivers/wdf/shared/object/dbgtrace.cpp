@@ -133,6 +133,78 @@ FxTraceSanitizeFormat(
     Buffer[Out] = '\0';
 }
 
+#if DBG
+#define     TEMP_BUFFER_SIZE        1024
+
+//
+// Formats one trace message and prints it.
+//
+// The two buffers are a kilobyte each, and a frame that large is reserved on
+// entry whether or not anything is printed. DoTraceLevelMessage is called from
+// the middle of the IO dispatch path, where a request coming down through WDF,
+// a bus filter and a hub can already be a dozen frames deep, so the buffers are
+// kept here and this is only entered once a message is known to be wanted.
+//
+static
+DECLSPEC_NOINLINE
+VOID
+FxTraceFormatAndPrint(
+    __in PCSTR   DebugMessage,
+    __in va_list list
+    )
+{
+    CHAR       debugMessageBuffer[TEMP_BUFFER_SIZE];
+    CHAR       formatBuffer[TEMP_BUFFER_SIZE];
+    NTSTATUS   status;
+
+    FxTraceSanitizeFormat(DebugMessage, formatBuffer, sizeof(formatBuffer));
+
+    //
+    // Using new safe string functions instead of _vsnprintf.
+    // This function takes care of NULL terminating if the message
+    // is longer than the buffer.
+    //
+#if FX_CORE_MODE==FX_CORE_KERNEL_MODE
+    status = RtlStringCbVPrintfA( debugMessageBuffer,
+                                  sizeof(debugMessageBuffer),
+                                  formatBuffer,
+                                  list );
+#else
+    HRESULT hr;
+    hr = StringCbVPrintfA( debugMessageBuffer,
+                           sizeof(debugMessageBuffer),
+                           formatBuffer,
+                           list );
+
+    if (HRESULT_FACILITY(hr) == FACILITY_WIN32)
+    {
+        status = WinErrorToNtStatus(HRESULT_CODE(hr));
+    }
+    else
+    {
+        status = SUCCEEDED(hr) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+    }
+#endif
+
+    if (!NT_SUCCESS(status)) {
+#if FX_CORE_MODE==FX_CORE_KERNEL_MODE
+        DbgPrint ("WDFTrace: RtlStringCbVPrintfA failed 0x%x\n", status);
+#else
+        OutputDebugString("WDFTrace: Unable to expand: ");
+        OutputDebugString(DebugMessage);
+#endif
+        return;
+    }
+
+#if FX_CORE_MODE==FX_CORE_KERNEL_MODE
+    DbgPrint("WDFTrace: %s\n", debugMessageBuffer);
+#else
+    OutputDebugString("WDFTrace: ");
+    OutputDebugString(DebugMessage);
+#endif
+}
+#endif // DBG
+
 VOID
 __cdecl
 DoTraceLevelMessage(
@@ -161,71 +233,26 @@ Return Value:
  --*/
  {
 #if DBG
+    va_list list;
+
     UNREFERENCED_PARAMETER(FxDriverGlobals);
 
-#define     TEMP_BUFFER_SIZE        1024
-    va_list    list;
-    CHAR       debugMessageBuffer[TEMP_BUFFER_SIZE];
-    CHAR       formatBuffer[TEMP_BUFFER_SIZE];
-    NTSTATUS   status;
+    if (DebugMessage == NULL) {
+        return;
+    }
+
+    //
+    // Decide before spending any stack on it
+    //
+    if (DebugPrintLevel > TRACE_LEVEL_ERROR &&
+        (DebugPrintLevel > DebugLevel ||
+         ((DebugPrintFlag & DebugFlag) != DebugPrintFlag))) {
+        return;
+    }
 
     va_start(list, DebugMessage);
-
-    if (DebugMessage) {
-
-        FxTraceSanitizeFormat(DebugMessage, formatBuffer, sizeof(formatBuffer));
-
-        //
-        // Using new safe string functions instead of _vsnprintf.
-        // This function takes care of NULL terminating if the message
-        // is longer than the buffer.
-        //
-#if FX_CORE_MODE==FX_CORE_KERNEL_MODE
-        status = RtlStringCbVPrintfA( debugMessageBuffer,
-                                      sizeof(debugMessageBuffer),
-                                      formatBuffer,
-                                      list );
-#else
-        HRESULT hr;
-        hr = StringCbVPrintfA( debugMessageBuffer,
-                                      sizeof(debugMessageBuffer),
-                                      formatBuffer,
-                                      list );
-
-
-        if (HRESULT_FACILITY(hr) == FACILITY_WIN32)
-        {
-            status = WinErrorToNtStatus(HRESULT_CODE(hr));
-        }
-        else
-        {
-            status = SUCCEEDED(hr) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
-        }
-#endif
-        if(!NT_SUCCESS(status)) {
-
-#if FX_CORE_MODE==FX_CORE_KERNEL_MODE
-            DbgPrint ("WDFTrace: RtlStringCbVPrintfA failed 0x%x\n", status);
-#else
-            OutputDebugString("WDFTrace: Unable to expand: ");
-            OutputDebugString(DebugMessage);
-#endif
-            return;
-        }
-        if (DebugPrintLevel <= TRACE_LEVEL_ERROR ||
-            (DebugPrintLevel <= DebugLevel &&
-             ((DebugPrintFlag & DebugFlag) == DebugPrintFlag))) {
-#if FX_CORE_MODE==FX_CORE_KERNEL_MODE
-            DbgPrint("WDFTrace: %s\n", debugMessageBuffer);
-#else
-            OutputDebugString("WDFTrace: ");
-            OutputDebugString(DebugMessage);
-#endif
-        }
-    }
+    FxTraceFormatAndPrint(DebugMessage, list);
     va_end(list);
-
-    return;
 #else
     UNREFERENCED_PARAMETER(FxDriverGlobals);
     UNREFERENCED_PARAMETER(DebugPrintLevel);
