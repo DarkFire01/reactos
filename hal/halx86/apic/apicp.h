@@ -463,6 +463,10 @@ ApicWriteIcr(
             return;
         }
 
+        /* WRMSR to the ICR is not serializing, so earlier stores must be visible first */
+        _mm_mfence();
+        _mm_lfence();
+
         /* Delivery status is not a bit of this register any more */
         __writemsr(X2APIC_MSR_ICR,
                    ((ULONG64)Icr.Destination << 32) |
