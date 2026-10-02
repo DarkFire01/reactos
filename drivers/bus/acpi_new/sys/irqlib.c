@@ -323,6 +323,44 @@ UacpipVectorIsHalLine(ULONG Vector, ULONG Gsiv)
     return FALSE;
 }
 
+/*
+ * Learns the whole line-to-vector map the HAL owns, before anything is handed
+ * out of the device band.
+ *
+ * The HAL answers for a line out of a fixed table, so every vector it owes is
+ * already decided at this point. Finding that out one line at a time, as each
+ * device starts, leaves the message allocator picking out of a band it believes
+ * is free: a run taken early can sit on the vector a line resolved later is
+ * owed, and that line then takes it back, leaving two owners for one entry.
+ *
+ * The HAL only maps here, it does not assign, and it answers zero for a vector
+ * it has kept for itself, so asking about every line costs nothing.
+ */
+static VOID
+UacpipLearnHalLineVectors(VOID)
+{
+    ULONG Gsiv;
+
+    if (UacpipHalGetInterruptVector == NULL)
+    {
+        return;
+    }
+
+    for (Gsiv = 0; Gsiv < UACPI_MAX_GSIV; Gsiv++)
+    {
+        KIRQL     halIrql = 0;
+        KAFFINITY halAffinity = 0;
+        ULONG     halVector;
+
+        halVector = UacpipHalGetInterruptVector(Internal, 0, Gsiv, Gsiv,
+                                                &halIrql, &halAffinity);
+        if ((halVector != 0) && (halVector <= 0xFF))
+        {
+            UacpiHalLineVector[Gsiv] = halVector;
+        }
+    }
+}
+
 // Processor-change callback: add each CPU's free-IDT range list.
 _Function_class_(PROCESSOR_CALLBACK_FUNCTION)
 static VOID NTAPI
@@ -1506,6 +1544,10 @@ UacpiIrqLibInitialize(VOID)
             UacpiTrace("[acpi] irqlib: FATAL - no processor IDT sets built\n");
             KeBugCheckEx(0xA3 /* ACPI_DRIVER_INTERNAL */, 0x22, 0, 0, 0);
         }
+
+        // Ask the HAL what it owes every line while it still answers for
+        // itself; the overrides below send the same question back here.
+        UacpipLearnHalLineVectors();
 
         // The SCI takes its vector from this allocator when resolved.
 
