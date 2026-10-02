@@ -339,7 +339,8 @@ extern "C" {
 // #define LOAD_PACKAGED_LIBRARY                       0x00000004 // Internal use only.
 #define LOAD_WITH_ALTERED_SEARCH_PATH               0x00000008
 #define LOAD_IGNORE_CODE_AUTHZ_LEVEL                0x00000010
-#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+/* kernel32 builds for an older target than these, and has to honour them */
+#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA) || defined(__REACTOS__)
 #define LOAD_LIBRARY_AS_IMAGE_RESOURCE              0x00000020
 #define LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE          0x00000040
 #define LOAD_LIBRARY_REQUIRE_SIGNED_TARGET          0x00000080
@@ -348,7 +349,7 @@ extern "C" {
 #define LOAD_LIBRARY_SEARCH_USER_DIRS               0x00000400
 #define LOAD_LIBRARY_SEARCH_SYSTEM32                0x00000800
 #define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS            0x00001000
-#endif // _WIN32_WINNT_VISTA
+#endif // _WIN32_WINNT_VISTA || __REACTOS__
 #if (NTDDI_VERSION >= NTDDI_WIN10_RS1)
 #define LOAD_LIBRARY_SAFE_CURRENT_DIRS              0x00002000
 #define LOAD_LIBRARY_SEARCH_SYSTEM32_NO_FORWARDER   0x00004000

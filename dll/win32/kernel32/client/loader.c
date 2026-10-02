@@ -183,6 +183,16 @@ LoadLibraryW(LPCWSTR lpLibFileName)
 }
 
 
+/*
+ * The three ways of asking for a mapping that is only ever read, never run.
+ * They differ in what the caller may then do with it, not in how it is made,
+ * so the loader takes the same path for all three.
+ */
+#define BASEP_AS_RESOURCE \
+    (LOAD_LIBRARY_AS_DATAFILE | \
+     LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | \
+     LOAD_LIBRARY_AS_IMAGE_RESOURCE)
+
 static
 NTSTATUS
 BasepLoadLibraryAsDatafile(PWSTR Path, LPCWSTR Name, HMODULE *hModule)
@@ -270,7 +280,14 @@ BasepLoadLibraryAsDatafile(PWSTR Path, LPCWSTR Name, HMODULE *hModule)
         return STATUS_INVALID_IMAGE_FORMAT;
     }
 
-    /* Set low bit of handle to indicate datafile module */
+    /*
+     * Mark the handle as a data file, whichever of the three flags asked for
+     * it. The section above is mapped from a plain file mapping rather than an
+     * image one, so a resource address in it still has to be walked through the
+     * section headers, and that is what the bit tells RtlImageRvaToVa to do.
+     * Claiming an image mapping here would have the resource code read past the
+     * headers into whatever the file happens to hold at that offset.
+     */
     *hModule = (HMODULE)((ULONG_PTR)lpBaseAddress | 1);
 
     /* Load alternate resource module */
@@ -311,7 +328,7 @@ LoadLibraryExW(LPCWSTR lpLibFileName,
         LdrEnumerateLoadedModules(0, BasepLocateExeLdrEntry, NtCurrentPeb()->ImageBaseAddress);
 
     /* Check if that module is our exe*/
-    if (BasepExeLdrEntry && !(dwFlags & LOAD_LIBRARY_AS_DATAFILE) &&
+    if (BasepExeLdrEntry && !(dwFlags & BASEP_AS_RESOURCE) &&
         DllName.Length == BasepExeLdrEntry->FullDllName.Length)
     {
         /* Lengths match and it's not a datafile, so perform name comparison */
@@ -349,10 +366,18 @@ LoadLibraryExW(LPCWSTR lpLibFileName,
 
     _SEH2_TRY
     {
-        if (dwFlags & LOAD_LIBRARY_AS_DATAFILE)
+        if (dwFlags & BASEP_AS_RESOURCE)
         {
-            /* If the image is loaded as a datafile, try to get its handle */
-            Status = LdrGetDllHandleEx(0, SearchPath, NULL, &DllName, (PVOID*)&hInst);
+            Status = STATUS_DLL_NOT_FOUND;
+
+            /* An exclusive caller is promised a mapping of its own, so the one
+               an earlier caller left behind is not handed out again */
+            if (!(dwFlags & LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE))
+            {
+                /* If the image is loaded as a datafile, try to get its handle */
+                Status = LdrGetDllHandleEx(0, SearchPath, NULL, &DllName, (PVOID*)&hInst);
+            }
+
             if (!NT_SUCCESS(Status))
             {
                 /* It's not loaded yet - so load it up */
@@ -462,15 +487,15 @@ FreeLibrary(HINSTANCE hLibModule)
     NTSTATUS Status;
     PIMAGE_NT_HEADERS NtHeaders;
 
-    if (LDR_IS_DATAFILE(hLibModule))
+    if (LDR_IS_RESOURCE(hLibModule))
     {
-        /* This is a LOAD_LIBRARY_AS_DATAFILE module, check if it's a valid one */
-        NtHeaders = RtlImageNtHeader((PVOID)((ULONG_PTR)hLibModule & ~1));
+        /* This is a resource-only mapping, check if it's a valid one */
+        NtHeaders = RtlImageNtHeader((PVOID)((ULONG_PTR)hLibModule & ~(ULONG_PTR)3));
 
         if (NtHeaders)
         {
             /* Unmap view */
-            Status = NtUnmapViewOfSection(NtCurrentProcess(), (PVOID)((ULONG_PTR)hLibModule & ~1));
+            Status = NtUnmapViewOfSection(NtCurrentProcess(), (PVOID)((ULONG_PTR)hLibModule & ~(ULONG_PTR)3));
 
             /* Unload alternate resource module */
             LdrUnloadAlternateResourceModule(hLibModule);
@@ -508,13 +533,13 @@ FreeLibraryAndExitThread(HMODULE hLibModule,
                          DWORD dwExitCode)
 {
 
-    if (LDR_IS_DATAFILE(hLibModule))
+    if (LDR_IS_RESOURCE(hLibModule))
     {
-        /* This is a LOAD_LIBRARY_AS_DATAFILE module */
-        if (RtlImageNtHeader((PVOID)((ULONG_PTR)hLibModule & ~1)))
+        /* This is a resource-only mapping */
+        if (RtlImageNtHeader((PVOID)((ULONG_PTR)hLibModule & ~(ULONG_PTR)3)))
         {
             /* Unmap view */
-            NtUnmapViewOfSection(NtCurrentProcess(), (PVOID)((ULONG_PTR)hLibModule & ~1));
+            NtUnmapViewOfSection(NtCurrentProcess(), (PVOID)((ULONG_PTR)hLibModule & ~(ULONG_PTR)3));
 
             /* Unload alternate resource module */
             LdrUnloadAlternateResourceModule(hLibModule);
