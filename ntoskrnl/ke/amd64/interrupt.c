@@ -147,6 +147,14 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
             (ConnectedInterrupt->ShareVector == 0) ||
             (Interrupt->Mode != ConnectedInterrupt->Mode))
         {
+            DPRINT1("Vector %lu is held by %p and cannot be shared: "
+                    "share %u/%u, mode %u/%u\n",
+                    Interrupt->Vector,
+                    ConnectedInterrupt,
+                    Interrupt->ShareVector,
+                    ConnectedInterrupt->ShareVector,
+                    Interrupt->Mode,
+                    ConnectedInterrupt->Mode);
             goto Cleanup;
         }
 
