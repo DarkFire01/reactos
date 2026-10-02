@@ -28,6 +28,7 @@
 
 #define NDEBUG
 #include <debug.h>
+#include "japanese.h"
 DEBUG_CHANNEL(nls);
 
 #define strcasecmp _stricmp
@@ -59,24 +60,14 @@ static inline BOOL set_ntstatus( NTSTATUS status )
     return !status;
 }
 
-NTSYSAPI NTSTATUS  WINAPI RtlQueryDynamicTimeZoneInformation(RTL_DYNAMIC_TIME_ZONE_INFORMATION*);
-
-#ifdef __REACTOS__
 HANDLE NLS_RegOpenKey(HANDLE hRootKey, LPCWSTR szKeyName)
-#else
-static HANDLE NLS_RegOpenKey(HANDLE hRootKey, LPCWSTR szKeyName)
-#endif
 {
     UNICODE_STRING keyName;
     OBJECT_ATTRIBUTES attr;
     HANDLE hkey;
 
     RtlInitUnicodeString( &keyName, szKeyName );
-#ifdef __REACTOS__
     InitializeObjectAttributes(&attr, &keyName, OBJ_CASE_INSENSITIVE, hRootKey, NULL);
-#else
-    InitializeObjectAttributes(&attr, &keyName, 0, hRootKey, NULL);
-#endif
 
     if (NtOpenKey( &hkey, KEY_READ, &attr ) != STATUS_SUCCESS)
         hkey = 0;
@@ -84,15 +75,9 @@ static HANDLE NLS_RegOpenKey(HANDLE hRootKey, LPCWSTR szKeyName)
     return hkey;
 }
 
-#ifdef __REACTOS__
 BOOL NLS_RegEnumValue(HANDLE hKey, UINT ulIndex,
                       LPWSTR szValueName, ULONG valueNameSize,
                       LPWSTR szValueData, ULONG valueDataSize)
-#else
-static BOOL NLS_RegEnumValue(HANDLE hKey, UINT ulIndex,
-                             LPWSTR szValueName, ULONG valueNameSize,
-                             LPWSTR szValueData, ULONG valueDataSize)
-#endif
 {
     BYTE buffer[80];
     KEY_VALUE_FULL_INFORMATION *info = (KEY_VALUE_FULL_INFORMATION *)buffer;
@@ -117,28 +102,75 @@ static BOOL NLS_RegEnumValue(HANDLE hKey, UINT ulIndex,
     return TRUE;
 }
 
-#ifndef __REACTOS__
-static BOOL NLS_RegGetDword(HANDLE hKey, LPCWSTR szValueName, DWORD *lpVal)
+static TIME_FIELDS SystemTimeToTimeFields(const SYSTEMTIME *SystemTime)
 {
-    BYTE buffer[128];
-    const KEY_VALUE_PARTIAL_INFORMATION *info = (KEY_VALUE_PARTIAL_INFORMATION *)buffer;
-    DWORD dwSize = sizeof(buffer);
-    UNICODE_STRING valueName;
-
-    RtlInitUnicodeString( &valueName, szValueName );
-
-    TRACE("%p, %s\n", hKey, debugstr_w(szValueName));
-    if (NtQueryValueKey( hKey, &valueName, KeyValuePartialInformation,
-                         buffer, dwSize, &dwSize ) == STATUS_SUCCESS &&
-        info->DataLength == sizeof(DWORD))
-    {
-        memcpy(lpVal, info->Data, sizeof(DWORD));
-        return TRUE;
-    }
-
-    return FALSE;
+    TIME_FIELDS TimeFields = {
+        SystemTime->wYear,
+        SystemTime->wMonth,
+        SystemTime->wDay,
+        SystemTime->wHour,
+        SystemTime->wMinute,
+        SystemTime->wSecond,
+        SystemTime->wMilliseconds,
+        SystemTime->wDayOfWeek
+    };
+    return TimeFields;
 }
-#endif
+
+static SYSTEMTIME TimeFieldsToSystemTime(const TIME_FIELDS *TimeFields)
+{
+    SYSTEMTIME SystemTime = {
+        TimeFields->Year,
+        TimeFields->Month,
+        TimeFields->Weekday,
+        TimeFields->Day,
+        TimeFields->Hour,
+        TimeFields->Minute,
+        TimeFields->Second,
+        TimeFields->Milliseconds
+    };
+    return SystemTime;
+}
+
+static void TimeZoneInfoToRtlTimeZoneInfo(
+    const TIME_ZONE_INFORMATION *Info,
+    PRTL_TIME_ZONE_INFORMATION TimeZoneInformation)
+{
+    memcpy(TimeZoneInformation, Info, sizeof(*TimeZoneInformation));
+
+    TimeZoneInformation->StandardDate = SystemTimeToTimeFields(&Info->StandardDate);
+    TimeZoneInformation->DaylightDate = SystemTimeToTimeFields(&Info->DaylightDate);
+}
+
+static void DynamicTimeZoneInfoToRtlDynamicTimeZoneInfo(
+    const DYNAMIC_TIME_ZONE_INFORMATION *Info,
+    PRTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInformation)
+{
+    memcpy(TimeZoneInformation, Info, sizeof(*TimeZoneInformation));
+
+    TimeZoneInformation->StandardDate = SystemTimeToTimeFields(&Info->StandardDate);
+    TimeZoneInformation->DaylightDate = SystemTimeToTimeFields(&Info->DaylightDate);
+}
+
+static void RtlTimeZoneInfoToTimeZoneInfo(
+    const RTL_TIME_ZONE_INFORMATION *TimeZoneInformation,
+    PTIME_ZONE_INFORMATION Info)
+{
+    memcpy(Info, TimeZoneInformation, sizeof(*Info));
+
+    Info->StandardDate = TimeFieldsToSystemTime(&TimeZoneInformation->StandardDate);
+    Info->DaylightDate = TimeFieldsToSystemTime(&TimeZoneInformation->DaylightDate);
+}
+
+static void RtlDynamicTimeZoneInfoToDynamicTimeZoneInfo(
+    const RTL_DYNAMIC_TIME_ZONE_INFORMATION *TimeZoneInformation,
+    PDYNAMIC_TIME_ZONE_INFORMATION Info)
+{
+    memcpy(Info, TimeZoneInformation, sizeof(*Info));
+
+    Info->StandardDate = TimeFieldsToSystemTime(&TimeZoneInformation->StandardDate);
+    Info->DaylightDate = TimeFieldsToSystemTime(&TimeZoneInformation->DaylightDate);
+}
 
 #include "nls.h"
 
@@ -422,37 +454,17 @@ struct norm_table
 
 static CPTABLEINFO ansi_cpinfo;
 static CPTABLEINFO oem_cpinfo;
+#ifdef __REACTOS__
+static UINT unix_cp = CP_ACP;
+#else
 static UINT unix_cp = CP_UTF8;
+#endif
 static LCID system_lcid;
 static LCID user_lcid;
 static LCID user_ui_lcid;
 static HKEY intl_key;
 static HKEY nls_key;
 static HKEY tz_key;
-
-#ifdef __REACTOS__
-/* Time zone data is only read, which every caller may do */
-#define TZ_KEY_ACCESS KEY_READ
-
-/*
- * Opens a key every process keeps open. Callers that may not write to it,
- * like users other than administrators or app containers, still read it.
- */
-static HKEY open_shared_key( HKEY root, const WCHAR *name )
-{
-    HKEY key = 0;
-
-    if (RegCreateKeyExW( root, name, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &key, NULL ))
-    {
-        key = 0;
-        RegOpenKeyExW( root, name, 0, KEY_READ, &key );
-    }
-    return key;
-}
-#else
-#define TZ_KEY_ACCESS KEY_ALL_ACCESS
-#endif
-
 static const NLS_LOCALE_LCID_INDEX *lcids_index;
 static const NLS_LOCALE_LCNAME_INDEX *lcnames_index;
 static const NLS_LOCALE_HEADER *locale_table;
@@ -461,10 +473,8 @@ static const NLS_LOCALE_DATA *system_locale;
 static const NLS_LOCALE_DATA *user_locale;
 static const NLS_LOCALE_DATA *user_ui_locale;
 
-#ifndef __REACTOS__
 static CPTABLEINFO codepages[128];
 static unsigned int nb_codepages;
-#endif
 
 static struct norm_table *norm_info;
 
@@ -582,127 +592,62 @@ static CRITICAL_SECTION_DEBUG critsect_debug =
 static CRITICAL_SECTION locale_section = { &critsect_debug, -1, 0, 0, 0, 0 };
 
 #ifdef __REACTOS__
-/**
- * @brief
- * Locates a string in the RT_STRING table of a module.
- *
- * @return
- * The length prefixed entry, or NULL with the last error set by the resource lookup.
+/* Copied from advapi32 implementation */
+
+/**********************************************************************
+ *	LoadStringW		(USER32.@)
+ *	Synced with Wine Staging 1.7.55
  */
-static
-PCWSTR
-BasepFindStringEntry(
-    _In_opt_ HINSTANCE hInstance,
-    _In_ UINT uID)
+INT WINAPI LoadStringW( HINSTANCE instance, UINT resource_id,
+                            LPWSTR buffer, INT buflen )
 {
-    HRSRC hResInfo;
-    HGLOBAL hResData;
-    PCWSTR Entry;
-    UINT Skip;
+    HGLOBAL hmem;
+    HRSRC hrsrc;
+    WCHAR *p;
+    int string_num;
+    int i;
 
-    /* Strings are grouped sixteen to a block, and block N holds IDs (N - 1) * 16 onwards */
-    hResInfo = FindResourceW(hInstance,
-                             MAKEINTRESOURCEW((LOWORD(uID) >> 4) + 1),
-                             (LPCWSTR)RT_STRING);
-    if (!hResInfo)
-        return NULL;
+    TRACE("instance = %p, id = %04x, buffer = %p, length = %d\n",
+          instance, resource_id, buffer, buflen);
 
-    hResData = LoadResource(hInstance, hResInfo);
-    if (!hResData)
-        return NULL;
-
-    Entry = LockResource(hResData);
-    for (Skip = uID & 0xF; Skip > 0; Skip--)
-        Entry += *Entry + 1;
-
-    return Entry;
-}
-
-/**
- * @brief
- * Loads a string resource. A zero sized buffer receives a read-only pointer to the
- * resource itself instead of a copy.
- *
- * @return
- * The length of the string in characters, not counting the terminator.
- */
-INT
-WINAPI
-LoadStringW(
-    _In_opt_ HINSTANCE hInstance,
-    _In_ UINT uID,
-    _Out_writes_to_(cchBufferMax, return + 1) LPWSTR lpBuffer,
-    _In_ INT cchBufferMax)
-{
-    PCWSTR Entry;
-    INT Length;
-
-    if (!lpBuffer)
-    {
-        SetLastError(ERROR_INVALID_PARAMETER);
-        return 0;
-    }
-
-    Entry = BasepFindStringEntry(hInstance, uID);
-    if (!Entry)
-    {
-        if (cchBufferMax > 0)
-            *lpBuffer = UNICODE_NULL;
-        return 0;
-    }
-
-    if (cchBufferMax == 0)
-    {
-        *(PCWSTR *)lpBuffer = Entry + 1;
-        return *Entry;
-    }
-
-    Length = min((INT)*Entry, cchBufferMax - 1);
-    if (Length < 0)
+    if(buffer == NULL)
         return 0;
 
-    RtlCopyMemory(lpBuffer, Entry + 1, Length * sizeof(*lpBuffer));
-    lpBuffer[Length] = UNICODE_NULL;
-    return Length;
-}
+    /* Use loword (incremented by 1) as resourceid */
+    hrsrc = FindResourceW( instance, MAKEINTRESOURCEW((LOWORD(resource_id) >> 4) + 1),
+                           (LPWSTR)RT_STRING );
+    if (!hrsrc) return 0;
+    hmem = LoadResource( instance, hrsrc );
+    if (!hmem) return 0;
 
-/**
- * @brief
- * Loads a string resource and converts it to the ANSI code page.
- *
- * @return
- * The number of bytes copied, not counting the terminator. A buffer without room
- * for the terminator receives nothing and gives back cchBufferMax - 1.
- */
-INT
-WINAPI
-LoadStringA(
-    _In_opt_ HINSTANCE hInstance,
-    _In_ UINT uID,
-    _Out_writes_to_(cchBufferMax, return + 1) LPSTR lpBuffer,
-    _In_ INT cchBufferMax)
-{
-    PCWSTR Entry;
-    ULONG Written;
+    p = LockResource(hmem);
+    string_num = resource_id & 0x000f;
+    for (i = 0; i < string_num; i++)
+	p += *p + 1;
 
-    Entry = BasepFindStringEntry(hInstance, uID);
-    if (!Entry)
+    TRACE("strlen = %d\n", (int)*p );
+
+    /*if buflen == 0, then return a read-only pointer to the resource itself in buffer
+    it is assumed that buffer is actually a (LPWSTR *) */
+    if(buflen == 0)
     {
-        if (cchBufferMax > 0)
-            *lpBuffer = ANSI_NULL;
-        return 0;
+        *((LPWSTR *)buffer) = p + 1;
+        return *p;
     }
 
-    if (cchBufferMax <= 0)
-        return cchBufferMax - 1;
+    i = min(buflen - 1, *p);
+    if (i > 0) {
+	memcpy(buffer, p + 1, i * sizeof (WCHAR));
+        buffer[i] = 0;
+    } else {
+	if (buflen > 1) {
+            buffer[0] = 0;
+	    return 0;
+	}
+    }
 
-    RtlUnicodeToMultiByteN(lpBuffer,
-                           cchBufferMax - 1,
-                           &Written,
-                           Entry + 1,
-                           *Entry * sizeof(*Entry));
-    lpBuffer[Written] = ANSI_NULL;
-    return Written;
+    TRACE("%s loaded !\n", debugstr_w(buffer));
+    return i;
 }
 #endif
 
@@ -1973,6 +1918,22 @@ static int get_calendar_info( const NLS_LOCALE_DATA *locale, CALID id, CALTYPE t
         return cal_return_number( val, type, buffer, len, value );
 
     case CAL_SERASTRING:
+#ifdef __REACTOS__
+        if (id == CAL_JAPAN)
+        {
+            PCJAPANESE_ERA pEra = JapaneseEra_Find(NULL);
+            if (pEra)
+            {
+                RtlStringCchCopyW(buffer, len, pEra->szEraName);
+                return strlenW(buffer) + 1;
+            }
+            else
+            {
+                SetLastError(ERROR_INVALID_PARAMETER);
+                return 0;
+            }
+        }
+#endif
         if (id == CAL_GREGORIAN) return locale_return_string( locale->serastring, type, buffer, len );
         if (cal->iyearoffsetrange)
         {
@@ -2068,6 +2029,17 @@ static int get_calendar_info( const NLS_LOCALE_DATA *locale, CALID id, CALTYPE t
 
     case CAL_SABBREVERASTRING:
         if (id == CAL_GREGORIAN) return locale_return_string( locale->sabbreverastring, type, buffer, len );
+#ifdef __REACTOS__
+        if (id == CAL_JAPAN)
+        {
+            PCJAPANESE_ERA pEra = JapaneseEra_Find(NULL);
+            if (pEra)
+            {
+                RtlStringCchCopyW(buffer, len, pEra->szEraAbbrev);
+                return strlenW(buffer) + 1;
+            }
+        }
+#endif
         if (cal->iyearoffsetrange)
         {
             const DWORD *array = (const DWORD *)(locale_strings + cal->iyearoffsetrange + 1);
@@ -2193,7 +2165,6 @@ static void update_registry_value( UINT type, const WCHAR *subkey, const WCHAR *
 }
 
 
-#ifndef __REACTOS__
 /* update all registry values upon user locale change */
 static void update_locale_registry(void)
 {
@@ -2248,7 +2219,6 @@ static void update_locale_registry(void)
     update_registry_value( LOCALE_NOUSEROVERRIDE | LOCALE_SNAME, NULL, L"LocaleName" );
     SetUserGeoID( user_locale->igeoid );
 }
-#endif
 
 
 /***********************************************************************
@@ -2260,15 +2230,11 @@ void init_locale( HMODULE module )
     USHORT *ansi_ptr, *oem_ptr;
     WCHAR bufferW[LOCALE_NAME_MAX_LENGTH];
     UNICODE_STRING strW;
-#ifndef __REACTOS__
     DYNAMIC_TIME_ZONE_INFORMATION timezone;
     const WCHAR *user_locale_name;
     DWORD count;
-#endif
     SIZE_T size;
-#ifndef __REACTOS__
     HKEY hkey;
-#endif
 
     kernelbase_handle = module;
     load_locale_nls();
@@ -2305,20 +2271,13 @@ void init_locale( HMODULE module )
     RtlInitCodePageTable( ansi_ptr, &ansi_cpinfo );
     RtlInitCodePageTable( oem_ptr, &oem_cpinfo );
 
-#ifdef __REACTOS__
-    nls_key = open_shared_key( HKEY_LOCAL_MACHINE, L"System\\CurrentControlSet\\Control\\Nls" );
-    tz_key = open_shared_key( HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones" );
-    intl_key = open_shared_key( HKEY_CURRENT_USER, L"Control Panel\\International" );
-#else
     RegCreateKeyExW( HKEY_LOCAL_MACHINE, L"System\\CurrentControlSet\\Control\\Nls",
                      0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &nls_key, NULL );
     RegCreateKeyExW( HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones",
                      0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &tz_key, NULL );
     RegCreateKeyExW( HKEY_CURRENT_USER, L"Control Panel\\International",
                      0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &intl_key, NULL );
-#endif
 
-#ifndef __REACTOS__
     current_locale_sort = get_language_sort( LOCALE_NAME_USER_DEFAULT );
 
     if (GetDynamicTimeZoneInformation( &timezone ) != TIME_ZONE_ID_INVALID &&
@@ -2358,7 +2317,6 @@ void init_locale( HMODULE module )
         RegSetValueExW( hkey, L"MACCP", 0, REG_SZ, (BYTE *)bufferW, (count + 1) * sizeof(WCHAR) );
         RegCloseKey( hkey );
     }
-#endif
 }
 
 
@@ -2516,7 +2474,6 @@ static const WCHAR *get_decomposition( WCHAR ch, unsigned int *ret_len )
 }
 
 
-#ifndef __REACTOS__
 static WCHAR compose_chars( WCHAR ch1, WCHAR ch2 )
 {
     const USHORT *table = (const USHORT *)norm_info + norm_info->comp_hash;
@@ -2538,7 +2495,6 @@ static WCHAR compose_chars( WCHAR ch1, WCHAR ch2 )
     }
     return 0;
 }
-#endif
 
 
 static UINT get_locale_codepage( const NLS_LOCALE_DATA *locale, ULONG flags )
@@ -2562,7 +2518,6 @@ static UINT get_lcid_codepage( LCID lcid, ULONG flags )
 }
 
 
-#ifndef __REACTOS__
 static const CPTABLEINFO *get_codepage_table( UINT codepage )
 {
     static const CPTABLEINFO utf7_cpinfo = { CP_UTF7, 5, '?', 0xfffd, '?', '?' };
@@ -2611,7 +2566,6 @@ done:
     RtlLeaveCriticalSection( &locale_section );
     return &codepages[i];
 }
-#endif
 
 
 static const WCHAR *get_ligature( WCHAR wc )
@@ -2727,7 +2681,6 @@ static NTSTATUS fold_string( DWORD flags, const WCHAR *src, int srclen, WCHAR *d
 }
 
 
-#ifndef __REACTOS__
 static int mbstowcs_cpsymbol( DWORD flags, const char *src, int srclen, WCHAR *dst, int dstlen )
 {
     int len, i;
@@ -2874,7 +2827,6 @@ static int mbstowcs_utf8( DWORD flags, const char *src, int srclen, WCHAR *dst, 
 
     return reslen / sizeof(WCHAR);
 }
-#endif
 
 
 static inline int is_private_use_area_char( WCHAR code )
@@ -2883,7 +2835,6 @@ static inline int is_private_use_area_char( WCHAR code )
 }
 
 
-#ifndef __REACTOS__
 static int check_invalid_chars( const CPTABLEINFO *info, const unsigned char *src, int srclen )
 {
     if (info->DBCSOffsets)
@@ -3640,7 +3591,6 @@ static int wcstombs_codepage( const CPTABLEINFO *info, DWORD flags, const WCHAR 
     else
         return wcstombs_sbcs( info, src, srclen, dst, dstlen );
 }
-#endif
 
 
 struct sortkey
@@ -4907,6 +4857,20 @@ BOOL WINAPI DECLSPEC_HOTPATCH Internal_EnumSystemCodePages( CODEPAGE_ENUMPROCW p
     DWORD name_len, type, index = 0;
     HKEY key;
 
+#ifdef __REACTOS__
+    /* Needed to pass kernel32:EnumSystemCodePages apitest */
+    if (!proc)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    if ((flags & ~(CP_INSTALLED | CP_SUPPORTED)) != 0 || flags == (CP_INSTALLED | CP_SUPPORTED))
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+#endif
+
     if (RegOpenKeyExW( nls_key, L"Codepage", 0, KEY_READ, &key )) return FALSE;
 
     for (;;)
@@ -5892,7 +5856,6 @@ DWORD WINAPI DECLSPEC_HOTPATCH FormatMessageW( DWORD flags, const void *source, 
 }
 
 
-#ifndef __REACTOS__
 /******************************************************************************
  *	GetACP   (kernelbase.@)
  */
@@ -5956,7 +5919,6 @@ BOOL WINAPI GetCPInfoExW( UINT codepage, DWORD flags, CPINFOEXW *cpinfo )
     }
     return TRUE;
 }
-#endif
 
 
 /***********************************************************************
@@ -6007,45 +5969,12 @@ static CRITICAL_SECTION_DEBUG tzname_section_debug =
 };
 static CRITICAL_SECTION tzname_section = { &tzname_section_debug, -1, 0, 0, 0, 0 };
 
-#if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
 static struct {
     LCID lcid;
     WCHAR key_name[128];
     WCHAR standard_name[32];
     WCHAR daylight_name[32];
 } cached_tzname;
-
-static
-VOID
-TimeFieldsToSystemTime(
-    _Out_ LPSYSTEMTIME SystemTime,
-    _In_ const TIME_FIELDS *TimeFields)
-{
-    SystemTime->wYear = TimeFields->Year;
-    SystemTime->wMonth = TimeFields->Month;
-    SystemTime->wDayOfWeek = TimeFields->Weekday;
-    SystemTime->wDay = TimeFields->Day;
-    SystemTime->wHour = TimeFields->Hour;
-    SystemTime->wMinute = TimeFields->Minute;
-    SystemTime->wSecond = TimeFields->Second;
-    SystemTime->wMilliseconds = TimeFields->Milliseconds;
-}
-
-static
-VOID
-SystemTimeToTimeFields(
-    _Out_ PTIME_FIELDS TimeFields,
-    _In_ const SYSTEMTIME *SystemTime)
-{
-    TimeFields->Year = SystemTime->wYear;
-    TimeFields->Month = SystemTime->wMonth;
-    TimeFields->Day = SystemTime->wDay;
-    TimeFields->Hour = SystemTime->wHour;
-    TimeFields->Minute = SystemTime->wMinute;
-    TimeFields->Second = SystemTime->wSecond;
-    TimeFields->Milliseconds = SystemTime->wMilliseconds;
-    TimeFields->Weekday = SystemTime->wDayOfWeek;
-}
 
 /***********************************************************************
  *	GetDynamicTimeZoneInformation   (kernelbase.@)
@@ -6054,37 +5983,12 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetDynamicTimeZoneInformation( DYNAMIC_TIME_ZONE_
 {
     HKEY key;
     LARGE_INTEGER now;
+
 #ifdef __REACTOS__
-    RTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZone;
-    NTSTATUS Status;
-
-    /* The kernel keeps the zone loaded, the registry is not read here */
-    Status = NtQuerySystemInformation(SystemDynamicTimeZoneInformation,
-                                      &TimeZone,
-                                      sizeof(TimeZone),
-                                      NULL);
-    if (!NT_SUCCESS(Status))
-    {
-        BaseSetLastNTError(Status);
+    RTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInfo = {0};
+    if (!set_ntstatus( RtlQueryDynamicTimeZoneInformation(&TimeZoneInfo)))
         return TIME_ZONE_ID_INVALID;
-    }
-
-    info->Bias = TimeZone.Bias;
-    RtlCopyMemory(info->StandardName, TimeZone.StandardName, sizeof(info->StandardName));
-    TimeFieldsToSystemTime(&info->StandardDate, &TimeZone.StandardDate);
-    info->StandardBias = TimeZone.StandardBias;
-    RtlCopyMemory(info->DaylightName, TimeZone.DaylightName, sizeof(info->DaylightName));
-    TimeFieldsToSystemTime(&info->DaylightDate, &TimeZone.DaylightDate);
-    info->DaylightBias = TimeZone.DaylightBias;
-    RtlCopyMemory(info->TimeZoneKeyName, TimeZone.TimeZoneKeyName, sizeof(info->TimeZoneKeyName));
-    info->DynamicDaylightTimeDisabled = TimeZone.DynamicDaylightTimeDisabled;
-
-    /* Names are returned as stored unless they are MUI references */
-    if (info->StandardName[0] != L'@' && info->DaylightName[0] != L'@')
-    {
-        NtQuerySystemTime( &now );
-        return get_timezone_id( (TIME_ZONE_INFORMATION *)info, now, FALSE );
-    }
+    RtlDynamicTimeZoneInfoToDynamicTimeZoneInfo(&TimeZoneInfo, info);
 #else
     if (!set_ntstatus( RtlQueryDynamicTimeZoneInformation( (RTL_DYNAMIC_TIME_ZONE_INFORMATION *)info )))
         return TIME_ZONE_ID_INVALID;
@@ -6101,7 +6005,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetDynamicTimeZoneInformation( DYNAMIC_TIME_ZONE_
     else
     {
         RtlLeaveCriticalSection( &tzname_section );
-        if (!RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, TZ_KEY_ACCESS, &key ))
+        if (!RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, KEY_ALL_ACCESS, &key ))
         {
             RegLoadMUIStringW( key, L"MUI_Std", info->StandardName,
                                sizeof(info->StandardName), NULL, 0, system_dir );
@@ -6133,9 +6037,9 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetDynamicTimeZoneInformationEffectiveYears( cons
     HKEY key, dst_key = 0;
     DWORD type, count, ret = ERROR_FILE_NOT_FOUND;
 
-    if (RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, TZ_KEY_ACCESS, &key )) return ret;
+    if (RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, KEY_ALL_ACCESS, &key )) return ret;
 
-    if (RegOpenKeyExW( key, L"Dynamic DST", 0, TZ_KEY_ACCESS, &dst_key )) goto done;
+    if (RegOpenKeyExW( key, L"Dynamic DST", 0, KEY_ALL_ACCESS, &dst_key )) goto done;
     count = sizeof(DWORD);
     if (RegQueryValueExW( dst_key, L"FirstEntry", NULL, &type, (BYTE *)first, &count )) goto done;
     if (type != REG_DWORD) goto done;
@@ -6149,7 +6053,6 @@ done:
     RegCloseKey( key );
     return ret;
 }
-#endif
 
 
 #define MUI_SIGNATURE 0xfecdfecd
@@ -6568,7 +6471,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetNLSVersionEx( NLS_FUNCTION func, const WCHAR *l
 }
 
 
-#ifndef __REACTOS__
 /******************************************************************************
  *	GetOEMCP   (kernelbase.@)
  */
@@ -6576,7 +6478,6 @@ UINT WINAPI GetOEMCP(void)
 {
     return oem_cpinfo.CodePage;
 }
-#endif
 
 
 #if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
@@ -6694,7 +6595,6 @@ LANGID WINAPI DECLSPEC_HOTPATCH GetSystemDefaultUILanguage(void)
 }
 
 
-#if (__REACTOS__ && _WIN32_WINNT >= 0x600)
 /***********************************************************************
  *      GetSystemPreferredUILanguages   (kernelbase.@)
  */
@@ -6735,7 +6635,6 @@ LANGID WINAPI DECLSPEC_HOTPATCH GetThreadUILanguage(void)
 }
 
 
-#endif
 /**********************************************************************
  *	SetThreadUILanguage   (kernelbase.@)
  */
@@ -6759,261 +6658,6 @@ LANGID WINAPI DECLSPEC_HOTPATCH SetThreadUILanguage( LANGID langid )
 }
 
 
-#ifdef __REACTOS__ /* TODO: Dynamic Timezone support */
-/* Copied from https://github.com/reactos/reactos/blob/f06eace89e11b6513afcf65b653f2d360db7ba77/dll/win32/kernel32/wine/timezone.c */
-#define TICKSPERMIN 600000000
-
-#define LL2FILETIME( ll, pft )\
-    (pft)->dwLowDateTime = (UINT)(ll); \
-    (pft)->dwHighDateTime = (UINT)((ll) >> 32);
-#define FILETIME2LL( pft, ll) \
-    ll = (((LONGLONG)((pft)->dwHighDateTime))<<32) + (pft)-> dwLowDateTime ;
-static const int MonthLengths[2][12] =
-{
-    { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 },
-    { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
-};
-
-static inline int IsLeapYear(int Year)
-{
-    return Year % 4 == 0 && (Year % 100 != 0 || Year % 400 == 0) ? 1 : 0;
-}
-
-/***********************************************************************
- *  TIME_DayLightCompareDate
- *
- * Compares two dates without looking at the year.
- *
- * PARAMS
- *   date        [in] The local time to compare.
- *   compareDate [in] The daylight savings begin or end date.
- *
- * RETURNS
- *
- *  -1 if date < compareDate
- *   0 if date == compareDate
- *   1 if date > compareDate
- *  -2 if an error occurs
- */
-static int
-TIME_DayLightCompareDate(const SYSTEMTIME *date, const SYSTEMTIME *compareDate)
-{
-    int limit_day, dayinsecs;
-
-    if (date->wMonth < compareDate->wMonth)
-        return -1; /* We are in a month before the date limit. */
-
-    if (date->wMonth > compareDate->wMonth)
-        return 1; /* We are in a month after the date limit. */
-
-    /* if year is 0 then date is in day-of-week format, otherwise
-     * it's absolute date.
-     */
-    if (compareDate->wYear == 0)
-    {
-        WORD First;
-        /* compareDate->wDay is interpreted as number of the week in the month
-         * 5 means: the last week in the month */
-        int weekofmonth = compareDate->wDay;
-          /* calculate the day of the first DayOfWeek in the month */
-        First = ( 6 + compareDate->wDayOfWeek - date->wDayOfWeek + date->wDay 
-               ) % 7 + 1;
-        limit_day = First + 7 * (weekofmonth - 1);
-        /* check needed for the 5th weekday of the month */
-        if(limit_day > MonthLengths[date->wMonth==2 && IsLeapYear(date->wYear)]
-                [date->wMonth - 1])
-            limit_day -= 7;
-    }
-    else
-    {
-       limit_day = compareDate->wDay;
-    }
-
-    /* convert to seconds */
-    limit_day = ((limit_day * 24  + compareDate->wHour) * 60 +
-            compareDate->wMinute ) * 60;
-    dayinsecs = ((date->wDay * 24  + date->wHour) * 60 +
-            date->wMinute ) * 60 + date->wSecond;
-    /* and compare */
-    return dayinsecs < limit_day ? -1 :
-           dayinsecs > limit_day ? 1 :
-           0;   /* date is equal to the date limit. */
-}
-
-/***********************************************************************
- *  TIME_CompTimeZoneID
- *
- *  Computes the local time bias for a given time and time zone.
- *
- *  PARAMS
- *      pTZinfo     [in] The time zone data.
- *      lpFileTime  [in] The system or local time.
- *      islocal     [in] it is local time.
- *
- *  RETURNS
- *      TIME_ZONE_ID_INVALID    An error occurred
- *      TIME_ZONE_ID_UNKNOWN    There are no transition time known
- *      TIME_ZONE_ID_STANDARD   Current time is standard time
- *      TIME_ZONE_ID_DAYLIGHT   Current time is daylight savings time
- */
-static
-DWORD
-TIME_CompTimeZoneID( const TIME_ZONE_INFORMATION *pTZinfo, FILETIME *lpFileTime, BOOL islocal )
-{
-    int ret, year;
-    BOOL beforeStandardDate, afterDaylightDate;
-    DWORD retval = TIME_ZONE_ID_INVALID;
-    LONGLONG llTime = 0; /* initialized to prevent gcc complaining */
-    SYSTEMTIME SysTime;
-    FILETIME ftTemp;
-
-    if (pTZinfo->DaylightDate.wMonth != 0)
-    {
-        /* if year is 0 then date is in day-of-week format, otherwise
-         * it's absolute date.
-         */
-        if (pTZinfo->StandardDate.wMonth == 0 ||
-            (pTZinfo->StandardDate.wYear == 0 &&
-            (pTZinfo->StandardDate.wDay<1 ||
-            pTZinfo->StandardDate.wDay>5 ||
-            pTZinfo->DaylightDate.wDay<1 ||
-            pTZinfo->DaylightDate.wDay>5)))
-        {
-            SetLastError(ERROR_INVALID_PARAMETER);
-            return TIME_ZONE_ID_INVALID;
-        }
-
-        if (!islocal) {
-            FILETIME2LL( lpFileTime, llTime );
-            llTime -= pTZinfo->Bias * (LONGLONG)TICKSPERMIN;
-            LL2FILETIME( llTime, &ftTemp)
-            lpFileTime = &ftTemp;
-        }
-
-        FileTimeToSystemTime(lpFileTime, &SysTime);
-        year = SysTime.wYear;
-
-        if (!islocal) {
-            llTime -= pTZinfo->DaylightBias * (LONGLONG)TICKSPERMIN;
-            LL2FILETIME( llTime, &ftTemp)
-            FileTimeToSystemTime(lpFileTime, &SysTime);
-        }
-        
-        /* check for daylight savings */
-        if(year == SysTime.wYear) {
-            ret = TIME_DayLightCompareDate( &SysTime, &pTZinfo->StandardDate);
-            if (ret == -2)
-                return TIME_ZONE_ID_INVALID;
-
-            beforeStandardDate = ret < 0;
-        } else
-            beforeStandardDate = SysTime.wYear < year;
-
-        if (!islocal) {
-            llTime -= ( pTZinfo->StandardBias - pTZinfo->DaylightBias )
-                * (LONGLONG)TICKSPERMIN;
-            LL2FILETIME( llTime, &ftTemp)
-            FileTimeToSystemTime(lpFileTime, &SysTime);
-        }
-
-        if(year == SysTime.wYear) {
-            ret = TIME_DayLightCompareDate( &SysTime, &pTZinfo->DaylightDate);
-            if (ret == -2)
-                return TIME_ZONE_ID_INVALID;
-
-            afterDaylightDate = ret >= 0;
-        } else
-            afterDaylightDate = SysTime.wYear > year;
-
-        retval = TIME_ZONE_ID_STANDARD;
-        if( pTZinfo->DaylightDate.wMonth <  pTZinfo->StandardDate.wMonth ) {
-            /* Northern hemisphere */
-            if( beforeStandardDate && afterDaylightDate )
-                retval = TIME_ZONE_ID_DAYLIGHT;
-        } else    /* Down south */
-            if( beforeStandardDate || afterDaylightDate )
-            retval = TIME_ZONE_ID_DAYLIGHT;
-    } else 
-        /* No transition date */
-        retval = TIME_ZONE_ID_UNKNOWN;
-        
-    return retval;
-}
-
-/***********************************************************************
- *  TIME_TimeZoneID
- *
- *  Calculates whether daylight savings is on now.
- *
- *  PARAMS
- *      pTzi [in] Timezone info.
- *
- *  RETURNS
- *      TIME_ZONE_ID_INVALID    An error occurred
- *      TIME_ZONE_ID_UNKNOWN    There are no transition time known
- *      TIME_ZONE_ID_STANDARD   Current time is standard time
- *      TIME_ZONE_ID_DAYLIGHT   Current time is daylight savings time
- */
-static DWORD TIME_ZoneID( const TIME_ZONE_INFORMATION *pTzi )
-{
-    FILETIME ftTime;
-    GetSystemTimeAsFileTime( &ftTime);
-    return TIME_CompTimeZoneID( pTzi, &ftTime, FALSE);
-}
-
-/*
- * @implemented
- */
-DWORD
-WINAPI
-GetTimeZoneInformation(LPTIME_ZONE_INFORMATION lpTimeZoneInformation)
-{
-    RTL_TIME_ZONE_INFORMATION TimeZoneInformation;
-    NTSTATUS Status;
-
-    DPRINT("GetTimeZoneInformation()\n");
-
-    Status = NtQuerySystemInformation(SystemCurrentTimeZoneInformation,
-                                      &TimeZoneInformation,
-                                      sizeof(RTL_TIME_ZONE_INFORMATION),
-                                      NULL);
-    if (!NT_SUCCESS(Status))
-    {
-        BaseSetLastNTError(Status);
-        return TIME_ZONE_ID_INVALID;
-    }
-
-    lpTimeZoneInformation->Bias = TimeZoneInformation.Bias;
-
-    wcsncpy(lpTimeZoneInformation->StandardName,
-            TimeZoneInformation.StandardName,
-            ARRAYSIZE(lpTimeZoneInformation->StandardName));
-    lpTimeZoneInformation->StandardDate.wYear = TimeZoneInformation.StandardDate.Year;
-    lpTimeZoneInformation->StandardDate.wMonth = TimeZoneInformation.StandardDate.Month;
-    lpTimeZoneInformation->StandardDate.wDay = TimeZoneInformation.StandardDate.Day;
-    lpTimeZoneInformation->StandardDate.wHour = TimeZoneInformation.StandardDate.Hour;
-    lpTimeZoneInformation->StandardDate.wMinute = TimeZoneInformation.StandardDate.Minute;
-    lpTimeZoneInformation->StandardDate.wSecond = TimeZoneInformation.StandardDate.Second;
-    lpTimeZoneInformation->StandardDate.wMilliseconds = TimeZoneInformation.StandardDate.Milliseconds;
-    lpTimeZoneInformation->StandardDate.wDayOfWeek = TimeZoneInformation.StandardDate.Weekday;
-    lpTimeZoneInformation->StandardBias = TimeZoneInformation.StandardBias;
-
-    wcsncpy(lpTimeZoneInformation->DaylightName,
-            TimeZoneInformation.DaylightName,
-            ARRAYSIZE(lpTimeZoneInformation->DaylightName));
-    lpTimeZoneInformation->DaylightDate.wYear = TimeZoneInformation.DaylightDate.Year;
-    lpTimeZoneInformation->DaylightDate.wMonth = TimeZoneInformation.DaylightDate.Month;
-    lpTimeZoneInformation->DaylightDate.wDay = TimeZoneInformation.DaylightDate.Day;
-    lpTimeZoneInformation->DaylightDate.wHour = TimeZoneInformation.DaylightDate.Hour;
-    lpTimeZoneInformation->DaylightDate.wMinute = TimeZoneInformation.DaylightDate.Minute;
-    lpTimeZoneInformation->DaylightDate.wSecond = TimeZoneInformation.DaylightDate.Second;
-    lpTimeZoneInformation->DaylightDate.wMilliseconds = TimeZoneInformation.DaylightDate.Milliseconds;
-    lpTimeZoneInformation->DaylightDate.wDayOfWeek = TimeZoneInformation.DaylightDate.Weekday;
-    lpTimeZoneInformation->DaylightBias = TimeZoneInformation.DaylightBias;
-
-    return TIME_ZoneID(lpTimeZoneInformation);
-}
-#else
 /***********************************************************************
  *	GetTimeZoneInformation   (kernelbase.@)
  */
@@ -7025,9 +6669,8 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetTimeZoneInformation( TIME_ZONE_INFORMATION *in
     memcpy( info, &tzinfo, sizeof(*info) );
     return ret;
 }
-#endif
 
-#if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
+
 /***********************************************************************
  *	GetTimeZoneInformationForYear   (kernelbase.@)
  */
@@ -7056,7 +6699,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetTimeZoneInformationForYear( USHORT year,
         dynamic = &local_info;
     }
 
-    if ((ret = RegOpenKeyExW( tz_key, dynamic->TimeZoneKeyName, 0, TZ_KEY_ACCESS, &key ))) goto done;
+    if ((ret = RegOpenKeyExW( tz_key, dynamic->TimeZoneKeyName, 0, KEY_ALL_ACCESS, &key ))) goto done;
     if (RegLoadMUIStringW( key, L"MUI_Std", info->StandardName,
                            sizeof(info->StandardName), NULL, 0, system_dir ))
     {
@@ -7074,7 +6717,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetTimeZoneInformationForYear( USHORT year,
 
     ret = ERROR_FILE_NOT_FOUND;
     if (!dynamic->DynamicDaylightTimeDisabled &&
-        !RegOpenKeyExW( key, L"Dynamic DST", 0, TZ_KEY_ACCESS, &dst_key ))
+        !RegOpenKeyExW( key, L"Dynamic DST", 0, KEY_ALL_ACCESS, &dst_key ))
     {
         WCHAR yearW[16];
         swprintf( yearW, ARRAY_SIZE(yearW), L"%u", year );
@@ -7102,7 +6745,6 @@ done:
     if (ret) SetLastError( ret );
     return !ret;
 }
-#endif
 
 
 /***********************************************************************
@@ -7141,85 +6783,6 @@ LANGID WINAPI DECLSPEC_HOTPATCH GetUserDefaultUILanguage(void)
 }
 
 
-#ifdef __REACTOS__
-/* Reads a non-empty, terminated REG_SZ value of the user's Geo key */
-static BOOL get_geo_value( HKEY key, const WCHAR *name, WCHAR *buffer, DWORD count )
-{
-    DWORD type, size = count * sizeof(WCHAR);
-
-    if (RegQueryValueExW( key, name, NULL, &type, (BYTE *)buffer, &size )) return FALSE;
-    if (type != REG_SZ || (size & 1) || size <= sizeof(WCHAR)) return FALSE;
-    return !buffer[size / sizeof(WCHAR) - 1];
-}
-
-/* The user's location: the Name value if it is a known one, else the Nation id */
-static const struct geo_id *get_user_geo( void )
-{
-    const struct geo_id *geo = NULL, *shared = NULL;
-    WCHAR buffer[256];
-    HKEY key;
-
-    if (RegOpenKeyExW( intl_key, L"Geo", 0, KEY_READ, &key )) return NULL;
-    if (get_geo_value( key, L"Name", buffer, ARRAY_SIZE(buffer) ))
-    {
-        geo = find_geo_name_entry( buffer );
-
-        /* XX and SJ belong to more than one nation, so Nation picks the entry */
-        if (!wcsncmp( buffer, L"XX", 2 ) || !wcsncmp( buffer, L"SJ", 2 ))
-        {
-            shared = geo;
-            geo = NULL;
-        }
-    }
-    if (!geo && get_geo_value( key, L"Nation", buffer, ARRAY_SIZE(buffer) ))
-        geo = find_geo_id_entry( wcstol( buffer, NULL, 10 ));
-    RegCloseKey( key );
-    return geo ? geo : shared;
-}
-
-/* ISO 3166 code of an entry, or its UN M.49 code when it has no ISO one */
-static void get_geo_short_name( const struct geo_id *geo, WCHAR *name, int count )
-{
-    if (!geo)
-        lstrcpynW( name, L"001", count );
-    else if (!wcscmp( geo->iso2, L"XX" ) && geo->uncode)
-        swprintf( name, count, L"%03u", geo->uncode );
-    else
-        lstrcpynW( name, geo->iso2, count );
-}
-
-/******************************************************************************
- *	GetUserGeoID   (kernelbase.@)
- */
-GEOID WINAPI DECLSPEC_HOTPATCH GetUserGeoID( GEOCLASS geoclass )
-{
-    const struct geo_id *geo;
-    GEOID ret = 39070;
-    WCHAR buffer[256];
-    HKEY key;
-
-    switch (geoclass)
-    {
-    case GEOCLASS_NATION:
-        geo = get_user_geo();
-        if (geo && geo->id) ret = geo->id;
-        break;
-    case GEOCLASS_REGION:
-        if (!RegOpenKeyExW( intl_key, L"Geo", 0, KEY_READ, &key ))
-        {
-            if (get_geo_value( key, L"Region", buffer, ARRAY_SIZE(buffer) ))
-                ret = wcstol( buffer, NULL, 10 );
-            RegCloseKey( key );
-        }
-        break;
-    default:
-        WARN("Unknown geoclass %ld\n", geoclass);
-        ret = GEOID_NOT_AVAILABLE;
-        break;
-    }
-    return ret;
-}
-#else
 /******************************************************************************
  *	GetUserGeoID   (kernelbase.@)
  */
@@ -7251,9 +6814,9 @@ GEOID WINAPI DECLSPEC_HOTPATCH GetUserGeoID( GEOCLASS geoclass )
     }
     return ret;
 }
-#endif
 
 
+#if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
 /******************************************************************************
  *      GetUserPreferredUILanguages   (kernelbase.@)
  */
@@ -7263,7 +6826,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetUserPreferredUILanguages( DWORD flags, ULONG *c
     return set_ntstatus( RtlGetUserPreferredUILanguages( flags, 0, count, buffer, size ));
 }
 
-#if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
+
 /******************************************************************************
  *	IdnToAscii   (kernelbase.@)
  */
@@ -7451,7 +7014,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsCharXDigitW( WCHAR wc )
 }
 
 
-#ifndef __REACTOS__
 /******************************************************************************
  *	IsDBCSLeadByte   (kernelbase.@)
  */
@@ -7469,7 +7031,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsDBCSLeadByteEx( UINT codepage, BYTE testchar )
     const CPTABLEINFO *table = get_codepage_table( codepage );
     return table && table->DBCSCodePage && table->DBCSOffsets[testchar];
 }
-#endif
 
 
 #if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
@@ -7485,7 +7046,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsNormalizedString( NORM_FORM form, const WCHAR *s
 #endif
 
 
-#ifndef __REACTOS__
 /******************************************************************************
  *	IsValidCodePage   (kernelbase.@)
  */
@@ -7502,7 +7062,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsValidCodePage( UINT codepage )
         return get_codepage_table( codepage ) != NULL;
     }
 }
-#endif
 
 
 /******************************************************************************
@@ -7786,6 +7345,13 @@ INT WINAPI DECLSPEC_HOTPATCH LCMapStringW( LCID lcid, DWORD flags, const WCHAR *
 LCID WINAPI DECLSPEC_HOTPATCH LocaleNameToLCID( const WCHAR *name, DWORD flags )
 {
     LCID lcid;
+#ifdef __REACTOS__
+    if (flags & ~LOCALE_ALLOW_NEUTRAL_NAMES)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+#endif
     const NLS_LOCALE_DATA *locale = get_locale_by_name( name, &lcid );
 
     if (!locale)
@@ -7799,7 +7365,6 @@ LCID WINAPI DECLSPEC_HOTPATCH LocaleNameToLCID( const WCHAR *name, DWORD flags )
 }
 
 
-#ifndef __REACTOS__
 /******************************************************************************
  *	MultiByteToWideChar   (kernelbase.@)
  */
@@ -7814,6 +7379,14 @@ INT WINAPI DECLSPEC_HOTPATCH MultiByteToWideChar( UINT codepage, DWORD flags, co
         SetLastError( ERROR_INVALID_PARAMETER );
         return 0;
     }
+#ifdef __REACTOS__
+    /* Needed for kernel32:MultiByteToWideChar test */
+    if ((PVOID)src == (PVOID)dst)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+#endif
     if (srclen < 0) srclen = strlen(src) + 1;
 
     switch (codepage)
@@ -7845,10 +7418,11 @@ INT WINAPI DECLSPEC_HOTPATCH MultiByteToWideChar( UINT codepage, DWORD flags, co
         break;
     }
 
+#ifndef __REACTOS__
     TRACE( "cp %d %s -> %s, ret = %d\n", codepage, debugstr_an(src, srclen), debugstr_wn(dst, ret), ret );
+#endif
     return ret;
 }
-#endif
 
 
 /******************************************************************************
@@ -8032,87 +7606,27 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetThreadPreferredUILanguages( DWORD flags, PCZZWS
 }
 
 
-#if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
-/***********************************************************************
- *	SetDynamicTimeZoneInformation   (kernelbase.@)
- */
-BOOL
-WINAPI
-SetDynamicTimeZoneInformation(
-    _In_ const DYNAMIC_TIME_ZONE_INFORMATION *lpTimeZoneInformation)
-{
-    RTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZone;
-    NTSTATUS Status;
-
-    RtlZeroMemory(&TimeZone, sizeof(TimeZone));
-    TimeZone.Bias = lpTimeZoneInformation->Bias;
-    RtlCopyMemory(TimeZone.StandardName, lpTimeZoneInformation->StandardName, sizeof(TimeZone.StandardName));
-    SystemTimeToTimeFields(&TimeZone.StandardDate, &lpTimeZoneInformation->StandardDate);
-    TimeZone.StandardBias = lpTimeZoneInformation->StandardBias;
-    RtlCopyMemory(TimeZone.DaylightName, lpTimeZoneInformation->DaylightName, sizeof(TimeZone.DaylightName));
-    SystemTimeToTimeFields(&TimeZone.DaylightDate, &lpTimeZoneInformation->DaylightDate);
-    TimeZone.DaylightBias = lpTimeZoneInformation->DaylightBias;
-    RtlCopyMemory(TimeZone.TimeZoneKeyName,
-                  lpTimeZoneInformation->TimeZoneKeyName,
-                  sizeof(TimeZone.TimeZoneKeyName));
-    TimeZone.DynamicDaylightTimeDisabled = lpTimeZoneInformation->DynamicDaylightTimeDisabled;
-
-    /* The kernel writes the registry and applies the zone */
-    Status = NtSetSystemInformation(SystemDynamicTimeZoneInformation,
-                                    &TimeZone,
-                                    sizeof(TimeZone));
-    if (!NT_SUCCESS(Status))
-    {
-        BaseSetLastNTError(Status);
-        return FALSE;
-    }
-
-    return TRUE;
-}
-#endif
-
-
 /***********************************************************************
  *	SetTimeZoneInformation   (kernelbase.@)
  */
 BOOL WINAPI DECLSPEC_HOTPATCH SetTimeZoneInformation( const TIME_ZONE_INFORMATION *info )
 {
 #ifdef __REACTOS__
-   RTL_TIME_ZONE_INFORMATION TimeZoneInformation;
+    RTL_TIME_ZONE_INFORMATION TimeZoneInformation;
     NTSTATUS Status;
 
     DPRINT("SetTimeZoneInformation()\n");
 
-    TimeZoneInformation.Bias = info->Bias;
+    TimeZoneInfoToRtlTimeZoneInfo(info, &TimeZoneInformation);
+    Status = RtlSetTimeZoneInformation(&TimeZoneInformation);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("RtlSetTimeZoneInformation() failed (Status %lx)\n", Status);
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
 
-    wcsncpy(TimeZoneInformation.StandardName,
-            info->StandardName,
-            ARRAYSIZE(TimeZoneInformation.StandardName));
-    TimeZoneInformation.StandardDate.Year = info->StandardDate.wYear;
-    TimeZoneInformation.StandardDate.Month = info->StandardDate.wMonth;
-    TimeZoneInformation.StandardDate.Day = info->StandardDate.wDay;
-    TimeZoneInformation.StandardDate.Hour = info->StandardDate.wHour;
-    TimeZoneInformation.StandardDate.Minute = info->StandardDate.wMinute;
-    TimeZoneInformation.StandardDate.Second = info->StandardDate.wSecond;
-    TimeZoneInformation.StandardDate.Milliseconds = info->StandardDate.wMilliseconds;
-    TimeZoneInformation.StandardDate.Weekday = info->StandardDate.wDayOfWeek;
-    TimeZoneInformation.StandardBias = info->StandardBias;
-
-    wcsncpy(TimeZoneInformation.DaylightName,
-            info->DaylightName,
-            ARRAYSIZE(TimeZoneInformation.DaylightName));
-    TimeZoneInformation.DaylightDate.Year = info->DaylightDate.wYear;
-    TimeZoneInformation.DaylightDate.Month = info->DaylightDate.wMonth;
-    TimeZoneInformation.DaylightDate.Day = info->DaylightDate.wDay;
-    TimeZoneInformation.DaylightDate.Hour = info->DaylightDate.wHour;
-    TimeZoneInformation.DaylightDate.Minute = info->DaylightDate.wMinute;
-    TimeZoneInformation.DaylightDate.Second = info->DaylightDate.wSecond;
-    TimeZoneInformation.DaylightDate.Milliseconds = info->DaylightDate.wMilliseconds;
-    TimeZoneInformation.DaylightDate.Weekday = info->DaylightDate.wDayOfWeek;
-    TimeZoneInformation.DaylightBias = info->DaylightBias;
-
-    /* The kernel writes the registry, clears the key name and applies the zone */
-    Status = NtSetSystemInformation(SystemTimeZoneInformation,
+    Status = NtSetSystemInformation(SystemCurrentTimeZoneInformation,
                                     (PVOID)&TimeZoneInformation,
                                     sizeof(RTL_TIME_ZONE_INFORMATION));
     if (!NT_SUCCESS(Status))
@@ -8128,69 +7642,41 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetTimeZoneInformation( const TIME_ZONE_INFORMATIO
 #endif
 }
 
-
 #ifdef __REACTOS__
-/* PreventGeoIdChange policy: a machine value of 0 or 1 decides, otherwise the user one does */
-static BOOL is_geo_change_blocked( void )
-{
-    static const WCHAR policy_key[] = L"Software\\Policies\\Microsoft\\Control Panel\\International";
-    DWORD value, size = sizeof(value);
-
-    if (!RegGetValueW( HKEY_LOCAL_MACHINE, policy_key, L"PreventGeoIdChange", RRF_RT_REG_DWORD,
-                       NULL, &value, &size ) && value <= 1)
-        return value == 1;
-    size = sizeof(value);
-    if (RegGetValueW( HKEY_CURRENT_USER, policy_key, L"PreventGeoIdChange", RRF_RT_REG_DWORD,
-                      NULL, &value, &size ))
-        return FALSE;
-    return value == 1;
-}
-
-/* Stores a location: Name and Nation for a nation, only Region for a region */
-static BOOL set_user_geo( const struct geo_id *geo )
-{
-    WCHAR buffer[16];
-    BOOL ret = TRUE;
-    HKEY key;
-
-    if (is_geo_change_blocked())
-    {
-        SetLastError( ERROR_ACCESS_DISABLED_BY_POLICY );
-        return FALSE;
-    }
-    if (!geo)
-    {
-        SetLastError( ERROR_INVALID_PARAMETER );
-        return FALSE;
-    }
-    if (RegCreateKeyExW( intl_key, L"Geo", 0, NULL, 0, KEY_QUERY_VALUE | KEY_SET_VALUE, NULL, &key, NULL ))
-    {
-        SetLastError( ERROR_INTERNAL_ERROR );
-        return FALSE;
-    }
-    if (geo->class == GEOCLASS_NATION)
-    {
-        get_geo_short_name( geo, buffer, ARRAY_SIZE(buffer) );
-        if (RegSetValueExW( key, L"Name", 0, REG_SZ, (BYTE *)buffer, (lstrlenW( buffer ) + 1) * sizeof(WCHAR) ))
-            ret = FALSE;
-    }
-    swprintf( buffer, ARRAY_SIZE(buffer), L"%u", geo->id );
-    if (RegSetValueExW( key, geo->class == GEOCLASS_NATION ? L"Nation" : L"Region", 0, REG_SZ,
-                        (BYTE *)buffer, (lstrlenW( buffer ) + 1) * sizeof(WCHAR) ))
-        ret = FALSE;
-    RegCloseKey( key );
-    if (!ret) SetLastError( ERROR_INTERNAL_ERROR );
-    return ret;
-}
-
-/******************************************************************************
- *	SetUserGeoID   (kernelbase.@)
+/***********************************************************************
+ *	SetDynamicTimeZoneInformation   (kernelbase.@)
  */
-BOOL WINAPI DECLSPEC_HOTPATCH SetUserGeoID( GEOID id )
+BOOL WINAPI DECLSPEC_HOTPATCH SetDynamicTimeZoneInformation( const DYNAMIC_TIME_ZONE_INFORMATION *info )
 {
-    return set_user_geo( find_geo_id_entry( id ));
+    RTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInformation;
+    NTSTATUS Status;
+
+    DPRINT("SetDynamicTimeZoneInformation()\n");
+
+    DynamicTimeZoneInfoToRtlDynamicTimeZoneInfo(info, &TimeZoneInformation);
+    Status = RtlSetDynamicTimeZoneInformation(&TimeZoneInformation);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("RtlSetTimeZoneInformation() failed (Status %lx)\n", Status);
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    Status = NtSetSystemInformation(SystemDynamicTimeZoneInformation,
+                                    (PVOID)&TimeZoneInformation,
+                                    sizeof(RTL_DYNAMIC_TIME_ZONE_INFORMATION));
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("NtSetSystemInformation() failed (Status %lx)\n", Status);
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
 }
-#else
+#endif
+
+
 /******************************************************************************
  *	SetUserGeoID   (kernelbase.@)
  */
@@ -8218,7 +7704,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetUserGeoID( GEOID id )
     }
     return TRUE;
 }
-#endif
 
 
 /***********************************************************************
@@ -8233,7 +7718,13 @@ BOOL WINAPI DECLSPEC_HOTPATCH SystemTimeToTzSpecificLocalTime( const TIME_ZONE_I
 
     if (!info)
     {
+#ifdef __REACTOS__
+        RTL_TIME_ZONE_INFORMATION TimeZone = {0};
+        RtlQueryTimeZoneInformation(&TimeZone);
+        RtlTimeZoneInfoToTimeZoneInfo(&TimeZone, &tzinfo);
+#else
         RtlQueryTimeZoneInformation( (RTL_TIME_ZONE_INFORMATION *)&tzinfo );
+#endif
         info = &tzinfo;
     }
 
@@ -8268,7 +7759,13 @@ BOOL WINAPI DECLSPEC_HOTPATCH TzSpecificLocalTimeToSystemTime( const TIME_ZONE_I
 
     if (!info)
     {
+#ifdef __REACTOS__
+        RTL_TIME_ZONE_INFORMATION TimeZone = {0};
+        RtlQueryTimeZoneInformation(&TimeZone);
+        RtlTimeZoneInfoToTimeZoneInfo(&TimeZone, &tzinfo);
+#else
         RtlQueryTimeZoneInformation( (RTL_TIME_ZONE_INFORMATION *)&tzinfo );
+#endif
         info = &tzinfo;
     }
 
@@ -8309,7 +7806,6 @@ DWORD WINAPI DECLSPEC_HOTPATCH VerLanguageNameW( DWORD lang, LPWSTR buffer, DWOR
 }
 
 
-#ifndef __REACTOS__
 /***********************************************************************
  *	WideCharToMultiByte   (kernelbase.@)
  */
@@ -8357,51 +7853,13 @@ INT WINAPI DECLSPEC_HOTPATCH WideCharToMultiByte( UINT codepage, DWORD flags, LP
         break;
     }
 
+#ifndef __REACTOS__
     TRACE( "cp %d %s -> %s, ret = %d\n", codepage, debugstr_wn(src, srclen), debugstr_an(dst, ret), ret );
+#endif
     return ret;
 }
-#endif
 
 
-#ifdef __REACTOS__
-/***********************************************************************
- *	GetUserDefaultGeoName  (kernelbase.@)
- */
-INT WINAPI GetUserDefaultGeoName(LPWSTR geo_name, int count)
-{
-    WCHAR name[4];
-    int len;
-
-    TRACE( "geo_name %p, count %d.\n", geo_name, count );
-
-    if (count < 0 || (count && !geo_name))
-    {
-        SetLastError( ERROR_INVALID_PARAMETER );
-        return 0;
-    }
-    get_geo_short_name( get_user_geo(), name, ARRAY_SIZE(name) );
-    len = lstrlenW( name ) + 1;
-    if (!count) return len;
-    if (count < len)
-    {
-        SetLastError( ERROR_INSUFFICIENT_BUFFER );
-        return 0;
-    }
-    lstrcpyW( geo_name, name );
-    return len;
-}
-
-
-/***********************************************************************
- *	SetUserGeoName  (kernelbase.@)
- */
-BOOL WINAPI SetUserGeoName(PWSTR geo_name)
-{
-    TRACE( "geo_name %s.\n", debugstr_w( geo_name ));
-
-    return set_user_geo( geo_name ? find_geo_name_entry( geo_name ) : NULL );
-}
-#else
 /***********************************************************************
  *	GetUserDefaultGeoName  (kernelbase.@)
  */
@@ -8462,7 +7920,6 @@ BOOL WINAPI SetUserGeoName(PWSTR geo_name)
     }
     return SetUserGeoID( geo->id );
 }
-#endif
 
 
 static void grouping_to_string( UINT grouping, WCHAR *buffer )
@@ -8626,7 +8083,12 @@ static WCHAR *format_number( WCHAR *end, const WCHAR *value, const WCHAR *decima
         if (len) end = prepend_str( end, thousand_sep );
     }
     if (round) *(--end) = '1';
+#ifdef __REACTOS__
+    /* Needed for shell32:AddCommas. By default, if input is 0 then null string is returned */
+    else if (lzero || !*end) *(--end) = '0';
+#else
     else if (lzero) *(--end) = '0';
+#endif
     return end;
 }
 
@@ -8911,8 +8373,13 @@ static int get_pattern_len( const WCHAR *pattern, const WCHAR *accept )
 }
 
 
+#ifdef __REACTOS__
+static int get_date_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SYSTEMTIME *systime,
+                            const WCHAR *format, WCHAR *buffer, int len, LCID lcid )
+#else
 static int get_date_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SYSTEMTIME *systime,
                             const WCHAR *format, WCHAR *buffer, int len )
+#endif
 {
     DWORD override = flags & LOCALE_NOUSEROVERRIDE;
     DWORD genitive = 0;
@@ -8962,7 +8429,11 @@ static int get_date_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SY
 
     for (p = output; *format; format += count)
     {
+#ifdef __REACTOS__
+        count = get_pattern_len( format, L"yMdg" );
+#else
         count = get_pattern_len( format, L"yMd" );
+#endif
 
         switch (*format)
         {
@@ -8975,6 +8446,29 @@ static int get_date_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SY
             break;
 
         case 'y':
+#ifdef __REACTOS__
+            if (IS_LCID_JAPANESE(lcid) && (flags & DATE_USE_ALT_CALENDAR))
+            {
+                PCJAPANESE_ERA pEra = JapaneseEra_Find(&time);
+                if (pEra)
+                {
+                    int year_count = (count >= 2) ? 2 : count;
+                    DWORD dwVal = time.wYear - pEra->wYear + 1;
+
+                    if (dwVal == 1 && JapaneseEra_IsFirstYearGannen())
+                    {
+                        p += swprintf(p, output + ARRAY_SIZE(output) - p, L"\u5143");
+                        break;
+                    }
+
+                    p += swprintf(p, output + ARRAY_SIZE(output) - p, L"%.*d", year_count, dwVal);
+                    break;
+                }
+
+                SetLastError(ERROR_INVALID_PARAMETER);
+                return 0;
+            }
+#endif
             p += swprintf( p, output + ARRAY_SIZE(output) - p, L"%02u",
                            (count <= 2) ? time.wYear % 100 : time.wYear );
             break;
@@ -9013,6 +8507,30 @@ static int get_date_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SY
             break;
 
         case 'g':
+#ifdef __REACTOS__
+            if (IS_LCID_JAPANESE(lcid))
+            {
+                if (flags & DATE_USE_ALT_CALENDAR)
+                {
+                    PCJAPANESE_ERA pEra = JapaneseEra_Find(&time);
+                    if (pEra)
+                    {
+                        p += swprintf(p, output + ARRAY_SIZE(output) - p, L"%ls", pEra->szEraName);
+                        break;
+                    }
+
+                    SetLastError(ERROR_INVALID_PARAMETER);
+                    return 0;
+                }
+                else
+                {
+                    /* NOTE: Windows ignores count here */
+                    *p++ = 0x897F; /* 西 */
+                    *p++ = 0x66A6; /* 暦 */
+                    break;
+                }
+            }
+#endif
             p += locale_return_string( count >= 2 ? locale->serastring : locale->sabbreverastring,
                                        override, p, output + ARRAY_SIZE(output) - p ) - 1;
             break;
@@ -9272,7 +8790,11 @@ int WINAPI GetDateFormatW( LCID lcid, DWORD flags, const SYSTEMTIME *systime,
     }
 
     TRACE( "(%04lx,%lx,%p,%s,%p,%d)\n", lcid, flags, systime, debugstr_w(format), buffer, len );
+#ifdef __REACTOS__
+    return get_date_format( locale, flags, systime, format, buffer, len, lcid );
+#else
     return get_date_format( locale, flags, systime, format, buffer, len );
+#endif
 }
 
 
@@ -9292,7 +8814,11 @@ int WINAPI GetDateFormatEx( const WCHAR *name, DWORD flags, const SYSTEMTIME *sy
     }
 
     TRACE( "(%s,%lx,%p,%s,%p,%d)\n", debugstr_w(name), flags, systime, debugstr_w(format), buffer, len );
+#ifdef __REACTOS__
+    return get_date_format( locale, flags, systime, format, buffer, len, lcid );
+#else
     return get_date_format( locale, flags, systime, format, buffer, len );
+#endif
 }
 
 
@@ -9364,6 +8890,7 @@ int WINAPI GetTimeFormatEx( const WCHAR *name, DWORD flags, const SYSTEMTIME *sy
 }
 
 #ifdef __REACTOS__
+/* Copied from Wine 10 kernelbase/thread.c */
 /**********************************************************************
  *           SetThreadLocale    (KERNEL32.@)
  *

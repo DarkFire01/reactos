@@ -16,7 +16,6 @@ add_dependencies(kernel32_shared psdk)
 list(APPEND SOURCE
     client/actctx.c
     client/appcache.c
-    client/appcontainer.c
     client/atom.c
     client/atomansi.c
     client/compname.c
@@ -31,13 +30,11 @@ list(APPEND SOURCE
     client/heapmem.c
     client/job.c
     client/loader.c
-    client/mmtime.c
     client/path.c
     client/pathansi.c
     client/perfcnt.c
     client/power.c
     client/proc.c
-    client/procattr.c
     client/procansi.c
     client/resntfy.c
     client/session.c
@@ -121,9 +118,6 @@ elseif(ARCH STREQUAL "arm")
     list(APPEND ASM_SOURCE
         client/arm/fiber.S
         client/arm/thread.S)
-elseif(ARCH STREQUAL "arm64")
-    list(APPEND ASM_SOURCE
-        client/arm64/fiber.s)
 endif()
 
 add_asm_files(kernel32_asm ${ASM_SOURCE})
@@ -141,12 +135,10 @@ set_subsystem(kernel32 console)
 ################# END  HACK #################
 
 target_link_libraries(kernel32 psapi_static win32_registry kernel32_vista_static kernel32_shared wine chkstk ${PSEH_LIB})
+if(DLL_EXPORT_VERSION LESS 0x601)
+add_importlibs(kernel32 ntdll_vista)
+endif()
 add_importlibs(kernel32 ntdll)
-# MS LINK resolves forwarded exports, so the advapi32 forwards need an import library of their own
-generate_import_lib(kernel32_advapi32 advapi32.dll advapi32_forwards.spec "" "")
-target_link_libraries(kernel32 kernel32_advapi32)
-generate_import_lib(kernel32_appmodel kernel.appcore.dll appmodel_forwards.spec "" "")
-target_link_libraries(kernel32 kernel32_appmodel)
 add_pch(kernel32 k32.h SOURCE)
 add_dependencies(kernel32 psdk errcodes asm)
 add_cd_file(TARGET kernel32 DESTINATION reactos/system32 FOR all)

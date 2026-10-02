@@ -7,26 +7,18 @@ include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys ..)
 spec2def(kernel32_vista.dll kernel32_vista.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
-    CancelIoEx.c
-    File2.c
     firmware.c
     GetFileInformationByHandleEx.c
     GetFinalPathNameByHandle.c
     GetNamedPipeClientProcessId.c
     GetTickCount64.c
     InitOnce.c
-    SetFileInformationByHandle.c
-    cpusets.c
-    ProcessInformation.c
-    ProcessMitigation.c
-    ThreadInformation.c
-    wer.c
     sync.c
     ThreadDescription.c
     threadpool.c
     vista.c
-    XState.c
-    ../winnls/string/locale.c)
+    ../winnls/string/locale.c
+    ../winnls/string/japanese.c)
 
 # These functions are not exported from kernel32_vista (yet).
 # They are only used when NT6 exports in kernel32 are enabled.

@@ -21,9 +21,32 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#ifdef __REACTOS__
 #include <k32.h>
 #include <debug.h>
 #include "nls.h"
+#include "japanese.h"
+#else
+#include <assert.h>
+#include <locale.h>
+#include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <ctype.h>
+#include <stdlib.h>
+
+#include "ntstatus.h"
+#include "windef.h"
+#include "winbase.h"
+#include "winternl.h"
+#include "winnls.h"
+#include "winerror.h"
+#include "winver.h"
+#include "kernel_private.h"
+#include "wine/debug.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(nls);
+#endif
 
 extern const NLS_LOCALE_DATA * WINAPI NlsValidateLocale( LCID *lcid, ULONG flags );
 
@@ -108,7 +131,7 @@ BOOL WINAPI SetLocaleInfoA(LCID lcid, LCTYPE lctype, LPCSTR data)
     return ret;
 }
 
-#ifndef __REACTOS__
+
 /******************************************************************************
  *              SetCPGlobal   (KERNEL32.@)
  *
@@ -153,7 +176,6 @@ BOOL WINAPI GetCPInfoExA( UINT codepage, DWORD dwFlags, LPCPINFOEXA cpinfo )
     WideCharToMultiByte(CP_ACP, 0, cpinfoW.CodePageName, -1, cpinfo->CodePageName, sizeof(cpinfo->CodePageName), NULL, NULL);
     return TRUE;
 }
-#endif
 
 
 /*********************************************************************
@@ -356,7 +378,7 @@ BOOL WINAPI EnumTimeFormatsA( TIMEFMT_ENUMPROCA proc, LCID lcid, DWORD flags )
 BOOL WINAPI InvalidateNLSCache(void)
 {
 #ifdef __REACTOS__
-    //JapaneseEra_ClearCache();
+    JapaneseEra_ClearCache();
     return TRUE;
 #else
   FIXME("() stub\n");
@@ -379,6 +401,15 @@ BOOL WINAPI EnumUILanguagesA( UILANGUAGE_ENUMPROCA proc, DWORD flags, LONG_PTR p
 int WINAPI GetCalendarInfoA( LCID lcid, CALID id, CALTYPE type, LPSTR data, int data_len, DWORD *val )
 {
     WCHAR buffer[256];
+
+#ifdef __REACTOS__
+    if ((type & 0xFFFF) == CAL_SABBREVERASTRING)
+    {
+        /* NOTE: CAL_SABBREVERASTRING is not supported in GetCalendarInfoA */
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+#endif
 
     if (type & CAL_RETURN_NUMBER)
         return GetCalendarInfoW( lcid, id, type, (WCHAR *)data, data_len, val ) * sizeof(WCHAR);
