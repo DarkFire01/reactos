@@ -35,6 +35,9 @@
 
 /* NOT INCLUDES ANYMORE ******************************************************/
 
+/* Spins to wait on a freeze target before sending it the NMI again */
+#define KI_FREEZE_RESEND_SPINS 0x100000
+
 PKPRCB KiFreezeOwner;
 
 /* FUNCTIONS *****************************************************************/
@@ -152,9 +155,19 @@ KxFreezeExecution(
            debugger cares about, and cannot be asked to stop */
         if ((TargetPrcb != NULL) && (TargetPrcb != CurrentPrcb))
         {
+            ULONG SpinCount = 0;
+
             /* Wait for the target to be frozen */
             while (TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_FROZEN)
             {
+                /* A target that took the NMI before it saw the request dropped it, ask again */
+                if ((++SpinCount == KI_FREEZE_RESEND_SPINS) &&
+                    (TargetPrcb->IpiFrozen == IPI_FROZEN_STATE_TARGET_FREEZE))
+                {
+                    KiIpiSend(TargetPrcb->SetMember, IPI_FREEZE);
+                    SpinCount = 0;
+                }
+
                 YieldProcessor();
                 KeMemoryBarrier();
             }
