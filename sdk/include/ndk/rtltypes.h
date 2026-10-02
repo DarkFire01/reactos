@@ -1804,7 +1804,7 @@ typedef struct _RTL_DYNAMIC_TIME_ZONE_INFORMATION
     WCHAR DaylightName[32];
     TIME_FIELDS DaylightDate;
     LONG DaylightBias;
-    WCHAR TimeZoneKeyName[0x80];
+    WCHAR TimeZoneKeyName[128];
     BOOLEAN DynamicDaylightTimeDisabled;
 } RTL_DYNAMIC_TIME_ZONE_INFORMATION, *PRTL_DYNAMIC_TIME_ZONE_INFORMATION;
 

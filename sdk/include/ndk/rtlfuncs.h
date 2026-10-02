@@ -4970,6 +4970,12 @@ NTAPI
 RtlSetTimeZoneInformation(
     _In_ PRTL_TIME_ZONE_INFORMATION TimeZoneInformation);
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlSetDynamicTimeZoneInformation(
+    _In_ PRTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInformation);
+
 _Success_(return != FALSE)
 NTSYSAPI
 BOOLEAN
