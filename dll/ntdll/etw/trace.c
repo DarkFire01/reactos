@@ -176,14 +176,40 @@ ULONG WINAPI EtwEnableTrace( ULONG enable, ULONG flag, ULONG level, LPCGUID guid
 }
 
 /******************************************************************************
+ * EtwEnableTraceEx [NTDLL.@]
+ */
+ULONG WINAPI EtwEnableTraceEx( LPCGUID ProviderId, LPCGUID SourceId, TRACEHANDLE hSession,
+                               ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+                               ULONGLONG MatchAllKeyword, ULONG EnableProperty,
+                               PEVENT_FILTER_DESCRIPTOR EnableFilterDesc )
+{
+    FIXME("(%p, %p, %I64x, %d, %d, %I64x, %I64x, %d, %p): stub\n", ProviderId, SourceId,
+            hSession, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, EnableProperty,
+            EnableFilterDesc);
+
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ * EtwTraceSetInformation [NTDLL.@]
+ */
+ULONG WINAPI EtwTraceSetInformation( TRACEHANDLE hSession, TRACE_INFO_CLASS InformationClass,
+                                     PVOID TraceInformation, ULONG InformationLength )
+{
+    FIXME("(%I64x, %d, %p, %d): stub\n", hSession, InformationClass,
+            TraceInformation, InformationLength);
+
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
  * EtwEnableTraceEx2 [NTDLL.@]
  */
 ULONG WINAPI EtwEnableTraceEx2( TRACEHANDLE hSession, LPCGUID ProviderId, ULONG ControlCode,
                                 UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                 ULONG Timeout, PENABLE_TRACE_PARAMETERS EnableParameters )
 {
-    FIXME("(%I64x, %p, %d, %d, %I64x, %I64x, %d, %p): stub
-", hSession, ProviderId, ControlCode,
+    FIXME("(%I64x, %p, %d, %d, %I64x, %I64x, %d, %p): stub\n", hSession, ProviderId, ControlCode,
             Level, MatchAnyKeyword, MatchAllKeyword, Timeout, EnableParameters);
 
     return ERROR_SUCCESS;

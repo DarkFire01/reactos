@@ -209,6 +209,7 @@
 @ stdcall ElfReportEventW(long long long long ptr long long ptr ptr long ptr ptr)
 @ stdcall -version=0x502 EnableTrace(long long long ptr double) ntdll.EtwEnableTrace
 @ stdcall -version=0x600+ EnableTrace(long long long ptr double) EtwEnableTrace
+@ stdcall -version=0x600+ EnableTraceEx(ptr ptr int64 long long int64 int64 long ptr) ntdll.EtwEnableTraceEx
 @ stdcall -version=0x601+ EnableTraceEx2(int64 ptr long long int64 int64 long ptr) ntdll.EtwEnableTraceEx2
 @ stdcall EncryptFileA(str)
 @ stdcall EncryptFileW(wstr)
@@ -635,6 +636,7 @@
 @ stdcall -version=0x600+ StartTraceA(ptr str ptr) EtwStartTraceA
 @ stdcall -version=0x502 StartTraceW(ptr wstr ptr) ntdll.EtwStartTraceW
 @ stdcall -version=0x600+ StartTraceW(ptr wstr ptr) EtwStartTraceW
+@ stdcall -version=0x601+ TraceSetInformation(int64 long ptr long) ntdll.EtwTraceSetInformation
 @ stdcall -version=0x502 StopTraceA(double str ptr) ntdll.EtwStopTraceA
 @ stdcall -version=0x600+ StopTraceA(double str ptr) EtwStopTraceA
 @ stdcall -version=0x502 StopTraceW(double wstr ptr) ntdll.EtwStopTraceW
