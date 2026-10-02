@@ -1695,10 +1695,8 @@
 @ stdcall PsReleaseProcessExitSynchronization()
 @ stdcall PsSetCreateProcessNotifyRoutineEx()
 @ stdcall ZwQueryVirtualMemory(long ptr long ptr long ptr)
-@ stdcall KeQueryMaximumProcessorCount()
 @ stdcall KeQueryMaximumProcessorCountEx(ptr)
 
-@ stdcall KeGetCurrentProcessorNumberEx(ptr)
 @ stdcall KeGetProcessorNumberFromIndex(long ptr)
 @ stdcall KeQueryActiveProcessorCountEx(long)
 @ stdcall KeRevertToUserGroupAffinityThread(ptr)
@@ -1709,3 +1707,13 @@
 @ stdcall strncpy_s(ptr long str long)
 @ stdcall wcscat_s(wstr long wstr)
 @ stdcall wcsncpy_s(ptr long wstr long)
+
+# Kernel
+@ stdcall -version=0x600+ KeDeregisterProcessorChangeCallback(ptr)
+@ stdcall -version=0x601+ KeGetCurrentNodeNumber()
+@ stdcall -version=0x601+ KeGetCurrentProcessorNumberEx(ptr)
+@ stdcall -version=0x600+ KeQueryActiveProcessorCount(ptr)
+@ stdcall -version=0x601+ KeQueryHighestNodeNumber()
+@ stdcall -version=0x600+ KeQueryMaximumProcessorCount()
+@ stdcall -version=0x601+ KeSetCoalescableTimer(ptr int64 long long ptr)
+@ stdcall -version=0x601+ KeSetTargetProcessorDpcEx(ptr ptr)

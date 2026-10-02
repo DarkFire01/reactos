@@ -8,8 +8,7 @@ include_directories(${REACTOS_SOURCE_DIR}/sdk/lib/rtl)
 list(APPEND SOURCE
     etw.c
     fsrtl.c
-    io.c
-    ke.c)
+    io.c)
 
 add_library(ntoskrnl_vista ${SOURCE})
 target_link_libraries(ntoskrnl_vista PRIVATE pseh) # rtl_vista)
