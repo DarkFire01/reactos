@@ -24,7 +24,6 @@ C_ASSERT(FIELD_OFFSET(HAL_MESSAGE_TARGET_REQUEST, Apic.DestinationMode) == 0x18)
 #endif
 
 /* Defined in acpi/madt.c */
-extern const PPROCESSOR_IDENTITY HalpProcessorIdentity;
 
 /* Defined in generic/misc.c */
 extern HALP_APIC_INFO_TABLE HalpApicInfoTable;

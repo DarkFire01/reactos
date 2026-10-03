@@ -386,6 +386,7 @@
 @ stdcall -version=0x600+ EventWrite(int64 ptr long ptr) ntdll.EtwEventWrite
 @ stdcall -version=0x600+ EventSetInformation(int64 long ptr long) ntdll.EtwEventSetInformation
 @ stdcall -version=0x600+ EventUnregister(int64) ntdll.EtwEventUnregister
+@ stdcall -version=0x600+ EventWriteString(int64 long int64 wstr) ntdll.EtwEventWriteString
 @ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr) ntdll.EtwEventWriteTransfer
 @ stdcall -version=0x600+ EventWriteEx(int64 ptr int64 long ptr ptr long ptr) ntdll.EtwEventWriteEx
 @ stdcall LsaLookupPrivilegeDisplayName(ptr ptr ptr ptr)
@@ -440,7 +441,17 @@
 @ stdcall MakeSelfRelativeSD(ptr ptr ptr)
 @ stdcall MapGenericMask(ptr ptr) ntdll.RtlMapGenericMask
 @ stdcall NotifyBootConfigStatus(long)
+@ stdcall -version=0x600+ PerfCreateInstance(ptr ptr wstr long) kernel32.PerfCreateInstance
+@ stdcall -version=0x600+ PerfDeleteInstance(ptr ptr) kernel32.PerfDeleteInstance
+@ stdcall -version=0x600+ PerfSetCounterRefValue(ptr ptr long ptr) kernel32.PerfSetCounterRefValue
+@ stdcall -version=0x600+ PerfSetCounterSetInfo(ptr ptr long) kernel32.PerfSetCounterSetInfo
+@ stdcall -version=0x600+ PerfSetULongCounterValue(ptr ptr long long) kernel32.PerfSetULongCounterValue
+@ stdcall -version=0x600+ PerfSetULongLongCounterValue(ptr ptr long int64) kernel32.PerfSetULongLongCounterValue
+@ stdcall -version=0x600+ PerfStartProvider(ptr ptr ptr) kernel32.PerfStartProvider
+@ stdcall -version=0x600+ PerfStopProvider(ptr) kernel32.PerfStopProvider
 @ stdcall NotifyChangeEventLog(long long)
+@ stdcall -version=0x600+ NotifyServiceStatusChangeA(ptr long ptr)
+@ stdcall -version=0x600+ NotifyServiceStatusChangeW(ptr long ptr)
 @ stdcall ObjectCloseAuditAlarmA(str ptr long)
 @ stdcall ObjectCloseAuditAlarmW(wstr ptr long)
 @ stdcall ObjectDeleteAuditAlarmA(str ptr long)
@@ -513,6 +524,7 @@
 @ stdcall RegDeleteValueA(long str)
 @ stdcall RegDeleteValueW(long wstr)
 @ stdcall RegDisablePredefinedCache()
+@ stdcall -version=0x600+ RegDisablePredefinedCacheEx()
 @ stdcall RegDisableReflectionKey(ptr)
 @ stdcall RegEnableReflectionKey(ptr)
 @ stdcall RegEnumKeyA(long long ptr long)

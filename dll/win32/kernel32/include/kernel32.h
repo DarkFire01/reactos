@@ -297,9 +297,14 @@ extern PRTL_COUNT_STRINGA Basep8BitStringToUnicodeSize;
 extern UNICODE_STRING BaseWindowsDirectory, BaseWindowsSystemDirectory;
 extern HANDLE BaseNamedObjectDirectory;
 
+NTSTATUS
+WINAPI
+BaseGetNamedObjectDirectory(
+    _Out_ PHANDLE DirectoryHandle);
+
 HANDLE
 WINAPI
-BaseGetNamedObjectDirectory(VOID);
+BasepGetNamedObjectDirectory(VOID);
 
 NTSTATUS
 WINAPI

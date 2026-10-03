@@ -29,6 +29,7 @@
 @ stdcall BaseCleanupAppcompatCacheSupport(ptr)
 @ stdcall BaseDumpAppcompatCache()
 @ stdcall BaseFlushAppcompatCache()
+@ stdcall BaseGetNamedObjectDirectory(ptr)
 @ stub -version=0x600+ BaseGenerateAppCompatData
 @ stdcall BaseInitAppcompatCacheSupport()
 @ stdcall BaseIsAppcompatInfrastructureDisabled() IsShimInfrastructureDisabled
@@ -767,6 +768,7 @@
 @ stdcall InterlockedPopEntrySList(ptr) ntdll.RtlInterlockedPopEntrySList
 @ stdcall InterlockedPushEntrySList(ptr ptr) ntdll.RtlInterlockedPushEntrySList
 @ fastcall -version=0x600+ InterlockedPushListSList(ptr ptr ptr long) ntdll.RtlInterlockedPushListSList
+@ stdcall -version=0x602+ InterlockedPushListSListEx(ptr ptr ptr long) ntdll.RtlInterlockedPushListSListEx
 @ stdcall InvalidateConsoleDIBits(long long)
 @ stdcall IsBadCodePtr(ptr)
 @ stdcall IsBadHugeReadPtr(ptr long)
@@ -1083,6 +1085,7 @@
 @ stub -version=0x600+ SetCurrentConsoleFontEx
 @ stdcall SetCurrentDirectoryA(str)
 @ stdcall SetCurrentDirectoryW(wstr)
+@ stdcall -version=0x602+ SetDefaultDllDirectories(long)
 @ stdcall SetDefaultCommConfigA(str ptr long)
 @ stdcall SetDefaultCommConfigW(wstr ptr long)
 @ stdcall SetDllDirectoryA(str)

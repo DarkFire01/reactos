@@ -126,6 +126,8 @@
 340 stdcall -noname DPA_CreateEx(long long)
 341 stdcall -noname SendNotify(long long long ptr)
 342 stdcall -noname SendNotifyEx(long long long ptr long)
+344 stdcall -version=0x600+ TaskDialog(long long wstr wstr wstr long wstr ptr)
+345 stdcall -version=0x600+ TaskDialogIndirect(ptr ptr ptr ptr)
 350 stdcall -noname -private StrChrA(str long)
 351 stdcall -noname -private StrRChrA(str str long)
 352 stdcall -noname -private StrCmpNA(str str long)

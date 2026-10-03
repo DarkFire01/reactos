@@ -1293,6 +1293,15 @@ ExSetResourceOwnerPointer(
 
 _IRQL_requires_max_(APC_LEVEL)
 NTKERNELAPI
+VOID
+NTAPI
+ExQueryTimerResolution(
+  _Out_ PULONG MaximumTime,
+  _Out_ PULONG MinimumTime,
+  _Out_ PULONG CurrentTime);
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
 ULONG
 NTAPI
 ExSetTimerResolution(

@@ -59,15 +59,17 @@ BasepAnsiStringToUnicodeSize(IN PANSI_STRING String)
     return RtlAnsiStringToUnicodeSize(String);
 }
 
-HANDLE
+NTSTATUS
 WINAPI
-BaseGetNamedObjectDirectory(VOID)
+BaseGetNamedObjectDirectory(
+    _Out_ PHANDLE DirectoryHandle)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     NTSTATUS Status;
     HANDLE DirHandle, BnoHandle, Token, NewToken;
 
-    if (BaseNamedObjectDirectory) return BaseNamedObjectDirectory;
+    *DirectoryHandle = BaseNamedObjectDirectory;
+    if (BaseNamedObjectDirectory) return STATUS_SUCCESS;
 
     if (NtCurrentTeb()->IsImpersonating)
     {
@@ -75,7 +77,7 @@ BaseGetNamedObjectDirectory(VOID)
                                    TOKEN_IMPERSONATE,
                                    TRUE,
                                    &Token);
-        if (!NT_SUCCESS(Status)) return BaseNamedObjectDirectory;
+        if (!NT_SUCCESS(Status)) return Status;
 
         NewToken = NULL;
         Status = NtSetInformationThread(NtCurrentThread(),
@@ -85,7 +87,7 @@ BaseGetNamedObjectDirectory(VOID)
         if (!NT_SUCCESS (Status))
         {
             NtClose(Token);
-            return BaseNamedObjectDirectory;
+            return Status;
         }
     }
     else
@@ -94,6 +96,8 @@ BaseGetNamedObjectDirectory(VOID)
     }
 
     RtlAcquirePebLock();
+
+    Status = STATUS_SUCCESS;
     if (BaseNamedObjectDirectory) goto Quickie;
 
     InitializeObjectAttributes(&ObjectAttributes,
@@ -149,7 +153,19 @@ Quickie:
         NtClose(Token);
     }
 
-    return BaseNamedObjectDirectory;
+    *DirectoryHandle = BaseNamedObjectDirectory;
+    return Status;
+}
+
+/* The callers inside kernel32 want the handle itself, and treat NULL as no root */
+HANDLE
+WINAPI
+BasepGetNamedObjectDirectory(VOID)
+{
+    HANDLE DirectoryHandle;
+
+    if (!NT_SUCCESS(BaseGetNamedObjectDirectory(&DirectoryHandle))) return NULL;
+    return DirectoryHandle;
 }
 
 VOID
@@ -328,7 +344,7 @@ BaseFormatObjectAttributes(OUT POBJECT_ATTRIBUTES ObjectAttributes,
     if (ObjectName)
     {
         Attributes |= OBJ_OPENIF;
-        RootDirectory = BaseGetNamedObjectDirectory();
+        RootDirectory = BasepGetNamedObjectDirectory();
     }
     else
     {

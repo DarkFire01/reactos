@@ -170,7 +170,22 @@ DWORD   WINAPI PowerRegisterSuspendResumeNotification(DWORD, HANDLE, PHPOWERNOTI
 DWORD   WINAPI PowerUnregisterSuspendResumeNotification(HPOWERNOTIFY);
 DWORD   WINAPI PowerSettingRegisterNotification(const GUID *, DWORD, HANDLE, PHPOWERNOTIFY);
 DWORD   WINAPI PowerSettingUnregisterNotification(HPOWERNOTIFY);
+DWORD   WINAPI PowerCreatePossibleSetting(HKEY, const GUID *, const GUID *, ULONG);
+DWORD   WINAPI PowerCreateSetting(HKEY, const GUID *, const GUID *);
+DWORD   WINAPI PowerRemovePowerSetting(const GUID *, const GUID *);
+DWORD   WINAPI PowerWriteACDefaultIndex(HKEY, const GUID *, const GUID *, const GUID *, DWORD);
 DWORD   WINAPI PowerWriteACValueIndex(HKEY, const GUID *, const GUID *, const GUID *, DWORD);
+DWORD   WINAPI PowerWriteDCDefaultIndex(HKEY, const GUID *, const GUID *, const GUID *, DWORD);
+DWORD   WINAPI PowerWriteDescription(HKEY, const GUID *, const GUID *, const GUID *, UCHAR *, DWORD);
+DWORD   WINAPI PowerWriteFriendlyName(HKEY, const GUID *, const GUID *, const GUID *, UCHAR *, DWORD);
+DWORD   WINAPI PowerWritePossibleDescription(HKEY, const GUID *, const GUID *, ULONG, UCHAR *, DWORD);
+DWORD   WINAPI PowerWritePossibleFriendlyName(HKEY, const GUID *, const GUID *, ULONG, UCHAR *, DWORD);
+DWORD   WINAPI PowerWritePossibleValue(HKEY, const GUID *, const GUID *, ULONG, ULONG, UCHAR *, DWORD);
+DWORD   WINAPI PowerWriteSettingAttributes(const GUID *, const GUID *, DWORD);
+DWORD   WINAPI PowerWriteValueIncrement(HKEY, const GUID *, const GUID *, DWORD);
+DWORD   WINAPI PowerWriteValueMax(HKEY, const GUID *, const GUID *, DWORD);
+DWORD   WINAPI PowerWriteValueMin(HKEY, const GUID *, const GUID *, DWORD);
+DWORD   WINAPI PowerWriteValueUnitsSpecifier(HKEY, const GUID *, const GUID *, UCHAR *, DWORD);
 BOOLEAN WINAPI ReadGlobalPwrPolicy(PGLOBAL_POWER_POLICY);
 BOOLEAN WINAPI ReadProcessorPwrScheme(UINT, PMACHINE_PROCESSOR_POWER_POLICY);
 BOOLEAN WINAPI ReadPwrScheme(UINT, PPOWER_POLICY);
@@ -180,6 +195,24 @@ BOOLEAN WINAPI WriteGlobalPwrPolicy(PGLOBAL_POWER_POLICY);
 BOOLEAN WINAPI WriteProcessorPwrScheme(UINT, PMACHINE_PROCESSOR_POWER_POLICY);
 BOOLEAN WINAPI ValidatePowerPolicies(PGLOBAL_POWER_POLICY, PPOWER_POLICY);
 BOOLEAN WINAPI WritePwrScheme(PUINT, LPWSTR, LPWSTR, PPOWER_POLICY);
+
+#define EFFECTIVE_POWER_MODE_V1 0x00000001
+#define EFFECTIVE_POWER_MODE_V2 0x00000002
+
+typedef enum EFFECTIVE_POWER_MODE {
+  EffectivePowerModeBatterySaver,
+  EffectivePowerModeBetterBattery,
+  EffectivePowerModeBalanced,
+  EffectivePowerModeHighPerformance,
+  EffectivePowerModeMaxPerformance,
+  EffectivePowerModeGameMode,
+  EffectivePowerModeMixedReality
+} EFFECTIVE_POWER_MODE;
+
+typedef VOID (WINAPI EFFECTIVE_POWER_MODE_CALLBACK)(EFFECTIVE_POWER_MODE, PVOID);
+
+HRESULT WINAPI PowerRegisterForEffectivePowerModeNotifications(ULONG, EFFECTIVE_POWER_MODE_CALLBACK *, PVOID, PVOID *);
+HRESULT WINAPI PowerUnregisterFromEffectivePowerModeNotifications(PVOID);
 
 /* Power scheme */
 POWER_PLATFORM_ROLE WINAPI PowerDeterminePlatformRole(void);
