@@ -306,6 +306,46 @@ ExSetTimerResolution(IN ULONG DesiredTime,
     return CurrentIncrement;
 }
 
+/*++
+ * @name ExQueryTimerResolution
+ * @exported
+ *
+ *     Reports the clock interrupt frequencies the platform supports, and the
+ *     one in effect.
+ *
+ * @param MaximumTime
+ *        Receives the longest interval between clock interrupts, in
+ *        100-nanosecond units. This is the platform default.
+ *
+ * @param MinimumTime
+ *        Receives the shortest interval the platform can be set to.
+ *
+ * @param CurrentTime
+ *        Receives the interval currently in effect.
+ *
+ * @return None.
+ *
+ * @remarks A caller that only wants the current interval reads KeQueryTimeIncrement
+ *          instead, which does not take the refresh lock.
+ *
+ *--*/
+VOID
+NTAPI
+ExQueryTimerResolution(
+    _Out_ PULONG MaximumTime,
+    _Out_ PULONG MinimumTime,
+    _Out_ PULONG CurrentTime)
+{
+    /* Keep the three values consistent with each other */
+    ExAcquireTimeRefreshLock(TRUE);
+
+    *MaximumTime = KeMaximumIncrement;
+    *MinimumTime = KeMinimumIncrement;
+    *CurrentTime = KeTimeIncrement;
+
+    ExReleaseTimeRefreshLock();
+}
+
 VOID
 NTAPI
 ExUpdateSystemTimeFromCmos(IN BOOLEAN UpdateInterruptTime,

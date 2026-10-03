@@ -893,6 +893,36 @@ SetDllDirectoryW(IN LPCWSTR lpPathName)
  */
 BOOL
 WINAPI
+SetDefaultDllDirectories(IN DWORD DirectoryFlags)
+{
+    NTSTATUS Status;
+
+    /* LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR is per load, not a default */
+    if (!DirectoryFlags ||
+        (DirectoryFlags & ~(LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                            LOAD_LIBRARY_SEARCH_USER_DIRS |
+                            LOAD_LIBRARY_SEARCH_SYSTEM32 |
+                            LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Status = LdrSetDefaultDllDirectories(DirectoryFlags);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
 SetDllDirectoryA(IN LPCSTR lpPathName)
 {
     ANSI_STRING AnsiDllDirectory;

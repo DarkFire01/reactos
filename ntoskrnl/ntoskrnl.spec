@@ -160,6 +160,7 @@
 @ fastcall ExRundownCompletedCacheAware(ptr) ExfRundownCompletedCacheAware
 @ extern ExSemaphoreObjectType
 @ stdcall ExSetResourceOwnerPointer(ptr ptr)
+@ stdcall ExQueryTimerResolution(ptr ptr ptr)
 @ stdcall ExSetTimerResolution(long long)
 @ stdcall ExSizeOfRundownProtectionCacheAware()
 @ stdcall ExSystemExceptionFilter()
@@ -1782,6 +1783,7 @@
 @ cdecl strtok_s()
 @ cdecl vsprintf_s()
 @ cdecl wcscat_s()
+@ cdecl wcsncat_s()
 @ cdecl wcscpy_s()
 @ cdecl wcsncpy_s()
 @ cdecl wcsnlen()

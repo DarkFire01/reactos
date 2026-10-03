@@ -614,6 +614,57 @@ CloseServiceHandle(SC_HANDLE hSCObject)
 
 
 /**********************************************************************
+ *  NotifyServiceStatusChangeW
+ *
+ * @unimplemented
+ *
+ * The SCM has no notification queue yet (RNotifyServiceStatusChange returns
+ * ERROR_CALL_NOT_IMPLEMENTED), so a caller has to keep polling.
+ */
+DWORD WINAPI
+NotifyServiceStatusChangeW(SC_HANDLE hService,
+                           DWORD dwNotifyMask,
+                           PSERVICE_NOTIFYW pNotifyBuffer)
+{
+    TRACE("NotifyServiceStatusChangeW(%p %lu %p)\n",
+          hService, dwNotifyMask, pNotifyBuffer);
+
+    if (hService == NULL || pNotifyBuffer == NULL)
+        return ERROR_INVALID_HANDLE;
+
+    if (pNotifyBuffer->dwVersion != SERVICE_NOTIFY_STATUS_CHANGE_1 &&
+        pNotifyBuffer->dwVersion != SERVICE_NOTIFY_STATUS_CHANGE_2)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    if (pNotifyBuffer->pfnNotifyCallback == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    return ERROR_CALL_NOT_IMPLEMENTED;
+}
+
+
+/**********************************************************************
+ *  NotifyServiceStatusChangeA
+ *
+ * @unimplemented
+ */
+DWORD WINAPI
+NotifyServiceStatusChangeA(SC_HANDLE hService,
+                           DWORD dwNotifyMask,
+                           PSERVICE_NOTIFYA pNotifyBuffer)
+{
+    TRACE("NotifyServiceStatusChangeA(%p %lu %p)\n",
+          hService, dwNotifyMask, pNotifyBuffer);
+
+    return NotifyServiceStatusChangeW(hService,
+                                      dwNotifyMask,
+                                      (PSERVICE_NOTIFYW)pNotifyBuffer);
+}
+
+
+/**********************************************************************
  *  ControlService
  *
  * @implemented

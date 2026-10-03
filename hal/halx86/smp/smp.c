@@ -13,6 +13,7 @@
 
 #define NDEBUG
 #include <debug.h>
+extern PROCESSOR_IDENTITY HalpProcessorIdentity[MAXIMUM_PROCESSORS];
 
 /* FUNCTIONS *****************************************************************/
 

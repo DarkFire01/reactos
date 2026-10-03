@@ -124,6 +124,12 @@ LdrGetProcedureAddressEx(
     _Out_ PVOID *ProcedureAddress,
     _In_ ULONG Flags);
 
+NTSTATUS
+NTAPI
+LdrSetDefaultDllDirectories(
+    _In_ ULONG DirectoryFlags
+);
+
 ULONG
 NTAPI
 LdrRelocateImage(

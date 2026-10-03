@@ -446,7 +446,7 @@ const ROS_APISET g_Apisets[] = {
     { RTL_CONSTANT_STRING(L"api-ms-win-mm-msacm-l1-1-0"), RTL_CONSTANT_STRING(L"msacm32.dll"), APISET_WIN8 | APISET_WIN81 },
     { RTL_CONSTANT_STRING(L"api-ms-win-mm-pehelper-l1-1-0"), RTL_CONSTANT_STRING(L"mf.dll"), APISET_WIN8 | APISET_WIN81 },
     { RTL_CONSTANT_STRING(L"api-ms-win-mm-playsound-l1-1-0"), RTL_CONSTANT_STRING(L"winmm.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
-    { RTL_CONSTANT_STRING(L"api-ms-win-mm-time-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
+    { RTL_CONSTANT_STRING(L"api-ms-win-mm-time-l1-1-0"), RTL_CONSTANT_STRING(L"winmm.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-mm-wmdrmsdk-l1-1-0"), RTL_CONSTANT_STRING(L"wmdrmsdk.dll"), APISET_WIN8 | APISET_WIN81 },
     // { RTL_CONSTANT_STRING(L"api-ms-win-mobilecore-boot-l1-1-0"), RTL_CONSTANT_STRING(L""), APISET_WIN81 },
     // { RTL_CONSTANT_STRING(L"api-ms-win-mobilecore-deviceinfo-l1-1-0"), RTL_CONSTANT_STRING(L""), APISET_WIN81 },

@@ -563,6 +563,51 @@ EnumProcessModules(HANDLE hProcess,
 /*
  * @implemented
  */
+BOOL
+WINAPI
+EnumProcessModulesEx(HANDLE hProcess,
+                     HMODULE *lphModule,
+                     DWORD cb,
+                     LPDWORD lpcbNeeded,
+                     DWORD dwFilterFlag)
+{
+#ifdef _WIN64
+    const DWORD NativeFlag = LIST_MODULES_64BIT;
+#else
+    const DWORD NativeFlag = LIST_MODULES_32BIT;
+#endif
+
+    if (dwFilterFlag & ~LIST_MODULES_ALL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Every process here runs at the native bit width, so a filter that asks
+       for the other one matches nothing */
+    if (dwFilterFlag != LIST_MODULES_DEFAULT && !(dwFilterFlag & NativeFlag))
+    {
+        _SEH2_TRY
+        {
+            *lpcbNeeded = 0;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            SetLastError(RtlNtStatusToDosError(_SEH2_GetExceptionCode()));
+            _SEH2_YIELD(return FALSE);
+        }
+        _SEH2_END;
+
+        return TRUE;
+    }
+
+    return EnumProcessModules(hProcess, lphModule, cb, lpcbNeeded);
+}
+
+
+/*
+ * @implemented
+ */
 DWORD
 WINAPI
 GetDeviceDriverBaseNameA(LPVOID ImageBase,
