@@ -97,7 +97,7 @@
 @ stub NCryptStreamOpenToUnprotect
 @ stub NCryptStreamOpenToUnprotectEx
 @ stub NCryptStreamUpdate
-@ stub NCryptTranslateHandle
+@ stdcall NCryptTranslateHandle(ptr ptr long long long long)
 @ stub NCryptUnprotectKey
 @ stub NCryptUnprotectSecret
 @ stub NCryptVerifyClaim

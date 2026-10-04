@@ -30,6 +30,7 @@
 #include "ncrypt.h"
 #include "bcrypt.h"
 #include "ncrypt_internal.h"
+#include <wincrypt.h>
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ncrypt);
@@ -50,6 +51,22 @@ static SECURITY_STATUS map_ntstatus(NTSTATUS status)
         FIXME("unhandled status %#lx\n", status);
         return NTE_INTERNAL_ERROR;
     }
+}
+
+static void reverse_bytes(BYTE *dst, const BYTE *src, DWORD len)
+{
+    DWORD i;
+    for (i = 0; i < len; ++i) dst[i] = src[len - 1 - i];
+}
+
+static DWORD be_uint_len_from_dword(DWORD v)
+{
+    /* minimal big-endian length without leading zeros; return at least 1 */
+    if (!v) return 1;
+    if (v <= 0xFF) return 1;
+    if (v <= 0xFFFF) return 2;
+    if (v <= 0xFFFFFF) return 3;
+    return 4;
 }
 
 static struct object *allocate_object(enum object_type type)
@@ -619,4 +636,302 @@ SECURITY_STATUS WINAPI NCryptVerifySignature(NCRYPT_KEY_HANDLE handle, void *pad
 
     return map_ntstatus(BCryptVerifySignature(key_object->key.bcrypt_key, padding, hash, hash_size, signature,
                                               signature_size, flags));
+}
+
+SECURITY_STATUS WINAPI NCryptTranslateHandle(NCRYPT_PROV_HANDLE *phProvider,
+                                             NCRYPT_KEY_HANDLE *phKey,
+                                             HCRYPTPROV hLegacyProv,
+                                             HCRYPTKEY hLegacyKey,
+                                             DWORD dwLegacyKeySpec,
+                                             DWORD dwFlags)
+{
+    struct object *object = NULL;
+    NCRYPT_PROV_HANDLE cng_provider = 0;
+    HCRYPTKEY legacy_key = hLegacyKey;
+    DWORD keyspec = dwLegacyKeySpec;
+    DWORD err;
+
+    TRACE("(%p, %p, %#Ix, %#Ix, %#lx, %#lx)\n", phProvider, phKey, hLegacyProv, hLegacyKey,
+          dwLegacyKeySpec, dwFlags);
+
+    if (!phKey) return HRESULT_FROM_WIN32(RPC_X_NULL_REF_POINTER);
+    if (!hLegacyProv) return NTE_INVALID_HANDLE;
+    if (dwFlags) { WARN("Invalid flags %#lx\n", dwFlags); return NTE_BAD_FLAGS; }
+
+    /* Open a CNG storage provider (name is ignored in our implementation) */
+    if (phProvider)
+    {
+        SECURITY_STATUS s = NCryptOpenStorageProvider(&cng_provider, NULL, 0);
+        if (s != ERROR_SUCCESS) return s;
+        *phProvider = cng_provider;
+    }
+
+    /* Determine legacy keyspec if not provided */
+    if (!keyspec)
+    {
+        if (legacy_key)
+        {
+            DWORD algid, sz = sizeof(algid);
+            if (!CryptGetKeyParam(legacy_key, KP_ALGID, (BYTE *)&algid, &sz, 0))
+            {
+                err = GetLastError();
+                return HRESULT_FROM_WIN32(err);
+            }
+            if (algid == CALG_RSA_SIGN) keyspec = AT_SIGNATURE;
+            else if (algid == CALG_RSA_KEYX) keyspec = AT_KEYEXCHANGE;
+            else
+            {
+                FIXME("Unsupported legacy ALG_ID %#lx\n", algid);
+                return NTE_NOT_SUPPORTED;
+            }
+        }
+        else
+        {
+            DWORD sz = sizeof(keyspec);
+            if (!CryptGetProvParam(hLegacyProv, PP_KEYSPEC, (BYTE *)&keyspec, &sz, 0))
+            {
+                /* If not available, attempt default to signature */
+                keyspec = AT_SIGNATURE;
+            }
+        }
+    }
+
+    /* Obtain legacy key handle if not supplied */
+    if (!legacy_key)
+    {
+        if (!CryptGetUserKey(hLegacyProv, keyspec, &legacy_key))
+        {
+            err = GetLastError();
+            return HRESULT_FROM_WIN32(err);
+        }
+    }
+
+    /* Try to export private key first; fallback to public key */
+    BYTE *legacy_blob = NULL;
+    DWORD legacy_blob_len = 0;
+    BOOL have_private = FALSE;
+    if (CryptExportKey(legacy_key, 0, PRIVATEKEYBLOB, 0, NULL, &legacy_blob_len))
+    {
+        if (!(legacy_blob = malloc(legacy_blob_len)))
+        {
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return NTE_NO_MEMORY;
+        }
+    if (!CryptExportKey(legacy_key, 0, PRIVATEKEYBLOB, 0, legacy_blob, &legacy_blob_len))
+        {
+            err = GetLastError();
+            free(legacy_blob);
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return HRESULT_FROM_WIN32(err);
+        }
+        have_private = TRUE;
+    }
+    else
+    {
+        legacy_blob_len = 0;
+    if (!CryptExportKey(legacy_key, 0, PUBLICKEYBLOB, 0, NULL, &legacy_blob_len))
+        {
+            err = GetLastError();
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return HRESULT_FROM_WIN32(err);
+        }
+        legacy_blob = malloc(legacy_blob_len);
+        if (!legacy_blob)
+        {
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return NTE_NO_MEMORY;
+        }
+    if (!CryptExportKey(legacy_key, 0, PUBLICKEYBLOB, 0, legacy_blob, &legacy_blob_len))
+        {
+            err = GetLastError();
+            free(legacy_blob);
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return HRESULT_FROM_WIN32(err);
+        }
+    }
+
+    /* Convert legacy RSA blob to CNG blob and import */
+    {
+        BLOBHEADER *hdr = (BLOBHEADER *)legacy_blob;
+        BYTE *p = legacy_blob + sizeof(BLOBHEADER);
+        DWORD remaining = legacy_blob_len - sizeof(BLOBHEADER);
+
+        if (!legacy_blob_len || legacy_blob_len < sizeof(BLOBHEADER) + sizeof(RSAPUBKEY))
+        {
+            free(legacy_blob);
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return NTE_INVALID_PARAMETER;
+        }
+
+        if (hdr->aiKeyAlg != CALG_RSA_KEYX && hdr->aiKeyAlg != CALG_RSA_SIGN)
+        {
+            FIXME("Only RSA keys are supported (aiKeyAlg=%#lx)\n", hdr->aiKeyAlg);
+            free(legacy_blob);
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return NTE_NOT_SUPPORTED;
+        }
+
+        RSAPUBKEY *rsapub = (RSAPUBKEY *)p;
+        DWORD bitlen = rsapub->bitlen;
+        DWORD modlen = bitlen / 8;
+        if (remaining < sizeof(RSAPUBKEY) + modlen)
+        {
+            free(legacy_blob);
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return NTE_INVALID_PARAMETER;
+        }
+
+        /* Build CNG blob */
+    DWORD e_len = be_uint_len_from_dword(rsapub->pubexp);
+    BCRYPT_RSAKEY_BLOB keyblob;
+    BYTE *cng_blob = NULL;
+    DWORD cng_blob_len = 0;
+    const WCHAR *import_type = NULL;
+    int i;
+
+        if (have_private && rsapub->magic == 0x32415352 /* 'RSA2' */)
+        {
+            DWORD prime_len = modlen / 2;
+            /* legacy layout after modulus: P, Q, dp, dq, iq, d (all little-endian) */
+            DWORD need = sizeof(BLOBHEADER) + sizeof(RSAPUBKEY) + modlen /*n*/
+                        + prime_len /*p*/ + prime_len /*q*/ + prime_len /*dp*/ + prime_len /*dq*/
+                        + prime_len /*iq*/ + modlen /*d*/;
+            if (legacy_blob_len < need)
+            {
+                free(legacy_blob);
+                if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+                return NTE_INVALID_PARAMETER;
+            }
+
+            keyblob.Magic = BCRYPT_RSAPRIVATE_MAGIC;
+            keyblob.BitLength = bitlen;
+            keyblob.cbPublicExp = e_len;
+            keyblob.cbModulus = modlen;
+            keyblob.cbPrime1 = prime_len;
+            keyblob.cbPrime2 = prime_len;
+
+            cng_blob_len = sizeof(BCRYPT_RSAKEY_BLOB) + e_len + modlen + prime_len + prime_len;
+            cng_blob = malloc(cng_blob_len);
+            if (!cng_blob)
+            {
+                free(legacy_blob);
+                if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+                return NTE_NO_MEMORY;
+            }
+
+            {
+                BYTE *q;
+                memcpy(cng_blob, &keyblob, sizeof(keyblob));
+                q = cng_blob + sizeof(BCRYPT_RSAKEY_BLOB);
+
+                /* public exponent, big-endian minimal */
+                {
+                    DWORD v = rsapub->pubexp;
+                    for (i = e_len - 1; i >= 0; --i) { q[i] = (BYTE)(v & 0xFF); v >>= 8; }
+                    q += e_len;
+                }
+
+                /* modulus (reverse from little-endian to big-endian) */
+                reverse_bytes(q, (BYTE *)(rsapub + 1), modlen);
+                q += modlen;
+
+                /* prime1 and prime2 */
+                reverse_bytes(q, (BYTE *)(rsapub + 1) + modlen, prime_len); q += prime_len;
+                reverse_bytes(q, (BYTE *)(rsapub + 1) + modlen + prime_len, prime_len); q += prime_len;
+            }
+
+            import_type = BCRYPT_RSAPRIVATE_BLOB;
+        }
+        else if (!have_private && rsapub->magic == 0x31415352 /* 'RSA1' */)
+        {
+            keyblob.Magic = BCRYPT_RSAPUBLIC_MAGIC;
+            keyblob.BitLength = bitlen;
+            keyblob.cbPublicExp = e_len;
+            keyblob.cbModulus = modlen;
+            keyblob.cbPrime1 = 0;
+            keyblob.cbPrime2 = 0;
+
+            cng_blob_len = sizeof(BCRYPT_RSAKEY_BLOB) + e_len + modlen;
+            cng_blob = malloc(cng_blob_len);
+            if (!cng_blob)
+            {
+                free(legacy_blob);
+                if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+                return NTE_NO_MEMORY;
+            }
+
+            {
+                BYTE *q;
+                memcpy(cng_blob, &keyblob, sizeof(keyblob));
+                q = cng_blob + sizeof(BCRYPT_RSAKEY_BLOB);
+                {
+                    DWORD v = rsapub->pubexp;
+                    for (i = e_len - 1; i >= 0; --i) { q[i] = (BYTE)(v & 0xFF); v >>= 8; }
+                    q += e_len;
+                }
+                reverse_bytes(q, (BYTE *)(rsapub + 1), modlen);
+            }
+            import_type = BCRYPT_RSAPUBLIC_BLOB;
+        }
+        else
+        {
+            FIXME("Unsupported or mismatched RSA magic: %#lx (private=%d)\n", rsapub->magic, have_private);
+            free(legacy_blob);
+            if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+            return NTE_NOT_SUPPORTED;
+        }
+
+        /* Build NCrypt key object and import */
+        {
+            NCRYPT_PROV_HANDLE prov_for_key = cng_provider;
+            if (!prov_for_key)
+            {
+                /* If caller didn't request provider, still create one to attach to key */
+                SECURITY_STATUS s = NCryptOpenStorageProvider(&prov_for_key, NULL, 0);
+                if (s != ERROR_SUCCESS)
+                {
+                    free(cng_blob);
+                    free(legacy_blob);
+                    if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+                    return s;
+                }
+            }
+
+            object = create_key_object(RSA, prov_for_key);
+            if (!object)
+            {
+                free(cng_blob);
+                free(legacy_blob);
+                if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+                return NTE_NO_MEMORY;
+            }
+
+            {
+                NTSTATUS status = BCryptImportKeyPair(BCRYPT_RSA_ALG_HANDLE, NULL, import_type,
+                                                      &object->key.bcrypt_key, cng_blob, cng_blob_len, 0);
+                if (status != STATUS_SUCCESS)
+                {
+                    WARN("BCryptImportKeyPair failed %#lx\n", status);
+                    free(cng_blob);
+                    free(legacy_blob);
+                    free(object);
+                    if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+                    return map_ntstatus(status);
+                }
+            }
+
+            /* Set properties */
+            set_object_property(object, NCRYPT_LENGTH_PROPERTY, (BYTE *)&bitlen, sizeof(bitlen));
+            set_object_property(object, BCRYPT_PUBLIC_KEY_LENGTH, (BYTE *)&bitlen, sizeof(bitlen));
+            set_object_property(object, NCRYPT_PROVIDER_HANDLE_PROPERTY, (BYTE *)&prov_for_key, sizeof(prov_for_key));
+
+            *phKey = (NCRYPT_KEY_HANDLE)object;
+
+            free(cng_blob);
+            free(legacy_blob);
+        }
+    }
+
+    if (hLegacyKey == 0) CryptDestroyKey(legacy_key);
+    return ERROR_SUCCESS;
 }
