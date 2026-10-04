@@ -127,6 +127,100 @@ HalpLegacyTranslateVector(
     }
 }
 
+/**
+ * @brief
+ * Returns the lines of a requirement window that the PIC really has.
+ *
+ * @param[in] Source
+ * The requirement. Its window is in bus-relative line numbers, and
+ * a device that accepts any line asks for all of MAXULONG.
+ *
+ * @remarks
+ * Clamping here is what lets a wide-open window be arbitrated at
+ * all. A PCI function reports its line requirement as 0 to
+ * MAXULONG and leaves the routing to whoever is above it, so a
+ * translator that insisted on mapping both ends would reject every
+ * one of them.
+ */
+static
+ULONG
+NTAPI
+HalpGetLinesInWindow(
+    _In_ PIO_RESOURCE_DESCRIPTOR Source)
+{
+    ULONG Minimum = Source->u.Interrupt.MinimumVector;
+    ULONG Maximum = Source->u.Interrupt.MaximumVector;
+    ULONG Lines = 0;
+    ULONG Line;
+
+    for (Line = Minimum; (Line <= Maximum) && (Line < HALP_ISA_LINE_COUNT); Line++)
+    {
+        if (HalpLineToVector(Line) != 0)
+            Lines |= HALP_ISA_LINE_BIT(Line);
+    }
+
+    /* IRQ 2 is the cascade, a device set to it is wired to IRQ 9 */
+    if (Lines & HALP_ISA_LINE_BIT(HALP_ISA_CASCADE_LINE))
+    {
+        Lines &= ~HALP_ISA_LINE_BIT(HALP_ISA_CASCADE_LINE);
+        Lines |= HALP_ISA_LINE_BIT(HALP_ISA_CASCADE_TARGET);
+    }
+
+    return Lines;
+}
+
+/* Writes one vector alternative for each run of consecutive lines, or only counts them */
+static
+ULONG
+NTAPI
+HalpBuildVectorAlternatives(
+    _In_ PIO_RESOURCE_DESCRIPTOR Source,
+    _In_ ULONG Lines,
+    _Out_opt_ PIO_RESOURCE_DESCRIPTOR Output)
+{
+    ULONG Count = 0;
+    ULONG First, Last;
+
+    for (First = 0; First < HALP_ISA_LINE_COUNT; First = Last + 1)
+    {
+        Last = First;
+        if (!(Lines & HALP_ISA_LINE_BIT(First)))
+            continue;
+
+        while ((Last + 1 < HALP_ISA_LINE_COUNT) && (Lines & HALP_ISA_LINE_BIT(Last + 1)))
+        {
+            Last++;
+        }
+
+        if (Output != NULL)
+        {
+            Output[Count] = *Source;
+            if (Count > 0)
+                Output[Count].Option = IO_RESOURCE_ALTERNATIVE;
+
+            Output[Count].u.Interrupt.MinimumVector = HalpLineToVector(First);
+            Output[Count].u.Interrupt.MaximumVector = HalpLineToVector(Last);
+        }
+
+        Count++;
+    }
+
+    return Count;
+}
+
+/**
+ * @brief
+ * Translates a requirement window of interrupt lines into the
+ * system vectors they map to, one alternative per run of lines.
+ *
+ * @remarks
+ * A line the PIC does not have is dropped from the window instead
+ * of failing the whole translation, because the window a PCI
+ * function reports covers every line there could be. A window that
+ * holds no usable line yields no alternative, which leaves that one
+ * requirement unsatisfiable and the rest of the device's
+ * requirements alone.
+ */
 static
 CODE_SEG("PAGE")
 NTSTATUS
@@ -139,7 +233,7 @@ HalpLegacyTranslateVectorRange(
     _Out_ PIO_RESOURCE_DESCRIPTOR *Target)
 {
     PIO_RESOURCE_DESCRIPTOR Output;
-    ULONG First, Last;
+    ULONG Lines, Count;
 
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PhysicalDeviceObject);
@@ -149,23 +243,43 @@ HalpLegacyTranslateVectorRange(
     *TargetCount = 0;
     *Target = NULL;
 
-    /* A range with an end that has no vector drops out, which is not an error */
-    First = HalpLineToVector(Source->u.Interrupt.MinimumVector);
-    Last = HalpLineToVector(Source->u.Interrupt.MaximumVector);
-    if ((First == 0) || (Last == 0))
+    Lines = HalpGetLinesInWindow(Source);
+    Count = HalpBuildVectorAlternatives(Source, Lines, NULL);
+    if (Count == 0)
         return STATUS_TRANSLATION_COMPLETE;
 
-    Output = ExAllocatePoolWithTag(PagedPool, sizeof(*Output), TAG_HAL);
+    Output = ExAllocatePoolWithTag(PagedPool, Count * sizeof(*Output), TAG_HAL);
     if (Output == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    *Output = *Source;
-    Output->u.Interrupt.MinimumVector = First;
-    Output->u.Interrupt.MaximumVector = Last;
+    HalpBuildVectorAlternatives(Source, Lines, Output);
 
-    *TargetCount = 1;
+    *TargetCount = Count;
     *Target = Output;
     return STATUS_TRANSLATION_COMPLETE;
+}
+
+/* The arbiter of the bus FDO takes the lines as they are, so leave them alone */
+static
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+HalpLegacyTranslateBusLineRange(
+    _Inout_opt_ PVOID Context,
+    _In_ PIO_RESOURCE_DESCRIPTOR Source,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PULONG TargetCount,
+    _Out_ PIO_RESOURCE_DESCRIPTOR *Target)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Source);
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+
+    PAGED_CODE();
+
+    *TargetCount = 0;
+    *Target = NULL;
+    return STATUS_NOT_SUPPORTED;
 }
 
 /* Checks if IRQ 9 stands for IRQ 2, which is when a device takes IRQ 2 but not IRQ 9 */
@@ -549,7 +663,7 @@ HalpLegacyPCQueryIrqTranslator(
 
     HalpFillIrqTranslator(Translator,
                           HalpLegacyTranslateVector,
-                          HalpLegacyTranslateVectorRange);
+                          HalpLegacyTranslateBusLineRange);
     return STATUS_SUCCESS;
 }
 
