@@ -885,9 +885,30 @@ KiSetPriorityThread(IN PKTHREAD Thread,
             }
             else if (Thread->State == DeferredReady)
             {
-                /* FIXME: TODO */
-                DPRINT1("Deferred state not yet supported\n");
-                ASSERT(FALSE);
+                /* The thread sits on a processor's deferred ready list, so lock that one */
+                Processor = Thread->DeferredProcessor;
+                Prcb = KiProcessorBlock[Processor];
+                KiAcquirePrcbLock(Prcb);
+
+                /* Make sure it is still deferred ready there */
+                if ((Thread->State == DeferredReady) &&
+                    (Thread->DeferredProcessor == (ULONG)Prcb->Number))
+                {
+                    /*
+                     * No queue holds it and the ready summary does not know it yet, so
+                     * the new priority is simply what it will be readied at.
+                     */
+                    Thread->Priority = (SCHAR)Priority;
+
+                    /* Release the PRCB lock */
+                    KiReleasePrcbLock(Prcb);
+                }
+                else
+                {
+                    /* Thread moved, release lock and restart */
+                    KiReleasePrcbLock(Prcb);
+                    continue;
+                }
             }
             else
             {
