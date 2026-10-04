@@ -31,6 +31,52 @@ typedef struct
 /* The driver flags bit that says the ICD, not GDI, describes a DC's pixel formats */
 #define OPENGL_ICD_PIXELFORMATS 0x1
 
+/*
+ * <d3dkmthk.h> hides the adapter type behind a DXGKDDI_INTERFACE_VERSION gate of WIN8
+ * while the tree targets Vista, so the parts of it this file reads are spelled out,
+ * the way gdi32_vista does for the structures it needs.
+ */
+#if (DXGKDDI_INTERFACE_VERSION < DXGKDDI_INTERFACE_VERSION_WIN8)
+
+#define KMTQAITYPE_ADAPTERTYPE 15
+
+typedef struct _D3DKMT_ADAPTERTYPE
+{
+    union
+    {
+        struct
+        {
+            UINT RenderSupported       : 1;
+            UINT DisplaySupported      : 1;
+            UINT SoftwareDevice        : 1;
+            UINT PostDevice            : 1;
+            UINT HybridDiscrete        : 1;
+            UINT HybridIntegrated      : 1;
+            UINT IndirectDisplayDevice : 1;
+            UINT Reserved              : 25;
+        };
+        UINT Value;
+    };
+} D3DKMT_ADAPTERTYPE;
+
+typedef struct _D3DKMT_ADAPTERINFO
+{
+    D3DKMT_HANDLE hAdapter;
+    LUID          AdapterLuid;
+    ULONG         NumOfSources;
+    BOOL          bPrecisePresentRegionsPreferred;
+} D3DKMT_ADAPTERINFO;
+
+typedef struct _D3DKMT_ENUMADAPTERS2
+{
+    ULONG               NumAdapters;
+    D3DKMT_ADAPTERINFO* pAdapters;
+} D3DKMT_ENUMADAPTERS2;
+
+NTSTATUS WINAPI D3DKMTEnumAdapters2(_Inout_ D3DKMT_ENUMADAPTERS2*);
+
+#endif
+
 typedef enum
 {
     OGL_CD_NOT_QUERIED,
@@ -131,6 +177,106 @@ extern BOOL APIENTRY GdiSetPixelFormat(HDC hdc, INT ipfd);
 extern BOOL APIENTRY GdiSwapBuffers(HDC hdc);
 
 /**
+ * @brief Reads an adapter's type, which says what part it plays on a hybrid system.
+ *
+ * @param hAdapter The adapter to ask.
+ * @param pType Receives the type bits.
+ *
+ * @return TRUE when the adapter answered.
+ */
+static BOOL IntGetAdapterType(D3DKMT_HANDLE hAdapter, D3DKMT_ADAPTERTYPE* pType)
+{
+    D3DKMT_QUERYADAPTERINFO QueryInfo;
+
+    ZeroMemory(pType, sizeof(*pType));
+    ZeroMemory(&QueryInfo, sizeof(QueryInfo));
+    QueryInfo.hAdapter = hAdapter;
+    QueryInfo.Type = KMTQAITYPE_ADAPTERTYPE;
+    QueryInfo.pPrivateDriverData = pType;
+    QueryInfo.PrivateDriverDataSize = sizeof(*pType);
+
+    return NT_SUCCESS(D3DKMTQueryAdapterInfo(&QueryInfo));
+}
+
+/**
+ * @brief Finds the adapter that renders for a display driven by another one.
+ *
+ * On a hybrid system the panel hangs off the integrated adapter, or off no adapter at
+ * all when the display is indirect, while the OpenGL driver belongs to the discrete one.
+ * Rendering has to follow the driver, so the display's adapter is swapped for its
+ * partner here.
+ *
+ * @param DisplayType The type of the adapter the device context sits on.
+ * @param phAdapter Receives the adapter to render with, left alone when there is none.
+ *
+ * @return TRUE when another adapter took over.
+ */
+static BOOL IntGetHybridRenderAdapter(D3DKMT_ADAPTERTYPE DisplayType, D3DKMT_HANDLE* phAdapter)
+{
+    D3DKMT_ENUMADAPTERS2 Enum;
+    D3DKMT_CLOSEADAPTER CloseAdapter;
+    D3DKMT_ADAPTERTYPE Type;
+    ULONG Index, Chosen = 0;
+    BOOL Found = FALSE;
+
+    ZeroMemory(&Enum, sizeof(Enum));
+    if (!NT_SUCCESS(D3DKMTEnumAdapters2(&Enum)) || (Enum.NumAdapters == 0))
+        return FALSE;
+
+    Enum.pAdapters = HeapAlloc(GetProcessHeap(), 0,
+                               Enum.NumAdapters * sizeof(D3DKMT_ADAPTERINFO));
+    if (!Enum.pAdapters)
+        return FALSE;
+
+    if (!NT_SUCCESS(D3DKMTEnumAdapters2(&Enum)))
+    {
+        HeapFree(GetProcessHeap(), 0, Enum.pAdapters);
+        return FALSE;
+    }
+
+    for (Index = 0; Index < Enum.NumAdapters; Index++)
+    {
+        if (!IntGetAdapterType(Enum.pAdapters[Index].hAdapter, &Type))
+            continue;
+
+        /* An indirect display is driven by whichever adapter the firmware posted */
+        if (DisplayType.IndirectDisplayDevice ? Type.PostDevice : Type.HybridDiscrete)
+        {
+            Chosen = Index;
+            Found = TRUE;
+            break;
+        }
+    }
+
+    if (Found)
+    {
+        TRACE("Rendering on adapter %lu rather than the one driving the display.\n", Chosen);
+
+        ZeroMemory(&CloseAdapter, sizeof(CloseAdapter));
+        CloseAdapter.hAdapter = *phAdapter;
+        D3DKMTCloseAdapter(&CloseAdapter);
+
+        *phAdapter = Enum.pAdapters[Chosen].hAdapter;
+        Enum.pAdapters[Chosen].hAdapter = 0;
+    }
+
+    /* Every adapter the enumeration opened and nobody kept */
+    for (Index = 0; Index < Enum.NumAdapters; Index++)
+    {
+        if (Enum.pAdapters[Index].hAdapter == 0)
+            continue;
+
+        ZeroMemory(&CloseAdapter, sizeof(CloseAdapter));
+        CloseAdapter.hAdapter = Enum.pAdapters[Index].hAdapter;
+        D3DKMTCloseAdapter(&CloseAdapter);
+    }
+
+    HeapFree(GetProcessHeap(), 0, Enum.pAdapters);
+
+    return Found;
+}
+
+/**
  * @brief Asks a WDDM adapter for the ICD it wants loaded.
  *
  * A WDDM driver does not answer the OPENGL_GETINFO escape and has no entry under
@@ -154,6 +300,7 @@ static BOOL IntGetWddmIcd(HDC hdc, LPWSTR DllName, DWORD cchDllName, PULONG pVer
     D3DKMT_QUERYADAPTERINFO QueryInfo;
     D3DKMT_CLOSEADAPTER CloseAdapter;
     D3DKMT_OPENGLINFO OpenGlInfo;
+    D3DKMT_ADAPTERTYPE AdapterType;
     NTSTATUS Status;
 
     ZeroMemory(&OpenAdapter, sizeof(OpenAdapter));
@@ -164,6 +311,13 @@ static BOOL IntGetWddmIcd(HDC hdc, LPWSTR DllName, DWORD cchDllName, PULONG pVer
     {
         TRACE("No WDDM adapter behind this DC (0x%08lx).\n", Status);
         return FALSE;
+    }
+
+    /* The adapter driving the display is not always the one holding the OpenGL driver */
+    if (IntGetAdapterType(OpenAdapter.hAdapter, &AdapterType) &&
+        (AdapterType.HybridIntegrated || AdapterType.IndirectDisplayDevice))
+    {
+        IntGetHybridRenderAdapter(AdapterType, &OpenAdapter.hAdapter);
     }
 
     ZeroMemory(&OpenGlInfo, sizeof(OpenGlInfo));
