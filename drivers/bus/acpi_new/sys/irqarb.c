@@ -27,6 +27,10 @@
 #define UACPINT_MSI_MAX_COUNT   32
 #define UACPINT_MSI_RECORD_MAX  64
 
+/* Range attributes of a placed GSIV, telling how it is triggered */
+#define UACPINT_RANGE_LEVEL     0x04
+#define UACPINT_RANGE_LATCHED   0x08
+
 /* Lines 0 to 15 are the legacy ISA inputs */
 #define UACPINT_ISA_GSIV_COUNT  16
 
@@ -1234,6 +1238,24 @@ UacpiNtPrtResolveGsiv(
     return Status;
 }
 
+/*
+ * A GSIV already placed as a shared level triggered line may be joined whatever
+ * the new requirement's disposition says, because every device on the line sees
+ * the same assertion. An edge triggered one may not: the second device would
+ * lose its edges.
+ */
+static
+BOOLEAN
+NTAPI
+UacpiNtIrqShareableRange(
+    _In_ PVOID Context,
+    _In_ PRTL_RANGE Range)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    return (Range->Attributes & UACPINT_RANGE_LEVEL) && (Range->Flags & RTL_RANGE_SHARED);
+}
+
 /* Resolve the _PRT line once per entry. Boot reservations keep the firmware IRQ. */
 static
 NTSTATUS
@@ -1249,6 +1271,18 @@ UacpiNtIrqPreprocessEntry(
 
     if (!State->Entry || !State->Entry->PhysicalDeviceObject)
         return STATUS_SUCCESS;
+
+    /* Tag the triggering so UacpiNtIrqShareableRange can tell the two apart */
+    State->RangeAttributes &= ~(UACPINT_RANGE_LEVEL | UACPINT_RANGE_LATCHED);
+    if (State->Alternatives &&
+        (State->Alternatives->Descriptor->Flags & CM_RESOURCE_INTERRUPT_LATCHED))
+    {
+        State->RangeAttributes |= UACPINT_RANGE_LATCHED;
+    }
+    else
+    {
+        State->RangeAttributes |= UACPINT_RANGE_LEVEL;
+    }
 
     if (State->Flags & ARBITER_STATE_FLAG_BOOT)
         return STATUS_SUCCESS;
@@ -1630,6 +1664,7 @@ UacpiNtIrqArbiterInitialize(
     UacpiNtIrqArbiter.CommitAllocation = UacpiNtIrqCommitAllocation;
     UacpiNtIrqArbiter.TestAllocation = UacpiNtIrqTestAllocation;
     UacpiNtIrqArbiter.RollbackAllocation = UacpiNtIrqRollbackAllocation;
+    UacpiNtIrqArbiter.ConflictCallback = UacpiNtIrqShareableRange;
     UacpiNtIrqArbFdoSelf = Fdo->Shared.Self;
 
     Status = ArbiterLibInitializeInstance(&UacpiNtIrqArbiter,
@@ -1653,7 +1688,7 @@ UacpiNtIrqArbiterInitialize(
         RtlAddRange(UacpiNtIrqArbiter.Allocation,
                     SciGsiv,
                     SciGsiv,
-                    0,
+                    UACPINT_RANGE_LEVEL,
                     RTL_RANGE_LIST_ADD_SHARED,
                     NULL,
                     Fdo->Shared.Self);
