@@ -28,6 +28,9 @@ typedef struct
 /* The ICD interface this loader speaks, which is the only one there has ever been */
 #define OPENGL_ICD_INTERFACE_VERSION 2
 
+/* The driver flags bit that says the ICD, not GDI, describes a DC's pixel formats */
+#define OPENGL_ICD_PIXELFORMATS 0x1
+
 typedef enum
 {
     OGL_CD_NOT_QUERIED,
@@ -468,15 +471,12 @@ LoadIcd:
         DrvSetCallbackProcs(ARRAYSIZE(callbacks), callbacks);
     }
 
-    /* Get the DLL exports */
-#define DRV_LOAD(x) do                                  \
-{                                                       \
-    data->x = (void*)GetProcAddress(data->hModule, #x); \
-    if(!data->x) {                                      \
-        ERR("%S lacks " #x "!\n", DllName);             \
-        goto fail;                                      \
-    }                                                   \
-} while(0)
+    /*
+     * Get the DLL exports. Only a handful are the contract; the rest are offers, and a
+     * WGL call that needs one an ICD does not serve fails on its own.
+     */
+#define DRV_LOAD(x) \
+    data->x = (void*)GetProcAddress(data->hModule, #x)
     DRV_LOAD(DrvCopyContext);
     DRV_LOAD(DrvCreateContext);
     DRV_LOAD(DrvCreateLayerContext);
@@ -493,14 +493,30 @@ LoadIcd:
     DRV_LOAD(DrvShareLists);
     DRV_LOAD(DrvSwapBuffers);
     DRV_LOAD(DrvSwapLayerBuffers);
+    DRV_LOAD(DrvSwapMultipleBuffers);
+    DRV_LOAD(DrvPresentBuffers);
 #undef DRV_LOAD
 
-    /* An ICD may serve these two or not, so they are only used where present */
-#define DRV_LOAD_OPTIONAL(x) \
-    data->x = (void*)GetProcAddress(data->hModule, #x)
-    DRV_LOAD_OPTIONAL(DrvSwapMultipleBuffers);
-    DRV_LOAD_OPTIONAL(DrvPresentBuffers);
-#undef DRV_LOAD_OPTIONAL
+    /* A context has to be creatable, usable and destroyable, whatever else is missing */
+    if(!data->DrvCreateContext && !data->DrvCreateLayerContext)
+    {
+        ERR("%S creates no context!\n", DllName);
+        goto fail;
+    }
+
+    if(!data->DrvDeleteContext || !data->DrvSetContext || !data->DrvReleaseContext)
+    {
+        ERR("%S cannot make a context current!\n", DllName);
+        goto fail;
+    }
+
+    /* A driver that owns the pixel formats of its DCs has to serve all three */
+    if((Flags & OPENGL_ICD_PIXELFORMATS) &&
+       (!data->DrvDescribePixelFormat || !data->DrvSetPixelFormat || !data->DrvSwapBuffers))
+    {
+        ERR("%S owns the pixel formats but does not serve them!\n", DllName);
+        goto fail;
+    }
 
     /*
      * Let's see if GDI should handle this instead of the ICD DLL. A WDDM adapter is
