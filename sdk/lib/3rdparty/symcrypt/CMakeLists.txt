@@ -176,8 +176,8 @@ set(KM_SOURCE ${SOURCE})
 list(REMOVE_ITEM KM_SOURCE lib/env_windowsUserModeWin8_1.c lib/cpuid_um.c)
 list(APPEND KM_SOURCE lib/env_reactosKernelmode.c)
 
-add_library(symcryptk ${KM_SOURCE})
-target_compile_definitions(symcryptk PUBLIC __WINESRC__ SYMCRYPT_PLATFORM_WINE)
+add_library(symcryptk STATIC ${KM_SOURCE})
+target_compile_definitions(symcryptk PUBLIC SYMCRYPT_PLATFORM_WINE)
 target_include_directories(symcryptk PUBLIC ${REACTOS_SOURCE_DIR}/sdk/lib/3rdparty/symcrypt/inc)
 target_include_directories(symcryptk PUBLIC ${REACTOS_SOURCE_DIR}/sdk/lib/3rdparty/symcrypt/lib)
 
