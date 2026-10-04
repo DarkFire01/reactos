@@ -3,6 +3,7 @@ spec2def(ncrypt.dll ncrypt.spec ADD_IMPORTLIB NO_PRIVATE_WARNINGS)
 
 add_library(ncrypt MODULE
     main.c
+    ssl.c
     ${CMAKE_CURRENT_BINARY_DIR}/ncrypt.def
     ${CMAKE_CURRENT_BINARY_DIR}/ncrypt_stubs.c)
 
