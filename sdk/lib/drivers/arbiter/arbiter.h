@@ -17,15 +17,15 @@
  * The arbiter allocation engine walks the alternatives in increasing priority.
  * An ordinary alternative's priority is its ordering-list index biased by one
  * (except for IO_RESOURCE_PREFERRED, so preferred ranges sort first).
- * Once the orderings are exhausted it gets one final whole-window pass
- * at (PREFERRED_)RESERVED before getting set to EXHAUSTED.
+ * Once the orderings are exhausted it gets one final pass over its own whole
+ * window at (PREFERRED_)FULL_RANGE before getting set to EXHAUSTED.
  *
  * Public as any driver can modify these of any range that's passed down.
  */
-#define ARBITER_PRIORITY_NULL               0x00000000
-#define ARBITER_PRIORITY_PREFERRED_RESERVED 0x7FFFFFFD
-#define ARBITER_PRIORITY_RESERVED           0x7FFFFFFE
-#define ARBITER_PRIORITY_EXHAUSTED          0x7FFFFFFF
+#define ARBITER_PRIORITY_NULL                 0x00000000
+#define ARBITER_PRIORITY_PREFERRED_FULL_RANGE 0x7FFFFFFD
+#define ARBITER_PRIORITY_FULL_RANGE           0x7FFFFFFE
+#define ARBITER_PRIORITY_EXHAUSTED            0x7FFFFFFF
 
 /* ARBITER_ALTERNATIVE.Flags */
 #define ARBITER_ALTERNATIVE_FLAG_SHARED            0x00000001  // CmResourceShareShared
@@ -56,10 +56,11 @@
 #define ARBITER_RANGE_INACCESSIBLE          0x40
 
 /* ARBITER_ALLOCATION_STATE.Flags */
-#define ARBITER_STATE_FLAG_BOOT             0x0004  // reserving a firmware boot config
+#define ARBITER_STATE_FLAG_BOOT             0x0002  // reserving a firmware boot config
 #define ARBITER_STATE_FLAG_NULL_CONFLICT_OK 0x0008  // a NULL-owner conflict is OK
 #define ARBITER_STATE_FLAG_WORKSPACE        0x0010  // WorkSpace holds a pool block to free
 #define ARBITER_STATE_FLAG_MCFG_CONFLICT    0x0020  // blocked by the MMCONFIG window
+#define ARBITER_STATE_FLAG_NO_RETRY         0x0040  // the placement must not be varied
 
 typedef struct _ARBITER_ALTERNATIVE
 {
