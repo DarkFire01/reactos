@@ -149,11 +149,22 @@ DxStartupDxgkInt(VOID)
         DPRINT("DxStartupDxgkInt: no WDDM stack (0x%lX); legacy display path\n", Status);
 }
 
+/* The three entry points below answer for themselves only where dxgkrnl offers nothing */
+typedef BOOLEAN (NTAPI *PFN_DXGK_CHECKEXCLUSIVEOWNERSHIP)(VOID);
+typedef NTSTATUS (NTAPI *PFN_DXGK_GETPROCESSPRIORITYCLASS)(HANDLE, D3DKMT_SCHEDULINGPRIORITYCLASS *);
+typedef NTSTATUS (NTAPI *PFN_DXGK_SETPROCESSPRIORITYCLASS)(HANDLE, D3DKMT_SCHEDULINGPRIORITYCLASS);
+
 BOOLEAN
 APIENTRY
 NtGdiDdDDICheckExclusiveOwnership(VOID)
 {
-    /* We don't support DWM at this time, exclusive ownership is always false. */
+    PFN_DXGK_CHECKEXCLUSIVEOWNERSHIP pfn;
+
+    pfn = (PFN_DXGK_CHECKEXCLUSIVEOWNERSHIP)DxgkGetD3DKMTSlot(DXGK_SLOT_CheckExclusiveOwnership);
+    if (pfn != NULL)
+        return pfn();
+
+    /* Nothing owns a VidPN source exclusively while there is no dxgkrnl to ask. */
     DXGKMT_TRACE_CANNED("CheckExclusiveOwnership");
     return FALSE;
 }
@@ -171,6 +182,104 @@ C_ASSERT(FIELD_OFFSET(DL_OPEN_ADAPTER, hAdapter) == sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DL_OPEN_ADAPTER, AdapterLuid) == sizeof(PVOID) + sizeof(D3DKMT_HANDLE));
 
 typedef NTSTATUS (NTAPI *PFN_DL_OPEN_ADAPTER)(_Inout_ PDL_OPEN_ADAPTER);
+
+/* dxgkrnl decides for itself whether a device name is one of its adapters */
+typedef NTSTATUS (NTAPI *PFN_DXGK_VALIDATEDEVICENAME)(_In_ PUNICODE_STRING);
+
+/**
+ * @brief Hands a display's device object to dxgkrnl and gets its adapter back.
+ *
+ * @param DeviceObject The device object, referenced by the caller for the call.
+ * @param phAdapter Receives the adapter handle.
+ * @param pAdapterLuid Receives the adapter's LUID.
+ *
+ * @return STATUS_PROCEDURE_NOT_FOUND when dxgkrnl left the slot empty.
+ */
+static
+NTSTATUS
+DxgkpOpenAdapterByDeviceObject(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Out_ D3DKMT_HANDLE *phAdapter,
+    _Out_ LUID *pAdapterLuid)
+{
+    PFN_DL_OPEN_ADAPTER pfnOpenAdapter;
+    DL_OPEN_ADAPTER Open;
+    NTSTATUS Status;
+
+    pfnOpenAdapter = (PFN_DL_OPEN_ADAPTER)DxgkGetD3DKMTSlot(DXGK_SLOT_OpenAdapter);
+    if (pfnOpenAdapter == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenAdapter");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    RtlZeroMemory(&Open, sizeof(Open));
+    Open.DeviceObject = DeviceObject;
+
+    Status = pfnOpenAdapter(&Open);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *phAdapter = Open.hAdapter;
+    *pAdapterLuid = Open.AdapterLuid;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Opens the adapter an NT device name leads to.
+ *
+ * The name a caller hands D3DKMTOpenAdapterFromDeviceName is a device interface path, which
+ * names the adapter's own device object rather than a display.
+ *
+ * @param DeviceName The NT name to resolve.
+ * @param phAdapter Receives the adapter handle.
+ * @param pAdapterLuid Receives the adapter's LUID.
+ *
+ * @return The failure of the name lookup, or what dxgkrnl answered.
+ */
+static
+NTSTATUS
+DxgkpOpenAdapterByName(
+    _In_ PUNICODE_STRING DeviceName,
+    _Out_ D3DKMT_HANDLE *phAdapter,
+    _Out_ LUID *pAdapterLuid)
+{
+    PFN_DXGK_VALIDATEDEVICENAME pfnValidateDeviceName;
+    PDEVICE_OBJECT DeviceObject;
+    PFILE_OBJECT FileObject;
+    NTSTATUS Status;
+
+    /* Ask dxgkrnl first, so a name belonging to something else never reaches the open */
+    pfnValidateDeviceName =
+        (PFN_DXGK_VALIDATEDEVICENAME)DxgkGetD3DKMTSlot(DXGK_SLOT_ValidateDeviceName);
+    if (pfnValidateDeviceName != NULL)
+    {
+        Status = pfnValidateDeviceName(DeviceName);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("win32k: %wZ is not a display adapter, 0x%lX\n", DeviceName, Status);
+            return STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    Status = IoGetDeviceObjectPointer(DeviceName, 0, &FileObject, &DeviceObject);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("win32k: no device object for %wZ, 0x%lX\n", DeviceName, Status);
+        return Status;
+    }
+
+    /* Only the device object is needed, and it has to stay while dxgkrnl looks at it */
+    ObReferenceObject(DeviceObject);
+    ObDereferenceObject(FileObject);
+
+    Status = DxgkpOpenAdapterByDeviceObject(DeviceObject, phAdapter, pAdapterLuid);
+
+    ObDereferenceObject(DeviceObject);
+
+    return Status;
+}
 
 /**
  * @brief Opens the dxgkrnl adapter that drives a graphics device.
@@ -193,11 +302,9 @@ DxgkpOpenAdapterForDevice(
     _Out_ LUID *pAdapterLuid,
     _Out_ ULONG *pVidPnSourceId)
 {
-    PFN_DL_OPEN_ADAPTER pfnOpenAdapter;
     PDEVICE_OBJECT DeviceObject;
     PFILE_OBJECT FileObject;
     UNICODE_STRING ustrDevice;
-    DL_OPEN_ADAPTER Open;
     NTSTATUS Status;
 
     if (pGraphicsDevice == NULL)
@@ -213,13 +320,6 @@ DxgkpOpenAdapterForDevice(
         return STATUS_NOT_SUPPORTED;
     }
 
-    pfnOpenAdapter = (PFN_DL_OPEN_ADAPTER)DxgkGetD3DKMTSlot(DXGK_SLOT_OpenAdapter);
-    if (pfnOpenAdapter == NULL)
-    {
-        DXGKMT_TRACE_NOPROC("OpenAdapter");
-        return STATUS_PROCEDURE_NOT_FOUND;
-    }
-
     RtlInitUnicodeString(&ustrDevice, pGraphicsDevice->szNtDeviceName);
     Status = IoGetDeviceObjectPointer(&ustrDevice, 0, &FileObject, &DeviceObject);
     if (!NT_SUCCESS(Status))
@@ -232,9 +332,7 @@ DxgkpOpenAdapterForDevice(
     ObReferenceObject(DeviceObject);
     ObDereferenceObject(FileObject);
 
-    RtlZeroMemory(&Open, sizeof(Open));
-    Open.DeviceObject = DeviceObject;
-    Status = pfnOpenAdapter(&Open);
+    Status = DxgkpOpenAdapterByDeviceObject(DeviceObject, phAdapter, pAdapterLuid);
 
     ObDereferenceObject(DeviceObject);
 
@@ -244,8 +342,6 @@ DxgkpOpenAdapterForDevice(
         return Status;
     }
 
-    *phAdapter = Open.hAdapter;
-    *pAdapterLuid = Open.AdapterLuid;
     *pVidPnSourceId = pGraphicsDevice->VidPnSourceId;
 
     return STATUS_SUCCESS;
@@ -257,7 +353,12 @@ APIENTRY
 NtGdiDdDDIGetProcessSchedulingPriorityClass(_In_  HANDLE unnamedParam1,
                                             _Out_ D3DKMT_SCHEDULINGPRIORITYCLASS *unnamedParam2)
 {
-    UNREFERENCED_PARAMETER(unnamedParam1);
+    PFN_DXGK_GETPROCESSPRIORITYCLASS pfn;
+
+    pfn = (PFN_DXGK_GETPROCESSPRIORITYCLASS)DxgkGetD3DKMTSlot(
+              DXGK_SLOT_GetProcessSchedulingPriorityClass);
+    if (pfn != NULL)
+        return pfn(unnamedParam1, unnamedParam2);
 
     DXGKMT_TRACE_CANNED("GetProcessSchedulingPriorityClass");
 
@@ -273,8 +374,13 @@ APIENTRY
 NtGdiDdDDISetProcessSchedulingPriorityClass(_In_ HANDLE unnamedParam1,
                                             _In_ D3DKMT_SCHEDULINGPRIORITYCLASS unnamedParam2)
 {
-    UNREFERENCED_PARAMETER(unnamedParam1);
-    UNREFERENCED_PARAMETER(unnamedParam2);
+    PFN_DXGK_SETPROCESSPRIORITYCLASS pfn;
+
+    pfn = (PFN_DXGK_SETPROCESSPRIORITYCLASS)DxgkGetD3DKMTSlot(
+              DXGK_SLOT_SetProcessSchedulingPriorityClass);
+    if (pfn != NULL)
+        return pfn(unnamedParam1, unnamedParam2);
+
     DXGKMT_TRACE_CANNED("SetProcessSchedulingPriorityClass");
     return STATUS_SUCCESS;
 }
@@ -436,16 +542,56 @@ NTSTATUS
 APIENTRY
 NtGdiDdDDIOpenAdapterFromDeviceName(_Inout_ D3DKMT_OPENADAPTERFROMDEVICENAME* unnamedParam1)
 {
+    WCHAR DeviceName[256];
+    D3DKMT_HANDLE hAdapter = 0;
+    LUID AdapterLuid = { 0, 0 };
+    UNICODE_STRING ustrDevice;
+    NTSTATUS Status;
+
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
-    if (!DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromDeviceName)
-    {
-        DXGKMT_TRACE_NOPROC("OpenAdapterFromDeviceName");
-        return STATUS_PROCEDURE_NOT_FOUND;
-    }
+    if (DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromDeviceName)
+        return DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromDeviceName(unnamedParam1);
 
-    return DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromDeviceName(unnamedParam1);
+    /* Take a copy before anything is decided on it, so it cannot change underneath */
+    _SEH2_TRY
+    {
+        Status = RtlStringCchCopyW(DeviceName,
+                                   RTL_NUMBER_OF(DeviceName),
+                                   unnamedParam1->pDeviceName);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    if (!NT_SUCCESS(Status))
+        return STATUS_INVALID_PARAMETER;
+
+    /* A device interface path reaches the object manager as \??\, not \\?\ */
+    if (DeviceName[0] == L'\\' && DeviceName[1] == L'\\')
+        DeviceName[1] = L'?';
+
+    RtlInitUnicodeString(&ustrDevice, DeviceName);
+
+    Status = DxgkpOpenAdapterByName(&ustrDevice, &hAdapter, &AdapterLuid);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    _SEH2_TRY
+    {
+        unnamedParam1->hAdapter = hAdapter;
+        unnamedParam1->AdapterLuid = AdapterLuid;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
 }
 
 
@@ -1727,4 +1873,912 @@ NtGdiDdDDISubmitPresentToHwQueue(_Inout_ PVOID unnamedParam1)
     /* No slot in the interface serves this one */
     DXGKMT_TRACE_NOPROC("SubmitPresentToHwQueue");
     return STATUS_PROCEDURE_NOT_FOUND;
+}
+
+/*
+ * The rest of the D3DKMT surface, the part a WDDM 2 user mode driver reaches for. Each
+ * argument is described by the caller and read by dxgkrnl, never here, so it travels as
+ * a plain pointer rather than a shape win32k would have to agree on.
+ */
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAcquireKeyedMutex(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_AcquireKeyedMutex);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("AcquireKeyedMutex");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAcquireKeyedMutex2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_AcquireKeyedMutex2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("AcquireKeyedMutex2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIChangeVideoMemoryReservation(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_ChangeVideoMemoryReservation);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("ChangeVideoMemoryReservation");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICheckMultiPlaneOverlaySupport2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CheckMultiPlaneOverlaySupport2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CheckMultiPlaneOverlaySupport2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIConfigureSharedResource(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_ConfigureSharedResource);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("ConfigureSharedResource");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateContextVirtual(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CreateContextVirtual);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CreateContextVirtual");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateKeyedMutex(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CreateKeyedMutex);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CreateKeyedMutex");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateKeyedMutex2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CreateKeyedMutex2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CreateKeyedMutex2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreatePagingQueue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CreatePagingQueue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CreatePagingQueue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyAllocation2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_DestroyAllocation2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("DestroyAllocation2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyKeyedMutex(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_DestroyKeyedMutex);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("DestroyKeyedMutex");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyPagingQueue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_DestroyPagingQueue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("DestroyPagingQueue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIEvict(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_Evict);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("Evict");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIFreeGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_FreeGpuVirtualAddress);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("FreeGpuVirtualAddress");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIGetOverlayState(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_GetOverlayState);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("GetOverlayState");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIInvalidateCache(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_InvalidateCache);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("InvalidateCache");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDILock2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_Lock2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("Lock2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIMakeResident(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_MakeResident);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("MakeResident");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIMapGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_MapGpuVirtualAddress);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("MapGpuVirtualAddress");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenKeyedMutex(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenKeyedMutex);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenKeyedMutex");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenKeyedMutex2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenKeyedMutex2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenKeyedMutex2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenNtHandleFromName(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenNtHandleFromName);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenNtHandleFromName");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenResourceFromNtHandle(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenResourceFromNtHandle);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenResourceFromNtHandle");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSyncObjectFromNtHandle(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenSyncObjectFromNtHandle);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenSyncObjectFromNtHandle");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSyncObjectFromNtHandle2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenSyncObjectFromNtHandle2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenSyncObjectFromNtHandle2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSyncObjectNtHandleFromName(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenSyncObjectNtHandleFromName);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenSyncObjectNtHandleFromName");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSynchronizationObject(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_OpenSynchronizationObject);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("OpenSynchronizationObject");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIPresentMultiPlaneOverlay2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_PresentMultiPlaneOverlay2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("PresentMultiPlaneOverlay2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryResourceInfoFromNtHandle(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_QueryResourceInfoFromNtHandle);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("QueryResourceInfoFromNtHandle");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReclaimAllocations2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_ReclaimAllocations2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("ReclaimAllocations2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReleaseKeyedMutex(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_ReleaseKeyedMutex);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("ReleaseKeyedMutex");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReleaseKeyedMutex2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_ReleaseKeyedMutex2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("ReleaseKeyedMutex2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReserveGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_ReserveGpuVirtualAddress);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("ReserveGpuVirtualAddress");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetContextInProcessSchedulingPriority(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SetContextInProcessSchedulingPriority);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SetContextInProcessSchedulingPriority");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISignalSynchronizationObjectFromCpu(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SignalSynchronizationObjectFromCpu);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SignalSynchronizationObjectFromCpu");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISignalSynchronizationObjectFromGpu(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SignalSynchronizationObjectFromGpu);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SignalSynchronizationObjectFromGpu");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISignalSynchronizationObjectFromGpu2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SignalSynchronizationObjectFromGpu2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SignalSynchronizationObjectFromGpu2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitCommand(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SubmitCommand);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SubmitCommand");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUnlock2(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_Unlock2);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("Unlock2");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUpdateGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_UpdateGpuVirtualAddress);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("UpdateGpuVirtualAddress");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIWaitForSynchronizationObjectFromCpu(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_WaitForSynchronizationObjectFromCpu);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("WaitForSynchronizationObjectFromCpu");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIWaitForSynchronizationObjectFromGpu(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_WaitForSynchronizationObjectFromGpu);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("WaitForSynchronizationObjectFromGpu");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+/* The one entry point here that is a parameter list rather than a block */
+typedef NTSTATUS (NTAPI *PFN_DXGK_SHAREOBJECTS)(ULONG, CONST D3DKMT_HANDLE *,
+                                                POBJECT_ATTRIBUTES, ULONG, HANDLE *);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIShareObjects(
+    _In_ ULONG ObjectCount,
+    _In_ CONST D3DKMT_HANDLE *Objects,
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ULONG DesiredAccess,
+    _Out_ HANDLE *SharedHandle)
+{
+    PFN_DXGK_SHAREOBJECTS pfn;
+
+    if (ObjectCount == 0 || Objects == NULL || SharedHandle == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = (PFN_DXGK_SHAREOBJECTS)DxgkGetD3DKMTSlot(DXGK_SLOT_ShareObjects);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("ShareObjects");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(ObjectCount, Objects, ObjectAttributes, DesiredAccess, SharedHandle);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryClockCalibration(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_QueryClockCalibration);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("QueryClockCalibration");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIMarkDeviceAsError(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_MarkDeviceAsError);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("MarkDeviceAsError");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICheckVidPnExclusiveOwnership(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CheckVidPnExclusiveOwnership);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CheckVidPnExclusiveOwnership");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryVideoMemoryInfo(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_QueryVideoMemoryInfo);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("QueryVideoMemoryInfo");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
 }

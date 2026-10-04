@@ -160,6 +160,245 @@ APIENTRY
 NtGdiDdDDISubmitPresentToHwQueue(
     _Inout_ PVOID unnamedParam1);
 
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAcquireKeyedMutex(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAcquireKeyedMutex2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIChangeVideoMemoryReservation(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICheckMultiPlaneOverlaySupport2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIConfigureSharedResource(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateContextVirtual(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateKeyedMutex(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateKeyedMutex2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreatePagingQueue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyAllocation2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyKeyedMutex(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyPagingQueue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIEvict(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIFreeGpuVirtualAddress(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIGetOverlayState(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIInvalidateCache(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDILock2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIMakeResident(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIMapGpuVirtualAddress(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenKeyedMutex(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenKeyedMutex2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenNtHandleFromName(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenResourceFromNtHandle(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSyncObjectFromNtHandle(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSyncObjectFromNtHandle2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSyncObjectNtHandleFromName(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSynchronizationObject(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIPresentMultiPlaneOverlay2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryResourceInfoFromNtHandle(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReclaimAllocations2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReleaseKeyedMutex(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReleaseKeyedMutex2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReserveGpuVirtualAddress(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetContextInProcessSchedulingPriority(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISignalSynchronizationObjectFromCpu(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISignalSynchronizationObjectFromGpu(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISignalSynchronizationObjectFromGpu2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitCommand(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUnlock2(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUpdateGpuVirtualAddress(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIWaitForSynchronizationObjectFromCpu(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIWaitForSynchronizationObjectFromGpu(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIShareObjects(
+    _In_ ULONG ObjectCount,
+    _In_ CONST D3DKMT_HANDLE *Objects,
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ULONG DesiredAccess,
+    _Out_ HANDLE *SharedHandle);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryClockCalibration(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIMarkDeviceAsError(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICheckVidPnExclusiveOwnership(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryVideoMemoryInfo(
+    _Inout_ PVOID unnamedParam1);
+
 /* Composition surface stubs, see ntuser/ntstubs.c */
 
 NTSTATUS

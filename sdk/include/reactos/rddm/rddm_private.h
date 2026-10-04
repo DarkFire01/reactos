@@ -186,9 +186,60 @@ SMgrRegisterGdiCallout(
 #define DXGK_SLOT_QueryVidPnExclusiveOwnership         206
 #define DXGK_SLOT_SetVidPnSourceHwProtection           217
 #define DXGK_SLOT_OpenAdapter                          7
+#define DXGK_SLOT_ValidateDeviceName                   100
 #define DXGK_SLOT_OpenAdapterFromLuid                  11
 #define DXGK_SLOT_EnumAdapters2                        9
 #define DXGK_SLOT_SetVidPnSourceOwner1                 50
+
+
+/* WDDM 2 and the NT handle based sharing, added for the OpenGL and D3D ICDs */
+#define DXGK_SLOT_ShareObjects                         16
+#define DXGK_SLOT_AcquireKeyedMutex                      72
+#define DXGK_SLOT_AcquireKeyedMutex2                     116
+#define DXGK_SLOT_ChangeVideoMemoryReservation           187
+#define DXGK_SLOT_CheckMultiPlaneOverlaySupport2         196
+#define DXGK_SLOT_ConfigureSharedResource                82
+#define DXGK_SLOT_CreateContextVirtual                   182
+#define DXGK_SLOT_CreateKeyedMutex                       69
+#define DXGK_SLOT_CreateKeyedMutex2                      114
+#define DXGK_SLOT_CreatePagingQueue                      173
+#define DXGK_SLOT_DestroyAllocation2                     184
+#define DXGK_SLOT_DestroyKeyedMutex                      71
+#define DXGK_SLOT_DestroyPagingQueue                     174
+#define DXGK_SLOT_Evict                                  167
+#define DXGK_SLOT_FreeGpuVirtualAddress                  179
+#define DXGK_SLOT_GetOverlayState                        87
+#define DXGK_SLOT_InvalidateCache                        177
+#define DXGK_SLOT_Lock2                                  175
+#define DXGK_SLOT_MakeResident                           166
+#define DXGK_SLOT_MapGpuVirtualAddress                   178
+#define DXGK_SLOT_OpenKeyedMutex                         70
+#define DXGK_SLOT_OpenKeyedMutex2                        115
+#define DXGK_SLOT_OpenNtHandleFromName                   17
+#define DXGK_SLOT_OpenResourceFromNtHandle               20
+#define DXGK_SLOT_OpenSyncObjectFromNtHandle             140
+#define DXGK_SLOT_OpenSyncObjectFromNtHandle2            141
+#define DXGK_SLOT_OpenSyncObjectNtHandleFromName         18
+#define DXGK_SLOT_OpenSynchronizationObject              29
+#define DXGK_SLOT_PresentMultiPlaneOverlay2              197
+#define DXGK_SLOT_QueryResourceInfoFromNtHandle          15
+#define DXGK_SLOT_ReclaimAllocations2                    198
+#define DXGK_SLOT_ReleaseKeyedMutex                      73
+#define DXGK_SLOT_ReleaseKeyedMutex2                     117
+#define DXGK_SLOT_ReserveGpuVirtualAddress               180
+#define DXGK_SLOT_SetContextInProcessSchedulingPriority  138
+#define DXGK_SLOT_SignalSynchronizationObjectFromCpu     170
+#define DXGK_SLOT_SignalSynchronizationObjectFromGpu     172
+#define DXGK_SLOT_SignalSynchronizationObjectFromGpu2    185
+#define DXGK_SLOT_SubmitCommand                          183
+#define DXGK_SLOT_Unlock2                                176
+#define DXGK_SLOT_UpdateGpuVirtualAddress                181
+#define DXGK_SLOT_WaitForSynchronizationObjectFromCpu    169
+#define DXGK_SLOT_WaitForSynchronizationObjectFromGpu    171
+#define DXGK_SLOT_QueryClockCalibration                  201
+#define DXGK_SLOT_MarkDeviceAsError                      218
+#define DXGK_SLOT_CheckVidPnExclusiveOwnership           88
+#define DXGK_SLOT_QueryVideoMemoryInfo                   186
 /* Every one of them takes a single pointer, so one shape covers the whole table. */
 typedef NTSTATUS (NTAPI *PFN_DXGK_D3DKMT)(PVOID);
 
