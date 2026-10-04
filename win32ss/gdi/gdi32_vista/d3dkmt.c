@@ -43,6 +43,17 @@ typedef struct _D3DKMT_QUERYVIDEOMEMORYINFO
 } D3DKMT_QUERYVIDEOMEMORYINFO;
 #endif
 
+/* Same for these two, which dxgkrnl answers through its own interface slots */
+NTSTATUS
+APIENTRY
+NtGdiDdDDICheckVidPnExclusiveOwnership(
+    _In_ CONST D3DKMT_CHECKVIDPNEXCLUSIVEOWNERSHIP* unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIQueryVideoMemoryInfo(
+    _Inout_ D3DKMT_QUERYVIDEOMEMORYINFO* unnamedParam1);
+
 #define D3DKMT_EMU_ADAPTER_TAG  0x0ada0000u
 #define D3DKMT_EMU_DEVICE_TAG   0x0de00000u
 #define D3DKMT_EMU_INDEX_MASK   0x0000ffffu
@@ -333,7 +344,8 @@ D3DKMTCheckVidPnExclusiveOwnership(_In_ CONST D3DKMT_CHECKVIDPNEXCLUSIVEOWNERSHI
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
-    return STATUS_PROCEDURE_NOT_FOUND;
+    /* The emulation owns no VidPN source, so this is dxgkrnl's question alone */
+    return NtGdiDdDDICheckVidPnExclusiveOwnership(unnamedParam1);
 }
 
 NTSTATUS
@@ -343,8 +355,193 @@ D3DKMTQueryVideoMemoryInfo(_Inout_ D3DKMT_QUERYVIDEOMEMORYINFO* unnamedParam1)
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
+    if (!D3DKMT_EMU_IS_ADAPTER(unnamedParam1->hAdapter))
+        return NtGdiDdDDIQueryVideoMemoryInfo(unnamedParam1);
+
     if (!D3DKMTEmuGetAdapter(unnamedParam1->hAdapter))
         return STATUS_INVALID_PARAMETER;
 
+    /* The emulated adapter has no memory of its own to report */
     return STATUS_PROCEDURE_NOT_FOUND;
+}
+
+/*
+ * The trim and budget change notifications are a user mode registry: no syscall carries
+ * them, and nothing here raises either event yet. A registration is kept so the caller
+ * gets a handle it can unregister with, and the callback is never invoked.
+ */
+
+/* Spelled out the same way the two above are, the tree not being at WDDM 2.2 */
+#if (DXGKDDI_INTERFACE_VERSION < DXGKDDI_INTERFACE_VERSION_WDDM2_2)
+
+typedef VOID (APIENTRY *PFND3DKMT_TRIMNOTIFICATIONCALLBACK)(VOID*);
+typedef VOID (APIENTRY *PFND3DKMT_BUDGETCHANGENOTIFICATIONCALLBACK)(VOID*);
+
+typedef struct _D3DKMT_REGISTERTRIMNOTIFICATION
+{
+    LUID                               AdapterLuid;
+    D3DKMT_HANDLE                      hDevice;
+    PFND3DKMT_TRIMNOTIFICATIONCALLBACK Callback;
+    VOID*                              Context;
+    VOID*                              Handle;
+} D3DKMT_REGISTERTRIMNOTIFICATION;
+
+typedef struct _D3DKMT_UNREGISTERTRIMNOTIFICATION
+{
+    VOID*                              Handle;
+    PFND3DKMT_TRIMNOTIFICATIONCALLBACK Callback;
+} D3DKMT_UNREGISTERTRIMNOTIFICATION;
+
+typedef struct _D3DKMT_REGISTERBUDGETCHANGENOTIFICATION
+{
+    D3DKMT_HANDLE                              hDevice;
+    PFND3DKMT_BUDGETCHANGENOTIFICATIONCALLBACK Callback;
+    VOID*                                      Context;
+    VOID*                                      Handle;
+} D3DKMT_REGISTERBUDGETCHANGENOTIFICATION;
+
+typedef struct _D3DKMT_UNREGISTERBUDGETCHANGENOTIFICATION
+{
+    VOID* Handle;
+} D3DKMT_UNREGISTERBUDGETCHANGENOTIFICATION;
+
+#endif
+
+#define D3DKMT_MAX_NOTIFICATIONS 32
+
+typedef struct _D3DKMT_NOTIFICATION
+{
+    LONG InUse;
+    PVOID Callback;
+    PVOID Context;
+} D3DKMT_NOTIFICATION;
+
+static D3DKMT_NOTIFICATION D3DKMTTrimNotifications[D3DKMT_MAX_NOTIFICATIONS];
+static D3DKMT_NOTIFICATION D3DKMTBudgetNotifications[D3DKMT_MAX_NOTIFICATIONS];
+
+static
+D3DKMT_NOTIFICATION*
+D3DKMTAddNotification(
+    _Inout_ D3DKMT_NOTIFICATION* Table,
+    _In_ PVOID Callback,
+    _In_opt_ PVOID Context)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < D3DKMT_MAX_NOTIFICATIONS; Index++)
+    {
+        if (InterlockedCompareExchange(&Table[Index].InUse, 1, 0) == 0)
+        {
+            Table[Index].Callback = Callback;
+            Table[Index].Context = Context;
+            return &Table[Index];
+        }
+    }
+
+    return NULL;
+}
+
+static
+BOOL
+D3DKMTRemoveNotification(
+    _Inout_ D3DKMT_NOTIFICATION* Table,
+    _In_opt_ PVOID Handle,
+    _In_opt_ PVOID Callback)
+{
+    ULONG Index;
+    BOOL Removed = FALSE;
+
+    for (Index = 0; Index < D3DKMT_MAX_NOTIFICATIONS; Index++)
+    {
+        D3DKMT_NOTIFICATION* Entry = &Table[Index];
+
+        if (!Entry->InUse)
+            continue;
+
+        /* Without a handle every registration of that callback goes, which is how a
+           DLL being unloaded drops the ones it can no longer name */
+        if (Handle != NULL ? (Entry != Handle) : (Entry->Callback != Callback))
+            continue;
+
+        Entry->Callback = NULL;
+        Entry->Context = NULL;
+        InterlockedExchange(&Entry->InUse, 0);
+        Removed = TRUE;
+
+        if (Handle != NULL)
+            break;
+    }
+
+    return Removed;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTRegisterTrimNotification(_Inout_ D3DKMT_REGISTERTRIMNOTIFICATION* unnamedParam1)
+{
+    D3DKMT_NOTIFICATION* Entry;
+
+    if (!unnamedParam1 || !unnamedParam1->Callback)
+        return STATUS_INVALID_PARAMETER;
+
+    Entry = D3DKMTAddNotification(D3DKMTTrimNotifications,
+                                  (PVOID)unnamedParam1->Callback,
+                                  unnamedParam1->Context);
+    if (!Entry)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    unnamedParam1->Handle = Entry;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTUnregisterTrimNotification(_Inout_ D3DKMT_UNREGISTERTRIMNOTIFICATION* unnamedParam1)
+{
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!unnamedParam1->Handle && !unnamedParam1->Callback)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!D3DKMTRemoveNotification(D3DKMTTrimNotifications,
+                                  unnamedParam1->Handle,
+                                  (PVOID)unnamedParam1->Callback))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTRegisterBudgetChangeNotification(_Inout_ D3DKMT_REGISTERBUDGETCHANGENOTIFICATION* unnamedParam1)
+{
+    D3DKMT_NOTIFICATION* Entry;
+
+    if (!unnamedParam1 || !unnamedParam1->Callback)
+        return STATUS_INVALID_PARAMETER;
+
+    Entry = D3DKMTAddNotification(D3DKMTBudgetNotifications,
+                                  (PVOID)unnamedParam1->Callback,
+                                  unnamedParam1->Context);
+    if (!Entry)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    unnamedParam1->Handle = Entry;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTUnregisterBudgetChangeNotification(_Inout_ D3DKMT_UNREGISTERBUDGETCHANGENOTIFICATION* unnamedParam1)
+{
+    if (!unnamedParam1 || !unnamedParam1->Handle)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!D3DKMTRemoveNotification(D3DKMTBudgetNotifications, unnamedParam1->Handle, NULL))
+        return STATUS_INVALID_PARAMETER;
+
+    return STATUS_SUCCESS;
 }
