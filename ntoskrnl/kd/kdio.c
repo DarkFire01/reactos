@@ -43,6 +43,10 @@ CPPORT SerialPortInfo   = {0, DEFAULT_DEBUG_BAUD_RATE, 0};
 #define KdpScreenLineLengthDefault 80
 static CHAR KdpScreenLineBuffer[KdpScreenLineLengthDefault + 1] = "";
 static ULONG KdpScreenLineBufferPos = 0, KdpScreenLineLength = 0;
+static KSPIN_LOCK KdpScreenSpinLock;
+
+/* How long a print waits for the line buffer before going around it */
+#define KdpScreenLockSpinCount 1000000
 
 KDP_DEBUG_MODE KdpDebugMode;
 LIST_ENTRY KdProviders = {&KdProviders, &KdProviders};
@@ -118,6 +122,38 @@ KdbpAcquireLock(
     }
 
     return OldIrql;
+}
+
+/**
+ * @brief Takes the screen line buffer, unless whoever holds it is not running.
+ *
+ * Every other provider waits for its lock. This one cannot: a processor frozen in the
+ * debugger may be holding it, and the debugger prints through here.
+ *
+ * @param[out] OldIrql The IRQL to give back to KdbpReleaseLock.
+ *
+ * @return FALSE when the buffer stayed with its owner.
+ */
+static
+BOOLEAN
+KdpScreenAcquireLineBuffer(
+    _Out_ PKIRQL OldIrql)
+{
+    ULONG Attempts;
+
+    KeRaiseIrql(HIGH_LEVEL, OldIrql);
+
+    for (Attempts = 0; Attempts < KdpScreenLockSpinCount; Attempts++)
+    {
+        if (KeTryToAcquireSpinLockAtDpcLevel(&KdpScreenSpinLock))
+            return TRUE;
+
+        YieldProcessor();
+    }
+
+    KeLowerIrql(*OldIrql);
+
+    return FALSE;
 }
 
 VOID
@@ -499,6 +535,20 @@ KdpScreenPrint(
     _In_ ULONG Length)
 {
     PCCH pch = String;
+    KIRQL OldIrql;
+
+    /*
+     * The line buffer below is shared, and a processor frozen in the debugger can be
+     * holding it, so the lock is only tried for. Printing straight out loses the
+     * backspace handling for this string and may interleave with another processor's
+     * line, which beats both corrupting the buffer and waiting for a lock whose owner
+     * is not running.
+     */
+    if (!KdpScreenAcquireLineBuffer(&OldIrql))
+    {
+        HalDisplayString(String);
+        return;
+    }
 
     while (pch < String + Length && *pch)
     {
@@ -522,7 +572,7 @@ KdpScreenPrint(
             KdpScreenLineBuffer[KdpScreenLineLength] = '\0';
         }
 
-        if (*pch == '\n' || KdpScreenLineLength == KdpScreenLineLengthDefault)
+        if (*pch == '\n' || KdpScreenLineLength >= KdpScreenLineLengthDefault)
         {
             /* Print buffered characters */
             if (KdpScreenLineBufferPos != KdpScreenLineLength)
@@ -542,6 +592,8 @@ KdpScreenPrint(
         HalDisplayString(KdpScreenLineBuffer + KdpScreenLineBufferPos);
         KdpScreenLineBufferPos = KdpScreenLineLength;
     }
+
+    KdbpReleaseLock(&KdpScreenSpinLock, OldIrql);
 }
 
 NTSTATUS
@@ -564,6 +616,8 @@ KdpScreenInit(
     }
     else if (BootPhase == 1)
     {
+        KeInitializeSpinLock(&KdpScreenSpinLock);
+
         /* Take control of the display */
         KdpScreenAcquire();
 
