@@ -813,3 +813,5 @@
     SVC_(GdiDdDDIMarkDeviceAsError, 1)
     SVC_(GdiDdDDICheckVidPnExclusiveOwnership, 1)
     SVC_(GdiDdDDIQueryVideoMemoryInfo, 1)
+    SVC_(GdiDdDDICacheHybridQueryValue, 1)
+    SVC_(GdiDdDDIGetCachedHybridQueryValue, 1)

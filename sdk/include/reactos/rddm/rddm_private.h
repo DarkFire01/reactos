@@ -240,6 +240,8 @@ SMgrRegisterGdiCallout(
 #define DXGK_SLOT_MarkDeviceAsError                      218
 #define DXGK_SLOT_CheckVidPnExclusiveOwnership           88
 #define DXGK_SLOT_QueryVideoMemoryInfo                   186
+#define DXGK_SLOT_CacheHybridQueryValue                  146
+#define DXGK_SLOT_GetCachedHybridQueryValue              145
 /* Every one of them takes a single pointer, so one shape covers the whole table. */
 typedef NTSTATUS (NTAPI *PFN_DXGK_D3DKMT)(PVOID);
 

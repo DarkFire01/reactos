@@ -2782,3 +2782,41 @@ NtGdiDdDDIQueryVideoMemoryInfo(_Inout_ PVOID unnamedParam1)
 
     return pfn(unnamedParam1);
 }
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICacheHybridQueryValue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CacheHybridQueryValue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CacheHybridQueryValue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIGetCachedHybridQueryValue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_GetCachedHybridQueryValue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("GetCachedHybridQueryValue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
