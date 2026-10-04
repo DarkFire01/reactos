@@ -34,6 +34,7 @@
 /* GLOBALS *******************************************************************/
 
 static LONG KdbEntryCount = 0;
+static volatile LONG KdbEntryOwner = -1;  /* The processor inside the debugger */
 static DECLSPEC_ALIGN(KDB_STACK_ALIGN) CHAR KdbStack[KDB_STACK_SIZE];
 
 static ULONG KdbBreakPointCount = 0;  /* Number of used breakpoints in the array */
@@ -1516,12 +1517,30 @@ EnterKdbg:;
     if (OldIrql > DISPATCH_LEVEL)
         KeLowerIrql(DISPATCH_LEVEL);
 
-    /* Exception inside the debugger? Game over. */
-    if (InterlockedIncrement(&KdbEntryCount) > 1)
+    /*
+     * One processor at a time owns the debugger. Another one reaching here was not held
+     * by the freeze, so it waits for its turn: reporting the exception unhandled instead
+     * would bugcheck it, and that bugcheck takes this same path again.
+     */
+    while (InterlockedCompareExchange(&KdbEntryCount, 1, 0) != 0)
     {
-        __writeeflags(OldEflags);
-        return kdHandleException;
+        /* Nothing to wait for if this processor is the one already inside */
+        if (KdbEntryOwner == (LONG)KeGetCurrentProcessorNumber())
+        {
+            /* Exception inside the debugger? Game over. */
+
+            /* HACK: Raise back to old IRQL */
+            if (OldIrql > DISPATCH_LEVEL)
+                KeRaiseIrql(OldIrql, &OldIrql);
+
+            __writeeflags(OldEflags);
+            return kdHandleException;
+        }
+
+        YieldProcessor();
     }
+
+    KdbEntryOwner = (LONG)KeGetCurrentProcessorNumber();
 
     /* Enter KDBG proper and run either the main loop or the KDBinit file */
     KdbpInternalEnter(EntryPoint);
@@ -1555,7 +1574,8 @@ EnterKdbg:;
     /* Update the exception Context */
     *Context = KdbTrapFrame;
 
-    /* Decrement the entry count */
+    /* Let another processor in */
+    KdbEntryOwner = -1;
     InterlockedDecrement(&KdbEntryCount);
 
     /* HACK: Raise back to old IRQL */
