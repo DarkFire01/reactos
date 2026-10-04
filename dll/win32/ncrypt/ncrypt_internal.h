@@ -26,6 +26,7 @@ enum algid
     RSA,
     DSA,
     ECDSA,
+    ECDSA_P256,
 };
 
 struct key
@@ -36,7 +37,9 @@ struct key
 
 struct storage_provider
 {
-    ULONG PLACEHOLDER;
+#ifdef __REACTOS__
+    BYTE unused; /* mutes error C2016: C requires that a struct or union have at least one member */
+#endif
 };
 
 enum object_type
@@ -55,6 +58,7 @@ struct object_property
 struct object
 {
     enum object_type type;
+    LONG refs;
     DWORD num_properties;
     struct object_property *properties;
     union
