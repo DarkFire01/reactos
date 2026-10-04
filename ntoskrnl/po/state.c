@@ -196,7 +196,7 @@ PopInvokeSystemStateHandler(
     ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
 
     /* The caller submitted a bogus handler type, bail out */
-    if (HandlerType < PowerStateSleeping1 || HandlerType > PowerStateShutdownOff)
+    if (HandlerType < PowerStateSleeping1 || HandlerType >= PowerStateMaximum)
     {
         DPRINT1("Unknown state type handler (%lu), quitting...\n", HandlerType);
         return STATUS_INVALID_PARAMETER;
@@ -687,46 +687,73 @@ PopChangeSystemSystemStateCapability(
     _In_ PPOWER_STATE_HANDLER StateHandler,
     _In_ BOOLEAN Enable)
 {
-    POWER_STATE_HANDLER_TYPE HandlerType;
+    PBOOLEAN Capability = NULL;
+    SYSTEM_POWER_STATE RtcWakeState = PowerSystemUnspecified;
 
     PAGED_CODE();
 
-    /* Cache the handler type and enable/disable the system capability */
-    HandlerType = StateHandler->Type;
-    switch (HandlerType)
+    /*
+     * Pick the capability this handler stands for, alongside the deepest
+     * system state its RTC alarm can still wake the machine from. Soft off
+     * has no wake state of its own and reset has neither.
+     */
+    switch (StateHandler->Type)
     {
         case PowerStateSleeping1:
         {
-            PopCapabilities.SystemS1 = !Enable;
+            Capability = &PopCapabilities.SystemS1;
+            RtcWakeState = PowerSystemSleeping1;
             break;
         }
 
         case PowerStateSleeping2:
         {
-            PopCapabilities.SystemS2 = !Enable;
+            Capability = &PopCapabilities.SystemS2;
+            RtcWakeState = PowerSystemSleeping2;
             break;
         }
 
         case PowerStateSleeping3:
         {
-            PopCapabilities.SystemS3 = !Enable;
+            Capability = &PopCapabilities.SystemS3;
+            RtcWakeState = PowerSystemSleeping3;
             break;
         }
 
         case PowerStateSleeping4:
         {
-            PopCapabilities.SystemS4 = !Enable;
+            Capability = &PopCapabilities.SystemS4;
+            RtcWakeState = PowerSystemHibernate;
+            break;
+        }
+
+        case PowerStateSleeping4Firmware:
+        {
+            /* Firmware S4 resumes through the S3 vector, so it wakes as S3 */
+            Capability = &PopCapabilities.FastSystemS4;
+            RtcWakeState = PowerSystemSleeping3;
             break;
         }
 
         case PowerStateShutdownOff:
         {
-            PopCapabilities.SystemS5 = !Enable;
+            Capability = &PopCapabilities.SystemS5;
             break;
         }
 
         default:
             break;
+    }
+
+    /* An RTC capable handler raises the wake state if it reaches deeper than what we have */
+    if (Enable && StateHandler->RtcWake && (RtcWakeState > PopCapabilities.RtcWake))
+    {
+        PopCapabilities.RtcWake = RtcWakeState;
+    }
+
+    if (Capability != NULL)
+    {
+        *Capability = Enable;
     }
 }
 
