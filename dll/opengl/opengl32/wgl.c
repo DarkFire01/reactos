@@ -75,7 +75,7 @@ get_dc_data_ex(HDC hdc, INT format, UINT size, PIXELFORMATDESCRIPTOR *descr)
     /* Load the driver */
     data->icd_data = IntGetIcdData(hdc);
     /* Get the number of available formats for this DC once and for all */
-    if(data->icd_data)
+    if(data->icd_data && data->icd_data->DrvDescribePixelFormat)
         data->nb_icd_formats = data->icd_data->DrvDescribePixelFormat(hdc, format, size, descr);
     else
         data->nb_icd_formats = 0;
@@ -152,7 +152,11 @@ INT WINAPI wglDescribePixelFormat(HDC hdc, INT format, UINT size, PIXELFORMATDES
         /* SetPixelFormat may have NULLified this */
         if (!icd_data)
             icd_data = IntGetIcdData(hdc);
-        if(!icd_data->DrvDescribePixelFormat(hdc, format, size, descr))
+        if(!icd_data || !icd_data->DrvDescribePixelFormat)
+        {
+            ret = 0;
+        }
+        else if(!icd_data->DrvDescribePixelFormat(hdc, format, size, descr))
         {
             ret = 0;
         }
@@ -375,7 +379,12 @@ BOOL WINAPI wglCopyContext(HGLRC hglrcSrc, HGLRC hglrcDst, UINT mask)
     }
 
     if(ctx_src->icd_data)
+    {
+        if(!ctx_src->icd_data->DrvCopyContext)
+            return FALSE;
+
         return ctx_src->icd_data->DrvCopyContext(ctx_src->dhglrc, ctx_dst->dhglrc, mask);
+    }
 
     return sw_CopyContext(ctx_src->dhglrc, ctx_dst->dhglrc, mask);
 }
@@ -411,7 +420,10 @@ HGLRC WINAPI wglCreateContext(HDC hdc)
     else
     {
         TRACE("Calling ICD.\n");
-        dhglrc = dc_data->icd_data->DrvCreateContext(hdc);
+        if(dc_data->icd_data->DrvCreateContext)
+            dhglrc = dc_data->icd_data->DrvCreateContext(hdc);
+        else
+            dhglrc = dc_data->icd_data->DrvCreateLayerContext(hdc, 0);
     }
 
     if(!dhglrc)
@@ -476,9 +488,14 @@ HGLRC WINAPI wglCreateLayerContext(HDC hdc, int iLayerPlane)
         }
         dhglrc = sw_CreateContext(dc_data);
     }
-    else
+    else if(dc_data->icd_data->DrvCreateLayerContext)
     {
         dhglrc = dc_data->icd_data->DrvCreateLayerContext(hdc, iLayerPlane);
+    }
+    else
+    {
+        /* Only the main plane is left when the ICD knows no layers */
+        dhglrc = (iLayerPlane == 0) ? dc_data->icd_data->DrvCreateContext(hdc) : NULL;
     }
 
     if(!dhglrc)
@@ -567,7 +584,12 @@ BOOL WINAPI wglDescribeLayerPlane(HDC hdc,
     }
 
     if(iPixelFormat <= dc_data->nb_icd_formats)
+    {
+        if(!dc_data->icd_data->DrvDescribeLayerPlane)
+            return FALSE;
+
         return dc_data->icd_data->DrvDescribeLayerPlane(hdc, iPixelFormat, iLayerPlane, nBytes, plpd);
+    }
 
     /* SW implementation doesn't support this */
     return FALSE;
@@ -606,7 +628,12 @@ int WINAPI wglGetLayerPaletteEntries(HDC hdc, int iLayerPlane, int iStart, int c
     }
 
     if(dc_data->icd_data)
+    {
+        if(!dc_data->icd_data->DrvGetLayerPaletteEntries)
+            return 0;
+
         return dc_data->icd_data->DrvGetLayerPaletteEntries(hdc, iLayerPlane, iStart, cEntries, pcr);
+    }
 
     /* SW implementation doesn't support this */
     return 0;
@@ -640,7 +667,8 @@ PROC WINAPI wglGetProcAddress(LPCSTR name)
 
     /* Forward */
     if(context->icd_data)
-        return context->icd_data->DrvGetProcAddress(name);
+        return context->icd_data->DrvGetProcAddress ?
+               context->icd_data->DrvGetProcAddress(name) : NULL;
     return sw_GetProcAddress(name);
 }
 
@@ -778,7 +806,12 @@ BOOL WINAPI wglRealizeLayerPalette(HDC hdc,
     }
 
     if(dc_data->icd_data)
+    {
+        if(!dc_data->icd_data->DrvRealizeLayerPalette)
+            return FALSE;
+
         return dc_data->icd_data->DrvRealizeLayerPalette(hdc, iLayerPlane, bRealize);
+    }
 
     /* SW implementation doesn't support this */
     return FALSE;
@@ -805,7 +838,12 @@ int WINAPI wglSetLayerPaletteEntries(HDC hdc,
     }
 
     if(dc_data->icd_data)
+    {
+        if(!dc_data->icd_data->DrvSetLayerPaletteEntries)
+            return 0;
+
         return dc_data->icd_data->DrvSetLayerPaletteEntries(hdc, iLayerPlane, iStart, cEntries, pcr);
+    }
 
     /* SW implementation doesn't support this */
     return 0;
@@ -842,7 +880,8 @@ BOOL WINAPI wglSetPixelFormat(HDC hdc, INT format, const PIXELFORMATDESCRIPTOR *
     if(format <= dc_data->nb_icd_formats)
     {
         TRACE("Calling ICD.\n");
-        ret = dc_data->icd_data->DrvSetPixelFormat(hdc, format);
+        ret = dc_data->icd_data->DrvSetPixelFormat ?
+              dc_data->icd_data->DrvSetPixelFormat(hdc, format) : FALSE;
         if(ret)
         {
             TRACE("Success!\n");
@@ -891,7 +930,12 @@ BOOL WINAPI wglShareLists(HGLRC hglrcSrc, HGLRC hglrcDst)
     }
 
     if(ctx_src->icd_data)
+    {
+        if(!ctx_src->icd_data->DrvShareLists)
+            return FALSE;
+
         return ctx_src->icd_data->DrvShareLists(ctx_src->dhglrc, ctx_dst->dhglrc);
+    }
 
     return sw_ShareLists(ctx_src->dhglrc, ctx_dst->dhglrc);
 }
@@ -913,7 +957,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH wglSwapBuffers(HDC hdc)
     }
 
     if(dc_data->icd_data)
+    {
+        if(!dc_data->icd_data->DrvSwapBuffers)
+            return FALSE;
+
         return dc_data->icd_data->DrvSwapBuffers(hdc);
+    }
 
     return sw_SwapBuffers(hdc, dc_data);
 }
@@ -935,7 +984,7 @@ BOOL WINAPI wglSwapLayerBuffers(HDC hdc, UINT fuPlanes)
     }
 
     /* Only an ICD has layer planes; the software implementation has none to swap */
-    if(dc_data->icd_data)
+    if(dc_data->icd_data && dc_data->icd_data->DrvSwapLayerBuffers)
         return dc_data->icd_data->DrvSwapLayerBuffers(hdc, fuPlanes);
 
     return FALSE;
