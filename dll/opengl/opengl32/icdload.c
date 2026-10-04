@@ -25,6 +25,9 @@ typedef struct
 #define OPENGL_GETINFO_DRVNAME 0
 #endif
 
+/* The ICD interface this loader speaks, which is the only one there has ever been */
+#define OPENGL_ICD_INTERFACE_VERSION 2
+
 typedef enum
 {
     OGL_CD_NOT_QUERIED,
@@ -55,6 +58,61 @@ static DHGLRC APIENTRY wglGetDHGLRC(struct wgl_context* context)
     return context->dhglrc;
 }
 
+/*
+ * The remaining callbacks an ICD is handed. The table is positional, so every one of
+ * them has to be there even where the answer is "not available here": an ICD reads as
+ * many entries as it knows about, whatever we claim to have passed.
+ */
+
+/* The DirectDraw surface behind the DC. Nothing here hands one out. */
+static ULONG_PTR APIENTRY wglGetDdHandle(ULONG_PTR context)
+{
+    UNREFERENCED_PARAMETER(context);
+    return 0;
+}
+
+/* The composed present path. Refusing it leaves the ICD on DrvSwapBuffers. */
+static BOOL APIENTRY wglPresentBuffers(HDC hdc, PVOID present)
+{
+    UNREFERENCED_PARAMETER(hdc);
+    UNREFERENCED_PARAMETER(present);
+    return FALSE;
+}
+
+/* The adapter the ICD was loaded for, which it opens through D3DKMT */
+static BOOL APIENTRY wglGetAdapterLuid(HDC hdc, LUID* pAdapterLuid)
+{
+    D3DKMT_OPENADAPTERFROMHDC OpenAdapter;
+    D3DKMT_CLOSEADAPTER CloseAdapter;
+
+    if (!pAdapterLuid)
+        return FALSE;
+
+    /* Asked while the ICD is still loading, so the adapter is reopened rather
+       than read back from the ICD this call would otherwise have to load */
+    ZeroMemory(&OpenAdapter, sizeof(OpenAdapter));
+    OpenAdapter.hDc = hdc;
+
+    if (!NT_SUCCESS(D3DKMTOpenAdapterFromHdc(&OpenAdapter)))
+        return FALSE;
+
+    *pAdapterLuid = OpenAdapter.AdapterLuid;
+
+    ZeroMemory(&CloseAdapter, sizeof(CloseAdapter));
+    CloseAdapter.hAdapter = OpenAdapter.hAdapter;
+    D3DKMTCloseAdapter(&CloseAdapter);
+
+    return TRUE;
+}
+
+/* Exclusive fullscreen, which needs a display path this stack does not drive yet */
+static BOOL APIENTRY wglCheckFullscreenSupport(HDC hdc, PVOID request)
+{
+    UNREFERENCED_PARAMETER(hdc);
+    UNREFERENCED_PARAMETER(request);
+    return FALSE;
+}
+
 /* GDI entry points (win32k) */
 extern INT APIENTRY GdiDescribePixelFormat(HDC hdc, INT ipfd, UINT cjpfd, PPIXELFORMATDESCRIPTOR ppfd);
 extern BOOL APIENTRY GdiSetPixelFormat(HDC hdc, INT ipfd);
@@ -72,10 +130,13 @@ extern BOOL APIENTRY GdiSwapBuffers(HDC hdc);
  * @param DllName Receives the ICD file name.
  * @param cchDllName Its size, in characters.
  * @param pVersion Receives the driver interface version the ICD reports.
+ * @param pFlags Receives the driver flags, which say whether the ICD owns the
+ *        pixel formats of the DC.
  *
  * @return TRUE when a WDDM adapter named an ICD.
  */
-static BOOL IntGetWddmIcd(HDC hdc, LPWSTR DllName, DWORD cchDllName, PULONG pVersion)
+static BOOL IntGetWddmIcd(HDC hdc, LPWSTR DllName, DWORD cchDllName, PULONG pVersion,
+                          PULONG pFlags)
 {
     D3DKMT_OPENADAPTERFROMHDC OpenAdapter;
     D3DKMT_QUERYADAPTERINFO QueryInfo;
@@ -126,7 +187,9 @@ static BOOL IntGetWddmIcd(HDC hdc, LPWSTR DllName, DWORD cchDllName, PULONG pVer
     }
 
     *pVersion = OpenGlInfo.Version;
-    TRACE("WDDM adapter wants ICD %S, version %lu.\n", DllName, OpenGlInfo.Version);
+    *pFlags = OpenGlInfo.Flags;
+    TRACE("WDDM adapter wants ICD %S, version %lu, flags 0x%lx.\n",
+          DllName, OpenGlInfo.Version, OpenGlInfo.Flags);
 
     return TRUE;
 }
@@ -143,6 +206,8 @@ struct ICD_Data* IntGetIcdData(HDC hdc)
     HKEY DrvKey, CustomKey;
     WCHAR DllName[MAX_PATH];
     BOOL bWddmIcd = FALSE;
+    ULONG WddmFlags = 0;
+
     BOOL (WINAPI *DrvValidateVersion)(DWORD);
     void (WINAPI *DrvSetCallbackProcs)(int nProcs, PROC* pProcs);
 
@@ -210,11 +275,15 @@ custom_end:
     {
         return NULL;
     }
-    else if(IntGetWddmIcd(hdc, DllName, RTL_NUMBER_OF(DllName), &DrvInfo.Version))
+    else if(IntGetWddmIcd(hdc, DllName, RTL_NUMBER_OF(DllName), &DrvInfo.DriverVersion, &WddmFlags))
     {
         /* The adapter named its ICD, so that name is also what identifies it here */
         bWddmIcd = TRUE;
-        DrvInfo.DriverVersion = 0;
+        /*
+         * What the adapter reports is the driver's own version, the one DrvValidateVersion
+         * is asked about. The interface version is this loader's, and it is always 2.
+         */
+        DrvInfo.Version = OPENGL_ICD_INTERFACE_VERSION;
         StringCchCopyW(DrvInfo.DriverName, RTL_NUMBER_OF(DrvInfo.DriverName), DllName);
         pDrvInfo = &DrvInfo;
     }
@@ -262,7 +331,9 @@ custom_end:
     if(bWddmIcd)
     {
         Version = DrvInfo.Version;
-        DriverVersion = Flags = 0;
+        DriverVersion = DrvInfo.DriverVersion;
+        Flags = WddmFlags;
+        TRACE("DLL name is %S, Version %lx, Flags %lx.\n", DllName, Version, Flags);
         goto LoadIcd;
     }
 
@@ -379,14 +450,21 @@ LoadIcd:
         }
     }
 
-    /* Pass the callbacks */
+    /*
+     * Pass the callbacks. The order is the contract, and an ICD reads the entries it
+     * knows of rather than the count it was given, so all seven are passed.
+     */
     DrvSetCallbackProcs = (void*)GetProcAddress(data->hModule, "DrvSetCallbackProcs");
     if(DrvSetCallbackProcs)
     {
         PROC callbacks[] = {
             (PROC)wglSetCurrentValue,
             (PROC)wglGetCurrentValue,
-            (PROC)wglGetDHGLRC};
+            (PROC)wglGetDHGLRC,
+            (PROC)wglGetDdHandle,
+            (PROC)wglPresentBuffers,
+            (PROC)wglGetAdapterLuid,
+            (PROC)wglCheckFullscreenSupport};
         DrvSetCallbackProcs(ARRAYSIZE(callbacks), callbacks);
     }
 
@@ -417,9 +495,19 @@ LoadIcd:
     DRV_LOAD(DrvSwapLayerBuffers);
 #undef DRV_LOAD
 
-    /* Let's see if GDI should handle this instead of the ICD DLL */
+    /* An ICD may serve these two or not, so they are only used where present */
+#define DRV_LOAD_OPTIONAL(x) \
+    data->x = (void*)GetProcAddress(data->hModule, #x)
+    DRV_LOAD_OPTIONAL(DrvSwapMultipleBuffers);
+    DRV_LOAD_OPTIONAL(DrvPresentBuffers);
+#undef DRV_LOAD_OPTIONAL
+
+    /*
+     * Let's see if GDI should handle this instead of the ICD DLL. A WDDM adapter is
+     * never the one to ask: its pixel formats are the ICD's own.
+     */
     // FIXME: maybe there is a better way
-    if (GdiDescribePixelFormat(hdc, 0, 0, NULL) != 0)
+    if (!bWddmIcd && GdiDescribePixelFormat(hdc, 0, 0, NULL) != 0)
     {
         /* GDI knows what to do with that. Override */
         TRACE("Forwarding WGL calls to win32k!\n");

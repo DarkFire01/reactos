@@ -386,6 +386,9 @@ struct ICD_Data
     BOOL      (WINAPI *DrvShareLists)( DHGLRC, DHGLRC );
     BOOL      (WINAPI *DrvSwapBuffers)( HDC );
     BOOL      (WINAPI *DrvSwapLayerBuffers)( HDC, UINT );
+    BOOL      (WINAPI *DrvSwapMultipleBuffers)( UINT, CONST WGLSWAP * );
+    /* The present argument is built and read by the ICD, never by us */
+    BOOL      (WINAPI *DrvPresentBuffers)( HDC, PVOID );
 
     /* Make this a linked list */
     struct ICD_Data* next;
