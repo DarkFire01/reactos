@@ -860,6 +860,18 @@ NtPowerInformation(
             StateHandler = (PPOWER_STATE_HANDLER)LocalBuffer;
 
             /*
+             * The type comes straight from the caller and indexes our handler
+             * array below, so range check it before touching anything.
+             */
+            if (StateHandler->Type < PowerStateSleeping1 ||
+                StateHandler->Type >= PowerStateMaximum)
+            {
+                DPRINT1("Invalid state handler type was given (Type %ld)\n", StateHandler->Type);
+                Status = STATUS_INVALID_PARAMETER;
+                goto Quit;
+            }
+
+            /*
              * HALs can only register newer power state handlers only once and
              * not more. Check that we already have a state handler registered
              * of the specified type. We allow HALs to replace our default
