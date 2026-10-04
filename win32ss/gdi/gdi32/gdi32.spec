@@ -731,6 +731,8 @@
 @ stdcall -version=0x600+ D3DKMTUnregisterBudgetChangeNotification(ptr)
 @ stdcall -version=0x600+ D3DKMTQueryClockCalibration(ptr) NtGdiDdDDIQueryClockCalibration
 @ stdcall -version=0x600+ D3DKMTMarkDeviceAsError(ptr) NtGdiDdDDIMarkDeviceAsError
+@ stdcall -version=0x600+ D3DKMTCacheHybridQueryValue(ptr) NtGdiDdDDICacheHybridQueryValue
+@ stdcall -version=0x600+ D3DKMTGetCachedHybridQueryValue(ptr) NtGdiDdDDIGetCachedHybridQueryValue
 @ stdcall -version=0x600+ D3DKMTCreateSynchronizationObject2(ptr) NtGdiDdDDICreateSynchronizationObject
 @ stdcall -version=0x600+ D3DKMTSignalSynchronizationObject2(ptr) NtGdiDdDDISignalSynchronizationObject
 @ stdcall -version=0x600+ D3DKMTWaitForSynchronizationObject2(ptr) NtGdiDdDDIWaitForSynchronizationObject
