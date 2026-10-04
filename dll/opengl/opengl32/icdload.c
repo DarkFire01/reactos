@@ -175,6 +175,24 @@ static BOOL IntGetWddmIcd(HDC hdc, LPWSTR DllName, DWORD cchDllName, PULONG pVer
 
     Status = D3DKMTQueryAdapterInfo(&QueryInfo);
 
+    /* The file the adapter names is being replaced right now, so it is not to be loaded */
+    if (NT_SUCCESS(Status))
+    {
+        ULONG UpdateInProgress = 0;
+
+        ZeroMemory(&QueryInfo, sizeof(QueryInfo));
+        QueryInfo.hAdapter = OpenAdapter.hAdapter;
+        QueryInfo.Type = KMTQAITYPE_CHECKDRIVERUPDATESTATUS;
+        QueryInfo.pPrivateDriverData = &UpdateInProgress;
+        QueryInfo.PrivateDriverDataSize = sizeof(UpdateInProgress);
+
+        if (NT_SUCCESS(D3DKMTQueryAdapterInfo(&QueryInfo)) && UpdateInProgress)
+        {
+            TRACE("The adapter's driver is being updated.\n");
+            Status = STATUS_DEVICE_NOT_READY;
+        }
+    }
+
     ZeroMemory(&CloseAdapter, sizeof(CloseAdapter));
     CloseAdapter.hAdapter = OpenAdapter.hAdapter;
     D3DKMTCloseAdapter(&CloseAdapter);
