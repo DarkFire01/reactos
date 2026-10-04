@@ -46,6 +46,15 @@ static const WCHAR CustomDrivers_Key[] = L"SOFTWARE\\ReactOS\\OpenGL";
 static Drv_Opengl_Info CustomDrvInfo;
 static CUSTOM_DRIVER_STATE CustomDriverState = OGL_CD_NOT_QUERIED;
 
+/*
+ * What a WDDM adapter answered the first time one did. The reference finds the installed
+ * driver once per process (LoadAvailableDrivers) and every later lookup reads that back,
+ * so the adapter is not opened again for each device context.
+ */
+static Drv_Opengl_Info WddmDrvInfo;
+static ULONG WddmDrvFlags;
+static BOOL WddmDrvFound = FALSE;
+
 static void APIENTRY wglSetCurrentValue(PVOID value)
 {
     IntSetCurrentICDPrivate(value);
@@ -278,6 +287,14 @@ custom_end:
     {
         return NULL;
     }
+    else if(WddmDrvFound)
+    {
+        /* Already asked an adapter once, and this is what it said */
+        bWddmIcd = TRUE;
+        DrvInfo = WddmDrvInfo;
+        WddmFlags = WddmDrvFlags;
+        pDrvInfo = &DrvInfo;
+    }
     else if(IntGetWddmIcd(hdc, DllName, RTL_NUMBER_OF(DllName), &DrvInfo.DriverVersion, &WddmFlags))
     {
         /* The adapter named its ICD, so that name is also what identifies it here */
@@ -289,6 +306,10 @@ custom_end:
         DrvInfo.Version = OPENGL_ICD_INTERFACE_VERSION;
         StringCchCopyW(DrvInfo.DriverName, RTL_NUMBER_OF(DrvInfo.DriverName), DllName);
         pDrvInfo = &DrvInfo;
+
+        WddmDrvInfo = DrvInfo;
+        WddmDrvFlags = WddmFlags;
+        WddmDrvFound = TRUE;
     }
     else
     {
