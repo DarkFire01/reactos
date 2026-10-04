@@ -920,12 +920,68 @@ BOOL WINAPI DECLSPEC_HOTPATCH wglSwapBuffers(HDC hdc)
 
 BOOL WINAPI wglSwapLayerBuffers(HDC hdc, UINT fuPlanes)
 {
+    struct wgl_dc_data* dc_data = get_dc_data(hdc);
+
+    if(!dc_data)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    if(!dc_data->pixelformat)
+    {
+        SetLastError(ERROR_INVALID_PIXEL_FORMAT);
+        return FALSE;
+    }
+
+    /* Only an ICD has layer planes; the software implementation has none to swap */
+    if(dc_data->icd_data)
+        return dc_data->icd_data->DrvSwapLayerBuffers(hdc, fuPlanes);
+
     return FALSE;
 }
 
 DWORD WINAPI wglSwapMultipleBuffers(UINT count, CONST WGLSWAP * toSwap)
 {
-    return 0;
+    struct wgl_dc_data* dc_data;
+    DWORD swapped = 0;
+    UINT i;
+
+    if(!toSwap)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
+    /* One ICD taking the whole batch is the point of this call, so try that first */
+    if(count > 0)
+    {
+        dc_data = get_dc_data(toSwap[0].hdc);
+        if(dc_data && dc_data->icd_data && dc_data->icd_data->DrvSwapMultipleBuffers)
+        {
+            struct ICD_Data* icd_data = dc_data->icd_data;
+
+            for(i = 1; i < count; i++)
+            {
+                struct wgl_dc_data* other = get_dc_data(toSwap[i].hdc);
+
+                if(!other || (other->icd_data != icd_data))
+                    break;
+            }
+
+            if(i == count)
+                return icd_data->DrvSwapMultipleBuffers(count, toSwap) ? count : 0;
+        }
+    }
+
+    /* Mixed drivers, or an ICD that does not take batches: one at a time */
+    for(i = 0; i < count; i++)
+    {
+        if(wglSwapBuffers(toSwap[i].hdc))
+            swapped++;
+    }
+
+    return swapped;
 }
 
 /* Clean up on DLL unload */
