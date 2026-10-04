@@ -399,6 +399,16 @@ APIENTRY
 NtGdiDdDDIQueryVideoMemoryInfo(
     _Inout_ PVOID unnamedParam1);
 
+NTSTATUS
+APIENTRY
+NtGdiDdDDICacheHybridQueryValue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIGetCachedHybridQueryValue(
+    _Inout_ PVOID unnamedParam1);
+
 /* Composition surface stubs, see ntuser/ntstubs.c */
 
 NTSTATUS
