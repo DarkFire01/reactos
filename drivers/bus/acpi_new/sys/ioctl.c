@@ -7,6 +7,7 @@
 
 #include <uacpint.h>
 #include <acpiioct.h>
+#include <drivers/acpi/acpipath.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
 #include <debug.h>
@@ -929,6 +930,85 @@ UacpiNtQueryBiosName(
     return STATUS_SUCCESS;
 }
 
+/*
+ * Absolute path with the leading backslash. Without the padded flag every
+ * name segment loses its trailing underscores, "\_SB_.XHC_" becomes "\_SB.XHC".
+ */
+static
+NTSTATUS
+NTAPI
+UacpiNtQueryNamespacePath(
+    _In_opt_ uacpi_namespace_node *Node,
+    _In_z_ const char *TraceName,
+    _In_ PIRP Irp,
+    _Out_ PULONG_PTR Information)
+{
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PUACPINT_NAMESPACE_PATH_REQUEST Request = Irp->AssociatedIrp.SystemBuffer;
+    const uacpi_char *AbsolutePath;
+    CHAR Path[UACPINT_EVAL_PATH_LENGTH];
+    UNICODE_STRING WidePath;
+    ANSI_STRING AnsiPath;
+    ULONG Source;
+    ULONG Length = 0;
+    ULONG SegmentStart = 0;
+    ULONG Required;
+    NTSTATUS Status;
+
+    *Information = 0;
+
+    if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(*Request))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    if (Request->Signature != UACPINT_NAMESPACE_PATH_SIGNATURE ||
+        (Request->Flags & ~UACPINT_NAMESPACE_PATH_PADDED) != 0)
+    {
+        return STATUS_INVALID_PARAMETER_1;
+    }
+
+    if (!Node)
+        return STATUS_NO_SUCH_DEVICE;
+
+    AbsolutePath = uacpi_namespace_node_generate_absolute_path(Node);
+    if (!AbsolutePath)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    for (Source = 0; AbsolutePath[Source] != '\0' && Length < sizeof(Path) - 1; Source++)
+    {
+        if (AbsolutePath[Source] == '.')
+            SegmentStart = Length + 1;
+
+        Path[Length++] = AbsolutePath[Source];
+
+        /* Trim at each separator and at the end, a segment keeps at least one character */
+        if (!(Request->Flags & UACPINT_NAMESPACE_PATH_PADDED) &&
+            (AbsolutePath[Source + 1] == '.' || AbsolutePath[Source + 1] == '\0'))
+        {
+            while (Length > SegmentStart + 1 && Path[Length - 1] == '_')
+                Length--;
+        }
+    }
+    Path[Length] = '\0';
+    uacpi_free_absolute_path(AbsolutePath);
+
+    RtlInitAnsiString(&AnsiPath, Path);
+    Required = RtlAnsiStringToUnicodeSize(&AnsiPath);
+    if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < Required)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    WidePath.Buffer = Irp->AssociatedIrp.SystemBuffer;
+    WidePath.Length = 0;
+    WidePath.MaximumLength = (USHORT)Required;
+
+    Status = RtlAnsiStringToUnicodeString(&WidePath, &AnsiPath, FALSE);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *Information = WidePath.Length + sizeof(WCHAR);
+    DPRINT("%s: namespace path %wZ\n", TraceName, &WidePath);
+    return STATUS_SUCCESS;
+}
+
 /* USB hubs skip ports that do not report ACPI_OBJECT_HAS_CHILDREN */
 static
 BOOLEAN
@@ -1078,6 +1158,11 @@ UacpiNtAcpiDeviceControl(
 
         case UACPINT_IOCTL_QUERY_BIOS_NAME:
             Status = UacpiNtQueryBiosName(Node, Name, Irp, &Information);
+            *Disposition = UacpiNtCompleteIrp(Irp, Status, Information);
+            return TRUE;
+
+        case IOCTL_UACPINT_QUERY_NAMESPACE_PATH:
+            Status = UacpiNtQueryNamespacePath(Node, Name, Irp, &Information);
             *Disposition = UacpiNtCompleteIrp(Irp, Status, Information);
             return TRUE;
 
