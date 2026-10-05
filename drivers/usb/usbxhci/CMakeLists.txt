@@ -2,8 +2,13 @@
 remove_definitions(-D_WIN32_WINNT=0x502)
 
 list(APPEND SOURCE
+    command.cpp
+    commonbuffer.cpp
     controller.cpp
+    deviceslot.cpp
     driver.cpp
+    interrupter.cpp
+    register.cpp
     roothub.cpp
     usbdevice.cpp
     usbxhci.h)
