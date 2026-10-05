@@ -378,7 +378,8 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
         KiAcquirePrcbLock(Prcb);
 
         if ((KiIdleSummary & Prcb->SetMember) &&
-            (Thread->Affinity & Prcb->SetMember))
+            (Thread->Affinity & Prcb->SetMember) &&
+            (Prcb->NextThread == NULL))
         {
             /* Still idle and still ours to use, so take it */
             InterlockedBitTestAndResetAffinity(&KiIdleSummary, Processor);
@@ -393,6 +394,17 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
                 KiIpiSend(AFFINITY_MASK(Processor), IPI_DPC);
             }
             return;
+        }
+
+        /*
+         * A processor that already has a thread on standby is not idle, whatever
+         * the summary says. Overwriting Prcb->NextThread would leave that thread
+         * in Standby with no processor looking for it and on no ready list, so
+         * take the processor out of the summary and let the loop terminate.
+         */
+        if (Prcb->NextThread != NULL)
+        {
+            InterlockedBitTestAndResetAffinity(&KiIdleSummary, Processor);
         }
 
         /* Somebody got there first. Drop the lock and choose again */
@@ -473,6 +485,16 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
         {
             /* Preempt it if it's already running */
             if (NextThread->State == Running) NextThread->Preempted = TRUE;
+
+            /*
+             * Taking an idle processor has to take it out of the summary as
+             * well, or KiSelectIdleProcessor() still offers it and that claim
+             * overwrites this standby thread.
+             */
+            if (NextThread == Prcb->IdleThread)
+            {
+                InterlockedBitTestAndResetAffinity(&KiIdleSummary, Prcb->Number);
+            }
 
             /* Set the thread on standby and as the next thread */
             Thread->State = Standby;
