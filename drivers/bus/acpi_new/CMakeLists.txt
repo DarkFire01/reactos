@@ -62,6 +62,7 @@ list(APPEND SOURCE
      sys/reshub.c
      sys/resource.c
      sys/sleep.c
+     sys/usb4.c
      uacpi-host/uacpi_host.c
      uacpi-host/uacpi_isr.c)
 

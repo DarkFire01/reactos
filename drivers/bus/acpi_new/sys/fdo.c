@@ -80,6 +80,7 @@ UacpiNtFdoStartDevice(
 
     UacpiNtEnumerateNamespace(Fdo);
     UacpiNtIrqArbiterInitialize(Fdo);
+    UacpiNtUsb4RegisterInterface(Fdo);
 
     Fdo->Started = TRUE;
     return UacpiNtCompleteIrp(Irp, STATUS_SUCCESS, 0);
@@ -122,6 +123,7 @@ UacpiNtFdoRemoveDevice(
     PDEVICE_OBJECT Self = Fdo->Shared.Self;
     NTSTATUS Status;
 
+    UacpiNtUsb4UnregisterInterface(Fdo);
     UacpiNtTearDownInterpreter(Fdo);
 
     Irp->IoStatus.Status = STATUS_SUCCESS;

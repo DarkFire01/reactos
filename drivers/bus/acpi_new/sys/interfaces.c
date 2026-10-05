@@ -835,44 +835,69 @@ UacpiNtEvaluateOsc(
     return UacpiNtEvaluateWithArgs(Node, "_OSC", Args, RTL_NUMBER_OF(Args), Result);
 }
 
+/*
+ * Evaluates _OSC and copies the returned DWORDs back over Capabilities.
+ * Fails when the status DWORD reports a rejected request.
+ */
+NTSTATUS
+NTAPI
+UacpiNtEvaluateOscDwords(
+    _In_ uacpi_namespace_node *Node,
+    _In_ const GUID *Uuid,
+    _Inout_updates_(Count) PULONG Capabilities,
+    _In_ ULONG Count)
+{
+    uacpi_object *Result;
+    uacpi_data_view View;
+    NTSTATUS Status;
+
+    Status = UacpiNtEvaluateOsc(Node, Uuid, Capabilities, Count, &Result);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = STATUS_UNSUCCESSFUL;
+    if (UacpiNtGetBufferObject(Result, &View) && View.length >= Count * sizeof(*Capabilities))
+    {
+        RtlCopyMemory(Capabilities, View.const_bytes, Count * sizeof(*Capabilities));
+        if (!(Capabilities[0] & UACPINT_OSC_ERROR_MASK))
+            Status = STATUS_SUCCESS;
+    }
+
+    if (Result)
+        uacpi_object_unref(Result);
+    return Status;
+}
+
 /* Platform wide \_SB._OSC feature declaration, nothing happens without one */
 VOID
 NTAPI
 UacpiNtPlatformOscNegotiate(VOID)
 {
     uacpi_namespace_node *SbNode;
-    uacpi_object *Result;
-    uacpi_data_view View;
     ULONG Capabilities[2];
-    ULONG OscStatus;
+    ULONG Granted = 0;
+    NTSTATUS Status;
 
     SbNode = uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB);
     if (!SbNode)
         return;
 
     Capabilities[0] = 0;
-    Capabilities[1] = UACPINT_PLATFORM_OSC_SUPPORT;
+    Capabilities[1] = UACPINT_PLATFORM_OSC_SUPPORT | UacpiNtUsb4PlatformSupport();
 
-    if (!NT_SUCCESS(UacpiNtEvaluateOsc(SbNode,
-                                       &UacpiNtSbOscUuid,
-                                       Capabilities,
-                                       RTL_NUMBER_OF(Capabilities),
-                                       &Result)))
+    Status = UacpiNtEvaluateOscDwords(SbNode, &UacpiNtSbOscUuid, Capabilities, RTL_NUMBER_OF(Capabilities));
+    if (Status != STATUS_NOT_IMPLEMENTED)
     {
-        return;
-    }
-
-    if (UacpiNtGetBufferObject(Result, &View) && View.length >= sizeof(Capabilities))
-    {
-        OscStatus = *(const ULONG UNALIGNED *)View.const_bytes;
-        DPRINT("\\_SB._OSC support 0x%lx status 0x%lx%s\n",
+        DPRINT("\\_SB._OSC status 0x%lx granted 0x%lx%s\n",
+               Capabilities[0],
                Capabilities[1],
-               OscStatus,
-               (OscStatus & UACPINT_OSC_ERROR_MASK) ? " (rejected)" : "");
+               NT_SUCCESS(Status) ? "" : " (rejected)");
     }
 
-    if (Result)
-        uacpi_object_unref(Result);
+    if (NT_SUCCESS(Status))
+        Granted = Capabilities[1];
+
+    UacpiNtUsb4PlatformNegotiated(SbNode, Granted);
 }
 
 /* One PCI root _OSC pass, Control is the request in and the grant out */
