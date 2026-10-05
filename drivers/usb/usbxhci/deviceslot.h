@@ -24,13 +24,18 @@ public:
 
     VOID D0Entry();
     VOID DisableAll();
+    _IRQL_requires_(PASSIVE_LEVEL)
     VOID PreReset();
+    _IRQL_requires_(PASSIVE_LEVEL)
     VOID PostReset();
     VOID OnHostLost();
 
-    /** Records the output device context for a slot; LogicalAddress 0 clears it. */
+    /**
+     * Records the output device context for a slot; LogicalAddress 0 clears it.
+     * STATUS_ACCESS_DENIED when the DCBAA entry is already in use.
+     */
     _IRQL_requires_max_(DISPATCH_LEVEL)
-    VOID
+    NTSTATUS
     SetSlot(
         _In_ ULONG SlotId,
         _In_ PVOID Device,
@@ -41,7 +46,7 @@ public:
     LookupSlot(
         _In_ ULONG SlotId) const;
 
-    /* From the interrupter DPC. Milestone 1 has no devices: log and drop. */
+    /* From the interrupter DPC; routed to the device that owns the slot */
     VOID
     OnTransferEvent(
         _In_ const XHCI_TRB* Event);

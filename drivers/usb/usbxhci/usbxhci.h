@@ -16,6 +16,7 @@
 #include "xhciutil.h"
 #include "xhcihw.h"
 #include "xhcierrata.h"
+#include "esm.h"
 
 #include "register.h"
 #include "commonbuffer.h"
@@ -24,6 +25,12 @@
 #include "command.h"
 #include "roothub.h"
 #include "controller.h"
+#include "usbdevice.h"
+#include "control.h"
+#include "bulk.h"
+#include "transferring.h"
+#include "endpoint.h"
+#include "requestdata.h"
 #include "xhcisvc.h"
 
 /* driver.cpp */
