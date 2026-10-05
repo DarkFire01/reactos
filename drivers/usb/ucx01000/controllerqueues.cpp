@@ -262,7 +262,7 @@ UcxQueryUsbCapability(
     }
     else
     {
-        DPRINT1("Capability query %p has unknown type %08lx\n", Query, Query->CapabilityType.Data1);
+        DPRINT("Capability query %p has unknown type %08lx\n", Query, Query->CapabilityType.Data1);
     }
 
     /* Unknown capabilities still go to the HCD, which decides */
@@ -279,7 +279,11 @@ UcxQueryUsbCapability(
                                                                   &Query->ResultLength);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Controller %p capability query %p failed 0x%lx\n", Controller, Query, Status);
+        /* An unsupported capability is a normal answer, not a failure */
+        if (Status == STATUS_NOT_SUPPORTED)
+            DPRINT("Controller %p capability %p not supported\n", Controller, Query);
+        else
+            DPRINT1("Controller %p capability query %p failed 0x%lx\n", Controller, Query, Status);
         return Status;
     }
 

@@ -524,6 +524,13 @@ PortReportChange(
             break;
 
         case PortEvent::ChangeError:
+            /* An empty 2.0 port with no change also answers ChangeError */
+            if (!(Status & PS_CONNECTED) && Change == 0)
+            {
+                DPRINT("Hub %p port %u empty, no change\n", Port->m_Hub, Port->Number());
+                return;
+            }
+
             What = "invalid status";
             break;
 
