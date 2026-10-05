@@ -175,6 +175,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/kdlock.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/kdprint.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/kdtrap.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/kse/kse.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/apc.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/balmgr.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/bug.c

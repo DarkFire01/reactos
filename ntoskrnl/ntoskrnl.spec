@@ -742,6 +742,7 @@
 @ fastcall -arch=i386,arm KiReleaseSpinLock(ptr)
 @ cdecl -arch=i386,arm KiUnexpectedInterrupt()
 @ stdcall -arch=i386 Kii386SpinOnSpinLock(ptr long)
+@ stdcall KseQueryDeviceFlags(wstr wstr ptr)
 @ stdcall LdrAccessResource(ptr ptr ptr ptr)
 @ stdcall LdrEnumResources(ptr ptr long ptr ptr)
 @ stdcall LdrFindResourceDirectory_U(ptr ptr long ptr)

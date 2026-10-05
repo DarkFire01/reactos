@@ -394,6 +394,18 @@ KeRaiseUserException(
     _In_ NTSTATUS ExceptionCode
 );
 
+//
+// Kernel Shim Engine Functions
+//
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTSTATUS
+NTAPI
+KseQueryDeviceFlags(
+    _In_ PCWSTR DeviceKey,
+    _In_ PCWSTR Provider,
+    _Out_ PULONG64 Flags
+);
+
 #endif
 
 #ifndef NONAMELESSUNION
