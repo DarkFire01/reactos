@@ -79,6 +79,8 @@ public:
 
         if (m_Header->ActualBufferLength > m_Header->RequestBufferLength)
         {
+            DPRINT1("USBUSER request 0x%lx needs %lu bytes, got %lu\n",
+                    m_Header->UsbUserRequest, m_Header->ActualBufferLength, m_Header->RequestBufferLength);
             SetStatus(UsbUserBufferTooSmall);
             return FALSE;
         }
@@ -181,6 +183,7 @@ UcxUserGetDriverKeyName(
     }
     else
     {
+        DPRINT1("Driver key name query on %p failed 0x%lx\n", Fdo, Status);
         User.SetStatus(UsbUserInvalidParameter);
     }
 
@@ -210,13 +213,17 @@ UcxGetStrippedRootHubName(
     *Stripped = NULL;
 
     if (!NT_SUCCESS(RootHub->ReferenceSymbolicName(&Original)))
+    {
+        DPRINT("Root hub %p has no symbolic name yet\n", RootHub);
         return STATUS_SUCCESS;
+    }
 
     WdfStringGetUnicodeString(Original, &Name);
     Count = Name.Length / sizeof(WCHAR);
 
     if (Count == 0 || Name.Buffer == NULL)
     {
+        DPRINT1("Root hub %p symbolic name is empty\n", RootHub);
         Status = STATUS_UNSUCCESSFUL;
     }
     else
@@ -242,6 +249,8 @@ UcxGetStrippedRootHubName(
         Attributes.ParentObject = RootHub->m_Handle;
 
         Status = WdfStringCreate(&Name, &Attributes, Stripped);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("Copying root hub %p name failed 0x%lx\n", RootHub, Status);
     }
 
     WdfObjectDereferenceWithTag(Original, (PVOID)UCX_POOL_TAG);
@@ -316,15 +325,18 @@ UcxUserPassThru(
 
     if (Length > UCX_PASS_THRU_MAX_LENGTH)
     {
+        DPRINT1("Pass through parameter length %lu is too large\n", Length);
         User.SetStatus(UsbUserInvalidParameter);
     }
     else if (UCX_USER_HEADER_SIZE + FIELD_OFFSET(USB_PASS_THRU_PARAMETERS, Parameters) + Length >
              User.Header()->RequestBufferLength)
     {
+        DPRINT1("Pass through buffer too small for %lu parameter bytes\n", Length);
         User.SetStatus(UsbUserBufferTooSmall);
     }
     else
     {
+        DPRINT("Pass through request is not serviced\n");
         User.SetStatus(UsbUserMiniportError);
         User.Header()->ActualBufferLength = UCX_USER_HEADER_SIZE + sizeof(USB_PASS_THRU_PARAMETERS) + Length;
     }
@@ -369,6 +381,7 @@ UcxUserGetPowerStateMap(
 
     if (!RootHub->m_PdoStarted)
     {
+        DPRINT1("Power state map requested before root hub %p started\n", RootHub);
         User.SetStatus(UsbUserDeviceNotStarted);
         return;
     }
@@ -413,11 +426,7 @@ UcxUserGetBandwidthInformation(
     Info->AllocedBulkAndControl = (UCX_BUS_BANDWIDTH / 5) * 32;
 }
 
-/**
- * The frame callback writes straight into the caller's buffer and the
- * cached frame follows that field even when the callback failed. Failures
- * report a counter that just moves on.
- */
+/** Uses the controller's cached frame during a reset; failures report a counter that just moves on. */
 static
 VOID
 NTAPI
@@ -428,22 +437,11 @@ UcxReadFrameForStatistics(
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
 
     if (Controller->m_Config.EvtControllerGetCurrentFrameNumber != NULL)
-    {
-        if (Controller->BlockReset())
-        {
-            Status = Controller->m_Config.EvtControllerGetCurrentFrameNumber(Controller->m_Handle, Frame);
-            Controller->m_CachedFrameNumber = *Frame;
-            Controller->UnblockReset();
-        }
-        else
-        {
-            *Frame = Controller->m_CachedFrameNumber;
-            Status = STATUS_SUCCESS;
-        }
-    }
+        Status = Controller->GetCurrentFrameNumber(Frame);
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT("Frame number read on controller %p failed 0x%lx, faking one\n", Controller, Status);
         Controller->m_SyntheticFrame = (Controller->m_SyntheticFrame + 1) & UCX_SYNTHETIC_FRAME_MASK;
         *Frame = Controller->m_SyntheticFrame;
     }
@@ -614,6 +612,7 @@ UcxRunUserRequest(
 
         /* Unlike the other test operations */
         case USBUSER_OP_SEND_ONE_PACKET:
+            DPRINT1("USBUSER send one packet is not supported\n");
             User.SetStatus(UsbUserInvalidHeaderParameter);
             break;
 
@@ -621,10 +620,12 @@ UcxRunUserRequest(
         case USBUSER_SET_ROOTPORT_FEATURE:
         case USBUSER_CLEAR_ROOTPORT_FEATURE:
         case USBUSER_GET_ROOTPORT_STATUS:
+            DPRINT1("USBUSER test request 0x%lx is disabled\n", User.Header()->UsbUserRequest);
             User.SetStatus(UsbUserFeatureDisabled);
             break;
 
         default:
+            DPRINT1("Unknown USBUSER request 0x%lx\n", User.Header()->UsbUserRequest);
             NT_ASSERT(!UcxLookupUserRequestSize(User.Header()->UsbUserRequest, &ParameterLength));
             User.SetStatus(UsbUserInvalidRequestCode);
             break;
@@ -647,12 +648,14 @@ UcxHandleUserRequest(
 
     if (InputBufferLength != OutputBufferLength)
     {
+        DPRINT1("USBUSER IOCTL input length %Iu differs from output length %Iu\n", InputBufferLength, OutputBufferLength);
         WdfRequestCompleteWithInformation(Request, STATUS_INVALID_PARAMETER, 0);
         return;
     }
 
     if (!NT_SUCCESS(WdfRequestRetrieveOutputBuffer(Request, UCX_USER_HEADER_SIZE, (PVOID*)&Header, NULL)))
     {
+        DPRINT1("USBUSER IOCTL buffer of %Iu bytes is too small\n", OutputBufferLength);
         WdfRequestCompleteWithInformation(Request, STATUS_BUFFER_TOO_SMALL, 0);
         return;
     }
@@ -665,6 +668,8 @@ UcxHandleUserRequest(
 
     if (Header->RequestBufferLength != OutputBufferLength)
     {
+        DPRINT1("USBUSER header length %lu differs from buffer length %Iu\n",
+                Header->RequestBufferLength, OutputBufferLength);
         User.SetStatus(UsbUserInvalidHeaderParameter);
         WdfRequestCompleteWithInformation(Request, STATUS_SUCCESS, UCX_USER_HEADER_SIZE);
         return;
@@ -715,6 +720,7 @@ UcxHandleLegacyName(
     if (OutputBufferLength < sizeof(USB_ROOT_HUB_NAME) ||
         !NT_SUCCESS(WdfRequestRetrieveOutputBuffer(Request, OutputBufferLength, (PVOID*)&Output, NULL)))
     {
+        DPRINT1("Name IOCTL 0x%lx buffer of %Iu bytes is too small\n", IoControlCode, OutputBufferLength);
         WdfRequestCompleteWithInformation(Request, STATUS_BUFFER_TOO_SMALL, 0);
         return;
     }
@@ -724,6 +730,7 @@ UcxHandleLegacyName(
         Block = (PUSBUSER_REQUEST_HEADER)ExAllocatePoolWithTag(PagedPool, Size, UCX_POOL_TAG);
         if (Block == NULL)
         {
+            DPRINT1("Name IOCTL 0x%lx could not allocate %lu bytes\n", IoControlCode, Size);
             WdfRequestCompleteWithInformation(Request, STATUS_INSUFFICIENT_RESOURCES, 0);
             return;
         }
@@ -754,6 +761,9 @@ UcxHandleLegacyName(
 
     if (Block == NULL || Block->UsbUserStatusCode != UsbUserSuccess)
     {
+        DPRINT1("Name IOCTL 0x%lx failed, USBUSER status %d\n",
+                IoControlCode, Block != NULL ? (INT)Block->UsbUserStatusCode : -1);
+
         if (Block != NULL)
             ExFreePoolWithTag(Block, UCX_POOL_TAG);
 
@@ -783,6 +793,7 @@ UcxHandleLegacyName(
     }
     else
     {
+        DPRINT("Name IOCTL 0x%lx needs %lu bytes, got %Iu\n", IoControlCode, ActualLength, OutputBufferLength);
         Output->RootHubName[0] = UNICODE_NULL;
         ActualLength = sizeof(USB_ROOT_HUB_NAME);
     }
@@ -846,7 +857,10 @@ UcxEvtWmiNodeInfoQueryInstance(
     *BufferUsed = sizeof(*Node);
 
     if (OutBufferSize < sizeof(*Node))
+    {
+        DPRINT1("WMI node info buffer of %lu bytes is too small\n", OutBufferSize);
         return STATUS_BUFFER_TOO_SMALL;
+    }
 
     RtlZeroMemory(OutBuffer, OutBufferSize);
 

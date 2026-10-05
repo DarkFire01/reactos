@@ -333,6 +333,7 @@ UcxParentGetHubSymbolicName(
 template <typename T>
 static
 VOID
+NTAPI
 UcxFillParentInterface(
     _Out_ T* Parent,
     _In_ UcxRootHub* RootHub)
@@ -380,11 +381,15 @@ UcxEvtQueryParentInterface(
     if (ExposedInterface->Size != sizeof(UCXHUB_PARENT_INTERFACE) &&
         ExposedInterface->Size != sizeof(UCXHUB_PARENT_INTERFACE_ORIGINAL))
     {
+        DPRINT1("Parent interface size %u not accepted\n", ExposedInterface->Size);
         return STATUS_BUFFER_TOO_SMALL;
     }
 
     if (ExposedInterface->Version != UCXHUB_PARENT_INTERFACE_VERSION)
+    {
+        DPRINT1("Parent interface version %u not supported\n", ExposedInterface->Version);
         return STATUS_NOT_SUPPORTED;
+    }
 
     /* The current layout added the tunnel state, which is 0 for the root hub */
     if (ExposedInterface->Size == sizeof(UCXHUB_PARENT_INTERFACE))
@@ -392,6 +397,7 @@ UcxEvtQueryParentInterface(
     else
         UcxFillParentInterface((PUCXHUB_PARENT_INTERFACE_ORIGINAL)ExposedInterface, RootHub);
 
+    DPRINT("Parent interface size %u handed to root hub %p's hub\n", ExposedInterface->Size, RootHub);
     return STATUS_SUCCESS;
 }
 
@@ -426,7 +432,10 @@ UcxEvtQueryStackInterface(
     UNREFERENCED_PARAMETER(ExposedInterfaceSpecificData);
 
     if (Version < UCXHUB_STACK_INTERFACE_VERSION_1)
+    {
+        DPRINT1("Stack interface version %u too old, left unfilled\n", Version);
         return STATUS_SUCCESS;
+    }
 
     Limit = min(Limit, (ULONG)sizeof(*Stack));
 
@@ -477,6 +486,7 @@ UcxEvtQueryStackInterface(
     Hub->m_HubNoPingResponse = Stack->NoPingResponse;
     Hub->m_HubUsesGrownInterface = (ExposedInterface->Size > UCXHUB_STACK_INTERFACE_SIZE_ORIGINAL);
 
+    DPRINT("Stack interface for hub %p, size %lu version %u\n", Hub, Filled, Stack->Header.Version);
     return STATUS_SUCCESS;
 }
 
@@ -498,7 +508,10 @@ UcxGetLocationString(
     /* One extra NUL makes it a multi string; PnP frees it */
     Buffer = (PWCHAR)ExAllocatePoolZero(PagedPool, sizeof(Location) + sizeof(WCHAR), UCX_POOL_TAG);
     if (Buffer == NULL)
+    {
+        DPRINT1("Root hub location string allocation failed\n");
         return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     RtlCopyMemory(Buffer, Location, sizeof(Location));
     *LocationStrings = Buffer;
@@ -526,7 +539,10 @@ UcxRootHub::AddQueryInterfaces()
     Config.ImportInterface = TRUE;
     Status = WdfDeviceAddQueryInterface(m_Pdo, &Config);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub PDO %p parent interface add failed 0x%lx\n", m_Pdo, Status);
         return Status;
+    }
 
     RtlZeroMemory(&StackTemplate, sizeof(StackTemplate));
     StackTemplate.Header.Size = UCXHUB_STACK_INTERFACE_SIZE_ORIGINAL;
@@ -538,13 +554,19 @@ UcxRootHub::AddQueryInterfaces()
     Config.ImportInterface = TRUE;
     Status = WdfDeviceAddQueryInterface(m_Pdo, &Config);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub PDO %p stack interface add failed 0x%lx\n", m_Pdo, Status);
         return Status;
+    }
 
     WDF_QUERY_INTERFACE_CONFIG_INIT(&Config, NULL, &USB_BUS_INTERFACE_USBDI_GUID, UcxEvtQueryUsbdiInterface);
     Config.ImportInterface = TRUE;
     Status = WdfDeviceAddQueryInterface(m_Pdo, &Config);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub PDO %p USBDI interface add failed 0x%lx\n", m_Pdo, Status);
         return Status;
+    }
 
     RtlZeroMemory(&ClientTemplate, sizeof(ClientTemplate));
     ClientTemplate.Header.Size = sizeof(ClientTemplate);
@@ -556,7 +578,10 @@ UcxRootHub::AddQueryInterfaces()
     Config.ImportInterface = TRUE;
     Status = WdfDeviceAddQueryInterface(m_Pdo, &Config);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub PDO %p USBD client interface add failed 0x%lx\n", m_Pdo, Status);
         return Status;
+    }
 
     RtlZeroMemory(&Location, sizeof(Location));
     Location.Size = sizeof(Location);
@@ -567,5 +592,9 @@ UcxRootHub::AddQueryInterfaces()
     WDF_QUERY_INTERFACE_CONFIG_INIT(&Config, (PINTERFACE)&Location, &GUID_PNP_LOCATION_INTERFACE, NULL);
     Config.ImportInterface = FALSE;
 
-    return WdfDeviceAddQueryInterface(m_Pdo, &Config);
+    Status = WdfDeviceAddQueryInterface(m_Pdo, &Config);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Root hub PDO %p location interface add failed 0x%lx\n", m_Pdo, Status);
+
+    return Status;
 }

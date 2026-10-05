@@ -45,6 +45,7 @@ UcxEndpoint::AbortPipe(
 {
     if (!m_HasMachine || !Post(EpEvent::ClientAbortUrb))
     {
+        DPRINT1("Endpoint %p abort pipe failed, endpoint is not running\n", m_Handle);
         return UcxCompleteUrb(Irp,
                               Urb,
                               STATUS_NO_SUCH_DEVICE,
@@ -55,6 +56,43 @@ UcxEndpoint::AbortPipe(
     Post(EpEvent::AbortUrbParked);
 
     return STATUS_PENDING;
+}
+
+/** Answered by the controller driver when it has the callback, otherwise not supported. */
+NTSTATUS
+UcxEndpoint::GetIsochPathDelays(
+    _In_ PIRP Irp,
+    _In_ PURB Urb)
+{
+    struct _URB_GET_ISOCH_PIPE_TRANSFER_PATH_DELAYS* Request = &Urb->UrbGetIsochPipeTransferPathDelays;
+    UCX_ENDPOINT_ISOCH_TRANSFER_PATH_DELAYS Delays;
+    NTSTATUS Status;
+
+    if (m_Pipe.TransferType != UcxTransferType::Isochronous)
+    {
+        DPRINT1("Endpoint %p path delay query on a non isoch pipe\n", m_Handle);
+        return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
+    }
+
+    if (m_Callbacks.GetIsochTransferPathDelays == NULL)
+    {
+        DPRINT("Endpoint %p has no path delay callback\n", m_Handle);
+        return UcxCompleteUrb(Irp, Urb, STATUS_NOT_SUPPORTED, USBD_STATUS_NOT_SUPPORTED);
+    }
+
+    RtlZeroMemory(&Delays, sizeof(Delays));
+    Status = m_Callbacks.GetIsochTransferPathDelays(m_Handle, &Delays);
+    if (NT_SUCCESS(Status))
+    {
+        Request->MaximumSendPathDelayInMilliSeconds = Delays.MaximumSendPathDelayInMilliSeconds;
+        Request->MaximumCompletionPathDelayInMilliSeconds = Delays.MaximumCompletionPathDelayInMilliSeconds;
+    }
+    else
+    {
+        DPRINT1("Endpoint %p path delay callback failed 0x%lx\n", m_Handle, Status);
+    }
+
+    return UcxCompleteUrb(Irp, Urb, Status, UcxNtStatusToUsbdStatus(Status));
 }
 
 /* Static streams */
@@ -98,6 +136,7 @@ UcxCreateStaticStreams(
     Status = Endpoint->m_Callbacks.StaticStreamsAdd(Endpoint->m_Handle, Count, &Init);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Endpoint %p HCD streams add failed 0x%lx\n", Endpoint->m_Handle, Status);
         if (Init.Created != NULL)
             WdfObjectDelete(Init.Created);
         return Status;
@@ -106,6 +145,7 @@ UcxCreateStaticStreams(
     /* Windows crashes on a success without a streams object */
     if (Init.Created == NULL)
     {
+        DPRINT1("Endpoint %p HCD streams add created no streams object\n", Endpoint->m_Handle);
         UcxVerifierBreak(Verifying);
         return STATUS_INTERNAL_ERROR;
     }
@@ -122,6 +162,10 @@ UcxCreateStaticStreams(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Endpoint %p HCD did not set every stream, %lu set calls for %lu streams\n",
+                Endpoint->m_Handle,
+                Init.SetInfoCalls,
+                Count);
         UcxVerifierBreak(Verifying);
         WdfObjectDelete(Init.Created);
         return Status;
@@ -145,6 +189,7 @@ UcxEndpoint::OpenStaticStreams(
 
     if (Irql != PASSIVE_LEVEL)
     {
+        DPRINT1("Endpoint %p streams open at IRQL %u\n", m_Handle, Irql);
         if (Client->m_VerifierEnabled)
         {
             KeBugCheckEx(UCX_BUGCHECK_USB3,
@@ -158,6 +203,7 @@ UcxEndpoint::OpenStaticStreams(
 
     if (!Client->m_StreamsGranted)
     {
+        DPRINT1("Endpoint %p streams open without a streams grant\n", m_Handle);
         if (Client->m_VerifierEnabled)
         {
             KeBugCheckEx(UCX_BUGCHECK_USB3,
@@ -171,6 +217,10 @@ UcxEndpoint::OpenStaticStreams(
 
     if (Count == 0 || Count > Client->m_GrantedStreams)
     {
+        DPRINT1("Endpoint %p streams open for %lu streams, %lu granted\n",
+                m_Handle,
+                Count,
+                Client->m_GrantedStreams);
         if (Client->m_VerifierEnabled)
         {
             KeBugCheckEx(UCX_BUGCHECK_USB3,
@@ -183,12 +233,17 @@ UcxEndpoint::OpenStaticStreams(
     }
 
     if (UcxVerifierWantsFailure(Client->m_VerifierFailEnableStaticStreams))
-        return UcxFailStreamsUrb(Irp, Urb, UcxRandomErrorStatus());
+    {
+        Status = UcxRandomErrorStatus();
+        DPRINT1("Endpoint %p streams open failed by verifier 0x%lx\n", m_Handle, Status);
+        return UcxFailStreamsUrb(Irp, Urb, Status);
+    }
 
     /* One open at a time per endpoint */
     if (InterlockedIncrement(&m_StreamsOpenCount) != 1)
     {
         InterlockedDecrement(&m_StreamsOpenCount);
+        DPRINT1("Endpoint %p static streams are already open\n", m_Handle);
 
         if (Client->m_VerifierEnabled)
         {
@@ -228,10 +283,16 @@ UcxEndpoint::CloseStaticStreams(
         return UcxCompleteUrb(Irp, Urb, STATUS_SUCCESS, USBD_STATUS_SUCCESS);
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+    {
+        DPRINT1("Endpoint %p streams close at IRQL %u\n", m_Handle, KeGetCurrentIrql());
         return UcxFailStreamsUrb(Irp, Urb, STATUS_INVALID_PARAMETER);
+    }
 
     if (m_Streams == NULL)
+    {
+        DPRINT1("Endpoint %p streams close with no streams open\n", m_Handle);
         return UcxFailStreamsUrb(Irp, Urb, STATUS_INVALID_DEVICE_STATE);
+    }
 
     return UcxForwardStreamsUrb(m_Controller->m_RootHub->Pdo(), Irp, Urb, m_Controller);
 }
@@ -268,6 +329,8 @@ UcxEndpoint::OpenStaticStreamsComplete(
 
     if (!NT_SUCCESS(Irp->IoStatus.Status))
     {
+        DPRINT1("Endpoint %p HCD streams enable failed 0x%lx\n", m_Handle, Irp->IoStatus.Status);
+
         {
             SpinLockGuard Guard(&m_Controller->m_TopologyLock);
 

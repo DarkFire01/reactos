@@ -176,5 +176,6 @@ DriverEntry(
 
     UcxReadUsbFlags();
 
+    DPRINT("UCX loaded, control device %wZ\n", &UcxDriver.ControlDeviceName);
     return STATUS_SUCCESS;
 }

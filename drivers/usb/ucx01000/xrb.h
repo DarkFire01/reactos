@@ -60,6 +60,7 @@ C_ASSERT(FIELD_OFFSET(UcxXrbPreamble, Signature) == sizeof(UcxXrbPreamble) - siz
 
 FORCEINLINE
 UcxXrbPreamble*
+NTAPI
 UcxXrbFromUrb(
     _In_ PURB Urb)
 {
@@ -68,6 +69,7 @@ UcxXrbFromUrb(
 
 FORCEINLINE
 PURB
+NTAPI
 UcxUrbFromXrb(
     _In_ UcxXrbPreamble* Xrb)
 {
@@ -80,6 +82,7 @@ UcxUrbFromXrb(
  */
 FORCEINLINE
 BOOLEAN
+NTAPI
 UcxIsXrbIrp(
     _In_ PIRP Irp,
     _In_ PURB Urb)
@@ -90,6 +93,7 @@ UcxIsXrbIrp(
 /* Every path that completes an XRB lets the client reuse it again */
 FORCEINLINE
 VOID
+NTAPI
 UcxXrbMarkInactive(
     _In_ PURB Urb)
 {

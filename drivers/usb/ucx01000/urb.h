@@ -10,6 +10,9 @@
 /* Low 24 bits of URB_HEADER.UsbdFlags belong to UCX, which clears them on entry */
 #define UCX_URB_FLAGS_KEEP_HUB_BITS  UCXHUB_URB_FLAGS_HUB_MASK
 
+/* UsbdFlags bit: UCX built and locked TransferBufferMDL and undoes that at completion */
+#define UCX_URB_FLAG_BUFFER_LOCKED   0x20000000
+
 /* Control transfers never exceed 64 KB minus one, whatever the pipe allows */
 #define UCX_MAX_CONTROL_TRANSFER     0xFFFF
 
@@ -29,6 +32,7 @@
 /* ReactOS has no KeGetCurrentProcessorNumberEx export yet */
 FORCEINLINE
 VOID
+NTAPI
 UcxStampProcessorNumber(
     _Inout_ PURB Urb)
 {
@@ -44,6 +48,7 @@ UcxStampProcessorNumber(
 /** Pins TransferFlags' direction to the pipe; the client's own bit is ignored. */
 FORCEINLINE
 VOID
+NTAPI
 UcxSetTransferDirection(
     _Inout_ PURB Urb,
     _In_ const UcxPipe* Pipe)
@@ -53,6 +58,17 @@ UcxSetTransferDirection(
     else
         Urb->UrbControlTransfer.TransferFlags &= ~USBD_TRANSFER_DIRECTION_IN;
 }
+
+/** Below DISPATCH_LEVEL, locks a buffer passed without an MDL so the HCD can map it. */
+VOID
+NTAPI
+UcxLockTransferBuffer(
+    _Inout_ PURB Urb);
+
+VOID
+NTAPI
+UcxUnlockTransferBuffer(
+    _Inout_ PURB Urb);
 
 NTSTATUS
 NTAPI

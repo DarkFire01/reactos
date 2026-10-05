@@ -101,22 +101,54 @@ private:
     SmDereference();
 
     /* Handlers */
-    SM_RESULT OnInactive(_In_ EpEvent Event);
-    SM_RESULT OnCreated(_In_ EpEvent Event);
-    SM_RESULT OnDisabled(_In_ EpEvent Event);
-    SM_RESULT OnRetired(_In_ EpEvent Event);
-    SM_RESULT OnStale(_In_ EpEvent Event);
-    SM_RESULT OnEnabled(_In_ EpEvent Event);
-    SM_RESULT OnBusy(_In_ EpEvent Event);
-    SM_RESULT OnPurging(_In_ EpEvent Event);
-    SM_RESULT OnOperation(_In_ EpEvent Event);
-    SM_RESULT OnAwaitingAbortUrb(_In_ EpEvent Event);
-    SM_RESULT OnAborting(_In_ EpEvent Event);
-    SM_RESULT OnEnablingStreams(_In_ EpEvent Event);
-    SM_RESULT OnDisablingStreams(_In_ EpEvent Event);
-    SM_RESULT OnResettingPipe(_In_ EpEvent Event);
-    SM_RESULT OnOperationHeld(_In_ EpEvent Event);
-    SM_RESULT OnOperationUnwinding(_In_ EpEvent Event);
+    SM_RESULT
+    OnInactive(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnCreated(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnDisabled(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnRetired(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnStale(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnEnabled(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnBusy(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnPurging(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnOperation(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnAwaitingAbortUrb(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnAborting(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnEnablingStreams(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnDisablingStreams(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnResettingPipe(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnOperationHeld(
+        _In_ EpEvent Event);
+    SM_RESULT
+    OnOperationUnwinding(
+        _In_ EpEvent Event);
 
     /* Entry actions */
     SM_RESULT EnterPurging();
@@ -159,7 +191,9 @@ private:
     VOID FinishEndpointResetRequest();
     VOID ForwardStreamsEnableRequest();
     VOID RejectStreamsEnableRequest();
-    VOID FinishStreamsOpenRequest(_In_ BOOLEAN ForceFailure);
+    VOID
+    FinishStreamsOpenRequest(
+        _In_ BOOLEAN ForceFailure);
     VOID ForwardStreamsDisableRequest();
     VOID ParkStreamsDisableRequest();
     VOID FinishStreamsCloseRequest();

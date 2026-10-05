@@ -73,18 +73,42 @@ private:
     SmQueuePassive();
 
     /* Handlers */
-    SM_RESULT OnRootHubOn(_In_ CrEvent Event);
-    SM_RESULT OnRootHubOff(_In_ CrEvent Event);
-    SM_RESULT OnPreparingDevicesOff(_In_ CrEvent Event);
-    SM_RESULT OnResetting(_In_ CrEvent Event);
-    SM_RESULT OnDrainingReferences(_In_ CrEvent Event);
-    SM_RESULT OnPreparingDevices(_In_ CrEvent Event);
-    SM_RESULT OnResettingController(_In_ CrEvent Event);
-    SM_RESULT OnAwaitingResetDone(_In_ CrEvent Event);
-    SM_RESULT OnAwaitingHubReset(_In_ CrEvent Event);
-    SM_RESULT OnFailed(_In_ CrEvent Event);
-    SM_RESULT OnFailedOn(_In_ CrEvent Event);
-    SM_RESULT OnFailedOff(_In_ CrEvent Event);
+    SM_RESULT
+    OnRootHubOn(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnRootHubOff(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnPreparingDevicesOff(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnResetting(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnDrainingReferences(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnPreparingDevices(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnResettingController(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnAwaitingResetDone(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnAwaitingHubReset(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnFailed(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnFailedOn(
+        _In_ CrEvent Event);
+    SM_RESULT
+    OnFailedOff(
+        _In_ CrEvent Event);
 
     /* Entry actions */
     SM_RESULT EnterDrainingReferences();
@@ -117,7 +141,9 @@ private:
     VOID PrepareDevicesForReset();
     VOID NotifyDevicesResetDone();
     VOID ResetController();
-    VOID CompleteHubReset(_In_ BOOLEAN Succeeded);
+    VOID
+    CompleteHubReset(
+        _In_ BOOLEAN Succeeded);
     VOID SignalPortChange();
     VOID AllowRootHubPowerDown();
     VOID LetResetCompletionProceed();

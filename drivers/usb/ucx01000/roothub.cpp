@@ -49,7 +49,10 @@ UcxRootHub::Create(
                                             Attributes != NULL ? &UcxAttributes : NULL,
                                             &Object);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub object create failed 0x%lx\n", Status);
         return Status;
+    }
 
     Context = new (UcxGetRootHubContext(Object)) UcxRootHub();
     Context->m_Handle = (UCXROOTHUB)Object;
@@ -61,6 +64,10 @@ UcxRootHub::Create(
     {
         Context->m_Device = new (DeviceContext) UcxUsbDevice();
         Status = Context->Initialize(ControllerContext, Config);
+    }
+    else
+    {
+        DPRINT1("Root hub device context allocation failed 0x%lx\n", Status);
     }
 
     if (!NT_SUCCESS(Status))
@@ -77,6 +84,7 @@ UcxRootHub::Create(
     }
 
     *RootHub = Context->m_Handle;
+    DPRINT("Root hub %p created for controller %p\n", Context, ControllerContext);
     return STATUS_SUCCESS;
 }
 
@@ -140,12 +148,18 @@ UcxRootHub::CreateEndpoint(
 
     Status = WdfIoQueueCreate(m_Controller->m_Fdo, &QueueConfig, &QueueAttributes, &Queue);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub %s queue create failed 0x%lx\n", Interrupt ? "interrupt" : "control", Status);
         return Status;
+    }
 
     WDF_IO_QUEUE_FORWARD_PROGRESS_POLICY_DEFAULT_INIT(&Policy, 1);
     Status = WdfIoQueueAssignForwardProgressPolicy(Queue, &Policy);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub %s queue forward progress setup failed 0x%lx\n", Interrupt ? "interrupt" : "control", Status);
         return Status;
+    }
 
     RtlZeroMemory(&Init, sizeof(Init));
     Init.Kind = Interrupt ? UcxEndpointKind::Generic : UcxEndpointKind::Default;
@@ -155,7 +169,10 @@ UcxRootHub::CreateEndpoint(
 
     Status = UcxEndpoint::Create((UCXUSBDEVICE)m_Handle, &InitPointer, NULL, &EndpointHandle);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub %s endpoint create failed 0x%lx\n", Interrupt ? "interrupt" : "control", Status);
         return Status;
+    }
 
     UcxEndpoint::FromHandle(EndpointHandle)->SetWdfIoQueue(Queue);
 
@@ -174,6 +191,7 @@ UcxRootHub::CreateEndpoint(
         m_InterruptQueue = Queue;
         m_InterruptState = State;
         m_InterruptEndpoint = UcxEndpoint::FromHandle(EndpointHandle);
+        DPRINT("Root hub %p interrupt endpoint %p\n", this, m_InterruptEndpoint);
     }
     else
     {
@@ -181,6 +199,7 @@ UcxRootHub::CreateEndpoint(
 
         m_ControlQueue = Queue;
         m_ControlEndpoint = UcxEndpoint::FromHandle(EndpointHandle);
+        DPRINT("Root hub %p control endpoint %p\n", this, m_ControlEndpoint);
     }
 
     return STATUS_SUCCESS;
@@ -210,6 +229,8 @@ UcxRootHub::PortChanged()
     UcxInterruptQueueState* State = m_InterruptState;
     WDFREQUEST Release = NULL;
     BOOLEAN IndicateWake;
+
+    DPRINT("Root hub %p port change\n", this);
 
     {
         SpinLockGuard Guard(&State->PortChangeLock);
@@ -246,6 +267,7 @@ UcxRootHub::PortChanged()
 
     if (!m_Controller->BlockReset())
     {
+        DPRINT1("Root hub %p failing held status change transfer %p, controller resetting\n", this, Release);
         WdfRequestComplete(Release, STATUS_NO_SUCH_DEVICE);
         return;
     }
@@ -268,6 +290,7 @@ UcxEvtRootHubHeldTransferCancel(
         State->LastTransferCanceled = TRUE;
     }
 
+    DPRINT("Held status change transfer %p canceled\n", Request);
     WdfRequestComplete(Request, STATUS_CANCELLED);
 }
 
@@ -319,6 +342,7 @@ UcxEvtRootHubInterruptTransfer(
 
     if (!NT_SUCCESS(HoldStatus))
     {
+        DPRINT1("Root hub %p could not hold status change transfer %p 0x%lx\n", RootHub, Request, HoldStatus);
         WdfRequestComplete(Request, HoldStatus);
         return;
     }
@@ -328,6 +352,7 @@ UcxEvtRootHubInterruptTransfer(
 
     if (!RootHub->m_Controller->BlockReset())
     {
+        DPRINT1("Root hub %p failing status change transfer %p, controller resetting\n", RootHub, Request);
         WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
         return;
     }
@@ -427,6 +452,7 @@ UcxEvtRootHubControlTransfer(
 
     if (!RootHub->m_Controller->BlockReset())
     {
+        DPRINT1("Root hub %p failing control transfer %p, controller resetting\n", RootHub, Request);
         WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
         return;
     }
@@ -445,6 +471,8 @@ UcxEvtRootHubControlTransfer(
 
     if (Callback == NULL)
     {
+        DPRINT1("Root hub %p has no callback for request 0x%x type 0x%x\n",
+                RootHub, Setup->bRequest, Setup->bmRequestType.B);
         NT_ASSERT(FALSE);
         WdfRequestComplete(Request, STATUS_NOT_SUPPORTED);
     }
@@ -456,6 +484,7 @@ UcxEvtRootHubControlTransfer(
 VOID
 UcxRootHub::FailIo()
 {
+    DPRINT("Root hub %p failing I/O for controller reset\n", this);
     WdfIoQueuePurge(m_InterruptQueue, NULL, NULL);
     WdfIoQueuePurge(m_ControlQueue, NULL, NULL);
 }
@@ -470,6 +499,7 @@ UcxRootHub::ResumeIo()
         m_InterruptState->PortChangeGeneration++;
     }
 
+    DPRINT("Root hub %p resuming I/O\n", this);
     WdfIoQueueStart(m_InterruptQueue);
     WdfIoQueueStart(m_ControlQueue);
 }
@@ -491,6 +521,9 @@ UcxRootHub::FinishPortResetRequest(
 
     m_Controller->m_RootHubResetSeen = 0;
 
+    if (!Succeeded)
+        DPRINT1("Root hub %p async reset IRP %p failed\n", this, Irp);
+
     Irp->IoStatus.Status = Succeeded ? STATUS_SUCCESS : STATUS_NO_SUCH_DEVICE;
     Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -506,6 +539,7 @@ UcxRootHub::DispatchGetInfo(
     Info->Info.Size = sizeof(ROOTHUB_INFO);
     Info->InterruptPipe = m_InterruptEndpoint->m_Pipe.Handle();
 
+    DPRINT("Root hub %p GetInfo request %p to HCD\n", this, Request);
     m_Config.EvtRootHubGetInfo(m_Handle, Request);
 }
 

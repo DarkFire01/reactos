@@ -214,7 +214,10 @@ UcxEndpoint::Create(
 
     Status = UcxCreateObjectWithTwoContexts(&Primary, Attributes, &Object);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Endpoint object create failed for UsbDevice %p 0x%lx\n", UsbDevice, Status);
         return Status;
+    }
 
     WdfObjectReference(UsbDevice);
 
@@ -255,6 +258,8 @@ UcxEndpoint::Create(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Endpoint %p not created, UsbDevice %p is disconnected\n", Object, UsbDevice);
+
         if (Context->m_HasMachine)
             WdfObjectDereference(Object);
 
@@ -270,6 +275,11 @@ UcxEndpoint::Create(
         if (!UcxIsListEntryLinked(&Context->m_TrackingLink))
             InsertTailList(&Device->m_TrackingList, &Context->m_TrackingLink);
     }
+
+    DPRINT("Endpoint %p address 0x%x created on UsbDevice %p\n",
+           Context->m_Handle,
+           Context->m_Descriptor.bEndpointAddress,
+           UsbDevice);
 
     *Endpoint = Context->m_Handle;
     Init->Created = Context->m_Handle;
@@ -335,6 +345,7 @@ UcxEndpoint::NeedToCancelTransfers()
     /* A second call during a clear never gets its OK, as on Windows */
     if (InterlockedCompareExchange(&m_CancelSync, 2, 0) != 0)
     {
+        DPRINT1("Endpoint %p HCD asked to cancel transfers again during a TT clear\n", m_Handle);
         NT_ASSERT(FALSE);
         return;
     }
@@ -416,10 +427,14 @@ UcxEndpoint::CreateThroughHcd(
                                               Init);
     }
 
+    if (!NT_SUCCESS(Status))
+        DPRINT1("UsbDevice %p HCD endpoint add failed 0x%lx\n", Device->m_Handle, Status);
+
     /* Success without an endpoint or a queue leaves nothing to send transfers to */
     if (NT_SUCCESS(Status) &&
         (Init->Created == NULL || FromHandle(Init->Created)->m_Pipe.Queue == NULL))
     {
+        DPRINT1("UsbDevice %p HCD endpoint add set no endpoint %p or no queue\n", Device->m_Handle, Init->Created);
         UcxVerifierBreak(Device->m_Controller->m_DriverVerifierEnabled);
         Status = STATUS_INTERNAL_ERROR;
     }
@@ -541,7 +556,10 @@ UcxStaticStreams::Create(
 
     Status = UcxCreateObjectWithTwoContexts(&Primary, Attributes, &Object);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Streams object create failed for endpoint %p 0x%lx\n", Endpoint, Status);
         return Status;
+    }
 
     Context = new (UcxGetStaticStreamsContext(Object)) UcxStaticStreams();
     Context->m_Handle = (UCXSSTREAMS)Object;
@@ -572,12 +590,14 @@ UcxStaticStreams::SetStreamInfo(
 
     if (Init == NULL)
     {
+        DPRINT1("Streams %p stream info set outside the add callback\n", m_Handle);
         UcxVerifierBreak(Verifying);
         return;
     }
 
     if (StreamInfo->Size != sizeof(*StreamInfo))
     {
+        DPRINT1("Streams %p stream info has bad size %lu\n", m_Handle, StreamInfo->Size);
         Init->Failed = TRUE;
         UcxVerifierBreak(Verifying);
         return;
@@ -588,6 +608,11 @@ UcxStaticStreams::SetStreamInfo(
 
     if (Index >= m_StreamCount || StreamInfo->StreamId != Index + 1 || StreamInfo->WdfQueue == NULL)
     {
+        DPRINT1("Streams %p bad stream info at call %lu, stream ID %lu, queue %p\n",
+                m_Handle,
+                Index,
+                StreamInfo->StreamId,
+                StreamInfo->WdfQueue);
         Init->Failed = TRUE;
         UcxVerifierBreak(Verifying);
         return;
@@ -677,6 +702,7 @@ EndpointMachine::ForwardResetRequest()
 VOID
 EndpointMachine::FailResetRequest()
 {
+    DPRINT1("Endpoint %p reset failed, device is gone or reset\n", m_Endpoint->m_Handle);
     WdfRequestComplete((WDFREQUEST)m_Endpoint->TakePending(), STATUS_NO_SUCH_DEVICE);
 }
 
@@ -698,6 +724,7 @@ EndpointMachine::ForwardStreamsEnableRequest()
 VOID
 EndpointMachine::RejectStreamsEnableRequest()
 {
+    DPRINT1("Endpoint %p static streams enable rejected in this state\n", m_Endpoint->m_Handle);
     WdfRequestComplete((WDFREQUEST)m_Endpoint->TakePending(), STATUS_INVALID_DEVICE_STATE);
 }
 
@@ -709,6 +736,7 @@ EndpointMachine::FinishStreamsOpenRequest(
 
     if (ForceFailure)
     {
+        DPRINT1("Endpoint %p static streams open failed by endpoint state\n", m_Endpoint->m_Handle);
         InterlockedDecrement(&m_Endpoint->m_StreamsOpenCount);
         Irp->IoStatus.Status = STATUS_INVALID_DEVICE_STATE;
         Irp->IoStatus.Information = 0;
@@ -733,8 +761,12 @@ EndpointMachine::ForwardStreamsDisableRequest()
 VOID
 EndpointMachine::ParkStreamsDisableRequest()
 {
-    WdfRequestForwardToIoQueue((WDFREQUEST)m_Endpoint->TakePending(),
-                               m_Endpoint->m_Controller->m_PendDuringResetQueue);
+    WDFREQUEST Request = (WDFREQUEST)m_Endpoint->TakePending();
+    NTSTATUS Status;
+
+    Status = WdfRequestForwardToIoQueue(Request, m_Endpoint->m_Controller->m_PendDuringResetQueue);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Endpoint %p could not park streams close %p 0x%lx\n", m_Endpoint->m_Handle, Request, Status);
 }
 
 /* UCX drops its streams even when the controller driver failed the close */
@@ -826,6 +858,8 @@ EndpointMachine::DeleteEndpoint()
     UcxController* Controller = m_Endpoint->m_Controller;
     UCXENDPOINT Handle = m_Endpoint->m_Handle;
 
+    DPRINT("Endpoint %p deleted\n", Handle);
+
     UcxUntrackEndpoint(m_Endpoint);
 
     {
@@ -886,6 +920,8 @@ EndpointMachine::ParkAsStale()
     if (Replaced != NULL)
         Replaced->Post(EpEvent::StaleReplaced);
 
+    DPRINT("Endpoint %p parked as stale %u, replaced %p\n", m_Endpoint->m_Handle, Parked, Replaced);
+
     return Parked;
 }
 
@@ -894,6 +930,8 @@ VOID
 EndpointMachine::DeleteStaleEndpoint()
 {
     UCXENDPOINT Handle = m_Endpoint->m_Handle;
+
+    DPRINT("Stale endpoint %p deleted\n", Handle);
 
     WdfObjectDelete(Handle);
     WdfObjectDereference(Handle);

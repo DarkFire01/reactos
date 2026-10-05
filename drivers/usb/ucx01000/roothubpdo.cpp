@@ -175,7 +175,10 @@ UcxRootHub::CreatePdo()
 
     Init = WdfPdoInitAllocate(Fdo);
     if (Init == NULL)
+    {
+        DPRINT1("Root hub PDO init allocation failed\n");
         return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     Status = WdfPdoInitAssignInstanceID(Init, &InstanceId);
     if (NT_SUCCESS(Status))
@@ -216,6 +219,7 @@ UcxRootHub::CreatePdo()
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Root hub PDO ID or preprocess setup failed 0x%lx\n", Status);
         WdfDeviceInitFree(Init);
         return Status;
     }
@@ -260,10 +264,13 @@ UcxRootHub::CreatePdo()
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Root hub PDO create failed at USBPDO-%lu 0x%lx\n", Index, Status);
         if (Init != NULL)
             WdfDeviceInitFree(Init);
         return Status;
     }
+
+    DPRINT("Root hub PDO %p is %wZ\n", Pdo, &Name);
 
     /* User mode IOCTLs on the root hub PDO are not served */
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&QueueConfig, WdfIoQueueDispatchParallel);
@@ -271,6 +278,7 @@ UcxRootHub::CreatePdo()
     Status = WdfIoQueueCreate(Pdo, &QueueConfig, WDF_NO_OBJECT_ATTRIBUTES, WDF_NO_HANDLE);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Root hub PDO %p queue create failed 0x%lx\n", Pdo, Status);
         WdfObjectDelete(Pdo);
         return Status;
     }
@@ -297,6 +305,7 @@ UcxRootHub::CreatePdo()
     Status = WdfDeviceCreateDeviceInterface(Pdo, &GUID_DEVINTERFACE_USB_HUB, NULL);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Root hub PDO %p hub interface create failed 0x%lx\n", Pdo, Status);
         WdfObjectDelete(Pdo);
         return Status;
     }
@@ -310,6 +319,7 @@ UcxRootHub::CreatePdo()
     Status = WdfFdoAddStaticChild(Fdo, Pdo);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Root hub PDO %p static child add failed 0x%lx\n", Pdo, Status);
         m_Pdo = NULL;
         WdfObjectDelete(Pdo);
         return Status;
@@ -427,11 +437,15 @@ UcxEvtRootHubPrepareHardware(
 
     Status = WdfStringCreate(NULL, &Attributes, &Name);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Root hub PDO %p interface string create failed 0x%lx\n", Device, Status);
         return Status;
+    }
 
     Status = WdfDeviceRetrieveDeviceInterfaceString(Device, &GUID_DEVINTERFACE_USB_HUB, NULL, Name);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Root hub PDO %p hub interface name query failed 0x%lx\n", Device, Status);
         WdfObjectDelete(Name);
         return Status;
     }
@@ -450,6 +464,7 @@ UcxEvtRootHubPrepareHardware(
 
     /* Unknown until the first S IRP, as USBPORT reports it */
     RootHub->m_LastSystemSleepState = PowerSystemUnspecified;
+    DPRINT("Root hub PDO %p prepared\n", Device);
     return STATUS_SUCCESS;
 }
 
@@ -475,6 +490,7 @@ UcxEvtRootHubReleaseHardware(
     if (Name != NULL)
         WdfObjectDelete(Name);
 
+    DPRINT("Root hub PDO %p released\n", Device);
     return STATUS_SUCCESS;
 }
 
@@ -488,6 +504,8 @@ UcxEvtRootHubD0Entry(
     UcxInterruptQueueState* State = Context->RootHub->m_InterruptState;
 
     UNREFERENCED_PARAMETER(PreviousState);
+
+    DPRINT("Root hub PDO %p D0 entry, previous WDF state %d\n", Device, PreviousState);
 
     {
         SpinLockGuard Guard(&State->PortChangeLock);
@@ -517,6 +535,8 @@ UcxEvtRootHubD0Exit(
     BOOLEAN WakeNow = FALSE;
 
     UNREFERENCED_PARAMETER(TargetState);
+
+    DPRINT("Root hub PDO %p D0 exit, target WDF state %d\n", Device, TargetState);
 
     /* Waits out any reset recovery that still needs the root hub */
     Controller->PostResetEvent(CrEvent::RootHubPoweringDown);
@@ -553,8 +573,12 @@ UcxEvtRootHubEnableWakeAtBus(
     UNREFERENCED_PARAMETER(PowerState);
 
     if (UcxGetRootHubPdoContext(Device)->Controller->IsResetInProgress())
+    {
+        DPRINT1("Root hub PDO %p wake arm failed, controller reset in progress\n", Device);
         return STATUS_NO_SUCH_DEVICE;
+    }
 
+    DPRINT("Root hub PDO %p wake armed\n", Device);
     return STATUS_SUCCESS;
 }
 
@@ -578,8 +602,7 @@ UcxEvtRootHubPdoIoDeviceControl(
     UNREFERENCED_PARAMETER(Queue);
     UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
-    UNREFERENCED_PARAMETER(IoControlCode);
-
+    DPRINT1("Root hub PDO user IOCTL 0x%lx not supported\n", IoControlCode);
     WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
 }
 
@@ -628,12 +651,13 @@ UcxRouteHubIoctl(
         case IOCTL_UCXHUB_ADDRESS0_OWNERSHIP_ACQUIRE:
             return Controller->m_Address0Queue;
 
+        /* The port info IOCTLs get the completion routine only so HCD failures print */
         case IOCTL_UCXHUB_ROOTHUB_GET_INFO:
+        case IOCTL_UCXHUB_ROOTHUB_GET_20PORT_INFO:
+        case IOCTL_UCXHUB_ROOTHUB_GET_30PORT_INFO:
             *Setup = UcxStackSetup::GetInfoCompletion;
             return Controller->m_DefaultQueue;
 
-        case IOCTL_UCXHUB_ROOTHUB_GET_20PORT_INFO:
-        case IOCTL_UCXHUB_ROOTHUB_GET_30PORT_INFO:
         case IOCTL_INTERNAL_USB_REGISTER_COMPOSITE_DEVICE:
         case IOCTL_INTERNAL_USB_UNREGISTER_COMPOSITE_DEVICE:
         case IOCTL_INTERNAL_USB_REQUEST_REMOTE_WAKE_NOTIFICATION:
@@ -693,10 +717,18 @@ UcxQueueAsyncPortReset(
     _In_ PIRP Irp)
 {
     if (Controller->m_Config.EvtControllerReset == NULL)
+    {
+        DPRINT1("Controller %p has no reset callback, failing async port reset\n", Controller);
         return UcxCompleteIrpWithStatus(Irp, STATUS_NOT_SUPPORTED);
+    }
 
     if (Controller->HasFailed())
+    {
+        DPRINT1("Controller %p has failed, refusing async port reset\n", Controller);
         return UcxCompleteIrpWithStatus(Irp, STATUS_UNSUCCESSFUL);
+    }
+
+    DPRINT("Controller %p async port reset requested by hub\n", Controller);
 
     IoMarkIrpPending(Irp);
 
@@ -726,7 +758,10 @@ UcxEvtRootHubPreprocessInternalIoctl(
 
     Queue = UcxRouteHubIoctl(Controller, Code, &Setup);
     if (Queue == NULL)
+    {
+        DPRINT1("Root hub PDO internal IOCTL 0x%lx not supported, IRP %p\n", Code, Irp);
         return UcxCompleteIrpWithStatus(Irp, STATUS_NOT_SUPPORTED);
+    }
 
     switch (Setup)
     {
@@ -865,6 +900,8 @@ UcxRootHubGetInfoCompletion(
     _In_ PIRP Irp,
     _In_reads_opt_(_Inexpressible_("varies")) PVOID Context)
 {
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    ULONG Code = Stack->Parameters.DeviceIoControl.IoControlCode;
     PUCXHUB_ROOTHUB_INFO Info;
     UcxRootHub* RootHub;
 
@@ -874,14 +911,24 @@ UcxRootHubGetInfoCompletion(
         IoMarkIrpPending(Irp);
 
     if (!NT_SUCCESS(Irp->IoStatus.Status))
+    {
+        DPRINT1("Root hub PDO %p IOCTL 0x%lx failed by HCD 0x%lx\n",
+                Context, Code, Irp->IoStatus.Status);
+        return STATUS_CONTINUE_COMPLETION;
+    }
+
+    if (Code != IOCTL_UCXHUB_ROOTHUB_GET_INFO)
         return STATUS_CONTINUE_COMPLETION;
 
-    Info = (PUCXHUB_ROOTHUB_INFO)IoGetCurrentIrpStackLocation(Irp)->Parameters.Others.Argument1;
+    Info = (PUCXHUB_ROOTHUB_INFO)Stack->Parameters.Others.Argument1;
     RootHub = UcxGetRootHubPdoContext((WDFDEVICE)Context)->RootHub;
 
     Info->Info.Size = sizeof(UCXHUB_ROOTHUB_INFO);
     RootHub->m_NumberOf20Ports = Info->Info.NumberOf20Ports;
     RootHub->m_NumberOf30Ports = Info->Info.NumberOf30Ports;
+
+    DPRINT("Root hub %p has %lu USB 2 and %lu USB 3 ports\n",
+           RootHub, (ULONG)Info->Info.NumberOf20Ports, (ULONG)Info->Info.NumberOf30Ports);
 
     return STATUS_CONTINUE_COMPLETION;
 }

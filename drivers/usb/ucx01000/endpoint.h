@@ -228,6 +228,11 @@ public:
         _In_ PIRP Irp,
         _In_ PURB Urb);
 
+    NTSTATUS
+    GetIsochPathDelays(
+        _In_ PIRP Irp,
+        _In_ PURB Urb);
+
     /* Lookups */
 
     static

@@ -109,7 +109,10 @@ UcxUsbDevice::Create(
                                             Attributes != NULL ? &UcxAttributes : NULL,
                                             &Object);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("UsbDevice object create failed under hub %p 0x%lx\n", Init->ParentHub, Status);
         return Status;
+    }
 
     Device = new (UcxGetUsbDeviceContext(Object)) UcxUsbDevice();
     Device->m_Handle = (UCXUSBDEVICE)Object;
@@ -144,9 +147,12 @@ UcxUsbDevice::Create(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("UsbDevice %p not created, parent hub %p is disconnected\n", Object, Parent->m_Handle);
         WdfObjectDelete(Object);
         return Status;
     }
+
+    DPRINT("UsbDevice %p created under hub %p\n", Device->m_Handle, Parent->m_Handle);
 
     *UsbDevice = Device->m_Handle;
     Init->Created = Device->m_Handle;
@@ -209,10 +215,18 @@ UcxUsbDevice::RemoteWakeNotification(
         }
     }
 
-    /* A failed unmark means the cancel routine owns the request */
-    if (Slot == NULL || !NT_SUCCESS(WdfRequestUnmarkCancelable(Slot->Request)))
+    if (Slot == NULL)
     {
         KeReleaseSpinLock(&m_RemoteWakeLock, OldIrql);
+        DPRINT1("UsbDevice %p remote wake on interface %lu with no armed request\n", m_Handle, Interface);
+        return;
+    }
+
+    /* A failed unmark means the cancel routine owns the request */
+    if (!NT_SUCCESS(WdfRequestUnmarkCancelable(Slot->Request)))
+    {
+        KeReleaseSpinLock(&m_RemoteWakeLock, OldIrql);
+        DPRINT("UsbDevice %p remote wake request is being canceled\n", m_Handle);
         return;
     }
 
@@ -222,6 +236,7 @@ UcxUsbDevice::RemoteWakeNotification(
 
     KeReleaseSpinLock(&m_RemoteWakeLock, OldIrql);
 
+    DPRINT("UsbDevice %p remote wake on interface %lu\n", m_Handle, Interface);
     WdfRequestComplete(Request, STATUS_SUCCESS);
 }
 
@@ -255,7 +270,10 @@ UcxBuildPortPath(
 
     ParentDepth = Hub->m_Info.PortPath.PortPathDepth;
     if (ParentDepth + 1 > MAX_USB_DEVICE_DEPTH)
+    {
+        DPRINT1("Hub %p port %lu is too deep for a device, depth %lu\n", Hub->m_Handle, PortNumber, ParentDepth + 1);
         return STATUS_INVALID_PARAMETER;
+    }
 
     *Path = Hub->m_Info.PortPath;
     Path->PortPathDepth = ParentDepth + 1;
@@ -309,11 +327,15 @@ UcxUsbDevice::CreateFromHub(
     if (!Controller->BlockReset())
     {
         Status = STATUS_NO_SUCH_DEVICE;
+        DPRINT1("Hub %p port %lu device add during controller reset 0x%lx\n", Hub, Info->PortNumber, Status);
     }
     else
     {
         Status = Controller->m_Config.EvtControllerUsbDeviceAdd(Controller->m_Handle, &Init.Info, &Init);
         Controller->UnblockReset();
+
+        if (!NT_SUCCESS(Status))
+            DPRINT1("Hub %p port %lu HCD device add failed 0x%lx\n", Hub, Info->PortNumber, Status);
     }
 
     if (NT_SUCCESS(Status))
@@ -337,6 +359,8 @@ UcxUsbDevice::DeleteFromHub()
     UcxEndpoint* Endpoint;
 
     PAGED_CODE();
+
+    DPRINT("UsbDevice %p deleted by the hub\n", m_Handle);
 
     UcxDropLeakedUsbdHandles(this);
 
@@ -430,6 +454,8 @@ UcxUsbDevice::DisconnectPort(
     UcxEndpoint* Endpoint;
 
     InitializeListHead(&Endpoints);
+
+    DPRINT("Hub %p disconnect on port %lu\n", m_Handle, PortNumber);
 
     {
         SpinLockGuard Guard(&m_Controller->m_TopologyLock);
@@ -540,10 +566,16 @@ UcxUsbDevice::EnableForwardProgress(
     PAGED_CODE();
 
     if (ControlSize > UCX_MAX_FORWARD_PROGRESS_SIZE)
+    {
+        DPRINT1("UsbDevice %p control forward progress size %lu too large\n", m_Handle, ControlSize);
         return STATUS_INVALID_PARAMETER;
+    }
 
     if (ControlSize != 0 && DefaultPipe->ReservedIoActive)
+    {
+        DPRINT1("UsbDevice %p control pipe forward progress already enabled\n", m_Handle);
         return STATUS_INVALID_PARAMETER;
+    }
 
     for (Index = 0; Index < Info->NumberOfPipes; Index++)
     {
@@ -552,22 +584,32 @@ UcxUsbDevice::EnableForwardProgress(
         if (!UcxIsValidForwardProgressSize(Info->Pipes[Index].ReservedTransferLimit) ||
             Pipe->ReservedIoActive)
         {
+            DPRINT1("UsbDevice %p pipe %lu bad forward progress size %lu or already enabled\n",
+                    m_Handle,
+                    Index,
+                    Info->Pipes[Index].ReservedTransferLimit);
             return STATUS_INVALID_PARAMETER;
         }
     }
 
-    /* The control pipe keeps resources it already got if they are big enough */
+    /* The control pipe keeps resources it already got if they are big enough; Windows tests the size backwards */
     if (ControlSize != 0 &&
         !(DefaultPipe->ForwardProgressAllocatedByHcd &&
           DefaultPipe->ReservedIoMaxBytes >= ControlSize))
     {
         Enable = m_DefaultEndpoint->m_Callbacks.EnableForwardProgress;
         if (Enable == NULL)
+        {
+            DPRINT1("UsbDevice %p HCD has no forward progress callback for the control pipe\n", m_Handle);
             return STATUS_NOT_SUPPORTED;
+        }
 
         Status = Enable(m_DefaultEndpoint->m_Handle, ControlSize);
         if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("UsbDevice %p control pipe forward progress failed 0x%lx\n", m_Handle, Status);
             return Status;
+        }
 
         DefaultPipe->ForwardProgressAllocatedByHcd = TRUE;
         DefaultPipe->ReservedIoMaxBytes = ControlSize;
@@ -579,11 +621,17 @@ UcxUsbDevice::EnableForwardProgress(
 
         Enable = Pipe->Endpoint->m_Callbacks.EnableForwardProgress;
         if (Enable == NULL)
+        {
+            DPRINT1("Endpoint %p HCD has no forward progress callback\n", Pipe->Endpoint->m_Handle);
             return STATUS_NOT_SUPPORTED;
+        }
 
         Status = Enable(Pipe->Endpoint->m_Handle, Info->Pipes[Index].ReservedTransferLimit);
         if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Endpoint %p forward progress failed 0x%lx\n", Pipe->Endpoint->m_Handle, Status);
             return Status;
+        }
 
         Pipe->ForwardProgressAllocatedByHcd = TRUE;
         Pipe->ReservedIoMaxBytes = Info->Pipes[Index].ReservedTransferLimit;
@@ -621,6 +669,7 @@ UcxUsbDevice::RegisterComposite(
         Register->FunctionCount == 0 ||
         Register->FunctionCount > UCX_MAX_COMPOSITE_FUNCTIONS)
     {
+        DPRINT1("UsbDevice %p composite register rejected, request %p\n", m_Handle, Request);
         WdfRequestComplete(Request, STATUS_INVALID_PARAMETER);
         return;
     }
@@ -636,6 +685,7 @@ UcxUsbDevice::RegisterComposite(
                              (PVOID*)&Records);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("UsbDevice %p function records allocation failed 0x%lx\n", m_Handle, Status);
         WdfRequestComplete(Request, Status);
         return;
     }
@@ -659,6 +709,7 @@ UcxUsbDevice::RegisterComposite(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("UsbDevice %p is already registered as composite\n", m_Handle);
         WdfObjectDelete(Memory);
         WdfRequestComplete(Request, Status);
         return;
@@ -696,6 +747,7 @@ UcxUsbDevice::UnregisterComposite(
 
     if (Memory == NULL)
     {
+        DPRINT1("UsbDevice %p composite unregister without a registration\n", m_Handle);
         WdfRequestComplete(Request, STATUS_INVALID_DEVICE_STATE);
         return;
     }
@@ -733,6 +785,7 @@ UcxUsbDevice::RequestRemoteWakeNotification(
     Params = (PREQUEST_REMOTE_WAKE_NOTIFICATION)UcxRequestArgs(Request).Arg1;
     if (Params == NULL)
     {
+        DPRINT1("UsbDevice %p remote wake request %p has no parameters\n", m_Handle, Request);
         WdfRequestComplete(Request, STATUS_INVALID_PARAMETER);
         return;
     }
@@ -766,7 +819,10 @@ UcxUsbDevice::RequestRemoteWakeNotification(
     KeReleaseSpinLock(&m_RemoteWakeLock, OldIrql);
 
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("UsbDevice %p remote wake request %p failed 0x%lx\n", m_Handle, Request, Status);
         WdfRequestComplete(Request, Status);
+    }
 }
 
 VOID
@@ -800,5 +856,6 @@ UcxUsbDevice::EvtRemoteWakeCancel(
         }
     }
 
+    DPRINT("UsbDevice %p remote wake request %p canceled\n", Device->m_Handle, Request);
     WdfRequestComplete(Request, STATUS_CANCELLED);
 }

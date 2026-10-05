@@ -57,14 +57,23 @@ UcxController::Create(
     PAGED_CODE();
 
     if (Controller == NULL || Config == NULL || !UcxIsAcceptedConfigSize(Config->Size))
+    {
+        DPRINT1("Controller create rejected, config %p size %lu\n", Config, Config != NULL ? Config->Size : 0);
         return STATUS_INVALID_PARAMETER;
+    }
 
     /* The two dump callbacks come as a pair */
     if ((Config->Reserved3 == NULL) != (Config->Reserved4 == NULL))
+    {
+        DPRINT1("Controller create rejected, only one dump callback given\n");
         return STATUS_INVALID_PARAMETER;
+    }
 
     if (Attributes != NULL && Attributes->ParentObject != NULL)
+    {
+        DPRINT1("Controller create rejected, HCD attributes name a parent\n");
         return STATUS_INVALID_PARAMETER;
+    }
 
     /* Older configs are upgraded: fields the HCD did not know about stay zero */
     UCX_CONTROLLER_CONFIG_INIT(&FullConfig, "");
@@ -74,7 +83,10 @@ UcxController::Create(
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&FdoAttributes, UcxFdoContext);
     Status = WdfObjectAllocateContext(Device, &FdoAttributes, (PVOID*)&FdoContext);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller FDO %p context allocation failed 0x%lx\n", Device, Status);
         return Status;
+    }
 
     *Controller = NULL;
 
@@ -104,6 +116,7 @@ UcxController::Create(
     }
 
     *Controller = Context->m_Handle;
+    DPRINT("Controller %p created on FDO %p, bus type %d\n", Context, Device, FullConfig.ParentBusType);
     return STATUS_SUCCESS;
 }
 
@@ -160,7 +173,10 @@ UcxController::Initialize(
 
     Status = WdfDeviceCreateDeviceInterface(Fdo, &GUID_DEVINTERFACE_USB_HOST_CONTROLLER, NULL);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller %p host controller interface create failed 0x%lx\n", this, Status);
         return Status;
+    }
 
     {
         WDF_OBJECT_ATTRIBUTES StringAttributes;
@@ -170,14 +186,20 @@ UcxController::Initialize(
 
         Status = WdfStringCreate(NULL, &StringAttributes, &m_HostControllerInterfaceName);
         if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Controller %p interface string create failed 0x%lx\n", this, Status);
             return Status;
+        }
 
         Status = WdfDeviceRetrieveDeviceInterfaceString(Fdo,
                                                         &GUID_DEVINTERFACE_USB_HOST_CONTROLLER,
                                                         NULL,
                                                         m_HostControllerInterfaceName);
         if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Controller %p interface name query failed 0x%lx\n", this, Status);
             return Status;
+        }
 
         /* Kept past the parent's cleanup; dropped in Destroy */
         WdfObjectReferenceWithTag(m_HostControllerInterfaceName, (PVOID)UCX_POOL_TAG);
@@ -189,7 +211,10 @@ UcxController::Initialize(
 
     Status = RegisterWmi();
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller %p WMI registration failed 0x%lx\n", this, Status);
         return Status;
+    }
 
     KeInitializeSpinLock(&m_WorkerLock);
     InitializeListHead(&m_WorkerItems);
@@ -224,7 +249,10 @@ UcxController::QueryHcCapabilities()
 
     Status = WdfRequestCreate(WDF_NO_OBJECT_ATTRIBUTES, Target, &Request);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller %p capabilities request create failed 0x%lx\n", this, Status);
         return Status;
+    }
 
     /* PnP IRPs must start out as not supported */
     WDF_REQUEST_REUSE_PARAMS_INIT(&ReuseParams, WDF_REQUEST_REUSE_NO_FLAGS, STATUS_NOT_SUPPORTED);
@@ -250,6 +278,10 @@ UcxController::QueryHcCapabilities()
     }
 
     WdfObjectDelete(Request);
+
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Controller %p query capabilities failed 0x%lx\n", this, Status);
+
     return Status;
 }
 
@@ -382,6 +414,7 @@ UcxController::Destroy()
 VOID
 UcxController::NeedsReset()
 {
+    DPRINT1("Controller %p reports it needs a reset\n", this);
     PostResetEvent(CrEvent::ControllerNeedsReset);
 }
 
@@ -394,6 +427,7 @@ UcxController::ResetComplete(
 
     m_RootHubResetSeen = 1;
 
+    DPRINT("Controller %p reset complete, state %d\n", this, Info->UcxControllerState);
     PostResetEvent(CrEvent::ControllerResetDone);
 
     /* While the root hub is out of D0 the machine releases this thread when done */
@@ -406,6 +440,8 @@ UcxController::SetFailed()
 {
     if (InterlockedCompareExchange(&m_Failed, 1, 0) != 0)
         return;
+
+    DPRINT1("Controller %p marked failed by the HCD\n", this);
 
     /*
      * Tear the tree down before telling the reset machine. Posting first lets
@@ -426,10 +462,16 @@ UcxController::SetIdStrings(
 
     /* Only a non empty manufacturer counts as already set, as on Windows */
     if (m_ManufacturerName.Length != 0)
+    {
+        DPRINT1("Controller %p ID strings already set\n", this);
         return STATUS_INVALID_PARAMETER;
+    }
 
     if (!UcxIsValidIdString(Manufacturer) || !UcxIsValidIdString(ModelName) || !UcxIsValidIdString(ModelNumber))
+    {
+        DPRINT1("Controller %p ID strings malformed\n", this);
         return STATUS_INVALID_PARAMETER;
+    }
 
     /* An earlier call with an empty manufacturer may have left copies behind */
     UcxFreeIdString(&m_ManufacturerName);
@@ -444,6 +486,7 @@ UcxController::SetIdStrings(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Controller %p ID string copy failed 0x%lx\n", this, Status);
         UcxFreeIdString(&m_ManufacturerName);
         UcxFreeIdString(&m_ModelName);
         UcxFreeIdString(&m_ModelNumber);
@@ -531,9 +574,11 @@ UcxController::GetCurrentFrameNumber(
     _Out_ PULONG FrameNumber)
 {
     NTSTATUS Status;
+    ULONG Frame;
 
     if (m_Config.EvtControllerGetCurrentFrameNumber == NULL)
     {
+        DPRINT1("Controller %p has no frame number callback\n", this);
         NT_ASSERT(FALSE);
         return STATUS_NOT_SUPPORTED;
     }
@@ -544,10 +589,27 @@ UcxController::GetCurrentFrameNumber(
         return STATUS_SUCCESS;
     }
 
-    Status = m_Config.EvtControllerGetCurrentFrameNumber(m_Handle, &m_CachedFrameNumber);
-    *FrameNumber = m_CachedFrameNumber;
-
+    Frame = m_CachedFrameNumber;
+    Status = m_Config.EvtControllerGetCurrentFrameNumber(m_Handle, &Frame);
     UnblockReset();
+
+    if (!NT_SUCCESS(Status))
+    {
+        /* Windows caches whatever the HCD left in the buffer even when the read failed */
+        DPRINT1("Controller %p frame number query failed 0x%lx\n", this, Status);
+    }
+    else if (Frame == MAXULONG)
+    {
+        /* Windows caches and hands out the all ones frame an HCD reports while it is not in D0 */
+        DPRINT("Controller %p has no frame number, reporting cached frame %lu\n", this, m_CachedFrameNumber);
+        Frame = m_CachedFrameNumber;
+    }
+    else
+    {
+        m_CachedFrameNumber = Frame;
+    }
+
+    *FrameNumber = Frame;
     return Status;
 }
 
@@ -617,6 +679,8 @@ UcxController::StopIdle(
     Status = WdfDeviceStopIdle(m_Fdo, TRUE);
     if (NT_SUCCESS(Status))
         Context->PowerReferenceAcquired = TRUE;
+    else
+        DPRINT1("Controller %p stop idle failed 0x%lx\n", this, Status);
 
     return Status;
 }
@@ -692,6 +756,8 @@ UcxController::EnableForwardProgress(
             Status = HcdEnable(m_Handle);
             if (NT_SUCCESS(Status))
                 m_HcdReservedIoReady = TRUE;
+            else
+                DPRINT1("Controller %p HCD forward progress enable failed 0x%lx\n", this, Status);
         }
     }
 
@@ -702,6 +768,9 @@ UcxController::EnableForwardProgress(
             Status = m_RootHub->EnableForwardProgress();
         else
             Status = Device->EnableForwardProgress(Info);
+
+        if (!NT_SUCCESS(Status))
+            DPRINT1("Controller %p forward progress for device %p failed 0x%lx\n", this, Device, Status);
     }
 
     KeReleaseMutex(&m_ForwardProgressMutex, FALSE);
@@ -725,7 +794,10 @@ UcxController::StartWorkerThread()
                                   UcxController::WorkerThreadRoutine,
                                   this);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller %p system thread create failed 0x%lx\n", this, Status);
         return Status;
+    }
 
     Status = ObReferenceObjectByHandle(ThreadHandle,
                                        0,
@@ -736,7 +808,10 @@ UcxController::StartWorkerThread()
     ZwClose(ThreadHandle);
 
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller %p system thread reference failed 0x%lx\n", this, Status);
         m_WorkerThread = NULL;
+    }
 
     return Status;
 }

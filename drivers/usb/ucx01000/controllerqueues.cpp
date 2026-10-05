@@ -42,10 +42,17 @@ UcxCreateControllerQueue(
 
     Status = WdfIoQueueCreate(Controller->m_Fdo, &Config, &Attributes, Queue);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller %p queue create failed 0x%lx\n", Controller, Status);
         return Status;
+    }
 
     if (Policy != NULL)
+    {
         Status = WdfIoQueueAssignForwardProgressPolicy(*Queue, Policy);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("Controller %p queue %p forward progress policy failed 0x%lx\n", Controller, *Queue, Status);
+    }
 
     return Status;
 }
@@ -130,6 +137,7 @@ UcxEvtAddress0IoInternalDeviceControl(
 
     if (IoControlCode != IOCTL_UCXHUB_ADDRESS0_OWNERSHIP_ACQUIRE)
     {
+        DPRINT1("Address 0 queue got unexpected IOCTL 0x%lx\n", IoControlCode);
         WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
         return;
     }
@@ -139,6 +147,7 @@ UcxEvtAddress0IoInternalDeviceControl(
     Acquire = (PADDRESS0_OWNERSHIP_ACQUIRE)UcxRequestArgs(Request).Arg1;
     Context->OwnerHub = Acquire->Header.Hub;
     Context->OwnerDevice = Acquire->Header.UsbDevice;
+    DPRINT("Address 0 owned by hub %p device %p\n", Context->OwnerHub, Context->OwnerDevice);
 
     WdfRequestComplete(Request, STATUS_SUCCESS);
 }
@@ -185,6 +194,7 @@ UcxQueryUsbCapability(
         Query->Version != UCXHUB_QUERY_CAPABILITY_VERSION ||
         Query->UsbdHandle == NULL)
     {
+        DPRINT1("Capability query %p malformed, size %u version %u\n", Query, Query->Size, Query->Version);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -192,7 +202,13 @@ UcxQueryUsbCapability(
     Query->ResultLength = 0;
 
     if ((Query->OutputBufferLength != 0) != (OutputBuffer != NULL))
+    {
+        DPRINT1("Capability query %p length %lu does not match buffer %p\n",
+                Query,
+                Query->OutputBufferLength,
+                OutputBuffer);
         return STATUS_INVALID_PARAMETER;
+    }
 
     IsChainedMdl = IsEqualGUID(Query->CapabilityType, GUID_USB_CAPABILITY_CHAINED_MDLS);
     IsStreams = IsEqualGUID(Query->CapabilityType, GUID_USB_CAPABILITY_STATIC_STREAMS);
@@ -200,36 +216,61 @@ UcxQueryUsbCapability(
     if (IsChainedMdl)
     {
         if (OutputBuffer != NULL)
+        {
+            DPRINT1("Chained MDL query %p must not have a buffer\n", Query);
             return STATUS_INVALID_PARAMETER;
+        }
 
         if (!Handle->m_ChainedMdlGranted &&
             UcxVerifierWantsFailure(Handle->m_VerifierFailChainedMdl))
         {
-            return UcxRandomErrorStatus();
+            Status = UcxRandomErrorStatus();
+            DPRINT1("Verifier fails chained MDL query %p with 0x%lx\n", Query, Status);
+            return Status;
         }
     }
     else if (IsEqualGUID(Query->CapabilityType, GUID_USB_CAPABILITY_SELECTIVE_SUSPEND))
     {
         if (OutputBuffer != NULL)
+        {
+            DPRINT1("Selective suspend query %p must not have a buffer\n", Query);
             return STATUS_INVALID_PARAMETER;
+        }
     }
     else if (IsEqualGUID(Query->CapabilityType, GUID_USB_CAPABILITY_HIGH_BANDWIDTH_ISOCH))
     {
         if (Query->OutputBufferLength != sizeof(ULONG))
+        {
+            DPRINT1("High bandwidth isoch query %p bad length %lu\n", Query, Query->OutputBufferLength);
             return STATUS_INVALID_PARAMETER;
+        }
     }
     else if (IsStreams)
     {
         if (Query->OutputBufferLength != sizeof(USHORT))
+        {
+            DPRINT1("Static streams query %p bad length %lu\n", Query, Query->OutputBufferLength);
             return STATUS_INVALID_PARAMETER;
+        }
 
         if (UcxVerifierWantsFailure(Handle->m_VerifierFailStaticStreamSupport))
-            return UcxRandomErrorStatus();
+        {
+            Status = UcxRandomErrorStatus();
+            DPRINT1("Verifier fails static streams query %p with 0x%lx\n", Query, Status);
+            return Status;
+        }
+    }
+    else
+    {
+        DPRINT1("Capability query %p has unknown type %08lx\n", Query, Query->CapabilityType.Data1);
     }
 
     /* Unknown capabilities still go to the HCD, which decides */
     if (Controller->m_Config.EvtControllerQueryUsbCapability == NULL)
+    {
+        DPRINT1("Controller %p has no capability query callback\n", Controller);
         return STATUS_NOT_SUPPORTED;
+    }
 
     Status = Controller->m_Config.EvtControllerQueryUsbCapability(Controller->m_Handle,
                                                                   &Query->CapabilityType,
@@ -237,13 +278,17 @@ UcxQueryUsbCapability(
                                                                   OutputBuffer,
                                                                   &Query->ResultLength);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Controller %p capability query %p failed 0x%lx\n", Controller, Query, Status);
         return Status;
+    }
 
     if (IsStreams)
     {
         UcxApplyStreamCountOverride(Handle, (PUSHORT)OutputBuffer);
         Handle->m_StreamsGranted = TRUE;
         Handle->m_GrantedStreams = *(PUSHORT)OutputBuffer;
+        DPRINT("Granted %u static streams to handle %p\n", *(PUSHORT)OutputBuffer, Handle);
     }
     else if (IsChainedMdl)
     {
@@ -269,12 +314,15 @@ UcxDispatchGetDumpData(
 
     if (GetDumpData == NULL)
     {
+        DPRINT1("Controller %p has no dump data callback\n", Controller);
         WdfRequestComplete(Request, STATUS_NOT_SUPPORTED);
         return;
     }
 
     DeviceInfo = (PUCXHUB_DUMP_DEVICE_INFO)Irp->AssociatedIrp.SystemBuffer;
     Status = GetDumpData(Controller->m_Handle, DeviceInfo->Device, DeviceInfo, Irp->UserBuffer);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Controller %p get dump data failed 0x%lx\n", Controller, Status);
 
     WdfRequestCompleteWithInformation(Request, Status, 0);
 }
@@ -291,6 +339,7 @@ UcxDispatchFreeDumpData(
 
     if (FreeDumpData == NULL)
     {
+        DPRINT1("Controller %p has no free dump data callback\n", Controller);
         WdfRequestComplete(Request, STATUS_NOT_SUPPORTED);
         return;
     }
@@ -312,6 +361,7 @@ UcxDispatchRootHubQuery(
 
     if (!Controller->BlockReset())
     {
+        DPRINT1("Controller %p unavailable, failing root hub IOCTL 0x%lx\n", Controller, IoControlCode);
         WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
         return;
     }
@@ -352,6 +402,8 @@ UcxEvtDefaultIoInternalDeviceControl(
 
     UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
+
+    DPRINT("Controller %p request %p IOCTL 0x%lx\n", Controller, Request, IoControlCode);
 
     switch (IoControlCode)
     {
@@ -403,6 +455,7 @@ UcxEvtDefaultIoInternalDeviceControl(
             break;
 
         default:
+            DPRINT1("Controller %p default queue got unexpected IOCTL 0x%lx\n", Controller, IoControlCode);
             NT_ASSERT(FALSE);
             WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
             break;
@@ -421,6 +474,7 @@ UcxEvtDefaultQueueExamineIrp(
     if (IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.IoControlCode ==
         IOCTL_INTERNAL_USB_REQUEST_REMOTE_WAKE_NOTIFICATION)
     {
+        DPRINT1("No reserved request for remote wake IRP %p\n", Irp);
         return WdfIoForwardProgressActionFailRequest;
     }
 
@@ -499,6 +553,8 @@ UcxCsqCompleteCanceledAbortIrp(
     PURB Urb = (PURB)IoGetCurrentIrpStackLocation(Irp)->Parameters.Others.Argument1;
 
     UNREFERENCED_PARAMETER(Csq);
+
+    DPRINT("Abort pipe IRP %p canceled\n", Irp);
 
     /* The mixed status pair is what USBPORT reported */
     UcxCompleteUrbAtDispatch(Irp, Urb, STATUS_CANCELLED, USBD_STATUS_DEVICE_GONE);

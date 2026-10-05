@@ -59,7 +59,10 @@ UcxBusQueryBusTime(
     _Out_opt_ PULONG CurrentFrame)
 {
     if (CurrentFrame == NULL)
+    {
+        DPRINT1("QueryBusTime called without a frame pointer\n");
         return STATUS_INVALID_PARAMETER;
+    }
 
     return UcxUsbDevice::FromHandle((UCXUSBDEVICE)Context)->m_Controller->GetCurrentFrameNumber(CurrentFrame);
 }
@@ -72,8 +75,8 @@ UcxBusSubmitIsoOutUrb(
     _In_ PURB Urb)
 {
     UNREFERENCED_PARAMETER(Context);
-    UNREFERENCED_PARAMETER(Urb);
 
+    DPRINT1("SubmitIsoOutUrb is not supported, URB %p\n", Urb);
     NT_ASSERT(FALSE);
     return STATUS_NOT_SUPPORTED;
 }
@@ -95,7 +98,10 @@ UcxBusQueryBusInformation(
 
     /* An HCD that tracks bandwidth itself is not second guessed */
     if (Controller->HcdGetBandwidthInformation() != NULL)
+    {
+        DPRINT1("Bus information query with HCD bandwidth tracking is not supported\n");
         return STATUS_NOT_SUPPORTED;
+    }
 
     if (Level == 0)
     {
@@ -103,7 +109,10 @@ UcxBusQueryBusInformation(
             *ActualLength = sizeof(USB_BUS_INFORMATION_LEVEL_0);
 
         if (*BufferLength < sizeof(USB_BUS_INFORMATION_LEVEL_0))
+        {
+            DPRINT("Bus information level 0 buffer too small, %lu bytes\n", *BufferLength);
             return STATUS_BUFFER_TOO_SMALL;
+        }
 
         *BufferLength = sizeof(USB_BUS_INFORMATION_LEVEL_0);
         ((PUSB_BUS_INFORMATION_LEVEL_0)Buffer)->TotalBandwidth = UCX_FAKE_TOTAL_BANDWIDTH;
@@ -112,7 +121,10 @@ UcxBusQueryBusInformation(
     }
 
     if (Level != 1)
+    {
+        DPRINT1("Bus information level %lu is not supported\n", Level);
         return STATUS_NOT_SUPPORTED;
+    }
 
     WdfStringGetUnicodeString(Controller->m_HostControllerInterfaceName, &Name);
 
@@ -122,7 +134,10 @@ UcxBusQueryBusInformation(
         *ActualLength = Needed;
 
     if (*BufferLength < Needed)
+    {
+        DPRINT("Bus information level 1 needs %lu bytes, got %lu\n", Needed, *BufferLength);
         return STATUS_BUFFER_TOO_SMALL;
+    }
 
     *BufferLength = Needed;
     Level1 = (PUSB_BUS_INFORMATION_LEVEL_1)Buffer;
@@ -175,10 +190,16 @@ UcxBusQueryBusTimeEx(
     _Out_opt_ PULONG CurrentMicroFrame)
 {
     if (CurrentMicroFrame == NULL)
+    {
+        DPRINT1("QueryBusTimeEx called without a microframe pointer\n");
         return STATUS_INVALID_PARAMETER;
+    }
 
     if (UcxIsLowOrFullSpeed(UcxUsbDevice::FromHandle((UCXUSBDEVICE)Context)))
+    {
+        DPRINT("QueryBusTimeEx is not supported for low or full speed device %p\n", Context);
         return STATUS_NOT_SUPPORTED;
+    }
 
     *CurrentMicroFrame = 0;
     return STATUS_SUCCESS;
@@ -302,6 +323,12 @@ UcxEvtQueryUsbdiInterface(
         }
     }
 
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("USBDI interface query size %u version %u failed 0x%lx, served version %u\n",
+                RequestedSize, RequestedVersion, Status, FilledVersion);
+    }
+
     ExposedInterface->Size = FilledSize;
     ExposedInterface->Version = FilledVersion;
     return Status;
@@ -344,7 +371,7 @@ NTSTATUS
 NTAPI
 UcxClientSelectInterfaceXrbBuild(
     _In_ USBD_CLIENT_HANDLE ClientHandle,
-    _In_ PUSB_CONFIGURATION_DESCRIPTOR ConfigurationHandle,
+    _In_ USBD_CONFIGURATION_HANDLE ConfigurationHandle,
     _In_ PUSBD_INTERFACE_LIST_ENTRY InterfaceEntry,
     _Out_ PURB* UrbOut);
 
@@ -353,6 +380,80 @@ VOID
 NTAPI
 UcxClientReleaseUrb(
     _In_ PURB Urb);
+
+static
+NTSTATUS
+NTAPI
+UcxClientOffloadSelectXrbAllocate(
+    _In_ USBD_CLIENT_HANDLE ClientHandle,
+    _In_ USBD_CONFIGURATION_HANDLE ConfigurationHandle,
+    _Inout_ PUSBD_INTERFACE_LIST_ENTRY InterfaceEntry,
+    _In_ ULONG OffloadedEndpoints,
+    _Out_ PURB* Urb)
+{
+    UNREFERENCED_PARAMETER(ClientHandle);
+    UNREFERENCED_PARAMETER(ConfigurationHandle);
+    UNREFERENCED_PARAMETER(InterfaceEntry);
+    UNREFERENCED_PARAMETER(OffloadedEndpoints);
+
+    /* No controller here offers endpoint offload */
+    *Urb = NULL;
+    return STATUS_NOT_SUPPORTED;
+}
+
+static
+NTSTATUS
+NTAPI
+UcxClientOffloadNotifyXrbAllocate(
+    _In_ USBD_CLIENT_HANDLE ClientHandle,
+    _In_ USBD_PIPE_HANDLE PipeHandle,
+    _In_ ULONG Flags,
+    _Out_ PURB* Urb)
+{
+    UNREFERENCED_PARAMETER(ClientHandle);
+    UNREFERENCED_PARAMETER(PipeHandle);
+    UNREFERENCED_PARAMETER(Flags);
+
+    *Urb = NULL;
+    return STATUS_NOT_SUPPORTED;
+}
+
+/** Answers the parts of a version 0x603 request that fit in its size, and reports what was filled. */
+static
+VOID
+NTAPI
+UcxFillClientInterface603(
+    _Inout_ UcxUsbdHandle* Handle,
+    _Inout_ PUSBD_CLIENT_INTERFACE Interface)
+{
+    PUSBD_CLIENT_INTERFACE_603 Extended = (PUSBD_CLIENT_INTERFACE_603)Interface;
+    USHORT Size = sizeof(*Interface);
+    USHORT Version = USBD_CLIENT_INTERFACE_VERSION;
+
+    if (Interface->Header.Version >= USBD_CLIENT_INTERFACE_VERSION_603 &&
+        Interface->Header.Size >= USBD_CLIENT_INTERFACE_603_SIZE_SECURE)
+    {
+        Extended->SecureIsochXrbAllocate = UcxClientAllocIsochUrb;
+        if (Handle->m_VerifierEnabled)
+            Handle->m_VerifierFailSecureTransfer = Extended->VerifierFailSecureTransferSupport;
+
+        Size = USBD_CLIENT_INTERFACE_603_SIZE_SECURE;
+        Version = USBD_CLIENT_INTERFACE_VERSION_603;
+
+        if (Interface->Header.Size >= sizeof(*Extended))
+        {
+            Extended->OffloadSelectInterfaceXrbAllocate = UcxClientOffloadSelectXrbAllocate;
+            Extended->OffloadNotificationXrbAllocate = UcxClientOffloadNotifyXrbAllocate;
+            if (Handle->m_VerifierEnabled)
+                Handle->m_VerifierFailEndpointOffload = Extended->VerifierFailEndpointOffload;
+
+            Size = sizeof(*Extended);
+        }
+    }
+
+    Interface->Header.Size = Size;
+    Interface->Header.Version = Version;
+}
 
 NTSTATUS
 NTAPI
@@ -389,21 +490,35 @@ UcxUsbdHandle::CreateFromQuery(
 
     PAGED_CODE();
 
-    if (Interface->Header.Size != sizeof(*Interface))
+    if (Interface->Header.Size < sizeof(*Interface))
+    {
+        DPRINT1("USBD client interface size %u, expected at least %u\n",
+                Interface->Header.Size, (ULONG)sizeof(*Interface));
         return STATUS_BUFFER_TOO_SMALL;
+    }
 
-    if (Interface->Header.Version != USBD_CLIENT_INTERFACE_VERSION)
+    if (Interface->Header.Version < USBD_CLIENT_INTERFACE_VERSION)
+    {
+        DPRINT1("USBD client interface version %u is not supported\n", Interface->Header.Version);
         return STATUS_NOT_SUPPORTED;
+    }
 
     if (Interface->DeviceObject == NULL || Interface->PoolTag == 0)
+    {
+        DPRINT1("USBD client registration with device object %p, tag 0x%lx\n",
+                Interface->DeviceObject, Interface->PoolTag);
         return STATUS_INVALID_PARAMETER;
+    }
 
     WDF_OBJECT_ATTRIBUTES_INIT(&Attributes);
     Attributes.ParentObject = Device->m_Handle;
 
     Status = WdfMemoryCreate(&Attributes, NonPagedPool, Interface->PoolTag, sizeof(*Handle), &Memory, &Buffer);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("USBD handle allocation for device %p failed 0x%lx\n", Device, Status);
         return Status;
+    }
 
     /* The handle has to outlive the USB device it was registered against */
     WdfObjectReference(Memory);
@@ -440,6 +555,7 @@ UcxUsbdHandle::CreateFromQuery(
 
     if (UcxVerifierWantsFailure(Handle->m_VerifierFailRegistration))
     {
+        DPRINT1("Verifier failed USBD client registration for device %p\n", Device);
         WdfObjectDelete(Memory);
         WdfObjectDereference(Memory);
         return UcxRandomErrorStatus();
@@ -456,6 +572,8 @@ UcxUsbdHandle::CreateFromQuery(
     Interface->AllocSelectInterfaceUrb = UcxClientSelectInterfaceXrbBuild;
     Interface->ReleaseUrb = UcxClientReleaseUrb;
 
+    UcxFillClientInterface603(Handle, Interface);
+
     ObReferenceObject(Handle->m_ClientDeviceObject);
 
     {
@@ -465,6 +583,7 @@ UcxUsbdHandle::CreateFromQuery(
     }
 
     InterlockedIncrement(&Device->m_Controller->m_UsbdInterfaceCount);
+    DPRINT("USBD client %p registered handle %p on device %p\n", Interface->DeviceObject, Handle, Device);
     return STATUS_SUCCESS;
 }
 
@@ -511,6 +630,8 @@ UcxDropLeakedUsbdHandles(
     for (Entry = Device->m_UsbdHandleList.Flink; Entry != &Device->m_UsbdHandleList; Entry = Entry->Flink)
     {
         Handle = CONTAINING_RECORD(Entry, UcxUsbdHandle, m_DeviceLink);
+
+        DPRINT1("USBD handle %p of client %p leaked on device %p\n", Handle, Handle->m_ClientDeviceObject, Device);
 
         if (Verifying || Handle->m_VerifierEnabled)
         {
@@ -563,7 +684,10 @@ UcxUsbdHandle::AllocateXrb(
 
     Status = WdfMemoryCreate(&Attributes, NonPagedPool, m_PoolTag, Size, &Memory, &Buffer);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("XRB allocation of %lu bytes for handle %p failed 0x%lx\n", Size, this, Status);
         return Status;
+    }
 
     /* Both released by the free call, which may come after unregister */
     WdfObjectReference(Memory);
@@ -638,6 +762,7 @@ UcxClientAllocUrb(
     Status = WdfRequestCreate(&RequestAttributes, NULL, &Xrb->Request);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("XRB request creation for handle %p failed 0x%lx\n", Handle, Status);
         UcxDeleteXrbMemory(Xrb);
         return Status;
     }
@@ -727,19 +852,31 @@ UcxClientSelectConfigXrbBuild(
     {
         Pipes += Entry->InterfaceDescriptor->bNumEndpoints;
         if (Pipes > UCX_MAX_SELECT_PIPES)
+        {
+            DPRINT1("Select config for handle %p has too many pipes\n", Handle);
             return STATUS_INVALID_PARAMETER;
+        }
 
         if (Strict && Entry->Interface != NULL)
+        {
+            DPRINT1("Select config entry %p for handle %p already has an interface\n", Entry, Handle);
             return STATUS_INVALID_PARAMETER;
+        }
 
         Size += (USHORT)GET_USBD_INTERFACE_SIZE(Entry->InterfaceDescriptor->bNumEndpoints);
 
         if (Interfaces++ > UCX_MAX_SELECT_INTERFACES)
+        {
+            DPRINT1("Select config for handle %p has too many interfaces\n", Handle);
             return STATUS_INVALID_PARAMETER;
+        }
     }
 
     if (Strict && Entry->Interface != NULL)
+    {
+        DPRINT1("Select config list end %p for handle %p has an interface\n", Entry, Handle);
         return STATUS_INVALID_PARAMETER;
+    }
 
     Status = Handle->AllocateXrb(Size, UCX_XRB_KIND_CONFIG, &Xrb);
     if (!NT_SUCCESS(Status))
@@ -756,6 +893,7 @@ UcxClientSelectConfigXrbBuild(
 
         if ((PUCHAR)Info + GET_USBD_INTERFACE_SIZE(EntryPipes) > End)
         {
+            DPRINT1("Interface descriptor %p grew while building select config\n", Entry->InterfaceDescriptor);
             UcxDeleteXrbMemory(Xrb);
             return STATUS_INVALID_PARAMETER;
         }
@@ -779,7 +917,7 @@ NTSTATUS
 NTAPI
 UcxClientSelectInterfaceXrbBuild(
     _In_ USBD_CLIENT_HANDLE ClientHandle,
-    _In_ PUSB_CONFIGURATION_DESCRIPTOR ConfigurationHandle,
+    _In_ USBD_CONFIGURATION_HANDLE ConfigurationHandle,
     _In_ PUSBD_INTERFACE_LIST_ENTRY InterfaceEntry,
     _Out_ PURB* UrbOut)
 {
@@ -794,11 +932,17 @@ UcxClientSelectInterfaceXrbBuild(
     *UrbOut = NULL;
 
     if (InterfaceEntry->InterfaceDescriptor == NULL || InterfaceEntry->Interface != NULL)
+    {
+        DPRINT1("Select interface entry %p for handle %p is malformed\n", InterfaceEntry, Handle);
         return STATUS_INVALID_PARAMETER;
+    }
 
     Pipes = InterfaceEntry->InterfaceDescriptor->bNumEndpoints;
     if (Pipes > UCX_MAX_SELECT_PIPES)
+    {
+        DPRINT1("Select interface for handle %p has %lu pipes\n", Handle, Pipes);
         return STATUS_INVALID_PARAMETER;
+    }
 
     /* With no pipes this is shorter than the URB structure, like the public macro */
     Size = (USHORT)(sizeof(UcxXrbPreamble) + GET_SELECT_INTERFACE_REQUEST_SIZE(Pipes));
@@ -814,7 +958,7 @@ UcxClientSelectInterfaceXrbBuild(
 
     Urb->UrbHeader.Length = (USHORT)(Size - sizeof(UcxXrbPreamble));
     Urb->UrbHeader.Function = URB_FUNCTION_SELECT_INTERFACE;
-    Urb->UrbSelectInterface.ConfigurationHandle = (USBD_CONFIGURATION_HANDLE)ConfigurationHandle;
+    Urb->UrbSelectInterface.ConfigurationHandle = ConfigurationHandle;
 
     Handle->TrackXrb(Xrb);
     *UrbOut = Urb;
@@ -832,6 +976,7 @@ UcxClientReleaseUrb(
 
     if (Xrb->Signature != UCX_XRB_SIGNATURE)
     {
+        DPRINT1("Freeing corrupted XRB for URB %p\n", Urb);
         KeBugCheckEx(UCX_BUGCHECK_USB3,
                      UCX_USB3_XRB_CORRUPTED,
                      0,
@@ -841,6 +986,7 @@ UcxClientReleaseUrb(
 
     if (Xrb->State != UCX_XRB_IDLE)
     {
+        DPRINT1("Freeing URB %p while it is still active\n", Urb);
         KeBugCheckEx(UCX_BUGCHECK_USB3,
                      UCX_USB3_ACTIVE_URB_REUSED,
                      0,

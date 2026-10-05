@@ -77,6 +77,8 @@ public:
     ULONG m_VerifierFailStaticStreamSupport;
     ULONG m_VerifierStaticStreamCountOverride;
     ULONG m_VerifierFailEnableStaticStreams;
+    ULONG m_VerifierFailSecureTransfer;
+    ULONG m_VerifierFailEndpointOffload;
 
     /* Granted through QUERY_USB_CAPABILITY */
     BOOLEAN m_StreamsGranted;
