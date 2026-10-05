@@ -68,7 +68,10 @@ UacpiNtResumeFromSleep(VOID)
 
     /* Only hibernate removes power from the wake circuitry */
     if (WokeFrom == UACPI_SLEEP_STATE_S4)
+    {
         UacpiNtWakeReArmAfterHibernate();
+        UacpiNtUsb4ResumeFromHibernate();
+    }
 
     /* Firmware may have reset PCI link routing */
     UacpiNtIrqLinksResume();

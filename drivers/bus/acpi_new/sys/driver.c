@@ -6,6 +6,7 @@
  */
 
 #include <uacpint.h>
+#include <drivers/acpi/usb4osc.h>
 #include <debug.h>
 
 /* SystemProcessorBrandString */
@@ -108,6 +109,13 @@ UacpiNtDispatchFdo(
         case IRP_MJ_CLOSE:
         case IRP_MJ_CLEANUP:
             return UacpiNtCompleteIrp(Irp, STATUS_SUCCESS, 0);
+
+        /* The USB4 host router asks the root for its _OSC */
+        case IRP_MJ_DEVICE_CONTROL:
+        case IRP_MJ_INTERNAL_DEVICE_CONTROL:
+            if (IoStack->Parameters.DeviceIoControl.IoControlCode == IOCTL_UACPINT_USB4_OSC)
+                return UacpiNtUsb4DeviceControl(Irp);
+            return UacpiNtForwardAndForget(Fdo->LowerDevice, Irp);
 
         default:
             return UacpiNtForwardAndForget(Fdo->LowerDevice, Irp);
@@ -296,6 +304,7 @@ UacpiNtReadParameters(
         { L"EnumDiagEnabled",      &UacpiNtEnumDiagEnabled },
         { L"EnumDiagDelaySeconds", &UacpiNtEnumDiagDelaySeconds },
         { L"HostVerbose",          &UacpiNtHostVerbose },
+        { L"USB4OSNativeCMPresent", &UacpiNtUsb4NativeCmPresent },
     };
     OBJECT_ATTRIBUTES ObjectAttributes;
     HANDLE ServiceKey;
@@ -413,6 +422,7 @@ DriverEntry(
     DPRINT1("uACPI-NT: uACPI based ACPI driver for %s\n", NT_TARGET_NAME);
 
     GlobalAcpiDriverObj = DriverObject;
+    UacpiNtUsb4Initialize();
 
     /* WmiLib wants the service path long after DriverEntry returns */
     if (RegistryPath && RegistryPath->Length)

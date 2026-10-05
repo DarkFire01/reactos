@@ -8,6 +8,7 @@
 #include <ntddk.h>
 #include <initguid.h>
 #include <wdmguid.h>
+#include <drivers/acpi/usb4osc.h>
 
 /* Device interface classes wdmguid.h does not carry */
 DEFINE_GUID(GUID_DEVICE_SYS_BUTTON,

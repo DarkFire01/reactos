@@ -72,6 +72,7 @@ typedef struct _UACPINT_FDO
     FAST_MUTEX           ChildLock;
     LIST_ENTRY           ChildList;         ///< UACPINT_PDO.Link
     LIST_ENTRY           FilterList;        ///< UACPINT_FLT.Link
+    UNICODE_STRING       RootInterfaceName;
 } UACPINT_FDO, *PUACPINT_FDO;
 
 /*
@@ -333,6 +334,7 @@ extern ULONG UacpiNtMsiDiagDelaySeconds;
 extern ULONG UacpiNtResArbEnabled;
 extern ULONG UacpiNtResVerbose;
 extern ULONG UacpiNtHostVerbose;
+extern ULONG UacpiNtUsb4NativeCmPresent;
 
 /* Nonzero from the sleep IRP until \_WAK, a fixed button press here is the wake press */
 extern volatile LONG UacpiNtSystemResuming;
@@ -594,6 +596,49 @@ UacpiNtBuildAcpiInterface(
 VOID
 NTAPI
 UacpiNtPlatformOscNegotiate(VOID);
+
+NTSTATUS
+NTAPI
+UacpiNtEvaluateOscDwords(
+    _In_ uacpi_namespace_node *Node,
+    _In_ const GUID *Uuid,
+    _Inout_updates_(Count) PULONG Capabilities,
+    _In_ ULONG Count);
+
+/* usb4.c */
+
+VOID
+NTAPI
+UacpiNtUsb4Initialize(VOID);
+
+ULONG
+NTAPI
+UacpiNtUsb4PlatformSupport(VOID);
+
+VOID
+NTAPI
+UacpiNtUsb4PlatformNegotiated(
+    _In_ uacpi_namespace_node *SbNode,
+    _In_ ULONG Granted);
+
+VOID
+NTAPI
+UacpiNtUsb4ResumeFromHibernate(VOID);
+
+NTSTATUS
+NTAPI
+UacpiNtUsb4DeviceControl(
+    _Inout_ PIRP Irp);
+
+VOID
+NTAPI
+UacpiNtUsb4RegisterInterface(
+    _Inout_ PUACPINT_FDO Fdo);
+
+VOID
+NTAPI
+UacpiNtUsb4UnregisterInterface(
+    _Inout_ PUACPINT_FDO Fdo);
 
 /* ioctl.c */
 
