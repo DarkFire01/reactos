@@ -3,8 +3,27 @@ remove_definitions(-D_WIN32_WINNT=0x502)
 
 list(APPEND SOURCE
     classlib.cpp
+    controller.cpp
+    controllerqueues.cpp
+    controllerreset.cpp
+    crsm.cpp
+    devicemgmt.cpp
     driver.cpp
+    endpoint.cpp
+    endpointio.cpp
+    epsm.cpp
     exports.cpp
+    guid.cpp
+    hubinterface.cpp
+    roothub.cpp
+    roothubpdo.cpp
+    ucxutil.cpp
+    urb.cpp
+    usbdevice.cpp
+    usbdi.cpp
+    userioctl.cpp
+    workitem.cpp
+    xrb.cpp
     ucx01000.h)
 
 add_library(ucx01000 MODULE ${SOURCE} ucx01000.rc)
