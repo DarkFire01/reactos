@@ -28,6 +28,7 @@
 #include "usbdevice.h"
 #include "control.h"
 #include "bulk.h"
+#include "isoch.h"
 #include "transferring.h"
 #include "endpoint.h"
 #include "requestdata.h"

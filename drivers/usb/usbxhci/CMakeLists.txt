@@ -12,6 +12,7 @@ list(APPEND SOURCE
     endpoint.cpp
     esm.cpp
     interrupter.cpp
+    isoch.cpp
     register.cpp
     roothub.cpp
     transferring.cpp

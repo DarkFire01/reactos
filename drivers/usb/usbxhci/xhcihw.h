@@ -638,6 +638,13 @@ C_ASSERT(sizeof(XHCI_STREAM_CONTEXT) == 16);
 /* Transfer Event TRB Transfer Length, dword 2 bits 23:0 (xHCI 6.4.2.1) */
 #define XHCI_TRANSFER_EVENT_LENGTH_MASK 0x00FFFFFF
 
+/* Isoch TRB fields (xHCI 6.4.1.3) and the Block Event Interrupt flag */
+#define XHCI_TRB_BEI                    0x00000200
+#define XHCI_ISOCH_TBC_SHIFT            7
+#define XHCI_ISOCH_TLBPC_SHIFT          16
+#define XHCI_ISOCH_FRAME_ID_SHIFT       20
+#define XHCI_ISOCH_FRAME_ID_MASK        0x000007FF
+
 /*
  * USB4 tunneling. Extended capability 0x12 and PORTSC bit 2 are reserved in
  * xHCI 1.2; later revisions use them to report a USB 3.x link carried over USB4.
