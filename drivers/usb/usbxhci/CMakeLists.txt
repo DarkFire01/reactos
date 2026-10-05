@@ -2,14 +2,19 @@
 remove_definitions(-D_WIN32_WINNT=0x502)
 
 list(APPEND SOURCE
+    bulk.cpp
     command.cpp
     commonbuffer.cpp
+    control.cpp
     controller.cpp
     deviceslot.cpp
     driver.cpp
+    endpoint.cpp
+    esm.cpp
     interrupter.cpp
     register.cpp
     roothub.cpp
+    transferring.cpp
     usbdevice.cpp
     usbxhci.h)
 

@@ -76,11 +76,17 @@ enum class XhciErrata : ULONG
     DsmHsicDisconnectInU3 = 60,
     MultiTtDuringConfigure = 61,
     Reserved62 = 62,
-    StrictBiosHandoff = 63
+    StrictBiosHandoff = 63,
+
+    /* Second 64 bit errata word, position 64 + bit */
+    TunnelStateFromVendorPortRegister = 64 + 22,
+    TunnelStateFromVendorStatusRegister = 64 + 23,
+    TunnelStateFromAcpiDsm = 64 + 28
 };
 
 FORCEINLINE
 ULONG64
+NTAPI
 XhciErrataBit(
     _In_ XhciErrata Bit)
 {
