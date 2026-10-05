@@ -37,9 +37,9 @@ HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList","Public",0x00020
 ; Nothing can be created on a disc, so the profile the accounts are given here
 ; is one the image already carries. The session itself runs as the system
 ; account, so a path that is merely correct and absent costs it its home.
-HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-18","ProfileImagePath",0x00020000,"%SystemDrive%\Profiles\Default User"
-HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-19","ProfileImagePath",0x00020000,"%SystemDrive%\Profiles\Default User"
-HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-20","ProfileImagePath",0x00020000,"%SystemDrive%\Profiles\Default User"
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-18","ProfileImagePath",0x00020000,"%SystemDrive%\Users\Default"
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-19","ProfileImagePath",0x00020000,"%SystemDrive%\Users\Default"
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-20","ProfileImagePath",0x00020000,"%SystemDrive%\Users\Default"
 
 ; Hide the "Internet Browser" desktop icon
 HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\ClassicStartMenu","{871C5380-42A0-1069-A2EA-08002B30309D}",0x00010001,1
