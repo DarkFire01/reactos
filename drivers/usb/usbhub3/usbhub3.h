@@ -8,27 +8,44 @@
 #pragma once
 
 #include <ntddk.h>
+#include <windef.h>
+#include <ntstrsafe.h>
+#include <wdmguid.h>
+#include <devpropdef.h>
+#include <devpkey.h>
 #include <wdf.h>
 #include <usb.h>
 #include <usbioctl.h>
+#include <usbbusif.h>
+extern "C" {
+#include <usbdlib.h>
+}
+#include <ucxclass.h>
+#include <drivers/usb3/hubucx.h>
+#include <drivers/usb3/usbdclient.h>
+#include <drivers/usb3/usbdhub.h>
 
-#define HUB_POOL_TAG '3buH'
+#include "hubguid.h"
+#include "hubutil.h"
+#include "hubdriver.h"
+#include "descvalidation.h"
 
-/** One per hub FDO, root hub or external. */
-typedef struct _HUB_FDO_CONTEXT
-{
-    WDFDEVICE Device;
-    WDFIOTARGET ParentTarget;
-} HUB_FDO_CONTEXT, *PHUB_FDO_CONTEXT;
+/* Objects that own the state machines */
+class HubFdo;
+class HubPort;
+class HubChild;
+class HubPdo;
 
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(HUB_FDO_CONTEXT, HubGetFdoContext);
+#include "hsm.h"
+#include "psm.h"
+#include "dsm.h"
+#include "ism.h"
 
-/* driver.cpp */
-extern "C" DRIVER_INITIALIZE DriverEntry;
-
-/* hub.cpp */
-EVT_WDF_DRIVER_DEVICE_ADD HubEvtDeviceAdd;
-EVT_WDF_DEVICE_PREPARE_HARDWARE HubEvtDevicePrepareHardware;
-EVT_WDF_DEVICE_RELEASE_HARDWARE HubEvtDeviceReleaseHardware;
-EVT_WDF_DEVICE_D0_ENTRY HubEvtDeviceD0Entry;
-EVT_WDF_DEVICE_D0_EXIT HubEvtDeviceD0Exit;
+#include "hubxfer.h"
+#include "hubfdo.h"
+#include "hubport.h"
+#include "hubchild.h"
+#include "hubid.h"
+#include "devucx.h"
+#include "hubpdo.h"
+#include "hubsvc.h"
