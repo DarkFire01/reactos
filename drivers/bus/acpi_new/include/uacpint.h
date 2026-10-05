@@ -628,6 +628,7 @@ UacpiNtUsb4ResumeFromHibernate(VOID);
 NTSTATUS
 NTAPI
 UacpiNtUsb4DeviceControl(
+    _In_opt_ uacpi_namespace_node *Node,
     _Inout_ PIRP Irp);
 
 VOID

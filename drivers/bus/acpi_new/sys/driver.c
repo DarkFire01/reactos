@@ -114,7 +114,10 @@ UacpiNtDispatchFdo(
         case IRP_MJ_DEVICE_CONTROL:
         case IRP_MJ_INTERNAL_DEVICE_CONTROL:
             if (IoStack->Parameters.DeviceIoControl.IoControlCode == IOCTL_UACPINT_USB4_OSC)
-                return UacpiNtUsb4DeviceControl(Irp);
+            {
+                return UacpiNtUsb4DeviceControl(uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB),
+                                                Irp);
+            }
             return UacpiNtForwardAndForget(Fdo->LowerDevice, Irp);
 
         default:

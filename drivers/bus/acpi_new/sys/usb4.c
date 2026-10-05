@@ -130,7 +130,9 @@ UacpiNtUsb4ResumeFromHibernate(VOID)
     Capabilities[0] = 0;
     Capabilities[1] = UacpiNtUsb4.PlatformGranted;
     Status = UacpiNtEvaluateOscDwords(SbNode, &UacpiNtSbOscUuid, Capabilities, RTL_NUMBER_OF(Capabilities));
-    if (Status == STATUS_NOT_IMPLEMENTED)
+
+    /* Only a run that returned both DWORDs counts, even when it reports an error */
+    if (!NT_SUCCESS(Status) && Status != STATUS_REQUEST_NOT_ACCEPTED)
         return;
 
     KeWaitForSingleObject(&UacpiNtUsb4.Lock, Executive, KernelMode, FALSE, NULL);
@@ -158,9 +160,9 @@ static
 NTSTATUS
 NTAPI
 UacpiNtUsb4HandleRequest(
+    _In_opt_ uacpi_namespace_node *Node,
     _Inout_ PUACPINT_USB4_OSC_REQUEST Request)
 {
-    uacpi_namespace_node *SbNode;
     ULONG Capabilities[3];
     NTSTATUS Status;
 
@@ -171,19 +173,23 @@ UacpiNtUsb4HandleRequest(
     if ((Request->ControlRequested & UacpiNtUsb4.Committed) != UacpiNtUsb4.Committed)
         return STATUS_UNSUCCESSFUL;
 
-    SbNode = uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_SB);
-    if (!SbNode)
+    if (!Node)
+    {
+        Request->Usb4Present = FALSE;
         return STATUS_UNSUCCESSFUL;
+    }
 
     Capabilities[0] = Request->Query ? 1 : 0;
     Capabilities[1] = Request->Support;
     Capabilities[2] = Request->ControlRequested;
 
-    Status = UacpiNtEvaluateOscDwords(SbNode, &GUID_UACPINT_USB4_OSC, Capabilities, RTL_NUMBER_OF(Capabilities));
+    Status = UacpiNtEvaluateOscDwords(Node, &GUID_UACPINT_USB4_OSC, Capabilities, RTL_NUMBER_OF(Capabilities));
     if (!NT_SUCCESS(Status))
     {
         Request->Usb4Present = FALSE;
-        return (Status == STATUS_NOT_IMPLEMENTED) ? STATUS_UNSUCCESSFUL : Status;
+        if (Status == STATUS_NOT_IMPLEMENTED || Status == STATUS_REQUEST_NOT_ACCEPTED)
+            Status = STATUS_UNSUCCESSFUL;
+        return Status;
     }
 
     Request->Usb4Present = TRUE;
@@ -208,23 +214,30 @@ UacpiNtUsb4HandleRequest(
 NTSTATUS
 NTAPI
 UacpiNtUsb4DeviceControl(
+    _In_opt_ uacpi_namespace_node *Node,
     _Inout_ PIRP Irp)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    ULONG_PTR Information = sizeof(UACPINT_USB4_OSC_REQUEST);
     NTSTATUS Status;
 
-    /* Windows checks only the input length but always returns the whole request */
-    if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(UACPINT_USB4_OSC_REQUEST) ||
-        IoStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(UACPINT_USB4_OSC_REQUEST))
+    /* Windows checks only the input length; the system buffer is at least that big */
+    if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(UACPINT_USB4_OSC_REQUEST))
     {
-        return UacpiNtCompleteIrp(Irp, STATUS_INFO_LENGTH_MISMATCH, 0);
+        Status = STATUS_INFO_LENGTH_MISMATCH;
+    }
+    else
+    {
+        KeWaitForSingleObject(&UacpiNtUsb4.Lock, Executive, KernelMode, FALSE, NULL);
+        Status = UacpiNtUsb4HandleRequest(Node, Irp->AssociatedIrp.SystemBuffer);
+        KeReleaseMutex(&UacpiNtUsb4.Lock, FALSE);
     }
 
-    KeWaitForSingleObject(&UacpiNtUsb4.Lock, Executive, KernelMode, FALSE, NULL);
-    Status = UacpiNtUsb4HandleRequest(Irp->AssociatedIrp.SystemBuffer);
-    KeReleaseMutex(&UacpiNtUsb4.Lock, FALSE);
+    /* Windows reports 24 bytes even to a smaller output buffer, which the copy back overruns */
+    if (Information > IoStack->Parameters.DeviceIoControl.OutputBufferLength)
+        Information = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
 
-    return UacpiNtCompleteIrp(Irp, Status, sizeof(UACPINT_USB4_OSC_REQUEST));
+    return UacpiNtCompleteIrp(Irp, Status, Information);
 }
 
 VOID

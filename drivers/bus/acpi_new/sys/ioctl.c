@@ -7,6 +7,8 @@
 
 #include <uacpint.h>
 #include <acpiioct.h>
+#include <drivers/acpi/acpipath.h>
+#include <drivers/acpi/usb4osc.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
 #include <debug.h>
@@ -929,6 +931,109 @@ UacpiNtQueryBiosName(
     return STATUS_SUCCESS;
 }
 
+/*
+ * Absolute path with the leading backslash. Without the padded flag every
+ * name segment loses its trailing underscores, "\_SB_.XHC_" becomes "\_SB.XHC".
+ */
+static
+NTSTATUS
+NTAPI
+UacpiNtQueryNamespacePath(
+    _In_opt_ uacpi_namespace_node *Node,
+    _In_z_ const char *TraceName,
+    _In_ PIRP Irp,
+    _Out_ PULONG_PTR Information)
+{
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PUACPINT_NAMESPACE_PATH_REQUEST Request = Irp->AssociatedIrp.SystemBuffer;
+    const uacpi_char *AbsolutePath;
+    PCHAR Path;
+    UNICODE_STRING WidePath;
+    ANSI_STRING AnsiPath;
+    SIZE_T Source;
+    SIZE_T Length = 0;
+    SIZE_T SegmentStart = 0;
+    ULONG Required;
+    NTSTATUS Status;
+
+    *Information = 0;
+
+    if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(*Request))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    if (Request->Signature != UACPINT_NAMESPACE_PATH_SIGNATURE ||
+        (Request->Flags & ~UACPINT_NAMESPACE_PATH_PADDED) != 0)
+    {
+        return STATUS_INVALID_PARAMETER_1;
+    }
+
+    if (!Node)
+        return STATUS_NO_SUCH_DEVICE;
+
+    AbsolutePath = uacpi_namespace_node_generate_absolute_path(Node);
+    if (!AbsolutePath)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* Trimming only shortens the path, so its own length bounds the result */
+    Path = ExAllocatePoolWithTag(NonPagedPool, strlen(AbsolutePath) + 1, UACPINT_POOL_TAG);
+    if (!Path)
+    {
+        uacpi_free_absolute_path(AbsolutePath);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    for (Source = 0; AbsolutePath[Source] != '\0'; Source++)
+    {
+        if (AbsolutePath[Source] == '.')
+            SegmentStart = Length + 1;
+
+        Path[Length++] = AbsolutePath[Source];
+
+        /* Trim at each separator and at the end, a segment keeps at least one character */
+        if (!(Request->Flags & UACPINT_NAMESPACE_PATH_PADDED) &&
+            (AbsolutePath[Source + 1] == '.' || AbsolutePath[Source + 1] == '\0'))
+        {
+            while (Length > SegmentStart + 1 && Path[Length - 1] == '_')
+                Length--;
+        }
+    }
+    Path[Length] = '\0';
+    uacpi_free_absolute_path(AbsolutePath);
+
+    Status = RtlInitAnsiStringEx(&AnsiPath, Path);
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Path, UACPINT_POOL_TAG);
+        return STATUS_NAME_TOO_LONG;
+    }
+
+    Required = RtlAnsiStringToUnicodeSize(&AnsiPath);
+    if (Required > MAXUSHORT)
+    {
+        Status = STATUS_NAME_TOO_LONG;
+    }
+    else if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < Required)
+    {
+        Status = STATUS_BUFFER_TOO_SMALL;
+    }
+    else
+    {
+        WidePath.Buffer = Irp->AssociatedIrp.SystemBuffer;
+        WidePath.Length = 0;
+        WidePath.MaximumLength = (USHORT)Required;
+
+        Status = RtlAnsiStringToUnicodeString(&WidePath, &AnsiPath, FALSE);
+    }
+
+    ExFreePoolWithTag(Path, UACPINT_POOL_TAG);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *Information = WidePath.Length + sizeof(WCHAR);
+    DPRINT("%s: namespace path %wZ\n", TraceName, &WidePath);
+    return STATUS_SUCCESS;
+}
+
 /* USB hubs skip ports that do not report ACPI_OBJECT_HAS_CHILDREN */
 static
 BOOLEAN
@@ -1081,6 +1186,11 @@ UacpiNtAcpiDeviceControl(
             *Disposition = UacpiNtCompleteIrp(Irp, Status, Information);
             return TRUE;
 
+        case IOCTL_UACPINT_QUERY_NAMESPACE_PATH:
+            Status = UacpiNtQueryNamespacePath(Node, Name, Irp, &Information);
+            *Disposition = UacpiNtCompleteIrp(Irp, Status, Information);
+            return TRUE;
+
         case UACPINT_IOCTL_REGISTER_OPREGION:
         case UACPINT_IOCTL_UNREGISTER_OPREGION:
         case UACPINT_IOCTL_TRANSLATE_BIOS_RESOURCES:
@@ -1088,6 +1198,11 @@ UacpiNtAcpiDeviceControl(
         case UACPINT_IOCTL_UNREGISTER_FIRMWARE_LOCK:
             DPRINT1("%s: ACPI IOCTL function %lu is not implemented\n", Name, (Code >> 2) & 0xFFF);
             *Disposition = UacpiNtCompleteIrp(Irp, STATUS_NOT_SUPPORTED, 0);
+            return TRUE;
+
+        /* Windows serves the USB4 _OSC on any ACPI device, evaluated on its own node */
+        case IOCTL_UACPINT_USB4_OSC:
+            *Disposition = UacpiNtUsb4DeviceControl(Node, Irp);
             return TRUE;
 
         case IOCTL_ACPI_ENUM_CHILDREN:

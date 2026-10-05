@@ -837,7 +837,7 @@ UacpiNtEvaluateOsc(
 
 /*
  * Evaluates _OSC and copies the returned DWORDs back over Capabilities.
- * Fails when the status DWORD reports a rejected request.
+ * A status DWORD that reports an error gives STATUS_REQUEST_NOT_ACCEPTED.
  */
 NTSTATUS
 NTAPI
@@ -859,7 +859,9 @@ UacpiNtEvaluateOscDwords(
     if (UacpiNtGetBufferObject(Result, &View) && View.length >= Count * sizeof(*Capabilities))
     {
         RtlCopyMemory(Capabilities, View.const_bytes, Count * sizeof(*Capabilities));
-        if (!(Capabilities[0] & UACPINT_OSC_ERROR_MASK))
+        if (Capabilities[0] & UACPINT_OSC_ERROR_MASK)
+            Status = STATUS_REQUEST_NOT_ACCEPTED;
+        else
             Status = STATUS_SUCCESS;
     }
 
