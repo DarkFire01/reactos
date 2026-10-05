@@ -112,7 +112,7 @@ HalpMadtAddIoApic(
 
 /**
  * @brief
- * Records the routing and polarity of an interrupt source override entry.
+ * Records the routing, polarity and trigger mode of an interrupt source override entry.
  *
  * @param[in] Override
  * The interrupt source override entry.
@@ -146,6 +146,22 @@ HalpMadtAddInterruptOverride(
 
         default:
             HalpApicInfoTable.IsaIrqPolarity[Irq] = InterruptPolarityUnknown;
+            break;
+    }
+
+    /* The reserved encoding is treated like conforming to the bus */
+    switch (Override->IntiFlags & ACPI_MADT_TRIGGER_MASK)
+    {
+        case ACPI_MADT_TRIGGER_EDGE:
+            HalpApicInfoTable.IsaIrqTrigger[Irq] = HALP_ISA_TRIGGER_EDGE;
+            break;
+
+        case ACPI_MADT_TRIGGER_LEVEL:
+            HalpApicInfoTable.IsaIrqTrigger[Irq] = HALP_ISA_TRIGGER_LEVEL;
+            break;
+
+        default:
+            HalpApicInfoTable.IsaIrqTrigger[Irq] = HALP_ISA_TRIGGER_CONFORMS;
             break;
     }
 }
