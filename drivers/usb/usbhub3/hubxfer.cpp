@@ -700,13 +700,19 @@ HubInterruptComplete(
 
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Hub %p status change read failed 0x%lx, URB status 0x%lx\n",
-                Hub,
-                Status,
-                Interrupt->Urb.Hdr.Status);
-
-        if (Status != STATUS_CANCELLED)
+        /* The hub cancels its own read when it powers down */
+        if (Status == STATUS_CANCELLED)
+        {
+            DPRINT("Hub %p status change read canceled\n", Hub);
+        }
+        else
+        {
+            DPRINT1("Hub %p status change read failed 0x%lx, URB status 0x%lx\n",
+                    Hub,
+                    Status,
+                    Interrupt->Urb.Hdr.Status);
             Hub->m_FailureMessageId = HUB_MSG_INTERRUPT_FAILED;
+        }
 
         Hub->Post(HubEvent::InterruptFailed);
         return;
