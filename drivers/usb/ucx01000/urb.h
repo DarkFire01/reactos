@@ -29,6 +29,7 @@
 /* ReactOS has no KeGetCurrentProcessorNumberEx export yet */
 FORCEINLINE
 VOID
+NTAPI
 UcxStampProcessorNumber(
     _Inout_ PURB Urb)
 {
@@ -44,6 +45,7 @@ UcxStampProcessorNumber(
 /** Pins TransferFlags' direction to the pipe; the client's own bit is ignored. */
 FORCEINLINE
 VOID
+NTAPI
 UcxSetTransferDirection(
     _Inout_ PURB Urb,
     _In_ const UcxPipe* Pipe)

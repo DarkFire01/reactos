@@ -32,7 +32,10 @@ UcxCreateObjectWithTwoContexts(
 
     Status = WdfObjectCreate(Primary, &Created);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Object create failed 0x%lx\n", Status);
         return Status;
+    }
 
     if (Secondary != NULL && Secondary->ContextTypeInfo != NULL)
     {
@@ -44,6 +47,7 @@ UcxCreateObjectWithTwoContexts(
         Status = WdfObjectAllocateContext(Created, &Extra, NULL);
         if (!NT_SUCCESS(Status))
         {
+            DPRINT1("Client context on object %p failed 0x%lx\n", Created, Status);
             WdfObjectDelete(Created);
             return Status;
         }

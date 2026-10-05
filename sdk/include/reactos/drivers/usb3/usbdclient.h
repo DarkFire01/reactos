@@ -56,6 +56,15 @@ NTSTATUS
     _Out_ PURB* Urb);
 
 typedef
+_Must_inspect_result_
+NTSTATUS
+(NTAPI *PFN_USBD_CLIENT_SELECT_INTERFACE_XRB_BUILD)(
+    _In_ USBD_CLIENT_HANDLE Handle,
+    _In_ USBD_CONFIGURATION_HANDLE ConfigurationHandle,
+    _In_ PUSBD_INTERFACE_LIST_ENTRY InterfaceListEntry,
+    _Out_ PURB* Urb);
+
+typedef
 VOID
 (NTAPI *PFN_USBD_CLIENT_XRB_FREE)(
     _In_ PURB Urb);
@@ -83,7 +92,7 @@ typedef struct _USBD_CLIENT_INTERFACE
     PFN_USBD_CLIENT_XRB_ALLOCATE XrbAllocate;
     PFN_USBD_CLIENT_ISOCH_XRB_ALLOCATE IsochXrbAllocate;
     PFN_USBD_CLIENT_SELECT_XRB_BUILD SelectConfigXrbAllocateAndBuild;
-    PFN_USBD_CLIENT_SELECT_XRB_BUILD SelectInterfaceXrbAllocateAndBuild;
+    PFN_USBD_CLIENT_SELECT_INTERFACE_XRB_BUILD SelectInterfaceXrbAllocateAndBuild;
     PFN_USBD_CLIENT_XRB_FREE XrbFree;
 } USBD_CLIENT_INTERFACE, *PUSBD_CLIENT_INTERFACE;
 

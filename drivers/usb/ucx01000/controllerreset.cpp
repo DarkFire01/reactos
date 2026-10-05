@@ -100,6 +100,8 @@ UcxController::PrepareDevicesForReset()
     NT_ASSERT(m_PendingPrepareForReset == 0);
     m_PendingPrepareForReset = FanOut.Count;
 
+    DPRINT("Controller %p preparing %lu endpoints for reset\n", this, FanOut.Count);
+
     UcxPostToCollectedEndpoints(&FanOut, EpEvent::ControllerResetStarting);
 
     if (FanOut.Count == 0)
@@ -117,6 +119,7 @@ UcxController::NotifyDevicesResetDone()
     FanOut.MarkDeprogrammed = FALSE;
 
     WalkDevices(UcxCollectEndpointsForReset, &FanOut, TRUE);
+    DPRINT("Controller %p reset done, notifying %lu endpoints\n", this, FanOut.Count);
     UcxPostToCollectedEndpoints(&FanOut, EpEvent::ControllerResetDone);
 }
 
@@ -220,6 +223,7 @@ ControllerResetMachine::NotifyDevicesResetDone()
 VOID
 ControllerResetMachine::ResetController()
 {
+    DPRINT1("Controller %p being reset\n", m_Controller);
     m_Controller->m_Config.EvtControllerReset(m_Controller->m_Handle);
 }
 
@@ -227,6 +231,7 @@ VOID
 ControllerResetMachine::CompleteHubReset(
     _In_ BOOLEAN Succeeded)
 {
+    DPRINT("Controller %p completing hub reset request, success %u\n", m_Controller, Succeeded);
     m_Controller->m_RootHub->CompleteAsyncReset(Succeeded);
 }
 

@@ -83,6 +83,7 @@ UcxXrbCheckOnSubmit(
 
     if (Xrb->Signature != UCX_XRB_SIGNATURE)
     {
+        DPRINT1("IRP %p submitted corrupted XRB for URB %p\n", Irp, Urb);
         KeBugCheckEx(UCX_BUGCHECK_USB3,
                      UCX_USB3_XRB_CORRUPTED,
                      (ULONG_PTR)Irp,
@@ -92,6 +93,7 @@ UcxXrbCheckOnSubmit(
 
     if (Xrb->State != UCX_XRB_STATE_INACTIVE)
     {
+        DPRINT1("IRP %p resubmitted URB %p while it is still active\n", Irp, Urb);
         KeBugCheckEx(UCX_BUGCHECK_USB3,
                      UCX_USB3_ACTIVE_URB_REUSED,
                      (ULONG_PTR)Irp,
@@ -147,6 +149,8 @@ UcxXrbSubmitChainedMdlTransfer(
 
     if (!Handle->m_ChainedMdlGranted)
     {
+        DPRINT1("Chained MDL URB %p from handle %p without the capability\n", Urb, Handle);
+
         if (Handle->m_VerifierEnabled)
         {
             KeBugCheckEx(UCX_BUGCHECK_USB3,
@@ -255,6 +259,7 @@ UcxXrbTransferCompletion(
 
     if (Urb->UrbHeader.Status == USBD_STATUS_PENDING)
     {
+        DPRINT("XRB URB %p function 0x%x canceled before reaching the HCD\n", Urb, Urb->UrbHeader.Function);
         Device->m_TransferFailureCount++;
         Urb->UrbBulkOrInterruptTransfer.TransferBufferLength = 0;
         UcxXrbFixUnprocessed(Irp, Urb, Device);
@@ -271,6 +276,8 @@ UcxXrbTransferCompletion(
     {
         if (!USBD_SUCCESS(Urb->UrbHeader.Status))
         {
+            DPRINT("XRB URB %p function 0x%x on device %p failed, USBD status 0x%lx\n",
+                   Urb, Urb->UrbHeader.Function, Device, Urb->UrbHeader.Status);
             Device->m_TransferFailureCount++;
             Device->ReportNoPingResponseIfPending();
         }
@@ -301,9 +308,20 @@ UcxXrbStreamsCompletion(
     UNREFERENCED_PARAMETER(DeviceObject);
 
     if (Urb->UrbHeader.Status == USBD_STATUS_PENDING)
+    {
+        DPRINT1("Streams URB %p function 0x%x never reached the HCD\n", Urb, Urb->UrbHeader.Function);
         UcxXrbFixUnprocessed(Irp, Urb, Device);
+    }
     else
+    {
+        if (!USBD_SUCCESS(Urb->UrbHeader.Status))
+        {
+            DPRINT1("Streams URB %p function 0x%x failed, USBD status 0x%lx\n",
+                    Urb, Urb->UrbHeader.Function, Urb->UrbHeader.Status);
+        }
+
         Irp->IoStatus.Status = UcxUsbdStatusToNtStatus(Urb->UrbHeader.Status);
+    }
 
     if (Irp->PendingReturned)
         IoMarkIrpPending(Irp);

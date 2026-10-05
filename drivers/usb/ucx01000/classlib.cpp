@@ -47,6 +47,7 @@ UcxClassLibraryInitialize(VOID)
 {
     PAGED_CODE();
 
+    DPRINT("Class library initialize\n");
     UcxBuildExportTable();
     return STATUS_SUCCESS;
 }
@@ -57,6 +58,8 @@ NTAPI
 UcxClassLibraryDeinitialize(VOID)
 {
     PAGED_CODE();
+
+    DPRINT("Class library deinitialize\n");
 }
 
 /*
@@ -78,7 +81,10 @@ UcxClassLibraryBindClient(
 
     ClientGlobals = (PUCX_DRIVER_GLOBALS *)ClassBindInfo->ClassBindInfo;
     if (ClientGlobals == NULL)
+    {
+        DPRINT1("Client bind info %p has no globals slot\n", ClassBindInfo);
         return STATUS_INVALID_PARAMETER;
+    }
 
     /* KMDF unbinds even after a failed bind, so clear the slot up front */
     *ClientGlobals = NULL;
@@ -107,11 +113,15 @@ UcxClassLibraryBindClient(
 
     Globals = (PUCX_DRIVER_GLOBALS)ExAllocatePoolZero(NonPagedPool, sizeof(*Globals), UCX_POOL_TAG);
     if (Globals == NULL)
+    {
+        DPRINT1("Client globals allocation failed\n");
         return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     Globals->Size = sizeof(*Globals);
     Globals->WdfDriverGlobals = (PWDF_DRIVER_GLOBALS)ComponentGlobals;
 
+    DPRINT("Bound UCX 1.%lu client, globals %p\n", Minor, Globals);
     *ClientGlobals = Globals;
     return STATUS_SUCCESS;
 }
@@ -132,6 +142,7 @@ UcxClassLibraryUnbindClient(
     if (ClientGlobals == NULL || *ClientGlobals == NULL)
         return;
 
+    DPRINT("Unbinding client globals %p\n", *ClientGlobals);
     ExFreePoolWithTag(*ClientGlobals, UCX_POOL_TAG);
     *ClientGlobals = NULL;
 }

@@ -22,11 +22,15 @@ UcxWorkItem::Allocate(
 
     Item = (UcxWorkItem*)ExAllocatePoolZero(NonPagedPool, sizeof(*Item), UCX_POOL_TAG);
     if (Item == NULL)
+    {
+        DPRINT1("Controller %p work item allocation failed\n", Controller);
         return NULL;
+    }
 
     Item->IoWorkItem = IoAllocateWorkItem(DeviceObject);
     if (Item->IoWorkItem == NULL)
     {
+        DPRINT1("Controller %p IO work item allocation failed for %p\n", Controller, DeviceObject);
         ExFreePoolWithTag(Item, UCX_POOL_TAG);
         return NULL;
     }
@@ -78,9 +82,14 @@ UcxWorkItem::Enqueue(
 
     /* The worker pool is out of threads; fall back to the controller's own thread */
     if (Options == UcxHubWorkItemForwardProgressNotRequired || !Controller->HasSystemThread())
+    {
         IoQueueWorkItemEx(IoWorkItem, UcxWorkItemIoRoutine, DelayedWorkQueue, this);
+    }
     else
+    {
+        DPRINT("Work item %p sent to controller %p system thread\n", this, Controller);
         Controller->QueueOnSystemThread(this);
+    }
 }
 
 /** Waits until the last queued run finished touching the item. */
@@ -91,6 +100,7 @@ UcxWorkItem::Flush()
 
     if (!NeedsFlush)
     {
+        DPRINT1("Flush on work item %p allocated without flush support\n", this);
         NT_ASSERT(FALSE);
         return;
     }

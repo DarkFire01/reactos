@@ -50,6 +50,7 @@ UcxEvtDeviceMgmtIoInternalDeviceControl(
 
     if (!Controller->AcquireResetReference())
     {
+        DPRINT("UsbDevice %p IOCTL 0x%lx during controller reset\n", Device->m_Handle, IoControlCode);
         Device->FailManagement(Request, IoControlCode);
         return;
     }
@@ -59,10 +60,14 @@ UcxEvtDeviceMgmtIoInternalDeviceControl(
     {
         if (IoControlCode != IOCTL_UCXHUB_DEVICE_ENABLE)
         {
+            DPRINT("UsbDevice %p IOCTL 0x%lx after a controller reset deprogrammed it\n",
+                   Device->m_Handle,
+                   IoControlCode);
             Device->FailManagement(Request, IoControlCode);
             Controller->ReleaseResetReference();
             return;
         }
+        DPRINT("UsbDevice %p enabled again after a controller reset\n", Device->m_Handle);
         Device->m_DeprogrammedByControllerReset = FALSE;
     }
 
@@ -83,6 +88,8 @@ UcxUsbDevice::DispatchManagement(
     PURB Urb;
 
     KeQuerySystemTime((PLARGE_INTEGER)&m_Timestamp);
+
+    DPRINT("UsbDevice %p IOCTL 0x%lx request %p\n", m_Handle, IoControlCode, Request);
 
     switch (IoControlCode)
     {
@@ -109,7 +116,10 @@ UcxUsbDevice::DispatchManagement(
             else if (Urb->UrbHeader.Function == URB_FUNCTION_CLOSE_STATIC_STREAMS)
                 UcxEndpoint::FromPipe(Urb->UrbPipeRequest.PipeHandle)->StaticStreamsDisableFromClient(Request);
             else
+            {
+                DPRINT1("UsbDevice %p unexpected URB function 0x%x\n", m_Handle, Urb->UrbHeader.Function);
                 WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
+            }
             break;
 
         case IOCTL_UCXHUB_DEVICE_RESET:
@@ -150,6 +160,7 @@ UcxUsbDevice::DispatchManagement(
             break;
 
         default:
+            DPRINT1("UsbDevice %p unexpected IOCTL 0x%lx\n", m_Handle, IoControlCode);
             WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
             break;
     }
@@ -190,6 +201,7 @@ UcxUsbDevice::FailManagement(
 
                 NT_ASSERT(!Endpoint->m_OpenFailedOnReset);
                 Endpoint->m_OpenFailedOnReset = TRUE;
+                DPRINT1("Endpoint %p static streams open failed by controller reset\n", Endpoint->m_Handle);
                 WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
             }
             else if (Urb->UrbHeader.Function == URB_FUNCTION_CLOSE_STATIC_STREAMS)
@@ -198,6 +210,7 @@ UcxUsbDevice::FailManagement(
             }
             else
             {
+                DPRINT1("UsbDevice %p unexpected URB function 0x%x during reset\n", m_Handle, Urb->UrbHeader.Function);
                 WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
             }
             break;
@@ -219,10 +232,12 @@ UcxUsbDevice::FailManagement(
         case IOCTL_UCXHUB_ENDPOINT_RESET:
             NT_ASSERT(!m_EndpointResetFailedByControllerReset);
             m_EndpointResetFailedByControllerReset = TRUE;
+            DPRINT1("UsbDevice %p endpoint reset failed by controller reset\n", m_Handle);
             WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
             break;
 
         default:
+            DPRINT1("UsbDevice %p IOCTL 0x%lx failed by controller reset\n", m_Handle, IoControlCode);
             WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
             break;
     }
@@ -263,6 +278,7 @@ UcxEvtPendDuringResetIoInternalDeviceControl(
             Urb = (PURB)Arg1;
             if (Urb->UrbHeader.Function != URB_FUNCTION_CLOSE_STATIC_STREAMS)
             {
+                DPRINT1("Parked request %p has unexpected URB function 0x%x\n", Request, Urb->UrbHeader.Function);
                 NT_ASSERT(FALSE);
                 Status = STATUS_NO_SUCH_DEVICE;
                 break;
@@ -281,11 +297,13 @@ UcxEvtPendDuringResetIoInternalDeviceControl(
             break;
 
         default:
+            DPRINT1("Parked request %p has unexpected IOCTL 0x%lx\n", Request, IoControlCode);
             NT_ASSERT(FALSE);
             Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
     }
 
+    DPRINT("Parked request %p IOCTL 0x%lx released 0x%lx\n", Request, IoControlCode, Status);
     WdfRequestComplete(Request, Status);
 }
 
@@ -300,12 +318,14 @@ UcxEvtTreePurgeIoInternalDeviceControl(
     _In_ ULONG IoControlCode)
 {
     UcxController* Controller = UcxController::FromFdo(WdfIoQueueGetDevice(Queue));
+    NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
 
     if (IoControlCode != IOCTL_UCXHUB_DEVICE_TREE_PURGE_IO)
     {
+        DPRINT1("Tree purge queue got unexpected IOCTL 0x%lx\n", IoControlCode);
         WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
         return;
     }
@@ -313,8 +333,10 @@ UcxEvtTreePurgeIoInternalDeviceControl(
     WdfIoQueueStop(Queue, NULL, NULL);
 
     /* This IOCTL must not fail */
-    if (!NT_SUCCESS(WdfRequestForwardToIoQueue(Request, Controller->m_DeviceMgmtQueue)))
+    Status = WdfRequestForwardToIoQueue(Request, Controller->m_DeviceMgmtQueue);
+    if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Tree purge request %p forward failed 0x%lx, completed anyway\n", Request, Status);
         WdfRequestComplete(Request, STATUS_SUCCESS);
         WdfIoQueueStart(Queue);
     }
@@ -540,7 +562,10 @@ UcxUsbDevice::EndpointsConfigureFromHub(
     {
         /* Unlike the parked path, nothing to disable after a reset is a failure here */
         if (AfterReset)
+        {
+            DPRINT1("UsbDevice %p endpoints configure failed by controller reset\n", m_Handle);
             WdfRequestComplete(Request, STATUS_NO_SUCH_DEVICE);
+        }
         else
             m_Callbacks.Public.EvtUsbDeviceEndpointsConfigure(m_Controller->m_Handle, Request);
         return;
@@ -595,22 +620,36 @@ UcxUsbDevice::ForwardEndpointsConfigureToHcd()
 }
 
 /* The parked request completes once the controller reset machine releases it */
+static
+VOID
+NTAPI
+UcxParkDuringReset(
+    _In_ UcxUsbDevice* Device,
+    _In_ WDFREQUEST Request)
+{
+    NTSTATUS Status;
+
+    Status = WdfRequestForwardToIoQueue(Request, Device->m_Controller->m_PendDuringResetQueue);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("UsbDevice %p could not park request %p 0x%lx\n", Device->m_Handle, Request, Status);
+}
+
 VOID
 UcxUsbDevice::PendReset()
 {
-    WdfRequestForwardToIoQueue((WDFREQUEST)TakeOperation(), m_Controller->m_PendDuringResetQueue);
+    UcxParkDuringReset(this, (WDFREQUEST)TakeOperation());
 }
 
 VOID
 UcxUsbDevice::PendDisable()
 {
-    WdfRequestForwardToIoQueue((WDFREQUEST)TakeOperation(), m_Controller->m_PendDuringResetQueue);
+    UcxParkDuringReset(this, (WDFREQUEST)TakeOperation());
 }
 
 VOID
 UcxUsbDevice::PendEndpointsConfigure()
 {
-    WdfRequestForwardToIoQueue((WDFREQUEST)TakeOperation(), m_Controller->m_PendDuringResetQueue);
+    UcxParkDuringReset(this, (WDFREQUEST)TakeOperation());
 }
 
 VOID
@@ -636,6 +675,9 @@ VOID
 UcxUsbDevice::CompleteEnableIrp()
 {
     PIRP Irp = (PIRP)TakeOperation();
+
+    if (m_DeprogrammedByControllerReset)
+        DPRINT1("UsbDevice %p enable failed by controller reset\n", m_Handle);
 
     UcxResumeIrpCompletion(Irp, m_DeprogrammedByControllerReset ? STATUS_NO_SUCH_DEVICE : STATUS_SUCCESS);
 }
@@ -673,6 +715,7 @@ UcxUsbDevice::EnableCompleteFromHcd(
     /* Completed again right here; the hub's routine runs nested */
     if (!NT_SUCCESS(Irp->IoStatus.Status))
     {
+        DPRINT1("UsbDevice %p HCD enable failed 0x%lx\n", m_Handle, Irp->IoStatus.Status);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_MORE_PROCESSING_REQUIRED;
     }
@@ -709,6 +752,7 @@ UcxUsbDevice::EndpointsConfigureCompleteFromHcd(
 
     if (!NT_SUCCESS(Irp->IoStatus.Status))
     {
+        DPRINT1("UsbDevice %p HCD endpoints configure failed 0x%lx\n", m_Handle, Irp->IoStatus.Status);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_MORE_PROCESSING_REQUIRED;
     }

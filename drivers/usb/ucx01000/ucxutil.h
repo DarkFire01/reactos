@@ -80,6 +80,7 @@ private:
 /* A LIST_ENTRY with NULL links means "not on any list" throughout this driver */
 FORCEINLINE
 VOID
+NTAPI
 UcxClearListEntry(
     _Out_ PLIST_ENTRY Entry)
 {
@@ -89,6 +90,7 @@ UcxClearListEntry(
 
 FORCEINLINE
 BOOLEAN
+NTAPI
 UcxIsListEntryLinked(
     _In_ const LIST_ENTRY* Entry)
 {
@@ -162,6 +164,7 @@ extern UcxDriverState UcxDriver;
 /** Stops in the debugger on a controller driver bug, only while verifying and attached. */
 FORCEINLINE
 VOID
+NTAPI
 UcxVerifierBreak(
     _In_ BOOLEAN Verifying)
 {

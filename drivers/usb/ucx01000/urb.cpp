@@ -229,7 +229,10 @@ UcxSetCompletionOnNext(
                                       TRUE,
                                       TRUE);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT("IoSetCompletionRoutineEx failed 0x%lx for IRP %p, using the plain routine\n", Status, Irp);
         IoSetCompletionRoutine(Irp, Completion, Context, TRUE, TRUE, TRUE);
+    }
 }
 
 /*
@@ -275,6 +278,7 @@ UcxForwardIrpWithRequest(
         if (Status == STATUS_WDF_BUSY)
             Status = STATUS_NO_SUCH_DEVICE;
 
+        DPRINT1("Forwarding request %p (IRP %p) to queue %p failed 0x%lx\n", Request, Irp, Queue, Status);
         WdfRequestComplete(Request, Status);
     }
 
@@ -316,7 +320,7 @@ UcxValidatePipeHandle(
 
     if (!Valid && UcxAnyUsbdHandleHasVerifier(Device))
     {
-        DbgPrint("ucx01000: client used invalid pipe handle %p\n", Handle);
+        DPRINT1("Client used invalid pipe handle %p on device %p\n", Handle, Device);
         if (!KdRefreshDebuggerNotPresent())
             DbgBreakPoint();
     }
@@ -495,7 +499,10 @@ UcxHandleStandardRequest(
 
     /* The setup bytes stay written even when this fails */
     if (Function->Handler == UcxUrbHandler::GetStatus && UcxGetWord(&Setup[6]) != sizeof(USHORT))
+    {
+        DPRINT1("GET_STATUS URB %p has wLength %u, expected 2\n", Urb, UcxGetWord(&Setup[6]));
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
+    }
 
     return UcxForwardDefaultPipeRequest(RootHubPdo, Irp, Urb, Queue);
 }
@@ -514,10 +521,14 @@ UcxHandleIsoch(
     ULONG Packets = Isoch->NumberOfPackets;
 
     if (Isoch->TransferBufferLength == 0 && Isoch->TransferBufferMDL == NULL && Isoch->TransferBuffer == NULL)
+    {
+        DPRINT1("Isoch URB %p has no buffer\n", Urb);
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
+    }
 
     if (Pipe->IsochPeriodMicroframes > 8)
     {
+        DPRINT1("Isoch URB %p on pipe %p has period %lu microframes\n", Urb, Pipe, Pipe->IsochPeriodMicroframes);
         Isoch->StartFrame = 0;
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
     }
@@ -525,12 +536,16 @@ UcxHandleIsoch(
     /* Only the frame alignment failure resets StartFrame */
     if (Packets != 0 && (Packets * Pipe->IsochPeriodMicroframes) % 8 != 0)
     {
+        DPRINT1("Isoch URB %p: %lu packets do not fill whole frames\n", Urb, Packets);
         Isoch->StartFrame = 0;
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
     }
 
     if (Packets == 0 || Packets > Pipe->MaximumIsochPacketCount)
+    {
+        DPRINT1("Isoch URB %p has bad packet count %lu, max %lu\n", Urb, Packets, Pipe->MaximumIsochPacketCount);
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
+    }
 
     UcxSetTransferDirection(Urb, Pipe);
     return UcxForwardIrpToQueue(RootHubPdo, Irp, UcxLegacyTransferCompletion, Urb, Queue);
@@ -549,7 +564,10 @@ UcxHandleGetCurrentFrame(
 
     Status = Device->m_Controller->GetCurrentFrameNumber(&Frame);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Getting the current frame for URB %p failed 0x%lx\n", Urb, Status);
         Frame = 0;
+    }
 
     Urb->UrbGetCurrentFrameNumber.FrameNumber = Frame;
     return UcxCompleteUrb(Irp, Urb, Status, UcxNtStatusToUsbdStatus(Status));
@@ -670,6 +688,7 @@ UcxPrepareTransfer(
         UcxIsUnalignedChainedMdl(Transfer->TransferBufferMDL, Transfer->TransferBufferLength) &&
         Device->m_Controller->m_DriverVerifierEnabled)
     {
+        DPRINT1("URB %p has an unaligned chained MDL %p\n", Urb, Transfer->TransferBufferMDL);
         KeBugCheckEx(0x144, 0x807, (ULONG_PTR)Transfer->TransferBufferMDL, (ULONG_PTR)Urb, 0);
     }
 
@@ -696,32 +715,50 @@ UcxProcessLegacyUrb(
     Urb->UrbHeader.UsbdFlags &= UCX_URB_FLAGS_KEEP_HUB_BITS;
 
     if (Code >= ARRAYSIZE(UcxUrbFunctions))
+    {
+        DPRINT1("URB %p has unknown function 0x%x\n", Urb, Code);
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_URB_FUNCTION);
+    }
 
     Function = &UcxUrbFunctions[Code];
 
     if (Function->Length != 0 && Function->Length != Urb->UrbHeader.Length)
+    {
+        DPRINT1("URB %p function 0x%x has length %u, expected %u\n", Urb, Code, Urb->UrbHeader.Length, Function->Length);
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
+    }
 
     /* The hub fills in its UCXUSBDEVICE */
     if (Urb->UrbHeader.UsbdDeviceHandle == NULL)
+    {
+        DPRINT1("URB %p function 0x%x has no device handle\n", Urb, Code);
         return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PARAMETER);
+    }
 
     Device = UcxUsbDevice::FromHandle((UCXUSBDEVICE)Urb->UrbHeader.UsbdDeviceHandle);
 
     if (Device->m_Disconnected)
+    {
+        DPRINT("URB %p function 0x%x for disconnected device %p\n", Urb, Code, Device);
         return UcxCompleteUrb(Irp, Urb, STATUS_NO_SUCH_DEVICE, USBD_STATUS_DEVICE_GONE);
+    }
 
     if (Function->Flags & UCX_URB_TRANSFER)
     {
         Error = UcxPrepareTransfer(Urb, Device, Function, &Pipe);
         if (Error != USBD_STATUS_SUCCESS)
+        {
+            DPRINT1("Transfer URB %p function 0x%x on device %p rejected, USBD status 0x%lx\n", Urb, Code, Device, Error);
             return UcxCompleteUrb(Irp, Urb, UcxUsbdStatusToNtStatus(Error), Error);
+        }
     }
     else if (Function->Flags & UCX_URB_PIPE_REQUEST)
     {
         if (!UcxValidatePipeHandle(Device, Urb->UrbPipeRequest.PipeHandle))
+        {
+            DPRINT1("Pipe URB %p function 0x%x has invalid pipe %p\n", Urb, Code, Urb->UrbPipeRequest.PipeHandle);
             return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_PIPE_HANDLE);
+        }
 
         Pipe = UcxPipe::FromHandle(Urb->UrbPipeRequest.PipeHandle);
 
@@ -736,10 +773,12 @@ UcxProcessLegacyUrb(
     switch (Function->Handler)
     {
         case UcxUrbHandler::NotSupported:
+            DPRINT1("URB %p function 0x%x is not supported\n", Urb, Code);
             NT_ASSERT(FALSE);
             return UcxCompleteUrb(Irp, Urb, STATUS_NOT_SUPPORTED, USBD_STATUS_NOT_SUPPORTED);
 
         case UcxUrbHandler::InvalidFunction:
+            DPRINT1("URB %p has invalid function 0x%x\n", Urb, Code);
             return UcxCompleteUrb(Irp, Urb, STATUS_INVALID_PARAMETER, USBD_STATUS_INVALID_URB_FUNCTION);
 
         case UcxUrbHandler::AbortPipe:
@@ -787,6 +826,7 @@ UcxLegacyTransferCompletion(
     if (UsbdStatus == USBD_STATUS_PENDING)
     {
         /* The HCD never saw it: purged, canceled while queued or refused */
+        DPRINT("URB %p function 0x%x canceled before reaching the HCD\n", Urb, Urb->UrbHeader.Function);
         Urb->UrbHeader.Status = USBD_STATUS_CANCELED;
         Irp->IoStatus.Status = STATUS_CANCELLED;
         Urb->UrbControlTransfer.TransferBufferLength = 0;
@@ -802,12 +842,15 @@ UcxLegacyTransferCompletion(
     }
     else if (!USBD_SUCCESS(UsbdStatus))
     {
+        DPRINT("URB %p function 0x%x on device %p failed, USBD status 0x%lx\n",
+               Urb, Urb->UrbHeader.Function, Device, UsbdStatus);
         Device->m_TransferFailureCount++;
         Device->ReportNoPingResponseIfPending();
         Irp->IoStatus.Status = UcxUsbdStatusToNtStatus(UsbdStatus);
     }
     else if (!NT_SUCCESS(Status))
     {
+        DPRINT1("URB %p succeeded but its IRP %p failed 0x%lx\n", Urb, Irp, Status);
         NT_ASSERT(FALSE);
         Urb->UrbHeader.Status = UcxNtStatusToUsbdStatus(Status);
     }
