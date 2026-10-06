@@ -1282,11 +1282,11 @@ HalpGetRootInterruptVector(IN ULONG BusInterruptLevel,
 {
     UCHAR SystemVector;
 
-    /* Validate the IRQ */
+    /* Validate the IRQ. The root arbiter translates its message windows here too */
     if (BusInterruptLevel > 23)
     {
         /* Invalid vector */
-        DPRINT1("IRQ %lx is too high!\n", BusInterruptLevel);
+        DPRINT("IRQ %lx is too high!\n", BusInterruptLevel);
         return 0;
     }
 
