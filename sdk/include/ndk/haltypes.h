@@ -162,7 +162,7 @@ typedef struct _INTERRUPT_CONNECTION_DATA
 typedef enum _INTERRUPT_TARGET_TYPE {
     TargetApic =        0,
     TargetApicRequest = 1,
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
     TargetGlobal =      2
 #endif
 } INTERRUPT_TARGET_TYPE;
@@ -1877,7 +1877,7 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalDpReplaceEnd HalDpReplaceEnd;
     pHalPrepareForBugcheck HalPrepareForBugcheck;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
     pHalQueryWakeTime HalQueryWakeTime;
     pHalReportIdleStateUsage HalReportIdleStateUsage;
     pHalTscSynchronization HalTscSynchronization;
@@ -1888,23 +1888,23 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalReadWheaPhysicalMemory HalReadWheaPhysicalMemory;
     pHalWriteWheaPhysicalMemory HalWriteWheaPhysicalMemory;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
     pHalDpMaskLevelTriggeredInterrupts HalDpMaskLevelTriggeredInterrupts;
     pHalDpUnmaskLevelTriggeredInterrupts HalDpUnmaskLevelTriggeredInterrupts;
     pHalDpGetInterruptReplayState HalDpGetInterruptReplayState;
     pHalDpReplayInterrupts HalDpReplayInterrupts;
     pHalQueryIoPortAccessSupported HalQueryIoPortAccessSupported;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     pKdSetupIntegratedDeviceForDebugging KdSetupIntegratedDeviceForDebugging;
     pKdReleaseIntegratedDeviceForDebugging KdReleaseIntegratedDeviceForDebugging;
     pHalGetEnlightenmentInformation HalGetEnlightenmentInformation;
     pHalAllocateEarlyPages HalAllocateEarlyPages;
     pHalMapEarlyPages HalMapEarlyPages;
-#if (NTDDI_VERSION == NTDDI_WIN8)
+#if (NTDDI_VERSION == NTDDI_WIN8) && !defined(__REACTOS__)
     pHalGetClockOwner HalGetClockOwner;
     pHalGetClockConfiguration HalGetClockConfiguration;
-#elif (NTDDI_VERSION >= NTDDI_WINBLUE)
+#elif (NTDDI_VERSION >= NTDDI_WINBLUE) || defined(__REACTOS__)
     PVOID Dummy1;
     PVOID Dummy2;
 #endif
@@ -1932,9 +1932,9 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalFreePmcCounterSet HalFreePmcCounterSet;
     pHalProcessorHalt HalProcessorHalt;
     pHalTimerQueryCycleCounter HalTimerQueryCycleCounter;
-#if (NTDDI_VERSION == NTDDI_WIN8)
+#if (NTDDI_VERSION == NTDDI_WIN8) && !defined(__REACTOS__)
     pHalGetNextTickDuration HalGetNextTickDuration;
-#elif (NTDDI_VERSION >= NTDDI_WINBLUE)
+#elif (NTDDI_VERSION >= NTDDI_WINBLUE) || defined(__REACTOS__)
     PVOID Dummy3;
 #endif
     pHalPciMarkHiberPhase HalPciMarkHiberPhase;
@@ -1951,7 +1951,7 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalDmaFreeCrashDumpRegisters HalDmaFreeCrashDumpRegisters;
     pHalAcpiAoacCapable HalAcpiAoacCapable;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
+#if (NTDDI_VERSION >= NTDDI_WINBLUE) || defined(__REACTOS__)
     pHalInterruptSetDestination HalInterruptSetDestination;
     pHalGetClockConfiguration HalGetClockConfiguration;
     pHalClockTimerActivate HalClockTimerActivate;
@@ -1968,7 +1968,7 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalTimerWatchdogGeneratedLastReset HalTimerWatchdogGeneratedLastReset;
     pHalTimerWatchdogTriggerSystemReset HalTimerWatchdogTriggerSystemReset;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
     pHalInterruptVectorDataToGsiv HalInterruptVectorDataToGsiv;
     pHalInterruptGetHighestPriorityInterrupt HalInterruptGetHighestPriorityInterrupt;
     pHalProcessorOn HalProcessorOn;
