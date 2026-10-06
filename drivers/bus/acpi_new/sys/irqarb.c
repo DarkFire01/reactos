@@ -73,11 +73,16 @@ typedef struct _UACPINT_MSI_RECORD
     ULONG     MessageCount;
 } UACPINT_MSI_RECORD, *PUACPINT_MSI_RECORD;
 
-/* PCI interrupt link (PNP0C0F), decided once and cached */
+/*
+ * PCI interrupt link (PNP0C0F). The line a transaction picks is tentative
+ * until the commit writes it with _SRS, so a failed placement can be undone.
+ */
 typedef struct _UACPINT_IRQ_LINK
 {
     uacpi_namespace_node *Node;
-    ULONG                 Gsiv;     ///< UACPINT_IRQ_LINK_NONE until decided
+    ULONG                 CurrentGsiv;   ///< line in the hardware, NONE when unprogrammed
+    ULONG                 PossibleGsiv;  ///< line this transaction picked
+    BOOLEAN               Dumped;        ///< its _PRS choices were traced once
 } UACPINT_IRQ_LINK, *PUACPINT_IRQ_LINK;
 
 /* Last connection data written for a device */
@@ -124,6 +129,13 @@ static ULONG UacpiNtIrqSciGsiv = (ULONG)-1;
 
 static UACPINT_IRQ_WRITTEN UacpiNtIrqWritten[UACPINT_IRQ_WRITTEN_MAX];
 static ULONG UacpiNtIrqWrittenCount;
+
+static
+BOOLEAN
+NTAPI
+UacpiNtIrqShareableRange(
+    _In_ PVOID Context,
+    _In_ PRTL_RANGE Range);
 
 static KTIMER UacpiNtMsiDiagTimer;
 static KDPC UacpiNtMsiDiagDpcObject;
@@ -644,7 +656,8 @@ UacpiNtLinkSlot(
         if (!UacpiNtIrqLinks[Index].Node)
         {
             UacpiNtIrqLinks[Index].Node = Node;
-            UacpiNtIrqLinks[Index].Gsiv = UACPINT_IRQ_LINK_NONE;
+            UacpiNtIrqLinks[Index].CurrentGsiv = UACPINT_IRQ_LINK_NONE;
+            UacpiNtIrqLinks[Index].PossibleGsiv = UACPINT_IRQ_LINK_NONE;
             return &UacpiNtIrqLinks[Index];
         }
     }
@@ -743,11 +756,50 @@ UacpiNtGsivHeldByLink(
 
     for (Index = 0; Index < UACPINT_IRQ_LINK_MAX; Index++)
     {
-        if (UacpiNtIrqLinks[Index].Node && UacpiNtIrqLinks[Index].Gsiv == Gsiv)
+        if (UacpiNtIrqLinks[Index].Node && UacpiNtIrqLinks[Index].PossibleGsiv == Gsiv)
             return TRUE;
     }
 
     return FALSE;
+}
+
+/*
+ * A line another device already drives may be joined only when every holder
+ * is on it shared and level triggered. An edge triggered or exclusive holder
+ * such as the keyboard or a serial port keeps the line to itself.
+ */
+static
+BOOLEAN
+NTAPI
+UacpiNtLinkMayJoinLine(
+    _In_ ULONG Gsiv)
+{
+    RTL_RANGE_LIST_ITERATOR Iterator;
+    PRTL_RANGE_LIST List;
+    PRTL_RANGE Range;
+
+    List = UacpiNtIrqArbiter.PossibleAllocation;
+    if (!List)
+        return TRUE;
+
+    if (!NT_SUCCESS(RtlGetFirstRange(List, &Iterator, &Range)))
+        return TRUE;
+
+    while (Range)
+    {
+        if (Range->Start <= Gsiv &&
+            Range->End >= Gsiv &&
+            Range->Owner != UacpiNtIrqArbFdoSelf &&
+            !UacpiNtIrqShareableRange(NULL, Range))
+        {
+            return FALSE;
+        }
+
+        if (!NT_SUCCESS(RtlGetNextRange(&Iterator, &Range, TRUE)))
+            break;
+    }
+
+    return TRUE;
 }
 
 static
@@ -766,7 +818,7 @@ UacpiNtLinkLineUsable(
     if (AvoidOtherLinks && UacpiNtGsivHeldByLink(Gsiv))
         return FALSE;
 
-    return TRUE;
+    return UacpiNtLinkMayJoinLine(Gsiv);
 }
 
 /*
@@ -851,6 +903,43 @@ UacpiNtLinkCurrentGsiv(
     return Found;
 }
 
+/* Trace a link's _PRS choices once, so a firmware offering an ISA line shows up */
+static
+VOID
+NTAPI
+UacpiNtLinkDumpCandidates(
+    _In_ PUACPINT_IRQ_LINK Slot)
+{
+    ULONG Candidates[UACPINT_LINK_CANDIDATE_MAX];
+    uacpi_object_name Name;
+    CHAR Text[sizeof(Name.text) + 1];
+    ULONG Count;
+    ULONG Index;
+
+    if (Slot->Dumped || !UacpiNtIrqArbVerbose)
+        return;
+
+    Slot->Dumped = TRUE;
+
+    Count = UacpiNtLinkCandidates(Slot->Node, Candidates, RTL_NUMBER_OF(Candidates));
+
+    Name = uacpi_namespace_node_name(Slot->Node);
+    RtlCopyMemory(Text, Name.text, sizeof(Name.text));
+    Text[sizeof(Name.text)] = ANSI_NULL;
+
+    DPRINT("uACPI-NT: link %s _PRS offers %u line(s):\n", Text, Count);
+    for (Index = 0; Index < Count; Index++)
+    {
+        DPRINT("uACPI-NT:   GSIV %u, %s\n",
+               Candidates[Index],
+               UacpiNtLinkLineUsable(Candidates[Index], FALSE) ? "usable" : "not usable");
+    }
+}
+
+/*
+ * Pick the line this transaction wants the link on. Nothing reaches the
+ * hardware here: the commit writes the pick with _SRS, a rollback drops it.
+ */
 BOOLEAN
 NTAPI
 UacpiNtIrqLinkDecide(
@@ -865,9 +954,11 @@ UacpiNtIrqLinkDecide(
     if (!Slot)
         return FALSE;
 
-    if (Slot->Gsiv != UACPINT_IRQ_LINK_NONE)
+    UacpiNtLinkDumpCandidates(Slot);
+
+    if (Slot->PossibleGsiv != UACPINT_IRQ_LINK_NONE)
     {
-        *Gsiv = Slot->Gsiv;
+        *Gsiv = Slot->PossibleGsiv;
         return TRUE;
     }
 
@@ -884,29 +975,60 @@ UacpiNtIrqLinkDecide(
 
     if (Chosen != Current)
     {
-        if (NT_SUCCESS(UacpiNtLinkProgram(Node, Chosen)))
+        DPRINT("uACPI-NT: link %p moves from GSIV %u to %u (rotation %u)\n",
+               Node,
+               Current,
+               Chosen,
+               UacpiNtIrqLinkRotation);
+    }
+
+    Slot->PossibleGsiv = Chosen;
+    *Gsiv = Chosen;
+    return TRUE;
+}
+
+/* Drop every tentative pick and start again from what the hardware holds */
+static
+VOID
+NTAPI
+UacpiNtIrqLinksRestart(VOID)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < UACPINT_IRQ_LINK_MAX; Index++)
+        UacpiNtIrqLinks[Index].PossibleGsiv = UacpiNtIrqLinks[Index].CurrentGsiv;
+}
+
+/* _SRS every link whose pick differs from the line it is on, then keep the pick */
+static
+VOID
+NTAPI
+UacpiNtIrqLinksWriteState(VOID)
+{
+    PUACPINT_IRQ_LINK Slot;
+    ULONG Index;
+
+    for (Index = 0; Index < UACPINT_IRQ_LINK_MAX; Index++)
+    {
+        Slot = &UacpiNtIrqLinks[Index];
+        if (!Slot->Node ||
+            Slot->PossibleGsiv == UACPINT_IRQ_LINK_NONE ||
+            Slot->PossibleGsiv == Slot->CurrentGsiv)
         {
-            DPRINT("uACPI-NT: link %p moved from GSIV %u to %u (rotation %u)\n",
-                   Node,
-                   Current,
-                   Chosen,
-                   UacpiNtIrqLinkRotation);
+            continue;
+        }
+
+        if (NT_SUCCESS(UacpiNtLinkProgram(Slot->Node, Slot->PossibleGsiv)))
+        {
+            DPRINT("uACPI-NT: link %p programmed to GSIV %u\n", Slot->Node, Slot->PossibleGsiv);
+            Slot->CurrentGsiv = Slot->PossibleGsiv;
         }
         else
         {
-            DPRINT1("uACPI-NT: link %p _SRS to GSIV %u failed, staying on %u\n",
-                    Node,
-                    Chosen,
-                    Current);
-            if (Current == UACPINT_IRQ_LINK_NONE)
-                return FALSE;
-            Chosen = Current;
+            DPRINT1("uACPI-NT: link %p _SRS to GSIV %u failed\n", Slot->Node, Slot->PossibleGsiv);
+            Slot->PossibleGsiv = Slot->CurrentGsiv;
         }
     }
-
-    Slot->Gsiv = Chosen;
-    *Gsiv = Chosen;
-    return TRUE;
 }
 
 /*
@@ -927,13 +1049,13 @@ UacpiNtIrqLinksResume(VOID)
     for (Index = 0; Index < UACPINT_IRQ_LINK_MAX; Index++)
     {
         Slot = &UacpiNtIrqLinks[Index];
-        if (!Slot->Node || Slot->Gsiv == UACPINT_IRQ_LINK_NONE)
+        if (!Slot->Node || Slot->CurrentGsiv == UACPINT_IRQ_LINK_NONE)
             continue;
 
-        if (NT_SUCCESS(UacpiNtLinkProgram(Slot->Node, Slot->Gsiv)))
-            DPRINT("uACPI-NT: link %p restored to GSIV %u\n", Slot->Node, Slot->Gsiv);
+        if (NT_SUCCESS(UacpiNtLinkProgram(Slot->Node, Slot->CurrentGsiv)))
+            DPRINT("uACPI-NT: link %p restored to GSIV %u\n", Slot->Node, Slot->CurrentGsiv);
         else
-            DPRINT1("uACPI-NT: link %p restore to GSIV %u failed\n", Slot->Node, Slot->Gsiv);
+            DPRINT1("uACPI-NT: link %p restore to GSIV %u failed\n", Slot->Node, Slot->CurrentGsiv);
     }
 }
 
@@ -1231,10 +1353,11 @@ UacpiNtPrtResolveGsiv(
             return STATUS_NOT_FOUND;
     }
 
-    /* _PRT routed lines are level triggered, active low */
-    if (NT_SUCCESS(Status))
-        UacpiNtIrqLibNoteLevelGsiv(*Gsiv);
-
+    /*
+     * The line is not noted as level triggered here. Resolving it is only a
+     * proposal, and a line a device merely considered must keep the triggering
+     * its real owner asked for. UacpiNtNotePlacedTriggering does it on placement.
+     */
     return Status;
 }
 
@@ -1463,24 +1586,35 @@ UacpiNtIrqFindSuitableRange(
 {
     ULONG Gsiv;
 
-    if (State->CurrentMinimum >= UACPINT_MSI_GSIV_BASE)
-        return ArbiterLibFindSuitableRange(Arbiter, State);
+    if (!ArbiterLibFindSuitableRange(Arbiter, State))
+        return FALSE;
 
-    /* A routed device only fits on its routed line */
+    if (State->Start >= UACPINT_MSI_GSIV_BASE)
+        return TRUE;
+
+    /*
+     * A routed device only fits on its routed line, so the library's pick is
+     * replaced by it. The line has to be free or already carrying nothing but
+     * shared level triggered interrupts: a line an edge triggered or exclusive
+     * device drives is a miss, not somewhere to stack a second owner.
+     */
     if (UACPINT_WS_PRT(State->WorkSpace) >= UACPINT_WS_PRT_BIAS)
     {
         Gsiv = UACPINT_WS_PRT(State->WorkSpace) - UACPINT_WS_PRT_BIAS;
         if (Gsiv < State->CurrentMinimum || Gsiv > State->CurrentMaximum)
             return FALSE;
 
+        if (!UacpiNtLinkMayJoinLine(Gsiv))
+        {
+            DPRINT("uACPI-NT: PDO %p cannot take routed GSIV %u, the line is not shareable\n",
+                   State->Entry ? State->Entry->PhysicalDeviceObject : NULL,
+                   Gsiv);
+            return FALSE;
+        }
+
         State->Start = Gsiv;
         State->End = Gsiv;
-        UacpiNtNotePlacedTriggering(State);
-        return TRUE;
     }
-
-    if (!ArbiterLibFindSuitableRange(Arbiter, State))
-        return FALSE;
 
     UacpiNtNotePlacedTriggering(State);
     return TRUE;
@@ -1498,6 +1632,9 @@ UacpiNtIrqTestAllocation(
 #endif
 {
     NTSTATUS Status;
+
+    /* Every pass starts from the lines the links are really on */
+    UacpiNtIrqLinksRestart();
 
 #if (NTDDI_VERSION >= NTDDI_VISTA)
     Status = ArbiterLibTestAllocation(Arbiter, Parameters);
@@ -1520,6 +1657,8 @@ UacpiNtIrqRollbackAllocation(
 {
     if (UacpiNtIrqArbVerbose)
         DPRINT("uACPI-NT: IRQ RollbackAllocation\n");
+
+    UacpiNtIrqLinksRestart();
 
     return ArbiterLibRollbackAllocation(Arbiter);
 }
@@ -1591,6 +1730,9 @@ UacpiNtIrqCommitAllocation(
     ULONG Written = 0;
     ULONG Start;
     ULONG Length;
+
+    /* The placements stand, so the links may reach the hardware now */
+    UacpiNtIrqLinksWriteState();
 
     Status = ArbiterLibCommitAllocation(Arbiter);
     if (!NT_SUCCESS(Status))
