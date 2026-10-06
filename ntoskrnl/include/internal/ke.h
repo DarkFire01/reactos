@@ -153,6 +153,9 @@ extern ULONG KeTimeAdjustment;
 extern BOOLEAN KiTimeAdjustmentEnabled;
 extern LONG KiTickOffset;
 extern ULONG KiFreezeFlag;
+#ifdef _M_AMD64
+extern PKPRCB KiFreezeOwner;
+#endif
 extern ULONG KiDPCTimeout;
 extern PGDI_BATCHFLUSH_ROUTINE KeGdiFlushUserBatch;
 extern ULONGLONG BootCycles, BootCyclesEnd;

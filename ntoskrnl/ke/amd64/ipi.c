@@ -43,7 +43,7 @@ KiIpiWaitForTargets(
     _In_ PCSTR Reason)
 {
     KAFFINITY Remaining;
-    PKPRCB TargetPrcb;
+    PKPRCB TargetPrcb, FreezeOwner;
     ULONG64 Spins = 0;
     ULONG Index;
 
@@ -55,8 +55,12 @@ KiIpiWaitForTargets(
         if (++Spins % KI_IPI_WAIT_SPINS != 0)
             continue;
 
-        DPRINT1("Ki: processor %u is still waiting on %I64x to %s, active %I64x\n",
-                Prcb->Number, Prcb->TargetSet, Reason, KeActiveProcessors);
+        FreezeOwner = KiFreezeOwner;
+
+        DPRINT1("Ki: processor %u is still waiting on %I64x to %s, active %I64x, "
+                "freeze owner %d\n",
+                Prcb->Number, Prcb->TargetSet, Reason, KeActiveProcessors,
+                FreezeOwner != NULL ? (LONG)FreezeOwner->Number : -1);
 
         /*
          * Which half of the handshake is missing. A processor that still has
@@ -76,11 +80,20 @@ KiIpiWaitForTargets(
                 continue;
             }
 
-            DPRINT1("Ki:   processor %lu senders %I64x packet %I64x irql %u halted %u\n",
+            /*
+             * A target's IRQL lives in its CR8 and cannot be read from here, so
+             * what it can report is the state that is in the block: IpiFrozen is
+             * the debugger's freeze state machine, and a non zero PacketBarrier
+             * on any processor means a generic call whose targets are parked at
+             * IPI_LEVEL and deaf to everything else.
+             */
+            DPRINT1("Ki:   processor %lu senders %I64x packet %I64x frozen %lx "
+                    "barrier %I64x halted %u\n",
                     Index,
                     TargetPrcb->SenderSummary,
                     TargetPrcb->RequestMailbox[Prcb->Number].RequestSummary,
-                    TargetPrcb->CurrentThread ? TargetPrcb->CurrentThread->WaitIrql : 0xFF,
+                    TargetPrcb->IpiFrozen,
+                    TargetPrcb->PacketBarrier,
                     TargetPrcb->IdleHalt);
         }
     }
