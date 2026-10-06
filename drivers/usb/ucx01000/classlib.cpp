@@ -71,7 +71,7 @@ NTSTATUS
 NTAPI
 UcxClassLibraryBindClient(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _Out_ PWDF_COMPONENT_GLOBALS *ComponentGlobals)
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals)
 {
     PUCX_DRIVER_GLOBALS *ClientGlobals;
     PUCX_DRIVER_GLOBALS Globals;
@@ -131,7 +131,7 @@ VOID
 NTAPI
 UcxClassLibraryUnbindClient(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _In_ PWDF_COMPONENT_GLOBALS *ComponentGlobals)
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals)
 {
     PUCX_DRIVER_GLOBALS *ClientGlobals;
 

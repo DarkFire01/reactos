@@ -63,14 +63,14 @@ NTSTATUS
 NTAPI
 UcxClassLibraryBindClient(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _Out_ PWDF_COMPONENT_GLOBALS* ComponentGlobals);
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID
 NTAPI
 UcxClassLibraryUnbindClient(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _In_ PWDF_COMPONENT_GLOBALS* ComponentGlobals);
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals);
 
 /* exports.cpp: the class function table the HCD calls through */
 extern PFN_UCXFUNC UcxExportTable[UcxFunctionTableNumEntries];

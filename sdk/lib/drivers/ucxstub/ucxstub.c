@@ -57,7 +57,7 @@ UcxStubBindClass(VOID)
     Info->ClassBindInfo = &UcxDriverGlobals;
 
     /* The class receives the globals pointer itself, matching what Windows clients pass */
-    Status = WdfVersionBindClass(&BindInfo, (PWDF_COMPONENT_GLOBALS *)WdfDriverGlobals, Info);
+    Status = WdfVersionBindClass(&BindInfo, (PWDF_COMPONENT_GLOBALS)WdfDriverGlobals, Info);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("UCX class bind failed 0x%lx\n", Status);
