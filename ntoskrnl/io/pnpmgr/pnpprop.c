@@ -78,7 +78,8 @@ typedef enum _PIP_PROP_FIELD
     PipFieldIsPresent,
     PipFieldInterfaceClass,
     PipFieldInterfaceEnabled,
-    PipFieldInterfaceDevice
+    PipFieldInterfaceDevice,
+    PipFieldInterfaceReference
 } PIP_PROP_FIELD;
 
 typedef struct _PIP_BUILTIN_PROPERTY
@@ -133,6 +134,7 @@ static const PIP_BUILTIN_PROPERTY PipInterfaceBuiltins[] =
     { &DEVPKEY_DeviceInterface_ClassGuid, DEVPROP_TYPE_GUID,    PipSourceInterface,        PIP_PROP_READ_ONLY,       NULL, PipFieldInterfaceClass },
     { &DEVPKEY_DeviceInterface_Enabled,   DEVPROP_TYPE_BOOLEAN, PipSourceInterface,        PIP_PROP_READ_ONLY,       NULL, PipFieldInterfaceEnabled },
     { &DEVPKEY_Device_InstanceId,         DEVPROP_TYPE_STRING,  PipSourceInterface,        PIP_PROP_READ_ONLY,       NULL, PipFieldInterfaceDevice },
+    { &DEVPKEY_DeviceInterface_ReferenceString, DEVPROP_TYPE_STRING, PipSourceInterface,   PIP_PROP_READ_ONLY,       NULL, PipFieldInterfaceReference },
 };
 
 static const DEVPROPKEY PiPropInterruptKey =
@@ -475,6 +477,32 @@ PiPropParseInterfaceName(
     GuidString.Length = GuidString.MaximumLength = 38 * sizeof(WCHAR);
 
     return NT_SUCCESS(RtlGUIDFromString(&GuidString, ClassGuid));
+}
+
+/* Text after the backslash that follows {ClassGuid}; FALSE when the link has none */
+static
+BOOLEAN
+NTAPI
+PiPropGetInterfaceReference(
+    _In_ PCUNICODE_STRING LinkName,
+    _Out_ PUNICODE_STRING Reference)
+{
+    USHORT Index, Chars;
+
+    Chars = LinkName->Length / sizeof(WCHAR);
+    Index = 4;
+    while ((Index < Chars) && (LinkName->Buffer[Index] != L'\\'))
+        Index++;
+
+    /* Skip the separator; an empty reference string counts as none */
+    Index++;
+    if (Index >= Chars)
+        return FALSE;
+
+    Reference->Buffer = &LinkName->Buffer[Index];
+    Reference->Length = (Chars - Index) * sizeof(WCHAR);
+    Reference->MaximumLength = Reference->Length;
+    return TRUE;
 }
 
 /* Property store ************************************************************/
@@ -1193,6 +1221,7 @@ PiPropReadInterfaceField(
     HANDLE DeviceKey, InstanceKey, ControlKey;
     PKEY_VALUE_FULL_INFORMATION Info;
     DEVPROP_BOOLEAN Enabled;
+    UNICODE_STRING Reference;
     NTSTATUS Status;
 
     Status = IopOpenDeviceInterfaceKeys(Object->Name, KEY_READ, &DeviceKey, &InstanceKey);
@@ -1230,6 +1259,16 @@ PiPropReadInterfaceField(
         case PipFieldInterfaceDevice:
             Status = PiPropReadRegistryValue(DeviceKey, L"DeviceInstance", REG_SZ,
                                              DEVPROP_TYPE_STRING, Blob, BlobSize);
+            break;
+
+        case PipFieldInterfaceReference:
+            if (!PiPropGetInterfaceReference(Object->Name, &Reference))
+            {
+                Status = STATUS_OBJECT_NAME_NOT_FOUND;
+                break;
+            }
+
+            Status = PiPropCaptureString(Reference.Buffer, Reference.Length, FALSE, Blob, BlobSize);
             break;
 
         default:
