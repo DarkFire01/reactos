@@ -258,6 +258,10 @@ ClassAddReference(
     _In_ PCLASS_MODULE ClassModule);
 
 VOID
+ClassReleaseReference(
+    _In_ PCLASS_MODULE ClassModule);
+
+VOID
 ClassClose(
     _In_ PCLASS_MODULE ClassModule);
 

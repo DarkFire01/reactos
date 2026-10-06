@@ -481,28 +481,28 @@ ReferenceClassVersion(
                 pLibModule,
                 pBindInfo->Module,
                 status));
+
+        /* Not ours to hand out or to release */
+        pClassModule = NULL;
     }
     FxLdrReleaseLoadedModuleLock();
 
-    if (!created)
-    {
-        if (!NT_SUCCESS(status))
-            goto clean;
-
-        ClassBindInfo->ClassModule = pClassModule;
-        *ClassModule = pClassModule;
-    }
+    /* Both branches that leave no class module behind have set a failure above */
+    if (pClassModule == NULL)
+        goto clean;
 
     /* Class logic: Only call ZwLoadDriver if:
      * 1. Class module was newly created, OR
      * 2. Class module exists but has no ClassLibraryInfo
      */
-    if (created || (pClassModule && !pClassModule->ClassLibraryInfo))
+    if (created || pClassModule->ClassLibraryInfo == NULL)
     {
-
         status = ZwLoadDriver(&driverServiceName);
         if (!NT_SUCCESS(status))
         {
+            __DBGPRINT(("WARNING: ZwLoadDriver (%wZ) failed with status 0x%x\n",
+                    &driverServiceName,
+                    status));
 
             if (status == STATUS_OBJECT_PATH_NOT_FOUND ||
                 status == STATUS_OBJECT_NAME_NOT_FOUND ||
@@ -512,32 +512,31 @@ ReferenceClassVersion(
                 status = STATUS_SUCCESS;
             }
         }
-        else if (pClassModule && !pClassModule->ClassLibraryInfo)
+
+        /*
+         * Loaded or already resident, the library exists only once it has
+         * registered itself. WdfVersionBindClass calls straight through
+         * ClassLibraryInfo, so handing it a class module without one faults.
+         */
+        if (NT_SUCCESS(status) && pClassModule->ClassLibraryInfo == NULL)
         {
+            __DBGPRINT(("ERROR: ZwLoadDriver (%wZ) returned no class library information\n",
+                    &driverServiceName));
+
             status = STATUS_DRIVER_INTERNAL_ERROR;
         }
     }
-    else
-    {
-        /* Class module exists and has ClassLibraryInfo - skip ZwLoadDriver */
-        status = STATUS_SUCCESS;
-    }
 
-    /* Always set the class module regardless of ZwLoadDriver result (Again.. UCX) */
-    if (pClassModule && NT_SUCCESS(status))
-    {
-        ClassBindInfo->ClassModule = pClassModule;
-        *ClassModule = pClassModule;
+    if (!NT_SUCCESS(status))
+        goto clean;
 
-        InterlockedExchangeAdd(&pClassModule->ClientRefCount, 1);
-        goto exit_success;
-    }
+    ClassBindInfo->ClassModule = pClassModule;
+    *ClassModule = pClassModule;
+    InterlockedExchangeAdd(&pClassModule->ClientRefCount, 1);
 
 clean:
-    if (pClassModule && InterlockedExchangeAdd(&pClassModule->ClassRefCount, -1) == 1)
-        ClassCleanupAndFree(pClassModule);
-
-exit_success:
+    if (pClassModule != NULL)
+        ClassReleaseReference(pClassModule);
 
     RtlFreeUnicodeString(&driverServiceName);
 
@@ -764,6 +763,31 @@ ClassAddReference(
     InterlockedIncrement(&ClassModule->ClassRefCount);
     DPRINT_VERBOSE(("Added reference to class %wZ, RefCount=%d\n",
                    &ClassModule->Service, ClassModule->ClassRefCount));
+}
+
+/*
+ * The last reference takes the module off its library's class list before the
+ * pool goes back, since the list outlives any one client.
+ */
+VOID
+ClassReleaseReference(
+    _In_ PCLASS_MODULE ClassModule)
+{
+    BOOLEAN isLast;
+
+    FxLdrAcquireLoadedModuleLock();
+
+    isLast = (InterlockedDecrement(&ClassModule->ClassRefCount) == 0);
+    if (isLast && !IsListEmpty(&ClassModule->LibraryLinkage))
+    {
+        RemoveEntryList(&ClassModule->LibraryLinkage);
+        InitializeListHead(&ClassModule->LibraryLinkage);
+    }
+
+    FxLdrReleaseLoadedModuleLock();
+
+    if (isLast)
+        ClassCleanupAndFree(ClassModule);
 }
 
 VOID
