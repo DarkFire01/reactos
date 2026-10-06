@@ -634,6 +634,14 @@ UacpiNtIrqPolicyConfigure(VOID)
 }
 
 static
+BOOLEAN
+NTAPI
+UacpiNtLinkCurrentGsiv(
+    _In_ uacpi_namespace_node *Link,
+    _In_ ULONG Index,
+    _Out_ PULONG Gsiv);
+
+static
 PUACPINT_IRQ_LINK
 NTAPI
 UacpiNtLinkSlot(
@@ -656,8 +664,12 @@ UacpiNtLinkSlot(
         if (!UacpiNtIrqLinks[Index].Node)
         {
             UacpiNtIrqLinks[Index].Node = Node;
-            UacpiNtIrqLinks[Index].CurrentGsiv = UACPINT_IRQ_LINK_NONE;
             UacpiNtIrqLinks[Index].PossibleGsiv = UACPINT_IRQ_LINK_NONE;
+
+            /* The firmware left the link on a line already, _CRS tells which */
+            if (!UacpiNtLinkCurrentGsiv(Node, 0, &UacpiNtIrqLinks[Index].CurrentGsiv))
+                UacpiNtIrqLinks[Index].CurrentGsiv = UACPINT_IRQ_LINK_NONE;
+
             return &UacpiNtIrqLinks[Index];
         }
     }
@@ -746,17 +758,27 @@ UacpiNtLinkProgram(
     return uacpi_likely_success(UacpiStatus) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
+/* Except is the link being decided, which never counts as holding a line */
 static
 BOOLEAN
 NTAPI
 UacpiNtGsivHeldByLink(
-    _In_ ULONG Gsiv)
+    _In_ ULONG Gsiv,
+    _In_opt_ uacpi_namespace_node *Except)
 {
+    PUACPINT_IRQ_LINK Slot;
+    ULONG Held;
     ULONG Index;
 
     for (Index = 0; Index < UACPINT_IRQ_LINK_MAX; Index++)
     {
-        if (UacpiNtIrqLinks[Index].Node && UacpiNtIrqLinks[Index].PossibleGsiv == Gsiv)
+        Slot = &UacpiNtIrqLinks[Index];
+        if (!Slot->Node || Slot->Node == Except)
+            continue;
+
+        Held = (Slot->PossibleGsiv != UACPINT_IRQ_LINK_NONE) ? Slot->PossibleGsiv
+                                                             : Slot->CurrentGsiv;
+        if (Held == Gsiv)
             return TRUE;
     }
 
@@ -807,7 +829,8 @@ BOOLEAN
 NTAPI
 UacpiNtLinkLineUsable(
     _In_ ULONG Gsiv,
-    _In_ BOOLEAN AvoidOtherLinks)
+    _In_ BOOLEAN AvoidOtherLinks,
+    _In_opt_ uacpi_namespace_node *Except)
 {
     if (Gsiv == UacpiNtIrqSciGsiv)
         return FALSE;
@@ -815,7 +838,7 @@ UacpiNtLinkLineUsable(
     if (Gsiv < UACPINT_ISA_GSIV_COUNT && (UacpiNtIrqPciExclusionMask & (1u << Gsiv)))
         return FALSE;
 
-    if (AvoidOtherLinks && UacpiNtGsivHeldByLink(Gsiv))
+    if (AvoidOtherLinks && UacpiNtGsivHeldByLink(Gsiv, Except))
         return FALSE;
 
     return UacpiNtLinkMayJoinLine(Gsiv);
@@ -847,7 +870,7 @@ UacpiNtLinkChoose(
         for (Index = 0; Index < Count; Index++)
         {
             Gsiv = Candidates[(UacpiNtIrqLinkRotation + Index) % Count];
-            if (UacpiNtLinkLineUsable(Gsiv, (BOOLEAN)(Pass == 0)))
+            if (UacpiNtLinkLineUsable(Gsiv, (BOOLEAN)(Pass == 0), Link))
             {
                 *Chosen = Gsiv;
                 return TRUE;
@@ -913,6 +936,7 @@ UacpiNtLinkDumpCandidates(
     ULONG Candidates[UACPINT_LINK_CANDIDATE_MAX];
     uacpi_object_name Name;
     CHAR Text[sizeof(Name.text) + 1];
+    BOOLEAN Usable;
     ULONG Count;
     ULONG Index;
 
@@ -930,9 +954,8 @@ UacpiNtLinkDumpCandidates(
     DPRINT("uACPI-NT: link %s _PRS offers %u line(s):\n", Text, Count);
     for (Index = 0; Index < Count; Index++)
     {
-        DPRINT("uACPI-NT:   GSIV %u, %s\n",
-               Candidates[Index],
-               UacpiNtLinkLineUsable(Candidates[Index], FALSE) ? "usable" : "not usable");
+        Usable = UacpiNtLinkLineUsable(Candidates[Index], FALSE, Slot->Node);
+        DPRINT("uACPI-NT:   GSIV %u, %s\n", Candidates[Index], Usable ? "usable" : "not usable");
     }
 }
 
@@ -962,8 +985,21 @@ UacpiNtIrqLinkDecide(
         return TRUE;
     }
 
-    if (!UacpiNtLinkCurrentGsiv(Node, 0, &Current))
-        Current = UACPINT_IRQ_LINK_NONE;
+    Current = Slot->CurrentGsiv;
+
+    /*
+     * The firmware routed the links before we booted and wrote the result into
+     * every interrupt line register behind them, so the line a link is already
+     * on is the one to keep. Two links sharing a line is how firmware leaves
+     * them, so the other links are not avoided here. Moving one is for a line
+     * that cannot carry the link at all.
+     */
+    if (Current != UACPINT_IRQ_LINK_NONE && UacpiNtLinkLineUsable(Current, FALSE, Node))
+    {
+        Slot->PossibleGsiv = Current;
+        *Gsiv = Current;
+        return TRUE;
+    }
 
     /* Without a usable _PRS the firmware line stands */
     if (!UacpiNtLinkChoose(Node, &Chosen))
@@ -987,7 +1023,7 @@ UacpiNtIrqLinkDecide(
     return TRUE;
 }
 
-/* Drop every tentative pick and start again from what the hardware holds */
+/* Drop every tentative pick, so the next decision starts from the hardware */
 static
 VOID
 NTAPI
@@ -996,7 +1032,7 @@ UacpiNtIrqLinksRestart(VOID)
     ULONG Index;
 
     for (Index = 0; Index < UACPINT_IRQ_LINK_MAX; Index++)
-        UacpiNtIrqLinks[Index].PossibleGsiv = UacpiNtIrqLinks[Index].CurrentGsiv;
+        UacpiNtIrqLinks[Index].PossibleGsiv = UACPINT_IRQ_LINK_NONE;
 }
 
 /* _SRS every link whose pick differs from the line it is on, then keep the pick */
@@ -1290,12 +1326,26 @@ UacpiNtPrtResolveGsiv(
                                               UACPINT_PCI_INTERRUPT_DWORD,
                                               &PinDword)))
     {
+        DPRINT1("uACPI-NT: PDO %p bus %u slot 0x%X interrupt register unreadable\n",
+                DevicePdo,
+                Bus,
+                UacpiNtPciSlotFromAddress(Address));
         return STATUS_NOT_FOUND;
     }
 
     Pin = (UCHAR)(PinDword >> 8);
     if (Pin == 0 || Pin > 4)
+    {
+        if (UacpiNtIrqArbVerbose)
+        {
+            DPRINT("uACPI-NT: PDO %p bus %u device %u drives no interrupt pin (0x%08lX)\n",
+                   DevicePdo,
+                   Bus,
+                   Device,
+                   PinDword);
+        }
         return STATUS_NOT_FOUND;
+    }
 
     if (UacpiNtIrqArbVerbose)
     {
@@ -1487,7 +1537,7 @@ UacpiNtFindIrqInAlternatives(
     return FALSE;
 }
 
-/* _PRT routed devices try their routed line, then their boot line, then the library walk */
+/* A device tries its routed line, then its firmware line, then the library walk */
 static
 BOOLEAN
 NTAPI
@@ -1512,8 +1562,6 @@ UacpiNtIrqGetNextAllocationRange(
     }
 
     WorkSpace = State->WorkSpace;
-    if (UACPINT_WS_PRT(WorkSpace) < UACPINT_WS_PRT_BIAS)
-        return ArbiterLibGetNextAllocationRange(Arbiter, State);
 
     while (UACPINT_WS_CURSOR(WorkSpace) < UACPINT_NEXT_ALTERNATIVES)
     {
@@ -1524,10 +1572,18 @@ UacpiNtIrqGetNextAllocationRange(
                 HavePreferred = FALSE;
                 break;
 
+            /*
+             * An unrouted device skips to its boot line. The firmware wired it
+             * to a line and wrote that line into its interrupt line register,
+             * and the ordering list the library walks knows nothing about which
+             * one: its first interrupt window is GSIV 9, so a device that falls
+             * through to it lands on a line nothing drives.
+             */
             case UACPINT_NEXT_LINK_PREF:
                 UACPINT_WS_SET_CURSOR(WorkSpace, UACPINT_NEXT_BOOT_CONFIG);
-                Preferred = UACPINT_WS_PRT(WorkSpace) - UACPINT_WS_PRT_BIAS;
-                HavePreferred = TRUE;
+                HavePreferred = (BOOLEAN)(UACPINT_WS_PRT(WorkSpace) >= UACPINT_WS_PRT_BIAS);
+                if (HavePreferred)
+                    Preferred = UACPINT_WS_PRT(WorkSpace) - UACPINT_WS_PRT_BIAS;
                 break;
 
             default:
