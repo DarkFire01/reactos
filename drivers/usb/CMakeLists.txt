@@ -12,5 +12,6 @@ add_subdirectory(usbuhci)
 add_subdirectory(usbxhci)
 
 if(ARCH STREQUAL "amd64")
+    add_subdirectory(usb4devicerouter)
     add_subdirectory(usb4hostrouter)
 endif()
