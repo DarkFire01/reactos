@@ -12,8 +12,8 @@
 
 #include <ntddk.h>
 #include <windef.h>
-#include <fxldr.h>
 #include <wdf.h>
+#include <fxldr.h>
 #include <ucxclass.h>
 #include "ucxstub.h"
 

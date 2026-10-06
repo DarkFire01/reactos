@@ -11,8 +11,8 @@
 #include <windef.h>
 #include <ntstrsafe.h>
 #include <wdmguid.h>
-#include <fxldr.h>
 #include <wdf.h>
+#include <fxldr.h>
 #include <ucxclass.h>
 #include <usbbusif.h>
 #include <usbdlib.h>
