@@ -320,9 +320,15 @@ IopConnectSecondaryVector(
 
     *InterruptObject = NULL;
 
+#if (NTDDI_VERSION >= NTDDI_WIN7)
     Affinity = VectorData->TargetProcessors.Mask & KeActiveProcessors;
     if ((VectorData->TargetProcessors.Group != 0) || (Affinity == 0))
         return STATUS_INVALID_PARAMETER;
+#else
+    Affinity = VectorData->TargetProcessors & KeActiveProcessors;
+    if (Affinity == 0)
+        return STATUS_INVALID_PARAMETER;
+#endif
 
     for (Number = 0; Number < MAXIMUM_PROCESSORS; Number++)
     {
