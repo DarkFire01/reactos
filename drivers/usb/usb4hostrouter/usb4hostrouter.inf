@@ -1,0 +1,69 @@
+; Installation file for USB4HOSTROUTER
+
+[Version]
+signature="$Windows NT$"
+Class=USB
+ClassGUID={36FC9E60-C465-11CF-8056-444553540000}
+Provider=%ReactOS%
+DriverVer=10/05/2026,1.0
+
+[SourceDisksFiles]
+usb4hostrouter.sys = 3426
+
+[ControlFlags]
+BasicDriverOk = *
+ExcludeFromSelect = *
+
+[DestinationDirs]
+DefaultDestDir         = 12
+Usb4HostRouter.CopyFiles = 12
+
+[Manufacturer]
+%Generic.Mfg%=Generic,NTamd64
+
+;
+; USB4 Host Routers
+;
+
+[Generic.NTamd64]
+%Usb4HostRouter.DeviceDesc%=Usb4HostRouter.Install,PCI\USB4_MS_CM
+%Usb4HostRouter.DeviceDesc%=Usb4HostRouter.Install,ACPI\ACPI0015
+
+[Usb4HostRouter.Install.NT]
+CopyFiles=Usb4HostRouter.CopyFiles
+
+[Usb4HostRouter.Install.NT.HW]
+AddReg=Usb4HostRouter.AddReg.HW
+
+[Usb4HostRouter.AddReg.HW]
+HKR, Interrupt Management,, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties,, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties, MSISupported, 0x00010001, 1
+HKR, Interrupt Management\MessageSignaledInterruptProperties, MessageNumberLimit, 0x00010001, 16
+HKR, DMA Management, RemappingSupported, 0x00010001, 1
+
+[Usb4HostRouter.Install.NT.Services]
+AddService=Usb4HostRouter, 0x00000002, Usb4HostRouter.AddService
+
+[Usb4HostRouter.AddService]
+DisplayName   = %Usb4HostRouter.ServiceDesc%
+ServiceType   = 1                  ; SERVICE_KERNEL_DRIVER
+StartType     = 3                  ; SERVICE_DEMAND_START
+ErrorControl  = 1                  ; SERVICE_ERROR_NORMAL
+ServiceBinary = %12%\usb4hostrouter.sys
+
+[Usb4HostRouter.CopyFiles]
+usb4hostrouter.sys
+
+;
+; Strings
+;
+
+[Strings]
+;Non-Localizable
+ReactOS = "ReactOS"
+
+;Localizable
+Generic.Mfg = "Generic USB4 Host Router"
+Usb4HostRouter.DeviceDesc = "USB4(TM) Host Router"
+Usb4HostRouter.ServiceDesc = "USB4 Host Router Service"

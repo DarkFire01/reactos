@@ -10,3 +10,7 @@ add_subdirectory(usbstor)
 #add_subdirectory(usbstor_new)
 add_subdirectory(usbuhci)
 add_subdirectory(usbxhci)
+
+if(ARCH STREQUAL "amd64")
+    add_subdirectory(usb4hostrouter)
+endif()
