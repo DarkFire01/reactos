@@ -420,6 +420,7 @@ extern "C" {
 #define	NUM_EISA_RANGES	4
 #define REGSTR_VAL_CAPABILITIES	TEXT("Capabilities")
 #define REGSTR_VAL_CLASSGUID	TEXT("ClassGUID")
+#define REGSTR_VAL_CONTAINERID	TEXT("ContainerID")
 #define REGSTR_VAL_LOCATION_INFORMATION TEXT("LocationInformation")
 #define REGSTR_VAL_LOWERFILTERS TEXT("LowerFilters")
 #define REGSTR_VAL_SERVICE	TEXT("Service")

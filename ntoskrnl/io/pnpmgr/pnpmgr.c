@@ -1570,7 +1570,6 @@ PiGetDeviceRegistryProperty(IN PDEVICE_OBJECT DeviceObject,
 
 #define PIP_RETURN_DATA(x, y)   {ReturnLength = x; Data = y; Status = STATUS_SUCCESS; break;}
 #define PIP_REGISTRY_DATA(x, y) {ValueName = x; ValueType = y; break;}
-#define PIP_UNIMPLEMENTED()     {UNIMPLEMENTED_DBGBREAK(); break;}
 
 /*
  * @implemented
@@ -1738,9 +1737,7 @@ IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
         case DevicePropertyFriendlyName:
             PIP_REGISTRY_DATA(REGSTR_VAL_FRIENDLYNAME, REG_SZ);
         case DevicePropertyContainerID:
-            //PIP_REGISTRY_DATA(REGSTR_VAL_CONTAINERID, REG_SZ); // Win7
-            PIP_UNIMPLEMENTED();
-            break;
+            PIP_REGISTRY_DATA(REGSTR_VAL_CONTAINERID, REG_SZ);
         case DevicePropertyInstallState:
             PIP_REGISTRY_DATA(REGSTR_VAL_CONFIGFLAGS, REG_DWORD);
             break;
