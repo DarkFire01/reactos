@@ -212,7 +212,7 @@ HalRegisterDynamicProcessor(
     _In_ ULONG ProcessorNumber,
     _In_ ULONG ProcessorId)
 {
-    HAL_INTERRUPT_TARGET_INFORMATION TargetInfo;
+    HAL_INTERRUPT_TARGET_DESCRIPTOR TargetInfo;
     ULONG Packages[MAXIMUM_PROCESSORS];
     ULONG PackageCount, PackageMask, PackageId;
     ULONG Processor, Index, ApicId;
@@ -220,9 +220,9 @@ HalRegisterDynamicProcessor(
     NTSTATUS Status;
 
     /* Flat logical destinations have one bit per processor */
-    Status = HalGetInterruptTargetInformation(InterruptTargetTypeGlobal, 0, &TargetInfo);
+    Status = HalGetInterruptTargetInformation(TargetGlobal, 0, &TargetInfo);
     if (NT_SUCCESS(Status) &&
-        (TargetInfo.Apic.DestinationMode == ApicDestinationModeLogicalFlat) &&
+        (TargetInfo.ApicRouting.DestinationFormat == ApicDestinationModeLogicalFlat) &&
         (HalQueryMaximumProcessorCount() > 8))
     {
         return STATUS_CONFLICTING_ADDRESSES;
