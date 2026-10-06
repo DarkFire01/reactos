@@ -10,6 +10,6 @@ target_compile_definitions(ucxstub
 target_include_directories(ucxstub
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
     ${REACTOS_SOURCE_DIR}/sdk/include/ucx/1.6
-    ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.17
+    ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.33
     PRIVATE ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/shared/inc/private/common
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/kmdf/inc/private)
