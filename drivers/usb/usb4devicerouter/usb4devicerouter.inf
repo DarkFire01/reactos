@@ -1,0 +1,63 @@
+; Installation file for USB4DEVICEROUTER
+
+[Version]
+signature="$Windows NT$"
+Class=USB
+ClassGUID={36FC9E60-C465-11CF-8056-444553540000}
+Provider=%ReactOS%
+DriverVer=10/05/2026,1.0
+
+[SourceDisksFiles]
+usb4devicerouter.sys = 3426
+
+[ControlFlags]
+BasicDriverOk = *
+ExcludeFromSelect = *
+
+[DestinationDirs]
+DefaultDestDir             = 12
+Usb4DeviceRouter.CopyFiles = 12
+
+[Manufacturer]
+%Generic.Mfg%=Generic,NTamd64
+
+;
+; USB4 Routers
+;
+
+[Generic.NTamd64]
+%Usb4DeviceRouter.DeviceDesc%=Usb4DeviceRouter.Install,USB4\DEVICE_ROUTER
+%Usb4RootDeviceRouter.DeviceDesc%=Usb4DeviceRouter.Install,USB4\ROOT_DEVICE_ROUTER
+%Tbt3DeviceRouter.DeviceDesc%=Usb4DeviceRouter.Install,USB4\TBT3_DEVICE_ROUTER
+
+[Usb4DeviceRouter.Install.NT]
+CopyFiles=Usb4DeviceRouter.CopyFiles
+
+[Usb4DeviceRouter.Install.NT.Services]
+AddService=Usb4DeviceRouter, 0x00000002, Usb4DeviceRouter.AddService
+
+[Usb4DeviceRouter.AddService]
+DisplayName    = %Usb4DeviceRouter.ServiceDesc%
+ServiceType    = 1                  ; SERVICE_KERNEL_DRIVER
+StartType      = 3                  ; SERVICE_DEMAND_START
+ErrorControl   = 1                  ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\usb4devicerouter.sys
+LoadOrderGroup = Base
+
+[Usb4DeviceRouter.CopyFiles]
+usb4devicerouter.sys
+
+;
+; Strings
+;
+
+[Strings]
+;Non-Localizable
+ReactOS = "ReactOS"
+
+;Localizable
+Generic.Mfg = "Generic USB4 Device Router"
+Usb4DeviceRouter.DeviceDesc = "USB4 Router"
+Usb4RootDeviceRouter.DeviceDesc = "USB4 Root Router"
+Tbt3DeviceRouter.DeviceDesc = "Thunderbolt 3(TM) Router"
+Usb4DeviceRouter.ServiceDesc = "USB4 Device Router Service"
