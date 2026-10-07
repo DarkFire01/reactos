@@ -2128,12 +2128,29 @@ LdrpInitializeProcess(IN PCONTEXT Context,
 
     /* Setup the Heap */
     RtlInitializeHeapManager();
-    Peb->ProcessHeap = RtlCreateHeap(HeapFlags,
-                                     NULL,
-                                     NtHeader->OptionalHeader.SizeOfHeapReserve,
-                                     NtHeader->OptionalHeader.SizeOfHeapCommit,
-                                     NULL,
-                                     &HeapParameters);
+#ifdef _M_AMD64
+    if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64)
+    {
+#endif
+        Peb->ProcessHeap = RtlCreateHeap(HeapFlags,
+                                        NULL,
+                                        NtHeader->OptionalHeader.SizeOfHeapReserve,
+                                        NtHeader->OptionalHeader.SizeOfHeapCommit,
+                                        NULL,
+                                        &HeapParameters);
+#ifdef _M_AMD64
+    }
+    else
+    {
+        PIMAGE_NT_HEADERS32 NtHeader32 = (PIMAGE_NT_HEADERS32)NtHeader;
+        Peb->ProcessHeap = RtlCreateHeap(HeapFlags,
+                                        NULL,
+                                        NtHeader32->OptionalHeader.SizeOfHeapReserve,
+                                        NtHeader32->OptionalHeader.SizeOfHeapCommit,
+                                        NULL,
+                                        &HeapParameters);
+    }
+#endif
 
     if (!Peb->ProcessHeap)
     {
