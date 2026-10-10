@@ -8,6 +8,7 @@
 #include "precomp.h"
 
 #include <process.h>
+#include <wow64.h>
 
 #define TEST_CONNECTION_INFO_SIGNATURE1 0xaabb0123
 #define TEST_CONNECTION_INFO_SIGNATURE2 0xaabb0124
@@ -51,10 +52,10 @@ ServerThread(
        "DataLength = %u\n", Message.Header.u1.s1.DataLength);
     ok(Message.Header.u2.s2.Type == LPC_CONNECTION_REQUEST,
        "Type = %x\n", Message.Header.u2.s2.Type);
-    ok(Message.Header.ClientId.UniqueProcess == UlongToHandle(GetCurrentProcessId()),
+    ok(Message.Header.ClientId.UniqueProcess == WOW64_CAST_FROM_HANDLE(UlongToHandle(GetCurrentProcessId())),
        "UniqueProcess = %p, expected %lx\n",
        Message.Header.ClientId.UniqueProcess, GetCurrentProcessId());
-    ok(Message.Header.ClientId.UniqueThread == UlongToHandle(ClientThreadId),
+    ok(Message.Header.ClientId.UniqueThread == WOW64_CAST_FROM_HANDLE(UlongToHandle(ClientThreadId)),
        "UniqueThread = %p, expected %x\n",
        Message.Header.ClientId.UniqueThread, ClientThreadId);
     ok(Message.Message == TEST_CONNECTION_INFO_SIGNATURE1, "Message = %lx\n", Message.Message);
@@ -82,10 +83,10 @@ ServerThread(
        "DataLength = %u\n", Message.Header.u1.s1.DataLength);
     ok(Message.Header.u2.s2.Type == LPC_CONNECTION_REQUEST,
        "Type = %x\n", Message.Header.u2.s2.Type);
-    ok(Message.Header.ClientId.UniqueProcess == UlongToHandle(GetCurrentProcessId()),
+    ok(Message.Header.ClientId.UniqueProcess == WOW64_CAST_FROM_HANDLE(UlongToHandle(GetCurrentProcessId())),
        "UniqueProcess = %p, expected %lx\n",
        Message.Header.ClientId.UniqueProcess, GetCurrentProcessId());
-    ok(Message.Header.ClientId.UniqueThread == UlongToHandle(ClientThreadId),
+    ok(Message.Header.ClientId.UniqueThread == WOW64_CAST_FROM_HANDLE(UlongToHandle(ClientThreadId)),
        "UniqueThread = %p, expected %x\n",
        Message.Header.ClientId.UniqueThread, ClientThreadId);
     ok(Message.Message == TEST_CONNECTION_INFO_SIGNATURE2, "Message = %lx\n", Message.Message);
@@ -120,10 +121,10 @@ ServerThread(
        "DataLength = %u\n", Message.Header.u1.s1.DataLength);
     ok(Message.Header.u2.s2.Type == LPC_DATAGRAM,
        "Type = %x\n", Message.Header.u2.s2.Type);
-    ok(Message.Header.ClientId.UniqueProcess == UlongToHandle(GetCurrentProcessId()),
+    ok(Message.Header.ClientId.UniqueProcess == WOW64_CAST_FROM_HANDLE(UlongToHandle(GetCurrentProcessId())),
        "UniqueProcess = %p, expected %lx\n",
        Message.Header.ClientId.UniqueProcess, GetCurrentProcessId());
-    ok(Message.Header.ClientId.UniqueThread == UlongToHandle(ClientThreadId),
+    ok(Message.Header.ClientId.UniqueThread == WOW64_CAST_FROM_HANDLE(UlongToHandle(ClientThreadId)),
        "UniqueThread = %p, expected %x\n",
        Message.Header.ClientId.UniqueThread, ClientThreadId);
     ok(Message.Message == TEST_MESSAGE_MESSAGE, "Message = %lx\n", Message.Message);

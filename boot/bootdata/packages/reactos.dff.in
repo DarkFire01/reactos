@@ -114,6 +114,9 @@ Signature = "$Windows NT$"
 91 = SysWOW64\wbem\AutoRecover
 92 = SysWOW64\wbem\snmp
 93 = SysWOW64\wbem\Performance
+94 = binwow64
+95 = binwow64\testdata
+96 = binwow64\suppl
 102 = SysWOW64\drivers\etc
 
 .InfEnd

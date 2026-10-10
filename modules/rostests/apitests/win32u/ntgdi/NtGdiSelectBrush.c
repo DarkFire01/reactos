@@ -62,7 +62,7 @@ START_TEST(NtGdiSelectBrush)
 
     pdcattr = GdiGetHandleUserData(hDC);
     /* Change the brush in user mode, without setting flags */
-    pdcattr->hbrush = (HBRUSH)12345;
+    pdcattr->hbrush = WOW64_CAST_FROM_HANDLE((HBRUSH)12345);
 
     hOldBrush = NtGdiSelectBrush(hDC, GetStockObject(BLACK_BRUSH));
     TEST(hOldBrush == (HBRUSH)12345);

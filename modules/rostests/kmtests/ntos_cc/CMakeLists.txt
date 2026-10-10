@@ -14,7 +14,7 @@ target_link_libraries(cccopyread_drv kmtest_printf ${PSEH_LIB})
 add_importlibs(cccopyread_drv ntoskrnl hal)
 target_compile_definitions(cccopyread_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(cccopyread_drv ../include/kmt_test.h)
-add_rostests_file(TARGET cccopyread_drv)
+add_rostests_file(TARGET cccopyread_drv NO_WOW64)
 
 #
 # CcCopyWrite
@@ -29,7 +29,7 @@ target_link_libraries(cccopywrite_drv kmtest_printf ${PSEH_LIB})
 add_importlibs(cccopywrite_drv ntoskrnl hal)
 target_compile_definitions(cccopywrite_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(cccopywrite_drv ../include/kmt_test.h)
-add_rostests_file(TARGET cccopywrite_drv)
+add_rostests_file(TARGET cccopywrite_drv NO_WOW64)
 
 #
 # CcMapData
@@ -44,7 +44,7 @@ target_link_libraries(ccmapdata_drv kmtest_printf ${PSEH_LIB})
 add_importlibs(ccmapdata_drv ntoskrnl hal)
 target_compile_definitions(ccmapdata_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(ccmapdata_drv ../include/kmt_test.h)
-add_rostests_file(TARGET ccmapdata_drv)
+add_rostests_file(TARGET ccmapdata_drv NO_WOW64)
 
 #
 # CcPinMappedData
@@ -59,7 +59,7 @@ target_link_libraries(ccpinmappeddata_drv kmtest_printf ${PSEH_LIB})
 add_importlibs(ccpinmappeddata_drv ntoskrnl hal)
 target_compile_definitions(ccpinmappeddata_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(ccpinmappeddata_drv ../include/kmt_test.h)
-add_rostests_file(TARGET ccpinmappeddata_drv)
+add_rostests_file(TARGET ccpinmappeddata_drv NO_WOW64)
 
 #
 # CcPinRead
@@ -74,7 +74,7 @@ target_link_libraries(ccpinread_drv kmtest_printf ${PSEH_LIB})
 add_importlibs(ccpinread_drv ntoskrnl hal)
 target_compile_definitions(ccpinread_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(ccpinread_drv ../include/kmt_test.h)
-add_rostests_file(TARGET ccpinread_drv)
+add_rostests_file(TARGET ccpinread_drv NO_WOW64)
 
 #
 # CcSetFileSizes
@@ -89,4 +89,4 @@ target_link_libraries(ccsetfilesizes_drv kmtest_printf ${PSEH_LIB})
 add_importlibs(ccsetfilesizes_drv ntoskrnl hal)
 target_compile_definitions(ccsetfilesizes_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(ccsetfilesizes_drv ../include/kmt_test.h)
-add_rostests_file(TARGET ccsetfilesizes_drv)
+add_rostests_file(TARGET ccsetfilesizes_drv NO_WOW64)

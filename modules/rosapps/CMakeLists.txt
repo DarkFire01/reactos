@@ -1,6 +1,8 @@
 add_subdirectory(applications)
 add_subdirectory(demos)
-add_subdirectory(drivers)
+if (NOT SYSWOW64_BUILD)
+    add_subdirectory(drivers)
+endif()
 add_subdirectory(lib)
 
 if(ENABLE_ROSAPPS_TEMPLATES)

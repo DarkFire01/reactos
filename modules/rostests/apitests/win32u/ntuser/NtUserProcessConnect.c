@@ -34,13 +34,21 @@ START_TEST(NtUserProcessConnect)
 
     ok_ntstatus(Status, STATUS_SUCCESS);
 
+#ifdef BUILD_WOW6432
+#define P_PRINTF_FORMAT "%llx"
+#define I_PRINTF_FORMAT "%Illx"
+#else
+#define P_PRINTF_FORMAT "%p"
+#define I_PRINTF_FORMAT "%Ix"
+#endif
+
     printf("UserConnect.ulVersion = 0x%lx\n", UserConnect.ulVersion);
     printf("UserConnect.ulCurrentVersion = 0x%lx\n", UserConnect.ulCurrentVersion);
     printf("UserConnect.dwDispatchCount = 0x%lx\n", UserConnect.dwDispatchCount);
-    printf("UserConnect.siClient.psi = 0x%p\n", UserConnect.siClient.psi);
-    printf("UserConnect.siClient.aheList = 0x%p\n", UserConnect.siClient.aheList);
-    printf("UserConnect.siClient.pDispInfo = 0x%p\n", UserConnect.siClient.pDispInfo);
-    printf("UserConnect.siClient.ulSharedDelta = 0x%Ix\n", UserConnect.siClient.ulSharedDelta);
+    printf("UserConnect.siClient.psi = 0x" P_PRINTF_FORMAT "\n", UserConnect.siClient.psi);
+    printf("UserConnect.siClient.aheList = 0x" P_PRINTF_FORMAT "\n", UserConnect.siClient.aheList);
+    printf("UserConnect.siClient.pDispInfo = 0x" P_PRINTF_FORMAT "\n", UserConnect.siClient.pDispInfo);
+    printf("UserConnect.siClient.ulSharedDelta = 0x" I_PRINTF_FORMAT "\n", UserConnect.siClient.ulSharedDelta);
 
     /* Verify the validity of some mandatory fields */
     TEST(UserConnect.ulVersion == MAKELONG(0, 5));
@@ -57,8 +65,8 @@ START_TEST(NtUserProcessConnect)
     MaximumUserModeAddress = SystemInformation.MaximumUserModeAddress;
 
     /* Verify the validity of pointers -- They must be in client space */
-    TEST(UserConnect.siClient.psi != NULL);
-    TEST(UserConnect.siClient.aheList != NULL);
+    TEST(UserConnect.siClient.psi != WOW64_CAST_FROM_PTR(NULL));
+    TEST(UserConnect.siClient.aheList != WOW64_CAST_FROM_PTR(NULL));
     // TEST(UserConnect.siClient.pDispInfo != NULL);
     TEST((ULONG_PTR)UserConnect.siClient.psi < MaximumUserModeAddress);
     TEST((ULONG_PTR)UserConnect.siClient.aheList < MaximumUserModeAddress);

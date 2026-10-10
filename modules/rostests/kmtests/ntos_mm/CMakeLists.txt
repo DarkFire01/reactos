@@ -14,7 +14,7 @@ target_link_libraries(ntcreatesection_drv kmtest_printf ${PSEH_LIB})
 add_importlibs(ntcreatesection_drv ntoskrnl hal)
 target_compile_definitions(ntcreatesection_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(ntcreatesection_drv ../include/kmt_test.h)
-add_rostests_file(TARGET ntcreatesection_drv)
+add_rostests_file(TARGET ntcreatesection_drv NO_WOW64)
 
 #
 # MmMapLockedPagesSpecifyCache
@@ -29,4 +29,4 @@ target_link_libraries(mmmaplockedpagesspecifycache_drv kmtest_printf ${PSEH_LIB}
 add_importlibs(mmmaplockedpagesspecifycache_drv ntoskrnl hal)
 target_compile_definitions(mmmaplockedpagesspecifycache_drv PRIVATE KMT_STANDALONE_DRIVER)
 #add_pch(mmmaplockedpagesspecifycache_drv ../include/kmt_test.h)
-add_rostests_file(TARGET mmmaplockedpagesspecifycache_drv)
+add_rostests_file(TARGET mmmaplockedpagesspecifycache_drv NO_WOW64)

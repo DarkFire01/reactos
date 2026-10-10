@@ -11,6 +11,7 @@
 #include <winddi.h>
 #include <winnls.h>
 #include <include/ntgdityp.h>
+#include <debug.h>
 #include <include/ntgdihdl.h>
 #include <stdio.h>
 #include <strsafe.h>

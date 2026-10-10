@@ -13,6 +13,8 @@
 
 #ifdef BUILD_WOW6432
 
+#include <ndk/pstypes.h>
+
 /**********************************************************************
  * Exported functions 
  */
