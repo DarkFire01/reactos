@@ -40,6 +40,146 @@ IopFixupDeviceId(PWCHAR String)
     }
 }
 
+/* Copies the values and subkeys of a key that the destination does not have yet */
+static
+NTSTATUS
+IopCopyMissingRegistryKey(
+    _In_ HANDLE SourceKey,
+    _In_ HANDLE DestinationKey)
+{
+    PKEY_VALUE_FULL_INFORMATION ValueInfo;
+    PKEY_BASIC_INFORMATION KeyInfo;
+    HANDLE SourceSubKey, DestinationSubKey;
+    UNICODE_STRING Name;
+    ULONG Index, Length;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    for (Index = 0; TRUE; Index++)
+    {
+        Status = ZwEnumerateValueKey(SourceKey, Index, KeyValueFullInformation, NULL, 0, &Length);
+        if (Status == STATUS_NO_MORE_ENTRIES)
+            break;
+        if (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL)
+            return Status;
+
+        ValueInfo = ExAllocatePoolWithTag(PagedPool, Length, TAG_IO);
+        if (!ValueInfo)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Status = ZwEnumerateValueKey(SourceKey, Index, KeyValueFullInformation, ValueInfo, Length, &Length);
+        if (NT_SUCCESS(Status))
+        {
+            Name.Buffer = ValueInfo->Name;
+            Name.Length = Name.MaximumLength = (USHORT)ValueInfo->NameLength;
+
+            /* A value the device was already given is kept */
+            Status = ZwQueryValueKey(DestinationKey, &Name, KeyValuePartialInformation, NULL, 0, &Length);
+            if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
+            {
+                Status = ZwSetValueKey(DestinationKey,
+                                       &Name,
+                                       ValueInfo->TitleIndex,
+                                       ValueInfo->Type,
+                                       (PUCHAR)ValueInfo + ValueInfo->DataOffset,
+                                       ValueInfo->DataLength);
+            }
+            else
+            {
+                Status = STATUS_SUCCESS;
+            }
+        }
+
+        ExFreePoolWithTag(ValueInfo, TAG_IO);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    for (Index = 0; TRUE; Index++)
+    {
+        Status = ZwEnumerateKey(SourceKey, Index, KeyBasicInformation, NULL, 0, &Length);
+        if (Status == STATUS_NO_MORE_ENTRIES)
+            break;
+        if (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL)
+            return Status;
+
+        KeyInfo = ExAllocatePoolWithTag(PagedPool, Length, TAG_IO);
+        if (!KeyInfo)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Status = ZwEnumerateKey(SourceKey, Index, KeyBasicInformation, KeyInfo, Length, &Length);
+        if (NT_SUCCESS(Status))
+        {
+            Name.Buffer = KeyInfo->Name;
+            Name.Length = Name.MaximumLength = (USHORT)KeyInfo->NameLength;
+
+            Status = IopOpenRegistryKeyEx(&SourceSubKey, SourceKey, &Name, KEY_READ);
+            if (NT_SUCCESS(Status))
+            {
+                Status = IopCreateRegistryKeyEx(&DestinationSubKey,
+                                                DestinationKey,
+                                                &Name,
+                                                KEY_ALL_ACCESS,
+                                                REG_OPTION_NON_VOLATILE,
+                                                NULL);
+                if (NT_SUCCESS(Status))
+                {
+                    Status = IopCopyMissingRegistryKey(SourceSubKey, DestinationSubKey);
+                    ZwClose(DestinationSubKey);
+                }
+
+                ZwClose(SourceSubKey);
+            }
+        }
+
+        ExFreePoolWithTag(KeyInfo, TAG_IO);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Gives a critical device the Device Parameters of its database entry, such as
+ * its message-signaled interrupt policy. The bus driver reads them when it
+ * builds the resource requirements, before any INF is installed for the device.
+ */
+static
+VOID
+IopCopyCriticalDeviceParameters(
+    _In_ HANDLE CriticalEntryKey,
+    _In_ HANDLE InstanceKey)
+{
+    UNICODE_STRING DeviceParametersU = RTL_CONSTANT_STRING(L"Device Parameters");
+    HANDLE SourceKey, DestinationKey;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = IopOpenRegistryKeyEx(&SourceKey, CriticalEntryKey, &DeviceParametersU, KEY_READ);
+    if (!NT_SUCCESS(Status))
+        return;
+
+    Status = IopCreateRegistryKeyEx(&DestinationKey,
+                                    InstanceKey,
+                                    &DeviceParametersU,
+                                    KEY_ALL_ACCESS,
+                                    REG_OPTION_NON_VOLATILE,
+                                    NULL);
+    if (NT_SUCCESS(Status))
+    {
+        Status = IopCopyMissingRegistryKey(SourceKey, DestinationKey);
+        ZwClose(DestinationKey);
+    }
+
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Failed to copy the critical device parameters (Status 0x%08lx)\n", Status);
+
+    ZwClose(SourceKey);
+}
+
 VOID
 NTAPI
 IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
@@ -231,13 +371,16 @@ IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
                                                NULL);
 
                     Status = ZwOpenKey(&ChildKeyHandle,
-                                       KEY_QUERY_VALUE,
+                                       KEY_READ,
                                        &ObjectAttributes);
                     if (Status != STATUS_SUCCESS)
                     {
                         ExFreePool(BasicInfo);
                         continue;
                     }
+
+                    /* Copied even for an installed device, a value it already has is kept */
+                    IopCopyCriticalDeviceParameters(ChildKeyHandle, InstanceKey);
 
                     /* Check if there's already a driver installed */
                     Status = ZwQueryValueKey(InstanceKey,
@@ -249,6 +392,7 @@ IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
                     if (Status == STATUS_BUFFER_OVERFLOW || Status == STATUS_BUFFER_TOO_SMALL)
                     {
                         ExFreePool(BasicInfo);
+                        ZwClose(ChildKeyHandle);
                         continue;
                     }
 
