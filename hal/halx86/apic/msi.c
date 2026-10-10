@@ -563,7 +563,11 @@ HalGetMessageRoutingInfo(
     VectorData->Irql = HalpVectorToIrql((UCHAR)Request->ApicTarget.InterruptVector);
     VectorData->Polarity = InterruptActiveHigh;
     VectorData->Mode = Latched;
+#if (NTDDI_VERSION >= NTDDI_WIN7)
     VectorData->TargetProcessors.Mask = Targets;
+#else
+    VectorData->TargetProcessors = Targets;
+#endif
 
     if (Request->InterruptTargetType == TargetApicRequest)
     {
@@ -590,9 +594,11 @@ HalGetMessageRoutingInfo(
     VectorData->Type = InterruptTypeXapicMessage;
     VectorData->XapicMessage.Address.QuadPart = Address;
     VectorData->XapicMessage.DataPayload = Data;
+#if (NTDDI_VERSION >= NTDDI_WIN7)
     VectorData->IntRemapInfo.FlagTranslated = 1;
     VectorData->IntRemapInfo.u.Msi.MessageAddressLow = Address;
     VectorData->IntRemapInfo.u.Msi.MessageData = (USHORT)Data;
+#endif
 
     return STATUS_SUCCESS;
 }
