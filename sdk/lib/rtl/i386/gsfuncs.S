@@ -1,8 +1,8 @@
 /*
  * COPYRIGHT:       See COPYING in the top level directory
- * PROJECT:         ReactOS NT Library
- * FILE:            dll/ntdll/wow64/gsfuncs.S
- * PURPOSE:         WOW64 functions for dealing with 64-bit TEB
+ * PROJECT:         ReactOS Runtime Library (RTL)
+ * FILE:            sdk/lib/rtl/i386/gsfuncs.S
+ * PURPOSE:         WOW64 helper functions for accesing the 64-bit TEB
  * PROGRAMMERS:     Marcin Jabłoński
  */
 

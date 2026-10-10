@@ -109,6 +109,10 @@ if(ARCH STREQUAL "i386")
         i386/rtlmem.s
         i386/rtlswap.S
         i386/res_asm.s)
+    if(SYSWOW64_BUILD)
+        list(APPEND ASM_SOURCE 
+            i386/gsfuncs.S)
+    endif()
     list(APPEND SOURCE
         i386/except.c
         i386/thread.c)

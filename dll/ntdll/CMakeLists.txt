@@ -52,10 +52,6 @@ else()
     list(APPEND SOURCE dispatch/dispatch.c)
 endif()
 
-if(SYSWOW64_BUILD)
-    list(APPEND ASM_SOURCE wow64/gsfuncs.S)
-endif()
-
 add_asm_files(ntdll_asm ${ASM_SOURCE})
 
 list(APPEND PCH_SKIP_SOURCE
