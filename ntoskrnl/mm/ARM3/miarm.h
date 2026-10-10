@@ -684,7 +684,6 @@ MiIsMemoryTypeInvisible(TYPE_OF_MEMORY MemoryType)
 {
     return ((MemoryType == LoaderFirmwarePermanent) ||
             (MemoryType == LoaderSpecialMemory) ||
-            (MemoryType == LoaderHALCachedMemory) ||
             (MemoryType == LoaderBBTMemory));
 }
 
