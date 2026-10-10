@@ -1264,6 +1264,11 @@ PiInitializeDevNode(
     // Set the device's DeviceDesc and LocationInformation fields
     PiSetDevNodeText(DeviceNode, InstanceKey);
 
+    // Try installing a critical device, so its Service key is populated.
+    // This is done before the resource requirements are queried, because the
+    // bus driver reads the Device Parameters it receives (such as MSISupported)
+    IopInstallCriticalDevice(DeviceNode);
+
     DPRINT("Sending IRP_MN_QUERY_BUS_INFORMATION to device stack\n");
 
     Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
@@ -1345,10 +1350,8 @@ PiInitializeDevNode(
                     &DeviceNode->InstancePath, Status);
     }
 
-    // Try installing a critical device, so its Service key is populated
-    // then call IopSetServiceEnumData to populate service's Enum key.
+    // Populate the service's Enum key with the critical device installed above.
     // That allows us to start devices during an early boot
-    IopInstallCriticalDevice(DeviceNode);
     IopSetServiceEnumData(DeviceNode, InstanceKey);
 
     ZwClose(InstanceKey);
