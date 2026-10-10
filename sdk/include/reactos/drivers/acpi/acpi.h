@@ -268,6 +268,7 @@ typedef struct _BGRT_TABLE
     ULONG OffsetY;
 } BGRT_TABLE, *PBGRT_TABLE;
 
+#include <pshpack1.h>
 typedef struct _MCFG_ALLOCATION
 {
     ULONGLONG BaseAddress;
@@ -283,5 +284,6 @@ typedef struct _MCFG_TABLE
     ULONGLONG Reserved;
     MCFG_ALLOCATION Allocation[ANYSIZE_ARRAY];
 } MCFG_TABLE, *PMCFG_TABLE;
+#include <poppack.h>
 
 /* EOF */
