@@ -13,23 +13,8 @@
 
 /* GLOBALS ******************************************************************/
 
-#include <pshpack1.h>
-typedef struct _MCFG_ALLOCATION
-{
-    ULONGLONG BaseAddress;
-    USHORT PciSegment;
-    UCHAR StartBusNumber;
-    UCHAR EndBusNumber;
-    ULONG Reserved;
-} MCFG_ALLOCATION, *PMCFG_ALLOCATION;
-
-typedef struct _MCFG_TABLE
-{
-    DESCRIPTION_HEADER Header;
-    ULONGLONG Reserved;
-    MCFG_ALLOCATION Allocations[ANYSIZE_ARRAY];
-} MCFG_TABLE, *PMCFG_TABLE;
-#include <poppack.h>
+C_ASSERT(FIELD_OFFSET(MCFG_TABLE, Allocation) == 44);
+C_ASSERT(sizeof(MCFG_ALLOCATION) == 16);
 
 /* Buses of one segment decoded through one configuration window */
 typedef struct _HALP_PCI_SEGMENT_WINDOW
@@ -71,14 +56,14 @@ HalpCollectSegmentWindows(
 
     for (Index = 0; Index < EntryCount; Index++)
     {
-        Entry = &Mcfg->Allocations[Index];
+        Entry = &Mcfg->Allocation[Index];
         if (Entry->StartBusNumber > Entry->EndBusNumber)
             return STATUS_INVALID_PARAMETER;
 
         Window = NULL;
         for (Slot = 0; Slot < *WindowCount; Slot++)
         {
-            if (Windows[Slot].Segment == Entry->PciSegment)
+            if (Windows[Slot].Segment == Entry->PciSegmentGroup)
             {
                 Window = &Windows[Slot];
                 break;
@@ -89,7 +74,7 @@ HalpCollectSegmentWindows(
         {
             Window = &Windows[(*WindowCount)++];
             RtlZeroMemory(Window, sizeof(*Window));
-            Window->Segment = Entry->PciSegment;
+            Window->Segment = Entry->PciSegmentGroup;
             Window->BaseAddress = Entry->BaseAddress;
         }
         else if (Window->BaseAddress != Entry->BaseAddress)
@@ -204,13 +189,13 @@ HalpPublishMmConfigRanges(VOID)
 
     Mcfg = HalAcpiGetTable(NULL, 'GFCM');
     if (Mcfg == NULL ||
-        Mcfg->Header.Length < FIELD_OFFSET(MCFG_TABLE, Allocations) + sizeof(MCFG_ALLOCATION))
+        Mcfg->Header.Length < FIELD_OFFSET(MCFG_TABLE, Allocation) + sizeof(MCFG_ALLOCATION))
     {
         HalpRemoveMmConfigRanges(&KeyName, &ValueName);
         return STATUS_NOT_FOUND;
     }
 
-    EntryCount = (Mcfg->Header.Length - FIELD_OFFSET(MCFG_TABLE, Allocations)) /
+    EntryCount = (Mcfg->Header.Length - FIELD_OFFSET(MCFG_TABLE, Allocation)) /
                  sizeof(MCFG_ALLOCATION);
 
     Windows = ExAllocatePoolWithTag(PagedPool,
