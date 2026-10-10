@@ -16,7 +16,6 @@
 
 /* GLOBALS *******************************************************************/
 
-extern PPROCESSOR_IDENTITY HalpProcessorIdentity;
 extern PHYSICAL_ADDRESS HalpLowStubPhysicalAddress;
 extern PVOID HalpLowStub;
 
