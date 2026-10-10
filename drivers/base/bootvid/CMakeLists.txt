@@ -53,7 +53,7 @@ function(add_bootvid _target _configfile)
     if(NOT _bviddata_NAME_ON_CD)
         set(_bviddata_NAME_ON_CD "$<TARGET_FILE_NAME:${_target}>")
     endif()
-    add_cd_file(TARGET ${_target} DESTINATION reactos/system32 NO_CAB NAME_ON_CD ${_bviddata_NAME_ON_CD} FOR all)
+    add_cd_file(TARGET ${_target} DESTINATION reactos/system32 NO_WOW64 NO_CAB NAME_ON_CD ${_bviddata_NAME_ON_CD} FOR all)
 endfunction()
 
 if(ARCH STREQUAL "i386")

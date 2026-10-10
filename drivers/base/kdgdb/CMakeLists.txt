@@ -32,4 +32,4 @@ if(GDB) ## See PR #5187
 else()
     set(KDGDB_NAME_ON_CD "$<TARGET_FILE_NAME:kdgdb>")
 endif()
-add_cd_file(TARGET kdgdb DESTINATION reactos/system32 NO_CAB NAME_ON_CD ${KDGDB_NAME_ON_CD} FOR all)
+add_cd_file(TARGET kdgdb DESTINATION reactos/system32 NO_WOW64 NO_CAB NAME_ON_CD ${KDGDB_NAME_ON_CD} FOR all)
