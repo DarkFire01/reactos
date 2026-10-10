@@ -489,13 +489,9 @@ PciGetMessageAddressAndData(
     Request.InterruptTargetType = TargetApic;
     Request.ApicTarget.InterruptVector = VectorData->Vector;
     Request.ApicTarget.ApicDestinationMode = VectorData->MessageRequest.DestinationMode;
-#if (NTDDI_VERSION >= NTDDI_WIN7)
     Request.ApicTarget.TargetProcessors = VectorData->TargetProcessors;
+#if (NTDDI_VERSION >= NTDDI_WIN7)
     Request.ApicTarget.InterruptRemapInfo = VectorData->IntRemapInfo;
-#else
-    /* Before processor groups the request only carries a mask */
-    ASSERT(VectorData->TargetProcessors.Group == 0);
-    Request.ApicTarget.TargetProcessors = VectorData->TargetProcessors.Mask;
 #endif
 
     RtlZeroMemory(&Routed, sizeof(Routed));

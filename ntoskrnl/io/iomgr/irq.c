@@ -312,6 +312,32 @@ IopIsMessageVector(
     }
 }
 
+/* Processor groups only exist in the connection data from Windows 7 on */
+static
+USHORT
+IopGetVectorGroup(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData)
+{
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    return VectorData->TargetProcessors.Group;
+#else
+    UNREFERENCED_PARAMETER(VectorData);
+    return 0;
+#endif
+}
+
+static
+KAFFINITY
+IopGetVectorTarget(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData)
+{
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    return VectorData->TargetProcessors.Mask;
+#else
+    return VectorData->TargetProcessors;
+#endif
+}
+
 /**
  * @brief
  * Enables the interrupt of one connection data element in the HAL, then
@@ -361,7 +387,7 @@ IopConnectVector(
                                 SynchronizeIrql,
                                 VectorData->Mode,
                                 ShareVector,
-                                VectorData->TargetProcessors.Mask,
+                                IopGetVectorTarget(VectorData),
                                 FloatingSave);
     if (!NT_SUCCESS(Status))
         HalDisableInterrupt(&Connection->Vector);
@@ -565,12 +591,9 @@ IopConnectOneMessage(
         Request.InterruptTargetType = TargetApic;
         Request.ApicTarget.InterruptVector = VectorData->Vector;
         Request.ApicTarget.ApicDestinationMode = VectorData->MessageRequest.DestinationMode;
-#if (NTDDI_VERSION >= NTDDI_WIN7)
         Request.ApicTarget.TargetProcessors = VectorData->TargetProcessors;
+#if (NTDDI_VERSION >= NTDDI_WIN7)
         Request.ApicTarget.InterruptRemapInfo = VectorData->IntRemapInfo;
-#else
-        ASSERT(VectorData->TargetProcessors.Group == 0);
-        Request.ApicTarget.TargetProcessors = VectorData->TargetProcessors.Mask;
 #endif
 
         Status = HalGetMessageRoutingInfo(&Request, &RoutingInfo);
@@ -585,7 +608,7 @@ IopConnectOneMessage(
 
     Entry->MessageAddress = Routed->XapicMessage.Address;
     Entry->MessageData = Routed->XapicMessage.DataPayload;
-    Entry->TargetProcessorSet = Routed->TargetProcessors.Mask;
+    Entry->TargetProcessorSet = IopGetVectorTarget(Routed);
     Entry->InterruptObject = Link->Connection.Interrupt;
     Entry->Vector = Routed->Vector;
     Entry->Irql = Routed->Irql;
@@ -741,8 +764,8 @@ IopVectorMatchesRequest(
 
     return VectorData->Vector == Request->Vector &&
            VectorData->Mode == Request->InterruptMode &&
-           VectorData->TargetProcessors.Group == Group &&
-           VectorData->TargetProcessors.Mask == Request->ProcessorEnableMask;
+           IopGetVectorGroup(VectorData) == Group &&
+           IopGetVectorTarget(VectorData) == Request->ProcessorEnableMask;
 }
 
 /**
@@ -813,12 +836,14 @@ IopConnectFullySpecifiedInterrupt(
         if (!IopVectorMatchesRequest(Match, Request, Group))
             continue;
 
+#if (NTDDI_VERSION >= NTDDI_WINBLUE)
         /* Wake interrupts are always shared */
         if ((Match->Type == InterruptTypeControllerInput) &&
             (Match->ControllerInput.WakeInterrupt != 0))
         {
             Request->ShareVector = TRUE;
         }
+#endif
 
         Status = IopConnectVector(Match,
                                   Request->ServiceRoutine,
