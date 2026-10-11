@@ -16,6 +16,7 @@
 @ cdecl DebugDumpBuffer()
 @ cdecl DebugInit()
 @ cdecl FrLdrBugCheckWithMessage()
+@ cdecl FrLdrScreenPrint(str)
 @ stdcall KeBugCheckEx(long long long long long)
 
 # Heap

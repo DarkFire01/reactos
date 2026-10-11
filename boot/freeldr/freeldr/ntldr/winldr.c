@@ -1483,6 +1483,12 @@ LoadAndBootWindowsCommon(
     /* Do the machine specific initialization */
     WinLdrSetupMachineDependent(LoaderBlock);
 
+#if (defined(_M_IX86) || defined(_M_AMD64)) && !defined(UEFIBOOT)
+    /* Early kernel code may print through the loader's text screen instead of COM */
+    if (NtLdrGetOption(BootOptions, "FRLDRSCREENLOG"))
+        LoaderBlock->u.I386.CommonDataArea = (PVOID)FrLdrScreenPrint;
+#endif
+
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
 
