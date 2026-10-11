@@ -183,7 +183,7 @@ PciGetMsiXCapability(
     if (PdoExtension->HackFlags & PCI_HACK_MSIX_TABLE_SIZE_IS_COUNT)
         MsiX->RequestedCount &= ~1;
 
-    DPRINT1("PCI: MSI-X at 0x%x, %u message(s), table in BAR %u at 0x%lx\n",
+    DPRINT("PCI: MSI-X at 0x%x, %u message(s), table in BAR %u at 0x%lx\n",
             Offset,
             MsiX->RequestedCount,
             MsiX->TableBarIndex,
@@ -225,7 +225,7 @@ PciGetMsiCapability(
     Msi->Is64Bit = (Control & PCI_MSI_CONTROL_64BIT) != 0;
     Msi->MaskCapable = (Control & PCI_MSI_CONTROL_MASKING) != 0;
 
-    DPRINT1("PCI: MSI at 0x%x, %u message(s), %s address\n",
+    DPRINT("PCI: MSI at 0x%x, %u message(s), %s address\n",
             Offset,
             Msi->RequestedCount,
             Msi->Is64Bit ? "64-bit" : "32-bit");

@@ -267,7 +267,7 @@ PciIrpNotSupported(IN PIRP Irp,
     UNREFERENCED_PARAMETER(DeviceExtension);
 
     /* Not supported */
-    DPRINT1("WARNING: PCI received unsupported IRP!\n");
+    DPRINT("WARNING: PCI received unsupported IRP!\n");
     //DbgBreakPoint();
     return STATUS_NOT_SUPPORTED;
 }

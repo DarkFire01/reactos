@@ -181,7 +181,7 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
         if (!*Interfaces)
         {
             /* Skip this arbiter and try the next one */
-            DPRINT1("PCI - FDO ext 0x%p no %s arbiter.\n",
+            DPRINT("PCI - FDO ext 0x%p no %s arbiter.\n",
                     FdoExtension,
                     PciArbiterNames[ArbiterType - PciArb_Io]);
             continue;
@@ -214,7 +214,7 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
                                    PciArbiterDestructor);
 
         /* This arbiter is now initialized, move to the next one */
-        DPRINT1("PCI - FDO ext 0x%p %S arbiter initialized (context 0x%p).\n",
+        DPRINT("PCI - FDO ext 0x%p %S arbiter initialized (context 0x%p).\n",
                 FdoExtension,
                 L"ARBITER HEADER MISSING", //ArbiterInterface->CommonInstance.Name,
                 ArbiterInterface);
