@@ -1,7 +1,7 @@
 /*
  * PROJECT:     uACPI-NT
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Memory, I/O port and bus number arbiters for PCI roots
+ * PURPOSE:     Memory, I/O port and bus number arbiters for module devices
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
@@ -33,7 +33,7 @@
 #define UACPINT_RES_DUMP_RANGES         96
 #define UACPINT_RES_DUMP_ORDERINGS      32
 
-/* Per root arbiters, created on the first query and hung off UACPINT_PDO.ResArb */
+/* Per device arbiters, created on the first query and hung off UACPINT_PDO.ResArb */
 typedef struct _UACPINT_RES_ARBITERS
 {
     ARBITER_INSTANCE Memory;
@@ -1071,6 +1071,19 @@ UacpiNtResArbDereference(
     UNREFERENCED_PARAMETER(Context);
 }
 
+/* A module device hands its producer windows to the children it enumerates */
+static
+BOOLEAN
+NTAPI
+UacpiNtResArbOwner(
+    _In_ PUACPINT_PDO Pdo)
+{
+    if (_stricmp(Pdo->Hid, "ACPI0004") != 0)
+        return FALSE;
+
+    return UacpiNtNodeHasChild(Pdo->Node, "_CRS");
+}
+
 NTSTATUS
 NTAPI
 UacpiNtQueryResArbiter(
@@ -1083,8 +1096,8 @@ UacpiNtQueryResArbiter(
     ULONG_PTR ResourceType;
     PCSTR Label;
 
-    /* Only a PCI root owns these pools */
-    if (!UacpiNtResArbEnabled || !UacpiNtHidIsPciRoot(Pdo->Hid))
+    /* A PCI root's FDO arbitrates its own bus, only module devices get these */
+    if (!UacpiNtResArbEnabled || !UacpiNtResArbOwner(Pdo))
         return STATUS_NOT_SUPPORTED;
 
     ResourceType = (ULONG_PTR)IoStack->Parameters.QueryInterface.InterfaceSpecificData;
