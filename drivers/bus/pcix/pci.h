@@ -1385,7 +1385,7 @@ NTSTATUS
 NTAPI
 PciProgramMessageInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension,
-    _In_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource);
+    _In_ ULONG Granted);
 
 VOID
 NTAPI

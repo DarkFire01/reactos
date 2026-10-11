@@ -727,8 +727,8 @@ PciProgramMsiX(
  * @param[in,out] PdoExtension
  * The PDO extension of the function being started.
  *
- * @param[in] Resource
- * The message interrupt resource from the start request, if one was found.
+ * @param[in] Granted
+ * The messages granted in the start request, 0 if unknown.
  *
  * @return
  * STATUS_SUCCESS if the function was programmed.
@@ -737,12 +737,12 @@ NTSTATUS
 NTAPI
 PciProgramMessageInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension,
-    _In_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource)
+    _In_ ULONG Granted)
 {
     PPCI_MESSAGE_INFO MessageInfo = &PdoExtension->MessageInfo;
     PINTERRUPT_CONNECTION_DATA ConnectionData;
     NTSTATUS Status;
-    ULONG Count, Granted, Requested;
+    ULONG Count, Requested;
     PAGED_CODE();
 
     if (MessageInfo->Type == PciMessageMsiX)
@@ -764,13 +764,8 @@ PciProgramMessageInterrupt(
     if (Count > Requested)
         Count = Requested;
 
-    /* The arbiter packs the message count into the upper word of the level */
-    if (Resource)
-    {
-        Granted = Resource->u.Interrupt.Level >> 16;
-        if (Granted && (Granted < Count))
-            Count = Granted;
-    }
+    if (Granted && (Granted < Count))
+        Count = Granted;
 
     if (MessageInfo->Type == PciMessageMsiX)
         Status = PciProgramMsiX(PdoExtension, ConnectionData, Count);
@@ -840,15 +835,33 @@ PciDisableMessageInterrupt(
     PciClearMessageEnable(PdoExtension, PCI_CAPABILITY_ID_MSI, PCI_MSI_CONTROL_ENABLE);
 }
 
+/**
+ * @brief
+ * Finds the first interrupt of a start request and adds up the messages granted.
+ *
+ * @param[in] ResourceList
+ * The raw resources assigned in the start request.
+ *
+ * @param[out] Messages
+ * Receives the message count of every message descriptor. MSI has one
+ * descriptor holding all of its messages, MSI-X one descriptor per message.
+ *
+ * @return
+ * The first interrupt descriptor, or NULL if none was assigned.
+ */
 static
 PCM_PARTIAL_RESOURCE_DESCRIPTOR
 NTAPI
 PciFindInterruptResource(
-    _In_opt_ PCM_RESOURCE_LIST ResourceList)
+    _In_opt_ PCM_RESOURCE_LIST ResourceList,
+    _Out_ PULONG Messages)
 {
     PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
-    ULONG ListIndex, PartialIndex;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR First = NULL;
+    ULONG ListIndex, PartialIndex, Count;
+
+    *Messages = 0;
 
     if (!ResourceList)
         return NULL;
@@ -862,7 +875,17 @@ PciFindInterruptResource(
              PartialIndex++)
         {
             if (Partial->Type == CmResourceTypeInterrupt)
-                return Partial;
+            {
+                if (!First)
+                    First = Partial;
+
+                /* The arbiter packs the message count into the upper word of the level */
+                if (Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+                {
+                    Count = Partial->u.Interrupt.Level >> 16;
+                    *Messages += Count ? Count : 1;
+                }
+            }
 
             Partial = CmiGetNextPartialDescriptor(Partial);
         }
@@ -871,7 +894,7 @@ PciFindInterruptResource(
         FullDescriptor = (PCM_FULL_RESOURCE_DESCRIPTOR)Partial;
     }
 
-    return NULL;
+    return First;
 }
 
 /**
@@ -895,17 +918,18 @@ PciProgramGrantedInterrupt(
     _In_opt_ PCM_RESOURCE_LIST ResourceList)
 {
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Interrupt;
+    ULONG Messages;
     PAGED_CODE();
 
     /* The grant can differ on every start, so nothing enabled before it is kept */
     PciDisableMessageInterrupt(PdoExtension);
 
-    Interrupt = PciFindInterruptResource(ResourceList);
+    Interrupt = PciFindInterruptResource(ResourceList, &Messages);
     if (!Interrupt)
         return STATUS_SUCCESS;
 
     if (Interrupt->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
-        return PciProgramMessageInterrupt(PdoExtension, Interrupt);
+        return PciProgramMessageInterrupt(PdoExtension, Messages);
 
     /* A wired line only fires with the interrupt disable bit clear */
     PciClearInterruptDisable(PdoExtension);
