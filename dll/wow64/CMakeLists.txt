@@ -6,7 +6,7 @@ include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
 add_asm_files(libwow64common_asm srasm.S)
 add_library(libwow64common STATIC 
     ${libwow64common_asm} 
-    ros_wow64_private.h 
+    ros_wow64_private.h
     redirection.c 
     redirection.h)
 
@@ -15,6 +15,7 @@ add_library(wow64 MODULE
     exception.c
     wow64.c
     lpc.c
+    apc.c
     service.cpp
     wine/registry.c
     wine/struct32.h
@@ -40,7 +41,7 @@ set_subsystem(wow64 console)
 set_image_base(wow64 0xFF000000)
 add_importlibs(wow64 ntdll)
 target_link_libraries(wow64 libwow64common)
-add_dependencies(wow64 psdk)
+add_dependencies(wow64 psdk wow64cpu)
 add_dependencies(libwow64common psdk)
 
 add_cd_file(TARGET wow64 DESTINATION reactos/system32 NO_WOW64 FOR all)

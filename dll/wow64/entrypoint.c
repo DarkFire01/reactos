@@ -14,7 +14,7 @@ typedef struct _ENTRYPOINT_TRANSLATION
     LPCSTR      SymbolName32;
     ULONG_PTR   SymbolAddress64;
     ULONG       SymbolAddress32;
-    NTSTATUS    (*ContextFixup)(HANDLE hProcess, PCONTEXT, PI386_CONTEXT, FIXUP);
+    NTSTATUS    (*ContextFixup)(HANDLE hProcess, PCONTEXT, PWOW64_CONTEXT, FIXUP);
 } ENTRYPOINT_TRANSLATION, *PENTRYPOINT_TRANSLATION;
 
 static
@@ -25,7 +25,7 @@ static
 NTSTATUS
 FixupStartupThunks(HANDLE hProcess, 
                    PCONTEXT pContext, 
-                   PI386_CONTEXT pContext32, 
+                   PWOW64_CONTEXT pContext32, 
                    FIXUP fixup);
 
 static ENTRYPOINT_TRANSLATION EntrypointTranslations[] =
@@ -309,7 +309,7 @@ Wow64InitEntrypointTranslation(VOID)
 NTSTATUS
 Wow64TranslateEntrypoint32To64(IN  HANDLE hProcess,
                                OUT PCONTEXT pContext, 
-                               IN  PI386_CONTEXT pContext32)
+                               IN  PWOW64_CONTEXT pContext32)
 {
     SIZE_T i;
     PENTRYPOINT_TRANSLATION pTranslation;
@@ -344,7 +344,7 @@ Wow64TranslateEntrypoint32To64(IN  HANDLE hProcess,
 
 NTSTATUS
 Wow64TranslateEntrypoint64To32(IN  HANDLE hProcess,
-                               OUT PI386_CONTEXT pContext32, 
+                               OUT PWOW64_CONTEXT pContext32, 
                                IN  PCONTEXT pContext)
 {
     SIZE_T i;
@@ -382,7 +382,7 @@ static
 NTSTATUS 
 FixupStartupThunks(HANDLE hProcess, 
                    PCONTEXT pContext, 
-                   PI386_CONTEXT pContext32, 
+                   PWOW64_CONTEXT pContext32, 
                    FIXUP fixup)
 {
     NTSTATUS Status;

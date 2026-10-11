@@ -8,9 +8,9 @@ Wow64InitEntrypointTranslation(VOID);
 NTSTATUS
 Wow64TranslateEntrypoint32To64(IN  HANDLE hProcess,
                                OUT PCONTEXT pContext, 
-                               IN  PI386_CONTEXT pContext32);
+                               IN  PWOW64_CONTEXT pContext32);
 
 NTSTATUS
 Wow64TranslateEntrypoint64To32(IN  HANDLE hProcess,
-                               OUT PI386_CONTEXT pContext32, 
+                               OUT PWOW64_CONTEXT pContext32, 
                                IN  PCONTEXT pContext);

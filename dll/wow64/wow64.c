@@ -8,6 +8,7 @@
  */
 
 #include "ros_wow64_private.h"
+#include "../wow64cpu/cpu.h"
 #include <ndk/rtlfuncs.h>
 
 //#define NDEBUG
@@ -29,14 +30,16 @@ static PCPTABLEINFO32 OemCpTable;
 
 static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\ntdll.dll");
 static UNICODE_STRING Kernel32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\kernel32.dll");
+static UNICODE_STRING Wow64CpuStr = RTL_CONSTANT_STRING(L"wow64cpu.dll");
 
-static ANSI_STRING ImportLdrInitializeThunkStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
-static ANSI_STRING ImportUserExceptionDispatcherStr = RTL_CONSTANT_STRING("KiUserExceptionDispatcher");
-static PVOID NtDll32 = NULL;
-static ANSI_STRING ImportBaseStr = RTL_CONSTANT_STRING("Base");
+static PVOID NtDll32 = NULL, Wow64Cpu = NULL;
 
 PVOID NtDll32LdrpRoutine = NULL;
 PVOID NtDll32KiUserExceptionDispatcher = NULL;
+PVOID NtDll32KiUserApcDispatcher = NULL;
+
+NTSTATUS (NTAPI *pBTCpuGetContext)(HANDLE, HANDLE, PVOID, PVOID);
+NTSTATUS (NTAPI *pBTCpuSetContext)(HANDLE, HANDLE, PVOID, PVOID);
 
 void SetupFs(ULONG_PTR segSelector);
 void EnterApc32(PVOID pEnterCtx, SIZE_T cbCtxSize);
@@ -50,7 +53,7 @@ Wow64SystemServiceEx(ULONG syscallNum,
 /* FIXME: this is an incomplete implementation */
 VOID
 Wow64CopyContext32To64(PCONTEXT pContext,
-                       PI386_CONTEXT pContext32)
+                       PWOW64_CONTEXT pContext32)
 {
     RtlZeroMemory(pContext, sizeof(*pContext));
     pContext->ContextFlags = CONTEXT_FULL;
@@ -74,7 +77,7 @@ Wow64CopyContext32To64(PCONTEXT pContext,
 }
 
 VOID
-Wow64CopyContext64To32(PI386_CONTEXT pContext32,
+Wow64CopyContext64To32(PWOW64_CONTEXT pContext32,
                        PCONTEXT pContext)
 {
     pContext32->Eip = pContext->Rip;
@@ -389,23 +392,6 @@ wow64_NtOpenThread(UINT* pArgs)
 }
 
 NTSTATUS
-WINAPI
-wow64_NtContinue(UINT *pArgs)
-{
-    CONTEXT Context;
-    
-    PI386_CONTEXT pContext32 = get_ptr(&pArgs);
-    BOOLEAN bRasieAlert = get_ulong(&pArgs);
-    
-    /* TODO: APC handling here?
-       Wine has an implementation, port from there maybe. */
-    
-    Wow64CopyContext32To64(&Context, pContext32);
-    
-    return NtContinue(&Context, bRasieAlert);
-}
-
-NTSTATUS
 NTAPI
 wow64_NtCreateThread(UINT* pArgs)
 {
@@ -414,7 +400,7 @@ wow64_NtCreateThread(UINT* pArgs)
     POBJECT_ATTRIBUTES32 pObjectAttributes32 = get_ptr(&pArgs);
     HANDLE hProcess = get_handle(&pArgs);
     PCLIENT_ID32 pClientId32 = get_ptr(&pArgs);
-    PI386_CONTEXT pContext32 = get_ptr(&pArgs);
+    PWOW64_CONTEXT pContext32 = get_ptr(&pArgs);
     PINITIAL_TEB32 pInitialTeb = get_ptr(&pArgs);
     BOOLEAN bCreateSuspended = get_ulong(&pArgs);
 
@@ -565,7 +551,7 @@ NTAPI
 wow64_NtGetContextThread(UINT *pArgs)
 {
     CONTEXT Context64;
-    PI386_CONTEXT pContext32;
+    PWOW64_CONTEXT pContext32;
     NTSTATUS Status;
     
     HANDLE hThread = get_handle(&pArgs);
@@ -781,6 +767,33 @@ SetupNls(PPEB Peb,
 }
 
 static
+PVOID
+GetProcAddressByName(PVOID pModuleBase, const char* Name)
+{
+    ANSI_STRING NameStr;
+    PVOID Result;
+    NTSTATUS Status;
+
+    NameStr.Buffer = (char*)Name;
+    NameStr.Length = strlen(Name);
+    NameStr.MaximumLength = NameStr.Length;
+
+    Status = LdrGetProcedureAddress(pModuleBase, 
+                                    &NameStr, 
+                                    0, 
+                                    &Result);
+    if (!NT_SUCCESS(Status)) 
+    {
+        DPRINT1("Couldn't find %s.\n", Name);
+        ASSERT(FALSE);
+
+        return NULL;
+    }
+
+    return Result;
+}
+
+static
 VOID 
 Wow64InitProcess(PCONTEXT pContext)
 {
@@ -795,10 +808,17 @@ Wow64InitProcess(PCONTEXT pContext)
     
     NtHeaders = (IMAGE_NT_HEADERS32 *)RtlImageNtHeader(Peb->ImageBaseAddress);
 
-    Status = LdrLoadDll(L"" TMP_WOW_DIR L"\\ntdll.dll", 0, &NtDll32Str, &NtDll32);
+    Status = LdrLoadDll(NtDll32Str.Buffer, 0, &NtDll32Str, &NtDll32);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("32 bit NTDLL.DLL could not be loaded.\n");
+        ASSERT(FALSE);
+    }
+
+    Status = LdrLoadDll(NULL, 0, &Wow64CpuStr, &Wow64Cpu);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WOW64CPU.DLL could not be loaded.\n");
         ASSERT(FALSE);
     }
 
@@ -841,26 +861,15 @@ Wow64InitProcess(PCONTEXT pContext)
     ProcParams32->ImagePathName.Length = Peb->ProcessParameters->ImagePathName.Length;
     ProcParams32->ImagePathName.MaximumLength = Peb->ProcessParameters->ImagePathName.MaximumLength;
     ProcParams32->Flags |= RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
-    
-    Status = LdrGetProcedureAddress(NtDll32, 
-                                    &ImportLdrInitializeThunkStr, 
-                                    0, 
-                                    &NtDll32LdrpRoutine);
-    if (!NT_SUCCESS(Status)) 
-    {
-        DPRINT1("Couldn't find LdrInitializeThunk in 32-bit ntdll.dll.\n");
-        ASSERT(FALSE);
-    }
-    
-    Status = LdrGetProcedureAddress(NtDll32,
-                                    &ImportUserExceptionDispatcherStr,
-                                    0,
-                                    &NtDll32KiUserExceptionDispatcher);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Couldn't find KiUserExceptionDispatcher in 32-bit ntdll.dll.\n");
-        ASSERT(FALSE);
-    }
+
+    NtDll32LdrpRoutine = GetProcAddressByName(NtDll32, "LdrInitializeThunk");
+    NtDll32KiUserExceptionDispatcher = GetProcAddressByName(NtDll32, "KiUserExceptionDispatcher");
+    NtDll32KiUserApcDispatcher = GetProcAddressByName(NtDll32, "KiUserApcDispatcher");
+
+    pBTCpuGetContext = GetProcAddressByName(Wow64Cpu, "BTCpuGetContext");
+    pBTCpuSetContext = GetProcAddressByName(Wow64Cpu, "BTCpuSetContext");
+
+    ASSERT(pBTCpuGetContext != NULL && pBTCpuSetContext != NULL);
     
     DPRINT("Getting init function ptr %p\n", NtDll32LdrpRoutine);
 }
@@ -883,7 +892,7 @@ Wow64Trampoline(PCONTEXT pContext)
         ULONG ApcContext;
         ULONG SystemArgument1;
         ULONG SystemArgument2;
-        I386_CONTEXT Context32;
+        WOW64_CONTEXT Context32;
     } EnterApc32Stack;
 #pragma pack(pop)
     
@@ -966,6 +975,8 @@ Wow64InitThread(PCONTEXT pContext)
     NtCurrentTeb()->TlsSlots[WOW64_TLS_APCLIST] = NULL;
     NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = NULL;
     NtCurrentTeb()->TlsSlots[WOW64_TLS_FILESYSREDIR] = (PVOID)FALSE;
+
+    NtCurrentTeb()->NtTib.ExceptionList = (PVOID)NtCurrentTeb32();
 
     /* Make sure the handler routine pointer fits into the 32-bit TEB */
     ASSERT((((ULONG_PTR)Wow64SystemServiceEx) & ~0xFFFFFFFF) == 0);

@@ -32,7 +32,7 @@ WINAPI
 wow64_NtRaiseException(UINT* pArgs)
 {
     PEXCEPTION_RECORD32 pRecord32 = get_ptr(&pArgs);
-    PI386_CONTEXT pContext32 = get_ptr(&pArgs);
+    PWOW64_CONTEXT pContext32 = get_ptr(&pArgs);
     BOOLEAN FirstChance = get_ulong(&pArgs);
     
     __debugbreak();
@@ -67,7 +67,7 @@ Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo)
 {    
     ULONG i;
     EXCEPTION_RECORD32 Record32;
-    I386_CONTEXT Context32;
+    WOW64_CONTEXT Context32;
     PCONTEXT pContext;
     PEXCEPTION_RECORD pRecord;
     

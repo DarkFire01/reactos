@@ -83,12 +83,32 @@ struct mem_header
     BYTE data[1];
 };
 
+struct user_apc_frame
+{
+    struct user_apc_frame *prev_frame;
+    CONTEXT               *context;
+    void                  *wow_context;
+};
+
 PVOID
 WINAPI
 Wow64AllocateTemp(SIZE_T size);
 
 VOID
 Wow64FreeTempData(VOID);
+
+extern PVOID NtDll32LdrpRoutine;
+extern PVOID NtDll32KiUserExceptionDispatcher;
+extern PVOID NtDll32KiUserApcDispatcher;
+extern NTSTATUS (NTAPI *pBTCpuGetContext)(HANDLE, HANDLE, PVOID, PVOID);
+extern NTSTATUS (NTAPI *pBTCpuSetContext)(HANDLE, HANDLE, PVOID, PVOID);
+
+VOID 
+WINAPI 
+Wow64ApcRoutine(ULONG_PTR SystemArgument1, 
+                ULONG_PTR SystemArgument2, 
+                ULONG_PTR SystemArgument3, 
+                PCONTEXT  Context);
 
 /* TODO: Refactor, all of this could be done in a cleaner way */
 static
@@ -111,7 +131,7 @@ CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
         ULONG SegCs64;
     };        
     
-    ULONG_PTR Enter32(struct Enter32* enter);
+    ULONG_PTR Enter32(PVOID enter);
     VOID FarReturn32();
     
     struct Leave32* leave;
@@ -131,7 +151,7 @@ CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
     
     if (!bJump)
     {
-        enter->FarReturn32 = PtrToUlong(FarReturn32);
+        enter->FarReturn32 = PtrToUlong((PVOID)FarReturn32);
     }
     
     for (int i = 0; i < nArgc + bJump; i++)
@@ -205,16 +225,9 @@ typedef struct tagSYSTEM_SERVICE_TABLE
 
 typedef IO_STATUS_BLOCK32 *PIO_STATUS_BLOCK32;
 
-static inline void *
-apc_32to64(ULONG func)
+static inline void *apc_32to64( ULONG func )
 {
-    /* UNIMPLEMENTED */
-    if (func)
-    {
-        DPRINT1("Warning: WOW64 APCs are unimplemented\n");
-    }
-    
-    return NULL;
+    return func ? Wow64ApcRoutine : NULL;
 }
 
 static inline void *
@@ -482,10 +495,10 @@ RemotePortView64To32(PREMOTE_PORT_VIEW32 portView32,
 
 VOID
 Wow64CopyContext32To64(PCONTEXT pContext,
-                       PI386_CONTEXT pContext32);
+                       PWOW64_CONTEXT pContext32);
 
 VOID
-Wow64CopyContext64To32(PI386_CONTEXT pContext32,
+Wow64CopyContext64To32(PWOW64_CONTEXT pContext32,
                        PCONTEXT pContext);
 
 #ifdef __cplusplus
