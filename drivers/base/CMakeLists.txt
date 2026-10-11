@@ -4,6 +4,7 @@ add_subdirectory(bootvid)
 add_subdirectory(condrv)
 add_subdirectory(kd_02_8086)
 add_subdirectory(kdnet)
+add_subdirectory(kdusb)
 
 if(_WINKD_)
     add_subdirectory(kdcom)
