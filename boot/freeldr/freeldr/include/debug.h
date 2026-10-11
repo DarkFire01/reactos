@@ -38,6 +38,11 @@
 #define DPRINT_HEAP         15  // messages in a bottle
 #define DBG_CHANNELS_COUNT  16
 
+ULONG
+FrLdrScreenPrint(
+    _In_ PCSTR Format,
+    ...);
+
 #if DBG
 
     VOID

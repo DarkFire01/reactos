@@ -33,6 +33,7 @@ list(APPEND FREELDR_ARC_SOURCE
 list(APPEND FREELDR_BOOTLIB_SOURCE
     lib/arcsupp.c
     lib/debug.c
+    lib/scrnlog.c
     lib/peloader.c
     lib/cache/blocklist.c
     lib/cache/cache.c
