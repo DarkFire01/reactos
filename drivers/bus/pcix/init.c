@@ -803,7 +803,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
     PWCHAR StartOptions;
     UNICODE_STRING OptionString, PciLockString;
     NTSTATUS Status;
-    DPRINT1("PCI: DriverEntry!\n");
+    DPRINT("PCI: DriverEntry!\n");
 
     /* Setup initial loop variables */
     KeyHandle = NULL;
