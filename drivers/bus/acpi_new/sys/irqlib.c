@@ -1014,8 +1014,31 @@ UacpiNtOwnerHasMessages(
 }
 
 /*
- * One message request element per message the device owns, runs sorted by
- * base vector so element 0 is the base. Plain multi message MSI needs that.
+ * Element order must match the order of the message descriptors. The arbiter
+ * places them top down, so a higher GSIV is an earlier descriptor.
+ */
+static
+BOOLEAN
+NTAPI
+UacpiNtMessageRunPrecedes(
+    _In_ PUACPINT_MESSAGE_RUN Run,
+    _In_ PUACPINT_MESSAGE_RUN Other)
+{
+    if (Run->MessageGsiv != Other->MessageGsiv)
+    {
+        /* HAL placed runs carry no GSIV and go last */
+        if (!Run->MessageGsiv || !Other->MessageGsiv)
+            return Run->MessageGsiv != 0;
+
+        return Run->MessageGsiv > Other->MessageGsiv;
+    }
+
+    return Run->Base < Other->Base;
+}
+
+/*
+ * One message request element per message the device owns. A run keeps its
+ * base first, plain multi message MSI needs that.
  */
 static
 NTSTATUS
@@ -1029,13 +1052,14 @@ UacpiNtWriteMessageConnectionData(
     PINTERRUPT_CONNECTION_DATA Readback;
     PINTERRUPT_VECTOR_DATA Element;
     PUACPINT_MESSAGE_RUN Next;
+    PUACPINT_MESSAGE_RUN Run;
+    BOOLEAN Emitted[UACPINT_MAX_MESSAGE_RUNS];
     KAFFINITY Processors = 0;
     KAFFINITY Target;
     KIRQL BaseIrql = 0;
     DEVPROPTYPE ReadbackType = 0;
     ULONG ReadbackSize = 0;
     ULONG Base = 0;
-    ULONG LastBase = 0;
     ULONG Total = 0;
     ULONG Written = 0;
     ULONG Size;
@@ -1071,27 +1095,26 @@ UacpiNtWriteMessageConnectionData(
         return STATUS_INSUFFICIENT_RESOURCES;
 
     RtlZeroMemory(Data, Size);
+    RtlZeroMemory(Emitted, sizeof(Emitted));
 
     ExAcquireFastMutex(&UacpiNtIrqLibLock);
     while (Written < Total)
     {
-        /* Next run by ascending base, arbiter and HAL placed runs alike */
         Next = NULL;
         for (Index = 0; Index < UACPINT_MAX_MESSAGE_RUNS; Index++)
         {
-            if (UacpiNtMessageRuns[Index].Owner == Pdo &&
-                UacpiNtMessageRuns[Index].Count &&
-                UacpiNtMessageRuns[Index].Base > LastBase &&
-                (!Next || UacpiNtMessageRuns[Index].Base < Next->Base))
-            {
-                Next = &UacpiNtMessageRuns[Index];
-            }
+            Run = &UacpiNtMessageRuns[Index];
+            if (Run->Owner != Pdo || !Run->Count || Emitted[Index])
+                continue;
+
+            if (!Next || UacpiNtMessageRunPrecedes(Run, Next))
+                Next = Run;
         }
 
         if (!Next)
             break;
 
-        LastBase = Next->Base;
+        Emitted[Next - UacpiNtMessageRuns] = TRUE;
 
         for (Message = 0; Message < Next->Count && Written < Total; Message++, Written++)
         {
