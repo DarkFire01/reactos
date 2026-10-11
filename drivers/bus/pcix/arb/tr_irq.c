@@ -62,7 +62,7 @@ tranirq_Constructor(IN PVOID DeviceExtension,
     if ((ULONG_PTR)InterfaceData != CmResourceTypeInterrupt)
     {
         /* Fail this invalid request */
-        DPRINT1("PCI - IRQ trans constructor doesn't like %p in InterfaceSpecificData\n",
+        DPRINT("PCI - IRQ trans constructor doesn't like %p in InterfaceSpecificData\n",
                 InterfaceData);
         return STATUS_INVALID_PARAMETER_3;
     }
@@ -77,7 +77,7 @@ tranirq_Constructor(IN PVOID DeviceExtension,
         /* It is, so there is no parent, and it's connected on the system bus */
         ParentBus = 0;
         ParentInterface = Internal;
-        DPRINT1("      Is root FDO\n");
+        DPRINT("      Is root FDO\n");
     }
     else
     {

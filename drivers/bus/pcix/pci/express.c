@@ -141,7 +141,7 @@ PciGetExpressCapabilities(
         PdoExtension->IsExtendedConfigReachable = ParentBridge->IsExtendedConfigReachable;
     }
 
-    DPRINT1("PCI - Express capability at 0x%x, port type %u, version %u\n",
+    DPRINT("PCI - Express capability at 0x%x, port type %u, version %u\n",
             PdoExtension->ExpressCapabilityPtr,
             PdoExtension->ExpressDeviceType,
             Express.ExpressCapabilities.CapabilityVersion);

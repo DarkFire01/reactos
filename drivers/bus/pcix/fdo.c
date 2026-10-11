@@ -720,7 +720,7 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     UNICODE_STRING ValueName;
     ULONG ResultLength;
     PAGED_CODE();
-    DPRINT1("PCI - AddDevice (a new bus). PDO: %p (Driver: %wZ)\n",
+    DPRINT("PCI - AddDevice (a new bus). PDO: %p (Driver: %wZ)\n",
             PhysicalDeviceObject, &PhysicalDeviceObject->DriverObject->DriverName);
 
     /* Zero out variables so failure path knows what to do */
@@ -758,7 +758,7 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
             }
 
             /* Subordinate bus on the bridge */
-            DPRINT1("PCI - AddDevice (new bus is child of bus 0x%x).\n",
+            DPRINT("PCI - AddDevice (new bus is child of bus 0x%x).\n",
                     ParentExtension->BaseBus);
 
             /* Make sure PCI bus numbers are configured */
@@ -827,7 +827,7 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
                                     &FdoExtension->BaseBus,
                                     &FdoExtension->MaxSubordinateBus)))
             {
-                DPRINT1("PCI   Root bus range 0x%x to 0x%x.\n",
+                DPRINT("PCI   Root bus range 0x%x to 0x%x.\n",
                         FdoExtension->BaseBus,
                         FdoExtension->MaxSubordinateBus);
             }
