@@ -635,9 +635,12 @@ XhciEnableDebugCapability(VOID)
     ULONG Burst;
     ULONG Index;
 
+    /* The controller starts both rings over, so the driver has to as well */
     XhciDebug.EventIndex = 0;
     XhciDebug.EventCycle = 1;
+    XhciDebug.OutIndex = 0;
     XhciDebug.OutCycle = 0;
+    XhciDebug.InIndex = 0;
     XhciDebug.InCycle = 0;
 
     Burst = (XhciReadDbc(DBC_DCCTRL) >> 16) & 0xFF;
@@ -1371,9 +1374,6 @@ XhciInitialize(
     XhciDebug.Dma = KdUsbDevice.Memory.VirtualAddress;
     XhciDebug.DmaAddress = KdUsbDevice.Memory.Start.QuadPart;
     XhciDebug.DmaLength = KdUsbDevice.Memory.Length;
-    XhciDebug.EventIndex = 0;
-    XhciDebug.OutIndex = 0;
-    XhciDebug.InIndex = 0;
     RtlZeroMemory(XhciDebug.Dma, sizeof(*XhciDebug.Dma));
 
     Status = XhciStartController(LoaderBlock);
