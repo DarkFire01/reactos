@@ -421,6 +421,7 @@ MiSetupPfnForPageTable(
     /* Check if it's valid memory */
     if ((PageFrameIndex <= MmHighestPhysicalPage) &&
         (MmIsAddressValid(Pfn)) &&
+        (MmIsAddressValid(Pfn + 1)) &&
         (Pfn->u3.e1.PageLocation == ActiveAndValid))
     {
         /* Setup the PFN entry */
