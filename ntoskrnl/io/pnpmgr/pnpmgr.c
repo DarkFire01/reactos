@@ -396,6 +396,7 @@ IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
                     if (Status == STATUS_BUFFER_OVERFLOW || Status == STATUS_BUFFER_TOO_SMALL)
                     {
                         ExFreePool(BasicInfo);
+                        ZwClose(ChildKeyHandle);
                         continue;
                     }
 
