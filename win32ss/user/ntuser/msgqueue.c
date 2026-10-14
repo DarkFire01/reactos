@@ -2009,6 +2009,13 @@ co_MsqPeekHardwareMessage(IN PTHREADINFO pti,
          UpdateKeyStateFromMsg(MessageQueue, &msg);
          AcceptMessage = co_IntProcessHardwareMessage(&msg, &Remove, &NotForUs, ExtraInfo, MsgFilterLow, MsgFilterHigh);
 
+         /* Hooks called above may peek again and remove the message we were going
+            to look at next. Ours stays queued while in play, so step on from it. */
+         if (CurrentMessage->pti != NULL)
+            ListHead = CurrentMessage->ListEntry.Flink;
+         else
+            ListHead = MessageQueue->HardwareMessagesListHead.Flink;
+
          if (!NotForUs && (MsgFilterLow != 0 || MsgFilterHigh != 0))
          {
              /* Don't return message if not in range */
