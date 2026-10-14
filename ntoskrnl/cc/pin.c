@@ -67,31 +67,7 @@ CcpFindBcb(
     return (Found ? Bcb : NULL);
 }
 
-/* How many pins on this view the current thread holds, through its BCB locks */
-LONG
-NTAPI
-CcpCountOwnVacbPins(
-    _In_ PROS_VACB Vacb)
-{
-    PROS_SHARED_CACHE_MAP SharedCacheMap = Vacb->SharedCacheMap;
-    PLIST_ENTRY Entry;
-    LONG Count = 0;
-    KIRQL OldIrql;
-
-    KeAcquireSpinLock(&SharedCacheMap->BcbSpinLock, &OldIrql);
-    for (Entry = SharedCacheMap->BcbList.Flink; Entry != &SharedCacheMap->BcbList; Entry = Entry->Flink)
-    {
-        PINTERNAL_BCB Bcb = CONTAINING_RECORD(Entry, INTERNAL_BCB, BcbEntry);
-
-        if (Bcb->Vacb == Vacb && Bcb->PinCount != 0)
-            Count += ExIsResourceAcquiredSharedLite(&Bcb->Lock);
-    }
-    KeReleaseSpinLock(&SharedCacheMap->BcbSpinLock, OldIrql);
-
-    return Count;
-}
-
-/* Pins keep flushes off their view, see CcRosFlushDirtyPages and CcFlushCache */
+/* Pins keep the lazy writer off their view, see CcRosFlushDirtyPages */
 static
 VOID
 NTAPI
@@ -100,23 +76,11 @@ CcpPinVacb(
 {
     static LARGE_INTEGER FlushWait = RTL_CONSTANT_LARGE_INTEGER(-10000LL);
 
-    while (TRUE)
-    {
-        InterlockedIncrement(&Vacb->PinnedCount);
+    InterlockedIncrement(&Vacb->PinnedCount);
 
-        if (InterlockedCompareExchange(&Vacb->Flushing, 0, 0) == 0)
-            break;
-
-        /* A thread already pinning this view goes on, the flush waits for it to unpin.
-         * The pin just taken is counted too, hence more than one. */
-        if (CcpCountOwnVacbPins(Vacb) > 1)
-            break;
-
-        /* Otherwise wait for the flush, without our pin in the count it waits on */
-        InterlockedDecrement(&Vacb->PinnedCount);
-        while (InterlockedCompareExchange(&Vacb->Flushing, 0, 0) != 0)
-            KeDelayExecutionThread(KernelMode, FALSE, &FlushWait);
-    }
+    /* A flush that started before us has to finish before the data can change */
+    while (InterlockedCompareExchange(&Vacb->Flushing, 0, 0) != 0)
+        KeDelayExecutionThread(KernelMode, FALSE, &FlushWait);
 }
 
 static

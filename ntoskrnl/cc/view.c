@@ -445,10 +445,10 @@ CcRosFlushDirtyPages (
         /* Like Windows, don't write what the file system still has pinned: it may be
          * halfway through changing it, and FastFat forgets its dirty FAT sectors once
          * written. New pins wait for us once Flushing is set. */
-        InterlockedIncrement(&current->Flushing);
+        InterlockedExchange(&current->Flushing, 1);
         if (!Wait && InterlockedCompareExchange(&current->PinnedCount, 0, 0) != 0)
         {
-            InterlockedDecrement(&current->Flushing);
+            InterlockedExchange(&current->Flushing, 0);
             SharedCacheMap->Callbacks->ReleaseFromLazyWrite(SharedCacheMap->LazyWriteContext);
             CcRosVacbDecRefCount(current);
             OldIrql = KeAcquireQueuedSpinLock(LockQueueMasterLock);
@@ -463,7 +463,7 @@ CcRosFlushDirtyPages (
         IO_STATUS_BLOCK Iosb;
         Status = CcRosFlushVacb(current, &Iosb);
 
-        InterlockedDecrement(&current->Flushing);
+        InterlockedExchange(&current->Flushing, 0);
 
         SharedCacheMap->Callbacks->ReleaseFromLazyWrite(SharedCacheMap->LazyWriteContext);
 
@@ -1297,17 +1297,7 @@ CcFlushCache (
             if (vacb->Dirty)
             {
                 IO_STATUS_BLOCK VacbIosb = { 0 };
-                static LARGE_INTEGER PinWait = RTL_CONSTANT_LARGE_INTEGER(-10000LL);
-
-                /* Like Windows, wait for other threads to unpin first: they may be halfway through
-                 * changing the data. New pins wait for us meanwhile. Our own pins don't count,
-                 * we would wait for them forever. */
-                InterlockedIncrement(&vacb->Flushing);
-                while (InterlockedCompareExchange(&vacb->PinnedCount, 0, 0) > CcpCountOwnVacbPins(vacb))
-                    KeDelayExecutionThread(KernelMode, FALSE, &PinWait);
-
                 Status = CcRosFlushVacb(vacb, &VacbIosb);
-                InterlockedDecrement(&vacb->Flushing);
                 if (!NT_SUCCESS(Status))
                 {
                     CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
