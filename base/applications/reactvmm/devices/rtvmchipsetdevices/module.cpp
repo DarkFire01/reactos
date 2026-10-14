@@ -15,6 +15,7 @@
 #include <objbase.h>
 
 #include "ioapicdevice.h"
+#include "rtcdevice.h"
 
 namespace rtvm
 {
@@ -26,6 +27,11 @@ static IVirtualDevice *MakeIoApicDevice(void)
     return static_cast<IVirtualDevice *>(new IoApicDevice());
 }
 
+static IVirtualDevice *MakeRtcDevice(void)
+{
+    return static_cast<IVirtualDevice *>(new RtcDevice());
+}
+
 static const struct
 {
     const GUID *Class;
@@ -33,7 +39,8 @@ static const struct
     const char *Name;
 } DeviceMap[] =
 {
-    { &CLSID_IoApicDevice, MakeIoApicDevice, "line router" }
+    { &CLSID_IoApicDevice, MakeIoApicDevice, "line router" },
+    { &CLSID_RealTimeClockDevice, MakeRtcDevice, "clock" }
 };
 
 class DeviceFactory : public IClassFactory

@@ -25,6 +25,7 @@
 #include "videodevice.h"
 #include "idedevice.h"
 #include "pcibusdevice.h"
+#include "keyboarddevice.h"
 
 namespace rtvm
 {
@@ -63,6 +64,11 @@ static IVirtualDevice *MakePciBusDevice(void)
     return static_cast<IVirtualDevice *>(new PciBusDevice());
 }
 
+static IVirtualDevice *MakeKeyboardDevice(void)
+{
+    return static_cast<IVirtualDevice *>(new KeyboardControllerDevice());
+}
+
 /*
  * Every kind this library has. A manager walks nothing but this, and adding a
  * device is adding a line to it.
@@ -79,7 +85,8 @@ static const struct
     { &CLSID_PitDevice, MakePitDevice, "interval timer" },
     { &CLSID_VideoS3Device, MakeVideoDevice, "display" },
     { &CLSID_IdeControllerDevice, MakeIdeDevice, "disk controller" },
-    { &CLSID_PciBusDevice, MakePciBusDevice, "bus" }
+    { &CLSID_PciBusDevice, MakePciBusDevice, "bus" },
+    { &CLSID_KeyboardControllerDevice, MakeKeyboardDevice, "keyboard controller" }
 };
 
 /**

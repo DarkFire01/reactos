@@ -6,6 +6,7 @@ add_library(rtvmchipsetdevices MODULE
     module.cpp
     ../common/vdevbase.cpp
     ioapicdevice.cpp
+    rtcdevice.cpp
     rtvmchipsetdevices.rc
     ${CMAKE_CURRENT_BINARY_DIR}/rtvmchipsetdevices.def)
 set_module_type(rtvmchipsetdevices win32dll ENTRYPOINT DllMain 12)

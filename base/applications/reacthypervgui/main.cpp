@@ -81,6 +81,7 @@ static const Part TheParts[] =
     { "vmemulateddevices.dll", "9edd1639-9bca-40dc-b3a2-07c828da60b5", nullptr },
     { "vmemulateddevices.dll", "84535fad-4d98-4a6a-bdcd-21d5720dc430", nullptr },
     { "vmchipset.dll",         "72682fc4-040a-430a-be0b-224574b953fe", nullptr },
+    { "vmchipset.dll",         "e51b7ef6-4a7f-4780-aaae-d4b291aacd2e", nullptr },
     { "vmemulateddevices.dll", "a28e4d02-3323-4148-9569-565930a5cb39", nullptr },
     { "vmemulateddevices.dll", "35b0b12f-a0d7-482f-80a0-f52f1ab3da2e", nullptr },
     { "vmemulateddevices.dll", "655bc5c5-a784-46b7-81bc-e26328f7eb0e", nullptr },

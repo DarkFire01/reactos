@@ -838,7 +838,7 @@ public:
 
         wcscpy_s(m_Held[m_Count].Which,
                  ARRAYSIZE(m_Held[m_Count].Which), Which);
-        strcpy_s(m_Held[m_Count].Name, ARRAYSIZE(m_Held[m_Count].Name), Name);
+        lstrcpynA(m_Held[m_Count].Name, Name, ARRAYSIZE(m_Held[m_Count].Name));
         m_Held[m_Count].What = Made;
         m_Count++;
 
@@ -3136,9 +3136,23 @@ static IVirtualDevice *Fit(const Part &What, Probe &Handed)
         if (SUCCEEDED(Device->QueryInterface(
                 IID_IRtvmDeviceSettings, reinterpret_cast<void **>(&Told))))
         {
-            const HRESULT Took = Told->SetSettings(What.Settings);
+            const char *Settings = What.Settings;
+            char Disc[MAX_PATH + 32];
 
-            printf("  it was told %s, %08lx\n", What.Settings, Took);
+            /* A bare path for a disk controller is a disc on the secondary master */
+            if ((_stricmp(What.Class, CLASS_IDE) == 0) &&
+                (strchr(Settings, '=') == nullptr))
+            {
+                _snprintf(Disc, sizeof(Disc) - 1, "secondary-master=%s,cdrom",
+                          Settings);
+
+                Disc[sizeof(Disc) - 1] = '\0';
+                Settings = Disc;
+            }
+
+            const HRESULT Took = Told->SetSettings(Settings);
+
+            printf("  it was told %s, %08lx\n", Settings, Took);
             Told->Release();
         }
         else
@@ -3311,8 +3325,7 @@ void VmSaidTo(const char *Path)
     if (TheSaidTo != nullptr)
         fclose(TheSaidTo);
 
-    TheSaidTo = nullptr;
-    fopen_s(&TheSaidTo, Path, "wb");
+    TheSaidTo = fopen(Path, "wb");
 }
 
 static void Overheard(UCHAR One)
@@ -3887,9 +3900,9 @@ void VmDump(const char *Path) { TheDumpTo = Path; }
  */
 static void Keep(const char *Path)
 {
-    FILE *File = nullptr;
+    FILE *File = fopen(Path, "wb");
 
-    if (fopen_s(&File, Path, "wb") != 0)
+    if (File == nullptr)
         return;
 
     ULONG64 Done = 0;
