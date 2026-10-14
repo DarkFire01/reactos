@@ -59,6 +59,12 @@ LIST_ENTRY CcDeferredWrites;
 KSPIN_LOCK CcDeferredWriteSpinLock;
 LIST_ENTRY CcCleanSharedCacheMapList;
 
+/* Views currently mapped, and how many fit before system space last ran out.
+ * Near that mark an unused view is freed before mapping a new one. */
+static volatile LONG CcMappedVacbCount = 0;
+static volatile LONG CcMappedVacbLimit = MAXLONG;
+#define CC_MAPPED_VACB_HEADROOM 4
+
 #if DBG
 ULONG CcRosVacbIncRefCount_(PROS_VACB vacb, PCSTR file, INT line)
 {
@@ -942,14 +948,22 @@ CcRosCreateVacb (
 
     CcRosVacbIncRefCount(current);
 
+    /* Make room before system space runs out, rather than failing a mapping first */
+    if (CcMappedVacbCount >= CcMappedVacbLimit - CC_MAPPED_VACB_HEADROOM)
+        CcRosFreeOneUnusedVacb();
+
     while (TRUE)
     {
         /* Map VACB in system space */
         Status = MmMapViewInSystemSpaceEx(SharedCacheMap->Section, &current->BaseAddress, &ViewSize, &current->FileOffset, 0);
         if (NT_SUCCESS(Status))
         {
+            InterlockedIncrement(&CcMappedVacbCount);
             break;
         }
+
+        /* Remember where system space ran out, so we free ahead of it next time */
+        InterlockedExchange(&CcMappedVacbLimit, CcMappedVacbCount);
 
         /*
          * If no space left, try to prune one unused VACB to recover space to map our VACB.
@@ -1200,6 +1214,7 @@ CcRosInternalFreeVacb (
         ASSERT(FALSE);
         /* Proceed with the deĺetion anyway */
     }
+    InterlockedDecrement(&CcMappedVacbCount);
 
     RtlFillMemory(Vacb, sizeof(*Vacb), 0xfd);
     ExFreeToNPagedLookasideList(&VacbLookasideList, Vacb);
