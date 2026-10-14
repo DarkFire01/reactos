@@ -3483,7 +3483,7 @@ MmMapViewOfSegment(
                                 Granularity);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Mapping between 0x%p and 0x%p failed (%X).\n",
+        DPRINT("Mapping between 0x%p and 0x%p failed (%X).\n",
                 (*BaseAddress), (char*)(*BaseAddress) + ViewSize, Status);
         return Status;
     }
