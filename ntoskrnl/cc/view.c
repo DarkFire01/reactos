@@ -445,10 +445,10 @@ CcRosFlushDirtyPages (
         /* Like Windows, don't write what the file system still has pinned: it may be
          * halfway through changing it, and FastFat forgets its dirty FAT sectors once
          * written. New pins wait for us once Flushing is set. */
-        InterlockedExchange(&current->Flushing, 1);
+        InterlockedIncrement(&current->Flushing);
         if (!Wait && InterlockedCompareExchange(&current->PinnedCount, 0, 0) != 0)
         {
-            InterlockedExchange(&current->Flushing, 0);
+            InterlockedDecrement(&current->Flushing);
             SharedCacheMap->Callbacks->ReleaseFromLazyWrite(SharedCacheMap->LazyWriteContext);
             CcRosVacbDecRefCount(current);
             OldIrql = KeAcquireQueuedSpinLock(LockQueueMasterLock);
@@ -463,7 +463,7 @@ CcRosFlushDirtyPages (
         IO_STATUS_BLOCK Iosb;
         Status = CcRosFlushVacb(current, &Iosb);
 
-        InterlockedExchange(&current->Flushing, 0);
+        InterlockedDecrement(&current->Flushing);
 
         SharedCacheMap->Callbacks->ReleaseFromLazyWrite(SharedCacheMap->LazyWriteContext);
 
@@ -1297,31 +1297,26 @@ CcFlushCache (
             if (vacb->Dirty)
             {
                 IO_STATUS_BLOCK VacbIosb = { 0 };
+                static LARGE_INTEGER PinWait = RTL_CONSTANT_LARGE_INTEGER(-10000LL);
 
-                /* Like the lazy writer, leave a view alone while it is pinned: another thread may
-                 * be halfway through changing it. Unpinning dirties it again, so it gets written
-                 * later. New pins wait for us once Flushing is set. */
-                InterlockedExchange(&vacb->Flushing, 1);
-                if (InterlockedCompareExchange(&vacb->PinnedCount, 0, 0) != 0)
-                {
-                    /* Handled, the range must not be written through Mm behind the pins either */
-                    InterlockedExchange(&vacb->Flushing, 0);
-                    DirtyVacb = TRUE;
-                }
-                else
-                {
-                    Status = CcRosFlushVacb(vacb, &VacbIosb);
-                    InterlockedExchange(&vacb->Flushing, 0);
-                    if (!NT_SUCCESS(Status))
-                    {
-                        CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
-                        break;
-                    }
-                    DirtyVacb = TRUE;
+                /* Like Windows, wait for other threads to unpin first: they may be halfway through
+                 * changing the data. New pins wait for us meanwhile. Our own pins don't count,
+                 * we would wait for them forever. */
+                InterlockedIncrement(&vacb->Flushing);
+                while (InterlockedCompareExchange(&vacb->PinnedCount, 0, 0) > CcpCountOwnVacbPins(vacb))
+                    KeDelayExecutionThread(KernelMode, FALSE, &PinWait);
 
-                    if (IoStatus)
-                        IoStatus->Information += VacbIosb.Information;
+                Status = CcRosFlushVacb(vacb, &VacbIosb);
+                InterlockedDecrement(&vacb->Flushing);
+                if (!NT_SUCCESS(Status))
+                {
+                    CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
+                    break;
                 }
+                DirtyVacb = TRUE;
+
+                if (IoStatus)
+                    IoStatus->Information += VacbIosb.Information;
             }
 
             CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
