@@ -1297,16 +1297,31 @@ CcFlushCache (
             if (vacb->Dirty)
             {
                 IO_STATUS_BLOCK VacbIosb = { 0 };
-                Status = CcRosFlushVacb(vacb, &VacbIosb);
-                if (!NT_SUCCESS(Status))
-                {
-                    CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
-                    break;
-                }
-                DirtyVacb = TRUE;
 
-                if (IoStatus)
-                    IoStatus->Information += VacbIosb.Information;
+                /* Like the lazy writer, leave a view alone while it is pinned: another thread may
+                 * be halfway through changing it. Unpinning dirties it again, so it gets written
+                 * later. New pins wait for us once Flushing is set. */
+                InterlockedExchange(&vacb->Flushing, 1);
+                if (InterlockedCompareExchange(&vacb->PinnedCount, 0, 0) != 0)
+                {
+                    /* Handled, the range must not be written through Mm behind the pins either */
+                    InterlockedExchange(&vacb->Flushing, 0);
+                    DirtyVacb = TRUE;
+                }
+                else
+                {
+                    Status = CcRosFlushVacb(vacb, &VacbIosb);
+                    InterlockedExchange(&vacb->Flushing, 0);
+                    if (!NT_SUCCESS(Status))
+                    {
+                        CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
+                        break;
+                    }
+                    DirtyVacb = TRUE;
+
+                    if (IoStatus)
+                        IoStatus->Information += VacbIosb.Information;
+                }
             }
 
             CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
