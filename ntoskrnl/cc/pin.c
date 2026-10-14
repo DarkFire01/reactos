@@ -674,10 +674,19 @@ CcRepinBcb (
     IN	PVOID Bcb)
 {
     PINTERNAL_BCB iBcb = CONTAINING_RECORD(Bcb, INTERNAL_BCB, PFCB);
+    PROS_SHARED_CACHE_MAP SharedCacheMap = iBcb->Vacb->SharedCacheMap;
+    KIRQL OldIrql;
 
     CCTRACE(CC_API_DEBUG, "Bcb=%p\n", Bcb);
 
+    /* A repin is a pin without the resource, CcUnpinRepinnedBcb drops it */
+    KeAcquireSpinLock(&SharedCacheMap->BcbSpinLock, &OldIrql);
     iBcb->RefCount++;
+    iBcb->PinCount++;
+    KeReleaseSpinLock(&SharedCacheMap->BcbSpinLock, OldIrql);
+
+    /* The caller still has it pinned, so there is no flush to wait for */
+    InterlockedIncrement(&iBcb->Vacb->PinnedCount);
 }
 
 /*
@@ -693,6 +702,7 @@ CcUnpinRepinnedBcb (
     PINTERNAL_BCB iBcb = CONTAINING_RECORD(Bcb, INTERNAL_BCB, PFCB);
     KIRQL OldIrql;
     PROS_SHARED_CACHE_MAP SharedCacheMap;
+    PROS_VACB Vacb;
 
     CCTRACE(CC_API_DEBUG, "Bcb=%p WriteThrough=%d\n", Bcb, WriteThrough);
 
@@ -716,27 +726,27 @@ CcUnpinRepinnedBcb (
         IoStatus->Information = 0;
     }
 
+    Vacb = iBcb->Vacb;
+
+    /* Drop the pin CcRepinBcb took. It holds no resource, the original pin owned that */
     KeAcquireSpinLock(&SharedCacheMap->BcbSpinLock, &OldIrql);
+    ASSERT(iBcb->PinCount != 0);
+    iBcb->PinCount--;
     if (--iBcb->RefCount == 0)
     {
         RemoveEntryList(&iBcb->BcbEntry);
         KeReleaseSpinLock(&SharedCacheMap->BcbSpinLock, OldIrql);
 
-        if (iBcb->PinCount != 0)
-        {
-            ExReleaseResourceLite(&iBcb->Lock);
-            iBcb->PinCount--;
-            CcpUnpinVacb(iBcb->Vacb);
-            ASSERT(iBcb->PinCount == 0);
-        }
+        ASSERT(iBcb->PinCount == 0);
+        CcpUnpinVacb(Vacb);
 
         /*
          * Don't mark dirty, if it was dirty,
          * the VACB was already marked as such
          * following the call to CcSetDirtyPinnedData
          */
-        CcRosReleaseVacb(iBcb->Vacb->SharedCacheMap,
-                         iBcb->Vacb,
+        CcRosReleaseVacb(SharedCacheMap,
+                         Vacb,
                          FALSE,
                          FALSE);
 
@@ -746,5 +756,6 @@ CcUnpinRepinnedBcb (
     else
     {
         KeReleaseSpinLock(&SharedCacheMap->BcbSpinLock, OldIrql);
+        CcpUnpinVacb(Vacb);
     }
 }
