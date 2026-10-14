@@ -1268,12 +1268,7 @@ CcFlushCache (
     while (FlushStart < FlushEnd)
     {
         BOOLEAN DirtyVacb = FALSE;
-        BOOLEAN HaveLock = FALSE;
         PROS_VACB vacb = CcRosLookupVacb(SharedCacheMap, FlushStart);
-
-        /* Like Windows, write no more than asked. Others may be changing the rest of the view */
-        BOOLEAN WholeVacb = ((FlushStart % VACB_MAPPING_GRANULARITY) == 0) &&
-                            ((FlushEnd - FlushStart) >= VACB_MAPPING_GRANULARITY);
 
         if (vacb != NULL)
         {
@@ -1284,7 +1279,7 @@ CcFlushCache (
              * this check and the CcRosFlushVacb call below. CcRosFlushVacb
              * handles this safely via the guarded CcRosUnmarkDirtyVacb path.
              */
-            if (vacb->Dirty && WholeVacb)
+            if (vacb->Dirty)
             {
                 IO_STATUS_BLOCK VacbIosb = { 0 };
                 Status = CcRosFlushVacb(vacb, &VacbIosb);
@@ -1297,17 +1292,6 @@ CcFlushCache (
 
                 if (IoStatus)
                     IoStatus->Information += VacbIosb.Information;
-            }
-            else if (vacb->Dirty && (IoGetTopLevelIrp() != (PIRP)FSRTL_CACHE_TOP_LEVEL_IRP))
-            {
-                /* Same locking as CcRosFlushVacb for the part we write below */
-                Status = FsRtlAcquireFileForCcFlushEx(SharedCacheMap->FileObject);
-                if (!NT_SUCCESS(Status))
-                {
-                    CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
-                    break;
-                }
-                HaveLock = TRUE;
             }
 
             CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
@@ -1330,9 +1314,6 @@ CcFlushCache (
                 ULONG MmLength = VACB_MAPPING_GRANULARITY - (FlushStart % VACB_MAPPING_GRANULARITY);
                 Status = MmFlushSegment(SectionObjectPointers, &MmOffset, MmLength, &MmIosb);
             }
-
-            if (HaveLock)
-                FsRtlReleaseFileForCcFlush(SharedCacheMap->FileObject);
 
             if (!NT_SUCCESS(Status))
                 break;
