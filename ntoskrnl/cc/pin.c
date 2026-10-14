@@ -92,6 +92,79 @@ CcpUnpinVacb(
     InterlockedDecrement(&Vacb->PinnedCount);
 }
 
+#if DBG
+/* CORE-19200: write the pinned range now and read it back to see if the file system kept it */
+static
+VOID
+NTAPI
+CcpVerifyBcbOnDisk(
+    _In_ PINTERNAL_BCB Bcb)
+{
+    PFILE_OBJECT FileObject = Bcb->Vacb->SharedCacheMap->FileObject;
+    ULONG PageOffset = (ULONG)(Bcb->PFCB.MappedFileOffset.QuadPart & (PAGE_SIZE - 1));
+    PUCHAR Memory;
+    PUCHAR Disk;
+    PMDL Mdl;
+    KEVENT Event;
+    IO_STATUS_BLOCK Iosb;
+    LARGE_INTEGER Offset;
+    NTSTATUS Status;
+    SIZE_T Same;
+
+    /* Keep it to a single page */
+    if ((PageOffset + Bcb->PFCB.MappedLength) > PAGE_SIZE)
+        return;
+
+    CcFlushCache(FileObject->SectionObjectPointer,
+                 &Bcb->PFCB.MappedFileOffset,
+                 Bcb->PFCB.MappedLength,
+                 &Iosb);
+    if (!NT_SUCCESS(Iosb.Status))
+        return;
+
+    Disk = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, TAG_CC);
+    if (!Disk)
+        return;
+
+    Mdl = IoAllocateMdl(Disk, PAGE_SIZE, FALSE, FALSE, NULL);
+    if (!Mdl)
+    {
+        ExFreePoolWithTag(Disk, TAG_CC);
+        return;
+    }
+    MmBuildMdlForNonPagedPool(Mdl);
+
+    Offset.QuadPart = Bcb->PFCB.MappedFileOffset.QuadPart - PageOffset;
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    Status = IoPageRead(FileObject, Mdl, &Offset, &Event, &Iosb);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Iosb.Status;
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        Memory = (PUCHAR)Bcb->Vacb->BaseAddress +
+                 (ULONG)(Bcb->PFCB.MappedFileOffset.QuadPart % VACB_MAPPING_GRANULARITY);
+        Same = RtlCompareMemory(Memory, Disk + PageOffset, Bcb->PFCB.MappedLength);
+        if (Same != Bcb->PFCB.MappedLength)
+        {
+            DPRINT1("Pinned data LOST, disk differs after flush: %wZ offset 0x%I64x length 0x%lx, first diff at +0x%Ix (mem %02x disk %02x)\n",
+                    &FileObject->FileName,
+                    Bcb->PFCB.MappedFileOffset.QuadPart,
+                    Bcb->PFCB.MappedLength,
+                    Same,
+                    Memory[Same],
+                    Disk[PageOffset + Same]);
+        }
+    }
+
+    IoFreeMdl(Mdl);
+    ExFreePoolWithTag(Disk, TAG_CC);
+}
+#endif
+
 static
 VOID
 NTAPI
@@ -123,6 +196,11 @@ CcpMarkBcbDataDirty(
     {
         CcRosMarkDirtyVacb(Vacb);
     }
+
+#if DBG
+    if (Unpinning && WasClean)
+        CcpVerifyBcbOnDisk(Bcb);
+#endif
 }
 
 static
