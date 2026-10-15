@@ -31,11 +31,8 @@ KeFindConfigurationNextEntry(
 /* uACPI timeout value meaning wait forever */
 #define UACPINT_HOST_WAIT_FOREVER           0xFFFF
 
-/* Seconds between reports while an infinite mutex wait is stuck */
-#define UACPINT_HOST_MUTEX_REPORT_SECONDS   5
-
-/* Mutexes tracked for the stuck report, a full table leaves the owner unknown */
-#define UACPINT_HOST_MUTEX_OWNERS           64
+/* Seconds between reports while an infinite semaphore wait is stuck */
+#define UACPINT_HOST_WAIT_REPORT_SECONDS    5
 
 /* MCFG segment windows kept, extra entries are ignored */
 #define UACPINT_HOST_MAX_ECAM_WINDOWS       16
@@ -57,12 +54,6 @@ typedef struct _UACPINT_HOST_ECAM_WINDOW
     uacpi_u8  EndBus;
 } UACPINT_HOST_ECAM_WINDOW, *PUACPINT_HOST_ECAM_WINDOW;
 
-typedef struct _UACPINT_HOST_MUTEX_OWNER
-{
-    volatile PVOID Handle;
-    volatile PVOID Owner;
-} UACPINT_HOST_MUTEX_OWNER, *PUACPINT_HOST_MUTEX_OWNER;
-
 ULONG UacpiNtHostVerbose = 1;
 
 /* QuadPart 0 means no override */
@@ -74,8 +65,6 @@ static struct acpi_rsdp *UacpiNtHostLoaderRsdp;
 static UACPINT_HOST_ECAM_WINDOW UacpiNtHostEcam[UACPINT_HOST_MAX_ECAM_WINDOWS];
 static ULONG UacpiNtHostEcamCount;
 static BOOLEAN UacpiNtHostEcamParsed;
-
-static UACPINT_HOST_MUTEX_OWNER UacpiNtHostMutexOwners[UACPINT_HOST_MUTEX_OWNERS];
 
 static
 ULONG
@@ -838,113 +827,78 @@ UacpiNtHostWaitTimeout(
     return Storage;
 }
 
-/* AML mutexes are binary, non recursive and releasable from any thread */
+/* One unit makes a lock that any thread may release, none makes an event */
 uacpi_handle
-uacpi_kernel_create_mutex(void)
+uacpi_kernel_create_semaphore(
+    _In_ uacpi_u32 InitialUnits)
 {
-    PKSEMAPHORE Semaphore;
+    PUACPINT_HOST_SEMAPHORE Semaphore;
 
     Semaphore = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Semaphore), UACPINT_HOST_POOL_TAG);
-    if (Semaphore)
-        KeInitializeSemaphore(Semaphore, 1, 1);
+    if (!Semaphore)
+        return NULL;
 
+    RtlZeroMemory(Semaphore, sizeof(*Semaphore));
+    Semaphore->Defer.Kind = UacpiNtHostDeferSignal;
+    Semaphore->Limit = InitialUnits ? (LONG)InitialUnits : MAXLONG;
+    KeInitializeSemaphore(&Semaphore->Semaphore, (LONG)InitialUnits, Semaphore->Limit);
     return Semaphore;
 }
 
 void
-uacpi_kernel_free_mutex(
+uacpi_kernel_free_semaphore(
     _In_opt_ uacpi_handle Handle)
 {
-    if (Handle)
-        ExFreePoolWithTag(Handle, UACPINT_HOST_POOL_TAG);
-}
+    PUACPINT_HOST_SEMAPHORE Semaphore = Handle;
 
-static
-VOID
-NTAPI
-UacpiNtHostMutexSetOwner(
-    _In_ uacpi_handle Handle,
-    _In_opt_ PVOID Owner)
-{
-    ULONG Index;
-
-    for (Index = 0; Index < UACPINT_HOST_MUTEX_OWNERS; Index++)
-    {
-        if (UacpiNtHostMutexOwners[Index].Handle == Handle)
-        {
-            UacpiNtHostMutexOwners[Index].Owner = Owner;
-            return;
-        }
-    }
-
-    /* A release of an untracked mutex has nothing to record */
-    if (!Owner)
+    if (!Semaphore)
         return;
 
-    for (Index = 0; Index < UACPINT_HOST_MUTEX_OWNERS; Index++)
-    {
-        if (!InterlockedCompareExchangePointer(&UacpiNtHostMutexOwners[Index].Handle, Handle, NULL))
-        {
-            UacpiNtHostMutexOwners[Index].Owner = Owner;
-            return;
-        }
-    }
-}
+    /* A unit given from DIRQL may still be on its way through the DPC */
+    while (InterlockedCompareExchange(&Semaphore->DeferredUnits, 0, 0) != 0)
+        KeFlushQueuedDpcs();
 
-static
-PVOID
-NTAPI
-UacpiNtHostMutexGetOwner(
-    _In_ uacpi_handle Handle)
-{
-    ULONG Index;
-
-    for (Index = 0; Index < UACPINT_HOST_MUTEX_OWNERS; Index++)
-    {
-        if (UacpiNtHostMutexOwners[Index].Handle == Handle)
-            return UacpiNtHostMutexOwners[Index].Owner;
-    }
-
-    return NULL;
+    ExFreePoolWithTag(Semaphore, UACPINT_HOST_POOL_TAG);
 }
 
 uacpi_status
-uacpi_kernel_acquire_mutex(
+uacpi_kernel_wait_for_semaphore(
     _In_ uacpi_handle Handle,
     _In_ uacpi_u16 Timeout)
 {
+    PUACPINT_HOST_SEMAPHORE Semaphore = Handle;
     LARGE_INTEGER Interval;
     NTSTATUS Status;
     ULONG Waited = 0;
 
-    UacpiNtHostCheckWaitIrql("acquire_mutex", Timeout);
+    UacpiNtHostCheckWaitIrql("wait_for_semaphore", Timeout);
 
     if (Timeout == UACPINT_HOST_WAIT_FOREVER)
     {
         /* Poll first, then wait in slices so a stuck wait gets reported */
         Interval.QuadPart = 0;
-        Status = KeWaitForSingleObject(Handle, Executive, KernelMode, FALSE, &Interval);
+        Status = KeWaitForSingleObject(&Semaphore->Semaphore, Executive, KernelMode, FALSE, &Interval);
 
         while (Status == STATUS_TIMEOUT)
         {
-            Interval.QuadPart = -((LONGLONG)UACPINT_HOST_MUTEX_REPORT_SECONDS * 10 * 1000 * 1000);
-            Status = KeWaitForSingleObject(Handle, Executive, KernelMode, FALSE, &Interval);
+            Interval.QuadPart = -((LONGLONG)UACPINT_HOST_WAIT_REPORT_SECONDS * 10 * 1000 * 1000);
+            Status = KeWaitForSingleObject(&Semaphore->Semaphore, Executive, KernelMode, FALSE, &Interval);
             if (Status != STATUS_TIMEOUT)
                 break;
 
-            Waited += UACPINT_HOST_MUTEX_REPORT_SECONDS;
-            DPRINT1("uACPI-NT: mutex %p still not acquired after %lu s "
+            Waited += UACPINT_HOST_WAIT_REPORT_SECONDS;
+            DPRINT1("uACPI-NT: semaphore %p still not taken after %lu s "
                     "(waiter %p, IRQL %u, owner %p)\n",
-                    Handle,
+                    Semaphore,
                     Waited,
                     PsGetCurrentThread(),
                     (ULONG)KeGetCurrentIrql(),
-                    UacpiNtHostMutexGetOwner(Handle));
+                    (Semaphore->Limit == 1) ? Semaphore->Owner : NULL);
         }
     }
     else
     {
-        Status = KeWaitForSingleObject(Handle,
+        Status = KeWaitForSingleObject(&Semaphore->Semaphore,
                                        Executive,
                                        KernelMode,
                                        FALSE,
@@ -953,7 +907,7 @@ uacpi_kernel_acquire_mutex(
 
     if (Status == STATUS_SUCCESS)
     {
-        UacpiNtHostMutexSetOwner(Handle, PsGetCurrentThread());
+        Semaphore->Owner = PsGetCurrentThread();
         return UACPI_STATUS_OK;
     }
 
@@ -961,66 +915,6 @@ uacpi_kernel_acquire_mutex(
         return UACPI_STATUS_TIMEOUT;
 
     return UACPI_STATUS_INTERNAL_ERROR;
-}
-
-void
-uacpi_kernel_release_mutex(
-    _In_ uacpi_handle Handle)
-{
-    UacpiNtHostMutexSetOwner(Handle, NULL);
-    KeReleaseSemaphore(Handle, IO_NO_INCREMENT, 1, FALSE);
-}
-
-/* uACPI events are counting semaphores */
-uacpi_handle
-uacpi_kernel_create_event(void)
-{
-    PKSEMAPHORE Semaphore;
-
-    Semaphore = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Semaphore), UACPINT_HOST_POOL_TAG);
-    if (Semaphore)
-        KeInitializeSemaphore(Semaphore, 0, MAXLONG);
-
-    return Semaphore;
-}
-
-void
-uacpi_kernel_free_event(
-    _In_opt_ uacpi_handle Handle)
-{
-    if (Handle)
-        ExFreePoolWithTag(Handle, UACPINT_HOST_POOL_TAG);
-}
-
-uacpi_bool
-uacpi_kernel_wait_for_event(
-    _In_ uacpi_handle Handle,
-    _In_ uacpi_u16 Timeout)
-{
-    LARGE_INTEGER Interval;
-    NTSTATUS Status;
-
-    UacpiNtHostCheckWaitIrql("wait_for_event", Timeout);
-
-    Status = KeWaitForSingleObject(Handle,
-                                   Executive,
-                                   KernelMode,
-                                   FALSE,
-                                   UacpiNtHostWaitTimeout(Timeout, &Interval));
-
-    return (Status == STATUS_SUCCESS) ? UACPI_TRUE : UACPI_FALSE;
-}
-
-void
-uacpi_kernel_reset_event(
-    _In_ uacpi_handle Handle)
-{
-    LARGE_INTEGER Interval;
-
-    /* Consume the whole count with polling waits */
-    Interval.QuadPart = 0;
-    while (KeWaitForSingleObject(Handle, Executive, KernelMode, FALSE, &Interval) == STATUS_SUCCESS)
-        NOTHING;
 }
 
 uacpi_thread_id

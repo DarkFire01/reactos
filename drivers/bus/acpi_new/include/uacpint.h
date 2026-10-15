@@ -1054,6 +1054,10 @@ UacpiNtHostConnectSci(VOID);
 
 VOID
 NTAPI
+UacpiNtHostDeferInitialize(VOID);
+
+VOID
+NTAPI
 UacpiNtHostRsdpOverride(
     _In_ PHYSICAL_ADDRESS RsdpPhysical);
 

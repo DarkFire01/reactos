@@ -1006,10 +1006,20 @@ static uacpi_status object_assign_with_implicit_cast(
         break;
 
     case UACPI_OBJECT_FIELD_UNIT:
-        return uacpi_write_field_unit(
+        /*
+         * The namespace is unlocked for as long as the address space handler
+         * is running, which makes it possible for someone else to get rid of
+         * the object that we're writing from, e.g. by overwriting it via
+         * CopyObject. All of the references that we have to it are gone if
+         * that happens, so take one that is ours alone.
+         */
+        uacpi_object_ref(src);
+        ret = uacpi_write_field_unit(
             dst->field_unit, src_buf.bytes, src_buf.length,
             wtr_response
         );
+        uacpi_object_unref(src);
+        return ret;
 
     case UACPI_OBJECT_BUFFER_INDEX:
         write_buffer_index(&dst->buffer_index, &src_buf);
@@ -1760,6 +1770,11 @@ static uacpi_status handle_create_field(struct execution_context *ctx)
             node = item->node;
 
             obj = item_array_at(&op_ctx->items, i++)->obj;
+
+            // Duplicate field, skip
+            if (uacpi_unlikely(node == UACPI_NULL))
+                goto next_field;
+
             field = obj->field_unit;
 
             field->update_rule = update_rule;
@@ -1860,9 +1875,16 @@ static uacpi_status handle_create_field(struct execution_context *ctx)
             if (uacpi_unlikely_error(ret)) {
                 uacpi_object_unref(node->object);
                 node->object = UACPI_NULL;
-                return ret;
+
+                if (ret != UACPI_STATUS_AML_OBJECT_ALREADY_EXISTS ||
+                    !ctx->cur_frame->method->named_objects_persist)
+                    return ret;
+
+                uacpi_warn("duplicate field '%.4s', skipping",
+                           node->name.text);
             }
 
+        next_field:
             bit_offset += length;
             pin_offset += length;
             continue;
@@ -2268,6 +2290,92 @@ static uacpi_object *reference_unwind(uacpi_object *obj)
     return UACPI_NULL;
 }
 
+DYNAMIC_ARRAY_WITH_INLINE_STORAGE(object_queue, uacpi_object*, 8)
+DYNAMIC_ARRAY_WITH_INLINE_STORAGE_IMPL(object_queue, uacpi_object*, static)
+
+/*
+ * Queues up an object to be looked at by check_no_reference_cycle, unless it
+ * has nothing to lead to, or it was queued up already.
+ *
+ * An object might be reachable in more than one way, e.g. if it's referenced
+ * by more than one element of a package. Going through it every single time
+ * makes the amount of work that we have to do grow exponentially with the
+ * depth of such a graph, so it's marked as soon as it's queued up.
+ */
+static uacpi_status queue_object(
+    struct object_queue *queue, uacpi_object *obj
+)
+{
+    uacpi_object **entry;
+
+    if (obj == UACPI_NULL || obj->visited)
+        return UACPI_STATUS_OK;
+
+    if (!uacpi_object_is_one_of(obj, UACPI_OBJECT_REFERENCE_BIT |
+                                     UACPI_OBJECT_PACKAGE_BIT))
+        return UACPI_STATUS_OK;
+
+    entry = object_queue_alloc(queue);
+    if (uacpi_unlikely(entry == UACPI_NULL))
+        return UACPI_STATUS_OUT_OF_MEMORY;
+
+    *entry = obj;
+    obj->visited = UACPI_TRUE;
+    return UACPI_STATUS_OK;
+}
+
+/*
+ * Storing a reference, or a package containing one, can make the target
+ * reachable from itself, which reference counting is unable to free. Walk
+ * everything reachable through the new object and reject the store if it
+ * leads back to the reference it's about to be stored through.
+ */
+static uacpi_status check_no_reference_cycle(
+    uacpi_object *dst, uacpi_object *new_obj
+)
+{
+    struct object_queue queue = { 0 };
+    uacpi_status ret;
+    uacpi_object *obj;
+    uacpi_size i, j;
+
+    /*
+     * Every object that was ever queued up stays in the queue, which is what
+     * we use to take the marks back off once we're done.
+     */
+    ret = queue_object(&queue, new_obj);
+
+    for (i = 0; i < object_queue_size(&queue); ++i) {
+        if (uacpi_unlikely_error(ret))
+            break;
+
+        obj = *object_queue_at(&queue, i);
+
+        if (obj == dst) {
+            uacpi_error("store would create a reference cycle");
+            ret = UACPI_STATUS_AML_REFERENCE_CYCLE;
+            break;
+        }
+
+        if (uacpi_object_is(obj, UACPI_OBJECT_REFERENCE)) {
+            ret = queue_object(&queue, obj->inner_object);
+            continue;
+        }
+
+        for (j = 0; j < obj->package->count; ++j) {
+            ret = queue_object(&queue, obj->package->objects[j]);
+            if (uacpi_unlikely_error(ret))
+                break;
+        }
+    }
+
+    for (i = 0; i < object_queue_size(&queue); ++i)
+        (*object_queue_at(&queue, i))->visited = UACPI_FALSE;
+
+    object_queue_clear(&queue);
+    return ret;
+}
+
 static uacpi_iteration_decision opregion_try_detach_from_parent(
     void *user, uacpi_namespace_node *node, uacpi_u32 node_depth
 )
@@ -2283,8 +2391,12 @@ static uacpi_iteration_decision opregion_try_detach_from_parent(
     return UACPI_ITERATION_DECISION_CONTINUE;
 }
 
-static void object_replace_child(uacpi_object *parent, uacpi_object *new_child)
+static uacpi_status object_replace_child(
+    uacpi_object *parent, uacpi_object *new_child
+)
 {
+    uacpi_status ret;
+
     if (parent->flags == UACPI_REFERENCE_KIND_NAMED &&
         uacpi_object_is(parent->inner_object, UACPI_OBJECT_OPERATION_REGION)) {
 
@@ -2299,10 +2411,23 @@ static void object_replace_child(uacpi_object *parent, uacpi_object *new_child)
             UACPI_OBJECT_OPERATION_REGION_BIT, UACPI_MAX_DEPTH_ANY,
             UACPI_SHOULD_LOCK_NO, UACPI_PERMANENT_ONLY_NO, parent
         );
+
+        /*
+         * Both the handler of the region and its _REG method were invoked by
+         * the above, at times with the namespace unlocked, so any number of
+         * other stores might've been done in the meantime. The one that we're
+         * in the middle of was only checked against what was there before
+         * that, and is free to be a reference cycle by now. Nothing else is
+         * able to get in the way from this point on, so check it once more.
+         */
+        ret = check_no_reference_cycle(parent, new_child);
+        if (uacpi_unlikely_error(ret))
+            return ret;
     }
 
     uacpi_object_detach_child(parent);
     uacpi_object_attach_child(parent, new_child);
+    return UACPI_STATUS_OK;
 }
 
 /*
@@ -2350,13 +2475,17 @@ static void object_replace_child(uacpi_object *parent, uacpi_object *new_child)
 
     ret = uacpi_object_assign(new_obj, src_obj,
                               UACPI_ASSIGN_BEHAVIOR_DEEP_COPY);
-    if (uacpi_unlikely_error(ret))
+    if (uacpi_likely_success(ret))
+        ret = check_no_reference_cycle(dst, new_obj);
+    if (uacpi_unlikely_error(ret)) {
+        uacpi_object_unref(new_obj);
         return ret;
+    }
 
-    object_replace_child(dst, new_obj);
+    ret = object_replace_child(dst, new_obj);
     uacpi_object_unref(new_obj);
 
-    return UACPI_STATUS_OK;
+    return ret;
 }
 
 /*
@@ -2416,14 +2545,16 @@ static uacpi_status store_to_reference(
 
         ret = uacpi_object_assign(new_obj, src_obj,
                                   UACPI_ASSIGN_BEHAVIOR_DEEP_COPY);
+        if (uacpi_likely_success(ret))
+            ret = check_no_reference_cycle(dst, new_obj);
         if (uacpi_unlikely_error(ret)) {
             uacpi_object_unref(new_obj);
             return ret;
         }
 
-        object_replace_child(dst, new_obj);
+        ret = object_replace_child(dst, new_obj);
         uacpi_object_unref(new_obj);
-        return UACPI_STATUS_OK;
+        return ret;
     }
 
     return object_assign_with_implicit_cast(
@@ -3626,10 +3757,10 @@ static uacpi_status handle_event_ctl(struct execution_context *ctx)
     switch (op_ctx->op->code)
     {
     case UACPI_AML_OP_SignalOp:
-        uacpi_kernel_signal_event(obj->event->handle);
+        uacpi_signal_native_event(obj->event->handle);
         break;
     case UACPI_AML_OP_ResetOp:
-        uacpi_kernel_reset_event(obj->event->handle);
+        uacpi_reset_native_event(obj->event->handle);
         break;
     case UACPI_AML_OP_WaitOp: {
         uacpi_u64 timeout;
@@ -3639,9 +3770,19 @@ static uacpi_status handle_event_ctl(struct execution_context *ctx)
         if (timeout > 0xFFFF)
             timeout = 0xFFFF;
 
+        /*
+         * The namespace is unlocked while we wait, which makes it possible
+         * for someone else to get rid of the object, e.g. by overwriting it
+         * via CopyObject. All of the references that we have to it are gone
+         * if that happens, so take one that is ours alone.
+         */
+        uacpi_object_ref(obj);
+
         uacpi_namespace_write_unlock();
-        ret = uacpi_kernel_wait_for_event(obj->event->handle, timeout);
+        ret = uacpi_wait_for_native_event(obj->event->handle, timeout);
         uacpi_namespace_write_lock();
+
+        uacpi_object_unref(obj);
 
         /*
          * The return value here is inverted, we return 0 for success and Ones
@@ -3703,18 +3844,28 @@ static uacpi_status handle_mutex_ctl(struct execution_context *ctx)
             break;
         }
 
-        ret = uacpi_acquire_aml_mutex(obj->mutex, timeout);
-        if (uacpi_unlikely_error(ret))
-            break;
+        /*
+         * The namespace is unlocked while we wait for the mutex, which makes
+         * it possible for someone else to get rid of the object, e.g. by
+         * overwriting it via CopyObject. All of the references that we have
+         * to it are gone if that happens, so take one that is ours alone.
+         */
+        uacpi_object_ref(obj);
 
-        ret = held_mutexes_array_push(&ctx->held_mutexes, obj->mutex);
-        if (uacpi_unlikely_error(ret)) {
-            uacpi_release_aml_mutex(obj->mutex);
-            return ret;
+        ret = uacpi_acquire_aml_mutex(obj->mutex, timeout);
+        if (uacpi_likely_success(ret)) {
+            ret = held_mutexes_array_push(&ctx->held_mutexes, obj->mutex);
+            if (uacpi_unlikely_error(ret)) {
+                uacpi_release_aml_mutex(obj->mutex);
+                uacpi_object_unref(obj);
+                return ret;
+            }
+
+            ctx->sync_level = obj->mutex->sync_level;
+            *return_value = 0;
         }
 
-        ctx->sync_level = obj->mutex->sync_level;
-        *return_value = 0;
+        uacpi_object_unref(obj);
         break;
     }
 
@@ -4338,7 +4489,6 @@ static uacpi_status frame_setup_base_scope(struct call_frame *frame,
     block->node = scope;
     block->begin = 0;
     block->end = method->size;
-    frame->method = method;
     frame->cur_scope = scope;
     return UACPI_STATUS_OK;
 }
@@ -4546,6 +4696,7 @@ static uacpi_status enter_method(
     uacpi_status ret = UACPI_STATUS_OK;
 
     uacpi_shareable_ref(method);
+    new_frame->method = method;
 
     if (!method->is_serialized)
         return ret;
@@ -5429,6 +5580,20 @@ static uacpi_status exec_op(struct execution_context *ctx)
             emit_op_skip_warn(op_ctx);
             break;
 
+        case UACPI_PARSE_OP_TARGET: {
+            uacpi_aml_op next_op;
+
+            /*
+             * Target := SuperName | NullName, and a null target has no use
+             * for an object, so don't bother executing it as ZeroOp.
+             */
+            if (peek_next_op(frame, &next_op) == 1 &&
+                next_op == UACPI_AML_OP_ZeroOp) {
+                frame->code_offset++;
+                break;
+            }
+            UACPI_FALLTHROUGH;
+        }
         case UACPI_PARSE_OP_SIMPLE_NAME:
         case UACPI_PARSE_OP_SUPERNAME:
         case UACPI_PARSE_OP_SUPERNAME_OR_UNRESOLVED:
@@ -5439,7 +5604,6 @@ static uacpi_status exec_op(struct execution_context *ctx)
         case UACPI_PARSE_OP_OPERAND:
         case UACPI_PARSE_OP_STRING:
         case UACPI_PARSE_OP_COMPUTATIONAL_DATA:
-        case UACPI_PARSE_OP_TARGET:
             /*
              * Preempt this op parsing for now as we wait for the dynamic arg
              * to be parsed.
@@ -5791,7 +5955,7 @@ static uacpi_status exec_op(struct execution_context *ctx)
                 break;
 
             default:
-                EXEC_OP_ERR_1("don't know how to copy/transfer object to %d",
+                EXEC_OP_ERR_1("don't know how to copy/transfer object to %u",
                               prev_op);
                 ret = UACPI_STATUS_INVALID_ARGUMENT;
                 break;
@@ -5830,6 +5994,10 @@ static uacpi_status exec_op(struct execution_context *ctx)
             } else {
                 src = item->obj;
             }
+
+            // Null target
+            if (dst == UACPI_NULL)
+                break;
 
             ret = store_to_target(dst, src, UACPI_NULL);
             break;
@@ -6002,7 +6170,7 @@ static uacpi_status exec_op(struct execution_context *ctx)
         }
 
         default:
-            EXEC_OP_ERR_1("unhandled parser op '%d'", op);
+            EXEC_OP_ERR_1("unhandled parser op '%u'", op);
             ret = UACPI_STATUS_UNIMPLEMENTED;
             break;
         }
