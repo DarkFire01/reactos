@@ -1739,52 +1739,27 @@
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
 
-# =========================================================================
-# NT 6.0+ kernel exports, backed by ntoskrnl_vista and the kernel itself.
-# See sdk/lib/drivers/ntoskrnl_vista.
-# =========================================================================
-
-# C runtime helpers
-
-# Errata Manager
+# ==================================================================
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
 @ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
 @ stdcall -version=0x601+ EmProviderDeregister(ptr)
 @ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
-
-# Event Tracing for Windows
-
-# Executive
 @ fastcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
 @ fastcall -version=0x600+ ExAcquireSpinLockShared(ptr)
 @ fastcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
 @ fastcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
 @ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
 @ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
-
-# Hypervisor Library
 @ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
 @ stdcall -version=0xa00+ HvlQueryActiveHypervisorProcessorCount()
-
-# I/O Manager
 @ stdcall -version=0xA00+ IoGetInitiatorProcess(ptr)
 @ stdcall -version=0xA00+ IoOpenDriverRegistryKey(ptr long long long ptr)
-
-# Kernel
 @ stdcall -version=0x602+ KeQuerySystemTimePrecise(ptr)
-
-# Memory Manager
 @ stdcall -version=0xa00+ MmMapInSpaceEx(int64 long long)
-
-# System information queries
 @ stdcall -version=0x602+ NtQuerySystemInformationEx(long ptr long ptr long ptr)
 @ stdcall -version=0x602+ ZwQuerySystemInformationEx(long ptr long ptr long ptr)
-
-# Object Manager
 @ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
 @ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
-
-# Power Manager
 @ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr long)
 @ stdcall -version=0x603+ PoDeleteThermalRequest(ptr)
 @ stdcall -version=0x600+ PoDisableSleepStates(long long ptr)
@@ -1798,16 +1773,25 @@
 @ stdcall -version=0x600+ PoReenableSleepStates(ptr)
 @ stdcall -version=0x603+ PoSetThermalActiveCooling(ptr long)
 @ stdcall -version=0x603+ PoSetThermalPassiveCooling(ptr long)
-
-# Runtime Library
 @ stdcall -version=0x600+ RtlFindClosestEncodableLength(int64 ptr)
 @ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
 @ stdcall -version=0x602+ RtlQueryRegistryValuesEx(long wstr ptr ptr ptr)
-
-# Windows Hardware Error Architecture
 @ stdcall -version=0x600+ WheaAddErrorSource(ptr ptr)
 @ stdcall -version=0x600+ WheaConfigureErrorSource(long ptr)
 @ stdcall -version=0x600+ WheaGetErrorSource(long ptr)
 @ stdcall -version=0x600+ WheaInitializeRecordHeader(ptr)
 @ stdcall -version=0x600+ WheaReportHwError(ptr)
+@ stdcall KeQueryPrcbAddress()
+@ stdcall ObGetFilterVersion()
+@ stdcall ObGetObjectType()
+@ stdcall ObRegisterCallbacks()
+@ stdcall ObUnRegisterCallbacks()
+@ stdcall PsAcquireProcessExitSynchronization()
+@ stdcall PsGetProcessWow64Process()
+@ stdcall PsReferenceProcessFilePointer(ptr ptr)
+@ stdcall PsReleaseProcessExitSynchronization()
+@ stdcall PsSetCreateProcessNotifyRoutineEx()
+@ stdcall ZwQueryVirtualMemory(long ptr long ptr long ptr)
+@ stdcall KeQueryMaximumProcessorCount()
+@ stdcall ObDereferenceObjectDeferDelete(ptr)
