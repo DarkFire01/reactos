@@ -33,6 +33,10 @@
 
 HINSTANCE hDllInstance;
 
+/* Inheritance flags a caller may put on an ACE it sets explicitly */
+#define ACCP_EXPLICIT_INHERIT_FLAGS (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | \
+                                     NO_PROPAGATE_INHERIT_ACE | INHERIT_ONLY_ACE)
+
 /* FIXME: Vista+ API */
 VOID
 WINAPI
@@ -1277,6 +1281,358 @@ AccRewriteGetNamedRights(LPWSTR pObjectName,
 }
 
 
+typedef enum _ACCP_ACE_GROUP
+{
+    AccpExplicitDenyAce,
+    AccpExplicitOtherAce,
+    AccpInheritedAce
+} ACCP_ACE_GROUP;
+
+static
+ACCP_ACE_GROUP
+AccpGetAceGroup(
+    _In_ PACE_HEADER AceHeader)
+{
+    if (AceHeader->AceFlags & INHERITED_ACE)
+        return AccpInheritedAce;
+
+    if (AccpGetAceAccessMode(AceHeader) == DENY_ACCESS)
+        return AccpExplicitDenyAce;
+
+    return AccpExplicitOtherAce;
+}
+
+/** @brief Appends the ACEs of OldAcl that are still kept and belong to Group. */
+static
+BOOL
+AccpCopyKeptAces(
+    _Inout_ PACL NewAcl,
+    _In_ PACL OldAcl,
+    _In_reads_(AceCount) const BOOLEAN *KeepAce,
+    _In_ ULONG AceCount,
+    _In_ ACCP_ACE_GROUP Group)
+{
+    PACE_HEADER AceHeader;
+    ULONG Index;
+
+    for (Index = 0; Index < AceCount; Index++)
+    {
+        if (!KeepAce[Index])
+            continue;
+
+        if (!GetAce(OldAcl, Index, (PVOID*)&AceHeader))
+            return FALSE;
+
+        if (AccpGetAceGroup(AceHeader) != Group)
+            continue;
+
+        if (!AddAce(NewAcl, OldAcl->AclRevision, MAXDWORD, AceHeader, AceHeader->AceSize))
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+static
+BOOL
+AccpAddKnownAce(
+    _Inout_ PACL Acl,
+    _In_ UCHAR AceType,
+    _In_ UCHAR AceFlags,
+    _In_ ACCESS_MASK Mask,
+    _In_ PSID Sid)
+{
+    if (AceType == ACCESS_DENIED_ACE_TYPE)
+        return AddAccessDeniedAceEx(Acl, Acl->AclRevision, AceFlags, Mask, Sid);
+
+    return AddAccessAllowedAceEx(Acl, Acl->AclRevision, AceFlags, Mask, Sid);
+}
+
+/**
+ * @brief
+ * Appends to Acl the ACEs that an object below a directory with ParentDacl
+ * inherits from it.
+ */
+static
+BOOL
+AccpAddInheritedAces(
+    _Inout_ PACL Acl,
+    _In_ PACL ParentDacl,
+    _In_ BOOL IsDirectory,
+    _In_opt_ PSID Owner,
+    _In_opt_ PSID Group)
+{
+    static GENERIC_MAPPING FileMapping = {FILE_GENERIC_READ,
+                                          FILE_GENERIC_WRITE,
+                                          FILE_GENERIC_EXECUTE,
+                                          FILE_ALL_ACCESS};
+    SID CreatorOwner = {SID_REVISION, 1, {SECURITY_CREATOR_SID_AUTHORITY}, {SECURITY_CREATOR_OWNER_RID}};
+    SID CreatorGroup = {SID_REVISION, 1, {SECURITY_CREATOR_SID_AUTHORITY}, {SECURITY_CREATOR_GROUP_RID}};
+    PACCESS_ALLOWED_ACE Ace;
+    ACCESS_MASK Mask;
+    PSID AceSid;
+    PSID EffectiveSid;
+    UCHAR InheritBits;
+    BOOL Effective;
+    BOOL Inheritable;
+    ULONG Index;
+
+    for (Index = 0; Index < ParentDacl->AceCount; Index++)
+    {
+        if (!GetAce(ParentDacl, Index, (PVOID*)&Ace))
+            return FALSE;
+
+        if (Ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE &&
+            Ace->Header.AceType != ACCESS_DENIED_ACE_TYPE)
+        {
+            continue;
+        }
+
+        InheritBits = Ace->Header.AceFlags & (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE);
+
+        if (IsDirectory)
+        {
+            /* A subdirectory uses container ACEs and passes object ACEs further down */
+            Effective = (InheritBits & CONTAINER_INHERIT_ACE) != 0;
+            Inheritable = InheritBits && !(Ace->Header.AceFlags & NO_PROPAGATE_INHERIT_ACE);
+        }
+        else
+        {
+            Effective = (InheritBits & OBJECT_INHERIT_ACE) != 0;
+            Inheritable = FALSE;
+        }
+
+        if (!Effective && !Inheritable)
+            continue;
+
+        AceSid = (PSID)&Ace->SidStart;
+        EffectiveSid = AceSid;
+        if (Owner && EqualSid(AceSid, &CreatorOwner))
+            EffectiveSid = Owner;
+        else if (Group && EqualSid(AceSid, &CreatorGroup))
+            EffectiveSid = Group;
+
+        Mask = Ace->Mask;
+        MapGenericMask(&Mask, &FileMapping);
+
+        /* An ACE that changes when applied here also needs an untouched copy for the children */
+        if (Effective && Inheritable && Mask == Ace->Mask && EffectiveSid == AceSid)
+        {
+            if (!AccpAddKnownAce(Acl, Ace->Header.AceType, INHERITED_ACE | InheritBits, Mask, AceSid))
+                return FALSE;
+
+            continue;
+        }
+
+        if (Effective &&
+            !AccpAddKnownAce(Acl, Ace->Header.AceType, INHERITED_ACE, Mask, EffectiveSid))
+        {
+            return FALSE;
+        }
+
+        if (Inheritable &&
+            !AccpAddKnownAce(Acl,
+                             Ace->Header.AceType,
+                             INHERITED_ACE | INHERIT_ONLY_ACE | InheritBits,
+                             Ace->Mask,
+                             AceSid))
+        {
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Builds the DACL a file really gets when its DACL is set without protection:
+ * the explicit ACEs from the caller followed by what the parent directory hands down.
+ *
+ * @return ERROR_SUCCESS with *MergedDacl set to NULL when nothing has to be merged.
+ */
+static
+DWORD
+AccpMergeParentDacl(
+    _In_ LPWSTR pObjectName,
+    _In_ SECURITY_INFORMATION SecurityInfo,
+    _In_ PSECURITY_DESCRIPTOR pSecurityDescriptor,
+    _Outptr_result_maybenull_ PACL *MergedDacl)
+{
+    PSECURITY_DESCRIPTOR ObjectSd = NULL;
+    PSECURITY_DESCRIPTOR ParentSd = NULL;
+    SECURITY_DESCRIPTOR_CONTROL Control;
+    ACL_SIZE_INFORMATION SizeInfo;
+    PACE_HEADER AceHeader;
+    LPWSTR ParentName = NULL;
+    LPWSTR Separator;
+    PACL Dacl;
+    PACL ParentDacl;
+    PACL NewDacl = NULL;
+    PSID Owner = NULL;
+    PSID Group = NULL;
+    PSID SdOwner;
+    PSID SdGroup;
+    BOOL Present;
+    BOOL Defaulted;
+    DWORD Revision;
+    DWORD Attributes;
+    DWORD AclSize;
+    SIZE_T Length;
+    ULONG Index;
+    DWORD Ret = ERROR_SUCCESS;
+
+    *MergedDacl = NULL;
+
+    if (!(SecurityInfo & DACL_SECURITY_INFORMATION) ||
+        (SecurityInfo & PROTECTED_DACL_SECURITY_INFORMATION))
+    {
+        return ERROR_SUCCESS;
+    }
+
+    /* A NULL DACL already grants everything */
+    if (!GetSecurityDescriptorDacl(pSecurityDescriptor, &Present, &Dacl, &Defaulted) ||
+        !Present || !Dacl)
+    {
+        return ERROR_SUCCESS;
+    }
+
+    if (AccRewriteGetNamedRights(pObjectName,
+                                 SE_FILE_OBJECT,
+                                 OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                                 &Owner,
+                                 &Group,
+                                 NULL,
+                                 NULL,
+                                 &ObjectSd) != ERROR_SUCCESS)
+    {
+        return ERROR_SUCCESS;
+    }
+
+    /* Without an explicit request the object keeps its current protection */
+    if (!(SecurityInfo & UNPROTECTED_DACL_SECURITY_INFORMATION) &&
+        GetSecurityDescriptorControl(ObjectSd, &Control, &Revision) &&
+        (Control & SE_DACL_PROTECTED))
+    {
+        goto Cleanup;
+    }
+
+    if ((SecurityInfo & OWNER_SECURITY_INFORMATION) &&
+        GetSecurityDescriptorOwner(pSecurityDescriptor, &SdOwner, &Defaulted) && SdOwner)
+    {
+        Owner = SdOwner;
+    }
+
+    if ((SecurityInfo & GROUP_SECURITY_INFORMATION) &&
+        GetSecurityDescriptorGroup(pSecurityDescriptor, &SdGroup, &Defaulted) && SdGroup)
+    {
+        Group = SdGroup;
+    }
+
+    /* Find the parent directory, a volume root has none */
+    Length = wcslen(pObjectName);
+    ParentName = LocalAlloc(LMEM_FIXED, (Length + 1) * sizeof(WCHAR));
+    if (!ParentName)
+    {
+        Ret = ERROR_NOT_ENOUGH_MEMORY;
+        goto Cleanup;
+    }
+    wcscpy(ParentName, pObjectName);
+
+    while (Length > 0 && (ParentName[Length - 1] == L'\\' || ParentName[Length - 1] == L'/'))
+        ParentName[--Length] = UNICODE_NULL;
+
+    Separator = max(wcsrchr(ParentName, L'\\'), wcsrchr(ParentName, L'/'));
+    if (!Separator)
+        goto Cleanup;
+
+    /* Keep the separator when the parent is a root such as C:\ */
+    if (Separator == ParentName || Separator[-1] == L':')
+        Separator[1] = UNICODE_NULL;
+    else
+        Separator[0] = UNICODE_NULL;
+
+    if (AccRewriteGetNamedRights(ParentName,
+                                 SE_FILE_OBJECT,
+                                 DACL_SECURITY_INFORMATION,
+                                 NULL,
+                                 NULL,
+                                 &ParentDacl,
+                                 NULL,
+                                 &ParentSd) != ERROR_SUCCESS ||
+        !ParentDacl)
+    {
+        goto Cleanup;
+    }
+
+    Attributes = GetFileAttributesW(pObjectName);
+
+    /* Every parent ACE can split in two and pick up an owner or group SID */
+    AclSize = Dacl->AclSize + 2 * ParentDacl->AclSize +
+              2 * ParentDacl->AceCount * SECURITY_MAX_SID_SIZE;
+
+    NewDacl = LocalAlloc(LMEM_FIXED, AclSize);
+    if (!NewDacl)
+    {
+        Ret = ERROR_NOT_ENOUGH_MEMORY;
+        goto Cleanup;
+    }
+
+    if (!InitializeAcl(NewDacl, AclSize, max(Dacl->AclRevision, ACL_REVISION)) ||
+        !GetAclInformation(Dacl, &SizeInfo, sizeof(SizeInfo), AclSizeInformation))
+    {
+        Ret = GetLastError();
+        goto Cleanup;
+    }
+
+    /* Keep what the caller set explicitly, stale inherited entries get rebuilt below */
+    for (Index = 0; Index < SizeInfo.AceCount; Index++)
+    {
+        if (!GetAce(Dacl, Index, (PVOID*)&AceHeader))
+        {
+            Ret = GetLastError();
+            goto Cleanup;
+        }
+
+        if (AceHeader->AceFlags & INHERITED_ACE)
+            continue;
+
+        if (!AddAce(NewDacl, Dacl->AclRevision, MAXDWORD, AceHeader, AceHeader->AceSize))
+        {
+            Ret = GetLastError();
+            goto Cleanup;
+        }
+    }
+
+    if (!AccpAddInheritedAces(NewDacl,
+                              ParentDacl,
+                              Attributes != INVALID_FILE_ATTRIBUTES &&
+                                  (Attributes & FILE_ATTRIBUTE_DIRECTORY),
+                              Owner,
+                              Group))
+    {
+        Ret = GetLastError();
+        goto Cleanup;
+    }
+
+    *MergedDacl = NewDacl;
+    NewDacl = NULL;
+
+Cleanup:
+    if (NewDacl)
+        LocalFree(NewDacl);
+
+    if (ParentSd)
+        LocalFree(ParentSd);
+
+    if (ParentName)
+        LocalFree(ParentName);
+
+    LocalFree(ObjectSd);
+
+    return Ret;
+}
+
 /**********************************************************************
  * AccRewriteSetNamedRights				EXPORTED
  *
@@ -1290,11 +1646,33 @@ AccRewriteSetNamedRights(LPWSTR pObjectName,
 {
     HANDLE Handle = NULL;
     HANDLE Handle2 = NULL;
+    SECURITY_DESCRIPTOR MergedSd;
+    PACL MergedDacl = NULL;
     DWORD LastErr;
     DWORD Ret;
 
     /* save the last error code */
     LastErr = GetLastError();
+
+    /* an unprotected file DACL also carries what the parent directory hands down */
+    if (ObjectType == SE_FILE_OBJECT &&
+        !(((PISECURITY_DESCRIPTOR)pSecurityDescriptor)->Control & SE_SELF_RELATIVE))
+    {
+        Ret = AccpMergeParentDacl(pObjectName,
+                                  SecurityInfo,
+                                  pSecurityDescriptor,
+                                  &MergedDacl);
+        if (Ret != ERROR_SUCCESS)
+            goto Exit;
+
+        if (MergedDacl)
+        {
+            MergedSd = *(PISECURITY_DESCRIPTOR)pSecurityDescriptor;
+            MergedSd.Dacl = MergedDacl;
+            MergedSd.Control |= SE_DACL_AUTO_INHERITED;
+            pSecurityDescriptor = &MergedSd;
+        }
+    }
 
     /* create the handle */
     Ret = AccpOpenNamedObject(pObjectName,
@@ -1319,6 +1697,10 @@ AccRewriteSetNamedRights(LPWSTR pObjectName,
                               Handle,
                               Handle2);
     }
+
+Exit:
+    if (MergedDacl)
+        LocalFree(MergedDacl);
 
     /* restore the last error code */
     SetLastError(LastErr);
@@ -1475,7 +1857,6 @@ AccRewriteSetEntriesInAcl(ULONG cCountOfExplicitEntries,
     {
         if (pListOfExplicitEntries[i].grfAccessMode == DENY_ACCESS)
         {
-            /* FIXME: take care of pListOfExplicitEntries[i].grfInheritance */
             Ret = AccpGetTrusteeSid(&pListOfExplicitEntries[i].Trustee,
                                     &PolicyHandle,
                                     &pSid1,
@@ -1489,8 +1870,11 @@ AccRewriteSetEntriesInAcl(ULONG cCountOfExplicitEntries,
 
             if (ObjectsPresent == 0)
             {
-                /* FIXME: Call AddAccessDeniedAceEx instead! */
-                bRet = AddAccessDeniedAce(pNew, ACL_REVISION, pListOfExplicitEntries[i].grfAccessPermissions, pSid1);
+                bRet = AddAccessDeniedAceEx(pNew,
+                                            ACL_REVISION,
+                                            pListOfExplicitEntries[i].grfInheritance & ACCP_EXPLICIT_INHERIT_FLAGS,
+                                            pListOfExplicitEntries[i].grfAccessPermissions,
+                                            pSid1);
             }
             else
             {
@@ -1510,7 +1894,12 @@ AccRewriteSetEntriesInAcl(ULONG cCountOfExplicitEntries,
     }
 
     /* 2b) Existing denied entries */
-    /* FIXME */
+    if (OldAcl &&
+        !AccpCopyKeptAces(pNew, OldAcl, pKeepAce, SizeInformation.AceCount, AccpExplicitDenyAce))
+    {
+        Ret = GetLastError();
+        goto Cleanup;
+    }
 
     /* 3a) New allow entries (GRANT_ACCESS, SET_ACCESS) */
     for (i = 0; i < cCountOfExplicitEntries; i++)
@@ -1518,7 +1907,6 @@ AccRewriteSetEntriesInAcl(ULONG cCountOfExplicitEntries,
         if (pListOfExplicitEntries[i].grfAccessMode == SET_ACCESS ||
             pListOfExplicitEntries[i].grfAccessMode == GRANT_ACCESS)
         {
-            /* FIXME: take care of pListOfExplicitEntries[i].grfInheritance */
             Ret = AccpGetTrusteeSid(&pListOfExplicitEntries[i].Trustee,
                                     &PolicyHandle,
                                     &pSid1,
@@ -1532,8 +1920,11 @@ AccRewriteSetEntriesInAcl(ULONG cCountOfExplicitEntries,
 
             if (ObjectsPresent == 0)
             {
-                /* FIXME: Call AddAccessAllowedAceEx instead! */
-                bRet = AddAccessAllowedAce(pNew, ACL_REVISION, pListOfExplicitEntries[i].grfAccessPermissions, pSid1);
+                bRet = AddAccessAllowedAceEx(pNew,
+                                             ACL_REVISION,
+                                             pListOfExplicitEntries[i].grfInheritance & ACCP_EXPLICIT_INHERIT_FLAGS,
+                                             pListOfExplicitEntries[i].grfAccessPermissions,
+                                             pSid1);
             }
             else
             {
@@ -1552,8 +1943,14 @@ AccRewriteSetEntriesInAcl(ULONG cCountOfExplicitEntries,
         }
     }
 
-    /* 3b) Existing allow entries */
-    /* FIXME */
+    /* 3b) Existing allow entries, then everything that was inherited */
+    if (OldAcl &&
+        (!AccpCopyKeptAces(pNew, OldAcl, pKeepAce, SizeInformation.AceCount, AccpExplicitOtherAce) ||
+         !AccpCopyKeptAces(pNew, OldAcl, pKeepAce, SizeInformation.AceCount, AccpInheritedAce)))
+    {
+        Ret = GetLastError();
+        goto Cleanup;
+    }
 
     *NewAcl = pNew;
 
