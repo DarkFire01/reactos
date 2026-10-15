@@ -124,6 +124,9 @@ UacpiNtBringUpInterpreter(
 
     PAGED_CODE();
 
+    /* uACPI may schedule work and signal from here on */
+    UacpiNtHostDeferInitialize();
+
     /* Enter ACPI mode and honor _OSI */
     UacpiStatus = uacpi_initialize(0);
     if (uacpi_unlikely_error(UacpiStatus))

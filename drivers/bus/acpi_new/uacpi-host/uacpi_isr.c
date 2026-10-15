@@ -13,31 +13,10 @@
 /* Seconds between reports while a work drain is stuck */
 #define UACPINT_HOST_WORK_REPORT_SECONDS    5
 
-/* Preallocated entries for work and signals queued from the ISR */
-#define UACPINT_HOST_DEFER_ENTRIES          64
-
-typedef enum _UACPINT_HOST_DEFER_KIND
-{
-    UacpiNtHostDeferWork = 0,
-    UacpiNtHostDeferSignal
-} UACPINT_HOST_DEFER_KIND;
-
-/*
- * ISR to DPC hand off. Link has to stay first, SLIST entries need
- * 16 byte alignment on 64 bit.
- */
-typedef struct _UACPINT_HOST_DEFER
-{
-    SLIST_ENTRY             Link;
-    UACPINT_HOST_DEFER_KIND Kind;
-    uacpi_work_handler      Handler;    ///< UacpiNtHostDeferWork
-    uacpi_handle            Context;
-    uacpi_work_type         Type;
-    uacpi_handle            Event;      ///< UacpiNtHostDeferSignal
-} UACPINT_HOST_DEFER, *PUACPINT_HOST_DEFER;
-
+/* Created by uACPI ahead of time, so scheduling never allocates */
 typedef struct _UACPINT_HOST_WORK_ITEM
 {
+    UACPINT_HOST_DEFER Defer;
     WORK_QUEUE_ITEM    Item;
     uacpi_work_handler Handler;
     uacpi_handle       Context;
@@ -59,8 +38,6 @@ static ULONG UacpiNtHostSciGsi;
 static KIRQL UacpiNtHostSciLockIrql = DISPATCH_LEVEL;
 
 static SLIST_HEADER UacpiNtHostDeferPending;
-static SLIST_HEADER UacpiNtHostDeferFree;
-static PUACPINT_HOST_DEFER UacpiNtHostDeferPool;
 static KDPC UacpiNtHostDeferDpc;
 
 static volatile LONG UacpiNtHostWorkOutstanding;
@@ -117,6 +94,8 @@ UacpiNtHostWorkRoutine(
     _In_ PVOID Parameter)
 {
     PUACPINT_HOST_WORK_ITEM WorkItem = Parameter;
+    uacpi_work_handler Handler = WorkItem->Handler;
+    uacpi_handle Context = WorkItem->Context;
 #if (NTDDI_VERSION >= NTDDI_VISTA)
     KAFFINITY OldAffinity = 0;
 #endif
@@ -133,7 +112,8 @@ UacpiNtHostWorkRoutine(
         Pinned = TRUE;
     }
 
-    WorkItem->Handler(WorkItem->Context);
+    /* The handler may reschedule or free the item, it is not ours past here */
+    Handler(Context);
 
     if (Pinned)
     {
@@ -144,11 +124,48 @@ UacpiNtHostWorkRoutine(
 #endif
     }
 
-    ExFreePoolWithTag(WorkItem, UACPINT_HOST_POOL_TAG);
     UacpiNtHostWorkDone();
 }
 
-/* Runs at DISPATCH_LEVEL, turns entries queued by the ISR into work items and releases */
+/* DISPATCH_LEVEL or below */
+static
+VOID
+NTAPI
+UacpiNtHostWorkQueue(
+    _In_ PUACPINT_HOST_WORK_ITEM WorkItem)
+{
+    ExInitializeWorkItem(&WorkItem->Item, UacpiNtHostWorkRoutine, WorkItem);
+    ExQueueWorkItem(&WorkItem->Item, DelayedWorkQueue);
+}
+
+static
+VOID
+NTAPI
+UacpiNtHostDeferQueue(
+    _In_ PUACPINT_HOST_DEFER Entry)
+{
+    InterlockedPushEntrySList(&UacpiNtHostDeferPending, &Entry->Link);
+    KeInsertQueueDpc(&UacpiNtHostDeferDpc, NULL, NULL);
+}
+
+/* Releases the units given to a semaphore above DISPATCH_LEVEL */
+static
+VOID
+NTAPI
+UacpiNtHostSemaphoreFlush(
+    _In_ PUACPINT_HOST_SEMAPHORE Semaphore)
+{
+    LONG Units;
+
+    Units = InterlockedCompareExchange(&Semaphore->DeferredUnits, 0, 0);
+    KeReleaseSemaphore(&Semaphore->Semaphore, IO_NO_INCREMENT, Units, FALSE);
+
+    /* Units given meanwhile found the count nonzero and did not queue it */
+    if (InterlockedExchangeAdd(&Semaphore->DeferredUnits, -Units) != Units)
+        UacpiNtHostDeferQueue(&Semaphore->Defer);
+}
+
+/* Runs at DISPATCH_LEVEL, hands off what was queued above it */
 static
 VOID
 NTAPI
@@ -158,7 +175,6 @@ UacpiNtHostDeferRoutine(
     _In_opt_ PVOID SystemArgument1,
     _In_opt_ PVOID SystemArgument2)
 {
-    PUACPINT_HOST_WORK_ITEM WorkItem;
     PUACPINT_HOST_DEFER Entry;
     PSLIST_ENTRY ListEntry;
 
@@ -176,140 +192,93 @@ UacpiNtHostDeferRoutine(
         Entry = CONTAINING_RECORD(ListEntry, UACPINT_HOST_DEFER, Link);
 
         if (Entry->Kind == UacpiNtHostDeferSignal)
-        {
-            KeReleaseSemaphore(Entry->Event, IO_NO_INCREMENT, 1, FALSE);
-        }
+            UacpiNtHostSemaphoreFlush(CONTAINING_RECORD(Entry, UACPINT_HOST_SEMAPHORE, Defer));
         else
-        {
-            WorkItem = ExAllocatePoolWithTag(NonPagedPool, sizeof(*WorkItem), UACPINT_HOST_POOL_TAG);
-            if (WorkItem)
-            {
-                WorkItem->Handler = Entry->Handler;
-                WorkItem->Context = Entry->Context;
-                WorkItem->Type = Entry->Type;
-                ExInitializeWorkItem(&WorkItem->Item, UacpiNtHostWorkRoutine, WorkItem);
-                ExQueueWorkItem(&WorkItem->Item, DelayedWorkQueue);
-            }
-            else
-            {
-                /* Drop the count too or the completion wait never drains */
-                DPRINT1("uACPI-NT: deferred work dropped, out of pool\n");
-                UacpiNtHostWorkDone();
-            }
-        }
-
-        InterlockedPushEntrySList(&UacpiNtHostDeferFree, &Entry->Link);
+            UacpiNtHostWorkQueue(CONTAINING_RECORD(Entry, UACPINT_HOST_WORK_ITEM, Defer));
     }
 }
 
-/* PASSIVE_LEVEL, must run before the SCI is connected */
-static
-NTSTATUS
+/* PASSIVE_LEVEL, must run before uACPI is initialized */
+VOID
 NTAPI
 UacpiNtHostDeferInitialize(VOID)
 {
-    ULONG Index;
-
     PAGED_CODE();
 
     if (UacpiNtHostWorkReady)
-        return STATUS_SUCCESS;
-
-    UacpiNtHostDeferPool = ExAllocatePoolWithTag(NonPagedPool,
-                                                 sizeof(*UacpiNtHostDeferPool) * UACPINT_HOST_DEFER_ENTRIES,
-                                                 UACPINT_HOST_POOL_TAG);
-    if (!UacpiNtHostDeferPool)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    RtlZeroMemory(UacpiNtHostDeferPool, sizeof(*UacpiNtHostDeferPool) * UACPINT_HOST_DEFER_ENTRIES);
+        return;
 
     InitializeSListHead(&UacpiNtHostDeferPending);
-    InitializeSListHead(&UacpiNtHostDeferFree);
-    for (Index = 0; Index < UACPINT_HOST_DEFER_ENTRIES; Index++)
-        InterlockedPushEntrySList(&UacpiNtHostDeferFree, &UacpiNtHostDeferPool[Index].Link);
-
     KeInitializeDpc(&UacpiNtHostDeferDpc, UacpiNtHostDeferRoutine, NULL);
     KeInitializeEvent(&UacpiNtHostWorkDrained, NotificationEvent, TRUE);
     UacpiNtHostWorkReady = TRUE;
-
-    return STATUS_SUCCESS;
 }
 
-/* Any IRQL */
-static
-PUACPINT_HOST_DEFER
-NTAPI
-UacpiNtHostDeferAcquire(VOID)
+uacpi_handle
+uacpi_kernel_create_work_item(void)
 {
-    PSLIST_ENTRY ListEntry;
+    PUACPINT_HOST_WORK_ITEM WorkItem;
 
-    if (!UacpiNtHostWorkReady)
+    WorkItem = ExAllocatePoolWithTag(NonPagedPool, sizeof(*WorkItem), UACPINT_HOST_POOL_TAG);
+    if (!WorkItem)
         return NULL;
 
-    ListEntry = ExInterlockedPopEntrySList(&UacpiNtHostDeferFree, NULL);
-    if (!ListEntry)
-        return NULL;
-
-    return CONTAINING_RECORD(ListEntry, UACPINT_HOST_DEFER, Link);
-}
-
-static
-VOID
-NTAPI
-UacpiNtHostDeferQueue(
-    _In_ PUACPINT_HOST_DEFER Entry)
-{
-    InterlockedPushEntrySList(&UacpiNtHostDeferPending, &Entry->Link);
-    KeInsertQueueDpc(&UacpiNtHostDeferDpc, NULL, NULL);
-}
-
-uacpi_status
-uacpi_kernel_schedule_work(
-    _In_ uacpi_work_type Type,
-    _In_ uacpi_work_handler Handler,
-    _In_opt_ uacpi_handle Context)
-{
-    PUACPINT_HOST_DEFER Entry;
-
-    Entry = UacpiNtHostDeferAcquire();
-    if (!Entry)
-        return UACPI_STATUS_OUT_OF_MEMORY;
-
-    Entry->Kind = UacpiNtHostDeferWork;
-    Entry->Handler = Handler;
-    Entry->Context = Context;
-    Entry->Type = Type;
-
-    if (InterlockedIncrement(&UacpiNtHostWorkOutstanding) == 1)
-        KeClearEvent(&UacpiNtHostWorkDrained);
-
-    UacpiNtHostDeferQueue(Entry);
-    return UACPI_STATUS_OK;
+    RtlZeroMemory(WorkItem, sizeof(*WorkItem));
+    WorkItem->Defer.Kind = UacpiNtHostDeferWork;
+    return WorkItem;
 }
 
 void
-uacpi_kernel_signal_event(
-    _In_ uacpi_handle Handle)
+uacpi_kernel_free_work_item(
+    _In_opt_ uacpi_handle Handle)
 {
-    PUACPINT_HOST_DEFER Entry;
+    if (Handle)
+        ExFreePoolWithTag(Handle, UACPINT_HOST_POOL_TAG);
+}
+
+void
+uacpi_kernel_schedule_work(
+    _In_ uacpi_work_type Type,
+    _In_ uacpi_handle Handle,
+    _In_ uacpi_work_handler Handler,
+    _In_opt_ uacpi_handle Context)
+{
+    PUACPINT_HOST_WORK_ITEM WorkItem = Handle;
+
+    WorkItem->Handler = Handler;
+    WorkItem->Context = Context;
+    WorkItem->Type = Type;
+
+    /* Counted before it can run, so a drain also covers work scheduled by work */
+    InterlockedIncrement(&UacpiNtHostWorkOutstanding);
 
     if (KeGetCurrentIrql() <= DISPATCH_LEVEL)
     {
-        KeReleaseSemaphore(Handle, IO_NO_INCREMENT, 1, FALSE);
+        UacpiNtHostWorkQueue(WorkItem);
         return;
     }
 
-    /* Semaphores cannot be released from DIRQL, let the DPC do it */
-    Entry = UacpiNtHostDeferAcquire();
-    if (!Entry)
+    /* Work items cannot be queued from DIRQL, let the DPC do it */
+    UacpiNtHostDeferQueue(&WorkItem->Defer);
+}
+
+void
+uacpi_kernel_signal_semaphore(
+    _In_ uacpi_handle Handle)
+{
+    PUACPINT_HOST_SEMAPHORE Semaphore = Handle;
+
+    Semaphore->Owner = NULL;
+
+    if (KeGetCurrentIrql() <= DISPATCH_LEVEL)
     {
-        DPRINT1("uACPI-NT: event signal dropped, deferral pool exhausted\n");
+        KeReleaseSemaphore(&Semaphore->Semaphore, IO_NO_INCREMENT, 1, FALSE);
         return;
     }
 
-    Entry->Kind = UacpiNtHostDeferSignal;
-    Entry->Event = Handle;
-    UacpiNtHostDeferQueue(Entry);
+    /* Semaphores cannot be released from DIRQL, the first pending unit queues the DPC */
+    if (InterlockedIncrement(&Semaphore->DeferredUnits) == 1)
+        UacpiNtHostDeferQueue(&Semaphore->Defer);
 }
 
 uacpi_status
@@ -324,12 +293,14 @@ uacpi_kernel_wait_for_work_completion(void)
     if (!UacpiNtHostWorkReady)
         return UACPI_STATUS_OK;
 
-    /*
-     * uACPI calls this with its own locks held, so a work item needing one of
-     * them never drains. Keep reporting instead of hanging silently.
-     */
-    while (InterlockedCompareExchange(&UacpiNtHostWorkOutstanding, 0, 0) != 0)
+    /* A drain that never finishes is a deadlock, keep reporting it */
+    for (;;)
     {
+        /* Cleared here and not when scheduling, which may happen at DIRQL */
+        KeClearEvent(&UacpiNtHostWorkDrained);
+        if (InterlockedCompareExchange(&UacpiNtHostWorkOutstanding, 0, 0) == 0)
+            break;
+
         Interval.QuadPart = -((LONGLONG)UACPINT_HOST_WORK_REPORT_SECONDS * 10 * 1000 * 1000);
         if (KeWaitForSingleObject(&UacpiNtHostWorkDrained,
                                   Executive,
@@ -421,11 +392,6 @@ UacpiNtHostConnectSci(VOID)
 
     if (Block->InterruptObject)
         return STATUS_SUCCESS;
-
-    /* The deferral pool has to exist before the line can fire */
-    Status = UacpiNtHostDeferInitialize();
-    if (!NT_SUCCESS(Status))
-        return Status;
 
     Status = UacpiNtIrqLibResolveVector(UacpiNtHostSciGsi,
                                         &Vector,
