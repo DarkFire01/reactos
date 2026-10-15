@@ -937,12 +937,12 @@ SeSetSecurityDescriptorInfoEx(
     if (SecurityInformation & DACL_SECURITY_INFORMATION)
     {
         Dacl = SepGetDaclFromDescriptor(SecurityDescriptor);
-        Control |= (SecurityDescriptor->Control & (SE_DACL_DEFAULTED | SE_DACL_PRESENT));
+        Control |= (SecurityDescriptor->Control & (SE_DACL_DEFAULTED | SE_DACL_PRESENT | SE_DACL_PROTECTED | SE_DACL_AUTO_INHERITED));
     }
     else
     {
         Dacl = SepGetDaclFromDescriptor(ObjectSd);
-        Control |= (ObjectSd->Control & (SE_DACL_DEFAULTED | SE_DACL_PRESENT));
+        Control |= (ObjectSd->Control & (SE_DACL_DEFAULTED | SE_DACL_PRESENT | SE_DACL_PROTECTED | SE_DACL_AUTO_INHERITED));
     }
     DaclLength = Dacl ? ROUND_UP((ULONG)Dacl->AclSize, 4) : 0;
 
@@ -950,12 +950,12 @@ SeSetSecurityDescriptorInfoEx(
     if (SecurityInformation & SACL_SECURITY_INFORMATION)
     {
         Sacl = SepGetSaclFromDescriptor(SecurityDescriptor);
-        Control |= (SecurityDescriptor->Control & (SE_SACL_DEFAULTED | SE_SACL_PRESENT));
+        Control |= (SecurityDescriptor->Control & (SE_SACL_DEFAULTED | SE_SACL_PRESENT | SE_SACL_PROTECTED | SE_SACL_AUTO_INHERITED));
     }
     else
     {
         Sacl = SepGetSaclFromDescriptor(ObjectSd);
-        Control |= (ObjectSd->Control & (SE_SACL_DEFAULTED | SE_SACL_PRESENT));
+        Control |= (ObjectSd->Control & (SE_SACL_DEFAULTED | SE_SACL_PRESENT | SE_SACL_PROTECTED | SE_SACL_AUTO_INHERITED));
     }
     SaclLength = Sacl ? ROUND_UP((ULONG)Sacl->AclSize, 4) : 0;
 
