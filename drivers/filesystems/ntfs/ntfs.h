@@ -20,6 +20,9 @@
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
 
+/* $FILE_NAME stores its length in a UCHAR */
+#define NTFS_MAX_NAME_LENGTH 255
+
 /* Deeper than any index this driver or Windows builds; past it the tree loops */
 #define NTFS_MAX_INDEX_DEPTH 32
 
@@ -166,12 +169,17 @@ typedef struct
     ULONG LastCluster;
     ULONG LastOffset;
     ULONG Flags;
+    /* for DirectoryControl, the name the scan last handed out */
+    USHORT ResumeNameLength;
+    WCHAR ResumeName[NTFS_MAX_NAME_LENGTH];
 } NTFS_CCB, *PNTFS_CCB;
 
 /* NTFS has no "." or ".." in its indices, so directory enumeration makes them
  * up. These record which of the two a scan has already handed out. */
 #define CCB_RETURNED_DOT        0x0001
 #define CCB_RETURNED_DOTDOT     0x0002
+/* ResumeName is valid, the scan continues after it */
+#define CCB_RESUME_NAME         0x0004
 
 typedef struct
 {
