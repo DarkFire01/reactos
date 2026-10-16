@@ -401,6 +401,9 @@ IncreaseMftSize(PDEVICE_EXTENSION Vcb, BOOLEAN CanWait)
         return Status;
     }
 
+    /* The new records are written through the cache, which has to cover them */
+    NtfsMftStreamResized(Vcb);
+
     // We'll need to find the bitmap again, because its offset will have changed after resizing the data attribute
     ReleaseAttributeContext(BitmapContext);
     Status = FindAttribute(Vcb, Vcb->MasterFileTable, AttributeBitmap, L"", 0, &BitmapContext, &BitmapOffset);
@@ -1850,25 +1853,190 @@ NtfsLoadUpCaseTable(PDEVICE_EXTENSION Vcb)
     return NtfsReadUpCaseTable(Vcb);
 }
 
+/* Copies a file record, still in its on-disk form, out of the cached $MFT */
+static
+NTSTATUS
+NTAPI
+NtfsCopyFromMftStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONGLONG Index,
+    _Out_writes_bytes_(Vcb->NtfsInfo.BytesPerFileRecord) PFILE_RECORD_HEADER FileRecord)
+{
+    PFILE_OBJECT FileObject = Vcb->MftStreamFileObject;
+    PNTFS_FCB MftFcb = FileObject->FsContext;
+    ULONG RecordSize = Vcb->NtfsInfo.BytesPerFileRecord;
+    LARGE_INTEGER Offset;
+    IO_STATUS_BLOCK IoStatus;
+    NTSTATUS Status = STATUS_PARTIAL_COPY;
+
+    Offset.QuadPart = Index * RecordSize;
+    if (Offset.QuadPart + RecordSize > MftFcb->RFCB.FileSize.QuadPart)
+        return STATUS_PARTIAL_COPY;
+
+    _SEH2_TRY
+    {
+        if (CcCopyRead(FileObject, &Offset, RecordSize, TRUE, FileRecord, &IoStatus) &&
+            NT_SUCCESS(IoStatus.Status) &&
+            IoStatus.Information == RecordSize)
+        {
+            Status = STATUS_SUCCESS;
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
+}
+
 NTSTATUS
 ReadFileRecord(PDEVICE_EXTENSION Vcb,
                ULONGLONG index,
                PFILE_RECORD_HEADER file)
 {
     ULONGLONG BytesRead;
+    NTSTATUS Status;
 
     DPRINT("ReadFileRecord(%p, %I64x, %p)\n", Vcb, index, file);
 
-    BytesRead = ReadAttribute(Vcb, Vcb->MFTContext, index * Vcb->NtfsInfo.BytesPerFileRecord, (PCHAR)file, Vcb->NtfsInfo.BytesPerFileRecord);
-    if (BytesRead != Vcb->NtfsInfo.BytesPerFileRecord)
+    /* Before the mount sets up the cached $MFT, records come straight off the disk */
+    if (Vcb->MftStreamFileObject != NULL)
     {
-        DPRINT1("ReadFileRecord failed: %I64u read, %lu expected\n", BytesRead, Vcb->NtfsInfo.BytesPerFileRecord);
-        return STATUS_PARTIAL_COPY;
+        Status = NtfsCopyFromMftStream(Vcb, index, file);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("ReadFileRecord failed for record %I64u (Status %lx)\n", index, Status);
+            return Status;
+        }
+    }
+    else
+    {
+        BytesRead = ReadAttribute(Vcb, Vcb->MFTContext, index * Vcb->NtfsInfo.BytesPerFileRecord, (PCHAR)file, Vcb->NtfsInfo.BytesPerFileRecord);
+        if (BytesRead != Vcb->NtfsInfo.BytesPerFileRecord)
+        {
+            DPRINT1("ReadFileRecord failed: %I64u read, %lu expected\n", BytesRead, Vcb->NtfsInfo.BytesPerFileRecord);
+            return STATUS_PARTIAL_COPY;
+        }
     }
 
     /* Apply update sequence array fixups. */
     DPRINT("Sequence number: %u\n", file->SequenceNumber);
     return FixupUpdateSequenceArray(Vcb, &file->Ntfs);
+}
+
+/**
+* @name NtfsMftStreamPagingIo
+* @implemented
+*
+* Serves paging I/O on the cached $MFT straight from the MFT's own runs.
+*
+* @param MajorFunction
+* IRP_MJ_READ or IRP_MJ_WRITE
+*
+* @param Irp
+* The paging request; Buffer maps its MDL
+*
+* @param Transferred
+* Receives Length on success. Reads past the end of $MFT return zeroes and
+* writes past it are dropped, as Mm deals in whole pages.
+*
+* @remarks Never goes through the cache itself, or a page-in of $MFT would
+* fault on $MFT again.
+*/
+NTSTATUS
+NTAPI
+NtfsMftStreamPagingIo(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ UCHAR MajorFunction,
+    _In_ PIRP Irp,
+    _Inout_updates_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG Offset,
+    _Out_ PULONG Transferred)
+{
+    ULONGLONG ValidLength = AttributeDataLength(Vcb->MFTContext->pRecord);
+    ULONG Inside = 0;
+    ULONG Done = 0;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    *Transferred = 0;
+
+    if (Offset < ValidLength)
+        Inside = (ULONG)min(Length, ValidLength - Offset);
+
+    if (MajorFunction == IRP_MJ_READ)
+    {
+        if (Inside != 0)
+        {
+            /* The IRP may only go down whole when nothing is left to zero after it */
+            Done = ReadAttributeToIrp(Vcb,
+                                      Vcb->MFTContext,
+                                      Offset,
+                                      (PCHAR)Buffer,
+                                      Inside,
+                                      (Inside == Length) ? Irp : NULL);
+            if (Done == 0)
+                return STATUS_UNEXPECTED_IO_ERROR;
+        }
+
+        if (Done < Length)
+            RtlZeroMemory(Buffer + Done, Length - Done);
+    }
+    else
+    {
+        if (Inside != 0)
+        {
+            Status = WriteAttributeFromIrp(Vcb,
+                                           Vcb->MFTContext,
+                                           Offset,
+                                           Buffer,
+                                           Inside,
+                                           &Done,
+                                           NULL,
+                                           (Inside == Length) ? Irp : NULL);
+            if (!NT_SUCCESS(Status))
+                return Status;
+        }
+    }
+
+    *Transferred = Length;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+* @name NtfsMftStreamResized
+* @implemented
+*
+* Tells the cache the new size of $MFT, after IncreaseMftSize() grew it.
+*/
+VOID
+NTAPI
+NtfsMftStreamResized(
+    _In_ PDEVICE_EXTENSION Vcb)
+{
+    PNTFS_FCB MftFcb;
+
+    if (Vcb->MftStreamFileObject == NULL)
+        return;
+
+    MftFcb = Vcb->MftStreamFileObject->FsContext;
+
+    MftFcb->RFCB.AllocationSize.QuadPart = Vcb->MFTContext->pRecord->NonResident.AllocatedSize;
+    MftFcb->RFCB.FileSize.QuadPart = AttributeDataLength(Vcb->MFTContext->pRecord);
+    MftFcb->RFCB.ValidDataLength = MftFcb->RFCB.FileSize;
+
+    _SEH2_TRY
+    {
+        CcSetFileSizes(Vcb->MftStreamFileObject, (PCC_FILE_SIZES)&MftFcb->RFCB.AllocationSize);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DPRINT1("Couldn't resize the cached $MFT (Status %lx)\n", _SEH2_GetExceptionCode());
+    }
+    _SEH2_END;
 }
 
 
@@ -2286,6 +2454,49 @@ UpdateIndexEntryFileName(PDEVICE_EXTENSION Vcb,
     return Status;
 }
 
+/* Puts a record, already in its on-disk form, in the cached $MFT and on the disk */
+static
+NTSTATUS
+NTAPI
+NtfsWriteThroughMftStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONGLONG Index,
+    _In_reads_bytes_(Vcb->NtfsInfo.BytesPerFileRecord) PFILE_RECORD_HEADER FileRecord)
+{
+    PFILE_OBJECT FileObject = Vcb->MftStreamFileObject;
+    PNTFS_FCB MftFcb = FileObject->FsContext;
+    ULONG RecordSize = Vcb->NtfsInfo.BytesPerFileRecord;
+    LARGE_INTEGER Offset;
+    IO_STATUS_BLOCK IoStatus;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    Offset.QuadPart = Index * RecordSize;
+    if (Offset.QuadPart + RecordSize > MftFcb->RFCB.FileSize.QuadPart)
+    {
+        DPRINT1("Record %I64u is past the end of $MFT\n", Index);
+        return STATUS_END_OF_FILE;
+    }
+
+    _SEH2_TRY
+    {
+        if (!CcCopyWrite(FileObject, &Offset, RecordSize, TRUE, FileRecord))
+            Status = STATUS_UNSUCCESSFUL;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Nothing journals our metadata, so it reaches the disk before we return */
+    CcFlushCache(&MftFcb->SectionObjectPointers, &Offset, RecordSize, &IoStatus);
+
+    return IoStatus.Status;
+}
+
 /**
 * @name UpdateFileRecord
 * @implemented
@@ -2319,13 +2530,21 @@ UpdateFileRecord(PDEVICE_EXTENSION Vcb,
     AddFixupArray(Vcb, &FileRecord->Ntfs);
 
     // write the file record to the master file table
-    Status = WriteAttribute(Vcb,
-                            Vcb->MFTContext,
-                            MftIndex * Vcb->NtfsInfo.BytesPerFileRecord,
-                            (const PUCHAR)FileRecord,
-                            Vcb->NtfsInfo.BytesPerFileRecord,
-                            &BytesWritten,
-                            FileRecord);
+    if (Vcb->MftStreamFileObject != NULL)
+    {
+        Status = NtfsWriteThroughMftStream(Vcb, MftIndex, FileRecord);
+        BytesWritten = NT_SUCCESS(Status) ? Vcb->NtfsInfo.BytesPerFileRecord : 0;
+    }
+    else
+    {
+        Status = WriteAttribute(Vcb,
+                                Vcb->MFTContext,
+                                MftIndex * Vcb->NtfsInfo.BytesPerFileRecord,
+                                (const PUCHAR)FileRecord,
+                                Vcb->NtfsInfo.BytesPerFileRecord,
+                                &BytesWritten,
+                                FileRecord);
+    }
 
     if (!NT_SUCCESS(Status))
     {

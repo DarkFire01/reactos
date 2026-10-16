@@ -17,6 +17,7 @@ list(APPEND SOURCE
     fcb.c
     finfo.c
     fsctl.c
+    index.c
     lockctrl.c
     mft.c
     misc.c

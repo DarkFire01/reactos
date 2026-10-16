@@ -463,6 +463,23 @@ NtfsRead(PNTFS_IRP_CONTEXT IrpContext)
                                      Irp,
                                      &ReturnedReadLength);
     }
+    else if (((PNTFS_FCB)FileObject->FsContext)->Flags & FCB_IS_MFT_STREAM)
+    {
+        /* Only Cc reads it, to fill its pages */
+        if (!(Irp->Flags & IRP_PAGING_IO) || Buffer == NULL)
+        {
+            Irp->IoStatus.Information = 0;
+            return (Buffer == NULL) ? STATUS_INSUFFICIENT_RESOURCES : STATUS_INVALID_DEVICE_REQUEST;
+        }
+
+        Status = NtfsMftStreamPagingIo(DeviceExt,
+                                       IRP_MJ_READ,
+                                       Irp,
+                                       Buffer,
+                                       ReadLength,
+                                       ReadOffset.QuadPart,
+                                       &ReturnedReadLength);
+    }
     else if (NtfsFCBIsDirectory((PNTFS_FCB)FileObject->FsContext))
     {
         /* A directory has no data stream to read */
@@ -1265,6 +1282,24 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
                                      ByteOffset.QuadPart,
                                      Irp,
                                      &ReturnedWriteLength);
+    }
+    else if (Fcb->Flags & FCB_IS_MFT_STREAM)
+    {
+        /* Only Cc writes it, flushing what we wrote through it */
+        if (!(Irp->Flags & IRP_PAGING_IO))
+        {
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+        }
+        else
+        {
+            Status = NtfsMftStreamPagingIo(DeviceExt,
+                                           IRP_MJ_WRITE,
+                                           Irp,
+                                           Buffer,
+                                           Length,
+                                           ByteOffset.QuadPart,
+                                           &ReturnedWriteLength);
+        }
     }
     else if (NtfsFCBIsDirectory(Fcb))
     {

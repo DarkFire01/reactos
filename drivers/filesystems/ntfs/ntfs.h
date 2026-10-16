@@ -128,6 +128,9 @@ typedef struct
     struct _FILE_RECORD_HEADER* MasterFileTable;
     struct _FCB *VolumeFcb;
 
+    /* $MFT through the cache. NULL until the mount has the MFT runs. */
+    PFILE_OBJECT MftStreamFileObject;
+
     NTFS_INFO NtfsInfo;
 
     NPAGED_LOOKASIDE_LIST FileRecLookasideList;
@@ -585,6 +588,8 @@ typedef struct _NTFS_ATTR_CONTEXT
 #define FCB_IS_VOLUME           0x0004
 #define FCB_DELETE_PENDING      0x0008
 #define FCB_DELETED             0x0010
+/* The cached $MFT, its paging I/O goes straight to the MFT runs */
+#define FCB_IS_MFT_STREAM       0x0020
 #define MAX_PATH                260
 
 /* The $DATA runs of an open stream, shared by its paging I/O so that each
@@ -1193,6 +1198,22 @@ NtfsFileSystemControl(PNTFS_IRP_CONTEXT IrpContext);
 NTSTATUS
 NtfsFlushBuffers(PNTFS_IRP_CONTEXT IrpContext);
 
+/* index.c */
+
+NTSTATUS
+NTAPI
+NtfsCreateMetadataStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONG Flags,
+    _In_ ULONGLONG MftIndex,
+    _In_ ULONGLONG Size,
+    _Out_ PNTFS_FCB *StreamFcb);
+
+VOID
+NTAPI
+NtfsCloseMetadataStream(
+    _In_ PNTFS_FCB StreamFcb);
+
 /* lockctrl.c */
 
 NTSTATUS
@@ -1355,6 +1376,22 @@ NTSTATUS
 ReadFileRecord(PDEVICE_EXTENSION Vcb,
                ULONGLONG index,
                PFILE_RECORD_HEADER file);
+
+NTSTATUS
+NTAPI
+NtfsMftStreamPagingIo(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ UCHAR MajorFunction,
+    _In_ PIRP Irp,
+    _Inout_updates_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG Offset,
+    _Out_ PULONG Transferred);
+
+VOID
+NTAPI
+NtfsMftStreamResized(
+    _In_ PDEVICE_EXTENSION Vcb);
 
 /* NTFS duplicates a file's sizes, timestamps and attributes into the $FILE_NAME
  * of its entry in the parent directory's index, so a directory can be

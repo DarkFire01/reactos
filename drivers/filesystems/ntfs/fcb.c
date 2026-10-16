@@ -157,7 +157,8 @@ NtfsIsRegularFileObject(
     if (Fcb == NULL || Fcb->Identifier.Type != NTFS_TYPE_FCB)
         return FALSE;
 
-    return !(Fcb->Flags & FCB_IS_VOLUME) && !NtfsFCBIsDirectory(Fcb);
+    return !(Fcb->Flags & (FCB_IS_VOLUME | FCB_IS_MFT_STREAM)) &&
+           !NtfsFCBIsDirectory(Fcb);
 }
 
 

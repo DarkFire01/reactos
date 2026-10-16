@@ -429,6 +429,7 @@ NtfsMountVolume(PDEVICE_OBJECT DeviceObject,
     PDEVICE_OBJECT DeviceToMount;
     PIO_STACK_LOCATION Stack;
     PNTFS_FCB Fcb = NULL;
+    PNTFS_FCB MftFcb = NULL;
     PNTFS_CCB Ccb = NULL;
     PNTFS_VCB Vcb = NULL;
     NTSTATUS Status;
@@ -543,6 +544,17 @@ NtfsMountVolume(PDEVICE_OBJECT DeviceObject,
     }
     _SEH2_END;
 
+    /* From here on file records go through the cache */
+    Status = NtfsCreateMetadataStream(Vcb,
+                                      FCB_IS_MFT_STREAM,
+                                      NTFS_FILE_MFT,
+                                      AttributeDataLength(Vcb->MFTContext->pRecord),
+                                      &MftFcb);
+    if (!NT_SUCCESS(Status))
+        goto ByeBye;
+
+    Vcb->MftStreamFileObject = MftFcb->FileObject;
+
     Status = NtfsLoadVolumeBitmap(Vcb);
     if (!NT_SUCCESS(Status))
         goto ByeBye;
@@ -570,6 +582,12 @@ ByeBye:
     if (!NT_SUCCESS(Status))
     {
         /* Cleanup */
+        if (MftFcb != NULL)
+        {
+            Vcb->MftStreamFileObject = NULL;
+            NtfsCloseMetadataStream(MftFcb);
+        }
+
         if (Vcb && Vcb->StreamFileObject)
             ObDereferenceObject(Vcb->StreamFileObject);
 
