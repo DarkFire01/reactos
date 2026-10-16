@@ -639,6 +639,9 @@ SetAttributeDataLength(PFILE_OBJECT FileObject,
         }
     }
 
+    /* Paging I/O keeps the runs it finds; keep it out while they change */
+    ExAcquireResourceExclusiveLite(&Fcb->PagingIoResource, TRUE);
+
     if (AttrContext->pRecord->IsNonResident)
     {
         Status = SetNonResidentAttributeDataLength(Fcb->Vcb,
@@ -657,9 +660,13 @@ SetAttributeDataLength(PFILE_OBJECT FileObject,
                                                 DataSize);
     }
 
+    /* Even a failure may have left some of the runs changed */
+    NtfsInvalidateDataMaps(Fcb, FALSE);
+
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("ERROR: Failed to set size of attribute!\n");
+        ExReleaseResourceLite(&Fcb->PagingIoResource);
         return Status;
     }
 
@@ -678,6 +685,8 @@ SetAttributeDataLength(PFILE_OBJECT FileObject,
         Fcb->RFCB.ValidDataLength = *DataSize;
         CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->RFCB.AllocationSize);
     }
+
+    ExReleaseResourceLite(&Fcb->PagingIoResource);
 
     return STATUS_SUCCESS;
 }
@@ -879,6 +888,7 @@ NtfsTrimAllocation(
                               AttributeOffset,
                               FileRecord,
                               (ULONG)((DataContext->pRecord->NonResident.AllocatedSize - NeededSize) / BytesPerCluster));
+        NtfsInvalidateDataMaps(Fcb, FALSE);
         if (NT_SUCCESS(Status))
         {
             DestinationAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset);
@@ -998,6 +1008,10 @@ NtfsResizeAllocation(
             Changed = TRUE;
         }
     }
+
+    /* Even a failure may have left some of the runs changed */
+    if (AllocationSize != CurrentSize)
+        NtfsInvalidateDataMaps(Fcb, FALSE);
 
     if (Changed)
     {

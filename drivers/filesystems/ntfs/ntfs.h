@@ -587,6 +587,15 @@ typedef struct _NTFS_ATTR_CONTEXT
 #define FCB_DELETED             0x0010
 #define MAX_PATH                260
 
+/* The $DATA runs of an open stream, shared by its paging I/O so that each
+ * request doesn't rebuild them from the file record */
+typedef struct _NTFS_DATA_MAP
+{
+    LONG RefCount;
+    PNTFS_ATTR_CONTEXT Context;
+    struct _NTFS_DATA_MAP* NextStale;   /* Only while being dropped */
+} NTFS_DATA_MAP, *PNTFS_DATA_MAP;
+
 typedef struct _FCB
 {
     /* Must come first: FsRtl, Cc and Mm read FsContext as this header */
@@ -621,6 +630,11 @@ typedef struct _FCB
 
     ULONGLONG MFTIndex;
     USHORT LinkCount;
+
+    /* Runs of a non-resident stream, guarded by Vcb->FcbListLock. NULL
+     * until paging I/O needs them, and again whenever the runs change. */
+    PNTFS_DATA_MAP DataMap;
+    ULONG DataMapGeneration;    /* Bumped by every invalidation */
 
     FILENAME_ATTRIBUTE Entry;
 
@@ -1134,6 +1148,23 @@ NtfsMakeFCBFromDirEntry(PNTFS_VCB Vcb,
                         PFILE_RECORD_HEADER Record,
                         ULONGLONG MFTIndex,
                         PNTFS_FCB * fileFCB);
+
+NTSTATUS
+NTAPI
+NtfsReferenceDataMap(
+    _In_ PNTFS_FCB Fcb,
+    _Out_ PNTFS_DATA_MAP *DataMap);
+
+VOID
+NTAPI
+NtfsDereferenceDataMap(
+    _In_ PNTFS_DATA_MAP DataMap);
+
+VOID
+NTAPI
+NtfsInvalidateDataMaps(
+    _In_ PNTFS_FCB Fcb,
+    _In_ BOOLEAN AllStreams);
 
 
 /* finfo.c */

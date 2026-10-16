@@ -116,6 +116,106 @@ NtfsReadWriteVolume(PDEVICE_EXTENSION DeviceExt,
     return Status;
 }
 
+/* Reads from the stream DataContext describes, zeroing what lies past its end */
+static
+NTSTATUS
+NTAPI
+NtfsReadStreamData(
+    _In_ PDEVICE_EXTENSION DeviceExt,
+    _In_ PNTFS_ATTR_CONTEXT DataContext,
+    _Out_writes_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG ReadOffset,
+    _In_opt_ PIRP Irp,
+    _Out_ PULONG LengthRead)
+{
+    ULONG RealLength;
+    ULONGLONG RealReadOffset;
+    ULONG RealLengthRead;
+    ULONG ToRead;
+    BOOLEAN AllocatedBuffer = FALSE;
+    PCHAR ReadBuffer = (PCHAR)Buffer;
+    ULONGLONG StreamSize;
+
+    *LengthRead = 0;
+
+    StreamSize = AttributeDataLength(DataContext->pRecord);
+    if (ReadOffset >= StreamSize)
+    {
+        DPRINT("Reading beyond stream end!\n");
+        return STATUS_END_OF_FILE;
+    }
+
+    ToRead = Length;
+    if (ReadOffset + Length > StreamSize)
+        ToRead = (ULONG)(StreamSize - ReadOffset);
+
+    RealReadOffset = ReadOffset;
+    RealLength = ToRead;
+
+    if ((ReadOffset % DeviceExt->NtfsInfo.BytesPerSector) != 0 || (ToRead % DeviceExt->NtfsInfo.BytesPerSector) != 0)
+    {
+        RealReadOffset = ROUND_DOWN(ReadOffset, DeviceExt->NtfsInfo.BytesPerSector);
+        RealLength = ROUND_UP(ToRead, DeviceExt->NtfsInfo.BytesPerSector);
+        /* do we need to extend RealLength by one sector? */
+        if (RealLength + RealReadOffset < ReadOffset + Length)
+        {
+            if (RealReadOffset + RealLength + DeviceExt->NtfsInfo.BytesPerSector <= AttributeAllocatedLength(DataContext->pRecord))
+                RealLength += DeviceExt->NtfsInfo.BytesPerSector;
+        }
+
+
+        ReadBuffer = ExAllocatePoolWithTag(NonPagedPool, RealLength, TAG_NTFS);
+        if (ReadBuffer == NULL)
+        {
+            DPRINT1("Not enough memory!\n");
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        AllocatedBuffer = TRUE;
+    }
+
+    DPRINT("Effective read: %lu at %I64u\n", RealLength, RealReadOffset);
+    /* Only hand the IRP down when reading straight into its buffer: a
+     * forwarded transfer lands at the start of the IRP's MDL, so a bounced
+     * read would end up in the wrong place */
+    RealLengthRead = ReadAttributeToIrp(DeviceExt,
+                                        DataContext,
+                                        RealReadOffset,
+                                        (PCHAR)ReadBuffer,
+                                        RealLength,
+                                        AllocatedBuffer ? NULL : Irp);
+    if (RealLengthRead == 0)
+    {
+        DPRINT1("Read failure!\n");
+        if (AllocatedBuffer)
+        {
+            ExFreePoolWithTag(ReadBuffer, TAG_NTFS);
+        }
+        return STATUS_UNEXPECTED_IO_ERROR;
+    }
+
+    *LengthRead = ToRead;
+
+    DPRINT("%lu got read\n", *LengthRead);
+
+    if (AllocatedBuffer)
+    {
+        RtlCopyMemory(Buffer, ReadBuffer + (ULONG)(ReadOffset - RealReadOffset), ToRead);
+    }
+
+    if (ToRead != Length)
+    {
+        RtlZeroMemory(Buffer + ToRead, Length - ToRead);
+    }
+
+    if (AllocatedBuffer)
+    {
+        ExFreePoolWithTag(ReadBuffer, TAG_NTFS);
+    }
+
+    return STATUS_SUCCESS;
+}
+
 /*
  * FUNCTION: Reads data from a file
  */
@@ -134,13 +234,7 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
     PNTFS_FCB Fcb;
     PFILE_RECORD_HEADER FileRecord;
     PNTFS_ATTR_CONTEXT DataContext = NULL;
-    ULONG RealLength;
-    ULONGLONG RealReadOffset;
-    ULONG RealLengthRead;
-    ULONG ToRead;
-    BOOLEAN AllocatedBuffer = FALSE;
-    PCHAR ReadBuffer = (PCHAR)Buffer;
-    ULONGLONG StreamSize;
+    PNTFS_DATA_MAP DataMap;
 
     DPRINT("NtfsReadFile(%p, %p, %p, %lu, %I64u, %lx, %p)\n", DeviceExt, FileObject, Buffer, Length, ReadOffset, IrpFlags, LengthRead);
 
@@ -166,6 +260,15 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
         DPRINT1("Encrypted file!\n");
         UNIMPLEMENTED;
         return STATUS_NOT_IMPLEMENTED;
+    }
+
+    /* The runs the FCB keeps spare a non-resident stream the file record */
+    Status = NtfsReferenceDataMap(Fcb, &DataMap);
+    if (NT_SUCCESS(Status) && DataMap != NULL)
+    {
+        Status = NtfsReadStreamData(DeviceExt, DataMap->Context, Buffer, Length, ReadOffset, Irp, LengthRead);
+        NtfsDereferenceDataMap(DataMap);
+        return Status;
     }
 
     FileRecord = ExAllocateFromNPagedLookasideList(&DeviceExt->FileRecLookasideList);
@@ -217,90 +320,12 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
         return Status;
     }
 
-    StreamSize = AttributeDataLength(DataContext->pRecord);
-    if (ReadOffset >= StreamSize)
-    {
-        DPRINT("Reading beyond stream end!\n");
-        ReleaseAttributeContext(DataContext);
-        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
-        return STATUS_END_OF_FILE;
-    }
-
-    ToRead = Length;
-    if (ReadOffset + Length > StreamSize)
-        ToRead = (ULONG)(StreamSize - ReadOffset);
-
-    RealReadOffset = ReadOffset;
-    RealLength = ToRead;
-
-    if ((ReadOffset % DeviceExt->NtfsInfo.BytesPerSector) != 0 || (ToRead % DeviceExt->NtfsInfo.BytesPerSector) != 0)
-    {
-        RealReadOffset = ROUND_DOWN(ReadOffset, DeviceExt->NtfsInfo.BytesPerSector);
-        RealLength = ROUND_UP(ToRead, DeviceExt->NtfsInfo.BytesPerSector);
-        /* do we need to extend RealLength by one sector? */
-        if (RealLength + RealReadOffset < ReadOffset + Length)
-        {
-            if (RealReadOffset + RealLength + DeviceExt->NtfsInfo.BytesPerSector <= AttributeAllocatedLength(DataContext->pRecord))
-                RealLength += DeviceExt->NtfsInfo.BytesPerSector;
-        }
-
-
-        ReadBuffer = ExAllocatePoolWithTag(NonPagedPool, RealLength, TAG_NTFS);
-        if (ReadBuffer == NULL)
-        {
-            DPRINT1("Not enough memory!\n");
-            ReleaseAttributeContext(DataContext);
-            ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
-        AllocatedBuffer = TRUE;
-    }
-
-    DPRINT("Effective read: %lu at %I64u for stream '%S'\n", RealLength, RealReadOffset, Fcb->Stream);
-    /* Only hand the IRP down when reading straight into its buffer: a
-     * forwarded transfer lands at the start of the IRP's MDL, so a bounced
-     * read would end up in the wrong place */
-    RealLengthRead = ReadAttributeToIrp(DeviceExt,
-                                        DataContext,
-                                        RealReadOffset,
-                                        (PCHAR)ReadBuffer,
-                                        RealLength,
-                                        AllocatedBuffer ? NULL : Irp);
-    if (RealLengthRead == 0)
-    {
-        DPRINT1("Read failure!\n");
-        ReleaseAttributeContext(DataContext);
-        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
-        if (AllocatedBuffer)
-        {
-            ExFreePoolWithTag(ReadBuffer, TAG_NTFS);
-        }
-        return Status;
-    }
+    Status = NtfsReadStreamData(DeviceExt, DataContext, Buffer, Length, ReadOffset, Irp, LengthRead);
 
     ReleaseAttributeContext(DataContext);
     ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
 
-    *LengthRead = ToRead;
-
-    DPRINT("%lu got read\n", *LengthRead);
-
-    if (AllocatedBuffer)
-    {
-        RtlCopyMemory(Buffer, ReadBuffer + (ULONG)(ReadOffset - RealReadOffset), ToRead);
-    }
-
-    if (ToRead != Length)
-    {
-        RtlZeroMemory(Buffer + ToRead, Length - ToRead);
-    }
-
-    if (AllocatedBuffer)
-    {
-        ExFreePoolWithTag(ReadBuffer, TAG_NTFS);
-    }
-
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 /* Sets up the cache map of a handle on its first cached I/O */
@@ -563,6 +588,58 @@ NtfsGrowStream(
     return STATUS_SUCCESS;
 }
 
+/* Writes inside a non-resident stream. Only a paging write may reach past
+ * StreamSize, and what lies past it is dropped. */
+static
+NTSTATUS
+NTAPI
+NtfsWriteStreamData(
+    _In_ PDEVICE_EXTENSION DeviceExt,
+    _In_ PNTFS_ATTR_CONTEXT DataContext,
+    _In_reads_bytes_(Length) const PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG WriteOffset,
+    _In_ ULONGLONG StreamSize,
+    _In_opt_ PIRP Irp,
+    _Out_ PULONG LengthWritten)
+{
+    ULONG RequestedLength = 0;
+    NTSTATUS Status;
+
+    *LengthWritten = 0;
+
+    if (WriteOffset + Length > StreamSize)
+    {
+        /* Mm flushes whole pages, see NtfsWriteFile() */
+        if (WriteOffset >= StreamSize)
+        {
+            *LengthWritten = Length;
+            return STATUS_SUCCESS;
+        }
+
+        RequestedLength = Length;
+        Length = (ULONG)(StreamSize - WriteOffset);
+    }
+
+    Status = WriteAttributeFromIrp(DeviceExt, DataContext, WriteOffset, Buffer, Length, LengthWritten, NULL, Irp);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Write failure!\n");
+        return Status;
+    }
+
+    if (*LengthWritten != Length)
+    {
+        DPRINT1("Wrote %lu bytes instead of %lu\n", *LengthWritten, Length);
+        return STATUS_UNEXPECTED_IO_ERROR;
+    }
+
+    if (RequestedLength != 0)
+        *LengthWritten = RequestedLength;
+
+    return STATUS_SUCCESS;
+}
+
 /**
 * @name NtfsWriteFile
 * @implemented
@@ -622,6 +699,7 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
     PNTFS_FCB Fcb;
     PFILE_RECORD_HEADER FileRecord;
     PNTFS_ATTR_CONTEXT DataContext = NULL;
+    PNTFS_DATA_MAP DataMap;
     ULONG AttributeOffset;
     ULONGLONG StreamSize;
     ULONG RequestedLength = 0;
@@ -661,6 +739,28 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
         DPRINT("Compressed file!\n");
         UNIMPLEMENTED;
         return STATUS_NOT_IMPLEMENTED;
+    }
+
+    /* A write that doesn't grow a non-resident stream needs only its runs */
+    Status = NtfsReferenceDataMap(Fcb, &DataMap);
+    if (NT_SUCCESS(Status) && DataMap != NULL)
+    {
+        StreamSize = AttributeDataLength(DataMap->Context->pRecord);
+        if (WriteOffset + Length <= StreamSize || (IrpFlags & IRP_PAGING_IO))
+        {
+            Status = NtfsWriteStreamData(DeviceExt,
+                                         DataMap->Context,
+                                         Buffer,
+                                         Length,
+                                         WriteOffset,
+                                         StreamSize,
+                                         Irp,
+                                         LengthWritten);
+            NtfsDereferenceDataMap(DataMap);
+            return Status;
+        }
+
+        NtfsDereferenceDataMap(DataMap);
     }
 
     // allocate non-paged memory for the FILE_RECORD_HEADER

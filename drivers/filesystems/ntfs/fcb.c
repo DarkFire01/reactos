@@ -128,6 +128,9 @@ NtfsDestroyFCB(PNTFS_FCB Fcb)
     ASSERT(Fcb);
     ASSERT(Fcb->Identifier.Type == NTFS_TYPE_FCB);
 
+    if (Fcb->DataMap != NULL)
+        NtfsDereferenceDataMap(Fcb->DataMap);
+
     FsRtlUninitializeFileLock(&Fcb->FileLock);
     ExDeleteResourceLite(&Fcb->PagingIoResource);
     ExDeleteResourceLite(&Fcb->MainResource);
@@ -323,6 +326,191 @@ NtfsGrabFCBFromTable(PNTFS_VCB Vcb,
     KeReleaseSpinLock(&Vcb->FcbListLock, oldIrql);
 
     return NULL;
+}
+
+
+/**
+* @name NtfsReferenceDataMap
+* @implemented
+*
+* Gets the runs of the stream an FCB stands for, reading them from the file
+* record only when nothing is kept yet.
+*
+* @param Fcb
+* FCB of the stream
+*
+* @param DataMap
+* Receives a referenced map, or NULL when the stream is resident and has no
+* runs to keep. Drop it with NtfsDereferenceDataMap().
+*
+* @return
+* STATUS_SUCCESS, or why the runs couldn't be read.
+*/
+NTSTATUS
+NTAPI
+NtfsReferenceDataMap(
+    _In_ PNTFS_FCB Fcb,
+    _Out_ PNTFS_DATA_MAP *DataMap)
+{
+    PNTFS_VCB Vcb = Fcb->Vcb;
+    PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_CONTEXT Context;
+    PNTFS_DATA_MAP Map;
+    ULONG Generation;
+    KIRQL OldIrql;
+    NTSTATUS Status;
+
+    *DataMap = NULL;
+
+    KeAcquireSpinLock(&Vcb->FcbListLock, &OldIrql);
+    Map = Fcb->DataMap;
+    if (Map != NULL)
+        InterlockedIncrement(&Map->RefCount);
+    Generation = Fcb->DataMapGeneration;
+    KeReleaseSpinLock(&Vcb->FcbListLock, OldIrql);
+
+    if (Map != NULL)
+    {
+        *DataMap = Map;
+        return STATUS_SUCCESS;
+    }
+
+    FileRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
+    if (FileRecord == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = ReadFileRecord(Vcb, Fcb->MFTIndex, FileRecord);
+    if (NT_SUCCESS(Status))
+        Status = FindAttribute(Vcb, FileRecord, AttributeData, Fcb->Stream, (ULONG)wcslen(Fcb->Stream), &Context, NULL);
+
+    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Resident data lives in the record, which the caller reads anyway */
+    if (!Context->pRecord->IsNonResident)
+    {
+        ReleaseAttributeContext(Context);
+        return STATUS_SUCCESS;
+    }
+
+    Map = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Map), TAG_NTFS);
+    if (Map == NULL)
+    {
+        ReleaseAttributeContext(Context);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Map->RefCount = 1;
+    Map->Context = Context;
+    Map->NextStale = NULL;
+
+    /* Runs that changed while we read them, or a map someone else kept
+     * first, leave ours serving this request only */
+    KeAcquireSpinLock(&Vcb->FcbListLock, &OldIrql);
+    if (Fcb->DataMap == NULL && Fcb->DataMapGeneration == Generation)
+    {
+        Fcb->DataMap = Map;
+        InterlockedIncrement(&Map->RefCount);
+    }
+    KeReleaseSpinLock(&Vcb->FcbListLock, OldIrql);
+
+    *DataMap = Map;
+
+    return STATUS_SUCCESS;
+}
+
+
+VOID
+NTAPI
+NtfsDereferenceDataMap(
+    _In_ PNTFS_DATA_MAP DataMap)
+{
+    if (InterlockedDecrement(&DataMap->RefCount) == 0)
+    {
+        ReleaseAttributeContext(DataMap->Context);
+        ExFreePoolWithTag(DataMap, TAG_NTFS);
+    }
+}
+
+
+/* Unhooks the map of an FCB onto Stale. The caller holds FcbListLock. */
+static
+VOID
+NTAPI
+NtfsDetachDataMap(
+    _Inout_ PNTFS_FCB Fcb,
+    _Inout_ PNTFS_DATA_MAP *Stale)
+{
+    Fcb->DataMapGeneration++;
+
+    if (Fcb->DataMap != NULL)
+    {
+        Fcb->DataMap->NextStale = *Stale;
+        *Stale = Fcb->DataMap;
+        Fcb->DataMap = NULL;
+    }
+}
+
+
+/**
+* @name NtfsInvalidateDataMaps
+* @implemented
+*
+* Drops the runs kept for a stream after they changed, from this FCB and any
+* other FCB open on the same file.
+*
+* @param Fcb
+* FCB whose stream changed
+*
+* @param AllStreams
+* TRUE when the whole file is going away, not just this stream
+*
+* @remarks Requests already holding a map finish on the runs they started
+* with. Whoever changes the runs holds PagingIoResource exclusive, so no
+* paging write of this FCB is among them.
+*/
+VOID
+NTAPI
+NtfsInvalidateDataMaps(
+    _In_ PNTFS_FCB Fcb,
+    _In_ BOOLEAN AllStreams)
+{
+    PNTFS_VCB Vcb = Fcb->Vcb;
+    PNTFS_DATA_MAP Stale = NULL;
+    PNTFS_DATA_MAP Map;
+    PLIST_ENTRY ListEntry;
+    PNTFS_FCB Other;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&Vcb->FcbListLock, &OldIrql);
+
+    /* Done apart from the table, a deleted FCB is no longer in it */
+    NtfsDetachDataMap(Fcb, &Stale);
+
+    for (ListEntry = Vcb->FcbListHead.Flink;
+         ListEntry != &Vcb->FcbListHead;
+         ListEntry = ListEntry->Flink)
+    {
+        Other = CONTAINING_RECORD(ListEntry, NTFS_FCB, FcbListEntry);
+        if (Other != Fcb &&
+            Other->MFTIndex == Fcb->MFTIndex &&
+            (AllStreams || wcscmp(Other->Stream, Fcb->Stream) == 0))
+        {
+            NtfsDetachDataMap(Other, &Stale);
+        }
+    }
+
+    KeReleaseSpinLock(&Vcb->FcbListLock, OldIrql);
+
+    /* Freeing an MCB isn't allowed under a spin lock */
+    while (Stale != NULL)
+    {
+        Map = Stale;
+        Stale = Map->NextStale;
+        NtfsDereferenceDataMap(Map);
+    }
 }
 
 

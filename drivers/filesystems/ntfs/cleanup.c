@@ -139,7 +139,11 @@ NtfsCleanupFile(PDEVICE_EXTENSION DeviceExt,
             }
 
             if (NT_SUCCESS(Status))
+            {
+                /* Nothing may write to the clusters once they are given back */
+                NtfsInvalidateDataMaps(Fcb, TRUE);
                 Status = NtfsDeleteFileRecord(DeviceExt, Fcb->MFTIndex, FALSE);
+            }
 
             /* A cached FCB for a path that no longer exists would make it look present */
             if (NT_SUCCESS(Status))
