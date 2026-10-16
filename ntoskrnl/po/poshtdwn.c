@@ -182,6 +182,14 @@ PopShutdownSystem(IN POWER_ACTION SystemAction)
     DPRINT("It's the final countdown...%lx\n", SystemAction);
     DbgUnLoadImageSymbols(NULL, (PVOID)-1, 0);
 
+    /* ReactOS Hack: drivers handling the power IRP may flush DPCs, so it goes before the affinity pin */
+    if (SystemAction == PowerActionShutdownReset ||
+        SystemAction == PowerActionShutdown ||
+        SystemAction == PowerActionShutdownOff)
+    {
+        PopSetSystemPowerState(PowerSystemShutdown, SystemAction);
+    }
+
     /* Run the thread on the boot processor */
     KeSetSystemAffinityThread(1);
 
@@ -193,7 +201,6 @@ PopShutdownSystem(IN POWER_ACTION SystemAction)
 
             /* Try platform driver first, then legacy */
             //PopInvokeSystemStateHandler(PowerStateShutdownReset, NULL);
-            PopSetSystemPowerState(PowerSystemShutdown, SystemAction);
             HalReturnToFirmware(HalRebootRoutine);
             break;
 
@@ -211,8 +218,6 @@ PopShutdownSystem(IN POWER_ACTION SystemAction)
             /* Call shutdown handler */
             //PopInvokeSystemStateHandler(PowerStateShutdownOff, NULL);
 
-            /* ReactOS Hack */
-            PopSetSystemPowerState(PowerSystemShutdown, SystemAction);
             PopShutdownHandler();
 
             /* If that didn't work, call the HAL */
