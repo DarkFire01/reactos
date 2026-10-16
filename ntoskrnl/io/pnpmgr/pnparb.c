@@ -1027,8 +1027,10 @@ IopNextFullDescriptor(
  * same place.
  *
  * @return
- * FALSE for a device specific descriptor, which has no requirement.
+ * FALSE for a device specific descriptor, which has no requirement. Io is
+ * left untouched then, since callers size their lists without a slot for it.
  */
+_Success_(return != FALSE)
 static
 BOOLEAN
 NTAPI
@@ -1039,6 +1041,9 @@ IopCmToFixedRequirement(
     ULONGLONG Start;
     ULONGLONG Length;
 
+    if (Cm->Type == CmResourceTypeDeviceSpecific)
+        return FALSE;
+
     RtlZeroMemory(Io, sizeof(*Io));
     Io->Option = IO_RESOURCE_PREFERRED;
     Io->Type = Cm->Type;
@@ -1047,9 +1052,6 @@ IopCmToFixedRequirement(
 
     switch (Cm->Type)
     {
-        case CmResourceTypeDeviceSpecific:
-            return FALSE;
-
         case CmResourceTypeInterrupt:
             if (Cm->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
             {
