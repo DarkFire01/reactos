@@ -42,7 +42,7 @@ PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] =
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
-    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
+    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpFilterResourceRequirements},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
@@ -119,6 +119,44 @@ PciGetRootBusRange(
     }
 
     return FALSE;
+}
+
+/**
+ * @brief Drops the inaccessible range marker from the memory windows a root bus was started with.
+ */
+static
+VOID
+NTAPI
+PciRootClearInaccessibleMarks(
+    _Inout_opt_ PCM_RESOURCE_LIST Resources)
+{
+    PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
+    ULONG FullIndex, PartialIndex;
+    PAGED_CODE();
+
+    if (Resources == NULL)
+        return;
+
+    FullDescriptor = Resources->List;
+    for (FullIndex = 0; FullIndex < Resources->Count; FullIndex++)
+    {
+        Partial = FullDescriptor->PartialResourceList.PartialDescriptors;
+        for (PartialIndex = 0;
+             PartialIndex < FullDescriptor->PartialResourceList.Count;
+             PartialIndex++)
+        {
+            if (Partial->Type == CmResourceTypeMemory ||
+                Partial->Type == CmResourceTypeMemoryLarge)
+            {
+                Partial->Flags &= ~CM_RESOURCE_MEMORY_COMPAT_FOR_INACCESSIBLE_RANGE;
+            }
+
+            Partial = CmiGetNextPartialDescriptor(Partial);
+        }
+
+        FullDescriptor = (PCM_FULL_RESOURCE_DESCRIPTOR)Partial;
+    }
 }
 
 /**
@@ -217,6 +255,13 @@ PciFdoIrpStartDevice(IN PIRP Irp,
     /* Only a root bus seeds its arbiters from these, a bus behind a bridge uses its windows */
     Resources = IoStackLocation->Parameters.StartDevice.AllocatedResources;
 
+    /* The marker only told the root arbiter to grant the windows, it is not a property of them */
+    if (PCI_IS_ROOT_FDO(DeviceExtension))
+    {
+        PciRootClearInaccessibleMarks(Resources);
+        PciRootClearInaccessibleMarks(IoStackLocation->Parameters.StartDevice.AllocatedResourcesTranslated);
+    }
+
     /* Initialize the arbiter for this FDO */
     Status = PciInitializeArbiterRanges(DeviceExtension, Resources);
     if (!NT_SUCCESS(Status))
@@ -228,6 +273,55 @@ PciFdoIrpStartDevice(IN PIRP Irp,
 
     /* Commit the transition to the started state */
     PciCommitStateTransition(DeviceExtension, PciStarted);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Lets the root memory arbiter grant a root bus memory windows the processor cannot reach.
+ *
+ * No device behind the bus is ever placed in such a window, so handing it to the bus is harmless,
+ * and refusing it would fail the whole configuration (a 64-bit window on an x86 kernel).
+ */
+NTSTATUS
+NTAPI
+PciFdoIrpFilterResourceRequirements(
+    _Inout_ PIRP Irp,
+    _In_ PIO_STACK_LOCATION IoStackLocation,
+    _In_ PPCI_FDO_EXTENSION DeviceExtension)
+{
+    PIO_RESOURCE_REQUIREMENTS_LIST Requirements;
+    PIO_RESOURCE_DESCRIPTOR Descriptor;
+    PIO_RESOURCE_DESCRIPTOR End;
+    PIO_RESOURCE_LIST List;
+    ULONG ListIndex;
+    PAGED_CODE();
+    UNREFERENCED_PARAMETER(IoStackLocation);
+
+    /* Bridges get their windows from the bus above, only the root bus is arbitrated at the root */
+    if (!PCI_IS_ROOT_FDO(DeviceExtension))
+        return STATUS_NOT_SUPPORTED;
+
+    Requirements = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+    if (Requirements == NULL)
+        return STATUS_NOT_SUPPORTED;
+
+    List = Requirements->List;
+    for (ListIndex = 0; ListIndex < Requirements->AlternativeLists; ListIndex++)
+    {
+        End = &List->Descriptors[List->Count];
+        for (Descriptor = List->Descriptors; Descriptor < End; Descriptor++)
+        {
+            if (Descriptor->Type == CmResourceTypeMemory ||
+                Descriptor->Type == CmResourceTypeMemoryLarge)
+            {
+                Descriptor->Flags |= CM_RESOURCE_MEMORY_COMPAT_FOR_INACCESSIBLE_RANGE;
+            }
+        }
+
+        /* The next alternative list starts right after the last descriptor */
+        List = (PIO_RESOURCE_LIST)End;
+    }
+
     return STATUS_SUCCESS;
 }
 

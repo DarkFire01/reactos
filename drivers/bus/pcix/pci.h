@@ -863,6 +863,14 @@ PciFdoIrpQueryLegacyBusInformation(
     IN PPCI_FDO_EXTENSION DeviceExtension
 );
 
+NTSTATUS
+NTAPI
+PciFdoIrpFilterResourceRequirements(
+    _Inout_ PIRP Irp,
+    _In_ PIO_STACK_LOCATION IoStackLocation,
+    _In_ PPCI_FDO_EXTENSION DeviceExtension
+);
+
 //
 // Device PDO Routines
 //
