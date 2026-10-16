@@ -355,7 +355,11 @@ NtfsGetFsAttributeInformation(PDEVICE_EXTENSION DeviceExt,
         return STATUS_BUFFER_OVERFLOW;
 
     FsAttributeInfo->FileSystemAttributes =
-        FILE_CASE_PRESERVED_NAMES | FILE_UNICODE_ON_DISK | FILE_READ_ONLY_VOLUME;
+        FILE_CASE_PRESERVED_NAMES | FILE_UNICODE_ON_DISK;
+
+    /* Installers ask before they write, and give up on a read only volume */
+    if (!NtfsGlobalData->EnableWriteSupport)
+        FsAttributeInfo->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;
     FsAttributeInfo->MaximumComponentNameLength = 255;
     FsAttributeInfo->FileSystemNameLength = 8;
 
@@ -397,6 +401,32 @@ NtfsGetFsSizeInformation(PDEVICE_OBJECT DeviceObject,
         *BufferLength -= sizeof(FILE_FS_SIZE_INFORMATION);
 
     return Status;
+}
+
+
+/* Like FileFsSizeInformation; with no quotas, the caller can have all that is free */
+static
+NTSTATUS
+NTAPI
+NtfsGetFsFullSizeInformation(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Out_ PFILE_FS_FULL_SIZE_INFORMATION FsFullSizeInfo,
+    _Inout_ PULONG BufferLength)
+{
+    PDEVICE_EXTENSION DeviceExt = DeviceObject->DeviceExtension;
+
+    if (*BufferLength < sizeof(*FsFullSizeInfo))
+        return STATUS_BUFFER_OVERFLOW;
+
+    FsFullSizeInfo->TotalAllocationUnits.QuadPart = DeviceExt->NtfsInfo.ClusterCount;
+    FsFullSizeInfo->ActualAvailableAllocationUnits.QuadPart = NtfsGetFreeClusters(DeviceExt);
+    FsFullSizeInfo->CallerAvailableAllocationUnits = FsFullSizeInfo->ActualAvailableAllocationUnits;
+    FsFullSizeInfo->SectorsPerAllocationUnit = DeviceExt->NtfsInfo.SectorsPerCluster;
+    FsFullSizeInfo->BytesPerSector = DeviceExt->NtfsInfo.BytesPerSector;
+
+    *BufferLength -= sizeof(*FsFullSizeInfo);
+
+    return STATUS_SUCCESS;
 }
 
 
@@ -487,7 +517,14 @@ NtfsQueryVolumeInformation(PNTFS_IRP_CONTEXT IrpContext)
                                                 &BufferLength);
             break;
 
+        case FileFsFullSizeInformation:
+            Status = NtfsGetFsFullSizeInformation(DeviceObject,
+                                                  SystemBuffer,
+                                                  &BufferLength);
+            break;
+
         default:
+            DPRINT1("Unimplemented volume information class %d\n", FsInformationClass);
             Status = STATUS_NOT_SUPPORTED;
     }
 

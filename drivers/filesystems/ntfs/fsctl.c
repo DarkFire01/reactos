@@ -1049,7 +1049,7 @@ NtfsUserFsRequest(PDEVICE_OBJECT DeviceObject,
             break;
 
         default:
-            DPRINT("Invalid user request: %x\n", Stack->Parameters.FileSystemControl.FsControlCode);
+            DPRINT1("Invalid user request: %x\n", Stack->Parameters.FileSystemControl.FsControlCode);
             Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
     }

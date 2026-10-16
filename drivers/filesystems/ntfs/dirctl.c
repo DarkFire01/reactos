@@ -487,8 +487,8 @@ NtfsGetDirEntryInformation(PDEVICE_EXTENSION DeviceExt,
                                      Buffer, BufferLength, Written, First);
 }
 
-/* Describes a name straight from its index entry, which carries a copy of the
- * file's sizes, times and attributes. Only a separate short name needs the record. */
+/* Describes a listed name. Its index entry carries a copy of the sizes and
+ * times, but not every change reaches that copy, so they come from the record. */
 static NTSTATUS
 NtfsGetIndexEntryInformation(PDEVICE_EXTENSION DeviceExt,
                              FILE_INFORMATION_CLASS FileInformationClass,
@@ -498,40 +498,25 @@ NtfsGetIndexEntryInformation(PDEVICE_EXTENSION DeviceExt,
                              PULONG Written,
                              BOOLEAN First)
 {
-    NTFS_LISTING_ENTRY Entry;
-    PFILE_RECORD_HEADER FileRecord = NULL;
+    PFILE_RECORD_HEADER FileRecord;
     ULONGLONG MFTIndex = IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK;
     NTSTATUS Status;
 
-    Entry.FileName = &IndexEntry->FileName;
-    Entry.FileAttributes = IndexEntry->FileName.FileAttributes;
-    Entry.EndOfFile = IndexEntry->FileName.DataSize;
-    Entry.AllocationSize = IndexEntry->FileName.AllocatedSize;
-    Entry.ShortName = NULL;
+    *Written = 0;
 
-    if (FileInformationClass == FileBothDirectoryInformation)
+    FileRecord = ExAllocateFromNPagedLookasideList(&DeviceExt->FileRecLookasideList);
+    if (FileRecord == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = ReadFileRecord(DeviceExt, MFTIndex, FileRecord);
+    if (NT_SUCCESS(Status))
     {
-        if (IndexEntry->FileName.NameType == NTFS_FILE_NAME_WIN32_AND_DOS)
-        {
-            Entry.ShortName = &IndexEntry->FileName;
-        }
-        else if (IndexEntry->FileName.NameType == NTFS_FILE_NAME_WIN32)
-        {
-            FileRecord = ExAllocateFromNPagedLookasideList(&DeviceExt->FileRecLookasideList);
-            if (FileRecord == NULL)
-                return STATUS_INSUFFICIENT_RESOURCES;
-
-            Status = ReadFileRecord(DeviceExt, MFTIndex, FileRecord);
-            if (NT_SUCCESS(Status))
-                Entry.ShortName = GetFileNameFromRecord(DeviceExt, FileRecord, NTFS_FILE_NAME_DOS);
-        }
+        Status = NtfsGetDirEntryInformation(DeviceExt, FileInformationClass, FileRecord,
+                                            MFTIndex, NULL, Buffer, BufferLength,
+                                            Written, First);
     }
 
-    Status = NtfsGetListingInformation(FileInformationClass, &Entry, MFTIndex, NULL,
-                                       Buffer, BufferLength, Written, First);
-
-    if (FileRecord != NULL)
-        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
+    ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
 
     return Status;
 }
@@ -916,6 +901,14 @@ NtfsQueryDirectory(PNTFS_IRP_CONTEXT IrpContext)
 
         if (Status == STATUS_BUFFER_OVERFLOW || Status == STATUS_INVALID_INFO_CLASS)
         {
+            break;
+        }
+
+        /* Nothing was filled in, so this is where the listing ends */
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Can't describe MFT record %I64u in '%S' (Status %lx)\n", MFTRecord, Fcb->PathName, Status);
+            Status = (First ? STATUS_NO_SUCH_FILE : STATUS_NO_MORE_FILES);
             break;
         }
 
