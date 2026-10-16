@@ -227,7 +227,7 @@ typedef struct _ROS_VACB
     PROS_SHARED_CACHE_MAP SharedCacheMap;
     /* Pins on this view, the lazy writer leaves it alone while there are any. */
     volatile LONG PinnedCount;
-    /* Set while the lazy writer flushes this view, new pins wait for it. */
+    /* Flushes of this view in progress, new pins wait for them. */
     volatile LONG Flushing;
     /* Pointer to the next VACB in a chain. */
 } ROS_VACB, *PROS_VACB;
@@ -319,6 +319,19 @@ NTSTATUS
 CcRosFlushVacb(
     _In_ PROS_VACB Vacb,
     _Out_opt_ PIO_STATUS_BLOCK Iosb
+);
+
+VOID
+NTAPI
+CcRosBeginFlushVacb(
+    _In_ PROS_VACB Vacb,
+    _In_opt_ PKGUARDED_MUTEX HeldLock
+);
+
+VOID
+NTAPI
+CcRosEndFlushVacb(
+    _In_ PROS_VACB Vacb
 );
 
 NTSTATUS

@@ -439,10 +439,10 @@ CcRosFlushDirtyPages (
         /* Like Windows, don't write what the file system still has pinned: it may be
          * halfway through changing it, and FastFat forgets its dirty FAT sectors once
          * written. New pins wait for us once Flushing is set. */
-        InterlockedExchange(&current->Flushing, 1);
+        InterlockedIncrement(&current->Flushing);
         if (!Wait && InterlockedCompareExchange(&current->PinnedCount, 0, 0) != 0)
         {
-            InterlockedExchange(&current->Flushing, 0);
+            InterlockedDecrement(&current->Flushing);
             SharedCacheMap->Callbacks->ReleaseFromLazyWrite(SharedCacheMap->LazyWriteContext);
             CcRosVacbDecRefCount(current);
             OldIrql = KeAcquireQueuedSpinLock(LockQueueMasterLock);
@@ -457,7 +457,7 @@ CcRosFlushDirtyPages (
         IO_STATUS_BLOCK Iosb;
         Status = CcRosFlushVacb(current, &Iosb);
 
-        InterlockedExchange(&current->Flushing, 0);
+        InterlockedDecrement(&current->Flushing);
 
         SharedCacheMap->Callbacks->ReleaseFromLazyWrite(SharedCacheMap->LazyWriteContext);
 
@@ -1272,6 +1272,9 @@ CcFlushCache (
 
         if (vacb != NULL)
         {
+            /* Every pin holds the view, so only then can someone be in the middle of changing the data */
+            CcRosBeginFlushVacb(vacb, &SharedCacheMap->FlushCacheLock);
+
             /*
              * NOTE: vacb->Dirty is read here without holding the spinlock.
              * The lock was released by CcRosLookupVacb before returning. A
@@ -1285,6 +1288,7 @@ CcFlushCache (
                 Status = CcRosFlushVacb(vacb, &VacbIosb);
                 if (!NT_SUCCESS(Status))
                 {
+                    CcRosEndFlushVacb(vacb);
                     CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
                     break;
                 }
@@ -1293,8 +1297,6 @@ CcFlushCache (
                 if (IoStatus)
                     IoStatus->Information += VacbIosb.Information;
             }
-
-            CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
         }
 
         if (!DirtyVacb)
@@ -1316,7 +1318,14 @@ CcFlushCache (
             }
 
             if (!NT_SUCCESS(Status))
+            {
+                if (vacb != NULL)
+                {
+                    CcRosEndFlushVacb(vacb);
+                    CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
+                }
                 break;
+            }
 
             if (IoStatus)
                 IoStatus->Information += MmIosb.Information;
@@ -1324,6 +1333,12 @@ CcFlushCache (
             /* Update VDL */
             if (SharedCacheMap->ValidDataLength.QuadPart < FlushEnd)
                 SharedCacheMap->ValidDataLength.QuadPart = FlushEnd;
+        }
+
+        if (vacb != NULL)
+        {
+            CcRosEndFlushVacb(vacb);
+            CcRosReleaseVacb(SharedCacheMap, vacb, FALSE, FALSE);
         }
 
         if (!NT_SUCCESS(RtlLongLongAdd(FlushStart, VACB_MAPPING_GRANULARITY, &FlushStart)))

@@ -161,6 +161,83 @@ CcpDereferenceBcb(
     }
 }
 
+/**
+ * @brief
+ * Waits until no other thread has data of the view pinned, then keeps new pins
+ * waiting until CcRosEndFlushVacb.
+ *
+ * FastFat drops a FAT sector from its dirty list once a paging write covers it,
+ * so the write must not catch an entry halfway through a change. This is what
+ * Windows gets from CcFlushCache taking the BCB resources. Pins of the calling
+ * thread are left alone, the caller is the one changing that data.
+ *
+ * @param[in] HeldLock
+ * A lock the caller holds, dropped while waiting since the pin owner may need it
+ * to unpin (a write through unpin flushes the same file).
+ */
+VOID
+NTAPI
+CcRosBeginFlushVacb(
+    _In_ PROS_VACB Vacb,
+    _In_opt_ PKGUARDED_MUTEX HeldLock)
+{
+    PROS_SHARED_CACHE_MAP SharedCacheMap = Vacb->SharedCacheMap;
+    PINTERNAL_BCB Foreign;
+    PLIST_ENTRY Entry;
+    KIRQL OldIrql;
+
+    for (;;)
+    {
+        /* Set first, a pin that misses the scan below sees it once it holds its BCB */
+        InterlockedIncrement(&Vacb->Flushing);
+
+        Foreign = NULL;
+        KeAcquireSpinLock(&SharedCacheMap->BcbSpinLock, &OldIrql);
+        for (Entry = SharedCacheMap->BcbList.Flink;
+             Entry != &SharedCacheMap->BcbList;
+             Entry = Entry->Flink)
+        {
+            PINTERNAL_BCB Bcb = CONTAINING_RECORD(Entry, INTERNAL_BCB, BcbEntry);
+
+            /* Pins hold the lock shared unless PIN_EXCLUSIVE, this counts both */
+            if (Bcb->Vacb == Vacb && Bcb->PinCount != 0 &&
+                ExIsResourceAcquiredSharedLite(&Bcb->Lock) == 0)
+            {
+                Bcb->RefCount++;
+                Foreign = Bcb;
+                break;
+            }
+        }
+        KeReleaseSpinLock(&SharedCacheMap->BcbSpinLock, OldIrql);
+
+        if (Foreign == NULL)
+            return;
+
+        /* Let pins waiting on us through, and wait for the owner to unpin */
+        InterlockedDecrement(&Vacb->Flushing);
+        if (HeldLock)
+            KeReleaseGuardedMutex(HeldLock);
+
+        KeEnterCriticalRegion();
+        ExAcquireResourceExclusiveLite(&Foreign->Lock, TRUE);
+        ExReleaseResourceLite(&Foreign->Lock);
+        KeLeaveCriticalRegion();
+
+        CcpDereferenceBcb(SharedCacheMap, Foreign);
+
+        if (HeldLock)
+            KeAcquireGuardedMutex(HeldLock);
+    }
+}
+
+VOID
+NTAPI
+CcRosEndFlushVacb(
+    _In_ PROS_VACB Vacb)
+{
+    InterlockedDecrement(&Vacb->Flushing);
+}
+
 static
 PVOID
 CcpGetAppropriateBcb(
