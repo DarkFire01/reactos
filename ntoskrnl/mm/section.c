@@ -1934,6 +1934,19 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
     }
     else
     {
+        /*
+         * CORE-19200: a file page being written can't be changed until the write is done. The file
+         * system may treat what it wrote as clean (FastFat's dirty FAT sectors), losing the change.
+         */
+        if (IS_WRITE_SSE(Entry) && FlagOn(*Segment->Flags, MM_DATAFILE_SEGMENT))
+        {
+            MmUnlockSectionSegment(Segment);
+            MmUnlockAddressSpace(AddressSpace);
+            KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
+            MmLockAddressSpace(AddressSpace);
+            return STATUS_MM_RESTART_OPERATION;
+        }
+
         /* We already have a page on this section offset. Map it into the process address space. */
         Page = PFN_FROM_SSE(Entry);
 
