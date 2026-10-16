@@ -1329,8 +1329,7 @@ SetResidentAttributeDataLength(PDEVICE_EXTENSION Vcb,
 * Volume the attribute lives on
 *
 * @param Context
-* Attribute to map. Its data run cache is updated to reflect where the mapping
-* stopped.
+* Attribute to map. Only its MCB is consulted.
 *
 * @param Offset
 * Byte offset into the attribute to start mapping at
@@ -1363,151 +1362,59 @@ NtfsMapAttributeRuns(PDEVICE_EXTENSION Vcb,
                      PNTFS_IO_RUN_LIST RunList,
                      PULONG MappedLength)
 {
-    ULONGLONG LastLCN = 0;
-    ULONGLONG CurrentOffset = 0;
-    PUCHAR DataRun;
-    LONGLONG DataRunOffset;
-    ULONGLONG DataRunLength = 0;
-    LONGLONG DataRunStartLCN = -1;
-    ULONG RunLength;
+    ULONG BytesPerCluster = Vcb->NtfsInfo.BytesPerCluster;
+    ULONGLONG VcnLimit = Context->pRecord->NonResident.HighestVCN + 1;
+    ULONGLONG Vcn;
+    ULONG InCluster;
+    LONGLONG Lbn;
+    LONGLONG Clusters;
+    ULONGLONG Available;
+    ULONG Piece;
     ULONG Mapped = 0;
-    ULONG UsedBufferSize;
     NTSTATUS Status = STATUS_SUCCESS;
-
-    //TEMPTEMP
-    PUCHAR TempBuffer;
 
     *MappedLength = 0;
 
-    // This will be rewritten in the next iteration to just use the DataRuns MCB directly
-    TempBuffer = ExAllocatePoolWithTag(NonPagedPool, Vcb->NtfsInfo.BytesPerFileRecord, TAG_NTFS);
-    if (TempBuffer == NULL)
-    {
-        DPRINT1("Not enough memory!\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    RtlZeroMemory(TempBuffer, Vcb->NtfsInfo.BytesPerFileRecord);
-
-    ConvertLargeMCBToDataRuns(&Context->DataRunsMCB,
-                              Context->pRecord->NonResident.HighestVCN + 1,
-                              TempBuffer,
-                              Vcb->NtfsInfo.BytesPerFileRecord,
-                              &UsedBufferSize);
-
-    DataRun = TempBuffer;
-
-    // I. Walk forward to the data run that holds Offset.
-    while (1)
-    {
-        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-        if (DataRunOffset != (LONGLONG)-1)
-        {
-            /* Normal data run. */
-            DataRunStartLCN = LastLCN + DataRunOffset;
-            LastLCN = DataRunStartLCN;
-        }
-        else
-        {
-            /* Sparse data run. */
-            DataRunStartLCN = -1;
-        }
-
-        if (Offset >= CurrentOffset &&
-            Offset < CurrentOffset + (DataRunLength * Vcb->NtfsInfo.BytesPerCluster))
-        {
-            break;
-        }
-
-        if (*DataRun == 0)
-        {
-            /* Offset is past the last cluster the attribute has allocated. */
-            Status = STATUS_END_OF_FILE;
-            goto Cleanup;
-        }
-
-        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-    }
-
-    // II. Collect the runs. The first is special only in that the request
-    // usually starts partway into it.
-
-    RunLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset), Length);
-
-    Status = NtfsAddIoRun(RunList,
-                          (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
-                              DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster + Offset - CurrentOffset,
-                          RunLength);
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
-    Length -= RunLength;
-    Mapped += RunLength;
-
-    /* Did that consume the rest of this data run? */
-    if (RunLength == DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset))
-    {
-        /* Never decode past the terminator; the caller gets a short map */
-        if (*DataRun == 0)
-            goto Cleanup;
-
-        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-        if (DataRunOffset != (LONGLONG)-1)
-        {
-            DataRunStartLCN = LastLCN + DataRunOffset;
-            LastLCN = DataRunStartLCN;
-        }
-        else
-            DataRunStartLCN = -1;
-    }
-
     while (Length > 0)
     {
-        RunLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster, Length);
+        Vcn = Offset / BytesPerCluster;
+        InCluster = (ULONG)(Offset % BytesPerCluster);
+
+        /* Past the last cluster the attribute has; the caller gets a short map */
+        if (Vcn >= VcnLimit)
+        {
+            if (Mapped == 0)
+                Status = STATUS_END_OF_FILE;
+            break;
+        }
+
+        /* A hole the MCB doesn't reach is the sparse tail of the stream */
+        if (!FsRtlLookupLargeMcbEntry(&Context->DataRunsMCB, Vcn, &Lbn, &Clusters, NULL, NULL, NULL))
+        {
+            Lbn = -1;
+            Clusters = VcnLimit - Vcn;
+        }
+
+        if (Clusters <= 0)
+        {
+            Status = STATUS_FILE_CORRUPT_ERROR;
+            break;
+        }
+
+        Clusters = min((ULONGLONG)Clusters, VcnLimit - Vcn);
+        Available = (ULONGLONG)Clusters * BytesPerCluster - InCluster;
+        Piece = (ULONG)min(Available, Length);
 
         Status = NtfsAddIoRun(RunList,
-                              (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
-                                  DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster,
-                              RunLength);
+                              (Lbn == -1) ? NTFS_SPARSE_LBO : Lbn * BytesPerCluster + InCluster,
+                              Piece);
         if (!NT_SUCCESS(Status))
-            goto Cleanup;
-
-        Length -= RunLength;
-        Mapped += RunLength;
-
-        /* We satisfied the request, but there is still data in this run. */
-        if (Length == 0 && RunLength != DataRunLength * Vcb->NtfsInfo.BytesPerCluster)
             break;
 
-        /* Last run the attribute has, so the caller gets a short map */
-        if (*DataRun == 0)
-            break;
-
-        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-        if (DataRunOffset != (LONGLONG)-1)
-        {
-            /* Normal data run. */
-            DataRunStartLCN = LastLCN + DataRunOffset;
-            LastLCN = DataRunStartLCN;
-        }
-        else
-        {
-            /* Sparse data run. */
-            DataRunStartLCN = -1;
-        }
+        Offset += Piece;
+        Length -= Piece;
+        Mapped += Piece;
     }
-
-Cleanup:
-    Context->CacheRun = DataRun;
-    Context->CacheRunOffset = Offset + Mapped;
-    Context->CacheRunStartLCN = DataRunStartLCN;
-    Context->CacheRunLength = DataRunLength;
-    Context->CacheRunLastLCN = LastLCN;
-    Context->CacheRunCurrentOffset = CurrentOffset;
-
-    //TEMPTEMP
-    ExFreePoolWithTag(TempBuffer, TAG_NTFS);
 
     *MappedLength = Mapped;
 
