@@ -563,11 +563,11 @@ CreateBTreeNodeFromIndexNode(PDEVICE_EXTENSION Vcb,
     // TODO: Confirm index bitmap has this node marked as in-use
 
     // Read the node
-    BytesRead = ReadAttribute(Vcb,
-                              IndexAllocationAttributeCtx,
-                              IndexNodeOffset,
-                              (PCHAR)NodeBuffer,
-                              IndexBufferSize);
+    BytesRead = NtfsReadIndexAllocation(Vcb,
+                                        IndexAllocationAttributeCtx,
+                                        IndexNodeOffset,
+                                        (PCHAR)NodeBuffer,
+                                        IndexBufferSize);
 
     ASSERT(BytesRead == IndexBufferSize);
     NT_ASSERT(NodeBuffer->Ntfs.Type == NRH_INDX_TYPE);

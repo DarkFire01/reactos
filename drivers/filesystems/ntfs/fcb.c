@@ -131,6 +131,9 @@ NtfsDestroyFCB(PNTFS_FCB Fcb)
     if (Fcb->DataMap != NULL)
         NtfsDereferenceDataMap(Fcb->DataMap);
 
+    if (Fcb->IndexFcb != NULL)
+        NtfsCloseMetadataStream(Fcb->IndexFcb);
+
     FsRtlUninitializeFileLock(&Fcb->FileLock);
     ExDeleteResourceLite(&Fcb->PagingIoResource);
     ExDeleteResourceLite(&Fcb->MainResource);
@@ -157,7 +160,7 @@ NtfsIsRegularFileObject(
     if (Fcb == NULL || Fcb->Identifier.Type != NTFS_TYPE_FCB)
         return FALSE;
 
-    return !(Fcb->Flags & (FCB_IS_VOLUME | FCB_IS_MFT_STREAM)) &&
+    return !(Fcb->Flags & (FCB_IS_VOLUME | FCB_IS_MFT_STREAM | FCB_IS_INDEX_STREAM)) &&
            !NtfsFCBIsDirectory(Fcb);
 }
 
@@ -325,6 +328,47 @@ NtfsGrabFCBFromTable(PNTFS_VCB Vcb,
     }
 
     KeReleaseSpinLock(&Vcb->FcbListLock, oldIrql);
+
+    return NULL;
+}
+
+
+/**
+* @name NtfsReferenceDirectoryFcb
+* @implemented
+*
+* Finds the FCB of an open directory by its file record.
+*
+* @return
+* The FCB, with a reference the caller drops through NtfsReleaseFCB(), or NULL
+* if the directory has none.
+*/
+PNTFS_FCB
+NTAPI
+NtfsReferenceDirectoryFcb(
+    _In_ PNTFS_VCB Vcb,
+    _In_ ULONGLONG MftIndex)
+{
+    KIRQL OldIrql;
+    PLIST_ENTRY ListEntry;
+    PNTFS_FCB Fcb;
+
+    KeAcquireSpinLock(&Vcb->FcbListLock, &OldIrql);
+
+    for (ListEntry = Vcb->FcbListHead.Flink;
+         ListEntry != &Vcb->FcbListHead;
+         ListEntry = ListEntry->Flink)
+    {
+        Fcb = CONTAINING_RECORD(ListEntry, NTFS_FCB, FcbListEntry);
+        if (Fcb->MFTIndex == MftIndex && NtfsFCBIsDirectory(Fcb))
+        {
+            Fcb->RefCount++;
+            KeReleaseSpinLock(&Vcb->FcbListLock, OldIrql);
+            return Fcb;
+        }
+    }
+
+    KeReleaseSpinLock(&Vcb->FcbListLock, OldIrql);
 
     return NULL;
 }

@@ -174,6 +174,12 @@ FindAttribute(PDEVICE_EXTENSION Vcb,
 
                 (*AttrCtx)->FileMFTIndex = MftRecord->MFTRecordNumber;
 
+                /* An extension record names the file it belongs to */
+                if (MftRecord->BaseFileRecord != 0)
+                    (*AttrCtx)->FileOwnerMFTIndex = MftRecord->BaseFileRecord & NTFS_MFT_MASK;
+                else
+                    (*AttrCtx)->FileOwnerMFTIndex = MftRecord->MFTRecordNumber;
+
                 if (Offset != NULL)
                     *Offset = Context.Offset;
 
@@ -1697,6 +1703,19 @@ WriteAttributeFromIrp(PDEVICE_EXTENSION Vcb,
         return Status;
     }
 
+    /* A directory's index goes through its cache, which then stays valid */
+    if (Irp == NULL && Context->pRecord->Type == AttributeIndexAllocation)
+    {
+        BOOLEAN Handled;
+
+        Status = NtfsWriteIndexAllocation(Vcb, Context, Offset, Buffer, Length, &Handled);
+        if (Handled)
+        {
+            *RealLengthWritten = NT_SUCCESS(Status) ? Length : 0;
+            return Status;
+        }
+    }
+
     // This is a non-resident attribute: map the requested range onto the
     // volume, then issue every run it spans in a single parallel batch.
 
@@ -1734,6 +1753,11 @@ WriteAttributeFromIrp(PDEVICE_EXTENSION Vcb,
         *RealLengthWritten = 0;
         return Status;
     }
+
+    /* A directory may be reading this index through its cache. Paging
+     * writes are that cache writing back, it already holds them. */
+    if (Irp == NULL && Context->pRecord->Type == AttributeIndexAllocation && Transferred != 0)
+        NtfsIndexAllocationWritten(Vcb, Context->FileOwnerMFTIndex, NULL);
 
     *RealLengthWritten = Transferred;
 
@@ -2395,7 +2419,7 @@ UpdateIndexEntryFileName(PDEVICE_EXTENSION Vcb,
     Status = STATUS_OBJECT_PATH_NOT_FOUND;
     for (RecordOffset = 0; RecordOffset < IndexAllocationSize; RecordOffset += IndexBlockSize)
     {
-        ReadAttribute(Vcb, IndexAllocationCtx, RecordOffset, IndexRecord, IndexBlockSize);
+        NtfsReadIndexAllocation(Vcb, IndexAllocationCtx, RecordOffset, IndexRecord, IndexBlockSize);
         Status = FixupUpdateSequenceArray(Vcb, &((PFILE_RECORD_HEADER)IndexRecord)->Ntfs);
         if (!NT_SUCCESS(Status))
         {
@@ -4012,7 +4036,7 @@ BrowseSubNodeIndexEntries(PNTFS_VCB Vcb,
     Offset = GetAllocationOffsetFromVCN(Vcb, IndexBlockSize, VCN);
 
     // Read the index record
-    BytesRead = ReadAttribute(Vcb, IndexAllocationContext, Offset, (PCHAR)IndexRecord, IndexBlockSize);
+    BytesRead = NtfsReadIndexAllocation(Vcb, IndexAllocationContext, Offset, (PCHAR)IndexRecord, IndexBlockSize);
     if (BytesRead != IndexBlockSize)
     {
         DPRINT1("Unable to read index record!\n");
@@ -4589,11 +4613,11 @@ NtfsIndexNodeIsEmpty(
     if (IndexBuffer == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    BytesRead = ReadAttribute(Vcb,
-                              IndexAllocationContext,
-                              GetAllocationOffsetFromVCN(Vcb, IndexBlockSize, Vcn),
-                              (PCHAR)IndexBuffer,
-                              IndexBlockSize);
+    BytesRead = NtfsReadIndexAllocation(Vcb,
+                                        IndexAllocationContext,
+                                        GetAllocationOffsetFromVCN(Vcb, IndexBlockSize, Vcn),
+                                        (PCHAR)IndexBuffer,
+                                        IndexBlockSize);
     if (BytesRead != IndexBlockSize || IndexBuffer->Ntfs.Type != NRH_INDX_TYPE)
     {
         DPRINT1("Unable to read index node at VCN %I64u\n", Vcn);

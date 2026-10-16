@@ -297,6 +297,158 @@ NtfsIndexSetLevel(
     return NtfsIndexEntryIsSane(Level->Entry, Level->End) ? STATUS_SUCCESS : STATUS_DATA_ERROR;
 }
 
+/* Returns the index stream of a directory, sized to its allocation. With
+ * Create clear, a directory that has none yet gets none. */
+static
+PNTFS_FCB
+NTAPI
+NtfsGetIndexStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_opt_ PNTFS_FCB DirectoryFcb,
+    _In_ ULONGLONG DirectoryMftIndex,
+    _In_ PNTFS_ATTR_CONTEXT AllocationContext,
+    _In_ BOOLEAN Create)
+{
+    PNTFS_FCB IndexFcb;
+    ULONGLONG Size;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    if (DirectoryFcb == NULL || DirectoryFcb->IndexUncached)
+        return NULL;
+
+    Size = AttributeDataLength(AllocationContext->pRecord);
+
+    /* The usual case: made earlier and still the right size */
+    IndexFcb = DirectoryFcb->IndexFcb;
+    if (IndexFcb != NULL && (ULONGLONG)IndexFcb->RFCB.FileSize.QuadPart == Size)
+        return IndexFcb;
+
+    if (IndexFcb == NULL && !Create)
+        return NULL;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceExclusiveLite(&Vcb->IndexStreamResource, TRUE);
+
+    IndexFcb = DirectoryFcb->IndexFcb;
+    if (IndexFcb == NULL)
+    {
+        Status = NtfsCreateMetadataStream(Vcb, FCB_IS_INDEX_STREAM, DirectoryMftIndex, Size, &IndexFcb);
+        if (NT_SUCCESS(Status))
+            InterlockedExchangePointer((PVOID *)&DirectoryFcb->IndexFcb, IndexFcb);
+    }
+    else if ((ULONGLONG)IndexFcb->RFCB.FileSize.QuadPart != Size)
+    {
+        IndexFcb->RFCB.AllocationSize.QuadPart = Size;
+        IndexFcb->RFCB.FileSize.QuadPart = Size;
+        IndexFcb->RFCB.ValidDataLength.QuadPart = Size;
+
+        _SEH2_TRY
+        {
+            CcSetFileSizes(IndexFcb->FileObject, (PCC_FILE_SIZES)&IndexFcb->RFCB.AllocationSize);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Reading the index of MFT record %I64u uncached (Status %lx)\n", DirectoryMftIndex, Status);
+        InterlockedExchange(&DirectoryFcb->IndexUncached, TRUE);
+        IndexFcb = NULL;
+    }
+
+    ExReleaseResourceLite(&Vcb->IndexStreamResource);
+    KeLeaveCriticalRegion();
+
+    return IndexFcb;
+}
+
+/* Copies part of the $I30 allocation, from the directory's cache when it can */
+static
+ULONG
+NTAPI
+NtfsCopyIndexAllocation(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_opt_ PNTFS_FCB DirectoryFcb,
+    _In_ ULONGLONG DirectoryMftIndex,
+    _In_ PNTFS_ATTR_CONTEXT AllocationContext,
+    _In_ ULONGLONG Offset,
+    _Out_writes_bytes_(Length) PCHAR Buffer,
+    _In_ ULONG Length)
+{
+    PNTFS_FCB IndexFcb = NULL;
+    LARGE_INTEGER FileOffset;
+    IO_STATUS_BLOCK IoStatus;
+    BOOLEAN Copied = FALSE;
+
+    if (Offset + Length <= AttributeDataLength(AllocationContext->pRecord))
+        IndexFcb = NtfsGetIndexStream(Vcb, DirectoryFcb, DirectoryMftIndex, AllocationContext, TRUE);
+
+    if (IndexFcb != NULL)
+    {
+        FileOffset.QuadPart = Offset;
+
+        _SEH2_TRY
+        {
+            Copied = CcCopyRead(IndexFcb->FileObject, &FileOffset, Length, TRUE, Buffer, &IoStatus) &&
+                     NT_SUCCESS(IoStatus.Status) &&
+                     IoStatus.Information == Length;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Copied = FALSE;
+        }
+        _SEH2_END;
+
+        if (Copied)
+            return Length;
+    }
+
+    /* Whatever the cache couldn't do, the disk still can */
+    return ReadAttribute(Vcb, AllocationContext, Offset, Buffer, Length);
+}
+
+/**
+* @name NtfsReadIndexAllocation
+* @implemented
+*
+* ReadAttribute() for a directory's $I30 allocation, served from the
+* directory's index cache when it has an FCB.
+*
+* @return
+* The number of bytes read, zero on failure.
+*/
+ULONG
+NTAPI
+NtfsReadIndexAllocation(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_ATTR_CONTEXT AllocationContext,
+    _In_ ULONGLONG Offset,
+    _Out_writes_bytes_(Length) PCHAR Buffer,
+    _In_ ULONG Length)
+{
+    PNTFS_FCB DirectoryFcb;
+    ULONG Read;
+
+    DirectoryFcb = NtfsReferenceDirectoryFcb(Vcb, AllocationContext->FileOwnerMFTIndex);
+
+    Read = NtfsCopyIndexAllocation(Vcb,
+                                   DirectoryFcb,
+                                   AllocationContext->FileOwnerMFTIndex,
+                                   AllocationContext,
+                                   Offset,
+                                   Buffer,
+                                   Length);
+
+    if (DirectoryFcb != NULL)
+        NtfsReleaseFCB(Vcb, DirectoryFcb);
+
+    return Read;
+}
+
 /* Reads the index block at Vcn into Block and undoes its fixups */
 static
 NTSTATUS
@@ -312,7 +464,13 @@ NtfsReadIndexBlock(
 
     Offset = GetAllocationOffsetFromVCN(Vcb, BlockSize, Vcn);
 
-    if (ReadAttribute(Vcb, Cursor->AllocationContext, Offset, (PCHAR)Block, BlockSize) != BlockSize)
+    if (NtfsCopyIndexAllocation(Vcb,
+                                Cursor->DirectoryFcb,
+                                Cursor->DirectoryMftIndex,
+                                Cursor->AllocationContext,
+                                Offset,
+                                (PCHAR)Block,
+                                BlockSize) != BlockSize)
     {
         DPRINT1("Unable to read index block at VCN %I64u of MFT record %I64u\n", Vcn, Cursor->DirectoryMftIndex);
         return STATUS_UNSUCCESSFUL;
@@ -344,7 +502,8 @@ NtfsReadIndexBlock(
 * Volume the directory lives on
 *
 * @param DirectoryFcb
-* FCB of the directory, if the caller has one
+* FCB of the directory, if the caller has one. Index blocks are then read
+* through its cache.
 *
 * @param DirectoryMftIndex
 * File record of the directory
@@ -427,6 +586,13 @@ NtfsIndexCursorOpen(
     Status = FindAttribute(Vcb, FileRecord, AttributeIndexAllocation, L"$I30", 4, &Cursor->AllocationContext, NULL);
     if (NT_SUCCESS(Status))
     {
+        /* Writes find the cache by these numbers; if they're off, it can't be kept in step */
+        if (FileRecord->MFTRecordNumber != (ULONG)DirectoryMftIndex ||
+            Cursor->AllocationContext->FileOwnerMFTIndex != DirectoryMftIndex)
+        {
+            Cursor->DirectoryFcb = NULL;
+        }
+
         Cursor->BlockSize = Cursor->Root->SizeOfEntry;
         if (!Cursor->AllocationContext->pRecord->IsNonResident ||
             Cursor->BlockSize < Vcb->NtfsInfo.BytesPerSector ||
@@ -710,6 +876,7 @@ NtfsIndexFindName(
     PNTFS_INDEX_CURSOR Cursor;
     PNTFS_INDEX_LEVEL Level;
     PINDEX_ENTRY_ATTRIBUTE Entry;
+    PNTFS_FCB DirectoryFcb;
     UNICODE_STRING EntryName;
     BOOLEAN SawNonAscii = FALSE;
     ULONG NameLength = Name->Length / sizeof(WCHAR);
@@ -722,7 +889,9 @@ NtfsIndexFindName(
     if (Cursor == NULL)
         return STATUS_MORE_PROCESSING_REQUIRED;
 
-    Status = NtfsIndexCursorOpen(Cursor, Vcb, NULL, DirectoryMftIndex);
+    DirectoryFcb = NtfsReferenceDirectoryFcb(Vcb, DirectoryMftIndex);
+
+    Status = NtfsIndexCursorOpen(Cursor, Vcb, DirectoryFcb, DirectoryMftIndex);
     if (!NT_SUCCESS(Status))
     {
         Status = STATUS_MORE_PROCESSING_REQUIRED;
@@ -797,7 +966,327 @@ Quit:
     NtfsIndexCursorClose(Cursor);
     ExFreePoolWithTag(Cursor, TAG_NTFS);
 
+    if (DirectoryFcb != NULL)
+        NtfsReleaseFCB(Vcb, DirectoryFcb);
+
     return Status;
+}
+
+/**
+* @name NtfsPageInIndexStream
+* @implemented
+*
+* Serves a paging read of a directory's index stream from its $I30 allocation.
+*
+* @param IndexFcb
+* FCB of the index stream; its MFTIndex is the directory
+*
+* @param Irp
+* The paging request; Buffer maps its MDL
+*
+* @param Transferred
+* Receives Length on success; the part past the allocation reads as zeroes
+*/
+NTSTATUS
+NTAPI
+NtfsPageInIndexStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_FCB IndexFcb,
+    _In_ PIRP Irp,
+    _Out_writes_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG Offset,
+    _Out_ PULONG Transferred)
+{
+    PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_CONTEXT AllocationContext;
+    ULONGLONG ValidLength;
+    ULONG ToRead = 0;
+    ULONG Read = 0;
+    NTSTATUS Status;
+
+    *Transferred = 0;
+
+    FileRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
+    if (FileRecord == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = ReadFileRecord(Vcb, IndexFcb->MFTIndex, FileRecord);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    Status = FindAttribute(Vcb, FileRecord, AttributeIndexAllocation, L"$I30", 4, &AllocationContext, NULL);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    ValidLength = AttributeDataLength(AllocationContext->pRecord);
+    if (Offset < ValidLength)
+    {
+        ToRead = (ULONG)min(Length, ValidLength - Offset);
+        ToRead = ROUND_UP(ToRead, Vcb->NtfsInfo.BytesPerSector);
+
+        /* The IRP may only go down whole when nothing is left to zero after it */
+        Read = ReadAttributeToIrp(Vcb,
+                                  AllocationContext,
+                                  Offset,
+                                  (PCHAR)Buffer,
+                                  ToRead,
+                                  (ToRead == Length) ? Irp : NULL);
+        if (Read == 0)
+            Status = STATUS_UNEXPECTED_IO_ERROR;
+    }
+
+    ReleaseAttributeContext(AllocationContext);
+
+    if (NT_SUCCESS(Status))
+    {
+        if (Read < Length)
+            RtlZeroMemory(Buffer + Read, Length - Read);
+
+        *Transferred = Length;
+    }
+
+Quit:
+    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+
+    return Status;
+}
+
+/**
+* @name NtfsPageOutIndexStream
+* @implemented
+*
+* Serves a paging write of a directory's index stream, which only the
+* write-through of NtfsWriteIndexAllocation() produces.
+*
+* @param Transferred
+* Receives Length on success; what lies past the allocation is dropped
+*/
+NTSTATUS
+NTAPI
+NtfsPageOutIndexStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_FCB IndexFcb,
+    _In_ PIRP Irp,
+    _In_reads_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG Offset,
+    _Out_ PULONG Transferred)
+{
+    PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_CONTEXT AllocationContext;
+    ULONGLONG ValidLength;
+    ULONG Inside = 0;
+    ULONG Written = 0;
+    NTSTATUS Status;
+
+    *Transferred = 0;
+
+    FileRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
+    if (FileRecord == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* The record went out before any node that uses new clusters, so its runs are current */
+    Status = ReadFileRecord(Vcb, IndexFcb->MFTIndex, FileRecord);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    Status = FindAttribute(Vcb, FileRecord, AttributeIndexAllocation, L"$I30", 4, &AllocationContext, NULL);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    ValidLength = AttributeDataLength(AllocationContext->pRecord);
+    if (Offset < ValidLength)
+    {
+        /* Always with the IRP: without one, the write would come back through this cache */
+        Inside = (ULONG)min(Length, ValidLength - Offset);
+        Status = WriteAttributeFromIrp(Vcb,
+                                       AllocationContext,
+                                       Offset,
+                                       Buffer,
+                                       Inside,
+                                       &Written,
+                                       NULL,
+                                       Irp);
+    }
+
+    ReleaseAttributeContext(AllocationContext);
+
+    if (NT_SUCCESS(Status))
+        *Transferred = Length;
+
+Quit:
+    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+
+    return Status;
+}
+
+/**
+* @name NtfsWriteIndexAllocation
+* @implemented
+*
+* Writes part of a directory's $I30 allocation through its index cache, so
+* the cache stays valid instead of being dropped.
+*
+* @param AllocationContext
+* The allocation being written
+*
+* @param Handled
+* Set when the write went through the cache. When clear, nothing was
+* written and the caller writes to disk itself.
+*
+* @return
+* The status of the write when Handled is set.
+*
+* @remarks Like $MFT, the range is flushed before returning: nothing journals
+* our metadata, so it has to be on the disk already.
+*/
+NTSTATUS
+NTAPI
+NtfsWriteIndexAllocation(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_ATTR_CONTEXT AllocationContext,
+    _In_ ULONGLONG Offset,
+    _In_reads_bytes_(Length) const PUCHAR Buffer,
+    _In_ ULONG Length,
+    _Out_ PBOOLEAN Handled)
+{
+    ULONGLONG MftIndex = AllocationContext->FileOwnerMFTIndex;
+    PNTFS_FCB DirectoryFcb;
+    PNTFS_FCB IndexFcb = NULL;
+    LARGE_INTEGER FileOffset;
+    IO_STATUS_BLOCK IoStatus;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    *Handled = FALSE;
+
+    DirectoryFcb = NtfsReferenceDirectoryFcb(Vcb, MftIndex);
+    if (DirectoryFcb == NULL)
+        return STATUS_SUCCESS;
+
+    /* Nothing is cached for a directory without a stream, the disk alone will do */
+    if (Offset + Length <= AttributeDataLength(AllocationContext->pRecord))
+        IndexFcb = NtfsGetIndexStream(Vcb, DirectoryFcb, MftIndex, AllocationContext, FALSE);
+
+    if (IndexFcb != NULL)
+    {
+        FileOffset.QuadPart = Offset;
+
+        _SEH2_TRY
+        {
+            if (!CcCopyWrite(IndexFcb->FileObject, &FileOffset, Length, TRUE, Buffer))
+                Status = STATUS_UNSUCCESSFUL;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+
+        if (NT_SUCCESS(Status))
+        {
+            CcFlushCache(&IndexFcb->SectionObjectPointers, &FileOffset, Length, &IoStatus);
+            Status = IoStatus.Status;
+            *Handled = TRUE;
+        }
+        else
+        {
+            /* The cache may hold part of it now; it can't be trusted any more */
+            DPRINT1("Writing the index of MFT record %I64u through the cache failed (Status %lx)\n", MftIndex, Status);
+            InterlockedExchange(&DirectoryFcb->IndexUncached, TRUE);
+            Status = STATUS_SUCCESS;
+        }
+    }
+
+    /* Any other FCB of the directory still holds what was there before */
+    if (*Handled)
+        NtfsIndexAllocationWritten(Vcb, MftIndex, DirectoryFcb);
+
+    NtfsReleaseFCB(Vcb, DirectoryFcb);
+
+    return Status;
+}
+
+/**
+* @name NtfsIndexAllocationWritten
+* @implemented
+*
+* Keeps the cached index of a directory in step with a write that went
+* straight to its $I30 allocation on disk.
+*
+* @param MftIndex
+* The directory's file record
+*
+* @param Skip
+* An FCB whose cache already holds the write, or NULL
+*
+* @remarks The disk is always written first, so dropping the cache is enough.
+* All of it goes: Cc keeps a view that is only partly in the purged range, and
+* Mm then refuses the pages that view still maps. Should Cc refuse anyway,
+* because someone is reading through it right now, the directory goes back to
+* reading its index from disk.
+*/
+VOID
+NTAPI
+NtfsIndexAllocationWritten(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONGLONG MftIndex,
+    _In_opt_ PNTFS_FCB Skip)
+{
+    PNTFS_FCB Cached[4];
+    ULONG Count = 0;
+    ULONG i;
+    PLIST_ENTRY ListEntry;
+    PNTFS_FCB Fcb;
+    PNTFS_FCB IndexFcb;
+    KIRQL OldIrql;
+
+    /* One FCB per directory is the rule, but every one of them must hear of it */
+    KeAcquireSpinLock(&Vcb->FcbListLock, &OldIrql);
+
+    for (ListEntry = Vcb->FcbListHead.Flink;
+         ListEntry != &Vcb->FcbListHead;
+         ListEntry = ListEntry->Flink)
+    {
+        Fcb = CONTAINING_RECORD(ListEntry, NTFS_FCB, FcbListEntry);
+        if (Fcb == Skip || Fcb->MFTIndex != MftIndex || !NtfsFCBIsDirectory(Fcb) || Fcb->IndexFcb == NULL)
+            continue;
+
+        if (Count < ARRAYSIZE(Cached))
+        {
+            Fcb->RefCount++;
+            Cached[Count++] = Fcb;
+        }
+        else
+        {
+            InterlockedExchange(&Fcb->IndexUncached, TRUE);
+        }
+    }
+
+    KeReleaseSpinLock(&Vcb->FcbListLock, OldIrql);
+
+    if (Count == 0)
+        return;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceExclusiveLite(&Vcb->IndexStreamResource, TRUE);
+
+    for (i = 0; i < Count; i++)
+    {
+        IndexFcb = Cached[i]->IndexFcb;
+        if (!Cached[i]->IndexUncached &&
+            !CcPurgeCacheSection(&IndexFcb->SectionObjectPointers, NULL, 0, FALSE))
+        {
+            DPRINT1("Couldn't drop the cached index of MFT record %I64u, reading it uncached\n", MftIndex);
+            InterlockedExchange(&Cached[i]->IndexUncached, TRUE);
+        }
+    }
+
+    ExReleaseResourceLite(&Vcb->IndexStreamResource);
+    KeLeaveCriticalRegion();
+
+    for (i = 0; i < Count; i++)
+        NtfsReleaseFCB(Vcb, Cached[i]);
 }
 
 /* EOF */

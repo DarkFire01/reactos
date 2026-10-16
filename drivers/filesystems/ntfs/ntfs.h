@@ -137,6 +137,9 @@ typedef struct
     /* $MFT through the cache. NULL until the mount has the MFT runs. */
     PFILE_OBJECT MftStreamFileObject;
 
+    /* Serializes creating and resizing the index streams of directories */
+    ERESOURCE IndexStreamResource;
+
     NTFS_INFO NtfsInfo;
 
     NPAGED_LOOKASIDE_LIST FileRecLookasideList;
@@ -601,6 +604,8 @@ typedef struct _NTFS_ATTR_CONTEXT
 #define FCB_DELETED             0x0010
 /* The cached $MFT, its paging I/O goes straight to the MFT runs */
 #define FCB_IS_MFT_STREAM       0x0020
+/* The cached $I30 allocation of a directory */
+#define FCB_IS_INDEX_STREAM     0x0040
 #define MAX_PATH                260
 
 /* The $DATA runs of an open stream, shared by its paging I/O so that each
@@ -651,6 +656,12 @@ typedef struct _FCB
      * until paging I/O needs them, and again whenever the runs change. */
     PNTFS_DATA_MAP DataMap;
     ULONG DataMapGeneration;    /* Bumped by every invalidation */
+
+    /* For a directory, the FCB its $I30 allocation is cached through. Once
+     * IndexUncached is set the cache couldn't be kept in step, and the
+     * index is read from disk. */
+    struct _FCB* IndexFcb;
+    LONG IndexUncached;
 
     FILENAME_ATTRIBUTE Entry;
 
@@ -1186,6 +1197,12 @@ NtfsMakeFCBFromDirEntry(PNTFS_VCB Vcb,
                         ULONGLONG MFTIndex,
                         PNTFS_FCB * fileFCB);
 
+PNTFS_FCB
+NTAPI
+NtfsReferenceDirectoryFcb(
+    _In_ PNTFS_VCB Vcb,
+    _In_ ULONGLONG MftIndex);
+
 NTSTATUS
 NTAPI
 NtfsReferenceDataMap(
@@ -1302,6 +1319,54 @@ NtfsIndexFindName(
     _In_ PUNICODE_STRING Name,
     _In_ BOOLEAN CaseSensitive,
     _Out_ PULONGLONG MftIndex);
+
+NTSTATUS
+NTAPI
+NtfsPageInIndexStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_FCB IndexFcb,
+    _In_ PIRP Irp,
+    _Out_writes_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG Offset,
+    _Out_ PULONG Transferred);
+
+NTSTATUS
+NTAPI
+NtfsPageOutIndexStream(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_FCB IndexFcb,
+    _In_ PIRP Irp,
+    _In_reads_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length,
+    _In_ ULONGLONG Offset,
+    _Out_ PULONG Transferred);
+
+ULONG
+NTAPI
+NtfsReadIndexAllocation(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_ATTR_CONTEXT AllocationContext,
+    _In_ ULONGLONG Offset,
+    _Out_writes_bytes_(Length) PCHAR Buffer,
+    _In_ ULONG Length);
+
+NTSTATUS
+NTAPI
+NtfsWriteIndexAllocation(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ PNTFS_ATTR_CONTEXT AllocationContext,
+    _In_ ULONGLONG Offset,
+    _In_reads_bytes_(Length) const PUCHAR Buffer,
+    _In_ ULONG Length,
+    _Out_ PBOOLEAN Handled);
+
+VOID
+NTAPI
+NtfsIndexAllocationWritten(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONGLONG MftIndex,
+    _In_opt_ PNTFS_FCB Skip);
 
 /* lockctrl.c */
 

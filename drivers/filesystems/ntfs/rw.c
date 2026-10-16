@@ -463,22 +463,37 @@ NtfsRead(PNTFS_IRP_CONTEXT IrpContext)
                                      Irp,
                                      &ReturnedReadLength);
     }
-    else if (((PNTFS_FCB)FileObject->FsContext)->Flags & FCB_IS_MFT_STREAM)
+    else if (((PNTFS_FCB)FileObject->FsContext)->Flags & (FCB_IS_MFT_STREAM | FCB_IS_INDEX_STREAM))
     {
-        /* Only Cc reads it, to fill its pages */
+        PNTFS_FCB StreamFcb = (PNTFS_FCB)FileObject->FsContext;
+
+        /* Only Cc reads these, to fill its pages */
         if (!(Irp->Flags & IRP_PAGING_IO) || Buffer == NULL)
         {
             Irp->IoStatus.Information = 0;
             return (Buffer == NULL) ? STATUS_INSUFFICIENT_RESOURCES : STATUS_INVALID_DEVICE_REQUEST;
         }
 
-        Status = NtfsMftStreamPagingIo(DeviceExt,
-                                       IRP_MJ_READ,
-                                       Irp,
-                                       Buffer,
-                                       ReadLength,
-                                       ReadOffset.QuadPart,
-                                       &ReturnedReadLength);
+        if (StreamFcb->Flags & FCB_IS_MFT_STREAM)
+        {
+            Status = NtfsMftStreamPagingIo(DeviceExt,
+                                           IRP_MJ_READ,
+                                           Irp,
+                                           Buffer,
+                                           ReadLength,
+                                           ReadOffset.QuadPart,
+                                           &ReturnedReadLength);
+        }
+        else
+        {
+            Status = NtfsPageInIndexStream(DeviceExt,
+                                           StreamFcb,
+                                           Irp,
+                                           Buffer,
+                                           ReadLength,
+                                           ReadOffset.QuadPart,
+                                           &ReturnedReadLength);
+        }
     }
     else if (NtfsFCBIsDirectory((PNTFS_FCB)FileObject->FsContext))
     {
@@ -1283,14 +1298,14 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
                                      Irp,
                                      &ReturnedWriteLength);
     }
-    else if (Fcb->Flags & FCB_IS_MFT_STREAM)
+    else if (Fcb->Flags & (FCB_IS_MFT_STREAM | FCB_IS_INDEX_STREAM))
     {
-        /* Only Cc writes it, flushing what we wrote through it */
+        /* Only Cc writes these, flushing what we wrote through them */
         if (!(Irp->Flags & IRP_PAGING_IO))
         {
             Status = STATUS_INVALID_DEVICE_REQUEST;
         }
-        else
+        else if (Fcb->Flags & FCB_IS_MFT_STREAM)
         {
             Status = NtfsMftStreamPagingIo(DeviceExt,
                                            IRP_MJ_WRITE,
@@ -1299,6 +1314,16 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
                                            Length,
                                            ByteOffset.QuadPart,
                                            &ReturnedWriteLength);
+        }
+        else
+        {
+            Status = NtfsPageOutIndexStream(DeviceExt,
+                                            Fcb,
+                                            Irp,
+                                            Buffer,
+                                            Length,
+                                            ByteOffset.QuadPart,
+                                            &ReturnedWriteLength);
         }
     }
     else if (NtfsFCBIsDirectory(Fcb))

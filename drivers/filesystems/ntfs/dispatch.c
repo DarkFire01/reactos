@@ -107,11 +107,11 @@ NtfsDispatch(PNTFS_IRP_CONTEXT IrpContext)
              break;
 
         case IRP_MJ_WRITE:
-            /* The cached $MFT writing back is our own metadata, never gated before */
+            /* Our metadata caches writing back was never gated before */
             if (!NtfsGlobalData->EnableWriteSupport &&
                 !(IrpContext->FileObject != NULL &&
                   IrpContext->FileObject->FsContext != NULL &&
-                  (((PNTFS_FCB)IrpContext->FileObject->FsContext)->Flags & FCB_IS_MFT_STREAM)))
+                  (((PNTFS_FCB)IrpContext->FileObject->FsContext)->Flags & (FCB_IS_MFT_STREAM | FCB_IS_INDEX_STREAM))))
             {
                 DPRINT1("NTFS write-support is EXPERIMENTAL and is disabled by default!\n");
                 Status = STATUS_ACCESS_DENIED;
