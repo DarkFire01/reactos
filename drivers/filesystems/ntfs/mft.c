@@ -4310,6 +4310,15 @@ NtfsFindMftRecord(PDEVICE_EXTENSION Vcb,
            CaseSensitive ? "TRUE" : "FALSE",
            OutMFTIndex);
 
+    /* A name is found by walking down the index; the scan below only
+     * settles what the walk can't */
+    if (!DirSearch)
+    {
+        Status = NtfsIndexFindName(Vcb, MFTIndex, FileName, CaseSensitive, OutMFTIndex);
+        if (Status != STATUS_MORE_PROCESSING_REQUIRED)
+            return Status;
+    }
+
     MftRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
     if (MftRecord == NULL)
     {
@@ -4543,9 +4552,6 @@ NtfsFindFileAt(PDEVICE_EXTENSION Vcb,
     return STATUS_SUCCESS;
 }
 
-
-/* Deeper than any index this driver or Windows builds; past it the tree loops */
-#define NTFS_MAX_INDEX_DEPTH 32
 
 static
 NTSTATUS

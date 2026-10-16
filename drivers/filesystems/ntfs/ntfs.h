@@ -20,6 +20,9 @@
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
 
+/* Deeper than any index this driver or Windows builds; past it the tree loops */
+#define NTFS_MAX_INDEX_DEPTH 32
+
 #define DEVICE_NAME L"\\Ntfs"
 
 #include <pshpack1.h>
@@ -664,6 +667,27 @@ typedef struct
     USHORT Array[];
 } FIXUP_ARRAY, *PFIXUP_ARRAY;
 
+/* One node on the path of an index walk, and the entry the walk stands on in it */
+typedef struct _NTFS_INDEX_LEVEL
+{
+    PINDEX_BUFFER Block;            /* NULL for the root, which lives in the record */
+    PINDEX_ENTRY_ATTRIBUTE Entry;
+    PINDEX_ENTRY_ATTRIBUTE End;     /* First byte past the node's entries */
+} NTFS_INDEX_LEVEL, *PNTFS_INDEX_LEVEL;
+
+/* Visits the entries of a directory's $I30 index in collation order */
+typedef struct _NTFS_INDEX_CURSOR
+{
+    PDEVICE_EXTENSION Vcb;
+    PNTFS_FCB DirectoryFcb;         /* Caches the index blocks, may be NULL */
+    ULONGLONG DirectoryMftIndex;
+    PINDEX_ROOT_ATTRIBUTE Root;
+    PNTFS_ATTR_CONTEXT AllocationContext;   /* NULL when the index fits in the root */
+    ULONG BlockSize;
+    ULONG Depth;                    /* Zero once the walk ran off the end */
+    NTFS_INDEX_LEVEL Levels[NTFS_MAX_INDEX_DEPTH];
+} NTFS_INDEX_CURSOR, *PNTFS_INDEX_CURSOR;
+
 extern PNTFS_GLOBAL_DATA NtfsGlobalData;
 
 FORCEINLINE
@@ -1213,6 +1237,63 @@ VOID
 NTAPI
 NtfsCloseMetadataStream(
     _In_ PNTFS_FCB StreamFcb);
+
+LONG
+NTAPI
+NtfsCompareIndexNames(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_reads_(Length1) PCWCH Name1,
+    _In_ ULONG Length1,
+    _In_reads_(Length2) PCWCH Name2,
+    _In_ ULONG Length2,
+    _In_ BOOLEAN Exact);
+
+NTSTATUS
+NTAPI
+NtfsIndexCursorOpen(
+    _Out_ PNTFS_INDEX_CURSOR Cursor,
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_opt_ PNTFS_FCB DirectoryFcb,
+    _In_ ULONGLONG DirectoryMftIndex);
+
+VOID
+NTAPI
+NtfsIndexCursorClose(
+    _Inout_ PNTFS_INDEX_CURSOR Cursor);
+
+NTSTATUS
+NTAPI
+NtfsIndexCursorFirst(
+    _Inout_ PNTFS_INDEX_CURSOR Cursor);
+
+NTSTATUS
+NTAPI
+NtfsIndexCursorSeekAfter(
+    _Inout_ PNTFS_INDEX_CURSOR Cursor,
+    _In_reads_(NameLength) PCWCH Name,
+    _In_ ULONG NameLength);
+
+NTSTATUS
+NTAPI
+NtfsIndexCursorNext(
+    _Inout_ PNTFS_INDEX_CURSOR Cursor);
+
+FORCEINLINE
+PINDEX_ENTRY_ATTRIBUTE
+NtfsIndexCursorEntry(
+    _In_ PNTFS_INDEX_CURSOR Cursor)
+{
+    return (Cursor->Depth != 0) ? Cursor->Levels[Cursor->Depth - 1].Entry : NULL;
+}
+
+NTSTATUS
+NTAPI
+NtfsIndexFindName(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONGLONG DirectoryMftIndex,
+    _In_ PUNICODE_STRING Name,
+    _In_ BOOLEAN CaseSensitive,
+    _Out_ PULONGLONG MftIndex);
 
 /* lockctrl.c */
 
