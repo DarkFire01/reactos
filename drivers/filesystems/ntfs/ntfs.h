@@ -160,12 +160,17 @@ typedef struct
     ULONG LastCluster;
     ULONG LastOffset;
     ULONG Flags;
+    /* MFT indices of the matching entries, in index order, Entry walks it */
+    PULONGLONG DirEntries;
+    ULONG DirEntryCount;
+    ULONG DirEntryCapacity;
 } NTFS_CCB, *PNTFS_CCB;
 
 /* NTFS has no "." or ".." in its indices, so directory enumeration makes them
  * up. These record which of the two a scan has already handed out. */
 #define CCB_RETURNED_DOT        0x0001
 #define CCB_RETURNED_DOTDOT     0x0002
+#define CCB_DIR_SNAPSHOT        0x0004
 
 typedef struct
 {
@@ -1463,6 +1468,20 @@ NtfsFindMftRecord(PDEVICE_EXTENSION Vcb,
                   BOOLEAN DirSearch,
                   BOOLEAN CaseSensitive,
                   ULONGLONG *OutMFTIndex);
+
+NTSTATUS
+NTAPI
+NtfsSnapshotDirectory(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONGLONG DirectoryMftIndex,
+    _In_ PUNICODE_STRING Pattern,
+    _In_ BOOLEAN CaseSensitive,
+    _Inout_ PNTFS_CCB Ccb);
+
+VOID
+NTAPI
+NtfsFreeDirectorySnapshot(
+    _Inout_ PNTFS_CCB Ccb);
 
 /* misc.c */
 

@@ -4415,6 +4415,285 @@ NtfsFindFileAt(PDEVICE_EXTENSION Vcb,
 /* Deeper than any index this driver or Windows builds; past it the tree loops */
 #define NTFS_MAX_INDEX_DEPTH 32
 
+VOID
+NTAPI
+NtfsFreeDirectorySnapshot(
+    _Inout_ PNTFS_CCB Ccb)
+{
+    if (Ccb->DirEntries)
+        ExFreePoolWithTag(Ccb->DirEntries, TAG_NTFS);
+
+    Ccb->DirEntries = NULL;
+    Ccb->DirEntryCount = 0;
+    Ccb->DirEntryCapacity = 0;
+    ClearFlag(Ccb->Flags, CCB_DIR_SNAPSHOT);
+}
+
+static
+NTSTATUS
+NtfsSnapshotAppend(
+    _Inout_ PNTFS_CCB Ccb,
+    _In_ ULONGLONG MftIndex)
+{
+    PULONGLONG NewEntries;
+    ULONG NewCapacity;
+
+    if (Ccb->DirEntryCount == Ccb->DirEntryCapacity)
+    {
+        NewCapacity = Ccb->DirEntryCapacity ? Ccb->DirEntryCapacity * 2 : 64;
+        if (NewCapacity <= Ccb->DirEntryCapacity)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        NewEntries = ExAllocatePoolWithTag(PagedPool,
+                                           NewCapacity * sizeof(*NewEntries),
+                                           TAG_NTFS);
+        if (!NewEntries)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        if (Ccb->DirEntries)
+        {
+            RtlCopyMemory(NewEntries,
+                          Ccb->DirEntries,
+                          Ccb->DirEntryCount * sizeof(*NewEntries));
+            ExFreePoolWithTag(Ccb->DirEntries, TAG_NTFS);
+        }
+
+        Ccb->DirEntries = NewEntries;
+        Ccb->DirEntryCapacity = NewCapacity;
+    }
+
+    Ccb->DirEntries[Ccb->DirEntryCount++] = MftIndex;
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NtfsSnapshotNode(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_opt_ PNTFS_ATTR_CONTEXT IndexAllocationContext,
+    _In_ ULONG IndexBlockSize,
+    _In_ ULONGLONG Vcn,
+    _In_ PUNICODE_STRING Pattern,
+    _In_ BOOLEAN CaseSensitive,
+    _In_ ULONG Depth,
+    _Inout_ PNTFS_CCB Ccb);
+
+/* Walks one index header in collation order, sub-nodes before the entry that points to them */
+static
+NTSTATUS
+NtfsSnapshotEntries(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_opt_ PNTFS_ATTR_CONTEXT IndexAllocationContext,
+    _In_ ULONG IndexBlockSize,
+    _In_ PINDEX_HEADER_ATTRIBUTE Header,
+    _In_ PUNICODE_STRING Pattern,
+    _In_ BOOLEAN CaseSensitive,
+    _In_ ULONG Depth,
+    _Inout_ PNTFS_CCB Ccb)
+{
+    PINDEX_ENTRY_ATTRIBUTE IndexEntry;
+    PINDEX_ENTRY_ATTRIBUTE LastEntry;
+    NTSTATUS Status;
+
+    IndexEntry = (PINDEX_ENTRY_ATTRIBUTE)((ULONG_PTR)Header + Header->FirstEntryOffset);
+    LastEntry = (PINDEX_ENTRY_ATTRIBUTE)((ULONG_PTR)Header + Header->TotalSizeOfEntries);
+
+    while (IndexEntry < LastEntry)
+    {
+        /* A short entry would never advance, a short named one would be read past */
+        if (IndexEntry->Length < FIELD_OFFSET(INDEX_ENTRY_ATTRIBUTE, FileName) ||
+            (!(IndexEntry->Flags & NTFS_INDEX_ENTRY_END) &&
+             IndexEntry->Length < FIELD_OFFSET(INDEX_ENTRY_ATTRIBUTE, FileName.Name)))
+        {
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
+
+        if (IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
+        {
+            if (!(Header->Flags & INDEX_NODE_LARGE) || !IndexAllocationContext)
+                return STATUS_FILE_CORRUPT_ERROR;
+
+            Status = NtfsSnapshotNode(Vcb,
+                                      IndexAllocationContext,
+                                      IndexBlockSize,
+                                      GetIndexEntryVCN(IndexEntry),
+                                      Pattern,
+                                      CaseSensitive,
+                                      Depth + 1,
+                                      Ccb);
+            if (!NT_SUCCESS(Status))
+                return Status;
+        }
+
+        if (IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
+            break;
+
+        /* Same filter the per-entry search applies */
+        if ((IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK) >= NTFS_FILE_FIRST_USER_FILE &&
+            IndexEntry->FileName.NameType != NTFS_FILE_NAME_DOS &&
+            CompareFileName(Vcb, Pattern, IndexEntry, TRUE, CaseSensitive))
+        {
+            Status = NtfsSnapshotAppend(Ccb, IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK);
+            if (!NT_SUCCESS(Status))
+                return Status;
+        }
+
+        IndexEntry = (PINDEX_ENTRY_ATTRIBUTE)((PCHAR)IndexEntry + IndexEntry->Length);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NtfsSnapshotNode(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_opt_ PNTFS_ATTR_CONTEXT IndexAllocationContext,
+    _In_ ULONG IndexBlockSize,
+    _In_ ULONGLONG Vcn,
+    _In_ PUNICODE_STRING Pattern,
+    _In_ BOOLEAN CaseSensitive,
+    _In_ ULONG Depth,
+    _Inout_ PNTFS_CCB Ccb)
+{
+    PINDEX_BUFFER IndexBuffer;
+    ULONGLONG Offset;
+    NTSTATUS Status;
+
+    if (Depth >= NTFS_MAX_INDEX_DEPTH)
+        return STATUS_FILE_CORRUPT_ERROR;
+
+    IndexBuffer = ExAllocatePoolWithTag(NonPagedPool, IndexBlockSize, TAG_NTFS);
+    if (!IndexBuffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Offset = GetAllocationOffsetFromVCN(Vcb, IndexBlockSize, Vcn);
+    if (ReadAttribute(Vcb, IndexAllocationContext, Offset, (PCHAR)IndexBuffer, IndexBlockSize) != IndexBlockSize ||
+        IndexBuffer->Ntfs.Type != NRH_INDX_TYPE)
+    {
+        DPRINT1("No index record at VCN %I64u\n", Vcn);
+        ExFreePoolWithTag(IndexBuffer, TAG_NTFS);
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
+
+    Status = FixupUpdateSequenceArray(Vcb, &IndexBuffer->Ntfs);
+    if (NT_SUCCESS(Status))
+    {
+        if (FIELD_OFFSET(INDEX_BUFFER, Header) + IndexBuffer->Header.TotalSizeOfEntries > IndexBlockSize)
+        {
+            Status = STATUS_FILE_CORRUPT_ERROR;
+        }
+        else
+        {
+            Status = NtfsSnapshotEntries(Vcb,
+                                         IndexAllocationContext,
+                                         IndexBlockSize,
+                                         &IndexBuffer->Header,
+                                         Pattern,
+                                         CaseSensitive,
+                                         Depth,
+                                         Ccb);
+        }
+    }
+
+    ExFreePoolWithTag(IndexBuffer, TAG_NTFS);
+    return Status;
+}
+
+/**
+ * @brief
+ * Collects the MFT indices of every entry of a directory that matches Pattern,
+ * in index order, so an enumeration reads the index once instead of per entry.
+ */
+NTSTATUS
+NTAPI
+NtfsSnapshotDirectory(
+    _In_ PDEVICE_EXTENSION Vcb,
+    _In_ ULONGLONG DirectoryMftIndex,
+    _In_ PUNICODE_STRING Pattern,
+    _In_ BOOLEAN CaseSensitive,
+    _Inout_ PNTFS_CCB Ccb)
+{
+    PFILE_RECORD_HEADER MftRecord;
+    PNTFS_ATTR_CONTEXT IndexRootContext;
+    PNTFS_ATTR_CONTEXT IndexAllocationContext = NULL;
+    PINDEX_ROOT_ATTRIBUTE IndexRoot;
+    ULONGLONG RootLength;
+    NTSTATUS Status;
+
+    NtfsFreeDirectorySnapshot(Ccb);
+
+    MftRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
+    if (!MftRecord)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = ReadFileRecord(Vcb, DirectoryMftIndex, MftRecord);
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    Status = FindAttribute(Vcb, MftRecord, AttributeIndexRoot, L"$I30", 4, &IndexRootContext, NULL);
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    RootLength = AttributeDataLength(IndexRootContext->pRecord);
+    if (RootLength < sizeof(*IndexRoot) || RootLength > Vcb->NtfsInfo.BytesPerFileRecord)
+    {
+        ReleaseAttributeContext(IndexRootContext);
+        Status = STATUS_FILE_CORRUPT_ERROR;
+        goto Exit;
+    }
+
+    IndexRoot = ExAllocatePoolWithTag(NonPagedPool, (ULONG)RootLength, TAG_NTFS);
+    if (!IndexRoot)
+    {
+        ReleaseAttributeContext(IndexRootContext);
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
+    if (ReadAttribute(Vcb, IndexRootContext, 0, (PCHAR)IndexRoot, (ULONG)RootLength) != RootLength ||
+        FIELD_OFFSET(INDEX_ROOT_ATTRIBUTE, Header) + IndexRoot->Header.TotalSizeOfEntries > RootLength)
+    {
+        Status = STATUS_FILE_CORRUPT_ERROR;
+    }
+    else
+    {
+        /* Small directories keep everything in the root and have no allocation */
+        if (IndexRoot->Header.Flags & INDEX_ROOT_LARGE)
+        {
+            Status = FindAttribute(Vcb, MftRecord, AttributeIndexAllocation, L"$I30", 4,
+                                   &IndexAllocationContext, NULL);
+        }
+
+        if (NT_SUCCESS(Status))
+        {
+            Status = NtfsSnapshotEntries(Vcb,
+                                         IndexAllocationContext,
+                                         IndexRoot->SizeOfEntry,
+                                         &IndexRoot->Header,
+                                         Pattern,
+                                         CaseSensitive,
+                                         0,
+                                         Ccb);
+        }
+    }
+
+    if (IndexAllocationContext)
+        ReleaseAttributeContext(IndexAllocationContext);
+    ExFreePoolWithTag(IndexRoot, TAG_NTFS);
+    ReleaseAttributeContext(IndexRootContext);
+
+Exit:
+    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, MftRecord);
+
+    if (NT_SUCCESS(Status))
+        SetFlag(Ccb->Flags, CCB_DIR_SNAPSHOT);
+    else
+        NtfsFreeDirectorySnapshot(Ccb);
+
+    return Status;
+}
+
 static
 NTSTATUS
 NtfsIndexEntriesAreEmpty(
