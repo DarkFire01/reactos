@@ -662,8 +662,8 @@ typedef VOID (NTAPI *PCI_IPI_FUNCTION)(
 //
 typedef struct _PCI_IPI_CONTEXT
 {
-    LONG RunCount;
-    ULONG Barrier;
+    volatile LONG RunCount;
+    volatile ULONG Barrier;
     PVOID DeviceExtension;
     PCI_IPI_FUNCTION Function;
     PVOID Context;
