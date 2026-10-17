@@ -1689,9 +1689,8 @@ IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
         case DevicePropertyFriendlyName:
             PIP_REGISTRY_DATA(REGSTR_VAL_FRIENDLYNAME, REG_SZ);
         case DevicePropertyContainerID:
-            //PIP_REGISTRY_DATA(REGSTR_VAL_CONTAINERID, REG_SZ); // Win7
-            PIP_UNIMPLEMENTED();
-            break;
+            /* Read from the instance key, like Windows 7 */
+            PIP_REGISTRY_DATA(L"ContainerID", REG_SZ);
         case DevicePropertyInstallState:
             PIP_REGISTRY_DATA(REGSTR_VAL_CONFIGFLAGS, REG_DWORD);
             break;
