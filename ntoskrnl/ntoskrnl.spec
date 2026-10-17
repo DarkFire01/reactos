@@ -1721,6 +1721,7 @@
 @ cdecl -arch=i386 _chkstk()
 @ cdecl strtok_s()
 @ cdecl vsprintf_s()
+@ cdecl wcscat_s()
 @ cdecl wcsncpy_s()
 @ cdecl wcsnlen()
 
@@ -1937,4 +1938,3 @@
 @ stdcall PsAcquireProcessExitSynchronization()
 @ stdcall PsReferenceProcessFilePointer(ptr ptr)
 @ stdcall PsReleaseProcessExitSynchronization()
-@ stdcall wcscat_s(wstr long wstr)
