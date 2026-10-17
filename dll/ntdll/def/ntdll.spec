@@ -352,7 +352,7 @@
 @ stdcall NtImpersonateAnonymousToken(ptr)
 @ stdcall NtImpersonateClientOfPort(ptr ptr)
 @ stdcall NtImpersonateThread(ptr ptr ptr)
-@ stdcall -version=0x600+ NtInitializeNlsFiles(ptr ptr)
+@ stdcall -version=0x600+ NtInitializeNlsFiles(ptr ptr ptr ptr)
 @ stdcall NtInitializeRegistry(long)
 @ stdcall NtInitiatePowerAction (long long long long)
 @ stdcall NtIsProcessInJob(long long)
