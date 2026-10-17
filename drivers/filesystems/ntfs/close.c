@@ -77,6 +77,8 @@ NtfsCloseFile(PDEVICE_EXTENSION DeviceExt,
         ExFreePool(Ccb->DirectorySearchPattern);
     }
 
+    NtfsFreeDirectorySnapshot(Ccb);
+
     ExFreePool(Ccb);
 
     return STATUS_SUCCESS;
