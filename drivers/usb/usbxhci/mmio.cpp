@@ -115,6 +115,13 @@ XhciRegisters::Prepare(
         return Status;
     }
 
+    /* HCRST would drop the debugger's DbC link, and KDUSB already reset the controller */
+    if (IsDebuggerUsingDbc())
+    {
+        DPRINT1("Kernel debugger owns the Debug Capability, skipping the initial reset\n");
+        return WaitForReady();
+    }
+
     Status = ResetController(FALSE);
     if (!NT_SUCCESS(Status))
         DPRINT1("Initial controller reset failed 0x%lx\n", Status);
@@ -645,6 +652,18 @@ ULONG
 XhciRegisters::DebugCapabilityOffset() const
 {
     return m_DebugCapability;
+}
+
+BOOLEAN
+XhciRegisters::IsDebuggerUsingDbc() const
+{
+    ULONG Control;
+
+    if (!KD_DEBUGGER_ENABLED || m_DebugCapability == 0)
+        return FALSE;
+
+    Control = ReadExtended32(m_DebugCapability + XHCI_DBC_DCCTRL);
+    return Control != MAXULONG && (Control & XHCI_DBC_DCCTRL_DCE) != 0;
 }
 
 ULONG
