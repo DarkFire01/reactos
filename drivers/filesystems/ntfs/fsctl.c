@@ -298,6 +298,16 @@ NtfsGetVolumeData(PDEVICE_OBJECT DeviceObject,
         return Status;
     }
 
+    /* The raw sectors still carry the update sequence, the run lists can cross it */
+    Status = FixupUpdateSequenceArray(DeviceExt, &DeviceExt->MasterFileTable->Ntfs);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("MFT record failed its update sequence check.\n");
+        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, DeviceExt->MasterFileTable);
+        ExDeleteNPagedLookasideList(&DeviceExt->FileRecLookasideList);
+        return Status;
+    }
+
     /* A non-resident attribute list in $MFT is read through this */
     DeviceExt->StorageDevice = DeviceObject;
 
