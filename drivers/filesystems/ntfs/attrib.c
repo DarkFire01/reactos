@@ -1265,6 +1265,11 @@ InternalReadNonResidentAttributes(PFIND_ATTR_CONTXT Context)
     }
 
     ListContext = PrepareAttributeContext(Attribute);
+    if (ListContext == NULL)
+    {
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
+
     ListSize = AttributeDataLength(ListContext->pRecord);
     if (ListSize > 0xFFFFFFFF)
     {

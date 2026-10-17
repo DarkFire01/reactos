@@ -171,6 +171,11 @@ FindAttribute(PDEVICE_EXTENSION Vcb,
                 /* Found it, fill up the context and return. */
                 DPRINT("Found context\n");
                 *AttrCtx = PrepareAttributeContext(Attribute);
+                if (*AttrCtx == NULL)
+                {
+                    FindCloseAttribute(&Context);
+                    return STATUS_FILE_CORRUPT_ERROR;
+                }
 
                 (*AttrCtx)->FileMFTIndex = MftRecord->MFTRecordNumber;
 
