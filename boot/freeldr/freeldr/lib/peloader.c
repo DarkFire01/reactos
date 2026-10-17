@@ -620,6 +620,118 @@ PeLdrCheckForLoadedDll(
     return FALSE;
 }
 
+/* The api sets a boot driver may import and the module serving each, as the kernel resolves them */
+static const struct
+{
+    PCSTR ApiSet;
+    PCSTR Host;
+} PeLdrApiSets[] =
+{
+    { "ext-ms-win-ntos-ksr-l1-1", NULL },
+    { "ext-ms-win-ntos-werkernel-l1-1", "werkernel.sys" },
+};
+
+/**
+ * @brief Finds the module that serves an api set.
+ *
+ * @param ImportName The name out of the import descriptor.
+ * @param Host Receives the serving module, or NULL when the image keeps its own fallbacks.
+ *
+ * @return TRUE when the name is a known api set, FALSE when it names a real module.
+ */
+static
+BOOLEAN
+PeLdrpResolveApiSet(
+    _In_ PCSTR ImportName,
+    _Out_ PCSTR *Host)
+{
+    SIZE_T Stem;
+    ULONG Index;
+
+    *Host = NULL;
+
+    if (_strnicmp(ImportName, "api-", 4) != 0 &&
+        _strnicmp(ImportName, "ext-", 4) != 0)
+    {
+        return FALSE;
+    }
+
+    /* The contract is the name without its minor version and extension */
+    Stem = strlen(ImportName);
+    while (Stem > 1 && ImportName[Stem - 1] != '-')
+        Stem--;
+
+    if (Stem <= 1)
+        return FALSE;
+
+    Stem--;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(PeLdrApiSets); Index++)
+    {
+        if (strlen(PeLdrApiSets[Index].ApiSet) == Stem &&
+            _strnicmp(ImportName, PeLdrApiSets[Index].ApiSet, Stem) == 0)
+        {
+            *Host = PeLdrApiSets[Index].Host;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief Turns off the base relocations of the thunks an api set import was bound through.
+ *
+ * Api set thunks come filled with fallbacks inside the image, so they carry relocations. Once
+ * bound they hold the host's address, which the kernel must not rebase when it moves the image.
+ *
+ * @param ImageBase The image owning the thunks.
+ * @param ImportTable The import descriptor that was bound.
+ */
+static
+VOID
+PeLdrpDropThunkRelocations(
+    _In_ PVOID ImageBase,
+    _In_ PIMAGE_IMPORT_DESCRIPTOR ImportTable)
+{
+    PIMAGE_BASE_RELOCATION Block;
+    PIMAGE_THUNK_DATA ThunkName;
+    PUSHORT Entry;
+    ULONG RelocSize, Count, Index, Rva, StartRva, EndRva;
+
+    ThunkName = VaToPa(RVA(ImageBase, ImportTable->OriginalFirstThunk));
+    for (Count = 0; ThunkName[Count].u1.AddressOfData != 0; Count++);
+
+    StartRva = ImportTable->FirstThunk;
+    EndRva = StartRva + Count * sizeof(*ThunkName);
+
+    Block = RtlImageDirectoryEntryToData(VaToPa(ImageBase),
+                                         TRUE,
+                                         IMAGE_DIRECTORY_ENTRY_BASERELOC,
+                                         &RelocSize);
+    if (!Block)
+        return;
+
+    while (RelocSize >= sizeof(*Block) &&
+           Block->SizeOfBlock >= sizeof(*Block) &&
+           Block->SizeOfBlock <= RelocSize)
+    {
+        Entry = (PUSHORT)(Block + 1);
+        Count = (Block->SizeOfBlock - sizeof(*Block)) / sizeof(*Entry);
+
+        for (Index = 0; Index < Count; Index++)
+        {
+            /* Type 0 is IMAGE_REL_BASED_ABSOLUTE, which relocation skips */
+            Rva = Block->VirtualAddress + (Entry[Index] & 0xFFF);
+            if (Rva >= StartRva && Rva < EndRva)
+                Entry[Index] &= 0xFFF;
+        }
+
+        RelocSize -= Block->SizeOfBlock;
+        Block = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)Block + Block->SizeOfBlock);
+    }
+}
+
 BOOLEAN
 PeLdrScanImportDescriptorTable(
     IN OUT PLIST_ENTRY ModuleListHead,
@@ -630,6 +742,7 @@ PeLdrScanImportDescriptorTable(
     PIMAGE_IMPORT_DESCRIPTOR ImportTable;
     ULONG ImportTableSize;
     PCH ImportName;
+    PCSTR HostName;
     BOOLEAN Success;
 
     /* Get a pointer to the import table of this image */
@@ -668,6 +781,19 @@ PeLdrScanImportDescriptorTable(
         if (PeLdrpCompareDllName(ImportName, &ScanDTE->BaseDllName))
             continue;
 
+        /* An api set is served by its host, or by the fallbacks the image was built with */
+        if (PeLdrpResolveApiSet(ImportName, &HostName))
+        {
+            if (!HostName)
+            {
+                TRACE("Api set %s has no host, keeping its fallbacks\n", ImportName);
+                continue;
+            }
+
+            TRACE("Api set %s is served by %s\n", ImportName, HostName);
+            ImportName = (PCH)HostName;
+        }
+
         /* Load the DLL if it is not already loaded */
         if (!PeLdrCheckForLoadedDll(ModuleListHead, ImportName, &DataTableEntry))
         {
@@ -697,6 +823,10 @@ PeLdrScanImportDescriptorTable(
                 ImportName, DirectoryPath);
             return Success;
         }
+
+        /* The kernel moves boot drivers later, the host's address must stay as bound */
+        if (HostName)
+            PeLdrpDropThunkRelocations(ScanDTE->DllBase, ImportTable);
     }
 
     return TRUE;
