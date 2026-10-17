@@ -91,6 +91,13 @@ CreateFreeLoaderReactOSEntries(
     Options->OsLoadOptions  = L"/DEBUG /DEBUGPORT=NET /HOST_IP=10.0.0.0 /HOST_PORT=50000 /ENCRYPTION_KEY=make.reactos.great.again /SOS";
     AddBootStoreEntry(BootStoreHandle, BootEntry, MAKESTRKEY(L"ReactOS_Debug_Net"));
 
+        /* ReactOS_Debug_USB */
+    // BootEntry->BootEntryKey = MAKESTRKEY(L"ReactOS_Debug_USB");
+    BootEntry->FriendlyName = L"\"ReactOS (Debug) USB\"";
+    Options->OsLoadOptions  = L"/DEBUG /DEBUGPORT=USB /TARGETNAME=ReactOSDebugDev /FRLDRSCREENLOG /SOS";
+    AddBootStoreEntry(BootStoreHandle, BootEntry, MAKESTRKEY(L"ReactOS_Debug_USB"));
+
+
 #ifdef _WINKD_
     /* ReactOS_VBoxDebug */
     // BootEntry->BootEntryKey = MAKESTRKEY(L"ReactOS_VBoxDebug");
