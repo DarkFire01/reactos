@@ -412,9 +412,11 @@ PopControlSwitchIrpCompletion(
         case POP_CS_QUERY_EVENT_MODE:
         {
             /* Perform a power action, depending on the inquired button event */
+            /* Completion can run at DISPATCH_LEVEL, so the handler performs the action */
             IrpData = *(PULONG)Irp->AssociatedIrp.SystemBuffer;
             PopFreePool(Irp->AssociatedIrp.SystemBuffer, TAG_PO_CONTROL_SWITCH_IO_DATA);
-            PopPerformButtonAction(ControlSwitch, IrpData);
+            ControlSwitch->PendingEvent = IrpData;
+            ControlSwitch->Flags |= POP_CS_EVENT_PENDING;
             break;
         }
 
@@ -604,6 +606,14 @@ PopControlSwitchHandler(
     PPOP_DEVICE_POLICY_WORKITEM_DATA WorkItemData = (PPOP_DEVICE_POLICY_WORKITEM_DATA)Parameter;
 
     PAGED_CODE();
+
+    /* No IRP is outstanding for this switch, so its pending event is ours to perform */
+    ControlSwitch = WorkItemData->PolicyData;
+    if (ControlSwitch->Flags & POP_CS_EVENT_PENDING)
+    {
+        ControlSwitch->Flags &= ~POP_CS_EVENT_PENDING;
+        PopPerformButtonAction(ControlSwitch, ControlSwitch->PendingEvent);
+    }
 
     /* We entered into a device policy handler, acquire the policy lock */
     PopAcquirePowerPolicyLock();

@@ -203,6 +203,7 @@ typedef VOID
 // POP_CONTROL_SWITCH flags
 //
 #define POP_CS_INITIALIZING             0x00000001
+#define POP_CS_EVENT_PENDING            0x00000002
 #define POP_CS_CLEANUP                  0x00000100
 
 //
@@ -1339,6 +1340,9 @@ typedef struct _POP_CONTROL_SWITCH
 
     /* The type of switch (power, sleep buttons or lid) */
     POP_SWITCH_TYPE SwitchType;
+
+    /* The event reported by the last IOCTL_GET_SYS_BUTTON_EVENT, valid with POP_CS_EVENT_PENDING */
+    ULONG PendingEvent;
 
     /* Specific switch constructs */
     union
