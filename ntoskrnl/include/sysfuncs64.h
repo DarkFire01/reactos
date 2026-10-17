@@ -319,7 +319,7 @@ SVC_(GetWriteWatch, 7)
 SVC_(ImpersonateAnonymousToken, 1)
 SVC_(ImpersonateThread, 3)
 #if (NTDDI_VERSION >= NTDDI_VISTA)
-SVC_(InitializeNlsFiles
+SVC_(InitializeNlsFiles, 4)
 #endif
 SVC_(InitializeRegistry, 1)
 SVC_(InitiatePowerAction, 4)

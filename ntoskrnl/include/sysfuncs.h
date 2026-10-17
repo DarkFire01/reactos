@@ -355,7 +355,7 @@ SVC_(ImpersonateThread, 3)
 SVC_(InitializeEnclave, 0) // FIXME
 #endif*/
 #if (NTDDI_VERSION >= NTDDI_VISTA)
-SVC_(InitializeNlsFiles, 2)
+SVC_(InitializeNlsFiles, 4)
 #endif
 SVC_(InitializeRegistry, 1)
 SVC_(InitiatePowerAction, 4)
