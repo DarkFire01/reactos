@@ -309,6 +309,8 @@ C_ASSERT(sizeof(XHCI_ERST_ENTRY) == 16);
 
 /* Debug Capability (xHCI 7.6.8): DCST holds the debug port number in bits 31:24 */
 #define XHCI_EXTCAP_DEBUG               10
+#define XHCI_DBC_DCCTRL                 0x20
+#define XHCI_DBC_DCCTRL_DCE             0x80000000
 #define XHCI_DBC_DCST                   0x24
 #define XHCI_DBC_DCST_PORT_SHIFT        24
 

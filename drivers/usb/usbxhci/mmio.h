@@ -126,6 +126,9 @@ public:
     ULONG LegacySupportOffset() const;
     ULONG DebugCapabilityOffset() const;
 
+    /** The kernel debugger is running its link over the Debug Capability. */
+    BOOLEAN IsDebuggerUsingDbc() const;
+
     /** Current 11 bit frame, Increment microframes ahead. */
     ULONG
     CurrentFrame(
