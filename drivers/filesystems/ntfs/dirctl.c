@@ -540,6 +540,35 @@ NtfsGetParentMftIndex(PDEVICE_EXTENSION DeviceExt,
     return Parent;
 }
 
+/* Reads the record of a snapshot entry, STATUS_NOT_FOUND once it was deleted */
+static
+NTSTATUS
+NtfsReadSnapshotRecord(
+    _In_ PDEVICE_EXTENSION DeviceExt,
+    _In_ ULONGLONG MftIndex,
+    _Out_ PFILE_RECORD_HEADER *FileRecord)
+{
+    PFILE_RECORD_HEADER Record;
+    NTSTATUS Status;
+
+    Record = ExAllocateFromNPagedLookasideList(&DeviceExt->FileRecLookasideList);
+    if (!Record)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = ReadFileRecord(DeviceExt, MftIndex, Record);
+    if (NT_SUCCESS(Status) && !(Record->Flags & FRH_IN_USE))
+        Status = STATUS_NOT_FOUND;
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, Record);
+        return Status;
+    }
+
+    *FileRecord = Record;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NtfsQueryDirectory(PNTFS_IRP_CONTEXT IrpContext)
 {
@@ -656,6 +685,23 @@ NtfsQueryDirectory(PNTFS_IRP_CONTEXT IrpContext)
         return STATUS_PENDING;
     }
 
+    /* Read the index once per scan, later calls only step through the result */
+    if (First || (Stack->Flags & SL_RESTART_SCAN) || !(Ccb->Flags & CCB_DIR_SNAPSHOT))
+    {
+        Status = NtfsSnapshotDirectory(DeviceExtension,
+                                       Fcb->MFTIndex,
+                                       &Pattern,
+                                       BooleanFlagOn(Stack->Flags, SL_CASE_SENSITIVE),
+                                       Ccb);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to read the index of '%S' (Status 0x%08lx)\n", Fcb->PathName, Status);
+            ExReleaseResourceLite(&DeviceExtension->DirResource);
+            ExReleaseResourceLite(&Fcb->MainResource);
+            return Status;
+        }
+    }
+
     Written = 0;
     while (Status == STATUS_SUCCESS && BufferLength > 0)
     {
@@ -711,46 +757,50 @@ NtfsQueryDirectory(PNTFS_IRP_CONTEXT IrpContext)
             continue;
         }
 
-        Status = NtfsFindFileAt(DeviceExtension,
-                                &Pattern,
-                                &Ccb->Entry,
-                                &FileRecord,
-                                &MFTRecord,
-                                Fcb->MFTIndex,
-                                BooleanFlagOn(Stack->Flags, SL_CASE_SENSITIVE));
-
-        if (NT_SUCCESS(Status))
-        {
-            /* HACK: files with both a short name and a long name are present twice in the index.
-             * Ignore the second entry, if it is immediately following the first one.
-             */
-            if (MFTRecord == OldMFTRecord)
-            {
-                DPRINT1("Ignoring duplicate MFT entry 0x%x\n", MFTRecord);
-                Ccb->Entry++;
-                ExFreeToNPagedLookasideList(&DeviceExtension->FileRecLookasideList, FileRecord);
-                continue;
-            }
-            OldMFTRecord = MFTRecord;
-
-            Status = NtfsGetDirEntryInformation(DeviceExtension,
-                                                FileInformationClass,
-                                                FileRecord,
-                                                MFTRecord,
-                                                NULL,
-                                                Buffer,
-                                                BufferLength,
-                                                &Written,
-                                                Buffer0 == NULL);
-
-            if (Status == STATUS_BUFFER_OVERFLOW || Status == STATUS_INVALID_INFO_CLASS)
-            {
-                break;
-            }
-        }
-        else
+        if (Ccb->Entry >= Ccb->DirEntryCount)
         {
             Status = (First ? STATUS_NO_SUCH_FILE : STATUS_NO_MORE_FILES);
+            break;
+        }
+
+        MFTRecord = Ccb->DirEntries[Ccb->Entry];
+
+        /* HACK: files with both a short name and a long name are present twice in the index.
+         * Ignore the second entry, if it is immediately following the first one.
+         */
+        if (MFTRecord == OldMFTRecord)
+        {
+            DPRINT1("Ignoring duplicate MFT entry 0x%I64x\n", MFTRecord);
+            Ccb->Entry++;
+            continue;
+        }
+
+        Status = NtfsReadSnapshotRecord(DeviceExtension, MFTRecord, &FileRecord);
+        if (!NT_SUCCESS(Status))
+        {
+            if (Status == STATUS_INSUFFICIENT_RESOURCES)
+                break;
+
+            /* Deleted after the snapshot was taken */
+            Ccb->Entry++;
+            Status = STATUS_SUCCESS;
+            continue;
+        }
+        OldMFTRecord = MFTRecord;
+
+        Status = NtfsGetDirEntryInformation(DeviceExtension,
+                                            FileInformationClass,
+                                            FileRecord,
+                                            MFTRecord,
+                                            NULL,
+                                            Buffer,
+                                            BufferLength,
+                                            &Written,
+                                            Buffer0 == NULL);
+
+        if (Status == STATUS_BUFFER_OVERFLOW || Status == STATUS_INVALID_INFO_CLASS)
+        {
+            ExFreeToNPagedLookasideList(&DeviceExtension->FileRecLookasideList, FileRecord);
             break;
         }
 
