@@ -32,8 +32,12 @@
 static LIST_ENTRY MiDataFileCleanupList;
 static KEVENT MiDataFileCleanupEvent;
 
-/* Serializes the growth of data file segments */
+/* Serializes the growth of data file segments and the building and freeing of their prototype PTEs */
 static KGUARDED_MUTEX MiDataFileExtendLock;
+
+/* Data file subsections with prototype PTEs but no view, linked through DereferenceList */
+static LIST_ENTRY MiUnusedSubsectionList;
+static ULONG MiUnusedSubsectionCount;
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -88,8 +92,8 @@ MiIsDataFileMapReferenced(
  * @param[in] Subsection
  * Subsection owning the prototype PTEs.
  *
- * @param[in] FirstIndex
- * Index of the first prototype PTE to fill.
+ * @param[out] FirstPte
+ * First prototype PTE to fill.
  *
  * @param[in] Count
  * Number of prototype PTEs to fill.
@@ -98,7 +102,7 @@ static
 VOID
 MiInitializeSubsectionPtes(
     _In_ PMSUBSECTION Subsection,
-    _In_ ULONG FirstIndex,
+    _Out_writes_(Count) PMMPTE FirstPte,
     _In_ ULONG Count)
 {
     MMPTE TempPte;
@@ -108,54 +112,359 @@ MiInitializeSubsectionPtes(
     ASSERT(MiSubsectionFromPte(&TempPte) == Subsection);
 
 #ifdef _WIN64
-    RtlFillMemoryUlonglong(&Subsection->SubsectionBase[FirstIndex],
+    RtlFillMemoryUlonglong(FirstPte,
                            Count * sizeof(MMPTE),
                            TempPte.u.Long);
 #else
-    RtlFillMemoryUlong(&Subsection->SubsectionBase[FirstIndex],
+    RtlFillMemoryUlong(FirstPte,
                        Count * sizeof(MMPTE),
                        TempPte.u.Long);
 #endif
 }
 
 /**
- * @brief Gives a subsection the prototype PTEs for a range of file pages.
+ * @brief Puts a subsection no view uses on the list of those whose prototype PTEs can go.
+ * @remarks The PFN lock must be held.
+ */
+static
+VOID
+MiInsertUnusedSubsection(
+    _Inout_ PMSUBSECTION Subsection)
+{
+    MI_ASSERT_PFN_LOCK_HELD();
+    ASSERT(Subsection->NumberOfMappedViews == 0);
+    ASSERT(Subsection->SubsectionBase != NULL);
+
+    Subsection->u2.SubsectionFlags2.SubsectionAccessed = 1;
+
+    if (Subsection->DereferenceList.Flink)
+        return;
+
+    InsertTailList(&MiUnusedSubsectionList, &Subsection->DereferenceList);
+    MiUnusedSubsectionCount++;
+    KeSetEvent(&MiDataFileCleanupEvent, IO_NO_INCREMENT, FALSE);
+}
+
+/**
+ * @brief Takes a subsection off the list of unused ones, if it is there.
+ * @remarks The PFN lock must be held.
+ */
+static
+VOID
+MiRemoveUnusedSubsection(
+    _Inout_ PMSUBSECTION Subsection)
+{
+    MI_ASSERT_PFN_LOCK_HELD();
+
+    if (!Subsection->DereferenceList.Flink)
+        return;
+
+    RemoveEntryList(&Subsection->DereferenceList);
+    Subsection->DereferenceList.Flink = NULL;
+    MiUnusedSubsectionCount--;
+}
+
+/**
+ * @brief Maps every page holding prototype PTEs of a subsection.
  *
- * @param[in,out] Subsection
- * Subsection without prototype PTEs yet.
+ * @return TRUE if the PFN lock had to be released on the way.
  *
- * @param[in] StartingPage
- * File page described by the first prototype PTE.
- *
- * @param[in] Count
- * Number of prototype PTEs in use.
- *
- * @param[in] Capacity
- * Number of prototype PTEs to allocate, the rest is kept for growth.
- *
- * @return FALSE if paged pool is exhausted.
+ * @remarks The PFN lock must be held.
  */
 static
 BOOLEAN
-MiAllocateSubsectionPtes(
-    _Inout_ PMSUBSECTION Subsection,
-    _In_ ULONG StartingPage,
-    _In_ ULONG Count,
-    _In_ ULONG Capacity)
+MiMakeSubsectionPtesValid(
+    _In_ PMSUBSECTION Subsection,
+    _In_ KIRQL OldIrql)
 {
-    ASSERT((Count != 0) && (Count <= Capacity) && (Capacity <= MI_SUBSECTION_PTES));
+    PMMPTE PointerPte, LastPte;
+    BOOLEAN Released = FALSE;
 
-    Subsection->SubsectionBase = ExAllocatePoolWithTag(PagedPool,
-                                                       Capacity * sizeof(MMPTE),
-                                                       TAG_MAPPED_PROTOTYPES);
-    if (!Subsection->SubsectionBase)
-        return FALSE;
+    PointerPte = PAGE_ALIGN(Subsection->SubsectionBase);
+    LastPte = &Subsection->SubsectionBase[Subsection->PtesInSubsection];
+    while (PointerPte < LastPte)
+    {
+        if (MiMakeSystemAddressValidPfn(PointerPte, OldIrql))
+            Released = TRUE;
 
-    Subsection->StartingSector = StartingPage;
-    Subsection->PtesInSubsection = Count;
-    Subsection->UnusedPtes = Capacity - Count;
-    MiInitializeSubsectionPtes(Subsection, 0, Count);
+        PointerPte = (PMMPTE)((ULONG_PTR)PointerPte + PAGE_SIZE);
+    }
+
+    return Released;
+}
+
+/**
+ * @brief Tells whether the prototype PTEs of a subsection can be freed now.
+ * @remarks The PFN lock must be held.
+ */
+static
+BOOLEAN
+MiCanTrimSubsection(
+    _In_ PMSUBSECTION Subsection)
+{
+    PCONTROL_AREA ControlArea = Subsection->ControlArea;
+
+    MI_ASSERT_PFN_LOCK_HELD();
+
+    /* Work done without a view walks the prototype PTEs with the PFN lock released at times */
+    return (BOOLEAN)((Subsection->SubsectionBase != NULL) &&
+                     (Subsection->NumberOfMappedViews == 0) &&
+                     (ControlArea->FlushInProgressCount == 0) &&
+                     (ControlArea->ModifiedWriteCount == 0) &&
+                     (ControlArea->u.Flags.BeingPurged == 0) &&
+                     (ControlArea->u.Flags.BeingDeleted == 0));
+}
+
+/**
+ * @brief Frees the prototype PTEs of a subsection nobody uses.
+ *
+ * @param[in,out] Subsection
+ * Subsection whose prototype PTEs go.
+ *
+ * @param[in] DropStandby
+ * TRUE to give up clean pages still cached for it, otherwise any resident page keeps them.
+ *
+ * @return TRUE if the prototype PTEs were freed.
+ *
+ * @remarks MiDataFileExtendLock must be held.
+ */
+static
+BOOLEAN
+MiTrimSubsectionPtes(
+    _Inout_ PMSUBSECTION Subsection,
+    _In_ BOOLEAN DropStandby)
+{
+    PFN_NUMBER PageFrameIndex;
+    PMMPTE Base;
+    MMPTE TempPte;
+    PMMPFN Pfn1;
+    KIRQL OldIrql;
+    ULONG i;
+
+    OldIrql = MiAcquirePfnLock();
+
+    do
+    {
+        if (!MiCanTrimSubsection(Subsection))
+        {
+            MiReleasePfnLock(OldIrql);
+            return FALSE;
+        }
+    } while (MiMakeSubsectionPtesValid(Subsection, OldIrql));
+
+    Base = Subsection->SubsectionBase;
+
+    /* Look first, so that no cached page is lost when the prototype PTEs have to stay */
+    for (i = 0; i < Subsection->PtesInSubsection; i++)
+    {
+        TempPte = Base[i];
+        if ((TempPte.u.Hard.Valid == 0) && (TempPte.u.Soft.Prototype == 1))
+            continue;
+
+        Pfn1 = MiGetResidentPfn(&TempPte);
+        if (!DropStandby ||
+            !Pfn1 ||
+            (TempPte.u.Hard.Valid == 1) ||
+            (Pfn1->u3.e1.PageLocation != StandbyPageList) ||
+            (Pfn1->u3.e2.ReferenceCount != 0) ||
+            Pfn1->u3.e1.Modified)
+        {
+            MiReleasePfnLock(OldIrql);
+            return FALSE;
+        }
+    }
+
+    for (i = 0; i < Subsection->PtesInSubsection; i++)
+    {
+        if (Base[i].u.Soft.Prototype == 1)
+            continue;
+
+        PageFrameIndex = Base[i].u.Trans.PageFrameNumber;
+        Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+        ASSERT(Pfn1->PteAddress == &Base[i]);
+
+        MiUnlinkPageFromList(Pfn1);
+        MI_WRITE_INVALID_PTE(&Base[i], Pfn1->OriginalPte);
+        MiDecrementShareCount(MI_PFN_ELEMENT(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
+        MI_SET_PFN_DELETED(Pfn1);
+
+        Pfn1->u3.e1.PageLocation = ActiveAndValid;
+        MiInsertPageInFreeList(PageFrameIndex);
+    }
+
+    Subsection->SubsectionBase = NULL;
+    MiRemoveUnusedSubsection(Subsection);
+    MiReleasePfnLock(OldIrql);
+
+    ExFreePoolWithTag(Base, TAG_MAPPED_PROTOTYPES);
     return TRUE;
+}
+
+/**
+ * @brief Frees the prototype PTEs of subsections no view uses.
+ *
+ * @param[in] UnderPressure
+ * TRUE when paged pool ran out. Every unused subsection is tried and cached pages are
+ * given up for it. Otherwise only subsections left alone since the last pass are tried.
+ *
+ * @remarks MiDataFileExtendLock must be held.
+ */
+static
+VOID
+MiTrimUnusedSubsections(
+    _In_ BOOLEAN UnderPressure)
+{
+    PMSUBSECTION Subsection;
+    PLIST_ENTRY Entry;
+    ULONG Count;
+    KIRQL OldIrql;
+
+    OldIrql = MiAcquirePfnLock();
+
+    for (Count = MiUnusedSubsectionCount; Count != 0; Count--)
+    {
+        if (IsListEmpty(&MiUnusedSubsectionList))
+            break;
+
+        /* Rotated to the end, a subsection that stays is looked at again on the next pass */
+        Entry = RemoveHeadList(&MiUnusedSubsectionList);
+        InsertTailList(&MiUnusedSubsectionList, Entry);
+        Subsection = CONTAINING_RECORD(Entry, MSUBSECTION, DereferenceList);
+
+        if (!UnderPressure && Subsection->u2.SubsectionFlags2.SubsectionAccessed)
+        {
+            Subsection->u2.SubsectionFlags2.SubsectionAccessed = 0;
+            continue;
+        }
+
+        MiReleasePfnLock(OldIrql);
+        MiTrimSubsectionPtes(Subsection, UnderPressure);
+        OldIrql = MiAcquirePfnLock();
+    }
+
+    MiReleasePfnLock(OldIrql);
+}
+
+/**
+ * @brief Gives a subsection its prototype PTEs.
+ *
+ * @param[in,out] Subsection
+ * Subsection without prototype PTEs.
+ *
+ * @return FALSE if paged pool is exhausted.
+ *
+ * @remarks MiDataFileExtendLock must be held. Room is kept for the growth the subsection was given.
+ */
+static
+BOOLEAN
+MiBuildSubsectionPtes(
+    _Inout_ PMSUBSECTION Subsection)
+{
+    ULONG Capacity = Subsection->PtesInSubsection + Subsection->UnusedPtes;
+    PMMPTE Base;
+    KIRQL OldIrql;
+
+    ASSERT(Subsection->SubsectionBase == NULL);
+    ASSERT((Subsection->PtesInSubsection != 0) && (Capacity <= MI_SUBSECTION_PTES));
+
+    Base = ExAllocatePoolWithTag(PagedPool, Capacity * sizeof(MMPTE), TAG_MAPPED_PROTOTYPES);
+    if (!Base)
+    {
+        MiTrimUnusedSubsections(TRUE);
+
+        Base = ExAllocatePoolWithTag(PagedPool, Capacity * sizeof(MMPTE), TAG_MAPPED_PROTOTYPES);
+        if (!Base)
+            return FALSE;
+    }
+
+    /* Readers holding only the PFN lock must never see them half filled */
+    MiInitializeSubsectionPtes(Subsection, Base, Subsection->PtesInSubsection);
+
+    OldIrql = MiAcquirePfnLock();
+    Subsection->SubsectionBase = Base;
+    MiReleasePfnLock(OldIrql);
+
+    return TRUE;
+}
+
+/**
+ * @brief Makes sure the subsection holding a file page has its prototype PTEs.
+ *
+ * @param[in] ControlArea
+ * Referenced data control area.
+ *
+ * @param[in] PageIndex
+ * File page.
+ *
+ * @param[in] ForView
+ * TRUE when a view uses the page, it keeps the prototype PTEs until it goes away.
+ *
+ * @param[in] FirstPageOfView
+ * TRUE when the page is the first one the view uses. A view takes one reference on each
+ * subsection, either with its first page or with the first page of the subsection.
+ *
+ * @param[out] OutSubsection
+ * Receives the subsection, or NULL if the segment does not reach the page.
+ *
+ * @remarks Without a view, the caller must hold an I/O reference on the control area
+ * for as long as it uses the prototype PTEs.
+ */
+static
+NTSTATUS
+MiPrepareSubsectionPtes(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 PageIndex,
+    _In_ BOOLEAN ForView,
+    _In_ BOOLEAN FirstPageOfView,
+    _Out_ PMSUBSECTION *OutSubsection)
+{
+    PMSUBSECTION Subsection;
+    KIRQL OldIrql;
+
+    ASSERT(ControlArea->u.Flags.File == 1);
+    ASSERT(ControlArea->u.Flags.Image == 0);
+
+    *OutSubsection = NULL;
+
+    KeAcquireGuardedMutex(&MiDataFileExtendLock);
+
+    for (Subsection = (PMSUBSECTION)(ControlArea + 1);
+         Subsection != NULL;
+         Subsection = (PMSUBSECTION)Subsection->NextSubsection)
+    {
+        if (PageIndex < ((ULONG64)Subsection->StartingSector + Subsection->PtesInSubsection))
+            break;
+    }
+
+    if (!Subsection)
+    {
+        KeReleaseGuardedMutex(&MiDataFileExtendLock);
+        return STATUS_SUCCESS;
+    }
+
+    if (!Subsection->SubsectionBase && !MiBuildSubsectionPtes(Subsection))
+    {
+        KeReleaseGuardedMutex(&MiDataFileExtendLock);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    OldIrql = MiAcquirePfnLock();
+
+    if (ForView && (FirstPageOfView || (PageIndex == Subsection->StartingSector)))
+    {
+        MiRemoveUnusedSubsection(Subsection);
+        Subsection->NumberOfMappedViews++;
+    }
+    else if (Subsection->NumberOfMappedViews == 0)
+    {
+        MiInsertUnusedSubsection(Subsection);
+    }
+
+    MiReleasePfnLock(OldIrql);
+    KeReleaseGuardedMutex(&MiDataFileExtendLock);
+
+    *OutSubsection = Subsection;
+    return STATUS_SUCCESS;
 }
 
 /**
@@ -242,18 +551,21 @@ MiAllocateDataFileMap(
     ControlArea->FilePointer = FileObject;
     ControlArea->u.Flags.File = 1;
 
-    /* Views pick their own protection, the file data itself is always writable */
+    /*
+     * Views pick their own protection, the file data itself is always writable.
+     * Prototype PTEs are only made once a subsection is used, a volume stream would
+     * otherwise take up paged pool for the whole disk.
+     */
     Subsection = (PMSUBSECTION)(ControlArea + 1);
     Page = 0;
     for (;;)
     {
+        Count = min(PteCount - Page, MI_SUBSECTION_PTES);
+
         Subsection->ControlArea = ControlArea;
         Subsection->u.SubsectionFlags.Protection = MM_READWRITE;
         Subsection->StartingSector = Page;
-
-        Count = min(PteCount - Page, MI_SUBSECTION_PTES);
-        if ((Count != 0) && !MiAllocateSubsectionPtes(Subsection, Page, Count, Count))
-            goto Failed;
+        Subsection->PtesInSubsection = Count;
 
         Page += Count;
         if (Page == PteCount)
@@ -268,7 +580,6 @@ MiAllocateDataFileMap(
         Previous->NextSubsection = (PSUBSECTION)Subsection;
     }
 
-    Segment->PrototypePte = ((PMSUBSECTION)(ControlArea + 1))->SubsectionBase;
     *OutControlArea = ControlArea;
     return STATUS_SUCCESS;
 
@@ -294,8 +605,8 @@ MiExtendDataFileMap(
 {
     PSEGMENT Segment = ControlArea->Segment;
     PMSUBSECTION Last, Subsection;
-    ULONG OldPtes, Needed, Count, Capacity;
-    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG Needed, Count, Capacity;
+    NTSTATUS Status = STATUS_SUCCESS, ViewStatus;
     ULONG64 NewPtes;
     KIRQL OldIrql;
 
@@ -305,24 +616,24 @@ MiExtendDataFileMap(
 
     KeAcquireGuardedMutex(&MiDataFileExtendLock);
 
-    OldPtes = Segment->TotalNumberOfPtes;
     if (NewSize <= Segment->SizeOfSegment)
     {
         KeReleaseGuardedMutex(&MiDataFileExtendLock);
-        return STATUS_SUCCESS;
+        goto ExtendViews;
     }
 
     Last = (PMSUBSECTION)(ControlArea + 1);
     while (Last->NextSubsection)
         Last = (PMSUBSECTION)Last->NextSubsection;
 
-    Needed = (ULONG)(NewPtes - OldPtes);
+    Needed = (ULONG)(NewPtes - Segment->TotalNumberOfPtes);
 
     /* Room left in the last subsection comes first */
     Count = min(Needed, Last->UnusedPtes);
     if (Count != 0)
     {
-        MiInitializeSubsectionPtes(Last, Last->PtesInSubsection, Count);
+        if (Last->SubsectionBase)
+            MiInitializeSubsectionPtes(Last, &Last->SubsectionBase[Last->PtesInSubsection], Count);
 
         OldIrql = MiAcquirePfnLock();
         Last->PtesInSubsection += Count;
@@ -350,13 +661,9 @@ MiExtendDataFileMap(
         RtlZeroMemory(Subsection, sizeof(MSUBSECTION));
         Subsection->ControlArea = ControlArea;
         Subsection->u.SubsectionFlags.Protection = Last->u.SubsectionFlags.Protection;
-
-        if (!MiAllocateSubsectionPtes(Subsection, Segment->TotalNumberOfPtes, Count, Capacity))
-        {
-            ExFreePoolWithTag(Subsection, TAG_MAPPED_SUBSECTION);
-            Status = STATUS_INSUFFICIENT_RESOURCES;
-            break;
-        }
+        Subsection->StartingSector = Segment->TotalNumberOfPtes;
+        Subsection->PtesInSubsection = Count;
+        Subsection->UnusedPtes = Capacity - Count;
 
         OldIrql = MiAcquirePfnLock();
         Last->NextSubsection = (PSUBSECTION)Subsection;
@@ -375,9 +682,14 @@ MiExtendDataFileMap(
 
     KeReleaseGuardedMutex(&MiDataFileExtendLock);
 
-    /* System views reaching past the old end can use the new pages now */
-    if (Segment->TotalNumberOfPtes != OldPtes)
-        MiExtendSystemViews(ControlArea, OldPtes);
+ExtendViews:
+    /* System views reaching past the old end can use the new pages now, so can those a failed fill left short */
+    if (ControlArea->NumberOfMappedViews != 0)
+    {
+        ViewStatus = MiExtendSystemViews(ControlArea);
+        if (NT_SUCCESS(Status))
+            Status = ViewStatus;
+    }
 
     return Status;
 }
@@ -870,6 +1182,10 @@ MiFlushDataFileMap(
         if (Subsection->StartingSector >= EndPage)
             break;
 
+        /* Nothing was ever brought in without prototype PTEs */
+        if (!Subsection->SubsectionBase)
+            continue;
+
         Index = (StartPage > Subsection->StartingSector) ?
                 (ULONG)(StartPage - Subsection->StartingSector) : 0;
         LastIndex = (ULONG)min(EndPage - Subsection->StartingSector,
@@ -927,7 +1243,6 @@ MiMakeDataFilePtesValid(
     _In_ PCONTROL_AREA ControlArea,
     _In_ KIRQL OldIrql)
 {
-    PMMPTE PointerPte, LastPte;
     PMSUBSECTION Subsection;
     BOOLEAN Released = FALSE;
 
@@ -935,18 +1250,8 @@ MiMakeDataFilePtesValid(
          Subsection != NULL;
          Subsection = (PMSUBSECTION)Subsection->NextSubsection)
     {
-        if (Subsection->PtesInSubsection == 0)
-            continue;
-
-        PointerPte = PAGE_ALIGN(Subsection->SubsectionBase);
-        LastPte = &Subsection->SubsectionBase[Subsection->PtesInSubsection];
-        while (PointerPte < LastPte)
-        {
-            if (MiMakeSystemAddressValidPfn(PointerPte, OldIrql))
-                Released = TRUE;
-
-            PointerPte = (PMMPTE)((ULONG_PTR)PointerPte + PAGE_SIZE);
-        }
+        if (Subsection->SubsectionBase && MiMakeSubsectionPtesValid(Subsection, OldIrql))
+            Released = TRUE;
     }
 
     return Released;
@@ -969,6 +1274,9 @@ MiHasModifiedDataFilePages(
          Subsection != NULL;
          Subsection = (PMSUBSECTION)Subsection->NextSubsection)
     {
+        if (!Subsection->SubsectionBase)
+            continue;
+
         for (i = 0; i < Subsection->PtesInSubsection; i++)
         {
             Pfn1 = MiGetResidentPfn(&Subsection->SubsectionBase[i]);
@@ -1001,6 +1309,9 @@ MiDetachDataFilePages(
          Subsection != NULL;
          Subsection = (PMSUBSECTION)Subsection->NextSubsection)
     {
+        if (!Subsection->SubsectionBase)
+            continue;
+
         for (i = 0; i < Subsection->PtesInSubsection; i++)
         {
             PointerPte = &Subsection->SubsectionBase[i];
@@ -1069,6 +1380,7 @@ MiDeleteDataFileMap(
     PFILE_OBJECT FileObject = ControlArea->FilePointer;
     BOOLEAN Image = (BOOLEAN)ControlArea->u.Flags.Image;
     PSECTION_OBJECT_POINTERS SectionPointers;
+    PMSUBSECTION Subsection;
     NTSTATUS Status;
     ULONG Written;
     KIRQL OldIrql;
@@ -1086,6 +1398,8 @@ MiDeleteDataFileMap(
             Final = FALSE;
     }
 
+    /* Keeps the trimming of unused subsections away from this one */
+    KeAcquireGuardedMutex(&MiDataFileExtendLock);
     OldIrql = MiAcquirePfnLock();
 
     while (MiMakeDataFilePtesValid(ControlArea, OldIrql))
@@ -1096,6 +1410,7 @@ MiDeleteDataFileMap(
         /* Picked up again, whoever lets go last brings it back */
         ControlArea->u.Flags.BeingPurged = 0;
         MiReleasePfnLock(OldIrql);
+        KeReleaseGuardedMutex(&MiDataFileExtendLock);
         return TRUE;
     }
 
@@ -1103,6 +1418,7 @@ MiDeleteDataFileMap(
         (!Final && MiHasModifiedDataFilePages(ControlArea)))
     {
         MiReleasePfnLock(OldIrql);
+        KeReleaseGuardedMutex(&MiDataFileExtendLock);
         return FALSE;
     }
 
@@ -1138,7 +1454,19 @@ MiDeleteDataFileMap(
     }
 
     MiDetachDataFilePages(ControlArea);
+
+    if (!Image)
+    {
+        for (Subsection = (PMSUBSECTION)(ControlArea + 1);
+             Subsection != NULL;
+             Subsection = (PMSUBSECTION)Subsection->NextSubsection)
+        {
+            MiRemoveUnusedSubsection(Subsection);
+        }
+    }
+
     MiReleasePfnLock(OldIrql);
+    KeReleaseGuardedMutex(&MiDataFileExtendLock);
 
     if (Image)
         MiFreeImageFileMap(ControlArea);
@@ -1166,6 +1494,7 @@ MiDataFileCleanupThread(
     LARGE_INTEGER Delay, RetainDelay;
     PLIST_ENTRY Entry;
     ULONG Attempt;
+    BOOLEAN Idle;
     KIRQL OldIrql;
 
     UNREFERENCED_PARAMETER(Context);
@@ -1181,13 +1510,22 @@ MiDataFileCleanupThread(
         {
             KeDelayExecutionThread(KernelMode, FALSE, &RetainDelay);
 
+            KeAcquireGuardedMutex(&MiDataFileExtendLock);
+            MiTrimUnusedSubsections(FALSE);
+            KeReleaseGuardedMutex(&MiDataFileExtendLock);
+
 ScanList:
             OldIrql = MiAcquirePfnLock();
 
             if (IsListEmpty(&MiDataFileCleanupList))
             {
+                Idle = (BOOLEAN)IsListEmpty(&MiUnusedSubsectionList);
                 MiReleasePfnLock(OldIrql);
-                break;
+
+                if (Idle)
+                    break;
+
+                continue;
             }
 
             for (Entry = MiDataFileCleanupList.Flink;
@@ -1237,6 +1575,7 @@ MiInitializeDataFileMaps(VOID)
     NTSTATUS Status;
 
     InitializeListHead(&MiDataFileCleanupList);
+    InitializeListHead(&MiUnusedSubsectionList);
     KeInitializeEvent(&MiDataFileCleanupEvent, SynchronizationEvent, FALSE);
     KeInitializeGuardedMutex(&MiDataFileExtendLock);
 
@@ -1265,9 +1604,9 @@ MiInitializeDataFileMaps(VOID)
  * File page.
  *
  * @param[out] OutSubsection
- * Receives the subsection holding the prototype PTE.
+ * Receives the subsection holding the page, or NULL if the segment does not reach it.
  *
- * @return The prototype PTE, or NULL if the segment does not reach the page.
+ * @return The prototype PTE, or NULL if there is none or its subsection has no prototype PTEs.
  */
 PMMPTE
 NTAPI
@@ -1280,6 +1619,9 @@ MiGetDataFileProtoPte(
 
     ASSERT(ControlArea->u.Flags.File == 1);
 
+    if (OutSubsection)
+        *OutSubsection = NULL;
+
     for (Subsection = (PMSUBSECTION)(ControlArea + 1);
          Subsection != NULL;
          Subsection = (PMSUBSECTION)Subsection->NextSubsection)
@@ -1289,11 +1631,141 @@ MiGetDataFileProtoPte(
             if (OutSubsection)
                 *OutSubsection = Subsection;
 
+            if (!Subsection->SubsectionBase)
+                return NULL;
+
             return &Subsection->SubsectionBase[PageIndex - Subsection->StartingSector];
         }
     }
 
     return NULL;
+}
+
+/**
+ * @brief Makes a view use the prototype PTEs of the subsection holding a file page.
+ *
+ * @param[in] ControlArea
+ * Data control area the view maps.
+ *
+ * @param[in] PageIndex
+ * File page the view reaches.
+ *
+ * @param[in] FirstPageOfView
+ * TRUE when it is the first page of the view.
+ *
+ * @param[out] OutSubsection
+ * Receives the subsection, or NULL if the segment does not reach the page.
+ *
+ * @return STATUS_INSUFFICIENT_RESOURCES if the prototype PTEs could not be made.
+ *
+ * @remarks The view takes a reference on the subsection with its first page, or with the
+ * first page of the subsection. MiDereferenceDataFileView drops it.
+ */
+NTSTATUS
+NTAPI
+MiReferenceDataFileSubsection(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 PageIndex,
+    _In_ BOOLEAN FirstPageOfView,
+    _Out_ PMSUBSECTION *OutSubsection)
+{
+    return MiPrepareSubsectionPtes(ControlArea, PageIndex, TRUE, FirstPageOfView, OutSubsection);
+}
+
+/**
+ * @brief Makes a view use the prototype PTEs of a range of file pages.
+ *
+ * @param[in] ControlArea
+ * Data control area the view maps.
+ *
+ * @param[in] StartPage
+ * First file page of the view.
+ *
+ * @param[in] PageCount
+ * Number of pages of the view, all inside the segment.
+ */
+NTSTATUS
+NTAPI
+MiReferenceDataFileView(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 StartPage,
+    _In_ ULONG64 PageCount)
+{
+    PMSUBSECTION Subsection;
+    ULONG64 Page, EndPage;
+    NTSTATUS Status;
+
+    EndPage = StartPage + PageCount;
+
+    for (Page = StartPage; Page < EndPage; )
+    {
+        Status = MiReferenceDataFileSubsection(ControlArea, Page, (BOOLEAN)(Page == StartPage), &Subsection);
+        if (NT_SUCCESS(Status) && !Subsection)
+            Status = STATUS_INVALID_VIEW_SIZE;
+
+        if (!NT_SUCCESS(Status))
+        {
+            if (Page != StartPage)
+                MiDereferenceDataFileView(ControlArea, StartPage, Page - StartPage);
+
+            return Status;
+        }
+
+        Page = min((ULONG64)Subsection->StartingSector + Subsection->PtesInSubsection, EndPage);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Drops what a view took with MiReferenceDataFileView or MiReferenceDataFileSubsection.
+ *
+ * @param[in] ControlArea
+ * Data control area the view maps.
+ *
+ * @param[in] StartPage
+ * First file page of the view.
+ *
+ * @param[in] PageCount
+ * Number of pages the view got prototype PTEs for.
+ */
+VOID
+NTAPI
+MiDereferenceDataFileView(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 StartPage,
+    _In_ ULONG64 PageCount)
+{
+    PMSUBSECTION Subsection;
+    ULONG64 EndPage;
+    KIRQL OldIrql;
+
+    ASSERT(ControlArea->u.Flags.File == 1);
+    ASSERT(ControlArea->u.Flags.Image == 0);
+
+    EndPage = StartPage + PageCount;
+
+    OldIrql = MiAcquirePfnLock();
+
+    for (Subsection = (PMSUBSECTION)(ControlArea + 1);
+         Subsection != NULL;
+         Subsection = (PMSUBSECTION)Subsection->NextSubsection)
+    {
+        if (((ULONG64)Subsection->StartingSector + Subsection->PtesInSubsection) <= StartPage)
+            continue;
+
+        if (Subsection->StartingSector >= EndPage)
+            break;
+
+        ASSERT(Subsection->NumberOfMappedViews != 0);
+        ASSERT(Subsection->SubsectionBase != NULL);
+
+        Subsection->NumberOfMappedViews--;
+        if (Subsection->NumberOfMappedViews == 0)
+            MiInsertUnusedSubsection(Subsection);
+    }
+
+    MiReleasePfnLock(OldIrql);
 }
 
 /**
@@ -2142,6 +2614,9 @@ MmPurgeSegment(
         if (Subsection->StartingSector >= EndPage)
             break;
 
+        if (!Subsection->SubsectionBase)
+            continue;
+
         Index = (StartPage > Subsection->StartingSector) ?
                 (ULONG)(StartPage - Subsection->StartingSector) : 0;
         LastIndex = (ULONG)min(EndPage - Subsection->StartingSector,
@@ -2229,17 +2704,16 @@ MmIsDataSectionResident(
     Page = (ULONG64)Offset >> PAGE_SHIFT;
     EndPage = ((ULONG64)Offset + Length + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
-    OldIrql = MiAcquirePfnLock();
-
-    ControlArea = SectionObjectPointer->DataSectionObject;
+    /* Keeps the prototype PTEs while the PFN lock is released to map them */
+    ControlArea = MiReferenceDataFileMapForIo(SectionObjectPointer);
     if (!ControlArea)
-    {
-        MiReleasePfnLock(OldIrql);
         return FALSE;
-    }
+
+    OldIrql = MiAcquirePfnLock();
 
     for (; Page < EndPage; Page++)
     {
+        /* No prototype PTEs means nothing was brought in */
         PointerPte = MiGetDataFileProtoPte(ControlArea, Page, NULL);
         if (!PointerPte)
         {
@@ -2258,6 +2732,8 @@ MmIsDataSectionResident(
     }
 
     MiReleasePfnLock(OldIrql);
+
+    MiDereferenceDataFileMapForIo(ControlArea);
     return Result;
 }
 
@@ -2283,8 +2759,10 @@ MmZeroDataSection(
     _In_ LONGLONG Offset,
     _In_ ULONG Length)
 {
+    NTSTATUS Status = STATUS_SUCCESS;
     PFN_NUMBER PageFrameIndex;
     PCONTROL_AREA ControlArea;
+    PMSUBSECTION Subsection;
     PKEVENT PreviousEvent;
     ULONG64 Page, EndPage;
     PMMPTE PointerPte;
@@ -2306,11 +2784,18 @@ MmZeroDataSection(
     {
         OldIrql = MiAcquirePfnLock();
 
-        PointerPte = MiGetDataFileProtoPte(ControlArea, Page, NULL);
+        PointerPte = MiGetDataFileProtoPte(ControlArea, Page, &Subsection);
         if (!PointerPte)
         {
             MiReleasePfnLock(OldIrql);
-            break;
+            if (!Subsection)
+                break;
+
+            Status = MiPrepareSubsectionPtes(ControlArea, Page, FALSE, FALSE, &Subsection);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            continue;
         }
 
         MiMakeSystemAddressValidPfn(PointerPte, OldIrql);
@@ -2362,7 +2847,7 @@ MmZeroDataSection(
     }
 
     MiDereferenceDataFileMapForIo(ControlArea);
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 /**
@@ -2420,7 +2905,14 @@ MmMakeDataSectionResident(
         if (!PointerPte)
         {
             MiReleasePfnLock(OldIrql);
-            break;
+            if (!Subsection)
+                break;
+
+            Status = MiPrepareSubsectionPtes(ControlArea, Page, FALSE, FALSE, &Subsection);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            continue;
         }
 
         MiMakeSystemAddressValidPfn(PointerPte, OldIrql);
@@ -2590,6 +3082,7 @@ MmMakeSegmentDirty(
     _Out_opt_ PBOOLEAN WasClean)
 {
     PCONTROL_AREA ControlArea;
+    PMSUBSECTION Subsection;
     ULONG64 Page, EndPage;
     PMMPTE PointerPte;
     PMMPFN Pfn1;
@@ -2604,20 +3097,25 @@ MmMakeSegmentDirty(
     Page = (ULONG64)Offset >> PAGE_SHIFT;
     EndPage = ((ULONG64)Offset + Length + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
-    OldIrql = MiAcquirePfnLock();
-
-    ControlArea = SectionObjectPointer->DataSectionObject;
+    /* Keeps the prototype PTEs while the PFN lock is released to map them */
+    ControlArea = MiReferenceDataFileMapForIo(SectionObjectPointer);
     if (!ControlArea)
-    {
-        MiReleasePfnLock(OldIrql);
         return STATUS_NOT_MAPPED_VIEW;
-    }
+
+    OldIrql = MiAcquirePfnLock();
 
     for (; Page < EndPage; Page++)
     {
-        PointerPte = MiGetDataFileProtoPte(ControlArea, Page, NULL);
-        if (!PointerPte)
+        PointerPte = MiGetDataFileProtoPte(ControlArea, Page, &Subsection);
+        if (!Subsection)
             break;
+
+        /* No prototype PTEs means no page of the subsection is in memory */
+        if (!PointerPte)
+        {
+            Page = (ULONG64)Subsection->StartingSector + Subsection->PtesInSubsection - 1;
+            continue;
+        }
 
         MiMakeSystemAddressValidPfn(PointerPte, OldIrql);
 
@@ -2639,6 +3137,8 @@ MmMakeSegmentDirty(
     }
 
     MiReleasePfnLock(OldIrql);
+
+    MiDereferenceDataFileMapForIo(ControlArea);
     return STATUS_SUCCESS;
 }
 

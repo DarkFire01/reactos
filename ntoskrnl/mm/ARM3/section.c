@@ -414,6 +414,7 @@ MiInsertInSystemSpace(IN PMMSESSION Session,
     Session->SystemSpaceViewTable[Hash].Entry = Entry;
     Session->SystemSpaceViewTable[Hash].ControlArea = ControlArea;
     Session->SystemSpaceViewTable[Hash].StartingPage = StartingPage;
+    Session->SystemSpaceViewTable[Hash].FilledPages = 0;
     Session->SystemSpaceViewTable[Hash].UserReference = UserReference;
     Session->SystemSpaceViewTable[Hash].ReadOnly = ReadOnly;
 
@@ -424,59 +425,95 @@ MiInsertInSystemSpace(IN PMMSESSION Session,
 }
 
 /**
- * @brief Points system view PTEs at the prototype PTEs of a section.
+ * @brief Finds the entry of a system view.
+ * @remarks The system space view lock must be held.
+ */
+static
+PMMVIEW
+MiLocateSystemView(
+    _In_ PMMSESSION Session,
+    _In_ PVOID Base)
+{
+    ULONG Hash, Count = 0;
+    ULONG_PTR Entry;
+
+    Entry = (ULONG_PTR)Base >> 16;
+    Hash = Entry % Session->SystemSpaceHashKey;
+    while ((Session->SystemSpaceViewTable[Hash].Entry >> 16) != Entry)
+    {
+        if (++Hash >= Session->SystemSpaceHashSize)
+        {
+            /* Wrapping around twice means this is not a real mapping */
+            Hash = 0;
+            if (++Count == 2)
+                KeBugCheckEx(DRIVER_UNMAPPING_INVALID_VIEW, (ULONG_PTR)Base, 1, 0, 0);
+        }
+    }
+
+    return &Session->SystemSpaceViewTable[Hash];
+}
+
+/**
+ * @brief Points the PTEs of a system view at prototype PTEs, from the first one not done yet.
  *
- * @param[in] FirstPte
- * PTE mapping the first page of the view.
+ * @param[in,out] View
+ * System view, FilledPages grows with the PTEs set.
  *
  * @param[in] PteCount
  * Number of PTEs of the view.
  *
- * @param[in] ControlArea
- * Control area of the section.
+ * @return STATUS_INSUFFICIENT_RESOURCES if prototype PTEs could not be made.
  *
- * @param[in] StartingPage
- * Section page mapped by the first PTE.
- *
- * @param[in] ReadOnly
- * TRUE if the view must not allow writes.
- *
- * @remarks PTEs already set are left alone, and so are PTEs past the end of a file segment.
+ * @remarks The system space view lock must be held. PTEs past the end of a file segment
+ * stay empty until MiExtendSystemViews gets to them.
  */
 static
-VOID
+NTSTATUS
 MiAddMappedPtes(
-    _In_ PMMPTE FirstPte,
-    _In_ ULONG PteCount,
-    _In_ PCONTROL_AREA ControlArea,
-    _In_ ULONG64 StartingPage,
-    _In_ BOOLEAN ReadOnly)
+    _Inout_ PMMVIEW View,
+    _In_ ULONG_PTR PteCount)
 {
+    PCONTROL_AREA ControlArea = View->ControlArea;
     PMMPTE PointerPte, LastPte, ProtoPte, LastProtoPte;
     PMSUBSECTION Subsection;
-    ULONG64 Page = StartingPage;
+    NTSTATUS Status;
     MMPTE TempPte;
+    ULONG64 Page;
 
     ASSERT(ControlArea->u.Flags.GlobalOnlyPerSession == 0);
     ASSERT(ControlArea->u.Flags.Rom == 0);
     ASSERT(ControlArea->u.Flags.BeingDeleted == 0);
     ASSERT(PteCount != 0);
 
-    PointerPte = FirstPte;
-    LastPte = FirstPte + PteCount;
+    PointerPte = MiAddressToPte((PVOID)(View->Entry & ~(MI_SYSTEM_VIEW_BUCKET_SIZE - 1)));
+    LastPte = PointerPte + PteCount;
+    PointerPte += View->FilledPages;
 
     while (PointerPte < LastPte)
     {
+        Page = View->StartingPage + View->FilledPages;
+
         if (ControlArea->FilePointer)
         {
-            ProtoPte = MiGetDataFileProtoPte(ControlArea, Page, &Subsection);
-            if (!ProtoPte)
+            if (Page >= ControlArea->Segment->TotalNumberOfPtes)
                 break;
+
+            Status = MiReferenceDataFileSubsection(ControlArea,
+                                                   Page,
+                                                   (BOOLEAN)(View->FilledPages == 0),
+                                                   &Subsection);
+            if (!NT_SUCCESS(Status))
+                return Status;
+
+            if (!Subsection)
+                break;
+
+            ProtoPte = &Subsection->SubsectionBase[Page - Subsection->StartingSector];
         }
         else
         {
             Subsection = (PMSUBSECTION)(ControlArea + 1);
-            ASSERT(Page + PteCount <= Subsection->PtesInSubsection);
+            ASSERT(Page + (LastPte - PointerPte) <= Subsection->PtesInSubsection);
             ProtoPte = &Subsection->SubsectionBase[Page];
         }
 
@@ -486,19 +523,21 @@ MiAddMappedPtes(
             if (PointerPte->u.Long == 0)
             {
                 MI_MAKE_PROTOTYPE_PTE(&TempPte, ProtoPte);
-                TempPte.u.Proto.ReadOnly = ReadOnly;
+                TempPte.u.Proto.ReadOnly = View->ReadOnly;
                 MI_WRITE_INVALID_PTE(PointerPte, TempPte);
             }
 
             PointerPte++;
             ProtoPte++;
-            Page++;
+            View->FilledPages++;
         }
 
         /* Paging file backed sections have a single subsection */
         if (!ControlArea->FilePointer)
             break;
     }
+
+    return STATUS_SUCCESS;
 }
 
 VOID
@@ -816,6 +855,14 @@ MiRemoveMappedView(IN PEPROCESS CurrentProcess,
     /* Release the working set */
     MiUnlockProcessWorkingSetUnsafe(CurrentProcess, CurrentThread);
 
+    /* A data file view held the prototype PTEs of its pages */
+    if (ControlArea->FilePointer && !ControlArea->u.Flags.Image)
+    {
+        MiDereferenceDataFileView(ControlArea,
+                                  ((ULONG64)Vad->u2.VadFlags2.FileOffset << 16) >> PAGE_SHIFT,
+                                  Vad->EndingVpn - Vad->StartingVpn + 1);
+    }
+
     /* Lock the PFN database */
     OldIrql = MiAcquirePfnLock();
 
@@ -1115,6 +1162,12 @@ MiSessionCommitPageTables(IN PVOID StartVa,
     return STATUS_SUCCESS;
 }
 
+static
+NTSTATUS
+MiUnmapViewInSystemSpace(
+    _In_ PMMSESSION Session,
+    _In_ PVOID MappedBase);
+
 NTSTATUS
 MiMapViewInSystemSpace(
     _In_ PVOID Section,
@@ -1244,12 +1297,17 @@ MiMapViewInSystemSpace(
         ASSERT(NT_SUCCESS(Status));
     }
 
-    /* Create the actual prototype PTEs for this mapping */
-    MiAddMappedPtes(MiAddressToPte(Base),
-                    BYTES_TO_PAGES(*ViewSize),
-                    ControlArea,
-                    (ULONG64)SectionOffset->QuadPart >> PAGE_SHIFT,
-                    ReadOnly);
+    /* Point the view at the prototype PTEs, a file gets them made for the pages the view reaches */
+    KeAcquireGuardedMutex(Session->SystemSpaceViewLockPointer);
+    Status = MiAddMappedPtes(MiLocateSystemView(Session, Base), BYTES_TO_PAGES(*ViewSize));
+    KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("No prototype PTEs for a view of control area %p\n", ControlArea);
+        MiUnmapViewInSystemSpace(Session, Base);
+        return Status;
+    }
 
     /* Return the base address of the mapping and success */
     *MappedBase = Base;
@@ -1262,19 +1320,17 @@ MiMapViewInSystemSpace(
  * @param[in] ControlArea
  * Data control area that was extended.
  *
- * @param[in] OldPtes
- * Number of prototype PTEs before the extension.
+ * @return STATUS_INSUFFICIENT_RESOURCES if prototype PTEs could not be made.
  */
-VOID
+NTSTATUS
 NTAPI
 MiExtendSystemViews(
-    _In_ PCONTROL_AREA ControlArea,
-    _In_ ULONG OldPtes)
+    _In_ PCONTROL_AREA ControlArea)
 {
     PMMSESSION Session = &MmSession;
-    ULONG64 FirstPage, EndPage;
+    NTSTATUS Status = STATUS_SUCCESS, ViewStatus;
+    ULONG_PTR PteCount;
     PMMVIEW View;
-    PVOID Base;
     ULONG i;
 
     PAGED_CODE();
@@ -1288,25 +1344,19 @@ MiExtendSystemViews(
         if (!View->Entry || (View->ControlArea != ControlArea))
             continue;
 
-        /* Only the part of the view past the old end has PTEs to fill */
-        EndPage = View->StartingPage +
-                  (View->Entry & (MI_SYSTEM_VIEW_BUCKET_SIZE - 1)) *
-                  (MI_SYSTEM_VIEW_BUCKET_SIZE >> PAGE_SHIFT);
-        if (EndPage <= OldPtes)
+        /* The view covers its whole buckets, the part past the end it reached so far has PTEs to fill */
+        PteCount = (View->Entry & (MI_SYSTEM_VIEW_BUCKET_SIZE - 1)) *
+                   (MI_SYSTEM_VIEW_BUCKET_SIZE >> PAGE_SHIFT);
+        if (View->FilledPages >= PteCount)
             continue;
 
-        FirstPage = max(View->StartingPage, OldPtes);
-        Base = (PVOID)(View->Entry & ~(MI_SYSTEM_VIEW_BUCKET_SIZE - 1));
-
-        MiAddMappedPtes(MiAddressToPte((PVOID)((ULONG_PTR)Base +
-                                               (ULONG_PTR)((FirstPage - View->StartingPage) << PAGE_SHIFT))),
-                        (ULONG)(EndPage - FirstPage),
-                        ControlArea,
-                        FirstPage,
-                        View->ReadOnly);
+        ViewStatus = MiAddMappedPtes(View, PteCount);
+        if (NT_SUCCESS(Status))
+            Status = ViewStatus;
     }
 
     KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
+    return Status;
 }
 
 static
@@ -1412,9 +1462,19 @@ MiMapViewOfDataSection(
     ASSERT(PteOffset < Segment->TotalNumberOfPtes);
     ASSERT(((SectionOffset->QuadPart + *ViewSize + PAGE_SIZE - 1) >> PAGE_SHIFT) >= PteOffset);
 
+    /* Calculate how many pages the region spans */
+    ViewSizeInPages = BYTES_TO_PAGES(*ViewSize);
+
     if (ControlArea->FilePointer)
     {
-        /* File data lives in chained subsections */
+        /* File data lives in chained subsections, the view keeps the prototype PTEs it reaches */
+        Status = MiReferenceDataFileView(ControlArea, PteOffset, ViewSizeInPages);
+        if (!NT_SUCCESS(Status))
+        {
+            MiDereferenceControlArea(ControlArea, TRUE);
+            return Status;
+        }
+
         FirstProtoPte = MiGetDataFileProtoPte(ControlArea, PteOffset, &MappedSubsection);
         ASSERT(FirstProtoPte != NULL);
         Subsection = (PSUBSECTION)MappedSubsection;
@@ -1443,15 +1503,14 @@ MiMapViewOfDataSection(
     /* ARM3 does not currently support large pages */
     ASSERT(Segment->SegmentFlags.LargePages == 0);
 
-    /* Calculate how many pages the region spans */
-    ViewSizeInPages = BYTES_TO_PAGES(*ViewSize);
-
     /* A VAD can now be allocated. Do so and zero it out */
     /* FIXME: we are allocating a LONG VAD for ReactOS compatibility only */
     ASSERT((AllocationType & MEM_RESERVE) == 0); /* ARM3 does not support this */
     Vad = ExAllocatePoolWithTag(NonPagedPool, sizeof(MMVAD_LONG), 'ldaV');
     if (!Vad)
     {
+        if (ControlArea->FilePointer)
+            MiDereferenceDataFileView(ControlArea, PteOffset, ViewSizeInPages);
         MiDereferenceControlArea(ControlArea, TRUE);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -1547,6 +1606,8 @@ MiMapViewOfDataSection(
     if (!NT_SUCCESS(Status))
     {
         ExFreePoolWithTag(Vad, 'ldaV');
+        if (ControlArea->FilePointer)
+            MiDereferenceDataFileView(ControlArea, PteOffset, ViewSizeInPages);
         MiDereferenceControlArea(ControlArea, TRUE);
 
         KeAcquireGuardedMutex(&MmSectionCommitMutex);
@@ -1566,6 +1627,8 @@ MiMapViewOfDataSection(
     if (!NT_SUCCESS(Status))
     {
         ExFreePoolWithTag(Vad, 'ldaV');
+        if (ControlArea->FilePointer)
+            MiDereferenceDataFileView(ControlArea, PteOffset, ViewSizeInPages);
         MiDereferenceControlArea(ControlArea, TRUE);
 
         KeAcquireGuardedMutex(&MmSectionCommitMutex);
@@ -2578,45 +2641,22 @@ static
 ULONG
 MiRemoveFromSystemSpace(IN PMMSESSION Session,
                         IN PVOID Base,
-                        OUT PCONTROL_AREA *ControlArea,
-                        OUT PBOOLEAN UserReference)
+                        OUT PMMVIEW RemovedView)
 {
-    ULONG Hash, Size, Count = 0;
-    ULONG_PTR Entry;
+    PMMVIEW View;
+    ULONG Size;
     PAGED_CODE();
 
-    /* Compute the hash for this entry and loop trying to find it */
-    Entry = (ULONG_PTR)Base >> 16;
-    Hash = Entry % Session->SystemSpaceHashKey;
-    while ((Session->SystemSpaceViewTable[Hash].Entry >> 16) != Entry)
-    {
-        /* Check if we overflew past the end of the hash table */
-        if (++Hash >= Session->SystemSpaceHashSize)
-        {
-            /* Reset the hash to zero and keep searching from the bottom */
-            Hash = 0;
-            if (++Count == 2)
-            {
-                /* But if we overflew twice, then this is not a real mapping */
-                KeBugCheckEx(DRIVER_UNMAPPING_INVALID_VIEW,
-                             (ULONG_PTR)Base,
-                             1,
-                             0,
-                             0);
-            }
-        }
-    }
+    View = MiLocateSystemView(Session, Base);
 
     /* One less entry */
     Session->SystemSpaceHashEntries--;
 
-    /* Extract the size and clear the entry */
-    Size = Session->SystemSpaceViewTable[Hash].Entry & 0xFFFF;
-    Session->SystemSpaceViewTable[Hash].Entry = 0;
+    /* Extract the size and clear the entry, the caller gets what it described */
+    Size = View->Entry & 0xFFFF;
+    *RemovedView = *View;
+    View->Entry = 0;
 
-    /* Return the control area and the size */
-    *ControlArea = Session->SystemSpaceViewTable[Hash].ControlArea;
-    *UserReference = Session->SystemSpaceViewTable[Hash].UserReference;
     return Size;
 }
 
@@ -2627,13 +2667,14 @@ MiUnmapViewInSystemSpace(IN PMMSESSION Session,
 {
     ULONG Size;
     PCONTROL_AREA ControlArea;
-    BOOLEAN UserReference;
+    MMVIEW View;
     KIRQL OldIrql;
     PAGED_CODE();
 
     /* Remove this mapping */
     KeAcquireGuardedMutex(Session->SystemSpaceViewLockPointer);
-    Size = MiRemoveFromSystemSpace(Session, MappedBase, &ControlArea, &UserReference);
+    Size = MiRemoveFromSystemSpace(Session, MappedBase, &View);
+    ControlArea = View.ControlArea;
 
     /* Clear the bits for this mapping */
     RtlClearBits(Session->SystemSpaceBitMap,
@@ -2652,7 +2693,12 @@ MiUnmapViewInSystemSpace(IN PMMSESSION Session,
     }
 
     /* Remove the PTEs now */
-    MiRemoveMappedPtes(MappedBase, Size, ControlArea, NULL, UserReference);
+    MiRemoveMappedPtes(MappedBase, Size, ControlArea, NULL, View.UserReference);
+
+    /* The prototype PTEs the view used may go once nothing else holds them */
+    if (ControlArea->FilePointer && (View.FilledPages != 0))
+        MiDereferenceDataFileView(ControlArea, View.StartingPage, View.FilledPages);
+
     KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
 
     if (ControlArea->FilePointer)
