@@ -31,6 +31,9 @@ typedef struct _INTERNAL_WORK_QUEUE_ITEM
 /* Only a UEFI boot hands over the framebuffer the basic display driver draws on */
 #define IOP_UEFI_ONLY_DISPLAY       L"BasicDisplay"
 
+/* The basic display adapter is a display adapter from the start, before its INF is processed */
+#define IOP_DISPLAY_CLASS_GUID      L"{4d36e968-e325-11ce-bfc1-08002be10318}"
+
 NTSTATUS
 IopSetDeviceInstanceData(HANDLE InstanceKey,
                          PDEVICE_NODE DeviceNode);
@@ -539,6 +542,19 @@ IoReportRootDevice(
                            ServiceName->Length + sizeof(UNICODE_NULL));
     if (!NT_SUCCESS(Status))
         goto Undo;
+
+    if (RtlEqualUnicodeString(ServiceName, &UefiOnlyDisplay, TRUE))
+    {
+        RtlInitUnicodeString(&ValueName, REGSTR_VAL_CLASSGUID);
+        Status = ZwSetValueKey(InstanceKey,
+                               &ValueName,
+                               0,
+                               REG_SZ,
+                               IOP_DISPLAY_CLASS_GUID,
+                               sizeof(IOP_DISPLAY_CLASS_GUID));
+        if (!NT_SUCCESS(Status))
+            goto Undo;
+    }
 
     DriverObject->Flags |= DRVO_ROOT_DEVICE_REPORTED;
     IoInvalidateDeviceRelations(IopRootDeviceNode->PhysicalDeviceObject, BusRelations);
