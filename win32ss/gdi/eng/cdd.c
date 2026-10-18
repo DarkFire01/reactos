@@ -10,6 +10,7 @@
  */
 
 #include <win32k.h>
+#include <reactos/rddm/rddm_private.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -30,6 +31,10 @@ typedef struct _W32KCDD_INTERFACE
     PVOID pfnW32kCddGenerateMoveData;
     PVOID pfnW32kCddAcquireDynamicModeChangeLockShared;
     PVOID pfnW32kCddReleaseDynamicModeChangeLockShared;
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+    PVOID pfnW32kCddIsRemoteConnection;
+    PVOID pfnW32kCddSetDeviceBitmapAdapterLuid;
+#endif
     PVOID pfnCddW32kAddD3DDirtyRgn;
     PVOID pfnCddW32kAddBitmapD3DDirtyRgn;
     PVOID pfnCddW32kCloseProcess;
@@ -38,7 +43,11 @@ typedef struct _W32KCDD_INTERFACE
     PVOID pfnCddW32kDeleteDeviceBitmapEx;
 } W32KCDD_INTERFACE, *PW32KCDD_INTERFACE;
 
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#define W32KCDD_INTERFACE_VERSION   4
+#else
 #define W32KCDD_INTERFACE_VERSION   3
+#endif
 
 /* Gamma is scaled by 1000, so 1000 means no correction at all */
 #define ENG_GAMMA_UNCORRECTED       1000
@@ -82,7 +91,7 @@ W32kCddGetWin32kCommand(
  * out which part of the screen a drawing call changed, and presents only that part.
  *
  * @param[in] hDstRgn
- * Receives the clipped region.
+ * Receives the clipped region. Windows 11 passes it by reference.
  *
  * @param[in] hSrcRgn
  * The area the call drew to.
@@ -97,10 +106,17 @@ static
 INT
 APIENTRY
 W32kCddClipRegion(
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+    _In_ PHANDLE phDstRgn,
+#else
     _In_ HANDLE hDstRgn,
+#endif
     _In_ HANDLE hSrcRgn,
     _In_ const CLIPOBJ *pco)
 {
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+    HANDLE hDstRgn = *phDstRgn;
+#endif
     const XCLIPOBJ *pxco = (const XCLIPOBJ *)pco;
     const RECTL *prcl;
     HANDLE hClipRgn, hRectRgn;
@@ -343,6 +359,53 @@ W32kCddReleaseDynamicModeChangeLockShared(VOID)
 {
 }
 
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+/**
+ * @brief
+ * Tells cdd whether the session is remote. Every session here is local.
+ *
+ * @return
+ * FALSE.
+ */
+static
+BOOL
+APIENTRY
+W32kCddIsRemoteConnection(
+    _Out_opt_ PULONG pulProtocol,
+    _Out_opt_ PVOID *ppvConnection,
+    _Out_opt_ PULONG pulFlags)
+{
+    if (pulProtocol)
+        *pulProtocol = 0;
+    if (ppvConnection)
+        *ppvConnection = NULL;
+    if (pulFlags)
+        *pulFlags = 0;
+
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Records which adapter a device bitmap lives on. GDI does not track that per surface.
+ *
+ * @return
+ * TRUE.
+ */
+static
+BOOL
+APIENTRY
+W32kCddSetDeviceBitmapAdapterLuid(
+    _In_ HSURF hsurf,
+    _In_ LUID AdapterLuid)
+{
+    UNREFERENCED_PARAMETER(hsurf);
+    UNREFERENCED_PARAMETER(AdapterLuid);
+
+    return TRUE;
+}
+#endif
+
 /* PUBLIC FUNCTIONS ***********************************************************/
 
 /**
@@ -561,6 +624,10 @@ EngQueryW32kCddInterface(
         W32kCddAcquireDynamicModeChangeLockShared;
     pW32kCddInterface->pfnW32kCddReleaseDynamicModeChangeLockShared =
         W32kCddReleaseDynamicModeChangeLockShared;
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+    pW32kCddInterface->pfnW32kCddIsRemoteConnection = W32kCddIsRemoteConnection;
+    pW32kCddInterface->pfnW32kCddSetDeviceBitmapAdapterLuid = W32kCddSetDeviceBitmapAdapterLuid;
+#endif
 
     *phAdapter = pGraphicsDevice->DxgAdapter;
     *pVidPnSourceId = pGraphicsDevice->VidPnSourceId;
