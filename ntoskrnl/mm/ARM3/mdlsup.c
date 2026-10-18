@@ -1993,4 +1993,73 @@ MmAllocateNodePagesForMdlEx(
                                    Flags);
 }
 
+/**
+ * @brief
+ * Describes ranges of I/O space, never RAM, with a locked MDL.
+ *
+ * @param[in] PhysicalAddressList
+ * The page aligned ranges, in the order the MDL describes them.
+ *
+ * @param[in] NumberOfEntries
+ * Number of entries in @p PhysicalAddressList.
+ *
+ * @param[out] NewMdl
+ * Receives the MDL. The caller frees it with IoFreeMdl.
+ *
+ * @return
+ * STATUS_INVALID_PARAMETER_1 for an unaligned range, a range that starts in
+ * RAM or a total over 4GB.
+ */
+NTSTATUS
+NTAPI
+MmAllocateMdlForIoSpace(
+    _In_reads_(NumberOfEntries) PMM_PHYSICAL_ADDRESS_LIST PhysicalAddressList,
+    _In_ SIZE_T NumberOfEntries,
+    _Out_ PMDL *NewMdl)
+{
+    PPFN_NUMBER MdlPages;
+    PFN_NUMBER PageFrameIndex;
+    PFN_NUMBER PageCount;
+    SIZE_T TotalBytes = 0;
+    SIZE_T Index;
+    PMDL Mdl;
+
+    for (Index = 0; Index < NumberOfEntries; Index++)
+    {
+        if (BYTE_OFFSET(PhysicalAddressList[Index].PhysicalAddress.LowPart) ||
+            BYTE_OFFSET(PhysicalAddressList[Index].NumberOfBytes))
+        {
+            return STATUS_INVALID_PARAMETER_1;
+        }
+
+        PageFrameIndex = (PFN_NUMBER)(PhysicalAddressList[Index].PhysicalAddress.QuadPart >> PAGE_SHIFT);
+        if (MiGetPfnEntry(PageFrameIndex))
+            return STATUS_INVALID_PARAMETER_1;
+
+        if (TotalBytes + PhysicalAddressList[Index].NumberOfBytes < TotalBytes)
+            return STATUS_INVALID_PARAMETER_1;
+
+        TotalBytes += PhysicalAddressList[Index].NumberOfBytes;
+        if (TotalBytes > MAXULONG)
+            return STATUS_INVALID_PARAMETER_1;
+    }
+
+    Mdl = IoAllocateMdl(NULL, (ULONG)TotalBytes, FALSE, FALSE, NULL);
+    if (!Mdl)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    MdlPages = MmGetMdlPfnArray(Mdl);
+    for (Index = 0; Index < NumberOfEntries; Index++)
+    {
+        PageFrameIndex = (PFN_NUMBER)(PhysicalAddressList[Index].PhysicalAddress.QuadPart >> PAGE_SHIFT);
+        for (PageCount = PhysicalAddressList[Index].NumberOfBytes >> PAGE_SHIFT; PageCount; PageCount--)
+            *MdlPages++ = PageFrameIndex++;
+    }
+
+    Mdl->Process = NULL;
+    Mdl->MdlFlags |= MDL_PAGES_LOCKED | MDL_IO_SPACE;
+    *NewMdl = Mdl;
+    return STATUS_SUCCESS;
+}
+
 /* EOF */
