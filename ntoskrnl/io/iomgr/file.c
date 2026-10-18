@@ -4142,6 +4142,201 @@ NtCancelIoFile(IN HANDLE FileHandle,
     return STATUS_SUCCESS;
 }
 
+typedef struct _IOP_CANCEL_FILE_IO
+{
+    KAPC Apc;
+    KEVENT Done;
+    PFILE_OBJECT FileObject;
+    PIO_STATUS_BLOCK IoRequestToCancel;
+    BOOLEAN Cancelled;
+} IOP_CANCEL_FILE_IO, *PIOP_CANCEL_FILE_IO;
+
+/**
+ * @brief
+ * Cancels the requests the current thread issued on a file object.
+ *
+ * @param[in] IoRequestToCancel
+ * Only cancels the request using this I/O status block when given.
+ *
+ * @return
+ * TRUE when a request was cancelled.
+ */
+static
+BOOLEAN
+IopCancelCurrentThreadFileIo(
+    _In_ PFILE_OBJECT FileObject,
+    _In_opt_ PIO_STATUS_BLOCK IoRequestToCancel)
+{
+    PETHREAD Thread = PsGetCurrentThread();
+    BOOLEAN Cancelled = FALSE;
+    PLIST_ENTRY NextEntry;
+    KIRQL OldIrql;
+    PIRP Irp;
+
+    /* The thread only changes its IRP list at APC level */
+    KeRaiseIrql(APC_LEVEL, &OldIrql);
+
+    for (NextEntry = Thread->IrpList.Flink;
+         NextEntry != &Thread->IrpList;
+         NextEntry = NextEntry->Flink)
+    {
+        Irp = CONTAINING_RECORD(NextEntry, IRP, ThreadListEntry);
+        if (Irp->Tail.Overlay.OriginalFileObject != FileObject)
+            continue;
+
+        if (IoRequestToCancel && Irp->UserIosb != IoRequestToCancel)
+            continue;
+
+        IoCancelIrp(Irp);
+        Cancelled = TRUE;
+    }
+
+    KeLowerIrql(OldIrql);
+    return Cancelled;
+}
+
+static
+VOID
+NTAPI
+IopCancelFileIoApc(
+    _In_ PKAPC Apc,
+    _Inout_ PKNORMAL_ROUTINE *NormalRoutine,
+    _Inout_ PVOID *NormalContext,
+    _Inout_ PVOID *SystemArgument1,
+    _Inout_ PVOID *SystemArgument2)
+{
+    PIOP_CANCEL_FILE_IO Request = CONTAINING_RECORD(Apc, IOP_CANCEL_FILE_IO, Apc);
+
+    UNREFERENCED_PARAMETER(NormalRoutine);
+    UNREFERENCED_PARAMETER(NormalContext);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    Request->Cancelled = IopCancelCurrentThreadFileIo(Request->FileObject,
+                                                      Request->IoRequestToCancel);
+    KeSetEvent(&Request->Done, IO_NO_INCREMENT, FALSE);
+}
+
+/* The thread exited before the APC ran, so it has no requests left */
+static
+VOID
+NTAPI
+IopCancelFileIoRundown(
+    _In_ PKAPC Apc)
+{
+    PIOP_CANCEL_FILE_IO Request = CONTAINING_RECORD(Apc, IOP_CANCEL_FILE_IO, Apc);
+
+    KeSetEvent(&Request->Done, IO_NO_INCREMENT, FALSE);
+}
+
+/**
+ * @brief
+ * Cancels requests that any thread of the calling process issued on a file.
+ *
+ * @param[in] FileHandle
+ * The file whose requests are cancelled. No specific access is needed.
+ *
+ * @param[in] IoRequestToCancel
+ * Only cancels the request using this I/O status block when given.
+ *
+ * @param[out] IoStatusBlock
+ * Receives the final status.
+ *
+ * @return
+ * STATUS_SUCCESS when a request was cancelled, STATUS_NOT_FOUND otherwise.
+ *
+ * @remarks
+ * Other threads cancel their own requests from a kernel APC, since only the
+ * owning thread may walk its IRP list. Unlike NtCancelIoFile, this does not
+ * wait for the cancelled requests to complete.
+ */
+NTSTATUS
+NTAPI
+NtCancelIoFileEx(
+    _In_ HANDLE FileHandle,
+    _In_opt_ PIO_STATUS_BLOCK IoRequestToCancel,
+    _Out_ PIO_STATUS_BLOCK IoStatusBlock)
+{
+    KPROCESSOR_MODE PreviousMode = KeGetPreviousMode();
+    PEPROCESS Process = PsGetCurrentProcess();
+    IOP_CANCEL_FILE_IO Request;
+    PFILE_OBJECT FileObject;
+    BOOLEAN Cancelled;
+    PETHREAD Thread;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    if (PreviousMode != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            ProbeForWriteIoStatusBlock(IoStatusBlock);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    Status = ObReferenceObjectByHandle(FileHandle,
+                                       0,
+                                       IoFileObjectType,
+                                       PreviousMode,
+                                       (PVOID*)&FileObject,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    IopUpdateOperationCount(IopOtherTransfer);
+
+    Cancelled = IopCancelCurrentThreadFileIo(FileObject, IoRequestToCancel);
+
+    for (Thread = PsGetNextProcessThread(Process, NULL);
+         Thread != NULL;
+         Thread = PsGetNextProcessThread(Process, Thread))
+    {
+        if (Thread == PsGetCurrentThread())
+            continue;
+
+        Request.FileObject = FileObject;
+        Request.IoRequestToCancel = IoRequestToCancel;
+        Request.Cancelled = FALSE;
+        KeInitializeEvent(&Request.Done, NotificationEvent, FALSE);
+        KeInitializeApc(&Request.Apc,
+                        &Thread->Tcb,
+                        OriginalApcEnvironment,
+                        IopCancelFileIoApc,
+                        IopCancelFileIoRundown,
+                        NULL,
+                        KernelMode,
+                        NULL);
+
+        if (KeInsertQueueApc(&Request.Apc, NULL, NULL, IO_NO_INCREMENT))
+        {
+            KeWaitForSingleObject(&Request.Done, Executive, KernelMode, FALSE, NULL);
+            Cancelled |= Request.Cancelled;
+        }
+    }
+
+    Status = Cancelled ? STATUS_SUCCESS : STATUS_NOT_FOUND;
+
+    _SEH2_TRY
+    {
+        IoStatusBlock->Status = Status;
+        IoStatusBlock->Information = 0;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        /* The caller still gets the status */
+    }
+    _SEH2_END;
+
+    ObDereferenceObject(FileObject);
+    return Status;
+}
+
 /*
  * @implemented
  */
