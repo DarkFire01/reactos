@@ -305,4 +305,33 @@ CancelIo(IN HANDLE hFile)
     return TRUE;
 }
 
+/**
+ * @brief
+ * Cancels I/O that any thread of the process issued on a file.
+ *
+ * @param[in] lpOverlapped
+ * Only cancels the request using this OVERLAPPED when given.
+ *
+ * @return
+ * FALSE with ERROR_NOT_FOUND when nothing was cancelled.
+ */
+BOOL
+WINAPI
+CancelIoEx(
+    _In_ HANDLE hFile,
+    _In_opt_ LPOVERLAPPED lpOverlapped)
+{
+    IO_STATUS_BLOCK IoStatusBlock;
+    NTSTATUS Status;
+
+    Status = NtCancelIoFileEx(hFile, (PIO_STATUS_BLOCK)lpOverlapped, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 /* EOF */
