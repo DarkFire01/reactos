@@ -111,8 +111,8 @@
 @ stdcall -import ControlService(long long ptr)
 # @ stub ControlServiceExA
 # @ stub ControlServiceExW
-@ stdcall -import -stub ControlTraceA(int64 str ptr long)
-@ stdcall -import -stub ControlTraceW(int64 wstr ptr long)
+@ stdcall -import ControlTraceA(int64 str ptr long)
+@ stdcall -import ControlTraceW(int64 wstr ptr long)
 # @ stub ConvertAccessToSecurityDescriptorA
 # @ stub ConvertAccessToSecurityDescriptorW
 # @ stub ConvertSDToStringSDDomainW
@@ -306,8 +306,8 @@
 @ stdcall FileEncryptionStatusW(wstr ptr)
 @ stdcall -import FindFirstFreeAce(ptr ptr)
 # @ stub FlushEfsCache
-@ stdcall -stub FlushTraceA(int64 str ptr)
-@ stdcall -stub FlushTraceW(int64 wstr ptr)
+@ stdcall FlushTraceA(int64 str ptr)
+@ stdcall FlushTraceW(int64 wstr ptr)
 # @ stub FreeEncryptedFileKeyInfo
 # @ stub FreeEncryptedFileMetadata
 # @ stub FreeEncryptionCertificateHashList
@@ -599,8 +599,8 @@
 @ stdcall -import QueryServiceObjectSecurity(long long ptr long ptr)
 @ stdcall -import QueryServiceStatus(long ptr)
 @ stdcall -import QueryServiceStatusEx (long long ptr long ptr)
-@ stdcall -stub QueryTraceA(int64 str ptr)
-@ stdcall -stub QueryTraceW(int64 wstr ptr)
+@ stdcall QueryTraceA(int64 str ptr)
+@ stdcall QueryTraceW(int64 wstr ptr)
 # @ stub QueryUserServiceName
 # @ stub QueryUsersOnEncryptedFile
 @ stdcall QueryWindows31FilesMigration(long)
@@ -768,10 +768,10 @@
 @ stdcall -import StartServiceCtrlDispatcherA(ptr)
 @ stdcall -import StartServiceCtrlDispatcherW(ptr)
 @ stdcall -import StartServiceW(long long ptr)
-@ stdcall -stub -import StartTraceA(ptr str ptr)
-@ stdcall -stub -import StartTraceW(ptr wstr ptr)
-@ stdcall -stub StopTraceA(int64 str ptr)
-@ stdcall -stub -import StopTraceW(int64 wstr ptr)
+@ stdcall -import StartTraceA(ptr str ptr)
+@ stdcall -import StartTraceW(ptr wstr ptr)
+@ stdcall StopTraceA(int64 str ptr)
+@ stdcall -import StopTraceW(int64 wstr ptr)
 @ stdcall SynchronizeWindows31FilesAndWindowsNTRegistry(long long long long)
 @ stdcall SystemFunction001(ptr ptr ptr)
 @ stdcall SystemFunction002(ptr ptr ptr)
