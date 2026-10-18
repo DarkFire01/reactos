@@ -737,3 +737,13 @@
 @ stdcall -version=0x600+ D3DKMTSignalSynchronizationObject2(ptr) NtGdiDdDDISignalSynchronizationObject
 @ stdcall -version=0x600+ D3DKMTWaitForSynchronizationObject2(ptr) NtGdiDdDDIWaitForSynchronizationObject
 @ stdcall -version=0x600+ D3DKMTSubmitPresentToHwQueue(ptr) NtGdiDdDDISubmitPresentToHwQueue
+@ stdcall -version=0x600+ D3DKMTEnumAdapters(ptr) NtGdiDdDDIEnumAdapters
+@ stdcall -version=0x600+ D3DKMTCreateHwQueue(ptr) NtGdiDdDDICreateHwQueue
+@ stdcall -version=0x600+ D3DKMTDestroyHwQueue(ptr) NtGdiDdDDIDestroyHwQueue
+@ stdcall -version=0x600+ D3DKMTSubmitCommandToHwQueue(ptr) NtGdiDdDDISubmitCommandToHwQueue
+@ stdcall -version=0x600+ D3DKMTSubmitSignalSyncObjectsToHwQueue(ptr) NtGdiDdDDISubmitSignalSyncObjectsToHwQueue
+@ stdcall -version=0x600+ D3DKMTSubmitWaitForSyncObjectsToHwQueue(ptr) NtGdiDdDDISubmitWaitForSyncObjectsToHwQueue
+@ stdcall -version=0x600+ D3DKMTUpdateAllocationProperty(ptr) NtGdiDdDDIUpdateAllocationProperty
+@ stdcall -version=0x600+ D3DKMTCreateAllocation2(ptr) NtGdiDdDDICreateAllocation
+@ stdcall -version=0x600+ D3DKMTOpenResource2(ptr) NtGdiDdDDIOpenResource
+@ stdcall -version=0x600+ D3DKMTSetVidPnSourceOwner2(ptr) NtGdiDdDDISetVidPnSourceOwner
