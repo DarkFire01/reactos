@@ -782,6 +782,25 @@ NpGetConnectionAttribute(
 
     ExAcquireResourceExclusiveLite(&Ccb->NonPagedCcb->Lock, TRUE);
 
+    /* The server end is known for as long as the pipe instance exists */
+    if (strncmp(SystemBuffer, "ServerProcessId", InputBufferLength) == 0 ||
+        strncmp(SystemBuffer, "ServerSessionId", InputBufferLength) == 0)
+    {
+        if (OutputBufferLength < sizeof(ULONG))
+        {
+            Status = STATUS_BUFFER_TOO_SMALL;
+            goto Cleanup;
+        }
+
+        if (strncmp(SystemBuffer, "ServerProcessId", InputBufferLength) == 0)
+            *(PULONG)SystemBuffer = HandleToUlong(Ccb->ServerProcessId);
+        else
+            *(PULONG)SystemBuffer = Ccb->ServerSessionId;
+
+        Irp->IoStatus.Information = sizeof(ULONG);
+        goto Cleanup;
+    }
+
     /* TODO: implement "extended attributes" support */
 
     /* HACK: This should be set as an extended attribute by NpCreateClientEnd,
