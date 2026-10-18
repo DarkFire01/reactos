@@ -471,6 +471,67 @@ Quit:
     return Status;
 }
 
+/**
+ * @brief Publish the loader's docking profile as the volatile IDConfigDB\CurrentDockInfo key.
+ *
+ * @param ConfigHandle Handle to the current control set's IDConfigDB key.
+ * @param Profile The profile block the loader passed.
+ */
+static
+CODE_SEG("INIT")
+VOID
+CmpSetCurrentDockInfo(
+    _In_ HANDLE ConfigHandle,
+    _In_ PPROFILE_PARAMETER_BLOCK Profile)
+{
+    UNICODE_STRING KeyName = RTL_CONSTANT_STRING(L"CurrentDockInfo");
+    UNICODE_STRING ValueName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    HANDLE DockHandle;
+    ULONG Disposition;
+    ULONG Index;
+    ULONG Data[4];
+    static PCWSTR const ValueNames[RTL_NUMBER_OF(Data)] =
+    {
+        L"DockingState", L"Capabilities", L"DockID", L"SerialNumber"
+    };
+    NTSTATUS Status;
+
+    /* An unknown dock (3) is reported as undocked (1) */
+    Data[0] = (Profile->DockingState == 3) ? 1 : Profile->DockingState;
+    Data[1] = Profile->Capabilities;
+    Data[2] = Profile->DockID;
+    Data[3] = Profile->SerialNumber;
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &KeyName,
+                               OBJ_CASE_INSENSITIVE,
+                               ConfigHandle,
+                               NULL);
+    Status = NtCreateKey(&DockHandle,
+                         KEY_ALL_ACCESS,
+                         &ObjectAttributes,
+                         0,
+                         NULL,
+                         REG_OPTION_VOLATILE,
+                         &Disposition);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to create CurrentDockInfo: 0x%lx\n", Status);
+        return;
+    }
+
+    for (Index = 0; Index < RTL_NUMBER_OF(Data); Index++)
+    {
+        RtlInitUnicodeString(&ValueName, ValueNames[Index]);
+        Status = NtSetValueKey(DockHandle, &ValueName, 0, REG_DWORD, &Data[Index], sizeof(Data[Index]));
+        if (!NT_SUCCESS(Status))
+            break;
+    }
+
+    NtClose(DockHandle);
+}
+
 static
 CODE_SEG("INIT")
 NTSTATUS
@@ -722,6 +783,17 @@ CmpCreateControlSet(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         HwProfile = *(PULONG)((PUCHAR)ValueInfo + ValueInfo->DataOffset);
     }
 
+    /* Check if we have a loader block extension */
+    LoaderExtension = LoaderBlock->Extension;
+    if (LoaderExtension)
+    {
+        /* A docking profile the loader matched gets its state published for drivers to read */
+        if ((LoaderExtension->Profile.Status == 1) || (LoaderExtension->Profile.Status == 2))
+            CmpSetCurrentDockInfo(ConfigHandle, &LoaderExtension->Profile);
+        else
+            DPRINT("ReactOS doesn't support NTLDR Profiles yet!\n");
+    }
+
     /* Open the hardware profile key */
     RtlInitUnicodeString(&KeyName,
                          L"\\Registry\\Machine\\System\\CurrentControlSet"
@@ -758,13 +830,6 @@ CmpCreateControlSet(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         /* Cleanup and exit */
         Status = STATUS_SUCCESS;
         goto Cleanup;
-    }
-
-    /* Check if we have a loader block extension */
-    LoaderExtension = LoaderBlock->Extension;
-    if (LoaderExtension)
-    {
-        DPRINT("ReactOS doesn't support NTLDR Profiles yet!\n");
     }
 
     /* Create the current hardware profile key */
