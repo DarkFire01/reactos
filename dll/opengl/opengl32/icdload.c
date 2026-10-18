@@ -129,14 +129,6 @@ static ULONG_PTR APIENTRY wglGetDdHandle(ULONG_PTR context)
     return 0;
 }
 
-/* The composed present path. Refusing it leaves the ICD on DrvSwapBuffers. */
-static BOOL APIENTRY wglPresentBuffers(HDC hdc, PVOID present)
-{
-    UNREFERENCED_PARAMETER(hdc);
-    UNREFERENCED_PARAMETER(present);
-    return FALSE;
-}
-
 /* The adapter the ICD was loaded for, which it opens through D3DKMT */
 static BOOL APIENTRY wglGetAdapterLuid(HDC hdc, LUID* pAdapterLuid)
 {
@@ -658,7 +650,8 @@ LoadIcd:
             (PROC)wglGetCurrentValue,
             (PROC)wglGetDHGLRC,
             (PROC)wglGetDdHandle,
-            (PROC)wglPresentBuffers,
+            /* No compositor to present through, an ICD presents to the window itself */
+            NULL,
             (PROC)wglGetAdapterLuid,
             (PROC)wglCheckFullscreenSupport};
         DrvSetCallbackProcs(ARRAYSIZE(callbacks), callbacks);
