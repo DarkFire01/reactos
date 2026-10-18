@@ -1,0 +1,16 @@
+/*
+ * PROJECT:     ReactOS OpenGL Cube Demo
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     English (United States) resource file
+ * TRANSLATOR:  Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+STRINGTABLE
+BEGIN
+    IDS_APPTITLE "OpenGL Cube"
+    IDS_NOOPENGL "OpenGL could not be set up for this window."
+    IDS_NOOPENGL20 "This demo needs OpenGL 2.0 or newer. The driver reports version %hs."
+    IDS_NOSHADERS "The cube shaders could not be built:\n\n%hs"
+END
