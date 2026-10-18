@@ -1559,7 +1559,7 @@
 @ stdcall SetUserGeoID(long)
 @ stdcall SetUserGeoName(wstr)
 @ stdcall SetWaitableTimer(long ptr long ptr ptr long)
-@ stdcall SetWaitableTimerEx(long ptr long ptr ptr ptr long)
+@ stdcall -version=0x601+ SetWaitableTimerEx(long ptr long ptr ptr ptr long)
 @ stdcall -version=0x601+ -arch=i386,x86_64 SetXStateFeaturesMask(ptr int64)
 @ stdcall SetupComm(long long long)
 # @ stub SharedLocalIsEnabled
