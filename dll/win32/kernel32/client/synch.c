@@ -379,6 +379,54 @@ SetWaitableTimer(IN HANDLE hTimer,
     return FALSE;
 }
 
+/**
+ * @brief
+ * Arms a waitable timer, optionally waking the system when it fires.
+ *
+ * @param[in] WakeContext
+ * Asks for the timer to wake the system. The reason it carries is diagnostic.
+ *
+ * @param[in] TolerableDelay
+ * How late the timer may fire to be coalesced with others, which is not done.
+ */
+BOOL
+WINAPI
+SetWaitableTimerEx(
+    _In_ HANDLE hTimer,
+    _In_ const LARGE_INTEGER *lpDueTime,
+    _In_ LONG lPeriod,
+    _In_opt_ PTIMERAPCROUTINE pfnCompletionRoutine,
+    _In_opt_ LPVOID lpArgToCompletionRoutine,
+    _In_opt_ PREASON_CONTEXT WakeContext,
+    _In_ ULONG TolerableDelay)
+{
+    NTSTATUS Status;
+
+    UNREFERENCED_PARAMETER(TolerableDelay);
+
+    if (!lpDueTime || lPeriod < 0)
+    {
+        BaseSetLastNTError(STATUS_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Status = NtSetTimer(hTimer,
+                        (PLARGE_INTEGER)lpDueTime,
+                        (PTIMER_APC_ROUTINE)pfnCompletionRoutine,
+                        lpArgToCompletionRoutine,
+                        WakeContext != NULL,
+                        lPeriod,
+                        NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    SetLastError(Status == STATUS_TIMER_RESUME_IGNORED ? ERROR_NOT_SUPPORTED : ERROR_SUCCESS);
+    return TRUE;
+}
+
 /*
  * @implemented
  */
