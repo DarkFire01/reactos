@@ -42,6 +42,7 @@
 #include "dplobby.h"
 #include "dplobby8.h"
 #include "dinput.h"
+#include "dinputd.h"
 #include "ddrawi.h"
 #include "dxdiag.h"
 #include "dxfile.h"
