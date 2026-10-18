@@ -344,4 +344,32 @@ AVrfInternalHeapFreeNotification(PVOID AllocationBase, SIZE_T AllocationSize)
 
 
 
+/**
+ * @brief Formats wide characters into a buffer that must hold the whole result.
+ *
+ * @return Characters written without the terminator, or -1 when the result did not fit.
+ */
+int
+__cdecl
+vswprintf_s(
+    _Out_writes_(SizeInWords) wchar_t *Buffer,
+    _In_ size_t SizeInWords,
+    _In_z_ _Printf_format_string_ const wchar_t *Format,
+    _In_ va_list ArgList)
+{
+    int Written;
+
+    if (!Buffer || (SizeInWords == 0) || !Format)
+        return -1;
+
+    Written = _vsnwprintf(Buffer, SizeInWords, Format, ArgList);
+    if ((Written < 0) || ((size_t)Written >= SizeInWords))
+    {
+        Buffer[0] = UNICODE_NULL;
+        return -1;
+    }
+
+    return Written;
+}
+
 /* EOF */
