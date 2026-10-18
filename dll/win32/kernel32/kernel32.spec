@@ -1530,6 +1530,9 @@
 @ stdcall VirtualQuery(ptr ptr long)
 @ stdcall VirtualQueryEx(long ptr ptr long)
 @ stdcall VirtualUnlock(ptr long)
+@ stdcall -version=0x602+ WaitOnAddress(ptr ptr long long)
+@ stdcall -version=0x602+ WakeByAddressAll(ptr) ntdll.RtlWakeAddressAll
+@ stdcall -version=0x602+ WakeByAddressSingle(ptr) ntdll.RtlWakeAddressSingle
 @ stdcall WTSGetActiveConsoleSessionId()
 @ stdcall WaitCommEvent(long ptr ptr)
 @ stdcall WaitForDebugEvent(ptr long)
