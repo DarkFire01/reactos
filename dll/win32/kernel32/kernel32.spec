@@ -30,6 +30,7 @@
 @ stdcall BaseDumpAppcompatCache()
 @ stdcall BaseFlushAppcompatCache()
 @ stub -version=0x600+ BaseGenerateAppCompatData
+@ stdcall -version=0x600+ BaseGetNamedObjectDirectory(ptr)
 @ stdcall BaseInitAppcompatCacheSupport()
 @ stdcall BaseIsAppcompatInfrastructureDisabled() IsShimInfrastructureDisabled
 @ stdcall -version=0x501-0x502 BaseProcessInitPostImport()
