@@ -1270,12 +1270,22 @@ KdbpCmdBackTrace(
     PCHAR Argv[])
 {
     CONTEXT Context = *KdbCurrentTrapFrame;
+    ULONG64 PreviousRsp;
+    ULONG Frames = 0;
 
     /* Walk through the frames */
     KdbpPrint("Frames:\n");
     do
     {
         BOOLEAN GotNextFrame;
+
+        /* A fault in here cannot be recovered from, so stop where the stack ends */
+        if ((Frames++ == 256) ||
+            !MmIsAddressValid((PVOID)Context.Rsp) ||
+            !MmIsAddressValid((PVOID)Context.Rip))
+        {
+            break;
+        }
 
         KdbpPrint("[%p] ", (PVOID)Context.Rsp);
 
@@ -1287,12 +1297,17 @@ KdbpCmdBackTrace(
         if (KdbOutputAborted)
             break;
 
+        PreviousRsp = Context.Rsp;
         GotNextFrame = GetNextFrame(&Context);
         if (!GotNextFrame)
         {
             KdbpPrint("Couldn't get next frame\n");
             break;
         }
+
+        /* Every frame sits higher on the stack than the one it called */
+        if (Context.Rsp <= PreviousRsp)
+            break;
     } while ((Context.Rip != 0) && (Context.Rsp != 0));
 
     return TRUE;
