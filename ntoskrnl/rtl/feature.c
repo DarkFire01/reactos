@@ -11,28 +11,6 @@
 #define NDEBUG
 #include <debug.h>
 
-/* TYPES **********************************************************************/
-
-typedef struct _RTL_FEATURE_CONFIGURATION
-{
-    ULONG FeatureId;
-    union
-    {
-        ULONG Flags;
-        struct
-        {
-            ULONG Priority:4;
-            ULONG EnabledState:2;
-            ULONG IsWexpConfiguration:1;
-            ULONG HasSubscriptions:1;
-            ULONG Variant:6;
-            ULONG VariantPayloadKind:2;
-            ULONG Reserved:16;
-        };
-    };
-    ULONG VariantPayload;
-} RTL_FEATURE_CONFIGURATION, *PRTL_FEATURE_CONFIGURATION;
-
 /* FUNCTIONS ******************************************************************/
 
 /**
