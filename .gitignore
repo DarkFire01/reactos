@@ -4,6 +4,8 @@ modules/optional
 modules/bootcd_extras
 modules/livecd_extras
 modules/3rdparty
+modules/x64
+modules/x86
 modules/[Aa][Hh][Kk]_[Tt]ests
 .cache
 .cproject
