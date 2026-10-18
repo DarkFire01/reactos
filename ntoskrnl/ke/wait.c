@@ -265,6 +265,123 @@ Quickie:
     KeLowerIrql(OldIrql);
 }
 
+/**
+ * @brief Blocks the current thread until KiAlertThreadById targets it.
+ *
+ * @return STATUS_ALERTED, STATUS_TIMEOUT or STATUS_USER_APC.
+ */
+NTSTATUS
+NTAPI
+KiWaitForIdAlert(
+    _In_ KPROCESSOR_MODE WaitMode,
+    _In_opt_ PLARGE_INTEGER Timeout)
+{
+    PKTHREAD Thread = KeGetCurrentThread();
+    PKWAIT_BLOCK WaitBlock = &Thread->WaitBlock[0];
+    PKWAIT_BLOCK TimerBlock = &Thread->WaitBlock[TIMER_WAIT_BLOCK];
+    PKTIMER Timer = &Thread->Timer;
+    PLARGE_INTEGER OriginalDueTime = Timeout;
+    LARGE_INTEGER DueTime = {{0}}, NewDueTime, InterruptTime;
+    NTSTATUS WaitStatus;
+    BOOLEAN Swappable;
+    ULONG Hand = 0;
+
+    ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
+
+    /* An alert that arrived while we were running is consumed right away */
+    if (InterlockedBitTestAndReset(&Thread->ThreadFlags, KI_ID_ALERT_BIT))
+        return STATUS_ALERTED;
+
+    if (Timeout && !Timeout->QuadPart)
+        return STATUS_TIMEOUT;
+
+    for (;;)
+    {
+        Thread->WaitIrql = KeRaiseIrqlToSynchLevel();
+        KiAcquireDispatcherLockAtSynchLevel();
+        Thread->Preempted = FALSE;
+
+        /* Let a pending kernel APC run first, then set the wait up again */
+        if ((Thread->ApcState.KernelApcPending) && !(Thread->SpecialApcDisable) &&
+            (Thread->WaitIrql < APC_LEVEL))
+        {
+            KiReleaseDispatcherLock(Thread->WaitIrql);
+            continue;
+        }
+
+        WaitStatus = KiCheckAlertability(Thread, FALSE, WaitMode);
+        if (WaitStatus != STATUS_WAIT_0)
+            break;
+
+        /* KiAlertThreadById sets the bit under this same lock if we are not waiting yet */
+        if (InterlockedBitTestAndReset(&Thread->ThreadFlags, KI_ID_ALERT_BIT))
+        {
+            WaitStatus = STATUS_ALERTED;
+            break;
+        }
+
+        if (Timeout)
+        {
+            KxSetTimerForThreadWait(Timer, *Timeout, &Hand);
+            DueTime.QuadPart = Timer->DueTime.QuadPart;
+
+            InterruptTime.QuadPart = KeQueryInterruptTime();
+            if ((ULONGLONG)InterruptTime.QuadPart >= Timer->DueTime.QuadPart)
+            {
+                WaitStatus = STATUS_TIMEOUT;
+                break;
+            }
+
+            /* The thread timer is the only object, it unwaits us with STATUS_TIMEOUT */
+            Thread->WaitBlockList = TimerBlock;
+            TimerBlock->NextWaitBlock = TimerBlock;
+            Timer->Header.WaitListHead.Flink = &TimerBlock->WaitListEntry;
+            Timer->Header.WaitListHead.Blink = &TimerBlock->WaitListEntry;
+            Timer->Header.Inserted = TRUE;
+        }
+        else
+        {
+            /* Nothing signals this block, it only gives KiUnlinkThread a list to walk */
+            Thread->WaitBlockList = WaitBlock;
+            WaitBlock->Object = NULL;
+            WaitBlock->NextWaitBlock = WaitBlock;
+            InitializeListHead(&WaitBlock->WaitListEntry);
+        }
+
+        Thread->WaitStatus = STATUS_SUCCESS;
+        Thread->Alertable = FALSE;
+        Thread->WaitMode = WaitMode;
+        Thread->WaitReason = WrAlertByThreadId;
+        Thread->WaitListEntry.Flink = NULL;
+        Swappable = KiCheckThreadStackSwap(Thread, WaitMode);
+        Thread->WaitTime = KeTickCount.LowPart;
+
+        if (Thread->Queue)
+            KiActivateWaiterQueue(Thread->Queue);
+
+        Thread->State = Waiting;
+        KiAddThreadToWaitList(Thread, Swappable);
+
+        ASSERT(Thread->WaitIrql <= DISPATCH_LEVEL);
+        KiSetThreadSwapBusy(Thread);
+
+        if (Timeout)
+            KxInsertTimer(Timer, Hand);
+        else
+            KiReleaseDispatcherLockFromSynchLevel();
+
+        WaitStatus = (NTSTATUS)KiSwapThread(Thread, KeGetCurrentPrcb());
+        if (WaitStatus != STATUS_KERNEL_APC)
+            return WaitStatus;
+
+        if (Timeout)
+            Timeout = KiRecalculateDueTime(OriginalDueTime, &DueTime, &NewDueTime);
+    }
+
+    KiReleaseDispatcherLock(Thread->WaitIrql);
+    return WaitStatus;
+}
+
 /* PUBLIC FUNCTIONS **********************************************************/
 
 /**
