@@ -381,6 +381,33 @@ SetWaitableTimer(IN HANDLE hTimer,
 
 /**
  * @brief
+ * Waits until the value at an address differs from a comparison value.
+ *
+ * @return
+ * FALSE with ERROR_TIMEOUT when the timeout expires first.
+ */
+BOOL
+WINAPI
+WaitOnAddress(
+    _In_reads_bytes_(AddressSize) volatile VOID *Address,
+    _In_reads_bytes_(AddressSize) PVOID CompareAddress,
+    _In_ SIZE_T AddressSize,
+    _In_opt_ DWORD dwMilliseconds)
+{
+    LARGE_INTEGER Time;
+    NTSTATUS Status;
+
+    Status = RtlWaitOnAddress(Address,
+                              CompareAddress,
+                              AddressSize,
+                              BaseFormatTimeOut(&Time, dwMilliseconds));
+    BaseSetLastNTError(Status);
+
+    return (NT_SUCCESS(Status) && Status != STATUS_TIMEOUT);
+}
+
+/**
+ * @brief
  * Arms a waitable timer, optionally waking the system when it fires.
  *
  * @param[in] WakeContext
