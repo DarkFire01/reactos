@@ -1486,7 +1486,7 @@
 @ stdcall SetFileApisToOEM()
 @ stdcall SetFileAttributesA(str long)
 @ stdcall SetFileAttributesW(wstr long)
-@ stdcall SetFileInformationByHandle(long long ptr long)
+@ stdcall -version=0x600+ SetFileInformationByHandle(ptr long ptr long)
 # @ stub SetFileIoOverlappedRange
 @ stdcall SetFilePointer(long long ptr long)
 @ stdcall SetFilePointerEx(long int64 ptr long)
