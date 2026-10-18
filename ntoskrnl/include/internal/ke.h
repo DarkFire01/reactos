@@ -492,6 +492,26 @@ KeAlertThread(
     IN KPROCESSOR_MODE AlertMode
 );
 
+/* Index of AlertedByThreadId within KTHREAD ThreadFlags */
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+#define KI_ID_ALERT_BIT 3
+#elif (NTDDI_VERSION >= NTDDI_LONGHORN)
+#define KI_ID_ALERT_BIT 9
+#else
+#define KI_ID_ALERT_BIT 2
+#endif
+
+VOID
+NTAPI
+KiAlertThreadById(
+    _Inout_ PKTHREAD Thread);
+
+NTSTATUS
+NTAPI
+KiWaitForIdAlert(
+    _In_ KPROCESSOR_MODE WaitMode,
+    _In_opt_ PLARGE_INTEGER Timeout);
+
 ULONG
 NTAPI
 KeAlertResumeThread(
