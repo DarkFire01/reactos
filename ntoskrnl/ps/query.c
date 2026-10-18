@@ -1049,6 +1049,43 @@ NtQueryInformationProcess(
             ObDereferenceObject(Process);
             break;
 
+        case ProcessCycleTime:
+        {
+            PROCESS_CYCLE_TIME_INFORMATION CycleTime;
+
+            Length = sizeof(PROCESS_CYCLE_TIME_INFORMATION);
+            if (ProcessInformationLength != Length)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            Status = ObReferenceObjectByHandle(ProcessHandle,
+            // FIXME: Use PROCESS_QUERY_LIMITED_INFORMATION when implemented
+                                               PROCESS_QUERY_INFORMATION,
+                                               PsProcessType,
+                                               PreviousMode,
+                                               (PVOID*)&Process,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            CycleTime.AccumulatedCycles = PsQueryTotalCycleTimeProcess(Process,
+                                                                       &CycleTime.CurrentCycleCount);
+            ObDereferenceObject(Process);
+
+            _SEH2_TRY
+            {
+                *(PPROCESS_CYCLE_TIME_INFORMATION)ProcessInformation = CycleTime;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            break;
+        }
+
         /* Per-process security cookie */
         case ProcessCookie:
         {
@@ -3307,6 +3344,80 @@ NtQueryInformationThread(
 
             /* Dereference the thread */
             ObDereferenceObject(Thread);
+            break;
+        }
+
+        case ThreadCycleTime:
+        {
+            THREAD_CYCLE_TIME_INFORMATION CycleTime;
+
+            Length = sizeof(THREAD_CYCLE_TIME_INFORMATION);
+            if (ThreadInformationLength != Length)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            Status = ObReferenceObjectByHandle(ThreadHandle,
+                                               THREAD_QUERY_LIMITED_INFORMATION,
+                                               PsThreadType,
+                                               PreviousMode,
+                                               (PVOID*)&Thread,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            CycleTime.AccumulatedCycles = KeQueryTotalCycleTimeThread(&Thread->Tcb,
+                                                                      &CycleTime.CurrentCycleCount);
+            ObDereferenceObject(Thread);
+
+            _SEH2_TRY
+            {
+                *(PTHREAD_CYCLE_TIME_INFORMATION)ThreadInformation = CycleTime;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            break;
+        }
+
+        case ThreadIdealProcessorEx:
+        {
+            PROCESSOR_NUMBER ProcessorNumber;
+
+            Length = sizeof(PROCESSOR_NUMBER);
+            if (ThreadInformationLength != Length)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            Status = ObReferenceObjectByHandle(ThreadHandle,
+                                               THREAD_QUERY_LIMITED_INFORMATION,
+                                               PsThreadType,
+                                               PreviousMode,
+                                               (PVOID*)&Thread,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            /* All processors are in group 0 */
+            ProcessorNumber.Group = 0;
+            ProcessorNumber.Number = Thread->Tcb.IdealProcessor;
+            ProcessorNumber.Reserved = 0;
+            ObDereferenceObject(Thread);
+
+            _SEH2_TRY
+            {
+                *(PPROCESSOR_NUMBER)ThreadInformation = ProcessorNumber;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
             break;
         }
 
