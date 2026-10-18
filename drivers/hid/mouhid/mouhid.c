@@ -530,22 +530,26 @@ MouHid_Close(
 
     DPRINT("[MOUHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
 
-    if (DeviceExtension->ReadReportActive)
+    /* only the file object that started the report cycle owns it */
+    if (IoGetCurrentIrpStackLocation(Irp)->FileObject == DeviceExtension->FileObject)
     {
-        /* request stopping of the report cycle */
-        DeviceExtension->StopReadReport = TRUE;
+        if (DeviceExtension->ReadReportActive)
+        {
+            /* request stopping of the report cycle */
+            DeviceExtension->StopReadReport = TRUE;
 
-        /* wait until the reports have been read */
-        KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
+            /* cancel the pending read, its completion signals the event */
+            IoCancelIrp(DeviceExtension->Irp);
 
-        /* cancel irp */
-        IoCancelIrp(DeviceExtension->Irp);
+            /* wait until the report cycle has stopped */
+            KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
+        }
+
+        /* remove file object */
+        DeviceExtension->FileObject = NULL;
     }
 
     DPRINT("[MOUHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
-
-    /* remove file object */
-    DeviceExtension->FileObject = NULL;
 
     /* skip location */
     IoSkipCurrentIrpStackLocation(Irp);
