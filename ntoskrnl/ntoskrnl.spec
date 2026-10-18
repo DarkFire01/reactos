@@ -1982,6 +1982,8 @@
 @ stdcall ZwManagePartition(ptr ptr long ptr long)
 @ stdcall ZwOpenPartition(ptr long ptr)
 @ stdcall ZwSystemDebugControl(long ptr long ptr long ptr)
+
+@ stdcall IoCreateDeviceSecure(ptr long ptr long long long ptr ptr ptr)
 @ cdecl bsearch()
 @ cdecl sqrt()
 @ stdcall KeQueryPrcbAddress()
