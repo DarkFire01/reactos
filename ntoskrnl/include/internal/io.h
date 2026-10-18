@@ -883,6 +883,12 @@ IopGetDeviceNode(
     IN PDEVICE_OBJECT DeviceObject
 );
 
+NTSTATUS
+NTAPI
+IoQueryFullDriverPath(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _Out_ PUNICODE_STRING FullPath);
+
 CODE_SEG("INIT")
 NTSTATUS
 IopInitPlugPlayEvents(VOID);

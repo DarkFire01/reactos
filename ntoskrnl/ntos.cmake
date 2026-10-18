@@ -118,6 +118,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/devsec.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/deviface.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/driver.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/drvstate.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/error.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/file.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/io/iomgr/iocomp.c
