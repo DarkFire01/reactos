@@ -143,6 +143,67 @@ static const IMAGE_RESOURCE_DIRECTORY *find_entry_by_id( const IMAGE_RESOURCE_DI
     return NULL;
 }
 
+#ifdef __REACTOS__
+/* TRUE when Size bytes at Pointer lie inside the mapped file */
+static BOOL
+ICO_IsInFile(
+    _In_ LPCVOID Pointer,
+    _In_ SIZE_T Size,
+    _In_ const BYTE *FileBase,
+    _In_ DWORD FileSize)
+{
+    ULONG_PTR Offset = (ULONG_PTR)Pointer - (ULONG_PTR)FileBase;
+
+    if ((ULONG_PTR)Pointer < (ULONG_PTR)FileBase || Size > FileSize)
+        return FALSE;
+    return Offset <= FileSize - Size;
+}
+
+/* TRUE when a resource directory and all of its entries lie inside the mapped file */
+static BOOL
+ICO_IsDirectoryInFile(
+    _In_ const IMAGE_RESOURCE_DIRECTORY *Directory,
+    _In_ const BYTE *FileBase,
+    _In_ DWORD FileSize)
+{
+    SIZE_T Count;
+
+    if (!ICO_IsInFile(Directory, sizeof(*Directory), FileBase, FileSize))
+        return FALSE;
+
+    Count = (SIZE_T)Directory->NumberOfNamedEntries + Directory->NumberOfIdEntries;
+    return ICO_IsInFile(Directory + 1, Count * sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY), FileBase, FileSize);
+}
+
+/* The language level data entry under a name level entry, or NULL when the tree is damaged */
+static const IMAGE_RESOURCE_DATA_ENTRY *
+ICO_GetDefaultDataEntry(
+    _In_ const IMAGE_RESOURCE_DIRECTORY *NameDirectory,
+    _In_ const void *Root,
+    _In_ const BYTE *FileBase,
+    _In_ DWORD FileSize)
+{
+    const IMAGE_RESOURCE_DIRECTORY_ENTRY *Entry;
+    const IMAGE_RESOURCE_DATA_ENTRY *DataEntry;
+
+    if (!ICO_IsDirectoryInFile(NameDirectory, FileBase, FileSize) ||
+        NameDirectory->NumberOfNamedEntries + NameDirectory->NumberOfIdEntries == 0)
+    {
+        return NULL;
+    }
+
+    Entry = (const IMAGE_RESOURCE_DIRECTORY_ENTRY *)(NameDirectory + 1);
+    if (Entry->DataIsDirectory)
+        return NULL;
+
+    DataEntry = (const IMAGE_RESOURCE_DATA_ENTRY *)((const char *)Root + Entry->OffsetToData);
+    if (!ICO_IsInFile(DataEntry, sizeof(*DataEntry), FileBase, FileSize))
+        return NULL;
+
+    return DataEntry;
+}
+#endif
+
 /**********************************************************************
  *  find_entry_default
  *
@@ -656,7 +717,8 @@ static UINT ICO_ExtractIconExW(
 #ifdef __REACTOS__
         /* Check for boundary limit (and overflow) */
         if (((ULONG_PTR)(rootresdir + 1) < (ULONG_PTR)rootresdir) ||
-            ((ULONG_PTR)(rootresdir + 1) > (ULONG_PTR)peimage + fsizel))
+            ((ULONG_PTR)(rootresdir + 1) > (ULONG_PTR)peimage + fsizel) ||
+            !ICO_IsDirectoryInFile(rootresdir, peimage, fsizel))
         {
             goto end;
         }
@@ -668,6 +730,13 @@ static UINT ICO_ExtractIconExW(
 	    WARN("No Icongroupresourcedirectory!\n");
 	    goto end;		/* failure */
 	  }
+#ifdef __REACTOS__
+	  if (!ICO_IsDirectoryInFile(icongroupresdir, peimage, fsizel))
+	  {
+	    WARN("%s: damaged icon group directory\n", debugstr_w(szExePath));
+	    goto end;
+	  }
+#endif
 	  iconDirCount = icongroupresdir->NumberOfNamedEntries + icongroupresdir->NumberOfIdEntries;
 
 	  /* only number of icons requested */
@@ -724,9 +793,19 @@ static UINT ICO_ExtractIconExW(
 	    /* go down this resource entry, name */
             resdir = (const IMAGE_RESOURCE_DIRECTORY *)((const char *)rootresdir + xresent->OffsetToDirectory);
 
+#ifdef __REACTOS__
+	    /* default language (0), refusing a tree that leaves the file */
+	    igdataent = xresent->DataIsDirectory ? ICO_GetDefaultDataEntry(resdir, rootresdir, peimage, fsizel) : NULL;
+	    if (!igdataent)
+	    {
+	      WARN("%s: damaged icon group resource\n", debugstr_w(szExePath));
+	      goto end;
+	    }
+#else
 	    /* default language (0) */
 	    resdir = find_entry_default(resdir,rootresdir);
 	    igdataent = (const IMAGE_RESOURCE_DATA_ENTRY*)resdir;
+#endif
 
 	    /* lookup address in mapped image for virtual address */
         igdata = RtlImageRvaToVa(RtlImageNtHeader((HMODULE)peimage), (HMODULE)peimage, igdataent->OffsetToData, NULL);
@@ -735,6 +814,13 @@ static UINT ICO_ExtractIconExW(
 	      FIXME("no matching real address for icongroup!\n");
 	      goto end;	/* failure */
 	    }
+#ifdef __REACTOS__
+        if (!ICO_IsInFile(igdata, igdataent->Size, peimage, fsizel))
+        {
+            WARN("%s: icon group data outside the file\n", debugstr_w(szExePath));
+            goto end;
+        }
+#endif
 	    pIconId[i] = LookupIconIdFromDirectoryEx(igdata, TRUE, cx1, cy1, flags);
             if (cx2 && cy2) pIconId[++i] = LookupIconIdFromDirectoryEx(igdata, TRUE, cx2, cy2, flags);
 	  }
@@ -744,6 +830,13 @@ static UINT ICO_ExtractIconExW(
 	    WARN("No Iconresourcedirectory!\n");
 	    goto end;		/* failure */
 	  }
+#ifdef __REACTOS__
+	  if (!ICO_IsDirectoryInFile(iconresdir, peimage, fsizel))
+	  {
+	    WARN("%s: damaged icon directory\n", debugstr_w(szExePath));
+	    goto end;
+	  }
+#endif
 
 	  for (i=0; i<nIcons; i++)
 	  {
@@ -774,6 +867,13 @@ static UINT ICO_ExtractIconExW(
               resdir = (const IMAGE_RESOURCE_DIRECTORY *)
                        ((const char *)rootresdir + xresent->OffsetToDirectory);
 
+              if (!xresent->DataIsDirectory || !ICO_IsDirectoryInFile(resdir, peimage, fsizel))
+              {
+                  WARN("%s: damaged icon directory\n", debugstr_w(szExePath));
+                  RetPtr[i] = 0;
+                  continue;
+              }
+
               if (resdir->NumberOfIdEntries > 0) // Do we have entries
               {
                   xresent = (const IMAGE_RESOURCE_DIRECTORY_ENTRY*)
@@ -788,9 +888,17 @@ static UINT ICO_ExtractIconExW(
               /* Retrieve the data entry and find its address */
               igdataent = (const IMAGE_RESOURCE_DATA_ENTRY*)
                   ((const char *)rootresdir + xresent->OffsetToData);
+              if (xresent->DataIsDirectory ||
+                  !ICO_IsInFile(igdataent, sizeof(*igdataent), peimage, fsizel))
+              {
+                  RetPtr[i] = 0;
+                  continue;
+              }
               idata = RtlImageRvaToVa(RtlImageNtHeader((HMODULE)peimage),
                   (HMODULE)peimage, igdataent->OffsetToData, NULL);
-              if (!idata)
+              if (!idata ||
+                  igdataent->Size < sizeof(BITMAPINFOHEADER) ||
+                  !ICO_IsInFile(idata, igdataent->Size, peimage, fsizel))
               {
                   RetPtr[i] = 0;
                   continue;
@@ -807,7 +915,7 @@ static UINT ICO_ExtractIconExW(
                       RetPtr[0] = CreateIconFromResourceEx(idata, igdataent->Size,
                           TRUE, 0x00030000, cx1, cy1, flags);
                       if (cx2 && cy2)
-                          RetPtr[1] = CreateIconFromResourceEx(idata, idataent->Size,
+                          RetPtr[1] = CreateIconFromResourceEx(idata, igdataent->Size,
                               TRUE, 0x00030000, cx2, cy2, flags);
                       ret = 1;  // Set number of icons found
                       goto end; // Success so Exit
@@ -824,8 +932,18 @@ static UINT ICO_ExtractIconExW(
 	      continue;
 #endif
             }
+#ifdef __REACTOS__
+	    idataent = ICO_GetDefaultDataEntry(xresdir, rootresdir, peimage, fsizel);
+	    if (!idataent)
+	    {
+	      WARN("%s: damaged icon resource %d\n", debugstr_w(szExePath), LOWORD(pIconId[i]));
+	      RetPtr[i]=0;
+	      continue;
+	    }
+#else
 	    xresdir = find_entry_default(xresdir, rootresdir);
 	    idataent = (const IMAGE_RESOURCE_DATA_ENTRY*)xresdir;
+#endif
 
         idata = RtlImageRvaToVa(RtlImageNtHeader((HMODULE)peimage), (HMODULE)peimage, idataent->OffsetToData, NULL);
         if (!idata)
@@ -834,6 +952,14 @@ static UINT ICO_ExtractIconExW(
 	      RetPtr[i]=0;
 	      continue;
 	    }
+#ifdef __REACTOS__
+        if (!ICO_IsInFile(idata, idataent->Size, peimage, fsizel))
+        {
+            WARN("%s: icon data outside the file\n", debugstr_w(szExePath));
+            RetPtr[i]=0;
+            continue;
+        }
+#endif
 	    RetPtr[i] = CreateIconFromResourceEx(idata, idataent->Size, TRUE, 0x00030000, cx1, cy1, flags);
             if (cx2 && cy2)
                 RetPtr[++i] = CreateIconFromResourceEx(idata, idataent->Size, TRUE, 0x00030000, cx2, cy2, flags);
