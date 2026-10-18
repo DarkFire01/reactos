@@ -585,7 +585,7 @@
 @ stdcall GetLogicalDriveStringsW(long ptr)
 @ stdcall GetLogicalDrives()
 @ stdcall GetLogicalProcessorInformation(ptr ptr)
-@ stdcall GetLogicalProcessorInformationEx(long ptr ptr)
+@ stdcall -version=0x601+ GetLogicalProcessorInformationEx(long ptr ptr)
 @ stdcall GetLongPathNameA(str ptr long)
 @ stdcall GetLongPathNameW(wstr ptr long)
 @ stdcall GetMappedFileNameA(long ptr ptr long)
@@ -756,7 +756,7 @@
 @ stdcall GetThreadGroupAffinity(long ptr)
 @ stdcall GetThreadIOPendingFlag(long ptr)
 @ stdcall GetThreadId(ptr)
-@ stdcall -stub GetThreadIdealProcessorEx(long ptr)
+@ stdcall -version=0x601+ GetThreadIdealProcessorEx(ptr ptr)
 # @ stub GetThreadInformation
 @ stdcall GetThreadLocale()
 @ stdcall GetThreadPreferredUILanguages(long ptr ptr ptr)
@@ -1252,13 +1252,13 @@
 @ stdcall QueryPerformanceCounter(ptr)
 @ stdcall QueryPerformanceFrequency(ptr)
 @ stub QueryProcessAffinityUpdateMode
-@ stdcall QueryProcessCycleTime(long ptr)
+@ stdcall -version=0x600+ QueryProcessCycleTime(ptr ptr)
 # @ stub QueryProtectedPolicy
 @ stdcall -stub QuerySecurityAccessMask(ptr ptr)
 # @ stub QueryStateAtomValueInfo
 # @ stub QueryStateContainerCreatedNew
 # @ stub QueryStateContainerItemInfo
-@ stdcall -stub QueryThreadCycleTime(long ptr)
+@ stdcall -version=0x600+ QueryThreadCycleTime(ptr ptr)
 @ stdcall QueryThreadpoolStackInformation(ptr ptr)
 @ stdcall QueryUnbiasedInterruptTime(ptr) QueryUnbiasedInterruptTimePrecise
 @ stdcall -version=0xA00+ QueryUnbiasedInterruptTimePrecise(ptr)
