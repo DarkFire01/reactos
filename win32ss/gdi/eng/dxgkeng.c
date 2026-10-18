@@ -6,6 +6,7 @@
  */
 
 #include <win32k.h>
+#include <d3dkmthk.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -368,82 +369,351 @@ DxgkEngDeleteObject(
     return TRUE;
 }
 
+/**
+ * @brief Does a present to this window have to go through GDI?
+ *
+ * GDI composes the whole display in the surface it owns, so a frame dxgkrnl writes to the
+ * primary itself is lost on the next GDI update of the same area. Any present that shows on
+ * this device is therefore drawn through GDI.
+ *
+ * @param pAdapter The adapter presenting.
+ * @param hdev The device the window is on.
+ * @param hwnd The window.
+ * @param hVisRgn The window's visible region, in screen coordinates.
+ *
+ * @return TRUE when the present has to go through DxgkEngBltViaGDI or DxgkEngColorFillViaGDI.
+ */
 static
-LONG
+BOOL
 APIENTRY
 DxgkEngDetectGDIPath(
-    _In_ PVOID pvSurface,
+    _In_ PVOID pAdapter,
     _In_ HDEV hdev,
     _In_ HWND hwnd,
-    _In_ HANDLE hrgn)
+    _In_ HANDLE hVisRgn)
 {
-    UNIMPLEMENTED_ONCE;
+    PPDEVOBJ ppdev = (PPDEVOBJ)hdev;
+    HANDLE hrgnDevice;
+    SIZEL sizl;
+    INT iComplexity;
 
-    UNREFERENCED_PARAMETER(pvSurface);
-    UNREFERENCED_PARAMETER(hdev);
+    UNREFERENCED_PARAMETER(pAdapter);
     UNREFERENCED_PARAMETER(hwnd);
-    UNREFERENCED_PARAMETER(hrgn);
 
-    return 0;
+    if ((ppdev == NULL) || (hVisRgn == NULL))
+        return FALSE;
+
+    PDEVOBJ_sizl(ppdev, &sizl);
+    hrgnDevice = EngCreateRectRgn(ppdev->ptlOrigion.x,
+                                  ppdev->ptlOrigion.y,
+                                  ppdev->ptlOrigion.x + sizl.cx,
+                                  ppdev->ptlOrigion.y + sizl.cy);
+    if (hrgnDevice == NULL)
+        return FALSE;
+
+    iComplexity = EngCombineRgn(hrgnDevice, hrgnDevice, hVisRgn, RGN_AND);
+    EngDeleteRgn(hrgnDevice);
+
+    return ((iComplexity != ERROR) && (iComplexity != NULLREGION));
 }
 
-/* Presenting through GDI is not supported, so the caller keeps the work */
+/* dxgkrnl's helpers: map a rectangle from one rectangle onto another with a 16.16 scale,
+   and clip a source and destination pair against the present's own rectangles */
+typedef VOID (APIENTRY *PFN_DXGK_XFORM_RECT)(
+    _In_ const RECT *prclTo,
+    _In_ const RECT *prclFrom,
+    _Out_ RECT *prclOut,
+    _In_ const RECT *prclIn,
+    _In_ ULONG fxScaleX,
+    _In_ ULONG fxScaleY);
+
+typedef BOOL (APIENTRY *PFN_DXGK_CLIP_RECTS)(
+    _Inout_ RECT *prclSrc,
+    _Inout_ RECT *prclDst,
+    _In_opt_ const RECT *prclPresentSrc,
+    _In_opt_ const RECT *prclPresentDst);
+
+/* SRCCOPY that keeps a mirrored DC from flipping the frame */
+#define DXGK_GDI_PRESENT_ROP            (SRCCOPY | NOMIRRORBITMAP)
+
+/**
+ * @brief Draw a presented back buffer into a window through GDI.
+ *
+ * @param pPresent The present dxgkrnl is carrying out.
+ * @param hdcWindow The DC to draw into, from DxgkEngGetDC.
+ * @param prclOutput Optionally the area the frame may cover, in screen coordinates.
+ * @param prclSubRects The parts of the back buffer to show, SubRectCnt of them.
+ * @param pvBits The locked back buffer.
+ * @param ulPitch Its pitch in bytes.
+ * @param cxBuffer Its width.
+ * @param cyBuffer Its height.
+ * @param b16Bpp TRUE for an R5G6B5 back buffer, FALSE for X8R8G8B8.
+ * @param bColorKey TRUE to leave the pixels matching crColorKey out.
+ * @param crColorKey The source color key.
+ * @param pfnXformRect dxgkrnl's rectangle mapping helper.
+ * @param pfnClipRects dxgkrnl's rectangle clipping helper.
+ *
+ * @return The result of the last blit.
+ */
 static
-LONG
+BOOL
 APIENTRY
 DxgkEngBltViaGDI(
-    _In_ PVOID pPresent,
-    _In_ HDC hdc,
-    _In_ PVOID prclSrc,
-    _In_ PVOID prclDst,
-    _In_ PVOID pvAllocation,
-    _In_ ULONG ulFlags,
-    _In_ ULONG ulRop,
-    _In_ ULONG ulColor,
-    _In_ UCHAR bFlag1,
-    _In_ UCHAR bFlag2,
-    _In_ ULONG ulCount,
-    _In_ PVOID pfnCallback1,
-    _In_ PVOID pfnCallback2)
+    _In_ const D3DKMT_PRESENT *pPresent,
+    _In_ HDC hdcWindow,
+    _In_opt_ const RECT *prclOutput,
+    _In_reads_(pPresent->SubRectCnt) const RECT *prclSubRects,
+    _In_ PVOID pvBits,
+    _In_ ULONG ulPitch,
+    _In_ ULONG cxBuffer,
+    _In_ ULONG cyBuffer,
+    _In_ BOOLEAN b16Bpp,
+    _In_ BOOLEAN bColorKey,
+    _In_ ULONG crColorKey,
+    _In_ PFN_DXGK_XFORM_RECT pfnXformRect,
+    _In_ PFN_DXGK_CLIP_RECTS pfnClipRects)
 {
-    UNIMPLEMENTED_ONCE;
+    RECTL rclWindow, rclLimit, rclSrc, rclDst, rclSubSrc, rclSubDst;
+    BOOL bLimit = FALSE;
+    BOOL bResult = FALSE;
+    DWORD dwLayout;
+    HBITMAP hbmBuffer;
+    HDC hdcBuffer;
+    PDC pdc;
+    ULONG fxScaleX, fxScaleY, fxInverseX = 0, fxInverseY = 0;
+    ULONG i;
+    INT iOldStretchMode;
 
-    UNREFERENCED_PARAMETER(pPresent);
-    UNREFERENCED_PARAMETER(hdc);
-    UNREFERENCED_PARAMETER(prclSrc);
-    UNREFERENCED_PARAMETER(prclDst);
-    UNREFERENCED_PARAMETER(pvAllocation);
-    UNREFERENCED_PARAMETER(ulFlags);
-    UNREFERENCED_PARAMETER(ulRop);
-    UNREFERENCED_PARAMETER(ulColor);
-    UNREFERENCED_PARAMETER(bFlag1);
-    UNREFERENCED_PARAMETER(bFlag2);
-    UNREFERENCED_PARAMETER(ulCount);
-    UNREFERENCED_PARAMETER(pfnCallback1);
-    UNREFERENCED_PARAMETER(pfnCallback2);
+    if (hdcWindow == NULL)
+        return FALSE;
 
-    return 0;
+    pdc = DC_LockDc(hdcWindow);
+    if (pdc == NULL)
+        return FALSE;
+    rclWindow = pdc->erclWindow;
+    dwLayout = pdc->pdcattr->dwLayout;
+    DC_UnlockDc(pdc);
+
+    /* Without a window the output rectangle stands in for one */
+    if ((prclOutput != NULL) && (pPresent->hWindow == NULL))
+        rclWindow = *(const RECTL *)prclOutput;
+
+    /* The part of the window the frame may cover, relative to the window */
+    if ((prclOutput != NULL) && (pPresent->hWindow != NULL))
+    {
+        RECTL_bIntersectRect(&rclLimit, &rclWindow, (const RECTL *)prclOutput);
+        if (!RtlEqualMemory(&rclLimit, &rclWindow, sizeof(rclLimit)))
+        {
+            RECTL_vOffsetRect(&rclLimit, -rclWindow.left, -rclWindow.top);
+            bLimit = TRUE;
+        }
+    }
+
+    RECTL_vSetRect(&rclDst, 0, 0, rclWindow.right - rclWindow.left, rclWindow.bottom - rclWindow.top);
+    RECTL_vSetRect(&rclSrc, 0, 0, (LONG)cxBuffer, (LONG)cyBuffer);
+
+    if (!pfnClipRects((RECT *)&rclSrc,
+                      (RECT *)&rclDst,
+                      pPresent->Flags.SrcRectValid ? &pPresent->SrcRect : NULL,
+                      pPresent->Flags.DstRectValid ? &pPresent->DstRect : NULL) ||
+        (rclDst.right == 0) || (rclDst.bottom == 0))
+    {
+        /* Nothing of the frame shows */
+        return TRUE;
+    }
+
+    /* A full screen DC draws in screen coordinates */
+    if ((prclOutput != NULL) && (pPresent->hWindow == NULL))
+        RECTL_vOffsetRect(&rclDst, prclOutput->left, prclOutput->top);
+
+    hbmBuffer = GreCreateBitmapEx(cxBuffer,
+                                  cyBuffer,
+                                  ulPitch,
+                                  b16Bpp ? BMF_16BPP : BMF_32BPP,
+                                  BMF_TOPDOWN,
+                                  0,
+                                  pvBits,
+                                  0);
+    if (hbmBuffer == NULL)
+        return FALSE;
+
+    hdcBuffer = GreCreateCompatibleDC(hdcWindow, FALSE);
+    if (hdcBuffer == NULL)
+    {
+        GreDeleteObject(hbmBuffer);
+        return FALSE;
+    }
+    NtGdiSelectBitmap(hdcBuffer, hbmBuffer);
+
+    /* The frame is never mirrored */
+    if (dwLayout & LAYOUT_ORIENTATIONMASK)
+        NtGdiSetLayout(hdcWindow, -1, 0);
+
+    if (((rclDst.right - rclDst.left) == (rclSrc.right - rclSrc.left)) &&
+        ((rclDst.bottom - rclDst.top) == (rclSrc.bottom - rclSrc.top)))
+    {
+        for (i = 0; i < pPresent->SubRectCnt; i++)
+        {
+            RECTL_bIntersectRect(&rclSubSrc, (const RECTL *)&prclSubRects[i], &rclSrc);
+
+            rclSubDst = rclSubSrc;
+            RECTL_vOffsetRect(&rclSubDst, rclDst.left - rclSrc.left, rclDst.top - rclSrc.top);
+            if (bLimit)
+            {
+                RECTL_bIntersectRect(&rclSubDst, &rclSubDst, &rclLimit);
+                rclSubSrc.left = rclSubDst.left - (rclDst.left - rclSrc.left);
+                rclSubSrc.top = rclSubDst.top - (rclDst.top - rclSrc.top);
+            }
+
+            if (bColorKey)
+            {
+                bResult = NtGdiTransparentBlt(hdcWindow,
+                                              rclSubDst.left,
+                                              rclSubDst.top,
+                                              rclSubDst.right - rclSubDst.left,
+                                              rclSubDst.bottom - rclSubDst.top,
+                                              hdcBuffer,
+                                              rclSubSrc.left,
+                                              rclSubSrc.top,
+                                              rclSubDst.right - rclSubDst.left,
+                                              rclSubDst.bottom - rclSubDst.top,
+                                              crColorKey);
+            }
+            else
+            {
+                bResult = NtGdiBitBlt(hdcWindow,
+                                      rclSubDst.left,
+                                      rclSubDst.top,
+                                      rclSubDst.right - rclSubDst.left,
+                                      rclSubDst.bottom - rclSubDst.top,
+                                      hdcBuffer,
+                                      rclSubSrc.left,
+                                      rclSubSrc.top,
+                                      DXGK_GDI_PRESENT_ROP,
+                                      0,
+                                      0);
+            }
+        }
+    }
+    else
+    {
+        fxScaleX = ((ULONG)(rclDst.right - rclDst.left) << 16) / (rclSrc.right - rclSrc.left);
+        fxScaleY = ((ULONG)(rclDst.bottom - rclDst.top) << 16) / (rclSrc.bottom - rclSrc.top);
+        if (bLimit)
+        {
+            fxInverseX = ((ULONG)(rclSrc.right - rclSrc.left) << 16) / (rclDst.right - rclDst.left);
+            fxInverseY = ((ULONG)(rclSrc.bottom - rclSrc.top) << 16) / (rclDst.bottom - rclDst.top);
+        }
+
+        iOldStretchMode = GreSetStretchBltMode(hdcWindow, COLORONCOLOR);
+
+        for (i = 0; i < pPresent->SubRectCnt; i++)
+        {
+            RECTL_bIntersectRect(&rclSubSrc, (const RECTL *)&prclSubRects[i], &rclSrc);
+            pfnXformRect((RECT *)&rclDst, (RECT *)&rclSrc, (RECT *)&rclSubDst, (RECT *)&rclSubSrc, fxScaleX, fxScaleY);
+
+            if (bLimit && RECTL_bIntersectRect(&rclSubDst, &rclSubDst, &rclLimit))
+                pfnXformRect((RECT *)&rclSrc, (RECT *)&rclDst, (RECT *)&rclSubSrc, (RECT *)&rclSubDst, fxInverseX, fxInverseY);
+
+            if (bColorKey)
+            {
+                bResult = NtGdiTransparentBlt(hdcWindow,
+                                              rclSubDst.left,
+                                              rclSubDst.top,
+                                              rclSubDst.right - rclSubDst.left,
+                                              rclSubDst.bottom - rclSubDst.top,
+                                              hdcBuffer,
+                                              rclSubSrc.left,
+                                              rclSubSrc.top,
+                                              rclSubSrc.right - rclSubSrc.left,
+                                              rclSubSrc.bottom - rclSubSrc.top,
+                                              crColorKey);
+            }
+            else
+            {
+                bResult = NtGdiStretchBlt(hdcWindow,
+                                          rclSubDst.left,
+                                          rclSubDst.top,
+                                          rclSubDst.right - rclSubDst.left,
+                                          rclSubDst.bottom - rclSubDst.top,
+                                          hdcBuffer,
+                                          rclSubSrc.left,
+                                          rclSubSrc.top,
+                                          rclSubSrc.right - rclSubSrc.left,
+                                          rclSubSrc.bottom - rclSubSrc.top,
+                                          DXGK_GDI_PRESENT_ROP,
+                                          0);
+            }
+        }
+
+        GreSetStretchBltMode(hdcWindow, iOldStretchMode);
+    }
+
+    if (dwLayout & LAYOUT_ORIENTATIONMASK)
+        NtGdiSetLayout(hdcWindow, -1, dwLayout);
+
+    IntGdiDeleteDC(hdcBuffer, TRUE);
+    GreDeleteObject(hbmBuffer);
+
+    return bResult;
 }
 
+/**
+ * @brief Fill parts of a window with a solid color through GDI.
+ *
+ * @param hdcWindow The DC to draw into, from DxgkEngGetDC.
+ * @param prclOutput Optionally the origin the rectangles are relative to.
+ * @param prclSubRects The rectangles to fill.
+ * @param cRects How many.
+ * @param ulColor The color, as X8R8G8B8.
+ *
+ * @return The result of the last fill.
+ */
 static
-LONG
+BOOL
 APIENTRY
 DxgkEngColorFillViaGDI(
-    _In_ HDC hdc,
-    _In_ PVOID prclDst,
-    _In_ PVOID prclClip,
-    _In_ ULONG ulColor,
-    _In_ ULONG ulFlags)
+    _In_ HDC hdcWindow,
+    _In_opt_ const RECT *prclOutput,
+    _In_reads_(cRects) const RECT *prclSubRects,
+    _In_ ULONG cRects,
+    _In_ ULONG ulColor)
 {
-    UNIMPLEMENTED_ONCE;
+    HBRUSH hbrFill, hbrOld;
+    LONG dx = 0, dy = 0;
+    BOOL bResult = FALSE;
+    ULONG i;
 
-    UNREFERENCED_PARAMETER(hdc);
-    UNREFERENCED_PARAMETER(prclDst);
-    UNREFERENCED_PARAMETER(prclClip);
-    UNREFERENCED_PARAMETER(ulColor);
-    UNREFERENCED_PARAMETER(ulFlags);
+    if (hdcWindow == NULL)
+        return FALSE;
 
-    return 0;
+    hbrFill = IntGdiCreateSolidBrush(RGB((ulColor >> 16) & 0xFF, (ulColor >> 8) & 0xFF, ulColor & 0xFF));
+    if (hbrFill == NULL)
+        return FALSE;
+
+    hbrOld = NtGdiSelectBrush(hdcWindow, hbrFill);
+
+    if (prclOutput != NULL)
+    {
+        dx = prclOutput->left;
+        dy = prclOutput->top;
+    }
+
+    for (i = 0; i < cRects; i++)
+    {
+        bResult = NtGdiPatBlt(hdcWindow,
+                              prclSubRects[i].left + dx,
+                              prclSubRects[i].top + dy,
+                              prclSubRects[i].right - prclSubRects[i].left,
+                              prclSubRects[i].bottom - prclSubRects[i].top,
+                              PATCOPY);
+    }
+
+    if (hbrOld != NULL)
+        NtGdiSelectBrush(hdcWindow, hbrOld);
+    GreDeleteObject(hbrFill);
+
+    return bResult;
 }
 
 static
