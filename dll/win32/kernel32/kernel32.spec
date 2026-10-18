@@ -530,6 +530,8 @@
 @ stdcall -version=0x602+ GetPackageId(ptr ptr ptr)
 @ stdcall -version=0x603+ GetPackagePathByFullName(wstr ptr ptr)
 @ stdcall -version=0x602+ GetPackagesByPackageFamily(wstr ptr ptr ptr ptr)
+@ stdcall -version=0xA00+ GetTempPath2A(long ptr)
+@ stdcall -version=0xA00+ GetTempPath2W(long ptr)
 @ stdcall -version=0x600+ IsValidLocaleName(wstr)
 @ stdcall -version=0x602+ IsValidNLSVersion(long wstr ptr)
 @ stdcall GetLogicalDriveStringsA(long ptr)

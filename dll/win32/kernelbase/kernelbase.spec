@@ -746,8 +746,8 @@
 # @ stub GetTargetPlatformContext
 @ stdcall GetTempFileNameA(str str long ptr)
 @ stdcall GetTempFileNameW(wstr wstr long ptr)
-@ stdcall -stub -version=0xA01+ GetTempPath2W(long ptr) ; Win11
-@ stdcall -stub -version=0xA01+ GetTempPath2A(long ptr) ; Win11
+@ stdcall -version=0xA00+ GetTempPath2W(long ptr)
+@ stdcall -version=0xA00+ GetTempPath2A(long ptr)
 @ stdcall GetTempPathA(long ptr)
 @ stdcall GetTempPathW(long ptr)
 @ stdcall GetThreadContext(long ptr)
