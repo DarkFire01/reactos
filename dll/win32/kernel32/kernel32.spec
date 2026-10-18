@@ -437,6 +437,7 @@
 @ stdcall -version=0x600+ GetCurrentConsoleFontEx(ptr long ptr)
 @ stdcall GetCurrentDirectoryA(long ptr)
 @ stdcall GetCurrentDirectoryW(long ptr)
+@ stdcall -version=0x602+ GetCurrentPackageFamilyName(ptr ptr)
 @ stdcall -version=0x602+ GetCurrentPackageId(ptr ptr)
 @ stdcall -norelay GetCurrentProcess()
 @ stdcall -norelay GetCurrentProcessId()
