@@ -654,6 +654,27 @@ GetCurrentPackageId(UINT32 *BufferLength,
 
 /**
  * @brief
+ * Gets the package family name of the calling process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_PACKAGE, since no process here runs with package identity.
+ */
+LONG
+WINAPI
+GetCurrentPackageFamilyName(
+    _Inout_ UINT32 *packageFamilyNameLength,
+    _Out_writes_opt_(*packageFamilyNameLength) PWSTR packageFamilyName)
+{
+    UNREFERENCED_PARAMETER(packageFamilyName);
+
+    if (!packageFamilyNameLength)
+        return ERROR_INVALID_PARAMETER;
+
+    return APPMODEL_ERROR_NO_PACKAGE;
+}
+
+/**
+ * @brief
  * Looks up the package identity of a process.
  *
  * @return
