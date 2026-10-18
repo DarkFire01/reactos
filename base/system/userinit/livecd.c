@@ -16,6 +16,7 @@ WCHAR Installer[MAX_PATH];
 typedef struct _LIVECD_UNATTEND
 {
     BOOL bEnabled;
+    BOOL bRunLiveCD;
     LCID LocaleID;
 } LIVECD_UNATTEND;
 
@@ -748,8 +749,11 @@ StartDlgProc(
             }
             else if (pState->Unattend->bEnabled)
             {
-                /* Click on "Install" */
-                SendMessageW(hwndDlg, WM_COMMAND, MAKEWPARAM(IDC_INSTALL, BN_CLICKED), 0);
+                /* Click on "Run LiveCD" or "Install", as the unattend file asks */
+                SendMessageW(hwndDlg,
+                             WM_COMMAND,
+                             MAKEWPARAM(pState->Unattend->bRunLiveCD ? IDC_RUN : IDC_INSTALL, BN_CLICKED),
+                             0);
             }
             return TRUE;
         }
@@ -830,16 +834,24 @@ ParseUnattend(
         return;
     }
 
-    if (!GetPrivateProfileStringW(L"Unattend", L"UnattendSetupEnabled", L"", Buffer, _countof(Buffer), UnattendInf))
-    {
-        ERR("Unable to parse UnattendSetupEnabled\n");
-        return;
-    }
+    /* "LiveCDAction = run" goes straight to the LiveCD desktop and leaves text mode setup alone */
+    pUnattend->bRunLiveCD =
+        GetPrivateProfileStringW(L"Unattend", L"LiveCDAction", L"", Buffer, _countof(Buffer), UnattendInf) &&
+        _wcsicmp(Buffer, L"run") == 0;
 
-    if (_wcsicmp(Buffer, L"yes") != 0)
+    if (!pUnattend->bRunLiveCD)
     {
-        TRACE("Unattended setup is not enabled\n");
-        return;
+        if (!GetPrivateProfileStringW(L"Unattend", L"UnattendSetupEnabled", L"", Buffer, _countof(Buffer), UnattendInf))
+        {
+            ERR("Unable to parse UnattendSetupEnabled\n");
+            return;
+        }
+
+        if (_wcsicmp(Buffer, L"yes") != 0)
+        {
+            TRACE("Unattended setup is not enabled\n");
+            return;
+        }
     }
     /* If the user presses Ctrl+Shift+F10, disable unattended setup */
     if ((GetKeyState(VK_CONTROL) & GetKeyState(VK_SHIFT) & GetKeyState(VK_F10)) < 0)
@@ -855,6 +867,47 @@ ParseUnattend(
     {
         pUnattend->LocaleID = wcstol(Buffer, NULL, 16);
     }
+}
+
+/* Hands the unattend file's [GuiRunOnce] commands to the shell, the way setup does for an installed system */
+static VOID
+QueueUnattendRunOnce(
+    _In_ LPCWSTR UnattendInf)
+{
+    WCHAR Section[2048];
+    WCHAR Command[MAX_PATH];
+    WCHAR Name[16];
+    PWSTR Line;
+    HKEY hKey;
+    UINT Index = 0;
+
+    if (!GetPrivateProfileSectionW(L"GuiRunOnce", Section, _countof(Section), UnattendInf))
+        return;
+
+    if (RegCreateKeyExW(HKEY_LOCAL_MACHINE,
+                        L"Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
+                        0,
+                        NULL,
+                        0,
+                        KEY_SET_VALUE,
+                        NULL,
+                        &hKey,
+                        NULL) != ERROR_SUCCESS)
+    {
+        ERR("Unable to open the RunOnce key\n");
+        return;
+    }
+
+    for (Line = Section; *Line; Line += wcslen(Line) + 1)
+    {
+        if (*Line == L';' || !ExpandEnvironmentStringsW(Line, Command, _countof(Command)))
+            continue;
+
+        StringCchPrintfW(Name, _countof(Name), L"%u", Index++);
+        RegSetValueExW(hKey, Name, 0, REG_SZ, (PBYTE)Command, (DWORD)((wcslen(Command) + 1) * sizeof(WCHAR)));
+    }
+
+    RegCloseKey(hKey);
 }
 
 
@@ -1045,6 +1098,9 @@ RunLiveCD(
                 break;
         }
     }
+
+    if (Unattend.bEnabled && pState->Run == SHELL)
+        QueueUnattendRunOnce(UnattendInf);
 
     DeleteObject(pState->ImageInfo.hBitmap);
 }
