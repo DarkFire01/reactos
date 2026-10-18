@@ -1848,6 +1848,8 @@
 @ fastcall -arch=i386 KfReleaseSpinLock(ptr long) hal.KfReleaseSpinLock
 
 @ stdcall -version=0x602+ LdrResFindResource(ptr ptr ptr ptr ptr ptr ptr ptr long)
+
+@ stdcall -version=0x602+ MmAllocateMdlForIoSpace(ptr long ptr)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 
 @ stdcall -version=0x600+ MmMapViewInSystemSpaceEx(ptr ptr ptr ptr long)
