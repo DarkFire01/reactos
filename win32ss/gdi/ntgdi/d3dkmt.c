@@ -2824,3 +2824,136 @@ NtGdiDdDDIGetCachedHybridQueryValue(_Inout_ PVOID unnamedParam1)
 
     return pfn(unnamedParam1);
 }
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIEnumAdapters(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_EnumAdapters);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("EnumAdapters");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateHwQueue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_CreateHwQueue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("CreateHwQueue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyHwQueue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_DestroyHwQueue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("DestroyHwQueue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitCommandToHwQueue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SubmitCommandToHwQueue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SubmitCommandToHwQueue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitSignalSyncObjectsToHwQueue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SubmitSignalSyncObjectsToHwQueue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SubmitSignalSyncObjectsToHwQueue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitWaitForSyncObjectsToHwQueue(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_SubmitWaitForSyncObjectsToHwQueue);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("SubmitWaitForSyncObjectsToHwQueue");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUpdateAllocationProperty(_Inout_ PVOID unnamedParam1)
+{
+    PFN_DXGK_D3DKMT pfn;
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_UpdateAllocationProperty);
+    if (pfn == NULL)
+    {
+        DXGKMT_TRACE_NOPROC("UpdateAllocationProperty");
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    return pfn(unnamedParam1);
+}
