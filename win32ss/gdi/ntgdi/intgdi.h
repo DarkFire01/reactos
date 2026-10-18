@@ -409,6 +409,41 @@ APIENTRY
 NtGdiDdDDIGetCachedHybridQueryValue(
     _Inout_ PVOID unnamedParam1);
 
+NTSTATUS
+APIENTRY
+NtGdiDdDDIEnumAdapters(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateHwQueue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIDestroyHwQueue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitCommandToHwQueue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitSignalSyncObjectsToHwQueue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISubmitWaitForSyncObjectsToHwQueue(
+    _Inout_ PVOID unnamedParam1);
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUpdateAllocationProperty(
+    _Inout_ PVOID unnamedParam1);
+
 /* Composition surface stubs, see ntuser/ntstubs.c */
 
 NTSTATUS
