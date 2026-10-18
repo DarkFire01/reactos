@@ -461,7 +461,9 @@
 @ stdcall GetDriveTypeW(wstr)
 @ stub -version=0x600+ GetDurationFormat
 @ stub -version=0x600+ GetDurationFormatEx
-@ stdcall -stub -version=0x600+ GetDynamicTimeZoneInformation(ptr)
+@ stdcall -version=0x600+ GetDynamicTimeZoneInformation(ptr)
+@ stdcall -version=0x600+ GetDynamicTimeZoneInformationEffectiveYears(ptr ptr ptr)
+@ stdcall -version=0x601+ GetEnabledXStateFeatures()
 @ stdcall GetEnvironmentStrings()
 @ stdcall GetEnvironmentStringsA() GetEnvironmentStrings
 @ stdcall GetEnvironmentStringsW()
@@ -681,6 +683,7 @@
 @ stdcall GetWindowsDirectoryA(ptr long)
 @ stdcall GetWindowsDirectoryW(ptr long)
 @ stdcall GetWriteWatch(long ptr long ptr ptr ptr)
+@ stdcall -version=0x601+ GetXStateFeaturesMask(ptr ptr)
 @ stdcall GlobalAddAtomA(str)
 @ stdcall GlobalAddAtomW(wstr)
 @ stdcall GlobalAlloc(long long)
@@ -842,6 +845,7 @@
 @ stdcall LocalSize(long)
 @ stdcall LocalUnlock(long)
 @ stdcall -version=0x600+ LocaleNameToLCID(wstr long)
+@ stdcall -version=0x601+ LocateXStateFeature(ptr long ptr)
 @ stdcall LockFile(long long long long long)
 @ stdcall LockFileEx(long long long long long ptr)
 @ stdcall LockResource(long)

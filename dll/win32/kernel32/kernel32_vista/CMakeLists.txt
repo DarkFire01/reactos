@@ -18,6 +18,7 @@ list(APPEND SOURCE
     ThreadDescription.c
     threadpool.c
     vista.c
+    XState.c
     ../winnls/string/locale.c)
 
 # These functions are not exported from kernel32_vista (yet).
