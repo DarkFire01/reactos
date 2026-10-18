@@ -188,8 +188,8 @@ ArbpReportConflictingRanges(
 
     if (!Overlapped)
     {
-        DPRINT1("  nothing holds 0x%I64x..0x%I64x, so it is outside what this "
-                "arbiter was given\n",
+        DPRINT1("  nothing outside this request holds 0x%I64x..0x%I64x, so another "
+                "entry of the request or the arbiter's limits stopped it\n",
                 Minimum, Maximum);
     }
 }
@@ -225,6 +225,9 @@ ArbiterLibAllocateEntry(
     _Inout_ PARBITER_ALLOCATION_STATE ArbState)
 {
     PARBITER_ALLOCATION_STATE Current = ArbState;
+    PARBITER_ALLOCATION_STATE Deepest = NULL;
+    ULONGLONG DeepestMinimum = 0;
+    ULONGLONG DeepestMaximum = 0;
     BOOLEAN Backtracking = FALSE;
     BOOLEAN McfgConflict = FALSE;
     BOOLEAN DeadlineReported = FALSE;
@@ -348,18 +351,26 @@ Backtrack:
         if (Current->Flags & ARBITER_STATE_FLAG_MCFG_CONFLICT)
             McfgConflict = TRUE;
 
+        /* Backtracking ends at the first entry, so remember which one really ran out */
+        if (Deepest == NULL || Current > Deepest)
+        {
+            Deepest = Current;
+            DeepestMinimum = Current->CurrentMinimum;
+            DeepestMaximum = Current->CurrentMaximum;
+        }
+
         if (Current == ArbState)
         {
             /* Even the first entry has no solution. */
             if (Current->Entry != NULL)
                 Current->Entry->Result = ArbiterResultExternalConflict;
 
-            DPRINT1("Arbiter %ws: nowhere to put 0x%I64x..0x%I64x\n",
+            DPRINT1("Arbiter %ws: nowhere to put 0x%I64x..0x%I64x for %p (entry %u of the request)\n",
                     Arbiter->Name ? Arbiter->Name : L"(unnamed)",
-                    Current->CurrentMinimum, Current->CurrentMaximum);
-            ArbpReportConflictingRanges(Arbiter,
-                                        Current->CurrentMinimum,
-                                        Current->CurrentMaximum);
+                    DeepestMinimum, DeepestMaximum,
+                    Deepest->Entry ? Deepest->Entry->PhysicalDeviceObject : NULL,
+                    (ULONG)(Deepest - ArbState));
+            ArbpReportConflictingRanges(Arbiter, DeepestMinimum, DeepestMaximum);
 
             ArbpFreeAllocationWorkSpaces(ArbState);
             return McfgConflict ? STATUS_BAD_MCFG_TABLE : STATUS_UNSUCCESSFUL;

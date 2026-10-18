@@ -2501,6 +2501,9 @@ PiDevNodeStateMachine(
                                      ? CM_PROB_NEED_RESTART
                                      : CM_PROB_FAILED_START;
 
+                    DPRINT1("Failed to start %wZ (Status 0x%08lx)\n",
+                            &currentNode->InstancePath, status);
+
                     PiSetDevNodeProblem(currentNode, problem);
                     PiSetDevNodeState(currentNode, DeviceNodeAwaitingQueuedRemoval);
                 }
