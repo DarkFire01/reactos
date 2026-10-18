@@ -7,6 +7,7 @@
 
 #include <win32k.h>
 #include <d3dkmthk.h>
+#include <reactos/rddm/rddm_private.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -15,6 +16,79 @@
 BOOLEAN NTAPI DxEngLockShareSem(VOID);
 BOOLEAN NTAPI DxEngUnlockShareSem(VOID);
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* The Windows 11 slot order, dxgkrnl indexes it by offset */
+typedef struct _DXGKWIN32KENG_INTERFACE
+{
+    USHORT Size;
+    USHORT Version;
+    PVOID pfnDxgkEngVisRgnUniq;
+    PVOID pfnDxgkEngLockVisRgn;
+    PVOID pfnDxgkEngUnlockVisRgn;
+    PVOID pfnDxgkEngEnterUserCrit;
+    PVOID pfnDxgkEngLeaveUserCrit;
+    PVOID pfnDxgkEngGetDC;
+    PVOID pfnDxgkEngIsRedirectionDC;
+    PVOID pfnDxgkEngReleaseDC;
+    PVOID pfnDxgkEngGetClientRect;
+    PVOID pfnDxgkEngCreateRectRgn;
+    PVOID pfnDxgkEngGetVisRgn;
+    PVOID pfnDxgkEngSetRgn;
+    PVOID pfnDxgkEngCombineRgn;
+    PVOID pfnDxgkEngGetRgnData;
+    PVOID pfnDxgkEngGetBoxRgn;
+    PVOID pfnDxgkEngDeleteObject;
+    PVOID pfnDxgkEngDetectGDIPath;
+    PVOID pfnDxgkEngBltViaGDI;
+    PVOID pfnDxgkEngColorFillViaGDI;
+    PVOID pfnDxgkEngLockShareSem;
+    PVOID pfnDxgkEngUnlockShareSem;
+    PVOID pfnDxgkEngAcquireWin32kLocks;
+    PVOID pfnDxgkEngReleaseWin32kLocks;
+    PVOID pfnDxgkEngAcquireDwmStateAndPDevLocks;
+    PVOID pfnDxgkEngReleasePDevAndDwmStateLocks;
+    PVOID pfnDxgkEngAssertGdiOutput;
+    PVOID pfnDxgkEngResetPointer;
+    PVOID pfnDxgkEngScreenAccessCheck;
+    PVOID pfnDxgkEngIsDwmProcess;
+    PVOID pfnDxgkEngIsRemoteConnection;
+    PVOID pfnDxgkEngGetRedirBitmapSharedHandle;
+    PVOID pfnDxgkEngAddRedirBitmapD3DDirtyRgn;
+    PVOID pfnDxgkEngAccumD3DPresentBounds;
+    PVOID pfnDxgkEngAcquireStableVisRgn;
+    PVOID pfnDxgkEngReleaseStableVisRgn;
+    PVOID pfnDxgkEngAcquireStableSprite;
+    PVOID pfnDxgkEngReleaseStableSprite;
+    PVOID pfnDxgkEngWatchVisRgnChange;
+    PVOID pfnDxgkEngFindViewDesktopPosition;
+    PVOID pfnDxgkEngIsDwmComposing;
+    PVOID pfnDxgkEngGetRedirectedWindowOrigin;
+    PVOID pfnDxgkEngAdjustMonitorPosition;
+    PVOID pfnDxgkEngGetRemoteDeviceCount;
+    PVOID pfnDxgkEngGetAdapterUniquenessPointer;
+    PVOID pfnDxgkEngIncPresentUniq;
+    PVOID pfnDxgkEngQueryWin32Info;
+    PVOID pfnDxgkEngGetWindowRect;
+    PVOID pfnDxgkEngNotifyDisplayChange;
+    PVOID pfnDxgkEngGetWindowGdiDpiScalingFactor;
+    PVOID pfnDxgkEngGetMonitorUniquenessPointer;
+    PVOID pfnDxgkEngSampleDisplayState;
+    PVOID pfnDxgkEngIsGDIOn;
+    PVOID pfnDxgkEngSetDisplayModeCallback;
+    PVOID pfnDxgkEngProcessWin32kEscape;
+    PVOID pfnDxgkEngIsWinLogonProcess;
+    PVOID pfnDxgkEngSetHwProtectionTeardownRecovery;
+    PVOID pfnDxgkEngQueryRemoteVidPnSourceFromGdiDisplayName;
+    PVOID pfnDxgkEngCheckRemoteSessionRemoteAdapterAccess;
+    PVOID pfnDxgkEngOpenAdapterFromHdc;
+} DXGKWIN32KENG_INTERFACE;
+
+/* Size and Version share the first pointer slot, so this is 480 bytes on x64 */
+C_ASSERT(sizeof(DXGKWIN32KENG_INTERFACE) == 60 * sizeof(PVOID));
+
+#define DXGKWIN32KENG_INTERFACE_VERSION     12
+
+#else
 /* Slot order comes from the 14361 win32kbase PDB, and dxgkrnl indexes it by offset */
 typedef struct _DXGKWIN32KENG_INTERFACE
 {
@@ -74,6 +148,7 @@ typedef struct _DXGKWIN32KENG_INTERFACE
 C_ASSERT(sizeof(DXGKWIN32KENG_INTERFACE) == 49 * sizeof(PVOID));
 
 #define DXGKWIN32KENG_INTERFACE_VERSION     5
+#endif /* DXGKRNL_TARGET */
 
 /* Request codes dxgkrnl passes to DxgkEngQueryWin32Info */
 typedef enum _DXGKENG_QUERY_TYPE
@@ -107,8 +182,10 @@ static ULONG gulVisRgnUniq = 0;
 static ULONG gulSpriteUniq = 0;
 static volatile LONG glAdapterUniqueness = 0;
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
 static const ULONG gaulScaleFactors[] = { 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500 };
 static const ULONG gaulScaleCutoffs[] = { 120, 139, 178, 178, 232, 232, 275, 325, 375, 375, 450 };
+#endif
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -732,6 +809,7 @@ DxgkEngUnlockShareSem(VOID)
     return DxEngUnlockShareSem();
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
 static
 VOID
 APIENTRY
@@ -744,6 +822,7 @@ DxgkEngAcquireWin32kAndPDEVLocks(
     UNREFERENCED_PARAMETER(pvDev);
     UNREFERENCED_PARAMETER(ulFlags);
 }
+#endif
 
 /*
  * Hands the adapter's sources to or from the CDD. This is what starts the CDD presenting: it
@@ -779,6 +858,7 @@ DxgkEngResetPointer(VOID)
     UNIMPLEMENTED_ONCE;
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
 static
 VOID
 APIENTRY
@@ -791,6 +871,7 @@ DxgkEngReleaseWin32kAndPDEVLocks(
     UNREFERENCED_PARAMETER(pvDev);
     UNREFERENCED_PARAMETER(ulFlags);
 }
+#endif
 
 static
 BOOL
@@ -862,6 +943,7 @@ DxgkEngAccumD3DPresentBounds(
     UNREFERENCED_PARAMETER(prcl);
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
 static
 LONG
 APIENTRY
@@ -874,6 +956,7 @@ DxgkEngRefPresentHistoryToken(
 
     return 0;
 }
+#endif
 
 /* Window positions, and so every visible region, only change under the user lock */
 static
@@ -961,6 +1044,7 @@ DxgkEngIsDwmComposing(
     return 0;
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
 static
 LONG
 APIENTRY
@@ -975,6 +1059,7 @@ DxgkEngQuerySwapChainBindingStatus(
 
     return 0;
 }
+#endif
 
 /* No window is redirected without a compositor */
 static
@@ -999,7 +1084,7 @@ DxgkEngGetRedirectedWindowOrigin(
  * rectangles where they came in leaves the desktop origin wherever the monitor happened to be
  * enumerated, and the damage rectangles built from it land outside the surface.
  *
- * @param ulFlags   Passed through and not read by AlignRects.
+ * @param ulFlags   1607 only, passed through and not read by AlignRects.
  * @param prc       The monitor rectangles, adjusted in place.
  * @param cRects    How many; Windows refuses more than 16.
  * @param iPrimary  Index of the primary, which is the one moved to (0,0).
@@ -1009,7 +1094,9 @@ static
 LONG
 APIENTRY
 DxgkEngAdjustMonitorPosition(
+#if (DXGKRNL_TARGET == DXGKRNL_TARGET_1607)
     _In_ ULONG ulFlags,
+#endif
     _Inout_updates_(cRects) LPRECT prc,
     _In_ ULONG cRects,
     _In_ ULONG iPrimary)
@@ -1017,7 +1104,9 @@ DxgkEngAdjustMonitorPosition(
     LONG  dx, dy;
     ULONG i;
 
+#if (DXGKRNL_TARGET == DXGKRNL_TARGET_1607)
     UNREFERENCED_PARAMETER(ulFlags);
+#endif
 
     /* Beyond this it does not lay them out at all. */
     if ((prc == NULL) || (cRects == 0) || (cRects > 16) || (iPrimary >= cRects))
@@ -1059,6 +1148,7 @@ DxgkEngGetAdapterUniquenessPointer(VOID)
     return &glAdapterUniqueness;
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
 static
 VOID
 APIENTRY
@@ -1066,6 +1156,7 @@ DxgkEngIncSpritetUniq(VOID)
 {
     gulSpriteUniq++;
 }
+#endif
 
 /**
  * @brief Answer dxgkrnl's session queries. ReactOS only has console sessions, no per-driver
@@ -1087,6 +1178,11 @@ DxgkEngQueryWin32Info(
             return STATUS_SUCCESS;
 
         case DxgkEngQueryScaleFactors:
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+            /* Windows 11 only gets the scale factors from an optional provider */
+            UNREFERENCED_PARAMETER(Scale);
+            return STATUS_NOT_SUPPORTED;
+#else
             ASSERT(pQuery->DataSize == sizeof(*Scale));
             Scale = pQuery->Data;
             Scale->MinResolution.cx = 800;
@@ -1095,6 +1191,7 @@ DxgkEngQueryWin32Info(
             Scale->Factors = gaulScaleFactors;
             Scale->Cutoffs = gaulScaleCutoffs;
             return STATUS_SUCCESS;
+#endif
 
         case DxgkEngQuerySessionProtocol:
             if (pQuery->DataSize != sizeof(ULONG))
@@ -1138,6 +1235,248 @@ DxgkEngNotifyDisplayChange(VOID)
     UNIMPLEMENTED_ONCE;
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* Bumped whenever the set of monitors changes */
+static volatile LONG glMonitorUniqueness = 0;
+
+/*
+ * The locks dxgkrnl takes around a mode change. GDI and USER already hold their own locks
+ * around everything that changes the display, so nothing more is taken here.
+ */
+static
+VOID
+APIENTRY
+DxgkEngAcquireWin32kLocks(VOID)
+{
+}
+
+static
+VOID
+APIENTRY
+DxgkEngReleaseWin32kLocks(VOID)
+{
+}
+
+static
+VOID
+APIENTRY
+DxgkEngAcquireDwmStateAndPDevLocks(
+    _In_ PVOID pAdapter,
+    _In_ ULONG cSources)
+{
+    UNREFERENCED_PARAMETER(pAdapter);
+    UNREFERENCED_PARAMETER(cSources);
+}
+
+static
+VOID
+APIENTRY
+DxgkEngReleasePDevAndDwmStateLocks(
+    _In_ PVOID pAdapter,
+    _In_ ULONG cSources)
+{
+    UNREFERENCED_PARAMETER(pAdapter);
+    UNREFERENCED_PARAMETER(cSources);
+}
+
+static
+VOID
+APIENTRY
+DxgkEngIncPresentUniq(VOID)
+{
+    gulSpriteUniq++;
+}
+
+/* GDI draws every window at the system DPI, so a window is never scaled */
+static
+ULONG
+APIENTRY
+DxgkEngGetWindowGdiDpiScalingFactor(
+    _In_ HWND hwnd)
+{
+    UNREFERENCED_PARAMETER(hwnd);
+    return 1;
+}
+
+static
+volatile LONG *
+APIENTRY
+DxgkEngGetMonitorUniquenessPointer(VOID)
+{
+    return &glMonitorUniqueness;
+}
+
+/**
+ * @brief Takes a snapshot of the display state counters for dxgkrnl.
+ *
+ * @param[out] pulState
+ * Seven counters: the display state, the monitors, the adapters, then four kept zero.
+ */
+static
+NTSTATUS
+APIENTRY
+DxgkEngSampleDisplayState(
+    _Out_writes_(7) PULONG pulState)
+{
+    if (!pulState)
+        return STATUS_INVALID_PARAMETER;
+
+    RtlZeroMemory(pulState, 7 * sizeof(ULONG));
+    pulState[1] = (ULONG)glMonitorUniqueness;
+    pulState[2] = (ULONG)glAdapterUniqueness;
+    return STATUS_SUCCESS;
+}
+
+/* The display is never powered off underneath GDI */
+static
+BOOLEAN
+APIENTRY
+DxgkEngIsGDIOn(VOID)
+{
+    return TRUE;
+}
+
+/* A mode change GDI asks for updates its PDEV itself, so dxgkrnl has nothing to hand over */
+static
+NTSTATUS
+APIENTRY
+DxgkEngSetDisplayModeCallback(
+    _In_opt_ PVOID pContext,
+    _In_ ULONG VidPnSourceId)
+{
+    UNREFERENCED_PARAMETER(pContext);
+    UNREFERENCED_PARAMETER(VidPnSourceId);
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+APIENTRY
+DxgkEngProcessWin32kEscape(
+    _In_ PVOID pEscape)
+{
+    UNREFERENCED_PARAMETER(pEscape);
+    return STATUS_NOT_SUPPORTED;
+}
+
+static
+BOOLEAN
+APIENTRY
+DxgkEngIsWinLogonProcess(VOID)
+{
+    return (BOOLEAN)(PsGetCurrentProcessId() == gpidLogon);
+}
+
+/* Hardware content protection is never used */
+static
+NTSTATUS
+APIENTRY
+DxgkEngSetHwProtectionTeardownRecovery(
+    _In_ PVOID pRecovery)
+{
+    UNREFERENCED_PARAMETER(pRecovery);
+    return STATUS_NOT_SUPPORTED;
+}
+
+/* Only console sessions exist, so no display is ever remote */
+static
+NTSTATUS
+APIENTRY
+DxgkEngQueryRemoteVidPnSourceFromGdiDisplayName(
+    _Inout_ PVOID pQuery)
+{
+    UNREFERENCED_PARAMETER(pQuery);
+    return STATUS_NOT_SUPPORTED;
+}
+
+static
+NTSTATUS
+APIENTRY
+DxgkEngCheckRemoteSessionRemoteAdapterAccess(
+    _In_opt_ PVOID pAdapter)
+{
+    UNREFERENCED_PARAMETER(pAdapter);
+    return STATUS_SUCCESS;
+}
+
+/* The adapter behind a DC is found from the PDEV it draws on */
+static
+NTSTATUS
+APIENTRY
+DxgkEngOpenAdapterFromHdc(
+    _Inout_ D3DKMT_OPENADAPTERFROMHDC *pOpenAdapter)
+{
+    return NtGdiDdDDIOpenAdapterFromHdc(pOpenAdapter);
+}
+
+/* GLOBALS ********************************************************************/
+
+DXGKWIN32KENG_INTERFACE gDxgkWin32kEngInterface =
+{
+    sizeof(DXGKWIN32KENG_INTERFACE),
+    DXGKWIN32KENG_INTERFACE_VERSION,
+    DxgkEngVisRgnUniq,
+    DxgkEngLockVisRgn,
+    DxgkEngUnlockVisRgn,
+    DxgkEngEnterUserCrit,
+    DxgkEngLeaveUserCrit,
+    DxgkEngGetDC,
+    DxgkEngIsRedirectionDC,
+    DxgkEngReleaseDC,
+    DxgkEngGetClientRect,
+    DxgkEngCreateRectRgn,
+    DxgkEngGetVisRgn,
+    DxgkEngSetRgn,
+    DxgkEngCombineRgn,
+    DxgkEngGetRgnData,
+    DxgkEngGetBoxRgn,
+    DxgkEngDeleteObject,
+    DxgkEngDetectGDIPath,
+    DxgkEngBltViaGDI,
+    DxgkEngColorFillViaGDI,
+    DxgkEngLockShareSem,
+    DxgkEngUnlockShareSem,
+    DxgkEngAcquireWin32kLocks,
+    DxgkEngReleaseWin32kLocks,
+    DxgkEngAcquireDwmStateAndPDevLocks,
+    DxgkEngReleasePDevAndDwmStateLocks,
+    DxgkEngAssertGdiOutput,
+    DxgkEngResetPointer,
+    DxgkEngScreenAccessCheck,
+    DxgkEngIsDwmProcess,
+    DxgkEngIsRemoteConnection,
+    DxgkEngGetRedirBitmapSharedHandle,
+    DxgkEngAddRedirBitmapD3DDirtyRgn,
+    DxgkEngAccumD3DPresentBounds,
+    DxgkEngAcquireStableVisRgn,
+    DxgkEngReleaseStableVisRgn,
+    DxgkEngAcquireStableSprite,
+    DxgkEngReleaseStableSprite,
+    DxgkEngWatchVisRgnChange,
+    DxgkEngFindViewDesktopPosition,
+    DxgkEngIsDwmComposing,
+    DxgkEngGetRedirectedWindowOrigin,
+    DxgkEngAdjustMonitorPosition,
+    DxgkEngGetRemoteDeviceCount,
+    DxgkEngGetAdapterUniquenessPointer,
+    DxgkEngIncPresentUniq,
+    DxgkEngQueryWin32Info,
+    DxgkEngGetWindowRect,
+    DxgkEngNotifyDisplayChange,
+    DxgkEngGetWindowGdiDpiScalingFactor,
+    DxgkEngGetMonitorUniquenessPointer,
+    DxgkEngSampleDisplayState,
+    DxgkEngIsGDIOn,
+    DxgkEngSetDisplayModeCallback,
+    DxgkEngProcessWin32kEscape,
+    DxgkEngIsWinLogonProcess,
+    DxgkEngSetHwProtectionTeardownRecovery,
+    DxgkEngQueryRemoteVidPnSourceFromGdiDisplayName,
+    DxgkEngCheckRemoteSessionRemoteAdapterAccess,
+    DxgkEngOpenAdapterFromHdc
+};
+
+#else
 /* GLOBALS ********************************************************************/
 
 DXGKWIN32KENG_INTERFACE gDxgkWin32kEngInterface =
@@ -1193,5 +1532,6 @@ DXGKWIN32KENG_INTERFACE gDxgkWin32kEngInterface =
     DxgkEngGetWindowRect,
     DxgkEngNotifyDisplayChange
 };
+#endif /* DXGKRNL_TARGET */
 
 /* EOF */

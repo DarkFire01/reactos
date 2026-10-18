@@ -11,6 +11,16 @@
 #define NDEBUG
 #include <debug.h>
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* Exported by ntoskrnl */
+NTSYSAPI
+PVOID
+NTAPI
+RtlFindExportedRoutineByName(
+    _In_ PVOID ImageBase,
+    _In_ PCSTR RoutineName);
+#endif
+
 /* The engine interface dxgkrnl calls back through (gdi/eng/dxgkeng.c) */
 struct _DXGKWIN32KENG_INTERFACE;
 extern struct _DXGKWIN32KENG_INTERFACE gDxgkWin32kEngInterface;
@@ -20,10 +30,14 @@ typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
     _In_ const struct _DXGKWIN32KENG_INTERFACE *EngInterface,
     _In_ BOOLEAN Create);
 
-/* 216 bytes on x64 and 196 on x86, the pointers inside a path make the difference */
 #define DL_MODALITY_PATH_SIZE       sizeof(DL_MODALITY_PATH)
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* The fixed fields and two pointers dxgkrnl frees along with the modality */
+#define DL_MODALITY_HEADER_SIZE     (40 + 2 * sizeof(PVOID))
+#else
 /* The fixed fields plus the applied paths pointer, so the header is narrower on a 32 bit build */
 #define DL_MODALITY_HEADER_SIZE     (40 + sizeof(PVOID))
+#endif
 #define DL_MODALITY_INITIAL_PATHS   8
 #define DL_MODALITY_MAX_PATHS       64
 
@@ -66,6 +80,9 @@ typedef struct _D3DKMT_GETPATHSMODALITY
     ULONG  Reserved24[3];
     ULONG  AppliedCount;
     PVOID  AppliedPaths;
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    PVOID  Reserved48;
+#endif
 } D3DKMT_GETPATHSMODALITY, *PD3DKMT_GETPATHSMODALITY;
 
 C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, PathCount) == 20);
@@ -73,7 +90,9 @@ C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, PathArraySize) == 22);
 C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, AppliedCount) == 36);
 C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, AppliedPaths) == 40);
 C_ASSERT(sizeof(D3DKMT_GETPATHSMODALITY) == DL_MODALITY_HEADER_SIZE);
-#ifdef _WIN64
+#if defined(_WIN64) && (DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11)
+C_ASSERT(DL_MODALITY_HEADER_SIZE == 56);
+#elif defined(_WIN64)
 /* Windows is 64 bit, where the header comes to 48 bytes */
 C_ASSERT(DL_MODALITY_HEADER_SIZE == 48);
 #endif
@@ -95,6 +114,29 @@ typedef struct _DL_MODALITY_SIGNAL
  * the source runs in, desktop position included, and the apply writes StatusApply. Only the first
  * path of a clone group names the source's mode.
  */
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+typedef struct _DL_MODALITY_PATH
+{
+    ULONG64            Flags;
+    ULONG64            Reserved08;
+    LUID               AdapterLuid;
+    ULONG              VidPnSourceId;
+    ULONG              VidPnTargetId;
+    UCHAR              Reserved20[0x98];
+    ULONG              CloneGroupId;
+    UCHAR              ReservedBC[0x3C];
+    PDEVMODEW          DevMode;
+    UCHAR              Reserved100[0x10];
+    LONG               StatusApply;
+    UCHAR              Reserved114[0x14];
+} DL_MODALITY_PATH, *PDL_MODALITY_PATH;
+
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, AdapterLuid) == 0x10);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, CloneGroupId) == 0xB8);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, DevMode) == 0xF8);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, StatusApply) == 0x110);
+C_ASSERT(sizeof(DL_MODALITY_PATH) == 0x128);
+#else
 typedef struct _DL_MODALITY_PATH
 {
     ULONG              Flags;
@@ -142,6 +184,7 @@ C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, DevMode) == 164);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, CloneGroupId) == 180);
 C_ASSERT(sizeof(DL_MODALITY_PATH) == 196);
 #endif
+#endif /* DXGKRNL_TARGET */
 
 /* The paths follow the header directly */
 #define DL_MODALITY_PATHS(Modality) \
@@ -161,9 +204,17 @@ typedef NTSTATUS (NTAPI *PFN_DxgkFunctionalizePathsModality)(
     _In_ ULONG Flags,
     _Inout_ PD3DKMT_GETPATHSMODALITY Modality);
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* The display scenario context may be NULL */
+typedef NTSTATUS (NTAPI *PFN_DxgkApplyPathsModality)(
+    _In_ ULONG Flags,
+    _Inout_ PD3DKMT_GETPATHSMODALITY Modality,
+    _In_opt_ PVOID ScenarioContext);
+#else
 typedef NTSTATUS (NTAPI *PFN_DxgkApplyPathsModality)(
     _In_ ULONG Flags,
     _Inout_ PD3DKMT_GETPATHSMODALITY Modality);
+#endif
 
 typedef NTSTATUS (NTAPI *PFN_DxgkFinalizePathsModality)(
     _Inout_ PD3DKMT_GETPATHSMODALITY Modality);
@@ -203,6 +254,49 @@ typedef NTSTATUS (NTAPI *PFN_DxgkApplyCdsjToPathsModality)(
     _Inout_ PD3DKMT_GETPATHSMODALITY *Modality,
     _Inout_ PDL_CDS_REQUEST Request);
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/*
+ * The Windows 11 DXGKWIN32K_INTERFACE: USHORT Size + USHORT Version, the image dxgkrnl looks up
+ * win32k routines in, Context/InterfaceReference/InterfaceDereference and 99 slots dxgkrnl fills,
+ * 832 bytes. The D3DKMT entry points are exports of dxgkrnl instead of slots.
+ */
+typedef struct _DXGKWIN32K_INTERFACE_BUF
+{
+    USHORT Size;
+    USHORT Version;
+    PVOID Win32kImageBase;                              /* 1 */
+    PVOID Context;                                      /* 2 */
+    PVOID InterfaceReference;                           /* 3 */
+    PVOID InterfaceDereference;                         /* 4 */
+    PFN_DxgkProcessCallout pfnDxgkProcessCallout;       /* 5 */
+    PVOID Reserved6[2];                                 /* 6..7 */
+    PVOID pfnDxgkOpenAdapter;                           /* 8 */
+    PVOID Reserved9[9];                                 /* 9..17 */
+    PFN_DxgkPathsModality pfnDxgkGetPathsModality;      /* 18 */
+    PFN_DxgkFunctionalizePathsModality pfnDxgkFunctionalizePathsModality; /* 19 */
+    PFN_DxgkApplyPathsModality pfnDxgkApplyPathsModality; /* 20 */
+    PFN_DxgkFinalizePathsModality pfnDxgkFinalizePathsModality; /* 21 */
+    PFN_DxgkPersistPathsModality pfnDxgkPersistPathsModality; /* 22 */
+    PFN_DxgkFreePathsModality pfnDxgkFreePathsModality; /* 23 */
+    PFN_DxgkAugmentCdsj pfnDxgkAugmentCdsj;             /* 24 */
+    PVOID Reserved25[50];                               /* 25..74 */
+    PFN_DxgkApplyCdsjToPathsModality pfnDxgkApplyCdsjToPathsModality; /* 75 */
+    PVOID Reserved76[28];                               /* 76..103 */
+} DXGKWIN32K_INTERFACE_BUF;
+
+C_ASSERT(sizeof(DXGKWIN32K_INTERFACE_BUF) == 104 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkProcessCallout) == 5 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkOpenAdapter) == 8 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkGetPathsModality) == 18 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkAugmentCdsj) == 24 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality) == 75 * sizeof(PVOID));
+
+#define DL_INTERFACE_VERSION    50
+
+/* The D3DKMT entry point of each slot number, taken from the exports of dxgkrnl */
+static PVOID DlpD3DKMTEntries[236];
+
+#else
 /*
  * The DXGKWIN32K_INTERFACE: USHORT Size + USHORT Version, then Context/InterfaceReference/
  * InterfaceDereference and 232 pfnDxgk* slots dxgkrnl fills, 944 bytes on x86 and 1888 on x64.
@@ -237,6 +331,9 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkFreePathsModality) == 80 
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkAugmentCdsj) == 81 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality) == 209 * sizeof(PVOID));
 
+#define DL_INTERFACE_VERSION    22
+#endif /* DXGKRNL_TARGET */
+
 
 /* Fills the NtGdiDdDDI* D3DKMT callback table (gdi/ntgdi/d3dkmt.c) via IOCTL_VIDEO_REGISTER_RXGK. */
 NTSTATUS NTAPI DxgRegisterAdapterCallbacks(_In_ PDEVICE_OBJECT pDxgkrnl);
@@ -262,14 +359,28 @@ DxgkGetD3DKMTSlot(
     if (!gbDxgkInitialized)
         return NULL;
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (Slot == DXGK_SLOT_OpenAdapter)
+        return (PFN_DXGK_D3DKMT)gDxgkInterface.pfnDxgkOpenAdapter;
+
+    if (Slot >= ARRAYSIZE(DlpD3DKMTEntries))
+        return NULL;
+
+    return (PFN_DXGK_D3DKMT)DlpD3DKMTEntries[Slot];
+#else
     if (Slot >= sizeof(gDxgkInterface) / sizeof(PVOID))
         return NULL;
 
     return (PFN_DXGK_D3DKMT)(((PVOID *)&gDxgkInterface)[Slot]);
+#endif
 }
 
-/* Exported by watchdog.sys */
+/* Exported by watchdog.sys, the Windows 11 one keeps the callout for the session it opens */
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState, _In_opt_ PVOID VideoPortCallout);
+#else
 NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
+#endif
 
 #define DL_SESSION_OPEN     0
 
@@ -423,6 +534,142 @@ DlProcessCallout(
     return gDxgkInterface.pfnDxgkProcessCallout(&ppi->DxProcess, &gDxgkWin32kEngInterface, Create);
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* Each D3DKMT slot win32k uses and the dxgkrnl export that took its place */
+static const struct
+{
+    USHORT Slot;
+    PCSTR Export;
+} DlpD3DKMTExports[] =
+{
+    { DXGK_SLOT_AcquireKeyedMutex,                     "NtGdiDdDDIAcquireKeyedMutex" },
+    { DXGK_SLOT_AcquireKeyedMutex2,                    "NtGdiDdDDIAcquireKeyedMutex2" },
+    { DXGK_SLOT_AdjustFullscreenGamma,                 "NtGdiDdDDIAdjustFullscreenGamma" },
+    { DXGK_SLOT_CacheHybridQueryValue,                 "NtGdiDdDDICacheHybridQueryValue" },
+    { DXGK_SLOT_ChangeVideoMemoryReservation,          "NtGdiDdDDIChangeVideoMemoryReservation" },
+    { DXGK_SLOT_CheckExclusiveOwnership,               "NtGdiDdDDICheckExclusiveOwnership" },
+    { DXGK_SLOT_CheckMonitorPowerState,                "NtGdiDdDDICheckMonitorPowerState" },
+    { DXGK_SLOT_CheckMultiPlaneOverlaySupport2,        "NtGdiDdDDICheckMultiPlaneOverlaySupport2" },
+    { DXGK_SLOT_CheckMultiPlaneOverlaySupport3,        "NtGdiDdDDICheckMultiPlaneOverlaySupport3" },
+    { DXGK_SLOT_CheckOcclusion,                        "NtGdiDdDDICheckOcclusion" },
+    { DXGK_SLOT_CheckSharedResourceAccess,             "NtGdiDdDDICheckSharedResourceAccess" },
+    { DXGK_SLOT_CheckVidPnExclusiveOwnership,          "NtGdiDdDDICheckVidPnExclusiveOwnership" },
+    { DXGK_SLOT_CloseAdapter,                          "NtGdiDdDDICloseAdapter" },
+    { DXGK_SLOT_ConfigureSharedResource,               "NtGdiDdDDIConfigureSharedResource" },
+    { DXGK_SLOT_CreateAllocation,                      "NtGdiDdDDICreateAllocation" },
+    { DXGK_SLOT_CreateContext,                         "NtGdiDdDDICreateContext" },
+    { DXGK_SLOT_CreateContextVirtual,                  "NtGdiDdDDICreateContextVirtual" },
+    { DXGK_SLOT_CreateDevice,                          "NtGdiDdDDICreateDevice" },
+    { DXGK_SLOT_CreateKeyedMutex,                      "NtGdiDdDDICreateKeyedMutex" },
+    { DXGK_SLOT_CreateKeyedMutex2,                     "NtGdiDdDDICreateKeyedMutex2" },
+    { DXGK_SLOT_CreateOverlay,                         "NtGdiDdDDICreateOverlay" },
+    { DXGK_SLOT_CreatePagingQueue,                     "NtGdiDdDDICreatePagingQueue" },
+    { DXGK_SLOT_CreateSynchronizationObject,           "NtGdiDdDDICreateSynchronizationObject" },
+    { DXGK_SLOT_DestroyAllocation,                     "NtGdiDdDDIDestroyAllocation" },
+    { DXGK_SLOT_DestroyAllocation2,                    "NtGdiDdDDIDestroyAllocation2" },
+    { DXGK_SLOT_DestroyContext,                        "NtGdiDdDDIDestroyContext" },
+    { DXGK_SLOT_DestroyDevice,                         "NtGdiDdDDIDestroyDevice" },
+    { DXGK_SLOT_DestroyKeyedMutex,                     "NtGdiDdDDIDestroyKeyedMutex" },
+    { DXGK_SLOT_DestroyOverlay,                        "NtGdiDdDDIDestroyOverlay" },
+    { DXGK_SLOT_DestroyPagingQueue,                    "NtGdiDdDDIDestroyPagingQueue" },
+    { DXGK_SLOT_DestroySynchronizationObject,          "NtGdiDdDDIDestroySynchronizationObject" },
+    { DXGK_SLOT_EnumAdapters2,                         "NtGdiDdDDIEnumAdapters2" },
+    { DXGK_SLOT_Escape,                                "NtGdiDdDDIEscape" },
+    { DXGK_SLOT_Evict,                                 "NtGdiDdDDIEvict" },
+    { DXGK_SLOT_FlipOverlay,                           "NtGdiDdDDIFlipOverlay" },
+    { DXGK_SLOT_FreeGpuVirtualAddress,                 "NtGdiDdDDIFreeGpuVirtualAddress" },
+    { DXGK_SLOT_GetCachedHybridQueryValue,             "NtGdiDdDDIGetCachedHybridQueryValue" },
+    { DXGK_SLOT_GetContextSchedulingPriority,          "NtGdiDdDDIGetContextSchedulingPriority" },
+    { DXGK_SLOT_GetDeviceState,                        "NtGdiDdDDIGetDeviceState" },
+    { DXGK_SLOT_GetDisplayModeList,                    "NtGdiDdDDIGetDisplayModeList" },
+    { DXGK_SLOT_GetMultisampleMethodList,              "NtGdiDdDDIGetMultisampleMethodList" },
+    { DXGK_SLOT_GetOverlayState,                       "NtGdiDdDDIGetOverlayState" },
+    { DXGK_SLOT_GetPresentHistory,                     "NtGdiDdDDIGetPresentHistory" },
+    { DXGK_SLOT_GetProcessSchedulingPriorityClass,     "NtGdiDdDDIGetProcessSchedulingPriorityClass" },
+    { DXGK_SLOT_GetRuntimeData,                        "NtGdiDdDDIGetRuntimeData" },
+    { DXGK_SLOT_GetScanLine,                           "NtGdiDdDDIGetScanLine" },
+    { DXGK_SLOT_GetSharedPrimaryHandle,                "NtGdiDdDDIGetSharedPrimaryHandle" },
+    { DXGK_SLOT_InvalidateActiveVidPn,                 "NtGdiDdDDIInvalidateActiveVidPn" },
+    { DXGK_SLOT_InvalidateCache,                       "NtGdiDdDDIInvalidateCache" },
+    { DXGK_SLOT_Lock,                                  "NtGdiDdDDILock" },
+    { DXGK_SLOT_Lock2,                                 "NtGdiDdDDILock2" },
+    { DXGK_SLOT_MakeResident,                          "NtGdiDdDDIMakeResident" },
+    { DXGK_SLOT_MapGpuVirtualAddress,                  "NtGdiDdDDIMapGpuVirtualAddress" },
+    { DXGK_SLOT_MarkDeviceAsError,                     "NtGdiDdDDIMarkDeviceAsError" },
+    { DXGK_SLOT_OpenAdapterFromLuid,                   "NtGdiDdDDIOpenAdapterFromLuid" },
+    { DXGK_SLOT_OpenKeyedMutex,                        "NtGdiDdDDIOpenKeyedMutex" },
+    { DXGK_SLOT_OpenKeyedMutex2,                       "NtGdiDdDDIOpenKeyedMutex2" },
+    { DXGK_SLOT_OpenNtHandleFromName,                  "NtGdiDdDDIOpenNtHandleFromName" },
+    { DXGK_SLOT_OpenResource,                          "NtGdiDdDDIOpenResource" },
+    { DXGK_SLOT_OpenResourceFromNtHandle,              "NtGdiDdDDIOpenResourceFromNtHandle" },
+    { DXGK_SLOT_OpenSyncObjectFromNtHandle,            "NtGdiDdDDIOpenSyncObjectFromNtHandle" },
+    { DXGK_SLOT_OpenSyncObjectFromNtHandle2,           "NtGdiDdDDIOpenSyncObjectFromNtHandle2" },
+    { DXGK_SLOT_OpenSyncObjectNtHandleFromName,        "NtGdiDdDDIOpenSyncObjectNtHandleFromName" },
+    { DXGK_SLOT_OpenSynchronizationObject,             "NtGdiDdDDIOpenSynchronizationObject" },
+    { DXGK_SLOT_PollDisplayChildren,                   "NtGdiDdDDIPollDisplayChildren" },
+    { DXGK_SLOT_Present,                               "NtGdiDdDDIPresent" },
+    { DXGK_SLOT_PresentMultiPlaneOverlay2,             "NtGdiDdDDIPresentMultiPlaneOverlay2" },
+    { DXGK_SLOT_PresentMultiPlaneOverlay3,             "NtGdiDdDDIPresentMultiPlaneOverlay3" },
+    { DXGK_SLOT_QueryAdapterInfo,                      "NtGdiDdDDIQueryAdapterInfo" },
+    { DXGK_SLOT_QueryAllocationResidency,              "NtGdiDdDDIQueryAllocationResidency" },
+    { DXGK_SLOT_QueryClockCalibration,                 "NtGdiDdDDIQueryClockCalibration" },
+    { DXGK_SLOT_QueryResourceInfo,                     "NtGdiDdDDIQueryResourceInfo" },
+    { DXGK_SLOT_QueryResourceInfoFromNtHandle,         "NtGdiDdDDIQueryResourceInfoFromNtHandle" },
+    { DXGK_SLOT_QueryStatistics,                       "NtGdiDdDDIQueryStatistics" },
+    { DXGK_SLOT_QueryVidPnExclusiveOwnership,          "NtGdiDdDDIQueryVidPnExclusiveOwnership" },
+    { DXGK_SLOT_QueryVideoMemoryInfo,                  "NtGdiDdDDIQueryVideoMemoryInfo" },
+    { DXGK_SLOT_ReclaimAllocations2,                   "NtGdiDdDDIReclaimAllocations2" },
+    { DXGK_SLOT_ReleaseKeyedMutex,                     "NtGdiDdDDIReleaseKeyedMutex" },
+    { DXGK_SLOT_ReleaseKeyedMutex2,                    "NtGdiDdDDIReleaseKeyedMutex2" },
+    { DXGK_SLOT_ReleaseProcessVidPnSourceOwners,       "NtGdiDdDDIReleaseProcessVidPnSourceOwners" },
+    { DXGK_SLOT_Render,                                "NtGdiDdDDIRender" },
+    { DXGK_SLOT_ReserveGpuVirtualAddress,              "NtGdiDdDDIReserveGpuVirtualAddress" },
+    { DXGK_SLOT_SetAllocationPriority,                 "NtGdiDdDDISetAllocationPriority" },
+    { DXGK_SLOT_SetContextInProcessSchedulingPriority, "NtGdiDdDDISetContextInProcessSchedulingPriority" },
+    { DXGK_SLOT_SetContextSchedulingPriority,          "NtGdiDdDDISetContextSchedulingPriority" },
+    { DXGK_SLOT_SetDisplayMode,                        "NtGdiDdDDISetDisplayMode" },
+    { DXGK_SLOT_SetGammaRamp,                          "NtGdiDdDDISetGammaRamp" },
+    { DXGK_SLOT_SetProcessSchedulingPriorityClass,     "NtGdiDdDDISetProcessSchedulingPriorityClass" },
+    { DXGK_SLOT_SetQueuedLimit,                        "NtGdiDdDDISetQueuedLimit" },
+    { DXGK_SLOT_SetVidPnSourceHwProtection,            "NtGdiDdDDISetVidPnSourceHwProtection" },
+    { DXGK_SLOT_SetVidPnSourceOwner,                   "NtGdiDdDDISetVidPnSourceOwner" },
+    { DXGK_SLOT_ShareObjects,                          "NtGdiDdDDIShareObjects" },
+    { DXGK_SLOT_SignalSynchronizationObject,           "NtGdiDdDDISignalSynchronizationObject" },
+    { DXGK_SLOT_SignalSynchronizationObjectFromCpu,    "NtGdiDdDDISignalSynchronizationObjectFromCpu" },
+    { DXGK_SLOT_SignalSynchronizationObjectFromGpu,    "NtGdiDdDDISignalSynchronizationObjectFromGpu" },
+    { DXGK_SLOT_SignalSynchronizationObjectFromGpu2,   "NtGdiDdDDISignalSynchronizationObjectFromGpu2" },
+    { DXGK_SLOT_SubmitCommand,                         "NtGdiDdDDISubmitCommand" },
+    { DXGK_SLOT_Unlock,                                "NtGdiDdDDIUnlock" },
+    { DXGK_SLOT_Unlock2,                               "NtGdiDdDDIUnlock2" },
+    { DXGK_SLOT_UpdateGpuVirtualAddress,               "NtGdiDdDDIUpdateGpuVirtualAddress" },
+    { DXGK_SLOT_UpdateOverlay,                         "NtGdiDdDDIUpdateOverlay" },
+    { DXGK_SLOT_WaitForIdle,                           "NtGdiDdDDIWaitForIdle" },
+    { DXGK_SLOT_WaitForSynchronizationObject,          "NtGdiDdDDIWaitForSynchronizationObject" },
+    { DXGK_SLOT_WaitForSynchronizationObjectFromCpu,   "NtGdiDdDDIWaitForSynchronizationObjectFromCpu" },
+    { DXGK_SLOT_WaitForSynchronizationObjectFromGpu,   "NtGdiDdDDIWaitForSynchronizationObjectFromGpu" },
+    { DXGK_SLOT_WaitForVerticalBlankEvent,             "NtGdiDdDDIWaitForVerticalBlankEvent" },
+};
+
+/**
+ * @brief Finds the D3DKMT entry points among the exports of the loaded dxgkrnl.
+ */
+static VOID
+DlpResolveD3DKMTExports(VOID)
+{
+    PVOID ImageBase = gpDxgkDeviceObject->DriverObject->DriverStart;
+    ULONG i;
+
+    for (i = 0; i < ARRAYSIZE(DlpD3DKMTExports); i++)
+    {
+        DlpD3DKMTEntries[DlpD3DKMTExports[i].Slot] =
+            RtlFindExportedRoutineByName(ImageBase, DlpD3DKMTExports[i].Export);
+
+        if (!DlpD3DKMTEntries[DlpD3DKMTExports[i].Slot])
+            DPRINT1("win32k: dxgkrnl does not export %s\n", DlpD3DKMTExports[i].Export);
+    }
+}
+#endif
+
 /**
  * @brief Open dxgkrnl + acquire the DXGKWIN32K_INTERFACE.
  *        After this, gDxgkInterface.pfnDxgk* are the D3DKMT entry points win32k calls.
@@ -443,8 +690,8 @@ DlInitDxgkrnl(VOID)
         return Status;
 
     /* win32k stamps Version/Size; dxgkrnl fills the pfn slots. */
-    gDxgkInterface.Version = 22;
-    gDxgkInterface.Size    = sizeof(gDxgkInterface);   /* 944 on x86, 1888 on x64 */
+    gDxgkInterface.Version = DL_INTERFACE_VERSION;
+    gDxgkInterface.Size    = sizeof(gDxgkInterface);
 
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Irp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_GIVE_CALLSBACK,
@@ -472,6 +719,10 @@ DlInitDxgkrnl(VOID)
         Status = DlProcessCallout(PsGetCurrentProcessWin32Process(), TRUE);
         if (!NT_SUCCESS(Status))
             DPRINT1("win32k: DxgkProcessCallout for CSRSS failed 0x%lX\n", Status);
+
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+        DlpResolveD3DKMTExports();
+#endif
 
         /* Also populate the D3DKMT callback table the NtGdiDdDDI* thunks route through. */
         Status = DxgRegisterAdapterCallbacks(gpDxgkDeviceObject);
@@ -654,8 +905,14 @@ DlpCommitPathsModality(
     if (bValidateOnly)
         return Status;
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    Status = gDxgkInterface.pfnDxgkApplyPathsModality(DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY,
+                                                     Modality,
+                                                     NULL);
+#else
     Status = gDxgkInterface.pfnDxgkApplyPathsModality(DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY,
                                                      Modality);
+#endif
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("win32k: DxgkApplyPathsModality failed 0x%lX\n", Status);
@@ -893,10 +1150,12 @@ DlNotifySessionOpen(VOID)
     PPROCESSINFO ppi = PsGetCurrentProcessWin32Process();
     NTSTATUS Status;
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
     /* Adapter arrival, removal and TDR reach win32k through this, whoever raises them */
     Status = SMgrRegisterGdiCallout((PVOID)VideoPortCallout);
     if (!NT_SUCCESS(Status))
         DPRINT1("win32k: SMgrRegisterGdiCallout failed 0x%lX\n", Status);
+#endif
 
     /*
      * dxgkrnl blocks here until its adapters have started and needs CSRSS's DXGPROCESS, so only
@@ -920,7 +1179,11 @@ DlNotifySessionOpen(VOID)
     }
 
     DPRINT1("win32k: opening session, dxgkrnl waits for its display and render adapters to start\n");
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    Status = SMgrNotifySessionChange(DL_SESSION_OPEN, (PVOID)VideoPortCallout);
+#else
     Status = SMgrNotifySessionChange(DL_SESSION_OPEN);
+#endif
     if (!NT_SUCCESS(Status))
         DPRINT1("win32k: SMgrNotifySessionChange failed 0x%lX\n", Status);
 }
@@ -984,4 +1247,30 @@ DlUnloadDxgkrnl(VOID)
         gpDxgkDeviceObject = NULL;
     }
     gbDxgkInitialized = FALSE;
+}
+
+/*
+ * Per session data the Windows 11 CDD keeps with win32k. The CDD allocates its own block and
+ * stores the pointer at offset 0x48, nothing else in here is read by it.
+ */
+typedef struct _W32_SESSION_STATE_BLOCK
+{
+    PVOID Reserved[9];
+    PVOID CddSessionData;
+    PVOID Reserved50[22];
+} W32_SESSION_STATE_BLOCK;
+
+C_ASSERT(FIELD_OFFSET(W32_SESSION_STATE_BLOCK, CddSessionData) == 9 * sizeof(PVOID));
+
+static W32_SESSION_STATE_BLOCK gW32SessionState;
+
+/**
+ * @brief Gets the win32k data of the current session.
+ * @remarks Only the console session exists, so every caller shares one block.
+ */
+PVOID
+NTAPI
+W32GetSessionState(VOID)
+{
+    return &gW32SessionState;
 }
