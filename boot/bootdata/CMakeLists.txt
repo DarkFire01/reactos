@@ -53,7 +53,8 @@ add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcd.ini DESTINATION root NO_CAB 
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcd_regtest.ini DESTINATION root NO_CAB NAME_ON_CD freeldr.ini FOR regtest)
 
 # Unattend
-add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcd/unattend.inf DESTINATION reactos NO_CAB FOR bootcd)
+set(BOOTCD_UNATTEND_INF ${CMAKE_CURRENT_SOURCE_DIR}/bootcd/unattend.inf CACHE FILEPATH "unattend.inf placed on the boot CD")
+add_cd_file(FILE ${BOOTCD_UNATTEND_INF} DESTINATION reactos NO_CAB NAME_ON_CD unattend.inf FOR bootcd)
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcdregtest/unattend.inf DESTINATION reactos NO_CAB FOR regtest)
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/livecd/unattend.inf DESTINATION reactos NO_CAB FOR livecd)
 
