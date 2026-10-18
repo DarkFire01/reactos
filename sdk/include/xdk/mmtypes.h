@@ -151,6 +151,11 @@ typedef enum _MM_SYSTEM_SIZE {
   MmLargeSystem
 } MM_SYSTEMSIZE;
 
+typedef struct _MM_PHYSICAL_ADDRESS_LIST {
+  PHYSICAL_ADDRESS PhysicalAddress;
+  SIZE_T NumberOfBytes;
+} MM_PHYSICAL_ADDRESS_LIST, *PMM_PHYSICAL_ADDRESS_LIST;
+
 #ifndef _NTSYSTEM_
 __CREATE_NTOS_DATA_IMPORT_ALIAS(Mm64BitPhysicalAddress)
 extern PBOOLEAN Mm64BitPhysicalAddress;
