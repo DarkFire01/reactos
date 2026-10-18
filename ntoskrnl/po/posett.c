@@ -290,6 +290,9 @@ PopLidStateChangeSettingWorker(
         DPRINT("No lid found, the driver's callback won't be called\n");
         PopReleasePowerPolicyLock();
         PopPowerSettingClearAttribute(SettingCallback, POP_PSC_GETTING_NOTIFIED);
+
+        /* The registration waits for this worker to be done, callback or not */
+        PopAlertCallbackReturned(SettingCallback);
         PsTerminateSystemThread(STATUS_SUCCESS);
         return;
     }
