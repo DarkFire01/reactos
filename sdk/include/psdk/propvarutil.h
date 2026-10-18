@@ -79,6 +79,7 @@ PSSTDAPI InitPropVariantFromGUIDAsString(REFGUID guid, PROPVARIANT *ppropvar);
 PSSTDAPI InitVariantFromFileTime(const FILETIME *ft, VARIANT *var);
 PSSTDAPI InitVariantFromGUIDAsString(REFGUID guid, VARIANT *pvar);
 PSSTDAPI InitPropVariantFromBuffer(const VOID *pv, UINT cb, PROPVARIANT *ppropvar);
+PSSTDAPI InitPropVariantFromDoubleVector(const DOUBLE *prgn, ULONG cElems, PROPVARIANT *ppropvar);
 PSSTDAPI InitPropVariantFromCLSID(REFCLSID clsid, PROPVARIANT *ppropvar);
 PSSTDAPI InitVariantFromBuffer(const VOID *pv, UINT cb, VARIANT *pvar);
 PSSTDAPI PropVariantToGUID(const PROPVARIANT *ppropvar, GUID *guid);
