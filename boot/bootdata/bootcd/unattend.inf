@@ -84,7 +84,7 @@ InstallationType = 0
 ;[Env]
 ;WINETEST_PLATFORM=reactos
 
-; Enable this section to enable the default ReactOS theme.
-;[Shell]
-;DefaultThemesOff = no
-;CustomDefaultThemeFile = "%WINDIR%\Resources\Themes\Lautus\lautus.msstyles"
+; Default visual style; set DefaultThemesOff = yes for the classic theme.
+[Shell]
+DefaultThemesOff = no
+CustomDefaultThemeFile = "%WINDIR%\Resources\Themes\Horizon\Horizon.msstyles"
