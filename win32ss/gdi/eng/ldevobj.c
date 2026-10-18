@@ -7,6 +7,7 @@
  */
 
 #include <win32k.h>
+#include <reactos/rddm/rddm_private.h>
 #define NDEBUG
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(EngLDev);
@@ -111,6 +112,98 @@ LDEVOBJ_vFreeLDEV(
     ExFreePoolWithTag(pldev, GDITAG_LDEV);
 }
 
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+static
+BOOLEAN
+LDEVOBJ_bIsCdd(
+    _In_ PCUNICODE_STRING pustrPathName)
+{
+    UNICODE_STRING ustrCdd = RTL_CONSTANT_STRING(L"\\cdd.dll");
+    UNICODE_STRING ustrTail;
+
+    if (pustrPathName->Length < ustrCdd.Length)
+        return FALSE;
+
+    ustrTail.Buffer = (PWSTR)((PUCHAR)pustrPathName->Buffer + pustrPathName->Length - ustrCdd.Length);
+    ustrTail.Length = ustrTail.MaximumLength = ustrCdd.Length;
+    return RtlEqualUnicodeString(&ustrTail, &ustrCdd, TRUE);
+}
+
+/**
+ * @brief Starts the loaded CDD image as a driver and asks its device for DrvEnableDriver.
+ *
+ * @param pDriverInfo The loaded image. EntryPoint is replaced with DrvEnableDriver.
+ */
+static
+BOOL
+LDEVOBJ_bStartCddDriver(
+    _Inout_ PSYSTEM_GDI_DRIVER_INFORMATION pDriverInfo)
+{
+    UNICODE_STRING ustrDriver = RTL_CONSTANT_STRING(L"\\Driver\\cdd");
+    UNICODE_STRING ustrDevice = RTL_CONSTANT_STRING(L"\\Device\\cdd");
+    PFN_DrvEnableDriver pfnEnableDriver = NULL;
+    PDEVICE_OBJECT pDeviceObject;
+    PFILE_OBJECT pFileObject;
+    IO_STATUS_BLOCK Iosb;
+    KEVENT Event;
+    PIRP pIrp;
+    NTSTATUS Status;
+
+    /* The image lives in session space, so it runs its DriverEntry here rather than in the system process */
+    Status = IoCreateDriver(&ustrDriver, (PDRIVER_INITIALIZE)pDriverInfo->EntryPoint);
+    if (!NT_SUCCESS(Status) && (Status != STATUS_OBJECT_NAME_COLLISION))
+    {
+        ERR("Failed to start the CDD driver, Status = 0x%lx\n", Status);
+        return FALSE;
+    }
+
+    Status = IoGetDeviceObjectPointer(&ustrDevice,
+                                      FILE_READ_DATA | FILE_WRITE_DATA,
+                                      &pFileObject,
+                                      &pDeviceObject);
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("Failed to open %wZ, Status = 0x%lx\n", &ustrDevice, Status);
+        return FALSE;
+    }
+
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    pIrp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_QUERY_CDD_ENABLE_DRIVER,
+                                         pDeviceObject,
+                                         NULL,
+                                         0,
+                                         &pfnEnableDriver,
+                                         sizeof(pfnEnableDriver),
+                                         TRUE,
+                                         &Event,
+                                         &Iosb);
+    if (pIrp)
+    {
+        Status = IoCallDriver(pDeviceObject, pIrp);
+        if (Status == STATUS_PENDING)
+        {
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+            Status = Iosb.Status;
+        }
+    }
+    else
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    ObDereferenceObject(pFileObject);
+
+    if (!NT_SUCCESS(Status) || !pfnEnableDriver)
+    {
+        ERR("The CDD gave no DrvEnableDriver, Status = 0x%lx\n", Status);
+        return FALSE;
+    }
+
+    pDriverInfo->EntryPoint = (PVOID)pfnEnableDriver;
+    return TRUE;
+}
+#endif
+
 static
 BOOL
 LDEVOBJ_bLoadImage(
@@ -152,6 +245,15 @@ LDEVOBJ_bLoadImage(
         ExFreePoolWithTag(pDriverInfo, GDITAG_LDEV);
         return FALSE;
     }
+
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+    /* This CDD is a driver of its own, DrvEnableDriver comes from its device */
+    if (LDEVOBJ_bIsCdd(pustrPathName) && !LDEVOBJ_bStartCddDriver(pDriverInfo))
+    {
+        ExFreePoolWithTag(pDriverInfo, GDITAG_LDEV);
+        return FALSE;
+    }
+#endif
 
     /* Set the driver info */
     pldev->pGdiDriverInfo = pDriverInfo;
