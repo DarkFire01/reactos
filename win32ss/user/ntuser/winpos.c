@@ -1948,6 +1948,7 @@ co_WinPosSetWindowPos(
    if (!(WinPos.flags & SWP_NOZORDER) && WinPos.hwnd != UserGetShellWindow())
    {
       IntLinkHwnd(Window, WinPos.hwndInsertAfter);
+      IntDwmNotifyWinEvent(EVENT_OBJECT_REORDER, Window, OBJID_WINDOW);
    }
 
    OldWindowRect = Window->rcWindow;
