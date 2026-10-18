@@ -606,3 +606,172 @@ GetCurrentPackageId(UINT32 *BufferLength,
     STUB;
     return APPMODEL_ERROR_NO_PACKAGE;
 }
+
+/**
+ * @brief
+ * Looks up the package identity of a process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_PACKAGE for any valid process, since no process here runs
+ * with package identity.
+ */
+static
+LONG
+BasepQueryProcessPackage(
+    _In_ HANDLE hProcess)
+{
+    HANDLE TokenHandle;
+    NTSTATUS Status;
+
+    /* The identity lives in the token, so a process without one is an error */
+    Status = NtOpenProcessToken(hProcess, TOKEN_QUERY, &TokenHandle);
+    if (!NT_SUCCESS(Status))
+        return RtlNtStatusToDosError(Status);
+
+    NtClose(TokenHandle);
+    return APPMODEL_ERROR_NO_PACKAGE;
+}
+
+static
+BOOLEAN
+BasepIsAsciiAlphaNumeric(
+    _In_ WCHAR Character)
+{
+    return ((Character >= L'0' && Character <= L'9') ||
+            (Character >= L'A' && Character <= L'Z') ||
+            (Character >= L'a' && Character <= L'z'));
+}
+
+/**
+ * @brief
+ * Checks that a package family name has the Name_PublisherId form.
+ */
+static
+BOOLEAN
+BasepIsPackageFamilyName(
+    _In_ PCWSTR FamilyName)
+{
+    PCWSTR Separator = wcsrchr(FamilyName, L'_');
+    SIZE_T NameLength;
+    SIZE_T Index;
+
+    if (!Separator)
+        return FALSE;
+
+    NameLength = Separator - FamilyName;
+    if (NameLength < 3 || NameLength > 50 || wcslen(Separator + 1) != 13)
+        return FALSE;
+
+    for (Index = 0; Index < NameLength; Index++)
+    {
+        if (!BasepIsAsciiAlphaNumeric(FamilyName[Index]) &&
+            FamilyName[Index] != L'.' && FamilyName[Index] != L'-')
+        {
+            return FALSE;
+        }
+    }
+
+    for (Index = 1; Index <= 13; Index++)
+    {
+        if (!BasepIsAsciiAlphaNumeric(Separator[Index]))
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Gets the package family name of a process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_PACKAGE for any valid process, since no process here runs
+ * with package identity.
+ */
+LONG
+WINAPI
+GetPackageFamilyName(
+    _In_ HANDLE hProcess,
+    _Inout_ UINT32 *packageFamilyNameLength,
+    _Out_writes_opt_(*packageFamilyNameLength) PWSTR packageFamilyName)
+{
+    UNREFERENCED_PARAMETER(packageFamilyName);
+
+    if (!packageFamilyNameLength)
+        return ERROR_INVALID_PARAMETER;
+
+    return BasepQueryProcessPackage(hProcess);
+}
+
+/**
+ * @brief
+ * Gets the package identity of a process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_PACKAGE for any valid process, since no process here runs
+ * with package identity.
+ */
+LONG
+WINAPI
+GetPackageId(
+    _In_ HANDLE hProcess,
+    _Inout_ UINT32 *bufferLength,
+    _Out_writes_bytes_opt_(*bufferLength) BYTE *buffer)
+{
+    if (!hProcess || !bufferLength || (*bufferLength && !buffer))
+        return ERROR_INVALID_PARAMETER;
+
+    return BasepQueryProcessPackage(hProcess);
+}
+
+/**
+ * @brief
+ * Lists the installed packages of a package family.
+ *
+ * @return
+ * ERROR_SUCCESS with no packages for a well formed family name, since no
+ * packages are ever installed here.
+ */
+LONG
+WINAPI
+GetPackagesByPackageFamily(
+    _In_ PCWSTR packageFamilyName,
+    _Inout_ UINT32 *count,
+    _Out_writes_opt_(*count) PWSTR *packageFullNames,
+    _Inout_ UINT32 *bufferLength,
+    _Out_writes_opt_(*bufferLength) WCHAR *buffer)
+{
+    if (!packageFamilyName || !count || (*count && !packageFullNames) ||
+        (packageFullNames && !buffer) || !bufferLength || (*bufferLength && !buffer))
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    if (!BasepIsPackageFamilyName(packageFamilyName))
+        return ERROR_INVALID_PARAMETER;
+
+    *count = 0;
+    *bufferLength = 0;
+    return ERROR_SUCCESS;
+}
+
+/**
+ * @brief
+ * Gets the install path of a package.
+ *
+ * @return
+ * ERROR_NOT_FOUND for valid parameters, since no packages are ever installed
+ * here.
+ */
+LONG
+WINAPI
+GetPackagePathByFullName(
+    _In_ PCWSTR packageFullName,
+    _Inout_ UINT32 *pathLength,
+    _Out_writes_opt_(*pathLength) PWSTR path)
+{
+    if (!packageFullName || !pathLength || (*pathLength && !path))
+        return ERROR_INVALID_PARAMETER;
+
+    return ERROR_NOT_FOUND;
+}
