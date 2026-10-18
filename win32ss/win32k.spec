@@ -166,6 +166,7 @@
 @ stdcall EngSubtractRgn(ptr ptr ptr)
 @ stdcall EngUnionRgn(ptr ptr ptr)
 @ stdcall EngXorRgn(ptr ptr ptr)
+@ stdcall W32GetSessionState()
 @ stdcall -arch=i386 FLOATOBJ_Add(ptr ptr)
 @ stdcall -arch=i386 FLOATOBJ_AddFloat(ptr long)
 @ stdcall -arch=i386 FLOATOBJ_AddFloatObj(ptr ptr) FLOATOBJ_Add
