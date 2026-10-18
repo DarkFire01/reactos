@@ -1817,7 +1817,10 @@
 @ stdcall -version=0x602+ InbvNotifyDisplayOwnershipChange(long ptr)
 @ stdcall -version=0x602+ InbvSetVirtualFrameBuffer(ptr ptr)
 @ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
+@ stdcall -version=0xA00+ IoGetDeviceDirectory(ptr long long ptr ptr)
 @ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
+
+@ stdcall -version=0xA00+ IoGetDriverDirectory(ptr long long ptr)
 @ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)
 @ stdcall -version=0x601+ IoReportRootDevice(ptr)
 @ stdcall -version=0x602+ IoReportInterruptActive(ptr)
