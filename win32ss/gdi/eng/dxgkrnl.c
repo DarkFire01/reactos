@@ -274,26 +274,8 @@ NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
 #define DL_SESSION_OPEN     0
 
 /**
- * @brief Can a WDDM adapter start on this boot? The kernel only admits BasicDisplay and
- *        BasicRender on UEFI, and dxgkrnl blocks the session open until both have started.
- */
-static BOOLEAN
-DlpIsWddmBoot(VOID)
-{
-    SYSTEM_BOOT_ENVIRONMENT_INFORMATION BootInfo;
-    NTSTATUS Status;
-
-    Status = ZwQuerySystemInformation(SystemBootEnvironmentInformation,
-                                      &BootInfo, sizeof(BootInfo), NULL);
-    if (!NT_SUCCESS(Status))
-        return FALSE;
-
-    return (BootInfo.FirmwareType == FirmwareTypeUefi);
-}
-
-/**
- * @brief Open \Device\DxgKrnl. Unlike Windows, win32k never loads dxgkrnl itself: only a WDDM
- *        miniport does, so a boot without one stays on XDDM.
+ * @brief Open \Device\DxgKrnl. dxgkrnl is boot start, so it is there on every boot; whether the
+ *        desktop runs on it depends on a WDDM display adapter starting.
  */
 static NTSTATUS
 DlpOpenDxgkrnl(VOID)
@@ -303,6 +285,109 @@ DlpOpenDxgkrnl(VOID)
     RtlInitUnicodeString(&DeviceName, L"\\Device\\DxgKrnl");
     return IoGetDeviceObjectPointer(&DeviceName, GENERIC_READ | GENERIC_WRITE,
                                     &gpDxgkFileObject, &gpDxgkDeviceObject);
+}
+
+/** @brief Does one of the driver's devices sit on a display class device? */
+static BOOLEAN
+DlpDriverDrivesDisplay(
+    _In_ PDRIVER_OBJECT DriverObject)
+{
+    static const WCHAR szDisplayClass[] = L"{4d36e968-e325-11ce-bfc1-08002be10318}";
+    WCHAR szClass[ARRAYSIZE(szDisplayClass)];
+    PDEVICE_OBJECT DeviceObject, Pdo;
+    ULONG cbClass;
+    NTSTATUS Status;
+
+    for (DeviceObject = DriverObject->DeviceObject;
+         DeviceObject != NULL;
+         DeviceObject = DeviceObject->NextDevice)
+    {
+        Pdo = IoGetDeviceAttachmentBaseRef(DeviceObject);
+        Status = IoGetDeviceProperty(Pdo, DevicePropertyClassGuid, sizeof(szClass), szClass, &cbClass);
+        ObDereferenceObject(Pdo);
+
+        if (NT_SUCCESS(Status) && (_wcsicmp(szClass, szDisplayClass) == 0))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief Is a WDDM display adapter there? dxgkrnl takes over the dispatch routines of every
+ *        miniport, and a display adapter, unlike a render only one, is in the display class.
+ *        This holds from the miniport's AddDevice on, before dxgkrnl starts the adapter.
+ */
+static BOOLEAN
+DlpHasWddmDisplayAdapter(VOID)
+{
+    UNICODE_STRING DirectoryName = RTL_CONSTANT_STRING(L"\\Driver");
+    union
+    {
+        OBJECT_DIRECTORY_INFORMATION Info;
+        UCHAR Buffer[sizeof(OBJECT_DIRECTORY_INFORMATION) + 128 * sizeof(WCHAR)];
+    } Entry;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    UNICODE_STRING DriverName;
+    WCHAR szDriverName[160];
+    PDRIVER_OBJECT DxgkDriver, DriverObject;
+    ULONG_PTR ulDispatch;
+    HANDLE hDirectory;
+    ULONG ulContext = 0;
+    ULONG cbReturned;
+    BOOLEAN bFound = FALSE;
+    NTSTATUS Status;
+
+    if (gpDxgkDeviceObject == NULL)
+        return FALSE;
+    DxgkDriver = gpDxgkDeviceObject->DriverObject;
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &DirectoryName,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               NULL,
+                               NULL);
+    Status = ZwOpenDirectoryObject(&hDirectory, DIRECTORY_QUERY, &ObjectAttributes);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    while (!bFound &&
+           NT_SUCCESS(ZwQueryDirectoryObject(hDirectory,
+                                             &Entry,
+                                             sizeof(Entry),
+                                             TRUE,
+                                             FALSE,
+                                             &ulContext,
+                                             &cbReturned)))
+    {
+        Status = RtlStringCbPrintfW(szDriverName, sizeof(szDriverName), L"\\Driver\\%wZ", &Entry.Info.Name);
+        if (!NT_SUCCESS(Status))
+            continue;
+
+        RtlInitUnicodeString(&DriverName, szDriverName);
+        Status = ObReferenceObjectByName(&DriverName,
+                                         OBJ_CASE_INSENSITIVE,
+                                         NULL,
+                                         0,
+                                         IoDriverObjectType,
+                                         KernelMode,
+                                         NULL,
+                                         (PVOID *)&DriverObject);
+        if (!NT_SUCCESS(Status))
+            continue;
+
+        ulDispatch = (ULONG_PTR)DriverObject->MajorFunction[IRP_MJ_PNP];
+        if ((DriverObject != DxgkDriver) &&
+            (ulDispatch - (ULONG_PTR)DxgkDriver->DriverStart < DxgkDriver->DriverSize))
+        {
+            bFound = DlpDriverDrivesDisplay(DriverObject);
+        }
+
+        ObDereferenceObject(DriverObject);
+    }
+
+    ZwClose(hDirectory);
+    return bFound;
 }
 
 /** @brief Is dxgkrnl loaded at all, whether or not win32k got its interface? */
@@ -352,10 +437,6 @@ DlInitDxgkrnl(VOID)
 
     if (gbDxgkInitialized)
         return STATUS_SUCCESS;
-
-    /* dxgkrnl is boot start, so it being loaded does not mean an adapter can ever start */
-    if (!DlpIsWddmBoot())
-        return STATUS_NOT_SUPPORTED;
 
     Status = DlpOpenDxgkrnl();
     if (!NT_SUCCESS(Status))
@@ -818,8 +899,8 @@ DlNotifySessionOpen(VOID)
         DPRINT1("win32k: SMgrRegisterGdiCallout failed 0x%lX\n", Status);
 
     /*
-     * dxgkrnl blocks here until an adapter has started and needs CSRSS's DXGPROCESS, so only
-     * call once a miniport loaded dxgkrnl and the process callout ran. Without dxgkrnl nothing
+     * dxgkrnl blocks here until its adapters have started and needs CSRSS's DXGPROCESS, so only
+     * call once win32k has its interface and the process callout ran. Without dxgkrnl nothing
      * waits, and watchdog still needs the session to deliver videoprt's callouts.
      */
     if (!gbDxgkInitialized)
@@ -829,6 +910,12 @@ DlNotifySessionOpen(VOID)
     }
     else if ((ppi == NULL) || (ppi->DxProcess == NULL))
     {
+        return;
+    }
+    else if (!DlpHasWddmDisplayAdapter())
+    {
+        /* dxgkrnl would hold the session for a display adapter that never comes, GDI stays on XDDM */
+        DPRINT1("win32k: no WDDM display adapter, the desktop stays on the XDDM drivers\n");
         return;
     }
 
