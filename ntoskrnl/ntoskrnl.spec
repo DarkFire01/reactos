@@ -1155,6 +1155,7 @@
 @ stdcall RtlDescribeChunk(long ptr ptr ptr ptr)
 @ stdcall RtlDestroyAtomTable(ptr)
 @ stdcall RtlDestroyHeap(ptr)
+@ stdcall RtlDowncaseUnicodeChar(long)
 @ stdcall RtlDowncaseUnicodeString(ptr ptr long)
 @ stdcall RtlEmptyAtomTable(ptr long)
 @ stdcall -arch=win32 RtlEnlargedIntegerMultiply(long long)
@@ -1713,13 +1714,18 @@
 # =========================================================================
 
 # C runtime helpers
+@ cdecl _snprintf_s()
 @ cdecl _strtoui64()
 @ cdecl memcpy_s()
+@ cdecl sprintf_s()
 @ cdecl sscanf_s()
+@ cdecl strcat_s()
 @ cdecl strcpy_s()
 @ cdecl strncpy_s()
+@ cdecl strnlen()
 @ cdecl -arch=i386 _chkstk()
 @ cdecl strtok_s()
+@ cdecl swscanf_s()
 @ cdecl vsprintf_s()
 @ cdecl wcscat_s()
 @ cdecl wcsncpy_s()
