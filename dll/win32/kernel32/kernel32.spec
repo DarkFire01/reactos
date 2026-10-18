@@ -536,12 +536,12 @@
 @ stub -version=0x600+ GetNamedPipeClientComputerNameA
 @ stub -version=0x600+ GetNamedPipeClientComputerNameW
 @ stdcall -version=0x600+ GetNamedPipeClientProcessId(ptr ptr)
-@ stub -version=0x600+ GetNamedPipeClientSessionId
+@ stdcall -version=0x600+ GetNamedPipeClientSessionId(ptr ptr)
 @ stdcall GetNamedPipeHandleStateA(long ptr ptr ptr ptr str long)
 @ stdcall GetNamedPipeHandleStateW(long ptr ptr ptr ptr wstr long)
 @ stdcall GetNamedPipeInfo(long ptr ptr ptr ptr)
-@ stub -version=0x600+ GetNamedPipeServerProcessId
-@ stub -version=0x600+ GetNamedPipeServerSessionId
+@ stdcall -version=0x600+ GetNamedPipeServerProcessId(ptr ptr)
+@ stdcall -version=0x600+ GetNamedPipeServerSessionId(ptr ptr)
 @ stdcall GetNativeSystemInfo(ptr)
 @ stdcall GetNextVDMCommand(long)
 @ stdcall -version=0x500-0x502 GetNlsSectionName(long long long str str long)
