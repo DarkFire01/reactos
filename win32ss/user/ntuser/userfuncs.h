@@ -180,4 +180,18 @@ AllocInputContextObject(
     _In_ SIZE_T Size,
     _Out_ PVOID* HandleOwner);
 
+/************************* dwm.c *************************/
+
+VOID
+FASTCALL
+IntDwmNotifyWinEvent(
+    _In_ DWORD Event,
+    _In_opt_ PWND Window,
+    _In_ LONG ObjectId);
+
+VOID
+FASTCALL
+IntDwmProcessCleanup(
+    _In_ PPROCESSINFO ProcessInfo);
+
 /* EOF */

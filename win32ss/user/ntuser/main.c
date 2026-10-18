@@ -191,6 +191,8 @@ UserProcessDestroy(PEPROCESS Process)
     /* Destroy user objects */
     UserDestroyObjectsForOwner(gHandleTable, ppiCurrent);
 
+    IntDwmProcessCleanup(ppiCurrent);
+
     TRACE_CH(UserProcess, "Freeing ppi 0x%p\n", ppiCurrent);
 #if DBG
     if (DBG_IS_CHANNEL_ENABLED(ppiCurrent, DbgChUserObj, WARN_LEVEL))

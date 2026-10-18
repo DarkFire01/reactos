@@ -2916,6 +2916,23 @@ NtUserRegisterRawInputDevices(
 
 BOOL
 NTAPI
+NtUserRegisterSessionPort(
+    _In_ HANDLE Port);
+
+BOOL
+NTAPI
+NtUserUnregisterSessionPort(VOID);
+
+BOOL
+NTAPI
+NtUserDwmKernelStartup(VOID);
+
+BOOL
+NTAPI
+NtUserDwmKernelShutdown(VOID);
+
+BOOL
+NTAPI
 NtUserRegisterUserApiHook(
     PUNICODE_STRING m_dllname1,
     PUNICODE_STRING m_funname1,
