@@ -819,8 +819,9 @@ PoRegisterPowerSettingCallback(
                           FALSE,
                           NULL);
 
-    /* Give the setting callback handle to the caller */
-    *Handle = SettingCallback;
+    /* Give the setting callback handle to the caller, who may not want one */
+    if (Handle)
+        *Handle = SettingCallback;
     return Status;
 }
 
