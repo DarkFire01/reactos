@@ -734,6 +734,22 @@ HRESULT WINAPI InitPropVariantFromBuffer(const VOID *pv, UINT cb, PROPVARIANT *p
     return S_OK;
 }
 
+#ifdef __REACTOS__
+HRESULT WINAPI InitPropVariantFromDoubleVector(const DOUBLE *prgn, ULONG cElems, PROPVARIANT *ppropvar)
+{
+    TRACE("(%p %u %p)\n", prgn, cElems, ppropvar);
+
+    ppropvar->cadbl.pElems = CoTaskMemAlloc(cElems * sizeof(*prgn));
+    if(!ppropvar->cadbl.pElems)
+        return E_OUTOFMEMORY;
+
+    ppropvar->vt = VT_VECTOR|VT_R8;
+    ppropvar->cadbl.cElems = cElems;
+    memcpy(ppropvar->cadbl.pElems, prgn, cElems * sizeof(*prgn));
+    return S_OK;
+}
+#endif
+
 HRESULT WINAPI InitPropVariantFromCLSID(REFCLSID clsid, PROPVARIANT *ppropvar)
 {
     TRACE("(%s %p)\n", debugstr_guid(clsid), ppropvar);
