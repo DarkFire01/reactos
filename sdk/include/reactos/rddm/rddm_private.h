@@ -89,6 +89,9 @@ typedef struct _DXGK_GDI_VIEW_INFORMATION
     ULONG VidPnSourceId;
     PVOID Adapter;          /* NULL when nothing WDDM drives this device */
     LUID AdapterLuid;
+#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+    ULONG64 Reserved;       /* Win11 refuses a buffer without it */
+#endif
 } DXGK_GDI_VIEW_INFORMATION, *PDXGK_GDI_VIEW_INFORMATION;
 
 /*
