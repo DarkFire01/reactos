@@ -338,6 +338,52 @@ CreateWaitableTimerW(IN LPSECURITY_ATTRIBUTES lpTimerAttributes OPTIONAL,
                                bManualReset ? NotificationTimer : SynchronizationTimer);
 }
 
+/**
+ * @brief
+ * Creates a waitable timer with the given access.
+ *
+ * @param[in] dwFlags
+ * CREATE_WAITABLE_TIMER_MANUAL_RESET and CREATE_WAITABLE_TIMER_HIGH_RESOLUTION.
+ * Every timer has the same resolution here, so the latter changes nothing.
+ */
+HANDLE
+WINAPI
+CreateWaitableTimerExW(
+    _In_opt_ LPSECURITY_ATTRIBUTES lpTimerAttributes,
+    _In_opt_ LPCWSTR lpTimerName,
+    _In_ DWORD dwFlags,
+    _In_ DWORD dwDesiredAccess)
+{
+    if (dwFlags & ~(CREATE_WAITABLE_TIMER_MANUAL_RESET | CREATE_WAITABLE_TIMER_HIGH_RESOLUTION))
+    {
+        BaseSetLastNTError(STATUS_INVALID_PARAMETER_3);
+        return NULL;
+    }
+
+    CreateNtObjectFromWin32Api(WaitableTimer, Timer, dwDesiredAccess,
+                               lpTimerAttributes,
+                               lpTimerName,
+                               (dwFlags & CREATE_WAITABLE_TIMER_MANUAL_RESET) ?
+                                   NotificationTimer : SynchronizationTimer);
+}
+
+HANDLE
+WINAPI
+CreateWaitableTimerExA(
+    _In_opt_ LPSECURITY_ATTRIBUTES lpTimerAttributes,
+    _In_opt_ LPCSTR lpTimerName,
+    _In_ DWORD dwFlags,
+    _In_ DWORD dwDesiredAccess)
+{
+    ConvertAnsiToUnicodePrologue
+    if (!lpTimerName)
+        return CreateWaitableTimerExW(lpTimerAttributes, NULL, dwFlags, dwDesiredAccess);
+    ConvertAnsiToUnicodeBody(lpTimerName)
+    if (NT_SUCCESS(Status))
+        return CreateWaitableTimerExW(lpTimerAttributes, UnicodeCache->Buffer, dwFlags, dwDesiredAccess);
+    ConvertAnsiToUnicodeEpilogue
+}
+
 /*
  * @implemented
  */
@@ -669,6 +715,53 @@ CreateEventW(IN LPSECURITY_ATTRIBUTES lpEventAttributes  OPTIONAL,
                                lpName,
                                bManualReset ? NotificationEvent : SynchronizationEvent,
                                bInitialState);
+}
+
+/**
+ * @brief
+ * Creates an event with the given access.
+ *
+ * @param[in] dwFlags
+ * CREATE_EVENT_MANUAL_RESET and CREATE_EVENT_INITIAL_SET.
+ */
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateEventExW(
+    _In_opt_ LPSECURITY_ATTRIBUTES lpEventAttributes,
+    _In_opt_ LPCWSTR lpName,
+    _In_ DWORD dwFlags,
+    _In_ DWORD dwDesiredAccess)
+{
+    if (dwFlags & ~(CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET))
+    {
+        BaseSetLastNTError(STATUS_INVALID_PARAMETER_3);
+        return NULL;
+    }
+
+    CreateNtObjectFromWin32Api(Event, Event, dwDesiredAccess,
+                               lpEventAttributes,
+                               lpName,
+                               (dwFlags & CREATE_EVENT_MANUAL_RESET) ? NotificationEvent : SynchronizationEvent,
+                               (dwFlags & CREATE_EVENT_INITIAL_SET) != 0);
+}
+
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateEventExA(
+    _In_opt_ LPSECURITY_ATTRIBUTES lpEventAttributes,
+    _In_opt_ LPCSTR lpName,
+    _In_ DWORD dwFlags,
+    _In_ DWORD dwDesiredAccess)
+{
+    ConvertAnsiToUnicodePrologue
+    if (!lpName)
+        return CreateEventExW(lpEventAttributes, NULL, dwFlags, dwDesiredAccess);
+    ConvertAnsiToUnicodeBody(lpName)
+    if (NT_SUCCESS(Status))
+        return CreateEventExW(lpEventAttributes, UnicodeCache->Buffer, dwFlags, dwDesiredAccess);
+    ConvertAnsiToUnicodeEpilogue
 }
 
 /*
