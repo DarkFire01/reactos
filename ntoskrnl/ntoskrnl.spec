@@ -1188,6 +1188,7 @@
 @ stdcall RtlDescribeChunk(long ptr ptr ptr ptr)
 @ stdcall RtlDestroyAtomTable(ptr)
 @ stdcall RtlDestroyHeap(ptr)
+@ stdcall RtlDowncaseUnicodeChar(long)
 @ stdcall RtlDowncaseUnicodeString(ptr ptr long)
 @ stdcall RtlEmptyAtomTable(ptr long)
 @ stdcall -arch=win32 RtlEnlargedIntegerMultiply(long long)
@@ -1763,9 +1764,10 @@
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
 
-# ===========================================================
+# ====================================================
 @ cdecl _strtoui64()
 @ cdecl sscanf_s()
+@ cdecl swscanf_s()
 
 @ cdecl -arch=i386 _chkstk()
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
