@@ -733,4 +733,29 @@ ObfDereferenceObjectWithTag(
     return ObfDereferenceObject(Object);
 }
 
+/**
+ * @brief References the object behind a handle, accounting the reference to a tag.
+ * @remarks Tags are not tracked, so this is the untagged reference.
+ */
+NTSTATUS
+NTAPI
+ObReferenceObjectByHandleWithTag(
+    _In_ HANDLE Handle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_TYPE ObjectType,
+    _In_ KPROCESSOR_MODE AccessMode,
+    _In_ ULONG Tag,
+    _Out_ PVOID *Object,
+    _Out_opt_ POBJECT_HANDLE_INFORMATION HandleInformation)
+{
+    UNREFERENCED_PARAMETER(Tag);
+
+    return ObReferenceObjectByHandle(Handle,
+                                     DesiredAccess,
+                                     ObjectType,
+                                     AccessMode,
+                                     Object,
+                                     HandleInformation);
+}
+
 /* EOF */

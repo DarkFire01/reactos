@@ -558,4 +558,51 @@ ExiFreeToNPagedLookasideList(
     }
 }
 
+/**
+ * @brief Takes an entry from a lookaside list, allocating one when the list is empty.
+ * @remarks The exported form of the inline routine drivers built for newer systems call.
+ */
+PVOID
+NTAPI
+ExpAllocateFromLookasideListEx(
+    _Inout_ PLOOKASIDE_LIST_EX Lookaside)
+{
+    PVOID Entry;
+
+    Lookaside->L.TotalAllocates++;
+    Entry = InterlockedPopEntrySList(&Lookaside->L.ListHead);
+    if (!Entry)
+    {
+        Lookaside->L.AllocateMisses++;
+        Entry = Lookaside->L.AllocateEx(Lookaside->L.Type,
+                                        Lookaside->L.Size,
+                                        Lookaside->L.Tag,
+                                        Lookaside);
+    }
+
+    return Entry;
+}
+
+/**
+ * @brief Gives an entry back to a lookaside list, freeing it when the list is full.
+ * @remarks The exported form of the inline routine drivers built for newer systems call.
+ */
+VOID
+NTAPI
+ExpFreeToLookasideListEx(
+    _Inout_ PLOOKASIDE_LIST_EX Lookaside,
+    _In_ PVOID Entry)
+{
+    Lookaside->L.TotalFrees++;
+    if (ExQueryDepthSList(&Lookaside->L.ListHead) >= Lookaside->L.Depth)
+    {
+        Lookaside->L.FreeMisses++;
+        Lookaside->L.FreeEx(Entry, Lookaside);
+    }
+    else
+    {
+        InterlockedPushEntrySList(&Lookaside->L.ListHead, (PSLIST_ENTRY)Entry);
+    }
+}
+
 /* EOF */

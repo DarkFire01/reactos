@@ -287,6 +287,17 @@ PspExitThread(
     IN NTSTATUS ExitStatus
 );
 
+CODE_SEG("INIT")
+VOID
+NTAPI
+PspInitializeTls(VOID);
+
+VOID
+NTAPI
+PspTlsThreadExit(
+    _In_ PETHREAD Thread
+);
+
 NTSTATUS
 NTAPI
 PspTerminateThreadByPointer(

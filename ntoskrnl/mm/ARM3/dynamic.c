@@ -124,3 +124,20 @@ MmGetPhysicalMemoryRanges(VOID)
     MiReleasePfnLock(OldIrql);
     return Buffer;
 }
+
+/**
+ * @brief Gets the physical memory ranges of a memory partition.
+ *
+ * @param[in] PartitionObject
+ * Partition to look at, NULL for the system partition, the only one there is.
+ */
+PPHYSICAL_MEMORY_RANGE
+NTAPI
+MmGetPhysicalMemoryRangesEx(
+    _In_opt_ PVOID PartitionObject)
+{
+    if (PartitionObject)
+        return NULL;
+
+    return MmGetPhysicalMemoryRanges();
+}

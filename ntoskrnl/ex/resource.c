@@ -2288,3 +2288,22 @@ ExReleaseResourceAndLeaveCriticalRegion(IN PERESOURCE Resource)
     /* Leave critical region */
     KeLeaveCriticalRegion();
 }
+
+/**
+ * @brief Prepares an owner entry for the fast resource routines.
+ *
+ * @param[out] OwnerEntry
+ * Entry of 40 bytes, it is cleared and records the current thread as its owner.
+ */
+VOID
+NTAPI
+ExInitializeFastOwnerEntry(
+    _Out_writes_bytes_(5 * sizeof(PVOID)) PVOID OwnerEntry)
+{
+    PVOID *Fields = OwnerEntry;
+
+    ASSERT(KeGetCurrentIrql() <= DISPATCH_LEVEL);
+
+    RtlZeroMemory(Fields, 5 * sizeof(PVOID));
+    Fields[2] = KeGetCurrentThread();
+}
