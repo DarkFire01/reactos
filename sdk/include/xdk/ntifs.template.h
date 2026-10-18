@@ -742,7 +742,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtQueryInformationTransactionManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryInformationWorkerFactory();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryLicenseValue(_In_ PUNICODE_STRING ValueName, _Out_opt_ PULONG Type, _Out_writes_bytes_to_opt_(DataSize, *ResultDataSize) PVOID Data, _In_ ULONG DataSize, _Out_ PULONG ResultDataSize);
 NTSYSCALLAPI NTSTATUS NTAPI NtQuerySecurityAttributesToken();
-NTSYSCALLAPI NTSTATUS NTAPI NtQuerySystemInformationEx();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryWnfStateData();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryWnfStateNameInformation();
 NTSYSCALLAPI NTSTATUS NTAPI NtReadOnlyEnlistment();
