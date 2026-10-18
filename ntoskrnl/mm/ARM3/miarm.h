@@ -472,6 +472,7 @@ typedef struct _MMVIEW
     ULONG_PTR Entry;
     PCONTROL_AREA ControlArea;
     ULONG_PTR StartingPage;
+    ULONG_PTR FilledPages; /* Pages from StartingPage pointed at prototype PTEs */
     BOOLEAN UserReference;
     BOOLEAN ReadOnly;
 } MMVIEW, *PMMVIEW;
@@ -2477,11 +2478,10 @@ MiCheckControlArea(
     _In_ KIRQL OldIrql
 );
 
-VOID
+NTSTATUS
 NTAPI
 MiExtendSystemViews(
-    _In_ PCONTROL_AREA ControlArea,
-    _In_ ULONG OldPtes
+    _In_ PCONTROL_AREA ControlArea
 );
 
 CODE_SEG("INIT")
@@ -2495,6 +2495,31 @@ MiGetDataFileProtoPte(
     _In_ PCONTROL_AREA ControlArea,
     _In_ ULONG64 PageIndex,
     _Out_opt_ PMSUBSECTION *OutSubsection
+);
+
+NTSTATUS
+NTAPI
+MiReferenceDataFileSubsection(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 PageIndex,
+    _In_ BOOLEAN FirstPageOfView,
+    _Out_ PMSUBSECTION *OutSubsection
+);
+
+NTSTATUS
+NTAPI
+MiReferenceDataFileView(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 StartPage,
+    _In_ ULONG64 PageCount
+);
+
+VOID
+NTAPI
+MiDereferenceDataFileView(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 StartPage,
+    _In_ ULONG64 PageCount
 );
 
 NTSTATUS
