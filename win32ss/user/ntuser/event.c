@@ -239,6 +239,8 @@ IntNotifyWinEvent(
 
    TRACE("IntNotifyWinEvent GlobalEvents = %p pWnd %p\n", GlobalEvents, pWnd);
 
+   IntDwmNotifyWinEvent(Event, pWnd, idObject);
+
    if (!GlobalEvents || !GlobalEvents->Counts) return;
 
    if (pWnd && pWnd->state & WNDS_DESTROYED) return;

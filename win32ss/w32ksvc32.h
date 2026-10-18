@@ -828,3 +828,7 @@
     SVC_(GdiDdDDISubmitSignalSyncObjectsToHwQueue, 1)
     SVC_(GdiDdDDISubmitWaitForSyncObjectsToHwQueue, 1)
     SVC_(GdiDdDDIUpdateAllocationProperty, 1)
+    SVC_(UserRegisterSessionPort, 1)
+    SVC_(UserUnregisterSessionPort, 0)
+    SVC_(UserDwmKernelStartup, 0)
+    SVC_(UserDwmKernelShutdown, 0)

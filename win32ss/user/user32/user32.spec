@@ -201,6 +201,8 @@
 @ stdcall DrawTextExA(long str long ptr long ptr)
 @ stdcall DrawTextExW(long wstr long ptr long ptr)
 @ stdcall DrawTextW(long wstr long ptr long)
+@ stdcall DwmKernelShutdown() NtUserDwmKernelShutdown
+@ stdcall DwmKernelStartup() NtUserDwmKernelStartup
 @ stdcall EditWndProc(long long long long) EditWndProcA
 @ stdcall EmptyClipboard() NtUserEmptyClipboard
 @ stdcall EnableMenuItem(long long long)
@@ -599,6 +601,7 @@
 @ stdcall RegisterTasklist(long) NtUserRegisterTasklist
 @ stdcall -version=0x602+ RegisterTouchHitTestingWindow(long long)
 @ stdcall -version=0x601+ RegisterTouchWindow(long long)
+@ stdcall RegisterSessionPort(ptr) NtUserRegisterSessionPort
 @ stdcall RegisterUserApiHook(ptr)
 @ stdcall RegisterWindowMessageA(str)
 @ stdcall RegisterWindowMessageW(wstr)
@@ -765,6 +768,7 @@
 @ stdcall -version=0x601+ UnregisterTouchWindow(ptr)
 @ stdcall -version=0x600+ UnregisterPowerSettingNotification(ptr)
 @ stdcall -version=0x602+ UnregisterSuspendResumeNotification(ptr)
+@ stdcall UnregisterSessionPort() NtUserUnregisterSessionPort
 @ stdcall UnregisterUserApiHook() NtUserUnregisterUserApiHook
 @ stdcall UpdateLayeredWindow(long long ptr ptr long ptr long ptr long)
 @ stdcall UpdateLayeredWindowIndirect(long ptr)

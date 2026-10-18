@@ -122,6 +122,7 @@ list(APPEND SOURCE
     user/ntuser/csr.c
     user/ntuser/cursoricon.c
     user/ntuser/dde.c
+    user/ntuser/dwm.c
     user/ntuser/defwnd.c
     user/ntuser/desktop.c
     user/ntuser/display.c
