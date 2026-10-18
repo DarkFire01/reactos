@@ -260,6 +260,15 @@ SMgrRegisterGdiCallout(
 #define DXGK_SLOT_QueryVideoMemoryInfo                   186
 #define DXGK_SLOT_CacheHybridQueryValue                  146
 #define DXGK_SLOT_GetCachedHybridQueryValue              145
+
+/* Only filled from the Windows 11 dxgkrnl export table, so any free index works */
+#define DXGK_SLOT_EnumAdapters                           228
+#define DXGK_SLOT_CreateHwQueue                          229
+#define DXGK_SLOT_DestroyHwQueue                         230
+#define DXGK_SLOT_SubmitCommandToHwQueue                 231
+#define DXGK_SLOT_SubmitSignalSyncObjectsToHwQueue       232
+#define DXGK_SLOT_SubmitWaitForSyncObjectsToHwQueue      233
+#define DXGK_SLOT_UpdateAllocationProperty               234
 /* Every one of them takes a single pointer, so one shape covers the whole table. */
 typedef NTSTATUS (NTAPI *PFN_DXGK_D3DKMT)(PVOID);
 
