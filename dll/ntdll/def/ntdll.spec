@@ -1882,6 +1882,7 @@
 @ cdecl strncat(str str long)
 @ cdecl strncmp(str str long)
 @ cdecl strncpy(ptr str long)
+@ cdecl -version=0x600+ strnlen(ptr long)
 @ cdecl strpbrk(str str)
 @ cdecl strrchr(str long)
 @ cdecl strspn(str str)
