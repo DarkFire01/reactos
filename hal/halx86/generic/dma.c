@@ -830,6 +830,27 @@ HalpDmaInitializeEisaAdapter(IN PADAPTER_OBJECT AdapterObject,
 
 #ifndef _MINIHAL_
 /**
+ * @brief Tells whether a device can reach every page of physical memory without help.
+ *
+ * @param DeviceDescription The device asking for an adapter.
+ *
+ * @return TRUE when no page lies beyond what the device addresses.
+ */
+static
+BOOLEAN
+HalpDmaReachesAllMemory(
+    _In_ PDEVICE_DESCRIPTION DeviceDescription)
+{
+    if (!*Mm64BitPhysicalAddress)
+        return TRUE;
+
+    if (DeviceDescription->Version == DEVICE_DESCRIPTION_VERSION3)
+        return (HalpGetDeviceDmaAddressWidth(DeviceDescription) >= 64);
+
+    return DeviceDescription->Dma64BitAddresses;
+}
+
+/**
  * @name HalGetAdapter
  *
  * Allocate an adapter object for DMA device.
@@ -900,7 +921,8 @@ HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
     /*
      * Calculate the number of map registers.
      *
-     * - For EISA and PCI scatter/gather no map registers are needed.
+     * - For EISA and PCI scatter/gather no map registers are needed,
+     *   unless memory lies beyond what the device can address.
      * - For ISA slave scatter/gather one map register is needed.
      * - For all other cases the number of map registers depends on
      *   DeviceDescription->MaximumLength.
@@ -908,7 +930,8 @@ HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
     MaximumLength = DeviceDescription->MaximumLength & MAXLONG;
     if ((DeviceDescription->ScatterGather) &&
         ((DeviceDescription->InterfaceType == Eisa) ||
-         (DeviceDescription->InterfaceType == PCIBus)))
+         (DeviceDescription->InterfaceType == PCIBus)) &&
+        HalpDmaReachesAllMemory(DeviceDescription))
     {
         MapRegisters = 0;
     }
