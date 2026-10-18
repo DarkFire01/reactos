@@ -102,6 +102,13 @@ PVOID MmAllocateMemoryAtAddress(SIZE_T MemorySize, PVOID DesiredAddress, TYPE_OF
     // Get the starting page number
     StartPageNumber = MmGetPageNumberFromAddress(DesiredAddress);
 
+    // The loader can only touch memory it has mapped
+    if (StartPageNumber + PagesNeeded > MM_MAX_PAGE_LOADER)
+    {
+        WARN("MmAllocateMemoryAtAddress(): %p is out of the loader's reach\n", DesiredAddress);
+        return NULL;
+    }
+
     // If we don't have enough available mem
     // then return NULL
     if (FreePagesInLookupTable < PagesNeeded)
