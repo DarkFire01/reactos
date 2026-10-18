@@ -31,7 +31,7 @@
 @ stub InitPropVariantFromBooleanVector
 @ stdcall InitPropVariantFromBuffer(ptr long ptr)
 @ stdcall InitPropVariantFromCLSID(ptr ptr)
-@ stub InitPropVariantFromDoubleVector
+@ stdcall InitPropVariantFromDoubleVector(ptr long ptr)
 @ stub InitPropVariantFromFileTime
 @ stub InitPropVariantFromFileTimeVector
 @ stdcall InitPropVariantFromGUIDAsString(ptr ptr)
