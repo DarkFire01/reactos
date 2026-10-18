@@ -444,6 +444,9 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Initialize job structures external to this file */
     PspInitializeJobStructures();
 
+    /* Slots drivers keep per thread values in */
+    PspInitializeTls();
+
     /* Initialize the Working Set data */
     InitializeListHead(&PspWorkingSetChangeHead.List);
     KeInitializeGuardedMutex(&PspWorkingSetChangeHead.Lock);

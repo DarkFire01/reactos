@@ -955,4 +955,55 @@ PoFxPowerControl(
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/**
+ * @brief Reports that a device finished powering down for a directed power transition.
+ * @remarks Directed power transitions are never started, so there is nothing to complete.
+ */
+VOID
+NTAPI
+PoFxCompleteDirectedPowerDown(
+    _In_ POHANDLE Handle)
+{
+    UNREFERENCED_PARAMETER(Handle);
+}
+
+/**
+ * @brief Makes the power state of one component depend on another.
+ * @return STATUS_NOT_SUPPORTED, components are managed one by one.
+ */
+NTSTATUS
+NTAPI
+PoFxAddComponentRelation(
+    _In_ POHANDLE Handle,
+    _In_ ULONG Component,
+    _In_ POHANDLE ProviderHandle,
+    _In_ ULONG ProviderComponent,
+    _In_ ULONG Flags,
+    _Out_ PVOID *Relation)
+{
+    UNREFERENCED_PARAMETER(Handle);
+    UNREFERENCED_PARAMETER(Component);
+    UNREFERENCED_PARAMETER(ProviderHandle);
+    UNREFERENCED_PARAMETER(ProviderComponent);
+    UNREFERENCED_PARAMETER(Flags);
+
+    *Relation = NULL;
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Removes a relation PoFxAddComponentRelation made.
+ */
+NTSTATUS
+NTAPI
+PoFxRemoveComponentRelation(
+    _In_ POHANDLE Handle,
+    _In_opt_ PVOID Relation)
+{
+    UNREFERENCED_PARAMETER(Handle);
+    UNREFERENCED_PARAMETER(Relation);
+
+    return STATUS_NOT_FOUND;
+}
+
 /* EOF */

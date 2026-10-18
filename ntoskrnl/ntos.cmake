@@ -63,6 +63,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/license.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/locale.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/lookas.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/pcw.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/mutant.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/profile.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/pushlock.c
@@ -83,6 +84,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/work.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/xipdisp.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/zone.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/zwext.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/stub.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fsrtl/dbcsname.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/fsrtl/fastio.c
@@ -288,13 +290,16 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/query.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/quota.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/security.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/silo.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/state.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/thread.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/tls.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/win32.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/avltree.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/feature.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/libsupp.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/misc.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/query.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/rbtree.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/access.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/accesschk.c

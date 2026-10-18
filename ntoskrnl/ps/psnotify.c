@@ -392,4 +392,31 @@ PsSetCreateThreadNotifyRoutine(IN PCREATE_THREAD_NOTIFY_ROUTINE NotifyRoutine)
     return STATUS_INSUFFICIENT_RESOURCES;
 }
 
+/**
+ * @brief Registers or removes a process notify routine of a given kind.
+ *
+ * @param[in] NotifyType
+ * Kind of routine, only the one for every subsystem is known.
+ *
+ * @param[in] NotifyInformation
+ * The routine, called like a PsSetCreateProcessNotifyRoutineEx one.
+ *
+ * @param[in] Remove
+ * TRUE to remove the routine.
+ */
+NTSTATUS
+NTAPI
+PsSetCreateProcessNotifyRoutineEx2(
+    _In_ ULONG NotifyType,
+    _In_ PVOID NotifyInformation,
+    _In_ BOOLEAN Remove)
+{
+    /* Kind 0 is for processes of every subsystem */
+    if (NotifyType != 0)
+        return STATUS_INVALID_PARAMETER;
+
+    return PsSetCreateProcessNotifyRoutineEx((PCREATE_PROCESS_NOTIFY_ROUTINE_EX)NotifyInformation,
+                                             Remove);
+}
+
 /* EOF */

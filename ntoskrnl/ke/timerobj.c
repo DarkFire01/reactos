@@ -468,3 +468,25 @@ KeCancelTimer2(
 {
     return KeCancelTimer(Timer);
 }
+
+/**
+ * @brief Gets the interrupt time without the time spent in sleep states.
+ * @remarks The system never adds a sleep bias, so this is the interrupt time.
+ */
+ULONGLONG
+NTAPI
+KeQueryUnbiasedInterruptTime(VOID)
+{
+    return (ULONGLONG)KeQueryInterruptTime();
+}
+
+/**
+ * @brief Gets the system time in 100ns units.
+ */
+VOID
+NTAPI
+KeQuerySystemTimePrecise(
+    _Out_ PLARGE_INTEGER CurrentTime)
+{
+    KeQuerySystemTime(CurrentTime);
+}

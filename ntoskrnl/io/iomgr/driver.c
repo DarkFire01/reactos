@@ -2273,4 +2273,55 @@ NtUnloadDriver(IN PUNICODE_STRING DriverServiceName)
     return IopUnloadDriver(DriverServiceName, FALSE);
 }
 
+/**
+ * @brief Gets the full path of the image a driver was loaded from.
+ *
+ * @param[in] DriverObject
+ * Loaded driver.
+ *
+ * @param[out] FullPath
+ * Receives the path, its buffer comes from paged pool and the caller frees it.
+ */
+NTSTATUS
+NTAPI
+IoQueryFullDriverPath(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _Out_ PUNICODE_STRING FullPath)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry = DriverObject->DriverSection;
+
+    PAGED_CODE();
+
+    RtlInitEmptyUnicodeString(FullPath, NULL, 0);
+
+    if (!LdrEntry || !LdrEntry->FullDllName.Length)
+        return STATUS_NOT_FOUND;
+
+    FullPath->Buffer = ExAllocatePoolWithTag(PagedPool, LdrEntry->FullDllName.Length, TAG_IO);
+    if (!FullPath->Buffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    FullPath->MaximumLength = LdrEntry->FullDllName.Length;
+    RtlCopyUnicodeString(FullPath, &LdrEntry->FullDllName);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Gets the interface to the IOMMU.
+ * @return STATUS_NOT_SUPPORTED, no IOMMU is ever driven.
+ */
+NTSTATUS
+NTAPI
+IoGetIommuInterfaceEx(
+    _In_ ULONG Version,
+    _In_ ULONG64 Flags,
+    _Out_ PVOID InterfaceOut)
+{
+    UNREFERENCED_PARAMETER(Version);
+    UNREFERENCED_PARAMETER(Flags);
+    UNREFERENCED_PARAMETER(InterfaceOut);
+
+    return STATUS_NOT_SUPPORTED;
+}
+
 /* EOF */

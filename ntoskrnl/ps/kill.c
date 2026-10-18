@@ -543,6 +543,9 @@ PspExitThread(IN NTSTATUS ExitStatus)
     /* Run Thread Notify Routines before we desintegrate the thread */
     PspRunCreateThreadNotifyRoutines(Thread, FALSE);
 
+    /* Values drivers kept for this thread go back to them */
+    PspTlsThreadExit(Thread);
+
     /* Lock the Process before we modify its thread entries */
     KeEnterCriticalRegion();
     ExAcquirePushLockExclusive(&CurrentProcess->ProcessLock);

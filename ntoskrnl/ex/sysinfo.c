@@ -3366,3 +3366,34 @@ ExGetPreviousMode(VOID)
     /* Just use Ke */
     return KeGetPreviousMode();
 }
+
+/**
+ * @brief Gets the kind of firmware the system booted from.
+ */
+FIRMWARE_TYPE
+NTAPI
+ExGetFirmwareType(VOID)
+{
+    return ExpFirmwareType;
+}
+
+/**
+ * @brief Tells whether the system came up through a soft reboot.
+ * @return FALSE, the system is always started by the boot loader.
+ */
+BOOLEAN
+NTAPI
+ExIsSoftBoot(VOID)
+{
+    return FALSE;
+}
+
+/**
+ * @brief Tells whether the system runs in manufacturing mode.
+ */
+BOOLEAN
+NTAPI
+ExIsManufacturingModeEnabled(VOID)
+{
+    return FALSE;
+}
