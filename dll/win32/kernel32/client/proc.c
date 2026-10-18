@@ -1179,6 +1179,34 @@ GetProcessTimes(IN HANDLE hProcess,
     return TRUE;
 }
 
+/**
+ * @brief
+ * Gets the processor cycles all threads of a process have used.
+ */
+BOOL
+WINAPI
+QueryProcessCycleTime(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG64 CycleTime)
+{
+    PROCESS_CYCLE_TIME_INFORMATION Information;
+    NTSTATUS Status;
+
+    Status = NtQueryInformationProcess(ProcessHandle,
+                                       ProcessCycleTime,
+                                       &Information,
+                                       sizeof(Information),
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    *CycleTime = Information.AccumulatedCycles;
+    return TRUE;
+}
+
 /*
  * @implemented
  */

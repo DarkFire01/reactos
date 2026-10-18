@@ -942,6 +942,60 @@ SetThreadIdealProcessor(IN HANDLE hThread,
     return (DWORD)Status;
 }
 
+/**
+ * @brief
+ * Gets the group and number of the processor a thread prefers to run on.
+ */
+BOOL
+WINAPI
+GetThreadIdealProcessorEx(
+    _In_ HANDLE hThread,
+    _Out_ PPROCESSOR_NUMBER lpIdealProcessor)
+{
+    NTSTATUS Status;
+
+    Status = NtQueryInformationThread(hThread,
+                                      ThreadIdealProcessorEx,
+                                      lpIdealProcessor,
+                                      sizeof(*lpIdealProcessor),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Gets the processor cycles a thread has used.
+ */
+BOOL
+WINAPI
+QueryThreadCycleTime(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG64 CycleTime)
+{
+    THREAD_CYCLE_TIME_INFORMATION Information;
+    NTSTATUS Status;
+
+    Status = NtQueryInformationThread(ThreadHandle,
+                                      ThreadCycleTime,
+                                      &Information,
+                                      sizeof(Information),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    *CycleTime = Information.AccumulatedCycles;
+    return TRUE;
+}
+
 /*
  * @implemented
  */

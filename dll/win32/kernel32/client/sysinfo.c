@@ -257,6 +257,51 @@ GetLogicalProcessorInformation(OUT PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
     return TRUE;
 }
 
+/**
+ * @brief
+ * Describes the processors, caches, NUMA nodes and groups of the system.
+ *
+ * @param[in] RelationshipType
+ * The kind of entries to return, or RelationAll.
+ *
+ * @return
+ * FALSE with ERROR_INSUFFICIENT_BUFFER and the needed size in ReturnedLength
+ * when the buffer is too small.
+ */
+BOOL
+WINAPI
+GetLogicalProcessorInformationEx(
+    _In_ LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
+    _Out_writes_bytes_to_opt_(*ReturnedLength, *ReturnedLength) PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Buffer,
+    _Inout_ PDWORD ReturnedLength)
+{
+    NTSTATUS Status;
+
+    if (!ReturnedLength)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Status = NtQuerySystemInformationEx(SystemLogicalProcessorAndGroupInformation,
+                                        &RelationshipType,
+                                        sizeof(RelationshipType),
+                                        Buffer,
+                                        *ReturnedLength,
+                                        ReturnedLength);
+
+    if (Status == STATUS_INFO_LENGTH_MISMATCH)
+        Status = STATUS_BUFFER_TOO_SMALL;
+
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 /*
  * @implemented
  */
