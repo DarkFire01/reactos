@@ -487,6 +487,10 @@ IoUnregisterPlugPlayNotification(
 
     DPRINT("%s(NotificationEntry %p) called\n", __FUNCTION__, Entry);
 
+    /* Drivers unwinding a failed start pass the handle they never got */
+    if (!Entry)
+        return STATUS_INVALID_PARAMETER;
+
     switch (Entry->EventCategory)
     {
         case EventCategoryDeviceInterfaceChange:
