@@ -324,7 +324,12 @@ static const INFORMATION_CLASS_INFO PsProcessInfoClass[] =
     ),
 
     /* ProcessCycleTime */
-    IQS_NONE,
+    IQS_SAME
+    (
+        PROCESS_CYCLE_TIME_INFORMATION,
+        ULONG,
+        ICIF_QUERY
+    ),
 
     /* ProcessPagePriority */
     IQS_NONE,
@@ -549,7 +554,12 @@ static const INFORMATION_CLASS_INFO PsThreadInfoClass[] =
     IQS_NONE,
 
     /* ThreadCycleTime */
-    IQS_NONE,
+    IQS_SAME
+    (
+        THREAD_CYCLE_TIME_INFORMATION,
+        ULONG,
+        ICIF_QUERY
+    ),
 
     /* ThreadPagePriority */
     IQS_NONE,
@@ -578,7 +588,12 @@ static const INFORMATION_CLASS_INFO PsThreadInfoClass[] =
     /* ThreadCounterProfiling */
     IQS_NONE,
     /* ThreadIdealProcessorEx */
-    IQS_NONE,
+    IQS_SAME
+    (
+        PROCESSOR_NUMBER,
+        ULONG,
+        ICIF_QUERY
+    ),
 
     // Windows 8
     /* ThreadCpuAccountingInformation */
