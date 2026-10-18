@@ -29,6 +29,29 @@ typedef struct DECLSPEC_ALIGN(8) _MEM_EXTENDED_PARAMETER
     };
 } MEM_EXTENDED_PARAMETER, *PMEM_EXTENDED_PARAMETER;
 
+/* What a memory partition reports about itself */
+typedef struct _MEMORY_PARTITION_CONFIGURATION_INFORMATION
+{
+    ULONG Flags;
+    ULONG NumaNode;
+    ULONG Channel;
+    ULONG NumberOfNumaNodes;
+    SIZE_T ResidentAvailablePages;
+    SIZE_T CommittedPages;
+    SIZE_T CommitLimit;
+    SIZE_T PeakCommitment;
+    SIZE_T TotalNumberOfPages;
+    SIZE_T AvailablePages;
+    SIZE_T ZeroPages;
+    SIZE_T FreePages;
+    SIZE_T StandbyPages;
+    SIZE_T StandbyPageCountByPriority[8];
+    SIZE_T RepurposedPagesByPriority[8];
+    SIZE_T MaximumCommitLimit;
+    SIZE_T DonatedPagesToPartitions;
+    ULONG PartitionId;
+} MEMORY_PARTITION_CONFIGURATION_INFORMATION, *PMEMORY_PARTITION_CONFIGURATION_INFORMATION;
+
 typedef struct _MEM_ADDRESS_REQUIREMENTS
 {
     PVOID LowestStartingAddress;
@@ -179,13 +202,35 @@ ZwManagePartition(
     _Inout_updates_bytes_(PartitionInformationLength) PVOID PartitionInformation,
     _In_ ULONG PartitionInformationLength)
 {
-    UNREFERENCED_PARAMETER(TargetHandle);
-    UNREFERENCED_PARAMETER(SourceHandle);
-    UNREFERENCED_PARAMETER(PartitionInformationClass);
-    UNREFERENCED_PARAMETER(PartitionInformation);
-    UNREFERENCED_PARAMETER(PartitionInformationLength);
+    PMEMORY_PARTITION_CONFIGURATION_INFORMATION Info = PartitionInformation;
 
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(SourceHandle);
+
+    /* Only the system partition exists, and only its configuration can be read */
+    if ((PartitionInformationClass != 0) ||
+        ((TargetHandle != NtCurrentProcess()) && (TargetHandle != NULL)))
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if (PartitionInformationLength < sizeof(*Info))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    RtlZeroMemory(Info, sizeof(*Info));
+    Info->NumberOfNumaNodes = 1;
+    Info->ResidentAvailablePages = MmResidentAvailablePages;
+    Info->CommittedPages = MmTotalCommittedPages;
+    Info->CommitLimit = MmTotalCommitLimit;
+    Info->PeakCommitment = MmPeakCommitment;
+    Info->TotalNumberOfPages = MmNumberOfPhysicalPages;
+    Info->AvailablePages = MmAvailablePages;
+    Info->ZeroPages = MmZeroedPageListHead.Total;
+    Info->FreePages = MmFreePageListHead.Total;
+    Info->StandbyPages = MmStandbyPageListHead.Total;
+    Info->MaximumCommitLimit = MmTotalCommitLimit;
+    Info->PartitionId = 0;
+
+    return STATUS_SUCCESS;
 }
 
 /**
