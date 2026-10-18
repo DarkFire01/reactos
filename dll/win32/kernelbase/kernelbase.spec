@@ -79,7 +79,7 @@
 @ stdcall BaseFlushAppcompatCache()
 @ stdcall BaseFormatObjectAttributes(ptr ptr wstr)
 # @ stub BaseFreeAppCompatDataForProcess
-@ stdcall BaseGetNamedObjectDirectory(ptr)
+@ stdcall -version=0x600+ BaseGetNamedObjectDirectory(ptr)
 @ stdcall BaseInitAppcompatCacheSupport()
 @ stub BaseInvalidateDllSearchPathCache
 @ stub BaseInvalidateProcessSearchPathCache
