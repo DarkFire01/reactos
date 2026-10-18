@@ -718,4 +718,6 @@ SVC_(CancelDeviceWakeupRequest, 1)
 
 #ifndef SYSFUNCS_NT5_ONLY
     SVC_(GetCurrentProcessorNumberEx, 1)
+    SVC_(AlertThreadByThreadId, 1)
+    SVC_(WaitForAlertByThreadId, 2)
 #endif

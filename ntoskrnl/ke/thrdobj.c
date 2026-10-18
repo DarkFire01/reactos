@@ -215,6 +215,29 @@ KeAlertThread(IN PKTHREAD Thread,
     return PreviousState;
 }
 
+/**
+ * @brief Wakes a thread blocked in KiWaitForIdAlert, or leaves the alert
+ *        pending so its next wait returns at once.
+ */
+VOID
+NTAPI
+KiAlertThreadById(
+    _Inout_ PKTHREAD Thread)
+{
+    KIRQL OldIrql;
+    ASSERT_THREAD(Thread);
+    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+
+    OldIrql = KiAcquireDispatcherLock();
+
+    if ((Thread->State == Waiting) && (Thread->WaitReason == WrAlertByThreadId))
+        KiUnwaitThread(Thread, STATUS_ALERTED, IO_NO_INCREMENT);
+    else
+        InterlockedBitTestAndSet(&Thread->ThreadFlags, KI_ID_ALERT_BIT);
+
+    KiReleaseDispatcherLock(OldIrql);
+}
+
 VOID
 NTAPI
 KeBoostPriorityThread(IN PKTHREAD Thread,
