@@ -2156,6 +2156,107 @@ GetTempPathW(IN DWORD count,
     return ret;
 }
 
+static
+BOOLEAN
+BasepIsLocalSystemProcess(VOID)
+{
+    static SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
+    ULONG_PTR Buffer[(sizeof(TOKEN_USER) + SECURITY_MAX_SID_SIZE) / sizeof(ULONG_PTR) + 1];
+    PTOKEN_USER UserInfo = (PTOKEN_USER)Buffer;
+    ULONG SystemSidBuffer[SECURITY_MAX_SID_SIZE / sizeof(ULONG)];
+    PSID SystemSid = (PSID)SystemSidBuffer;
+    HANDLE TokenHandle;
+    ULONG Length;
+    NTSTATUS Status;
+
+    Status = NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &TokenHandle);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    Status = NtQueryInformationToken(TokenHandle, TokenUser, UserInfo, sizeof(Buffer), &Length);
+    NtClose(TokenHandle);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    RtlInitializeSid(SystemSid, &NtAuthority, 1);
+    *RtlSubAuthoritySid(SystemSid, 0) = SECURITY_LOCAL_SYSTEM_RID;
+
+    return RtlEqualSid(UserInfo->User.Sid, SystemSid);
+}
+
+/**
+ * @brief
+ * Gets the temporary directory, which is %windir%\SystemTemp\ for processes
+ * running as SYSTEM.
+ *
+ * @remarks
+ * SYSTEM processes fall back to GetTempPathW when SystemTemp does not exist.
+ */
+DWORD
+WINAPI
+GetTempPath2W(
+    _In_ DWORD BufferLength,
+    _Out_writes_to_opt_(BufferLength, return + 1) LPWSTR Buffer)
+{
+    WCHAR SystemTemp[MAX_PATH];
+    DWORD Attributes;
+    DWORD Length;
+
+    if (!BasepIsLocalSystemProcess())
+        return GetTempPathW(BufferLength, Buffer);
+
+    Length = GetWindowsDirectoryW(SystemTemp, MAX_PATH);
+    if (!Length || Length >= MAX_PATH)
+        return GetTempPathW(BufferLength, Buffer);
+
+    if (SystemTemp[Length - 1] == L'\\')
+        SystemTemp[--Length] = UNICODE_NULL;
+
+    if (!NT_SUCCESS(RtlStringCchCatW(SystemTemp, MAX_PATH, L"\\SystemTemp\\")))
+        return GetTempPathW(BufferLength, Buffer);
+
+    Attributes = GetFileAttributesW(SystemTemp);
+    if (Attributes == INVALID_FILE_ATTRIBUTES || !(Attributes & FILE_ATTRIBUTE_DIRECTORY))
+        return GetTempPathW(BufferLength, Buffer);
+
+    Length = (DWORD)wcslen(SystemTemp);
+    if (BufferLength <= Length)
+    {
+        if (Buffer && BufferLength)
+            RtlZeroMemory(Buffer, BufferLength * sizeof(WCHAR));
+        return Length + 1;
+    }
+
+    RtlCopyMemory(Buffer, SystemTemp, (Length + 1) * sizeof(WCHAR));
+    return Length;
+}
+
+/**
+ * @brief
+ * ANSI version of GetTempPath2W.
+ */
+DWORD
+WINAPI
+GetTempPath2A(
+    _In_ DWORD BufferLength,
+    _Out_writes_to_opt_(BufferLength, return + 1) LPSTR Buffer)
+{
+    WCHAR BufferW[MAX_PATH];
+    DWORD Length;
+
+    Length = GetTempPath2W(MAX_PATH, BufferW);
+    if (!Length)
+        return 0;
+
+    if (Length > MAX_PATH)
+    {
+        SetLastError(ERROR_FILENAME_EXCED_RANGE);
+        return 0;
+    }
+
+    return FilenameW2A_FitOrFail(Buffer, BufferLength, BufferW, Length + 1);
+}
+
 /*
  * @implemented
  */
