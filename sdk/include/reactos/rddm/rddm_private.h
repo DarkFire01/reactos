@@ -8,6 +8,17 @@
 #pragma once
 
 /*
+ * The Windows graphics kernel win32k drives: dxgkrnl.sys, watchdog.sys and cdd.dll from either
+ * Windows 10 1607 or Windows 11. Every table win32k shares with them differs between the two.
+ */
+#define DXGKRNL_TARGET_1607     1607
+#define DXGKRNL_TARGET_WIN11    2600
+
+#ifndef DXGKRNL_TARGET
+#define DXGKRNL_TARGET          DXGKRNL_TARGET_WIN11
+#endif
+
+/*
  * Create an IO request to fill out the function pointer list.
  *
  * A WDDM miniport's DriverEntry calls DxgkInitialize, which is not an export but an inline stub in
