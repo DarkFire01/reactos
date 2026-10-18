@@ -711,12 +711,16 @@ MmMapLockedPagesSpecifyCache(IN PMDL Mdl,
         LastPage = MdlPages + PageCount;
 
         //
-        // Sanity checks
+        // Sanity checks. Windows maps such an MDL a second time instead of failing, and
+        // drivers rely on it, so only report it
         //
-        ASSERT((Mdl->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA |
-                                 MDL_SOURCE_IS_NONPAGED_POOL |
-                                 MDL_PARTIAL_HAS_BEEN_MAPPED)) == 0);
-        ASSERT((Mdl->MdlFlags & (MDL_PAGES_LOCKED | MDL_PARTIAL)) != 0);
+        if ((Mdl->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA |
+                              MDL_SOURCE_IS_NONPAGED_POOL |
+                              MDL_PARTIAL_HAS_BEEN_MAPPED)) ||
+            !(Mdl->MdlFlags & (MDL_PAGES_LOCKED | MDL_PARTIAL | MDL_SOURCE_IS_NONPAGED_POOL)))
+        {
+            DPRINT1("Mapping MDL %p with unexpected flags 0x%x\n", Mdl, Mdl->MdlFlags);
+        }
 
         //
         // Get the correct cache type
@@ -800,7 +804,6 @@ MmMapLockedPagesSpecifyCache(IN PMDL Mdl,
         //
         // Mark it as mapped
         //
-        ASSERT((Mdl->MdlFlags & MDL_MAPPED_TO_SYSTEM_VA) == 0);
         Mdl->MappedSystemVa = Base;
         Mdl->MdlFlags |= MDL_MAPPED_TO_SYSTEM_VA;
 
