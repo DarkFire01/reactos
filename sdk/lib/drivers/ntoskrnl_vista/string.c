@@ -182,6 +182,63 @@ memcpy_s(
 
 /**
  * @brief
+ * Appends a string to the one already in a buffer of known size.
+ *
+ * @param[in,out] Destination
+ * The null terminated string to append to.
+ *
+ * @param[in] DestinationSize
+ * Size of @p Destination, in characters.
+ *
+ * @param[in] Source
+ * The string to append.
+ *
+ * @return
+ * Zero on success, EINVAL or ERANGE otherwise. On failure the destination is
+ * left empty whenever there is one.
+ */
+errno_t
+__cdecl
+strcat_s(
+    char *Destination,
+    rsize_t DestinationSize,
+    const char *Source)
+{
+    rsize_t Length = 0;
+    rsize_t Index;
+
+    if (Destination == NULL || DestinationSize == 0)
+        return EINVAL;
+
+    if (Source == NULL)
+    {
+        Destination[0] = '\0';
+        return EINVAL;
+    }
+
+    while (Length < DestinationSize && Destination[Length] != '\0')
+        Length++;
+
+    /* The destination was never terminated inside its buffer */
+    if (Length == DestinationSize)
+    {
+        Destination[0] = '\0';
+        return EINVAL;
+    }
+
+    for (Index = 0; Length + Index < DestinationSize; Index++)
+    {
+        Destination[Length + Index] = Source[Index];
+        if (Source[Index] == '\0')
+            return 0;
+    }
+
+    Destination[0] = '\0';
+    return ERANGE;
+}
+
+/**
+ * @brief
  * Copies at most @p Count characters of a string and always terminates the
  * result.
  *

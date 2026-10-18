@@ -291,6 +291,13 @@ memcpy_s(
 
 errno_t
 __cdecl
+strcat_s(
+    char *Destination,
+    rsize_t DestinationSize,
+    const char *Source);
+
+errno_t
+__cdecl
 strncpy_s(
     char *Destination,
     rsize_t DestinationSize,
