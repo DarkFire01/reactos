@@ -57,7 +57,7 @@
 @ stdcall -stub -version=0x600+ CallbackMayRunLong(ptr)
 @ stdcall CancelDeviceWakeupRequest(long)
 @ stdcall CancelIo(long)
-@ stdcall -stub -version=0x600+ CancelIoEx(ptr ptr)
+@ stdcall -version=0x600+ CancelIoEx(ptr ptr)
 @ stdcall -stub -version=0x600+ CancelSynchronousIo(ptr)
 @ stdcall -version=0x600+ CancelThreadpoolIo(ptr) ntdll.TpCancelAsyncIoOperation
 @ stdcall CancelTimerQueueTimer(long long)
@@ -333,7 +333,7 @@
 @ stdcall FlushConsoleInputBuffer(long)
 @ stdcall FlushFileBuffers(long)
 @ stdcall FlushInstructionCache(long long long)
-@ stub -version=0x600+ FlushProcessWriteBuffers
+@ stdcall -version=0x600+ FlushProcessWriteBuffers() ntdll.NtFlushProcessWriteBuffers
 @ stdcall FlushViewOfFile(ptr long)
 @ stdcall FoldStringA(long str long ptr long)
 @ stdcall FoldStringW(long wstr long ptr long)
@@ -344,7 +344,7 @@
 @ stdcall FreeEnvironmentStringsW(ptr)
 @ stdcall FreeLibrary(long)
 @ stdcall FreeLibraryAndExitThread(long long)
-@ stub -version=0x600+ FreeLibraryWhenCallbackReturns
+@ stdcall -version=0x600+ FreeLibraryWhenCallbackReturns(ptr ptr) ntdll.TpCallbackUnloadDllOnCompletion
 @ stdcall FreeResource(long)
 @ stdcall FreeUserPhysicalPages(long long long)
 @ stdcall GenerateConsoleCtrlEvent(long long)
