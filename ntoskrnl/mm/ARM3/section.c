@@ -18,6 +18,10 @@
 /* The low bits of the section attributes name a preferred NUMA node, counted from 1 */
 #define MI_SECTION_NODE_MASK    0x7F
 
+#ifndef SEC_PARTITION_OWNER_HANDLE
+#define SEC_PARTITION_OWNER_HANDLE  0x00040000
+#endif
+
 /* GLOBALS ********************************************************************/
 
 ACCESS_MASK MmMakeSectionAccess[8] =
@@ -2846,6 +2850,16 @@ MmCreateSection(OUT PVOID *SectionObject,
         return STATUS_INVALID_PARAMETER_6;
 
     AllocationAttributes &= ~MI_SECTION_NODE_MASK;
+
+    /* The handle can name the partition that owns the pages, and there is only the system one */
+    if (AllocationAttributes & SEC_PARTITION_OWNER_HANDLE)
+    {
+        if (FileObject || (AllocationAttributes & SEC_IMAGE))
+            return STATUS_INVALID_PARAMETER_6;
+
+        AllocationAttributes &= ~SEC_PARTITION_OWNER_HANDLE;
+        FileHandle = NULL;
+    }
 
     /* Make the same sanity checks that the Nt interface should've validated */
     ASSERT((AllocationAttributes & ~(SEC_COMMIT | SEC_RESERVE | SEC_BASED |
