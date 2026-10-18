@@ -5,6 +5,7 @@
 @ stdcall AddAtomW(wstr)
 @ stdcall AddConsoleAliasA(str str str) ;check
 @ stdcall AddConsoleAliasW(wstr wstr wstr) ;check
+@ stdcall -version=0x602+ AddDllDirectory(wstr)
 @ stdcall AddLocalAlternateComputerNameA(str ptr)
 @ stdcall AddLocalAlternateComputerNameW(wstr ptr)
 @ stdcall AddRefActCtx(ptr)
@@ -969,6 +970,7 @@
 @ stub -version=0x600+ RemoveDirectoryTransactedA
 @ stub -version=0x600+ RemoveDirectoryTransactedW
 @ stdcall RemoveDirectoryW(wstr)
+@ stdcall -version=0x602+ RemoveDllDirectory(ptr)
 @ stdcall RemoveLocalAlternateComputerNameA(str long)
 @ stdcall RemoveLocalAlternateComputerNameW(wstr long)
 @ stub -version=0x600+ RemoveSecureMemoryCacheCallback
@@ -1057,6 +1059,7 @@
 @ stdcall SetCurrentDirectoryW(wstr)
 @ stdcall SetDefaultCommConfigA(str ptr long)
 @ stdcall SetDefaultCommConfigW(wstr ptr long)
+@ stdcall -version=0x602+ SetDefaultDllDirectories(long)
 @ stdcall SetDllDirectoryA(str)
 @ stdcall SetDllDirectoryW(wstr)
 @ stub -version=0x600+ SetDynamicTimeZoneInformation
