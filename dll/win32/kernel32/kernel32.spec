@@ -477,6 +477,8 @@
 @ stub -version=0x600+ GetDurationFormat
 @ stub -version=0x600+ GetDurationFormatEx
 @ stdcall -version=0x600+ GetDynamicTimeZoneInformation(ptr)
+@ stdcall -version=0x600+ GetDynamicTimeZoneInformationEffectiveYears(ptr ptr ptr)
+@ stdcall -version=0x601+ GetEnabledXStateFeatures()
 @ stdcall GetEnvironmentStrings()
 @ stdcall GetEnvironmentStringsA() GetEnvironmentStrings
 @ stdcall GetEnvironmentStringsW()
@@ -532,6 +534,7 @@
 @ stdcall -version=0x602+ GetPackagesByPackageFamily(wstr ptr ptr ptr ptr)
 @ stdcall -version=0xA00+ GetTempPath2A(long ptr)
 @ stdcall -version=0xA00+ GetTempPath2W(long ptr)
+@ stdcall -version=0x601+ GetXStateFeaturesMask(ptr ptr)
 @ stdcall -version=0x600+ IsValidLocaleName(wstr)
 @ stdcall -version=0x602+ IsValidNLSVersion(long wstr ptr)
 @ stdcall GetLogicalDriveStringsA(long ptr)
@@ -831,6 +834,7 @@
 @ stdcall LCMapStringA(long long str long ptr long)
 @ stdcall -version=0x600+ LCMapStringEx(long long wstr long ptr long ptr ptr long)
 @ stdcall LCMapStringW(long long wstr long ptr long)
+@ stdcall -version=0x601+ LocateXStateFeature(ptr long ptr)
 @ stdcall LZClose(long)
 @ stdcall LZCloseFile(long)
 @ stdcall LZCopy(long long)

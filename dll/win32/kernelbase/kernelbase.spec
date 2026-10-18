@@ -522,12 +522,12 @@
 @ stdcall GetDriveTypeA(str)
 @ stdcall GetDriveTypeW(wstr)
 # @ stub GetDurationFormatEx
-@ stdcall GetDynamicTimeZoneInformation(ptr)
-@ stdcall GetDynamicTimeZoneInformationEffectiveYears(ptr ptr ptr)
+@ stdcall -version=0x600+ GetDynamicTimeZoneInformation(ptr)
+@ stdcall -version=0x600+ GetDynamicTimeZoneInformationEffectiveYears(ptr ptr ptr)
 # @ stub GetEffectivePackageStatusForUser
 # @ stub GetEightBitStringToUnicodeSizeRoutine
 # @ stub GetEightBitStringToUnicodeStringRoutine
-@ stdcall -version=0x601+ -ret64 -arch=i386,x86_64 GetEnabledXStateFeatures()
+@ stdcall -version=0x601+ GetEnabledXStateFeatures()
 @ stdcall GetEnvironmentStrings()
 @ stdcall GetEnvironmentStringsA() GetEnvironmentStrings
 @ stdcall GetEnvironmentStringsW()
@@ -805,7 +805,7 @@
 @ stdcall GetWriteWatch(long ptr long ptr ptr ptr)
 @ stdcall GetWsChanges(long ptr long)
 @ stdcall GetWsChangesEx(long ptr ptr)
-@ stdcall -version=0x601+ -arch=i386,x86_64 GetXStateFeaturesMask(ptr ptr)
+@ stdcall -version=0x601+ GetXStateFeaturesMask(ptr ptr)
 @ stdcall GlobalAlloc(long long)
 @ stdcall GlobalFree(long)
 @ stdcall GlobalMemoryStatusEx(ptr)
@@ -982,7 +982,7 @@
 @ stdcall LocalReAlloc(long long long)
 @ stdcall LocalUnlock(long)
 @ stdcall LocaleNameToLCID(wstr long)
-@ stdcall -version=0x601+ -arch=i386,x86_64 LocateXStateFeature(ptr long ptr)
+@ stdcall -version=0x601+ LocateXStateFeature(ptr long ptr)
 @ stdcall LockFile(long long long long long)
 @ stdcall LockFileEx(long long long long long ptr)
 @ stdcall LockResource(long)
