@@ -482,7 +482,12 @@ HalpGrowMapBuffers(IN PADAPTER_OBJECT AdapterObject,
     HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
     LowestAcceptableAddress.HighPart = 0;
     LowestAcceptableAddress.LowPart = HighestAcceptableAddress.LowPart == 0xFFFFFFFF ? 0x1000000 : 0;
-    BoundryAddressMultiple.QuadPart = 0;
+
+    /*
+     * A buffer crossing a 64Kb line gets a free entry in the middle below, and a request
+     * for all of its registers could then never be served. Keep small ones within one.
+     */
+    BoundryAddressMultiple.QuadPart = (MapRegisterCount <= (0x10000 >> PAGE_SHIFT)) ? 0x10000 : 0;
 
     VirtualAddress = MmAllocateContiguousMemorySpecifyCache(MapRegisterCount << PAGE_SHIFT,
                                                             LowestAcceptableAddress,
