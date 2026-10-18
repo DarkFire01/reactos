@@ -15,6 +15,7 @@ list(APPEND SOURCE
     GetNamedPipeClientProcessId.c
     GetTickCount64.c
     InitOnce.c
+    SetFileInformationByHandle.c
     sync.c
     ThreadDescription.c
     threadpool.c
