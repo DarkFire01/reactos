@@ -1200,11 +1200,14 @@ NtGdiDdDDIPollDisplayChildren(_In_ const D3DKMT_POLLDISPLAYCHILDREN* unnamedPara
     return pfn((PVOID)unnamedParam1);
 }
 
+/* dxgkrnl's present also takes whether GDI owns the display, it reports occlusion otherwise */
+typedef NTSTATUS (NTAPI *PFN_DXGK_PRESENT)(_In_ D3DKMT_PRESENT *, _In_ BOOL);
+
 NTSTATUS
 APIENTRY
 NtGdiDdDDIPresent(_In_ D3DKMT_PRESENT* unnamedParam1)
 {
-    PFN_DXGK_D3DKMT pfn;
+    PFN_DXGK_PRESENT pfn;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
@@ -1212,14 +1215,15 @@ NtGdiDdDDIPresent(_In_ D3DKMT_PRESENT* unnamedParam1)
     if (DxgAdapterCallbacks.RxgkIntPfnPresent)
         return DxgAdapterCallbacks.RxgkIntPfnPresent(unnamedParam1);
 
-    pfn = DxgkGetD3DKMTSlot(DXGK_SLOT_Present);
+    pfn = (PFN_DXGK_PRESENT)DxgkGetD3DKMTSlot(DXGK_SLOT_Present);
     if (pfn == NULL)
     {
         DXGKMT_TRACE_NOPROC("Present");
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    /* GDI is never powered off here, so it always owns the display */
+    return pfn(unnamedParam1, TRUE);
 }
 
 NTSTATUS
