@@ -1657,9 +1657,10 @@ MiQueryAddressState(IN PVOID Va,
         return MEM_COMMIT;
     }
 
-    /* Only normal and image VADs supported */
+    /* Only normal, image and rotate VADs supported */
     ASSERT((Vad->u.VadFlags.VadType == VadNone) ||
-           (Vad->u.VadFlags.VadType == VadImageMap));
+           (Vad->u.VadFlags.VadType == VadImageMap) ||
+           (Vad->u.VadFlags.VadType == VadRotatePhysical));
 
     /* Get the PDE and PTE for the address */
     PointerPde = MiAddressToPde(Va);
