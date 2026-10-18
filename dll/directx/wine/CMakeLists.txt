@@ -5,6 +5,14 @@ if (MSVC)
     add_compile_options(/wd4090 /wd4146)
 endif()
 
+# A native DirectX runtime slipstreamed under modules/ takes the place of Wine's DLL of the same
+# name on the CD; Wine's still builds, since other Wine modules link against it.
+if(ARCH STREQUAL "amd64")
+    set(WINE_DIRECTX_SLIPSTREAM ${REACTOS_SOURCE_DIR}/modules/x64/system32)
+else()
+    set(WINE_DIRECTX_SLIPSTREAM ${REACTOS_SOURCE_DIR}/modules/x86/system32)
+endif()
+
 set(VKD3D_INCLUDE_DIRS
     ${REACTOS_SOURCE_DIR}/sdk/lib/vkd3d/include
     ${REACTOS_SOURCE_DIR}/sdk/lib/vkd3d/include/private)
