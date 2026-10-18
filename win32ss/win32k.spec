@@ -166,6 +166,16 @@
 @ stdcall EngSubtractRgn(ptr ptr ptr)
 @ stdcall EngUnionRgn(ptr ptr ptr)
 @ stdcall EngXorRgn(ptr ptr ptr)
+@ stdcall CddEngCombineRgn(ptr ptr ptr long)
+@ stdcall CddEngCopyRgn(ptr ptr)
+@ stdcall CddEngCreateRectRgn(long long long long) EngCreateRectRgn
+@ stdcall CddEngDeleteRgn(ptr) EngDeleteRgn
+@ stdcall CddEngEqualRgn(ptr ptr) EngEqualRgn
+@ stdcall CddEngGetRgnBox(ptr ptr) EngGetRgnBox
+@ stdcall CddEngGetRgnData(ptr long ptr) EngGetRgnData
+@ stdcall CddEngOffsetRgn(ptr long long) EngOffsetRgn
+@ stdcall CddEngRectInRgn(ptr ptr) EngRectInRgn
+@ stdcall CddEngSetRectRgn(ptr long long long long) EngSetRectRgn
 @ stdcall W32GetSessionState()
 @ stdcall -arch=i386 FLOATOBJ_Add(ptr ptr)
 @ stdcall -arch=i386 FLOATOBJ_AddFloat(ptr long)
