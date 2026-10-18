@@ -10,6 +10,10 @@
 #define NDEBUG
 #include <debug.h>
 
+/* The DirectX share semaphore, see reactx/ntddraw/dxeng.c */
+BOOLEAN NTAPI DxEngLockShareSem(VOID);
+BOOLEAN NTAPI DxEngUnlockShareSem(VOID);
+
 /* Slot order comes from the 14361 win32kbase PDB, and dxgkrnl indexes it by offset */
 typedef struct _DXGKWIN32KENG_INTERFACE
 {
@@ -115,40 +119,45 @@ DxgkEngVisRgnUniq(VOID)
     return gulVisRgnUniq;
 }
 
-/* Nothing here hands out a window's visible region yet */
+/* The device the DC draws on, which the caller holds on to while it reads the region */
 static
-HANDLE
+PVOID
 APIENTRY
 DxgkEngLockVisRgn(
     _In_ HDC hdc)
 {
-    UNIMPLEMENTED_ONCE;
+    PVOID ppdev = NULL;
+    PDC pdc;
 
-    UNREFERENCED_PARAMETER(hdc);
+    pdc = DC_LockDc(hdc);
+    if (pdc != NULL)
+    {
+        ppdev = pdc->ppdev;
+        DC_UnlockDc(pdc);
+    }
 
-    return NULL;
+    return ppdev;
 }
 
 static
 VOID
 APIENTRY
 DxgkEngUnlockVisRgn(
-    _In_ HANDLE hrgn)
+    _In_ PVOID ppdev)
 {
-    UNIMPLEMENTED_ONCE;
-
-    UNREFERENCED_PARAMETER(hrgn);
+    UNREFERENCED_PARAMETER(ppdev);
 }
 
 static
 VOID
 APIENTRY
 DxgkEngEnterUserCrit(
-    _In_ LONG Flags)
+    _In_ BOOL bExclusive)
 {
-    UNIMPLEMENTED_ONCE;
-
-    UNREFERENCED_PARAMETER(Flags);
+    if (bExclusive)
+        UserEnterExclusive();
+    else
+        UserEnterShared();
 }
 
 static
@@ -156,23 +165,41 @@ VOID
 APIENTRY
 DxgkEngLeaveUserCrit(VOID)
 {
-    UNIMPLEMENTED_ONCE;
+    UserLeave();
 }
 
+/**
+ * @brief The client area DC of a window that is being presented to.
+ *
+ * @param hwnd The window.
+ * @param phFullscreenDC Optionally receives a DC over the whole display the window is on.
+ *
+ * @return The window DC, NULL on failure.
+ */
 static
 HDC
 APIENTRY
 DxgkEngGetDC(
     _In_ HWND hwnd,
-    _Out_ HDC *phdc)
+    _Out_opt_ HDC *phFullscreenDC)
 {
-    UNIMPLEMENTED_ONCE;
+    HDC hdc;
 
-    UNREFERENCED_PARAMETER(hwnd);
+    if (phFullscreenDC != NULL)
+        *phFullscreenDC = NULL;
 
-    if (phdc != NULL)
-        *phdc = NULL;
+    hdc = NtUserGetDC(hwnd);
+    if ((hdc == NULL) || (phFullscreenDC == NULL))
+        return hdc;
 
+    /* There is a single display device, so the primary's DC covers the window */
+    *phFullscreenDC = IntGdiCreateDC(NULL, NULL, NULL, NULL, FALSE);
+    if (*phFullscreenDC != NULL)
+        return hdc;
+
+    UserEnterExclusive();
+    UserReleaseDC(NULL, hdc, FALSE);
+    UserLeave();
     return NULL;
 }
 
@@ -192,31 +219,38 @@ BOOL
 APIENTRY
 DxgkEngReleaseDC(
     _In_ HDC hdc,
-    _In_ HDC hdcRedirected)
+    _In_opt_ HDC hFullscreenDC)
 {
-    UNIMPLEMENTED_ONCE;
+    INT iResult;
 
-    UNREFERENCED_PARAMETER(hdc);
-    UNREFERENCED_PARAMETER(hdcRedirected);
+    if (hFullscreenDC != NULL)
+        return IntGdiDeleteDC(hFullscreenDC, TRUE);
 
-    return FALSE;
+    UserEnterExclusive();
+    iResult = UserReleaseDC(NULL, hdc, FALSE);
+    UserLeave();
+
+    return (iResult != 0);
 }
 
+/* The screen rectangle the DC draws into, the client area for a window DC */
 static
-LONG
+BOOL
 APIENTRY
 DxgkEngGetClientRect(
     _In_ HDC hdc,
     _Out_ LPRECT prcl)
 {
-    UNIMPLEMENTED_ONCE;
+    PDC pdc;
 
-    UNREFERENCED_PARAMETER(hdc);
+    pdc = DC_LockDc(hdc);
+    if (pdc == NULL)
+        return FALSE;
 
-    if (prcl != NULL)
-        RtlZeroMemory(prcl, sizeof(*prcl));
+    *prcl = *(LPRECT)&pdc->erclWindow;
+    DC_UnlockDc(pdc);
 
-    return 0;
+    return TRUE;
 }
 
 static
@@ -231,21 +265,50 @@ DxgkEngCreateRectRgn(
     return EngCreateRectRgn(left, top, right, bottom);
 }
 
+/**
+ * @brief Copy one of a DC's regions into a region dxgkrnl created.
+ *
+ * @param hdc The DC.
+ * @param hrgn Receives the region, in screen coordinates for the system region.
+ * @param iCode Which region, as GetRandomRgn takes it.
+ *
+ * @return 1 when copied, 0 when the DC has no such region, -1 on failure.
+ */
 static
-LONG
+INT
 APIENTRY
 DxgkEngGetVisRgn(
     _In_ HDC hdc,
     _In_ HANDLE hrgn,
-    _In_ BOOL bClient)
+    _In_ INT iCode)
 {
-    UNIMPLEMENTED_ONCE;
+    PDC pdc;
+    PREGION prgnDest;
+    INT iResult = -1;
 
-    UNREFERENCED_PARAMETER(hdc);
-    UNREFERENCED_PARAMETER(hrgn);
-    UNREFERENCED_PARAMETER(bClient);
+    /* 5 asks for the system region too, without the offset of a redirected window */
+    if ((iCode != SYSRGN) && (iCode != SYSRGN + 1))
+        return NtGdiGetRandomRgn(hdc, hrgn, iCode);
 
-    return 0;
+    pdc = DC_LockDc(hdc);
+    if (pdc == NULL)
+        return -1;
+
+    prgnDest = (PREGION)GDIOBJ_ReferenceObjectByHandle(hrgn, GDIObjType_RGN_TYPE);
+    if (prgnDest != NULL)
+    {
+        /* The DC keeps its visible region relative to its origin */
+        if ((IntGdiCombineRgn(prgnDest, pdc->prgnVis, NULL, RGN_COPY) != ERROR) &&
+            REGION_bOffsetRgn(prgnDest, pdc->ptlDCOrig.x, pdc->ptlDCOrig.y))
+        {
+            iResult = 1;
+        }
+
+        GDIOBJ_vDereferenceObject(&prgnDest->BaseObject);
+    }
+
+    DC_UnlockDc(pdc);
+    return iResult;
 }
 
 static
@@ -384,21 +447,19 @@ DxgkEngColorFillViaGDI(
 }
 
 static
-LONG
+BOOL
 APIENTRY
 DxgkEngLockShareSem(VOID)
 {
-    UNIMPLEMENTED_ONCE;
-    return 0;
+    return DxEngLockShareSem();
 }
 
 static
-LONG
+BOOL
 APIENTRY
 DxgkEngUnlockShareSem(VOID)
 {
-    UNIMPLEMENTED_ONCE;
-    return 0;
+    return DxEngUnlockShareSem();
 }
 
 static
@@ -544,15 +605,16 @@ DxgkEngRefPresentHistoryToken(
     return 0;
 }
 
+/* Window positions, and so every visible region, only change under the user lock */
 static
 VOID
 APIENTRY
 DxgkEngAcquireStableVisRgn(
     _In_ HDC hdc)
 {
-    UNIMPLEMENTED_ONCE;
-
     UNREFERENCED_PARAMETER(hdc);
+
+    UserEnterShared();
 }
 
 static
@@ -560,20 +622,19 @@ VOID
 APIENTRY
 DxgkEngReleaseStableVisRgn(VOID)
 {
-    UNIMPLEMENTED_ONCE;
+    UserLeave();
 }
 
+/* GDI draws no sprites over a present, there is nothing to hold still */
 static
 VOID
 APIENTRY
 DxgkEngAcquireStableSprite(
     _In_ PVOID pvDev,
-    _In_ LONG lFlags)
+    _In_ BOOL bAcquireSpriteState)
 {
-    UNIMPLEMENTED_ONCE;
-
     UNREFERENCED_PARAMETER(pvDev);
-    UNREFERENCED_PARAMETER(lFlags);
+    UNREFERENCED_PARAMETER(bAcquireSpriteState);
 }
 
 static
@@ -581,25 +642,22 @@ VOID
 APIENTRY
 DxgkEngReleaseStableSprite(
     _In_ PVOID pvDev,
-    _In_ LONG lFlags)
+    _In_ BOOL bReleaseSpriteState)
 {
-    UNIMPLEMENTED_ONCE;
-
     UNREFERENCED_PARAMETER(pvDev);
-    UNREFERENCED_PARAMETER(lFlags);
+    UNREFERENCED_PARAMETER(bReleaseSpriteState);
 }
 
+/* Nothing reports visible region changes yet, dxgkrnl rereads the region every present */
 static
 VOID
 APIENTRY
 DxgkEngWatchVisRgnChange(
     _In_ HDC hdc,
-    _In_ LONG lWatch)
+    _In_ BOOL bEnable)
 {
-    UNIMPLEMENTED_ONCE;
-
     UNREFERENCED_PARAMETER(hdc);
-    UNREFERENCED_PARAMETER(lWatch);
+    UNREFERENCED_PARAMETER(bEnable);
 }
 
 static
@@ -648,21 +706,20 @@ DxgkEngQuerySwapChainBindingStatus(
     return 0;
 }
 
+/* No window is redirected without a compositor */
 static
-LONG
+BOOL
 APIENTRY
 DxgkEngGetRedirectedWindowOrigin(
     _In_ HDC hdc,
     _Out_ PPOINT ppt)
 {
-    UNIMPLEMENTED_ONCE;
-
     UNREFERENCED_PARAMETER(hdc);
 
     if (ppt != NULL)
         RtlZeroMemory(ppt, sizeof(*ppt));
 
-    return 0;
+    return FALSE;
 }
 
 /**
