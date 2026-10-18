@@ -64,9 +64,9 @@ HKCU,"Control Panel\Desktop","ScreenSaverIsSecure",2,"1"
 HKCU,"Control Panel\Desktop","ScreenSaveTimeOut",2,"600"
 HKCU,"Control Panel\Desktop","WaitToKillAppTimeout",2,"20000"
 HKCU,"Control Panel\Desktop","Pattern",2,"(None)"
-HKCU,"Control Panel\Desktop","Wallpaper",0x00000002,""
+HKCU,"Control Panel\Desktop","Wallpaper",0x00000002,"%SystemRoot%\Web\Wallpaper\Horizon.bmp"
 HKCU,"Control Panel\Desktop","TileWallpaper",2,"0"
-HKCU,"Control Panel\Desktop","WallpaperStyle",2,"2"
+HKCU,"Control Panel\Desktop","WallpaperStyle",2,"10"
 HKCU,"Control Panel\Desktop","FontSmoothing",2,"0"
 HKCU,"Control Panel\Desktop","FontSmoothingOrientation",0x00010003,0x00000001
 HKCU,"Control Panel\Desktop","FontSmoothingType",0x00010003,0x00000001
@@ -217,6 +217,12 @@ HKCU,"Control Panel\PowerCfg\PowerPolicies\5","Policies",0x00030003,01,00,00,00,
 00,00,01,00,00,00,00,00,00,00,02,00,00,00,05,00,00,00,00,00,00,00,B0,04,00,00,78,00,\
 00,00,32,32,03,02,04,00,00,00,04,00,00,00,00,00,00,00,00,00,00,00,84,03,00,00,3C,00,\
 00,00,00,00,00,00,B4,00,00,00,01,01,64,32,64,64,00,00
+
+; Visual style
+HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","ThemeActive",2,"1"
+HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","DllName",0x00020002,"%SystemRoot%\Resources\Themes\Horizon\Horizon.msstyles"
+HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","ColorName",2,"NormalColor"
+HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","SizeName",2,"NormalSize"
 
 ; Color schemes
 HKCU,"Control Panel\Current","Color Schemes",0x00020000,"%DESKTOP_SCHEME_0%"
