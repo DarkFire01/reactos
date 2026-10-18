@@ -2452,8 +2452,24 @@ QSI_DEF(SystemSessionProcessInformation)
 /* Class 54 - Load & map in system space */
 SSI_DEF(SystemLoadGdiDriverInSystemSpace)
 {
-    /* Similar to SystemLoadGdiDriverInformation */
-    return SSI_USE(SystemLoadGdiDriverInformation)(Buffer, Size);
+    SYSTEM_GDI_DRIVER_INFORMATION DriverInfo;
+    NTSTATUS Status;
+
+    /* Newer callers leave out the image length at the end */
+    if (Size != FIELD_OFFSET(SYSTEM_GDI_DRIVER_INFORMATION, ImageLength))
+    {
+        /* Similar to SystemLoadGdiDriverInformation */
+        return SSI_USE(SystemLoadGdiDriverInformation)(Buffer, Size);
+    }
+
+    RtlZeroMemory(&DriverInfo, sizeof(DriverInfo));
+    RtlCopyMemory(&DriverInfo, Buffer, Size);
+
+    Status = SSI_USE(SystemLoadGdiDriverInformation)(&DriverInfo, sizeof(DriverInfo));
+    if (NT_SUCCESS(Status))
+        RtlCopyMemory(Buffer, &DriverInfo, Size);
+
+    return Status;
 }
 
 /* Class 55 - NUMA processor information */
