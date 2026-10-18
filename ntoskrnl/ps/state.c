@@ -221,6 +221,66 @@ NtAlertThread(IN HANDLE ThreadHandle)
     return Status;
 }
 
+/**
+ * @brief Wakes a thread of the calling process that waits in
+ *        NtWaitForAlertByThreadId, or makes its next such wait return at once.
+ */
+NTSTATUS
+NTAPI
+NtAlertThreadByThreadId(
+    _In_ HANDLE ThreadId)
+{
+    PETHREAD Thread;
+    NTSTATUS Status;
+
+    Status = PsLookupThreadByThreadId(ThreadId, &Thread);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (Thread->ThreadsProcess == PsGetCurrentThread()->ThreadsProcess)
+        KiAlertThreadById(&Thread->Tcb);
+    else
+        Status = STATUS_ACCESS_DENIED;
+
+    ObDereferenceObject(Thread);
+    return Status;
+}
+
+/**
+ * @brief Sleeps until NtAlertThreadByThreadId targets the calling thread.
+ *
+ * @param Address Caller supplied hint, not used to match the alert.
+ *
+ * @return STATUS_ALERTED, STATUS_TIMEOUT or STATUS_USER_APC.
+ */
+NTSTATUS
+NTAPI
+NtWaitForAlertByThreadId(
+    _In_opt_ PVOID Address,
+    _In_opt_ PLARGE_INTEGER Timeout)
+{
+    KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+    LARGE_INTEGER SafeTimeout;
+
+    UNREFERENCED_PARAMETER(Address);
+
+    if (Timeout && (PreviousMode != KernelMode))
+    {
+        _SEH2_TRY
+        {
+            SafeTimeout = ProbeForReadLargeInteger(Timeout);
+            Timeout = &SafeTimeout;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    return KiWaitForIdAlert(PreviousMode, Timeout);
+}
+
 NTSTATUS
 NTAPI
 NtAlertResumeThread(IN HANDLE ThreadHandle,

@@ -1507,9 +1507,11 @@ typedef struct _KTHREAD
                     ULONG ApcQueueable:1;
                     ULONG EnableStackSwap:1;
                     ULONG GuiThread:1;
-                    ULONG ReservedFlags:23;
+                    ULONG AlertedByThreadId:1;
+                    ULONG ReservedFlags:22;
 #else // ][
-                    LONG ReservedFlags:30;
+                    ULONG AlertedByThreadId:1;
+                    LONG ReservedFlags:29;
 #endif // ]
                 };
                 LONG ThreadFlags;

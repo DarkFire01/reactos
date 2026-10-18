@@ -48,6 +48,7 @@ list(APPEND SOURCE
     NtAccessCheckByTypeResultList.c
     NtAdjustGroupsToken.c
     NtAdjustPrivilegesToken.c
+    NtAlertThreadByThreadId.c
     NtAllocateVirtualMemory.c
     NtApphelpCacheControl.c
     NtCompareTokens.c
