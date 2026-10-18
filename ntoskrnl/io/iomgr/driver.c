@@ -1792,6 +1792,9 @@ try_again:
         }
     }
 
+    /* The devices it created during init can be opened now */
+    IopReadyDeviceObjects(DriverObject);
+
     /* Return the Status */
     return Status;
 }
