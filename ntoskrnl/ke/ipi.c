@@ -416,3 +416,32 @@ KiIpiSendRequest(
 }
 
 #endif // !_M_AMD64
+
+static
+ULONG_PTR
+NTAPI
+KiFlushWriteBuffersWorker(
+    _In_ ULONG_PTR Argument)
+{
+    UNREFERENCED_PARAMETER(Argument);
+
+    KeMemoryBarrier();
+    return 0;
+}
+
+/**
+ * @brief
+ * Makes the writes of every thread in the calling process visible to all
+ * processors.
+ *
+ * @remarks
+ * Only the processors running the process need the barrier, every processor
+ * gets it here, which gives the same guarantee.
+ */
+NTSTATUS
+NTAPI
+NtFlushProcessWriteBuffers(VOID)
+{
+    KeIpiGenericCall(KiFlushWriteBuffersWorker, 0);
+    return STATUS_SUCCESS;
+}
