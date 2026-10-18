@@ -17,6 +17,7 @@ extern PFN_COUNT MmNumberOfPhysicalPages;
 extern UCHAR MmDisablePagingExecutive;
 extern PFN_NUMBER MmLowestPhysicalPage;
 extern PFN_NUMBER MmHighestPhysicalPage;
+extern BOOLEAN Mm64BitPhysicalAddress;
 extern PFN_NUMBER MmAvailablePages;
 extern PFN_NUMBER MmResidentAvailablePages;
 extern ULONG MmThrottleTop;
