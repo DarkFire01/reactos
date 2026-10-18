@@ -93,6 +93,8 @@ else()
     set(_WINKD_ FALSE CACHE BOOL "Whether to compile with the KD protocol.")
 endif()
 
+option(ENABLE_FFMPEG "Build the Media Foundation DLLs that load FFmpeg at run time" OFF)
+
 cmake_dependent_option(ISAPNP_ENABLE "Whether to enable the ISA PnP support." ON
                        "ARCH STREQUAL i386 AND NOT SARCH STREQUAL xbox" OFF)
 
