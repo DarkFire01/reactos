@@ -75,6 +75,7 @@ IntDwmNotifyWinEvent(
         case EVENT_OBJECT_LOCATIONCHANGE:
         case EVENT_OBJECT_NAMECHANGE:
         case EVENT_OBJECT_STATECHANGE:
+        case EVENT_OBJECT_REORDER:
             break;
 
         default:
