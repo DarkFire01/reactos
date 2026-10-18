@@ -102,6 +102,13 @@ typedef struct _DXGK_GDI_VIEW_INFORMATION
 #define IOCTL_VIDEO_SET_SESSION_USAGE \
 	CTL_CODE( FILE_DEVICE_VIDEO, 0x80A, METHOD_NEITHER, FILE_ANY_ACCESS )
 
+/*
+ * win32k sends this to \Device\cdd when the CDD runs as a driver (INTERNAL_DEVICE_CONTROL).
+ * Irp->UserBuffer receives its DrvEnableDriver.
+ */
+#define IOCTL_VIDEO_QUERY_CDD_ENABLE_DRIVER \
+	CTL_CODE( FILE_DEVICE_VIDEO, 0x801, METHOD_NEITHER, FILE_ANY_ACCESS )
+
 typedef struct _DXGK_SESSION_USAGE
 {
     ULONG Enable;
