@@ -21,7 +21,7 @@
 @ stdcall AddAuditAccessObjectAce(ptr long long long ptr ptr ptr long long)
 @ stdcall AddConsoleAliasA(str str str)
 @ stdcall AddConsoleAliasW(wstr wstr wstr)
-@ stdcall AddDllDirectory(wstr)
+@ stdcall -version=0x602+ AddDllDirectory(wstr)
 @ stdcall AddMandatoryAce(ptr long long long ptr)
 @ stdcall AddRefActCtx(ptr)
 # @ stub AddResourceAttributeAce
@@ -1380,7 +1380,7 @@
 @ stdcall -stub RemapPredefinedHandleInternal(long long)
 @ stdcall RemoveDirectoryA(str)
 @ stdcall RemoveDirectoryW(wstr)
-@ stdcall RemoveDllDirectory(ptr)
+@ stdcall -version=0x602+ RemoveDllDirectory(ptr)
 # @ stub RemovePackageStatus
 # @ stub RemovePackageStatusForUser
 @ stdcall RemoveVectoredContinueHandler(ptr) ntdll.RtlRemoveVectoredContinueHandler
@@ -1473,7 +1473,7 @@
 @ stdcall -stub SetCurrentConsoleFontEx(long long ptr)
 @ stdcall SetCurrentDirectoryA(str)
 @ stdcall SetCurrentDirectoryW(wstr)
-@ stdcall SetDefaultDllDirectories(long)
+@ stdcall -version=0x602+ SetDefaultDllDirectories(long)
 @ stdcall SetDynamicTimeZoneInformation(ptr)
 @ stdcall SetEndOfFile(long)
 @ stdcall SetEnvironmentStringsW(wstr)
