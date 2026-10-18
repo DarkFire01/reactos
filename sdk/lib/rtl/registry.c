@@ -140,10 +140,15 @@ RtlpCallQueryRegistryRoutine(IN PRTL_QUERY_REGISTRY_TABLE QueryTable,
     NTSTATUS Status;
     BOOLEAN FoundExpander = FALSE;
     UNICODE_STRING Source, Destination;
+    ULONG DefaultType = QueryTable->DefaultType;
 
     /* Setup defaults */
     InfoLength = *InfoSize;
     *InfoSize = 0;
+
+    /* With a type check the type the value must have sits in the top byte */
+    if (QueryTable->Flags & RTL_QUERY_REGISTRY_TYPECHECK)
+        DefaultType &= ~(0xFFUL << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT);
 
     /* Check if there's no data */
     if (KeyValueInfo->DataOffset == MAXULONG)
@@ -161,10 +166,10 @@ RtlpCallQueryRegistryRoutine(IN PRTL_QUERY_REGISTRY_TABLE QueryTable,
     /* Check if there's no value or data */
     if ((KeyValueInfo->Type == REG_NONE) ||
         (!(KeyValueInfo->DataLength) &&
-          (KeyValueInfo->Type == QueryTable->DefaultType)))
+          (KeyValueInfo->Type == DefaultType)))
     {
-        /* Check if there's no value */
-        if (QueryTable->DefaultType == REG_NONE)
+        /* Check if there's no value, a default without data is none either */
+        if ((DefaultType == REG_NONE) || !QueryTable->DefaultData)
         {
             /* Return proper status code */
             return (QueryTable->Flags & RTL_QUERY_REGISTRY_REQUIRED) ?
@@ -173,7 +178,7 @@ RtlpCallQueryRegistryRoutine(IN PRTL_QUERY_REGISTRY_TABLE QueryTable,
 
         /* We can setup a default value... capture the defaults */
         Name = (PWCHAR)QueryTable->Name;
-        Type = QueryTable->DefaultType;
+        Type = DefaultType;
         Data = QueryTable->DefaultData;
         Length = QueryTable->DefaultLength;
         if (!Length)
@@ -196,6 +201,13 @@ RtlpCallQueryRegistryRoutine(IN PRTL_QUERY_REGISTRY_TABLE QueryTable,
     }
     else
     {
+        /* A value of another type than the caller expects is refused */
+        if ((QueryTable->Flags & RTL_QUERY_REGISTRY_TYPECHECK) &&
+            (KeyValueInfo->Type != (QueryTable->DefaultType >> RTL_QUERY_REGISTRY_TYPECHECK_SHIFT)))
+        {
+            return STATUS_OBJECT_TYPE_MISMATCH;
+        }
+
         /* Check if we have length */
         if (KeyValueInfo->DataLength)
         {
