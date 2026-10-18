@@ -467,6 +467,9 @@ MiScanMemoryDescriptors(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Save original values of the free descriptor, since it'll be
      * altered by early allocations */
     MxOldFreeDescriptor = *MxFreeDescriptor;
+
+    /* Bus masters that only reach 32 bits need double buffering once memory sits above 4 GB */
+    Mm64BitPhysicalAddress = ((ULONG64)MmHighestPhysicalPage >= (0x100000000ULL >> PAGE_SHIFT));
 }
 
 CODE_SEG("INIT")
