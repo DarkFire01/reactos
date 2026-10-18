@@ -727,7 +727,37 @@ NTAPI
 ExQueueWorkItem(IN PWORK_QUEUE_ITEM WorkItem,
                 IN WORK_QUEUE_TYPE QueueType)
 {
-    PEX_WORK_QUEUE WorkQueue = &ExWorkerQueue[QueueType];
+    PEX_WORK_QUEUE WorkQueue;
+
+    /* Run the Windows 8 queue types on the queue closest in priority */
+    switch ((ULONG)QueueType)
+    {
+        case 3: /* Normal */
+        case 4: /* Background */
+            QueueType = DelayedWorkQueue;
+            break;
+
+        case 5: /* RealTime */
+            QueueType = HyperCriticalWorkQueue;
+            break;
+
+        case 6: /* SuperCritical */
+            QueueType = CriticalWorkQueue;
+            break;
+
+        default:
+            /* Custom priority queues carry the priority above 32 */
+            if ((ULONG)QueueType >= 32)
+            {
+                if (((ULONG)QueueType - 32) >= (8 + EX_CRITICAL_QUEUE_PRIORITY_INCREMENT))
+                    QueueType = CriticalWorkQueue;
+                else
+                    QueueType = DelayedWorkQueue;
+            }
+            break;
+    }
+
+    WorkQueue = &ExWorkerQueue[QueueType];
     ASSERT(QueueType < MaximumWorkQueue);
     ASSERT(WorkItem->List.Flink == NULL);
 
