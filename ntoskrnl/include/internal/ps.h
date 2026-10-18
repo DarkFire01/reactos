@@ -150,6 +150,12 @@ PsShutdownSystem(
 //
 // Utility Routines
 //
+_IRQL_requires_max_(PASSIVE_LEVEL)
+ULONG64
+PsQueryTotalCycleTimeProcess(
+    _Inout_ PEPROCESS Process,
+    _Out_ PULONG64 CycleTimeStamp);
+
 PETHREAD
 NTAPI
 PsGetNextProcessThread(
