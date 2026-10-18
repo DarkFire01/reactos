@@ -895,4 +895,16 @@ SeFastTraverseCheck(
 
 #endif
 
+/* SDDL functions */
+NTSTATUS
+NTAPI
+SepConvertSddlToSecurityDescriptor(
+    _In_ PCUNICODE_STRING Sddl,
+    _Outptr_ PSECURITY_DESCRIPTOR *SecurityDescriptor);
+
+VOID
+NTAPI
+SepFreeSddlSecurityDescriptor(
+    _In_ PSECURITY_DESCRIPTOR SecurityDescriptor);
+
 /* EOF */
