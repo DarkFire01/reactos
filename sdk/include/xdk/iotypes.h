@@ -7668,4 +7668,20 @@ typedef struct _D3COLD_AUX_POWER_AND_TIMING_INTERFACE
     PD3COLD_REQUEST_AUX_POWER RequestAuxPower;
     PD3COLD_REQUEST_PERST_DELAY RequestPerstDelay;
 } D3COLD_AUX_POWER_AND_TIMING_INTERFACE, *PD3COLD_AUX_POWER_AND_TIMING_INTERFACE;
+
+typedef enum _DRIVER_REGKEY_TYPE {
+  DriverRegKeyParameters,
+  DriverRegKeyPersistentState,
+  DriverRegKeySharedPersistentState
+} DRIVER_REGKEY_TYPE, *PDRIVER_REGKEY_TYPE;
+
+typedef enum _DRIVER_DIRECTORY_TYPE {
+  DriverDirectoryImage,
+  DriverDirectoryData,
+  DriverDirectorySharedData
+} DRIVER_DIRECTORY_TYPE, *PDRIVER_DIRECTORY_TYPE;
+
+typedef enum _DEVICE_DIRECTORY_TYPE {
+  DeviceDirectoryData
+} DEVICE_DIRECTORY_TYPE, *PDEVICE_DIRECTORY_TYPE;
 $endif(_WDMDDK_)

@@ -841,3 +841,17 @@ NtFreeVirtualMemory(
 $endif (_NTIFS_)
 #endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
 
+$if (_WDMDDK_)
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+_Must_inspect_result_
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+MmAllocateMdlForIoSpace(
+  _In_reads_(NumberOfEntries) PMM_PHYSICAL_ADDRESS_LIST PhysicalAddressList,
+  _In_ SIZE_T NumberOfEntries,
+  _Out_ PMDL *NewMdl);
+#endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+$endif (_WDMDDK_)
+

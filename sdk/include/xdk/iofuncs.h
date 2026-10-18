@@ -2674,6 +2674,43 @@ IoGetDeviceInterfacePropertyData(
   _Out_ PULONG RequiredSize,
   _Out_ PDEVPROPTYPE Type);
 #endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_VB)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoOpenDriverRegistryKey(
+  _In_ PDRIVER_OBJECT DriverObject,
+  _In_ DRIVER_REGKEY_TYPE RegKeyType,
+  _In_ ACCESS_MASK DesiredAccess,
+  _In_ ULONG Flags,
+  _Out_ PHANDLE DriverRegKey);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoGetDriverDirectory(
+  _In_ PVOID DriverObject,
+  _In_ DRIVER_DIRECTORY_TYPE DirectoryType,
+  _In_ ULONG Flags,
+  _Out_ PHANDLE DriverDirectoryHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoGetDeviceDirectory(
+  _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+  _In_ DEVICE_DIRECTORY_TYPE DirectoryType,
+  _In_ ULONG Flags,
+  _In_ PVOID Reserved,
+  _Out_ PHANDLE DeviceDirectoryHandle);
+#endif /* (NTDDI_VERSION >= NTDDI_WIN10_VB) */
 $endif (_WDMDDK_)
 
 $if (_WDMDDK_)
