@@ -185,14 +185,21 @@ class CStartButton
     HIMAGELIST m_ImageList;
     SIZE       m_Size;
     HFONT      m_Font;
+    HTHEME     m_OrbTheme;
+    SIZE       m_OrbSize;
+    BOOL       m_bHot;
 
 public:
     CStartButton()
         : m_ImageList(NULL),
-          m_Font(NULL)
+          m_Font(NULL),
+          m_OrbTheme(NULL),
+          m_bHot(FALSE)
     {
         m_Size.cx = 0;
         m_Size.cy = 0;
+        m_OrbSize.cx = 0;
+        m_OrbSize.cy = 0;
     }
 
     virtual ~CStartButton()
@@ -202,11 +209,41 @@ public:
 
         if (m_Font != NULL)
             DeleteObject(m_Font);
+
+        if (m_OrbTheme != NULL)
+            CloseThemeData(m_OrbTheme);
     }
 
     SIZE GetSize()
     {
         return m_Size;
+    }
+
+    /* Vista styles draw the start button as an orb image instead of a push button */
+    VOID UpdateOrb()
+    {
+        if (m_OrbTheme != NULL)
+            CloseThemeData(m_OrbTheme);
+        m_OrbTheme = NULL;
+
+        if (!IsThemeActive())
+            return;
+
+        HTHEME Theme = OpenThemeData(m_hWnd, L"StartBottom::Button;StartMiddle::Button;StartTop::Button");
+        if (Theme == NULL)
+            return;
+
+        SIZE Size;
+        if (!IsThemePartDefined(Theme, 0, 0) ||
+            FAILED(GetThemePartSize(Theme, NULL, 0, PBS_NORMAL, NULL, TS_TRUE, &Size)) ||
+            Size.cx <= 0 || Size.cy <= 0)
+        {
+            CloseThemeData(Theme);
+            return;
+        }
+
+        m_OrbTheme = Theme;
+        m_OrbSize = Size;
     }
 
     VOID UpdateSize()
@@ -220,6 +257,10 @@ public:
         }
 
         Size.cy = max(Size.cy, GetSystemMetrics(SM_CYCAPTION));
+
+        /* The orb is drawn at its own size; the taskbar takes its height from it */
+        if (m_OrbTheme != NULL)
+            Size = m_OrbSize;
 
         /* Save the size of the start button */
         m_Size = Size;
@@ -258,6 +299,7 @@ public:
 
         BUTTON_IMAGELIST bil = {m_ImageList, {1,1,1,1}, BUTTON_IMAGELIST_ALIGN_LEFT};
         SendMessageW(BCM_SETIMAGELIST, 0, (LPARAM) &bil);
+        UpdateOrb();
         UpdateSize();
     }
 
@@ -301,8 +343,92 @@ public:
         return 0;
     }
 
+    LRESULT OnPaint(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        if (m_OrbTheme == NULL)
+        {
+            bHandled = FALSE;
+            return 0;
+        }
+
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(&ps);
+        RECT rc;
+        GetClientRect(&rc);
+
+        int State = PBS_NORMAL;
+        if (SendMessageW(BM_GETSTATE, 0, 0) & BST_PUSHED)
+            State = PBS_PRESSED;
+        else if (m_bHot)
+            State = PBS_HOT;
+
+        DrawThemeParentBackground(m_hWnd, hdc, &rc);
+        DrawThemeBackground(m_OrbTheme, hdc, 0, State, &rc, NULL);
+        EndPaint(&ps);
+        return 0;
+    }
+
+    LRESULT OnEraseBackground(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        if (m_OrbTheme == NULL)
+        {
+            bHandled = FALSE;
+            return 0;
+        }
+        return TRUE;
+    }
+
+    LRESULT OnMouseMove(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        bHandled = FALSE;
+        if (m_OrbTheme == NULL || m_bHot)
+            return 0;
+
+        TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, m_hWnd, 0 };
+        if (TrackMouseEvent(&tme))
+        {
+            m_bHot = TRUE;
+            Invalidate(FALSE);
+        }
+        return 0;
+    }
+
+    LRESULT OnMouseLeave(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        bHandled = FALSE;
+        if (m_bHot)
+        {
+            m_bHot = FALSE;
+            Invalidate(FALSE);
+        }
+        return 0;
+    }
+
+    LRESULT OnSetState(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        /* The button only redraws its own face; the orb has to follow the pushed state */
+        LRESULT Result = DefWindowProc(uMsg, wParam, lParam);
+        if (m_OrbTheme != NULL)
+            Invalidate(FALSE);
+        return Result;
+    }
+
+    LRESULT OnThemeChanged(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        bHandled = FALSE;
+        UpdateOrb();
+        UpdateSize();
+        return 0;
+    }
+
     BEGIN_MSG_MAP(CStartButton)
         MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown)
+        MESSAGE_HANDLER(WM_PAINT, OnPaint)
+        MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
+        MESSAGE_HANDLER(WM_MOUSEMOVE, OnMouseMove)
+        MESSAGE_HANDLER(WM_MOUSELEAVE, OnMouseLeave)
+        MESSAGE_HANDLER(BM_SETSTATE, OnSetState)
+        MESSAGE_HANDLER(WM_THEMECHANGED, OnThemeChanged)
     END_MSG_MAP()
 };
 
