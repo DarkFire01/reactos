@@ -1903,7 +1903,7 @@
 @ stdcall -version=0xA00+ RtlQueryFeatureConfigurationChangeStamp()
 @ stdcall -version=0xA00+ RtlRecordFeatureUsage(ptr int64)
 @ stdcall -version=0xA00+ RtlRegisterFeatureConfigurationChangeNotification(ptr ptr ptr ptr)
-@ stdcall -version=0xA00+ RtlRegisterFeatureUsageProvider(ptr ptr ptr ptr)
+@ stdcall -version=0xA00+ RtlRegisterFeatureUsageProvider(ptr ptr ptr)
 @ stdcall -version=0xA00+ RtlUnregisterFeatureConfigurationChangeNotification(ptr)
 @ stdcall -version=0xA00+ RtlUnregisterFeatureUsageProvider(ptr)
 @ stdcall -version=0xA00+ TtmNotifyDeviceArrival(long int64 ptr long ptr)
