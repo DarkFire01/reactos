@@ -112,14 +112,12 @@ RtlUnregisterFeatureConfigurationChangeNotification(
 NTSTATUS
 NTAPI
 RtlRegisterFeatureUsageProvider(
-    _In_ PVOID Provider,
     _In_ PVOID Callback,
-    _In_opt_ PVOID Context,
+    _In_ PVOID Registration,
     _Out_opt_ PVOID *ProviderHandle)
 {
-    UNREFERENCED_PARAMETER(Provider);
     UNREFERENCED_PARAMETER(Callback);
-    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Registration);
 
     if (ProviderHandle != NULL)
         *ProviderHandle = NULL;
