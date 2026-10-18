@@ -353,7 +353,7 @@ WinLdrLoadDeviceDriver(PLIST_ENTRY LoadOrderListHead,
     // Allocate a DTE for it
     Success = PeLdrAllocateDataTableEntry(LoadOrderListHead,
                                           DllName,
-                                          DllName,
+                                          FullPath,
                                           PaToVa(DriverBase),
                                           DriverDTE);
     if (!Success)
