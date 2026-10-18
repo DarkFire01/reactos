@@ -587,9 +587,9 @@ MmFreePagesFromMdl(IN PMDL Mdl)
     DPRINT("Freeing MDL: %p\n", Mdl);
 
     //
-    // Sanity checks
+    // Sanity checks. Only the PFN lock is taken, so a DPC may free its pages too
     //
-    ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
+    ASSERT(KeGetCurrentIrql() <= DISPATCH_LEVEL);
     ASSERT((Mdl->MdlFlags & MDL_IO_SPACE) == 0);
     ASSERT(((ULONG_PTR)Mdl->StartVa & (PAGE_SIZE - 1)) == 0);
 
