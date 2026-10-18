@@ -268,6 +268,8 @@ typedef struct _NP_CCB
     PFILE_OBJECT FileObject[2];
     PEPROCESS Process;
     PVOID ClientSession;
+    HANDLE ServerProcessId;
+    ULONG ServerSessionId;
     PNP_NONPAGED_CCB NonPagedCcb;
     NP_DATA_QUEUE DataQueue[2];
     PSECURITY_CLIENT_CONTEXT ClientContext;

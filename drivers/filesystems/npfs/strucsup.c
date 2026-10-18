@@ -337,6 +337,10 @@ NpCreateCcb(IN PNP_FCB Fcb,
     Ccb->ReadMode[FILE_PIPE_SERVER_END] = ReadMode;
     Ccb->CompletionMode[FILE_PIPE_SERVER_END] = CompletionMode;
 
+    /* Pipe instances are created in the context of the server process */
+    Ccb->ServerProcessId = PsGetCurrentProcessId();
+    Ccb->ServerSessionId = PsGetCurrentProcessSessionId();
+
     Status = NpInitializeDataQueue(&Ccb->DataQueue[FILE_PIPE_INBOUND], InQuota);
     if (!NT_SUCCESS(Status))
     {
