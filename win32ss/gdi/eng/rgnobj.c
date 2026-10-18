@@ -195,6 +195,40 @@ EngCopyRgn(
     return EngCombineRgn(hrgnDst, hrgnSrc, NULL, RGN_COPY);
 }
 
+/**
+ * @brief The CDD's combine, which takes the target by reference and refuses a target that is
+ *        also a source.
+ * @return The resulting region's complexity, or ERROR.
+ */
+INT
+APIENTRY
+CddEngCombineRgn(
+    _Inout_ PHANDLE phrgnTrg,
+    _In_ HANDLE hrgnSrc1,
+    _In_opt_ HANDLE hrgnSrc2,
+    _In_ INT iMode)
+{
+    if ((iMode < RGN_AND) || (iMode > RGN_COPY))
+    {
+        EngSetLastError(ERROR_INVALID_PARAMETER);
+        return ERROR;
+    }
+
+    if ((iMode != RGN_COPY) && ((*phrgnTrg == hrgnSrc1) || (*phrgnTrg == hrgnSrc2)))
+        return ERROR;
+
+    return EngCombineRgn(*phrgnTrg, hrgnSrc1, hrgnSrc2, iMode);
+}
+
+INT
+APIENTRY
+CddEngCopyRgn(
+    _Inout_ PHANDLE phrgnDst,
+    _In_ HANDLE hrgnSrc)
+{
+    return CddEngCombineRgn(phrgnDst, hrgnSrc, NULL, RGN_COPY);
+}
+
 ENGAPI
 INT
 APIENTRY
