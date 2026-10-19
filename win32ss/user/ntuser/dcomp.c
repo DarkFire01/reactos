@@ -104,6 +104,8 @@ DcompIsValidProperty(
                 return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
             if (Property == DCOMP_WINDOW_NODE_WINDOW)
                 return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
+            if (Property == DCOMP_WINDOW_NODE_GLASS_MARGINS)
+                return Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
             return DcompIsValidVisualProperty(Tag, Property);
 
         case DCOMP_RESOURCE_SPRITE_VISUAL:

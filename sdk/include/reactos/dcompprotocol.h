@@ -103,6 +103,12 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 #define DCOMP_WINDOW_NODE_SPRITE_BITMAP 66  /* reference */
 #define DCOMP_WINDOW_NODE_WINDOW        69  /* integer: the HWND */
 
+/*
+ * Ours: MARGINS of the content the frame's glass extends under. Content there is blended by its
+ * alpha, so what GDI leaves black shows the glass. A negative margin covers all of the content.
+ */
+#define DCOMP_WINDOW_NODE_GLASS_MARGINS 1000    /* buffer: MARGINS */
+
 /* GDI sprite bitmap properties: the logical surface a redirected window draws into */
 #define DCOMP_SPRITE_BITMAP_DIRTY_RECTS 0   /* buffer: RECTs that changed, surface coordinates */
 #define DCOMP_SPRITE_BITMAP_FORMAT      1   /* integer: DXGI_FORMAT */
