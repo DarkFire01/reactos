@@ -980,7 +980,13 @@ UacpiNtIrqLibResolveVector(
 
     *Vector = Assigned;
     *Irql = VectorIrql;
-    *Affinity = UacpiNtLowestProcessor(TargetAffinity);
+
+    /* The I/O APIC hands a line to the least busy processor of the set, an 8259 only reaches one */
+    if (GlobalAcpiInterruptModel == ACPI_NT_APIC)
+        *Affinity = TargetAffinity;
+    else
+        *Affinity = UacpiNtLowestProcessor(TargetAffinity);
+
     *Polarity = UacpiNtGsivPolarity(Gsiv);
     *Mode = UacpiNtGsivMode(Gsiv);
 
