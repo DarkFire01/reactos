@@ -67,6 +67,29 @@ static PEPROCESS gDcompCompositor = NULL;
 static PKEVENT gDcompWorkEvent = NULL;
 static PVOID gDcompUserList = NULL;
 
+/* The properties every kind of visual has */
+static
+BOOLEAN
+DcompIsValidVisualProperty(
+    _In_ ULONG Tag,
+    _In_ ULONG Property)
+{
+    switch (Property)
+    {
+        case DCOMP_VISUAL_OFFSET_X:
+        case DCOMP_VISUAL_OFFSET_Y:
+        case DCOMP_VISUAL_OPACITY:
+            return Tag == DCOMP_CMD_SET_FLOAT_PROPERTY;
+        case DCOMP_VISUAL_INSERT_CHILD:
+        case DCOMP_VISUAL_REMOVE_CHILD:
+        case DCOMP_VISUAL_CONTENT:
+            return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
+        case DCOMP_VISUAL_SIZE:
+            return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
+    }
+    return FALSE;
+}
+
 static
 BOOLEAN
 DcompIsValidProperty(
@@ -76,22 +99,35 @@ DcompIsValidProperty(
 {
     switch (Type)
     {
-        case DCOMP_RESOURCE_VISUAL:
+        case DCOMP_RESOURCE_WINDOW_NODE:
+            if (Property == DCOMP_WINDOW_NODE_SPRITE_BITMAP)
+                return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
+            if (Property == DCOMP_WINDOW_NODE_WINDOW)
+                return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
+            return DcompIsValidVisualProperty(Tag, Property);
+
         case DCOMP_RESOURCE_SPRITE_VISUAL:
+            if (Property == DCOMP_SPRITE_VISUAL_BRUSH)
+                return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
+            return DcompIsValidVisualProperty(Tag, Property);
+
+        case DCOMP_RESOURCE_VISUAL:
+            return DcompIsValidVisualProperty(Tag, Property);
+
+        case DCOMP_RESOURCE_GDI_SPRITE_BITMAP:
             switch (Property)
             {
-                case DCOMP_VISUAL_OFFSET_X:
-                case DCOMP_VISUAL_OFFSET_Y:
-                case DCOMP_VISUAL_OPACITY:
-                    return Tag == DCOMP_CMD_SET_FLOAT_PROPERTY;
-                case DCOMP_VISUAL_INSERT_CHILD:
-                case DCOMP_VISUAL_REMOVE_CHILD:
-                case DCOMP_VISUAL_CONTENT:
-                    return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
-                case DCOMP_VISUAL_SIZE:
+                case DCOMP_SPRITE_BITMAP_DIRTY_RECTS:
+                case DCOMP_SPRITE_BITMAP_MARGINS:
+                    return Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
+                case DCOMP_SPRITE_BITMAP_FORMAT:
+                case DCOMP_SPRITE_BITMAP_SURFACE:
                     return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
             }
             return FALSE;
+
+        case DCOMP_RESOURCE_COLOR_BRUSH:
+            return Property == DCOMP_COLOR_BRUSH_COLOR && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
 
         case DCOMP_RESOURCE_HWND_TARGET:
             switch (Property)
@@ -114,7 +150,20 @@ DcompIsKnownType(
 {
     return Type == DCOMP_RESOURCE_VISUAL ||
            Type == DCOMP_RESOURCE_SPRITE_VISUAL ||
-           Type == DCOMP_RESOURCE_HWND_TARGET;
+           Type == DCOMP_RESOURCE_HWND_TARGET ||
+           Type == DCOMP_RESOURCE_WINDOW_NODE ||
+           Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP ||
+           Type == DCOMP_RESOURCE_COLOR_BRUSH;
+}
+
+/* Windows and their surfaces are only composed by the DWM */
+static
+BOOLEAN
+DcompIsDwmOnlyType(
+    _In_ ULONG Type)
+{
+    return Type == DCOMP_RESOURCE_WINDOW_NODE ||
+           Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP;
 }
 
 static
@@ -250,6 +299,8 @@ DcompCreateResource(
 
     if (Command->External || !DcompIsKnownType(Command->Type))
         return STATUS_NOT_SUPPORTED;
+    if (DcompIsDwmOnlyType(Command->Type) && !IntDwmIsCurrentProcess())
+        return STATUS_ACCESS_DENIED;
     if (Command->Resource == 0 || Command->Resource > DCOMP_MAX_RESOURCES)
         return STATUS_INVALID_PARAMETER;
 
