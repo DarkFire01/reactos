@@ -36,6 +36,7 @@ typedef struct _SURFACE
   /* reactos specific */
     DWORD biClrImportant;
     BOOLEAN bCddDeviceBitmap;   /* From EngCreateRedirectionDeviceBitmap */
+    struct _LOGICAL_SURFACE *pLogicalSurface; /* Set for the bitmap a redirected window draws into */
 } SURFACE, *PSURFACE;
 
 /* flags field */

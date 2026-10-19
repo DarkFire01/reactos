@@ -1107,6 +1107,7 @@ DriverEntry(
     NT_ROF(InitLDEVImpl());
     NT_ROF(InitDeviceImpl());
     NT_ROF(InitDcImpl());
+    NT_ROF(InitLogicalSurfaceImpl());
     USERLOCK_AND_ROF(InitUserImpl());
     NT_ROF(InitWindowStationImpl());
     NT_ROF(InitDesktopImpl());

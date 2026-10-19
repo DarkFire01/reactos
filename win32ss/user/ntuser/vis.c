@@ -45,6 +45,10 @@ VIS_ComputeVisibleRegion(
    CurrentWindow = Wnd->spwndParent;
    while (CurrentWindow)
    {
+      /* A composed top level window has a surface of its own; nothing above it clips it */
+      if (IntDwmIsRedirected(PreviousWindow))
+         break;
+
       if (!VerifyWnd(CurrentWindow))
       {
          ERR("ATM the Current Window or Parent is dead! %p\n",CurrentWindow);

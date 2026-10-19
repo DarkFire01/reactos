@@ -115,6 +115,7 @@ typedef struct _DC
   RECTL       erclWindow;
   RECTL       erclBounds;
   RECTL       erclBoundsApp;
+  RECTL       erclRedirectionDirty; /* What the current drawing call touches of a redirection surface */
   PREGION     prgnAPI;
   _Notnull_ PREGION     prgnVis; /* Visible region (must never be 0) */
   PREGION     prgnRao;
@@ -195,6 +196,7 @@ BOOL FASTCALL IntGdiDeleteDC(HDC, BOOL);
 BOOL FASTCALL DC_InvertXform(const XFORM *xformSrc, XFORM *xformDest);
 VOID FASTCALL DC_vUpdateViewportExt(PDC pdc);
 VOID FASTCALL DC_vCopyState(PDC pdcSrc, PDC pdcDst, BOOL To);
+void DC_vUpdateDC(PDC pdc);
 VOID FASTCALL DC_vFinishBlit(PDC pdc1, PDC pdc2);
 VOID FASTCALL DC_vPrepareDCsForBlit(PDC pdcDest, const RECT* rcDest, PDC pdcSrc, const RECT* rcSrc);
 

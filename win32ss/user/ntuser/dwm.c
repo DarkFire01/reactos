@@ -18,6 +18,60 @@ static PVOID gpDwmPort = NULL;
 static PPROCESSINFO gppiDwm = NULL;
 static BOOLEAN gbDwmKernelStarted = FALSE;
 
+/* Drawing threads send dirty notifications without the user lock, so the port is swapped under this */
+static KSPIN_LOCK gDwmPortLock;
+
+/* Replaces the port and returns the one it replaced, for the caller to dereference */
+static
+PVOID
+IntDwmSwapPort(
+    _In_opt_ PVOID Port)
+{
+    PVOID Old;
+    KIRQL Irql;
+
+    KeAcquireSpinLock(&gDwmPortLock, &Irql);
+    Old = gpDwmPort;
+    gpDwmPort = Port;
+    KeReleaseSpinLock(&gDwmPortLock, Irql);
+    return Old;
+}
+
+/* Sends a kernel datagram to the DWM; Header is followed by the message's payload */
+NTSTATUS
+FASTCALL
+IntDwmSendMessage(
+    _Inout_ PPORT_MESSAGE Header,
+    _In_ ULONG TotalLength)
+{
+    PVOID Port;
+    KIRQL Irql;
+    NTSTATUS Status;
+
+    KeAcquireSpinLock(&gDwmPortLock, &Irql);
+    Port = gpDwmPort;
+    if (Port)
+        ObReferenceObject(Port);
+    KeReleaseSpinLock(&gDwmPortLock, Irql);
+
+    if (!Port)
+        return STATUS_PORT_DISCONNECTED;
+
+    Header->u1.s1.DataLength = (CSHORT)(TotalLength - sizeof(*Header));
+    Header->u1.s1.TotalLength = (CSHORT)TotalLength;
+    Header->u2.s2.Type = LPC_DATAGRAM | LPC_KERNELMODE_MESSAGE;
+    Status = LpcRequestPort(Port, Header);
+    ObDereferenceObject(Port);
+    return Status;
+}
+
+BOOLEAN
+FASTCALL
+IntDwmIsKernelStarted(VOID)
+{
+    return gbDwmKernelStarted;
+}
+
 static
 BOOLEAN
 IntDwmIsTrackedWindow(
@@ -40,9 +94,6 @@ IntDwmSendWindowNotification(
     NTSTATUS Status;
 
     RtlZeroMemory(&Message, sizeof(Message));
-    Message.Header.u1.s1.DataLength = sizeof(Message) - sizeof(Message.Header);
-    Message.Header.u1.s1.TotalLength = sizeof(Message);
-    Message.Header.u2.s2.Type = LPC_DATAGRAM | LPC_KERNELMODE_MESSAGE;
     Message.Command = DWM_PORT_WINDOW_NOTIFICATION;
     Message.Event = Event;
     Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
@@ -53,7 +104,7 @@ IntDwmSendWindowNotification(
     Message.ExStyle = Window->ExStyle;
     Message.ProcessId = HandleToUlong(PsGetProcessId(Window->head.pti->ppi->peProcess));
 
-    Status = LpcRequestPort(gpDwmPort, &Message.Header);
+    Status = IntDwmSendMessage(&Message.Header, sizeof(Message));
     if (!NT_SUCCESS(Status))
         TRACE("DWM notification %lu for %p failed 0x%08lx\n", Event, UserHMGetHandle(Window), Status);
 }
@@ -89,6 +140,7 @@ IntDwmNotifyWinEvent(
         return;
 
     IntDwmSendWindowNotification(Window, Event);
+    IntDwmSpriteWinEvent(Event, Window);
 }
 
 BOOLEAN
@@ -113,12 +165,16 @@ IntDwmStop(
     _In_ BOOLEAN Redraw)
 {
     PWND Desktop;
+    PVOID Port;
+
+    /* Windows draw to the screen again before the DWM gives it up */
+    IntDwmDecomposeAll();
 
     /* The DWM stops counting as active first, so dxgkrnl hands its outputs to GDI */
     gbDwmKernelStarted = FALSE;
-    if (gpDwmPort)
-        ObDereferenceObject(gpDwmPort);
-    gpDwmPort = NULL;
+    Port = IntDwmSwapPort(NULL);
+    if (Port)
+        ObDereferenceObject(Port);
     gppiDwm = NULL;
 
     DlDwmShutdown();
@@ -172,7 +228,7 @@ NtUserRegisterSessionPort(
         goto Exit;
     }
 
-    gpDwmPort = PortObject;
+    IntDwmSwapPort(PortObject);
     gppiDwm = GetW32ProcessInfo();
 
     /* dxgkrnl only lets the registered DWM take shared ownership of the display */
@@ -180,8 +236,7 @@ NtUserRegisterSessionPort(
     if (!NT_SUCCESS(Status))
     {
         ERR("dxgkrnl refused the DWM process: 0x%08lx\n", Status);
-        ObDereferenceObject(gpDwmPort);
-        gpDwmPort = NULL;
+        ObDereferenceObject(IntDwmSwapPort(NULL));
         gppiDwm = NULL;
         SetLastNtError(Status);
         goto Exit;
@@ -242,6 +297,9 @@ NtUserDwmKernelStartup(VOID)
         if (Child->style & WS_VISIBLE)
             IntDwmSendWindowNotification(Child, EVENT_OBJECT_SHOW);
     }
+
+    /* From here on windows draw into their sprites instead of the screen */
+    IntDwmComposeAll();
     Result = TRUE;
 
 Exit:

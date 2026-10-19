@@ -207,6 +207,48 @@ FASTCALL
 IntDwmProcessShutdown(
     _In_ PPROCESSINFO ProcessInfo);
 
+NTSTATUS
+FASTCALL
+IntDwmSendMessage(
+    _Inout_ PPORT_MESSAGE Header,
+    _In_ ULONG TotalLength);
+
+BOOLEAN
+FASTCALL
+IntDwmIsKernelStarted(VOID);
+
+/************************* sprite.c *************************/
+
+PWND
+FASTCALL
+IntDwmGetRedirectedWindow(
+    _In_ PWND Window,
+    _Out_opt_ HBITMAP *phbm);
+
+BOOLEAN
+FASTCALL
+IntDwmIsRedirected(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
+IntDwmSpriteWinEvent(
+    _In_ DWORD Event,
+    _In_ PWND Window);
+
+VOID
+FASTCALL
+IntDwmWindowFreed(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
+IntDwmComposeAll(VOID);
+
+VOID
+FASTCALL
+IntDwmDecomposeAll(VOID);
+
 /************************* dcomp.c *************************/
 
 VOID

@@ -641,6 +641,7 @@ LRESULT co_UserFreeWindow(PWND Window,
    }
 
    UserClipboardFreeWindow(Window);
+   IntDwmWindowFreed(Window);
 
    DestroyTimersForWindow(ThreadData, Window);
 

@@ -141,25 +141,42 @@ DceAllocDCE(PWND Window OPTIONAL, DCE_TYPE Type)
   return(pDce);
 }
 
+/*
+ * Where a window's DC draws. A window under a composed top level window draws into that
+ * window's surface, where 0,0 is the top left of the top level window rectangle.
+ */
+static VOID
+DceGetDrawable(
+    _In_opt_ PWND Window,
+    _In_ ULONG Flags,
+    _Out_ PRECTL Rect,
+    _Out_ HBITMAP *phbmRedirection)
+{
+    PWND Redirected;
+
+    RtlZeroMemory(Rect, sizeof(*Rect));
+    *phbmRedirection = NULL;
+    if (!Window)
+        return;
+
+    *Rect = (Flags & DCX_WINDOW) ? Window->rcWindow : Window->rcClient;
+
+    Redirected = IntDwmGetRedirectedWindow(Window, phbmRedirection);
+    if (Redirected)
+        RECTL_vOffsetRect(Rect, -Redirected->rcWindow.left, -Redirected->rcWindow.top);
+}
+
 static VOID APIENTRY
 DceSetDrawable( PWND Window OPTIONAL,
                 HDC hDC,
                 ULONG Flags,
                 BOOL SetClipOrigin)
 {
-  RECTL rect = {0,0,0,0};
+  RECTL rect;
+  HBITMAP hbmRedirection;
 
-  if (Window)
-  {
-      if (Flags & DCX_WINDOW)
-      {
-         rect = Window->rcWindow;
-      }
-      else
-      {
-         rect = Window->rcClient;
-      }
-  }
+  DceGetDrawable(Window, Flags, &rect, &hbmRedirection);
+  GreSelectRedirectionBitmap(hDC, hbmRedirection);
 
   /* Set DC Origin and Window Rectangle */
   GreSetDCOrg( hDC, rect.left, rect.top, &rect);
@@ -261,6 +278,14 @@ noparent:
        PREGION RgnClip = REGION_LockRgn(Dce->hrgnClip);
        IntGdiCombineRgn(RgnVisible, RgnVisible, RgnClip, RGN_DIFF);
        REGION_UnlockRgn(RgnClip);
+   }
+
+   /* A redirected window's visible region is in its surface's coordinates */
+   if (Window && RgnVisible)
+   {
+      PWND Redirected = IntDwmGetRedirectedWindow(Window, NULL);
+      if (Redirected)
+         REGION_bOffsetRgn(RgnVisible, -Redirected->rcWindow.left, -Redirected->rcWindow.top);
    }
 
    Dce->DCXFlags &= ~DCX_DCEDIRTY;
@@ -821,6 +846,9 @@ DceResetActiveDCEs(PWND Window)
    INT DeltaX;
    INT DeltaY;
    PLIST_ENTRY ListEntry;
+   RECTL rcDrawable;
+   HBITMAP hbmRedirection;
+   BOOLEAN bWasRedirected;
 
    if (NULL == Window)
    {
@@ -850,34 +878,42 @@ DceResetActiveDCEs(PWND Window)
             }
          }
 
-         if (!GreIsHandleValid(pDCE->hDC) ||
-             (dc = DC_LockDc(pDCE->hDC)) == NULL)
+         if (!GreIsHandleValid(pDCE->hDC))
+         {
+            continue;
+         }
+
+         /* The DC follows the window onto or off its composed surface first */
+         if (Window == CurrentWindow || IntIsChildWindow(Window, CurrentWindow))
+         {
+            DceGetDrawable(CurrentWindow, pDCE->DCXFlags, &rcDrawable, &hbmRedirection);
+            if ((dc = DC_LockDc(pDCE->hDC)) == NULL)
+               continue;
+            bWasRedirected = (dc->fs & DC_REDIRECTION) != 0;
+            DC_UnlockDc(dc);
+            GreSelectRedirectionBitmap(pDCE->hDC, hbmRedirection);
+         }
+
+         if ((dc = DC_LockDc(pDCE->hDC)) == NULL)
          {
             continue;
          }
          if (Window == CurrentWindow || IntIsChildWindow(Window, CurrentWindow))
          {
-            if (pDCE->DCXFlags & DCX_WINDOW)
-            {
-               DeltaX = CurrentWindow->rcWindow.left - dc->ptlDCOrig.x;
-               DeltaY = CurrentWindow->rcWindow.top - dc->ptlDCOrig.y;
-               dc->ptlDCOrig.x = CurrentWindow->rcWindow.left;
-               dc->ptlDCOrig.y = CurrentWindow->rcWindow.top;
-            }
-            else
-            {
-               DeltaX = CurrentWindow->rcClient.left - dc->ptlDCOrig.x;
-               DeltaY = CurrentWindow->rcClient.top - dc->ptlDCOrig.y;
-               dc->ptlDCOrig.x = CurrentWindow->rcClient.left;
-               dc->ptlDCOrig.y = CurrentWindow->rcClient.top;
-            }
+            DeltaX = rcDrawable.left - dc->ptlDCOrig.x;
+            DeltaY = rcDrawable.top - dc->ptlDCOrig.y;
+            dc->ptlDCOrig.x = rcDrawable.left;
+            dc->ptlDCOrig.y = rcDrawable.top;
+            dc->erclWindow = rcDrawable;
 
             if (NULL != dc->dclevel.prgnClip)
             {
                REGION_bOffsetRgn(dc->dclevel.prgnClip, DeltaX, DeltaY);
                dc->fs |= DC_DIRTY_RAO;
             }
-            if (NULL != pDCE->hrgnClip)
+
+            /* The clip region is in screen coordinates, which a composed surface does not move with */
+            if (NULL != pDCE->hrgnClip && !bWasRedirected && !hbmRedirection)
             {
                NtGdiOffsetRgn(pDCE->hrgnClip, DeltaX, DeltaY);
             }

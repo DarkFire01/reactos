@@ -124,6 +124,7 @@ list(APPEND SOURCE
     user/ntuser/dcomp.c
     user/ntuser/dde.c
     user/ntuser/dwm.c
+    user/ntuser/sprite.c
     user/ntuser/defwnd.c
     user/ntuser/desktop.c
     user/ntuser/display.c
@@ -176,6 +177,7 @@ list(APPEND SOURCE
     gdi/ntgdi/bezier.c
     gdi/ntgdi/bitblt.c
     gdi/ntgdi/bitmaps.c
+    gdi/ntgdi/hlsurf.c
     gdi/ntgdi/cliprgn.c
     gdi/ntgdi/coord.c
     gdi/ntgdi/d3dkmt.c
