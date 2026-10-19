@@ -80,8 +80,11 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 
 /* Resource types; the values Windows uses where they are known */
 #define DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP   41
+#define DCOMP_RESOURCE_GDI_SPRITE_BITMAP            63
+#define DCOMP_RESOURCE_COLOR_BRUSH                  162
 #define DCOMP_RESOURCE_SPRITE_VISUAL                164
 #define DCOMP_RESOURCE_SURFACE_BRUSH                167
+#define DCOMP_RESOURCE_WINDOW_NODE                  188
 #define DCOMP_RESOURCE_VISUAL                       200
 #define DCOMP_RESOURCE_HWND_TARGET                  201
 
@@ -93,6 +96,22 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 #define DCOMP_VISUAL_REMOVE_CHILD       5   /* reference */
 #define DCOMP_VISUAL_CONTENT            6   /* reference */
 #define DCOMP_VISUAL_SIZE               7   /* integer: width in the low dword, height in the high */
+
+/* Window node properties, besides the visual ones: the visual a redirected window is composed as */
+#define DCOMP_WINDOW_NODE_SPRITE_BITMAP 66  /* reference */
+#define DCOMP_WINDOW_NODE_WINDOW        69  /* integer: the HWND */
+
+/* GDI sprite bitmap properties: the logical surface a redirected window draws into */
+#define DCOMP_SPRITE_BITMAP_DIRTY_RECTS 0   /* buffer: RECTs that changed, surface coordinates */
+#define DCOMP_SPRITE_BITMAP_FORMAT      1   /* integer: DXGI_FORMAT */
+#define DCOMP_SPRITE_BITMAP_SURFACE     3   /* integer: the logical surface */
+#define DCOMP_SPRITE_BITMAP_MARGINS     4   /* buffer: MARGINS of the surface left out, the frame GDI drew */
+
+/* Sprite visual properties, besides the visual ones */
+#define DCOMP_SPRITE_VISUAL_BRUSH       52  /* reference: fills the visual's size */
+
+/* Color brush properties */
+#define DCOMP_COLOR_BRUSH_COLOR         0   /* buffer: four floats, premultiplied red, green, blue, alpha */
 
 /* HWND target properties */
 #define DCOMP_TARGET_WINDOW             1   /* integer: the HWND */
