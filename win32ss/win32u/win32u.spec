@@ -688,6 +688,8 @@
 @ stdcall NtDCompositionProcessChannelBatchBuffer(ptr long ptr ptr)
 @ stdcall NtDCompositionSetChannelConnectionId(ptr long int64)
 @ stdcall NtDCompositionWaitForChannel(ptr long)
+@ stdcall NtGdiHLSurfGetInformation(ptr long ptr ptr)
+@ stdcall NtGdiHLSurfSetInformation(ptr long ptr long)
 @ stdcall NtUnBindCompositionSurface(ptr long int64)
 @ stdcall NtQueryCompositionSurfaceStatistics(ptr int64)
 @ stdcall NtSetCompositionSurfaceHDRMetaData(ptr ptr int64 int64)

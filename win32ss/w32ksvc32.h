@@ -840,3 +840,5 @@
     SVC_(DCompositionWaitForChannel, 2)
     SVC_(DCompositionSetChannelConnectionId, 3)
     SVC_(DCompositionGetConnectionBatch, 3)
+    SVC_(GdiHLSurfGetInformation, 4)
+    SVC_(GdiHLSurfSetInformation, 4)
