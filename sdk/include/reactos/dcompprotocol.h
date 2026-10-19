@@ -94,10 +94,52 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 #define DCOMP_VISUAL_OFFSET_X           1   /* float */
 #define DCOMP_VISUAL_OFFSET_Y           2   /* float */
 #define DCOMP_VISUAL_OPACITY            3   /* float */
-#define DCOMP_VISUAL_INSERT_CHILD       4   /* reference, placed above every existing child */
+#define DCOMP_VISUAL_INSERT_CHILD       4   /* reference, placed as INSERT_REFERENCE and INSERT_ABOVE say, then those reset */
 #define DCOMP_VISUAL_REMOVE_CHILD       5   /* reference */
 #define DCOMP_VISUAL_CONTENT            6   /* reference */
 #define DCOMP_VISUAL_SIZE               7   /* integer: width in the low dword, height in the high */
+#define DCOMP_VISUAL_INSERT_REFERENCE   8   /* reference: the sibling the next child goes next to; none is an end */
+#define DCOMP_VISUAL_INSERT_ABOVE       9   /* integer: the next child goes above (1, the default) or below */
+#define DCOMP_VISUAL_TRANSFORM          10  /* buffer: DCOMP_MATRIX, applied before the offset */
+#define DCOMP_VISUAL_CLIP               11  /* buffer: DCOMP_RECT in the visual's space; an empty one is no clip */
+#define DCOMP_VISUAL_INTERPOLATION      12  /* integer: DCOMPOSITION_BITMAP_INTERPOLATION_MODE */
+#define DCOMP_VISUAL_BORDER_MODE        13  /* integer: DCOMPOSITION_BORDER_MODE */
+#define DCOMP_VISUAL_COMPOSITE_MODE     14  /* integer: DCOMPOSITION_COMPOSITE_MODE */
+
+/* A 2D affine transform: x' = x * M11 + y * M21 + Dx, y' = x * M12 + y * M22 + Dy */
+typedef struct _DCOMP_MATRIX
+{
+    FLOAT M11;
+    FLOAT M12;
+    FLOAT M21;
+    FLOAT M22;
+    FLOAT Dx;
+    FLOAT Dy;
+} DCOMP_MATRIX, *PDCOMP_MATRIX;
+
+typedef struct _DCOMP_RECT
+{
+    FLOAT Left;
+    FLOAT Top;
+    FLOAT Right;
+    FLOAT Bottom;
+} DCOMP_RECT, *PDCOMP_RECT;
+
+/*
+ * Composition surface properties: a texture an application draws and the compositor samples.
+ * The handle is the texture's global share handle, which any device on the adapter can open.
+ */
+#define DCOMP_COMPOSITION_SURFACE_HANDLE        0   /* integer */
+#define DCOMP_COMPOSITION_SURFACE_DESC          1   /* buffer: DCOMP_SURFACE_DESC */
+#define DCOMP_COMPOSITION_SURFACE_GENERATION    2   /* integer: changes whenever the application drew into it */
+
+typedef struct _DCOMP_SURFACE_DESC
+{
+    ULONG Width;
+    ULONG Height;
+    ULONG Format;               /* DXGI_FORMAT */
+    ULONG AlphaMode;            /* DXGI_ALPHA_MODE */
+} DCOMP_SURFACE_DESC, *PDCOMP_SURFACE_DESC;
 
 /* Window node properties, besides the visual ones: the visual a redirected window is composed as */
 #define DCOMP_WINDOW_NODE_SPRITE_BITMAP 66  /* reference */
