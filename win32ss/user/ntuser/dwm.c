@@ -65,6 +65,42 @@ IntDwmSendMessage(
     return Status;
 }
 
+/* A request the DWM answers in the same buffer; the user lock is let go while it does */
+NTSTATUS
+FASTCALL
+IntDwmSendSyncMessage(
+    _Inout_ PPORT_MESSAGE Header,
+    _In_ ULONG TotalLength)
+{
+    PVOID Port;
+    KIRQL Irql;
+    NTSTATUS Status;
+
+    /* The DWM never waits on itself */
+    if (IntDwmIsCurrentProcess())
+        return STATUS_PORT_DISCONNECTED;
+
+    KeAcquireSpinLock(&gDwmPortLock, &Irql);
+    Port = gpDwmPort;
+    if (Port)
+        ObReferenceObject(Port);
+    KeReleaseSpinLock(&gDwmPortLock, Irql);
+
+    if (!Port)
+        return STATUS_PORT_DISCONNECTED;
+
+    Header->u1.s1.DataLength = (CSHORT)(TotalLength - sizeof(*Header));
+    Header->u1.s1.TotalLength = (CSHORT)TotalLength;
+    Header->u2.s2.Type = 0;
+
+    UserLeave();
+    Status = LpcRequestWaitReplyPort(Port, Header, Header);
+    UserEnterExclusive();
+
+    ObDereferenceObject(Port);
+    return Status;
+}
+
 BOOLEAN
 FASTCALL
 IntDwmIsKernelStarted(VOID)

@@ -138,6 +138,56 @@ typedef struct _DWM_DIRTY_SPRITE
     ULONG64 Token;
 } DWM_DIRTY_SPRITE, *PDWM_DIRTY_SPRITE;
 
+/* What the frame the DWM draws shows: the window's icons, its caption text and whether it is active */
+#define DWM_PORT_ICON_CHANGE        0x40000008
+#define DWM_PORT_TEXT_CHANGE        0x40000009
+#define DWM_PORT_ACTIVATION_CHANGE  0x4000000C
+
+typedef struct _DWM_WINDOW_HANDLE
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    ULONG64 Window;
+} DWM_WINDOW_HANDLE, *PDWM_WINDOW_HANDLE;
+
+typedef struct _DWM_ACTIVATION_CHANGE
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    ULONG64 Window;
+    ULONG Active;
+} DWM_ACTIVATION_CHANGE, *PDWM_ACTIVATION_CHANGE;
+
+typedef struct _DWM_ICON_CHANGE
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    ULONG64 Window;
+    ULONG64 Icon;
+    ULONG64 SmallIcon;
+} DWM_ICON_CHANGE, *PDWM_ICON_CHANGE;
+
+/*
+ * A request the DWM answers in place: what of its frame is under a point. The DWM shows hover
+ * and pressed caption buttons from these; Captured is the hit test code of a button being tracked.
+ */
+#define DWM_PORT_HIT_TEST_QUERY     0x40000018
+#define DWM_HIT_TEST_NONE           (-2)
+
+typedef struct _DWM_HIT_TEST_QUERY
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    ULONG64 Window;
+    ULONG Message;
+    POINT Point;
+    ULONG64 WParam;
+    ULONG64 LParam;
+    LONG Captured;
+    LONG HitTest;               /* out */
+    ULONG Handled;              /* out */
+} DWM_HIT_TEST_QUERY, *PDWM_HIT_TEST_QUERY;
+
 #include <poppack.h>
 
 #define DWM_PORT_DATA_SIZE(Type) ((ULONG)(sizeof(Type) - sizeof(PORT_MESSAGE)))
@@ -150,6 +200,10 @@ C_ASSERT(DWM_PORT_DATA_SIZE(DWM_SHOW_SPRITE) == 0x10);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ZORDER_SPRITE) == 0x14);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_DIRTY_SPRITE) == 0x18);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_CHILD_MOVE_SIZE) == 0x40);
+C_ASSERT(DWM_PORT_DATA_SIZE(DWM_WINDOW_HANDLE) == 0x0C);
+C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ACTIVATION_CHANGE) == 0x10);
+C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ICON_CHANGE) == 0x1C);
+C_ASSERT(DWM_PORT_DATA_SIZE(DWM_HIT_TEST_QUERY) == 0x34);
 
 /* NtGdiHLSurfGetInformation classes */
 #define HLSURF_INFO_SURFACE_DATA    3

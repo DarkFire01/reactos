@@ -356,6 +356,7 @@ IntSendNCPaint(PWND pWnd, HRGN hRgn)
    {
       pWnd->state |= WNDS_ACTIVEFRAME;
       pWnd->state &= ~WNDS_NONCPAINT;
+      IntDwmNotifyActivation(pWnd);
       hRgn = HRGN_WINDOW;
    }
 
