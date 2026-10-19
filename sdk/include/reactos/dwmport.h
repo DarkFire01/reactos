@@ -129,6 +129,20 @@ typedef struct _DWM_CHILD_MOVE_SIZE
     LONG BorderThickness;
 } DWM_CHILD_MOVE_SIZE, *PDWM_CHILD_MOVE_SIZE;
 
+/* The frame the DWM draws, from the window's style alone; an application may cover it with its client area */
+#define DWM_PORT_FRAME_MARGINS_CHANGE   0x40000054
+
+typedef struct _DWM_FRAME_MARGINS_CHANGE
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    ULONG64 Window;
+    LONG Left;
+    LONG Right;
+    LONG Top;
+    LONG Bottom;
+} DWM_FRAME_MARGINS_CHANGE, *PDWM_FRAME_MARGINS_CHANGE;
+
 typedef struct _DWM_DIRTY_SPRITE
 {
     PORT_MESSAGE Header;
@@ -193,7 +207,13 @@ typedef struct _DWM_HIT_TEST_QUERY
  * The DWM answers each in place, with Result. Windows carries these over ALPC; the command values
  * are its own.
  */
+#define DWM_API_HIT_TEST            0x40000018
 #define DWM_API_EXTEND_FRAME        0x4000001A
+#define DWM_API_MOUSE_LEAVE         0x4000001B
+#define DWM_API_ENABLE_BLUR_BEHIND  0x40000022
+
+/* As many of a blur region's rectangles as a port message holds; a region with more sends its bounds */
+#define DWM_BLUR_BEHIND_MAX_RECTS   12
 
 typedef struct _DWM_API_REQUEST
 {
@@ -201,6 +221,30 @@ typedef struct _DWM_API_REQUEST
     ULONG Command;
     LONG Result;
 } DWM_API_REQUEST, *PDWM_API_REQUEST;
+
+typedef struct _DWM_WINDOW_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;
+} DWM_WINDOW_REQUEST, *PDWM_WINDOW_REQUEST;
+
+/* DwmDefWindowProc's question about a frame the application draws itself; as DWM_HIT_TEST_QUERY */
+typedef struct _DWM_HIT_TEST_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;
+    ULONG Message;
+    POINT Point;
+    ULONG64 WParam;
+    ULONG64 LParam;
+    LONG Captured;
+    LONG HitTest;               /* out */
+    ULONG Handled;              /* out */
+} DWM_HIT_TEST_REQUEST, *PDWM_HIT_TEST_REQUEST;
 
 typedef struct _DWM_EXTEND_FRAME_REQUEST
 {
@@ -214,6 +258,19 @@ typedef struct _DWM_EXTEND_FRAME_REQUEST
     LONG Bottom;
 } DWM_EXTEND_FRAME_REQUEST, *PDWM_EXTEND_FRAME_REQUEST;
 
+typedef struct _DWM_BLUR_BEHIND_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;
+    ULONG Flags;                /* DWM_BB_*: which of the fields below to take */
+    ULONG Enable;
+    ULONG TransitionOnMaximized;
+    ULONG RectCount;            /* with DWM_BB_BLURREGION, zero is the whole client area */
+    RECT Rects[DWM_BLUR_BEHIND_MAX_RECTS];  /* client coordinates */
+} DWM_BLUR_BEHIND_REQUEST, *PDWM_BLUR_BEHIND_REQUEST;
+
 #include <poppack.h>
 
 #define DWM_PORT_DATA_SIZE(Type) ((ULONG)(sizeof(Type) - sizeof(PORT_MESSAGE)))
@@ -226,6 +283,7 @@ C_ASSERT(DWM_PORT_DATA_SIZE(DWM_SHOW_SPRITE) == 0x10);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ZORDER_SPRITE) == 0x14);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_DIRTY_SPRITE) == 0x18);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_CHILD_MOVE_SIZE) == 0x40);
+C_ASSERT(DWM_PORT_DATA_SIZE(DWM_FRAME_MARGINS_CHANGE) == 0x1C);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_WINDOW_HANDLE) == 0x0C);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ACTIVATION_CHANGE) == 0x10);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ICON_CHANGE) == 0x1C);
