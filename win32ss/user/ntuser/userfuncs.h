@@ -213,6 +213,12 @@ IntDwmSendMessage(
     _Inout_ PPORT_MESSAGE Header,
     _In_ ULONG TotalLength);
 
+NTSTATUS
+FASTCALL
+IntDwmSendSyncMessage(
+    _Inout_ PPORT_MESSAGE Header,
+    _In_ ULONG TotalLength);
+
 BOOLEAN
 FASTCALL
 IntDwmIsKernelStarted(VOID);
@@ -230,6 +236,17 @@ FASTCALL
 IntDwmIsRedirected(
     _In_ PWND Window);
 
+BOOLEAN
+FASTCALL
+IntDwmGetSurfaceSize(
+    _In_ PWND Window,
+    _Out_ PSIZEL Size);
+
+VOID
+FASTCALL
+IntDwmWindowRectChanged(
+    _In_ PWND Window);
+
 VOID
 FASTCALL
 IntDwmSpriteWinEvent(
@@ -244,6 +261,42 @@ IntDwmWindowFreed(
 VOID
 FASTCALL
 IntDwmComposeAll(VOID);
+
+VOID
+FASTCALL
+IntDwmNotifyActivation(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
+IntDwmNotifyTextChange(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
+IntDwmNotifyIconChange(
+    _In_ PWND Window);
+
+BOOLEAN
+FASTCALL
+co_IntDwmHitTestFrame(
+    _In_ PWND Window,
+    _In_ POINT Point,
+    _Out_ PUSHORT HitTest);
+
+VOID
+FASTCALL
+co_IntDwmLeaveFrame(
+    _In_opt_ PWND Found,
+    _In_ POINT Point,
+    _In_ USHORT HitTest);
+
+BOOLEAN
+FASTCALL
+co_IntDwmTrackCaptionButton(
+    _In_ PWND Window,
+    _In_ POINT Point,
+    _In_ LONG Captured);
 
 VOID
 FASTCALL

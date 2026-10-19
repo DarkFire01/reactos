@@ -460,6 +460,7 @@ DefWndSetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
 
     UserSetProp(pWnd, gpsi->atomIconProp, hIcon, TRUE);
     UserSetProp(pWnd, gpsi->atomIconSmProp, hIconSmall, TRUE);
+    IntDwmNotifyIconChange(pWnd);
 
     if ((pWnd->style & WS_CAPTION ) == WS_CAPTION)
        UserPaintCaption(pWnd, DC_ICON);

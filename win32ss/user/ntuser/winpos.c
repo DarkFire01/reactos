@@ -1966,6 +1966,7 @@ co_WinPosSetWindowPos(
 
    Window->rcWindow = NewWindowRect;
    Window->rcClient = NewClientRect;
+   IntDwmWindowRectChanged(Window);
 
    /* erase parent when hiding or resizing child */
    if (WinPos.flags & SWP_HIDEWINDOW)
@@ -2995,6 +2996,10 @@ co_WinPosSearchChildren(
 
     if (ScopeWin->head.pti == PsGetCurrentThreadWin32Thread())
     {
+       /* The DWM answers for the caption buttons it draws on a composed frame */
+       if (co_IntDwmHitTestFrame(ScopeWin, *Point, HitTest))
+           return ScopeWin;
+
        *HitTest = (USHORT)co_IntSendMessage(UserHMGetHandle(ScopeWin), WM_NCHITTEST, 0, MAKELONG(Point->x, Point->y));
 
        if ((*HitTest) == (USHORT)HTTRANSPARENT)
@@ -3034,6 +3039,7 @@ co_WinPosWindowFromPoint(
    UserRefObjectCo(ScopeWin, &Ref);
 
    Window = co_WinPosSearchChildren(ScopeWin, &Point, HitTest, Ignore);
+   co_IntDwmLeaveFrame(Window, Point, *HitTest);
 
    UserDerefObjectCo(ScopeWin);
    if (Window)
