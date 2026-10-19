@@ -771,7 +771,7 @@
 @ stdcall -version=0x600+ GetTimeFormatEx(wstr long ptr wstr ptr long)
 @ stdcall GetTimeFormatW(long long ptr wstr ptr long)
 @ stdcall GetTimeZoneInformation(ptr)
-@ stdcall GetTimeZoneInformationForYear(long ptr ptr)
+@ stdcall -version=0x600+ GetTimeZoneInformationForYear(long ptr ptr)
 @ stdcall GetTokenInformation(long long ptr long ptr)
 @ stdcall GetTraceEnableFlags(int64) ntdll.EtwGetTraceEnableFlags
 @ stdcall GetTraceEnableLevel(int64) ntdll.EtwGetTraceEnableLevel
@@ -826,9 +826,9 @@
 @ stdcall HeapUnlock(long)
 @ stdcall HeapValidate(long long ptr)
 @ stdcall HeapWalk(long ptr)
-@ stdcall IdnToAscii(long wstr long ptr long)
-@ stdcall IdnToNameprepUnicode(long wstr long ptr long)
-@ stdcall IdnToUnicode(long wstr long ptr long)
+@ stdcall -version=0x600+ IdnToAscii(long wstr long ptr long)
+@ stdcall -version=0x600+ IdnToNameprepUnicode(long wstr long ptr long)
+@ stdcall -version=0x600+ IdnToUnicode(long wstr long ptr long)
 @ stdcall ImpersonateAnonymousToken(long)
 @ stdcall ImpersonateLoggedOnUser(long)
 @ stdcall ImpersonateNamedPipeClient(long)
@@ -905,7 +905,7 @@
 # @ stub IsGlobalizationUserSettingsKeyRedirected
 @ stdcall IsInternetESCEnabled()
 @ stdcall IsNLSDefinedString(long long ptr wstr long)
-@ stdcall IsNormalizedString(long wstr long)
+@ stdcall -version=0x600+ IsNormalizedString(long wstr long)
 # @ stub IsProcessCritical
 @ stdcall IsProcessInJob(long long ptr)
 @ stdcall IsProcessorFeaturePresent(long)
