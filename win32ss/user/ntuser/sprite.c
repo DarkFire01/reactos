@@ -24,6 +24,7 @@ typedef struct _DWM_SPRITE
     BOOLEAN Visible;
     BOOLEAN ActiveFrame;
     BOOLEAN RendersFrame;
+    RECT FrameMargins;          /* as last sent: left, top, right, bottom */
 } DWM_SPRITE, *PDWM_SPRITE;
 
 /* Every sprite; only touched with the user lock held exclusively */
@@ -226,6 +227,39 @@ IntDwmCalculateContentRect(
     *BorderThickness = Border.cx;
 }
 
+/* The frame of the window's style, whatever its client area covers; nothing for a window without one */
+static
+VOID
+IntDwmSendFrameMargins(
+    _In_ PDWM_SPRITE Sprite)
+{
+    PWND Window = Sprite->Window;
+    DWM_FRAME_MARGINS_CHANGE Message;
+    RECT Margins = { 0, 0, 0, 0 };
+    SIZE Border;
+
+    if ((Window->style & WS_THICKFRAME) || (Window->style & WS_CAPTION) == WS_CAPTION)
+    {
+        UserGetWindowBorders(Window->style, Window->ExStyle, &Border, FALSE);
+        Margins.left = Margins.right = Border.cx;
+        Margins.top = Margins.bottom = Border.cy;
+        if ((Window->style & WS_CAPTION) == WS_CAPTION)
+            Margins.top += UserGetSystemMetrics((Window->ExStyle & WS_EX_TOOLWINDOW) ? SM_CYSMCAPTION : SM_CYCAPTION);
+    }
+    if (RtlEqualMemory(&Margins, &Sprite->FrameMargins, sizeof(Margins)))
+        return;
+    Sprite->FrameMargins = Margins;
+
+    RtlZeroMemory(&Message, sizeof(Message));
+    Message.Command = DWM_PORT_FRAME_MARGINS_CHANGE;
+    Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
+    Message.Left = Margins.left;
+    Message.Right = Margins.right;
+    Message.Top = Margins.top;
+    Message.Bottom = Margins.bottom;
+    IntDwmSendMessage(&Message.Header, sizeof(Message));
+}
+
 static
 VOID
 IntDwmSendChildMoveSize(
@@ -308,6 +342,7 @@ IntDwmComposeWindow(
     IntDwmSendZOrderSprite(Sprite);
     IntDwmSendShowSprite(Sprite);
     IntDwmSendUpdateSprite(Sprite, TRUE);
+    IntDwmSendFrameMargins(Sprite);
     IntDwmSendChildMoveSize(Window);
     IntDwmNotifyIconChange(Window);
     if (IntDwmRendersFrame(Window))
@@ -355,6 +390,8 @@ IntDwmMoveSprite(
     LONG Height = Window->rcWindow.bottom - Window->rcWindow.top;
     BOOLEAN Resized;
 
+    /* A new style can change the frame without moving the window */
+    IntDwmSendFrameMargins(Sprite);
     if (RtlEqualMemory(&Sprite->WindowRect, &Window->rcWindow, sizeof(RECT)))
         return;
 
