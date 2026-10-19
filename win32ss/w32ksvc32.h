@@ -842,3 +842,4 @@
     SVC_(DCompositionGetConnectionBatch, 3)
     SVC_(GdiHLSurfGetInformation, 4)
     SVC_(GdiHLSurfSetInformation, 4)
+    SVC_(DCompositionCreateAndBindSharedSection, 4)

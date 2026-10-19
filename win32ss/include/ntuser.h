@@ -2938,6 +2938,14 @@ NtDCompositionDestroyChannel(
 
 NTSTATUS
 NTAPI
+NtDCompositionCreateAndBindSharedSection(
+    _In_ HANDLE Channel,
+    _In_ ULONG Resource,
+    _In_ ULONG Size,
+    _Out_ PHANDLE Section);
+
+NTSTATUS
+NTAPI
 NtDCompositionProcessChannelBatchBuffer(
     _In_ HANDLE Channel,
     _In_ ULONG Length,

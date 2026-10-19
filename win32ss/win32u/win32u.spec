@@ -681,6 +681,7 @@
 @ stdcall NtGdiDrawStream(ptr long ptr)
 @ stdcall NtBindCompositionSurface(ptr long long ptr int64)
 @ stdcall NtDCompositionCommitChannel(ptr ptr ptr long ptr ptr ptr long)
+@ stdcall NtDCompositionCreateAndBindSharedSection(ptr long long ptr)
 @ stdcall NtDCompositionCreateChannel(ptr ptr ptr)
 @ stdcall NtDCompositionCreateConnection(long ptr ptr)
 @ stdcall NtDCompositionDestroyChannel(ptr)
