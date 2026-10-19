@@ -231,6 +231,12 @@ KiSwapContextResume(
     NewProcess = NewThread->ApcState.Process;
     if (OldProcess != NewProcess)
     {
+#ifdef CONFIG_SMP
+        /* TB flushes for a process go to the processors in its mask, so this one joins before it loads CR3 */
+        InterlockedAnd64((PLONG64)&OldProcess->ActiveProcessors, ~(LONG64)Pcr->Prcb.SetMember);
+        InterlockedOr64((PLONG64)&NewProcess->ActiveProcessors, (LONG64)Pcr->Prcb.SetMember);
+#endif
+
         /* Switch address space and flush TLB */
         __writecr3(NewProcess->DirectoryTableBase[0]);
 
