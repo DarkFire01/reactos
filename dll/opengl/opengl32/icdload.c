@@ -129,6 +129,145 @@ static ULONG_PTR APIENTRY wglGetDdHandle(ULONG_PTR context)
     return 0;
 }
 
+/* What an ICD hands over when it presents through the compositor */
+typedef struct _ICD_COMPOSED_PRESENT
+{
+    DWORD Type;                 /* 2, or 3 from an ICD that also names a format */
+    DWORD Flags;                /* 1: wait for the compositor's frame */
+    LUID AdapterLuid;
+    ULONG_PTR Resource;         /* the ICD's own back buffer, given back to it */
+} ICD_COMPOSED_PRESENT;
+
+/* What DrvPresentBuffers is called with: the surface to draw into, or none to present itself */
+typedef struct _ICD_PRESENT_TARGET
+{
+    HANDLE Surface;
+    LUID AdapterLuid;
+    ULONG64 UpdateId;
+    ULONG_PTR Resource;
+} ICD_PRESENT_TARGET;
+
+typedef HRESULT (WINAPI *PFN_GET_WINDOW_SHARED_SURFACE)(HWND, LUID, HMONITOR, DWORD, UINT*, HANDLE*, ULONG64*);
+typedef HRESULT (WINAPI *PFN_UPDATE_WINDOW_SHARED_SURFACE)(HWND, ULONG64, DWORD, HMONITOR, const RECT*);
+
+/* dwmapi's success code for a window GDI has to draw */
+#define DWM_SURFACE_BLT_VIA_GDI ((HRESULT)0x00263008L)
+
+static PFN_GET_WINDOW_SHARED_SURFACE pfnGetWindowSharedSurface;
+static PFN_UPDATE_WINDOW_SHARED_SURFACE pfnUpdateWindowSharedSurface;
+
+/**
+ * @brief Finds dwmapi's shared surface entry points, which it exports only by ordinal.
+ *
+ * @return TRUE when a surface can be asked for.
+ */
+static
+BOOL
+IntLoadSharedSurfaceRoutines(VOID)
+{
+    static LONG Loaded = 0;
+    HMODULE hDwm;
+
+    if (InterlockedCompareExchange(&Loaded, 1, 0) == 0)
+    {
+        hDwm = LoadLibraryW(L"dwmapi.dll");
+        if (hDwm)
+        {
+            pfnUpdateWindowSharedSurface = (PFN_UPDATE_WINDOW_SHARED_SURFACE)GetProcAddress(hDwm, MAKEINTRESOURCEA(101));
+            InterlockedExchangePointer((PVOID*)&pfnGetWindowSharedSurface,
+                                       (PVOID)GetProcAddress(hDwm, MAKEINTRESOURCEA(100)));
+        }
+    }
+
+    return pfnGetWindowSharedSurface != NULL;
+}
+
+/**
+ * @brief The composed present: the ICD draws into the surface the DWM composes the window from.
+ *
+ * @param hdc The DC being presented.
+ * @param present The ICD's ICD_COMPOSED_PRESENT.
+ *
+ * @return TRUE when the frame was handed on; without a compositor the ICD presents it itself.
+ */
+static
+BOOL
+APIENTRY
+wglPresentBuffers(
+    _In_ HDC hdc,
+    _In_ PVOID present)
+{
+    const ICD_COMPOSED_PRESENT* Present = present;
+    struct ICD_Data* data;
+    ICD_PRESENT_TARGET Target;
+    UINT Format = 88; /* DXGI_FORMAT_B8G8R8X8_UNORM */
+    DWORD Flags;
+    HWND hwnd;
+    HRESULT hr;
+
+    if (!Present || (Present->Type != 2 && Present->Type != 3) || Present->Flags > 1)
+        return FALSE;
+
+    data = IntGetIcdData(hdc);
+    hwnd = WindowFromDC(hdc);
+    if (!data || !data->DrvPresentBuffers || !hwnd || !IntLoadSharedSurfaceRoutines())
+        return FALSE;
+
+    Flags = Present->Flags;
+    if (Present->Type == 3)
+        Flags |= 0x10;
+
+    ZeroMemory(&Target, sizeof(Target));
+    Target.AdapterLuid = Present->AdapterLuid;
+    Target.Resource = Present->Resource;
+    hr = pfnGetWindowSharedSurface(hwnd, Present->AdapterLuid, NULL, Flags, &Format,
+                                   &Target.Surface, &Target.UpdateId);
+
+    /* Not composed, or composed through GDI: the ICD presents to the window as it would alone */
+    if (FAILED(hr) || hr == DWM_SURFACE_BLT_VIA_GDI)
+    {
+        Target.Surface = NULL;
+        if (FAILED(hr))
+            Target.UpdateId = 0;
+    }
+    else if (!Target.Surface)
+    {
+        return TRUE;
+    }
+
+    if (!data->DrvPresentBuffers(hdc, &Target))
+        return FALSE;
+
+    if (Target.Surface && pfnUpdateWindowSharedSurface)
+        pfnUpdateWindowSharedSurface(hwnd, Target.UpdateId, 0, NULL, NULL);
+    return TRUE;
+}
+
+/* A present into the window's GDI redirection surface, which is not a GPU allocation here */
+static
+BOOL
+APIENTRY
+wglPresentToRedirectionSurface(
+    _In_ HDC hdc,
+    _In_ PVOID present)
+{
+    UNREFERENCED_PARAMETER(hdc);
+    UNREFERENCED_PARAMETER(present);
+    return FALSE;
+}
+
+static
+BOOL
+APIENTRY
+wglSubmitPresentToRedirectionSurface(
+    _In_ HDC hdc,
+    _In_ PVOID present)
+{
+    UNREFERENCED_PARAMETER(hdc);
+    UNREFERENCED_PARAMETER(present);
+    return FALSE;
+}
+
 /* The adapter the ICD was loaded for, which it opens through D3DKMT */
 static BOOL APIENTRY wglGetAdapterLuid(HDC hdc, LUID* pAdapterLuid)
 {
@@ -640,7 +779,7 @@ LoadIcd:
 
     /*
      * Pass the callbacks. The order is the contract, and an ICD reads the entries it
-     * knows of rather than the count it was given, so all seven are passed.
+     * knows of rather than the count it was given, so all nine are passed.
      */
     DrvSetCallbackProcs = (void*)GetProcAddress(data->hModule, "DrvSetCallbackProcs");
     if(DrvSetCallbackProcs)
@@ -650,10 +789,11 @@ LoadIcd:
             (PROC)wglGetCurrentValue,
             (PROC)wglGetDHGLRC,
             (PROC)wglGetDdHandle,
-            /* No compositor to present through, an ICD presents to the window itself */
-            NULL,
+            (PROC)wglPresentBuffers,
             (PROC)wglGetAdapterLuid,
-            (PROC)wglCheckFullscreenSupport};
+            (PROC)wglCheckFullscreenSupport,
+            (PROC)wglPresentToRedirectionSurface,
+            (PROC)wglSubmitPresentToRedirectionSurface};
         DrvSetCallbackProcs(ARRAYSIZE(callbacks), callbacks);
     }
 
