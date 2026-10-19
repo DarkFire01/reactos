@@ -212,6 +212,10 @@ typedef struct _DWM_HIT_TEST_QUERY
 #define DWM_API_MOUSE_LEAVE         0x4000001B
 #define DWM_API_ENABLE_BLUR_BEHIND  0x40000022
 
+/* Ours: the shared surface a GPU presenter draws a window's client area into, and word of a new frame in it */
+#define DWM_API_GET_SHARED_SURFACE      0x40000080
+#define DWM_API_UPDATE_SHARED_SURFACE   0x40000081
+
 /* As many of a blur region's rectangles as a port message holds; a region with more sends its bounds */
 #define DWM_BLUR_BEHIND_MAX_RECTS   12
 
@@ -270,6 +274,20 @@ typedef struct _DWM_BLUR_BEHIND_REQUEST
     ULONG RectCount;            /* with DWM_BB_BLURREGION, zero is the whole client area */
     RECT Rects[DWM_BLUR_BEHIND_MAX_RECTS];  /* client coordinates */
 } DWM_BLUR_BEHIND_REQUEST, *PDWM_BLUR_BEHIND_REQUEST;
+
+/* DwmpDxGetWindowSharedSurface and DwmpDxUpdateWindowSharedSurface */
+typedef struct _DWM_SHARED_SURFACE_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;
+    LUID AdapterLuid;
+    ULONG Format;               /* DXGI_FORMAT; in, the one asked for, and out, the surface's */
+    ULONG Flags;
+    ULONG64 Surface;            /* out: global share handle of the surface */
+    ULONG64 UpdateId;           /* out on a get, in on an update */
+} DWM_SHARED_SURFACE_REQUEST, *PDWM_SHARED_SURFACE_REQUEST;
 
 #include <poppack.h>
 
