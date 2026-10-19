@@ -280,12 +280,25 @@ noparent:
        REGION_UnlockRgn(RgnClip);
    }
 
-   /* A redirected window's visible region is in its surface's coordinates */
+   /* A redirected window's visible region is in its surface's coordinates, and never past its edge */
    if (Window && RgnVisible)
    {
       PWND Redirected = IntDwmGetRedirectedWindow(Window, NULL);
+      SIZEL Size;
+
       if (Redirected)
+      {
          REGION_bOffsetRgn(RgnVisible, -Redirected->rcWindow.left, -Redirected->rcWindow.top);
+         if (IntDwmGetSurfaceSize(Redirected, &Size))
+         {
+            PREGION RgnSurface = IntSysCreateRectpRgn(0, 0, Size.cx, Size.cy);
+            if (RgnSurface)
+            {
+               IntGdiCombineRgn(RgnVisible, RgnVisible, RgnSurface, RGN_AND);
+               REGION_Delete(RgnSurface);
+            }
+         }
+      }
    }
 
    Dce->DCXFlags &= ~DCX_DCEDIRTY;
