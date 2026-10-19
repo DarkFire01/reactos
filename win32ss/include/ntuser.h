@@ -2914,6 +2914,65 @@ NtUserRegisterRawInputDevices(
     IN UINT uiNumDevices,
     IN UINT cbSize);
 
+NTSTATUS
+NTAPI
+NtDCompositionCreateConnection(
+    _In_ ULONG Compositor,
+    _In_opt_ PVOID ClientInfo,
+    _Out_ PHANDLE Connection);
+
+NTSTATUS
+NTAPI
+NtDCompositionCreateChannel(
+    _Out_ PHANDLE Channel,
+    _Inout_ PULONG SectionSize,
+    _Out_ PVOID* SharedSection);
+
+NTSTATUS
+NTAPI
+NtDCompositionDestroyChannel(
+    _In_ HANDLE Channel);
+
+NTSTATUS
+NTAPI
+NtDCompositionProcessChannelBatchBuffer(
+    _In_ HANDLE Channel,
+    _In_ ULONG Length,
+    _Out_ PULONG Consumed,
+    _Out_ PBOOLEAN MoreWork);
+
+NTSTATUS
+NTAPI
+NtDCompositionCommitChannel(
+    _In_ HANDLE Channel,
+    _Out_opt_ PULONG BatchId,
+    _Out_opt_ PBOOLEAN Pending,
+    _In_ ULONG Flags,
+    _In_opt_ HANDLE SyncObject,
+    _In_opt_ PVOID Reserved1,
+    _In_opt_ PVOID Reserved2,
+    _In_ ULONG Reserved3);
+
+NTSTATUS
+NTAPI
+NtDCompositionWaitForChannel(
+    _In_ HANDLE Channel,
+    _In_ BOOL WaitAll);
+
+NTSTATUS
+NTAPI
+NtDCompositionSetChannelConnectionId(
+    _In_ HANDLE Channel,
+    _In_ ULONG Slot,
+    _In_ ULONG64 ConnectionId);
+
+NTSTATUS
+NTAPI
+NtDCompositionGetConnectionBatch(
+    _In_ HANDLE Connection,
+    _In_opt_ PVOID Context,
+    _Out_ PVOID* ListHead);
+
 BOOL
 NTAPI
 NtUserRegisterSessionPort(

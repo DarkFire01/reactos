@@ -88,6 +88,13 @@ IntDwmNotifyWinEvent(
     IntDwmSendWindowNotification(Window, Event);
 }
 
+BOOLEAN
+FASTCALL
+IntDwmIsCurrentProcess(VOID)
+{
+    return gppiDwm && gppiDwm == GetW32ProcessInfo();
+}
+
 VOID
 FASTCALL
 IntDwmProcessCleanup(

@@ -194,4 +194,15 @@ FASTCALL
 IntDwmProcessCleanup(
     _In_ PPROCESSINFO ProcessInfo);
 
+BOOLEAN
+FASTCALL
+IntDwmIsCurrentProcess(VOID);
+
+/************************* dcomp.c *************************/
+
+VOID
+FASTCALL
+IntDcompProcessCleanup(
+    _In_ PEPROCESS Process);
+
 /* EOF */
