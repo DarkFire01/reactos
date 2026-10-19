@@ -250,6 +250,15 @@ typedef struct _DL_CDS_REQUEST
 typedef NTSTATUS (NTAPI *PFN_DxgkAugmentCdsj)(
     _Inout_ PDL_CDS_REQUEST Request);
 
+typedef NTSTATUS (NTAPI *PFN_DxgkRegisterDwmProcess)(VOID);
+
+typedef NTSTATUS (NTAPI *PFN_DxgkReleaseProcessVidPnSourceOwners)(
+    _In_ HANDLE Process);
+
+typedef BOOLEAN (NTAPI *PFN_DxgkNeedToEnableCddPrimary)(
+    _In_ PVOID Adapter,
+    _In_ ULONG VidPnSourceId);
+
 typedef NTSTATUS (NTAPI *PFN_DxgkApplyCdsjToPathsModality)(
     _Inout_ PD3DKMT_GETPATHSMODALITY *Modality,
     _Inout_ PDL_CDS_REQUEST Request);
@@ -271,7 +280,9 @@ typedef struct _DXGKWIN32K_INTERFACE_BUF
     PFN_DxgkProcessCallout pfnDxgkProcessCallout;       /* 5 */
     PVOID Reserved6[2];                                 /* 6..7 */
     PVOID pfnDxgkOpenAdapter;                           /* 8 */
-    PVOID Reserved9[9];                                 /* 9..17 */
+    PVOID Reserved9[6];                                 /* 9..14 */
+    PFN_DxgkReleaseProcessVidPnSourceOwners pfnDxgkReleaseProcessVidPnSourceOwners; /* 15 */
+    PVOID Reserved16[2];                                /* 16..17 */
     PFN_DxgkPathsModality pfnDxgkGetPathsModality;      /* 18 */
     PFN_DxgkFunctionalizePathsModality pfnDxgkFunctionalizePathsModality; /* 19 */
     PFN_DxgkApplyPathsModality pfnDxgkApplyPathsModality; /* 20 */
@@ -279,7 +290,11 @@ typedef struct _DXGKWIN32K_INTERFACE_BUF
     PFN_DxgkPersistPathsModality pfnDxgkPersistPathsModality; /* 22 */
     PFN_DxgkFreePathsModality pfnDxgkFreePathsModality; /* 23 */
     PFN_DxgkAugmentCdsj pfnDxgkAugmentCdsj;             /* 24 */
-    PVOID Reserved25[50];                               /* 25..74 */
+    PVOID Reserved25[11];                               /* 25..35 */
+    PFN_DxgkNeedToEnableCddPrimary pfnDxgkNeedToEnableCddPrimary; /* 36 */
+    PVOID Reserved37[21];                               /* 37..57 */
+    PFN_DxgkRegisterDwmProcess pfnDxgkRegisterDwmProcess; /* 58 */
+    PVOID Reserved59[16];                               /* 59..74 */
     PFN_DxgkApplyCdsjToPathsModality pfnDxgkApplyCdsjToPathsModality; /* 75 */
     PVOID Reserved76[28];                               /* 76..103 */
 } DXGKWIN32K_INTERFACE_BUF;
@@ -289,6 +304,9 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkProcessCallout) == 5 * si
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkOpenAdapter) == 8 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkGetPathsModality) == 18 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkAugmentCdsj) == 24 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkReleaseProcessVidPnSourceOwners) == 15 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkNeedToEnableCddPrimary) == 36 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkRegisterDwmProcess) == 58 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality) == 75 * sizeof(PVOID));
 
 #define DL_INTERFACE_VERSION    50
@@ -532,6 +550,40 @@ DlProcessCallout(
         return STATUS_SUCCESS;
 
     return gDxgkInterface.pfnDxgkProcessCallout(&ppi->DxProcess, &gDxgkWin32kEngInterface, Create);
+}
+
+/** @brief Mark the current process as the session's DWM, which may then share VidPN source ownership. */
+NTSTATUS NTAPI
+DlRegisterDwmProcess(VOID)
+{
+    if (!gbDxgkInitialized)
+        return STATUS_SUCCESS;
+
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (gDxgkInterface.pfnDxgkRegisterDwmProcess != NULL)
+        return gDxgkInterface.pfnDxgkRegisterDwmProcess();
+#endif
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Give every output the dying DWM owned back to GDI, from the DWM process's teardown.
+ *        dxgkrnl restores the CDD's output while releasing, and primaries it reports as still
+ *        needing it are asserted again.
+ */
+VOID NTAPI
+DlDwmShutdown(VOID)
+{
+    if (!gbDxgkInitialized)
+        return;
+
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (gDxgkInterface.pfnDxgkReleaseProcessVidPnSourceOwners != NULL)
+        gDxgkInterface.pfnDxgkReleaseProcessVidPnSourceOwners(NtCurrentProcess());
+
+    if (gDxgkInterface.pfnDxgkNeedToEnableCddPrimary != NULL)
+        PDEVOBJ_vEnableCddPrimaries(gDxgkInterface.pfnDxgkNeedToEnableCddPrimary);
+#endif
 }
 
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11

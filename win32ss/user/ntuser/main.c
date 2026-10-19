@@ -802,6 +802,8 @@ ExitThreadCallback(PETHREAD Thread)
                 UserUnregisterUserApiHook();
             }
 
+            IntDwmProcessShutdown(ppiCurrent);
+
             /* Notify logon application to restart shell if needed */
             if (ptiCurrent->pDeskInfo)
             {
