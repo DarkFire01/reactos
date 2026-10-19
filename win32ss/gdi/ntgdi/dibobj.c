@@ -1925,7 +1925,7 @@ DIB_CreateDIBSection(
     ULONG totalSize;
     BITMAP bm;
     //SIZEL Size;
-    HANDLE hSecure;
+    HANDLE hSecure = NULL;
 
     DPRINT("format (%ld,%ld), planes %u, bpp %u, size %lu, colors %lu (%s)\n",
            bi->biWidth, bi->biHeight, bi->biPlanes, bi->biBitCount,
@@ -2009,8 +2009,14 @@ DIB_CreateDIBSection(
         }
     }
 
-//  hSecure = MmSecureVirtualMemory(bm.bmBits, totalSize, PAGE_READWRITE);
-    hSecure = (HANDLE)0x1; // HACK OF UNIMPLEMENTED KERNEL STUFF !!!!
+    /* EngUnmapSectionView unsecures this when the bitmap goes away */
+    hSecure = EngSecureMem(bm.bmBits, totalSize);
+    if (!hSecure)
+    {
+        DPRINT1("EngSecureMem failed\n");
+        EngSetLastError(ERROR_INVALID_PARAMETER);
+        goto cleanup;
+    }
 
     // Create Device Dependent Bitmap and add DIB pointer
     //Size.cx = bm.bmWidth;
@@ -2058,7 +2064,8 @@ cleanup:
         DPRINT("Got an error res=%p, bmp=%p, bm.bmBits=%p\n", res, bmp, bm.bmBits);
         if (bm.bmBits)
         {
-            // MmUnsecureVirtualMemory(hSecure); // FIXME: Implement this!
+            if (hSecure)
+                EngUnsecureMem(hSecure);
             if (section)
             {
                 ZwUnmapViewOfSection(NtCurrentProcess(), mapBits);
