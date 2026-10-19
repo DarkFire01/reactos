@@ -83,9 +83,17 @@ DcompIsValidVisualProperty(
         case DCOMP_VISUAL_INSERT_CHILD:
         case DCOMP_VISUAL_REMOVE_CHILD:
         case DCOMP_VISUAL_CONTENT:
+        case DCOMP_VISUAL_INSERT_REFERENCE:
             return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
         case DCOMP_VISUAL_SIZE:
+        case DCOMP_VISUAL_INSERT_ABOVE:
+        case DCOMP_VISUAL_INTERPOLATION:
+        case DCOMP_VISUAL_BORDER_MODE:
+        case DCOMP_VISUAL_COMPOSITE_MODE:
             return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
+        case DCOMP_VISUAL_TRANSFORM:
+        case DCOMP_VISUAL_CLIP:
+            return Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
     }
     return FALSE;
 }
@@ -137,6 +145,11 @@ DcompIsValidProperty(
             return (Property == DCOMP_SURFACE_BRUSH_SOURCE_RECT || Property == DCOMP_SURFACE_BRUSH_NINE_GRID) &&
                    Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
 
+        case DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP:
+            if (Property == DCOMP_COMPOSITION_SURFACE_HANDLE || Property == DCOMP_COMPOSITION_SURFACE_GENERATION)
+                return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
+            return Property == DCOMP_COMPOSITION_SURFACE_DESC && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
+
         case DCOMP_RESOURCE_BACKDROP_BRUSH:
             if (Property == DCOMP_BACKDROP_BRUSH_BLUR)
                 return Tag == DCOMP_CMD_SET_FLOAT_PROPERTY;
@@ -174,6 +187,7 @@ DcompIsKnownType(
            Type == DCOMP_RESOURCE_COLOR_BRUSH ||
            Type == DCOMP_RESOURCE_SURFACE_BRUSH ||
            Type == DCOMP_RESOURCE_BACKDROP_BRUSH ||
+           Type == DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP ||
            Type == DCOMP_RESOURCE_BITMAP_SOURCE;
 }
 

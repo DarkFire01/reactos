@@ -19,7 +19,7 @@ typedef struct _DWM_SPRITE
     LIST_ENTRY Link;
     PWND Window;
     ULONG64 Handle;
-    PLOGICAL_SURFACE Surface;
+    PLOGICAL_SURFACE Surface;   /* none for a window created without a redirection bitmap */
     RECT WindowRect;
     BOOLEAN Visible;
     BOOLEAN ActiveFrame;
@@ -72,8 +72,9 @@ IntDwmGetRedirectedWindow(
     if (TopLevel->spwndParent != Desktop)
         return NULL;
 
+    /* Without a surface GDI draws where it always did, and the DWM shows none of it */
     Sprite = IntDwmFindSprite(TopLevel);
-    if (!Sprite)
+    if (!Sprite || !Sprite->Surface)
         return NULL;
 
     if (phbm)
@@ -98,7 +99,7 @@ IntDwmGetSurfaceSize(
 {
     PDWM_SPRITE Sprite = IntDwmFindSprite(Window);
 
-    if (!Sprite)
+    if (!Sprite || !Sprite->Surface)
     {
         Size->cx = Size->cy = 0;
         return FALSE;
@@ -156,12 +157,18 @@ IntDwmSendUpdateSprite(
     RtlZeroMemory(&Message, sizeof(Message));
     Message.Command = DWM_PORT_UPDATE_SPRITE;
     Message.Sprite = Sprite->Handle;
-    Message.Flags = (Sprite->Visible ? DWM_SPRITE_VISIBLE : 0) | (NewSurface ? DWM_SPRITE_NEW_SURFACE : 0);
+    Message.Flags = Sprite->Visible ? DWM_SPRITE_VISIBLE : 0;
     Message.HasInfo = TRUE;
     IntDwmDescribeWindow(Sprite->Window, &Message.Info);
-    Message.Surface = Sprite->Surface->Handle;
-    Message.Width = Sprite->Surface->Size.cx;
-    Message.Height = Sprite->Surface->Size.cy;
+    if (Sprite->Surface)
+    {
+        if (NewSurface)
+            Message.Flags |= DWM_SPRITE_NEW_SURFACE;
+        Message.Surface = Sprite->Surface->Handle;
+        Message.SurfaceKind = DWM_SURFACE_SECTION;
+        Message.Width = Sprite->Surface->Size.cx;
+        Message.Height = Sprite->Surface->Size.cy;
+    }
     IntDwmSendMessage(&Message.Header, sizeof(Message));
 }
 
@@ -294,7 +301,6 @@ IntDwmShouldCompose(
     return IntDwmIsKernelStarted() &&
            Window->spwndParent == UserGetDesktopWindow() &&
            (Window->style & WS_VISIBLE) &&
-           !(Window->ExStyle & WS_EX_NOREDIRECTIONBITMAP) &&
            !(Window->state & WNDS_DESTROYED);
 }
 
@@ -319,14 +325,17 @@ IntDwmComposeWindow(
     Sprite->WindowRect = Window->rcWindow;
     Sprite->Visible = TRUE;
     Sprite->ActiveFrame = (Window->state & WNDS_ACTIVEFRAME) != 0;
-    Sprite->Surface = GreCreateLogicalSurface(Window->rcWindow.right - Window->rcWindow.left,
-                                              Window->rcWindow.bottom - Window->rcWindow.top,
-                                              Sprite->Handle);
-    if (!Sprite->Surface)
+    if (!(Window->ExStyle & WS_EX_NOREDIRECTIONBITMAP))
     {
-        ERR("No redirection surface for %p\n", UserHMGetHandle(Window));
-        ExFreePoolWithTag(Sprite, TAG_SPRITE);
-        return;
+        Sprite->Surface = GreCreateLogicalSurface(Window->rcWindow.right - Window->rcWindow.left,
+                                                  Window->rcWindow.bottom - Window->rcWindow.top,
+                                                  Sprite->Handle);
+        if (!Sprite->Surface)
+        {
+            ERR("No redirection surface for %p\n", UserHMGetHandle(Window));
+            ExFreePoolWithTag(Sprite, TAG_SPRITE);
+            return;
+        }
     }
     InsertTailList(&gDwmSprites, &Sprite->Link);
 
@@ -372,9 +381,12 @@ IntDwmDestroySprite(
     }
 
     /* Its DCs go back to the screen before the surface goes away */
-    if (!(Sprite->Window->state & WNDS_DESTROYED))
-        DceResetActiveDCEs(Sprite->Window);
-    GreDeleteLogicalSurface(Sprite->Surface);
+    if (Sprite->Surface)
+    {
+        if (!(Sprite->Window->state & WNDS_DESTROYED))
+            DceResetActiveDCEs(Sprite->Window);
+        GreDeleteLogicalSurface(Sprite->Surface);
+    }
     ExFreePoolWithTag(Sprite, TAG_SPRITE);
 }
 
@@ -400,7 +412,7 @@ IntDwmMoveSprite(
     Sprite->WindowRect = Window->rcWindow;
 
     IntDwmSendChildMoveSize(Window);
-    if (!Resized)
+    if (!Resized || !Sprite->Surface)
     {
         IntDwmSendUpdateSprite(Sprite, FALSE);
         return;
