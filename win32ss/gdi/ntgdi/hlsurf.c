@@ -155,6 +155,17 @@ GreAccumulateLogicalSurfaceDirty(
     return Notify;
 }
 
+VOID
+NTAPI
+GreCancelLogicalSurfaceNotify(
+    _In_ PSURFACE psurf)
+{
+    EngAcquireSemaphore(ghsemLogicalSurfaces);
+    if (psurf->pLogicalSurface)
+        psurf->pLogicalSurface->DirtyPending = FALSE;
+    EngReleaseSemaphore(ghsemLogicalSurfaces);
+}
+
 BOOL
 NTAPI
 GreSelectRedirectionBitmap(
@@ -176,6 +187,10 @@ GreSelectRedirectionBitmap(
             DC_UnlockDc(pdc);
             return FALSE;
         }
+
+        /* Brushes are realized for a surface, so they have to be realized again for this one */
+        if (pdc->dclevel.pSurface != psurf)
+            pdc->pdcattr->ulDirty_ |= DIRTY_FILL | DIRTY_LINE | DIRTY_TEXT | DIRTY_BACKGROUND;
 
         DC_vSelectSurface(pdc, psurf);
         pdc->dclevel.sizl = psurf->SurfObj.sizlBitmap;

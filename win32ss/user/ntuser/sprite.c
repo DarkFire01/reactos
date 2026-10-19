@@ -697,7 +697,7 @@ co_IntDwmTrackCaptionButton(
     return Captured != DWM_HIT_TEST_NONE && HitTest == Captured;
 }
 
-VOID
+NTSTATUS
 NTAPI
 IntDwmNotifyDirtySprite(
     _In_ ULONG64 Sprite)
@@ -708,5 +708,5 @@ IntDwmNotifyDirtySprite(
     Message.Command = DWM_PORT_DIRTY_SPRITE;
     Message.DirtyFlags = 1;
     Message.Sprite = Sprite;
-    IntDwmSendMessage(&Message.Header, sizeof(Message));
+    return IntDwmSendMessage(&Message.Header, sizeof(Message));
 }
