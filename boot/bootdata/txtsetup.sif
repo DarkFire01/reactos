@@ -155,6 +155,12 @@ legide.sys   = 1,,,,,,,4,,,,1,4
 
 [SourceDisksFiles.amd64]
 acpi.sys     = 1,,,,,,x,4,,,,1,4
+dxgmms1.sys  = 1,,,,,,x,4,,,,1,4
+dxgmms2.sys  = 1,,,,,,x,4,,,,1,4
+watchdog.sys = 1,,,,,,x,4,,,,1,4
+BasicDisplay.sys = 1,,,,,,x,4,,,,1,4
+BasicRender.sys  = 1,,,,,,x,4,,,,1,4
+cdd.dll      = 1,,,,,,x,2,,,,1,2
 
 ;
 ; The [SystemPartitionFiles] section lists all the files
