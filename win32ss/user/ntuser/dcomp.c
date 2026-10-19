@@ -132,7 +132,13 @@ DcompIsValidProperty(
         case DCOMP_RESOURCE_SURFACE_BRUSH:
             if (Property == DCOMP_SURFACE_BRUSH_SURFACE)
                 return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
-            return Property == DCOMP_SURFACE_BRUSH_SOURCE_RECT && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
+            return (Property == DCOMP_SURFACE_BRUSH_SOURCE_RECT || Property == DCOMP_SURFACE_BRUSH_NINE_GRID) &&
+                   Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
+
+        case DCOMP_RESOURCE_BACKDROP_BRUSH:
+            if (Property == DCOMP_BACKDROP_BRUSH_BLUR)
+                return Tag == DCOMP_CMD_SET_FLOAT_PROPERTY;
+            return Property == DCOMP_BACKDROP_BRUSH_TINT && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
 
         case DCOMP_RESOURCE_BITMAP_SOURCE:
             if (Property == DCOMP_BITMAP_SOURCE_SECTION)
@@ -165,6 +171,7 @@ DcompIsKnownType(
            Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP ||
            Type == DCOMP_RESOURCE_COLOR_BRUSH ||
            Type == DCOMP_RESOURCE_SURFACE_BRUSH ||
+           Type == DCOMP_RESOURCE_BACKDROP_BRUSH ||
            Type == DCOMP_RESOURCE_BITMAP_SOURCE;
 }
 
