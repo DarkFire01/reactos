@@ -188,6 +188,32 @@ typedef struct _DWM_HIT_TEST_QUERY
     ULONG Handled;              /* out */
 } DWM_HIT_TEST_QUERY, *PDWM_HIT_TEST_QUERY;
 
+/*
+ * Requests applications make through dwmapi on a connection of their own to the session port.
+ * The DWM answers each in place, with Result. Windows carries these over ALPC; the command values
+ * are its own.
+ */
+#define DWM_API_EXTEND_FRAME        0x4000001A
+
+typedef struct _DWM_API_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+} DWM_API_REQUEST, *PDWM_API_REQUEST;
+
+typedef struct _DWM_EXTEND_FRAME_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;
+    LONG Left;                  /* MARGINS; a negative one turns the whole window to glass */
+    LONG Right;
+    LONG Top;
+    LONG Bottom;
+} DWM_EXTEND_FRAME_REQUEST, *PDWM_EXTEND_FRAME_REQUEST;
+
 #include <poppack.h>
 
 #define DWM_PORT_DATA_SIZE(Type) ((ULONG)(sizeof(Type) - sizeof(PORT_MESSAGE)))

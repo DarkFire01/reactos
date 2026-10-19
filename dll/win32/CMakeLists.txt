@@ -306,7 +306,10 @@ add_subdirectory(xolehlp)
 if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
     add_subdirectory(avrt)
     add_subdirectory(bcryptprimitives)
-    add_subdirectory(dwmapi)
+    # DarkFiresReactOSModules/dwm_win11 builds the same dwmapi target, a client of its DWM, when present
+    if(NOT EXISTS ${REACTOS_SOURCE_DIR}/DarkFiresReactOSModules/dwm_win11/dwmapi/CMakeLists.txt)
+        add_subdirectory(dwmapi)
+    endif()
     add_subdirectory(ncrypt)
 endif()
 
