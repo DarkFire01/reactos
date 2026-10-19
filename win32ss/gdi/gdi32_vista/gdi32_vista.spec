@@ -1,6 +1,7 @@
 @ stdcall D3DKMTCreateDCFromMemory(ptr)
 @ stdcall D3DKMTDestroyDCFromMemory(ptr)
 @ stdcall D3DKMTSetVidPnSourceOwner(ptr)
+@ stdcall D3DKMTSetVidPnSourceOwner1(ptr)
 @ stdcall D3DKMTQueryVideoMemoryInfo(ptr)
 @ stdcall D3DKMTOpenAdapterFromGdiDisplayName(ptr)
 @ stdcall D3DKMTCloseAdapter(ptr)
