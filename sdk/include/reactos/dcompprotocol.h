@@ -88,6 +88,7 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 #define DCOMP_RESOURCE_WINDOW_NODE                  188
 #define DCOMP_RESOURCE_VISUAL                       200
 #define DCOMP_RESOURCE_HWND_TARGET                  201
+#define DCOMP_RESOURCE_BACKDROP_BRUSH               1000    /* ours; the Windows value is not known */
 
 /* Visual properties */
 #define DCOMP_VISUAL_OFFSET_X           1   /* float */
@@ -117,6 +118,11 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 /* Surface brush properties: a rectangle of a bitmap stretched over the visual */
 #define DCOMP_SURFACE_BRUSH_SURFACE     0   /* reference: a bitmap source */
 #define DCOMP_SURFACE_BRUSH_SOURCE_RECT 1   /* buffer: RECT in the bitmap */
+#define DCOMP_SURFACE_BRUSH_NINE_GRID   2   /* buffer: MARGINS of the source rect kept unstretched */
+
+/* Backdrop brush properties: what is composed under the visual, blurred, with a tint over it */
+#define DCOMP_BACKDROP_BRUSH_BLUR       0   /* float: standard deviation in pixels */
+#define DCOMP_BACKDROP_BRUSH_TINT       1   /* buffer: four floats, premultiplied red, green, blue, alpha */
 
 /*
  * Bitmap source properties: premultiplied 32bpp BGRA pixels the DWM itself draws, in a section
