@@ -508,8 +508,9 @@ DC_vReportRedirectionDirty(
     if (!RECTL_bIntersectRect(&rcl, &pdc->erclRedirectionDirty, &pdc->erclClip))
         return;
 
-    if (GreAccumulateLogicalSurfaceDirty(pdc->dclevel.pSurface, &rcl, &Sprite))
-        IntDwmNotifyDirtySprite(Sprite);
+    if (GreAccumulateLogicalSurfaceDirty(pdc->dclevel.pSurface, &rcl, &Sprite) &&
+        !NT_SUCCESS(IntDwmNotifyDirtySprite(Sprite)))
+        GreCancelLogicalSurfaceNotify(pdc->dclevel.pSurface);
 }
 
 /* Prepare a blit for up to 2 DCs */

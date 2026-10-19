@@ -48,8 +48,14 @@ GreAccumulateLogicalSurfaceDirty(
     _In_ const RECTL *prcl,
     _Out_ PULONG64 Sprite);
 
-/* Tells the DWM a sprite's surface has new content; callable from any drawing thread */
+/* A notification that never reached the DWM leaves the next drawing call to send one */
 VOID
+NTAPI
+GreCancelLogicalSurfaceNotify(
+    _In_ PSURFACE psurf);
+
+/* Tells the DWM a sprite's surface has new content; callable from any drawing thread */
+NTSTATUS
 NTAPI
 IntDwmNotifyDirtySprite(
     _In_ ULONG64 Sprite);
