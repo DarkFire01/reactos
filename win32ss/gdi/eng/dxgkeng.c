@@ -881,25 +881,31 @@ DxgkEngScreenAccessCheck(VOID)
     return TRUE;
 }
 
-/* There is no desktop window manager here */
 static
 BOOL
 APIENTRY
 DxgkEngIsDwmProcess(VOID)
 {
-    return FALSE;
+    return IntDwmIsCurrentProcess();
 }
 
+/* The console session is always connected and never remote; dxgkrnl tests all 32 bits of the result */
 static
-LONG
+ULONG
 APIENTRY
 DxgkEngIsRemoteConnection(
-    _Out_ PBOOL pbRemote)
+    _Out_opt_ PULONG pConnected,
+    _Out_opt_ PVOID* pRemoteConnection,
+    _Out_opt_ PBOOL pbRemote)
 {
+    if (pConnected != NULL)
+        *pConnected = TRUE;
+    if (pRemoteConnection != NULL)
+        *pRemoteConnection = NULL;
     if (pbRemote != NULL)
         *pbRemote = FALSE;
 
-    return 0;
+    return FALSE;
 }
 
 static
@@ -1041,7 +1047,7 @@ DxgkEngIsDwmComposing(
     if (pbComposing != NULL)
         *pbComposing = FALSE;
 
-    return 0;
+    return IntDwmIsActive();
 }
 
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_1607

@@ -198,6 +198,15 @@ BOOLEAN
 FASTCALL
 IntDwmIsCurrentProcess(VOID);
 
+BOOLEAN
+FASTCALL
+IntDwmIsActive(VOID);
+
+VOID
+FASTCALL
+IntDwmProcessShutdown(
+    _In_ PPROCESSINFO ProcessInfo);
+
 /************************* dcomp.c *************************/
 
 VOID

@@ -192,6 +192,15 @@ PDEVOBJ_bAssertGdiOutput(
     _In_ ULONG cSources,
     _Out_ PUCHAR pbResetPointer);
 
+typedef BOOLEAN (NTAPI *PFN_PDEV_NEED_CDD_PRIMARY)(
+    _In_ PVOID pAdapter,
+    _In_ ULONG VidPnSourceId);
+
+VOID
+NTAPI
+PDEVOBJ_vEnableCddPrimaries(
+    _In_ PFN_PDEV_NEED_CDD_PRIMARY pfnNeedCddPrimary);
+
 VOID
 NTAPI
 PDEVOBJ_vSynchronizeDrivers(

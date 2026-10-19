@@ -185,6 +185,42 @@ PDEVOBJ_bAssertGdiOutput(
 }
 
 /**
+ * @brief Assert the mode of every WDDM display whose CDD primary dxgkrnl says still has to
+ *        come back, once the DWM no longer owns the output.
+ *
+ * @param[in] pfnNeedCddPrimary
+ * dxgkrnl's answer for one adapter and video present source.
+ */
+VOID
+NTAPI
+PDEVOBJ_vEnableCddPrimaries(
+    _In_ PFN_PDEV_NEED_CDD_PRIMARY pfnNeedCddPrimary)
+{
+    PPDEVOBJ ppdev;
+
+    EngAcquireSemaphoreShared(ghsemPDEV);
+
+    for (ppdev = gppdevList; ppdev != NULL; ppdev = ppdev->ppdevNext)
+    {
+        if ((ppdev->flFlags & (PDEV_META_DEVICE | PDEV_DISABLED)) != 0)
+            continue;
+
+        if (ppdev->pGraphicsDevice == NULL || ppdev->pGraphicsDevice->DxgAdapter == NULL)
+            continue;
+
+        if (ppdev->pfn.AssertMode == NULL ||
+            !pfnNeedCddPrimary(ppdev->pGraphicsDevice->DxgAdapter, ppdev->pGraphicsDevice->VidPnSourceId))
+        {
+            continue;
+        }
+
+        ppdev->pfn.AssertMode(ppdev->dhpdev, TRUE);
+    }
+
+    EngReleaseSemaphore(ghsemPDEV);
+}
+
+/**
  * @brief Let each display driver that asked for it catch up on GDI output, the way the
  *        periodic sync timer and GdiFlush do. CDD only presents what it drew when told to.
  *
