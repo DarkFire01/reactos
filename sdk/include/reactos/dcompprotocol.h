@@ -79,6 +79,7 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 } DCOMP_CMD_SET_REFERENCE;
 
 /* Resource types; the values Windows uses where they are known */
+#define DCOMP_RESOURCE_BITMAP_SOURCE                13
 #define DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP   41
 #define DCOMP_RESOURCE_GDI_SPRITE_BITMAP            63
 #define DCOMP_RESOURCE_COLOR_BRUSH                  162
@@ -112,6 +113,25 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
 
 /* Color brush properties */
 #define DCOMP_COLOR_BRUSH_COLOR         0   /* buffer: four floats, premultiplied red, green, blue, alpha */
+
+/* Surface brush properties: a rectangle of a bitmap stretched over the visual */
+#define DCOMP_SURFACE_BRUSH_SURFACE     0   /* reference: a bitmap source */
+#define DCOMP_SURFACE_BRUSH_SOURCE_RECT 1   /* buffer: RECT in the bitmap */
+
+/*
+ * Bitmap source properties: premultiplied 32bpp BGRA pixels the DWM itself draws, in a section
+ * of the DWM process. Setting the description makes the compositor read the pixels again.
+ */
+#define DCOMP_BITMAP_SOURCE_SECTION     0   /* integer: the section handle */
+#define DCOMP_BITMAP_SOURCE_DESC        1   /* buffer: DCOMP_BITMAP_DESC */
+
+typedef struct _DCOMP_BITMAP_DESC
+{
+    ULONG Width;
+    ULONG Height;
+    ULONG Stride;
+    ULONG Reserved;
+} DCOMP_BITMAP_DESC, *PDCOMP_BITMAP_DESC;
 
 /* HWND target properties */
 #define DCOMP_TARGET_WINDOW             1   /* integer: the HWND */

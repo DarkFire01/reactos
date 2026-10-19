@@ -129,6 +129,16 @@ DcompIsValidProperty(
         case DCOMP_RESOURCE_COLOR_BRUSH:
             return Property == DCOMP_COLOR_BRUSH_COLOR && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
 
+        case DCOMP_RESOURCE_SURFACE_BRUSH:
+            if (Property == DCOMP_SURFACE_BRUSH_SURFACE)
+                return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
+            return Property == DCOMP_SURFACE_BRUSH_SOURCE_RECT && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
+
+        case DCOMP_RESOURCE_BITMAP_SOURCE:
+            if (Property == DCOMP_BITMAP_SOURCE_SECTION)
+                return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
+            return Property == DCOMP_BITMAP_SOURCE_DESC && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
+
         case DCOMP_RESOURCE_HWND_TARGET:
             switch (Property)
             {
@@ -153,7 +163,9 @@ DcompIsKnownType(
            Type == DCOMP_RESOURCE_HWND_TARGET ||
            Type == DCOMP_RESOURCE_WINDOW_NODE ||
            Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP ||
-           Type == DCOMP_RESOURCE_COLOR_BRUSH;
+           Type == DCOMP_RESOURCE_COLOR_BRUSH ||
+           Type == DCOMP_RESOURCE_SURFACE_BRUSH ||
+           Type == DCOMP_RESOURCE_BITMAP_SOURCE;
 }
 
 /* Windows and their surfaces are only composed by the DWM */
@@ -163,7 +175,8 @@ DcompIsDwmOnlyType(
     _In_ ULONG Type)
 {
     return Type == DCOMP_RESOURCE_WINDOW_NODE ||
-           Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP;
+           Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP ||
+           Type == DCOMP_RESOURCE_BITMAP_SOURCE;
 }
 
 static
