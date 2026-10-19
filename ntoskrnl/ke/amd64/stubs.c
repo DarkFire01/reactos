@@ -211,8 +211,8 @@ KiSwapProcess(IN PKPROCESS NewProcess,
 
 #ifdef CONFIG_SMP
     /* Update active processor mask */
-    InterlockedXor64((PLONG64)&NewProcess->ActiveProcessors, Pcr->Prcb.SetMember);
-    InterlockedXor64((PLONG64)&OldProcess->ActiveProcessors, Pcr->Prcb.SetMember);
+    InterlockedAnd64((PLONG64)&OldProcess->ActiveProcessors, ~(LONG64)Pcr->Prcb.SetMember);
+    InterlockedOr64((PLONG64)&NewProcess->ActiveProcessors, (LONG64)Pcr->Prcb.SetMember);
 #endif
 
     /* Update CR3 */
