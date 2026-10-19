@@ -4434,6 +4434,8 @@ DefSetText(PWND Wnd, PCWSTR WindowText)
    // FIXME: HAX! Windows does not do this in here!
    // In User32, these are called after: NotifyWinEvent EVENT_OBJECT_NAMECHANGE than
    // RepaintButton, StaticRepaint, NtUserCallHwndLock HWNDLOCK_ROUTINE_REDRAWFRAMEANDHOOK, etc.
+   IntDwmNotifyTextChange(Wnd);
+
    /* Send shell notifications */
    if (!Wnd->spwndOwner && !IntGetParent(Wnd))
    {
@@ -4568,6 +4570,8 @@ NtUserDefSetText(HWND hWnd, PLARGE_STRING WindowText)
    // FIXME: HAX! Windows does not do this in here!
    // In User32, these are called after: NotifyWinEvent EVENT_OBJECT_NAMECHANGE than
    // RepaintButton, StaticRepaint, NtUserCallHwndLock HWNDLOCK_ROUTINE_REDRAWFRAMEANDHOOK, etc.
+   IntDwmNotifyTextChange(Wnd);
+
    /* Send shell notifications */
    if (!Wnd->spwndOwner && !IntGetParent(Wnd))
    {

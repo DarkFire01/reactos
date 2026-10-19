@@ -22,11 +22,16 @@ typedef struct _DWM_SPRITE
     PLOGICAL_SURFACE Surface;
     RECT WindowRect;
     BOOLEAN Visible;
+    BOOLEAN ActiveFrame;
+    BOOLEAN RendersFrame;
 } DWM_SPRITE, *PDWM_SPRITE;
 
 /* Every sprite; only touched with the user lock held exclusively */
 static LIST_ENTRY gDwmSprites = { &gDwmSprites, &gDwmSprites };
 static ULONG64 gNextSprite = 0x100;
+
+/* The window whose caption button the DWM last showed under the pointer */
+static HWND ghwndDwmHover = NULL;
 
 static
 PDWM_SPRITE
@@ -81,6 +86,46 @@ IntDwmIsRedirected(
     _In_ PWND Window)
 {
     return !IsListEmpty(&gDwmSprites) && IntDwmFindSprite(Window) != NULL;
+}
+
+/* The size of the surface a redirected top level window draws into */
+BOOLEAN
+FASTCALL
+IntDwmGetSurfaceSize(
+    _In_ PWND Window,
+    _Out_ PSIZEL Size)
+{
+    PDWM_SPRITE Sprite = IntDwmFindSprite(Window);
+
+    if (!Sprite)
+    {
+        Size->cx = Size->cy = 0;
+        return FALSE;
+    }
+    *Size = Sprite->Surface->Size;
+    return TRUE;
+}
+
+/* The DWM draws the frame of a window that has a sizing border or a caption, as dwmredir decides */
+static
+BOOLEAN
+IntDwmRendersFrame(
+    _In_ PWND Window)
+{
+    return (Window->style & WS_THICKFRAME) || (Window->style & WS_CAPTION) == WS_CAPTION;
+}
+
+/* Tells the window, and so the theme, whether the DWM draws its frame */
+static
+VOID
+IntDwmSendNcRendering(
+    _In_ PDWM_SPRITE Sprite,
+    _In_ BOOLEAN Enabled)
+{
+    if (Sprite->RendersFrame == Enabled || (Sprite->Window->state & WNDS_DESTROYED))
+        return;
+    Sprite->RendersFrame = Enabled;
+    co_IntSendMessageNoWait(UserHMGetHandle(Sprite->Window), WM_DWMNCRENDERINGCHANGED, Enabled, 0);
 }
 
 static
@@ -239,6 +284,7 @@ IntDwmComposeWindow(
     Sprite->Handle = gNextSprite++;
     Sprite->WindowRect = Window->rcWindow;
     Sprite->Visible = TRUE;
+    Sprite->ActiveFrame = (Window->state & WNDS_ACTIVEFRAME) != 0;
     Sprite->Surface = GreCreateLogicalSurface(Window->rcWindow.right - Window->rcWindow.left,
                                               Window->rcWindow.bottom - Window->rcWindow.top,
                                               Sprite->Handle);
@@ -263,6 +309,9 @@ IntDwmComposeWindow(
     IntDwmSendShowSprite(Sprite);
     IntDwmSendUpdateSprite(Sprite, TRUE);
     IntDwmSendChildMoveSize(Window);
+    IntDwmNotifyIconChange(Window);
+    if (IntDwmRendersFrame(Window))
+        IntDwmSendNcRendering(Sprite, TRUE);
     IntDwmRepaintWindow(Window);
 }
 
@@ -275,6 +324,9 @@ IntDwmDestroySprite(
     DWM_SPRITE_HANDLE Message;
 
     RemoveEntryList(&Sprite->Link);
+    if (ghwndDwmHover == UserHMGetHandle(Sprite->Window))
+        ghwndDwmHover = NULL;
+    IntDwmSendNcRendering(Sprite, FALSE);
 
     if (Notify)
     {
@@ -330,6 +382,18 @@ IntDwmMoveSprite(
     DceResetActiveDCEs(Window);
     GreDeleteLogicalSurface(Old);
     co_UserRedrawWindow(Window, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+}
+
+/* SetWindowPos gave the window a new rectangle; the surface follows before anything paints at the new size */
+VOID
+FASTCALL
+IntDwmWindowRectChanged(
+    _In_ PWND Window)
+{
+    PDWM_SPRITE Sprite = IntDwmFindSprite(Window);
+
+    if (Sprite && Sprite->Visible)
+        IntDwmMoveSprite(Sprite);
 }
 
 VOID
@@ -416,6 +480,176 @@ IntDwmDecomposeAll(VOID)
 {
     while (!IsListEmpty(&gDwmSprites))
         IntDwmDestroySprite(CONTAINING_RECORD(gDwmSprites.Flink, DWM_SPRITE, Link), FALSE);
+}
+
+VOID
+FASTCALL
+IntDwmNotifyActivation(
+    _In_ PWND Window)
+{
+    DWM_ACTIVATION_CHANGE Message;
+    PDWM_SPRITE Sprite = IntDwmFindSprite(Window);
+    BOOLEAN Active = (Window->state & WNDS_ACTIVEFRAME) != 0;
+
+    if (!Sprite || Sprite->ActiveFrame == Active)
+        return;
+    Sprite->ActiveFrame = Active;
+
+    RtlZeroMemory(&Message, sizeof(Message));
+    Message.Command = DWM_PORT_ACTIVATION_CHANGE;
+    Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
+    Message.Active = Active;
+    IntDwmSendMessage(&Message.Header, sizeof(Message));
+}
+
+/* The DWM reads the text itself */
+VOID
+FASTCALL
+IntDwmNotifyTextChange(
+    _In_ PWND Window)
+{
+    DWM_WINDOW_HANDLE Message;
+
+    if (!IntDwmFindSprite(Window))
+        return;
+
+    RtlZeroMemory(&Message, sizeof(Message));
+    Message.Command = DWM_PORT_TEXT_CHANGE;
+    Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
+    IntDwmSendMessage(&Message.Header, sizeof(Message));
+}
+
+/* The icons WM_SETICON gave the window; without them the DWM falls back to the class icons */
+VOID
+FASTCALL
+IntDwmNotifyIconChange(
+    _In_ PWND Window)
+{
+    DWM_ICON_CHANGE Message;
+
+    if (!IntDwmFindSprite(Window))
+        return;
+
+    RtlZeroMemory(&Message, sizeof(Message));
+    Message.Command = DWM_PORT_ICON_CHANGE;
+    Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
+    Message.Icon = (ULONG64)(ULONG_PTR)UserGetProp(Window, gpsi->atomIconProp, TRUE);
+    Message.SmallIcon = (ULONG64)(ULONG_PTR)UserGetProp(Window, gpsi->atomIconSmProp, TRUE);
+    IntDwmSendMessage(&Message.Header, sizeof(Message));
+}
+
+static
+BOOLEAN
+co_IntDwmHitTestQuery(
+    _In_ PWND Window,
+    _In_ POINT Point,
+    _In_ UINT Message,
+    _In_ LONG Captured,
+    _Out_ PUSHORT HitTest)
+{
+    DWM_HIT_TEST_QUERY Query;
+    USER_REFERENCE_ENTRY Ref;
+    NTSTATUS Status;
+
+    *HitTest = HTNOWHERE;
+
+    RtlZeroMemory(&Query, sizeof(Query));
+    Query.Command = DWM_PORT_HIT_TEST_QUERY;
+    Query.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
+    Query.Message = Message;
+    Query.Point = Point;
+    Query.WParam = Captured != DWM_HIT_TEST_NONE ? MK_LBUTTON : 0;
+    Query.LParam = MAKELONG(Point.x, Point.y);
+    Query.Captured = Captured;
+    Query.HitTest = DWM_HIT_TEST_NONE;
+
+    UserRefObjectCo(Window, &Ref);
+    Status = IntDwmSendSyncMessage(&Query.Header, sizeof(Query));
+    UserDerefObjectCo(Window);
+
+    if (!NT_SUCCESS(Status) || !Query.Handled)
+        return FALSE;
+    *HitTest = (USHORT)Query.HitTest;
+    return TRUE;
+}
+
+/*
+ * Asks the DWM about a point on the frame of a composed window before the window is sent
+ * WM_NCHITTEST. The DWM claims its caption buttons and shows the one under the pointer as hot.
+ */
+BOOLEAN
+FASTCALL
+co_IntDwmHitTestFrame(
+    _In_ PWND Window,
+    _In_ POINT Point,
+    _Out_ PUSHORT HitTest)
+{
+    *HitTest = HTNOWHERE;
+    if (!IntDwmFindSprite(Window) || RECTL_bPointInRect(&Window->rcClient, Point.x, Point.y))
+        return FALSE;
+
+    if (!co_IntDwmHitTestQuery(Window, Point, WM_MOUSEMOVE, DWM_HIT_TEST_NONE, HitTest))
+    {
+        if (ghwndDwmHover == UserHMGetHandle(Window))
+            ghwndDwmHover = NULL;
+        return FALSE;
+    }
+
+    ghwndDwmHover = UserHMGetHandle(Window);
+    return TRUE;
+}
+
+/* Once the pointer is somewhere else, the DWM is told so it drops the hot button */
+VOID
+FASTCALL
+co_IntDwmLeaveFrame(
+    _In_opt_ PWND Found,
+    _In_ POINT Point,
+    _In_ USHORT HitTest)
+{
+    PWND Desktop = UserGetDesktopWindow();
+    PWND Hover;
+    PWND TopLevel = Found;
+    USHORT Ignored;
+
+    if (!ghwndDwmHover)
+        return;
+
+    Hover = ValidateHwndNoErr(ghwndDwmHover);
+    if (!Hover)
+    {
+        ghwndDwmHover = NULL;
+        return;
+    }
+
+    while (TopLevel && TopLevel->spwndParent && TopLevel->spwndParent != Desktop)
+        TopLevel = TopLevel->spwndParent;
+
+    /* Another thread's hit test of the same window says nothing about its frame */
+    if (TopLevel == Hover &&
+        (Found->head.pti != PsGetCurrentThreadWin32Thread() ||
+         HitTest == HTMINBUTTON || HitTest == HTMAXBUTTON || HitTest == HTCLOSE || HitTest == HTHELP))
+    {
+        return;
+    }
+
+    ghwndDwmHover = NULL;
+    co_IntDwmHitTestQuery(Hover, Point, WM_MOUSEMOVE, DWM_HIT_TEST_NONE, &Ignored);
+}
+
+/* One step of tracking a caption button the DWM draws: TRUE while the pointer is on it */
+BOOLEAN
+FASTCALL
+co_IntDwmTrackCaptionButton(
+    _In_ PWND Window,
+    _In_ POINT Point,
+    _In_ LONG Captured)
+{
+    USHORT HitTest;
+
+    if (!co_IntDwmHitTestQuery(Window, Point, WM_MOUSEMOVE, Captured, &HitTest))
+        return FALSE;
+    return Captured != DWM_HIT_TEST_NONE && HitTest == Captured;
 }
 
 VOID

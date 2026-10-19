@@ -132,7 +132,10 @@ co_IntSendDeactivateMessages(HWND hWndPrev, HWND hWnd, BOOL Clear)
                     (LPARAM)hWnd);
 
          if (WndPrev && Clear)
+         {
             WndPrev->state &= ~(WNDS_ACTIVEFRAME|WNDS_HASCAPTION);
+            IntDwmNotifyActivation(WndPrev);
+         }
       }
       else
       {

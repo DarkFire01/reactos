@@ -8,6 +8,7 @@
 
 #include <win32k.h>
 #include <windowsx.h>
+#include <reactos/dwmport.h>
 
 DBG_DEFAULT_CHANNEL(UserDefwnd);
 
@@ -1462,6 +1463,7 @@ LRESULT NC_HandleNCActivate( PWND Wnd, WPARAM wParam, LPARAM lParam )
       Wnd->state &= ~WNDS_ACTIVEFRAME;
       wParam = DC_CAPTION;
    }
+   IntDwmNotifyActivation(Wnd);
 
    if ((Wnd->state & WNDS_NONCPAINT) || !(Wnd->style & WS_VISIBLE))
       return TRUE;
@@ -1504,8 +1506,8 @@ VOID
 NC_DoButton(PWND pWnd, WPARAM wParam, LPARAM lParam)
 {
    MSG Msg;
-   HDC WindowDC;
-   BOOL Pressed = TRUE, OldState;
+   HDC WindowDC = NULL;
+   BOOL Pressed = TRUE, OldState, Composed;
    WPARAM SCMsg;
    PMENU SysMenu;
    ULONG ButtonType;
@@ -1549,8 +1551,19 @@ NC_DoButton(PWND pWnd, WPARAM wParam, LPARAM lParam)
     */
    co_IntUpdateWindows(pWnd, RDW_ALLCHILDREN, FALSE);
 
-   WindowDC = UserGetWindowDC(pWnd);
-   UserDrawCaptionButtonWnd(pWnd, WindowDC, TRUE, ButtonType);
+   /* On a composed frame the DWM draws the button and says whether the pointer is on it */
+   Composed = IntDwmIsRedirected(pWnd);
+   if (Composed)
+   {
+      Msg.pt.x = GET_X_LPARAM(lParam);
+      Msg.pt.y = GET_Y_LPARAM(lParam);
+      Pressed = co_IntDwmTrackCaptionButton(pWnd, Msg.pt, (LONG)wParam);
+   }
+   else
+   {
+      WindowDC = UserGetWindowDC(pWnd);
+      UserDrawCaptionButtonWnd(pWnd, WindowDC, TRUE, ButtonType);
+   }
 
    co_UserSetCapture(UserHMGetHandle(pWnd));
 
@@ -1566,15 +1579,28 @@ NC_DoButton(PWND pWnd, WPARAM wParam, LPARAM lParam)
          continue;
 
       OldState = Pressed;
+      if (Composed)
+      {
+         Pressed = co_IntDwmTrackCaptionButton(pWnd, Msg.pt, (LONG)wParam);
+         continue;
+      }
       Pressed = (GetNCHitEx(pWnd, Msg.pt) == wParam);
       if (Pressed != OldState)
          UserDrawCaptionButtonWnd(pWnd, WindowDC, Pressed, ButtonType);
    }
 
-   if (Pressed)
-      UserDrawCaptionButtonWnd(pWnd, WindowDC, FALSE, ButtonType);
+   if (Composed)
+   {
+      /* Lets the DWM drop the pressed look; the button stays hot if the pointer is still on it */
+      co_IntDwmTrackCaptionButton(pWnd, Msg.pt, DWM_HIT_TEST_NONE);
+   }
+   else
+   {
+      if (Pressed)
+         UserDrawCaptionButtonWnd(pWnd, WindowDC, FALSE, ButtonType);
+      UserReleaseDC(pWnd, WindowDC, FALSE);
+   }
    IntReleaseCapture();
-   UserReleaseDC(pWnd, WindowDC, FALSE);
    if (Pressed)
       co_IntSendMessage(UserHMGetHandle(pWnd), WM_SYSCOMMAND, SCMsg, SCMsg == SC_CLOSE ? lParam : MAKELONG(Msg.pt.x,Msg.pt.y));
 }
