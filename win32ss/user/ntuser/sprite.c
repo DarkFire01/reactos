@@ -222,9 +222,7 @@ IntDwmCalculateContentRect(
 
     UserGetWindowBorders(Window->style, Window->ExStyle, &Border, FALSE);
     if ((Window->style & WS_CAPTION) == WS_CAPTION)
-    {
         Caption = UserGetSystemMetrics((Window->ExStyle & WS_EX_TOOLWINDOW) ? SM_CYSMCAPTION : SM_CYCAPTION);
-    }
 
     *Content = Window->rcWindow;
     RECTL_vInflateRect((PRECTL)Content, -Border.cx, -Border.cy);
@@ -678,9 +676,7 @@ co_IntDwmLeaveFrame(
     if (TopLevel == Hover &&
         (Found->head.pti != PsGetCurrentThreadWin32Thread() ||
          HitTest == HTMINBUTTON || HitTest == HTMAXBUTTON || HitTest == HTCLOSE || HitTest == HTHELP))
-    {
         return;
-    }
 
     ghwndDwmHover = NULL;
     co_IntDwmHitTestQuery(Hover, Point, WM_MOUSEMOVE, DWM_HIT_TEST_NONE, &Ignored);
