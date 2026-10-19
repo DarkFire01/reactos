@@ -1,5 +1,5 @@
-100 stdcall DwmpDxGetWindowSharedSurface(ptr)
-101 stub DwmpDxUpdateWindowSharedSurface
+100 stdcall DwmpDxGetWindowSharedSurface(ptr int64 ptr long ptr ptr ptr)
+101 stdcall DwmpDxUpdateWindowSharedSurface(ptr int64 long ptr ptr)
 102 stdcall DwmEnableComposition(long)
 103 stub -noname DwmpRestartComposition
 104 stub -noname DwmpSetColorizationColor

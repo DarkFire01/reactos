@@ -58,13 +58,7 @@ HRESULT WINAPI DwmIsCompositionEnabled(BOOL *enabled)
     *enabled = FALSE;
     version.dwOSVersionInfoSize = sizeof(version);
 #ifdef __REACTOS__
-    /*
-     * ReactOS has no compositor. Deriving this from the reported OS version says "composition is
-     * on" simply because we claim to be Windows 10, and a caller that believes it goes looking for
-     * DWM services that do not exist - opengl32 answers it by calling DwmpDxGetWindowSharedSurface,
-     * which is a raising .spec stub, so the application dies with 0x80000100 instead of falling
-     * back to the ordinary non-composited path.
-     */
+    /* This dwmapi is not a DWM client, so composition is off whatever Windows version is reported */
     UNREFERENCED_PARAMETER(version);
 #else
     if (!RtlGetVersion(&version))
@@ -78,21 +72,26 @@ HRESULT WINAPI DwmIsCompositionEnabled(BOOL *enabled)
 /**********************************************************************
  *           DwmpDxGetWindowSharedSurface         (DWMAPI.100)
  *
- * Undocumented. opengl32 calls this once per SwapBuffers to obtain the DWM-composited shared
- * surface for a window, and presents the finished frame into it.
- *
- * As a raising .spec stub this was the end of the line for OpenGL presentation: rendering
- * completed, the frame was handed nowhere, and nothing reached the screen. Answering
- * DWM_E_COMPOSITIONDISABLED tells the caller what is actually true here - there is no compositor,
- * so there is no shared surface - and lets it fall back to presenting directly.
- *
- * @note The parameter list follows the arity already declared for this export in dwmapi.spec.
- *       It is __stdcall, so if the real function takes more arguments the callee-side cleanup is
- *       wrong; that is inherited from the existing declaration rather than established here.
+ * This dwmapi cannot reach the DWM for a surface, so the caller presents to the window itself.
  */
-HRESULT WINAPI DwmpDxGetWindowSharedSurface(HWND hwnd)
+HRESULT WINAPI DwmpDxGetWindowSharedSurface(HWND hwnd, LUID luid, HMONITOR monitor, DWORD flags,
+                                            UINT *format, HANDLE *surface, ULONG64 *update_id)
 {
-    FIXME("(%p): no compositor, reporting composition disabled\n", hwnd);
+    FIXME("(%p): not a DWM client, reporting composition disabled\n", hwnd);
+    if (surface)
+        *surface = NULL;
+    if (update_id)
+        *update_id = 0;
+    return DWM_E_COMPOSITIONDISABLED;
+}
+
+/**********************************************************************
+ *           DwmpDxUpdateWindowSharedSurface      (DWMAPI.101)
+ */
+HRESULT WINAPI DwmpDxUpdateWindowSharedSurface(HWND hwnd, ULONG64 update_id, DWORD flags,
+                                               HMONITOR monitor, const RECT *update)
+{
+    FIXME("(%p): not a DWM client, reporting composition disabled\n", hwnd);
     return DWM_E_COMPOSITIONDISABLED;
 }
 #endif /* __REACTOS__ */
