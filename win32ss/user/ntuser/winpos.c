@@ -2081,7 +2081,21 @@ co_WinPosSetWindowPos(
        * class need to be completely repainted on (horizontal/vertical) size
        * change.
        */
-      if (VisBefore != NULL &&
+      /* A composed window's surface moves with its sprite, so a move copies nothing and repaints nothing */
+      if (VisAfter != NULL && IntDwmIsRedirected(Window))
+      {
+         if (!(WinPos.flags & SWP_FRAMECHANGED) &&
+             OldWindowRect.right - OldWindowRect.left == NewWindowRect.right - NewWindowRect.left &&
+             OldWindowRect.bottom - OldWindowRect.top == NewWindowRect.bottom - NewWindowRect.top &&
+             OldClientRect.right - OldClientRect.left == NewClientRect.right - NewClientRect.left &&
+             OldClientRect.bottom - OldClientRect.top == NewClientRect.bottom - NewClientRect.top)
+         {
+            CopyRgn = IntSysCreateRectpRgn(0, 0, 0, 0);
+            if (CopyRgn)
+               IntGdiCombineRgn(CopyRgn, VisAfter, NULL, RGN_COPY);
+         }
+      }
+      else if (VisBefore != NULL &&
           VisAfter != NULL &&
           !(WvrFlags & WVR_REDRAW) &&
           !(WinPos.flags & SWP_NOCOPYBITS) &&
@@ -2252,8 +2266,8 @@ co_WinPosSetWindowPos(
          }
       }
 
-      /* Expose what was covered before but not covered anymore */
-      if (VisBefore != NULL)
+      /* Expose what was covered before but not covered anymore; the DWM composes what is under a composed window */
+      if (VisBefore != NULL && !IntDwmIsRedirected(Window))
       {
          PREGION ExposedRgn = IntSysCreateRectpRgn(0, 0, 0, 0);
          if (ExposedRgn)
