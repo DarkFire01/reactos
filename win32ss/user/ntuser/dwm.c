@@ -10,6 +10,9 @@
 
 DBG_DEFAULT_CHANNEL(UserMisc);
 
+NTSTATUS NTAPI DlRegisterDwmProcess(VOID);
+VOID NTAPI DlDwmShutdown(VOID);
+
 /* The port dwmredir created and registered, and the process that registered it */
 static PVOID gpDwmPort = NULL;
 static PPROCESSINFO gppiDwm = NULL;
@@ -95,19 +98,54 @@ IntDwmIsCurrentProcess(VOID)
     return gppiDwm && gppiDwm == GetW32ProcessInfo();
 }
 
-VOID
+/* The DWM is active from the moment it registers its session port */
+BOOLEAN
 FASTCALL
-IntDwmProcessCleanup(
-    _In_ PPROCESSINFO ProcessInfo)
+IntDwmIsActive(VOID)
 {
-    if (ProcessInfo != gppiDwm)
-        return;
+    return gpDwmPort != NULL;
+}
 
+/* Stops the DWM and gives its outputs back to GDI */
+static
+VOID
+IntDwmStop(
+    _In_ BOOLEAN Redraw)
+{
+    PWND Desktop;
+
+    /* The DWM stops counting as active first, so dxgkrnl hands its outputs to GDI */
     gbDwmKernelStarted = FALSE;
     if (gpDwmPort)
         ObDereferenceObject(gpDwmPort);
     gpDwmPort = NULL;
     gppiDwm = NULL;
+
+    DlDwmShutdown();
+
+    /* Nothing GDI drew while the DWM owned the screen reached it */
+    Desktop = Redraw ? UserGetDesktopWindow() : NULL;
+    if (Desktop)
+        co_UserRedrawWindow(Desktop, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
+}
+
+/* The DWM's last thread is leaving while its process can still draw */
+VOID
+FASTCALL
+IntDwmProcessShutdown(
+    _In_ PPROCESSINFO ProcessInfo)
+{
+    if (ProcessInfo == gppiDwm)
+        IntDwmStop(TRUE);
+}
+
+VOID
+FASTCALL
+IntDwmProcessCleanup(
+    _In_ PPROCESSINFO ProcessInfo)
+{
+    if (ProcessInfo == gppiDwm)
+        IntDwmStop(FALSE);
 }
 
 BOOL
@@ -136,6 +174,18 @@ NtUserRegisterSessionPort(
 
     gpDwmPort = PortObject;
     gppiDwm = GetW32ProcessInfo();
+
+    /* dxgkrnl only lets the registered DWM take shared ownership of the display */
+    Status = DlRegisterDwmProcess();
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("dxgkrnl refused the DWM process: 0x%08lx\n", Status);
+        ObDereferenceObject(gpDwmPort);
+        gpDwmPort = NULL;
+        gppiDwm = NULL;
+        SetLastNtError(Status);
+        goto Exit;
+    }
     Result = TRUE;
 
 Exit:
