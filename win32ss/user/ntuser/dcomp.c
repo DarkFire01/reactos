@@ -15,21 +15,46 @@ DBG_DEFAULT_CHANNEL(UserMisc);
 /* Handles a client may use for resources in one channel */
 #define DCOMP_MAX_RESOURCES 65536
 
+/* Largest shared section an animation's segments may live in */
+#define DCOMP_MAX_SHARED_SECTION (16 * 1024 * 1024)
+
 /* The compositor connection's handle; client connections get their process id */
 #define DCOMP_COMPOSITOR_CONNECTION ((HANDLE)(ULONG_PTR)1)
 
+/* What a resource keeps so its commands to the compositor carry whole values */
 typedef struct _DCOMP_RESOURCE
 {
     ULONG Type;
-    ULONG CompositorId;
+    union
+    {
+        struct
+        {
+            FLOAT Offset[3];
+            FLOAT Size[2];
+        } Visual;
+        struct
+        {
+            ULONG Section;
+            ULONG Offset;
+            ULONG Size;
+            LONGLONG Begin;
+            LONGLONG End;
+        } Animation;
+        struct
+        {
+            PVOID Section;
+            ULONG Size;
+        } Shared;
+    };
 } DCOMP_RESOURCE, *PDCOMP_RESOURCE;
 
-/* Commands for one compositor resource, kept in order until commit */
-typedef struct _DCOMP_GROUP
+/* A property an animation drives */
+typedef struct _DCOMP_BINDING
 {
-    ULONG Resource;
-    ULONG Size;
-} DCOMP_GROUP, *PDCOMP_GROUP;
+    ULONG Target;
+    ULONG Property;
+    ULONG Animation;
+} DCOMP_BINDING, *PDCOMP_BINDING;
 
 typedef struct _DCOMP_CHANNEL
 {
@@ -40,15 +65,17 @@ typedef struct _DCOMP_CHANNEL
     SIZE_T BufferSize;
     PDCOMP_RESOURCE Resources;
     ULONG ResourceCount;
+    PDCOMP_BINDING Bindings;
+    ULONG BindingCount;
+    ULONG BindingCapacity;
     PUCHAR Pending;
     ULONG PendingSize;
     ULONG PendingCapacity;
-    PDCOMP_GROUP LastGroup;
     ULONG BatchId;
     ULONG64 ConnectionId[2];
 } DCOMP_CHANNEL, *PDCOMP_CHANNEL;
 
-/* A node waiting for the compositor; Data holds groups for resource commands */
+/* A node waiting for the compositor; Data holds a channel's commands */
 typedef struct _DCOMP_QUEUED
 {
     LIST_ENTRY Link;
@@ -61,134 +88,51 @@ typedef struct _DCOMP_QUEUED
 
 static LIST_ENTRY gDcompChannels = { &gDcompChannels, &gDcompChannels };
 static LIST_ENTRY gDcompQueue = { &gDcompQueue, &gDcompQueue };
-static ULONG gDcompNextChannel = 1;
-static ULONG gDcompNextResource = 1;
 static PEPROCESS gDcompCompositor = NULL;
 static PKEVENT gDcompWorkEvent = NULL;
 static PVOID gDcompUserList = NULL;
 
-/* The properties every kind of visual has */
 static
 BOOLEAN
-DcompIsValidVisualProperty(
-    _In_ ULONG Tag,
-    _In_ ULONG Property)
+DcompIsVisualType(
+    _In_ ULONG Type)
 {
-    switch (Property)
-    {
-        case DCOMP_VISUAL_OFFSET_X:
-        case DCOMP_VISUAL_OFFSET_Y:
-        case DCOMP_VISUAL_OPACITY:
-            return Tag == DCOMP_CMD_SET_FLOAT_PROPERTY;
-        case DCOMP_VISUAL_INSERT_CHILD:
-        case DCOMP_VISUAL_REMOVE_CHILD:
-        case DCOMP_VISUAL_CONTENT:
-        case DCOMP_VISUAL_INSERT_REFERENCE:
-            return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
-        case DCOMP_VISUAL_SIZE:
-        case DCOMP_VISUAL_INSERT_ABOVE:
-        case DCOMP_VISUAL_INTERPOLATION:
-        case DCOMP_VISUAL_BORDER_MODE:
-        case DCOMP_VISUAL_COMPOSITE_MODE:
-            return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
-        case DCOMP_VISUAL_TRANSFORM:
-        case DCOMP_VISUAL_CLIP:
-            return Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-    }
-    return FALSE;
+    return Type == DCOMP_RESOURCE_VISUAL ||
+           Type == DCOMP_RESOURCE_SPRITE_VISUAL ||
+           Type == DCOMP_RESOURCE_WINDOW_NODE;
 }
 
-static
-BOOLEAN
-DcompIsValidProperty(
-    _In_ ULONG Type,
-    _In_ ULONG Tag,
-    _In_ ULONG Property)
-{
-    switch (Type)
-    {
-        case DCOMP_RESOURCE_WINDOW_NODE:
-            if (Property == DCOMP_WINDOW_NODE_SPRITE_BITMAP)
-                return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
-            if (Property == DCOMP_WINDOW_NODE_WINDOW)
-                return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
-            if (Property == DCOMP_WINDOW_NODE_GLASS_MARGINS || Property == DCOMP_WINDOW_NODE_BLUR_RECTS)
-                return Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-            return DcompIsValidVisualProperty(Tag, Property);
-
-        case DCOMP_RESOURCE_SPRITE_VISUAL:
-            if (Property == DCOMP_SPRITE_VISUAL_BRUSH)
-                return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
-            return DcompIsValidVisualProperty(Tag, Property);
-
-        case DCOMP_RESOURCE_VISUAL:
-            return DcompIsValidVisualProperty(Tag, Property);
-
-        case DCOMP_RESOURCE_GDI_SPRITE_BITMAP:
-            switch (Property)
-            {
-                case DCOMP_SPRITE_BITMAP_DIRTY_RECTS:
-                case DCOMP_SPRITE_BITMAP_MARGINS:
-                    return Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-                case DCOMP_SPRITE_BITMAP_FORMAT:
-                case DCOMP_SPRITE_BITMAP_SURFACE:
-                    return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
-            }
-            return FALSE;
-
-        case DCOMP_RESOURCE_COLOR_BRUSH:
-            return Property == DCOMP_COLOR_BRUSH_COLOR && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-
-        case DCOMP_RESOURCE_SURFACE_BRUSH:
-            if (Property == DCOMP_SURFACE_BRUSH_SURFACE)
-                return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
-            return (Property == DCOMP_SURFACE_BRUSH_SOURCE_RECT || Property == DCOMP_SURFACE_BRUSH_NINE_GRID) &&
-                   Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-
-        case DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP:
-            if (Property == DCOMP_COMPOSITION_SURFACE_HANDLE || Property == DCOMP_COMPOSITION_SURFACE_GENERATION)
-                return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
-            return Property == DCOMP_COMPOSITION_SURFACE_DESC && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-
-        case DCOMP_RESOURCE_BACKDROP_BRUSH:
-            if (Property == DCOMP_BACKDROP_BRUSH_BLUR)
-                return Tag == DCOMP_CMD_SET_FLOAT_PROPERTY;
-            return Property == DCOMP_BACKDROP_BRUSH_TINT && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-
-        case DCOMP_RESOURCE_BITMAP_SOURCE:
-            if (Property == DCOMP_BITMAP_SOURCE_SECTION)
-                return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
-            return Property == DCOMP_BITMAP_SOURCE_DESC && Tag == DCOMP_CMD_SET_BUFFER_PROPERTY;
-
-        case DCOMP_RESOURCE_HWND_TARGET:
-            switch (Property)
-            {
-                case DCOMP_TARGET_WINDOW:
-                case DCOMP_TARGET_TOPMOST:
-                    return Tag == DCOMP_CMD_SET_INTEGER_PROPERTY;
-                case DCOMP_TARGET_ROOT:
-                    return Tag == DCOMP_CMD_SET_REFERENCE_PROPERTY;
-            }
-            return FALSE;
-    }
-    return FALSE;
-}
-
+/* The concrete types this kernel accepts; the rest of Windows' enum is not composed yet */
 static
 BOOLEAN
 DcompIsKnownType(
     _In_ ULONG Type)
 {
-    return Type == DCOMP_RESOURCE_VISUAL ||
-           Type == DCOMP_RESOURCE_SPRITE_VISUAL ||
-           Type == DCOMP_RESOURCE_HWND_TARGET ||
-           Type == DCOMP_RESOURCE_WINDOW_NODE ||
-           Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP ||
-           Type == DCOMP_RESOURCE_COLOR_BRUSH ||
-           Type == DCOMP_RESOURCE_SURFACE_BRUSH ||
-           Type == DCOMP_RESOURCE_BACKDROP_BRUSH ||
-           Type == DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP ||
-           Type == DCOMP_RESOURCE_BITMAP_SOURCE;
+    switch (Type)
+    {
+        case DCOMP_RESOURCE_ANIMATION:
+        case DCOMP_RESOURCE_BACKDROP_BRUSH:
+        case DCOMP_RESOURCE_BITMAP_RESOURCE:
+        case DCOMP_RESOURCE_COLOR_BRUSH:
+        case DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP:
+        case DCOMP_RESOURCE_EFFECT_GROUP:
+        case DCOMP_RESOURCE_GDI_SPRITE_BITMAP:
+        case DCOMP_RESOURCE_MATRIX_TRANSFORM:
+        case DCOMP_RESOURCE_RECTANGLE_CLIP:
+        case DCOMP_RESOURCE_ROTATE_TRANSFORM:
+        case DCOMP_RESOURCE_SCALE_TRANSFORM:
+        case DCOMP_RESOURCE_SHARED_SECTION:
+        case DCOMP_RESOURCE_SKEW_TRANSFORM:
+        case DCOMP_RESOURCE_SPRITE_VISUAL:
+        case DCOMP_RESOURCE_SURFACE_BRUSH:
+        case DCOMP_RESOURCE_TRANSFORM_GROUP:
+        case DCOMP_RESOURCE_TRANSLATE_TRANSFORM:
+        case DCOMP_RESOURCE_VISUAL:
+        case DCOMP_RESOURCE_WINDOW_NODE:
+        case DCOMP_RESOURCE_HWND_TARGET:
+            return TRUE;
+    }
+    return FALSE;
 }
 
 /* Windows and their surfaces are only composed by the DWM */
@@ -199,7 +143,7 @@ DcompIsDwmOnlyType(
 {
     return Type == DCOMP_RESOURCE_WINDOW_NODE ||
            Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP ||
-           Type == DCOMP_RESOURCE_BITMAP_SOURCE;
+           Type == DCOMP_RESOURCE_BITMAP_RESOURCE;
 }
 
 static
@@ -217,6 +161,31 @@ DcompLookupChannel(
             return Channel;
     }
     return NULL;
+}
+
+/* The compositor indexes channels by id, so ids are kept small and reused */
+static
+ULONG
+DcompAllocateChannelId(VOID)
+{
+    PLIST_ENTRY Entry;
+    ULONG Id;
+
+    for (Id = 1; Id < DCOMP_MAX_CHANNELS; Id++)
+    {
+        BOOLEAN Used = FALSE;
+        for (Entry = gDcompChannels.Flink; Entry != &gDcompChannels; Entry = Entry->Flink)
+        {
+            if (CONTAINING_RECORD(Entry, DCOMP_CHANNEL, Link)->Id == Id)
+            {
+                Used = TRUE;
+                break;
+            }
+        }
+        if (!Used)
+            return Id;
+    }
+    return 0;
 }
 
 static
@@ -269,60 +238,203 @@ DcompQueueNode(
     return STATUS_SUCCESS;
 }
 
-/* Appends one compositor command for a resource, opening a new group when the resource changes */
+/* Appends [size][command][resource][payload][extra] to the channel's batch */
 static
 NTSTATUS
-DcompAppend(
+DcompEmit(
     _In_ PDCOMP_CHANNEL Channel,
-    _In_ ULONG CompositorId,
     _In_ ULONG Command,
+    _In_ ULONG Resource,
     _In_reads_bytes_opt_(PayloadSize) const VOID* Payload,
     _In_ ULONG PayloadSize,
     _In_reads_bytes_opt_(ExtraSize) const VOID* Extra,
     _In_ ULONG ExtraSize)
 {
-    ULONG RecordSize = ALIGN_UP_BY(2 * sizeof(ULONG) + PayloadSize + ExtraSize, sizeof(ULONG));
-    BOOLEAN NewGroup = !Channel->LastGroup || Channel->LastGroup->Resource != CompositorId;
-    ULONG Needed = Channel->PendingSize + RecordSize + (NewGroup ? sizeof(DCOMP_GROUP) : 0);
+    ULONG RecordSize = ALIGN_UP_BY(3 * sizeof(ULONG) + PayloadSize + ExtraSize, sizeof(ULONG));
+    ULONG Needed = Channel->PendingSize + RecordSize;
     PULONG Record;
 
     if (Needed > Channel->PendingCapacity)
     {
-        ULONG Capacity = max(Needed, Channel->PendingCapacity * 2);
-        PUCHAR Grown = ExAllocatePoolWithTag(PagedPool, max(Capacity, PAGE_SIZE), TAG_DCOMP);
+        ULONG Capacity = max(max(Needed, Channel->PendingCapacity * 2), PAGE_SIZE);
+        PUCHAR Grown = ExAllocatePoolWithTag(PagedPool, Capacity, TAG_DCOMP);
         if (!Grown)
             return STATUS_NO_MEMORY;
         if (Channel->Pending)
         {
             RtlCopyMemory(Grown, Channel->Pending, Channel->PendingSize);
-            if (Channel->LastGroup)
-                Channel->LastGroup = (PDCOMP_GROUP)(Grown + ((PUCHAR)Channel->LastGroup - Channel->Pending));
             ExFreePoolWithTag(Channel->Pending, TAG_DCOMP);
         }
         Channel->Pending = Grown;
-        Channel->PendingCapacity = max(Capacity, PAGE_SIZE);
-    }
-
-    if (NewGroup)
-    {
-        Channel->LastGroup = (PDCOMP_GROUP)(Channel->Pending + Channel->PendingSize);
-        Channel->LastGroup->Resource = CompositorId;
-        Channel->LastGroup->Size = 0;
-        Channel->PendingSize += sizeof(DCOMP_GROUP);
+        Channel->PendingCapacity = Capacity;
     }
 
     Record = (PULONG)(Channel->Pending + Channel->PendingSize);
     RtlZeroMemory(Record, RecordSize);
     Record[0] = RecordSize;
     Record[1] = Command;
+    Record[2] = Resource;
     if (PayloadSize)
-        RtlCopyMemory(&Record[2], Payload, PayloadSize);
+        RtlCopyMemory(&Record[3], Payload, PayloadSize);
     if (ExtraSize)
-        RtlCopyMemory((PUCHAR)&Record[2] + PayloadSize, Extra, ExtraSize);
+        RtlCopyMemory((PUCHAR)&Record[3] + PayloadSize, Extra, ExtraSize);
 
     Channel->PendingSize += RecordSize;
-    Channel->LastGroup->Size += RecordSize;
     return STATUS_SUCCESS;
+}
+
+/* Drops the binding of Target's Property; the compositor stops animating it */
+static
+NTSTATUS
+DcompUnbind(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ ULONG Target,
+    _In_ ULONG Property)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < Channel->BindingCount; Index++)
+    {
+        ULONG Animation = Channel->Bindings[Index].Animation;
+        ULONG Payload[2];
+
+        if (Channel->Bindings[Index].Target != Target || Channel->Bindings[Index].Property != Property)
+            continue;
+
+        Payload[0] = Target;
+        Payload[1] = Property;
+        Channel->Bindings[Index] = Channel->Bindings[--Channel->BindingCount];
+        return DcompEmit(Channel, DCOMP_MILCMD_BASE_ANIMATION_REMOVE_BINDING, Animation,
+                         Payload, sizeof(Payload), NULL, 0);
+    }
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+DcompBind(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_SET_ANIMATION* Command)
+{
+    PDCOMP_RESOURCE Animation = DcompLookupResource(Channel, Command->Animation);
+    ULONG Payload[2];
+    NTSTATUS Status;
+
+    if (!DcompLookupResource(Channel, Command->Resource) || !Animation ||
+        Animation->Type != DCOMP_RESOURCE_ANIMATION)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = DcompUnbind(Channel, Command->Resource, Command->Property);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (Channel->BindingCount == Channel->BindingCapacity)
+    {
+        ULONG Capacity = max(Channel->BindingCapacity * 2, 16);
+        PDCOMP_BINDING Grown = ExAllocatePoolWithTag(PagedPool, Capacity * sizeof(*Grown), TAG_DCOMP);
+        if (!Grown)
+            return STATUS_NO_MEMORY;
+        if (Channel->Bindings)
+        {
+            RtlCopyMemory(Grown, Channel->Bindings, Channel->BindingCount * sizeof(*Grown));
+            ExFreePoolWithTag(Channel->Bindings, TAG_DCOMP);
+        }
+        Channel->Bindings = Grown;
+        Channel->BindingCapacity = Capacity;
+    }
+
+    Channel->Bindings[Channel->BindingCount].Target = Command->Resource;
+    Channel->Bindings[Channel->BindingCount].Property = Command->Property;
+    Channel->Bindings[Channel->BindingCount].Animation = Command->Animation;
+    Channel->BindingCount++;
+
+    Payload[0] = Command->Resource;
+    Payload[1] = Command->Property;
+    return DcompEmit(Channel, DCOMP_MILCMD_BASE_ANIMATION_ADD_BINDING, Command->Animation,
+                     Payload, sizeof(Payload), NULL, 0);
+}
+
+/* A released resource takes the bindings it is part of with it */
+static
+VOID
+DcompForgetBindings(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ ULONG Handle)
+{
+    ULONG Index = 0;
+
+    while (Index < Channel->BindingCount)
+    {
+        if (Channel->Bindings[Index].Target == Handle || Channel->Bindings[Index].Animation == Handle)
+            Channel->Bindings[Index] = Channel->Bindings[--Channel->BindingCount];
+        else
+            Index++;
+    }
+}
+
+static
+NTSTATUS
+DcompEmitOffset(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ ULONG Handle,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    return DcompEmit(Channel, DCOMP_MILCMD_VISUAL_SET_OFFSET, Handle, Resource->Visual.Offset,
+                     sizeof(Resource->Visual.Offset), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompEmitSize(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ ULONG Handle,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    return DcompEmit(Channel, DCOMP_MILCMD_VISUAL_SET_SIZE, Handle, Resource->Visual.Size,
+                     sizeof(Resource->Visual.Size), NULL, 0);
+}
+
+/* An animation reads its segments once it knows where they are */
+static
+NTSTATUS
+DcompEmitPrimitives(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ ULONG Handle,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    ULONG Payload[3];
+
+    if (!Resource->Animation.Section)
+        return STATUS_SUCCESS;
+
+    Payload[0] = Resource->Animation.Section;
+    Payload[1] = Resource->Animation.Offset;
+    Payload[2] = Resource->Animation.Size;
+    return DcompEmit(Channel, DCOMP_MILCMD_ANIMATION_SET_PRIMITIVES, Handle, Payload, sizeof(Payload), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompEmitBeginTime(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ ULONG Handle,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    LONGLONG Payload[2];
+
+    Payload[0] = Resource->Animation.Begin;
+    Payload[1] = Resource->Animation.End;
+    return DcompEmit(Channel, DCOMP_MILCMD_ANIMATION_UPDATE_BEGIN_TIME, Handle, Payload, sizeof(Payload), NULL, 0);
+}
+
+static
+VOID
+DcompReleaseResourceState(
+    _Inout_ PDCOMP_RESOURCE Resource)
+{
+    if (Resource->Type == DCOMP_RESOURCE_SHARED_SECTION && Resource->Shared.Section)
+        ObDereferenceObject(Resource->Shared.Section);
+    RtlZeroMemory(Resource, sizeof(*Resource));
 }
 
 static
@@ -331,7 +443,7 @@ DcompCreateResource(
     _In_ PDCOMP_CHANNEL Channel,
     _In_ const DCOMP_CMD_CREATE* Command)
 {
-    ULONG Payload[2];
+    PDCOMP_RESOURCE Resource;
 
     if (Command->External || !DcompIsKnownType(Command->Type))
         return STATUS_NOT_SUPPORTED;
@@ -356,123 +468,570 @@ DcompCreateResource(
         Channel->ResourceCount = Count;
     }
 
-    if (Channel->Resources[Command->Resource - 1].Type)
+    Resource = &Channel->Resources[Command->Resource - 1];
+    if (Resource->Type)
         return STATUS_OBJECT_NAME_COLLISION;
 
-    Channel->Resources[Command->Resource - 1].Type = Command->Type;
-    Channel->Resources[Command->Resource - 1].CompositorId = gDcompNextResource++;
-
-    Payload[0] = Command->Type;
-    Payload[1] = Channel->Id;
-    return DcompAppend(Channel,
-                       Channel->Resources[Command->Resource - 1].CompositorId,
-                       DCOMP_MILCMD_CREATE,
-                       Payload,
-                       sizeof(Payload),
-                       NULL,
-                       0);
+    Resource->Type = Command->Type;
+    return DcompEmit(Channel, DCOMP_MILCMD_CHANNEL_CREATE_RESOURCE, Command->Resource,
+                     &Command->Type, sizeof(Command->Type), NULL, 0);
 }
 
-/* Validates one client command and turns it into compositor commands; returns its size or 0 */
 static
-ULONG
-DcompProcessCommand(
+NTSTATUS
+DcompSetFloat(
     _In_ PDCOMP_CHANNEL Channel,
-    _In_reads_bytes_(Remaining) const UCHAR* Record,
-    _In_ ULONG Remaining,
-    _Out_ NTSTATUS* Status)
+    _In_ const DCOMP_CMD_SET_FLOAT* Command,
+    _In_ PDCOMP_RESOURCE Resource)
 {
-    ULONG Tag = *(const ULONG*)Record;
-    PDCOMP_RESOURCE Resource;
+    FLOAT Value = Command->Value;
+    ULONG Payload[2];
+    NTSTATUS Status = DcompUnbind(Channel, Command->Resource, Command->Property);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (DcompIsVisualType(Resource->Type))
+    {
+        switch (Command->Property)
+        {
+            case DCOMP_VISUAL_OFFSET_X:
+            case DCOMP_VISUAL_OFFSET_Y:
+            case DCOMP_VISUAL_OFFSET_Z:
+                Resource->Visual.Offset[Command->Property - DCOMP_VISUAL_OFFSET_X] = Value;
+                return DcompEmitOffset(Channel, Command->Resource, Resource);
+
+            case DCOMP_VISUAL_WIDTH:
+            case DCOMP_VISUAL_HEIGHT:
+                Resource->Visual.Size[Command->Property - DCOMP_VISUAL_WIDTH] = Value;
+                return DcompEmitSize(Channel, Command->Resource, Resource);
+
+            case DCOMP_VISUAL_OPACITY:
+                Value = min(max(Value, 0.0f), 1.0f);
+                return DcompEmit(Channel, DCOMP_MILCMD_VISUAL_SET_OPACITY, Command->Resource,
+                                 &Value, sizeof(Value), NULL, 0);
+        }
+    }
+
+    Payload[0] = Command->Property;
+    RtlCopyMemory(&Payload[1], &Value, sizeof(Value));
+    return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_FLOAT, Command->Resource, Payload, sizeof(Payload), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompSetInteger(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_SET_INTEGER* Command,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    ULONG Payload[4];
+    NTSTATUS Status = DcompUnbind(Channel, Command->Resource, Command->Property);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    switch (Resource->Type)
+    {
+        case DCOMP_RESOURCE_ANIMATION:
+            if (Command->Property == DCOMP_ANIMATION_SECTION_OFFSET)
+            {
+                Resource->Animation.Offset = (ULONG)Command->Value;
+                return DcompEmitPrimitives(Channel, Command->Resource, Resource);
+            }
+            if (Command->Property == DCOMP_ANIMATION_SECTION_SIZE)
+            {
+                Resource->Animation.Size = (ULONG)Command->Value;
+                return DcompEmitPrimitives(Channel, Command->Resource, Resource);
+            }
+            break;
+
+        case DCOMP_RESOURCE_GDI_SPRITE_BITMAP:
+            if (Command->Property == DCOMP_SPRITE_BITMAP_FORMAT)
+            {
+                Payload[0] = (ULONG)Command->Value;
+                return DcompEmit(Channel, DCOMP_MILCMD_GDI_SPRITE_BITMAP_SET_FORMAT, Command->Resource,
+                                 Payload, sizeof(ULONG), NULL, 0);
+            }
+            if (Command->Property == DCOMP_SPRITE_BITMAP_SURFACE)
+                return DcompEmit(Channel, DCOMP_MILCMD_GDI_SPRITE_BITMAP_SET_SURFACE, Command->Resource,
+                                 &Command->Value, sizeof(Command->Value), NULL, 0);
+            break;
+
+        case DCOMP_RESOURCE_WINDOW_NODE:
+            if (Command->Property == DCOMP_WINDOW_NODE_WINDOW)
+                return DcompEmit(Channel, DCOMP_MILCMD_WINDOW_NODE_SET_WINDOW_HANDLE, Command->Resource,
+                                 &Command->Value, sizeof(Command->Value), NULL, 0);
+            break;
+    }
+
+    if (DcompIsVisualType(Resource->Type) && Command->Property == DCOMP_VISUAL_VISIBLE)
+    {
+        Payload[0] = Command->Value ? TRUE : FALSE;
+        return DcompEmit(Channel, DCOMP_MILCMD_VISUAL_SET_VISIBLE, Command->Resource, Payload, sizeof(ULONG), NULL, 0);
+    }
+
+    Payload[0] = Command->Property;
+    Payload[1] = 0;
+    RtlCopyMemory(&Payload[2], &Command->Value, sizeof(Command->Value));
+    return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_INTEGER, Command->Resource, Payload, sizeof(Payload), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompSetHandle(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_SET_HANDLE* Command,
+    _In_ PDCOMP_RESOURCE Resource)
+{
     ULONG Payload[4];
 
-    *Status = STATUS_INVALID_PARAMETER;
+    if (Resource->Type == DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP &&
+        Command->Property == DCOMP_COMPOSITION_SURFACE_HANDLE)
+    {
+        RtlZeroMemory(Payload, sizeof(Payload));
+        RtlCopyMemory(Payload, &Command->Handle, sizeof(Command->Handle));
+        return DcompEmit(Channel, DCOMP_MILCMD_COMPOSITION_SURFACE_UPDATE, Command->Resource,
+                         Payload, sizeof(Payload), NULL, 0);
+    }
+
+    Payload[0] = Command->Property;
+    Payload[1] = 0;
+    RtlCopyMemory(&Payload[2], &Command->Handle, sizeof(Command->Handle));
+    return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_HANDLE, Command->Resource, Payload, sizeof(Payload), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompSetReference(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_SET_REFERENCE* Command,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    ULONG Payload[2];
+    ULONG MilCommand = 0;
+
+    if (Command->Value && !DcompLookupResource(Channel, Command->Value))
+        return STATUS_INVALID_PARAMETER;
+
+    if (DcompIsVisualType(Resource->Type))
+    {
+        switch (Command->Property)
+        {
+            case DCOMP_VISUAL_TRANSFORM:
+                MilCommand = DCOMP_MILCMD_VISUAL_SET_TRANSFORM;
+                break;
+            case DCOMP_VISUAL_CLIP:
+                MilCommand = DCOMP_MILCMD_VISUAL_SET_CLIP;
+                break;
+            case DCOMP_VISUAL_CONTENT:
+                MilCommand = DCOMP_MILCMD_VISUAL_SET_CONTENT;
+                break;
+            case DCOMP_VISUAL_EFFECT:
+                MilCommand = DCOMP_MILCMD_VISUAL_SET_EFFECT;
+                break;
+            case DCOMP_SPRITE_VISUAL_BRUSH:
+                if (Resource->Type == DCOMP_RESOURCE_SPRITE_VISUAL)
+                    MilCommand = DCOMP_MILCMD_SPRITE_VISUAL_SET_BRUSH;
+                break;
+            case DCOMP_WINDOW_NODE_SPRITE_BITMAP:
+                if (Resource->Type == DCOMP_RESOURCE_WINDOW_NODE)
+                    MilCommand = DCOMP_MILCMD_WINDOW_NODE_SET_SPRITE_BITMAP;
+                break;
+        }
+    }
+    else if (Resource->Type == DCOMP_RESOURCE_SURFACE_BRUSH && Command->Property == DCOMP_SURFACE_BRUSH_SURFACE)
+    {
+        MilCommand = DCOMP_MILCMD_SURFACE_BRUSH_SET_SURFACE;
+    }
+    else if (Resource->Type == DCOMP_RESOURCE_ANIMATION && Command->Property == DCOMP_ANIMATION_SECTION)
+    {
+        Resource->Animation.Section = Command->Value;
+        return DcompEmitPrimitives(Channel, Command->Resource, Resource);
+    }
+
+    if (MilCommand)
+        return DcompEmit(Channel, MilCommand, Command->Resource, &Command->Value, sizeof(ULONG), NULL, 0);
+
+    Payload[0] = Command->Property;
+    Payload[1] = Command->Value;
+    return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_REFERENCE, Command->Resource, Payload, sizeof(Payload), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompSetBuffer(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_SET_BUFFER* Command,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    const VOID* Data = Command + 1;
+    ULONG Payload[2];
+    NTSTATUS Status = DcompUnbind(Channel, Command->Resource, Command->Property);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (DcompIsVisualType(Resource->Type))
+    {
+        if (Command->Property == DCOMP_VISUAL_OFFSET_VECTOR && Command->Size == sizeof(Resource->Visual.Offset))
+        {
+            RtlCopyMemory(Resource->Visual.Offset, Data, sizeof(Resource->Visual.Offset));
+            return DcompEmitOffset(Channel, Command->Resource, Resource);
+        }
+        if (Command->Property == DCOMP_VISUAL_SIZE_VECTOR && Command->Size == sizeof(Resource->Visual.Size))
+        {
+            RtlCopyMemory(Resource->Visual.Size, Data, sizeof(Resource->Visual.Size));
+            return DcompEmitSize(Channel, Command->Resource, Resource);
+        }
+    }
+
+    switch (Resource->Type)
+    {
+        case DCOMP_RESOURCE_COLOR_BRUSH:
+            if (Command->Property == DCOMP_COLOR_BRUSH_COLOR && Command->Size == 4 * sizeof(FLOAT))
+                return DcompEmit(Channel, DCOMP_MILCMD_COLOR_BRUSH_SET_COLOR, Command->Resource,
+                                 Data, Command->Size, NULL, 0);
+            break;
+
+        case DCOMP_RESOURCE_GDI_SPRITE_BITMAP:
+            if (Command->Property == DCOMP_SPRITE_BITMAP_DIRTY_RECTS && !(Command->Size % sizeof(RECT)))
+                return DcompEmit(Channel, DCOMP_MILCMD_GDI_SPRITE_BITMAP_SET_DIRTY, Command->Resource,
+                                 Data, Command->Size, NULL, 0);
+            if (Command->Property == DCOMP_SPRITE_BITMAP_MARGINS && Command->Size == 4 * sizeof(LONG))
+                return DcompEmit(Channel, DCOMP_MILCMD_GDI_SPRITE_BITMAP_SET_MARGINS, Command->Resource,
+                                 Data, Command->Size, NULL, 0);
+            break;
+
+        case DCOMP_RESOURCE_ANIMATION:
+            if ((Command->Property == DCOMP_ANIMATION_BEGIN_TIME || Command->Property == DCOMP_ANIMATION_END_TIME) &&
+                Command->Size == sizeof(LONGLONG))
+            {
+                if (Command->Property == DCOMP_ANIMATION_BEGIN_TIME)
+                    RtlCopyMemory(&Resource->Animation.Begin, Data, sizeof(LONGLONG));
+                else
+                    RtlCopyMemory(&Resource->Animation.End, Data, sizeof(LONGLONG));
+                return DcompEmitBeginTime(Channel, Command->Resource, Resource);
+            }
+            break;
+    }
+
+    Payload[0] = Command->Property;
+    Payload[1] = Command->Size;
+    return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_BUFFER, Command->Resource,
+                     Payload, sizeof(Payload), Data, Command->Size);
+}
+
+static
+NTSTATUS
+DcompSetReferenceArray(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_SET_REFERENCE_ARRAY* Command)
+{
+    const ULONG* Members = (const ULONG*)(Command + 1);
+    ULONG Payload[2];
+    ULONG Index;
+
+    for (Index = 0; Index < Command->Count; Index++)
+    {
+        if (Members[Index] && !DcompLookupResource(Channel, Members[Index]))
+            return STATUS_INVALID_PARAMETER;
+    }
+
+    Payload[0] = Command->Property;
+    Payload[1] = Command->Count;
+    return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_REFERENCE_ARRAY, Command->Resource,
+                     Payload, sizeof(Payload), Members, Command->Count * sizeof(ULONG));
+}
+
+static
+NTSTATUS
+DcompAddChild(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_ADD_CHILD* Command)
+{
+    PDCOMP_RESOURCE Parent = DcompLookupResource(Channel, Command->Parent);
+    PDCOMP_RESOURCE Child = DcompLookupResource(Channel, Command->Child);
+    PDCOMP_RESOURCE Reference = Command->Reference ? DcompLookupResource(Channel, Command->Reference) : NULL;
+    ULONG Payload[3];
+
+    if (!Parent || !Child || !DcompIsVisualType(Parent->Type) || !DcompIsVisualType(Child->Type) ||
+        Command->Parent == Command->Child || (Command->Reference && (!Reference || !DcompIsVisualType(Reference->Type))))
+        return STATUS_INVALID_PARAMETER;
+
+    Payload[0] = Command->Child;
+    Payload[1] = Command->Reference;
+    Payload[2] = Command->InsertAbove ? TRUE : FALSE;
+    return DcompEmit(Channel, DCOMP_MILCMD_VISUAL_INSERT_CHILD, Command->Parent, Payload, sizeof(Payload), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompRemoveChild(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ const DCOMP_CMD_REMOVE_CHILD* Command)
+{
+    PDCOMP_RESOURCE Parent = DcompLookupResource(Channel, Command->Parent);
+
+    if (!Parent || !DcompIsVisualType(Parent->Type))
+        return STATUS_INVALID_PARAMETER;
+    if (!Command->Child)
+        return DcompEmit(Channel, DCOMP_MILCMD_VISUAL_REMOVE_ALL_CHILDREN, Command->Parent, NULL, 0, NULL, 0);
+    if (!DcompLookupResource(Channel, Command->Child))
+        return STATUS_INVALID_PARAMETER;
+    return DcompEmit(Channel, DCOMP_MILCMD_VISUAL_REMOVE_CHILD, Command->Parent,
+                     &Command->Child, sizeof(ULONG), NULL, 0);
+}
+
+static
+NTSTATUS
+DcompProcessBuffer(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_reads_bytes_(Length) const UCHAR* Buffer,
+    _In_ ULONG Length,
+    _In_ BOOLEAN TopLevel,
+    _Inout_ PULONG Count);
+
+/* The size of the command at Record, or 0 when it does not fit in Remaining */
+static
+ULONG
+DcompCommandSize(
+    _In_reads_bytes_(Remaining) const UCHAR* Record,
+    _In_ ULONG Remaining)
+{
+    ULONG Tag = *(const ULONG*)Record;
+    ULONG Size;
 
     switch (Tag)
     {
+        case DCOMP_CMD_OUT_OF_LINE:
+            Size = sizeof(DCOMP_CMD_OUT_OF_LINE_BUFFER);
+            break;
+        case DCOMP_CMD_ACTIVATE_CHANNEL_TRIGGER:
+        case DCOMP_CMD_RELEASE_RESOURCE:
+            Size = 2 * sizeof(ULONG);
+            break;
         case DCOMP_CMD_CREATE_RESOURCE:
-            if (Remaining < sizeof(DCOMP_CMD_CREATE))
+            Size = sizeof(DCOMP_CMD_CREATE);
+            break;
+        case DCOMP_CMD_OPEN_SHARED_RESOURCE:
+            Size = sizeof(DCOMP_CMD_OPEN_SHARED);
+            break;
+        case DCOMP_CMD_SET_CHANNEL_INTEGER_PROPERTY:
+            Size = sizeof(DCOMP_CMD_SET_CHANNEL_INTEGER);
+            break;
+        case DCOMP_CMD_GET_ANIMATION_TIME:
+        case DCOMP_CMD_CAPTURE_POINTER:
+            Size = sizeof(DCOMP_CMD_ANIMATION_TIME);
+            break;
+        case DCOMP_CMD_ACTIVATE_RESOURCE_TRIGGER:
+        case DCOMP_CMD_SET_RESOURCE_CALLBACK_ID:
+            Size = sizeof(DCOMP_CMD_RESOURCE_VALUE);
+            break;
+        case DCOMP_CMD_OPEN_SHARED_RESOURCE_HANDLE:
+            Size = sizeof(DCOMP_CMD_OPEN_SHARED_HANDLE);
+            break;
+        case DCOMP_CMD_SET_INTEGER_PROPERTY:
+            Size = sizeof(DCOMP_CMD_SET_INTEGER);
+            break;
+        case DCOMP_CMD_SET_FLOAT_PROPERTY:
+            Size = sizeof(DCOMP_CMD_SET_FLOAT);
+            break;
+        case DCOMP_CMD_SET_HANDLE_PROPERTY:
+            Size = sizeof(DCOMP_CMD_SET_HANDLE);
+            break;
+        case DCOMP_CMD_SET_REFERENCE_PROPERTY:
+            Size = sizeof(DCOMP_CMD_SET_REFERENCE);
+            break;
+        case DCOMP_CMD_SET_ANIMATION_PROPERTY:
+            Size = sizeof(DCOMP_CMD_SET_ANIMATION);
+            break;
+        case DCOMP_CMD_SET_DELETED_NOTIFICATION_TAG:
+            Size = sizeof(DCOMP_CMD_SET_DELETED_TAG);
+            break;
+        case DCOMP_CMD_ADD_VISUAL_CHILD:
+            Size = sizeof(DCOMP_CMD_ADD_CHILD);
+            break;
+        case DCOMP_CMD_REDIRECT_MOUSE_TO_HWND:
+            Size = DCOMP_REDIRECT_MOUSE_COMMAND_SIZE;
+            break;
+        case DCOMP_CMD_SET_VISUAL_INPUT_SINK:
+            Size = sizeof(DCOMP_CMD_SET_INPUT_SINK);
+            break;
+        case DCOMP_CMD_REMOVE_VISUAL_CHILD:
+            Size = sizeof(DCOMP_CMD_REMOVE_CHILD);
+            break;
+
+        case DCOMP_CMD_SET_HANDLE_ARRAY_PROPERTY:
+        case DCOMP_CMD_SET_BUFFER_PROPERTY:
+        case DCOMP_CMD_SET_REFERENCE_ARRAY_PROPERTY:
+        {
+            /* The three variable commands share the header layout; the fourth dword sizes the tail */
+            const DCOMP_CMD_SET_BUFFER* Header = (const DCOMP_CMD_SET_BUFFER*)Record;
+            ULONG Element = (Tag == DCOMP_CMD_SET_BUFFER_PROPERTY) ? 1 :
+                            (Tag == DCOMP_CMD_SET_HANDLE_ARRAY_PROPERTY) ? sizeof(ULONG64) : sizeof(ULONG);
+            if (Remaining < sizeof(*Header) || Header->Size > (Remaining - sizeof(*Header)) / Element)
                 return 0;
-            *Status = DcompCreateResource(Channel, (const DCOMP_CMD_CREATE*)Record);
-            return sizeof(DCOMP_CMD_CREATE);
+            Size = sizeof(*Header) + ALIGN_UP_BY(Header->Size * Element, sizeof(ULONG));
+            break;
+        }
+
+        default:
+            return 0;
+    }
+
+    return (Size <= Remaining) ? Size : 0;
+}
+
+/* Validates one client command and turns it into compositor commands */
+static
+NTSTATUS
+DcompProcessCommand(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_reads_bytes_(Size) const UCHAR* Record,
+    _In_ ULONG Size,
+    _In_ BOOLEAN TopLevel,
+    _Inout_ PULONG Count)
+{
+    ULONG Tag = *(const ULONG*)Record;
+    PDCOMP_RESOURCE Resource = NULL;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    /* Every property command starts { tag, resource, property } */
+    if (Tag >= DCOMP_CMD_SET_INTEGER_PROPERTY && Tag <= DCOMP_CMD_SET_REFERENCE_ARRAY_PROPERTY)
+    {
+        Resource = DcompLookupResource(Channel, ((const ULONG*)Record)[1]);
+        if (!Resource)
+            return STATUS_INVALID_HANDLE;
+    }
+
+    switch (Tag)
+    {
+        case DCOMP_CMD_OUT_OF_LINE:
+        {
+            const DCOMP_CMD_OUT_OF_LINE_BUFFER* Command = (const DCOMP_CMD_OUT_OF_LINE_BUFFER*)Record;
+            PUCHAR Copy;
+
+            if (!TopLevel || !Command->Size || Command->Size > 16 * DCOMP_CHANNEL_BUFFER_SIZE)
+                return STATUS_INVALID_PARAMETER;
+            Copy = ExAllocatePoolWithTag(PagedPool, Command->Size, TAG_DCOMP);
+            if (!Copy)
+                return STATUS_NO_MEMORY;
+            _SEH2_TRY
+            {
+                ProbeForRead((PVOID)(ULONG_PTR)Command->Buffer, Command->Size, sizeof(ULONG));
+                RtlCopyMemory(Copy, (PVOID)(ULONG_PTR)Command->Buffer, Command->Size);
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            if (NT_SUCCESS(Status))
+                Status = DcompProcessBuffer(Channel, Copy, Command->Size, FALSE, Count);
+            ExFreePoolWithTag(Copy, TAG_DCOMP);
+            return Status;
+        }
+
+        case DCOMP_CMD_CREATE_RESOURCE:
+            Status = DcompCreateResource(Channel, (const DCOMP_CMD_CREATE*)Record);
+            break;
 
         case DCOMP_CMD_RELEASE_RESOURCE:
         {
-            const DCOMP_CMD_RELEASE* Command = (const DCOMP_CMD_RELEASE*)Record;
-            if (Remaining < sizeof(*Command) || !(Resource = DcompLookupResource(Channel, Command->Resource)))
-                return 0;
-            *Status = DcompAppend(Channel, Resource->CompositorId, DCOMP_MILCMD_RELEASE, NULL, 0, NULL, 0);
-            Resource->Type = 0;
-            return sizeof(*Command);
+            ULONG Handle = ((const DCOMP_CMD_RELEASE*)Record)->Resource;
+            Resource = DcompLookupResource(Channel, Handle);
+            if (!Resource)
+                return STATUS_INVALID_HANDLE;
+            Status = DcompEmit(Channel, DCOMP_MILCMD_CHANNEL_RELEASE_RESOURCE, Handle, NULL, 0, NULL, 0);
+            DcompForgetBindings(Channel, Handle);
+            DcompReleaseResourceState(Resource);
+            break;
         }
 
         case DCOMP_CMD_SET_INTEGER_PROPERTY:
-        {
-            const DCOMP_CMD_SET_INTEGER* Command = (const DCOMP_CMD_SET_INTEGER*)Record;
-            if (Remaining < sizeof(*Command) || !(Resource = DcompLookupResource(Channel, Command->Resource)))
-                return 0;
-            if (!DcompIsValidProperty(Resource->Type, Tag, Command->Property))
-                return 0;
-            Payload[0] = Command->Property;
-            Payload[1] = 0;
-            *Status = DcompAppend(Channel, Resource->CompositorId, DCOMP_MILCMD_SET_INTEGER,
-                                  Payload, 2 * sizeof(ULONG), &Command->Value, sizeof(Command->Value));
-            return sizeof(*Command);
-        }
+            Status = DcompSetInteger(Channel, (const DCOMP_CMD_SET_INTEGER*)Record, Resource);
+            break;
 
         case DCOMP_CMD_SET_FLOAT_PROPERTY:
-        {
-            const DCOMP_CMD_SET_FLOAT* Command = (const DCOMP_CMD_SET_FLOAT*)Record;
-            if (Remaining < sizeof(*Command) || !(Resource = DcompLookupResource(Channel, Command->Resource)))
-                return 0;
-            if (!DcompIsValidProperty(Resource->Type, Tag, Command->Property))
-                return 0;
-            Payload[0] = Command->Property;
-            *Status = DcompAppend(Channel, Resource->CompositorId, DCOMP_MILCMD_SET_FLOAT,
-                                  Payload, sizeof(ULONG), &Command->Value, sizeof(Command->Value));
-            return sizeof(*Command);
-        }
-
-        case DCOMP_CMD_SET_REFERENCE_PROPERTY:
-        {
-            const DCOMP_CMD_SET_REFERENCE* Command = (const DCOMP_CMD_SET_REFERENCE*)Record;
-            PDCOMP_RESOURCE Target = NULL;
-            if (Remaining < sizeof(*Command) || !(Resource = DcompLookupResource(Channel, Command->Resource)))
-                return 0;
-            if (!DcompIsValidProperty(Resource->Type, Tag, Command->Property))
-                return 0;
-            if (Command->Value && !(Target = DcompLookupResource(Channel, Command->Value)))
-                return 0;
-            Payload[0] = Command->Property;
-            Payload[1] = Target ? Target->CompositorId : 0;
-            *Status = DcompAppend(Channel, Resource->CompositorId, DCOMP_MILCMD_SET_REFERENCE,
-                                  Payload, 2 * sizeof(ULONG), NULL, 0);
-            return sizeof(*Command);
-        }
-
-        case DCOMP_CMD_SET_BUFFER_PROPERTY:
-        {
-            const DCOMP_CMD_SET_BUFFER* Command = (const DCOMP_CMD_SET_BUFFER*)Record;
-            ULONG Size;
-            if (Remaining < sizeof(*Command) || !(Resource = DcompLookupResource(Channel, Command->Resource)))
-                return 0;
-            Size = sizeof(*Command) + ALIGN_UP_BY(Command->Size, sizeof(ULONG));
-            if (Command->Size > Remaining || Size > Remaining)
-                return 0;
-            if (!DcompIsValidProperty(Resource->Type, Tag, Command->Property))
-                return 0;
-            Payload[0] = Command->Property;
-            Payload[1] = Command->Size;
-            *Status = DcompAppend(Channel, Resource->CompositorId, DCOMP_MILCMD_SET_BUFFER,
-                                  Payload, 2 * sizeof(ULONG), Command + 1, Command->Size);
-            return Size;
-        }
+            Status = DcompSetFloat(Channel, (const DCOMP_CMD_SET_FLOAT*)Record, Resource);
+            break;
 
         case DCOMP_CMD_SET_HANDLE_PROPERTY:
-            *Status = STATUS_NOT_SUPPORTED;
-            return 0;
+            Status = DcompSetHandle(Channel, (const DCOMP_CMD_SET_HANDLE*)Record, Resource);
+            break;
+
+        case DCOMP_CMD_SET_BUFFER_PROPERTY:
+            Status = DcompSetBuffer(Channel, (const DCOMP_CMD_SET_BUFFER*)Record, Resource);
+            break;
+
+        case DCOMP_CMD_SET_REFERENCE_PROPERTY:
+            Status = DcompSetReference(Channel, (const DCOMP_CMD_SET_REFERENCE*)Record, Resource);
+            break;
+
+        case DCOMP_CMD_SET_REFERENCE_ARRAY_PROPERTY:
+            Status = DcompSetReferenceArray(Channel, (const DCOMP_CMD_SET_REFERENCE_ARRAY*)Record);
+            break;
+
+        case DCOMP_CMD_SET_ANIMATION_PROPERTY:
+            Status = DcompBind(Channel, (const DCOMP_CMD_SET_ANIMATION*)Record);
+            break;
+
+        case DCOMP_CMD_ADD_VISUAL_CHILD:
+            Status = DcompAddChild(Channel, (const DCOMP_CMD_ADD_CHILD*)Record);
+            break;
+
+        case DCOMP_CMD_REMOVE_VISUAL_CHILD:
+            Status = DcompRemoveChild(Channel, (const DCOMP_CMD_REMOVE_CHILD*)Record);
+            break;
+
+        /* Accepted so Windows clients carry on; nothing acts on these yet */
+        case DCOMP_CMD_ACTIVATE_CHANNEL_TRIGGER:
+        case DCOMP_CMD_SET_CHANNEL_INTEGER_PROPERTY:
+        case DCOMP_CMD_ACTIVATE_RESOURCE_TRIGGER:
+        case DCOMP_CMD_SET_RESOURCE_CALLBACK_ID:
+        case DCOMP_CMD_SET_DELETED_NOTIFICATION_TAG:
+        case DCOMP_CMD_SET_VISUAL_INPUT_SINK:
+            break;
+
+        /* Shared resources, animation time queries, pointer capture and handle arrays come later */
+        default:
+            Status = STATUS_NOT_SUPPORTED;
+            break;
     }
-    return 0;
+
+    if (NT_SUCCESS(Status))
+        (*Count)++;
+    return Status;
+}
+
+static
+NTSTATUS
+DcompProcessBuffer(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_reads_bytes_(Length) const UCHAR* Buffer,
+    _In_ ULONG Length,
+    _In_ BOOLEAN TopLevel,
+    _Inout_ PULONG Count)
+{
+    ULONG Offset = 0;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    while (Length - Offset >= sizeof(ULONG) && NT_SUCCESS(Status))
+    {
+        ULONG Size = DcompCommandSize(Buffer + Offset, Length - Offset);
+        if (!Size)
+        {
+            Status = STATUS_INVALID_PARAMETER;
+            break;
+        }
+        Status = DcompProcessCommand(Channel, Buffer + Offset, Size, TopLevel, Count);
+        if (!NT_SUCCESS(Status))
+            ERR("DComp channel %lu: command %lu at offset %lu failed 0x%08lx\n",
+                Channel->Id, *(const ULONG*)(Buffer + Offset), Offset, Status);
+        Offset += Size;
+    }
+    return Status;
 }
 
 static
@@ -482,6 +1041,7 @@ DcompDestroyChannel(
     _In_ BOOLEAN FreeUserBuffer)
 {
     SIZE_T Size = 0;
+    ULONG Index;
 
     RemoveEntryList(&Channel->Link);
     if (gDcompCompositor)
@@ -490,7 +1050,13 @@ DcompDestroyChannel(
     if (FreeUserBuffer && Channel->UserBuffer)
         ZwFreeVirtualMemory(NtCurrentProcess(), &Channel->UserBuffer, &Size, MEM_RELEASE);
     if (Channel->Resources)
+    {
+        for (Index = 0; Index < Channel->ResourceCount; Index++)
+            DcompReleaseResourceState(&Channel->Resources[Index]);
         ExFreePoolWithTag(Channel->Resources, TAG_DCOMP);
+    }
+    if (Channel->Bindings)
+        ExFreePoolWithTag(Channel->Bindings, TAG_DCOMP);
     if (Channel->Pending)
         ExFreePoolWithTag(Channel->Pending, TAG_DCOMP);
     ExFreePoolWithTag(Channel, TAG_DCOMP);
@@ -647,6 +1213,13 @@ NtDCompositionCreateChannel(
     }
     RtlZeroMemory(Channel, sizeof(*Channel));
 
+    Channel->Id = DcompAllocateChannelId();
+    if (!Channel->Id)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
     Size = ALIGN_UP_BY(min(max(Requested, PAGE_SIZE), DCOMP_CHANNEL_BUFFER_SIZE), PAGE_SIZE);
     Status = ZwAllocateVirtualMemory(NtCurrentProcess(), &Channel->UserBuffer, 0, &Size, MEM_COMMIT, PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
@@ -654,7 +1227,6 @@ NtDCompositionCreateChannel(
 
     Channel->BufferSize = Size;
     Channel->Process = PsGetCurrentProcess();
-    Channel->Id = gDcompNextChannel++;
 
     _SEH2_TRY
     {
@@ -716,7 +1288,7 @@ NtDCompositionProcessChannelBatchBuffer(
 {
     PDCOMP_CHANNEL Channel;
     PUCHAR Copy = NULL;
-    ULONG Offset = 0;
+    ULONG Count = 0;
     NTSTATUS Status = STATUS_SUCCESS;
 
     UserEnterExclusive();
@@ -753,26 +1325,16 @@ NtDCompositionProcessChannelBatchBuffer(
         _SEH2_END;
         if (!NT_SUCCESS(Status))
             goto Exit;
+
+        Status = DcompProcessBuffer(Channel, Copy, Length, TRUE, &Count);
     }
 
-    while (Length - Offset >= sizeof(ULONG))
-    {
-        ULONG Used = DcompProcessCommand(Channel, Copy + Offset, Length - Offset, &Status);
-        if (!Used || !NT_SUCCESS(Status))
-        {
-            if (NT_SUCCESS(Status))
-                Status = STATUS_INVALID_PARAMETER;
-            ERR("DComp channel %lu: bad command at offset %lu (0x%08lx)\n", Channel->Id, Offset, Status);
-            break;
-        }
-        Offset += Used;
-    }
-
+    /* The count is what was processed, which Windows' dcomp checks against what it wrote */
     _SEH2_TRY
     {
         ProbeForWrite(Consumed, sizeof(*Consumed), sizeof(ULONG));
         ProbeForWrite(MoreWork, sizeof(*MoreWork), sizeof(BOOLEAN));
-        *Consumed = Offset;
+        *Consumed = Count;
         *MoreWork = FALSE;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
@@ -784,6 +1346,109 @@ NtDCompositionProcessChannelBatchBuffer(
 Exit:
     if (Copy)
         ExFreePoolWithTag(Copy, TAG_DCOMP);
+    UserLeave();
+    return Status;
+}
+
+/*
+ * Gives a shared section resource its section: the caller gets a handle to map and write it,
+ * the compositor its own handle to read it.
+ */
+NTSTATUS
+APIENTRY
+NtDCompositionCreateAndBindSharedSection(
+    _In_ HANDLE ChannelHandle,
+    _In_ ULONG ResourceHandle,
+    _In_ ULONG Size,
+    _Out_ PHANDLE SectionHandle)
+{
+    PDCOMP_CHANNEL Channel;
+    PDCOMP_RESOURCE Resource;
+    OBJECT_ATTRIBUTES Attributes;
+    LARGE_INTEGER MaximumSize;
+    HANDLE KernelHandle = NULL;
+    HANDLE ClientHandle = NULL;
+    HANDLE CompositorHandle = NULL;
+    PVOID Section = NULL;
+    KAPC_STATE ApcState;
+    ULONG64 Payload[2];
+    NTSTATUS Status;
+
+    UserEnterExclusive();
+
+    Channel = DcompLookupChannel(ChannelHandle);
+    Resource = Channel ? DcompLookupResource(Channel, ResourceHandle) : NULL;
+    if (!Resource || Resource->Type != DCOMP_RESOURCE_SHARED_SECTION || Resource->Shared.Section)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Exit;
+    }
+    if (!Size || Size > DCOMP_MAX_SHARED_SECTION || !gDcompCompositor)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Exit;
+    }
+
+    InitializeObjectAttributes(&Attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+    MaximumSize.QuadPart = ALIGN_UP_BY(Size, PAGE_SIZE);
+    Status = ZwCreateSection(&KernelHandle, SECTION_ALL_ACCESS, &Attributes, &MaximumSize,
+                             PAGE_READWRITE, SEC_COMMIT, NULL);
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+    Status = ObReferenceObjectByHandle(KernelHandle, SECTION_ALL_ACCESS, NULL, KernelMode, &Section, NULL);
+    ZwClose(KernelHandle);
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    Status = ObOpenObjectByPointer(Section, 0, NULL, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_QUERY,
+                                   NULL, UserMode, &ClientHandle);
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    KeStackAttachProcess((PKPROCESS)gDcompCompositor, &ApcState);
+    Status = ObOpenObjectByPointer(Section, 0, NULL, SECTION_MAP_READ | SECTION_QUERY,
+                                   NULL, UserMode, &CompositorHandle);
+    KeUnstackDetachProcess(&ApcState);
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    Payload[0] = (ULONG64)(ULONG_PTR)CompositorHandle;
+    Payload[1] = Size;
+    Status = DcompEmit(Channel, DCOMP_MILCMD_SHARED_SECTION_UPDATE, ResourceHandle, Payload,
+                       sizeof(ULONG64) + sizeof(ULONG), NULL, 0);
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+    CompositorHandle = NULL;
+
+    _SEH2_TRY
+    {
+        ProbeForWrite(SectionHandle, sizeof(*SectionHandle), sizeof(ULONG));
+        *SectionHandle = ClientHandle;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    Resource->Shared.Section = Section;
+    Resource->Shared.Size = Size;
+    Section = NULL;
+    ClientHandle = NULL;
+
+Exit:
+    if (ClientHandle)
+        ZwClose(ClientHandle);
+    if (CompositorHandle)
+    {
+        KeStackAttachProcess((PKPROCESS)gDcompCompositor, &ApcState);
+        ZwClose(CompositorHandle);
+        KeUnstackDetachProcess(&ApcState);
+    }
+    if (Section)
+        ObDereferenceObject(Section);
     UserLeave();
     return Status;
 }
@@ -815,11 +1480,11 @@ NtDCompositionCommitChannel(
 
     if (Channel->PendingSize)
     {
-        Status = DcompQueueNode(DCOMP_BATCH_RESOURCE_COMMANDS, Channel->Id, 0, Channel->Pending, Channel->PendingSize);
+        Status = DcompQueueNode(DCOMP_BATCH_RESOURCE_COMMANDS, Channel->Id, Channel->PendingSize,
+                                Channel->Pending, Channel->PendingSize);
         if (!NT_SUCCESS(Status))
             goto Exit;
         Channel->PendingSize = 0;
-        Channel->LastGroup = NULL;
     }
     Id = ++Channel->BatchId;
 
@@ -911,21 +1576,7 @@ NtDCompositionGetConnectionBatch(
     }
 
     for (Entry = gDcompQueue.Flink; Entry != &gDcompQueue; Entry = Entry->Flink)
-    {
-        PDCOMP_QUEUED Node = CONTAINING_RECORD(Entry, DCOMP_QUEUED, Link);
-        if (Node->Type != DCOMP_BATCH_RESOURCE_COMMANDS)
-        {
-            Total += sizeof(DCOMP_BATCH_NODE);
-            continue;
-        }
-        /* Every group becomes a node followed by its commands */
-        for (ULONG Offset = 0; Offset < Node->Size;)
-        {
-            PDCOMP_GROUP Group = (PDCOMP_GROUP)(Node->Data + Offset);
-            Total += sizeof(DCOMP_BATCH_NODE) + Group->Size;
-            Offset += sizeof(*Group) + Group->Size;
-        }
-    }
+        Total += sizeof(DCOMP_BATCH_NODE) + CONTAINING_RECORD(Entry, DCOMP_QUEUED, Link)->Size;
 
     if (Total)
     {
@@ -943,33 +1594,24 @@ NtDCompositionGetConnectionBatch(
         while (!IsListEmpty(&gDcompQueue))
         {
             PDCOMP_QUEUED Node = CONTAINING_RECORD(RemoveHeadList(&gDcompQueue), DCOMP_QUEUED, Link);
-            ULONG Offset = 0;
+            PDCOMP_BATCH_NODE Out = (PDCOMP_BATCH_NODE)Cursor;
 
-            do
+            RtlZeroMemory(Out, sizeof(*Out));
+            Out->Type = Node->Type;
+            Out->Channel = Node->Channel;
+            Out->Value = Node->Value;
+            Cursor += sizeof(*Out);
+
+            if (Node->Size)
             {
-                PDCOMP_BATCH_NODE Out = (PDCOMP_BATCH_NODE)Cursor;
-                RtlZeroMemory(Out, sizeof(*Out));
-                Out->Type = Node->Type;
-                Out->Channel = Node->Channel;
-                Out->Value = Node->Value;
-                Cursor += sizeof(*Out);
+                Out->Commands = (ULONG64)(ULONG_PTR)Cursor;
+                RtlCopyMemory(Cursor, Node->Data, Node->Size);
+                Cursor += Node->Size;
+            }
 
-                if (Node->Type == DCOMP_BATCH_RESOURCE_COMMANDS)
-                {
-                    PDCOMP_GROUP Group = (PDCOMP_GROUP)(Node->Data + Offset);
-                    Out->Channel = Group->Resource;
-                    Out->Value = Group->Size;
-                    Out->Commands = (ULONG64)(ULONG_PTR)Cursor;
-                    RtlCopyMemory(Cursor, Group + 1, Group->Size);
-                    Cursor += Group->Size;
-                    Offset += sizeof(*Group) + Group->Size;
-                }
-
-                if (Previous)
-                    Previous->Next = (ULONG64)(ULONG_PTR)Out;
-                Previous = Out;
-            } while (Node->Type == DCOMP_BATCH_RESOURCE_COMMANDS && Offset < Node->Size);
-
+            if (Previous)
+                Previous->Next = (ULONG64)(ULONG_PTR)Out;
+            Previous = Out;
             ExFreePoolWithTag(Node, TAG_DCOMP);
         }
 
