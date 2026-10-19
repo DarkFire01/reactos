@@ -4267,6 +4267,23 @@ IopGetDeviceRequirements(
     if (Requirements != NULL && !(DeviceNode->Flags & DNF_RESOURCE_REQUIREMENTS_NEED_FILTERED))
         return STATUS_SUCCESS;
 
+    /*
+     * Ask the stack again, as Windows does at assignment: the INF or the critical device
+     * database has written Device Parameters by now, and bus drivers read them (MSISupported).
+     */
+    if (!(DeviceNode->Flags & DNF_MADEUP))
+    {
+        PIO_RESOURCE_REQUIREMENTS_LIST Queried = NULL;
+
+        if (NT_SUCCESS(PiIrpQueryResourceRequirements(DeviceNode, &Queried)))
+        {
+            if (Requirements != NULL)
+                ExFreePool(Requirements);
+
+            DeviceNode->ResourceRequirements = Requirements = Queried;
+        }
+    }
+
     if (BootConfig == NULL ||
         BootConfig->Count == 0 ||
         BootConfig->List[0].InterfaceType != PCIBus)
