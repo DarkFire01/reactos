@@ -470,7 +470,6 @@ GreSetDCOwner(HDC hdc, ULONG ulOwner)
     return TRUE;
 }
 
-static
 void
 DC_vUpdateDC(PDC pdc)
 {
@@ -495,6 +494,22 @@ DC_vUpdateDC(PDC pdc)
 
     /* Mark EBRUSHOBJs as dirty */
     pdc->pdcattr->ulDirty_ |= DIRTY_DEFAULT ;
+}
+
+/* Hands what a drawing call touched to the surface the DC is redirected to */
+static
+VOID
+DC_vReportRedirectionDirty(
+    _In_ PDC pdc)
+{
+    RECTL rcl;
+    ULONG64 Sprite;
+
+    if (!RECTL_bIntersectRect(&rcl, &pdc->erclRedirectionDirty, &pdc->erclClip))
+        return;
+
+    if (GreAccumulateLogicalSurfaceDirty(pdc->dclevel.pSurface, &rcl, &Sprite))
+        IntDwmNotifyDirtySprite(Sprite);
 }
 
 /* Prepare a blit for up to 2 DCs */
@@ -549,19 +564,23 @@ DC_vPrepareDCsForBlit(
     if (pdcDest->fs & DC_DIRTY_RAO)
         CLIPPING_UpdateGCRegion(pdcDest);
 
+    /* What the call draws to a redirection surface is reported to the DWM when it finishes */
+    if (pdcDest->fs & DC_REDIRECTION)
+        pdcDest->erclRedirectionDirty = rcDest ? *(const RECTL*)rcDest : pdcDest->erclClip;
+
     /* Lock and update first DC */
     if (pdcFirst->dctype == DCTYPE_DIRECT)
     {
         EngAcquireSemaphore(pdcFirst->ppdev->hsemDevLock);
 
-        /* Update surface if needed */
-        if (pdcFirst->ppdev->pSurface != pdcFirst->dclevel.pSurface)
+        /* Update surface if needed; a redirected DC keeps its window's surface */
+        if (!(pdcFirst->fs & DC_REDIRECTION) && pdcFirst->ppdev->pSurface != pdcFirst->dclevel.pSurface)
         {
             DC_vUpdateDC(pdcFirst);
         }
     }
 
-    if (pdcFirst->dctype == DCTYPE_DIRECT)
+    if (pdcFirst->dctype == DCTYPE_DIRECT && !(pdcFirst->fs & DC_REDIRECTION))
     {
         if (!prcFirst)
             prcFirst = &pdcFirst->erclClip;
@@ -586,13 +605,13 @@ DC_vPrepareDCsForBlit(
         EngAcquireSemaphore(pdcSecond->ppdev->hsemDevLock);
 
         /* Update surface if needed */
-        if (pdcSecond->ppdev->pSurface != pdcSecond->dclevel.pSurface)
+        if (!(pdcSecond->fs & DC_REDIRECTION) && pdcSecond->ppdev->pSurface != pdcSecond->dclevel.pSurface)
         {
             DC_vUpdateDC(pdcSecond);
         }
     }
 
-    if (pdcSecond->dctype == DCTYPE_DIRECT)
+    if (pdcSecond->dctype == DCTYPE_DIRECT && !(pdcSecond->fs & DC_REDIRECTION))
     {
         if (!prcSecond)
             prcSecond = &pdcSecond->erclClip;
@@ -615,9 +634,13 @@ DC_vFinishBlit(PDC pdc1, PDC pdc2)
 {
     if (pdc1->dctype == DCTYPE_DIRECT)
     {
-        MouseSafetyOnDrawEnd(pdc1->ppdev);
+        if (!(pdc1->fs & DC_REDIRECTION))
+            MouseSafetyOnDrawEnd(pdc1->ppdev);
         EngReleaseSemaphore(pdc1->ppdev->hsemDevLock);
     }
+
+    if (pdc1->fs & DC_REDIRECTION)
+        DC_vReportRedirectionDirty(pdc1);
 #if DBG
     pdc1->fs &= ~DC_PREPARED;
 #endif
@@ -626,7 +649,8 @@ DC_vFinishBlit(PDC pdc1, PDC pdc2)
     {
         if (pdc2->dctype == DCTYPE_DIRECT)
         {
-            MouseSafetyOnDrawEnd(pdc2->ppdev);
+            if (!(pdc2->fs & DC_REDIRECTION))
+                MouseSafetyOnDrawEnd(pdc2->ppdev);
             EngReleaseSemaphore(pdc2->ppdev->hsemDevLock);
         }
 #if DBG
