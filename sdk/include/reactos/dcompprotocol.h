@@ -109,6 +109,9 @@ typedef struct _DCOMP_CMD_SET_REFERENCE
  */
 #define DCOMP_WINDOW_NODE_GLASS_MARGINS 1000    /* buffer: MARGINS */
 
+/* Ours: rectangles of the content blurred glass shows through, blended by its alpha the same way */
+#define DCOMP_WINDOW_NODE_BLUR_RECTS    1001    /* buffer: RECTs in content coordinates */
+
 /* GDI sprite bitmap properties: the logical surface a redirected window draws into */
 #define DCOMP_SPRITE_BITMAP_DIRTY_RECTS 0   /* buffer: RECTs that changed, surface coordinates */
 #define DCOMP_SPRITE_BITMAP_FORMAT      1   /* integer: DXGI_FORMAT */
