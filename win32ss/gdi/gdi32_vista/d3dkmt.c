@@ -23,6 +23,37 @@ typedef struct _D3DKMT_OPENADAPTERFROMLUID
 } D3DKMT_OPENADAPTERFROMLUID;
 #endif
 
+#if (DXGKDDI_INTERFACE_VERSION < DXGKDDI_INTERFACE_VERSION_WIN8)
+typedef struct _D3DKMT_VIDPNSOURCEOWNER_FLAGS
+{
+    union
+    {
+        struct
+        {
+            UINT AllowOutputDuplication : 1;
+            UINT DisableDWMVirtualMode  : 1;
+            UINT UseNtHandles           : 1;
+            UINT Reserved               : 29;
+        };
+        UINT Value;
+    };
+} D3DKMT_VIDPNSOURCEOWNER_FLAGS;
+
+typedef struct _D3DKMT_SETVIDPNSOURCEOWNER1
+{
+    D3DKMT_SETVIDPNSOURCEOWNER    Version0;
+    D3DKMT_VIDPNSOURCEOWNER_FLAGS Flags;
+} D3DKMT_SETVIDPNSOURCEOWNER1;
+#endif
+
+#if (DXGKDDI_INTERFACE_VERSION < DXGKDDI_INTERFACE_VERSION_WDDM2_3)
+typedef struct _D3DKMT_SETVIDPNSOURCEOWNER2
+{
+    D3DKMT_SETVIDPNSOURCEOWNER1 Version1;
+    CONST ULONG64*              pVidPnSourceNtHandles;
+} D3DKMT_SETVIDPNSOURCEOWNER2;
+#endif
+
 /* NT6.2 syscall, appended to w32ksvc so ntgdi.h (Vista) does not declare it */
 NTSTATUS
 APIENTRY
@@ -317,15 +348,48 @@ D3DKMTDestroyDevice(_In_ const D3DKMT_DESTROYDEVICE* unnamedParam1)
     return STATUS_SUCCESS;
 }
 
+/*
+ * One syscall serves every revision of the call: dxgkrnl reads the flags behind the
+ * base description, and the NT handles behind those when the flags ask for them.
+ */
+static
+NTSTATUS
+D3DKMTSetVidPnSourceOwnerFlags(
+    _In_ const D3DKMT_SETVIDPNSOURCEOWNER* Owner,
+    _In_ D3DKMT_VIDPNSOURCEOWNER_FLAGS Flags)
+{
+    D3DKMT_SETVIDPNSOURCEOWNER2 Full = { 0 };
+
+    Full.Version1.Version0 = *Owner;
+    Full.Version1.Flags = Flags;
+    Full.Version1.Flags.UseNtHandles = 0;
+    return NtGdiDdDDISetVidPnSourceOwner(&Full.Version1.Version0);
+}
+
 NTSTATUS
 WINAPI
-D3DKMTSetVidPnSourceOwner(_In_ const D3DKMT_SETVIDPNSOURCEOWNER* unnamedParam1)
+D3DKMTSetVidPnSourceOwner1(_In_ const D3DKMT_SETVIDPNSOURCEOWNER1* unnamedParam1)
 {
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
+    if (D3DKMT_EMU_IS_DEVICE(unnamedParam1->Version0.hDevice))
+        return D3DKMTSetVidPnSourceOwner(&unnamedParam1->Version0);
+
+    return D3DKMTSetVidPnSourceOwnerFlags(&unnamedParam1->Version0, unnamedParam1->Flags);
+}
+
+NTSTATUS
+WINAPI
+D3DKMTSetVidPnSourceOwner(_In_ const D3DKMT_SETVIDPNSOURCEOWNER* unnamedParam1)
+{
+    D3DKMT_VIDPNSOURCEOWNER_FLAGS NoFlags = { 0 };
+
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
     if (!D3DKMT_EMU_IS_DEVICE(unnamedParam1->hDevice))
-        return NtGdiDdDDISetVidPnSourceOwner(unnamedParam1);
+        return D3DKMTSetVidPnSourceOwnerFlags(unnamedParam1, NoFlags);
 
     /* A zero VidPnSourceCount releases ownership, which always succeeds. */
     if (unnamedParam1->VidPnSourceCount == 0)
