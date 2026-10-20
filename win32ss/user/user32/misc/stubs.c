@@ -596,3 +596,88 @@ GetPointerPenInfo(
     return FALSE;
 }
 
+/**
+ * @brief
+ * Gets the rectangles a pointer device and its display cover.
+ *
+ * @return
+ * FALSE with ERROR_INVALID_PARAMETER, since there is no pointer device stack to name a device.
+ */
+BOOL
+WINAPI
+GetPointerDeviceRects(
+    _In_ HANDLE device,
+    _Out_ RECT *pointerDeviceRect,
+    _Out_ RECT *displayRect)
+{
+    UNREFERENCED_PARAMETER(device);
+    UNREFERENCED_PARAMETER(pointerDeviceRect);
+    UNREFERENCED_PARAMETER(displayRect);
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Gets the touch history of every pointer in a pointer's frame.
+ *
+ * @return
+ * FALSE with ERROR_INVALID_PARAMETER, since no pointer exists to have a frame.
+ */
+BOOL
+WINAPI
+GetPointerFrameTouchInfoHistory(
+    _In_ UINT32 pointerId,
+    _Inout_ UINT32 *entriesCount,
+    _Inout_ UINT32 *pointerCount,
+    _Out_opt_ PVOID touchInfo)
+{
+    UNREFERENCED_PARAMETER(pointerId);
+    UNREFERENCED_PARAMETER(entriesCount);
+    UNREFERENCED_PARAMETER(pointerCount);
+    UNREFERENCED_PARAMETER(touchInfo);
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Gets the pen history of a pointer.
+ *
+ * @return
+ * FALSE with ERROR_INVALID_PARAMETER, since no pointer is ever a pen here.
+ */
+BOOL
+WINAPI
+GetPointerPenInfoHistory(
+    _In_ UINT32 pointerId,
+    _Inout_ UINT32 *entriesCount,
+    _Out_opt_ PVOID penInfo)
+{
+    UNREFERENCED_PARAMETER(pointerId);
+    UNREFERENCED_PARAMETER(entriesCount);
+    UNREFERENCED_PARAMETER(penInfo);
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Drops the pointer messages still queued for a pointer's frame.
+ *
+ * @return
+ * FALSE with ERROR_INVALID_PARAMETER, since no pointer exists to have queued messages.
+ */
+BOOL
+WINAPI
+SkipPointerFrameMessages(
+    _In_ UINT32 pointerId)
+{
+    UNREFERENCED_PARAMETER(pointerId);
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}
