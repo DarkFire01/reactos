@@ -221,6 +221,7 @@ typedef struct _DCOMP_CMD_REMOVE_CHILD
 #define DCOMP_RESOURCE_BASE_ANIMATION               10  /* abstract */
 #define DCOMP_RESOURCE_BITMAP_RESOURCE              13
 #define DCOMP_RESOURCE_BRUSH                        17  /* abstract */
+#define DCOMP_RESOURCE_CACHED_VISUAL_IMAGE          18
 #define DCOMP_RESOURCE_COLOR_BRUSH                  22
 #define DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP   41
 #define DCOMP_RESOURCE_CONTENT                      45  /* abstract */
@@ -273,6 +274,8 @@ typedef struct _DCOMP_CMD_REMOVE_CHILD
 #define DCOMP_VISUAL_TRANSFORM_MATRIX       12  /* buffer: DCOMP_MATRIX4X4 */
 #define DCOMP_VISUAL_CLIP_RECT              13  /* buffer: DCOMP_RECT; right below left is no clip */
 #define DCOMP_VISUAL_OPACITY_MODE           14  /* integer */
+#define DCOMP_VISUAL_BACKFACE_VISIBILITY    20  /* integer */
+#define DCOMP_VISUAL_DEPTH_MODE             22  /* integer */
 #define DCOMP_VISUAL_WIDTH                  24  /* float */
 #define DCOMP_VISUAL_HEIGHT                 25  /* float */
 #define DCOMP_VISUAL_OPACITY                26  /* float, 0 to 1 */
@@ -323,6 +326,10 @@ typedef struct _DCOMP_RECT
 #define DCOMP_SKEW_CENTER_X                 3
 #define DCOMP_SKEW_CENTER_Y                 4
 #define DCOMP_MATRIX_TRANSFORM_MATRIX       7   /* buffer: DCOMP_MATRIX; elements 1 to 6 as floats */
+#define DCOMP_MATRIX_TRANSFORM_3D_MATRIX    17  /* buffer: DCOMP_MATRIX4X4; elements 1 to 16 as floats */
+#define DCOMP_TRANSLATE_3D_OFFSET_Z         3
+#define DCOMP_SCALE_3D_CENTER_X             4   /* scale x, y, z are 1 to 3, centers 4 to 6 */
+#define DCOMP_ROTATE_3D_AXIS_X              2   /* angle 1, axis 2 to 4, center 5 to 7 */
 #define DCOMP_TRANSFORM_GROUP_CHILDREN      1   /* reference array */
 
 /* Rectangle clip */
@@ -358,6 +365,7 @@ typedef struct _DCOMP_SURFACE_DESC
 /* Window node properties, besides the visual ones: the visual a redirected window is composed as */
 #define DCOMP_WINDOW_NODE_SPRITE_BITMAP 66      /* reference: GdiSpriteBitmap */
 #define DCOMP_WINDOW_NODE_WINDOW        1002    /* ours, integer: the HWND */
+#define DCOMP_WINDOW_NODE_CONTENT_SCALE 1003    /* ours, buffer: FLOAT screen pixels per surface pixel */
 
 /*
  * Ours: MARGINS of the content the frame's glass extends under. Content there is blended by its
@@ -402,6 +410,15 @@ typedef struct _DCOMP_BITMAP_DESC
 #define DCOMP_TARGET_ROOT               52      /* reference: the root visual, as on a Windows visual target */
 #define DCOMP_TARGET_WINDOW             1000    /* ours, integer: the HWND */
 #define DCOMP_TARGET_TOPMOST            1001    /* ours, integer */
+
+/*
+ * Ours, cached visual image properties: a visual's subtree drawn into an image other visuals show
+ * as their content. The image follows the visual every frame until it is frozen.
+ */
+#define DCOMP_CACHED_IMAGE_VISUAL       1000    /* reference: the visual drawn */
+#define DCOMP_CACHED_IMAGE_RECT         1001    /* buffer: DCOMP_RECT drawn, in the space of the visual's parent */
+#define DCOMP_CACHED_IMAGE_SNAPSHOT     1002    /* buffer: RECT; drawn once right away and kept */
+#define DCOMP_CACHED_IMAGE_FREEZE       1003    /* integer: keep what was drawn last */
 
 /*
  * Animation properties. Its segments live in a shared section (DCOMP_RESOURCE_SHARED_SECTION)
@@ -457,6 +474,9 @@ typedef struct _DCOMP_ANIMATION_SEGMENT
 #define DCOMP_MILCMD_ANIMATION_UPDATE_BEGIN_TIME    11  /* LONGLONG begin, LONGLONG end */
 #define DCOMP_MILCMD_BASE_ANIMATION_ADD_BINDING     12  /* target, property */
 #define DCOMP_MILCMD_BASE_ANIMATION_REMOVE_BINDING  13  /* target, property */
+#define DCOMP_MILCMD_CACHED_VISUAL_IMAGE_FREEZE     21
+#define DCOMP_MILCMD_CACHED_VISUAL_IMAGE_SNAPSHOT   22  /* RECT */
+#define DCOMP_MILCMD_CACHED_VISUAL_IMAGE_UPDATE     23  /* DCOMP_CACHED_IMAGE_UPDATE */
 #define DCOMP_MILCMD_CHANNEL_CREATE_RESOURCE        40  /* type */
 #define DCOMP_MILCMD_CHANNEL_RELEASE_RESOURCE       41
 #define DCOMP_MILCMD_COLOR_BRUSH_SET_COLOR          51  /* four floats */
@@ -485,6 +505,17 @@ typedef struct _DCOMP_ANIMATION_SEGMENT
 #define DCOMP_MILCMD_GDI_SPRITE_BITMAP_SET_MARGINS  527 /* MARGINS */
 #define DCOMP_MILCMD_WINDOW_NODE_SET_SPRITE_BITMAP  668 /* sprite bitmap */
 #define DCOMP_MILCMD_WINDOW_NODE_SET_WINDOW_HANDLE  671 /* ULONG64 HWND */
+
+/* The payload of DCOMP_MILCMD_CACHED_VISUAL_IMAGE_UPDATE, after the resource */
+typedef struct _DCOMP_CACHED_IMAGE_UPDATE
+{
+    DCOMP_RECT Rect;
+    ULONG64 Reserved;
+    ULONG RectResource;
+    ULONG Reserved2;
+    ULONG Visual;
+    ULONG Reserved3[5];
+} DCOMP_CACHED_IMAGE_UPDATE, *PDCOMP_CACHED_IMAGE_UPDATE;
 
 /* Ours, for buffers and reference arrays that have no command of their own */
 #define DCOMP_MILCMD_RESOURCE_SET_BUFFER            0x8000  /* property, size, bytes */
