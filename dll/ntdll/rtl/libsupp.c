@@ -1149,10 +1149,8 @@ LdrpApisetVersion(VOID)
         switch (CompatVersion)
         {
             case 0:
-                break;
             case _WIN32_WINNT_VISTA:
-                /* No apisets in vista yet*/
-                CachedApisetVersion = 0;
+                /* Vista had no apisets, so nothing made for it asks for one; anything that does gets them all */
                 break;
             case _WIN32_WINNT_WIN7:
                 CachedApisetVersion = APISET_WIN7;
@@ -1263,7 +1261,7 @@ LdrpApplyFileNameRedirection(
         RtlAppendUnicodeStringToString(ResultPath, &NtSystemRoot);
         RtlAppendUnicodeStringToString(ResultPath, &System32);
         RtlAppendUnicodeStringToString(ResultPath, &ApisetName);
-        DPRINT1("ApiSetResolveToHost redirected %wZ to %wZ\n", OriginalName, ResultPath);
+        DPRINT("ApiSetResolveToHost redirected %wZ to %wZ\n", OriginalName, ResultPath);
         *NewName = ResultPath;
     }
     else
