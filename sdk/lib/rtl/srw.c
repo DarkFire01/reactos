@@ -91,18 +91,26 @@ __forceinline LONG RtlpInterlockedBit0SetPointer(volatile PVOID* Target)
     }
 }
 
+static BOOLEAN RtlpSrwSingleProcessor(VOID)
+{
+    return NtCurrentTeb()->ProcessEnvironmentBlock->NumberOfProcessors == 1;
+}
+
 static VOID NTAPI RtlpBackoffExp(ULONG* pCount)
 {
     ULONG n = *pCount;
+
+    /* With one processor the thread that changed the lock only runs if this one gives way */
+    if (RtlpSrwSingleProcessor())
+    {
+        NtYieldExecution();
+        return;
+    }
+
     if (n == 0)
-    {
-        if (NtCurrentTeb()->ProcessEnvironmentBlock->NumberOfProcessors == 1) return;
         n = 64;
-    }
     else if (n < 0x2000)
-    {
         n <<= 1;
-    }
     *pCount = n;
     while (n--) YieldProcessor();
 }
@@ -115,6 +123,34 @@ __forceinline BOOLEAN RtlpWaitCouldDeadlock(void)
 /* Helpers to test node attributes; avoid raw bit-twiddling at callsites. */
 __forceinline BOOLEAN SrwNodeIsExclusive(const SRW_WAIT_NODE* n) { return (n->flags & NODEF_EXCL) != 0; }
 __forceinline BOOLEAN SrwNodeIsSpinning(const SRW_WAIT_NODE* n)  { return (n->flags & NODEF_SPIN) != 0; }
+
+/* Waits until the waker takes the queued node off the list */
+static VOID NTAPI RtlpSrwBlock(SRW_WAIT_NODE* node)
+{
+    NTSTATUS Status;
+    ULONG i;
+
+    /* Spinning only helps when the waker can run on another processor meanwhile */
+    if (!RtlpSrwSingleProcessor())
+    {
+        for (i = SRWLockSpinCount; i > 0; --i)
+        {
+            if (!SrwNodeIsSpinning(node)) return;
+            YieldProcessor();
+        }
+    }
+
+    if (!InterlockedBitTestAndReset((PLONG)&node->flags, NODE_SPIN_BIT))
+        return;
+
+    /* The node stays linked until the waker releases it, so it must not be queued again */
+    Status = NtWaitForKeyedEvent(GlobalKeyedEventHandle, node, FALSE, NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("SRW wait on keyed event %p failed 0x%lx\n", GlobalKeyedEventHandle, Status);
+        RtlRaiseStatus(Status);
+    }
+}
 
 static VOID NTAPI RtlpSrwWake(PRTL_SRWLOCK SRWLock, SRW_STATE OldStatus)
 {
@@ -214,7 +250,6 @@ VOID NTAPI RtlAcquireSRWLockExclusive(PRTL_SRWLOCK SRWLock)
     ULONG backoff = 0;
     SRW_STATE CurrStatus;
     SRW_STATE OldStatus;
-    int i;
 
     if (RtlpInterlockedBit0SetPointer(&SRWLock->Ptr) == 0)
         return;
@@ -253,14 +288,10 @@ VOID NTAPI RtlAcquireSRWLockExclusive(PRTL_SRWLOCK SRWLock)
             if (CurrStatus == OldStatus)
             {
                 if (IsOptimize) RtlpSrwCompressQueue(SRWLock, NewStatus);
-                for (i = SRWLockSpinCount; i > 0; --i)
-                {
-                    if (!SrwNodeIsSpinning(&node)) break;
-                    YieldProcessor();
-                }
-                if (InterlockedBitTestAndReset((PLONG)&node.flags, NODE_SPIN_BIT))
-                    NtWaitForKeyedEvent(GlobalKeyedEventHandle, &node, FALSE, NULL);
-                OldStatus = CurrStatus;
+                RtlpSrwBlock(&node);
+
+                /* The lock changed while this thread slept */
+                OldStatus = (SRW_STATE)SRWLock->Ptr;
             }
             else
             {
@@ -283,7 +314,6 @@ VOID NTAPI RtlAcquireSRWLockShared(PRTL_SRWLOCK SRWLock)
     __ALIGNED(16) SRW_WAIT_NODE node;
     BOOLEAN IsOptimize;
     ULONG backoff = 0;
-    int i;
 
     SRW_STATE NewStatus;
     SRW_STATE CurrStatus;
@@ -318,14 +348,10 @@ VOID NTAPI RtlAcquireSRWLockShared(PRTL_SRWLOCK SRWLock)
             if (CurrStatus == OldStatus)
             {
                 if (IsOptimize) RtlpSrwCompressQueue(SRWLock, NewStatus);
-                for (i = SRWLockSpinCount; i > 0; --i)
-                {
-                    if (!SrwNodeIsSpinning(&node)) break;
-                    YieldProcessor();
-                }
-                if (InterlockedBitTestAndReset((PLONG)&node.flags, NODE_SPIN_BIT))
-                    NtWaitForKeyedEvent(GlobalKeyedEventHandle, &node, FALSE, NULL);
-                OldStatus = CurrStatus;
+                RtlpSrwBlock(&node);
+
+                /* The lock changed while this thread slept */
+                OldStatus = (SRW_STATE)SRWLock->Ptr;
             }
             else
             {
