@@ -29,6 +29,9 @@ typedef struct _RTLP_WAIT
     ULONG Milliseconds;
 } RTLP_WAIT, *PRTLP_WAIT;
 
+/* Left in CompletionEvent once the wait thread is past signaling it */
+#define RTLP_WAIT_FINISHED ((HANDLE)(LONG_PTR)-2)
+
 /* PRIVATE FUNCTIONS *******************************************************/
 
 static inline PLARGE_INTEGER get_nt_timeout( PLARGE_INTEGER pTime, ULONG timeout )
@@ -88,7 +91,8 @@ Wait_thread_proc(LPVOID Arg)
             break;
     }
 
-    completion_event = Wait->CompletionEvent;
+    /* An event handed over after this point is signaled by whoever deregisters the wait */
+    completion_event = InterlockedExchangePointer( &Wait->CompletionEvent, RTLP_WAIT_FINISHED );
     if (completion_event) NtSetEvent( completion_event, NULL );
 
     if (InterlockedIncrement( &Wait->DeleteCount ) == 2 )
@@ -204,42 +208,54 @@ RtlDeregisterWaitEx(HANDLE WaitHandle,
 {
     PRTLP_WAIT Wait = (PRTLP_WAIT) WaitHandle;
     NTSTATUS Status = STATUS_SUCCESS;
+    HANDLE Event = CompletionEvent;
+    BOOLEAN Blocking = (CompletionEvent == INVALID_HANDLE_VALUE);
+    BOOLEAN Finished;
 
     //TRACE( "(%p)\n", WaitHandle );
 
-    NtSetEvent( Wait->CancelEvent, NULL );
-    if (Wait->CallbackInProgress)
+    if (!Wait)
+        return STATUS_INVALID_PARAMETER_1;
+
+    /* A blocking caller waits on an event of its own */
+    if (Blocking)
     {
-        if (CompletionEvent != NULL)
-        {
-            if (CompletionEvent == INVALID_HANDLE_VALUE)
-            {
-                Status = NtCreateEvent( &CompletionEvent,
-                                         EVENT_ALL_ACCESS,
-                                         NULL,
-                                         NotificationEvent,
-                                         FALSE );
+        Status = NtCreateEvent( &Event,
+                                EVENT_ALL_ACCESS,
+                                NULL,
+                                NotificationEvent,
+                                FALSE );
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
 
-                if (Status != STATUS_SUCCESS)
-                    return Status;
+    /* The wait thread signals the event when it leaves, unless it already left */
+    Finished = FALSE;
+    if (Event)
+        Finished = (InterlockedCompareExchangePointer( &Wait->CompletionEvent, Event, NULL ) == RTLP_WAIT_FINISHED);
+    else
+        Finished = (Wait->CompletionEvent == RTLP_WAIT_FINISHED);
 
-                (void)InterlockedExchangePointer( &Wait->CompletionEvent, CompletionEvent );
+    NtSetEvent( Wait->CancelEvent, NULL );
 
-                if (Wait->CallbackInProgress)
-                    NtWaitForSingleObject( CompletionEvent, FALSE, NULL );
+    if (Finished)
+    {
+        if (Event && !Blocking)
+            NtSetEvent( Event, NULL );
+    }
+    else if (Blocking)
+    {
+        NtWaitForSingleObject( Event, FALSE, NULL );
+    }
+    else if (Wait->CallbackInProgress)
+    {
+        Status = STATUS_PENDING;
+    }
 
-                NtClose( CompletionEvent );
-            }
-            else
-            {
-                (void)InterlockedExchangePointer( &Wait->CompletionEvent, CompletionEvent );
-
-                if (Wait->CallbackInProgress)
-                    Status = STATUS_PENDING;
-            }
-        }
-        else
-            Status = STATUS_PENDING;
+    if (Blocking)
+    {
+        NtClose( Event );
+        Status = STATUS_SUCCESS;
     }
 
     if (InterlockedIncrement( &Wait->DeleteCount ) == 2 )
