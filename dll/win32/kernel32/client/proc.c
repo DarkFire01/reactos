@@ -1943,6 +1943,55 @@ IsWow64Process(IN HANDLE hProcess,
 /*
  * @implemented
  */
+BOOL
+WINAPI
+IsWow64Process2(
+    _In_ HANDLE hProcess,
+    _Out_ USHORT *pProcessMachine,
+    _Out_opt_ USHORT *pNativeMachine)
+{
+    ULONG_PTR Wow64;
+    NTSTATUS Status;
+
+    Status = NtQueryInformationProcess(hProcess,
+                                       ProcessWow64Information,
+                                       &Wow64,
+                                       sizeof(Wow64),
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* x86 is the only guest WOW64 runs; a native process has none */
+    *pProcessMachine = Wow64 ? IMAGE_FILE_MACHINE_I386 : IMAGE_FILE_MACHINE_UNKNOWN;
+
+    if (pNativeMachine)
+    {
+#if defined(_M_AMD64)
+        *pNativeMachine = IMAGE_FILE_MACHINE_AMD64;
+#elif defined(_M_ARM64)
+        *pNativeMachine = IMAGE_FILE_MACHINE_ARM64;
+#elif defined(_M_ARM)
+        *pNativeMachine = IMAGE_FILE_MACHINE_ARMNT;
+#else
+        /* 32-bit code sees the 64-bit machine when it runs under WOW64 itself */
+        Status = NtQueryInformationProcess(NtCurrentProcess(),
+                                           ProcessWow64Information,
+                                           &Wow64,
+                                           sizeof(Wow64),
+                                           NULL);
+        *pNativeMachine = (NT_SUCCESS(Status) && Wow64) ? IMAGE_FILE_MACHINE_AMD64 : IMAGE_FILE_MACHINE_I386;
+#endif
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
 LPSTR
 WINAPI
 GetCommandLineA(VOID)
