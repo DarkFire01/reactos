@@ -61,6 +61,7 @@ PWND FASTCALL
 IntTopLevelWindowFromPoint(INT x, INT y)
 {
     PWND pWnd, pwndDesktop;
+    POINT Point;
 
     /* Get the desktop window */
     pwndDesktop = UserGetDesktopWindow();
@@ -78,9 +79,12 @@ IntTopLevelWindowFromPoint(INT x, INT y)
             continue;
         }
 
+        Point.x = x;
+        Point.y = y;
+        Point = UserDpiScreenPointToWindow(pWnd, Point);
         if ((pWnd->style & WS_VISIBLE) &&
             (pWnd->ExStyle & (WS_EX_LAYERED|WS_EX_TRANSPARENT)) != (WS_EX_LAYERED|WS_EX_TRANSPARENT) &&
-            IntPtInWindow(pWnd, x, y))
+            IntPtInWindow(pWnd, Point.x, Point.y))
             return pWnd;
     }
 
@@ -1546,6 +1550,9 @@ BOOL co_IntProcessMouseMessage(MSG* msg, BOOL* RemoveMessages, BOOL* NotForUs, L
     }
 
     msg->hwnd = UserHMGetHandle(pwndMsg);
+
+    /* A window the DWM stretches is told where the pointer is at 96 DPI */
+    msg->pt = UserDpiScreenPointToWindow(pwndMsg, msg->pt);
 
     pt = msg->pt;
     message = msg->message;

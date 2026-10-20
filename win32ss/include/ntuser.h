@@ -768,6 +768,9 @@ typedef struct _WND
     LIST_ENTRY ThreadListEntry;
 
     PVOID DialogPointer;
+
+    ULONG DpiAwareness; /* the creating thread's, a USER_DPI_ value */
+    BOOLEAN DpiVirtualized; /* lives at USER_VIRTUAL_DPI for the DWM to stretch */
 } WND, *PWND;
 
 #define PWND_BOTTOM ((PWND)1)
@@ -3686,6 +3689,10 @@ NtUserYieldTask(VOID);
 /* NtUserBad
  * ReactOS-specific NtUser calls and their related structures, both which shouldn't exist.
  */
+
+#include "userdpi.h"
+
+C_ASSERT(sizeof(CLIENTINFO) <= USER_CLIENTINFO_VIRTUAL_DPI_SLOT * sizeof(ULONG_PTR));
 
 #define NOPARAM_ROUTINE_ISCONSOLEMODE             0xffff0001
 #define ONEPARAM_ROUTINE_ENABLEPROCWNDGHSTING     0xfffe000d

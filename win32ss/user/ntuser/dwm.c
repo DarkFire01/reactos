@@ -136,6 +136,11 @@ IntDwmSendWindowNotification(
     Message.InsertAfter = Window->spwndPrev ? (ULONG64)(ULONG_PTR)UserHMGetHandle(Window->spwndPrev) : 0;
     Message.WindowRect = Window->rcWindow;
     Message.ClientRect = Window->rcClient;
+    if (Window->DpiVirtualized)
+    {
+        UserDpiRectFromVirtual(&Message.WindowRect);
+        UserDpiRectFromVirtual(&Message.ClientRect);
+    }
     Message.Style = Window->style;
     Message.ExStyle = Window->ExStyle;
     Message.ProcessId = HandleToUlong(PsGetProcessId(Window->head.pti->ppi->peProcess));

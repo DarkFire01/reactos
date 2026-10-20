@@ -130,6 +130,26 @@ IntDwmSendNcRendering(
     co_IntSendMessageNoWait(UserHMGetHandle(Sprite->Window), WM_DWMNCRENDERINGCHANGED, Enabled, 0);
 }
 
+/* Where a rectangle of the window lands on the screen; one the DWM stretches lives at 96 DPI */
+static
+VOID
+IntDwmScreenRect(
+    _In_ PWND Window,
+    _Inout_ PRECT Rect)
+{
+    if (Window->DpiVirtualized)
+        UserDpiRectFromVirtual(Rect);
+}
+
+static
+LONG
+IntDwmScreenLength(
+    _In_ PWND Window,
+    _In_ LONG Length)
+{
+    return Window->DpiVirtualized ? UserDpiFromVirtual(Length) : Length;
+}
+
 static
 VOID
 IntDwmDescribeWindow(
@@ -139,6 +159,13 @@ IntDwmDescribeWindow(
     RtlZeroMemory(Info, sizeof(*Info));
     Info->WindowRect = Window->rcWindow;
     Info->ClientRect = Window->rcClient;
+    IntDwmScreenRect(Window, &Info->WindowRect);
+    IntDwmScreenRect(Window, &Info->ClientRect);
+    if (Window->DpiVirtualized)
+    {
+        Info->ContentDpi = USER_VIRTUAL_DPI;
+        Info->ScreenDpi = gpsi->dmLogPixels;
+    }
     Info->Style = Window->style;
     Info->ExStyle = Window->ExStyle;
     Info->ExStyle2 = Window->ExStyle2;
@@ -219,17 +246,20 @@ IntDwmCalculateContentRect(
 {
     SIZE Border;
     LONG Caption = 0;
+    ULONG Scope = UserDpiBeginWindowScope(Window);
 
     UserGetWindowBorders(Window->style, Window->ExStyle, &Border, FALSE);
     if ((Window->style & WS_CAPTION) == WS_CAPTION)
         Caption = UserGetSystemMetrics((Window->ExStyle & WS_EX_TOOLWINDOW) ? SM_CYSMCAPTION : SM_CYCAPTION);
+    UserDpiEndWindowScope(Scope);
 
     *Content = Window->rcWindow;
     RECTL_vInflateRect((PRECTL)Content, -Border.cx, -Border.cy);
     Content->top += Caption;
     RECTL_bUnionRect((PRECTL)Content, (PRECTL)Content, (PRECTL)&Window->rcClient);
     RECTL_bIntersectRect((PRECTL)Content, (PRECTL)Content, (PRECTL)&Window->rcWindow);
-    *BorderThickness = Border.cx;
+    IntDwmScreenRect(Window, Content);
+    *BorderThickness = IntDwmScreenLength(Window, Border.cx);
 }
 
 /* The frame of the window's style, whatever its client area covers; nothing for a window without one */
@@ -242,14 +272,21 @@ IntDwmSendFrameMargins(
     DWM_FRAME_MARGINS_CHANGE Message;
     RECT Margins = { 0, 0, 0, 0 };
     SIZE Border;
+    ULONG Scope;
 
     if ((Window->style & WS_THICKFRAME) || (Window->style & WS_CAPTION) == WS_CAPTION)
     {
+        Scope = UserDpiBeginWindowScope(Window);
         UserGetWindowBorders(Window->style, Window->ExStyle, &Border, FALSE);
         Margins.left = Margins.right = Border.cx;
         Margins.top = Margins.bottom = Border.cy;
         if ((Window->style & WS_CAPTION) == WS_CAPTION)
             Margins.top += UserGetSystemMetrics((Window->ExStyle & WS_EX_TOOLWINDOW) ? SM_CYSMCAPTION : SM_CYCAPTION);
+        UserDpiEndWindowScope(Scope);
+        Margins.left = IntDwmScreenLength(Window, Margins.left);
+        Margins.right = IntDwmScreenLength(Window, Margins.right);
+        Margins.top = IntDwmScreenLength(Window, Margins.top);
+        Margins.bottom = IntDwmScreenLength(Window, Margins.bottom);
     }
     if (RtlEqualMemory(&Margins, &Sprite->FrameMargins, sizeof(Margins)))
         return;
@@ -277,6 +314,8 @@ IntDwmSendChildMoveSize(
     Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
     Message.WindowRect = Window->rcWindow;
     Message.ClientRect = Window->rcClient;
+    IntDwmScreenRect(Window, &Message.WindowRect);
+    IntDwmScreenRect(Window, &Message.ClientRect);
     IntDwmCalculateContentRect(Window, &Message.ContentRect, &Message.BorderThickness);
     IntDwmSendMessage(&Message.Header, sizeof(Message));
 }
@@ -342,6 +381,7 @@ IntDwmComposeWindow(
     Message.Sprite = Sprite->Handle;
     Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
     Message.Rect = Window->rcWindow;
+    IntDwmScreenRect(Window, &Message.Rect);
     IntDwmDescribeWindow(Window, &Message.Info);
     Message.ExpWinVer = Window->head.pti->dwExpWinVer;
     IntDwmSendMessage(&Message.Header, sizeof(Message));
@@ -441,6 +481,21 @@ IntDwmWindowRectChanged(
 
     if (Sprite && Sprite->Visible)
         IntDwmMoveSprite(Sprite);
+}
+
+/* The screen's resolution changed under a window the DWM stretches; its rectangles stay, its scale does not */
+VOID
+FASTCALL
+IntDwmScaleChanged(
+    _In_ PWND Window)
+{
+    PDWM_SPRITE Sprite = IntDwmFindSprite(Window);
+
+    if (!Sprite)
+        return;
+    IntDwmSendUpdateSprite(Sprite, FALSE);
+    IntDwmSendFrameMargins(Sprite);
+    IntDwmSendChildMoveSize(Window);
 }
 
 VOID
@@ -602,6 +657,7 @@ co_IntDwmHitTestQuery(
 
     RtlZeroMemory(&Query, sizeof(Query));
     Query.Command = DWM_PORT_HIT_TEST_QUERY;
+    Point = UserDpiWindowPointToScreen(Window, Point);
     Query.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
     Query.Message = Message;
     Query.Point = Point;
@@ -679,7 +735,7 @@ co_IntDwmLeaveFrame(
         return;
 
     ghwndDwmHover = NULL;
-    co_IntDwmHitTestQuery(Hover, Point, WM_MOUSEMOVE, DWM_HIT_TEST_NONE, &Ignored);
+    co_IntDwmHitTestQuery(Hover, UserDpiScreenPointToWindow(Hover, Point), WM_MOUSEMOVE, DWM_HIT_TEST_NONE, &Ignored);
 }
 
 /* One step of tracking a caption button the DWM draws: TRUE while the pointer is on it */

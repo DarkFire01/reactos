@@ -246,6 +246,22 @@ NtUserCallOneParam(
             Result = (DWORD_PTR)UserShowCursor((BOOL)Param);
             break;
 
+        case ONEPARAM_ROUTINE_SETPROCESSDPIAWARENESS:
+            Result = (DWORD_PTR)UserSetProcessDpiAwareness((ULONG)Param);
+            break;
+
+        case ONEPARAM_ROUTINE_GETPROCESSDPIAWARENESS:
+            Result = (DWORD_PTR)UserGetProcessDpiAwareness((HANDLE)Param);
+            break;
+
+        case ONEPARAM_ROUTINE_SETTHREADDPIAWARENESS:
+            Result = (DWORD_PTR)UserSetThreadDpiAwareness((ULONG)Param);
+            break;
+
+        case ONEPARAM_ROUTINE_GETTHREADDPIAWARENESS:
+            Result = (DWORD_PTR)UserGetThreadDpiAwareness(GetW32ThreadInfo());
+            break;
+
         case ONEPARAM_ROUTINE_GETDESKTOPMAPPING:
         {
             PTHREADINFO ti;
@@ -363,7 +379,7 @@ NtUserCallOneParam(
             {
                 ProbeForWrite((POINT*)Param,sizeof(POINT),1);
                pptl = (PPOINTL)Param;
-               *pptl = gpsi->ptCursor;
+               *pptl = UserDpiScreenPointToCaller(gpsi->ptCursor);
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -581,8 +597,12 @@ NtUserCallTwoParam(
             break;
 
         case TWOPARAM_ROUTINE_SETCURSORPOS:
-            Ret = (DWORD_PTR)UserSetCursorPos((int)Param1, (int)Param2, 0, 0, FALSE);
+        {
+            POINT Point = { (LONG)Param1, (LONG)Param2 };
+            Point = UserDpiCallerPointToScreen(Point);
+            Ret = (DWORD_PTR)UserSetCursorPos(Point.x, Point.y, 0, 0, FALSE);
             break;
+        }
 
         case TWOPARAM_ROUTINE_UNHOOKWINDOWSHOOK:
             Ret = IntUnhookWindowsHook((int)Param1, (HOOKPROC)Param2);

@@ -523,13 +523,13 @@ WinPosInitInternalPos(PWND Wnd, RECTL *RestoreRect)
             RECTL WorkArea;
             PMONITOR pmonitor = UserMonitorFromRect(&Rect, MONITOR_DEFAULTTOPRIMARY );
             // FIXME: support DPI aware, rcWorkDPI/Real etc..
-            WorkArea = pmonitor->rcMonitor;
+            UserDpiGetMonitorRects(pmonitor, Wnd, (PRECT)&WorkArea, NULL);
 
             if (Wnd->style & WS_MAXIMIZEBOX)
             {  // Support (Wnd->state & WNDS_HASCAPTION) || pmonitor->cFullScreen too.
                if ((Wnd->style & WS_CAPTION) == WS_CAPTION || !(Wnd->style & (WS_CHILD | WS_POPUP)))
                {
-                  WorkArea = pmonitor->rcWork;
+                  UserDpiGetMonitorRects(pmonitor, Wnd, NULL, (PRECT)&WorkArea);
                   //ERR("rcWork\n");
                }
             }
@@ -605,16 +605,18 @@ IntGetWindowPlacement(PWND Wnd, WINDOWPLACEMENT *lpwndpl)
        !(Wnd->ExStyle & WS_EX_TOOLWINDOW))
    {
       PMONITOR pmonitor = UserMonitorFromRect(&lpwndpl->rcNormalPosition, MONITOR_DEFAULTTOPRIMARY );
+      RECT rcMonitor, rcWork;
 
       // FIXME: support DPI aware, rcWorkDPI/Real etc..
+      UserDpiGetMonitorRects(pmonitor, Wnd, &rcMonitor, &rcWork);
       if (Wnd->InternalPos.flags & WPF_MININIT)
       {
-         lpwndpl->ptMinPosition.x -= (pmonitor->rcWork.left - pmonitor->rcMonitor.left);
-         lpwndpl->ptMinPosition.y -= (pmonitor->rcWork.top - pmonitor->rcMonitor.top);
+         lpwndpl->ptMinPosition.x -= (rcWork.left - rcMonitor.left);
+         lpwndpl->ptMinPosition.y -= (rcWork.top - rcMonitor.top);
       }
       RECTL_vOffsetRect(&lpwndpl->rcNormalPosition,
-                         pmonitor->rcMonitor.left - pmonitor->rcWork.left,
-                         pmonitor->rcMonitor.top  - pmonitor->rcWork.top);
+                         rcMonitor.left - rcWork.left,
+                         rcMonitor.top  - rcWork.top);
    }
 
    if ( Wnd->InternalPos.flags & WPF_RESTORETOMAXIMIZED || Wnd->style & WS_MAXIMIZE )
@@ -630,29 +632,31 @@ IntGetWindowPlacement(PWND Wnd, WINDOWPLACEMENT *lpwndpl)
 static void make_rect_onscreen( RECT *rect )
 {
     PMONITOR pmonitor = UserMonitorFromRect( rect, MONITOR_DEFAULTTONEAREST ); // Wine uses this.
+    RECT rcWork;
 
     //  FIXME: support DPI aware, rcWorkDPI/Real etc..
     if (!pmonitor) return;
+    UserDpiGetMonitorRects(pmonitor, NULL, NULL, &rcWork);
     /* FIXME: map coordinates from rcWork to rcMonitor */
-    if (rect->right <= pmonitor->rcWork.left)
+    if (rect->right <= rcWork.left)
     {
-        rect->right += pmonitor->rcWork.left - rect->left;
-        rect->left = pmonitor->rcWork.left;
+        rect->right += rcWork.left - rect->left;
+        rect->left = rcWork.left;
     }
-    else if (rect->left >= pmonitor->rcWork.right)
+    else if (rect->left >= rcWork.right)
     {
-        rect->left += pmonitor->rcWork.right - rect->right;
-        rect->right = pmonitor->rcWork.right;
+        rect->left += rcWork.right - rect->right;
+        rect->right = rcWork.right;
     }
-    if (rect->bottom <= pmonitor->rcWork.top)
+    if (rect->bottom <= rcWork.top)
     {
-        rect->bottom += pmonitor->rcWork.top - rect->top;
-        rect->top = pmonitor->rcWork.top;
+        rect->bottom += rcWork.top - rect->top;
+        rect->top = rcWork.top;
     }
-    else if (rect->top >= pmonitor->rcWork.bottom)
+    else if (rect->top >= rcWork.bottom)
     {
-        rect->top += pmonitor->rcWork.bottom - rect->bottom;
-        rect->bottom = pmonitor->rcWork.bottom;
+        rect->top += rcWork.bottom - rect->bottom;
+        rect->bottom = rcWork.bottom;
     }
 }
 
@@ -1010,14 +1014,15 @@ co_WinPosGetMinMaxInfo(PWND Window, POINT* MaxSize, POINT* MaxPos,
     /* if the app didn't change the values, adapt them for the current monitor */
     if ((monitor = UserGetPrimaryMonitor()))
     {
-        RECT rc_work;
+        RECT rc_work, rc_monitor;
 
-        rc_work = monitor->rcMonitor;
+        UserDpiGetMonitorRects(monitor, Window, &rc_monitor, NULL);
+        rc_work = rc_monitor;
 
         if (style & WS_MAXIMIZEBOX)
         {
             if ((style & WS_CAPTION) == WS_CAPTION || !(style & (WS_CHILD | WS_POPUP)))
-               rc_work = monitor->rcWork;
+               UserDpiGetMonitorRects(monitor, Window, NULL, &rc_work);
         }
 
         if (MinMax.ptMaxSize.x == UserGetSystemMetrics(SM_CXSCREEN) + 2 * xinc &&
@@ -1031,8 +1036,8 @@ co_WinPosGetMinMaxInfo(PWND Window, POINT* MaxSize, POINT* MaxPos,
             MinMax.ptMaxPosition.x = rc_work.left - xinc;
             MinMax.ptMaxPosition.y = rc_work.top - yinc;
         }
-        if (MinMax.ptMaxSize.x >= (monitor->rcMonitor.right - monitor->rcMonitor.left) &&
-            MinMax.ptMaxSize.y >= (monitor->rcMonitor.bottom - monitor->rcMonitor.top) )
+        if (MinMax.ptMaxSize.x >= (rc_monitor.right - rc_monitor.left) &&
+            MinMax.ptMaxSize.y >= (rc_monitor.bottom - rc_monitor.top) )
         {
             Window->state |= WNDS_MAXIMIZESTOMONITOR;
         }
@@ -2950,11 +2955,19 @@ co_WinPosSearchChildren(
 {
     HWND *List, *phWnd;
     PWND pwndChild = NULL;
+    POINT Virtual;
 
     /* not visible */
     if (!(ScopeWin->style & WS_VISIBLE))
     {
         return NULL;
+    }
+
+    /* A top level window the DWM stretches is searched at 96 DPI, and so is everything in it */
+    if (ScopeWin->DpiVirtualized && ScopeWin->spwndParent && !ScopeWin->spwndParent->DpiVirtualized)
+    {
+        Virtual = UserDpiScreenPointToWindow(ScopeWin, *Point);
+        Point = &Virtual;
     }
 
     /* not in window or in window region */
@@ -3940,6 +3953,7 @@ NtUserWindowFromPoint(LONG X, LONG Y)
 
       pt.x = X;
       pt.y = Y;
+      pt = UserDpiCallerPointToScreen(pt);
 
       // Hmm... Threads live on desktops thus we have a reference on the desktop and indirectly the desktop window.
       // It is possible this referencing is useless, though it should not hurt...

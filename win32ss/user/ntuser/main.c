@@ -501,8 +501,11 @@ InitThreadCallback(PETHREAD Thread)
     ptiCurrent->pEThread = Thread;
     ptiCurrent->ppi = PsGetProcessWin32Process(Process);
     IntReferenceProcessInfo(ptiCurrent->ppi);
+    ptiCurrent->DpiAwarenessOverride = USER_DPI_INVALID;
     pTeb->Win32ThreadInfo = ptiCurrent;
     ptiCurrent->pClientInfo = (PCLIENTINFO)pTeb->Win32ClientInfo;
+    ptiCurrent->DpiMetricsScope = USER_DPI_SCOPE_THREAD;
+    UserUpdateClientDpi(ptiCurrent);
     ptiCurrent->pcti = &ptiCurrent->cti;
     bFirstThread = !(ptiCurrent->ppi->W32PF_flags & W32PF_THREADCONNECTED);
 

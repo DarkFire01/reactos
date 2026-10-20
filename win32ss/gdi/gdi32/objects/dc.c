@@ -588,6 +588,23 @@ GetDeviceCaps(
 
         if (!(pdcattr->ulDirty_ & DC_PRIMARY_DISPLAY))
             return NtGdiGetDeviceCaps(hdc, nIndex);
+
+        /* An application the DWM stretches sees the display at 96 DPI; the desktop sizes stay real */
+        if (UserGetThreadVirtualDpi())
+        {
+            switch (nIndex)
+            {
+            case LOGPIXELSX:
+            case LOGPIXELSY:
+                return USER_VIRTUAL_DPI;
+
+            case HORZRES:
+                return MulDiv(pDevCaps->ulHorzRes, USER_VIRTUAL_DPI, pDevCaps->ulLogPixelsX);
+
+            case VERTRES:
+                return MulDiv(pDevCaps->ulVertRes, USER_VIRTUAL_DPI, pDevCaps->ulLogPixelsY);
+            }
+        }
     }
 
     switch (nIndex)

@@ -778,6 +778,10 @@ NtUserClipCursor(
 
     UserEnterExclusive();
 
+    /* An application the DWM stretches clips the cursor with a rectangle at 96 DPI */
+    if (prcl && UserIsThreadDpiVirtualized(PsGetCurrentThreadWin32Thread()))
+        UserDpiRectFromVirtual((PRECT)prcl);
+
     /* Call the internal function */
     bResult = UserClipCursor(prcl);
 
@@ -1018,6 +1022,8 @@ NtUserGetClipCursor(
     if (CurInfo->bClipped)
     {
         Rect = CurInfo->rcClip;
+        if (UserIsThreadDpiVirtualized(PsGetCurrentThreadWin32Thread()))
+            UserDpiRectToVirtual((PRECT)&Rect);
     }
     else
     {

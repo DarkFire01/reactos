@@ -504,6 +504,17 @@ IntGetSystemPaletteEntries(HDC  hDC,
                            LPPALETTEENTRY  pe);
 
 VOID  FASTCALL CreateStockObjects (VOID);
+VOID  FASTCALL IntUpdateStockFontsForDpi (VOID);
+
+HGDIOBJ
+FASTCALL
+GreGetStockObjectForThread(
+    _In_ INT Object);
+
+VOID
+FASTCALL
+GreSelectThreadDefaultFont(
+    _In_ HDC hdc);
 VOID  FASTCALL CreateSysColorObjects (VOID);
 
 PPOINT GDI_Bezier (const POINT *Points, INT count, PINT nPtsOut);

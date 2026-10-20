@@ -125,10 +125,11 @@ InitMetrics(VOID)
     piSysMet[SM_CXHTHUMB] = gspv.ncm.iScrollHeight;     // 16;
     piSysMet[SM_CYVSCROLL] = gspv.ncm.iScrollHeight;    // 16
     piSysMet[SM_CXHSCROLL] = gspv.ncm.iScrollHeight;    // 16;
-    piSysMet[SM_CXICON] = 32;
-    piSysMet[SM_CYICON] = 32;
-    piSysMet[SM_CXSMICON] = 16;
-    piSysMet[SM_CYSMICON] = 16;
+    /* Icons are 32 and 16 pixels at 96 DPI and grow with the resolution */
+    piSysMet[SM_CXICON] = EngMulDiv(32, PDEVOBJ_usGetDisplayDpi(), 96);
+    piSysMet[SM_CYICON] = piSysMet[SM_CXICON];
+    piSysMet[SM_CXSMICON] = EngMulDiv(16, PDEVOBJ_usGetDisplayDpi(), 96);
+    piSysMet[SM_CYSMICON] = piSysMet[SM_CXSMICON];
     piSysMet[SM_CXICONSPACING] = gspv.im.iHorzSpacing;  // 64;
     piSysMet[SM_CYICONSPACING] = gspv.im.iVertSpacing;  // 64;
     piSysMet[SM_CXCURSOR] = 32;
@@ -218,9 +219,11 @@ UserGetSystemMetrics(ULONG Index)
     if (Index == SM_IMMENABLED)
         return !!(gpsi->dwSRVIFlags & SRVINFO_IMM32);
 
-    /* Get metrics from array */
+    /* Get metrics from array; an application the DWM stretches sees them at 96 DPI */
     if (Index < SM_CMETRICS)
     {
+        if ((UserDpiIsSizeMetric(Index) || UserDpiIsScreenMetric(Index)) && UserDpiMetricsVirtualized())
+            return UserDpiToVirtual(gpsi->aiSysMet[Index]);
         return gpsi->aiSysMet[Index];
     }
 

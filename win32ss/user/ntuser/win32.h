@@ -159,6 +159,8 @@ typedef struct _THREADINFO
     LIST_ENTRY W32CallbackListHead;
     SINGLE_LIST_ENTRY  ReferencesList;
     ULONG cExclusiveLocks;
+    ULONG DpiAwarenessOverride; /* a USER_DPI_ value, USER_DPI_INVALID to follow the process */
+    ULONG DpiMetricsScope;      /* a USER_DPI_SCOPE_ value: whose resolution metrics are read at */
 #if DBG
     USHORT acExclusiveLockCount[GDIObjTypeTotal + 1];
     UINT cRefObjectCo;
@@ -293,6 +295,10 @@ typedef struct _PROCESSINFO
     FAST_MUTEX DriverObjListLock;
     LIST_ENTRY DriverObjListHead;
     W32HEAP_USER_MAPPING HeapMappings;
+    ULONG DpiAwareness;         /* a USER_DPI_ value */
+    BOOLEAN DpiAwarenessSet;    /* by the manifest or a first call, after which it stays */
+    BOOLEAN DpiVirtualizationDecided;   /* with its first top level window */
+    BOOLEAN DpiVirtualized;     /* unaware windows of it live at USER_VIRTUAL_DPI */
     struct _GDI_POOL* pPoolDcAttr;
     struct _GDI_POOL* pPoolBrushAttr;
     struct _GDI_POOL* pPoolRgnAttr;
