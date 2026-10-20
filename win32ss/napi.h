@@ -5,6 +5,8 @@
  * PROGRAMMER:      Timo Kreuzer
  */
 
+#include "gdi/ntgdi/dxgkfwd.h"
+
 #define SVC_(name, argcount) (ULONG_PTR)Nt##name,
 ULONG_PTR Win32kSSDT[] = {
 #ifdef _WIN64
