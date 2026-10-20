@@ -689,6 +689,12 @@ extern PVOID MiSessionImageStart;
 extern PVOID MiSessionImageEnd;
 extern PMMPTE MiHighestUserPte;
 extern PMMPDE MiHighestUserPde;
+#if (_MI_PAGING_LEVELS >= 3)
+extern PMMPTE MiHighestUserPpe;
+#if (_MI_PAGING_LEVELS >= 4)
+extern PMMPTE MiHighestUserPxe;
+#endif
+#endif
 extern PFN_NUMBER MmSystemPageDirectory[PPE_PER_PAGE];
 extern PMMPTE MmSharedUserDataPte;
 extern LIST_ENTRY MmProcessList;
@@ -745,32 +751,37 @@ MiIsMemoryTypeInvisible(TYPE_OF_MEMORY MemoryType)
 }
 
 #ifdef _M_AMD64
+/* The user range is only known at run time, so are the tables that map it */
 FORCEINLINE
 BOOLEAN
-MiIsUserPxe(PVOID Address)
+MiIsUserPxe(
+    _In_ PVOID Address)
 {
-    return ((ULONG_PTR)Address >> 7) == 0x1FFFFEDF6FB7DA0ULL;
+    return (Address >= (PVOID)MiAddressToPxe(NULL)) && (Address <= (PVOID)MiHighestUserPxe);
 }
 
 FORCEINLINE
 BOOLEAN
-MiIsUserPpe(PVOID Address)
+MiIsUserPpe(
+    _In_ PVOID Address)
 {
-    return ((ULONG_PTR)Address >> 16) == 0xFFFFF6FB7DA0ULL;
+    return (Address >= (PVOID)MiAddressToPpe(NULL)) && (Address <= (PVOID)MiHighestUserPpe);
 }
 
 FORCEINLINE
 BOOLEAN
-MiIsUserPde(PVOID Address)
+MiIsUserPde(
+    _In_ PVOID Address)
 {
-    return ((ULONG_PTR)Address >> 25) == 0x7FFFFB7DA0ULL;
+    return (Address >= (PVOID)MiAddressToPde(NULL)) && (Address <= (PVOID)MiHighestUserPde);
 }
 
 FORCEINLINE
 BOOLEAN
-MiIsUserPte(PVOID Address)
+MiIsUserPte(
+    _In_ PVOID Address)
 {
-    return ((ULONG_PTR)Address >> 34) == 0x3FFFFDA0ULL;
+    return (Address >= (PVOID)MiAddressToPte(NULL)) && (Address <= (PVOID)MiHighestUserPte);
 }
 #else
 FORCEINLINE
