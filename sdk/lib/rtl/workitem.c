@@ -189,6 +189,16 @@ RtlpStartWorkerThread(PTHREAD_START_ROUTINE StartRoutine)
     return Status;
 }
 
+/* Keeps where an exception in a work item happened, for the debug output */
+static LONG
+RtlpWorkItemExceptionFilter(
+    _In_ PEXCEPTION_POINTERS Pointers,
+    _Out_ PVOID *ExceptionAddress)
+{
+    *ExceptionAddress = Pointers->ExceptionRecord->ExceptionAddress;
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 static VOID
 NTAPI
 RtlpExecuteWorkItem(IN OUT PVOID NormalContext,
@@ -197,6 +207,7 @@ RtlpExecuteWorkItem(IN OUT PVOID NormalContext,
 {
     NTSTATUS Status;
     BOOLEAN Impersonated = FALSE;
+    PVOID ExceptionAddress = NULL;
     RTLP_WORKITEM WorkItem = *(volatile RTLP_WORKITEM *)SystemArgument2;
 
     RtlFreeHeap(RtlGetProcessHeap(),
@@ -225,9 +236,13 @@ RtlpExecuteWorkItem(IN OUT PVOID NormalContext,
         /* Execute the function */
         WorkItem.Function(WorkItem.Context);
     }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    _SEH2_EXCEPT(RtlpWorkItemExceptionFilter(_SEH2_GetExceptionInformation(), &ExceptionAddress))
     {
-        DPRINT1("Exception 0x%x while executing IO work item 0x%p\n", _SEH2_GetExceptionCode(), WorkItem.Function);
+        PVOID ImageBase = NULL;
+
+        RtlPcToFileHeader(ExceptionAddress, &ImageBase);
+        DPRINT1("Exception 0x%x at %p (image %p) while executing IO work item 0x%p\n",
+                _SEH2_GetExceptionCode(), ExceptionAddress, ImageBase, WorkItem.Function);
     }
     _SEH2_END;
 
@@ -311,6 +326,7 @@ RtlpExecuteIoWorkItem(IN OUT PVOID NormalContext,
 {
     NTSTATUS Status;
     BOOLEAN Impersonated = FALSE;
+    PVOID ExceptionAddress = NULL;
     PRTLP_IOWORKERTHREAD IoThread = (PRTLP_IOWORKERTHREAD)NormalContext;
     RTLP_WORKITEM WorkItem = *(volatile RTLP_WORKITEM *)SystemArgument2;
 
@@ -342,9 +358,13 @@ RtlpExecuteIoWorkItem(IN OUT PVOID NormalContext,
         /* Execute the function */
         WorkItem.Function(WorkItem.Context);
     }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    _SEH2_EXCEPT(RtlpWorkItemExceptionFilter(_SEH2_GetExceptionInformation(), &ExceptionAddress))
     {
-        DPRINT1("Exception 0x%x while executing IO work item 0x%p\n", _SEH2_GetExceptionCode(), WorkItem.Function);
+        PVOID ImageBase = NULL;
+
+        RtlPcToFileHeader(ExceptionAddress, &ImageBase);
+        DPRINT1("Exception 0x%x at %p (image %p) while executing IO work item 0x%p\n",
+                _SEH2_GetExceptionCode(), ExceptionAddress, ImageBase, WorkItem.Function);
     }
     _SEH2_END;
 
