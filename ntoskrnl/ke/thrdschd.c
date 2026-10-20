@@ -444,9 +444,6 @@ KiSwapThread(IN PKTHREAD CurrentThread,
     if (NextThread)
     {
         ASSERT(NextThread->State == Standby);
-#ifndef CONFIG_SMP
-        ASSERT(NextThread != CurrentThread);
-#endif
 
         /* Already got a thread, set it up */
         Prcb->NextThread = NULL;
@@ -459,10 +456,6 @@ KiSwapThread(IN PKTHREAD CurrentThread,
         NextThread = KiSelectReadyThread(0, Prcb);
         if (NextThread)
         {
-#ifndef CONFIG_SMP
-            ASSERT(NextThread != CurrentThread);
-#endif
-
             /* Switch to it */
             Prcb->CurrentThread = NextThread;
             NextThread->State = Running;
@@ -487,8 +480,7 @@ KiSwapThread(IN PKTHREAD CurrentThread,
     /* Save the wait IRQL */
     WaitIrql = CurrentThread->WaitIrql;
 
-#ifdef CONFIG_SMP
-    /* On SMP builds it is possible that the new thread is the old thread. */
+    /* A wait satisfied before the thread left the processor readies it again, so it is the next thread */
     if (NextThread == CurrentThread)
     {
         /* Unset SwapBusy */
@@ -503,7 +495,6 @@ KiSwapThread(IN PKTHREAD CurrentThread,
         }
     }
     else
-#endif
     {
         /* Swap contexts */
         ApcState = KiSwapContext(WaitIrql, CurrentThread);
