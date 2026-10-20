@@ -13,6 +13,24 @@
 static RTL_UNLOAD_EVENT_TRACE RtlpUnloadEventTrace[RTL_UNLOAD_EVENT_TRACE_NUMBER];
 static UINT RtlpUnloadEventTraceIndex = 0;
 
+/* The same trace in the layout Vista gave it, which RtlGetUnloadEventTraceEx describes */
+typedef struct _RTLP_UNLOAD_EVENT_RECORD
+{
+    PVOID BaseAddress;
+    SIZE_T SizeOfImage;
+    ULONG Sequence;
+    ULONG TimeDateStamp;
+    ULONG CheckSum;
+    WCHAR ImageName[32];
+    ULONG Version[2];
+} RTLP_UNLOAD_EVENT_RECORD;
+
+static RTLP_UNLOAD_EVENT_RECORD RtlpUnloadEventRecords[RTL_UNLOAD_EVENT_TRACE_NUMBER];
+
+/* Debuggers and crash reporters read the trace's layout through these */
+static ULONG RtlpUnloadEventTraceElementSize = sizeof(RTLP_UNLOAD_EVENT_RECORD);
+static ULONG RtlpUnloadEventTraceElementCount = RTL_UNLOAD_EVENT_TRACE_NUMBER;
+
 /* FUNCTIONS ******************************************************************/
 
 PRTL_UNLOAD_EVENT_TRACE
@@ -21,6 +39,18 @@ RtlGetUnloadEventTrace(VOID)
 {
     /* Just return a pointer to an array, according to MSDN */
     return RtlpUnloadEventTrace;
+}
+
+VOID
+NTAPI
+RtlGetUnloadEventTraceEx(
+    _Out_ PULONG *ElementSize,
+    _Out_ PULONG *ElementCount,
+    _Out_ PVOID *EventTrace)
+{
+    *ElementSize = &RtlpUnloadEventTraceElementSize;
+    *ElementCount = &RtlpUnloadEventTraceElementCount;
+    *EventTrace = RtlpUnloadEventRecords;
 }
 
 VOID
@@ -56,6 +86,15 @@ LdrpRecordUnloadEvent(_In_ PLDR_DATA_TABLE_ENTRY LdrEntry)
     RtlCopyMemory(RtlpUnloadEventTrace[Index].ImageName, LdrEntry->BaseDllName.Buffer, StringLen * sizeof(WCHAR));
     if (StringLen < RTL_NUMBER_OF(RtlpUnloadEventTrace[Index].ImageName))
         RtlpUnloadEventTrace[Index].ImageName[StringLen] = 0;
+
+    RtlZeroMemory(&RtlpUnloadEventRecords[Index], sizeof(RtlpUnloadEventRecords[Index]));
+    RtlpUnloadEventRecords[Index].BaseAddress = RtlpUnloadEventTrace[Index].BaseAddress;
+    RtlpUnloadEventRecords[Index].SizeOfImage = RtlpUnloadEventTrace[Index].SizeOfImage;
+    RtlpUnloadEventRecords[Index].Sequence = Sequence;
+    RtlpUnloadEventRecords[Index].TimeDateStamp = RtlpUnloadEventTrace[Index].TimeDateStamp;
+    RtlpUnloadEventRecords[Index].CheckSum = RtlpUnloadEventTrace[Index].CheckSum;
+    RtlCopyMemory(RtlpUnloadEventRecords[Index].ImageName, RtlpUnloadEventTrace[Index].ImageName,
+                  sizeof(RtlpUnloadEventRecords[Index].ImageName));
 }
 
 BOOLEAN
