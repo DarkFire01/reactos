@@ -236,6 +236,7 @@ IntEngFillBox(
     DestRect.right = X + Width;
     DestRect.top = Y;
     DestRect.bottom = Y + Height;
+    DC_vAccumulateRedirectionDirty(dc, &DestRect);
 
     IntEngBitBlt(&psurf->SurfObj,
                  NULL,
@@ -281,6 +282,7 @@ IntEngFillPolygon(
         else if (Rect.bottom < y)
             Rect.bottom = y;
     }
+    DC_vAccumulateRedirectionDirty(dc, (RECTL *)&Rect);
 
     IntFillPolygon(dc, dc->dclevel.pSurface, BrushObj, pPoints, cPoints, Rect, &g_PointZero);
 }

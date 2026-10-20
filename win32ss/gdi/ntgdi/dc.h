@@ -198,6 +198,7 @@ VOID FASTCALL DC_vUpdateViewportExt(PDC pdc);
 VOID FASTCALL DC_vCopyState(PDC pdcSrc, PDC pdcDst, BOOL To);
 void DC_vUpdateDC(PDC pdc);
 VOID FASTCALL DC_vFinishBlit(PDC pdc1, PDC pdc2);
+VOID FASTCALL DC_vAccumulateRedirectionDirty(PDC pdc, const RECTL *prcl);
 VOID FASTCALL DC_vPrepareDCsForBlit(PDC pdcDest, const RECT* rcDest, PDC pdcSrc, const RECT* rcSrc);
 
 VOID NTAPI DC_vRestoreDC(IN PDC pdc, INT iSaveLevel);
