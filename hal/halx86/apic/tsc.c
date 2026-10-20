@@ -22,7 +22,77 @@ ULONG64 TscCalibrationArray[NUM_SAMPLES];
 #define RTC_MODE 6 /* Mode 6 is 1024 Hz */
 #define SAMPLE_FREQUENCY ((32768 << 1) >> RTC_MODE)
 
+/* How long PIT channel 2 counts while the TSC is measured, and how often */
+#define PIT_CALIBRATION_MS          20
+#define PIT_CALIBRATION_ATTEMPTS    5
+#define PIT_CALIBRATION_MAX_POLLS   5000000
+
 /* PRIVATE FUNCTIONS *********************************************************/
+
+/*
+ * Times the TSC against PIT channel 2 counting down, by polling its output.
+ * Hypervisors can deliver the RTC interrupts late, which makes the TSC look faster
+ * than it is; reading the counter's output does not depend on interrupt delivery.
+ * The median of a few runs rides out a virtual clock that briefly runs fast or slow.
+ * Returns 0 when the PIT does not count.
+ */
+static
+ULONG64
+HalpMeasureTscWithPit(VOID)
+{
+    SYSTEM_CONTROL_PORT_B_REGISTER SavedPortB, PortB;
+    TIMER_CONTROL_PORT_REGISTER TimerControl;
+    USHORT Count = (USHORT)((PIT_FREQUENCY * PIT_CALIBRATION_MS) / 1000);
+    ULONG64 Elapsed[PIT_CALIBRATION_ATTEMPTS];
+    ULONG64 Start, Swap;
+    ULONG Attempt, Polls, Index;
+
+    SavedPortB.Bits = __inbyte(SYSTEM_CONTROL_PORT_B);
+
+    for (Attempt = 0; Attempt < PIT_CALIBRATION_ATTEMPTS; Attempt++)
+    {
+        /* Let channel 2 count, with the speaker kept quiet */
+        PortB.Bits = SavedPortB.Bits;
+        PortB.Timer2GateToSpeaker = 1;
+        PortB.SpeakerDataEnable = 0;
+        __outbyte(SYSTEM_CONTROL_PORT_B, PortB.Bits);
+
+        /* One shot: the output goes high once the count runs out */
+        TimerControl.BcdMode = FALSE;
+        TimerControl.OperatingMode = PitOperatingMode0;
+        TimerControl.AccessMode = PitAccessModeLowHigh;
+        TimerControl.Channel = PitChannel2;
+        __outbyte(TIMER_CONTROL_PORT, TimerControl.Bits);
+        __outbyte(TIMER_CHANNEL2_DATA_PORT, (UCHAR)Count);
+        __outbyte(TIMER_CHANNEL2_DATA_PORT, (UCHAR)(Count >> 8));
+
+        Start = __rdtsc();
+        for (Polls = 0; Polls < PIT_CALIBRATION_MAX_POLLS; Polls++)
+        {
+            PortB.Bits = __inbyte(SYSTEM_CONTROL_PORT_B);
+            if (PortB.Timer2Output)
+                break;
+        }
+        Elapsed[Attempt] = __rdtsc() - Start;
+
+        if (Polls == PIT_CALIBRATION_MAX_POLLS)
+        {
+            __outbyte(SYSTEM_CONTROL_PORT_B, SavedPortB.Bits);
+            return 0;
+        }
+
+        /* Keep the runs sorted */
+        for (Index = Attempt; (Index > 0) && (Elapsed[Index - 1] > Elapsed[Index]); Index--)
+        {
+            Swap = Elapsed[Index - 1];
+            Elapsed[Index - 1] = Elapsed[Index];
+            Elapsed[Index] = Swap;
+        }
+    }
+
+    __outbyte(SYSTEM_CONTROL_PORT_B, SavedPortB.Bits);
+    return (Elapsed[PIT_CALIBRATION_ATTEMPTS / 2] * 1000) / PIT_CALIBRATION_MS;
+}
 
 static
 ULONG64
@@ -67,6 +137,14 @@ HalpInitializeTsc(VOID)
      /* Save flags and disable interrupts */
     Flags = __readeflags();
     _disable();
+
+    /* The PIT gives the frequency without relying on interrupts arriving on time */
+    HalpCpuClockFrequency.QuadPart = HalpMeasureTscWithPit();
+    if (HalpCpuClockFrequency.QuadPart != 0)
+    {
+        __writeeflags(Flags);
+        return;
+    }
 
     /* Enable the periodic interrupt in the CMOS */
     RegisterB = HalpReadCmos(RTC_REGISTER_B);
