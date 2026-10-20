@@ -192,6 +192,7 @@ list(APPEND SOURCE
     gdi/ntgdi/fillshap.c
     gdi/ntgdi/font.c
     gdi/ntgdi/freetype.c
+    gdi/ntgdi/textblend.c
     gdi/ntgdi/gdibatch.c
     gdi/ntgdi/gdidbg.c
     gdi/ntgdi/gdiobj.c

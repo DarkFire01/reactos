@@ -513,6 +513,17 @@ DC_vReportRedirectionDirty(
         GreCancelLogicalSurfaceNotify(pdc->dclevel.pSurface);
 }
 
+/* Adds what a drawing call touched to what it reports, for calls that only know it as they draw */
+VOID
+FASTCALL
+DC_vAccumulateRedirectionDirty(
+    _Inout_ PDC pdc,
+    _In_ const RECTL *prcl)
+{
+    if (pdc->fs & DC_REDIRECTION)
+        RECTL_bUnionRect(&pdc->erclRedirectionDirty, &pdc->erclRedirectionDirty, prcl);
+}
+
 /* Prepare a blit for up to 2 DCs */
 /* rc1 and rc2 are the rectangles where we want to draw or
  * from where we take pixels. */
