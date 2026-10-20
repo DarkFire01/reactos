@@ -2125,6 +2125,14 @@ MmArmInitSystem(IN ULONG Phase,
         MmSystemRangeStart = (PVOID)MI_DEFAULT_SYSTEM_RANGE_START;
         MmUserProbeAddress = (ULONG_PTR)MI_USER_PROBE_ADDRESS;
         MmHighestUserAddress = (PVOID)MI_HIGHEST_USER_ADDRESS;
+#ifdef _M_AMD64
+        /* An 8 byte SLIST header only holds pointers below 8 TB */
+        if (KeFeatureBits & KF_CMPXCHG16B)
+        {
+            MmUserProbeAddress = (ULONG_PTR)MI_LARGE_USER_PROBE_ADDRESS;
+            MmHighestUserAddress = (PVOID)MI_LARGE_HIGHEST_USER_ADDRESS;
+        }
+#endif
 
         /* Highest PTE and PDE based on the addresses above */
         MiHighestUserPte = MiAddressToPte(MmHighestUserAddress);
