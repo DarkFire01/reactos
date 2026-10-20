@@ -298,7 +298,8 @@ NtUserUnregisterSessionPort(VOID)
     UserEnterExclusive();
     if (gppiDwm && gppiDwm == GetW32ProcessInfo())
     {
-        IntDwmProcessCleanup(gppiDwm);
+        /* A DWM that stops on its own can still have the desktop drawn again */
+        IntDwmStop(TRUE);
         Result = TRUE;
     }
     else
