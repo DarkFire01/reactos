@@ -45,6 +45,7 @@ typedef struct _DCOMP_RESOURCE
             PVOID Section;
             ULONG Size;
         } Shared;
+        DCOMP_CACHED_IMAGE_UPDATE CachedImage;
     };
 } DCOMP_RESOURCE, *PDCOMP_RESOURCE;
 
@@ -113,20 +114,26 @@ DcompIsKnownType(
         case DCOMP_RESOURCE_ANIMATION:
         case DCOMP_RESOURCE_BACKDROP_BRUSH:
         case DCOMP_RESOURCE_BITMAP_RESOURCE:
+        case DCOMP_RESOURCE_CACHED_VISUAL_IMAGE:
         case DCOMP_RESOURCE_COLOR_BRUSH:
         case DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP:
         case DCOMP_RESOURCE_EFFECT_GROUP:
         case DCOMP_RESOURCE_GDI_SPRITE_BITMAP:
         case DCOMP_RESOURCE_MATRIX_TRANSFORM:
+        case DCOMP_RESOURCE_MATRIX_TRANSFORM_3D:
         case DCOMP_RESOURCE_RECTANGLE_CLIP:
         case DCOMP_RESOURCE_ROTATE_TRANSFORM:
+        case DCOMP_RESOURCE_ROTATE_TRANSFORM_3D:
         case DCOMP_RESOURCE_SCALE_TRANSFORM:
+        case DCOMP_RESOURCE_SCALE_TRANSFORM_3D:
         case DCOMP_RESOURCE_SHARED_SECTION:
         case DCOMP_RESOURCE_SKEW_TRANSFORM:
         case DCOMP_RESOURCE_SPRITE_VISUAL:
         case DCOMP_RESOURCE_SURFACE_BRUSH:
         case DCOMP_RESOURCE_TRANSFORM_GROUP:
+        case DCOMP_RESOURCE_TRANSFORM_3D_GROUP:
         case DCOMP_RESOURCE_TRANSLATE_TRANSFORM:
+        case DCOMP_RESOURCE_TRANSLATE_TRANSFORM_3D:
         case DCOMP_RESOURCE_VISUAL:
         case DCOMP_RESOURCE_WINDOW_NODE:
         case DCOMP_RESOURCE_HWND_TARGET:
@@ -143,7 +150,8 @@ DcompIsDwmOnlyType(
 {
     return Type == DCOMP_RESOURCE_WINDOW_NODE ||
            Type == DCOMP_RESOURCE_GDI_SPRITE_BITMAP ||
-           Type == DCOMP_RESOURCE_BITMAP_RESOURCE;
+           Type == DCOMP_RESOURCE_BITMAP_RESOURCE ||
+           Type == DCOMP_RESOURCE_CACHED_VISUAL_IMAGE;
 }
 
 static
@@ -428,6 +436,17 @@ DcompEmitBeginTime(
 }
 
 static
+NTSTATUS
+DcompEmitCachedImage(
+    _In_ PDCOMP_CHANNEL Channel,
+    _In_ ULONG Handle,
+    _In_ PDCOMP_RESOURCE Resource)
+{
+    return DcompEmit(Channel, DCOMP_MILCMD_CACHED_VISUAL_IMAGE_UPDATE, Handle, &Resource->CachedImage,
+                     sizeof(Resource->CachedImage), NULL, 0);
+}
+
+static
 VOID
 DcompReleaseResourceState(
     _Inout_ PDCOMP_RESOURCE Resource)
@@ -563,6 +582,11 @@ DcompSetInteger(
                 return DcompEmit(Channel, DCOMP_MILCMD_WINDOW_NODE_SET_WINDOW_HANDLE, Command->Resource,
                                  &Command->Value, sizeof(Command->Value), NULL, 0);
             break;
+
+        case DCOMP_RESOURCE_CACHED_VISUAL_IMAGE:
+            if (Command->Property == DCOMP_CACHED_IMAGE_FREEZE)
+                return DcompEmit(Channel, DCOMP_MILCMD_CACHED_VISUAL_IMAGE_FREEZE, Command->Resource, NULL, 0, NULL, 0);
+            break;
     }
 
     if (DcompIsVisualType(Resource->Type) && Command->Property == DCOMP_VISUAL_VISIBLE)
@@ -649,6 +673,13 @@ DcompSetReference(
         Resource->Animation.Section = Command->Value;
         return DcompEmitPrimitives(Channel, Command->Resource, Resource);
     }
+    else if (Resource->Type == DCOMP_RESOURCE_CACHED_VISUAL_IMAGE && Command->Property == DCOMP_CACHED_IMAGE_VISUAL)
+    {
+        if (Command->Value && !DcompIsVisualType(DcompLookupResource(Channel, Command->Value)->Type))
+            return STATUS_INVALID_PARAMETER;
+        Resource->CachedImage.Visual = Command->Value;
+        return DcompEmitCachedImage(Channel, Command->Resource, Resource);
+    }
 
     if (MilCommand)
         return DcompEmit(Channel, MilCommand, Command->Resource, &Command->Value, sizeof(ULONG), NULL, 0);
@@ -700,6 +731,17 @@ DcompSetBuffer(
                                  Data, Command->Size, NULL, 0);
             if (Command->Property == DCOMP_SPRITE_BITMAP_MARGINS && Command->Size == 4 * sizeof(LONG))
                 return DcompEmit(Channel, DCOMP_MILCMD_GDI_SPRITE_BITMAP_SET_MARGINS, Command->Resource,
+                                 Data, Command->Size, NULL, 0);
+            break;
+
+        case DCOMP_RESOURCE_CACHED_VISUAL_IMAGE:
+            if (Command->Property == DCOMP_CACHED_IMAGE_RECT && Command->Size == sizeof(Resource->CachedImage.Rect))
+            {
+                RtlCopyMemory(&Resource->CachedImage.Rect, Data, sizeof(Resource->CachedImage.Rect));
+                return DcompEmitCachedImage(Channel, Command->Resource, Resource);
+            }
+            if (Command->Property == DCOMP_CACHED_IMAGE_SNAPSHOT && Command->Size == sizeof(RECT))
+                return DcompEmit(Channel, DCOMP_MILCMD_CACHED_VISUAL_IMAGE_SNAPSHOT, Command->Resource,
                                  Data, Command->Size, NULL, 0);
             break;
 
@@ -1401,13 +1443,13 @@ NtDCompositionCreateAndBindSharedSection(
         goto Exit;
 
     Status = ObOpenObjectByPointer(Section, 0, NULL, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_QUERY,
-                                   NULL, UserMode, &ClientHandle);
+                                   MmSectionObjectType, UserMode, &ClientHandle);
     if (!NT_SUCCESS(Status))
         goto Exit;
 
     KeStackAttachProcess((PKPROCESS)gDcompCompositor, &ApcState);
     Status = ObOpenObjectByPointer(Section, 0, NULL, SECTION_MAP_READ | SECTION_QUERY,
-                                   NULL, UserMode, &CompositorHandle);
+                                   MmSectionObjectType, UserMode, &CompositorHandle);
     KeUnstackDetachProcess(&ApcState);
     if (!NT_SUCCESS(Status))
         goto Exit;
