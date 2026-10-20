@@ -95,6 +95,103 @@ BOOL FakeVersion(LPOSVERSIONINFOEXA pResult, VersionLieInfo* pFake)
 }
 
 typedef BOOL(WINAPI* GETVERSIONEXAPROC)(LPOSVERSIONINFOEXA);
+typedef BOOL(WINAPI* VERIFYVERSIONINFOPROC)(PVOID, DWORD, DWORDLONG);
+typedef LONG(NTAPI* RTLVERIFYVERSIONINFOPROC)(PVOID, ULONG, ULONGLONG);
+
+/* What VerifyVersionInfo concludes; product type and suite are left to the real check */
+typedef enum _FAKE_VERIFY_RESULT
+{
+    FakeVerifyMatch,
+    FakeVerifyMismatch,
+    FakeVerifyInvalid
+} FAKE_VERIFY_RESULT;
+
+/* The condition VerSetConditionMask stored for one VER_ type bit; each takes three bits */
+static BYTE FakeCondition(DWORDLONG ConditionMask, DWORD TypeBit)
+{
+    DWORD Index = 0;
+
+    while (!(TypeBit & 1))
+    {
+        TypeBit >>= 1;
+        Index++;
+    }
+    return (BYTE)((ConditionMask >> (Index * 3)) & 7);
+}
+
+static BOOL FakeCompare(DWORD Current, DWORD Wanted, BYTE Condition)
+{
+    switch (Condition)
+    {
+        case VER_EQUAL:         return Current == Wanted;
+        case VER_GREATER:       return Current > Wanted;
+        case VER_GREATER_EQUAL: return Current >= Wanted;
+        case VER_LESS:          return Current < Wanted;
+        case VER_LESS_EQUAL:    return Current <= Wanted;
+        default:                return FALSE;
+    }
+}
+
+/*
+ * Checks the version fields of a VerifyVersionInfo request against the faked version. Major,
+ * minor and service pack form one number compared in that order, with the condition of the
+ * first field the request names.
+ */
+FAKE_VERIFY_RESULT VerifyFakeVersion(VersionLieInfo* pFake, DWORD MajorVersion, DWORD MinorVersion, DWORD BuildNumber,
+                                     DWORD PlatformId, WORD ServicePackMajor, WORD ServicePackMinor,
+                                     DWORD TypeMask, DWORDLONG ConditionMask)
+{
+    const struct
+    {
+        DWORD TypeBit;
+        DWORD Current;
+        DWORD Wanted;
+    } Parts[] =
+    {
+        { VER_MAJORVERSION, pFake->dwMajorVersion, MajorVersion },
+        { VER_MINORVERSION, pFake->dwMinorVersion, MinorVersion },
+        { VER_SERVICEPACKMAJOR, pFake->wServicePackMajor, ServicePackMajor },
+        { VER_SERVICEPACKMINOR, pFake->wServicePackMinor, ServicePackMinor },
+    };
+    BYTE Condition = 0;
+    BOOL Named = FALSE;
+    DWORD i;
+
+    if (!TypeMask || !ConditionMask)
+        return FakeVerifyInvalid;
+
+    if ((TypeMask & VER_PLATFORMID) &&
+        !FakeCompare(pFake->dwPlatformId, PlatformId, FakeCondition(ConditionMask, VER_PLATFORMID)))
+    {
+        return FakeVerifyMismatch;
+    }
+
+    if ((TypeMask & VER_BUILDNUMBER) &&
+        !FakeCompare(pFake->dwBuildNumber, BuildNumber, FakeCondition(ConditionMask, VER_BUILDNUMBER)))
+    {
+        return FakeVerifyMismatch;
+    }
+
+    for (i = 0; i < ARRAYSIZE(Parts); i++)
+    {
+        if (!(TypeMask & Parts[i].TypeBit))
+            continue;
+
+        if (!Named)
+        {
+            Condition = FakeCondition(ConditionMask, Parts[i].TypeBit);
+            Named = TRUE;
+        }
+
+        /* The first part that differs decides; equal parts hand on to the next one */
+        if (Parts[i].Current != Parts[i].Wanted)
+            return FakeCompare(Parts[i].Current, Parts[i].Wanted, Condition) ? FakeVerifyMatch : FakeVerifyMismatch;
+    }
+
+    if (Named && !FakeCompare(0, 0, Condition))
+        return FakeVerifyMismatch;
+    return FakeVerifyMatch;
+}
 
 
 #define SHIM_NS         Win95VersionLie
