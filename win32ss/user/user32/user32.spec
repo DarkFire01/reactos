@@ -699,6 +699,7 @@
 @ stdcall SetTaskmanWindow (long)
 @ stdcall SetThreadDesktop(long) NtUserSetThreadDesktop
 @ stdcall SetTimer(long long long ptr) NtUserSetTimer
+@ stdcall -version=0x602+ SetCoalescableTimer(ptr long long ptr long)
 @ stdcall SetUserObjectInformationA(long long ptr long) NtUserSetObjectInformation
 @ stdcall SetUserObjectInformationW(long long ptr long) NtUserSetObjectInformation
 @ stdcall SetUserObjectSecurity(long ptr ptr)
