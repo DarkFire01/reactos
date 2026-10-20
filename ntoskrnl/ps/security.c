@@ -125,51 +125,52 @@ PspWriteTebImpersonationInfo(IN PETHREAD Thread,
     /* Sanity check */
     ASSERT(CurrentThread == PsGetCurrentThread());
 
-    /* Get process and TEB */
-    Process = Thread->ThreadsProcess;
+    /* System threads have no user mode state to update */
     Teb = Thread->Tcb.Teb;
-    if (Teb)
+    if (!Teb || Thread->SystemThread)
+        return STATUS_SUCCESS;
+
+    /* The TEB lives in the target's address space, which is not ours when a broker sets another process' thread token */
+    Process = Thread->ThreadsProcess;
+    if (CurrentThread->Tcb.ApcState.Process != &Process->Pcb)
     {
-        /* Check if we're not in the right process */
-        if (Thread->Tcb.ApcState.Process != &Process->Pcb)
-        {
-            /* Attach to the process */
-            KeStackAttachProcess(&Process->Pcb, &ApcState);
-            Attached = TRUE;
-        }
-
-        /* Check if we're in a different thread or acquire rundown */
-        if ((Thread == CurrentThread) ||
-            (ExAcquireRundownProtection(&Thread->RundownProtect)))
-        {
-            /* Check if the thread is impersonating */
-            IsImpersonating = (BOOLEAN)Thread->ActiveImpersonationInfo;
-            if (IsImpersonating)
-            {
-                /* Set TEB data */
-                Teb->ImpersonationLocale = -1;
-                Teb->IsImpersonating = 1;
-            }
-            else
-            {
-                /* Set TEB data */
-                Teb->ImpersonationLocale = 0;
-                Teb->IsImpersonating = 0;
-            }
-        }
-
-        /* Check if we're in a different thread */
-        if (Thread != CurrentThread)
-        {
-            /* Release protection */
-            ExReleaseRundownProtection(&Thread->RundownProtect);
-        }
-
-        /* Detach */
-        if (Attached) KeUnstackDetachProcess(&ApcState);
+        KeStackAttachProcess(&Process->Pcb, &ApcState);
+        Attached = TRUE;
     }
 
-    /* Return to caller */
+    /* Check if we're in a different thread or acquire rundown */
+    if ((Thread == CurrentThread) ||
+        (ExAcquireRundownProtection(&Thread->RundownProtect)))
+    {
+        /* Write again if the impersonation state changed underneath us */
+        do
+        {
+            IsImpersonating = (BOOLEAN)Thread->ActiveImpersonationInfo;
+
+            /* The TEB is user memory, so a bad page must not take the system down */
+            _SEH2_TRY
+            {
+                Teb->ImpersonationLocale = IsImpersonating ? -1 : 0;
+                Teb->IsImpersonating = IsImpersonating;
+                Teb->MuiImpersonation = 0;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                NOTHING;
+            }
+            _SEH2_END;
+
+            KeMemoryBarrier();
+        } while (IsImpersonating != (BOOLEAN)Thread->ActiveImpersonationInfo);
+
+        /* Only release what we acquired */
+        if (Thread != CurrentThread)
+            ExReleaseRundownProtection(&Thread->RundownProtect);
+    }
+
+    if (Attached)
+        KeUnstackDetachProcess(&ApcState);
+
     return STATUS_SUCCESS;
 }
 
