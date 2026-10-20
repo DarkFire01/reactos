@@ -68,17 +68,31 @@ IopSynchronousCall(
     /* Otherwise we may get stuck here or have IoStatusBlock not populated */
     ASSERT(!KeAreAllApcsDisabled());
 #if DBG
-    /* A request completed in this thread has run its completion APC by now */
-    if (Status != STATUS_PENDING &&
-        !IsListEmpty(&KeGetCurrentThread()->ApcState.ApcListHead[KernelMode]))
+    /*
+     * A request completed in this thread has run its completion APC by now. Other kernel APCs
+     * can stay queued while the thread is in a critical region, as file systems are, so only
+     * this IRP's own APC counts. Its address is compared, the IRP may already be freed.
+     */
+    if (Status != STATUS_PENDING)
     {
-        DPRINT1("Completion APC of IRP %p still queued: Irql %u Pending %u SpecialApcDisable %d Flags 0x%Ix\n",
-                Irp,
-                KeGetCurrentIrql(),
-                KeGetCurrentThread()->ApcState.KernelApcPending,
-                KeGetCurrentThread()->SpecialApcDisable,
-                __readeflags());
-        DbgBreakPoint();
+        PLIST_ENTRY ApcListHead = &KeGetCurrentThread()->ApcState.ApcListHead[KernelMode];
+        PLIST_ENTRY ApcEntry;
+
+        for (ApcEntry = ApcListHead->Flink; ApcEntry != ApcListHead; ApcEntry = ApcEntry->Flink)
+        {
+            if (ApcEntry != &Irp->Tail.Apc.ApcListEntry)
+                continue;
+
+            DPRINT1("Completion APC of IRP %p still queued: Irql %u Pending %u KernelApcDisable %d SpecialApcDisable %d Flags 0x%Ix\n",
+                    Irp,
+                    KeGetCurrentIrql(),
+                    KeGetCurrentThread()->ApcState.KernelApcPending,
+                    KeGetCurrentThread()->KernelApcDisable,
+                    KeGetCurrentThread()->SpecialApcDisable,
+                    __readeflags());
+            DbgBreakPoint();
+            break;
+        }
     }
 #endif
     if (Status == STATUS_PENDING)
