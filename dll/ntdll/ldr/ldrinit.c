@@ -1942,9 +1942,15 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     PWCHAR Current;
     ULONG ExecuteOptions = 0;
     PVOID ViewBase;
+    SYSTEM_BASIC_INFORMATION BasicInfo;
 
     /* Set a NULL SEH Filter */
     RtlSetUnhandledExceptionFilter(NULL);
+
+    /* The kernel picks the size of user space at boot */
+    Status = NtQuerySystemInformation(SystemBasicInformation, &BasicInfo, sizeof(BasicInfo), NULL);
+    if (NT_SUCCESS(Status))
+        MmHighestUserAddress = (PVOID)BasicInfo.MaximumUserModeAddress;
 
     /* Get the image path */
     ImagePath = Peb->ProcessParameters->ImagePathName.Buffer;
