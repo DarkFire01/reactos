@@ -2417,6 +2417,9 @@ BOOL WINAPI IsValidSid(PSID);
 #if (_WIN32_WINNT >= 0x0501)
 BOOL WINAPI IsWellKnownSid(PSID,WELL_KNOWN_SID_TYPE);
 BOOL WINAPI IsWow64Process(HANDLE,PBOOL);
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN10)
+BOOL WINAPI IsWow64Process2(_In_ HANDLE,_Out_ USHORT*,_Out_opt_ USHORT*);
+#endif
 #endif
 void WINAPI LeaveCriticalSection(LPCRITICAL_SECTION);
 #define LimitEmsPages(n)
