@@ -62,6 +62,10 @@ EtwpCheckTraceProperties(
 
     if (Properties->Wnode.BufferSize < sizeof(EVENT_TRACE_PROPERTIES))
         return ERROR_BAD_LENGTH;
+
+    return ERROR_SUCCESS;
+}
+
 /*
  * The provider side of event tracing. There is no session to trace to here, so
  * these do what Windows does when nobody is listening: registration succeeds,
@@ -328,6 +332,8 @@ FlushTraceA(
     _Inout_ PEVENT_TRACE_PROPERTIES Properties)
 {
     return ControlTraceA(SessionHandle, SessionName, Properties, EVENT_TRACE_CONTROL_FLUSH);
+}
+
 ULONG
 EVNTAPI
 EventWriteTransfer(

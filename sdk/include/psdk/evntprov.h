@@ -363,15 +363,6 @@ EventDescOrKeyword(
 
 #if (WINVER >= _WIN32_WINNT_WIN8)
 
-typedef enum _EVENT_INFO_CLASS
-{
-    EventProviderBinaryTrackInfo,
-    EventProviderSetReserved1,
-    EventProviderSetTraits,
-    EventProviderUseDescriptorType,
-    MaxEventInfo
-} EVENT_INFO_CLASS;
-
 ULONG
 EVNTAPI
 EventSetInformation(
