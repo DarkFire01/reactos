@@ -15,6 +15,67 @@ DBG_DEFAULT_CHANNEL(EngPDev);
 static PPDEVOBJ gppdevList = NULL;
 static HSEMAPHORE ghsemPDEV;
 
+/* The resolution every display reports: the machine's until a user logs on with one of their own */
+static USHORT gusDisplayDpi = 0;
+
+static
+USHORT
+PDEVOBJ_usValidDpi(
+    _In_ ULONG ulDpi)
+{
+    return (ulDpi >= 72 && ulDpi <= 480) ? (USHORT)ulDpi : 96;
+}
+
+USHORT
+NTAPI
+PDEVOBJ_usGetDisplayDpi(VOID)
+{
+    HKEY hkey;
+    DWORD dwDpi = 96;
+
+    if (gusDisplayDpi)
+        return gusDisplayDpi;
+
+    if (NT_SUCCESS(RegOpenKey(L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Hardware Profiles\\Current\\Software\\Fonts",
+                              &hkey)))
+    {
+        RegReadDWORD(hkey, L"LogPixels", &dwDpi);
+        ZwClose(hkey);
+    }
+    gusDisplayDpi = PDEVOBJ_usValidDpi(dwDpi);
+    return gusDisplayDpi;
+}
+
+/* Displays report usDpi from now on; what was made for the old resolution is the caller's to update */
+VOID
+NTAPI
+PDEVOBJ_vSetDisplayDpi(
+    _In_ USHORT usDpi)
+{
+    PPDEVOBJ ppdev;
+
+    gusDisplayDpi = PDEVOBJ_usValidDpi(usDpi);
+
+    EngAcquireSemaphoreShared(ghsemPDEV);
+    for (ppdev = gppdevList; ppdev; ppdev = ppdev->ppdevNext)
+    {
+        if (ppdev->flFlags & PDEV_DISPLAY)
+        {
+            ppdev->gdiinfo.ulLogPixelsX = gusDisplayDpi;
+            ppdev->gdiinfo.ulLogPixelsY = gusDisplayDpi;
+        }
+    }
+
+    /* gdi32 reads the primary display's capabilities from the shared table */
+    if (gpmdev && gpmdev->ppdevGlobal)
+    {
+        gpmdev->ppdevGlobal->gdiinfo.ulLogPixelsX = gusDisplayDpi;
+        gpmdev->ppdevGlobal->gdiinfo.ulLogPixelsY = gusDisplayDpi;
+        PDEVOBJ_vGetDeviceCaps(gpmdev->ppdevGlobal, &GdiHandleTable->DevCaps);
+    }
+    EngReleaseSemaphore(ghsemPDEV);
+}
+
 
 BOOL
 APIENTRY
@@ -419,7 +480,13 @@ PDEVOBJ_bEnablePDEV(
         return FALSE;
     }
 
-    /* Fix up some values */
+    /* Fix up some values; a display reports the session's resolution whatever its driver says */
+    if (ppdev->flFlags & PDEV_DISPLAY)
+    {
+        ppdev->gdiinfo.ulLogPixelsX = PDEVOBJ_usGetDisplayDpi();
+        ppdev->gdiinfo.ulLogPixelsY = PDEVOBJ_usGetDisplayDpi();
+    }
+
     if (ppdev->gdiinfo.ulLogPixelsX == 0)
         ppdev->gdiinfo.ulLogPixelsX = 96;
 

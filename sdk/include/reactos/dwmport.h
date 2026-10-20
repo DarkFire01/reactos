@@ -61,7 +61,9 @@ typedef struct _DWM_SPRITE_WINDOW
     ULONG ActiveFrame;
     ULONG64 DesktopId;
     UCHAR Reserved[0x40];
-    ULONG Reserved2[4];
+    ULONG ContentDpi;       /* ours: what the window draws at when the DWM stretches it to ScreenDpi, else 0 */
+    ULONG ScreenDpi;
+    ULONG Reserved2[2];
 } DWM_SPRITE_WINDOW, *PDWM_SPRITE_WINDOW;
 
 typedef struct _DWM_CREATE_SPRITE

@@ -18,6 +18,10 @@ GetStockObject(
     if ((fnObject < 0) || (fnObject >= NB_STOCK_OBJECTS))
         return NULL;
 
+    /* win32k picks the fonts at 96 DPI for an application the DWM stretches */
+    if (UserGetThreadVirtualDpi())
+        return NtGdiGetStockObject(fnObject);
+
     hobj = stock_objects[fnObject];
     if (hobj == NULL)
     {

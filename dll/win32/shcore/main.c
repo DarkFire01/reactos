@@ -60,7 +60,48 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
     return TRUE;
 }
 
-#ifndef __REACTOS__
+#ifdef __REACTOS__
+/* user32 only has these among its Windows 10 exports, so they are looked up rather than imported */
+static FARPROC get_user32_proc(const char *name)
+{
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+
+    if (!user32) user32 = LoadLibraryW(L"user32.dll");
+    return user32 ? GetProcAddress(user32, name) : NULL;
+}
+
+static BOOL ros_GetProcessDpiAwarenessInternal(HANDLE process, DPI_AWARENESS *awareness)
+{
+    BOOL (WINAPI *fn)(HANDLE, DPI_AWARENESS *) = (void *)get_user32_proc("GetProcessDpiAwarenessInternal");
+
+    if (fn) return fn(process, awareness);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+static BOOL ros_SetProcessDpiAwarenessInternal(DPI_AWARENESS awareness)
+{
+    BOOL (WINAPI *fn)(DPI_AWARENESS) = (void *)get_user32_proc("SetProcessDpiAwarenessInternal");
+
+    if (fn) return fn(awareness);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+static BOOL ros_GetDpiForMonitorInternal(HMONITOR monitor, UINT type, UINT *x, UINT *y)
+{
+    BOOL (WINAPI *fn)(HMONITOR, UINT, UINT *, UINT *) = (void *)get_user32_proc("GetDpiForMonitorInternal");
+
+    if (fn) return fn(monitor, type, x, y);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+#define GetProcessDpiAwarenessInternal ros_GetProcessDpiAwarenessInternal
+#define SetProcessDpiAwarenessInternal ros_SetProcessDpiAwarenessInternal
+#define GetDpiForMonitorInternal ros_GetDpiForMonitorInternal
+#endif /* __REACTOS__ */
+
 HRESULT WINAPI GetProcessDpiAwareness(HANDLE process, PROCESS_DPI_AWARENESS *value)
 {
     if (GetProcessDpiAwarenessInternal( process, (DPI_AWARENESS *)value )) return S_OK;
@@ -78,21 +119,58 @@ HRESULT WINAPI GetDpiForMonitor(HMONITOR monitor, MONITOR_DPI_TYPE type, UINT *x
     if (GetDpiForMonitorInternal( monitor, type, x, y )) return S_OK;
     return HRESULT_FROM_WIN32( GetLastError() );
 }
+
+#ifdef __REACTOS__
+/* The listed scale closest to what the primary display's resolution makes of 96 DPI */
+static DEVICE_SCALE_FACTOR scale_for_primary(void)
+{
+    static const DEVICE_SCALE_FACTOR scales[] =
+    {
+        SCALE_100_PERCENT, SCALE_120_PERCENT, SCALE_125_PERCENT, SCALE_140_PERCENT, SCALE_150_PERCENT,
+        SCALE_160_PERCENT, SCALE_175_PERCENT, SCALE_180_PERCENT, SCALE_200_PERCENT, SCALE_225_PERCENT,
+        SCALE_250_PERCENT, SCALE_300_PERCENT, SCALE_350_PERCENT, SCALE_400_PERCENT, SCALE_450_PERCENT,
+        SCALE_500_PERCENT,
+    };
+    DEVICE_SCALE_FACTOR best = SCALE_100_PERCENT;
+    HDC screen = GetDC(NULL);
+    int percent = screen ? MulDiv(GetDeviceCaps(screen, LOGPIXELSY), 100, 96) : 100;
+    UINT i;
+
+    if (screen) ReleaseDC(NULL, screen);
+    for (i = 0; i < sizeof(scales) / sizeof(scales[0]); i++)
+    {
+        if (abs((int)scales[i] - percent) < abs((int)best - percent))
+            best = scales[i];
+    }
+    return best;
+}
 #endif /* __REACTOS__ */
 
 HRESULT WINAPI GetScaleFactorForMonitor(HMONITOR monitor, DEVICE_SCALE_FACTOR *scale)
 {
+#ifdef __REACTOS__
+    MONITORINFO info = { sizeof(info) };
+
+    if (!scale) return E_INVALIDARG;
+    if (!GetMonitorInfoW(monitor, &info)) return E_INVALIDARG;
+    *scale = scale_for_primary();
+#else
     FIXME("(%p %p): stub\n", monitor, scale);
 
     *scale = SCALE_100_PERCENT;
+#endif
     return S_OK;
 }
 
 DEVICE_SCALE_FACTOR WINAPI GetScaleFactorForDevice(DISPLAY_DEVICE_TYPE device_type)
 {
+#ifdef __REACTOS__
+    return device_type == DEVICE_PRIMARY ? scale_for_primary() : SCALE_100_PERCENT;
+#else
     FIXME("%d\n", device_type);
 
     return SCALE_100_PERCENT;
+#endif
 }
 
 HRESULT WINAPI _IStream_Read(IStream *stream, void *dest, ULONG size)

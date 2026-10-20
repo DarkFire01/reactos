@@ -15,6 +15,8 @@ DriverVer = 05/29/2008,0.1
 
 [Font.120]
 
+[Font.144]
+
 [Font.Reg.96]
 HKLM,"Software\Microsoft\Windows NT\CurrentVersion\FontDPI","LogPixels",0x00010003,96
 HKLM,"System\CurrentControlSet\Hardware Profiles\Current\Software\Fonts","LogPixels",0x00010003,96
@@ -22,6 +24,10 @@ HKLM,"System\CurrentControlSet\Hardware Profiles\Current\Software\Fonts","LogPix
 [Font.Reg.120]
 HKLM,"Software\Microsoft\Windows NT\CurrentVersion\FontDPI","LogPixels",0x00010003,120
 HKLM,"System\CurrentControlSet\Hardware Profiles\Current\Software\Fonts","LogPixels",0x00010003,120
+
+[Font.Reg.144]
+HKLM,"Software\Microsoft\Windows NT\CurrentVersion\FontDPI","LogPixels",0x00010003,144
+HKLM,"System\CurrentControlSet\Hardware Profiles\Current\Software\Fonts","LogPixels",0x00010003,144
 
 [Font.Latin.Reg]
 HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\FontSubstitutes","Courier",0x00000000,"Courier New"
@@ -110,6 +116,10 @@ AddReg = Font.Latin.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Latin.Reg
 
+[Font.CP437.144]
+AddReg = Font.Reg.144
+AddReg = Font.Latin.Reg
+
 ; cp1256/cp720 Arabic
 [Font.CP720.96]
 AddReg = Font.Reg.96
@@ -117,6 +127,10 @@ AddReg = Font.Unicode.Reg
 
 [Font.CP720.120]
 AddReg = Font.Reg.120
+AddReg = Font.Unicode.Reg
+
+[Font.CP720.144]
+AddReg = Font.Reg.144
 AddReg = Font.Unicode.Reg
 
 ; cp1253/cp737 Greek
@@ -128,6 +142,10 @@ AddReg = Font.Greek.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Greek.Reg
 
+[Font.CP737.144]
+AddReg = Font.Reg.144
+AddReg = Font.Greek.Reg
+
 ; cp1257/cp775 Baltic
 [Font.CP775.96]
 AddReg = Font.Reg.96
@@ -135,6 +153,10 @@ AddReg = Font.Latin.Reg
 
 [Font.CP775.120]
 AddReg = Font.Reg.120
+AddReg = Font.Latin.Reg
+
+[Font.CP775.144]
+AddReg = Font.Reg.144
 AddReg = Font.Latin.Reg
 
 ; cp1252/cp850 Multilingual Latin I
@@ -146,6 +168,10 @@ AddReg = Font.Latin.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Latin.Reg
 
+[Font.CP850.144]
+AddReg = Font.Reg.144
+AddReg = Font.Latin.Reg
+
 ; cp1250/cp852 Latin II/Central European
 [Font.CP852.96]
 AddReg = Font.Reg.96
@@ -153,6 +179,10 @@ AddReg = Font.Latin.Reg
 
 [Font.CP852.120]
 AddReg = Font.Reg.120
+AddReg = Font.Latin.Reg
+
+[Font.CP852.144]
+AddReg = Font.Reg.144
 AddReg = Font.Latin.Reg
 
 ; cp1251/cp855 Cyrillic
@@ -164,6 +194,10 @@ AddReg = Font.Cyrillic.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Cyrillic.Reg
 
+[Font.CP855.144]
+AddReg = Font.Reg.144
+AddReg = Font.Cyrillic.Reg
+
 ; cp1254/cp857 Turkish
 [Font.CP857.96]
 AddReg = Font.Reg.96
@@ -171,6 +205,10 @@ AddReg = Font.Latin.Reg
 
 [Font.CP857.120]
 AddReg = Font.Reg.120
+AddReg = Font.Latin.Reg
+
+[Font.CP857.144]
+AddReg = Font.Reg.144
 AddReg = Font.Latin.Reg
 
 ; cp1252/cp860 Portuguese
@@ -182,6 +220,10 @@ AddReg = Font.Latin.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Latin.Reg
 
+[Font.CP860.144]
+AddReg = Font.Reg.144
+AddReg = Font.Latin.Reg
+
 ; cp1252/cp861 Icelandic
 [Font.CP861.96]
 AddReg = Font.Reg.120
@@ -189,6 +231,10 @@ AddReg = Font.Latin.Reg
 
 [Font.CP861.120]
 AddReg = Font.Reg.120
+AddReg = Font.Latin.Reg
+
+[Font.CP861.144]
+AddReg = Font.Reg.144
 AddReg = Font.Latin.Reg
 
 ; cp1255/cp862 Hebrew
@@ -200,6 +246,10 @@ AddReg = Font.Hebrew.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Hebrew.Reg
 
+[Font.CP862.144]
+AddReg = Font.Reg.144
+AddReg = Font.Hebrew.Reg
+
 ; cp1252/cp863 Canadian-French
 [Font.CP863.96]
 AddReg = Font.Reg.96
@@ -207,6 +257,10 @@ AddReg = Font.Latin.Reg
 
 [Font.CP863.120]
 AddReg = Font.Reg.120
+AddReg = Font.Latin.Reg
+
+[Font.CP863.144]
+AddReg = Font.Reg.144
 AddReg = Font.Latin.Reg
 
 ; cp1252/cp865 Nordic
@@ -218,6 +272,10 @@ AddReg = Font.Latin.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Latin.Reg
 
+[Font.CP865.144]
+AddReg = Font.Reg.144
+AddReg = Font.Latin.Reg
+
 ; cp1251/cp866 Russian
 [Font.CP866.96]
 AddReg = Font.Reg.96
@@ -225,6 +283,10 @@ AddReg = Font.Cyrillic.Reg
 
 [Font.CP866.120]
 AddReg = Font.Reg.120
+AddReg = Font.Cyrillic.Reg
+
+[Font.CP866.144]
+AddReg = Font.Reg.144
 AddReg = Font.Cyrillic.Reg
 
 ; cp1253/cp869 Modern Greek
@@ -236,6 +298,10 @@ AddReg = Font.Greek.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Greek.Reg
 
+[Font.CP869.144]
+AddReg = Font.Reg.144
+AddReg = Font.Greek.Reg
+
 ; cp874/cp874 (Thai)
 [Font.CP874.96]
 AddReg = Font.Reg.96
@@ -243,6 +309,10 @@ AddReg = Font.Unicode.Reg
 
 [Font.CP874.120]
 AddReg = Font.Reg.120
+AddReg = Font.Unicode.Reg
+
+[Font.CP874.144]
+AddReg = Font.Reg.144
 AddReg = Font.Unicode.Reg
 
 ; cp1258/cp1258 (Vietnamese)
@@ -254,6 +324,10 @@ AddReg = Font.Unicode.Reg
 AddReg = Font.Reg.120
 AddReg = Font.Unicode.Reg
 
+[Font.CP1258.144]
+AddReg = Font.Reg.144
+AddReg = Font.Unicode.Reg
+
 ; cp932/cp932 Japanese
 [Font.CP932.96]
 AddReg = Font.Reg.96
@@ -261,6 +335,10 @@ AddReg = Font.CJK.Reg
 
 [Font.CP932.120]
 AddReg = Font.Reg.120
+AddReg = Font.CJK.Reg
+
+[Font.CP932.144]
+AddReg = Font.Reg.144
 AddReg = Font.CJK.Reg
 
 ; cp936/cp936 Simplified Chinese
@@ -272,6 +350,10 @@ AddReg = Font.CJK.Reg
 AddReg = Font.Reg.120
 AddReg = Font.CJK.Reg
 
+[Font.CP936.144]
+AddReg = Font.Reg.144
+AddReg = Font.CJK.Reg
+
 ; cp949/cp949 Korean
 [Font.CP949.96]
 AddReg = Font.Reg.96
@@ -279,6 +361,10 @@ AddReg = Font.CJK.Reg
 
 [Font.CP949.120]
 AddReg = Font.Reg.120
+AddReg = Font.CJK.Reg
+
+[Font.CP949.144]
+AddReg = Font.Reg.144
 AddReg = Font.CJK.Reg
 
 ; cp950/cp950 Traditional Chinese
@@ -290,6 +376,11 @@ AddReg = Font.CJK.Reg
 AddReg = Font.Reg.120
 AddReg = Font.CJK.Reg
 
+[Font.CP950.144]
+AddReg = Font.Reg.144
+AddReg = Font.CJK.Reg
+
 [Font Sizes]
 Small Fonts = 96
 Large Fonts = 120
+Extra Large Fonts = 144

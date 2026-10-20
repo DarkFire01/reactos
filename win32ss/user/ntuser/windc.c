@@ -644,6 +644,10 @@ UserGetDCEx(PWND Wnd OPTIONAL, HANDLE ClipRegion, ULONG Flags)
       // Need to set ownership so Sync dcattr will work.
       GreSetDCOwner(Dce->hDC, GDI_OBJ_HMGR_POWNED);
       Dce->ptiOwner = GetW32ThreadInfo(); // Set the temp owning
+
+      /* A window the DWM stretches starts with the system font made for 96 DPI */
+      if (Wnd && Wnd->DpiVirtualized)
+          GreSelectThreadDefaultFont(Dce->hDC);
    }
 
    if ( Wnd &&

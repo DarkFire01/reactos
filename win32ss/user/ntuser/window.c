@@ -1719,6 +1719,7 @@ IntFixWindowCoordinates(CREATESTRUCTW* Cs, PWND ParentWindow, DWORD* dwShowMode)
       PMONITOR pMonitor = NULL;
       PRTL_USER_PROCESS_PARAMETERS ProcessParams;
       PPROCESSINFO ppi = PsGetCurrentProcessWin32Process();
+      RECT rcWork;
 
       if (ppi && ppi->hMonitor)
          pMonitor = UserGetMonitorObject(ppi->hMonitor);
@@ -1736,6 +1737,11 @@ IntFixWindowCoordinates(CREATESTRUCTW* Cs, PWND ParentWindow, DWORD* dwShowMode)
 
       ProcessParams = PsGetCurrentProcess()->Peb->ProcessParameters;
 
+      /* A process the DWM stretches places its first window at 96 DPI already */
+      if (ppi)
+          UserDecideProcessDpiVirtualization(ppi);
+      UserDpiGetMonitorRects(pMonitor, NULL, NULL, &rcWork);
+
       if (IS_DEFAULT(Cs->x))
       {
           if (!IS_DEFAULT(Cs->y)) *dwShowMode = Cs->y;
@@ -1749,8 +1755,8 @@ IntFixWindowCoordinates(CREATESTRUCTW* Cs, PWND ParentWindow, DWORD* dwShowMode)
           {
                Cs->x = pMonitor->cWndStack * (UserGetSystemMetrics(SM_CXSIZE) + UserGetSystemMetrics(SM_CXFRAME));
                Cs->y = pMonitor->cWndStack * (UserGetSystemMetrics(SM_CYSIZE) + UserGetSystemMetrics(SM_CYFRAME));
-               if (Cs->x > ((pMonitor->rcWork.right - pMonitor->rcWork.left) / 4) ||
-                   Cs->y > ((pMonitor->rcWork.bottom - pMonitor->rcWork.top) / 4))
+               if (Cs->x > ((rcWork.right - rcWork.left) / 4) ||
+                   Cs->y > ((rcWork.bottom - rcWork.top) / 4))
                {
                   /* reset counter and position */
                   Cs->x = 0;
@@ -1770,8 +1776,8 @@ IntFixWindowCoordinates(CREATESTRUCTW* Cs, PWND ParentWindow, DWORD* dwShowMode)
           }
           else
           {
-              Cs->cx = (pMonitor->rcWork.right - pMonitor->rcWork.left) * 3 / 4;
-              Cs->cy = (pMonitor->rcWork.bottom - pMonitor->rcWork.top) * 3 / 4;
+              Cs->cx = (rcWork.right - rcWork.left) * 3 / 4;
+              Cs->cy = (rcWork.bottom - rcWork.top) * 3 / 4;
           }
       }
       /* neither x nor cx are default. Check the y values .
@@ -1781,7 +1787,7 @@ IntFixWindowCoordinates(CREATESTRUCTW* Cs, PWND ParentWindow, DWORD* dwShowMode)
       else if (IS_DEFAULT(Cs->cy))
       {
           TRACE("Strange use of CW_USEDEFAULT in nHeight\n");
-          Cs->cy = (pMonitor->rcWork.bottom - pMonitor->rcWork.top) * 3 / 4;
+          Cs->cy = (rcWork.bottom - rcWork.top) * 3 / 4;
       }
    }
    else
@@ -1902,6 +1908,18 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
    pWnd->ExStyle = Cs->dwExStyle;
    pWnd->cbwndExtra = pWnd->pcls->cbwndExtra;
    pWnd->pActCtx = acbiBuffer;
+   pWnd->DpiAwareness = UserGetThreadDpiAwareness(pti);
+
+   /* A top level window of a process the DWM stretches lives at 96 DPI, and so do its children */
+   if (!ParentWindow || UserIsDesktopWindow(ParentWindow))
+   {
+       UserDecideProcessDpiVirtualization(pti->ppi);
+       pWnd->DpiVirtualized = UserIsThreadDpiVirtualized(pti);
+   }
+   else if (!UserIsMessageWindow(ParentWindow))
+   {
+       pWnd->DpiVirtualized = ParentWindow->DpiVirtualized;
+   }
 
    if (pti->spDefaultImc && Class->atomClassName != gpsi->atomSysClass[ICLS_BUTTON])
       pWnd->hImc = UserHMGetHandle(pti->spDefaultImc);
@@ -4270,6 +4288,14 @@ NtUserQueryWindow(HWND hWnd, DWORD Index)
       case QUERY_WINDOW_DEFAULT_ICONTEXT: /* default input context handle */
          if (pWnd->head.pti->spDefaultImc)
             Result = (DWORD_PTR)UserHMGetHandle(pWnd->head.pti->spDefaultImc);
+         break;
+
+      case QUERY_WINDOW_DPI_AWARENESS:
+         Result = pWnd->DpiAwareness;
+         break;
+
+      case QUERY_WINDOW_DPI:
+         Result = pWnd->DpiVirtualized ? USER_VIRTUAL_DPI : gpsi->dmLogPixels;
          break;
 
       case QUERY_WINDOW_ACTIVE_IME:

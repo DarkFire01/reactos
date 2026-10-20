@@ -7,6 +7,19 @@
  */
 
 #include <win32k.h>
+
+/* The move and size loop works in the window's coordinates; the cursor lives in the screen's */
+static
+VOID
+UserDpiSetCursorPos(
+    _In_ LONG x,
+    _In_ LONG y)
+{
+    POINT Point = { x, y };
+
+    Point = UserDpiCallerPointToScreen(Point);
+    UserSetCursorPos(Point.x, Point.y, 0, 0, FALSE);
+}
 #include <windowsx.h>
 #include <reactos/dwmport.h>
 
@@ -246,7 +259,7 @@ DefWndStartSizeMove(PWND Wnd, WPARAM wParam, POINT *capturePoint)
        }
        *capturePoint = pt;
     }
-    UserSetCursorPos(pt.x, pt.y, 0, 0, FALSE);
+    UserDpiSetCursorPos(pt.x, pt.y);
     co_IntSendMessage(UserHMGetHandle(Wnd), WM_SETCURSOR, (WPARAM)UserHMGetHandle(Wnd), MAKELONG(hittest, WM_MOUSEMOVE));
     return hittest;
 }
@@ -492,7 +505,7 @@ DefWndDoSizeMove(PWND pwnd, WORD wParam)
 
       if (msg.message == WM_KEYDOWN)
       {
-          UserSetCursorPos(pt.x, pt.y, 0, 0, FALSE);
+          UserDpiSetCursorPos(pt.x, pt.y);
       }
       else
       {
@@ -532,7 +545,7 @@ DefWndDoSizeMove(PWND pwnd, WORD wParam)
                       pr->left = mouseRect.right - width;
                       pr->right = pr->left + width;
                   }
-                  UserSetCursorPos(pt.x, pr->top + capcy / 2, 0, 0, FALSE);
+                  UserDpiSetCursorPos(pt.x, pr->top + capcy / 2);
                   snap = FALSE;
                   dx = dy = 0; /* Don't offset this move */
                   if (DragFullWindows)

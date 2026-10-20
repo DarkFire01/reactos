@@ -240,6 +240,15 @@ NTAPI
 PDEVOBJ_vRelease(
     _Inout_ PPDEVOBJ ppdev);
 
+USHORT
+NTAPI
+PDEVOBJ_usGetDisplayDpi(VOID);
+
+VOID
+NTAPI
+PDEVOBJ_vSetDisplayDpi(
+    _In_ USHORT usDpi);
+
 PSURFACE
 NTAPI
 PDEVOBJ_pSurface(

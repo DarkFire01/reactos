@@ -355,6 +355,77 @@ IntDestroyMenuObject(PMENU Menu, BOOL bRecurse)
    return FALSE;
 }
 
+static HFONT ghMenuFontVirtual = NULL;
+static HFONT ghMenuFontBoldVirtual = NULL;
+
+static
+BOOL
+MenuCreateFonts(
+    _In_ const LOGFONTW *plf,
+    _Out_ HFONT *phFont,
+    _Out_ HFONT *phFontBold)
+{
+    LOGFONTW lf = *plf;
+
+    *phFont = GreCreateFontIndirectW(&lf);
+    lf.lfWeight = min(lf.lfWeight + (FW_BOLD - FW_NORMAL), FW_HEAVY);
+    *phFontBold = GreCreateFontIndirectW(&lf);
+    if (!*phFont || !*phFontBold)
+    {
+        if (*phFont)
+            GreDeleteObject(*phFont);
+        if (*phFontBold)
+            GreDeleteObject(*phFontBold);
+        *phFont = *phFontBold = NULL;
+        return FALSE;
+    }
+    GreSetObjectOwner(*phFont, GDI_OBJ_HMGR_PUBLIC);
+    GreSetObjectOwner(*phFontBold, GDI_OBJ_HMGR_PUBLIC);
+    return TRUE;
+}
+
+/* The menu font for what is drawn now */
+HFONT
+FASTCALL
+MenuGetFont(
+    _In_ BOOL Bold)
+{
+    LOGFONTW lf;
+
+    if (!UserDpiMetricsVirtualized())
+        return Bold ? ghMenuFontBold : ghMenuFont;
+
+    if (!ghMenuFontVirtual)
+    {
+        lf = gspv.ncm.lfMenuFont;
+        lf.lfHeight = UserDpiToVirtual(lf.lfHeight);
+        if (!MenuCreateFonts(&lf, &ghMenuFontVirtual, &ghMenuFontBoldVirtual))
+            return Bold ? ghMenuFontBold : ghMenuFont;
+    }
+    return Bold ? ghMenuFontBoldVirtual : ghMenuFontVirtual;
+}
+
+/* The menu font follows the system's; a new resolution makes new fonts */
+VOID
+FASTCALL
+MenuUpdateFonts(VOID)
+{
+    HFONT hFont, hFontBold;
+
+    if (ghMenuFontVirtual)
+    {
+        GreDeleteObject(ghMenuFontVirtual);
+        GreDeleteObject(ghMenuFontBoldVirtual);
+        ghMenuFontVirtual = ghMenuFontBoldVirtual = NULL;
+    }
+    if (!ghMenuFont || !MenuCreateFonts(&gspv.ncm.lfMenuFont, &hFont, &hFontBold))
+        return;
+    GreDeleteObject(ghMenuFont);
+    GreDeleteObject(ghMenuFontBold);
+    ghMenuFont = hFont;
+    ghMenuFontBold = hFontBold;
+}
+
 BOOL
 MenuInit(VOID)
 {
@@ -1941,7 +2012,7 @@ static void FASTCALL MENU_CalcItemSize( HDC hdc, PITEM lpitem, PMENU Menu, PWND 
         rc.bottom = lpitem->cyItem;
 
         if ( lpitem->fState & MFS_DEFAULT ) {
-            hfontOld = NtGdiSelectFont( hdc, ghMenuFontBold );
+            hfontOld = NtGdiSelectFont( hdc, MenuGetFont(TRUE) );
         }
         if (menuBar) {
             txtheight = DrawTextW( hdc, lpitem->Xlpstr, -1, &rc, DT_SINGLELINE|DT_CALCRECT); 
@@ -2022,7 +2093,7 @@ static void FASTCALL MENU_PopupMenuCalcSize(PMENU Menu, PWND WndOwner)
 
     hdc = UserGetDCEx(NULL, NULL, DCX_CACHE);
 
-    NtGdiSelectFont( hdc, ghMenuFont );
+    NtGdiSelectFont( hdc, MenuGetFont(FALSE) );
 
     start = 0;
     maxX = 0;
@@ -2504,7 +2575,7 @@ static void FASTCALL MENU_DrawMenuItem(PWND Wnd, PMENU Menu, PWND WndOwner, HDC 
 
         if ( lpitem->fState & MFS_DEFAULT )
         {
-            hfontOld = NtGdiSelectFont(hdc, ghMenuFontBold);            
+            hfontOld = NtGdiSelectFont(hdc, MenuGetFont(TRUE));            
         }
 
         if (menuBar) {
@@ -2607,7 +2678,7 @@ static void FASTCALL MENU_DrawPopupMenu(PWND wnd, HDC hdc, PMENU menu )
 
     if (menu && menu->hbrBack) brush = menu->hbrBack;
     if((hPrevBrush = NtGdiSelectBrush( hdc, brush ))
-        && (NtGdiSelectFont( hdc, ghMenuFont)))
+        && (NtGdiSelectFont( hdc, MenuGetFont(FALSE))))
     {
         HPEN hPrevPen;
 
@@ -2697,7 +2768,7 @@ IntDrawMenuBarTemp(PWND pWnd, HDC hDC, LPRECT Rect, PMENU pMenu, HFONT Font)
 
   if (!Font)
   {
-      Font = ghMenuFont;
+      Font = MenuGetFont(FALSE);
   }
 
   if (Rect == NULL || !pMenu)
@@ -2757,7 +2828,7 @@ UINT MENU_DrawMenuBar( HDC hDC, LPRECT lprect, PWND pWnd, BOOL suppress_draw )
 
     if (suppress_draw)
     {
-       hfontOld = NtGdiSelectFont(hDC, ghMenuFont);
+       hfontOld = NtGdiSelectFont(hDC, MenuGetFont(FALSE));
 
        MENU_MenuBarCalcSize(hDC, lprect, lppop, pWnd);
 
@@ -3168,7 +3239,7 @@ static void FASTCALL MENU_SelectItem(PWND pwndOwner, PMENU menu, UINT wIndex,
         top_popup_hmenu = UserHMGetHandle(menu); //pPopupMenu->spmenu
     }
 
-    NtGdiSelectFont( hdc, ghMenuFont );
+    NtGdiSelectFont( hdc, MenuGetFont(FALSE) );
 
      /* Clear previous highlighted item */
     if (menu->iItem != NO_SELECTED_ITEM)
@@ -3381,7 +3452,7 @@ static PMENU FASTCALL MENU_ShowSubPopup(PWND WndOwner, PMENU Menu, BOOL SelectFi
       if (Menu->fFlags & MNF_POPUP) Dc = UserGetDCEx(pWnd, NULL, DCX_USESTYLE);
       else Dc = UserGetDCEx(pWnd, 0, DCX_CACHE | DCX_WINDOW);
 
-      NtGdiSelectFont(Dc, ghMenuFont);
+      NtGdiSelectFont(Dc, MenuGetFont(FALSE));
 
       Item->fState |= MF_HILITE;
       MENU_DrawMenuItem(pWnd, Menu, WndOwner, Dc, Item, Menu->cyMenu,

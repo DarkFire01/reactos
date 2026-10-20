@@ -451,6 +451,86 @@ Cleanup(VOID)
 }
 
 // UserClientDllInitialize
+typedef NTSTATUS (NTAPI *PFN_QUERY_APPLICATION_SETTINGS)(DWORD, HANDLE, const WCHAR *, const WCHAR *,
+                                                         WCHAR *, SIZE_T, SIZE_T *);
+
+/* The first word of a comma separated list Awareness knows, from Value on; USER_DPI_INVALID when none */
+static
+ULONG
+DpiAwarenessFromList(
+    _In_ PCWSTR Value)
+{
+    static const struct
+    {
+        PCWSTR Name;
+        ULONG Awareness;
+    } Names[] =
+    {
+        { L"unaware", USER_DPI_UNAWARE },
+        { L"system", USER_DPI_SYSTEM_AWARE },
+        { L"permonitor", USER_DPI_PER_MONITOR_AWARE },
+        { L"permonitorv2", USER_DPI_PER_MONITOR_AWARE_V2 },
+    };
+    WCHAR Word[32];
+    SIZE_T Length;
+    ULONG i;
+
+    while (*Value)
+    {
+        while (*Value == L' ' || *Value == L',')
+            Value++;
+        Length = 0;
+        while (Value[Length] && Value[Length] != L',' && Value[Length] != L' ')
+            Length++;
+        if (Length && Length < _countof(Word))
+        {
+            RtlCopyMemory(Word, Value, Length * sizeof(WCHAR));
+            Word[Length] = UNICODE_NULL;
+            for (i = 0; i < _countof(Names); i++)
+            {
+                if (!_wcsicmp(Word, Names[i].Name))
+                    return Names[i].Awareness;
+            }
+        }
+        Value += Length;
+    }
+    return USER_DPI_INVALID;
+}
+
+/* What an application's manifest says about DPI is its awareness before it can say anything else */
+static
+VOID
+ApplyManifestDpiAwareness(VOID)
+{
+    PFN_QUERY_APPLICATION_SETTINGS pfnQuery;
+    WCHAR Value[64];
+    ULONG Awareness = USER_DPI_INVALID;
+
+    pfnQuery = (PFN_QUERY_APPLICATION_SETTINGS)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),
+                                                              "RtlQueryActivationContextApplicationSettings");
+    if (!pfnQuery)
+        return;
+
+    if (NT_SUCCESS(pfnQuery(0, NULL, L"http://schemas.microsoft.com/SMI/2016/WindowsSettings", L"dpiAwareness",
+                            Value, _countof(Value), NULL)))
+    {
+        Awareness = DpiAwarenessFromList(Value);
+    }
+
+    if (Awareness == USER_DPI_INVALID &&
+        NT_SUCCESS(pfnQuery(0, NULL, L"http://schemas.microsoft.com/SMI/2005/WindowsSettings", L"dpiAware",
+                            Value, _countof(Value), NULL)))
+    {
+        if (!_wcsicmp(Value, L"true"))
+            Awareness = USER_DPI_SYSTEM_AWARE;
+        else if (!_wcsicmp(Value, L"true/pm") || !_wcsicmp(Value, L"per monitor"))
+            Awareness = USER_DPI_PER_MONITOR_AWARE;
+    }
+
+    if (Awareness != USER_DPI_INVALID)
+        NtUserCallOneParam(Awareness, ONEPARAM_ROUTINE_SETPROCESSDPIAWARENESS);
+}
+
 BOOL
 WINAPI
 DllMain(
@@ -531,6 +611,8 @@ DllMain(
 
             if (!gfServerProcess)
             {
+                ApplyManifestDpiAwareness();
+
                 HINSTANCE hImm32 = NULL;
 
                 if (gpsi && (gpsi->dwSRVIFlags & SRVINFO_IMM32))
