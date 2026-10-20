@@ -36,3 +36,25 @@ KillSystemTimer( HWND hWnd, UINT_PTR IDEvent)
 {
   return NtUserxKillSystemTimer(hWnd, IDEvent);
 }
+
+/*
+ * @implemented
+ */
+UINT_PTR
+WINAPI
+SetCoalescableTimer(
+    _In_opt_ HWND hWnd,
+    _In_ UINT_PTR nIDEvent,
+    _In_ UINT uElapse,
+    _In_opt_ TIMERPROC lpTimerFunc,
+    _In_ ULONG uToleranceDelay)
+{
+    /* The tolerance is only a coalescing hint: 0 is the default, ~0 none, and up to 0x7FFFFFF5 ms otherwise */
+    if (uToleranceDelay > 0x7FFFFFF5 && uToleranceDelay != 0xFFFFFFFF)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
+    return NtUserSetTimer(hWnd, nIDEvent, uElapse, lpTimerFunc);
+}
