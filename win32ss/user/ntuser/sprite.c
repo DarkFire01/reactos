@@ -21,6 +21,7 @@ typedef struct _DWM_SPRITE
     ULONG64 Handle;
     PLOGICAL_SURFACE Surface;   /* none for a window created without a redirection bitmap */
     RECT WindowRect;
+    RECT ClientRect;            /* as last sent */
     BOOLEAN Visible;
     BOOLEAN ActiveFrame;
     BOOLEAN RendersFrame;
@@ -360,6 +361,7 @@ IntDwmComposeWindow(
     Sprite->Window = Window;
     Sprite->Handle = gNextSprite++;
     Sprite->WindowRect = Window->rcWindow;
+    Sprite->ClientRect = Window->rcClient;
     Sprite->Visible = TRUE;
     Sprite->ActiveFrame = (Window->state & WNDS_ACTIVEFRAME) != 0;
     if (!(Window->ExStyle & WS_EX_NOREDIRECTIONBITMAP))
@@ -443,11 +445,21 @@ IntDwmMoveSprite(
     /* A new style can change the frame without moving the window */
     IntDwmSendFrameMargins(Sprite);
     if (RtlEqualMemory(&Sprite->WindowRect, &Window->rcWindow, sizeof(RECT)))
+    {
+        /* A recalculated frame moves the client area inside a window that stays put */
+        if (!RtlEqualMemory(&Sprite->ClientRect, &Window->rcClient, sizeof(RECT)))
+        {
+            Sprite->ClientRect = Window->rcClient;
+            IntDwmSendChildMoveSize(Window);
+            IntDwmSendUpdateSprite(Sprite, FALSE);
+        }
         return;
+    }
 
     Resized = Width != Sprite->WindowRect.right - Sprite->WindowRect.left ||
               Height != Sprite->WindowRect.bottom - Sprite->WindowRect.top;
     Sprite->WindowRect = Window->rcWindow;
+    Sprite->ClientRect = Window->rcClient;
 
     IntDwmSendChildMoveSize(Window);
     if (!Resized || !Sprite->Surface)

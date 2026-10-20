@@ -330,9 +330,45 @@ co_UserNotifyChildrenDpiChange(
     ExFreePoolWithTag(List, USERTAG_WINDOWLIST);
 }
 
+/* A window and everything in it lay out their frames again, for metrics that changed under them */
+static
+VOID
+co_UserRecalculateFrames(
+    _In_ PWND pwnd)
+{
+    PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
+    USER_REFERENCE_ENTRY Ref;
+    HWND *List;
+    HWND *Phwnd;
+    PWND pwndChild;
+
+    /* Only borders, captions, scroll bars and edges follow the metrics; another thread's window gets it posted */
+    if ((pwnd->style & (WS_BORDER | WS_DLGFRAME | WS_THICKFRAME | WS_HSCROLL | WS_VSCROLL)) ||
+        (pwnd->ExStyle & (WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE | WS_EX_DLGMODALFRAME)))
+    {
+        UserRefObjectCo(pwnd, &Ref);
+        co_WinPosSetWindowPos(pwnd, NULL, 0, 0, 0, 0,
+                              SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER |
+                              SWP_FRAMECHANGED | ((pwnd->head.pti != pti) ? SWP_ASYNCWINDOWPOS : 0));
+        UserDerefObjectCo(pwnd);
+    }
+
+    List = IntWinListChildren(pwnd);
+    if (!List)
+        return;
+    for (Phwnd = List; *Phwnd; Phwnd++)
+    {
+        pwndChild = ValidateHwndNoErr(*Phwnd);
+        if (pwndChild)
+            co_UserRecalculateFrames(pwndChild);
+    }
+    ExFreePoolWithTag(List, USERTAG_WINDOWLIST);
+}
+
 /*
  * After the displays changed resolution, the windows that follow their monitor's are told and
- * offered a rectangle as large as theirs at the new one. The others keep the one they started with.
+ * offered a rectangle as large as theirs at the new one. The others keep the one they started with,
+ * and every window that is not stretched lays out its frame again.
  */
 VOID
 FASTCALL
@@ -380,6 +416,14 @@ co_UserNotifyDpiChange(
         pwnd = ValidateHwndNoErr(*Phwnd);
         if (Awareness == USER_DPI_PER_MONITOR_AWARE_V2 && pwnd)
             co_UserNotifyChildrenDpiChange(pwnd, WM_DPICHANGED_AFTERPARENT);
+    }
+
+    /* Frames and scroll bars were laid out with the old metrics; a stretched window keeps its own */
+    for (Phwnd = List; *Phwnd; Phwnd++)
+    {
+        pwnd = ValidateHwndNoErr(*Phwnd);
+        if (pwnd && !pwnd->DpiVirtualized)
+            co_UserRecalculateFrames(pwnd);
     }
     ExFreePoolWithTag(List, USERTAG_WINDOWLIST);
 }
