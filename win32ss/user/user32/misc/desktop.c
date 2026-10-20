@@ -129,6 +129,9 @@ RealGetSystemMetrics(int nIndex)
 {
   //FIXME("Global Server Data -> %x\n",gpsi);
   if (nIndex < 0 || nIndex >= SM_CMETRICS) return 0;
+  /* An application the DWM stretches sees the metrics at 96 DPI */
+  if (UserGetThreadVirtualDpi() && (UserDpiIsSizeMetric(nIndex) || UserDpiIsScreenMetric(nIndex)))
+      return MulDiv(gpsi->aiSysMet[nIndex], USER_VIRTUAL_DPI, gpsi->dmLogPixels);
   return gpsi->aiSysMet[nIndex];
 }
 

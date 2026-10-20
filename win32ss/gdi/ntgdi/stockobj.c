@@ -99,6 +99,25 @@ static LOGFONTW DefaultGuiFont =
 
 HGDIOBJ StockObjects[NB_STOCK_OBJECTS];
 
+/* The stock fonts with the heights CreateStockFonts chose for 96 DPI */
+static const struct
+{
+    ULONG iObject;
+    const LOGFONTW *plf;
+} gStockFonts[] =
+{
+    { OEM_FIXED_FONT, &OEMFixedFont },
+    { ANSI_FIXED_FONT, &AnsiFixedFont },
+    { ANSI_VAR_FONT, &AnsiVarFont },
+    { SYSTEM_FONT, &SystemFont },
+    { DEVICE_DEFAULT_FONT, &DeviceDefaultFont },
+    { SYSTEM_FIXED_FONT, &SystemFixedFont },
+    { DEFAULT_GUI_FONT, &DefaultGuiFont },
+};
+
+/* The same fonts kept at 96 DPI, for applications the DWM stretches */
+static HGDIOBJ gVirtualStockFonts[_countof(gStockFonts)];
+
 static
 HPEN
 FASTCALL
@@ -147,6 +166,7 @@ CreateStockFonts(void)
     USHORT ActiveCodePage, OemCodePage;
     BYTE bActiveCharSet, bOemCharSet;
     BOOL bIsCJK;
+    ULONG i;
     static const WCHAR SimSun[] = { 0x5B8B, 0x4F53, 0 };
     static const WCHAR MingLiU[] = { 0x7D30, 0x660E, 0x9AD4, 0 };
     static const WCHAR Batang[] = { 0xBC14, 0xD0D5, 0 };
@@ -231,13 +251,74 @@ CreateStockFonts(void)
     SystemFixedFont.lfCharSet = bActiveCharSet;
     DefaultGuiFont.lfCharSet = bActiveCharSet;
 
-    TextIntCreateFontIndirect(&OEMFixedFont, (HFONT*)&StockObjects[OEM_FIXED_FONT]);
-    TextIntCreateFontIndirect(&AnsiFixedFont, (HFONT*)&StockObjects[ANSI_FIXED_FONT]);
-    TextIntCreateFontIndirect(&AnsiVarFont, (HFONT*)&StockObjects[ANSI_VAR_FONT]);
-    TextIntCreateFontIndirect(&SystemFont, (HFONT*)&StockObjects[SYSTEM_FONT]);
-    TextIntCreateFontIndirect(&DeviceDefaultFont, (HFONT*)&StockObjects[DEVICE_DEFAULT_FONT]);
-    TextIntCreateFontIndirect(&SystemFixedFont, (HFONT*)&StockObjects[SYSTEM_FIXED_FONT]);
-    TextIntCreateFontIndirect(&DefaultGuiFont, (HFONT*)&StockObjects[DEFAULT_GUI_FONT]);
+    for (i = 0; i < _countof(gStockFonts); i++)
+    {
+        LOGFONTW lf = *gStockFonts[i].plf;
+        TextIntCreateFontIndirect(&lf, (HFONT*)&gVirtualStockFonts[i]);
+        if (gVirtualStockFonts[i])
+            GDIOBJ_ConvertToStockObj(&gVirtualStockFonts[i]);
+        lf.lfHeight = EngMulDiv(lf.lfHeight, PDEVOBJ_usGetDisplayDpi(), 96);
+        TextIntCreateFontIndirect(&lf, (HFONT*)&StockObjects[gStockFonts[i].iObject]);
+    }
+}
+
+/* The stock object the calling thread sees: the fonts at 96 DPI for an application the DWM stretches */
+HGDIOBJ
+FASTCALL
+GreGetStockObjectForThread(
+    _In_ INT Object)
+{
+    ULONG i;
+
+    if (Object < 0 || Object >= NB_STOCK_OBJECTS)
+        return NULL;
+    if (UserIsThreadDpiVirtualized(PsGetCurrentThreadWin32Thread()))
+    {
+        for (i = 0; i < _countof(gStockFonts); i++)
+        {
+            if (gStockFonts[i].iObject == (ULONG)Object && gVirtualStockFonts[i])
+                return gVirtualStockFonts[i];
+        }
+    }
+    return StockObjects[Object];
+}
+
+/* A DC handed to a window the DWM stretches trades the default system font for the one at 96 DPI */
+VOID
+FASTCALL
+GreSelectThreadDefaultFont(
+    _In_ HDC hdc)
+{
+    PDC pdc;
+    BOOL bDefault;
+
+    pdc = DC_LockDc(hdc);
+    if (!pdc)
+        return;
+    bDefault = pdc->dcattr.hlfntNew == StockObjects[SYSTEM_FONT];
+    DC_UnlockDc(pdc);
+
+    if (bDefault)
+        NtGdiSelectFont(hdc, GreGetStockObjectForThread(SYSTEM_FONT));
+}
+
+/* The stock fonts are as tall at a new display resolution as they were at the old one, in points */
+VOID FASTCALL
+IntUpdateStockFontsForDpi(VOID)
+{
+    PTEXTOBJ TextObj;
+    ULONG i;
+
+    for (i = 0; i < _countof(gStockFonts); i++)
+    {
+        TextObj = TEXTOBJ_LockText(StockObjects[gStockFonts[i].iObject]);
+        if (!TextObj)
+            continue;
+        TextObj->logfont.elfEnumLogfontEx.elfLogFont.lfHeight =
+            EngMulDiv(gStockFonts[i].plf->lfHeight, PDEVOBJ_usGetDisplayDpi(), 96);
+        TextObj->fl &= ~TEXTOBJECT_INIT;
+        TEXTOBJ_UnlockText(TextObj);
+    }
 }
 
 /*!
@@ -293,7 +374,7 @@ NtGdiGetStockObject(INT Object)
 {
     DPRINT("NtGdiGetStockObject index %d\n", Object);
 
-    return ((Object < 0) || (NB_STOCK_OBJECTS <= Object)) ? NULL : StockObjects[Object];
+    return GreGetStockObjectForThread(Object);
 }
 
 VOID FASTCALL

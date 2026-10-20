@@ -19,11 +19,14 @@ BOOL gbSpiInitialized = FALSE;
 BOOL g_PaintDesktopVersion = FALSE;
 BOOL g_bWindowSnapEnabled = TRUE;
 
-// HACK! We initialize SPI before we have a proper surface to get this from.
-#define dpi 96
-//(pPrimarySurface->GDIInfo.ulLogPixelsY)
-#define REG2METRIC(reg) (reg > 0 ? reg : ((-(reg) * dpi + 720) / 1440))
-#define METRIC2REG(met) (-((((met) * 1440)- 0) / dpi))
+/*
+ * The displays' resolution, and the one the user's metrics were last written at. A metric in the
+ * registry is twips when negative, else pixels at that older resolution.
+ */
+static INT giSpiDpi = 96;
+static INT giSpiAppliedDpi = 96;
+#define REG2METRIC(reg) (reg > 0 ? EngMulDiv(reg, giSpiDpi, giSpiAppliedDpi) : ((-(reg) * giSpiDpi + 720) / 1440))
+#define METRIC2REG(met) (-((((met) * 1440)- 0) / giSpiDpi))
 
 #define REQ_INTERACTIVE_WINSTA(err) \
 do { \
@@ -179,7 +182,8 @@ SpiLoadMetric(PCWSTR pwszValue, INT iValue)
 {
     INT iRegVal;
 
-    iRegVal = SpiLoadInt(KEY_METRIC, pwszValue, METRIC2REG(iValue));
+    /* The default is in pixels at 96 DPI */
+    iRegVal = SpiLoadInt(KEY_METRIC, pwszValue, -(iValue * 1440 / 96));
     TRACE("Loaded metric setting '%S', iValue=%d(reg:%d), ret=%d(reg:%d)\n",
            pwszValue, iValue, METRIC2REG(iValue), REG2METRIC(iRegVal), iRegVal);
     return REG2METRIC(iRegVal);
@@ -196,8 +200,15 @@ SpiLoadFont(PLOGFONTW plfOut, LPWSTR pwszValueName, PLOGFONTW plfDefault)
                                  REG_BINARY,
                                  plfOut,
                                  sizeof(LOGFONTW));
-    if (!bResult)
+    if (bResult)
+    {
+        plfOut->lfHeight = EngMulDiv(plfOut->lfHeight, giSpiDpi, giSpiAppliedDpi);
+    }
+    else
+    {
         *plfOut = *plfDefault;
+        plfOut->lfHeight = EngMulDiv(plfOut->lfHeight, giSpiDpi, 96);
+    }
 }
 
 static
@@ -216,10 +227,10 @@ SpiFixupValues(VOID)
     if (gspv.iDblClickTime == 0) gspv.iDblClickTime = 500;
 
     // FIXME: Hack!!!
-    gspv.tmMenuFont.tmHeight = 11;
+    gspv.tmMenuFont.tmHeight = EngMulDiv(11, giSpiDpi, 96);
     gspv.tmMenuFont.tmExternalLeading = 2;
 
-    gspv.tmCaptionFont.tmHeight = 11;
+    gspv.tmCaptionFont.tmHeight = EngMulDiv(11, giSpiDpi, 96);
     gspv.tmCaptionFont.tmExternalLeading = 2;
 
 }
@@ -239,6 +250,24 @@ SpiUpdatePerUserSystemParameters(VOID)
 
     /* Clear the structure */
     RtlZeroMemory(&gspv, sizeof(gspv));
+
+    /* A user's own resolution replaces the machine's from their logon on, as it does on Windows */
+    giSpiDpi = (INT)SpiLoadDWord(KEY_DESKTOP, L"LogPixels", PDEVOBJ_usGetDisplayDpi());
+    if (giSpiDpi != PDEVOBJ_usGetDisplayDpi())
+    {
+        PDEVOBJ_vSetDisplayDpi((USHORT)giSpiDpi);
+        IntUpdateStockFontsForDpi();
+    }
+    giSpiDpi = PDEVOBJ_usGetDisplayDpi();
+    if (gpsi)
+        gpsi->dmLogPixels = (USHORT)giSpiDpi;
+    giSpiAppliedDpi = (INT)SpiLoadDWord(KEY_METRIC, L"AppliedDPI", 96);
+    if (giSpiAppliedDpi < 72 || giSpiAppliedDpi > 480)
+        giSpiAppliedDpi = 96;
+
+    /* From 144 DPI on the DWM stretches unaware applications, unless the user asked for XP style scaling */
+    UserSetDpiVirtualizationPolicy(SpiLoadDWord(L"Software\\Microsoft\\Windows\\DWM", L"UseDpiScaling",
+                                                giSpiDpi >= 144) != 0);
 
     /* Load mouse settings */
     gspv.caiMouse.FirstThreshold = SpiLoadMouse(VAL_MOUSE1, 6);
@@ -303,8 +332,8 @@ SpiUpdatePerUserSystemParameters(VOID)
     gspv.dwUserPrefMask = SpiLoadUserPrefMask(UPM_DEFAULT);
     gspv.bMouseClickLock = (gspv.dwUserPrefMask & UPM_CLICKLOCK) != 0;
     gspv.bMouseCursorShadow = (gspv.dwUserPrefMask & UPM_CURSORSHADOW) != 0;
-    gspv.bFontSmoothing = SpiLoadInt(KEY_DESKTOP, VAL_FONTSMOOTHING, 0) == 2;
-    gspv.uiFontSmoothingType = SpiLoadDWord(KEY_DESKTOP, VAL_FONTSMOOTHINGTYPE, 1);
+    gspv.bFontSmoothing = SpiLoadInt(KEY_DESKTOP, VAL_FONTSMOOTHING, 2) == 2;
+    gspv.uiFontSmoothingType = SpiLoadDWord(KEY_DESKTOP, VAL_FONTSMOOTHINGTYPE, FE_FONTSMOOTHINGCLEARTYPE);
     gspv.uiFontSmoothingContrast = SpiLoadDWord(KEY_DESKTOP, VAL_FONTSMOOTHINGCONTRAST, 1400);
     gspv.uiFontSmoothingOrientation = SpiLoadDWord(KEY_DESKTOP, VAL_FONTSMOOTHINGORIENTATION, 1);
 #if (_WIN32_WINNT >= 0x0600)
@@ -343,6 +372,7 @@ SpiUpdatePerUserSystemParameters(VOID)
     gspv.soundsentry.cbSize = sizeof(SOUNDSENTRYW);
     gspv.highcontrast.cbSize = sizeof(HIGHCONTRASTW);
     gspv.animationinfo.cbSize = sizeof(ANIMATIONINFO);
+    gspv.animationinfo.iMinAnimate = SpiLoadInt(KEY_METRIC, L"MinAnimate", TRUE);
 
     g_bWindowSnapEnabled = SpiLoadInt(KEY_DESKTOP, VAL_SNAP_ENABLED, TRUE);
     gspv.bDockMoving = SpiLoadInt(KEY_DESKTOP, VAL_SNAP_DOCKMOVING, TRUE);
@@ -383,11 +413,16 @@ NtUserUpdatePerUserSystemParameters(
     BOOL bEnable)
 {
     BOOL bResult;
+    UINT OldDpi;
 
     TRACE("Enter NtUserUpdatePerUserSystemParameters\n");
     UserEnterExclusive();
 
+    /* A logon or a new setting can change the displays' resolution under windows that already exist */
+    OldDpi = PDEVOBJ_usGetDisplayDpi();
     SpiUpdatePerUserSystemParameters();
+    MenuUpdateFonts();
+    co_UserNotifyDpiChange(OldDpi, PDEVOBJ_usGetDisplayDpi());
     if(bEnable)
         g_PaintDesktopVersion = SpiLoadDWord(KEY_DESKTOP, VAL_PAINTDESKVER, 0);
     else
@@ -446,14 +481,58 @@ SpiStoreMetric(LPCWSTR pwszValue, INT iValue)
     SpiStoreSzInt(KEY_METRIC, pwszValue, METRIC2REG(iValue));
 }
 
+/* What an application the DWM stretches reads instead: the settings at 96 DPI */
+static
+BOOL
+SpiIsCallerVirtualized(VOID)
+{
+    return UserIsThreadDpiVirtualized(PsGetCurrentThreadWin32Thread());
+}
+
+static
+VOID
+SpiVirtualizeFont(
+    _Inout_ PLOGFONTW plf)
+{
+    plf->lfHeight = UserDpiToVirtual(plf->lfHeight);
+}
+
+static
+VOID
+SpiVirtualizeNonClientMetrics(
+    _Inout_ PNONCLIENTMETRICSW pncm)
+{
+    pncm->iBorderWidth = UserDpiToVirtual(pncm->iBorderWidth);
+    pncm->iScrollWidth = UserDpiToVirtual(pncm->iScrollWidth);
+    pncm->iScrollHeight = UserDpiToVirtual(pncm->iScrollHeight);
+    pncm->iCaptionWidth = UserDpiToVirtual(pncm->iCaptionWidth);
+    pncm->iCaptionHeight = UserDpiToVirtual(pncm->iCaptionHeight);
+    pncm->iSmCaptionWidth = UserDpiToVirtual(pncm->iSmCaptionWidth);
+    pncm->iSmCaptionHeight = UserDpiToVirtual(pncm->iSmCaptionHeight);
+    pncm->iMenuWidth = UserDpiToVirtual(pncm->iMenuWidth);
+    pncm->iMenuHeight = UserDpiToVirtual(pncm->iMenuHeight);
+#if (WINVER >= 0x0600)
+    pncm->iPaddedBorderWidth = UserDpiToVirtual(pncm->iPaddedBorderWidth);
+#endif
+    SpiVirtualizeFont(&pncm->lfCaptionFont);
+    SpiVirtualizeFont(&pncm->lfSmCaptionFont);
+    SpiVirtualizeFont(&pncm->lfMenuFont);
+    SpiVirtualizeFont(&pncm->lfStatusFont);
+    SpiVirtualizeFont(&pncm->lfMessageFont);
+}
+
+/* Fonts stay at the resolution the user's other metrics were written at */
 static
 VOID
 SpiStoreFont(PCWSTR pwszValue, LOGFONTW* plogfont)
 {
+    LOGFONTW lf = *plogfont;
+
+    lf.lfHeight = EngMulDiv(lf.lfHeight, giSpiAppliedDpi, giSpiDpi);
     RegWriteUserSetting(KEY_METRIC,
                         pwszValue,
                         REG_BINARY,
-                        plogfont,
+                        &lf,
                         sizeof(LOGFONTW));
 }
 
@@ -945,7 +1024,12 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
             return SpiSetInt(&gspv.iDblClickHeight, uiParam, KEY_MOUSE, VAL_DBLCLKHEIGHT, fl);
 
         case SPI_GETICONTITLELOGFONT:
-            return SpiGet(pvParam, &gspv.im.lfFont, sizeof(LOGFONTW), fl);
+        {
+            LOGFONTW lf = gspv.im.lfFont;
+            if (SpiIsCallerVirtualized())
+                SpiVirtualizeFont(&lf);
+            return SpiGet(pvParam, &lf, sizeof(LOGFONTW), fl);
+        }
 
         case SPI_SETICONTITLELOGFONT:
             if (!SpiSet(&gspv.im.lfFont, pvParam, sizeof(LOGFONTW), fl))
@@ -977,7 +1061,10 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
 
         case SPI_GETNONCLIENTMETRICS:
         {
-            return SpiGet(pvParam, &gspv.ncm, sizeof(NONCLIENTMETRICSW), fl);
+            NONCLIENTMETRICSW ncm = gspv.ncm;
+            if (SpiIsCallerVirtualized())
+                SpiVirtualizeNonClientMetrics(&ncm);
+            return SpiGet(pvParam, &ncm, sizeof(NONCLIENTMETRICSW), fl);
         }
 
         case SPI_SETNONCLIENTMETRICS:
@@ -989,6 +1076,7 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
 
             if (!SpiSet(&gspv.ncm, metrics, sizeof(NONCLIENTMETRICSW), fl))
                 return 0;
+            MenuUpdateFonts();
 
             if (fl & SPIF_UPDATEINIFILE)
             {
@@ -1019,7 +1107,14 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
 
         case SPI_GETMINIMIZEDMETRICS:
         {
-            return SpiGet(pvParam, &gspv.mm, sizeof(MINIMIZEDMETRICS), fl);
+            MINIMIZEDMETRICS mm = gspv.mm;
+            if (SpiIsCallerVirtualized())
+            {
+                mm.iWidth = UserDpiToVirtual(mm.iWidth);
+                mm.iHorzGap = UserDpiToVirtual(mm.iHorzGap);
+                mm.iVertGap = UserDpiToVirtual(mm.iVertGap);
+            }
+            return SpiGet(pvParam, &mm, sizeof(MINIMIZEDMETRICS), fl);
         }
 
         case SPI_SETMINIMIZEDMETRICS:
@@ -1050,7 +1145,14 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
 
         case SPI_GETICONMETRICS:
         {
-            return SpiGet(pvParam, &gspv.im, sizeof(ICONMETRICSW), fl);
+            ICONMETRICSW im = gspv.im;
+            if (SpiIsCallerVirtualized())
+            {
+                im.iHorzSpacing = UserDpiToVirtual(im.iHorzSpacing);
+                im.iVertSpacing = UserDpiToVirtual(im.iVertSpacing);
+                SpiVirtualizeFont(&im.lfFont);
+            }
+            return SpiGet(pvParam, &im, sizeof(ICONMETRICSW), fl);
         }
 
         case SPI_SETICONMETRICS:
@@ -1076,11 +1178,15 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
         case SPI_GETWORKAREA:
         {
             PMONITOR pmonitor = UserGetPrimaryMonitor();
+            RECT rcWork;
 
             if(!pmonitor)
                 return 0;
 
-            return SpiGet(pvParam, &pmonitor->rcWork, sizeof(RECTL), fl);
+            rcWork = pmonitor->rcWork;
+            if (SpiIsCallerVirtualized())
+                UserDpiRectToVirtual(&rcWork);
+            return SpiGet(pvParam, &rcWork, sizeof(RECTL), fl);
         }
 
         case SPI_SETWORKAREA:
@@ -1418,9 +1524,7 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
             if (!SpiSet(&gspv.animationinfo, pvParam, sizeof(ANIMATIONINFO), fl))
                 return 0;
             if (fl & SPIF_UPDATEINIFILE)
-            {
-                // FIXME: What to do?
-            }
+                SpiStoreSzInt(KEY_METRIC, L"MinAnimate", gspv.animationinfo.iMinAnimate);
             return (UINT_PTR)KEY_DESKTOP;
 
         case SPI_GETFONTSMOOTHING:

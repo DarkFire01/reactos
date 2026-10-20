@@ -258,15 +258,15 @@ UserSendMouseInput(MOUSEINPUT *pmi, BOOL bInjected)
         }
         else if (pmi->dwFlags & MOUSEEVENTF_VIRTUALDESK)
         {
-            /* Absolute move in virtual screen units */
-            ptCursor.x = pmi->dx * UserGetSystemMetrics(SM_CXVIRTUALSCREEN) >> 16;
-            ptCursor.y = pmi->dy * UserGetSystemMetrics(SM_CYVIRTUALSCREEN) >> 16;
+            /* Absolute move in virtual screen units, real pixels even for a caller the DWM stretches */
+            ptCursor.x = pmi->dx * gpsi->aiSysMet[SM_CXVIRTUALSCREEN] >> 16;
+            ptCursor.y = pmi->dy * gpsi->aiSysMet[SM_CYVIRTUALSCREEN] >> 16;
         }
         else
         {
-            /* Absolute move in primary monitor units */
-            ptCursor.x = pmi->dx * UserGetSystemMetrics(SM_CXSCREEN) >> 16;
-            ptCursor.y = pmi->dy * UserGetSystemMetrics(SM_CYSCREEN) >> 16;
+            /* Absolute move in primary monitor units, real pixels too */
+            ptCursor.x = pmi->dx * gpsi->aiSysMet[SM_CXSCREEN] >> 16;
+            ptCursor.y = pmi->dy * gpsi->aiSysMet[SM_CYSCREEN] >> 16;
         }
     }
 

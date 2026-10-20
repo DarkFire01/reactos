@@ -9,6 +9,10 @@
 
 #include <shtypes.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum
 {
     MDT_EFFECTIVE_DPI,
@@ -62,3 +66,7 @@ typedef enum
 
 UINT WINAPI GetDpiForShellUIComponent(_In_ SHELL_UI_COMPONENT);
 #endif // (NTDDI_VERSION >= NTDDI_WIN10)
+
+#ifdef __cplusplus
+}
+#endif

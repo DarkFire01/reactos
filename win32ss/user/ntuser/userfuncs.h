@@ -249,6 +249,11 @@ IntDwmWindowRectChanged(
 
 VOID
 FASTCALL
+IntDwmScaleChanged(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
 IntDwmSpriteWinEvent(
     _In_ DWORD Event,
     _In_ PWND Window);
@@ -301,6 +306,127 @@ co_IntDwmTrackCaptionButton(
 VOID
 FASTCALL
 IntDwmDecomposeAll(VOID);
+
+/************************* dpi.c *************************/
+
+ULONG
+FASTCALL
+UserGetThreadDpiAwareness(
+    _In_ PTHREADINFO pti);
+
+BOOL
+FASTCALL
+UserSetProcessDpiAwareness(
+    _In_ ULONG Awareness);
+
+ULONG
+FASTCALL
+UserGetProcessDpiAwareness(
+    _In_opt_ HANDLE hProcess);
+
+ULONG
+FASTCALL
+UserSetThreadDpiAwareness(
+    _In_ ULONG Awareness);
+
+VOID
+FASTCALL
+co_UserNotifyDpiChange(
+    _In_ UINT OldDpi,
+    _In_ UINT NewDpi);
+
+VOID
+FASTCALL
+UserSetDpiVirtualizationPolicy(
+    _In_ BOOLEAN bEnabled);
+
+BOOLEAN
+FASTCALL
+UserIsDpiVirtualizationActive(VOID);
+
+BOOLEAN
+FASTCALL
+UserIsThreadDpiVirtualized(
+    _In_opt_ PTHREADINFO pti);
+
+VOID
+FASTCALL
+UserUpdateClientDpi(
+    _In_ PTHREADINFO pti);
+
+VOID
+FASTCALL
+UserDecideProcessDpiVirtualization(
+    _In_ PPROCESSINFO ppi);
+
+INT
+FASTCALL
+UserDpiToVirtual(
+    _In_ INT Value);
+
+INT
+FASTCALL
+UserDpiFromVirtual(
+    _In_ INT Value);
+
+VOID
+FASTCALL
+UserDpiRectToVirtual(
+    _Inout_ PRECT Rect);
+
+VOID
+FASTCALL
+UserDpiRectFromVirtual(
+    _Inout_ PRECT Rect);
+
+/* THREADINFO.DpiMetricsScope */
+#define USER_DPI_SCOPE_THREAD   0   /* the thread's own view */
+#define USER_DPI_SCOPE_SCREEN   1   /* the screen's pixels */
+#define USER_DPI_SCOPE_VIRTUAL  2   /* USER_VIRTUAL_DPI */
+
+BOOLEAN
+FASTCALL
+UserDpiMetricsVirtualized(VOID);
+
+ULONG
+FASTCALL
+UserDpiBeginWindowScope(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
+UserDpiEndWindowScope(
+    _In_ ULONG Old);
+
+POINT
+FASTCALL
+UserDpiScreenPointToWindow(
+    _In_ PWND Window,
+    _In_ POINT Point);
+
+POINT
+FASTCALL
+UserDpiWindowPointToScreen(
+    _In_ PWND Window,
+    _In_ POINT Point);
+
+POINT
+FASTCALL
+UserDpiScreenPointToCaller(
+    _In_ POINT Point);
+
+POINT
+FASTCALL
+UserDpiCallerPointToScreen(
+    _In_ POINT Point);
+
+VOID
+FASTCALL
+UserDpiGetMonitorRects(
+    _In_ PMONITOR pMonitor,
+    _In_opt_ PWND Window,
+    _Out_opt_ PRECT rcMonitor,
+    _Out_opt_ PRECT rcWork);
 
 /************************* dcomp.c *************************/
 

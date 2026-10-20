@@ -781,8 +781,7 @@ NtUserGetMonitorInfo(
     }
 
     /* Fill monitor info */
-    MonitorInfo.rcMonitor = pMonitor->rcMonitor;
-    MonitorInfo.rcWork = pMonitor->rcWork;
+    UserDpiGetMonitorRects(pMonitor, NULL, (PRECT)&MonitorInfo.rcMonitor, (PRECT)&MonitorInfo.rcWork);
     MonitorInfo.dwFlags = 0;
     if (pMonitor->IsPrimary)
         MonitorInfo.dwFlags |= MONITORINFOF_PRIMARY;

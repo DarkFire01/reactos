@@ -958,6 +958,25 @@ GetAncestor(_In_ HWND hwnd, _In_ UINT uType)
     return NtUserGetAncestor(hwnd, uType);
 }
 
+/* A window's rectangle as the calling thread sees it, when only one of them lives at 96 DPI */
+static
+VOID
+DpiRectForCaller(
+    _In_ PWND Wnd,
+    _Inout_ LPRECT Rect)
+{
+    UINT From, To;
+
+    if (Wnd->DpiVirtualized == (UserGetThreadVirtualDpi() != 0))
+        return;
+    From = Wnd->DpiVirtualized ? USER_VIRTUAL_DPI : gpsi->dmLogPixels;
+    To = Wnd->DpiVirtualized ? gpsi->dmLogPixels : USER_VIRTUAL_DPI;
+    Rect->left = MulDiv(Rect->left, To, From);
+    Rect->top = MulDiv(Rect->top, To, From);
+    Rect->right = MulDiv(Rect->right, To, From);
+    Rect->bottom = MulDiv(Rect->bottom, To, From);
+}
+
 /*
  * @implemented
  */
@@ -992,6 +1011,7 @@ GetClientRect(HWND hWnd, LPRECT lpRect)
         lpRect->right = GetSystemMetrics(SM_CXSCREEN);
         lpRect->bottom = GetSystemMetrics(SM_CYSCREEN);
 */    }
+    DpiRectForCaller(Wnd, lpRect);
     return TRUE;
 }
 
@@ -1290,6 +1310,7 @@ GetWindowRect(HWND hWnd,
         lpRect->right = GetSystemMetrics(SM_CXSCREEN);
         lpRect->bottom = GetSystemMetrics(SM_CYSCREEN);
 */    }
+    DpiRectForCaller(Wnd, lpRect);
     return TRUE;
 }
 

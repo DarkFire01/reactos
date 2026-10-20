@@ -50,6 +50,7 @@
 #include <ntgdityp.h>
 #include <ntgdi.h>
 #include <ntgdihdl.h>
+#include <userdpi.h>
 
 /* Private GDI32 Header */
 #include "gdi32p.h"

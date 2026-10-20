@@ -111,7 +111,7 @@ static const unsigned int message_pointer_flags[] =
     /* 0x2c0 - 0x2df */
     0,
     /* 0x2e0 - 0x2ff */
-    0,
+    SET(WM_DPICHANGED),
     /* 0x300 - 0x31f */
     SET(WM_ASKCBFORMATNAME)
 };
@@ -162,6 +162,7 @@ static MSGMEMORY g_MsgMemory[] =
     { WM_HELP, sizeof(HELPINFO), MMS_FLAG_READWRITE },
     { WM_NEXTMENU, sizeof(MDINEXTMENU), MMS_FLAG_READWRITE },
     { WM_DEVICECHANGE, MMS_SIZE_SPECIAL, MMS_FLAG_READ },
+    { WM_DPICHANGED, sizeof(RECT), MMS_FLAG_READ },
 };
 
 static PMSGMEMORY FASTCALL

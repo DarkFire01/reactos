@@ -1871,6 +1871,11 @@ typedef enum tagHANDEDNESS
 #define WM_MOUSEHOVER               0x02A1
 #define WM_MOUSELEAVE               0x02A3
 
+#define WM_DPICHANGED               0x02E0
+#define WM_DPICHANGED_BEFOREPARENT  0x02E2
+#define WM_DPICHANGED_AFTERPARENT   0x02E3
+#define WM_GETDPISCALEDSIZE         0x02E4
+
 #if (_WIN32_WINNT >= 0x0501)
 #define WTS_CONSOLE_CONNECT 0x1
 #define WTS_CONSOLE_DISCONNECT 0x2
@@ -5083,11 +5088,37 @@ BOOL WINAPI GetMonitorInfoW(_In_ HMONITOR, _Inout_ LPMONITORINFO);
 
 #if (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
 #define USER_DEFAULT_SCREEN_DPI 96
+BOOL WINAPI SetProcessDPIAware(VOID);
+BOOL WINAPI IsProcessDPIAware(VOID);
+BOOL WINAPI LogicalToPhysicalPoint(_In_ HWND hWnd, _Inout_ LPPOINT lpPoint);
+BOOL WINAPI PhysicalToLogicalPoint(_In_ HWND hWnd, _Inout_ LPPOINT lpPoint);
 #endif /* _WIN32_WINNT >= _WIN32_WINNT_VISTA */
+
+#if (_WIN32_WINNT >= _WIN32_WINNT_WINBLUE)
+BOOL WINAPI LogicalToPhysicalPointForPerMonitorDPI(_In_opt_ HWND hWnd, _Inout_ LPPOINT lpPoint);
+BOOL WINAPI PhysicalToLogicalPointForPerMonitorDPI(_In_opt_ HWND hWnd, _Inout_ LPPOINT lpPoint);
+#endif /* _WIN32_WINNT >= _WIN32_WINNT_WINBLUE */
 
 #if (_WIN32_WINNT >= 0x0605) /* Windows 10 pre-Threshold */
 UINT WINAPI GetDpiForSystem(VOID);
 UINT WINAPI GetDpiForWindow(_In_ HWND hwnd);
+UINT WINAPI GetSystemDpiForProcess(_In_ HANDLE hProcess);
+int WINAPI GetSystemMetricsForDpi(_In_ int nIndex, _In_ UINT dpi);
+BOOL WINAPI AdjustWindowRectExForDpi(_Inout_ LPRECT lpRect, _In_ DWORD dwStyle, _In_ BOOL bMenu, _In_ DWORD dwExStyle, _In_ UINT dpi);
+BOOL WINAPI SystemParametersInfoForDpi(_In_ UINT uiAction, _In_ UINT uiParam, _Pre_maybenull_ _Post_valid_ PVOID pvParam, _In_ UINT fWinIni, _In_ UINT dpi);
+BOOL WINAPI EnableNonClientDpiScaling(_In_ HWND hwnd);
+BOOL WINAPI SetProcessDpiAwarenessContext(_In_ DPI_AWARENESS_CONTEXT value);
+DPI_AWARENESS_CONTEXT WINAPI GetThreadDpiAwarenessContext(VOID);
+DPI_AWARENESS_CONTEXT WINAPI SetThreadDpiAwarenessContext(_In_ DPI_AWARENESS_CONTEXT dpiContext);
+DPI_AWARENESS_CONTEXT WINAPI GetWindowDpiAwarenessContext(_In_ HWND hwnd);
+DPI_AWARENESS_CONTEXT WINAPI GetDpiAwarenessContextForProcess(_In_ HANDLE hProcess);
+DPI_AWARENESS WINAPI GetAwarenessFromDpiAwarenessContext(_In_ DPI_AWARENESS_CONTEXT value);
+UINT WINAPI GetDpiFromDpiAwarenessContext(_In_ DPI_AWARENESS_CONTEXT value);
+BOOL WINAPI AreDpiAwarenessContextsEqual(_In_ DPI_AWARENESS_CONTEXT dpiContextA, _In_ DPI_AWARENESS_CONTEXT dpiContextB);
+BOOL WINAPI IsValidDpiAwarenessContext(_In_ DPI_AWARENESS_CONTEXT value);
+DPI_HOSTING_BEHAVIOR WINAPI SetThreadDpiHostingBehavior(_In_ DPI_HOSTING_BEHAVIOR value);
+DPI_HOSTING_BEHAVIOR WINAPI GetThreadDpiHostingBehavior(VOID);
+DPI_HOSTING_BEHAVIOR WINAPI GetWindowDpiHostingBehavior(_In_ HWND hwnd);
 #endif /* _WIN32_WINNT >= 0x0605 */
 
 UINT

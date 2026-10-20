@@ -7,6 +7,9 @@
 
 #include "desk.h"
 
+#define FONTS_KEY _T("SYSTEM\\CurrentControlSet\\Hardware Profiles\\Current\\Software\\Fonts")
+#define FONT_DPI_KEY _T("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\FontDPI")
+
 static VOID
 InitFontSizeList(HWND hWnd)
 {
@@ -15,7 +18,8 @@ InitFontSizeList(HWND hWnd)
     HWND hFontSize;
     INFCONTEXT Context;
     int i, ci = 0;
-    DWORD dwSize, dwValue, dwType;
+    DWORD dwSize, dwValue = 0, dwType;
+    BOOL bFound = FALSE;
 
     hFontSize = GetDlgItem(hWnd, IDC_FONTSIZE_COMBO);
 
@@ -26,8 +30,7 @@ InitFontSizeList(HWND hWnd)
     {
         if (SetupFindFirstLine(hInf, _T("Font Sizes"), NULL, &Context))
         {
-            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, _T("SYSTEM\\CurrentControlSet\\Hardware Profiles\\Current\\Software\\Fonts"),
-                             0, KEY_READ, &hKey) == ERROR_SUCCESS)
+            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, FONTS_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
             {
                 dwSize = MAX_PATH;
                 dwType = REG_DWORD;
@@ -58,9 +61,8 @@ InitFontSizeList(HWND hWnd)
                     {
                         SendMessage(hFontSize, CB_SETCURSEL, (WPARAM)i, 0);
                         SetWindowText(GetDlgItem(hWnd, IDC_FONTSIZE_CUSTOM), Desc);
+                        bFound = TRUE;
                     }
-                    else
-                        SendMessage(hFontSize, CB_SETCURSEL, 0, 0);
                 }
 
                 if (!SetupFindNextLine(&Context, &Context))
@@ -68,6 +70,9 @@ InitFontSizeList(HWND hWnd)
                     break;
                 }
             }
+
+            if (!bFound)
+                SendMessage(hFontSize, CB_SETCURSEL, 0, 0);
         }
     }
 
@@ -111,6 +116,41 @@ InitRadioButtons(HWND hWnd)
         SendDlgItemMessage(hWnd, IDC_WITHOUTREBOOT_RB, BM_SETCHECK, 1, 1);
 }
 
+/* GDI takes the machine's resolution at boot and the user's at their logon, so both are written */
+static VOID
+ApplyFontSize(HWND hWnd)
+{
+    HWND hFontSize = GetDlgItem(hWnd, IDC_FONTSIZE_COMBO);
+    LRESULT lSel = SendMessage(hFontSize, CB_GETCURSEL, 0, 0);
+    DWORD dwDpi, dwOld = 0, dwSize = sizeof(dwOld);
+    HKEY hKey;
+
+    if (lSel == CB_ERR)
+        return;
+    dwDpi = (DWORD)SendMessage(hFontSize, CB_GETITEMDATA, (WPARAM)lSel, 0);
+
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, FONTS_KEY, 0, KEY_QUERY_VALUE | KEY_SET_VALUE, &hKey) == ERROR_SUCCESS)
+    {
+        if (RegQueryValueEx(hKey, _T("LogPixels"), NULL, NULL, (LPBYTE)&dwOld, &dwSize) != ERROR_SUCCESS)
+            dwOld = 0;
+        RegSetValueEx(hKey, _T("LogPixels"), 0, REG_DWORD, (const BYTE *)&dwDpi, sizeof(dwDpi));
+        RegCloseKey(hKey);
+    }
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, FONT_DPI_KEY, 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS)
+    {
+        RegSetValueEx(hKey, _T("LogPixels"), 0, REG_DWORD, (const BYTE *)&dwDpi, sizeof(dwDpi));
+        RegCloseKey(hKey);
+    }
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, _T("Control Panel\\Desktop"), 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS)
+    {
+        RegSetValueEx(hKey, _T("LogPixels"), 0, REG_DWORD, (const BYTE *)&dwDpi, sizeof(dwDpi));
+        RegCloseKey(hKey);
+    }
+
+    if (dwOld != dwDpi)
+        RestartDialog(GetParent(hWnd), NULL, EWX_REBOOT);
+}
+
 INT_PTR CALLBACK
 AdvGeneralPageProc(HWND hwndDlg,
                    UINT uMsg,
@@ -149,6 +189,10 @@ AdvGeneralPageProc(HWND hwndDlg,
                     PropSheet_Changed(GetParent(hwndDlg), hwndDlg);
                 break;
             }
+            break;
+        case WM_NOTIFY:
+            if (((LPNMHDR)lParam)->code == PSN_APPLY)
+                ApplyFontSize(hwndDlg);
             break;
     }
 
