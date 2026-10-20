@@ -248,11 +248,15 @@ IntSetTimer( PWND Window,
 
   if (!pTmr)
   {
+     /* A thread that is going away has already had its timers destroyed */
+     if (Window && (Type & TMRF_TIFROMWND) && (Window->head.pti->TIF_flags & TIF_INCLEANUP))
+        return 0;
+
      pTmr = CreateTimer();
      if (!pTmr) return 0;
 
      if (Window && (Type & TMRF_TIFROMWND))
-        pTmr->pti = Window->head.pti->pEThread->Tcb.Win32Thread;
+        pTmr->pti = Window->head.pti;
      else
      {
         if (Type & TMRF_RIT)
@@ -674,7 +678,23 @@ NtUserSetTimer
 
    TRACE("Enter NtUserSetTimer\n");
    UserEnterExclusive();
-   if (hWnd) Window = UserGetWindowObject(hWnd);
+   if (hWnd)
+   {
+      Window = UserGetWindowObject(hWnd);
+      if (!Window)
+      {
+         UserLeave();
+         return 0;
+      }
+
+      /* Only windows of the calling process take timers */
+      if (Window->head.pti->ppi != PsGetCurrentProcessWin32Process())
+      {
+         EngSetLastError(ERROR_ACCESS_DENIED);
+         UserLeave();
+         return 0;
+      }
+   }
 
    ret = IntSetTimer(Window, nIDEvent, uElapse, lpTimerFunc, TMRF_TIFROMWND);
 
