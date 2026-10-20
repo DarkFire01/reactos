@@ -1097,7 +1097,7 @@ RtlWalkFrameChain(OUT PVOID *Callers,
             {
                 /* Check if we left the user range */
                 if ((Context.Rip < 0x10000) ||
-                    (Context.Rip > 0x000007FFFFFEFFFFULL))
+                    (Context.Rip > (ULONG64)MmHighestUserAddress))
                 {
                     break;
                 }
