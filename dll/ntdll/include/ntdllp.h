@@ -57,6 +57,7 @@ extern BOOLEAN LdrpInLdrInit;
 extern PVOID LdrpHeap;
 extern LIST_ENTRY LdrpHashTable[LDR_HASH_TABLE_ENTRIES];
 extern BOOLEAN ShowSnaps;
+extern PVOID MmHighestUserAddress;
 extern UNICODE_STRING LdrpDefaultPath;
 extern HANDLE LdrpKnownDllObjectDirectory;
 extern ULONG LdrpNumberOfProcessors;
