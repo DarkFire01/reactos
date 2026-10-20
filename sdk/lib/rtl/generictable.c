@@ -483,7 +483,7 @@ RtlGetElementGenericTable(IN PRTL_GENERIC_TABLE Table,
             while (DeltaUp)
             {
                 /* Get next node */
-                OrderedNode = OrderedNode->Blink;
+                OrderedNode = OrderedNode->Flink;
                 DeltaUp--;
             }
         }
