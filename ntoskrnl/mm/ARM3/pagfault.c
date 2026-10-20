@@ -1765,6 +1765,50 @@ MiDispatchFault(IN ULONG FaultCode,
     return Status;
 }
 
+#if (_MI_PAGING_LEVELS == 4)
+/* TMPDBG: report user access violations on addresses that have a VAD */
+NTSTATUS
+NTAPI
+MiTmpDbgUserFault(
+    _In_ NTSTATUS Status,
+    _In_ PVOID Address,
+    _In_ PKTRAP_FRAME TrapFrame)
+{
+    PETHREAD Thread;
+    PEPROCESS Process;
+    PMMVAD Vad;
+    ULONG64 Pte = 0;
+
+    if ((Status != STATUS_ACCESS_VIOLATION) ||
+        !(TrapFrame->SegCs & MODE_MASK) ||
+        (Address > MM_HIGHEST_USER_ADDRESS) ||
+        ((ULONG_PTR)Address < 0x10000))
+        return Status;
+
+    Thread = PsGetCurrentThread();
+    Process = PsGetCurrentProcess();
+    MiLockProcessWorkingSet(Process, Thread);
+
+    Vad = MiLocateAddress(Address);
+    if (Vad)
+    {
+        if (MiAddressToPxe(Address)->u.Hard.Valid &&
+            MiAddressToPpe(Address)->u.Hard.Valid &&
+            MiAddressToPde(Address)->u.Hard.Valid)
+            Pte = MiAddressToPte(Address)->u.Long;
+
+        DPRINT1("TMPDBG user AV %p rip %p rsp %p err %lx tid %p vad %Ix-%Ix type %lu prot %lu priv %lu pte %I64x\n",
+                Address, (PVOID)TrapFrame->Rip, (PVOID)TrapFrame->Rsp, TrapFrame->ErrorCode,
+                Thread->Cid.UniqueThread, (ULONG_PTR)Vad->StartingVpn, (ULONG_PTR)Vad->EndingVpn,
+                (ULONG)Vad->u.VadFlags.VadType, (ULONG)Vad->u.VadFlags.Protection,
+                (ULONG)Vad->u.VadFlags.PrivateMemory, Pte);
+    }
+
+    MiUnlockProcessWorkingSet(Process, Thread);
+    return Status;
+}
+#endif
+
 NTSTATUS
 NTAPI
 MmAccessFault(IN ULONG FaultCode,

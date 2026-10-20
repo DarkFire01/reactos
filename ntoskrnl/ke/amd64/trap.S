@@ -14,6 +14,7 @@
 EXTERN KiDispatchException:PROC
 EXTERN KeBugCheckWithTf:PROC
 EXTERN MmAccessFault:PROC
+EXTERN MiTmpDbgUserFault:PROC
 EXTERN KiSystemFatalException:PROC
 EXTERN KiNpxNotAvailableFaultHandler:PROC
 EXTERN KiGeneralProtectionFaultHandler:PROC
@@ -462,14 +463,20 @@ IntsDisabled:
 
 PageFaultError:
 
+    /* TMPDBG */
+    mov ecx, eax
+    mov rdx, [rbp + KTRAP_FRAME_FaultAddress]
+    mov r8, rbp
+    call MiTmpDbgUserFault
+
     /* Set parameter 1 to write/execute flag.
        See https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record */
     mov r9d, [rbp + KTRAP_FRAME_ErrorCode]
     shr r9d, 1
     and r9d, 9
 
-    /* Set parameter 2 to faulting address */
-    mov r10, cr2  // Param2 = faulting address
+    /* Set parameter 2 to the address saved on entry, CR2 is stale after MmAccessFault */
+    mov r10, [rbp + KTRAP_FRAME_FaultAddress]
 
     cmp eax, STATUS_ACCESS_VIOLATION
     je AccessViolation

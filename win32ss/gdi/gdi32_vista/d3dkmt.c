@@ -609,3 +609,81 @@ D3DKMTUnregisterBudgetChangeNotification(_Inout_ D3DKMT_UNREGISTERBUDGETCHANGENO
 
     return STATUS_SUCCESS;
 }
+
+/*
+ * Windows 11 dxgkrnl has one system call per synchronization object operation and it takes
+ * the second revision of each structure. The first revision is filled in from the caller's.
+ */
+NTSTATUS
+WINAPI
+D3DKMTCreateSynchronizationObject(
+    _Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT* pData)
+{
+    D3DKMT_CREATESYNCHRONIZATIONOBJECT2 Create;
+    NTSTATUS Status;
+
+    if (!pData)
+        return STATUS_INVALID_PARAMETER;
+
+    RtlZeroMemory(&Create, sizeof(Create));
+    Create.hDevice = pData->hDevice;
+    Create.Info.Type = pData->Info.Type;
+    switch (pData->Info.Type)
+    {
+        case D3DDDI_SYNCHRONIZATION_MUTEX:
+            Create.Info.SynchronizationMutex.InitialState = pData->Info.SynchronizationMutex.InitialState;
+            break;
+
+        case D3DDDI_SEMAPHORE:
+            Create.Info.Semaphore.MaxCount = pData->Info.Semaphore.MaxCount;
+            Create.Info.Semaphore.InitialCount = pData->Info.Semaphore.InitialCount;
+            break;
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+
+    Status = NtGdiDdDDICreateSynchronizationObject((D3DKMT_CREATESYNCHRONIZATIONOBJECT*)&Create);
+    if (NT_SUCCESS(Status))
+        pData->hSyncObject = Create.hSyncObject;
+    return Status;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTSignalSynchronizationObject(
+    _In_ const D3DKMT_SIGNALSYNCHRONIZATIONOBJECT* pData)
+{
+    D3DKMT_SIGNALSYNCHRONIZATIONOBJECT2 Signal;
+
+    if (!pData || pData->ObjectCount > D3DDDI_MAX_OBJECT_SIGNALED)
+        return STATUS_INVALID_PARAMETER;
+
+    RtlZeroMemory(&Signal, sizeof(Signal));
+    Signal.hContext = pData->hContext;
+    Signal.ObjectCount = pData->ObjectCount;
+    RtlCopyMemory(Signal.ObjectHandleArray, pData->ObjectHandleArray,
+                  pData->ObjectCount * sizeof(pData->ObjectHandleArray[0]));
+    Signal.Flags = pData->Flags;
+
+    return NtGdiDdDDISignalSynchronizationObject((const D3DKMT_SIGNALSYNCHRONIZATIONOBJECT*)&Signal);
+}
+
+NTSTATUS
+WINAPI
+D3DKMTWaitForSynchronizationObject(
+    _In_ const D3DKMT_WAITFORSYNCHRONIZATIONOBJECT* pData)
+{
+    D3DKMT_WAITFORSYNCHRONIZATIONOBJECT2 Wait;
+
+    if (!pData || pData->ObjectCount > D3DDDI_MAX_OBJECT_WAITED_ON)
+        return STATUS_INVALID_PARAMETER;
+
+    RtlZeroMemory(&Wait, sizeof(Wait));
+    Wait.hContext = pData->hContext;
+    Wait.ObjectCount = pData->ObjectCount;
+    RtlCopyMemory(Wait.ObjectHandleArray, pData->ObjectHandleArray,
+                  pData->ObjectCount * sizeof(pData->ObjectHandleArray[0]));
+
+    return NtGdiDdDDIWaitForSynchronizationObject((const D3DKMT_WAITFORSYNCHRONIZATIONOBJECT*)&Wait);
+}

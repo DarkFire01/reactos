@@ -444,29 +444,7 @@ APIENTRY
 NtGdiDdDDIUpdateAllocationProperty(
     _Inout_ PVOID unnamedParam1);
 
-/* Composition surface stubs, see ntuser/ntstubs.c */
-
-NTSTATUS
-APIENTRY
-NtBindCompositionSurface(
-    _In_opt_ PVOID Param1,
-    _In_ INT Param2,
-    _In_ INT Param3,
-    _In_opt_ PVOID Param4,
-    _In_ ULONGLONG Param5);
-
-NTSTATUS
-APIENTRY
-NtUnBindCompositionSurface(
-    _In_opt_ PVOID Param1,
-    _In_ INT Param2,
-    _In_ ULONGLONG Param3);
-
-NTSTATUS
-APIENTRY
-NtQueryCompositionSurfaceStatistics(
-    _In_opt_ PVOID Param1,
-    _In_ ULONGLONG Param2);
+/* The other composition surface calls forward to dxgkrnl, see ntgdi/dxgkfwd.c */
 
 NTSTATUS
 APIENTRY

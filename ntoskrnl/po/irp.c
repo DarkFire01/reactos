@@ -1063,15 +1063,15 @@ PopQueuePowerIrp(
      * Passing PowerSystemUnspecified or PowerDeviceUnspecified only makes things
      * confusing for power management.
      */
-    if (Stack->Parameters.Power.SystemContext == POP_SYS_CONTEXT_DEVICE_PWR_REQUEST)
-    {
-        DeviceState = Stack->Parameters.Power.State.DeviceState;
-        ASSERT(DeviceState != PowerDeviceUnspecified);
-    }
-    else // POP_SYS_CONTEXT_WAKE_REQUEST
+    if (IrpData->MinorFunction == IRP_MN_WAIT_WAKE)
     {
         SystemState = Stack->Parameters.WaitWake.PowerState;
         ASSERT(SystemState != PowerSystemUnspecified);
+    }
+    else if (Stack->Parameters.Power.SystemContext == POP_SYS_CONTEXT_DEVICE_PWR_REQUEST)
+    {
+        DeviceState = Stack->Parameters.Power.State.DeviceState;
+        ASSERT(DeviceState != PowerDeviceUnspecified);
     }
 
     /*
@@ -1760,16 +1760,8 @@ PopRequestPowerIrp(
     Stack->MinorFunction = MinorFunction;
     if (MinorFunction == IRP_MN_WAIT_WAKE)
     {
-        /*
-         * You would think that we will set POP_SYS_CONTEXT_SYSTEM_IRP or
-         * POP_SYS_CONTEXT_DEVICE_PWR_REQUEST here but consider the following:
-         * this is a wake request, whether it is for the system or a device.
-         * Setting the wake context here would come in handy, if a bus driver
-         * wants to set this IRP as responsible for waking the system, we can
-         * set the "system wake" toggle within IRP data accordingly.
-         */
+        /* SystemContext shares its slot with WaitWake.PowerState, so it stays unset */
         Stack->Parameters.WaitWake.PowerState = PowerState.SystemState;
-        Stack->Parameters.Power.SystemContext = POP_SYS_CONTEXT_WAKE_REQUEST;
     }
     else
     {

@@ -67,6 +67,7 @@ static BOOLEAN KdbpCmdBreakPoint(ULONG Argc, PCHAR Argv[]);
 
 static BOOLEAN KdbpCmdThread(ULONG Argc, PCHAR Argv[]);
 static BOOLEAN KdbpCmdProc(ULONG Argc, PCHAR Argv[]);
+static BOOLEAN KdbpCmdStacks(ULONG Argc, PCHAR Argv[]);
 
 static BOOLEAN KdbpCmdMod(ULONG Argc, PCHAR Argv[]);
 static BOOLEAN KdbpCmdGdtLdtIdt(ULONG Argc, PCHAR Argv[]);
@@ -376,6 +377,7 @@ static const struct
     { NULL, NULL, "Process/Thread", NULL },
     { "thread", "thread [list[ pid]|[attach ]tid]", "List threads in current or specified process, display thread with given id or attach to thread.", KdbpCmdThread },
     { "proc", "proc [list|[attach ]pid]", "List processes, display process with given id or attach to process.", KdbpCmdProc },
+    { "stacks", "stacks", "Scan every thread stack for module addresses.", KdbpCmdStacks },
 
     /* System information */
     { NULL, NULL, "System info", NULL },
@@ -1997,6 +1999,66 @@ KdbpCmdThread(
             ObDereferenceObject(Thread);
     }
 
+    return TRUE;
+}
+
+/* LOCAL DEBUG: walk all threads without the CID table and print module return candidates */
+static BOOLEAN
+KdbpCmdStacks(
+    ULONG Argc,
+    PCHAR Argv[])
+{
+    extern LIST_ENTRY PsActiveProcessHead;
+    PLIST_ENTRY ProcEntry, ThreadEntry;
+    PEPROCESS Process;
+    PETHREAD Thread;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    ULONG_PTR Value, Sp, Top;
+    PKWAIT_BLOCK WaitBlock;
+
+    for (ProcEntry = PsActiveProcessHead.Flink; ProcEntry != &PsActiveProcessHead; ProcEntry = ProcEntry->Flink)
+    {
+        Process = CONTAINING_RECORD(ProcEntry, EPROCESS, ActiveProcessLinks);
+        for (ThreadEntry = Process->ThreadListHead.Flink;
+             ThreadEntry != &Process->ThreadListHead;
+             ThreadEntry = ThreadEntry->Flink)
+        {
+            Thread = CONTAINING_RECORD(ThreadEntry, ETHREAD, ThreadListEntry);
+            KdbpPrint("THREAD %s tid %p state %u wr %u ks %p is %p\n",
+                      Process->ImageFileName, Thread->Cid.UniqueThread, Thread->Tcb.State,
+                      Thread->Tcb.WaitReason, Thread->Tcb.KernelStack, Thread->Tcb.InitialStack);
+            if (Thread->Tcb.State == Waiting)
+            {
+                for (WaitBlock = Thread->Tcb.WaitBlockList, Value = 0; WaitBlock && Value < 4; Value++)
+                {
+                    DISPATCHER_HEADER Header;
+                    if (!NT_SUCCESS(KdbpSafeReadMemory(&Header, WaitBlock->Object, sizeof(Header))))
+                        break;
+                    KdbpPrint("  WAIT obj %p type %u signal %d\n", WaitBlock->Object, Header.Type, Header.SignalState);
+                    WaitBlock = WaitBlock->NextWaitBlock;
+                    if (WaitBlock == Thread->Tcb.WaitBlockList)
+                        break;
+                }
+            }
+            if (!Thread->Tcb.InitialStack || !Thread->Tcb.KernelStack || Thread == KdbCurrentThread)
+                continue;
+            Sp = (ULONG_PTR)Thread->Tcb.KernelStack;
+            Top = (ULONG_PTR)Thread->Tcb.InitialStack;
+            if (Top <= Sp || Top - Sp > 0x8000)
+                continue;
+            for (; Sp < Top; Sp += sizeof(ULONG_PTR))
+            {
+                if (!NT_SUCCESS(KdbpSafeReadMemory(&Value, (PVOID)Sp, sizeof(Value))))
+                    break;
+                if (Value < (ULONG_PTR)MmSystemRangeStart)
+                    continue;
+                if (!KdbpSymFindModule((PVOID)Value, -1, &LdrEntry))
+                    continue;
+                KdbpPrint("  %p %wZ+%x\n", (PVOID)Sp, &LdrEntry->BaseDllName,
+                          (ULONG)(Value - (ULONG_PTR)LdrEntry->DllBase));
+            }
+        }
+    }
     return TRUE;
 }
 

@@ -161,7 +161,29 @@ dxgmms2.sys  = 1,,,,,,x,4,,,,1,4
 watchdog.sys = 1,,,,,,x,4,,,,1,4
 BasicDisplay.sys = 1,,,,,,x,4,,,,1,4
 BasicRender.sys  = 1,,,,,,x,4,,,,1,4
+VBoxWddm.sys = 1,,,,,,x,4,,,,1,4
 cdd.dll      = 1,,,,,,x,2,,,,1,2
+VBoxDX.dll       = 1,,,,,,x,2,,,,1,2
+VBoxDispD3D.dll  = 1,,,,,,x,2,,,,1,2
+VBoxGL.dll       = 1,,,,,,x,2,,,,1,2
+VBoxNine.dll     = 1,,,,,,x,2,,,,1,2
+VBoxSVGA.dll     = 1,,,,,,x,2,,,,1,2
+d3d10.dll        = 1,,,,,,x,2,,,,1,2
+d3d10_1.dll      = 1,,,,,,x,2,,,,1,2
+d3d10_1core.dll  = 1,,,,,,x,2,,,,1,2
+d3d10core.dll    = 1,,,,,,x,2,,,,1,2
+d3d11.dll        = 1,,,,,,x,2,,,,1,2
+d3d12.dll        = 1,,,,,,x,2,,,,1,2
+d3d12core.dll    = 1,,,,,,x,2,,,,1,2
+dxgi.dll         = 1,,,,,,x,2,,,,1,2
+icu.dll          = 1,,,,,,x,2,,,,1,2
+icuin.dll        = 1,,,,,,x,2,,,,1,2
+icuuc.dll        = 1,,,,,,x,2,,,,1,2
+msvcp140.dll     = 1,,,,,,x,2,,,,1,2
+msvcp_win.dll    = 1,,,,,,x,2,,,,1,2
+profapi.dll      = 1,,,,,,x,2,,,,1,2
+vcruntime140.dll = 1,,,,,,x,2,,,,1,2
+vcruntime140_1.dll = 1,,,,,,x,2,,,,1,2
 
 ;
 ; The [SystemPartitionFiles] section lists all the files
