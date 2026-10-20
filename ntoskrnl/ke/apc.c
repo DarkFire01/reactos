@@ -763,9 +763,24 @@ KeInsertQueueApc(IN PKAPC Apc,
         KiInsertQueueApc(Apc, PriorityBoost);
     }
 
-    /* Release the APC lock and return success */
+    /* Release the APC lock */
     KiReleaseApcLockFromSynchLevel(&ApcLock);
     KiExitDispatcher(ApcLock.OldIrql);
+
+    /*
+     * An APC for the running thread is due the moment the IRQL drops back to passive.
+     * Deliver it here rather than relying on the APC interrupt arriving on time, which
+     * some processors and hypervisors deliver late after the TPR is lowered.
+     */
+    if ((State) &&
+        (ApcLock.OldIrql == PASSIVE_LEVEL) &&
+        (Thread == KeGetCurrentThread()) &&
+        (Thread->ApcState.KernelApcPending) &&
+        !(Thread->SpecialApcDisable))
+    {
+        KiCheckForKernelApcDelivery();
+    }
+
     return State;
 }
 

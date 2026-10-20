@@ -1439,8 +1439,10 @@ Phase1InitializationDiscard(IN PVOID Context)
     SosEnabled = (CommandLine && strstr(CommandLine, "SOS") != NULL);
 
     /* Setup the boot video driver */
+    DPRINT1("TMPDBG before InbvDriverInitialize\n");
     InbvEnableBootDriver(!NoGuiBoot);
     InbvDriverInitialize(LoaderBlock, IDB_MAX_RESOURCES);
+    DPRINT1("TMPDBG after InbvDriverInitialize\n");
 
     /* Check if GUI boot is enabled */
     if (!NoGuiBoot)

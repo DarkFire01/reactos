@@ -7,6 +7,7 @@
 
 #include <win32k.h>
 #include <reactos/rddm/rddm_private.h>
+#include "../ntgdi/dxgkfwd.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -781,6 +782,7 @@ DlInitDxgkrnl(VOID)
 
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
         DlpResolveD3DKMTExports();
+        DlResolveDxgkForwards(gpDxgkDeviceObject->DriverObject->DriverStart);
 #endif
 
         /* Also populate the D3DKMT callback table the NtGdiDdDDI* thunks route through. */

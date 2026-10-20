@@ -8,6 +8,7 @@
 #include <win32k.h>
 #include <reactos/rddm/rxgkinterface.h>
 #include <reactos/rddm/rddm_private.h>
+#include "dxgkfwd.h"
 #include <debug.h>
 
 /*
@@ -1768,11 +1769,8 @@ NTSTATUS
 APIENTRY
 NtGdiDdDDISetHwProtectionTeardownRecovery(_Inout_ PVOID unnamedParam1)
 {
-    UNREFERENCED_PARAMETER(unnamedParam1);
-
-    /* No slot in the interface serves this one */
-    DXGKMT_TRACE_NOPROC("SetHwProtectionTeardownRecovery");
-    return STATUS_PROCEDURE_NOT_FOUND;
+    /* No slot serves this one; dxgkrnl exports it by name */
+    return DlForwardSetHwProtectionTeardownRecovery(unnamedParam1);
 }
 
 /*
@@ -1872,11 +1870,8 @@ NTSTATUS
 APIENTRY
 NtGdiDdDDISubmitPresentToHwQueue(_Inout_ PVOID unnamedParam1)
 {
-    UNREFERENCED_PARAMETER(unnamedParam1);
-
-    /* No slot in the interface serves this one */
-    DXGKMT_TRACE_NOPROC("SubmitPresentToHwQueue");
-    return STATUS_PROCEDURE_NOT_FOUND;
+    /* Windows names this system call NtDxgkSubmitPresentToHwQueue */
+    return NtDxgkSubmitPresentToHwQueue(unnamedParam1);
 }
 
 /*

@@ -284,6 +284,7 @@ LdrpHandleOneNewFormatImportDescriptor(IN LPWSTR DllPath OPTIONAL,
     }
 
     /* Load the module for this entry */
+    if (!BoundImportName[0]) DPRINT1("TMPDBG empty bound import in %wZ\n", &LdrEntry->BaseDllName);
     Status = LdrpLoadImportModule(DllPath,
                                   BoundImportName,
                                   &DllLdrEntry,
@@ -357,6 +358,7 @@ LdrpHandleOneNewFormatImportDescriptor(IN LPWSTR DllPath OPTIONAL,
         }
 
         /* Load the module */
+        if (!ForwarderName[0]) DPRINT1("TMPDBG empty bound forwarder in %wZ\n", &LdrEntry->BaseDllName);
         Status = LdrpLoadImportModule(DllPath,
                                       ForwarderName,
                                       &ForwarderLdrEntry,
@@ -543,6 +545,7 @@ LdrpHandleOneOldFormatImportDescriptor(IN LPWSTR DllPath OPTIONAL,
     }
 
     /* Load the module associated to it */
+    if (!ImportName[0]) DPRINT1("TMPDBG empty import in %wZ\n", &LdrEntry->BaseDllName);
     Status = LdrpLoadImportModule(DllPath,
                                   ImportName,
                                   &DllLdrEntry,

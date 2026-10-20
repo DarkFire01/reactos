@@ -2090,6 +2090,12 @@ RtlAllocateHeap(IN PVOID HeapPtr,
     {
         RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_NO_MEMORY);
         DPRINT1("HEAP: Allocation failed!\n");
+        {
+            PVOID TmpBase = NULL, TmpRet = _ReturnAddress();
+            RtlPcToFileHeader(TmpRet, &TmpBase);
+            DPRINT1("TMPDBG heap size 0x%Ix ret %p base %p off 0x%Ix\n", Size, TmpRet, TmpBase,
+                    (ULONG_PTR)TmpRet - (ULONG_PTR)TmpBase);
+        }
         return NULL;
     }
 

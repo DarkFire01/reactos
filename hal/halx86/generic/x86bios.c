@@ -26,6 +26,10 @@ PUCHAR x86BiosMemoryMapping;
 /* This the physical address of the bios buffer */
 ULONG64 x86BiosBufferPhysical;
 
+/* TMPDBG */
+USHORT x86TmpDbgLastPort;
+BOOLEAN x86TmpDbgLastWrite;
+
 VOID
 NTAPI
 DbgDumpPage(PUCHAR MemBuffer, USHORT Segment)
@@ -350,6 +354,9 @@ x86IoRead(
     ULONG DataCount,
     UCHAR DataSize)
 {
+    x86TmpDbgLastPort = Port;
+    x86TmpDbgLastWrite = FALSE;
+
     /* Validate the port */
     if (!ValidatePort(Port, DataSize, FALSE))
     {
@@ -374,6 +381,9 @@ x86IoWrite(
     ULONG DataCount,
     UCHAR DataSize)
 {
+    x86TmpDbgLastPort = Port;
+    x86TmpDbgLastWrite = TRUE;
+
     /* Validate the port */
     if (!ValidatePort(Port, DataSize, TRUE))
     {
@@ -418,9 +428,12 @@ x86BiosCall(
     FAST486_STATE EmulatorContext;
     ULONG FlatIp;
     PUCHAR InstructionPointer;
+    ULONG64 TmpDbgSteps = 0;
 
     if (!x86BiosIsInitialized || (x86BiosMemoryMapping == NULL))
         return FALSE;
+
+    DPRINT1("TMPDBG x86BiosCall enter int %02lx eax %08lx\n", InterruptNumber, Registers->Eax);
 
     /* Initialize the emulator context */
     Fast486Initialize(&EmulatorContext,
@@ -485,7 +498,20 @@ x86BiosCall(
 
         /* Emulate one instruction */
         Fast486StepInto(&EmulatorContext);
+
+        /* TMPDBG */
+        if ((++TmpDbgSteps & 0xFFFFFF) == 0)
+        {
+            DPRINT1("TMPDBG x86BiosCall step %I64u at %04x:%08lx last port %04x %s\n",
+                    TmpDbgSteps,
+                    EmulatorContext.SegmentRegs[FAST486_REG_CS].Selector,
+                    EmulatorContext.InstPtr.Long,
+                    x86TmpDbgLastPort,
+                    x86TmpDbgLastWrite ? "out" : "in");
+        }
     }
+
+    DPRINT1("TMPDBG x86BiosCall leave after %I64u steps\n", TmpDbgSteps);
 
     /* Copy the registers back */
     Registers->Eax = EmulatorContext.GeneralRegs[FAST486_REG_EAX].Long;

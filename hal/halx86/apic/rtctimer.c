@@ -162,8 +162,13 @@ HalpClockInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         return;
     }
 
-    /* Read register C, so that the next interrupt can happen */
-    HalpReadCmos(RTC_REGISTER_C);
+    /*
+     * Read register C until IRQF is clear, so that the next interrupt can happen.
+     * A read that hit another register (SMM can move the index) leaves the line high.
+     */
+    HalpAcquireCmosSpinLock();
+    while (HalpReadCmos(RTC_REGISTER_C) & RTC_REG_C_IRQ);
+    HalpReleaseCmosSpinLock();
 
     /* Save increment */
     LastIncrement = HalpCurrentTimeIncrement;
