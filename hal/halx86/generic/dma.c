@@ -1404,19 +1404,26 @@ HalpFlushTransferElements(
     _In_ ULONG Length,
     _In_ BOOLEAN WriteToDevice)
 {
+    ULONG_PTR MapRegisters = (ULONG_PTR)MapRegisterBase;
+    PUCHAR CurrentVa;
     ULONG Chunk;
 
     Mdl = HalpFindTransferMdl(Mdl, &Offset);
     for (; (Mdl != NULL) && (Length != 0); Mdl = Mdl->Next, Offset = 0)
     {
         Chunk = min(MmGetMdlByteCount(Mdl) - (ULONG)Offset, Length);
+        CurrentVa = (PUCHAR)MmGetMdlVirtualAddress(Mdl) + (ULONG)Offset;
         IoFlushAdapterBuffers(AdapterObject,
                               Mdl,
-                              MapRegisterBase,
-                              (PUCHAR)MmGetMdlVirtualAddress(Mdl) + (ULONG)Offset,
+                              (PVOID)MapRegisters,
+                              CurrentVa,
                               Chunk,
                               WriteToDevice);
         Length -= Chunk;
+
+        /* IoMapTransfer kept counting map registers into the next MDL of the chain */
+        if (MapRegisters)
+            MapRegisters += ADDRESS_AND_SIZE_TO_SPAN_PAGES(CurrentVa, Chunk) * sizeof(ROS_MAP_REGISTER_ENTRY);
     }
 }
 
@@ -3068,20 +3075,35 @@ IoFlushAdapterBuffers(IN PADAPTER_OBJECT AdapterObject,
         }
         else
         {
+            PUCHAR PageVa = CurrentVa;
+            ULONG Remaining = Length;
+            ULONG Index, Chunk;
+
             MdlPagesPtr = MmGetMdlPfnArray(Mdl);
             MdlPagesPtr += ((ULONG_PTR)CurrentVa - (ULONG_PTR)Mdl->StartVa) >> PAGE_SHIFT;
-
-            PhysicalAddress.QuadPart = *MdlPagesPtr << PAGE_SHIFT;
-            PhysicalAddress.QuadPart += BYTE_OFFSET(CurrentVa);
-
             HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
-            if ((PhysicalAddress.QuadPart + Length) > HighestAcceptableAddress.QuadPart)
+
+            /*
+             * IoMapTransfer bounced only the pages the device cannot reach, each through the
+             * map register at its place in the transfer; the others already hold their data.
+             */
+            for (Index = 0; Remaining != 0; Index++)
             {
-                HalpCopyBufferMap(Mdl,
-                                  RealMapRegisterBase,
-                                  CurrentVa,
-                                  Length,
-                                  FALSE);
+                Chunk = min(PAGE_SIZE - BYTE_OFFSET(PageVa), Remaining);
+
+                PhysicalAddress.QuadPart = MdlPagesPtr[Index] << PAGE_SHIFT;
+                PhysicalAddress.QuadPart += BYTE_OFFSET(PageVa);
+                if ((PhysicalAddress.QuadPart + Chunk - 1) > HighestAcceptableAddress.QuadPart)
+                {
+                    HalpCopyBufferMap(Mdl,
+                                      RealMapRegisterBase + Index,
+                                      PageVa,
+                                      Chunk,
+                                      FALSE);
+                }
+
+                PageVa += Chunk;
+                Remaining -= Chunk;
             }
         }
     }
@@ -3247,7 +3269,7 @@ IoMapTransfer(IN PADAPTER_OBJECT AdapterObject,
          * store the data.
          */
         HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
-        if ((PhysicalAddress.QuadPart + TransferLength) > HighestAcceptableAddress.QuadPart)
+        if ((PhysicalAddress.QuadPart + TransferLength - 1) > HighestAcceptableAddress.QuadPart)
         {
             UseMapRegisters = TRUE;
             PhysicalAddress = RealMapRegisterBase[Counter].PhysicalAddress;
