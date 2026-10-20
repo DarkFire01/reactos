@@ -21,11 +21,14 @@
 #include FT_SYNTHESIS_H
 #include FT_TRUETYPE_IDS_H
 #include FT_MODULE_H
+#include FT_LCD_FILTER_H
+#include FT_GASP_H
 #include <freetype/internal/ftcalc.h> // INT_TO_FIXED
 
 #include <gdi/eng/floatobj.h>
 #include "font.h"
 #include "utils.h"
+#include "textblend.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -234,9 +237,11 @@ do { \
     ExReleaseFastMutexUnsafeAndLeaveCriticalRegion(g_FreeTypeLock); \
 } while(0)
 
-#define MAX_FONT_CACHE 256
+#define MAX_FONT_CACHE 4096
+#define FONT_CACHE_BUCKETS 1024
 
 static RTL_STATIC_LIST_HEAD(g_FontCacheListHead);
+static LIST_ENTRY g_FontCacheBuckets[FONT_CACHE_BUCKETS];
 static UINT g_FontCacheNumEntries;
 
 static PWCHAR g_ElfScripts[32] =   /* These are in the order of the fsCsb[0] bits */
@@ -465,6 +470,7 @@ RemoveCachedEntry(PFONT_CACHE_ENTRY Entry)
 
     FT_Done_Glyph((FT_Glyph)Entry->BitmapGlyph);
     RemoveEntryList(&Entry->ListEntry);
+    RemoveEntryList(&Entry->BucketEntry);
     ExFreePoolWithTag(Entry, TAG_FONT);
     g_FontCacheNumEntries--;
     ASSERT(g_FontCacheNumEntries <= MAX_FONT_CACHE);
@@ -961,8 +967,11 @@ BOOL FASTCALL
 InitFontSupport(VOID)
 {
     ULONG ulError;
+    ULONG iBucket;
 
     g_FontCacheNumEntries = 0;
+    for (iBucket = 0; iBucket < FONT_CACHE_BUCKETS; iBucket++)
+        InitializeListHead(&g_FontCacheBuckets[iBucket]);
 
     g_FreeTypeLock = ExAllocatePoolWithTag(NonPagedPool, sizeof(FAST_MUTEX), TAG_INTERNAL_SYNC);
     if (g_FreeTypeLock == NULL)
@@ -977,6 +986,9 @@ InitFontSupport(VOID)
         DPRINT1("FT_Init_FreeType failed with error code 0x%x\n", ulError);
         return FALSE;
     }
+
+    /* ClearType glyphs are filtered across subpixels so their color fringes stay faint */
+    FT_Library_SetLcdFilter(g_FreeTypeLibrary, FT_LCD_FILTER_DEFAULT);
 
     if (!IntLoadFontsInRegistry())
     {
@@ -1012,7 +1024,7 @@ FreeFontSupport(VOID)
     pHead = &g_FontCacheListHead;
     while (!IsListEmpty(pHead))
     {
-        pEntry = RemoveHeadList(pHead);
+        pEntry = pHead->Flink;
         pFontCache = CONTAINING_RECORD(pEntry, FONT_CACHE_ENTRY, ListEntry);
         RemoveCachedEntry(pFontCache);
     }
@@ -2722,24 +2734,25 @@ IntEnableFontRendering(BOOL Enable)
     g_RenderingEnabled = Enable;
 }
 
+/* A quality the font asks for wins; any other follows the user's font smoothing */
 FT_Render_Mode FASTCALL
 IntGetFontRenderMode(LOGFONTW *logfont)
 {
     switch (logfont->lfQuality)
     {
-    case ANTIALIASED_QUALITY:
-        break;
     case NONANTIALIASED_QUALITY:
         return FT_RENDER_MODE_MONO;
-    case DRAFT_QUALITY:
-        return FT_RENDER_MODE_LIGHT;
+    case ANTIALIASED_QUALITY:
+        return FT_RENDER_MODE_NORMAL;
     case CLEARTYPE_QUALITY:
-        if (!gspv.bFontSmoothing)
-            break;
-        if (!gspv.uiFontSmoothingType)
-            break;
+    case CLEARTYPE_NATURAL_QUALITY:
         return FT_RENDER_MODE_LCD;
     }
+
+    if (!gspv.bFontSmoothing)
+        return FT_RENDER_MODE_MONO;
+    if (gspv.uiFontSmoothingType == FE_FONTSMOOTHINGCLEARTYPE)
+        return FT_RENDER_MODE_LCD;
     return FT_RENDER_MODE_NORMAL;
 }
 
@@ -3796,14 +3809,15 @@ IntFindGlyphCache(IN const FONT_CACHE_ENTRY *pCache)
     PLIST_ENTRY CurrentEntry;
     PFONT_CACHE_ENTRY FontEntry;
     DWORD dwHash = pCache->dwHash;
+    PLIST_ENTRY pBucket = &g_FontCacheBuckets[dwHash % FONT_CACHE_BUCKETS];
 
     ASSERT_FREETYPE_LOCK_HELD();
 
-    for (CurrentEntry = g_FontCacheListHead.Flink;
-         CurrentEntry != &g_FontCacheListHead;
+    for (CurrentEntry = pBucket->Flink;
+         CurrentEntry != pBucket;
          CurrentEntry = CurrentEntry->Flink)
     {
-        FontEntry = CONTAINING_RECORD(CurrentEntry, FONT_CACHE_ENTRY, ListEntry);
+        FontEntry = CONTAINING_RECORD(CurrentEntry, FONT_CACHE_ENTRY, BucketEntry);
         if (FontEntry->dwHash == dwHash &&
             FontEntry->Hashed.GlyphIndex == pCache->Hashed.GlyphIndex &&
             FontEntry->Hashed.Face == pCache->Hashed.Face &&
@@ -3817,13 +3831,13 @@ IntFindGlyphCache(IN const FONT_CACHE_ENTRY *pCache)
         }
     }
 
-    if (CurrentEntry == &g_FontCacheListHead)
+    if (CurrentEntry == pBucket)
     {
         return NULL;
     }
 
-    RemoveEntryList(CurrentEntry);
-    InsertHeadList(&g_FontCacheListHead, CurrentEntry);
+    RemoveEntryList(&FontEntry->ListEntry);
+    InsertHeadList(&g_FontCacheListHead, &FontEntry->ListEntry);
     return FontEntry->BitmapGlyph;
 }
 
@@ -3837,6 +3851,7 @@ IntGetBitmapGlyphWithCache(
     PFONT_CACHE_ENTRY NewEntry;
     FT_Bitmap AlignedBitmap;
     FT_BitmapGlyph BitmapGlyph;
+    BOOLEAN bSubpixel;
 
     ASSERT_FREETYPE_LOCK_HELD();
 
@@ -3864,6 +3879,7 @@ IntGetBitmapGlyphWithCache(
     }
 
     BitmapGlyph = (FT_BitmapGlyph)GlyphCopy;
+    bSubpixel = (BitmapGlyph->bitmap.pixel_mode == FT_PIXEL_MODE_LCD);
     FT_Bitmap_New(&AlignedBitmap);
     if (FT_Bitmap_Convert_ReactOS_Hack(GlyphSlot->library, &BitmapGlyph->bitmap,
                                        &AlignedBitmap, 4, TRUE))
@@ -3878,11 +3894,16 @@ IntGetBitmapGlyphWithCache(
     FT_Bitmap_Done(GlyphSlot->library, &BitmapGlyph->bitmap);
     BitmapGlyph->bitmap = AlignedBitmap;
 
+    /* The conversion calls subpixel coverage gray; it is still one byte a subpixel */
+    if (bSubpixel)
+        BitmapGlyph->bitmap.pixel_mode = FT_PIXEL_MODE_LCD;
+
     NewEntry->BitmapGlyph = BitmapGlyph;
     NewEntry->dwHash = Cache->dwHash;
     NewEntry->Hashed = Cache->Hashed;
 
     InsertHeadList(&g_FontCacheListHead, &NewEntry->ListEntry);
+    InsertHeadList(&g_FontCacheBuckets[NewEntry->dwHash % FONT_CACHE_BUCKETS], &NewEntry->BucketEntry);
     if (++g_FontCacheNumEntries > MAX_FONT_CACHE)
     {
         NewEntry = CONTAINING_RECORD(g_FontCacheListHead.Blink, FONT_CACHE_ENTRY, ListEntry);
@@ -4945,6 +4966,7 @@ IntGetRealGlyph(
     INT error;
     FT_GlyphSlot glyph;
     FT_BitmapGlyph realglyph;
+    FT_Int32 LoadFlags;
 
     ASSERT_FREETYPE_LOCK_HELD();
 
@@ -4954,7 +4976,23 @@ IntGetRealGlyph(
     if (realglyph)
         return realglyph;
 
-    error = FT_Load_Glyph(Cache->Hashed.Face, Cache->Hashed.GlyphIndex, FT_LOAD_DEFAULT);
+    /* Smoothed text draws the outlines, never a font's own bitmaps; ClearType hints for subpixels */
+    if (Cache->Hashed.Aspect.RenderMode == FT_RENDER_MODE_LCD)
+        LoadFlags = FT_LOAD_NO_BITMAP | FT_LOAD_TARGET_LCD;
+    else if (Cache->Hashed.Aspect.RenderMode == FT_RENDER_MODE_NORMAL)
+        LoadFlags = FT_LOAD_NO_BITMAP;
+    else
+        LoadFlags = FT_LOAD_DEFAULT;
+    error = FT_Load_Glyph(Cache->Hashed.Face, Cache->Hashed.GlyphIndex, LoadFlags);
+
+    /* A bitmap strike that left a glyph out has it drawn from the outline instead */
+    if (!error && Cache->Hashed.Face->glyph->format == FT_GLYPH_FORMAT_BITMAP &&
+        (!Cache->Hashed.Face->glyph->bitmap.width || !Cache->Hashed.Face->glyph->bitmap.rows) &&
+        FT_IS_SCALABLE(Cache->Hashed.Face))
+    {
+        error = FT_Load_Glyph(Cache->Hashed.Face, Cache->Hashed.GlyphIndex, LoadFlags | FT_LOAD_NO_BITMAP);
+    }
+
     if (error)
     {
         DPRINT1("WARNING: Failed to load and render glyph! [index: %d]\n", Cache->Hashed.GlyphIndex);
@@ -6716,6 +6754,8 @@ IntExtTextOutW(
     FT_Vector delta, vecAscent64, vecDescent64, vec;
     LOGFONTW *plf;
     BOOL use_kerning, bResult, DoBreak;
+    GLYPH_TARGET GlyphTarget;
+    BOOLEAN bBlend, bSubpixel;
     FONT_CACHE_ENTRY Cache;
     FT_Matrix mat;
     BOOL bNoTransform;
@@ -6742,6 +6782,10 @@ IntExtTextOutW(
     }
 
     DC_vPrepareDCsForBlit(dc, NULL, NULL, NULL);
+
+    /* What the text covers is only known glyph by glyph, so the DWM is told what was drawn */
+    if (dc->fs & DC_REDIRECTION)
+        RECTL_vSetEmptyRect(&dc->erclRedirectionDirty);
 
     if (!dc->dclevel.pSurface)
     {
@@ -6854,6 +6898,21 @@ IntExtTextOutW(
     /* Is there no transformation? */
     bNoTransform = ((mat.xy == 0) && (mat.yx == 0) &&
                     (mat.xx == (1 << 16)) && (mat.yy == (1 << 16)));
+
+    /*
+     * Subpixels only line up with unrotated text on a surface glyphs blend into, and grayscale
+     * smoothing is left out at sizes the font says it reads better without.
+     */
+    bBlend = GlyphBlendPrepare(psoDest, &dc->eboText.BrushObject, &GlyphTarget);
+    if (Cache.Hashed.Aspect.RenderMode == FT_RENDER_MODE_LCD && (!bBlend || !bNoTransform))
+        Cache.Hashed.Aspect.RenderMode = (BYTE)FT_RENDER_MODE_NORMAL;
+    if (Cache.Hashed.Aspect.RenderMode == FT_RENDER_MODE_NORMAL &&
+        plf->lfQuality != ANTIALIASED_QUALITY && FT_IS_SCALABLE(face))
+    {
+        FT_Int Gasp = FT_Get_Gasp(face, face->size->metrics.y_ppem);
+        if (Gasp != FT_GASP_NO_TABLE && !(Gasp & FT_GASP_DO_GRAY))
+            Cache.Hashed.Aspect.RenderMode = (BYTE)FT_RENDER_MODE_MONO;
+    }
 
     /* Calculate the ascent point and the descent point */
     vecAscent64.x = 0;
@@ -6984,7 +7043,8 @@ IntExtTextOutW(
         DPRINT("X64, Y64: %I64d, %I64d\n", X64, Y64);
         DPRINT("Advance: %d, %d\n", realglyph->root.advance.x, realglyph->root.advance.y);
 
-        glyphSize.cx = realglyph->bitmap.width;
+        bSubpixel = (realglyph->bitmap.pixel_mode == FT_PIXEL_MODE_LCD);
+        glyphSize.cx = bSubpixel ? realglyph->bitmap.width / 3 : realglyph->bitmap.width;
         glyphSize.cy = realglyph->bitmap.rows;
 
         /* Do chars > space & not DEL & not nbsp have a glyphSize.cx of zero? */
@@ -7018,6 +7078,32 @@ IntExtTextOutW(
         /* Check if the bitmap has any pixels */
         if ((glyphSize.cx != 0) && (glyphSize.cy != 0))
         {
+            DC_vAccumulateRedirectionDirty(dc, &DestRect);
+
+            if (lprc && (fuOptions & ETO_CLIPPED))
+            {
+                // We do the check '>=' instead of '>' to possibly save an iteration
+                // through this loop, since it's breaking after the drawing is done,
+                // and x is always incremented.
+                if (DestRect.right >= lprc->right)
+                {
+                    DestRect.right = lprc->right;
+                    DoBreak = TRUE;
+                }
+
+                if (DestRect.bottom >= lprc->bottom)
+                {
+                    DestRect.bottom = lprc->bottom;
+                }
+            }
+
+            if (bBlend)
+            {
+                GlyphBlendDraw(&GlyphTarget, (CLIPOBJ *)&dc->co, &DestRect, realglyph->bitmap.buffer,
+                               realglyph->bitmap.pitch, bSubpixel);
+                goto NextGlyph;
+            }
+
             /*
              * We should create the bitmap out of the loop at the biggest possible
              * glyph size. Then use memset with 0 to clear it and sourcerect to
@@ -7046,23 +7132,6 @@ IntExtTextOutW(
              * Use the font data as a mask to paint onto the DCs surface using a
              * brush.
              */
-            if (lprc && (fuOptions & ETO_CLIPPED))
-            {
-                // We do the check '>=' instead of '>' to possibly save an iteration
-                // through this loop, since it's breaking after the drawing is done,
-                // and x is always incremented.
-                if (DestRect.right >= lprc->right)
-                {
-                    DestRect.right = lprc->right;
-                    DoBreak = TRUE;
-                }
-
-                if (DestRect.bottom >= lprc->bottom)
-                {
-                    DestRect.bottom = lprc->bottom;
-                }
-            }
-
             if (!IntEngMaskBlt(psoDest,
                                psoGlyph,
                                (CLIPOBJ *)&dc->co,
@@ -7080,6 +7149,7 @@ IntExtTextOutW(
             EngDeleteSurface((HSURF)hbmGlyph);
         }
 
+NextGlyph:
         if (DoBreak)
             break;
 

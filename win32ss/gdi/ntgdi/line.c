@@ -196,6 +196,13 @@ IntGdiLineTo(DC  *dc,
         pbrLine = dc->dclevel.pbrLine;
         ASSERT(pbrLine);
 
+        /* The points alone have no area for a straight line; a thin one covers its end pixels too */
+        if (dc->fs & DC_REDIRECTION)
+        {
+            RECTL rclLine = { Bounds.left, Bounds.top, Bounds.right + 1, Bounds.bottom + 1 };
+            DC_vAccumulateRedirectionDirty(dc, IntIsEffectiveWidePen(pbrLine) ? &dc->erclClip : &rclLine);
+        }
+
         if (dc->fs & (DC_ACCUM_APP|DC_ACCUM_WMGR))
         {
            DPRINT("Bounds dc %p l %d t %d\n",dc,Bounds.left,Bounds.top);
@@ -366,6 +373,17 @@ IntGdiPolyline(DC      *dc,
             if (dc->fs & (DC_ACCUM_APP|DC_ACCUM_WMGR))
             {
                AddPenLinesBounds(dc, Count, Points);
+            }
+
+            /* A thin line stays within its points, so the DWM is told only that much */
+            if ((dc->fs & DC_REDIRECTION) && !IntIsEffectiveWidePen(pbrLine))
+            {
+                RECTL_vSetEmptyRect(&dc->erclRedirectionDirty);
+                for (i = 0; i < Count; i++)
+                {
+                    RECTL rclPoint = { Points[i].x, Points[i].y, Points[i].x + 1, Points[i].y + 1 };
+                    DC_vAccumulateRedirectionDirty(dc, &rclPoint);
+                }
             }
 
             if (IntIsEffectiveWidePen(pbrLine))
