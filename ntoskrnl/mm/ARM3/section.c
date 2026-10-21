@@ -1696,6 +1696,7 @@ MiMapViewOfImageSection(
     _In_ ULONG AllocationType)
 {
     PSEGMENT Segment = ControlArea->Segment;
+    PSECTION_IMAGE_INFORMATION ImageInformation;
     ULONG_PTR StartAddress;
     SIZE_T ImageSize;
     PMMVAD_LONG Vad;
@@ -1784,6 +1785,15 @@ MiMapViewOfImageSection(
 
     *BaseAddress = (PVOID)StartAddress;
     *ViewSize = ImageSize;
+
+    /* Code for another processor still maps, but the loader learns it cannot run here */
+    ImageInformation = Segment->u2.ImageInformation;
+    if (ImageInformation && ImageInformation->ImageContainsCode &&
+        (ImageInformation->Machine < SharedUserData->ImageNumberLow ||
+         ImageInformation->Machine > SharedUserData->ImageNumberHigh))
+    {
+        return STATUS_IMAGE_MACHINE_TYPE_MISMATCH;
+    }
 
     return (StartAddress == (ULONG_PTR)Segment->BasedAddress) ? STATUS_SUCCESS : STATUS_IMAGE_NOT_AT_BASE;
 }
