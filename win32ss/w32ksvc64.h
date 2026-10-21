@@ -1002,3 +1002,4 @@
     SVC_(DCompositionGetTargetStatistics, 3)
     SVC_(DCompositionWaitForCompositorClock, 3)
     SVC_(DCompositionBoostCompositorClock, 1)
+    SVC_(UserGetUpdatedClipboardFormats, 3)

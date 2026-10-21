@@ -676,6 +676,73 @@ cleanup:
     return cFormats;
 }
 
+/**
+ * @brief
+ * Gets the formats on the clipboard without opening it.
+ *
+ * @param[out] lpuiFormats
+ * Receives the formats.
+ *
+ * @param[in] cFormats
+ * How many formats lpuiFormats holds.
+ *
+ * @param[out] pcFormatsOut
+ * Receives how many formats the clipboard has.
+ *
+ * @return
+ * TRUE if every format fit, FALSE with ERROR_INSUFFICIENT_BUFFER when lpuiFormats is too small.
+ */
+BOOL
+APIENTRY
+NtUserGetUpdatedClipboardFormats(
+    _Out_writes_opt_(cFormats) PUINT lpuiFormats,
+    _In_ UINT cFormats,
+    _Out_ PUINT pcFormatsOut)
+{
+    PWINSTATION_OBJECT pWinStaObj;
+    UINT Count;
+    UINT i;
+    BOOL Ret = FALSE;
+
+    UserEnterShared();
+
+    pWinStaObj = IntGetWinStaForCbAccess();
+    if (!pWinStaObj)
+        goto cleanup;
+
+    Count = pWinStaObj->cNumClipFormats;
+    _SEH2_TRY
+    {
+        ProbeForWrite(pcFormatsOut, sizeof(*pcFormatsOut), sizeof(UINT));
+        *pcFormatsOut = Count;
+
+        if (cFormats < Count)
+        {
+            EngSetLastError(ERROR_INSUFFICIENT_BUFFER);
+        }
+        else
+        {
+            if (Count)
+                ProbeForWrite(lpuiFormats, Count * sizeof(*lpuiFormats), sizeof(UINT));
+            for (i = 0; i < Count; ++i)
+                lpuiFormats[i] = pWinStaObj->pClipBase[i].fmt;
+            Ret = TRUE;
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        SetLastNtError(_SEH2_GetExceptionCode());
+        Ret = FALSE;
+    }
+    _SEH2_END;
+
+    ObDereferenceObject(pWinStaObj);
+
+cleanup:
+    UserLeave();
+    return Ret;
+}
+
 BOOL NTAPI
 UserEmptyClipboard(VOID)
 {

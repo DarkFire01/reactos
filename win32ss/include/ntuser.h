@@ -3047,6 +3047,13 @@ NtDCompositionBoostCompositorClock(
 
 BOOL
 NTAPI
+NtUserGetUpdatedClipboardFormats(
+    _Out_writes_opt_(cFormats) PUINT lpuiFormats,
+    _In_ UINT cFormats,
+    _Out_ PUINT pcFormatsOut);
+
+BOOL
+NTAPI
 NtUserRegisterSessionPort(
     _In_ HANDLE Port);
 
