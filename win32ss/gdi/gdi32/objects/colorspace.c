@@ -54,6 +54,22 @@ CheckColorsInGamut(
 }
 
 
+typedef BOOL (WINAPI *PFN_GAMMA_CAPABILITY)(HDC);
+typedef BOOL (WINAPI *PFN_GAMMA_RAMP)(HDC, LPVOID);
+
+/* Displays with a color transform, as WDDM monitors have, take gamma ramps through mscms */
+static
+FARPROC
+IntGetMscmsGammaProc(
+    _In_ PCSTR Name)
+{
+    static HMODULE Mscms;
+
+    if (!Mscms)
+        Mscms = LoadLibraryW(L"mscms.dll");
+    return Mscms ? GetProcAddress(Mscms, Name) : NULL;
+}
+
 /*
  * @implemented
  */
@@ -62,6 +78,8 @@ WINAPI
 GetDeviceGammaRamp( HDC hdc,
                     LPVOID lpGammaRamp)
 {
+    PFN_GAMMA_CAPABILITY Capability;
+    PFN_GAMMA_RAMP GetRamp;
     BOOL retValue = FALSE;
     if (lpGammaRamp == NULL)
     {
@@ -69,7 +87,12 @@ GetDeviceGammaRamp( HDC hdc,
     }
     else
     {
-        retValue = NtGdiGetDeviceGammaRamp(hdc,lpGammaRamp);
+        Capability = (PFN_GAMMA_CAPABILITY)IntGetMscmsGammaProc("InternalGetDeviceGammaCapability");
+        GetRamp = (PFN_GAMMA_RAMP)IntGetMscmsGammaProc("InternalGetAppliedGDIGammaRamp");
+        if (Capability && GetRamp && Capability(hdc))
+            retValue = GetRamp(hdc, lpGammaRamp);
+        else
+            retValue = NtGdiGetDeviceGammaRamp(hdc,lpGammaRamp);
     }
 
     return retValue;
@@ -83,11 +106,18 @@ WINAPI
 SetDeviceGammaRamp(HDC hdc,
                    LPVOID lpGammaRamp)
 {
+    PFN_GAMMA_RAMP SetRamp;
     BOOL retValue = FALSE;
 
     if (lpGammaRamp)
     {
         retValue = NtGdiSetDeviceGammaRamp(hdc, lpGammaRamp);
+        if (!retValue)
+        {
+            SetRamp = (PFN_GAMMA_RAMP)IntGetMscmsGammaProc("InternalSetDeviceGDIGammaRamp");
+            if (SetRamp)
+                retValue = SetRamp(hdc, lpGammaRamp);
+        }
     }
     else
     {
