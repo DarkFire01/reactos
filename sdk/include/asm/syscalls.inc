@@ -74,11 +74,17 @@ MACRO(STUBCODE_K, Name, SyscallId, ArgCount)
     ret StackBytes
 ENDM
 #elif defined(_M_AMD64)
+/* The same bytes as Windows 10 stubs, which sandboxes that hook them check for before patching */
 MACRO(STUBCODE_U, Name, SyscallId, ArgCount)
     .ENDPROLOG
-    mov eax, SyscallId
     mov r10, rcx
+    mov eax, SyscallId
+    test byte ptr [HEX(7FFE0308)], 1
+    jne Nt&Name&_Int2E
     syscall
+    ret
+Nt&Name&_Int2E:
+    int HEX(2E)
     ret
 ENDM
 MACRO(STUBCODE_K, Name, SyscallId, ArgCount)
@@ -137,6 +143,10 @@ ENDM
 #endif
 
 MACRO(STUB_U, Name, ArgCount)
+#ifdef _M_AMD64
+    /* Hooks overwrite the start of a stub, so each one gets a slot of its own */
+    .align 16
+#endif
     MAKE_LABEL Zw&Name, %ArgCount * 4
     START_PROC Nt&Name, %ArgCount * 4
     STUBCODE_U Name, SyscallId, %ArgCount
