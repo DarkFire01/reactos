@@ -66,16 +66,37 @@ static void FreeWsleIndex(PMMWSL WsList, ULONG Index)
  */
 static bool GrowWsList(PMMWSL WsList)
 {
-    PMMPTE PointerPte = MiAddressToPte(&WsList->Wsle[WsList->LastInitializedWsle]);
-    ASSERT(PointerPte->u.Hard.Valid == 0);
+    PVOID Address = &WsList->Wsle[WsList->LastInitializedWsle];
+    PMMPTE PointerPte = MiAddressToPte(Address);
+    PMMPDE PointerPde = MiAddressToPde(Address);
 
     /* The list lives in hyperspace, it cannot run into the next region */
-    if ((ULONG_PTR)MiPteToAddress(PointerPte) >= HYPER_SPACE_END)
+    if ((ULONG_PTR)Address >= HYPER_SPACE_END)
         return false;
+
+#if (_MI_PAGING_LEVELS >= 3)
+    /* Only the first page directory of hyperspace is made with the process */
+    if (MiAddressToPpe(Address)->u.Hard.Valid == 0)
+        return false;
+#endif
 
     MMPTE TempPte = GetPteTemplateForWsList(WsList);
     {
         ntoskrnl::MiPfnLockGuard PfnLock;
+
+        /* Past the page table made with the process, the entries need one of their own; touching
+           the PTE before it exists would fault while the working set lock is held */
+        if (PointerPde->u.Hard.Valid == 0)
+        {
+            PFN_NUMBER PageTable = MiRemoveZeroPage(GetNextPageColorForWsList(WsList));
+            if (PageTable == 0)
+                return false;
+
+            MMPTE TempPde = TempPte;
+            TempPde.u.Hard.PageFrameNumber = PageTable;
+            MiInitializePfnAndMakePteValid(PageTable, PointerPde, TempPde);
+        }
+        ASSERT(PointerPte->u.Hard.Valid == 0);
 
         PFN_NUMBER Page = MiRemoveAnyPage(GetNextPageColorForWsList(WsList));
         if (Page == 0)
@@ -160,6 +181,23 @@ static void ShrinkWsList(PMMWSL WsList)
 
         PointerPte->u.Long = 0;
         KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
+
+        /* The first entry of a page table can only be the list's, so a table starting with it held list pages alone */
+        if (MiIsPteOnPdeBoundary(PointerPte))
+        {
+            PMMPDE PointerPde = MiAddressToPde(MiPteToAddress(PointerPte));
+            PFN_NUMBER PageTable = PFN_FROM_PDE(PointerPde);
+
+            ntoskrnl::MiPfnLockGuard PfnLock;
+
+            PointerPde->u.Long = 0;
+            KeInvalidateTlbEntry(PointerPte);
+
+            PMMPFN PageTablePfn = MiGetPfnEntry(PageTable);
+            MI_SET_PFN_DELETED(PageTablePfn);
+            MiDecrementShareCount(MiGetPfnEntry(PageTablePfn->u4.PteFrame), PageTablePfn->u4.PteFrame);
+            MiDecrementShareCount(PageTablePfn, PageTable);
+        }
         WsList->LastInitializedWsle -= GetEntriesPerPage();
     }
 }
