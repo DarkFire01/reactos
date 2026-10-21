@@ -123,6 +123,72 @@ CreateIoCompletionPort(IN HANDLE FileHandle,
     return NewPort;
 }
 
+C_ASSERT(sizeof(OVERLAPPED_ENTRY) == sizeof(FILE_IO_COMPLETION_INFORMATION));
+
+/**
+ * @brief
+ * Removes up to ulCount completions from a port at once, waiting for the first.
+ *
+ * @return
+ * TRUE with at least one entry. FALSE with WAIT_TIMEOUT when none came, WAIT_IO_COMPLETION
+ * when an alertable wait ran an APC, ERROR_ABANDONED_WAIT_0 when the port was closed, or
+ * ERROR_INVALID_PARAMETER.
+ */
+BOOL
+WINAPI
+GetQueuedCompletionStatusEx(
+    _In_ HANDLE CompletionPort,
+    _Out_writes_to_(ulCount, *ulNumEntriesRemoved) LPOVERLAPPED_ENTRY lpCompletionPortEntries,
+    _In_ ULONG ulCount,
+    _Out_ PULONG ulNumEntriesRemoved,
+    _In_ DWORD dwMilliseconds,
+    _In_ BOOL fAlertable)
+{
+    LARGE_INTEGER Time;
+    PLARGE_INTEGER TimePtr;
+    NTSTATUS Status;
+
+    if (!lpCompletionPortEntries || !ulNumEntriesRemoved || !ulCount)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    TimePtr = BaseFormatTimeOut(&Time, dwMilliseconds);
+
+    /* An alerted wait that ran no APC goes on waiting */
+    do
+    {
+        Status = NtRemoveIoCompletionEx(CompletionPort,
+                                        (PFILE_IO_COMPLETION_INFORMATION)lpCompletionPortEntries,
+                                        ulCount,
+                                        ulNumEntriesRemoved,
+                                        TimePtr,
+                                        fAlertable != FALSE);
+    } while (fAlertable && Status == STATUS_ALERTED);
+
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    switch (Status)
+    {
+        case STATUS_TIMEOUT:
+            SetLastError(WAIT_TIMEOUT);
+            return FALSE;
+        case STATUS_ABANDONED_WAIT_0:
+            SetLastError(ERROR_ABANDONED_WAIT_0);
+            return FALSE;
+        case STATUS_USER_APC:
+            SetLastError(WAIT_IO_COMPLETION);
+            return FALSE;
+        default:
+            return TRUE;
+    }
+}
+
 /*
  * @implemented
  */
@@ -216,6 +282,57 @@ PostQueuedCompletionStatus(IN HANDLE CompletionHandle,
 /*
  * @implemented
  */
+/**
+ * @brief
+ * Gets the result of an overlapped operation, waiting for it up to a timeout and alertably if asked.
+ *
+ * @return
+ * TRUE once the operation completed successfully. FALSE with ERROR_IO_INCOMPLETE while it is
+ * pending and no wait is asked for, WAIT_TIMEOUT or WAIT_IO_COMPLETION when the wait ends early,
+ * or the operation's own error.
+ */
+BOOL
+WINAPI
+GetOverlappedResultEx(
+    _In_ HANDLE hFile,
+    _In_ LPOVERLAPPED lpOverlapped,
+    _Out_ LPDWORD lpNumberOfBytesTransferred,
+    _In_ DWORD dwMilliseconds,
+    _In_ BOOL bAlertable)
+{
+    DWORD WaitStatus;
+
+    if (lpOverlapped->Internal == STATUS_PENDING)
+    {
+        if (!dwMilliseconds)
+        {
+            SetLastError(ERROR_IO_INCOMPLETE);
+            return FALSE;
+        }
+
+        WaitStatus = WaitForSingleObjectEx(lpOverlapped->hEvent ? lpOverlapped->hEvent : hFile,
+                                           dwMilliseconds,
+                                           bAlertable);
+        if (WaitStatus == WAIT_TIMEOUT || WaitStatus == WAIT_IO_COMPLETION)
+        {
+            SetLastError(WaitStatus);
+            return FALSE;
+        }
+
+        /* The wait itself failed and set the error */
+        if (WaitStatus != WAIT_OBJECT_0)
+            return FALSE;
+    }
+
+    *lpNumberOfBytesTransferred = (DWORD)lpOverlapped->InternalHigh;
+    if (!NT_SUCCESS(lpOverlapped->Internal))
+    {
+        BaseSetLastNTError(lpOverlapped->Internal);
+        return FALSE;
+    }
+    return TRUE;
+}
+
 BOOL
 WINAPI
 GetOverlappedResult(IN HANDLE hFile,
