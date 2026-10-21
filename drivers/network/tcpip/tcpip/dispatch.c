@@ -711,8 +711,7 @@ NTSTATUS DispTdiQueryInformation(
             AddrFile = (PADDRESS_FILE)TranContext->Handle.AddressHandle;
             if (AddrFile == NULL)
             {
-                TI_DbgPrint(MIN_TRACE, ("FIXME: No address file object.\n"));
-                ASSERT(AddrFile != NULL);
+                TI_DbgPrint(MIN_TRACE, ("No address file object.\n"));
                 return STATUS_INVALID_PARAMETER;
             }
 
@@ -729,10 +728,10 @@ NTSTATUS DispTdiQueryInformation(
           case TDI_CONNECTION_FILE:
             Endpoint =
 				(PCONNECTION_ENDPOINT)TranContext->Handle.ConnectionContext;
+            /* A connection that was never associated with an address, or no longer is */
             if (Endpoint == NULL || Endpoint->AddressFile == NULL)
             {
-                TI_DbgPrint(MIN_TRACE, ("FIXME: No connection endpoint file object.\n"));
-                ASSERT(Endpoint != NULL && Endpoint->AddressFile != NULL);
+                TI_DbgPrint(MIN_TRACE, ("No address associated with the connection.\n"));
                 return STATUS_INVALID_PARAMETER;
             }
 
