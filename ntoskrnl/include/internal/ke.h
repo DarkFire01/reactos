@@ -738,6 +738,14 @@ BOOLEAN
 NTAPI
 KeRemoveQueueApc(PKAPC Apc);
 
+PLIST_ENTRY
+NTAPI
+KiRemoveQueue(
+    _In_ PKQUEUE Queue,
+    _In_ KPROCESSOR_MODE WaitMode,
+    _In_ BOOLEAN Alertable,
+    _In_opt_ PLARGE_INTEGER Timeout);
+
 VOID
 FASTCALL
 KiActivateWaiterQueue(IN PKQUEUE Queue);

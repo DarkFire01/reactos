@@ -294,3 +294,4 @@ NtWaitForKeyedEvent 4
 NtQueryPortInformationProcess 0
 NtGetCurrentProcessorNumber 0
 NtWaitForMultipleObjects32 5
+NtRemoveIoCompletionEx 6
