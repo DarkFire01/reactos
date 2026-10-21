@@ -60,6 +60,7 @@ list(APPEND SOURCE
     windows/rect.c
     windows/spy.c
     windows/text.c
+    windows/touch.c
     windows/window.c
     windows/winpos.c
     ${REACTOS_SOURCE_DIR}/win32ss/user/rtl/image.c
