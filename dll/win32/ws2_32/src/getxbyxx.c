@@ -439,6 +439,39 @@ gethostname(OUT char FAR * name,
     return ERROR_SUCCESS;
 }
 
+/**
+ * @brief
+ * Gets the local host name as a wide string; nothing is written unless all of it fits.
+ */
+INT
+WSAAPI
+GetHostNameW(
+    _Out_writes_(namelen) PWSTR name,
+    _In_ INT namelen)
+{
+    CHAR AnsiName[MAX_HOSTNAME_LEN] = "";
+    INT Length;
+
+    if (!name || namelen < 1)
+    {
+        SetLastError(WSAEFAULT);
+        return SOCKET_ERROR;
+    }
+
+    if (gethostname(AnsiName, sizeof(AnsiName)) == SOCKET_ERROR)
+        return SOCKET_ERROR;
+
+    Length = MultiByteToWideChar(CP_ACP, 0, AnsiName, -1, NULL, 0);
+    if (Length == 0 || Length > namelen)
+    {
+        SetLastError(WSAEFAULT);
+        return SOCKET_ERROR;
+    }
+
+    MultiByteToWideChar(CP_ACP, 0, AnsiName, -1, name, namelen);
+    return ERROR_SUCCESS;
+}
+
 /*
  * @implemented
  */

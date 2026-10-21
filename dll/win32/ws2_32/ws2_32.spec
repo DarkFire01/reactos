@@ -59,6 +59,7 @@
 @ stdcall -stub -version=0x600+ GetAddrInfoExW(wstr wstr long ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall -version=0x600+ GetAddrInfoExCancel(ptr)
 @ stdcall GetAddrInfoW(wstr wstr ptr ptr)
+@ stdcall -version=0x602+ GetHostNameW(ptr long)
 @ stdcall GetNameInfoW(ptr long wstr long wstr long long)
 @ stdcall -version=0x600+ InetNtopW(long ptr ptr long)
 @ stdcall -version=0x600+ InetPtonW(long wstr ptr)
