@@ -983,3 +983,4 @@
 @ stdcall NtDCompositionGetTargetStatistics(ptr ptr ptr)
 @ stdcall NtDCompositionWaitForCompositorClock(long ptr long)
 @ stdcall NtDCompositionBoostCompositorClock(long)
+@ stdcall NtUserGetUpdatedClipboardFormats(ptr long ptr)
