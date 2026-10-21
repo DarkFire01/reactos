@@ -466,6 +466,8 @@
 @ stdcall IsRectEmpty(ptr)
 @ stdcall IsSETEnabled()
 @ stdcall IsServerSideWindow(long)
+@ stdcall -version=0x602+ InitializeTouchInjection(long long)
+@ stdcall -version=0x602+ InjectTouchInput(long ptr)
 @ stdcall -version=0x601+ IsTouchWindow(long ptr)
 @ stdcall -version=0xA00+ IsValidDpiAwarenessContext(long)
 @ stdcall IsWinEventHookInstalled(long)
