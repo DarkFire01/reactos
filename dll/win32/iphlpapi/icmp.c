@@ -418,6 +418,51 @@ IcmpSendEcho2(
     return nReplies;
 }
 
+/**
+ * @brief
+ * Sends an IPv4 echo request from a given source address.
+ *
+ * @param[in] SourceAddress
+ * The address to send from. The stack picks the source itself, so only 0 (any) can be honored.
+ *
+ * @return
+ * As IcmpSendEcho2. With any other source address, 0 and ERROR_NOT_SUPPORTED.
+ */
+DWORD
+WINAPI
+IcmpSendEcho2Ex(
+    _In_ HANDLE IcmpHandle,
+    _In_opt_ HANDLE Event,
+    _In_opt_ PIO_APC_ROUTINE ApcRoutine,
+    _In_opt_ PVOID ApcContext,
+    _In_ IPAddr SourceAddress,
+    _In_ IPAddr DestinationAddress,
+    _In_ LPVOID RequestData,
+    _In_ WORD RequestSize,
+    _In_opt_ PIP_OPTION_INFORMATION RequestOptions,
+    _Out_ LPVOID ReplyBuffer,
+    _In_ DWORD ReplySize,
+    _In_ DWORD Timeout)
+{
+    if (SourceAddress != INADDR_ANY)
+    {
+        SetLastError(ERROR_NOT_SUPPORTED);
+        return 0;
+    }
+
+    return IcmpSendEcho2(IcmpHandle,
+                         Event,
+                         ApcRoutine,
+                         ApcContext,
+                         DestinationAddress,
+                         RequestData,
+                         RequestSize,
+                         RequestOptions,
+                         ReplyBuffer,
+                         ReplySize,
+                         Timeout);
+}
+
 DWORD
 WINAPI
 IcmpSendEcho(

@@ -61,6 +61,42 @@ FreeMibTable(
         HeapFree(GetProcessHeap(), 0, Memory);
 }
 
+/* ADDRESSES *****************************************************************/
+
+/**
+ * @brief
+ * Gets the anycast addresses of the local interfaces.
+ *
+ * @param[in] Family
+ * AF_INET, AF_INET6 or AF_UNSPEC for both.
+ *
+ * @param[out] Table
+ * Receives the table, freed with FreeMibTable.
+ *
+ * @return
+ * NO_ERROR with an empty table, since the stack keeps no anycast addresses, or
+ * ERROR_INVALID_PARAMETER.
+ */
+DWORD
+WINAPI
+GetAnycastIpAddressTable(
+    _In_ ADDRESS_FAMILY Family,
+    _Outptr_ PMIB_ANYCASTIPADDRESS_TABLE *Table)
+{
+    PMIB_ANYCASTIPADDRESS_TABLE Result;
+
+    if (!Table || (Family != AF_UNSPEC && Family != AF_INET && Family != AF_INET6))
+        return ERROR_INVALID_PARAMETER;
+
+    *Table = NULL;
+    Result = IpHlpAllocMibTable(FIELD_OFFSET(MIB_ANYCASTIPADDRESS_TABLE, Table));
+    if (!Result)
+        return ERROR_NOT_ENOUGH_MEMORY;
+
+    *Table = Result;
+    return NO_ERROR;
+}
+
 /* INTERFACES ****************************************************************/
 
 /*
