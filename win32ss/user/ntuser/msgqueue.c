@@ -2016,6 +2016,9 @@ co_MsqPeekHardwareMessage(IN PTHREADINFO pti,
          UpdateKeyStateFromMsg(MessageQueue, &msg);
          AcceptMessage = co_IntProcessHardwareMessage(&msg, &Remove, &NotForUs, ExtraInfo, MsgFilterLow, MsgFilterHigh);
 
+         /* The callout may have removed what followed; the message in play is still queued */
+         ListHead = CurrentMessage->ListEntry.Flink;
+
          if (!NotForUs && (MsgFilterLow != 0 || MsgFilterHigh != 0))
          {
              /* Don't return message if not in range */
