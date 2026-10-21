@@ -20,6 +20,13 @@ NTAPI
 RtlFindExportedRoutineByName(
     _In_ PVOID ImageBase,
     _In_ PCSTR RoutineName);
+
+NTSYSAPI
+PVOID
+NTAPI
+RtlPcToFileHeader(
+    _In_ PVOID PcValue,
+    _Out_ PVOID* BaseOfImage);
 #endif
 
 /* The engine interface dxgkrnl calls back through (gdi/eng/dxgkeng.c) */
@@ -575,6 +582,7 @@ DlRegisterDwmProcess(VOID)
 VOID NTAPI
 DlDwmShutdown(VOID)
 {
+    DlForgetTokenThread();
     if (!gbDxgkInitialized)
         return;
 
@@ -752,6 +760,14 @@ DlInitDxgkrnl(VOID)
     /* win32k stamps Version/Size; dxgkrnl fills the pfn slots. */
     gDxgkInterface.Version = DL_INTERFACE_VERSION;
     gDxgkInterface.Size    = sizeof(gDxgkInterface);
+
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    /* dxgkrnl looks the routines it calls back by name up in this image */
+    Status = DlInitializeDxgkImports();
+    if (!NT_SUCCESS(Status))
+        return Status;
+    RtlPcToFileHeader((PVOID)DlInitDxgkrnl, &gDxgkInterface.Win32kImageBase);
+#endif
 
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Irp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_GIVE_CALLSBACK,

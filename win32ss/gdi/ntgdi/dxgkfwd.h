@@ -7,6 +7,41 @@
 
 #pragma once
 
+NTSTATUS
+NTAPI
+DlInitializeDxgkImports(VOID);
+
+VOID
+NTAPI
+DlNoteTokenThread(VOID);
+
+VOID
+NTAPI
+DlForgetTokenThread(VOID);
+
+NTSTATUS
+NTAPI
+DlGetSessionTokenManager(
+    _Out_ PVOID* TokenManager);
+
+NTSTATUS
+NTAPI
+DlOpenCompositionSurfaceForDwm(
+    _In_ HANDLE Surface,
+    _Out_ PHANDLE DwmHandle);
+
+NTSTATUS
+NTAPI
+DlReferenceCompositionSurface(
+    _In_ HANDLE Surface,
+    _Out_ PVOID* Object);
+
+NTSTATUS
+NTAPI
+DlOpenDwmHandleForSurface(
+    _In_ PVOID Object,
+    _Out_ PHANDLE DwmHandle);
+
 VOID
 NTAPI
 DlResolveDxgkForwards(

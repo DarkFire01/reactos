@@ -124,6 +124,7 @@ list(APPEND SOURCE
     user/ntuser/dcomp.c
     user/ntuser/dde.c
     user/ntuser/dwm.c
+    user/ntuser/dwmswapchain.c
     user/ntuser/sprite.c
     user/ntuser/defwnd.c
     user/ntuser/desktop.c
@@ -183,6 +184,7 @@ list(APPEND SOURCE
     gdi/ntgdi/coord.c
     gdi/ntgdi/d3dkmt.c
     gdi/ntgdi/dxgkfwd.c
+    gdi/eng/dxgkimport.c
     gdi/ntgdi/dcattr.c
     gdi/ntgdi/dclife.c
     gdi/ntgdi/dcobjs.c

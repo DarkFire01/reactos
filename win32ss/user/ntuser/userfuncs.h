@@ -202,6 +202,15 @@ BOOLEAN
 FASTCALL
 IntDwmIsActive(VOID);
 
+PEPROCESS
+FASTCALL
+IntDwmReferenceProcess(VOID);
+
+BOOLEAN
+FASTCALL
+IntDwmIsProcess(
+    _In_ PEPROCESS Process);
+
 VOID
 FASTCALL
 IntDwmProcessShutdown(
@@ -261,6 +270,11 @@ IntDwmSpriteWinEvent(
 VOID
 FASTCALL
 IntDwmWindowFreed(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
+IntDwmSwapChainWindowFreed(
     _In_ PWND Window);
 
 VOID
