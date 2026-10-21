@@ -2750,10 +2750,10 @@ NtSetInformationThread(
 
         case ThreadPriorityBoost:
         {
-            ULONG_PTR DisableBoost;
+            ULONG DisableBoost;
 
             /* Check buffer length */
-            if (ThreadInformationLength != sizeof(ULONG_PTR))
+            if (ThreadInformationLength != sizeof(ULONG))
             {
                 Status = STATUS_INFO_LENGTH_MISMATCH;
                 break;
@@ -2763,7 +2763,7 @@ NtSetInformationThread(
             _SEH2_TRY
             {
                 /* Get the priority */
-                DisableBoost = *(PULONG_PTR)ThreadInformation;
+                DisableBoost = *(PULONG)ThreadInformation;
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -2775,7 +2775,7 @@ NtSetInformationThread(
 
             /* Reference the thread */
             Status = ObReferenceObjectByHandle(ThreadHandle,
-                                               THREAD_SET_INFORMATION,
+                                               THREAD_SET_LIMITED_INFORMATION,
                                                PsThreadType,
                                                PreviousMode,
                                                (PVOID*)&Thread,
@@ -2784,7 +2784,7 @@ NtSetInformationThread(
                 break;
 
             /* Call the kernel */
-            KeSetDisableBoostThread(&Thread->Tcb, (BOOLEAN)DisableBoost);
+            KeSetDisableBoostThread(&Thread->Tcb, DisableBoost != 0);
 
             /* Dereference the thread */
             ObDereferenceObject(Thread);
