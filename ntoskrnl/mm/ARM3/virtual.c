@@ -5924,6 +5924,156 @@ NtResetWriteWatch(IN HANDLE ProcessHandle,
     return STATUS_SUCCESS;
 }
 
+/* One address of a working set query and what is found there, laid out as PSAPI_WORKING_SET_EX_INFORMATION */
+typedef struct _MI_WORKING_SET_EX_ENTRY
+{
+    PVOID VirtualAddress;
+    ULONG_PTR VirtualAttributes;
+} MI_WORKING_SET_EX_ENTRY, *PMI_WORKING_SET_EX_ENTRY;
+
+#define MI_WS_EX_VALID              0x1
+#define MI_WS_EX_SHARE_COUNT_SHIFT  1
+#define MI_WS_EX_PROTECTION_SHIFT   4
+#define MI_WS_EX_SHARED             0x8000
+
+/* Entries looked up per attach; the caller's buffer cannot be reached while attached */
+#define MI_WS_EX_CHUNK              256
+
+/* Where a page of the current process stands; the working set lock must be held */
+static
+ULONG_PTR
+MiQueryWorkingSetExAttributes(
+    _In_ PVOID Address)
+{
+    PMMPTE PointerPte;
+    MMPTE TempPte;
+    PMMPFN Pfn;
+    ULONG_PTR Attributes;
+    ULONG ShareCount;
+
+    if (Address > MM_HIGHEST_USER_ADDRESS)
+        return 0;
+
+    /* Each level has to be there before the next can be read */
+#if (_MI_PAGING_LEVELS == 4)
+    if (!MiAddressToPxe(Address)->u.Hard.Valid)
+        return 0;
+#endif
+#if (_MI_PAGING_LEVELS >= 3)
+    if (!MiAddressToPpe(Address)->u.Hard.Valid)
+        return 0;
+#endif
+    if (!MiAddressToPde(Address)->u.Hard.Valid)
+        return 0;
+
+    PointerPte = MiAddressToPte(Address);
+    TempPte = *PointerPte;
+    if (!TempPte.u.Hard.Valid)
+        return 0;
+
+    Attributes = MI_WS_EX_VALID;
+    Attributes |= (ULONG_PTR)(MiGetPageProtection(PointerPte) & 0x7FF) << MI_WS_EX_PROTECTION_SHIFT;
+
+    Pfn = MI_PFN_ELEMENT(PFN_FROM_PTE(&TempPte));
+    if (Pfn->u3.e1.PrototypePte)
+    {
+        ShareCount = min(Pfn->u2.ShareCount, 7);
+        Attributes |= MI_WS_EX_SHARED | ((ULONG_PTR)ShareCount << MI_WS_EX_SHARE_COUNT_SHIFT);
+    }
+    return Attributes;
+}
+
+/**
+ * @brief
+ * Tells for each address the caller lists whether its page is in the process' working set,
+ * with its protection and whether it is shared.
+ */
+static
+NTSTATUS
+MiQueryWorkingSetEx(
+    _In_ HANDLE ProcessHandle,
+    _Inout_updates_bytes_(Length) PVOID Information,
+    _In_ SIZE_T Length,
+    _Out_opt_ PSIZE_T ReturnLength)
+{
+    PMI_WORKING_SET_EX_ENTRY UserEntries = Information;
+    PMI_WORKING_SET_EX_ENTRY Entries;
+    KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+    PETHREAD CurrentThread = PsGetCurrentThread();
+    SIZE_T Count = Length / sizeof(*Entries);
+    SIZE_T Done, Chunk, Index;
+    PEPROCESS Process;
+    KAPC_STATE ApcState;
+    NTSTATUS Status;
+
+    Status = ObReferenceObjectByHandle(ProcessHandle,
+                                       PROCESS_QUERY_INFORMATION,
+                                       PsProcessType,
+                                       PreviousMode,
+                                       (PVOID*)&Process,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Entries = ExAllocatePoolWithTag(PagedPool, MI_WS_EX_CHUNK * sizeof(*Entries), TAG_MM);
+    if (!Entries)
+    {
+        ObDereferenceObject(Process);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    for (Done = 0; Done < Count && NT_SUCCESS(Status); Done += Chunk)
+    {
+        Chunk = min(Count - Done, MI_WS_EX_CHUNK);
+
+        _SEH2_TRY
+        {
+            RtlCopyMemory(Entries, &UserEntries[Done], Chunk * sizeof(*Entries));
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+        if (!NT_SUCCESS(Status))
+            break;
+
+        KeStackAttachProcess(&Process->Pcb, &ApcState);
+        MiLockProcessWorkingSetShared(Process, CurrentThread);
+        for (Index = 0; Index < Chunk; Index++)
+            Entries[Index].VirtualAttributes = MiQueryWorkingSetExAttributes(Entries[Index].VirtualAddress);
+        MiUnlockProcessWorkingSetShared(Process, CurrentThread);
+        KeUnstackDetachProcess(&ApcState);
+
+        _SEH2_TRY
+        {
+            RtlCopyMemory(&UserEntries[Done], Entries, Chunk * sizeof(*Entries));
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+
+    ExFreePoolWithTag(Entries, TAG_MM);
+    ObDereferenceObject(Process);
+
+    if (NT_SUCCESS(Status) && ReturnLength)
+    {
+        _SEH2_TRY
+        {
+            *ReturnLength = Length;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 NtQueryVirtualMemory(IN HANDLE ProcessHandle,
@@ -5967,6 +6117,15 @@ NtQueryVirtualMemory(IN HANDLE ProcessHandle,
 
     switch(MemoryInformationClass)
     {
+        case MemoryWorkingSetExList:
+            if (MemoryInformationLength < sizeof(MI_WORKING_SET_EX_ENTRY))
+                return STATUS_INFO_LENGTH_MISMATCH;
+            Status = MiQueryWorkingSetEx(ProcessHandle,
+                                         MemoryInformation,
+                                         MemoryInformationLength,
+                                         ReturnLength);
+            break;
+
         case MemoryBasicInformation:
             /* Validate the size information of the class */
             if (MemoryInformationLength < sizeof(MEMORY_BASIC_INFORMATION))
