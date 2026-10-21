@@ -568,6 +568,7 @@ IntDwmWindowFreed(
 
     if (Sprite)
         IntDwmDestroySprite(Sprite, TRUE);
+    IntDwmSwapChainWindowFreed(Window);
 }
 
 /* Composes every visible top level window, bottom first so each lands above the last */
