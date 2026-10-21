@@ -594,6 +594,10 @@ NtUserGetRawInputBuffer(
         if (Message->Msg.message != WM_INPUT)
             continue;
 
+        /* A hook or window procedure can get here while the peek still holds this message */
+        if ((ULONG_PTR)Message == MessageQueue->idSysPeek)
+            continue;
+
         RawEntry = RawInputEntryFromHandle(MessageQueue, (HRAWINPUT)Message->Msg.lParam);
         if (!RawEntry)
             continue;
