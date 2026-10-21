@@ -7376,7 +7376,8 @@ FindVad:
             (Vad->u.VadFlags.VadType == VadLargePages) ||
             (Vad->u.VadFlags.VadType == VadRotatePhysical))
         {
-            DPRINT1("Trying to decommit from invalid VAD\n");
+            DPRINT1("Trying to decommit from invalid VAD: %s at %p, VAD type %lu\n",
+                    Process->ImageFileName, PBaseAddress, (ULONG)Vad->u.VadFlags.VadType);
             Status = STATUS_MEMORY_NOT_ALLOCATED;
             goto FailPath;
         }
