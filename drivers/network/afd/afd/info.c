@@ -399,9 +399,10 @@ AfdGetSockName( PDEVICE_OBJECT DeviceObject, PIRP Irp,
         } _SEH2_END;
 
         if( NT_SUCCESS(Status) ) {
-                Status = TdiQueryInformation( FCB->Connection.Object
-                                                ? FCB->Connection.Object
-                                                : FCB->AddressFile.Object,
+                /* A connection only knows its address once it is associated with the socket's address file */
+                Status = TdiQueryInformation( FCB->AddressFile.Object
+                                                ? FCB->AddressFile.Object
+                                                : FCB->Connection.Object,
                                               TDI_QUERY_ADDRESS_INFO,
                                               Mdl );
         }
