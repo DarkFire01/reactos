@@ -15,14 +15,14 @@
 //
 // Waits on an LPC semaphore for a receive operation
 //
-#define LpcpReceiveWait(s, w)                               \
+#define LpcpReceiveWait(s, w, t)                            \
 {                                                           \
     LPCTRACE(LPC_REPLY_DEBUG, "Wait: %p\n", s);             \
     Status = KeWaitForSingleObject(s,                       \
                                    WrLpcReceive,            \
                                    w,                       \
                                    FALSE,                   \
-                                   NULL);                   \
+                                   t);                      \
     LPCTRACE(LPC_REPLY_DEBUG, "Wait done: %lx\n", Status);  \
 }
 

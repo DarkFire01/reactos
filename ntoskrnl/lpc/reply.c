@@ -594,8 +594,8 @@ NtReplyWaitReceivePortEx(IN HANDLE PortHandle,
         ObDereferenceObject(WakeupThread);
     }
 
-    /* Now wait for someone to reply to us */
-    LpcpReceiveWait(ReceivePort->MsgQueue.Semaphore, WaitMode);
+    /* Now wait for someone to reply to us; a timeout is returned as it is */
+    LpcpReceiveWait(ReceivePort->MsgQueue.Semaphore, WaitMode, Timeout);
     if (Status != STATUS_SUCCESS) goto Cleanup;
 
     /* Wait done, get the LPC lock */
