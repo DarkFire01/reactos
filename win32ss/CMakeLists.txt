@@ -122,6 +122,7 @@ list(APPEND SOURCE
     user/ntuser/csr.c
     user/ntuser/cursoricon.c
     user/ntuser/dcomp.c
+    user/ntuser/dcompframe.c
     user/ntuser/dde.c
     user/ntuser/dwm.c
     user/ntuser/dwmswapchain.c
