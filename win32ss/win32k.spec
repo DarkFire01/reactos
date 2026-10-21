@@ -265,6 +265,31 @@
 @ stdcall XLATEOBJ_hGetColorTransform(ptr)
 @ stdcall XLATEOBJ_iXlate(ptr long)
 @ stdcall XLATEOBJ_piVector(ptr)
+
+# Looked up by name by the Windows 11 dxgkrnl, see gdi/eng/dxgkimport.c
+@ stdcall CreateRegion(ptr)
+@ stdcall CreateRegionFromRect(ptr ptr)
+@ stdcall DCompositionAcquireDwmStateLock(ptr ptr)
+@ stdcall DCompositionReleaseDwmStateLock(ptr long)
+@ stdcall GreIsDwmStateLocked()
+@ stdcall GreLockDwmState()
+@ stdcall GreSfmGetNotificationTokens(long ptr ptr)
+@ stdcall GreSfmOpenTokenEvent(ptr)
+@ stdcall GreUnlockDwmState()
+@ stdcall UserAllocDefaultCompositionSecurityDescriptor(long ptr)
+@ stdcall UserDereferenceDwmProcess(ptr)
+@ stdcall UserEnterUserCritSecShared()
+@ stdcall UserIsCurrentThreadDesktopComposed()
+@ stdcall UserIsDisconnectConnection()
+@ stdcall UserIsUserCritSecIn()
+@ stdcall UserIsWindowDesktopComposed(ptr ptr)
+@ stdcall UserLeaveUserCritSec()
+@ stdcall UserReferenceDwmProcess()
+@ stdcall UserRemoveWindowedSwapChain(ptr long)
+@ stdcall UserSetWindowedSwapChainApiExt(ptr long ptr)
+@ stdcall UserUnsafeIsCurrentProcessDwm()
+@ stdcall UserUnsafeIsProcessDwm(ptr)
+@ stdcall Win32FreePool(ptr)
 @ cdecl -arch=x86_64,arm __C_specific_handler(ptr long ptr ptr) NTOSKRNL.__C_specific_handler
 @ cdecl -arch=x86_64,arm __chkstk(ptr long ptr ptr) NTOSKRNL.__chkstk
 @ cdecl -arch=arm __jump_unwind() NTOSKRNL.__jump_unwind

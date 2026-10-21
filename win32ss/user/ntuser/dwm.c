@@ -16,6 +16,9 @@ VOID NTAPI DlDwmShutdown(VOID);
 /* The port dwmredir created and registered, and the process that registered it */
 static PVOID gpDwmPort = NULL;
 static PPROCESSINFO gppiDwm = NULL;
+
+/* The same process for dxgkrnl, which asks from any thread; it is read under gDwmPortLock */
+static PEPROCESS gpepDwm = NULL;
 static BOOLEAN gbDwmKernelStarted = FALSE;
 
 /* Drawing threads send dirty notifications without the user lock, so the port is swapped under this */
@@ -35,6 +38,42 @@ IntDwmSwapPort(
     gpDwmPort = Port;
     KeReleaseSpinLock(&gDwmPortLock, Irql);
     return Old;
+}
+
+static
+VOID
+IntDwmSetProcess(
+    _In_opt_ PEPROCESS Process)
+{
+    KIRQL Irql;
+
+    KeAcquireSpinLock(&gDwmPortLock, &Irql);
+    gpepDwm = Process;
+    KeReleaseSpinLock(&gDwmPortLock, Irql);
+}
+
+/* The DWM's process with a reference the caller drops, or NULL */
+PEPROCESS
+FASTCALL
+IntDwmReferenceProcess(VOID)
+{
+    PEPROCESS Process;
+    KIRQL Irql;
+
+    KeAcquireSpinLock(&gDwmPortLock, &Irql);
+    Process = gpepDwm;
+    if (Process)
+        ObReferenceObject(Process);
+    KeReleaseSpinLock(&gDwmPortLock, Irql);
+    return Process;
+}
+
+BOOLEAN
+FASTCALL
+IntDwmIsProcess(
+    _In_ PEPROCESS Process)
+{
+    return gpepDwm && gpepDwm == Process;
 }
 
 /* Sends a kernel datagram to the DWM; Header is followed by the message's payload */
@@ -217,6 +256,7 @@ IntDwmStop(
     if (Port)
         ObDereferenceObject(Port);
     gppiDwm = NULL;
+    IntDwmSetProcess(NULL);
 
     DlDwmShutdown();
 
@@ -271,6 +311,7 @@ NtUserRegisterSessionPort(
 
     IntDwmSwapPort(PortObject);
     gppiDwm = GetW32ProcessInfo();
+    IntDwmSetProcess(PsGetCurrentProcess());
 
     /* dxgkrnl only lets the registered DWM take shared ownership of the display */
     Status = DlRegisterDwmProcess();
@@ -279,6 +320,7 @@ NtUserRegisterSessionPort(
         ERR("dxgkrnl refused the DWM process: 0x%08lx\n", Status);
         ObDereferenceObject(IntDwmSwapPort(NULL));
         gppiDwm = NULL;
+        IntDwmSetProcess(NULL);
         SetLastNtError(Status);
         goto Exit;
     }

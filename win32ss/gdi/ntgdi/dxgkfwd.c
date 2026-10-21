@@ -354,6 +354,16 @@ static const PCSTR DlpDxgkForwardNames[DxgkForwardCount] =
 
 static PVOID DlpDxgkForwards[DxgkForwardCount];
 
+typedef NTSTATUS (NTAPI *PFN_GET_SESSION_TOKEN_MANAGER)(PVOID*);
+typedef NTSTATUS (NTAPI *PFN_REFERENCE_COMPOSITION_OBJECT)(HANDLE, ACCESS_MASK, ULONG, KPROCESSOR_MODE, PVOID*);
+typedef NTSTATUS (NTAPI *PFN_OPEN_DWM_HANDLE)(PVOID, PHANDLE);
+static PFN_GET_SESSION_TOKEN_MANAGER DlpGetSessionTokenManager;
+static PFN_REFERENCE_COMPOSITION_OBJECT DlpReferenceCompositionObject;
+static PFN_OPEN_DWM_HANDLE DlpOpenDwmHandle;
+
+/* The kind of composition object a composition surface is */
+#define DL_COMPOSITION_SURFACE_KIND 1
+
 /**
  * @brief Finds every forwarded entry point among the exports of the loaded dxgkrnl.
  */
@@ -366,6 +376,84 @@ DlResolveDxgkForwards(
 
     for (i = 0; i < DxgkForwardCount; i++)
         DlpDxgkForwards[i] = RtlFindExportedRoutineByName(ImageBase, DlpDxgkForwardNames[i]);
+
+    DlpGetSessionTokenManager = (PFN_GET_SESSION_TOKEN_MANAGER)
+        RtlFindExportedRoutineByName(ImageBase, "DxgkGetSessionTokenManager");
+    DlpReferenceCompositionObject = (PFN_REFERENCE_COMPOSITION_OBJECT)
+        RtlFindExportedRoutineByName(ImageBase, "DxgkReferenceCompositionObject");
+    DlpOpenDwmHandle = (PFN_OPEN_DWM_HANDLE)
+        RtlFindExportedRoutineByName(ImageBase, "DxgkOpenDwmHandleForCompositionObjectReference");
+}
+
+/**
+ * @brief Opens the composition surface an application's handle names into the DWM, which
+ *        owns and closes the handle it gets.
+ */
+NTSTATUS
+NTAPI
+DlOpenCompositionSurfaceForDwm(
+    _In_ HANDLE Surface,
+    _Out_ PHANDLE DwmHandle)
+{
+    PVOID Object;
+    NTSTATUS Status;
+
+    *DwmHandle = NULL;
+    if (!DlpReferenceCompositionObject || !DlpOpenDwmHandle)
+        return STATUS_NOT_SUPPORTED;
+
+    Status = DlpReferenceCompositionObject(Surface, 1, DL_COMPOSITION_SURFACE_KIND, UserMode, &Object);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = DlpOpenDwmHandle(Object, DwmHandle);
+    ObDereferenceObject(Object);
+    return Status;
+}
+
+/**
+ * @brief References the composition surface a handle of the calling process names; the caller
+ *        dereferences the object it gets.
+ */
+NTSTATUS
+NTAPI
+DlReferenceCompositionSurface(
+    _In_ HANDLE Surface,
+    _Out_ PVOID* Object)
+{
+    *Object = NULL;
+    if (!DlpReferenceCompositionObject)
+        return STATUS_NOT_SUPPORTED;
+    return DlpReferenceCompositionObject(Surface, 1, DL_COMPOSITION_SURFACE_KIND, UserMode, Object);
+}
+
+/**
+ * @brief Opens a referenced composition surface into the DWM, which owns and closes the handle.
+ */
+NTSTATUS
+NTAPI
+DlOpenDwmHandleForSurface(
+    _In_ PVOID Object,
+    _Out_ PHANDLE DwmHandle)
+{
+    *DwmHandle = NULL;
+    if (!DlpOpenDwmHandle)
+        return STATUS_NOT_SUPPORTED;
+    return DlpOpenDwmHandle(Object, DwmHandle);
+}
+
+/**
+ * @brief Gets the session's dxgkrnl token manager with a reference for the caller to release.
+ */
+NTSTATUS
+NTAPI
+DlGetSessionTokenManager(
+    _Out_ PVOID* TokenManager)
+{
+    *TokenManager = NULL;
+    if (!DlpGetSessionTokenManager)
+        return STATUS_PROCEDURE_NOT_FOUND;
+    return DlpGetSessionTokenManager(TokenManager);
 }
 
 static
@@ -2557,6 +2645,9 @@ NtTokenManagerThread(
 
     if (!pfn)
         return STATUS_PROCEDURE_NOT_FOUND;
+
+    /* Flip presents reach the desktop from here on */
+    DlNoteTokenThread();
     return pfn(Param1);
 }
 
