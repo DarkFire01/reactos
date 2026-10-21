@@ -66,9 +66,13 @@ VOID SignalSocket(
 
     if (Poll)
     {
-        KeCancelTimer( &Poll->Timer );
         RemoveEntryList( &Poll->ListEntry );
-        ExFreePoolWithTag(Poll, TAG_AFD_ACTIVE_POLL);
+
+        /* A timer that already went off has its DPC on the way, which frees the poll and must not complete the IRP again */
+        if (KeCancelTimer( &Poll->Timer ))
+            ExFreePoolWithTag(Poll, TAG_AFD_ACTIVE_POLL);
+        else
+            Poll->Irp = NULL;
     }
 
     Irp->IoStatus.Status = Status;
@@ -109,15 +113,25 @@ static VOID NTAPI SelectTimeout( PKDPC Dpc,
 
     AFD_DbgPrint(MID_TRACE,("Called\n"));
 
-    Irp = Poll->Irp;
     DeviceExt = Poll->DeviceExt;
-    PollReq = Irp->AssociatedIrp.SystemBuffer;
+    KeAcquireSpinLock( &DeviceExt->Lock, &OldIrql );
 
+    /* Signaled while this DPC was queued; its IRP is completed and only the memory is left */
+    Irp = Poll->Irp;
+    if (!Irp)
+    {
+        KeReleaseSpinLock( &DeviceExt->Lock, OldIrql );
+        ExFreePoolWithTag(Poll, TAG_AFD_ACTIVE_POLL);
+        return;
+    }
+
+    PollReq = Irp->AssociatedIrp.SystemBuffer;
     ZeroEvents( PollReq->Handles, PollReq->HandleCount );
 
-    KeAcquireSpinLock( &DeviceExt->Lock, &OldIrql );
+    /* The timer has fired, so signalling leaves the poll to this DPC to free */
     SignalSocket( Poll, NULL, PollReq, STATUS_TIMEOUT );
     KeReleaseSpinLock( &DeviceExt->Lock, OldIrql );
+    ExFreePoolWithTag(Poll, TAG_AFD_ACTIVE_POLL);
 
     AFD_DbgPrint(MID_TRACE,("Timeout\n"));
 }
