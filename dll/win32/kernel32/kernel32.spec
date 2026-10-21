@@ -530,6 +530,7 @@
 @ stdcall GetLocaleInfoA(long long ptr long)
 @ stdcall -version=0x600+ GetLocaleInfoEx(wstr long ptr long)
 @ stdcall GetLocaleInfoW(long long ptr long)
+@ stdcall -version=0x602+ GetOverlappedResultEx(long ptr ptr long long)
 @ stdcall -version=0x602+ GetPackageFamilyName(ptr ptr ptr)
 @ stdcall -version=0x602+ GetPackageFullName(ptr ptr ptr)
 @ stdcall -version=0x602+ GetPackageId(ptr ptr ptr)

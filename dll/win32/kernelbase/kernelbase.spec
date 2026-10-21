@@ -622,7 +622,7 @@
 # @ stub GetOsManufacturingMode
 # @ stub GetOsSafeBootMode
 @ stdcall GetOverlappedResult(long ptr ptr long)
-@ stdcall -stub -version=0x602+ GetOverlappedResultEx(long ptr ptr long long)
+@ stdcall -version=0x602+ GetOverlappedResultEx(long ptr ptr long long)
 # @ stub GetPackageApplicationContext
 # @ stub GetPackageApplicationIds
 # @ stub GetPackageApplicationProperty
@@ -683,7 +683,7 @@
 # @ stub GetPublisherCacheFolder
 # @ stub GetPublisherRootFolder
 @ stdcall GetQueuedCompletionStatus(long ptr ptr ptr long)
-@ stdcall -stub GetQueuedCompletionStatusEx(ptr ptr long ptr long long)
+@ stdcall -version=0x600+ GetQueuedCompletionStatusEx(ptr ptr long ptr long long)
 # @ stub GetRegistryExtensionFlags
 # @ stub GetRoamingLastObservedChangeTime
 @ stdcall GetSecurityDescriptorControl(ptr ptr ptr)
