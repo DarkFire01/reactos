@@ -3871,6 +3871,14 @@ NtCreateSection(OUT PHANDLE SectionHandle,
         return STATUS_INVALID_PARAMETER_6;
     }
 
+    /* An image with SEC_NOCACHE is one mapped without execute, which only maps read only */
+    if ((AllocationAttributes & (SEC_IMAGE | SEC_NOCACHE)) == (SEC_IMAGE | SEC_NOCACHE))
+    {
+        if (SectionPageProtection != PAGE_READONLY)
+            return STATUS_INVALID_PAGE_PROTECTION;
+        AllocationAttributes &= ~SEC_NOCACHE;
+    }
+
     /* Check for image allocation with invalid attributes */
     if ((AllocationAttributes & SEC_IMAGE) &&
         (AllocationAttributes & (SEC_COMMIT | SEC_RESERVE | SEC_LARGE_PAGES |
