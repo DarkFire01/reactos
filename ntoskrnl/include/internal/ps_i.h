@@ -486,7 +486,7 @@ static const INFORMATION_CLASS_INFO PsThreadInfoClass[] =
     (
         ULONG,
         ULONG,
-        ULONG_PTR,
+        ULONG,
         ULONG,
         ICIF_QUERY | ICIF_SET
     ),
