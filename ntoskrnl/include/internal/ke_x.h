@@ -1221,7 +1221,7 @@ KxSetTimerForThreadWait(IN PKTIMER Timer,
     }                                                                       \
                                                                             \
     /* Set wait settings */                                                 \
-    Thread->Alertable = FALSE;                                              \
+    Thread->Alertable = Alertable;                                          \
     Thread->WaitMode = WaitMode;                                            \
     Thread->WaitReason = WrQueue;                                           \
                                                                             \

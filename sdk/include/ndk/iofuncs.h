@@ -497,6 +497,18 @@ NtRemoveIoCompletion(
 NTSYSCALLAPI
 NTSTATUS
 NTAPI
+NtRemoveIoCompletionEx(
+    _In_ HANDLE IoCompletionHandle,
+    _Out_writes_to_(Count, *NumEntriesRemoved) PFILE_IO_COMPLETION_INFORMATION IoCompletionInformation,
+    _In_ ULONG Count,
+    _Out_ PULONG NumEntriesRemoved,
+    _In_opt_ PLARGE_INTEGER Timeout,
+    _In_ BOOLEAN Alertable
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
 NtSetBootEntryOrder(
     _In_ PULONG Ids,
     _In_ PULONG Count

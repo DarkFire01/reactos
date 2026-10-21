@@ -440,6 +440,135 @@ NtQueryIoCompletion(IN  HANDLE IoCompletionHandle,
     return Status;
 }
 
+/* What a queued completion carries; the packet or IRP behind it is freed */
+static
+VOID
+IopTakeCompletionEntry(
+    _In_ PLIST_ENTRY ListEntry,
+    _Out_ PFILE_IO_COMPLETION_INFORMATION Entry)
+{
+    PIOP_MINI_COMPLETION_PACKET Packet = CONTAINING_RECORD(ListEntry, IOP_MINI_COMPLETION_PACKET, ListEntry);
+    PIRP Irp;
+
+    if (Packet->PacketType == IopCompletionPacketIrp)
+    {
+        Irp = CONTAINING_RECORD(ListEntry, IRP, Tail.Overlay.ListEntry);
+        Entry->KeyContext = Irp->Tail.CompletionKey;
+        Entry->ApcContext = Irp->Overlay.AsynchronousParameters.UserApcContext;
+        Entry->IoStatusBlock = Irp->IoStatus;
+        IoFreeIrp(Irp);
+    }
+    else
+    {
+        Entry->KeyContext = Packet->KeyContext;
+        Entry->ApcContext = Packet->ApcContext;
+        Entry->IoStatusBlock.Status = Packet->IoStatus;
+        Entry->IoStatusBlock.Information = Packet->IoStatusInformation;
+        IopFreeMiniPacket(Packet);
+    }
+}
+
+/**
+ * @brief
+ * Removes up to Count completions from a port, waiting for the first up to the timeout.
+ *
+ * @return
+ * STATUS_SUCCESS with at least one entry, STATUS_TIMEOUT when none came, STATUS_USER_APC when an
+ * alertable wait was alerted, or a failure.
+ */
+NTSTATUS
+NTAPI
+NtRemoveIoCompletionEx(
+    _In_ HANDLE IoCompletionHandle,
+    _Out_writes_to_(Count, *NumEntriesRemoved) PFILE_IO_COMPLETION_INFORMATION IoCompletionInformation,
+    _In_ ULONG Count,
+    _Out_ PULONG NumEntriesRemoved,
+    _In_opt_ PLARGE_INTEGER Timeout,
+    _In_ BOOLEAN Alertable)
+{
+    KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+    FILE_IO_COMPLETION_INFORMATION Entry;
+    LARGE_INTEGER SafeTimeout;
+    LARGE_INTEGER NoWait;
+    PLIST_ENTRY ListEntry;
+    PKQUEUE Queue;
+    ULONG Removed = 0;
+    NTSTATUS Status;
+    PAGED_CODE();
+
+    if (!Count)
+        return STATUS_INVALID_PARAMETER;
+
+    if (PreviousMode != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            ProbeForWrite(IoCompletionInformation, Count * sizeof(*IoCompletionInformation), sizeof(PVOID));
+            ProbeForWriteUlong(NumEntriesRemoved);
+            if (Timeout)
+            {
+                SafeTimeout = ProbeForReadLargeInteger(Timeout);
+                Timeout = &SafeTimeout;
+            }
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    Status = ObReferenceObjectByHandle(IoCompletionHandle,
+                                       IO_COMPLETION_MODIFY_STATE,
+                                       IoCompletionType,
+                                       PreviousMode,
+                                       (PVOID*)&Queue,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Only the first entry is waited for; the rest are whatever is already queued */
+    NoWait.QuadPart = 0;
+    while (Removed < Count)
+    {
+        ListEntry = KiRemoveQueue(Queue, PreviousMode, Removed ? FALSE : Alertable, Removed ? &NoWait : Timeout);
+        if ((NTSTATUS)(ULONG_PTR)ListEntry == STATUS_TIMEOUT ||
+            (NTSTATUS)(ULONG_PTR)ListEntry == STATUS_USER_APC)
+        {
+            if (!Removed)
+                Status = (NTSTATUS)(ULONG_PTR)ListEntry;
+            break;
+        }
+
+        IopTakeCompletionEntry(ListEntry, &Entry);
+        _SEH2_TRY
+        {
+            IoCompletionInformation[Removed] = Entry;
+        }
+        _SEH2_EXCEPT(ExSystemExceptionFilter())
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+        if (!NT_SUCCESS(Status))
+            break;
+        Removed++;
+    }
+
+    ObDereferenceObject(Queue);
+
+    _SEH2_TRY
+    {
+        *NumEntriesRemoved = Removed;
+    }
+    _SEH2_EXCEPT(ExSystemExceptionFilter())
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 NtRemoveIoCompletion(IN HANDLE IoCompletionHandle,

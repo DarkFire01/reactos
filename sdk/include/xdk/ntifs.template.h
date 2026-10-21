@@ -750,7 +750,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtRecoverResourceManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtRecoverTransactionManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtRegisterProtocolAddressInformation();
 NTSYSCALLAPI NTSTATUS NTAPI NtReleaseWorkerFactoryWorker();
-NTSYSCALLAPI NTSTATUS NTAPI NtRemoveIoCompletionEx();
 NTSYSCALLAPI NTSTATUS NTAPI NtRenameTransactionManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtReplacePartitionUnit();
 NTSYSCALLAPI NTSTATUS NTAPI NtRollbackComplete();

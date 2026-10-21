@@ -230,14 +230,18 @@ KeReadStateQueue(IN PKQUEUE Queue)
     return Queue->Header.SignalState;
 }
 
-/*
- * @implemented
+/**
+ * @brief
+ * Removes the next entry of a queue, waiting for one up to the timeout. An alertable user mode
+ * wait ends with STATUS_USER_APC when a user APC arrives.
  */
 PLIST_ENTRY
 NTAPI
-KeRemoveQueue(IN PKQUEUE Queue,
-              IN KPROCESSOR_MODE WaitMode,
-              IN PLARGE_INTEGER Timeout OPTIONAL)
+KiRemoveQueue(
+    _In_ PKQUEUE Queue,
+    _In_ KPROCESSOR_MODE WaitMode,
+    _In_ BOOLEAN Alertable,
+    _In_opt_ PLARGE_INTEGER Timeout)
 {
     PLIST_ENTRY QueueEntry;
     LONG_PTR Status;
@@ -428,6 +432,18 @@ KeRemoveQueue(IN PKQUEUE Queue,
     KiReleaseDispatcherLockFromSynchLevel();
     KiExitDispatcher(Thread->WaitIrql);
     return QueueEntry;
+}
+
+/*
+ * @implemented
+ */
+PLIST_ENTRY
+NTAPI
+KeRemoveQueue(IN PKQUEUE Queue,
+              IN KPROCESSOR_MODE WaitMode,
+              IN PLARGE_INTEGER Timeout OPTIONAL)
+{
+    return KiRemoveQueue(Queue, WaitMode, FALSE, Timeout);
 }
 
 /*
