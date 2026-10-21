@@ -904,7 +904,10 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     if (!(Vad) || (Vad->u.VadFlags.PrivateMemory))
     {
         /* Couldn't find it, or invalid VAD, fail */
-        DPRINT1("No VAD or invalid VAD\n");
+        DPRINT1("No VAD or invalid VAD: %s unmapping %p, VAD type %lu private %lu\n",
+                Process->ImageFileName, BaseAddress,
+                Vad ? (ULONG)Vad->u.VadFlags.VadType : MAXULONG,
+                Vad ? (ULONG)Vad->u.VadFlags.PrivateMemory : MAXULONG);
         if (!Flags) MmUnlockAddressSpace(&Process->Vm);
         return STATUS_NOT_MAPPED_VIEW;
     }
