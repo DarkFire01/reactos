@@ -42,6 +42,7 @@
 @ stdcall GetAdapterOrderMap()
 @ stdcall GetAdaptersAddresses(long long ptr ptr ptr)
 @ stdcall GetAdaptersInfo(ptr ptr)
+@ stdcall -version=0x600+ GetAnycastIpAddressTable(long ptr)
 @ stdcall GetBestInterface(long ptr)
 @ stdcall GetBestInterfaceEx(ptr ptr)
 @ stub GetBestInterfaceFromStack
@@ -111,6 +112,7 @@
 @ stdcall IcmpCreateFile()
 @ stdcall IcmpParseReplies(ptr long)
 @ stdcall IcmpSendEcho2(ptr ptr ptr ptr long ptr long ptr ptr long long)
+@ stdcall -version=0x600+ IcmpSendEcho2Ex(ptr ptr ptr ptr long long ptr long ptr ptr long long)
 @ stdcall IcmpSendEcho(ptr long ptr long ptr ptr long long)
 @ stdcall -version=0x600+ if_indextoname(long ptr)
 @ stdcall -version=0x600+ if_nametoindex(str)
