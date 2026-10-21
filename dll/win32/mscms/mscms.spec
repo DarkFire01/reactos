@@ -55,13 +55,17 @@
 @ stdcall GetStandardColorSpaceProfileW(wstr long ptr ptr)
 @ stdcall InstallColorProfileA(str str)
 @ stdcall InstallColorProfileW(wstr wstr)
+207 stdcall InternalGetAppliedGDIGammaRamp(ptr ptr)
 @ stub InternalGetDeviceConfig
+206 stdcall InternalGetDeviceGammaCapability(ptr)
 @ stub InternalGetPS2CSAFromLCS
 @ stub InternalGetPS2ColorRenderingDictionary
 @ stub InternalGetPS2ColorSpaceArray
 @ stub InternalGetPS2PreviewCRD
 @ stub InternalRefreshCalibration
 @ stub InternalSetDeviceConfig
+208 stdcall InternalSetDeviceGDIGammaRamp(ptr ptr)
+204 stdcall InternalSetDeviceTemperature(ptr float long long)
 @ stub InternalWcsAssociateColorProfileWithDevice
 @ stdcall IsColorProfileTagPresent(ptr long ptr)
 @ stdcall IsColorProfileValid(ptr ptr)
