@@ -7,6 +7,7 @@
 
 #include <win32k.h>
 #include <reactos/dcompprotocol.h>
+#include "../../gdi/ntgdi/dxgkfwd.h"
 
 DBG_DEFAULT_CHANNEL(UserMisc);
 
@@ -609,12 +610,24 @@ DcompSetHandle(
     _In_ PDCOMP_RESOURCE Resource)
 {
     ULONG Payload[4];
+    HANDLE DwmHandle = NULL;
+    ULONG64 Value;
+    NTSTATUS Status;
 
+    /* The surface is opened into the compositor, which closes what it is given */
     if (Resource->Type == DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP &&
         Command->Property == DCOMP_COMPOSITION_SURFACE_HANDLE)
     {
+        if (Command->Handle)
+        {
+            Status = DlOpenCompositionSurfaceForDwm((HANDLE)(ULONG_PTR)Command->Handle, &DwmHandle);
+            if (!NT_SUCCESS(Status))
+                return Status;
+        }
+
+        Value = (ULONG64)(ULONG_PTR)DwmHandle;
         RtlZeroMemory(Payload, sizeof(Payload));
-        RtlCopyMemory(Payload, &Command->Handle, sizeof(Command->Handle));
+        RtlCopyMemory(Payload, &Value, sizeof(Value));
         return DcompEmit(Channel, DCOMP_MILCMD_COMPOSITION_SURFACE_UPDATE, Command->Resource,
                          Payload, sizeof(Payload), NULL, 0);
     }
@@ -1118,6 +1131,25 @@ DcompResetCompositor(VOID)
     gDcompWorkEvent = NULL;
     gDcompCompositor = NULL;
     gDcompUserList = NULL;
+
+    IntDcompFrameCompositorGone();
+}
+
+/* The compositor's own connection, used from the compositor */
+BOOLEAN
+FASTCALL
+IntDcompIsCompositor(
+    _In_ HANDLE Connection)
+{
+    return Connection == DCOMP_COMPOSITOR_CONNECTION && gDcompCompositor &&
+           PsGetCurrentProcess() == gDcompCompositor;
+}
+
+BOOLEAN
+FASTCALL
+IntDcompHasCompositor(VOID)
+{
+    return gDcompCompositor != NULL;
 }
 
 /* Process teardown: channels go away with their owner, and so does the compositor connection */

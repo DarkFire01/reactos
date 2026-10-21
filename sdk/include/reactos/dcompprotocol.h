@@ -347,12 +347,14 @@ typedef struct _DCOMP_RECT
 #define DCOMP_COLOR_BRUSH_COLOR             0   /* buffer: four floats, premultiplied red, green, blue, alpha */
 
 /*
- * Composition surface: a texture an application draws and the compositor samples. The handle is
- * the texture's global share handle, which any device on the adapter can open.
+ * Composition surface: a texture an application draws and the compositor samples. Windows sets
+ * the handle of a dxgkrnl composition surface object that swapchains bind to. Our own surfaces
+ * instead set the texture's global share handle, which any device on the adapter can open.
  */
-#define DCOMP_COMPOSITION_SURFACE_HANDLE        0       /* handle */
+#define DCOMP_COMPOSITION_SURFACE_HANDLE        0       /* handle: dxgkrnl composition surface */
 #define DCOMP_COMPOSITION_SURFACE_DESC          1000    /* ours, buffer: DCOMP_SURFACE_DESC */
 #define DCOMP_COMPOSITION_SURFACE_GENERATION    1001    /* ours, integer: changes whenever it was drawn */
+#define DCOMP_COMPOSITION_SURFACE_SHARED        1002    /* ours, handle: D3D global share handle */
 
 typedef struct _DCOMP_SURFACE_DESC
 {
@@ -548,6 +550,116 @@ typedef struct _DCOMP_COMPOSITOR_INFO
 
 /* Most channels a connection may have open, as the compositor indexes them */
 #define DCOMP_MAX_CHANNELS              0x10000
+
+/*
+ * Composition frames. The compositor begins and confirms each frame it shows; dxgkrnl numbers
+ * them and hands the presents to composition surfaces that made it into a frame. All times
+ * are performance counter values and all durations performance counter ticks.
+ */
+
+/* An output a frame was shown on; a UniqueId of 0 matches any */
+typedef struct _DCOMP_TARGET_ID
+{
+    LUID DisplayAdapterLuid;
+    LUID RenderAdapterLuid;
+    ULONG VidPnSourceId;
+    ULONG VidPnTargetId;
+    ULONG UniqueId;
+} DCOMP_TARGET_ID, *PDCOMP_TARGET_ID;
+
+typedef struct _DCOMP_PRESENT_STATS
+{
+    ULONG PresentCount;
+    ULONG RefreshCount;
+    ULONG VirtualRefreshCount;
+    ULONG64 Time;               /* the vblank the present was shown at */
+    ULONG64 VirtualTime;
+} DCOMP_PRESENT_STATS, *PDCOMP_PRESENT_STATS;
+
+/* What happened on one output in a frame */
+typedef struct _DCOMP_FRAME_TARGET
+{
+    DCOMP_TARGET_ID Id;
+    ULONG Reserved;
+    ULONG OutstandingPresents;
+    ULONG64 PresentTime;        /* 0 when the output did not present in this frame */
+    ULONG64 VblankDuration;
+    DCOMP_PRESENT_STATS Presented;  /* this frame's present */
+    DCOMP_PRESENT_STATS Completed;  /* the newest present known to be on screen */
+} DCOMP_FRAME_TARGET, *PDCOMP_FRAME_TARGET;
+
+/* What NtDCompositionBeginFrame is given */
+typedef struct _DCOMP_FRAME_INFO
+{
+    ULONG64 BaseTime;           /* the vblank before the target one */
+    ULONG64 TargetTime;         /* the vblank the frame is aimed at */
+    ULONG64 FramePeriod;
+    ULONG64 Deadline;           /* presents made before this join the frame */
+    DCOMP_TARGET_ID ClockTarget;    /* the output the compositor clock follows */
+    ULONG64 VblankTime;         /* the last vblank, and the same on the virtual refresh grid */
+    ULONG64 VirtualVblankTime;
+    ULONG64 VblankPeriod;
+    ULONG64 VirtualVblankPeriod;
+    ULONG64 VblankBase;         /* presents after this wait for a later frame */
+    ULONG64 VirtualVblankBase;
+    UCHAR Capabilities[20];
+    ULONG64 Reserved1;
+    ULONG64 BatchIds;           /* user address of ULONG64 batch ids, unused by ReactOS */
+    ULONG BatchIdCount;
+} DCOMP_FRAME_INFO, *PDCOMP_FRAME_INFO;
+
+/* What NtDCompositionConfirmFrame is given once a frame was presented */
+typedef struct _DCOMP_FRAME_CONFIRM
+{
+    ULONG64 FrameId;
+    ULONG64 StartTime;          /* when the compositor woke for the frame */
+    ULONG64 TargetTime;
+    ULONG64 FramePeriod;
+    ULONG64 FlipAwayFence;
+    ULONG TargetCount;
+    ULONG64 Targets;            /* user address of DCOMP_FRAME_TARGET[TargetCount] */
+} DCOMP_FRAME_CONFIRM, *PDCOMP_FRAME_CONFIRM;
+
+/* The frame statistics applications read, as COMPOSITION_FRAME_STATS and COMPOSITION_TARGET_STATS */
+typedef struct _DCOMP_FRAME_STATS
+{
+    ULONG64 StartTime;
+    ULONG64 TargetTime;
+    ULONG64 FramePeriod;
+} DCOMP_FRAME_STATS, *PDCOMP_FRAME_STATS;
+
+typedef struct _DCOMP_STATS
+{
+    ULONG PresentCount;
+    ULONG RefreshCount;
+    ULONG VirtualRefreshCount;
+    ULONG64 Time;
+} DCOMP_STATS, *PDCOMP_STATS;
+
+typedef struct _DCOMP_TARGET_STATS
+{
+    ULONG OutstandingPresents;
+    ULONG64 PresentTime;
+    ULONG64 VblankDuration;
+    DCOMP_STATS PresentedStats;
+    DCOMP_STATS CompletedStats;
+} DCOMP_TARGET_STATS, *PDCOMP_TARGET_STATS;
+
+/* COMPOSITION_FRAME_ID_TYPE */
+#define DCOMP_FRAME_ID_CREATED          0
+#define DCOMP_FRAME_ID_CONFIRMED        1
+#define DCOMP_FRAME_ID_COMPLETED        2
+
+/* A surface update dxgkrnl writes into the token manager section; up to 10 fit */
+#define DCOMP_SURFACE_UPDATE_SIZE       376
+
+#if defined(_WIN64)
+C_ASSERT(sizeof(DCOMP_TARGET_ID) == 28);
+C_ASSERT(sizeof(DCOMP_FRAME_TARGET) == 120);
+C_ASSERT(sizeof(DCOMP_FRAME_INFO) == 0xA0);
+C_ASSERT(sizeof(DCOMP_FRAME_CONFIRM) == 0x38);
+C_ASSERT(sizeof(DCOMP_TARGET_STATS) == 0x48);
+#endif
 
 #ifdef __cplusplus
 }

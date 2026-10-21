@@ -2984,6 +2984,67 @@ NtDCompositionGetConnectionBatch(
     _In_opt_ PVOID Context,
     _Out_ PVOID* ListHead);
 
+NTSTATUS
+NTAPI
+NtDCompositionBeginFrame(
+    _In_ HANDLE Connection,
+    _In_ const struct _DCOMP_FRAME_INFO* FrameInfo,
+    _Out_ PULONG64 FrameId);
+
+NTSTATUS
+NTAPI
+NtDCompositionConfirmFrame(
+    _In_ HANDLE Connection,
+    _In_ const struct _DCOMP_FRAME_CONFIRM* FrameConfirm);
+
+NTSTATUS
+NTAPI
+NtDCompositionGetFrameSurfaceUpdates(
+    _In_ PULONG64 FrameId,
+    _Out_ PULONG Count,
+    _Out_ PULONG More);
+
+NTSTATUS
+NTAPI
+NtDCompositionGetFrameLegacyTokens(
+    _In_ PULONG64 FrameId,
+    _Out_ PULONG Count,
+    _Out_ PULONG More);
+
+NTSTATUS
+NTAPI
+NtDCompositionGetFrameId(
+    _In_ ULONG Type,
+    _Out_ PULONG64 FrameId);
+
+NTSTATUS
+NTAPI
+NtDCompositionGetStatistics(
+    _In_ PULONG64 FrameId,
+    _Out_ struct _DCOMP_FRAME_STATS* FrameStats,
+    _In_ ULONG TargetIdCount,
+    _Out_writes_opt_(TargetIdCount) struct _DCOMP_TARGET_ID* TargetIds,
+    _Out_opt_ PULONG ActualTargetIdCount);
+
+NTSTATUS
+NTAPI
+NtDCompositionGetTargetStatistics(
+    _In_ PULONG64 FrameId,
+    _In_ const struct _DCOMP_TARGET_ID* TargetId,
+    _Out_ struct _DCOMP_TARGET_STATS* TargetStats);
+
+NTSTATUS
+NTAPI
+NtDCompositionWaitForCompositorClock(
+    _In_ ULONG Count,
+    _In_reads_opt_(Count) const HANDLE* Handles,
+    _In_ ULONG TimeoutMs);
+
+NTSTATUS
+NTAPI
+NtDCompositionBoostCompositorClock(
+    _In_ BOOL Enable);
+
 BOOL
 NTAPI
 NtUserRegisterSessionPort(

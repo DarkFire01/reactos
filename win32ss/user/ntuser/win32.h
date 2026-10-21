@@ -299,6 +299,7 @@ typedef struct _PROCESSINFO
     BOOLEAN DpiAwarenessSet;    /* by the manifest or a first call, after which it stays */
     BOOLEAN DpiVirtualizationDecided;   /* with its first top level window */
     BOOLEAN DpiVirtualized;     /* unaware windows of it live at USER_VIRTUAL_DPI */
+    ULONG DcompClockBoost;      /* compositor clock boosts not yet undone */
     struct _GDI_POOL* pPoolDcAttr;
     struct _GDI_POOL* pPoolBrushAttr;
     struct _GDI_POOL* pPoolRgnAttr;

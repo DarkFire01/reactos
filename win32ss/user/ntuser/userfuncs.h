@@ -449,4 +449,28 @@ FASTCALL
 IntDcompProcessCleanup(
     _In_ PEPROCESS Process);
 
+BOOLEAN
+FASTCALL
+IntDcompIsCompositor(
+    _In_ HANDLE Connection);
+
+BOOLEAN
+FASTCALL
+IntDcompHasCompositor(VOID);
+
+/************************* dcompframe.c *************************/
+
+NTSTATUS
+FASTCALL
+IntDcompFrameInitialize(VOID);
+
+VOID
+FASTCALL
+IntDcompFrameCompositorGone(VOID);
+
+VOID
+FASTCALL
+IntDcompFrameProcessCleanup(
+    _In_ PPROCESSINFO ProcessInfo);
+
 /* EOF */
