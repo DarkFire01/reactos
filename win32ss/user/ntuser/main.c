@@ -192,6 +192,7 @@ UserProcessDestroy(PEPROCESS Process)
     UserDestroyObjectsForOwner(gHandleTable, ppiCurrent);
 
     IntDcompProcessCleanup(Process);
+    IntDcompFrameProcessCleanup(ppiCurrent);
     IntDwmProcessCleanup(ppiCurrent);
 
     TRACE_CH(UserProcess, "Freeing ppi 0x%p\n", ppiCurrent);

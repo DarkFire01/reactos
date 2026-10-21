@@ -102,6 +102,13 @@ InitUserImpl(VOID)
 
     InitUserAtoms();
 
+    Status = IntDcompFrameInitialize();
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("Error initializing composition frames.\n");
+        return Status;
+    }
+
     Status = RegOpenKey(L"\\Registry\\Machine\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows",
                         &hKey);
     if (NT_SUCCESS(Status))
