@@ -431,8 +431,9 @@ IopCompleteRequest(IN PKAPC Apc,
         }
         else if (FileObject)
         {
-            /* Signal the file object and set the status */
-            KeSetEvent(&FileObject->Event, 0, FALSE);
+            /* Signal the file object, unless its handle asked to be left alone, and set the status */
+            if (!(FileObject->Flags & FO_SKIP_SET_EVENT))
+                KeSetEvent(&FileObject->Event, 0, FALSE);
             FileObject->FinalStatus = Irp->IoStatus.Status;
 
             /*
@@ -492,8 +493,15 @@ IopCompleteRequest(IN PKAPC Apc,
             KeInsertQueueApc(&Irp->Tail.Apc, Irp->UserIosb, NULL, 2);
         }
         else if ((Port) &&
-                 (Irp->Overlay.AsynchronousParameters.UserApcContext))
+                 (Irp->Overlay.AsynchronousParameters.UserApcContext) &&
+                 !((FileObject->Flags & FO_SKIP_COMPLETION_PORT) &&
+                   !(Irp->PendingReturned) &&
+                   !NT_WARNING(Irp->IoStatus.Status)))
         {
+            /*
+             * A request that succeeded without pending was already reported to its caller,
+             * so a handle set to skip the port gets no packet for it.
+             */
             /* We have an I/O Completion setup... create the special Overlay */
             Irp->Tail.CompletionKey = Key;
             Irp->Tail.Overlay.PacketType = IopCompletionPacketIrp;

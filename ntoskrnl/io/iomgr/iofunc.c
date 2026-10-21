@@ -3088,6 +3088,92 @@ NtSetEaFile(IN HANDLE FileHandle,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/* The kernel headers stop at the Windows Server 2003 classes */
+#if (NTDDI_VERSION < NTDDI_VISTA)
+#define FileIoCompletionNotificationInformation ((FILE_INFORMATION_CLASS)41)
+#endif
+
+/**
+ * @brief
+ * Sets what finishing I/O on a handle reports: no completion packet for what succeeds at once,
+ * no signal of the file object's event, or neither. Only the I/O manager acts on these.
+ */
+static
+NTSTATUS
+IopSetCompletionNotificationModes(
+    _In_ HANDLE FileHandle,
+    _Out_ PIO_STATUS_BLOCK IoStatusBlock,
+    _In_reads_bytes_(Length) PVOID FileInformation,
+    _In_ ULONG Length,
+    _In_ KPROCESSOR_MODE PreviousMode)
+{
+    PFILE_OBJECT FileObject;
+    NTSTATUS Status;
+    ULONG Modes;
+    ULONG Flags = 0;
+
+    if (Length < sizeof(FILE_IO_COMPLETION_NOTIFICATION_INFORMATION))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    _SEH2_TRY
+    {
+        if (PreviousMode != KernelMode)
+        {
+            ProbeForWriteIoStatusBlock(IoStatusBlock);
+            ProbeForRead(FileInformation, Length, sizeof(ULONG));
+        }
+        Modes = ((PFILE_IO_COMPLETION_NOTIFICATION_INFORMATION)FileInformation)->Flags;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        _SEH2_YIELD(return _SEH2_GetExceptionCode());
+    }
+    _SEH2_END;
+
+    Status = ObReferenceObjectByHandle(FileHandle,
+                                       0,
+                                       IoFileObjectType,
+                                       PreviousMode,
+                                       (PVOID*)&FileObject,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* I/O on a synchronous handle finishes before its caller returns, so there is nothing to skip */
+    if (FileObject->Flags & FO_SYNCHRONOUS_IO)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+    }
+    else
+    {
+        if (Modes & FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)
+            Flags |= FO_SKIP_COMPLETION_PORT;
+        if (Modes & FILE_SKIP_SET_EVENT_ON_HANDLE)
+            Flags |= FO_SKIP_SET_EVENT;
+        if (Modes & FILE_SKIP_SET_USER_EVENT_ON_FAST_IO)
+            Flags |= FO_SKIP_SET_FAST_IO;
+
+        /* Modes are only ever added, never taken back */
+        InterlockedOr((PLONG)&FileObject->Flags, (LONG)Flags);
+    }
+    ObDereferenceObject(FileObject);
+
+    if (NT_SUCCESS(Status))
+    {
+        _SEH2_TRY
+        {
+            IoStatusBlock->Status = Status;
+            IoStatusBlock->Information = 0;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+    return Status;
+}
+
 /*
  * @implemented
  */
@@ -3118,6 +3204,16 @@ NtSetInformationFile(IN HANDLE FileHandle,
     HANDLE TargetHandle = NULL;
     PAGED_CODE();
     IOTRACE(IO_API_DEBUG, "FileHandle: %p\n", FileHandle);
+
+    /* The file's driver never sees these; they change what the I/O manager does on completion */
+    if (FileInformationClass == FileIoCompletionNotificationInformation)
+    {
+        return IopSetCompletionNotificationModes(FileHandle,
+                                                 IoStatusBlock,
+                                                 FileInformation,
+                                                 Length,
+                                                 PreviousMode);
+    }
 
     /* Check if we're called from user mode */
     if (PreviousMode != KernelMode)
