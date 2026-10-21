@@ -201,6 +201,36 @@ PspDumpThreadInfoClassName(
 }
 #endif // #if DBG
 
+/* Windows 8.1 classes that the DDK enumeration does not list */
+#define ProcessHandleTable ((PROCESSINFOCLASS)58)
+
+/* Handle values gathered for ProcessHandleTable */
+typedef struct _PSP_HANDLE_VALUES
+{
+    PULONG Values;
+    ULONG Capacity;
+    ULONG Count;
+} PSP_HANDLE_VALUES, *PPSP_HANDLE_VALUES;
+
+static
+BOOLEAN
+NTAPI
+PspCollectHandleValue(
+    _In_ PHANDLE_TABLE_ENTRY HandleTableEntry,
+    _In_ HANDLE Handle,
+    _In_ PVOID Context)
+{
+    PPSP_HANDLE_VALUES Collected = Context;
+
+    UNREFERENCED_PARAMETER(HandleTableEntry);
+
+    /* A full buffer ends the walk; the caller gets what fit */
+    if (Collected->Count == Collected->Capacity)
+        return TRUE;
+    Collected->Values[Collected->Count++] = HandleToUlong(Handle);
+    return FALSE;
+}
+
 /*
  * Reference a process for an information class that Windows lets a caller
  * reach with either PROCESS_QUERY_INFORMATION or, since Vista, the narrower
@@ -1431,6 +1461,71 @@ NtQueryInformationProcess(
             DPRINT1("Pool limits not implemented: %lu\n", ProcessInformationClass);
             Status = STATUS_NOT_IMPLEMENTED;
             break;
+
+        /* The value of every handle the process has open, as many as fit */
+        case ProcessHandleTable:
+        {
+            PSP_HANDLE_VALUES Collected;
+            PHANDLE_TABLE HandleTable;
+            ULONG HandleCount;
+
+            if (ProcessInformationLength < sizeof(ULONG))
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            Status = ObReferenceObjectByHandle(ProcessHandle,
+                                               PROCESS_QUERY_INFORMATION | PROCESS_DUP_HANDLE,
+                                               PsProcessType,
+                                               PreviousMode,
+                                               (PVOID*)&Process,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            /* Gathered in pool, so the caller's buffer is not touched while table entries are locked */
+            HandleCount = ObGetProcessHandleCount(Process);
+            Collected.Capacity = min(ProcessInformationLength / sizeof(ULONG), HandleCount + 64);
+            Collected.Count = 0;
+            Collected.Values = ExAllocatePoolWithTag(PagedPool,
+                                                     Collected.Capacity * sizeof(ULONG),
+                                                     TAG_PS_HANDLE_TABLE);
+            if (!Collected.Values)
+            {
+                ObDereferenceObject(Process);
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                break;
+            }
+
+            HandleTable = ObReferenceProcessHandleTable(Process);
+            if (HandleTable)
+            {
+                ExEnumHandleTable(HandleTable, PspCollectHandleValue, &Collected, NULL);
+                ObDereferenceProcessHandleTable(Process);
+            }
+            else
+            {
+                Status = STATUS_PROCESS_IS_TERMINATING;
+            }
+            ObDereferenceObject(Process);
+
+            if (NT_SUCCESS(Status))
+            {
+                _SEH2_TRY
+                {
+                    RtlCopyMemory(ProcessInformation, Collected.Values, Collected.Count * sizeof(ULONG));
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+                Length = Collected.Count * sizeof(ULONG);
+            }
+            ExFreePoolWithTag(Collected.Values, TAG_PS_HANDLE_TABLE);
+            break;
+        }
 
         /* Not supported by Server 2003 */
         default:

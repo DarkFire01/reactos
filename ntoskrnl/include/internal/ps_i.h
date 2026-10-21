@@ -359,6 +359,40 @@ static const INFORMATION_CLASS_INFO PsProcessInfoClass[] =
 
     /* ProcessMemoryAllocationMode */
     IQS_NONE,
+
+    // Windows 7
+    /* ProcessGroupInformation */
+    IQS_NONE,
+    /* ProcessTokenVirtualizationEnabled */
+    IQS_NONE,
+    /* ProcessConsoleHostProcess */
+    IQS_NONE,
+    /* ProcessWindowInformation */
+    IQS_NONE,
+
+    // Windows 8
+    /* ProcessHandleInformation */
+    IQS_NONE,
+    /* ProcessMitigationPolicy */
+    IQS_NONE,
+    /* ProcessDynamicFunctionTableInformation */
+    IQS_NONE,
+    /* ProcessHandleCheckingMode */
+    IQS_NONE,
+    /* ProcessKeepAliveCount */
+    IQS_NONE,
+    /* ProcessRevokeFileHandles */
+    IQS_NONE,
+    /* ProcessWorkingSetControl */
+    IQS_NONE,
+
+    // Windows 8.1
+    /* ProcessHandleTable */
+    IQS_NO_TYPE_LENGTH
+    (
+        ULONG,
+        ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE
+    ),
 };
 
 //
