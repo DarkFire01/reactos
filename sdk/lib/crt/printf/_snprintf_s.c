@@ -25,9 +25,9 @@
  * as many as fit.
  *
  * @return
- * The number of characters written without the terminator, or -1. An output
- * that does not fit gives -1 either way: _TRUNCATE keeps what fit, and any
- * other count leaves an empty string in the buffer.
+ * The number of characters written without the terminator, or -1. Output cut
+ * by _TRUNCATE or by a count below the buffer size keeps what fit; output that
+ * overruns the buffer otherwise leaves an empty string.
  */
 int
 __cdecl
@@ -64,7 +64,7 @@ _snprintf_s(
     if (Length < 0 || (size_t)Length >= Limit)
     {
         Buffer[Limit - 1] = '\0';
-        if (Count == _TRUNCATE)
+        if (Count == _TRUNCATE || Count < BufferSize)
             return -1;
 
         Buffer[0] = '\0';
