@@ -33,6 +33,7 @@ list(APPEND INF_FILES
     usbport.inf
     usbxhci.inf
     volume.inf
+    wdma_usb.inf
     wdmaudio.inf
     wmiacpi.inf)
 
