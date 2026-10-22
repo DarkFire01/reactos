@@ -1473,6 +1473,10 @@ HANDLE WINAPI CreateFileA(LPCSTR,DWORD,DWORD,LPSECURITY_ATTRIBUTES,DWORD,DWORD,H
 HANDLE WINAPI CreateFileW(LPCWSTR,DWORD,DWORD,LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE);
 _Ret_maybenull_ HANDLE WINAPI CreateFileMappingA(_In_ HANDLE, _In_opt_ LPSECURITY_ATTRIBUTES, _In_ DWORD, _In_ DWORD, _In_ DWORD, _In_opt_ LPCSTR);
 HANDLE WINAPI CreateFileMappingW(HANDLE,LPSECURITY_ATTRIBUTES,DWORD,DWORD,DWORD,LPCWSTR);
+#if (_WIN32_WINNT >= 0x0600)
+_Ret_maybenull_ HANDLE WINAPI CreateFileMappingNumaA(_In_ HANDLE, _In_opt_ LPSECURITY_ATTRIBUTES, _In_ DWORD, _In_ DWORD, _In_ DWORD, _In_opt_ LPCSTR, _In_ DWORD);
+_Ret_maybenull_ HANDLE WINAPI CreateFileMappingNumaW(_In_ HANDLE, _In_opt_ LPSECURITY_ATTRIBUTES, _In_ DWORD, _In_ DWORD, _In_ DWORD, _In_opt_ LPCWSTR, _In_ DWORD);
+#endif
 #if (_WIN32_WINNT >= 0x0500)
 BOOL WINAPI CreateHardLinkA(_In_ LPCSTR, _In_ LPCSTR, _Reserved_ LPSECURITY_ATTRIBUTES);
 BOOL WINAPI CreateHardLinkW(_In_ LPCWSTR, _In_ LPCWSTR, _Reserved_ LPSECURITY_ATTRIBUTES);
@@ -1841,6 +1845,9 @@ HANDLE WINAPI GetCurrentProcess(void);
 DWORD WINAPI GetCurrentProcessId(void);
 HANDLE WINAPI GetCurrentThread(void);
 DWORD WINAPI GetCurrentThreadId(void);
+#if (_WIN32_WINNT >= 0x0602)
+VOID WINAPI GetCurrentThreadStackLimits(_Out_ PULONG_PTR, _Out_ PULONG_PTR);
+#endif
 #define GetCurrentTime GetTickCount
 
 BOOL
@@ -2083,6 +2090,14 @@ GetPrivateProfileStructW(
 
 FARPROC WINAPI GetProcAddress(HINSTANCE,LPCSTR);
 BOOL WINAPI GetProcessAffinityMask(_In_ HANDLE, _Out_ PDWORD_PTR, _Out_ PDWORD_PTR);
+#if (_WIN32_WINNT >= 0x0601)
+BOOL WINAPI GetProcessGroupAffinity(_In_ HANDLE hProcess, _Inout_ PUSHORT GroupCount, _Out_writes_to_(*GroupCount, *GroupCount) PUSHORT GroupArray);
+BOOL WINAPI GetNumaProcessorNodeEx(_In_ PPROCESSOR_NUMBER, _Out_ PUSHORT);
+BOOL WINAPI GetNumaNodeProcessorMaskEx(_In_ USHORT, _Out_ PGROUP_AFFINITY);
+#endif
+#if (_WIN32_WINNT >= 0x0502)
+BOOL WINAPI GetNumaHighestNodeNumber(_Out_ PULONG);
+#endif
 BOOL WINAPI GetProcessDEPPolicy(_In_ HANDLE, _Out_opt_ LPDWORD, _Out_opt_ PBOOL);
 #if (_WIN32_WINNT >= 0x0502)
 BOOL WINAPI GetProcessHandleCount(_In_ HANDLE, _Out_ PDWORD);

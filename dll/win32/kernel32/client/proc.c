@@ -894,6 +894,44 @@ GetProcessAffinityMask(IN HANDLE hProcess,
  */
 BOOL
 WINAPI
+GetProcessGroupAffinity(
+    _In_ HANDLE hProcess,
+    _Inout_ PUSHORT GroupCount,
+    _Out_writes_to_(*GroupCount, *GroupCount) PUSHORT GroupArray)
+{
+    PROCESS_BASIC_INFORMATION ProcessInfo;
+    NTSTATUS Status;
+
+    /* The handle is checked before the buffer */
+    Status = NtQueryInformationProcess(hProcess,
+                                       ProcessBasicInformation,
+                                       &ProcessInfo,
+                                       sizeof(ProcessInfo),
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* Every process runs in group 0, the only one there is */
+    if (*GroupCount < 1)
+    {
+        *GroupCount = 1;
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    GroupArray[0] = 0;
+    *GroupCount = 1;
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
 SetProcessAffinityMask(IN HANDLE hProcess,
                        IN DWORD_PTR dwProcessAffinityMask)
 {

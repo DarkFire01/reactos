@@ -462,6 +462,36 @@ EnumProcesses(DWORD *lpidProcess,
  */
 BOOL
 WINAPI
+EnumProcessModulesEx(
+    _In_ HANDLE hProcess,
+    _Out_writes_bytes_(cb) HMODULE *lphModule,
+    _In_ DWORD cb,
+    _Out_ LPDWORD lpcbNeeded,
+    _In_ DWORD dwFilterFlag)
+{
+    if (dwFilterFlag & ~LIST_MODULES_ALL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Without WoW64 there are no 32-bit modules in a native process to report */
+#ifdef _WIN64
+    if (dwFilterFlag == LIST_MODULES_32BIT)
+    {
+        *lpcbNeeded = 0;
+        return TRUE;
+    }
+#endif
+
+    return EnumProcessModules(hProcess, lphModule, cb, lpcbNeeded);
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
 EnumProcessModules(HANDLE hProcess,
                    HMODULE *lphModule,
                    DWORD cb,
