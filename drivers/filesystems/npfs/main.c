@@ -306,22 +306,6 @@ NpInitializeAliases(VOID)
 
 NTSTATUS
 NTAPI
-NpFsdDirectoryControl(IN PDEVICE_OBJECT DeviceObject,
-                     IN PIRP Irp)
-{
-    TRACE("Entered\n");
-    UNIMPLEMENTED;
-
-    Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
-    Irp->IoStatus.Information = 0;
-
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-
-NTSTATUS
-NTAPI
 DriverEntry(IN PDRIVER_OBJECT DriverObject,
             IN PUNICODE_STRING RegistryPath)
 {
