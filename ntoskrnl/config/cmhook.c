@@ -19,6 +19,10 @@ EX_CALLBACK CmpCallBackVector[100];
 
 LIST_ENTRY CmiCallbackHead;
 FAST_MUTEX CmiCallbackLock;
+LARGE_INTEGER CmpCallbackCookie;
+
+/* Callbacks registered without an altitude share this one */
+static const UNICODE_STRING CmpLegacyAltitude = RTL_CONSTANT_STRING(L"425000");
 
 typedef struct _REGISTRY_CALLBACK
 {
@@ -28,7 +32,16 @@ typedef struct _REGISTRY_CALLBACK
     PVOID Context;
     LARGE_INTEGER Cookie;
     BOOLEAN PendingDelete;
+    UNICODE_STRING Altitude;
 } REGISTRY_CALLBACK, *PREGISTRY_CALLBACK;
+
+typedef struct _CMP_ALTITUDE_PARTS
+{
+    PCWCH Whole;
+    USHORT WholeLength;
+    PCWCH Fraction;
+    USHORT FractionLength;
+} CMP_ALTITUDE_PARTS, *PCMP_ALTITUDE_PARTS;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
@@ -100,6 +113,153 @@ CmiCallRegisteredCallbacks(IN REG_NOTIFY_CLASS Argument1,
     return Status;
 }
 
+/* Leading zeros of the whole part and trailing zeros of the fraction carry no weight */
+static
+VOID
+CmpSplitAltitude(
+    _In_ PCUNICODE_STRING Altitude,
+    _Out_ PCMP_ALTITUDE_PARTS Parts)
+{
+    USHORT Length = Altitude->Length / sizeof(WCHAR);
+    USHORT Dot = 0;
+
+    while (Dot < Length && Altitude->Buffer[Dot] != L'.')
+        Dot++;
+
+    Parts->Whole = Altitude->Buffer;
+    Parts->WholeLength = Dot;
+    while (Parts->WholeLength > 0 && *Parts->Whole == L'0')
+    {
+        Parts->Whole++;
+        Parts->WholeLength--;
+    }
+
+    Parts->Fraction = &Altitude->Buffer[Dot];
+    Parts->FractionLength = 0;
+    if (Dot < Length)
+    {
+        Parts->Fraction++;
+        Parts->FractionLength = Length - Dot - 1;
+    }
+    while (Parts->FractionLength > 0 && Parts->Fraction[Parts->FractionLength - 1] == L'0')
+        Parts->FractionLength--;
+}
+
+/* Altitudes are decimal numbers written out as strings; returns -1, 0 or 1 */
+static
+LONG
+CmpCompareAltitudes(
+    _In_ PCUNICODE_STRING Altitude1,
+    _In_ PCUNICODE_STRING Altitude2)
+{
+    CMP_ALTITUDE_PARTS First, Second;
+    USHORT Index, Shorter;
+
+    CmpSplitAltitude(Altitude1, &First);
+    CmpSplitAltitude(Altitude2, &Second);
+
+    if (First.WholeLength != Second.WholeLength)
+        return (First.WholeLength > Second.WholeLength) ? 1 : -1;
+
+    for (Index = 0; Index < First.WholeLength; Index++)
+    {
+        if (First.Whole[Index] != Second.Whole[Index])
+            return (First.Whole[Index] > Second.Whole[Index]) ? 1 : -1;
+    }
+
+    Shorter = min(First.FractionLength, Second.FractionLength);
+    for (Index = 0; Index < Shorter; Index++)
+    {
+        if (First.Fraction[Index] != Second.Fraction[Index])
+            return (First.Fraction[Index] > Second.Fraction[Index]) ? 1 : -1;
+    }
+
+    if (First.FractionLength != Second.FractionLength)
+        return (First.FractionLength > Second.FractionLength) ? 1 : -1;
+
+    return 0;
+}
+
+/*
+ * The list runs from the highest altitude down. Legacy callbacks queue up
+ * behind others at the same altitude, anyone else must pick a free one.
+ */
+static
+NTSTATUS
+CmpRegisterCallbackInternal(
+    _In_ PEX_CALLBACK_FUNCTION Function,
+    _In_opt_ PVOID Context,
+    _In_ PCUNICODE_STRING Altitude,
+    _In_ BOOLEAN LegacyCallback,
+    _Out_ PLARGE_INTEGER Cookie)
+{
+    PREGISTRY_CALLBACK Callback, Existing;
+    PLIST_ENTRY InsertBefore;
+    NTSTATUS Status = STATUS_SUCCESS;
+    LONG Order;
+    PAGED_CODE();
+
+    Callback = ExAllocatePoolWithTag(PagedPool,
+                                     sizeof(*Callback),
+                                     'bcMC');
+    if (Callback == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Callback->Altitude.Buffer = ExAllocatePoolWithTag(PagedPool,
+                                                      max(Altitude->Length, sizeof(WCHAR)),
+                                                      'acMC');
+    if (Callback->Altitude.Buffer == NULL)
+    {
+        ExFreePoolWithTag(Callback, 'bcMC');
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlCopyMemory(Callback->Altitude.Buffer, Altitude->Buffer, Altitude->Length);
+    Callback->Altitude.Length = Altitude->Length;
+    Callback->Altitude.MaximumLength = Altitude->Length;
+
+    ExInitializeRundownProtection(&Callback->RundownRef);
+    Callback->Function = Function;
+    Callback->Context = Context;
+    Callback->PendingDelete = FALSE;
+
+    ExAcquireFastMutex(&CmiCallbackLock);
+
+    CmpCallbackCookie.QuadPart++;
+    Callback->Cookie = CmpCallbackCookie;
+
+    for (InsertBefore = CmiCallbackHead.Flink;
+         InsertBefore != &CmiCallbackHead;
+         InsertBefore = InsertBefore->Flink)
+    {
+        Existing = CONTAINING_RECORD(InsertBefore, REGISTRY_CALLBACK, ListEntry);
+        Order = CmpCompareAltitudes(&Existing->Altitude, Altitude);
+        if (Order < 0)
+            break;
+        if (Order == 0 && !LegacyCallback)
+        {
+            Status = STATUS_FLT_INSTANCE_ALTITUDE_COLLISION;
+            break;
+        }
+    }
+
+    if (NT_SUCCESS(Status))
+        InsertTailList(InsertBefore, &Callback->ListEntry);
+
+    ExReleaseFastMutex(&CmiCallbackLock);
+
+    /* The cookie is handed out even when the altitude was taken */
+    *Cookie = Callback->Cookie;
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Callback->Altitude.Buffer, 'acMC');
+        ExFreePoolWithTag(Callback, 'bcMC');
+    }
+
+    return Status;
+}
+
 /* PUBLIC FUNCTIONS **********************************************************/
 
 /*
@@ -111,36 +271,41 @@ CmRegisterCallback(IN PEX_CALLBACK_FUNCTION Function,
                    IN PVOID Context,
                    IN OUT PLARGE_INTEGER Cookie)
 {
-    PREGISTRY_CALLBACK Callback;
     PAGED_CODE();
     ASSERT(Function && Cookie);
 
-    Callback = ExAllocatePoolWithTag(PagedPool,
-                                     sizeof(REGISTRY_CALLBACK),
-                                     'bcMC');
-    if (Callback == NULL)
-    {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
+    return CmpRegisterCallbackInternal(Function,
+                                       Context,
+                                       &CmpLegacyAltitude,
+                                       TRUE,
+                                       Cookie);
+}
 
-    /* initialize the callback */
-    ExInitializeRundownProtection(&Callback->RundownRef);
-    Callback->Function = Function;
-    Callback->Context = Context;
-    Callback->PendingDelete = FALSE;
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+CmRegisterCallbackEx(
+    _In_ PEX_CALLBACK_FUNCTION Function,
+    _In_ PCUNICODE_STRING Altitude,
+    _In_ PVOID Driver,
+    _In_opt_ PVOID Context,
+    _Out_ PLARGE_INTEGER Cookie,
+    _Reserved_ PVOID Reserved)
+{
+    PAGED_CODE();
 
-    /* add it to the callback list and receive a cookie for the callback */
-    ExAcquireFastMutex(&CmiCallbackLock);
+    if (Driver == NULL)
+        return STATUS_INVALID_PARAMETER_3;
+    if (Reserved != NULL)
+        return STATUS_INVALID_PARAMETER_6;
 
-    /* FIXME - to receive a unique cookie we'll just return the pointer to the
-       callback object */
-    Callback->Cookie.QuadPart = (ULONG_PTR)Callback;
-    InsertTailList(&CmiCallbackHead, &Callback->ListEntry);
-
-    ExReleaseFastMutex(&CmiCallbackLock);
-
-    *Cookie = Callback->Cookie;
-    return STATUS_SUCCESS;
+    return CmpRegisterCallbackInternal(Function,
+                                       Context,
+                                       Altitude,
+                                       FALSE,
+                                       Cookie);
 }
 
 /*
@@ -180,6 +345,7 @@ CmUnRegisterCallback(IN LARGE_INTEGER Cookie)
                 ExReleaseFastMutex(&CmiCallbackLock);
 
                 /* free the callback */
+                ExFreePoolWithTag(CurrentCallback->Altitude.Buffer, 'acMC');
                 ExFreePoolWithTag(CurrentCallback, 'bcMC');
                 return STATUS_SUCCESS;
             }
