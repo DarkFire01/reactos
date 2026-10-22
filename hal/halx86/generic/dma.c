@@ -86,6 +86,7 @@ static PADAPTER_OBJECT HalpEisaAdapter[8];
 static BOOLEAN HalpEisaDma;
 #ifndef _MINIHAL_
 static PADAPTER_OBJECT HalpMasterAdapter;
+static PADAPTER_OBJECT HalpMasterAdapter32;
 #endif
 
 static const ULONG_PTR HalpEisaPortPage[8] = {
@@ -400,7 +401,8 @@ HalpInitDma(VOID)
     InitializeListHead(&HalpDmaAdapterList);
     KeInitializeSpinLock(&HalpDmaAdapterListLock);
     KeInitializeEvent(&HalpDmaLock, NotificationEvent, TRUE);
-    HalpMasterAdapter = HalpDmaAllocateMasterAdapter();
+    HalpMasterAdapter = HalpDmaAllocateMasterAdapter(24);
+    HalpMasterAdapter32 = HalpDmaAllocateMasterAdapter(32);
 
     /*
      * Setup the HalDispatchTable callback for creating PnP DMA adapters. It's
@@ -582,11 +584,16 @@ HalpGrowMapBuffers(IN PADAPTER_OBJECT AdapterObject,
  * Helper routine to allocate and initialize master adapter object and it's
  * associated map register buffers.
  *
+ * @param DmaAddressWidth
+ *        24 for the pool ISA DMA can reach, more for a pool of bus masters
+ *        that reach that many address bits.
+ *
  * @see HalpInitDma
  */
 PADAPTER_OBJECT
 NTAPI
-HalpDmaAllocateMasterAdapter(VOID)
+HalpDmaAllocateMasterAdapter(
+    _In_ ULONG DmaAddressWidth)
 {
     PADAPTER_OBJECT MasterAdapter;
     ULONG Size, SizeOfBitmap;
@@ -600,6 +607,13 @@ HalpDmaAllocateMasterAdapter(VOID)
     if (!MasterAdapter) return NULL;
 
     RtlZeroMemory(MasterAdapter, Size);
+
+    /* The map buffers are placed where the adapters of this pool can reach */
+    if (DmaAddressWidth > 24)
+    {
+        MasterAdapter->MasterDevice = TRUE;
+        MasterAdapter->DmaAddressWidth = DmaAddressWidth;
+    }
 
     KeInitializeSpinLock(&MasterAdapter->SpinLock);
     InitializeListHead(&MasterAdapter->AdapterQueue);
@@ -631,6 +645,28 @@ HalpDmaAllocateMasterAdapter(VOID)
     }
 
     return MasterAdapter;
+}
+
+/*
+ * Bus masters that reach 32 bits take their map registers from the pool below
+ * 4Gb, everything else from the pool ISA DMA can reach.
+ */
+static
+PADAPTER_OBJECT
+HalpMasterAdapterForDevice(
+    _In_ PDEVICE_DESCRIPTION DeviceDescription)
+{
+    BOOLEAN Addresses32Bits;
+
+    if (!DeviceDescription->Master || !HalpMasterAdapter32)
+        return HalpMasterAdapter;
+
+    if (DeviceDescription->Version == DEVICE_DESCRIPTION_VERSION3)
+        Addresses32Bits = (HalpGetDeviceDmaAddressWidth(DeviceDescription) >= 32);
+    else
+        Addresses32Bits = DeviceDescription->Dma32BitAddresses || DeviceDescription->Dma64BitAddresses;
+
+    return Addresses32Bits ? HalpMasterAdapter32 : HalpMasterAdapter;
 }
 
 /**
@@ -691,7 +727,7 @@ HalpDmaAllocateChildAdapter(IN ULONG NumberOfMapRegisters,
     AdapterObject->MapRegistersPerChannel = 1;
     AdapterObject->Dma32BitAddresses = DeviceDescription->Dma32BitAddresses;
     AdapterObject->ChannelNumber = 0xFF;
-    AdapterObject->MasterAdapter = HalpMasterAdapter;
+    AdapterObject->MasterAdapter = HalpMasterAdapterForDevice(DeviceDescription);
     KeInitializeDeviceQueue(&AdapterObject->ChannelWaitQueue);
 
     return AdapterObject;
