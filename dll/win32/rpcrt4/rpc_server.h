@@ -71,6 +71,7 @@ typedef struct _RpcServerInterface
   UINT MaxRpcSize;
   RPC_IF_CALLBACK_FN* IfCallbackFn;
   LONG CurrentCalls; /* number of calls currently executing */
+  LONG TotalCalls; /* number of calls dispatched so far */
   /* set when unregistering interface to let the caller of
    * RpcServerUnregisterIf* know that all calls have finished */
   HANDLE CallsCompletedEvent;
@@ -82,5 +83,6 @@ const struct protseq_ops *rpcrt4_get_protseq_ops(const char *protseq);
 
 void RPCRT4_destroy_all_protseqs(void);
 void RPCRT4_ServerFreeAllRegisteredAuthInfo(void);
+void RPCRT4_query_interface_calls(RPC_IF_HANDLE IfSpec, UUID *MgrTypeUuid, LONG *current, LONG *total);
 
 #endif  /* __WINE_RPC_SERVER_H */
