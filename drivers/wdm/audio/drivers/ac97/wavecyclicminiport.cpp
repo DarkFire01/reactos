@@ -152,6 +152,25 @@ STDMETHODIMP CMiniportWaveCyclic::NewStream
     }
 
     //
+    // Every stream runs on its own DMA engine and gets its own buffer for it.
+    //
+    pWaveCyclicStream->DmaChannel = NULL;
+    ntStatus = Port->NewMasterDmaChannel (&pWaveCyclicStream->DmaChannel,
+                                          NULL,
+                                          NULL,
+                                          0x1FFFE,
+                                          TRUE,
+                                          FALSE,
+                                          Width32Bits,
+                                          MaximumDmaSpeed);
+    if (!NT_SUCCESS (ntStatus))
+    {
+        DOUT (DBG_ERROR, ("[NewStream] Failed on NewMasterDmaChannel!"));
+        pWaveCyclicStream->Release ();
+        return ntStatus;
+    }
+
+    //
     // Initialize the stream.
     //
 
@@ -176,7 +195,7 @@ STDMETHODIMP CMiniportWaveCyclic::NewStream
     // Save the pointers.
     //
     *Stream = (PMINIPORTWAVECYCLICSTREAM)pWaveCyclicStream;
-    obj_AddRef(DmaChannel, (PVOID *)DmaChannel_);
+    obj_AddRef(pWaveCyclicStream->DmaChannel, (PVOID *)DmaChannel_);
 
     return STATUS_SUCCESS;
 }

@@ -80,6 +80,12 @@ CMiniportWaveCyclicStream::~CMiniportWaveCyclicStream ()
 
     // Release the scatter/gather table.
     BDList_Free();
+
+    if (DmaChannel)
+    {
+        DmaChannel->FreeBuffer();
+        obj_Release((PVOID *)&DmaChannel);
+    }
 }
 
 /*****************************************************************************
@@ -129,7 +135,6 @@ NTSTATUS CMiniportWaveCyclicStream::ResizeBuffer(void)
     DWORD totalSize = bufferSize * NBUFFERS;
 
     // allocate buffer
-    PDMACHANNEL DmaChannel = Miniport->DmaChannel;
     DWORD allocSize = DmaChannel->AllocatedBufferSize();
     if(totalSize > allocSize)
     {
