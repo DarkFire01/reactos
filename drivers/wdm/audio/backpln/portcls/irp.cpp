@@ -157,10 +157,10 @@ PortClsPnp(
             return PcCompleteIrp(DeviceObject, Irp, Status);
     }
 
-    DPRINT("unhandled function %u\n", IoStack->MinorFunction);
-    Status = Irp->IoStatus.Status;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return Status;
+    /* The rest is for the bus driver below to answer, capabilities included */
+    DPRINT("forwarding function %u\n", IoStack->MinorFunction);
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(DeviceExt->PrevDeviceObject, Irp);
 }
 
 VOID
