@@ -21,6 +21,7 @@
 
 #define COBJMACROS
 #include "ole2.h"
+#include "winstring.h"
 
 #include "wine/debug.h"
 
@@ -1025,3 +1026,152 @@ void WINAPI WdtpInterfacePointer_UserFree(IUnknown *punk)
     TRACE("%p.\n", punk);
     if (punk) IUnknown_Release(punk);
 }
+
+/* An HSTRING goes as a tag then, in process, its handle; otherwise its byte length and characters */
+#ifdef _WIN64
+#define HSTRING_WIRE_TAG 0x50746457
+#else
+#define HSTRING_WIRE_TAG 0x48746457
+#endif
+
+/******************************************************************************
+ *           HSTRING_UserSize (combase.@)
+ *
+ * The size allows for the widest alignment the marshaled data can need.
+ */
+ULONG __RPC_USER HSTRING_UserSize(ULONG *flags, ULONG start, HSTRING *str)
+{
+    TRACE("%#lx, %lu, %p.\n", *flags, start, str);
+
+    ALIGN_LENGTH(start, 7);
+    start += sizeof(ULONG);
+
+    if (LOWORD(*flags) == MSHCTX_INPROC)
+    {
+        ALIGN_LENGTH(start, sizeof(void *) - 1);
+        return start + sizeof(HSTRING);
+    }
+
+    return start + sizeof(ULONG) + WindowsGetStringLen(*str) * sizeof(WCHAR);
+}
+
+/******************************************************************************
+ *           HSTRING_UserMarshal (combase.@)
+ */
+UCHAR * __RPC_USER HSTRING_UserMarshal(ULONG *flags, UCHAR *buffer, HSTRING *str)
+{
+    UINT32 length;
+    const WCHAR *chars;
+
+    TRACE("%#lx, %p, %p.\n", *flags, buffer, str);
+
+    if (LOWORD(*flags) == MSHCTX_DIFFERENTMACHINE)
+        RaiseException(RPC_X_BAD_STUB_DATA, 0, 0, NULL);
+
+    if (LOWORD(*flags) == MSHCTX_INPROC)
+    {
+        ALIGN_POINTER(buffer, sizeof(void *) - 1);
+        *(ULONG *)buffer = HSTRING_WIRE_TAG;
+        buffer += sizeof(ULONG);
+        ALIGN_POINTER(buffer, sizeof(void *) - 1);
+        *(HSTRING *)buffer = *str;
+        return buffer + sizeof(HSTRING);
+    }
+
+    /* Padding on the wire is cleared */
+    while ((ULONG_PTR)buffer & (sizeof(void *) - 1))
+        *buffer++ = 0;
+
+    chars = WindowsGetStringRawBuffer(*str, &length);
+    *(ULONG *)buffer = HSTRING_WIRE_TAG;
+    buffer += sizeof(ULONG);
+    *(ULONG *)buffer = length * sizeof(WCHAR);
+    buffer += sizeof(ULONG);
+    memcpy(buffer, chars, length * sizeof(WCHAR));
+    return buffer + length * sizeof(WCHAR);
+}
+
+/******************************************************************************
+ *           HSTRING_UserUnmarshal (combase.@)
+ */
+UCHAR * __RPC_USER HSTRING_UserUnmarshal(ULONG *flags, UCHAR *buffer, HSTRING *str)
+{
+    ULONG length;
+    HRESULT hr;
+
+    TRACE("%#lx, %p, %p.\n", *flags, buffer, str);
+
+    if (LOWORD(*flags) == MSHCTX_DIFFERENTMACHINE)
+        RaiseException(RPC_X_BAD_STUB_DATA, 0, 0, NULL);
+
+    ALIGN_POINTER(buffer, sizeof(void *) - 1);
+    if (*(ULONG *)buffer != HSTRING_WIRE_TAG)
+        RaiseException(RPC_X_BAD_STUB_DATA, 0, 0, NULL);
+    buffer += sizeof(ULONG);
+
+    if (LOWORD(*flags) == MSHCTX_INPROC)
+    {
+        ALIGN_POINTER(buffer, sizeof(void *) - 1);
+        hr = WindowsDuplicateString(*(HSTRING *)buffer, str);
+        if (FAILED(hr))
+            RaiseException(hr, 0, 0, NULL);
+        return buffer + sizeof(HSTRING);
+    }
+
+    length = *(ULONG *)buffer;
+    buffer += sizeof(ULONG);
+    if (length & 1)
+        RaiseException(RPC_X_BAD_STUB_DATA, 0, 0, NULL);
+
+    hr = WindowsCreateString((const WCHAR *)buffer, length / sizeof(WCHAR), str);
+    if (FAILED(hr))
+        RaiseException(hr, 0, 0, NULL);
+    return buffer + length;
+}
+
+/******************************************************************************
+ *           HSTRING_UserFree (combase.@)
+ */
+void __RPC_USER HSTRING_UserFree(ULONG *flags, HSTRING *str)
+{
+    TRACE("%#lx, %p.\n", *flags, str);
+
+    WindowsDeleteString(*str);
+    *str = NULL;
+}
+
+#ifdef _WIN64
+
+/******************************************************************************
+ *           HSTRING_UserSize64 (combase.@)
+ */
+ULONG __RPC_USER HSTRING_UserSize64(ULONG *flags, ULONG start, HSTRING *str)
+{
+    return HSTRING_UserSize(flags, start, str);
+}
+
+/******************************************************************************
+ *           HSTRING_UserMarshal64 (combase.@)
+ */
+UCHAR * __RPC_USER HSTRING_UserMarshal64(ULONG *flags, UCHAR *buffer, HSTRING *str)
+{
+    return HSTRING_UserMarshal(flags, buffer, str);
+}
+
+/******************************************************************************
+ *           HSTRING_UserUnmarshal64 (combase.@)
+ */
+UCHAR * __RPC_USER HSTRING_UserUnmarshal64(ULONG *flags, UCHAR *buffer, HSTRING *str)
+{
+    return HSTRING_UserUnmarshal(flags, buffer, str);
+}
+
+/******************************************************************************
+ *           HSTRING_UserFree64 (combase.@)
+ */
+void __RPC_USER HSTRING_UserFree64(ULONG *flags, HSTRING *str)
+{
+    HSTRING_UserFree(flags, str);
+}
+
+#endif
