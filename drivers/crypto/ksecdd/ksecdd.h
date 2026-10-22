@@ -98,6 +98,16 @@ KsecGenRandom(
 
 VOID
 NTAPI
+KsecInitializeCng(VOID);
+
+NTSTATUS
+NTAPI
+KsecGenerateRandom(
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ SIZE_T Length);
+
+VOID
+NTAPI
 KsecInitializeEncryptionSupport (
     VOID);
 
