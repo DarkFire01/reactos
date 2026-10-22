@@ -161,6 +161,25 @@ IsGUIThread(
     return TRUE;
 }
 
+/**
+ * @brief
+ * Checks whether a process runs in the immersive (Windows Store) environment.
+ *
+ * @return
+ * Always FALSE, since there is no such environment here. A handle that does not
+ * name a process the caller may query also sets ERROR_INVALID_PARAMETER.
+ */
+BOOL
+WINAPI
+IsImmersiveProcess(
+    _In_ HANDLE hProcess)
+{
+    if (hProcess != NtCurrentProcess() && !GetProcessId(hProcess))
+        UserSetLastError(ERROR_INVALID_PARAMETER);
+
+    return FALSE;
+}
+
 BOOL
 FASTCALL
 TestWindowProcess(PWND Wnd)
