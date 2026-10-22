@@ -7,15 +7,17 @@ include_directories(
 list(APPEND SOURCE
     ksecdd.c
     bcrypt.c
+    bcryptkey.c
     dispatch.c
     crypt.c
     random.c
+    scenv.c
     stubs.c
     ksecdd.rc
     ${CMAKE_CURRENT_BINARY_DIR}/ksecdd.def)
 
 add_library(ksecdd MODULE ${SOURCE})
-target_link_libraries(ksecdd cryptlib pseh)
+target_link_libraries(ksecdd cryptlib pseh symcrypt)
 set_module_type(ksecdd kernelmodedriver)
 add_importlibs(ksecdd ntoskrnl hal)
 add_cd_file(TARGET ksecdd DESTINATION reactos/system32/drivers NO_CAB FOR all)
