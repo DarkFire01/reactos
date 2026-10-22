@@ -317,7 +317,8 @@ typedef struct _HALP_DEVICE_DESCRIPTION_V3
     (((PHALP_DEVICE_DESCRIPTION_V3)(Description))->DmaAddressWidth)
 #endif
 
-#define MAX_MAP_REGISTERS 64
+/* The pool grows on demand up to this, so a 256 register scatter/gather request can be met */
+#define MAX_MAP_REGISTERS 1024
 
 #define TAG_DMA ' AMD'
 
@@ -855,6 +856,33 @@ HalpDmaReachesAllMemory(
     return DeviceDescription->Dma64BitAddresses;
 }
 
+/*
+ * How many map registers a device may hold at once. Devices that address
+ * 32 bits or more get room for large transfers, 256 for scatter/gather bus
+ * masters and 64 otherwise; anything narrower is held to 16. A bus master
+ * that does scatter/gather always counts as addressing 32 bits.
+ */
+static
+ULONG
+HalpMaximumMapRegisters(
+    _In_ PDEVICE_DESCRIPTION DeviceDescription)
+{
+    BOOLEAN Addresses32Bits;
+
+    if (DeviceDescription->Version == DEVICE_DESCRIPTION_VERSION3)
+        Addresses32Bits = (HalpGetDeviceDmaAddressWidth(DeviceDescription) >= 32);
+    else
+        Addresses32Bits = DeviceDescription->Dma32BitAddresses || DeviceDescription->Dma64BitAddresses;
+
+    if (DeviceDescription->Master && DeviceDescription->ScatterGather)
+        Addresses32Bits = TRUE;
+
+    if (!Addresses32Bits)
+        return 16;
+
+    return DeviceDescription->ScatterGather ? 256 : 64;
+}
+
 /**
  * @name HalGetAdapter
  *
@@ -952,7 +980,8 @@ HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
          * at a page-aligned address.
          */
         MapRegisters = BYTES_TO_PAGES(MaximumLength) + 1;
-        if (MapRegisters > 16) MapRegisters = 16;
+        if (MapRegisters > HalpMaximumMapRegisters(DeviceDescription))
+            MapRegisters = HalpMaximumMapRegisters(DeviceDescription);
     }
 
     /*
