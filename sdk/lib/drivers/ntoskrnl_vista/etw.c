@@ -39,6 +39,38 @@ EtwEventEnabled(
 
 /**
  * @brief
+ * Tells whether any session listens to a provider at a level and keyword.
+ *
+ * @param[in] RegHandle
+ * The registration handle returned by EtwRegister().
+ *
+ * @param[in] Level
+ * The event level being asked about.
+ *
+ * @param[in] Keyword
+ * The event keyword being asked about.
+ *
+ * @return
+ * FALSE. No tracing session ever enables a provider on ReactOS.
+ */
+_IRQL_requires_max_(HIGH_LEVEL)
+BOOLEAN
+NTKRNLVISTAAPI
+NTAPI
+EtwProviderEnabled(
+    _In_ REGHANDLE RegHandle,
+    _In_ UCHAR Level,
+    _In_ ULONGLONG Keyword)
+{
+    UNREFERENCED_PARAMETER(RegHandle);
+    UNREFERENCED_PARAMETER(Level);
+    UNREFERENCED_PARAMETER(Keyword);
+
+    return FALSE;
+}
+
+/**
+ * @brief
  * Writes an event to the sessions that enabled the provider.
  *
  * @param[in] RegHandle

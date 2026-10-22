@@ -206,6 +206,7 @@
 @ fastcall -arch=i386 ExiAcquireFastMutex(ptr) ExAcquireFastMutex
 @ fastcall -arch=i386 ExiReleaseFastMutex(ptr) ExReleaseFastMutex
 @ fastcall -arch=i386 ExiTryToAcquireFastMutex(ptr) ExTryToAcquireFastMutex
+@ stdcall -version=0x602+ FirstEntrySList(ptr) RtlFirstEntrySList
 @ stdcall FsRtlAcquireFileExclusive(ptr)
 @ stdcall FsRtlAddBaseMcbEntry(ptr long long long long long long)
 @ stdcall FsRtlAddLargeMcbEntry(ptr long long long long long long)
@@ -681,6 +682,7 @@
 @ stdcall KeQueryGroupAffinity(long)
 @ stdcall -arch=i386,arm,arm64 KeQueryInterruptTime()
 @ stdcall -version=0x602+ KeQueryDpcWatchdogInformation(ptr)
+@ stdcall -arch=i386,arm KeQueryInterruptTime()
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
 @ stdcall KeQueryMaximumGroupCount()
@@ -1354,6 +1356,10 @@
 @ stdcall RtlRemoveUnicodePrefix(ptr ptr)
 @ stdcall RtlReserveChunk(long ptr ptr ptr long)
 @ cdecl -arch=x86_64,arm64 RtlRestoreContext(ptr ptr)
+@ stdcall -version=0x600+ RtlRunOnceBeginInitialize(ptr long ptr)
+@ stdcall -version=0x600+ RtlRunOnceComplete(ptr long ptr)
+@ stdcall -version=0x600+ RtlRunOnceExecuteOnce(ptr ptr ptr ptr)
+@ stdcall -version=0x600+ RtlRunOnceInitialize(ptr)
 @ stdcall RtlSecondsSince1970ToTime(long ptr)
 @ stdcall RtlSecondsSince1980ToTime(long ptr)
 @ stdcall RtlSelfRelativeToAbsoluteSD(ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr)
@@ -1776,6 +1782,11 @@
 @ cdecl _ltoa_s()
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
 @ cdecl wcsncat_s()
+@ cdecl wcsncpy_s()
+@ cdecl wcsnlen()
+
+# Errata Manager
+@ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
 @ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
 @ stdcall -version=0x601+ EmProviderDeregister(ptr)
 @ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
@@ -1845,13 +1856,14 @@
 @ fastcall -version=0x600+ KeInvalidateRangeAllCaches(ptr long)
 @ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
 @ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
+
+@ stdcall -version=0x601+ KeQueryLogicalProcessorRelationship(ptr long ptr ptr)
 @ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
 @ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
 
 @ stdcall -version=0x600+ KeSetActualBasePriorityThread(ptr long)
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
-@ stdcall -version=0x601+ KeQueryLogicalProcessorRelationship(ptr long ptr ptr)
 @ fastcall -arch=i386 KfAcquireSpinLock(ptr) hal.KfAcquireSpinLock
 @ fastcall -arch=i386 KfReleaseSpinLock(ptr long) hal.KfReleaseSpinLock
 
@@ -2001,7 +2013,6 @@
 @ cdecl sqrt()
 @ stdcall KeQueryPrcbAddress()
 @ stdcall ObGetFilterVersion()
-@ cdecl swprintf_s()
 @ stdcall ObRegisterCallbacks()
 @ stdcall ObUnRegisterCallbacks()
 @ stdcall PsAcquireProcessExitSynchronization()
