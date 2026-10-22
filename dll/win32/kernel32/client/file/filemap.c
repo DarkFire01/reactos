@@ -41,6 +41,79 @@ CreateFileMappingA(IN HANDLE hFile,
  * @implemented
  */
 HANDLE
+WINAPI
+CreateFileMappingNumaW(
+    _In_ HANDLE hFile,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+    _In_ DWORD flProtect,
+    _In_ DWORD dwMaximumSizeHigh,
+    _In_ DWORD dwMaximumSizeLow,
+    _In_opt_ LPCWSTR lpName,
+    _In_ DWORD nndPreferred)
+{
+    ULONG HighestNode;
+
+    /* The preferred node is only checked; the memory manager places pages on its own */
+    if (nndPreferred != NUMA_NO_PREFERRED_NODE)
+    {
+        if (!GetNumaHighestNodeNumber(&HighestNode) || nndPreferred > HighestNode)
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return NULL;
+        }
+    }
+
+    return CreateFileMappingW(hFile,
+                              lpFileMappingAttributes,
+                              flProtect,
+                              dwMaximumSizeHigh,
+                              dwMaximumSizeLow,
+                              lpName);
+}
+
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+CreateFileMappingNumaA(
+    _In_ HANDLE hFile,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+    _In_ DWORD flProtect,
+    _In_ DWORD dwMaximumSizeHigh,
+    _In_ DWORD dwMaximumSizeLow,
+    _In_opt_ LPCSTR lpName,
+    _In_ DWORD nndPreferred)
+{
+    ConvertAnsiToUnicodePrologue
+    if (!lpName)
+    {
+        return CreateFileMappingNumaW(hFile,
+                                      lpFileMappingAttributes,
+                                      flProtect,
+                                      dwMaximumSizeHigh,
+                                      dwMaximumSizeLow,
+                                      NULL,
+                                      nndPreferred);
+    }
+    ConvertAnsiToUnicodeBody(lpName)
+    if (NT_SUCCESS(Status))
+    {
+        return CreateFileMappingNumaW(hFile,
+                                      lpFileMappingAttributes,
+                                      flProtect,
+                                      dwMaximumSizeHigh,
+                                      dwMaximumSizeLow,
+                                      UnicodeCache->Buffer,
+                                      nndPreferred);
+    }
+    ConvertAnsiToUnicodeEpilogue
+}
+
+/*
+ * @implemented
+ */
+HANDLE
 NTAPI
 CreateFileMappingW(HANDLE hFile,
                    LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
