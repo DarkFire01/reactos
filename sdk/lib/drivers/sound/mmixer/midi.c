@@ -94,10 +94,13 @@ MMixerAddMidiPin(
     }
     else
     {
+        /* a KS MIDI pin is a port to outside hardware, on every channel */
         MidiInfo->u.OutCaps.dwSupport = 0;
         MidiInfo->u.OutCaps.wMid = MM_MICROSOFT;
         MidiInfo->u.OutCaps.wPid = MM_PID_UNMAPPED;
         MidiInfo->u.OutCaps.vDriverVersion = 1;
+        MidiInfo->u.OutCaps.wTechnology = MOD_MIDIPORT;
+        MidiInfo->u.OutCaps.wChannelMask = 0xFFFF;
     }
 
     if (bInput)
@@ -143,18 +146,16 @@ MMixerCheckFilterPinMidiSupport(
             IsEqualGUIDAligned(&DataRange->SubFormat, &KSDATAFORMAT_SUBTYPE_MIDI) &&
             IsEqualGUIDAligned(&DataRange->Specifier, &KSDATAFORMAT_SPECIFIER_NONE))
         {
-            /* pin supports midi datarange */
-            if (MMixerGetPinDataFlowAndCommunication(MixerContext, MixerData->hDevice, PinId, &DataFlow, &Communication) == MM_STATUS_SUCCESS)
+            /* pin supports midi datarange; clients connect to both directions as a sink */
+            if (MMixerGetPinDataFlowAndCommunication(MixerContext, MixerData->hDevice, PinId, &DataFlow, &Communication) == MM_STATUS_SUCCESS &&
+                (Communication == KSPIN_COMMUNICATION_SINK || Communication == KSPIN_COMMUNICATION_BOTH ||
+                 (DataFlow == KSPIN_DATAFLOW_OUT && Communication == KSPIN_COMMUNICATION_SOURCE)))
             {
-                if (DataFlow == KSPIN_DATAFLOW_IN && Communication == KSPIN_COMMUNICATION_SINK)
-                {
-                    MMixerAddMidiPin(MixerContext, MixerList, MixerData->DeviceId, PinId, FALSE, szPname);
-                }
-                else if (DataFlow == KSPIN_DATAFLOW_OUT && Communication == KSPIN_COMMUNICATION_SOURCE)
-                {
-                    MMixerAddMidiPin(MixerContext, MixerList, MixerData->DeviceId, PinId, TRUE, szPname);
-                }
+                MMixerAddMidiPin(MixerContext, MixerList, MixerData->DeviceId, PinId, DataFlow == KSPIN_DATAFLOW_OUT, szPname);
             }
+
+            /* one device per pin, however many ranges it lists */
+            break;
         }
 
         /* move to next datarange */
@@ -201,6 +202,7 @@ MMixerInitializeMidiForFilter(
         {
             /* check if there is support KSDATARANGE_MUSIC */
             MMixerCheckFilterPinMidiSupport(MixerContext, MixerList, MixerData, Index, MultipleItem, szPname);
+            MixerContext->Free(MultipleItem);
         }
     }
 }

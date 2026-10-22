@@ -70,8 +70,38 @@ modMessage(
 
         case MODM_CLOSE :
         {
-            Result = MmeCloseDevice(PrivateHandle);
+            Result = MmeCloseMidiDevice(PrivateHandle);
 
+            break;
+        }
+
+        case MODM_PREPARE :
+        {
+            Result = MmePrepareMidiHeader(PrivateHandle, Parameter1);
+            break;
+        }
+
+        case MODM_UNPREPARE :
+        {
+            Result = MmeUnprepareMidiHeader(PrivateHandle, Parameter1);
+            break;
+        }
+
+        case MODM_DATA :
+        {
+            Result = MmeWriteMidiShort(PrivateHandle, (DWORD)Parameter1);
+            break;
+        }
+
+        case MODM_LONGDATA :
+        {
+            Result = MmeWriteMidiLong(PrivateHandle, Parameter1);
+            break;
+        }
+
+        case MODM_RESET :
+        {
+            Result = MmeResetMidiOutput(PrivateHandle);
             break;
         }
 

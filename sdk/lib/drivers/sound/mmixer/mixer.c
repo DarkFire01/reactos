@@ -875,3 +875,126 @@ MMixerInitialize(
     /* done */
     return MM_STATUS_SUCCESS;
 }
+
+/* Frees every entry of a list whose entries start with their LIST_ENTRY */
+static
+VOID
+MMixerFreeEntries(
+    _In_ PMIXER_CONTEXT MixerContext,
+    _Inout_ PLIST_ENTRY ListHead)
+{
+    PLIST_ENTRY Entry;
+
+    while (!IsListEmpty(ListHead))
+    {
+        Entry = RemoveHeadList(ListHead);
+        MixerContext->Free(Entry);
+    }
+}
+
+static
+VOID
+MMixerFreeTopology(
+    _In_ PMIXER_CONTEXT MixerContext,
+    _In_ PTOPOLOGY Topology)
+{
+    PTOPOLOGY_NODE Node;
+    PPIN Pin;
+    ULONG Index;
+
+    for (Index = 0; Index < Topology->TopologyNodesCount; Index++)
+    {
+        Node = &Topology->TopologyNodes[Index];
+        if (Node->NodeConnectedTo)
+            MixerContext->Free(Node->NodeConnectedTo);
+        if (Node->NodeConnectedFrom)
+            MixerContext->Free(Node->NodeConnectedFrom);
+        if (Node->LogicalPinNodeConnectedFrom)
+            MixerContext->Free(Node->LogicalPinNodeConnectedFrom);
+        if (Node->PinConnectedFrom)
+            MixerContext->Free(Node->PinConnectedFrom);
+        if (Node->PinConnectedTo)
+            MixerContext->Free(Node->PinConnectedTo);
+    }
+
+    for (Index = 0; Index < Topology->TopologyPinsCount; Index++)
+    {
+        Pin = &Topology->TopologyPins[Index];
+        if (Pin->NodesConnectedTo)
+            MixerContext->Free(Pin->NodesConnectedTo);
+        if (Pin->NodesConnectedFrom)
+            MixerContext->Free(Pin->NodesConnectedFrom);
+        if (Pin->PinConnectedFrom)
+            MixerContext->Free(Pin->PinConnectedFrom);
+        if (Pin->PinConnectedTo)
+            MixerContext->Free(Pin->PinConnectedTo);
+    }
+
+    if (Topology->TopologyNodes)
+        MixerContext->Free(Topology->TopologyNodes);
+    if (Topology->TopologyPins)
+        MixerContext->Free(Topology->TopologyPins);
+    MixerContext->Free(Topology);
+}
+
+/**
+ * @brief
+ * Closes every filter the library opened and frees what it built, so that
+ * MMixerInitialize can enumerate the devices again.
+ */
+VOID
+MMixerUninitialize(
+    _Inout_ PMIXER_CONTEXT MixerContext)
+{
+    PMIXER_LIST MixerList = (PMIXER_LIST)MixerContext->MixerContext;
+    LPMIXERCONTROL_EXT MixerControl;
+    LPMIXERLINE_EXT MixerLine;
+    LPMIXER_INFO MixerInfo;
+    LPMIXER_DATA MixerData;
+    PLIST_ENTRY Entry;
+
+    if (!MixerList)
+        return;
+
+    while (!IsListEmpty(&MixerList->MixerList))
+    {
+        MixerInfo = (LPMIXER_INFO)CONTAINING_RECORD(RemoveHeadList(&MixerList->MixerList), MIXER_INFO, Entry);
+        while (!IsListEmpty(&MixerInfo->LineList))
+        {
+            MixerLine = (LPMIXERLINE_EXT)CONTAINING_RECORD(RemoveHeadList(&MixerInfo->LineList), MIXERLINE_EXT, Entry);
+            while (!IsListEmpty(&MixerLine->ControlsList))
+            {
+                Entry = RemoveHeadList(&MixerLine->ControlsList);
+                MixerControl = (LPMIXERCONTROL_EXT)CONTAINING_RECORD(Entry, MIXERCONTROL_EXT, Entry);
+                if (MixerControl->ExtraData)
+                    MixerContext->Free(MixerControl->ExtraData);
+                MixerContext->Free(MixerControl);
+            }
+            MixerContext->Free(MixerLine);
+        }
+        MMixerFreeEntries(MixerContext, &MixerInfo->EventList);
+        MixerContext->Free(MixerInfo);
+    }
+
+    while (!IsListEmpty(&MixerList->MixerData))
+    {
+        MixerData = (LPMIXER_DATA)CONTAINING_RECORD(RemoveHeadList(&MixerList->MixerData), MIXER_DATA, Entry);
+        if (MixerData->hDevice)
+            MixerContext->Close(MixerData->hDevice);
+        if (MixerData->hDeviceInterfaceKey)
+            MixerContext->CloseKey(MixerData->hDeviceInterfaceKey);
+        if (MixerData->Topology)
+            MMixerFreeTopology(MixerContext, MixerData->Topology);
+        if (MixerData->DeviceName)
+            MixerContext->Free(MixerData->DeviceName);
+        MixerContext->Free(MixerData);
+    }
+
+    MMixerFreeEntries(MixerContext, &MixerList->WaveInList);
+    MMixerFreeEntries(MixerContext, &MixerList->WaveOutList);
+    MMixerFreeEntries(MixerContext, &MixerList->MidiInList);
+    MMixerFreeEntries(MixerContext, &MixerList->MidiOutList);
+
+    MixerContext->Free(MixerList);
+    MixerContext->MixerContext = NULL;
+}
