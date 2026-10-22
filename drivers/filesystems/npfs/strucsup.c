@@ -117,9 +117,9 @@ NpDeleteCcb(IN PNP_CCB Ccb,
         }
         ExFreePool(Ccb->NonPagedCcb);
     }
-    else if (RootDcbCcb->NodeType == NPFS_NTC_ROOT_DCB_CCB && RootDcbCcb->Unknown)
+    else if (RootDcbCcb->NodeType == NPFS_NTC_ROOT_DCB_CCB && RootDcbCcb->SearchExpression)
     {
-        ExFreePool(RootDcbCcb->Unknown);
+        ExFreePool(RootDcbCcb->SearchExpression);
     }
 
     ExFreePool(Ccb);

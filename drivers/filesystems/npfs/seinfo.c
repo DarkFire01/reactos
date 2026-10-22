@@ -35,7 +35,7 @@ NpCommonQuerySecurityInfo(IN PDEVICE_OBJECT DeviceObject,
                                       &Ccb,
                                       &NamedPipeEnd);
     if (!NodeTypeCode) return STATUS_PIPE_DISCONNECTED;
-    if (NodeTypeCode != NPFS_NTC_CCB) return STATUS_INVALID_PARAMETER;
+    if (NodeTypeCode != NPFS_NTC_CCB && NodeTypeCode != NPFS_NTC_PREFIX) return STATUS_INVALID_PARAMETER;
 
     Status = SeQuerySecurityDescriptorInfo(&IoStack->Parameters.QuerySecurity.SecurityInformation,
                                            Irp->UserBuffer,
@@ -73,7 +73,7 @@ NpCommonSetSecurityInfo(IN PDEVICE_OBJECT DeviceObject,
                                       &Ccb,
                                       &NamedPipeEnd);
     if (!NodeTypeCode) return STATUS_PIPE_DISCONNECTED;
-    if (NodeTypeCode != NPFS_NTC_CCB) return STATUS_INVALID_PARAMETER;
+    if (NodeTypeCode != NPFS_NTC_CCB && NodeTypeCode != NPFS_NTC_PREFIX) return STATUS_INVALID_PARAMETER;
 
     OldSecurityDescriptor = TempSecurityDescriptor = Fcb->SecurityDescriptor;
     Status = SeSetSecurityDescriptorInfo(NULL,

@@ -50,6 +50,11 @@ NpDecodeFileObject(IN PFILE_OBJECT FileObject,
                 if (PrimaryContext) *PrimaryContext = Node->Fcb;
                 return NPFS_NTC_CCB;
 
+            case NPFS_NTC_PREFIX:
+                *Ccb = NULL;
+                if (PrimaryContext) *PrimaryContext = Node;
+                return NPFS_NTC_PREFIX;
+
             default:
                 NpBugCheck(Node->NodeType, 0, 0);
                 break;

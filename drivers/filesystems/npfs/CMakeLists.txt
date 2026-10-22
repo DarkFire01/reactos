@@ -4,6 +4,7 @@ list(APPEND SOURCE
     close.c
     create.c
     datasup.c
+    dirctrl.c
     fileinfo.c
     fileobsup.c
     flushbuf.c
