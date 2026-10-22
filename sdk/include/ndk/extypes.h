@@ -145,6 +145,23 @@ extern ULONG NTSYSAPI InitSafeBootMode;
                                              KEYEDEVENT_WAKE)
 
 //
+// Worker Factory Object Access Masks
+//
+#define WORKER_FACTORY_RELEASE_WORKER       0x0001
+#define WORKER_FACTORY_WAIT                 0x0002
+#define WORKER_FACTORY_SET_INFORMATION      0x0004
+#define WORKER_FACTORY_QUERY_INFORMATION    0x0008
+#define WORKER_FACTORY_READY_WORKER         0x0010
+#define WORKER_FACTORY_SHUTDOWN             0x0020
+#define WORKER_FACTORY_ALL_ACCESS           (STANDARD_RIGHTS_REQUIRED | \
+                                             WORKER_FACTORY_RELEASE_WORKER | \
+                                             WORKER_FACTORY_WAIT | \
+                                             WORKER_FACTORY_SET_INFORMATION | \
+                                             WORKER_FACTORY_QUERY_INFORMATION | \
+                                             WORKER_FACTORY_READY_WORKER | \
+                                             WORKER_FACTORY_SHUTDOWN)
+
+//
 // NtRaiseHardError-related parameters
 //
 #define MAXIMUM_HARDERROR_PARAMETERS        5
@@ -533,6 +550,30 @@ typedef enum _EVENT_INFORMATION_CLASS
     EventBasicInformation
 } EVENT_INFORMATION_CLASS;
 
+//
+// Information Classes for NtQueryInformationWorkerFactory and NtSetInformationWorkerFactory
+//
+typedef enum _WORKERFACTORYINFOCLASS
+{
+    WorkerFactoryTimeout,
+    WorkerFactoryRetryTimeout,
+    WorkerFactoryIdleTimeout,
+    WorkerFactoryBindingCount,
+    WorkerFactoryThreadMinimum,
+    WorkerFactoryThreadMaximum,
+    WorkerFactoryPaused,
+    WorkerFactoryBasicInformation,
+    WorkerFactoryAdjustThreadGoal,
+    WorkerFactoryCallbackType,
+    WorkerFactoryStackInformation,
+    WorkerFactoryThreadBasePriority,
+    WorkerFactoryTimeoutWaiters,
+    WorkerFactoryFlags,
+    WorkerFactoryThreadSoftMaximum,
+    WorkerFactoryThreadCpuSets,
+    MaxWorkerFactoryInfoClass
+} WORKERFACTORYINFOCLASS, *PWORKERFACTORYINFOCLASS;
+
 #ifdef NTOS_MODE_USER
 
 //
@@ -907,6 +948,48 @@ typedef struct _EVENT_BASIC_INFORMATION
     EVENT_TYPE EventType;
     LONG EventState;
 } EVENT_BASIC_INFORMATION, *PEVENT_BASIC_INFORMATION;
+
+//
+// Information Structures for NtQueryInformationWorkerFactory
+//
+typedef struct _WORKER_FACTORY_BASIC_INFORMATION
+{
+    LARGE_INTEGER Timeout;
+    LARGE_INTEGER RetryTimeout;
+    LARGE_INTEGER IdleTimeout;
+    BOOLEAN Paused;
+    BOOLEAN TimerSet;
+    BOOLEAN QueuedToExWorker;
+    BOOLEAN MayCreate;
+    BOOLEAN CreateInProgress;
+    BOOLEAN InsertedIntoQueue;
+    BOOLEAN Shutdown;
+    ULONG BindingCount;
+    ULONG ThreadMinimum;
+    ULONG ThreadMaximum;
+    ULONG PendingWorkerCount;
+    ULONG WaitingWorkerCount;
+    ULONG TotalWorkerCount;
+    ULONG ReleaseCount;
+    LONGLONG InfiniteWaitGoal;
+    PVOID StartRoutine;
+    PVOID StartParameter;
+    HANDLE ProcessId;
+    SIZE_T StackReserve;
+    SIZE_T StackCommit;
+    NTSTATUS LastThreadCreationStatus;
+} WORKER_FACTORY_BASIC_INFORMATION, *PWORKER_FACTORY_BASIC_INFORMATION;
+
+//
+// Work done by NtWaitForWorkViaWorkerFactory before it waits
+//
+typedef struct _WORKER_FACTORY_DEFERRED_WORK
+{
+    struct _PORT_MESSAGE *AlpcSendMessage;
+    PVOID AlpcSendMessagePort;
+    ULONG AlpcSendMessageFlags;
+    ULONG Flags;
+} WORKER_FACTORY_DEFERRED_WORK, *PWORKER_FACTORY_DEFERRED_WORK;
 
 //
 // Information Structures for NtQuerySystemInformation

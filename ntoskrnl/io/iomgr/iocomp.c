@@ -31,7 +31,142 @@ static const INFORMATION_CLASS_INFO IoCompletionInfoClass[] =
     IQS_SAME(IO_COMPLETION_BASIC_INFORMATION, ULONG, ICIF_QUERY),
 };
 
+/* Ports somebody wants to hear about when a packet sits in them unclaimed */
+static LIST_ENTRY IopCompletionWatchList = { &IopCompletionWatchList, &IopCompletionWatchList };
+static KSPIN_LOCK IopCompletionWatchLock;
+
 /* PRIVATE FUNCTIONS *********************************************************/
+
+/* Hands a callback packet that left its port back to the component that queued it */
+static
+VOID
+IopReturnCallbackPacket(
+    _In_ PIOP_MINI_COMPLETION_PACKET Packet,
+    _In_ BOOLEAN Rundown)
+{
+    PIOP_CALLBACK_COMPLETION_PACKET Owned;
+
+    Owned = CONTAINING_RECORD(Packet, IOP_CALLBACK_COMPLETION_PACKET, Packet);
+    Owned->Routine(Owned->Context, Rundown);
+}
+
+/* A KiRemoveQueue result that ended the wait instead of returning an entry */
+static
+BOOLEAN
+IopIsQueueWaitStatus(
+    _In_ PLIST_ENTRY ListEntry)
+{
+    NTSTATUS Status = (NTSTATUS)(ULONG_PTR)ListEntry;
+
+    return (Status == STATUS_TIMEOUT) ||
+           (Status == STATUS_USER_APC) ||
+           (Status == STATUS_ALERTED) ||
+           (Status == STATUS_ABANDONED);
+}
+
+/**
+ * @brief
+ * Starts watching a port for a packet that no waiter takes. The routine runs once, at or below
+ * DISPATCH_LEVEL, and the watch must be armed again to hear about later packets.
+ *
+ * @return
+ * TRUE when armed. FALSE when the port already holds packets, in which case nothing is armed.
+ */
+BOOLEAN
+NTAPI
+IopArmCompletionWatch(
+    _Inout_ PIOP_COMPLETION_WATCH Watch)
+{
+    KLOCK_QUEUE_HANDLE LockHandle;
+
+    KeAcquireInStackQueuedSpinLock(&IopCompletionWatchLock, &LockHandle);
+    if (!Watch->Armed)
+    {
+        InsertTailList(&IopCompletionWatchList, &Watch->Links);
+        Watch->Armed = TRUE;
+    }
+    KeReleaseInStackQueuedSpinLock(&LockHandle);
+
+    /* A packet queued before the watch was listed would never be signaled */
+    KeMemoryBarrier();
+    if (KeReadStateQueue(Watch->Port) > 0)
+    {
+        /* Losing the race to a signal means the routine is already on its way */
+        return !IopDisarmCompletionWatch(Watch);
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Stops watching a port.
+ *
+ * @return
+ * TRUE when the watch was still armed. FALSE when it already fired or was never armed.
+ */
+BOOLEAN
+NTAPI
+IopDisarmCompletionWatch(
+    _Inout_ PIOP_COMPLETION_WATCH Watch)
+{
+    KLOCK_QUEUE_HANDLE LockHandle;
+    BOOLEAN WasArmed;
+
+    KeAcquireInStackQueuedSpinLock(&IopCompletionWatchLock, &LockHandle);
+    WasArmed = Watch->Armed;
+    if (WasArmed)
+    {
+        RemoveEntryList(&Watch->Links);
+        Watch->Armed = FALSE;
+    }
+    KeReleaseInStackQueuedSpinLock(&LockHandle);
+
+    return WasArmed;
+}
+
+/* Fires the watches of a port that was just given a packet, if the packet stayed queued */
+VOID
+NTAPI
+IopSignalCompletionWatches(
+    _In_ PKQUEUE Port)
+{
+    KLOCK_QUEUE_HANDLE LockHandle;
+    PIOP_COMPLETION_WATCH Watch;
+    PLIST_ENTRY Entry, Next;
+    LIST_ENTRY Fired;
+
+    KeMemoryBarrier();
+    if (IsListEmpty(&IopCompletionWatchList))
+        return;
+
+    /* A packet handed straight to a waiter leaves the queue empty */
+    if (KeReadStateQueue(Port) <= 0)
+        return;
+
+    InitializeListHead(&Fired);
+    KeAcquireInStackQueuedSpinLock(&IopCompletionWatchLock, &LockHandle);
+    for (Entry = IopCompletionWatchList.Flink; Entry != &IopCompletionWatchList; Entry = Next)
+    {
+        Next = Entry->Flink;
+        Watch = CONTAINING_RECORD(Entry, IOP_COMPLETION_WATCH, Links);
+        if (Watch->Port != Port)
+            continue;
+
+        RemoveEntryList(&Watch->Links);
+        Watch->Armed = FALSE;
+        InsertTailList(&Fired, &Watch->Links);
+    }
+    KeReleaseInStackQueuedSpinLock(&LockHandle);
+
+    /* The routine may arm the watch again, so it is unlinked first */
+    while (!IsListEmpty(&Fired))
+    {
+        Entry = RemoveHeadList(&Fired);
+        Watch = CONTAINING_RECORD(Entry, IOP_COMPLETION_WATCH, Links);
+        Watch->Routine(Watch->Context);
+    }
+}
 
 NTSTATUS
 NTAPI
@@ -128,6 +263,11 @@ IopDeleteIoCompletion(PVOID ObjectBody)
                 Irp = CONTAINING_RECORD(Packet, IRP, Tail.Overlay.ListEntry);
                 IoFreeIrp(Irp);
             }
+            else if (Packet->PacketType == IopCompletionPacketCallback)
+            {
+                /* Its owner frees it */
+                IopReturnCallbackPacket(Packet, TRUE);
+            }
             else
             {
                 /* Use common routine */
@@ -201,6 +341,7 @@ IoSetIoCompletion(IN PVOID IoCompletion,
 
         /* Insert the Queue */
         KeInsertQueue(Queue, &Packet->ListEntry);
+        IopSignalCompletionWatches(Queue);
     }
     else
     {
@@ -445,7 +586,8 @@ static
 VOID
 IopTakeCompletionEntry(
     _In_ PLIST_ENTRY ListEntry,
-    _Out_ PFILE_IO_COMPLETION_INFORMATION Entry)
+    _Out_ PFILE_IO_COMPLETION_INFORMATION Entry,
+    _Inout_opt_ PLIST_ENTRY ReturnedPackets)
 {
     PIOP_MINI_COMPLETION_PACKET Packet = CONTAINING_RECORD(ListEntry, IOP_MINI_COMPLETION_PACKET, ListEntry);
     PIRP Irp;
@@ -457,15 +599,89 @@ IopTakeCompletionEntry(
         Entry->ApcContext = Irp->Overlay.AsynchronousParameters.UserApcContext;
         Entry->IoStatusBlock = Irp->IoStatus;
         IoFreeIrp(Irp);
+        return;
     }
-    else
+
+    Entry->KeyContext = Packet->KeyContext;
+    Entry->ApcContext = Packet->ApcContext;
+    Entry->IoStatusBlock.Status = Packet->IoStatus;
+    Entry->IoStatusBlock.Information = Packet->IoStatusInformation;
+    if (Packet->PacketType != IopCompletionPacketCallback)
     {
-        Entry->KeyContext = Packet->KeyContext;
-        Entry->ApcContext = Packet->ApcContext;
-        Entry->IoStatusBlock.Status = Packet->IoStatus;
-        Entry->IoStatusBlock.Information = Packet->IoStatusInformation;
         IopFreeMiniPacket(Packet);
+        return;
     }
+
+    /* The owner may queue it again, so a caller taking several entries returns it afterwards */
+    if (ReturnedPackets)
+        InsertTailList(ReturnedPackets, ListEntry);
+    else
+        IopReturnCallbackPacket(Packet, FALSE);
+}
+
+/**
+ * @brief
+ * Removes up to Count completions from a queue, waiting for the first up to the timeout.
+ * Entries is written under SEH, so it may be a probed user buffer.
+ *
+ * @return
+ * STATUS_SUCCESS with at least one entry, the wait status when none came, or a failure.
+ */
+NTSTATUS
+NTAPI
+IopRemoveCompletionEntries(
+    _In_ PKQUEUE Queue,
+    _Out_writes_to_(Count, *NumEntriesRemoved) PFILE_IO_COMPLETION_INFORMATION Entries,
+    _In_ ULONG Count,
+    _Out_ PULONG NumEntriesRemoved,
+    _In_ KPROCESSOR_MODE PreviousMode,
+    _In_opt_ PLARGE_INTEGER Timeout,
+    _In_ BOOLEAN Alertable)
+{
+    FILE_IO_COMPLETION_INFORMATION Entry;
+    LIST_ENTRY ReturnedPackets;
+    LARGE_INTEGER NoWait;
+    PLIST_ENTRY ListEntry;
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG Removed = 0;
+
+    InitializeListHead(&ReturnedPackets);
+
+    /* Only the first entry is waited for; the rest are whatever is already queued */
+    NoWait.QuadPart = 0;
+    while (Removed < Count)
+    {
+        ListEntry = KiRemoveQueue(Queue, PreviousMode, Removed ? FALSE : Alertable, Removed ? &NoWait : Timeout);
+        if (IopIsQueueWaitStatus(ListEntry))
+        {
+            if (!Removed)
+                Status = (NTSTATUS)(ULONG_PTR)ListEntry;
+            break;
+        }
+
+        IopTakeCompletionEntry(ListEntry, &Entry, &ReturnedPackets);
+        _SEH2_TRY
+        {
+            Entries[Removed] = Entry;
+        }
+        _SEH2_EXCEPT(ExSystemExceptionFilter())
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+        if (!NT_SUCCESS(Status))
+            break;
+        Removed++;
+    }
+
+    while (!IsListEmpty(&ReturnedPackets))
+    {
+        ListEntry = RemoveHeadList(&ReturnedPackets);
+        IopReturnCallbackPacket(CONTAINING_RECORD(ListEntry, IOP_MINI_COMPLETION_PACKET, ListEntry), FALSE);
+    }
+
+    *NumEntriesRemoved = Removed;
+    return Status;
 }
 
 /**
@@ -487,12 +703,9 @@ NtRemoveIoCompletionEx(
     _In_ BOOLEAN Alertable)
 {
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
-    FILE_IO_COMPLETION_INFORMATION Entry;
     LARGE_INTEGER SafeTimeout;
-    LARGE_INTEGER NoWait;
-    PLIST_ENTRY ListEntry;
     PKQUEUE Queue;
-    ULONG Removed = 0;
+    ULONG Removed;
     NTSTATUS Status;
     PAGED_CODE();
 
@@ -527,33 +740,13 @@ NtRemoveIoCompletionEx(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    /* Only the first entry is waited for; the rest are whatever is already queued */
-    NoWait.QuadPart = 0;
-    while (Removed < Count)
-    {
-        ListEntry = KiRemoveQueue(Queue, PreviousMode, Removed ? FALSE : Alertable, Removed ? &NoWait : Timeout);
-        if ((NTSTATUS)(ULONG_PTR)ListEntry == STATUS_TIMEOUT ||
-            (NTSTATUS)(ULONG_PTR)ListEntry == STATUS_USER_APC)
-        {
-            if (!Removed)
-                Status = (NTSTATUS)(ULONG_PTR)ListEntry;
-            break;
-        }
-
-        IopTakeCompletionEntry(ListEntry, &Entry);
-        _SEH2_TRY
-        {
-            IoCompletionInformation[Removed] = Entry;
-        }
-        _SEH2_EXCEPT(ExSystemExceptionFilter())
-        {
-            Status = _SEH2_GetExceptionCode();
-        }
-        _SEH2_END;
-        if (!NT_SUCCESS(Status))
-            break;
-        Removed++;
-    }
+    Status = IopRemoveCompletionEntries(Queue,
+                                        IoCompletionInformation,
+                                        Count,
+                                        &Removed,
+                                        PreviousMode,
+                                        Timeout,
+                                        Alertable);
 
     ObDereferenceObject(Queue);
 
@@ -579,11 +772,10 @@ NtRemoveIoCompletion(IN HANDLE IoCompletionHandle,
 {
     LARGE_INTEGER SafeTimeout;
     PKQUEUE Queue;
-    PIOP_MINI_COMPLETION_PACKET Packet;
+    FILE_IO_COMPLETION_INFORMATION Entry;
     PLIST_ENTRY ListEntry;
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
     NTSTATUS Status;
-    PIRP Irp;
     PVOID Apc, Key;
     IO_STATUS_BLOCK IoStatus;
     PAGED_CODE();
@@ -638,38 +830,11 @@ NtRemoveIoCompletion(IN HANDLE IoCompletionHandle,
         }
         else
         {
-            /* Get the Packet Data */
-            Packet = CONTAINING_RECORD(ListEntry,
-                                       IOP_MINI_COMPLETION_PACKET,
-                                       ListEntry);
-
-            /* Check if this is piggybacked on an IRP */
-            if (Packet->PacketType == IopCompletionPacketIrp)
-            {
-                /* Get the IRP */
-                Irp = CONTAINING_RECORD(ListEntry,
-                                        IRP,
-                                        Tail.Overlay.ListEntry);
-
-                /* Save values */
-                Key = Irp->Tail.CompletionKey;
-                Apc = Irp->Overlay.AsynchronousParameters.UserApcContext;
-                IoStatus = Irp->IoStatus;
-
-                /* Free the IRP */
-                IoFreeIrp(Irp);
-            }
-            else
-            {
-                /* Save values */
-                Key = Packet->KeyContext;
-                Apc = Packet->ApcContext;
-                IoStatus.Status = Packet->IoStatus;
-                IoStatus.Information = Packet->IoStatusInformation;
-
-                /* Free the packet */
-                IopFreeMiniPacket(Packet);
-            }
+            /* Save the values and free the IRP or packet behind them */
+            IopTakeCompletionEntry(ListEntry, &Entry, NULL);
+            Key = Entry.KeyContext;
+            Apc = Entry.ApcContext;
+            IoStatus = Entry.IoStatusBlock;
 
             /* Enter SEH to write back the values */
             _SEH2_TRY

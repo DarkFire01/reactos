@@ -434,6 +434,39 @@ KiRemoveQueue(
     return QueueEntry;
 }
 
+/**
+ * @brief
+ * Ends the waits of up to Count threads blocked in KiRemoveQueue, oldest first, with
+ * STATUS_TIMEOUT.
+ *
+ * @return
+ * The number of threads woken.
+ */
+ULONG
+NTAPI
+KiTimeOutQueueWaiters(
+    _In_ PKQUEUE Queue,
+    _In_ ULONG Count)
+{
+    PKWAIT_BLOCK WaitBlock;
+    ULONG Woken = 0;
+    KIRQL OldIrql;
+    ASSERT_QUEUE(Queue);
+    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+
+    OldIrql = KiAcquireDispatcherLock();
+    while ((Woken < Count) && !IsListEmpty(&Queue->Header.WaitListHead))
+    {
+        /* Unwaiting the thread takes its block off the list */
+        WaitBlock = CONTAINING_RECORD(Queue->Header.WaitListHead.Flink, KWAIT_BLOCK, WaitListEntry);
+        KiUnwaitThread(WaitBlock->Thread, STATUS_TIMEOUT, IO_NO_INCREMENT);
+        Woken++;
+    }
+    KiReleaseDispatcherLock(OldIrql);
+
+    return Woken;
+}
+
 /*
  * @implemented
  */

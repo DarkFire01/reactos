@@ -634,7 +634,7 @@ SVC_(WaitForKeyedEvent, 4)
 SVC_(WaitForWnfNotifications, 0) // FIXME
 #endif
 #if (NTDDI_VERSION >= NTDDI_VISTA)
-SVC_(WaitForWorkViaWorkerFactory, 2)
+SVC_(WaitForWorkViaWorkerFactory, 5)
 #endif
 SVC_(WaitHighEventPair, 1)
 SVC_(WaitLowEventPair, 1)

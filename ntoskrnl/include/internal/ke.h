@@ -746,6 +746,12 @@ KiRemoveQueue(
     _In_ BOOLEAN Alertable,
     _In_opt_ PLARGE_INTEGER Timeout);
 
+ULONG
+NTAPI
+KiTimeOutQueueWaiters(
+    _In_ PKQUEUE Queue,
+    _In_ ULONG Count);
+
 VOID
 FASTCALL
 KiActivateWaiterQueue(IN PKQUEUE Queue);

@@ -506,6 +506,7 @@ IopCompleteRequest(IN PKAPC Apc,
             Irp->Tail.CompletionKey = Key;
             Irp->Tail.Overlay.PacketType = IopCompletionPacketIrp;
             KeInsertQueue(Port, &Irp->Tail.Overlay.ListEntry);
+            IopSignalCompletionWatches(Port);
         }
         else
         {
