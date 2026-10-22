@@ -998,6 +998,12 @@ SepReleaseSecurityAttributesAndOperations(
     _In_opt_ _Post_invalid_ PTOKEN_SECURITY_ATTRIBUTES_INFORMATION CapturedAttributes,
     _In_opt_ _Post_invalid_ PTOKEN_SECURITY_ATTRIBUTE_OPERATION CapturedOperations);
 
+BOOLEAN
+SepQuerySecurityAttributeNumber(
+    _In_opt_ PSEP_SECURITY_ATTRIBUTES Attributes,
+    _In_ PCUNICODE_STRING Name,
+    _Out_ PULONG64 Value);
+
 NTSTATUS
 SepSetSecurityAttributesToken(
     _Inout_ PTOKEN Token,
@@ -1019,6 +1025,18 @@ SepCopyTokenAppContainerData(
 VOID
 SepFreeTokenAppContainerData(
     _Inout_ PTOKEN Token);
+
+ACCESS_MASK
+SepAppContainerGrantedAccess(
+    _In_ PTOKEN Token,
+    _In_ PACL Dacl,
+    _In_ PGENERIC_MAPPING GenericMapping);
+
+ACCESS_MASK
+SepOwnerImplicitAccess(
+    _In_ PTOKEN Token,
+    _In_ PSECURITY_DESCRIPTOR SecurityDescriptor,
+    _In_ PGENERIC_MAPPING GenericMapping);
 
 //
 // Access check functions
