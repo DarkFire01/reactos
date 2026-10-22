@@ -132,6 +132,7 @@ const ROS_APISET g_Apisets[] = {
     { RTL_CONSTANT_STRING(L"api-ms-win-core-file-l1-2-3"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-file-l2-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-file-l2-1-1"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN81 }, // kernelbase.dll
+    { RTL_CONSTANT_STRING(L"api-ms-win-core-file-l2-1-2"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-file-l2-1-3"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-firmware-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-core-guard-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 }, // kernelbase.dll
@@ -237,6 +238,7 @@ const ROS_APISET g_Apisets[] = {
     { RTL_CONSTANT_STRING(L"api-ms-win-core-realtime-l1-1-2"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-registry-fromapp-l1-1-0"), RTL_CONSTANT_STRING(L"reguwpapi.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-core-registry-l1-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN8 | APISET_WIN81 }, // kernelbase.dll
+    { RTL_CONSTANT_STRING(L"api-ms-win-core-registry-l1-1-1"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-registry-l1-1-2"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-registry-l2-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-core-registry-l2-2-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN10 },
@@ -258,11 +260,11 @@ const ROS_APISET g_Apisets[] = {
     { RTL_CONSTANT_STRING(L"api-ms-win-core-slapi-l1-1-0"), RTL_CONSTANT_STRING(L"clipc.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-core-state-helpers-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-MS-Win-Core-String-L1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN7 | APISET_WIN8 | APISET_WIN81 | APISET_WIN10 }, // kernelbase.dll
-    { RTL_CONSTANT_STRING(L"api-ms-win-core-string-l2-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 }, // kernelbase.dll
-    { RTL_CONSTANT_STRING(L"api-ms-win-core-string-l2-1-1"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 }, // kernelbase.dll
+    { RTL_CONSTANT_STRING(L"api-ms-win-core-string-l2-1-0"), RTL_CONSTANT_STRING(L"user32.dll"), APISET_WIN8 | APISET_WIN81 }, // kernelbase.dll
+    { RTL_CONSTANT_STRING(L"api-ms-win-core-string-l2-1-1"), RTL_CONSTANT_STRING(L"user32.dll"), APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-string-obsolete-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 },
     { RTL_CONSTANT_STRING(L"api-ms-win-core-string-obsolete-l1-1-1"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 },
-    { RTL_CONSTANT_STRING(L"api-ms-win-core-stringansi-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 }, // kernelbase.dll
+    { RTL_CONSTANT_STRING(L"api-ms-win-core-stringansi-l1-1-0"), RTL_CONSTANT_STRING(L"user32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-stringloader-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 },
     { RTL_CONSTANT_STRING(L"api-ms-win-core-stringloader-l1-1-1"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN81 | APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-core-synch-ansi-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN10 },
@@ -378,6 +380,7 @@ const ROS_APISET g_Apisets[] = {
     { RTL_CONSTANT_STRING(L"api-ms-win-eventing-legacy-l1-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-eventing-obsolete-l1-1-0"), RTL_CONSTANT_STRING(L"kernel32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 }, // kernelbase.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-eventing-provider-l1-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 }, // kernelbase.dll
+    { RTL_CONSTANT_STRING(L"api-ms-win-eventing-tdh-l1-1-0"), RTL_CONSTANT_STRING(L"tdh.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-eventing-tdh-l1-1-1"), RTL_CONSTANT_STRING(L"tdh.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-eventlog-legacy-l1-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-ms-win-eventlog-private-l1-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN8 | APISET_WIN81 | APISET_WIN10 },
@@ -635,6 +638,7 @@ const ROS_APISET g_Apisets[] = {
     { RTL_CONSTANT_STRING(L"api-ms-win-service-core-ansi-l1-1-1"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"api-MS-Win-Service-Core-L1-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN7 | APISET_WIN8 | APISET_WIN81 }, // sechost.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-service-core-l1-1-1"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN8 | APISET_WIN81 }, // sechost.dll
+    { RTL_CONSTANT_STRING(L"api-ms-win-service-core-l1-1-3"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN10 }, // sechost.dll
     { RTL_CONSTANT_STRING(L"api-ms-win-service-core-l1-1-4"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN10 }, // sechost.dll
     { RTL_CONSTANT_STRING(L"api-MS-Win-Service-Management-L1-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN7 | APISET_WIN8 | APISET_WIN81 | APISET_WIN10 }, // sechost.dll
     { RTL_CONSTANT_STRING(L"api-MS-Win-Service-Management-L2-1-0"), RTL_CONSTANT_STRING(L"advapi32.dll"), APISET_WIN7 | APISET_WIN8 | APISET_WIN81 | APISET_WIN10 }, // sechost.dll
@@ -1212,6 +1216,7 @@ const ROS_APISET g_Apisets[] = {
     { RTL_CONSTANT_STRING(L"ext-ms-win-shell-shlwapi-l1-1-2"), RTL_CONSTANT_STRING(L"shlwapi.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"ext-ms-win-shell-shlwapi-l1-2-1"), RTL_CONSTANT_STRING(L"shlwapi.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"ext-ms-win-shell32-shellcom-l1-1-0"), RTL_CONSTANT_STRING(L"windows.storage.dll"), APISET_WIN10 },
+    { RTL_CONSTANT_STRING(L"ext-ms-win-shell32-shellfolders-l1-1-0"), RTL_CONSTANT_STRING(L"shell32.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"ext-ms-win-shell32-shellfolders-l1-1-1"), RTL_CONSTANT_STRING(L"windows.storage.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"ext-ms-win-shell32-shellfolders-l1-2-0"), RTL_CONSTANT_STRING(L"windows.storage.dll"), APISET_WIN10 },
     { RTL_CONSTANT_STRING(L"ext-ms-win-smbshare-browser-l1-1-0"), RTL_CONSTANT_STRING(L"browser.dll"), APISET_WIN10 },
