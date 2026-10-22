@@ -24,6 +24,9 @@
 
 #include <stdio.h>
 #include <winnls.h>
+#include <wincon.h>
+#include <cfgmgr32.h>
+#include <shlobj.h>
 
 /* Global variables */
 HINSTANCE hDllInstance;
@@ -266,6 +269,710 @@ UpdateDriverForPlugAndPlayDevicesA(
     HeapFree(GetProcessHeap(), 0, FullInfPathW);
 
     return Result;
+}
+
+static BOOL
+IsCallerLocalSystem(VOID)
+{
+    BYTE SidBuffer[SECURITY_MAX_SID_SIZE];
+    DWORD SidSize = sizeof(SidBuffer);
+    BOOL IsMember = FALSE;
+
+    if (!CreateWellKnownSid(WinLocalSystemSid, NULL, SidBuffer, &SidSize))
+        return FALSE;
+
+    if (!CheckTokenMembership(NULL, SidBuffer, &IsMember))
+        return FALSE;
+
+    return IsMember;
+}
+
+static BOOL
+IsRunningInWow64(VOID)
+{
+    BOOL Wow64 = FALSE;
+
+    if (!IsWow64Process(GetCurrentProcess(), &Wow64))
+        return FALSE;
+
+    return Wow64;
+}
+
+static BOOL
+DeviceNeedsReboot(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData)
+{
+    SP_DEVINSTALL_PARAMS_W InstallParams;
+
+    InstallParams.cbSize = sizeof(InstallParams);
+    if (!SetupDiGetDeviceInstallParamsW(DeviceInfoSet, DeviceInfoData, &InstallParams))
+        return FALSE;
+
+    return (InstallParams.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART)) != 0;
+}
+
+/* Hands the reboot state to the caller, or asks the user when there is nowhere to report it */
+static VOID
+ReportReboot(
+    _In_opt_ HWND hwndParent,
+    _In_ BOOL RebootNeeded,
+    _Out_opt_ PBOOL NeedReboot)
+{
+    if (NeedReboot)
+        *NeedReboot = RebootNeeded;
+    else if (RebootNeeded)
+        RestartDialogEx(hwndParent,
+                        NULL,
+                        EWX_REBOOT,
+                        SHTDN_REASON_FLAG_PLANNED | SHTDN_REASON_MAJOR_HARDWARE | SHTDN_REASON_MINOR_INSTALLATION);
+}
+
+/* Runs the class installer steps that put the selected driver on the device */
+static BOOL
+InstallSelectedDriverOnDevice(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData)
+{
+    static const DI_FUNCTION InstallSteps[] =
+    {
+        DIF_ALLOW_INSTALL,
+        DIF_INSTALLDEVICEFILES,
+        DIF_REGISTER_COINSTALLERS,
+        DIF_INSTALLINTERFACES,
+        DIF_INSTALLDEVICE
+    };
+    ULONG i;
+
+    for (i = 0; i < ARRAYSIZE(InstallSteps); i++)
+    {
+        if (!SetupDiCallClassInstaller(InstallSteps[i], DeviceInfoSet, DeviceInfoData))
+        {
+            TRACE("SetupDiCallClassInstaller(0x%lx) failed with error 0x%lx\n", InstallSteps[i], GetLastError());
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+static VOID
+InstallNullDriverOnDevice(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _Out_ PBOOL RebootNeeded)
+{
+    ULONG Status, Problem, ConfigFlags, Size;
+
+    *RebootNeeded = FALSE;
+
+    /* Nothing to do for a device that is not in the tree */
+    if (CM_Get_DevNode_Status(&Status, &Problem, DeviceInfoData->DevInst, 0) != CR_SUCCESS)
+        return;
+
+    SetupDiDeleteDevRegKey(DeviceInfoSet, DeviceInfoData, DICS_FLAG_GLOBAL, 0, DIREG_DRV);
+    CM_Set_DevNode_Registry_PropertyW(DeviceInfoData->DevInst, CM_DRP_DRIVER, NULL, 0, 0);
+    CM_Set_DevNode_Registry_PropertyW(DeviceInfoData->DevInst, CM_DRP_SERVICE, NULL, 0, 0);
+
+    Size = sizeof(ConfigFlags);
+    if (CM_Get_DevNode_Registry_PropertyW(DeviceInfoData->DevInst,
+                                          CM_DRP_CONFIGFLAGS,
+                                          NULL,
+                                          &ConfigFlags,
+                                          &Size,
+                                          0) == CR_SUCCESS)
+    {
+        ConfigFlags &= ~(CONFIGFLAG_REINSTALL | CONFIGFLAG_FAILEDINSTALL);
+        CM_Set_DevNode_Registry_PropertyW(DeviceInfoData->DevInst,
+                                          CM_DRP_CONFIGFLAGS,
+                                          &ConfigFlags,
+                                          sizeof(ConfigFlags),
+                                          0);
+    }
+
+    /* A running function driver stays loaded until the next boot */
+    if (Status & DN_STARTED)
+        *RebootNeeded = TRUE;
+}
+
+static BOOL
+OpenDeviceDriverKey(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _Out_ PHKEY DriverKey)
+{
+    *DriverKey = SetupDiOpenDevRegKey(DeviceInfoSet,
+                                      DeviceInfoData,
+                                      DICS_FLAG_GLOBAL,
+                                      0,
+                                      DIREG_DRV,
+                                      KEY_QUERY_VALUE);
+    return (*DriverKey != INVALID_HANDLE_VALUE);
+}
+
+static BOOL
+IsDeviceUsingInf(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_ PCWSTR InfName)
+{
+    WCHAR CurrentInf[MAX_PATH];
+    PCWSTR CurrentName;
+    DWORD Size, Type;
+    HKEY hKey;
+    LONG Error;
+
+    if (!OpenDeviceDriverKey(DeviceInfoSet, DeviceInfoData, &hKey))
+        return FALSE;
+
+    ZeroMemory(CurrentInf, sizeof(CurrentInf));
+    Size = sizeof(CurrentInf) - sizeof(WCHAR);
+    Error = RegQueryValueExW(hKey, REGSTR_VAL_INFPATH, NULL, &Type, (PBYTE)CurrentInf, &Size);
+    RegCloseKey(hKey);
+
+    if (Error != ERROR_SUCCESS || Type != REG_SZ)
+        return FALSE;
+
+    CurrentName = wcsrchr(CurrentInf, L'\\');
+    CurrentName = CurrentName ? CurrentName + 1 : CurrentInf;
+
+    return (_wcsicmp(CurrentName, InfName) == 0);
+}
+
+static DWORDLONG
+ParseDriverVersion(
+    _In_ PCWSTR VersionString)
+{
+    USHORT Parts[4] = { 0, 0, 0, 0 };
+
+    swscanf(VersionString, L"%hu.%hu.%hu.%hu", &Parts[0], &Parts[1], &Parts[2], &Parts[3]);
+
+    return ((DWORDLONG)Parts[0] << 48) | ((DWORDLONG)Parts[1] << 32) |
+           ((DWORDLONG)Parts[2] << 16) | (DWORDLONG)Parts[3];
+}
+
+/* Newer date wins, then newer version. A device without a working driver always takes it. */
+static BOOL
+IsDriverBetterThanCurrent(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_ PSP_DRVINFO_DATA_W DriverInfoData)
+{
+    WCHAR VersionString[64];
+    FILETIME CurrentDate;
+    ULONG Status, Problem;
+    DWORD Size, Type;
+    LONG Compare;
+    BOOL Better = TRUE;
+    HKEY hKey;
+
+    if (CM_Get_DevNode_Status(&Status, &Problem, DeviceInfoData->DevInst, 0) == CR_SUCCESS &&
+        (Status & DN_HAS_PROBLEM))
+    {
+        return TRUE;
+    }
+
+    if (!OpenDeviceDriverKey(DeviceInfoSet, DeviceInfoData, &hKey))
+        return TRUE;
+
+    Size = sizeof(CurrentDate);
+    if (RegQueryValueExW(hKey, L"DriverDateData", NULL, &Type, (PBYTE)&CurrentDate, &Size) == ERROR_SUCCESS &&
+        Type == REG_BINARY && Size == sizeof(CurrentDate))
+    {
+        Compare = CompareFileTime(&DriverInfoData->DriverDate, &CurrentDate);
+        if (Compare < 0)
+        {
+            Better = FALSE;
+        }
+        else if (Compare == 0)
+        {
+            ZeroMemory(VersionString, sizeof(VersionString));
+            Size = sizeof(VersionString) - sizeof(WCHAR);
+            if (RegQueryValueExW(hKey, L"DriverVersion", NULL, &Type, (PBYTE)VersionString, &Size) == ERROR_SUCCESS &&
+                Type == REG_SZ)
+            {
+                Better = (DriverInfoData->DriverVersion > ParseDriverVersion(VersionString));
+            }
+        }
+    }
+
+    RegCloseKey(hKey);
+    return Better;
+}
+
+/*
+* @implemented
+*/
+BOOL
+WINAPI
+DiInstallDriverW(
+    _In_opt_ HWND hwndParent,
+    _In_ LPCWSTR InfPath,
+    _In_ DWORD Flags,
+    _Out_opt_ PBOOL NeedReboot)
+{
+    WIN32_FILE_ATTRIBUTE_DATA FileData;
+    WCHAR FullPath[MAX_PATH];
+    WCHAR SourceDir[MAX_PATH];
+    WCHAR OemInf[MAX_PATH];
+    PWSTR FilePart;
+    PCWSTR OemName;
+    DEVINSTDATA DevInstData;
+    SP_DRVINFO_DATA_W DriverInfo;
+    DWORD AllowedFlags, Length, Index;
+    BOOL RebootNeeded = FALSE;
+    HINF hInf;
+
+    TRACE("DiInstallDriverW(%p %s 0x%lx %p)\n", hwndParent, debugstr_w(InfPath), Flags, NeedReboot);
+
+    if (NeedReboot)
+        *NeedReboot = FALSE;
+
+    if (hwndParent && !IsWindow(hwndParent))
+    {
+        SetLastError(ERROR_INVALID_WINDOW_HANDLE);
+        return FALSE;
+    }
+
+    AllowedFlags = IsCallerLocalSystem() ? DIIRFLAG_SYSTEM_BITS : DIIRFLAG_BITS;
+    if (Flags & ~AllowedFlags)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    if (IsRunningInWow64())
+    {
+        SetLastError(ERROR_IN_WOW64);
+        return FALSE;
+    }
+
+    if (!InfPath || !*InfPath)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Length = GetFullPathNameW(InfPath, ARRAYSIZE(FullPath), FullPath, &FilePart);
+    if (Length == 0 || Length >= ARRAYSIZE(FullPath) || !FilePart)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (!GetFileAttributesExW(FullPath, GetFileExInfoStandard, &FileData))
+    {
+        SetLastError(ERROR_FILE_NOT_FOUND);
+        return FALSE;
+    }
+
+    /* Windows reports an empty file as an INF syntax error */
+    if (!(FileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+        FileData.nFileSizeHigh == 0 && FileData.nFileSizeLow == 0)
+    {
+        SetLastError(ERROR_GENERAL_SYNTAX);
+        return FALSE;
+    }
+
+    hInf = SetupOpenInfFileW(FullPath, NULL, INF_STYLE_WIN4, NULL);
+    if (hInf == INVALID_HANDLE_VALUE)
+        return FALSE;
+    SetupCloseInfFile(hInf);
+
+    if (Flags & DIIRFLAG_INF_ALREADY_COPIED)
+    {
+        OemName = FilePart;
+    }
+    else
+    {
+        Length = (DWORD)(FilePart - FullPath);
+        CopyMemory(SourceDir, FullPath, Length * sizeof(WCHAR));
+        SourceDir[Length] = UNICODE_NULL;
+
+        /* An identical INF already in the INF directory is reused */
+        if (!SetupCopyOEMInfW(FullPath,
+                              SourceDir,
+                              SPOST_PATH,
+                              SP_COPY_NOOVERWRITE,
+                              OemInf,
+                              ARRAYSIZE(OemInf),
+                              NULL,
+                              NULL) &&
+            GetLastError() != ERROR_FILE_EXISTS)
+        {
+            return FALSE;
+        }
+
+        OemName = wcsrchr(OemInf, L'\\');
+        OemName = OemName ? OemName + 1 : OemInf;
+    }
+
+    TRACE("Staged %s as %s\n", debugstr_w(FullPath), debugstr_w(OemName));
+
+    ZeroMemory(&DevInstData, sizeof(DevInstData));
+    DevInstData.hDevInfo = SetupDiGetClassDevsW(NULL, NULL, hwndParent, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (DevInstData.hDevInfo == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    DevInstData.devInfoData.cbSize = sizeof(DevInstData.devInfoData);
+    for (Index = 0; SetupDiEnumDeviceInfo(DevInstData.hDevInfo, Index, &DevInstData.devInfoData); Index++)
+    {
+        if ((Flags & DIIRFLAG_HW_USING_THE_INF) &&
+            !IsDeviceUsingInf(DevInstData.hDevInfo, &DevInstData.devInfoData, OemName))
+        {
+            continue;
+        }
+
+        /* Collect what this INF offers for the device and pick its best match */
+        if (!SearchDriver(&DevInstData, NULL, FullPath))
+            continue;
+
+        DriverInfo.cbSize = sizeof(DriverInfo);
+        if (SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV, DevInstData.hDevInfo, &DevInstData.devInfoData) &&
+            SetupDiGetSelectedDriverW(DevInstData.hDevInfo, &DevInstData.devInfoData, &DriverInfo) &&
+            ((Flags & DIIRFLAG_FORCE_INF) ||
+             IsDriverBetterThanCurrent(DevInstData.hDevInfo, &DevInstData.devInfoData, &DriverInfo)))
+        {
+            if (InstallSelectedDriverOnDevice(DevInstData.hDevInfo, &DevInstData.devInfoData))
+            {
+                if (DeviceNeedsReboot(DevInstData.hDevInfo, &DevInstData.devInfoData))
+                    RebootNeeded = TRUE;
+            }
+            else
+            {
+                WARN("Installing %s on device %lu failed with error 0x%lx\n",
+                     debugstr_w(FullPath), Index, GetLastError());
+            }
+        }
+
+        SetupDiDestroyDriverInfoList(DevInstData.hDevInfo, &DevInstData.devInfoData, SPDIT_COMPATDRIVER);
+    }
+
+    SetupDiDestroyDeviceInfoList(DevInstData.hDevInfo);
+
+    ReportReboot(hwndParent, RebootNeeded, NeedReboot);
+    SetLastError(NO_ERROR);
+    return TRUE;
+}
+
+/*
+* @implemented
+*/
+BOOL
+WINAPI
+DiInstallDriverA(
+    _In_opt_ HWND hwndParent,
+    _In_ LPCSTR InfPath,
+    _In_ DWORD Flags,
+    _Out_opt_ PBOOL NeedReboot)
+{
+    PWSTR InfPathW;
+    DWORD Error;
+    BOOL Result;
+    int Length;
+
+    if (!InfPath)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Length = MultiByteToWideChar(CP_ACP, 0, InfPath, -1, NULL, 0);
+    InfPathW = HeapAlloc(GetProcessHeap(), 0, Length * sizeof(WCHAR));
+    if (!InfPathW)
+    {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+    MultiByteToWideChar(CP_ACP, 0, InfPath, -1, InfPathW, Length);
+
+    Result = DiInstallDriverW(hwndParent, InfPathW, Flags, NeedReboot);
+
+    Error = GetLastError();
+    HeapFree(GetProcessHeap(), 0, InfPathW);
+    SetLastError(Error);
+
+    return Result;
+}
+
+/*
+* @implemented
+*/
+BOOL
+WINAPI
+DiInstallDevice(
+    _In_opt_ HWND hwndParent,
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_opt_ PSP_DRVINFO_DATA_W DriverInfoData,
+    _In_ DWORD Flags,
+    _Out_opt_ PBOOL NeedReboot)
+{
+    WCHAR InstanceId[MAX_DEVICE_ID_LEN];
+    SP_DRVINFO_DATA_W SelectedDriver;
+    DEVINSTDATA DevInstData;
+    BOOL RebootNeeded = FALSE;
+    BOOL ValidDevice;
+
+    TRACE("DiInstallDevice(%p %p %p %p 0x%lx %p)\n",
+          hwndParent, DeviceInfoSet, DeviceInfoData, DriverInfoData, Flags, NeedReboot);
+
+    if (NeedReboot)
+        *NeedReboot = FALSE;
+
+    if (Flags & ~DIIDFLAG_BITS)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    if (IsRunningInWow64())
+    {
+        SetLastError(ERROR_IN_WOW64);
+        return FALSE;
+    }
+
+    if (!DeviceInfoSet || DeviceInfoSet == INVALID_HANDLE_VALUE || !DeviceInfoData)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Device data that setupapi does not know must not reach the driver calls */
+    ValidDevice = SetupDiGetDeviceInstanceIdW(DeviceInfoSet,
+                                              DeviceInfoData,
+                                              InstanceId,
+                                              ARRAYSIZE(InstanceId),
+                                              NULL);
+
+    if (Flags & DIIDFLAG_INSTALLNULLDRIVER)
+    {
+        if (ValidDevice)
+            InstallNullDriverOnDevice(DeviceInfoSet, DeviceInfoData, &RebootNeeded);
+
+        ReportReboot(hwndParent, RebootNeeded, NeedReboot);
+        SetLastError(NO_ERROR);
+        return TRUE;
+    }
+
+    if (DriverInfoData)
+    {
+        if (!ValidDevice)
+            return FALSE;
+
+        if (!SetupDiSetSelectedDriverW(DeviceInfoSet, DeviceInfoData, DriverInfoData))
+            return FALSE;
+
+        if (!InstallSelectedDriverOnDevice(DeviceInfoSet, DeviceInfoData))
+            return FALSE;
+    }
+    else
+    {
+        if (!ValidDevice)
+        {
+            SetLastError(ERROR_NO_DRIVER_SELECTED);
+            return FALSE;
+        }
+
+        /* Search the INF directory for the best driver */
+        SetupDiDestroyDriverInfoList(DeviceInfoSet, DeviceInfoData, SPDIT_COMPATDRIVER);
+
+        ZeroMemory(&DevInstData, sizeof(DevInstData));
+        DevInstData.hDevInfo = DeviceInfoSet;
+        DevInstData.devInfoData = *DeviceInfoData;
+
+        SelectedDriver.cbSize = sizeof(SelectedDriver);
+        if (!SearchDriver(&DevInstData, NULL, NULL) ||
+            !SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV, DeviceInfoSet, DeviceInfoData) ||
+            !SetupDiGetSelectedDriverW(DeviceInfoSet, DeviceInfoData, &SelectedDriver))
+        {
+            if (Flags & DIIDFLAG_SHOWSEARCHUI)
+                FIXME("Driver search UI is not supported\n");
+
+            SetupDiDestroyDriverInfoList(DeviceInfoSet, DeviceInfoData, SPDIT_COMPATDRIVER);
+            SetLastError(ERROR_NO_DRIVER_SELECTED);
+            return FALSE;
+        }
+
+        if (!InstallSelectedDriverOnDevice(DeviceInfoSet, DeviceInfoData))
+            return FALSE;
+    }
+
+    ReportReboot(hwndParent, DeviceNeedsReboot(DeviceInfoSet, DeviceInfoData), NeedReboot);
+    SetLastError(NO_ERROR);
+    return TRUE;
+}
+
+static BOOL
+RemoveSingleDevice(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _Inout_ PBOOL RebootNeeded)
+{
+    SP_REMOVEDEVICE_PARAMS RemoveParams;
+    DWORD Error;
+    BOOL Result;
+
+    RemoveParams.ClassInstallHeader.cbSize = sizeof(RemoveParams.ClassInstallHeader);
+    RemoveParams.ClassInstallHeader.InstallFunction = DIF_REMOVE;
+    RemoveParams.Scope = DI_REMOVEDEVICE_GLOBAL;
+    RemoveParams.HwProfile = 0;
+
+    if (!SetupDiSetClassInstallParamsW(DeviceInfoSet,
+                                       DeviceInfoData,
+                                       &RemoveParams.ClassInstallHeader,
+                                       sizeof(RemoveParams)))
+    {
+        return FALSE;
+    }
+
+    Result = SetupDiCallClassInstaller(DIF_REMOVE, DeviceInfoSet, DeviceInfoData);
+    Error = GetLastError();
+
+    if (Result && DeviceNeedsReboot(DeviceInfoSet, DeviceInfoData))
+        *RebootNeeded = TRUE;
+
+    SetupDiSetClassInstallParamsW(DeviceInfoSet, DeviceInfoData, NULL, 0);
+    SetLastError(Error);
+    return Result;
+}
+
+/* Appends the instance IDs below Parent, deepest first, to a MULTI_SZ list */
+static BOOL
+CollectDescendants(
+    _In_ DEVINST Parent,
+    _Inout_ PWSTR *IdList,
+    _Inout_ PSIZE_T IdListLength)
+{
+    WCHAR DeviceId[MAX_DEVICE_ID_LEN];
+    SIZE_T IdLength;
+    PWSTR NewList;
+    DEVINST Child;
+    CONFIGRET Cr;
+
+    Cr = CM_Get_Child(&Child, Parent, 0);
+    while (Cr == CR_SUCCESS)
+    {
+        if (!CollectDescendants(Child, IdList, IdListLength))
+            return FALSE;
+
+        if (CM_Get_Device_IDW(Child, DeviceId, ARRAYSIZE(DeviceId), 0) == CR_SUCCESS)
+        {
+            IdLength = wcslen(DeviceId) + 1;
+            if (*IdList)
+                NewList = HeapReAlloc(GetProcessHeap(), 0, *IdList, (*IdListLength + IdLength + 1) * sizeof(WCHAR));
+            else
+                NewList = HeapAlloc(GetProcessHeap(), 0, (IdLength + 1) * sizeof(WCHAR));
+
+            if (!NewList)
+            {
+                SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+                return FALSE;
+            }
+
+            wcscpy(NewList + *IdListLength, DeviceId);
+            *IdListLength += IdLength;
+            NewList[*IdListLength] = UNICODE_NULL;
+            *IdList = NewList;
+        }
+
+        Cr = CM_Get_Sibling(&Child, Child, 0);
+    }
+
+    return TRUE;
+}
+
+static BOOL
+UninstallDeviceTree(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _Out_ PBOOL RebootNeeded)
+{
+    WCHAR VetoName[MAX_PATH];
+    PNP_VETO_TYPE VetoType;
+    SP_DEVINFO_DATA ChildData;
+    HDEVINFO ChildSet;
+    PWSTR IdList = NULL;
+    PWSTR CurrentId;
+    SIZE_T IdListLength = 0;
+
+    *RebootNeeded = FALSE;
+
+    if (!CollectDescendants(DeviceInfoData->DevInst, &IdList, &IdListLength))
+    {
+        HeapFree(GetProcessHeap(), 0, IdList);
+        return FALSE;
+    }
+
+    /* Stop the subtree first. A veto leaves the removal to the next boot. */
+    if (CM_Query_And_Remove_SubTreeW(DeviceInfoData->DevInst,
+                                     &VetoType,
+                                     VetoName,
+                                     ARRAYSIZE(VetoName),
+                                     CM_REMOVE_NO_RESTART) == CR_REMOVE_VETOED)
+    {
+        *RebootNeeded = TRUE;
+    }
+
+    if (IdList)
+    {
+        ChildSet = SetupDiCreateDeviceInfoList(NULL, NULL);
+        if (ChildSet != INVALID_HANDLE_VALUE)
+        {
+            for (CurrentId = IdList; *CurrentId != UNICODE_NULL; CurrentId += wcslen(CurrentId) + 1)
+            {
+                ChildData.cbSize = sizeof(ChildData);
+                if (SetupDiOpenDeviceInfoW(ChildSet, CurrentId, NULL, 0, &ChildData))
+                    RemoveSingleDevice(ChildSet, &ChildData, RebootNeeded);
+            }
+
+            SetupDiDestroyDeviceInfoList(ChildSet);
+        }
+
+        HeapFree(GetProcessHeap(), 0, IdList);
+    }
+
+    return RemoveSingleDevice(DeviceInfoSet, DeviceInfoData, RebootNeeded);
+}
+
+/*
+* @implemented
+*/
+BOOL
+WINAPI
+DiUninstallDevice(
+    _In_ HWND hwndParent,
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_ DWORD Flags,
+    _Out_opt_ PBOOL NeedReboot)
+{
+    WCHAR InstanceId[MAX_DEVICE_ID_LEN];
+    BOOL RebootNeeded;
+
+    TRACE("DiUninstallDevice(%p %p %p 0x%lx %p)\n",
+          hwndParent, DeviceInfoSet, DeviceInfoData, Flags, NeedReboot);
+
+    if (Flags != 0)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    if (NeedReboot)
+        *NeedReboot = FALSE;
+
+    if (!SetupDiGetDeviceInstanceIdW(DeviceInfoSet, DeviceInfoData, InstanceId, ARRAYSIZE(InstanceId), NULL))
+        return FALSE;
+
+    TRACE("Uninstalling %s\n", debugstr_w(InstanceId));
+
+    if (!UninstallDeviceTree(DeviceInfoSet, DeviceInfoData, &RebootNeeded))
+        return FALSE;
+
+    ReportReboot(hwndParent, RebootNeeded, NeedReboot);
+    SetLastError(NO_ERROR);
+    return TRUE;
 }
 
 /* Directory and InfFile MUST NOT be specified simultaneously */

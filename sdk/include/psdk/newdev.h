@@ -69,19 +69,37 @@ UpdateDriverForPlugAndPlayDevicesW(
 #define DIIDFLAG_SHOWSEARCHUI             0x00000001
 #define DIIDFLAG_NOFINISHINSTALLUI        0x00000002
 #define DIIDFLAG_INSTALLNULLDRIVER        0x00000004
-#define DIIDFLAG_BITS                     0x00000007
+#define DIIDFLAG_INSTALLCOPYINFDRIVERS    0x00000008
+#define DIIDFLAG_BITS                     0x0000000F
 
 #define DIIRFLAG_INF_ALREADY_COPIED       0x00000001
 #define DIIRFLAG_FORCE_INF                0x00000002
 #define DIIRFLAG_HW_USING_THE_INF         0x00000004
 #define DIIRFLAG_HOTPATCH                 0x00000008
 #define DIIRFLAG_NOBACKUP                 0x00000010
+
+#if (WINVER >= _WIN32_WINNT_WINBLUE)
+#define DIIRFLAG_PRE_CONFIGURE_INF        0x00000020
+#define DIIRFLAG_INSTALL_AS_SET           0x00000040
+#define DIIRFLAG_BITS ( DIIRFLAG_FORCE_INF |\
+                        DIIRFLAG_HOTPATCH |\
+                        DIIRFLAG_PRE_CONFIGURE_INF |\
+                        DIIRFLAG_INSTALL_AS_SET )
+#define DIIRFLAG_SYSTEM_BITS ( DIIRFLAG_INF_ALREADY_COPIED |\
+                               DIIRFLAG_FORCE_INF |\
+                               DIIRFLAG_HW_USING_THE_INF |\
+                               DIIRFLAG_HOTPATCH |\
+                               DIIRFLAG_NOBACKUP |\
+                               DIIRFLAG_PRE_CONFIGURE_INF |\
+                               DIIRFLAG_INSTALL_AS_SET )
+#else
 #define DIIRFLAG_BITS ( DIIRFLAG_FORCE_INF | DIIRFLAG_HOTPATCH)
 #define DIIRFLAG_SYSTEM_BITS ( DIIRFLAG_INF_ALREADY_COPIED |\
                                DIIRFLAG_FORCE_INF |\
                                DIIRFLAG_HW_USING_THE_INF |\
                                DIIRFLAG_HOTPATCH |\
                                DIIRFLAG_NOBACKUP )
+#endif
 
 #define ROLLBACK_FLAG_NO_UI               0x00000001
 #define ROLLBACK_BITS                     0x00000001
