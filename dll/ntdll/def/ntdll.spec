@@ -639,6 +639,7 @@
 @ stdcall -stub RtlAddCompoundAce(ptr long long long ptr ptr)
 @ stdcall -arch=x86_64,arm64 RtlAddFunctionTable(ptr long long)
 @ stdcall -stub -version=0x600+ RtlAddMandatoryAce(ptr long long long long ptr) ; not present in Win11
+@ stdcall -version=0x602+ -arch=x86_64 RtlAddGrowableFunctionTable(ptr ptr long long ptr ptr)
 @ stdcall RtlAddRefActivationContext(ptr)
 @ stdcall RtlAddRefMemoryStream(ptr)
 @ stdcall -stub -version=0x600+ RtlAddSIDToBoundaryDescriptor(ptr ptr) ; not present in Win11
@@ -772,6 +773,7 @@
 @ stdcall RtlDeleteElementGenericTable(ptr ptr)
 @ stdcall RtlDeleteElementGenericTableAvl(ptr ptr)
 @ cdecl -arch=x86_64,arm64 RtlDeleteFunctionTable(ptr)
+@ stdcall -version=0x602+ -arch=x86_64 RtlDeleteGrowableFunctionTable(ptr)
 @ stdcall RtlDeleteNoSplay(ptr ptr)
 @ stdcall RtlDeleteRegistryValue(long ptr ptr)
 @ stdcall RtlDeleteResource(ptr)
@@ -935,6 +937,7 @@
 @ stdcall RtlGetUserInfoHeap(ptr long ptr ptr ptr)
 @ stdcall RtlGetUserPreferredUILanguages(long ptr ptr ptr ptr)
 @ stdcall RtlGetVersion(ptr)
+@ stdcall -version=0x602+ -arch=x86_64 RtlGrowFunctionTable(ptr long)
 @ stdcall RtlHashUnicodeString(ptr long long ptr)
 @ stdcall -stub -version=0x600+ RtlHeapTrkInitialize(ptr)
 @ stdcall RtlIdentifierAuthoritySid(ptr)
