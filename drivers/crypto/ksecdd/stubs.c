@@ -355,6 +355,116 @@ SecLookupAccountSid(
     return 0;
 }
 
+typedef struct _KSEC_WELL_KNOWN_SID
+{
+    UCHAR Type;
+    UCHAR Authority;
+    UCHAR SubAuthorityCount;
+    ULONG SubAuthority[6];
+} KSEC_WELL_KNOWN_SID, *PKSEC_WELL_KNOWN_SID;
+
+/* Every type Windows can build without a domain SID; the rest need one the kernel does not have */
+static const KSEC_WELL_KNOWN_SID KsecWellKnownSids[] =
+{
+    { 0, 0, 1, { 0 } },
+    { 1, 1, 1, { 0 } },
+    { 2, 2, 1, { 0 } },
+    { 3, 3, 1, { 0 } },
+    { 4, 3, 1, { 1 } },
+    { 5, 3, 1, { 2 } },
+    { 6, 3, 1, { 3 } },
+    { 7, 5, 0, { 0 } },
+    { 8, 5, 1, { 1 } },
+    { 9, 5, 1, { 2 } },
+    { 10, 5, 1, { 3 } },
+    { 11, 5, 1, { 4 } },
+    { 12, 5, 1, { 6 } },
+    { 13, 5, 1, { 7 } },
+    { 14, 5, 1, { 8 } },
+    { 15, 5, 1, { 9 } },
+    { 16, 5, 1, { 10 } },
+    { 17, 5, 1, { 11 } },
+    { 18, 5, 1, { 12 } },
+    { 19, 5, 1, { 13 } },
+    { 20, 5, 1, { 14 } },
+    { 22, 5, 1, { 18 } },
+    { 23, 5, 1, { 19 } },
+    { 24, 5, 1, { 20 } },
+    { 25, 5, 1, { 32 } },
+    { 26, 5, 2, { 32, 544 } },
+    { 27, 5, 2, { 32, 545 } },
+    { 28, 5, 2, { 32, 546 } },
+    { 29, 5, 2, { 32, 547 } },
+    { 30, 5, 2, { 32, 548 } },
+    { 31, 5, 2, { 32, 549 } },
+    { 32, 5, 2, { 32, 550 } },
+    { 33, 5, 2, { 32, 551 } },
+    { 34, 5, 2, { 32, 552 } },
+    { 35, 5, 2, { 32, 554 } },
+    { 36, 5, 2, { 32, 555 } },
+    { 37, 5, 2, { 32, 556 } },
+    { 51, 5, 2, { 64, 10 } },
+    { 52, 5, 2, { 64, 21 } },
+    { 53, 5, 2, { 64, 14 } },
+    { 54, 5, 1, { 15 } },
+    { 55, 5, 1, { 1000 } },
+    { 56, 5, 2, { 32, 557 } },
+    { 57, 5, 2, { 32, 558 } },
+    { 58, 5, 2, { 32, 559 } },
+    { 59, 5, 2, { 32, 560 } },
+    { 60, 5, 2, { 32, 561 } },
+    { 61, 5, 2, { 32, 562 } },
+    { 62, 5, 2, { 32, 568 } },
+    { 63, 5, 1, { 17 } },
+    { 64, 5, 2, { 32, 569 } },
+    { 65, 16, 1, { 0 } },
+    { 66, 16, 1, { 4096 } },
+    { 67, 16, 1, { 8192 } },
+    { 68, 16, 1, { 12288 } },
+    { 69, 16, 1, { 16384 } },
+    { 70, 5, 1, { 33 } },
+    { 71, 3, 1, { 4 } },
+    { 74, 5, 1, { 22 } },
+    { 76, 5, 2, { 32, 573 } },
+    { 78, 5, 2, { 32, 574 } },
+    { 79, 16, 1, { 8448 } },
+    { 81, 2, 1, { 1 } },
+    { 82, 5, 2, { 65, 1 } },
+    { 84, 15, 2, { 2, 1 } },
+    { 85, 15, 2, { 3, 1 } },
+    { 86, 15, 2, { 3, 2 } },
+    { 87, 15, 2, { 3, 3 } },
+    { 88, 15, 2, { 3, 4 } },
+    { 89, 15, 2, { 3, 5 } },
+    { 90, 15, 2, { 3, 6 } },
+    { 91, 15, 2, { 3, 7 } },
+    { 92, 15, 2, { 3, 9 } },
+    { 93, 15, 2, { 3, 8 } },
+    { 94, 15, 2, { 3, 10 } },
+    { 95, 5, 2, { 32, 575 } },
+    { 96, 5, 2, { 32, 576 } },
+    { 97, 5, 2, { 32, 577 } },
+    { 98, 5, 6, { 84, 0, 0, 0, 0, 0 } },
+    { 99, 5, 2, { 32, 578 } },
+    { 101, 5, 2, { 32, 579 } },
+    { 102, 5, 2, { 32, 580 } },
+    { 103, 18, 1, { 1 } },
+    { 104, 18, 1, { 2 } },
+    { 105, 5, 1, { 113 } },
+    { 106, 5, 1, { 114 } },
+    { 108, 15, 2, { 3, 11 } },
+    { 109, 15, 2, { 3, 12 } },
+    { 111, 5, 2, { 32, 581 } },
+    { 112, 5, 2, { 32, 582 } },
+    { 115, 18, 1, { 4 } },
+    { 116, 18, 1, { 5 } },
+    { 117, 18, 1, { 6 } },
+    { 118, 18, 1, { 3 } },
+    { 119, 5, 2, { 32, 583 } },
+    { 120, 5, 2, { 32, 584 } },
+    { 121, 5, 2, { 32, 585 } },
+};
+
 NTSTATUS
 SEC_ENTRY
 SecLookupWellKnownSid(
@@ -363,8 +473,34 @@ SecLookupWellKnownSid(
     _In_ ULONG SidBufferSize,
     _Inout_opt_ PULONG SidSize)
 {
-    UNIMPLEMENTED_DBGBREAK();
-    return 0;
+    SID_IDENTIFIER_AUTHORITY Authority = { { 0, 0, 0, 0, 0, 0 } };
+    const KSEC_WELL_KNOWN_SID *Entry = NULL;
+    ULONG Index, Needed;
+
+    for (Index = 0; Index < ARRAYSIZE(KsecWellKnownSids); Index++)
+    {
+        if (KsecWellKnownSids[Index].Type == (ULONG)SidType)
+        {
+            Entry = &KsecWellKnownSids[Index];
+            break;
+        }
+    }
+
+    if (Entry == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    Needed = RtlLengthRequiredSid(Entry->SubAuthorityCount);
+    if (SidSize != NULL)
+        *SidSize = Needed;
+    if (Sid == NULL || SidBufferSize < Needed)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Authority.Value[5] = Entry->Authority;
+    RtlInitializeSid(Sid, &Authority, Entry->SubAuthorityCount);
+    for (Index = 0; Index < Entry->SubAuthorityCount; Index++)
+        *RtlSubAuthoritySid(Sid, Index) = Entry->SubAuthority[Index];
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
