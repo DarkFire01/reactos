@@ -658,6 +658,7 @@
 @ stdcall KePulseEvent(ptr long long)
 @ stdcall KeQueryActiveProcessors()
 @ stdcall -arch=i386,arm KeQueryInterruptTime()
+@ stdcall -version=0x602+ KeQueryDpcWatchdogInformation(ptr)
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
 @ stdcall KeQueryPriorityThread(ptr)
