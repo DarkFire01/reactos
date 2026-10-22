@@ -292,6 +292,14 @@
 295 stub LPSAFEARRAY_Size
 296 stub LPSAFEARRAY_Marshal
 297 stub LPSAFEARRAY_Unmarshal
+@ stdcall BSTR_UserSize64(ptr long ptr)
+@ stdcall BSTR_UserMarshal64(ptr ptr ptr)
+@ stdcall BSTR_UserUnmarshal64(ptr ptr ptr)
+@ stdcall BSTR_UserFree64(ptr ptr) BSTR_UserFree
+@ stdcall LPSAFEARRAY_UserSize64(ptr long ptr)
+@ stdcall LPSAFEARRAY_UserMarshal64(ptr ptr ptr)
+@ stdcall LPSAFEARRAY_UserUnmarshal64(ptr ptr ptr)
+@ stdcall LPSAFEARRAY_UserFree64(ptr ptr) LPSAFEARRAY_UserFree
 298 stdcall VarDecCmpR8(ptr double)
 299 stdcall VarCyAdd(int64 int64 ptr)
 303 stdcall VarCyMul(int64 int64 ptr)
