@@ -69,11 +69,6 @@ send(IN SOCKET s,
         }
     }
 
-
-    /* Diagnostic - WSAEWOULDBLOCK is normal on a non-blocking socket */
-    if (ErrorCode != WSAEWOULDBLOCK)
-        WsDiagLog("send: socket %lx len %d -> %d\r\n", s, len, ErrorCode);
-
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
@@ -137,10 +132,6 @@ sendto(IN SOCKET s,
         }
     }
 
-
-    /* Diagnostic - WSAEWOULDBLOCK / WSA_IO_PENDING are normal here */
-    if (ErrorCode != WSAEWOULDBLOCK && ErrorCode != WSA_IO_PENDING)
-        WsDiagLog("sendto: socket %lx -> %d\r\n", s, ErrorCode);
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
@@ -197,10 +188,6 @@ WSASend(IN SOCKET s,
         }
     }
 
-
-    /* Diagnostic - WSAEWOULDBLOCK / WSA_IO_PENDING are normal here */
-    if (ErrorCode != WSAEWOULDBLOCK && ErrorCode != WSA_IO_PENDING)
-        WsDiagLog("WSASend: socket %lx -> %d\r\n", s, ErrorCode);
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
@@ -307,10 +294,6 @@ WSASendTo(IN SOCKET s,
         }
     }
 
-
-    /* Diagnostic - WSAEWOULDBLOCK / WSA_IO_PENDING are normal here */
-    if (ErrorCode != WSAEWOULDBLOCK && ErrorCode != WSA_IO_PENDING)
-        WsDiagLog("WSASendTo: socket %lx -> %d\r\n", s, ErrorCode);
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
