@@ -74,9 +74,33 @@ static const INFORMATION_CLASS_INFO SeTokenInformationClass[] = {
     /* TokenUIAccess */
     IQS_NONE,
     /* TokenMandatoryPolicy */
-    IQS_NONE,
+    IQS_SAME(TOKEN_MANDATORY_POLICY, ULONG, ICIF_QUERY | ICIF_SET | ICIF_SIZE_VARIABLE),
     /* TokenLogonSid */
     IQS_SAME(TOKEN_GROUPS, ULONG, ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE),
+    /* TokenIsAppContainer */
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE),
+    /* TokenCapabilities */
+    IQS_SAME(TOKEN_GROUPS, ULONG, ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE),
+    /* TokenAppContainerSid */
+    IQS_SAME(TOKEN_APPCONTAINER_INFORMATION, ULONG, ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE),
+    /* TokenAppContainerNumber */
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE),
+    /* TokenUserClaimAttributes */
+    IQS_NONE,
+    /* TokenDeviceClaimAttributes */
+    IQS_NONE,
+    /* TokenRestrictedUserClaimAttributes */
+    IQS_NONE,
+    /* TokenRestrictedDeviceClaimAttributes */
+    IQS_NONE,
+    /* TokenDeviceGroups */
+    IQS_NONE,
+    /* TokenRestrictedDeviceGroups */
+    IQS_NONE,
+    /* TokenSecurityAttributes */
+    IQS(TOKEN_SECURITY_ATTRIBUTES_INFORMATION, ULONG,
+        TOKEN_SECURITY_ATTRIBUTES_AND_OPERATION_INFORMATION, ULONG,
+        ICIF_QUERY | ICIF_SET | ICIF_SIZE_VARIABLE),
 };
 
 /* PUBLIC FUNCTIONS *****************************************************************/
@@ -1197,6 +1221,138 @@ NtQueryInformationToken(
                 break;
             }
 
+            case TokenMandatoryPolicy:
+            case TokenIsAppContainer:
+            case TokenAppContainerNumber:
+            {
+                ULONG Value;
+
+                if (TokenInformationClass == TokenMandatoryPolicy)
+                    Value = Token->MandatoryPolicy.Policy;
+                else if (TokenInformationClass == TokenIsAppContainer)
+                    Value = (Token->TokenFlags & TOKEN_LOWBOX) ? TRUE : FALSE;
+                else
+                    Value = Token->LowboxNumberEntry ? Token->LowboxNumberEntry->LowboxNumber : 0;
+
+                RequiredLength = sizeof(ULONG);
+
+                _SEH2_TRY
+                {
+                    if (TokenInformationLength >= RequiredLength)
+                        *(PULONG)TokenInformation = Value;
+                    else
+                        Status = STATUS_BUFFER_TOO_SMALL;
+
+                    *ReturnLength = RequiredLength;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
+            case TokenCapabilities:
+            {
+                PTOKEN_GROUPS Groups = (PTOKEN_GROUPS)TokenInformation;
+                ULONG Index, Offset;
+
+                /* Each SID follows the array, padded to pointer size */
+                RequiredLength = FIELD_OFFSET(TOKEN_GROUPS, Groups[Token->CapabilityCount]);
+                for (Index = 0; Index < Token->CapabilityCount; Index++)
+                {
+                    RequiredLength += ALIGN_UP_BY(RtlLengthSid(Token->Capabilities[Index].Sid), sizeof(PVOID));
+                }
+
+                _SEH2_TRY
+                {
+                    if (TokenInformationLength >= RequiredLength)
+                    {
+                        Groups->GroupCount = Token->CapabilityCount;
+                        Offset = FIELD_OFFSET(TOKEN_GROUPS, Groups[Token->CapabilityCount]);
+                        for (Index = 0; Index < Token->CapabilityCount; Index++)
+                        {
+                            PSID Sid = Token->Capabilities[Index].Sid;
+
+                            Groups->Groups[Index].Sid = (PUCHAR)TokenInformation + Offset;
+                            Groups->Groups[Index].Attributes = Token->Capabilities[Index].Attributes;
+                            RtlCopySid(RtlLengthSid(Sid), Groups->Groups[Index].Sid, Sid);
+                            Offset += ALIGN_UP_BY(RtlLengthSid(Sid), sizeof(PVOID));
+                        }
+                    }
+                    else
+                    {
+                        Status = STATUS_BUFFER_TOO_SMALL;
+                    }
+
+                    *ReturnLength = RequiredLength;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
+            case TokenAppContainerSid:
+            {
+                PTOKEN_APPCONTAINER_INFORMATION Information = (PTOKEN_APPCONTAINER_INFORMATION)TokenInformation;
+
+                RequiredLength = sizeof(TOKEN_APPCONTAINER_INFORMATION) +
+                                 (Token->Package ? RtlLengthSid(Token->Package) : 0);
+
+                _SEH2_TRY
+                {
+                    if (TokenInformationLength >= RequiredLength)
+                    {
+                        Information->TokenAppContainer = NULL;
+                        if (Token->Package)
+                        {
+                            Information->TokenAppContainer = (PSID)(Information + 1);
+                            RtlCopySid(RtlLengthSid(Token->Package), Information->TokenAppContainer, Token->Package);
+                        }
+                    }
+                    else
+                    {
+                        Status = STATUS_BUFFER_TOO_SMALL;
+                    }
+
+                    *ReturnLength = RequiredLength;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
+            case TokenSecurityAttributes:
+            {
+                _SEH2_TRY
+                {
+                    Status = SepQuerySecurityAttributes(Token->pSecurityAttributes,
+                                                        NULL,
+                                                        0,
+                                                        TokenInformation,
+                                                        TokenInformationLength,
+                                                        &RequiredLength);
+                    *ReturnLength = RequiredLength;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
             default:
                 DPRINT1("NtQueryInformationToken(%d) invalid information class\n", TokenInformationClass);
                 Status = STATUS_INVALID_INFO_CLASS;
@@ -1497,72 +1653,10 @@ NtSetInformationToken(
                                                &CapturedAcl);
                         if (NT_SUCCESS(Status))
                         {
-                            ULONG NewDynamicLength;
-                            ULONG_PTR Acl;
-
                             /* Lock the token */
                             SepAcquireTokenLockExclusive(Token);
 
-                            /*
-                             * We can whack the token's default DACL only if
-                             * the charged dynamic space boundary allows us
-                             * to do so. Exceeding this boundary and we're
-                             * busted out.
-                             */
-                            NewDynamicLength = CapturedAcl->AclSize + RtlLengthSid(Token->PrimaryGroup);
-                            if (NewDynamicLength > Token->DynamicCharged)
-                            {
-                                SepReleaseTokenLock(Token);
-                                SepReleaseAcl(CapturedAcl, PreviousMode, TRUE);
-                                Status = STATUS_ALLOTTED_SPACE_EXCEEDED;
-                                DPRINT1("NtSetInformationToken(): Couldn't assign new default DACL, space exceeded (current length %u, new length %lu)\n",
-                                        Token->DynamicCharged, NewDynamicLength);
-                                goto Cleanup;
-                            }
-
-                            /*
-                             * The dynamic part of the token may require a rebuild
-                             * if the current dynamic area is too small. If not then
-                             * we're pretty much good as is.
-                             */
-                            Status = SepRebuildDynamicPartOfToken(Token, NewDynamicLength);
-                            if (NT_SUCCESS(Status))
-                            {
-                                /*
-                                 * Before setting up a new DACL for the
-                                 * token object we add up the size of
-                                 * the old DACL to the available dynamic
-                                 * area
-                                 */
-                                if (Token->DefaultDacl)
-                                {
-                                    Token->DynamicAvailable += Token->DefaultDacl->AclSize;
-                                }
-
-                                /*
-                                 * Move the primary group if it's not at the
-                                 * head of the dynamic part.
-                                 */
-                                if ((PULONG)(Token->PrimaryGroup) != Token->DynamicPart)
-                                {
-                                    RtlMoveMemory(Token->DynamicPart,
-                                                  Token->PrimaryGroup,
-                                                  RtlLengthSid(Token->PrimaryGroup));
-                                    Token->PrimaryGroup = (PSID)(Token->DynamicPart);
-                                }
-
-                                /* Take away available space from the dynamic area */
-                                Token->DynamicAvailable -= CapturedAcl->AclSize;
-
-                                /* Set the new dacl */
-                                Acl = (ULONG_PTR)(Token->DynamicPart) + RtlLengthSid(Token->PrimaryGroup);
-                                RtlCopyMemory((PVOID)Acl,
-                                              CapturedAcl,
-                                              CapturedAcl->AclSize);
-                                Token->DefaultDacl = (PACL)Acl;
-
-                                ExAllocateLocallyUniqueId(&Token->ModifiedId);
-                            }
+                            Status = SepAssignDefaultDaclToken(Token, CapturedAcl);
 
                             /* Unlock the token and release the ACL */
                             SepReleaseTokenLock(Token);
@@ -1899,6 +1993,79 @@ NtSetInformationToken(
                 /* Unlock the token */
                 SepReleaseTokenLock(Token);
 
+                break;
+            }
+
+            case TokenMandatoryPolicy:
+            {
+                TOKEN_MANDATORY_POLICY Policy;
+
+                if (TokenInformationLength != sizeof(TOKEN_MANDATORY_POLICY))
+                {
+                    Status = STATUS_INFO_LENGTH_MISMATCH;
+                    break;
+                }
+
+                _SEH2_TRY
+                {
+                    Policy = *(PTOKEN_MANDATORY_POLICY)TokenInformation;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                    _SEH2_YIELD(goto Cleanup);
+                }
+                _SEH2_END;
+
+                if (!SeSinglePrivilegeCheck(SeTcbPrivilege, PreviousMode))
+                {
+                    Status = STATUS_PRIVILEGE_NOT_HELD;
+                    break;
+                }
+
+                if (Policy.Policy & ~TOKEN_MANDATORY_POLICY_VALID_MASK)
+                {
+                    Status = STATUS_INVALID_PARAMETER;
+                    break;
+                }
+
+                SepAcquireTokenLockExclusive(Token);
+                Token->MandatoryPolicy = Policy;
+                ExAllocateLocallyUniqueId(&Token->ModifiedId);
+                SepReleaseTokenLock(Token);
+                break;
+            }
+
+            case TokenSecurityAttributes:
+            {
+                PTOKEN_SECURITY_ATTRIBUTES_INFORMATION Attributes;
+                PTOKEN_SECURITY_ATTRIBUTE_OPERATION Operations;
+
+                if (TokenInformationLength < sizeof(TOKEN_SECURITY_ATTRIBUTES_AND_OPERATION_INFORMATION))
+                {
+                    Status = STATUS_INFO_LENGTH_MISMATCH;
+                    break;
+                }
+
+                if (!SeSinglePrivilegeCheck(SeTcbPrivilege, PreviousMode))
+                {
+                    Status = STATUS_PRIVILEGE_NOT_HELD;
+                    break;
+                }
+
+                Status = SepCaptureSecurityAttributesAndOperations(TokenInformation,
+                                                                   PreviousMode,
+                                                                   &Attributes,
+                                                                   &Operations);
+                if (!NT_SUCCESS(Status))
+                    break;
+
+                SepAcquireTokenLockExclusive(Token);
+                Status = SepSetSecurityAttributesToken(Token, Operations, Attributes);
+                ExAllocateLocallyUniqueId(&Token->ModifiedId);
+                SepReleaseTokenLock(Token);
+
+                SepReleaseSecurityAttributesAndOperations(Attributes, Operations);
                 break;
             }
 

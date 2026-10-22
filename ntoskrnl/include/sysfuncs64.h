@@ -205,7 +205,7 @@ SVC_(CreateKeyTransacted, 8)
 #endif
 SVC_(CreateKeyedEvent, 4)
 #if (NTDDI_VERSION >= NTDDI_WIN8)
-SVC_(CreateLowBoxToken, 0) // FIXME
+SVC_(CreateLowBoxToken, 9)
 #endif // (NTDDI_VERSION >= NTDDI_WIN8)
 SVC_(CreateMailslotFile, 8)
 SVC_(CreateMutant, 4)

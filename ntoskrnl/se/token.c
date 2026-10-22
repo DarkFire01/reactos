@@ -778,6 +778,66 @@ SepRebuildDynamicPartOfToken(
 }
 
 /**
+ * @brief
+ * Replaces the default DACL of a token, within the dynamic space it was charged for.
+ *
+ * @param[in,out] Token
+ * The token, locked exclusively by the caller.
+ *
+ * @param[in] Acl
+ * A validated ACL in system memory.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_ALLOTTED_SPACE_EXCEEDED when the ACL does not fit the
+ * charged dynamic space, or STATUS_INSUFFICIENT_RESOURCES.
+ */
+NTSTATUS
+SepAssignDefaultDaclToken(
+    _Inout_ PTOKEN Token,
+    _In_ PACL Acl)
+{
+    NTSTATUS Status;
+    ULONG NewDynamicLength;
+    ULONG_PTR Target;
+
+    NewDynamicLength = Acl->AclSize + RtlLengthSid(Token->PrimaryGroup);
+    if (NewDynamicLength > Token->DynamicCharged)
+    {
+        DPRINT1("Couldn't assign new default DACL, space exceeded (current length %u, new length %lu)\n",
+                Token->DynamicCharged, NewDynamicLength);
+        return STATUS_ALLOTTED_SPACE_EXCEEDED;
+    }
+
+    Status = SepRebuildDynamicPartOfToken(Token, NewDynamicLength);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* The old DACL's space goes back to the available dynamic area */
+    if (Token->DefaultDacl)
+    {
+        Token->DynamicAvailable += Token->DefaultDacl->AclSize;
+    }
+
+    /* Keep the primary group at the head of the dynamic part */
+    if ((PULONG)(Token->PrimaryGroup) != Token->DynamicPart)
+    {
+        RtlMoveMemory(Token->DynamicPart,
+                      Token->PrimaryGroup,
+                      RtlLengthSid(Token->PrimaryGroup));
+        Token->PrimaryGroup = (PSID)(Token->DynamicPart);
+    }
+
+    Token->DynamicAvailable -= Acl->AclSize;
+
+    Target = (ULONG_PTR)(Token->DynamicPart) + RtlLengthSid(Token->PrimaryGroup);
+    RtlCopyMemory((PVOID)Target, Acl, Acl->AclSize);
+    Token->DefaultDacl = (PACL)Target;
+
+    ExAllocateLocallyUniqueId(&Token->ModifiedId);
+    return STATUS_SUCCESS;
+}
+
+/**
  * @unimplemented
  * @brief
  * Frees (de-allocates) the proxy data memory block of a token.
@@ -1379,6 +1439,7 @@ SeSubProcessToken(
 {
     PTOKEN NewToken;
     OBJECT_ATTRIBUTES ObjectAttributes;
+    PSEP_SECURITY_ATTRIBUTES Inherited;
     NTSTATUS Status;
 
     /* Initialize the attributes and duplicate it */
@@ -1392,6 +1453,17 @@ SeSubProcessToken(
                                &NewToken);
     if (NT_SUCCESS(Status))
     {
+        /* A new process does not inherit the attributes marked non-inheritable */
+        Status = SepDuplicateSecurityAttributes(NewToken->pSecurityAttributes, TRUE, &Inherited);
+        if (!NT_SUCCESS(Status))
+        {
+            ObDereferenceObject(NewToken);
+            return Status;
+        }
+
+        SepFreeSecurityAttributes(NewToken->pSecurityAttributes);
+        NewToken->pSecurityAttributes = Inherited;
+
         /* Insert it */
         Status = ObInsertObject(NewToken,
                                 NULL,
@@ -1611,6 +1683,9 @@ SepDeleteToken(
 
     DPRINT("SepDeleteToken()\n");
 
+    /* Release the AppContainer data and the security attributes */
+    SepFreeTokenAppContainerData(AccessToken);
+
     /* Remove the referenced logon session from token */
     if (AccessToken->LogonSession)
     {
@@ -1667,6 +1742,8 @@ SepInitializeTokenImplementation(VOID)
     ObjectTypeInitializer.UseDefaultObject = TRUE;
     ObjectTypeInitializer.DeleteProcedure = SepDeleteToken;
     ObCreateObjectType(&Name, &ObjectTypeInitializer, NULL, &SeTokenObjectType);
+
+    SepInitializeLowBox();
 }
 
 /**

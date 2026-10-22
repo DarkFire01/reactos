@@ -75,6 +75,61 @@ typedef struct _TOKEN_AUDIT_POLICY_INFORMATION
 } TOKEN_AUDIT_POLICY_INFORMATION, *PTOKEN_AUDIT_POLICY_INFORMATION;
 
 //
+// Token security attributes, kept as a list of attributes each owning a list of values
+//
+typedef struct _SEP_SECURITY_ATTRIBUTE_VALUE
+{
+    LIST_ENTRY ListEntry;
+    union
+    {
+        ULONG64 Number;
+        UNICODE_STRING String;
+        TOKEN_SECURITY_ATTRIBUTE_FQBN_VALUE Fqbn;
+        TOKEN_SECURITY_ATTRIBUTE_OCTET_STRING_VALUE Octet;
+    };
+} SEP_SECURITY_ATTRIBUTE_VALUE, *PSEP_SECURITY_ATTRIBUTE_VALUE;
+
+typedef struct _SEP_SECURITY_ATTRIBUTE
+{
+    LIST_ENTRY ListEntry;
+    UNICODE_STRING Name;
+    USHORT ValueType;
+    ULONG Flags;
+    ULONG ValueCount;
+    LIST_ENTRY ValueList;
+} SEP_SECURITY_ATTRIBUTE, *PSEP_SECURITY_ATTRIBUTE;
+
+typedef struct _SEP_SECURITY_ATTRIBUTES
+{
+    ULONG AttributeCount;
+    LIST_ENTRY AttributeList;
+} SEP_SECURITY_ATTRIBUTES, *PSEP_SECURITY_ATTRIBUTES;
+
+//
+// LowBox (AppContainer) bookkeeping. Tokens of the same package in the same
+// session share a number entry, and tokens of the same package in the same
+// logon session share the named object handles that keep their directories alive.
+//
+typedef struct _SEP_LOWBOX_NUMBER_ENTRY
+{
+    LIST_ENTRY ListEntry;
+    LONG ReferenceCount;
+    ULONG SessionId;
+    ULONG LowboxNumber;
+    PSID PackageSid;
+} SEP_LOWBOX_NUMBER_ENTRY, *PSEP_LOWBOX_NUMBER_ENTRY;
+
+typedef struct _SEP_LOWBOX_HANDLES_ENTRY
+{
+    LIST_ENTRY ListEntry;
+    LONG ReferenceCount;
+    LUID AuthenticationId;
+    PSID PackageSid;
+    ULONG HandleCount;
+    PHANDLE Handles;
+} SEP_LOWBOX_HANDLES_ENTRY, *PSEP_LOWBOX_HANDLES_ENTRY;
+
+//
 // Token creation method defines (for debugging purposes)
 //
 #define TOKEN_CREATE_METHOD    0xCUL
@@ -436,6 +491,11 @@ NTSTATUS
 SepRebuildDynamicPartOfToken(
     _In_ PTOKEN Token,
     _In_ ULONG NewDynamicPartSize);
+
+NTSTATUS
+SepAssignDefaultDaclToken(
+    _Inout_ PTOKEN Token,
+    _In_ PACL Acl);
 
 BOOLEAN
 NTAPI
@@ -903,6 +963,62 @@ PSID_AND_ATTRIBUTES
 NTAPI
 SepGetIntegrityLevelFromToken(
     _In_ PTOKEN Token);
+
+//
+// Token security attribute functions
+//
+NTSTATUS
+SepDuplicateSecurityAttributes(
+    _In_opt_ PSEP_SECURITY_ATTRIBUTES Source,
+    _In_ BOOLEAN SkipNonInheritable,
+    _Out_ PSEP_SECURITY_ATTRIBUTES *Copy);
+
+VOID
+SepFreeSecurityAttributes(
+    _In_opt_ _Post_invalid_ PSEP_SECURITY_ATTRIBUTES Attributes);
+
+NTSTATUS
+SepQuerySecurityAttributes(
+    _In_opt_ PSEP_SECURITY_ATTRIBUTES Attributes,
+    _In_reads_opt_(NameCount) PCUNICODE_STRING Names,
+    _In_ ULONG NameCount,
+    _Out_writes_bytes_to_opt_(Length, *ReturnLength) PVOID Buffer,
+    _In_ ULONG Length,
+    _Out_ PULONG ReturnLength);
+
+NTSTATUS
+SepCaptureSecurityAttributesAndOperations(
+    _In_ PTOKEN_SECURITY_ATTRIBUTES_AND_OPERATION_INFORMATION Input,
+    _In_ KPROCESSOR_MODE PreviousMode,
+    _Out_ PTOKEN_SECURITY_ATTRIBUTES_INFORMATION *CapturedAttributes,
+    _Out_ PTOKEN_SECURITY_ATTRIBUTE_OPERATION *CapturedOperations);
+
+VOID
+SepReleaseSecurityAttributesAndOperations(
+    _In_opt_ _Post_invalid_ PTOKEN_SECURITY_ATTRIBUTES_INFORMATION CapturedAttributes,
+    _In_opt_ _Post_invalid_ PTOKEN_SECURITY_ATTRIBUTE_OPERATION CapturedOperations);
+
+NTSTATUS
+SepSetSecurityAttributesToken(
+    _Inout_ PTOKEN Token,
+    _In_ PTOKEN_SECURITY_ATTRIBUTE_OPERATION Operations,
+    _In_opt_ PTOKEN_SECURITY_ATTRIBUTES_INFORMATION Attributes);
+
+//
+// LowBox (AppContainer) token functions
+//
+CODE_SEG("INIT")
+VOID
+SepInitializeLowBox(VOID);
+
+NTSTATUS
+SepCopyTokenAppContainerData(
+    _In_ PTOKEN Source,
+    _Inout_ PTOKEN Copy);
+
+VOID
+SepFreeTokenAppContainerData(
+    _Inout_ PTOKEN Token);
 
 //
 // Access check functions

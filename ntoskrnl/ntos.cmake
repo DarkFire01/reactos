@@ -315,6 +315,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/acl.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/audit.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/client.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/se/lowbox.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/objtype.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/priv.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/sd.c
@@ -326,6 +327,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/subject.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/token.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/tokenadj.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/se/tokenattr.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/tokencls.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/tokenlif.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/vf/driver.c
