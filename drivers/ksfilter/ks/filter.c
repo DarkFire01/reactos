@@ -1021,6 +1021,7 @@ IKsFilter_DispatchDeviceIoControl(
     ULONG SetCount = 0;
     PKSP_NODE NodeProperty;
     PKSNODE_DESCRIPTOR NodeDescriptor;
+    ULONG NodeId;
 
     /* obtain filter from object header */
     Status = IKsFilter_GetFilterFromIrp(Irp, &Filter);
@@ -1072,10 +1073,17 @@ IKsFilter_DispatchDeviceIoControl(
         /* check if the driver supports method sets */
         if (Property->Flags & KSPROPERTY_TYPE_TOPOLOGY)
         {
-            ASSERT(IoStack->Parameters.DeviceIoControl.InputBufferLength >= sizeof(KSP_NODE));
             NodeProperty = (PKSP_NODE)Property;
-            NodeDescriptor = (PKSNODE_DESCRIPTOR)((ULONG_PTR)FilterInstance->Descriptor->NodeDescriptors + FilterInstance->Descriptor->NodeDescriptorSize * NodeProperty->NodeId);
-            if (NodeDescriptor->AutomationTable != NULL)
+
+            /* a node the filter does not have answers like one without properties; the id is read
+             * once, as the request may sit in memory the caller can still change */
+            NodeDescriptor = NULL;
+            NodeId = MAXULONG;
+            if (IoStack->Parameters.DeviceIoControl.InputBufferLength >= sizeof(KSP_NODE))
+                NodeId = *(volatile ULONG *)&NodeProperty->NodeId;
+            if (NodeId < FilterInstance->Descriptor->NodeDescriptorsCount)
+                NodeDescriptor = (PKSNODE_DESCRIPTOR)((ULONG_PTR)FilterInstance->Descriptor->NodeDescriptors + FilterInstance->Descriptor->NodeDescriptorSize * NodeId);
+            if (NodeDescriptor && NodeDescriptor->AutomationTable != NULL)
             {
                 SetCount = NodeDescriptor->AutomationTable->PropertySetsCount;
                 PropertySet = NodeDescriptor->AutomationTable->PropertySets;
