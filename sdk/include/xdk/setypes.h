@@ -1126,6 +1126,10 @@ typedef struct _TOKEN_ORIGIN {
   LUID OriginatingLogonSession;
 } TOKEN_ORIGIN, *PTOKEN_ORIGIN;
 
+typedef struct _TOKEN_APPCONTAINER_INFORMATION {
+  PSID TokenAppContainer;
+} TOKEN_APPCONTAINER_INFORMATION, *PTOKEN_APPCONTAINER_INFORMATION;
+
 typedef enum _MANDATORY_LEVEL {
   MandatoryLevelUntrusted = 0,
   MandatoryLevelLow,
@@ -1209,6 +1213,7 @@ typedef struct _TOKEN_ACCESS_INFORMATION {
 #define TOKEN_IS_FILTERED               0x0800
 #define TOKEN_UIACCESS                  0x1000
 #define TOKEN_NOT_LOW                   0x2000
+#define TOKEN_LOWBOX                    0x4000
 
 /* See: https://microsoft.github.io/windows-docs-rs/doc/windows/Wdk/Storage/FileSystem/struct.SE_EXPORTS.html */
 typedef struct _SE_EXPORTS {

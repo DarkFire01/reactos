@@ -485,6 +485,18 @@ typedef enum _RTL_PATH_TYPE
     RtlPathTypeRootLocalDevice,
 } RTL_PATH_TYPE;
 
+//
+// AppContainer SID Types
+//
+typedef enum _APPCONTAINER_SID_TYPE
+{
+    NotAppContainerSidType,
+    ChildAppContainerSidType,
+    ParentAppContainerSidType,
+    InvalidAppContainerSidType,
+    MaxAppContainerSidType
+} APPCONTAINER_SID_TYPE, *PAPPCONTAINER_SID_TYPE;
+
 #ifndef NTOS_MODE_USER
 
 //

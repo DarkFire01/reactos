@@ -1462,6 +1462,50 @@ RtlEqualPrefixSid(
     PSID Sid2
 );
 
+//
+// AppContainer and capability SIDs
+//
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlIsPackageSid(
+    _In_ PSID Sid);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlIsCapabilitySid(
+    _In_ PSID Sid);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlGetAppContainerSidType(
+    _In_ PSID AppContainerSid,
+    _Out_ PAPPCONTAINER_SID_TYPE AppContainerSidType);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlIsParentOfChildAppContainer(
+    _In_ PSID ParentAppContainerSid,
+    _In_ PSID ChildAppContainerSid);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlGetAppContainerParent(
+    _In_ PSID ChildAppContainerSid,
+    _Out_ PSID *ParentAppContainerSid);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlCheckTokenCapability(
+    _In_opt_ HANDLE TokenHandle,
+    _In_ PSID CapabilitySidToCheck,
+    _Out_ PBOOLEAN HasCapability);
+
 NTSYSAPI
 BOOLEAN
 NTAPI

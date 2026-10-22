@@ -29,6 +29,85 @@ Author:
 //
 #define SECURITY_INTERNETSITE_AUTHORITY     {0,0,0,0,0,7}
 
+//
+// Token Security Attributes
+//
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_INVALID               0x00
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_INT64                 0x01
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_UINT64                0x02
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_STRING                0x03
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_FQBN                  0x04
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_SID                   0x05
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_BOOLEAN               0x06
+#define TOKEN_SECURITY_ATTRIBUTE_TYPE_OCTET_STRING          0x10
+
+#define TOKEN_SECURITY_ATTRIBUTE_NON_INHERITABLE            0x0001
+#define TOKEN_SECURITY_ATTRIBUTE_VALUE_CASE_SENSITIVE       0x0002
+#define TOKEN_SECURITY_ATTRIBUTE_USE_FOR_DENY_ONLY          0x0004
+#define TOKEN_SECURITY_ATTRIBUTE_DISABLED_BY_DEFAULT        0x0008
+#define TOKEN_SECURITY_ATTRIBUTE_DISABLED                   0x0010
+#define TOKEN_SECURITY_ATTRIBUTE_MANDATORY                  0x0020
+#define TOKEN_SECURITY_ATTRIBUTE_COMPARE_IGNORE             0x0040
+#define TOKEN_SECURITY_ATTRIBUTE_VALID_FLAGS                0x007F
+#define TOKEN_SECURITY_ATTRIBUTE_CUSTOM_FLAGS               0xFFFF0000
+
+#define TOKEN_SECURITY_ATTRIBUTES_INFORMATION_VERSION_V1    1
+
+typedef struct _TOKEN_SECURITY_ATTRIBUTE_FQBN_VALUE
+{
+    ULONG64 Version;
+    UNICODE_STRING Name;
+} TOKEN_SECURITY_ATTRIBUTE_FQBN_VALUE, *PTOKEN_SECURITY_ATTRIBUTE_FQBN_VALUE;
+
+typedef struct _TOKEN_SECURITY_ATTRIBUTE_OCTET_STRING_VALUE
+{
+    PVOID pValue;
+    ULONG ValueLength;
+} TOKEN_SECURITY_ATTRIBUTE_OCTET_STRING_VALUE, *PTOKEN_SECURITY_ATTRIBUTE_OCTET_STRING_VALUE;
+
+typedef struct _TOKEN_SECURITY_ATTRIBUTE_V1
+{
+    UNICODE_STRING Name;
+    USHORT ValueType;
+    USHORT Reserved;
+    ULONG Flags;
+    ULONG ValueCount;
+    union
+    {
+        PLONG64 pInt64;
+        PULONG64 pUint64;
+        PUNICODE_STRING pString;
+        PTOKEN_SECURITY_ATTRIBUTE_FQBN_VALUE pFqbn;
+        PTOKEN_SECURITY_ATTRIBUTE_OCTET_STRING_VALUE pOctetString;
+    } Values;
+} TOKEN_SECURITY_ATTRIBUTE_V1, *PTOKEN_SECURITY_ATTRIBUTE_V1;
+
+typedef struct _TOKEN_SECURITY_ATTRIBUTES_INFORMATION
+{
+    USHORT Version;
+    USHORT Reserved;
+    ULONG AttributeCount;
+    union
+    {
+        PTOKEN_SECURITY_ATTRIBUTE_V1 pAttributeV1;
+    } Attribute;
+} TOKEN_SECURITY_ATTRIBUTES_INFORMATION, *PTOKEN_SECURITY_ATTRIBUTES_INFORMATION;
+
+typedef enum _TOKEN_SECURITY_ATTRIBUTE_OPERATION
+{
+    TOKEN_SECURITY_ATTRIBUTE_OPERATION_NONE,
+    TOKEN_SECURITY_ATTRIBUTE_OPERATION_REPLACE_ALL,
+    TOKEN_SECURITY_ATTRIBUTE_OPERATION_ADD,
+    TOKEN_SECURITY_ATTRIBUTE_OPERATION_DELETE,
+    TOKEN_SECURITY_ATTRIBUTE_OPERATION_REPLACE
+} TOKEN_SECURITY_ATTRIBUTE_OPERATION, *PTOKEN_SECURITY_ATTRIBUTE_OPERATION;
+
+typedef struct _TOKEN_SECURITY_ATTRIBUTES_AND_OPERATION_INFORMATION
+{
+    PTOKEN_SECURITY_ATTRIBUTES_INFORMATION Attributes;
+    PTOKEN_SECURITY_ATTRIBUTE_OPERATION Operations;
+} TOKEN_SECURITY_ATTRIBUTES_AND_OPERATION_INFORMATION, *PTOKEN_SECURITY_ATTRIBUTES_AND_OPERATION_INFORMATION;
+
 #ifdef NTOS_MODE_USER
 //
 // Privilege constants
@@ -244,13 +323,20 @@ typedef struct _TOKEN
     PSECURITY_TOKEN_AUDIT_DATA AuditData;             /* 0x94 */
     PSEP_LOGON_SESSION_REFERENCES LogonSession;       /* 0x98 */
     LUID OriginatingLogonSession;                     /* 0x9C */
+    TOKEN_MANDATORY_POLICY MandatoryPolicy;           /* 0xA4 */
+    PSID Package;                                     /* 0xA8 */
+    PSID_AND_ATTRIBUTES Capabilities;                 /* 0xAC */
+    ULONG CapabilityCount;                            /* 0xB0 */
+    struct _SEP_LOWBOX_NUMBER_ENTRY *LowboxNumberEntry;   /* 0xB4 */
+    struct _SEP_LOWBOX_HANDLES_ENTRY *LowboxHandlesEntry; /* 0xB8 */
+    struct _SEP_SECURITY_ATTRIBUTES *pSecurityAttributes; /* 0xBC */
 #if DBG
-    UCHAR ImageFileName[16];                          /* 0xA4 */
-    HANDLE ProcessCid;                                /* 0xB4 */
-    HANDLE ThreadCid;                                 /* 0xB8 */
-    ULONG CreateMethod;                               /* 0xBC */
+    UCHAR ImageFileName[16];                          /* 0xC0 */
+    HANDLE ProcessCid;                                /* 0xD0 */
+    HANDLE ThreadCid;                                 /* 0xD4 */
+    ULONG CreateMethod;                               /* 0xD8 */
 #endif
-    ULONG VariablePart;                               /* 0xC0 */
+    ULONG VariablePart;                               /* 0xDC */
 } TOKEN, *PTOKEN;
 
 typedef struct _AUX_ACCESS_DATA
