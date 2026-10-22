@@ -43,8 +43,6 @@ int __cdecl __acrt_initialize_sse2(void)
 #pragma function(fmaf)
 #pragma function(log2)
 #pragma function(log2f)
-#pragma function(lrint)
-#pragma function(lrintf)
 #endif
 
 double fma(double x, double y, double z)
@@ -68,16 +66,4 @@ double log2(double x)
 float log2f(float x)
 {
     return (float)log2((double)x);
-}
-
-long int lrint(double x)
-{
-    __debugbreak();
-    return 0;
-}
-
-long int lrintf(float x)
-{
-    __debugbreak();
-    return 0;
 }
