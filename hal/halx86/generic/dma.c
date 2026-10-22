@@ -533,15 +533,15 @@ HalpGrowMapBuffers(IN PADAPTER_OBJECT AdapterObject,
              * using RtlFindClearBits for contiguous map register regions.
              *
              * Also for non-EISA DMA leave one free entry for every 64Kb
-             * break, because the DMA controller can handle only coniguous
-             * 64Kb regions.
+             * break below 16Mb, because the ISA DMA controller can handle
+             * only contiguous 64Kb regions and cannot reach higher memory.
              */
             if (CurrentEntry != AdapterObject->MapRegisterBase)
             {
                 PreviousEntry = CurrentEntry - 1;
                 if ((PreviousEntry->PhysicalAddress.LowPart + PAGE_SIZE) == PhysicalAddress.LowPart)
                 {
-                    if (!HalpEisaDma)
+                    if (!HalpEisaDma && (PhysicalAddress.QuadPart < 0x1000000))
                     {
                         if ((PreviousEntry->PhysicalAddress.LowPart ^ PhysicalAddress.LowPart) & 0xFFFF0000)
                         {
