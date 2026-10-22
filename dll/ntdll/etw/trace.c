@@ -62,6 +62,24 @@ EtwTraceEvent(
     return ERROR_SUCCESS;
 }
 
+/*
+ * @implemented
+ */
+ULONG
+NTAPI
+EtwLogTraceEvent(
+    _In_ TRACEHANDLE SessionHandle,
+    _In_ PEVENT_TRACE_HEADER EventTrace)
+{
+    if (EventTrace == NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (SessionHandle == 0)
+        return ERROR_INVALID_HANDLE;
+
+    /* No logger session is ever started, so no handle can name one */
+    return ERROR_WMI_INSTANCE_NOT_FOUND;
+}
+
 ULONG
 NTAPI
 EtwGetTraceEnableFlags(
