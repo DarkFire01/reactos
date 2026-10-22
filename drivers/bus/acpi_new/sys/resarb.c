@@ -9,6 +9,8 @@
 #include <ndk/rtlfuncs.h>
 #include <wdmguid.h>
 #include "arbiter.h"
+
+#define NDEBUG
 #include <debug.h>
 
 #ifndef CM_RESOURCE_PORT_10_BIT_DECODE

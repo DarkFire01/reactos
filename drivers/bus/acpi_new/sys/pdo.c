@@ -7,6 +7,8 @@
 
 #include <uacpint.h>
 #include <wdmguid.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* _STA bit 2, the device should be shown in the UI */

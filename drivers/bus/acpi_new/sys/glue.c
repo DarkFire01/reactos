@@ -10,6 +10,8 @@
 #include <uacpi/tables.h>
 #include <uacpi/registers.h>
 #include <uacpi/acpi.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Runs at DISPATCH_LEVEL from the SCI DPC or at PASSIVE_LEVEL from a work item */
@@ -20,11 +22,9 @@ UacpiNtGlobalNotify(
     _In_ uacpi_namespace_node *Node,
     _In_ uacpi_u64 Value)
 {
-    uacpi_object_name Name = uacpi_namespace_node_name(Node);
-
     UNREFERENCED_PARAMETER(Context);
 
-    DPRINT("uACPI-NT: Notify(%.4s, 0x%I64X)\n", Name.text, Value);
+    DPRINT("uACPI-NT: Notify(%.4s, 0x%I64X)\n", uacpi_namespace_node_name(Node).text, Value);
     UacpiNtRouteNotify(Node, (ULONG)Value);
     return UACPI_STATUS_OK;
 }

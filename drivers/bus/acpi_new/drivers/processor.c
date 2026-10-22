@@ -6,6 +6,8 @@
  */
 
 #include <uacpint.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Covers legacy Processor() objects and ACPI0007 devices */

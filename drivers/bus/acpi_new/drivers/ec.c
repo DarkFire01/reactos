@@ -9,6 +9,8 @@
 #include <uacpi/opregion.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* EC commands and status bits, ACPI specification chapter 12 */

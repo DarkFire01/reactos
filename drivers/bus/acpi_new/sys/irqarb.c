@@ -11,6 +11,8 @@
 #include "arbiter.h"
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
+
+#define NDEBUG
 #include <debug.h>
 
 #ifndef CM_RESOURCE_INTERRUPT_MESSAGE

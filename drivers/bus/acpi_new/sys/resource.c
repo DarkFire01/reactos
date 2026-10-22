@@ -7,6 +7,8 @@
 
 #include <uacpint.h>
 #include <reshub_downlevel.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Raw AML resource item header, ACPI 6.5 section 6.4 */

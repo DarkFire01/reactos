@@ -7,6 +7,8 @@
 
 #include <uacpint.h>
 #include <wdmguid.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Cached QUERY_CAPABILITIES answer for one entry of a relations list */

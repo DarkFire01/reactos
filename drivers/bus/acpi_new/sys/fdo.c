@@ -7,6 +7,8 @@
 
 #include <uacpint.h>
 #include <wdmguid.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Logs the interrupt band the HAL granted, the SCI is not part of it */

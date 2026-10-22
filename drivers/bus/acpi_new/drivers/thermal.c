@@ -16,6 +16,8 @@
 #include <poclass.h>
 #include <wmistr.h>
 #include <wmilib.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* _STR description request, the caller frees the returned string */

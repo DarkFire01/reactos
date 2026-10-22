@@ -6,6 +6,8 @@
  */
 
 #include <uacpint.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Built once at init, the mutex serializes _ON, _OFF and the refcounts */

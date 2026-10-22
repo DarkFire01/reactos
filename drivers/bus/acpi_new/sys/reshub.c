@@ -9,6 +9,8 @@
 #include <haltypes.h>
 #include <reshub_downlevel.h>
 #include <drivers/acpi/restrans.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Initial translation buffer, the hub asks for more when it needs it */

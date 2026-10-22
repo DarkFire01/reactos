@@ -6,6 +6,8 @@
  */
 
 #include <uacpint.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* SystemProcessorBrandString */

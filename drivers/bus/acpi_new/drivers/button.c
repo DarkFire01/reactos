@@ -10,6 +10,8 @@
 #include <ntpoapi.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
+
+#define NDEBUG
 #include <debug.h>
 
 /* Lid reports as the power service expects them: changed bit plus open or closed */
