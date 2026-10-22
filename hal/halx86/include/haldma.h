@@ -368,7 +368,8 @@ typedef struct _GROW_WORK_ITEM {
 #define MAP_BASE_SW_SG 1
 
 PADAPTER_OBJECT NTAPI
-HalpDmaAllocateMasterAdapter(VOID);
+HalpDmaAllocateMasterAdapter(
+   _In_ ULONG DmaAddressWidth);
 
 PDMA_ADAPTER NTAPI
 HalpGetDmaAdapter(
