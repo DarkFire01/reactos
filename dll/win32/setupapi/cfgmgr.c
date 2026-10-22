@@ -4539,7 +4539,7 @@ CM_Get_Device_ID_List_Size_ExW(
     RPC_BINDING_HANDLE BindingHandle = NULL;
     CONFIGRET ret;
 
-    FIXME("CM_Get_Device_ID_List_Size_ExW(%p %s %lx %p)\n",
+    TRACE("CM_Get_Device_ID_List_Size_ExW(%p %s %lx %p)\n",
           pulLen, debugstr_w(pszFilter), ulFlags, hMachine);
 
     if (pulLen == NULL)

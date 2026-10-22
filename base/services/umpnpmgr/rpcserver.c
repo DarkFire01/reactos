@@ -1516,6 +1516,38 @@ GetAllInstanceList(
 }
 
 
+/* Class filters take a braced GUID string, anything else is rejected */
+static
+BOOL
+IsValidClassGuidString(
+    _In_ PWSTR pszClassGuid)
+{
+    WCHAR szGuid[40];
+    UUID Guid;
+
+    if (wcslen(pszClassGuid) != 38 ||
+        pszClassGuid[0] != L'{' ||
+        pszClassGuid[37] != L'}')
+    {
+        return FALSE;
+    }
+
+    wcsncpy(szGuid, &pszClassGuid[1], 36);
+    szGuid[36] = UNICODE_NULL;
+
+    return (UuidFromStringW((RPC_WSTR)szGuid, &Guid) == RPC_S_OK);
+}
+
+
+static
+CONFIGRET
+GetFilteredInstanceList(
+    _In_opt_ PWSTR pszFilter,
+    _In_ DWORD ulFlags,
+    _Out_writes_opt_(*pulLength) PWSTR pszBuffer,
+    _Inout_ PDWORD pulLength);
+
+
 /* Function 10 */
 DWORD
 WINAPI
@@ -1540,9 +1572,13 @@ PNP_GetDeviceList(
     if (pulLength == NULL)
         return CR_INVALID_POINTER;
 
-    if ((ulFlags != CM_GETIDLIST_FILTER_NONE) &&
+    if (((ulFlags & ~CM_GETIDLIST_FILTER_PRESENT) != CM_GETIDLIST_FILTER_NONE) &&
         (pszFilter == NULL))
         return CR_INVALID_POINTER;
+
+    if ((ulFlags & CM_GETIDLIST_FILTER_CLASS) &&
+        !IsValidClassGuidString(pszFilter))
+        return CR_INVALID_DATA;
 
     if (ulFlags &
         (CM_GETIDLIST_FILTER_BUSRELATIONS |
@@ -1560,6 +1596,13 @@ PNP_GetDeviceList(
         ret = GetServiceInstanceList(pszFilter,
                                      Buffer,
                                      pulLength);
+    }
+    else if (ulFlags & (CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT))
+    {
+        ret = GetFilteredInstanceList(pszFilter,
+                                      ulFlags,
+                                      Buffer,
+                                      pulLength);
     }
     else if (ulFlags & CM_GETIDLIST_FILTER_ENUMERATOR)
     {
@@ -1887,6 +1930,166 @@ GetAllInstanceListSize(
 }
 
 
+
+static
+BOOL
+MatchesInstanceFilter(
+    _In_ PWSTR pszDeviceID,
+    _In_opt_ PWSTR pszFilter,
+    _In_ DWORD ulFlags)
+{
+    WCHAR szClassGuid[40];
+    HKEY hDeviceKey;
+    DWORD dwSize, dwType, dwError;
+
+    if ((ulFlags & CM_GETIDLIST_FILTER_PRESENT) &&
+        !IsPresentDeviceInstanceID(pszDeviceID))
+    {
+        return FALSE;
+    }
+
+    if (!(ulFlags & CM_GETIDLIST_FILTER_CLASS))
+        return TRUE;
+
+    dwError = RegOpenKeyExW(hEnumKey,
+                            pszDeviceID,
+                            0,
+                            KEY_QUERY_VALUE,
+                            &hDeviceKey);
+    if (dwError != ERROR_SUCCESS)
+        return FALSE;
+
+    dwSize = sizeof(szClassGuid);
+    dwError = RegQueryValueExW(hDeviceKey,
+                               L"ClassGUID",
+                               NULL,
+                               &dwType,
+                               (LPBYTE)szClassGuid,
+                               &dwSize);
+    RegCloseKey(hDeviceKey);
+    if (dwError != ERROR_SUCCESS || dwType != REG_SZ)
+        return FALSE;
+
+    szClassGuid[ARRAYSIZE(szClassGuid) - 1] = UNICODE_NULL;
+    return (_wcsicmp(szClassGuid, pszFilter) == 0);
+}
+
+
+/* The enumerator filter picks the source list, the class and present filters trim it */
+static
+CONFIGRET
+GetSourceInstanceList(
+    _In_opt_ PWSTR pszFilter,
+    _In_ DWORD ulFlags,
+    _Outptr_ PWSTR *ppszList)
+{
+    WCHAR szEnumerator[MAX_DEVICE_ID_LEN];
+    WCHAR szDevice[MAX_DEVICE_ID_LEN];
+    WCHAR szInstance[MAX_DEVICE_ID_LEN];
+    BOOL bDevice = FALSE;
+    DWORD dwLength = 0;
+    PWSTR pszList;
+    CONFIGRET ret;
+
+    if (ulFlags & CM_GETIDLIST_FILTER_ENUMERATOR)
+    {
+        SplitDeviceInstanceID(pszFilter,
+                              szEnumerator,
+                              szDevice,
+                              szInstance);
+        bDevice = (*szEnumerator != UNICODE_NULL && *szDevice != UNICODE_NULL);
+
+        if (bDevice)
+            ret = GetDeviceInstanceListSize(pszFilter, &dwLength);
+        else
+            ret = GetEnumeratorInstanceListSize(pszFilter, &dwLength);
+    }
+    else
+    {
+        ret = GetAllInstanceListSize(&dwLength);
+    }
+
+    if (ret != CR_SUCCESS)
+        return ret;
+
+    dwLength += 1;
+    pszList = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwLength * sizeof(WCHAR));
+    if (pszList == NULL)
+        return CR_OUT_OF_MEMORY;
+
+    if (!(ulFlags & CM_GETIDLIST_FILTER_ENUMERATOR))
+        ret = GetAllInstanceList(pszList, &dwLength);
+    else if (bDevice)
+        ret = GetDeviceInstanceList(pszFilter, pszList, &dwLength);
+    else
+        ret = GetEnumeratorInstanceList(pszFilter, pszList, &dwLength);
+
+    if (ret != CR_SUCCESS)
+    {
+        HeapFree(GetProcessHeap(), 0, pszList);
+        return ret;
+    }
+
+    *ppszList = pszList;
+    return CR_SUCCESS;
+}
+
+
+/* Without a buffer only the needed length, terminator included, is returned */
+static
+CONFIGRET
+GetFilteredInstanceList(
+    _In_opt_ PWSTR pszFilter,
+    _In_ DWORD ulFlags,
+    _Out_writes_opt_(*pulLength) PWSTR pszBuffer,
+    _Inout_ PDWORD pulLength)
+{
+    PWSTR pszList, pszDeviceID;
+    DWORD dwIdLength, dwUsedLength = 0;
+    CONFIGRET ret;
+
+    ret = GetSourceInstanceList(pszFilter, ulFlags, &pszList);
+    if (ret != CR_SUCCESS)
+    {
+        *pulLength = 0;
+        return ret;
+    }
+
+    for (pszDeviceID = pszList; *pszDeviceID != UNICODE_NULL; pszDeviceID += dwIdLength)
+    {
+        dwIdLength = wcslen(pszDeviceID) + 1;
+        if (!MatchesInstanceFilter(pszDeviceID, pszFilter, ulFlags))
+            continue;
+
+        if (pszBuffer != NULL)
+        {
+            if (dwUsedLength + dwIdLength + 1 > *pulLength)
+            {
+                ret = CR_BUFFER_SMALL;
+                break;
+            }
+
+            wcscpy(&pszBuffer[dwUsedLength], pszDeviceID);
+        }
+
+        dwUsedLength += dwIdLength;
+    }
+
+    if (pszBuffer != NULL && ret == CR_SUCCESS)
+    {
+        if (dwUsedLength + 1 > *pulLength)
+            ret = CR_BUFFER_SMALL;
+        else
+            pszBuffer[dwUsedLength] = UNICODE_NULL;
+    }
+
+    HeapFree(GetProcessHeap(), 0, pszList);
+
+    *pulLength = (ret == CR_SUCCESS) ? dwUsedLength + 1 : 0;
+    return ret;
+}
+
+
 /* Function 11 */
 DWORD
 WINAPI
@@ -1910,9 +2113,13 @@ PNP_GetDeviceListSize(
     if (pulLength == NULL)
         return CR_INVALID_POINTER;
 
-    if ((ulFlags != CM_GETIDLIST_FILTER_NONE) &&
+    if (((ulFlags & ~CM_GETIDLIST_FILTER_PRESENT) != CM_GETIDLIST_FILTER_NONE) &&
         (pszFilter == NULL))
         return CR_INVALID_POINTER;
+
+    if ((ulFlags & CM_GETIDLIST_FILTER_CLASS) &&
+        !IsValidClassGuidString(pszFilter))
+        return CR_INVALID_DATA;
 
     *pulLength = 0;
 
@@ -1930,6 +2137,14 @@ PNP_GetDeviceListSize(
     {
         ret = GetServiceInstanceListSize(pszFilter,
                                          pulLength);
+    }
+    else if (ulFlags & (CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT))
+    {
+        /* The filtered walk already counts the final terminator */
+        return GetFilteredInstanceList(pszFilter,
+                                       ulFlags,
+                                       NULL,
+                                       pulLength);
     }
     else if (ulFlags & CM_GETIDLIST_FILTER_ENUMERATOR)
     {
