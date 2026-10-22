@@ -23,6 +23,14 @@ DEBUG_CHANNEL(kernel32file);
 #define FIND_DATA_SIZE      0x4000
 #define FIND_DEVICE_HANDLE  ((HANDLE)0x1)
 
+#ifndef FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY
+#define FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY 0x00000004
+#endif
+
+/* Large fetch only sizes the buffer, and with no placeholder files every entry is on disk */
+#define FIND_EX_SUPPORTED_FLAGS (FIND_FIRST_EX_CASE_SENSITIVE | FIND_FIRST_EX_LARGE_FETCH | \
+                                 FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY)
+
 typedef enum _FIND_DATA_TYPE
 {
     FindFile   = 1,
@@ -463,11 +471,11 @@ FindNextFileW(IN HANDLE hFindFile,
                 FindFileData->NextDirInfo.DirInfo = NULL;
             }
 
-            if ((FindFileData->SearchOp != FindExSearchLimitToDirectories) ||
-                (DirInfo.FullDirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-            {
-                FoundFile = DirInfo;
-            }
+            /*
+             * Limiting the search to directories is only advisory, and file systems on Windows
+             * do not filter, so callers get every entry and check the attributes themselves.
+             */
+            FoundFile = DirInfo;
         } while ( FoundFile.DirInfo == NULL && (FindFileData->NextDirInfo.DirInfo || FindFileData->HasMoreData) );
 
         if (FoundFile.DirInfo != NULL)
@@ -583,7 +591,7 @@ FindFirstFileExA(IN LPCSTR lpFileName,
 
     if ((fInfoLevelId != FindExInfoStandard && fInfoLevelId != FindExInfoBasic) ||
         fSearchOp == FindExSearchLimitToDevices ||
-        dwAdditionalFlags & ~FIND_FIRST_EX_CASE_SENSITIVE /* only supported flag for now */)
+        dwAdditionalFlags & ~FIND_EX_SUPPORTED_FLAGS)
     {
         SetLastError(fSearchOp == FindExSearchLimitToDevices
                                 ? ERROR_NOT_SUPPORTED
@@ -659,7 +667,7 @@ FindFirstFileExW(IN LPCWSTR lpFileName,
 
     if ((fInfoLevelId != FindExInfoStandard && fInfoLevelId != FindExInfoBasic) ||
         fSearchOp == FindExSearchLimitToDevices ||
-        dwAdditionalFlags & ~FIND_FIRST_EX_CASE_SENSITIVE /* only supported flag for now */)
+        dwAdditionalFlags & ~FIND_EX_SUPPORTED_FLAGS)
     {
         SetLastError(fSearchOp == FindExSearchLimitToDevices
                                 ? ERROR_NOT_SUPPORTED
