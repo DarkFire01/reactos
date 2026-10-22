@@ -667,7 +667,7 @@ SVC_(UnloadKeyEx, 2)
 SVC_(UnlockFile, 5)
 SVC_(UnlockVirtualMemory, 4)
 #if (NTDDI_VERSION >= NTDDI_WIN8)
-//SVC_(UnmapViewOfSectionEx, 0) // FIXME
+SVC_(UnmapViewOfSectionEx, 3)
 //SVC_(UnsubscribeWnfStateChange, 0) // FIXME
 //SVC_(UpdateWnfStateData, 0) // FIXME
 #endif
