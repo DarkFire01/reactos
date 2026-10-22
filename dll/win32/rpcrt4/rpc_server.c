@@ -146,6 +146,7 @@ static RpcServerInterface* RPCRT4_find_interface(UUID* object,
         (check_object == FALSE || UuidEqual(MgrType, &cif->MgrTypeUuid, &status)) &&
         std_listen) {
       InterlockedIncrement(&cif->CurrentCalls);
+      InterlockedIncrement(&cif->TotalCalls);
       break;
     }
   }
@@ -1256,6 +1257,24 @@ RPC_STATUS WINAPI RpcServerUnregisterIfEx( RPC_IF_HANDLE IfSpec, UUID* MgrTypeUu
     IfSpec, debugstr_guid(MgrTypeUuid), RundownContextHandles);
 
   return RPC_S_OK;
+}
+
+/* Sums the executing and dispatched call counts of a registered interface */
+void RPCRT4_query_interface_calls(RPC_IF_HANDLE IfSpec, UUID *MgrTypeUuid, LONG *current, LONG *total)
+{
+  PRPC_SERVER_INTERFACE If = IfSpec;
+  RpcServerInterface *cif;
+  RPC_STATUS status;
+
+  EnterCriticalSection(&server_cs);
+  LIST_FOR_EACH_ENTRY(cif, &server_interfaces, RpcServerInterface, entry) {
+    if (!memcmp(&If->InterfaceId, &cif->If->InterfaceId, sizeof(RPC_SYNTAX_IDENTIFIER)) &&
+        UuidEqual(MgrTypeUuid, &cif->MgrTypeUuid, &status)) {
+      *current += cif->CurrentCalls;
+      *total += cif->TotalCalls;
+    }
+  }
+  LeaveCriticalSection(&server_cs);
 }
 
 /***********************************************************************
