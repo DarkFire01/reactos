@@ -1,0 +1,82 @@
+; WDMA_USB.INF
+
+; Installation of USB Audio Class devices
+
+[Version]
+Signature  = "$Windows NT$"
+;Signature  = "$ReactOS$"
+LayoutFile = layout.inf
+Class      = MEDIA
+ClassGUID  = {4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider   = %ReactOS%
+DriverVer  = 10/21/2026,1.00.0.0
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ReactOS% = GenericMfg
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[GenericMfg]
+%USB\CLASS_01.DeviceDesc% = USBAudio, USB\CLASS_01
+
+;------------------------------ USB AUDIO -------------------------------
+
+[USBAudio.NT]
+Include = ks.inf, wdmaudio.inf
+Needs = KS.Registration, WDMAUDIO.Registration
+CopyFiles = USBAudio.CopyFiles
+AddReg = USBAudio.AddReg
+
+[USBAudio.CopyFiles]
+usbaudio.sys
+
+[USBAudio.AddReg]
+HKR,,AssociatedFilters,,"wdmaud"
+HKR,,Driver,,usbaudio.sys
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,Drivers,SubClasses,,"wave,mixer"
+HKR,Drivers\wave\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\mixer\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\wave\wdmaud.drv,Description,,%USBAudio.Description%
+HKR,Drivers\mixer\wdmaud.drv,Description,,%USBAudio.Description%
+
+[USBAudio.NT.Interfaces]
+AddInterface = %KSCATEGORY_AUDIO%,"GLOBAL",USBAudio.Interface
+AddInterface = %KSCATEGORY_RENDER%,"GLOBAL",USBAudio.Interface
+AddInterface = %KSCATEGORY_CAPTURE%,"GLOBAL",USBAudio.Interface
+
+; No friendly name here, so the mixer takes the product string the driver publishes
+[USBAudio.Interface]
+AddReg = USBAudio.Interface.AddReg
+
+[USBAudio.Interface.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+
+[USBAudio.NT.Services]
+AddService = usbaudio, 0x00000002, usbaudio_Service_Inst
+
+[usbaudio_Service_Inst]
+DisplayName   = %usbaudio.SvcDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\usbaudio.sys
+
+;-------------------------------- STRINGS -------------------------------
+
+[Strings]
+; Non-localizable
+ReactOS            = "ReactOS Project"
+Proxy.CLSID        = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+KSCATEGORY_AUDIO   = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_RENDER  = "{65E8773E-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_CAPTURE = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+
+; Localizable
+USB\CLASS_01.DeviceDesc = "USB Audio Device"
+USBAudio.Description    = "USB Audio Device"
+usbaudio.SvcDesc        = "USB Audio Driver"

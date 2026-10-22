@@ -5,9 +5,12 @@ add_definitions(-D_WIN32_WINNT=0x600)
 
 list(APPEND SOURCE
     usbaudio.c
+    descriptors.c
     pool.c
     filter.c
     pin.c
+    midi.c
+    uac2.c
     guid.c)
 
 add_library(usbaudio MODULE
