@@ -612,6 +612,151 @@ KiDumpParameterImages(IN PCHAR Message,
     }
 }
 
+#ifdef _M_AMD64
+/**
+ * @brief
+ * Unwinds the context captured at the bug check into return addresses.
+ *
+ * Unlike RtlWalkFrameChain this follows switches to DPC and interrupt stacks,
+ * and treats a NULL or unknown address as a leaf so a call through a bad
+ * pointer still shows its caller.
+ */
+static
+ULONG
+KiWalkBugCheckStack(
+    _Out_writes_(Count) PVOID *Frames,
+    _In_ ULONG Count)
+{
+    CONTEXT Context = KeGetCurrentPrcb()->ProcessorState.ContextFrame;
+    PRUNTIME_FUNCTION FunctionEntry;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    ULONG64 ImageBase, EstablisherFrame;
+    ULONG64 LastRsp = 0;
+    PVOID HandlerData;
+    BOOLEAN InSystem;
+    ULONG i;
+
+    for (i = 0; i < Count; i++)
+    {
+        if (Context.Rsp < (ULONG64)MmSystemRangeStart ||
+            !MmIsAddressValid((PVOID)Context.Rsp) ||
+            !MmIsAddressValid((PVOID)(Context.Rsp + sizeof(ULONG64) - 1)))
+        {
+            break;
+        }
+
+        /* A frame that does not move the stack would repeat forever */
+        if (i != 0 && Context.Rsp == LastRsp)
+            break;
+        LastRsp = Context.Rsp;
+
+        Frames[i] = (PVOID)Context.Rip;
+
+        /* Dynamic function tables need a lock, so only images are searched */
+        FunctionEntry = NULL;
+        if (Context.Rip >= (ULONG64)MmSystemRangeStart &&
+            KiPcToFileHeader((PVOID)Context.Rip, &LdrEntry, FALSE, &InSystem))
+        {
+            FunctionEntry = RtlLookupFunctionEntry(Context.Rip, &ImageBase, NULL);
+        }
+
+        if (FunctionEntry == NULL)
+        {
+            Context.Rip = *(PULONG64)Context.Rsp;
+            Context.Rsp += sizeof(ULONG64);
+        }
+        else
+        {
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+                             ImageBase,
+                             Context.Rip,
+                             FunctionEntry,
+                             &Context,
+                             &HandlerData,
+                             &EstablisherFrame,
+                             NULL);
+        }
+
+        /* Stop once the walk reaches user mode */
+        if (Context.Rip != 0 && Context.Rip < (ULONG64)MmSystemRangeStart)
+        {
+            i++;
+            break;
+        }
+    }
+
+    return i;
+}
+#endif
+
+/**
+ * @brief
+ * Prints the bug checking thread's call stack on the blue screen, as
+ * module+offset, three frames to a line.
+ */
+static
+VOID
+KiDisplayBugCheckBackTrace(VOID)
+{
+    PVOID Frames[18];
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    CHAR Line[96];
+    CHAR Entry[32];
+    CHAR Name[16];
+    BOOLEAN InSystem;
+    ULONG Count, i;
+    SIZE_T Used;
+
+#ifdef _M_AMD64
+    Count = KiWalkBugCheckStack(Frames, RTL_NUMBER_OF(Frames));
+#else
+    /* Skip this routine so the trace starts at the bug check itself */
+    Count = RtlCaptureStackBackTrace(1, RTL_NUMBER_OF(Frames), Frames, NULL);
+#endif
+    if (Count == 0)
+    {
+        InbvDisplayString("Stack: unavailable\r\n\r\n");
+        return;
+    }
+
+    InbvDisplayString("Stack:\r\n");
+
+    Line[0] = ANSI_NULL;
+    for (i = 0; i < Count; i++)
+    {
+        if ((ULONG_PTR)Frames[i] > (ULONG_PTR)MmHighestUserAddress &&
+            KiPcToFileHeader(Frames[i], &LdrEntry, FALSE, &InSystem))
+        {
+            KeBugCheckUnicodeToAnsi(&LdrEntry->BaseDllName, Name, sizeof(Name));
+            RtlStringCbPrintfA(Entry,
+                               sizeof(Entry),
+                               "%s+0x%Ix",
+                               Name,
+                               (ULONG_PTR)Frames[i] - (ULONG_PTR)LdrEntry->DllBase);
+        }
+        else
+        {
+            RtlStringCbPrintfA(Entry, sizeof(Entry), "%p", Frames[i]);
+        }
+
+        /* Pad all but the last column so the frames line up */
+        Used = strlen(Line);
+        RtlStringCbPrintfA(Line + Used,
+                           sizeof(Line) - Used,
+                           ((i % 3) == 2 || i == Count - 1) ? "  %s" : "  %-24s",
+                           Entry);
+
+        if ((i % 3) == 2 || i == Count - 1)
+        {
+            RtlStringCbCatA(Line, sizeof(Line), "\r\n");
+            InbvDisplayString(Line);
+            Line[0] = ANSI_NULL;
+        }
+    }
+
+    InbvDisplayString("\r\n");
+}
+
 VOID
 NTAPI
 KiDisplayBlueScreen(IN ULONG MessageId,
@@ -706,6 +851,8 @@ KiDisplayBlueScreen(IN ULONG MessageId,
                        (PVOID)KiBugCheckData[3],
                        (PVOID)KiBugCheckData[4]);
     InbvDisplayString(AnsiName);
+
+    KiDisplayBugCheckBackTrace();
 
     /* Check if we have a driver*/
     if (KiBugCheckDriver)
