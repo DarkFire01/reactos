@@ -279,6 +279,35 @@ UnmapViewOfFile(LPCVOID lpBaseAddress)
 /*
  * @implemented
  */
+BOOL
+WINAPI
+UnmapViewOfFileEx(
+    _In_ PVOID BaseAddress,
+    _In_ ULONG UnmapFlags)
+{
+    NTSTATUS Status;
+
+    Status = NtUnmapViewOfSectionEx(NtCurrentProcess(), BaseAddress, UnmapFlags);
+
+    /* A secure memory cache can pin the view; flushing it lets the unmap through */
+    if (Status == STATUS_INVALID_PAGE_PROTECTION &&
+        RtlFlushSecureMemoryCache(BaseAddress, 0))
+    {
+        Status = NtUnmapViewOfSectionEx(NtCurrentProcess(), BaseAddress, UnmapFlags);
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
 HANDLE
 NTAPI
 OpenFileMappingA(IN DWORD dwDesiredAccess,

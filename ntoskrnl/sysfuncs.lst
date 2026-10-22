@@ -295,3 +295,4 @@ NtQueryPortInformationProcess 0
 NtGetCurrentProcessorNumber 0
 NtWaitForMultipleObjects32 5
 NtRemoveIoCompletionEx 6
+NtUnmapViewOfSectionEx 3

@@ -4266,9 +4266,43 @@ NTAPI
 NtUnmapViewOfSection(IN HANDLE ProcessHandle,
                      IN PVOID BaseAddress)
 {
+    return NtUnmapViewOfSectionEx(ProcessHandle, BaseAddress, 0);
+}
+
+#ifndef MEM_UNMAP_WITH_TRANSIENT_BOOST
+#define MEM_UNMAP_WITH_TRANSIENT_BOOST 0x00000001
+#endif
+
+/**
+ * @brief
+ * Unmaps a view of a section from a process.
+ *
+ * @param[in] ProcessHandle
+ * The process the view is mapped in.
+ *
+ * @param[in] BaseAddress
+ * The base address of the view.
+ *
+ * @param[in] Flags
+ * MEM_UNMAP_WITH_TRANSIENT_BOOST, a scheduling hint that is accepted and not acted on.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INVALID_PARAMETER_3 for unknown flags,
+ * STATUS_NOT_MAPPED_VIEW or the status of referencing the process.
+ */
+NTSTATUS
+NTAPI
+NtUnmapViewOfSectionEx(
+    _In_ HANDLE ProcessHandle,
+    _In_opt_ PVOID BaseAddress,
+    _In_ ULONG Flags)
+{
     PEPROCESS Process;
     NTSTATUS Status;
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+
+    if (Flags & ~MEM_UNMAP_WITH_TRANSIENT_BOOST)
+        return STATUS_INVALID_PARAMETER_3;
 
     /* Don't allowing mapping kernel views */
     if ((PreviousMode == UserMode) && (BaseAddress > MM_HIGHEST_USER_ADDRESS))
