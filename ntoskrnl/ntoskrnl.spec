@@ -1725,6 +1725,7 @@
 @ cdecl strcat_s()
 @ cdecl strcpy_s()
 @ cdecl strncpy_s()
+@ cdecl memmove_s()
 @ cdecl strnlen()
 @ cdecl -arch=i386 _chkstk()
 @ cdecl strtok_s()
@@ -1735,7 +1736,13 @@
 @ cdecl wcsnlen()
 
 # Errata Manager
+@ cdecl _itoa_s()
+@ cdecl _ltoa_s()
+@ cdecl _snwprintf_s()
+@ cdecl _vsnprintf_s()
+@ cdecl _vsnwprintf_s()
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
+@ cdecl wcsncat_s()
 @ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
 @ stdcall -version=0x601+ EmProviderDeregister(ptr)
 @ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
@@ -2023,6 +2030,7 @@
 # Stubs
 @ stdcall KeQueryPrcbAddress()
 @ stdcall ObGetFilterVersion()
+@ cdecl swprintf_s()
 @ stdcall ObRegisterCallbacks()
 @ stdcall ObUnRegisterCallbacks()
 @ stdcall PsAcquireProcessExitSynchronization()
