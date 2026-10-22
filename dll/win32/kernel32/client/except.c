@@ -781,6 +781,72 @@ SetErrorMode(IN UINT uMode)
     return PrevErrMode;
 }
 
+/* The TEB keeps each SEM_ flag in its own RTL_SEM_ bit */
+static
+DWORD
+BasepRtlToWin32ErrorMode(
+    _In_ ULONG RtlMode)
+{
+    DWORD Mode = 0;
+
+    if (RtlMode & RTL_SEM_FAILCRITICALERRORS)
+        Mode |= SEM_FAILCRITICALERRORS;
+    if (RtlMode & RTL_SEM_NOGPFAULTERRORBOX)
+        Mode |= SEM_NOGPFAULTERRORBOX;
+    if (RtlMode & RTL_SEM_NOALIGNMENTFAULTEXCEPT)
+        Mode |= SEM_NOOPENFILEERRORBOX;
+
+    return Mode;
+}
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+GetThreadErrorMode(VOID)
+{
+    return BasepRtlToWin32ErrorMode(RtlGetThreadErrorMode());
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+SetThreadErrorMode(
+    _In_ DWORD dwNewMode,
+    _Out_opt_ LPDWORD lpOldMode)
+{
+    ULONG RtlMode = 0, OldRtlMode;
+    NTSTATUS Status;
+
+    if (dwNewMode & ~(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (dwNewMode & SEM_FAILCRITICALERRORS)
+        RtlMode |= RTL_SEM_FAILCRITICALERRORS;
+    if (dwNewMode & SEM_NOGPFAULTERRORBOX)
+        RtlMode |= RTL_SEM_NOGPFAULTERRORBOX;
+    if (dwNewMode & SEM_NOOPENFILEERRORBOX)
+        RtlMode |= RTL_SEM_NOALIGNMENTFAULTEXCEPT;
+
+    Status = RtlSetThreadErrorMode(RtlMode, &OldRtlMode);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    if (lpOldMode)
+        *lpOldMode = BasepRtlToWin32ErrorMode(OldRtlMode);
+
+    return TRUE;
+}
+
 /*
  * @implemented
  */
