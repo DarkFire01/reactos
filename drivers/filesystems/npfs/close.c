@@ -45,6 +45,10 @@ NpCommonClose(IN PDEVICE_OBJECT DeviceObject,
     {
         --NpVcb->ReferenceCount;
     }
+    else if (NodeTypeCode == NPFS_NTC_PREFIX)
+    {
+        NpDereferencePrefix((PNP_PREFIX)Fcb);
+    }
 
     NpReleaseVcb();
     NpCompleteDeferredIrps(&DeferredList);

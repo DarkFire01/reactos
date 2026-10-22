@@ -58,6 +58,7 @@
 #define NPFS_GLOBAL_TAG         'gFpN'
 #define NPFS_CLIENT_INFO_TAG    'iFpN'
 #define NPFS_NAME_BLOCK_TAG     'nFpN'
+#define NPFS_PREFIX_TAG         'pFpN'
 #define NPFS_QUERY_TEMPLATE_TAG 'qFpN'
 #define NPFS_DATA_ENTRY_TAG     'rFpN'
 #define NPFS_CLIENT_SEC_CTX_TAG 'sFpN'
@@ -112,6 +113,7 @@
 /* Node Type Codes for NPFS */
 #define NPFS_NTC_VCB            1
 #define NPFS_NTC_ROOT_DCB       2
+#define NPFS_NTC_PREFIX         3
 #define NPFS_NTC_FCB            4
 #define NPFS_NTC_CCB            6
 #define NPFS_NTC_NONPAGED_CCB   7
@@ -184,8 +186,8 @@ typedef struct _NP_EVENT_BUFFER
 typedef struct _NP_ROOT_DCB_CCB
 {
     NODE_TYPE_CODE NodeType;
-    PVOID Unknown;
-    ULONG Unknown2;
+    PUNICODE_STRING SearchExpression;
+    ULONG Index;
 } NP_ROOT_DCB_CCB, *PNP_ROOT_DCB_FCB;
 
 /* The header that both FCB and DCB share */
@@ -246,6 +248,28 @@ typedef struct _NP_FCB
 } NP_FCB, *PNP_FCB;
 
 C_ASSERT(FIELD_OFFSET(NP_FCB, PrefixTableEntry) == FIELD_OFFSET(NP_DCB, PrefixTableEntry));
+
+/*
+ * A protected name prefix, what a FILE_DIRECTORY_FILE create below the root makes.
+ * Pipes named under it need FILE_ADD_FILE on its security descriptor, and prefixes
+ * below it FILE_ADD_SUBDIRECTORY. It lives as long as handles are open to it.
+ */
+typedef struct _NP_PREFIX
+{
+    /* Common Header; CurrentInstances counts the open handles, ParentDcb is the enclosing prefix */
+    NP_CB_HEADER;
+
+    LIST_ENTRY Reserved[3];
+#ifndef _WIN64
+    ULONG Pad;
+#endif
+
+    /* Common Footer */
+    NP_CB_FOOTER;
+} NP_PREFIX, *PNP_PREFIX;
+
+C_ASSERT(FIELD_OFFSET(NP_PREFIX, PrefixTableEntry) == FIELD_OFFSET(NP_FCB, PrefixTableEntry));
+C_ASSERT(FIELD_OFFSET(NP_PREFIX, SecurityDescriptor) == FIELD_OFFSET(NP_FCB, SecurityDescriptor));
 
 /* The nonpaged portion of the CCB */
 typedef struct _NP_NONPAGED_CCB
@@ -578,6 +602,41 @@ NpFindRelativePrefix(IN PNP_DCB Dcb,
                      IN ULONG CaseInsensitiveIndex,
                      IN PUNICODE_STRING Prefix,
                      OUT PNP_FCB *FoundFcb);
+
+IO_STATUS_BLOCK
+NTAPI
+NpOpenNamedPipePrefix(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PACCESS_STATE AccessState,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ KPROCESSOR_MODE PreviousMode);
+
+IO_STATUS_BLOCK
+NTAPI
+NpCreateNamedPipePrefix(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PACCESS_STATE AccessState,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ KPROCESSOR_MODE PreviousMode,
+    _In_ ULONG Disposition);
+
+VOID
+NTAPI
+NpDereferencePrefix(
+    _In_ PNP_PREFIX Prefix);
+
+NTSTATUS
+NTAPI
+NpCheckAddToPrefix(
+    _In_ PNP_FCB Node,
+    _In_ PACCESS_STATE AccessState,
+    _In_ KPROCESSOR_MODE PreviousMode);
+
+NTSTATUS
+NTAPI
+NpFsdDirectoryControl(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp);
 
 VOID
 NTAPI

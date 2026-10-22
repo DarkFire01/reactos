@@ -29,7 +29,6 @@ NpCheckForNotify(IN PNP_DCB Dcb,
     ListHead = &Dcb->NotifyList;
     for (i = 0; i < 2; i++)
     {
-        ASSERT(IsListEmpty(ListHead));
         while (!IsListEmpty(ListHead))
         {
             NextEntry = RemoveHeadList(ListHead);
@@ -422,6 +421,24 @@ NpFsdCreate(IN PDEVICE_OBJECT DeviceObject,
                                                 FileObject,
                                                 DesiredAccess,
                                                 &DeferredList);
+        goto Quickie;
+    }
+
+    /* A directory create below the root opens or makes a protected prefix */
+    if (IoStack->Parameters.Create.Options & FILE_DIRECTORY_FILE)
+    {
+        ULONG Disposition = (IoStack->Parameters.Create.Options >> 24) & 0xFF;
+        PACCESS_STATE AccessState = IoStack->Parameters.Create.SecurityContext->AccessState;
+        KPROCESSOR_MODE AccessMode = (IoStack->Flags & SL_FORCE_ACCESS_CHECK) ? UserMode : Irp->RequestorMode;
+
+        if (RelatedFileObject)
+            IoStatus.Status = STATUS_OBJECT_NAME_INVALID;
+        else if (Disposition == FILE_OPEN)
+            IoStatus = NpOpenNamedPipePrefix(FileObject, AccessState, DesiredAccess, AccessMode);
+        else if (Disposition == FILE_CREATE || Disposition == FILE_OPEN_IF)
+            IoStatus = NpCreateNamedPipePrefix(FileObject, AccessState, DesiredAccess, AccessMode, Disposition);
+        else
+            IoStatus.Status = STATUS_OBJECT_NAME_INVALID;
         goto Quickie;
     }
 
@@ -858,6 +875,21 @@ NpFsdCreateNamedPipe(IN PDEVICE_OBJECT DeviceObject,
 
     if (Prefix.Length)
     {
+        /* A pipe under a protected prefix needs FILE_ADD_FILE on it */
+        if (Fcb->NodeType == NPFS_NTC_PREFIX)
+        {
+            IoStatus.Status = NpCheckAddToPrefix(Fcb,
+                                                 IoStack->Parameters.CreatePipe.SecurityContext->AccessState,
+                                                 IoStack->Flags & SL_FORCE_ACCESS_CHECK ?
+                                                 UserMode : Irp->RequestorMode);
+            if (!NT_SUCCESS(IoStatus.Status))
+            {
+                goto Quickie;
+            }
+
+            Fcb = (PNP_FCB)NpVcb->RootDcb;
+        }
+
         if (Fcb->NodeType == NPFS_NTC_ROOT_DCB)
         {
             IoStatus.Status = NpCreateNewNamedPipe((PNP_DCB)Fcb,
