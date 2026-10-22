@@ -1477,6 +1477,7 @@
 @ stdcall TryEnterCriticalSection(ptr) ntdll.RtlTryEnterCriticalSection
 @ stdcall -version=0x600+ TrySubmitThreadpoolCallback(ptr ptr ptr)
 @ stdcall TzSpecificLocalTimeToSystemTime(ptr ptr ptr)
+@ stdcall -version=0x602+ UnmapViewOfFileEx(ptr long)
 @ stdcall -stub UTRegister(long str str str ptr ptr ptr)
 @ stdcall -stub UTUnRegister(long)
 @ stdcall UnhandledExceptionFilter(ptr)

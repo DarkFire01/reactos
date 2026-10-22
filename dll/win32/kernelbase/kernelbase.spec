@@ -1673,7 +1673,7 @@
 @ stdcall UnlockFileEx(long long long long ptr)
 @ stdcall UnmapViewOfFile(ptr)
 @ stdcall -stub -version=0xA00+ UnmapViewOfFile2(long ptr long)
-@ stdcall -stub -version=0x602+ UnmapViewOfFileEx(ptr long)
+@ stdcall -version=0x602+ UnmapViewOfFileEx(ptr long)
 # @ stub UnregisterBadMemoryNotification
 # @ stub UnregisterGPNotificationInternal
 # @ stub UnregisterStateChangeNotification
