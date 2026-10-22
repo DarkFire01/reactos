@@ -29,6 +29,23 @@ PcGetDeviceProperty(
     return IoGetDeviceProperty(DeviceExtension->PhysicalDeviceObject, DeviceProperty, BufferLength, PropertyBuffer, ResultLength);
 }
 
+/* Hands back the PDO given to PcAddAdapterDevice, without taking a reference */
+NTSTATUS
+NTAPI
+PcGetPhysicalDeviceObject(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Out_ PDEVICE_OBJECT *PhysicalDeviceObject)
+{
+    PPCLASS_DEVICE_EXTENSION DeviceExtension;
+
+    if (DeviceObject == NULL || PhysicalDeviceObject == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    DeviceExtension = (PPCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    *PhysicalDeviceObject = DeviceExtension->PhysicalDeviceObject;
+    return STATUS_SUCCESS;
+}
+
 ULONGLONG
 NTAPI
 PcGetTimeInterval(

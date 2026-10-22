@@ -2442,6 +2442,11 @@ PcGetDeviceProperty(
   OUT PULONG ResultLength);
 
 PORTCLASSAPI NTSTATUS NTAPI
+PcGetPhysicalDeviceObject(
+  _In_ PDEVICE_OBJECT DeviceObject,
+  _Out_ PDEVICE_OBJECT *PhysicalDeviceObject);
+
+PORTCLASSAPI NTSTATUS NTAPI
 PcCompletePendingPropertyRequest(
   IN PPCPROPERTY_REQUEST PropertyRequest,
   IN NTSTATUS NtStatus);
