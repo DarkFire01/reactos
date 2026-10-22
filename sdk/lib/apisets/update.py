@@ -16,6 +16,7 @@ REDIRECT_HOSTS = {
     'kernel.appcore.dll': 'kernel32.dll',
     'ucrtbase.dll': 'msvcrt.dll',
     'winmmbase.dll': 'winmm.dll',
+    'sechost.dll': 'advapi32.dll',
     'gdi32full.dll': 'gdi32.dll'
 }
 
