@@ -1,0 +1,5 @@
+@ stdcall Tbsi_Context_Create(ptr ptr)
+@ stdcall Tbsi_GetDeviceInfo(long ptr)
+@ stdcall Tbsip_Cancel_Commands(ptr)
+@ stdcall Tbsip_Context_Close(ptr)
+@ stdcall Tbsip_Submit_Command(ptr long long ptr long ptr ptr)
