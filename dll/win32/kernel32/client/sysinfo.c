@@ -14,6 +14,7 @@
 /* INCLUDES *******************************************************************/
 
 #include <k32.h>
+#include <appmodel.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -763,6 +764,42 @@ GetCurrentApplicationUserModelId(
 
 /**
  * @brief
+ * Gets the application user model ID of a process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_APPLICATION for any process that may be queried, since no
+ * process here runs as a packaged application.
+ */
+LONG
+WINAPI
+GetApplicationUserModelId(
+    _In_ HANDLE hProcess,
+    _Inout_ UINT32 *applicationUserModelIdLength,
+    _Out_writes_opt_(*applicationUserModelIdLength) PWSTR applicationUserModelId)
+{
+    PROCESS_BASIC_INFORMATION BasicInfo;
+    NTSTATUS Status;
+
+    if (!hProcess || !applicationUserModelIdLength ||
+        (*applicationUserModelIdLength && !applicationUserModelId))
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    /* A handle that does not name a process the caller may query is still an error */
+    Status = NtQueryInformationProcess(hProcess,
+                                       ProcessBasicInformation,
+                                       &BasicInfo,
+                                       sizeof(BasicInfo),
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return BaseSetLastNTError(Status);
+
+    return APPMODEL_ERROR_NO_APPLICATION;
+}
+
+/**
+ * @brief
  * Looks up the package identity of a process.
  *
  * @return
@@ -798,14 +835,49 @@ BasepIsAsciiAlphaNumeric(
 
 /**
  * @brief
- * Checks that a package family name has the Name_PublisherId form.
+ * Checks whether a package name is a reserved device name such as CON or LPT1.
+ * As with file names, only the part ahead of the first period counts.
+ */
+static
+BOOLEAN
+BasepIsReservedPackageName(
+    _In_reads_(Length) PCWCH Name,
+    _In_ SIZE_T Length)
+{
+    static const PCWSTR DeviceNames[] = { L"CON", L"PRN", L"AUX", L"NUL" };
+    SIZE_T Stem = 0;
+    ULONG Index;
+
+    while (Stem < Length && Name[Stem] != L'.')
+        Stem++;
+
+    if (Stem == 3)
+    {
+        for (Index = 0; Index < RTL_NUMBER_OF(DeviceNames); Index++)
+        {
+            if (!_wcsnicmp(Name, DeviceNames[Index], 3))
+                return TRUE;
+        }
+    }
+    else if (Stem == 4 && Name[3] >= L'1' && Name[3] <= L'9')
+    {
+        return (!_wcsnicmp(Name, L"COM", 3) || !_wcsnicmp(Name, L"LPT", 3));
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Checks that a package family name has the Name_PublisherId form. Windows only
+ * validates the name ahead of the first underscore, not the publisher ID.
  */
 static
 BOOLEAN
 BasepIsPackageFamilyName(
     _In_ PCWSTR FamilyName)
 {
-    PCWSTR Separator = wcsrchr(FamilyName, L'_');
+    PCWSTR Separator = wcschr(FamilyName, L'_');
     SIZE_T NameLength;
     SIZE_T Index;
 
@@ -813,7 +885,7 @@ BasepIsPackageFamilyName(
         return FALSE;
 
     NameLength = Separator - FamilyName;
-    if (NameLength < 3 || NameLength > 50 || wcslen(Separator + 1) != 13)
+    if (NameLength < 3 || NameLength > 50 || FamilyName[NameLength - 1] == L'.')
         return FALSE;
 
     for (Index = 0; Index < NameLength; Index++)
@@ -825,13 +897,7 @@ BasepIsPackageFamilyName(
         }
     }
 
-    for (Index = 1; Index <= 13; Index++)
-    {
-        if (!BasepIsAsciiAlphaNumeric(Separator[Index]))
-            return FALSE;
-    }
-
-    return TRUE;
+    return !BasepIsReservedPackageName(FamilyName, NameLength);
 }
 
 /**
@@ -903,6 +969,45 @@ GetPackageId(
 
 /**
  * @brief
+ * Lists the installed packages of a package family that match a set of filters.
+ *
+ * @return
+ * ERROR_SUCCESS with no packages for a well formed family name, since no
+ * packages are ever installed here.
+ */
+LONG
+WINAPI
+FindPackagesByPackageFamily(
+    _In_ PCWSTR packageFamilyName,
+    _In_ UINT32 packageFilters,
+    _Inout_ UINT32 *count,
+    _Out_writes_opt_(*count) PWSTR *packageFullNames,
+    _Inout_ UINT32 *bufferLength,
+    _Out_writes_opt_(*bufferLength) WCHAR *buffer,
+    _Out_writes_opt_(*count) UINT32 *packageProperties)
+{
+    UNREFERENCED_PARAMETER(packageProperties);
+
+    if (!packageFamilyName || !packageFilters || !count || (*count && !packageFullNames) ||
+        (packageFullNames && !buffer) || !bufferLength || (*bufferLength && !buffer))
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    /* Windows answers an empty family name this way rather than calling it malformed */
+    if (*packageFamilyName == UNICODE_NULL)
+        return ERROR_MORE_DATA;
+
+    if (!BasepIsPackageFamilyName(packageFamilyName))
+        return ERROR_INVALID_PARAMETER;
+
+    *count = 0;
+    *bufferLength = 0;
+    return ERROR_SUCCESS;
+}
+
+/**
+ * @brief
  * Lists the installed packages of a package family.
  *
  * @return
@@ -918,18 +1023,13 @@ GetPackagesByPackageFamily(
     _Inout_ UINT32 *bufferLength,
     _Out_writes_opt_(*bufferLength) WCHAR *buffer)
 {
-    if (!packageFamilyName || !count || (*count && !packageFullNames) ||
-        (packageFullNames && !buffer) || !bufferLength || (*bufferLength && !buffer))
-    {
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    if (!BasepIsPackageFamilyName(packageFamilyName))
-        return ERROR_INVALID_PARAMETER;
-
-    *count = 0;
-    *bufferLength = 0;
-    return ERROR_SUCCESS;
+    return FindPackagesByPackageFamily(packageFamilyName,
+                                       PACKAGE_FILTER_HEAD | PACKAGE_FILTER_DIRECT,
+                                       count,
+                                       packageFullNames,
+                                       bufferLength,
+                                       buffer,
+                                       NULL);
 }
 
 /**

@@ -558,62 +558,127 @@ static CRITICAL_SECTION_DEBUG critsect_debug =
 static CRITICAL_SECTION locale_section = { &critsect_debug, -1, 0, 0, 0, 0 };
 
 #ifdef __REACTOS__
-/* Copied from advapi32 implementation */
-
-/**********************************************************************
- *	LoadStringW		(USER32.@)
- *	Synced with Wine Staging 1.7.55
+/**
+ * @brief
+ * Locates a string in the RT_STRING table of a module.
+ *
+ * @return
+ * The length prefixed entry, or NULL with the last error set by the resource lookup.
  */
-INT WINAPI LoadStringW( HINSTANCE instance, UINT resource_id,
-                            LPWSTR buffer, INT buflen )
+static
+PCWSTR
+BasepFindStringEntry(
+    _In_opt_ HINSTANCE hInstance,
+    _In_ UINT uID)
 {
-    HGLOBAL hmem;
-    HRSRC hrsrc;
-    WCHAR *p;
-    int string_num;
-    int i;
+    HRSRC hResInfo;
+    HGLOBAL hResData;
+    PCWSTR Entry;
+    UINT Skip;
 
-    TRACE("instance = %p, id = %04x, buffer = %p, length = %d\n",
-          instance, resource_id, buffer, buflen);
+    /* Strings are grouped sixteen to a block, and block N holds IDs (N - 1) * 16 onwards */
+    hResInfo = FindResourceW(hInstance,
+                             MAKEINTRESOURCEW((LOWORD(uID) >> 4) + 1),
+                             (LPCWSTR)RT_STRING);
+    if (!hResInfo)
+        return NULL;
 
-    if(buffer == NULL)
+    hResData = LoadResource(hInstance, hResInfo);
+    if (!hResData)
+        return NULL;
+
+    Entry = LockResource(hResData);
+    for (Skip = uID & 0xF; Skip > 0; Skip--)
+        Entry += *Entry + 1;
+
+    return Entry;
+}
+
+/**
+ * @brief
+ * Loads a string resource. A zero sized buffer receives a read-only pointer to the
+ * resource itself instead of a copy.
+ *
+ * @return
+ * The length of the string in characters, not counting the terminator.
+ */
+INT
+WINAPI
+LoadStringW(
+    _In_opt_ HINSTANCE hInstance,
+    _In_ UINT uID,
+    _Out_writes_to_(cchBufferMax, return + 1) LPWSTR lpBuffer,
+    _In_ INT cchBufferMax)
+{
+    PCWSTR Entry;
+    INT Length;
+
+    if (!lpBuffer)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
+    Entry = BasepFindStringEntry(hInstance, uID);
+    if (!Entry)
+    {
+        if (cchBufferMax > 0)
+            *lpBuffer = UNICODE_NULL;
+        return 0;
+    }
+
+    if (cchBufferMax == 0)
+    {
+        *(PCWSTR *)lpBuffer = Entry + 1;
+        return *Entry;
+    }
+
+    Length = min((INT)*Entry, cchBufferMax - 1);
+    if (Length < 0)
         return 0;
 
-    /* Use loword (incremented by 1) as resourceid */
-    hrsrc = FindResourceW( instance, MAKEINTRESOURCEW((LOWORD(resource_id) >> 4) + 1),
-                           (LPWSTR)RT_STRING );
-    if (!hrsrc) return 0;
-    hmem = LoadResource( instance, hrsrc );
-    if (!hmem) return 0;
+    RtlCopyMemory(lpBuffer, Entry + 1, Length * sizeof(*lpBuffer));
+    lpBuffer[Length] = UNICODE_NULL;
+    return Length;
+}
 
-    p = LockResource(hmem);
-    string_num = resource_id & 0x000f;
-    for (i = 0; i < string_num; i++)
-	p += *p + 1;
+/**
+ * @brief
+ * Loads a string resource and converts it to the ANSI code page.
+ *
+ * @return
+ * The number of bytes copied, not counting the terminator. A buffer without room
+ * for the terminator receives nothing and gives back cchBufferMax - 1.
+ */
+INT
+WINAPI
+LoadStringA(
+    _In_opt_ HINSTANCE hInstance,
+    _In_ UINT uID,
+    _Out_writes_to_(cchBufferMax, return + 1) LPSTR lpBuffer,
+    _In_ INT cchBufferMax)
+{
+    PCWSTR Entry;
+    ULONG Written;
 
-    TRACE("strlen = %d\n", (int)*p );
-
-    /*if buflen == 0, then return a read-only pointer to the resource itself in buffer
-    it is assumed that buffer is actually a (LPWSTR *) */
-    if(buflen == 0)
+    Entry = BasepFindStringEntry(hInstance, uID);
+    if (!Entry)
     {
-        *((LPWSTR *)buffer) = p + 1;
-        return *p;
+        if (cchBufferMax > 0)
+            *lpBuffer = ANSI_NULL;
+        return 0;
     }
 
-    i = min(buflen - 1, *p);
-    if (i > 0) {
-	memcpy(buffer, p + 1, i * sizeof (WCHAR));
-        buffer[i] = 0;
-    } else {
-	if (buflen > 1) {
-            buffer[0] = 0;
-	    return 0;
-	}
-    }
+    if (cchBufferMax <= 0)
+        return cchBufferMax - 1;
 
-    TRACE("%s loaded !\n", debugstr_w(buffer));
-    return i;
+    RtlUnicodeToMultiByteN(lpBuffer,
+                           cchBufferMax - 1,
+                           &Written,
+                           Entry + 1,
+                           *Entry * sizeof(*Entry));
+    lpBuffer[Written] = ANSI_NULL;
+    return Written;
 }
 #endif
 
