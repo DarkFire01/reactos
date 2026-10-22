@@ -759,6 +759,13 @@ ExpInitSystemPhase1(VOID)
         return FALSE;
     }
 
+    /* Initialize worker factories */
+    if (ExpInitializeWorkerFactoryImplementation() == FALSE)
+    {
+        DPRINT1("Executive: Worker factory initialization failed\n");
+        return FALSE;
+    }
+
     /* Initialize Win32K */
     if (ExpWin32kInit() == FALSE)
     {
