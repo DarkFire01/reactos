@@ -79,6 +79,11 @@ private:
     NTSTATUS ResizeBuffer(void);
 
 public:
+    //
+    // The stream's own bus master channel, so render and capture do not share a buffer.
+    //
+    PDMACHANNEL DmaChannel;
+
     /*************************************************************************
      * The following two macros are from STDUNK.H.  DECLARE_STD_UNKNOWN()
      * defines inline IUnknown implementations that use CUnknown's aggregation
