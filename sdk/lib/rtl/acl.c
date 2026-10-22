@@ -305,9 +305,9 @@ NTAPI
 RtlAddMandatoryAce(IN OUT PACL Acl,
                    IN ULONG Revision,
                    IN ULONG Flags,
-                   IN ULONG MandatoryFlags,
+                   IN PSID LabelSid,
                    IN UCHAR AceType,
-                   IN PSID LabelSid)
+                   IN ULONG MandatoryFlags)
 {
     PAGED_CODE_RTL();
 

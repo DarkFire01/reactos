@@ -726,18 +726,18 @@ SeQuerySecurityDescriptorInfo(
             RtlAddMandatoryAce(LabelSacl,
                                ACL_REVISION,
                                LabelAce->Header.AceFlags,
-                               LabelAce->Mask,
+                               (PSID)&LabelAce->SidStart,
                                SYSTEM_MANDATORY_LABEL_ACE_TYPE,
-                               (PSID)&LabelAce->SidStart);
+                               LabelAce->Mask);
         }
         else
         {
             RtlAddMandatoryAce(LabelSacl,
                                ACL_REVISION,
                                0,
-                               SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+                               SeMediumMandatorySid,
                                SYSTEM_MANDATORY_LABEL_ACE_TYPE,
-                               SeMediumMandatorySid);
+                               SYSTEM_MANDATORY_LABEL_NO_WRITE_UP);
         }
 
         Sacl = LabelSacl;
