@@ -37,7 +37,13 @@ RtlPcToFileHeader(
     KIRQL OldIrql;
 
     /* Get the base for this file */
-    if ((ULONG_PTR)PcValue > (ULONG_PTR)MmHighestUserAddress)
+    if ((ULONG_PTR)PcValue > (ULONG_PTR)MmHighestUserAddress &&
+        (KiBugCheckData[0] != 0 || KeGetCurrentIrql() > DISPATCH_LEVEL))
+    {
+        /* Bug checks and callers above DISPATCH_LEVEL walk the list without the lock */
+        *BaseOfImage = KiPcToFileHeader(PcValue, &LdrEntry, FALSE, &InSystem);
+    }
+    else if ((ULONG_PTR)PcValue > (ULONG_PTR)MmHighestUserAddress)
     {
         /* Acquire the loaded module spinlock */
         KeAcquireSpinLock(&PsLoadedModuleSpinLock, &OldIrql);
