@@ -4551,6 +4551,44 @@ KsCreateTopologyNode(
   _In_ ACCESS_MASK DesiredAccess,
   _Out_ PHANDLE NodeHandle);
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreateAllocator2(
+  _In_ HANDLE ConnectionHandle,
+  _In_ PKSALLOCATOR_FRAMING AllocatorFraming,
+  _Out_ PHANDLE AllocatorHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreateClock2(
+  _In_ HANDLE ConnectionHandle,
+  _In_ PKSCLOCK_CREATE ClockCreate,
+  _Out_ PHANDLE ClockHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreatePin2(
+  _In_ HANDLE FilterHandle,
+  _In_ PKSPIN_CONNECT Connect,
+  _In_ ACCESS_MASK DesiredAccess,
+  _Out_ PHANDLE ConnectionHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreateTopologyNode2(
+  _In_ HANDLE ParentHandle,
+  _In_ PKSNODE_CREATE NodeCreate,
+  _In_ ACCESS_MASK DesiredAccess,
+  _Out_ PHANDLE NodeHandle);
+
 #endif
 
 #endif /* _NTDDK_ */
