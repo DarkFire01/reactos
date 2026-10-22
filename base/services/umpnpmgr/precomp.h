@@ -34,6 +34,15 @@
 #include <winsvc_undoc.h>
 #include <pnp_s.h>
 
+/* Windows 7 device list filters, accepted whatever version the caller targets */
+#ifndef CM_GETIDLIST_FILTER_CLASS
+#define CM_GETIDLIST_FILTER_TRANSPORTRELATIONS 0x00000080
+#define CM_GETIDLIST_FILTER_PRESENT            0x00000100
+#define CM_GETIDLIST_FILTER_CLASS              0x00000200
+#undef CM_GETIDLIST_FILTER_BITS
+#define CM_GETIDLIST_FILTER_BITS               0x100003FF
+#endif
+
 
 #define LOGCONF_NAME_BUFFER_SIZE 32
 

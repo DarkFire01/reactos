@@ -60,6 +60,15 @@ WINE_DEFAULT_DEBUG_CHANNEL(setupapi);
 
 #include "resource.h"
 
+/* Windows 7 device list filters, accepted whatever version the caller targets */
+#ifndef CM_GETIDLIST_FILTER_CLASS
+#define CM_GETIDLIST_FILTER_TRANSPORTRELATIONS 0x00000080
+#define CM_GETIDLIST_FILTER_PRESENT            0x00000100
+#define CM_GETIDLIST_FILTER_CLASS              0x00000200
+#undef CM_GETIDLIST_FILTER_BITS
+#define CM_GETIDLIST_FILTER_BITS               0x100003FF
+#endif
+
 #define SETUP_DEVICE_INFO_SET_MAGIC 0xd00ff057
 #define SETUP_CLASS_IMAGE_LIST_MAGIC 0xd00ff058
 
