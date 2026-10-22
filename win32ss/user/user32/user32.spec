@@ -460,6 +460,7 @@
 @ stdcall IsGUIThread(long)
 @ stdcall IsHungAppWindow(long)
 @ stdcall IsIconic(long)
+@ stdcall -version=0x602+ IsImmersiveProcess(ptr)
 @ stdcall IsMenu(long)
 @ stdcall -stub IsProcess16Bit()
 @ stdcall -version=0x600+ IsProcessDPIAware()

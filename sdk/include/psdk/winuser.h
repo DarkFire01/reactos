@@ -4264,6 +4264,7 @@ typedef struct tagPOINTER_TOUCH_INFO
 
 BOOL WINAPI InitializeTouchInjection(_In_ UINT32 maxCount, _In_ DWORD dwMode);
 BOOL WINAPI InjectTouchInput(_In_ UINT32 count, _In_reads_(count) const POINTER_TOUCH_INFO *contacts);
+BOOL WINAPI IsImmersiveProcess(_In_ HANDLE hProcess);
 
 #endif /* WINVER >= 0x0602 */
 
