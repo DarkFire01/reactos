@@ -182,6 +182,47 @@ memcpy_s(
 
 /**
  * @brief
+ * Moves bytes into a buffer of known size, the two ranges may overlap.
+ *
+ * @param[out] Destination
+ * The buffer to move into.
+ *
+ * @param[in] DestinationSize
+ * Size of @p Destination, in bytes.
+ *
+ * @param[in] Source
+ * The bytes to move.
+ *
+ * @param[in] Count
+ * Number of bytes to move.
+ *
+ * @return
+ * Zero on success, EINVAL or ERANGE otherwise. Unlike memcpy_s, a failure
+ * leaves the destination as it was.
+ */
+errno_t
+__cdecl
+memmove_s(
+    void *Destination,
+    rsize_t DestinationSize,
+    const void *Source,
+    rsize_t Count)
+{
+    if (Count == 0)
+        return 0;
+
+    if (Destination == NULL || Source == NULL)
+        return EINVAL;
+
+    if (DestinationSize < Count)
+        return ERANGE;
+
+    RtlMoveMemory(Destination, Source, Count);
+    return 0;
+}
+
+/**
+ * @brief
  * Appends a string to the one already in a buffer of known size.
  *
  * @param[in,out] Destination

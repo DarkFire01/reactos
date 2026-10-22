@@ -1773,7 +1773,9 @@
 @ cdecl swscanf_s()
 
 @ cdecl -arch=i386 _chkstk()
+@ cdecl _ltoa_s()
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
+@ cdecl wcsncat_s()
 @ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
 @ stdcall -version=0x601+ EmProviderDeregister(ptr)
 @ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
@@ -1999,6 +2001,7 @@
 @ cdecl sqrt()
 @ stdcall KeQueryPrcbAddress()
 @ stdcall ObGetFilterVersion()
+@ cdecl swprintf_s()
 @ stdcall ObRegisterCallbacks()
 @ stdcall ObUnRegisterCallbacks()
 @ stdcall PsAcquireProcessExitSynchronization()
