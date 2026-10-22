@@ -17,6 +17,7 @@ list(APPEND SOURCE
     client/job.c
     client/lfile.c
     client/lstring.c
+    client/mmtime.c
     client/pathansi.c
     client/power.c
     client/procansi.c
