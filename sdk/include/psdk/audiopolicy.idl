@@ -25,6 +25,8 @@ import "propidl.idl";
 import "audiosessiontypes.h";
 import "audioclient.idl";
 
+cpp_quote("#define AUDCLNT_S_NO_SINGLE_PROCESS AUDCLNT_SUCCESS(0x00d)")
+
 interface IAudioSessionEvents;
 interface IAudioSessionControl;
 interface IAudioSessionControl2;
@@ -141,7 +143,7 @@ interface IAudioSessionControl2 : IAudioSessionControl
         [out] DWORD *pRetVal
     );
     HRESULT IsSystemSoundsSession(void);
-    HRESULT SetDuckingPreferences(
+    HRESULT SetDuckingPreference(
         [in] BOOL optOut
     );
 };

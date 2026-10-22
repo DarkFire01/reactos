@@ -146,3 +146,27 @@ interface IAudioEndpointVolumeEx : IAudioEndpointVolume
         [out] FLOAT *pflVolumeIncrementdB
     );
 }
+
+[
+    pointer_default(unique),
+    nonextensible,
+    uuid(c02216f6-8c67-4b5b-9d00-d008e73e0064),
+    local,
+    object
+]
+interface IAudioMeterInformation : IUnknown
+{
+    HRESULT GetPeakValue(
+        [out] FLOAT *pfPeak
+    );
+    HRESULT GetMeteringChannelCount(
+        [out] UINT *pnChannelCount
+    );
+    HRESULT GetChannelsPeakValues(
+        [in] UINT32 u32ChannelCount,
+        [out, size_is(u32ChannelCount)] FLOAT *afPeakValues
+    );
+    HRESULT QueryHardwareSupport(
+        [out] DWORD *pdwHardwareSupportMask
+    );
+}
