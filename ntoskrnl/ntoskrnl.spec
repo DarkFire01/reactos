@@ -42,6 +42,7 @@
 @ stdcall CcWaitForCurrentLazyWriterActivity()
 @ stdcall CcZeroData(ptr ptr ptr long)
 @ stdcall CmRegisterCallback(ptr ptr ptr)
+@ stdcall -version=0x600+ CmRegisterCallbackEx(ptr ptr ptr ptr ptr ptr)
 @ stdcall CmUnRegisterCallback(long long)
 @ stdcall DbgBreakPoint()
 @ stdcall DbgBreakPointWithStatus(long)
