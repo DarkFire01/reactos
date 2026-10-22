@@ -20,6 +20,7 @@ list(APPEND SOURCE
     auxiliary/auxMessage.c
     midi/midMessage.c
     midi/modMessage.c
+    midi/stream.c
     mixer/mxdMessage.c
     wave/widMessage.c
     wave/wodMessage.c

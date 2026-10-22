@@ -121,6 +121,13 @@ WdmAudSetMixerDeviceFormatByMMixer(
     IN  DWORD WaveFormatSize);
 
 MMRESULT
+WdmAudSetMidiDeviceFormatByMMixer(
+    _In_ PSOUND_DEVICE_INSTANCE Instance,
+    _In_ DWORD DeviceId,
+    _In_opt_ PWAVEFORMATEX WaveFormat,
+    _In_ DWORD WaveFormatSize);
+
+MMRESULT
 WdmAudQueryMixerInfoByMMixer(
     IN  struct _SOUND_DEVICE_INSTANCE* SoundDeviceInstance,
     IN DWORD DeviceId,

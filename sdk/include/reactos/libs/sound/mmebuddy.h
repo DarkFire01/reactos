@@ -316,6 +316,19 @@ typedef struct _SOUND_DEVICE_INSTANCE
     HANDLE hResetEvent;
     BOOL ResetInProgress;
     BOOL bPaused;
+
+    /* MIDI: requests the device holds, and the status byte output may leave out */
+    DWORD MidiPending;
+    BYTE MidiRunningStatus;
+
+    /* MIDI input: buffers for system exclusive data and the message being put together */
+    LPMIDIHDR MidiInHead;
+    BOOL MidiInStarted;
+    BOOL MidiInSysEx;
+    DWORD MidiInStartTime;
+    BYTE MidiInStatus;
+    BYTE MidiInCount;
+    BYTE MidiInData[2];
 } SOUND_DEVICE_INSTANCE, *PSOUND_DEVICE_INSTANCE;
 
 /* This lives in WAVEHDR.reserved */
@@ -409,6 +422,50 @@ MMRESULT
 MmeSetState(
     IN  DWORD_PTR PrivateHandle,
     IN  BOOL bStart);
+
+/* midi/stream.c */
+
+MMRESULT
+MmePrepareMidiHeader(
+    _In_ DWORD_PTR PrivateHandle,
+    _Inout_ DWORD_PTR Parameter);
+
+MMRESULT
+MmeUnprepareMidiHeader(
+    _In_ DWORD_PTR PrivateHandle,
+    _Inout_ DWORD_PTR Parameter);
+
+MMRESULT
+MmeWriteMidiShort(
+    _In_ DWORD_PTR PrivateHandle,
+    _In_ DWORD Message);
+
+MMRESULT
+MmeWriteMidiLong(
+    _In_ DWORD_PTR PrivateHandle,
+    _Inout_ DWORD_PTR Parameter);
+
+MMRESULT
+MmeResetMidiOutput(
+    _In_ DWORD_PTR PrivateHandle);
+
+MMRESULT
+MmeAddMidiInBuffer(
+    _In_ DWORD_PTR PrivateHandle,
+    _Inout_ DWORD_PTR Parameter);
+
+MMRESULT
+MmeStartMidiInput(
+    _In_ DWORD_PTR PrivateHandle);
+
+MMRESULT
+MmeStopMidiInput(
+    _In_ DWORD_PTR PrivateHandle,
+    _In_ BOOL Reset);
+
+MMRESULT
+MmeCloseMidiDevice(
+    _In_ DWORD_PTR PrivateHandle);
 
 
 #define MmePrepareWaveHeader(private_handle, header) \

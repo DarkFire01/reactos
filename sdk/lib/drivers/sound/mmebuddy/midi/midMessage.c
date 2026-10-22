@@ -70,19 +70,43 @@ midMessage(
 
         case MIDM_CLOSE :
         {
-            Result = MmeCloseDevice(PrivateHandle);
+            Result = MmeCloseMidiDevice(PrivateHandle);
             break;
         }
 
        case MIDM_START :
         {
-            Result = MmeSetState(PrivateHandle, TRUE);
+            Result = MmeStartMidiInput(PrivateHandle);
             break;
         }
 
         case MIDM_STOP :
         {
-            Result = MmeSetState(PrivateHandle, FALSE);
+            Result = MmeStopMidiInput(PrivateHandle, FALSE);
+            break;
+        }
+
+        case MIDM_RESET :
+        {
+            Result = MmeStopMidiInput(PrivateHandle, TRUE);
+            break;
+        }
+
+        case MIDM_PREPARE :
+        {
+            Result = MmePrepareMidiHeader(PrivateHandle, Parameter1);
+            break;
+        }
+
+        case MIDM_UNPREPARE :
+        {
+            Result = MmeUnprepareMidiHeader(PrivateHandle, Parameter1);
+            break;
+        }
+
+        case MIDM_ADDBUFFER :
+        {
+            Result = MmeAddMidiInBuffer(PrivateHandle, Parameter1);
             break;
         }
     }

@@ -110,6 +110,10 @@ MMixerInitialize(
     IN PMIXER_ENUM EnumFunction,
     IN PVOID EnumContext);
 
+VOID
+MMixerUninitialize(
+    _Inout_ PMIXER_CONTEXT MixerContext);
+
 ULONG
 MMixerGetCount(
     IN PMIXER_CONTEXT MixerContext);

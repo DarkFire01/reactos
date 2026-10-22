@@ -1802,7 +1802,7 @@ MMixerSetupFilter(
     /* TODO: apply hacks for Wave source line */
 
     /* activate midi devices */
-    //MMixerInitializeMidiForFilter(MixerContext, MixerList, MixerData, Topology);
+    MMixerInitializeMidiForFilter(MixerContext, MixerList, MixerData, Topology);
 
     /* done */
     return Status;

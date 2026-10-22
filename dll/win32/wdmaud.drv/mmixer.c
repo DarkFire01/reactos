@@ -381,7 +381,12 @@ WdmAudInitUserModeMixer()
 MMRESULT
 WdmAudCleanupByMMixer()
 {
-    /* TODO */
+    /* The next load enumerates the devices again, with the ones that came or went since */
+    if (MMixerLibraryInitialized)
+    {
+        MMixerUninitialize(&MixerContext);
+        MMixerLibraryInitialized = FALSE;
+    }
     return MMSYSERR_NOERROR;
 }
 
@@ -587,8 +592,16 @@ WdmAudCloseSoundDeviceByMMixer(
         CloseHandle(Handle);
         return MMSYSERR_NOERROR;
     }
+    else if (DeviceType == MIDI_IN_DEVICE_TYPE || DeviceType == MIDI_OUT_DEVICE_TYPE)
+    {
+        MMixerSetMidiStatus(&MixerContext, SoundDeviceInstance->Handle, KSSTATE_PAUSE);
+        MMixerSetMidiStatus(&MixerContext, SoundDeviceInstance->Handle, KSSTATE_ACQUIRE);
+        MMixerSetMidiStatus(&MixerContext, SoundDeviceInstance->Handle, KSSTATE_STOP);
 
-    /* midi is not supported */
+        CloseHandle(Handle);
+        return MMSYSERR_NOERROR;
+    }
+
     return MMSYSERR_ERROR;
 }
 
@@ -697,6 +710,40 @@ WdmAudSetMixerDeviceFormatByMMixer(
         return MMSYSERR_NOERROR;
 
     return MMSYSERR_BADDEVICEID;
+}
+
+/* Opens the MIDI pin of a device; output runs from the start, input once it is started */
+MMRESULT
+WdmAudSetMidiDeviceFormatByMMixer(
+    _In_ PSOUND_DEVICE_INSTANCE Instance,
+    _In_ DWORD DeviceId,
+    _In_opt_ PWAVEFORMATEX WaveFormat,
+    _In_ DWORD WaveFormatSize)
+{
+    MMDEVICE_TYPE DeviceType;
+    PSOUND_DEVICE SoundDevice;
+    MMRESULT Result;
+
+    UNREFERENCED_PARAMETER(WaveFormat);
+    UNREFERENCED_PARAMETER(WaveFormatSize);
+
+    Result = GetSoundDeviceFromInstance(Instance, &SoundDevice);
+    if (!MMSUCCESS(Result))
+        return TranslateInternalMmResult(Result);
+
+    Result = GetSoundDeviceType(SoundDevice, &DeviceType);
+    SND_ASSERT(Result == MMSYSERR_NOERROR);
+
+    if (MMixerOpenMidi(&MixerContext, DeviceId, DeviceType == MIDI_IN_DEVICE_TYPE, NULL, NULL, &Instance->Handle) != MM_STATUS_SUCCESS)
+        return MMSYSERR_BADDEVICEID;
+
+    if (DeviceType == MIDI_OUT_DEVICE_TYPE)
+    {
+        MMixerSetMidiStatus(&MixerContext, Instance->Handle, KSSTATE_ACQUIRE);
+        MMixerSetMidiStatus(&MixerContext, Instance->Handle, KSSTATE_PAUSE);
+        MMixerSetMidiStatus(&MixerContext, Instance->Handle, KSSTATE_RUN);
+    }
+    return MMSYSERR_NOERROR;
 }
 
 MMRESULT
@@ -981,9 +1028,10 @@ WdmAudCommitWaveBufferByMMixer(
     lpHeader->FrameExtent = Length;
     Overlap->CompletionContext = lpHeader;
     Overlap->OriginalCompletionRoutine = CompletionRoutine;
-    IoCtl = (DeviceType == WAVE_OUT_DEVICE_TYPE ? IOCTL_KS_WRITE_STREAM : IOCTL_KS_READ_STREAM);
+    /* MIDI goes the same way as wave data, as KS music records */
+    IoCtl = ((DeviceType == WAVE_OUT_DEVICE_TYPE || DeviceType == MIDI_OUT_DEVICE_TYPE) ? IOCTL_KS_WRITE_STREAM : IOCTL_KS_READ_STREAM);
 
-    if (DeviceType == WAVE_OUT_DEVICE_TYPE)
+    if (DeviceType == WAVE_OUT_DEVICE_TYPE || DeviceType == MIDI_OUT_DEVICE_TYPE)
     {
         lpHeader->DataUsed = Length;
     }
