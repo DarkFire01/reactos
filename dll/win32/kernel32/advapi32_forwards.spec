@@ -1,1 +1,5 @@
+@ stdcall CreateProcessAsUserA(long str str ptr ptr long long ptr str ptr ptr)
+@ stdcall CreateProcessAsUserW(long wstr wstr ptr ptr long long ptr wstr ptr ptr)
 @ stdcall OpenProcessToken(long long ptr)
+@ stdcall OpenThreadToken(long long long ptr)
+@ stdcall SetThreadToken(ptr ptr)
