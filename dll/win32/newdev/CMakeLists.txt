@@ -1,4 +1,7 @@
 
+remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
+add_definitions(-D_WIN32_WINNT=0x603 -DWINVER=0x603)
+
 spec2def(newdev.dll newdev.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
