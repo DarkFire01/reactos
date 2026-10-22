@@ -681,3 +681,199 @@ KeSetTargetProcessorDpcEx(
 
     return STATUS_SUCCESS;
 }
+
+/* Room for one record, zeroed and labeled; the needed length grows whether or not it fits */
+static
+PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX
+KiReserveRelationRecord(
+    _Inout_ PUCHAR *Cursor,
+    _In_ LOGICAL_PROCESSOR_RELATIONSHIP Relationship,
+    _In_ ULONG RecordSize,
+    _In_ ULONG BufferLength,
+    _Inout_ PULONG Needed,
+    _Inout_ PNTSTATUS Status)
+{
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Record;
+
+    *Needed += RecordSize;
+    if (*Needed > BufferLength)
+    {
+        *Status = STATUS_INFO_LENGTH_MISMATCH;
+        return NULL;
+    }
+
+    Record = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)*Cursor;
+    RtlZeroMemory(Record, RecordSize);
+    Record->Relationship = Relationship;
+    Record->Size = RecordSize;
+    *Cursor += RecordSize;
+
+    return Record;
+}
+
+/**
+ * @brief
+ * Describes the packages, cores, caches, NUMA nodes and groups of the
+ * processors.
+ *
+ * @param[in] ProcessorNumber
+ * The processor to describe, or NULL for every processor.
+ *
+ * @param[in] RelationshipType
+ * The kind of record to return, or RelationAll.
+ *
+ * @param[out] Information
+ * Receives the records.
+ *
+ * @param[in,out] Length
+ * The size of @p Information on input, the size every record needs on output.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INFO_LENGTH_MISMATCH when the buffer is too small,
+ * STATUS_INVALID_PARAMETER for a processor that does not exist, or
+ * STATUS_UNSUCCESSFUL when nothing matched.
+ *
+ * @remarks
+ * ReactOS does not read the processor topology, so every processor is its own
+ * core, all of them share one package, and each cache belongs to the processor
+ * that reported it.
+ */
+NTSTATUS
+NTAPI
+KeQueryLogicalProcessorRelationship(
+    _In_opt_ PPROCESSOR_NUMBER ProcessorNumber,
+    _In_ LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
+    _Out_writes_bytes_opt_(*Length) PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Information,
+    _Inout_ PULONG Length)
+{
+    const ULONG ProcessorRecordSize =
+        FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor.GroupMask) + sizeof(GROUP_AFFINITY);
+    const ULONG CacheRecordSize =
+        FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Cache.GroupMask) + sizeof(GROUP_AFFINITY);
+    const ULONG NodeRecordSize =
+        FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, NumaNode.GroupMask) + sizeof(GROUP_AFFINITY);
+    const ULONG GroupRecordSize =
+        ALIGN_UP_BY(FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Group.GroupInfo) +
+                    sizeof(PROCESSOR_GROUP_INFO), sizeof(ULONG));
+    BOOLEAN All = (RelationshipType == RelationAll);
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Record;
+    KAFFINITY CoresSeen = 0, PackagesSeen = 0, Mask;
+    ULONG First, Last, Index, CacheIndex, Node;
+    ULONG BufferLength = *Length, Needed = 0;
+    PUCHAR Cursor = (PUCHAR)Information;
+    NTSTATUS Status = STATUS_SUCCESS;
+    PKPRCB Prcb;
+
+    if (ProcessorNumber != NULL)
+    {
+        First = KeGetProcessorIndexFromNumber(ProcessorNumber);
+        if (First >= (ULONG)KeNumberProcessors)
+            return STATUS_INVALID_PARAMETER;
+        Last = First;
+    }
+    else
+    {
+        First = 0;
+        Last = KeNumberProcessors - 1;
+    }
+
+    for (Index = First; Index <= Last; Index++)
+    {
+        Prcb = KiProcessorBlock[Index];
+
+        if (All || RelationshipType == RelationProcessorPackage)
+        {
+            Mask = KeActiveProcessors;
+            if (ProcessorNumber != NULL || !(PackagesSeen & Mask))
+            {
+                PackagesSeen |= Mask;
+                Record = KiReserveRelationRecord(&Cursor, RelationProcessorPackage, ProcessorRecordSize,
+                                                 BufferLength, &Needed, &Status);
+                if (Record != NULL)
+                {
+                    Record->Processor.GroupCount = 1;
+                    Record->Processor.GroupMask[0].Mask = Mask;
+                }
+            }
+        }
+
+        if (All || RelationshipType == RelationProcessorCore)
+        {
+            Mask = Prcb->MultiThreadProcessorSet;
+            if (ProcessorNumber != NULL || !(CoresSeen & Mask))
+            {
+                CoresSeen |= Mask;
+                Record = KiReserveRelationRecord(&Cursor, RelationProcessorCore, ProcessorRecordSize,
+                                                 BufferLength, &Needed, &Status);
+                if (Record != NULL)
+                {
+                    if (Mask != Prcb->SetMember)
+                        Record->Processor.Flags = LTP_PC_SMT;
+                    Record->Processor.GroupCount = 1;
+                    Record->Processor.GroupMask[0].Mask = Mask;
+                }
+            }
+        }
+
+        if (All || RelationshipType == RelationCache)
+        {
+            for (CacheIndex = 0; CacheIndex < Prcb->CacheCount && CacheIndex < ARRAYSIZE(Prcb->Cache); CacheIndex++)
+            {
+                Record = KiReserveRelationRecord(&Cursor, RelationCache, CacheRecordSize,
+                                                 BufferLength, &Needed, &Status);
+                if (Record == NULL)
+                    continue;
+
+                Record->Cache.Level = Prcb->Cache[CacheIndex].Level;
+                Record->Cache.Associativity = Prcb->Cache[CacheIndex].Associativity;
+                Record->Cache.LineSize = Prcb->Cache[CacheIndex].LineSize;
+                Record->Cache.CacheSize = Prcb->Cache[CacheIndex].Size;
+                Record->Cache.Type = Prcb->Cache[CacheIndex].Type;
+                Record->Cache.GroupCount = 1;
+                Record->Cache.GroupMask.Mask = Prcb->SetMember;
+            }
+        }
+    }
+
+    if (All || RelationshipType == RelationNumaNode)
+    {
+        for (Node = 0; Node < KeNumberNodes; Node++)
+        {
+            Mask = KeNodeBlock[Node]->ProcessorMask;
+            if (Mask == 0)
+                continue;
+            if (ProcessorNumber != NULL && !(Mask & AFFINITY_MASK(First)))
+                continue;
+
+            Record = KiReserveRelationRecord(&Cursor, RelationNumaNode, NodeRecordSize,
+                                             BufferLength, &Needed, &Status);
+            if (Record != NULL)
+            {
+                Record->NumaNode.NodeNumber = Node;
+                Record->NumaNode.GroupCount = 1;
+                Record->NumaNode.GroupMask.Mask = Mask;
+            }
+        }
+    }
+
+    /* The group record describes the whole system, so a single processor query leaves it out */
+    if (RelationshipType == RelationGroup || (All && ProcessorNumber == NULL))
+    {
+        Record = KiReserveRelationRecord(&Cursor, RelationGroup, GroupRecordSize,
+                                         BufferLength, &Needed, &Status);
+        if (Record != NULL)
+        {
+            Record->Group.MaximumGroupCount = KeQueryMaximumGroupCount();
+            Record->Group.ActiveGroupCount = 1;
+            Record->Group.GroupInfo[0].MaximumProcessorCount = (UCHAR)KeQueryMaximumProcessorCountEx(0);
+            Record->Group.GroupInfo[0].ActiveProcessorCount = (UCHAR)KeQueryActiveProcessorCountEx(0);
+            Record->Group.GroupInfo[0].ActiveProcessorMask = KeActiveProcessors;
+        }
+    }
+
+    if (NT_SUCCESS(Status) && Needed == 0)
+        Status = STATUS_UNSUCCESSFUL;
+
+    *Length = Needed;
+    return Status;
+}
