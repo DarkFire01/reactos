@@ -167,6 +167,47 @@ ScLookupServiceByServiceName(LPCWSTR lpServiceName)
 }
 
 
+/**
+ * @brief
+ * Finds the service of this process that the SCM handed a status handle to.
+ * Only services the SCM started have one, so their names fit MAX_SERVICE_NAME_LENGTH.
+ */
+static
+PACTIVE_SERVICE
+ScLookupServiceByStatusHandle(
+    _In_ SERVICE_STATUS_HANDLE hServiceStatus)
+{
+    DWORD i;
+
+    for (i = 0; i < dwActiveServiceCount; i++)
+    {
+        if (lpActiveServices[i].hServiceStatus == hServiceStatus &&
+            lpActiveServices[i].ServiceName.Length <= MAX_SERVICE_NAME_LENGTH * sizeof(WCHAR))
+        {
+            return &lpActiveServices[i];
+        }
+    }
+
+    return NULL;
+}
+
+
+/**
+ * @brief
+ * Creates one level of a service state directory, keeping an existing one.
+ */
+static
+DWORD
+ScCreateStateDirectory(
+    _In_ PCWSTR lpPath)
+{
+    if (CreateDirectoryW(lpPath, NULL) || GetLastError() == ERROR_ALREADY_EXISTS)
+        return ERROR_SUCCESS;
+
+    return GetLastError();
+}
+
+
 static DWORD WINAPI
 ScServiceMainStubA(LPVOID Context)
 {
@@ -1239,6 +1280,130 @@ done:
         SetLastError(dwError);
 
     return bRet;
+}
+
+
+/**
+ * @brief
+ * Opens the registry key a service keeps its state in. The Parameters key may
+ * only be read, the State key may also be written.
+ *
+ * @return
+ * ERROR_SUCCESS, or a Win32 error code.
+ */
+DWORD
+WINAPI
+GetServiceRegistryStateKey(
+    _In_ SERVICE_STATUS_HANDLE ServiceStatusHandle,
+    _In_ SERVICE_REGISTRY_STATE_TYPE StateType,
+    _In_ DWORD AccessMask,
+    _Out_ HKEY *ServiceStateKey)
+{
+    static const WCHAR ServicesKey[] = L"System\\CurrentControlSet\\Services\\";
+    WCHAR KeyPath[RTL_NUMBER_OF(ServicesKey) + MAX_SERVICE_NAME_LENGTH + 16];
+    PACTIVE_SERVICE Service;
+    DWORD AllowedAccess;
+
+    if (!ServiceStatusHandle ||
+        (DWORD)StateType >= MaxServiceRegistryStateType ||
+        !ServiceStateKey)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    Service = ScLookupServiceByStatusHandle(ServiceStatusHandle);
+    if (!Service)
+        return ERROR_INVALID_HANDLE;
+
+    if (StateType == ServiceRegistryStateParameters)
+        AllowedAccess = KEY_READ;
+    else
+        AllowedAccess = GENERIC_READ | GENERIC_WRITE | KEY_READ | KEY_SET_VALUE | KEY_CREATE_SUB_KEY;
+
+    /* MAXIMUM_ALLOWED stands for everything the state type permits */
+    if (AccessMask & MAXIMUM_ALLOWED)
+        AccessMask = (AccessMask & ~MAXIMUM_ALLOWED) | AllowedAccess;
+
+    if (AccessMask & ~AllowedAccess)
+        return ERROR_ACCESS_DENIED;
+
+    wcscpy(KeyPath, ServicesKey);
+    wcscat(KeyPath, Service->ServiceName.Buffer);
+    wcscat(KeyPath, (StateType == ServiceRegistryStateParameters) ? L"\\Parameters" : L"\\State");
+
+    return RegCreateKeyExW(HKEY_LOCAL_MACHINE,
+                           KeyPath,
+                           0,
+                           NULL,
+                           REG_OPTION_NON_VOLATILE,
+                           AccessMask,
+                           NULL,
+                           ServiceStateKey,
+                           NULL);
+}
+
+
+/**
+ * @brief
+ * Gets the directory a service keeps its persistent state in, which is
+ * %SystemRoot%\ServiceState\<service>\Data. The directory is created on first use.
+ *
+ * @return
+ * ERROR_SUCCESS, ERROR_INSUFFICIENT_BUFFER with the required length in characters
+ * when the buffer is missing or too small, or another Win32 error code.
+ */
+DWORD
+WINAPI
+GetServiceDirectory(
+    _In_ SERVICE_STATUS_HANDLE hServiceStatus,
+    _In_ SERVICE_DIRECTORY_TYPE eDirectoryType,
+    _Out_writes_opt_(cchPathBufferLength) PWCHAR lpPathBuffer,
+    _In_ DWORD cchPathBufferLength,
+    _Out_ DWORD *lpcchRequiredBufferLength)
+{
+    WCHAR Path[MAX_PATH + MAX_SERVICE_NAME_LENGTH + 32];
+    PACTIVE_SERVICE Service;
+    DWORD Length;
+    DWORD dwError;
+
+    if (!hServiceStatus ||
+        eDirectoryType != ServiceDirectoryPersistentState ||
+        !lpcchRequiredBufferLength)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    Service = ScLookupServiceByStatusHandle(hServiceStatus);
+    if (!Service)
+        return ERROR_INVALID_HANDLE;
+
+    Length = GetSystemWindowsDirectoryW(Path, MAX_PATH);
+    if (Length == 0 || Length >= MAX_PATH)
+        return ERROR_PATH_NOT_FOUND;
+
+    wcscpy(Path + Length, L"\\ServiceState");
+    dwError = ScCreateStateDirectory(Path);
+    if (dwError != ERROR_SUCCESS)
+        return dwError;
+
+    wcscat(Path, L"\\");
+    wcscat(Path, Service->ServiceName.Buffer);
+    dwError = ScCreateStateDirectory(Path);
+    if (dwError != ERROR_SUCCESS)
+        return dwError;
+
+    wcscat(Path, L"\\Data");
+    dwError = ScCreateStateDirectory(Path);
+    if (dwError != ERROR_SUCCESS)
+        return dwError;
+
+    Length = (DWORD)wcslen(Path) + 1;
+    *lpcchRequiredBufferLength = Length;
+    if (!lpPathBuffer || cchPathBufferLength < Length)
+        return ERROR_INSUFFICIENT_BUFFER;
+
+    RtlCopyMemory(lpPathBuffer, Path, Length * sizeof(*Path));
+    return ERROR_SUCCESS;
 }
 
 /* EOF */
