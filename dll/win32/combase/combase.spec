@@ -217,14 +217,14 @@
 @ stdcall HPALETTE_UserMarshal(ptr ptr ptr)
 @ stdcall HPALETTE_UserSize(ptr long ptr)
 @ stdcall HPALETTE_UserUnmarshal(ptr ptr ptr)
-@ stub HSTRING_UserFree
-@ stub -arch=win64 HSTRING_UserFree64
-@ stub HSTRING_UserMarshal
-@ stub -arch=win64 HSTRING_UserMarshal64
-@ stub HSTRING_UserSize
-@ stub -arch=win64 HSTRING_UserSize64
-@ stub HSTRING_UserUnmarshal
-@ stub -arch=win64 HSTRING_UserUnmarshal64
+@ stdcall HSTRING_UserFree(ptr ptr)
+@ stdcall -arch=win64 HSTRING_UserFree64(ptr ptr)
+@ stdcall HSTRING_UserMarshal(ptr ptr ptr)
+@ stdcall -arch=win64 HSTRING_UserMarshal64(ptr ptr ptr)
+@ stdcall HSTRING_UserSize(ptr long ptr)
+@ stdcall -arch=win64 HSTRING_UserSize64(ptr long ptr)
+@ stdcall HSTRING_UserUnmarshal(ptr ptr ptr)
+@ stdcall -arch=win64 HSTRING_UserUnmarshal64(ptr ptr ptr)
 @ stdcall HWND_UserFree(ptr ptr)
 @ stdcall HWND_UserMarshal(ptr ptr ptr)
 @ stdcall HWND_UserSize(ptr long ptr)
