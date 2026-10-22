@@ -28,9 +28,9 @@ AddMandatoryAce(PACL pAcl,
     Status = RtlAddMandatoryAce(pAcl,
                                 dwAceRevision,
                                 AceFlags,
-                                MandatoryPolicy,
+                                pLabelSid,
                                 SYSTEM_MANDATORY_LABEL_ACE_TYPE,
-                                pLabelSid);
+                                MandatoryPolicy);
     if (!NT_SUCCESS(Status))
     {
         SetLastError(RtlNtStatusToDosError(Status));

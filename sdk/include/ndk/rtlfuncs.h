@@ -1314,9 +1314,9 @@ RtlAddMandatoryAce(
     _Inout_ PACL Acl,
     _In_ ULONG Revision,
     _In_ ULONG Flags,
-    _In_ ULONG MandatoryFlags,
+    _In_ PSID LabelSid,
     _In_ UCHAR AceType,
-    _In_ PSID LabelSid);
+    _In_ ULONG MandatoryFlags);
 
 NTSYSAPI
 NTSTATUS
