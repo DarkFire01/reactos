@@ -1371,8 +1371,8 @@ BOOL WINAPI AddAuditAccessObjectAce( PACL acl, DWORD rev, DWORD flags, DWORD acc
  */
 BOOL WINAPI AddMandatoryAce( PACL acl, DWORD rev, DWORD flags, DWORD policy, PSID sid )
 {
-    return set_ntstatus( RtlAddMandatoryAce( acl, rev, flags, policy,
-                                             SYSTEM_MANDATORY_LABEL_ACE_TYPE, sid ));
+    return set_ntstatus( RtlAddMandatoryAce( acl, rev, flags, sid,
+                                             SYSTEM_MANDATORY_LABEL_ACE_TYPE, policy ));
 }
 
 /******************************************************************************
