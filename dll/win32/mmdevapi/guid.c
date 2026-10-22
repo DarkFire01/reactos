@@ -11,8 +11,10 @@
 #include <wingdi.h>
 #include <objbase.h>
 #include <initguid.h>
+#include <mmdeviceapi.h>
+#include <audioclient.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
-#include <mmdeviceapi.h>
+#include <functiondiscoverykeys_devpkey.h>
 
 /* NO CODE HERE, THIS IS JUST REQUIRED FOR THE GUID DEFINITIONS */
