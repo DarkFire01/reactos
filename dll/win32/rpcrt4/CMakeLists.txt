@@ -34,6 +34,7 @@ list(APPEND SOURCE
     rpc_async.c
     rpc_binding.c
     rpc_epmap.c
+    rpc_ifgroup.c
     rpc_message.c
     rpcrt4_main.c
     rpc_server.c
