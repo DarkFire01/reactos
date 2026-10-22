@@ -2310,9 +2310,9 @@
 @ stub conj
 @ stub conjf
 @ stub conjl
-@ cdecl -stub copysign(double double)
-@ cdecl -stub copysignf(float float)
-@ cdecl -stub copysignl(double double) copysign
+@ cdecl copysign(double double)
+@ cdecl copysignf(float float)
+@ cdecl copysignl(double double) copysign
 @ cdecl cos(double)
 @ cdecl -arch=!i386 cosf(float)
 @ cdecl cosh(double)
@@ -2360,20 +2360,20 @@
 @ cdecl fabs(double)
 @ cdecl -stub -arch=arm,arm64 fabsf(float)
 @ cdecl fclose(ptr)
-@ cdecl -stub fdim(double double)
-@ cdecl -stub fdimf(float float)
+@ cdecl fdim(double double)
+@ cdecl fdimf(float float)
 @ cdecl fdiml(double double) fdim
-@ cdecl -stub feclearexcept(long)
-@ cdecl -stub fegetenv(ptr)
-@ cdecl -stub fegetexceptflag(ptr long)
-@ cdecl -stub fegetround()
-@ cdecl -stub feholdexcept(ptr)
+@ cdecl feclearexcept(long)
+@ cdecl fegetenv(ptr)
+@ cdecl fegetexceptflag(ptr long)
+@ cdecl fegetround()
+@ cdecl feholdexcept(ptr)
 @ cdecl feof(ptr)
 @ cdecl ferror(ptr)
-@ cdecl -stub fesetenv(ptr)
-@ cdecl -stub fesetexceptflag(ptr long)
-@ cdecl -stub fesetround(long)
-@ cdecl -stub fetestexcept(long)
+@ cdecl fesetenv(ptr)
+@ cdecl fesetexceptflag(ptr long)
+@ cdecl fesetround(long)
+@ cdecl fetestexcept(long)
 @ cdecl fflush(ptr)
 @ cdecl fgetc(ptr)
 @ cdecl fgetpos(ptr ptr)
@@ -2385,11 +2385,11 @@
 @ cdecl fma(double double double)
 @ cdecl fmaf(float float float)
 @ cdecl fmal(double double double) fma
-@ cdecl -stub fmax(double double)
-@ cdecl -stub fmaxf(float float)
+@ cdecl fmax(double double)
+@ cdecl fmaxf(float float)
 @ cdecl fmaxl(double double) fmax
-@ cdecl -stub fmin(double double)
-@ cdecl -stub fminf(float float)
+@ cdecl fmin(double double)
+@ cdecl fminf(float float)
 @ cdecl fminl(double double) fmin
 @ cdecl fmod(double double)
 @ cdecl -arch=!i386 fmodf(float float)
@@ -2459,11 +2459,11 @@
 @ cdecl lgammal(double) lgamma
 @ cdecl -ret64 llabs(int64)
 @ cdecl -norelay lldiv(int64 int64)
-@ cdecl -stub -ret64 llrint(double)
-@ cdecl -stub -ret64 llrintf(float)
+@ cdecl -ret64 llrint(double)
+@ cdecl -ret64 llrintf(float)
 @ cdecl -ret64 llrintl(double) llrint
-@ cdecl -stub -ret64 llround(double)
-@ cdecl -stub -ret64 llroundf(float)
+@ cdecl -ret64 llround(double)
+@ cdecl -ret64 llroundf(float)
 @ cdecl -ret64 llroundl(double) llround
 @ cdecl localeconv()
 @ cdecl log(double)
@@ -2483,8 +2483,8 @@
 @ cdecl lrint(double)
 @ cdecl lrintf(float)
 @ cdecl lrintl(double) lrint
-@ cdecl -stub lround(double)
-@ cdecl -stub lroundf(float)
+@ cdecl lround(double)
+@ cdecl lroundf(float)
 @ cdecl lroundl(double) lround
 @ cdecl malloc(long)
 @ cdecl mblen(ptr long)
@@ -2509,8 +2509,8 @@
 @ cdecl -stub nan(str)
 @ cdecl -stub nanf(str)
 @ cdecl nanl(str) nan
-@ cdecl -stub nearbyint(double)
-@ cdecl -stub nearbyintf(float)
+@ cdecl nearbyint(double)
+@ cdecl nearbyintf(float)
 @ cdecl nearbyintl(double) nearbyint
 @ cdecl nextafter(double double)
 @ cdecl nextafterf(float float)
@@ -2545,8 +2545,8 @@
 @ cdecl remquol(double double ptr) remquo
 @ cdecl rename(str str)
 @ cdecl rewind(ptr)
-@ cdecl -stub rint(double)
-@ cdecl -stub rintf(float)
+@ cdecl rint(double)
+@ cdecl rintf(float)
 @ cdecl rintl(double) rint
 @ cdecl round(double)
 @ cdecl roundf(float)
