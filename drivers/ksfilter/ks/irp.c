@@ -1452,56 +1452,31 @@ KsRemoveIrpFromCancelableQueue(
         /* get irp offset */
         Irp = (PIRP)CONTAINING_RECORD(CurEntry, IRP, Tail.Overlay.ListEntry);
 
-        if (Irp->Cancel)
+        /* Taking the cancel routine claims the irp; one already being canceled, or already
+         * acquired, belongs to someone else and stays where it is */
+        if (!IoSetCancelRoutine(Irp, NULL))
         {
-            /* irp has been canceled */
+            Irp = NULL;
+            continue;
+        }
+
+        if (RemovalOperation == KsAcquireAndRemove || RemovalOperation == KsAcquireAndRemoveOnlySingleItem)
+        {
+            /* remove irp from list, keeping the walk on the entry before it */
+            CurEntry = (ListLocation == KsListEntryHead) ? CurEntry->Blink : CurEntry->Flink;
+            RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
+        }
+
+        if (RemovalOperation == KsAcquireAndRemoveOnlySingleItem || RemovalOperation == KsAcquireOnlySingleItem)
             break;
-        }
-
-        if (Irp->CancelRoutine)
-        {
-            /* remove cancel routine */
-            Irp->CancelRoutine = NULL;
-
-            if (RemovalOperation == KsAcquireAndRemove || RemovalOperation == KsAcquireAndRemoveOnlySingleItem)
-            {
-                /* remove irp from list */
-                RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
-            }
-
-            if (RemovalOperation == KsAcquireAndRemoveOnlySingleItem || RemovalOperation == KsAcquireOnlySingleItem)
-                break;
-        }
 
     }while(TRUE);
 
     /* release lock */
     KeReleaseSpinLock(SpinLock, OldIrql);
 
-    if (!Irp || Irp->CancelRoutine == NULL)
-    {
-        /* either an irp has been acquired or nothing found */
-        return Irp;
-    }
-
-    /* time to remove the canceled irp */
-    IoAcquireCancelSpinLock(&OldIrql);
-    /* acquire list lock */
-    KeAcquireSpinLockAtDpcLevel(SpinLock);
-
-    if (RemovalOperation == KsAcquireAndRemove || RemovalOperation == KsAcquireAndRemoveOnlySingleItem)
-    {
-        /* remove it */
-        RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
-    }
-
-    /* release list lock */
-    KeReleaseSpinLockFromDpcLevel(SpinLock);
-
-    /* release cancel spinlock */
-    IoReleaseCancelSpinLock(OldIrql);
-    /* no non canceled irp has been found */
-    return NULL;
+    /* the irp is ours, or there was none to take */
+    return Irp;
 }
 
 /*
