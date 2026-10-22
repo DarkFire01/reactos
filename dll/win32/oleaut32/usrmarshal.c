@@ -1212,6 +1212,366 @@ void WINAPI LPSAFEARRAY_UserFree(ULONG *pFlags, LPSAFEARRAY *ppsa)
     *ppsa = NULL;
 }
 
+/* NDR64 transfer syntax: counts and pointers are 64 bits wide and the
+ * structures align on 8 bytes. The free routines are shared with NDR. */
+
+typedef struct
+{
+    ULONG64 len;        /* conformance, == len2 */
+    DWORD byte_len;     /* len * 2 or 0xffffffff for a null bstr */
+    DWORD len2;         /* No. of chars not including trailing '\0' */
+} bstr_wire64_t;
+
+static unsigned char *align_zero_gap64(unsigned char *Buffer)
+{
+    while ((ULONG_PTR)Buffer & 7)
+        *Buffer++ = 0;
+    return Buffer;
+}
+
+ULONG WINAPI BSTR_UserSize64(ULONG *pFlags, ULONG Start, BSTR *pstr)
+{
+    TRACE("%#lx, %lu, %p => %p\n", *pFlags, Start, pstr, *pstr);
+    ALIGN_LENGTH(Start, 7);
+    Start += sizeof(bstr_wire64_t) + ((SysStringByteLen(*pstr) + 1) & ~1);
+    TRACE("returning %ld\n", Start);
+    return Start;
+}
+
+unsigned char * WINAPI BSTR_UserMarshal64(ULONG *pFlags, unsigned char *Buffer, BSTR *pstr)
+{
+    bstr_wire64_t *header;
+    DWORD len = SysStringByteLen(*pstr);
+
+    TRACE("%#lx, %p, %p => %p\n", *pFlags, Buffer, pstr, *pstr);
+
+    Buffer = align_zero_gap64(Buffer);
+    header = (bstr_wire64_t*)Buffer;
+    header->len2 = (len + 1) / 2;
+    header->len = header->len2;
+    if (*pstr)
+    {
+        header->byte_len = len;
+        memcpy(header + 1, *pstr, header->len2 * 2);
+    }
+    else
+        header->byte_len = 0xffffffff; /* special case for a null bstr */
+
+    return Buffer + sizeof(*header) + sizeof(OLECHAR) * header->len2;
+}
+
+unsigned char * WINAPI BSTR_UserUnmarshal64(ULONG *pFlags, unsigned char *Buffer, BSTR *pstr)
+{
+    bstr_wire64_t *header;
+
+    TRACE("%#lx, %p, %p => %p\n", *pFlags, Buffer, pstr, *pstr);
+
+    ALIGN_POINTER(Buffer, 7);
+    header = (bstr_wire64_t*)Buffer;
+    if (header->len != header->len2)
+        RpcRaiseException(RPC_X_BAD_STUB_DATA);
+
+    if (header->byte_len == 0xffffffff)
+    {
+        SysFreeString(*pstr);
+        *pstr = NULL;
+    }
+    else
+    {
+        BSTR str;
+
+        /* keep odd byte lengths intact */
+        if (header->byte_len > header->len2 * sizeof(OLECHAR))
+            RpcRaiseException(RPC_X_BAD_STUB_DATA);
+
+        str = SysAllocStringByteLen((char *)(header + 1), header->byte_len);
+        if (!str)
+            RpcRaiseException(E_OUTOFMEMORY);
+
+        SysFreeString(*pstr);
+        *pstr = str;
+    }
+
+    return Buffer + sizeof(*header) + sizeof(OLECHAR) * header->len2;
+}
+
+/* Only element types without nested wire types are supported */
+static void check_wire64_union_type(SF_TYPE sftype)
+{
+    switch (sftype)
+    {
+    case SF_I1:
+    case SF_I2:
+    case SF_I4:
+    case SF_I8:
+    case SF_BSTR:
+        break;
+    default:
+        FIXME("unsupported union type %#x\n", sftype);
+        RpcRaiseException(E_NOTIMPL);
+    }
+}
+
+ULONG WINAPI LPSAFEARRAY_UserSize64(ULONG *pFlags, ULONG StartingSize, LPSAFEARRAY *ppsa)
+{
+    ULONG size = StartingSize;
+
+    TRACE("("); dump_user_flags(pFlags); TRACE(", %ld, %p\n", StartingSize, *ppsa);
+
+    ALIGN_LENGTH(size, 7);
+    size += sizeof(ULONG64);
+    if (*ppsa)
+    {
+        SAFEARRAY *psa = *ppsa;
+        ULONG ulCellCount = SAFEARRAY_GetCellCount(psa);
+        SF_TYPE sftype = SAFEARRAY_GetUnionType(psa);
+        BSTR *lpBstr;
+
+        check_wire64_union_type(sftype);
+
+        size += sizeof(ULONG64);
+        size += 2 * sizeof(USHORT) + 2 * sizeof(ULONG);
+        ALIGN_LENGTH(size, 7);
+        size += sizeof(ULONG);
+        ALIGN_LENGTH(size, 7);
+        size += 2 * sizeof(ULONG64);
+        size += sizeof(psa->rgsabound[0]) * psa->cDims;
+        size += sizeof(ULONG64);
+
+        if (sftype == SF_BSTR)
+        {
+            size += ulCellCount * sizeof(ULONG64);
+            for (lpBstr = psa->pvData; ulCellCount; ulCellCount--, lpBstr++)
+            {
+                if (*lpBstr)
+                    size = BSTR_UserSize64(pFlags, size, lpBstr);
+            }
+        }
+        else
+        {
+            ALIGN_LENGTH(size, 7);
+            size += ulCellCount * psa->cbElements;
+        }
+    }
+
+    return size;
+}
+
+unsigned char * WINAPI LPSAFEARRAY_UserMarshal64(ULONG *pFlags, unsigned char *Buffer, LPSAFEARRAY *ppsa)
+{
+    TRACE("("); dump_user_flags(pFlags); TRACE(", %p, &%p\n", Buffer, *ppsa);
+
+    Buffer = align_zero_gap64(Buffer);
+    *(ULONG64 *)Buffer = *ppsa ? 0x1 : 0x0;
+    Buffer += sizeof(ULONG64);
+    if (*ppsa)
+    {
+        SAFEARRAY *psa = *ppsa;
+        ULONG ulCellCount = SAFEARRAY_GetCellCount(psa);
+        SF_TYPE sftype = SAFEARRAY_GetUnionType(psa);
+        SAFEARRAYBOUND *bound;
+        DWORD vt = 0;
+        ULONG64 *pointers;
+        BSTR *lpBstr;
+        INT i;
+
+        check_wire64_union_type(sftype);
+
+        if (psa->fFeatures & FADF_HAVEVARTYPE)
+            vt = ((DWORD *)psa)[-1];
+
+        *(ULONG64 *)Buffer = psa->cDims;
+        Buffer += sizeof(ULONG64);
+        *(USHORT *)Buffer = psa->cDims;
+        Buffer += sizeof(USHORT);
+        *(USHORT *)Buffer = psa->fFeatures;
+        Buffer += sizeof(USHORT);
+        *(ULONG *)Buffer = elem_wire_size(psa, sftype);
+        Buffer += sizeof(ULONG);
+        *(ULONG *)Buffer = (USHORT)psa->cLocks | (vt << 16);
+        Buffer += sizeof(ULONG);
+
+        Buffer = align_zero_gap64(Buffer);
+        *(ULONG *)Buffer = sftype;
+        Buffer += sizeof(ULONG);
+
+        Buffer = align_zero_gap64(Buffer);
+        *(ULONG64 *)Buffer = ulCellCount;
+        Buffer += sizeof(ULONG64);
+        *(ULONG64 *)Buffer = (ULONG_PTR)psa->pvData;
+        Buffer += sizeof(ULONG64);
+
+        /* bounds are marshaled in opposite order comparing to storage layout */
+        bound = (SAFEARRAYBOUND*)Buffer;
+        for (i = 0; i < psa->cDims; i++)
+            memcpy(bound++, &psa->rgsabound[psa->cDims-i-1], sizeof(psa->rgsabound[0]));
+        Buffer += sizeof(psa->rgsabound[0]) * psa->cDims;
+
+        *(ULONG64 *)Buffer = ulCellCount;
+        Buffer += sizeof(ULONG64);
+
+        if (psa->pvData)
+        {
+            if (sftype == SF_BSTR)
+            {
+                /* an array of unique pointers, then the strings they point to */
+                pointers = (ULONG64 *)Buffer;
+                Buffer += ulCellCount * sizeof(ULONG64);
+                for (lpBstr = psa->pvData; ulCellCount; ulCellCount--, lpBstr++)
+                {
+                    *pointers++ = *lpBstr ? 0x1 : 0x0;
+                    if (*lpBstr)
+                        Buffer = BSTR_UserMarshal64(pFlags, Buffer, lpBstr);
+                }
+            }
+            else
+            {
+                Buffer = align_zero_gap64(Buffer);
+                memcpy(Buffer, psa->pvData, ulCellCount * psa->cbElements);
+                Buffer += ulCellCount * psa->cbElements;
+            }
+        }
+    }
+
+    return Buffer;
+}
+
+unsigned char * WINAPI LPSAFEARRAY_UserUnmarshal64(ULONG *pFlags, unsigned char *Buffer, LPSAFEARRAY *ppsa)
+{
+    ULONG64 ptr;
+    wireSAFEARRAY wiresa;
+    ULONG64 cDims;
+    HRESULT hr;
+    SF_TYPE sftype;
+    ULONG64 cell_count;
+    VARTYPE vt;
+    SAFEARRAYBOUND *wiresab;
+    ULONG64 *pointers;
+    BSTR *lpBstr;
+
+    TRACE("("); dump_user_flags(pFlags); TRACE(", %p, %p\n", Buffer, ppsa);
+
+    ALIGN_POINTER(Buffer, 7);
+    ptr = *(ULONG64 *)Buffer;
+    Buffer += sizeof(ULONG64);
+
+    if (!ptr)
+    {
+        SafeArrayDestroy(*ppsa);
+        *ppsa = NULL;
+
+        TRACE("NULL safe array unmarshaled\n");
+
+        return Buffer;
+    }
+
+    cDims = *(ULONG64 *)Buffer;
+    Buffer += sizeof(ULONG64);
+
+    wiresa = (wireSAFEARRAY)Buffer;
+    Buffer += 2 * sizeof(USHORT) + 2 * sizeof(ULONG);
+
+    if (cDims != wiresa->cDims)
+        RpcRaiseException(RPC_S_INVALID_BOUND);
+
+    vt = HIWORD(wiresa->cLocks);
+
+    ALIGN_POINTER(Buffer, 7);
+    sftype = *(ULONG *)Buffer;
+    Buffer += sizeof(ULONG);
+    check_wire64_union_type(sftype);
+
+    ALIGN_POINTER(Buffer, 7);
+    cell_count = *(ULONG64 *)Buffer;
+    Buffer += sizeof(ULONG64);
+    ptr = *(ULONG64 *)Buffer;
+    Buffer += sizeof(ULONG64);
+
+    wiresab = (SAFEARRAYBOUND *)Buffer;
+    Buffer += sizeof(wiresab[0]) * wiresa->cDims;
+
+    if(*ppsa && (*ppsa)->cDims==wiresa->cDims)
+    {
+        if(((*ppsa)->fFeatures & ~FADF_AUTOSETFLAGS) != (wiresa->fFeatures & ~FADF_AUTOSETFLAGS))
+            RpcRaiseException(DISP_E_BADCALLEE);
+
+        if(SAFEARRAY_GetCellCount(*ppsa)*(*ppsa)->cbElements != cell_count*elem_mem_size(wiresa, sftype))
+        {
+            if((*ppsa)->fFeatures & (FADF_AUTO|FADF_STATIC|FADF_EMBEDDED|FADF_FIXEDSIZE))
+                RpcRaiseException(DISP_E_BADCALLEE);
+
+            hr = SafeArrayDestroyData(*ppsa);
+            if(FAILED(hr))
+                RpcRaiseException(hr);
+        }
+        memcpy((*ppsa)->rgsabound, wiresab, sizeof(*wiresab)*wiresa->cDims);
+
+        if((*ppsa)->fFeatures & FADF_HAVEVARTYPE)
+            ((DWORD*)(*ppsa))[-1] = vt;
+    }
+    else if(vt)
+    {
+        SafeArrayDestroy(*ppsa);
+        *ppsa = SafeArrayCreateEx(vt, wiresa->cDims, wiresab, NULL);
+        if (!*ppsa) RpcRaiseException(E_OUTOFMEMORY);
+    }
+    else
+    {
+        SafeArrayDestroy(*ppsa);
+        if (FAILED(SafeArrayAllocDescriptor(wiresa->cDims, ppsa)))
+            RpcRaiseException(E_OUTOFMEMORY);
+        memcpy((*ppsa)->rgsabound, wiresab, sizeof(SAFEARRAYBOUND) * wiresa->cDims);
+    }
+
+    /* be careful about which flags we set since they could be a security
+     * risk */
+    (*ppsa)->fFeatures &= FADF_AUTOSETFLAGS;
+    (*ppsa)->fFeatures |= (wiresa->fFeatures & ~(FADF_AUTOSETFLAGS));
+    (*ppsa)->cbElements = elem_mem_size(wiresa, sftype);
+
+    /* SafeArrayCreateEx allocates the data for us, but
+     * SafeArrayAllocDescriptor doesn't */
+    if(!(*ppsa)->pvData)
+    {
+        hr = SafeArrayAllocData(*ppsa);
+        if (FAILED(hr))
+            RpcRaiseException(hr);
+    }
+
+    if ((*(ULONG64 *)Buffer != cell_count) || (SAFEARRAY_GetCellCount(*ppsa) != cell_count))
+        RpcRaiseException(RPC_S_INVALID_BOUND);
+    Buffer += sizeof(ULONG64);
+
+    if (ptr)
+    {
+        if (sftype == SF_BSTR)
+        {
+            pointers = (ULONG64 *)Buffer;
+            Buffer += cell_count * sizeof(ULONG64);
+            for (lpBstr = (*ppsa)->pvData; cell_count; cell_count--, lpBstr++, pointers++)
+            {
+                if (*pointers)
+                    Buffer = BSTR_UserUnmarshal64(pFlags, Buffer, lpBstr);
+                else
+                {
+                    SysFreeString(*lpBstr);
+                    *lpBstr = NULL;
+                }
+            }
+        }
+        else
+        {
+            ALIGN_POINTER(Buffer, 7);
+            memcpy((*ppsa)->pvData, Buffer, cell_count * (*ppsa)->cbElements);
+            Buffer += cell_count * (*ppsa)->cbElements;
+        }
+    }
+
+    TRACE("safe array unmarshaled: %p\n", *ppsa);
+
+    return Buffer;
+}
+
 
 ULONG WINAPI HFONT_UserSize(ULONG *pFlags, ULONG Start, HFONT *phfont)
 {
