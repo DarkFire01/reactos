@@ -10,6 +10,7 @@ list(APPEND SOURCE
     fdi.c)
 
 list(APPEND PCH_SKIP_SOURCE
+    compressapi.c
     stubs.c)
 
 add_library(cabinet MODULE
