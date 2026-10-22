@@ -271,6 +271,18 @@ ObpLookupEntryDirectory(
     IN POBP_LOOKUP_CONTEXT Context
 );
 
+VOID
+NTAPI
+ObpDeleteDirectory(
+    IN PVOID ObjectBody
+);
+
+//
+// Object directory flags
+//
+#define OB_DIRECTORY_FLAG_SHADOW                        0x04
+#define OB_DIRECTORY_FLAG_CREATE_EX_1                   0x08
+
 //
 // Symbolic Link Functions
 //
