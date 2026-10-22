@@ -202,7 +202,7 @@ SVC_(ConnectPort, 8)
 SVC_(CreateDebugObject, 4)
 SVC_(CreateDirectoryObject, 3)
 #if (NTDDI_VERSION >= NTDDI_WIN8)
-//SVC_(CreateDirectoryObjectEx, 0) // FIXME
+SVC_(CreateDirectoryObjectEx, 5)
 #endif // (NTDDI_VERSION >= NTDDI_WIN8)
 /*#if (NTDDI_VERSION >= NTDDI_WIN10_RS3)
 SVC_(CreateEnclave, 0) // FIXME

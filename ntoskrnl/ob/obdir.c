@@ -112,6 +112,14 @@ ObpGetShadowDirectory(IN POBJECT_DIRECTORY Directory)
     PDEVICE_MAP DeviceMap;
     POBJECT_DIRECTORY GlobalDosDirectory = NULL;
 
+    /* A directory created with a shadow falls through to it */
+    if (Directory->Flags & OB_DIRECTORY_FLAG_SHADOW)
+        return Directory->ShadowDirectory;
+
+    /* Otherwise only LUID device maps give a directory a shadow */
+    if (ObpLUIDDeviceMapsEnabled == 0)
+        return NULL;
+
     /* Acquire the device map lock */
     KeAcquireGuardedMutex(&ObpDeviceMapLock);
 
@@ -176,9 +184,6 @@ ObpLookupEntryDirectory(IN POBJECT_DIRECTORY Directory,
     POBJECT_DIRECTORY ShadowDirectory;
 
     PAGED_CODE();
-
-    /* Check if we should search the shadow directory */
-    if (ObpLUIDDeviceMapsEnabled == 0) SearchShadow = FALSE;
 
     /* Fail if we don't have a directory or name */
     if (!(Directory) || !(Name)) goto Quickie;
@@ -287,7 +292,7 @@ DoItAgain:
         }
 
         /* Check if we should scan the shadow directory */
-        if ((SearchShadow) && (Directory->DeviceMap))
+        if (SearchShadow)
         {
             ShadowDirectory = ObpGetShadowDirectory(Directory);
             /* A global DOS directory was found, loop it again */
@@ -364,6 +369,27 @@ ObpDeleteEntryDirectory(POBP_LOOKUP_CONTEXT Context)
 
     /* Return */
     return TRUE;
+}
+
+/**
+ * @brief
+ * Delete procedure of directory objects, releasing the shadow directory.
+ *
+ * @param[in] ObjectBody
+ * The directory being deleted.
+ */
+VOID
+NTAPI
+ObpDeleteDirectory(
+    _In_ PVOID ObjectBody)
+{
+    POBJECT_DIRECTORY Directory = ObjectBody;
+
+    if (Directory->Flags & OB_DIRECTORY_FLAG_SHADOW)
+    {
+        ObDereferenceObject(Directory->ShadowDirectory);
+        Directory->ShadowDirectory = NULL;
+    }
 }
 
 /* FUNCTIONS **************************************************************/
@@ -766,7 +792,43 @@ NtCreateDirectoryObject(OUT PHANDLE DirectoryHandle,
                         IN ACCESS_MASK DesiredAccess,
                         IN POBJECT_ATTRIBUTES ObjectAttributes)
 {
+    return NtCreateDirectoryObjectEx(DirectoryHandle, DesiredAccess, ObjectAttributes, NULL, 0);
+}
+
+/**
+ * @brief
+ * Creates an object directory that can fall through to a shadow directory.
+ * Names a lookup does not find in the new directory are looked up in the shadow.
+ *
+ * @param[out] DirectoryHandle
+ * Receives the new directory handle.
+ *
+ * @param[in] DesiredAccess
+ * Access for the new handle.
+ *
+ * @param[in] ObjectAttributes
+ * Name and attributes of the directory.
+ *
+ * @param[in] ShadowDirectoryHandle
+ * Optional directory, opened with DIRECTORY_QUERY | DIRECTORY_TRAVERSE, to fall through to.
+ *
+ * @param[in] Flags
+ * Bit 0 is recorded on the directory, as AppContainer named object directories are created.
+ *
+ * @return
+ * STATUS_SUCCESS or a failure code.
+ */
+NTSTATUS
+NTAPI
+NtCreateDirectoryObjectEx(
+    _Out_ PHANDLE DirectoryHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_opt_ HANDLE ShadowDirectoryHandle,
+    _In_ ULONG Flags)
+{
     POBJECT_DIRECTORY Directory;
+    POBJECT_DIRECTORY ShadowDirectory = NULL;
     HANDLE NewHandle;
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
     NTSTATUS Status;
@@ -788,6 +850,18 @@ NtCreateDirectoryObject(OUT PHANDLE DirectoryHandle,
         _SEH2_END;
     }
 
+    /* Reference the shadow the new directory falls through to */
+    if (ShadowDirectoryHandle)
+    {
+        Status = ObReferenceObjectByHandle(ShadowDirectoryHandle,
+                                           DIRECTORY_QUERY | DIRECTORY_TRAVERSE,
+                                           ObpDirectoryObjectType,
+                                           PreviousMode,
+                                           (PVOID*)&ShadowDirectory,
+                                           NULL);
+        if (!NT_SUCCESS(Status)) return Status;
+    }
+
     /* Create the object */
     Status = ObCreateObject(PreviousMode,
                             ObpDirectoryObjectType,
@@ -798,12 +872,26 @@ NtCreateDirectoryObject(OUT PHANDLE DirectoryHandle,
                             0,
                             0,
                             (PVOID*)&Directory);
-    if (!NT_SUCCESS(Status)) return Status;
+    if (!NT_SUCCESS(Status))
+    {
+        if (ShadowDirectory) ObDereferenceObject(ShadowDirectory);
+        return Status;
+    }
 
     /* Setup the object */
     RtlZeroMemory(Directory, sizeof(OBJECT_DIRECTORY));
     ExInitializePushLock(&Directory->Lock);
     Directory->SessionId = -1;
+
+    /* The directory owns the shadow reference from here on */
+    if (ShadowDirectory)
+    {
+        Directory->ShadowDirectory = ShadowDirectory;
+        Directory->Flags |= OB_DIRECTORY_FLAG_SHADOW;
+    }
+
+    if (Flags & 1)
+        Directory->Flags |= OB_DIRECTORY_FLAG_CREATE_EX_1;
 
     /* Insert it into the handle table */
     Status = ObInsertObject((PVOID)Directory,

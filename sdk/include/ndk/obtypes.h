@@ -452,6 +452,8 @@ typedef struct _OBJECT_DIRECTORY
     USHORT Reserved;
     USHORT SymbolicLinkUsageCount;
 #endif
+    struct _OBJECT_DIRECTORY *ShadowDirectory;
+    ULONG Flags;
 } OBJECT_DIRECTORY, *POBJECT_DIRECTORY;
 
 //
