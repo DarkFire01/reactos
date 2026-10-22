@@ -899,12 +899,9 @@ NtQueryInformationProcess(
             PUNICODE_STRING ImageName;
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Get the image path */
