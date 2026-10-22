@@ -502,6 +502,22 @@ GetCurrentThreadId(VOID)
 /*
  * @implemented
  */
+VOID
+WINAPI
+GetCurrentThreadStackLimits(
+    _Out_ PULONG_PTR LowLimit,
+    _Out_ PULONG_PTR HighLimit)
+{
+    PTEB Teb = NtCurrentTeb();
+
+    /* The whole reservation counts, not just the part committed so far */
+    *LowLimit = (ULONG_PTR)Teb->DeallocationStack;
+    *HighLimit = (ULONG_PTR)Teb->NtTib.StackBase;
+}
+
+/*
+ * @implemented
+ */
 BOOL
 NTAPI
 GetThreadTimes(IN HANDLE hThread,
