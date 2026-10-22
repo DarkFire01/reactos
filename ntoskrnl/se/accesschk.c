@@ -966,6 +966,8 @@ SepAccessCheckWorker(
     BOOLEAN Defaulted;
     NTSTATUS Status;
     BOOLEAN AccessIsGranted = FALSE;
+    BOOLEAN LowBox;
+    ACCESS_MASK AppContainerAccess;
     PACCESS_TOKEN Token = NULL;
     ACCESS_CHECK_RIGHTS AccessCheckRights = {0};
 
@@ -1035,6 +1037,9 @@ SepAccessCheckWorker(
      */
     ASSERT(Token);
 
+    /* An AppContainer also needs the rights granted to its package or capabilities */
+    LowBox = (((PTOKEN)Token)->TokenFlags & TOKEN_LOWBOX) != 0;
+
     /*
      * Check for ACCESS_SYSTEM_SECURITY and WRITE_OWNER access.
      * Write down a set of privileges that have been checked
@@ -1096,9 +1101,16 @@ SepAccessCheckWorker(
         goto ReturnCommonStatus;
     }
 
-    /* Grant desired access if the object is unprotected */
+    /* Grant desired access if the object is unprotected, but never to an AppContainer */
     if (Present == FALSE || Dacl == NULL)
     {
+        if (LowBox)
+        {
+            PreviouslyGrantedAccess = 0;
+            Status = STATUS_ACCESS_DENIED;
+            goto ReturnCommonStatus;
+        }
+
         PreviouslyGrantedAccess |= RemainingAccess;
         if (RemainingAccess & MAXIMUM_ALLOWED)
         {
@@ -1165,6 +1177,16 @@ SepAccessCheckWorker(
                                    ObjectTypeListLength,
                                    UseResultList,
                                    &AccessCheckRights);
+        }
+
+        if (LowBox)
+        {
+            AppContainerAccess = SepAppContainerGrantedAccess(Token, Dacl, GenericMapping);
+            AccessCheckRights.GrantedAccessRights &= AppContainerAccess;
+            for (ObjectTypeIndex = 0; ObjectTypeIndex < ObjectTypeListLength; ObjectTypeIndex++)
+            {
+                ObjectTypeList[ObjectTypeIndex].ObjectAccessRights.GrantedAccessRights &= AppContainerAccess;
+            }
         }
 
         /* The caller did not provide an object type list, check access only for that object */
@@ -1416,6 +1438,14 @@ SepAccessCheckWorker(
                 goto ReturnCommonStatus;
             }
         }
+    }
+
+    if (LowBox && (RemainingAccess & ~SepAppContainerGrantedAccess(Token, Dacl, GenericMapping)))
+    {
+        DPRINT("The AppContainer is not granted all rights, access denied. RemainingAccess = 0x%08lx\n", RemainingAccess);
+        PreviouslyGrantedAccess = 0;
+        Status = STATUS_ACCESS_DENIED;
+        goto ReturnCommonStatus;
     }
 
     /* Set granted access rights */
@@ -1872,12 +1902,14 @@ SepAccessCheck(
     {
         if (SepTokenIsOwner(Token, CapturedSecurityDescriptor, FALSE))
         {
-            if (DesiredAccess & MAXIMUM_ALLOWED)
-                PreviouslyGrantedAccess |= (WRITE_DAC | READ_CONTROL);
-            else
-                PreviouslyGrantedAccess |= (DesiredAccess & (WRITE_DAC | READ_CONTROL));
+            ACCESS_MASK OwnerAccess = SepOwnerImplicitAccess(Token, CapturedSecurityDescriptor, GenericMapping);
 
-            DesiredAccess &= ~(WRITE_DAC | READ_CONTROL);
+            if (DesiredAccess & MAXIMUM_ALLOWED)
+                PreviouslyGrantedAccess |= OwnerAccess;
+            else
+                PreviouslyGrantedAccess |= (DesiredAccess & OwnerAccess);
+
+            DesiredAccess &= ~OwnerAccess;
         }
     }
 
@@ -2059,12 +2091,14 @@ SeAccessCheck(
                             SecurityDescriptor,
                             FALSE))
         {
-            if (DesiredAccess & MAXIMUM_ALLOWED)
-                PreviouslyGrantedAccess |= (WRITE_DAC | READ_CONTROL);
-            else
-                PreviouslyGrantedAccess |= (DesiredAccess & (WRITE_DAC | READ_CONTROL));
+            ACCESS_MASK OwnerAccess = SepOwnerImplicitAccess(Token, SecurityDescriptor, GenericMapping);
 
-            DesiredAccess &= ~(WRITE_DAC | READ_CONTROL);
+            if (DesiredAccess & MAXIMUM_ALLOWED)
+                PreviouslyGrantedAccess |= OwnerAccess;
+            else
+                PreviouslyGrantedAccess |= (DesiredAccess & OwnerAccess);
+
+            DesiredAccess &= ~OwnerAccess;
         }
     }
 
