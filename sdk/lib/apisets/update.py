@@ -23,16 +23,18 @@ REDIRECT_HOSTS = {
 # Windows keeps most of these in kernelbase.dll, and REDIRECT_HOSTS above
 # sends the whole of kernelbase to kernel32. That is right for the bulk of
 # it and wrong for the sets below, because ReactOS did not consolidate the
-# same way: security and registry live in advapi32 and the version resource
-# calls live in version.dll. Sent to kernel32 they resolve to a DLL that
-# does not export them, and an application importing one at load time simply
-# does not start - mozglue.dll pulls AddAccessAllowedAce and RegOpenKeyExW
-# in through these, so Firefox does not start.
+# same way: security and registry live in advapi32, the version resource
+# calls live in version.dll and PathCch lives in kernelbase_ros.dll. Sent to
+# kernel32 they resolve to a DLL that does not export them, and an application
+# importing one at load time simply does not start - mozglue.dll pulls
+# AddAccessAllowedAce and RegOpenKeyExW in through these, so Firefox does not
+# start.
 #
 # Keyed on the apiset name without the .dll, lowercased. Wins over
 # REDIRECT_HOSTS.
 SET_HOSTS = {
     'api-ms-win-core-localregistry-l1-1-0': 'advapi32.dll',
+    'api-ms-win-core-path-l1-1-0': 'kernelbase_ros.dll',
     'api-ms-win-core-registry-l1-1-0': 'advapi32.dll',
     'api-ms-win-core-registry-l1-1-2': 'advapi32.dll',
     'api-ms-win-core-version-l1-1-0': 'version.dll',
