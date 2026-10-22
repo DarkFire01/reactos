@@ -270,6 +270,121 @@ RtlDeleteFunctionTable(
     return removed;
 }
 
+/**
+ * @brief Registers a sorted function table over a fixed range that the caller fills over time.
+ */
+DWORD
+NTAPI
+RtlAddGrowableFunctionTable(
+    _Out_ PVOID *DynamicTable,
+    _In_reads_(MaximumEntryCount) PRUNTIME_FUNCTION FunctionTable,
+    _In_ DWORD EntryCount,
+    _In_ DWORD MaximumEntryCount,
+    _In_ ULONG_PTR RangeBase,
+    _In_ ULONG_PTR RangeEnd)
+{
+    PDYNAMIC_FUNCTION_TABLE dynamicTable, otherTable;
+    PLIST_ENTRY listLink;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if ((EntryCount > MaximumEntryCount) || (RangeBase >= RangeEnd))
+        RtlRaiseStatus(STATUS_INVALID_PARAMETER);
+
+    dynamicTable = RtlpAllocateMemory(sizeof(*dynamicTable), TAG_RTLDYNFNTBL);
+    if (dynamicTable == NULL)
+        return STATUS_NO_MEMORY;
+
+    /* Entries are relative to the start of the range */
+    dynamicTable->FunctionTable = FunctionTable;
+    dynamicTable->EntryCount = EntryCount;
+    dynamicTable->BaseAddress = RangeBase;
+    dynamicTable->MinimumAddress = RangeBase;
+    dynamicTable->MaximumAddress = RangeEnd;
+    dynamicTable->Callback = NULL;
+    dynamicTable->Context = NULL;
+    dynamicTable->OutOfProcessCallbackDll = NULL;
+
+    /* Growable tables share the type used for kernel dynamic tables */
+    dynamicTable->Type = RF_KERNEL_DYNAMIC;
+
+    AcquireDynamicFunctionTableLockExclusive();
+
+    /* The first table touching this range decides: an identical range is fine, a partial one is not */
+    for (listLink = RtlpDynamicFunctionTableList.Flink;
+         listLink != &RtlpDynamicFunctionTableList;
+         listLink = listLink->Flink)
+    {
+        otherTable = CONTAINING_RECORD(listLink, DYNAMIC_FUNCTION_TABLE, ListEntry);
+
+        if ((RangeEnd <= otherTable->MinimumAddress) ||
+            (RangeBase >= otherTable->MaximumAddress))
+        {
+            continue;
+        }
+
+        if ((otherTable->MinimumAddress != RangeBase) ||
+            (otherTable->MaximumAddress != RangeEnd))
+        {
+            status = STATUS_CONFLICTING_ADDRESSES;
+        }
+        break;
+    }
+
+    if (NT_SUCCESS(status))
+        InsertTailList(&RtlpDynamicFunctionTableList, &dynamicTable->ListEntry);
+
+    ReleaseDynamicFunctionTableLockExclusive();
+
+    if (!NT_SUCCESS(status))
+    {
+        RtlpFreeMemory(dynamicTable, TAG_RTLDYNFNTBL);
+        return status;
+    }
+
+    *DynamicTable = dynamicTable;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Makes entries the caller has already written to a growable table visible to unwinding.
+ */
+VOID
+NTAPI
+RtlGrowFunctionTable(
+    _Inout_ PVOID DynamicTable,
+    _In_ DWORD NewEntryCount)
+{
+    PDYNAMIC_FUNCTION_TABLE dynamicTable = DynamicTable;
+
+    if ((dynamicTable->Type != RF_KERNEL_DYNAMIC) ||
+        (NewEntryCount < dynamicTable->EntryCount))
+    {
+        RtlRaiseStatus(STATUS_INVALID_PARAMETER);
+    }
+
+    dynamicTable->EntryCount = NewEntryCount;
+}
+
+/**
+ * @brief Unregisters and frees a table created by RtlAddGrowableFunctionTable.
+ */
+VOID
+NTAPI
+RtlDeleteGrowableFunctionTable(
+    _In_ PVOID DynamicTable)
+{
+    PDYNAMIC_FUNCTION_TABLE dynamicTable = DynamicTable;
+
+    if (dynamicTable->Type != RF_KERNEL_DYNAMIC)
+        RtlRaiseStatus(STATUS_INVALID_PARAMETER);
+
+    AcquireDynamicFunctionTableLockExclusive();
+    RemoveEntryList(&dynamicTable->ListEntry);
+    ReleaseDynamicFunctionTableLockExclusive();
+
+    RtlpFreeMemory(dynamicTable, TAG_RTLDYNFNTBL);
+}
+
 PRUNTIME_FUNCTION
 NTAPI
 RtlpLookupDynamicFunctionEntry(
