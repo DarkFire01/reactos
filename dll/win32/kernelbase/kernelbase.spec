@@ -194,7 +194,7 @@
 @ stdcall -version=0x602+ CreateFile2(wstr long long long ptr)
 @ stdcall CreateFileA(str long long ptr long long long)
 @ stdcall CreateFileMappingFromApp(long ptr long int64 wstr)
-@ stdcall CreateFileMappingNumaW(long ptr long long long wstr long)
+@ stdcall -version=0x600+ CreateFileMappingNumaW(ptr ptr long long long wstr long)
 @ stdcall CreateFileMappingW(long ptr long long long wstr)
 @ stdcall CreateFileW(wstr long long ptr long long long)
 @ stdcall CreateHardLinkA(str str ptr)
@@ -507,7 +507,7 @@
 # @ stub GetCurrentTargetPlatformContext
 @ stdcall -norelay GetCurrentThread() 
 @ stdcall -norelay GetCurrentThreadId()
-@ stdcall GetCurrentThreadStackLimits(ptr ptr)
+@ stdcall -version=0x602+ GetCurrentThreadStackLimits(ptr ptr)
 @ stdcall GetDateFormatA(long long ptr str ptr long)
 @ stdcall -version=0x600+ GetDateFormatEx(wstr long ptr wstr ptr long wstr)
 @ stdcall GetDateFormatW(long long ptr wstr ptr long)
@@ -612,7 +612,7 @@
 @ stdcall GetNativeSystemInfo(ptr)
 # @ stub GetNextFgPolicyRefreshInfoInternal
 @ stdcall GetNumaHighestNodeNumber(ptr)
-@ stdcall -stub GetNumaNodeProcessorMaskEx(long ptr)
+@ stdcall -version=0x601+ GetNumaNodeProcessorMaskEx(long ptr)
 @ stdcall -stub GetNumaProximityNodeEx(long ptr)
 @ stdcall -version=0x600+ GetNumberFormatEx(wstr long wstr ptr ptr long)
 @ stdcall GetNumberFormatW(long long wstr ptr ptr long)
@@ -659,7 +659,7 @@
 @ stdcall GetProcAddress(long str)
 # @ stub GetProcAddressForCaller
 # @ stub GetProcessDefaultCpuSets
-@ stdcall GetProcessGroupAffinity(long ptr ptr)
+@ stdcall -version=0x601+ GetProcessGroupAffinity(ptr ptr ptr)
 @ stdcall GetProcessHandleCount(long ptr)
 @ stdcall -norelay GetProcessHeap()
 @ stdcall GetProcessHeaps(long ptr) ntdll.RtlGetProcessHeaps
@@ -864,7 +864,7 @@
 @ stdcall InterlockedPopEntrySList(ptr) ntdll.RtlInterlockedPopEntrySList
 @ stdcall InterlockedPushEntrySList(ptr ptr) ntdll.RtlInterlockedPushEntrySList
 @ stdcall InterlockedPushListSList(ptr ptr ptr long) ntdll.RtlInterlockedPushListSList
-@ stdcall -stub -version=0x602+ InterlockedPushListSListEx(ptr ptr ptr long); ntdll.RtlInterlockedPushListSListEx
+@ stdcall -version=0x602+ InterlockedPushListSListEx(ptr ptr ptr long) ntdll.RtlInterlockedPushListSListEx
 @ stdcall Internal_EnumCalendarInfo(ptr long long long long long long long)
 @ stdcall Internal_EnumDateFormats(ptr long long long long long long)
 @ stdcall Internal_EnumLanguageGroupLocales(ptr long long ptr long)
@@ -933,7 +933,7 @@
 @ stdcall K32EnumPageFilesA(ptr ptr) EnumPageFilesA
 @ stdcall K32EnumPageFilesW(ptr ptr) EnumPageFilesW
 @ stdcall K32EnumProcessModules(long ptr long ptr) EnumProcessModules
-@ stdcall K32EnumProcessModulesEx(long ptr long ptr long) EnumProcessModulesEx
+@ stdcall -version=0x601+ K32EnumProcessModulesEx(long ptr long ptr long) EnumProcessModulesEx
 @ stdcall K32EnumProcesses(ptr long ptr) EnumProcesses
 @ stdcall K32GetDeviceDriverBaseNameA(ptr ptr long) GetDeviceDriverBaseNameA
 @ stdcall K32GetDeviceDriverBaseNameW(ptr ptr long) GetDeviceDriverBaseNameW

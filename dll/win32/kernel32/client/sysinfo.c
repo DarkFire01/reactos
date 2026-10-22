@@ -108,6 +108,29 @@ GetNumaProcessorNode(IN UCHAR Processor,
  */
 BOOL
 WINAPI
+GetNumaProcessorNodeEx(
+    _In_ PPROCESSOR_NUMBER Processor,
+    _Out_ PUSHORT NodeNumber)
+{
+    UCHAR Node;
+
+    if (Processor->Group != 0 || Processor->Number >= MAXIMUM_PROCESSORS ||
+        !GetNumaProcessorNode(Processor->Number, &Node))
+    {
+        *NodeNumber = MAXUSHORT;
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    *NodeNumber = Node;
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
 GetNumaAvailableMemoryNode(IN UCHAR Node,
                            OUT PULONGLONG AvailableBytes)
 {

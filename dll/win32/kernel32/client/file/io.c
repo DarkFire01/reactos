@@ -249,6 +249,45 @@ CreateFileMappingA(IN HANDLE hFile,
                                           dwMaximumSizeLow);
 }
 
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+CreateFileMappingNumaA(
+    _In_ HANDLE hFile,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+    _In_ DWORD flProtect,
+    _In_ DWORD dwMaximumSizeHigh,
+    _In_ DWORD dwMaximumSizeLow,
+    _In_opt_ LPCSTR lpName,
+    _In_ DWORD nndPreferred)
+{
+    ConvertAnsiToUnicodePrologue
+    if (!lpName)
+    {
+        return CreateFileMappingNumaW(hFile,
+                                      lpFileMappingAttributes,
+                                      flProtect,
+                                      dwMaximumSizeHigh,
+                                      dwMaximumSizeLow,
+                                      NULL,
+                                      nndPreferred);
+    }
+    ConvertAnsiToUnicodeBody(lpName)
+    if (NT_SUCCESS(Status))
+    {
+        return CreateFileMappingNumaW(hFile,
+                                      lpFileMappingAttributes,
+                                      flProtect,
+                                      dwMaximumSizeHigh,
+                                      dwMaximumSizeLow,
+                                      UnicodeCache->Buffer,
+                                      nndPreferred);
+    }
+    ConvertAnsiToUnicodeEpilogue
+}
+
 
 /*
  * @implemented

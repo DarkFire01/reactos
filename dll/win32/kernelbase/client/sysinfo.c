@@ -308,6 +308,29 @@ GetNumaHighestNodeNumber(OUT PULONG HighestNodeNumber)
     return TRUE;
 }
 
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetNumaNodeProcessorMaskEx(
+    _In_ USHORT Node,
+    _Out_ PGROUP_AFFINITY ProcessorMask)
+{
+    ULONGLONG Mask;
+
+    if (Node > MAXUCHAR || !GetNumaNodeProcessorMask((UCHAR)Node, &Mask))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    RtlZeroMemory(ProcessorMask, sizeof(*ProcessorMask));
+    ProcessorMask->Mask = (KAFFINITY)Mask;
+    ProcessorMask->Group = 0;
+    return TRUE;
+}
+
 _Success_(return > 0)
 DWORD
 WINAPI
