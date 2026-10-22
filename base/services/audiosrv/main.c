@@ -45,6 +45,8 @@ ServiceControlHandler(
         {
             DPRINT("* Service Stop/Shutdown request received\n");
 
+            AeStopEngine();
+
             DPRINT("Unregistering device notifications\n");
             UnregisterDeviceNotifications();
 
@@ -149,6 +151,9 @@ ServiceMain(DWORD argc, LPWSTR argv)
         SetServiceStatus(service_status_handle, &service_status);
         return;
     }
+
+    if (!AeStartEngine())
+        DPRINT1("Failed to start the audio engine\n");
 
     DPRINT("* Service started\n");
     /* Tell SCM we are now running, and we may be stopped */
