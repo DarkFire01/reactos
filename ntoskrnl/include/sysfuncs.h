@@ -678,7 +678,7 @@ SVC_(VdmControl, 2)
 SVC_(WaitForDebugEvent, 4)
 SVC_(WaitForKeyedEvent, 4)
 #if (NTDDI_VERSION >= NTDDI_VISTA)
-SVC_(WaitForWorkViaWorkerFactory, 2)
+SVC_(WaitForWorkViaWorkerFactory, 5)
 #endif
 SVC_(WaitHighEventPair, 1)
 SVC_(WaitLowEventPair, 1)

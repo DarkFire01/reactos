@@ -274,7 +274,8 @@ typedef enum _COMPLETION_PACKET_TYPE
     {
     IopCompletionPacketIrp,
     IopCompletionPacketMini,
-    IopCompletionPacketQuota
+    IopCompletionPacketQuota,
+    IopCompletionPacketCallback
 } COMPLETION_PACKET_TYPE, *PCOMPLETION_PACKET_TYPE;
 
 //
@@ -297,6 +298,38 @@ typedef struct _IOP_MINI_COMPLETION_PACKET
     NTSTATUS IoStatus;
     ULONG_PTR IoStatusInformation;
 } IOP_MINI_COMPLETION_PACKET, *PIOP_MINI_COMPLETION_PACKET;
+
+//
+// Completion packet owned by its poster, who is called back once it leaves the port.
+// Rundown is TRUE when the port is being deleted rather than read.
+//
+typedef VOID
+(NTAPI *PIOP_PACKET_RETURN_ROUTINE)(
+    _In_ PVOID Context,
+    _In_ BOOLEAN Rundown);
+
+typedef struct _IOP_CALLBACK_COMPLETION_PACKET
+{
+    IOP_MINI_COMPLETION_PACKET Packet;
+    PIOP_PACKET_RETURN_ROUTINE Routine;
+    PVOID Context;
+} IOP_CALLBACK_COMPLETION_PACKET, *PIOP_CALLBACK_COMPLETION_PACKET;
+
+//
+// One shot notification that a completion port received a packet nobody was waiting for
+//
+typedef VOID
+(NTAPI *PIOP_COMPLETION_WATCH_ROUTINE)(
+    _In_ PVOID Context);
+
+typedef struct _IOP_COMPLETION_WATCH
+{
+    LIST_ENTRY Links;
+    PKQUEUE Port;
+    PIOP_COMPLETION_WATCH_ROUTINE Routine;
+    PVOID Context;
+    BOOLEAN Armed;
+} IOP_COMPLETION_WATCH, *PIOP_COMPLETION_WATCH;
 
 //
 // I/O Completion Context for IoSetIoCompletionRoutineEx
@@ -1562,6 +1595,36 @@ IoSetIoCompletion(
     IN NTSTATUS IoStatus,
     IN ULONG_PTR IoStatusInformation,
     IN BOOLEAN Quota
+);
+
+NTSTATUS
+NTAPI
+IopRemoveCompletionEntries(
+    _In_ PKQUEUE Queue,
+    _Out_writes_to_(Count, *NumEntriesRemoved) PFILE_IO_COMPLETION_INFORMATION Entries,
+    _In_ ULONG Count,
+    _Out_ PULONG NumEntriesRemoved,
+    _In_ KPROCESSOR_MODE PreviousMode,
+    _In_opt_ PLARGE_INTEGER Timeout,
+    _In_ BOOLEAN Alertable
+);
+
+BOOLEAN
+NTAPI
+IopArmCompletionWatch(
+    _Inout_ PIOP_COMPLETION_WATCH Watch
+);
+
+BOOLEAN
+NTAPI
+IopDisarmCompletionWatch(
+    _Inout_ PIOP_COMPLETION_WATCH Watch
+);
+
+VOID
+NTAPI
+IopSignalCompletionWatches(
+    _In_ PKQUEUE Port
 );
 
 //

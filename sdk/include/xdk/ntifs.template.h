@@ -634,12 +634,6 @@ NtCreateSection(
 
 #endif
 // Stubs
-NTSYSCALLAPI
-NTSTATUS
-NTAPI
-NtWorkerFactoryWorkerReady(
-    ULONG
-);
 NTSYSCALLAPI NTSTATUS NTAPI NtThawRegistry();
 NTSYSCALLAPI NTSTATUS NTAPI NtThawTransactions();
 NTSYSCALLAPI NTSTATUS NTAPI NtTraceControl();
@@ -697,7 +691,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtCreateTransactionManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtCreateUserProcess();
 NTSYSCALLAPI NTSTATUS NTAPI NtCreateWaitCompletionPacket();
 NTSYSCALLAPI NTSTATUS NTAPI NtCreateWnfStateName();
-NTSYSCALLAPI NTSTATUS NTAPI NtCreateWorkerFactory();
 NTSYSCALLAPI NTSTATUS NTAPI NtDeletePrivateNamespace();
 NTSYSCALLAPI NTSTATUS NTAPI NtDeleteWnfStateData();
 NTSYSCALLAPI NTSTATUS NTAPI NtDeleteWnfStateName();
@@ -739,7 +732,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtQueryInformationEnlistment();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryInformationResourceManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryInformationTransaction();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryInformationTransactionManager();
-NTSYSCALLAPI NTSTATUS NTAPI NtQueryInformationWorkerFactory();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryLicenseValue(_In_ PUNICODE_STRING ValueName, _Out_opt_ PULONG Type, _Out_writes_bytes_to_opt_(DataSize, *ResultDataSize) PVOID Data, _In_ ULONG DataSize, _Out_ PULONG ResultDataSize);
 NTSYSCALLAPI NTSTATUS NTAPI NtQuerySecurityAttributesToken();
 NTSYSCALLAPI NTSTATUS NTAPI NtQueryWnfStateData();
@@ -749,7 +741,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtRecoverEnlistment();
 NTSYSCALLAPI NTSTATUS NTAPI NtRecoverResourceManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtRecoverTransactionManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtRegisterProtocolAddressInformation();
-NTSYSCALLAPI NTSTATUS NTAPI NtReleaseWorkerFactoryWorker();
 NTSYSCALLAPI NTSTATUS NTAPI NtRenameTransactionManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtReplacePartitionUnit();
 NTSYSCALLAPI NTSTATUS NTAPI NtRollbackComplete();
@@ -761,11 +752,9 @@ NTSYSCALLAPI NTSTATUS NTAPI NtSetInformationEnlistment();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetInformationResourceManager();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetInformationTransaction();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetInformationTransactionManager();
-NTSYSCALLAPI NTSTATUS NTAPI NtSetInformationWorkerFactory();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetIoCompletionEx();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetSystemCodeIntegrityRoots();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetTimerEx();
-NTSYSCALLAPI NTSTATUS NTAPI NtShutdownWorkerFactory();
 NTSYSCALLAPI NTSTATUS NTAPI NtSinglePhaseReject();
 NTSYSCALLAPI NTSTATUS NTAPI NtSubscribeWnfStateChange();
 NTSYSCALLAPI NTSTATUS NTAPI NtUmsThreadYield();
@@ -773,7 +762,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtUnsubscribeWnfStateChange();
 NTSYSCALLAPI NTSTATUS NTAPI NtUpdateWnfStateData();
 NTSYSCALLAPI NTSTATUS NTAPI NtWaitForAlertByThreadId(_In_opt_ PVOID Address, _In_opt_ PLARGE_INTEGER Timeout);
 NTSYSCALLAPI NTSTATUS NTAPI NtWaitForWnfNotifications();
-NTSYSCALLAPI NTSTATUS NTAPI NtWaitForWorkViaWorkerFactory();
 NTSYSCALLAPI NTSTATUS NTAPI NtReleaseCMFViewOwnership();
 NTSYSCALLAPI NTSTATUS NTAPI NtManagePartition();
 NTSYSCALLAPI NTSTATUS NTAPI NtCallEnclave();

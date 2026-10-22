@@ -372,6 +372,11 @@ NTAPI
 ExpInitializeProfileImplementation(VOID);
 
 CODE_SEG("INIT")
+BOOLEAN
+NTAPI
+ExpInitializeWorkerFactoryImplementation(VOID);
+
+CODE_SEG("INIT")
 VOID
 NTAPI
 ExpResourceInitialization(VOID);

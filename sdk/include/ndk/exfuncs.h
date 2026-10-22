@@ -212,6 +212,8 @@ ExShareAddressSpaceWithDevice(
 
 #endif
 
+struct _FILE_IO_COMPLETION_INFORMATION;
+
 //
 // Native Calls
 //
@@ -743,6 +745,76 @@ NtTraceEvent(
     _In_ PEVENT_TRACE_HEADER TraceHeader
 );
 
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtCreateWorkerFactory(
+    _Out_ PHANDLE WorkerFactoryHandleReturn,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ HANDLE CompletionPortHandle,
+    _In_ HANDLE WorkerProcessHandle,
+    _In_ PVOID StartRoutine,
+    _In_opt_ PVOID StartParameter,
+    _In_opt_ ULONG MaxThreadCount,
+    _In_opt_ SIZE_T StackReserve,
+    _In_opt_ SIZE_T StackCommit
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtQueryInformationWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _In_ WORKERFACTORYINFOCLASS WorkerFactoryInformationClass,
+    _Out_writes_bytes_(WorkerFactoryInformationLength) PVOID WorkerFactoryInformation,
+    _In_ ULONG WorkerFactoryInformationLength,
+    _Out_opt_ PULONG ReturnLength
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtReleaseWorkerFactoryWorker(
+    _In_ HANDLE WorkerFactoryHandle
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtSetInformationWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _In_ WORKERFACTORYINFOCLASS WorkerFactoryInformationClass,
+    _In_reads_bytes_(WorkerFactoryInformationLength) PVOID WorkerFactoryInformation,
+    _In_ ULONG WorkerFactoryInformationLength
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtShutdownWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _Inout_ volatile LONG *PendingWorkerCount
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtWaitForWorkViaWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _Out_writes_to_(Count, *PacketsReturned) struct _FILE_IO_COMPLETION_INFORMATION *MiniPackets,
+    _In_ ULONG Count,
+    _Out_ PULONG PacketsReturned,
+    _In_ PWORKER_FACTORY_DEFERRED_WORK DeferredWork
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtWorkerFactoryWorkerReady(
+    _In_ HANDLE WorkerFactoryHandle
+);
+
 NTSYSAPI
 NTSTATUS
 NTAPI
@@ -1172,6 +1244,76 @@ ZwTraceEvent(
     _In_ ULONG Flags,
     _In_ ULONG TraceHeaderLength,
     _In_ PEVENT_TRACE_HEADER TraceHeader
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwCreateWorkerFactory(
+    _Out_ PHANDLE WorkerFactoryHandleReturn,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ HANDLE CompletionPortHandle,
+    _In_ HANDLE WorkerProcessHandle,
+    _In_ PVOID StartRoutine,
+    _In_opt_ PVOID StartParameter,
+    _In_opt_ ULONG MaxThreadCount,
+    _In_opt_ SIZE_T StackReserve,
+    _In_opt_ SIZE_T StackCommit
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwQueryInformationWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _In_ WORKERFACTORYINFOCLASS WorkerFactoryInformationClass,
+    _Out_writes_bytes_(WorkerFactoryInformationLength) PVOID WorkerFactoryInformation,
+    _In_ ULONG WorkerFactoryInformationLength,
+    _Out_opt_ PULONG ReturnLength
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwReleaseWorkerFactoryWorker(
+    _In_ HANDLE WorkerFactoryHandle
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwSetInformationWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _In_ WORKERFACTORYINFOCLASS WorkerFactoryInformationClass,
+    _In_reads_bytes_(WorkerFactoryInformationLength) PVOID WorkerFactoryInformation,
+    _In_ ULONG WorkerFactoryInformationLength
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwShutdownWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _Inout_ volatile LONG *PendingWorkerCount
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwWaitForWorkViaWorkerFactory(
+    _In_ HANDLE WorkerFactoryHandle,
+    _Out_writes_to_(Count, *PacketsReturned) struct _FILE_IO_COMPLETION_INFORMATION *MiniPackets,
+    _In_ ULONG Count,
+    _Out_ PULONG PacketsReturned,
+    _In_ PWORKER_FACTORY_DEFERRED_WORK DeferredWork
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwWorkerFactoryWorkerReady(
+    _In_ HANDLE WorkerFactoryHandle
 );
 
 #ifdef __cplusplus
