@@ -1049,14 +1049,14 @@ KeShouldYieldProcessor(VOID)
  * Receives the limits and how much of each is left.
  *
  * @return
- * STATUS_SUCCESS, or STATUS_UNSUCCESSFUL below DISPATCH_LEVEL.
+ * STATUS_SUCCESS from inside a DPC, STATUS_UNSUCCESSFUL anywhere else.
  */
 NTSTATUS
 NTAPI
 KeQueryDpcWatchdogInformation(
     _Out_ PKDPC_WATCHDOG_INFORMATION WatchdogInformation)
 {
-    if (KeGetCurrentIrql() < DISPATCH_LEVEL)
+    if (!KeGetCurrentPrcb()->DpcRoutineActive)
         return STATUS_UNSUCCESSFUL;
 
     /* No single DPC limit or DPC watchdog period is ever set, so there is no budget to report */

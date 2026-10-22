@@ -680,6 +680,7 @@
 @ stdcall KeQueryActiveProcessors()
 @ stdcall KeQueryGroupAffinity(long)
 @ stdcall -arch=i386,arm,arm64 KeQueryInterruptTime()
+@ stdcall -version=0x602+ KeQueryDpcWatchdogInformation(ptr)
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
 @ stdcall KeQueryMaximumGroupCount()
