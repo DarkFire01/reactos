@@ -639,6 +639,115 @@ SepMakeLowBoxToken(
 
 /**
  * @brief
+ * Collects what a DACL grants a LowBox token through its package and capabilities.
+ * Package SID and capability ACEs never count for the token's user and groups,
+ * so an AppContainer only gets what both this and the regular pass grant.
+ *
+ * @param[in] Token
+ * A LowBox token, locked by the caller.
+ *
+ * @param[in] Dacl
+ * The DACL being checked.
+ *
+ * @param[in] GenericMapping
+ * Generic mapping of the object type.
+ *
+ * @return
+ * The rights the package and capability allow ACEs grant.
+ */
+ACCESS_MASK
+SepAppContainerGrantedAccess(
+    _In_ PTOKEN Token,
+    _In_ PACL Dacl,
+    _In_ PGENERIC_MAPPING GenericMapping)
+{
+    static const UNICODE_STRING NoAllAppPackages = RTL_CONSTANT_STRING(L"WIN://NOALLAPPPKG");
+    PACCESS_ALLOWED_ACE Ace;
+    ACCESS_MASK Granted = 0, Mask;
+    ULONG64 OptOut;
+    BOOLEAN MatchesAllPackages;
+    BOOLEAN Matches;
+    ULONG Index, Held;
+    PSID Sid;
+
+    /* Less privileged AppContainers opt out of ALL APPLICATION PACKAGES */
+    MatchesAllPackages = !SepQuerySecurityAttributeNumber(Token->pSecurityAttributes, &NoAllAppPackages, &OptOut) ||
+                         OptOut == 0;
+
+    for (Index = 0; Index < Dacl->AceCount; Index++)
+    {
+        if (!NT_SUCCESS(RtlGetAce(Dacl, Index, (PVOID*)&Ace)))
+            break;
+
+        if (Ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE || (Ace->Header.AceFlags & INHERIT_ONLY_ACE))
+            continue;
+
+        Sid = &Ace->SidStart;
+        Matches = FALSE;
+
+        if (RtlIsPackageSid(Sid))
+        {
+            /* S-1-15-2-1 is every application package, S-1-15-2-2 every restricted one */
+            if (*RtlSubAuthorityCountSid(Sid) == 2)
+            {
+                if (*RtlSubAuthoritySid(Sid, 1) == SECURITY_BUILTIN_PACKAGE_ANY_PACKAGE)
+                    Matches = MatchesAllPackages;
+                else if (*RtlSubAuthoritySid(Sid, 1) == SECURITY_BUILTIN_PACKAGE_ANY_RESTRICTED_PACKAGE)
+                    Matches = TRUE;
+            }
+            else
+            {
+                Matches = Token->Package && RtlEqualSid(Token->Package, Sid);
+            }
+        }
+        else if (RtlIsCapabilitySid(Sid))
+        {
+            for (Held = 0; Held < Token->CapabilityCount && !Matches; Held++)
+            {
+                Matches = (Token->Capabilities[Held].Attributes & SE_GROUP_ENABLED) &&
+                          RtlEqualSid(Token->Capabilities[Held].Sid, Sid);
+            }
+        }
+
+        if (!Matches)
+            continue;
+
+        Mask = Ace->Mask;
+        RtlMapGenericMask(&Mask, GenericMapping);
+        Granted |= Mask;
+    }
+
+    return Granted;
+}
+
+/**
+ * @brief
+ * Returns the rights an object's owner gets without an ACE. An AppContainer
+ * owner only keeps those its package or capabilities are granted too.
+ */
+ACCESS_MASK
+SepOwnerImplicitAccess(
+    _In_ PTOKEN Token,
+    _In_ PSECURITY_DESCRIPTOR SecurityDescriptor,
+    _In_ PGENERIC_MAPPING GenericMapping)
+{
+    BOOLEAN Present, Defaulted;
+    PACL Dacl;
+
+    if (!(Token->TokenFlags & TOKEN_LOWBOX))
+        return WRITE_DAC | READ_CONTROL;
+
+    if (!NT_SUCCESS(RtlGetDaclSecurityDescriptor(SecurityDescriptor, &Present, &Dacl, &Defaulted)) ||
+        !Present || Dacl == NULL)
+    {
+        return 0;
+    }
+
+    return SepAppContainerGrantedAccess(Token, Dacl, GenericMapping) & (WRITE_DAC | READ_CONTROL);
+}
+
+/**
+ * @brief
  * Gives a new token the AppContainer data of the token it is copied from.
  * Package and capabilities are copied, the number and handle entries shared.
  */

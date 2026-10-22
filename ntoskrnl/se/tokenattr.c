@@ -664,6 +664,38 @@ SepLayoutSecurityAttributes(
 
 /**
  * @brief
+ * Reads the first value of a numeric security attribute.
+ *
+ * @return
+ * TRUE when the attribute exists, is INT64, UINT64 or BOOLEAN and has a value.
+ */
+BOOLEAN
+SepQuerySecurityAttributeNumber(
+    _In_opt_ PSEP_SECURITY_ATTRIBUTES Attributes,
+    _In_ PCUNICODE_STRING Name,
+    _Out_ PULONG64 Value)
+{
+    PSEP_SECURITY_ATTRIBUTE Attribute;
+
+    if (Attributes == NULL)
+        return FALSE;
+
+    Attribute = SepFindSecurityAttribute(Attributes, Name);
+    if (Attribute == NULL ||
+        IsListEmpty(&Attribute->ValueList) ||
+        (Attribute->ValueType != TOKEN_SECURITY_ATTRIBUTE_TYPE_INT64 &&
+         Attribute->ValueType != TOKEN_SECURITY_ATTRIBUTE_TYPE_UINT64 &&
+         Attribute->ValueType != TOKEN_SECURITY_ATTRIBUTE_TYPE_BOOLEAN))
+    {
+        return FALSE;
+    }
+
+    *Value = CONTAINING_RECORD(Attribute->ValueList.Flink, SEP_SECURITY_ATTRIBUTE_VALUE, ListEntry)->Number;
+    return TRUE;
+}
+
+/**
+ * @brief
  * Frees a token's security attribute list and every value it holds.
  */
 VOID
