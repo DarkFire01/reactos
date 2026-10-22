@@ -195,6 +195,8 @@
 #define TAG_SID_VALIDATE        'vSeS'
 #define TAG_DACL                'lcaD'
 #define TAG_LOGON_TERMINATED    'eToL'
+#define TAG_SE_ATTRIBUTES       'tAeS'
+#define TAG_SE_LOWBOX           'bLeS'
 
 /* LPC Tags */
 #define TAG_LPC_MESSAGE         'McpL'

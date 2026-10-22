@@ -37,6 +37,7 @@ list(APPEND SOURCE
     access.c
     acl.c
     appverifier.c
+    appcontainer.c
     assert.c
     atom.c
     avltable.c

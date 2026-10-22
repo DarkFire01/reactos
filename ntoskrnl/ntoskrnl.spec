@@ -1998,6 +1998,7 @@
 @ stdcall PsTlsGetValue(long ptr)
 @ stdcall PsTlsSetValue(long ptr)
 @ stdcall RtlCapabilityCheck(ptr ptr ptr)
+@ stdcall RtlCheckTokenCapability(ptr ptr ptr)
 @ stdcall RtlCheckTokenMembership(ptr ptr ptr)
 @ stdcall RtlConvertHostPerfCounterToPerfCounter(int64 int64 ptr)
 @ stdcall RtlFindExportedRoutineByName(ptr str)

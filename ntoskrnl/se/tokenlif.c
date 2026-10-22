@@ -251,6 +251,7 @@ SepCreateToken(
     AccessToken->DynamicCharged = TokenPagedCharges - TotalSize;
 
     AccessToken->TokenFlags = TokenFlags & ~TOKEN_SESSION_NOT_REFERENCED;
+    AccessToken->MandatoryPolicy.Policy = TOKEN_MANDATORY_POLICY_VALID_MASK;
 
     /* Copy and reference the logon session */
     AccessToken->AuthenticationId = *AuthenticationId;
@@ -641,6 +642,11 @@ SepDuplicateToken(
         DPRINT1("SepRmInsertLogonSessionIntoToken() failed (Status 0x%lx)\n", Status);
         goto Quit;
     }
+
+    /* Carry over the AppContainer data and the security attributes */
+    Status = SepCopyTokenAppContainerData(Token, AccessToken);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
 
     /* Fill in token debug information */
 #if DBG
@@ -1081,6 +1087,11 @@ SepPerformTokenFiltering(
         DPRINT1("SepPerformTokenFiltering(): Failed to insert the logon session into token (Status 0x%lx)\n", Status);
         goto Quit;
     }
+
+    /* Carry over the AppContainer data and the security attributes */
+    Status = SepCopyTokenAppContainerData(Token, AccessToken);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
 
     /* Fill in token debug information */
 #if DBG
