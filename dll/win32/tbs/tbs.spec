@@ -13,9 +13,9 @@
 @ stub Tbsi_Physical_Presence_Command
 @ stub Tbsi_Revoke_Attestation
 @ stub Tbsi_ShaHash
-@ stub Tbsip_Cancel_Commands
-@ stub Tbsip_Context_Close
-@ stub Tbsip_Submit_Command
+@ stdcall Tbsip_Cancel_Commands(ptr)
+@ stdcall Tbsip_Context_Close(ptr)
+@ stdcall Tbsip_Submit_Command(ptr long long ptr long ptr ptr)
 @ stub Tbsip_Submit_Command_NonBlocking
 @ stub Tbsip_TestInterruptInformation
 @ stub Tbsip_TestMorBit
