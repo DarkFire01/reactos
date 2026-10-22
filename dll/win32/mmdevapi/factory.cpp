@@ -1,164 +1,169 @@
 /*
- * PROJECT:         ReactOS WAS Audio Stack implementation
- * LICENSE:         MIT
- * FILE:            dll/win32/mmdevapi/factory.cpp
- * PURPOSE:         COM Factory
- * PROGRAMMERS:     Mikhail Tyukin (mishakey20@gmail.com)
+ * PROJECT:     ReactOS Multimedia Device API
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     Class factory, registration and module entry points
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
-#define COBJMACROS
 
 #include "precomp.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(mmdevapi);
+#define MMD_ENUMERATOR_KEY  L"CLSID\\{BCDE0395-E52F-467C-8E3D-C4579291692E}"
 
-static HINSTANCE g_hInstance = NULL;
-
-typedef HRESULT (*LPFNCONSTRUCTOR)(IUnknown *pUnkOuter, IUnknown **ppvOut);
-
-static const struct {
-    const CLSID *clsid;
-    LPFNCONSTRUCTOR ctor;
-} ClassesTable[] = {
-    {&CLSID_MMDeviceEnumerator, MMDeviceEnumerator_Constructor},
-    {NULL, NULL}
-};
+HINSTANCE MmdInstance;
+LONG MmdObjects;
+static LONG MmdLocks;
 
 class CClassFactory
-    : public IClassFactory
+    : public CMmdObject
+    , public IClassFactory
 {
 public:
-    CClassFactory(LPFNCONSTRUCTOR ctor);
-    virtual ~CClassFactory();
-
-    // ** IUnknown methods **
-    STDMETHODIMP QueryInterface(REFIID riid, void **ppvObj) override;
-    STDMETHODIMP_(ULONG) AddRef() override;
-    STDMETHODIMP_(ULONG) Release() override;
-
-    // ** IClassFactory methods **
-    STDMETHODIMP CreateInstance(
-        _In_ IUnknown *pUnkOuter,
-        _In_ REFIID riid,
-        _Out_ void **ppvObject) override;
-    STDMETHODIMP LockServer(_In_ BOOL fLock) override;
-
-protected:
-    LONG m_cRefs;
-    LPFNCONSTRUCTOR m_ctor;
-};
-
-CClassFactory::CClassFactory(LPFNCONSTRUCTOR ctor)
-    : m_cRefs(1)
-    , m_ctor(ctor)
-{
-}
-
-CClassFactory::~CClassFactory()
-{
-    TRACE("Destroying class factory %p\n", this);
-}
-
-STDMETHODIMP CClassFactory::QueryInterface(REFIID riid, void **ppvObj)
-{
-    *ppvObj = NULL;
-    if (riid == IID_IClassFactory || riid == IID_IUnknown)
+    STDMETHODIMP
+    QueryInterface(
+        _In_ REFIID Riid,
+        _Outptr_ VOID **Object) override
     {
+        if (!Object)
+            return E_POINTER;
+        if (!IsEqualIID(Riid, IID_IUnknown) && !IsEqualIID(Riid, IID_IClassFactory))
+        {
+            *Object = NULL;
+            return E_NOINTERFACE;
+        }
+        *Object = static_cast<IClassFactory *>(this);
         AddRef();
-        *ppvObj = static_cast<IClassFactory *>(this);
         return S_OK;
     }
 
-    WARN("Unknown interface %s\n", debugstr_guid(&riid));
-    return E_NOINTERFACE;
-}
+    MMD_IMPLEMENT_REFCOUNT()
 
-STDMETHODIMP_(ULONG) CClassFactory::AddRef()
-{
-    return ::InterlockedIncrement(&m_cRefs);
-}
-
-STDMETHODIMP_(ULONG) CClassFactory::Release()
-{
-    ULONG ret = InterlockedDecrement(&m_cRefs);
-    if (!ret)
-        delete this;
-    return ret;
-}
-
-STDMETHODIMP CClassFactory::CreateInstance(
-    _In_ IUnknown *pUnkOuter,
-    _In_ REFIID riid,
-    _Out_ void **ppvObject)
-{
-    TRACE("(%p, %p, %s, %p)\n", this, pUnkOuter, debugstr_guid(&riid), ppvObject);
-
-    IUnknown *obj;
-    HRESULT ret = m_ctor(pUnkOuter, &obj);
-    if (FAILED(ret))
-        return ret;
-    ret = obj->QueryInterface(riid, ppvObject);
-    obj->Release();
-    return ret;
-}
-
-STDMETHODIMP CClassFactory::LockServer(_In_ BOOL fLock)
-{
-    TRACE("(%p)->(%x)\n", this, fLock);
-    return S_OK;
-}
-
-static HRESULT ClassFactory_Constructor(LPFNCONSTRUCTOR ctor, LPVOID *ppvOut)
-{
-    CClassFactory *This = new CClassFactory(ctor);
-    *ppvOut = static_cast<IClassFactory *>(This);
-    TRACE("Created class factory %p\n", This);
-    return S_OK;
-}
-
-EXTERN_C HRESULT WINAPI DllGetClassObject(REFCLSID clsid, REFIID iid, LPVOID *ppvOut)
-{
-    int i;
-
-    *ppvOut = NULL;
-    if (iid != IID_IUnknown && iid != IID_IClassFactory)
-        return E_NOINTERFACE;
-
-    for (i = 0; ClassesTable[i].clsid; i++)
+    STDMETHODIMP
+    CreateInstance(
+        _In_opt_ IUnknown *Outer,
+        _In_ REFIID Riid,
+        _Outptr_ VOID **Object) override
     {
-        if (*ClassesTable[i].clsid == clsid)
-            return ClassFactory_Constructor(ClassesTable[i].ctor, ppvOut);
+        if (!Object)
+            return E_POINTER;
+        *Object = NULL;
+        if (Outer)
+            return CLASS_E_NOAGGREGATION;
+        return MmdCreateEnumerator(Riid, Object);
     }
-    FIXME("CLSID %s not supported\n", debugstr_guid(&clsid));
-    return CLASS_E_CLASSNOTAVAILABLE;
+
+    STDMETHODIMP
+    LockServer(
+        _In_ BOOL Lock) override
+    {
+        if (Lock)
+            InterlockedIncrement(&MmdLocks);
+        else
+            InterlockedDecrement(&MmdLocks);
+        return S_OK;
+    }
+};
+
+EXTERN_C
+HRESULT
+WINAPI
+DllGetClassObject(
+    _In_ REFCLSID Clsid,
+    _In_ REFIID Riid,
+    _Outptr_ LPVOID *Object)
+{
+    CClassFactory *Factory;
+    HRESULT Hr;
+
+    if (!Object)
+        return E_POINTER;
+    *Object = NULL;
+    if (!IsEqualCLSID(Clsid, CLSID_MMDeviceEnumerator))
+        return CLASS_E_CLASSNOTAVAILABLE;
+
+    Factory = new (std::nothrow) CClassFactory();
+    if (!Factory)
+        return E_OUTOFMEMORY;
+    Hr = Factory->QueryInterface(Riid, Object);
+    Factory->Release();
+    return Hr;
 }
 
-
-EXTERN_C BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
+EXTERN_C
+HRESULT
+WINAPI
+DllCanUnloadNow(VOID)
 {
-    switch (fdwReason)
+    return (!MmdObjects && !MmdLocks) ? S_OK : S_FALSE;
+}
+
+static
+LONG
+MmdSetString(
+    _In_ HKEY Key,
+    _In_opt_ PCWSTR Name,
+    _In_ DWORD Type,
+    _In_ PCWSTR Value)
+{
+    return RegSetValueExW(Key, Name, 0, Type, (const BYTE *)Value, (DWORD)((wcslen(Value) + 1) * sizeof(WCHAR)));
+}
+
+EXTERN_C
+HRESULT
+WINAPI
+DllRegisterServer(VOID)
+{
+    HKEY Class, Server;
+    LONG Error;
+
+    Error = RegCreateKeyExW(HKEY_CLASSES_ROOT, MMD_ENUMERATOR_KEY, 0, NULL, 0, KEY_WRITE, NULL, &Class, NULL);
+    if (Error != ERROR_SUCCESS)
+        return HRESULT_FROM_WIN32(Error);
+
+    Error = MmdSetString(Class, NULL, REG_SZ, L"MMDeviceEnumerator class");
+    if (Error == ERROR_SUCCESS)
+        Error = RegCreateKeyExW(Class, L"InprocServer32", 0, NULL, 0, KEY_WRITE, NULL, &Server, NULL);
+    if (Error == ERROR_SUCCESS)
+    {
+        Error = MmdSetString(Server, NULL, REG_EXPAND_SZ, L"%SystemRoot%\\System32\\mmdevapi.dll");
+        if (Error == ERROR_SUCCESS)
+            Error = MmdSetString(Server, L"ThreadingModel", REG_SZ, L"Both");
+        RegCloseKey(Server);
+    }
+    RegCloseKey(Class);
+    return HRESULT_FROM_WIN32(Error);
+}
+
+EXTERN_C
+HRESULT
+WINAPI
+DllUnregisterServer(VOID)
+{
+    LONG Error = RegDeleteTreeW(HKEY_CLASSES_ROOT, MMD_ENUMERATOR_KEY);
+
+    return (Error == ERROR_FILE_NOT_FOUND) ? S_OK : HRESULT_FROM_WIN32(Error);
+}
+
+EXTERN_C
+BOOL
+WINAPI
+DllMain(
+    _In_ HINSTANCE Instance,
+    _In_ DWORD Reason,
+    _In_opt_ LPVOID Reserved)
+{
+    switch (Reason)
     {
         case DLL_PROCESS_ATTACH:
-            g_hInstance = hinstDLL;
-            DisableThreadLibraryCalls(hinstDLL);
+            MmdInstance = Instance;
+            DisableThreadLibraryCalls(Instance);
+            MmdInitialize();
             break;
+
         case DLL_PROCESS_DETACH:
+            /* At process exit other threads are gone mid-call, so their locks are left alone */
+            if (!Reserved)
+                MmdUninitialize();
             break;
     }
-
     return TRUE;
-}
-
-EXTERN_C HRESULT WINAPI DllRegisterServer(void)
-{
-    return __wine_register_resources(g_hInstance);
-}
-
-EXTERN_C HRESULT WINAPI DllUnregisterServer(void)
-{
-    return __wine_unregister_resources(g_hInstance);
-}
-
-HRESULT WINAPI DllCanUnloadNow(void)
-{
-    return S_FALSE;
 }
