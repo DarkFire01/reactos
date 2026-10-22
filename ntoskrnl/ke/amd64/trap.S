@@ -37,6 +37,18 @@ MACRO(DispatchException, Status, Number, P1, P2, P3)
     mov r9, P1
     mov r10, P2
     mov r11, P3
+    mov r8d, 1
+    call InternalDispatchException
+ENDM
+
+/* The same, but straight to the last chance: no handler of the thread sees it, and it cannot be continued */
+MACRO(DispatchLastChance, Status, Number, P1, P2, P3)
+    mov eax, Status
+    mov edx, Number
+    mov r9, P1
+    mov r10, P2
+    mov r11, P3
+    xor r8d, r8d
     call InternalDispatchException
 ENDM
 
@@ -84,7 +96,7 @@ KiInterruptDispatchTemplate:
     call qword ptr KiInterruptDispatchTemplate[rip - KINTERRUPT_DispatchCode + KINTERRUPT_DispatchAddress]
 
 
-// rbp = TrapFrame, eax = ExceptionCode, edx = NumParams, r9,r10,r11 = params
+// rbp = TrapFrame, eax = ExceptionCode, edx = NumParams, r9,r10,r11 = params, r8b = FirstChance
 FUNC InternalDispatchException
 
     /* Allocate stack space for EXCEPTION_RECORD and KEXCEPTION_FRAME */
@@ -95,8 +107,12 @@ FUNC InternalDispatchException
     /* Set up EXCEPTION_RECORD */
     lea rcx, [rsp + KEXCEPTION_FRAME_LENGTH]
     mov [rcx + EXCEPTION_RECORD_ExceptionCode], eax
-    xor rax, rax
+
+    /* An exception that skips the first chance is EXCEPTION_NONCONTINUABLE */
+    mov eax, r8d
+    xor eax, 1
     mov [rcx + EXCEPTION_RECORD_ExceptionFlags], eax
+    xor rax, rax
     mov [rcx + EXCEPTION_RECORD_ExceptionRecord], rax
     mov rax, [rbp + KTRAP_FRAME_Rip]
     mov [rcx + EXCEPTION_RECORD_ExceptionAddress], rax
@@ -130,9 +146,9 @@ FUNC InternalDispatchException
     /* Call KiDispatchException */
     // rcx already points to ExceptionRecord
     mov rdx, rsp                                // ExceptionFrame
+    mov byte ptr [rsp + KEXCEPTION_FRAME_P5], r8b // FirstChance
     mov r8, rbp                                 // TrapFrame
     mov r9b, [r8 + KTRAP_FRAME_PreviousMode]    // PreviousMode
-    mov byte ptr [rsp + KEXCEPTION_FRAME_P5], 1 // FirstChance
     call KiDispatchException
 
     /* Restore registers */
@@ -490,6 +506,7 @@ InPageException:
     mov r11d, eax // Param3 = Status
     mov eax, STATUS_IN_PAGE_ERROR // ExceptionCode
     mov edx, 3    // ParamCount
+    mov r8d, 1    // FirstChance
     call InternalDispatchException
     jmp PageFaultReturn
 
@@ -500,6 +517,7 @@ AccessViolation:
 SpecialCode:
     /* Setup a normal page fault exception */
     mov edx, 2   // ParamCount
+    mov r8d, 1   // FirstChance
     call InternalDispatchException
 
 PageFaultReturn:
@@ -583,6 +601,25 @@ FUNC KiRaiseAssertion
 
     /* Dispatch the exception */
     DispatchException STATUS_ASSERTION_FAILURE, 0, 0, 0, 0
+
+    /* Return */
+    ExitTrap TF_SAVE_ALL
+ENDFUNC
+
+
+/*
+ * __fastfail: the code is in rcx. The thread's own handlers never see it; a debugger may,
+ * and then the process ends with STATUS_STACK_BUFFER_OVERRUN.
+ */
+PUBLIC KiRaiseSecurityCheckFailure
+FUNC KiRaiseSecurityCheckFailure
+    /* No error code */
+    EnterTrap TF_SAVE_ALL
+
+    /* Point RIP back at the INT29 instruction */
+    sub qword ptr [rbp + KTRAP_FRAME_Rip], 2
+
+    DispatchLastChance STATUS_STACK_BUFFER_OVERRUN, 1, [rbp + KTRAP_FRAME_Rcx], 0, 0
 
     /* Return */
     ExitTrap TF_SAVE_ALL
