@@ -102,9 +102,10 @@ PopulateWdmDeviceList(
         }
         else if (DeviceType == MIDI_IN_DEVICE_TYPE || DeviceType == MIDI_OUT_DEVICE_TYPE)
         {
-            FuncTable.SetWaveFormat = FUNC_NAME(WdmAudSetMixerDeviceFormat);
+            FuncTable.SetWaveFormat = FUNC_NAME(WdmAudSetMidiDeviceFormat);
             FuncTable.SetState = FUNC_NAME(WdmAudSetWaveState);
             FuncTable.GetPos = FUNC_NAME(WdmAudGetWavePosition);
+            FuncTable.CommitWaveBuffer = FUNC_NAME(WdmAudCommitWaveBuffer);
         }
 
         SetSoundDeviceFunctionTable(SoundDevice, &FuncTable);
