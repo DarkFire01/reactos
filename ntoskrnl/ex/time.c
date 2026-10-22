@@ -306,6 +306,31 @@ ExSetTimerResolution(IN ULONG DesiredTime,
     return CurrentIncrement;
 }
 
+/**
+ * @brief
+ * Returns the clock interrupt intervals the system supports and the one in use.
+ *
+ * @param[out] MaximumTime
+ * Receives the longest interval, in 100-nanosecond units.
+ *
+ * @param[out] MinimumTime
+ * Receives the shortest interval, in 100-nanosecond units.
+ *
+ * @param[out] CurrentTime
+ * Receives the interval in use, in 100-nanosecond units.
+ */
+VOID
+NTAPI
+ExQueryTimerResolution(
+    _Out_ PULONG MaximumTime,
+    _Out_ PULONG MinimumTime,
+    _Out_ PULONG CurrentTime)
+{
+    *MaximumTime = KeMaximumIncrement;
+    *MinimumTime = KeMinimumIncrement;
+    *CurrentTime = KeTimeIncrement;
+}
+
 VOID
 NTAPI
 ExUpdateSystemTimeFromCmos(IN BOOLEAN UpdateInterruptTime,

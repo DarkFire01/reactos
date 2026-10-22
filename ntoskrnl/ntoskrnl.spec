@@ -139,6 +139,7 @@
 @ stdcall ExNotifyCallback(ptr ptr ptr)
 @ stdcall -arch=x86_64,arm,arm64 ExQueryDepthSList(ptr) RtlQueryDepthSList
 @ stdcall ExQueryPoolBlockSize(ptr ptr)
+@ stdcall -version=0x602+ ExQueryTimerResolution(ptr ptr ptr)
 @ stdcall ExQueueWorkItem(ptr long)
 @ stdcall ExRaiseAccessViolation()
 @ stdcall ExRaiseDatatypeMisalignment()
