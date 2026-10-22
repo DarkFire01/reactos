@@ -2657,6 +2657,10 @@ BOOL WINAPI ProcessIdToSessionId(DWORD,DWORD*);
 #endif
 BOOL WINAPI PulseEvent(HANDLE);
 BOOL WINAPI PurgeComm(_In_ HANDLE, _In_ DWORD);
+#if (_WIN32_WINNT >= 0x0600)
+WINBASEAPI BOOL WINAPI QueryFullProcessImageNameA(_In_ HANDLE, _In_ DWORD, _Out_writes_to_(*lpdwSize, *lpdwSize) LPSTR, _Inout_ PDWORD lpdwSize);
+WINBASEAPI BOOL WINAPI QueryFullProcessImageNameW(_In_ HANDLE, _In_ DWORD, _Out_writes_to_(*lpdwSize, *lpdwSize) LPWSTR, _Inout_ PDWORD lpdwSize);
+#endif
 
 #if (_WIN32_WINNT >= 0x0501)
 BOOL
