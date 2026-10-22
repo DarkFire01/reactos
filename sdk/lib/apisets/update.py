@@ -24,11 +24,11 @@ REDIRECT_HOSTS = {
 # sends the whole of kernelbase to kernel32. That is right for the bulk of
 # it and wrong for the sets below, because ReactOS did not consolidate the
 # same way: security and registry live in advapi32, the version resource
-# calls live in version.dll and PathCch lives in kernelbase_ros.dll. Sent to
-# kernel32 they resolve to a DLL that does not export them, and an application
-# importing one at load time simply does not start - mozglue.dll pulls
-# AddAccessAllowedAce and RegOpenKeyExW in through these, so Firefox does not
-# start.
+# calls live in version.dll, PathCch lives in kernelbase_ros.dll and the
+# character classing calls live in user32. Sent to kernel32 they resolve to
+# a DLL that does not export them, and an application importing one at load
+# time simply does not start - mozglue.dll pulls AddAccessAllowedAce and
+# RegOpenKeyExW in through these, so Firefox does not start.
 #
 # Keyed on the apiset name without the .dll, lowercased. Wins over
 # REDIRECT_HOSTS.
@@ -36,7 +36,11 @@ SET_HOSTS = {
     'api-ms-win-core-localregistry-l1-1-0': 'advapi32.dll',
     'api-ms-win-core-path-l1-1-0': 'kernelbase_ros.dll',
     'api-ms-win-core-registry-l1-1-0': 'advapi32.dll',
+    'api-ms-win-core-registry-l1-1-1': 'advapi32.dll',
     'api-ms-win-core-registry-l1-1-2': 'advapi32.dll',
+    'api-ms-win-core-string-l2-1-0': 'user32.dll',
+    'api-ms-win-core-string-l2-1-1': 'user32.dll',
+    'api-ms-win-core-stringansi-l1-1-0': 'user32.dll',
     'api-ms-win-core-version-l1-1-0': 'version.dll',
     'api-ms-win-core-version-l1-1-1': 'version.dll',
     'api-ms-win-eventing-classicprovider-l1-1-0': 'advapi32.dll',
@@ -46,10 +50,16 @@ SET_HOSTS = {
     'api-ms-win-security-base-l1-2-2': 'advapi32.dll',
 }
 
-# Sets later Windows 10 releases added, missing from the schemas the table is built from.
+# Sets later Windows 10 releases added, or revisions skipped between two of the schemas the
+# table is built from.
 # Applications built with a recent SDK import them, so they get the host of the set they extend.
 EXTRA_SETS = {
+    'api-ms-win-core-file-l2-1-2': 'kernelbase.dll',
     'api-ms-win-core-libraryloader-l1-2-1': 'kernelbase.dll',
+    'api-ms-win-core-registry-l1-1-1': 'kernelbase.dll',
+    'api-ms-win-eventing-tdh-l1-1-0': 'tdh.dll',
+    'api-ms-win-service-core-l1-1-3': 'sechost.dll',
+    'ext-ms-win-shell32-shellfolders-l1-1-0': 'shell32.dll',
 }
 
 OUTPUT_HEADER = """/*
