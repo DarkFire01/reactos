@@ -284,7 +284,7 @@ ObInitSystem(VOID)
     ObjectTypeInitializer.CaseInsensitive = TRUE;
     ObjectTypeInitializer.MaintainTypeList = FALSE;
     ObjectTypeInitializer.GenericMapping = ObpDirectoryMapping;
-    ObjectTypeInitializer.DeleteProcedure = NULL;
+    ObjectTypeInitializer.DeleteProcedure = ObpDeleteDirectory;
     ObjectTypeInitializer.DefaultNonPagedPoolCharge = sizeof(OBJECT_DIRECTORY);
     ObCreateObjectType(&Name, &ObjectTypeInitializer, NULL, &ObpDirectoryObjectType);
     ObpDirectoryObjectType->TypeInfo.ValidAccessMask &= ~SYNCHRONIZE;
