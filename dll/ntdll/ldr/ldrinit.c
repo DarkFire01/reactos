@@ -1262,9 +1262,14 @@ LdrShutdownThread(VOID)
         RemoveEntryList(&pFlsData->ListEntry);
         RtlReleasePebLock();
 
-        for (n = 1; n <= FlsHighIndex; ++n)
+        for (n = 1; n <= FlsHighIndex && NtCurrentPeb()->FlsCallback; ++n)
         {
+#if (DLL_EXPORT_VERSION >= _WIN32_WINNT_VISTA)
+            /* Each index owns a callback followed by a reserved pointer */
+            lpCallback = (PFLS_CALLBACK_FUNCTION)NtCurrentPeb()->FlsCallback[n * 2];
+#else
             lpCallback = NtCurrentPeb()->FlsCallback[n];
+#endif
             if (lpCallback && pFlsData->Data[n])
             {
                 lpCallback(pFlsData->Data[n]);
