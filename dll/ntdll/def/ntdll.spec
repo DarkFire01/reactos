@@ -85,7 +85,7 @@
 @ stdcall EtwGetTraceEnableFlags(double)
 @ stdcall EtwGetTraceEnableLevel(double)
 @ stdcall EtwGetTraceLoggerHandle(ptr)
-@ stdcall -stub -version=0x600+ EtwLogTraceEvent(long long)
+@ stdcall -version=0x600+ EtwLogTraceEvent(int64 ptr)
 @ stdcall -stub -version=0x600+ EtwNotificationRegister(ptr long long long ptr)
 @ stdcall -stub -version=0x502 EtwNotificationRegistrationA(ptr long ptr long long)
 @ stdcall -stub -version=0x502 EtwNotificationRegistrationW(ptr long ptr long long)
