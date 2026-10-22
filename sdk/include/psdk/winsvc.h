@@ -387,6 +387,40 @@ GetServiceKeyNameW(
   _Out_writes_opt_(*lpcchBuffer) LPWSTR lpServiceName,
   _Inout_ LPDWORD lpcchBuffer);
 
+#if (_WIN32_WINNT >= 0x0A00) || defined(__REACTOS__)
+
+typedef enum SERVICE_REGISTRY_STATE_TYPE {
+  ServiceRegistryStateParameters = 0,
+  ServiceRegistryStatePersistent = 1,
+  MaxServiceRegistryStateType = 2
+} SERVICE_REGISTRY_STATE_TYPE;
+
+typedef enum SERVICE_DIRECTORY_TYPE {
+  ServiceDirectoryPersistentState = 0,
+  ServiceDirectoryTypeMax = 1
+} SERVICE_DIRECTORY_TYPE;
+
+_Must_inspect_result_
+DWORD
+WINAPI
+GetServiceRegistryStateKey(
+  _In_ SERVICE_STATUS_HANDLE ServiceStatusHandle,
+  _In_ SERVICE_REGISTRY_STATE_TYPE StateType,
+  _In_ DWORD AccessMask,
+  _Out_ HKEY *ServiceStateKey);
+
+_Must_inspect_result_
+DWORD
+WINAPI
+GetServiceDirectory(
+  _In_ SERVICE_STATUS_HANDLE hServiceStatus,
+  _In_ SERVICE_DIRECTORY_TYPE eDirectoryType,
+  _Out_writes_opt_(cchPathBufferLength) PWCHAR lpPathBuffer,
+  _In_ DWORD cchPathBufferLength,
+  _Out_ DWORD *lpcchRequiredBufferLength);
+
+#endif /* _WIN32_WINNT >= 0x0A00 || __REACTOS__ */
+
 SC_LOCK WINAPI LockServiceDatabase(_In_ SC_HANDLE);
 BOOL WINAPI NotifyBootConfigStatus(_In_ BOOL);
 _Must_inspect_result_ SC_HANDLE WINAPI OpenSCManagerA(_In_opt_ LPCSTR, _In_opt_ LPCSTR, _In_ DWORD);

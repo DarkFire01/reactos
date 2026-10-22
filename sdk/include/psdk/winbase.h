@@ -1613,6 +1613,18 @@ BOOL WINAPI DeleteVolumeMountPointA(_In_ LPCSTR);
 BOOL WINAPI DeleteVolumeMountPointW(LPCWSTR);
 #endif
 BOOL WINAPI DeregisterEventSource(_In_ HANDLE);
+
+#if (_WIN32_WINNT >= 0x0A00)
+BOOL
+WINAPI
+DeriveCapabilitySidsFromName(
+  _In_ LPCWSTR CapName,
+  _Outptr_result_buffer_(*CapabilityGroupSidCount) PSID **CapabilityGroupSids,
+  _Out_ DWORD *CapabilityGroupSidCount,
+  _Outptr_result_buffer_(*CapabilitySidCount) PSID **CapabilitySids,
+  _Out_ DWORD *CapabilitySidCount);
+#endif
+
 BOOL WINAPI DestroyPrivateObjectSecurity(PSECURITY_DESCRIPTOR*);
 BOOL WINAPI DisableThreadLibraryCalls(HMODULE);
 
