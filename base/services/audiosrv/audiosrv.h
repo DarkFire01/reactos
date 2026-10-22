@@ -61,6 +61,18 @@ HandleDeviceEvent(
 BOOL
 StartSystemAudioServices(VOID);
 
+
+/* Audio engine (engine/server.cpp) */
+
+BOOL
+AeStartEngine(VOID);
+
+VOID
+AeStopEngine(VOID);
+
+VOID
+AeDevicesChanged(VOID);
+
 #endif
 
 #endif /* _AUDIOSRV_PCH_ */

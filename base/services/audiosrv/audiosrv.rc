@@ -2,3 +2,8 @@
 #define REACTOS_STR_INTERNAL_NAME     "audiosrv"
 #define REACTOS_STR_ORIGINAL_FILENAME "audiosrv.dll"
 #include <reactos/version.rc>
+
+STRINGTABLE
+BEGIN
+    202 "System Sounds"
+END

@@ -200,7 +200,10 @@ HandleDeviceEvent(
             DEV_BROADCAST_DEVICEINTERFACE* incoming_device =
                 (DEV_BROADCAST_DEVICEINTERFACE*)lpEventData;
 
-            return ProcessDeviceArrival(incoming_device);
+            DWORD Result = ProcessDeviceArrival(incoming_device);
+
+            AeDevicesChanged();
+            return Result;
         }
 
         case DBT_DEVICEREMOVECOMPLETE:
@@ -208,7 +211,10 @@ HandleDeviceEvent(
             DEV_BROADCAST_DEVICEINTERFACE* removed_device =
                 (DEV_BROADCAST_DEVICEINTERFACE*)lpEventData;
             
-            return ProcessDeviceRemovalComplete(removed_device);
+            DWORD Result = ProcessDeviceRemovalComplete(removed_device);
+
+            AeDevicesChanged();
+            return Result;
         }
 
         default:
