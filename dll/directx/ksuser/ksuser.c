@@ -80,6 +80,103 @@ KsiCreateObjectType( HANDLE hHandle,
     return Status;
 }
 
+/**
+ * @brief Opens a KS object below a parent handle, returning an HRESULT.
+ * The name is "<ObjectType>\<Buffer>" and must fit a UNICODE_STRING.
+ */
+static
+HRESULT
+KsiCreateObjectHandle(
+    _In_ HANDLE ParentHandle,
+    _In_ PCWSTR ObjectType,
+    _In_reads_bytes_(BufferSize) PVOID Buffer,
+    _In_ ULONG BufferSize,
+    _In_ ACCESS_MASK DesiredAccess,
+    _Out_ PHANDLE ObjectHandle)
+{
+    SIZE_T TypeChars;
+    SIZE_T NameBytes;
+    PWSTR Name;
+    UNICODE_STRING ObjectName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    IO_STATUS_BLOCK IoStatusBlock;
+    NTSTATUS Status;
+
+    TypeChars = wcslen(ObjectType);
+    NameBytes = (TypeChars + 1) * sizeof(WCHAR) + BufferSize;
+    NameBytes = (NameBytes + 1) & ~(SIZE_T)1;
+    if (NameBytes > MAXUSHORT)
+        return E_FAIL;
+
+    if (ParentHandle == INVALID_HANDLE_VALUE || !ObjectHandle)
+        return E_INVALIDARG;
+
+    *ObjectHandle = INVALID_HANDLE_VALUE;
+
+    Name = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, NameBytes);
+    if (!Name)
+        return E_OUTOFMEMORY;
+
+    RtlCopyMemory(Name, ObjectType, TypeChars * sizeof(WCHAR));
+    Name[TypeChars] = L'\\';
+    RtlCopyMemory(&Name[TypeChars + 1], Buffer, BufferSize);
+
+    ObjectName.Buffer = Name;
+    ObjectName.Length = (USHORT)NameBytes;
+    ObjectName.MaximumLength = (USHORT)NameBytes;
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &ObjectName,
+                               OBJ_CASE_INSENSITIVE,
+                               ParentHandle,
+                               NULL);
+
+    Status = NtCreateFile(ObjectHandle,
+                          DesiredAccess | SYNCHRONIZE | FILE_READ_ATTRIBUTES,
+                          &ObjectAttributes,
+                          &IoStatusBlock,
+                          NULL,
+                          FILE_ATTRIBUTE_NORMAL,
+                          0,
+                          FILE_OPEN,
+                          0,
+                          NULL,
+                          0);
+
+    HeapFree(GetProcessHeap(), 0, Name);
+
+    if (!NT_SUCCESS(Status))
+    {
+        *ObjectHandle = INVALID_HANDLE_VALUE;
+        return HRESULT_FROM_NT(Status);
+    }
+
+    return S_OK;
+}
+
+/**
+ * @brief Returns the size of a pin connect request, including the data
+ * format and the attribute list that follows it when present.
+ */
+static
+ULONG
+KsiGetPinConnectSize(
+    _In_ PKSPIN_CONNECT Connect)
+{
+    PKSDATAFORMAT DataFormat = (PKSDATAFORMAT)(Connect + 1);
+    PKSMULTIPLE_ITEM Attributes;
+    ULONG Size;
+
+    Size = DataFormat->FormatSize;
+    if (DataFormat->Flags & KSDATAFORMAT_ATTRIBUTES)
+    {
+        Size = ROUND_UP(Size, sizeof(LONGLONG));
+        Attributes = (PKSMULTIPLE_ITEM)((PUCHAR)DataFormat + Size);
+        Size += Attributes->Size;
+    }
+
+    return sizeof(*Connect) + Size;
+}
+
 /*++
 * @name KsCreateAllocator
 * @implemented
@@ -194,10 +291,7 @@ KsCreatePin(HANDLE FilterHandle,
             ACCESS_MASK DesiredAccess,
             PHANDLE  ConnectionHandle)
 {
-    ULONG BufferSize = sizeof(KSPIN_CONNECT);
-    PKSDATAFORMAT DataFormat = (PKSDATAFORMAT)(Connect + 1);
-
-    BufferSize += DataFormat->FormatSize;
+    ULONG BufferSize = KsiGetPinConnectSize(Connect);
 
     return KsiCreateObjectType(FilterHandle,
                                KSSTRING_Pin,
@@ -248,6 +342,84 @@ KsCreateTopologyNode(HANDLE ParentHandle,
                                 sizeof(KSNODE_CREATE),
                                 DesiredAccess,
                                 NodeHandle);
+}
+
+/**
+ * @brief Creates an allocator on a connection, returning an HRESULT.
+ */
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreateAllocator2(
+    _In_ HANDLE ConnectionHandle,
+    _In_ PKSALLOCATOR_FRAMING AllocatorFraming,
+    _Out_ PHANDLE AllocatorHandle)
+{
+    return KsiCreateObjectHandle(ConnectionHandle,
+                                 KSSTRING_Allocator,
+                                 AllocatorFraming,
+                                 sizeof(*AllocatorFraming),
+                                 GENERIC_READ,
+                                 AllocatorHandle);
+}
+
+/**
+ * @brief Creates a clock on a connection, returning an HRESULT.
+ */
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreateClock2(
+    _In_ HANDLE ConnectionHandle,
+    _In_ PKSCLOCK_CREATE ClockCreate,
+    _Out_ PHANDLE ClockHandle)
+{
+    return KsiCreateObjectHandle(ConnectionHandle,
+                                 KSSTRING_Clock,
+                                 ClockCreate,
+                                 sizeof(*ClockCreate),
+                                 GENERIC_READ,
+                                 ClockHandle);
+}
+
+/**
+ * @brief Creates a pin instance on a filter, returning an HRESULT.
+ */
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreatePin2(
+    _In_ HANDLE FilterHandle,
+    _In_ PKSPIN_CONNECT Connect,
+    _In_ ACCESS_MASK DesiredAccess,
+    _Out_ PHANDLE ConnectionHandle)
+{
+    return KsiCreateObjectHandle(FilterHandle,
+                                 KSSTRING_Pin,
+                                 Connect,
+                                 KsiGetPinConnectSize(Connect),
+                                 DesiredAccess,
+                                 ConnectionHandle);
+}
+
+/**
+ * @brief Creates a topology node instance, returning an HRESULT.
+ */
+KSDDKAPI
+HRESULT
+WINAPI
+KsCreateTopologyNode2(
+    _In_ HANDLE ParentHandle,
+    _In_ PKSNODE_CREATE NodeCreate,
+    _In_ ACCESS_MASK DesiredAccess,
+    _Out_ PHANDLE NodeHandle)
+{
+    return KsiCreateObjectHandle(ParentHandle,
+                                 KSSTRING_TopologyNode,
+                                 NodeCreate,
+                                 sizeof(*NodeCreate),
+                                 DesiredAccess,
+                                 NodeHandle);
 }
 
 

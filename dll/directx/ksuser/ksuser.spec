@@ -1,4 +1,8 @@
 @ stdcall KsCreateAllocator(ptr ptr ptr)
+@ stdcall KsCreateAllocator2(ptr ptr ptr)
 @ stdcall KsCreateClock(ptr ptr ptr)
+@ stdcall KsCreateClock2(ptr ptr ptr)
 @ stdcall KsCreatePin(ptr ptr long ptr)
+@ stdcall KsCreatePin2(ptr ptr long ptr)
 @ stdcall KsCreateTopologyNode(ptr ptr long ptr)
+@ stdcall KsCreateTopologyNode2(ptr ptr long ptr)
