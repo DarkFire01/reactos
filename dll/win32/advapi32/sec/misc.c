@@ -1665,4 +1665,164 @@ TreeResetNamedSecurityInfoA(LPSTR pObjectName,
 #endif
 }
 
+/* Capabilities that kept the fixed RID they had before names were hashed, numbered from 1 */
+static const PCWSTR KnownCapabilityNames[] =
+{
+    L"internetClient",
+    L"internetClientServer",
+    L"privateNetworkClientServer",
+    L"picturesLibrary",
+    L"videosLibrary",
+    L"musicLibrary",
+    L"documentsLibrary",
+    L"enterpriseAuthentication",
+    L"sharedUserCertificates",
+    L"removableStorage",
+    L"appointments",
+    L"contacts"
+};
+
+/**
+ * @brief
+ * Computes the SHA-256 hash of a capability name, as eight RIDs.
+ */
+static
+BOOL
+AdvpHashCapabilityName(
+    _In_ PCUNICODE_STRING Name,
+    _Out_writes_bytes_(8 * sizeof(ULONG)) PULONG Hash)
+{
+    HCRYPTPROV hProv;
+    HCRYPTHASH hHash;
+    DWORD HashSize = 8 * sizeof(*Hash);
+    BOOL Success = FALSE;
+
+    if (!CryptAcquireContextW(&hProv,
+                              NULL,
+                              MS_ENH_RSA_AES_PROV_W,
+                              PROV_RSA_AES,
+                              CRYPT_VERIFYCONTEXT))
+    {
+        return FALSE;
+    }
+
+    if (CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash))
+    {
+        Success = CryptHashData(hHash, (PBYTE)Name->Buffer, Name->Length, 0) &&
+                  CryptGetHashParam(hHash, HP_HASHVAL, (PBYTE)Hash, &HashSize, 0);
+        CryptDestroyHash(hHash);
+    }
+
+    CryptReleaseContext(hProv, 0);
+    return Success;
+}
+
+/**
+ * @brief
+ * Allocates a SID with LocalAlloc, so callers can release it with LocalFree.
+ */
+static
+PSID
+AdvpAllocateLocalSid(
+    _In_ PSID_IDENTIFIER_AUTHORITY Authority,
+    _In_ UCHAR SubAuthorityCount,
+    _In_reads_(SubAuthorityCount) const ULONG *SubAuthorities)
+{
+    PSID Sid;
+    UCHAR Index;
+
+    Sid = LocalAlloc(LMEM_FIXED, RtlLengthRequiredSid(SubAuthorityCount));
+    if (!Sid)
+        return NULL;
+
+    RtlInitializeSid(Sid, Authority, SubAuthorityCount);
+    for (Index = 0; Index < SubAuthorityCount; Index++)
+        *RtlSubAuthoritySid(Sid, Index) = SubAuthorities[Index];
+
+    return Sid;
+}
+
+/**
+ * @brief
+ * Derives the group SID and the capability SID for a capability name. Both end
+ * in the SHA-256 hash of the upper case name, except that a handful of early
+ * capabilities keep a fixed capability RID.
+ *
+ * @return
+ * TRUE on success. The arrays and every SID in them are released with LocalFree.
+ */
+BOOL
+WINAPI
+DeriveCapabilitySidsFromName(
+    _In_ LPCWSTR CapName,
+    _Outptr_result_buffer_(*CapabilityGroupSidCount) PSID **CapabilityGroupSids,
+    _Out_ DWORD *CapabilityGroupSidCount,
+    _Outptr_result_buffer_(*CapabilitySidCount) PSID **CapabilitySids,
+    _Out_ DWORD *CapabilitySidCount)
+{
+    SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
+    SID_IDENTIFIER_AUTHORITY AppPackageAuthority = {SECURITY_APP_PACKAGE_AUTHORITY};
+    ULONG GroupRids[1 + 8];
+    ULONG CapabilityRids[2 + 8];
+    UCHAR CapabilityRidCount = RTL_NUMBER_OF(CapabilityRids);
+    UNICODE_STRING Name, UpperName, KnownName;
+    PSID *GroupArray, *CapabilityArray;
+    PSID GroupSid, CapabilitySid;
+    NTSTATUS Status;
+    ULONG Index;
+    BOOL Hashed;
+
+    RtlInitUnicodeString(&Name, CapName);
+    Status = RtlUpcaseUnicodeString(&UpperName, &Name, TRUE);
+    if (!NT_SUCCESS(Status))
+    {
+        SetLastError(RtlNtStatusToDosError(Status));
+        return FALSE;
+    }
+
+    Hashed = AdvpHashCapabilityName(&UpperName, &GroupRids[1]);
+    RtlFreeUnicodeString(&UpperName);
+    if (!Hashed)
+        return FALSE;
+
+    GroupRids[0] = SECURITY_BUILTIN_DOMAIN_RID;
+    CapabilityRids[0] = SECURITY_CAPABILITY_BASE_RID;
+    CapabilityRids[1] = SECURITY_CAPABILITY_APP_RID;
+    RtlCopyMemory(&CapabilityRids[2], &GroupRids[1], 8 * sizeof(*GroupRids));
+
+    for (Index = 0; Index < RTL_NUMBER_OF(KnownCapabilityNames); Index++)
+    {
+        RtlInitUnicodeString(&KnownName, KnownCapabilityNames[Index]);
+        if (RtlEqualUnicodeString(&Name, &KnownName, TRUE))
+        {
+            CapabilityRids[1] = Index + 1;
+            CapabilityRidCount = 2;
+            break;
+        }
+    }
+
+    GroupArray = LocalAlloc(LMEM_FIXED, sizeof(*GroupArray));
+    CapabilityArray = LocalAlloc(LMEM_FIXED, sizeof(*CapabilityArray));
+    GroupSid = AdvpAllocateLocalSid(&NtAuthority, RTL_NUMBER_OF(GroupRids), GroupRids);
+    CapabilitySid = AdvpAllocateLocalSid(&AppPackageAuthority, CapabilityRidCount, CapabilityRids);
+    if (!GroupArray || !CapabilityArray || !GroupSid || !CapabilitySid)
+    {
+        LocalFree(GroupArray);
+        LocalFree(CapabilityArray);
+        LocalFree(GroupSid);
+        LocalFree(CapabilitySid);
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+
+    GroupArray[0] = GroupSid;
+    CapabilityArray[0] = CapabilitySid;
+
+    *CapabilityGroupSids = GroupArray;
+    *CapabilityGroupSidCount = 1;
+    *CapabilitySids = CapabilityArray;
+    *CapabilitySidCount = 1;
+    return TRUE;
+}
+
 /* EOF */
