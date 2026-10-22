@@ -1664,6 +1664,14 @@ ExGetFirmwareEnvironmentVariable(
   _Inout_ PULONG ValueLength,
   _Out_opt_ PULONG Attributes);
 
+NTKERNELAPI
+VOID
+NTAPI
+ExQueryTimerResolution(
+  _Out_ PULONG MaximumTime,
+  _Out_ PULONG MinimumTime,
+  _Out_ PULONG CurrentTime);
+
 #endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
 
 __drv_allocatesMem(Mem)
