@@ -1841,6 +1841,7 @@
 @ stdcall -version=0x601+ KeSetTargetProcessorDpcEx(ptr ptr)
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
+@ stdcall -version=0x601+ KeQueryLogicalProcessorRelationship(ptr long ptr ptr)
 @ fastcall -arch=i386 KfAcquireSpinLock(ptr) hal.KfAcquireSpinLock
 @ fastcall -arch=i386 KfReleaseSpinLock(ptr long) hal.KfReleaseSpinLock
 
