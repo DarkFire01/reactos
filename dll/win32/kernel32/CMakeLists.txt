@@ -141,6 +141,8 @@ add_importlibs(kernel32 ntdll)
 # MS LINK resolves forwarded exports, so the advapi32 forwards need an import library of their own
 generate_import_lib(kernel32_advapi32 advapi32.dll advapi32_forwards.spec "" "")
 target_link_libraries(kernel32 kernel32_advapi32)
+generate_import_lib(kernel32_appmodel kernel.appcore.dll appmodel_forwards.spec "" "")
+target_link_libraries(kernel32 kernel32_appmodel)
 add_pch(kernel32 k32.h SOURCE)
 add_dependencies(kernel32 psdk errcodes asm)
 add_cd_file(TARGET kernel32 DESTINATION reactos/system32 FOR all)

@@ -33,6 +33,15 @@ REDIRECT_HOSTS = {
 # Keyed on the apiset name without the .dll, lowercased. Wins over
 # REDIRECT_HOSTS.
 SET_HOSTS = {
+    # The package APIs live in kernel.appcore.dll, and kernel32 forwards to them through these
+    'api-ms-win-appmodel-identity-l1-1-0': 'kernel.appcore.dll',
+    'api-ms-win-appmodel-identity-l1-2-0': 'kernel.appcore.dll',
+    'api-ms-win-appmodel-runtime-internal-l1-1-0': 'kernel.appcore.dll',
+    'api-ms-win-appmodel-runtime-internal-l1-1-7': 'kernel.appcore.dll',
+    'api-ms-win-appmodel-runtime-l1-1-0': 'kernel.appcore.dll',
+    'api-ms-win-appmodel-runtime-l1-1-1': 'kernel.appcore.dll',
+    'api-ms-win-appmodel-runtime-l1-1-2': 'kernel.appcore.dll',
+    'api-ms-win-appmodel-runtime-l1-1-3': 'kernel.appcore.dll',
     'api-ms-win-core-localregistry-l1-1-0': 'advapi32.dll',
     'api-ms-win-core-path-l1-1-0': 'kernelbase_ros.dll',
     'api-ms-win-core-registry-l1-1-0': 'advapi32.dll',
