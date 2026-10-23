@@ -26,6 +26,12 @@
 
 #include "dcom.h"
 #include "combase_private.h"
+#ifdef __REACTOS__
+#include "roregistration.h"
+
+/* get_unmarshaler_from_stream found an OBJREF carrying an object by value */
+#define S_MARSHAL_BY_VALUE ((HRESULT)2)
+#endif
 
 #include "wine/debug.h"
 
@@ -69,6 +75,9 @@ struct proxy_manager
     IMultiQI IMultiQI_iface;
     IMarshal IMarshal_iface;
     IClientSecurity IClientSecurity_iface;
+#ifdef __REACTOS__
+    IServerProcessIdentity IServerProcessIdentity_iface;
+#endif
     struct apartment *parent; /* owning apartment (RO) */
     struct list entry;        /* entry in apartment (CS parent->cs) */
     OXID oxid;                /* object exported ID (RO) */
@@ -98,6 +107,13 @@ static inline struct proxy_manager *impl_from_IClientSecurity(IClientSecurity *i
 {
     return CONTAINING_RECORD(iface, struct proxy_manager, IClientSecurity_iface);
 }
+
+#ifdef __REACTOS__
+static inline struct proxy_manager *impl_from_IServerProcessIdentity(IServerProcessIdentity *iface)
+{
+    return CONTAINING_RECORD(iface, struct proxy_manager, IServerProcessIdentity_iface);
+}
+#endif
 
 struct ftmarshaler
 {
@@ -443,6 +459,10 @@ HRESULT WINAPI CoGetMarshalSizeMax(ULONG *size, REFIID riid, IUnknown *unk,
     BOOL std_marshal = FALSE;
     IMarshal *marshal;
     HRESULT hr;
+#ifdef __REACTOS__
+    IPropertySetMarshal *by_value;
+    CLSID marshaler_clsid;
+#endif
 
     if (!unk)
         return E_POINTER;
@@ -455,6 +475,21 @@ HRESULT WINAPI CoGetMarshalSizeMax(ULONG *size, REFIID riid, IUnknown *unk,
     }
     if (hr != S_OK)
         return hr;
+
+#ifdef __REACTOS__
+    /* Objects that standard marshaling would carry may go by value instead */
+    if ((std_marshal ||
+         (IMarshal_GetUnmarshalClass(marshal, riid, unk, dest_context, pvDestContext, mshlFlags,
+                                     &marshaler_clsid) == S_OK &&
+          IsEqualCLSID(&marshaler_clsid, &CLSID_StdMarshal))) &&
+        RtUseMarshalByValue(unk, dest_context, mshlFlags, &by_value))
+    {
+        hr = RtGetMarshalByValueSize(riid, unk, by_value, size);
+        IPropertySetMarshal_Release(by_value);
+        IMarshal_Release(marshal);
+        return hr;
+    }
+#endif
 
     hr = IMarshal_GetMarshalSizeMax(marshal, riid, unk, dest_context, pvDestContext, mshlFlags, size);
     if (!std_marshal)
@@ -486,6 +521,9 @@ HRESULT WINAPI CoMarshalInterface(IStream *stream, REFIID riid, IUnknown *unk,
     CLSID marshaler_clsid;
     IMarshal *marshal;
     HRESULT hr;
+#ifdef __REACTOS__
+    IPropertySetMarshal *by_value;
+#endif
 
     TRACE("%p, %s, %p, %lx, %p, ", stream, debugstr_guid(riid), unk, dest_context, pvDestContext);
     dump_mshflags(mshlFlags);
@@ -514,6 +552,15 @@ HRESULT WINAPI CoMarshalInterface(IStream *stream, REFIID riid, IUnknown *unk,
     /* FIXME: implement handler marshaling too */
     if (IsEqualCLSID(&marshaler_clsid, &CLSID_StdMarshal))
     {
+#ifdef __REACTOS__
+        if (RtUseMarshalByValue(unk, dest_context, mshlFlags, &by_value))
+        {
+            TRACE("Using marshaling by value\n");
+            hr = RtMarshalByValue(stream, riid, unk, by_value);
+            IPropertySetMarshal_Release(by_value);
+            goto cleanup;
+        }
+#endif
         TRACE("Using standard marshaling\n");
     }
     else
@@ -607,6 +654,14 @@ static HRESULT get_unmarshaler_from_stream(IStream *stream, IMarshal **marshal, 
             ERR("Failed to read OR_CUSTOM header, %#lx\n", hr);
             return STG_E_READFAULT;
         }
+#ifdef __REACTOS__
+        if (IsEqualCLSID(&objref.u_objref.u_custom.clsid, &CLSID_RtMarshalByValue))
+        {
+            TRACE("Using unmarshaling by value\n");
+            *marshal = NULL;
+            return S_MARSHAL_BY_VALUE;
+        }
+#endif
         /* now create the marshaler specified in the stream */
         hr = CoCreateInstance(&objref.u_objref.u_custom.clsid, NULL,
                               CLSCTX_INPROC_SERVER, &IID_IMarshal,
@@ -685,6 +740,11 @@ HRESULT WINAPI CoReleaseMarshalData(IStream *stream)
             ERR("StdMarshal ReleaseMarshalData failed with error %#lx\n", hr);
         return hr;
     }
+#ifdef __REACTOS__
+    /* A value holds no references */
+    if (hr == S_MARSHAL_BY_VALUE)
+        return S_OK;
+#endif
     if (hr != S_OK)
         return hr;
 
@@ -809,6 +869,14 @@ HRESULT WINAPI CoUnmarshalInterface(IStream *stream, REFIID riid, void **ppv)
         if (hr != S_OK)
             ERR("StdMarshal UnmarshalInterface failed, hr %#lx\n", hr);
     }
+#ifdef __REACTOS__
+    else if (hr == S_MARSHAL_BY_VALUE)
+    {
+        hr = RtUnmarshalByValue(stream, &iid, (void **)&object);
+        if (hr != S_OK)
+            ERR("Unmarshaling by value failed, hr %#lx\n", hr);
+    }
+#endif
     else if (hr == S_OK)
     {
         /* call the helper object to do the actual unmarshaling */
@@ -1423,6 +1491,131 @@ static const IClientSecurityVtbl ProxyCliSec_Vtbl =
     ProxyCliSec_CopyProxy
 };
 
+#ifdef __REACTOS__
+static
+HRESULT
+STDMETHODCALLTYPE
+ProxyIdentity_QueryInterface(
+    _In_ IServerProcessIdentity *iface,
+    _In_ REFIID riid,
+    _Outptr_ void **ppvObject)
+{
+    struct proxy_manager *This = impl_from_IServerProcessIdentity(iface);
+    return IMultiQI_QueryInterface(&This->IMultiQI_iface, riid, ppvObject);
+}
+
+static
+ULONG
+STDMETHODCALLTYPE
+ProxyIdentity_AddRef(
+    _In_ IServerProcessIdentity *iface)
+{
+    struct proxy_manager *This = impl_from_IServerProcessIdentity(iface);
+    return IMultiQI_AddRef(&This->IMultiQI_iface);
+}
+
+static
+ULONG
+STDMETHODCALLTYPE
+ProxyIdentity_Release(
+    _In_ IServerProcessIdentity *iface)
+{
+    struct proxy_manager *This = impl_from_IServerProcessIdentity(iface);
+    return IMultiQI_Release(&This->IMultiQI_iface);
+}
+
+/* Gets the process exporting the object, as long as the proxy is still connected */
+static
+HRESULT
+ProxyIdentity_GetConnectedProcess(
+    _In_ struct proxy_manager *This,
+    _Out_ DWORD *ProcessId)
+{
+    struct ifproxy *IfProxy;
+    BOOL Connected = FALSE;
+
+    *ProcessId = 0;
+    EnterCriticalSection(&This->cs);
+    LIST_FOR_EACH_ENTRY(IfProxy, &This->interfaces, struct ifproxy, entry)
+    {
+        if (IfProxy->chan)
+        {
+            Connected = TRUE;
+            break;
+        }
+    }
+    LeaveCriticalSection(&This->cs);
+
+    if (!Connected)
+        return CO_E_OBJNOTCONNECTED;
+
+    /* Apartments name themselves by their process id in the high part of the OXID */
+    *ProcessId = This->oxid_info.dwPid ? This->oxid_info.dwPid : (DWORD)(This->oxid >> 32);
+    return S_OK;
+}
+
+static
+HRESULT
+STDMETHODCALLTYPE
+ProxyIdentity_GetServerProcessId(
+    _In_ IServerProcessIdentity *iface,
+    _Out_ DWORD *ProcessId)
+{
+    struct proxy_manager *This = impl_from_IServerProcessIdentity(iface);
+    return ProxyIdentity_GetConnectedProcess(This, ProcessId);
+}
+
+static
+HRESULT
+STDMETHODCALLTYPE
+ProxyIdentity_GetServerProcessHandle(
+    _In_ IServerProcessIdentity *iface,
+    _In_ DWORD Access,
+    _In_ BOOL Inherit,
+    _Out_ HANDLE *Process)
+{
+    struct proxy_manager *This = impl_from_IServerProcessIdentity(iface);
+    DWORD ProcessId;
+    HRESULT Status;
+
+    *Process = NULL;
+    Status = ProxyIdentity_GetConnectedProcess(This, &ProcessId);
+    if (FAILED(Status))
+        return Status;
+    if (!ProcessId)
+        return CO_E_NOT_SUPPORTED;
+
+    *Process = OpenProcess(Access, Inherit, ProcessId);
+    if (!*Process)
+        return HRESULT_FROM_WIN32(GetLastError());
+    return S_OK;
+}
+
+static
+HRESULT
+STDMETHODCALLTYPE
+ProxyIdentity_IsAppSilo(
+    _In_ IServerProcessIdentity *iface,
+    _Out_ BOOL *IsAppSilo)
+{
+    struct proxy_manager *This = impl_from_IServerProcessIdentity(iface);
+    DWORD ProcessId;
+
+    *IsAppSilo = FALSE;
+    return ProxyIdentity_GetConnectedProcess(This, &ProcessId);
+}
+
+static const IServerProcessIdentityVtbl ProxyIdentity_Vtbl =
+{
+    ProxyIdentity_QueryInterface,
+    ProxyIdentity_AddRef,
+    ProxyIdentity_Release,
+    ProxyIdentity_GetServerProcessId,
+    ProxyIdentity_GetServerProcessHandle,
+    ProxyIdentity_IsAppSilo
+};
+#endif
+
 static HRESULT ifproxy_get_public_ref(struct ifproxy * This)
 {
     HRESULT hr = S_OK;
@@ -1571,6 +1764,9 @@ static HRESULT proxy_manager_construct(
     This->IMultiQI_iface.lpVtbl = &ClientIdentity_Vtbl;
     This->IMarshal_iface.lpVtbl = &ProxyMarshal_Vtbl;
     This->IClientSecurity_iface.lpVtbl = &ProxyCliSec_Vtbl;
+#ifdef __REACTOS__
+    This->IServerProcessIdentity_iface.lpVtbl = &ProxyIdentity_Vtbl;
+#endif
 
     list_init(&This->entry);
     list_init(&This->interfaces);
@@ -1700,6 +1896,14 @@ static HRESULT proxy_manager_query_local_interface(struct proxy_manager * This, 
         IClientSecurity_AddRef(&This->IClientSecurity_iface);
         return S_OK;
     }
+#ifdef __REACTOS__
+    if (IsEqualIID(riid, &IID_IServerProcessIdentity))
+    {
+        *ppv = &This->IServerProcessIdentity_iface;
+        IServerProcessIdentity_AddRef(&This->IServerProcessIdentity_iface);
+        return S_OK;
+    }
+#endif
 
     hr = proxy_manager_find_ifproxy(This, riid, &ifproxy);
     if (hr == S_OK)

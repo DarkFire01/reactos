@@ -4,8 +4,8 @@ add_definitions(-D_WIN32_WINNT=0x600)
 include_directories(${REACTOS_SOURCE_DIR}/sdk/include/wine)
 
 spec2def(combase.dll combase.spec ADD_IMPORTLIB)
-add_idl_headers(combase_idlheader dcom.idl)
-add_rpc_files(client irpcss.idl)
+add_idl_headers(combase_idlheader dcom.idl rtinterfaces.idl)
+add_rpc_files(client irpcss.idl ${REACTOS_SOURCE_DIR}/sdk/include/reactos/idl/rtscm.idl)
 
 list(APPEND SOURCE
     apartment.c
@@ -15,12 +15,17 @@ list(APPEND SOURCE
     malloc.c
     marshal.c
     roapi.c
+    rocatalog.c
+    roextension.c
+    romarshal.c
+    roserver.c
     rpc.c
     string.c
     stubmanager.c
     usrmarshal.c
     ${CMAKE_CURRENT_BINARY_DIR}/combase_stubs.c
     ${CMAKE_CURRENT_BINARY_DIR}/irpcss_c.c
+    ${CMAKE_CURRENT_BINARY_DIR}/rtscm_c.c
 )
 
 add_definitions(-Dwcsdup=_wcsdup -Dwcsicmp=_wcsicmp -D_ROAPI_)

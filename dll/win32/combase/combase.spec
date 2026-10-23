@@ -71,6 +71,7 @@
 @ stdcall CleanupTlsOleState(ptr)
 @ stub ClearCleanupFlag
 @ stdcall CoAddRefServerProcess()
+140 stdcall -noname CoAllowSetForegroundWindow(ptr ptr)
 @ stub CoAllowUnmarshalerCLSID
 @ stdcall -stub CoCancelCall(long long)
 @ stdcall CoCopyProxy(ptr ptr)
@@ -136,6 +137,7 @@
 @ stdcall CoQueryProxyBlanket(ptr ptr ptr ptr ptr ptr ptr ptr)
 @ stub CoReactivateObject
 @ stub CoRegisterActivationFilter
+69 stdcall CoRegisterServerShutdownDelay(ptr long)
 @ stdcall CoRegisterChannelHook(ptr ptr)
 @ stdcall CoRegisterClassObject(ptr ptr long long ptr)
 @ stdcall CoRegisterInitializeSpy(ptr ptr)
@@ -289,10 +291,13 @@
 @ stub RoFailFastWithErrorContextInternal
 @ stub RoFailFastWithErrorContextInternal2
 @ stub RoFreeParameterizedTypeExtra
-@ stub RoGetActivatableClassRegistration
+@ stdcall RoGetActivatableClassRegistration(ptr ptr)
 @ stdcall RoGetActivationFactory(ptr ptr ptr)
 @ stdcall RoGetAgileReference(long ptr ptr ptr)
 @ stdcall RoGetApartmentIdentifier(ptr)
+65 stdcall -noname RoGetExtensionRegistration(ptr ptr ptr ptr)
+79 stdcall -noname RoGetExtensionRegistrationByExtensionId(ptr ptr ptr)
+159 stdcall -noname RoGetExtensionRegistrationForLaunchContracts(ptr ptr long ptr ptr)
 @ stub RoGetErrorReportingFlags
 @ stub RoGetMatchingRestrictedErrorInfo
 @ stdcall RoGetParameterizedTypeInstanceIID(long ptr ptr ptr ptr)
@@ -310,7 +315,7 @@
 @ stub RoReportFailedDelegate
 @ stub RoReportUnhandledError
 @ stub RoResolveRestrictedErrorInfoReference
-@ stub RoRevokeActivationFactories
+@ stdcall RoRevokeActivationFactories(ptr)
 @ stdcall RoSetErrorReportingFlags(long)
 @ stub RoTransformError
 @ stub RoTransformErrorW

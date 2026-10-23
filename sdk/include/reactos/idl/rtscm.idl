@@ -1,0 +1,73 @@
+/*
+ * PROJECT:     ReactOS RPC Subsystem Service
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Windows Runtime server activation interface between combase and rpcss
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+/*
+ * rpcss serves this interface on the same endpoint as Irpcss. Servers register a
+ * marshaled provider object with a key per class; clients get the provider and the
+ * key back and ask the provider for the factory. Callers are identified by their
+ * RPC client process and token.
+ */
+
+import "wtypes.idl";
+
+typedef struct _RT_SERVER_CLASS
+{
+    [string] WCHAR *ClassId;
+    GUID Key;
+} RT_SERVER_CLASS, *PRT_SERVER_CLASS;
+
+typedef struct _RT_ACTIVATION_REQUEST
+{
+    [string, unique] WCHAR *PackageFullName;
+    [string] WCHAR *ClassId;
+    ULONGLONG HostId;
+    ULONGLONG UserContext;
+    ULONGLONG ActivationId;
+    DWORD Flags;
+} RT_ACTIVATION_REQUEST, *PRT_ACTIVATION_REQUEST;
+
+typedef struct _RT_ACTIVATION_RESULT
+{
+    GUID Key;
+    DWORD ProcessId;
+    DWORD ProviderLength;
+    [size_is(ProviderLength)] BYTE *Provider;
+} RT_ACTIVATION_RESULT, *PRT_ACTIVATION_RESULT;
+
+[
+    uuid(d3c4a1e6-0f5b-4f7e-9b4a-6c2a2e5b8d71),
+    version(1.0),
+    pointer_default(unique)
+]
+interface IRtScm
+{
+    /* Function 0 */
+    HRESULT
+    __stdcall
+    RtScmRegisterServer(
+        [in] handle_t Binding,
+        [in] DWORD ClassCount,
+        [in, size_is(ClassCount)] RT_SERVER_CLASS *Classes,
+        [in] DWORD ProviderLength,
+        [in, size_is(ProviderLength)] BYTE *Provider,
+        [out] DWORD *Cookie);
+
+    /* Function 1 */
+    HRESULT
+    __stdcall
+    RtScmRevokeServer(
+        [in] handle_t Binding,
+        [in] DWORD Cookie);
+
+    /* Function 2 */
+    HRESULT
+    __stdcall
+    RtScmGetActivationFactory(
+        [in] handle_t Binding,
+        [in, ref] RT_ACTIVATION_REQUEST *Request,
+        [out, ref] RT_ACTIVATION_RESULT *Result);
+}

@@ -25,6 +25,9 @@
 #include "winstring.h"
 
 #include "combase_private.h"
+#ifdef __REACTOS__
+#include "roregistration.h"
+#endif
 
 #include "wine/debug.h"
 
@@ -59,6 +62,11 @@ static HRESULT get_library_for_classid(const WCHAR *classid, WCHAR **out)
         *out = wcsdup(ptr);
         return S_OK;
     }
+
+#ifdef __REACTOS__
+    /* The registry is the runtime class catalog's, see RtFindClass */
+    return REGDB_E_CLASSNOTREG;
+#endif
 
     /* load class registry key */
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\WindowsRuntime\\ActivatableClassId",
@@ -160,6 +168,22 @@ HRESULT WINAPI DECLSPEC_HOTPATCH RoGetActivationFactory(HSTRING classid, REFIID 
         return hr;
 
     hr = get_library_for_classid(WindowsGetStringRawBuffer(classid, NULL), &library);
+#ifdef __REACTOS__
+    if (hr == REGDB_E_CLASSNOTREG)
+    {
+        RT_CLASS_INFO info;
+
+        hr = RtFindClass(classid, NULL, &info);
+        if (FAILED(hr))
+        {
+            WARN("Class %s not found, %#lx\n", debugstr_hstring(classid), hr);
+            return hr;
+        }
+        hr = RtGetClassFactory(&info, NULL, iid, class_factory);
+        RtFreeClassInfo(&info);
+        return hr;
+    }
+#endif
     if (FAILED(hr))
     {
         ERR("Failed to find library for %s\n", debugstr_hstring(classid));
@@ -448,6 +472,7 @@ HRESULT WINAPI RoRegisterForApartmentShutdown(IApartmentShutdown *callback,
     return S_OK;
 }
 
+#ifndef __REACTOS__
 /***********************************************************************
  *      RoGetServerActivatableClasses (combase.@)
  */
@@ -470,6 +495,7 @@ HRESULT WINAPI RoRegisterActivationFactories(HSTRING *classes, PFNGETACTIVATIONF
 
     return S_OK;
 }
+#endif
 
 /***********************************************************************
  *      GetRestrictedErrorInfo (combase.@)

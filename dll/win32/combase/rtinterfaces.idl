@@ -1,0 +1,398 @@
+/*
+ * PROJECT:     ReactOS COM Base
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Windows Runtime interfaces used inside combase
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+/*
+ * Parameterized and internal interfaces are declared here as plain interfaces with
+ * the IID and method order Windows uses. Names of internal interfaces are our own.
+ */
+
+#pragma makedep header
+
+import "inspectable.idl";
+
+typedef [v1_enum] enum RegistrationScope
+{
+    RegistrationScope_PerMachine = 0,
+    RegistrationScope_PerUser = 1,
+    RegistrationScope_InboxApp = 2
+} RegistrationScope;
+
+typedef [v1_enum] enum ActivationType
+{
+    ActivationType_InProcess = 0,
+    ActivationType_OutOfProcess = 1,
+    ActivationType_RemoteProcess = 2
+} ActivationType;
+
+typedef [v1_enum] enum ThreadingType
+{
+    ThreadingType_BOTH = 0,
+    ThreadingType_STA = 1,
+    ThreadingType_MTA = 2
+} ThreadingType;
+
+typedef [v1_enum] enum IdentityType
+{
+    IdentityType_ActivateAsActivator = 0,
+    IdentityType_RunAs = 1,
+    IdentityType_ActivateAsPackage = 2,
+    IdentityType_SessionVirtual = 3,
+    IdentityType_SessionUser = 4,
+    IdentityType_ActivateAsActivatingUser = 5,
+    IdentityType_ActivateAsActivatorPackaged = 6
+} IdentityType;
+
+typedef [v1_enum] enum InstancingType
+{
+    InstancingType_SingleInstance = 0,
+    InstancingType_MultipleInstances = 1
+} InstancingType;
+
+/* Windows.Foundation.PropertyType values combase looks at */
+typedef [v1_enum] enum RtPropertyType
+{
+    RtPropertyType_Empty = 0,
+    RtPropertyType_UInt32 = 5,
+    RtPropertyType_String = 12,
+    RtPropertyType_Inspectable = 13
+} RtPropertyType;
+
+interface IRtMapView;
+interface IRtKeyValuePair;
+
+/* IKeyValuePair<HSTRING, IInspectable *> */
+[
+    object,
+    uuid(09335560-6c6b-5a26-9348-97b781132b20),
+    pointer_default(unique)
+]
+interface IRtKeyValuePair : IInspectable
+{
+    HRESULT get_Key([out] HSTRING *key);
+    HRESULT get_Value([out] IInspectable **value);
+}
+
+/* IIterator<IKeyValuePair<HSTRING, IInspectable *> *> */
+[
+    object,
+    uuid(5db5fa32-707c-5849-a06b-91c8eb9d10e8),
+    pointer_default(unique)
+]
+interface IRtKeyValueIterator : IInspectable
+{
+    HRESULT get_Current([out] IRtKeyValuePair **current);
+    HRESULT get_HasCurrent([out] boolean *hasCurrent);
+    HRESULT MoveNext([out] boolean *hasCurrent);
+    HRESULT GetMany([in] UINT32 capacity, [out] IRtKeyValuePair **items, [out] UINT32 *actual);
+}
+
+/* IIterable<IKeyValuePair<HSTRING, IInspectable *> *> */
+[
+    object,
+    uuid(fe2f3d47-5d47-5499-8374-430c7cda0204),
+    pointer_default(unique)
+]
+interface IRtKeyValueIterable : IInspectable
+{
+    HRESULT First([out] IRtKeyValueIterator **first);
+}
+
+/* IMapView<HSTRING, IInspectable *> */
+[
+    object,
+    uuid(bb78502a-f79d-54fa-92c9-90c5039fdf7e),
+    pointer_default(unique)
+]
+interface IRtMapView : IInspectable
+{
+    HRESULT Lookup([in] HSTRING key, [out] IInspectable **value);
+    HRESULT get_Size([out] UINT32 *size);
+    HRESULT HasKey([in] HSTRING key, [out] boolean *found);
+    HRESULT Split([out] IRtMapView **first, [out] IRtMapView **second);
+}
+
+/* IMap<HSTRING, IInspectable *> */
+[
+    object,
+    uuid(1b0d3570-0877-5ec2-8a2c-3b9539506aca),
+    pointer_default(unique)
+]
+interface IRtMap : IInspectable
+{
+    HRESULT Lookup([in] HSTRING key, [out] IInspectable **value);
+    HRESULT get_Size([out] UINT32 *size);
+    HRESULT HasKey([in] HSTRING key, [out] boolean *found);
+    HRESULT GetView([out] IRtMapView **view);
+    HRESULT Insert([in] HSTRING key, [in] IInspectable *value, [out] boolean *replaced);
+    HRESULT Remove([in] HSTRING key);
+    HRESULT Clear();
+}
+
+/* Windows.Foundation.Collections.IPropertySet; its methods come from the map interfaces */
+[
+    object,
+    uuid(8a43ed9f-f4e6-4421-acf9-1dab2986820c),
+    pointer_default(unique)
+]
+interface IRtPropertySet : IInspectable
+{
+}
+
+/* Windows.Foundation.IPropertyValue, up to the last method combase calls */
+[
+    object,
+    uuid(4bd682dd-7554-40e9-9a9b-82654ede7e62),
+    pointer_default(unique)
+]
+interface IRtPropertyValue : IInspectable
+{
+    HRESULT get_Type([out] RtPropertyType *type);
+    HRESULT get_IsNumericScalar([out] boolean *numeric);
+    HRESULT GetUInt8([out] BYTE *value);
+    HRESULT GetInt16([out] INT16 *value);
+    HRESULT GetUInt16([out] UINT16 *value);
+    HRESULT GetInt32([out] INT32 *value);
+    HRESULT GetUInt32([out] UINT32 *value);
+    HRESULT GetInt64([out] INT64 *value);
+    HRESULT GetUInt64([out] UINT64 *value);
+    HRESULT GetSingle([out] FLOAT *value);
+    HRESULT GetDouble([out] DOUBLE *value);
+    HRESULT GetChar16([out] WCHAR *value);
+    HRESULT GetBoolean([out] boolean *value);
+    HRESULT GetString([out] HSTRING *value);
+}
+
+/* Windows.Foundation.IPropertyValueStatics, up to the last method combase calls */
+[
+    object,
+    uuid(629bdbc8-d932-4ff4-96b9-8d96c5c1e858),
+    pointer_default(unique)
+]
+interface IRtPropertyValueStatics : IInspectable
+{
+    HRESULT CreateEmpty([out] IInspectable **value);
+    HRESULT CreateUInt8([in] BYTE data, [out] IInspectable **value);
+    HRESULT CreateInt16([in] INT16 data, [out] IInspectable **value);
+    HRESULT CreateUInt16([in] UINT16 data, [out] IInspectable **value);
+    HRESULT CreateInt32([in] INT32 data, [out] IInspectable **value);
+    HRESULT CreateUInt32([in] UINT32 data, [out] IInspectable **value);
+    HRESULT CreateInt64([in] INT64 data, [out] IInspectable **value);
+    HRESULT CreateUInt64([in] UINT64 data, [out] IInspectable **value);
+    HRESULT CreateSingle([in] FLOAT data, [out] IInspectable **value);
+    HRESULT CreateDouble([in] DOUBLE data, [out] IInspectable **value);
+    HRESULT CreateChar16([in] WCHAR data, [out] IInspectable **value);
+    HRESULT CreateBoolean([in] boolean data, [out] IInspectable **value);
+    HRESULT CreateString([in] HSTRING data, [out] IInspectable **value);
+}
+
+/* Windows.Storage.Streams.IBuffer */
+[
+    object,
+    uuid(905a0fe0-bc53-11df-8c49-001e4fc686da),
+    pointer_default(unique)
+]
+interface IRtBuffer : IInspectable
+{
+    HRESULT get_Capacity([out] UINT32 *capacity);
+    HRESULT get_Length([out] UINT32 *length);
+    HRESULT put_Length([in] UINT32 length);
+}
+
+/* Windows::Storage::Streams::IBufferByteAccess */
+[
+    object,
+    uuid(905a0fef-bc53-11df-8c49-001e4fc686da),
+    pointer_default(unique)
+]
+interface IRtBufferByteAccess : IUnknown
+{
+    HRESULT Buffer([out] BYTE **data);
+}
+
+/* Windows.Storage.Streams.IPropertySetSerializer */
+[
+    object,
+    uuid(6e8ebf1c-ef3d-4376-b20e-5be638aeac77),
+    pointer_default(unique)
+]
+interface IRtPropertySetSerializer : IInspectable
+{
+    HRESULT Serialize([in] IRtPropertySet *set, [out] IRtBuffer **buffer);
+    HRESULT Deserialize([in] IRtPropertySet *set, [in] IRtBuffer *buffer);
+}
+
+/* IWeakReference */
+[
+    object,
+    uuid(00000037-0000-0000-c000-000000000046),
+    pointer_default(unique)
+]
+interface IRtWeakReference : IUnknown
+{
+    HRESULT Resolve([in] REFIID riid, [out, iid_is(riid)] IInspectable **object);
+}
+
+/* IWeakReferenceSource */
+[
+    object,
+    uuid(00000038-0000-0000-c000-000000000046),
+    pointer_default(unique)
+]
+interface IRtWeakReferenceSource : IUnknown
+{
+    HRESULT GetWeakReference([out] IRtWeakReference **reference);
+}
+
+/* Windows.Foundation.IActivatableClassRegistration */
+[
+    object,
+    uuid(9bbcae23-3dd6-49c3-b63c-1c587e7a6a67),
+    pointer_default(unique)
+]
+interface IActivatableClassRegistration : IInspectable
+{
+    HRESULT get_ActivatableClassId([out] HSTRING *activatableClassId);
+    HRESULT get_ActivationType([out] ActivationType *activationType);
+    HRESULT get_RegistrationScope([out] RegistrationScope *registrationScope);
+    HRESULT get_RegisteredTrustLevel([out] TrustLevel *registeredTrustLevel);
+    HRESULT get_Attributes([out] IRtMapView **attributes);
+}
+
+/* Windows.Foundation.IDllServerActivatableClassRegistration */
+[
+    object,
+    uuid(c8aa04f6-66c6-46a3-8fe6-f56be7ddc091),
+    pointer_default(unique)
+]
+interface IDllServerActivatableClassRegistration : IInspectable
+{
+    HRESULT get_DllPath([out] HSTRING *dllPath);
+    HRESULT get_ThreadingType([out] ThreadingType *threadingType);
+}
+
+/* Windows.Foundation.IExeServerRegistration */
+[
+    object,
+    uuid(ec734a06-0401-4317-bac1-3b7e207242e3),
+    pointer_default(unique)
+]
+interface IExeServerRegistration : IInspectable
+{
+    HRESULT get_ServerName([out] HSTRING *serverName);
+    HRESULT get_ExePath([out] HSTRING *exePath);
+    HRESULT get_CommandLine([out] HSTRING *commandLine);
+    HRESULT get_AppUserModelId([out] HSTRING *appUserModelId);
+    HRESULT get_IdentityType([out] IdentityType *identityType);
+    HRESULT get_Identity([out] HSTRING *identity);
+    HRESULT get_Instancing([out] InstancingType *instanceType);
+    HRESULT get_Permissions([out] HSTRING *permissions);
+}
+
+/* Windows.Foundation.IExeServerActivatableClassRegistration */
+[
+    object,
+    uuid(9308c3c5-c2ac-49d1-a024-660a2bb5d5ac),
+    pointer_default(unique)
+]
+interface IExeServerActivatableClassRegistration : IInspectable
+{
+    HRESULT get_ServerRegistration([out] IExeServerRegistration **serverRegistration);
+}
+
+/* Attributes of a server registration, offered next to IExeServerRegistration */
+[
+    object,
+    uuid(3d9892c6-79a5-433b-ac06-d920684e2d57),
+    pointer_default(unique)
+]
+interface IServerAttributeInfo : IInspectable
+{
+    HRESULT get_Attributes([out] IRtMapView **attributes);
+}
+
+/* One registration of an extension catalog contract */
+[
+    object,
+    uuid(905754d7-1cc5-404e-a9d4-c517bc35e88d),
+    pointer_default(unique)
+]
+interface IExtensionEntry : IInspectable
+{
+    HRESULT get_ActivatableClassId([out] HSTRING *activatableClassId);
+    HRESULT get_ContractId([out] HSTRING *contractId);
+    HRESULT get_PackageId([out] HSTRING *packageId);
+    HRESULT get_ExtensionId([out] HSTRING *extensionId);
+    HRESULT get_ActivatableClassRegistration([out] IActivatableClassRegistration **registration);
+    HRESULT get_Vendor([out] HSTRING *vendor);
+    HRESULT get_Icon([out] HSTRING *icon);
+    HRESULT get_DisplayName([out] HSTRING *displayName);
+    HRESULT get_Description([out] HSTRING *description);
+    HRESULT get_RegistrationScope([out] RegistrationScope *registrationScope);
+    HRESULT get_Attributes([out] IRtMapView **attributes);
+    HRESULT get_OutOfProcActivationFlags([out] UINT32 *flags);
+    HRESULT put_OutOfProcActivationFlags([in] UINT32 flags);
+    HRESULT Activate([out] IInspectable **instance);
+}
+
+/* Values an activation through an extension entry carries to the server launcher */
+[
+    object,
+    uuid(533148e2-ee0a-4b06-8500-7fda28f92ae2),
+    pointer_default(unique)
+]
+interface IExtensionLaunchContext : IUnknown
+{
+    HRESULT get_HostId([out] UINT64 *hostId);
+    HRESULT put_HostId([in] UINT64 hostId);
+    HRESULT get_UserContext([out] UINT64 *userContext);
+    HRESULT put_UserContext([in] UINT64 userContext);
+    HRESULT get_ComponentProcessId([out] GUID *componentProcessId);
+    HRESULT put_ComponentProcessId([in] GUID *componentProcessId);
+    HRESULT get_RacActivationTokenId([out] UINT64 *tokenId);
+    HRESULT put_RacActivationTokenId([in] UINT64 tokenId);
+    HRESULT get_LpacAttributes([out] BLOB **attributes);
+    HRESULT put_LpacAttributes([in] BLOB *attributes);
+    HRESULT get_ConsoleHandlesId([out] UINT64 *handlesId);
+    HRESULT put_ConsoleHandlesId([in] UINT64 handlesId);
+    HRESULT get_ActivationId([out] UINT64 *activationId);
+    HRESULT put_ActivationId([in] UINT64 activationId);
+}
+
+/* Implemented by objects that cross processes as a property set */
+[
+    object,
+    uuid(2132b005-c604-4354-85bd-8f2e24181b0c),
+    pointer_default(unique)
+]
+interface IPropertySetMarshal : IInspectable
+{
+    HRESULT MarshalObjectToPropertySet([in] IRtPropertySet *set);
+}
+
+/* Implemented by the activation factory of such a class to rebuild the object */
+[
+    object,
+    uuid(ecabe149-4833-452b-8112-3eeec6d20cb0),
+    pointer_default(unique)
+]
+interface IPropertySetUnmarshal : IInspectable
+{
+    HRESULT UnmarshalObjectFromPropertySet([in] IRtPropertySet *set, [out] IInspectable **object);
+}
+
+/* Server identity of a standard proxy */
+[
+    object,
+    uuid(5524fe34-8da7-40a8-8165-e8b37a8b4a4b),
+    pointer_default(unique)
+]
+interface IServerProcessIdentity : IUnknown
+{
+    HRESULT GetServerProcessId([out] DWORD *processId);
+    HRESULT GetServerProcessHandle([in] DWORD access, [in] BOOL inherit, [out] HANDLE *process);
+    HRESULT IsAppSilo([out] BOOL *isAppSilo);
+}
