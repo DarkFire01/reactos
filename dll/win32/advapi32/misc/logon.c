@@ -423,6 +423,55 @@ InsertProcessSecurityCommon(
 }
 
 
+/* Exported by kernel32 for advapi32, as on Windows */
+BOOL
+WINAPI
+CreateProcessInternalW(
+    _In_opt_ HANDLE hUserToken,
+    _In_opt_ LPCWSTR lpApplicationName,
+    _Inout_opt_ LPWSTR lpCommandLine,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpProcessAttributes,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes,
+    _In_ BOOL bInheritHandles,
+    _In_ DWORD dwCreationFlags,
+    _In_opt_ LPVOID lpEnvironment,
+    _In_opt_ LPCWSTR lpCurrentDirectory,
+    _In_ LPSTARTUPINFOW lpStartupInfo,
+    _Out_ LPPROCESS_INFORMATION lpProcessInformation,
+    _Out_opt_ PHANDLE hNewToken);
+
+BOOL
+WINAPI
+CreateProcessInternalA(
+    _In_opt_ HANDLE hUserToken,
+    _In_opt_ LPCSTR lpApplicationName,
+    _Inout_opt_ LPSTR lpCommandLine,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpProcessAttributes,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes,
+    _In_ BOOL bInheritHandles,
+    _In_ DWORD dwCreationFlags,
+    _In_opt_ LPVOID lpEnvironment,
+    _In_opt_ LPCSTR lpCurrentDirectory,
+    _In_ LPSTARTUPINFOA lpStartupInfo,
+    _Out_ LPPROCESS_INFORMATION lpProcessInformation,
+    _Out_opt_ PHANDLE hNewToken);
+
+/**
+ * @brief
+ * Finishes a process kernel32 created from the caller's token. kernel32 hands
+ * back a token only when it already put one in the process: an AppContainer
+ * token it derived from hToken, which stays, or a Safer token, which is then
+ * assigned in place of hToken.
+ */
+static
+BOOL
+FinishProcessWithNewTokenCommon(
+    _In_ HANDLE NewToken,
+    _In_ DWORD dwCreationFlags,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpProcessAttributes,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes,
+    _Inout_ LPPROCESS_INFORMATION lpProcessInformation);
+
 /**
  * @brief
  * Sets a primary token to the newly created process.
@@ -929,6 +978,60 @@ Quit:
     return Success;
 }
 
+static
+BOOL
+FinishProcessWithNewTokenCommon(
+    _In_ HANDLE NewToken,
+    _In_ DWORD dwCreationFlags,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpProcessAttributes,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes,
+    _Inout_ LPPROCESS_INFORMATION lpProcessInformation)
+{
+    ULONG IsAppContainer = 0, ReturnLength;
+    NTSTATUS Status;
+    BOOL Success;
+
+    Status = NtQueryInformationToken(NewToken, TokenIsAppContainer, &IsAppContainer,
+                                     sizeof(IsAppContainer), &ReturnLength);
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("NtQueryInformationToken() failed, Status 0x%08x\n", Status);
+        NtClose(NewToken);
+        TerminateProcess(lpProcessInformation->hProcess, Status);
+        SetLastError(RtlNtStatusToDosError(Status));
+        return FALSE;
+    }
+
+    if (!IsAppContainer)
+    {
+        Success = CreateProcessAsUserCommon(NewToken, dwCreationFlags, lpProcessAttributes,
+                                            lpThreadAttributes, lpProcessInformation);
+        NtClose(NewToken);
+        return Success;
+    }
+
+    NtClose(NewToken);
+
+    /* The process keeps its AppContainer token; only the caller's descriptors are left to apply */
+    if ((lpProcessAttributes && lpProcessAttributes->lpSecurityDescriptor &&
+         !SetKernelObjectSecurity(lpProcessInformation->hProcess,
+                                  DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
+                                  lpProcessAttributes->lpSecurityDescriptor)) ||
+        (lpThreadAttributes && lpThreadAttributes->lpSecurityDescriptor &&
+         !SetKernelObjectSecurity(lpProcessInformation->hThread,
+                                  DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
+                                  lpThreadAttributes->lpSecurityDescriptor)))
+    {
+        ERR("Failed to set the caller's security on the AppContainer process (error %lu)\n", GetLastError());
+        TerminateProcess(lpProcessInformation->hProcess, GetLastError());
+        return FALSE;
+    }
+
+    if (!(dwCreationFlags & CREATE_SUSPENDED))
+        ResumeThread(lpProcessInformation->hThread);
+    return TRUE;
+}
+
 
 /*
  * @implemented
@@ -949,24 +1052,38 @@ CreateProcessAsUserA(
     _In_ LPSTARTUPINFOA lpStartupInfo,
     _Out_ LPPROCESS_INFORMATION lpProcessInformation)
 {
+    HANDLE NewToken = NULL;
+
     TRACE("%p %s %s %p %p %d 0x%08x %p %s %p %p\n", hToken, debugstr_a(lpApplicationName),
         debugstr_a(lpCommandLine), lpProcessAttributes, lpThreadAttributes, bInheritHandles,
         dwCreationFlags, lpEnvironment, debugstr_a(lpCurrentDirectory), lpStartupInfo, lpProcessInformation);
 
-    /* Create the process with a suspended main thread */
-    if (!CreateProcessA(lpApplicationName,
-                        lpCommandLine,
-                        lpProcessAttributes,
-                        lpThreadAttributes,
-                        bInheritHandles,
-                        dwCreationFlags | CREATE_SUSPENDED,
-                        lpEnvironment,
-                        lpCurrentDirectory,
-                        lpStartupInfo,
-                        lpProcessInformation))
+    /* Create the process with a suspended main thread, from the caller's token */
+    if (!CreateProcessInternalA(hToken,
+                                lpApplicationName,
+                                lpCommandLine,
+                                lpProcessAttributes,
+                                lpThreadAttributes,
+                                bInheritHandles,
+                                dwCreationFlags | CREATE_SUSPENDED,
+                                lpEnvironment,
+                                lpCurrentDirectory,
+                                lpStartupInfo,
+                                lpProcessInformation,
+                                &NewToken))
     {
-        ERR("CreateProcessA failed, last error: %d\n", GetLastError());
+        ERR("CreateProcessInternalA failed, last error: %d\n", GetLastError());
         return FALSE;
+    }
+
+    /* kernel32 already put a token of its own in the process */
+    if (NewToken)
+    {
+        return FinishProcessWithNewTokenCommon(NewToken,
+                                               dwCreationFlags,
+                                               lpProcessAttributes,
+                                               lpThreadAttributes,
+                                               lpProcessInformation);
     }
 
     /* Call the helper function */
@@ -997,24 +1114,38 @@ CreateProcessAsUserW(
     _In_ LPSTARTUPINFOW lpStartupInfo,
     _Out_ LPPROCESS_INFORMATION lpProcessInformation)
 {
+    HANDLE NewToken = NULL;
+
     TRACE("%p %s %s %p %p %d 0x%08x %p %s %p %p\n", hToken, debugstr_w(lpApplicationName),
         debugstr_w(lpCommandLine), lpProcessAttributes, lpThreadAttributes, bInheritHandles,
         dwCreationFlags, lpEnvironment, debugstr_w(lpCurrentDirectory), lpStartupInfo, lpProcessInformation);
 
-    /* Create the process with a suspended main thread */
-    if (!CreateProcessW(lpApplicationName,
-                        lpCommandLine,
-                        lpProcessAttributes,
-                        lpThreadAttributes,
-                        bInheritHandles,
-                        dwCreationFlags | CREATE_SUSPENDED,
-                        lpEnvironment,
-                        lpCurrentDirectory,
-                        lpStartupInfo,
-                        lpProcessInformation))
+    /* Create the process with a suspended main thread, from the caller's token */
+    if (!CreateProcessInternalW(hToken,
+                                lpApplicationName,
+                                lpCommandLine,
+                                lpProcessAttributes,
+                                lpThreadAttributes,
+                                bInheritHandles,
+                                dwCreationFlags | CREATE_SUSPENDED,
+                                lpEnvironment,
+                                lpCurrentDirectory,
+                                lpStartupInfo,
+                                lpProcessInformation,
+                                &NewToken))
     {
-        ERR("CreateProcessW failed, last error: %d\n", GetLastError());
+        ERR("CreateProcessInternalW failed, last error: %d\n", GetLastError());
         return FALSE;
+    }
+
+    /* kernel32 already put a token of its own in the process */
+    if (NewToken)
+    {
+        return FinishProcessWithNewTokenCommon(NewToken,
+                                               dwCreationFlags,
+                                               lpProcessAttributes,
+                                               lpThreadAttributes,
+                                               lpProcessInformation);
     }
 
     /* Call the helper function */
