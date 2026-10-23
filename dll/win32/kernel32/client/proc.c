@@ -2309,6 +2309,10 @@ CreateProcessInternalW(IN HANDLE hUserToken,
     PIMAGE_NT_HEADERS NtHeaders;
     STARTUPINFOW StartupInfo;
     LPPROC_THREAD_ATTRIBUTE_LIST AttributeList = NULL;
+    PSECURITY_CAPABILITIES SecurityCapabilities = NULL;
+    HANDLE AppContainerToken = NULL;
+    PWSTR AppContainerEnvironment = NULL;
+    LPVOID CallerEnvironment = NULL;
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
     UNICODE_STRING DebuggerString;
     BOOL Result;
@@ -2610,6 +2614,34 @@ CreateProcessInternalW(IN HANDLE hUserToken,
         (lpStartupInfo->cb >= sizeof(STARTUPINFOEXW)))
     {
         AttributeList = ((LPSTARTUPINFOEXW)lpStartupInfo)->lpAttributeList;
+        SecurityCapabilities = BasepFindProcThreadAttribute(AttributeList,
+                                                            PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+                                                            NULL);
+    }
+
+    /* An AppContainer process gets a LowBox token and its container's folders in its environment */
+    if (SecurityCapabilities)
+    {
+        Status = BasepCreateAppContainerToken(hUserToken, SecurityCapabilities, &AppContainerToken);
+        if (NT_SUCCESS(Status))
+        {
+            Status = BasepCreateAppContainerEnvironment(SecurityCapabilities->AppContainerSid,
+                                                        lpEnvironment,
+                                                        &AppContainerEnvironment);
+        }
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to set up the AppContainer: %lx\n", Status);
+            BaseSetLastNTError(Status);
+            Result = FALSE;
+            goto Quickie;
+        }
+
+        if (AppContainerEnvironment)
+        {
+            CallerEnvironment = lpEnvironment;
+            lpEnvironment = AppContainerEnvironment;
+        }
     }
 
     /* Check if private data is being sent on the same channel as std handles */
@@ -3935,6 +3967,34 @@ StartScan:
         goto Quickie;
     }
 
+    /* Give an AppContainer process its LowBox token before it has a thread to run */
+    if (AppContainerToken)
+    {
+        PROCESS_ACCESS_TOKEN AccessToken;
+        PVOID TokenPrivilegeState = NULL;
+        ULONG TokenPrivilege = SE_ASSIGNPRIMARYTOKEN_PRIVILEGE;
+        BOOLEAN HaveTokenPrivilege;
+
+        /* A token made from the caller's own needs no privilege; one made from hUserToken may */
+        HaveTokenPrivilege = NT_SUCCESS(RtlAcquirePrivilege(&TokenPrivilege, 1, 0, &TokenPrivilegeState));
+
+        AccessToken.Token = AppContainerToken;
+        AccessToken.Thread = NULL;
+        Status = NtSetInformationProcess(ProcessHandle,
+                                         ProcessAccessToken,
+                                         &AccessToken,
+                                         sizeof(AccessToken));
+        if (HaveTokenPrivilege) RtlReleasePrivilege(TokenPrivilegeState);
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to give the process its AppContainer token: %lx\n", Status);
+            BaseSetLastNTError(Status);
+            Result = FALSE;
+            goto Quickie;
+        }
+    }
+
     /*
      * Put the process into the jobs the caller named, while it still has no
      * thread to run.
@@ -4582,6 +4642,14 @@ Quickie:
         }
     }
 #endif
+    /* Drop the AppContainer environment and go back to what the caller passed */
+    if (AppContainerEnvironment)
+    {
+        if (VdmUnicodeEnv.Buffer == AppContainerEnvironment) VdmUnicodeEnv.Buffer = NULL;
+        RtlDestroyEnvironment(AppContainerEnvironment);
+        lpEnvironment = CallerEnvironment;
+    }
+
     /* Check if an environment was passed in */
     if ((lpEnvironment) && !(dwCreationFlags & CREATE_UNICODE_ENVIRONMENT))
     {
@@ -4631,6 +4699,15 @@ Quickie:
             /* User didn't want it, so we used it temporarily -- close it */
             NtClose(TokenHandle);
         }
+    }
+
+    /* Tell a caller with its own token that the process already runs with the AppContainer token */
+    if (AppContainerToken)
+    {
+        if ((Result) && (hUserToken) && (hNewToken) && !(TokenHandle))
+            *hNewToken = AppContainerToken;
+        else
+            NtClose(AppContainerToken);
     }
 
     /* Free any temporary app compatibility data, it's no longer needed */

@@ -16,6 +16,7 @@ add_dependencies(kernel32_shared psdk)
 list(APPEND SOURCE
     client/actctx.c
     client/appcache.c
+    client/appcontainer.c
     client/atom.c
     client/atomansi.c
     client/compname.c
