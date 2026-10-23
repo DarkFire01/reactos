@@ -45,6 +45,12 @@ static ULONG_PTR global_options[COMGLB_PROPERTIES_RESERVED3 + 1];
 extern void WINAPI DestroyRunningObjectTable(void);
 extern HRESULT WINAPI Ole32DllGetClassObject(REFCLSID rclsid, REFIID riid, void **obj);
 
+#ifdef __REACTOS__
+/* Shutdown delay of Windows Runtime servers, see roserver.c */
+extern VOID RtServerProcessReferenced(VOID);
+extern VOID RtServerProcessUnreferenced(VOID);
+#endif
+
 /*
  * Number of times CoInitialize is called. It is decreased every time CoUninitialize is called. When it hits 0, the COM libraries are freed
  */
@@ -3154,6 +3160,9 @@ ULONG WINAPI CoAddRefServerProcess(void)
 
     TRACE("\n");
 
+#ifdef __REACTOS__
+    RtServerProcessReferenced();
+#endif
     EnterCriticalSection(&registered_classes_cs);
     refs = ++com_server_process_refcount;
     LeaveCriticalSection(&registered_classes_cs);
@@ -3178,6 +3187,11 @@ ULONG WINAPI CoReleaseServerProcess(void)
     /* FIXME: suspend objects */
 
     LeaveCriticalSection(&registered_classes_cs);
+
+#ifdef __REACTOS__
+    if (!refs)
+        RtServerProcessUnreferenced();
+#endif
 
     TRACE("refs after: %ld\n", refs);
 
