@@ -73,6 +73,7 @@
 @ stdcall ClearCommError(long ptr ptr)
 @ stdcall CloseConsoleHandle(long)
 @ stdcall CloseHandle(long)
+@ stdcall -version=0x602+ ClosePackageInfo(ptr) api-ms-win-appmodel-runtime-l1-1-2.ClosePackageInfo
 @ stdcall -stub -version=0x600+ ClosePrivateNamespace(ptr long)
 @ stdcall CloseProfileUserMapping()
 @ stdcall -version=0x600+ CloseThreadpool(ptr) ntdll.TpReleasePool
@@ -324,7 +325,7 @@
 @ stdcall FindNextVolumeMountPointA(long str long)
 @ stdcall FindNextVolumeMountPointW(long wstr long)
 @ stdcall FindNextVolumeW(long ptr long)
-@ stdcall -version=0x602+ FindPackagesByPackageFamily(wstr long ptr ptr ptr ptr ptr)
+@ stdcall -version=0x602+ FindPackagesByPackageFamily(wstr long ptr ptr ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.FindPackagesByPackageFamily
 @ stdcall FindResourceA(long str str)
 @ stdcall FindResourceExA(long str str long)
 @ stdcall FindResourceExW(long wstr wstr long)
@@ -343,6 +344,7 @@
 @ stdcall FlushViewOfFile(ptr long)
 @ stdcall FoldStringA(long str long ptr long)
 @ stdcall FoldStringW(long wstr long ptr long)
+@ stdcall -version=0x603+ FormatApplicationUserModelId(wstr wstr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.FormatApplicationUserModelId
 @ stdcall FormatMessageA(long ptr long long ptr long ptr)
 @ stdcall FormatMessageW(long ptr long long ptr long ptr)
 @ stdcall FreeConsole()
@@ -359,7 +361,7 @@
 @ stdcall -version=0x601+ GetActiveProcessorGroupCount()
 @ stdcall -version=0x600+ GetApplicationRecoveryCallback(ptr ptr ptr ptr ptr)
 @ stub -version=0x600+ GetApplicationRestartSettings
-@ stdcall -version=0x602+ GetApplicationUserModelId(ptr ptr ptr)
+@ stdcall -version=0x602+ GetApplicationUserModelId(ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetApplicationUserModelId
 @ stdcall GetAtomNameA(long ptr long)
 @ stdcall GetAtomNameW(long ptr long)
 @ stdcall GetBinaryType(str ptr) GetBinaryTypeA
@@ -440,14 +442,16 @@
 @ stdcall -version=0x600+ GetCurrencyFormatEx(wstr long wstr ptr wstr long)
 @ stdcall GetCurrencyFormatW(long long wstr ptr wstr long)
 @ stdcall GetCurrentActCtx(ptr)
-@ stdcall -version=0x602+ GetCurrentApplicationUserModelId(ptr ptr)
+@ stdcall -version=0x602+ GetCurrentApplicationUserModelId(ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetCurrentApplicationUserModelId
 @ stdcall GetCurrentConsoleFont(long long ptr)
 @ stdcall -version=0x600+ GetCurrentConsoleFontEx(ptr long ptr)
 @ stdcall GetCurrentDirectoryA(long ptr)
 @ stdcall GetCurrentDirectoryW(long ptr)
-@ stdcall -version=0x602+ GetCurrentPackageFamilyName(ptr ptr)
-@ stdcall -version=0x602+ GetCurrentPackageFullName(ptr ptr)
-@ stdcall -version=0x602+ GetCurrentPackageId(ptr ptr)
+@ stdcall -version=0x602+ GetCurrentPackageFamilyName(ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetCurrentPackageFamilyName
+@ stdcall -version=0x602+ GetCurrentPackageFullName(ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetCurrentPackageFullName
+@ stdcall -version=0x602+ GetCurrentPackageId(ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetCurrentPackageId
+@ stdcall -version=0x602+ GetCurrentPackageInfo(long ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetCurrentPackageInfo
+@ stdcall -version=0x602+ GetCurrentPackagePath(ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetCurrentPackagePath
 @ stdcall -norelay GetCurrentProcess()
 @ stdcall -norelay GetCurrentProcessId()
 @ stdcall GetCurrentProcessorNumber() ntdll.RtlGetCurrentProcessorNumber
@@ -573,11 +577,14 @@
 @ stdcall GetOEMCP()
 @ stdcall GetOverlappedResult(long ptr ptr long)
 @ stdcall -version=0x602+ GetOverlappedResultEx(long ptr ptr long long)
-@ stdcall -version=0x602+ GetPackageFamilyName(ptr ptr ptr)
-@ stdcall -version=0x602+ GetPackageFullName(ptr ptr ptr)
-@ stdcall -version=0x602+ GetPackageId(ptr ptr ptr)
-@ stdcall -version=0x603+ GetPackagePathByFullName(wstr ptr ptr)
-@ stdcall -version=0x602+ GetPackagesByPackageFamily(wstr ptr ptr ptr ptr)
+@ stdcall -version=0x603+ GetPackageApplicationIds(ptr ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackageApplicationIds
+@ stdcall -version=0x602+ GetPackageFamilyName(ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackageFamilyName
+@ stdcall -version=0x602+ GetPackageFullName(ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackageFullName
+@ stdcall -version=0x602+ GetPackageId(ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackageId
+@ stdcall -version=0x602+ GetPackageInfo(ptr long ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackageInfo
+@ stdcall -version=0x602+ GetPackagePath(ptr long ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackagePath
+@ stdcall -version=0x603+ GetPackagePathByFullName(wstr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackagePathByFullName
+@ stdcall -version=0x602+ GetPackagesByPackageFamily(wstr ptr ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackagesByPackageFamily
 @ stdcall -stub -version=0x600+ GetPhysicallyInstalledSystemMemory(ptr)
 @ stdcall GetPriorityClass(long)
 @ stdcall GetPrivateProfileIntA(str str long str)
@@ -619,6 +626,7 @@
 @ stdcall -version=0x600+ GetQueuedCompletionStatusEx(ptr ptr long ptr long long)
 @ stdcall GetShortPathNameA(str ptr long)
 @ stdcall GetShortPathNameW(wstr ptr long)
+@ stdcall -version=0x603+ GetStagedPackagePathByFullName(wstr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetStagedPackagePathByFullName
 @ stdcall GetStartupInfoA(ptr)
 @ stdcall GetStartupInfoW(ptr)
 @ stdcall GetStdHandle(long)
@@ -916,6 +924,7 @@
 @ stdcall OpenJobObjectW(long long wstr)
 @ stdcall OpenMutexA(long long str)
 @ stdcall OpenMutexW(long long wstr)
+@ stdcall -version=0x602+ OpenPackageInfoByFullName(wstr long ptr) api-ms-win-appmodel-runtime-l1-1-2.OpenPackageInfoByFullName
 @ stub -version=0x600+ OpenPrivateNamespaceA
 @ stub -version=0x600+ OpenPrivateNamespaceW
 @ stdcall OpenProcess(long long long)
@@ -929,6 +938,12 @@
 @ stdcall OpenWaitableTimerW(long long wstr)
 @ stdcall OutputDebugStringA(str)
 @ stdcall OutputDebugStringW(wstr)
+@ stdcall -version=0x602+ PackageFamilyNameFromFullName(wstr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.PackageFamilyNameFromFullName
+@ stdcall -version=0x602+ PackageFamilyNameFromId(ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.PackageFamilyNameFromId
+@ stdcall -version=0x602+ PackageFullNameFromId(ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.PackageFullNameFromId
+@ stdcall -version=0x602+ PackageIdFromFullName(wstr long ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.PackageIdFromFullName
+@ stdcall -version=0x602+ PackageNameAndPublisherIdFromFamilyName(wstr ptr ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.PackageNameAndPublisherIdFromFamilyName
+@ stdcall -version=0x603+ ParseApplicationUserModelId(wstr ptr ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.ParseApplicationUserModelId
 @ stdcall PeekConsoleInputA(ptr ptr long ptr)
 @ stdcall PeekConsoleInputW(ptr ptr long ptr)
 @ stdcall PeekNamedPipe(long ptr long ptr ptr ptr)
