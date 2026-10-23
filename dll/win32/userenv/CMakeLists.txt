@@ -2,6 +2,7 @@
 spec2def(userenv.dll userenv.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    appcontainer.c
     desktop.c
     directory.c
     environment.c
@@ -25,6 +26,7 @@ add_library(userenv MODULE
 set_module_type(userenv win32dll)
 target_link_libraries(userenv uuid pathcch_static)
 target_compile_definitions(userenv PRIVATE STATIC_PATHCCH)
+add_delay_importlibs(userenv ole32)
 add_importlibs(userenv advapi32 advapi32_vista user32 msvcrt kernel32 ntdll)
 add_pch(userenv precomp.h "${PCH_SKIP_SOURCE}")
 add_cd_file(TARGET userenv DESTINATION reactos/system32 FOR all)
