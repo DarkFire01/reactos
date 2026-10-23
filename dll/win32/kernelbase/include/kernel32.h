@@ -262,6 +262,20 @@ BasepFindProcThreadAttribute(
     _In_ DWORD_PTR Attribute,
     _Out_opt_ PSIZE_T pSize);
 
+NTSTATUS
+WINAPI
+BasepCreateAppContainerToken(
+    _In_opt_ HANDLE BaseToken,
+    _In_ PSECURITY_CAPABILITIES Capabilities,
+    _Out_ PHANDLE NewToken);
+
+NTSTATUS
+WINAPI
+BasepCreateAppContainerEnvironment(
+    _In_ PSID PackageSid,
+    _In_opt_ PWSTR Environment,
+    _Out_ PWSTR *NewEnvironment);
+
 VOID
 WINAPI
 BasepAnsiStringToHeapUnicodeString(IN LPCSTR AnsiString,

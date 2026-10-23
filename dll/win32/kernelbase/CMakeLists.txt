@@ -17,6 +17,7 @@ add_definitions(
 spec2def(${KERNELBASE_NAME}.dll kernelbase.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    client/appcontainer.c
     client/cpusets.c
     client/wer.c
     client/ProcessInformation.c
