@@ -166,6 +166,50 @@ BOOL WINAPI RefreshPolicyEx (BOOL, DWORD);
 BOOL WINAPI RegisterGPNotification (HANDLE, BOOL);
 BOOL WINAPI UnregisterGPNotification (HANDLE);
 
+#if (_WIN32_WINNT >= 0x0602)
+HRESULT
+WINAPI
+CreateAppContainerProfile(
+    _In_ PCWSTR pszAppContainerName,
+    _In_ PCWSTR pszDisplayName,
+    _In_ PCWSTR pszDescription,
+    _In_reads_opt_(dwCapabilityCount) PSID_AND_ATTRIBUTES pCapabilities,
+    _In_ DWORD dwCapabilityCount,
+    _Outptr_ PSID *ppSidAppContainerSid);
+
+HRESULT
+WINAPI
+DeleteAppContainerProfile(
+    _In_ PCWSTR pszAppContainerName);
+
+HRESULT
+WINAPI
+GetAppContainerRegistryLocation(
+    _In_ REGSAM desiredAccess,
+    _Outptr_ PHKEY phAppContainerKey);
+
+HRESULT
+WINAPI
+GetAppContainerFolderPath(
+    _In_ PCWSTR pszAppContainerSid,
+    _Outptr_ PWSTR *ppszPath);
+
+HRESULT
+WINAPI
+DeriveAppContainerSidFromAppContainerName(
+    _In_ PCWSTR pszAppContainerName,
+    _Outptr_ PSID *ppsidAppContainerSid);
+#endif
+
+#if (_WIN32_WINNT >= 0x0603)
+HRESULT
+WINAPI
+DeriveRestrictedAppContainerSidFromAppContainerSidAndRestrictedName(
+    _In_ PSID psidAppContainerSid,
+    _In_ PCWSTR pszRestrictedAppContainerName,
+    _Outptr_ PSID *ppsidRestrictedAppContainerSid);
+#endif
+
 #ifdef UNICODE
 typedef PROFILEINFOW PROFILEINFO;
 typedef LPPROFILEINFOW LPPROFILEINFO;
