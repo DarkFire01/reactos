@@ -28,6 +28,7 @@ extern UNICODE_STRING BaseSrvKernel32DllPath;
 /* Memory */
 HANDLE BaseSrvHeap = NULL;          // Our own heap.
 HANDLE BaseSrvSharedHeap = NULL;    // Shared heap with CSR. (CsrSrvSharedSectionHeap)
+HANDLE BaseSrvAppContainerPipes = NULL; // Keeps the session's AppContainer pipe prefix alive
 PBASE_STATIC_SERVER_DATA BaseStaticServerData = NULL;   // Data that we can share amongst processes. Initialized inside BaseSrvSharedHeap.
 
 ULONG SessionId = 0;
@@ -168,6 +169,138 @@ BaseSrvInitializeIniFileMappings(IN PBASE_STATIC_SERVER_DATA StaticServerData)
 
     /* FIXME: Do the work to initialize the mappings */
     return STATUS_SUCCESS;
+}
+
+/*
+ * Creates \Sessions\<n>\AppContainerNamedObjects, where kernel32 makes each container's
+ * directories. It takes the BNO DACL, plus the right to create entries for all app packages.
+ */
+NTSTATUS
+NTAPI
+BaseSrvCreateAppContainerRoot(
+    _In_ PACL BnoDacl)
+{
+    SID_IDENTIFIER_AUTHORITY PackageAuthority = {SECURITY_APP_PACKAGE_AUTHORITY};
+    ACL_SIZE_INFORMATION SizeInfo;
+    SECURITY_DESCRIPTOR Descriptor;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    UNICODE_STRING Name;
+    WCHAR SessionPath[64], PipePath[96];
+    IO_STATUS_BLOCK IoStatus;
+    PSID AllPackages = NULL, AllRestrictedPackages = NULL;
+    PACL Dacl = NULL;
+    PVOID Ace;
+    HANDLE Session = NULL, Root = NULL;
+    ULONG Length, Index;
+    NTSTATUS Status;
+
+    Status = RtlQueryInformationAcl(BnoDacl, &SizeInfo, sizeof(SizeInfo), AclSizeInformation);
+    if (NT_SUCCESS(Status))
+    {
+        Status = RtlAllocateAndInitializeSid(&PackageAuthority, SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT,
+                                             SECURITY_APP_PACKAGE_BASE_RID, SECURITY_BUILTIN_PACKAGE_ANY_PACKAGE,
+                                             0, 0, 0, 0, 0, 0, &AllPackages);
+    }
+    if (NT_SUCCESS(Status))
+    {
+        Status = RtlAllocateAndInitializeSid(&PackageAuthority, SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT,
+                                             SECURITY_APP_PACKAGE_BASE_RID, SECURITY_BUILTIN_PACKAGE_ANY_RESTRICTED_PACKAGE,
+                                             0, 0, 0, 0, 0, 0, &AllRestrictedPackages);
+    }
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    Length = SizeInfo.AclBytesInUse + 2 * sizeof(ACCESS_ALLOWED_ACE) +
+             RtlLengthSid(AllPackages) + RtlLengthSid(AllRestrictedPackages);
+    Dacl = RtlAllocateHeap(BaseSrvHeap, 0, Length);
+    if (!Dacl)
+    {
+        Status = STATUS_NO_MEMORY;
+        goto Quit;
+    }
+
+    Status = RtlCreateAcl(Dacl, Length, ACL_REVISION2);
+    if (NT_SUCCESS(Status) && SizeInfo.AceCount)
+    {
+        Status = RtlGetAce(BnoDacl, 0, &Ace);
+        if (NT_SUCCESS(Status))
+            Status = RtlAddAce(Dacl, ACL_REVISION2, 0, Ace, SizeInfo.AclBytesInUse - sizeof(ACL));
+    }
+    if (NT_SUCCESS(Status))
+    {
+        Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION2,
+                                        DIRECTORY_CREATE_OBJECT | DIRECTORY_CREATE_SUBDIRECTORY, AllPackages);
+    }
+    if (NT_SUCCESS(Status))
+    {
+        Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION2,
+                                        DIRECTORY_CREATE_OBJECT | DIRECTORY_CREATE_SUBDIRECTORY, AllRestrictedPackages);
+    }
+    if (NT_SUCCESS(Status))
+        Status = RtlCreateSecurityDescriptor(&Descriptor, SECURITY_DESCRIPTOR_REVISION);
+    if (NT_SUCCESS(Status))
+        Status = RtlSetDaclSecurityDescriptor(&Descriptor, TRUE, Dacl, FALSE);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    /* Session 0 keeps its named objects at the root, so its session directory may not exist yet */
+    _swprintf(SessionPath, L"\\Sessions\\%lu", SessionId);
+    RtlInitUnicodeString(&Name, SessionPath);
+    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_OPENIF | OBJ_PERMANENT | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    Status = NtCreateDirectoryObject(&Session, DIRECTORY_ALL_ACCESS, &ObjectAttributes);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    RtlInitUnicodeString(&Name, L"AppContainerNamedObjects");
+    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_OPENIF | OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
+                               Session, &Descriptor);
+    Status = NtCreateDirectoryObject(&Root, DIRECTORY_ALL_ACCESS, &ObjectAttributes);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    /*
+     * The pipe prefix of the same name lives only while a handle is open, so it is held for
+     * the session. It takes the same DACL with the directory rights turned into file rights.
+     */
+    for (Index = 0; NT_SUCCESS(RtlGetAce(Dacl, Index, &Ace)); Index++)
+    {
+        PACCESS_ALLOWED_ACE Allowed = Ace;
+        ACCESS_MASK Directory = Allowed->Mask;
+
+        Allowed->Mask &= ~SPECIFIC_RIGHTS_ALL;
+        if (Directory & DIRECTORY_CREATE_OBJECT)
+            Allowed->Mask |= SYNCHRONIZE | FILE_ADD_FILE;
+        if (Directory & DIRECTORY_CREATE_SUBDIRECTORY)
+            Allowed->Mask |= SYNCHRONIZE | FILE_ADD_SUBDIRECTORY;
+    }
+
+    _swprintf(PipePath, L"\\Device\\NamedPipe\\Sessions\\%lu\\AppContainerNamedObjects", SessionId);
+    RtlInitUnicodeString(&Name, PipePath);
+    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE, NULL, &Descriptor);
+    Status = NtCreateFile(&BaseSrvAppContainerPipes,
+                          STANDARD_RIGHTS_ALL | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY,
+                          &ObjectAttributes,
+                          &IoStatus,
+                          NULL,
+                          FILE_ATTRIBUTE_NORMAL,
+                          FILE_SHARE_READ | FILE_SHARE_WRITE,
+                          FILE_OPEN_IF,
+                          FILE_DIRECTORY_FILE,
+                          NULL,
+                          0);
+
+Quit:
+    if (Root)
+        NtClose(Root);
+    if (Session)
+        NtClose(Session);
+    if (Dacl)
+        RtlFreeHeap(BaseSrvHeap, 0, Dacl);
+    if (AllPackages)
+        RtlFreeSid(AllPackages);
+    if (AllRestrictedPackages)
+        RtlFreeSid(AllRestrictedPackages);
+    return Status;
 }
 
 NTSTATUS
@@ -571,6 +704,11 @@ BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
                                         0);
         ASSERT(NT_SUCCESS(Status));
     }
+
+    /* AppContainer processes get their named objects under the session's AppContainerNamedObjects */
+    Status = BaseSrvCreateAppContainerRoot(BnoDacl);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("BASESRV: Failed to create AppContainerNamedObjects (Status 0x%08lx)\n", Status);
 
     /* Check if LUID device maps are enabled */
     Status = NtQueryInformationProcess(NtCurrentProcess(),
