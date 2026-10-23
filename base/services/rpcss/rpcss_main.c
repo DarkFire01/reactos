@@ -31,7 +31,11 @@
 #include "irpcss.h"
 #ifdef __REACTOS__
 #include <objbase.h>
+#include "rtscm_s.h"
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
+/* Windows Runtime server table, see rtscm.c */
+extern VOID RtScmInitialize(VOID);
 #endif
 
 #include "wine/debug.h"
@@ -174,11 +178,18 @@ static RPC_STATUS RPCSS_Initialize(void)
         epm_v3_0_s_ifspec,
         Irot_v0_2_s_ifspec,
         Irpcss_v0_0_s_ifspec,
+#ifdef __REACTOS__
+        IRtScm_v1_0_s_ifspec,
+#endif
     };
     RPC_STATUS status;
     int i, j;
 
     WINE_TRACE("\n");
+
+#ifdef __REACTOS__
+    RtScmInitialize();
+#endif
 
     for (i = 0, j = 0; i < ARRAY_SIZE(ifspecs); ++i, j = i)
     {
