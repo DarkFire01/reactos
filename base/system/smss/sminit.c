@@ -1000,7 +1000,9 @@ SmpCreateSecurityDescriptors(IN BOOLEAN InitialCall)
     NTSTATUS Status;
     PSID WorldSid = NULL, AdminSid = NULL, SystemSid = NULL;
     PSID RestrictedSid = NULL, OwnerSid = NULL;
+    PSID AllAppPackagesSid = NULL, AllRestrictedAppPackagesSid = NULL;
     SID_IDENTIFIER_AUTHORITY WorldAuthority = {SECURITY_WORLD_SID_AUTHORITY};
+    SID_IDENTIFIER_AUTHORITY AppPackageAuthority = {SECURITY_APP_PACKAGE_AUTHORITY};
     SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
     SID_IDENTIFIER_AUTHORITY CreatorAuthority = {SECURITY_CREATOR_SID_AUTHORITY};
     ULONG AclLength, SidLength;
@@ -1107,6 +1109,23 @@ SmpCreateSecurityDescriptors(IN BOOLEAN InitialCall)
         goto Quickie;
     }
 
+    /* Build ALL APPLICATION PACKAGES and ALL RESTRICTED APPLICATION PACKAGES */
+    Status = RtlAllocateAndInitializeSid(&AppPackageAuthority, SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT,
+                                         SECURITY_APP_PACKAGE_BASE_RID,
+                                         SECURITY_BUILTIN_PACKAGE_ANY_PACKAGE,
+                                         0, 0, 0, 0, 0, 0,
+                                         &AllAppPackagesSid);
+    if (NT_SUCCESS(Status))
+    {
+        Status = RtlAllocateAndInitializeSid(&AppPackageAuthority, SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT,
+                                             SECURITY_APP_PACKAGE_BASE_RID,
+                                             SECURITY_BUILTIN_PACKAGE_ANY_RESTRICTED_PACKAGE,
+                                             0, 0, 0, 0, 0, 0,
+                                             &AllRestrictedAppPackagesSid);
+    }
+    if (!NT_SUCCESS(Status))
+        goto Quickie;
+
     /* Build the system SID */
     Status = RtlAllocateAndInitializeSid(&NtAuthority, 1,
                                          SECURITY_LOCAL_SYSTEM_RID,
@@ -1154,6 +1173,10 @@ NextAcl:
     SidLength = RtlLengthSid(WorldSid) + RtlLengthSid(RestrictedSid) + RtlLengthSid(AdminSid);
     SidLength *= 2;
     AclLength = sizeof(ACL) + 6 * sizeof(ACCESS_ALLOWED_ACE) + SidLength;
+
+    /* App packages read and map the known DLLs too, as on Windows 8 and later */
+    AclLength += 4 * sizeof(ACCESS_ALLOWED_ACE) +
+                 2 * (RtlLengthSid(AllAppPackagesSid) + RtlLengthSid(AllRestrictedAppPackagesSid));
     Acl = RtlAllocateHeap(RtlGetProcessHeap(), 0, AclLength);
     if (!Acl) Status = STATUS_NO_MEMORY;
     if (!NT_SUCCESS(Status)) goto NotInitial;
@@ -1184,6 +1207,17 @@ NextAcl:
     Status = RtlGetAce(Acl, 5, (PVOID)&Ace);
     ASSERT(NT_SUCCESS(Status));
     Ace->AceFlags = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE;
+
+    Status = RtlAddAccessAllowedAce(Acl, ACL_REVISION2, GENERIC_EXECUTE | GENERIC_READ, AllAppPackagesSid);
+    ASSERT(NT_SUCCESS(Status));
+    Status = RtlAddAccessAllowedAce(Acl, ACL_REVISION2, GENERIC_EXECUTE | GENERIC_READ, AllRestrictedAppPackagesSid);
+    ASSERT(NT_SUCCESS(Status));
+    Status = RtlAddAccessAllowedAceEx(Acl, ACL_REVISION2, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE,
+                                      GENERIC_EXECUTE | GENERIC_READ, AllAppPackagesSid);
+    ASSERT(NT_SUCCESS(Status));
+    Status = RtlAddAccessAllowedAceEx(Acl, ACL_REVISION2, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE,
+                                      GENERIC_EXECUTE | GENERIC_READ, AllRestrictedAppPackagesSid);
+    ASSERT(NT_SUCCESS(Status));
 
     /* Set this as the DACL */
     Status = RtlSetDaclSecurityDescriptor(SmpKnownDllsSecurityDescriptor,
@@ -1294,6 +1328,8 @@ Quickie:
     if (WorldSid) RtlFreeHeap(RtlGetProcessHeap(), 0, WorldSid);
     if (SystemSid) RtlFreeHeap(RtlGetProcessHeap(), 0, SystemSid);
     if (RestrictedSid) RtlFreeHeap(RtlGetProcessHeap(), 0, RestrictedSid);
+    if (AllAppPackagesSid) RtlFreeHeap(RtlGetProcessHeap(), 0, AllAppPackagesSid);
+    if (AllRestrictedAppPackagesSid) RtlFreeHeap(RtlGetProcessHeap(), 0, AllRestrictedAppPackagesSid);
     return Status;
 }
 
