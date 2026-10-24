@@ -486,6 +486,10 @@ static HRESULT create_server(REFCLSID rclsid, HANDLE *process)
     BOOL                is_wow64 = FALSE, is_opposite = FALSE;
     HRESULT             hr;
     WCHAR               command[MAX_PATH + ARRAY_SIZE(embeddingW)];
+#ifdef __REACTOS__
+    WCHAR               value[MAX_PATH + 1];
+    DWORD               type;
+#endif
     DWORD               size = (MAX_PATH+1) * sizeof(WCHAR);
     STARTUPINFOW        sinfo;
     PROCESS_INFORMATION pinfo;
@@ -505,8 +509,27 @@ static HRESULT create_server(REFCLSID rclsid, HANDLE *process)
         return hr;
     }
 
+#ifdef __REACTOS__
+    /* Windows expands a REG_EXPAND_SZ server path, as explorer.exe's own hosts are registered */
+    ret = RegQueryValueExW(key, NULL, NULL, &type, (LPBYTE)value, &size);
+    RegCloseKey(key);
+    if (!ret)
+    {
+        if (type == REG_EXPAND_SZ)
+        {
+            DWORD cch = ExpandEnvironmentStringsW(value, command, MAX_PATH + 1);
+            if (!cch || cch > MAX_PATH + 1)
+                ret = ERROR_BUFFER_OVERFLOW;
+        }
+        else
+        {
+            lstrcpynW(command, value, MAX_PATH + 1);
+        }
+    }
+#else
     ret = RegQueryValueExW(key, NULL, NULL, NULL, (LPBYTE)command, &size);
     RegCloseKey(key);
+#endif
     if (ret)
     {
         WARN("No default value for LocalServer32 key\n");
