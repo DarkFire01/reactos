@@ -1,0 +1,16 @@
+<duixml>
+<Element resid="FolderLayout" layout="filllayout()" accessible="true" sheet="searchlayoutstyle">
+<Element id="atom(SearchPage)" layout="filllayout()">
+<SearchPageText layout="verticalflowlayout(0, 2, 2, 0)">
+<Element id="atom(header)" accessible="true" accrole="statictext" content="resstr(0x7B20, library(shell32.dll))"/>
+<Element id="atom(ScopeInformation)" layout="borderlayout()">
+<Element id="atom(line)" layoutpos="top" height="1rp"/>
+<Element id="atom(footer)" layoutpos="top" layout="borderlayout()" tooltip="true" active="mouse" accessible="true" accrole="statictext" accname="resstr(0x7B23, library(shell32.dll))">
+<Element id="atom(Currently)" class="HoverText" layoutpos="top" active="inactive" accessible="true" accrole="statictext"/>
+</Element>
+</Element>
+</SearchPageText>
+</Element>
+<Element id="atom(SearchBackground)" layout="filllayout()"/>
+</Element>
+</duixml>

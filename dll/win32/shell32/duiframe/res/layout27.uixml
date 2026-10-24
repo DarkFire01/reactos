@@ -1,0 +1,34 @@
+<hwndview resid="main" id="atom(main)" sheet="main" layout="borderlayout()">
+<Element layoutpos="Top" layout="filllayout()" sheet="folderbandstyle">
+<TemplateBackground id="atom(BackLayer)"/>
+<TemplateBackground id="atom(FolderBandShineLayer)"/>
+<FolderBandModule ModuleID="FolderBandModule"/>
+</Element>
+<Element id="atom(FolderLayoutContainerForce)" layoutpos="Client" layout="borderlayout()" sheet="commonitemdialoglayoutstyle">
+<Element layoutpos="Client" layout="borderlayout()">
+<InfoBarHostModule ModuleID="InfoBarHostModule" sheet="infobarstyle" layoutpos="top" layout="filllayout()" animation="rectanglev|s|fast"/>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="documentslayoutstyle" layoutpos="Left" animation="rectanglev|s|fast"/>
+<TemplateBackground id="atom(ReadingPane)" layout="filllayout()" layoutpos="right">
+<PreviewThumbnail ModuleID="ReadingPaneThumbnailModule" HideProperty="PreviewHandlerRunning" Vertical="true" layoutpos="client"/>
+<ReadingPaneModule ModuleID="ReadingPaneModule" layoutpos="none"/>
+</TemplateBackground>
+<Sizer id="atom(ReadingPaneSizer)" sizingtarget="atom(ReadingPane)" GrowTargetFirst="true" SlidesUpAndDown="false" PrioritySizer="atom(PageSpaceControlSizer)" DownOrRightGrowsTarget="false" FramePersistType="2" layoutpos="Right"/>
+<LibraryPaneModule id="atom(LibraryPaneModule)" ModuleID="LibraryPaneModule" layoutpos="Top"/>
+<Element layoutpos="Client" sheet="documentslayoutstyle" layout="filllayout()" animation="rectanglev|s|fast">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element> 
+</Element>
+<AppControlsModule sheet="openappcontrolsstyle" layoutpos="Bottom" id="atom(AppControlsModule)" ModuleID="AppControlsModule"></AppControlsModule>
+<TemplateBackground layoutpos="Bottom" id="atom(PreviewContainer)" height="90rp" layout="filllayout()">
+<TemplateBackground id="atom(PreviewShineLayer)"/>
+<Element background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<PreviewBackground id="atom(BackgroundClear)" layoutpos="Client" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<PreviewThumbnail ModuleID="PreviewThumbnailModule" MaxThumbSize="256" layoutpos="Left"/>
+<PreviewMetadata ReadOnly="true" ModuleID="PreviewMetadataModule" NullSelectPropertyString="prop:*System.OfflineStatus;*System.OfflineAvailability" layoutpos="Client"/>
+</PreviewBackground>
+</Element>
+<Sizer id="atom(PreviewPaneSizer)" InitialVisibility="false" ReservedMaster="atom(AppControlsContainer)" sizingtarget="atom(PreviewContainer)" SlidesUpAndDown="true" layoutpos="top" DownOrRightGrowsTarget="false"/>
+</TemplateBackground>
+</Element>
+</hwndview>

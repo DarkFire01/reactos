@@ -1,0 +1,30 @@
+<hwndview resid="main" id="atom(main)" sheet="main" layout="borderlayout()">
+<Element layoutpos="Top" layout="filllayout()" sheet="folderbandstyle">
+<TemplateBackground id="atom(BackLayer)"/>
+<TemplateBackground id="atom(FolderBandShineLayer)"/>
+<FolderBandModule ModuleID="FolderBandModule"/>
+</Element>
+<Element id="atom(FolderLayoutContainerForce)" layoutpos="Client" layout="borderlayout()" sheet="commonsavedialoglayoutstyle">
+<Element layoutpos="Client" layout="borderlayout()">
+<InfoBarHostModule ModuleID="InfoBarHostModule" sheet="infobarstyle" layoutpos="top" layout="filllayout()" animation="rectanglev|s|fast"/>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="documentslayoutstyle" layoutpos="Left" animation="rectanglev|s|fast"/>
+<LibraryPaneModule id="atom(LibraryPaneModule)" ModuleID="LibraryPaneModule" layoutpos="Top"/>
+<Element layoutpos="Client" sheet="documentslayoutstyle" layout="filllayout()" animation="rectanglev|s|fast">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+</Element>
+<TemplateBackground layoutpos="Bottom" id="atom(PreviewContainer)" layout="filllayout()">
+<Element layout="borderlayout()" background="ARGB(0, 0, 0, 0)">
+<PreviewBackground id="atom(BackgroundClear)" layoutpos="Client" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<Sizer id="atom(CommonItemDialogSizer)" ReservedMaster="atom(AppControlsModule)" sizingtarget="atom(BackgroundClear)" SlidesUpAndDown="true" DownOrRightGrowsTarget="false" layoutpos="top"/>
+<Element layoutpos="Client" layout="borderlayout()">
+<SaveControlsModule ModuleID="SaveControlsModule" layoutpos="Top"></SaveControlsModule>
+<SaveDialogPreviewMetadata ModuleID="SaveDialogPreviewMetadataModule" layoutpos="Client"/>
+</Element>
+</PreviewBackground>
+<AppControlsModule id="atom(AppControlsModule)" sheet="saveappcontrolsstyle" layoutpos="Bottom" ModuleID="AppControlsModule"></AppControlsModule>
+</Element>
+</TemplateBackground>
+</Element>
+</hwndview>

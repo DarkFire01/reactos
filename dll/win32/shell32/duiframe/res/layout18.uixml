@@ -1,0 +1,5 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()">
+<ControlPanelCategoryModule layoutpos="client"/>
+</Element>
+</duixml>

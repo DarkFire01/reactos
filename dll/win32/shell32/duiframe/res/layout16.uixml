@@ -1,0 +1,39 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()" sheet="documentslayoutstyle">
+<TemplateBackground id="atom(PreviewContainer)" height="90rp" layoutpos="bottom" layout="filllayout()">
+<TemplateBackground id="atom(PreviewShineLayer)"/>
+<PreviewBackground id="atom(BackgroundClear)" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<PreviewThumbnail ModuleID="PreviewThumbnailModule" MaxThumbSize="256" layoutpos="Left"/>
+<Element layoutpos="Client" layout="filllayout()">
+<PreviewMetadata ModuleID="PreviewMetadataModule" NullSelectPropertyString="prop:*System.OfflineStatus;*System.OfflineAvailability" layoutpos="Client"/>
+</Element>
+</PreviewBackground>
+<Sizer id="atom(PreviewPaneSizer)" sizingtarget="atom(PreviewContainer)" FramePersistType="2" SlidesUpAndDown="true" layoutpos="top" DownOrRightGrowsTarget="false"/>
+</TemplateBackground>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="documentslayoutstyle" layoutpos="Left"/>
+<Element id="atom(ViewHostContainer)" layoutpos="Client" sheet="documentslayoutstyle" layout="filllayout()">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+</Element>
+<Element resid="ViewLayout" layout="filllayout()" sheet="barrierpagestyle">
+<Element class="bp_pane" layout="filllayout()">
+<EmptyLibraryPage layout="borderlayout()">
+<FocusIndicator id="atom(FocusIndicator)" firsttabtarget="atom(AddFolderButton)"/>
+<Element id="atom(thumbnail)" padding="rect(0rp, 0rp, 10rp, 0rp)" layoutpos="Left" layout="verticalflowlayout()">
+<PreviewThumbnail ModuleID="PreviewThumbnailModule2" MaxThumbSize="48" AlwaysGetIconFromView="true" ThumbnailId="{0368e1ef-dfbf-4de2-8f61-9e440589dc73}"/>
+</Element>
+<Element layoutpos="client" layout="verticalflowlayout(0,0,0,0)">
+<Element class="bp_v_spacer" height="4rp"/>
+<Element id="atom(instruction)" class="bp_instruction"/>
+<Element class="bp_v_spacer"/>
+<Element class="bp_divider_line"/>
+<Element class="bp_v_spacer"/>
+<Element id="atom(text)" class="bp_text" content="resstr(0x9598, library(shell32.dll))"/>
+<Element class="bp_v_spacer" height="20rp"/>
+<CCPushButton id="atom(AddFolderButton)" content="resstr(0x9599, library(shell32.dll))"/>
+</Element>
+</EmptyLibraryPage>
+</Element>
+</Element>
+</duixml>

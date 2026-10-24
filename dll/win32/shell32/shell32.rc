@@ -77,6 +77,10 @@ END
 #include "avi_res.rc"
 #include "rgs_res.rc"
 
+#ifdef SHELL32_DUIFRAME
+#include "duiframe/duiframe.rc"
+#endif
+
 #include <reactos/manifest_dll.rc>
 #include <reactos/manifest_hosted.rc>
 

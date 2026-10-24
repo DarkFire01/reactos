@@ -1,0 +1,18 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()" sheet="genericlayoutstyle">
+<TemplateBackground id="atom(PreviewContainer)" height="90rp" layoutpos="bottom" layout="filllayout()">
+<TemplateBackground id="atom(PreviewShineLayer)"/>
+<PreviewBackground id="atom(BackgroundClear)" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<PreviewThumbnail ModuleID="PreviewThumbnailModule" MaxThumbSize="256" layoutpos="Left"/>
+<Element layoutpos="Client" layout="filllayout()"> 
+<PreviewMetadata ModuleID="PreviewMetadataModule" layoutpos="Client" NullSelectTitlePropertyString="prop:System.Software.NullPreview.Title;System.Software.NullPreview.Subtitle" NullSelectPropertyString="prop:*System.Software.NullPreview.TotalSize"/>
+</Element>
+</PreviewBackground>
+<Sizer id="atom(PreviewPaneSizer)" sizingtarget="atom(PreviewContainer)" SlidesUpAndDown="true" layoutpos="top" DownOrRightGrowsTarget="false"/>
+</TemplateBackground>
+<Element layoutpos="Client" sheet="genericlayoutstyle" layout="filllayout()">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+</Element>
+</duixml>

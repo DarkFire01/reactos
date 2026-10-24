@@ -1,0 +1,8 @@
+<duixml>
+<Element resid="FolderLayout" layout="filllayout()">
+<Element layoutpos="Client" sheet="genericlayoutstyle" layout="filllayout()">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+</Element>
+</duixml>

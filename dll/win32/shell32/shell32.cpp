@@ -397,6 +397,14 @@ BEGIN_OBJECT_MAP(ObjectMap)
     OBJECT_ENTRY(CLSID_QueryAssociations, CQueryAssociations)
     OBJECT_ENTRY(CLSID_UserNotification, CUserNotification)
     OBJECT_ENTRY(CLSID_UserEventTimer, CUserEventTimer)
+    OBJECT_ENTRY(CLSID_ShellTaskScheduler, CShellTaskScheduler)
+    OBJECT_ENTRY(CLSID_SharedTaskScheduler, CSharedTaskScheduler)
+    OBJECT_ENTRY(CLSID_BrowserProgressAggregator, CBrowserProgressAggregator)
+#ifdef SHELL32_DUIFRAME
+    OBJECT_ENTRY(CLSID_DUIShellViewFrame, CDUIViewFrame)
+    OBJECT_ENTRY(CLSID_CommonLayoutDefinition, CCommonLayoutDefinition)
+    OBJECT_ENTRY(CLSID_CommonLayoutModifier, CCommonLayoutModifier)
+#endif
 END_OBJECT_MAP()
 
 CShell32Module  gModule;
@@ -485,11 +493,18 @@ STDAPI_(BOOL) DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID fImpLoad)
 
         /* Bad idea, initialization in DllMain! */
         InitChangeNotifications();
+#ifdef SHELL32_DUIFRAME
+        DUIFrame_ProcessAttach();
+#endif
     }
     else if (dwReason == DLL_PROCESS_DETACH)
     {
         shell32_hInstance = NULL;
         SIC_Destroy();
+        CSharedTaskScheduler::Shutdown();
+#ifdef SHELL32_DUIFRAME
+        DUIFrame_ProcessDetach();
+#endif
         FreeChangeNotifications();
         gModule.Term();
     }

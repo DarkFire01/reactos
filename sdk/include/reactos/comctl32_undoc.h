@@ -90,6 +90,9 @@ INT WINAPI FindMRUData(HANDLE,LPCVOID,DWORD,LPINT);
 INT WINAPI FindMRUStringW(HANDLE hList, LPCWSTR lpszString, LPINT lpRegNum);
 INT WINAPI FindMRUStringA(HANDLE hList, LPCSTR lpszString, LPINT lpRegNum);
 BOOL WINAPI DelMRUString(HANDLE hList, INT nItemPos);
+
+BOOL WINAPI DSA_GetItem(HDSA hdsa, int i, void *pitem);
+BOOL WINAPI DSA_DeleteItem(HDSA hdsa, int i);
 VOID WINAPI FreeMRUList(HANDLE);
 
 #ifdef UNICODE
