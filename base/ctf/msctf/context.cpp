@@ -174,6 +174,8 @@ public:
         _Out_ ITfRangeACP **range) override;
 
 protected:
+    HRESULT QueueAppChange();
+
     LONG m_cRefs;
     BOOL m_connected;
 
@@ -188,6 +190,9 @@ protected:
     ITextStoreACP *m_pITextStoreACP;
     ITfContextOwnerCompositionSink *m_pITfContextOwnerCompositionSink;
     ITfEditSession *m_currentEditSession;
+
+    /* The application changed its text or selection; the text edit sinks hear of it under a read lock */
+    BOOL m_appChangePending;
 
     // kept as separate lists to reduce unnecessary iterations
     struct list m_pContextKeyEventSink;
@@ -207,6 +212,125 @@ typedef struct tagEditCookie
 
 ////////////////////////////////////////////////////////////////////////////
 
+/* A view of the text store; everything is answered by the store for its view cookie */
+class CContextView
+    : public ITfContextView
+{
+public:
+    CContextView(
+        _In_ ITfContext *pContext,
+        _In_ ITextStoreACP *pStore,
+        _In_ TsViewCookie vcView)
+        : m_cRefs(1)
+        , m_pContext(pContext)
+        , m_pStore(pStore)
+        , m_vcView(vcView)
+    {
+        m_pContext->AddRef();
+        m_pStore->AddRef();
+    }
+
+    virtual ~CContextView()
+    {
+        m_pStore->Release();
+        m_pContext->Release();
+    }
+
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppvObj) override
+    {
+        if (!ppvObj)
+            return E_POINTER;
+        if (riid == IID_IUnknown || riid == IID_ITfContextView)
+        {
+            *ppvObj = static_cast<ITfContextView *>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppvObj = NULL;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return ::InterlockedIncrement(&m_cRefs);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        ULONG ret = ::InterlockedDecrement(&m_cRefs);
+        if (!ret)
+            delete this;
+        return ret;
+    }
+
+    STDMETHODIMP GetRangeFromPoint(
+        _In_ TfEditCookie ec,
+        _In_ const POINT *ppt,
+        _In_ DWORD dwFlags,
+        _Out_ ITfRange **ppRange) override
+    {
+        LONG acp;
+        HRESULT hr;
+
+        if (!ppRange)
+            return E_INVALIDARG;
+        *ppRange = NULL;
+        if (!ppt)
+            return E_INVALIDARG;
+
+        hr = m_pStore->GetACPFromPoint(m_vcView, ppt, dwFlags, &acp);
+        if (FAILED(hr))
+            return hr;
+        return Range_Constructor(m_pContext, acp, acp, ppRange);
+    }
+
+    STDMETHODIMP GetTextExt(
+        _In_ TfEditCookie ec,
+        _In_ ITfRange *pRange,
+        _Out_ RECT *prc,
+        _Out_ BOOL *pfClipped) override
+    {
+        ITfRangeACP *pRangeACP;
+        LONG acpStart, cch;
+        HRESULT hr;
+
+        if (!pRange || !prc || !pfClipped)
+            return E_INVALIDARG;
+
+        hr = pRange->QueryInterface(IID_ITfRangeACP, (void **)&pRangeACP);
+        if (FAILED(hr))
+            return hr;
+        hr = pRangeACP->GetExtent(&acpStart, &cch);
+        pRangeACP->Release();
+        if (FAILED(hr))
+            return hr;
+
+        return m_pStore->GetTextExt(m_vcView, acpStart, acpStart + cch, prc, pfClipped);
+    }
+
+    STDMETHODIMP GetScreenExt(_Out_ RECT *prc) override
+    {
+        if (!prc)
+            return E_INVALIDARG;
+        return m_pStore->GetScreenExt(m_vcView, prc);
+    }
+
+    STDMETHODIMP GetWnd(_Out_ HWND *phwnd) override
+    {
+        if (!phwnd)
+            return E_INVALIDARG;
+        return m_pStore->GetWnd(m_vcView, phwnd);
+    }
+
+protected:
+    LONG m_cRefs;
+    ITfContext *m_pContext;
+    ITextStoreACP *m_pStore;
+    TsViewCookie m_vcView;
+};
+
+////////////////////////////////////////////////////////////////////////////
+
 CContext::CContext()
     : m_cRefs(1)
     , m_connected(FALSE)
@@ -215,6 +339,7 @@ CContext::CContext()
     , m_pITextStoreACP(NULL)
     , m_pITfContextOwnerCompositionSink(NULL)
     , m_currentEditSession(NULL)
+    , m_appChangePending(FALSE)
 {
     list_init(&m_pContextKeyEventSink);
     list_init(&m_pEditTransactionSink);
@@ -504,8 +629,24 @@ CContext::GetEnd(
 
 STDMETHODIMP CContext::GetActiveView(_Out_ ITfContextView **ppView)
 {
-    FIXME("STUB:(%p)\n", this);
-    return E_NOTIMPL;
+    TsViewCookie vcView;
+    HRESULT hr;
+
+    TRACE("(%p) %p\n", this, ppView);
+
+    if (!ppView)
+        return E_INVALIDARG;
+    *ppView = NULL;
+
+    if (!m_connected || !m_pITextStoreACP)
+        return TF_E_DISCONNECTED;
+
+    hr = m_pITextStoreACP->GetActiveView(&vcView);
+    if (FAILED(hr))
+        return hr;
+
+    *ppView = new(cicNoThrow) CContextView(static_cast<ITfContext *>(this), m_pITextStoreACP, vcView);
+    return *ppView ? S_OK : E_OUTOFMEMORY;
 }
 
 STDMETHODIMP CContext::EnumViews(_Out_ IEnumTfContextViews **ppEnum)
@@ -606,6 +747,8 @@ STDMETHODIMP CContext::AdviseSink(
 
     if (riid == IID_ITfTextEditSink)
         return advise_sink(&m_pTextEditSink, IID_ITfTextEditSink, COOKIE_MAGIC_CONTEXTSINK, punk, pdwCookie);
+    if (riid == IID_ITfTextLayoutSink)
+        return advise_sink(&m_pTextLayoutSink, IID_ITfTextLayoutSink, COOKIE_MAGIC_CONTEXTSINK, punk, pdwCookie);
 
     FIXME("(%p) Unhandled Sink: %s\n", this, debugstr_guid(&riid));
     return E_NOTIMPL;
@@ -727,25 +870,67 @@ STDMETHODIMP CContext::UnadviseSingleSink(
     return E_NOTIMPL;
 }
 
+/*
+ * The application changed its document on its own. The text edit sinks are told
+ * at the end of a read lock, which is asked for now and granted once the
+ * application lets go of its own.
+ */
+HRESULT CContext::QueueAppChange()
+{
+    HRESULT hr, hrSession;
+
+    /* Changes made in an edit session are reported when that session ends */
+    if (m_currentEditSession || !m_pITextStoreACP)
+        return S_OK;
+
+    if (m_appChangePending)
+        return S_OK;
+    m_appChangePending = TRUE;
+
+    hr = m_pITextStoreACP->RequestLock(TS_LF_READ, &hrSession);
+    if (FAILED(hr))
+        m_appChangePending = FALSE;
+    return S_OK;
+}
+
 STDMETHODIMP CContext::OnTextChange(
     _In_ DWORD dwFlags,
     _In_ const TS_TEXTCHANGE *pChange)
 {
-    FIXME("STUB:(%p)\n", this);
-    return S_OK;
+    TRACE("(%p) %x %p\n", this, dwFlags, pChange);
+    return QueueAppChange();
 }
 
 STDMETHODIMP CContext::OnSelectionChange()
 {
-    FIXME("STUB:(%p)\n", this);
-    return S_OK;
+    TRACE("(%p)\n", this);
+    return QueueAppChange();
 }
 
 STDMETHODIMP CContext::OnLayoutChange(
     _In_ TsLayoutCode lcode,
     _In_ TsViewCookie vcView)
 {
-    FIXME("STUB:(%p)\n", this);
+    ITfTextLayoutSink *sink;
+    ITfContextView *view;
+    struct list *cursor;
+
+    TRACE("(%p) %d %u\n", this, lcode, vcView);
+
+    if (!m_pITextStoreACP || list_empty(&m_pTextLayoutSink))
+        return S_OK;
+
+    view = new(cicNoThrow) CContextView(static_cast<ITfContext *>(this), m_pITextStoreACP, vcView);
+    if (!view)
+        return E_OUTOFMEMORY;
+
+    /* TS_LC_CREATE, TS_LC_CHANGE and TS_LC_DESTROY have the values of the TF_LC_ codes */
+    SINK_FOR_EACH(cursor, &m_pTextLayoutSink, ITfTextLayoutSink, sink)
+    {
+        sink->OnLayoutChange(static_cast<ITfContext *>(this), (TfLayoutCode)lcode, view);
+    }
+
+    view->Release();
     return S_OK;
 }
 
@@ -790,7 +975,30 @@ STDMETHODIMP CContext::OnLockGranted(_In_ DWORD dwLockFlags)
 
     if (!m_currentEditSession)
     {
-        FIXME("OnLockGranted called for something other than an EditSession\n");
+        ITfTextEditSink *sink;
+
+        /* A lock asked for to report a change the application made itself */
+        if (!m_appChangePending)
+            return S_OK;
+        m_appChangePending = FALSE;
+
+        if (list_empty(&m_pTextEditSink))
+            return S_OK;
+
+        cookie = (EditCookie *)cicMemAlloc(sizeof(EditCookie));
+        if (!cookie)
+            return E_OUTOFMEMORY;
+        cookie->lockType = TS_LF_READ;
+        cookie->pOwningContext = this;
+        ec = generate_Cookie(COOKIE_MAGIC_EDITCOOKIE, cookie);
+
+        SINK_FOR_EACH(cursor, &m_pTextEditSink, ITfTextEditSink, sink)
+        {
+            sink->OnEndEdit(static_cast<ITfContext *>(this), ec, NULL);
+        }
+
+        cookie = (EditCookie *)remove_Cookie(ec);
+        cicMemFree(cookie);
         return S_OK;
     }
 

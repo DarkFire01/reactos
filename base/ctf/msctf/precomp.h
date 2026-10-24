@@ -87,6 +87,7 @@ typedef struct {
         ITfThreadMgrEventSink *pITfThreadMgrEventSink;
         ITfCompartmentEventSink *pITfCompartmentEventSink;
         ITfTextEditSink *pITfTextEditSink;
+        ITfTextLayoutSink *pITfTextLayoutSink;
         ITfLanguageProfileNotifySink *pITfLanguageProfileNotifySink;
         ITfTransitoryExtensionSink *pITfTransitoryExtensionSink;
     } interfaces;
