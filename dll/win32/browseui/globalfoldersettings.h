@@ -53,7 +53,8 @@ public:
     STDMETHOD(Get)(struct DEFFOLDERSETTINGS *pFDS, UINT cb) override;
     STDMETHOD(Set)(const struct DEFFOLDERSETTINGS *pFDS, UINT cb, UINT unknown) override;
 
-    DECLARE_REGISTRY_RESOURCEID(IDR_GLOBALFOLDERSETTINGS)
+    /* ExplorerFrame.dll registers this class, as in Windows 7 */
+    DECLARE_NO_REGISTRY()
     DECLARE_NOT_AGGREGATABLE(CGlobalFolderSettings)
 
     DECLARE_PROTECT_FINAL_CONSTRUCT()
