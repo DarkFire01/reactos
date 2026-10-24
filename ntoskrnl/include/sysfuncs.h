@@ -201,9 +201,7 @@ SVC_(ConnectPort, 8)
 // NtConvertBetweenAuxiliaryCounterAndPerformanceCounter: 1709
 SVC_(CreateDebugObject, 4)
 SVC_(CreateDirectoryObject, 3)
-#if (NTDDI_VERSION >= NTDDI_WIN8)
 SVC_(CreateDirectoryObjectEx, 5)
-#endif // (NTDDI_VERSION >= NTDDI_WIN8)
 /*#if (NTDDI_VERSION >= NTDDI_WIN10_RS3)
 SVC_(CreateEnclave, 0) // FIXME
 #endif*/
@@ -221,9 +219,7 @@ SVC_(CreateJobSet, 3)
 SVC_(CreateKeyTransacted, 8)
 #endif
 SVC_(CreateKeyedEvent, 4)
-#if (NTDDI_VERSION >= NTDDI_WIN8)
 SVC_(CreateLowBoxToken, 9)
-#endif // (NTDDI_VERSION >= NTDDI_WIN8)
 SVC_(CreateMailslotFile, 8)
 SVC_(CreateMutant, 4)
 SVC_(CreateNamedPipeFile, 14)
@@ -666,8 +662,8 @@ SVC_(UnloadKey2, 2)
 SVC_(UnloadKeyEx, 2)
 SVC_(UnlockFile, 5)
 SVC_(UnlockVirtualMemory, 4)
-#if (NTDDI_VERSION >= NTDDI_WIN8)
 SVC_(UnmapViewOfSectionEx, 3)
+#if (NTDDI_VERSION >= NTDDI_WIN8)
 //SVC_(UnsubscribeWnfStateChange, 0) // FIXME
 //SVC_(UpdateWnfStateData, 0) // FIXME
 #endif
