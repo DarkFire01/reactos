@@ -327,8 +327,12 @@ STDMETHODIMP CRange::GetContext(
 
 STDMETHODIMP CRange::GetExtent(_Out_ LONG *pacpAnchor, _Out_ LONG *pcch)
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    if (!pacpAnchor || !pcch)
+        return E_INVALIDARG;
+
+    *pacpAnchor = (LONG)m_anchorStart;
+    *pcch = (LONG)m_anchorEnd - (LONG)m_anchorStart;
+    return S_OK;
 }
 
 STDMETHODIMP CRange::SetExtent(_In_ LONG acpAnchor, _In_ LONG cch)
