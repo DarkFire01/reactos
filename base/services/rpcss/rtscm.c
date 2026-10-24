@@ -134,11 +134,19 @@ RtGetCaller(
     RpcStatus = RpcImpersonateClient(Binding);
     if (RpcStatus != RPC_S_OK)
         return HRESULT_FROM_WIN32(RpcStatus);
-    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE, TRUE, &Caller->Token))
+    /* An AppContainer token does not grant NetworkService, so fall back to opening it as the client */
+    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE, TRUE, &Caller->Token) &&
+        (GetLastError() != ERROR_ACCESS_DENIED ||
+         !OpenThreadToken(GetCurrentThread(), TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE, FALSE, &Caller->Token)))
+    {
         Status = HRESULT_FROM_WIN32(GetLastError());
+    }
     RpcRevertToSelf();
     if (FAILED(Status))
+    {
+        ERR("Opening the token of process %lu failed, %#lx\n", ProcessId, Status);
         return Status;
+    }
 
     if (!GetTokenInformation(Caller->Token, TokenUser, User, sizeof(Buffer), &Length) ||
         !GetTokenInformation(Caller->Token, TokenSessionId, &Caller->SessionId, sizeof(Caller->SessionId), &Length))
@@ -553,7 +561,8 @@ RtScmRegisterServer(
         if (!Classes[Index].ClassId ||
             FAILED(RtOpenEntry(Caller.UserSid, Caller.PackageFullName, L"ActivatableClassId", Classes[Index].ClassId, &Key)))
         {
-            WARN("Process %lu may not serve %s\n", Caller.ProcessId, debugstr_w(Classes[Index].ClassId));
+            ERR("Process %lu of package %s may not serve %s\n", Caller.ProcessId,
+                debugstr_w(Caller.PackageFullName), debugstr_w(Classes[Index].ClassId));
             RtFreeCaller(&Caller);
             return E_ACCESSDENIED;
         }
@@ -567,8 +576,16 @@ RtScmRegisterServer(
         return E_OUTOFMEMORY;
     }
 
+    /* rpcss only waits on it; an AppContainer process grants that to itself, not to NetworkService */
     Registration->ProcessId = Caller.ProcessId;
-    Registration->Process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, Caller.ProcessId);
+    Registration->Process = OpenProcess(SYNCHRONIZE, FALSE, Caller.ProcessId);
+    if (!Registration->Process && RpcImpersonateClient(Binding) == RPC_S_OK)
+    {
+        Registration->Process = OpenProcess(SYNCHRONIZE, FALSE, Caller.ProcessId);
+        RpcRevertToSelf();
+    }
+    if (!Registration->Process)
+        ERR("Process %lu cannot be watched, %lu\n", Caller.ProcessId, GetLastError());
     Registration->UserSid = Caller.UserSid;
     Caller.UserSid = NULL;
     Registration->SessionId = Caller.SessionId;
