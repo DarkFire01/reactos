@@ -64,7 +64,8 @@ public:
     // *** IContextMenu3 methods ***
     STDMETHOD(HandleMenuMsg2)(UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT *plResult) override;
 
-    DECLARE_REGISTRY_RESOURCEID(IDR_BANDSITEMENU)
+    /* ExplorerFrame.dll registers this class, as in Windows 7 */
+    DECLARE_NO_REGISTRY()
     DECLARE_NOT_AGGREGATABLE(CBandSiteMenu)
 
     DECLARE_PROTECT_FINAL_CONSTRUCT()

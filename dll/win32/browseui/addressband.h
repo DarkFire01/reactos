@@ -117,7 +117,8 @@ public:
         MESSAGE_HANDLER(WM_WINDOWPOSCHANGING, OnWindowPosChanging)
     END_MSG_MAP()
 
-    DECLARE_REGISTRY_RESOURCEID(IDR_ADDRESSBAND)
+    /* ExplorerFrame.dll registers this class, as in Windows 7 */
+    DECLARE_NO_REGISTRY()
     DECLARE_NOT_AGGREGATABLE(CAddressBand)
 
     DECLARE_PROTECT_FINAL_CONSTRUCT()
