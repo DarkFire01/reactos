@@ -1,0 +1,129 @@
+/*
+ * PROJECT:     ReactOS ActiveX Interface Marshaling Library
+ * LICENSE:     LGPL-2.1-or-later (https://spdx.org/licenses/LGPL-2.1-or-later)
+ * PURPOSE:     Proxies for the explorer.exe and ExplorerFrame.dll host and launcher interfaces
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#pragma makedep proxy
+#pragma makedep register
+
+import "shobjidl.idl";
+
+typedef enum LAUNCHEXPLORERFLAGS
+{
+    LE_DEFAULT = 0x0,
+    LE_NEWWINDOW = 0x1,
+    LE_NEWPROCESS = 0x2,
+    LE_SELECTITEM = 0x4,
+    LE_EXPLORE = 0x8,
+    LE_EXPAND = 0x10
+} LAUNCHEXPLORERFLAGS;
+
+[
+    object,
+    uuid(489e9453-869b-4bcc-a1c7-48b5285fd9d8),
+    pointer_default(unique)
+]
+interface ILegacyExplorerHost : IUnknown
+{
+    HRESULT ShowWindow(
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] POINT pt,
+        [in] int nShow);
+    HRESULT ShowWindowAtRect(
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] const RECT *prc,
+        [in] int nShow);
+}
+
+[
+    object,
+    uuid(50a87baa-5f79-4c31-b6b3-28f6f2d097e6),
+    pointer_default(unique)
+]
+interface IExplorerHost : IUnknown
+{
+    HRESULT ShowWindow(
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] POINT pt,
+        [in] int nShow);
+    HRESULT ShowWindowAtRect(
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] const RECT *prc,
+        [in] int nShow);
+}
+
+[
+    object,
+    uuid(c4de032a-d902-450a-bc43-d9df6d0fd48c),
+    pointer_default(unique)
+]
+interface IExplorerHostCreator : IUnknown
+{
+    HRESULT CreateHost(
+        [in] REFCLSID clsidHost);
+    HRESULT RunHost();
+}
+
+[
+    object,
+    uuid(5ac8c8f7-1cc7-46cb-8d7d-3cf14b64868c),
+    pointer_default(unique)
+]
+interface IExplorerLauncher : IUnknown
+{
+    HRESULT ShowWindowInHost(
+        [in] REFCLSID clsidHost,
+        [in] PCIDLIST_ABSOLUTE pidlTarget,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] POINT ptPosition,
+        [in] int nShow);
+    HRESULT ShowWindowUsingDefaultPolicy(
+        [in] IUnknown *punk,
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] POINT pt,
+        [in] int nShow);
+    HRESULT ShowWindowUsingDefaultPolicyAtRect(
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] const RECT *prc,
+        [in] int nShow);
+}
+
+[
+    object,
+    uuid(578e4660-e403-4e8f-9fd4-6d559f7a0edc),
+    pointer_default(unique)
+]
+interface ILegacyExplorerLauncher : IUnknown
+{
+    HRESULT ShowWindowInHost(
+        [in] REFCLSID clsidHost,
+        [in] PCIDLIST_ABSOLUTE pidlTarget,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] POINT ptPosition,
+        [in] int nShow);
+    HRESULT ShowWindowUsingDefaultPolicy(
+        [in] IUnknown *punk,
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] POINT pt,
+        [in] int nShow);
+    HRESULT ShowWindowUsingDefaultPolicyAtRect(
+        [in] PCIDLIST_ABSOLUTE pidl,
+        [in] LAUNCHEXPLORERFLAGS flags,
+        [in] const RECT *prc,
+        [in] int nShow);
+}
+
+[
+    threading(both),
+    uuid(b8da6310-e19b-11d0-933c-00a0c90dcaa9)  /* IActiveScriptStats */
+]
+coclass PSFactoryBuffer { interface IPSFactoryBuffer; }
