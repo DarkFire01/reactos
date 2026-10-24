@@ -1975,6 +1975,10 @@ LPITEMIDLIST _ILCreateFromFindDataW( const WIN32_FIND_DATAW *wfd )
 
         fsw = (FileStructW*)(pData->u.file.szNames + alen + (alen & 0x1));
         fsw->cbLen = FIELD_OFFSET(FileStructW, wszName[wlen]) + sizeof(WORD);
+#ifdef __REACTOS__
+        fsw->wVersion = 3;
+        fsw->dwSignature = 0xBEEF0004;
+#endif
         FileTimeToDosDateTime( &wfd->ftCreationTime, &fsw->uCreationDate, &fsw->uCreationTime);
         FileTimeToDosDateTime( &wfd->ftLastAccessTime, &fsw->uLastAccessDate, &fsw->uLastAccessTime);
         memcpy(fsw->wszName, wfd->cFileName, wlen * sizeof(WCHAR));
@@ -2467,7 +2471,14 @@ FileStructW* _ILGetFileStructW(LPCITEMIDLIST pidl) {
         cbOffset < sizeof(pidl->mkid.cb) + sizeof(PIDLTYPE) + sizeof(FileStruct) ||
         /* There has to be enough space at cbOffset in the pidl to hold FileStructW and cbOffset */
         cbOffset > pidl->mkid.cb - sizeof(cbOffset) - sizeof(FileStructW) ||
+#ifdef __REACTOS__
+        /* Hidden blocks may follow a block that carries its signature */
+        (pFileStructW->dwSignature == 0xBEEF0004 ?
+            pidl->mkid.cb < cbOffset + pFileStructW->cbLen :
+            pidl->mkid.cb != cbOffset + pFileStructW->cbLen))
+#else
         pidl->mkid.cb != cbOffset + pFileStructW->cbLen)
+#endif
     {
         WARN("Invalid pidl format (cbOffset = %d)!\n", cbOffset);
         return NULL;

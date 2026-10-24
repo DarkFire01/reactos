@@ -1,0 +1,39 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()" sheet="documentslayoutstyle">
+<TemplateBackground id="atom(PreviewContainer)" height="90rp" layoutpos="bottom" layout="filllayout()">
+<TemplateBackground id="atom(PreviewShineLayer)"/>
+<PreviewBackground id="atom(BackgroundClear)" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<PreviewThumbnail ModuleID="PreviewThumbnailModule" MaxThumbSize="256" layoutpos="Left"/>
+<Element layoutpos="Client" layout="filllayout()">
+<PreviewMetadata ModuleID="PreviewMetadataModule" NullSelectPropertyString="prop:*System.OfflineStatus;*System.OfflineAvailability" layoutpos="Client"/>
+</Element>
+</PreviewBackground>
+<Sizer id="atom(PreviewPaneSizer)" sizingtarget="atom(PreviewContainer)" FramePersistType="2" SlidesUpAndDown="true" layoutpos="top" DownOrRightGrowsTarget="false"/>
+</TemplateBackground>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="documentslayoutstyle" layoutpos="Left"/>
+<Element id="atom(ViewHostContainer)" layoutpos="Client" sheet="documentslayoutstyle" layout="filllayout()">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+</Element>
+<Element resid="ViewLayout" layout="filllayout()" sheet="barrierpagestyle">
+<Element class="bp_pane" layout="filllayout()">
+<OtherUsersBarrierPage layout="borderlayout()">
+<FocusIndicator id="atom(FocusIndicator)" firsttabtarget="atom(HomeGroupAutoCreatedWizardLink)"/>
+<Element layoutpos="left" content="icon(1013, 48, 48, library(imageres.dll))"/>
+<Element layoutpos="client" layout="borderlayout()" padding="rect(10rp, 0rp, 0rp, 0rp)">
+<Element layoutpos="top" class="bp_instruction" content="resstr(0x8969, library(shell32.dll))"/>
+<Element layoutpos="top" class="bp_v_spacer"/>
+<Element layoutpos="top" class="bp_divider_line"/>
+<Element layoutpos="top" class="bp_v_spacer"/>
+<Element layoutpos="top" class="bp_text" content="resstr(0x896A, library(shell32.dll))"/>
+<Element layoutpos="top" layout="flowlayout()">
+<Button id="atom(HomeGroupAutoCreatedWizardLink)" class="bp_content_link" content="resstr(0x896B, library(shell32.dll))"/> 
+</Element>
+<Element layoutpos="top" class="bp_v_spacer"/>
+<Button id="atom(HomeGroupHelpLink)" layoutpos="top" class="bp_content_link" content="resstr(0x8952, library(shell32.dll))"/> 
+</Element>
+</OtherUsersBarrierPage>
+</Element>
+</Element>
+</duixml>

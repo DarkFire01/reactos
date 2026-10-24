@@ -1,0 +1,20 @@
+<hwndview resid="main" id="atom(main)" sheet="main" layout="borderlayout()">
+<Element id="atom(FolderLayoutContainerForce)" layoutpos="Client" layout="borderlayout()" sheet="commonsavedialoglayoutstyle">
+<TemplateBackground layoutpos="Client" id="atom(PreviewContainer)" layout="filllayout()">
+<Element layout="borderlayout()" background="ARGB(0, 0, 0, 0)">
+<PreviewBackground id="atom(BackgroundClear)" layoutpos="Client" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<Element layoutpos="Client" layout="borderlayout()">
+<SaveControlsModule ModuleID="SaveControlsModule" layoutpos="Top"></SaveControlsModule>
+<SaveDialogPreviewMetadata ModuleID="SaveDialogPreviewMetadataModule" layoutpos="Client"/>
+</Element>
+</PreviewBackground>
+<AppControlsModule id="atom(AppControlsModule)" layoutpos="Bottom" sheet="saveappcontrolsstyle" ModuleID="AppControlsModule"></AppControlsModule>
+</Element>
+</TemplateBackground>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="documentslayoutstyle" layoutpos="none" height="0"/>
+<Element layoutpos="none" height="0" sheet="documentslayoutstyle" layout="filllayout()">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+</Element>
+</hwndview>

@@ -212,7 +212,13 @@ typedef struct tagFileStruct
  * to the FileStructW member. */
 typedef struct tagFileStructW {
     WORD cbLen;
+#ifdef __REACTOS__
+    /* The hidden block header, so other blocks can follow this one in the item */
+    WORD wVersion;
+    DWORD dwSignature;
+#else
     BYTE dummy1[6];
+#endif
     WORD uCreationDate;
     WORD uCreationTime;
     WORD uLastAccessDate;

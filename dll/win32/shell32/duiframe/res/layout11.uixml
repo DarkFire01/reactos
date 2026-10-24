@@ -1,0 +1,3 @@
+<hwndview resid="main" id="atom(main)" sheet="main" layout="shellborderlayout()">
+<Element id="atom(FolderLayoutContainer)" layoutpos="Client" layout="shellborderlayout()"/>
+</hwndview>

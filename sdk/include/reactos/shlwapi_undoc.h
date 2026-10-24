@@ -112,6 +112,7 @@ DWORD WINAPI SHGetCurColorRes(void);
 HMENU WINAPI SHGetMenuFromID(HMENU hMenu, UINT uID);
 DWORD WINAPI SHMenuIndexFromID(HMENU hMenu, UINT uID);
 DWORD WINAPI SHWaitForSendMessageThread(HANDLE hand, DWORD dwTimeout);
+BOOL WINAPI SHQueueUserWorkItem(LPTHREAD_START_ROUTINE pfnCallback, LPVOID pContext, LONG lPriority, DWORD_PTR dwTag, DWORD_PTR *pdwId, LPCSTR pszModule, DWORD dwFlags);
 DWORD WINAPI SHSendMessageBroadcastW(UINT uMsg, WPARAM wParam, LPARAM lParam);
 HRESULT WINAPI SHIsExpandableFolder(LPSHELLFOLDER lpFolder, LPCITEMIDLIST pidl);
 DWORD WINAPI SHFillRectClr(HDC hDC, LPCRECT pRect, COLORREF cRef);

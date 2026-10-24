@@ -25,7 +25,8 @@ public:
 
 public:
 
-    DECLARE_REGISTRY_RESOURCEID(IDR_SHELLTASKSCHEDULER)
+    /* shell32.dll registers this class, as in Windows 7 */
+    DECLARE_NO_REGISTRY()
     DECLARE_NOT_AGGREGATABLE(CShellTaskScheduler)
 
     DECLARE_PROTECT_FINAL_CONSTRUCT()
