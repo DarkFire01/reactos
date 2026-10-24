@@ -79,6 +79,13 @@ list(APPEND SOURCE
     systray.cpp
     CUserEventTimer.cpp
     CUserEventTimer.h
+    CShellTaskScheduler.cpp
+    CShellTaskScheduler.h
+    CBrowserProgressAggregator.cpp
+    hiddenid.cpp
+    hiddenid.h
+    CBrowserProgressAggregator.h
+    CDUIViewFrame.h
     CUserNotification.cpp
     CDefaultContextMenu.cpp
     COpenWithMenu.cpp
@@ -115,7 +122,7 @@ list(APPEND PCH_SKIP_SOURCE
     vista.c
     ${CMAKE_CURRENT_BINARY_DIR}/shell32_stubs.c)
 
-file(GLOB_RECURSE shell32_rc_deps res/*.*)
+file(GLOB_RECURSE shell32_rc_deps res/*.* duiframe/res/*.*)
 list(APPEND shell32_rc_deps ${CMAKE_CURRENT_BINARY_DIR}/shell32_shldisp.tlb)
 add_rc_deps(shell32.rc ${shell32_rc_deps})
 

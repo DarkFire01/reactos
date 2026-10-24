@@ -1,0 +1,108 @@
+/*
+ * PROJECT:     shell32
+ * LICENSE:     LGPL-2.1-or-later (https://spdx.org/licenses/LGPL-2.1-or-later)
+ * PURPOSE:     Resources of the DirectUI view frame, included by shell32.rc
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#include "duiframe_res.h"
+
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+
+IDR_DUISHELLVIEWFRAME REGISTRY "res/rgs/duishellviewframe.rgs"
+IDR_COMMONLAYOUTDEFINITION REGISTRY "res/rgs/commonlayoutdefinition.rgs"
+IDR_COMMONLAYOUTMODIFIER REGISTRY "res/rgs/commonlayoutmodifier.rgs"
+
+/* Folder layouts, picked by layout type */
+3  UIFILE "duiframe/res/layout3.uixml"
+4  UIFILE "duiframe/res/layout4.uixml"
+5  UIFILE "duiframe/res/layout5.uixml"
+6  UIFILE "duiframe/res/layout6.uixml"
+10 UIFILE "duiframe/res/layout10.uixml"
+13 UIFILE "duiframe/res/layout13.uixml"
+14 UIFILE "duiframe/res/layout14.uixml"
+15 UIFILE "duiframe/res/layout15.uixml"
+16 UIFILE "duiframe/res/layout16.uixml"
+17 UIFILE "duiframe/res/layout17.uixml"
+18 UIFILE "duiframe/res/layout18.uixml"
+19 UIFILE "duiframe/res/layout19.uixml"
+20 UIFILE "duiframe/res/layout20.uixml"
+21 UIFILE "duiframe/res/layout21.uixml"
+31 UIFILE "duiframe/res/layout31.uixml"
+53 UIFILE "duiframe/res/layout53.uixml"
+54 UIFILE "duiframe/res/layout54.uixml"
+56 UIFILE "duiframe/res/layout56.uixml"
+57 UIFILE "duiframe/res/layout57.uixml"
+58 UIFILE "duiframe/res/layout58.uixml"
+62 UIFILE "duiframe/res/layout62.uixml"
+
+/* Frame chrome the layout modifier merges in front of the folder layout */
+11 UIFILE "duiframe/res/layout11.uixml"
+12 UIFILE "duiframe/res/layout12.uixml"
+27 UIFILE "duiframe/res/layout27.uixml"
+28 UIFILE "duiframe/res/layout28.uixml"
+46 UIFILE "duiframe/res/layout46.uixml"
+49 UIFILE "duiframe/res/layout49.uixml"
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+IDM_PREVIEWPANE MENUEX
+BEGIN
+    POPUP ""
+    BEGIN
+        POPUP "&Size", IDC_PREVIEW_SIZE
+        BEGIN
+            MENUITEM "&Small", IDC_PREVIEW_SIZE_SMALL
+            MENUITEM "&Medium", IDC_PREVIEW_SIZE_MEDIUM
+            MENUITEM "&Large", IDC_PREVIEW_SIZE_LARGE
+        END
+        MENUITEM "", -1, MFT_SEPARATOR
+        MENUITEM "&Remove properties...", IDC_PREVIEW_REMOVEPROPS
+    END
+END
+
+STRINGTABLE
+BEGIN
+    IDS_DUI_SHELLFOLDERVIEW "Shell Folder View"
+    IDS_DUI_EXPLORERPANE "Explorer Pane"
+END
+
+/* Referenced by number from the layout markup */
+STRINGTABLE
+BEGIN
+    31520 "To begin, type in the search box"
+    31523 "Search Page Scope"
+    35152 "Share with other home computers running Windows 7"
+    35153 "With a homegroup, you can share files and printers with other computers running Windows 7. You can also stream media to devices. The homegroup is protected with a password, and you'll always be able to choose what you share with the group."
+    35154 "Tell me more about homegroups"
+    35155 "Create a homegroup"
+    35158 "Windows detected a homegroup on your network. With a homegroup, you can share files and printers with other computers running Windows 7. You can also stream media to devices. The homegroup is protected with a password, and you'll always be able to choose what you share with the group."
+    35159 "Join now"
+    35160 "The homegroup password has been changed"
+    35162 "Your homegroup password has been changed.\n\nTo continue using homegroup resources, make sure that someone who has already entered the new password is online, and then type the new password."
+    35163 "Type new password"
+    35168 "There are no other people in the homegroup"
+    35169 "Before you can view files from other people on the network, they must join the homegroup.\n\nOn each computer running Windows 7 that you want to add to the homegroup:"
+    35170 "1."
+    35171 "Click Start, and then click Control Panel."
+    35172 "2."
+    35173 "Under Network and Internet, click Choose homegroup and sharing options."
+    35174 "3."
+    35175 "Click Join now, and then follow the HomeGroup wizard to enter the password."
+    35176 "View the homegroup password"
+    35177 "Your computer is ready to share files and printers"
+    35178 "With a homegroup, you can share files and printers with other home computers running Windows 7. You can also stream media to devices. The homegroup is protected with a password, and you'll always be able to choose what you share with the group.\n\nCurrently there are no other people in the homegroup."
+    35179 "Choose what you want to share, and view the homegroup password"
+    35180 "No other homegroup computers are currently available"
+    35181 "Make sure that:\n"
+    35182 L"\x2022"
+    35183 "The other homegroup computers are awake and connected to the network."
+    35184 "The network location of this computer and the other homegroup computers is set to Home."
+    35185 "The other homegroup computers have the current homegroup password."
+    35186 "Other people in your homegroup are sharing libraries with the homegroup.\n"
+    35187 "View homegroup settings"
+    35188 "Start the HomeGroup troubleshooter"
+    38296 "No folders have been included in this library."
+    38297 "Include a folder"
+    38299 "To begin, type in the search box."
+END

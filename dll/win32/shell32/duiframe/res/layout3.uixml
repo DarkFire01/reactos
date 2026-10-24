@@ -1,0 +1,25 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()" sheet="genericlayoutstyle">
+<TemplateBackground id="atom(PreviewContainer)" height="53rp" layoutpos="bottom" layout="filllayout()">
+<TemplateBackground id="atom(PreviewShineLayer)"/>
+<PreviewBackground id="atom(BackgroundClear)" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<PreviewThumbnail ModuleID="PreviewThumbnailModule" MaxThumbSize="256" layoutpos="Left"/>
+<Element layoutpos="Client" layout="filllayout()">
+<PreviewMetadata ModuleID="PreviewMetadataModule" NullSelectPropertyString="prop:*System.OfflineStatus;*System.OfflineAvailability" layoutpos="Client"/>
+</Element>
+</PreviewBackground>
+<Sizer id="atom(PreviewPaneSizer)" sizingtarget="atom(PreviewContainer)" FramePersistType="2" SlidesUpAndDown="true" layoutpos="top" DownOrRightGrowsTarget="false"/>
+</TemplateBackground>
+<TemplateBackground id="atom(ReadingPane)" layout="filllayout()" layoutpos="right">
+<PreviewThumbnail ModuleID="ReadingPaneThumbnailModule" HideProperty="PreviewHandlerRunning" Vertical="true" layoutpos="client" background="ARGB(0, 0, 0, 0)"/>
+<ReadingPaneModule ModuleID="ReadingPaneModule" layoutpos="none"/>
+</TemplateBackground>
+<Sizer id="atom(ReadingPaneSizer)" sizingtarget="atom(ReadingPane)" GrowTargetFirst="true" SlidesUpAndDown="false" PrioritySizer="atom(PageSpaceControlSizer)" DownOrRightGrowsTarget="false" FramePersistType="2" layoutpos="Right"/>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="documentslayoutstyle" layoutpos="Left"/>
+<Element id="atom(ViewHostContainer)" layoutpos="Client" sheet="documentslayoutstyle" layout="borderlayout()">
+<LibraryPaneModule id="atom(LibraryPaneModule)" ModuleID="LibraryPaneModule" layoutpos="top"/>
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()" layoutpos="client">
+</ViewHost>
+</Element>
+</Element>
+</duixml>

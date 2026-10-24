@@ -1,0 +1,11 @@
+<hwndview resid="main" id="atom(main)" sheet="main" layout="shellborderlayout()">
+<InfoPane id="atom(InfoPane)" ModuleID="InfoPane" sheet="genericlayoutstyle" layoutpos="top"/>
+<Element layoutpos="Top" layout="filllayout()" sheet="folderbandstyle" animation="rectanglev|s|fast">
+<TemplateBackground id="atom(BackLayer)"/>
+<TemplateBackground id="atom(FolderBandShineLayer)"/>
+<FolderBandModule ModuleID="FolderBandModule"/>
+</Element>
+<InfoBarHostModule ModuleID="InfoBarHostModule" sheet="infobarstyle" layoutpos="top" layout="filllayout()" animation="rectanglev|s|fast"/>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="documentslayoutstyle" layoutpos="Left" animation="rectangle|s|fast"/>
+<Element id="atom(FolderLayoutContainer)" layoutpos="Client" layout="shellborderlayout()"/>
+</hwndview>

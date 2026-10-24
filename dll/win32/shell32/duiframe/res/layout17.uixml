@@ -1,0 +1,6 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()">
+<ControlPanelNavPane ModuleID="ControlPanelNavPaneModule" layoutpos="left"/>
+<ControlPanelCategoryModule layoutpos="client"/>
+</Element>
+</duixml>

@@ -288,6 +288,12 @@ void WINAPI IUnknown_Set(IUnknown **dest, IUnknown *src)
 {
     TRACE("(%p, %p)\n", dest, src);
 
+#ifdef __REACTOS__
+    /* Setting the same object again must not release its last reference */
+    if (*dest == src)
+        return;
+#endif
+
     IUnknown_AtomicRelease(dest);
 
     if (src)
