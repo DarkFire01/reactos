@@ -50,7 +50,8 @@ public:
     STDMETHOD(ActivateTab)(HWND hwnd) override;
     STDMETHOD(SetActiveAlt)(HWND hwnd) override;
 
-    DECLARE_REGISTRY_RESOURCEID(IDR_TASKBARLIST)
+    /* ExplorerFrame.dll registers this class, as in Windows 7 */
+    DECLARE_NO_REGISTRY()
     DECLARE_NOT_AGGREGATABLE(CTaskbarList)
 
     DECLARE_PROTECT_FINAL_CONSTRUCT()

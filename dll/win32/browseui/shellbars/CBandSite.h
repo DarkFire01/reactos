@@ -153,7 +153,8 @@ class CBandSite :
 {
 public:
 
-    DECLARE_REGISTRY_RESOURCEID(IDR_BANDSITE)
+    /* ExplorerFrame.dll registers this class, as in Windows 7 */
+    DECLARE_NO_REGISTRY()
     DECLARE_AGGREGATABLE(CBandSite)
 
     DECLARE_PROTECT_FINAL_CONSTRUCT()

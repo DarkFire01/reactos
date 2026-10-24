@@ -240,7 +240,8 @@ public:
         MESSAGE_HANDLER(BWM_SETTINGCHANGE, OnSettingsChange)
     END_MSG_MAP()
 
-    DECLARE_REGISTRY_RESOURCEID(IDR_INTERNETTOOLBAR)
+    /* ExplorerFrame.dll registers this class, as in Windows 7 */
+    DECLARE_NO_REGISTRY()
     DECLARE_NOT_AGGREGATABLE(CInternetToolbar)
 
     DECLARE_PROTECT_FINAL_CONSTRUCT()
