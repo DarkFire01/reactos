@@ -1564,6 +1564,7 @@ NtSetInformationProcess(
     _In_ ULONG ProcessInformationLength)
 {
     PEPROCESS Process;
+    PEJOB Job;
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
     ACCESS_MASK Access;
     NTSTATUS Status;
@@ -1888,10 +1889,14 @@ NtSetInformationProcess(
                 }
             }
 
-            /* Check if we have a job */
-            if (Process->Job)
+            /* A job that limits the priority class decides it for its processes */
+            Job = Process->Job;
+            if (Job)
             {
-                DPRINT1("Jobs not yet supported\n");
+                ExEnterCriticalRegionAndAcquireResourceShared(&Job->JobLock);
+                if (Job->LimitFlags & JOB_OBJECT_LIMIT_PRIORITY_CLASS)
+                    PriorityClass.PriorityClass = Job->PriorityClass;
+                ExReleaseResourceAndLeaveCriticalRegion(&Job->JobLock);
             }
 
             /* Set process priority class */
