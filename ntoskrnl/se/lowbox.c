@@ -389,20 +389,44 @@ SepValidateLowBoxHandles(
             (Type != IoFileObjectType ||
              ((PFILE_OBJECT)Object)->DeviceObject->DeviceType != FILE_DEVICE_NAMED_PIPE))
         {
+            DPRINT1("LowBox handle %lu has an object type that is not allowed\n", Index);
             ObDereferenceObject(Object);
             Status = STATUS_INVALID_PARAMETER;
             break;
         }
 
-        /* Ask for the size first, then the name */
-        Length = 0;
-        ObQueryNameString(Object, NULL, 0, &Length);
-        NameInfo = Length ? ExAllocatePoolWithTag(PagedPool, Length, TAG_SE_LOWBOX) : NULL;
-        Status = NameInfo ? ObQueryNameString(Object, NameInfo, Length, &Length) : STATUS_INVALID_PARAMETER;
+        /* File objects do not report their full name length up front, so grow the buffer until it fits */
+        Length = sizeof(OBJECT_NAME_INFORMATION) + 512 * sizeof(WCHAR);
+        for (;;)
+        {
+            ULONG Needed = 0;
+
+            NameInfo = ExAllocatePoolWithTag(PagedPool, Length, TAG_SE_LOWBOX);
+            if (NameInfo == NULL)
+            {
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                break;
+            }
+
+            Status = ObQueryNameString(Object, NameInfo, Length, &Needed);
+            if (Status != STATUS_BUFFER_OVERFLOW &&
+                Status != STATUS_INFO_LENGTH_MISMATCH &&
+                Status != STATUS_BUFFER_TOO_SMALL)
+            {
+                break;
+            }
+
+            ExFreePoolWithTag(NameInfo, TAG_SE_LOWBOX);
+            NameInfo = NULL;
+            if (Needed <= Length || Length >= MAXUSHORT)
+                break;
+            Length = Needed;
+        }
         ObDereferenceObject(Object);
 
         if (!NT_SUCCESS(Status) || NameInfo->Name.Length == 0)
         {
+            DPRINT1("LowBox handle %lu has no name (length %lu, status 0x%08lx)\n", Index, Length, Status);
             Status = STATUS_INVALID_PARAMETER;
             break;
         }
@@ -423,14 +447,20 @@ SepValidateLowBoxHandles(
                 Matches = RtlEqualUnicodeString(&Leaf, &SepLowBoxObjectNames[Name], TRUE);
         }
 
+        if (!Matches)
+        {
+            DPRINT1("LowBox handle %lu is not part of the package tree: %wZ (package %wZ, session %lu)\n",
+                    Index, &NameInfo->Name, &PackageName, SessionId);
+            Status = STATUS_INVALID_PARAMETER;
+        }
+
         ExFreePoolWithTag(NameInfo, TAG_SE_LOWBOX);
         NameInfo = NULL;
-
-        if (!Matches)
-            Status = STATUS_INVALID_PARAMETER;
     }
 
 Quit:
+    if (NameInfo)
+        ExFreePoolWithTag(NameInfo, TAG_SE_LOWBOX);
     if (FreePackageName)
         RtlFreeUnicodeString(&PackageName);
 
@@ -545,7 +575,10 @@ SepMakeLowBoxToken(
 
     Integrity = SepGetIntegrityLevelFromToken(Token);
     if (Integrity == NULL)
+    {
+        DPRINT1("LowBox source token has no integrity level\n");
         return STATUS_INVALID_PARAMETER;
+    }
 
     Sid = Integrity->Sid;
     *RtlSubAuthoritySid(Sid, *RtlSubAuthorityCountSid(Sid) - 1) = SECURITY_MANDATORY_LOW_RID;
@@ -1001,13 +1034,15 @@ NtCreateLowBoxToken(
             }
             _SEH2_END;
 
-            Status = ZwDuplicateObject(NtCurrentProcess(),
+            /* Only a handle made in the system process is a kernel handle, closable from any process */
+            Status = ObDuplicateObject(PsGetCurrentProcess(),
                                        Source,
-                                       NtCurrentProcess(),
+                                       PsInitialSystemProcess,
                                        &KernelHandles[Index],
                                        0,
                                        OBJ_KERNEL_HANDLE,
-                                       DUPLICATE_SAME_ACCESS);
+                                       DUPLICATE_SAME_ACCESS,
+                                       KernelMode);
             if (!NT_SUCCESS(Status))
                 goto Quit;
         }
@@ -1015,6 +1050,7 @@ NtCreateLowBoxToken(
 
     if (!RtlIsPackageSid(CapturedPackage))
     {
+        DPRINT1("LowBox SID is not a package SID\n");
         Status = STATUS_INVALID_PARAMETER;
         goto Quit;
     }
@@ -1030,6 +1066,8 @@ NtCreateLowBoxToken(
         if (!RtlIsCapabilitySid(CapturedCapabilities[Index].Sid) ||
             (CapturedCapabilities[Index].Attributes & ~SE_GROUP_VALID_ATTRIBUTES))
         {
+            DPRINT1("LowBox capability %lu is not a capability SID or has attributes 0x%lx\n",
+                    Index, CapturedCapabilities[Index].Attributes);
             Status = STATUS_INVALID_PARAMETER;
             goto Quit;
         }
@@ -1038,6 +1076,7 @@ NtCreateLowBoxToken(
         {
             if (RtlEqualSid(CapturedCapabilities[Other].Sid, CapturedCapabilities[Index].Sid))
             {
+                DPRINT1("LowBox capability %lu repeats capability %lu\n", Index, Other);
                 Status = STATUS_INVALID_PARAMETER;
                 goto Quit;
             }
