@@ -72,6 +72,12 @@ PREGION FASTCALL
 DceGetVisRgn(PWND Window, ULONG Flags, HWND hWndChild, ULONG CFlags)
 {
     PREGION Rgn;
+    PWND TopLevel = IntDwmGetRedirectedWindow(Window, NULL);
+
+    /* A composed window UpdateLayeredWindow drew shows only its layer, so its own painting goes nowhere */
+    if (TopLevel && IntGetLayeredWindowLayer(TopLevel, NULL))
+        return IntSysCreateRectpRgn(0, 0, 0, 0);
+
     Rgn = VIS_ComputeVisibleRegion( Window,
                                     0 == (Flags & DCX_WINDOW),
                                     0 != (Flags & DCX_CLIPCHILDREN),

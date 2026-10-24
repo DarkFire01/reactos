@@ -43,6 +43,7 @@ typedef struct _DWM_WINDOW_NOTIFICATION
 /* UpdateSprite flags */
 #define DWM_SPRITE_VISIBLE          0x00000001
 #define DWM_SPRITE_NEW_SURFACE      0x00000008
+#define DWM_SPRITE_LAYERED          0x00000010  /* ours: Attributes holds UpdateLayeredWindow's blending */
 
 /* ZOrderSprite insert-after values that are not sprites */
 #define DWM_SPRITE_INSERT_TOP       0
@@ -78,6 +79,14 @@ typedef struct _DWM_CREATE_SPRITE
     ULONG ExpWinVer;
 } DWM_CREATE_SPRITE, *PDWM_CREATE_SPRITE;
 
+/* How the DWM blends an UpdateLayeredWindow surface, which holds premultiplied alpha */
+typedef struct _DWM_LAYERED_ATTRIBUTES
+{
+    COLORREF Key;               /* already applied to the surface's alpha */
+    BLENDFUNCTION Blend;
+    ULONG Flags;                /* ULW_* */
+} DWM_LAYERED_ATTRIBUTES, *PDWM_LAYERED_ATTRIBUTES;
+
 typedef struct _DWM_UPDATE_SPRITE
 {
     PORT_MESSAGE Header;
@@ -86,7 +95,7 @@ typedef struct _DWM_UPDATE_SPRITE
     ULONG Flags;
     ULONG HasInfo;
     DWM_SPRITE_WINDOW Info;
-    UCHAR CachedAttributes[0xC];
+    DWM_LAYERED_ATTRIBUTES Attributes;
     ULONG64 Surface;            /* the logical surface, read with NtGdiHLSurfGetInformation */
     ULONG SurfaceKind;
     ULONG Width;
@@ -307,6 +316,7 @@ typedef struct _DWM_SHARED_SURFACE_REQUEST
 #define DWM_PORT_DATA_SIZE(Type) ((ULONG)(sizeof(Type) - sizeof(PORT_MESSAGE)))
 
 C_ASSERT(sizeof(DWM_SPRITE_WINDOW) == 0x88);
+C_ASSERT(sizeof(DWM_LAYERED_ATTRIBUTES) == 0xC);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_CREATE_SPRITE) == 0xB4);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_UPDATE_SPRITE) == 0xC4);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_SPRITE_HANDLE) == 0x0C);

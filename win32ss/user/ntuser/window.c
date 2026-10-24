@@ -727,6 +727,7 @@ LRESULT co_UserFreeWindow(PWND Window,
    DceFreeWindowDCE(Window);    /* Always do this to catch orphaned DCs */
 
    IntUnlinkWindow(Window);
+   IntDestroyLayeredWindow(Window);
 
    if (Window->PropListItems)
    {
