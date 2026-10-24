@@ -557,6 +557,8 @@ HRESULT WINAPI CoMarshalInterface(IStream *stream, REFIID riid, IUnknown *unk,
         {
             TRACE("Using marshaling by value\n");
             hr = RtMarshalByValue(stream, riid, unk, by_value);
+            if (FAILED(hr))
+                ERR("Marshaling by value failed, hr %#lx\n", hr);
             IPropertySetMarshal_Release(by_value);
             goto cleanup;
         }
