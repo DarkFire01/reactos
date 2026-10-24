@@ -96,6 +96,7 @@ ServiceControlHandler(DWORD dwControl,
 }
 
 VOID DealWithDeviceEvent();
+VOID RtLaunchStartListening(VOID);
 
 VOID WINAPI
 ServiceMain(DWORD argc, LPTSTR *argv)
@@ -117,6 +118,7 @@ ServiceMain(DWORD argc, LPTSTR *argv)
     ShutdownEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
 
     DealWithDeviceEvent();
+    RtLaunchStartListening();
 
     UpdateServiceStatus(SERVICE_RUNNING);
 

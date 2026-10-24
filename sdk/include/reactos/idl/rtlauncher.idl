@@ -1,0 +1,48 @@
+/*
+ * PROJECT:     ReactOS DCOM Server Process Launcher
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Windows Runtime server launch interface between rpcss and DcomLaunch
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+/*
+ * rpcss runs as NetworkService, so it asks DcomLaunch, which runs as LocalSystem,
+ * to start a server for the activating user. Only rpcss may call it: the token is
+ * passed as a handle value in rpcss and DcomLaunch duplicates it from there.
+ */
+
+import "wtypes.idl";
+
+cpp_quote("#define RT_LAUNCH_PROTSEQ L\"ncalrpc\"")
+cpp_quote("#define RT_LAUNCH_ENDPOINT L\"DcomLaunchRt\"")
+
+typedef struct _RT_LAUNCH_REQUEST
+{
+    ULONGLONG ClientToken;
+    [string] WCHAR *PackageFullName;
+    [string] WCHAR *ServerName;
+    [string, unique] WCHAR *ExePath;
+    [string, unique] WCHAR *CommandLine;
+    [string, unique] WCHAR *AppUserModelId;
+    DWORD PackageRelative;
+    DWORD Instancing;
+    DWORD IdentityType;
+    ULONGLONG HostId;
+} RT_LAUNCH_REQUEST, *PRT_LAUNCH_REQUEST;
+
+[
+    uuid(6b1f0a57-2c64-4e3d-a8f1-3d9e5c7b2a40),
+    version(1.0),
+    pointer_default(unique)
+]
+interface IRtLaunch
+{
+    /* Function 0 */
+    HRESULT
+    __stdcall
+    RtLaunchStartServer(
+        [in] handle_t Binding,
+        [in] RT_LAUNCH_REQUEST *Request,
+        [out] ULONGLONG *Process,
+        [out] DWORD *ProcessId);
+}
