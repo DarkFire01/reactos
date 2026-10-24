@@ -56,11 +56,11 @@ static const INFORMATION_CLASS_INFO SeTokenInformationClass[] = {
     /* TokenOrigin */
     IQS_SAME(TOKEN_ORIGIN, ULONG, ICIF_QUERY | ICIF_SET),
     /* TokenElevationType */
-    IQS_NONE,
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY),
     /* TokenLinkedToken */
     IQS_NONE,
     /* TokenElevation */
-    IQS_NONE,
+    IQS_SAME(TOKEN_ELEVATION, ULONG, ICIF_QUERY),
     /* TokenHasRestrictions */
     IQS_NONE,
     /* TokenAccessInformation */
@@ -1061,6 +1061,44 @@ NtQueryInformationToken(
                     }
 
                     *ReturnLength = RequiredLength;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
+            /* Without UAC a token is never split, so it is the default kind and elevated when it is an admin */
+            case TokenElevationType:
+            {
+                DPRINT("NtQueryInformationToken(TokenElevationType)\n");
+
+                _SEH2_TRY
+                {
+                    /* TokenElevationTypeDefault */
+                    *(PULONG)TokenInformation = 1;
+                    *ReturnLength = sizeof(ULONG);
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
+            case TokenElevation:
+            {
+                DPRINT("NtQueryInformationToken(TokenElevation)\n");
+
+                _SEH2_TRY
+                {
+                    ((PTOKEN_ELEVATION)TokenInformation)->TokenIsElevated = SeTokenIsAdmin(Token);
+                    *ReturnLength = sizeof(TOKEN_ELEVATION);
                 }
                 _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
                 {
