@@ -3257,14 +3257,37 @@ static void DumpRights(DWORD mask, WCHAR **pwptr, ULONG *plen)
             DumpString(AceRightBitNames[i], -1, pwptr, plen);
 }
 
+/* A mandatory label's policy is written as NW, NR and NX, never as access rights */
+static void DumpMandatoryPolicy(DWORD mask, WCHAR **pwptr, ULONG *plen)
+{
+    static const WCHAR fmtW[] = {'0','x','%','x',0};
+    WCHAR buf[15];
+
+    if (mask & ~(SYSTEM_MANDATORY_LABEL_NO_WRITE_UP | SYSTEM_MANDATORY_LABEL_NO_READ_UP | SYSTEM_MANDATORY_LABEL_NO_EXECUTE_UP))
+    {
+        sprintfW(buf, fmtW, mask);
+        DumpString(buf, -1, pwptr, plen);
+        return;
+    }
+
+    if (mask & SYSTEM_MANDATORY_LABEL_NO_WRITE_UP)
+        DumpString(SDDL_NO_WRITE_UP, -1, pwptr, plen);
+    if (mask & SYSTEM_MANDATORY_LABEL_NO_READ_UP)
+        DumpString(SDDL_NO_READ_UP, -1, pwptr, plen);
+    if (mask & SYSTEM_MANDATORY_LABEL_NO_EXECUTE_UP)
+        DumpString(SDDL_NO_EXECUTE_UP, -1, pwptr, plen);
+}
+
 static BOOL DumpAce(LPVOID pace, WCHAR **pwptr, ULONG *plen)
 {
     ACCESS_ALLOWED_ACE *piace; /* all the supported ACEs have the same memory layout */
     static const WCHAR openbr = '(';
     static const WCHAR closebr = ')';
     static const WCHAR semicolon = ';';
+    BYTE type = ((PACE_HEADER)pace)->AceType;
 
-    if (((PACE_HEADER)pace)->AceType > SYSTEM_ALARM_ACE_TYPE || ((PACE_HEADER)pace)->AceSize < sizeof(ACCESS_ALLOWED_ACE))
+    if ((type > SYSTEM_ALARM_ACE_TYPE && type != SYSTEM_MANDATORY_LABEL_ACE_TYPE) ||
+        ((PACE_HEADER)pace)->AceSize < sizeof(ACCESS_ALLOWED_ACE))
     {
         SetLastError(ERROR_INVALID_ACL);
         return FALSE;
@@ -3286,6 +3309,9 @@ static BOOL DumpAce(LPVOID pace, WCHAR **pwptr, ULONG *plen)
         case SYSTEM_ALARM_ACE_TYPE:
             DumpString(SDDL_ALARM, -1, pwptr, plen);
             break;
+        case SYSTEM_MANDATORY_LABEL_ACE_TYPE:
+            DumpString(SDDL_MANDATORY_LABEL, -1, pwptr, plen);
+            break;
     }
     DumpString(&semicolon, 1, pwptr, plen);
 
@@ -3304,7 +3330,10 @@ static BOOL DumpAce(LPVOID pace, WCHAR **pwptr, ULONG *plen)
     if (piace->Header.AceFlags & FAILED_ACCESS_ACE_FLAG)
         DumpString(SDDL_AUDIT_FAILURE, -1, pwptr, plen);
     DumpString(&semicolon, 1, pwptr, plen);
-    DumpRights(piace->Mask, pwptr, plen);
+    if (type == SYSTEM_MANDATORY_LABEL_ACE_TYPE)
+        DumpMandatoryPolicy(piace->Mask, pwptr, plen);
+    else
+        DumpRights(piace->Mask, pwptr, plen);
     DumpString(&semicolon, 1, pwptr, plen);
     /* objects not supported */
     DumpString(&semicolon, 1, pwptr, plen);
