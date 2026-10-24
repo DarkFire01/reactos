@@ -277,3 +277,115 @@ HRESULT __RPC_STUB IParentAndItem_GetParentAndItem_Proxy(
     TRACE("(%p)->(%p %p %p)\n", This, parent, folder, child);
     return IParentAndItem_RemoteGetParentAndItem_Proxy(This, parent, folder, child);
 }
+
+#ifdef __REACTOS__
+
+/* PIDLs travel as a ULONG byte count and the bytes, terminator included; NULL is a count of 0 */
+
+static ULONG pidl_wire_size(const ITEMIDLIST *pidl)
+{
+    ULONG size = 0;
+
+    if (!pidl)
+        return 0;
+
+    while (pidl->mkid.cb)
+    {
+        size += pidl->mkid.cb;
+        pidl = (const ITEMIDLIST *)((const BYTE *)pidl + pidl->mkid.cb);
+    }
+    return size + sizeof(USHORT);
+}
+
+static ULONG pidl_user_size(ULONG start, const ITEMIDLIST *pidl)
+{
+    return start + sizeof(ULONG) + pidl_wire_size(pidl);
+}
+
+static unsigned char *pidl_user_marshal(unsigned char *buffer, const ITEMIDLIST *pidl)
+{
+    ULONG size = pidl_wire_size(pidl);
+
+    memcpy(buffer, &size, sizeof(size));
+    buffer += sizeof(size);
+    if (size)
+    {
+        memcpy(buffer, pidl, size);
+        buffer += size;
+    }
+    return buffer;
+}
+
+/* The bytes must form a list that ends exactly at the count, or the call is rejected */
+static unsigned char *pidl_user_unmarshal(unsigned char *buffer, void **ppidl)
+{
+    ULONG size, offset = 0;
+    const BYTE *bytes;
+    void *pidl;
+
+    memcpy(&size, buffer, sizeof(size));
+    buffer += sizeof(size);
+
+    if (!size)
+    {
+        CoTaskMemFree(*ppidl);
+        *ppidl = NULL;
+        return buffer;
+    }
+
+    bytes = buffer;
+    if (size < sizeof(USHORT))
+        RpcRaiseException(RPC_X_BAD_STUB_DATA);
+    while (offset + sizeof(USHORT) <= size)
+    {
+        USHORT cb;
+
+        memcpy(&cb, bytes + offset, sizeof(cb));
+        if (!cb)
+            break;
+        if (cb < sizeof(USHORT) || cb > size - offset - sizeof(USHORT))
+            RpcRaiseException(RPC_X_BAD_STUB_DATA);
+        offset += cb;
+    }
+    if (offset + sizeof(USHORT) != size)
+        RpcRaiseException(RPC_X_BAD_STUB_DATA);
+
+    pidl = CoTaskMemRealloc(*ppidl, size);
+    if (!pidl)
+        RpcRaiseException(E_OUTOFMEMORY);
+    memcpy(pidl, bytes, size);
+    *ppidl = pidl;
+    return buffer + size;
+}
+
+static void pidl_user_free(void *pidl)
+{
+    CoTaskMemFree(pidl);
+}
+
+#define PIDL_USER_MARSHAL(type) \
+ULONG __RPC_USER type##_UserSize(ULONG *flags, ULONG start, type *pidl) \
+{ \
+    return pidl_user_size(start, (const ITEMIDLIST *)*pidl); \
+} \
+unsigned char * __RPC_USER type##_UserMarshal(ULONG *flags, unsigned char *buffer, type *pidl) \
+{ \
+    return pidl_user_marshal(buffer, (const ITEMIDLIST *)*pidl); \
+} \
+unsigned char * __RPC_USER type##_UserUnmarshal(ULONG *flags, unsigned char *buffer, type *pidl) \
+{ \
+    return pidl_user_unmarshal(buffer, (void **)pidl); \
+} \
+void __RPC_USER type##_UserFree(ULONG *flags, type *pidl) \
+{ \
+    pidl_user_free((void *)*pidl); \
+}
+
+PIDL_USER_MARSHAL(PIDLIST_ABSOLUTE)
+PIDL_USER_MARSHAL(PCIDLIST_ABSOLUTE)
+PIDL_USER_MARSHAL(PIDLIST_RELATIVE)
+PIDL_USER_MARSHAL(PCUIDLIST_RELATIVE)
+PIDL_USER_MARSHAL(PITEMID_CHILD)
+PIDL_USER_MARSHAL(PCUITEMID_CHILD)
+
+#endif /* __REACTOS__ */

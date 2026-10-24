@@ -2,11 +2,13 @@
 add_definitions(-D__WINESRC__)
 add_definitions(-DWINE_REGISTER_DLL -DPROXY_DELEGATION)
 spec2def(actxprxy.dll actxprxy.spec)
+generate_idl_iids(actxprxy_explorer.idl)
 
 add_rpcproxy_files(
     actxprxy_activscp.idl
     actxprxy_comcat.idl
     actxprxy_docobj.idl
+    actxprxy_explorer.idl
     actxprxy_hlink.idl
     actxprxy_htiface.idl
     actxprxy_htiframe.idl
@@ -22,6 +24,8 @@ list(APPEND SOURCE
     ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_activscp_p.c
     ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_comcat_p.c
     ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_docobj_p.c
+    ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_explorer_p.c
+    ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_explorer_i.c
     ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_hlink_p.c
     ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_htiface_p.c
     ${CMAKE_CURRENT_BINARY_DIR}/actxprxy_htiframe_p.c
@@ -43,6 +47,7 @@ add_idl_reg_scripts(actxprxy registry
     actxprxy_activscp.idl
     actxprxy_comcat.idl
     actxprxy_docobj.idl
+    actxprxy_explorer.idl
     actxprxy_hlink.idl
     actxprxy_htiface.idl
     actxprxy_htiframe.idl
