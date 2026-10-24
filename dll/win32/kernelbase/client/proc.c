@@ -2292,7 +2292,8 @@ CreateProcessInternalW(IN HANDLE hUserToken,
         Status = BasepCreateAppContainerToken(hUserToken, SecurityCapabilities, &AppContainerToken);
         if (NT_SUCCESS(Status))
         {
-            Status = BasepCreateAppContainerEnvironment(SecurityCapabilities->AppContainerSid,
+            Status = BasepCreateAppContainerEnvironment(hUserToken,
+                                                        SecurityCapabilities->AppContainerSid,
                                                         lpEnvironment,
                                                         &AppContainerEnvironment);
         }
