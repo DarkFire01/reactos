@@ -25,6 +25,7 @@ typedef struct _DWM_SPRITE
     BOOLEAN Visible;
     BOOLEAN ActiveFrame;
     BOOLEAN RendersFrame;
+    BOOLEAN Layered;            /* UpdateLayeredWindow gave it a layer, so its DCs draw nowhere */
     RECT FrameMargins;          /* as last sent: left, top, right, bottom */
 } DWM_SPRITE, *PDWM_SPRITE;
 
@@ -188,6 +189,8 @@ IntDwmSendUpdateSprite(
     Message.Flags = Sprite->Visible ? DWM_SPRITE_VISIBLE : 0;
     Message.HasInfo = TRUE;
     IntDwmDescribeWindow(Sprite->Window, &Message.Info);
+    if (IntGetLayeredWindowLayer(Sprite->Window, &Message.Attributes))
+        Message.Flags |= DWM_SPRITE_LAYERED;
     if (Sprite->Surface)
     {
         if (NewSurface)
@@ -198,6 +201,41 @@ IntDwmSendUpdateSprite(
         Message.Height = Sprite->Surface->Size.cy;
     }
     IntDwmSendMessage(&Message.Header, sizeof(Message));
+}
+
+/* An UpdateLayeredWindow image goes into the surface; the window itself draws nothing there */
+static
+VOID
+IntDwmCopyLayer(
+    _In_ PDWM_SPRITE Sprite,
+    _In_opt_ const RECTL *prclDirty)
+{
+    PSURFACE psurf;
+    RECTL rcl;
+    ULONG64 Notify;
+
+    if (!Sprite->Surface)
+        return;
+
+    psurf = SURFACE_ShareLockSurface(Sprite->Surface->hbm);
+    if (!psurf)
+        return;
+
+    if (IntCopyLayeredWindowLayer(Sprite->Window, psurf, prclDirty))
+    {
+        rcl.left = 0;
+        rcl.top = 0;
+        rcl.right = psurf->SurfObj.sizlBitmap.cx;
+        rcl.bottom = psurf->SurfObj.sizlBitmap.cy;
+        if (prclDirty)
+            RECTL_bIntersectRect(&rcl, &rcl, prclDirty);
+        if (!RECTL_bIsEmptyRect(&rcl) && GreAccumulateLogicalSurfaceDirty(psurf, &rcl, &Notify))
+        {
+            if (!NT_SUCCESS(IntDwmNotifyDirtySprite(Notify)))
+                GreCancelLogicalSurfaceNotify(psurf);
+        }
+    }
+    SURFACE_ShareUnlockSurface(psurf);
 }
 
 static
@@ -390,6 +428,7 @@ IntDwmComposeWindow(
 
     IntDwmSendZOrderSprite(Sprite);
     IntDwmSendShowSprite(Sprite);
+    IntDwmCopyLayer(Sprite, NULL);
     IntDwmSendUpdateSprite(Sprite, TRUE);
     IntDwmSendFrameMargins(Sprite);
     IntDwmSendChildMoveSize(Window);
@@ -477,10 +516,33 @@ IntDwmMoveSprite(
         return;
     }
 
+    IntDwmCopyLayer(Sprite, NULL);
     IntDwmSendUpdateSprite(Sprite, TRUE);
     DceResetActiveDCEs(Window);
     GreDeleteLogicalSurface(Old);
     co_UserRedrawWindow(Window, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+}
+
+/* UpdateLayeredWindow changed the image or how it blends */
+VOID
+FASTCALL
+IntDwmLayeredWindowUpdated(
+    _In_ PWND Window,
+    _In_opt_ const RECTL *prclDirty)
+{
+    PDWM_SPRITE Sprite = IntDwmFindSprite(Window);
+
+    if (!Sprite)
+        return;
+
+    if (!Sprite->Layered)
+    {
+        Sprite->Layered = TRUE;
+        DceResetActiveDCEs(Window);
+    }
+    if (prclDirty)
+        IntDwmCopyLayer(Sprite, prclDirty);
+    IntDwmSendUpdateSprite(Sprite, FALSE);
 }
 
 /* SetWindowPos gave the window a new rectangle; the surface follows before anything paints at the new size */

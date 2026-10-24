@@ -368,6 +368,7 @@ typedef struct _DCOMP_SURFACE_DESC
 #define DCOMP_WINDOW_NODE_SPRITE_BITMAP 66      /* reference: GdiSpriteBitmap */
 #define DCOMP_WINDOW_NODE_WINDOW        1002    /* ours, integer: the HWND */
 #define DCOMP_WINDOW_NODE_CONTENT_SCALE 1003    /* ours, buffer: FLOAT screen pixels per surface pixel */
+#define DCOMP_WINDOW_NODE_LAYERED       1004    /* ours, integer: 0, or 0x100 | constant alpha to blend a premultiplied layered surface */
 
 /*
  * Ours: MARGINS of the content the frame's glass extends under. Content there is blended by its
