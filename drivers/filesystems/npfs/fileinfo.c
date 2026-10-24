@@ -365,6 +365,31 @@ NpQueryPipeInfo(IN PNP_FCB Fcb,
     return STATUS_SUCCESS;
 }
 
+/* A protected prefix answers only for its name */
+static
+NTSTATUS
+NpQueryPrefixNameInfo(
+    _In_ PNP_PREFIX Prefix,
+    _Out_writes_bytes_(*Length) PVOID Buffer,
+    _Inout_ PULONG Length)
+{
+    PFILE_NAME_INFORMATION InfoBuffer = Buffer;
+    USHORT NameLength = Prefix->FullName.Length;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    *Length -= FIELD_OFFSET(FILE_NAME_INFORMATION, FileName);
+    if (*Length < NameLength)
+    {
+        Status = STATUS_BUFFER_OVERFLOW;
+        NameLength = (USHORT)*Length;
+    }
+
+    RtlCopyMemory(InfoBuffer->FileName, Prefix->FullName.Buffer, NameLength);
+    InfoBuffer->FileNameLength = Prefix->FullName.Length;
+    *Length -= NameLength;
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 NpCommonQueryInformation(IN PDEVICE_OBJECT DeviceObject,
@@ -392,6 +417,13 @@ NpCommonQueryInformation(IN PDEVICE_OBJECT DeviceObject,
     Buffer = Irp->AssociatedIrp.SystemBuffer;
     Length = IoStack->Parameters.QueryFile.Length;
     InfoClass = IoStack->Parameters.QueryFile.FileInformationClass;
+
+    if (NodeTypeCode == NPFS_NTC_PREFIX && InfoClass == FileNameInformation)
+    {
+        Status = NpQueryPrefixNameInfo((PNP_PREFIX)Fcb, Buffer, &Length);
+        Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - Length;
+        return Status;
+    }
 
     if (NodeTypeCode != NPFS_NTC_CCB)
     {
