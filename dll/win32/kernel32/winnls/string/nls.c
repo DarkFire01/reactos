@@ -1015,10 +1015,29 @@ IntWideCharToMultiByteUTF8(UINT CodePage,
     INT TempLength;
     DWORD Char;
 
-    if (Flags)
+    if (Flags & ~WC_ERR_INVALID_CHARS)
     {
         SetLastError(ERROR_INVALID_FLAGS);
         return 0;
+    }
+
+    /* WC_ERR_INVALID_CHARS refuses an unpaired surrogate instead of encoding it */
+    if (Flags & WC_ERR_INVALID_CHARS)
+    {
+        for (TempLength = 0; TempLength < WideCharCount; TempLength++)
+        {
+            Char = WideCharString[TempLength];
+            if (Char < 0xd800 || Char >= 0xe000)
+                continue;
+            if (Char < 0xdc00 && TempLength + 1 < WideCharCount &&
+                WideCharString[TempLength + 1] >= 0xdc00 && WideCharString[TempLength + 1] < 0xe000)
+            {
+                TempLength++;
+                continue;
+            }
+            SetLastError(ERROR_NO_UNICODE_TRANSLATION);
+            return 0;
+        }
     }
 
     /* Does caller query for output buffer size? */
