@@ -105,18 +105,7 @@ BasepSetLowIntegrityLabel(
     SECURITY_DESCRIPTOR Descriptor;
     PACL Sacl = (PACL)AclBuffer;
     PSID LowSid = NULL;
-    HANDLE Writable;
     NTSTATUS Status;
-
-    Status = NtDuplicateObject(NtCurrentProcess(),
-                               Object,
-                               NtCurrentProcess(),
-                               &Writable,
-                               DIRECTORY_ALL_ACCESS,
-                               0,
-                               0);
-    if (!NT_SUCCESS(Status))
-        return Status;
 
     Status = RtlAllocateAndInitializeSid(&LabelAuthority, 1, SECURITY_MANDATORY_LOW_RID,
                                          0, 0, 0, 0, 0, 0, 0, &LowSid);
@@ -136,11 +125,10 @@ BasepSetLowIntegrityLabel(
     if (NT_SUCCESS(Status))
         Status = RtlSetSaclSecurityDescriptor(&Descriptor, TRUE, Sacl, FALSE);
     if (NT_SUCCESS(Status))
-        Status = NtSetSecurityObject(Writable, LABEL_SECURITY_INFORMATION, &Descriptor);
+        Status = NtSetSecurityObject(Object, LABEL_SECURITY_INFORMATION, &Descriptor);
 
     if (LowSid)
         RtlFreeSid(LowSid);
-    NtClose(Writable);
     return Status;
 }
 
@@ -350,21 +338,39 @@ BasepCreateContainerDirectory(
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING NameString;
+    HANDLE Labeled;
     NTSTATUS Status;
 
+    *Handle = NULL;
+
+    /* Labeling takes WRITE_OWNER; the handle kept afterwards has only the container rights */
     RtlInitUnicodeString(&NameString, Name);
     InitializeObjectAttributes(&ObjectAttributes, &NameString, OBJ_CASE_INSENSITIVE | OBJ_OPENIF,
                                Parent, Descriptor);
-    Status = NtCreateDirectoryObjectEx(Handle, LOWBOX_DIRECTORY_ACCESS, &ObjectAttributes, Shadow, 1);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    Status = BasepSetLowIntegrityLabel(*Handle);
+    Status = NtCreateDirectoryObjectEx(&Labeled, LOWBOX_DIRECTORY_ACCESS | WRITE_OWNER, &ObjectAttributes, Shadow, 1);
     if (!NT_SUCCESS(Status))
     {
-        NtClose(*Handle);
-        *Handle = NULL;
+        DPRINT1("Creating directory %S failed: 0x%08lx\n", Name, Status);
+        return Status;
     }
+
+    Status = BasepSetLowIntegrityLabel(Labeled);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Labeling directory %S failed: 0x%08lx\n", Name, Status);
+        NtClose(Labeled);
+        return Status;
+    }
+
+    Status = NtDuplicateObject(NtCurrentProcess(),
+                               Labeled,
+                               NtCurrentProcess(),
+                               Handle,
+                               LOWBOX_DIRECTORY_ACCESS,
+                               0,
+                               DUPLICATE_CLOSE_SOURCE);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Reducing directory %S failed: 0x%08lx\n", Name, Status);
     return Status;
 }
 
@@ -402,7 +408,7 @@ BasepCreateAppContainerDirectories(
     PTOKEN_USER User = (PTOKEN_USER)UserBuffer;
     APPCONTAINER_SID_TYPE SidType;
     UNICODE_STRING SidString = {0}, Target, PipeName;
-    WCHAR Leaf[64], RootPath[256], BasePath[256], ContainerPath[256], PipePath[300];
+    WCHAR Leaf[128], RootPath[256], BasePath[256], ContainerPath[256], PipePath[300];
     SECURITY_DESCRIPTOR Descriptor, SharedDescriptor;
     PSECURITY_DESCRIPTOR BaseDescriptor = NULL;
     PACL Dacl = NULL, SharedDacl = NULL;
@@ -411,6 +417,7 @@ BasepCreateAppContainerDirectories(
     IO_STATUS_BLOCK IoStatus;
     ULONG SessionId, Length;
     PSID ParentSid = NULL;
+    PCSTR Step = "naming";
     NTSTATUS Status;
 
     RtlZeroMemory(Handles, sizeof(*Handles));
@@ -465,6 +472,7 @@ BasepCreateAppContainerDirectories(
     if (!NT_SUCCESS(Status))
         goto Quit;
 
+    Step = "base directory";
     Status = BasepOpenDirectory(NULL, BasePath, READ_CONTROL | DIRECTORY_QUERY | DIRECTORY_TRAVERSE, &Base);
     if (!NT_SUCCESS(Status))
         goto Quit;
@@ -482,13 +490,20 @@ BasepCreateAppContainerDirectories(
     if (NT_SUCCESS(Status))
         Status = BasepBuildContainerDescriptor(BaseDescriptor, PackageSid, User->User.Sid, 0, &Descriptor, &Dacl);
     if (NT_SUCCESS(Status))
+    {
+        Step = "root directory";
         Status = BasepOpenDirectory(NULL, RootPath, LOWBOX_DIRECTORY_ACCESS, &Root);
+    }
     if (NT_SUCCESS(Status))
+    {
+        Step = "container directory";
         Status = BasepCreateContainerDirectory(Root, Leaf, &Descriptor, Base, &Handles->Directory);
+    }
     if (!NT_SUCCESS(Status))
         goto Quit;
 
     /* RPC Control and Global fall through to the session's, or to the parent container's */
+    Step = "RPC Control";
     if (SidType == ParentAppContainerSidType)
         Status = BasepOpenDirectory(NULL, L"\\RPC Control", DIRECTORY_QUERY | DIRECTORY_TRAVERSE, &ShadowRpc);
     else
@@ -503,6 +518,7 @@ BasepCreateAppContainerDirectories(
     if (!NT_SUCCESS(Status))
         goto Quit;
 
+    Step = "Global";
     if (SidType == ParentAppContainerSidType)
         Status = BasepOpenDirectory(NULL, L"\\BaseNamedObjects", DIRECTORY_QUERY | DIRECTORY_TRAVERSE, &ShadowGlobal);
     else
@@ -518,6 +534,7 @@ BasepCreateAppContainerDirectories(
         goto Quit;
     RtlInitUnicodeString(&Target, ContainerPath);
 
+    Step = "links";
     Status = BasepCreateContainerLink(Handles->Directory, L"Local", &Descriptor, &Target, &Handles->Local);
     if (NT_SUCCESS(Status))
         Status = BasepCreateContainerLink(Handles->Directory, L"Session", &Descriptor, &Target, &Handles->Session);
@@ -526,6 +543,7 @@ BasepCreateAppContainerDirectories(
     if (!NT_SUCCESS(Status))
         goto Quit;
 
+    Step = "pipe directory";
     BasepConvertDaclToPipeRights(Dacl);
     RtlInitUnicodeString(&PipeName, PipePath);
     InitializeObjectAttributes(&ObjectAttributes, &PipeName, OBJ_CASE_INSENSITIVE | OBJ_INHERIT, NULL, &Descriptor);
@@ -552,7 +570,10 @@ BasepCreateAppContainerDirectories(
 
 Quit:
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("AppContainer %s failed for session %lu: 0x%08lx\n", Step, SessionId, Status);
         BasepCloseLowBoxHandles(Handles);
+    }
     if (Base)
         NtClose(Base);
     if (Root)
@@ -638,24 +659,27 @@ Quit:
 static
 NTSTATUS
 BasepLookupAppContainerMoniker(
+    _In_ PSID UserSid,
     _In_ PSID Sid,
     _Out_writes_(Count) PWSTR Moniker,
     _In_ SIZE_T Count)
 {
     ULONG ValueBuffer[(sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 256 * sizeof(WCHAR)) / sizeof(ULONG)];
     PKEY_VALUE_PARTIAL_INFORMATION Value = (PKEY_VALUE_PARTIAL_INFORMATION)ValueBuffer;
-    UNICODE_STRING SidString = {0}, ParentString = {0}, KeyName, ValueName;
+    UNICODE_STRING SidString = {0}, ParentString = {0}, UserString = {0}, KeyName, ValueName;
     OBJECT_ATTRIBUTES ObjectAttributes;
     APPCONTAINER_SID_TYPE SidType;
     HANDLE UserKey = NULL, Key = NULL;
     PSID ParentSid = NULL;
-    WCHAR KeyPath[400];
+    WCHAR KeyPath[400], UserPath[128];
     ULONG Length;
     NTSTATUS Status;
 
     Status = RtlGetAppContainerSidType(Sid, &SidType);
     if (NT_SUCCESS(Status))
         Status = RtlConvertSidToUnicodeString(&SidString, Sid, TRUE);
+    if (NT_SUCCESS(Status))
+        Status = RtlConvertSidToUnicodeString(&UserString, UserSid, TRUE);
     if (!NT_SUCCESS(Status))
         goto Quit;
 
@@ -674,8 +698,15 @@ BasepLookupAppContainerMoniker(
     {
         Status = RtlStringCchPrintfW(KeyPath, _countof(KeyPath), L"%ws\\%wZ", AppContainerMappings, &SidString);
     }
+    /* The mapping lives in the hive of the user the process is made for, not necessarily the caller's */
     if (NT_SUCCESS(Status))
-        Status = RtlOpenCurrentUser(KEY_READ, &UserKey);
+        Status = RtlStringCchPrintfW(UserPath, _countof(UserPath), L"\\Registry\\User\\%wZ", &UserString);
+    if (NT_SUCCESS(Status))
+    {
+        RtlInitUnicodeString(&KeyName, UserPath);
+        InitializeObjectAttributes(&ObjectAttributes, &KeyName, OBJ_CASE_INSENSITIVE, NULL, NULL);
+        Status = NtOpenKey(&UserKey, KEY_READ, &ObjectAttributes);
+    }
     if (!NT_SUCCESS(Status))
         goto Quit;
 
@@ -706,6 +737,7 @@ Quit:
         RtlFreeHeap(RtlGetProcessHeap(), 0, ParentSid);
     RtlFreeUnicodeString(&SidString);
     RtlFreeUnicodeString(&ParentString);
+    RtlFreeUnicodeString(&UserString);
     return Status;
 }
 
@@ -809,6 +841,8 @@ BasepCreateAppContainerToken(
                                  Capabilities->Capabilities,
                                  HandleCount,
                                  (PHANDLE)&Handles);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("NtCreateLowBoxToken failed: 0x%08lx\n", Status);
 
 Quit:
     BasepCloseLowBoxHandles(&Handles);
@@ -827,12 +861,15 @@ Quit:
 NTSTATUS
 WINAPI
 BasepCreateAppContainerEnvironment(
+    _In_opt_ HANDLE UserToken,
     _In_ PSID PackageSid,
     _In_opt_ PWSTR Environment,
     _Out_ PWSTR *NewEnvironment)
 {
     ULONG SidBuffer[(sizeof(TOKEN_APPCONTAINER_INFORMATION) + SECURITY_MAX_SID_SIZE) / sizeof(ULONG)];
     PTOKEN_APPCONTAINER_INFORMATION Own = (PTOKEN_APPCONTAINER_INFORMATION)SidBuffer;
+    ULONG UserBuffer[(sizeof(TOKEN_USER) + SECURITY_MAX_SID_SIZE) / sizeof(ULONG)];
+    PTOKEN_USER User = (PTOKEN_USER)UserBuffer;
     UNICODE_STRING Name, Value;
     APPCONTAINER_SID_TYPE SidType, OwnType = NotAppContainerSidType;
     WCHAR Moniker[256], ParentMoniker[256], Folder[MAX_PATH * 2];
@@ -857,7 +894,11 @@ BasepCreateAppContainerEnvironment(
             goto Quit;
     }
     if (NT_SUCCESS(Status))
-        Status = BasepLookupAppContainerMoniker(PackageSid, Moniker, _countof(Moniker));
+        Status = NtQueryInformationToken(UserToken ? UserToken : Token, TokenUser, User, sizeof(UserBuffer), &Length);
+    if (NT_SUCCESS(Status))
+        Status = BasepLookupAppContainerMoniker(User->User.Sid, PackageSid, Moniker, _countof(Moniker));
+    if (!NT_SUCCESS(Status))
+        DPRINT1("AppContainer moniker lookup failed: 0x%08lx\n", Status);
     if (NT_SUCCESS(Status))
         Status = RtlGetAppContainerSidType(PackageSid, &SidType);
     if (NT_SUCCESS(Status))
@@ -883,7 +924,7 @@ BasepCreateAppContainerEnvironment(
     {
         Status = RtlGetAppContainerParent(PackageSid, &ParentSid);
         if (NT_SUCCESS(Status))
-            Status = BasepLookupAppContainerMoniker(ParentSid, ParentMoniker, _countof(ParentMoniker));
+            Status = BasepLookupAppContainerMoniker(User->User.Sid, ParentSid, ParentMoniker, _countof(ParentMoniker));
         if (!NT_SUCCESS(Status))
             goto Quit;
 

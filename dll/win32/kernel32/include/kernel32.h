@@ -272,6 +272,7 @@ BasepCreateAppContainerToken(
 NTSTATUS
 WINAPI
 BasepCreateAppContainerEnvironment(
+    _In_opt_ HANDLE UserToken,
     _In_ PSID PackageSid,
     _In_opt_ PWSTR Environment,
     _Out_ PWSTR *NewEnvironment);
