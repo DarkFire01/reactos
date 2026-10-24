@@ -864,6 +864,57 @@ SepAnalyzeAcesFromDacl(
     }
 }
 
+/*
+ * FIXME: Temporary. AppContainer refusals are logged and then granted, so that
+ * one run lists every object a packaged app needs that ReactOS does not open up
+ * to app packages yet. Set to 0 to enforce them.
+ */
+#define SEP_APPCONTAINER_AUDIT_ONLY 1
+
+/* Names what an AppContainer was refused: the rights, the object's owner and DACL, and who asked */
+static
+VOID
+SepReportAppContainerDenial(
+    _In_ PSECURITY_DESCRIPTOR SecurityDescriptor,
+    _In_opt_ PACL Dacl,
+    _In_ ACCESS_MASK Wanted)
+{
+    UNICODE_STRING Text;
+    PACCESS_ALLOWED_ACE Ace;
+    PVOID Frames[8];
+    BOOLEAN Defaulted;
+    PSID Owner = NULL;
+    ULONG Count, Index;
+
+    RtlGetOwnerSecurityDescriptor(SecurityDescriptor, &Owner, &Defaulted);
+    if (Owner && NT_SUCCESS(RtlConvertSidToUnicodeString(&Text, Owner, TRUE)))
+    {
+        DPRINT1("AppContainer denied 0x%08lx, owner %wZ, DACL %s, kernel at %p\n",
+                Wanted, &Text, Dacl ? "present" : "absent", (PVOID)PsNtosImageBase);
+        RtlFreeUnicodeString(&Text);
+    }
+    else
+    {
+        DPRINT1("AppContainer denied 0x%08lx, no owner, DACL %s, kernel at %p\n",
+                Wanted, Dacl ? "present" : "absent", (PVOID)PsNtosImageBase);
+    }
+
+    for (Index = 0; Dacl && Index < Dacl->AceCount && Index < 8; Index++)
+    {
+        if (!NT_SUCCESS(RtlGetAce(Dacl, Index, (PVOID*)&Ace)))
+            break;
+        if (NT_SUCCESS(RtlConvertSidToUnicodeString(&Text, (PSID)&Ace->SidStart, TRUE)))
+        {
+            DPRINT1("  ACE type %u flags %x mask %08lx %wZ\n", Ace->Header.AceType, Ace->Header.AceFlags, Ace->Mask, &Text);
+            RtlFreeUnicodeString(&Text);
+        }
+    }
+
+    Count = RtlWalkFrameChain(Frames, RTL_NUMBER_OF(Frames), 0);
+    for (Index = 0; Index < Count; Index++)
+        DPRINT1("  frame %p\n", Frames[Index]);
+}
+
 /**
  * @brief
  * Private worker function that determines whether security access rights can be
@@ -1106,9 +1157,12 @@ SepAccessCheckWorker(
     {
         if (LowBox)
         {
+            SepReportAppContainerDenial(SecurityDescriptor, NULL, RemainingAccess);
+#if !SEP_APPCONTAINER_AUDIT_ONLY
             PreviouslyGrantedAccess = 0;
             Status = STATUS_ACCESS_DENIED;
             goto ReturnCommonStatus;
+#endif
         }
 
         PreviouslyGrantedAccess |= RemainingAccess;
@@ -1179,7 +1233,13 @@ SepAccessCheckWorker(
                                    &AccessCheckRights);
         }
 
-        if (LowBox)
+        if (LowBox && SEP_APPCONTAINER_AUDIT_ONLY)
+        {
+            AppContainerAccess = SepAppContainerGrantedAccess(Token, Dacl, GenericMapping);
+            if (AccessCheckRights.GrantedAccessRights & ~AppContainerAccess)
+                SepReportAppContainerDenial(SecurityDescriptor, Dacl, AccessCheckRights.GrantedAccessRights & ~AppContainerAccess);
+        }
+        else if (LowBox)
         {
             AppContainerAccess = SepAppContainerGrantedAccess(Token, Dacl, GenericMapping);
             AccessCheckRights.GrantedAccessRights &= AppContainerAccess;
@@ -1442,10 +1502,12 @@ SepAccessCheckWorker(
 
     if (LowBox && (RemainingAccess & ~SepAppContainerGrantedAccess(Token, Dacl, GenericMapping)))
     {
-        DPRINT("The AppContainer is not granted all rights, access denied. RemainingAccess = 0x%08lx\n", RemainingAccess);
+        SepReportAppContainerDenial(SecurityDescriptor, Dacl, RemainingAccess);
+#if !SEP_APPCONTAINER_AUDIT_ONLY
         PreviouslyGrantedAccess = 0;
         Status = STATUS_ACCESS_DENIED;
         goto ReturnCommonStatus;
+#endif
     }
 
     /* Set granted access rights */
