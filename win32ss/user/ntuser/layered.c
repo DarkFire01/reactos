@@ -7,6 +7,7 @@
  */
 
 #include <win32k.h>
+#include <reactos/dwmport.h>
 DBG_DEFAULT_CHANNEL(UserMisc);
 
 
@@ -17,7 +18,235 @@ typedef struct _LRD_PROP
    BYTE     is_Layered;
    BYTE     NoUsed[2];
    DWORD    Flags;
+   HBITMAP  hbmLayer;          /* UpdateLayeredWindow's image, 32bpp with premultiplied alpha */
+   SIZE     LayerSize;
+   DWM_LAYERED_ATTRIBUTES LayerAttributes;
 } LRD_PROP, *PLRD_PROP;
+
+static
+PLRD_PROP
+IntGetLayeredProp(
+   _In_ PWND pWnd,
+   _In_ BOOL Create)
+{
+   PLRD_PROP pLrdProp = UserGetProp(pWnd, AtomLayer, TRUE);
+
+   if (!pLrdProp && Create)
+   {
+      pLrdProp = ExAllocatePoolZero(PagedPool, sizeof(*pLrdProp), USERTAG_REDIRECT);
+      if (pLrdProp)
+         UserSetProp(pWnd, AtomLayer, (HANDLE)pLrdProp, TRUE);
+   }
+   return pLrdProp;
+}
+
+VOID
+FASTCALL
+IntDestroyLayeredWindow(
+   _In_ PWND pWnd)
+{
+   PLRD_PROP pLrdProp = UserGetProp(pWnd, AtomLayer, TRUE);
+
+   if (!pLrdProp)
+      return;
+
+   UserRemoveProp(pWnd, AtomLayer, TRUE);
+   if (pLrdProp->hbmLayer)
+      GreDeleteObject(pLrdProp->hbmLayer);
+   ExFreePoolWithTag(pLrdProp, USERTAG_REDIRECT);
+}
+
+/* A window UpdateLayeredWindow gave an image of its own, and how that image blends */
+BOOL
+FASTCALL
+IntGetLayeredWindowLayer(
+   _In_ PWND pWnd,
+   _Out_opt_ PDWM_LAYERED_ATTRIBUTES pAttributes)
+{
+   PLRD_PROP pLrdProp = UserGetProp(pWnd, AtomLayer, TRUE);
+
+   if (!pLrdProp || !pLrdProp->hbmLayer)
+      return FALSE;
+
+   if (pAttributes)
+      *pAttributes = pLrdProp->LayerAttributes;
+   return TRUE;
+}
+
+static
+VOID
+IntCopyPixels32(
+   _Inout_ SURFOBJ *psoDst,
+   _In_ SURFOBJ *psoSrc,
+   _In_ const RECTL *prcl)
+{
+   LONG y;
+   SIZE_T cjRow = (prcl->right - prcl->left) * sizeof(ULONG);
+
+   for (y = prcl->top; y < prcl->bottom; y++)
+   {
+      RtlCopyMemory((PBYTE)psoDst->pvScan0 + y * psoDst->lDelta + prcl->left * sizeof(ULONG),
+                    (PBYTE)psoSrc->pvScan0 + y * psoSrc->lDelta + prcl->left * sizeof(ULONG),
+                    cjRow);
+   }
+}
+
+/* Copies the layer into a 32bpp surface the size of the window, within prclDirty when given */
+BOOL
+FASTCALL
+IntCopyLayeredWindowLayer(
+   _In_ PWND pWnd,
+   _Inout_ PSURFACE psurfDst,
+   _In_opt_ const RECTL *prclDirty)
+{
+   PLRD_PROP pLrdProp = UserGetProp(pWnd, AtomLayer, TRUE);
+   PSURFACE psurfLayer;
+   RECTL rcl;
+
+   if (!pLrdProp || !pLrdProp->hbmLayer || psurfDst->SurfObj.iBitmapFormat != BMF_32BPP)
+      return FALSE;
+
+   psurfLayer = SURFACE_ShareLockSurface(pLrdProp->hbmLayer);
+   if (!psurfLayer)
+      return FALSE;
+
+   rcl.left = 0;
+   rcl.top = 0;
+   rcl.right = min(psurfLayer->SurfObj.sizlBitmap.cx, psurfDst->SurfObj.sizlBitmap.cx);
+   rcl.bottom = min(psurfLayer->SurfObj.sizlBitmap.cy, psurfDst->SurfObj.sizlBitmap.cy);
+   if (!prclDirty || RECTL_bIntersectRect(&rcl, &rcl, prclDirty))
+      IntCopyPixels32(&psurfDst->SurfObj, &psurfLayer->SurfObj, &rcl);
+
+   SURFACE_ShareUnlockSurface(psurfLayer);
+   return TRUE;
+}
+
+/* Only a 32bpp source with AC_SRC_ALPHA brings alpha of its own; the color key makes pixels clear */
+static
+VOID
+IntFinishLayerAlpha(
+   _Inout_ SURFOBJ *pso,
+   _In_ const RECTL *prcl,
+   _In_ const DWM_LAYERED_ATTRIBUTES *pAttributes,
+   _In_ BOOL fSourceAlpha)
+{
+   ULONG Key = CLR_INVALID;
+   LONG x, y;
+
+   if (fSourceAlpha &&
+       (pAttributes->Flags & ULW_ALPHA) &&
+       (pAttributes->Blend.AlphaFormat & AC_SRC_ALPHA) &&
+       !(pAttributes->Flags & ULW_OPAQUE))
+   {
+      return;
+   }
+
+   if (pAttributes->Flags & ULW_COLORKEY)
+   {
+      Key = (GetRValue(pAttributes->Key) << 16) |
+            (GetGValue(pAttributes->Key) << 8) |
+            GetBValue(pAttributes->Key);
+   }
+
+   for (y = prcl->top; y < prcl->bottom; y++)
+   {
+      PULONG Row = (PULONG)((PBYTE)pso->pvScan0 + y * pso->lDelta);
+
+      for (x = prcl->left; x < prcl->right; x++)
+      {
+         ULONG Color = Row[x] & 0x00FFFFFF;
+         Row[x] = (Color == Key) ? 0 : (Color | 0xFF000000);
+      }
+   }
+}
+
+/* Takes the source bits into the layer, a new one when the size changed */
+static
+BOOL
+IntCaptureLayer(
+   _Inout_ PLRD_PROP pLrdProp,
+   _In_ LONG cx,
+   _In_ LONG cy,
+   _In_ HDC hdcSrc,
+   _In_opt_ const POINT *pptSrc,
+   _In_opt_ const RECT *prcDirty,
+   _Out_ RECTL *prclChanged)
+{
+   PSURFACE psurfLayer, psurfSrc;
+   PDC pdcSrc;
+   EXLATEOBJ exlo;
+   POINTL ptlSrc;
+   RECTL rcl, rclSrc;
+   BOOL Ret = FALSE;
+   BOOL fNew = FALSE;
+
+   RtlZeroMemory(prclChanged, sizeof(*prclChanged));
+   if (!pLrdProp->hbmLayer ||
+       pLrdProp->LayerSize.cx != cx ||
+       pLrdProp->LayerSize.cy != cy)
+   {
+      HBITMAP hbm = GreCreateBitmapEx(cx, cy, 0, BMF_32BPP, BMF_TOPDOWN, 0, NULL, 0);
+      if (!hbm)
+         return FALSE;
+
+      GreSetObjectOwner(hbm, GDI_OBJ_HMGR_PUBLIC);
+      if (pLrdProp->hbmLayer)
+         GreDeleteObject(pLrdProp->hbmLayer);
+      pLrdProp->hbmLayer = hbm;
+      pLrdProp->LayerSize.cx = cx;
+      pLrdProp->LayerSize.cy = cy;
+      fNew = TRUE;
+   }
+
+   rcl.left = 0;
+   rcl.top = 0;
+   rcl.right = cx;
+   rcl.bottom = cy;
+   if (prcDirty && !fNew && !RECTL_bIntersectRect(&rcl, &rcl, (const RECTL *)prcDirty))
+      return TRUE;
+
+   pdcSrc = DC_LockDc(hdcSrc);
+   if (!pdcSrc)
+      return FALSE;
+
+   psurfSrc = pdcSrc->dclevel.pSurface;
+   psurfLayer = SURFACE_ShareLockSurface(pLrdProp->hbmLayer);
+   if (psurfSrc && psurfLayer && pdcSrc->dctype != DCTYPE_DIRECT)
+   {
+      ptlSrc.x = pptSrc ? pptSrc->x : 0;
+      ptlSrc.y = pptSrc ? pptSrc->y : 0;
+      if (fNew)
+         RtlZeroMemory(psurfLayer->SurfObj.pvBits, psurfLayer->SurfObj.cjBits);
+
+      /* What the source has of the rectangle; the rest stays clear */
+      rclSrc.left = -ptlSrc.x;
+      rclSrc.top = -ptlSrc.y;
+      rclSrc.right = psurfSrc->SurfObj.sizlBitmap.cx - ptlSrc.x;
+      rclSrc.bottom = psurfSrc->SurfObj.sizlBitmap.cy - ptlSrc.y;
+      if (RECTL_bIntersectRect(&rclSrc, &rclSrc, &rcl))
+      {
+         ptlSrc.x += rclSrc.left;
+         ptlSrc.y += rclSrc.top;
+         EXLATEOBJ_vInitialize(&exlo, psurfSrc->ppal, psurfLayer->ppal, 0, 0, 0);
+         EngCopyBits(&psurfLayer->SurfObj, &psurfSrc->SurfObj, NULL, &exlo.xlo, &rclSrc, &ptlSrc);
+         EXLATEOBJ_vCleanup(&exlo);
+         IntFinishLayerAlpha(&psurfLayer->SurfObj, &rclSrc, &pLrdProp->LayerAttributes,
+                             psurfSrc->SurfObj.iBitmapFormat == BMF_32BPP);
+      }
+
+      *prclChanged = rcl;
+      Ret = TRUE;
+   }
+   else if (pdcSrc->dctype == DCTYPE_DIRECT)
+   {
+      ERR("UpdateLayeredWindow from a screen DC is not supported\n");
+   }
+
+   if (psurfLayer)
+      SURFACE_ShareUnlockSurface(psurfLayer);
+   DC_UnlockDc(pdcSrc);
+   return Ret;
+}
 
 BOOL FASTCALL
 GetLayeredStatus(PWND pWnd)
@@ -57,18 +286,11 @@ IntSetLayeredWindowAttributes(PWND pWnd,
       return FALSE;
    }
 
-   pLrdProp = UserGetProp(pWnd, AtomLayer, TRUE);
-
+   pLrdProp = IntGetLayeredProp(pWnd, TRUE);
    if (!pLrdProp)
    {
-      pLrdProp = ExAllocatePoolWithTag(PagedPool, sizeof(LRD_PROP), USERTAG_REDIRECT);
-      if (pLrdProp == NULL)
-      {
-         ERR("failed to allocate LRD_PROP\n");
-         return FALSE;
-      }
-      RtlZeroMemory(pLrdProp, sizeof(LRD_PROP));
-      UserSetProp(pWnd, AtomLayer, (HANDLE)pLrdProp, TRUE);
+      ERR("failed to allocate LRD_PROP\n");
+      return FALSE;
    }
 
    if (pLrdProp)
@@ -101,10 +323,14 @@ BOOL FASTCALL
 IntUpdateLayeredWindowI( PWND pWnd,
                          UPDATELAYEREDWINDOWINFO *info )
 {
+   static const BLENDFUNCTION DefaultBlend = { AC_SRC_OVER, 0, 255, 0 };
    PWND Parent;
+   PLRD_PROP pLrdProp;
    RECT Window, Client;
+   RECTL rclChanged;
    SIZE Offset;
    BOOL ret = FALSE;
+   BOOL fComposed;
    DWORD flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW;
 
    Window = pWnd->rcWindow;
@@ -148,7 +374,37 @@ IntUpdateLayeredWindowI( PWND pWnd,
       flags &= ~SWP_NOSIZE;
    }
 
-   if (info->hdcSrc)
+   pLrdProp = IntGetLayeredProp(pWnd, TRUE);
+   if (!pLrdProp)
+   {
+      EngSetLastError(ERROR_NOT_ENOUGH_MEMORY);
+      return FALSE;
+   }
+
+   pLrdProp->LayerAttributes.Key = info->crKey;
+   pLrdProp->LayerAttributes.Flags = info->dwFlags & (ULW_COLORKEY | ULW_ALPHA | ULW_OPAQUE);
+   if ((info->dwFlags & ULW_ALPHA) && info->pblend)
+      pLrdProp->LayerAttributes.Blend = *info->pblend;
+   else
+      pLrdProp->LayerAttributes.Blend = DefaultBlend;
+
+   /* The window keeps the image, so it can be shown again without asking the application */
+   if (info->hdcSrc &&
+       !IntCaptureLayer(pLrdProp,
+                        Window.right - Window.left,
+                        Window.bottom - Window.top,
+                        info->hdcSrc,
+                        info->pptSrc,
+                        info->prcDirty,
+                        &rclChanged))
+   {
+      EngSetLastError(ERROR_INVALID_PARAMETER);
+      return FALSE;
+   }
+
+   /* The DWM composes the layer itself; only an uncomposed window draws it here */
+   fComposed = IntDwmIsRedirected(pWnd);
+   if (info->hdcSrc && !fComposed)
    {
       HDC hdc, hdcBuffer;
       RECT Rect;
@@ -229,6 +485,10 @@ IntUpdateLayeredWindowI( PWND pWnd,
       ret = TRUE;
 
    co_WinPosSetWindowPos(pWnd, 0, Window.left, Window.top, Window.right - Window.left, Window.bottom - Window.top, flags);
+
+   /* After the move, so a new size already has its surface */
+   if (fComposed)
+      IntDwmLayeredWindowUpdated(pWnd, info->hdcSrc ? &rclChanged : NULL);
    return ret;
 }
 
@@ -378,8 +638,11 @@ NtUserUpdateLayeredWindow(
          ProbeForRead(pptSrc, sizeof(POINT), 1);
          Src = *pptSrc;
       }
-      ProbeForRead(psize, sizeof(SIZE), 1);
-      Size = *psize;
+      if (psize)
+      {
+         ProbeForRead(psize, sizeof(SIZE), 1);
+         Size = *psize;
+      }
       if (pblend)
       {
          ProbeForRead(pblend, sizeof(BLENDFUNCTION), 1);
@@ -410,7 +673,7 @@ NtUserUpdateLayeredWindow(
    info.cbSize   = sizeof(info);
    info.hdcDst   = hdcDst;
    info.pptDst   = pptDst? &Dst : NULL;
-   info.psize    = &Size;
+   info.psize    = psize ? &Size : NULL;
    info.hdcSrc   = hdcSrc;
    info.pptSrc   = pptSrc ? &Src : NULL;
    info.crKey    = crKey;

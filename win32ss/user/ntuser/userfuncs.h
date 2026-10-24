@@ -166,6 +166,9 @@ PWND FASTCALL DWP_GetEnabledPopup(PWND pWnd);
 
 BOOL FASTCALL SetLayeredStatus(PWND pWnd, BYTE set);
 BOOL FASTCALL GetLayeredStatus(PWND pWnd);
+VOID FASTCALL IntDestroyLayeredWindow(_In_ PWND pWnd);
+BOOL FASTCALL IntGetLayeredWindowLayer(_In_ PWND pWnd, _Out_opt_ struct _DWM_LAYERED_ATTRIBUTES *pAttributes);
+BOOL FASTCALL IntCopyLayeredWindowLayer(_In_ PWND pWnd, _Inout_ PSURFACE psurfDst, _In_opt_ const RECTL *prclDirty);
 
 /************** INPUT CONTEXT **************/
 
@@ -255,6 +258,12 @@ VOID
 FASTCALL
 IntDwmWindowRectChanged(
     _In_ PWND Window);
+
+VOID
+FASTCALL
+IntDwmLayeredWindowUpdated(
+    _In_ PWND Window,
+    _In_opt_ const RECTL *prclDirty);
 
 VOID
 FASTCALL
