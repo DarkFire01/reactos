@@ -1164,6 +1164,77 @@ done:
 }
 
 
+/*
+ * Gives the token its integrity level as Windows does without UAC filtering:
+ * system for the service accounts, high for administrators, medium otherwise.
+ */
+static
+NTSTATUS
+LsapAddIntegrityGroup(
+    _In_ PVOID TokenInformation,
+    _In_ LSA_TOKEN_INFORMATION_TYPE TokenInformationType)
+{
+    static SID_IDENTIFIER_AUTHORITY LabelAuthority = {SECURITY_MANDATORY_LABEL_AUTHORITY};
+    PLSA_TOKEN_INFORMATION_V1 TokenInfo1;
+    PTOKEN_GROUPS Groups;
+    PSID UserSid, LabelSid = NULL;
+    ULONG Rid = SECURITY_MANDATORY_MEDIUM_RID;
+    ULONG i, Length;
+    NTSTATUS Status;
+
+    if (TokenInformationType != LsaTokenInformationV1)
+        return STATUS_SUCCESS;
+
+    TokenInfo1 = (PLSA_TOKEN_INFORMATION_V1)TokenInformation;
+    UserSid = TokenInfo1->User.User.Sid;
+
+    if (IsWellKnownSid(UserSid, WinLocalSystemSid) ||
+        IsWellKnownSid(UserSid, WinLocalServiceSid) ||
+        IsWellKnownSid(UserSid, WinNetworkServiceSid))
+    {
+        Rid = SECURITY_MANDATORY_SYSTEM_RID;
+    }
+
+    for (i = 0; TokenInfo1->Groups && i < TokenInfo1->Groups->GroupCount; i++)
+    {
+        /* The authentication package already chose one */
+        if (TokenInfo1->Groups->Groups[i].Attributes & SE_GROUP_INTEGRITY)
+            return STATUS_SUCCESS;
+
+        if (Rid == SECURITY_MANDATORY_MEDIUM_RID &&
+            EqualSid(TokenInfo1->Groups->Groups[i].Sid, LsapAdministratorsSid))
+        {
+            Rid = SECURITY_MANDATORY_HIGH_RID;
+        }
+    }
+
+    Status = RtlAllocateAndInitializeSid(&LabelAuthority, 1, Rid, 0, 0, 0, 0, 0, 0, 0, &LabelSid);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    i = TokenInfo1->Groups ? TokenInfo1->Groups->GroupCount : 0;
+    Length = sizeof(TOKEN_GROUPS) + (i + 1 - ANYSIZE_ARRAY) * sizeof(SID_AND_ATTRIBUTES);
+    Groups = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Length);
+    if (Groups == NULL)
+    {
+        RtlFreeSid(LabelSid);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (i)
+        RtlCopyMemory(Groups->Groups, TokenInfo1->Groups->Groups, i * sizeof(SID_AND_ATTRIBUTES));
+    Groups->Groups[i].Sid = LabelSid;
+    Groups->Groups[i].Attributes = SE_GROUP_INTEGRITY | SE_GROUP_INTEGRITY_ENABLED;
+    Groups->GroupCount = i + 1;
+
+    if (TokenInfo1->Groups)
+        RtlFreeHeap(RtlGetProcessHeap(), 0, TokenInfo1->Groups);
+    TokenInfo1->Groups = Groups;
+
+    return STATUS_SUCCESS;
+}
+
+
 static
 NTSTATUS
 LsapSetTokenOwner(
@@ -1557,6 +1628,14 @@ LsapLogonUser(PLSA_API_MSG RequestMsg,
     if (!NT_SUCCESS(Status))
     {
         ERR("LsapAddSamGroups() failed (Status 0x%08lx)\n", Status);
+        goto done;
+    }
+
+    Status = LsapAddIntegrityGroup(TokenInformation,
+                                   TokenInformationType);
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("LsapAddIntegrityGroup() failed (Status 0x%08lx)\n", Status);
         goto done;
     }
 
