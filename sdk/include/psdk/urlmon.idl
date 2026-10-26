@@ -1925,6 +1925,7 @@ cpp_quote("#define Uri_CREATE_CANONICALIZE_ABSOLUTE       0x00020000")
 cpp_quote("#define Uri_DISPLAY_NO_FRAGMENT  0x00000001")
 cpp_quote("#define Uri_PUNYCODE_IDN_HOST    0x00000002")
 cpp_quote("#define Uri_DISPLAY_IDN_HOST     0x00000004")
+cpp_quote("#define Uri_DISPLAY_NO_PUNYCODE  0x00000008")
 
 cpp_quote("#define Uri_ENCODING_USER_INFO_AND_PATH_IS_PERCENT_ENCODED_UTF8   0x00000001")
 cpp_quote("#define Uri_ENCODING_USER_INFO_AND_PATH_IS_CP                     0x00000002")
