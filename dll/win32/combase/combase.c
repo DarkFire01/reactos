@@ -256,6 +256,9 @@ static HKEY create_classes_root_hkey(DWORD access)
 }
 
 static HKEY get_classes_root_hkey(HKEY hkey, REGSAM access);
+#ifdef __REACTOS__
+static LSTATUS open_classes_key(HKEY hkey, const WCHAR *name, REGSAM access, HKEY *retkey);
+#endif
 
 static LSTATUS create_classes_key(HKEY hkey, const WCHAR *name, REGSAM access, HKEY *retkey)
 {
@@ -292,8 +295,15 @@ static HKEY get_classes_root_hkey(HKEY hkey, REGSAM access)
     if (force_wow32 && ret && ret == classes_root_hkey)
     {
         access &= ~KEY_WOW64_32KEY;
+#ifdef __REACTOS__
+        /* A caller that may not create the 32-bit view still reads it when it is there */
+        if (create_classes_key(classes_root_hkey, L"Wow6432Node", access, &hkey) &&
+            open_classes_key(classes_root_hkey, L"Wow6432Node", access, &hkey))
+            return 0;
+#else
         if (create_classes_key(classes_root_hkey, L"Wow6432Node", access, &hkey))
             return 0;
+#endif
         ret = hkey;
     }
 
@@ -306,7 +316,12 @@ static LSTATUS open_classes_key(HKEY hkey, const WCHAR *name, REGSAM access, HKE
     UNICODE_STRING nameW;
 
     if (!(hkey = get_classes_root_hkey(hkey, access)))
+#ifdef __REACTOS__
+        /* Without a 32-bit view nothing is registered in it */
+        return (access & KEY_WOW64_32KEY) ? ERROR_FILE_NOT_FOUND : ERROR_INVALID_HANDLE;
+#else
         return ERROR_INVALID_HANDLE;
+#endif
 
     attr.Length = sizeof(attr);
     attr.RootDirectory = hkey;
