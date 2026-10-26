@@ -54,7 +54,50 @@ typedef struct tagLOGON_SOUND_DATA
     BOOL IsStartup;
 } LOGON_SOUND_DATA, *PLOGON_SOUND_DATA;
 
+typedef HRESULT (WINAPI *PDWMP_NOTIFY_USER_LOGON)(HANDLE);
+typedef HRESULT (WINAPI *PDWMP_NOTIFY_USER_LOGOFF)(VOID);
+
+/* dwminit.dll stays loaded once used, because it watches the DWM process */
+static HMODULE hDwmInit = NULL;
+
 /* FUNCTIONS ****************************************************************/
+
+/* The DWM is optional; when dwminit.dll is installed it starts the DWM for the user */
+static
+VOID
+NotifyDwmLogon(
+    _In_ PWLSESSION Session)
+{
+    PDWMP_NOTIFY_USER_LOGON pDwmpNotifyUserLogon;
+    HRESULT hr;
+
+    if (!hDwmInit)
+        hDwmInit = LoadLibraryW(L"dwminit.dll");
+    if (!hDwmInit)
+        return;
+
+    pDwmpNotifyUserLogon = (PDWMP_NOTIFY_USER_LOGON)GetProcAddress(hDwmInit, "DwmpNotifyUserLogon");
+    if (!pDwmpNotifyUserLogon)
+        return;
+
+    hr = pDwmpNotifyUserLogon(Session->UserToken);
+    if (FAILED(hr))
+        WARN("WL: DwmpNotifyUserLogon() failed with 0x%08lx\n", hr);
+}
+
+static
+VOID
+NotifyDwmLogoff(VOID)
+{
+    PDWMP_NOTIFY_USER_LOGOFF pDwmpNotifyUserLogoff;
+
+    if (!hDwmInit)
+        return;
+
+    pDwmpNotifyUserLogoff = (PDWMP_NOTIFY_USER_LOGOFF)GetProcAddress(hDwmInit, "DwmpNotifyUserLogoff");
+    if (pDwmpNotifyUserLogoff)
+        pDwmpNotifyUserLogoff();
+}
 
 static BOOL
 StartTaskManager(
@@ -662,6 +705,9 @@ HandleLogon(
 
     CallNotificationDlls(Session, LogonHandler);
 
+    /* Composition runs before the shell starts */
+    NotifyDwmLogon(Session);
+
     /* Connect remote resources */
     RestoreAllConnections(Session);
 
@@ -1044,6 +1090,7 @@ HandleLogoff(
     SwitchDesktop(Session->ApplicationDesktop);
     DisplayStatusMessage(Session, Session->ApplicationDesktop, IDS_LOGGINGOFF);
     CallNotificationDlls(Session, LogoffHandler);
+    NotifyDwmLogoff();
     RemoveStatusMessage(Session);
 
     /* The remaining Logoff steps run on the Winlogon desktop */
