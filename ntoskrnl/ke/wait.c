@@ -65,8 +65,9 @@ KiUnlinkThread(IN PKTHREAD Thread,
     WaitBlock = Thread->WaitBlockList;
     do
     {
-        /* Remove it */
-        RemoveEntryList(&WaitBlock->WaitListEntry);
+        /* Remove it, unless it has no object and so sits on no list */
+        if (WaitBlock->Object)
+            RemoveEntryList(&WaitBlock->WaitListEntry);
 
         /* Go to the next one */
         WaitBlock = WaitBlock->NextWaitBlock;
@@ -341,11 +342,10 @@ KiWaitForIdAlert(
         }
         else
         {
-            /* Nothing signals this block, it only gives KiUnlinkThread a list to walk */
+            /* No object signals this block, so it stays off every list and KiUnlinkThread skips it */
             Thread->WaitBlockList = WaitBlock;
             WaitBlock->Object = NULL;
             WaitBlock->NextWaitBlock = WaitBlock;
-            InitializeListHead(&WaitBlock->WaitListEntry);
         }
 
         Thread->WaitStatus = STATUS_SUCCESS;
