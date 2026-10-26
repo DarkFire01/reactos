@@ -478,11 +478,11 @@ DECLARE_INTERFACE_(IExplorerToolbar, IUnknown)
 	STDMETHOD(SetCommandTarget)(THIS_ IUnknown *theTarget, GUID *category, long param14) PURE;
 	STDMETHOD(Unknown1)(THIS) PURE;
 	STDMETHOD(AddButtons)(THIS_ const GUID *pguidCmdGroup, long buttonCount, TBBUTTON *buttons) PURE;
-	STDMETHOD(AddString)(THIS_ const GUID *pguidCmdGroup, HINSTANCE param10, LPCTSTR param14, long *param18) PURE;
+	STDMETHOD(AddString)(THIS_ const GUID *pguidCmdGroup, HINSTANCE param10, LPCTSTR param14, LONG_PTR *param18) PURE;
 	STDMETHOD(GetButton)(THIS_ const GUID *paramC, long param10, long param14) PURE;
 	STDMETHOD(GetState)(THIS_ const GUID *pguidCmdGroup, long commandID, long *theState) PURE;
 	STDMETHOD(SetState)(THIS_ const GUID *pguidCmdGroup, long commandID, long theState) PURE;
-	STDMETHOD(AddBitmap)(THIS_ const GUID *pguidCmdGroup, long param10, long buttonCount, TBADDBITMAP *lParam, long *newIndex, COLORREF param20) PURE;
+	STDMETHOD(AddBitmap)(THIS_ const GUID *pguidCmdGroup, long param10, long buttonCount, TBADDBITMAP *lParam, LONG_PTR *newIndex, COLORREF param20) PURE;
 	STDMETHOD(GetBitmapSize)(THIS_ long *paramC) PURE;
 	STDMETHOD(SendToolbarMsg)(THIS_ const GUID *pguidCmdGroup, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT *result) PURE;
 	STDMETHOD(SetImageList)(THIS_ const GUID *pguidCmdGroup, HIMAGELIST param10, HIMAGELIST param14, HIMAGELIST param18) PURE;
