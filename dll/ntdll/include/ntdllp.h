@@ -23,6 +23,9 @@
 /* Page heap flags */
 #define DPH_FLAG_DLL_NOTIFY 0x40
 
+/* PEB BitField: IsPackagedProcess */
+#define LDRP_PEB_PACKAGED_PROCESS 0x10
+
 typedef struct _LDRP_TLS_DATA
 {
     LIST_ENTRY TlsLinks;
@@ -59,6 +62,7 @@ extern LIST_ENTRY LdrpHashTable[LDR_HASH_TABLE_ENTRIES];
 extern BOOLEAN ShowSnaps;
 extern PVOID MmHighestUserAddress;
 extern UNICODE_STRING LdrpDefaultPath;
+extern UNICODE_STRING LdrpPackageDirectories;
 extern HANDLE LdrpKnownDllObjectDirectory;
 extern ULONG LdrpNumberOfProcessors;
 extern ULONG LdrpFatalHardErrorCount;
@@ -161,6 +165,15 @@ BOOLEAN
 NTAPI
 LdrpCheckForLoadedDllHandle(IN PVOID Base,
                             OUT PLDR_DATA_TABLE_ENTRY *LdrEntry);
+
+ULONG
+NTAPI
+LdrpSearchDllPath(
+    _In_opt_ PCWSTR DllPath,
+    _In_ PCWSTR DllName,
+    _In_ ULONG Size,
+    _Out_writes_bytes_(Size) PWSTR Buffer,
+    _Out_opt_ PWSTR *FilePart);
 
 BOOLEAN NTAPI
 LdrpCheckForLoadedDll(IN PWSTR DllPath,
