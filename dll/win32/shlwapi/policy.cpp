@@ -46,6 +46,24 @@ static const SHPOLICY_CONSTRAINT c_String   = { SRRF_RT_REG_SZ, sizeof(WCHAR), 0
 static const SHPOLICY_CONSTRAINT c_TriValue = { SRRF_RT_DWORD,  sizeof(DWORD), 1, 3 };
 static const SHPOLICY_CONSTRAINT c_Special  = { SRRF_RT_DWORD,  sizeof(DWORD), 0x1806, 0x1808 };
 
+// Start menu policies
+static const GUID POLID_NoRun =
+    { 0xa9ea41a7, 0x4ea4, 0x4776, { 0x8c, 0x1e, 0xaa, 0x06, 0xa2, 0x51, 0x60, 0xf9 } };
+static const GUID POLID_NoClose =
+    { 0x29b0cc43, 0x2f2b, 0x4d0c, { 0xa0, 0x81, 0xa5, 0x28, 0xdd, 0x34, 0x96, 0x31 } };
+static const GUID POLID_StartMenuLogoff =
+    { 0xef2a45cf, 0xd2c9, 0x4ef8, { 0xa8, 0x4b, 0x12, 0xd7, 0xf1, 0x15, 0x0c, 0xa8 } };
+static const GUID POLID_NoSMConfigurePrograms =
+    { 0xffd2f653, 0x7f76, 0x4eba, { 0x9b, 0x49, 0xb7, 0x39, 0x24, 0xa7, 0xef, 0xae } };
+static const GUID POLID_NoWindowsUpdate =
+    { 0x68f894e4, 0x3c9d, 0x4c68, { 0x82, 0x95, 0xc8, 0x38, 0x0e, 0x22, 0x76, 0x55 } };
+static const GUID POLID_NoStartMenuSubFolders =
+    { 0x78627e11, 0xec80, 0x49a3, { 0xb3, 0xb7, 0x6a, 0xbe, 0x73, 0x96, 0x93, 0xfc } };
+static const GUID POLID_TurnOffSidebar =
+    { 0x13a1260e, 0x41c7, 0x462f, { 0xa3, 0x97, 0xe7, 0xfb, 0x03, 0xbe, 0x94, 0x7f } };
+static const GUID POLID_NoMobilityCenter =
+    { 0xa55f91dc, 0xaadc, 0x4038, { 0x82, 0xfc, 0x84, 0x80, 0x6d, 0x92, 0x89, 0x78 } };
+
 // Items
 typedef struct tagSHPOLICY_ITEM
 {
@@ -69,6 +87,14 @@ static const SHPOLICY_ITEM g_PolicyItems[] =
     { POLID_LowRiskFileTypes, L"Associations", L"LowRiskFileTypes", &c_String },
     { POLID_PreXPSP2ShellProtocolBehavior, L"Explorer", L"PreXPSP2ShellProtocolBehavior", &c_Bool },
     { POLID_CompareJunctionness, L"Explorer", L"CompareJunctionness", &c_Bool },
+    { POLID_NoRun, L"Explorer", L"NoRun", &c_Bool },
+    { POLID_NoClose, L"Explorer", L"NoClose", &c_Bool },
+    { POLID_StartMenuLogoff, L"Explorer", L"StartMenuLogoff", &c_Bool },
+    { POLID_NoSMConfigurePrograms, L"Explorer", L"NoSMConfigurePrograms", &c_Bool },
+    { POLID_NoWindowsUpdate, L"Explorer", L"NoWindowsUpdate", &c_Bool },
+    { POLID_NoStartMenuSubFolders, L"Explorer", L"NoStartMenuSubFolders", &c_Bool },
+    { POLID_TurnOffSidebar, L"Windows", L"TurnOffSidebar", &c_Bool },
+    { POLID_NoMobilityCenter, L"MobilityCenter", L"NoMobilityCenter", &c_Bool },
 };
 
 /**************************************************************************
