@@ -2304,6 +2304,22 @@ static BOOL paste_special(ME_TextEditor *editor, UINT cf, REPASTESPECIAL *ps, BO
     hr = OleGetClipboard( &data );
     if (hr != S_OK) return FALSE;
 
+#ifdef __REACTOS__
+    /* The host may refuse the data or pick the one format it takes */
+    if (editor->lpOleCallback)
+    {
+        CLIPFORMAT cf_host = cf;
+
+        hr = IRichEditOleCallback_QueryAcceptData( editor->lpOleCallback, data, &cf_host, RECO_PASTE, !check_only, NULL );
+        if (FAILED( hr ))
+        {
+            IDataObject_Release( data );
+            return FALSE;
+        }
+        if (cf_host) cf = cf_host;
+    }
+#endif
+
     if (cf == CF_TEXT) cf = CF_UNICODETEXT;
 
     hr = S_FALSE;
@@ -2925,7 +2941,13 @@ static BOOL ME_ShowContextMenu(ME_TextEditor *editor, int x, int y)
 
     ME_GetSelectionOfs( editor, &selrange.cpMin, &selrange.cpMax );
     seltype = ME_GetSelectionType( editor );
+#ifdef __REACTOS__
+    /* S_FALSE or no menu from the callback means there is nothing to show */
+    menu = NULL;
+    if (IRichEditOleCallback_GetContextMenu( editor->lpOleCallback, seltype, NULL, &selrange, &menu ) == S_OK && menu)
+#else
     if (SUCCEEDED( IRichEditOleCallback_GetContextMenu( editor->lpOleCallback, seltype, NULL, &selrange, &menu ) ))
+#endif
     {
         TrackPopupMenu( menu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, x, y, 0, parent, NULL );
         DestroyMenu( menu );
@@ -3267,6 +3289,14 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
                                LPARAM lParam, HRESULT* phresult )
 {
   *phresult = S_OK;
+
+#ifdef __REACTOS__
+  if (msg == WM_MOUSEMOVE || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK ||
+      msg == WM_RBUTTONUP || msg == WM_KEYDOWN || msg == WM_CHAR)
+  {
+    editor_query_selbar( editor );
+  }
+#endif
 
   switch(msg) {
 
@@ -3624,9 +3654,9 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
 #ifdef __REACTOS__
     if (ImmIsIME(GetKeyboardLayout(0)))
     {
-      HIMC hIMC = ImmGetContext(editor->hWnd);
+      HIMC hIMC = ImmGetContext(editor_hwnd(editor));
       ImmSetCompositionFontW(hIMC, &lf);
-      ImmReleaseContext(editor->hWnd, hIMC);
+      ImmReleaseContext(editor_hwnd(editor), hIMC);
     }
 #endif
     return 0;
@@ -4132,7 +4162,7 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
 
     if (wParam)
     {
-      HIMC hIMC = ImmGetContext(editor->hWnd);
+      HIMC hIMC = ImmGetContext(editor_hwnd(editor));
       LPINPUTCONTEXTDX pIC = (LPINPUTCONTEXTDX)ImmLockIMC(hIMC);
       if (pIC)
       {
@@ -4141,26 +4171,26 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
       }
       if (FALSE) /* FIXME: Condition */
         ImmNotifyIME(hIMC, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
-      ImmReleaseContext(editor->hWnd, hIMC);
+      ImmReleaseContext(editor_hwnd(editor), hIMC);
     }
 
-    return DefWindowProcW(editor->hWnd, msg, wParam, lParam);
+    return DefWindowProcW(editor_hwnd(editor), msg, wParam, lParam);
   }
 #endif
   case WM_IME_CONTROL:
 #ifdef __REACTOS__
-    return DefWindowProcW(editor->hWnd, msg, wParam, lParam);
+    return DefWindowProcW(editor_hwnd(editor), msg, wParam, lParam);
 #endif
   case WM_IME_SELECT:
 #ifdef __REACTOS__
-    return DefWindowProcW(editor->hWnd, msg, wParam, lParam);
+    return DefWindowProcW(editor_hwnd(editor), msg, wParam, lParam);
 #endif
   case WM_IME_COMPOSITIONFULL:
     return 0;
   case WM_IME_STARTCOMPOSITION:
   {
 #ifdef __REACTOS__
-    return DefWindowProcW(editor->hWnd, msg, wParam, lParam);
+    return DefWindowProcW(editor_hwnd(editor), msg, wParam, lParam);
 #else
     editor->imeStartIndex=ME_GetCursorOfs(&editor->pCursors[0]);
     ME_DeleteSelection(editor);
@@ -4207,7 +4237,7 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
     ME_CommitUndo(editor);
     ME_UpdateRepaint(editor, FALSE);
 #ifdef __REACTOS__
-    return DefWindowProcW(editor->hWnd, msg, wParam, lParam);
+    return DefWindowProcW(editor_hwnd(editor), msg, wParam, lParam);
 #else
     return 0;
 #endif
@@ -4215,7 +4245,7 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
   case WM_IME_ENDCOMPOSITION:
   {
 #ifdef __REACTOS__
-    return DefWindowProcW(editor->hWnd, msg, wParam, lParam);
+    return DefWindowProcW(editor_hwnd(editor), msg, wParam, lParam);
 #else
     ME_DeleteSelection(editor);
     editor->imeStartIndex=-1;

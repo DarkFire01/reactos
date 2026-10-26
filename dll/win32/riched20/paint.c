@@ -55,6 +55,10 @@ void editor_draw( ME_TextEditor *editor, HDC hDC, const RECT *update )
     oldRgn = NULL;
   }
   IntersectClipRect( hDC, update->left, update->top, update->right, update->bottom );
+#ifdef __REACTOS__
+  /* Nothing is drawn outside the view, even when scrolled text reaches past it */
+  IntersectClipRect( hDC, c.rcView.left - editor->selofs, c.rcView.top, c.rcView.right, c.rcView.bottom );
+#endif
 
   brush = SelectObject( hDC, brush );
   SetBkMode(hDC, TRANSPARENT);
@@ -1108,6 +1112,15 @@ void scroll_abs( ME_TextEditor *editor, int x, int y, BOOL notify )
     set_scroll_range_pos( editor, SB_VERT, &editor->vert_si, FALSE, notify );
   }
 
+#ifdef __REACTOS__
+  /* Scrolling the bits of a transparent control would drag its old background along */
+  if (editor->back_style == TXTBACK_TRANSPARENT)
+  {
+    if (scrollX || scrollY)
+      ITextHost_TxInvalidateRect(editor->texthost, &editor->rcFormat, FALSE);
+  }
+  else
+#endif
   if (abs(scrollX) > editor->sizeWindow.cx || abs(scrollY) > editor->sizeWindow.cy)
     ITextHost_TxInvalidateRect(editor->texthost, NULL, TRUE);
   else

@@ -2605,16 +2605,188 @@ static HRESULT WINAPI ITextRange_fnChangeCase(ITextRange *me, LONG type)
     return E_NOTIMPL;
 }
 
+#ifdef __REACTOS__
+/* GetPoint may report a point outside the view only when asked to */
+#define REACTOS_TOM_ALLOW_OFF_CLIENT 0x200
+
+/* Screen position of one end of a range, placed by the TA_* bits in type */
+static
+HRESULT
+range_get_point(
+    _In_ ME_TextEditor *editor,
+    _In_ LONG start,
+    _In_ LONG end,
+    _In_ LONG type,
+    _Out_ LONG *cx,
+    _Out_ LONG *cy)
+{
+    ME_Cursor cursor;
+    POINT pt;
+    int x, y, height;
+
+    if (!cx || !cy)
+        return E_INVALIDARG;
+
+    cursor_from_char_ofs( editor, (type & tomStart) ? start : end, &cursor );
+    cursor_coords( editor, &cursor, &x, &y, &height );
+
+    if ((type & TA_BASELINE) == TA_BASELINE)
+        y += cursor.run->style->tm.tmAscent;
+    else if (type & TA_BOTTOM)
+        y += height;
+
+    if (!(type & REACTOS_TOM_ALLOW_OFF_CLIENT) &&
+        (x < editor->rcFormat.left || x > editor->rcFormat.right ||
+         y < editor->rcFormat.top || y > editor->rcFormat.bottom))
+    {
+        return S_FALSE;
+    }
+
+    pt.x = x;
+    pt.y = y;
+    ITextHost_TxClientToScreen( editor->texthost, &pt );
+    *cx = pt.x;
+    *cy = pt.y;
+    return S_OK;
+}
+
+/* Puts the active end of the selection on target; tomMove brings the anchor along */
+static
+HRESULT
+selection_move_to(
+    _In_ ME_TextEditor *editor,
+    _In_ const ME_Cursor *target,
+    _In_ LONG extend)
+{
+    LONG old_from, old_to, from, to;
+
+    ME_GetSelectionOfs( editor, &old_from, &old_to );
+
+    if (!editor->bHideSelection) ME_InvalidateSelection( editor );
+    editor->pCursors[0] = *target;
+    if (extend != tomExtend)
+        editor->pCursors[1] = *target;
+    editor_ensure_visible( editor, &editor->pCursors[0] );
+    if (!editor->bHideSelection) ME_InvalidateSelection( editor );
+    update_caret( editor );
+    ME_Repaint( editor );
+    ME_SendSelChange( editor );
+
+    ME_GetSelectionOfs( editor, &from, &to );
+    return (from == old_from && to == old_to) ? S_FALSE : S_OK;
+}
+
+/* Moves the selection count units left (dir -1) or right (dir 1) */
+static
+HRESULT
+selection_move_horz(
+    _In_ ME_TextEditor *editor,
+    _In_ LONG unit,
+    _In_ LONG count,
+    _In_ LONG extend,
+    _In_ int dir,
+    _Out_opt_ LONG *delta)
+{
+    ME_Cursor cursor;
+    LONG from, to, moved = 0;
+    HRESULT hr;
+
+    if (delta) *delta = 0;
+    if (unit != tomCharacter && unit != tomWord)
+        return E_NOTIMPL;
+
+    if (count < 0)
+    {
+        count = -count;
+        dir = -dir;
+    }
+    if (!count)
+        return S_FALSE;
+
+    /* Collapsing a selection to the side moved to counts as the first unit */
+    ME_GetSelectionOfs( editor, &from, &to );
+    if (extend != tomExtend && from != to)
+    {
+        cursor_from_char_ofs( editor, dir > 0 ? to : from, &cursor );
+        count--;
+        moved++;
+    }
+    else
+    {
+        cursor = editor->pCursors[0];
+    }
+
+    if (unit == tomCharacter)
+    {
+        moved += abs( ME_MoveCursorChars( editor, &cursor, dir * count, FALSE ) );
+    }
+    else
+    {
+        for (; count > 0 && ME_MoveCursorWords( editor, &cursor, dir ); count--)
+            moved++;
+    }
+
+    hr = selection_move_to( editor, &cursor, extend );
+    if (delta) *delta = moved;
+    return moved ? S_OK : hr;
+}
+
+/* Home and End keys: the start or end of the line or of the story */
+static
+HRESULT
+selection_home_end(
+    _In_ ME_TextEditor *editor,
+    _In_ LONG unit,
+    _In_ LONG extend,
+    _In_ BOOL end,
+    _Out_opt_ LONG *delta)
+{
+    ME_Cursor cursor = editor->pCursors[0];
+    LONG old_ofs = ME_GetCursorOfs( &editor->pCursors[0] );
+    HRESULT hr;
+
+    if (delta) *delta = 0;
+
+    switch (unit)
+    {
+    case tomLine:
+        if (end)
+            row_end_cursor( row_from_cursor( &cursor ), &cursor, FALSE );
+        else
+            row_first_cursor( row_from_cursor( &cursor ), &cursor );
+        break;
+    case tomStory:
+        cursor_from_char_ofs( editor, end ? ME_GetTextLength( editor ) : 0, &cursor );
+        break;
+    default:
+        return E_INVALIDARG;
+    }
+
+    hr = selection_move_to( editor, &cursor, extend );
+    if (delta) *delta = ME_GetCursorOfs( &cursor ) - old_ofs;
+    return hr;
+}
+#endif
+
 static HRESULT WINAPI ITextRange_fnGetPoint(ITextRange *me, LONG type, LONG *cx, LONG *cy)
 {
     ITextRangeImpl *This = impl_from_ITextRange(me);
 
+#ifdef __REACTOS__
+    TRACE("(%p)->(%ld %p %p)\n", This, type, cx, cy);
+
+    if (!This->child.reole)
+        return CO_E_RELEASED;
+
+    return range_get_point(This->child.reole->editor, This->start, This->end, type, cx, cy);
+#else
     FIXME("(%p)->(%ld %p %p): stub\n", This, type, cx, cy);
 
     if (!This->child.reole)
         return CO_E_RELEASED;
 
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ITextRange_fnSetPoint(ITextRange *me, LONG x, LONG y, LONG type,
@@ -2658,7 +2830,11 @@ static HRESULT WINAPI ITextRange_fnScrollIntoView(ITextRange *me, LONG value)
         FIXME("bStart value %ld not handled\n", value);
         return E_NOTIMPL;
     }
+#ifdef __REACTOS__
+    editor_ensure_visible( editor, &cursor );
+#else
     scroll_abs( editor, x, y, TRUE );
+#endif
     return S_OK;
 }
 
@@ -4335,8 +4511,27 @@ static HRESULT WINAPI ITextDocument2Old_fnRangeFromPoint(ITextDocument2Old *ifac
                                                          ITextRange **ppRange)
 {
     struct text_services *services = impl_from_ITextDocument2Old(iface);
+#ifdef __REACTOS__
+    ME_Cursor cursor;
+    POINT pt;
+    LONG ofs;
+
+    TRACE("%p %ld %ld %p\n", services, x, y, ppRange);
+
+    if (!ppRange)
+        return E_INVALIDARG;
+
+    /* x and y are screen coordinates; the range is the insertion point nearest them */
+    pt.x = x;
+    pt.y = y;
+    ITextHost_TxScreenToClient(services->editor->texthost, &pt);
+    cursor_from_coords(services->editor, pt.x, pt.y, &cursor);
+    ofs = ME_GetCursorOfs(&cursor);
+    return CreateITextRange(services, ofs, ofs, ppRange);
+#else
     FIXME("stub %p\n", services);
     return E_NOTIMPL;
+#endif
 }
 
 /* ITextDocument2Old methods */
@@ -5437,6 +5632,17 @@ static HRESULT WINAPI ITextSelection_fnChangeCase(ITextSelection *me, LONG type)
 static HRESULT WINAPI ITextSelection_fnGetPoint(ITextSelection *me, LONG type, LONG *cx, LONG *cy)
 {
     struct text_selection *This = impl_from_ITextSelection(me);
+#ifdef __REACTOS__
+    LONG start, end;
+
+    TRACE("(%p)->(%ld %p %p)\n", This, type, cx, cy);
+
+    if (!This->services)
+        return CO_E_RELEASED;
+
+    ME_GetSelectionOfs(This->services->editor, &start, &end);
+    return range_get_point(This->services->editor, start, end, type, cx, cy);
+#else
 
     FIXME("(%p)->(%ld %p %p): stub\n", This, type, cx, cy);
 
@@ -5444,6 +5650,7 @@ static HRESULT WINAPI ITextSelection_fnGetPoint(ITextSelection *me, LONG type, L
         return CO_E_RELEASED;
 
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ITextSelection_fnSetPoint(ITextSelection *me, LONG x, LONG y, LONG type,
@@ -5462,6 +5669,21 @@ static HRESULT WINAPI ITextSelection_fnSetPoint(ITextSelection *me, LONG x, LONG
 static HRESULT WINAPI ITextSelection_fnScrollIntoView(ITextSelection *me, LONG value)
 {
     struct text_selection *This = impl_from_ITextSelection(me);
+#ifdef __REACTOS__
+    ME_Cursor cursor;
+    LONG start, end;
+
+    TRACE("(%p)->(%ld)\n", This, value);
+
+    if (!This->services)
+        return CO_E_RELEASED;
+
+    /* Scroll as little as needed to bring the asked for end into view */
+    ME_GetSelectionOfs(This->services->editor, &start, &end);
+    cursor_from_char_ofs(This->services->editor, (value & tomStart) ? start : end, &cursor);
+    editor_ensure_visible(This->services->editor, &cursor);
+    return S_OK;
+#else
 
     FIXME("(%p)->(%ld): stub\n", This, value);
 
@@ -5469,6 +5691,7 @@ static HRESULT WINAPI ITextSelection_fnScrollIntoView(ITextSelection *me, LONG v
         return CO_E_RELEASED;
 
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ITextSelection_fnGetEmbeddedObject(ITextSelection *me, IUnknown **ppv)
@@ -5525,12 +5748,21 @@ static HRESULT WINAPI ITextSelection_fnMoveLeft(ITextSelection *me, LONG unit, L
 {
     struct text_selection *This = impl_from_ITextSelection(me);
 
+#ifdef __REACTOS__
+    TRACE("(%p)->(%ld %ld %ld %p)\n", This, unit, count, extend, delta);
+
+    if (!This->services)
+        return CO_E_RELEASED;
+
+    return selection_move_horz(This->services->editor, unit, count, extend, -1, delta);
+#else
     FIXME("(%p)->(%ld %ld %ld %p): stub\n", This, unit, count, extend, delta);
 
     if (!This->services)
         return CO_E_RELEASED;
 
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ITextSelection_fnMoveRight(ITextSelection *me, LONG unit, LONG count,
@@ -5538,12 +5770,21 @@ static HRESULT WINAPI ITextSelection_fnMoveRight(ITextSelection *me, LONG unit, 
 {
     struct text_selection *This = impl_from_ITextSelection(me);
 
+#ifdef __REACTOS__
+    TRACE("(%p)->(%ld %ld %ld %p)\n", This, unit, count, extend, delta);
+
+    if (!This->services)
+        return CO_E_RELEASED;
+
+    return selection_move_horz(This->services->editor, unit, count, extend, 1, delta);
+#else
     FIXME("(%p)->(%ld %ld %ld %p): stub\n", This, unit, count, extend, delta);
 
     if (!This->services)
         return CO_E_RELEASED;
 
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ITextSelection_fnMoveUp(ITextSelection *me, LONG unit, LONG count,
@@ -5577,12 +5818,21 @@ static HRESULT WINAPI ITextSelection_fnHomeKey(ITextSelection *me, LONG unit, LO
 {
     struct text_selection *This = impl_from_ITextSelection(me);
 
+#ifdef __REACTOS__
+    TRACE("(%p)->(%ld %ld %p)\n", This, unit, extend, delta);
+
+    if (!This->services)
+        return CO_E_RELEASED;
+
+    return selection_home_end(This->services->editor, unit, extend, FALSE, delta);
+#else
     FIXME("(%p)->(%ld %ld %p): stub\n", This, unit, extend, delta);
 
     if (!This->services)
         return CO_E_RELEASED;
 
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ITextSelection_fnEndKey(ITextSelection *me, LONG unit, LONG extend,
@@ -5590,12 +5840,21 @@ static HRESULT WINAPI ITextSelection_fnEndKey(ITextSelection *me, LONG unit, LON
 {
     struct text_selection *This = impl_from_ITextSelection(me);
 
+#ifdef __REACTOS__
+    TRACE("(%p)->(%ld %ld %p)\n", This, unit, extend, delta);
+
+    if (!This->services)
+        return CO_E_RELEASED;
+
+    return selection_home_end(This->services->editor, unit, extend, TRUE, delta);
+#else
     FIXME("(%p)->(%ld %ld %p): stub\n", This, unit, extend, delta);
 
     if (!This->services)
         return CO_E_RELEASED;
 
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ITextSelection_fnTypeText(ITextSelection *me, BSTR text)
