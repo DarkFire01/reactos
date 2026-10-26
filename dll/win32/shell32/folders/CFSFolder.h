@@ -11,6 +11,17 @@
 #ifndef _CFSFOLDER_H_
 #define _CFSFOLDER_H_
 
+/* Lets the owner of a folder force or forbid kinds of children in its enumeration */
+struct DECLSPEC_UUID("76347B91-9846-4CE7-9A57-69B910D16123") DECLSPEC_NOVTABLE
+ISetFolderEnumRestriction : public IUnknown
+{
+    STDMETHOD(SetEnumRestriction)(
+        _In_ DWORD dwRequired,
+        _In_ DWORD dwForbidden) PURE;
+};
+
+static const IID IID_ISetFolderEnumRestriction = __uuidof(ISetFolderEnumRestriction);
+
 class CFSFolder :
     public CComCoClass<CFSFolder, &CLSID_ShellFSFolder>,
     public CComObjectRootEx<CComMultiThreadModelNoCS>,
@@ -18,7 +29,8 @@ class CFSFolder :
     public IPersistFolder3,
     public IContextMenuCB,
     public IShellFolderViewCB,
-    public IItemNameLimits
+    public IItemNameLimits,
+    public ISetFolderEnumRestriction
 {
     private:
         const CLSID *m_pclsid;
@@ -29,6 +41,15 @@ class CFSFolder :
         LPITEMIDLIST m_pidlRoot; /* absolute pidl */
 
         DWORD m_bGroupPolicyActive;
+
+        /* Target this folder was given by InitializeEx */
+        BOOL m_bHasTargetInfo;
+        DWORD m_dwTargetAttributes;
+        int m_iTargetCsidl;
+
+        /* SHCONTF flags always added to or taken from enumerations */
+        DWORD m_dwEnumRequired;
+        DWORD m_dwEnumForbidden;
         HRESULT _CreateShellExtInstance(const CLSID *pclsid, LPCITEMIDLIST pidl, REFIID riid, LPVOID *ppvOut);
         HRESULT _CreateExtensionUIObject(LPCITEMIDLIST pidl, REFIID riid, LPVOID *ppvOut);
         HRESULT _GetDropTarget(LPCITEMIDLIST pidl, LPVOID *ppvOut);
@@ -103,6 +124,17 @@ class CFSFolder :
             return S_OK;
         }
 
+        // ISetFolderEnumRestriction
+        STDMETHODIMP
+        SetEnumRestriction(
+            _In_ DWORD dwRequired,
+            _In_ DWORD dwForbidden) override
+        {
+            m_dwEnumRequired = dwRequired;
+            m_dwEnumForbidden = dwForbidden;
+            return S_OK;
+        }
+
     DECLARE_REGISTRY_RESOURCEID(IDR_SHELLFSFOLDER)
     DECLARE_NOT_AGGREGATABLE(CFSFolder)
 
@@ -117,6 +149,7 @@ class CFSFolder :
         COM_INTERFACE_ENTRY_IID(IID_IPersist, IPersist)
         COM_INTERFACE_ENTRY_IID(IID_IShellFolderViewCB, IShellFolderViewCB)
         COM_INTERFACE_ENTRY_IID(IID_IItemNameLimits, IItemNameLimits)
+        COM_INTERFACE_ENTRY_IID(IID_ISetFolderEnumRestriction, ISetFolderEnumRestriction)
     END_COM_MAP()
 
     protected:
