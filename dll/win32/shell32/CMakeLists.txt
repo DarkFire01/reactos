@@ -84,6 +84,13 @@ list(APPEND SOURCE
     CBrowserProgressAggregator.cpp
     hiddenid.cpp
     hiddenid.h
+    pinning/CAppResolver.cpp
+    pinning/CAppResolver.h
+    pinning/CPinnedList.cpp
+    pinning/CPinnedList.h
+    pinning/CPinStore.cpp
+    pinning/pinning.h
+    pinning/pinutil.cpp
     CBrowserProgressAggregator.h
     CDUIViewFrame.h
     CUserNotification.cpp
@@ -96,6 +103,8 @@ list(APPEND SOURCE
     CShellDispatch.cpp
     CShellLibrary.cpp
     CShellLibrary.h
+    CShellFolderSet.cpp
+    CShellFolderSet.h
     CFolder.cpp
     CFolderItems.cpp
     CFolderItemVerbs.cpp)

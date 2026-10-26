@@ -2411,3 +2411,41 @@ EXTERN_C BOOL WINAPI LinkWindow_UnregisterClass(_In_ DWORD dwUnused)
     /* Do nothing. This is correct. */
     return TRUE;
 }
+
+/*************************************************************************
+ *              IsSearchEnabled (SHELL32.902)
+ *
+ * The start menu search box shows unless Windows Search is installed without a version.
+ * Servers always show it. Only the first answer counts for the process.
+ */
+EXTERN_C BOOL WINAPI IsSearchEnabled(VOID)
+{
+    static LONG s_lSearchState = 0;
+    LONG lState = s_lSearchState;
+
+    if (!lState)
+    {
+        OSVERSIONINFOEXW osvi = { sizeof(osvi) };
+        HKEY hkey;
+
+        lState = 1;
+        if (!(GetVersionExW((OSVERSIONINFOW *)&osvi) && osvi.wProductType != VER_NT_WORKSTATION) &&
+            RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows Search", 0,
+                          KEY_QUERY_VALUE, &hkey) == ERROR_SUCCESS)
+        {
+            WCHAR szVersion[MAX_PATH];
+            DWORD cbVersion = sizeof(szVersion);
+
+            if (SHRegGetValueW(hkey, NULL, L"CurrentVersion", SRRF_RT_ANY, NULL, szVersion,
+                               &cbVersion) != ERROR_SUCCESS)
+            {
+                lState = 2;
+            }
+            RegCloseKey(hkey);
+        }
+
+        s_lSearchState = lState;
+    }
+
+    return lState == 1;
+}
