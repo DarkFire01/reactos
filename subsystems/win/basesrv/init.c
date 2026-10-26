@@ -173,7 +173,7 @@ BaseSrvInitializeIniFileMappings(IN PBASE_STATIC_SERVER_DATA StaticServerData)
 
 /*
  * Creates \Sessions\<n>\AppContainerNamedObjects, where kernel32 makes each container's
- * directories. It takes the BNO DACL, plus the right to create entries for all app packages.
+ * directories. It takes the BNO DACL, plus the right of all app packages to look into it.
  */
 NTSTATUS
 NTAPI
@@ -229,12 +229,12 @@ BaseSrvCreateAppContainerRoot(
     if (NT_SUCCESS(Status))
     {
         Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION2,
-                                        DIRECTORY_CREATE_OBJECT | DIRECTORY_CREATE_SUBDIRECTORY, AllPackages);
+                                        DIRECTORY_QUERY | DIRECTORY_TRAVERSE, AllPackages);
     }
     if (NT_SUCCESS(Status))
     {
         Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION2,
-                                        DIRECTORY_CREATE_OBJECT | DIRECTORY_CREATE_SUBDIRECTORY, AllRestrictedPackages);
+                                        DIRECTORY_QUERY | DIRECTORY_TRAVERSE, AllRestrictedPackages);
     }
     if (NT_SUCCESS(Status))
         Status = RtlCreateSecurityDescriptor(&Descriptor, SECURITY_DESCRIPTOR_REVISION);
