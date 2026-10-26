@@ -96,6 +96,22 @@ BEGIN
     END
 END
 
+IDM_MERGEDFOLDER MENUEX
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "&Open", 1
+        MENUITEM "O&pen all users", 3
+        MENUITEM "&Explore", 2
+        MENUITEM "E&xplore all users", 4
+        MENUITEM "", -1, MFT_SEPARATOR
+        MENUITEM "&Delete", 5
+        MENUITEM "Rena&me", 6
+        MENUITEM "", -1, MFT_SEPARATOR
+        MENUITEM "P&roperties", 7
+    END
+END
+
 IDD_BROWSE_FOR_FOLDER DIALOGEX 15, 40, 188, 192
 STYLE DS_SHELLFONT | DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
 CAPTION "Browse for Folder"

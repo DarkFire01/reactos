@@ -366,4 +366,11 @@ typedef HRESULT (CALLBACK *FILEOPCALLBACK)(FILEOPCALLBACKEVENT Event, LPCWSTR So
 int SHELL32_FileOperation(LPSHFILEOPSTRUCTW lpFileOp, FILEOPCALLBACK Callback, void *CallerData);
 HRESULT SHELL_SingleFileOperation(HWND hWnd, UINT Op, PCWSTR Src, PCWSTR Dest, UINT Flags, PWSTR *ppNewName);
 
+/* jumplist/recentdocs.cpp */
+VOID
+AddToRecentDocsForApp(
+    _In_ PCIDLIST_ABSOLUTE pidl,
+    _In_opt_ PCWSTR pszAppID,
+    _In_ PCWSTR pszAppPath);
+
 #endif /* _PRECOMP_H__ */
