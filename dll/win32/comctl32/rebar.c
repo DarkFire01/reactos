@@ -183,9 +183,20 @@ typedef struct
     INT      ihitoffset;  /* offset of hotspot from gripper.left */
     INT      ichevronhotBand; /* last band that had a hot chevron */
     INT      iGrabbedBand;/* band number of band whose gripper was grabbed */
+#ifdef __REACTOS__
+    DWORD    dwExStyle;   /* RBS_EX_* styles */
+#endif
 
     HDPA     bands;       /* pointer to the array of rebar bands */
 } REBAR_INFO;
+
+#ifdef __REACTOS__
+/* Vista+ names missing from the SDK header */
+#ifndef RB_SETEXTENDEDSTYLE
+#define RB_SETEXTENDEDSTYLE (WM_USER + 41)
+#define RB_GETEXTENDEDSTYLE (WM_USER + 42)
+#endif
+#endif
 
 /* fStatus flags */
 #define BEGIN_DRAG_ISSUED   0x00000001
@@ -2896,6 +2907,34 @@ REBAR_SetUnicodeFormat (REBAR_INFO *infoPtr, BOOL unicode)
    return bTemp;
 }
 
+#ifdef __REACTOS__
+static LRESULT
+REBAR_SetExtendedStyle(
+    _In_ REBAR_INFO *infoPtr,
+    _In_ DWORD dwMask,
+    _In_ DWORD dwExStyle)
+{
+    DWORD dwOld = infoPtr->dwExStyle;
+
+    /* Only stored for now, no RBS_EX_* style changes drawing yet */
+    infoPtr->dwExStyle = (dwOld & ~dwMask) | (dwExStyle & dwMask);
+    return dwOld;
+}
+
+static LRESULT
+REBAR_SetWindowTheme(
+    _In_ REBAR_INFO *infoPtr,
+    _In_opt_ LPCWSTR pszSubAppName)
+{
+    /* SetWindowTheme sends WM_THEMECHANGED, which reopens the theme */
+    SetWindowTheme(infoPtr->hwndSelf, pszSubAppName, NULL);
+
+    REBAR_Layout(infoPtr);
+    InvalidateRect(infoPtr->hwndSelf, NULL, TRUE);
+    return 0;
+}
+#endif
+
 
 static LRESULT
 REBAR_SetVersion (REBAR_INFO *infoPtr, INT iVersion)
@@ -3727,6 +3766,17 @@ REBAR_WindowProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	case CCM_SETVERSION:
 	    return REBAR_SetVersion (infoPtr, (INT)wParam);
+
+#ifdef __REACTOS__
+	case RB_SETEXTENDEDSTYLE:
+	    return REBAR_SetExtendedStyle(infoPtr, (DWORD)wParam, (DWORD)lParam);
+
+	case RB_GETEXTENDEDSTYLE:
+	    return infoPtr->dwExStyle;
+
+	case RB_SETWINDOWTHEME:
+	    return REBAR_SetWindowTheme(infoPtr, (LPCWSTR)lParam);
+#endif
 
 	case RB_SHOWBAND:
 	    return REBAR_ShowBand (infoPtr, wParam, lParam);
