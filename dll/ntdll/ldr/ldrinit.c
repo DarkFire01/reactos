@@ -12,6 +12,8 @@
 #include <ntdll.h>
 #include <compat_undoc.h>
 #include <compatguid_undoc.h>
+#include <ndk/sefuncs.h>
+#include <ndk/setypes.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -62,6 +64,7 @@ HANDLE LdrpKnownDllObjectDirectory;
 UNICODE_STRING LdrpKnownDllPath;
 WCHAR LdrpKnownDllPathBuffer[128];
 UNICODE_STRING LdrpDefaultPath;
+UNICODE_STRING LdrpPackageDirectories;
 
 PEB_LDR_DATA PebLdr;
 
@@ -1906,6 +1909,109 @@ LdrpInitializeDotLocalSupport(PRTL_USER_PROCESS_PARAMETERS ProcessParameters)
     }
 }
 
+/* The package claim of the process token, present on every packaged process */
+static
+BOOLEAN
+LdrpQueryPackageClaim(
+    _Out_ PULONG64 Claim)
+{
+    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"WIN://PKG");
+    PTOKEN_SECURITY_ATTRIBUTES_INFORMATION Information;
+    PTOKEN_SECURITY_ATTRIBUTE_V1 Attribute;
+    ULONG64 Buffer[32];
+    HANDLE Token;
+    ULONG Length;
+    NTSTATUS Status;
+
+    *Claim = 0;
+    Status = NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &Token);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    Status = NtQuerySecurityAttributesToken(Token, &Name, 1, Buffer, sizeof(Buffer), &Length);
+    NtClose(Token);
+    Information = (PTOKEN_SECURITY_ATTRIBUTES_INFORMATION)Buffer;
+    if (!NT_SUCCESS(Status) || !Information->AttributeCount)
+        return FALSE;
+
+    Attribute = Information->Attribute.pAttributeV1;
+    if (Attribute->ValueType != TOKEN_SECURITY_ATTRIBUTE_TYPE_UINT64 || !Attribute->ValueCount)
+        return FALSE;
+    *Claim = Attribute->Values.pUint64[0];
+    return TRUE;
+}
+
+/*
+ * A packaged process gets the folders of its package graph in DllPath, main package first.
+ * Like on Windows they are searched before anything else, and the default path behind them
+ * is the application folder and System32: no current directory, Windows folder or PATH.
+ */
+static
+BOOLEAN
+LdrpInitializePackagePaths(
+    _In_ PRTL_USER_PROCESS_PARAMETERS ProcessParameters)
+{
+    PPEB Peb = NtCurrentPeb();
+    PUNICODE_STRING ImagePath = &ProcessParameters->ImagePathName;
+    UNICODE_STRING SystemRoot;
+    UNICODE_STRING Path;
+    USHORT Folder;
+    ULONG64 Claim;
+
+    if (!LdrpQueryPackageClaim(&Claim))
+        return FALSE;
+
+    /* The kernel marks the PEB on Windows; here the claims arrive after the PEB is built */
+    Peb->BitField |= LDRP_PEB_PACKAGED_PROCESS;
+    if (ProcessParameters->DllPath.Length)
+        LdrpPackageDirectories = ProcessParameters->DllPath;
+
+    Folder = ImagePath->Length;
+    while (Folder >= sizeof(WCHAR) && ImagePath->Buffer[Folder / sizeof(WCHAR) - 1] != OBJ_NAME_PATH_SEPARATOR)
+        Folder -= sizeof(WCHAR);
+    if (Folder > 3 * sizeof(WCHAR))
+        Folder -= sizeof(WCHAR);
+
+    RtlInitUnicodeString(&SystemRoot, SharedUserData->NtSystemRoot);
+    Path.Length = 0;
+    Path.MaximumLength = Folder + sizeof(L';') + SystemRoot.Length + sizeof(L"\\System32");
+    Path.Buffer = RtlAllocateHeap(Peb->ProcessHeap, 0, Path.MaximumLength);
+    if (!Path.Buffer)
+    {
+        /* The package graph alone still finds what the package brings */
+        LdrpDefaultPath = LdrpPackageDirectories;
+        return LdrpDefaultPath.Length != 0;
+    }
+
+    RtlCopyMemory(Path.Buffer, ImagePath->Buffer, Folder);
+    Path.Length = Folder;
+    RtlAppendUnicodeToString(&Path, L";");
+    RtlAppendUnicodeStringToString(&Path, &SystemRoot);
+    RtlAppendUnicodeToString(&Path, L"\\System32");
+    LdrpDefaultPath = Path;
+    return TRUE;
+}
+
+/* Searches the package graph of a packaged process, then DllPath or the default path */
+ULONG
+NTAPI
+LdrpSearchDllPath(
+    _In_opt_ PCWSTR DllPath,
+    _In_ PCWSTR DllName,
+    _In_ ULONG Size,
+    _Out_writes_bytes_(Size) PWSTR Buffer,
+    _Out_opt_ PWSTR *FilePart)
+{
+    ULONG Length;
+
+    if (LdrpPackageDirectories.Length)
+    {
+        Length = RtlDosSearchPath_U(LdrpPackageDirectories.Buffer, DllName, NULL, Size, Buffer, FilePart);
+        if (Length && Length <= Size)
+            return Length;
+    }
+    return RtlDosSearchPath_U(DllPath ? DllPath : LdrpDefaultPath.Buffer, DllName, NULL, Size, Buffer, FilePart);
+}
 
 NTSTATUS
 NTAPI
@@ -2288,7 +2394,11 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     if (ProcessParameters)
     {
         /* Check if we have a Dll Path */
-        if (ProcessParameters->DllPath.Length)
+        if (LdrpInitializePackagePaths(ProcessParameters))
+        {
+            DPRINT("Package graph: %wZ\n", &LdrpPackageDirectories);
+        }
+        else if (ProcessParameters->DllPath.Length)
         {
             /* Get the path */
             LdrpDefaultPath = *(PUNICODE_STRING)&ProcessParameters->DllPath;

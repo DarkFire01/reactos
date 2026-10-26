@@ -683,12 +683,11 @@ LdrpResolveDllName(PWSTR DllPath,
     FullDllName->Buffer = RtlAllocateHeap(LdrpHeap, 0, BufSize + sizeof(UNICODE_NULL));
     if (!FullDllName->Buffer) return FALSE;
 
-    Length = RtlDosSearchPath_U(DllPath ? DllPath : LdrpDefaultPath.Buffer,
-                                DllName,
-                                NULL,
-                                BufSize,
-                                FullDllName->Buffer,
-                                &BaseDllName->Buffer);
+    Length = LdrpSearchDllPath(DllPath,
+                               DllName,
+                               BufSize,
+                               FullDllName->Buffer,
+                               &BaseDllName->Buffer);
 
     if (!Length || Length > BufSize)
     {
@@ -2040,12 +2039,11 @@ lookinhash:
                 FullDllName.Buffer = NameBuf;
 
                 /* FIXME: This is from the Windows 2000 loader, not XP/2003, we should call LdrpSearchPath */
-                Length = RtlDosSearchPath_U(DllPath ? DllPath : LdrpDefaultPath.Buffer,
-                                            DllName->Buffer,
-                                            NULL,
-                                            sizeof(NameBuf) - sizeof(UNICODE_NULL),
-                                            FullDllName.Buffer,
-                                            NULL);
+                Length = LdrpSearchDllPath(DllPath,
+                                           DllName->Buffer,
+                                           sizeof(NameBuf) - sizeof(UNICODE_NULL),
+                                           FullDllName.Buffer,
+                                           NULL);
 
                 /* Check if that was successful */
                 if (!(Length) || (Length > (sizeof(NameBuf) - sizeof(UNICODE_NULL))))
