@@ -297,19 +297,9 @@ FASTCALL
 IntGetCodePageEntry(UINT CodePage)
 {
     NTSTATUS Status;
-    CHAR SectionName[40];
-    HANDLE SectionHandle = INVALID_HANDLE_VALUE, FileHandle;
     PBYTE SectionMapping;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    union
-    {
-        SECURITY_DESCRIPTOR AlignedSd;
-        UCHAR Buffer[NLS_SECTION_SECURITY_DESCRIPTOR_SIZE];
-    } SecurityDescriptor;
-    ANSI_STRING AnsiName;
-    UNICODE_STRING UnicodeName;
+    SIZE_T SectionSize;
     WCHAR FileName[MAX_PATH + 1];
-    UINT FileNamePos;
     PCODEPAGE_ENTRY CodePageEntry;
 
     if (CodePage == CP_ACP)
@@ -359,105 +349,17 @@ IntGetCodePageEntry(UINT CodePage)
      */
     RtlEnterCriticalSection(&CodePageListLock);
 
-    /* Generate the section name. */
-    if (!GetNlsSectionName(CodePage,
-                           10,
-                           0,
-                           "\\Nls\\NlsSectionCP",
-                           SectionName,
-                           sizeof(SectionName)))
+    /* Only code pages the registry knows of can be used */
+    if (!GetCPFileNameFromRegistry(CodePage, FileName, _countof(FileName)))
     {
         RtlLeaveCriticalSection(&CodePageListLock);
         return NULL;
     }
 
-    RtlInitAnsiString(&AnsiName, SectionName);
-    RtlAnsiStringToUnicodeString(&UnicodeName, &AnsiName, TRUE);
-
-    /*
-     * FIXME: IntGetCodePageEntry should not create any security
-     * descriptor here but instead this responsibility should be
-     * assigned to Base Server API (aka basesrv.dll). That is,
-     * kernel32 must instruct basesrv.dll on creating NLS section
-     * names that do not exist through API message communication.
-     * However since we do not do that, let the kernel32 do the job
-     * by assigning security to NLS section names for the time being...
-     */
-    Status = CreateNlsSecurityDescriptor(&SecurityDescriptor,
-                                         sizeof(SecurityDescriptor),
-                                         SECTION_MAP_READ);
+    /* The kernel maps the shared code page table, so even an app container can use it */
+    Status = NtGetNlsSectionPtr(11, CodePage, NULL, (PVOID*)&SectionMapping, &SectionSize);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("CreateNlsSecurityDescriptor FAILED! (Status 0x%08x)\n", Status);
-        RtlLeaveCriticalSection(&CodePageListLock);
-        return NULL;
-    }
-
-    InitializeObjectAttributes(&ObjectAttributes,
-                               &UnicodeName,
-                               OBJ_CASE_INSENSITIVE,
-                               NULL,
-                               &SecurityDescriptor);
-
-    /* Try to open the section first */
-    Status = NtOpenSection(&SectionHandle,
-                           SECTION_MAP_READ,
-                           &ObjectAttributes);
-
-    /* If the section doesn't exist, try to create it. */
-    if (Status == STATUS_UNSUCCESSFUL ||
-        Status == STATUS_OBJECT_NAME_NOT_FOUND ||
-        Status == STATUS_OBJECT_PATH_NOT_FOUND)
-    {
-        FileNamePos = GetSystemDirectoryW(FileName, MAX_PATH);
-        if (GetCPFileNameFromRegistry(CodePage,
-                                      FileName + FileNamePos + 1,
-                                      MAX_PATH - FileNamePos - 1))
-        {
-            FileName[FileNamePos] = L'\\';
-            FileName[MAX_PATH] = 0;
-            FileHandle = CreateFileW(FileName,
-                                     FILE_GENERIC_READ,
-                                     FILE_SHARE_READ,
-                                     NULL,
-                                     OPEN_EXISTING,
-                                     0,
-                                     NULL);
-
-            Status = NtCreateSection(&SectionHandle,
-                                     SECTION_MAP_READ,
-                                     &ObjectAttributes,
-                                     NULL,
-                                     PAGE_READONLY,
-                                     SEC_COMMIT,
-                                     FileHandle);
-
-            /* HACK: Check if another process was faster
-             * and already created this section. See bug 3626 for details */
-            if (Status == STATUS_OBJECT_NAME_COLLISION)
-            {
-                /* Close the file then */
-                NtClose(FileHandle);
-
-                /* And open the section */
-                Status = NtOpenSection(&SectionHandle,
-                                       SECTION_MAP_READ,
-                                       &ObjectAttributes);
-            }
-        }
-    }
-    RtlFreeUnicodeString(&UnicodeName);
-
-    if (!NT_SUCCESS(Status))
-    {
-        RtlLeaveCriticalSection(&CodePageListLock);
-        return NULL;
-    }
-
-    SectionMapping = MapViewOfFile(SectionHandle, FILE_MAP_READ, 0, 0, 0);
-    if (SectionMapping == NULL)
-    {
-        NtClose(SectionHandle);
         RtlLeaveCriticalSection(&CodePageListLock);
         return NULL;
     }
@@ -465,13 +367,12 @@ IntGetCodePageEntry(UINT CodePage)
     CodePageEntry = HeapAlloc(GetProcessHeap(), 0, sizeof(CODEPAGE_ENTRY));
     if (CodePageEntry == NULL)
     {
-        NtClose(SectionHandle);
         RtlLeaveCriticalSection(&CodePageListLock);
         return NULL;
     }
 
     CodePageEntry->CodePage = CodePage;
-    CodePageEntry->SectionHandle = SectionHandle;
+    CodePageEntry->SectionHandle = NULL;
     CodePageEntry->SectionMapping = SectionMapping;
 
     RtlInitCodePageTable((PUSHORT)SectionMapping, &CodePageEntry->CodePageTable);
