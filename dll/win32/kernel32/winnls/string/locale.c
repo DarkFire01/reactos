@@ -7077,6 +7077,85 @@ LANGID WINAPI DECLSPEC_HOTPATCH GetUserDefaultUILanguage(void)
 }
 
 
+#ifdef __REACTOS__
+/* Reads a non-empty, terminated REG_SZ value of the user's Geo key */
+static BOOL get_geo_value( HKEY key, const WCHAR *name, WCHAR *buffer, DWORD count )
+{
+    DWORD type, size = count * sizeof(WCHAR);
+
+    if (RegQueryValueExW( key, name, NULL, &type, (BYTE *)buffer, &size )) return FALSE;
+    if (type != REG_SZ || (size & 1) || size <= sizeof(WCHAR)) return FALSE;
+    return !buffer[size / sizeof(WCHAR) - 1];
+}
+
+/* The user's location: the Name value if it is a known one, else the Nation id */
+static const struct geo_id *get_user_geo( void )
+{
+    const struct geo_id *geo = NULL, *shared = NULL;
+    WCHAR buffer[256];
+    HKEY key;
+
+    if (RegOpenKeyExW( intl_key, L"Geo", 0, KEY_READ, &key )) return NULL;
+    if (get_geo_value( key, L"Name", buffer, ARRAY_SIZE(buffer) ))
+    {
+        geo = find_geo_name_entry( buffer );
+
+        /* XX and SJ belong to more than one nation, so Nation picks the entry */
+        if (!wcsncmp( buffer, L"XX", 2 ) || !wcsncmp( buffer, L"SJ", 2 ))
+        {
+            shared = geo;
+            geo = NULL;
+        }
+    }
+    if (!geo && get_geo_value( key, L"Nation", buffer, ARRAY_SIZE(buffer) ))
+        geo = find_geo_id_entry( wcstol( buffer, NULL, 10 ));
+    RegCloseKey( key );
+    return geo ? geo : shared;
+}
+
+/* ISO 3166 code of an entry, or its UN M.49 code when it has no ISO one */
+static void get_geo_short_name( const struct geo_id *geo, WCHAR *name, int count )
+{
+    if (!geo)
+        lstrcpynW( name, L"001", count );
+    else if (!wcscmp( geo->iso2, L"XX" ) && geo->uncode)
+        swprintf( name, count, L"%03u", geo->uncode );
+    else
+        lstrcpynW( name, geo->iso2, count );
+}
+
+/******************************************************************************
+ *	GetUserGeoID   (kernelbase.@)
+ */
+GEOID WINAPI DECLSPEC_HOTPATCH GetUserGeoID( GEOCLASS geoclass )
+{
+    const struct geo_id *geo;
+    GEOID ret = 39070;
+    WCHAR buffer[256];
+    HKEY key;
+
+    switch (geoclass)
+    {
+    case GEOCLASS_NATION:
+        geo = get_user_geo();
+        if (geo && geo->id) ret = geo->id;
+        break;
+    case GEOCLASS_REGION:
+        if (!RegOpenKeyExW( intl_key, L"Geo", 0, KEY_READ, &key ))
+        {
+            if (get_geo_value( key, L"Region", buffer, ARRAY_SIZE(buffer) ))
+                ret = wcstol( buffer, NULL, 10 );
+            RegCloseKey( key );
+        }
+        break;
+    default:
+        WARN("Unknown geoclass %ld\n", geoclass);
+        ret = GEOID_NOT_AVAILABLE;
+        break;
+    }
+    return ret;
+}
+#else
 /******************************************************************************
  *	GetUserGeoID   (kernelbase.@)
  */
@@ -7108,6 +7187,7 @@ GEOID WINAPI DECLSPEC_HOTPATCH GetUserGeoID( GEOCLASS geoclass )
     }
     return ret;
 }
+#endif
 
 
 /******************************************************************************
@@ -7952,6 +8032,68 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetTimeZoneInformation( const TIME_ZONE_INFORMATIO
 }
 
 
+#ifdef __REACTOS__
+/* PreventGeoIdChange policy: a machine value of 0 or 1 decides, otherwise the user one does */
+static BOOL is_geo_change_blocked( void )
+{
+    static const WCHAR policy_key[] = L"Software\\Policies\\Microsoft\\Control Panel\\International";
+    DWORD value, size = sizeof(value);
+
+    if (!RegGetValueW( HKEY_LOCAL_MACHINE, policy_key, L"PreventGeoIdChange", RRF_RT_REG_DWORD,
+                       NULL, &value, &size ) && value <= 1)
+        return value == 1;
+    size = sizeof(value);
+    if (RegGetValueW( HKEY_CURRENT_USER, policy_key, L"PreventGeoIdChange", RRF_RT_REG_DWORD,
+                      NULL, &value, &size ))
+        return FALSE;
+    return value == 1;
+}
+
+/* Stores a location: Name and Nation for a nation, only Region for a region */
+static BOOL set_user_geo( const struct geo_id *geo )
+{
+    WCHAR buffer[16];
+    BOOL ret = TRUE;
+    HKEY key;
+
+    if (is_geo_change_blocked())
+    {
+        SetLastError( ERROR_ACCESS_DISABLED_BY_POLICY );
+        return FALSE;
+    }
+    if (!geo)
+    {
+        SetLastError( ERROR_INVALID_PARAMETER );
+        return FALSE;
+    }
+    if (RegCreateKeyExW( intl_key, L"Geo", 0, NULL, 0, KEY_QUERY_VALUE | KEY_SET_VALUE, NULL, &key, NULL ))
+    {
+        SetLastError( ERROR_INTERNAL_ERROR );
+        return FALSE;
+    }
+    if (geo->class == GEOCLASS_NATION)
+    {
+        get_geo_short_name( geo, buffer, ARRAY_SIZE(buffer) );
+        if (RegSetValueExW( key, L"Name", 0, REG_SZ, (BYTE *)buffer, (lstrlenW( buffer ) + 1) * sizeof(WCHAR) ))
+            ret = FALSE;
+    }
+    swprintf( buffer, ARRAY_SIZE(buffer), L"%u", geo->id );
+    if (RegSetValueExW( key, geo->class == GEOCLASS_NATION ? L"Nation" : L"Region", 0, REG_SZ,
+                        (BYTE *)buffer, (lstrlenW( buffer ) + 1) * sizeof(WCHAR) ))
+        ret = FALSE;
+    RegCloseKey( key );
+    if (!ret) SetLastError( ERROR_INTERNAL_ERROR );
+    return ret;
+}
+
+/******************************************************************************
+ *	SetUserGeoID   (kernelbase.@)
+ */
+BOOL WINAPI DECLSPEC_HOTPATCH SetUserGeoID( GEOID id )
+{
+    return set_user_geo( find_geo_id_entry( id ));
+}
+#else
 /******************************************************************************
  *	SetUserGeoID   (kernelbase.@)
  */
@@ -7979,6 +8121,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetUserGeoID( GEOID id )
     }
     return TRUE;
 }
+#endif
 
 
 /***********************************************************************
@@ -8123,6 +8266,45 @@ INT WINAPI DECLSPEC_HOTPATCH WideCharToMultiByte( UINT codepage, DWORD flags, LP
 #endif
 
 
+#ifdef __REACTOS__
+/***********************************************************************
+ *	GetUserDefaultGeoName  (kernelbase.@)
+ */
+INT WINAPI GetUserDefaultGeoName(LPWSTR geo_name, int count)
+{
+    WCHAR name[4];
+    int len;
+
+    TRACE( "geo_name %p, count %d.\n", geo_name, count );
+
+    if (count < 0 || (count && !geo_name))
+    {
+        SetLastError( ERROR_INVALID_PARAMETER );
+        return 0;
+    }
+    get_geo_short_name( get_user_geo(), name, ARRAY_SIZE(name) );
+    len = lstrlenW( name ) + 1;
+    if (!count) return len;
+    if (count < len)
+    {
+        SetLastError( ERROR_INSUFFICIENT_BUFFER );
+        return 0;
+    }
+    lstrcpyW( geo_name, name );
+    return len;
+}
+
+
+/***********************************************************************
+ *	SetUserGeoName  (kernelbase.@)
+ */
+BOOL WINAPI SetUserGeoName(PWSTR geo_name)
+{
+    TRACE( "geo_name %s.\n", debugstr_w( geo_name ));
+
+    return set_user_geo( geo_name ? find_geo_name_entry( geo_name ) : NULL );
+}
+#else
 /***********************************************************************
  *	GetUserDefaultGeoName  (kernelbase.@)
  */
@@ -8183,6 +8365,7 @@ BOOL WINAPI SetUserGeoName(PWSTR geo_name)
     }
     return SetUserGeoID( geo->id );
 }
+#endif
 
 
 static void grouping_to_string( UINT grouping, WCHAR *buffer )
