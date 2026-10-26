@@ -388,6 +388,8 @@ HKCR,"inffile\shell\Install\command","",0x00020000,"%SystemRoot%\system32\rundll
 ; Show icons for shortcuts in shell views (lnkfile is handled specially in shell32)
 ; Don't display extension for shortcuts
 HKCR,".lnk","",0x00000000,"lnkfile"
+HKCR,".lnk\ShellEx\{000214EE-0000-0000-C000-000000000046}","",0x00000000,"{00021401-0000-0000-C000-000000000046}"
+HKCR,".lnk\ShellEx\{000214F9-0000-0000-C000-000000000046}","",0x00000000,"{00021401-0000-0000-C000-000000000046}"
 HKCR,".lnk\shellnew","",0x00000000,""
 HKCR,".lnk\shellnew","command",0x00020000,"%SystemRoot%\system32\rundll32.exe appwiz.cpl,NewLinkHere %1"
 HKCR,"lnkfile","",0x00000000,"Shortcut"
