@@ -1079,4 +1079,13 @@ BEGIN
     IDS_SWITCH_USER_DESC "Lets another user log on while your programs and files remain open.\r\n\r\n(You can also switch users by pressing the Windows logo key + L.)"
     IDS_LOG_OFF_TITLE "Log Off"
     IDS_SWITCH_USER_TITLE "Switch User"
+
+    IDS_PIN_TO_STARTMENU "Pin to Start Men&u"
+    IDS_UNPIN_FROM_STARTMENU "Unpin from Start Men&u"
+    IDS_PIN_TO_STARTMENU_HELP "Adds this item to the Start Menu"
+    IDS_UNPIN_FROM_STARTMENU_HELP "Removes this item from the Start Menu"
+    IDS_PIN_TO_TASKBAR "Pin to Tas&kbar"
+    IDS_UNPIN_FROM_TASKBAR "Unpin from Tas&kbar"
+    IDS_PIN_TO_TASKBAR_HELP "Pins this application to the taskbar."
+    IDS_UNPIN_FROM_TASKBAR_HELP "Unpins this application from the taskbar."
 END

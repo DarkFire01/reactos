@@ -387,6 +387,16 @@
 #define IDS_LOG_OFF_TITLE                           35010
 #define IDS_SWITCH_USER_TITLE                       35011
 
+/* Pin verbs; each unpin string follows its pin string */
+#define IDS_PIN_TO_STARTMENU                        5381
+#define IDS_UNPIN_FROM_STARTMENU                    5382
+#define IDS_PIN_TO_STARTMENU_HELP                   5384
+#define IDS_UNPIN_FROM_STARTMENU_HELP               5385
+#define IDS_PIN_TO_TASKBAR                          5386
+#define IDS_UNPIN_FROM_TASKBAR                      5387
+#define IDS_PIN_TO_TASKBAR_HELP                     5388
+#define IDS_UNPIN_FROM_TASKBAR_HELP                 5389
+
 /* Dialogs */
 
 /* Run dialog */
@@ -967,3 +977,7 @@
 #define IDR_DUISHELLVIEWFRAME   170
 #define IDR_COMMONLAYOUTDEFINITION 171
 #define IDR_COMMONLAYOUTMODIFIER 172
+#define IDR_STARTMENUPIN        180
+#define IDR_TASKBANDPIN         181
+#define IDR_STARTMENUCACHEANDAPPRESOLVER 182
+#define IDR_SHELLFOLDERSET      183

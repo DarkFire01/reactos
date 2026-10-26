@@ -377,7 +377,7 @@
 847 stub -version=0x600+ -noname SHCombineMultipleConditionsEx
 848 stub -version=0x600+ -noname SHGetNoAssocIconIndex
 849 stub -version=0x600+ -noname SHCreateConditionFactory
-850 stub -version=0x600+ -noname PathComparePaths
+850 stdcall -version=0x600+ -noname PathComparePaths(wstr wstr)
 852 stub -version=0x600+ -noname SHInitializeControlPanelRegkeys
 854 stub -version=0x600+ -noname IsShellItemInSearchIndex
 856 stub -version=0x600+ -noname CPL_ExecuteTask
@@ -386,7 +386,7 @@
 859 stub -version=0x600+ -noname WPC_InstallState
 860 stub -version=0x600+ -noname SHGetCorrectOwnerSid
 861 stub -version=0x600+ -noname SHDisplayNameFromScopeAndSubQueries
-862 stub -version=0x600+ -noname SHCompareIDsFull
+862 stdcall -version=0x600+ -noname SHCompareIDsFull(long ptr ptr ptr)
 863 stub -version=0x600+ -noname GetTryHarderIDList
 864 stub -version=0x600+ -noname StampIconForElevation
 865 stub -version=0x600+ -noname IsElevationRequired
@@ -412,8 +412,8 @@
 896 stub -noname -version=0x601+ ClearDestinationsForAllApps
 897 stub -noname -version=0x601+ SaveTopViewSettings
 899 stdcall -stub -noname -version=0x601+ SetExplorerServerMode(long)
-900 stub -noname -version=0x601+ GetAppIDRoot
-902 stub -noname -version=0x601+ IsSearchEnabled
+900 stdcall -noname -version=0x601+ GetAppIDRoot(ptr ptr ptr ptr)
+902 stdcall -noname -version=0x601+ IsSearchEnabled()
 
 # Automatically assigned ordinals:
 @ stdcall OpenAs_RunDLLA(long long str long) # 2k3:101, Vista:125
@@ -507,7 +507,7 @@
 @ stdcall -version=0x600+ SHCreateItemFromParsingName(wstr ptr ptr ptr) # Vista:331
 @ stdcall -version=0x600+ SHCreateItemFromRelativeName(ptr wstr ptr ptr ptr) # Vista:332
 @ stdcall -version=0x600+ SHCreateItemInKnownFolder(ptr long wstr ptr ptr) # Vista:333
-@ stdcall -stub -version=0x600+ SHCreateItemWithParent(ptr ptr ptr ptr ptr) # Vista:334
+@ stdcall -version=0x600+ SHCreateItemWithParent(ptr ptr ptr ptr ptr) # Vista:334
 @ stub SHCreateLocalServerRunDll # 2k3:280, Vista:335
 @ stdcall SHCreateProcessAsUserW(ptr) # 2k3:281, Vista:336
 @ stdcall SHCreateQueryCancelAutoPlayMoniker(ptr) # 2k3:282, Vista:337
@@ -555,7 +555,7 @@
 @ stdcall SHGetNewLinkInfo(str str ptr long long) SHGetNewLinkInfoA # 2k3:312, Vista:379
 @ stdcall SHGetPathFromIDList(ptr ptr) SHGetPathFromIDListA # 2k3:313, Vista:380
 @ stdcall SHGetPathFromIDListA(ptr ptr) # 2k3:314, Vista:381
-@ stub -version=0x600+ SHGetPathFromIDListEx # Vista:382
+@ stdcall -version=0x600+ SHGetPathFromIDListEx(ptr ptr long long) # Vista:382
 @ stdcall SHGetPathFromIDListW(ptr ptr) # 2k3:315, Vista:383
 @ stub -version=0x600+ SHGetPropertyStoreFromIDList # Vista:384
 @ stdcall -version=0x600+ SHGetPropertyStoreFromParsingName(wstr ptr ptr ptr ptr) # Vista:385
