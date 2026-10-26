@@ -31,6 +31,7 @@
 #include "irpcss.h"
 #ifdef __REACTOS__
 #include <objbase.h>
+#include <sddl.h>
 #include "rtscm_s.h"
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -184,6 +185,9 @@ static RPC_STATUS RPCSS_Initialize(void)
     };
     RPC_STATUS status;
     int i, j;
+#ifdef __REACTOS__
+    PSECURITY_DESCRIPTOR local_sd = NULL;
+#endif
 
     WINE_TRACE("\n");
 
@@ -198,13 +202,29 @@ static RPC_STATUS RPCSS_Initialize(void)
             goto fail;
     }
 
+#ifdef __REACTOS__
+    /* App containers reach the local endpoints like COM's own, as on Windows */
+    ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        L"D:(A;;0x130001;;;WD)(A;;0x130001;;;AN)(A;;0x20001;;;AC)"
+        L"(A;;0x20001;;;S-1-15-3-1024-2405443489-874036122-4286035555-1823921565-1746547431-2453885448-3625952902-991631256)",
+        SDDL_REVISION_1, &local_sd, NULL);
+#endif
+
     for (i = 0; i < ARRAY_SIZE(protseqs); ++i)
     {
         status = RpcServerUseProtseqEpW(protseqs[i].protseq, RPC_C_PROTSEQ_MAX_REQS_DEFAULT,
+#ifdef __REACTOS__
+                protseqs[i].endpoint, local_sd);
+#else
                 protseqs[i].endpoint, NULL);
+#endif
         if (status != RPC_S_OK)
             goto fail;
     }
+#ifdef __REACTOS__
+    LocalFree(local_sd);
+    local_sd = NULL;
+#endif
 
     status = RpcServerListen(1, RPC_C_LISTEN_MAX_CALLS_DEFAULT, TRUE);
     if (status != RPC_S_OK)
@@ -213,6 +233,9 @@ static RPC_STATUS RPCSS_Initialize(void)
     return RPC_S_OK;
 
 fail:
+#ifdef __REACTOS__
+    LocalFree(local_sd);
+#endif
     for (i = 0; i < j; ++i)
         RpcServerUnregisterIf(ifspecs[i], NULL, FALSE);
 
