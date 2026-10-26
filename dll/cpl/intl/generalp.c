@@ -1248,28 +1248,8 @@ SaveGeoID(
         }
     }
 
-    ret = RegOpenKeyExW(HKEY_CURRENT_USER,
-                        L"Control Panel\\International\\Geo",
-                        0,
-                        KEY_WRITE,
-                        &hGeoKey);
-    if (ret != ERROR_SUCCESS)
-    {
-        PrintErrorMsgBox(IDS_ERROR_INT_KEY_REG);
-        return;
-    }
-
-    ret = RegSetValueExW(hGeoKey,
-                         L"Nation",
-                         0,
-                         REG_SZ,
-                         (PBYTE)value,
-                         valuesize);
-
-    RegFlushKey(hGeoKey);
-    RegCloseKey(hGeoKey);
-
-    if (ret != ERROR_SUCCESS)
+    /* Keeps the Name value GetUserDefaultGeoName reads in step with Nation */
+    if (!SetUserGeoID(pGlobalData->geoid))
     {
         PrintErrorMsgBox(IDS_ERROR_INT_KEY_REG);
         return;
