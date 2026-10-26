@@ -47,6 +47,7 @@ private:
     ASSOCF m_InitFlags;
     BYTE m_InitType;
     bool m_SkipBaseClass = false;
+    CComHeapPtr<WCHAR> m_AppPath; // The program itself when initialized by a full exe path
 
     bool EmulateWin2000() const { return false; }
     bool IsNT5() const { return LOBYTE(GetVersion()) < 6; }
