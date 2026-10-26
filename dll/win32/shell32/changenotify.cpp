@@ -436,47 +436,23 @@ static BOOL DoGetAliasPIDLs(LPITEMIDLIST apidls[2], PCIDLIST_ABSOLUTE pidl)
     return k > 0;
 }
 
-/*************************************************************************
- * SHChangeNotifyRegister           [SHELL32.2]
- */
-EXTERN_C ULONG WINAPI
-SHChangeNotifyRegister(HWND hwnd, INT fSources, LONG wEventMask, UINT uMsg,
-                       INT cItems, SHChangeNotifyEntry *lpItems)
+// Sends the registration entries to the server and returns the ID it assigned
+static ULONG
+RegisterWithServer(
+    _In_ HWND hwndServer,
+    _In_ HWND hwnd,
+    _In_ UINT uMsg,
+    _In_ INT fSources,
+    _In_ LONG wEventMask,
+    _In_ INT cItems,
+    _In_reads_(cItems) const SHChangeNotifyEntry *lpItems,
+    _In_opt_ HWND hwndBroker)
 {
-    HWND hwndServer, hwndBroker = NULL;
     HANDLE hRegEntry;
     INT iItem;
     ULONG nRegID = INVALID_REG_ID;
     DWORD dwOwnerPID;
     LPREGENTRY pRegEntry;
-
-    TRACE("(%p,0x%08x,0x%08x,0x%08x,%d,%p)\n",
-          hwnd, fSources, wEventMask, uMsg, cItems, lpItems);
-
-    // sanity check
-    if (wEventMask == 0 || cItems <= 0 || cItems > 0x7FFF || lpItems == NULL ||
-        hwnd == NULL || !IsWindow(hwnd))
-    {
-        return INVALID_REG_ID;
-    }
-
-    // request the window of the server
-    hwndServer = GetNotificationServer(TRUE);
-    if (hwndServer == NULL)
-        return INVALID_REG_ID;
-
-    // disable recursive interrupt in specific condition
-    if ((fSources & SHCNRF_RecursiveInterrupt) && !(fSources & SHCNRF_InterruptLevel))
-    {
-        fSources &= ~SHCNRF_RecursiveInterrupt;
-    }
-
-    // if it is old delivery method, then create a broker window
-    if ((fSources & SHCNRF_NewDelivery) == 0)
-    {
-        hwndBroker = hwnd = CreateNotificationBroker(hwnd, uMsg);
-        uMsg = WM_BROKER_NOTIFICATION;
-    }
 
     // The owner PID is the process ID of the server
     GetWindowThreadProcessId(hwndServer, &dwOwnerPID);
@@ -570,6 +546,221 @@ SHChangeNotifyRegister(HWND hwnd, INT fSources, LONG wEventMask, UINT uMsg,
     return nRegID;
 }
 
+/*
+ * A window may register before the desktop hosts the server, as the taskbar does while
+ * explorer starts. Such registrations wait here until the server comes up.
+ */
+#define PENDING_REG_ID_FLAG 0x80000000
+
+typedef struct tagPENDING_REGISTRATION
+{
+    struct tagPENDING_REGISTRATION *pNext;
+    ULONG nClientID;          // The ID the caller was given
+    ULONG nRegID;             // The server's ID once registered
+    HWND hwnd;
+    UINT uMsg;
+    INT fSources;
+    LONG wEventMask;
+    INT cItems;
+    SHChangeNotifyEntry *pItems;
+    HWND hwndBroker;
+} PENDING_REGISTRATION, *PPENDING_REGISTRATION;
+
+static PPENDING_REGISTRATION s_pPendingRegs = NULL;
+static ULONG s_nNextClientID = 0;
+static HANDLE s_hPendingTimer = NULL;
+
+static VOID
+FreePendingItems(
+    _Inout_ PPENDING_REGISTRATION pPending)
+{
+    if (!pPending->pItems)
+        return;
+
+    for (INT iItem = 0; iItem < pPending->cItems; ++iItem)
+        ILFree((LPITEMIDLIST)pPending->pItems[iItem].pidl);
+    LocalFree(pPending->pItems);
+    pPending->pItems = NULL;
+}
+
+static VOID CALLBACK
+RegisterPendingProc(
+    _In_ PVOID pvContext,
+    _In_ BOOLEAN bTimerFired)
+{
+    HWND hwndServer = GetNotificationServer(TRUE);
+    if (!hwndServer)
+        return;
+
+    EnterCriticalSection(&SHELL32_ChangenotifyCS);
+    for (PPENDING_REGISTRATION pPending = s_pPendingRegs; pPending; pPending = pPending->pNext)
+    {
+        if (!pPending->pItems)
+            continue;
+
+        if (IsWindow(pPending->hwnd))
+        {
+            pPending->nRegID = RegisterWithServer(hwndServer, pPending->hwnd, pPending->uMsg,
+                                                  pPending->fSources, pPending->wEventMask,
+                                                  pPending->cItems, pPending->pItems,
+                                                  pPending->hwndBroker);
+        }
+        FreePendingItems(pPending);
+    }
+
+    if (s_hPendingTimer)
+    {
+        DeleteTimerQueueTimer(NULL, s_hPendingTimer, NULL);
+        s_hPendingTimer = NULL;
+    }
+    LeaveCriticalSection(&SHELL32_ChangenotifyCS);
+}
+
+static ULONG
+AddPendingRegistration(
+    _In_ HWND hwnd,
+    _In_ UINT uMsg,
+    _In_ INT fSources,
+    _In_ LONG wEventMask,
+    _In_ INT cItems,
+    _In_reads_(cItems) const SHChangeNotifyEntry *lpItems,
+    _In_opt_ HWND hwndBroker)
+{
+    PPENDING_REGISTRATION pPending;
+    ULONG nClientID = INVALID_REG_ID;
+
+    pPending = (PPENDING_REGISTRATION)LocalAlloc(LPTR, sizeof(*pPending));
+    if (!pPending)
+        return INVALID_REG_ID;
+
+    pPending->pItems = (SHChangeNotifyEntry *)LocalAlloc(LPTR, cItems * sizeof(*pPending->pItems));
+    if (!pPending->pItems)
+    {
+        LocalFree(pPending);
+        return INVALID_REG_ID;
+    }
+
+    pPending->hwnd = hwnd;
+    pPending->uMsg = uMsg;
+    pPending->fSources = fSources;
+    pPending->wEventMask = wEventMask;
+    pPending->cItems = cItems;
+    pPending->hwndBroker = hwndBroker;
+    for (INT iItem = 0; iItem < cItems; ++iItem)
+    {
+        pPending->pItems[iItem].fRecursive = lpItems[iItem].fRecursive;
+        if (lpItems[iItem].pidl)
+            pPending->pItems[iItem].pidl = ILClone(lpItems[iItem].pidl);
+    }
+
+    EnterCriticalSection(&SHELL32_ChangenotifyCS);
+    if (!s_hPendingTimer &&
+        !CreateTimerQueueTimer(&s_hPendingTimer, NULL, RegisterPendingProc, NULL, 250, 250,
+                               WT_EXECUTEDEFAULT))
+    {
+        s_hPendingTimer = NULL;
+    }
+
+    if (s_hPendingTimer)
+    {
+        nClientID = PENDING_REG_ID_FLAG | ++s_nNextClientID;
+        pPending->nClientID = nClientID;
+        pPending->pNext = s_pPendingRegs;
+        s_pPendingRegs = pPending;
+        pPending = NULL;
+    }
+    LeaveCriticalSection(&SHELL32_ChangenotifyCS);
+
+    if (pPending)
+    {
+        FreePendingItems(pPending);
+        LocalFree(pPending);
+    }
+    return nClientID;
+}
+
+// Forgets a waiting registration and returns the server's ID if it got one
+static ULONG
+RemovePendingRegistration(
+    _In_ ULONG nClientID,
+    _Out_ HWND *phwndBroker)
+{
+    PPENDING_REGISTRATION *ppPending;
+    PPENDING_REGISTRATION pFound = NULL;
+    ULONG nRegID;
+
+    *phwndBroker = NULL;
+
+    EnterCriticalSection(&SHELL32_ChangenotifyCS);
+    for (ppPending = &s_pPendingRegs; *ppPending; ppPending = &(*ppPending)->pNext)
+    {
+        if ((*ppPending)->nClientID == nClientID)
+        {
+            pFound = *ppPending;
+            *ppPending = pFound->pNext;
+            break;
+        }
+    }
+    LeaveCriticalSection(&SHELL32_ChangenotifyCS);
+
+    if (!pFound)
+        return INVALID_REG_ID;
+
+    nRegID = pFound->nRegID;
+    if (nRegID == INVALID_REG_ID)
+        *phwndBroker = pFound->hwndBroker;
+    FreePendingItems(pFound);
+    LocalFree(pFound);
+    return nRegID;
+}
+
+/*************************************************************************
+ * SHChangeNotifyRegister           [SHELL32.2]
+ */
+EXTERN_C ULONG WINAPI
+SHChangeNotifyRegister(HWND hwnd, INT fSources, LONG wEventMask, UINT uMsg,
+                       INT cItems, SHChangeNotifyEntry *lpItems)
+{
+    HWND hwndServer, hwndBroker = NULL;
+    ULONG nRegID;
+
+    TRACE("(%p,0x%08x,0x%08x,0x%08x,%d,%p)\n",
+          hwnd, fSources, wEventMask, uMsg, cItems, lpItems);
+
+    // sanity check
+    if (wEventMask == 0 || cItems <= 0 || cItems > 0x7FFF || lpItems == NULL ||
+        hwnd == NULL || !IsWindow(hwnd))
+    {
+        return INVALID_REG_ID;
+    }
+
+    // request the window of the server
+    hwndServer = GetNotificationServer(TRUE);
+
+    // disable recursive interrupt in specific condition
+    if ((fSources & SHCNRF_RecursiveInterrupt) && !(fSources & SHCNRF_InterruptLevel))
+    {
+        fSources &= ~SHCNRF_RecursiveInterrupt;
+    }
+
+    // if it is old delivery method, then create a broker window
+    if ((fSources & SHCNRF_NewDelivery) == 0)
+    {
+        hwndBroker = hwnd = CreateNotificationBroker(hwnd, uMsg);
+        uMsg = WM_BROKER_NOTIFICATION;
+    }
+
+    if (hwndServer == NULL)
+    {
+        nRegID = AddPendingRegistration(hwnd, uMsg, fSources, wEventMask, cItems, lpItems, hwndBroker);
+        if (nRegID == INVALID_REG_ID && hwndBroker)
+            DestroyWindow(hwndBroker);
+        return nRegID;
+    }
+
+    return RegisterWithServer(hwndServer, hwnd, uMsg, fSources, wEventMask, cItems, lpItems, hwndBroker);
+}
+
 /*************************************************************************
  * SHChangeNotifyDeregister         [SHELL32.4]
  */
@@ -577,6 +768,19 @@ EXTERN_C BOOL WINAPI
 SHChangeNotifyDeregister(ULONG hNotify)
 {
     TRACE("(0x%08x)\n", hNotify);
+
+    if (hNotify & PENDING_REG_ID_FLAG)
+    {
+        HWND hwndBroker;
+
+        hNotify = RemovePendingRegistration(hNotify, &hwndBroker);
+        if (hNotify == INVALID_REG_ID)
+        {
+            if (hwndBroker)
+                DestroyWindow(hwndBroker);
+            return (hwndBroker != NULL);
+        }
+    }
 
     // get the server window
     HWND hwndServer = GetNotificationServer(FALSE);

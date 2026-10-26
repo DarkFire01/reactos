@@ -729,7 +729,10 @@ GetAppPathFromShortcut(
     return hr;
 }
 
+/* Exported as shell32 ordinal 895 */
+EXTERN_C
 HRESULT
+WINAPI
 GetAppPathFromLink(
     _In_ IUnknown *punkItem,
     _Out_writes_(cchPath) PWSTR pszPath,

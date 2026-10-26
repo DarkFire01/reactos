@@ -424,7 +424,9 @@ GetAppPathFromShortcut(
     _Out_writes_(cchPath) PWSTR pszPath,
     _In_ DWORD cchPath);
 
+EXTERN_C
 HRESULT
+WINAPI
 GetAppPathFromLink(
     _In_ IUnknown *punkItem,
     _Out_writes_(cchPath) PWSTR pszPath,
