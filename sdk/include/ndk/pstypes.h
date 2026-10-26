@@ -1059,6 +1059,15 @@ typedef struct _PROCESS_HANDLE_TRACING_QUERY
 
 #endif
 
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
+typedef struct _PROCESS_WINDOW_INFORMATION
+{
+    ULONG WindowFlags;
+    USHORT WindowTitleLength;
+    WCHAR WindowTitle[ANYSIZE_ARRAY];
+} PROCESS_WINDOW_INFORMATION, *PPROCESS_WINDOW_INFORMATION;
+#endif
+
 typedef struct _PROCESS_LDT_INFORMATION
 {
     ULONG Start;
