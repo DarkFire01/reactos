@@ -49,6 +49,7 @@ WINE_DECLARE_DEBUG_CHANNEL(pidl);
 #ifdef __REACTOS__
 #include <comctl32_undoc.h>
 #include <shlwapi_undoc.h>
+#include <shlguid_undoc.h>
 #else
 /* FIXME: !!! move CREATEMRULIST and flags to header file !!! */
 /*        !!! it is in both here and comctl32undoc.c      !!! */
@@ -2887,11 +2888,66 @@ void WINAPI SHFlushSFCache(void)
  *   only supports the traditional small and large image lists, so requests
  *   for the others will currently fail.
  */
+#ifdef __REACTOS__
+/* A private image list that serves the system list images at any size */
+static HRESULT
+SHELL_CreateGangedSysImageList(
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    IImageList2 *rgpil[SHIL_SMALL + 1];
+    HIMAGELIST hLarge, hSmall;
+    IGangImageList *pGang;
+    IImageList2 *pil;
+    INT cx, cy;
+    HRESULT hr;
+
+    *ppv = NULL;
+
+    if (!Shell_GetImageLists(&hLarge, &hSmall) || !hLarge || !hSmall)
+        return E_FAIL;
+    if (!ImageList_GetIconSize(hSmall, &cx, &cy))
+        return E_FAIL;
+
+    hr = ImageList_CoCreateInstance(&CLSID_GangImageList, NULL, &IID_IImageList2, (void **)&pil);
+    if (FAILED(hr))
+        return hr;
+
+    hr = IImageList2_Initialize(pil,
+                                cx,
+                                cy,
+                                ImageList_GetFlags(hSmall) | ILC_MASK | ILC_HIGHQUALITYSCALE,
+                                0,
+                                32);
+    if (SUCCEEDED(hr))
+        hr = IImageList2_QueryInterface(pil, &IID_IGangImageList, (void **)&pGang);
+
+    if (SUCCEEDED(hr))
+    {
+        /* Only the large and small system lists exist so far */
+        rgpil[SHIL_LARGE] = (IImageList2 *)hLarge;
+        rgpil[SHIL_SMALL] = (IImageList2 *)hSmall;
+        hr = IGangImageList_SetImageLists(pGang, ARRAY_SIZE(rgpil), rgpil);
+        if (SUCCEEDED(hr))
+            hr = IGangImageList_QueryInterface(pGang, riid, ppv);
+        IGangImageList_Release(pGang);
+    }
+
+    IImageList2_Release(pil);
+    return hr;
+}
+#endif
+
 HRESULT WINAPI SHGetImageList(int iImageList, REFIID riid, void **ppv)
 {
     HIMAGELIST hLarge, hSmall;
     HIMAGELIST hNew;
     HRESULT ret = E_FAIL;
+
+#ifdef __REACTOS__
+    if (iImageList == -1)
+        return SHELL_CreateGangedSysImageList(riid, ppv);
+#endif
 
     /* Wine currently only maintains large and small image lists */
     if ((iImageList != SHIL_LARGE) && (iImageList != SHIL_SMALL) && (iImageList != SHIL_SYSSMALL))
