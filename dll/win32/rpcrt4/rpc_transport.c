@@ -84,6 +84,9 @@ typedef struct _RpcConnection_np
     IO_STATUS_BLOCK io_status;
     HANDLE event_cache;
     BOOL read_closed;
+#ifdef __REACTOS__
+    PSECURITY_DESCRIPTOR listen_sd;
+#endif
 } RpcConnection_np;
 
 static RpcConnection *rpcrt4_conn_np_alloc(void)
@@ -299,6 +302,132 @@ Quit:
 
     return ErrCode;
 }
+
+/*
+ * An ncalrpc endpoint is a named pipe here, not a port. The right to connect
+ * to the port becomes reading and writing the pipe, which also lets the server
+ * add instances. Full port access becomes full pipe access.
+ */
+static ACCESS_MASK
+rpcrt4_port_to_pipe_rights(ACCESS_MASK PortRights)
+{
+    static const ACCESS_MASK PortConnect = 0x0001;
+    static const ACCESS_MASK PortAllAccess = STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x0001;
+    ACCESS_MASK PipeRights;
+
+    if ((PortRights & GENERIC_ALL) || (PortRights & PortAllAccess) == PortAllAccess)
+        return FILE_ALL_ACCESS;
+
+    PipeRights = PortRights & (STANDARD_RIGHTS_ALL | SYNCHRONIZE);
+    if (PortRights & (PortConnect | GENERIC_READ | GENERIC_WRITE))
+        PipeRights |= FILE_GENERIC_READ | FILE_GENERIC_WRITE;
+
+    return PipeRights;
+}
+
+/**
+ * @brief
+ * Creates the pipe security of an ncalrpc endpoint from the
+ * security descriptor the server gave for the endpoint.
+ *
+ * @param[in] PortSd
+ * The security descriptor given to RpcServerUseProtseqEp.
+ *
+ * @param[out] SecDesc
+ * A pointer to an allocated self-relative security descriptor.
+ *
+ * @return
+ * ERROR_SUCCESS, or a Win32 error code.
+ */
+static DWORD
+rpcrt4_create_lrpc_pipe_security(PSECURITY_DESCRIPTOR PortSd, PSECURITY_DESCRIPTOR *SecDesc)
+{
+    SECURITY_DESCRIPTOR AbsSD;
+    PSECURITY_DESCRIPTOR RelSD = NULL;
+    BOOL Present = FALSE, Defaulted;
+    PACL PortDacl = NULL, Dacl = NULL;
+    PSID Owner = NULL, Group = NULL;
+    PACCESS_ALLOWED_ACE Ace;
+    DWORD ErrCode = ERROR_SUCCESS, RelSDSize = 0, i;
+    BOOL Added;
+
+    if (!GetSecurityDescriptorDacl(PortSd, &Present, &PortDacl, &Defaulted) ||
+        !GetSecurityDescriptorOwner(PortSd, &Owner, &Defaulted) ||
+        !GetSecurityDescriptorGroup(PortSd, &Group, &Defaulted) ||
+        !InitializeSecurityDescriptor(&AbsSD, SECURITY_DESCRIPTOR_REVISION))
+    {
+        return GetLastError();
+    }
+
+    /* The ACEs keep their SIDs and flags, so the ACL keeps its size */
+    if (Present && PortDacl)
+    {
+        Dacl = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, PortDacl->AclSize);
+        if (!Dacl || !InitializeAcl(Dacl, PortDacl->AclSize, ACL_REVISION))
+        {
+            ErrCode = Dacl ? GetLastError() : ERROR_OUTOFMEMORY;
+            goto Quit;
+        }
+
+        for (i = 0; i < PortDacl->AceCount; i++)
+        {
+            if (!GetAce(PortDacl, i, (PVOID*)&Ace))
+                continue;
+
+            if (Ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE)
+            {
+                Added = AddAccessAllowedAceEx(Dacl, ACL_REVISION, Ace->Header.AceFlags,
+                                              rpcrt4_port_to_pipe_rights(Ace->Mask), &Ace->SidStart);
+            }
+            else if (Ace->Header.AceType == ACCESS_DENIED_ACE_TYPE)
+            {
+                Added = AddAccessDeniedAceEx(Dacl, ACL_REVISION, Ace->Header.AceFlags,
+                                             rpcrt4_port_to_pipe_rights(Ace->Mask), &Ace->SidStart);
+            }
+            else
+            {
+                continue;
+            }
+
+            if (!Added)
+            {
+                ErrCode = GetLastError();
+                goto Quit;
+            }
+        }
+    }
+
+    if (!SetSecurityDescriptorDacl(&AbsSD, Present, Dacl, FALSE) ||
+        (Owner && !SetSecurityDescriptorOwner(&AbsSD, Owner, FALSE)) ||
+        (Group && !SetSecurityDescriptorGroup(&AbsSD, Group, FALSE)))
+    {
+        ErrCode = GetLastError();
+        goto Quit;
+    }
+
+    MakeSelfRelativeSD(&AbsSD, NULL, &RelSDSize);
+    RelSD = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, RelSDSize);
+    if (!RelSD)
+    {
+        ErrCode = ERROR_OUTOFMEMORY;
+        goto Quit;
+    }
+
+    if (!MakeSelfRelativeSD(&AbsSD, RelSD, &RelSDSize))
+    {
+        ErrCode = GetLastError();
+        HeapFree(GetProcessHeap(), 0, RelSD);
+        goto Quit;
+    }
+
+    *SecDesc = RelSD;
+
+Quit:
+    if (Dacl)
+        HeapFree(GetProcessHeap(), 0, Dacl);
+
+    return ErrCode;
+}
 #endif
 
 static RPC_STATUS rpcrt4_conn_create_pipe(RpcConnection *conn)
@@ -313,7 +442,16 @@ static RPC_STATUS rpcrt4_conn_create_pipe(RpcConnection *conn)
     TRACE("listening on %s\n", connection->listen_pipe);
 
 #ifdef __REACTOS__
-    ErrCode = rpcrt4_create_pipe_security(&PipeSecDesc);
+    /* An endpoint the server secured itself keeps that security */
+    if (connection->listen_sd)
+    {
+        PipeSecDesc = NULL;
+        ErrCode = ERROR_SUCCESS;
+    }
+    else
+    {
+        ErrCode = rpcrt4_create_pipe_security(&PipeSecDesc);
+    }
     if (ErrCode != ERROR_SUCCESS)
     {
         ERR("rpcrt4_conn_create_pipe(): Pipe security descriptor creation failed\n");
@@ -321,14 +459,15 @@ static RPC_STATUS rpcrt4_conn_create_pipe(RpcConnection *conn)
     }
 
     SecurityAttributes.nLength = sizeof(SECURITY_ATTRIBUTES);
-    SecurityAttributes.lpSecurityDescriptor = PipeSecDesc;
+    SecurityAttributes.lpSecurityDescriptor = connection->listen_sd ? connection->listen_sd : PipeSecDesc;
     SecurityAttributes.bInheritHandle = FALSE;
 
     connection->pipe = CreateNamedPipeA(connection->listen_pipe, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                                         PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE,
                                         PIPE_UNLIMITED_INSTANCES,
                                         RPC_MAX_PACKET_SIZE, RPC_MAX_PACKET_SIZE, 5000, &SecurityAttributes);
-    HeapFree(GetProcessHeap(), 0, PipeSecDesc);
+    if (PipeSecDesc)
+        HeapFree(GetProcessHeap(), 0, PipeSecDesc);
 #else
     connection->pipe = CreateNamedPipeA(connection->listen_pipe, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                                         PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE,
@@ -469,6 +608,16 @@ static RPC_STATUS rpcrt4_protseq_ncalrpc_open_endpoint(RpcServerProtseq* protseq
       return r;
 
   ((RpcConnection_np*)Connection)->listen_pipe = ncalrpc_pipe_name(Connection->Endpoint);
+#ifdef __REACTOS__
+  /* Every pipe instance of the endpoint is made with the security the server asked for */
+  if (protseq->endpoint_sd && IsValidSecurityDescriptor(protseq->endpoint_sd))
+  {
+    PSECURITY_DESCRIPTOR PipeSd = NULL;
+
+    if (rpcrt4_create_lrpc_pipe_security(protseq->endpoint_sd, &PipeSd) == ERROR_SUCCESS)
+      ((RpcConnection_np*)Connection)->listen_sd = PipeSd;
+  }
+#endif
   r = rpcrt4_conn_create_pipe(Connection);
 
   EnterCriticalSection(&protseq->cs);
@@ -745,6 +894,13 @@ static int rpcrt4_conn_np_close(RpcConnection *conn)
         CloseHandle(connection->event_cache);
         connection->event_cache = 0;
     }
+#ifdef __REACTOS__
+    if (connection->listen_sd)
+    {
+        HeapFree(GetProcessHeap(), 0, connection->listen_sd);
+        connection->listen_sd = NULL;
+    }
+#endif
     return 0;
 }
 

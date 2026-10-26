@@ -832,7 +832,11 @@ static BOOL RPCRT4_protseq_is_endpoint_registered(RpcServerProtseq *protseq, con
   return registered;
 }
 
+#ifdef __REACTOS__
+static RPC_STATUS RPCRT4_use_protseq(RpcServerProtseq* ps, const char *endpoint, void *security)
+#else
 static RPC_STATUS RPCRT4_use_protseq(RpcServerProtseq* ps, const char *endpoint)
+#endif
 {
   RPC_STATUS status;
 
@@ -840,8 +844,18 @@ static RPC_STATUS RPCRT4_use_protseq(RpcServerProtseq* ps, const char *endpoint)
 
   if (RPCRT4_protseq_is_endpoint_registered(ps, endpoint))
     status = RPC_S_OK;
+#ifdef __REACTOS__
+  else
+  {
+    /* The transport picks the descriptor up while it opens the endpoint */
+    ps->endpoint_sd = security;
+    status = ps->ops->open_endpoint(ps, endpoint);
+    ps->endpoint_sd = NULL;
+  }
+#else
   else
     status = ps->ops->open_endpoint(ps, endpoint);
+#endif
 
   LeaveCriticalSection(&ps->cs);
 
@@ -1025,7 +1039,11 @@ RPC_STATUS WINAPI RpcServerUseProtseqEpExA( RPC_CSTR Protseq, UINT MaxCalls, RPC
   if (status != RPC_S_OK)
     return status;
 
+#ifdef __REACTOS__
+  return RPCRT4_use_protseq(ps, (const char *)Endpoint, SecurityDescriptor);
+#else
   return RPCRT4_use_protseq(ps, (const char *)Endpoint);
+#endif
 }
 
 /***********************************************************************
@@ -1050,7 +1068,11 @@ RPC_STATUS WINAPI RpcServerUseProtseqEpExW( RPC_WSTR Protseq, UINT MaxCalls, RPC
     return status;
 
   EndpointA = RPCRT4_strdupWtoA(Endpoint);
+#ifdef __REACTOS__
+  status = RPCRT4_use_protseq(ps, EndpointA, SecurityDescriptor);
+#else
   status = RPCRT4_use_protseq(ps, EndpointA);
+#endif
   free(EndpointA);
   return status;
 }
@@ -1069,7 +1091,11 @@ RPC_STATUS WINAPI RpcServerUseProtseqA(RPC_CSTR Protseq, unsigned int MaxCalls, 
   if (status != RPC_S_OK)
     return status;
 
+#ifdef __REACTOS__
+  return RPCRT4_use_protseq(ps, NULL, SecurityDescriptor);
+#else
   return RPCRT4_use_protseq(ps, NULL);
+#endif
 }
 
 /***********************************************************************
@@ -1089,7 +1115,11 @@ RPC_STATUS WINAPI RpcServerUseProtseqW(RPC_WSTR Protseq, unsigned int MaxCalls, 
   if (status != RPC_S_OK)
     return status;
 
+#ifdef __REACTOS__
+  return RPCRT4_use_protseq(ps, NULL, SecurityDescriptor);
+#else
   return RPCRT4_use_protseq(ps, NULL);
+#endif
 }
 
 void RPCRT4_destroy_all_protseqs(void)
