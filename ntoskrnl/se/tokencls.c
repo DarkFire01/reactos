@@ -72,7 +72,7 @@ static const INFORMATION_CLASS_INFO SeTokenInformationClass[] = {
     /* TokenIntegrityLevel */
     IQS_SAME(TOKEN_MANDATORY_LABEL, ULONG, ICIF_QUERY | ICIF_SET | ICIF_SIZE_VARIABLE),
     /* TokenUIAccess */
-    IQS_NONE,
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY),
     /* TokenMandatoryPolicy */
     IQS_SAME(TOKEN_MANDATORY_POLICY, ULONG, ICIF_QUERY | ICIF_SET | ICIF_SIZE_VARIABLE),
     /* TokenLogonSid */
@@ -1099,6 +1099,25 @@ NtQueryInformationToken(
                 {
                     ((PTOKEN_ELEVATION)TokenInformation)->TokenIsElevated = SeTokenIsAdmin(Token);
                     *ReturnLength = sizeof(TOKEN_ELEVATION);
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
+            /* UI access is only granted through UAC, so no token has it */
+            case TokenUIAccess:
+            {
+                DPRINT("NtQueryInformationToken(TokenUIAccess)\n");
+
+                _SEH2_TRY
+                {
+                    *(PULONG)TokenInformation = 0;
+                    *ReturnLength = sizeof(ULONG);
                 }
                 _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
                 {
