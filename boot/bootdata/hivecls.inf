@@ -8,6 +8,23 @@ HKLM,"SOFTWARE\Classes",,0x00000010
 HKCR,"*","AlwaysShowExt",0x00000000,""
 HKCR,"SystemFileAssociations",,0x00000010
 
+; Property lists of the details pane, details view and tiles
+HKCR,"*","PreviewTitle",0x00000000,"prop:System.ItemNameDisplay;System.ItemTypeText"
+HKCR,"*","PreviewDetails",0x00000000,"prop:*System.DateModified;*System.Size;*System.DateCreated;*System.OfflineAvailability;*System.OfflineStatus;*System.SharedWith"
+HKCR,"*","FullDetails",0x00000000,"prop:System.PropGroup.Description;System.Title;System.Subject;System.Keywords;System.Category;System.Comment;System.PropGroup.Origin;System.Author;System.Document.RevisionNumber;System.Document.Version;System.ApplicationName;System.Company;System.Document.DateCreated;System.Document.DateSaved;System.Document.DatePrinted;System.PropGroup.Content;System.ContentStatus;System.ContentType;System.Document.PageCount;System.Document.WordCount;System.Document.CharacterCount;System.Document.LineCount;System.Document.ParagraphCount;System.Document.Template;System.Language;System.PropGroup.FileSystem;System.ItemNameDisplay;System.ItemType;System.ItemFolderPathDisplay;System.DateCreated;System.DateModified;System.Size;System.FileAttributes;System.OfflineAvailability;System.OfflineStatus;System.SharedWith;System.FileOwner;System.ComputerName"
+HKCR,"*","TileInfo",0x00000000,"prop:System.ItemTypeText;*System.Size;*System.DateModified"
+HKCR,"*","ExtendedTileInfo",0x00000000,"prop:System.ItemTypeText;*System.Size;*System.DateModified"
+HKCR,"Directory","PreviewDetails",0x00000000,"prop:*System.DateModified;*System.OfflineAvailability;*System.OfflineStatus;*System.SharedWith"
+HKCR,"Directory","FullDetails",0x00000000,"prop:System.PropGroup.FileSystem;System.ItemNameDisplay;System.ItemType;System.ItemFolderPathDisplay;System.DateCreated;System.DateModified;System.FileAttributes;System.OfflineAvailability;System.OfflineStatus;System.SharedWith;System.FileOwner;System.ComputerName"
+HKCR,"Drive","PreviewDetails",0x00000000,"prop:System.PercentFull;System.FreeSpace;System.Capacity;System.Volume.FileSystem"
+HKCR,"Drive","TileInfo",0x00000000,"prop:System.PercentFull;System.Computer.DecoratedFreeSpace;System.Volume.FileSystem"
+HKCR,"SystemFileAssociations\image","PreviewDetails",0x00000000,"prop:System.Photo.DateTaken;*System.Keywords;*System.Rating;*System.Image.Dimensions;*System.Size;*System.Title;*System.Author;*System.Comment;*System.Photo.CameraModel;*System.DateModified;*System.DateCreated;*System.OfflineAvailability;*System.OfflineStatus;*System.SharedWith"
+HKCR,"SystemFileAssociations\image","TileInfo",0x00000000,"prop:System.ItemTypeText;*System.Image.Dimensions;*System.Size"
+HKCR,"SystemFileAssociations\audio","PreviewDetails",0x00000000,"prop:System.Music.Artist;System.Music.AlbumTitle;System.Music.Genre;System.Media.Duration;*System.Rating;*System.Media.Year;*System.Music.TrackNumber;*System.Size;*System.DateModified;*System.DateCreated;*System.OfflineAvailability;*System.OfflineStatus;*System.SharedWith"
+HKCR,"SystemFileAssociations\audio","TileInfo",0x00000000,"prop:System.Music.Artist;*System.Media.Duration;*System.Size"
+HKCR,"SystemFileAssociations\video","PreviewDetails",0x00000000,"prop:System.Media.Duration;*System.Size;*System.Title;*System.Media.SubTitle;*System.Rating;*System.Keywords;*System.Media.Year;*System.Video.FrameWidth;*System.Video.FrameHeight;*System.DateModified;*System.DateCreated;*System.OfflineAvailability;*System.OfflineStatus;*System.SharedWith"
+HKCR,"SystemFileAssociations\video","TileInfo",0x00000000,"prop:System.ItemTypeText;*System.Media.Duration;*System.Size"
+
 ; Open With List
 HKCR,"*\OpenWithList\excel.exe","",0x00000000,""
 HKCR,"*\OpenWithList\iexplore.exe","",0x00000000,""
