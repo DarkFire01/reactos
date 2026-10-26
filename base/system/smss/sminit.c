@@ -1213,10 +1213,10 @@ NextAcl:
     Status = RtlAddAccessAllowedAce(Acl, ACL_REVISION2, GENERIC_EXECUTE | GENERIC_READ, AllRestrictedAppPackagesSid);
     ASSERT(NT_SUCCESS(Status));
     Status = RtlAddAccessAllowedAceEx(Acl, ACL_REVISION2, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE,
-                                      GENERIC_EXECUTE | GENERIC_READ, AllAppPackagesSid);
+                                      GENERIC_EXECUTE | GENERIC_READ | GENERIC_WRITE, AllAppPackagesSid);
     ASSERT(NT_SUCCESS(Status));
     Status = RtlAddAccessAllowedAceEx(Acl, ACL_REVISION2, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE,
-                                      GENERIC_EXECUTE | GENERIC_READ, AllRestrictedAppPackagesSid);
+                                      GENERIC_EXECUTE | GENERIC_READ | GENERIC_WRITE, AllRestrictedAppPackagesSid);
     ASSERT(NT_SUCCESS(Status));
 
     /* Set this as the DACL */
