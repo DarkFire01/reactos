@@ -472,6 +472,46 @@ HRESULT WINAPI RoRegisterForApartmentShutdown(IApartmentShutdown *callback,
     return S_OK;
 }
 
+#ifdef __REACTOS__
+/***********************************************************************
+ *      RoUnregisterForApartmentShutdown (combase.@)
+ */
+HRESULT WINAPI RoUnregisterForApartmentShutdown(APARTMENT_SHUTDOWN_REGISTRATION_COOKIE cookie)
+{
+    FIXME("(%p): stub\n", cookie);
+
+    /* Registration keeps nothing, so there is nothing to undo */
+    return cookie ? S_OK : E_INVALIDARG;
+}
+
+/***********************************************************************
+ *      RoTransformError (combase.@)
+ */
+BOOL WINAPI RoTransformError(HRESULT old_error, HRESULT new_error, HSTRING message)
+{
+    FIXME("%#lx, %#lx, %s: stub\n", old_error, new_error, debugstr_hstring(message));
+    return FALSE;
+}
+
+/***********************************************************************
+ *      RoReportUnhandledError (combase.@)
+ */
+HRESULT WINAPI RoReportUnhandledError(IRestrictedErrorInfo *info)
+{
+    FIXME("(%p): stub\n", info);
+    return S_OK;
+}
+
+/***********************************************************************
+ *      RoFailFastWithErrorContext (combase.@)
+ */
+void WINAPI RoFailFastWithErrorContext(HRESULT error)
+{
+    ERR("fail fast, %#lx\n", error);
+    TerminateProcess(GetCurrentProcess(), error);
+}
+#endif
+
 #ifndef __REACTOS__
 /***********************************************************************
  *      RoGetServerActivatableClasses (combase.@)

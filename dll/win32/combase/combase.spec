@@ -287,7 +287,7 @@
 @ stdcall RoActivateInstance(ptr ptr)
 @ stub RoCaptureErrorContext
 @ stub RoClearError
-@ stub RoFailFastWithErrorContext
+@ stdcall RoFailFastWithErrorContext(long)
 @ stub RoFailFastWithErrorContextInternal
 @ stub RoFailFastWithErrorContextInternal2
 @ stub RoFreeParameterizedTypeExtra
@@ -313,14 +313,14 @@
 @ stdcall RoRegisterForApartmentShutdown(ptr ptr ptr)
 @ stub RoReportCapabilityCheckFailure
 @ stub RoReportFailedDelegate
-@ stub RoReportUnhandledError
+@ stdcall RoReportUnhandledError(ptr)
 @ stub RoResolveRestrictedErrorInfoReference
 @ stdcall RoRevokeActivationFactories(ptr)
 @ stdcall RoSetErrorReportingFlags(long)
-@ stub RoTransformError
+@ stdcall RoTransformError(long long ptr)
 @ stub RoTransformErrorW
 @ stdcall RoUninitialize()
-@ stub RoUnregisterForApartmentShutdown
+@ stdcall RoUnregisterForApartmentShutdown(ptr)
 @ stub SetCleanupFlag
 @ stdcall SetErrorInfo(long ptr)
 @ stdcall SetRestrictedErrorInfo(ptr)
