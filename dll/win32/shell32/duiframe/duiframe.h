@@ -63,6 +63,18 @@ ILayoutDefinitionRegistration : public IUnknown
     STDMETHOD(UnRegister)() PURE;
 };
 
+/* Nav pane setting refresh, reached through QueryService(IID_INameSpaceTreeControl) on a browser */
+MIDL_INTERFACE("5925316D-20B6-4FF9-A980-96482AA885DE")
+IUpdateNavPaneSettings : public IUnknown
+{
+    STDMETHOD(UpdateSetting)(
+        _In_ int iSetting) PURE;
+};
+
+/* IUpdateNavPaneSettings::UpdateSetting values */
+#define NAVPANE_SETTING_SHOWALLFOLDERS      1
+#define NAVPANE_SETTING_EXPANDTOCURRENT     2
+
 typedef enum _LAYOUTPROPERTIES
 {
     LP_NONE = 0x0,
@@ -75,6 +87,12 @@ ILayoutProperties : public IUnknown
     STDMETHOD(GetLayoutProperties)(
         _Out_ LAYOUTPROPERTIES *plp) PURE;
 };
+
+/* GetPersistStream types; the sizer's FramePersistType names one */
+#define FRAMEPERSIST_PERFOLDER      0
+#define FRAMEPERSIST_PERLAYOUT      1
+#define FRAMEPERSIST_GLOBAL         2
+#define FRAMEPERSIST_PERFOLDERTYPE  3
 
 /* DShellFolderViewEvents ids beyond the ones ReactOS's shdispid.h has */
 #ifndef DISPID_VIEWMODECHANGED
@@ -113,6 +131,7 @@ EXTERN_C const IID IID_IElementWrapper;
 EXTERN_C const IID IID_ILayoutDefinitionRegistration;
 EXTERN_C const IID IID_ILayoutProperties;
 EXTERN_C const IID IID_IDelayedVisibility;
+EXTERN_C const IID IID_IUpdateNavPaneSettings;
 /* XP's MruPidlList from shdocvw; shell32 gets these two from the uuid library */
 EXTERN_C const CLSID CLSID_MruPidlList;
 EXTERN_C const IID IID_IMruPidlList;
@@ -179,6 +198,18 @@ DUI_CreateParser(
     _Outptr_ DirectUI::DUIXmlParser **ppParser,
     _In_opt_ IUnknown *punkSheetContext,
     _In_opt_ DirectUI::ParseErrorCallback pfnError);
+
+HRESULT
+WINAPI
+DUI_CreateElementFromResource(
+    _In_ HINSTANCE hinst,
+    _In_ UINT uID,
+    _In_ PCWSTR pszResID,
+    _In_opt_ DirectUI::Element *peSubstitute,
+    _In_opt_ DirectUI::Element *peParent,
+    _Inout_opt_ ULONG *pdwDeferCookie,
+    _Outptr_ DirectUI::Element **ppe,
+    _In_opt_ IUnknown *punkSheetContext);
 
 HRESULT
 WINAPI
@@ -438,6 +469,149 @@ public:
     static DirectUI::IClassInfo *Class;
 };
 
+class CProperTreeHost;
+class CDUISizerElement;
+
+/* Nav pane content: the tree host plus the optional links expando and the pane sizer */
+class CProperTreeModuleInner :
+    public CElementWithSite,
+    public IFrameNotificationClient,
+    public DirectUI::IElementListener,
+    public IInputObject
+{
+public:
+    static HRESULT WINAPI Create(
+        _In_opt_ DirectUI::Element *peParent,
+        _Inout_opt_ ULONG *pdwDeferCookie,
+        _Outptr_ DirectUI::Element **ppElement);
+    static HRESULT WINAPI Register();
+    static DirectUI::IClassInfo *WINAPI GetClassInfoPtr() { return Class; }
+    virtual DirectUI::IClassInfo *GetClassInfoW() { return Class; }
+
+    virtual void OnHosted(DirectUI::Element *peNewHost);
+    virtual void OnInput(DirectUI::InputEvent *pie);
+    virtual void OnPropertyChanged(const DirectUI::PropertyInfo *ppi, int iIndex, DirectUI::Value *pvOld,
+                                   DirectUI::Value *pvNew);
+
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv) override;
+    STDMETHODIMP_(ULONG) AddRef() override { return 1; }
+    STDMETHODIMP_(ULONG) Release() override { return 1; }
+    STDMETHODIMP SetSite(IUnknown *punkSite) override;
+    STDMETHODIMP GetSite(REFIID riid, void **ppvSite) override { return CElementWithSite::GetSite(riid, ppvSite); }
+
+    STDMETHODIMP LayoutInitialized() override;
+    STDMETHODIMP Notify(PCWSTR pszPropertyName) override;
+    STDMETHODIMP OnNavigateAway() override;
+    STDMETHODIMP LayoutUninitialized() override { return S_OK; }
+
+    void OnListenerAttach(DirectUI::Element *peFrom) override {}
+    void OnListenerDetach(DirectUI::Element *peFrom) override {}
+    bool OnListenedPropertyChanging(DirectUI::Element *peFrom, const DirectUI::PropertyInfo *ppi, int iIndex,
+                                    DirectUI::Value *pvOld, DirectUI::Value *pvNew) override { return true; }
+    void OnListenedPropertyChanged(DirectUI::Element *peFrom, const DirectUI::PropertyInfo *ppi, int iIndex,
+                                   DirectUI::Value *pvOld, DirectUI::Value *pvNew) override;
+    void OnListenedInput(DirectUI::Element *peFrom, DirectUI::InputEvent *pie) override {}
+    void OnListenedEvent(DirectUI::Element *peFrom, DirectUI::Event *pev) override {}
+
+    STDMETHODIMP UIActivateIO(BOOL fActivate, MSG *pmsg) override { return E_NOTIMPL; }
+    STDMETHODIMP HasFocusIO() override;
+    STDMETHODIMP TranslateAcceleratorIO(MSG *pmsg) override;
+
+    static DirectUI::IClassInfo *Class;
+
+private:
+    void _ExpandFolders(_In_ BOOL fExpand);
+    void _UpdateButton();
+    BOOL _FolderTreeHasFocus();
+    BOOL _OnInputExpando(_Inout_ DirectUI::InputEvent *pie);
+    HRESULT _SaveSettings();
+
+    IPropertyBag *_ppbBrowser;
+    IPropertyBag *_ppbSettings;
+    BOOL _fExpandPending;
+    BOOL _fLayoutInitialized;
+    BOOL _fExpandoPressed;
+    DirectUI::Element *_peHeaderExpand;
+    DirectUI::Element *_peHeaderCollapse;
+    CDUISizerElement *_pseExpando;
+    CProperTreeHost *_pHost;
+};
+
+/* Push button of the command bar that sinks into the bar while pressed */
+class Button3d : public DirectUI::Button
+{
+public:
+    static HRESULT WINAPI Create(
+        _In_opt_ DirectUI::Element *peParent,
+        _Inout_opt_ ULONG *pdwDeferCookie,
+        _Outptr_ DirectUI::Element **ppElement);
+    static HRESULT WINAPI Register();
+    static DirectUI::IClassInfo *WINAPI GetClassInfoPtr() { return Class; }
+    virtual DirectUI::IClassInfo *GetClassInfoW() { return Class; }
+
+    virtual void OnPropertyChanged(const DirectUI::PropertyInfo *ppi, int iIndex, DirectUI::Value *pvOld,
+                                   DirectUI::Value *pvNew);
+
+    HRESULT SetEvaluatingAsyncState(_In_ bool fEvaluating);
+
+    static const DirectUI::PropertyInfo *const PressedPaddingShiftProp;
+    static const DirectUI::PropertyInfo *const EvaluatingAsyncStateProp;
+    static DirectUI::IClassInfo *Class;
+};
+
+/* Command bar content: the folder's commands plus the preview pane and help buttons */
+class CCommandModuleInner :
+    public CElementWithSite,
+    public IFrameNotificationClient,
+    public IFrameShellViewClient
+{
+public:
+    static HRESULT WINAPI Create(
+        _In_opt_ DirectUI::Element *peParent,
+        _Inout_opt_ ULONG *pdwDeferCookie,
+        _Outptr_ DirectUI::Element **ppElement);
+    static HRESULT WINAPI Register();
+    static DirectUI::IClassInfo *WINAPI GetClassInfoPtr() { return Class; }
+    virtual DirectUI::IClassInfo *GetClassInfoW() { return Class; }
+
+    virtual void OnEvent(DirectUI::Event *pev);
+    virtual void OnDestroy();
+
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv) override;
+    STDMETHODIMP_(ULONG) AddRef() override { return 1; }
+    STDMETHODIMP_(ULONG) Release() override { return 1; }
+    STDMETHODIMP SetSite(IUnknown *punkSite) override;
+    STDMETHODIMP GetSite(REFIID riid, void **ppvSite) override { return CElementWithSite::GetSite(riid, ppvSite); }
+
+    STDMETHODIMP LayoutInitialized() override;
+    STDMETHODIMP Notify(PCWSTR pszPropertyName) override;
+    STDMETHODIMP OnNavigateAway() override;
+    STDMETHODIMP LayoutUninitialized() override { return S_OK; }
+
+    STDMETHODIMP OnSelectedItemChanged() override { return S_OK; }
+    STDMETHODIMP OnSelectionChanged() override;
+    STDMETHODIMP OnContentsChanged() override;
+    STDMETHODIMP OnFolderChanged() override;
+
+    static DirectUI::IClassInfo *Class;
+
+private:
+    static LRESULT CALLBACK s_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+    void _DeferRefreshButtons(_In_ BOOL fDelay);
+    void _InitRefreshButtons(_In_ BOOL fDelay);
+    void _RefreshButtons();
+    void _EndRefreshTracking();
+    void _UpdatePreviewButton();
+
+    HWND _hwndWorker;
+    ITrackEvents *_pte;
+    BOOL _fNoFolderBand;
+    BOOL _fRefreshPending;
+    BOOL _fRefreshedOnce;
+    UINT _uViewOperation;
+};
+
 class CTemplateBackground : public CElementWithSite, public IFrameNotificationClient, public IDispatch
 {
 public:
@@ -553,6 +727,8 @@ public:
     static DirectUI::IClassInfo *Class;
 
 private:
+    friend class CProperTreeModuleInner;
+
     int _GetIntProp(_In_ const DirectUI::PropertyInfo *ppi);
     BOOL _GetBoolProp(_In_ const DirectUI::PropertyInfo *ppi);
     ATOM _GetAtomProp(_In_ const DirectUI::PropertyInfo *ppi);
@@ -671,6 +847,172 @@ private:
     HWND _hwndOriginalParent;
     HWND _hwndView;
     BOOL _fHadClientEdge;
+};
+
+class CNavPaneExpandedState;
+class CNavPaneNullSpaceMenu;
+
+/* Hosts the namespace tree control of the nav pane */
+class CProperTreeHost :
+    public DirectUI::HWNDHost,
+    public IObjectWithSite,
+    public INameSpaceTreeAccessible,
+    public INameSpaceTreeControlEvents,
+    public INameSpaceTreeControlCustomDrawWin7,
+    public INameSpaceTreeOrderCallback,
+    public INameSpaceTreeCallbackPriv,
+    public IServiceProvider,
+    public IUpdateNavPaneSettings,
+    public IDispatch
+{
+public:
+    static HRESULT WINAPI Create(
+        _In_opt_ DirectUI::Element *peParent,
+        _Inout_opt_ ULONG *pdwDeferCookie,
+        _Outptr_ DirectUI::Element **ppElement);
+    static HRESULT WINAPI Register();
+    static DirectUI::IClassInfo *WINAPI GetClassInfoPtr() { return Class; }
+    virtual DirectUI::IClassInfo *GetClassInfoW() { return Class; }
+
+    virtual HWND CreateHWND(HWND hwndParent);
+    virtual void OnHosted(DirectUI::Element *peNewHost);
+    virtual void OnDestroy();
+    virtual bool OnMessage(UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT *plRet);
+    virtual void OnPropertyChanged(const DirectUI::PropertyInfo *ppi, int iIndex, DirectUI::Value *pvOld,
+                                   DirectUI::Value *pvNew);
+
+    // *** IUnknown ***
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv) override;
+    STDMETHODIMP_(ULONG) AddRef() override { return 1; }
+    STDMETHODIMP_(ULONG) Release() override { return 1; }
+
+    // *** IObjectWithSite ***
+    STDMETHODIMP SetSite(IUnknown *punkSite) override;
+    STDMETHODIMP GetSite(REFIID riid, void **ppvSite) override;
+
+    // *** INameSpaceTreeAccessible ***
+    STDMETHODIMP OnGetDefaultAccessibilityAction(IShellItem *psi, BSTR *pbstrDefaultAction) override;
+    STDMETHODIMP OnDoDefaultAccessibilityAction(IShellItem *psi) override;
+    STDMETHODIMP OnGetAccessibilityRole(IShellItem *psi, VARIANT *pvarRole) override { return E_NOTIMPL; }
+
+    // *** INameSpaceTreeControlEvents ***
+    STDMETHODIMP OnItemClick(IShellItem *psi, NSTCEHITTEST nstceHitTest, NSTCECLICKTYPE nstceClickType) override;
+    STDMETHODIMP OnPropertyItemCommit(IShellItem *psi) override { return E_NOTIMPL; }
+    STDMETHODIMP OnItemStateChanging(IShellItem *psi, NSTCITEMSTATE nstcisMask, NSTCITEMSTATE nstcisState) override
+    {
+        return S_OK;
+    }
+    STDMETHODIMP OnItemStateChanged(IShellItem *psi, NSTCITEMSTATE nstcisMask, NSTCITEMSTATE nstcisState) override
+    {
+        return S_OK;
+    }
+    STDMETHODIMP OnSelectionChanged(IShellItemArray *psiaSelection) override { return S_OK; }
+    STDMETHODIMP OnKeyboardInput(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
+    STDMETHODIMP OnBeforeExpand(IShellItem *psi) override { return S_OK; }
+    STDMETHODIMP OnAfterExpand(IShellItem *psi) override;
+    STDMETHODIMP OnBeginLabelEdit(IShellItem *psi) override { return S_OK; }
+    STDMETHODIMP OnEndLabelEdit(IShellItem *psi) override { return S_OK; }
+    STDMETHODIMP OnGetToolTip(IShellItem *psi, LPWSTR pszTip, int cchTip) override { return E_FAIL; }
+    STDMETHODIMP OnBeforeItemDelete(IShellItem *psi) override { return S_OK; }
+    STDMETHODIMP OnItemAdded(IShellItem *psi, BOOL fIsRoot) override;
+    STDMETHODIMP OnItemDeleted(IShellItem *psi, BOOL fIsRoot) override { return S_OK; }
+    STDMETHODIMP OnBeforeContextMenu(IShellItem *psi, REFIID riid, void **ppv) override;
+    STDMETHODIMP OnAfterContextMenu(IShellItem *psi, IContextMenu *pcmIn, REFIID riid, void **ppv) override
+    {
+        *ppv = NULL;
+        return E_NOTIMPL;
+    }
+    STDMETHODIMP OnBeforeStateImageChange(IShellItem *psi) override { return E_NOTIMPL; }
+    STDMETHODIMP OnGetDefaultIconIndex(IShellItem *psi, int *piDefaultIcon, int *piOpenIcon) override
+    {
+        return E_NOTIMPL;
+    }
+
+    // *** INameSpaceTreeControlCustomDraw ***
+    STDMETHODIMP PrePaint(HDC hdc, RECT *prc, LRESULT *plres) override;
+    STDMETHODIMP PostPaint(HDC hdc, RECT *prc) override { return S_OK; }
+    STDMETHODIMP ItemPrePaint(HDC hdc, RECT *prc, NSTCCUSTOMDRAW *pnstccdItem, COLORREF *pclrText,
+                              COLORREF *pclrTextBk, LRESULT *plres) override;
+    STDMETHODIMP ItemPostPaint(HDC hdc, RECT *prc, NSTCCUSTOMDRAW *pnstccdItem) override { return S_OK; }
+
+    // *** INameSpaceTreeOrderCallback ***
+    STDMETHODIMP ShouldReorderChildItems(IShellItem *psi) override;
+    STDMETHODIMP GetOrderStream(IShellItem *psi, DWORD grfMode, IStream **ppstm) override;
+
+    // *** INameSpaceTreeCallbackPriv ***
+    STDMETHODIMP OnEnumDone(IShellFolder *psf, int cItems) override { return S_OK; }
+    STDMETHODIMP OnGetItemCustomState(IShellItem *psi) override { return E_NOTIMPL; }
+
+    // *** IServiceProvider ***
+    STDMETHODIMP QueryService(REFGUID guidService, REFIID riid, void **ppv) override;
+
+    // *** IUpdateNavPaneSettings ***
+    STDMETHODIMP UpdateSetting(int iSetting) override;
+
+    // *** IDispatch ***
+    STDMETHODIMP GetTypeInfoCount(UINT *pctinfo) override { return E_NOTIMPL; }
+    STDMETHODIMP GetTypeInfo(UINT iTInfo, LCID lcid, ITypeInfo **ppTInfo) override { return E_NOTIMPL; }
+    STDMETHODIMP GetIDsOfNames(REFIID riid, LPOLESTR *rgszNames, UINT cNames, LCID lcid, DISPID *rgDispId) override
+    {
+        return E_NOTIMPL;
+    }
+    STDMETHODIMP Invoke(DISPID dispIdMember, REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams,
+                        VARIANT *pVarResult, EXCEPINFO *pExcepInfo, UINT *puArgErr) override;
+
+    HRESULT TranslateAcceleratorTree(_In_ MSG *pmsg);
+    void SetSettingsBag(_In_opt_ IPropertyBag *ppb);
+
+    static const DirectUI::PropertyInfo *const TopMarginProp;
+    static const DirectUI::PropertyInfo *const InitialExpandProp;
+    static DirectUI::IClassInfo *Class;
+
+private:
+    friend class CNavPaneNullSpaceMenu;
+
+    void _EnsureRootsInitialized();
+    void _OnNavigate();
+    void _RefreshCompColorSetting();
+    void _SetColors();
+    void _GetSetColorProp(_In_ const DirectUI::PropertyInfo *ppi, _In_ IVisualProperties *pvp, _In_ VPCOLORFLAGS vpcf);
+    HRESULT _GetViewItem(_In_ REFIID riid, _COM_Outptr_ void **ppv);
+    HRESULT _GetSelectedItem(_COM_Outptr_ IShellItem **ppsi);
+    BOOL _AreItemsEquivalent(_In_ IShellItem *psi1, _In_ IShellItem *psi2, _In_ BOOL fCheckTarget);
+    HRESULT _NavigateTo(_In_ IShellItem *psi);
+    HRESULT _ExpandItemInTree(_In_ IShellItem *psi, _In_ NSTCITEMSTATE nstcis);
+    BOOL _IsItemExpanded(_In_ IShellItem *psi);
+    void _OptionallyExpandParent(_In_ IShellItem *psi);
+    HRESULT _InitExpandedItemArray();
+    HRESULT _SaveExpandedItemArray();
+    HRESULT _EnsureFavorites();
+    BOOL _ShowPlaces();
+    BOOL _IsInCFD();
+    SHCONTF _GetEnumFlags();
+    HRESULT _MaybeGetAppLocations();
+    HRESULT _MaybeGetBrowserNavigationRoot();
+    BOOL _IsAppLocationsExpanded();
+
+    HWND _hwndTree;
+    HWND _hwndParent;
+    INameSpaceTreeControl2 *_pnstc;
+    BOOL _fDestroyed;
+    BOOL _fShowCompColor;
+    BOOL _fRootsInitialized;
+    BOOL _fExpandedOtherUsers;
+    int _iShowPlaces;
+    DWORD _dwAdviseCookie;
+    DWORD _dwProfferCookie;
+    DWORD _dwEventsCookie;
+    IUnknown *_punkSite;
+    IProfferService *_pps;
+    IConnectionPointContainer *_pcpcBrowser;
+    HACCEL _haccel;
+    IPropertyBag *_ppbSettings;
+    CNavPaneNullSpaceMenu *_pNullSpaceMenu;
+    CNavPaneExpandedState *_pExpanded;
+    IShellItem *_psiFavorites;
+    IShellItem *_psiAppLocations;
+    IShellItem *_psiNavRoot;
+    BOOL _fNavRootChecked;
 };
 
 /* Registers every element class the frame layouts use */
