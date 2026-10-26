@@ -92,7 +92,7 @@ dll/win32/avifil32            # Synced to Wine-10.0
 dll/win32/avrt                # Synced to Wine-10.0
 dll/win32/bcrypt              # Synced to Wine-11.19
 dll/win32/bcryptprimitives    # Synced to Wine-10.0
-dll/win32/bluetoothapis       # Synced to Wine-10.0
+dll/win32/bluetoothapis       # Forked at Wine-10.0, sdp.c is still synced
 dll/win32/cabinet             # Synced to Wine-10.0
 dll/win32/clusapi             # Synced to Wine-10.0
 dll/win32/combase             # Synced to Wine-10.0
@@ -278,7 +278,7 @@ comctl32 -
   dll/win32/comctl32/datetime.c            # Synced to Wine-6.0
   dll/win32/comctl32/*                     # Synced to Wine-5.0
 
-dll/cpl/bthprops              # Synced to Wine-10.0
+dll/cpl/bthprops              # Forked at Wine-10.0
 dll/cpl/inetcpl               # Synced to WineStaging-4.18
 
 win32ss/printing/monitors/localmon/ui/  # Synced to WineStaging-4.18 (known there as /dll/win32/localui)
