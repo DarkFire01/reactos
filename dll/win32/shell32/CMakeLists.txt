@@ -48,7 +48,9 @@ list(APPEND SOURCE
     utils.cpp
     CShellItem.cpp
     CShellItemArray.cpp
+    CShellItemProperties.cpp
     CShellLink.cpp
+    CWindowPropertyStore.cpp
     CFolderOptions.cpp
     folders/CDesktopFolder.cpp
     folders/CFSFolder.cpp
@@ -91,6 +93,21 @@ list(APPEND SOURCE
     pinning/CPinStore.cpp
     pinning/pinning.h
     pinning/pinutil.cpp
+    jumplist/CApplicationLists.cpp
+    jumplist/CApplicationLists.h
+    jumplist/CAutomaticDestinationList.cpp
+    jumplist/CAutomaticDestinationList.h
+    jumplist/CDestinationList.cpp
+    jumplist/CDestinationList.h
+    jumplist/CEnumerableObjectCollection.cpp
+    jumplist/CEnumerableObjectCollection.h
+    jumplist/destutil.cpp
+    jumplist/jumplist.h
+    jumplist/recentdocs.cpp
+    mergedfolder/CMergedFldrObjects.cpp
+    mergedfolder/CMergedShellFolder.cpp
+    mergedfolder/CPersonalStartMenu.cpp
+    mergedfolder/mergedfolder.h
     CBrowserProgressAggregator.h
     CDUIViewFrame.h
     CUserNotification.cpp
@@ -158,8 +175,11 @@ target_link_libraries(shell32 shellmenu shelldesktop wine uuid recyclebin cpprt 
 if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
     target_link_libraries(shell32 evalcmd)
 endif()
-add_delay_importlibs(shell32 powrprof shdocvw devmgr winspool.drv winmm mpr uxtheme ole32 oleaut32 userenv browseui version fmifs netapi32 secur32)
+add_delay_importlibs(shell32 powrprof shdocvw devmgr winspool.drv winmm mpr uxtheme ole32 oleaut32 userenv browseui version fmifs netapi32 secur32 propsys)
 add_importlibs(shell32 advapi32 gdi32 user32 comctl32 comdlg32 shlwapi shcore msvcrt kernel32 ntdll)
 add_dependencies(shell32 stdole2) # shell32_shldisp.tlb needs stdole2.tlb
 add_pch(shell32 precomp.h "${PCH_SKIP_SOURCE}")
 add_cd_file(TARGET shell32 DESTINATION reactos/system32 FOR all)
+
+# The live image builds its registry from inf files and never runs DllRegisterServer
+add_registry_inf(mergedfolder/startmenu_reg.inf)
