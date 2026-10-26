@@ -149,6 +149,36 @@ typedef INT (WINAPI *FN_FreeMRUList)(HANDLE);
 DWORD WINAPI ImageList_GetFlags(HIMAGELIST himl);
 BOOL WINAPI ImageList_SetFlags(HIMAGELIST himl, DWORD flags);
 
+#ifndef __IImageList2_FWD_DEFINED__
+#define __IImageList2_FWD_DEFINED__
+typedef interface IImageList2 IImageList2;
+#ifdef __cplusplus
+interface IImageList2;
+#endif
+#endif
+
+/* CLSID_GangImageList: an IImageList2 that serves images from a set of
+ * image lists, picking the one whose size is closest to its own */
+#undef INTERFACE
+#define INTERFACE IGangImageList
+DECLARE_INTERFACE_(IGangImageList, IUnknown)
+{
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, void **ppv) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+    STDMETHOD(SetImageLists)(THIS_ UINT cLists, IImageList2 **ppil) PURE;
+    STDMETHOD(GetImageList)(THIS_ UINT iList, REFIID riid, void **ppv) PURE;
+};
+#undef INTERFACE
+
+#if defined(COBJMACROS) && !defined(__cplusplus)
+#define IGangImageList_QueryInterface(T,a,b) (T)->lpVtbl->QueryInterface(T,a,b)
+#define IGangImageList_AddRef(T) (T)->lpVtbl->AddRef(T)
+#define IGangImageList_Release(T) (T)->lpVtbl->Release(T)
+#define IGangImageList_SetImageLists(T,a,b) (T)->lpVtbl->SetImageLists(T,a,b)
+#define IGangImageList_GetImageList(T,a,b,c) (T)->lpVtbl->GetImageList(T,a,b,c)
+#endif
+
 #endif /* NOIMAGEAPIS */
 
 #ifdef __cplusplus

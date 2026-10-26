@@ -125,8 +125,13 @@ struct _IMAGELIST
 #define WinVerMajor() LOBYTE(GetVersion())
 
 #include <comctl32_undoc.h>
+#include <shlguid_undoc.h>
 #define ILC_PUBLICFLAGS ( 0xFFFFFFFF ) /* Allow all flags for now */
 #define ILC_COLORMASK 0xFE
+
+static IImageList2 *GangImageList_FromHandle(_In_opt_ HIMAGELIST himl);
+static UINT GangImageList_GetFlags(_In_ IImageList2 *iface);
+static HRESULT GangImageList_CreateInstance(_In_opt_ const IUnknown *pUnkOuter, _In_ REFIID riid, _Outptr_ void **ppv);
 #endif /* __REACTOS__ */
 
 /* Header used by ImageList_Read() and ImageList_Write() */
@@ -940,6 +945,14 @@ cleanup:
 BOOL WINAPI
 ImageList_Destroy (HIMAGELIST himl)
 {
+#ifdef __REACTOS__
+    IImageList2 *gang = GangImageList_FromHandle(himl);
+    if (gang)
+    {
+        IImageList2_Release(gang);
+        return TRUE;
+    }
+#endif
     if (!is_valid(himl))
         return FALSE;
 
@@ -1298,6 +1311,13 @@ ImageList_DrawEx (HIMAGELIST himl, INT i, HDC hdc, INT x, INT y,
     imldp.rgbFg   = rgbFg;
     imldp.fStyle  = fStyle;
 
+#ifdef __REACTOS__
+    {
+        IImageList2 *gang = GangImageList_FromHandle(himl);
+        if (gang)
+            return SUCCEEDED(IImageList2_Draw(gang, &imldp));
+    }
+#endif
     return ImageList_DrawIndirect (&imldp);
 }
 
@@ -1953,6 +1973,9 @@ ImageList_GetFlags(HIMAGELIST himl)
 {
     TRACE("%p\n", himl);
 #ifdef __REACTOS__
+    IImageList2 *gang = GangImageList_FromHandle(himl);
+    if (gang)
+        return GangImageList_GetFlags(gang) & ILC_PUBLICFLAGS;
     if(!is_valid2(himl))
         return 0;
     return himl->flags & ILC_PUBLICFLAGS;
@@ -3525,6 +3548,10 @@ ImageList_CoCreateInstance (REFCLSID rclsid, const IUnknown *punkOuter, REFIID r
 {
     TRACE("(%s,%p,%s,%p)\n", debugstr_guid(rclsid), punkOuter, debugstr_guid(riid), ppv);
 
+#ifdef __REACTOS__
+    if (IsEqualCLSID(&CLSID_GangImageList, rclsid))
+        return GangImageList_CreateInstance(punkOuter, riid, ppv);
+#endif
     if (!IsEqualCLSID(&CLSID_ImageList, rclsid))
         return E_NOINTERFACE;
 
@@ -3969,10 +3996,103 @@ static HRESULT WINAPI ImageListImpl_GetOverlayImage(IImageList2 *iface, int iOve
     return E_FAIL;
 }
 
+#ifdef __REACTOS__
+/* Stretch every image of the list to a new image size */
+static BOOL
+IMAGELIST_StretchImages(
+    _In_ HIMAGELIST himl,
+    _In_ INT cx,
+    _In_ INT cy)
+{
+    INT cxOld = himl->cx, cyOld = himl->cy;
+    HBITMAP hbmImage, hbmMask = NULL;
+    HDC hdcNew;
+    POINT ptOld, ptNew;
+    SIZE sz;
+    INT i;
+
+    if (cx == cxOld && cy == cyOld)
+        return TRUE;
+
+    hdcNew = CreateCompatibleDC(0);
+    if (!hdcNew)
+        return FALSE;
+
+    himl->cx = cx;
+    himl->cy = cy;
+    hbmImage = ImageList_CreateImage(hdcNew, himl, himl->cMaxImage);
+    if (hbmImage && himl->hbmMask)
+    {
+        imagelist_get_bitmap_size(himl, himl->cMaxImage, &sz);
+        hbmMask = CreateBitmap(sz.cx, sz.cy, 1, 1, NULL);
+    }
+
+    if (!hbmImage || (himl->hbmMask && !hbmMask))
+    {
+        himl->cx = cxOld;
+        himl->cy = cyOld;
+        if (hbmImage)
+            DeleteObject(hbmImage);
+        DeleteDC(hdcNew);
+        return FALSE;
+    }
+
+    /* Plain pixel stretching keeps the alpha bytes of 32 bpp images */
+    SetStretchBltMode(hdcNew, COLORONCOLOR);
+    SelectObject(hdcNew, hbmImage);
+    for (i = 0; i < himl->cCurImage; i++)
+    {
+        ptOld.x = (i % TILE_COUNT) * cxOld;
+        ptOld.y = (i / TILE_COUNT) * cyOld;
+        imagelist_point_from_index(himl, i, &ptNew);
+        StretchBlt(hdcNew, ptNew.x, ptNew.y, cx, cy,
+                   himl->hdcImage, ptOld.x, ptOld.y, cxOld, cyOld, SRCCOPY);
+    }
+
+    if (hbmMask)
+    {
+        SelectObject(hdcNew, hbmMask);
+        for (i = 0; i < himl->cCurImage; i++)
+        {
+            ptOld.x = (i % TILE_COUNT) * cxOld;
+            ptOld.y = (i / TILE_COUNT) * cyOld;
+            imagelist_point_from_index(himl, i, &ptNew);
+            StretchBlt(hdcNew, ptNew.x, ptNew.y, cx, cy,
+                       himl->hdcMask, ptOld.x, ptOld.y, cxOld, cyOld, SRCCOPY);
+        }
+    }
+    DeleteDC(hdcNew);
+
+    SelectObject(himl->hdcImage, hbmImage);
+    DeleteObject(himl->hbmImage);
+    himl->hbmImage = hbmImage;
+
+    if (hbmMask)
+    {
+        SelectObject(himl->hdcMask, hbmMask);
+        DeleteObject(himl->hbmMask);
+        himl->hbmMask = hbmMask;
+    }
+
+    return TRUE;
+}
+#endif
+
 static HRESULT WINAPI ImageListImpl_Resize(IImageList2 *iface, INT cx, INT cy)
 {
+#ifdef __REACTOS__
+    HIMAGELIST imgl = impl_from_IImageList2(iface);
+
+    TRACE("(%p)->(%d %d)\n", iface, cx, cy);
+
+    if (cx <= 0 || cy <= 0)
+        return E_INVALIDARG;
+
+    return IMAGELIST_StretchImages(imgl, cx, cy) ? S_OK : E_OUTOFMEMORY;
+#else
     FIXME("(%p)->(%d %d): stub\n", iface, cx, cy);
     return E_NOTIMPL;
+#endif
 }
 
 static HRESULT WINAPI ImageListImpl_GetOriginalSize(IImageList2 *iface, INT image, DWORD flags, INT *cx, INT *cy)
@@ -4161,6 +4281,1102 @@ static HRESULT ImageListImpl_CreateInstance(const IUnknown *pUnkOuter, REFIID ii
     return ret;
 }
 
+#ifdef __REACTOS__
+/*
+ * Ganged image list (CLSID_GangImageList). It holds no images of its own,
+ * each request goes to the attached list whose image size is closest to the
+ * gang size, so indexes and images always follow the attached lists.
+ */
+
+#define GANG_MAX_LISTS 8
+
+typedef struct _GANG_IMAGELIST
+{
+    IImageList2 IImageList2_iface;
+    IGangImageList IGangImageList_iface;
+    LONG ref;
+    CRITICAL_SECTION Lock;
+    INT cx;
+    INT cy;
+    UINT flags;
+    COLORREF clrBk;
+    UINT cLists;
+    IImageList2 *Lists[GANG_MAX_LISTS];
+    HIMAGELIST himlScaled;  /* one image stretched to cx by cy, plus its overlay */
+} GANG_IMAGELIST, *PGANG_IMAGELIST;
+
+static const IImageList2Vtbl GangImageList_Vtbl;
+static const IGangImageListVtbl GangImageList_GangVtbl;
+
+static inline PGANG_IMAGELIST
+GangImageList_FromIface(
+    _In_ IImageList2 *iface)
+{
+    return CONTAINING_RECORD(iface, GANG_IMAGELIST, IImageList2_iface);
+}
+
+static inline PGANG_IMAGELIST
+GangImageList_FromGangIface(
+    _In_ IGangImageList *iface)
+{
+    return CONTAINING_RECORD(iface, GANG_IMAGELIST, IGangImageList_iface);
+}
+
+static IImageList2 *
+GangImageList_FromHandle(
+    _In_opt_ HIMAGELIST himl)
+{
+    IImageList2 *iface = (IImageList2 *)himl;
+    BOOL bGang;
+
+    __TRY
+    {
+        bGang = (iface && iface->lpVtbl == &GangImageList_Vtbl);
+    }
+    __EXCEPT_PAGE_FAULT
+    {
+        bGang = FALSE;
+    }
+    __ENDTRY
+
+    return bGang ? iface : NULL;
+}
+
+static UINT
+GangImageList_GetFlags(
+    _In_ IImageList2 *iface)
+{
+    return GangImageList_FromIface(iface)->flags;
+}
+
+/* Exact size first, then the smallest larger list, then the largest smaller one */
+static IImageList2 *
+GangImageList_PickList(
+    _In_ PGANG_IMAGELIST This,
+    _Out_opt_ PBOOL pbExact)
+{
+    IImageList2 *pilBest = NULL;
+    BOOL bBestLarger = FALSE, bLarger, bExact = FALSE;
+    INT cxBest = 0, cxList, cyList;
+    UINT i;
+
+    EnterCriticalSection(&This->Lock);
+    for (i = 0; i < This->cLists; i++)
+    {
+        if (!This->Lists[i])
+            continue;
+        if (FAILED(IImageList2_GetIconSize(This->Lists[i], &cxList, &cyList)))
+            continue;
+
+        if (cxList == This->cx && cyList == This->cy)
+        {
+            pilBest = This->Lists[i];
+            bExact = TRUE;
+            break;
+        }
+
+        bLarger = (cxList >= This->cx && cyList >= This->cy);
+        if (!pilBest ||
+            (bLarger && (!bBestLarger || cxList < cxBest)) ||
+            (!bLarger && !bBestLarger && cxList > cxBest))
+        {
+            pilBest = This->Lists[i];
+            cxBest = cxList;
+            bBestLarger = bLarger;
+        }
+    }
+
+    if (pilBest)
+        IImageList2_AddRef(pilBest);
+    LeaveCriticalSection(&This->Lock);
+
+    if (pbExact)
+        *pbExact = bExact;
+    return pilBest;
+}
+
+/* Index of the image that overlay iOverlay maps to in pil, or -1 */
+static INT
+GangImageList_GetOverlayIndex(
+    _In_ IImageList2 *pil,
+    _In_ INT iOverlay)
+{
+    HIMAGELIST himl = (HIMAGELIST)pil;
+
+    if (iOverlay < 1 || iOverlay > MAX_OVERLAYIMAGE)
+        return -1;
+
+    if (is_valid2(himl))
+        return himl->nOvlIdx[iOverlay - 1];
+
+    return -1;
+}
+
+/* Stretch image i of pil, and the overlay *pfStyle names, into the scaled list.
+ * The caller holds the gang lock while it uses the scaled list. */
+static HRESULT
+GangImageList_LoadScaled(
+    _In_ PGANG_IMAGELIST This,
+    _In_ IImageList2 *pil,
+    _In_ INT i,
+    _Inout_ UINT *pfStyle)
+{
+    HICON hIcon;
+    INT iOverlay, iOvlImage;
+    BOOL bLoaded;
+    HRESULT hr;
+
+    if (This->himlScaled &&
+        (This->himlScaled->cx != This->cx || This->himlScaled->cy != This->cy))
+    {
+        ImageList_Destroy(This->himlScaled);
+        This->himlScaled = NULL;
+    }
+
+    if (!This->himlScaled)
+    {
+        This->himlScaled = ImageList_Create(This->cx, This->cy, This->flags | ILC_MASK, 2, 0);
+        if (!This->himlScaled)
+            return E_OUTOFMEMORY;
+        ImageList_SetImageCount(This->himlScaled, 2);
+    }
+
+    hr = IImageList2_GetIcon(pil, i, ILD_TRANSPARENT, &hIcon);
+    if (FAILED(hr))
+        return hr;
+    bLoaded = (ImageList_ReplaceIcon(This->himlScaled, 0, hIcon) != -1);
+    DestroyIcon(hIcon);
+    if (!bLoaded)
+        return E_FAIL;
+
+    iOverlay = (*pfStyle & ILD_OVERLAYMASK) >> 8;
+    if (!iOverlay)
+        return S_OK;
+
+    bLoaded = FALSE;
+    iOvlImage = GangImageList_GetOverlayIndex(pil, iOverlay);
+    if (iOvlImage >= 0 && SUCCEEDED(IImageList2_GetIcon(pil, iOvlImage, ILD_TRANSPARENT, &hIcon)))
+    {
+        bLoaded = (ImageList_ReplaceIcon(This->himlScaled, 1, hIcon) != -1) &&
+                  ImageList_SetOverlayImage(This->himlScaled, 1, iOverlay);
+        DestroyIcon(hIcon);
+    }
+
+    if (!bLoaded)
+        *pfStyle &= ~ILD_OVERLAYMASK;
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_QueryInterface(
+    _In_ IImageList2 *iface,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+
+    if (!ppv)
+        return E_INVALIDARG;
+
+    if (IsEqualIID(&IID_IUnknown, riid) ||
+        IsEqualIID(&IID_IImageList, riid) ||
+        IsEqualIID(&IID_IImageList2, riid))
+    {
+        *ppv = &This->IImageList2_iface;
+    }
+    else if (IsEqualIID(&IID_IGangImageList, riid))
+    {
+        *ppv = &This->IGangImageList_iface;
+    }
+    else
+    {
+        *ppv = NULL;
+        return E_NOINTERFACE;
+    }
+
+    IImageList2_AddRef(iface);
+    return S_OK;
+}
+
+static ULONG WINAPI
+GangImageList_AddRef(
+    _In_ IImageList2 *iface)
+{
+    return InterlockedIncrement(&GangImageList_FromIface(iface)->ref);
+}
+
+static ULONG WINAPI
+GangImageList_Release(
+    _In_ IImageList2 *iface)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    ULONG ref = InterlockedDecrement(&This->ref);
+    UINT i;
+
+    if (ref)
+        return ref;
+
+    for (i = 0; i < This->cLists; i++)
+    {
+        if (This->Lists[i])
+            IImageList2_Release(This->Lists[i]);
+    }
+    if (This->himlScaled)
+        ImageList_Destroy(This->himlScaled);
+
+    DeleteCriticalSection(&This->Lock);
+    This->IImageList2_iface.lpVtbl = NULL;
+    heap_free(This);
+    return 0;
+}
+
+static HRESULT WINAPI
+GangImageList_Add(
+    _In_ IImageList2 *iface,
+    _In_ HBITMAP hbmImage,
+    _In_opt_ HBITMAP hbmMask,
+    _Out_ int *pi)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_ReplaceIcon(
+    _In_ IImageList2 *iface,
+    _In_ int i,
+    _In_ HICON hicon,
+    _Out_ int *pi)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_SetOverlayImage(
+    _In_ IImageList2 *iface,
+    _In_ int iImage,
+    _In_ int iOverlay)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    HRESULT hr = E_FAIL;
+    UINT i;
+
+    EnterCriticalSection(&This->Lock);
+    for (i = 0; i < This->cLists; i++)
+    {
+        if (This->Lists[i])
+            hr = IImageList2_SetOverlayImage(This->Lists[i], iImage, iOverlay);
+        if (FAILED(hr))
+            break;
+    }
+    LeaveCriticalSection(&This->Lock);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_Replace(
+    _In_ IImageList2 *iface,
+    _In_ int i,
+    _In_ HBITMAP hbmImage,
+    _In_opt_ HBITMAP hbmMask)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_AddMasked(
+    _In_ IImageList2 *iface,
+    _In_ HBITMAP hbmImage,
+    _In_ COLORREF crMask,
+    _Out_ int *pi)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_Draw(
+    _In_ IImageList2 *iface,
+    _In_ IMAGELISTDRAWPARAMS *pimldp)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IMAGELISTDRAWPARAMS imldp;
+    IImageList2 *pil;
+    BOOL bExact;
+    HRESULT hr;
+
+    if (!pimldp || !pimldp->cbSize)
+        return E_INVALIDARG;
+
+    ZeroMemory(&imldp, sizeof(imldp));
+    CopyMemory(&imldp, pimldp, min(pimldp->cbSize, sizeof(imldp)));
+    if (imldp.rgbBk == CLR_DEFAULT)
+        imldp.rgbBk = This->clrBk;
+
+    pil = GangImageList_PickList(This, &bExact);
+    if (!pil)
+        return E_FAIL;
+
+    if (bExact)
+    {
+        hr = IImageList2_Draw(pil, &imldp);
+    }
+    else
+    {
+        EnterCriticalSection(&This->Lock);
+        hr = GangImageList_LoadScaled(This, pil, imldp.i, &imldp.fStyle);
+        if (SUCCEEDED(hr))
+        {
+            imldp.himl = This->himlScaled;
+            imldp.i = 0;
+            hr = ImageList_DrawIndirect(&imldp) ? S_OK : E_INVALIDARG;
+        }
+        LeaveCriticalSection(&This->Lock);
+    }
+
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_Remove(
+    _In_ IImageList2 *iface,
+    _In_ int i)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_GetIcon(
+    _In_ IImageList2 *iface,
+    _In_ int i,
+    _In_ UINT flags,
+    _Out_ HICON *picon)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    BOOL bExact;
+    HRESULT hr;
+
+    if (!picon)
+        return E_POINTER;
+    *picon = NULL;
+
+    pil = GangImageList_PickList(This, &bExact);
+    if (!pil)
+        return E_FAIL;
+
+    if (bExact)
+    {
+        hr = IImageList2_GetIcon(pil, i, flags, picon);
+    }
+    else
+    {
+        EnterCriticalSection(&This->Lock);
+        hr = GangImageList_LoadScaled(This, pil, i, &flags);
+        if (SUCCEEDED(hr))
+        {
+            *picon = ImageList_GetIcon(This->himlScaled, 0, flags);
+            hr = *picon ? S_OK : E_FAIL;
+        }
+        LeaveCriticalSection(&This->Lock);
+    }
+
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_GetImageInfo(
+    _In_ IImageList2 *iface,
+    _In_ int i,
+    _Out_ IMAGEINFO *pImageInfo)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    UINT fStyle = 0;
+    BOOL bExact;
+    HRESULT hr;
+
+    pil = GangImageList_PickList(This, &bExact);
+    if (!pil)
+        return E_FAIL;
+
+    if (bExact)
+    {
+        hr = IImageList2_GetImageInfo(pil, i, pImageInfo);
+    }
+    else
+    {
+        /* The bitmaps returned belong to the scaled list */
+        EnterCriticalSection(&This->Lock);
+        hr = GangImageList_LoadScaled(This, pil, i, &fStyle);
+        if (SUCCEEDED(hr))
+            hr = ImageList_GetImageInfo(This->himlScaled, 0, pImageInfo) ? S_OK : E_FAIL;
+        LeaveCriticalSection(&This->Lock);
+    }
+
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_Copy(
+    _In_ IImageList2 *iface,
+    _In_ int iDst,
+    _In_ IUnknown *punkSrc,
+    _In_ int iSrc,
+    _In_ UINT uFlags)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_Merge(
+    _In_ IImageList2 *iface,
+    _In_ int i1,
+    _In_ IUnknown *punk2,
+    _In_ int i2,
+    _In_ int dx,
+    _In_ int dy,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_Clone(
+    _In_ IImageList2 *iface,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pilClone;
+    IGangImageList *pGang;
+    HRESULT hr;
+
+    hr = GangImageList_CreateInstance(NULL, &IID_IImageList2, (void **)&pilClone);
+    if (FAILED(hr))
+        return hr;
+
+    IImageList2_Initialize(pilClone, This->cx, This->cy, This->flags, 0, 0);
+    GangImageList_FromIface(pilClone)->clrBk = This->clrBk;
+
+    pGang = &GangImageList_FromIface(pilClone)->IGangImageList_iface;
+    EnterCriticalSection(&This->Lock);
+    hr = IGangImageList_SetImageLists(pGang, This->cLists, This->Lists);
+    LeaveCriticalSection(&This->Lock);
+
+    if (SUCCEEDED(hr))
+        hr = IImageList2_QueryInterface(pilClone, riid, ppv);
+    IImageList2_Release(pilClone);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_GetImageRect(
+    _In_ IImageList2 *iface,
+    _In_ int i,
+    _Out_ RECT *prc)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    BOOL bExact;
+    HRESULT hr;
+    INT cImages;
+
+    if (!prc)
+        return E_POINTER;
+
+    pil = GangImageList_PickList(This, &bExact);
+    if (!pil)
+        return E_FAIL;
+
+    if (bExact)
+    {
+        hr = IImageList2_GetImageRect(pil, i, prc);
+    }
+    else
+    {
+        /* A stretched image always sits first in the scaled list */
+        hr = IImageList2_GetImageCount(pil, &cImages);
+        if (SUCCEEDED(hr) && (i < 0 || i >= cImages))
+            hr = E_INVALIDARG;
+        if (SUCCEEDED(hr))
+            SetRect(prc, 0, 0, This->cx, This->cy);
+    }
+
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_GetIconSize(
+    _In_ IImageList2 *iface,
+    _Out_ int *cx,
+    _Out_ int *cy)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+
+    if (!cx || !cy)
+        return E_INVALIDARG;
+
+    *cx = This->cx;
+    *cy = This->cy;
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_Resize(
+    _In_ IImageList2 *iface,
+    _In_ INT cx,
+    _In_ INT cy)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+
+    if (cx <= 0 || cy <= 0)
+        return E_INVALIDARG;
+
+    EnterCriticalSection(&This->Lock);
+    This->cx = cx;
+    This->cy = cy;
+    LeaveCriticalSection(&This->Lock);
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_SetIconSize(
+    _In_ IImageList2 *iface,
+    _In_ int cx,
+    _In_ int cy)
+{
+    return GangImageList_Resize(iface, cx, cy);
+}
+
+static HRESULT WINAPI
+GangImageList_GetImageCount(
+    _In_ IImageList2 *iface,
+    _Out_ int *pi)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    HRESULT hr;
+
+    if (!pi)
+        return E_INVALIDARG;
+    *pi = 0;
+
+    pil = GangImageList_PickList(This, NULL);
+    if (!pil)
+        return S_OK;
+
+    hr = IImageList2_GetImageCount(pil, pi);
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_SetImageCount(
+    _In_ IImageList2 *iface,
+    _In_ UINT uNewCount)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_SetBkColor(
+    _In_ IImageList2 *iface,
+    _In_ COLORREF clrBk,
+    _Out_ COLORREF *pclr)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+
+    if (!pclr)
+        return E_FAIL;
+
+    *pclr = InterlockedExchange((LONG *)&This->clrBk, clrBk);
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_GetBkColor(
+    _In_ IImageList2 *iface,
+    _Out_ COLORREF *pclr)
+{
+    if (!pclr)
+        return E_FAIL;
+
+    *pclr = GangImageList_FromIface(iface)->clrBk;
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_BeginDrag(
+    _In_ IImageList2 *iface,
+    _In_ int iTrack,
+    _In_ int dxHotspot,
+    _In_ int dyHotspot)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    UINT fStyle = 0;
+    BOOL bExact;
+    HRESULT hr;
+
+    pil = GangImageList_PickList(This, &bExact);
+    if (!pil)
+        return E_FAIL;
+
+    if (bExact)
+    {
+        hr = IImageList2_BeginDrag(pil, iTrack, dxHotspot, dyHotspot);
+    }
+    else
+    {
+        /* The drag list takes a copy, so the scaled list can be reused */
+        EnterCriticalSection(&This->Lock);
+        hr = GangImageList_LoadScaled(This, pil, iTrack, &fStyle);
+        if (SUCCEEDED(hr))
+            hr = ImageList_BeginDrag(This->himlScaled, 0, dxHotspot, dyHotspot) ? S_OK : E_FAIL;
+        LeaveCriticalSection(&This->Lock);
+    }
+
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_EndDrag(
+    _In_ IImageList2 *iface)
+{
+    ImageList_EndDrag();
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_DragEnter(
+    _In_ IImageList2 *iface,
+    _In_opt_ HWND hwndLock,
+    _In_ int x,
+    _In_ int y)
+{
+    return ImageList_DragEnter(hwndLock, x, y) ? S_OK : E_FAIL;
+}
+
+static HRESULT WINAPI
+GangImageList_DragLeave(
+    _In_ IImageList2 *iface,
+    _In_opt_ HWND hwndLock)
+{
+    return ImageList_DragLeave(hwndLock) ? S_OK : E_FAIL;
+}
+
+static HRESULT WINAPI
+GangImageList_DragMove(
+    _In_ IImageList2 *iface,
+    _In_ int x,
+    _In_ int y)
+{
+    return ImageList_DragMove(x, y) ? S_OK : E_FAIL;
+}
+
+static HRESULT WINAPI
+GangImageList_SetDragCursorImage(
+    _In_ IImageList2 *iface,
+    _In_ IUnknown *punk,
+    _In_ int iDrag,
+    _In_ int dxHotspot,
+    _In_ int dyHotspot)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    HRESULT hr;
+
+    pil = GangImageList_PickList(This, NULL);
+    if (!pil)
+        return E_FAIL;
+
+    hr = IImageList2_SetDragCursorImage(pil, punk, iDrag, dxHotspot, dyHotspot);
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_DragShowNolock(
+    _In_ IImageList2 *iface,
+    _In_ BOOL fShow)
+{
+    return ImageList_DragShowNolock(fShow) ? S_OK : E_FAIL;
+}
+
+static HRESULT WINAPI
+GangImageList_GetDragImage(
+    _In_ IImageList2 *iface,
+    _Out_opt_ POINT *ppt,
+    _Out_opt_ POINT *pptHotspot,
+    _In_ REFIID riid,
+    _Outptr_ PVOID *ppv)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    HRESULT hr;
+
+    pil = GangImageList_PickList(This, NULL);
+    if (!pil)
+        return E_FAIL;
+
+    hr = IImageList2_GetDragImage(pil, ppt, pptHotspot, riid, ppv);
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_GetItemFlags(
+    _In_ IImageList2 *iface,
+    _In_ int i,
+    _Out_ DWORD *dwFlags)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    HRESULT hr;
+
+    pil = GangImageList_PickList(This, NULL);
+    if (!pil)
+        return E_FAIL;
+
+    hr = IImageList2_GetItemFlags(pil, i, dwFlags);
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_GetOverlayImage(
+    _In_ IImageList2 *iface,
+    _In_ int iOverlay,
+    _Out_ int *piIndex)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    HRESULT hr;
+
+    pil = GangImageList_PickList(This, NULL);
+    if (!pil)
+        return E_FAIL;
+
+    hr = IImageList2_GetOverlayImage(pil, iOverlay, piIndex);
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_GetOriginalSize(
+    _In_ IImageList2 *iface,
+    _In_ INT image,
+    _In_ DWORD flags,
+    _Out_ INT *cx,
+    _Out_ INT *cy)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+    IImageList2 *pil;
+    HRESULT hr;
+
+    /* The size of the image before it gets stretched to the gang size */
+    pil = GangImageList_PickList(This, NULL);
+    if (!pil)
+        return E_FAIL;
+
+    hr = IImageList2_GetIconSize(pil, cx, cy);
+    IImageList2_Release(pil);
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_SetOriginalSize(
+    _In_ IImageList2 *iface,
+    _In_ INT image,
+    _In_ INT cx,
+    _In_ INT cy)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_SetCallback(
+    _In_ IImageList2 *iface,
+    _In_opt_ IUnknown *callback)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_GetCallback(
+    _In_ IImageList2 *iface,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_ForceImagePresent(
+    _In_ IImageList2 *iface,
+    _In_ INT image,
+    _In_ DWORD flags)
+{
+    INT cImages;
+    HRESULT hr;
+
+    /* Images are always loaded in the attached lists */
+    hr = GangImageList_GetImageCount(iface, &cImages);
+    if (SUCCEEDED(hr) && (image < 0 || image >= cImages))
+        hr = E_INVALIDARG;
+    return hr;
+}
+
+static HRESULT WINAPI
+GangImageList_DiscardImages(
+    _In_ IImageList2 *iface,
+    _In_ INT first_image,
+    _In_ INT last_image,
+    _In_ DWORD flags)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_PreloadImages(
+    _In_ IImageList2 *iface,
+    _In_ IMAGELISTDRAWPARAMS *params)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_GetStatistics(
+    _In_ IImageList2 *iface,
+    _Inout_ IMAGELISTSTATS *stats)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_Initialize(
+    _In_ IImageList2 *iface,
+    _In_ INT cx,
+    _In_ INT cy,
+    _In_ UINT flags,
+    _In_ INT initial,
+    _In_ INT grow)
+{
+    PGANG_IMAGELIST This = GangImageList_FromIface(iface);
+
+    if (cx <= 0 || cy <= 0)
+        return E_INVALIDARG;
+
+    EnterCriticalSection(&This->Lock);
+    This->cx = cx;
+    This->cy = cy;
+    This->flags = flags;
+    LeaveCriticalSection(&This->Lock);
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_Replace2(
+    _In_ IImageList2 *iface,
+    _In_ INT i,
+    _In_ HBITMAP image,
+    _In_opt_ HBITMAP mask,
+    _In_opt_ IUnknown *unk,
+    _In_ DWORD flags)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI
+GangImageList_ReplaceFromImageList(
+    _In_ IImageList2 *iface,
+    _In_ INT i,
+    _In_ IImageList *imagelist,
+    _In_ INT src,
+    _In_opt_ IUnknown *unk,
+    _In_ DWORD flags)
+{
+    return E_NOTIMPL;
+}
+
+static const IImageList2Vtbl GangImageList_Vtbl =
+{
+    GangImageList_QueryInterface,
+    GangImageList_AddRef,
+    GangImageList_Release,
+    GangImageList_Add,
+    GangImageList_ReplaceIcon,
+    GangImageList_SetOverlayImage,
+    GangImageList_Replace,
+    GangImageList_AddMasked,
+    GangImageList_Draw,
+    GangImageList_Remove,
+    GangImageList_GetIcon,
+    GangImageList_GetImageInfo,
+    GangImageList_Copy,
+    GangImageList_Merge,
+    GangImageList_Clone,
+    GangImageList_GetImageRect,
+    GangImageList_GetIconSize,
+    GangImageList_SetIconSize,
+    GangImageList_GetImageCount,
+    GangImageList_SetImageCount,
+    GangImageList_SetBkColor,
+    GangImageList_GetBkColor,
+    GangImageList_BeginDrag,
+    GangImageList_EndDrag,
+    GangImageList_DragEnter,
+    GangImageList_DragLeave,
+    GangImageList_DragMove,
+    GangImageList_SetDragCursorImage,
+    GangImageList_DragShowNolock,
+    GangImageList_GetDragImage,
+    GangImageList_GetItemFlags,
+    GangImageList_GetOverlayImage,
+    GangImageList_Resize,
+    GangImageList_GetOriginalSize,
+    GangImageList_SetOriginalSize,
+    GangImageList_SetCallback,
+    GangImageList_GetCallback,
+    GangImageList_ForceImagePresent,
+    GangImageList_DiscardImages,
+    GangImageList_PreloadImages,
+    GangImageList_GetStatistics,
+    GangImageList_Initialize,
+    GangImageList_Replace2,
+    GangImageList_ReplaceFromImageList
+};
+
+static HRESULT WINAPI
+GangImageList_Gang_QueryInterface(
+    _In_ IGangImageList *iface,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    PGANG_IMAGELIST This = GangImageList_FromGangIface(iface);
+    return GangImageList_QueryInterface(&This->IImageList2_iface, riid, ppv);
+}
+
+static ULONG WINAPI
+GangImageList_Gang_AddRef(
+    _In_ IGangImageList *iface)
+{
+    PGANG_IMAGELIST This = GangImageList_FromGangIface(iface);
+    return GangImageList_AddRef(&This->IImageList2_iface);
+}
+
+static ULONG WINAPI
+GangImageList_Gang_Release(
+    _In_ IGangImageList *iface)
+{
+    PGANG_IMAGELIST This = GangImageList_FromGangIface(iface);
+    return GangImageList_Release(&This->IImageList2_iface);
+}
+
+static HRESULT WINAPI
+GangImageList_Gang_SetImageLists(
+    _In_ IGangImageList *iface,
+    _In_ UINT cLists,
+    _In_reads_opt_(cLists) IImageList2 **ppil)
+{
+    PGANG_IMAGELIST This = GangImageList_FromGangIface(iface);
+    IImageList2 *Lists[GANG_MAX_LISTS];
+    UINT i, cOld;
+
+    if (cLists > GANG_MAX_LISTS || (cLists && !ppil))
+        return E_INVALIDARG;
+
+    ZeroMemory(Lists, sizeof(Lists));
+    for (i = 0; i < cLists; i++)
+    {
+        if (ppil[i])
+            IImageList2_QueryInterface(ppil[i], &IID_IImageList2, (void **)&Lists[i]);
+    }
+
+    EnterCriticalSection(&This->Lock);
+    cOld = This->cLists;
+    for (i = 0; i < GANG_MAX_LISTS; i++)
+    {
+        IImageList2 *pilOld = This->Lists[i];
+        This->Lists[i] = Lists[i];
+        Lists[i] = pilOld;
+    }
+    This->cLists = cLists;
+    LeaveCriticalSection(&This->Lock);
+
+    for (i = 0; i < cOld; i++)
+    {
+        if (Lists[i])
+            IImageList2_Release(Lists[i]);
+    }
+    return S_OK;
+}
+
+static HRESULT WINAPI
+GangImageList_Gang_GetImageList(
+    _In_ IGangImageList *iface,
+    _In_ UINT iList,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    PGANG_IMAGELIST This = GangImageList_FromGangIface(iface);
+    HRESULT hr = E_INVALIDARG;
+
+    if (!ppv)
+        return E_POINTER;
+    *ppv = NULL;
+
+    EnterCriticalSection(&This->Lock);
+    if (iList < This->cLists && This->Lists[iList])
+        hr = IImageList2_QueryInterface(This->Lists[iList], riid, ppv);
+    LeaveCriticalSection(&This->Lock);
+    return hr;
+}
+
+static const IGangImageListVtbl GangImageList_GangVtbl =
+{
+    GangImageList_Gang_QueryInterface,
+    GangImageList_Gang_AddRef,
+    GangImageList_Gang_Release,
+    GangImageList_Gang_SetImageLists,
+    GangImageList_Gang_GetImageList
+};
+
+static HRESULT
+GangImageList_CreateInstance(
+    _In_opt_ const IUnknown *pUnkOuter,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    PGANG_IMAGELIST This;
+    HRESULT hr;
+
+    *ppv = NULL;
+    if (pUnkOuter)
+        return CLASS_E_NOAGGREGATION;
+
+    This = heap_alloc_zero(sizeof(*This));
+    if (!This)
+        return E_OUTOFMEMORY;
+
+    This->IImageList2_iface.lpVtbl = &GangImageList_Vtbl;
+    This->IGangImageList_iface.lpVtbl = &GangImageList_GangVtbl;
+    This->ref = 1;
+    This->clrBk = CLR_NONE;
+    InitializeCriticalSection(&This->Lock);
+
+    hr = GangImageList_QueryInterface(&This->IImageList2_iface, riid, ppv);
+    GangImageList_Release(&This->IImageList2_iface);
+    return hr;
+}
+
+#endif /* __REACTOS__ */
+
 
 
 #ifdef __REACTOS__
@@ -4187,6 +5403,10 @@ static HRESULT ImageListImpl_CreateInstance(const IUnknown *pUnkOuter, REFIID ii
 
 static inline IImageList2* IImageList2_from_impl(HIMAGELIST himl)
 {
+    IImageList2 *gang = GangImageList_FromHandle(himl);
+    if (gang)
+        return gang;
+
     if (is_valid(himl))
     {
         return &himl->IImageList2_iface;
