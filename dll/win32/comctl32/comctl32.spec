@@ -185,3 +185,4 @@
 @ stdcall DrawShadowText(long wstr long ptr long long long long long)
 @ stdcall -version=0x600+ LoadIconWithScaleDown(long wstr long long long)
 @ stdcall -version=0x600+ LoadIconMetric(long wstr long long)
+@ stdcall -version=0x600+ ImageList_CoCreateInstance(ptr ptr ptr ptr)
