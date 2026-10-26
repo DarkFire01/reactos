@@ -1496,6 +1496,48 @@ DWORD WINAPI SHTruncateString(char *str, DWORD size)
     return size;
 }
 
+#ifdef __REACTOS__
+typedef HRESULT (WINAPI *PFN_MRM_IS_REFERENCE)(PCWSTR);
+typedef HRESULT (WINAPI *PFN_MRM_GET_STRING)(PCWSTR, PCWSTR, PCWSTR, PWSTR, SIZE_T, SIZE_T *);
+
+static HMODULE MrmModule;
+
+/* Package resource references ("@{...}") are resolved by MrmCoreR, loaded on first use and kept */
+static
+BOOL
+LoadResourceReference(
+    _In_ PCWSTR Source,
+    _Out_writes_(Length) PWSTR Buffer,
+    _In_ UINT Length,
+    _Out_ HRESULT *Status)
+{
+    HMODULE Module = MrmModule;
+    PFN_MRM_IS_REFERENCE IsReference;
+    PFN_MRM_GET_STRING GetString;
+    SIZE_T Needed = 0;
+
+    if (!Module)
+    {
+        Module = LoadLibraryW(L"mrmcorer.dll");
+        if (!Module)
+            return FALSE;
+        if (InterlockedCompareExchangePointer((PVOID *)&MrmModule, Module, NULL) != NULL)
+        {
+            FreeLibrary(Module);
+            Module = MrmModule;
+        }
+    }
+
+    IsReference = (PFN_MRM_IS_REFERENCE)GetProcAddress(Module, "ResourceManagerQueueIsResourceReference");
+    GetString = (PFN_MRM_GET_STRING)GetProcAddress(Module, "ResourceManagerQueueGetString");
+    if (!IsReference || !GetString || FAILED(IsReference(Source)))
+        return FALSE;
+
+    *Status = GetString(Source, NULL, NULL, Buffer, Length, &Needed);
+    return TRUE;
+}
+#endif
+
 HRESULT WINAPI SHLoadIndirectString(const WCHAR *src, WCHAR *dst, UINT dst_len, void **reserved)
 {
     WCHAR *dllname = NULL;
@@ -1506,6 +1548,11 @@ HRESULT WINAPI SHLoadIndirectString(const WCHAR *src, WCHAR *dst, UINT dst_len, 
 #endif
 
     TRACE("%s, %p, %#x, %p\n", debugstr_w(src), dst, dst_len, reserved);
+
+#ifdef __REACTOS__
+    if (src[0] == '@' && src[1] == '{' && LoadResourceReference(src, dst, dst_len, &hr))
+        return hr;
+#endif
 
     if (src[0] == '@')
     {
