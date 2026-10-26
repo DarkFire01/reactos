@@ -301,6 +301,7 @@ void CQueryAssociations::Reset()
         RegCloseKey(hkeyProgID);
     hkeySource = hkeyProgID = NULL;
     m_InitType = 0;
+    m_AppPath.Free();
 }
 
 HRESULT CQueryAssociations::DuplicateHKey(HKEY hKey, HKEY *phKey)
@@ -414,6 +415,14 @@ HRESULT STDMETHODCALLTYPE CQueryAssociations::Init(
             hr = StringCchPrintfW(buf, _countof(buf), L"%s\\%s%s", L"Applications", pszAppFile, pszDotExt);
             if (FAILED(hr))
                 return hr;
+
+            // A full path still names the program when it has no Applications key
+            if (pszAppFile != pszAssoc)
+            {
+                hr = SHStrDupW(pszAssoc, &m_AppPath);
+                if (FAILED(hr))
+                    return hr;
+            }
             pszAssoc = buf;
         }
         else if (*pszAssoc == L'{')
@@ -443,6 +452,8 @@ HRESULT STDMETHODCALLTYPE CQueryAssociations::Init(
         OpenClassKey(cfFlags, pszAssoc, &this->hkeyProgID);
         if (!this->hkeySource)
             this->hkeySource = this->hkeyProgID;
+        if (m_InitType == 'A' && !GetClassHandle() && m_AppPath && PathFileExistsW(m_AppPath))
+            return S_FALSE;
 done:
         return (!GetClassHandle() && IsNT5()) ? S_FALSE : S_OK;
     }
@@ -496,7 +507,8 @@ HRESULT STDMETHODCALLTYPE CQueryAssociations::GetString(
     if (!pcchOut)
         return E_UNEXPECTED;
 
-    if (!GetClassHandle())
+    // A program named by its full path needs no registry key for its display name
+    if (!GetClassHandle() && (str != ASSOCSTR_FRIENDLYAPPNAME || !m_AppPath))
         goto trybase;
 
     switch (str)
@@ -560,7 +572,10 @@ HRESULT STDMETHODCALLTYPE CQueryAssociations::GetString(
             WCHAR *bufW;
             WCHAR fileDescW[41];
 
-            hr = this->GetExecutable(pszExtra, path, MAX_PATH, &len);
+            if (m_AppPath)
+                hr = StringCchCopyW(path, _countof(path), m_AppPath);
+            else
+                hr = this->GetExecutable(pszExtra, path, MAX_PATH, &len);
             if (FAILED(hr))
             {
                 return hr;
