@@ -164,6 +164,9 @@ typedef struct _TREEITEM    /* HTREEITEM is a _TREEINFO *. */
                                Each item takes up "item.iIntegral" spots in the visible order.
                                0 is the root's first child. */
   const TREEVIEW_INFO *infoPtr; /* tree data this item belongs to */
+#ifdef __REACTOS__
+  UINT      uStateEx;       /* TVIS_EX_* flags */
+#endif
 } TREEVIEW_ITEM;
 
 /******** Defines that TREEVIEW_ProcessLetterKeys uses ****************/
@@ -194,6 +197,11 @@ typedef struct _TREEITEM    /* HTREEITEM is a _TREEINFO *. */
 #define STATEIMAGEINDEX(x) (((x) >> 12) & 0x0f)
 #define OVERLAYIMAGEINDEX(x) (((x) >> 8) & 0x0f)
 #define ISVISIBLE(x)         ((x)->visibleOrder >= 0)
+#ifdef __REACTOS__
+/* A flat item is never shown, its children take its place in the list */
+#define ISFLAT(x)            (((x)->uStateEx & TVIS_EX_FLAT) != 0)
+#define ISLISTEXPANDED(x)    (((x)->state & TVIS_EXPANDED) || ISFLAT(x))
+#endif
 
 #define GETLINECOLOR(x) ((x) == CLR_DEFAULT ? comctl32_color.clrGrayText   : (x))
 #define GETBKCOLOR(x)   ((x) == CLR_NONE    ? comctl32_color.clrWindow     : (x))
@@ -367,6 +375,11 @@ TREEVIEW_IsItemHit(const TREEVIEW_INFO *infoPtr, const TVHITTESTINFO *ht)
 
 /* Tree Traversal *******************************************************/
 
+#ifdef __REACTOS__
+static TREEVIEW_ITEM *
+TREEVIEW_GetPrevListItem(const TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *tvItem);
+#endif
+
 /***************************************************************************
  * This method returns the last expanded sibling or child child item
  * of a tree node
@@ -378,7 +391,11 @@ TREEVIEW_GetLastListItem(const TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *item)
 
     while (item->lastChild)
     {
+#ifdef __REACTOS__
+       if (ISLISTEXPANDED(item))
+#else
        if (item->state & TVIS_EXPANDED)
+#endif
           item = item->lastChild;
        else
           break;
@@ -387,6 +404,10 @@ TREEVIEW_GetLastListItem(const TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *item)
     if (item == infoPtr->root)
         return NULL;
 
+#ifdef __REACTOS__
+    if (ISFLAT(item))
+        return TREEVIEW_GetPrevListItem(infoPtr, item);
+#endif
     return item;
 }
 
@@ -397,6 +418,26 @@ TREEVIEW_GetLastListItem(const TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *item)
 static TREEVIEW_ITEM *
 TREEVIEW_GetPrevListItem(const TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *tvItem)
 {
+#ifdef __REACTOS__
+    do
+    {
+        if (tvItem->prevSibling)
+        {
+            TREEVIEW_ITEM *upItem = tvItem->prevSibling;
+
+            if (ISLISTEXPANDED(upItem) && upItem->lastChild != NULL)
+                return TREEVIEW_GetLastListItem(infoPtr, upItem->lastChild);
+
+            tvItem = upItem;
+        }
+        else
+        {
+            tvItem = (tvItem->parent != infoPtr->root) ? tvItem->parent : NULL;
+        }
+    } while (tvItem && ISFLAT(tvItem));
+
+    return (TREEVIEW_ITEM *)tvItem;
+#else
     if (tvItem->prevSibling)
     {
 	/* This item has a prevSibling, get the last item in the sibling's tree. */
@@ -412,6 +453,7 @@ TREEVIEW_GetPrevListItem(const TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *tvIt
 	/* this item does not have a prevSibling, get the parent */
 	return (tvItem->parent != infoPtr->root) ? tvItem->parent : NULL;
     }
+#endif
 }
 
 
@@ -422,6 +464,24 @@ TREEVIEW_GetPrevListItem(const TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *tvIt
 static TREEVIEW_ITEM *
 TREEVIEW_GetNextListItem(const TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *tvItem)
 {
+#ifdef __REACTOS__
+    do
+    {
+        if (ISLISTEXPANDED(tvItem) && tvItem->firstChild != NULL)
+        {
+            tvItem = tvItem->firstChild;
+            continue;
+        }
+
+        while (tvItem && !tvItem->nextSibling)
+            tvItem = tvItem->parent;
+
+        if (tvItem)
+            tvItem = tvItem->nextSibling;
+    } while (tvItem && ISFLAT(tvItem));
+
+    return (TREEVIEW_ITEM *)tvItem;
+#else
     /*
      * If this item has children and is expanded, return the first child
      */
@@ -449,7 +509,31 @@ TREEVIEW_GetNextListItem(const TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *tvIt
     }
 
     return NULL;
+#endif
 }
+
+#ifdef __REACTOS__
+/* First item of the list, the root's first child unless that one is flat */
+static TREEVIEW_ITEM *
+TREEVIEW_GetFirstListItem(const TREEVIEW_INFO *infoPtr)
+{
+    TREEVIEW_ITEM *item = infoPtr->root->firstChild;
+
+    if (item && ISFLAT(item))
+        item = TREEVIEW_GetNextListItem(infoPtr, item);
+    return item;
+}
+
+/* Whether children of this item are part of the list */
+static BOOL
+TREEVIEW_IsListParent(const TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *item)
+{
+    while (item != infoPtr->root && ISFLAT(item))
+        item = item->parent;
+
+    return item == infoPtr->root || (ISVISIBLE(item) && (item->state & TVIS_EXPANDED));
+}
+#endif
 
 /***************************************************************************
  * This method returns the nth item starting at the given item.  It returns
@@ -929,7 +1013,11 @@ TREEVIEW_RecalculateVisibleOrder(TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *start)
 
     if (!start)
     {
+#ifdef __REACTOS__
+	start = TREEVIEW_GetFirstListItem(infoPtr);
+#else
 	start = infoPtr->root->firstChild;
+#endif
 	order = 0;
     }
     else
@@ -946,7 +1034,11 @@ TREEVIEW_RecalculateVisibleOrder(TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *start)
 
     infoPtr->maxVisibleOrder = order;
 
+#ifdef __REACTOS__
+    for (item = TREEVIEW_GetFirstListItem(infoPtr); item != NULL;
+#else
     for (item = infoPtr->root->firstChild; item != NULL;
+#endif
 	 item = TREEVIEW_GetNextListItem(infoPtr, item))
     {
 	TREEVIEW_ComputeItemRect(infoPtr, item);
@@ -1155,6 +1247,11 @@ TREEVIEW_DoSetItemT(const TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *item,
             callbackSet |= TVIF_TEXT;
             item->pszText = heap_realloc(item->pszText, TEXT_CALLBACK_SIZE * sizeof(WCHAR));
 	    item->cchTextMax = TEXT_CALLBACK_SIZE;
+#ifdef __REACTOS__
+            /* A failed name callback leaves the text empty instead of heap garbage */
+            if (item->pszText)
+                item->pszText[0] = UNICODE_NULL;
+#endif
 	    TRACE("setting callback, item %p\n", item);
 	}
     }
@@ -1217,7 +1314,11 @@ TREEVIEW_DoSetItemT(const TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *item,
 
     if (tvItem->mask & TVIF_STATEEX)
     {
+#ifdef __REACTOS__
+        item->uStateEx = tvItem->uStateEx & (TVIS_EX_FLAT | TVIS_EX_DISABLED);
+#else
         FIXME("New extended state: 0x%x\n", tvItem->uStateEx);
+#endif
     }
 
     item->callbackMask |= callbackSet;
@@ -1378,7 +1479,12 @@ TREEVIEW_InsertItemT(TREEVIEW_INFO *infoPtr, const TVINSERTSTRUCTW *ptdi, BOOL i
     TRACE("new item %p; parent %p, mask 0x%x\n", newItem,
 	  newItem->parent, tvItem->mask);
 
+#ifdef __REACTOS__
+    /* Children of a flat item sit on its level */
+    newItem->iLevel = newItem->parent->iLevel + (ISFLAT(newItem->parent) ? 0 : 1);
+#else
     newItem->iLevel = newItem->parent->iLevel + 1;
+#endif
 
     if (newItem->parent->cChildren == 0)
 	newItem->parent->cChildren = 1;
@@ -1389,15 +1495,24 @@ TREEVIEW_InsertItemT(TREEVIEW_INFO *infoPtr, const TVINSERTSTRUCTW *ptdi, BOOL i
 	    newItem->state |= INDEXTOSTATEIMAGEMASK(1);
     }
 
+#ifdef __REACTOS__
+    if (infoPtr->firstVisible == NULL && !ISFLAT(newItem) &&
+        TREEVIEW_IsListParent(infoPtr, parentItem))
+#else
     if (infoPtr->firstVisible == NULL)
+#endif
 	infoPtr->firstVisible = newItem;
 
     TREEVIEW_VerifyTree(infoPtr);
 
     if (!infoPtr->bRedraw) return (LRESULT)newItem;
 
+#ifdef __REACTOS__
+    if (!ISFLAT(newItem) && TREEVIEW_IsListParent(infoPtr, parentItem))
+#else
     if (parentItem == infoPtr->root ||
         (ISVISIBLE(parentItem) && parentItem->state & TVIS_EXPANDED))
+#endif
     {
        TREEVIEW_ITEM *item;
        TREEVIEW_ITEM *prev = TREEVIEW_GetPrevListItem(infoPtr, newItem);
@@ -1537,7 +1652,11 @@ TREEVIEW_DeleteItem(TREEVIEW_INFO *infoPtr, HTREEITEM item)
 	TRACE("%p (%s)\n", item, TREEVIEW_ItemName(item));
 	parent = item->parent;
 
+#ifdef __REACTOS__
+        if (ISVISIBLE(item) || (ISFLAT(item) && TREEVIEW_IsListParent(infoPtr, item->parent)))
+#else
         if (ISVISIBLE(item))
+#endif
         {
             prev = TREEVIEW_GetPrevListItem(infoPtr, item);
             visible = TRUE;
@@ -1553,6 +1672,10 @@ TREEVIEW_DeleteItem(TREEVIEW_INFO *infoPtr, HTREEITEM item)
 		newSelection = item->parent;
             else
                 newSelection = item->prevSibling;
+#ifdef __REACTOS__
+            if (newSelection && ISFLAT(newSelection))
+                newSelection = NULL;
+#endif
             TRACE("newSelection = %p\n", newSelection);
 	}
 
@@ -1589,8 +1712,13 @@ TREEVIEW_DeleteItem(TREEVIEW_INFO *infoPtr, HTREEITEM item)
     if (!TREEVIEW_ValidItem(infoPtr, infoPtr->dropItem))
 	infoPtr->dropItem = 0;
 
+#ifdef __REACTOS__
+    if (!TREEVIEW_ValidItem(infoPtr, newFirstVisible) || ISFLAT(newFirstVisible))
+        newFirstVisible = TREEVIEW_GetFirstListItem(infoPtr);
+#else
     if (!TREEVIEW_ValidItem(infoPtr, newFirstVisible))
         newFirstVisible = infoPtr->root->firstChild;
+#endif
 
     TREEVIEW_VerifyTree(infoPtr);
 
@@ -2173,8 +2301,12 @@ TREEVIEW_GetItemT(const TREEVIEW_INFO *infoPtr, LPTVITEMEXW tvItem, BOOL isW)
 
     if (tvItem->mask & TVIF_STATEEX)
     {
+#ifdef __REACTOS__
+        tvItem->uStateEx = item->uStateEx;
+#else
         FIXME("Extended item state not supported, returning 0.\n");
         tvItem->uStateEx = 0;
+#endif
     }
 
     TRACE("item <%p>, txt %p, img %d, mask 0x%x\n",
@@ -2413,7 +2545,11 @@ TREEVIEW_DrawItemLines(const TREEVIEW_INFO *infoPtr, HDC hdc, const TREEVIEW_ITE
 	MoveToEx(hdc, item->stateOffset, centery, NULL);
 	LineTo(hdc, centerx - 1, centery);
 
+#ifdef __REACTOS__
+	if (item->prevSibling || item->iLevel > 0)
+#else
 	if (item->prevSibling || item->parent != infoPtr->root)
+#endif
 	{
 	    MoveToEx(hdc, centerx, item->rect.top, NULL);
 	    LineTo(hdc, centerx, centery);
@@ -2431,7 +2567,11 @@ TREEVIEW_DrawItemLines(const TREEVIEW_INFO *infoPtr, HDC hdc, const TREEVIEW_ITE
 	{
 	    int pcenterx = (parent->linesOffset + parent->stateOffset) / 2;
 
+#ifdef __REACTOS__
+	    if (!ISFLAT(parent) && parent->nextSibling
+#else
 	    if (parent->nextSibling
+#endif
 		/* skip top-levels unless TVS_LINESATROOT */
 		&& parent->stateOffset > parent->linesOffset)
 	    {
@@ -2769,7 +2909,11 @@ TREEVIEW_UpdateScrollBars(TREEVIEW_INFO *infoPtr)
 
     /* We iterate through all visible items in order to get the tree height
      * and width */
+#ifdef __REACTOS__
+    item = TREEVIEW_GetFirstListItem(infoPtr);
+#else
     item = infoPtr->root->firstChild;
+#endif
 
     while (item != NULL)
     {
@@ -2787,8 +2931,13 @@ TREEVIEW_UpdateScrollBars(TREEVIEW_INFO *infoPtr)
     }
 
     /* Fix the scroll adjusted treeHeight and treeWidth. */
+#ifdef __REACTOS__
+    if (TREEVIEW_GetFirstListItem(infoPtr))
+	infoPtr->treeHeight -= TREEVIEW_GetFirstListItem(infoPtr)->rect.top;
+#else
     if (infoPtr->root->firstChild)
 	infoPtr->treeHeight -= infoPtr->root->firstChild->rect.top;
+#endif
 
     infoPtr->treeWidth += infoPtr->scrollX;
 
@@ -2930,7 +3079,11 @@ TREEVIEW_Refresh(TREEVIEW_INFO *infoPtr, HDC hdc, const RECT *rc)
 	return;
     }
 
+#ifdef __REACTOS__
+    for (item = TREEVIEW_GetFirstListItem(infoPtr);
+#else
     for (item = infoPtr->root->firstChild;
+#endif
          item != NULL;
          item = TREEVIEW_GetNextListItem(infoPtr, item))
     {
@@ -3260,11 +3413,19 @@ TREEVIEW_Sort(TREEVIEW_INFO *infoPtr, HTREEITEM parent,
 
 	TREEVIEW_VerifyTree(infoPtr);
 
+#ifdef __REACTOS__
+	if (ISLISTEXPANDED(parent) && infoPtr->firstVisible)
+#else
 	if (parent->state & TVIS_EXPANDED)
+#endif
 	{
 	    int visOrder = infoPtr->firstVisible->visibleOrder;
 
+#ifdef __REACTOS__
+	    if (parent == infoPtr->root || ISFLAT(parent))
+#else
 	    if (parent == infoPtr->root)
+#endif
 	        TREEVIEW_RecalculateVisibleOrder(infoPtr, NULL);
 	    else
 	        TREEVIEW_RecalculateVisibleOrder(infoPtr, parent);
@@ -3273,7 +3434,11 @@ TREEVIEW_Sort(TREEVIEW_INFO *infoPtr, HTREEITEM parent,
 	    {
 	        TREEVIEW_ITEM *item;
 
+#ifdef __REACTOS__
+	        for (item = TREEVIEW_GetFirstListItem(infoPtr); item != NULL;
+#else
 	        for (item = infoPtr->root->firstChild; item != NULL;
+#endif
 	             item = TREEVIEW_GetNextListItem(infoPtr, item))
 	        {
 	            if (item->visibleOrder == visOrder)
@@ -4686,7 +4851,11 @@ static INT TREEVIEW_ProcessLetterKeys(TREEVIEW_INFO *infoPtr, WPARAM charCode, L
             idx=endidx;
     } else {
         endidx=NULL;
+#ifdef __REACTOS__
+        idx=TREEVIEW_GetFirstListItem(infoPtr);
+#else
         idx=infoPtr->root->firstChild;
+#endif
     }
     do {
         /* At the end point, sort out wrapping */
@@ -4697,7 +4866,11 @@ static INT TREEVIEW_ProcessLetterKeys(TREEVIEW_INFO *infoPtr, WPARAM charCode, L
                 break;
 
             /* Otherwise, start again at the very beginning */
+#ifdef __REACTOS__
+            idx=TREEVIEW_GetFirstListItem(infoPtr);
+#else
             idx=infoPtr->root->firstChild;
+#endif
 
             /* But if we are stopping on the first child, end now! */
             if (idx == endidx) break;
@@ -4746,6 +4919,11 @@ TREEVIEW_EnsureVisible(TREEVIEW_INFO *infoPtr, HTREEITEM item, BOOL bHScroll)
     if (!TREEVIEW_ValidItem(infoPtr, item))
 	return FALSE;
 
+#ifdef __REACTOS__
+    if (ISFLAT(item))
+        return FALSE;
+#endif
+
     if (!ISVISIBLE(item))
     {
 	/* Expand parents as necessary. */
@@ -4759,7 +4937,11 @@ TREEVIEW_EnsureVisible(TREEVIEW_INFO *infoPtr, HTREEITEM item, BOOL bHScroll)
 
 	while (parent != infoPtr->root)
 	{
+#ifdef __REACTOS__
+	    if (!ISLISTEXPANDED(parent))
+#else
 	    if (!(parent->state & TVIS_EXPANDED))
+#endif
 		TREEVIEW_Expand(infoPtr, parent, FALSE, TRUE);
 
 	    parent = parent->parent;
@@ -4854,7 +5036,11 @@ TREEVIEW_SetFirstVisible(TREEVIEW_INFO *infoPtr,
 
 	    /* ... unless we just don't have enough items. */
 	    if (newFirstVisible == NULL)
+#ifdef __REACTOS__
+		newFirstVisible = TREEVIEW_GetFirstListItem(infoPtr);
+#else
 		newFirstVisible = infoPtr->root->firstChild;
+#endif
 	}
     }
 
@@ -4874,7 +5060,11 @@ TREEVIEW_SetFirstVisible(TREEVIEW_INFO *infoPtr,
 
 	    infoPtr->firstVisible = newFirstVisible;
 
+#ifdef __REACTOS__
+	    for (item = TREEVIEW_GetFirstListItem(infoPtr); item != NULL;
+#else
 	    for (item = infoPtr->root->firstChild; item != NULL;
+#endif
 	         item = TREEVIEW_GetNextListItem(infoPtr, item))
 	    {
 	       item->rect.top += scroll;
@@ -4910,14 +5100,22 @@ TREEVIEW_VScroll(TREEVIEW_INFO *infoPtr, WPARAM wParam)
 
     if (!oldFirstVisible)
     {
+#ifdef __REACTOS__
+	assert(TREEVIEW_GetFirstListItem(infoPtr) == NULL);
+#else
 	assert(infoPtr->root->firstChild == NULL);
+#endif
 	return 0;
     }
 
     switch (nScrollCode)
     {
     case SB_TOP:
+#ifdef __REACTOS__
+	newFirstVisible = TREEVIEW_GetFirstListItem(infoPtr);
+#else
 	newFirstVisible = infoPtr->root->firstChild;
+#endif
 	break;
 
     case SB_BOTTOM:
@@ -4945,7 +5143,11 @@ TREEVIEW_VScroll(TREEVIEW_INFO *infoPtr, WPARAM wParam)
     case SB_THUMBTRACK:
     case SB_THUMBPOSITION:
 	newFirstVisible = TREEVIEW_GetListItem(infoPtr,
+#ifdef __REACTOS__
+					       TREEVIEW_GetFirstListItem(infoPtr),
+#else
 					       infoPtr->root->firstChild,
+#endif
 					       (LONG)(SHORT)HIWORD(wParam));
 	break;
 
@@ -5021,7 +5223,11 @@ scroll:
         TREEVIEW_ITEM *item;
         LONG scroll_pixels = infoPtr->scrollX - scrollX;
 
+#ifdef __REACTOS__
+        for (item = TREEVIEW_GetFirstListItem(infoPtr); item != NULL;
+#else
         for (item = infoPtr->root->firstChild; item != NULL;
+#endif
              item = TREEVIEW_GetNextListItem(infoPtr, item))
         {
            item->linesOffset += scroll_pixels;
@@ -5304,7 +5510,11 @@ TREEVIEW_KeyDown(TREEVIEW_INFO *infoPtr, WPARAM wParam)
     case VK_UP:
 	newSelection = TREEVIEW_GetPrevListItem(infoPtr, prevItem);
 	if (!newSelection)
+#ifdef __REACTOS__
+	    newSelection = TREEVIEW_GetFirstListItem(infoPtr);
+#else
 	    newSelection = infoPtr->root->firstChild;
+#endif
 	break;
 
     case VK_DOWN:
@@ -5316,7 +5526,11 @@ TREEVIEW_KeyDown(TREEVIEW_INFO *infoPtr, WPARAM wParam)
         break;
 
     case VK_HOME:
+#ifdef __REACTOS__
+	newSelection = TREEVIEW_GetFirstListItem(infoPtr);
+#else
 	newSelection = infoPtr->root->firstChild;
+#endif
 	break;
 
     case VK_END:
@@ -5328,7 +5542,11 @@ TREEVIEW_KeyDown(TREEVIEW_INFO *infoPtr, WPARAM wParam)
 	{
 	    TREEVIEW_Collapse(infoPtr, prevItem, FALSE, TRUE);
 	}
+#ifdef __REACTOS__
+	else if (prevItem->parent != infoPtr->root && !ISFLAT(prevItem->parent))
+#else
 	else if (prevItem->parent != infoPtr->root)
+#endif
 	{
 	    newSelection = prevItem->parent;
 	}
@@ -6015,7 +6233,11 @@ TREEVIEW_VerifyItem(TREEVIEW_INFO *infoPtr, const TREEVIEW_ITEM *item)
 
     assert(item->parent != NULL);
     assert(item->parent != item);
+#ifdef __REACTOS__
+    assert(item->iLevel == item->parent->iLevel + (ISFLAT(item->parent) ? 0 : 1));
+#else
     assert(item->iLevel == item->parent->iLevel + 1);
+#endif
 
     assert(DPA_GetPtrIndex(infoPtr->items, item) != -1);
 
