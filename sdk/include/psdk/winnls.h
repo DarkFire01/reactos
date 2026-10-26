@@ -1023,6 +1023,19 @@ GetUserDefaultLocaleName(
 LCID WINAPI GetUserDefaultLCID(void);
 GEOID WINAPI GetUserGeoID(_In_ GEOCLASS);
 
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS3) || defined(__REACTOS__)
+int
+WINAPI
+GetUserDefaultGeoName(
+    _Out_writes_opt_(geoNameCount) LPWSTR geoName,
+    _In_ int geoNameCount);
+
+BOOL
+WINAPI
+SetUserGeoName(
+    _In_ PWSTR geoName);
+#endif
+
 #if (WINVER >= 0x0600) || defined(__REACTOS__)
 
 int
