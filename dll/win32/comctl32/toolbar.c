@@ -138,6 +138,7 @@ typedef struct
     SIZE     szPadding;       /* padding values around button */
 #ifdef __REACTOS__
     SIZE     szBarPadding;       /* padding values around the toolbar (NOT USED BUT STORED) */
+    SIZE     szBound;         /* TB_SETBOUNDINGSIZE, Windows lays it out only for TBSTYLE_EX_MULTICOLUMN */
     SIZE     szSpacing;       /* spacing values between buttons */
     MARGINS  themeMargins;
 #endif
@@ -5527,12 +5528,22 @@ TOOLBAR_GetStringW (const TOOLBAR_INFO *infoPtr, WPARAM wParam, LPWSTR str)
     return ret;
 }
 
+#ifdef __REACTOS__
+static LRESULT TOOLBAR_SetBoundingSize(TOOLBAR_INFO *infoPtr, const SIZE *pSize)
+{
+    /* Windows only stores the size here; the next layout of a multicolumn toolbar uses it */
+    TRACE("size.cx=%d, size.cy=%d\n", pSize->cx, pSize->cy);
+    infoPtr->szBound = *pSize;
+    return 0;
+}
+#else
 static LRESULT TOOLBAR_SetBoundingSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
 {
     SIZE * pSize = (SIZE*)lParam;
     FIXME("hwnd=%p, wParam=0x%08lx, size.cx=%d, size.cy=%d stub\n", hwnd, wParam, pSize->cx, pSize->cy);
     return 0;
 }
+#endif
 
 /* This is an extended version of the TB_SETHOTITEM message. It allows the
  * caller to specify a reason why the hot item changed (rather than just the
@@ -7234,7 +7245,11 @@ ToolbarWindowProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	    return TOOLBAR_SetUnicodeFormat (infoPtr, wParam);
 
 	case TB_SETBOUNDINGSIZE:
+#ifdef __REACTOS__
+	    return TOOLBAR_SetBoundingSize(infoPtr, (const SIZE *)lParam);
+#else
 	    return TOOLBAR_SetBoundingSize(hwnd, wParam, lParam);
+#endif
 
 	case TB_SETHOTITEM2:
 	    return TOOLBAR_SetHotItem2 (infoPtr, wParam, lParam);
