@@ -1524,6 +1524,99 @@ NtQueryInformationProcess(
             break;
         }
 
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
+        /* The startup flags and window title the process was created with */
+        case ProcessWindowInformation:
+        {
+            PPROCESS_WINDOW_INFORMATION WindowInfo = ProcessInformation;
+            PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+            UNICODE_STRING WindowTitle;
+            PWCHAR TitleBuffer = NULL;
+            ULONG WindowFlags = 0;
+            KAPC_STATE ApcState;
+
+            RtlInitEmptyUnicodeString(&WindowTitle, NULL, 0);
+
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            if (!ExAcquireRundownProtection(&Process->RundownProtect))
+            {
+                ObDereferenceObject(Process);
+                Status = STATUS_PROCESS_IS_TERMINATING;
+                break;
+            }
+
+            /* The process parameters are user memory of the target, so copy the title to pool */
+            KeStackAttachProcess(&Process->Pcb, &ApcState);
+            _SEH2_TRY
+            {
+                if (Process->Peb)
+                {
+                    ProcessParameters = Process->Peb->ProcessParameters;
+                    ProbeForRead(ProcessParameters, sizeof(*ProcessParameters), sizeof(ULONG));
+                    WindowFlags = ProcessParameters->WindowFlags;
+                    WindowTitle = ProcessParameters->WindowTitle;
+                    WindowTitle.Length &= ~(sizeof(WCHAR) - 1);
+
+                    if (WindowTitle.Length)
+                    {
+                        ProbeForRead(WindowTitle.Buffer, WindowTitle.Length, sizeof(WCHAR));
+                        TitleBuffer = ExAllocatePoolWithTag(PagedPool,
+                                                            WindowTitle.Length,
+                                                            TAG_PS_WINDOW_INFO);
+                        if (TitleBuffer)
+                            RtlCopyMemory(TitleBuffer, WindowTitle.Buffer, WindowTitle.Length);
+                        else
+                            Status = STATUS_INSUFFICIENT_RESOURCES;
+                    }
+                }
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            KeUnstackDetachProcess(&ApcState);
+            ExReleaseRundownProtection(&Process->RundownProtect);
+            ObDereferenceObject(Process);
+
+            if (NT_SUCCESS(Status))
+            {
+                if (!TitleBuffer)
+                    WindowTitle.Length = 0;
+
+                Length = FIELD_OFFSET(PROCESS_WINDOW_INFORMATION, WindowTitle) + WindowTitle.Length;
+                if (ProcessInformationLength < Length)
+                {
+                    Status = STATUS_INFO_LENGTH_MISMATCH;
+                }
+                else
+                {
+                    _SEH2_TRY
+                    {
+                        WindowInfo->WindowFlags = WindowFlags;
+                        WindowInfo->WindowTitleLength = WindowTitle.Length;
+                        if (TitleBuffer)
+                            RtlCopyMemory(WindowInfo->WindowTitle, TitleBuffer, WindowTitle.Length);
+                    }
+                    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                    {
+                        Status = _SEH2_GetExceptionCode();
+                    }
+                    _SEH2_END;
+                }
+            }
+
+            if (TitleBuffer)
+                ExFreePoolWithTag(TitleBuffer, TAG_PS_WINDOW_INFO);
+            break;
+        }
+#endif
+
         /* Not supported by Server 2003 */
         default:
 #if DBG
