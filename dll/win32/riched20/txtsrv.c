@@ -171,6 +171,10 @@ HRESULT __thiscall fnTextSrv_TxDraw( ITextServices *iface, DWORD aspect, LONG in
 
     if (view_id == TXTVIEW_ACTIVE && services->editor->freeze_count) return E_UNEXPECTED;
 
+#ifdef __REACTOS__
+    editor_query_selbar( services->editor );
+#endif
+
     hr = update_client_rect( services, (RECT *)bounds );
     if (FAILED( hr )) return hr;
     if (hr == S_OK) rewrap = TRUE;
@@ -189,6 +193,11 @@ HRESULT __thiscall fnTextSrv_TxDraw( ITextServices *iface, DWORD aspect, LONG in
         ITextHost_TxNotify( services->editor->texthost, EN_UPDATE, NULL );
 
     editor_draw( services->editor, dc, update );
+
+#ifdef __REACTOS__
+    /* The caret follows the view when the host moved it */
+    if (rewrap && services->editor->bHaveFocus) update_caret( services->editor );
+#endif
 
     if (!draw) ITextHost_TxReleaseDC( services->editor->texthost, dc );
     return S_OK;
@@ -235,6 +244,9 @@ HRESULT __thiscall fnTextSrv_OnTxSetCursor( ITextServices *iface, DWORD aspect, 
     if (aspect != DVASPECT_CONTENT || index || aspect_info || td || draw || target || client)
         FIXME( "Ignoring most params\n" );
 
+#ifdef __REACTOS__
+    editor_query_selbar( services->editor );
+#endif
     link_notify( services->editor, WM_SETCURSOR, 0, MAKELPARAM( x, y ) );
     editor_set_cursor( services->editor, x, y );
     return S_OK;
@@ -287,8 +299,14 @@ HRESULT __thiscall fnTextSrv_OnTxUIActivate(ITextServices *iface)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
+#ifdef __REACTOS__
+    /* Windows has nothing to do here and reports success */
+    TRACE( "%p\n", services );
+    return S_OK;
+#else
     FIXME( "%p: STUB\n", services );
     return E_NOTIMPL;
+#endif
 }
 
 DEFINE_THISCALL_WRAPPER(fnTextSrv_OnTxUIDeactivate,4)
@@ -296,8 +314,13 @@ HRESULT __thiscall fnTextSrv_OnTxUIDeactivate(ITextServices *iface)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
+#ifdef __REACTOS__
+    TRACE( "%p\n", services );
+    return S_OK;
+#else
     FIXME( "%p: STUB\n", services );
     return E_NOTIMPL;
+#endif
 }
 
 DEFINE_THISCALL_WRAPPER(fnTextSrv_TxGetText,8)
@@ -318,7 +341,16 @@ HRESULT __thiscall fnTextSrv_TxGetText( ITextServices *iface, BSTR *text )
         ME_GetTextW( services->editor, bstr, length, &start, INT_MAX, FALSE, FALSE );
         *text = bstr;
     }
+#ifdef __REACTOS__
+    /* Windows hands out an empty string, not NULL, for an empty control */
+    else
+    {
+        *text = SysAllocStringLen( NULL, 0 );
+        if (!*text) return E_OUTOFMEMORY;
+    }
+#else
     else *text = NULL;
+#endif
 
     return S_OK;
 }
@@ -328,6 +360,13 @@ HRESULT __thiscall fnTextSrv_TxSetText( ITextServices *iface, const WCHAR *text 
 {
     struct text_services *services = impl_from_ITextServices( iface );
     ME_Cursor cursor;
+#ifdef __REACTOS__
+    DWORD event_mask = services->editor->nEventMask;
+
+    /* Windows does not report a change when an empty control is set to empty text */
+    if (!ME_GetTextLength( services->editor ) && (!text || !*text))
+        services->editor->nEventMask &= ~ENM_CHANGE;
+#endif
 
     ME_SetCursorToStart( services->editor, &cursor );
     ME_InternalDeleteText( services->editor, &cursor, ME_GetTextLength( services->editor ), FALSE );
@@ -337,6 +376,9 @@ HRESULT __thiscall fnTextSrv_TxSetText( ITextServices *iface, const WCHAR *text 
     OleFlushClipboard();
     ME_EmptyUndoStack( services->editor );
     ME_UpdateRepaint( services->editor, FALSE );
+#ifdef __REACTOS__
+    services->editor->nEventMask = event_mask;
+#endif
 
     return S_OK;
 }
@@ -345,9 +387,21 @@ DEFINE_THISCALL_WRAPPER(fnTextSrv_TxGetCurTargetX,8)
 HRESULT __thiscall fnTextSrv_TxGetCurTargetX(ITextServices *iface, LONG *x)
 {
     struct text_services *services = impl_from_ITextServices( iface );
+#ifdef __REACTOS__
+    int caret_x, caret_y, height;
 
+    TRACE( "%p, %p\n", services, x );
+
+    if (!x) return E_INVALIDARG;
+
+    /* The caret's horizontal position in client coordinates */
+    cursor_coords( services->editor, &services->editor->pCursors[0], &caret_x, &caret_y, &height );
+    *x = caret_x;
+    return S_OK;
+#else
     FIXME( "%p: STUB\n", services );
     return E_NOTIMPL;
+#endif
 }
 
 DEFINE_THISCALL_WRAPPER(fnTextSrv_TxGetBaseLinePos,8)
@@ -408,6 +462,79 @@ HRESULT __thiscall fnTextSrv_TxGetDropTarget(ITextServices *iface, IDropTarget *
     return E_NOTIMPL;
 }
 
+#ifdef __REACTOS__
+/* Picks up the host's new default formats, text mode, back style and length limit */
+static
+BOOL
+host_props_changed(
+    _In_ ME_TextEditor *editor,
+    _In_ DWORD mask,
+    _In_ DWORD bits)
+{
+    BOOL changed = FALSE;
+    HRESULT hr;
+
+    if (mask & TXTBIT_RICHTEXT)
+    {
+        int mode = (bits & TXTBIT_RICHTEXT) ? TM_RICHTEXT : TM_PLAINTEXT;
+
+        /* Like EM_SETTEXTMODE this only works while the control is empty */
+        if (!(editor->mode & mode))
+            editor_handle_message( editor, EM_SETTEXTMODE, mode, 0, &hr );
+    }
+
+    if (mask & TXTBIT_CHARFORMATCHANGE)
+    {
+        const CHARFORMATW *host_cf;
+        CHARFORMAT2W cf;
+
+        if (ITextHost_TxGetCharFormat( editor->texthost, &host_cf ) == S_OK)
+        {
+            ZeroMemory( &cf, sizeof(cf) );
+            cf.cbSize = sizeof(cf);
+            if (cfany_to_cf2w( &cf, (const CHARFORMAT2W *)host_cf ))
+            {
+                ME_SetDefaultCharFormat( editor, &cf );
+                changed = TRUE;
+            }
+        }
+    }
+
+    if (mask & TXTBIT_PARAFORMATCHANGE)
+    {
+        const PARAFORMAT *host_pf;
+        ME_Paragraph *para;
+
+        if (ITextHost_TxGetParaFormat( editor->texthost, &host_pf ) == S_OK &&
+            (host_pf->dwMask & PFM_ALIGNMENT))
+        {
+            for (para = editor_first_para( editor ); para_next( para ); para = para_next( para ))
+            {
+                para->fmt.wAlignment = host_pf->wAlignment;
+                para_mark_rewrap( editor, para );
+            }
+            changed = TRUE;
+        }
+    }
+
+    if (mask & TXTBIT_BACKSTYLECHANGE)
+    {
+        ITextHost_TxGetBackStyle( editor->texthost, &editor->back_style );
+        changed = TRUE;
+    }
+
+    if (mask & TXTBIT_MAXLENGTHCHANGE)
+    {
+        DWORD length;
+
+        if (SUCCEEDED( ITextHost_TxGetMaxLength( editor->texthost, &length ) ))
+            editor->nTextLimit = (length > INT_MAX) ? INT_MAX : (int)length;
+    }
+
+    return changed;
+}
+#endif
+
 DEFINE_THISCALL_WRAPPER(fnTextSrv_OnTxPropertyBitsChange,12)
 HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServices *iface, DWORD mask, DWORD bits )
 {
@@ -415,6 +542,9 @@ HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServices *iface, DWORD
     DWORD scrollbars;
     HRESULT hr;
     BOOL repaint = FALSE;
+#ifdef __REACTOS__
+    BOOL moved = FALSE;
+#endif
 
     TRACE( "%p, mask %08lx, bits %08lx\n", services, mask, bits );
 
@@ -458,6 +588,9 @@ HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServices *iface, DWORD
     {
         hr = update_client_rect( services, NULL );
         if (SUCCEEDED( hr )) repaint = TRUE;
+#ifdef __REACTOS__
+        if (hr == S_OK) moved = TRUE;
+#endif
     }
 
     if (mask & TXTBIT_USEPASSWORD)
@@ -467,7 +600,19 @@ HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServices *iface, DWORD
         repaint = TRUE;
     }
 
+#ifdef __REACTOS__
+    if (host_props_changed( services->editor, mask, bits ))
+    {
+        /* Windows repaints the whole view after a format change from the host */
+        ITextHost_TxInvalidateRect( services->editor->texthost, NULL, FALSE );
+        repaint = TRUE;
+    }
+#endif
+
     if (repaint) ME_RewrapRepaint( services->editor );
+#ifdef __REACTOS__
+    if (moved && services->editor->bHaveFocus) update_caret( services->editor );
+#endif
 
     return S_OK;
 }
@@ -609,5 +754,14 @@ HRESULT create_text_services( IUnknown *outer, ITextHost *text_host, IUnknown **
  */
 HRESULT WINAPI CreateTextServices( IUnknown *outer, ITextHost *text_host, IUnknown **unk )
 {
+#ifdef __REACTOS__
+    HRESULT hr = create_text_services( outer, text_host, unk, FALSE );
+
+    /* A windowless host sets the length limit, as on Windows */
+    if (SUCCEEDED( hr ))
+        host_props_changed( impl_from_IUnknown( *unk )->editor, TXTBIT_MAXLENGTHCHANGE, 0 );
+    return hr;
+#else
     return create_text_services( outer, text_host, unk, FALSE );
+#endif
 }
