@@ -226,7 +226,7 @@ void CToolbarProxy::Destroy()
 
 LRESULT CToolbarProxy::OnAddBitmap(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled)
 {
-    long result = 0;
+    LONG_PTR result = 0;
     if (fExplorerToolbar.p != NULL)
     {
         fExplorerToolbar->AddBitmap(&CGID_ShellBrowser, 1, (long)wParam,
