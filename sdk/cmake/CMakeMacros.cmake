@@ -263,6 +263,8 @@ macro(dir_to_num dir var)
         set(${var} 83)
     elseif(${dir} STREQUAL reactos/Resources/Themes/Horizon)
         set(${var} 84)
+    elseif(${dir} STREQUAL reactos/Resources/Themes/Horizon/Shell/NormalColor)
+        set(${var} 85)
 
     else()
         message(FATAL_ERROR "Wrong destination: ${dir}")

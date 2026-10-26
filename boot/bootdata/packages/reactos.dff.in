@@ -105,6 +105,7 @@ Signature = "$Windows NT$"
 82 = Globalization
 83 = Globalization\Sorting
 84 = Resources\Themes\Horizon
+85 = Resources\Themes\Horizon\Shell\NormalColor
 
 .InfEnd
 
