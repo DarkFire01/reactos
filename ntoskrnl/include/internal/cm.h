@@ -522,6 +522,22 @@ CmpAssignSecurityDescriptor(
     IN PSECURITY_DESCRIPTOR SecurityDescriptor
 );
 
+PSECURITY_DESCRIPTOR
+NTAPI
+CmpGetKeySecurityDescriptor(
+    _In_ PHHIVE Hive,
+    _In_ HCELL_INDEX Cell
+);
+
+NTSTATUS
+NTAPI
+CmpAssignKeyNodeSecurity(
+    _In_ PHHIVE Hive,
+    _In_ HCELL_INDEX NodeCell,
+    _In_ PCM_KEY_NODE Node,
+    _In_ PSECURITY_DESCRIPTOR Descriptor
+);
+
 //
 // Security Cache Functions
 //

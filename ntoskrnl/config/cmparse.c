@@ -367,13 +367,7 @@ CmpDoCreateChild(IN PHHIVE Hive,
                               CmpKeyObjectType->TypeInfo.PoolType);
     if (NT_SUCCESS(Status))
     {
-        /*
-         * FIXME: We must acquire a security lock when assigning
-         * a security descriptor to this hive but since the
-         * CmpAssignSecurityDescriptor function does nothing
-         * (we lack the necessary security management implementations
-         * anyway), do not do anything for now.
-         */
+        /* Store it in the hive, which takes the hive's security lock */
         Status = CmpAssignSecurityDescriptor(Kcb, NewDescriptor);
     }
 
@@ -416,6 +410,7 @@ CmpDoCreate(IN PHHIVE Hive,
     ULONG ParentType;
     PCM_KEY_BODY KeyBody;
     PSECURITY_DESCRIPTOR SecurityDescriptor = NULL;
+    ACCESS_MASK CreateAccess, GrantedAccess;
     LARGE_INTEGER TimeStamp;
     PCM_KEY_NODE KeyNode;
 
@@ -479,6 +474,29 @@ CmpDoCreate(IN PHHIVE Hive,
         ASSERT(FALSE);
         Status = STATUS_ACCESS_DENIED;
         goto Exit;
+    }
+
+    /* The new key inherits from its parent, where the caller must be allowed to add a key */
+    SecurityDescriptor = CmpGetKeySecurityDescriptor(Hive, Cell);
+    if (SecurityDescriptor)
+    {
+        CreateAccess = KEY_CREATE_SUB_KEY;
+        if (ParseContext->CreateOptions & REG_OPTION_CREATE_LINK)
+            CreateAccess |= KEY_CREATE_LINK;
+
+        if (!SeAccessCheck(SecurityDescriptor,
+                           &AccessState->SubjectSecurityContext,
+                           FALSE,
+                           CreateAccess,
+                           0,
+                           NULL,
+                           &CmpKeyObjectType->TypeInfo.GenericMapping,
+                           AccessMode,
+                           &GrantedAccess,
+                           &Status))
+        {
+            goto Exit;
+        }
     }
 
     /* Make the cell dirty for now */

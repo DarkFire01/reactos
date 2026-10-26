@@ -2464,8 +2464,10 @@ CmpDeepCopyKeyInternal(IN PHHIVE SourceHive,
     PCM_KEY_NODE SrcNode;
     PCM_KEY_NODE DestNode = NULL;
     HCELL_INDEX NewKeyCell = HCELL_NIL;
-    HCELL_INDEX NewClassCell = HCELL_NIL, NewSecCell = HCELL_NIL;
+    HCELL_INDEX NewClassCell = HCELL_NIL;
     HCELL_INDEX SubKey, NewSubKey;
+    PSECURITY_DESCRIPTOR SecurityDescriptor;
+    BOOLEAN SecurityAssigned = FALSE;
     ULONG Index, SubKeyCount;
 
     PAGED_CODE();
@@ -2533,21 +2535,16 @@ CmpDeepCopyKeyInternal(IN PHHIVE SourceHive,
         DestNode->ClassLength = 0;
     }
 
-    /* Copy the security cell (FIXME: HACKish poor-man version) */
-    if (SrcNode->Security != HCELL_NIL)
+    /* Give the copy the same security, in a cell of the destination hive's own list */
+    DestNode->Security = HCELL_NIL;
+    SecurityDescriptor = CmpGetKeySecurityDescriptor(SourceHive, SrcKeyCell);
+    if (SecurityDescriptor)
     {
-        NewSecCell = CmpCopyCell(SourceHive,
-                                 SrcNode->Security,
-                                 DestinationHive,
-                                 StorageType);
-        if (NewSecCell == HCELL_NIL)
-        {
-            /* Not enough storage space */
-            Status = STATUS_INSUFFICIENT_RESOURCES;
+        Status = CmpAssignKeyNodeSecurity(DestinationHive, NewKeyCell, DestNode, SecurityDescriptor);
+        if (!NT_SUCCESS(Status))
             goto Cleanup;
-        }
+        SecurityAssigned = TRUE;
     }
-    DestNode->Security = NewSecCell;
 
     /* Copy the value list */
     Status = CmpCopyKeyValueList(SourceHive,
@@ -2610,8 +2607,8 @@ Cleanup:
     /* Cleanup allocated cells in case of failure */
     if (!NT_SUCCESS(Status))
     {
-        if (NewSecCell != HCELL_NIL)
-            HvFreeCell(DestinationHive, NewSecCell);
+        if (SecurityAssigned)
+            CmpFreeSecurityDescriptor(DestinationHive, NewKeyCell);
 
         if (NewClassCell != HCELL_NIL)
             HvFreeCell(DestinationHive, NewClassCell);
