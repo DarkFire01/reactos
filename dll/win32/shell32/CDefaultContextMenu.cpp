@@ -144,6 +144,7 @@ typedef struct _DynamicShellEntry_
     UINT NumIds;
     CLSID ClassID;
     CComPtr<IContextMenu> pCM;
+    BOOL bLogUsage;
 } DynamicShellEntry, *PDynamicShellEntry;
 
 typedef struct _StaticShellEntry_
@@ -337,6 +338,8 @@ class CDefaultContextMenu :
         HRESULT InvokePidl(LPCMINVOKECOMMANDINFOEX lpcmi, LPCITEMIDLIST pidl, PStaticShellEntry pEntry);
         PDynamicShellEntry GetDynamicEntry(UINT idCmd);
         BOOL MapVerbToCmdId(PVOID Verb, PUINT idCmd, BOOL IsUnicode);
+        VOID AddFolderToRecentDocs();
+        VOID AddRegVerbToRecentDocs(UINT iCmd);
 
         HRESULT GetNoAssocError()
         {
@@ -608,7 +611,16 @@ CDefaultContextMenu::LoadDynamicContextMenuHandler(HKEY hKey, REFCLSID clsid)
     if (m_site)
         IUnknown_SetSite(pcm, m_site);
 
-    m_DynamicEntries.AddTail({ 0, 0, clsid, pcm });
+    /* Commands of the handler count as uses unless it or the type opts out */
+    WCHAR szClsid[CHARS_IN_GUID], szKey[MAX_PATH];
+    BOOL bLogUsage = !RegValueExists(hKey, L"NoRecentDocs");
+    if (bLogUsage && StringFromGUID2(clsid, szClsid, _countof(szClsid)) &&
+        SUCCEEDED(StringCchPrintfW(szKey, _countof(szKey), L"CLSID\\%s\\shellex\\NoAddToRecent", szClsid)))
+    {
+        bLogUsage = !RegKeyExists(HKEY_CLASSES_ROOT, szKey);
+    }
+
+    m_DynamicEntries.AddTail({ 0, 0, clsid, pcm, bLogUsage });
 
     return S_OK;
 }
@@ -1394,7 +1406,110 @@ CDefaultContextMenu::InvokeShellExt(
 
     /* invoke the dynamic context menu */
     lpcmi->lpVerb = MAKEINTRESOURCEA(idCmd - pEntry->iIdCmdFirst);
-    return pEntry->pCM->InvokeCommand((LPCMINVOKECOMMANDINFO)lpcmi);
+    if (!pEntry->bLogUsage)
+        lpcmi->fMask &= ~CMIC_MASK_FLAG_LOG_USAGE;
+
+    HRESULT hr = pEntry->pCM->InvokeCommand((LPCMINVOKECOMMANDINFO)lpcmi);
+    if (SUCCEEDED(hr) && (lpcmi->fMask & CMIC_MASK_FLAG_LOG_USAGE))
+        AddFolderToRecentDocs();
+    return hr;
+}
+
+/* A handler command on files counts their folder; with no folder, the first file */
+VOID
+CDefaultContextMenu::AddFolderToRecentDocs()
+{
+    const UINT cItems = min(m_cidl, 16);
+
+    if (m_pidlFolder && m_psf && cItems)
+    {
+        for (UINT i = 0; i < cItems; i++)
+        {
+            SFGAOF sfgao = SFGAO_FOLDER | SFGAO_LINK;
+
+            if (SUCCEEDED(m_psf->GetAttributesOf(1, &m_apidl[i], &sfgao)) && !(sfgao & (SFGAO_FOLDER | SFGAO_LINK)))
+            {
+                SHAddToRecentDocs(SHARD_PIDL, m_pidlFolder);
+                return;
+            }
+        }
+        return;
+    }
+
+    CComPtr<IShellItemArray> psia;
+    DWORD cArray;
+    if (!m_pDataObj ||
+        FAILED(SHCreateShellItemArrayFromDataObject(m_pDataObj, IID_PPV_ARG(IShellItemArray, &psia))) ||
+        FAILED(psia->GetCount(&cArray)))
+    {
+        return;
+    }
+
+    for (UINT i = 0; i < min(cArray, 16); i++)
+    {
+        CComPtr<IShellItem> psi;
+        CComHeapPtr<ITEMIDLIST> pidl;
+        SFGAOF sfgao;
+
+        if (SUCCEEDED(psia->GetItemAt(i, &psi)) &&
+            SUCCEEDED(psi->GetAttributes(SFGAO_FOLDER | SFGAO_LINK, &sfgao)) &&
+            !(sfgao & (SFGAO_FOLDER | SFGAO_LINK)) &&
+            SUCCEEDED(SHGetIDListFromObject(psi, &pidl)))
+        {
+            SHAddToRecentDocs(SHARD_PIDL, pidl);
+            return;
+        }
+    }
+}
+
+/* A registry verb counts each file it opened in the jump list of the program it runs */
+VOID
+CDefaultContextMenu::AddRegVerbToRecentDocs(
+    _In_ UINT iCmd)
+{
+    POSITION it = m_StaticEntries.FindIndex(iCmd);
+    WCHAR szVerbKey[sizeof("shell\\") + MAX_VERB];
+    WCHAR szApp[MAX_PATH];
+    WCHAR szAppID[129];
+    DWORD cchApp = _countof(szApp);
+    DWORD cbAppID = sizeof(szAppID);
+    PCWSTR pszAppID = NULL;
+
+    if (!it || !m_psf)
+        return;
+
+    PStaticShellEntry pEntry = &m_StaticEntries.GetAt(it);
+    if (RegValueExists(pEntry->hkClass, L"NoRecentDocs") ||
+        FAILED(StringCchPrintfW(szVerbKey, _countof(szVerbKey), L"shell\\%s", pEntry->Verb.GetString())) ||
+        RegGetValueW(pEntry->hkClass, szVerbKey, L"ProgrammaticAccessOnly", RRF_RT_ANY, NULL, NULL, NULL) == ERROR_SUCCESS)
+    {
+        return;
+    }
+
+    if (FAILED(AssocQueryStringByKeyW(ASSOCF_NOTRUNCATE, ASSOCSTR_EXECUTABLE, pEntry->hkClass, pEntry->Verb,
+                                      szApp, &cchApp)))
+    {
+        return;
+    }
+
+    /* A type may name the app ID its program uses */
+    if (RegGetValueW(pEntry->hkClass, NULL, L"AppUserModelID", RRF_RT_REG_SZ, NULL, szAppID, &cbAppID) == ERROR_SUCCESS)
+        pszAppID = szAppID;
+
+    for (UINT i = 0; i < min(m_cidl, 16); i++)
+    {
+        SFGAOF sfgao = SFGAO_FOLDER | SFGAO_LINK;
+
+        if (FAILED(m_psf->GetAttributesOf(1, &m_apidl[i], &sfgao)) || (sfgao & (SFGAO_FOLDER | SFGAO_LINK)))
+            continue;
+
+        PIDLIST_ABSOLUTE pidl = ILCombine(m_pidlFolder, m_apidl[i]);
+        if (pidl)
+        {
+            AddToRecentDocsForApp(pidl, pszAppID, szApp);
+            ILFree(pidl);
+        }
+    }
 }
 
 DWORD
@@ -1476,7 +1591,8 @@ CDefaultContextMenu::InvokePidl(LPCMINVOKECOMMANDINFOEX lpcmi, LPCITEMIDLIST pid
     WCHAR wszDir[MAX_PATH];
 
     SHELLEXECUTEINFOW sei = { sizeof(sei) };
-    sei.fMask = SEE_MASK_CLASSKEY | SEE_MASK_IDLIST | (CmicFlagsToSeeFlags(lpcmi->fMask) & ~SEE_MASK_INVOKEIDLIST);
+    sei.fMask = SEE_MASK_CLASSKEY | SEE_MASK_IDLIST |
+                (CmicFlagsToSeeFlags(lpcmi->fMask) & ~(SEE_MASK_INVOKEIDLIST | SEE_MASK_FLAG_LOG_USAGE));
     sei.hwnd = lpcmi->hwnd;
     sei.nShow = lpcmi->nShow;
     sei.lpVerb = pEntry->Verb;
@@ -1667,6 +1783,8 @@ CDefaultContextMenu::InvokeCommand(
     {
         LocalInvokeInfo.lpVerb -= m_iIdSCMFirst;
         Result = InvokeRegVerb(&LocalInvokeInfo);
+        if (SUCCEEDED(Result) && (LocalInvokeInfo.fMask & CMIC_MASK_FLAG_LOG_USAGE))
+            AddRegVerbToRecentDocs(LOWORD(LocalInvokeInfo.lpVerb));
         // TODO: if (FAILED(Result) && !(lpcmi->fMask & CMIC_MASK_FLAG_NO_UI)) SHELL_ErrorBox(m_pSite, Result);
         return Result;
     }

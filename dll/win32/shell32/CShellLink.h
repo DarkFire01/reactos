@@ -45,6 +45,7 @@ class CShellLink :
 //  public IFilter,
     public IObjectWithSite,
 //  public ICustomizeInfoTip,
+    public IPropertyStore,
     public IShellPropSheetExt
 {
 public:
@@ -97,6 +98,10 @@ private:
     CComPtr<IUnknown>    m_site;
     CComPtr<IDropTarget> m_DropTarget;
 
+    /* Properties kept in the extra data section, loaded on first use */
+    CComPtr<IPropertyStoreCache> m_pPropertyStore;
+    DWORD         m_dwPropertyAccess;
+
     VOID Reset();
 
     HRESULT GetAdvertiseInfo(LPWSTR *str, DWORD dwSig);
@@ -107,6 +112,13 @@ private:
 
     HRESULT DoOpen(LPCMINVOKECOMMANDINFO lpici);
     HRESULT DoOpenFileLocation();
+
+    HRESULT _GetPropertyStore(REFIID riid, void **ppv);
+    HRESULT _GetInternalValue(REFPROPERTYKEY key, PROPVARIANT *pv);
+    HRESULT _ComputeKindProperty(PROPVARIANT *pv);
+    HRESULT _UpdatePropertyStoreDataSection();
+    BOOL _IsPropertyStoreDirty();
+    VOID _ResetPropertyStoreDirty();
 
 public:
     CShellLink();
@@ -204,6 +216,13 @@ public:
     STDMETHOD(SetSite)(IUnknown *punk) override;
     STDMETHOD(GetSite)(REFIID iid, void **ppvSite) override;
 
+    // IPropertyStore
+    STDMETHOD(GetCount)(DWORD *cProps) override;
+    STDMETHOD(GetAt)(DWORD iProp, PROPERTYKEY *pkey) override;
+    STDMETHOD(GetValue)(REFPROPERTYKEY key, PROPVARIANT *pv) override;
+    STDMETHOD(SetValue)(REFPROPERTYKEY key, REFPROPVARIANT propvar) override;
+    STDMETHOD(Commit)() override;
+
     // IDropTarget
     STDMETHOD(DragEnter)(IDataObject *pDataObject, DWORD dwKeyState, POINTL pt, DWORD *pdwEffect) override;
     STDMETHOD(DragOver)(DWORD dwKeyState, POINTL pt, DWORD *pdwEffect) override;
@@ -233,6 +252,7 @@ BEGIN_COM_MAP(CShellLink)
 //  COM_INTERFACE_ENTRY_IID(IID_IServiceProvider, IServiceProvider)
 //  COM_INTERFACE_ENTRY_IID(IID_IFilter, IFilter)
     COM_INTERFACE_ENTRY_IID(IID_IObjectWithSite, IObjectWithSite)
+    COM_INTERFACE_ENTRY_IID(IID_IPropertyStore, IPropertyStore)
 //  COM_INTERFACE_ENTRY_IID(IID_ICustomizeInfoTip, ICustomizeInfoTip)
     COM_INTERFACE_ENTRY_IID(IID_IShellPropSheetExt, IShellPropSheetExt)
 END_COM_MAP()
