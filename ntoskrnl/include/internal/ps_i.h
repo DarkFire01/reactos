@@ -368,7 +368,12 @@ static const INFORMATION_CLASS_INFO PsProcessInfoClass[] =
     /* ProcessConsoleHostProcess */
     IQS_NONE,
     /* ProcessWindowInformation */
-    IQS_NONE,
+    IQS_SAME
+    (
+        PROCESS_WINDOW_INFORMATION,
+        ULONG,
+        ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE
+    ),
 
     // Windows 8
     /* ProcessHandleInformation */
