@@ -483,6 +483,20 @@ BaseProcessStartup(
     _SEH2_END;
 }
 
+/* A copy of a DLL path on the process heap, freed like the computed ones */
+static
+PWSTR
+BasepCopyDllPath(
+    _In_ PCWSTR Path)
+{
+    SIZE_T Size = (wcslen(Path) + 1) * sizeof(WCHAR);
+    PWSTR Copy = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+
+    if (Copy)
+        RtlCopyMemory(Copy, Path, Size);
+    return Copy;
+}
+
 BOOLEAN
 WINAPI
 BasePushProcessParameters(IN ULONG ParameterFlags,
@@ -497,7 +511,8 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
                           IN BOOL InheritHandles,
                           IN ULONG ImageSubsystem,
                           IN PVOID AppCompatData,
-                          IN ULONG AppCompatDataSize)
+                          IN ULONG AppCompatDataSize,
+                          IN LPCWSTR PackageDllPath OPTIONAL)
 {
     WCHAR FullPath[MAX_PATH + 5];
     PWCHAR Remaining, DllPathString, ScanChar;
@@ -518,8 +533,9 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
                             &Remaining);
     if ((Size) && (Size <= (MAX_PATH + 4)))
     {
-        /* Get the DLL Path */
-        DllPathString = BaseComputeProcessDllPath(FullPath, lpEnvironment);
+        /* Get the DLL Path; a packaged process gets the folders of its package graph */
+        DllPathString = PackageDllPath ? BasepCopyDllPath(PackageDllPath) :
+                                         BaseComputeProcessDllPath(FullPath, lpEnvironment);
         if (!DllPathString)
         {
             /* Fail */
@@ -534,8 +550,9 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
     else
     {
         /* Couldn't get the path name. Just take the original path */
-        DllPathString = BaseComputeProcessDllPath((LPWSTR)ApplicationPathName,
-                                                  lpEnvironment);
+        DllPathString = PackageDllPath ? BasepCopyDllPath(PackageDllPath) :
+                                         BaseComputeProcessDllPath((LPWSTR)ApplicationPathName,
+                                                                   lpEnvironment);
         if (!DllPathString)
         {
             /* Fail */
@@ -2311,8 +2328,13 @@ CreateProcessInternalW(IN HANDLE hUserToken,
     LPPROC_THREAD_ATTRIBUTE_LIST AttributeList = NULL;
     PSECURITY_CAPABILITIES SecurityCapabilities = NULL;
     HANDLE AppContainerToken = NULL;
+    PSECURITY_DESCRIPTOR TokenObjectSecurity = NULL;
     PWSTR AppContainerEnvironment = NULL;
     LPVOID CallerEnvironment = NULL;
+    PCWSTR PackageFullName = NULL;
+    PWSTR PackageDllPath = NULL;
+    SIZE_T PackageNameSize = 0;
+    DWORD PackageError;
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
     UNICODE_STRING DebuggerString;
     BOOL Result;
@@ -2617,6 +2639,31 @@ CreateProcessInternalW(IN HANDLE hUserToken,
         SecurityCapabilities = BasepFindProcThreadAttribute(AttributeList,
                                                             PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
                                                             NULL);
+        PackageFullName = BasepFindProcThreadAttribute(AttributeList,
+                                                       BASEP_ATTRIBUTE_PACKAGE_FULL_NAME,
+                                                       &PackageNameSize);
+        if (PackageFullName && PackageFullName[PackageNameSize / sizeof(WCHAR) - 1] != UNICODE_NULL)
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            Result = FALSE;
+            goto Quickie;
+        }
+    }
+
+    /*
+     * A process started for a package, or by a packaged process, finds its DLLs in the
+     * package graph first; the loader searches the DllPath built here before its own path
+     */
+    if (PackageFullName || BasepIsPackagedProcess())
+    {
+        PackageError = BasepGetPackageDllPath(hUserToken, PackageFullName, &PackageDllPath);
+        if (PackageError != ERROR_SUCCESS)
+        {
+            DPRINT1("Failed to find the package graph: %lu\n", PackageError);
+            SetLastError(PackageError);
+            Result = FALSE;
+            goto Quickie;
+        }
     }
 
     /* An AppContainer process gets a LowBox token and its container's folders in its environment */
@@ -3976,6 +4023,28 @@ StartScan:
         ULONG TokenPrivilege = SE_ASSIGNPRIMARYTOKEN_PRIVILEGE;
         BOOLEAN HaveTokenPrivilege;
 
+        /*
+         * Like on Windows, a process that gets a token of its own takes its security from that
+         * token, unless the caller gave a descriptor. Do it first, so the process keeps full
+         * access to itself under the new token.
+         */
+        Status = BasepCreateTokenObjectSecurity(AppContainerToken, &TokenObjectSecurity);
+        if (NT_SUCCESS(Status) &&
+            (hUserToken || !lpProcessAttributes || !lpProcessAttributes->lpSecurityDescriptor))
+        {
+            Status = NtSetSecurityObject(ProcessHandle,
+                                         OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
+                                         DACL_SECURITY_INFORMATION,
+                                         TokenObjectSecurity);
+        }
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to give the process the security of its AppContainer token: %lx\n", Status);
+            BaseSetLastNTError(Status);
+            Result = FALSE;
+            goto Quickie;
+        }
+
         /* A token made from the caller's own needs no privilege; one made from hUserToken may */
         HaveTokenPrivilege = NT_SUCCESS(RtlAcquirePrivilege(&TokenPrivilege, 1, 0, &TokenPrivilegeState));
 
@@ -4255,7 +4324,8 @@ StartScan:
                                        bInheritHandles,
                                        IsWowApp ? IMAGE_SUBSYSTEM_WINDOWS_GUI: 0,
                                        AppCompatData,
-                                       AppCompatDataSize);
+                                       AppCompatDataSize,
+                                       PackageDllPath);
     if (!Result)
     {
         /* The remote process would have an undefined state, so fail the call */
@@ -4340,6 +4410,17 @@ StartScan:
         /* If the caller specified a user token, zero the security descriptor */
         LocalThreadAttributes = *lpThreadAttributes;
         LocalThreadAttributes.lpSecurityDescriptor = NULL;
+        ObjectAttributes = BaseFormatObjectAttributes(&LocalObjectAttributes,
+                                                      &LocalThreadAttributes,
+                                                      NULL);
+    }
+
+    /* The main thread of an AppContainer process takes its security from the token as well */
+    if (TokenObjectSecurity && (hUserToken || !lpThreadAttributes || !lpThreadAttributes->lpSecurityDescriptor))
+    {
+        LocalThreadAttributes.nLength = sizeof(LocalThreadAttributes);
+        LocalThreadAttributes.bInheritHandle = lpThreadAttributes ? lpThreadAttributes->bInheritHandle : FALSE;
+        LocalThreadAttributes.lpSecurityDescriptor = TokenObjectSecurity;
         ObjectAttributes = BaseFormatObjectAttributes(&LocalObjectAttributes,
                                                       &LocalThreadAttributes,
                                                       NULL);
@@ -4650,6 +4731,8 @@ Quickie:
         RtlDestroyEnvironment(AppContainerEnvironment);
         lpEnvironment = CallerEnvironment;
     }
+    if (PackageDllPath)
+        RtlFreeHeap(RtlGetProcessHeap(), 0, PackageDllPath);
 
     /* Check if an environment was passed in */
     if ((lpEnvironment) && !(dwCreationFlags & CREATE_UNICODE_ENVIRONMENT))
@@ -4710,6 +4793,7 @@ Quickie:
         else
             NtClose(AppContainerToken);
     }
+    if (TokenObjectSecurity) RtlFreeHeap(RtlGetProcessHeap(), 0, TokenObjectSecurity);
 
     /* Free any temporary app compatibility data, it's no longer needed */
     BasepFreeAppCompatData(AppCompatData, AppCompatSxsData);

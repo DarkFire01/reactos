@@ -92,6 +92,10 @@ ValidateProcThreadAttribute(
             if (Size != sizeof(SECURITY_CAPABILITIES)) return ERROR_BAD_LENGTH;
             break;
 
+        case BASEP_ATTRIBUTE_PACKAGE_FULL_NAME:
+            if (!Size || (Size & 1) || Size >= 0xFFFF) return ERROR_BAD_LENGTH;
+            break;
+
         case PROC_THREAD_ATTRIBUTE_JOB_LIST:
             if ((Size / sizeof(HANDLE)) * sizeof(HANDLE) != Size) return ERROR_BAD_LENGTH;
             break;

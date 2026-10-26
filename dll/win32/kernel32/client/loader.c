@@ -188,6 +188,16 @@ LoadLibraryW(LPCWSTR lpLibFileName)
 }
 
 
+/* The package graph folders a packaged process got as its DllPath, or NULL */
+static
+PCWSTR
+BasepPackageDirectories(VOID)
+{
+    PUNICODE_STRING DllPath = &NtCurrentPeb()->ProcessParameters->DllPath;
+
+    return (BasepIsPackagedProcess() && DllPath->Length) ? DllPath->Buffer : NULL;
+}
+
 static
 NTSTATUS
 BasepLoadLibraryAsDatafile(PWSTR Path, LPCWSTR Name, HMODULE *hModule)
@@ -216,8 +226,10 @@ BasepLoadLibraryAsDatafile(PWSTR Path, LPCWSTR Name, HMODULE *hModule)
                                                       NULL,
                                                       NULL);*/
 
-    /* Try to search for it */
-    if (!SearchPathW(Path,
+    /* Try to search for it, in the package graph first like the loader does */
+    if ((!BasepPackageDirectories() ||
+         !SearchPathW(BasepPackageDirectories(), Name, L".DLL", _countof(FilenameW), FilenameW, NULL)) &&
+        !SearchPathW(Path,
                      Name,
                      L".DLL",
                      sizeof(FilenameW) / sizeof(FilenameW[0]),
@@ -283,6 +295,9 @@ BasepLoadLibraryAsDatafile(PWSTR Path, LPCWSTR Name, HMODULE *hModule)
 
     return STATUS_SUCCESS;
 }
+
+/* LoadLibraryEx flag behind LoadPackagedLibrary: search the package graph only */
+#define BASEP_LOAD_PACKAGED_LIBRARY 0x00000004
 
 #define BASEP_SEARCH_FLAGS (LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | \
                             LOAD_LIBRARY_SEARCH_APPLICATION_DIR | \
@@ -371,11 +386,16 @@ BasepComputeSearchFlagsDllPath(
     PWSTR Path, Cursor;
     SIZE_T Length;
     RTL_PATH_TYPE PathType;
+    BOOLEAN UserDirectories = BasepPackageAllowsUserDirectories();
+
+    /* A packaged process without full trust has no user directories to search */
+    if ((SearchFlags & LOAD_LIBRARY_SEARCH_USER_DIRS) && !UserDirectories)
+        return STATUS_INVALID_PARAMETER;
 
     if (SearchFlags & LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
     {
         SearchFlags |= LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
-                       LOAD_LIBRARY_SEARCH_USER_DIRS |
+                       (UserDirectories ? LOAD_LIBRARY_SEARCH_USER_DIRS : 0) |
                        LOAD_LIBRARY_SEARCH_SYSTEM32;
     }
 
@@ -471,7 +491,8 @@ AddDllDirectory(
     NTSTATUS Status;
 
     PathType = RtlDetermineDosPathNameType_U(NewDirectory);
-    if (PathType == RtlPathTypeUnknown ||
+    if (!BasepPackageAllowsUserDirectories() ||
+        PathType == RtlPathTypeUnknown ||
         PathType == RtlPathTypeDriveRelative ||
         PathType == RtlPathTypeRelative)
     {
@@ -531,7 +552,7 @@ RemoveDllDirectory(
 {
     PBASEP_DLL_DIRECTORY Entry = Cookie;
 
-    if (!Entry)
+    if (!Entry || !BasepPackageAllowsUserDirectories())
     {
         BaseSetLastNTError(STATUS_INVALID_PARAMETER);
         return FALSE;
@@ -598,6 +619,15 @@ LoadLibraryExW(LPCWSTR lpLibFileName,
         RtlEnterCriticalSection(&BaseDllDirectoryLock);
         SearchFlags = BasepDefaultDllDirectories;
         RtlLeaveCriticalSection(&BaseDllDirectoryLock);
+
+        /* A packaged process starts out with the default directories */
+        if (!SearchFlags && BasepIsPackagedProcess())
+            SearchFlags = LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+    }
+    else if (!SearchFlags && BasepIsPackagedProcess())
+    {
+        /* There the altered search puts the DLL's own folder in front, so the name needs one */
+        SearchFlags = LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR;
     }
 
     /* Check for any flags LdrLoadDll might be interested in */
@@ -640,7 +670,22 @@ LoadLibraryExW(LPCWSTR lpLibFileName,
     }
 
     /* Compute the load path */
-    if (SearchFlags)
+    if (dwFlags & BASEP_LOAD_PACKAGED_LIBRARY)
+    {
+        if (!BasepPackageDirectories())
+        {
+            SetLastError(APPMODEL_ERROR_NO_PACKAGE);
+            if (FreeString)
+                RtlFreeUnicodeString(&DllName);
+            return NULL;
+        }
+
+        /* The loader puts the package graph in front of any path, so this one adds nothing else */
+        SearchPath = RtlAllocateHeap(RtlGetProcessHeap(), 0, (wcslen(BasepPackageDirectories()) + 1) * sizeof(WCHAR));
+        if (SearchPath)
+            wcscpy(SearchPath, BasepPackageDirectories());
+    }
+    else if (SearchFlags)
     {
         Status = BasepComputeSearchFlagsDllPath(&DllName, SearchFlags, &SearchPath);
         if (!NT_SUCCESS(Status))
@@ -708,6 +753,40 @@ done:
 
     /* Return loaded module handle */
     return hInst;
+}
+
+/*
+ * @implemented
+ */
+HMODULE
+WINAPI
+LoadPackagedLibrary(
+    _In_ LPCWSTR lpwLibFileName,
+    _Reserved_ DWORD Reserved)
+{
+    PCWSTR Part;
+
+    /* Only names relative to the package, and none that climb out of it */
+    if (Reserved || RtlDetermineDosPathNameType_U(lpwLibFileName) != RtlPathTypeRelative)
+    {
+        BaseSetLastNTError(STATUS_INVALID_PARAMETER);
+        return NULL;
+    }
+    Part = lpwLibFileName;
+    while (Part)
+    {
+        if (Part[0] == L'.' && Part[1] == L'.' && (Part[2] == L'\\' || Part[2] == L'/'))
+        {
+            BaseSetLastNTError(STATUS_INVALID_PARAMETER);
+            return NULL;
+        }
+
+        Part = wcspbrk(Part, L"\\/");
+        if (Part)
+            Part++;
+    }
+
+    return LoadLibraryExW(lpwLibFileName, NULL, BASEP_LOAD_PACKAGED_LIBRARY);
 }
 
 
