@@ -702,6 +702,15 @@ SetDIBits(
             dwHeight = abs(lpbmi->bmiHeader.biHeight);
         }
 
+        /* Windows clamps the scan line count to the DIB height for uncompressed bitmaps */
+        if (lpbmi->bmiHeader.biSize < sizeof(BITMAPINFOHEADER) ||
+            (lpbmi->bmiHeader.biCompression != BI_RLE8 &&
+             lpbmi->bmiHeader.biCompression != BI_RLE4))
+        {
+            if (uStartScan < dwHeight && cScanLines > dwHeight - uStartScan)
+                cScanLines = dwHeight - uStartScan;
+        }
+
         LinesCopied = SetDIBitsToDevice(SavehDC, 0, 0, dwWidth, dwHeight, 0, 0, uStartScan,
             cScanLines, (void *) lpvBits, (LPBITMAPINFO) lpbmi, fuColorUse);
 
