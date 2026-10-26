@@ -140,6 +140,8 @@
 #include "precomp.h"
 
 #include <appmgmt.h>
+#include <propvarutil.h>
+#include "jumplist/jumplist.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
 
@@ -260,6 +262,9 @@ VOID CShellLink::Reset()
         SHFreeDataBlockList(m_pDBList);
     m_pDBList = NULL;
 
+    m_pPropertyStore.Release();
+    m_dwPropertyAccess = STGM_READWRITE;
+
     /**/sProduct = sComponent = NULL;/**/
 }
 
@@ -296,6 +301,7 @@ CShellLink::CShellLink()
     m_hIcon = NULL;
 
     m_sLinkPath = NULL;
+    m_dwPropertyAccess = STGM_READWRITE;
 
     /**/sProduct = sComponent = NULL;/**/
 }
@@ -333,7 +339,7 @@ HRESULT STDMETHODCALLTYPE CShellLink::GetClassID(CLSID *pclsid)
 HRESULT STDMETHODCALLTYPE CShellLink::IsDirty()
 {
     TRACE("(%p)\n", this);
-    return (m_bDirty ? S_OK : S_FALSE);
+    return ((m_bDirty || _IsPropertyStoreDirty()) ? S_OK : S_FALSE);
 }
 
 HRESULT STDMETHODCALLTYPE CShellLink::Load(LPCOLESTR pszFileName, DWORD dwMode)
@@ -352,6 +358,11 @@ HRESULT STDMETHODCALLTYPE CShellLink::Load(LPCOLESTR pszFileName, DWORD dwMode)
         hr = Load(stm);
         ShellLink_UpdatePath(m_sPathRel, pszFileName, m_sWorkDir, &m_sPath);
         m_bDirty = FALSE;
+
+        /* A link opened for writing only may still have its properties read */
+        m_dwPropertyAccess = dwMode & (STGM_WRITE | STGM_READWRITE);
+        if (m_dwPropertyAccess == STGM_WRITE)
+            m_dwPropertyAccess = STGM_READWRITE;
     }
     TRACE("-- returning hr %08x\n", hr);
     return hr;
@@ -388,6 +399,7 @@ HRESULT STDMETHODCALLTYPE CShellLink::Save(LPCOLESTR pszFileName, BOOL fRemember
 
             m_sLinkPath = strdupW(pszFileName);
             m_bDirty = FALSE;
+            _ResetPropertyStoreDirty();
         }
         else
         {
@@ -1039,7 +1051,10 @@ HRESULT STDMETHODCALLTYPE CShellLink::Save(IStream *stm, BOOL fClearDirty)
 
     /* Clear the dirty bit if requested */
     if (fClearDirty)
+    {
         m_bDirty = FALSE;
+        _ResetPropertyStoreDirty();
+    }
 
     return hr;
 }
@@ -2654,7 +2669,7 @@ HRESULT CShellLink::DoOpen(LPCMINVOKECOMMANDINFO lpici)
     WCHAR dir[MAX_PATH];
     SHELLEXECUTEINFOW sei = { sizeof(sei) };
     sei.fMask = SEE_MASK_HASLINKNAME | SEE_MASK_UNICODE | SEE_MASK_DOENVSUBST |
-               (lpici->fMask & (SEE_MASK_NOASYNC | SEE_MASK_ASYNCOK | SEE_MASK_FLAG_NO_UI));
+               (lpici->fMask & (SEE_MASK_NOASYNC | SEE_MASK_ASYNCOK | SEE_MASK_FLAG_NO_UI | SEE_MASK_FLAG_LOG_USAGE));
     sei.lpDirectory = m_sWorkDir;
     if (m_pPidl)
     {
@@ -3173,6 +3188,315 @@ HRESULT STDMETHODCALLTYPE CShellLink::GetSite(REFIID iid, void ** ppvSite)
         return E_FAIL;
 
     return m_site->QueryInterface(iid, ppvSite);
+}
+
+/* The property store of the link: the saved property storage block, or a new empty store */
+HRESULT
+CShellLink::_GetPropertyStore(
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    *ppv = NULL;
+    if (!m_pPropertyStore)
+    {
+        CComPtr<IPropertyStoreCache> pStore;
+        LPDATABLOCK_HEADER pBlock;
+        HRESULT hr;
+
+        hr = PSCreateMemoryPropertyStore(IID_PPV_ARG(IPropertyStoreCache, &pStore));
+        if (FAILED(hr))
+            return hr;
+
+        pBlock = SHFindDataBlock(m_pDBList, EXP_PROPERTYSTORAGE_SIG);
+        if (pBlock && pBlock->cbSize >= sizeof(*pBlock))
+        {
+            CComPtr<IPersistSerializedPropStorage> pPersist;
+
+            if (SUCCEEDED(pStore->QueryInterface(IID_PPV_ARG(IPersistSerializedPropStorage, &pPersist))))
+            {
+                pPersist->SetPropertyStorage((PCUSERIALIZEDPROPSTORAGE)(pBlock + 1),
+                                             pBlock->cbSize - sizeof(*pBlock));
+            }
+        }
+
+        /* The comment is the link description */
+        if (m_sDescription)
+        {
+            PROPVARIANT pv;
+
+            if (SUCCEEDED(InitPropVariantFromString(m_sDescription, &pv)))
+            {
+                pStore->SetValue(PKEY_Comment, pv);
+                PropVariantClear(&pv);
+            }
+        }
+
+        m_pPropertyStore = pStore;
+    }
+    return m_pPropertyStore->QueryInterface(riid, ppv);
+}
+
+/* Kind of the link: "link", then "program", "folder" or the kinds of the target's type */
+HRESULT
+CShellLink::_ComputeKindProperty(
+    _Out_ PROPVARIANT *pv)
+{
+    CStringW strKind(L"link");
+
+    if (m_Header.dwFlags & SLDF_HAS_DARWINID)
+    {
+        strKind += L";program";
+    }
+    else if (m_pPidl)
+    {
+        CComPtr<IShellItem2> psi;
+
+        if (SUCCEEDED(SHCreateItemFromIDList(m_pPidl, IID_PPV_ARG(IShellItem2, &psi))))
+        {
+            SFGAOF sfgao;
+            CComHeapPtr<WCHAR> pszExt;
+            WCHAR szKinds[MAX_PATH];
+            DWORD cbKinds = sizeof(szKinds);
+
+            if (psi->GetAttributes(SFGAO_FOLDER, &sfgao) == S_OK)
+                strKind += L";folder";
+
+            if (SUCCEEDED(psi->GetString(PKEY_FileExtension, &pszExt)) &&
+                SHRegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\KindMap",
+                               pszExt, SRRF_RT_REG_SZ, NULL, szKinds, &cbKinds) == ERROR_SUCCESS)
+            {
+                strKind += L";";
+                strKind += szKinds;
+            }
+        }
+    }
+
+    /* One vector element per kind */
+    CAtlList<CStringW> Kinds;
+    int iPos = 0;
+    CStringW strToken = strKind.Tokenize(L";", iPos);
+    while (iPos >= 0)
+    {
+        Kinds.AddTail(strToken);
+        strToken = strKind.Tokenize(L";", iPos);
+    }
+
+    PropVariantInit(pv);
+    pv->calpwstr.pElems = (LPWSTR *)CoTaskMemAlloc(Kinds.GetCount() * sizeof(LPWSTR));
+    if (!pv->calpwstr.pElems)
+        return E_OUTOFMEMORY;
+    pv->vt = VT_VECTOR | VT_LPWSTR;
+
+    for (POSITION pos = Kinds.GetHeadPosition(); pos;)
+    {
+        HRESULT hr = SHStrDupW(Kinds.GetNext(pos), &pv->calpwstr.pElems[pv->calpwstr.cElems]);
+
+        if (FAILED(hr))
+        {
+            PropVariantClear(pv);
+            return hr;
+        }
+        pv->calpwstr.cElems++;
+    }
+    return S_OK;
+}
+
+/* Properties the link answers from its own fields */
+HRESULT
+CShellLink::_GetInternalValue(
+    _In_ REFPROPERTYKEY key,
+    _Out_ PROPVARIANT *pv)
+{
+    HRESULT hr = TYPE_E_ELEMENTNOTFOUND;
+
+    if (IsEqualPropertyKey(key, PKEY_Link_Arguments))
+    {
+        if (m_sArgs)
+        {
+            hr = SHStrDupW(m_sArgs, &pv->pwszVal);
+            if (SUCCEEDED(hr))
+                pv->vt = VT_LPWSTR;
+        }
+    }
+    else if (IsEqualPropertyKey(key, PKEY_Kind))
+    {
+        hr = _ComputeKindProperty(pv);
+    }
+    return hr;
+}
+
+/* Writes the property store back into the property storage data block */
+HRESULT
+CShellLink::_UpdatePropertyStoreDataSection()
+{
+    CComPtr<IPersistSerializedPropStorage> pPersist;
+    SERIALIZEDPROPSTORAGE *pStorage;
+    LPDATABLOCK_HEADER pBlock;
+    DWORD cbStorage;
+    HRESULT hr;
+
+    hr = _GetPropertyStore(IID_PPV_ARG(IPersistSerializedPropStorage, &pPersist));
+    if (FAILED(hr))
+        return hr;
+
+    hr = pPersist->GetPropertyStorage(&pStorage, &cbStorage);
+    if (FAILED(hr))
+        return hr;
+
+    if (cbStorage + sizeof(*pBlock) < cbStorage)
+    {
+        CoTaskMemFree(pStorage);
+        return HRESULT_FROM_WIN32(ERROR_ARITHMETIC_OVERFLOW);
+    }
+
+    pBlock = (LPDATABLOCK_HEADER)LocalAlloc(LPTR, cbStorage + sizeof(*pBlock));
+    if (!pBlock)
+    {
+        CoTaskMemFree(pStorage);
+        return E_OUTOFMEMORY;
+    }
+
+    pBlock->cbSize = cbStorage + sizeof(*pBlock);
+    pBlock->dwSignature = EXP_PROPERTYSTORAGE_SIG;
+    CopyMemory(pBlock + 1, pStorage, cbStorage);
+
+    if (SHRemoveDataBlock(&m_pDBList, pBlock->dwSignature))
+        m_bDirty = TRUE;
+    if (SHAddDataBlock(&m_pDBList, pBlock))
+        m_bDirty = TRUE;
+
+    LocalFree(pBlock);
+    CoTaskMemFree(pStorage);
+    return hr;
+}
+
+BOOL
+CShellLink::_IsPropertyStoreDirty()
+{
+    DWORD cProps;
+
+    if (!m_pPropertyStore || FAILED(m_pPropertyStore->GetCount(&cProps)))
+        return FALSE;
+
+    for (DWORD i = 0; i < cProps; i++)
+    {
+        PROPERTYKEY key;
+        PSC_STATE state;
+
+        if (SUCCEEDED(m_pPropertyStore->GetAt(i, &key)) &&
+            SUCCEEDED(m_pPropertyStore->GetState(key, &state)) &&
+            state == PSC_DIRTY)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+VOID
+CShellLink::_ResetPropertyStoreDirty()
+{
+    DWORD cProps;
+
+    if (!m_pPropertyStore || FAILED(m_pPropertyStore->GetCount(&cProps)))
+        return;
+
+    for (DWORD i = 0; i < cProps; i++)
+    {
+        PROPERTYKEY key;
+        PSC_STATE state;
+
+        if (SUCCEEDED(m_pPropertyStore->GetAt(i, &key)) &&
+            SUCCEEDED(m_pPropertyStore->GetState(key, &state)) &&
+            state == PSC_DIRTY)
+        {
+            m_pPropertyStore->SetState(key, PSC_NORMAL);
+        }
+    }
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CShellLink::GetCount(
+    _Out_ DWORD *cProps)
+{
+    CComPtr<IPropertyStore> pps;
+
+    *cProps = 0;
+    if (SUCCEEDED(_GetPropertyStore(IID_PPV_ARG(IPropertyStore, &pps))))
+        pps->GetCount(cProps);
+    return S_OK;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CShellLink::GetAt(
+    _In_ DWORD iProp,
+    _Out_ PROPERTYKEY *pkey)
+{
+    CComPtr<IPropertyStore> pps;
+    HRESULT hr;
+
+    ZeroMemory(pkey, sizeof(*pkey));
+    hr = _GetPropertyStore(IID_PPV_ARG(IPropertyStore, &pps));
+    if (SUCCEEDED(hr))
+        hr = pps->GetAt(iProp, pkey);
+    return hr;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CShellLink::GetValue(
+    _In_ REFPROPERTYKEY key,
+    _Out_ PROPVARIANT *pv)
+{
+    CComPtr<IPropertyStore> pps;
+    HRESULT hr;
+
+    PropVariantInit(pv);
+    hr = _GetPropertyStore(IID_PPV_ARG(IPropertyStore, &pps));
+    if (FAILED(hr))
+        return hr;
+
+    hr = _GetInternalValue(key, pv);
+    if (FAILED(hr) || pv->vt == VT_EMPTY)
+        hr = pps->GetValue(key, pv);
+    return hr;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CShellLink::SetValue(
+    _In_ REFPROPERTYKEY key,
+    _In_ REFPROPVARIANT propvar)
+{
+    CComPtr<IPropertyStoreCache> pStore;
+    HRESULT hr;
+
+    if (!(m_dwPropertyAccess & (STGM_WRITE | STGM_READWRITE)))
+        return STG_E_ACCESSDENIED;
+
+    /* The comment comes from the description and cannot be set here */
+    if (IsEqualPropertyKey(key, PKEY_Comment))
+        return STG_E_ACCESSDENIED;
+
+    hr = _GetPropertyStore(IID_PPV_ARG(IPropertyStoreCache, &pStore));
+    if (SUCCEEDED(hr))
+        hr = pStore->SetValueAndState(key, &propvar, PSC_DIRTY);
+    return hr;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CShellLink::Commit()
+{
+    if (!(m_dwPropertyAccess & (STGM_WRITE | STGM_READWRITE)))
+        return STG_E_ACCESSDENIED;
+
+    if (IsDirty() == S_FALSE)
+        return S_OK;
+
+    return _UpdatePropertyStoreDataSection();
 }
 
 HRESULT STDMETHODCALLTYPE CShellLink::DragEnter(IDataObject *pDataObject,

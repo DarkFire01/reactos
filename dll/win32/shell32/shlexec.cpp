@@ -2100,6 +2100,53 @@ SHELL_InvokePidl(
     return !FAILED_UNEXPECTEDLY(hr);
 }
 
+/*
+ * Windows opens a file given without a verb through the context menu of the item, which
+ * counts it as a used document when the caller asked to log usage.
+ */
+static VOID
+SHELL_LogDocumentOpen(
+    _In_ const SHELLEXECUTEINFOW *sei,
+    _In_ LPCWSTR pszFile,
+    _In_opt_ LPCWSTR pszDir)
+{
+    WCHAR szPath[MAX_PATH], szApp[MAX_PATH];
+    DWORD cchApp = _countof(szApp);
+    PIDLIST_ABSOLUTE pidl;
+
+    if (!(sei->fMask & SEE_MASK_FLAG_LOG_USAGE) || !StrIsNullOrEmpty(sei->lpVerb) ||
+        (sei->fMask & (SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_UNKNOWN_0x1000 | SEE_MASK_FILEANDURL)))
+    {
+        return;
+    }
+
+    if (PathIsRelativeW(pszFile) && !StrIsNullOrEmpty(pszDir))
+    {
+        if (!PathCombineW(szPath, pszDir, pszFile))
+            return;
+        pszFile = szPath;
+    }
+
+    if (FAILED(AssocQueryStringW(ASSOCF_NOTRUNCATE, ASSOCSTR_EXECUTABLE, PathFindExtensionW(pszFile), NULL,
+                                 szApp, &cchApp)))
+    {
+        return;
+    }
+
+    pidl = ILCreateFromPathW(pszFile);
+    if (!pidl)
+        return;
+
+    /* Folders and links never count */
+    DWORD dwAttributes = SFGAO_FOLDER | SFGAO_LINK;
+    if (SUCCEEDED(SHGetNameAndFlagsW(pidl, 0, NULL, 0, &dwAttributes)) &&
+        !(dwAttributes & (SFGAO_FOLDER | SFGAO_LINK)))
+    {
+        AddToRecentDocsForApp(pidl, NULL, szApp);
+    }
+    ILFree(pidl);
+}
+
 static UINT_PTR SHELL_quote_and_execute(LPCWSTR wcmd, LPCWSTR wszParameters, LPCWSTR wszKeyname, LPCWSTR wszApplicationName, LPWSTR env, LPSHELLEXECUTEINFOW psei, LPSHELLEXECUTEINFOW psei_out, SHELL_ExecuteW32 execfunc)
 {
     UINT_PTR retval;
@@ -2570,6 +2617,8 @@ static BOOL SHELL_execute(LPSHELLEXECUTEINFOW sei, SHELL_ExecuteW32 execfunc)
         retval = SHELL_quote_and_execute(wcmd, wszParameters, wszKeyname,
                                          wszApplicationName, env, &sei_tmp,
                                          sei, execfunc);
+        if (retval > 32)
+            SHELL_LogDocumentOpen(sei, lpFile, sei_tmp.lpDirectory);
     }
     else if (PathIsDirectoryW(lpFile))
     {
