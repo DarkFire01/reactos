@@ -35,6 +35,9 @@ WINE_DEFAULT_DEBUG_CHANNEL(ole);
 /* WIN://PKG flags of a normal launch; bit 0x10 would select the registrar path */
 #define RT_PACKAGE_CLAIM_FLAGS 0x1
 
+/* Process attribute naming the package a new process runs as, a NUL terminated full name */
+#define RT_ATTRIBUTE_PACKAGE_FULL_NAME (8 | PROC_THREAD_ATTRIBUTE_INPUT)
+
 #ifndef APPMODEL_ERROR_NO_PACKAGE
 #define APPMODEL_ERROR_NO_PACKAGE 15700L
 #endif
@@ -401,6 +404,30 @@ RtLaunchServer(
     Startup.StartupInfo.lpDesktop = L"WinSta0\\Default";
     Flags = CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT;
 
+    if (Packaged)
+    {
+        /* Naming the package gives the process its package graph to load DLLs from */
+        Step = "attributes";
+        InitializeProcThreadAttributeList(NULL, 2, 0, &ListSize);
+        Startup.lpAttributeList = malloc(ListSize);
+        if (!Startup.lpAttributeList ||
+            !InitializeProcThreadAttributeList(Startup.lpAttributeList, 2, 0, &ListSize))
+        {
+            free(Startup.lpAttributeList);
+            Startup.lpAttributeList = NULL;
+            Status = E_OUTOFMEMORY;
+            goto Quit;
+        }
+        if (!UpdateProcThreadAttribute(Startup.lpAttributeList, 0, RT_ATTRIBUTE_PACKAGE_FULL_NAME, Server->PackageFullName,
+                                       (wcslen(Server->PackageFullName) + 1) * sizeof(WCHAR), NULL, NULL))
+        {
+            Status = HRESULT_FROM_WIN32(GetLastError());
+            goto Quit;
+        }
+        Startup.StartupInfo.cb = sizeof(Startup);
+        Flags |= EXTENDED_STARTUPINFO_PRESENT;
+    }
+
     if (Container)
     {
         Step = "container identity";
@@ -413,24 +440,12 @@ RtLaunchServer(
         Security.CapabilityCount = CapabilityCount;
         Security.Reserved = 0;
 
-        InitializeProcThreadAttributeList(NULL, 1, 0, &ListSize);
-        Startup.lpAttributeList = malloc(ListSize);
-        if (!Startup.lpAttributeList ||
-            !InitializeProcThreadAttributeList(Startup.lpAttributeList, 1, 0, &ListSize))
-        {
-            free(Startup.lpAttributeList);
-            Startup.lpAttributeList = NULL;
-            Status = E_OUTOFMEMORY;
-            goto Quit;
-        }
         if (!UpdateProcThreadAttribute(Startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
                                        &Security, sizeof(Security), NULL, NULL))
         {
             Status = HRESULT_FROM_WIN32(GetLastError());
             goto Quit;
         }
-        Startup.StartupInfo.cb = sizeof(Startup);
-        Flags |= EXTENDED_STARTUPINFO_PRESENT;
     }
 
     TRACE("starting %s, container %d\n", debugstr_w(CommandLine), Container);
