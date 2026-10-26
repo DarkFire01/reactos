@@ -765,40 +765,6 @@ DWORD WINAPI CheckStagingArea(VOID)
 /*
  * Unimplemented
  */
-
-EXTERN_C HRESULT
-WINAPI
-GetAppPathFromLink(IShellItem* pItem,
-                   LPWSTR pwszPathBuffer,
-                   DWORD dwBufferLen)
-{
-    FIXME("GetAppPathFromLink() stub\n");
-    return S_OK;
-}
-
-/*
- * Unimplemented
- */
-EXTERN_C HRESULT
-WINAPI
-GetCurrentProcessExplicitAppUserModelID(PWSTR *AppID)
-{
-    return SHStrDupW(L"ROS FixMe", AppID);
-}
-
-/*
- * Unimplemented
- */
-HRESULT WINAPI
-SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID)
-{
-    FIXME("SetCurrentProcessExplicitAppUserModelID stub\n");
-    return S_OK;
-}
-
-/*
- * Unimplemented
- */
 EXTERN_C DWORD
 WINAPI
 RunInstallUninstallStubs(VOID)
