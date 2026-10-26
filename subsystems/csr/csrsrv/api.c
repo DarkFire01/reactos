@@ -882,6 +882,88 @@ CsrApiRequestThread(
 }
 
 /*++
+ * @name CsrCreateApiPortSd
+ *
+ * The CsrCreateApiPortSd routine builds the security descriptor of the API
+ * port: everyone, restricted code and app packages may connect to it.
+ *
+ * @param PortSd
+ *        Receives the security descriptor, allocated from the CSR heap.
+ *
+ * @return STATUS_SUCCESS in case of success, or a failure code otherwise.
+ *
+ * @remarks None.
+ *
+ *--*/
+static
+NTSTATUS
+CsrCreateApiPortSd(
+    _Out_ PSECURITY_DESCRIPTOR *PortSd)
+{
+    SID_IDENTIFIER_AUTHORITY WorldAuthority = {SECURITY_WORLD_SID_AUTHORITY};
+    SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
+    SID_IDENTIFIER_AUTHORITY PackageAuthority = {SECURITY_APP_PACKAGE_AUTHORITY};
+    PSID Sids[4] = {NULL};
+    PSECURITY_DESCRIPTOR Sd = NULL;
+    PACL Dacl;
+    ULONG Length, i;
+    NTSTATUS Status;
+
+    Status = RtlAllocateAndInitializeSid(&WorldAuthority, 1, SECURITY_WORLD_RID,
+                                         0, 0, 0, 0, 0, 0, 0, &Sids[0]);
+    if (NT_SUCCESS(Status))
+        Status = RtlAllocateAndInitializeSid(&NtAuthority, 1, SECURITY_RESTRICTED_CODE_RID,
+                                             0, 0, 0, 0, 0, 0, 0, &Sids[1]);
+    if (NT_SUCCESS(Status))
+        Status = RtlAllocateAndInitializeSid(&PackageAuthority, SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT,
+                                             SECURITY_APP_PACKAGE_BASE_RID, SECURITY_BUILTIN_PACKAGE_ANY_PACKAGE,
+                                             0, 0, 0, 0, 0, 0, &Sids[2]);
+    if (NT_SUCCESS(Status))
+        Status = RtlAllocateAndInitializeSid(&PackageAuthority, SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT,
+                                             SECURITY_APP_PACKAGE_BASE_RID, SECURITY_BUILTIN_PACKAGE_ANY_RESTRICTED_PACKAGE,
+                                             0, 0, 0, 0, 0, 0, &Sids[3]);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    Length = sizeof(ACL);
+    for (i = 0; i < RTL_NUMBER_OF(Sids); i++)
+        Length += FIELD_OFFSET(ACCESS_ALLOWED_ACE, SidStart) + RtlLengthSid(Sids[i]);
+
+    Sd = RtlAllocateHeap(CsrHeap, 0, SECURITY_DESCRIPTOR_MIN_LENGTH + Length);
+    if (!Sd)
+    {
+        Status = STATUS_NO_MEMORY;
+        goto Quit;
+    }
+
+    Dacl = (PACL)((ULONG_PTR)Sd + SECURITY_DESCRIPTOR_MIN_LENGTH);
+    RtlCreateSecurityDescriptor(Sd, SECURITY_DESCRIPTOR_REVISION);
+    RtlCreateAcl(Dacl, Length, ACL_REVISION2);
+
+    for (i = 0; i < RTL_NUMBER_OF(Sids) && NT_SUCCESS(Status); i++)
+        Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION2, SYNCHRONIZE | READ_CONTROL | PORT_CONNECT, Sids[i]);
+
+    if (NT_SUCCESS(Status))
+        Status = RtlSetDaclSecurityDescriptor(Sd, TRUE, Dacl, FALSE);
+
+Quit:
+    if (!NT_SUCCESS(Status) && Sd)
+    {
+        RtlFreeHeap(CsrHeap, 0, Sd);
+        Sd = NULL;
+    }
+
+    for (i = 0; i < RTL_NUMBER_OF(Sids); i++)
+    {
+        if (Sids[i])
+            RtlFreeSid(Sids[i]);
+    }
+
+    *PortSd = Sd;
+    return Status;
+}
+
+/*++
  * @name CsrApiPortInitialize
  *
  * The CsrApiPortInitialize routine initializes the LPC Port used for
@@ -906,6 +988,7 @@ CsrApiPortInitialize(VOID)
     CLIENT_ID ClientId;
     PLIST_ENTRY ListHead, NextEntry;
     PCSR_THREAD ServerThread;
+    PSECURITY_DESCRIPTOR PortSd;
 
     /* Calculate how much space we'll need for the Port Name */
     Size = CsrDirectoryName.Length + sizeof(CSR_PORT_NAME) + sizeof(WCHAR);
@@ -927,14 +1010,16 @@ CsrApiPortInitialize(VOID)
                 sizeof(CSR_API_CONNECTINFO), sizeof(CSR_API_MESSAGE));
     }
 
-    /* FIXME: Create a Security Descriptor */
+    /* Create Security Descriptor for this Port */
+    Status = CsrCreateApiPortSd(&PortSd);
+    if (!NT_SUCCESS(Status)) return Status;
 
     /* Initialize the Attributes */
     InitializeObjectAttributes(&ObjectAttributes,
                                &CsrApiPortName,
                                0,
                                NULL,
-                               NULL /* FIXME: Use the Security Descriptor */);
+                               PortSd);
 
     /* Create the Port Object */
     Status = NtCreatePort(&CsrApiPort,
@@ -942,6 +1027,7 @@ CsrApiPortInitialize(VOID)
                           sizeof(CSR_API_CONNECTINFO),
                           sizeof(CSR_API_MESSAGE),
                           16 * PAGE_SIZE);
+    RtlFreeHeap(CsrHeap, 0, PortSd);
     if (NT_SUCCESS(Status))
     {
         /* Create the event the Port Thread will use */
