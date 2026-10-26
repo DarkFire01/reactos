@@ -392,8 +392,20 @@ InitializeDUIFrameClasses(VOID)
         CProperTreeModuleInner::Register,
         Button3d::Register,
         CCommandModuleInner::Register,
+        CSplitButton::Register,
+        ViewControl::Register,
         CProperTreeHost::Register,
         CCIDLabel::Register,
+        CInfoPaneInner::Register,
+        CLibraryPaneModuleInner::Register,
+        CReadingPaneModuleInner::Register,
+        CReadingPaneModuleHost::Register,
+        CThumbnailControlHost::Register,
+        CPreviewThumbnailInner::Register,
+        CMetadataLabel::Register,
+        CMetadataElement::Register,
+        CDisplayElement::Register,
+        CPreviewMetadataInner::Register,
     };
     HRESULT hr = S_OK;
     SIZE_T i;

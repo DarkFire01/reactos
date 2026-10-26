@@ -67,6 +67,9 @@ const DirectUI::PropertyInfo *const CPreviewThumbnail::MaxThumbSizeProp = &s_piM
 const DirectUI::PropertyInfo *const CPreviewThumbnail::FixedSizeProp = &s_piFixedThumbSize;
 const DirectUI::PropertyInfo *const CPreviewThumbnail::HidePropertyProp = &s_piHideProperty;
 const DirectUI::PropertyInfo *const CPreviewThumbnail::VerticalProp = &s_piVertical;
+const DirectUI::PropertyInfo *const CPreviewThumbnail::AlwaysGetIconFromViewProp = &s_piAlwaysGetIconFromView;
+const DirectUI::PropertyInfo *const CPreviewThumbnail::ForceUseIconProp = &s_piForceUseIcon;
+const DirectUI::PropertyInfo *const CPreviewThumbnail::ThumbnailIdProp = &s_piThumbnailId;
 
 /* PreviewMetadata */
 
@@ -91,6 +94,9 @@ static const DirectUI::PropertyInfo *const c_rgpiPreviewMetadata[] =
 };
 
 const DirectUI::PropertyInfo *const CPreviewMetadata::NullSelectPropertyStringProp = &s_piNullSelectPropertyString;
+const DirectUI::PropertyInfo *const CPreviewMetadata::NullSelectTitlePropertyStringProp =
+    &s_piNullSelectTitlePropertyString;
+const DirectUI::PropertyInfo *const CPreviewMetadata::ReadOnlyProp = &s_piReadOnly;
 
 /* ProperTreeModule */
 
@@ -186,12 +192,12 @@ STDMETHODIMP ClassName::CreateInnerObject(IUnknown **ppunkInner)                
 IMPLEMENT_FRAME_MODULE(CProperTreeModule, L"ProperTreeModule", CProperTreeModuleInner::Create,
                        L"ProperTreeModuleInner", c_rgpiProperTreeModule, _countof(c_rgpiProperTreeModule))
 IMPLEMENT_FRAME_MODULE(CCommandModule, L"FolderBandModule", CCommandModuleInner::Create,
-                       L"FolderBandModuleInner", NULL, 0)
+                       L"FolderBandModuleInner", c_rgpiCommandModule, c_cpiCommandModule)
 IMPLEMENT_FRAME_MODULE(CInfoBarHostModule, L"InfoBarHostModule", CreateInnerNotImplemented,
                        L"InfoBarHostModuleInner", NULL, 0)
-IMPLEMENT_FRAME_MODULE(CLibraryPaneModule, L"LibraryPaneModule", CreateInnerNotImplemented,
+IMPLEMENT_FRAME_MODULE(CLibraryPaneModule, L"LibraryPaneModule", CLibraryPaneModuleInner::Create,
                        L"LibraryPaneModuleInner", NULL, 0)
-IMPLEMENT_FRAME_MODULE(CInfoPane, L"InfoPane", CreateInnerNotImplemented,
+IMPLEMENT_FRAME_MODULE(CInfoPane, L"InfoPane", CInfoPaneInner::Create,
                        L"InfoPaneInner", NULL, 0)
 
 /* CNotifyingFrameModule */
@@ -239,7 +245,7 @@ STDMETHODIMP
 CPreviewThumbnail::CreateInnerObject(
     IUnknown **ppunkInner)
 {
-    return FrameModule_CreateInner(CreateInnerNotImplemented, L"PreviewThumbnailInner", ppunkInner);
+    return FrameModule_CreateInner(CPreviewThumbnailInner::Create, L"PreviewThumbnailInner", ppunkInner);
 }
 
 STDMETHODIMP
@@ -369,7 +375,7 @@ STDMETHODIMP
 CPreviewMetadata::CreateInnerObject(
     IUnknown **ppunkInner)
 {
-    return FrameModule_CreateInner(CreateInnerNotImplemented, L"PreviewMetadataInner", ppunkInner);
+    return FrameModule_CreateInner(CPreviewMetadataInner::Create, L"PreviewMetadataInner", ppunkInner);
 }
 
 /* CReadingPaneModule */
@@ -397,7 +403,7 @@ STDMETHODIMP
 CReadingPaneModule::CreateInnerObject(
     IUnknown **ppunkInner)
 {
-    return FrameModule_CreateInner(CreateInnerNotImplemented, L"ReadingPaneModuleInner", ppunkInner);
+    return FrameModule_CreateInner(CReadingPaneModuleInner::Create, L"ReadingPaneModuleInner", ppunkInner);
 }
 
 /* The reading pane only takes space while a preview handler is rendering */

@@ -47,6 +47,11 @@ IDR_COMMONLAYOUTMODIFIER REGISTRY "res/rgs/commonlayoutmodifier.rgs"
 /* Markup of the frame modules' inner elements */
 32 UIFILE "duiframe/res/folderband.uixml"
 52 UIFILE "duiframe/res/propertree.uixml"
+33 UIFILE "duiframe/res/infopane.uixml"
+59 UIFILE "duiframe/res/librarypane.uixml"
+60 UIFILE "duiframe/res/librarytopview.uixml"
+7  UIFILE "duiframe/res/previewthumbnail.uixml"
+8  UIFILE "duiframe/res/previewmetadata.uixml"
 
 /* Preview pane button of the command bar: pane closed, pane open */
 16757 ICON "duiframe/res/previewshow.ico"
@@ -151,4 +156,47 @@ BEGIN
     38296 "No folders have been included in this library."
     38297 "Include a folder"
     38299 "To begin, type in the search box."
+END
+
+/* Preview, info and library panes; "Libraries" moves to 38330 since 34561 is taken in this shell32 */
+STRINGTABLE
+BEGIN
+    31123 "Info Pane"
+    34568 "Open a library to see your files and arrange them by folder, date, and other properties."
+    34582 "HomeGroup"
+    34583 "Browse available libraries shared by other members of your homegroup."
+    34591 "Open a library to see homegroup files and arrange them by folder, date, and other properties."
+    38228 "Preview Pane"
+    38232 "Library Pane"
+    38245 "Select a file to preview."
+    38246 "No preview available."
+    38247 "This file can't be previewed because it is in use."
+    38248 "This file can't be previewed because of an error in the %s."
+    38249 "This file can't be previewed."
+    38250 "Files in this location can't be previewed."
+    38304 "%1!d! location"
+    38305 "%1!d! locations"
+    38306 "%1!s! library"
+    38330 "Libraries"
+    50258 "The file you are attempting to preview could harm your computer. If you trust the file and the source you received it from, open it to view its contents."
+    50690 "Arrange by:"
+END
+
+#include "commands.rc"
+
+/* Details pane */
+STRINGTABLE
+BEGIN
+    IDS_DUI_METADATALABEL "%1:"
+    IDS_DUI_ITEMCOUNT_PLURAL "%s items"
+    IDS_DUI_ITEMCOUNT_SINGULAR "%s item"
+    IDS_DUI_SELECTED_PLURAL "%s items selected"
+    IDS_DUI_SELECTED_SINGULAR "%s item selected"
+    IDS_DUI_ITEMCOUNT_NAME "Number of items"
+    38229 "Metadata Row"
+    IDS_DUI_METADATAMODULE "Metadata Module"
+    IDS_DUI_THUMBNAILMODULE "Thumbnail Module"
+    38240 "Show more details..."
+    38243 "Save"
+    38244 "Cancel"
 END

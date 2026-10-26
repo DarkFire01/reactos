@@ -1,0 +1,108 @@
+/*
+ * PROJECT:     shell32
+ * LICENSE:     LGPL-2.1-or-later (https://spdx.org/licenses/LGPL-2.1-or-later)
+ * PURPOSE:     Resources of the command bar, included by duiframe.rc
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+
+/* Command folder and command store registration */
+3401 REGISTRY "duiframe/res/commandbar.rgs"
+
+/* Command element markup: split button, plain button, view control */
+43 UIFILE "duiframe/res/splitbutton.uixml"
+44 UIFILE "duiframe/res/taskbutton.uixml"
+45 UIFILE "duiframe/res/viewcontrol.uixml"
+
+/* Command icons: layout, organize, navigation pane, cut, paste */
+16742 ICON "duiframe/res/cmd16742.ico"
+16753 ICON "duiframe/res/cmd16753.ico"
+16755 ICON "duiframe/res/cmd16755.ico"
+16762 ICON "duiframe/res/cmd16762.ico"
+16763 ICON "duiframe/res/cmd16763.ico"
+
+/* Views button and its slider: one icon per view mode */
+IDI_VIEW_DETAILS ICON "duiframe/res/view62998.ico"
+IDI_VIEW_TILES ICON "duiframe/res/view62999.ico"
+IDI_VIEW_LIST ICON "duiframe/res/view63000.ico"
+IDI_VIEW_EXTRALARGE ICON "duiframe/res/view63001.ico"
+IDI_VIEW_LARGE ICON "duiframe/res/view63008.ico"
+IDI_VIEW_MEDIUM ICON "duiframe/res/view63009.ico"
+IDI_VIEW_SMALL ICON "duiframe/res/view63010.ico"
+IDI_VIEW_CONTENT ICON "duiframe/res/view63011.ico"
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+/* Menu of a command folder item */
+392 MENUEX
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Invoke", 16, MFT_STRING, MFS_DEFAULT
+    END
+END
+
+/* Command store titles and descriptions */
+STRINGTABLE
+BEGIN
+    31145 "Views"
+    31147 "View Slider"
+    31152 "Submenu"
+    31153 "More options"
+    31236 "New folder"
+    31237 "Create a new, empty folder."
+    31242 "Rename"
+    31244 "Cut"
+    31245 "Move the selected items to the Clipboard."
+    31246 "Copy"
+    31247 "Copy the selected items to the Clipboard."
+    31252 "Delete"
+    31253 "Move the selected files and folders to the Recycle Bin."
+    31254 "Remove properties"
+    31255 "Remove properties from the selected file."
+    31259 "Properties"
+    31260 "Show properties for the selected file or folder."
+    31261 "Undo"
+    31262 "Undo your last action."
+    31263 "Redo"
+    31265 "Redo your last action."
+    31276 "Select all"
+    31277 "Select all items in this view."
+    31296 "Views"
+    31297 "Change your view."
+    31380 "Paste"
+    31381 "Paste the contents of the Clipboard to the current location."
+    31411 "Organize"
+    31412 "Organize this folder's contents."
+    31413 "Layout"
+    31414 "Configure this folder's layout."
+    31415 "Details pane"
+    31416 "Show or hide the Details pane."
+    31418 "Menu bar"
+    31420 "Show or hide this folder's menu bar."
+    31421 "Navigation pane"
+    31422 "Show or hide the Navigation pane."
+    31447 "Folder options"
+    31448 "Folder and search options"
+    31449 "Modify settings for how to view your folders."
+    31450 "Close"
+    31451 "Close this window."
+END
+
+/* View slider: the row strings start with their own separator for TB_ADDSTRING */
+STRINGTABLE
+BEGIN
+    IDS_VIEWSLIDER_SLIDER "Slider"
+    31136 "|Extra Large Icons||"
+    31137 "|Large Icons||"
+    31138 "|Medium Icons||"
+    31139 "|Small Icons||"
+    31140 "|List||"
+    31141 "|Details||"
+    31142 "|Tiles||"
+    31143 "|Content||"
+    IDS_VIEWSLIDER_EXTENDEDTILES "|Extended Tiles||"
+    IDS_VIEWSLIDER_TITLE "View Slider Control"
+    IDS_VIEWSLIDER_VALUEMAP "A:0:0:Extra Large Icons:28:Large Icons:48:Medium Icons:78:Small Icons:99:List:120:Details:140:Tiles:160:Content:"
+END

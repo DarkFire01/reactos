@@ -32,6 +32,17 @@ DUIFrame_CreateCommonLayoutDefinition(
 EXTERN_C
 HRESULT
 WINAPI
+DUIFrame_CreateCommandBarObject(
+    _In_ REFCLSID rclsid,
+    _In_ REFIID riid,
+    _COM_Outptr_ void **ppv)
+{
+    return CommandBar_CreateInstance(rclsid, riid, ppv);
+}
+
+EXTERN_C
+HRESULT
+WINAPI
 DUIFrame_CreateCommonLayoutModifier(
     _In_ REFIID riid,
     _COM_Outptr_ void **ppv)

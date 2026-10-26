@@ -1,0 +1,5 @@
+<duixml>
+<Element resid="PreviewThumbnail" id="atom(PreviewThumbnail)">
+<ThumbnailControlHost id="atom(Thumbnail)"/>
+</Element>
+</duixml>
