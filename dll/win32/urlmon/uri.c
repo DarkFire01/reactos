@@ -32,6 +32,8 @@
 #include "in6addr.h"
 #include "ip2string.h"
 
+#include "psl.h"
+
 #define URI_DISPLAY_NO_ABSOLUTE_URI         0x1
 #define URI_DISPLAY_NO_DEFAULT_PORT_AUTH    0x2
 
@@ -46,6 +48,14 @@
 #define RAW_URI_CONVERT_TO_DOS_PATH 0x2
 
 #define COMBINE_URI_FORCE_FLAG_USE  0x1
+
+/* Canonicalization flag of combined file URIs, whose paths keep their percent encoding */
+#define CANON_KEEP_PERCENT_ENCODED  0x80000000
+
+/* winnls.h only has it for Vista and later */
+#ifndef IDN_USE_STD3_ASCII_RULES
+#define IDN_USE_STD3_ASCII_RULES    0x2
+#endif
 
 WINE_DEFAULT_DEBUG_CHANNEL(urlmon);
 
@@ -171,6 +181,13 @@ typedef struct {
 
     const WCHAR     *fragment;
     DWORD           fragment_len;
+
+    /* A file URI keeps the ':' and port after an IP address as part of its host */
+    const WCHAR     *host_suffix;
+    DWORD           host_suffix_len;
+
+    /* Error to report when parsing fails for a reason other than a malformed URI */
+    HRESULT         error;
 } parse_data;
 
 static const CHAR hexDigits[] = "0123456789ABCDEF";
@@ -216,21 +233,6 @@ static const struct {
     {URL_SCHEME_TELNET, 23},
     {URL_SCHEME_WAIS,   210},
     {URL_SCHEME_HTTPS,  443},
-};
-
-/* List of 3-character top level domain names Windows seems to recognize.
- * There might be more, but, these are the only ones I've found so far.
- */
-static const struct {
-    WCHAR tld_name[4];
-} recognized_tlds[] = {
-    {L"com"},
-    {L"edu"},
-    {L"gov"},
-    {L"int"},
-    {L"mil"},
-    {L"net"},
-    {L"org"}
 };
 
 static Uri *get_uri_obj(IUri *uri)
@@ -366,6 +368,12 @@ static inline BOOL is_hierarchical_scheme(URL_SCHEME type) {
 }
 
 /* Checks if 'flags' contains an invalid combination of Uri_CREATE flags. */
+/* Schemes whose whole text after the ':' is the path, as it is */
+static BOOL has_raw_path(URL_SCHEME scheme) {
+    return scheme == URL_SCHEME_JAVASCRIPT || scheme == URL_SCHEME_ABOUT || scheme == URL_SCHEME_VBSCRIPT ||
+           scheme == URL_SCHEME_SHELL;
+}
+
 static inline BOOL has_invalid_flag_combination(DWORD flags) {
     return((flags & Uri_CREATE_DECODE_EXTRA_INFO && flags & Uri_CREATE_NO_DECODE_EXTRA_INFO) ||
            (flags & Uri_CREATE_CANONICALIZE && flags & Uri_CREATE_NO_CANONICALIZE) ||
@@ -407,11 +415,23 @@ static inline BOOL is_hierarchical_uri(const WCHAR **ptr, const parse_data *data
         return TRUE;
     else if(data->scheme_type == URL_SCHEME_FILE && data->has_implicit_scheme)
         return TRUE;
+    else if(data->scheme_type == URL_SCHEME_FILE && is_slash((*ptr)[0]) && is_drive_path(*ptr+1) &&
+            is_slash((*ptr)[3])) {
+        /* "file:/C:/" stands for "file:///C:/" */
+        ++(*ptr);
+        return TRUE;
+    }
     else if(is_hierarchical_scheme(data->scheme_type) && (*ptr)[0] == '\\' && (*ptr)[1] == '\\') {
         *ptr += 2;
         return TRUE;
-    } else if(data->scheme_type != URL_SCHEME_MAILTO && check_hierarchical(ptr))
+    } else if(data->scheme_type != URL_SCHEME_MAILTO && check_hierarchical(ptr)) {
+        /* A relative reference with an empty authority is a path */
+        if(data->is_relative && (**ptr == '/' || !**ptr)) {
+            *ptr = start;
+            return FALSE;
+        }
         return TRUE;
+    }
 
     *ptr = start;
     return FALSE;
@@ -464,186 +484,504 @@ static inline void pct_encode_val(WCHAR val, WCHAR *dest) {
     dest[2] = hexDigits[val & 0xf];
 }
 
-/* Attempts to parse the domain name from the host.
- *
- * This function also includes the Top-level Domain (TLD) name
- * of the host when it tries to find the domain name. If it finds
- * a valid domain name it will assign 'domain_start' the offset
- * into 'host' where the domain name starts.
- *
- * It's implied that if there is a domain name its range is:
- * [host+domain_start, host+host_len).
+/* Characters of the BMP that an IRI keeps percent encoded */
+static const struct {
+    WCHAR first;
+    WCHAR last;
+} iri_unsafe_ranges[] = {
+    {0x0080, 0x00a0}, {0x0340, 0x0341}, {0x06dd, 0x06dd}, {0x070f, 0x070f},
+    {0x1680, 0x1680}, {0x180e, 0x180e}, {0x2000, 0x200f}, {0x2028, 0x202f},
+    {0x205f, 0x2063}, {0x206a, 0x206f}, {0x2ff0, 0x2ffb}, {0x3000, 0x3000},
+    {0xe000, 0xf8ff}, {0xfdd0, 0xfdef}, {0xfeff, 0xffff}
+};
+
+static BOOL is_iri_unsafe(UINT cp) {
+    DWORD i;
+
+    if(cp >= 0x10000) {
+        /* Private use planes, tags and the last code points of each plane */
+        if(cp >= 0xf0000 || (cp >= 0xe0000 && cp <= 0xe0fff))
+            return TRUE;
+        return (cp & 0xffff) >= ((cp >> 16) == 0xe ? 0xfffe : 0xfffd);
+    }
+
+    for(i = 0; i < ARRAY_SIZE(iri_unsafe_ranges); ++i) {
+        if(cp >= iri_unsafe_ranges[i].first && cp <= iri_unsafe_ranges[i].last)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL read_pct_byte(const WCHAR *ptr, const WCHAR *end, BYTE *value) {
+    if(end - ptr < 3 || ptr[0] != '%' || !is_hexdigit(ptr[1]) || !is_hexdigit(ptr[2]))
+        return FALSE;
+    *value = (hex_to_int(ptr[1]) << 4) | hex_to_int(ptr[2]);
+    return TRUE;
+}
+
+/* Code point of the UTF-8 sequence spelled out as %XX escapes at ptr, or 0 if there is none */
+static UINT decode_pct_utf8(const WCHAR *ptr, const WCHAR *end, DWORD *used) {
+    UINT cp, min;
+    DWORD count, i;
+    BYTE byte;
+
+    if(!read_pct_byte(ptr, end, &byte))
+        return 0;
+
+    if(byte >= 0xc2 && byte <= 0xdf) {
+        count = 1;
+        cp = byte & 0x1f;
+        min = 0x80;
+    } else if(byte >= 0xe0 && byte <= 0xef) {
+        count = 2;
+        cp = byte & 0x0f;
+        min = 0x800;
+    } else if(byte >= 0xf0 && byte <= 0xf4) {
+        count = 3;
+        cp = byte & 0x07;
+        min = 0x10000;
+    } else {
+        return 0;
+    }
+
+    for(i = 1; i <= count; ++i) {
+        if(!read_pct_byte(ptr + 3*i, end, &byte) || (byte & 0xc0) != 0x80)
+            return 0;
+        cp = (cp << 6) | (byte & 0x3f);
+    }
+
+    if(cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff))
+        return 0;
+
+    *used = 3 * (count + 1);
+    return cp;
+}
+
+/* Writes the UTF-8 of cp as %XX escapes, returning how many characters that takes */
+static DWORD pct_encode_utf8(UINT cp, WCHAR *dest, BOOL lower) {
+    BYTE bytes[4];
+    DWORD count, i;
+
+    if(cp < 0x800) {
+        bytes[0] = 0xc0 | (cp >> 6);
+        count = 2;
+    } else if(cp < 0x10000) {
+        bytes[0] = 0xe0 | (cp >> 12);
+        bytes[1] = 0x80 | ((cp >> 6) & 0x3f);
+        count = 3;
+    } else {
+        bytes[0] = 0xf0 | (cp >> 18);
+        bytes[1] = 0x80 | ((cp >> 12) & 0x3f);
+        bytes[2] = 0x80 | ((cp >> 6) & 0x3f);
+        count = 4;
+    }
+    bytes[count-1] = 0x80 | (cp & 0x3f);
+
+    if(dest) {
+        for(i = 0; i < count; ++i) {
+            pct_encode_val(bytes[i], dest + 3*i);
+            if(lower) {
+                dest[3*i+1] = towlower(dest[3*i+1]);
+                dest[3*i+2] = towlower(dest[3*i+2]);
+            }
+        }
+    }
+    return 3 * count;
+}
+
+/* Applies Uri_CREATE_NORMALIZE_INTL_CHARACTERS to the character at ptr: the UTF-8 escapes of an
+ * IRI-safe character get decoded and an unsafe character gets percent encoded. The result goes to
+ * dest (when it isn't NULL) and *len grows by its length. Returns how many input characters were
+ * used, 0 when the character isn't international, or -1 for a lone surrogate.
+ */
+static INT normalize_intl_char(const WCHAR *ptr, const WCHAR *end, WCHAR *dest, DWORD *len, BOOL lower) {
+    DWORD used = 1, i;
+    UINT cp;
+
+    if(*ptr == '%') {
+        cp = decode_pct_utf8(ptr, end, &used);
+        if(!cp || is_iri_unsafe(cp))
+            return 0;
+
+        if(cp >= 0x10000) {
+            if(dest) {
+                dest[0] = 0xd800 + ((cp - 0x10000) >> 10);
+                dest[1] = 0xdc00 + ((cp - 0x10000) & 0x3ff);
+            }
+            *len += 2;
+        } else {
+            if(dest)
+                dest[0] = cp;
+            *len += 1;
+        }
+        return used;
+    }
+
+    if(*ptr < 0x80)
+        return 0;
+
+    if(IS_HIGH_SURROGATE(*ptr)) {
+        if(ptr + 1 >= end || !IS_LOW_SURROGATE(ptr[1]))
+            return -1;
+        cp = 0x10000 + ((ptr[0] - 0xd800) << 10) + (ptr[1] - 0xdc00);
+        used = 2;
+    } else if(IS_LOW_SURROGATE(*ptr)) {
+        return -1;
+    } else {
+        cp = *ptr;
+    }
+
+    if(is_iri_unsafe(cp)) {
+        *len += pct_encode_utf8(cp, dest, lower);
+    } else {
+        if(dest) {
+            for(i = 0; i < used; ++i)
+                dest[i] = ptr[i];
+        }
+        *len += used;
+    }
+    return used;
+}
+
+static BOOL has_punycode_label(const WCHAR *host, DWORD len) {
+    DWORD i;
+
+    for(i = 0; i + 4 <= len; ++i) {
+        if((i == 0 || host[i-1] == '.') && !StrCmpNIW(host + i, L"xn--", 4))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* Prepares the reg-name host of a known scheme: escapes of unreserved characters are decoded,
+ * international characters are normalized when asked to, and with idna a host with international
+ * characters or punycode labels goes through IDNA to its Unicode form. The result is malloc'ed
+ * into *ret.
+ */
+static HRESULT convert_reg_name(const WCHAR *host, DWORD host_len, DWORD flags, BOOL idna, WCHAR **ret,
+                                DWORD *ret_len, Uri_HOST_TYPE *type) {
+    const BOOL canonicalize = !(flags & Uri_CREATE_NO_CANONICALIZE);
+    const WCHAR *ptr, *end = host + host_len;
+    WCHAR *buf, *ascii = NULL, *unicode = NULL;
+    DWORD len = 0, i;
+    int ascii_len, unicode_len;
+    BOOL intl = FALSE;
+
+    *ret = NULL;
+    *ret_len = 0;
+    *type = Uri_HOST_DNS;
+
+    buf = malloc((host_len * 9 + 1) * sizeof(WCHAR));
+    if(!buf)
+        return E_OUTOFMEMORY;
+
+    for(ptr = host; ptr < end; ++ptr) {
+        if(flags & Uri_CREATE_NORMALIZE_INTL_CHARACTERS) {
+            INT used = normalize_intl_char(ptr, end, buf + len, &len, canonicalize);
+
+            if(used < 0) {
+                free(buf);
+                return E_INVALIDARG;
+            }
+            if(used) {
+                ptr += used - 1;
+                continue;
+            }
+        }
+
+        if(*ptr == '%' && is_unreserved(decode_pct_val(ptr))) {
+            buf[len++] = decode_pct_val(ptr);
+            ptr += 2;
+        } else {
+            buf[len++] = *ptr;
+        }
+    }
+
+    for(i = 0; i < len; ++i) {
+        if(!is_ascii(buf[i]))
+            intl = TRUE;
+    }
+
+    buf[len] = 0;
+    if(!idna || (!intl && !has_punycode_label(buf, len))) {
+        *ret = buf;
+        *ret_len = len;
+        return S_OK;
+    }
+
+    /* Hosts that IDNA rejects can't be used */
+    ascii_len = IdnToAscii(IDN_USE_STD3_ASCII_RULES, buf, len, NULL, 0);
+    if(ascii_len)
+        ascii = malloc(ascii_len * sizeof(WCHAR));
+    if(ascii)
+        ascii_len = IdnToAscii(IDN_USE_STD3_ASCII_RULES, buf, len, ascii, ascii_len);
+    if(ascii && ascii_len)
+        unicode_len = IdnToUnicode(IDN_USE_STD3_ASCII_RULES, ascii, ascii_len, NULL, 0);
+    else
+        unicode_len = 0;
+    if(unicode_len)
+        unicode = malloc((unicode_len + 1) * sizeof(WCHAR));
+    if(unicode) {
+        unicode_len = IdnToUnicode(IDN_USE_STD3_ASCII_RULES, ascii, ascii_len, unicode, unicode_len);
+        unicode[unicode_len] = 0;
+    }
+    free(ascii);
+
+    if(!unicode || !unicode_len) {
+        free(unicode);
+        free(buf);
+        return E_FAIL;
+    }
+
+    for(i = 0; i < unicode_len; ++i) {
+        if(!is_ascii(unicode[i]))
+            *type = Uri_HOST_IDN;
+    }
+
+    /* Without canonicalization the host keeps its text, only its type comes from IDNA */
+    if(!canonicalize) {
+        free(unicode);
+        *ret = buf;
+        *ret_len = len;
+        return S_OK;
+    }
+
+    free(buf);
+    *ret = unicode;
+    *ret_len = unicode_len;
+    return S_OK;
+}
+
+/* Hosts of known schemes other than file and res go through convert_reg_name */
+static BOOL converts_reg_name(URL_SCHEME scheme) {
+    return scheme != URL_SCHEME_UNKNOWN && scheme != URL_SCHEME_FILE && scheme != URL_SCHEME_RES;
+}
+
+/* Only these take international hosts through IDNA */
+static BOOL uses_idna(URL_SCHEME scheme) {
+    return scheme == URL_SCHEME_HTTP || scheme == URL_SCHEME_HTTPS || scheme == URL_SCHEME_FTP;
+}
+
+/* The same schemes normalize international characters in their other components */
+static BOOL normalizes_intl_scheme(URL_SCHEME scheme) {
+    return converts_reg_name(scheme);
+}
+
+static inline BOOL normalize_intl(const parse_data *data, DWORD flags) {
+    return (flags & Uri_CREATE_NORMALIZE_INTL_CHARACTERS) && normalizes_intl_scheme(data->scheme_type);
+}
+
+static BOOL has_lone_surrogate(const WCHAR *str, DWORD len) {
+    DWORD i;
+
+    for(i = 0; i < len; ++i) {
+        if(IS_HIGH_SURROGATE(str[i]) && i + 1 < len && IS_LOW_SURROGATE(str[i+1]))
+            ++i;
+        else if(IS_HIGH_SURROGATE(str[i]) || IS_LOW_SURROGATE(str[i]))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* Every character must be whole where international characters get normalized */
+static BOOL check_lone_surrogates(const parse_data *data, DWORD flags) {
+    if(!normalize_intl(data, flags))
+        return TRUE;
+
+    if(has_lone_surrogate(data->username, data->username_len) ||
+       has_lone_surrogate(data->password, data->password_len) ||
+       has_lone_surrogate(data->host, data->host_len) ||
+       has_lone_surrogate(data->path, data->path_len))
+        return FALSE;
+
+    if(!(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO) &&
+       (has_lone_surrogate(data->query, data->query_len) ||
+        has_lone_surrogate(data->fragment, data->fragment_len)))
+        return FALSE;
+
+    return TRUE;
+}
+
+static int __cdecl compare_suffix(const void *key, const void *entry) {
+    return strcmp(key, *(const char * const *)entry);
+}
+
+static BOOL find_suffix(const char *name, const char * const *table, size_t count) {
+    return bsearch(name, table, count, sizeof(*table), compare_suffix) != NULL;
+}
+
+/* Tells if the last labels of a host form a public suffix, looking them up lower cased and in Unicode */
+static BOOL is_public_suffix(const WCHAR *name, DWORD len) {
+    WCHAR lower[256], decoded[256], *unicode = lower;
+    char utf8[1024], *parent;
+    int unicode_len = len;
+    DWORD i;
+
+    if(!wmemchr(name, '.', len))
+        return TRUE;
+    if(len >= ARRAY_SIZE(lower))
+        return FALSE;
+
+    for(i = 0; i < len; ++i)
+        lower[i] = towlower(name[i]);
+
+    if(has_punycode_label(lower, len)) {
+        unicode_len = IdnToUnicode(0, lower, len, decoded, ARRAY_SIZE(decoded));
+        if(!unicode_len)
+            return FALSE;
+        unicode = decoded;
+    }
+
+    i = WideCharToMultiByte(CP_UTF8, 0, unicode, unicode_len, utf8, sizeof(utf8) - 1, NULL, NULL);
+    if(!i)
+        return FALSE;
+    utf8[i] = 0;
+
+    if(find_suffix(utf8, exception_suffixes, ARRAY_SIZE(exception_suffixes)))
+        return FALSE;
+
+    parent = strchr(utf8, '.') + 1;
+    if(find_suffix(parent, wildcard_suffixes, ARRAY_SIZE(wildcard_suffixes)))
+        return TRUE;
+
+    return find_suffix(utf8, public_suffixes, ARRAY_SIZE(public_suffixes));
+}
+
+/* Finds the domain of a host, the public suffix it ends with and one more label. A domain has
+ * at most four labels, not counting the empty one after a trailing dot. If it finds one it
+ * assigns 'domain_start' the offset into 'host' where the domain name starts.
  */
 void find_domain_name(const WCHAR *host, DWORD host_len,
                              INT *domain_start) {
-    const WCHAR *last_tld, *sec_last_tld, *end, *p;
-
-    end = host+host_len-1;
+    const BOOL trailing_dot = host_len && host[host_len-1] == '.';
+    DWORD labels = 1, count, start, i;
 
     *domain_start = -1;
 
-    /* There has to be at least enough room for a '.' followed by a
-     * 3-character TLD for a domain to even exist in the host name.
-     */
-    if(host_len < 4)
-        return;
-
-    for (last_tld = sec_last_tld = NULL, p = host; p <= end; p++)
-    {
-        if (*p == '.')
-        {
-            sec_last_tld = last_tld;
-            last_tld = p;
-        }
-    }
-    if(!last_tld)
-        /* http://hostname -> has no domain name. */
-        return;
-
-    if(!sec_last_tld) {
-        /* If the '.' is at the beginning of the host there
-         * has to be at least 3 characters in the TLD for it
-         * to be valid.
-         *  Ex: .com -> .com as the domain name.
-         *      .co  -> has no domain name.
-         */
-        if(last_tld-host == 0) {
-            if(end-(last_tld-1) < 3)
-                return;
-        } else if(last_tld-host == 3) {
-            DWORD i;
-
-            /* If there are three characters in front of last_tld and
-             * they are on the list of recognized TLDs, then this
-             * host doesn't have a domain (since the host only contains
-             * a TLD name.
-             *  Ex: edu.uk -> has no domain name.
-             *      foo.uk -> foo.uk as the domain name.
-             */
-            for(i = 0; i < ARRAY_SIZE(recognized_tlds); ++i) {
-                if(!StrCmpNIW(host, recognized_tlds[i].tld_name, 3))
-                    return;
-            }
-        } else if(last_tld-host < 3)
-        {
-            /* Anything less than 3 ASCII characters is considered part
-             * of the TLD name.
-             *  Ex: ak.uk -> Has no domain name.
-             */
-            for(p = host; p < last_tld; p++) {
-                if(!is_ascii(*p))
-                    break;
-            }
-
-            if(p == last_tld)
-                return;
-        }
-
-        /* Otherwise the domain name is the whole host name. */
-        *domain_start = 0;
-    } else if(end+1-last_tld > 3) {
-        /* If the last_tld has more than 3 characters, then it's automatically
-         * considered the TLD of the domain name.
-         *  Ex: www.winehq.org.uk.test -> uk.test as the domain name.
-         */
-        *domain_start = (sec_last_tld+1)-host;
-    } else if(last_tld - (sec_last_tld+1) < 4) {
-        DWORD i;
-        /* If the sec_last_tld is 3 characters long it HAS to be on the list of
-         * recognized to still be considered part of the TLD name, otherwise
-         * it's considered the domain name.
-         *  Ex: www.google.com.uk -> google.com.uk as the domain name.
-         *      www.google.foo.uk -> foo.uk as the domain name.
-         */
-        if(last_tld - (sec_last_tld+1) == 3) {
-            for(i = 0; i < ARRAY_SIZE(recognized_tlds); ++i) {
-                if(!StrCmpNIW(sec_last_tld+1, recognized_tlds[i].tld_name, 3)) {
-                    for (p = sec_last_tld; p > host; p--) if (p[-1] == '.') break;
-                    *domain_start = p - host;
-                    TRACE("Found domain name %s\n", debugstr_wn(host+*domain_start,
-                                                        (host+host_len)-(host+*domain_start)));
-                    return;
-                }
-            }
-
-            *domain_start = (sec_last_tld+1)-host;
-        } else {
-            /* Since the sec_last_tld is less than 3 characters it's considered
-             * part of the TLD.
-             *  Ex: www.google.fo.uk -> google.fo.uk as the domain name.
-             */
-            for (p = sec_last_tld; p > host; p--) if (p[-1] == '.') break;
-            *domain_start = p - host;
-        }
-    } else {
-        /* The second to last TLD has more than 3 characters making it
-         * the domain name.
-         *  Ex: www.google.test.us -> test.us as the domain name.
-         */
-        *domain_start = (sec_last_tld+1)-host;
+    for(i = 0; i < host_len; ++i) {
+        if(host[i] == '.')
+            ++labels;
     }
 
-    TRACE("Found domain name %s\n", debugstr_wn(host+*domain_start,
-                                        (host+host_len)-(host+*domain_start)));
+    for(count = trailing_dot ? 3 : 2; count <= labels && count <= (trailing_dot ? 5 : 4); ++count) {
+        /* The last 'count' labels start after the dot that comes before them */
+        DWORD dots = 0;
+
+        for(start = host_len; start > 0; --start) {
+            if(host[start-1] == '.' && ++dots == count)
+                break;
+        }
+
+        if(!is_public_suffix(host+start, host_len-start)) {
+            *domain_start = start;
+            TRACE("Found domain name %s\n", debugstr_wn(host+start, host_len-start));
+            return;
+        }
+    }
 }
 
-/* Removes the dot segments from a hierarchical URIs path component. This
- * function performs the removal in place.
+/* Removes the dot segments from a path component. An empty segment is a
+ * segment like any other, and the segment after a removed one takes over
+ * the separator that stood before the removed one. A leading separator is
+ * the root, which ".." never takes away. This function performs the
+ * removal in place.
  *
  * This function returns the new length of the path string.
  */
 static DWORD remove_dot_segments(WCHAR *path, DWORD path_len) {
-    WCHAR *out = path;
-    const WCHAR *in = out;
-    const WCHAR *end = out + path_len;
-    DWORD len;
+    const BOOL rooted = path_len && is_slash(path[0]);
+    DWORD *starts, count = 0, in = 0, len = 0;
+    WCHAR *out, *seps, sep = 0, inherited = 0;
+    BOOL inherit = FALSE;
 
-    while(in < end) {
-        /* Move the first path segment in the input buffer to the end of
-         * the output buffer, and any subsequent characters up to, including
-         * the next "/" character (if any) or the end of the input buffer.
-         */
-        while(in < end && !is_slash(*in))
-            *out++ = *in++;
-        if(in == end)
-            break;
-        *out++ = *in++;
-
-        while(in < end) {
-            if(*in != '.')
-                break;
-
-            /* Handle ending "/." */
-            if(in + 1 == end) {
-                ++in;
-                break;
-            }
-
-            /* Handle "/./" */
-            if(is_slash(in[1])) {
-                in += 2;
-                continue;
-            }
-
-            /* If we don't have "/../" or ending "/.." */
-            if(in[1] != '.' || (in + 2 != end && !is_slash(in[2])))
-                break;
-
-            /* Find the slash preceding out pointer and move out pointer to it */
-            if(out > path+1 && is_slash(*--out))
-                --out;
-            while(out > path && !is_slash(*(--out)));
-            if(is_slash(*out))
-                ++out;
-            in += 2;
-            if(in != end)
-                ++in;
-        }
+    out = malloc((path_len + 1) * sizeof(WCHAR));
+    seps = malloc((path_len + 2) * sizeof(WCHAR));
+    starts = malloc((path_len + 2) * sizeof(DWORD));
+    if(!out || !seps || !starts) {
+        free(out);
+        free(seps);
+        free(starts);
+        return path_len;
     }
 
-    len = out - path;
+    /* The root is an output segment of its own that takes no characters */
+    if(rooted) {
+        starts[count] = 0;
+        seps[count++] = 0;
+        sep = path[in++];
+    }
+
+    for(;;) {
+        const DWORD start = in;
+        const WCHAR seg_sep = inherit ? inherited : sep;
+        DWORD seg_len;
+        BOOL last;
+
+        while(in < path_len && !is_slash(path[in]))
+            ++in;
+        seg_len = in - start;
+        last = in >= path_len;
+        inherit = FALSE;
+
+        if((seg_len == 1 && path[start] == '.') || (seg_len == 2 && path[start] == '.' && path[start+1] == '.')) {
+            /* The segment after a dot segment takes over a separator */
+            inherit = TRUE;
+            if(seg_len == 2 && count > (rooted ? 1 : 0)) {
+                len = starts[--count];
+                inherited = seps[count];
+            } else {
+                inherited = seg_sep;
+            }
+
+            if(last && inherited)
+                out[len++] = inherited;
+        } else {
+            starts[count] = len;
+            seps[count++] = seg_sep;
+            if(seg_sep)
+                out[len++] = seg_sep;
+            memcpy(out+len, path+start, seg_len*sizeof(WCHAR));
+            len += seg_len;
+        }
+
+        if(last)
+            break;
+        sep = path[in++];
+    }
+
+    memcpy(path, out, len * sizeof(WCHAR));
+    free(out);
+    free(seps);
+    free(starts);
+
     TRACE("(%p %ld): Path after dot segments removed %s len=%ld\n", path, path_len,
         debugstr_wn(path, len), len);
+    return len;
+}
+
+/* Removes the dot segments of an opaque path that starts with a '/'. A leading run of "." and ".."
+ * segments stays, and a result that would start with "//" gets "/." put in front of it.
+ */
+static DWORD remove_opaque_dot_segments(WCHAR *path, DWORD path_len) {
+    DWORD keep = 0, len;
+
+    for(;;) {
+        if(keep + 2 < path_len && is_slash(path[keep]) && path[keep+1] == '.' && is_slash(path[keep+2]))
+            keep += 2;
+        else if(keep + 3 < path_len && is_slash(path[keep]) && path[keep+1] == '.' && path[keep+2] == '.' &&
+                is_slash(path[keep+3]))
+            keep += 3;
+        else
+            break;
+    }
+
+    len = keep + remove_dot_segments(path+keep, path_len-keep);
+    if(!keep && len >= 2 && path[0] == '/' && path[1] == '/') {
+        memmove(path+2, path, len*sizeof(WCHAR));
+        path[0] = '/';
+        path[1] = '.';
+        len += 2;
+    }
     return len;
 }
 
@@ -659,9 +997,13 @@ static INT find_file_extension(const WCHAR *path, DWORD path_len) {
     return -1;
 }
 
-/* Removes all the leading and trailing white spaces or
- * control characters from the URI and removes all control
- * characters inside of the URI string.
+/* Tabs and line breaks are dropped from anywhere in the URI */
+static inline BOOL is_dropped_char(WCHAR c) {
+    return c == '\t' || c == '\n' || c == '\r';
+}
+
+/* Removes the ASCII spaces and control characters at both ends of
+ * the URI and the tabs and line breaks inside of it.
  */
 static BSTR pre_process_uri(LPCWSTR uri) {
     const WCHAR *start, *end, *ptr;
@@ -671,18 +1013,18 @@ static BSTR pre_process_uri(LPCWSTR uri) {
 
     start = uri;
     /* Skip leading controls and whitespace. */
-    while(*start && (iswcntrl(*start) || iswspace(*start))) ++start;
+    while(*start && *start <= ' ') ++start;
 
     /* URI consisted only of control/whitespace. */
     if(!*start)
         return SysAllocStringLen(NULL, 0);
 
     end = start + lstrlenW(start);
-    while(--end > start && (iswcntrl(*end) || iswspace(*end)));
+    while(--end > start && *end <= ' ');
 
     len = ++end - start;
     for(ptr = start; ptr < end; ptr++) {
-        if(iswcntrl(*ptr))
+        if(is_dropped_char(*ptr))
             len--;
     }
 
@@ -691,7 +1033,7 @@ static BSTR pre_process_uri(LPCWSTR uri) {
         return NULL;
 
     for(ptr = start, ptr2=ret; ptr < end; ptr++) {
-        if(!iswcntrl(*ptr))
+        if(!is_dropped_char(*ptr))
             *ptr2++ = *ptr;
     }
 
@@ -763,135 +1105,6 @@ static BOOL check_pct_encoded(const WCHAR **ptr) {
     return TRUE;
 }
 
-/* dec-octet   = DIGIT                 ; 0-9
- *             / %x31-39 DIGIT         ; 10-99
- *             / "1" 2DIGIT            ; 100-199
- *             / "2" %x30-34 DIGIT     ; 200-249
- *             / "25" %x30-35          ; 250-255
- */
-static BOOL check_dec_octet(const WCHAR **ptr) {
-    const WCHAR *c1, *c2, *c3;
-
-    c1 = *ptr;
-    /* A dec-octet must be at least 1 digit long. */
-    if(*c1 < '0' || *c1 > '9')
-        return FALSE;
-
-    ++(*ptr);
-
-    c2 = *ptr;
-    /* Since the 1-digit requirement was met, it doesn't
-     * matter if this is a DIGIT value, it's considered a
-     * dec-octet.
-     */
-    if(*c2 < '0' || *c2 > '9')
-        return TRUE;
-
-    ++(*ptr);
-
-    c3 = *ptr;
-    /* Same explanation as above. */
-    if(*c3 < '0' || *c3 > '9')
-        return TRUE;
-
-    /* Anything > 255 isn't a valid IP dec-octet. */
-    if(*c1 >= '2' && *c2 >= '5' && *c3 >= '5') {
-        *ptr = c1;
-        return FALSE;
-    }
-
-    ++(*ptr);
-    return TRUE;
-}
-
-/* Checks if there is an implicit IPv4 address in the host component of the URI.
- * The max value of an implicit IPv4 address is UINT_MAX.
- *
- *  Ex:
- *      "234567" would be considered an implicit IPv4 address.
- */
-static BOOL check_implicit_ipv4(const WCHAR **ptr, UINT *val) {
-    const WCHAR *start = *ptr;
-    ULONGLONG ret = 0;
-    *val = 0;
-
-    while(is_num(**ptr)) {
-        ret = ret*10 + (**ptr - '0');
-
-        if(ret > UINT_MAX) {
-            *ptr = start;
-            return FALSE;
-        }
-        ++(*ptr);
-    }
-
-    if(*ptr == start)
-        return FALSE;
-
-    *val = ret;
-    return TRUE;
-}
-
-/* Checks if the string contains an IPv4 address.
- *
- * This function has a strict mode or a non-strict mode of operation
- * When 'strict' is set to FALSE this function will return TRUE if
- * the string contains at least 'dec-octet "." dec-octet' since partial
- * IPv4 addresses will be normalized out into full IPv4 addresses. When
- * 'strict' is set this function expects there to be a full IPv4 address.
- *
- * IPv4address = dec-octet "." dec-octet "." dec-octet "." dec-octet
- */
-static BOOL check_ipv4address(const WCHAR **ptr, BOOL strict) {
-    const WCHAR *start = *ptr;
-
-    if(!check_dec_octet(ptr)) {
-        *ptr = start;
-        return FALSE;
-    }
-
-    if(**ptr != '.') {
-        *ptr = start;
-        return FALSE;
-    }
-
-    ++(*ptr);
-    if(!check_dec_octet(ptr)) {
-        *ptr = start;
-        return FALSE;
-    }
-
-    if(**ptr != '.') {
-        if(strict) {
-            *ptr = start;
-            return FALSE;
-        } else
-            return TRUE;
-    }
-
-    ++(*ptr);
-    if(!check_dec_octet(ptr)) {
-        *ptr = start;
-        return FALSE;
-    }
-
-    if(**ptr != '.') {
-        if(strict) {
-            *ptr = start;
-            return FALSE;
-        } else
-            return TRUE;
-    }
-
-    ++(*ptr);
-    if(!check_dec_octet(ptr)) {
-        *ptr = start;
-        return FALSE;
-    }
-
-    /* Found a four digit ip address. */
-    return TRUE;
-}
 /* Tries to parse the scheme name of the URI.
  *
  * scheme = ALPHA *(ALPHA | NUM | '+' | '-' | '.') as defined by RFC 3896.
@@ -1169,6 +1382,17 @@ static BOOL parse_port(const WCHAR **ptr, parse_data *data) {
         ++(*ptr);
     }
 
+    /* Known schemes treat an empty port as the default one; unknown schemes keep the ':' in the host */
+    if(*ptr == data->port) {
+        if(data->scheme_type == URL_SCHEME_UNKNOWN) {
+            data->port = NULL;
+            return FALSE;
+        }
+        data->has_port = FALSE;
+        data->port_len = 0;
+        return TRUE;
+    }
+
     data->has_port = TRUE;
     data->port_value = port;
     data->port_len = *ptr - data->port;
@@ -1192,20 +1416,37 @@ static BOOL parse_port(const WCHAR **ptr, parse_data *data) {
  *          is UINT_MAX, if the value in the URI exceeds this then
  *          it is not considered an IPv4 address.
  */
+/* File URIs keep a port as part of their host */
+static void fold_file_port(parse_data *data) {
+    if(data->scheme_type != URL_SCHEME_FILE || !data->port)
+        return;
+
+    data->host_suffix = data->port - 1;
+    data->host_suffix_len = data->port_len + 1;
+    data->has_port = FALSE;
+    data->port = NULL;
+    data->port_len = 0;
+    data->port_value = 0;
+}
+
 static BOOL parse_ipv4address(const WCHAR **ptr, parse_data *data) {
     const BOOL is_unknown = data->scheme_type == URL_SCHEME_UNKNOWN;
+    const WCHAR *terminator;
+    IN_ADDR address;
+
     data->host = *ptr;
 
-    if(!check_ipv4address(ptr, FALSE)) {
-        if(!check_implicit_ipv4(ptr, &data->implicit_ipv4)) {
-            TRACE("(%p %p): URI didn't contain anything looking like an IPv4 address.\n", ptr, data);
-            *ptr = data->host;
-            data->host = NULL;
-            return FALSE;
-        } else
-            data->has_implicit_ip = TRUE;
+    /* Hosts take the inet_aton forms: one to four parts in decimal, octal or hex */
+    if(RtlIpv4StringToAddressW(*ptr, FALSE, &terminator, &address) || terminator == *ptr) {
+        TRACE("(%p %p): URI didn't contain anything looking like an IPv4 address.\n", ptr, data);
+        data->host = NULL;
+        return FALSE;
     }
 
+    *ptr = terminator;
+    data->has_implicit_ip = TRUE;
+    data->implicit_ipv4 = (address.S_un.S_un_b.s_b1 << 24) | (address.S_un.S_un_b.s_b2 << 16) |
+                          (address.S_un.S_un_b.s_b3 << 8) | address.S_un.S_un_b.s_b4;
     data->host_len = *ptr - data->host;
     data->host_type = Uri_HOST_IPV4;
 
@@ -1217,8 +1458,10 @@ static BOOL parse_ipv4address(const WCHAR **ptr, parse_data *data) {
         if(!parse_port(ptr, data)) {
             *ptr = data->host;
             data->host = NULL;
+            data->has_implicit_ip = FALSE;
             return FALSE;
         }
+        fold_file_port(data);
     } else if(!is_auth_delim(**ptr, !is_unknown)) {
         /* Found more data which belongs to the host, so this isn't an IPv4. */
         *ptr = data->host;
@@ -1259,11 +1502,17 @@ static BOOL parse_reg_name(const WCHAR **ptr, parse_data *data, DWORD extras) {
     const BOOL is_res = data->scheme_type == URL_SCHEME_RES;
     BOOL inside_brackets = has_start_bracket;
 
-    /* res URIs don't have ports. */
-    BOOL ignore_col = (extras & IGNORE_PORT_DELIMITER) || is_res;
+    /* res and file URIs don't have ports. */
+    BOOL ignore_col = (extras & IGNORE_PORT_DELIMITER) || is_res || data->scheme_type == URL_SCHEME_FILE;
 
     /* We have to be careful with file schemes. */
     if(data->scheme_type == URL_SCHEME_FILE) {
+        /* Two or more slashes after "file://" lead to a UNC host or a drive */
+        if(is_slash((*ptr)[0]) && is_slash((*ptr)[1])) {
+            while(is_slash(**ptr))
+                ++(*ptr);
+        }
+
         /* This is because an implicit file scheme could be "C:\\test" and it
          * would trick this function into thinking the host is "C", when after
          * canonicalization the host would end up being an empty string. A drive
@@ -1300,11 +1549,13 @@ static BOOL parse_reg_name(const WCHAR **ptr, parse_data *data, DWORD extras) {
                         data->host = NULL;
                         TRACE("(%p %p %lx): Expected valid port\n", ptr, data, extras);
                         return FALSE;
-                    } else
+                    } else {
                         /* Windows gives up on trying to parse a port when it
                          * encounters an invalid port.
                          */
                         ignore_col = TRUE;
+                        *ptr = tmp;
+                    }
                 } else {
                     data->host_len = tmp - data->host;
                     break;
@@ -1470,6 +1721,7 @@ static BOOL parse_ip_literal(const WCHAR **ptr, parse_data *data, DWORD extras) 
     }
 
     ++(*ptr);
+    data->host_len = *ptr - data->host;
     if(**ptr == ':') {
         ++(*ptr);
         /* If a valid port is not found, then let it trickle down to
@@ -1480,8 +1732,13 @@ static BOOL parse_ip_literal(const WCHAR **ptr, parse_data *data, DWORD extras) 
             data->host = NULL;
             return FALSE;
         }
-    } else
-        data->host_len = *ptr - data->host;
+        fold_file_port(data);
+    } else if(!is_auth_delim(**ptr, data->scheme_type != URL_SCHEME_UNKNOWN)) {
+        /* More follows the ']', so the host is a reg-name */
+        *ptr = data->host;
+        data->host = NULL;
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -1508,7 +1765,17 @@ static BOOL parse_host(const WCHAR **ptr, parse_data *data, DWORD extras) {
  * authority   = [ userinfo "@" ] host [ ":" port ]
  */
 static BOOL parse_authority(const WCHAR **ptr, parse_data *data, DWORD flags) {
-    parse_userinfo(ptr, data, flags);
+    const BOOL is_file = data->scheme_type == URL_SCHEME_FILE;
+
+    /* A file URI that starts with a drive has no userinfo */
+    if(!(is_file && is_drive_path(*ptr)))
+        parse_userinfo(ptr, data, flags);
+
+    /* File URIs can't name a user */
+    if(is_file && data->username_len && !data->password) {
+        data->error = INET_E_SECURITY_PROBLEM;
+        return FALSE;
+    }
 
     /* Parsing the port will happen during one of the host parsing
      * routines (if the URI has a port).
@@ -1628,6 +1895,13 @@ static BOOL parse_path_opaque(const WCHAR **ptr, parse_data *data, DWORD flags) 
     }
 
     if (data->path) data->path_len = *ptr - data->path;
+
+    /* mailto and mk URIs have no empty paths, unknown schemes only when nothing follows */
+    if(data->path && !data->path_len && !data->is_relative &&
+       (data->scheme_type == URL_SCHEME_MAILTO || data->scheme_type == URL_SCHEME_MK ||
+        (data->scheme_type == URL_SCHEME_UNKNOWN && **ptr)))
+        data->path = NULL;
+
     TRACE("(%p %p %lx): Parsed opaque URI path %s len=%ld\n", ptr, data, flags,
         debugstr_wn(data->path, data->path_len), data->path_len);
     return TRUE;
@@ -1661,12 +1935,16 @@ static BOOL parse_hierpart(const WCHAR **ptr, parse_data *data, DWORD flags) {
 
     data->must_have_path = FALSE;
 
-    /* For javascript: URIs, simply set everything as a path */
-    if(data->scheme_type == URL_SCHEME_JAVASCRIPT) {
+    /* For javascript:, about:, vbscript: and shell: URIs, simply set everything as a path */
+    if(has_raw_path(data->scheme_type)) {
         data->path = *ptr;
         data->path_len = lstrlenW(*ptr);
         data->is_opaque = TRUE;
         *ptr += data->path_len;
+
+        /* An empty one doesn't count */
+        if(!data->path_len)
+            data->path = NULL;
         return TRUE;
     }
 
@@ -1795,6 +2073,50 @@ static BOOL parse_fragment(const WCHAR **ptr, parse_data *data, DWORD flags) {
  *
  * Returns TRUE if it successfully parsed the URI. False otherwise.
  */
+static BOOL has_encoded_null(const WCHAR *str, DWORD len) {
+    DWORD i;
+
+    for(i = 0; i + 2 < len; i++) {
+        if(str[i] == '%' && str[i+1] == '0' && str[i+2] == '0')
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* A file path under a host may not encode a slash */
+static BOOL has_encoded_slash(const WCHAR *str, DWORD len) {
+    DWORD i;
+
+    for(i = 0; i + 2 < len; i++) {
+        if(str[i] == '%' && ((str[i+1] == '2' && (str[i+2] == 'f' || str[i+2] == 'F')) ||
+                             (str[i+1] == '5' && (str[i+2] == 'c' || str[i+2] == 'C'))))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* Known schemes may not encode a null in the components they decode */
+static BOOL check_encoded_nulls(const parse_data *data, DWORD flags) {
+    if(data->scheme_type == URL_SCHEME_UNKNOWN)
+        return TRUE;
+
+    if(data->scheme_type == URL_SCHEME_FILE && data->host_len && has_encoded_slash(data->path, data->path_len))
+        return FALSE;
+
+    if(has_encoded_null(data->username, data->username_len) ||
+       has_encoded_null(data->password, data->password_len) ||
+       has_encoded_null(data->host, data->host_len) ||
+       has_encoded_null(data->path, data->path_len))
+        return FALSE;
+
+    if(!(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO) &&
+       (has_encoded_null(data->query, data->query_len) ||
+        has_encoded_null(data->fragment, data->fragment_len)))
+        return FALSE;
+
+    return TRUE;
+}
+
 static BOOL parse_uri(parse_data *data, DWORD flags) {
     const WCHAR *ptr;
     const WCHAR **pptr;
@@ -1816,6 +2138,9 @@ static BOOL parse_uri(parse_data *data, DWORD flags) {
     if(!parse_fragment(pptr, data, flags))
         return FALSE;
 
+    if(!check_encoded_nulls(data, flags) || !check_lone_surrogates(data, flags))
+        return FALSE;
+
     TRACE("(%p %lx): FINISHED PARSING URI.\n", data, flags);
     return TRUE;
 }
@@ -1830,6 +2155,15 @@ static BOOL canonicalize_username(const parse_data *data, Uri *uri, DWORD flags,
 
     uri->userinfo_start = uri->canon_len;
     for(ptr = data->username; ptr < data->username+data->username_len; ++ptr) {
+        if(normalize_intl(data, flags)) {
+            INT used = normalize_intl_char(ptr, data->username+data->username_len,
+                                           computeOnly ? NULL : uri->canon_uri+uri->canon_len, &uri->canon_len, FALSE);
+            if(used > 0) {
+                ptr += used - 1;
+                continue;
+            }
+        }
+
         if(*ptr == '%') {
             /* Only decode % encoded values for known scheme types. */
             if(data->scheme_type != URL_SCHEME_UNKNOWN) {
@@ -1846,7 +2180,8 @@ static BOOL canonicalize_username(const parse_data *data, Uri *uri, DWORD flags,
                     continue;
                 }
             }
-        } else if(is_ascii(*ptr) && !is_reserved(*ptr) && !is_unreserved(*ptr) && *ptr != '\\') {
+        } else if(data->scheme_type != URL_SCHEME_UNKNOWN && is_ascii(*ptr) && !is_reserved(*ptr) &&
+                  !is_unreserved(*ptr) && *ptr != '\\') {
             /* Only percent encode forbidden characters if the NO_ENCODE_FORBIDDEN_CHARACTERS flag
              * is NOT set.
              */
@@ -1888,6 +2223,15 @@ static BOOL canonicalize_password(const parse_data *data, Uri *uri, DWORD flags,
     ++uri->canon_len;
 
     for(ptr = data->password; ptr < data->password+data->password_len; ++ptr) {
+        if(normalize_intl(data, flags)) {
+            INT used = normalize_intl_char(ptr, data->password+data->password_len,
+                                           computeOnly ? NULL : uri->canon_uri+uri->canon_len, &uri->canon_len, FALSE);
+            if(used > 0) {
+                ptr += used - 1;
+                continue;
+            }
+        }
+
         if(*ptr == '%') {
             /* Only decode % encoded values for known scheme types. */
             if(data->scheme_type != URL_SCHEME_UNKNOWN) {
@@ -1904,7 +2248,8 @@ static BOOL canonicalize_password(const parse_data *data, Uri *uri, DWORD flags,
                     continue;
                 }
             }
-        } else if(is_ascii(*ptr) && !is_reserved(*ptr) && !is_unreserved(*ptr) && *ptr != '\\') {
+        } else if(data->scheme_type != URL_SCHEME_UNKNOWN && is_ascii(*ptr) && !is_reserved(*ptr) &&
+                  !is_unreserved(*ptr) && *ptr != '\\') {
             /* Only percent encode forbidden characters if the NO_ENCODE_FORBIDDEN_CHARACTERS flag
              * is NOT set.
              */
@@ -1983,8 +2328,10 @@ static BOOL canonicalize_userinfo(const parse_data *data, Uri *uri, DWORD flags,
  */
 static BOOL canonicalize_reg_name(const parse_data *data, Uri *uri,
                                   DWORD flags, BOOL computeOnly) {
-    const WCHAR *ptr;
+    const WCHAR *ptr, *host = data->host;
     const BOOL known_scheme = data->scheme_type != URL_SCHEME_UNKNOWN;
+    DWORD host_len = data->host_len;
+    WCHAR *converted = NULL;
 
     if(data->scheme_type == URL_SCHEME_FILE &&
        data->host_len == lstrlenW(L"localhost")) {
@@ -2007,7 +2354,16 @@ static BOOL canonicalize_reg_name(const parse_data *data, Uri *uri,
 
     uri->host_start = uri->canon_len;
 
-    for(ptr = data->host; ptr < data->host+data->host_len; ++ptr) {
+    /* International hosts of other schemes keep their text and count as DNS names */
+    uri->host_type = Uri_HOST_DNS;
+    if(converts_reg_name(data->scheme_type)) {
+        if(FAILED(convert_reg_name(data->host, data->host_len, flags, uses_idna(data->scheme_type), &converted,
+                                   &host_len, &uri->host_type)))
+            return FALSE;
+        host = converted;
+    }
+
+    for(ptr = host; ptr < host+host_len; ++ptr) {
         if(*ptr == '%' && known_scheme) {
             WCHAR val = decode_pct_val(ptr);
             if(is_unreserved(val)) {
@@ -2052,7 +2408,9 @@ static BOOL canonicalize_reg_name(const parse_data *data, Uri *uri,
             uri->canon_len += 3;
         } else {
             if(!computeOnly) {
-                if(!(flags & Uri_CREATE_NO_CANONICALIZE) && known_scheme)
+                /* Only ASCII letters get lower cased here, international ones went through IDNA */
+                if(!(flags & Uri_CREATE_NO_CANONICALIZE) && known_scheme && is_ascii(*ptr) &&
+                   data->scheme_type != URL_SCHEME_MK)
                     uri->canon_uri[uri->canon_len] = towlower(*ptr);
                 else
                     uri->canon_uri[uri->canon_len] = *ptr;
@@ -2062,6 +2420,7 @@ static BOOL canonicalize_reg_name(const parse_data *data, Uri *uri,
         }
     }
 
+    free(converted);
     uri->host_len = uri->canon_len - uri->host_start;
 
     if(!computeOnly)
@@ -2095,6 +2454,10 @@ static BOOL canonicalize_implicit_ipv4address(const parse_data *data, Uri *uri, 
         else
             uri->canon_len += ui2ipv4(NULL, data->implicit_ipv4);
     }
+
+    if(!computeOnly)
+        memcpy(uri->canon_uri+uri->canon_len, data->host_suffix, data->host_suffix_len*sizeof(WCHAR));
+    uri->canon_len += data->host_suffix_len;
 
     uri->host_len = uri->canon_len - uri->host_start;
     uri->host_type = Uri_HOST_IPV4;
@@ -2258,6 +2621,10 @@ static BOOL canonicalize_ipv6address(const parse_data *data, Uri *uri,
         }
     }
 
+    if(!computeOnly)
+        memcpy(uri->canon_uri+uri->canon_len, data->host_suffix, data->host_suffix_len*sizeof(WCHAR));
+    uri->canon_len += data->host_suffix_len;
+
     uri->host_len = uri->canon_len - uri->host_start;
 
     if(!computeOnly)
@@ -2277,7 +2644,8 @@ static BOOL canonicalize_host(const parse_data *data, Uri *uri, DWORD flags, BOO
     if(data->host) {
         switch(data->host_type) {
         case Uri_HOST_DNS:
-            uri->host_type = Uri_HOST_DNS;
+        case Uri_HOST_IDN:
+            /* The canonical host decides between DNS and IDN */
             if(!canonicalize_reg_name(data, uri, flags, computeOnly))
                 return FALSE;
 
@@ -2295,14 +2663,8 @@ static BOOL canonicalize_host(const parse_data *data, Uri *uri, DWORD flags, BOO
             uri->host_type = Uri_HOST_IPV6;
             break;
 
-        case Uri_HOST_IDN:
-            uri->host_type = Uri_HOST_IDN;
-            if(!canonicalize_reg_name(data, uri, flags, computeOnly))
-                return FALSE;
-
-            break;
         case Uri_HOST_UNKNOWN:
-            if(data->host_len > 0 || data->scheme_type != URL_SCHEME_FILE) {
+            if(data->host_len > 0 || (data->scheme_type != URL_SCHEME_FILE && !(data->has_port && data->port))) {
                 uri->host_start = uri->canon_len;
 
                 /* Nothing happens to unknown host types. */
@@ -2376,7 +2738,8 @@ static BOOL canonicalize_port(const parse_data *data, Uri *uri, DWORD flags, BOO
             uri->canon_uri[uri->canon_len] = ':';
         ++uri->canon_len;
 
-        if(flags & Uri_CREATE_NO_CANONICALIZE && data->port) {
+        if(data->port && data->port_len && ((flags & Uri_CREATE_NO_CANONICALIZE) ||
+           data->scheme_type == URL_SCHEME_UNKNOWN || data->scheme_type == URL_SCHEME_MK)) {
             /* Copy the original over without changes. */
             if(!computeOnly)
                 memcpy(uri->canon_uri+uri->canon_len, data->port, data->port_len*sizeof(WCHAR));
@@ -2409,7 +2772,9 @@ static BOOL canonicalize_authority(const parse_data *data, Uri *uri, DWORD flags
     if(!canonicalize_port(data, uri, flags, computeOnly))
         return FALSE;
 
-    if(uri->host_start != -1 || (data->is_relative && (data->password || data->username)))
+    /* An empty host before a port isn't reported, but the authority is unless it ends up empty */
+    if(uri->host_start != -1 || (data->is_relative && (data->password || data->username)) ||
+       (data->host && data->has_port && data->port && uri->canon_len > uri->authority_start))
         uri->authority_len = uri->canon_len - uri->authority_start;
     else
         uri->authority_start = -1;
@@ -2488,7 +2853,7 @@ static DWORD canonicalize_path_hierarchical(const WCHAR *path, DWORD path_len, U
         }
     }
 
-    if(!is_file && *path && *path != '/') {
+    if(!is_file && *path && *path != '/' && !(known_scheme && *path == '\\')) {
         /* Prepend a '/' to the path if it doesn't have one. */
         if(ret_path)
             ret_path[len] = '/';
@@ -2498,7 +2863,17 @@ static DWORD canonicalize_path_hierarchical(const WCHAR *path, DWORD path_len, U
     for(; ptr < path+path_len; ++ptr) {
         BOOL do_default_action = TRUE;
 
-        if(*ptr == '%' && !is_res) {
+        if((flags & Uri_CREATE_NORMALIZE_INTL_CHARACTERS) && normalizes_intl_scheme(scheme_type)) {
+            INT used = normalize_intl_char(ptr, path+path_len, ret_path ? ret_path+len : NULL, &len, FALSE);
+            if(used > 0) {
+                ptr += used - 1;
+                continue;
+            }
+        }
+
+        if(*ptr == '%' && (flags & CANON_KEEP_PERCENT_ENCODED)) {
+            /* Copied as it is */
+        } else if(*ptr == '%' && !is_res) {
             const WCHAR *tmp = ptr;
             WCHAR val;
 
@@ -2517,6 +2892,15 @@ static DWORD canonicalize_path_hierarchical(const WCHAR *path, DWORD path_len, U
                       (val && flags&Uri_CREATE_FILE_USE_DOS_PATH && !is_forbidden_dos_path_char(val))))) {
                 if(ret_path)
                     ret_path[len] = val;
+                len++;
+
+                ptr += 2;
+                continue;
+            } else if(is_file && !is_implicit_scheme && !(flags & Uri_CREATE_FILE_USE_DOS_PATH) &&
+                      (val >= 0x80 || val == '\\')) {
+                /* File paths take escaped bytes as Latin-1 characters, and an escaped backslash as a '/' */
+                if(ret_path)
+                    ret_path[len] = val == '\\' ? '/' : val;
                 len++;
 
                 ptr += 2;
@@ -2611,8 +2995,8 @@ static BOOL canonicalize_path_opaque(const parse_data *data, Uri *uri, DWORD fla
         flags |= Uri_CREATE_FILE_USE_DOS_PATH;
     }
 
-    /* For javascript: URIs, simply copy path part without any canonicalization */
-    if(data->scheme_type == URL_SCHEME_JAVASCRIPT) {
+    /* For javascript:, about:, vbscript: and shell: URIs, simply copy path part without any canonicalization */
+    if(has_raw_path(data->scheme_type)) {
         if(!computeOnly)
             memcpy(uri->canon_uri+uri->canon_len, data->path, data->path_len*sizeof(WCHAR));
         uri->path_len = data->path_len;
@@ -2623,7 +3007,7 @@ static BOOL canonicalize_path_opaque(const parse_data *data, Uri *uri, DWORD fla
     /* Windows doesn't allow a "//" to appear after the scheme
      * of a URI, if it's an opaque URI.
      */
-    if(data->scheme && *(data->path) == '/' && *(data->path+1) == '/') {
+    if(data->path_len >= 2 && *(data->path) == '/' && *(data->path+1) == '/') {
         /* So it inserts a "/." before the "//" if it exists. */
         if(!computeOnly) {
             uri->canon_uri[uri->canon_len] = '/';
@@ -2635,6 +3019,15 @@ static BOOL canonicalize_path_opaque(const parse_data *data, Uri *uri, DWORD fla
 
     for(ptr = data->path; ptr < data->path+data->path_len; ++ptr) {
         BOOL do_default_action = TRUE;
+
+        if(normalize_intl(data, flags)) {
+            INT used = normalize_intl_char(ptr, data->path+data->path_len,
+                                           computeOnly ? NULL : uri->canon_uri+uri->canon_len, &uri->canon_len, FALSE);
+            if(used > 0) {
+                ptr += used - 1;
+                continue;
+            }
+        }
 
         if(*ptr == '%' && known_scheme) {
             WCHAR val = decode_pct_val(ptr);
@@ -2653,7 +3046,7 @@ static BOOL canonicalize_path_opaque(const parse_data *data, Uri *uri, DWORD fla
             ++uri->canon_len;
             do_default_action = FALSE;
         } else if(*ptr == '\\') {
-            if((data->is_relative || is_mk || is_file) && !(flags & Uri_CREATE_FILE_USE_DOS_PATH)) {
+            if((is_mk || is_file) && !(flags & Uri_CREATE_FILE_USE_DOS_PATH)) {
                 /* Convert to a '/'. */
                 if(!computeOnly)
                     uri->canon_uri[uri->canon_len] = '/';
@@ -2682,6 +3075,14 @@ static BOOL canonicalize_path_opaque(const parse_data *data, Uri *uri, DWORD fla
     if(is_mk && !computeOnly && !(flags & Uri_CREATE_NO_CANONICALIZE)) {
         DWORD new_len = remove_dot_segments(uri->canon_uri + uri->path_start,
                                             uri->canon_len - uri->path_start);
+        uri->canon_len = uri->path_start + new_len;
+    } else if(!computeOnly && !(flags & Uri_CREATE_NO_CANONICALIZE) && data->scheme &&
+              uri->canon_len > uri->path_start && uri->canon_uri[uri->path_start] == '/' &&
+              data->scheme_type != URL_SCHEME_ABOUT && data->scheme_type != URL_SCHEME_SHELL &&
+              data->scheme_type != URL_SCHEME_VBSCRIPT && data->scheme_type != URL_SCHEME_MAILTO) {
+        /* Opaque paths that start with a '/' lose their dot segments as well */
+        DWORD new_len = remove_opaque_dot_segments(uri->canon_uri + uri->path_start,
+                                                   uri->canon_len - uri->path_start);
         uri->canon_len = uri->path_start + new_len;
     }
 
@@ -2804,6 +3205,15 @@ static BOOL canonicalize_query(const parse_data *data, Uri *uri, DWORD flags, BO
 
     end = data->query+data->query_len;
     for(ptr = data->query; ptr < end; ++ptr) {
+        if(normalize_intl(data, flags) && !(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO)) {
+            INT used = normalize_intl_char(ptr, end, computeOnly ? NULL : uri->canon_uri+uri->canon_len,
+                                           &uri->canon_len, FALSE);
+            if(used > 0) {
+                ptr += used - 1;
+                continue;
+            }
+        }
+
         if(*ptr == '%') {
             if(known_scheme && !(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO)) {
                 WCHAR val = decode_pct_val(ptr);
@@ -2816,7 +3226,8 @@ static BOOL canonicalize_query(const parse_data *data, Uri *uri, DWORD flags, BO
                     continue;
                 }
             }
-        } else if(known_scheme && is_ascii(*ptr) && !is_unreserved(*ptr) && !is_reserved(*ptr)) {
+        } else if(known_scheme && is_ascii(*ptr) && !is_unreserved(*ptr) && !is_reserved(*ptr) && *ptr != '\\') {
+            /* A backslash stays as it is in the query and fragment */
             if(!(flags & Uri_CREATE_NO_ENCODE_FORBIDDEN_CHARACTERS) &&
                !(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO)) {
                 if(!computeOnly)
@@ -2854,6 +3265,15 @@ static BOOL canonicalize_fragment(const parse_data *data, Uri *uri, DWORD flags,
 
     end = data->fragment + data->fragment_len;
     for(ptr = data->fragment; ptr < end; ++ptr) {
+        if(normalize_intl(data, flags) && !(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO)) {
+            INT used = normalize_intl_char(ptr, end, computeOnly ? NULL : uri->canon_uri+uri->canon_len,
+                                           &uri->canon_len, FALSE);
+            if(used > 0) {
+                ptr += used - 1;
+                continue;
+            }
+        }
+
         if(*ptr == '%') {
             if(known_scheme && !(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO)) {
                 WCHAR val = decode_pct_val(ptr);
@@ -2866,7 +3286,8 @@ static BOOL canonicalize_fragment(const parse_data *data, Uri *uri, DWORD flags,
                     continue;
                 }
             }
-        } else if(known_scheme && is_ascii(*ptr) && !is_unreserved(*ptr) && !is_reserved(*ptr)) {
+        } else if(known_scheme && is_ascii(*ptr) && !is_unreserved(*ptr) && !is_reserved(*ptr) && *ptr != '\\') {
+            /* A backslash stays as it is in the query and fragment */
             if(!(flags & Uri_CREATE_NO_ENCODE_FORBIDDEN_CHARACTERS) &&
                !(flags & Uri_CREATE_NO_DECODE_EXTRA_INFO)) {
                 if(!computeOnly)
@@ -3874,6 +4295,93 @@ static ULONG WINAPI Uri_Release(IUri *iface)
     return ref;
 }
 
+/* The display flags each string property takes */
+static BOOL is_valid_display_flags(Uri_PROPERTY prop, DWORD flags)
+{
+    switch(prop) {
+    case Uri_PROPERTY_ABSOLUTE_URI:
+    case Uri_PROPERTY_DOMAIN:
+    case Uri_PROPERTY_HOST:
+        return !flags || flags == Uri_PUNYCODE_IDN_HOST || flags == Uri_DISPLAY_IDN_HOST ||
+               flags == Uri_DISPLAY_NO_PUNYCODE;
+    case Uri_PROPERTY_DISPLAY_URI:
+        return !(flags & ~(Uri_DISPLAY_NO_FRAGMENT|Uri_DISPLAY_NO_PUNYCODE));
+    default:
+        return !flags;
+    }
+}
+
+/* The display URI shows an IDN host as punycode unless told not to; the other properties only when asked */
+static BOOL wants_punycode_host(Uri_PROPERTY prop, DWORD flags)
+{
+    if(prop == Uri_PROPERTY_DISPLAY_URI)
+        return !(flags & Uri_DISPLAY_NO_PUNYCODE);
+    return flags == Uri_PUNYCODE_IDN_HOST || flags == Uri_DISPLAY_IDN_HOST;
+}
+
+/* Replaces the IDN host found at offset pos of *str with its punycode form */
+static HRESULT punycode_host_at(const Uri *This, BSTR *str, unsigned int pos)
+{
+    unsigned int len = SysStringLen(*str);
+    int punycode_len;
+    BSTR ret;
+
+    punycode_len = IdnToAscii(0, This->canon_uri+This->host_start, This->host_len, NULL, 0);
+    if(!punycode_len)
+        return S_OK;
+
+    ret = SysAllocStringLen(NULL, len-This->host_len+punycode_len);
+    if(!ret)
+        return E_OUTOFMEMORY;
+
+    memcpy(ret, *str, pos*sizeof(WCHAR));
+    IdnToAscii(0, This->canon_uri+This->host_start, This->host_len, ret+pos, punycode_len);
+    memcpy(ret+pos+punycode_len, *str+pos+This->host_len, (len-pos-This->host_len)*sizeof(WCHAR));
+    SysFreeString(*str);
+    *str = ret;
+    return S_OK;
+}
+
+/* Percent encodes the international characters of *str as UTF-8 */
+static HRESULT pct_encode_intl(BSTR *str) {
+    unsigned int len = SysStringLen(*str), size = 0, i;
+    WCHAR *dest;
+    BSTR ret;
+
+    for(i = 0; i < len; ++i) {
+        if(is_ascii((*str)[i])) {
+            ++size;
+        } else if(IS_HIGH_SURROGATE((*str)[i]) && i + 1 < len && IS_LOW_SURROGATE((*str)[i+1])) {
+            size += 12;
+            ++i;
+        } else {
+            size += pct_encode_utf8((*str)[i], NULL, FALSE);
+        }
+    }
+
+    if(size == len)
+        return S_OK;
+
+    ret = SysAllocStringLen(NULL, size);
+    if(!ret)
+        return E_OUTOFMEMORY;
+
+    for(i = 0, dest = ret; i < len; ++i) {
+        if(is_ascii((*str)[i])) {
+            *dest++ = (*str)[i];
+        } else if(IS_HIGH_SURROGATE((*str)[i]) && i + 1 < len && IS_LOW_SURROGATE((*str)[i+1])) {
+            dest += pct_encode_utf8(0x10000 + (((*str)[i] - 0xd800) << 10) + ((*str)[i+1] - 0xdc00), dest, FALSE);
+            ++i;
+        } else {
+            dest += pct_encode_utf8((*str)[i], dest, FALSE);
+        }
+    }
+
+    SysFreeString(*str);
+    *str = ret;
+    return S_OK;
+}
+
 static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BSTR *pbstrProperty, DWORD dwFlags)
 {
     Uri *This = impl_from_IUri(iface);
@@ -3898,15 +4406,7 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
         return E_INVALIDARG;
     }
 
-    if(dwFlags != 0 && dwFlags != Uri_DISPLAY_NO_FRAGMENT && dwFlags != Uri_PUNYCODE_IDN_HOST
-       && dwFlags != Uri_DISPLAY_IDN_HOST)
-        return E_INVALIDARG;
-
-    if((dwFlags == Uri_DISPLAY_NO_FRAGMENT && uriProp != Uri_PROPERTY_DISPLAY_URI)
-       || (dwFlags == Uri_PUNYCODE_IDN_HOST && uriProp != Uri_PROPERTY_ABSOLUTE_URI
-           && uriProp != Uri_PROPERTY_DOMAIN && uriProp != Uri_PROPERTY_HOST)
-       || (dwFlags == Uri_DISPLAY_IDN_HOST && uriProp != Uri_PROPERTY_ABSOLUTE_URI
-           && uriProp != Uri_PROPERTY_DOMAIN && uriProp != Uri_PROPERTY_HOST))
+    if(!is_valid_display_flags(uriProp, dwFlags))
         return E_INVALIDARG;
 
     switch(uriProp) {
@@ -3915,50 +4415,35 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
             *pbstrProperty = SysAllocStringLen(NULL, 0);
             hres = S_FALSE;
         }
-        /* Uri_PUNYCODE_IDN_HOST doesn't remove user info containing only "@" and ":@" */
-        else if (dwFlags == Uri_PUNYCODE_IDN_HOST && This->host_type == Uri_HOST_IDN && This->host_start > -1) {
-            unsigned int punycode_host_len;
+        else {
+            /* Empty userinfo is left out, unless the host is IDN or the URI is canonicalized as absolute */
+            unsigned int skip = 0;
 
-            punycode_host_len = IdnToAscii(0, This->canon_uri+This->host_start, This->host_len, NULL, 0);
-            *pbstrProperty = SysAllocStringLen(NULL, This->canon_len-This->host_len+punycode_host_len);
+            if(This->scheme_type != URL_SCHEME_UNKNOWN && This->userinfo_start > -1 &&
+               This->host_type != Uri_HOST_IDN && !(This->create_flags & Uri_CREATE_CANONICALIZE_ABSOLUTE)) {
+                if(This->userinfo_len == 0)
+                    skip = 1;
+                else if(This->userinfo_split == 0 && This->userinfo_len == 1)
+                    skip = 2;
+            }
+
+            *pbstrProperty = SysAllocStringLen(NULL, This->canon_len-skip);
             hres = S_OK;
             if(*pbstrProperty) {
-                memcpy(*pbstrProperty, This->canon_uri, This->host_start*sizeof(WCHAR));
-                IdnToAscii(0, This->canon_uri+This->host_start, This->host_len, *pbstrProperty+This->host_start, punycode_host_len);
-                memcpy(*pbstrProperty+This->host_start+punycode_host_len,
-                       This->canon_uri+This->host_start+This->host_len,
-                       (This->canon_len-This->host_start-This->host_len)*sizeof(WCHAR));
-            }
-        } else {
-            if(This->scheme_type != URL_SCHEME_UNKNOWN && This->userinfo_start > -1) {
-                if(This->userinfo_len == 0) {
-                    /* Don't include the '@' after the userinfo component. */
-                    *pbstrProperty = SysAllocStringLen(NULL, This->canon_len-1);
-                    hres = S_OK;
-                    if(*pbstrProperty) {
-                        /* Copy everything before it. */
-                        memcpy(*pbstrProperty, This->canon_uri, This->userinfo_start*sizeof(WCHAR));
+                unsigned int prefix = skip ? This->userinfo_start : This->canon_len;
 
-                        /* And everything after it. */
-                        memcpy(*pbstrProperty+This->userinfo_start, This->canon_uri+This->userinfo_start+1,
-                               (This->canon_len-This->userinfo_start-1)*sizeof(WCHAR));
-                    }
-                } else if(This->userinfo_split == 0 && This->userinfo_len == 1) {
-                    /* Don't include the ":@" */
-                    *pbstrProperty = SysAllocStringLen(NULL, This->canon_len-2);
-                    hres = S_OK;
-                    if(*pbstrProperty) {
-                        memcpy(*pbstrProperty, This->canon_uri, This->userinfo_start*sizeof(WCHAR));
-                        memcpy(*pbstrProperty+This->userinfo_start, This->canon_uri+This->userinfo_start+2,
-                               (This->canon_len-This->userinfo_start-2)*sizeof(WCHAR));
-                    }
-                } else {
-                    *pbstrProperty = SysAllocString(This->canon_uri);
-                    hres = S_OK;
-                }
-            } else {
-                *pbstrProperty = SysAllocString(This->canon_uri);
-                hres = S_OK;
+                memcpy(*pbstrProperty, This->canon_uri, prefix*sizeof(WCHAR));
+                memcpy(*pbstrProperty+prefix, This->canon_uri+prefix+skip,
+                       (This->canon_len-prefix-skip)*sizeof(WCHAR));
+
+                if(wants_punycode_host(uriProp, dwFlags) && This->host_type == Uri_HOST_IDN &&
+                   This->host_start > -1)
+                    hres = punycode_host_at(This, pbstrProperty, This->host_start-skip);
+
+                /* An absolute URI canonicalized as such is pure ASCII, except for file URIs */
+                if(SUCCEEDED(hres) && (This->create_flags & Uri_CREATE_CANONICALIZE_ABSOLUTE) &&
+                   This->scheme_type != URL_SCHEME_FILE)
+                    hres = pct_encode_intl(pbstrProperty);
             }
         }
 
@@ -3989,10 +4474,11 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
          * scheme types.
          */
         if(This->scheme_type != URL_SCHEME_UNKNOWN && This->userinfo_start > -1) {
-            unsigned int length = This->canon_len-This->userinfo_len;
+            /* Leave out the userinfo and the '@' after it */
+            unsigned int length = This->canon_len-This->userinfo_len-1;
 
             /* Skip fragment if Uri_DISPLAY_NO_FRAGMENT is specified */
-            if(dwFlags == Uri_DISPLAY_NO_FRAGMENT && This->fragment_start > -1)
+            if((dwFlags & Uri_DISPLAY_NO_FRAGMENT) && This->fragment_start > -1)
                 length -= This->fragment_len;
 
             *pbstrProperty = SysAllocStringLen(NULL, length);
@@ -4002,7 +4488,7 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
                 memcpy(*pbstrProperty, This->canon_uri, This->userinfo_start*sizeof(WCHAR));
 
                 /* Copy everything after the userinfo over. */
-                length -= This->userinfo_start+1;
+                length -= This->userinfo_start;
                 memcpy(*pbstrProperty+This->userinfo_start,
                    This->canon_uri+This->userinfo_start+This->userinfo_len+1, length*sizeof(WCHAR));
             }
@@ -4010,7 +4496,7 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
             unsigned int length = This->canon_len;
 
             /* Skip fragment if Uri_DISPLAY_NO_FRAGMENT is specified */
-            if(dwFlags == Uri_DISPLAY_NO_FRAGMENT && This->fragment_start > -1)
+            if((dwFlags & Uri_DISPLAY_NO_FRAGMENT) && This->fragment_start > -1)
                 length -= This->fragment_len;
 
             *pbstrProperty = SysAllocStringLen(This->canon_uri, length);
@@ -4021,10 +4507,19 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
         else
             hres = S_OK;
 
+        if(hres == S_OK && wants_punycode_host(uriProp, dwFlags) && This->host_type == Uri_HOST_IDN &&
+           This->host_start > -1) {
+            unsigned int pos = This->host_start;
+
+            if(This->scheme_type != URL_SCHEME_UNKNOWN && This->userinfo_start > -1)
+                pos -= This->userinfo_len+1;
+            hres = punycode_host_at(This, pbstrProperty, pos);
+        }
+
         break;
     case Uri_PROPERTY_DOMAIN:
         if(This->domain_offset > -1) {
-            if(dwFlags == Uri_PUNYCODE_IDN_HOST && This->host_type == Uri_HOST_IDN) {
+            if(wants_punycode_host(uriProp, dwFlags) && This->host_type == Uri_HOST_IDN) {
                 unsigned int punycode_length;
 
                 punycode_length = IdnToAscii(0, This->canon_uri+This->host_start+This->domain_offset,
@@ -4077,10 +4572,10 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
         break;
     case Uri_PROPERTY_HOST:
         if(This->host_start > -1) {
-            /* The '[' and ']' aren't included for IPv6 addresses. */
-            if(This->host_type == Uri_HOST_IPV6)
+            /* The '[' and ']' aren't included for IPv6 addresses, unless a file URI keeps its port there */
+            if(This->host_type == Uri_HOST_IPV6 && This->canon_uri[This->host_start+This->host_len-1] == ']')
                 *pbstrProperty = SysAllocStringLen(This->canon_uri+This->host_start+1, This->host_len-2);
-            else if(dwFlags == Uri_PUNYCODE_IDN_HOST && This->host_type == Uri_HOST_IDN) {
+            else if(wants_punycode_host(uriProp, dwFlags) && This->host_type == Uri_HOST_IDN) {
                 unsigned int punycode_length;
 
                 punycode_length = IdnToAscii(0, This->canon_uri+This->host_start, This->host_len, NULL, 0);
@@ -4223,6 +4718,8 @@ static HRESULT WINAPI Uri_GetPropertyBSTR(IUri *iface, Uri_PROPERTY uriProp, BST
 static HRESULT WINAPI Uri_GetPropertyLength(IUri *iface, Uri_PROPERTY uriProp, DWORD *pcchProperty, DWORD dwFlags)
 {
     Uri *This = impl_from_IUri(iface);
+    BSTR property = NULL;
+    BOOL valid;
     HRESULT hres;
     TRACE("(%p %s)->(%d %p %lx)\n", This, debugstr_w(This->canon_uri), uriProp, pcchProperty, dwFlags);
 
@@ -4235,145 +4732,18 @@ static HRESULT WINAPI Uri_GetPropertyLength(IUri *iface, Uri_PROPERTY uriProp, D
     if(uriProp > Uri_PROPERTY_STRING_LAST)
         return E_INVALIDARG;
 
-    if(dwFlags != 0 && dwFlags != Uri_DISPLAY_NO_FRAGMENT && dwFlags != Uri_PUNYCODE_IDN_HOST
-       && dwFlags != Uri_DISPLAY_IDN_HOST) {
+    /* Flags a property does not take only fail when the property is there */
+    valid = is_valid_display_flags(uriProp, dwFlags);
+    hres = Uri_GetPropertyBSTR(iface, uriProp, &property, valid ? dwFlags : 0);
+    if(FAILED(hres)) {
         *pcchProperty = 0;
-        return E_INVALIDARG;
+        return hres;
     }
 
-    switch(uriProp) {
-    case Uri_PROPERTY_ABSOLUTE_URI:
-        if(This->display_modifiers & URI_DISPLAY_NO_ABSOLUTE_URI) {
-            *pcchProperty = 0;
-            hres = S_FALSE;
-        }
-        /* Uri_PUNYCODE_IDN_HOST doesn't remove user info containing only "@" and ":@" */
-        else if(dwFlags == Uri_PUNYCODE_IDN_HOST && This->host_type == Uri_HOST_IDN && This->host_start > -1) {
-            unsigned int punycode_host_len = IdnToAscii(0, This->canon_uri+This->host_start, This->host_len, NULL, 0);
-            *pcchProperty = This->canon_len - This->host_len + punycode_host_len;
-            hres = S_OK;
-        } else {
-            if(This->scheme_type != URL_SCHEME_UNKNOWN) {
-                if(This->userinfo_start > -1 && This->userinfo_len == 0)
-                    /* Don't include the '@' in the length. */
-                    *pcchProperty = This->canon_len-1;
-                else if(This->userinfo_start > -1 && This->userinfo_len == 1 &&
-                        This->userinfo_split == 0)
-                    /* Don't include the ":@" in the length. */
-                    *pcchProperty = This->canon_len-2;
-                else
-                    *pcchProperty = This->canon_len;
-            } else
-                *pcchProperty = This->canon_len;
+    *pcchProperty = SysStringLen(property);
+    SysFreeString(property);
 
-            hres = S_OK;
-        }
-
-        break;
-    case Uri_PROPERTY_AUTHORITY:
-        if(This->port_offset > -1 &&
-           This->display_modifiers & URI_DISPLAY_NO_DEFAULT_PORT_AUTH &&
-           is_default_port(This->scheme_type, This->port))
-            /* Only count up until the port in the authority. */
-            *pcchProperty = This->port_offset;
-        else
-            *pcchProperty = This->authority_len;
-        hres = (This->authority_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_DISPLAY_URI:
-        if(This->scheme_type != URL_SCHEME_UNKNOWN && This->userinfo_start > -1)
-            *pcchProperty = This->canon_len-This->userinfo_len-1;
-        else
-            *pcchProperty = This->canon_len;
-
-        if(dwFlags == Uri_DISPLAY_NO_FRAGMENT && This->fragment_start > -1)
-            *pcchProperty -= This->fragment_len;
-
-        hres = S_OK;
-        break;
-    case Uri_PROPERTY_DOMAIN:
-        if(This->domain_offset > -1) {
-            if(dwFlags == Uri_PUNYCODE_IDN_HOST && This->host_type == Uri_HOST_IDN)
-                *pcchProperty = IdnToAscii(0, This->canon_uri+This->host_start+This->domain_offset, This->host_len-This->domain_offset, NULL, 0);
-            else
-                *pcchProperty = This->host_len - This->domain_offset;
-        }
-        else
-            *pcchProperty = 0;
-
-        hres = (This->domain_offset > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_EXTENSION:
-        if(This->extension_offset > -1) {
-            *pcchProperty = This->path_len - This->extension_offset;
-            hres = S_OK;
-        } else {
-            *pcchProperty = 0;
-            hres = S_FALSE;
-        }
-
-        break;
-    case Uri_PROPERTY_FRAGMENT:
-        *pcchProperty = This->fragment_len;
-        hres = (This->fragment_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_HOST:
-        *pcchProperty = This->host_len;
-
-        /* '[' and ']' aren't included in the length. */
-        if(This->host_type == Uri_HOST_IPV6)
-            *pcchProperty -= 2;
-        else if(dwFlags == Uri_PUNYCODE_IDN_HOST && This->host_type == Uri_HOST_IDN && This->host_start > -1)
-            *pcchProperty = IdnToAscii(0, This->canon_uri+This->host_start, This->host_len, NULL, 0);
-
-        hres = (This->host_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_PASSWORD:
-        *pcchProperty = (This->userinfo_split > -1) ? This->userinfo_len-This->userinfo_split-1 : 0;
-        hres = (This->userinfo_split > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_PATH:
-        *pcchProperty = This->path_len;
-        hres = (This->path_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_PATH_AND_QUERY:
-        *pcchProperty = This->path_len+This->query_len;
-        hres = (This->path_start > -1 || This->query_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_QUERY:
-        *pcchProperty = This->query_len;
-        hres = (This->query_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_RAW_URI:
-        *pcchProperty = SysStringLen(This->raw_uri);
-        hres = S_OK;
-        break;
-    case Uri_PROPERTY_SCHEME_NAME:
-        *pcchProperty = This->scheme_len;
-        hres = (This->scheme_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_USER_INFO:
-        *pcchProperty = This->userinfo_len;
-        hres = (This->userinfo_start > -1) ? S_OK : S_FALSE;
-        break;
-    case Uri_PROPERTY_USER_NAME:
-        *pcchProperty = (This->userinfo_split > -1) ? This->userinfo_split : This->userinfo_len;
-        if(This->userinfo_split == 0)
-            hres = S_FALSE;
-        else
-            hres = (This->userinfo_start > -1) ? S_OK : S_FALSE;
-        break;
-    default:
-        FIXME("(%p)->(%d %p %lx)\n", This, uriProp, pcchProperty, dwFlags);
-        hres = E_NOTIMPL;
-    }
-
-    if(hres == S_OK
-       && ((dwFlags == Uri_DISPLAY_NO_FRAGMENT && uriProp != Uri_PROPERTY_DISPLAY_URI)
-            || (dwFlags == Uri_PUNYCODE_IDN_HOST && uriProp != Uri_PROPERTY_ABSOLUTE_URI
-                && uriProp != Uri_PROPERTY_DOMAIN && uriProp != Uri_PROPERTY_HOST)
-            || (dwFlags == Uri_DISPLAY_IDN_HOST && uriProp != Uri_PROPERTY_ABSOLUTE_URI
-                && uriProp != Uri_PROPERTY_DOMAIN && uriProp != Uri_PROPERTY_HOST))) {
+    if(hres == S_OK && !valid) {
         *pcchProperty = 0;
         hres = E_INVALIDARG;
     }
@@ -4698,8 +5068,30 @@ static HRESULT WINAPI Uri_IsEqual(IUri *iface, IUri *pUri, BOOL *pfEqual)
 
     /* Try to convert it to a Uri (allows for a more simple comparison). */
     if(!(other = get_uri_obj(pUri))) {
-        FIXME("(%p)->(%p %p) No support for unknown IUri's yet.\n", iface, pUri, pfEqual);
-        return E_NOTIMPL;
+        IUri *parsed;
+        BSTR text = NULL;
+        HRESULT hres;
+
+        /* Any other IUri gets compared through the URI it stands for */
+        hres = IUri_GetPropertyBSTR(pUri, Uri_PROPERTY_ABSOLUTE_URI, &text, 0);
+        if(hres == S_OK) {
+            hres = CreateUri(text, 0, 0, &parsed);
+        } else {
+            SysFreeString(text);
+            text = NULL;
+            hres = IUri_GetPropertyBSTR(pUri, Uri_PROPERTY_RAW_URI, &text, 0);
+            if(SUCCEEDED(hres))
+                hres = CreateUri(text, Uri_CREATE_ALLOW_RELATIVE, 0, &parsed);
+        }
+        SysFreeString(text);
+        if(FAILED(hres)) {
+            *pfEqual = FALSE;
+            return hres;
+        }
+
+        hres = compare_uris(This, impl_from_IUri(parsed), pfEqual);
+        IUri_Release(parsed);
+        return hres;
     }
 
     TRACE("comparing to %s\n", debugstr_w(other->canon_uri));
@@ -4884,7 +5276,7 @@ static HRESULT WINAPI PersistStream_Load(IPersistStream *iface, IStream *pStm)
         return hr;
     }
 
-    if(size < sizeof(struct persist_uri)) {
+    if(size < FIELD_OFFSET(struct persist_uri, data)) {
         free(data);
         return S_OK;
     }
@@ -5051,7 +5443,7 @@ static HRESULT WINAPI PersistStream_GetSizeMax(IPersistStream *iface, ULARGE_INT
     if(!pcbSize)
         return E_INVALIDARG;
 
-    pcbSize->u.LowPart = 2+sizeof(struct persist_uri);
+    pcbSize->u.LowPart = 2+FIELD_OFFSET(struct persist_uri, data);
     pcbSize->u.HighPart = 0;
     if(This->create_flags)
         pcbSize->u.LowPart += (SysStringLen(This->raw_uri)+1)*sizeof(WCHAR) + 2*sizeof(DWORD);
@@ -5385,7 +5777,8 @@ HRESULT WINAPI CreateUri(LPCWSTR pwzURI, DWORD dwFlags, DWORD_PTR dwReserved, IU
         Uri_CREATE_ALLOW_IMPLICIT_FILE_SCHEME|Uri_CREATE_NO_CANONICALIZE|Uri_CREATE_CANONICALIZE|
         Uri_CREATE_DECODE_EXTRA_INFO|Uri_CREATE_NO_DECODE_EXTRA_INFO|Uri_CREATE_CRACK_UNKNOWN_SCHEMES|
         Uri_CREATE_NO_CRACK_UNKNOWN_SCHEMES|Uri_CREATE_PRE_PROCESS_HTML_URI|Uri_CREATE_NO_PRE_PROCESS_HTML_URI|
-        Uri_CREATE_NO_IE_SETTINGS|Uri_CREATE_NO_ENCODE_FORBIDDEN_CHARACTERS|Uri_CREATE_FILE_USE_DOS_PATH;
+        Uri_CREATE_NO_IE_SETTINGS|Uri_CREATE_NO_ENCODE_FORBIDDEN_CHARACTERS|Uri_CREATE_FILE_USE_DOS_PATH|
+        Uri_CREATE_NORMALIZE_INTL_CHARACTERS|Uri_CREATE_CANONICALIZE_ABSOLUTE;
     Uri *ret;
     HRESULT hr;
     parse_data data;
@@ -5438,7 +5831,24 @@ HRESULT WINAPI CreateUri(LPCWSTR pwzURI, DWORD dwFlags, DWORD_PTR dwReserved, IU
         /* Encountered an unsupported or invalid URI */
         IUri_Release(&ret->IUri_iface);
         *ppURI = NULL;
-        return E_INVALIDARG;
+        return FAILED(data.error) ? data.error : E_INVALIDARG;
+    }
+
+    /* A host IDNA can't take fails with its own error */
+    if(data.host && (data.host_type == Uri_HOST_DNS || data.host_type == Uri_HOST_IDN) &&
+       converts_reg_name(data.scheme_type)) {
+        WCHAR *host;
+        DWORD host_len;
+        Uri_HOST_TYPE host_type;
+
+        hr = convert_reg_name(data.host, data.host_len, dwFlags, uses_idna(data.scheme_type), &host, &host_len,
+                              &host_type);
+        if(FAILED(hr)) {
+            IUri_Release(&ret->IUri_iface);
+            *ppURI = NULL;
+            return hr;
+        }
+        free(host);
     }
 
     /* Canonicalize the URI. */
@@ -6079,6 +6489,36 @@ HRESULT WINAPI CreateIUriBuilder(IUri *pIUri, DWORD dwFlags, DWORD_PTR dwReserve
 /* Merges the base path with the relative path and stores the resulting path
  * and path len in 'result' and 'result_len'.
  */
+/* Schemes whose opaque paths keep their dot segments */
+static BOOL keeps_opaque_dot_segments(URL_SCHEME scheme) {
+    return scheme == URL_SCHEME_ABOUT || scheme == URL_SCHEME_SHELL || scheme == URL_SCHEME_VBSCRIPT ||
+           scheme == URL_SCHEME_MAILTO || scheme == URL_SCHEME_JAVASCRIPT;
+}
+
+/* A reference naming one of these schemes without an authority resolves against a base of the same scheme */
+static BOOL resolves_same_scheme(URL_SCHEME scheme) {
+    switch(scheme) {
+    case URL_SCHEME_HTTP:
+    case URL_SCHEME_HTTPS:
+    case URL_SCHEME_FTP:
+    case URL_SCHEME_FILE:
+    case URL_SCHEME_GOPHER:
+    case URL_SCHEME_NEWS:
+    case URL_SCHEME_NNTP:
+    case URL_SCHEME_TELNET:
+    case URL_SCHEME_WAIS:
+    case URL_SCHEME_RES:
+    case URL_SCHEME_LOCAL:
+    case URL_SCHEME_SNEWS:
+    case URL_SCHEME_MSSHELLROOTED:
+    case URL_SCHEME_MSSHELLIDLIST:
+    case URL_SCHEME_MSHELP:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 static HRESULT merge_paths(parse_data *data, const WCHAR *base, DWORD base_len, const WCHAR *relative,
                            DWORD relative_len, WCHAR **result, DWORD *result_len, DWORD flags)
 {
@@ -6087,7 +6527,7 @@ static HRESULT merge_paths(parse_data *data, const WCHAR *base, DWORD base_len, 
     WCHAR *ptr;
 
     if(base_len) {
-        if(data->scheme_type == URL_SCHEME_MK && *relative == '/') {
+        if(data->scheme_type == URL_SCHEME_MK && (*relative == '/' || *relative == '\\')) {
             /* Find '::' segment */
             for(end = base; end < base+base_len-1; end++) {
                 if(end[0] == ':' && end[1] == ':') {
@@ -6099,7 +6539,10 @@ static HRESULT merge_paths(parse_data *data, const WCHAR *base, DWORD base_len, 
             /* If not found, try finding the end of @xxx: */
             if(end == base+base_len-1)
                 end = *base == '@' ? wmemchr(base, ':', base_len) : NULL;
-        }else {
+        } else if(data->scheme_type == URL_SCHEME_MAILTO) {
+            /* mailto paths are appended to, not merged */
+            end = base+base_len-1;
+        } else {
             /* Find the characters that will be copied over from the base path. */
             for (end = base + base_len - 1; end >= base; end--) if (*end == '/') break;
             if(end < base && data->scheme_type == URL_SCHEME_FILE)
@@ -6135,14 +6578,26 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
     parse_data data;
     Uri *proc_uri = base;
     DWORD create_flags = 0, len = 0;
+    BOOL same_scheme, empty_reference;
 
     memset(&data, 0, sizeof(parse_data));
+
+    /* Only a scheme written out in the reference counts, not an implicit file scheme */
+    /* An empty reference to a base with a path works like "." without a query */
+    empty_reference = relative->scheme_start == -1 && relative->authority_start == -1 && !relative->path_len &&
+                      relative->query_start == -1 && relative->fragment_start == -1 && base->path_len;
+
+    same_scheme = relative->scheme_start > -1 && base->scheme_start > -1 && relative->authority_start == -1 &&
+                  relative->scheme_type == base->scheme_type && resolves_same_scheme(relative->scheme_type) &&
+                  !StrCmpNIW(relative->raw_uri, relative->canon_uri+relative->scheme_start, relative->scheme_len) &&
+                  relative->raw_uri[relative->scheme_len] == ':' &&
+                  !(relative->raw_uri[relative->scheme_len+1] == '/' && relative->raw_uri[relative->scheme_len+2] == '/');
 
     /* Base case is when the relative Uri has a scheme name,
      * if it does, then 'result' will contain the same data
      * as the relative Uri.
      */
-    if(relative->scheme_start > -1) {
+    if(relative->scheme_start > -1 && !same_scheme) {
         data.uri = SysAllocString(relative->raw_uri);
         if(!data.uri) {
             *result = NULL;
@@ -6179,6 +6634,7 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
     } else {
         WCHAR *path = NULL;
         DWORD raw_flags = 0;
+        BSTR raw;
 
         if(base->scheme_start > -1) {
             data.scheme = base->canon_uri+base->scheme_start;
@@ -6207,16 +6663,25 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
             if(proc_uri->host_start > -1) {
                 const WCHAR *host = proc_uri->canon_uri+proc_uri->host_start;
                 parse_host(&host, &data, 0);
+            } else {
+                /* An authority without a host still has its userinfo and port */
+                data.host = L"";
+                data.host_len = 0;
+                data.host_type = Uri_HOST_UNKNOWN;
             }
 
             if(proc_uri->has_port) {
                 data.has_port = TRUE;
                 data.port_value = proc_uri->port;
+                if(proc_uri->host_start == -1)
+                    data.port = L"";
             }
-        } else if(base->scheme_type != URL_SCHEME_FILE)
+        } else if(base->scheme_type != URL_SCHEME_FILE &&
+                  !(base->scheme_start > -1 && base->canon_len > base->scheme_len+2 &&
+                    base->canon_uri[base->scheme_len+1] == '/' && base->canon_uri[base->scheme_len+2] == '/'))
             data.is_opaque = TRUE;
 
-        if(proc_uri == relative || relative->path_start == -1 || !relative->path_len) {
+        if(!empty_reference && (proc_uri == relative || relative->path_start == -1 || !relative->path_len)) {
             if(proc_uri->path_start > -1) {
                 data.path = proc_uri->canon_uri+proc_uri->path_start;
                 data.path_len = proc_uri->path_len;
@@ -6226,6 +6691,10 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
                  */
                 data.path = L"/";
                 data.path_len = 1;
+            } else {
+                /* An opaque result keeps an empty path */
+                data.path = L"";
+                data.path_len = 0;
             }
 
             if(relative->query_start > -1)
@@ -6245,7 +6714,12 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
              * relative path doesn't begin with a '/' then the base path and relative
              * path are merged together.
              */
-            if(relative->path_len && *(relative->canon_uri+relative->path_start) == '/' && data.scheme_type != URL_SCHEME_MK) {
+            const WCHAR first = relative->path_len ? relative->canon_uri[relative->path_start] : 0;
+
+            /* A leading backslash makes the path absolute as well when the base scheme is known */
+            if((first == '/' || (first == '\\' && data.scheme_type != URL_SCHEME_UNKNOWN &&
+                                 data.scheme_type != URL_SCHEME_MAILTO && data.scheme_type != URL_SCHEME_RES)) &&
+               data.scheme_type != URL_SCHEME_MK) {
                 WCHAR *tmp = NULL;
                 BOOL copy_drive_path = FALSE;
 
@@ -6276,6 +6750,9 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
                 if(copy_drive_path) {
                     memcpy(tmp, base->canon_uri+base->path_start, 3*sizeof(WCHAR));
                     tmp += 3;
+
+                    /* Dot segments can't take the drive away */
+                    path_offset = 2;
                 }
 
                 memcpy(tmp, relative->canon_uri+relative->path_start, relative->path_len*sizeof(WCHAR));
@@ -6283,8 +6760,8 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
             } else {
                 /* Merge the base path with the relative path. */
                 hr = merge_paths(&data, base->canon_uri+base->path_start, base->path_len,
-                                 relative->canon_uri+relative->path_start, relative->path_len,
-                                 &path, &path_len, flags);
+                                 relative->path_start > -1 ? relative->canon_uri+relative->path_start : L"",
+                                 relative->path_len, &path, &path_len, flags);
                 if(FAILED(hr)) {
                     *result = NULL;
                     return hr;
@@ -6299,6 +6776,11 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
                     else if(is_drive_path(path))
                         path_offset = 1;
                 }
+            }
+
+            if(!(flags & URL_DONT_SIMPLIFY) && data.is_opaque && !keeps_opaque_dot_segments(data.scheme_type)) {
+                path_len = remove_dot_segments(path, path_len);
+                path[path_len] = '\0';
             }
 
             /* Check if the dot segments need to be removed from the path. */
@@ -6341,6 +6823,19 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
             data.fragment_len = relative->fragment_len;
         }
 
+        if(data.scheme_type == URL_SCHEME_FILE) {
+            /* File URIs can't get a port from the reference */
+            if(data.has_port) {
+                free(path);
+                *result = NULL;
+                return INET_E_SECURITY_PROBLEM;
+            }
+
+            /* Like a file name, the last segment loses its trailing dots and spaces */
+            while(data.path_len && (data.path[data.path_len-1] == '.' || data.path[data.path_len-1] == ' '))
+                data.path_len--;
+        }
+
         if(flags & URL_DONT_SIMPLIFY)
             raw_flags |= RAW_URI_FORCE_PORT_DISP;
         if(flags & URL_FILE_USE_PATHURL)
@@ -6369,8 +6864,25 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
         if(flags & URL_FILE_USE_PATHURL)
             create_flags |= Uri_CREATE_FILE_USE_DOS_PATH;
 
+        /* mailto URIs have no authority, so one taken from the reference becomes part of the path */
+        if(data.scheme_type == URL_SCHEME_MAILTO && (data.host || data.has_port)) {
+            BSTR uri = data.uri;
+
+            memset(&data, 0, sizeof(data));
+            data.uri = uri;
+            if(!parse_uri(&data, 0)) {
+                IUri_Release(&ret->IUri_iface);
+                SysFreeString(uri);
+                free(path);
+                *result = NULL;
+                return E_INVALIDARG;
+            }
+        }
+
         ret->raw_uri = data.uri;
-        hr = canonicalize_uri(&data, ret, create_flags);
+        /* The query and fragment come over as the URIs had them */
+        hr = canonicalize_uri(&data, ret, (create_flags | Uri_CREATE_NO_DECODE_EXTRA_INFO) |
+                              (data.scheme_type == URL_SCHEME_FILE ? CANON_KEEP_PERCENT_ENCODED : 0));
         if(FAILED(hr)) {
             IUri_Release(&ret->IUri_iface);
             *result = NULL;
@@ -6379,6 +6891,13 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
 
         if(flags & URL_DONT_SIMPLIFY)
             ret->display_modifiers |= URI_DISPLAY_NO_DEFAULT_PORT_AUTH;
+
+        /* The raw form of a combined URI is its canonical form */
+        raw = SysAllocStringLen(ret->canon_uri, ret->canon_len);
+        if(raw) {
+            SysFreeString(ret->raw_uri);
+            ret->raw_uri = raw;
+        }
 
         apply_default_flags(&create_flags);
         ret->create_flags = create_flags;
