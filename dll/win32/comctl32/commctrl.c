@@ -1373,6 +1373,10 @@ BOOL WINAPI GetWindowSubclass (HWND hWnd, SUBCLASSPROC pfnSubclass,
    while (proc) {
       if ((proc->id == uID) &&
          (proc->subproc == pfnSubclass)) {
+#ifdef __REACTOS__
+         /* Windows lets callers that only test for the subclass pass no pointer */
+         if (pdwRef)
+#endif
          *pdwRef = proc->ref;
          return TRUE;
       }
