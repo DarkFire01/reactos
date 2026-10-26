@@ -56,6 +56,10 @@ typedef struct {
     LONG ref;
     CRITICAL_SECTION lock;
     struct list formats; /* list of struct propstore_format */
+#ifdef __REACTOS__
+    IPersistSerializedPropStorage IPersistSerializedPropStorage_iface;
+    PERSIST_SPROPSTORE_FLAGS persist_flags;
+#endif
 } PropertyStore;
 
 static inline PropertyStore *impl_from_IPropertyStoreCache(IPropertyStoreCache *iface)
@@ -76,6 +80,12 @@ static HRESULT WINAPI PropertyStore_QueryInterface(IPropertyStoreCache *iface, R
     {
         *ppv = &This->IPropertyStoreCache_iface;
     }
+#ifdef __REACTOS__
+    else if (IsEqualIID(&IID_IPersistSerializedPropStorage, iid))
+    {
+        *ppv = &This->IPersistSerializedPropStorage_iface;
+    }
+#endif
     else
     {
         FIXME("No interface for %s\n", debugstr_guid(iid));
@@ -305,6 +315,11 @@ static HRESULT WINAPI PropertyStore_SetValue(IPropertyStoreCache *iface,
 
     TRACE("%p,%p,%p\n", iface, key, propvar);
 
+#ifdef __REACTOS__
+    if (This->persist_flags & FPSPS_READONLY)
+        return STG_E_ACCESSDENIED;
+#endif
+
     EnterCriticalSection(&This->lock);
 
     hr = PropertyStore_LookupValue(This, key, TRUE, &value);
@@ -448,6 +463,609 @@ static const IPropertyStoreCacheVtbl PropertyStore_Vtbl = {
     PropertyStore_SetValueAndState
 };
 
+#ifdef __REACTOS__
+
+/* [MS-PROPSTORE] storage version, "1SPS" */
+#define PROPSTORE_STORAGE_VERSION 0x53505331
+
+/* Storage header: size, version and format ID. Value header: size, ID and a reserved byte */
+#define PROPSTORE_STORAGE_HEADER (2 * sizeof(DWORD) + sizeof(GUID))
+#define PROPSTORE_VALUE_HEADER (2 * sizeof(DWORD) + sizeof(BYTE))
+
+/* The type word and its padding in front of the value data */
+#define PROPSTORE_TYPE_HEADER (2 * sizeof(WORD))
+
+static inline PropertyStore *impl_from_IPersistSerializedPropStorage(IPersistSerializedPropStorage *iface)
+{
+    return CONTAINING_RECORD(iface, PropertyStore, IPersistSerializedPropStorage_iface);
+}
+
+static
+ULONG
+PropertyStore_Align4(
+    _In_ ULONG cb)
+{
+    return (cb + 3) & ~3;
+}
+
+/* Bytes a fixed size type keeps inside the PROPVARIANT, 0 for types that are not fixed size */
+static
+ULONG
+PropertyStore_GetFixedSize(
+    _In_ VARTYPE vt)
+{
+    switch (vt)
+    {
+        case VT_I1:
+        case VT_UI1:
+            return sizeof(BYTE);
+        case VT_I2:
+        case VT_UI2:
+        case VT_BOOL:
+            return sizeof(WORD);
+        case VT_I4:
+        case VT_UI4:
+        case VT_INT:
+        case VT_UINT:
+        case VT_R4:
+        case VT_ERROR:
+            return sizeof(DWORD);
+        case VT_I8:
+        case VT_UI8:
+        case VT_R8:
+        case VT_CY:
+        case VT_DATE:
+        case VT_FILETIME:
+            return sizeof(ULONGLONG);
+    }
+    return 0;
+}
+
+static
+ULONG
+PropertyStore_GetStringSize(
+    _In_opt_ PCWSTR psz)
+{
+    ULONG cch = psz ? lstrlenW(psz) + 1 : 0;
+
+    return sizeof(DWORD) + PropertyStore_Align4(cch * sizeof(WCHAR));
+}
+
+/* Size of the serialized data that follows the type header, FALSE when the type cannot be saved */
+static
+BOOL
+PropertyStore_GetDataSize(
+    _In_ const PROPVARIANT *pv,
+    _Out_ ULONG *pcb)
+{
+    ULONG cbFixed = PropertyStore_GetFixedSize(pv->vt);
+    ULONG i;
+
+    *pcb = 0;
+    if (cbFixed)
+    {
+        *pcb = PropertyStore_Align4(cbFixed);
+        return TRUE;
+    }
+
+    switch (pv->vt)
+    {
+        case VT_EMPTY:
+        case VT_NULL:
+            return TRUE;
+        case VT_CLSID:
+            *pcb = sizeof(GUID);
+            return pv->puuid != NULL;
+        case VT_LPWSTR:
+            *pcb = PropertyStore_GetStringSize(pv->pwszVal);
+            return TRUE;
+        case VT_LPSTR:
+            *pcb = sizeof(DWORD) + PropertyStore_Align4(pv->pszVal ? lstrlenA(pv->pszVal) + 1 : 0);
+            return TRUE;
+        case VT_BSTR:
+            *pcb = sizeof(DWORD) + PropertyStore_Align4(pv->bstrVal ? SysStringByteLen(pv->bstrVal) + sizeof(WCHAR) : 0);
+            return TRUE;
+        case VT_BLOB:
+            *pcb = sizeof(DWORD) + PropertyStore_Align4(pv->blob.cbSize);
+            return TRUE;
+        case VT_VECTOR | VT_LPWSTR:
+            *pcb = sizeof(DWORD);
+            for (i = 0; i < pv->calpwstr.cElems; i++)
+                *pcb += PropertyStore_GetStringSize(pv->calpwstr.pElems[i]);
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* Writes a counted byte run padded to a 4 byte boundary */
+static
+BYTE *
+PropertyStore_WriteCounted(
+    _Out_ BYTE *pb,
+    _In_ DWORD dwCount,
+    _In_reads_bytes_opt_(cb) const void *pvData,
+    _In_ ULONG cb)
+{
+    memcpy(pb, &dwCount, sizeof(dwCount));
+    pb += sizeof(dwCount);
+    memset(pb, 0, PropertyStore_Align4(cb));
+    if (cb)
+        memcpy(pb, pvData, cb);
+    return pb + PropertyStore_Align4(cb);
+}
+
+static
+BYTE *
+PropertyStore_WriteString(
+    _Out_ BYTE *pb,
+    _In_opt_ PCWSTR psz)
+{
+    ULONG cch = psz ? lstrlenW(psz) + 1 : 0;
+
+    return PropertyStore_WriteCounted(pb, cch, psz, cch * sizeof(WCHAR));
+}
+
+/* Writes the type header and data of a value PropertyStore_GetDataSize accepted */
+static
+BYTE *
+PropertyStore_WriteData(
+    _Out_ BYTE *pb,
+    _In_ const PROPVARIANT *pv)
+{
+    ULONG cbFixed = PropertyStore_GetFixedSize(pv->vt);
+    ULONG cb;
+    WORD wType = pv->vt;
+    ULONG i;
+
+    memcpy(pb, &wType, sizeof(wType));
+    memset(pb + sizeof(wType), 0, sizeof(WORD));
+    pb += PROPSTORE_TYPE_HEADER;
+
+    if (cbFixed)
+    {
+        memset(pb, 0, PropertyStore_Align4(cbFixed));
+        memcpy(pb, &pv->bVal, cbFixed);
+        return pb + PropertyStore_Align4(cbFixed);
+    }
+
+    switch (pv->vt)
+    {
+        case VT_CLSID:
+            memcpy(pb, pv->puuid, sizeof(GUID));
+            pb += sizeof(GUID);
+            break;
+        case VT_LPWSTR:
+            pb = PropertyStore_WriteString(pb, pv->pwszVal);
+            break;
+        case VT_LPSTR:
+            cb = pv->pszVal ? lstrlenA(pv->pszVal) + 1 : 0;
+            pb = PropertyStore_WriteCounted(pb, cb, pv->pszVal, cb);
+            break;
+        case VT_BSTR:
+            cb = pv->bstrVal ? SysStringByteLen(pv->bstrVal) + sizeof(WCHAR) : 0;
+            pb = PropertyStore_WriteCounted(pb, cb, pv->bstrVal, cb);
+            break;
+        case VT_BLOB:
+            pb = PropertyStore_WriteCounted(pb, pv->blob.cbSize, pv->blob.pBlobData, pv->blob.cbSize);
+            break;
+        case VT_VECTOR | VT_LPWSTR:
+            memcpy(pb, &pv->calpwstr.cElems, sizeof(DWORD));
+            pb += sizeof(DWORD);
+            for (i = 0; i < pv->calpwstr.cElems; i++)
+                pb = PropertyStore_WriteString(pb, pv->calpwstr.pElems[i]);
+            break;
+    }
+    return pb;
+}
+
+/* Reads a counted run; pcbUsed gets the padded size it takes in the buffer */
+static
+HRESULT
+PropertyStore_ReadCounted(
+    _In_reads_bytes_(cb) const BYTE *pb,
+    _In_ ULONG cb,
+    _In_ ULONG cbUnit,
+    _Out_ DWORD *pdwCount,
+    _Out_ const BYTE **ppbData,
+    _Out_ ULONG *pcbUsed)
+{
+    DWORD dwCount;
+    ULONG cbData;
+
+    if (cb < sizeof(dwCount))
+        return E_FAIL;
+    memcpy(&dwCount, pb, sizeof(dwCount));
+    if (dwCount > (cb - sizeof(dwCount)) / cbUnit)
+        return E_FAIL;
+
+    cbData = dwCount * cbUnit;
+    *pdwCount = dwCount;
+    *ppbData = pb + sizeof(dwCount);
+    *pcbUsed = sizeof(dwCount) + PropertyStore_Align4(cbData);
+    if (*pcbUsed > cb)
+        *pcbUsed = cb;
+    return S_OK;
+}
+
+static
+HRESULT
+PropertyStore_ReadString(
+    _In_reads_bytes_(cb) const BYTE *pb,
+    _In_ ULONG cb,
+    _Outptr_result_maybenull_ LPWSTR *ppsz,
+    _Out_ ULONG *pcbUsed)
+{
+    const BYTE *pbChars;
+    DWORD cch;
+    HRESULT hr;
+
+    *ppsz = NULL;
+    hr = PropertyStore_ReadCounted(pb, cb, sizeof(WCHAR), &cch, &pbChars, pcbUsed);
+    if (FAILED(hr) || !cch)
+        return hr;
+
+    *ppsz = CoTaskMemAlloc(cch * sizeof(WCHAR));
+    if (!*ppsz)
+        return E_OUTOFMEMORY;
+    memcpy(*ppsz, pbChars, cch * sizeof(WCHAR));
+    (*ppsz)[cch - 1] = 0;
+    return S_OK;
+}
+
+/* Reads one typed value; pb starts at the type header */
+static
+HRESULT
+PropertyStore_ReadData(
+    _In_reads_bytes_(cb) const BYTE *pb,
+    _In_ ULONG cb,
+    _Out_ PROPVARIANT *pv)
+{
+    const BYTE *pbData;
+    ULONG cbFixed;
+    ULONG cbUsed;
+    DWORD dwCount;
+    WORD wType;
+    HRESULT hr = S_OK;
+    ULONG i;
+
+    PropVariantInit(pv);
+    if (cb < PROPSTORE_TYPE_HEADER)
+        return E_FAIL;
+    memcpy(&wType, pb, sizeof(wType));
+    pb += PROPSTORE_TYPE_HEADER;
+    cb -= PROPSTORE_TYPE_HEADER;
+
+    cbFixed = PropertyStore_GetFixedSize(wType);
+    if (cbFixed)
+    {
+        if (cb < cbFixed)
+            return E_FAIL;
+        memcpy(&pv->bVal, pb, cbFixed);
+        pv->vt = wType;
+        return S_OK;
+    }
+
+    switch (wType)
+    {
+        case VT_EMPTY:
+        case VT_NULL:
+            break;
+        case VT_CLSID:
+            if (cb < sizeof(GUID))
+                return E_FAIL;
+            pv->puuid = CoTaskMemAlloc(sizeof(GUID));
+            if (!pv->puuid)
+                return E_OUTOFMEMORY;
+            memcpy(pv->puuid, pb, sizeof(GUID));
+            break;
+        case VT_LPWSTR:
+            hr = PropertyStore_ReadString(pb, cb, &pv->pwszVal, &cbUsed);
+            break;
+        case VT_LPSTR:
+            hr = PropertyStore_ReadCounted(pb, cb, sizeof(CHAR), &dwCount, &pbData, &cbUsed);
+            if (SUCCEEDED(hr) && dwCount)
+            {
+                pv->pszVal = CoTaskMemAlloc(dwCount);
+                if (!pv->pszVal)
+                    return E_OUTOFMEMORY;
+                memcpy(pv->pszVal, pbData, dwCount);
+                pv->pszVal[dwCount - 1] = 0;
+            }
+            break;
+        case VT_BSTR:
+            hr = PropertyStore_ReadCounted(pb, cb, sizeof(CHAR), &dwCount, &pbData, &cbUsed);
+            if (SUCCEEDED(hr) && dwCount >= sizeof(WCHAR))
+            {
+                pv->bstrVal = SysAllocStringByteLen((LPCSTR)pbData, dwCount - sizeof(WCHAR));
+                if (!pv->bstrVal)
+                    return E_OUTOFMEMORY;
+            }
+            break;
+        case VT_BLOB:
+            hr = PropertyStore_ReadCounted(pb, cb, sizeof(BYTE), &dwCount, &pbData, &cbUsed);
+            if (SUCCEEDED(hr) && dwCount)
+            {
+                pv->blob.pBlobData = CoTaskMemAlloc(dwCount);
+                if (!pv->blob.pBlobData)
+                    return E_OUTOFMEMORY;
+                memcpy(pv->blob.pBlobData, pbData, dwCount);
+                pv->blob.cbSize = dwCount;
+            }
+            break;
+        case VT_VECTOR | VT_LPWSTR:
+            if (cb < sizeof(DWORD))
+                return E_FAIL;
+            memcpy(&dwCount, pb, sizeof(dwCount));
+            pb += sizeof(DWORD);
+            cb -= sizeof(DWORD);
+            if (dwCount > cb / sizeof(DWORD))
+                return E_FAIL;
+            pv->calpwstr.pElems = CoTaskMemAlloc(dwCount * sizeof(LPWSTR));
+            if (!pv->calpwstr.pElems && dwCount)
+                return E_OUTOFMEMORY;
+            pv->vt = wType;
+            for (i = 0; i < dwCount && SUCCEEDED(hr); i++)
+            {
+                hr = PropertyStore_ReadString(pb, cb, &pv->calpwstr.pElems[i], &cbUsed);
+                if (SUCCEEDED(hr))
+                {
+                    pv->calpwstr.cElems++;
+                    pb += cbUsed;
+                    cb -= cbUsed;
+                }
+            }
+            if (FAILED(hr))
+                PropVariantClear(pv);
+            return hr;
+        default:
+            return E_FAIL;
+    }
+
+    if (SUCCEEDED(hr))
+        pv->vt = wType;
+    return hr;
+}
+
+/* Drops every value and format the store holds */
+static
+VOID
+PropertyStore_ClearAll(
+    _Inout_ PropertyStore *This)
+{
+    propstore_format *cursor, *cursor2;
+
+    LIST_FOR_EACH_ENTRY_SAFE(cursor, cursor2, &This->formats, propstore_format, entry)
+    {
+        list_remove(&cursor->entry);
+        destroy_format(cursor);
+    }
+}
+
+static HRESULT WINAPI PropertyStore_Persist_QueryInterface(IPersistSerializedPropStorage *iface,
+    REFIID iid, void **ppv)
+{
+    PropertyStore *This = impl_from_IPersistSerializedPropStorage(iface);
+    return IPropertyStoreCache_QueryInterface(&This->IPropertyStoreCache_iface, iid, ppv);
+}
+
+static ULONG WINAPI PropertyStore_Persist_AddRef(IPersistSerializedPropStorage *iface)
+{
+    PropertyStore *This = impl_from_IPersistSerializedPropStorage(iface);
+    return IPropertyStoreCache_AddRef(&This->IPropertyStoreCache_iface);
+}
+
+static ULONG WINAPI PropertyStore_Persist_Release(IPersistSerializedPropStorage *iface)
+{
+    PropertyStore *This = impl_from_IPersistSerializedPropStorage(iface);
+    return IPropertyStoreCache_Release(&This->IPropertyStoreCache_iface);
+}
+
+static
+HRESULT
+WINAPI
+PropertyStore_Persist_SetFlags(
+    _In_ IPersistSerializedPropStorage *iface,
+    _In_ PERSIST_SPROPSTORE_FLAGS flags)
+{
+    PropertyStore *This = impl_from_IPersistSerializedPropStorage(iface);
+
+    This->persist_flags = flags;
+    return S_OK;
+}
+
+static
+HRESULT
+WINAPI
+PropertyStore_Persist_SetPropertyStorage(
+    _In_ IPersistSerializedPropStorage *iface,
+    _In_reads_bytes_(cb) PCUSERIALIZEDPROPSTORAGE psps,
+    _In_ DWORD cb)
+{
+    PropertyStore *This = impl_from_IPersistSerializedPropStorage(iface);
+    const BYTE *pb = (const BYTE *)psps;
+    HRESULT hr = S_OK;
+
+    if (!psps && cb)
+        return E_POINTER;
+
+    EnterCriticalSection(&This->lock);
+    PropertyStore_ClearAll(This);
+
+    while (SUCCEEDED(hr) && cb >= sizeof(DWORD))
+    {
+        const BYTE *pbValue;
+        DWORD cbStorage;
+        DWORD dwVersion;
+        ULONG cbLeft;
+        PROPERTYKEY key;
+
+        memcpy(&cbStorage, pb, sizeof(cbStorage));
+        if (!cbStorage)
+            break;
+        if (cbStorage > cb || cbStorage < PROPSTORE_STORAGE_HEADER)
+        {
+            hr = E_FAIL;
+            break;
+        }
+
+        memcpy(&dwVersion, pb + sizeof(DWORD), sizeof(dwVersion));
+        memcpy(&key.fmtid, pb + 2 * sizeof(DWORD), sizeof(GUID));
+        if (dwVersion != PROPSTORE_STORAGE_VERSION)
+        {
+            hr = E_FAIL;
+            break;
+        }
+
+        pbValue = pb + PROPSTORE_STORAGE_HEADER;
+        cbLeft = cbStorage - PROPSTORE_STORAGE_HEADER;
+        while (cbLeft >= sizeof(DWORD))
+        {
+            propstore_value *value;
+            PROPVARIANT pv;
+            DWORD cbValue;
+
+            memcpy(&cbValue, pbValue, sizeof(cbValue));
+            if (!cbValue)
+                break;
+            if (cbValue > cbLeft || cbValue < PROPSTORE_VALUE_HEADER)
+            {
+                hr = E_FAIL;
+                break;
+            }
+
+            /* Named values are skipped, the store only keys by property ID */
+            if (!IsEqualGUID(&key.fmtid, &FMTID_NamedProperties))
+            {
+                memcpy(&key.pid, pbValue + sizeof(DWORD), sizeof(DWORD));
+                if (SUCCEEDED(PropertyStore_ReadData(pbValue + PROPSTORE_VALUE_HEADER,
+                                                     cbValue - PROPSTORE_VALUE_HEADER,
+                                                     &pv)))
+                {
+                    hr = PropertyStore_LookupValue(This, &key, TRUE, &value);
+                    if (SUCCEEDED(hr))
+                    {
+                        PropVariantClear(&value->propvar);
+                        value->propvar = pv;
+                        value->state = PSC_NORMAL;
+                    }
+                    else
+                    {
+                        PropVariantClear(&pv);
+                    }
+                }
+            }
+
+            pbValue += cbValue;
+            cbLeft -= cbValue;
+        }
+
+        pb += cbStorage;
+        cb -= cbStorage;
+    }
+
+    LeaveCriticalSection(&This->lock);
+    return hr;
+}
+
+static
+HRESULT
+WINAPI
+PropertyStore_Persist_GetPropertyStorage(
+    _In_ IPersistSerializedPropStorage *iface,
+    _Outptr_result_bytebuffer_(*pcb) SERIALIZEDPROPSTORAGE **ppsps,
+    _Out_ DWORD *pcb)
+{
+    PropertyStore *This = impl_from_IPersistSerializedPropStorage(iface);
+    propstore_format *format;
+    propstore_value *value;
+    ULONG cbTotal = sizeof(DWORD);
+    ULONG cbData;
+    BYTE *pb;
+
+    if (!ppsps || !pcb)
+        return E_POINTER;
+    *ppsps = NULL;
+    *pcb = 0;
+
+    EnterCriticalSection(&This->lock);
+
+    LIST_FOR_EACH_ENTRY(format, &This->formats, propstore_format, entry)
+    {
+        ULONG cbStorage = PROPSTORE_STORAGE_HEADER + sizeof(DWORD);
+        BOOL fAny = FALSE;
+
+        LIST_FOR_EACH_ENTRY(value, &format->values, propstore_value, entry)
+        {
+            if (value->propvar.vt == VT_EMPTY || !PropertyStore_GetDataSize(&value->propvar, &cbData))
+                continue;
+            cbStorage += PROPSTORE_VALUE_HEADER + PROPSTORE_TYPE_HEADER + cbData;
+            fAny = TRUE;
+        }
+        if (fAny)
+            cbTotal += cbStorage;
+    }
+
+    pb = CoTaskMemAlloc(cbTotal);
+    if (!pb)
+    {
+        LeaveCriticalSection(&This->lock);
+        return E_OUTOFMEMORY;
+    }
+    *ppsps = (SERIALIZEDPROPSTORAGE *)pb;
+    *pcb = cbTotal;
+
+    LIST_FOR_EACH_ENTRY(format, &This->formats, propstore_format, entry)
+    {
+        BYTE *pbStorage = pb;
+        DWORD dwVersion = PROPSTORE_STORAGE_VERSION;
+        DWORD cbStorage;
+
+        pb += PROPSTORE_STORAGE_HEADER;
+        LIST_FOR_EACH_ENTRY(value, &format->values, propstore_value, entry)
+        {
+            DWORD cbValue;
+
+            if (value->propvar.vt == VT_EMPTY || !PropertyStore_GetDataSize(&value->propvar, &cbData))
+                continue;
+
+            cbValue = PROPSTORE_VALUE_HEADER + PROPSTORE_TYPE_HEADER + cbData;
+            memcpy(pb, &cbValue, sizeof(cbValue));
+            memcpy(pb + sizeof(DWORD), &value->pid, sizeof(DWORD));
+            pb[2 * sizeof(DWORD)] = 0;
+            pb = PropertyStore_WriteData(pb + PROPSTORE_VALUE_HEADER, &value->propvar);
+        }
+
+        /* A format without anything to save leaves no storage behind */
+        if (pb == pbStorage + PROPSTORE_STORAGE_HEADER)
+        {
+            pb = pbStorage;
+            continue;
+        }
+
+        memset(pb, 0, sizeof(DWORD));
+        pb += sizeof(DWORD);
+        cbStorage = (DWORD)(pb - pbStorage);
+        memcpy(pbStorage, &cbStorage, sizeof(cbStorage));
+        memcpy(pbStorage + sizeof(DWORD), &dwVersion, sizeof(dwVersion));
+        memcpy(pbStorage + 2 * sizeof(DWORD), &format->fmtid, sizeof(GUID));
+    }
+    memset(pb, 0, sizeof(DWORD));
+
+    LeaveCriticalSection(&This->lock);
+    return S_OK;
+}
+
+static const IPersistSerializedPropStorageVtbl PropertyStore_PersistVtbl = {
+    PropertyStore_Persist_QueryInterface,
+    PropertyStore_Persist_AddRef,
+    PropertyStore_Persist_Release,
+    PropertyStore_Persist_SetFlags,
+    PropertyStore_Persist_SetPropertyStorage,
+    PropertyStore_Persist_GetPropertyStorage
+};
+
+#endif /* __REACTOS__ */
+
 HRESULT PropertyStore_CreateInstance(IUnknown *pUnkOuter, REFIID iid, void** ppv)
 {
     PropertyStore *This;
@@ -465,6 +1083,8 @@ HRESULT PropertyStore_CreateInstance(IUnknown *pUnkOuter, REFIID iid, void** ppv
     This->IPropertyStoreCache_iface.lpVtbl = &PropertyStore_Vtbl;
     This->ref = 1;
 #ifdef __REACTOS__
+    This->IPersistSerializedPropStorage_iface.lpVtbl = &PropertyStore_PersistVtbl;
+    This->persist_flags = FPSPS_DEFAULT;
     InitializeCriticalSection(&This->lock);
 #else
     InitializeCriticalSectionEx(&This->lock, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);

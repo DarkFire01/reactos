@@ -63,35 +63,35 @@
 @ stub InitVariantFromUInt32Array
 @ stub InitVariantFromUInt64Array
 @ stub InitVariantFromVariantArrayElem
-@ stub PSCoerceToCanonicalValue
+@ stdcall PSCoerceToCanonicalValue(ptr ptr)
 @ stub PSCreateAdapterFromPropertyStore
-@ stub PSCreateDelayedMultiplexPropertyStore
+@ stdcall PSCreateDelayedMultiplexPropertyStore(long ptr ptr long ptr ptr)
 @ stdcall PSCreateMemoryPropertyStore(ptr ptr)
-@ stub PSCreateMultiplexPropertyStore
+@ stdcall PSCreateMultiplexPropertyStore(ptr long ptr ptr)
 @ stub PSCreatePropertyChangeArray
 @ stdcall PSCreatePropertyStoreFromObject(ptr long ptr ptr)
 @ stub PSCreatePropertyStoreFromPropertySetStorage
 @ stub PSCreateSimplePropertyChange
-@ stub PSEnumeratePropertyDescriptions
-@ stub PSFormatForDisplay
-@ stub PSFormatForDisplayAlloc
-@ stub PSFormatPropertyValue
+@ stdcall PSEnumeratePropertyDescriptions(long ptr ptr)
+@ stdcall PSFormatForDisplay(ptr ptr long ptr long)
+@ stdcall PSFormatForDisplayAlloc(ptr ptr long ptr)
+@ stdcall PSFormatPropertyValue(ptr ptr long ptr)
 @ stub PSGetItemPropertyHandler
 @ stub PSGetItemPropertyHandlerWithCreateObject
-@ stub PSGetNameFromPropertyKey
+@ stdcall PSGetNameFromPropertyKey(ptr ptr)
 @ stub PSGetNamedPropertyFromPropertyStorage
 @ stdcall PSGetPropertyDescription(ptr ptr ptr)
-@ stub PSGetPropertyDescriptionByName
+@ stdcall PSGetPropertyDescriptionByName(wstr ptr ptr)
 @ stdcall PSGetPropertyDescriptionListFromString(wstr ptr ptr)
 @ stub PSGetPropertyFromPropertyStorage
 @ stdcall PSGetPropertyKeyFromName(wstr ptr)
 @ stdcall PSGetPropertySystem(ptr ptr)
-@ stub PSGetPropertyValue
+@ stdcall PSGetPropertyValue(ptr ptr ptr)
 @ stub PSLookupPropertyHandlerCLSID
 @ stdcall PSPropertyKeyFromString(wstr ptr)
 @ stdcall PSRefreshPropertySchema()
 @ stdcall PSRegisterPropertySchema(wstr)
-@ stub PSSetPropertyValue
+@ stdcall PSSetPropertyValue(ptr ptr ptr)
 @ stdcall PSStringFromPropertyKey(ptr ptr long)
 @ stdcall PSUnregisterPropertySchema(wstr)
 @ stdcall PropVariantChangeType(ptr ptr long long)

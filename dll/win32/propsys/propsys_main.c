@@ -31,6 +31,7 @@
 #include "wine/debug.h"
 
 #include "propsys_private.h"
+#include "propdesc.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(propsys);
 
@@ -136,8 +137,7 @@ static HRESULT WINAPI propsys_GetPropertyDescription(IPropertySystem *iface,
 static HRESULT WINAPI propsys_GetPropertyDescriptionByName(IPropertySystem *iface,
     LPCWSTR canonical_name, REFIID riid, void **ppv)
 {
-    FIXME("%s %s %p: stub\n", debugstr_w(canonical_name), debugstr_guid(riid), ppv);
-    return E_NOTIMPL;
+    return PSGetPropertyDescriptionByName(canonical_name, riid, ppv);
 }
 
 static HRESULT WINAPI propsys_GetPropertyDescriptionListFromString(IPropertySystem *iface,
@@ -149,24 +149,21 @@ static HRESULT WINAPI propsys_GetPropertyDescriptionListFromString(IPropertySyst
 static HRESULT WINAPI propsys_EnumeratePropertyDescriptions(IPropertySystem *iface,
     PROPDESC_ENUMFILTER filter, REFIID riid, void **ppv)
 {
-    FIXME("%d %s %p: stub\n", filter, debugstr_guid(riid), ppv);
-    return E_NOTIMPL;
+    return PSEnumeratePropertyDescriptions(filter, riid, ppv);
 }
 
 static HRESULT WINAPI propsys_FormatForDisplay(IPropertySystem *iface,
     REFPROPERTYKEY key, REFPROPVARIANT propvar, PROPDESC_FORMAT_FLAGS flags,
     LPWSTR dest, DWORD destlen)
 {
-    FIXME("%p %p %x %p %ld: stub\n", key, propvar, flags, dest, destlen);
-    return E_NOTIMPL;
+    return PSFormatForDisplay(key, propvar, flags, dest, destlen);
 }
 
 static HRESULT WINAPI propsys_FormatForDisplayAlloc(IPropertySystem *iface,
     REFPROPERTYKEY key, REFPROPVARIANT propvar, PROPDESC_FORMAT_FLAGS flags,
     LPWSTR *text)
 {
-    FIXME("%p %p %x %p: stub\n", key, propvar, flags, text);
-    return E_NOTIMPL;
+    return PSFormatForDisplayAlloc(key, propvar, flags, text);
 }
 
 static HRESULT WINAPI propsys_RegisterPropertySchema(IPropertySystem *iface, LPCWSTR path)
@@ -217,24 +214,6 @@ HRESULT WINAPI PSUnregisterPropertySchema(PCWSTR path)
 {
     FIXME("%s stub\n", debugstr_w(path));
 
-    return E_NOTIMPL;
-}
-
-HRESULT WINAPI PSGetPropertyDescription(REFPROPERTYKEY propkey, REFIID riid, void **ppv)
-{
-    FIXME("%p, %p, %p\n", propkey, riid, ppv);
-    return E_NOTIMPL;
-}
-
-HRESULT WINAPI PSGetPropertyDescriptionListFromString(LPCWSTR proplist, REFIID riid, void **ppv)
-{
-    FIXME("%s, %p, %p\n", debugstr_w(proplist), riid, ppv);
-    return E_NOTIMPL;
-}
-
-HRESULT WINAPI PSGetPropertyKeyFromName(PCWSTR name, PROPERTYKEY *key)
-{
-    FIXME("%s, %p\n", debugstr_w(name), key);
     return E_NOTIMPL;
 }
 
