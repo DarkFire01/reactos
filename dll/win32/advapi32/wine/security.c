@@ -96,6 +96,7 @@ static const WELLKNOWNSID WellKnownSids[] =
     { {'M','E'}, WinMediumLabelSid, { SID_REVISION, 1, { SECURITY_MANDATORY_LABEL_AUTHORITY}, { SECURITY_MANDATORY_MEDIUM_RID } } },
     { {'H','I'}, WinHighLabelSid, { SID_REVISION, 1, { SECURITY_MANDATORY_LABEL_AUTHORITY}, { SECURITY_MANDATORY_HIGH_RID } } },
     { {'S','I'}, WinSystemLabelSid, { SID_REVISION, 1, { SECURITY_MANDATORY_LABEL_AUTHORITY}, { SECURITY_MANDATORY_SYSTEM_RID } } },
+    { {'A','C'}, WinBuiltinAnyPackageSid, { SID_REVISION, 2, { SECURITY_APP_PACKAGE_AUTHORITY }, { SECURITY_APP_PACKAGE_BASE_RID, SECURITY_BUILTIN_PACKAGE_ANY_PACKAGE } } },
 };
 
 /* these SIDs must be constructed as relative to some domain - only the RID is well-known */
@@ -3965,7 +3966,9 @@ static DWORD ComputeStringSidSize(LPCWSTR StringSid)
     if (StringSid[0] == 'S' && StringSid[1] == '-') /* S-R-I(-S)+ */
     {
         int ctok = 0;
-        while (*StringSid)
+
+        /* Inside an ACE string the SID ends at the closing parenthesis */
+        while (*StringSid && *StringSid != ')')
         {
             if (*StringSid == '-')
                 ctok++;
@@ -4069,11 +4072,12 @@ static BOOL ParseStringSidToSid(LPCWSTR StringSid, PSID pSid, LPDWORD cBytes)
         if (*StringSid == '-')
             StringSid++;
 
-        while (*StringSid)
+        while (*StringSid && *StringSid != ')')
         {
-            pisid->SubAuthority[i++] = atoiW(StringSid);
+            /* Sub authorities use the full unsigned range */
+            pisid->SubAuthority[i++] = strtoulW(StringSid, NULL, 10);
 
-            while (*StringSid && *StringSid != '-')
+            while (*StringSid && *StringSid != '-' && *StringSid != ')')
                 StringSid++;
             if (*StringSid == '-')
                 StringSid++;
