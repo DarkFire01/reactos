@@ -425,6 +425,7 @@ typedef struct _DCOMP_BITMAP_DESC
 #define DCOMP_CACHED_IMAGE_RECT         1001    /* buffer: DCOMP_RECT drawn, in the space of the visual's parent */
 #define DCOMP_CACHED_IMAGE_SNAPSHOT     1002    /* buffer: RECT; drawn once right away and kept */
 #define DCOMP_CACHED_IMAGE_FREEZE       1003    /* integer: keep what was drawn last */
+#define DCOMP_CACHED_IMAGE_MIPMAPS      1004    /* integer: keep smaller copies too, for an image shown shrunk */
 
 /*
  * Animation properties. Its segments live in a shared section (DCOMP_RESOURCE_SHARED_SECTION)
