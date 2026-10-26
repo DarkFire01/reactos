@@ -160,11 +160,11 @@ public:
     STDMETHOD(SetCommandTarget)(IUnknown *theTarget, GUID *category, long param14) override;
     STDMETHOD(Unknown1)() override;
     STDMETHOD(AddButtons)(const GUID *pguidCmdGroup, long buttonCount, TBBUTTON *buttons) override;
-    STDMETHOD(AddString)(const GUID *pguidCmdGroup, HINSTANCE param10, LPCTSTR param14, long *param18) override;
+    STDMETHOD(AddString)(const GUID *pguidCmdGroup, HINSTANCE param10, LPCTSTR param14, LONG_PTR *param18) override;
     STDMETHOD(GetButton)(const GUID *pguidCmdGroup, long param10, long param14) override;
     STDMETHOD(GetState)(const GUID *pguidCmdGroup, long commandID, long *theState) override;
     STDMETHOD(SetState)(const GUID *pguidCmdGroup, long commandID, long theState) override;
-    STDMETHOD(AddBitmap)(const GUID *pguidCmdGroup, long param10, long buttonCount, TBADDBITMAP *lParam, long *newIndex, COLORREF param20) override;
+    STDMETHOD(AddBitmap)(const GUID *pguidCmdGroup, long param10, long buttonCount, TBADDBITMAP *lParam, LONG_PTR *newIndex, COLORREF param20) override;
     STDMETHOD(GetBitmapSize)(long *paramC) override;
     STDMETHOD(SendToolbarMsg)(const GUID *pguidCmdGroup, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT *result) override;
     STDMETHOD(SetImageList)(const GUID *pguidCmdGroup, HIMAGELIST param10, HIMAGELIST param14, HIMAGELIST param18) override;

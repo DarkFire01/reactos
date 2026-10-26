@@ -1378,11 +1378,11 @@ HRESULT STDMETHODCALLTYPE CInternetToolbar::AddButtons(const GUID *pguidCmdGroup
 }
 
 HRESULT STDMETHODCALLTYPE CInternetToolbar::AddString(const GUID *pguidCmdGroup,
-    HINSTANCE param10, LPCTSTR param14, long *param18)
+    HINSTANCE param10, LPCTSTR param14, LONG_PTR *param18)
 {
-    long                                    result;
+    LONG_PTR                                result;
 
-    result = (long)::SendMessage(fToolbarWindow, TB_ADDSTRINGW,
+    result = ::SendMessage(fToolbarWindow, TB_ADDSTRINGW,
             reinterpret_cast<WPARAM>(param10), reinterpret_cast<LPARAM>(param14));
     *param18 = result;
     if (result == -1)
@@ -1412,7 +1412,7 @@ HRESULT STDMETHODCALLTYPE CInternetToolbar::SetState(const GUID *pguidCmdGroup, 
 }
 
 HRESULT STDMETHODCALLTYPE CInternetToolbar::AddBitmap(const GUID *pguidCmdGroup, long param10, long buttonCount,
-    TBADDBITMAP *lParam, long *newIndex, COLORREF param20)
+    TBADDBITMAP *lParam, LONG_PTR *newIndex, COLORREF param20)
 {
     return E_NOTIMPL;
 }
