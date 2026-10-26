@@ -429,6 +429,30 @@ static LCID user_ui_lcid;
 static HKEY intl_key;
 static HKEY nls_key;
 static HKEY tz_key;
+
+#ifdef __REACTOS__
+/* Time zone data is only read, which every caller may do */
+#define TZ_KEY_ACCESS KEY_READ
+
+/*
+ * Opens a key every process keeps open. Callers that may not write to it,
+ * like users other than administrators or app containers, still read it.
+ */
+static HKEY open_shared_key( HKEY root, const WCHAR *name )
+{
+    HKEY key = 0;
+
+    if (RegCreateKeyExW( root, name, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &key, NULL ))
+    {
+        key = 0;
+        RegOpenKeyExW( root, name, 0, KEY_READ, &key );
+    }
+    return key;
+}
+#else
+#define TZ_KEY_ACCESS KEY_ALL_ACCESS
+#endif
+
 static const NLS_LOCALE_LCID_INDEX *lcids_index;
 static const NLS_LOCALE_LCNAME_INDEX *lcnames_index;
 static const NLS_LOCALE_HEADER *locale_table;
@@ -2281,12 +2305,18 @@ void init_locale( HMODULE module )
     RtlInitCodePageTable( ansi_ptr, &ansi_cpinfo );
     RtlInitCodePageTable( oem_ptr, &oem_cpinfo );
 
+#ifdef __REACTOS__
+    nls_key = open_shared_key( HKEY_LOCAL_MACHINE, L"System\\CurrentControlSet\\Control\\Nls" );
+    tz_key = open_shared_key( HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones" );
+    intl_key = open_shared_key( HKEY_CURRENT_USER, L"Control Panel\\International" );
+#else
     RegCreateKeyExW( HKEY_LOCAL_MACHINE, L"System\\CurrentControlSet\\Control\\Nls",
                      0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &nls_key, NULL );
     RegCreateKeyExW( HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones",
                      0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &tz_key, NULL );
     RegCreateKeyExW( HKEY_CURRENT_USER, L"Control Panel\\International",
                      0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &intl_key, NULL );
+#endif
 
 #ifndef __REACTOS__
     current_locale_sort = get_language_sort( LOCALE_NAME_USER_DEFAULT );
@@ -6007,7 +6037,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetDynamicTimeZoneInformation( DYNAMIC_TIME_ZONE_
     else
     {
         RtlLeaveCriticalSection( &tzname_section );
-        if (!RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, KEY_ALL_ACCESS, &key ))
+        if (!RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, TZ_KEY_ACCESS, &key ))
         {
             RegLoadMUIStringW( key, L"MUI_Std", info->StandardName,
                                sizeof(info->StandardName), NULL, 0, system_dir );
@@ -6039,9 +6069,9 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetDynamicTimeZoneInformationEffectiveYears( cons
     HKEY key, dst_key = 0;
     DWORD type, count, ret = ERROR_FILE_NOT_FOUND;
 
-    if (RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, KEY_ALL_ACCESS, &key )) return ret;
+    if (RegOpenKeyExW( tz_key, info->TimeZoneKeyName, 0, TZ_KEY_ACCESS, &key )) return ret;
 
-    if (RegOpenKeyExW( key, L"Dynamic DST", 0, KEY_ALL_ACCESS, &dst_key )) goto done;
+    if (RegOpenKeyExW( key, L"Dynamic DST", 0, TZ_KEY_ACCESS, &dst_key )) goto done;
     count = sizeof(DWORD);
     if (RegQueryValueExW( dst_key, L"FirstEntry", NULL, &type, (BYTE *)first, &count )) goto done;
     if (type != REG_DWORD) goto done;
@@ -6962,7 +6992,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetTimeZoneInformationForYear( USHORT year,
         dynamic = &local_info;
     }
 
-    if ((ret = RegOpenKeyExW( tz_key, dynamic->TimeZoneKeyName, 0, KEY_ALL_ACCESS, &key ))) goto done;
+    if ((ret = RegOpenKeyExW( tz_key, dynamic->TimeZoneKeyName, 0, TZ_KEY_ACCESS, &key ))) goto done;
     if (RegLoadMUIStringW( key, L"MUI_Std", info->StandardName,
                            sizeof(info->StandardName), NULL, 0, system_dir ))
     {
@@ -6980,7 +7010,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetTimeZoneInformationForYear( USHORT year,
 
     ret = ERROR_FILE_NOT_FOUND;
     if (!dynamic->DynamicDaylightTimeDisabled &&
-        !RegOpenKeyExW( key, L"Dynamic DST", 0, KEY_ALL_ACCESS, &dst_key ))
+        !RegOpenKeyExW( key, L"Dynamic DST", 0, TZ_KEY_ACCESS, &dst_key ))
     {
         WCHAR yearW[16];
         swprintf( yearW, ARRAY_SIZE(yearW), L"%u", year );
