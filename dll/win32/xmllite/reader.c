@@ -1088,6 +1088,10 @@ static HRESULT reader_more(xmlreader *reader)
         readerinput_grow(readerinput, len);
         memcpy(dest->data + dest->written, src->data + src->cur, len);
         dest->written += len;
+#ifdef __REACTOS__
+        /* Otherwise the next read finds the raw buffer full and copies this chunk again */
+        readerinput_shrinkraw(readerinput, len);
+#endif
     }
     else
     {
