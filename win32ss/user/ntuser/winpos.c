@@ -277,6 +277,9 @@ SelectWindowRgn(PWND Window, HRGN hRgnClip)
 
         Window->hrgnClip = hRgnClip;
     }
+
+    /* The DWM clips what it composes of the window by the region */
+    IntDwmNotifyWindowRegion(Window);
 }
 
 //

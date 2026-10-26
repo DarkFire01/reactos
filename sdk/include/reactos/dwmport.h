@@ -163,6 +163,34 @@ typedef struct _DWM_DIRTY_SPRITE
     ULONG64 Token;
 } DWM_DIRTY_SPRITE, *PDWM_DIRTY_SPRITE;
 
+/*
+ * A region the DWM clips a window by, in window coordinates, sent in as many messages as its
+ * rectangles take; First and Total place each message's rectangles. Total is zero when the window
+ * has none, and an empty region is one empty rectangle.
+ */
+#define DWM_PORT_VIS_RGN_UPDATE     0x4000009E
+
+/* VisRgnUpdate kinds */
+#define DWM_VIS_RGN_WINDOW_REGION   2   /* SetWindowRgn's */
+
+#ifdef _WIN64
+#define DWM_VIS_RGN_MAX_RECTS       27
+#else
+#define DWM_VIS_RGN_MAX_RECTS       12
+#endif
+
+typedef struct _DWM_VIS_RGN_UPDATE
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    ULONG64 Window;
+    ULONG First;
+    ULONG Total;
+    ULONG Kind;
+    ULONG Count;
+    RECT Rects[DWM_VIS_RGN_MAX_RECTS];
+} DWM_VIS_RGN_UPDATE, *PDWM_VIS_RGN_UPDATE;
+
 /* What the frame the DWM draws shows: the window's icons, its caption text and whether it is active */
 #define DWM_PORT_ICON_CHANGE        0x40000008
 #define DWM_PORT_TEXT_CHANGE        0x40000009
@@ -330,6 +358,8 @@ C_ASSERT(DWM_PORT_DATA_SIZE(DWM_BIND_SWAPCHAIN) == 0x14);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ACTIVATION_CHANGE) == 0x10);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ICON_CHANGE) == 0x1C);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_HIT_TEST_QUERY) == 0x34);
+C_ASSERT(FIELD_OFFSET(DWM_VIS_RGN_UPDATE, Rects) - sizeof(PORT_MESSAGE) == 0x1C);
+C_ASSERT(sizeof(DWM_VIS_RGN_UPDATE) <= PORT_MAXIMUM_MESSAGE_LENGTH);
 
 /* NtGdiHLSurfGetInformation classes */
 #define HLSURF_INFO_SURFACE_DATA    3

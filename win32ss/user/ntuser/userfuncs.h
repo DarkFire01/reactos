@@ -272,6 +272,11 @@ IntDwmScaleChanged(
 
 VOID
 FASTCALL
+IntDwmNotifyWindowRegion(
+    _In_ PWND Window);
+
+VOID
+FASTCALL
 IntDwmSpriteWinEvent(
     _In_ DWORD Event,
     _In_ PWND Window);

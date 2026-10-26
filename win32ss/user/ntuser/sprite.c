@@ -26,6 +26,7 @@ typedef struct _DWM_SPRITE
     BOOLEAN ActiveFrame;
     BOOLEAN RendersFrame;
     BOOLEAN Layered;            /* UpdateLayeredWindow gave it a layer, so its DCs draw nowhere */
+    BOOLEAN HasRegion;          /* the DWM was last sent a window region */
     RECT FrameMargins;          /* as last sent: left, top, right, bottom */
 } DWM_SPRITE, *PDWM_SPRITE;
 
@@ -359,6 +360,64 @@ IntDwmSendChildMoveSize(
     IntDwmSendMessage(&Message.Header, sizeof(Message));
 }
 
+/* Sends the region SetWindowRgn gave a composed window, a message per handful of its rectangles */
+VOID
+FASTCALL
+IntDwmNotifyWindowRegion(
+    _In_ PWND Window)
+{
+    PDWM_SPRITE Sprite = IntDwmFindSprite(Window);
+    static const RECTL Empty = { 0, 0, 0, 0 };
+    DWM_VIS_RGN_UPDATE Message;
+    PREGION Region = NULL;
+    const RECTL *Rects = NULL;
+    ULONG Total = 0;
+    ULONG First = 0;
+    ULONG Index;
+
+    if (!Sprite)
+        return;
+
+    if (Window->hrgnClip)
+        Region = REGION_LockRgn(Window->hrgnClip);
+    if (Region)
+    {
+        Total = Region->rdh.nCount;
+        Rects = Region->Buffer;
+        if (!Total)
+        {
+            Total = 1;
+            Rects = &Empty;
+        }
+    }
+
+    /* Nothing to take back from a window that never had one */
+    if (Total || Sprite->HasRegion)
+    {
+        Sprite->HasRegion = Total != 0;
+        do
+        {
+            RtlZeroMemory(&Message, sizeof(Message));
+            Message.Command = DWM_PORT_VIS_RGN_UPDATE;
+            Message.Window = (ULONG64)(ULONG_PTR)UserHMGetHandle(Window);
+            Message.First = First;
+            Message.Total = Total;
+            Message.Kind = DWM_VIS_RGN_WINDOW_REGION;
+            Message.Count = min(Total - First, DWM_VIS_RGN_MAX_RECTS);
+            for (Index = 0; Index < Message.Count; Index++)
+            {
+                Message.Rects[Index] = *(const RECT *)&Rects[First + Index];
+                IntDwmScreenRect(Window, &Message.Rects[Index]);
+            }
+            IntDwmSendMessage(&Message.Header, FIELD_OFFSET(DWM_VIS_RGN_UPDATE, Rects) + Message.Count * sizeof(RECT));
+            First += Message.Count;
+        } while (First < Total);
+    }
+
+    if (Region)
+        REGION_UnlockRgn(Region);
+}
+
 /* Redraws a window into the surface it now has */
 static
 VOID
@@ -432,6 +491,7 @@ IntDwmComposeWindow(
     IntDwmSendUpdateSprite(Sprite, TRUE);
     IntDwmSendFrameMargins(Sprite);
     IntDwmSendChildMoveSize(Window);
+    IntDwmNotifyWindowRegion(Window);
     IntDwmNotifyIconChange(Window);
     if (IntDwmRendersFrame(Window))
         IntDwmSendNcRendering(Sprite, TRUE);
