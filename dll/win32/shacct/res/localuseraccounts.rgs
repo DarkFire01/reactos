@@ -1,0 +1,13 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {4F6BCD94-C2A5-42CE-8DBC-31E794BE4630} = s 'Local User Accounts'
+        {
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Both'
+            }
+        }
+    }
+}

@@ -50,6 +50,7 @@ AddReg=Classes
 11,,actxprxy.dll,1
 11,,acppage.dll,1
 11,,amstream.dll,1
+11,,authui.dll,1
 11,,avifil32.dll,1
 11,,browseui.dll,1
 11,,cabview.dll,1
@@ -123,6 +124,7 @@ AddReg=Classes
 11,,rsaenh.dll,1
 11,,scrrun.dll,1
 11,,sendmail.dll,1
+11,,shacct.dll,3
 11,,shdocvw.dll,3
 11,,shell32.dll,3
 11,,softpub.dll,1
