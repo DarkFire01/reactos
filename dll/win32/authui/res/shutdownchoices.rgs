@@ -1,0 +1,13 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {14CE31DC-ABC2-484C-B061-CF3416AED8FF} = s 'Shutdown Choices'
+        {
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+}
