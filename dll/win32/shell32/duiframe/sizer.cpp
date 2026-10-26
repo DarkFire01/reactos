@@ -132,10 +132,13 @@ CDUISizerElement::Create(
 
     hr = pe->Initialize(0, peParent, pdwDeferCookie);
     if (FAILED(hr))
+    {
         pe->Destroy(false);
-    else
-        *ppElement = pe;
-    return hr;
+        return hr;
+    }
+
+    *ppElement = pe;
+    return pe->SetActive(1);
 }
 
 HRESULT

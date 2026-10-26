@@ -1,0 +1,24 @@
+<duixml>
+<Element resid="LibraryPane" layout="filllayout()" sheet="librarypanestyle">
+<Sizer id="atom(LibraryPaneSizer)" sizingtarget="atom(LibraryPaneContainer)" FramePersistType="2"/>
+<Element id="atom(LibraryPaneContainer)" layout="filllayout()">
+<Element id="atom(LibraryPaneBackground)"/>
+<Element id="atom(LibraryPaneShine)"/>
+<Element id="atom(LibraryPaneOverlayContainer)" background="argb(0, 0, 0, 0)">
+<Element id="atom(LibraryPaneOverlay)"/>
+</Element>
+<Element id="atom(LibraryPane)" class="library_pane">
+<Element id="atom(LibraryIdentifier)" tooltip="true" accessible="true" accrole="statictext" active="mouse"/>
+<Element id="atom(Locations)" layout="flowlayout()">
+<Element class="location_includes" id="atom(Leaf)" contentalign="endellipsis"/>
+<Element class="location_includes" id="atom(LocationIncludes)" content="resstr(0x95A3, library(shell32.dll))"/>
+<Button id="atom(LocationButton)" accdefaction="resstr(0x79AC, library(shell32.dll))" accessible="true" accrole="pushbutton" active="mouseandkeyboard" tooltip="true"/>
+</Element>
+<Element layout="verticalflowlayout()">
+<Element id="atom(TopViewControl)" layout="filllayout()"/>
+<Element class="library_pane_spacer"/>
+</Element>
+</Element>
+</Element>
+</Element>
+</duixml>

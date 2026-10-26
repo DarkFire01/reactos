@@ -1071,8 +1071,12 @@ CDUIViewFrame::_DisconnectShellView()
 {
     if (_pdispViewEvents)
     {
-        ConnectToConnectionPoint(static_cast<IDispatch *>(this), DIID_DShellFolderViewEvents, FALSE,
-                                 _pdispViewEvents, &_dwViewEventsCookie, NULL);
+        if (_dwViewEventsCookie)
+        {
+            ConnectToConnectionPoint(static_cast<IDispatch *>(this), DIID_DShellFolderViewEvents, FALSE,
+                                     _pdispViewEvents, &_dwViewEventsCookie, NULL);
+            _dwViewEventsCookie = 0;
+        }
         IUnknown_SafeReleaseAndNullPtr(&_pdispViewEvents);
     }
     IUnknown_SafeReleaseAndNullPtr(&_psstView);
@@ -1579,7 +1583,7 @@ CDUIViewFrame::GetPersistStream(
     }
 }
 
-/* IObjectProvider: the frame task manager is Phase B work (notes\SHELL32_DUIFRAME.md) */
+/* IObjectProvider: the modules share one task manager, created on first use */
 STDMETHODIMP
 CDUIViewFrame::QueryObject(
     REFGUID guidObject,
@@ -1587,7 +1591,17 @@ CDUIViewFrame::QueryObject(
     void **ppvOut)
 {
     *ppvOut = NULL;
-    return E_NOTIMPL;
+    if (!IsEqualGUID(guidObject, OID_FrameTaskManager))
+        return E_FAIL;
+
+    if (!_punkTaskManager)
+    {
+        CFrameTaskManager::CreateInstance(IID_PPV_ARGS(&_punkTaskManager));
+        IUnknown_SetSite(_punkTaskManager, static_cast<IServiceProvider *>(this));
+    }
+    if (!_punkTaskManager)
+        return E_FAIL;
+    return _punkTaskManager->QueryInterface(riid, ppvOut);
 }
 
 /* IDispatch: the view's DShellFolderViewEvents */

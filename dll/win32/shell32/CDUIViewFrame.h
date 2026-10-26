@@ -82,4 +82,72 @@ class CCommonLayoutModifier :
 {
 };
 
+/* Command bar objects: the command folder carries the registration of all of them */
+#define IDR_COMMANDBAR  3401
+
+EXTERN_C
+HRESULT
+WINAPI
+DUIFrame_CreateCommandBarObject(
+    _In_ REFCLSID rclsid,
+    _In_ REFIID riid,
+    _COM_Outptr_ void **ppv);
+
+EXTERN_C const CLSID CLSID_CommandFolder;
+EXTERN_C const CLSID CLSID_CommonCommandState;
+EXTERN_C const CLSID CLSID_FolderOptionsCommand;
+EXTERN_C const CLSID CLSID_SelectAllExecute;
+EXTERN_C const CLSID CLSID_RenameExecute;
+EXTERN_C const CLSID CLSID_CloseWindowExecute;
+EXTERN_C const CLSID CLSID_MenuBarExecute;
+EXTERN_C const CLSID CLSID_UndoExecute;
+EXTERN_C const CLSID CLSID_RedoExecute;
+
+template <class T, const CLSID *pclsid>
+class CCommandBarClass :
+    public CComCoClass<T, pclsid>
+{
+public:
+    static HRESULT WINAPI CreateInstance(
+        _In_opt_ PVOID pUnkOuter,
+        _In_ REFIID riid,
+        _Outptr_ PVOID *ppv)
+    {
+        *ppv = NULL;
+        if (pUnkOuter)
+            return CLASS_E_NOAGGREGATION;
+        return DUIFrame_CreateCommandBarObject(*pclsid, riid, ppv);
+    }
+
+    typedef CCommandBarClass _CreatorClass;
+
+    static void WINAPI ObjectMain(bool) {}
+    static const struct _ATL_CATMAP_ENTRY *GetCategoryMap() { return NULL; }
+
+    DECLARE_NO_REGISTRY()
+};
+
+class CCommandFolderClass : public CCommandBarClass<CCommandFolderClass, &CLSID_CommandFolder>
+{
+public:
+    DECLARE_REGISTRY_RESOURCEID(IDR_COMMANDBAR)
+};
+
+class CCommonCommandStateClass : public CCommandBarClass<CCommonCommandStateClass, &CLSID_CommonCommandState> {};
+class CFolderOptionsCommandClass : public CCommandBarClass<CFolderOptionsCommandClass, &CLSID_FolderOptionsCommand> {};
+class CSelectAllExecuteClass : public CCommandBarClass<CSelectAllExecuteClass, &CLSID_SelectAllExecute> {};
+class CRenameExecuteClass : public CCommandBarClass<CRenameExecuteClass, &CLSID_RenameExecute> {};
+class CCloseWindowExecuteClass : public CCommandBarClass<CCloseWindowExecuteClass, &CLSID_CloseWindowExecute> {};
+class CMenuBarExecuteClass : public CCommandBarClass<CMenuBarExecuteClass, &CLSID_MenuBarExecute> {};
+class CUndoExecuteClass : public CCommandBarClass<CUndoExecuteClass, &CLSID_UndoExecute> {};
+class CRedoExecuteClass : public CCommandBarClass<CRedoExecuteClass, &CLSID_RedoExecute> {};
+
+/* SFVM_GET_WEBVIEW_TASKS of file system folders */
+EXTERN_C
+HRESULT
+WINAPI
+DUIFrame_GetFolderWebViewTasks(
+    _In_opt_ IUnknown *punkSite,
+    _Out_ PVOID pvTasks);
+
 #endif /* SHELL32_DUIFRAME */

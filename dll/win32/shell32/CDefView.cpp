@@ -37,8 +37,33 @@ TODO:
 
 #include <atlwin.h>
 #include <ui/rosctrls.h>
+#include <shdispid.h>
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
+
+/* DShellFolderViewEvents ids the ReactOS shdispid.h lacks */
+#ifndef DISPID_CONTENTSCHANGED
+#define DISPID_CONTENTSCHANGED 207
+#endif
+#ifndef DISPID_SELECTEDITEMCHANGED
+#define DISPID_SELECTEDITEMCHANGED 220
+#endif
+#ifndef DISPID_VIEWMODECHANGED
+#define DISPID_VIEWMODECHANGED 205
+#endif
+#ifndef DISPID_CTRLMOUSEWHEEL
+#define DISPID_CTRLMOUSEWHEEL 213
+#endif
+#ifndef DISPID_ICONSIZECHANGED
+#define DISPID_ICONSIZECHANGED 215
+#endif
+
+void
+WINAPI
+CDefViewDual_FireEventWithArgs(
+    _In_opt_ IShellFolderViewDual *pDual,
+    _In_ DISPID dispid,
+    _In_ DISPPARAMS *pParams);
 
 // It would be easier to allocate these from 1 and up but the original code used the entire
 // FCIDM_SHVIEWFIRST..FCIDM_SHVIEWLAST range when dealing with IContextMenu and to avoid
@@ -223,7 +248,7 @@ class CDefView :
     public CWindowImpl<CDefView, CWindow, CControlWinTraits>,
     public CComObjectRootEx<CComMultiThreadModelNoCS>,
     public IShellView3,
-    public IFolderView,
+    public IFolderView2,
     public IShellFolderView,
     public IOleCommandTarget,
     public IDropTarget,
@@ -285,8 +310,10 @@ private:
     SFVM_CUSTOMVIEWINFO_DATA  m_viewinfo_data;
 
     HICON                     m_hMyComputerIcon;
+    int                       m_iIconSize = 0;      // Icon size asked for through IFolderView2, 0 when never set
 
     HRESULT _MergeToolbar();
+    int _GetIconSize();
     BOOL _Sort(int Col = -1);
     HRESULT _DoFolderViewCB(UINT uMsg, WPARAM wParam, LPARAM lParam);
     HRESULT _GetSnapToGrid();
@@ -430,6 +457,32 @@ public:
     STDMETHOD(SelectItem)(int iItem, DWORD dwFlags) override;
     STDMETHOD(SelectAndPositionItems)(UINT cidl, PCUITEMID_CHILD_ARRAY apidl, POINT *apt, DWORD dwFlags) override;
 
+    // *** IFolderView2 methods ***
+    STDMETHOD(SetGroupBy)(REFPROPERTYKEY key, BOOL fAscending) override;
+    STDMETHOD(GetGroupBy)(PROPERTYKEY *pkey, BOOL *pfAscending) override;
+    STDMETHOD(SetViewProperty)(PCUITEMID_CHILD pidl, REFPROPERTYKEY propkey, REFPROPVARIANT propvar) override;
+    STDMETHOD(GetViewProperty)(PCUITEMID_CHILD pidl, REFPROPERTYKEY propkey, PROPVARIANT *ppropvar) override;
+    STDMETHOD(SetTileViewProperties)(PCUITEMID_CHILD pidl, LPCWSTR pszPropList) override;
+    STDMETHOD(SetExtendedTileViewProperties)(PCUITEMID_CHILD pidl, LPCWSTR pszPropList) override;
+    STDMETHOD(SetText)(FVTEXTTYPE iType, LPCWSTR pwszText) override;
+    STDMETHOD(SetCurrentFolderFlags)(DWORD dwMask, DWORD dwFlags) override;
+    STDMETHOD(GetCurrentFolderFlags)(DWORD *pdwFlags) override;
+    STDMETHOD(GetSortColumnCount)(int *pcColumns) override;
+    STDMETHOD(SetSortColumns)(const SORTCOLUMN *rgSortColumns, int cColumns) override;
+    STDMETHOD(GetSortColumns)(SORTCOLUMN *rgSortColumns, int cColumns) override;
+    STDMETHOD(GetItem)(int iItem, REFIID riid, void **ppv) override;
+    STDMETHOD(GetVisibleItem)(int iStart, BOOL fPrevious, int *piItem) override;
+    STDMETHOD(GetSelectedItem)(int iStart, int *piItem) override;
+    STDMETHOD(GetSelection)(BOOL fNoneImpliesFolder, IShellItemArray **ppsia) override;
+    STDMETHOD(GetSelectionState)(PCUITEMID_CHILD pidl, DWORD *pdwFlags) override;
+    STDMETHOD(InvokeVerbOnSelection)(LPCSTR pszVerb) override;
+    STDMETHOD(SetViewModeAndIconSize)(FOLDERVIEWMODE uViewMode, int iImageSize) override;
+    STDMETHOD(GetViewModeAndIconSize)(FOLDERVIEWMODE *puViewMode, int *piImageSize) override;
+    STDMETHOD(SetGroupSubsetCount)(UINT cVisibleRows) override;
+    STDMETHOD(GetGroupSubsetCount)(UINT *pcVisibleRows) override;
+    STDMETHOD(IsMoveInSameFolder)() override;
+    STDMETHOD(DoRename)() override;
+
     // *** IShellFolderView methods ***
     STDMETHOD(Rearrange)(LPARAM sort) override;
     STDMETHOD(GetArrangeParam)(LPARAM *sort) override;
@@ -511,6 +564,7 @@ public:
     LRESULT OnInitMenuPopup(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
     LRESULT OnChangeCBChain(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
     LRESULT OnDrawClipboard(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
+    LRESULT OnMouseWheel(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
 
     virtual VOID OnFinalMessage(HWND) override;
 
@@ -570,6 +624,7 @@ public:
     MESSAGE_HANDLER(WM_INITMENUPOPUP, OnInitMenuPopup)
     MESSAGE_HANDLER(WM_CHANGECBCHAIN, OnChangeCBChain)
     MESSAGE_HANDLER(WM_DRAWCLIPBOARD, OnDrawClipboard)
+    MESSAGE_HANDLER(WM_MOUSEWHEEL, OnMouseWheel)
     END_MSG_MAP()
 
     BEGIN_COM_MAP(CDefView)
@@ -580,6 +635,7 @@ public:
     COM_INTERFACE_ENTRY_IID(IID_IShellView2, IShellView2)
     COM_INTERFACE_ENTRY_IID(IID_IShellView3, IShellView3)
     COM_INTERFACE_ENTRY_IID(IID_IFolderView, IFolderView)
+    COM_INTERFACE_ENTRY_IID(IID_IFolderView2, IFolderView2)
     COM_INTERFACE_ENTRY_IID(IID_IShellFolderView, IShellFolderView)
     COM_INTERFACE_ENTRY_IID(IID_IOleCommandTarget, IOleCommandTarget)
     COM_INTERFACE_ENTRY_IID(IID_IDropTarget, IDropTarget)
@@ -1635,6 +1691,10 @@ HRESULT CDefView::FillList(BOOL IsRefreshCommand)
 
     _DoFolderViewCB(SFVM_LISTREFRESHED, 0, 0);
 
+    /* Frames hosting the view rebuild their panes when the list is complete */
+    CDefViewDual_FireEvent(m_pShellFolderViewDual, DISPID_FILELISTENUMDONE);
+    CDefViewDual_FireEvent(m_pShellFolderViewDual, DISPID_CONTENTSCHANGED);
+
     return S_OK;
 }
 
@@ -2150,6 +2210,7 @@ HRESULT CDefView::InvokeContextMenuCommand(CComPtr<IContextMenu>& pCM, LPCSTR lp
 
     ZeroMemory(&cmi, sizeof(cmi));
     cmi.cbSize = sizeof(cmi);
+    cmi.fMask = CMIC_MASK_FLAG_LOG_USAGE;
     cmi.hwnd = m_hWnd;
     cmi.lpVerb = lpVerb;
     cmi.nShow = SW_SHOW;
@@ -2764,6 +2825,10 @@ LRESULT CDefView::OnNotify(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandl
                     PostMessage(SHV_UPDATESTATUSBAR, 0, 0);
                 }
                 _DoFolderViewCB(SFVM_SELECTIONCHANGED, NULL/* FIXME */, NULL/* FIXME */);
+                if ((lpnmlv->uOldState ^ lpnmlv->uNewState) & LVIS_SELECTED)
+                    CDefViewDual_FireEvent(m_pShellFolderViewDual, DISPID_SELECTIONCHANGED);
+                if ((lpnmlv->uNewState & ~lpnmlv->uOldState) & LVIS_FOCUSED)
+                    CDefViewDual_FireEvent(m_pShellFolderViewDual, DISPID_SELECTEDITEMCHANGED);
             }
             break;
         case LVN_BEGINDRAG:
@@ -3001,6 +3066,12 @@ LRESULT CDefView::OnChangeNotify(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &
         case SHCNE_FREESPACE:
             UpdateStatusbar();
             break;
+    }
+
+    if (lEvent & (SHCNE_MKDIR | SHCNE_CREATE | SHCNE_DRIVEADD | SHCNE_RMDIR | SHCNE_DELETE | SHCNE_DRIVEREMOVED |
+                  SHCNE_RENAMEFOLDER | SHCNE_RENAMEITEM | SHCNE_UPDATEDIR))
+    {
+        CDefViewDual_FireEvent(m_pShellFolderViewDual, DISPID_CONTENTSCHANGED);
     }
 
     SHChangeNotification_Unlock(hLock);
@@ -3538,7 +3609,7 @@ HRESULT WINAPI CDefView::GetItemObject(UINT uItem, REFIID riid, LPVOID *ppvOut)
 
     *ppvOut = NULL;
 
-    switch (uItem)
+    switch (uItem & SVGIO_TYPE_MASK)
     {
         case SVGIO_BACKGROUND:
             if (IsEqualIID(riid, IID_IContextMenu))
@@ -3626,8 +3697,12 @@ HRESULT STDMETHODCALLTYPE CDefView::SetCurrentViewMode(UINT ViewMode)
 
     /* This will not necessarily be the actual mode set above.
        This mimics the behavior of Windows XP. */
+    UINT OldViewMode = m_FolderSettings.ViewMode;
     m_FolderSettings.ViewMode = ViewMode;
     CheckToolbar();
+
+    if (OldViewMode != ViewMode)
+        CDefViewDual_FireEvent(m_pShellFolderViewDual, DISPID_VIEWMODECHANGED);
     return S_OK;
 }
 
@@ -3635,6 +3710,18 @@ HRESULT STDMETHODCALLTYPE CDefView::GetFolder(REFIID riid, void **ppv)
 {
     if (m_pSFParent == NULL)
         return E_FAIL;
+
+    /* The folder as an item, for commands that work on the location itself */
+    if ((IsEqualIID(riid, IID_IShellItem) || IsEqualIID(riid, IID_IShellItemArray)) && m_pidlParent)
+    {
+        CComPtr<IShellItem> psi;
+        HRESULT hr = SHCreateItemFromIDList(m_pidlParent, IID_PPV_ARG(IShellItem, &psi));
+        if (FAILED(hr))
+            return hr;
+        if (IsEqualIID(riid, IID_IShellItem))
+            return psi->QueryInterface(riid, ppv);
+        return SHCreateShellItemArrayFromShellItem(psi, riid, ppv);
+    }
 
     return m_pSFParent->QueryInterface(riid, ppv);
 }
@@ -3666,7 +3753,54 @@ HRESULT STDMETHODCALLTYPE CDefView::ItemCount(UINT uFlags, int *pcItems)
 
 HRESULT STDMETHODCALLTYPE CDefView::Items(UINT uFlags, REFIID riid, void **ppv)
 {
-    return E_NOTIMPL;
+    CComPtr<IShellItemArray> psia;
+    PITEMID_CHILD *apidl;
+    UINT cidl = 0;
+    HRESULT hr;
+
+    *ppv = NULL;
+    if (!m_ListView || !m_pSFParent)
+        return E_FAIL;
+
+    /* Selection and view items only; an empty set is not handed out */
+    switch (uFlags & SVGIO_TYPE_MASK)
+    {
+        case SVGIO_SELECTION:
+            cidl = m_ListView.GetSelectedCount();
+            break;
+        case SVGIO_ALLVIEW:
+            cidl = m_ListView.GetItemCount();
+            break;
+        default:
+            return E_NOTIMPL;
+    }
+    if (!cidl)
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+
+    if (IsEqualIID(riid, IID_IDataObject))
+        return GetItemObject(uFlags, riid, ppv);
+    if (!IsEqualIID(riid, IID_IShellItemArray))
+        return E_NOINTERFACE;
+
+    apidl = (PITEMID_CHILD *)SHAlloc(cidl * sizeof(*apidl));
+    if (!apidl)
+        return E_OUTOFMEMORY;
+
+    UINT i = 0;
+    int lvIndex = -1;
+    UINT uNext = ((uFlags & SVGIO_TYPE_MASK) == SVGIO_SELECTION) ? LVNI_SELECTED : LVNI_ALL;
+    while (i < cidl && (lvIndex = m_ListView.GetNextItem(lvIndex, uNext)) > -1)
+    {
+        apidl[i] = (PITEMID_CHILD)_PidlByItem(lvIndex);
+        if (apidl[i])
+            i++;
+    }
+
+    hr = i ? SHCreateShellItemArray(NULL, m_pSFParent, i, (PCUITEMID_CHILD_ARRAY)apidl, &psia) : E_FAIL;
+    SHFree(apidl);
+    if (SUCCEEDED(hr))
+        hr = psia->QueryInterface(riid, ppv);
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE CDefView::GetSelectionMarkedItem(int *piItem)
@@ -3783,6 +3917,315 @@ HRESULT STDMETHODCALLTYPE CDefView::SelectAndPositionItems(UINT cidl, PCUITEMID_
             SelectAndPositionItem(lvIndex, dwFlags, apt ? &apt[i] : NULL);
     }
     return S_OK;
+}
+
+// IFolderView2 implementation
+
+/* The list view only has a small and a large icon layout, so the icon modes report the size last asked for */
+int
+CDefView::_GetIconSize()
+{
+    switch (m_FolderSettings.ViewMode)
+    {
+        case FVM_ICON:
+            return (m_iIconSize > 32) ? m_iIconSize : 48;
+        case FVM_SMALLICON:
+            return (m_iIconSize && m_iIconSize <= 32) ? m_iIconSize : 16;
+        case FVM_TILE:
+            return 48;
+        case FVM_CONTENT:
+            return 32;
+        default:
+            return 16;
+    }
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetGroupBy(
+    _In_ REFPROPERTYKEY key,
+    _In_ BOOL fAscending)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetGroupBy(
+    _Out_ PROPERTYKEY *pkey,
+    _Out_ BOOL *pfAscending)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetViewProperty(
+    _In_ PCUITEMID_CHILD pidl,
+    _In_ REFPROPERTYKEY propkey,
+    _In_ REFPROPVARIANT propvar)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetViewProperty(
+    _In_ PCUITEMID_CHILD pidl,
+    _In_ REFPROPERTYKEY propkey,
+    _Out_ PROPVARIANT *ppropvar)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetTileViewProperties(
+    _In_ PCUITEMID_CHILD pidl,
+    _In_ LPCWSTR pszPropList)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetExtendedTileViewProperties(
+    _In_ PCUITEMID_CHILD pidl,
+    _In_ LPCWSTR pszPropList)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetText(
+    _In_ FVTEXTTYPE iType,
+    _In_ LPCWSTR pwszText)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetCurrentFolderFlags(
+    _In_ DWORD dwMask,
+    _In_ DWORD dwFlags)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetCurrentFolderFlags(
+    _Out_ DWORD *pdwFlags)
+{
+    if (!pdwFlags)
+        return E_POINTER;
+
+    *pdwFlags = m_FolderSettings.fFlags;
+    return S_OK;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetSortColumnCount(
+    _Out_ int *pcColumns)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetSortColumns(
+    _In_reads_(cColumns) const SORTCOLUMN *rgSortColumns,
+    _In_ int cColumns)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetSortColumns(
+    _Out_writes_(cColumns) SORTCOLUMN *rgSortColumns,
+    _In_ int cColumns)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetItem(
+    _In_ int iItem,
+    _In_ REFIID riid,
+    _Outptr_ void **ppv)
+{
+    *ppv = NULL;
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetVisibleItem(
+    _In_ int iStart,
+    _In_ BOOL fPrevious,
+    _Out_ int *piItem)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetSelectedItem(
+    _In_ int iStart,
+    _Out_ int *piItem)
+{
+    if (!piItem)
+        return E_POINTER;
+
+    *piItem = m_ListView.GetNextItem(iStart, LVNI_SELECTED);
+    return (*piItem == -1) ? S_FALSE : S_OK;
+}
+
+/* The selected items, or the folder itself when nothing is selected and the caller wants that */
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetSelection(
+    _In_ BOOL fNoneImpliesFolder,
+    _Outptr_ IShellItemArray **ppsia)
+{
+    HRESULT hr = Items(SVGIO_SELECTION, IID_PPV_ARG(IShellItemArray, ppsia));
+
+    if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) && fNoneImpliesFolder)
+        hr = GetFolder(IID_PPV_ARG(IShellItemArray, ppsia));
+    return hr;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetSelectionState(
+    _In_ PCUITEMID_CHILD pidl,
+    _Out_ DWORD *pdwFlags)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::InvokeVerbOnSelection(
+    _In_opt_ LPCSTR pszVerb)
+{
+    return OpenSelectedItems(pszVerb);
+}
+
+/*
+ * The list view draws icon modes small up to 32 pixels and large above that, like the small
+ * icons switch of Windows. Tiles and content keep the mode but lay out as SetCurrentViewMode does.
+ */
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetViewModeAndIconSize(
+    _In_ FOLDERVIEWMODE uViewMode,
+    _In_ int iImageSize)
+{
+    if (((INT)uViewMode < FVM_FIRST || (INT)uViewMode > FVM_LAST) && (INT)uViewMode != FVM_AUTO)
+        return E_INVALIDARG;
+    if ((iImageSize < 16 || iImageSize > 256) && iImageSize != -1)
+        return E_INVALIDARG;
+
+    if (uViewMode == FVM_AUTO)
+        uViewMode = FVM_ICON;
+
+    int iOldSize = _GetIconSize();
+
+    if (uViewMode == FVM_ICON || uViewMode == FVM_SMALLICON ||
+        uViewMode == FVM_THUMBNAIL || uViewMode == FVM_THUMBSTRIP)
+    {
+        if (iImageSize == -1)
+            iImageSize = (uViewMode == FVM_SMALLICON) ? 16 : 48;
+        uViewMode = (iImageSize <= 32) ? FVM_SMALLICON : FVM_ICON;
+        m_iIconSize = iImageSize;
+    }
+
+    HRESULT hr = SetCurrentViewMode(uViewMode);
+    if (SUCCEEDED(hr) && iOldSize != _GetIconSize())
+        CDefViewDual_FireEvent(m_pShellFolderViewDual, DISPID_ICONSIZECHANGED);
+    return hr;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetViewModeAndIconSize(
+    _Out_ FOLDERVIEWMODE *puViewMode,
+    _Out_ int *piImageSize)
+{
+    if (!puViewMode || !piImageSize)
+        return E_POINTER;
+
+    *puViewMode = (FOLDERVIEWMODE)m_FolderSettings.ViewMode;
+    *piImageSize = _GetIconSize();
+    return S_OK;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::SetGroupSubsetCount(
+    _In_ UINT cVisibleRows)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::GetGroupSubsetCount(
+    _Out_ UINT *pcVisibleRows)
+{
+    return E_NOTIMPL;
+}
+
+HRESULT
+STDMETHODCALLTYPE
+CDefView::IsMoveInSameFolder()
+{
+    return E_NOTIMPL;
+}
+
+/* Renames the focused selected item in place */
+HRESULT
+STDMETHODCALLTYPE
+CDefView::DoRename()
+{
+    int iItem = m_ListView.GetNextItem(-1, LVNI_SELECTED | LVNI_FOCUSED);
+
+    if (iItem == -1)
+        iItem = m_ListView.GetNextItem(-1, LVNI_SELECTED);
+    if (iItem == -1)
+        return S_FALSE;
+
+    m_ListView.EditLabel(iItem);
+    return S_OK;
+}
+
+/* The list view leaves Ctrl+wheel to its owner; the frame's view control does the zooming */
+LRESULT
+CDefView::OnMouseWheel(
+    _In_ UINT uMsg,
+    _In_ WPARAM wParam,
+    _In_ LPARAM lParam,
+    _Inout_ BOOL &bHandled)
+{
+    VARIANT varUp;
+    DISPPARAMS dp = { &varUp, NULL, 1, 0 };
+
+    if (!(GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL) || !m_pShellFolderViewDual)
+    {
+        bHandled = FALSE;
+        return 0;
+    }
+
+    V_VT(&varUp) = VT_BOOL;
+    V_BOOL(&varUp) = (GET_WHEEL_DELTA_WPARAM(wParam) > 0) ? VARIANT_TRUE : VARIANT_FALSE;
+    CDefViewDual_FireEventWithArgs(m_pShellFolderViewDual, DISPID_CTRLMOUSEWHEEL, &dp);
+    return 0;
 }
 
 
@@ -4158,10 +4601,28 @@ HRESULT STDMETHODCALLTYPE CDefView::SetCallback(IShellFolderViewCB  *new_cb, ISh
     return S_OK;
 }
 
+#ifndef SFVS_SELECT_NONE
+#define SFVS_SELECT_NONE        0x0
+#define SFVS_SELECT_ALLITEMS    0x1
+#define SFVS_SELECT_INVERT      0x2
+#endif
+
 HRESULT STDMETHODCALLTYPE CDefView::Select(UINT flags)
 {
-    FIXME("(%p)->(%d) stub\n", this, flags);
-    return E_NOTIMPL;
+    switch (flags)
+    {
+        case SFVS_SELECT_NONE:
+            m_ListView.SetItemState(-1, 0, LVIS_SELECTED);
+            return S_OK;
+        case SFVS_SELECT_ALLITEMS:
+            m_ListView.SetItemState(-1, LVIS_SELECTED, LVIS_SELECTED);
+            return S_OK;
+        case SFVS_SELECT_INVERT:
+            for (int i = 0; i < m_ListView.GetItemCount(); i++)
+                m_ListView.SetItemState(i, m_ListView.GetItemState(i, LVIS_SELECTED) ^ LVIS_SELECTED, LVIS_SELECTED);
+            return S_OK;
+    }
+    return E_INVALIDARG;
 }
 
 HRESULT STDMETHODCALLTYPE CDefView::QuerySupport(UINT *support)
@@ -4756,6 +5217,9 @@ HRESULT STDMETHODCALLTYPE CDefView::QueryService(REFGUID guidService, REFIID rii
 {
     if (IsEqualIID(guidService, SID_SFolderView))
         return QueryInterface(riid, ppvObject);
+    /* The command bar reads the folder's web view tasks through the view callback */
+    if (IsEqualIID(guidService, IID_IShellFolderViewCB))
+        return m_pShellFolderViewCB ? m_pShellFolderViewCB->QueryInterface(riid, ppvObject) : E_NOINTERFACE;
     return m_pShellBrowser ? IUnknown_QueryService(m_pShellBrowser, guidService, riid, ppvObject) : E_NOINTERFACE;
 }
 

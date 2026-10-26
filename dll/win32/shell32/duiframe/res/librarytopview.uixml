@@ -1,0 +1,10 @@
+<duixml>
+<AJOSplitButton resid="CommandElement" sheet="TaskButtonStylePlaceholder" layout="BorderLayout()" layoutpos="left" active="keyboard" accessible="true" accrole="pane">
+<Button3d id="atom(ActionButton)" layoutpos="right" layout="BorderLayout()" active="mouse" tooltip="true" accessible="true" accrole="pushbutton" accdefaction="Click">
+<Element id="atom(ActionButtonIcon)" layoutpos="left"/>
+<Element id="atom(ActionButtonLabel)" layoutpos="left" shortcut="None"/>
+<Element id="atom(MenuButtonGlyph)" layoutpos="left"/>
+</Button3d>
+</AJOSplitButton>
+<Element resid="TopViewPrefixElement" id="atom(TopViewPrefix)" content="resstr(0xC602, library(shell32.dll))" layoutpos="client" contentalign="middleleft" padding="rect(3rp,0,0,0)" sheet="LibraryPaneTopViewButtonStyle"/>
+</duixml>

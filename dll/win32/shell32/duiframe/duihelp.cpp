@@ -335,7 +335,6 @@ DUI_UninitThread(VOID)
     UnInitThread();
 }
 
-static
 DirectUI::Value *
 WINAPI
 DUI_GetSheetCB(
@@ -382,6 +381,47 @@ DUI_CreateParser(
 
     if (hinstStyle)
         FreeLibrary(hinstStyle);
+    return hr;
+}
+
+/* Parser over a UIFILE of hinst whose style sheets come through pfnGetSheet */
+HRESULT
+WINAPI
+DUI_CreateParserWithCallbackFromResource(
+    _In_ HINSTANCE hinst,
+    _In_ UINT uID,
+    _Outptr_ DirectUI::DUIXmlParser **ppParser,
+    _In_ DirectUI::GetSheetCallback pfnGetSheet,
+    _In_opt_ void *pvContext)
+{
+    DirectUI::DUIXmlParser *pParser;
+    HINSTANCE hinstStyle;
+    PWSTR pszUIFile;
+    HRESULT hr;
+
+    *ppParser = NULL;
+    hr = DUI_LoadUIFileFromResources(hinst, uID, &pszUIFile);
+    if (FAILED(hr))
+        return hr;
+
+    hinstStyle = GetShellStyleHInstance(NULL);
+    hr = DirectUI::DUIXmlParser::Create(&pParser, pfnGetSheet, pvContext, DUI_IgnoreParseError, NULL);
+    if (SUCCEEDED(hr))
+    {
+        if (FAILED(pParser->SetXML(pszUIFile, hinstStyle, hinst)))
+        {
+            pParser->Destroy();
+            hr = E_FAIL;
+        }
+        else
+        {
+            *ppParser = pParser;
+        }
+    }
+
+    if (hinstStyle)
+        FreeLibrary(hinstStyle);
+    LocalFree(pszUIFile);
     return hr;
 }
 

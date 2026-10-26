@@ -49,6 +49,8 @@ CreateSiteElement(
         return E_OUTOFMEMORY;
 
     hr = pe->Initialize(0, peParent, pdwDeferCookie);
+    if (SUCCEEDED(hr))
+        hr = pe->SetActive(1);
     if (FAILED(hr))
         pe->Destroy(false);
     else
@@ -126,8 +128,12 @@ CTemplateBackground::SetSite(
     }
     else
     {
-        ConnectToConnectionPoint(static_cast<IDispatch *>(this), DIID_DShellFolderViewEvents, FALSE,
-                                 _pdispView, &_dwCookie, NULL);
+        if (_dwCookie)
+        {
+            ConnectToConnectionPoint(static_cast<IDispatch *>(this), DIID_DShellFolderViewEvents, FALSE,
+                                     _pdispView, &_dwCookie, NULL);
+            _dwCookie = 0;
+        }
         IUnknown_SafeReleaseAndNullPtr(&_psv);
         IUnknown_SafeReleaseAndNullPtr(&_pdispView);
     }

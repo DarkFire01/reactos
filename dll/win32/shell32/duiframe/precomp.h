@@ -43,5 +43,8 @@
 #include <DirectUI.h>
 
 #include "duiframe.h"
+#include "commands.h"
+#include "detailspane.h"
+#include "panes.h"
 #include "cidlabel.h"
 #include "duiframe_res.h"
