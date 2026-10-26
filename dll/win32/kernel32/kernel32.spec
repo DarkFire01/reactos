@@ -860,6 +860,7 @@
 @ stdcall LoadLibraryExW(wstr long long)
 @ stdcall LoadLibraryW(wstr)
 @ stdcall LoadModule(str ptr)
+@ stdcall -version=0x602+ LoadPackagedLibrary(wstr long)
 @ stdcall LoadResource(long long)
 @ stdcall -private -version=0x603+ LoadStringA(long long ptr long)
 @ stub -version=0x600+ LoadStringBaseExW
