@@ -283,6 +283,9 @@ typedef struct _DCOMP_CMD_REMOVE_CHILD
 #define DCOMP_VISUAL_SIZE_VECTOR            29  /* buffer: two floats */
 #define DCOMP_VISUAL_VISIBLE                38  /* integer */
 
+/* Ours, buffer: RECTs in the visual's space nothing outside of is drawn; none is no region, one empty RECT hides it */
+#define DCOMP_VISUAL_CLIP_REGION            1100
+
 /* Sprite visual: its brush fills its size */
 #define DCOMP_SPRITE_VISUAL_BRUSH           52  /* reference: Brush */
 
