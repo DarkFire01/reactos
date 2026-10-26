@@ -855,6 +855,7 @@
 @ stdcall LCMapStringA(long long str long ptr long)
 @ stdcall -version=0x600+ LCMapStringEx(long long wstr long ptr long ptr ptr long)
 @ stdcall LCMapStringW(long long wstr long ptr long)
+@ stdcall -version=0x602+ LoadPackagedLibrary(wstr long)
 @ stdcall -private -version=0x603+ LoadStringA(long long ptr long)
 @ stdcall -private -version=0x603+ LoadStringW(long long ptr long)
 @ stdcall -version=0x601+ LocateXStateFeature(ptr long ptr)

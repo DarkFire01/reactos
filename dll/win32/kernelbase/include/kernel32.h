@@ -271,11 +271,38 @@ BasepCreateAppContainerToken(
 
 NTSTATUS
 WINAPI
+BasepCreateTokenObjectSecurity(
+    _In_ HANDLE Token,
+    _Out_ PSECURITY_DESCRIPTOR *SecurityDescriptor);
+
+NTSTATUS
+WINAPI
 BasepCreateAppContainerEnvironment(
     _In_opt_ HANDLE UserToken,
     _In_ PSID PackageSid,
     _In_opt_ PWSTR Environment,
     _Out_ PWSTR *NewEnvironment);
+
+/* Process attribute naming the package a new process runs as */
+#define BASEP_ATTRIBUTE_PACKAGE_FULL_NAME   (8 | PROC_THREAD_ATTRIBUTE_INPUT)
+
+/* PEB BitField: IsPackagedProcess */
+#define BASEP_PEB_PACKAGED_PROCESS          0x10
+
+DWORD
+WINAPI
+BasepGetPackageDllPath(
+    _In_opt_ HANDLE UserToken,
+    _In_opt_ PCWSTR PackageFullName,
+    _Outptr_result_maybenull_ PWSTR *DllPath);
+
+BOOLEAN
+WINAPI
+BasepIsPackagedProcess(VOID);
+
+BOOLEAN
+WINAPI
+BasepPackageAllowsUserDirectories(VOID);
 
 VOID
 WINAPI

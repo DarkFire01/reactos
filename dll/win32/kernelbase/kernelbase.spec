@@ -969,7 +969,7 @@
 @ stdcall LoadLibraryExA( str long long)
 @ stdcall LoadLibraryExW(wstr long long)
 @ stdcall LoadLibraryW(wstr)
-@ stdcall LoadPackagedLibrary(wstr long)
+@ stdcall -version=0x602+ LoadPackagedLibrary(wstr long)
 @ stdcall LoadResource(long long)
 @ stdcall LoadStringA(long long ptr long)
 @ stub LoadStringBaseExW
