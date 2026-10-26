@@ -1,65 +1,65 @@
 @ stub BluetoothAddressToString
-@ stub BluetoothAuthenticateDevice
-@ stub BluetoothAuthenticateDeviceEx
-@ stub BluetoothAuthenticateMultipleDevices
+@ stdcall BluetoothAuthenticateDevice(ptr ptr ptr wstr long)
+@ stdcall BluetoothAuthenticateDeviceEx(ptr ptr ptr ptr long)
+@ stdcall BluetoothAuthenticateMultipleDevices(ptr ptr long ptr)
 @ stub BluetoothAuthenticationAgent
 @ stub BluetoothDisconnectDevice
-@ stub BluetoothDisplayDeviceProperties
-@ stub BluetoothEnableDiscovery
-@ stub BluetoothEnableIncomingConnections
-@ stub BluetoothEnumerateInstalledServices
+@ stdcall BluetoothDisplayDeviceProperties(ptr ptr)
+@ stdcall BluetoothEnableDiscovery(ptr long) bluetoothapis.BluetoothEnableDiscovery
+@ stdcall BluetoothEnableIncomingConnections(ptr long) bluetoothapis.BluetoothEnableIncomingConnections
+@ stdcall BluetoothEnumerateInstalledServices(ptr ptr ptr ptr) bluetoothapis.BluetoothEnumerateInstalledServices
 @ stub BluetoothEnumerateInstalledServicesEx
 @ stub BluetoothFindBrowseGroupClose
 @ stub BluetoothFindClassIdClose
-@ stdcall -import BluetoothFindDeviceClose(ptr)
+@ stdcall BluetoothFindDeviceClose(ptr) bluetoothapis.BluetoothFindDeviceClose
 @ stub BluetoothFindFirstBrowseGroup
 @ stub BluetoothFindFirstClassId
-@ stdcall -import BluetoothFindFirstDevice(ptr ptr)
+@ stdcall BluetoothFindFirstDevice(ptr ptr) bluetoothapis.BluetoothFindFirstDevice
 @ stub BluetoothFindFirstProfileDescriptor
 @ stub BluetoothFindFirstProtocolDescriptorStack
 @ stub BluetoothFindFirstProtocolEntry
-@ stdcall -import BluetoothFindFirstRadio(ptr ptr)
+@ stdcall BluetoothFindFirstRadio(ptr ptr) bluetoothapis.BluetoothFindFirstRadio
 @ stub BluetoothFindFirstService
 @ stub BluetoothFindFirstServiceEx
 @ stub BluetoothFindNextBrowseGroup
 @ stub BluetoothFindNextClassId
-@ stdcall -import BluetoothFindNextDevice(ptr ptr)
+@ stdcall BluetoothFindNextDevice(ptr ptr) bluetoothapis.BluetoothFindNextDevice
 @ stub BluetoothFindNextProfileDescriptor
 @ stub BluetoothFindNextProtocolDescriptorStack
 @ stub BluetoothFindNextProtocolEntry
-@ stdcall -import BluetoothFindNextRadio(ptr ptr)
+@ stdcall BluetoothFindNextRadio(ptr ptr) bluetoothapis.BluetoothFindNextRadio
 @ stub BluetoothFindNextService
 @ stub BluetoothFindProfileDescriptorClose
 @ stub BluetoothFindProtocolDescriptorStackClose
 @ stub BluetoothFindProtocolEntryClose
-@ stdcall -import BluetoothFindRadioClose(ptr)
+@ stdcall BluetoothFindRadioClose(ptr) bluetoothapis.BluetoothFindRadioClose
 @ stub BluetoothFindServiceClose
-@ stub BluetoothGetDeviceInfo
-@ stdcall -import BluetoothGetRadioInfo(ptr ptr)
-@ stub BluetoothIsConnectable
-@ stub BluetoothIsDiscoverable
-@ stub BluetoothIsVersionAvailable
+@ stdcall BluetoothGetDeviceInfo(ptr ptr) bluetoothapis.BluetoothGetDeviceInfo
+@ stdcall BluetoothGetRadioInfo(ptr ptr) bluetoothapis.BluetoothGetRadioInfo
+@ stdcall BluetoothIsConnectable(ptr) bluetoothapis.BluetoothIsConnectable
+@ stdcall BluetoothIsDiscoverable(ptr) bluetoothapis.BluetoothIsDiscoverable
+@ stdcall BluetoothIsVersionAvailable(long long) bluetoothapis.BluetoothIsVersionAvailable
 @ stub BluetoothMapClassOfDeviceToImageIndex
 @ stub BluetoothMapClassOfDeviceToString
-@ stub BluetoothRegisterForAuthentication
-@ stdcall -import BluetoothRegisterForAuthenticationEx(ptr ptr ptr ptr)
-@ stub BluetoothRemoveDevice
-@ stdcall -import BluetoothSdpEnumAttributes(ptr long ptr ptr)
-@ stdcall -import BluetoothSdpGetAttributeValue(ptr long long ptr)
-@ stdcall -import BluetoothSdpGetContainerElementData(ptr long ptr ptr)
-@ stdcall -import BluetoothSdpGetElementData(ptr long ptr)
+@ stdcall BluetoothRegisterForAuthentication(ptr ptr ptr ptr) bluetoothapis.BluetoothRegisterForAuthentication
+@ stdcall BluetoothRegisterForAuthenticationEx(ptr ptr ptr ptr) bluetoothapis.BluetoothRegisterForAuthenticationEx
+@ stdcall BluetoothRemoveDevice(ptr) bluetoothapis.BluetoothRemoveDevice
+@ stdcall BluetoothSdpEnumAttributes(ptr long ptr ptr) bluetoothapis.BluetoothSdpEnumAttributes
+@ stdcall BluetoothSdpGetAttributeValue(ptr long long ptr) bluetoothapis.BluetoothSdpGetAttributeValue
+@ stdcall BluetoothSdpGetContainerElementData(ptr long ptr ptr) bluetoothapis.BluetoothSdpGetContainerElementData
+@ stdcall BluetoothSdpGetElementData(ptr long ptr) bluetoothapis.BluetoothSdpGetElementData
 @ stub BluetoothSdpGetString
-@ stub BluetoothSelectDevices
-@ stub BluetoothSelectDevicesFree
-@ stub BluetoothSendAuthenticationResponse
-@ stub BluetoothSendAuthenticationResponseEx
-@ stub BluetoothSetLocalServiceInfo
-@ stub BluetoothSetServiceState
-@ stdcall -import BluetoothUnregisterAuthentication(long)
-@ stub BluetoothUpdateDeviceRecord
+@ stdcall BluetoothSelectDevices(ptr)
+@ stdcall BluetoothSelectDevicesFree(ptr)
+@ stdcall BluetoothSendAuthenticationResponse(ptr ptr wstr) bluetoothapis.BluetoothSendAuthenticationResponse
+@ stdcall BluetoothSendAuthenticationResponseEx(ptr ptr) bluetoothapis.BluetoothSendAuthenticationResponseEx
+@ stdcall BluetoothSetLocalServiceInfo(ptr ptr long ptr) bluetoothapis.BluetoothSetLocalServiceInfo
+@ stdcall BluetoothSetServiceState(ptr ptr ptr long) bluetoothapis.BluetoothSetServiceState
+@ stdcall BluetoothUnregisterAuthentication(ptr) bluetoothapis.BluetoothUnregisterAuthentication
+@ stdcall BluetoothUpdateDeviceRecord(ptr) bluetoothapis.BluetoothUpdateDeviceRecord
 @ stub BthpEnableAllServices
 @ stub BthpFindPnpInfo
 @ stub BthpMapStatusToErr
-#@ stub CPlApplet
+@ stdcall CPlApplet(ptr long ptr ptr)
 @ stdcall -private DllCanUnloadNow()
 @ stub DllGetClassObject
