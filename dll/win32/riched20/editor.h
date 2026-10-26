@@ -382,6 +382,32 @@ extern const struct ITextHost2Vtbl text_host2_stdcall_vtbl;
 #define ITextHost2_TxDestroyCaret(This) TXTHOST_VTABLE(This)->TxDestroyCaret(This)
 #define ITextHost2_TxGetHorzExtent(This,a) TXTHOST_VTABLE(This)->TxGetHorzExtent(This,a)
 
+#ifdef __REACTOS__
+/* The window IME and default processing go to; a windowless host has one as well */
+static inline
+HWND
+editor_hwnd(
+    _In_ ME_TextEditor *editor)
+{
+    HWND hwnd = NULL;
+
+    if (!editor->have_texthost2 || FAILED( ITextHost2_TxGetWindow( editor->texthost, &hwnd ) ))
+        hwnd = NULL;
+    return hwnd;
+}
+
+/* Windows asks for the selection bar width each time it lays out the view, and hosts hook that */
+static inline
+void
+editor_query_selbar(
+    _In_ ME_TextEditor *editor)
+{
+    LONG width;
+
+    ITextHost_TxGetSelectionBarWidth( editor->texthost, &width );
+}
+#endif
+
 /* undo.c */
 BOOL add_undo_insert_run( ME_TextEditor *, int pos, const WCHAR *str, int len, int flags, ME_Style *style );
 BOOL add_undo_delete_run( ME_TextEditor *, int pos, int len );

@@ -278,6 +278,9 @@ void update_caret(ME_TextEditor *editor)
 {
   int x, y, height;
 
+#ifdef __REACTOS__
+  editor_query_selbar( editor );
+#endif
   if (!editor->bHaveFocus) return;
   if (!ME_IsSelection(editor))
   {
@@ -292,16 +295,20 @@ void update_caret(ME_TextEditor *editor)
 #ifdef __REACTOS__
   if (ImmIsIME(GetKeyboardLayout(0)))
   {
-    HIMC hIMC = ImmGetContext(editor->hWnd);
+    HIMC hIMC = ImmGetContext(editor_hwnd(editor));
     if (hIMC)
     {
       CHARFORMAT2W fmt;
       LOGFONTW lf;
       COMPOSITIONFORM CompForm;
-      POINT pt = { x, y };
+      POINT pt;
 
+      /* With a selection the caret position above was never computed */
+      cursor_coords( editor, &editor->pCursors[0], &x, &y, &height );
+      pt.x = x;
+      pt.y = y;
       CompForm.ptCurrentPos = pt;
-      if (editor->styleFlags & ES_MULTILINE)
+      if (editor->props & TXTBIT_MULTILINE)
       {
         CompForm.dwStyle = CFS_RECT;
         CompForm.rcArea = editor->rcFormat;
@@ -330,7 +337,7 @@ void update_caret(ME_TextEditor *editor)
         lstrcpynW(lf.lfFaceName, fmt.szFaceName, ARRAY_SIZE(lf.lfFaceName));
       ImmSetCompositionFontW(hIMC, &lf);
 
-      ImmReleaseContext(editor->hWnd, hIMC);
+      ImmReleaseContext(editor_hwnd(editor), hIMC);
     }
   }
 #endif
