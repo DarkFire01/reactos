@@ -26,13 +26,27 @@
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
 
 CShellItem::CShellItem() :
-    m_pidl(NULL)
+    m_pidl(NULL),
+    m_pidlParent(NULL),
+    m_psfParent(NULL)
 {
 }
 
 CShellItem::~CShellItem()
 {
+    ResetParent();
     ILFree(m_pidl);
+}
+
+void CShellItem::ResetParent()
+{
+    ILFree(m_pidlParent);
+    m_pidlParent = NULL;
+    if (m_psfParent)
+    {
+        m_psfParent->Release();
+        m_psfParent = NULL;
+    }
 }
 
 HRESULT CShellItem::get_parent_pidl(LPITEMIDLIST *parent_pidl)
@@ -61,6 +75,10 @@ HRESULT CShellItem::get_parent_shellfolder(IShellFolder **ppsf)
     HRESULT hr;
     LPITEMIDLIST parent_pidl;
     CComPtr<IShellFolder>        desktop;
+
+    /* A folder handed in through IParentAndItem is used as is */
+    if (m_psfParent)
+        return m_psfParent->QueryInterface(IID_PPV_ARG(IShellFolder, ppsf));
 
     hr = get_parent_pidl(&parent_pidl);
     if (SUCCEEDED(hr))
@@ -411,6 +429,7 @@ HRESULT WINAPI CShellItem::SetIDList(PCIDLIST_ABSOLUTE pidlx)
     new_pidl = ILClone(pidlx);
     if (new_pidl)
     {
+        ResetParent();
         ILFree(m_pidl);
         m_pidl = new_pidl;
         return S_OK;
@@ -428,6 +447,130 @@ HRESULT WINAPI CShellItem::GetIDList(PIDLIST_ABSOLUTE *ppidl)
         return S_OK;
     else
         return E_OUTOFMEMORY;
+}
+
+HRESULT
+WINAPI
+CShellItem::SetParentAndItem(
+    _In_opt_ PCIDLIST_ABSOLUTE pidlParent,
+    _In_opt_ IShellFolder *psfParent,
+    _In_ PCUITEMID_CHILD pidlChild)
+{
+    LPITEMIDLIST pidlNewParent = NULL;
+    LPITEMIDLIST pidlNew;
+    HRESULT hr;
+
+    if ((!pidlParent && !psfParent) || !pidlChild)
+        return E_INVALIDARG;
+
+    if (pidlParent)
+    {
+        pidlNewParent = ILClone(pidlParent);
+        hr = pidlNewParent ? S_OK : E_OUTOFMEMORY;
+    }
+    else
+    {
+        hr = SHGetIDListFromObject(psfParent, &pidlNewParent);
+    }
+    if (FAILED(hr))
+        return hr;
+
+    pidlNew = ILCombine(pidlNewParent, pidlChild);
+    if (!pidlNew)
+    {
+        ILFree(pidlNewParent);
+        return E_OUTOFMEMORY;
+    }
+
+    ResetParent();
+    ILFree(m_pidl);
+    m_pidl = pidlNew;
+    m_pidlParent = pidlNewParent;
+    m_psfParent = psfParent;
+    if (m_psfParent)
+        m_psfParent->AddRef();
+    return S_OK;
+}
+
+HRESULT
+WINAPI
+CShellItem::GetParentAndItem(
+    _Out_opt_ PIDLIST_ABSOLUTE *ppidlParent,
+    _Out_opt_ IShellFolder **ppsfParent,
+    _Out_opt_ PITEMID_CHILD *ppidlChild)
+{
+    BOOL bDesktop = _ILIsDesktop(m_pidl);
+    HRESULT hr = S_OK;
+
+    if (ppidlParent)
+        *ppidlParent = NULL;
+    if (ppsfParent)
+        *ppsfParent = NULL;
+    if (ppidlChild)
+        *ppidlChild = NULL;
+
+    if (!m_pidl)
+        return E_UNEXPECTED;
+
+    if (ppsfParent)
+    {
+        /* The desktop is its own parent folder */
+        if (!m_psfParent && bDesktop)
+            hr = SHGetDesktopFolder(ppsfParent);
+        else
+            hr = get_parent_shellfolder(ppsfParent);
+    }
+
+    if (SUCCEEDED(hr) && ppidlParent)
+    {
+        if (m_pidlParent)
+        {
+            *ppidlParent = ILClone(m_pidlParent);
+            if (!*ppidlParent)
+                hr = E_OUTOFMEMORY;
+        }
+        else if (!bDesktop)
+        {
+            hr = get_parent_pidl(ppidlParent);
+        }
+    }
+
+    if (SUCCEEDED(hr) && ppidlChild)
+    {
+        LPCITEMIDLIST pidlLast = ILFindLastID(m_pidl);
+        UINT cbLast = pidlLast->mkid.cb;
+
+        *ppidlChild = (PITEMID_CHILD)SHAlloc(cbLast + sizeof(USHORT));
+        if (*ppidlChild)
+        {
+            CopyMemory(*ppidlChild, pidlLast, cbLast);
+            *(USHORT *)((BYTE *)*ppidlChild + cbLast) = 0;
+        }
+        else
+        {
+            hr = E_OUTOFMEMORY;
+        }
+    }
+
+    if (FAILED(hr))
+    {
+        if (ppsfParent && *ppsfParent)
+        {
+            (*ppsfParent)->Release();
+            *ppsfParent = NULL;
+        }
+        if (ppidlParent)
+        {
+            ILFree(*ppidlParent);
+            *ppidlParent = NULL;
+        }
+        if (ppidlChild)
+        {
+            ILFree(*ppidlChild);
+            *ppidlChild = NULL;
+        }
+    }
+    return hr;
 }
 
 HRESULT WINAPI SHCreateShellItem(PCIDLIST_ABSOLUTE pidlParent,
@@ -503,6 +646,34 @@ HRESULT WINAPI SHCreateShellItem(PCIDLIST_ABSOLUTE pidlParent,
     *ppsi = newShellItem.Detach();
 
     return hr;
+}
+
+/***********************************************************************
+ *   SHCreateItemWithParent [SHELL32.@]
+ */
+EXTERN_C
+HRESULT
+WINAPI
+SHCreateItemWithParent(
+    _In_opt_ PCIDLIST_ABSOLUTE pidlParent,
+    _In_opt_ IShellFolder *psfParent,
+    _In_ PCUITEMID_CHILD pidl,
+    _In_ REFIID riid,
+    _Outptr_ void **ppvItem)
+{
+    CComPtr<IParentAndItem> ppai;
+    HRESULT hr;
+
+    *ppvItem = NULL;
+    hr = CShellItem::_CreatorClass::CreateInstance(NULL, IID_PPV_ARG(IParentAndItem, &ppai));
+    if (FAILED(hr))
+        return hr;
+
+    hr = ppai->SetParentAndItem(pidlParent, psfParent, pidl);
+    if (FAILED(hr))
+        return hr;
+
+    return ppai->QueryInterface(riid, ppvItem);
 }
 
 /***********************************************************************

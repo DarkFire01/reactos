@@ -26,10 +26,15 @@ class CShellItem :
     public CComCoClass<CShellItem, &CLSID_ShellItem>,
     public CComObjectRootEx<CComMultiThreadModelNoCS>,
     public IShellItem2,
-    public IPersistIDList
+    public IPersistIDList,
+    public IParentAndItem
 {
 private:
     LPITEMIDLIST        m_pidl;
+    LPITEMIDLIST        m_pidlParent;
+    IShellFolder        *m_psfParent;
+
+    void ResetParent();
 
 public:
     CShellItem();
@@ -67,6 +72,10 @@ public:
     STDMETHOD(SetIDList)(PCIDLIST_ABSOLUTE pidl) override;
     STDMETHOD(GetIDList)(PIDLIST_ABSOLUTE *ppidl) override;
 
+    // IParentAndItem
+    STDMETHOD(SetParentAndItem)(PCIDLIST_ABSOLUTE pidlParent, IShellFolder *psfParent, PCUITEMID_CHILD pidlChild) override;
+    STDMETHOD(GetParentAndItem)(PIDLIST_ABSOLUTE *ppidlParent, IShellFolder **ppsfParent, PITEMID_CHILD *ppidlChild) override;
+
 DECLARE_NO_REGISTRY()
 DECLARE_NOT_AGGREGATABLE(CShellItem)
 
@@ -76,6 +85,7 @@ BEGIN_COM_MAP(CShellItem)
     COM_INTERFACE_ENTRY_IID(IID_IShellItem, IShellItem)
     COM_INTERFACE_ENTRY_IID(IID_IShellItem2, IShellItem2)
     COM_INTERFACE_ENTRY_IID(IID_IPersistIDList, IPersistIDList)
+    COM_INTERFACE_ENTRY_IID(IID_IParentAndItem, IParentAndItem)
 END_COM_MAP()
 };
 
