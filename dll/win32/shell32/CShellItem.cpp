@@ -22,6 +22,7 @@
 
 #include "precomp.h"
 #include "prop.h"
+#include "CShellItemProperties.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
 
@@ -251,14 +252,25 @@ HRESULT WINAPI CShellItem::Compare(IShellItem *oth, SICHINTF hint, int *piOrder)
         return S_OK;
 }
 
+/* Without property handlers every store is the read-only item store; temporary stores live with the item */
 HRESULT WINAPI CShellItem::GetPropertyStore(_In_ GETPROPERTYSTOREFLAGS flags,
                                             _In_ REFIID riid, _Out_ void **ppv)
 {
     if (!ppv)
         return E_POINTER;
-    UNIMPLEMENTED;
     *ppv = NULL;
-    return E_NOTIMPL;
+
+    if (flags & GPS_TEMPORARY)
+    {
+        if (!m_pTemporaryStore)
+        {
+            HRESULT hr = PSCreateMemoryPropertyStore(IID_PPV_ARG(IPropertyStore, &m_pTemporaryStore));
+            if (FAILED(hr))
+                return hr;
+        }
+        return m_pTemporaryStore->QueryInterface(riid, ppv);
+    }
+    return SHELL_CreateItemPropertyStore(m_pidl, flags, NULL, 0, riid, ppv);
 }
 
 HRESULT WINAPI CShellItem::GetPropertyStoreWithCreateObject(_In_ GETPROPERTYSTOREFLAGS flags,
@@ -269,9 +281,7 @@ HRESULT WINAPI CShellItem::GetPropertyStoreWithCreateObject(_In_ GETPROPERTYSTOR
         return E_POINTER;
     if (!punkCreateObject)
         return E_INVALIDARG;
-    UNIMPLEMENTED;
-    *ppv = NULL;
-    return E_NOTIMPL;
+    return GetPropertyStore(flags, riid, ppv);
 }
 
 HRESULT WINAPI CShellItem::GetPropertyStoreForKeys(const PROPERTYKEY *rgKeys, _In_ UINT cKeys,
@@ -280,19 +290,28 @@ HRESULT WINAPI CShellItem::GetPropertyStoreForKeys(const PROPERTYKEY *rgKeys, _I
 {
     if (!ppv)
         return E_POINTER;
-    UNIMPLEMENTED;
     *ppv = NULL;
-    return E_NOTIMPL;
+    if (!rgKeys || !cKeys)
+        return E_INVALIDARG;
+    return SHELL_CreateItemPropertyStore(m_pidl, flags, rgKeys, cKeys, riid, ppv);
 }
 
+/* Same list a one item array gives */
 HRESULT WINAPI CShellItem::GetPropertyDescriptionList(_In_ REFPROPERTYKEY keyType, _In_ REFIID riid,
                                                       _Out_ void **ppv)
 {
+    CComPtr<IShellItemArray> psia;
+    IShellItem *psi = static_cast<IShellItem2 *>(this);
+    HRESULT hr;
+
     if (!ppv)
         return E_POINTER;
-    UNIMPLEMENTED; // TODO: propsys::PSCreatePropertyDescriptionList? IShellItemArray::GetPropertyDescriptionList?
     *ppv = NULL;
-    return E_NOTIMPL;
+
+    hr = CreateShellItemArrayFromItems(&psi, 1, IID_PPV_ARG(IShellItemArray, &psia));
+    if (SUCCEEDED(hr))
+        hr = SHELL_CreateItemArrayPropertyDescriptionList(psia, keyType, riid, ppv);
+    return hr;
 }
 
 HRESULT WINAPI CShellItem::Update(_In_ IBindCtx *pbc)
@@ -303,15 +322,17 @@ HRESULT WINAPI CShellItem::Update(_In_ IBindCtx *pbc)
 
 HRESULT WINAPI CShellItem::GetProperty(_In_ REFPROPERTYKEY key, _Out_ PROPVARIANT *ppropvar)
 {
-    VARIANT v;
-    HRESULT hr = get_property_from_folder(key, &v); // TODO: BHID_PropertyStore?
-    if (FAILED(hr))
-    {
-        if (HRESULT_FACILITY(hr) == FACILITY_WIN32 && hr != E_INVALIDARG)
-            return hr;
-        return HResultFromWin32(ERROR_NOT_FOUND);
-    }
-    return SHELL_VariantToPropVariant(&v, ppropvar);
+    CComPtr<IPropertyStore> pps;
+    HRESULT hr;
+
+    if (!ppropvar)
+        return E_INVALIDARG;
+    PropVariantInit(ppropvar);
+
+    hr = GetPropertyStoreForKeys(&key, 1, GPS_DEFAULT, IID_PPV_ARG(IPropertyStore, &pps));
+    if (SUCCEEDED(hr))
+        hr = pps->GetValue(key, ppropvar);
+    return hr;
 }
 
 HRESULT CShellItem::get_converted_property(REFPROPERTYKEY key, PROPVARIANT *ppropvar, VARTYPE vt)
@@ -321,6 +342,8 @@ HRESULT CShellItem::get_converted_property(REFPROPERTYKEY key, PROPVARIANT *ppro
     HRESULT hr = GetProperty(key, &pv);
     if (FAILED(hr))
         return hr;
+    if (pv.vt == VT_EMPTY)
+        return HResultFromWin32(ERROR_NOT_FOUND);
     hr = SHELL_PropVariantChangeType(ppropvar, pv, vt);
     PropVariantClear(&pv);
     return hr;
@@ -945,30 +968,6 @@ SHGetItemFromObject(_In_ IUnknown *punk, _In_ REFIID riid, _Out_ void **ppv)
     if (SUCCEEDED(hr))
         hr = SHCreateItemFromIDList(pidl, riid, ppv);
     return hr;
-}
-
-/***********************************************************************
- *   SHGetPropertyStoreForWindow [SHELL32.@]
- *
- * Hands back the property store a window keeps for the shell: the application
- * user model id it is grouped under on the taskbar, its relaunch command, and
- * so on. We keep no such store yet, so report that rather than inventing one.
- * Callers use this to decorate a window and carry on without it.
- */
-EXTERN_C HRESULT WINAPI
-SHGetPropertyStoreForWindow(_In_ HWND hwnd, _In_ REFIID riid, _Out_ void **ppv)
-{
-    FIXME("(%p,%s,%p) stub\n", hwnd, debugstr_guid(&riid), ppv);
-
-    if (ppv == NULL)
-        return E_INVALIDARG;
-
-    *ppv = NULL;
-
-    if (!IsWindow(hwnd))
-        return E_INVALIDARG;
-
-    return E_NOTIMPL;
 }
 
 /***********************************************************************
