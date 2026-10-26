@@ -834,7 +834,7 @@ HRESULT CAssocShellElement::_GetVerbDelegate(PCWSTR pszSrc, IAssociationElementO
         return E_FAIL;
 
     HRESULT hr;
-    IQuerySourceOld* pSource;
+    IQuerySourceOld* pSource = NULL;
     if (pszSrc)
         hr = QSOpen2(m_pSource, L"shell", pszSrc, 0, &pSource);
     else
@@ -842,6 +842,8 @@ HRESULT CAssocShellElement::_GetVerbDelegate(PCWSTR pszSrc, IAssociationElementO
 
     if (FAILED_UNEXPECTEDLY(hr))
         return hr;
+    if (!pSource)
+        return E_FAIL;
 
     BOOL bAppSource = _IsAppSource();
     auto pElement = new(std::nothrow) CAssocShellVerbElement(bAppSource);
@@ -981,15 +983,19 @@ STDMETHODIMP CAssocShellElement::GetString(PWSTR* ppsz)
 
 HRESULT CAssocShellElement::_DefaultVerbSource(IQuerySourceOld** ppSource)
 {
+    *ppSource = NULL;
+
     IQuerySourceOld* pShellSource;
     HRESULT hr = m_pSource->OpenSource(L"shell", FALSE, &pShellSource);
     if (FAILED_UNEXPECTEDLY(hr))
         return hr;
 
-    PWSTR pszValue;
+    PWSTR pszValue = NULL;
     PCWSTR pszVerb = L"open";
-    if (SUCCEEDED(pShellSource->QueryValueString(NULL, NULL, &pszValue)))
+    if (SUCCEEDED(pShellSource->QueryValueString(NULL, NULL, &pszValue)) && pszValue)
         pszVerb = pszValue;
+    else
+        pszValue = NULL;
 
     hr = pShellSource->OpenSource(pszVerb, FALSE, ppSource);
     if (FAILED_UNEXPECTEDLY(hr))
