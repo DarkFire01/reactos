@@ -581,6 +581,11 @@ CFSFolder::CFSFolder()
     m_sPathTarget = NULL;
     m_pidlRoot = NULL;
     m_bGroupPolicyActive = 0;
+    m_bHasTargetInfo = FALSE;
+    m_dwTargetAttributes = 0;
+    m_iTargetCsidl = -1;
+    m_dwEnumRequired = 0;
+    m_dwEnumForbidden = 0;
 }
 
 CFSFolder::~CFSFolder()
@@ -1001,6 +1006,7 @@ HRESULT WINAPI CFSFolder::EnumObjects(
     DWORD dwFlags,
     LPENUMIDLIST *ppEnumIDList)
 {
+    dwFlags = (dwFlags | m_dwEnumRequired) & ~m_dwEnumForbidden;
     return ShellObjectCreatorInit<CFileSysEnum>(m_sPathTarget, dwFlags, IID_PPV_ARG(IEnumIDList, ppEnumIDList));
 }
 
@@ -1652,6 +1658,18 @@ HRESULT WINAPI CFSFolder::GetDetailsEx(PCUITEMID_CHILD pidl, const SHCOLUMNID *p
     {
         switch (pscid->pid)
         {
+            case PID_FINDDATA:
+            {
+                WIN32_FIND_DATAW wfd;
+
+                hr = SHGetDataFromIDListW(this, pidl, SHGDFIL_FINDDATA, &wfd, sizeof(wfd));
+                if (FAILED(hr))
+                    return hr;
+                if (FAILED(hr = SHELL_CreateVariantBuffer(pv, sizeof(wfd))))
+                    return hr;
+                CopyMemory(V_ARRAY(pv)->pvData, &wfd, sizeof(wfd));
+                return S_OK;
+            }
             case PID_DESCRIPTIONID:
             {
                 if (FAILED(hr = SHELL_CreateVariantBuffer(pv, sizeof(SHDESCRIPTIONID))))
@@ -1864,8 +1882,11 @@ HRESULT WINAPI CFSFolder::InitializeEx(IBindCtx * pbc, LPCITEMIDLIST pidlRootx,
      *  szTargetParsingName
      */
     HRESULT hr = E_FAIL;
+    m_bHasTargetInfo = (ppfti != NULL);
     if (ppfti)
     {
+        m_dwTargetAttributes = ppfti->dwAttributes;
+        m_iTargetCsidl = ppfti->csidl;
         if (ppfti->csidl != -1)
         {
             BOOL create = ppfti->csidl & CSIDL_FLAG_CREATE;
@@ -1889,9 +1910,18 @@ HRESULT WINAPI CFSFolder::InitializeEx(IBindCtx * pbc, LPCITEMIDLIST pidlRootx,
 
 HRESULT WINAPI CFSFolder::GetFolderTargetInfo(PERSIST_FOLDER_TARGET_INFO * ppfti)
 {
-    FIXME("(%p)->(%p)\n", this, ppfti);
+    TRACE("(%p)->(%p)\n", this, ppfti);
     ZeroMemory(ppfti, sizeof (*ppfti));
-    return E_NOTIMPL;
+
+    /* Only a folder that was given a target reports one */
+    if (!m_bHasTargetInfo || !m_sPathTarget)
+        return E_FAIL;
+
+    StringCchCopyW(ppfti->szTargetParsingName, _countof(ppfti->szTargetParsingName), m_sPathTarget);
+    ppfti->pidlTargetFolder = ILCreateFromPathW(m_sPathTarget);
+    ppfti->dwAttributes = m_dwTargetAttributes;
+    ppfti->csidl = m_iTargetCsidl;
+    return S_OK;
 }
 
 HRESULT CFSFolder::_CreateExtensionUIObject(PCUIDLIST_RELATIVE pidl, REFIID riid, LPVOID *ppvOut)
@@ -2141,6 +2171,11 @@ HRESULT WINAPI CFSFolder::MessageSFVCB(UINT uMsg, WPARAM wParam, LPARAM lParam)
         if (m_sPathTarget)
             hr = StringCchCopyW((PWSTR)lParam, wParam, m_sPathTarget);
         break;
+#ifdef SHELL32_DUIFRAME
+    case SFVM_GET_WEBVIEW_TASKS:
+        hr = DUIFrame_GetFolderWebViewTasks(NULL, (PVOID)lParam);
+        break;
+#endif
     }
     return hr;
 }

@@ -1,0 +1,17 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {865E5E76-AD83-4DCA-A109-50DC2113CE9A} = s 'Programs Folder and Fast Items'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+			ShellFolder
+			{
+				val Attributes = d '&HA0000000'
+			}
+		}
+	}
+}

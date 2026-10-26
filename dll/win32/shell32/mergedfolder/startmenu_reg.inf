@@ -1,0 +1,15 @@
+; Start menu Programs list and its filters, as the shell32 registration writes them
+; Generated from res/rgs for the live image, which never runs DllRegisterServer
+[AddReg]
+HKCR,"CLSID",,0x00000010
+HKCR,"CLSID\{865E5E76-AD83-4DCA-A109-50DC2113CE9A}","",0x00000000,"Programs Folder and Fast Items"
+HKCR,"CLSID\{865E5E76-AD83-4DCA-A109-50DC2113CE9A}\InprocServer32","",0x00020000,"%SystemRoot%\system32\shell32.dll"
+HKCR,"CLSID\{865E5E76-AD83-4DCA-A109-50DC2113CE9A}\InprocServer32","ThreadingModel",0x00000000,"Apartment"
+HKCR,"CLSID\{865E5E76-AD83-4DCA-A109-50DC2113CE9A}\ShellFolder",,0x00000010
+HKCR,"CLSID\{865E5E76-AD83-4DCA-A109-50DC2113CE9A}\ShellFolder","Attributes",0x00010001,0xA0000000
+HKCR,"CLSID\{3F6953F0-5359-47FC-BD99-9F2CB95A62FD}","",0x00000000,"Personal Start Menu"
+HKCR,"CLSID\{3F6953F0-5359-47FC-BD99-9F2CB95A62FD}\InprocServer32","",0x00020000,"%SystemRoot%\system32\shell32.dll"
+HKCR,"CLSID\{3F6953F0-5359-47FC-BD99-9F2CB95A62FD}\InprocServer32","ThreadingModel",0x00000000,"Apartment"
+HKCR,"CLSID\{23613363-0028-431D-A49E-A3CD482D3926}","",0x00000000,"Start Menu Group Policy Filter"
+HKCR,"CLSID\{23613363-0028-431D-A49E-A3CD482D3926}\InprocServer32","",0x00020000,"%SystemRoot%\system32\shell32.dll"
+HKCR,"CLSID\{23613363-0028-431D-A49E-A3CD482D3926}\InprocServer32","ThreadingModel",0x00000000,"Apartment"
