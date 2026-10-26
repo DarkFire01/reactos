@@ -32,6 +32,16 @@
 
 #define WINSTA_ADMINS_LIMITED (WINSTA_READATTRIBUTES | WINSTA_ENUMERATE)
 
+/* App containers may read the interactive window station and use its desktops, as on Windows 8 and later */
+#define WINSTA_APP_PACKAGES (WINSTA_ENUMDESKTOPS | WINSTA_READATTRIBUTES | WINSTA_ACCESSCLIPBOARD | \
+    WINSTA_ACCESSGLOBALATOMS | WINSTA_ENUMERATE | WINSTA_READSCREEN | READ_CONTROL)
+
+#define DESKTOP_APP_PACKAGES (DESKTOP_ALL & ~DESKTOP_SWITCHDESKTOP)
+
+/* Size of one ACE for ALL APPLICATION PACKAGES or ALL RESTRICTED APPLICATION PACKAGES */
+#define APP_PACKAGE_ACE_SIZE \
+    (sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetSidLengthRequired(SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT))
+
 #define GENERIC_ACCESS (GENERIC_READ | GENERIC_WRITE | \
     GENERIC_EXECUTE | GENERIC_ALL)
 
@@ -855,6 +865,56 @@ Quit:
 
 /**
  * @brief
+ * Adds one ACE for ALL APPLICATION PACKAGES and one for
+ * ALL RESTRICTED APPLICATION PACKAGES to an ACL.
+ *
+ * @param[in,out] Dacl
+ * The ACL that receives the ACEs.
+ *
+ * @param[in] AceFlags
+ * Inheritance flags of both ACEs.
+ *
+ * @param[in] AccessMask
+ * The rights both ACEs grant.
+ *
+ * @return
+ * Returns TRUE if both ACEs were added, FALSE otherwise.
+ */
+static
+BOOL
+AddAppPackageAces(
+    _Inout_ PACL Dacl,
+    _In_ DWORD AceFlags,
+    _In_ ACCESS_MASK AccessMask)
+{
+    static SID_IDENTIFIER_AUTHORITY PackageAuthority = {SECURITY_APP_PACKAGE_AUTHORITY};
+    PSID PackageSid;
+    DWORD Rid;
+    BOOL Success = TRUE;
+
+    for (Rid = SECURITY_BUILTIN_PACKAGE_ANY_PACKAGE;
+         Success && Rid <= SECURITY_BUILTIN_PACKAGE_ANY_RESTRICTED_PACKAGE;
+         Rid++)
+    {
+        if (!AllocateAndInitializeSid(&PackageAuthority,
+                                      SECURITY_BUILTIN_APP_PACKAGE_RID_COUNT,
+                                      SECURITY_APP_PACKAGE_BASE_RID,
+                                      Rid,
+                                      0, 0, 0, 0, 0, 0,
+                                      &PackageSid))
+        {
+            return FALSE;
+        }
+
+        Success = AddAccessAllowedAceEx(Dacl, ACL_REVISION, AceFlags, AccessMask, PackageSid);
+        FreeSid(PackageSid);
+    }
+
+    return Success;
+}
+
+/**
+ * @brief
  * Assigns access to the specific logon user to
  * the default window station. Such access is
  * given to the user when it has logged in.
@@ -947,7 +1007,8 @@ AllowWinstaAccessToUser(
                sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(LogonSid) +
                sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(LogonSid) +
                sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(NetworkServiceSid) + /* HACK */
-               sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(NetworkServiceSid);
+               sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(NetworkServiceSid) +
+               4 * APP_PACKAGE_ACE_SIZE;
 
     /* Allocate the DACL now */
     Dacl = RtlAllocateHeap(RtlGetProcessHeap(),
@@ -1073,6 +1134,16 @@ AllowWinstaAccessToUser(
                                NetworkServiceSid))
     {
         ERR("AllowWinstaAccessToUser(): Failed to set ACE for network service SID (error code %lu)\n", GetLastError());
+        goto Quit;
+    }
+
+    /* Last ACEs: give app containers limited winsta access and generic read access to its desktops */
+    if (!AddAppPackageAces(Dacl, NO_PROPAGATE_INHERIT_ACE, WINSTA_APP_PACKAGES) ||
+        !AddAppPackageAces(Dacl,
+                           INHERIT_ONLY_ACE | OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
+                           GENERIC_READ | GENERIC_EXECUTE))
+    {
+        ERR("AllowWinstaAccessToUser(): Failed to set ACEs for app packages (error code %lu)\n", GetLastError());
         goto Quit;
     }
 
@@ -1233,7 +1304,8 @@ AllowDesktopAccessToUser(
                sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(AdminsSid) +
                sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(InteractiveSid) +
                sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(LogonSid) +
-               sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(NetworkServiceSid); /* HACK */
+               sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid(NetworkServiceSid) + /* HACK */
+               2 * APP_PACKAGE_ACE_SIZE;
 
     /* Allocate the DACL now */
     Dacl = RtlAllocateHeap(RtlGetProcessHeap(),
@@ -1304,6 +1376,13 @@ AllowDesktopAccessToUser(
                                NetworkServiceSid))
     {
         ERR("AllowDesktopAccessToUser(): Failed to set ACE for network service SID (error code %lu)\n", GetLastError());
+        goto Quit;
+    }
+
+    /* Last ACEs: give app containers desktop access, except switching to it */
+    if (!AddAppPackageAces(Dacl, 0, DESKTOP_APP_PACKAGES))
+    {
+        ERR("AllowDesktopAccessToUser(): Failed to set ACEs for app packages (error code %lu)\n", GetLastError());
         goto Quit;
     }
 
