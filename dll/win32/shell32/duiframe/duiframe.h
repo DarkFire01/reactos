@@ -211,6 +211,21 @@ DUI_CreateElementFromResource(
     _Outptr_ DirectUI::Element **ppe,
     _In_opt_ IUnknown *punkSheetContext);
 
+DirectUI::Value *
+WINAPI
+DUI_GetSheetCB(
+    _In_ const wchar_t *pszSheetID,
+    _In_opt_ void *pvContext);
+
+HRESULT
+WINAPI
+DUI_CreateParserWithCallbackFromResource(
+    _In_ HINSTANCE hinst,
+    _In_ UINT uID,
+    _Outptr_ DirectUI::DUIXmlParser **ppParser,
+    _In_ DirectUI::GetSheetCallback pfnGetSheet,
+    _In_opt_ void *pvContext);
+
 HRESULT
 WINAPI
 DUI_ReloadTheme(
@@ -429,6 +444,9 @@ public:
     static const DirectUI::PropertyInfo *const FixedSizeProp;
     static const DirectUI::PropertyInfo *const HidePropertyProp;
     static const DirectUI::PropertyInfo *const VerticalProp;
+    static const DirectUI::PropertyInfo *const AlwaysGetIconFromViewProp;
+    static const DirectUI::PropertyInfo *const ForceUseIconProp;
+    static const DirectUI::PropertyInfo *const ThumbnailIdProp;
     static DirectUI::IClassInfo *Class;
 
 private:
@@ -449,6 +467,8 @@ public:
     STDMETHODIMP CreateInnerObject(IUnknown **ppunkInner) override;
 
     static const DirectUI::PropertyInfo *const NullSelectPropertyStringProp;
+    static const DirectUI::PropertyInfo *const NullSelectTitlePropertyStringProp;
+    static const DirectUI::PropertyInfo *const ReadOnlyProp;
     static DirectUI::IClassInfo *Class;
 };
 
@@ -560,6 +580,9 @@ public:
 };
 
 /* Command bar content: the folder's commands plus the preview pane and help buttons */
+class CCommandModuleSite;
+typedef struct _COMMANDBUTTONDATA COMMANDBUTTONDATA;
+
 class CCommandModuleInner :
     public CElementWithSite,
     public IFrameNotificationClient,
@@ -593,19 +616,56 @@ public:
     STDMETHODIMP OnContentsChanged() override;
     STDMETHODIMP OnFolderChanged() override;
 
+    HWND GetWorkerWindow() { return _hwndWorker; }
+    DirectUI::Element *GetMenuOwner() { return _peMenuOwner; }
+
     static DirectUI::IClassInfo *Class;
 
 private:
     static LRESULT CALLBACK s_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    static DirectUI::Value *WINAPI s_GetSheetCallback(_In_ const wchar_t *pszSheetID, _In_opt_ void *pvContext);
 
     void _DeferRefreshButtons(_In_ BOOL fDelay);
     void _InitRefreshButtons(_In_ BOOL fDelay);
-    void _RefreshButtons();
+    HRESULT _RefreshButtons();
     void _EndRefreshTracking();
     void _UpdatePreviewButton();
 
+    IServiceProvider *_GetCommandSite();
+    HRESULT _GetButtonStyles();
+    HRESULT _AllocSheetName(_In_opt_ DirectUI::Element *peModule, _In_ const DirectUI::PropertyInfo *ppi,
+                            _In_ PCWSTR pszDefault, _Outptr_ PWSTR *ppszSheet);
+    HRESULT _GetCommandElementParser(_In_ UINT uID, _Outptr_ DirectUI::DUIXmlParser **ppParser);
+    HRESULT _CreateButtons();
+    HRESULT _UpdateButton(_In_ IShellFolder *psf, _In_ PCUITEMID_CHILD pidl, _In_opt_ IShellItemArray *psia,
+                          _Inout_ int *piButton, _Inout_ BOOL *pfCreated, _Inout_ BOOL *pfDestroyed);
+    HRESULT _CreateButton(_In_ IShellFolder *psf, _In_ PCUITEMID_CHILD pidl, _In_ const COMMANDBUTTONDATA *pData,
+                          _In_ DirectUI::Element *peParent, _Outptr_ DirectUI::Element **ppe);
+    HRESULT _CreateSplitButton(_In_ IShellFolder *psf, _In_ PCUITEMID_CHILD pidl,
+                               _In_ const COMMANDBUTTONDATA *pData, _In_ DirectUI::Element *peParent,
+                               _Outptr_ DirectUI::Element **ppe);
+    HRESULT _CreateCustomElement(_In_ UINT uID, _In_ DirectUI::Element *peParent, _Outptr_ DirectUI::Element **ppe);
+    HRESULT _InsertButtonToBand(_In_ DirectUI::Element *pe);
+    HRESULT _AddTrackedElement(_In_ PCUITEMID_CHILD pidl, _In_ REFGUID rguidCanonical,
+                               _In_opt_ DirectUI::Element *pe, _In_ int iButton);
+    int _GetButtonCount();
+    void _DestroyButton(_In_ int iButton);
+    void _DestroyButtons();
+    void _GetDisplayedAndTotalCommands(_Out_opt_ int *pcDisplayed, _Out_opt_ int *pcTotal,
+                                       _Out_opt_ int *pcLeftSide);
+    void _InsertBackgroundTaskButton(_In_ const COMMANDBUTTONDATA *pData, _In_ UINT uRefreshID);
+    HRESULT _ShowOverflowMenu(_In_ DirectUI::Element *peButton);
+
+    HDPA _hdpaButtons;
+    HDPA _hdpaParsers;
     HWND _hwndWorker;
+    UINT _uRefreshID;
     ITrackEvents *_pte;
+    CCommandModuleSite *_pSite;
+    DirectUI::Element *_peMenuOwner;
+    BOOL _fOverflowMenuUp;
+    PWSTR _pszSplitButtonSheet;
+    PWSTR _pszTaskButtonSheet;
     BOOL _fNoFolderBand;
     BOOL _fRefreshPending;
     BOOL _fRefreshedOnce;
@@ -1017,6 +1077,96 @@ private:
 
 /* Registers every element class the frame layouts use */
 HRESULT WINAPI InitializeDUIFrameClasses(VOID);
+
+/* Frame task manager (taskmanager.cpp), reached through IObjectProvider(OID_FrameTaskManager) on the frame */
+
+/* IFrameTaskManager::StartWorkItem flag: cancel pending items that share the task id */
+#define FTMF_REPLACE    0x1
+
+/* Base of the frame work items: DoWork runs on a worker thread, Dispatch back on the frame thread */
+class CFrameWorkItem : public IFrameWorkItem, public CDUIFrameZeroAlloc
+{
+public:
+    CFrameWorkItem();
+
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv) override;
+    STDMETHODIMP_(ULONG) AddRef() override;
+    STDMETHODIMP_(ULONG) Release() override;
+
+    STDMETHODIMP SetDispatchable(BOOL fDispatchable) override;
+    STDMETHODIMP GetDispatchable(BOOL *pfDispatchable) override;
+
+protected:
+    virtual ~CFrameWorkItem();
+
+    BOOL _ShouldContinue();
+
+private:
+    LONG _cRef;
+    BOOL _fDispatchable;
+    BOOL _fStateKnown;
+    CRITICAL_SECTION _cs;
+};
+
+class CFrameTask : public CRunnableTask
+{
+public:
+    CFrameTask(
+        _In_ HWND hwndDispatch,
+        _In_ IFrameWorkItem *pfwi);
+
+    STDMETHODIMP InternalResumeRT() override;
+
+protected:
+    virtual ~CFrameTask();
+
+private:
+    IFrameWorkItem *_pfwi;
+    HWND _hwndDispatch;
+};
+
+typedef struct _FRAMEWORKITEMENTRY
+{
+    IFrameWorkItem *pfwi;
+    GUID guidTask;
+} FRAMEWORKITEMENTRY;
+
+class CFrameTaskManager : public IFrameTaskManager, public CObjectWithSite, public CDUIFrameZeroAlloc
+{
+public:
+    static HRESULT WINAPI CreateInstance(
+        _In_ REFIID riid,
+        _COM_Outptr_ void **ppv);
+
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv) override;
+    STDMETHODIMP_(ULONG) AddRef() override;
+    STDMETHODIMP_(ULONG) Release() override;
+
+    STDMETHODIMP StartWorkItem(IFrameWorkItem *pfwi, REFCLSID rclsidTaskID, int dwFlags) override;
+    STDMETHODIMP DispatchCompletedWorkItems() override;
+    STDMETHODIMP CancelAllWorkItems() override;
+
+    STDMETHODIMP SetSite(IUnknown *punkSite) override;
+
+private:
+    CFrameTaskManager();
+    ~CFrameTaskManager();
+
+    static int CALLBACK s_ReleaseEntryCB(_In_ void *p, _In_opt_ void *pData);
+    static int CALLBACK s_DispatchWorkItem(_In_ void *p, _In_opt_ void *pData);
+    static int CALLBACK s_ReleaseItemCB(_In_ void *p, _In_opt_ void *pData);
+
+    static LRESULT CALLBACK s_DispatchWndProc(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam, _In_ LPARAM lParam);
+
+    HRESULT _EnsureTaskScheduler();
+    HRESULT _EnsureWorkItemList();
+    HRESULT _EnsureDispatchWindow();
+
+    LONG _cRef;
+    IShellTaskScheduler2 *_pScheduler;
+    HDSA _hdsaItems;
+    HWND _hwndDispatch;
+};
 
 /* COM objects; shell32 creates them through the extern "C" entry points in exports.cpp */
 

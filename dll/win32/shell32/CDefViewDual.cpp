@@ -25,7 +25,9 @@ WINE_DEFAULT_DEBUG_CHANNEL(shell);
 
 class CDefViewDual :
     public CComObjectRootEx<CComMultiThreadModelNoCS>,
-    public IDispatchImpl<IShellFolderViewDual2, &IID_IShellFolderViewDual2>
+    public IDispatchImpl<IShellFolderViewDual2, &IID_IShellFolderViewDual2>,
+    public IConnectionPointContainerImpl<CDefViewDual>,
+    public IConnectionPointImpl<CDefViewDual, &DIID_DShellFolderViewEvents>
 {
     public:
         CDefViewDual()
@@ -40,6 +42,62 @@ class CDefViewDual :
         {
             // Nothing to do for now..
             return S_OK;
+        }
+
+        /* Tells every DShellFolderViewEvents sink about a view change; most events take no arguments */
+        void FireViewEvent(DISPID dispid, DISPPARAMS *pParams = NULL)
+        {
+            CComDynamicUnkArray &vec = IConnectionPointImpl<CDefViewDual, &DIID_DShellFolderViewEvents>::m_vec;
+            DISPPARAMS params = { NULL, NULL, 0, 0 };
+
+            for (IUnknown **pp = vec.begin(); pp < vec.end(); pp++)
+            {
+                CComPtr<IDispatch> pdisp;
+
+                if (*pp && SUCCEEDED((*pp)->QueryInterface(IID_PPV_ARG(IDispatch, &pdisp))))
+                    pdisp->Invoke(dispid, GUID_NULL, 0, DISPATCH_METHOD, pParams ? pParams : &params, NULL, NULL, NULL);
+            }
+        }
+
+        /* Sinks that only expose IDispatch are accepted, as the shell's view events always were */
+        STDMETHOD(Advise)(IUnknown *pUnkSink, DWORD *pdwCookie) override
+        {
+            typedef IConnectionPointImpl<CDefViewDual, &DIID_DShellFolderViewEvents> ViewEventsCP;
+            IUnknown *punk;
+            DWORD dwCookie;
+
+            if (!pdwCookie)
+                return E_POINTER;
+            *pdwCookie = 0;
+            if (!pUnkSink)
+                return E_POINTER;
+
+            if (FAILED(pUnkSink->QueryInterface(DIID_DShellFolderViewEvents, (void **)&punk)) &&
+                FAILED(pUnkSink->QueryInterface(IID_IDispatch, (void **)&punk)))
+            {
+                return CONNECT_E_CANNOTCONNECT;
+            }
+
+            dwCookie = ViewEventsCP::m_vec.Add(punk);
+            if (!dwCookie)
+            {
+                punk->Release();
+                return CONNECT_E_ADVISELIMIT;
+            }
+            *pdwCookie = dwCookie;
+            return S_OK;
+        }
+
+        /* A cookie that names no live connection fails quietly instead of asserting */
+        STDMETHOD(Unadvise)(DWORD dwCookie) override
+        {
+            typedef IConnectionPointImpl<CDefViewDual, &DIID_DShellFolderViewEvents> ViewEventsCP;
+            CComDynamicUnkArray &vec = ViewEventsCP::m_vec;
+            DWORD cSlots = (DWORD)(vec.end() - vec.begin());
+
+            if (!dwCookie || dwCookie > cSlots || !vec.begin()[dwCookie - 1])
+                return CONNECT_E_NOCONNECTION;
+            return ViewEventsCP::Unadvise(dwCookie);
         }
 
         // *** IShellFolderViewDual methods ***
@@ -129,7 +187,12 @@ class CDefViewDual :
         COM_INTERFACE_ENTRY_IID(IID_IDispatch, IDispatch)
         COM_INTERFACE_ENTRY_IID(IID_IShellFolderViewDual, IShellFolderViewDual)
         COM_INTERFACE_ENTRY_IID(IID_IShellFolderViewDual2, IShellFolderViewDual2)
+        COM_INTERFACE_ENTRY_IID(IID_IConnectionPointContainer, IConnectionPointContainer)
     END_COM_MAP()
+
+    BEGIN_CONNECTION_POINT_MAP(CDefViewDual)
+        CONNECTION_POINT_ENTRY(DIID_DShellFolderViewEvents)
+    END_CONNECTION_POINT_MAP()
 };
 
 /**********************************************************
@@ -139,4 +202,21 @@ class CDefViewDual :
 HRESULT WINAPI CDefViewDual_Constructor(REFIID riid, LPVOID * ppvOut)
 {
     return ShellObjectCreatorInit<CDefViewDual>(riid, ppvOut);
+}
+
+void WINAPI CDefViewDual_FireEvent(IShellFolderViewDual *pDual, DISPID dispid)
+{
+    if (pDual)
+        static_cast<CDefViewDual *>(static_cast<IShellFolderViewDual2 *>(pDual))->FireViewEvent(dispid);
+}
+
+void
+WINAPI
+CDefViewDual_FireEventWithArgs(
+    _In_opt_ IShellFolderViewDual *pDual,
+    _In_ DISPID dispid,
+    _In_ DISPPARAMS *pParams)
+{
+    if (pDual)
+        static_cast<CDefViewDual *>(static_cast<IShellFolderViewDual2 *>(pDual))->FireViewEvent(dispid, pParams);
 }

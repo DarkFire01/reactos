@@ -1,0 +1,316 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {437FF9C0-A07F-4FA0-AF80-84B6C6440A16} = s 'Command Folder'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+			ShellFolder
+			{
+				val Attributes = d '1744830880'
+			}
+		}
+		ForceRemove {3756E7F5-E514-4776-A32B-EB24BC1EFE7A} = s 'State of built-in commands'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+		ForceRemove {83BB272F-7D5E-4B6E-9250-889893F0DAC7} = s 'Folder options command'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+		ForceRemove {AA28FBC7-59F1-4C42-9FD8-BA2BE27EA319} = s 'Select All command invocation'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+		ForceRemove {81007291-F070-4C4F-B978-AD1BEC84BABC} = s 'Rename command invocation'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+		ForceRemove {8570B44E-D109-42D3-BE32-0F8D446669C5} = s 'Close window command invocation'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+		ForceRemove {25AB468C-3974-4075-BE50-193135461727} = s 'Show/hide menu bar command invocation'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+		ForceRemove {50CC2C18-B48C-4764-8F3F-0331ED295CE4} = s 'Undo command invocation'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+		ForceRemove {7D13F939-B90E-42EA-8FB6-C2183F14C578} = s 'Redo command invocation'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+	}
+}
+HKLM
+{
+	NoRemove Software
+	{
+		NoRemove Microsoft
+		{
+			NoRemove Windows
+			{
+				NoRemove CurrentVersion
+				{
+					NoRemove Explorer
+					{
+						NoRemove CommandStore
+						{
+							NoRemove shell
+							{
+								ForceRemove Windows.organize
+								{
+									val CanonicalName = s '{7ddc1264-7e4d-4f74-bbc0-d191987c8d0f}'
+									val Description = s '@shell32.dll,-31412'
+									val Icon = s 'shell32.dll,-16753'
+									val MUIVerb = s '@shell32.dll,-31411'
+									val SubCommands = s 'Windows.cut;Windows.copy;Windows.paste;Windows.undo;Windows.redo;|;Windows.selectall;|;Windows.layout;Windows.folderoptions;|;Windows.delete;Windows.rename;Windows.removeproperties;Windows.properties;|;Windows.closewindow'
+								}
+								ForceRemove Windows.separator
+								{
+									val CanonicalName = s '{ce639a3f-3e68-4e1c-9be7-37c1a4df1cb0}'
+								}
+								ForceRemove Windows.cut
+								{
+									val AttributeMask = d '2'
+									val AttributeValue = d '2'
+									val CanonicalName = s '{fdadbe2d-b1d6-476b-85bd-5929b017cc00}'
+									val Description = s '@shell32.dll,-31245'
+									val Icon = s 'shell32.dll,-16762'
+									val ImpliedSelectionModel = d '0'
+									val InvokeCommandOnSelection = d '1'
+									val MUIVerb = s '@shell32.dll,-31244'
+									val ShowAsDisabledIfHidden = s ''
+								}
+								ForceRemove Windows.copy
+								{
+									val AttributeMask = d '1'
+									val AttributeValue = d '1'
+									val CanonicalName = s '{F0FF2AE6-3A15-48C3-98F2-FEBE2BA780D8}'
+									val Description = s '@shell32.dll,-31247'
+									val Icon = s 'shell32.dll,-243'
+									val ImpliedSelectionModel = d '0'
+									val InvokeCommandOnSelection = d '1'
+									val MUIVerb = s '@shell32.dll,-31246'
+									val ShowAsDisabledIfHidden = s ''
+								}
+								ForceRemove Windows.paste
+								{
+									val CanonicalName = s '{a360bfef-1241-410f-9bdc-e5f3ae8bb81e}'
+									val CommandStateHandler = s '{3756e7f5-e514-4776-a32b-eb24bc1efe7a}'
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31381'
+									val Icon = s 'shell32.dll,-16763'
+									val ImpliedSelectionModel = d '4'
+									val InvokeCommandOnSelection = d '0'
+									val MUIVerb = s '@shell32.dll,-31380'
+								}
+								ForceRemove Windows.undo
+								{
+									val CanonicalName = s '{0DBD7044-8EA5-4573-A924-FE8565CCE18F}'
+									val CommandStateHandler = s '{3756e7f5-e514-4776-a32b-eb24bc1efe7a}'
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31262'
+									val Icon = s 'imageres.dll,-5315'
+									val MUIVerb = s '@shell32.dll,-31261'
+									command
+									{
+										val DelegateExecute = s '{50CC2C18-B48C-4764-8F3F-0331ED295CE4}'
+									}
+								}
+								ForceRemove Windows.redo
+								{
+									val CanonicalName = s '{1CC6B704-D0F5-4dc3-A521-13620D89E8BC}'
+									val CommandStateHandler = s '{3756e7f5-e514-4776-a32b-eb24bc1efe7a}'
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31265'
+									val Icon = s 'imageres.dll,-5311'
+									val MUIVerb = s '@shell32.dll,-31263'
+									command
+									{
+										val DelegateExecute = s '{7D13F939-B90E-42EA-8FB6-C2183F14C578}'
+									}
+								}
+								ForceRemove Windows.selectall
+								{
+									val CanonicalName = s '{b33bf5af-76d5-4d10-93e7-d8e22e93798f}'
+									val CommandStateHandler = s '{3756e7f5-e514-4776-a32b-eb24bc1efe7a}'
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31277'
+									val Icon = s 'imageres.dll,-5308'
+									val ImpliedSelectionModel = d '32'
+									val MUIVerb = s '@shell32.dll,-31276'
+									command
+									{
+										val DelegateExecute = s '{aa28fbc7-59f1-4c42-9fd8-ba2be27ea319}'
+									}
+								}
+								ForceRemove Windows.layout
+								{
+									val CanonicalName = s '{23b4303b-4628-438b-ba5c-290fbcb06232}'
+									val Description = s '@shell32.dll,-31414'
+									val Icon = s 'shell32.dll,-16742'
+									val MUIVerb = s '@shell32.dll,-31413'
+									val SubCommands = s 'Windows.menubar;|;Windows.previewpane;Windows.readingpane;Windows.navpane'
+								}
+								ForceRemove Windows.menubar
+								{
+									val CanonicalName = s '{6325cb66-1093-445c-8756-2b21769e08fb}'
+									val CommandStateHandler = s '{3756e7f5-e514-4776-a32b-eb24bc1efe7a}'
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31420'
+									val MUIVerb = s '@shell32.dll,-31418'
+									command
+									{
+										val DelegateExecute = s '{25ab468c-3974-4075-be50-193135461727}'
+									}
+								}
+								ForceRemove Windows.previewpane
+								{
+									val CanonicalName = s '{1380d028-a77f-4c12-96c7-ea276333f982}'
+									val Description = s '@shell32.dll,-31416'
+									val Icon = s 'shell32.dll,-16814'
+									val MUIVerb = s '@shell32.dll,-31415'
+									val PaneID = s '{43abf98b-89b8-472d-b9ce-e69b8229f019}'
+									val PaneVisibleProperty = s 'PreviewPaneSizer_Visible'
+									val PolicyID = s '{17067f8d-981b-42c5-98f8-5bc016d4b073}'
+								}
+								ForceRemove Windows.readingpane
+								{
+									val CanonicalName = s '{831e1a71-5be9-4934-be77-04baedc9f21b}'
+									val Description = s '@shell32.dll,-31424'
+									val Icon = s 'shell32.dll,-16757'
+									val MUIVerb = s '@shell32.dll,-31423'
+									val PaneID = s '{893c63d1-45c8-4d17-be19-223be71be365}'
+									val PaneVisibleProperty = s 'ReadingPaneSizer_Visible'
+									val PolicyID = s '{33dcce8d-b6f8-4b7a-ac93-45e301f956aa}'
+								}
+								ForceRemove Windows.navpane
+								{
+									val CanonicalName = s '{41dd5f6f-9f9e-4066-8836-722fe4bb950e}'
+									val Description = s '@shell32.dll,-31422'
+									val Icon = s 'shell32.dll,-16755'
+									val MUIVerb = s '@shell32.dll,-31421'
+									val PaneID = s '{cb316b22-25f7-42b8-8a09-540d23a43c2f}'
+									val PaneVisibleProperty = s 'PageSpaceControlSizer_Visible'
+								}
+								ForceRemove Windows.folderoptions
+								{
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31449'
+									val ExplorerCommandHandler = s '{83bb272f-7d5e-4b6e-9250-889893f0dac7}'
+									val Icon = s 'shell32.dll,-274'
+								}
+								ForceRemove Windows.delete
+								{
+									val AttributeMask = d '32'
+									val AttributeValue = d '32'
+									val CanonicalName = s '{9ED8204C-C3DE-4D66-9851-42943F9FCC77}'
+									val Description = s '@shell32.dll,-31253'
+									val Icon = s 'shell32.dll,-240'
+									val ImpliedSelectionModel = d '0'
+									val InvokeCommandOnSelection = d '1'
+									val MUIVerb = s '@shell32.dll,-31252'
+									val ShowAsDisabledIfHidden = s ''
+								}
+								ForceRemove Windows.rename
+								{
+									val AttributeMask = d '16'
+									val AttributeValue = d '16'
+									val CanonicalName = s '{3AAD0259-BE8D-41A0-897D-03807968BADF}'
+									val Description = s '@shell32.dll,-31243'
+									val Icon = s 'shell32.dll,-242'
+									val ImpliedSelectionModel = d '0'
+									val InvokeCommandOnSelection = d '1'
+									val MUIVerb = s '@shell32.dll,-31242'
+									val ShowAsDisabledIfHidden = s ''
+									command
+									{
+										val DelegateExecute = s '{81007291-f070-4c4f-b978-ad1bec84babc}'
+									}
+								}
+								ForceRemove Windows.RemoveProperties
+								{
+									val CanonicalName = s '{31050AEE-8D1C-11DA-9B54-0040F4D19F13}'
+									val Description = s '@shell32.dll,-31255'
+									val EnableIfContextMenuVerbExists = s ''
+									val Icon = s 'imageres.dll,-5383'
+									val InvokeCommandOnSelection = d '1'
+									val MUIVerb = s '@shell32.dll,-31254'
+									val ShowAsDisabledIfHidden = s ''
+									val StaticVerbOnly = s ''
+								}
+								ForceRemove Windows.properties
+								{
+									val AttributeMask = d '64'
+									val AttributeValue = d '64'
+									val CanonicalName = s '{aefbab4d-3a9b-409a-98f7-1eaac20f0aa1}'
+									val Description = s '@shell32.dll,-31260'
+									val Icon = s 'imageres.dll,-5367'
+									val ImpliedSelectionModel = d '1'
+									val InvokeCommandOnSelection = d '1'
+									val MUIVerb = s '@shell32.dll,-31259'
+									val ShowAsDisabledIfHidden = s ''
+								}
+								ForceRemove Windows.closewindow
+								{
+									val CanonicalName = s '{edf99fce-5d83-441a-a6c6-d363532ede4f}'
+									val CommandStateHandler = s '{3756e7f5-e514-4776-a32b-eb24bc1efe7a}'
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31451'
+									val Icon = s 'imageres.dll,-5320'
+									val MUIVerb = s '@shell32.dll,-31450'
+									command
+									{
+										val DelegateExecute = s '{8570b44e-d109-42d3-be32-0f8d446669c5}'
+									}
+								}
+								ForceRemove Windows.newfolder
+								{
+									val CanonicalName = s '{E44616AD-6DF1-4B94-85A4-E465AE8A19DB}'
+									val CommandStateHandler = s '{3756e7f5-e514-4776-a32b-eb24bc1efe7a}'
+									val CommandStateSync = s ''
+									val Description = s '@shell32.dll,-31237'
+									val Icon = s 'shell32.dll,-319'
+									val ImpliedSelectionModel = d '4'
+									val InvokeCommandOnSelection = d '0'
+									val MUIVerb = s '@shell32.dll,-31236'
+									val Position = s 'Last'
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
