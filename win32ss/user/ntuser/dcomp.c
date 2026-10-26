@@ -101,6 +101,9 @@ DcompIsVisualType(
 {
     return Type == DCOMP_RESOURCE_VISUAL ||
            Type == DCOMP_RESOURCE_SPRITE_VISUAL ||
+           Type == DCOMP_RESOURCE_LAYER_VISUAL ||
+           Type == DCOMP_RESOURCE_REDIRECT_VISUAL ||
+           Type == DCOMP_RESOURCE_SHAPE_VISUAL ||
            Type == DCOMP_RESOURCE_WINDOW_NODE;
 }
 
@@ -117,7 +120,14 @@ DcompIsKnownType(
         case DCOMP_RESOURCE_BITMAP_RESOURCE:
         case DCOMP_RESOURCE_CACHED_VISUAL_IMAGE:
         case DCOMP_RESOURCE_COLOR_BRUSH:
+        case DCOMP_RESOURCE_COMPILED_EFFECT_TEMPLATE:
+        case DCOMP_RESOURCE_VISUAL_CAPTURE:
+        case DCOMP_RESOURCE_COMPOSITION_AMBIENT_LIGHT:
+        case DCOMP_RESOURCE_COMPOSITION_DISTANT_LIGHT:
+        case DCOMP_RESOURCE_COMPOSITION_POINT_LIGHT:
+        case DCOMP_RESOURCE_COMPOSITION_SPOT_LIGHT:
         case DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP:
+        case DCOMP_RESOURCE_EFFECT_BRUSH:
         case DCOMP_RESOURCE_EFFECT_GROUP:
         case DCOMP_RESOURCE_GDI_SPRITE_BITMAP:
         case DCOMP_RESOURCE_MATRIX_TRANSFORM:
@@ -138,6 +148,34 @@ DcompIsKnownType(
         case DCOMP_RESOURCE_VISUAL:
         case DCOMP_RESOURCE_WINDOW_NODE:
         case DCOMP_RESOURCE_HWND_TARGET:
+        case DCOMP_RESOURCE_PROPERTY_SET:
+        case DCOMP_RESOURCE_INSET_CLIP:
+        case DCOMP_RESOURCE_COMPOSITION_ANIMATION:
+        case DCOMP_RESOURCE_ANIMATION_CONTROLLER:
+        case DCOMP_RESOURCE_DROP_SHADOW:
+        case DCOMP_RESOURCE_LAYER_VISUAL:
+        case DCOMP_RESOURCE_REDIRECT_VISUAL:
+        case DCOMP_RESOURCE_VISUAL_SURFACE:
+        case DCOMP_RESOURCE_PROJECTED_SHADOW_CASTER:
+        case DCOMP_RESOURCE_PROJECTED_SHADOW_RECEIVER:
+        case DCOMP_RESOURCE_PROJECTED_SHADOW:
+        case DCOMP_RESOURCE_DELEGATED_INK_CANVAS:
+        case DCOMP_RESOURCE_INTERACTION_TRACKER:
+        case DCOMP_RESOURCE_BLURRED_WALLPAPER_BRUSH:
+        case DCOMP_RESOURCE_COLOR_GRADIENT_STOP:
+        case DCOMP_RESOURCE_LINEAR_GRADIENT_BRUSH:
+        case DCOMP_RESOURCE_MASK_BRUSH:
+        case DCOMP_RESOURCE_NINE_GRID_BRUSH:
+        case DCOMP_RESOURCE_RADIAL_GRADIENT_BRUSH:
+        case DCOMP_RESOURCE_WINDOW_BACKDROP_BRUSH:
+        case DCOMP_RESOURCE_CONTAINER_SHAPE:
+        case DCOMP_RESOURCE_ELLIPSE_GEOMETRY:
+        case DCOMP_RESOURCE_LINE_GEOMETRY:
+        case DCOMP_RESOURCE_PATH_GEOMETRY:
+        case DCOMP_RESOURCE_SHAPE_VISUAL:
+        case DCOMP_RESOURCE_SPRITE_SHAPE:
+        case DCOMP_RESOURCE_VIEW_BOX:
+        case DCOMP_RESOURCE_GEOMETRIC_CLIP:
             return TRUE;
     }
     return FALSE;
@@ -602,6 +640,32 @@ DcompSetInteger(
     return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_INTEGER, Command->Resource, Payload, sizeof(Payload), NULL, 0);
 }
 
+/* Opens the object an NT handle of the calling process names into the compositor, which owns and closes what it gets */
+static
+NTSTATUS
+DcompOpenForCompositor(
+    _In_ HANDLE Handle,
+    _Out_ PHANDLE CompositorHandle)
+{
+    KAPC_STATE ApcState;
+    PVOID Object;
+    NTSTATUS Status;
+
+    *CompositorHandle = NULL;
+    if (!gDcompCompositor)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = ObReferenceObjectByHandle(Handle, 0, NULL, UserMode, &Object, NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    KeStackAttachProcess((PKPROCESS)gDcompCompositor, &ApcState);
+    Status = ObOpenObjectByPointer(Object, 0, NULL, GENERIC_ALL, NULL, KernelMode, CompositorHandle);
+    KeUnstackDetachProcess(&ApcState);
+    ObDereferenceObject(Object);
+    return Status;
+}
+
 static
 NTSTATUS
 DcompSetHandle(
@@ -630,6 +694,24 @@ DcompSetHandle(
         RtlCopyMemory(Payload, &Value, sizeof(Value));
         return DcompEmit(Channel, DCOMP_MILCMD_COMPOSITION_SURFACE_UPDATE, Command->Resource,
                          Payload, sizeof(Payload), NULL, 0);
+    }
+
+    /* A texture shared by NT handle is sampled by the compositor itself */
+    if (Resource->Type == DCOMP_RESOURCE_COMPOSITION_SURFACE_BITMAP &&
+        Command->Property == DCOMP_COMPOSITION_SURFACE_NT_SHARED)
+    {
+        if (Command->Handle)
+        {
+            Status = DcompOpenForCompositor((HANDLE)(ULONG_PTR)Command->Handle, &DwmHandle);
+            if (!NT_SUCCESS(Status))
+                return Status;
+        }
+
+        Value = (ULONG64)(ULONG_PTR)DwmHandle;
+        Payload[0] = Command->Property;
+        Payload[1] = 0;
+        RtlCopyMemory(&Payload[2], &Value, sizeof(Value));
+        return DcompEmit(Channel, DCOMP_MILCMD_RESOURCE_SET_HANDLE, Command->Resource, Payload, sizeof(Payload), NULL, 0);
     }
 
     Payload[0] = Command->Property;
@@ -1479,8 +1561,9 @@ NtDCompositionCreateAndBindSharedSection(
     if (!NT_SUCCESS(Status))
         goto Exit;
 
+    /* The compositor writes back into some sections, such as the one a visual capture finishes in */
     KeStackAttachProcess((PKPROCESS)gDcompCompositor, &ApcState);
-    Status = ObOpenObjectByPointer(Section, 0, NULL, SECTION_MAP_READ | SECTION_QUERY,
+    Status = ObOpenObjectByPointer(Section, 0, NULL, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_QUERY,
                                    MmSectionObjectType, UserMode, &CompositorHandle);
     KeUnstackDetachProcess(&ApcState);
     if (!NT_SUCCESS(Status))
