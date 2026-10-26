@@ -390,7 +390,21 @@ BOOL COpenWithList::Execute(COpenWithList::SApp *pApp, LPCWSTR pwszFilePath)
     sei.hkeyClass = hKey;
     sei.lpFile = pwszFilePath;
 
-    ShellExecuteExW(&sei);
+    if (ShellExecuteExW(&sei))
+    {
+        /* The document goes in the jump list of the program the user picked */
+        WCHAR wszApp[MAX_PATH];
+
+        if (GetPathFromCmd(wszApp, pApp->wszCmd))
+        {
+            PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(pwszFilePath);
+            if (pidl)
+            {
+                AddToRecentDocsForApp(pidl, NULL, wszApp);
+                ILFree(pidl);
+            }
+        }
+    }
 
     return TRUE;
 }
