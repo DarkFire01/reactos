@@ -1,0 +1,7 @@
+<duixml>
+<Element resid="FolderBand" sheet="FolderBandStyle" accessible="true" accname="resstr(0x7C03, library(shell32.dll))" accrole="toolbar" layout="BorderLayout()" padding="rect(3rp, 2rp, 9rp, 3rp)">
+<Button3d id="atom(OverflowButton)" accessible="true" accname="resstr(0x7C01, library(shell32.dll))" accdesc="resstr(0x7C02, library(shell32.dll))" accrole="pushbutton" accdefaction="Click" active="mouseandkeyboard" layoutpos="left" tooltip="true"/>
+<Button3d id="atom(HelpButton)" accdefaction="resstr(0x79AC, library(shell32.dll))" accdesc="resstr(0x79AF, library(shell32.dll))" accessible="true" accname="resstr(0x79AE, library(shell32.dll))" accrole="pushbutton" active="mouseandkeyboard" layoutpos="right" tooltip="true"/>
+<Button3d id="atom(PreviewButton)" shortcut="80" accdefaction="resstr(0x79AC, library(shell32.dll))" accdesc="resstr(0x7AC0, library(shell32.dll))" accessible="true" accname="resstr(0x7ABF, library(shell32.dll))" accrole="checkbutton" active="mouseandkeyboard" tooltip="true"/> 
+</Element>
+</duixml>

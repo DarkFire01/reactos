@@ -385,6 +385,38 @@ DUI_CreateParser(
     return hr;
 }
 
+/* Builds one resid of a UIFILE in this module; peSubstitute, when given, becomes the markup's top element */
+HRESULT
+WINAPI
+DUI_CreateElementFromResource(
+    _In_ HINSTANCE hinst,
+    _In_ UINT uID,
+    _In_ PCWSTR pszResID,
+    _In_opt_ DirectUI::Element *peSubstitute,
+    _In_opt_ DirectUI::Element *peParent,
+    _Inout_opt_ ULONG *pdwDeferCookie,
+    _Outptr_ DirectUI::Element **ppe,
+    _In_opt_ IUnknown *punkSheetContext)
+{
+    DirectUI::DUIXmlParser *pParser;
+    PWSTR pszUIFile;
+    HRESULT hr;
+
+    *ppe = NULL;
+    hr = DUI_LoadUIFileFromResources(hinst, uID, &pszUIFile);
+    if (FAILED(hr))
+        return hr;
+
+    hr = DUI_CreateParser(pszUIFile, &pParser, punkSheetContext, NULL);
+    if (SUCCEEDED(hr))
+    {
+        hr = pParser->CreateElement(pszResID, peSubstitute, peParent, pdwDeferCookie, ppe);
+        pParser->Destroy();
+    }
+    LocalFree(pszUIFile);
+    return hr;
+}
+
 HRESULT
 WINAPI
 DUI_GetElementRootHWNDElement(
@@ -648,12 +680,7 @@ DUI_GetColor(
     COLORREF cr = CLR_INVALID;
 
     if (pv->GetType() == (int)DirectUI::ValueType::Color)
-    {
-        /* ReactUI keeps a solid color as the value's int and has no fill to hand out */
-        const DirectUI::Fill *pfill = pv->GetFill();
-
-        cr = (pfill ? pfill->ref.cr : (COLORREF)pv->GetInt()) & 0x00FFFFFF;
-    }
+        cr = pv->GetFill()->ref.cr & 0x00FFFFFF;
     else if (pv->GetType() == (int)DirectUI::ValueType::Int)
         cr = ColorFromEnumI(pv->GetInt());
     pv->Release();

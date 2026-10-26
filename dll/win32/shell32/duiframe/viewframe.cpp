@@ -10,12 +10,6 @@
 static const WCHAR c_szDUIViewWndClass[] = L"DUIViewWndClassName";
 static const WCHAR c_szModulesKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Modules";
 
-/* GetPersistStream types; the sizer's FramePersistType names one */
-#define FRAMEPERSIST_PERFOLDER      0
-#define FRAMEPERSIST_PERLAYOUT      1
-#define FRAMEPERSIST_GLOBAL         2
-#define FRAMEPERSIST_PERFOLDERTYPE  3
-
 /* Browser command the host forwards WM_CONTEXTMENU-less help requests to */
 #define FCIDM_HELPCONTENTS          0x7091
 
@@ -710,7 +704,6 @@ CDUIViewFrame::s_CreateOrSetInnerObject(
         else if (s_FindModule(pThis->_hdsaModules, &entry) < 0)
         {
             IUnknown *punkInner;
-
             if (SUCCEEDED(pfm->CreateInnerObject(&punkInner)))
             {
                 MODULEENTRY newEntry = { NULL, NULL };

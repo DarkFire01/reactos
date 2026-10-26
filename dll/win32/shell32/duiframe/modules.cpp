@@ -9,6 +9,9 @@
 
 #define MODULE_PROPFLAGS 2
 
+/* Modules that take mouse input themselves */
+#define MODULE_ACTIVE_MOUSE 1
+
 /* Constant default values: a reference count of -1 keeps them out of reference counting */
 static const DirectUI::_StaticValue c_svIntMinusOne = { (int)DirectUI::ValueType::Int, 0, -1, -1 };
 static const DirectUI::_StaticValuePtr c_svEmptyString = { (int)DirectUI::ValueType::String, 0, -1, (void *)L"" };
@@ -101,7 +104,7 @@ static const DirectUI::PropertyInfo *const c_rgpiProperTreeModule[] =
     &s_piRootMgrClsid,
 };
 
-/* Element allocation shared by every module class */
+/* Element allocation shared by every module class; the inner element sits in a shell border layout */
 template <class T>
 static
 HRESULT
@@ -109,8 +112,10 @@ WINAPI
 CreateModuleElement(
     _In_opt_ DirectUI::Element *peParent,
     _Inout_opt_ ULONG *pdwDeferCookie,
+    _In_ int iActive,
     _Outptr_ DirectUI::Element **ppElement)
 {
+    DirectUI::Layout *pLayout = NULL;
     T *pe;
     HRESULT hr;
 
@@ -120,6 +125,13 @@ CreateModuleElement(
         return E_OUTOFMEMORY;
 
     hr = pe->Initialize(0, peParent, pdwDeferCookie);
+    if (SUCCEEDED(hr))
+        hr = pe->SetActive(iActive);
+    if (SUCCEEDED(hr))
+        hr = DirectUI::ShellBorderLayout::Create(&pLayout);
+    if (SUCCEEDED(hr))
+        hr = pe->SetLayout(pLayout);
+
     if (FAILED(hr))
         pe->Destroy(false);
     else
@@ -160,7 +172,7 @@ HRESULT WINAPI ClassName::Create(                                               
     _Inout_opt_ ULONG *pdwDeferCookie,                                                         \
     _Outptr_ DirectUI::Element **ppElement)                                                    \
 {                                                                                              \
-    return CreateModuleElement<ClassName>(peParent, pdwDeferCookie, ppElement);                \
+    return CreateModuleElement<ClassName>(peParent, pdwDeferCookie, 0, ppElement);             \
 }                                                                                              \
 HRESULT WINAPI ClassName::Register()                                                           \
 {                                                                                              \
@@ -171,9 +183,9 @@ STDMETHODIMP ClassName::CreateInnerObject(IUnknown **ppunkInner)                
     return FrameModule_CreateInner(InnerCreate, InnerID, ppunkInner);                          \
 }
 
-IMPLEMENT_FRAME_MODULE(CProperTreeModule, L"ProperTreeModule", CreateInnerNotImplemented,
+IMPLEMENT_FRAME_MODULE(CProperTreeModule, L"ProperTreeModule", CProperTreeModuleInner::Create,
                        L"ProperTreeModuleInner", c_rgpiProperTreeModule, _countof(c_rgpiProperTreeModule))
-IMPLEMENT_FRAME_MODULE(CCommandModule, L"FolderBandModule", CreateInnerNotImplemented,
+IMPLEMENT_FRAME_MODULE(CCommandModule, L"FolderBandModule", CCommandModuleInner::Create,
                        L"FolderBandModuleInner", NULL, 0)
 IMPLEMENT_FRAME_MODULE(CInfoBarHostModule, L"InfoBarHostModule", CreateInnerNotImplemented,
                        L"InfoBarHostModuleInner", NULL, 0)
@@ -212,7 +224,7 @@ CPreviewThumbnail::Create(
     _Inout_opt_ ULONG *pdwDeferCookie,
     _Outptr_ DirectUI::Element **ppElement)
 {
-    return CreateModuleElement<CPreviewThumbnail>(peParent, pdwDeferCookie, ppElement);
+    return CreateModuleElement<CPreviewThumbnail>(peParent, pdwDeferCookie, MODULE_ACTIVE_MOUSE, ppElement);
 }
 
 HRESULT
@@ -342,7 +354,7 @@ CPreviewMetadata::Create(
     _Inout_opt_ ULONG *pdwDeferCookie,
     _Outptr_ DirectUI::Element **ppElement)
 {
-    return CreateModuleElement<CPreviewMetadata>(peParent, pdwDeferCookie, ppElement);
+    return CreateModuleElement<CPreviewMetadata>(peParent, pdwDeferCookie, MODULE_ACTIVE_MOUSE, ppElement);
 }
 
 HRESULT
@@ -371,7 +383,7 @@ CReadingPaneModule::Create(
     _Inout_opt_ ULONG *pdwDeferCookie,
     _Outptr_ DirectUI::Element **ppElement)
 {
-    return CreateModuleElement<CReadingPaneModule>(peParent, pdwDeferCookie, ppElement);
+    return CreateModuleElement<CReadingPaneModule>(peParent, pdwDeferCookie, MODULE_ACTIVE_MOUSE, ppElement);
 }
 
 HRESULT

@@ -44,7 +44,41 @@ IDR_COMMONLAYOUTMODIFIER REGISTRY "res/rgs/commonlayoutmodifier.rgs"
 46 UIFILE "duiframe/res/layout46.uixml"
 49 UIFILE "duiframe/res/layout49.uixml"
 
+/* Markup of the frame modules' inner elements */
+32 UIFILE "duiframe/res/folderband.uixml"
+52 UIFILE "duiframe/res/propertree.uixml"
+
+/* Preview pane button of the command bar: pane closed, pane open */
+16757 ICON "duiframe/res/previewshow.ico"
+16758 ICON "duiframe/res/previewhide.ico"
+
+/* Nav pane tree shortcuts */
+5 ACCELERATORS
+BEGIN
+    "X", 0xA041, VIRTKEY, CONTROL, NOINVERT
+    "C", 0xA042, VIRTKEY, CONTROL, NOINVERT
+    "V", 0xA043, VIRTKEY, CONTROL, NOINVERT
+    VK_F2, 0xA024, VIRTKEY, NOINVERT
+    VK_INSERT, 0xA042, VIRTKEY, CONTROL, NOINVERT
+    VK_INSERT, 0xA043, VIRTKEY, SHIFT, NOINVERT
+    VK_DELETE, 0xA023, VIRTKEY, NOINVERT
+    VK_DELETE, 0xA023, VIRTKEY, SHIFT, NOINVERT
+    "D", 0xA023, VIRTKEY, CONTROL, NOINVERT
+    VK_RETURN, 0xA025, VIRTKEY, ALT, NOINVERT
+    VK_F5, 0xA220, VIRTKEY, NOINVERT
+END
+
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+/* Nav pane options on the empty area of the tree */
+275 MENUEX
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Show &all folders", 0
+        MENUITEM "Expand to &current folder", 1
+    END
+END
 
 IDM_PREVIEWPANE MENUEX
 BEGIN
@@ -65,6 +99,18 @@ STRINGTABLE
 BEGIN
     IDS_DUI_SHELLFOLDERVIEW "Shell Folder View"
     IDS_DUI_EXPLORERPANE "Explorer Pane"
+    31148 "Click"
+    31150 "Help"
+    31151 "Get help."
+    31423 "Preview pane"
+    31424 "Show or hide the Preview pane."
+    31745 "Overflow menu"
+    31746 "Display additional commands"
+    31747 "Command Module"
+    32769 "Control Host"
+    32774 "Navigate"
+    50209 "Show the preview pane."
+    50210 "Hide the preview pane."
 END
 
 /* Referenced by number from the layout markup */
