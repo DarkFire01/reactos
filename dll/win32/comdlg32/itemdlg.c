@@ -791,6 +791,20 @@ static HRESULT on_default_action(FileDialogImpl *This)
 
             if(events_OnFileOk(This) == S_OK)
                 ret = S_OK;
+
+#ifdef __REACTOS__
+            /* Each chosen item counts as a recently used document */
+            if (ret == S_OK && !(This->options & FOS_DONTADDTORECENT))
+            {
+                WCHAR path[MAX_PATH];
+
+                for (i = 0; i < file_count; i++)
+                {
+                    if (pidla[i] && SHGetPathFromIDListW(pidla[i], path))
+                        SHAddToRecentDocs(SHARD_PATHW, path);
+                }
+            }
+#endif
         }
         break;
 
