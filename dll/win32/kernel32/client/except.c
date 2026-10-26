@@ -157,6 +157,50 @@ PrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo)
         DbgPrint("<error dumping stack trace: 0x%x>\n", _SEH2_GetExceptionCode());
     }
     _SEH2_END;
+#elif defined(_M_AMD64)
+    DbgPrint("Frames:\n");
+
+    _SEH2_TRY
+    {
+        CONTEXT Context = *ContextRecord;
+        UINT i;
+
+        /* Unwind a copy of the context with the unwind data of each module */
+        for (i = 0; Context.Rip && i < 64; i++)
+        {
+            ULONG64 ImageBase;
+            PRUNTIME_FUNCTION FunctionEntry;
+            PVOID HandlerData;
+            ULONG64 EstablisherFrame;
+
+            _module_name_from_addr((const void*)Context.Rip, &StartAddr, szMod, sizeof(szMod), &szModFile);
+            DbgPrint("<%s:%I64x> (%s@%p)\n",
+                     szModFile,
+                     Context.Rip - (ULONG64)StartAddr,
+                     szMod,
+                     StartAddr);
+
+            FunctionEntry = RtlLookupFunctionEntry(Context.Rip, &ImageBase, NULL);
+            if (FunctionEntry)
+            {
+                RtlVirtualUnwind(UNW_FLAG_NHANDLER, ImageBase, Context.Rip, FunctionEntry,
+                                 &Context, &HandlerData, &EstablisherFrame, NULL);
+            }
+            else
+            {
+                /* A leaf function: the return address is on top of the stack */
+                if (IsBadReadPtr((PVOID)Context.Rsp, sizeof(ULONG64)))
+                    break;
+                Context.Rip = *(PULONG64)Context.Rsp;
+                Context.Rsp += sizeof(ULONG64);
+            }
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DbgPrint("<error dumping stack trace: 0x%x>\n", _SEH2_GetExceptionCode());
+    }
+    _SEH2_END;
 #endif
 }
 
