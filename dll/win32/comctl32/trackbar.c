@@ -40,6 +40,21 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(trackbar);
 
+/* Vista additions the ReactOS commctrl.h does not carry yet */
+#ifndef TBS_NOTIFYBEFOREMOVE
+#define TBS_NOTIFYBEFOREMOVE 0x0800
+#endif
+#ifndef TRBN_THUMBPOSCHANGING
+#define TRBN_FIRST (0U-1501U)
+#define TRBN_THUMBPOSCHANGING (TRBN_FIRST-1)
+typedef struct tagTRBTHUMBPOSCHANGING
+{
+    NMHDR hdr;
+    DWORD dwPos;
+    int nReason;
+} NMTRBTHUMBPOSCHANGING;
+#endif
+
 typedef struct
 {
     HWND hwndSelf;
@@ -136,6 +151,19 @@ static void notify_with_scroll (const TRACKBAR_INFO *infoPtr, UINT code)
     TRACE("%x\n", code);
 
     SendMessageW (infoPtr->hwndNotify, scroll, code, (LPARAM)infoPtr->hwndSelf);
+}
+
+/* With TBS_NOTIFYBEFOREMOVE the parent hears of a user move first; TRUE means it refused the move */
+static BOOL notify_pos_changing (const TRACKBAR_INFO *infoPtr, LONG lPos, int nReason)
+{
+    NMTRBTHUMBPOSCHANGING nmtrb;
+
+    if (!(infoPtr->dwStyle & TBS_NOTIFYBEFOREMOVE))
+        return FALSE;
+
+    nmtrb.dwPos = lPos;
+    nmtrb.nReason = nReason;
+    return notify_hdr(infoPtr, TRBN_THUMBPOSCHANGING, &nmtrb.hdr) != 0;
 }
 
 static void TRACKBAR_RecalculateTics (TRACKBAR_INFO *infoPtr)
@@ -235,11 +263,13 @@ TRACKBAR_GetAutoPageDirection (const TRACKBAR_INFO *infoPtr, POINT clickPoint)
 static inline void
 TRACKBAR_PageDown (TRACKBAR_INFO *infoPtr)
 {
+    LONG lPos;
+
     if (infoPtr->lPos == infoPtr->lRangeMax) return;
 
-    infoPtr->lPos += infoPtr->lPageSize;
-    if (infoPtr->lPos > infoPtr->lRangeMax)
-	infoPtr->lPos = infoPtr->lRangeMax;
+    lPos = min(infoPtr->lPos + infoPtr->lPageSize, infoPtr->lRangeMax);
+    if (notify_pos_changing(infoPtr, lPos, TB_PAGEDOWN)) return;
+    infoPtr->lPos = lPos;
     notify_with_scroll (infoPtr, TB_PAGEDOWN);
 }
 
@@ -247,29 +277,35 @@ TRACKBAR_PageDown (TRACKBAR_INFO *infoPtr)
 static inline void
 TRACKBAR_PageUp (TRACKBAR_INFO *infoPtr)
 {
+    LONG lPos;
+
     if (infoPtr->lPos == infoPtr->lRangeMin) return;
 
-    infoPtr->lPos -= infoPtr->lPageSize;
-    if (infoPtr->lPos < infoPtr->lRangeMin)
-        infoPtr->lPos = infoPtr->lRangeMin;
+    lPos = max(infoPtr->lPos - infoPtr->lPageSize, infoPtr->lRangeMin);
+    if (notify_pos_changing(infoPtr, lPos, TB_PAGEUP)) return;
+    infoPtr->lPos = lPos;
     notify_with_scroll (infoPtr, TB_PAGEUP);
 }
 
 static inline void TRACKBAR_LineUp(TRACKBAR_INFO *infoPtr)
 {
+    LONG lPos;
+
     if (infoPtr->lPos == infoPtr->lRangeMin) return;
-    infoPtr->lPos -= infoPtr->lLineSize;
-    if (infoPtr->lPos < infoPtr->lRangeMin)
-        infoPtr->lPos = infoPtr->lRangeMin;
+    lPos = max(infoPtr->lPos - infoPtr->lLineSize, infoPtr->lRangeMin);
+    if (notify_pos_changing(infoPtr, lPos, TB_LINEUP)) return;
+    infoPtr->lPos = lPos;
     notify_with_scroll (infoPtr, TB_LINEUP);
 }
 
 static inline void TRACKBAR_LineDown(TRACKBAR_INFO *infoPtr)
 {
+    LONG lPos;
+
     if (infoPtr->lPos == infoPtr->lRangeMax) return;
-    infoPtr->lPos += infoPtr->lLineSize;
-    if (infoPtr->lPos > infoPtr->lRangeMax)
-        infoPtr->lPos = infoPtr->lRangeMax;
+    lPos = min(infoPtr->lPos + infoPtr->lLineSize, infoPtr->lRangeMax);
+    if (notify_pos_changing(infoPtr, lPos, TB_LINEDOWN)) return;
+    infoPtr->lPos = lPos;
     notify_with_scroll (infoPtr, TB_LINEDOWN);
 }
 
@@ -1107,6 +1143,16 @@ TRACKBAR_GetChannelRect (const TRACKBAR_INFO *infoPtr, LPRECT lprc)
 {
     if (lprc == NULL) return 0;
 
+    /* Windows hands back the channel of a vertical trackbar as if it lay horizontally */
+    if (infoPtr->dwStyle & TBS_VERT)
+    {
+        lprc->left   = infoPtr->rcChannel.top;
+        lprc->right  = infoPtr->rcChannel.bottom;
+        lprc->top    = infoPtr->rcChannel.left;
+        lprc->bottom = infoPtr->rcChannel.right;
+        return 0;
+    }
+
     lprc->left   = infoPtr->rcChannel.left;
     lprc->right  = infoPtr->rcChannel.right;
     lprc->bottom = infoPtr->rcChannel.bottom;
@@ -1160,6 +1206,13 @@ TRACKBAR_GetTicPos (const TRACKBAR_INFO *infoPtr, INT iTic)
     tic   = TRACKBAR_GetTic (infoPtr, iTic);
     range = infoPtr->lRangeMax - infoPtr->lRangeMin;
     if (range <= 0) range = 1;
+    if (infoPtr->dwStyle & TBS_VERT)
+    {
+        offsetthumb = (infoPtr->rcThumb.bottom - infoPtr->rcThumb.top)/2;
+        width = infoPtr->rcChannel.bottom - infoPtr->rcChannel.top - offsetthumb*2;
+        pos   = infoPtr->rcChannel.top + offsetthumb + (width * tic) / range;
+        return pos;
+    }
     offsetthumb = (infoPtr->rcThumb.right - infoPtr->rcThumb.left)/2;
     width = infoPtr->rcChannel.right - infoPtr->rcChannel.left - offsetthumb*2;
     pos   = infoPtr->rcChannel.left + offsetthumb + (width * tic) / range;
@@ -1777,6 +1830,7 @@ TRACKBAR_MouseMove (TRACKBAR_INFO *infoPtr, INT x, INT y)
     dragPos = TRACKBAR_ConvertPlaceToPosition (infoPtr, clickPlace);
 
     if (dragPos == oldPos) return TRUE;
+    if (notify_pos_changing(infoPtr, dragPos, TB_THUMBTRACK)) return TRUE;
 
     infoPtr->lPos = dragPos;
     TRACKBAR_UpdateThumb (infoPtr);
@@ -1825,11 +1879,13 @@ TRACKBAR_KeyDown (TRACKBAR_INFO *infoPtr, INT nVirtKey)
         break;
     case VK_HOME:
         if (infoPtr->lPos == infoPtr->lRangeMin) return FALSE;
+        if (notify_pos_changing(infoPtr, infoPtr->lRangeMin, TB_TOP)) return TRUE;
         infoPtr->lPos = infoPtr->lRangeMin;
         notify_with_scroll (infoPtr, TB_TOP);
         break;
     case VK_END:
         if (infoPtr->lPos == infoPtr->lRangeMax) return FALSE;
+        if (notify_pos_changing(infoPtr, infoPtr->lRangeMax, TB_BOTTOM)) return TRUE;
         infoPtr->lPos = infoPtr->lRangeMax;
         notify_with_scroll (infoPtr, TB_BOTTOM);
         break;
