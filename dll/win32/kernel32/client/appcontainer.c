@@ -7,6 +7,7 @@
 
 #include <k32.h>
 #include <ndk/sefuncs.h>
+#include <appmodel.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -768,6 +769,73 @@ BasepCopyEnvironment(
 /* PUBLIC FUNCTIONS ***********************************************************/
 
 /*
+ * Builds the security a process and its first thread get from the token they run
+ * with: its owner, its primary group and its default DACL. Free it with RtlFreeHeap.
+ */
+NTSTATUS
+WINAPI
+BasepCreateTokenObjectSecurity(
+    _In_ HANDLE Token,
+    _Out_ PSECURITY_DESCRIPTOR *SecurityDescriptor)
+{
+    static const TOKEN_INFORMATION_CLASS Classes[] = { TokenOwner, TokenPrimaryGroup, TokenDefaultDacl };
+    PVOID Info[RTL_NUMBER_OF(Classes)] = {NULL};
+    SECURITY_DESCRIPTOR Absolute;
+    PSECURITY_DESCRIPTOR Relative = NULL;
+    ULONG Length, i;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    *SecurityDescriptor = NULL;
+
+    for (i = 0; i < RTL_NUMBER_OF(Classes) && NT_SUCCESS(Status); i++)
+    {
+        Status = NtQueryInformationToken(Token, Classes[i], NULL, 0, &Length);
+        if (Status != STATUS_BUFFER_TOO_SMALL)
+            break;
+
+        Info[i] = RtlAllocateHeap(RtlGetProcessHeap(), 0, Length);
+        if (!Info[i])
+        {
+            Status = STATUS_NO_MEMORY;
+            break;
+        }
+        Status = NtQueryInformationToken(Token, Classes[i], Info[i], Length, &Length);
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        RtlCreateSecurityDescriptor(&Absolute, SECURITY_DESCRIPTOR_REVISION);
+        RtlSetOwnerSecurityDescriptor(&Absolute, ((PTOKEN_OWNER)Info[0])->Owner, FALSE);
+        RtlSetGroupSecurityDescriptor(&Absolute, ((PTOKEN_PRIMARY_GROUP)Info[1])->PrimaryGroup, FALSE);
+        RtlSetDaclSecurityDescriptor(&Absolute, TRUE, ((PTOKEN_DEFAULT_DACL)Info[2])->DefaultDacl, FALSE);
+
+        Length = 0;
+        RtlAbsoluteToSelfRelativeSD(&Absolute, NULL, &Length);
+        Relative = RtlAllocateHeap(RtlGetProcessHeap(), 0, Length);
+        if (!Relative)
+            Status = STATUS_NO_MEMORY;
+        else
+            Status = RtlAbsoluteToSelfRelativeSD(&Absolute, Relative, &Length);
+    }
+
+    for (i = 0; i < RTL_NUMBER_OF(Info); i++)
+    {
+        if (Info[i])
+            RtlFreeHeap(RtlGetProcessHeap(), 0, Info[i]);
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        if (Relative)
+            RtlFreeHeap(RtlGetProcessHeap(), 0, Relative);
+        return Status;
+    }
+
+    *SecurityDescriptor = Relative;
+    return STATUS_SUCCESS;
+}
+
+/*
  * Makes the AppContainer token a new process runs with, from BaseToken or, when there is none,
  * from the caller's own token.
  */
@@ -977,4 +1045,198 @@ Quit:
     if (Token)
         NtClose(Token);
     return Status;
+}
+
+/* kernel.appcore keeps the package store */
+typedef LONG (WINAPI *PBASEP_OPEN_PACKAGE_INFO)(PSID, PCWSTR, const UINT32, PACKAGE_INFO_REFERENCE *);
+typedef LONG (WINAPI *PBASEP_GET_PACKAGE_INFO)(PACKAGE_INFO_REFERENCE, const UINT32, UINT32 *, BYTE *, UINT32 *);
+typedef LONG (WINAPI *PBASEP_CLOSE_PACKAGE_INFO)(PACKAGE_INFO_REFERENCE);
+typedef LONG (WINAPI *PBASEP_PACKAGE_NAME_FROM_TOKEN)(HANDLE, UINT32 *, PWSTR);
+
+/* WIN://PKG claim bit of a full trust packaged application */
+#define BASEP_PACKAGE_CLAIM_FULL_TRUST 0x4
+
+static
+BOOLEAN
+BasepQueryPackageClaim(
+    _Out_ PULONG64 Claim)
+{
+    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"WIN://PKG");
+    PTOKEN_SECURITY_ATTRIBUTES_INFORMATION Information;
+    PTOKEN_SECURITY_ATTRIBUTE_V1 Attribute;
+    ULONG64 Buffer[32];
+    HANDLE Token;
+    ULONG Length;
+    NTSTATUS Status;
+
+    *Claim = 0;
+    Status = NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &Token);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    Status = NtQuerySecurityAttributesToken(Token, &Name, 1, Buffer, sizeof(Buffer), &Length);
+    NtClose(Token);
+    Information = (PTOKEN_SECURITY_ATTRIBUTES_INFORMATION)Buffer;
+    if (!NT_SUCCESS(Status) || !Information->AttributeCount)
+        return FALSE;
+
+    Attribute = Information->Attribute.pAttributeV1;
+    if (Attribute->ValueType != TOKEN_SECURITY_ATTRIBUTE_TYPE_UINT64 || !Attribute->ValueCount)
+        return FALSE;
+    *Claim = Attribute->Values.pUint64[0];
+    return TRUE;
+}
+
+/*
+ * The loader marks a packaged process when it starts, from the package claim of its token
+ */
+BOOLEAN
+WINAPI
+BasepIsPackagedProcess(VOID)
+{
+    return (NtCurrentPeb()->BitField & BASEP_PEB_PACKAGED_PROCESS) != 0;
+}
+
+/*
+ * Like on Windows, a packaged process only gets SetDllDirectory and AddDllDirectory
+ * when it runs with full trust
+ */
+BOOLEAN
+WINAPI
+BasepPackageAllowsUserDirectories(VOID)
+{
+    static LONG Allowed = -1;
+    ULONG64 Claim;
+
+    if (!BasepIsPackagedProcess())
+        return TRUE;
+
+    /* The claims of a running process do not change */
+    if (Allowed < 0)
+        Allowed = BasepQueryPackageClaim(&Claim) && (Claim & BASEP_PACKAGE_CLAIM_FULL_TRUST);
+    return Allowed != 0;
+}
+
+/*
+ * The DllPath of a packaged process: the folders of its main package and of its frameworks,
+ * in dependency order, each ending in a semicolon. Resource packages hold no code and stay out.
+ * Without a package name the process inherits the caller's package, if it has one.
+ */
+DWORD
+WINAPI
+BasepGetPackageDllPath(
+    _In_opt_ HANDLE UserToken,
+    _In_opt_ PCWSTR PackageFullName,
+    _Outptr_result_maybenull_ PWSTR *DllPath)
+{
+    ULONG UserBuffer[(sizeof(TOKEN_USER) + SECURITY_MAX_SID_SIZE) / sizeof(ULONG)];
+    PTOKEN_USER User = (PTOKEN_USER)UserBuffer;
+    WCHAR Inherited[PACKAGE_FULL_NAME_MAX_LENGTH + 1];
+    PBASEP_PACKAGE_NAME_FROM_TOKEN NameFromToken = NULL;
+    PBASEP_OPEN_PACKAGE_INFO OpenInfo = NULL;
+    PBASEP_GET_PACKAGE_INFO GetInfo = NULL;
+    PBASEP_CLOSE_PACKAGE_INFO CloseInfo = NULL;
+    PACKAGE_INFO_REFERENCE Reference = NULL;
+    PACKAGE_INFO *Packages = NULL;
+    HANDLE Token = UserToken;
+    HMODULE AppCore = NULL;
+    UINT32 Length = 0;
+    UINT32 Count = 0;
+    UINT32 Index;
+    SIZE_T Size;
+    PWSTR Path;
+    ULONG Returned;
+    NTSTATUS Status;
+    DWORD Error;
+
+    *DllPath = NULL;
+    if (!Token)
+    {
+        Status = NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &Token);
+        if (!NT_SUCCESS(Status))
+            return RtlNtStatusToDosError(Status);
+    }
+
+    AppCore = LoadLibraryW(L"kernel.appcore.dll");
+    if (!AppCore)
+    {
+        Error = GetLastError();
+        goto Quit;
+    }
+    NameFromToken = (PBASEP_PACKAGE_NAME_FROM_TOKEN)GetProcAddress(AppCore, "GetPackageFullNameFromToken");
+    OpenInfo = (PBASEP_OPEN_PACKAGE_INFO)GetProcAddress(AppCore, "OpenPackageInfoByFullNameForUser");
+    GetInfo = (PBASEP_GET_PACKAGE_INFO)GetProcAddress(AppCore, "GetPackageInfo");
+    CloseInfo = (PBASEP_CLOSE_PACKAGE_INFO)GetProcAddress(AppCore, "ClosePackageInfo");
+    if (!NameFromToken || !OpenInfo || !GetInfo || !CloseInfo)
+    {
+        Error = ERROR_PROC_NOT_FOUND;
+        goto Quit;
+    }
+
+    if (!PackageFullName)
+    {
+        Length = _countof(Inherited);
+        Error = NameFromToken(Token, &Length, Inherited);
+        if (Error == APPMODEL_ERROR_NO_PACKAGE)
+            Error = ERROR_SUCCESS;
+        if (Error != ERROR_SUCCESS || !Length)
+            goto Quit;
+        PackageFullName = Inherited;
+    }
+
+    /* The graph of the user the process runs as */
+    Status = NtQueryInformationToken(Token, TokenUser, User, sizeof(UserBuffer), &Returned);
+    if (!NT_SUCCESS(Status))
+    {
+        Error = RtlNtStatusToDosError(Status);
+        goto Quit;
+    }
+    Error = OpenInfo(User->User.Sid, PackageFullName, 0, &Reference);
+    if (Error == ERROR_SUCCESS)
+    {
+        Length = 0;
+        Error = GetInfo(Reference, PACKAGE_FILTER_HEAD | PACKAGE_FILTER_DIRECT, &Length, NULL, &Count);
+    }
+    if (Error == ERROR_INSUFFICIENT_BUFFER)
+    {
+        Packages = RtlAllocateHeap(RtlGetProcessHeap(), 0, Length);
+        Error = Packages ? GetInfo(Reference, PACKAGE_FILTER_HEAD | PACKAGE_FILTER_DIRECT, &Length, (BYTE *)Packages, &Count)
+                         : ERROR_NOT_ENOUGH_MEMORY;
+    }
+    if (Error != ERROR_SUCCESS)
+        goto Quit;
+
+    Size = sizeof(UNICODE_NULL);
+    for (Index = 0; Index < Count; Index++)
+    {
+        if (Packages[Index].path && !(Packages[Index].flags & PACKAGE_PROPERTY_RESOURCE))
+            Size += (wcslen(Packages[Index].path) + 1) * sizeof(WCHAR);
+    }
+    Path = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+    if (!Path)
+    {
+        Error = ERROR_NOT_ENOUGH_MEMORY;
+        goto Quit;
+    }
+
+    Path[0] = UNICODE_NULL;
+    for (Index = 0; Index < Count; Index++)
+    {
+        if (!Packages[Index].path || (Packages[Index].flags & PACKAGE_PROPERTY_RESOURCE))
+            continue;
+        RtlStringCbCatW(Path, Size, Packages[Index].path);
+        RtlStringCbCatW(Path, Size, L";");
+    }
+    *DllPath = Path;
+
+Quit:
+    if (Packages)
+        RtlFreeHeap(RtlGetProcessHeap(), 0, Packages);
+    if (Reference)
+        CloseInfo(Reference);
+    if (AppCore)
+        FreeLibrary(AppCore);
+    if (Token != UserToken)
+        NtClose(Token);
+    return Error;
 }

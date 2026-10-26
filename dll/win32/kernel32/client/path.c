@@ -860,6 +860,13 @@ SetDllDirectoryW(IN LPCWSTR lpPathName)
 {
     UNICODE_STRING OldDirectory, DllDirectory;
 
+    /* A packaged process without full trust keeps to its package graph */
+    if (!BasepPackageAllowsUserDirectories())
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
     if (lpPathName)
     {
         if (wcschr(lpPathName, L';'))
@@ -899,6 +906,13 @@ SetDllDirectoryA(IN LPCSTR lpPathName)
     ANSI_STRING AnsiDllDirectory;
     UNICODE_STRING OldDirectory, DllDirectory;
     NTSTATUS Status;
+
+    /* A packaged process without full trust keeps to its package graph */
+    if (!BasepPackageAllowsUserDirectories())
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
 
     if (lpPathName)
     {
@@ -947,6 +961,13 @@ GetDllDirectoryW(IN DWORD nBufferLength,
                  OUT LPWSTR lpBuffer)
 {
     ULONG Length;
+
+    /* A packaged process without full trust keeps to its package graph */
+    if (!BasepPackageAllowsUserDirectories())
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
 
     RtlEnterCriticalSection(&BaseDllDirectoryLock);
 
