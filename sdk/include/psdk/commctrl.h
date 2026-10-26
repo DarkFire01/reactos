@@ -251,7 +251,9 @@ extern "C" {
 #define BCSIF_STYLE 0x00000004
 #define BCSIF_SIZE  0x00000008
 
+#define BCSS_NOSPLIT 0x00000001
 #define BCSS_STRETCH 0x00000002
+#define BCSS_ALIGNLEFT 0x00000004
 #define BCSS_IMAGE   0x00000008
 
 #define BCN_FIRST (0U-1250U)
@@ -359,6 +361,8 @@ extern "C" {
 #define ILC_PALETTE 0x800
 #define ILC_MIRROR 0x2000
 #define ILC_PERITEMMIRROR 0x8000
+#define ILC_ORIGINALSIZE 0x10000
+#define ILC_HIGHQUALITYSCALE 0x20000
 
   WINCOMMCTRLAPI HIMAGELIST WINAPI ImageList_Create(int cx,int cy,UINT flags,int cInitial,int cGrow);
   WINCOMMCTRLAPI BOOL WINAPI ImageList_Destroy(_In_opt_ HIMAGELIST himl);
@@ -2939,6 +2943,16 @@ typedef struct tagNMBCDROPDOWN {
 #define ListView_RemoveAllGroups(hwnd) SNDMSG((hwnd),LVM_REMOVEALLGROUPS,0,0)
 #define LVM_HASGROUP (LVM_FIRST+161)
 #define ListView_HasGroup(hwnd,dwGroupId) SNDMSG((hwnd),LVM_HASGROUP,dwGroupId,0)
+#define LVM_GETGROUPRECT (LVM_FIRST+98)
+#define ListView_GetGroupRect(hwnd,iGroupId,type,prc) SNDMSG((hwnd),LVM_GETGROUPRECT,(WPARAM)(iGroupId),((prc) ? (((RECT *)(prc))->top = (type)),(LPARAM)(RECT *)(prc) : (LPARAM)(RECT *)NULL))
+#define LVGGR_GROUP 0
+#define LVGGR_HEADER 1
+#define LVGGR_LABEL 2
+#define LVGGR_SUBSETLINK 3
+#define LVM_GETGROUPCOUNT (LVM_FIRST+152)
+#define ListView_GetGroupCount(hwnd) SNDMSG((hwnd),LVM_GETGROUPCOUNT,0,0)
+#define LVM_GETGROUPINFOBYINDEX (LVM_FIRST+153)
+#define ListView_GetGroupInfoByIndex(hwnd,iIndex,pgrp) SNDMSG((hwnd),LVM_GETGROUPINFOBYINDEX,(WPARAM)(iIndex),(LPARAM)(pgrp))
 
 #define LVTVIF_AUTOSIZE 0x0
 #define LVTVIF_FIXEDWIDTH 0x1
@@ -4671,6 +4685,7 @@ typedef struct {
   } NMBCHOTITEM,*LPNMBCHOTITEM;
 
 #define BST_HOT 0x200
+#define BST_DROPDOWNPUSHED 0x0400
 
 #define BS_SPLITBUTTON    0x0000000C
 #define BS_DEFSPLITBUTTON 0x0000000D
