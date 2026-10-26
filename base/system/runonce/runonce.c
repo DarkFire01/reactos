@@ -60,22 +60,25 @@ InitDialog(HWND hDlg)
     {
         for (dwIndex = 0; ; dwIndex++)
         {
-            dwSize = sizeof(szAppPath);
-            dwData = sizeof(szData) / sizeof(TCHAR);
+            LONG lError;
 
-            if (RegEnumValue(hKey,
-                             dwIndex,
-                             szAppPath,
-                             &dwSize,
-                             NULL,
-                             &dwType,
-                             (LPBYTE)szData,
-                             &dwData) == ERROR_SUCCESS)
-            {
-                if (dwType != REG_SZ) continue;
+            dwSize = sizeof(szAppPath) / sizeof(TCHAR);
+            dwData = sizeof(szData);
 
-                SendMessage(GetDlgItem(hDlg, IDC_COMP_LIST), LB_ADDSTRING, 0, (LPARAM)szData);
-            }
+            lError = RegEnumValue(hKey,
+                                  dwIndex,
+                                  szAppPath,
+                                  &dwSize,
+                                  NULL,
+                                  &dwType,
+                                  (LPBYTE)szData,
+                                  &dwData);
+            if (lError == ERROR_NO_MORE_ITEMS)
+                break;
+
+            if (lError != ERROR_SUCCESS || dwType != REG_SZ) continue;
+
+            SendMessage(GetDlgItem(hDlg, IDC_COMP_LIST), LB_ADDSTRING, 0, (LPARAM)szData);
         }
 
         RegCloseKey(hKey);
@@ -114,7 +117,7 @@ _tWinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPTSTR lpCmdLine, INT nCmdShow)
 {
     LPCTSTR lpCmd = GetCommandLine();
     TCHAR szAppPath[MAX_PATH], szData[MAX_PATH];
-    DWORD dwIndex, dwSize, dwType, dwData;
+    DWORD dwSize, dwType, dwData;
     PROCESS_INFORMATION pi;
     STARTUPINFOW si;
     BOOL bRunApps = FALSE;
@@ -124,7 +127,11 @@ _tWinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPTSTR lpCmdLine, INT nCmdShow)
     {
         while (*lpCmd && *lpCmd != _T('/') && *lpCmd != _T('-')) lpCmd++;
         if (!*lpCmd) break;
-        if (*++lpCmd == _T('r')) bRunApps = TRUE;
+        lpCmd++;
+
+        /* Explorer passes /Explorer to have the machine RunOnce entries run, as /r does */
+        if (*lpCmd == _T('r') || !_tcsnicmp(lpCmd, _T("Explorer"), 8))
+            bRunApps = TRUE;
         lpCmd++;
     }
 
@@ -133,40 +140,45 @@ _tWinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPTSTR lpCmdLine, INT nCmdShow)
         if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
                          _T("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce"),
                          0,
-                         KEY_QUERY_VALUE,
+                         KEY_QUERY_VALUE | KEY_SET_VALUE,
                          &hKey) == ERROR_SUCCESS)
         {
-            for (dwIndex = 0; ; dwIndex++)
+            /* Each entry is deleted before it runs, so the first remaining value is always next */
+            for (;;)
             {
-                dwSize = sizeof(szAppPath);
-                dwData = sizeof(szData) / sizeof(TCHAR);
+                LONG lError;
 
-                if (RegEnumValue(hKey,
-                                 dwIndex,
-                                 szAppPath,
-                                 &dwSize,
-                                 NULL,
-                                 &dwType,
-                                 (LPBYTE)szData,
-                                 &dwData) == ERROR_SUCCESS)
-                {
-                    RegDeleteValue(hKey, szAppPath);
+                dwSize = sizeof(szAppPath) / sizeof(TCHAR);
+                dwData = sizeof(szData);
 
-                    if (dwType != REG_SZ) continue;
+                lError = RegEnumValue(hKey,
+                                      0,
+                                      szAppPath,
+                                      &dwSize,
+                                      NULL,
+                                      &dwType,
+                                      (LPBYTE)szData,
+                                      &dwData);
+                if (lError != ERROR_SUCCESS && lError != ERROR_MORE_DATA)
+                    break;
 
-                    ZeroMemory(&si, sizeof(si));
-                    si.cb = sizeof(si);
-                    si.dwFlags = STARTF_USESHOWWINDOW;
-                    si.wShowWindow = SW_SHOW;
+                if (RegDeleteValue(hKey, szAppPath) != ERROR_SUCCESS)
+                    break;
 
-                    if (!CreateProcess(NULL, szData, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
-                        continue;
+                if (lError != ERROR_SUCCESS || dwType != REG_SZ) continue;
 
-                    WaitForSingleObjectEx(pi.hProcess, INFINITE, TRUE);
+                ZeroMemory(&si, sizeof(si));
+                si.cb = sizeof(si);
+                si.dwFlags = STARTF_USESHOWWINDOW;
+                si.wShowWindow = SW_SHOW;
 
-                    CloseHandle(pi.hProcess);
-                    CloseHandle(pi.hThread);
-                }
+                if (!CreateProcess(NULL, szData, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+                    continue;
+
+                WaitForSingleObjectEx(pi.hProcess, INFINITE, TRUE);
+
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
             }
 
             RegCloseKey(hKey);
