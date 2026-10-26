@@ -266,6 +266,20 @@ typedef struct _DWM_HIT_TEST_QUERY
 #define DWM_API_GET_SHARED_SURFACE      0x40000080
 #define DWM_API_UPDATE_SHARED_SURFACE   0x40000081
 
+/* Thumbnails, iconic bitmaps and live preview */
+#define DWM_API_REGISTER_THUMBNAIL      0x4000001F
+#define DWM_API_UPDATE_THUMBNAIL        0x40000020
+#define DWM_API_UNREGISTER_THUMBNAIL    0x40000021
+#define DWM_API_QUERY_THUMBNAIL_SIZE    0x40000023
+#define DWM_API_ACTIVATE_LIVE_PREVIEW   0x40000039
+#define DWM_API_SET_ICONIC_THUMBNAIL    0x4000003A
+#define DWM_API_QUERY_THUMBNAIL_TYPE    0x4000003C
+#define DWM_API_SET_ICONIC_LIVE_PREVIEW 0x4000003D
+#define DWM_API_INVALIDATE_ICONIC       0x4000003E
+
+/* Ours: DwmSetWindowAttribute's attributes the DWM acts on */
+#define DWM_API_SET_WINDOW_ATTRIBUTE    0x40000082
+
 /* As many of a blur region's rectangles as a port message holds; a region with more sends its bounds */
 #define DWM_BLUR_BEHIND_MAX_RECTS   12
 
@@ -339,6 +353,90 @@ typedef struct _DWM_SHARED_SURFACE_REQUEST
     ULONG64 UpdateId;           /* out on a get, in on an update */
 } DWM_SHARED_SURFACE_REQUEST, *PDWM_SHARED_SURFACE_REQUEST;
 
+/* A thumbnail is named by the id its process gave it; the DWM keys it by that process too */
+typedef struct _DWM_REGISTER_THUMBNAIL_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG Thumbnail;
+    ULONG Flags;
+    ULONG64 Destination;
+    ULONG64 Source;
+} DWM_REGISTER_THUMBNAIL_REQUEST, *PDWM_REGISTER_THUMBNAIL_REQUEST;
+
+/* DWM_THUMBNAIL_PROPERTIES, field for field */
+typedef struct _DWM_UPDATE_THUMBNAIL_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG Thumbnail;
+    ULONG Flags;                /* DWM_TNP_* */
+    RECT Destination;
+    RECT Source;
+    ULONG Opacity;
+    ULONG Visible;
+    ULONG SourceClientAreaOnly;
+} DWM_UPDATE_THUMBNAIL_REQUEST, *PDWM_UPDATE_THUMBNAIL_REQUEST;
+
+/* Unregistering a thumbnail, or a question about it */
+typedef struct _DWM_THUMBNAIL_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG Thumbnail;
+    ULONG Type;                 /* out: what the thumbnail shows */
+    SIZE Size;                  /* out: the size of what it shows */
+} DWM_THUMBNAIL_REQUEST, *PDWM_THUMBNAIL_REQUEST;
+
+/* What a thumbnail shows, as DwmpQueryThumbnailType answers */
+#define DWM_THUMBNAIL_TYPE_LIVE         0
+#define DWM_THUMBNAIL_TYPE_SNAPSHOT     1   /* the window as it was before it was minimized */
+#define DWM_THUMBNAIL_TYPE_NONE         2
+#define DWM_THUMBNAIL_TYPE_ICONIC_WAIT  3   /* asked the window for its iconic bitmap */
+#define DWM_THUMBNAIL_TYPE_ICONIC       4
+
+typedef struct _DWM_LIVE_PREVIEW_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG Activate;
+    ULONG Trigger;
+    ULONG64 Window;             /* none shows the desktop */
+    ULONG64 InsertBehind;
+} DWM_LIVE_PREVIEW_REQUEST, *PDWM_LIVE_PREVIEW_REQUEST;
+
+/*
+ * An iconic bitmap's premultiplied 32bpp top down pixels, in a section the sender made. Section is
+ * the sender's handle; the DWM duplicates it and the sender closes its own once answered.
+ */
+typedef struct _DWM_ICONIC_BITMAP_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;
+    ULONG64 Section;
+    ULONG Width;
+    ULONG Height;
+    ULONG Flags;                /* DWM_SIT_* */
+    ULONG HasOrigin;            /* live preview: Origin is where the client area is in the bitmap's frame */
+    POINT Origin;
+} DWM_ICONIC_BITMAP_REQUEST, *PDWM_ICONIC_BITMAP_REQUEST;
+
+typedef struct _DWM_WINDOW_ATTRIBUTE_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;
+    ULONG Attribute;            /* DWMWA_* */
+    ULONG Value;
+} DWM_WINDOW_ATTRIBUTE_REQUEST, *PDWM_WINDOW_ATTRIBUTE_REQUEST;
+
 #include <poppack.h>
 
 #define DWM_PORT_DATA_SIZE(Type) ((ULONG)(sizeof(Type) - sizeof(PORT_MESSAGE)))
@@ -360,6 +458,8 @@ C_ASSERT(DWM_PORT_DATA_SIZE(DWM_ICON_CHANGE) == 0x1C);
 C_ASSERT(DWM_PORT_DATA_SIZE(DWM_HIT_TEST_QUERY) == 0x34);
 C_ASSERT(FIELD_OFFSET(DWM_VIS_RGN_UPDATE, Rects) - sizeof(PORT_MESSAGE) == 0x1C);
 C_ASSERT(sizeof(DWM_VIS_RGN_UPDATE) <= PORT_MAXIMUM_MESSAGE_LENGTH);
+C_ASSERT(sizeof(DWM_UPDATE_THUMBNAIL_REQUEST) <= PORT_MAXIMUM_MESSAGE_LENGTH);
+C_ASSERT(sizeof(DWM_ICONIC_BITMAP_REQUEST) <= PORT_MAXIMUM_MESSAGE_LENGTH);
 
 /* NtGdiHLSurfGetInformation classes */
 #define HLSURF_INFO_SURFACE_DATA    3
