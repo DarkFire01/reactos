@@ -3,11 +3,14 @@
 # settings exist.
 
 list(APPEND SOURCE
+    cidlabel.cpp
+    commandmodule.cpp
     commonlayout.cpp
     duihelp.cpp
     elements.cpp
     hwndview.cpp
     modules.cpp
+    propertree.cpp
     sizer.cpp
     templatebg.cpp
     viewframe.cpp

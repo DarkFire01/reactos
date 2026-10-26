@@ -43,4 +43,5 @@
 #include <DirectUI.h>
 
 #include "duiframe.h"
+#include "cidlabel.h"
 #include "duiframe_res.h"

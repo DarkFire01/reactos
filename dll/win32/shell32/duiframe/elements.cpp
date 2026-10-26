@@ -389,6 +389,11 @@ InitializeDUIFrameClasses(VOID)
         CInfoBarHostModule::Register,
         CLibraryPaneModule::Register,
         CInfoPane::Register,
+        CProperTreeModuleInner::Register,
+        Button3d::Register,
+        CCommandModuleInner::Register,
+        CProperTreeHost::Register,
+        CCIDLabel::Register,
     };
     HRESULT hr = S_OK;
     SIZE_T i;
