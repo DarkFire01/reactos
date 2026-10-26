@@ -152,6 +152,10 @@ typedef struct
     INT       cimlHot;        /* hot image list array count */
     PIMLENTRY *himlDis;       /* disabled image list array */
     INT       cimlDis;        /* disabled image list array count */
+#ifdef __REACTOS__
+    PIMLENTRY *himlPressed;   /* pressed image list array */
+    INT       cimlPressed;    /* pressed image list array count */
+#endif
     HWND     hwndToolTip;     /* handle to tool tip control */
     HWND     hwndNotify;      /* handle to the window that gets notifications */
     HWND     hwndSelf;        /* my own handle */
@@ -197,6 +201,9 @@ typedef enum
     IMAGE_LIST_DEFAULT,
     IMAGE_LIST_HOT,
     IMAGE_LIST_DISABLED
+#ifdef __REACTOS__
+    , IMAGE_LIST_PRESSED
+#endif
 } IMAGE_LIST_TYPE;
 
 #define SEPARATOR_WIDTH    8
@@ -246,6 +253,20 @@ typedef enum
 #define GETDEFIMAGELIST(infoPtr, id) TOOLBAR_GetImageList(infoPtr->himlDef, infoPtr->cimlDef, id)
 #define GETHOTIMAGELIST(infoPtr, id) TOOLBAR_GetImageList(infoPtr->himlHot, infoPtr->cimlHot, id)
 #define GETDISIMAGELIST(infoPtr, id) TOOLBAR_GetImageList(infoPtr->himlDis, infoPtr->cimlDis, id)
+#ifdef __REACTOS__
+#define GETPRESSEDIMAGELIST(infoPtr, id) TOOLBAR_GetImageList(infoPtr->himlPressed, infoPtr->cimlPressed, id)
+
+/* Vista+ messages missing from the SDK header */
+#ifndef TB_GETITEMDROPDOWNRECT
+#define TB_GETITEMDROPDOWNRECT  (WM_USER + 103)
+#endif
+#ifndef TB_SETPRESSEDIMAGELIST
+#define TB_SETPRESSEDIMAGELIST  (WM_USER + 104)
+#endif
+#ifndef TB_GETPRESSEDIMAGELIST
+#define TB_GETPRESSEDIMAGELIST  (WM_USER + 105)
+#endif
+#endif
 
 static const WCHAR themeClass[] = { 'T','o','o','l','b','a','r',0 };
 
@@ -520,6 +541,11 @@ TOOLBAR_GetImageListForDrawing (const TOOLBAR_INFO *infoPtr, TBUTTON_INFO *btnPt
     case IMAGE_LIST_DISABLED:
         himl = GETDISIMAGELIST(infoPtr, GETHIMLID(infoPtr, btnPtr->iBitmap));
         break;
+#ifdef __REACTOS__
+    case IMAGE_LIST_PRESSED:
+        himl = GETPRESSEDIMAGELIST(infoPtr, GETHIMLID(infoPtr, btnPtr->iBitmap));
+        break;
+#endif
     default:
         himl = NULL;
         FIXME("Shouldn't reach here\n");
@@ -838,6 +864,14 @@ TOOLBAR_DrawImage(const TOOLBAR_INFO *infoPtr, TBUTTON_INFO *btnPtr, INT left, I
 #endif
         }
     }
+#ifdef __REACTOS__
+    else if ((tbcd->nmcd.uItemState & CDIS_SELECTED) && infoPtr->cimlPressed)
+    {
+        himl = TOOLBAR_GetImageListForDrawing(infoPtr, btnPtr, IMAGE_LIST_PRESSED, &index);
+        if (!himl)
+            himl = TOOLBAR_GetImageListForDrawing(infoPtr, btnPtr, IMAGE_LIST_DEFAULT, &index);
+    }
+#endif
     else if (tbcd->nmcd.uItemState & CDIS_CHECKED ||
       ((tbcd->nmcd.uItemState & CDIS_HOT) 
       && ((infoPtr->dwStyle & TBSTYLE_FLAT) || GetWindowTheme (infoPtr->hwndSelf))))
@@ -4852,6 +4886,61 @@ TOOLBAR_SetHotImageList (TOOLBAR_INFO *infoPtr, WPARAM wParam, HIMAGELIST himl)
     return (LRESULT)himlTemp;
 }
 
+#ifdef __REACTOS__
+static LRESULT
+TOOLBAR_SetPressedImageList(
+    _In_ TOOLBAR_INFO *infoPtr,
+    _In_ WPARAM wParam,
+    _In_opt_ HIMAGELIST himl)
+{
+    HIMAGELIST himlOld;
+    INT id = (infoPtr->iVersion >= 5) ? (INT)wParam : 0;
+
+    himlOld = TOOLBAR_InsertImageList(&infoPtr->himlPressed, &infoPtr->cimlPressed, himl, id);
+    InvalidateRect(infoPtr->hwndSelf, NULL, TRUE);
+
+    return (LRESULT)himlOld;
+}
+
+static LRESULT
+TOOLBAR_GetItemDropDownRect(
+    _In_ const TOOLBAR_INFO *infoPtr,
+    _In_ INT nIndex,
+    _Out_opt_ LPRECT lpRect)
+{
+    const TBUTTON_INFO *btnPtr;
+
+    if (!lpRect || nIndex < 0 || nIndex >= infoPtr->nNumButtons)
+        return FALSE;
+
+    btnPtr = &infoPtr->buttons[nIndex];
+    if ((btnPtr->fsState & TBSTATE_HIDDEN) || !button_has_ddarrow(infoPtr, btnPtr))
+        return FALSE;
+
+    /* Same arrow area TOOLBAR_DrawButton paints */
+    *lpRect = btnPtr->rect;
+    if (infoPtr->dwStyle & TBSTYLE_FLAT)
+        lpRect->left = max(lpRect->left, lpRect->right - DDARROW_WIDTH);
+    else
+        lpRect->left = max(lpRect->left, lpRect->right - DDARROW_WIDTH - 2);
+
+    return TRUE;
+}
+
+static LRESULT
+TOOLBAR_SetWindowTheme(
+    _In_ TOOLBAR_INFO *infoPtr,
+    _In_opt_ LPCWSTR pszSubAppName)
+{
+    /* SetWindowTheme sends WM_THEMECHANGED, which reopens the theme */
+    SetWindowTheme(infoPtr->hwndSelf, pszSubAppName, NULL);
+
+    TOOLBAR_CalcToolbar(infoPtr);
+    InvalidateRect(infoPtr->hwndSelf, NULL, TRUE);
+    return 0;
+}
+#endif
+
 
 /* Makes previous hot button no longer hot, makes the specified
  * button hot and sends appropriate notifications. dwReason is one or
@@ -5614,6 +5703,9 @@ TOOLBAR_Destroy (TOOLBAR_INFO *infoPtr)
     TOOLBAR_DeleteImageList(&infoPtr->himlDef, &infoPtr->cimlDef);
     TOOLBAR_DeleteImageList(&infoPtr->himlDis, &infoPtr->cimlDis);
     TOOLBAR_DeleteImageList(&infoPtr->himlHot, &infoPtr->cimlHot);
+#ifdef __REACTOS__
+    TOOLBAR_DeleteImageList(&infoPtr->himlPressed, &infoPtr->cimlPressed);
+#endif
 
     /* delete default font */
     DeleteObject (infoPtr->hDefaultFont);
@@ -5648,6 +5740,11 @@ TOOLBAR_EraseBackground (TOOLBAR_INFO *infoPtr, WPARAM wParam, LPARAM lParam)
 	ntfret = TOOLBAR_SendNotify (&tbcd.nmcd.hdr, infoPtr, NM_CUSTOMDRAW);
 	dwEraseCustDraw = ntfret & 0xffff;
 
+#ifdef __REACTOS__
+	/* The owner may combine CDRF_SKIPDEFAULT with other flags */
+	if (dwEraseCustDraw & CDRF_SKIPDEFAULT)
+	    return TRUE;
+#else
 	/* FIXME: in general the return flags *can* be or'ed together */
 	switch (dwEraseCustDraw)
 	    {
@@ -5659,6 +5756,7 @@ TOOLBAR_EraseBackground (TOOLBAR_INFO *infoPtr, WPARAM wParam, LPARAM lParam)
 		FIXME("[%p] response %d not handled to NM_CUSTOMDRAW (CDDS_PREERASE)\n",
 		      infoPtr->hwndSelf, ntfret);
 	    }
+#endif
     }
 
     /* If the toolbar is "transparent" then pass the WM_ERASEBKGND up
@@ -6935,6 +7033,13 @@ ToolbarWindowProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	case TB_GETHOTIMAGELIST:
 	    return TOOLBAR_GetHotImageList (infoPtr, wParam);
+#ifdef __REACTOS__
+	case TB_GETPRESSEDIMAGELIST:
+	    return (LRESULT)GETPRESSEDIMAGELIST(infoPtr, wParam);
+
+	case TB_GETITEMDROPDOWNRECT:
+	    return TOOLBAR_GetItemDropDownRect(infoPtr, (INT)wParam, (LPRECT)lParam);
+#endif
 
 	case TB_GETHOTITEM:
 	    return TOOLBAR_GetHotItem (infoPtr);
@@ -7079,6 +7184,10 @@ ToolbarWindowProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	case TB_SETHOTIMAGELIST:
 	    return TOOLBAR_SetHotImageList (infoPtr, wParam, (HIMAGELIST)lParam);
+#ifdef __REACTOS__
+	case TB_SETPRESSEDIMAGELIST:
+	    return TOOLBAR_SetPressedImageList(infoPtr, wParam, (HIMAGELIST)lParam);
+#endif
 
 	case TB_SETHOTITEM:
 	    return TOOLBAR_SetHotItem (infoPtr, wParam);
@@ -7157,6 +7266,10 @@ ToolbarWindowProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	case CCM_SETVERSION:
 	    return TOOLBAR_SetVersion (infoPtr, (INT)wParam);
+#ifdef __REACTOS__
+	case TB_SETWINDOWTHEME:
+	    return TOOLBAR_SetWindowTheme(infoPtr, (LPCWSTR)lParam);
+#endif
 
 
 /*	case WM_CHAR: */
