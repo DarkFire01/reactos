@@ -83,10 +83,16 @@ EXTERN_C HRESULT DoReleaseAutoCompleteWithCWD(FileOpenDlgInfos *pInfo);
 
 WINE_DEFAULT_DEBUG_CHANNEL(commdlg);
 
+#ifdef __REACTOS__
+#define UNIMPLEMENTED_FLAGS \
+(OFN_NODEREFERENCELINKS | OFN_NOREADONLYRETURN |\
+OFN_NOTESTFILECREATE /*| OFN_USEMONIKERS*/)
+#else
 #define UNIMPLEMENTED_FLAGS \
 (OFN_DONTADDTORECENT |\
 OFN_NODEREFERENCELINKS | OFN_NOREADONLYRETURN |\
 OFN_NOTESTFILECREATE /*| OFN_USEMONIKERS*/)
+#endif
 
 /***********************************************************************
  * Data structure and global variables
@@ -2421,6 +2427,22 @@ BOOL FILEDLG95_OnOpenMultipleFiles(HWND hwnd, LPWSTR lpstrFileList, UINT nFileCo
   if ( !FILEDLG95_SendFileOK(hwnd, fodInfos) )
     return FALSE;
 
+#ifdef __REACTOS__
+  /* Each chosen file counts as a recently used document */
+  if (!(fodInfos->ofnInfos->Flags & OFN_DONTADDTORECENT))
+  {
+    LPWSTR lpstrTemp = lpstrFileList;
+    WCHAR szFile[MAX_PATH];
+
+    for (nCount = 0; nCount < nFileCount; nCount++)
+    {
+      if (PathCombineW(szFile, lpstrPathSpec, lpstrTemp))
+        SHAddToRecentDocs(SHARD_PATHW, szFile);
+      lpstrTemp += lstrlenW(lpstrTemp) + 1;
+    }
+  }
+#endif
+
   /* clean and exit */
   FILEDLG95_Clean(hwnd);
   return EndDialog(hwnd,TRUE);
@@ -3458,6 +3480,8 @@ BOOL FILEDLG95_OnOpen(HWND hwnd)
           FILEDLG95_MRU_save_filename(lpstrPathAndFile);
 #ifdef __REACTOS__
           FILEDLG95_MRU_save_ext(lpstrPathAndFile);
+          if (!(fodInfos->ofnInfos->Flags & OFN_DONTADDTORECENT))
+              SHAddToRecentDocs(SHARD_PATHW, lpstrPathAndFile);
 #endif
 
           TRACE("close\n");
