@@ -1,0 +1,46 @@
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+IDD_SELECT_DEVICE DIALOGEX 0, 0, 260, 170
+STYLE DS_SHELLFONT | DS_MODALFRAME | WS_POPUPWINDOW | WS_CAPTION
+CAPTION "Select Bluetooth Device"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    ICON IDI_BLUETOOTH, -1, 7, 7, 20, 20
+    LTEXT "No Bluetooth devices were found. Make sure a Bluetooth radio is installed and turned on.", IDC_SELECT_INFO, 35, 7, 218, 24
+    LISTBOX IDC_SELECT_LIST, 7, 36, 246, 105, LBS_NOINTEGRALHEIGHT | WS_BORDER | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON "OK", IDOK, 149, 149, 50, 14
+    PUSHBUTTON "Cancel", IDCANCEL, 203, 149, 50, 14
+END
+
+IDD_DEVICE_GENERAL DIALOGEX 0, 0, 252, 170
+STYLE DS_SHELLFONT | WS_CHILD | WS_CAPTION
+CAPTION "General"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    ICON IDI_BLUETOOTH, IDC_DEVICE_ICON, 7, 7, 20, 20
+    LTEXT "", IDC_DEVICE_NAME, 35, 12, 210, 8, SS_NOPREFIX
+    LTEXT "Address:", -1, 7, 40, 80, 8
+    LTEXT "", IDC_DEVICE_ADDRESS, 90, 40, 155, 8, SS_NOPREFIX
+    LTEXT "Device class:", -1, 7, 54, 80, 8
+    LTEXT "", IDC_DEVICE_CLASS, 90, 54, 155, 8, SS_NOPREFIX
+    LTEXT "Connected:", -1, 7, 68, 80, 8
+    LTEXT "", IDC_DEVICE_CONNECTED, 90, 68, 155, 8
+    LTEXT "Remembered:", -1, 7, 82, 80, 8
+    LTEXT "", IDC_DEVICE_REMEMBERED, 90, 82, 155, 8
+    LTEXT "Paired:", -1, 7, 96, 80, 8
+    LTEXT "", IDC_DEVICE_AUTHENTICATED, 90, 96, 155, 8
+    LTEXT "Last seen:", -1, 7, 110, 80, 8
+    LTEXT "", IDC_DEVICE_LASTSEEN, 90, 110, 155, 8
+    LTEXT "Last used:", -1, 7, 124, 80, 8
+    LTEXT "", IDC_DEVICE_LASTUSED, 90, 124, 155, 8
+END
+
+STRINGTABLE
+BEGIN
+    IDS_CPLNAME "Bluetooth Settings"
+    IDS_CPLDESCRIPTION "Set up a Bluetooth device such as a keyboard, mouse, personal digital assistant (PDA), printer, or cell phone."
+    IDS_PROPERTIES_TITLE "%s Properties"
+    IDS_YES "Yes"
+    IDS_NO "No"
+    IDS_NEVER "Never"
+END
