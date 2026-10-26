@@ -132,6 +132,7 @@ HRESULT WINAPI INewItem_Constructor(IUnknown * pUnkOuter, REFIID riif, LPVOID *p
 IContextMenu2 * ISvStaticItemCm_Constructor(LPSHELLFOLDER pSFParent, LPCITEMIDLIST pidl, LPCITEMIDLIST *apidl, UINT cidl, HKEY hKey);
 IContextMenu2 *	ISvBgCm_Constructor(LPSHELLFOLDER pSFParent, BOOL bDesktop);
 HRESULT WINAPI CDefViewDual_Constructor(REFIID riid, LPVOID * ppvOut);
+void WINAPI CDefViewDual_FireEvent(IShellFolderViewDual *pDual, DISPID dispid);
 HRESULT WINAPI CShellDispatch_Constructor(REFIID riid, LPVOID * ppvOut);
 
 HRESULT WINAPI IShellLink_ConstructFromPath(WCHAR *path, REFIID riid, LPVOID *ppv);

@@ -33,6 +33,7 @@ private:
     LPITEMIDLIST        m_pidl;
     LPITEMIDLIST        m_pidlParent;
     IShellFolder        *m_psfParent;
+    CComPtr<IPropertyStore> m_pTemporaryStore;
 
     void ResetParent();
 

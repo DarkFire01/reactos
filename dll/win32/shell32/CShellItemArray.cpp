@@ -1,6 +1,7 @@
 
 
 #include "precomp.h"
+#include "CShellItemProperties.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
 
@@ -50,17 +51,23 @@ CShellItemArray::BindToHandler(_In_opt_ IBindCtx *pbc, _In_ REFGUID rbhid, _In_ 
 STDMETHODIMP
 CShellItemArray::GetPropertyStore(_In_ GETPROPERTYSTOREFLAGS flags, _In_ REFIID riid, _Out_ void **ppv)
 {
-    UNIMPLEMENTED;
+    if (!ppv)
+        return E_POINTER;
     *ppv = NULL;
-    return E_NOTIMPL;
+    if (!m_pHIDA)
+        return E_UNEXPECTED;
+    return SHELL_CreateItemArrayPropertyStore(this, flags, riid, ppv);
 }
 
 STDMETHODIMP
 CShellItemArray::GetPropertyDescriptionList(_In_ REFPROPERTYKEY keyType, _In_ REFIID riid, _Out_ void **ppv)
 {
-    UNIMPLEMENTED;
+    if (!ppv)
+        return E_POINTER;
     *ppv = NULL;
-    return E_NOTIMPL;
+    if (!m_pHIDA)
+        return E_UNEXPECTED;
+    return SHELL_CreateItemArrayPropertyDescriptionList(this, keyType, riid, ppv);
 }
 
 STDMETHODIMP
@@ -132,17 +139,19 @@ CSimpleShellItemArray::BindToHandler(_In_opt_ IBindCtx *pbc, _In_ REFGUID rbhid,
 STDMETHODIMP
 CSimpleShellItemArray::GetPropertyStore(_In_ GETPROPERTYSTOREFLAGS flags, _In_ REFIID riid, _Out_ void **ppv)
 {
-    UNIMPLEMENTED;
+    if (!ppv)
+        return E_POINTER;
     *ppv = NULL;
-    return E_NOTIMPL;
+    return SHELL_CreateItemArrayPropertyStore(this, flags, riid, ppv);
 }
 
 STDMETHODIMP
 CSimpleShellItemArray::GetPropertyDescriptionList(_In_ REFPROPERTYKEY keyType, _In_ REFIID riid, _Out_ void **ppv)
 {
-    UNIMPLEMENTED;
+    if (!ppv)
+        return E_POINTER;
     *ppv = NULL;
-    return E_NOTIMPL;
+    return SHELL_CreateItemArrayPropertyDescriptionList(this, keyType, riid, ppv);
 }
 
 STDMETHODIMP
