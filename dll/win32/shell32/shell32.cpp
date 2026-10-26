@@ -22,6 +22,11 @@
 #include "precomp.h"
 
 #include "shell32_version.h"
+#include "jumplist/CEnumerableObjectCollection.h"
+#include "jumplist/CAutomaticDestinationList.h"
+#include "jumplist/CDestinationList.h"
+#include "jumplist/CApplicationLists.h"
+#include "mergedfolder/mergedfolder.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
 
@@ -347,6 +352,75 @@ public:
 };
 
 /**************************************************************************
+ *  Start menu classes made by their own creation functions
+ */
+class CProgramsFolderAndFastItemsClass :
+    public CComCoClass<CProgramsFolderAndFastItemsClass, &CLSID_ProgramsFolderAndFastItems>,
+    public CComObjectRootEx<CComMultiThreadModelNoCS>
+{
+public:
+    DECLARE_REGISTRY_RESOURCEID(IDR_PROGRAMSFOLDERANDFASTITEMS)
+
+    class _CreatorClass
+    {
+    public:
+        static STDMETHODIMP CreateInstance(void *pv, REFIID riid, LPVOID *ppv)
+        {
+            if (ppv == NULL)
+                return E_POINTER;
+            *ppv = NULL;
+            if (pv != NULL)
+                return CLASS_E_NOAGGREGATION;
+            return CProgramsFolderAndFastItems_CreateInstance(riid, ppv);
+        }
+    };
+};
+
+class CPersonalStartMenuClass :
+    public CComCoClass<CPersonalStartMenuClass, &CLSID_PersonalStartMenu>,
+    public CComObjectRootEx<CComMultiThreadModelNoCS>
+{
+public:
+    DECLARE_REGISTRY_RESOURCEID(IDR_PERSONALSTARTMENU)
+
+    class _CreatorClass
+    {
+    public:
+        static STDMETHODIMP CreateInstance(void *pv, REFIID riid, LPVOID *ppv)
+        {
+            if (ppv == NULL)
+                return E_POINTER;
+            *ppv = NULL;
+            if (pv != NULL)
+                return CLASS_E_NOAGGREGATION;
+            return CPersonalStartMenu_CreateInstance(riid, ppv);
+        }
+    };
+};
+
+class CStartMenuGroupPolicyFilterClass :
+    public CComCoClass<CStartMenuGroupPolicyFilterClass, &CLSID_StartMenuGroupPolicyFilter>,
+    public CComObjectRootEx<CComMultiThreadModelNoCS>
+{
+public:
+    DECLARE_REGISTRY_RESOURCEID(IDR_STARTMENUGROUPPOLICYFILTER)
+
+    class _CreatorClass
+    {
+    public:
+        static STDMETHODIMP CreateInstance(void *pv, REFIID riid, LPVOID *ppv)
+        {
+            if (ppv == NULL)
+                return E_POINTER;
+            *ppv = NULL;
+            if (pv != NULL)
+                return CLASS_E_NOAGGREGATION;
+            return CStartMenuGroupPolicyFilter_CreateInstance(riid, ppv);
+        }
+    };
+};
+
+/**************************************************************************
  *  CShell32Module
  */
 class CShell32Module : public CComModule
@@ -404,10 +478,27 @@ BEGIN_OBJECT_MAP(ObjectMap)
     OBJECT_ENTRY(CLSID_TaskbandPin, CTaskbandPin)
     OBJECT_ENTRY(CLSID_StartMenuCacheAndAppResolver, CStartMenuCacheAndAppResolver)
     OBJECT_ENTRY(CLSID_ShellFolderSet, CShellFolderSet)
+    OBJECT_ENTRY(CLSID_DestinationList, CDestinationList)
+    OBJECT_ENTRY(CLSID_AutomaticDestinationList, CAutomaticDestinationList)
+    OBJECT_ENTRY(CLSID_EnumerableObjectCollection, CEnumerableObjectCollection)
+    OBJECT_ENTRY(CLSID_ApplicationDestinations, CApplicationDestinations)
+    OBJECT_ENTRY(CLSID_ApplicationDocumentLists, CApplicationDocumentLists)
+    OBJECT_ENTRY(CLSID_ProgramsFolderAndFastItems, CProgramsFolderAndFastItemsClass)
+    OBJECT_ENTRY(CLSID_PersonalStartMenu, CPersonalStartMenuClass)
+    OBJECT_ENTRY(CLSID_StartMenuGroupPolicyFilter, CStartMenuGroupPolicyFilterClass)
 #ifdef SHELL32_DUIFRAME
     OBJECT_ENTRY(CLSID_DUIShellViewFrame, CDUIViewFrame)
     OBJECT_ENTRY(CLSID_CommonLayoutDefinition, CCommonLayoutDefinition)
     OBJECT_ENTRY(CLSID_CommonLayoutModifier, CCommonLayoutModifier)
+    OBJECT_ENTRY(CLSID_CommandFolder, CCommandFolderClass)
+    OBJECT_ENTRY(CLSID_CommonCommandState, CCommonCommandStateClass)
+    OBJECT_ENTRY(CLSID_FolderOptionsCommand, CFolderOptionsCommandClass)
+    OBJECT_ENTRY(CLSID_SelectAllExecute, CSelectAllExecuteClass)
+    OBJECT_ENTRY(CLSID_RenameExecute, CRenameExecuteClass)
+    OBJECT_ENTRY(CLSID_CloseWindowExecute, CCloseWindowExecuteClass)
+    OBJECT_ENTRY(CLSID_MenuBarExecute, CMenuBarExecuteClass)
+    OBJECT_ENTRY(CLSID_UndoExecute, CUndoExecuteClass)
+    OBJECT_ENTRY(CLSID_RedoExecute, CRedoExecuteClass)
 #endif
 END_OBJECT_MAP()
 
