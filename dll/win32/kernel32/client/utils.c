@@ -10,6 +10,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <k32.h>
+#include <ndk/sefuncs.h>
 #ifdef _M_IX86
 #include "i386/ketypes.h"
 #elif defined _M_AMD64
@@ -59,6 +60,87 @@ BasepAnsiStringToUnicodeSize(IN PANSI_STRING String)
     return RtlAnsiStringToUnicodeSize(String);
 }
 
+/*
+ * Opens the named object directory of an app container, the one kernel32 made
+ * for it under \Sessions\<n>\AppContainerNamedObjects. A child container lives
+ * inside its parent's directory, named by its last four sub-authorities.
+ */
+static
+NTSTATUS
+BasepOpenAppContainerNamedObjects(
+    _In_ HANDLE Token,
+    _Out_ PHANDLE DirectoryHandle)
+{
+    ULONG Buffer[(sizeof(TOKEN_APPCONTAINER_INFORMATION) + SECURITY_MAX_SID_SIZE) / sizeof(ULONG)];
+    PTOKEN_APPCONTAINER_INFORMATION Container = (PTOKEN_APPCONTAINER_INFORMATION)Buffer;
+    APPCONTAINER_SID_TYPE SidType;
+    UNICODE_STRING Name, SidString = {0};
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    WCHAR Path[MAX_PATH], RootPath[64];
+    HANDLE Root;
+    PSID ParentSid;
+    ULONG SessionId, Length;
+    NTSTATUS Status;
+
+    Status = NtQueryInformationToken(Token, TokenSessionId, &SessionId, sizeof(SessionId), &Length);
+    if (NT_SUCCESS(Status))
+        Status = NtQueryInformationToken(Token, TokenAppContainerSid, Container, sizeof(Buffer), &Length);
+    if (NT_SUCCESS(Status))
+        Status = RtlGetAppContainerSidType(Container->TokenAppContainer, &SidType);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (SidType == ParentAppContainerSidType)
+    {
+        Status = RtlConvertSidToUnicodeString(&SidString, Container->TokenAppContainer, TRUE);
+        if (NT_SUCCESS(Status))
+            Status = RtlStringCchPrintfW(Path, _countof(Path), L"%wZ", &SidString);
+    }
+    else
+    {
+        Status = RtlGetAppContainerParent(Container->TokenAppContainer, &ParentSid);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        Status = RtlConvertSidToUnicodeString(&SidString, ParentSid, TRUE);
+        RtlFreeSid(ParentSid);
+        if (NT_SUCCESS(Status))
+        {
+            Status = RtlStringCchPrintfW(Path, _countof(Path), L"%wZ\\%lu-%lu-%lu-%lu", &SidString,
+                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 8),
+                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 9),
+                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 10),
+                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 11));
+        }
+    }
+    RtlFreeUnicodeString(&SidString);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* The container root is only passed through, the container's own directory is used */
+    Status = RtlStringCchPrintfW(RootPath, _countof(RootPath),
+                                 L"\\Sessions\\%lu\\AppContainerNamedObjects", SessionId);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RtlInitUnicodeString(&Name, RootPath);
+    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE, NULL, NULL);
+    Status = NtOpenDirectoryObject(&Root, DIRECTORY_TRAVERSE, &ObjectAttributes);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RtlInitUnicodeString(&Name, Path);
+    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE, Root, NULL);
+    Status = NtOpenDirectoryObject(DirectoryHandle,
+                                   DIRECTORY_QUERY |
+                                   DIRECTORY_TRAVERSE |
+                                   DIRECTORY_CREATE_OBJECT |
+                                   DIRECTORY_CREATE_SUBDIRECTORY,
+                                   &ObjectAttributes);
+    NtClose(Root);
+    return Status;
+}
+
 NTSTATUS
 WINAPI
 BaseGetNamedObjectDirectory(
@@ -66,7 +148,8 @@ BaseGetNamedObjectDirectory(
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     NTSTATUS Status;
-    HANDLE DirHandle, BnoHandle, Token, NewToken;
+    HANDLE DirHandle, BnoHandle, Token, NewToken, ProcessToken;
+    ULONG IsAppContainer = 0, Length;
 
     *DirectoryHandle = BaseNamedObjectDirectory;
 
@@ -104,6 +187,21 @@ BaseGetNamedObjectDirectory(
 
     RtlAcquirePebLock();
     if (BaseNamedObjectDirectory) goto Quickie;
+
+    /* An app container keeps its named objects in a directory of its own */
+    if (NT_SUCCESS(NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &ProcessToken)))
+    {
+        Status = NtQueryInformationToken(ProcessToken, TokenIsAppContainer, &IsAppContainer,
+                                         sizeof(IsAppContainer), &Length);
+        if (NT_SUCCESS(Status) && IsAppContainer)
+        {
+            Status = BasepOpenAppContainerNamedObjects(ProcessToken, &BnoHandle);
+            NtClose(ProcessToken);
+            if (NT_SUCCESS(Status)) BaseNamedObjectDirectory = BnoHandle;
+            goto Quickie;
+        }
+        NtClose(ProcessToken);
+    }
 
     InitializeObjectAttributes(&ObjectAttributes,
                                &BaseStaticServerData->NamedObjectDirectory,
