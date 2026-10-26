@@ -213,7 +213,7 @@ RtOpenUserPackages(
 static
 HRESULT
 RtOpenEntry(
-    _In_ PSID UserSid,
+    _In_ PRT_CALLER Caller,
     _In_ PCWSTR PackageFullName,
     _In_ PCWSTR Collection,
     _In_ PCWSTR Name,
@@ -221,7 +221,8 @@ RtOpenEntry(
 {
     WCHAR Path[MAX_PATH * 2];
     HKEY Packages;
-    LONG Error;
+    BOOL Impersonating;
+    LONG Error = ERROR_FILE_NOT_FOUND;
 
     *Key = NULL;
     if (!PackageFullName[0])
@@ -233,13 +234,18 @@ RtOpenEntry(
 
     _snwprintf(Path, ARRAYSIZE(Path), L"%s\\%s\\%s", PackageFullName, Collection, Name);
     Path[ARRAYSIZE(Path) - 1] = UNICODE_NULL;
-    if (SUCCEEDED(RtOpenUserPackages(UserSid, &Packages)))
+
+    /* NetworkService may not read a user's hive, so read it with the caller's token */
+    Impersonating = SetThreadToken(NULL, Caller->Token);
+    if (SUCCEEDED(RtOpenUserPackages(Caller->UserSid, &Packages)))
     {
         Error = RegOpenKeyExW(Packages, Path, 0, RT_REGISTRY_READ, Key);
         RegCloseKey(Packages);
-        if (Error == ERROR_SUCCESS)
-            return S_OK;
     }
+    if (Impersonating)
+        RevertToSelf();
+    if (Error == ERROR_SUCCESS)
+        return S_OK;
 
     _snwprintf(Path, ARRAYSIZE(Path), L"%s\\%s\\%s\\%s", RT_PACKAGED_ROOT, PackageFullName, Collection, Name);
     Path[ARRAYSIZE(Path) - 1] = UNICODE_NULL;
@@ -301,7 +307,7 @@ RtReadServer(
     RtlZeroMemory(Server, sizeof(*Server));
     wcsncpy(Server->PackageFullName, PackageFullName, RT_PACKAGE_NAME_LENGTH - 1);
 
-    Status = RtOpenEntry(Caller->UserSid, PackageFullName, L"ActivatableClassId", ClassId, &Key);
+    Status = RtOpenEntry(Caller, PackageFullName, L"ActivatableClassId", ClassId, &Key);
     if (FAILED(Status))
         return REGDB_E_CLASSNOTREG;
 
@@ -315,7 +321,7 @@ RtReadServer(
     if (!Server->ServerName)
         return REGDB_E_INVALIDVALUE;
 
-    Status = RtOpenEntry(Caller->UserSid, PackageFullName, L"Server", Server->ServerName, &Key);
+    Status = RtOpenEntry(Caller, PackageFullName, L"Server", Server->ServerName, &Key);
     if (FAILED(Status))
     {
         RtFreeServerInfo(Server);
@@ -559,7 +565,7 @@ RtScmRegisterServer(
     for (Index = 0; Index < ClassCount; Index++)
     {
         if (!Classes[Index].ClassId ||
-            FAILED(RtOpenEntry(Caller.UserSid, Caller.PackageFullName, L"ActivatableClassId", Classes[Index].ClassId, &Key)))
+            FAILED(RtOpenEntry(&Caller, Caller.PackageFullName, L"ActivatableClassId", Classes[Index].ClassId, &Key)))
         {
             ERR("Process %lu of package %s may not serve %s\n", Caller.ProcessId,
                 debugstr_w(Caller.PackageFullName), debugstr_w(Classes[Index].ClassId));
