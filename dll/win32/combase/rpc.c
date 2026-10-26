@@ -29,6 +29,9 @@
 
 #include "wine/debug.h"
 #include "wine/exception.h"
+#ifdef __REACTOS__
+#include <sddl.h>
+#endif
 
 #include "combase_private.h"
 
@@ -2215,11 +2218,29 @@ void rpc_start_remoting(struct apartment *apt)
 
         get_rpc_endpoint(endpoint, &apt->oxid);
 
+#ifdef __REACTOS__
+        {
+            /* As on Windows, app containers may call into any apartment */
+            PSECURITY_DESCRIPTOR sd = NULL;
+
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                L"D:(A;;0x130001;;;WD)(A;;0x130001;;;AN)(A;;0x20001;;;AC)"
+                L"(A;;0x20001;;;S-1-15-3-1024-2405443489-874036122-4286035555-1823921565-1746547431-2453885448-3625952902-991631256)",
+                SDDL_REVISION_1, &sd, NULL);
+            status = RpcServerUseProtseqEpW(
+                rpctransportW,
+                RPC_C_PROTSEQ_MAX_REQS_DEFAULT,
+                endpoint,
+                sd);
+            LocalFree(sd);
+        }
+#else
         status = RpcServerUseProtseqEpW(
             rpctransportW,
             RPC_C_PROTSEQ_MAX_REQS_DEFAULT,
             endpoint,
             NULL);
+#endif
         if (status != RPC_S_OK)
             ERR("Couldn't register endpoint %s\n", debugstr_w(endpoint));
 
