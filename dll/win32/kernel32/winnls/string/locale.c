@@ -6015,6 +6015,38 @@ static struct {
     WCHAR daylight_name[32];
 } cached_tzname;
 
+static
+VOID
+TimeFieldsToSystemTime(
+    _Out_ LPSYSTEMTIME SystemTime,
+    _In_ const TIME_FIELDS *TimeFields)
+{
+    SystemTime->wYear = TimeFields->Year;
+    SystemTime->wMonth = TimeFields->Month;
+    SystemTime->wDayOfWeek = TimeFields->Weekday;
+    SystemTime->wDay = TimeFields->Day;
+    SystemTime->wHour = TimeFields->Hour;
+    SystemTime->wMinute = TimeFields->Minute;
+    SystemTime->wSecond = TimeFields->Second;
+    SystemTime->wMilliseconds = TimeFields->Milliseconds;
+}
+
+static
+VOID
+SystemTimeToTimeFields(
+    _Out_ PTIME_FIELDS TimeFields,
+    _In_ const SYSTEMTIME *SystemTime)
+{
+    TimeFields->Year = SystemTime->wYear;
+    TimeFields->Month = SystemTime->wMonth;
+    TimeFields->Day = SystemTime->wDay;
+    TimeFields->Hour = SystemTime->wHour;
+    TimeFields->Minute = SystemTime->wMinute;
+    TimeFields->Second = SystemTime->wSecond;
+    TimeFields->Milliseconds = SystemTime->wMilliseconds;
+    TimeFields->Weekday = SystemTime->wDayOfWeek;
+}
+
 /***********************************************************************
  *	GetDynamicTimeZoneInformation   (kernelbase.@)
  */
@@ -6022,9 +6054,41 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetDynamicTimeZoneInformation( DYNAMIC_TIME_ZONE_
 {
     HKEY key;
     LARGE_INTEGER now;
+#ifdef __REACTOS__
+    RTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZone;
+    NTSTATUS Status;
 
+    /* The kernel keeps the zone loaded, the registry is not read here */
+    Status = NtQuerySystemInformation(SystemDynamicTimeZoneInformation,
+                                      &TimeZone,
+                                      sizeof(TimeZone),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return TIME_ZONE_ID_INVALID;
+    }
+
+    info->Bias = TimeZone.Bias;
+    RtlCopyMemory(info->StandardName, TimeZone.StandardName, sizeof(info->StandardName));
+    TimeFieldsToSystemTime(&info->StandardDate, &TimeZone.StandardDate);
+    info->StandardBias = TimeZone.StandardBias;
+    RtlCopyMemory(info->DaylightName, TimeZone.DaylightName, sizeof(info->DaylightName));
+    TimeFieldsToSystemTime(&info->DaylightDate, &TimeZone.DaylightDate);
+    info->DaylightBias = TimeZone.DaylightBias;
+    RtlCopyMemory(info->TimeZoneKeyName, TimeZone.TimeZoneKeyName, sizeof(info->TimeZoneKeyName));
+    info->DynamicDaylightTimeDisabled = TimeZone.DynamicDaylightTimeDisabled;
+
+    /* Names are returned as stored unless they are MUI references */
+    if (info->StandardName[0] != L'@' && info->DaylightName[0] != L'@')
+    {
+        NtQuerySystemTime( &now );
+        return get_timezone_id( (TIME_ZONE_INFORMATION *)info, now, FALSE );
+    }
+#else
     if (!set_ntstatus( RtlQueryDynamicTimeZoneInformation( (RTL_DYNAMIC_TIME_ZONE_INFORMATION *)info )))
         return TIME_ZONE_ID_INVALID;
+#endif
 
     RtlEnterCriticalSection( &tzname_section );
     if (cached_tzname.lcid == GetThreadLocale() &&
@@ -7968,6 +8032,46 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetThreadPreferredUILanguages( DWORD flags, PCZZWS
 }
 
 
+#if (__REACTOS__ && DLL_EXPORT_VERSION >= 0x600)
+/***********************************************************************
+ *	SetDynamicTimeZoneInformation   (kernelbase.@)
+ */
+BOOL
+WINAPI
+SetDynamicTimeZoneInformation(
+    _In_ const DYNAMIC_TIME_ZONE_INFORMATION *lpTimeZoneInformation)
+{
+    RTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZone;
+    NTSTATUS Status;
+
+    RtlZeroMemory(&TimeZone, sizeof(TimeZone));
+    TimeZone.Bias = lpTimeZoneInformation->Bias;
+    RtlCopyMemory(TimeZone.StandardName, lpTimeZoneInformation->StandardName, sizeof(TimeZone.StandardName));
+    SystemTimeToTimeFields(&TimeZone.StandardDate, &lpTimeZoneInformation->StandardDate);
+    TimeZone.StandardBias = lpTimeZoneInformation->StandardBias;
+    RtlCopyMemory(TimeZone.DaylightName, lpTimeZoneInformation->DaylightName, sizeof(TimeZone.DaylightName));
+    SystemTimeToTimeFields(&TimeZone.DaylightDate, &lpTimeZoneInformation->DaylightDate);
+    TimeZone.DaylightBias = lpTimeZoneInformation->DaylightBias;
+    RtlCopyMemory(TimeZone.TimeZoneKeyName,
+                  lpTimeZoneInformation->TimeZoneKeyName,
+                  sizeof(TimeZone.TimeZoneKeyName));
+    TimeZone.DynamicDaylightTimeDisabled = lpTimeZoneInformation->DynamicDaylightTimeDisabled;
+
+    /* The kernel writes the registry and applies the zone */
+    Status = NtSetSystemInformation(SystemDynamicTimeZoneInformation,
+                                    &TimeZone,
+                                    sizeof(TimeZone));
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+#endif
+
+
 /***********************************************************************
  *	SetTimeZoneInformation   (kernelbase.@)
  */
@@ -8007,15 +8111,8 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetTimeZoneInformation( const TIME_ZONE_INFORMATIO
     TimeZoneInformation.DaylightDate.Weekday = info->DaylightDate.wDayOfWeek;
     TimeZoneInformation.DaylightBias = info->DaylightBias;
 
-    Status = RtlSetTimeZoneInformation(&TimeZoneInformation);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("RtlSetTimeZoneInformation() failed (Status %lx)\n", Status);
-        BaseSetLastNTError(Status);
-        return FALSE;
-    }
-
-    Status = NtSetSystemInformation(SystemCurrentTimeZoneInformation,
+    /* The kernel writes the registry, clears the key name and applies the zone */
+    Status = NtSetSystemInformation(SystemTimeZoneInformation,
                                     (PVOID)&TimeZoneInformation,
                                     sizeof(RTL_TIME_ZONE_INFORMATION));
     if (!NT_SUCCESS(Status))
