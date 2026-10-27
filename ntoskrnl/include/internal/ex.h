@@ -7,7 +7,7 @@ extern "C"
 
 /* GLOBAL VARIABLES *********************************************************/
 
-extern RTL_TIME_ZONE_INFORMATION ExpTimeZoneInfo;
+extern RTL_DYNAMIC_TIME_ZONE_INFORMATION ExpTimeZoneInfo;
 extern LARGE_INTEGER ExpTimeZoneBias;
 extern ULONG ExpTimeZoneId;
 extern ULONG ExpTickCountMultiplier;
@@ -30,6 +30,7 @@ extern ULONG ExpInitializationPhase;
 extern FIRMWARE_TYPE ExpFirmwareType;
 extern GUID ExpBootIdentifier;
 extern ULONG ExpAltTimeZoneBias;
+extern BOOLEAN ExpRealTimeIsUniversal;
 extern LIST_ENTRY ExSystemLookasideListHead;
 extern PCALLBACK_OBJECT PowerStateCallback;
 extern LIST_ENTRY ExPoolLookasideListHead;
@@ -1544,8 +1545,8 @@ ExTryToAcquireResourceExclusiveLite(
 
 NTSTATUS
 ExpSetTimeZoneInformation(
-    IN PRTL_TIME_ZONE_INFORMATION TimeZoneInformation
-);
+    _In_reads_bytes_(Length) PVOID TimeZoneInformation,
+    _In_ ULONG Length);
 
 BOOLEAN
 NTAPI
