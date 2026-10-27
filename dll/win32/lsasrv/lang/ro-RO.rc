@@ -82,4 +82,5 @@ BEGIN
     IDS_MANAGE_VOLUME_PRIVILEGE "Efectuează sarcini de mentenanță a volumelor"
     IDS_IMPERSONATE_PRIVILEGE "Impersonează un client după autentificare"
     IDS_CREATE_GLOBAL_PRIVILEGE "Crează obiecte globale"
+    IDS_TIME_ZONE_PRIVILEGE "Change the time zone"
 END

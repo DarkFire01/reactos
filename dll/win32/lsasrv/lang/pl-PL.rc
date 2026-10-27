@@ -74,4 +74,5 @@ BEGIN
     IDS_MANAGE_VOLUME_PRIVILEGE "Wykonuj zadania konserwacji woluminów"
     IDS_IMPERSONATE_PRIVILEGE "Personifikuj klienta po uwierzytelnieniu"
     IDS_CREATE_GLOBAL_PRIVILEGE "Utwórz obiekty globalne"
+    IDS_TIME_ZONE_PRIVILEGE "Change the time zone"
 END
