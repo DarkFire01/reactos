@@ -370,11 +370,10 @@ DbgkForwardException(IN PEXCEPTION_RECORD ExceptionRecord,
         Status = DbgkpSendApiMessage(&ApiMessage, DebugPort);
     }
 
-    /* Check if we failed, and for a debug port, also check the return status */
+    /* Check if we failed, and for either port, also check the return status */
     if (!(NT_SUCCESS(Status)) ||
-        ((DebugPort) &&
-         (!(NT_SUCCESS(ApiMessage.ReturnedStatus)) ||
-           (ApiMessage.ReturnedStatus == DBG_EXCEPTION_NOT_HANDLED))))
+        !(NT_SUCCESS(ApiMessage.ReturnedStatus)) ||
+        (ApiMessage.ReturnedStatus == DBG_EXCEPTION_NOT_HANDLED))
     {
         /* Fail */
         return FALSE;
