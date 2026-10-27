@@ -3054,6 +3054,16 @@ NtUserGetUpdatedClipboardFormats(
 
 BOOL
 NTAPI
+NtUserAddClipboardFormatListener(
+    _In_ HWND hwnd);
+
+BOOL
+NTAPI
+NtUserRemoveClipboardFormatListener(
+    _In_ HWND hwnd);
+
+BOOL
+NTAPI
 NtUserRegisterSessionPort(
     _In_ HANDLE Port);
 
