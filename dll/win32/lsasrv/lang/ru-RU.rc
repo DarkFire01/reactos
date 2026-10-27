@@ -76,4 +76,5 @@ BEGIN
     IDS_MANAGE_VOLUME_PRIVILEGE "Выполнение задач по обслуживанию томов"
     IDS_IMPERSONATE_PRIVILEGE "Олицетворять клиента после проверки подлинности"
     IDS_CREATE_GLOBAL_PRIVILEGE "Создание глобальных объектов"
+    IDS_TIME_ZONE_PRIVILEGE "Change the time zone"
 END
