@@ -38,6 +38,7 @@ _1 = %cdname%,%cdtagfile%,,""
 5 = media
 6 = Fonts
 7 = bin
+8 = Globalization\ICU
 
 [DiskSpaceRequirements]
 ; Required free system partition disk space in MB
@@ -186,6 +187,11 @@ msvcp_win.dll    = 1,,,,,,x,2,,,,1,2
 profapi.dll      = 1,,,,,,x,2,,,,1,2
 vcruntime140.dll = 1,,,,,,x,2,,,,1,2
 vcruntime140_1.dll = 1,,,,,,x,2,,,,1,2
+icudtl.dat        = 1,Globalization\ICU,,,,,x,8,,,,1,8
+metaZones.res     = 1,Globalization\ICU,,,,,x,8,,,,1,8
+timezoneTypes.res = 1,Globalization\ICU,,,,,x,8,,,,1,8
+windowsZones.res  = 1,Globalization\ICU,,,,,x,8,,,,1,8
+zoneinfo64.res    = 1,Globalization\ICU,,,,,x,8,,,,1,8
 
 ;
 ; The [SystemPartitionFiles] section lists all the files
