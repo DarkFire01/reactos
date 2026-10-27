@@ -44,6 +44,7 @@ typedef struct _TIMEZONE_ENTRY
     WCHAR Description[128]; /* 'Display' */
     WCHAR StandardName[32]; /* 'Std' */
     WCHAR DaylightName[32]; /* 'Dlt' */
+    WCHAR KeyName[128];
     REG_TZI_FORMAT TimezoneInfo; /* 'TZI' */
     ULONG Index;
 } TIMEZONE_ENTRY, *PTIMEZONE_ENTRY;
@@ -1678,8 +1679,9 @@ GetLargerTimeZoneEntry(PSETUPDATA SetupData, DWORD Index)
 
 static LONG
 RetrieveTimeZone(
-    IN HKEY hZoneKey,
-    IN PVOID Context)
+    _In_ HKEY hZoneKey,
+    _In_ PCWSTR KeyName,
+    _In_opt_ PVOID Context)
 {
     LONG lError;
     PSETUPDATA SetupData = (PSETUPDATA)Context;
@@ -1689,11 +1691,17 @@ RetrieveTimeZone(
     ULONG StandardNameSize;
     ULONG DaylightNameSize;
 
+    /* The key name identifies the zone, a longer one could not be set */
+    if (wcslen(KeyName) >= ARRAYSIZE(Entry->KeyName))
+        return ERROR_SUCCESS;
+
     Entry = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(TIMEZONE_ENTRY));
     if (Entry == NULL)
     {
         return ERROR_NOT_ENOUGH_MEMORY;
     }
+
+    wcscpy(Entry->KeyName, KeyName);
 
     DescriptionSize  = sizeof(Entry->Description);
     StandardNameSize = sizeof(Entry->StandardName);
@@ -1863,9 +1871,11 @@ ShowTimeZoneList(HWND hwnd, PSETUPDATA SetupData, DWORD dwEntryIndex)
 
 
 static VOID
-SetLocalTimeZone(HWND hwnd, PSETUPDATA SetupData)
+SetLocalTimeZone(
+    _In_ HWND hwnd,
+    _In_ PSETUPDATA SetupData,
+    _In_ BOOL AutoDaylight)
 {
-    TIME_ZONE_INFORMATION TimeZoneInformation;
     PTIMEZONE_ENTRY Entry;
     DWORD dwIndex;
     DWORD i;
@@ -1886,24 +1896,12 @@ SetLocalTimeZone(HWND hwnd, PSETUPDATA SetupData)
         Entry = Entry->Next;
     }
 
-    wcscpy(TimeZoneInformation.StandardName,
-           Entry->StandardName);
-    wcscpy(TimeZoneInformation.DaylightName,
-           Entry->DaylightName);
+    if (Entry == NULL)
+        return;
 
-    TimeZoneInformation.Bias = Entry->TimezoneInfo.Bias;
-    TimeZoneInformation.StandardBias = Entry->TimezoneInfo.StandardBias;
-    TimeZoneInformation.DaylightBias = Entry->TimezoneInfo.DaylightBias;
-
-    memcpy(&TimeZoneInformation.StandardDate,
-           &Entry->TimezoneInfo.StandardDate,
-           sizeof(SYSTEMTIME));
-    memcpy(&TimeZoneInformation.DaylightDate,
-           &Entry->TimezoneInfo.DaylightDate,
-           sizeof(SYSTEMTIME));
-
-    /* Set time zone information */
-    SetTimeZoneInformation(&TimeZoneInformation);
+    /* Set the zone with its key name, as the date and time control panel does */
+    if (!SetLocalTimeZoneByKey(Entry->KeyName, AutoDaylight))
+        DPRINT1("Setting time zone '%S' failed (Error %lu)\n", Entry->KeyName, GetLastError());
 }
 
 
@@ -1964,13 +1962,17 @@ WriteDateTimeSettings(HWND hwndDlg, PSETUPDATA SetupData)
 {
     WCHAR Title[64];
     WCHAR ErrorLocalTime[256];
+    BOOL bAutoDaylight;
+
+    bAutoDaylight = (SendDlgItemMessage(hwndDlg, IDC_AUTODAYLIGHT,
+                                        BM_GETCHECK, 0, 0) != BST_UNCHECKED);
 
     GetLocalSystemTime(hwndDlg, SetupData);
     SetLocalTimeZone(GetDlgItem(hwndDlg, IDC_TIMEZONELIST),
-                     SetupData);
+                     SetupData,
+                     bAutoDaylight);
 
-    SetAutoDaylight(SendDlgItemMessage(hwndDlg, IDC_AUTODAYLIGHT,
-                                       BM_GETCHECK, 0, 0) != BST_UNCHECKED);
+    SetAutoDaylight(bAutoDaylight);
     if (!SetSystemLocalTime(hwndDlg, SetupData))
     {
         if (0 == LoadStringW(hDllInstance, IDS_REACTOS_SETUP, Title, ARRAYSIZE(Title)))
