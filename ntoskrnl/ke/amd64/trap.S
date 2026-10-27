@@ -619,10 +619,17 @@ FUNC KiRaiseSecurityCheckFailure
     /* Point RIP back at the INT29 instruction */
     sub qword ptr [rbp + KTRAP_FRAME_Rip], 2
 
+    /* The debugger and exception port waits need interrupts, if the caller had them on */
+    test dword ptr [rbp + KTRAP_FRAME_EFlags], EFLAGS_IF_MASK
+    jz FastFailIntsDisabled
+    sti
+
+FastFailIntsDisabled:
     DispatchLastChance STATUS_STACK_BUFFER_OVERRUN, 1, [rbp + KTRAP_FRAME_Rcx], 0, 0
 
-    /* Return */
-    ExitTrap TF_SAVE_ALL
+    /* A process terminated meanwhile dies here through its user APC, instead of failing again */
+    cli
+    ExitTrap (TF_SAVE_ALL or TF_CHECKUSERAPC)
 ENDFUNC
 
 
@@ -901,6 +908,10 @@ PUBLIC KiSystemCallEntry64
     mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_TrapFrame], rcx
     mov [rax + ThTrapFrame], rdx
 
+    /* User mode runs at PASSIVE_LEVEL. KiServiceExit3 checks this field when
+       NtContinue or NtRaiseException leave through this trap frame. */
+    mov byte ptr [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_PreviousIrql], 0
+
 #if DBG
     /* Check IRQL */
     mov rax, cr8
@@ -908,10 +919,6 @@ PUBLIC KiSystemCallEntry64
     jz KiSystemCall64Again
     int HEX(2C)
 #endif
-    /* User mode runs at PASSIVE_LEVEL. KiServiceExit3 checks this field when
-       NtContinue or NtRaiseException leave through this trap frame. */
-    mov byte ptr [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_PreviousIrql], 0
-
 
 GLOBAL_LABEL KiSystemCall64Again
 
