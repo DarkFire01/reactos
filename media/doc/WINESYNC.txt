@@ -79,7 +79,7 @@ dll/directx/wine/qcap           # Synced to wine-10.1-dev (b00c7619f1b)
 dll/directx/wine/qedit          # Synced to wine-10.1-dev (b00c7619f1b)
 dll/directx/wine/quartz         # Synced to wine-10.1-dev (b00c7619f1b)
 dll/directx/wine/wined3d        # Synced to wine-10.1-dev (b00c7619f1b). Built as d3dwine.dll.
-sdk/lib/vkd3d                   # Wine bundled vkd3d 1.14, synced to wine-10.1-dev (b00c7619f1b)
+sdk/lib/vkd3d                   # Wine bundled vkd3d 2.1, synced to Wine-11.20
 
 dll/win32/activeds            # Synced to Wine-10.0
 dll/win32/activeds.tlb        # Synced to Wine-10.0
