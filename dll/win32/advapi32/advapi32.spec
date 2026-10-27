@@ -276,7 +276,7 @@
 # @ stub EncryptionDisable
 @ stdcall EnumDependentServicesA(long long ptr long ptr ptr)
 @ stdcall -import EnumDependentServicesW(long long ptr long ptr ptr)
-@ stdcall -import -stub EnumDynamicTimeZoneInformation(long ptr)
+@ stdcall -version=0x600+ EnumDynamicTimeZoneInformation(long ptr) kernel32.EnumDynamicTimeZoneInformation
 @ stub EnumServiceGroupA
 @ stdcall EnumServiceGroupW(ptr long long ptr long ptr ptr ptr wstr)
 @ stdcall EnumServicesStatusA(long long long ptr long ptr ptr ptr)
@@ -322,7 +322,7 @@
 @ stdcall GetAuditedPermissionsFromAclW(ptr ptr ptr ptr)
 @ stdcall GetCurrentHwProfileA(ptr)
 @ stdcall GetCurrentHwProfileW(ptr)
-@ stdcall -stub GetDynamicTimeZoneInformationEffectiveYears(ptr ptr ptr) #kernel32.GetDynamicTimeZoneInformationEffectiveYears
+@ stdcall -version=0x600+ GetDynamicTimeZoneInformationEffectiveYears(ptr ptr ptr) kernel32.GetDynamicTimeZoneInformationEffectiveYears
 @ stdcall GetEffectiveRightsFromAclA(ptr ptr ptr)
 @ stdcall GetEffectiveRightsFromAclW(ptr ptr ptr)
 # @ stub GetEncryptedFileMetadata
