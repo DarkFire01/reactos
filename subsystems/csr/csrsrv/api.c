@@ -469,12 +469,13 @@ CsrApiRequestThread(
             /* This wasn't a CSR Thread, release lock */
             CsrReleaseProcessLock();
 
-            /* If this was an exception, handle it */
+            /* Leave an unhandled exception to the kernel, which ends the process with its code */
             if (MessageType == LPC_EXCEPTION)
             {
+                DebugMessage = (PDBGKM_MSG)&ReceiveMsg;
+                DebugMessage->ReturnedStatus = DBG_EXCEPTION_NOT_HANDLED;
                 ReplyMsg = &ReceiveMsg;
                 ReplyPort = CsrApiPort;
-                ReplyMsg->Status = DBG_CONTINUE;
             }
             else if (MessageType == LPC_PORT_CLOSED ||
                      MessageType == LPC_CLIENT_DIED)
@@ -665,15 +666,9 @@ CsrApiRequestThread(
             /* Check if this was an exception */
             if (MessageType == LPC_EXCEPTION)
             {
-                /* Kill the process */
-                NtTerminateProcess(CsrProcess->ProcessHandle, STATUS_ABANDONED);
-
-                /* Destroy it from CSR */
-                CsrDestroyProcess(&ReceiveMsg.Header.ClientId, STATUS_ABANDONED);
-
-                /* Return a Debug Message */
+                /* Not handled here either, the kernel ends the process with the exception code */
                 DebugMessage = (PDBGKM_MSG)&ReceiveMsg;
-                DebugMessage->ReturnedStatus = DBG_CONTINUE;
+                DebugMessage->ReturnedStatus = DBG_EXCEPTION_NOT_HANDLED;
                 ReplyMsg = &ReceiveMsg;
                 ReplyPort = CsrApiPort;
 
