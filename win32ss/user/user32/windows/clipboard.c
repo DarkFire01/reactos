@@ -374,24 +374,3 @@ SetClipboardData(UINT uFormat, HANDLE hMem)
     return hRet;
 }
 
-/*
- * @unimplemented
- */
-BOOL
-WINAPI
-AddClipboardFormatListener(HWND hwnd)
-{
-    UNIMPLEMENTED;
-    return FALSE;
-}
-/*
- * @unimplemented
- */
-BOOL
-WINAPI
-RemoveClipboardFormatListener(HWND hwnd)
-{
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
