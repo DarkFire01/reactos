@@ -180,6 +180,8 @@
 @ stdcall -stub -version=0x600+ LdrResFindResourceDirectory(ptr long long long long long long)
 @ stdcall -stub -version=0x600+ LdrResRelease(ptr ptr long long)
 @ stdcall -stub -version=0x600+ LdrResSearchResource(wstr wstr long long long ptr long long)
+@ stdcall -version=0x602+ LdrResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long)
+@ stdcall -version=0x602+ LdrResolveDelayLoadsFromDll(ptr str long)
 @ stdcall LdrSetAppCompatDllRedirectionCallback(long ptr ptr)
 @ stdcall LdrSetDllManifestProber(ptr)
 @ stdcall -stub -version=0x600+ LdrSetMUICacheType(long)
