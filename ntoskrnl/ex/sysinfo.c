@@ -2159,33 +2159,43 @@ QSI_DEF(SystemLegacyDriverInformation)
     return STATUS_NOT_IMPLEMENTED;
 }
 
-/* Class 44 - Current Time Zone Information */
-QSI_DEF(SystemCurrentTimeZoneInformation)
+/* Copies the current time zone, of which the RTL_TIME_ZONE_INFORMATION is the start */
+static
+NTSTATUS
+ExpQueryTimeZone(
+    _Out_writes_bytes_(Size) PVOID Buffer,
+    _In_ ULONG Size,
+    _In_ ULONG TimeZoneSize,
+    _Out_ PULONG ReqSize)
 {
-    *ReqSize = sizeof(RTL_TIME_ZONE_INFORMATION);
+    RTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZone;
 
-    if (sizeof(RTL_TIME_ZONE_INFORMATION) != Size)
-    {
+    *ReqSize = TimeZoneSize;
+    if (Size < TimeZoneSize)
         return STATUS_INFO_LENGTH_MISMATCH;
-    }
 
-    /* Copy the time zone information struct */
-    memcpy(Buffer,
-           &ExpTimeZoneInfo,
-           sizeof(RTL_TIME_ZONE_INFORMATION));
+    /* Take a snapshot first, the user buffer may fault */
+    ExAcquireTimeRefreshLock(TRUE);
+    RtlCopyMemory(&TimeZone, &ExpTimeZoneInfo, sizeof(TimeZone));
+    ExReleaseTimeRefreshLock();
 
+    RtlCopyMemory(Buffer, &TimeZone, TimeZoneSize);
     return STATUS_SUCCESS;
 }
 
+/* Class 44 - Current Time Zone Information */
+QSI_DEF(SystemCurrentTimeZoneInformation)
+{
+    return ExpQueryTimeZone(Buffer, Size, sizeof(RTL_TIME_ZONE_INFORMATION), ReqSize);
+}
+
+/* NT 5.x callers set the time zone through this class */
 SSI_DEF(SystemCurrentTimeZoneInformation)
 {
-    /* Check user buffer's size */
-    if (Size < sizeof(RTL_TIME_ZONE_INFORMATION))
-    {
+    if (Size != sizeof(RTL_TIME_ZONE_INFORMATION))
         return STATUS_INFO_LENGTH_MISMATCH;
-    }
 
-    return ExpSetTimeZoneInformation((PRTL_TIME_ZONE_INFORMATION)Buffer);
+    return ExpSetTimeZoneInformation(Buffer, Size);
 }
 
 static
@@ -3121,6 +3131,29 @@ QSI_DEF(SystemPhysicalMemoryInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 93 - Time Zone Information, set only */
+SSI_DEF(SystemTimeZoneInformation)
+{
+    if (Size != sizeof(RTL_TIME_ZONE_INFORMATION))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    return ExpSetTimeZoneInformation(Buffer, Size);
+}
+
+/* Class 102 - Dynamic Time Zone Information */
+QSI_DEF(SystemDynamicTimeZoneInformation)
+{
+    return ExpQueryTimeZone(Buffer, Size, sizeof(RTL_DYNAMIC_TIME_ZONE_INFORMATION), ReqSize);
+}
+
+SSI_DEF(SystemDynamicTimeZoneInformation)
+{
+    if (Size != sizeof(RTL_DYNAMIC_TIME_ZONE_INFORMATION))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    return ExpSetTimeZoneInformation(Buffer, Size);
+}
+
 /* Query/Set Calls Table */
 typedef
 struct _QSSI_CALLS
@@ -3226,6 +3259,8 @@ CallQS[] =
     SI_QX(SystemProcessorIdleCycleTimeInformation),
     SI_QX(SystemBootEnvironmentInformation),
     SI_QX(SystemProcessorBrandString),
+    SI_XS(SystemTimeZoneInformation),
+    SI_QS(SystemDynamicTimeZoneInformation),
 
     // Windows 8 and later
     SI_QX(SystemBootGraphicsInformation),
