@@ -22,8 +22,9 @@ typedef struct _REG_TZI_FORMAT
 
 typedef LONG
 (*PENUM_TIMEZONE_CALLBACK)(
-    IN HKEY hZoneKey,
-    IN PVOID Context OPTIONAL);
+    _In_ HKEY hZoneKey,
+    _In_ PCWSTR KeyName,
+    _In_opt_ PVOID Context);
 
 BOOL
 GetTimeZoneListIndex(
@@ -54,3 +55,8 @@ GetAutoDaylight(VOID);
 VOID
 SetAutoDaylight(
     IN BOOL EnableAutoDaylightTime);
+
+BOOL
+SetLocalTimeZoneByKey(
+    _In_ PCWSTR KeyName,
+    _In_ BOOL AutoDaylight);

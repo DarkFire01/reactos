@@ -268,7 +268,7 @@ EnumerateTimeZoneList(
         }
 
         /* Call the user-provided callback */
-        lError = Callback(hZoneKey, Context);
+        lError = Callback(hZoneKey, szKeyName, Context);
         // lError = QueryTimeZoneData(hZoneKey, Context);
 
         RegCloseKey(hZoneKey);
@@ -353,4 +353,158 @@ SetAutoDaylight(
     }
 
     RegCloseKey(hKey);
+}
+
+/* Copies a name that may be longer than the 32 characters of the time zone structures */
+static
+VOID
+CopyTimeZoneName(
+    _Out_writes_(32) PWCHAR Destination,
+    _In_ PCWSTR Source)
+{
+    wcsncpy(Destination, Source, 31);
+    Destination[31] = L'\0';
+}
+
+/* Enables or restores SeTimeZonePrivilege of the process token */
+static
+BOOL
+AdjustTimeZonePrivilege(
+    _In_ HANDLE hToken,
+    _In_ PTOKEN_PRIVILEGES NewState,
+    _Out_opt_ PTOKEN_PRIVILEGES OldState)
+{
+    DWORD dwSize;
+
+    return AdjustTokenPrivileges(hToken,
+                                 FALSE,
+                                 NewState,
+                                 OldState ? sizeof(*OldState) : 0,
+                                 OldState,
+                                 OldState ? &dwSize : NULL) &&
+           GetLastError() == ERROR_SUCCESS;
+}
+
+/*
+ * Makes a zone of the Time Zones list the current one with its key name,
+ * the way the Windows control panel does. With AutoDaylight off a zone
+ * that has daylight time keeps standard time all year.
+ */
+BOOL
+SetLocalTimeZoneByKey(
+    _In_ PCWSTR KeyName,
+    _In_ BOOL AutoDaylight)
+{
+    DYNAMIC_TIME_ZONE_INFORMATION TimeZone;
+    TIME_ZONE_INFORMATION YearZone;
+    TOKEN_PRIVILEGES Privilege;
+    TOKEN_PRIVILEGES OldPrivilege;
+    REG_TZI_FORMAT ZoneInfo;
+    SYSTEMTIME LocalTime;
+    WCHAR szStandardName[64];
+    WCHAR szDaylightName[64];
+    ULONG StandardNameSize = sizeof(szStandardName);
+    ULONG DaylightNameSize = sizeof(szDaylightName);
+    HANDLE hToken;
+    HKEY hZonesKey;
+    HKEY hZoneKey;
+    LONG lError;
+    BOOL bRet;
+
+    if (wcslen(KeyName) >= ARRAYSIZE(TimeZone.TimeZoneKeyName))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    lError = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                           L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones",
+                           0,
+                           KEY_QUERY_VALUE,
+                           &hZonesKey);
+    if (lError == ERROR_SUCCESS)
+    {
+        lError = RegOpenKeyExW(hZonesKey, KeyName, 0, KEY_QUERY_VALUE, &hZoneKey);
+        RegCloseKey(hZonesKey);
+    }
+    if (lError == ERROR_SUCCESS)
+    {
+        lError = QueryTimeZoneData(hZoneKey,
+                                   NULL,
+                                   &ZoneInfo,
+                                   NULL,
+                                   NULL,
+                                   szStandardName,
+                                   &StandardNameSize,
+                                   szDaylightName,
+                                   &DaylightNameSize);
+        RegCloseKey(hZoneKey);
+    }
+    if (lError != ERROR_SUCCESS)
+    {
+        SetLastError(lError);
+        return FALSE;
+    }
+
+    ZeroMemory(&TimeZone, sizeof(TimeZone));
+    wcscpy(TimeZone.TimeZoneKeyName, KeyName);
+    CopyTimeZoneName(TimeZone.StandardName, szStandardName);
+    CopyTimeZoneName(TimeZone.DaylightName, szDaylightName);
+
+    /* Take this year's rules when the zone has Dynamic DST data */
+    GetLocalTime(&LocalTime);
+    if (GetTimeZoneInformationForYear(LocalTime.wYear, &TimeZone, &YearZone))
+    {
+        ZoneInfo.Bias = YearZone.Bias;
+        ZoneInfo.StandardBias = YearZone.StandardBias;
+        ZoneInfo.DaylightBias = YearZone.DaylightBias;
+        ZoneInfo.StandardDate = YearZone.StandardDate;
+        ZoneInfo.DaylightDate = YearZone.DaylightDate;
+    }
+
+    TimeZone.Bias = ZoneInfo.Bias;
+    TimeZone.StandardBias = ZoneInfo.StandardBias;
+    TimeZone.DaylightBias = ZoneInfo.DaylightBias;
+    TimeZone.StandardDate = ZoneInfo.StandardDate;
+    TimeZone.DaylightDate = ZoneInfo.DaylightDate;
+
+    if (TimeZone.StandardDate.wMonth == 0)
+    {
+        /* Without daylight time the daylight part repeats the standard one */
+        TimeZone.DaylightBias = TimeZone.StandardBias;
+        TimeZone.DaylightDate = TimeZone.StandardDate;
+    }
+    else if (!AutoDaylight)
+    {
+        TimeZone.StandardBias = 0;
+        TimeZone.DaylightBias = 0;
+        ZeroMemory(&TimeZone.StandardDate, sizeof(TimeZone.StandardDate));
+        ZeroMemory(&TimeZone.DaylightDate, sizeof(TimeZone.DaylightDate));
+        CopyMemory(TimeZone.DaylightName, TimeZone.StandardName, sizeof(TimeZone.DaylightName));
+        TimeZone.DynamicDaylightTimeDisabled = TRUE;
+    }
+
+    /* Changing the time zone takes SeTimeZonePrivilege, which is off by default */
+    OldPrivilege.PrivilegeCount = 0;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+        hToken = NULL;
+
+    Privilege.PrivilegeCount = 1;
+    Privilege.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    if (hToken && LookupPrivilegeValueW(NULL, L"SeTimeZonePrivilege", &Privilege.Privileges[0].Luid))
+        AdjustTimeZonePrivilege(hToken, &Privilege, &OldPrivilege);
+
+    /* Without the privilege the kernel refuses the call */
+    bRet = SetDynamicTimeZoneInformation(&TimeZone);
+    lError = GetLastError();
+
+    if (hToken)
+    {
+        if (OldPrivilege.PrivilegeCount > 0)
+            AdjustTimeZonePrivilege(hToken, &OldPrivilege, NULL);
+        CloseHandle(hToken);
+    }
+
+    SetLastError(lError);
+    return bRet;
 }
