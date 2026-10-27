@@ -19,6 +19,7 @@ typedef struct _TIMEZONE_ENTRY
     WCHAR Description[128]; /* 'Display' */
     WCHAR StandardName[33]; /* 'Std' */
     WCHAR DaylightName[33]; /* 'Dlt' */
+    WCHAR KeyName[128];
     REG_TZI_FORMAT TimezoneInfo; /* 'TZI' */
 } TIMEZONE_ENTRY, *PTIMEZONE_ENTRY;
 
@@ -112,8 +113,9 @@ GetLargerTimeZoneEntry(
 
 static LONG
 RetrieveTimeZone(
-    IN HKEY hZoneKey,
-    IN PVOID Context)
+    _In_ HKEY hZoneKey,
+    _In_ PCWSTR KeyName,
+    _In_opt_ PVOID Context)
 {
     LONG lError;
     PTIMEZONE_ENTRY Entry;
@@ -122,11 +124,17 @@ RetrieveTimeZone(
     ULONG StandardNameSize;
     ULONG DaylightNameSize;
 
+    /* The key name identifies the zone, a longer one could not be set */
+    if (wcslen(KeyName) >= ARRAYSIZE(Entry->KeyName))
+        return ERROR_SUCCESS;
+
     Entry = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(TIMEZONE_ENTRY));
     if (Entry == NULL)
     {
         return ERROR_NOT_ENOUGH_MEMORY;
     }
+
+    wcscpy(Entry->KeyName, KeyName);
 
     DescriptionSize  = sizeof(Entry->Description);
     StandardNameSize = sizeof(Entry->StandardName);
@@ -221,13 +229,13 @@ DestroyTimeZoneList(VOID)
 static VOID
 ShowTimeZoneList(HWND hwnd)
 {
-    TIME_ZONE_INFORMATION TimeZoneInfo;
+    DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInfo;
     PTIMEZONE_ENTRY Entry;
     DWORD dwCount;
     DWORD dwIndex = 0;
     BOOL bFound = FALSE;
 
-    if (GetTimeZoneInformation(&TimeZoneInfo) == TIME_ZONE_ID_INVALID)
+    if (GetDynamicTimeZoneInformation(&TimeZoneInfo) == TIME_ZONE_ID_INVALID)
     {
         /* Failed to retrieve current time-zone info, reset it */
         ZeroMemory(&TimeZoneInfo, sizeof(TimeZoneInfo));
@@ -246,7 +254,16 @@ ShowTimeZoneList(HWND hwnd)
         if (bFound)
             continue;
 
-        if (*TimeZoneInfo.StandardName && *Entry->StandardName)
+        if (*TimeZoneInfo.TimeZoneKeyName)
+        {
+            /* The key name names the zone, as on Windows */
+            if (_wcsicmp(Entry->KeyName, TimeZoneInfo.TimeZoneKeyName) == 0)
+            {
+                dwIndex = dwCount;
+                bFound = TRUE;
+            }
+        }
+        else if (*TimeZoneInfo.StandardName && *Entry->StandardName)
         {
             /* Compare by name */
             if (wcscmp(Entry->StandardName, TimeZoneInfo.StandardName) == 0)
@@ -278,33 +295,18 @@ ShowTimeZoneList(HWND hwnd)
 
 
 static VOID
-SetLocalTimeZone(HWND hwnd)
+SetLocalTimeZone(
+    _In_ HWND hwnd,
+    _In_ BOOL AutoDaylight)
 {
-    TIME_ZONE_INFORMATION TimeZoneInformation;
     PTIMEZONE_ENTRY Entry;
 
     Entry = GetSelectedTimeZoneEntry(hwnd);
     if (Entry == NULL)
         return;
 
-    wcscpy(TimeZoneInformation.StandardName,
-           Entry->StandardName);
-    wcscpy(TimeZoneInformation.DaylightName,
-           Entry->DaylightName);
-
-    TimeZoneInformation.Bias = Entry->TimezoneInfo.Bias;
-    TimeZoneInformation.StandardBias = Entry->TimezoneInfo.StandardBias;
-    TimeZoneInformation.DaylightBias = Entry->TimezoneInfo.DaylightBias;
-
-    memcpy(&TimeZoneInformation.StandardDate,
-           &Entry->TimezoneInfo.StandardDate,
-           sizeof(SYSTEMTIME));
-    memcpy(&TimeZoneInformation.DaylightDate,
-           &Entry->TimezoneInfo.DaylightDate,
-           sizeof(SYSTEMTIME));
-
-    /* Set time zone information */
-    SetTimeZoneInformation(&TimeZoneInformation);
+    /* Set the zone with its key name and daylight setting */
+    SetLocalTimeZoneByKey(Entry->KeyName, AutoDaylight);
 }
 
 
@@ -387,9 +389,11 @@ TimeZonePageProc(HWND hwndDlg,
             {
                 case PSN_APPLY:
                 {
-                    SetAutoDaylight(SendDlgItemMessage(hwndDlg, IDC_AUTODAYLIGHT,
-                                                       BM_GETCHECK, 0, 0) != BST_UNCHECKED);
-                    SetLocalTimeZone(GetDlgItem(hwndDlg, IDC_TIMEZONELIST));
+                    BOOL bAutoDaylight = (SendDlgItemMessage(hwndDlg, IDC_AUTODAYLIGHT,
+                                                             BM_GETCHECK, 0, 0) != BST_UNCHECKED);
+
+                    SetAutoDaylight(bAutoDaylight);
+                    SetLocalTimeZone(GetDlgItem(hwndDlg, IDC_TIMEZONELIST), bAutoDaylight);
                     SetWindowLongPtr(hwndDlg, DWLP_MSGRESULT, PSNRET_NOERROR);
                     return TRUE;
                 }
