@@ -1331,11 +1331,20 @@ GetModuleHandleExA(IN DWORD dwFlags,
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
-FARPROC WINAPI DelayLoadFailureHook(LPCSTR pszDllName, LPCSTR pszProcName)
+FARPROC
+WINAPI
+DelayLoadFailureHook(
+    _In_ LPCSTR pszDllName,
+    _In_ LPCSTR pszProcName)
 {
-    STUB;
+    ULONG_PTR Arguments[2];
+
+    /* There are no fallback stubs, so every failure is reported to the caller */
+    Arguments[0] = (ULONG_PTR)pszDllName;
+    Arguments[1] = (ULONG_PTR)pszProcName;
+    RaiseException(ERROR_DELAY_LOAD_FAILED, EXCEPTION_NONCONTINUABLE, 2, Arguments);
     return NULL;
 }
 
