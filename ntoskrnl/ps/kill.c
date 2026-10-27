@@ -1084,6 +1084,9 @@ PspTerminateThreadByPointer(IN PETHREAD Thread,
         }
         else
         {
+            /* Break an alertable kernel wait, which the APC cannot reach inside a critical region */
+            KeAlertThread(&Thread->Tcb, KernelMode);
+
             /* Forcefully resume the thread and return */
             KeForceResumeThread(&Thread->Tcb);
             return Status;
