@@ -79,3 +79,4 @@
 #define IDS_MANAGE_VOLUME_PRIVILEGE             226
 #define IDS_IMPERSONATE_PRIVILEGE               227
 #define IDS_CREATE_GLOBAL_PRIVILEGE             228
+#define IDS_TIME_ZONE_PRIVILEGE                 229
