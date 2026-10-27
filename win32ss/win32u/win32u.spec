@@ -984,3 +984,5 @@
 @ stdcall NtDCompositionWaitForCompositorClock(long ptr long)
 @ stdcall NtDCompositionBoostCompositorClock(long)
 @ stdcall NtUserGetUpdatedClipboardFormats(ptr long ptr)
+@ stdcall NtUserAddClipboardFormatListener(ptr)
+@ stdcall NtUserRemoveClipboardFormatListener(ptr)

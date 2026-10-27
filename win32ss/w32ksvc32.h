@@ -1009,3 +1009,5 @@
     SVC_(DCompositionWaitForCompositorClock, 3)
     SVC_(DCompositionBoostCompositorClock, 1)
     SVC_(UserGetUpdatedClipboardFormats, 3)
+    SVC_(UserAddClipboardFormatListener, 1)
+    SVC_(UserRemoveClipboardFormatListener, 1)
