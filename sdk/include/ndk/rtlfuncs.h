@@ -4906,6 +4906,19 @@ NTSTATUS
 NTAPI
 RtlQueryDynamicTimeZoneInformation(
     _Out_ PRTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInformation);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlSetDynamicTimeZoneInformation(
+    _In_ PRTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInformation);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlpCheckDynamicTimeZoneInformation(
+    _Inout_ PRTL_DYNAMIC_TIME_ZONE_INFORMATION TimeZoneInformation,
+    _In_ USHORT Year);
 #endif /* _WIN32_WINNT >= _WIN32_WINNT_VISTA */
 
 NTSYSAPI

@@ -440,6 +440,7 @@
 #define SE_MANAGE_VOLUME_NAME    TEXT("SeManageVolumePrivilege")
 #define SE_IMPERSONATE_NAME    TEXT("SeImpersonatePrivilege")
 #define SE_CREATE_GLOBAL_NAME    TEXT("SeCreateGlobalPrivilege")
+#define SE_TIME_ZONE_NAME    TEXT("SeTimeZonePrivilege")
 
 #define SE_GROUP_MANDATORY          0x00000001
 #define SE_GROUP_ENABLED_BY_DEFAULT 0x00000002
