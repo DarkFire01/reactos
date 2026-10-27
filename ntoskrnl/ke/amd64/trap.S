@@ -908,6 +908,10 @@ PUBLIC KiSystemCallEntry64
     jz KiSystemCall64Again
     int HEX(2C)
 #endif
+    /* User mode runs at PASSIVE_LEVEL. KiServiceExit3 checks this field when
+       NtContinue or NtRaiseException leave through this trap frame. */
+    mov byte ptr [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_PreviousIrql], 0
+
 
 GLOBAL_LABEL KiSystemCall64Again
 
