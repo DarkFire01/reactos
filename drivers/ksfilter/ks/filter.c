@@ -2037,6 +2037,19 @@ KsFilterGetAndGate(
     return &This->Gate;
 }
 
+KSDDKAPI
+PKSDEVICE
+NTAPI
+KsFilterGetDevice(
+    IN PKSFILTER Filter)
+{
+    IKsFilterImpl * This = (IKsFilterImpl*)CONTAINING_RECORD(Filter, IKsFilterImpl, Filter);
+
+    /* return KSDEVICE */
+    return This->Header.KsDevice;
+}
+
+
 /*
     @implemented
 */

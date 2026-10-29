@@ -39,7 +39,6 @@ WorkItemRoutine(
     PWORK_QUEUE_ITEM WorkItem;
     PLIST_ENTRY Entry;
 
-
     /* get ks worker implementation */
     KsWorker = (PKSIWORKER)Context;
 
@@ -207,7 +206,10 @@ KsDecrementCountedWorker(
 
     /* get ks worker implementation */
     KsWorker = (PKSIWORKER)Worker;
-    /* decrement counter */
+    /* sanity check*/
+    ASSERT(KsWorker->Counter > 0);
+
+  /* decrement counter */
     Counter = InterlockedDecrement(&KsWorker->Counter);
     /* return result */
     return Counter;
@@ -268,6 +270,10 @@ KsQueueWorkItem(
     InsertTailList(&KsWorker->QueuedWorkItems, &WorkItem->List);
     /* increment active count */
     InterlockedIncrement(&KsWorker->QueuedWorkItemCount);
+
+    /* release lock */
+    KeReleaseSpinLock(&KsWorker->Lock, OldIrql);
+
     /* is this the first work item */
     if (KsWorker->QueuedWorkItemCount == 1)
     {
@@ -276,8 +282,5 @@ KsQueueWorkItem(
         /* it is, queue it */
         ExQueueWorkItem(&KsWorker->WorkItem, KsWorker->Type);
     }
-    /* release lock */
-    KeReleaseSpinLock(&KsWorker->Lock, OldIrql);
-
     return STATUS_SUCCESS;
 }
