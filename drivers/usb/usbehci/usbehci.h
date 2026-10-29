@@ -37,6 +37,9 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 
 #define EHCI_MAX_HC_SYSTEM_ERRORS  256
 
+#define ROUND_DOWN(n, align) (((ULONG)n) & ~((align) - 1l))
+#define ROUND_UP(n, align) ROUND_DOWN(((ULONG)n) + (align) - 1, (align))
+
 typedef struct _EHCI_PERIOD {
   UCHAR Period;
   UCHAR PeriodIdx;
@@ -49,6 +52,22 @@ typedef struct _EHCI_PERIOD {
 #define EHCI_HCD_TD_FLAG_DONE      0x08
 #define EHCI_HCD_TD_FLAG_ACTIVE    0x10
 #define EHCI_HCD_TD_FLAG_DUMMY     0x20
+
+/* Isochronous Transfer Descriptor flags */
+#define EHCI_HCD_ITD_FLAG_ALLOCATED    0x01
+#define EHCI_HCD_ITD_FLAG_PROCESSED    0x02
+#define EHCI_HCD_ITD_FLAG_DONE         0x08
+#define EHCI_HCD_ITD_FLAG_ACTIVE       0x10
+
+#define EHCI_HCD_SITD_FLAG_ALLOCATED   0x01
+#define EHCI_HCD_SITD_FLAG_PROCESSED   0x02
+#define EHCI_HCD_SITD_FLAG_DONE        0x08
+#define EHCI_HCD_SITD_FLAG_ACTIVE      0x10
+
+/* Maximum number of microframes per frame */
+#define EHCI_MICROFRAMES_PER_FRAME     8
+/* Maximum number of transactions per iTD */
+#define EHCI_MAX_ITD_TRANSACTIONS      8
 
 struct _EHCI_HCD_QH;
 struct _EHCI_ENDPOINT;
@@ -75,6 +94,49 @@ typedef struct _EHCI_HCD_TD {
 } EHCI_HCD_TD, *PEHCI_HCD_TD;
 
 C_ASSERT(sizeof(EHCI_HCD_TD) == 0x100);
+
+/* High-Speed Isochronous Transfer Descriptor */
+typedef struct _EHCI_HCD_ITD {
+  /* Hardware*/
+  EHCI_ISOCHRONOUS_TD HwTD;
+  /* Software */
+  ULONG PhysicalAddress;
+  ULONG TdFlags;
+  struct _EHCI_ENDPOINT * EhciEndpoint;
+  struct _EHCI_TRANSFER * EhciTransfer;
+  ULONG PacketLength[EHCI_MAX_ITD_TRANSACTIONS];
+  LIST_ENTRY ActiveITDEntry;
+  PUSBPORT_ISO_PACKET_DATA IsoPacket[EHCI_MAX_ITD_TRANSACTIONS];
+  ULONG ScheduledFrame; /* Frame list index where this iTD was inserted */
+  ULONG PacketsThisITD;
+  struct _EHCI_HCD_ITD * NextITD;
+#ifdef _WIN64
+  ULONG Pad[16];
+#else
+  ULONG Pad[0];
+#endif
+} EHCI_HCD_ITD, *PEHCI_HCD_ITD;
+C_ASSERT(sizeof(EHCI_HCD_ITD) == ROUND_UP(sizeof(EHCI_HCD_ITD), 32));
+
+/* Split Isochronous Transfer Descriptor */
+typedef struct _EHCI_HCD_SITD {
+  /* Hardware*/
+  EHCI_SPLIT_ISOCHRONOUS_TD HwTD;
+  /* Software */
+  ULONG PhysicalAddress;
+  ULONG TdFlags;
+  struct _EHCI_ENDPOINT * EhciEndpoint;
+  struct _EHCI_TRANSFER * EhciTransfer;
+  struct _EHCI_HCD_SITD * NextHcdTD;
+  ULONG PacketLength;
+  LIST_ENTRY DoneLink;
+#ifdef _WIN64
+  ULONG Pad[19];
+#else
+  ULONG Pad[22];
+#endif
+} EHCI_HCD_SITD, *PEHCI_HCD_SITD;
+
 
 /* Queue Head */
 #define EHCI_QH_FLAG_IN_SCHEDULE  0x01
@@ -142,8 +204,18 @@ typedef struct _EHCI_ENDPOINT {
   PEHCI_HCD_TD HcdHeadP;
   PEHCI_HCD_TD HcdTailP;
   LIST_ENTRY ListTDs;
+  LIST_ENTRY ListTransfers;
   const EHCI_PERIOD * PeriodTable;
   PEHCI_STATIC_QH StaticQH;
+  /* Isochronous endpoint fields */
+  PEHCI_HCD_ITD FirstITD;
+  PEHCI_HCD_SITD FirstSITD;
+  ULONG MaxITDs;
+  ULONG MaxSITDs;
+  ULONG RemainITDs;
+  ULONG RemainSITDs;
+  ULONG StartingFrame;
+  ULONG FrameCount;
 } EHCI_ENDPOINT, *PEHCI_ENDPOINT;
 
 /* EHCI Transfer follows USBPORT Transfer */
@@ -153,6 +225,8 @@ typedef struct _EHCI_TRANSFER {
   ULONG USBDStatus;
   ULONG TransferLen;
   PEHCI_ENDPOINT EhciEndpoint;
+  LIST_ENTRY ActiveITDs;
+  LIST_ENTRY EndpointEntry;
   ULONG PendingTDs;
   ULONG TransferOnAsyncList;
 } EHCI_TRANSFER, *PEHCI_TRANSFER;
@@ -163,6 +237,7 @@ typedef struct _EHCI_HC_RESOURCES {
   EHCI_STATIC_QH PeriodicHead[64];
   UCHAR Padded[0x160];
   EHCI_HCD_QH IsoDummyQH[EHCI_FRAME_LIST_MAX_ENTRIES];
+  UCHAR Padded1[0x160];
 } EHCI_HC_RESOURCES, *PEHCI_HC_RESOURCES;
 
 #define EHCI_FLAGS_CONTROLLER_SUSPEND 0x01
@@ -207,6 +282,8 @@ typedef struct _EHCI_EXTENSION {
   ULONG BackupAsynclistaddr;
   ULONG BackupCtrlDSSegment;
   ULONG BackupUSBCmd;
+  RTL_BITMAP IsoBitmap;
+  PULONG IsoBitmapBuffer;
 } EHCI_EXTENSION, *PEHCI_EXTENSION;
 
 /* debug.c */
@@ -333,5 +410,32 @@ VOID
 NTAPI
 EHCI_RH_EnableIrq(
   IN PVOID ohciExtension);
+
+BOOLEAN
+NTAPI
+EHCI_CheckIsoBandwidth(IN PEHCI_EXTENSION EhciExtension,
+                       IN PEHCI_ENDPOINT EhciEndpoint,
+                       IN ULONG TransferLength);
+
+VOID
+NTAPI
+EHCI_UnlinkITDFromFrameList(IN PEHCI_EXTENSION EhciExtension,
+                            IN PEHCI_HCD_ITD ITD,
+                            IN ULONG Frame,
+                            IN PEHCI_TRANSFER EhciTransfer);
+
+VOID
+NTAPI
+EHCI_InitializeITD(IN PEHCI_EXTENSION EhciExtension,
+                   IN PEHCI_ENDPOINT EhciEndpoint,
+                   IN PEHCI_HCD_ITD ITD,
+                   IN PEHCI_TRANSFER EhciTransfer,
+                   IN ULONG TransactionIndex,
+                   IN ULONG BufferPhysicalAddress,
+                   IN ULONG TransferLength,
+                   IN ULONG MicroframeNumber);
+ULONG
+NTAPI
+EHCI_Get32BitFrameNumber(IN PVOID ehciExtension);
 
 #endif /* USBEHCI_H__ */

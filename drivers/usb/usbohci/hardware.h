@@ -56,6 +56,17 @@
 #define OHCI_TD_CONDITION_BUFFER_UNDERRUN   0x0D
 #define OHCI_TD_CONDITION_NOT_ACCESSED      0x0E
 
+/* Isochronous Transfer Descriptor */
+#define OHCI_ITD_MAX_FRAMES          8      // FrameCount is 3 bits wide
+#define OHCI_ITD_FRAME_NUMBER_MASK   0xFFFF // StartingFrame holds the low 16 bits of the frame number
+
+/* Offset (before processing) and Packet Status Word (after processing) of an ITD */
+#define OHCI_ITD_OFFSET_MASK         0x0FFF // offset within the selected page
+#define OHCI_ITD_OFFSET_PAGE_SELECT  0x1000 // 0 - page of BufferPage0, 1 - page of BufferEnd
+#define OHCI_ITD_OFFSET_NOT_ACCESSED 0xE000 // ConditionCode field initialized to NotAccessed
+#define OHCI_ITD_PSW_SIZE_MASK       0x07FF
+#define OHCI_ITD_PSW_CC_SHIFT        12
+
 typedef union _OHCI_TRANSFER_CONTROL {
   struct {
     ULONG Reserved       : 18;

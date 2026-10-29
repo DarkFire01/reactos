@@ -46,7 +46,7 @@ USBPORT_MakeSplitTransfer(IN PDEVICE_OBJECT FdoDevice,
         SplitTransfer->TransferParameters.IsTransferSplited = TRUE;
         SplitTransfer->TransferParameters.TransferBufferLength = MaxTransferSize;
 
-        SplitTransfer->SgList.CurrentVa = Transfer->SgList.CurrentVa + TransferOffset;
+        SplitTransfer->SgList.CurrentVa = (PVOID)((ULONG_PTR)Transfer->SgList.CurrentVa + TransferOffset);
         SplitTransfer->SgList.MappedSystemVa = (PVOID)((ULONG_PTR)Transfer->SgList.MappedSystemVa + TransferOffset);
 
         SplitTransfer->Flags |= TRANSFER_FLAG_SPLITED;
@@ -67,7 +67,7 @@ USBPORT_MakeSplitTransfer(IN PDEVICE_OBJECT FdoDevice,
     SplitTransfer->TransferParameters.TransferBufferLength = SgLength;
     SplitTransfer->TransferParameters.IsTransferSplited = TRUE;
 
-    SplitTransfer->SgList.CurrentVa = Transfer->SgList.CurrentVa + TransferOffset;
+    SplitTransfer->SgList.CurrentVa = (PVOID)((ULONG_PTR)Transfer->SgList.CurrentVa + TransferOffset);
     SplitTransfer->SgList.MappedSystemVa = (PVOID)((ULONG_PTR)Transfer->SgList.MappedSystemVa + TransferOffset);
 
     SplitTransfer->Flags |= TRANSFER_FLAG_SPLITED;

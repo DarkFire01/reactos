@@ -62,6 +62,9 @@ DEFINE_KSPROPERTY_TABLE(TopologySet) {\
     DEFINE_KSPROPERTY_ITEM_AUDIO_MUTE(Handler)\
 }
 
+#define ROUND_DOWN(n, align) (((ULONG)n) & ~((align) - 1l))
+#define ROUND_UP(n, align) ROUND_DOWN(((ULONG)n) + (align) - 1, (align))
+
 #include <pshpack1.h>
 
 typedef struct
@@ -188,7 +191,7 @@ typedef struct
 {
     PDEVICE_EXTENSION DeviceExtension;                           /* device extension */
     PDEVICE_OBJECT LowerDevice;                                  /* lower device*/
-
+    PUSBD_INTERFACE_INFORMATION InterfaceInfo;                   /* interface information */
 }FILTER_CONTEXT, *PFILTER_CONTEXT;
 
 typedef struct
@@ -203,10 +206,20 @@ typedef struct
     ULONG BufferOffset;                                          /* buffer offset */
     ULONG BufferLength;                                          /* remaining render bytes */
     PUSB_INTERFACE_DESCRIPTOR InterfaceDescriptor;               /* interface descriptor */
+    PUSBD_INTERFACE_INFORMATION InterfaceInfo;                   /* interface information */
     WORK_QUEUE_ITEM  CaptureWorkItem;                            /* work item */
     PKSWORKER        CaptureWorker;                              /* capture worker */
     WORK_QUEUE_ITEM  StarvationWorkItem;                            /* work item */
     PKSWORKER        StarvationWorker;                              /* capture worker */
+    ULONG StopStreaming;                                          /* stops streaming */
+    ULONG StoppedStreamingIrps;                                   /* stopped streaming irp count */
+    KEVENT StoppedStreamingEvent;                                  /* stopped streaming event */
+    ULONG MaximumPacketSize;                                       /* max packet size */
+    ULONG DataPacketLength;                                        /* max packet data length */
+    ULONG CaptureBufferOffset;
+    ULONG CaptureBufferLength;
+    PUCHAR CaptureBuffer;
+
 }PIN_CONTEXT, *PPIN_CONTEXT;
 
 /* filter.c */
@@ -405,3 +418,16 @@ USBAudioPinSetDeviceState(
     _In_ KSSTATE ToState,
     _In_ KSSTATE FromState);
 
+ULONG
+GetDataRangeIndexForFormat(
+    IN const KSDATARANGE * ConnectionFormat,
+    IN const PKSDATARANGE * DataRanges,
+    IN ULONG DataRangesCount);
+
+NTSTATUS
+USBAudioSelectAudioStreamingInterface(
+    IN PKSPIN Pin,
+    IN PPIN_CONTEXT PinContext,
+    IN PDEVICE_EXTENSION DeviceExtension,
+    IN PUSB_CONFIGURATION_DESCRIPTOR ConfigurationDescriptor,
+    IN ULONG FormatDescriptorIndex);

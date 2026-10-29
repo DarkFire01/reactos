@@ -17,6 +17,9 @@
 #include <drivers/usbport/usbmport.h>
 #include "hardware.h"
 
+#define ROUND_DOWN(n, align) (((ULONG)n) & ~((align) - 1l))
+#define ROUND_UP(n, align) ROUND_DOWN(((ULONG)n) + (align) - 1, (align))
+
 extern USBPORT_REGISTRATION_PACKET RegPacket;
 
 #define UHCI_MAX_HC_SCHEDULE_ERRORS        16
@@ -48,6 +51,7 @@ typedef struct _UHCI_HCD_TD {
   ULONG PhysicalAddress;
   ULONG Flags;
   struct _UHCI_HCD_TD * NextHcdTD;
+  struct _UHCI_HCD_TD * NextTD;
   _ANONYMOUS_UNION union {
     PUHCI_TRANSFER UhciTransfer;
 #if !defined(_M_X64)
@@ -60,15 +64,19 @@ typedef struct _UHCI_HCD_TD {
 #endif
   } DUMMYUNIONNAME;
   LIST_ENTRY TdLink;
+  PUHCI_ENDPOINT UhciEndpoint;
+  LIST_ENTRY ActiveITDEntry;
+  ULONG ScheduledFrame;
+  PUSBPORT_ISO_PACKET_DATA IsoPacket;
 #if !defined(_M_X64)
-  ULONG Padded[4];
+  UCHAR Padded[6];
 #else
-  ULONG Padded[15];
+  ULONG Padded[3];
 #endif
 } UHCI_HCD_TD, *PUHCI_HCD_TD;
 
 #if !defined(_M_X64)
-C_ASSERT(sizeof(UHCI_HCD_TD) == 0x40);
+C_ASSERT(sizeof(UHCI_HCD_TD) == 0x50);
 #else
 C_ASSERT(sizeof(UHCI_HCD_TD) == 0x80);
 #endif
@@ -118,6 +126,8 @@ typedef struct _UHCI_ENDPOINT {
   ULONG AllocTdCounter;
   LIST_ENTRY ListTDs;
   BOOL DataToggle;
+  ULONG FrameCount;
+  LIST_ENTRY ListTransfers;
 } UHCI_ENDPOINT, *PUHCI_ENDPOINT;
 
 /* UHCI Transfer follows USBPORT Transfer */
@@ -127,6 +137,8 @@ typedef struct _UHCI_TRANSFER {
   USBD_STATUS USBDStatus;
   ULONG PendingTds;
   SIZE_T TransferLen;
+  LIST_ENTRY ActiveITDs;
+  LIST_ENTRY EndpointEntry;
 } UHCI_TRANSFER, *PUHCI_TRANSFER;
 
 #define UHCI_FRAME_LIST_POINTER_VALID      (0 << 0)
@@ -170,10 +182,11 @@ typedef struct _UHCI_EXTENSION {
   ULONG SuspendChangePortMask;
   ULONG HcScheduleError;
   LONG ExtensionLock;
-  UHCI_USB_STATUS StatusMask;
+  UHCI_INTERRUPT_ENABLE StatusMask;
   UHCI_USB_STATUS HcStatus;
   UCHAR SOF_Modify;
   UCHAR Padded2[3];
+  ULONG PendingTransfers;
 } UHCI_EXTENSION, *PUHCI_EXTENSION;
 
 /* roothub.c */

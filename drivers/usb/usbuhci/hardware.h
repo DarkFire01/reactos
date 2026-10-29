@@ -6,6 +6,7 @@
  */
 
 #define UHCI_FRAME_LIST_MAX_ENTRIES  1024 // Number of frames in Frame List
+#define UHCI_FRINDEX_INDEX_MASK      1023
 #define UHCI_NUM_ROOT_HUB_PORTS      2
 
 /* UHCI HC I/O Registers offset (PUSHORT) */

@@ -61,6 +61,195 @@ UhciDumpHcdTD(PUHCI_HCD_TD TD)
 
 VOID
 NTAPI
+UHCI_DisablePeriodicList(IN PUHCI_EXTENSION UhciExtension)
+{
+    PUHCI_HW_REGISTERS OperationalRegs;
+    UHCI_USB_COMMAND Command;
+
+    DPRINT("UHCI_DisablePeriodicList: ... \n");
+
+    OperationalRegs = UhciExtension->BaseRegister;
+    Command.AsUSHORT = READ_PORT_USHORT(&OperationalRegs->HcCommand.AsUSHORT);
+    Command.Run = 0;
+    WRITE_PORT_USHORT(&OperationalRegs->HcCommand.AsUSHORT, Command.AsUSHORT);
+}
+
+
+VOID
+NTAPI
+UHCI_EnablePeriodicList(IN PUHCI_EXTENSION UhciExtension)
+{
+    PUHCI_HW_REGISTERS OperationalRegs;
+    UHCI_USB_COMMAND Command;
+
+    DPRINT("UHCI_EnablePeriodicList: ... \n");
+
+    OperationalRegs = UhciExtension->BaseRegister;
+    Command.AsUSHORT = READ_PORT_USHORT(&OperationalRegs->HcCommand.AsUSHORT);
+    Command.Run = 1;
+    WRITE_PORT_USHORT(&OperationalRegs->HcCommand.AsUSHORT, Command.AsUSHORT);
+}
+
+
+VOID
+NTAPI
+UHCI_AlignHwStructure(IN PULONG PhysicalAddress,
+                      IN PULONG_PTR VirtualAddress,
+                      IN ULONG Size)
+{
+    ULONG PAddress;
+    ULONG NewPAddress;
+    ULONG_PTR VAddress;
+
+    DPRINT("UHCI_AlignHwStructure: *PhysicalAddress - %X, *VirtualAddress - %X, Alignment - %x\n",
+                 *PhysicalAddress,
+                 *VirtualAddress,
+                 Size);
+
+    PAddress = *PhysicalAddress;
+    VAddress = *VirtualAddress;
+
+    PAddress = ROUND_UP(PAddress, 16);
+    VAddress = ROUND_UP(VAddress, 16);
+
+    NewPAddress = (ULONG)(ULONG_PTR)PAGE_ALIGN(PAddress + Size);
+
+    if (NewPAddress != (ULONG)(ULONG_PTR)PAGE_ALIGN(*PhysicalAddress))
+    {
+
+        DPRINT("UHCI_AlignHwStructure: Old PhysicalAddress - %X,  Old VirtualAddress - %X, Alignment - %x\n",
+                 *PhysicalAddress,
+                 *VirtualAddress,
+                 Size);
+
+        VAddress = (ULONG)(ULONG_PTR)PAGE_ALIGN(VAddress + Size);
+        PAddress = NewPAddress;
+
+        DPRINT1("UHCI_AlignHwStructure: New VAddress - %X, New PAddress - %X\n",
+               VAddress,
+               PAddress);
+    }
+
+    *VirtualAddress = VAddress;
+    *PhysicalAddress = PAddress;
+}
+
+VOID
+NTAPI
+UHCI_UnlinkITDFromFrameList(IN PUHCI_EXTENSION UhciExtension,
+                            IN PUHCI_HCD_TD ITD,
+                            IN ULONG Frame,
+                            IN PUHCI_TRANSFER UhciTransfer)
+{
+    PUHCI_HC_RESOURCES HcResourcesVA;
+
+    HcResourcesVA = UhciExtension->HcResourcesVA;
+
+    DPRINT_UHCI("UHCI_UnlinkITDFromFrameList: Unlinking iTD %p from frame %d\n", ITD, Frame);
+
+    /* Search and unlink from frame list - simplified version */
+    KeMemoryBarrier();
+    HcResourcesVA->FrameList[Frame & UHCI_FRAME_LIST_INDEX_MASK] = ITD->HwTD.NextElement;
+    KeMemoryBarrier();
+
+    RemoveEntryList(&ITD->ActiveITDEntry);
+}
+
+VOID
+NTAPI
+UHCI_ProcessCompletedITD(IN PUHCI_EXTENSION UhciExtension,
+                         IN PUHCI_HCD_TD ITD)
+{
+    PUHCI_TRANSFER UhciTransfer;
+    PUHCI_ENDPOINT UhciEndpoint;
+    ULONG TotalBytesTransferred = 0;
+
+    DPRINT_UHCI("UHCI_ProcessCompletedITD: ITD - %p\n", ITD);
+
+    UhciTransfer = ITD->UhciTransfer;
+    UhciEndpoint = ITD->UhciEndpoint;
+
+    if (!UhciTransfer || !UhciEndpoint)
+        return;
+
+    /* make sure we are in sync */
+    KeMemoryBarrier();
+
+    if(ITD->HwTD.ControlStatus.ActualLength == UHCI_TD_LENGTH_NULL)
+        TotalBytesTransferred = 0;
+    else
+        TotalBytesTransferred = ITD->HwTD.ControlStatus.ActualLength + 1;
+
+    if (ITD->HwTD.ControlStatus.Status & (1 << 6))
+    {
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_STALL_PID;
+    }
+    else if (ITD->HwTD.ControlStatus.Status & (1 << 5))
+    {
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_DATA_BUFFER_ERROR;
+    }
+    else if (ITD->HwTD.ControlStatus.Status & (1 << 4))
+    {
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_BABBLE_DETECTED;
+    }
+    else if (ITD->HwTD.ControlStatus.Status & (1 << 3))
+    {
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_XACT_ERROR;
+    }
+    else if (ITD->HwTD.ControlStatus.Status & (1 << 2))
+    {
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_CRC;
+    }
+    else if (ITD->HwTD.ControlStatus.Status & (1 << 1))
+    {
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_XACT_ERROR;
+    }
+    else
+    {
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_SUCCESS;
+        ITD->IsoPacket->BytesTransferred = TotalBytesTransferred;
+
+        /* All transactions in this iTD completed */
+        UhciTransfer->TransferLen += TotalBytesTransferred;
+    }
+
+    KeMemoryBarrier();
+
+    /* Remove iTD from frame list */
+    UHCI_UnlinkITDFromFrameList(UhciExtension, ITD, ITD->ScheduledFrame, UhciTransfer);
+
+    ITD->UhciTransfer = NULL;
+    ITD->UhciEndpoint = NULL;
+    ITD->IsoPacket = NULL;
+
+    ITD->Flags &= ~UHCI_HCD_TD_FLAG_ALLOCATED;
+    UhciEndpoint->AllocatedTDs--;
+
+    /* decrement pending count */
+    UhciTransfer->PendingTds--;
+
+    /* Complete the transfer only when ALL iTDs are done */
+    if (IsListEmpty(&UhciTransfer->ActiveITDs))
+    {
+        /* sanity check */
+        ASSERT(UhciTransfer->PendingTds == 0);
+
+        /* remove from endpoint list */
+        RemoveEntryList(&UhciTransfer->EndpointEntry);
+
+        UhciExtension->PendingTransfers--;
+        DPRINT("UHCI_ProcessCompletedITD: Transfer fully completed, %d total bytes\n",
+                   UhciTransfer->TransferLen);
+
+        RegPacket.UsbPortCompleteIsoTransfer(UhciExtension,
+                                              UhciEndpoint,
+                                              UhciTransfer->TransferParameters,
+                                              UhciTransfer->TransferLen);
+    }
+}
+
+VOID
+NTAPI
 UhciFixDataToggle(IN PUHCI_EXTENSION UhciExtension,
                   IN PUHCI_ENDPOINT UhciEndpoint,
                   IN PUHCI_HCD_TD TD,
@@ -192,17 +381,18 @@ UhciOpenEndpoint(IN PVOID uhciExtension,
     ULONG TransferType;
     ULONG_PTR BufferVA;
     ULONG BufferPA;
-    ULONG ix;
     ULONG TdCount;
-    PUHCI_HCD_TD TD;
+    PUHCI_HCD_TD TD, LastTD;
     SIZE_T BufferLength;
     PUHCI_HCD_QH QH;
+    ULONG BufferPAEnd;
 
     RtlCopyMemory(&UhciEndpoint->EndpointProperties,
                   EndpointProperties,
                   sizeof(UhciEndpoint->EndpointProperties));
 
     InitializeListHead(&UhciEndpoint->ListTDs);
+    InitializeListHead(&UhciEndpoint->ListTransfers);
 
     UhciEndpoint->EndpointLock = 0;
     UhciEndpoint->DataToggle = UHCI_TD_PID_DATA0;
@@ -247,24 +437,38 @@ UhciOpenEndpoint(IN PVOID uhciExtension,
     }
 
     /* Initialize HCD Transfer Descriptors */
-    TdCount = BufferLength / sizeof(UHCI_HCD_TD);
-    UhciEndpoint->MaxTDs = TdCount;
+    TdCount = 0;
+    RtlZeroMemory((PVOID)BufferVA, BufferLength);
+
+    UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
 
     UhciEndpoint->FirstTD = (PUHCI_HCD_TD)BufferVA;
     UhciEndpoint->AllocatedTDs = 0;
+    UhciEndpoint->FirstTD->PhysicalAddress = BufferPA;
 
-    RtlZeroMemory(UhciEndpoint->FirstTD, TdCount * sizeof(UHCI_HCD_TD));
-
-    for (ix = 0; ix < UhciEndpoint->MaxTDs; ix++)
+    LastTD = UhciEndpoint->FirstTD;
+    BufferPAEnd = EndpointProperties->BufferPA + EndpointProperties->BufferLength;
+    DPRINT1("UhciEndpoint %p FirstITD %p\n", UhciEndpoint, BufferVA);
+    while(BufferLength > 0)
     {
-        TD = &UhciEndpoint->FirstTD[ix];
-        TD->PhysicalAddress = BufferPA;
         BufferPA += sizeof(UHCI_HCD_TD);
+        BufferVA += sizeof(UHCI_HCD_TD);
+        UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
+        if (BufferPA + sizeof(UHCI_HCD_TD) >= BufferPAEnd)
+            break;
+        TD = (PUHCI_HCD_TD)BufferVA;
+        TD->PhysicalAddress = BufferPA;
+        LastTD->NextTD = TD;
+        LastTD = TD;
+        TdCount++;
+        ASSERT(BufferLength >= sizeof(UHCI_HCD_TD));
+        BufferLength -= sizeof(UHCI_HCD_TD);
     }
 
     UhciEndpoint->TailTD = NULL;
     UhciEndpoint->HeadTD = NULL;
-
+    UhciEndpoint->MaxTDs = TdCount;
+    DPRINT1("Endpoint %p MaxTds %u\n", UhciEndpoint, TdCount);
     return MP_STATUS_SUCCESS;
 }
 
@@ -274,7 +478,99 @@ UhciReopenEndpoint(IN PVOID uhciExtension,
                    IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
                    IN PVOID uhciEndpoint)
 {
-    DPRINT_IMPL("Uhci: UNIMPLEMENTED. FIXME\n");
+    PUHCI_ENDPOINT UhciEndpoint = uhciEndpoint;
+    ULONG TransferType;
+    ULONG_PTR BufferVA;
+    ULONG BufferPA;
+    ULONG TdCount;
+    ULONG BufferPAEnd;
+    PUHCI_HCD_TD TD, LastTD;
+    SIZE_T BufferLength;
+    PUHCI_HCD_QH QH;
+
+    DPRINT_UHCI("OHCI_ReopenEndpoint: ... \n");
+
+    RtlCopyMemory(&UhciEndpoint->EndpointProperties,
+                  EndpointProperties,
+                  sizeof(UhciEndpoint->EndpointProperties));
+
+    InitializeListHead(&UhciEndpoint->ListTDs);
+    InitializeListHead(&UhciEndpoint->ListTransfers);
+
+    UhciEndpoint->EndpointLock = 0;
+    UhciEndpoint->DataToggle = UHCI_TD_PID_DATA0;
+    UhciEndpoint->Flags = 0;
+
+    TransferType = EndpointProperties->TransferType;
+
+    DPRINT("UhciOpenEndpoint: UhciEndpoint - %p, TransferType - %x\n",
+           UhciEndpoint,
+           TransferType);
+
+    if (TransferType == USBPORT_TRANSFER_TYPE_CONTROL ||
+        TransferType == USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
+    {
+        UhciEndpoint->Flags |= UHCI_ENDPOINT_FLAG_CONTROL_OR_ISO;
+    }
+
+    BufferVA = EndpointProperties->BufferVA;
+    BufferPA = EndpointProperties->BufferPA;
+
+    BufferLength = EndpointProperties->BufferLength;
+
+    /* For Isochronous transfers not used QHs (only TDs) */
+    if (EndpointProperties->TransferType != USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
+    {
+        /* Initialize HCD Queue Head */
+        UhciEndpoint->QH = (PUHCI_HCD_QH)BufferVA;
+
+        QH = UhciEndpoint->QH;
+
+        QH->HwQH.NextElement |= UHCI_QH_ELEMENT_LINK_PTR_TERMINATE;
+        QH->PhysicalAddress = BufferPA;
+
+        QH->NextHcdQH = QH;
+        QH->PrevHcdQH = QH;
+        QH->UhciEndpoint = UhciEndpoint;
+
+        BufferVA += sizeof(UHCI_HCD_QH);
+        BufferPA += sizeof(UHCI_HCD_QH);
+
+        BufferLength -= sizeof(UHCI_HCD_QH);
+    }
+
+    /* Initialize HCD Transfer Descriptors */
+    TdCount = 0;
+    RtlZeroMemory((PVOID)BufferVA, BufferLength);
+    UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
+
+    UhciEndpoint->FirstTD = (PUHCI_HCD_TD)BufferVA;
+    UhciEndpoint->AllocatedTDs = 0;
+    UhciEndpoint->FirstTD->PhysicalAddress = BufferPA;
+    LastTD = UhciEndpoint->FirstTD;
+    BufferPAEnd = EndpointProperties->BufferPA + EndpointProperties->BufferLength;
+
+    while(TRUE)
+    {
+        BufferPA += sizeof(UHCI_HCD_TD);
+        BufferVA += sizeof(UHCI_HCD_TD);
+        UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
+        if (BufferPA + sizeof(UHCI_HCD_TD) >= BufferPAEnd)
+            break;
+        TD = (PUHCI_HCD_TD)BufferVA;
+
+        TD->PhysicalAddress = BufferPA;
+        LastTD->NextTD = TD;
+        LastTD = TD;
+        TdCount++;
+        ASSERT(BufferLength >= sizeof(UHCI_HCD_TD));
+        BufferLength -= sizeof(UHCI_HCD_TD);
+    }
+
+    UhciEndpoint->TailTD = NULL;
+    UhciEndpoint->HeadTD = NULL;
+    UhciEndpoint->MaxTDs = TdCount;
+    DPRINT1("Endpoint %p MaxTds %u\n", UhciEndpoint, TdCount);
     return MP_STATUS_SUCCESS;
 }
 
@@ -391,7 +687,6 @@ UhciTakeControlHC(IN PUHCI_EXTENSION UhciExtension,
                                           &LegacySupport.AsUSHORT,
                                           PCI_LEGSUP,
                                           sizeof(USHORT));
-
     UhciDisableInterrupts(UhciExtension);
 
     Command.AsUSHORT = READ_PORT_USHORT(&BaseRegister->HcCommand.AsUSHORT);
@@ -458,7 +753,7 @@ UhciInitializeHardware(IN PUHCI_EXTENSION UhciExtension)
 {
     PUHCI_HW_REGISTERS BaseRegister;
     UHCI_USB_COMMAND Command;
-    UHCI_USB_STATUS StatusMask;
+    UHCI_INTERRUPT_ENABLE StatusMask;
 
     DPRINT("UhciInitializeHardware: UhciExtension - %p\n", UhciExtension);
     DPRINT("UhciInitializeHardware: VIA HW FIXME\n"); // after supporting HcFlavor in usbport
@@ -492,10 +787,10 @@ UhciInitializeHardware(IN PUHCI_EXTENSION UhciExtension)
 
     StatusMask = UhciExtension->StatusMask;
 
-    StatusMask.Interrupt = 1;
-    StatusMask.ErrorInterrupt = 1;
-    StatusMask.ResumeDetect = 1;
-    StatusMask.HostSystemError = 1;
+    StatusMask.InterruptOnComplete = 1;
+    StatusMask.ResumeInterrupt = 1;
+    StatusMask.TimeoutCRC = 1;
+    StatusMask.ShortPacket = 1;
 
     UhciExtension->StatusMask = StatusMask;
 
@@ -694,6 +989,8 @@ UhciStartController(IN PVOID uhciExtension,
     WRITE_PORT_ULONG(&BaseRegister->FrameAddress,
                      UhciExtension->HcResourcesPA + FIELD_OFFSET(UHCI_HC_RESOURCES, FrameList));
 
+    WRITE_PORT_USHORT(&BaseRegister->FrameNumber, 0);
+
     if (MpStatus == MP_STATUS_SUCCESS)
     {
         Command.AsUSHORT = READ_PORT_USHORT(&BaseRegister->HcCommand.AsUSHORT);
@@ -860,7 +1157,7 @@ UhciInterruptService(IN PVOID uhciExtension)
 
     if (HcStatus.HcHalted)
     {
-        DPRINT_UHCI("UhciInterruptService: Hc Halted [%p] HcStatus %X\n",
+        DPRINT1("UhciInterruptService: Hc Halted [%p] HcStatus %X\n",
                     UhciExtension,
                     HcStatus.AsUSHORT);
     }
@@ -926,13 +1223,14 @@ NextProcess:
             WRITE_PORT_USHORT(CommandReg, Command.AsUSHORT);
         }
     }
-    else if (HcStatus.Interrupt && UhciExtension->ExtensionLock)
+    else if (HcStatus.Interrupt)
     {
-        DPRINT1("UhciInterruptService: [%p] HcStatus %X\n",
+        DPRINT("UhciInterruptService: [%p] HcStatus %X Result %d\n",
                 UhciExtension,
-                HcStatus.AsUSHORT);
+                HcStatus.AsUSHORT,
+            Result);
 
-        UhciCleanupFrameList(UhciExtension, FALSE);
+        //UhciCleanupFrameList(UhciExtension, FALSE);
     }
 
     return Result;
@@ -947,7 +1245,7 @@ UhciInterruptDpc(IN PVOID uhciExtension,
     PUHCI_HW_REGISTERS BaseRegister;
     UHCI_USB_STATUS HcStatus;
 
-    DPRINT_UHCI("UhciInterruptDpc: [%p] EnableInt %x, HcStatus %X\n",
+    DPRINT("UhciInterruptDpc: [%p] EnableInt %x, HcStatus %X\n",
                 uhciExtension, IsDoEnableInterrupts, UhciExtension->HcStatus);
 
     BaseRegister = UhciExtension->BaseRegister;
@@ -1047,33 +1345,25 @@ UhciAllocateTD(IN PUHCI_EXTENSION UhciExtension,
                IN PUHCI_ENDPOINT UhciEndpoint)
 {
     PUHCI_HCD_TD TD;
-    ULONG AllocTdCounter;
     ULONG ix;
 
     DPRINT_UHCI("UhciAllocateTD: ...\n");
 
-    AllocTdCounter = UhciEndpoint->AllocTdCounter;
+
+    TD = UhciEndpoint->FirstTD;
 
     for (ix = 0; ix < UhciEndpoint->MaxTDs; ++ix)
     {
-        TD = &UhciEndpoint->FirstTD[AllocTdCounter];
-
         if (!(TD->Flags & UHCI_HCD_TD_FLAG_ALLOCATED))
         {
             TD->Flags |= UHCI_HCD_TD_FLAG_ALLOCATED;
 
             UhciEndpoint->AllocatedTDs++;
-            UhciEndpoint->AllocTdCounter = AllocTdCounter;
-
             return TD;
         }
 
-        if (AllocTdCounter < UhciEndpoint->MaxTDs - 1)
-            AllocTdCounter++;
-        else
-            AllocTdCounter = 0;
+        TD = TD->NextTD;
     }
-
     return NULL;
 }
 
@@ -1675,13 +1965,133 @@ UhciProcessDoneNonIsoTD(IN PUHCI_EXTENSION UhciExtension,
 
 MPSTATUS
 NTAPI
-UhciIsochTransfer(IN PVOID ehciExtension,
-                  IN PVOID ehciEndpoint,
+UhciIsochTransfer(IN PVOID uhciExtension,
+                  IN PVOID uhciEndpoint,
                   IN PUSBPORT_TRANSFER_PARAMETERS TransferParameters,
-                  IN PVOID ehciTransfer,
+                  IN PVOID uhciTransfer,
                   IN PVOID isoParameters)
 {
-    DPRINT_IMPL("UhciIsochTransfer: UNIMPLEMENTED. FIXME\n");
+    PUHCI_EXTENSION UhciExtension = uhciExtension;
+    PUHCI_ENDPOINT UhciEndpoint = uhciEndpoint;
+    PUHCI_TRANSFER UhciTransfer = uhciTransfer;
+    PUSBPORT_ISO_TRANSFER_DATA IsoTransfer = isoParameters;
+    ULONG DeviceSpeed;
+
+    if (!IsoTransfer || IsoTransfer->TotalPackets == 0)
+    {
+        DPRINT1("UHCI_SubmitIsoTransfer: No ISO transfer data\n");
+        return MP_STATUS_FAILURE;
+    }
+
+    RtlZeroMemory(UhciTransfer, sizeof(UHCI_TRANSFER));
+
+    UhciTransfer->TransferParameters = TransferParameters;
+    UhciTransfer->USBDStatus = USBD_STATUS_SUCCESS;
+    UhciTransfer->UhciEndpoint = UhciEndpoint;
+    InitializeListHead(&UhciTransfer->ActiveITDs);
+
+    DeviceSpeed = UhciEndpoint->EndpointProperties.DeviceSpeed;
+
+    if (DeviceSpeed == UsbFullSpeed)
+    {
+        ULONG Period = UhciEndpoint->EndpointProperties.Period;
+        ULONG NumITDs;
+        ULONG PacketIndex = 0;
+        ULONG ITDCount = 0;
+        ULONG Count = 0;
+        PUHCI_HCD_TD ITD;
+        PUHCI_HC_RESOURCES HcResourcesVA;
+        ULONG CurrentFrame;
+
+        /* get number of iTDs needed */
+        NumITDs = IsoTransfer->TotalPackets;
+
+        if (UhciEndpoint->AllocatedTDs + NumITDs > UhciEndpoint->MaxTDs)
+        {
+            DPRINT1("UHCI_SubmitIsoTransfer: Need %lu iTDs but only %lu available\n",
+                    NumITDs, UhciEndpoint->MaxTDs - UhciEndpoint->AllocatedTDs);
+            return MP_STATUS_NO_RESOURCES;
+        }
+
+        HcResourcesVA = UhciExtension->HcResourcesVA;
+
+        /* Use the first packet's FrameNumber for scheduling */
+        CurrentFrame = IsoTransfer->Packets[0].FrameNumber;
+        UHCI_DisablePeriodicList(UhciExtension);
+
+        /* Allocate and program iTDs, one per frame */
+        while (PacketIndex < IsoTransfer->TotalPackets)
+        {
+            PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties;
+            ULONG DeviceAddress, EndpointNumber, Direction;
+            PUSBPORT_ISO_PACKET_DATA Packet = &IsoTransfer->Packets[PacketIndex];
+
+            ITD = UhciAllocateTD(UhciExtension, UhciEndpoint);
+            if (!ITD)
+            {
+                DPRINT1("UHCI_SubmitIsoTransfer: Failed to allocate iTD %lu\n", ITDCount);
+                /* TODO: free previously allocated iTDs */
+                return MP_STATUS_NO_RESOURCES;
+            }
+            DPRINT("ITD %p CurrentFrame %x\n", ITD, CurrentFrame);
+            EndpointProperties = &UhciEndpoint->EndpointProperties;
+            DeviceAddress = EndpointProperties->DeviceAddress;
+            EndpointNumber = EndpointProperties->EndpointAddress & 0x0F;
+            Direction = (EndpointProperties->EndpointAddress & USB_ENDPOINT_DIRECTION_MASK) ? 1 : 0;
+
+            /* Initialize iTD hardware structure */
+            RtlZeroMemory(&ITD->HwTD, sizeof(UHCI_TD));
+            ITD->UhciTransfer = UhciTransfer;
+            ITD->UhciEndpoint = UhciEndpoint;
+
+            if (PacketIndex + 1 == IsoTransfer->TotalPackets)
+            {
+                ITD->HwTD.ControlStatus.ShortPacketDetect = 1;
+                ITD->HwTD.ControlStatus.InterruptOnComplete = 1;
+            }
+            ITD->HwTD.ControlStatus.Status = UHCI_TD_STS_ACTIVE;
+            ITD->HwTD.ControlStatus.ActualLength = UHCI_TD_LENGTH_NULL;
+            ITD->HwTD.ControlStatus.IsochronousType = 1;
+            ITD->HwTD.ControlStatus.ErrorCounter = 3;
+            ITD->HwTD.Token.MaximumLength = Packet->Segment0Length;
+            ITD->HwTD.Token.DeviceAddress = DeviceAddress;
+            ITD->HwTD.Token.Endpoint = EndpointNumber;
+
+            if (TransferParameters->TransferFlags & USBD_TRANSFER_DIRECTION_IN)
+                ITD->HwTD.Token.PIDCode = UHCI_TD_PID_IN;
+            else
+                ITD->HwTD.Token.PIDCode = UHCI_TD_PID_OUT;
+
+            ITD->HwTD.Buffer = Packet->Segment0Addr.LowPart;
+            ITD->ScheduledFrame = CurrentFrame;
+
+            ITD->IsoPacket = Packet;
+            KeMemoryBarrier();
+
+            ITD->HwTD.NextElement = HcResourcesVA->FrameList[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK];
+            HcResourcesVA->FrameList[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK] = (ITD->PhysicalAddress & 0xFFFFFFF0);
+
+            ASSERT((ITD->PhysicalAddress & 0xF) == 0);
+            DPRINT("ITD %p Phys %x SegmentCount %d LowPart1 %p LowPart2 %p\n", ITD,
+                ITD->PhysicalAddress,
+                Packet->SegmentCount, Packet->Segment0Addr.LowPart, Packet->Segment1Addr.LowPart);
+
+
+            KeMemoryBarrier();
+            PacketIndex++;
+            CurrentFrame++;
+            ITDCount++;
+            InsertTailList(&UhciTransfer->ActiveITDs, &ITD->ActiveITDEntry);
+        }
+        UhciEndpoint->FrameCount += ITDCount;
+        UhciTransfer->PendingTds += ITDCount;
+        UhciExtension->PendingTransfers++;
+        InsertTailList(&UhciEndpoint->ListTransfers, &UhciTransfer->EndpointEntry);
+        UHCI_EnablePeriodicList(UhciExtension);
+
+        DPRINT("UHCI_SubmitIsoTransfer: Scheduled %lu iTDs for %lu packets FirstFrame %x LastFrame %x\n",
+               ITDCount, IsoTransfer->TotalPackets, IsoTransfer->Packets[0].FrameNumber, ITD->ScheduledFrame);
+    }
     return MP_STATUS_SUCCESS;
 }
 
@@ -1691,7 +2101,8 @@ UhciAbortIsoTransfer(IN PUHCI_EXTENSION UhciExtension,
                      IN PUHCI_ENDPOINT UhciEndpoint,
                      IN PUHCI_TRANSFER UhciTransfer)
 {
-    DPRINT_IMPL("UhciAbortIsoTransfer: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("UhciAbortIsoTransfer: UNIMPLEMENTED. FIXME\n");
+    ASSERT(FALSE);
 }
 
 VOID
@@ -2069,7 +2480,61 @@ NTAPI
 UhciPollIsoEndpoint(IN PUHCI_EXTENSION UhciExtension,
                     IN PUHCI_ENDPOINT UhciEndpoint)
 {
-    DPRINT_IMPL("UhciPollIsoEndpoint: UNIMPLEMENTED. FIXME\n");
+    PUHCI_HCD_TD ITD;
+    PLIST_ENTRY Entry;
+    PLIST_ENTRY ITDEntry;
+    PUHCI_TRANSFER Transfer;
+    BOOLEAN StillActive;
+    ULONG DeviceSpeed;
+    ULONG ActiveCount;
+
+    DeviceSpeed = UhciEndpoint->EndpointProperties.DeviceSpeed;
+
+    if (DeviceSpeed == UsbFullSpeed)
+    {
+        /* full-speed: poll iTDs */
+        if (UhciEndpoint->AllocatedTDs == 0)
+        {
+            /* no iTDs consumed or out of resources */
+            return;
+        }
+
+        Entry = UhciEndpoint->ListTransfers.Flink;
+        while(Entry != &UhciEndpoint->ListTransfers)
+        {
+            Transfer = CONTAINING_RECORD(Entry, UHCI_TRANSFER, EndpointEntry);
+            if (!IsListEmpty(&Transfer->ActiveITDs))
+            {
+                ITDEntry = Transfer->ActiveITDs.Flink;
+                ActiveCount = 0;
+                while(ITDEntry != &Transfer->ActiveITDs)
+                {
+                    ITD = CONTAINING_RECORD(ITDEntry, UHCI_HCD_TD, ActiveITDEntry);
+                    ITDEntry = ITDEntry->Flink;
+                    KeMemoryBarrier();
+                    if (ITD->ScheduledFrame + 2 < UhciGet32BitFrameNumber(UhciExtension) || ((ITD->HwTD.ControlStatus.Status & UHCI_TD_STS_ACTIVE) == 0))
+                    {
+                        UHCI_ProcessCompletedITD(UhciExtension, ITD);
+                    }
+                    else
+                    {
+                        /* still active */
+                        StillActive = TRUE;
+                        ActiveCount++;
+                        DPRINT("ITD %p still active Buffer %p ScheduledFrame %x CurrentFrame %x\n", ITD, ITD->HwTD.Buffer, ITD->ScheduledFrame, UhciGet32BitFrameNumber(UhciExtension));
+                    }
+                }
+                DPRINT("UhciPollIsoEndpoint Transfer %p ActiveCount %u\n", Transfer, ActiveCount);
+            }
+            Entry = Entry->Flink;
+        }
+    }
+    else
+    {
+        /* Low-speed: poll siTDs - not yet implemented */
+        DPRINT("UHCI_PollIsoEndpoint: Low-speed ISO polling not yet implemented\n");
+        ASSERT(FALSE);
+    }
 }
 
 VOID

@@ -107,6 +107,20 @@
 #define DEVICE_HANDLE_FLAG_REMOVED     0x00000008
 #define DEVICE_HANDLE_FLAG_USB2HUB     0x00000010
 
+/*
+ * Wrap-safe 32-bit USB frame counter comparisons.  The hardware
+ * frame counter is 32 bits and wraps roughly every 49 days.
+ * We treat any frame in [x, x + 2^31) as "in the future".
+ */
+static __inline BOOLEAN UsbportFrameAfter(ULONG a, ULONG b)
+{
+    return (a > (b + 1));
+}
+static __inline BOOLEAN UsbportFrameAtOrAfter(ULONG a, ULONG b)
+{
+    return (a - b) < (MAXULONG / 2);
+}
+
 /* Endpoint Flags (USBPORT_ENDPOINT) */
 #define ENDPOINT_FLAG_DMA_TYPE      0x00000001
 #define ENDPOINT_FLAG_ROOTHUB_EP0   0x00000002
@@ -137,6 +151,9 @@
 #define TRANSFER_FLAG_SPLITED    0x00000100
 #define TRANSFER_FLAG_COMPLETED  0x00000200
 #define TRANSFER_FLAG_PARENT     0x00000400
+
+/* Transfer Parameter Flags */
+#define USBPORT_TRANSFER_FLAGS_ISO  0x00000001
 
 extern KSPIN_LOCK USBPORT_SpinLock;
 extern LIST_ENTRY USBPORT_MiniPortDrivers;
@@ -238,6 +255,10 @@ typedef struct _USBPORT_ENDPOINT {
   LIST_ENTRY FlushAbortLink;
   LIST_ENTRY TtLink;
   LIST_ENTRY RebalanceLink;
+  /* Isochronous scheduling state */
+  ULONG IsoScheduleStartFrame;
+  ULONG IsoScheduleFrame;
+  BOOLEAN IsFirstIsoTransfer;
 } USBPORT_ENDPOINT, *PUSBPORT_ENDPOINT;
 
 typedef struct _USBPORT_ISO_BLOCK *PUSBPORT_ISO_BLOCK;
@@ -632,6 +653,15 @@ VOID
 NTAPI
 USBPORT_FlushMapTransfers(
   IN PDEVICE_OBJECT FdoDevice);
+
+VOID
+NTAPI
+USBPORT_MiniportCompleteTransfer(
+  IN PVOID MiniPortExtension,
+  IN PVOID MiniPortEndpoint,
+  IN PVOID TransferParameters,
+  IN USBD_STATUS USBDStatus,
+  IN ULONG TransferLength);
 
 VOID
 NTAPI

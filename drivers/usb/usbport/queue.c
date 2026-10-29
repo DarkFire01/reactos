@@ -492,7 +492,15 @@ USBPORT_CancelPendingTransferIrp(IN PDEVICE_OBJECT DeviceObject,
                 Irp);
 
     Urb = URB_FROM_IRP(Irp);
-    Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
+    {
+        Transfer = Urb->UrbIsochronousTransfer.hca.Reserved8[0];
+    }
+    else
+    {
+        Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+    }
     Endpoint = Transfer->Endpoint;
 
     FdoDevice = Endpoint->FdoDevice;
@@ -559,7 +567,15 @@ USBPORT_CancelActiveTransferIrp(IN PDEVICE_OBJECT DeviceObject,
     }
 
     Urb = URB_FROM_IRP(irp);
-    Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
+    {
+        Transfer = Urb->UrbIsochronousTransfer.hca.Reserved8[0];
+    }
+    else
+    {
+        Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+    }
     Endpoint = Transfer->Endpoint;
 
     DPRINT_CORE("USBPORT_CancelActiveTransferIrp: irp - %p, Urb - %p, Transfer - %p\n",
@@ -977,7 +993,16 @@ USBPORT_QueuePendingUrbToEndpoint(IN PUSBPORT_ENDPOINT Endpoint,
                 Endpoint,
                 Urb);
 
-    Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
+    {
+        Transfer = Urb->UrbIsochronousTransfer.hca.Reserved8[0];
+    }
+    else
+    {
+        Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+    }
+
+
     //FIXME USBPORT_ResetEndpointIdle();
     InsertTailList(&Endpoint->PendingTransferList, &Transfer->TransferLink);
     Urb->UrbHeader.Status = USBD_STATUS_PENDING;
@@ -998,7 +1023,16 @@ USBPORT_QueueActiveUrbToEndpoint(IN PUSBPORT_ENDPOINT Endpoint,
                 Endpoint,
                 Urb);
 
-    Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
+    {
+        Transfer = Urb->UrbIsochronousTransfer.hca.Reserved8[0];
+    }
+    else
+    {
+        Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+    }
+
     FdoDevice = Endpoint->FdoDevice;
     FdoExtension = FdoDevice->DeviceExtension;
 
@@ -1058,7 +1092,16 @@ USBPORT_QueuePendingTransferIrp(IN PIRP Irp)
 
     Urb = URB_FROM_IRP(Irp);
 
-    Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
+    {
+        Transfer = Urb->UrbIsochronousTransfer.hca.Reserved8[0];
+    }
+    else
+    {
+        Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+    }
+
     Endpoint = Transfer->Endpoint;
 
     FdoDevice = Endpoint->FdoDevice;
@@ -1095,25 +1138,54 @@ USBPORT_QueueTransferUrb(IN PURB Urb)
     if (Urb->UrbControlTransfer.TransferFlags & USBD_DEFAULT_PIPE_TRANSFER)
         Urb->UrbHeader.Function = URB_FUNCTION_CONTROL_TRANSFER;
 
-    Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
+    {
+        Transfer = Urb->UrbIsochronousTransfer.hca.Reserved8[0];
+    }
+    else
+    {
+        Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+    }
+
     Parameters = &Transfer->TransferParameters;
 
     Endpoint = Transfer->Endpoint;
     Endpoint->Flags &= ~ENDPOINT_FLAG_QUEUENE_EMPTY;
 
-    Parameters->TransferBufferLength = Urb->UrbControlTransfer.TransferBufferLength;
-    Parameters->TransferFlags = Urb->UrbControlTransfer.TransferFlags;
-
-    Transfer->TransferBufferMDL = Urb->UrbControlTransfer.TransferBufferMDL;
-
-    if (Urb->UrbControlTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN)
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
     {
-        Transfer->Direction = USBPORT_DMA_DIRECTION_FROM_DEVICE;
+       Parameters->TransferBufferLength = Urb->UrbIsochronousTransfer.TransferBufferLength;
+       Parameters->TransferFlags = Urb->UrbIsochronousTransfer.TransferFlags;
+       Transfer->TransferBufferMDL = Urb->UrbIsochronousTransfer.TransferBufferMDL;
+       if (Urb->UrbIsochronousTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN)
+       {
+          Transfer->Direction = USBPORT_DMA_DIRECTION_FROM_DEVICE;
+       }
+       else
+       {
+          Transfer->Direction = USBPORT_DMA_DIRECTION_TO_DEVICE;
+       }
     }
     else
     {
-        Transfer->Direction = USBPORT_DMA_DIRECTION_TO_DEVICE;
+        Parameters->TransferBufferLength = Urb->UrbControlTransfer.TransferBufferLength;
+        Parameters->TransferFlags = Urb->UrbControlTransfer.TransferFlags;
+
+        Transfer->TransferBufferMDL = Urb->UrbControlTransfer.TransferBufferMDL;
+
+        if (Urb->UrbControlTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN)
+        {
+            Transfer->Direction = USBPORT_DMA_DIRECTION_FROM_DEVICE;
+        }
+        else
+        {
+            Transfer->Direction = USBPORT_DMA_DIRECTION_TO_DEVICE;
+        }
+
+        Urb->UrbControlTransfer.TransferBufferLength = 0;
     }
+
 
     if (Endpoint->EndpointProperties.TransferType == USBPORT_TRANSFER_TYPE_CONTROL)
     {
@@ -1124,8 +1196,6 @@ USBPORT_QueueTransferUrb(IN PURB Urb)
 
     DPRINT_URB("... URB TransferBufferLength - %x\n",
            Urb->UrbControlTransfer.TransferBufferLength);
-
-    Urb->UrbControlTransfer.TransferBufferLength = 0;
 
     Irp = Transfer->Irp;
 
