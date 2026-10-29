@@ -92,6 +92,27 @@ typedef struct _USBPORT_ENDPOINT_PROPERTIES {
 
 C_ASSERT(sizeof(USBPORT_ENDPOINT_PROPERTIES) == 56 + 2 * sizeof(PVOID));
 
+/* Per-packet scatter/gather info prepared by the port driver for ISO transfers */
+typedef struct _USBPORT_ISO_PACKET_DATA {
+  ULONG FrameNumber;
+  ULONG MicroFrameNumber;
+  ULONG PacketLength;
+  ULONG BytesTransferred;
+  USBD_STATUS CompletionStatus;
+  ULONG SegmentCount;           /* 1 or 2 physical segments */
+  PHYSICAL_ADDRESS Segment0Addr;
+  ULONG Segment0Length;
+  PHYSICAL_ADDRESS Segment1Addr;
+  ULONG Segment1Length;
+} USBPORT_ISO_PACKET_DATA, *PUSBPORT_ISO_PACKET_DATA;
+
+/* ISO transfer block passed to SubmitIsoTransfer via isoParameters */
+typedef struct _USBPORT_ISO_TRANSFER_DATA {
+  PVOID MappedBuffer;
+  ULONG TotalPackets;
+  USBPORT_ISO_PACKET_DATA Packets[1]; /* variable-length array */
+} USBPORT_ISO_TRANSFER_DATA, *PUSBPORT_ISO_TRANSFER_DATA;
+
 typedef struct _USBPORT_TRANSFER_PARAMETERS {
   ULONG TransferFlags;
   ULONG TransferBufferLength;
@@ -115,7 +136,7 @@ C_ASSERT(sizeof(USBPORT_SCATTER_GATHER_ELEMENT) == 24);
 
 typedef struct _USBPORT_SCATTER_GATHER_LIST {
   ULONG Flags;
-  ULONG_PTR CurrentVa;
+  PVOID CurrentVa;
   PVOID MappedSystemVa;
   ULONG SgElementCount;
   USBPORT_SCATTER_GATHER_ELEMENT SgElement[2];
