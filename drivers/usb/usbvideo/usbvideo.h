@@ -1,0 +1,645 @@
+#pragma once
+
+#include <ntddk.h>
+#include <portcls.h>
+#include <ksmedia.h>
+#include <hubbusif.h>
+#include <usbbusif.h>
+#include <usbioctl.h>
+#include <usb.h>
+#include <usbdlib.h>
+#define YDEBUG
+#include <debug.h>
+
+#define USBVIDEO_TAG 'VbsU'
+
+#include <pshpack1.h>
+
+typedef struct _VS_PROBE_COMMIT_CONTROL
+{
+    USHORT  bmHint;                               //{0x00, 0x00
+    UCHAR   bFormatIndex;                         // ,0x02
+    UCHAR   bFrameIndex;                          // 0x01
+    ULONG   dwFrameInterval;                      // 0x15,0x16,0x05,0x00
+    USHORT  wKeyFrameRate;                        // 0x00,0x00
+    USHORT  wPFrameRate;                          // 0x00,0x00
+    USHORT  wCompQuality;                         // 0xD0,0x07
+    USHORT  wCompWindowSize;                      // 0x00,0x00
+    USHORT  wDelay;                               // 0x00,0x00
+    ULONG   dwMaxVideoFrameSize;                  //0x00,0x90,0x01,0x00
+    ULONG   dwMaxPayloadTransferSize;             // 0x80,0x01,0x00,0x00
+    // UVC 1.1+
+    ULONG   dwClockFrequency;
+    UCHAR   bmFramingInfo;
+    UCHAR   bPreferedVersion;
+    UCHAR   bMinVersion;
+    UCHAR   bMaxVersion;
+    // TODO UVC 1.5
+} VS_PROBE_COMMIT_CONTROL;
+
+typedef struct
+{
+        UCHAR bFormatIndex;
+        UCHAR bFrameIndex;
+        UCHAR bCompressionIndex;
+        ULONG dwMaxVideoFrameSize;
+        ULONG dwMaxPayloadTransferSize;
+} STILL_PROBE_COMMIT, *PSTILL_PROBE_COMMIT;;
+
+typedef struct _FRAME_CONTEXT {
+    PUCHAR  FrameBuffer;
+    ULONG   FrameSize;
+    ULONG   MaxFrameSize;
+    UCHAR   LastFid;
+    BOOLEAN FrameStarted;
+    ULONG dwPresentationTimestamp;
+} FRAME_CONTEXT, *PFRAME_CONTEXT;
+
+typedef struct
+{
+    UCHAR bHeaderLength;
+    union {
+        UCHAR bmHeaderInfo;
+        struct {
+            UCHAR FID  : 1;
+            UCHAR EOF  : 1;
+            UCHAR PTS  : 1;
+            UCHAR SCR  : 1;
+            UCHAR RES  : 1;
+            UCHAR STI  : 1;
+            UCHAR ERR  : 1;
+            UCHAR EOH  : 1;
+        };
+    };
+    ULONG dwPresentationTime;
+    ULONG dwClockFrequency;
+    USHORT SOFTokenCount;
+} UVC_PAYLOAD_HEADER, *PUVC_PAYLOAD_HEADER;
+
+typedef struct
+{
+    UCHAR  bLength;
+    UCHAR  bDescriptorType;
+    UCHAR  bDescriptorSubType;
+    USHORT bcdUVC;
+    USHORT wTotalLength;
+    ULONG  dwClockFrequency;
+    UCHAR  bInCollection;
+    UCHAR  baInterfaceNr[1];
+} VC_INTERFACE_HEADER_DESCRIPTOR, *PVC_INTERFACE_HEADER_DESCRIPTOR;
+
+typedef struct
+{
+    USB_COMMON_DESCRIPTOR Common;
+    UCHAR                 bDescriptorSubtype;
+    UCHAR                 bTerminalID;
+} VC_INTERFACE_COMMON_DESCRIPTOR, *PVC_INTERFACE_COMMON_DESCRIPTOR;
+C_ASSERT(sizeof(USB_COMMON_DESCRIPTOR) + sizeof(UCHAR) * 2 == sizeof(VC_INTERFACE_COMMON_DESCRIPTOR));
+
+typedef struct {
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bTerminalID;
+    USHORT wTerminalType;
+    UCHAR bAssocTerminal;
+    UCHAR bSourceID;
+    UCHAR iTerminal;
+}VC_OUTPUT_TERMINAL_DESCRIPTOR, *PVC_OUTPUT_TERMINAL_DESCRIPTOR;
+C_ASSERT(sizeof(VC_OUTPUT_TERMINAL_DESCRIPTOR) == 0x09);
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bTerminalID;
+    USHORT wTerminalType;
+    UCHAR bAssocTerminal;
+    UCHAR iTerminal;
+    USHORT wObjectiveFocalLengthMin;
+    USHORT wObjectiveFocalLengthMax;
+    USHORT wOcularFocalLength;
+    UCHAR bControlSize;
+    UCHAR bmControls[0];
+}VC_INPUT_TERMINAL_DESCRIPTOR, *PVC_INPUT_TERMINAL_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bUnitID;
+    UCHAR bSourceID;
+    USHORT wMaxMultiplier;
+    UCHAR bControlSize;
+    UCHAR bmControls[1];
+    UCHAR iProcessing;
+}VC_PROCESSING_UNIT_TERMINAL_DESCRIPTOR, *PVC_PROCESSING_UNIT_TERMINAL_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubType;
+    UCHAR bUnitID;
+    UCHAR bNrInPins;
+    UCHAR baSourceID[1];
+    UCHAR iSelector;
+}VC_MULTIPLEXER_TERMINAL_DESCRIPTOR, *PVC_MULITPLEXER_TERMINAL_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubType;
+    UCHAR bUnitID;
+    GUID guidExtensionCode;
+    UCHAR bNumControls;
+    UCHAR bNrInPins;
+    UCHAR baSourceID[1];
+    UCHAR bControlSize;
+    UCHAR bmControls[1];
+    UCHAR iExtension;
+}VC_EXTENSION_TERMINAL_DESCRIPTOR, *PVC_EXTENSION_TERMINAL_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bNumFormats;
+    USHORT wTotalLength;
+    UCHAR bEndpointAddress;
+    UCHAR bmInfo;
+    UCHAR bTerminalLink;
+    UCHAR bStillCaptureMethod;
+    UCHAR bTriggerSupport;
+    UCHAR bTriggerUsage;
+    UCHAR bControlSize;
+    UCHAR bmaControls[1];
+}VS_VIDEO_INPUT_HEADER_DESCRIPTOR, *PVS_VIDEO_INPUT_HEADER_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bFormatIndex;
+    UCHAR bNumFrameDescriptors;
+    UCHAR bmFlags;
+    UCHAR bDefaultFrameIndex;
+    UCHAR bAspectRatioX;
+    UCHAR bAspectRatioY;
+    UCHAR bmInterlaceFlags;
+    UCHAR bCopyProtect;
+}VS_MJPEG_FORMAT_TYPE_DESCRIPTOR, *PVS_MJPEG_FORMAT_TYPE_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bFrameIndex;
+    UCHAR bmCapabilities;
+    USHORT wWidth;
+    USHORT wHeight;
+    ULONG dwMinBitRate;
+    ULONG dwMaxBitRate;
+    ULONG dwMaxVideoFrameBufferSize;
+    ULONG dwDefaultFrameInterval;
+    UCHAR bFrameIntervalType;
+    ULONG dwFrameInterval[1];
+}VS_MJPEG_FRAME_TYPE_DESCRIPTOR, *PVS_MJPEG_FRAME_TYPE_DESCRIPTOR;
+
+typedef struct
+{
+    USHORT wWidth;
+    USHORT wHeight;
+} STILL_IMAGE_SIZE;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bEndpointAddress;
+    UCHAR bNumImageSizePatterns;
+    STILL_IMAGE_SIZE Size[1];
+}VS_STILL_IMAGE_FRAME_TYPE_DESCRIPTOR, *PVS_STILL_IMAGE_FRAME_TYPE_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bFormatIndex;
+    UCHAR bNumFrameDescriptors;
+    GUID guidFormat;
+    UCHAR bBitsPerPixel;
+    UCHAR bDefaultFrameIndex;
+    UCHAR bAspectRatioX;
+    UCHAR bAspectRatioY;
+    UCHAR bmInterlaceFlags;
+    UCHAR bCopyProtect;
+}VS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR, *PVS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR;
+
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bFrameIndex;
+    UCHAR bmCapabilities;
+    USHORT wWidth;
+    USHORT wHeight;
+    ULONG dwMinBitRate;
+    ULONG dwMaxBitRate;
+    ULONG dwMaxVideoFrameBufferSize;
+    ULONG dwDefaultFrameInterval;
+    UCHAR bFrameIntervalType;
+    ULONG dwFrameInterval[1];
+} VS_UNCOMPRESSED_FRAME_TYPE_DESCRIPTOR, *PVS_UNCOMPRESSED_FRAME_TYPE_DESCRIPTOR;
+
+typedef struct
+{
+    PUSB_COMMON_DESCRIPTOR Descriptor;
+    UCHAR bFrameIndex;
+    UCHAR bFormatIndex;
+    ULONG dwFrameInterval;
+}VIDEO_FORMAT_INFO, *PVIDEO_FORMAT_INFO;
+
+
+#define VC_INTERFACE_HEADER_DESCRIPTOR_TYPE 0x24
+#define VS_INTERFACE_HEADER_DESCRIPTOR_TYPE 0x24
+
+
+#define VC_INTERFACE_HEADER_DESCRIPTOR_SUBTYPE 0x01
+#define VC_INPUT_TERMINAL_DESCRIPTOR_SUBTYPE 0x02
+#define VC_OUTPUT_TERMINAL_DESCRIPTOR_SUBTYPE 0x03
+#define VC_MULTIPLEXER_TERMINAL_DESCRIPTOR_SUBTYPE 0x04
+#define VC_PROCESSING_UNIT_TERMINAL_DESCRIPTOR_SUBTYPE 0x05
+#define VC_EXTENSION_TERMINAL_DESCRIPTOR_SUBTYPE 0x06
+
+#define VS_STILL_IMAGE_FRAME_TYPE_DESCRIPTOR_SUBTYPE 0x03
+#define VS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR_SUBTYPE 0x04
+#define VS_UNCOMPRESSED_FRAME_TYPE_DESCRIPTOR_SUBTYPE 0x05
+#define VS_MJPEG_FORMAT_TYPE_DESCRIPTOR_SUBTYPE 0x06
+#define VS_MJPEG_FRAME_TYPE_DESCRIPTOR_SUBTYPE 0x07
+
+#define MAKEFOURCC(ch0, ch1, ch2, ch3)                              \
+                ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) |   \
+                ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24 ))
+
+
+#define UVC_VERSION_100 0x100
+#define UVC_VERSION_110 0x110
+#define UVC_VERSION_150 0x150
+
+#include <poppack.h>
+
+#define ROUND_DOWN(n, align) (((ULONG)n) & ~((align) - 1l))
+#define ROUND_UP(n, align) ROUND_DOWN(((ULONG)n) + (align) - 1, (align))
+
+typedef struct
+{
+    PDEVICE_OBJECT LowerDevice;                                  /* lower device*/
+    PDEVICE_OBJECT FunctionalDeviceObject;
+    PUSB_CONFIGURATION_DESCRIPTOR ConfigurationDescriptor;       /* usb configuration descriptor */
+    PUSB_DEVICE_DESCRIPTOR DeviceDescriptor;                     /* usb device descriptor */
+    PUSBD_INTERFACE_INFORMATION InterfaceInfo;                   /* interface information */
+    USBD_CONFIGURATION_HANDLE ConfigurationHandle;               /* configuration handle */
+    PVC_INTERFACE_HEADER_DESCRIPTOR InterfaceHeaderDescriptor;   /* interface header descriptor*/
+    PUSB_COMMON_DESCRIPTOR * TerminalDescriptors;                /* terminal descriptors */
+    ULONG TerminalDescriptorsCount;                              /* num of terminal descriptors */
+    PVS_VIDEO_INPUT_HEADER_DESCRIPTOR VideoInputHeaderDescriptor; /* video input header descriptor */
+    HANDLE hPipe;                                                 /* handle pipe */
+    USBD_PIPE_TYPE PipeType;                                      /* pipe type */
+    ULONG MaximumPacketSize;                                      /* max packet size */
+    PFRAME_CONTEXT FrameCtx;
+    ULONG dwMaxVideoFrameSize;                                    /* max video frame size */
+    ULONG dwMaxPayloadTransferSize;
+    PVIDEO_FORMAT_INFO VideoFormatInfo;                           /* video format lookup info */
+    PUCHAR * Buffer;                                              /* buffer array for irp queue */
+    PURB * Urb;                                                   /* Urb array for irp queue */
+    PIRP * Irp;                                                   /* irp array for irp queue */
+    PMDL * Mdl;
+    PKSPIN Pin;                                                   /* pin reference */
+    ULONG StopStreaming;                                          /* stops streaming */
+    KEVENT StopStreamingEvent;
+    ULONG StoppedStreamingIrps;                                   /* stopped streaming irp count */
+    KEVENT StoppedStreamingEvent;                                  /* stopped streaming event */
+    KSPIN_LOCK StreamingLock;
+    KSPIN_LOCK IsoIrpCompletionLock;
+    LIST_ENTRY IsoIrpCompletionList;
+    KEVENT IsoIrpCompletionEvent;
+    KEVENT StartStreamingEvent;
+    ULONG UsbFrameNumber;
+    KEVENT UsbFrameNumberUpdated;
+    HANDLE IrpSchedulerThread;
+    ULONG IsoIrpCompletionCount;
+    ULONG BulkTransferSize;
+    ULONG IsoTransferSize;
+    ULONG FrameContextCount;
+    ULONG FrameContextSize;
+    ULONG UrbPoolCount;
+    ULONG IsoPacketCount;
+    BOOLEAN IsMjpegFormat;
+} USB_VIDEO_DEVICE_EXTENSION, *PUSB_VIDEO_DEVICE_EXTENSION;
+
+
+typedef struct
+{
+    PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension;                           /* device extension */
+    PDEVICE_OBJECT LowerDevice;                                  /* lower device*/
+}FILTER_CONTEXT, *PFILTER_CONTEXT;
+
+/* bulk.c */
+
+NTSTATUS
+NTAPI
+USBVideoBulkReadComplete(
+    PDEVICE_OBJECT DeviceObject,
+    PIRP Irp,
+    PVOID Context);
+
+NTSTATUS
+USBVideoQueueBulkRead(
+    IN PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension,
+    IN USBD_PIPE_HANDLE hBulkPipe,
+    IN PUCHAR TransferBuffer,
+    IN ULONG TransferLength,
+    IN PIRP Irp,
+    IN PURB Urb);
+
+
+/* descriptor.c */
+
+NTSTATUS
+USBVideoFindStreamingInterfaceDescriptor(
+    IN PKSPIN Pin,
+    IN ULONG dwMaxPayloadTransferSize,
+    IN UCHAR InterfaceNumber,
+    OUT PUCHAR AlternateSetting,
+    OUT PULONG pMaxPayloadTransferSize);
+
+
+NTSTATUS
+USBVideoGetInterfaceDescriptorForStreaming(
+    IN PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension,
+    OUT PUCHAR InterfaceNumber);
+
+NTSTATUS
+USBVideoTransferControlPacket(
+    IN PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension,
+    IN PVOID TransferBuffer,
+    IN ULONG TransferBufferLength,
+    IN ULONG TransferFlags,
+    IN UCHAR           bRequest,
+    IN USHORT          wValue,
+    IN USHORT          wIndex);
+
+NTSTATUS
+USBVideoReadErrorControl(
+    IN PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension
+);
+
+NTSTATUS
+SubmitUrbSync(
+    IN PDEVICE_OBJECT DeviceObject,
+    IN PURB Urb);
+
+
+NTSTATUS
+USBVideoPinBuildDescriptors(
+    PKSDEVICE Device,
+    PKSPIN_DESCRIPTOR_EX *PinDescriptors,
+    PULONG PinDescriptorsCount,
+    PULONG PinDescriptorSize);
+
+
+NTSTATUS
+BuildUSBVideoFilterTopology(
+    PKSDEVICE Device,
+    PKSFILTER_DESCRIPTOR FilterDescriptor);
+
+NTSTATUS
+USBVideoCheckUVCVersion(
+    PKSDEVICE Device,
+    PUSB_CONFIGURATION_DESCRIPTOR ConfigurationDescriptor);
+
+NTSTATUS
+USBVideoEnumTerminalDescriptors(
+    PKSDEVICE Device);
+
+
+NTSTATUS
+USBVideoFindTerminalDescriptorWithTerminalId(
+    IN PKSDEVICE Device,
+    IN UCHAR bTerminalId,
+    OUT PULONG TerminalDescriptorIndex
+);
+
+NTSTATUS
+USBVideoFindTerminalDescriptorWithSubType(
+    IN PKSDEVICE Device,
+    IN UCHAR bDescriptorSubType,
+    OUT PULONG TerminalDescriptorIndex);
+
+/* pool.c */
+
+PVOID
+NTAPI
+AllocFunction(
+    IN ULONG ItemSize);
+
+VOID
+NTAPI
+FreeFunction(
+    IN PVOID Item);
+
+/* usbvideo.c */
+
+NTSTATUS
+NTAPI
+USBVideoAddDevice(
+  _In_ PKSDEVICE Device
+);
+
+NTSTATUS
+NTAPI
+USBVideoPnPStart(
+  _In_     PKSDEVICE         Device,
+  _In_     PIRP              Irp,
+  _In_opt_ PCM_RESOURCE_LIST TranslatedResourceList,
+  _In_opt_ PCM_RESOURCE_LIST UntranslatedResourceList
+);
+
+NTSTATUS
+NTAPI
+USBVideoPnPQueryStop(
+  _In_ PKSDEVICE Device,
+  _In_ PIRP      Irp
+);
+
+VOID
+NTAPI
+USBVideoPnPCancelStop(
+  _In_ PKSDEVICE Device,
+  _In_ PIRP      Irp
+);
+
+VOID
+NTAPI
+USBVideoPnPStop(
+  _In_ PKSDEVICE Device,
+  _In_ PIRP      Irp
+);
+
+NTSTATUS
+NTAPI
+USBVideoPnPQueryRemove(
+  _In_ PKSDEVICE Device,
+  _In_ PIRP      Irp
+);
+
+VOID
+NTAPI
+USBVideoPnPCancelRemove(
+  _In_ PKSDEVICE Device,
+  _In_ PIRP      Irp
+);
+
+VOID
+NTAPI
+USBVideoPnPRemove(
+  _In_ PKSDEVICE Device,
+  _In_ PIRP      Irp
+);
+
+NTSTATUS
+NTAPI
+USBVideoPnPQueryCapabilities(
+  _In_    PKSDEVICE            Device,
+  _In_    PIRP                 Irp,
+  _Inout_ PDEVICE_CAPABILITIES Capabilities
+);
+
+VOID
+NTAPI
+USBVideoPnPSurpriseRemoval(
+  _In_ PKSDEVICE Device,
+  _In_ PIRP      Irp
+);
+
+NTSTATUS
+NTAPI
+USBVideoPnPQueryPower(
+  _In_ PKSDEVICE          Device,
+  _In_ PIRP               Irp,
+  _In_ DEVICE_POWER_STATE DeviceTo,
+  _In_ DEVICE_POWER_STATE DeviceFrom,
+  _In_ SYSTEM_POWER_STATE SystemTo,
+  _In_ SYSTEM_POWER_STATE SystemFrom,
+  _In_ POWER_ACTION       Action
+);
+
+VOID
+NTAPI
+USBVideoPnPSetPower(
+  _In_ PKSDEVICE          Device,
+  _In_ PIRP               Irp,
+  _In_ DEVICE_POWER_STATE To,
+  _In_ DEVICE_POWER_STATE From
+);
+
+/* filter.c */
+NTSTATUS
+NTAPI
+USBVideoCreateFilterContext(
+    PKSDEVICE Device);
+
+NTSTATUS
+NTAPI
+USBVideoFilterCreate(
+    PKSFILTER Filter,
+    PIRP Irp);
+
+/* pin.c */
+
+NTSTATUS
+USBVideoSetFormat(
+    PKSPIN Pin,
+    PKSDATAFORMAT ConnectionFormat);
+
+NTSTATUS
+NTAPI
+USBVideoPinCreate(
+    _In_ PKSPIN Pin,
+    _In_ PIRP Irp);
+
+
+NTSTATUS
+NTAPI
+USBVideoPinClose(
+    _In_ PKSPIN Pin,
+    _In_ PIRP Irp);
+
+NTSTATUS
+NTAPI
+USBVideoPinProcess(
+    _In_ PKSPIN Pin);
+
+VOID
+NTAPI
+USBVideoPinReset(
+    _In_ PKSPIN Pin);
+
+NTSTATUS
+NTAPI
+USBVideoPinSetDataFormat(
+    _In_ PKSPIN Pin,
+    _In_opt_ PKSDATAFORMAT OldFormat,
+    _In_opt_ PKSMULTIPLE_ITEM OldAttributeList,
+    _In_ const KSDATARANGE* DataRange,
+    _In_opt_ const KSATTRIBUTE_LIST* AttributeRange);
+
+NTSTATUS
+NTAPI
+USBVideoPinSetDeviceState(
+    _In_ PKSPIN Pin,
+    _In_ KSSTATE ToState,
+    _In_ KSSTATE FromState);
+
+/* iso.c */
+
+VOID
+NTAPI
+IrpSchedulerThread(IN PVOID Parameter);
+
+NTSTATUS
+NTAPI
+USBVideoIsoReadComplete(
+    PDEVICE_OBJECT DeviceObject,
+    PIRP Irp,
+    PVOID Context);
+
+NTSTATUS
+USBVideoQueueIsoRead(
+    IN PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension,
+    IN USBD_PIPE_HANDLE hIsoPipe,
+    IN PMDL Mdl,
+    IN ULONG TransferLength,
+    IN PIRP Irp,
+    IN PURB Urb,
+    IN ULONG FrameNumber,
+    IN PFRAME_CONTEXT FrameCtx);
+
+/* uvc.c */
+VOID
+NTAPI
+USBVideoDeliverFrame(
+    PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension,
+    PUCHAR FrameBuffer,
+    ULONG FrameSize,
+    UCHAR CompleteFrame);
