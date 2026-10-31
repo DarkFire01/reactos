@@ -98,6 +98,8 @@ USBAudioSelectConfiguration(
     PURB Urb;
     NTSTATUS Status;
     ULONG InterfaceDescriptorCount;
+    UCHAR AudioControlInterfaceNumber = 0;
+    BOOLEAN AudioControlInterfaceFound = FALSE;
 
     /* alloc item for configuration request */
     InterfaceList = AllocFunction(sizeof(USBD_INTERFACE_LIST_ENTRY) * (ConfigurationDescriptor->bNumInterfaces + 1));
@@ -122,6 +124,13 @@ USBAudioSelectConfiguration(
         if (InterfaceDescriptor->bInterfaceSubClass == 0x01) /* AUDIO_CONTROL*/
         {
             InterfaceList[InterfaceDescriptorCount++].InterfaceDescriptor = InterfaceDescriptor;
+
+            /* the units and terminals are addressed through the audio control interface */
+            if (!AudioControlInterfaceFound)
+            {
+                AudioControlInterfaceNumber = InterfaceDescriptor->bInterfaceNumber;
+                AudioControlInterfaceFound = TRUE;
+            }
         }
         else if (InterfaceDescriptor->bInterfaceSubClass == 0x03) /* MIDI_STREAMING*/
         {
@@ -155,6 +164,7 @@ USBAudioSelectConfiguration(
 
     /* store configuration handle */
     DeviceExtension->ConfigurationHandle = Urb->UrbSelectConfiguration.ConfigurationHandle;
+    DeviceExtension->AudioControlInterfaceNumber = AudioControlInterfaceNumber;
 
     /* alloc interface info */
     DeviceExtension->InterfaceInfo = AllocFunction(Urb->UrbSelectConfiguration.Interface.Length);

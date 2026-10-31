@@ -12,6 +12,37 @@
 
 #define USBAUDIO_TAG 'AbsU'
 #define USB_AUDIO_CONTROL_TERMINAL_DESCRIPTOR_TYPE (0x24)
+#define USB_AUDIO_ENDPOINT_DESCRIPTOR_TYPE (0x25)
+
+
+/* full speed audio endpoints are serviced once per 1ms frame */
+#define USB_AUDIO_FRAMES_PER_SECOND 1000
+/* maximum number of packets of a full speed iso urb */
+#define USB_AUDIO_MAX_ISO_PACKETS 255
+
+/* audio streaming descriptor subtypes */
+#define USB_AUDIO_STREAMING_FORMAT_TYPE (0x02)
+#define USB_AUDIO_STREAMING_EP_GENERAL (0x01)
+#define USB_AUDIO_FORMAT_TYPE_I (0x01)
+
+/* bmAttributes of the class-specific AS isochronous audio data endpoint descriptor */
+#define USB_AUDIO_EP_SAMPLING_FREQ_CONTROL (0x01)
+
+/* class-specific requests and endpoint control selectors */
+#define USB_AUDIO_SET_CUR (0x01)
+#define USB_AUDIO_GET_CUR (0x81)
+#define USB_AUDIO_GET_MIN (0x82)
+#define USB_AUDIO_GET_MAX (0x83)
+#define USB_AUDIO_GET_RES (0x84)
+#define USB_AUDIO_SAMPLING_FREQ_CONTROL (0x01)
+
+/* feature unit control selectors (USB Audio 1.0, A.10.2) */
+#define USB_AUDIO_MUTE_CONTROL (0x01)
+#define USB_AUDIO_VOLUME_CONTROL (0x02)
+
+/* bmaControls bits of the feature unit descriptor (USB Audio 1.0, 4.3.2.5) */
+#define USB_AUDIO_FU_CONTROL_MUTE (0x0001)
+#define USB_AUDIO_FU_CONTROL_VOLUME (0x0002)
 
 /* Universal Serial Bus Device Class Definition for Terminal Types Section 2.2 */
 #define USB_AUDIO_STREAMING_TERMINAL_TYPE (0x0101)
@@ -167,6 +198,17 @@ typedef struct
     UCHAR tSamFreq[1];
 }USB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR, *PUSB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR;
 
+/* class-specific AS isochronous audio data endpoint descriptor (USB Audio 1.0, 4.6.1.2) */
+typedef struct
+{
+    UCHAR bLength;
+    UCHAR bDescriptorType;
+    UCHAR bDescriptorSubtype;
+    UCHAR bmAttributes;
+    UCHAR bLockDelayUnits;
+    USHORT wLockDelay;
+}USB_AUDIO_STREAMING_ENDPOINT_DESCRIPTOR, *PUSB_AUDIO_STREAMING_ENDPOINT_DESCRIPTOR;
+
 #include <poppack.h>
 
 typedef struct
@@ -185,6 +227,7 @@ typedef struct __DEVICE_EXTENSION__
     USBD_CONFIGURATION_HANDLE ConfigurationHandle;               /* configuration handle */
     PNODE_CONTEXT NodeContext;                                   /* node context */
     ULONG NodeContextCount;                                      /* node context count */
+    UCHAR AudioControlInterfaceNumber;                           /* interface number of the audio control interface */
 }DEVICE_EXTENSION, *PDEVICE_EXTENSION;
 
 typedef struct
@@ -216,6 +259,7 @@ typedef struct
     KEVENT StoppedStreamingEvent;                                  /* stopped streaming event */
     ULONG MaximumPacketSize;                                       /* max packet size */
     ULONG DataPacketLength;                                        /* max packet data length */
+    ULONG RenderSampleRemainder;                                   /* fractional samples per frame carried between render packets, in 1/1000 samples */
     ULONG CaptureBufferOffset;
     ULONG CaptureBufferLength;
     PUCHAR CaptureBuffer;

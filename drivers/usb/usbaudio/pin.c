@@ -13,6 +13,7 @@
 #define IRP_CAPTURE_COUNT 16
 #define RENDER_IRP_COUNT (16)
 
+
 NTSTATUS
 UsbAudioAllocCaptureUrbIso(
     IN USBD_PIPE_HANDLE PipeHandle,
@@ -55,10 +56,113 @@ UsbAudioAllocCaptureUrbIso(
 
 }
 
+static
+ULONG
+UsbAudioGetSampleFrequency(
+    IN PUSB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR FormatDescriptor,
+    IN ULONG Index)
+{
+    /* tSamFreq entries are 3 byte little endian values */
+    return FormatDescriptor->tSamFreq[Index * 3] |
+           FormatDescriptor->tSamFreq[(Index * 3) + 1] << 8 |
+           FormatDescriptor->tSamFreq[(Index * 3) + 2] << 16;
+}
+
+static
+BOOLEAN
+UsbAudioIsSampleFrequencySupported(
+    IN PUSB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR FormatDescriptor,
+    IN ULONG SampleFrequency)
+{
+    ULONG Index;
+
+    if (FormatDescriptor->bSamFreqType == 0)
+    {
+        /* continuous sampling frequency, tSamFreq holds the lower and the upper bound */
+        return SampleFrequency >= UsbAudioGetSampleFrequency(FormatDescriptor, 0) &&
+               SampleFrequency <= UsbAudioGetSampleFrequency(FormatDescriptor, 1);
+    }
+
+    /* discrete sampling frequencies */
+    for (Index = 0; Index < FormatDescriptor->bSamFreqType; Index++)
+    {
+        if (UsbAudioGetSampleFrequency(FormatDescriptor, Index) == SampleFrequency)
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static
+PUSB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR
+UsbAudioGetFormatTypeDescriptor(
+    IN PUSB_CONFIGURATION_DESCRIPTOR ConfigurationDescriptor,
+    IN PUSB_INTERFACE_DESCRIPTOR InterfaceDescriptor)
+{
+    PUSB_AUDIO_STREAMING_INTERFACE_DESCRIPTOR StreamingInterfaceDescriptor;
+    PUSB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR FormatDescriptor;
+
+    /* the format type descriptor follows the AS_GENERAL descriptor of the interface */
+    StreamingInterfaceDescriptor = (PUSB_AUDIO_STREAMING_INTERFACE_DESCRIPTOR)USBD_ParseDescriptors(ConfigurationDescriptor, ConfigurationDescriptor->wTotalLength, InterfaceDescriptor, USB_AUDIO_CONTROL_TERMINAL_DESCRIPTOR_TYPE);
+    if (!StreamingInterfaceDescriptor)
+        return NULL;
+
+    FormatDescriptor = (PUSB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR)((ULONG_PTR)StreamingInterfaceDescriptor + StreamingInterfaceDescriptor->bLength);
+    if (FormatDescriptor->bDescriptorType != USB_AUDIO_CONTROL_TERMINAL_DESCRIPTOR_TYPE ||
+        FormatDescriptor->bDescriptorSubtype != USB_AUDIO_STREAMING_FORMAT_TYPE ||
+        FormatDescriptor->bFormatType != USB_AUDIO_FORMAT_TYPE_I)
+    {
+        return NULL;
+    }
+
+    return FormatDescriptor;
+}
+
+static
+PUSB_AUDIO_STREAMING_ENDPOINT_DESCRIPTOR
+UsbAudioGetStreamingEndpointDescriptor(
+    IN PUSB_CONFIGURATION_DESCRIPTOR ConfigurationDescriptor,
+    IN PUSB_INTERFACE_DESCRIPTOR InterfaceDescriptor,
+    IN UCHAR EndpointAddress)
+{
+    PUSB_COMMON_DESCRIPTOR Descriptor;
+    PUSB_COMMON_DESCRIPTOR NextDescriptor;
+    ULONG_PTR End;
+
+    End = (ULONG_PTR)ConfigurationDescriptor + ConfigurationDescriptor->wTotalLength;
+    Descriptor = (PUSB_COMMON_DESCRIPTOR)((ULONG_PTR)InterfaceDescriptor + InterfaceDescriptor->bLength);
+
+    /* search the endpoints of this alternate setting */
+    while ((ULONG_PTR)Descriptor + sizeof(USB_COMMON_DESCRIPTOR) <= End &&
+           Descriptor->bLength != 0 &&
+           Descriptor->bDescriptorType != USB_INTERFACE_DESCRIPTOR_TYPE)
+    {
+        NextDescriptor = (PUSB_COMMON_DESCRIPTOR)((ULONG_PTR)Descriptor + Descriptor->bLength);
+
+        if (Descriptor->bDescriptorType == USB_ENDPOINT_DESCRIPTOR_TYPE &&
+            ((PUSB_ENDPOINT_DESCRIPTOR)Descriptor)->bEndpointAddress == EndpointAddress)
+        {
+            /* the class-specific endpoint descriptor follows the standard endpoint descriptor */
+            if ((ULONG_PTR)NextDescriptor + sizeof(USB_AUDIO_STREAMING_ENDPOINT_DESCRIPTOR) <= End &&
+                NextDescriptor->bDescriptorType == USB_AUDIO_ENDPOINT_DESCRIPTOR_TYPE &&
+                ((PUSB_AUDIO_STREAMING_ENDPOINT_DESCRIPTOR)NextDescriptor)->bDescriptorSubtype == USB_AUDIO_STREAMING_EP_GENERAL)
+            {
+                return (PUSB_AUDIO_STREAMING_ENDPOINT_DESCRIPTOR)NextDescriptor;
+            }
+
+            return NULL;
+        }
+
+        Descriptor = NextDescriptor;
+    }
+
+    return NULL;
+}
+
 NTSTATUS
 UsbAudioSetFormat(
     IN PKSPIN Pin,
-    IN const KSDATARANGE * DataRange)
+    IN const KSDATAFORMAT * DataFormat)
 {
     PURB Urb;
     PUCHAR SampleRateBuffer;
@@ -68,11 +172,24 @@ UsbAudioSetFormat(
     PKSFILTER Filter;
     ULONG FormatIndex;
     PPIN_CONTEXT PinContext;
+    PUSB_CONFIGURATION_DESCRIPTOR ConfigurationDescriptor;
+    PUSB_AUDIO_STREAMING_FORMAT_TYPE_DESCRIPTOR FormatDescriptor;
+    PUSB_AUDIO_STREAMING_ENDPOINT_DESCRIPTOR EndpointDescriptor;
+    UCHAR EndpointAddress;
 
     DPRINT1("UsbAudioSetFormat entered\n");
 
+    if (!IsEqualGUIDAligned(&DataFormat->MajorFormat, &KSDATAFORMAT_TYPE_AUDIO) ||
+        !IsEqualGUIDAligned(&DataFormat->SubFormat, &KSDATAFORMAT_SUBTYPE_PCM) ||
+        !IsEqualGUIDAligned(&DataFormat->Specifier, &KSDATAFORMAT_SPECIFIER_WAVEFORMATEX))
+    {
+        /* not supported yet*/
+        UNIMPLEMENTED;
+        return STATUS_INVALID_PARAMETER;
+    }
+
     /* choose correct dataformat */
-    FormatIndex = GetDataRangeIndexForFormat(DataRange, Pin->Descriptor->PinDescriptor.DataRanges, Pin->Descriptor->PinDescriptor.DataRangesCount);
+    FormatIndex = GetDataRangeIndexForFormat(DataFormat, Pin->Descriptor->PinDescriptor.DataRanges, Pin->Descriptor->PinDescriptor.DataRangesCount);
     if (FormatIndex == MAXULONG)
     {
         /* no format match */
@@ -110,10 +227,47 @@ UsbAudioSetFormat(
         PinContext = (PPIN_CONTEXT)Pin->Context;
     }
 
+    ConfigurationDescriptor = FilterContext->DeviceExtension->ConfigurationDescriptor;
+
     Status = USBAudioSelectAudioStreamingInterface(Pin, PinContext, FilterContext->DeviceExtension,
-        FilterContext->DeviceExtension->ConfigurationDescriptor, FormatIndex);
+        ConfigurationDescriptor, FormatIndex);
     if (!NT_SUCCESS(Status))
         return Status;
+
+    /* validate the connection format against the type I format descriptor of the selected alternate setting */
+    FormatDescriptor = UsbAudioGetFormatTypeDescriptor(ConfigurationDescriptor, PinContext->InterfaceDescriptor);
+    if (!FormatDescriptor)
+    {
+        DPRINT1("UsbAudioSetFormat no type I format descriptor\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    WaveFormatEx = (PKSDATAFORMAT_WAVEFORMATEX)DataFormat;
+
+    /* samples are stored MSB justified in subframes of bSubframeSize bytes (USB Audio Data Formats 1.0, 2.2) */
+    if (WaveFormatEx->WaveFormatEx.wFormatTag != WAVE_FORMAT_PCM ||
+        WaveFormatEx->WaveFormatEx.nChannels != FormatDescriptor->bNrChannels ||
+        WaveFormatEx->WaveFormatEx.wBitsPerSample != FormatDescriptor->bSubframeSize * 8 ||
+        WaveFormatEx->WaveFormatEx.nBlockAlign != FormatDescriptor->bNrChannels * FormatDescriptor->bSubframeSize ||
+        !UsbAudioIsSampleFrequencySupported(FormatDescriptor, WaveFormatEx->WaveFormatEx.nSamplesPerSec))
+    {
+        DPRINT1("UsbAudioSetFormat format mismatch Channels %u BitsPerSample %u BlockAlign %u SamplesPerSec %u\n",
+                WaveFormatEx->WaveFormatEx.nChannels,
+                WaveFormatEx->WaveFormatEx.wBitsPerSample,
+                WaveFormatEx->WaveFormatEx.nBlockAlign,
+                WaveFormatEx->WaveFormatEx.nSamplesPerSec);
+        return STATUS_NO_MATCH;
+    }
+
+    /* the sampling frequency control is optional, only send SET_CUR when the endpoint supports it
+     * (USB Audio 1.0, 4.6.1.2 and 5.2.3.2.3.1) */
+    EndpointAddress = PinContext->InterfaceInfo->Pipes[0].EndpointAddress;
+    EndpointDescriptor = UsbAudioGetStreamingEndpointDescriptor(ConfigurationDescriptor, PinContext->InterfaceDescriptor, EndpointAddress);
+    if (!EndpointDescriptor || !(EndpointDescriptor->bmAttributes & USB_AUDIO_EP_SAMPLING_FREQ_CONTROL))
+    {
+        DPRINT1("UsbAudioSetFormat endpoint %x has no sampling frequency control\n", EndpointAddress);
+        return STATUS_SUCCESS;
+    }
 
     /* allocate sample rate buffer */
     SampleRateBuffer = AllocFunction(sizeof(ULONG));
@@ -123,24 +277,10 @@ UsbAudioSetFormat(
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    if (IsEqualGUIDAligned(&DataRange->MajorFormat, &KSDATAFORMAT_TYPE_AUDIO) &&
-        IsEqualGUIDAligned(&DataRange->SubFormat, &KSDATAFORMAT_SUBTYPE_PCM) &&
-        IsEqualGUIDAligned(&DataRange->Specifier, &KSDATAFORMAT_SPECIFIER_WAVEFORMATEX))
-    {
-        WaveFormatEx = (PKSDATAFORMAT_WAVEFORMATEX)DataRange;
-        SampleRateBuffer[2] = (WaveFormatEx->WaveFormatEx.nSamplesPerSec >> 16) & 0xFF;
-        SampleRateBuffer[1] = (WaveFormatEx->WaveFormatEx.nSamplesPerSec >> 8) & 0xFF;
-        SampleRateBuffer[0] = (WaveFormatEx->WaveFormatEx.nSamplesPerSec >> 0) & 0xFF;
-
-        /* TODO: verify connection format */
-    }
-    else
-    {
-        /* not supported yet*/
-        UNIMPLEMENTED;
-        FreeFunction(SampleRateBuffer);
-        return STATUS_INVALID_PARAMETER;
-    }
+    /* tSampleFreq is a 3 byte little endian value */
+    SampleRateBuffer[2] = (WaveFormatEx->WaveFormatEx.nSamplesPerSec >> 16) & 0xFF;
+    SampleRateBuffer[1] = (WaveFormatEx->WaveFormatEx.nSamplesPerSec >> 8) & 0xFF;
+    SampleRateBuffer[0] = (WaveFormatEx->WaveFormatEx.nSamplesPerSec >> 0) & 0xFF;
 
     /* allocate urb */
     Urb = AllocFunction(sizeof(struct _URB_CONTROL_VENDOR_OR_CLASS_REQUEST));
@@ -150,15 +290,15 @@ UsbAudioSetFormat(
         FreeFunction(SampleRateBuffer);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    /* FIXME: determine controls and format urb */
+
     UsbBuildVendorRequest(Urb,
         URB_FUNCTION_CLASS_ENDPOINT,
         sizeof(struct _URB_CONTROL_VENDOR_OR_CLASS_REQUEST),
         USBD_TRANSFER_DIRECTION_OUT,
         0,
-        0x01, // SET_CUR
-        0x100,
-        PinContext->InterfaceInfo->Pipes[0].EndpointAddress,
+        USB_AUDIO_SET_CUR,
+        USB_AUDIO_SAMPLING_FREQ_CONTROL << 8,
+        EndpointAddress,
         SampleRateBuffer,
         NULL,
         3,
@@ -320,6 +460,54 @@ CaptureGateOnWorkItem(
     } while (Count);
 }
 
+/* returns the length of the next render packet. A full speed audio endpoint is serviced once per
+ * 1ms frame and every packet has to carry the samples of exactly one frame, e.g. 44.1kHz is sent as
+ * nine packets of 44 samples followed by one of 45 samples (USB Audio 1.0, 3.7.2.1 and 3.7.2.2) */
+static
+ULONG
+UsbAudioGetRenderPacketLength(
+    IN PKSDATAFORMAT_WAVEFORMATEX WaveFormat,
+    IN ULONG MaximumPacketSize,
+    IN OUT PULONG SampleRemainder)
+{
+    ULONG Samples;
+    ULONG MaximumSamples;
+
+    *SampleRemainder += WaveFormat->WaveFormatEx.nSamplesPerSec;
+    Samples = *SampleRemainder / USB_AUDIO_FRAMES_PER_SECOND;
+    *SampleRemainder %= USB_AUDIO_FRAMES_PER_SECOND;
+
+    /* never exceed wMaxPacketSize, the remaining samples are carried to the next packet */
+    MaximumSamples = MaximumPacketSize / WaveFormat->WaveFormatEx.nBlockAlign;
+    if (Samples > MaximumSamples)
+    {
+        *SampleRemainder += (Samples - MaximumSamples) * USB_AUDIO_FRAMES_PER_SECOND;
+        Samples = MaximumSamples;
+    }
+
+    return Samples * WaveFormat->WaveFormatEx.nBlockAlign;
+}
+
+static
+ULONG
+UsbAudioGetRenderPacketCount(
+    IN PKSDATAFORMAT_WAVEFORMATEX WaveFormat,
+    IN ULONG MaximumPacketSize,
+    IN ULONG SampleRemainder,
+    IN ULONG TransferBufferSize)
+{
+    ULONG PacketCount = 0;
+    ULONG Length = 0;
+
+    while (Length < TransferBufferSize && PacketCount < USB_AUDIO_MAX_ISO_PACKETS)
+    {
+        Length += UsbAudioGetRenderPacketLength(WaveFormat, MaximumPacketSize, &SampleRemainder);
+        PacketCount++;
+    }
+
+    return PacketCount;
+}
+
 NTSTATUS
 RenderInitializeUrbAndIrp(
     IN PKSPIN Pin,
@@ -327,12 +515,15 @@ RenderInitializeUrbAndIrp(
     IN OUT PIRP Irp,
     IN PVOID TransferBuffer,
     IN ULONG TransferBufferSize,
-    IN ULONG PacketSize,
+    IN ULONG MaximumPacketSize,
     IN ULONG PacketCount)
 {
     ULONG Index;
+    ULONG Offset;
+    ULONG UnusedSamples;
     PURB Urb;
     PIO_STACK_LOCATION IoStack;
+    PKSDATAFORMAT_WAVEFORMATEX WaveFormat;
 
     /* initialize irp */
     IoInitializeIrp(Irp, IoSizeOfIrp(PinContext->DeviceExtension->LowerDevice->StackSize), PinContext->DeviceExtension->LowerDevice->StackSize);
@@ -372,9 +563,28 @@ RenderInitializeUrbAndIrp(
     Urb->UrbIsochronousTransfer.NumberOfPackets = PacketCount;
     Urb->UrbIsochronousTransfer.StartFrame = 0;
 
+    /* the length of an OUT packet is given by the offset of the next packet */
+    WaveFormat = (PKSDATAFORMAT_WAVEFORMATEX)Pin->ConnectionFormat;
+    Offset = 0;
+
     for (Index = 0; Index < PacketCount; Index++)
     {
-        Urb->UrbIsochronousTransfer.IsoPacket[Index].Offset = Index * PacketSize;
+        ASSERT(Offset < TransferBufferSize);
+        Urb->UrbIsochronousTransfer.IsoPacket[Index].Offset = Offset;
+        Offset += UsbAudioGetRenderPacketLength(WaveFormat, MaximumPacketSize, &PinContext->RenderSampleRemainder);
+
+    }
+
+    if (Offset > TransferBufferSize)
+    {
+        /* the last packet is short, carry the samples it did not get over to the next transfer */
+        UnusedSamples = (Offset - TransferBufferSize) / WaveFormat->WaveFormatEx.nBlockAlign;
+        PinContext->RenderSampleRemainder += UnusedSamples * USB_AUDIO_FRAMES_PER_SECOND;
+    }
+    else if (Offset < TransferBufferSize)
+    {
+        /* the transfer is limited by the maximum number of iso packets */
+        Urb->UrbIsochronousTransfer.TransferBufferLength = Offset;
     }
 
     /* store urb */
@@ -684,6 +894,7 @@ InitStreamPin(
     PinContext->BufferSize = WaveFormatEx->WaveFormatEx.nAvgBytesPerSec;
     PinContext->BufferOffset = 0;
     PinContext->BufferLength = 0;
+    PinContext->RenderSampleRemainder = 0;
 
     /* initialize completion event */
     KeInitializeEvent(&PinContext->StoppedStreamingEvent, SynchronizationEvent, FALSE);
@@ -791,7 +1002,14 @@ GetDataRangeIndexForFormat(
              continue;
          }
 
-         /* FIXME add checks for bitrate / sample size etc */
+         if (CurrentAudioDataRange->MinimumBitsPerSample > ConnectionDataFormat->WaveFormatEx.wBitsPerSample ||
+             CurrentAudioDataRange->MaximumBitsPerSample < ConnectionDataFormat->WaveFormatEx.wBitsPerSample)
+         {
+             /* sample size mismatch */
+             DPRINT1("NoBitsPerSampleMatch %u\n", ConnectionDataFormat->WaveFormatEx.wBitsPerSample);
+             continue;
+         }
+
          return Index;
     }
 
@@ -1221,10 +1439,11 @@ PinRenderProcess(
     /* calculate offset */
     Offset = CloneStreamPointer->Offset->Count - CloneStreamPointer->Offset->Remaining;
 
-    /* calculate packet count */
-    PacketCount = (CloneStreamPointer->Offset->Remaining) / MaximumPacketSize;
-    if (PacketCount * MaximumPacketSize < CloneStreamPointer->Offset->Remaining)
-        PacketCount++;
+    /* calculate packet count, every packet carries the samples of one frame */
+    PacketCount = UsbAudioGetRenderPacketCount((PKSDATAFORMAT_WAVEFORMATEX)Pin->ConnectionFormat,
+                                               MaximumPacketSize,
+                                               PinContext->RenderSampleRemainder,
+                                               CloneStreamPointer->Offset->Remaining);
 
     Status = RenderInitializeUrbAndIrp(Pin, PinContext, Irp, &TransferBuffer[Offset], CloneStreamPointer->Offset->Remaining, MaximumPacketSize, PacketCount);
     if (NT_SUCCESS(Status))
@@ -1557,7 +1776,8 @@ USBAudioPinSetDataFormat(
     _In_ const KSDATARANGE* DataRange,
     _In_opt_ const KSATTRIBUTE_LIST* AttributeRange)
 {
-    return UsbAudioSetFormat(Pin, DataRange);;
+    /* DataRange is the matching range of the pin, the new format is in Pin->ConnectionFormat */
+    return UsbAudioSetFormat(Pin, Pin->ConnectionFormat);
 }
 
 NTSTATUS
