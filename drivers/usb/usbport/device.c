@@ -1188,24 +1188,7 @@ USBPORT_CreateDevice(IN OUT PUSB_DEVICE_HANDLE *pUsbdDeviceHandle,
 
                 return Status;
             }
-            else
-            {
-                DPRINT1("else 2\n");
-                ASSERT(FALSE);
-            }
-
         }
-        else
-        {
-            DPRINT1("else 1\n");
-            ASSERT(FALSE);
-        }
-
-    }
-    else
-    {
-        DPRINT1("else\n");
-        ASSERT(FALSE);
     }
 
     DPRINT1("USBPORT_CreateDevice: ERROR!!! TransferedLen - %x, Status - %lx\n",
