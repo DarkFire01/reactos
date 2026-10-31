@@ -73,7 +73,7 @@ typedef struct _OHCI_HCD_TD {
   struct _OHCI_HCD_TD *NextTDVa;
   ULONG TransferLen;
   LIST_ENTRY DoneLink;
-  ULONG Pad[1];
+  struct _OHCI_HCD_TD *NextHcdTD; // next TD of the endpoint, TDs are not contiguous when aligned to pages
 } OHCI_HCD_TD, *POHCI_HCD_TD;
 
 #ifdef _WIN64

@@ -260,11 +260,103 @@ OHCI_InitializeTDs(IN POHCI_ENDPOINT OhciEndpoint,
         if (PrevTDVA)
         {
             PrevTDVA->NextTDVa = TdVA;
+            PrevTDVA->NextHcdTD = TdVA;
         }
         PrevTDVA = TdVA;
         TdVA++;
         TdPA += sizeof(OHCI_HCD_TD);
     }
+}
+
+
+VOID
+NTAPI
+OHCI_AlignHwStructure(IN OUT PULONG PhysicalAddress,
+                      IN OUT PULONG_PTR VirtualAddress,
+                      IN ULONG Size)
+{
+    ULONG PAddress;
+    ULONG_PTR VAddress;
+    ULONG Skip;
+
+    /* TDs must be aligned to 32 bytes, keep virtual and physical address in step */
+    PAddress = ALIGN_UP_BY(*PhysicalAddress, 32);
+    VAddress = *VirtualAddress + (PAddress - *PhysicalAddress);
+
+    if ((PAddress & ~(PAGE_SIZE - 1)) != ((PAddress + Size - 1) & ~(PAGE_SIZE - 1)))
+    {
+        /* the structure would span two pages, move it to the next page */
+        Skip = PAGE_SIZE - (PAddress & (PAGE_SIZE - 1));
+        PAddress += Skip;
+        VAddress += Skip;
+
+        DPRINT_OHCI("OHCI_AlignHwStructure: VAddress - %p, PAddress - %08X\n",
+                    (PVOID)VAddress,
+                    PAddress);
+    }
+
+    *PhysicalAddress = PAddress;
+    *VirtualAddress = VAddress;
+}
+
+
+VOID
+NTAPI
+OHCI_InitializeIsoTDs(IN POHCI_ENDPOINT OhciEndpoint,
+                      IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties)
+{
+    POHCI_HCD_TD TD, PrevTD;
+    ULONG TdPA;
+    ULONG_PTR TdVA;
+    ULONG_PTR BufferEnd;
+    ULONG TdCount;
+
+    ASSERT(EndpointProperties->BufferLength > sizeof(OHCI_HCD_ED));
+
+    TdVA = EndpointProperties->BufferVA + sizeof(OHCI_HCD_ED);
+    TdPA = EndpointProperties->BufferPA + sizeof(OHCI_HCD_ED);
+    BufferEnd = EndpointProperties->BufferVA + EndpointProperties->BufferLength;
+
+    OhciEndpoint->FirstTD = NULL;
+    PrevTD = NULL;
+    TdCount = 0;
+
+    while (TRUE)
+    {
+        OHCI_AlignHwStructure(&TdPA, &TdVA, sizeof(OHCI_HCD_TD));
+
+        if (TdVA + sizeof(OHCI_HCD_TD) > BufferEnd)
+            break;
+
+        TD = (POHCI_HCD_TD)TdVA;
+
+        DPRINT_OHCI("OHCI_InitializeIsoTDs: TdVA - %p, TdPA - %08X\n", TD, TdPA);
+
+        RtlZeroMemory(TD, sizeof(OHCI_HCD_TD));
+        TD->PhysicalAddress = TdPA;
+
+        if (PrevTD)
+        {
+            PrevTD->NextTDVa = TD;
+            PrevTD->NextHcdTD = TD;
+        }
+        else
+        {
+            OhciEndpoint->FirstTD = TD;
+        }
+
+        PrevTD = TD;
+        TdCount++;
+
+        TdVA += sizeof(OHCI_HCD_TD);
+        TdPA += sizeof(OHCI_HCD_TD);
+    }
+
+    OhciEndpoint->MaxTransferDescriptors = TdCount;
+
+    DPRINT1("OHCI_InitializeIsoTDs: TdCount - %x\n", TdCount);
+
+    ASSERT(TdCount > 0);
 }
 
 MPSTATUS
@@ -390,9 +482,6 @@ OHCI_OpenIsoEndpoint(IN POHCI_EXTENSION OhciExtension,
 
     ED = (POHCI_HCD_ED)EndpointProperties->BufferVA;
 
-    OhciEndpoint->FirstTD = (POHCI_HCD_TD)((ULONG_PTR)ED + sizeof(OHCI_HCD_ED));
-    OhciEndpoint->FirstTD->PhysicalAddress = EndpointProperties->BufferPA + sizeof(OHCI_HCD_ED);
-
     // For ISO endpoints, we schedule them in the interrupt tree
     // ISO transfers use the same periodic schedule as interrupt transfers
     Period = EndpointProperties->Period;
@@ -421,7 +510,7 @@ OHCI_OpenIsoEndpoint(IN POHCI_EXTENSION OhciExtension,
 
     OhciEndpoint->HeadED = &OhciExtension->IntStaticED[Index[PeriodIdx] + ScheduleOffset];
 
-    OHCI_InitializeTDs(OhciEndpoint, EndpointProperties);
+    OHCI_InitializeIsoTDs(OhciEndpoint, EndpointProperties);
 
     OhciEndpoint->HcdED = OHCI_InitializeED(OhciEndpoint,
                                             ED,
@@ -536,8 +625,11 @@ OHCI_QueryEndpointRequirements(IN PVOID ohciExtension,
         case USBPORT_TRANSFER_TYPE_ISOCHRONOUS:
             DPRINT_OHCI("OHCI_QueryEndpointRequirements: IsoTransfer\n");
             EndpointRequirements->MaxTransferSize = OHCI_MAX_ISO_TRANSFER_SIZE;
+            /* OHCI_InitializeIsoTDs skips the end of a page which can't hold a whole TD,
+             * reserve one TD per page so OHCI_MAX_ISO_TD_COUNT TDs still fit */
             EndpointRequirements->HeaderBufferSize =
-            sizeof(OHCI_HCD_ED) + OHCI_MAX_ISO_TD_COUNT * sizeof(OHCI_HCD_TD);
+            sizeof(OHCI_HCD_ED) + OHCI_MAX_ISO_TD_COUNT * sizeof(OHCI_HCD_TD) +
+            (BYTES_TO_PAGES(sizeof(OHCI_HCD_ED) + OHCI_MAX_ISO_TD_COUNT * sizeof(OHCI_HCD_TD)) + 1) * sizeof(OHCI_HCD_TD);
             break;
 
         case USBPORT_TRANSFER_TYPE_CONTROL:
@@ -1235,7 +1327,8 @@ OHCI_MapTransferToTD(IN POHCI_EXTENSION OhciExtension,
             break;
         }
     }
-
+    if (SgIdx >= SGList->SgElementCount)
+        return (ULONG)-1;
     DPRINT_OHCI("OHCI_MapTransferToTD: SgIdx - %x, SgCount - %x\n",
                 SgIdx,
                 SGList->SgElementCount);
@@ -1293,25 +1386,38 @@ OHCI_AllocateTD(IN POHCI_EXTENSION OhciExtension,
                 IN POHCI_ENDPOINT OhciEndpoint)
 {
     POHCI_HCD_TD TD;
-    ULONG Count = 1;
 
     DPRINT_OHCI("OHCI_AllocateTD: ... \n");
 
-    TD = OhciEndpoint->FirstTD;
-
-    while (TD->Flags & OHCI_HCD_TD_FLAG_ALLOCATED && Count < OhciEndpoint->MaxTransferDescriptors)
+    for (TD = OhciEndpoint->FirstTD; TD; TD = TD->NextHcdTD)
     {
-        TD += 1;
-        Count++;
+        if (!(TD->Flags & OHCI_HCD_TD_FLAG_ALLOCATED))
+        {
+            TD->Flags |= OHCI_HCD_TD_FLAG_ALLOCATED;
+
+            RtlSecureZeroMemory(&TD->HwTD, sizeof(TD->HwTD));
+
+            return TD;
+        }
     }
-    if (TD->Flags & OHCI_HCD_TD_FLAG_ALLOCATED)
-        return NULL;
 
-    TD->Flags |= OHCI_HCD_TD_FLAG_ALLOCATED;
+    return NULL;
+}
 
-    RtlSecureZeroMemory(&TD->HwTD, sizeof(TD->HwTD));
+static
+BOOLEAN
+OHCI_IsEndpointTD(IN POHCI_ENDPOINT OhciEndpoint,
+                  IN POHCI_HCD_TD TD)
+{
+    POHCI_HCD_TD CurrentTD;
 
-    return TD;
+    for (CurrentTD = OhciEndpoint->FirstTD; CurrentTD; CurrentTD = CurrentTD->NextHcdTD)
+    {
+        if (CurrentTD == TD)
+            return TRUE;
+    }
+
+    return FALSE;
 }
 
 ULONG
@@ -1320,23 +1426,16 @@ OHCI_RemainTDs(IN POHCI_EXTENSION OhciExtension,
                IN POHCI_ENDPOINT OhciEndpoint)
 {
     POHCI_HCD_TD TD;
-    ULONG MaxTDs;
     ULONG RemainTDs;
-    ULONG ix;
 
     DPRINT_OHCI("OHCI_RemainTDs: ... \n");
 
-    MaxTDs = OhciEndpoint->MaxTransferDescriptors;
-    TD = OhciEndpoint->FirstTD;
-
     RemainTDs = 0;
 
-    for (ix = 0; ix < MaxTDs; ix++)
+    for (TD = OhciEndpoint->FirstTD; TD; TD = TD->NextHcdTD)
     {
         if (!(TD->Flags & OHCI_HCD_TD_FLAG_ALLOCATED))
             RemainTDs++;
-
-        TD += 1;
     }
 
     return RemainTDs;
@@ -2090,7 +2189,6 @@ OHCI_AbortTransfer(IN PVOID ohciExtension,
     POHCI_TRANSFER OhciTransfer = ohciTransfer;
     POHCI_HCD_ED ED = OhciEndpoint->HcdED;
     POHCI_HCD_TD TD, NextTD, LastTD;
-    ULONG ix;
     BOOLEAN IsIsoEndpoint;
     BOOLEAN IsProcessed = FALSE;
 
@@ -2113,10 +2211,8 @@ OHCI_AbortTransfer(IN PVOID ohciExtension,
 
         OhciEndpoint->HcdHeadP = LastTD;
 
-        for (ix = 0; ix < OhciEndpoint->MaxTransferDescriptors; ix++)
+        for (TD = OhciEndpoint->FirstTD; TD; TD = TD->NextHcdTD)
         {
-            TD = &OhciEndpoint->FirstTD[ix];
-
             if (TD->OhciTransfer != OhciTransfer)
                 continue;
 
@@ -2522,8 +2618,7 @@ OHCI_PollIsoEndpoint(IN POHCI_EXTENSION OhciExtension,
                                                       OhciExtension,
                                                       OhciEndpoint);
 
-    if (NextTD < OhciEndpoint->FirstTD ||
-        NextTD >= OhciEndpoint->FirstTD + OhciEndpoint->MaxTransferDescriptors)
+    if (!OHCI_IsEndpointTD(OhciEndpoint, NextTD))
     {
         DPRINT1("OHCI_PollIsoEndpoint: HeadPointer %p is not a TD of the endpoint\n", (PVOID)NextTdPA);
         return;
