@@ -27,7 +27,7 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define UHCI_MAX_ISO_TRANSFER_SIZE         0x10000
 #define UHCI_MAX_BULK_TRANSFER_SIZE        0x1000
 //#define UHCI_MAX_BULK_TRANSFER_SIZE        0x10000 // Hack for testing w/o Split Transfers
-#define UHCI_MAX_ISO_TD_COUNT              256
+#define UHCI_MAX_ISO_TD_COUNT              512
 #define UHCI_MAX_INTERRUPT_TD_COUNT        8
 
 /* Host Controller Driver Transfer Descriptor (HCD TD) */
@@ -68,10 +68,12 @@ typedef struct _UHCI_HCD_TD {
   LIST_ENTRY ActiveITDEntry;
   ULONG ScheduledFrame;
   PUSBPORT_ISO_PACKET_DATA IsoPacket;
+  USHORT BounceIndex; // bounce buffer of an iso packet, UHCI_ISO_NO_BOUNCE_BUFFER if not used
 #if !defined(_M_X64)
-  UCHAR Padded[6];
+  UCHAR Padded[4];
 #else
-  ULONG Padded[3];
+  USHORT Padded1;
+  ULONG Padded[2];
 #endif
 } UHCI_HCD_TD, *PUHCI_HCD_TD;
 
@@ -128,7 +130,18 @@ typedef struct _UHCI_ENDPOINT {
   BOOL DataToggle;
   ULONG FrameCount;
   LIST_ENTRY ListTransfers;
+  /* bounce buffers for iso packets which span two physically non contiguous pages */
+  PUCHAR BounceBufferVA;
+  ULONG BounceBufferPA;
+  ULONG BounceBufferSize; // size of one bounce buffer
+  ULONG BounceBufferMask; // bit set for every used bounce buffer
 } UHCI_ENDPOINT, *PUHCI_ENDPOINT;
+
+/* a TD has a single buffer pointer, iso packets which span two non contiguous pages are copied */
+#define UHCI_ISO_BOUNCE_BUFFER_COUNT  32
+#define UHCI_ISO_NO_BOUNCE_BUFFER     0xFFFF
+
+C_ASSERT(UHCI_ISO_BOUNCE_BUFFER_COUNT <= sizeof(ULONG) * 8);
 
 /* UHCI Transfer follows USBPORT Transfer */
 typedef struct _UHCI_TRANSFER {
@@ -139,6 +152,7 @@ typedef struct _UHCI_TRANSFER {
   SIZE_T TransferLen;
   LIST_ENTRY ActiveITDs;
   LIST_ENTRY EndpointEntry;
+  PUSBPORT_ISO_TRANSFER_DATA IsoTransfer;
 } UHCI_TRANSFER, *PUHCI_TRANSFER;
 
 #define UHCI_FRAME_LIST_POINTER_VALID      (0 << 0)

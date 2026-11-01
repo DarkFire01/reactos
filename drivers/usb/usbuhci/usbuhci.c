@@ -97,41 +97,101 @@ UHCI_AlignHwStructure(IN PULONG PhysicalAddress,
                       IN PULONG_PTR VirtualAddress,
                       IN ULONG Size)
 {
-    ULONG PAddress;
-    ULONG NewPAddress;
+    ULONG_PTR PAddress;
     ULONG_PTR VAddress;
+    ULONG Skip;
 
-    DPRINT("UHCI_AlignHwStructure: *PhysicalAddress - %X, *VirtualAddress - %X, Alignment - %x\n",
+    DPRINT("UHCI_AlignHwStructure: *PhysicalAddress - %X, *VirtualAddress - %p, Size - %x\n",
                  *PhysicalAddress,
-                 *VirtualAddress,
+                 (PVOID)*VirtualAddress,
                  Size);
 
-    PAddress = *PhysicalAddress;
-    VAddress = *VirtualAddress;
+    /* TDs and QHs must be aligned to 16 bytes, keep virtual and physical address in step */
+    PAddress = ROUND_UP(*PhysicalAddress, 16);
+    VAddress = *VirtualAddress + (PAddress - *PhysicalAddress);
 
-    PAddress = ROUND_UP(PAddress, 16);
-    VAddress = ROUND_UP(VAddress, 16);
-
-    NewPAddress = (ULONG)(ULONG_PTR)PAGE_ALIGN(PAddress + Size);
-
-    if (NewPAddress != (ULONG)(ULONG_PTR)PAGE_ALIGN(*PhysicalAddress))
+    /* compare the pages of the first and the last byte of the structure */
+    if ((PAddress & ~(PAGE_SIZE - 1)) != ((PAddress + Size - 1) & ~(PAGE_SIZE - 1)))
     {
+        /* the structure would span two pages, move it to the next page */
+        Skip = PAGE_SIZE - (PAddress & (PAGE_SIZE - 1));
+        PAddress += Skip;
+        VAddress += Skip;
 
-        DPRINT("UHCI_AlignHwStructure: Old PhysicalAddress - %X,  Old VirtualAddress - %X, Alignment - %x\n",
-                 *PhysicalAddress,
-                 *VirtualAddress,
-                 Size);
-
-        VAddress = (ULONG)(ULONG_PTR)PAGE_ALIGN(VAddress + Size);
-        PAddress = NewPAddress;
-
-        DPRINT1("UHCI_AlignHwStructure: New VAddress - %X, New PAddress - %X\n",
-               VAddress,
+        DPRINT("UHCI_AlignHwStructure: New VAddress - %p, New PAddress - %X\n",
+               (PVOID)VAddress,
                PAddress);
     }
 
     *VirtualAddress = VAddress;
     *PhysicalAddress = PAddress;
+}
+
+/* places the bounce buffers of an iso endpoint at the start of the endpoint buffer */
+static
+VOID
+UHCI_InitializeIsoBounceBuffers(IN PUHCI_ENDPOINT UhciEndpoint,
+                                IN OUT PULONG_PTR BufferVA,
+                                IN OUT PULONG BufferPA,
+                                IN OUT PSIZE_T BufferLength)
+{
+    ULONG Size;
+
+    /* the endpoint buffer is physically contiguous, so a bounce buffer may cross a page */
+    UhciEndpoint->BounceBufferSize = ROUND_UP(UhciEndpoint->EndpointProperties.TotalMaxPacketSize, 16);
+    UhciEndpoint->BounceBufferVA = (PUCHAR)*BufferVA;
+    UhciEndpoint->BounceBufferPA = *BufferPA;
+    UhciEndpoint->BounceBufferMask = 0;
+
+    Size = UhciEndpoint->BounceBufferSize * UHCI_ISO_BOUNCE_BUFFER_COUNT;
+    ASSERT(*BufferLength > Size);
+
+    *BufferVA += Size;
+    *BufferPA += Size;
+    *BufferLength -= Size;
+}
+
+/* a packet needs a bounce buffer when its two segments are not physically contiguous */
+static
+BOOLEAN
+UHCI_IsoPacketNeedsBounceBuffer(IN PUSBPORT_ISO_PACKET_DATA Packet)
+{
+    return Packet->SegmentCount == 2 &&
+           Packet->Segment0Addr.QuadPart + Packet->Segment0Length != Packet->Segment1Addr.QuadPart;
+}
+
+static
+ULONG
+UHCI_GetFreeIsoBounceBufferCount(IN PUHCI_ENDPOINT UhciEndpoint)
+{
+    ULONG Index;
+    ULONG Count = 0;
+
+    for (Index = 0; Index < UHCI_ISO_BOUNCE_BUFFER_COUNT; Index++)
+    {
+        if (!(UhciEndpoint->BounceBufferMask & (1 << Index)))
+            Count++;
+    }
+
+    return Count;
+}
+
+static
+USHORT
+UHCI_AllocateIsoBounceBuffer(IN PUHCI_ENDPOINT UhciEndpoint)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < UHCI_ISO_BOUNCE_BUFFER_COUNT; Index++)
+    {
+        if (!(UhciEndpoint->BounceBufferMask & (1 << Index)))
+        {
+            UhciEndpoint->BounceBufferMask |= (1 << Index);
+            return (USHORT)Index;
+        }
+    }
+
+    return UHCI_ISO_NO_BOUNCE_BUFFER;
 }
 
 VOID
@@ -214,6 +274,20 @@ UHCI_ProcessCompletedITD(IN PUHCI_EXTENSION UhciExtension,
     }
 
     KeMemoryBarrier();
+
+    if (ITD->BounceIndex != UHCI_ISO_NO_BOUNCE_BUFFER)
+    {
+        /* copy received data of a packet spanning two pages back into the transfer buffer */
+        if (ITD->HwTD.Token.PIDCode == UHCI_TD_PID_IN && ITD->IsoPacket->BytesTransferred)
+        {
+            RtlCopyMemory((PUCHAR)UhciTransfer->IsoTransfer->MappedBuffer + ITD->IsoPacket->Offset,
+                          UhciEndpoint->BounceBufferVA + ITD->BounceIndex * UhciEndpoint->BounceBufferSize,
+                          min(ITD->IsoPacket->BytesTransferred, ITD->IsoPacket->PacketLength));
+        }
+
+        UhciEndpoint->BounceBufferMask &= ~(1 << ITD->BounceIndex);
+        ITD->BounceIndex = UHCI_ISO_NO_BOUNCE_BUFFER;
+    }
 
     /* Remove iTD from frame list */
     UHCI_UnlinkITDFromFrameList(UhciExtension, ITD, ITD->ScheduledFrame, UhciTransfer);
@@ -435,35 +509,44 @@ UhciOpenEndpoint(IN PVOID uhciExtension,
 
         BufferLength -= sizeof(UHCI_HCD_QH);
     }
+    else
+    {
+        UHCI_InitializeIsoBounceBuffers(UhciEndpoint, &BufferVA, &BufferPA, &BufferLength);
+    }
 
-    /* Initialize HCD Transfer Descriptors */
+    /* Initialize HCD Transfer Descriptors, no TD crosses a page boundary */
     TdCount = 0;
     RtlZeroMemory((PVOID)BufferVA, BufferLength);
 
-    UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
-
-    UhciEndpoint->FirstTD = (PUHCI_HCD_TD)BufferVA;
+    UhciEndpoint->FirstTD = NULL;
     UhciEndpoint->AllocatedTDs = 0;
-    UhciEndpoint->FirstTD->PhysicalAddress = BufferPA;
 
-    LastTD = UhciEndpoint->FirstTD;
+    LastTD = NULL;
     BufferPAEnd = EndpointProperties->BufferPA + EndpointProperties->BufferLength;
-    DPRINT1("UhciEndpoint %p FirstITD %p\n", UhciEndpoint, BufferVA);
-    while(BufferLength > 0)
+
+    while (TRUE)
     {
-        BufferPA += sizeof(UHCI_HCD_TD);
-        BufferVA += sizeof(UHCI_HCD_TD);
         UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
-        if (BufferPA + sizeof(UHCI_HCD_TD) >= BufferPAEnd)
+        if (BufferPA + sizeof(UHCI_HCD_TD) > BufferPAEnd)
             break;
+
         TD = (PUHCI_HCD_TD)BufferVA;
         TD->PhysicalAddress = BufferPA;
-        LastTD->NextTD = TD;
+
+        if (LastTD)
+            LastTD->NextTD = TD;
+        else
+            UhciEndpoint->FirstTD = TD;
+
         LastTD = TD;
         TdCount++;
-        ASSERT(BufferLength >= sizeof(UHCI_HCD_TD));
-        BufferLength -= sizeof(UHCI_HCD_TD);
+
+        BufferPA += sizeof(UHCI_HCD_TD);
+        BufferVA += sizeof(UHCI_HCD_TD);
     }
+
+    ASSERT(TdCount > 0);
+    DPRINT1("UhciEndpoint %p FirstTD %p\n", UhciEndpoint, UhciEndpoint->FirstTD);
 
     UhciEndpoint->TailTD = NULL;
     UhciEndpoint->HeadTD = NULL;
@@ -538,34 +621,43 @@ UhciReopenEndpoint(IN PVOID uhciExtension,
 
         BufferLength -= sizeof(UHCI_HCD_QH);
     }
+    else
+    {
+        UHCI_InitializeIsoBounceBuffers(UhciEndpoint, &BufferVA, &BufferPA, &BufferLength);
+    }
 
-    /* Initialize HCD Transfer Descriptors */
+    /* Initialize HCD Transfer Descriptors, no TD crosses a page boundary */
     TdCount = 0;
     RtlZeroMemory((PVOID)BufferVA, BufferLength);
-    UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
 
-    UhciEndpoint->FirstTD = (PUHCI_HCD_TD)BufferVA;
+    UhciEndpoint->FirstTD = NULL;
     UhciEndpoint->AllocatedTDs = 0;
-    UhciEndpoint->FirstTD->PhysicalAddress = BufferPA;
-    LastTD = UhciEndpoint->FirstTD;
+
+    LastTD = NULL;
     BufferPAEnd = EndpointProperties->BufferPA + EndpointProperties->BufferLength;
 
-    while(TRUE)
+    while (TRUE)
     {
-        BufferPA += sizeof(UHCI_HCD_TD);
-        BufferVA += sizeof(UHCI_HCD_TD);
         UHCI_AlignHwStructure(&BufferPA, &BufferVA, sizeof(UHCI_HCD_TD));
-        if (BufferPA + sizeof(UHCI_HCD_TD) >= BufferPAEnd)
+        if (BufferPA + sizeof(UHCI_HCD_TD) > BufferPAEnd)
             break;
-        TD = (PUHCI_HCD_TD)BufferVA;
 
+        TD = (PUHCI_HCD_TD)BufferVA;
         TD->PhysicalAddress = BufferPA;
-        LastTD->NextTD = TD;
+
+        if (LastTD)
+            LastTD->NextTD = TD;
+        else
+            UhciEndpoint->FirstTD = TD;
+
         LastTD = TD;
         TdCount++;
-        ASSERT(BufferLength >= sizeof(UHCI_HCD_TD));
-        BufferLength -= sizeof(UHCI_HCD_TD);
+
+        BufferPA += sizeof(UHCI_HCD_TD);
+        BufferVA += sizeof(UHCI_HCD_TD);
     }
+
+    ASSERT(TdCount > 0);
 
     UhciEndpoint->TailTD = NULL;
     UhciEndpoint->HeadTD = NULL;
@@ -594,6 +686,7 @@ UhciQueryEndpointRequirements(IN PVOID uhciExtension,
             TdCount = 2 * UHCI_MAX_ISO_TD_COUNT;
 
             EndpointRequirements->HeaderBufferSize = 0 + // Iso queue is have not Queue Heads
+                                                     UHCI_ISO_BOUNCE_BUFFER_COUNT * ROUND_UP(EndpointProperties->TotalMaxPacketSize, 16) +
                                                      TdCount * sizeof(UHCI_HCD_TD);
 
             EndpointRequirements->MaxTransferSize = UHCI_MAX_ISO_TRANSFER_SIZE;
@@ -1988,22 +2081,25 @@ UhciIsochTransfer(IN PVOID uhciExtension,
     UhciTransfer->TransferParameters = TransferParameters;
     UhciTransfer->USBDStatus = USBD_STATUS_SUCCESS;
     UhciTransfer->UhciEndpoint = UhciEndpoint;
+    UhciTransfer->IsoTransfer = IsoTransfer;
     InitializeListHead(&UhciTransfer->ActiveITDs);
 
     DeviceSpeed = UhciEndpoint->EndpointProperties.DeviceSpeed;
 
     if (DeviceSpeed == UsbFullSpeed)
     {
-        ULONG Period = UhciEndpoint->EndpointProperties.Period;
         ULONG NumITDs;
         ULONG PacketIndex = 0;
         ULONG ITDCount = 0;
-        ULONG Count = 0;
+        ULONG BounceCount = 0;
+        ULONG Index;
         PUHCI_HCD_TD ITD;
         PUHCI_HC_RESOURCES HcResourcesVA;
         ULONG CurrentFrame;
+        ULONG BufferPA;
+        PUCHAR BounceBuffer;
 
-        /* get number of iTDs needed */
+        /* one iTD per packet, a full speed iso endpoint transfers one packet per frame */
         NumITDs = IsoTransfer->TotalPackets;
 
         if (UhciEndpoint->AllocatedTDs + NumITDs > UhciEndpoint->MaxTDs)
@@ -2013,11 +2109,29 @@ UhciIsochTransfer(IN PVOID uhciExtension,
             return MP_STATUS_NO_RESOURCES;
         }
 
-        HcResourcesVA = UhciExtension->HcResourcesVA;
+        /* reserve the bounce buffers before anything is scheduled */
+        for (Index = 0; Index < IsoTransfer->TotalPackets; Index++)
+        {
+            if (UHCI_IsoPacketNeedsBounceBuffer(&IsoTransfer->Packets[Index]))
+                BounceCount++;
+        }
 
-        /* Use the first packet's FrameNumber for scheduling */
-        CurrentFrame = IsoTransfer->Packets[0].FrameNumber;
-        UHCI_DisablePeriodicList(UhciExtension);
+        if (BounceCount)
+        {
+            if (!IsoTransfer->MappedBuffer)
+            {
+                DPRINT1("UHCI_SubmitIsoTransfer: transfer buffer is not mapped\n");
+                return MP_STATUS_FAILURE;
+            }
+
+            if (BounceCount > UHCI_GetFreeIsoBounceBufferCount(UhciEndpoint))
+            {
+                DPRINT1("UHCI_SubmitIsoTransfer: Need %lu bounce buffers\n", BounceCount);
+                return MP_STATUS_NO_RESOURCES;
+            }
+        }
+
+        HcResourcesVA = UhciExtension->HcResourcesVA;
 
         /* Allocate and program iTDs, one per frame */
         while (PacketIndex < IsoTransfer->TotalPackets)
@@ -2033,7 +2147,7 @@ UhciIsochTransfer(IN PVOID uhciExtension,
                 /* TODO: free previously allocated iTDs */
                 return MP_STATUS_NO_RESOURCES;
             }
-            DPRINT("ITD %p CurrentFrame %x\n", ITD, CurrentFrame);
+            DPRINT("ITD %p Frame %x\n", ITD, Packet->FrameNumber);
             EndpointProperties = &UhciEndpoint->EndpointProperties;
             DeviceAddress = EndpointProperties->DeviceAddress;
             EndpointNumber = EndpointProperties->EndpointAddress & 0x0F;
@@ -2053,7 +2167,13 @@ UhciIsochTransfer(IN PVOID uhciExtension,
             ITD->HwTD.ControlStatus.ActualLength = UHCI_TD_LENGTH_NULL;
             ITD->HwTD.ControlStatus.IsochronousType = 1;
             ITD->HwTD.ControlStatus.ErrorCounter = 3;
-            ITD->HwTD.Token.MaximumLength = Packet->Segment0Length;
+
+            /* MaximumLength is encoded as length - 1, UHCI_TD_LENGTH_NULL is a zero length packet */
+            if (Packet->PacketLength)
+                ITD->HwTD.Token.MaximumLength = Packet->PacketLength - 1;
+            else
+                ITD->HwTD.Token.MaximumLength = UHCI_TD_LENGTH_NULL;
+
             ITD->HwTD.Token.DeviceAddress = DeviceAddress;
             ITD->HwTD.Token.Endpoint = EndpointNumber;
 
@@ -2062,13 +2182,38 @@ UhciIsochTransfer(IN PVOID uhciExtension,
             else
                 ITD->HwTD.Token.PIDCode = UHCI_TD_PID_OUT;
 
-            ITD->HwTD.Buffer = Packet->Segment0Addr.LowPart;
+            /* the whole packet has to be sent in its frame. A TD has only one buffer pointer,
+             * so a packet spanning two non contiguous pages is sent from a bounce buffer */
+            BufferPA = Packet->Segment0Addr.LowPart;
+            ITD->BounceIndex = UHCI_ISO_NO_BOUNCE_BUFFER;
+
+            if (UHCI_IsoPacketNeedsBounceBuffer(Packet))
+            {
+                ITD->BounceIndex = UHCI_AllocateIsoBounceBuffer(UhciEndpoint);
+                ASSERT(ITD->BounceIndex != UHCI_ISO_NO_BOUNCE_BUFFER);
+
+                BounceBuffer = UhciEndpoint->BounceBufferVA + ITD->BounceIndex * UhciEndpoint->BounceBufferSize;
+                BufferPA = UhciEndpoint->BounceBufferPA + ITD->BounceIndex * UhciEndpoint->BounceBufferSize;
+
+                if (ITD->HwTD.Token.PIDCode == UHCI_TD_PID_OUT)
+                {
+                    RtlCopyMemory(BounceBuffer,
+                                  (PUCHAR)IsoTransfer->MappedBuffer + Packet->Offset,
+                                  Packet->PacketLength);
+                }
+            }
+
+            ITD->HwTD.Buffer = BufferPA;
+
+            /* schedule the packet in the frame assigned by usbport */
+            CurrentFrame = Packet->FrameNumber;
             ITD->ScheduledFrame = CurrentFrame;
 
             ITD->IsoPacket = Packet;
             KeMemoryBarrier();
 
             ITD->HwTD.NextElement = HcResourcesVA->FrameList[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK];
+            KeMemoryBarrier();
             HcResourcesVA->FrameList[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK] = (ITD->PhysicalAddress & 0xFFFFFFF0);
 
             ASSERT((ITD->PhysicalAddress & 0xF) == 0);
@@ -2078,8 +2223,8 @@ UhciIsochTransfer(IN PVOID uhciExtension,
 
 
             KeMemoryBarrier();
+
             PacketIndex++;
-            CurrentFrame++;
             ITDCount++;
             InsertTailList(&UhciTransfer->ActiveITDs, &ITD->ActiveITDEntry);
         }
@@ -2087,7 +2232,7 @@ UhciIsochTransfer(IN PVOID uhciExtension,
         UhciTransfer->PendingTds += ITDCount;
         UhciExtension->PendingTransfers++;
         InsertTailList(&UhciEndpoint->ListTransfers, &UhciTransfer->EndpointEntry);
-        UHCI_EnablePeriodicList(UhciExtension);
+        //UHCI_EnablePeriodicList(UhciExtension);
 
         DPRINT("UHCI_SubmitIsoTransfer: Scheduled %lu iTDs for %lu packets FirstFrame %x LastFrame %x\n",
                ITDCount, IsoTransfer->TotalPackets, IsoTransfer->Packets[0].FrameNumber, ITD->ScheduledFrame);

@@ -104,6 +104,7 @@ typedef struct _USBPORT_ISO_PACKET_DATA {
   ULONG Segment0Length;
   PHYSICAL_ADDRESS Segment1Addr;
   ULONG Segment1Length;
+  ULONG Offset;                 /* offset of the packet in the transfer buffer (MappedBuffer) */
 } USBPORT_ISO_PACKET_DATA, *PUSBPORT_ISO_PACKET_DATA;
 
 /* ISO transfer block passed to SubmitIsoTransfer via isoParameters */

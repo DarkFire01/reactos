@@ -1152,7 +1152,6 @@ BuildUSBAudioFilterTopology(
     }
 
 
-
     return STATUS_SUCCESS;
 }
 

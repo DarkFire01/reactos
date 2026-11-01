@@ -127,6 +127,7 @@ USBPORT_InitializeIsoTransfer(PDEVICE_OBJECT FdoDevice,
         UrbPkt->Status = USBD_STATUS_NOT_ACCESSED;
 
         /* Fill in the miniport packet data */
+        PktData->Offset = UrbPkt->Offset;
         PktData->PacketLength = PktBytes;
         PktData->BytesTransferred = 0;
         PktData->CompletionStatus = USBD_STATUS_NOT_ACCESSED;
