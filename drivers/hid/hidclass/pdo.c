@@ -472,6 +472,9 @@ HidClassPDO_PnP(
             IoStack->Parameters.DeviceCapabilities.Capabilities->SurpriseRemovalOK = TRUE;
             IoStack->Parameters.DeviceCapabilities.Capabilities->RawDeviceOK = !PDODeviceExtension->IsKeyboardOrMouse;
 
+            /* The collection number only tells collections of one device apart */
+            IoStack->Parameters.DeviceCapabilities.Capabilities->UniqueID = FALSE;
+
             Status = STATUS_SUCCESS;
             break;
         }
