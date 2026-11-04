@@ -60,6 +60,10 @@ ULONG64 Arm64GetSystemControl(VOID);
 extern ULONG_PTR VramAddress;
 extern ULONG VramSize;
 
+/* The console copy of the screen, see vidfb.c */
+PVOID VidFbGetShadowBuffer(VOID);
+ULONG VidFbGetShadowSize(VOID);
+
 /* Set with DEBUGPORT=SCREEN, the hand off and the early kernel print on the loader console */
 static BOOLEAN WinLdrpScreenTrace = FALSE;
 
@@ -307,7 +311,7 @@ static
 VOID
 WinLdrpMapFrameBuffer(VOID)
 {
-    ULONG_PTR Address, End;
+    ULONG_PTR Address, End, Copy;
 
     if (!VramAddress || !VramSize)
         return;
@@ -317,6 +321,18 @@ WinLdrpMapFrameBuffer(VOID)
     {
         if (!MempIsPageMapped((PVOID)Address))
             MempMapSinglePage(Address, Address, ATTR_NORMAL_NONCACHED);
+    }
+
+    /* Every character also lands in the copy, which can sit above the pages the loader maps */
+    Copy = (ULONG_PTR)VidFbGetShadowBuffer();
+    if (!Copy)
+        return;
+
+    End = ALIGN_UP_BY(Copy + VidFbGetShadowSize(), PAGE_SIZE);
+    for (Address = ALIGN_DOWN_BY(Copy, PAGE_SIZE); Address < End; Address += PAGE_SIZE)
+    {
+        if (!MempIsPageMapped((PVOID)Address))
+            MempMapSinglePage(Address, Address, ATTR_NORMAL);
     }
 }
 
