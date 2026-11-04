@@ -708,7 +708,8 @@ UefiSetupBlockDevices(VOID)
     ULONG BlockDeviceIndex;
     ULONG SystemHandleCount;
     EFI_STATUS Status;
-    ULONG i;
+    ULONG i, Slot;
+    BOOLEAN IsCdRom;
     UINTN HandleSize = 0;
     EFI_BLOCK_IO* BlockIo;
 
@@ -799,10 +800,16 @@ UefiSetupBlockDevices(VOID)
         }
     }
 
-    /* Step 6: Enumerate root block devices (skip logical partitions) */
+    /*
+     * Step 6: Enumerate root block devices (skip logical partitions).
+     * Hard disks are numbered on the first pass and CD drives on the second,
+     * so rdisk(N) is the Nth hard disk the way the installer names it.
+     */
     BlockDeviceIndex = 0;
-    for (i = 0; i < SystemHandleCount; i++)
+    for (Slot = 0; Slot < 2 * SystemHandleCount; Slot++)
     {
+        i = Slot % SystemHandleCount;
+
         Status = GlobalSystemTable->BootServices->HandleProtocol(
             handles[i],
             &BlockIoGuid,
@@ -848,6 +855,10 @@ UefiSetupBlockDevices(VOID)
             TRACE("Skipping logical partition handle %lu\n", i);
             continue;
         }
+
+        IsCdRom = (BlockIo->Media->RemovableMedia && (BlockIo->Media->BlockSize == 2048));
+        if (IsCdRom != (Slot >= SystemHandleCount))
+            continue;
 
         /* This is a root block device */
         TRACE("Found root block device at index %lu: BlockSize=%lu, LastBlock=%llu\n",
