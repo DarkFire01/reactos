@@ -198,6 +198,12 @@ NTSTATUS
 NTAPI
 HalpPublishMmConfigRanges(VOID);
 
+/* cache.s */
+VOID
+HalpSweepDcacheRange(
+    _In_ PVOID BaseAddress,
+    _In_ SIZE_T Length);
+
 /* pci.c */
 ULONG
 NTAPI
