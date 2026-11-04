@@ -39,6 +39,9 @@ typedef struct _FRAMEBUFFER_INFO
 
     ULONG BytesPerPixel;
     ULONG Delta;             // aka. "Pitch": actual size in bytes of a scanline.
+
+    /* Cached copy of the screen, scrolling reads it instead of the video memory */
+    ULONG_PTR ShadowAddress;
 } FRAMEBUFFER_INFO, *PFRAMEBUFFER_INFO;
 
 static FRAMEBUFFER_INFO framebufInfo = {0};
@@ -231,15 +234,23 @@ VidFbClearScreenColor(
     _In_ UINT32 Color,
     _In_ BOOLEAN FullScreen)
 {
-    ULONG Line, Col;
-    PUINT32 p;
+    ULONG Line, Col, Offset;
+    PUINT32 p, s;
 
     for (Line = 0; Line < framebufInfo.ScreenHeight - (FullScreen ? 0 : 2 * TOP_BOTTOM_LINES); Line++)
     {
-        p = (PUINT32)((PUCHAR)framebufInfo.BaseAddress + (Line + (FullScreen ? 0 : TOP_BOTTOM_LINES)) * framebufInfo.Delta);
+        Offset = (Line + (FullScreen ? 0 : TOP_BOTTOM_LINES)) * framebufInfo.Delta;
+        p = (PUINT32)(framebufInfo.BaseAddress + Offset);
         for (Col = 0; Col < framebufInfo.ScreenWidth; Col++)
         {
             *p++ = Color;
+        }
+
+        if (framebufInfo.ShadowAddress)
+        {
+            s = (PUINT32)(framebufInfo.ShadowAddress + Offset);
+            for (Col = 0; Col < framebufInfo.ScreenWidth; Col++)
+                *s++ = Color;
         }
     }
 }
@@ -258,9 +269,10 @@ VidFbOutputChar(
     _In_ UINT32 BgColor)
 {
     const UCHAR* FontPtr;
-    PUINT32 Pixel;
+    PUINT32 Pixel, Shadow;
+    UINT32 Color;
     UCHAR Mask;
-    ULONG Line, Col;
+    ULONG Line, Col, Offset;
 
     /* Don't display outside of the screen, nor partial characters */
     if ((X + CHAR_WIDTH - 1 >= framebufInfo.ScreenWidth) ||
@@ -270,19 +282,78 @@ VidFbOutputChar(
     }
 
     FontPtr = BitmapFont8x16 + Char * CHAR_HEIGHT;
-    Pixel = (PUINT32)((PUCHAR)framebufInfo.BaseAddress +
-            (Y + TOP_BOTTOM_LINES) * framebufInfo.Delta + X * sizeof(UINT32));
+    Offset = (Y + TOP_BOTTOM_LINES) * framebufInfo.Delta + X * sizeof(UINT32);
+    Pixel = (PUINT32)(framebufInfo.BaseAddress + Offset);
+    Shadow = framebufInfo.ShadowAddress ? (PUINT32)(framebufInfo.ShadowAddress + Offset) : NULL;
 
     for (Line = 0; Line < CHAR_HEIGHT; Line++)
     {
         Mask = 0x80;
         for (Col = 0; Col < CHAR_WIDTH; Col++)
         {
-            Pixel[Col] = (0 != (FontPtr[Line] & Mask) ? FgColor : BgColor);
+            Color = (0 != (FontPtr[Line] & Mask) ? FgColor : BgColor);
+            Pixel[Col] = Color;
+            if (Shadow)
+                Shadow[Col] = Color;
             Mask = Mask >> 1;
         }
         Pixel = (PUINT32)((PUCHAR)Pixel + framebufInfo.Delta);
+        if (Shadow)
+            Shadow = (PUINT32)((PUCHAR)Shadow + framebufInfo.Delta);
     }
+}
+
+/**
+ * @brief
+ * Sets one pixel, raw framebuffer coordinates.
+ **/
+VOID
+VidFbPutPixel(
+    _In_ ULONG X,
+    _In_ ULONG Y,
+    _In_ UINT32 Color)
+{
+    ULONG Offset;
+
+    if ((X >= framebufInfo.ScreenWidth) || (Y >= framebufInfo.ScreenHeight))
+        return;
+
+    Offset = Y * framebufInfo.Delta + X * sizeof(UINT32);
+    *(PUINT32)(framebufInfo.BaseAddress + Offset) = Color;
+    if (framebufInfo.ShadowAddress)
+        *(PUINT32)(framebufInfo.ShadowAddress + Offset) = Color;
+}
+
+/**
+ * @brief
+ * Returns the size in bytes of a copy of the whole screen.
+ **/
+ULONG
+VidFbGetShadowSize(VOID)
+{
+    return framebufInfo.ScreenHeight * framebufInfo.Delta;
+}
+
+/**
+ * @brief
+ * Keeps a copy of the screen in the given buffer of VidFbGetShadowSize() bytes.
+ *
+ * Video memory is uncached or device memory, reading it back is slow. With a
+ * copy in normal memory, scrolling only writes to the screen.
+ **/
+VOID
+VidFbSetShadowBuffer(
+    _In_ PVOID Buffer)
+{
+    PUINT32 Source = (PUINT32)framebufInfo.BaseAddress;
+    PUINT32 Copy = (PUINT32)Buffer;
+    ULONG Count;
+
+    /* One aligned word at a time, video memory may not take wider or unaligned reads */
+    for (Count = VidFbGetShadowSize() / sizeof(UINT32); Count != 0; Count--)
+        *Copy++ = *Source++;
+
+    framebufInfo.ShadowAddress = (ULONG_PTR)Buffer;
 }
 
 /**
@@ -320,8 +391,33 @@ VidFbScrollUp(
 {
     PUCHAR Area = (PUCHAR)framebufInfo.BaseAddress + TOP_BOTTOM_LINES * framebufInfo.Delta;
     ULONG Lines = framebufInfo.ScreenHeight - 2 * TOP_BOTTOM_LINES;
+    PUCHAR Copy;
     PUINT32 Dst, Src;
     ULONG Line, Col;
+
+    if (framebufInfo.ShadowAddress)
+    {
+        /* Move the copy, then write every line out without reading the screen */
+        Copy = (PUCHAR)framebufInfo.ShadowAddress + TOP_BOTTOM_LINES * framebufInfo.Delta;
+        if (Scroll < Lines)
+            RtlMoveMemory(Copy, Copy + Scroll * framebufInfo.Delta, (Lines - Scroll) * framebufInfo.Delta);
+
+        for (Line = (Scroll < Lines) ? (Lines - Scroll) : 0; Line < Lines; Line++)
+        {
+            Dst = (PUINT32)(Copy + Line * framebufInfo.Delta);
+            for (Col = 0; Col < framebufInfo.ScreenWidth; Col++)
+                Dst[Col] = Color;
+        }
+
+        for (Line = 0; Line < Lines; Line++)
+        {
+            Dst = (PUINT32)(Area + Line * framebufInfo.Delta);
+            Src = (PUINT32)(Copy + Line * framebufInfo.Delta);
+            for (Col = 0; Col < framebufInfo.ScreenWidth; Col++)
+                Dst[Col] = Src[Col];
+        }
+        return;
+    }
 
     /* A scanline can be longer than the visible width, so each one moves on its own */
     for (Line = 0; Line < Lines; Line++)

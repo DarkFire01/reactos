@@ -430,8 +430,6 @@ static
 VOID
 UefiDrawBgrtLogo(VOID)
 {
-    PUCHAR VramBase;
-    ULONG BytesPerPixel, Pitch;
     ULONG Row, Col;
 
     if (!UefiBgrtLogo.Valid || !UiProgressBar.Show)
@@ -443,18 +441,8 @@ UefiDrawBgrtLogo(VOID)
     if ((FrameBufferData == NULL) || (FrameBufferData->BitsPerPixel != 32))
         return;
 
-    BytesPerPixel = FrameBufferData->BitsPerPixel / 8;
-    Pitch = FrameBufferData->PixelsPerScanLine * BytesPerPixel;
-    VramBase = (PUCHAR)VramAddress;
-
     for (Row = 0; Row < UefiBgrtLogo.DrawHeight; ++Row)
     {
-        PULONG DestinationRow;
-
-        DestinationRow = (PULONG)(VramBase +
-                                  (UefiBgrtLogo.PositionY + Row) * Pitch +
-                                  UefiBgrtLogo.PositionX * BytesPerPixel);
-
         for (Col = 0; Col < UefiBgrtLogo.DrawWidth; ++Col)
         {
             ULONG SourceX, SourceY;
@@ -468,10 +456,12 @@ UefiDrawBgrtLogo(VOID)
 
             SourcePixel = UefiGetLogoPixelAddress(&UefiBgrtLogo, SourceX, SourceY);
 
-            DestinationRow[Col] = 0xFF000000 |
-                                  (SourcePixel[2] << 16) |
-                                  (SourcePixel[1] << 8) |
-                                  SourcePixel[0];
+            VidFbPutPixel(UefiBgrtLogo.PositionX + Col,
+                          UefiBgrtLogo.PositionY + Row,
+                          0xFF000000 |
+                          (SourcePixel[2] << 16) |
+                          (SourcePixel[1] << 8) |
+                          SourcePixel[0]);
         }
     }
 }
@@ -613,6 +603,32 @@ UefiInitializeAppleGraphics(VOID)
     return Status;
 }
 
+/**
+ * @brief Gives the console a copy of the screen in normal memory.
+ *
+ * Loader data stays mapped after the switch to the kernel tables, the kernel
+ * prints through this console until its own debugger is up.
+ */
+static
+VOID
+UefiAllocateScreenCopy(VOID)
+{
+    EFI_PHYSICAL_ADDRESS Copy;
+    EFI_STATUS Status;
+
+    Status = GlobalSystemTable->BootServices->AllocatePages(AllocateAnyPages,
+                                                            EfiLoaderData,
+                                                            EFI_SIZE_TO_PAGES(VidFbGetShadowSize()),
+                                                            &Copy);
+    if (Status != EFI_SUCCESS)
+    {
+        WARN("No memory for a copy of the screen, status %d\n", Status);
+        return;
+    }
+
+    VidFbSetShadowBuffer((PVOID)(ULONG_PTR)Copy);
+}
+
 EFI_STATUS
 UefiInitializeVideo(VOID)
 {
@@ -621,13 +637,19 @@ UefiInitializeVideo(VOID)
     /* First, try GOP */
     Status = UefiInitializeGop();
     if (Status == EFI_SUCCESS)
+    {
+        UefiAllocateScreenCopy();
         return Status;
+    }
 
     /* Try Apple Graphics Info if that fails */
     TRACE("Failed to detect GOP, trying Apple Graphics Info\n");
     Status = UefiInitializeAppleGraphics();
     if (Status == EFI_SUCCESS)
+    {
+        UefiAllocateScreenCopy();
         return Status;
+    }
 
     /* We didn't find GOP or Apple Graphics Info, probably a UGA-only system */
     ERR("Cannot find framebuffer!\n");
