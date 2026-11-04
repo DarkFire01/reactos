@@ -72,10 +72,10 @@ HalInitSystem(
 {
     PKPRCB Prcb = KeGetCurrentPrcb();
 
-    UNREFERENCED_PARAMETER(LoaderBlock);
-
     if (BootPhase == 0)
     {
+        HalpInitializeEfiRuntime(LoaderBlock);
+
         if (Prcb->MajorVersion != PRCB_MAJOR_VERSION)
             KeBugCheckEx(MISMATCHED_HAL, 1, Prcb->MajorVersion, PRCB_MAJOR_VERSION, 0);
 
