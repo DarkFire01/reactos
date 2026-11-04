@@ -45,6 +45,16 @@ EFI_HANDLE PublicBootHandle;
 PVOID ExitStack;
 PVOID EndofExitStack;
 
+/* EFI_RT_PROPERTIES_TABLE from the UEFI specification, lists the services that still work at runtime */
+typedef struct _UEFI_RT_PROPERTIES
+{
+    UINT16 Version;
+    UINT16 Length;
+    UINT32 RuntimeServicesSupported;
+} UEFI_RT_PROPERTIES;
+
+#define UEFI_RT_SUPPORTS_SET_VIRTUAL_ADDRESS_MAP 0x0080
+
 /* The memory map ExitBootServices took, SetVirtualAddressMap wants that one */
 static UINTN UefiFinalMapSize;
 static UINTN UefiFinalDescriptorSize;
@@ -335,6 +345,32 @@ UefiExitBootServices(VOID)
     }
 }
 
+/* Without a properties table every runtime service is supported */
+static
+BOOLEAN
+UefiCanSetVirtualMap(VOID)
+{
+    EFI_GUID RtPropertiesGuid = {0xeb66918a, 0x7eef, 0x402a, {0x84, 0x2e, 0x93, 0x1d, 0x21, 0xc3, 0x8a, 0xe9}};
+    EFI_CONFIGURATION_TABLE *Table;
+    UEFI_RT_PROPERTIES *Properties;
+    UINTN Index;
+
+    for (Index = 0; Index < GlobalSystemTable->NumberOfTableEntries; Index++)
+    {
+        Table = &GlobalSystemTable->ConfigurationTable[Index];
+        if (memcmp(&Table->VendorGuid, &RtPropertiesGuid, sizeof(RtPropertiesGuid)))
+            continue;
+
+        Properties = Table->VendorTable;
+        if (!Properties || (Properties->Length < sizeof(*Properties)))
+            return TRUE;
+
+        return (Properties->RuntimeServicesSupported & UEFI_RT_SUPPORTS_SET_VIRTUAL_ADDRESS_MAP) != 0;
+    }
+
+    return TRUE;
+}
+
 /**
  * @brief Moves the UEFI runtime services to the addresses the kernel calls them at.
  *
@@ -367,7 +403,7 @@ UefiSetRuntimeVirtualMap(
     EFI_STATUS Status;
 
     RtlZeroMemory(Services, sizeof(*Services));
-    if (!Runtime || !EfiMemoryMap || !UefiFinalDescriptorSize)
+    if (!Runtime || !EfiMemoryMap || !UefiFinalDescriptorSize || !UefiCanSetVirtualMap())
         return EFI_UNSUPPORTED;
 
     for (Offset = 0; Offset < UefiFinalMapSize; Offset += UefiFinalDescriptorSize)
