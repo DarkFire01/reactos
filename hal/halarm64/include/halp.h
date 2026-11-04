@@ -138,6 +138,10 @@ typedef struct _HALP_PLATFORM
     PHYSICAL_ADDRESS GicdBase;
     PHYSICAL_ADDRESS GicrBase;
     ULONG GicrLength;
+    /* Without a GICR range every GICC entry names the redistributor of its processor */
+    ULONG64 GiccMpidr[MAXIMUM_PROCESSORS];
+    ULONG64 GiccGicr[MAXIMUM_PROCESSORS];
+    ULONG GiccCount;
     PHYSICAL_ADDRESS GiccBase;
     UCHAR GicVersion;
     ULONG TimerIntId;

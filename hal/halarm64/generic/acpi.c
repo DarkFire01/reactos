@@ -123,9 +123,18 @@ HalpParseMadt(
                 if (!HalpPlatform.GiccBase.QuadPart)
                     HalpPlatform.GiccBase.QuadPart = Gicc->PhysicalBaseAddress;
 
-                /* Without a GICR entry every GICC carries its own redistributor */
-                if (!HalpPlatform.GicrLength && Gicc->GicrBaseAddress)
-                    HalpPlatform.GicrBase.QuadPart = Gicc->GicrBaseAddress;
+                /* Without a GICR entry every GICC carries its own redistributor, the lowest one is reported */
+                if (Gicc->GicrBaseAddress)
+                {
+                    HalpPlatform.GiccMpidr[HalpPlatform.GiccCount] = Gicc->Mpidr;
+                    HalpPlatform.GiccGicr[HalpPlatform.GiccCount++] = Gicc->GicrBaseAddress;
+
+                    if (!HalpPlatform.GicrLength &&
+                        (!HalpPlatform.GicrBase.QuadPart || (Gicc->GicrBaseAddress < (ULONG64)HalpPlatform.GicrBase.QuadPart)))
+                    {
+                        HalpPlatform.GicrBase.QuadPart = Gicc->GicrBaseAddress;
+                    }
+                }
                 break;
 
             case MADT_TYPE_GICD:
