@@ -14,8 +14,10 @@
 // HalpFlushTbEntry(
 //     _In_ PVOID VirtualAddress);
 //
+// Only VA[55:12] goes in, see KeArm64FlushTbEntry.
+//
     LEAF_ENTRY HalpFlushTbEntry
-    lsr     x0, x0, #12
+    ubfx    x0, x0, #12, #44
     dsb     ishst
     tlbi    vaae1is, x0
     dsb     ish
