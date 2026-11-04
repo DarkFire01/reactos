@@ -111,7 +111,7 @@ AllocateAndInitLPB(
 
 #ifdef UEFIBOOT
     Extension->BootViaEFI = 1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(__REACTOS__)
     LoaderBlock->FirmwareInformation.FirmwareTypeEfi = 1;
 #endif
 #endif
