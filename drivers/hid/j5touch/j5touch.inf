@@ -1,0 +1,45 @@
+; j5touch.inf - Imagis IST3038C touchscreen on the Galaxy J5 2016 (HID absolute mouse)
+; The ACPI device J5TS0001 comes from the j5xlte EDK2 firmware's DSDT.
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = HIDClass
+ClassGuid   = {745a17a0-74d3-11d0-b6fe-00a0c90f57da}
+Provider    = %Provider%
+DriverVer   = 11/01/2026,1.0.0.0
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+j5touch.sys = 1
+
+[Manufacturer]
+%Provider% = J5Touch, NTarm64
+
+[J5Touch.NTarm64]
+%DeviceDesc% = J5Touch_Inst, ACPI\J5TS0001
+
+[J5Touch_Inst.NT]
+CopyFiles = J5Touch_CopyFiles
+
+[J5Touch_CopyFiles]
+j5touch.sys
+
+[J5Touch_Inst.NT.Services]
+AddService = j5touch, 0x00000002, J5Touch_Service
+
+[J5Touch_Service]
+DisplayName    = %DeviceDesc%
+ServiceType    = 1   ; SERVICE_KERNEL_DRIVER
+StartType      = 3   ; SERVICE_DEMAND_START
+ErrorControl   = 1   ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\j5touch.sys
+
+[Strings]
+Provider   = "j5xlte-edk2"
+DiskName   = "j5touch"
+DeviceDesc = "J5 2016 touchscreen (IST3038C)"
