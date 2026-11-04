@@ -962,6 +962,13 @@ HaliPciInterfaceReadConfig(
 {
     BUS_HANDLER BusHandler;
 
+    /* Type 1 cycles only reach segment 0, other segments read as missing functions */
+    if (BusNumber > 0xFF)
+    {
+        RtlFillMemory(Buffer, Length, 0xFF);
+        return Length;
+    }
+
     /* Setup fake PCI Bus handler */
     RtlCopyMemory(&BusHandler, &HalpFakePciBusHandler, sizeof(BUS_HANDLER));
     BusHandler.BusNumber = BusNumber;
@@ -984,6 +991,9 @@ HaliPciInterfaceWriteConfig(
     _In_ ULONG Length)
 {
     BUS_HANDLER BusHandler;
+
+    if (BusNumber > 0xFF)
+        return Length;
 
     RtlCopyMemory(&BusHandler, &HalpFakePciBusHandler, sizeof(BUS_HANDLER));
     BusHandler.BusNumber = BusNumber;

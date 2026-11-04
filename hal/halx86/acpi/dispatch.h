@@ -48,6 +48,7 @@ typedef struct _HAL_ACPI_SERVICES
     VOID (NTAPI *InterruptControllerRestore)(
         VOID);
 
+    /* BusNumber carries the PCI segment in bits 8 to 23 */
     ULONG (NTAPI *PciConfigRead)(
         _In_ PBUS_HANDLER RootBusHandler,
         _In_ ULONG BusNumber,
