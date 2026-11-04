@@ -2361,6 +2361,10 @@ UserFault:
                 TempPte.u.Hard.NoExecute = 0;
 #endif
                 MI_UPDATE_VALID_PTE(PointerPte, TempPte);
+#ifdef _M_ARM64
+                /* A fault does not drop the old entry from the TLB here, the retry would hit it again */
+                KeInvalidateTlbEntry(Address);
+#endif
                 MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);
                 return STATUS_SUCCESS;
             }
