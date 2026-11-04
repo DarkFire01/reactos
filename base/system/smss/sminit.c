@@ -1791,6 +1791,10 @@ SmpCreateDynamicEnvironmentVariables(VOID)
             ValueData = L"AMD64";
             break;
 
+        case PROCESSOR_ARCHITECTURE_ARM64:
+            ValueData = L"ARM64";
+            break;
+
         case PROCESSOR_ARCHITECTURE_IA64:
             ValueData = L"IA64";
             break;
@@ -1936,6 +1940,7 @@ SmpCreateDynamicEnvironmentVariables(VOID)
         /* Modern Intel, as well as 64-bit CPUs use a revision without stepping */
         case PROCESSOR_ARCHITECTURE_IA64:
         case PROCESSOR_ARCHITECTURE_AMD64:
+        case PROCESSOR_ARCHITECTURE_ARM64:
             _swprintf(ValueBuffer, L"%04x", ProcessorInfo.ProcessorRevision);
             break;
 
