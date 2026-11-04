@@ -598,6 +598,79 @@ KdIoPrintf(
 extern const CSTRING KdbPromptStr;
 #endif
 
+#ifdef _M_ARM64
+/* Prints a code address as module+offset when it falls in a loaded image */
+static
+VOID
+KdpPrintCodeAddress(
+    _In_ PCSTR Label,
+    _In_ ULONG_PTR Address)
+{
+    PLDR_DATA_TABLE_ENTRY Module;
+    PLIST_ENTRY Entry;
+
+    for (Entry = PsLoadedModuleList.Flink;
+         Entry && (Entry != &PsLoadedModuleList) && MmIsAddressValid(Entry);
+         Entry = Entry->Flink)
+    {
+        Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if ((Address >= (ULONG_PTR)Module->DllBase) &&
+            (Address < (ULONG_PTR)Module->DllBase + Module->SizeOfImage))
+        {
+            KdIoPrintf("  %s %p %wZ+0x%Ix\n",
+                       Label,
+                       (PVOID)Address,
+                       &Module->BaseDllName,
+                       Address - (ULONG_PTR)Module->DllBase);
+            return;
+        }
+    }
+
+    KdIoPrintf("  %s %p\n", Label, (PVOID)Address);
+}
+
+/**
+ * @brief Prints the registers and the frame chain of an exception.
+ *
+ * Without a debugger attached this is what a photo of the screen can be
+ * symbolized from.
+ */
+static
+VOID
+KdpPrintExceptionBacktrace(
+    _In_ PEXCEPTION_RECORD64 ExceptionRecord)
+{
+    PCONTEXT Context = &KeGetCurrentPrcb()->ProcessorState.ContextFrame;
+    ULONG_PTR Frame;
+    ULONG Depth;
+
+    KdIoPrintf("  Info[1] %p SP %p X0 %p X1 %p X2 %p\n",
+               (PVOID)(ULONG_PTR)ExceptionRecord->ExceptionInformation[1],
+               (PVOID)Context->Sp,
+               (PVOID)Context->X0,
+               (PVOID)Context->X1,
+               (PVOID)Context->X2);
+    KdpPrintCodeAddress("PC", Context->Pc);
+    KdpPrintCodeAddress("LR", Context->Lr);
+
+    /* Every frame starts with the caller's frame pointer and return address */
+    Frame = Context->Fp;
+    for (Depth = 0; Depth < 12; Depth++)
+    {
+        if ((Frame & 7) ||
+            (Frame < (ULONG_PTR)MmSystemRangeStart) ||
+            !MmIsAddressValid((PVOID)Frame) ||
+            !MmIsAddressValid((PVOID)(Frame + sizeof(ULONG_PTR))))
+        {
+            break;
+        }
+
+        KdpPrintCodeAddress("<-", ((PULONG_PTR)Frame)[1]);
+        Frame = ((PULONG_PTR)Frame)[0];
+    }
+}
+#endif
+
 VOID
 NTAPI
 KdSendPacket(
@@ -636,6 +709,10 @@ KdSendPacket(
                        ExceptionRecord->ExceptionFlags,
                        WaitStateChange->u.Exception.FirstChance ? "FirstChance" : "LastChance",
                        ExceptionRecord->ExceptionInformation[0]);
+#ifdef _M_ARM64
+            if (ExceptionRecord->ExceptionCode != STATUS_BREAKPOINT)
+                KdpPrintExceptionBacktrace(ExceptionRecord);
+#endif
 #if defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM) || defined(_M_ARM64)
 extern VOID NTAPI RtlpBreakWithStatusInstruction(VOID);
             if ((ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT) &&
