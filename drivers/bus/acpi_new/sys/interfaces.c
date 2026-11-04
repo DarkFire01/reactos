@@ -681,10 +681,19 @@ UacpiNtPciReadConfig(
     _In_ ULONG Offset,
     _In_ ULONG Length)
 {
+    PUACPINT_PDO Pdo = Context;
     ULONG Returned;
 
-    Returned = UacpiNtHalPciReadConfig(Context, Bus, Slot, Buffer, Offset, Length);
-    UacpiNtPciTrackPresence(Bus, Slot, Buffer, Offset, Length, Returned);
+    Returned = UacpiNtHalPciReadConfig(Context,
+                                       UACPINT_HAL_PCI_BUS(Pdo->PciRootSegment, Bus),
+                                       Slot,
+                                       Buffer,
+                                       Offset,
+                                       Length);
+
+    /* The presence bits only cover segment 0 */
+    if (Pdo->PciRootSegment == 0)
+        UacpiNtPciTrackPresence(Bus, Slot, Buffer, Offset, Length, Returned);
     return Returned;
 }
 
@@ -699,7 +708,14 @@ UacpiNtPciWriteConfig(
     _In_ ULONG Offset,
     _In_ ULONG Length)
 {
-    return UacpiNtHalPciWriteConfig(Context, Bus, Slot, Buffer, Offset, Length);
+    PUACPINT_PDO Pdo = Context;
+
+    return UacpiNtHalPciWriteConfig(Context,
+                                    UACPINT_HAL_PCI_BUS(Pdo->PciRootSegment, Bus),
+                                    Slot,
+                                    Buffer,
+                                    Offset,
+                                    Length);
 }
 
 /* Interrupt Line fixups do nothing, _PRT owns interrupt routing */
@@ -1146,7 +1162,7 @@ UacpiNtBuildPciBusInterface(
     struct acpi_fadt *Fadt = NULL;
     BOOLEAN ExpressWake = FALSE;
     BOOLEAN IsVersion2;
-    uacpi_u64 BaseBus;
+    uacpi_u64 BaseBus, Segment;
     ULONG Size;
 
     BusInterface = (PPCI_BUS_INTERFACE_STANDARD)IoStack->Parameters.QueryInterface.Interface;
@@ -1167,6 +1183,11 @@ UacpiNtBuildPciBusInterface(
     if (uacpi_unlikely_error(uacpi_eval_simple_integer(Pdo->Node, "_BBN", &BaseBus)))
         BaseBus = 0;
     Pdo->PciRootBaseBus = (UCHAR)BaseBus;
+
+    /* No _SEG means segment 0, every other root complex has its own config window */
+    if (uacpi_unlikely_error(uacpi_eval_simple_integer(Pdo->Node, "_SEG", &Segment)))
+        Segment = 0;
+    Pdo->PciRootSegment = (USHORT)Segment;
 
     /* PNP0A08 in _HID or _CID marks a PCI Express root */
     if (_stricmp(Pdo->Hid, "PNP0A08") == 0)
@@ -1224,8 +1245,9 @@ UacpiNtBuildPciBusInterface(
     if (IsVersion2 && Size >= sizeof(*BusInterface))
         BusInterface->PrepareMultistageResume = NULL;
 
-    DPRINT("PCI bus interface provided to %s, base bus %u%s\n",
+    DPRINT("PCI bus interface provided to %s, segment %u, base bus %u%s\n",
            Pdo->Name,
+           Pdo->PciRootSegment,
            Pdo->PciRootBaseBus,
            Pdo->HostBridge.IsExpress ? ", express" : "");
     return STATUS_SUCCESS;

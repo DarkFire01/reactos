@@ -28,6 +28,9 @@ VOID
     _In_ PVOID StateData,
     _Out_ PULONG OutInterruptModel);
 
+/* The HAL takes the PCI segment in bits 8 to 23 of the bus number */
+#define UACPINT_HAL_PCI_BUS(Segment, Bus)   (((ULONG)(Segment) << 8) | (Bus))
+
 typedef
 ULONG
 (NTAPI *PACPI_HAL_PCI_CONFIG)(
