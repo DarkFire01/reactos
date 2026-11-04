@@ -192,6 +192,30 @@ PartMgrIsDiskSuperFloppy(
     return TRUE;
 }
 
+/* Unused entries and MBR containers get no partition device */
+static
+BOOLEAN
+PartMgrIsSkippedEntry(
+    _In_ PARTITION_STYLE PartitionStyle,
+    _In_ PPARTITION_INFORMATION_EX PartEntry)
+{
+    if (PartitionStyle == PARTITION_STYLE_MBR)
+    {
+        return (PartEntry->Mbr.PartitionType == PARTITION_ENTRY_UNUSED) ||
+               IsContainerPartition(PartEntry->Mbr.PartitionType);
+    }
+
+    /* A GPT layout carries every slot of the entry array, unused ones have no type */
+    if (PartitionStyle == PARTITION_STYLE_GPT)
+    {
+        return RtlCompareMemory(&PartEntry->Gpt.PartitionType,
+                                &PARTITION_ENTRY_UNUSED_GUID,
+                                sizeof(GUID)) == sizeof(GUID);
+    }
+
+    return FALSE;
+}
+
 static
 CODE_SEG("PAGE")
 VOID
@@ -225,12 +249,8 @@ PartMgrUpdatePartitionDevices(
             partEntry = &NewLayout->PartitionEntry[i];
 
             // skip unused and container partitions
-            if (NewLayout->PartitionStyle == PARTITION_STYLE_MBR &&
-                (partEntry->Mbr.PartitionType == PARTITION_ENTRY_UNUSED ||
-                    IsContainerPartition(partEntry->Mbr.PartitionType)))
-            {
+            if (PartMgrIsSkippedEntry(NewLayout->PartitionStyle, partEntry))
                 continue;
-            }
 
             partNumber++;
 
@@ -300,12 +320,8 @@ PartMgrUpdatePartitionDevices(
         PPARTITION_INFORMATION_EX partEntry = &NewLayout->PartitionEntry[i];
 
         // again, skip unused and container partitions
-        if (NewLayout->PartitionStyle == PARTITION_STYLE_MBR &&
-            (partEntry->Mbr.PartitionType == PARTITION_ENTRY_UNUSED ||
-                IsContainerPartition(partEntry->Mbr.PartitionType)))
-        {
+        if (PartMgrIsSkippedEntry(NewLayout->PartitionStyle, partEntry))
             continue;
-        }
 
         partNumber++;
 

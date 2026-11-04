@@ -6,6 +6,7 @@
 
 #define DEVICE_TYPE ULONG
 #include <ntdddisk.h>
+#include <diskguid.h>
 #include <ioevent.h>
 
 /* NO CODE HERE, THIS IS JUST REQUIRED FOR THE GUID DEFINITIONS */
