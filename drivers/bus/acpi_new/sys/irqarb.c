@@ -216,6 +216,18 @@ UacpiNtMsiCountFromRequirement(
     return (ULONG)Span;
 }
 
+/* The PIC cannot deliver messages, the ARM64 HAL cannot until it drives an ITS or a GICv2m frame */
+static
+BOOLEAN
+UacpiNtHalDeliversMessages(VOID)
+{
+#ifdef _M_ARM64
+    return FALSE;
+#else
+    return (GlobalAcpiInterruptModel == 1);
+#endif
+}
+
 static
 NTSTATUS
 NTAPI
@@ -242,10 +254,10 @@ UacpiNtIrqUnpackRequirement(
         return STATUS_SUCCESS;
     }
 
-    /* The PIC cannot deliver messages, an empty window sends it back to INTx */
-    if (GlobalAcpiInterruptModel != 1)
+    /* An empty window sends a message request back to INTx */
+    if (!UacpiNtHalDeliversMessages())
     {
-        DPRINT("uACPI-NT: message interrupt declined under the PIC model\n");
+        DPRINT("uACPI-NT: message interrupt declined, the HAL cannot deliver it\n");
         *Minimum = 1;
         *Maximum = 0;
         return STATUS_SUCCESS;
