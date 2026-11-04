@@ -88,6 +88,48 @@ static BOOLEAN HalpEisaDma;
 static PADAPTER_OBJECT HalpMasterAdapter;
 #endif
 
+#ifdef _M_ARM64
+/* Normal memory without caching, device memory faults on unaligned and zeroing accesses */
+#define HALP_DMA_UNCACHED       MmWriteCombined
+
+/* DMA masters that do not snoop the caches only see what reached memory */
+static
+BOOLEAN
+HalpDmaNotCoherent(VOID)
+{
+    return (KeGetDmaIoCoherency() & KE_DMA_IO_NOT_COHERENT) != 0;
+}
+
+static
+VOID
+HalpSweepDmaBuffer(
+    _In_ PMDL Mdl,
+    _In_ PVOID CurrentVa,
+    _In_ ULONG Length)
+{
+    PUCHAR Buffer;
+    ULONG Offset;
+
+    if (!HalpDmaNotCoherent() || !Mdl || !Length)
+        return;
+
+    Offset = (ULONG)((PUCHAR)CurrentVa - (PUCHAR)MmGetMdlVirtualAddress(Mdl));
+    if (Offset >= Mdl->ByteCount)
+        return;
+
+    Buffer = MmGetSystemAddressForMdlSafe(Mdl, HighPagePriority);
+    if (!Buffer)
+    {
+        DPRINT1("No system mapping for MDL %p, its DMA buffer is not swept\n", Mdl);
+        return;
+    }
+
+    HalpSweepDcacheRange(Buffer + Offset, min(Length, Mdl->ByteCount - Offset));
+}
+#else
+#define HALP_DMA_UNCACHED       MmNonCached
+#endif
+
 static const ULONG_PTR HalpEisaPortPage[8] = {
    FIELD_OFFSET(DMA_PAGE, Channel0),
    FIELD_OFFSET(DMA_PAGE, Channel1),
@@ -301,7 +343,7 @@ HalpGrowMapBuffers(IN PADAPTER_OBJECT AdapterObject,
                                                             LowestAcceptableAddress,
                                                             HighestAcceptableAddress,
                                                             BoundryAddressMultiple,
-                                                            MmNonCached);
+                                                            HALP_DMA_UNCACHED);
     if (!(VirtualAddress) && (LowestAcceptableAddress.LowPart))
     {
         LowestAcceptableAddress.LowPart = 0;
@@ -309,7 +351,7 @@ HalpGrowMapBuffers(IN PADAPTER_OBJECT AdapterObject,
                                                                 LowestAcceptableAddress,
                                                                 HighestAcceptableAddress,
                                                                 BoundryAddressMultiple,
-                                                                MmNonCached);
+                                                                HALP_DMA_UNCACHED);
     }
 
     if (!VirtualAddress) return FALSE;
@@ -932,12 +974,18 @@ HalAllocateCommonBuffer(IN PADAPTER_OBJECT AdapterObject,
         BoundryAddressMultiple.LowPart = 0x10000;
     }
 
+#ifdef _M_ARM64
+    /* Drivers never flush common buffers, a master that does not snoop needs them uncached */
+    if (HalpDmaNotCoherent())
+        CacheEnabled = FALSE;
+#endif
+
     VirtualAddress = MmAllocateContiguousMemorySpecifyCache(Length,
                                                             LowestAcceptableAddress,
                                                             HighestAcceptableAddress,
                                                             BoundryAddressMultiple,
                                                             CacheEnabled ? MmCached :
-                                                            MmNonCached);
+                                                            HALP_DMA_UNCACHED);
     if (VirtualAddress == NULL) return NULL;
 
     *LogicalAddress = MmGetPhysicalAddress(VirtualAddress);
@@ -962,9 +1010,14 @@ HalFreeCommonBuffer(IN PADAPTER_OBJECT AdapterObject,
                     IN PVOID VirtualAddress,
                     IN BOOLEAN CacheEnabled)
 {
+#ifdef _M_ARM64
+    if (HalpDmaNotCoherent())
+        CacheEnabled = FALSE;
+#endif
+
     MmFreeContiguousMemorySpecifyCache(VirtualAddress,
                                        Length,
-                                       CacheEnabled ? MmCached : MmNonCached);
+                                       CacheEnabled ? MmCached : HALP_DMA_UNCACHED);
 }
 
 typedef struct _SCATTER_GATHER_CONTEXT {
@@ -1951,6 +2004,12 @@ IoFlushAdapterBuffers(IN PADAPTER_OBJECT AdapterObject,
     ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
     ASSERT(AdapterObject);
 
+#ifdef _M_ARM64
+    /* Drop lines the CPU may have pulled in while the device wrote memory */
+    if (!WriteToDevice)
+        HalpSweepDmaBuffer(Mdl, CurrentVa, Length);
+#endif
+
     if (!AdapterObject->MasterDevice)
     {
         /* Mask out (disable) the DMA channel. */
@@ -2068,6 +2127,11 @@ IoMapTransfer(IN PADAPTER_OBJECT AdapterObject,
     ULONG Counter;
     DMA_MODE AdapterMode;
     KIRQL OldIrql;
+
+#ifdef _M_ARM64
+    /* Write back what the device reads and drop lines over what it writes */
+    HalpSweepDmaBuffer(Mdl, CurrentVa, *Length);
+#endif
 
     /*
      * Precalculate some values that are used in all cases.
