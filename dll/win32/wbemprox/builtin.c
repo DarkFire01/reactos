@@ -3689,7 +3689,8 @@ static const WCHAR *get_osarchitecture(void)
 {
     SYSTEM_INFO info;
     GetNativeSystemInfo( &info );
-    if (info.u.s.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) return os_64bitW;
+    if (info.u.s.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ||
+        info.u.s.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64) return os_64bitW;
     return os_32bitW;
 }
 static void get_processor_caption( WCHAR *caption, UINT len )
