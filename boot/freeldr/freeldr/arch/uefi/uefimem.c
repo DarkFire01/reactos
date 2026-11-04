@@ -45,6 +45,11 @@ EFI_HANDLE PublicBootHandle;
 PVOID ExitStack;
 PVOID EndofExitStack;
 
+/* The memory map ExitBootServices took, SetVirtualAddressMap wants that one */
+static UINTN UefiFinalMapSize;
+static UINTN UefiFinalDescriptorSize;
+static UINT32 UefiFinalDescriptorVersion;
+
 void _exituefi(VOID);
 
 /* FUNCTIONS *****************************************************************/
@@ -311,6 +316,10 @@ UefiExitBootServices(VOID)
     if (Status != EFI_SUCCESS)
         Status = GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle, MapKey);
 
+    UefiFinalMapSize = MapSize;
+    UefiFinalDescriptorSize = DescriptorSize;
+    UefiFinalDescriptorVersion = DescriptorVersion;
+
     if (Status != EFI_SUCCESS)
     {
         TRACE("Failed to exit boot services with status: %d\n", Status);
@@ -324,6 +333,85 @@ UefiExitBootServices(VOID)
     {
         TRACE("Exited bootservices\n");
     }
+}
+
+/**
+ * @brief Moves the UEFI runtime services to the addresses the kernel calls them at.
+ *
+ * Runs after ExitBootServices, still on the firmware's identity mapping.
+ * The runtime regions are packed one after another from VirtualBase.
+ *
+ * @param[in] VirtualBase
+ * Start of the window the runtime regions are placed in.
+ *
+ * @param[in] MapPage
+ * Maps one page in the kernel tables, Cached is FALSE for device memory.
+ *
+ * @param[out] Services
+ * Receives the virtual entry points of the runtime services.
+ *
+ * @return
+ * The SetVirtualAddressMap status, the services are unusable unless it is 0.
+ */
+ULONG_PTR
+UefiSetRuntimeVirtualMap(
+    _In_ ULONG64 VirtualBase,
+    _In_ BOOLEAN (*MapPage)(_In_ ULONG64 VirtualAddress, _In_ ULONG64 PhysicalAddress, _In_ BOOLEAN Cached),
+    _Out_ PVIRTUAL_EFI_RUNTIME_SERVICES Services)
+{
+    EFI_RUNTIME_SERVICES *Runtime = GlobalSystemTable->RuntimeServices;
+    EFI_MEMORY_DESCRIPTOR *Descriptor;
+    ULONG64 Virtual = VirtualBase;
+    UINT64 Page;
+    UINTN Offset;
+    EFI_STATUS Status;
+
+    RtlZeroMemory(Services, sizeof(*Services));
+    if (!Runtime || !EfiMemoryMap || !UefiFinalDescriptorSize)
+        return EFI_UNSUPPORTED;
+
+    for (Offset = 0; Offset < UefiFinalMapSize; Offset += UefiFinalDescriptorSize)
+    {
+        Descriptor = (EFI_MEMORY_DESCRIPTOR *)((PUCHAR)EfiMemoryMap + Offset);
+        if (!(Descriptor->Attribute & EFI_MEMORY_RUNTIME))
+            continue;
+
+        Descriptor->VirtualStart = Virtual;
+        for (Page = 0; Page < Descriptor->NumberOfPages; Page++)
+        {
+            if (!MapPage(Virtual + Page * EFI_PAGE_SIZE,
+                         Descriptor->PhysicalStart + Page * EFI_PAGE_SIZE,
+                         (Descriptor->Attribute & EFI_MEMORY_WB) != 0))
+            {
+                return EFI_OUT_OF_RESOURCES;
+            }
+        }
+        Virtual += Descriptor->NumberOfPages * EFI_PAGE_SIZE;
+    }
+
+    Status = Runtime->SetVirtualAddressMap(UefiFinalMapSize,
+                                           UefiFinalDescriptorSize,
+                                           UefiFinalDescriptorVersion,
+                                           EfiMemoryMap);
+    if (EFI_ERROR(Status))
+        return Status;
+
+    /* The firmware rewrote the table entries, they are virtual from here on */
+    Services->GetTime = (ULONG_PTR)Runtime->GetTime;
+    Services->SetTime = (ULONG_PTR)Runtime->SetTime;
+    Services->GetWakeupTime = (ULONG_PTR)Runtime->GetWakeupTime;
+    Services->SetWakeupTime = (ULONG_PTR)Runtime->SetWakeupTime;
+    Services->SetVirtualAddressMap = (ULONG_PTR)Runtime->SetVirtualAddressMap;
+    Services->ConvertPointer = (ULONG_PTR)Runtime->ConvertPointer;
+    Services->GetVariable = (ULONG_PTR)Runtime->GetVariable;
+    Services->GetNextVariableName = (ULONG_PTR)Runtime->GetNextVariableName;
+    Services->SetVariable = (ULONG_PTR)Runtime->SetVariable;
+    Services->GetNextHighMonotonicCount = (ULONG_PTR)Runtime->GetNextHighMonotonicCount;
+    Services->ResetSystem = (ULONG_PTR)Runtime->ResetSystem;
+    Services->UpdateCapsule = (ULONG_PTR)Runtime->UpdateCapsule;
+    Services->QueryCapsuleCapabilities = (ULONG_PTR)Runtime->QueryCapsuleCapabilities;
+    Services->QueryVariableInfo = (ULONG_PTR)Runtime->QueryVariableInfo;
+    return EFI_SUCCESS;
 }
 
 VOID
