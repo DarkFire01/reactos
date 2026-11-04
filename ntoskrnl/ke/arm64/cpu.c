@@ -189,6 +189,16 @@ KeSetDmaIoCoherency(
     KiDmaIoCoherency = Coherency;
 }
 
+/**
+ * @brief Returns what KeSetDmaIoCoherency was given, the HAL picks its DMA memory from it.
+ */
+ULONG
+NTAPI
+KeGetDmaIoCoherency(VOID)
+{
+    return KiDmaIoCoherency;
+}
+
 VOID
 NTAPI
 KeFlushIoBuffers(
@@ -196,10 +206,25 @@ KeFlushIoBuffers(
     _In_ BOOLEAN ReadOperation,
     _In_ BOOLEAN DmaOperation)
 {
-    UNREFERENCED_PARAMETER(Mdl);
+    PVOID Buffer;
+
     UNREFERENCED_PARAMETER(ReadOperation);
     UNREFERENCED_PARAMETER(DmaOperation);
 
-    /* DMA is coherent, the writes only need to be ordered */
-    __dsb(_ARM64_BARRIER_SY);
+    /* Coherent DMA only needs the writes ordered */
+    if (!(KiDmaIoCoherency & KE_DMA_IO_NOT_COHERENT))
+    {
+        __dsb(_ARM64_BARRIER_SY);
+        return;
+    }
+
+    /* Clean for the device to read, invalidate so no stale line hides what it writes */
+    Buffer = MmGetSystemAddressForMdlSafe(Mdl, HighPagePriority);
+    if (!Buffer)
+    {
+        DPRINT1("No system mapping for MDL %p, its DMA buffer is not flushed\n", Mdl);
+        return;
+    }
+
+    KeArm64SweepDcacheRange(Buffer, Mdl->ByteCount);
 }

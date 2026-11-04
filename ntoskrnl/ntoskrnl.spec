@@ -694,6 +694,7 @@
 @ stdcall KeSetAffinityThread(ptr long)
 @ stdcall KeSetBasePriorityThread(ptr long)
 @ stdcall KeSetDmaIoCoherency(long)
+@ stdcall -arch=arm64 KeGetDmaIoCoherency()
 @ stdcall KeSetEvent(ptr long long)
 @ stdcall KeSetEventBoostPriority(ptr ptr)
 @ stdcall KeSetIdealProcessorThread(ptr long)
