@@ -146,6 +146,7 @@ CheckSectionValid(
     static const WCHAR ExtensionArchitectureNone[]  = {0};
     static const WCHAR ExtensionArchitecturealpha[]  = {'a','l','p','h','a',0};
     static const WCHAR ExtensionArchitectureamd64[]  = {'A','M','D','6','4',0};
+    static const WCHAR ExtensionArchitecturearm64[]  = {'A','R','M','6','4',0};
     static const WCHAR ExtensionArchitectureia64[]  = {'I','A','6','4',0};
     static const WCHAR ExtensionArchitecturemips[]  = {'m','i','p','s',0};
     static const WCHAR ExtensionArchitectureppc[]  = {'p','p','c',0};
@@ -184,6 +185,9 @@ CheckSectionValid(
             break;
         case PROCESSOR_ARCHITECTURE_AMD64:
             pExtensionArchitecture = ExtensionArchitectureamd64;
+            break;
+        case PROCESSOR_ARCHITECTURE_ARM64:
+            pExtensionArchitecture = ExtensionArchitecturearm64;
             break;
         case PROCESSOR_ARCHITECTURE_IA64:
             pExtensionArchitecture = ExtensionArchitectureia64;
