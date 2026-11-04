@@ -1,0 +1,9 @@
+; IST3038C touchscreen on the Galaxy J5 2016
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\*J5TS0001","Service",0x00000000,"j5touch"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\*J5TS0001","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
+
+HKLM,"SYSTEM\CurrentControlSet\Services\j5touch","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\j5touch","ImagePath",0x00020000,"system32\drivers\j5touch.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\j5touch","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\j5touch","Type",0x00010001,0x00000001

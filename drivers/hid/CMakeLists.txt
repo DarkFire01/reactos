@@ -3,3 +3,7 @@ add_subdirectory(hidparse)
 add_subdirectory(hidusb)
 add_subdirectory(kbdhid)
 add_subdirectory(mouhid)
+
+if(ARCH STREQUAL "arm64")
+    add_subdirectory(j5touch)
+endif()
