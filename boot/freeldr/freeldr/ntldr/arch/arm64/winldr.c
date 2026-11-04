@@ -64,6 +64,16 @@ extern ULONG VramSize;
 PVOID VidFbGetShadowBuffer(VOID);
 ULONG VidFbGetShadowSize(VOID);
 
+/* See uefimem.c */
+ULONG_PTR
+UefiSetRuntimeVirtualMap(
+    _In_ ULONG64 VirtualBase,
+    _In_ BOOLEAN (*MapPage)(_In_ ULONG64 VirtualAddress, _In_ ULONG64 PhysicalAddress, _In_ BOOLEAN Cached),
+    _Out_ PVIRTUAL_EFI_RUNTIME_SERVICES Services);
+
+/* The UEFI runtime regions get a window of their own, just below the system PTEs */
+#define EFI_RUNTIME_VA_BASE     0xFFFFF87F00000000ULL
+
 /* Set with DEBUGPORT=SCREEN, the hand off and the early kernel print on the loader console */
 static BOOLEAN WinLdrpScreenTrace = FALSE;
 
@@ -336,6 +346,42 @@ WinLdrpMapFrameBuffer(VOID)
     }
 }
 
+static
+BOOLEAN
+WinLdrpMapRuntimePage(
+    _In_ ULONG64 VirtualAddress,
+    _In_ ULONG64 PhysicalAddress,
+    _In_ BOOLEAN Cached)
+{
+    return MempMapSinglePage(VirtualAddress, PhysicalAddress, Cached ? ATTR_NORMAL : ATTR_DEVICE_NGNRE);
+}
+
+/* The HAL reads and sets the clock through the runtime services */
+static
+VOID
+WinLdrpSetupEfiRuntime(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    PEFI_FIRMWARE_INFORMATION EfiInformation = &LoaderBlock->FirmwareInformation.u.EfiInformation;
+    PVIRTUAL_EFI_RUNTIME_SERVICES Services;
+    ULONG_PTR Status;
+
+    Services = MmAllocateMemoryWithType(sizeof(*Services), LoaderMemoryData);
+    if (!Services)
+        return;
+
+    Status = UefiSetRuntimeVirtualMap(EFI_RUNTIME_VA_BASE, WinLdrpMapRuntimePage, Services);
+    EfiInformation->SetVirtualAddressMapStatus = (ULONG)Status;
+    if (Status != 0)
+    {
+        WARN("The runtime services stay unusable, status 0x%Ix\n", Status);
+        return;
+    }
+
+    EfiInformation->VirtualEfiRuntimeServices = PaToVa(Services);
+    WinLdrpTrace("freeldr: runtime services at %p\n", (PVOID)Services->GetTime);
+}
+
 /* The debug port stays reachable at its physical address */
 static
 VOID
@@ -453,6 +499,7 @@ WinLdrSetupMachineDependent(
     }
 
     WinLdrMapSpecialPages();
+    WinLdrpSetupEfiRuntime(LoaderBlock);
     WinLdrpTrace("freeldr: page tables at %p, framebuffer %p mapped\n", PxeBase, (PVOID)VramAddress);
 }
 
