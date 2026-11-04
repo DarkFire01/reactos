@@ -73,6 +73,7 @@ UefiSetRuntimeVirtualMap(
 
 /* The UEFI runtime regions get a window of their own, just below the system PTEs */
 #define EFI_RUNTIME_VA_BASE     0xFFFFF87F00000000ULL
+#define EFI_RUNTIME_VA_END      0xFFFFF88000000000ULL
 
 /* Set with DEBUGPORT=SCREEN, the hand off and the early kernel print on the loader console */
 static BOOLEAN WinLdrpScreenTrace = FALSE;
@@ -353,6 +354,9 @@ WinLdrpMapRuntimePage(
     _In_ ULONG64 PhysicalAddress,
     _In_ BOOLEAN Cached)
 {
+    if (VirtualAddress >= EFI_RUNTIME_VA_END)
+        return FALSE;
+
     return MempMapSinglePage(VirtualAddress, PhysicalAddress, Cached ? ATTR_NORMAL : ATTR_DEVICE_NGNRE);
 }
 
@@ -366,15 +370,23 @@ WinLdrpSetupEfiRuntime(
     PVIRTUAL_EFI_RUNTIME_SERVICES Services;
     ULONG_PTR Status;
 
+    /* For firmware that breaks while moving its services, the clock then starts from a fixed date */
+    if (NtLdrGetOption(VaToPa(LoaderBlock->LoadOptions), "NOEFIRUNTIME"))
+    {
+        WinLdrpTrace("freeldr: UEFI runtime services left out\n");
+        return;
+    }
+
     Services = MmAllocateMemoryWithType(sizeof(*Services), LoaderMemoryData);
     if (!Services)
         return;
 
+    WinLdrpTrace("freeldr: moving the UEFI runtime services\n");
     Status = UefiSetRuntimeVirtualMap(EFI_RUNTIME_VA_BASE, WinLdrpMapRuntimePage, Services);
     EfiInformation->SetVirtualAddressMapStatus = (ULONG)Status;
     if (Status != 0)
     {
-        WARN("The runtime services stay unusable, status 0x%Ix\n", Status);
+        WinLdrpTrace("freeldr: the runtime services stay unusable, status %p\n", (PVOID)Status);
         return;
     }
 
