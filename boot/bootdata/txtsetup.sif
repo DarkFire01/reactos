@@ -20,6 +20,9 @@ _1 = %cdname%,%cdtagfile%,,""
 [SourceDisksNames.amd64]
 1 = %cdname%,%cdtagfilea%,,\amd64
 
+[SourceDisksNames.arm64]
+1 = %cdname%,%cdtagfilearm64%,,\arm64
+
 ;
 ; The directories listed in the [Directories] or [WinntDirectories] sections
 ; are relative to the installation source or destination directories.
@@ -147,6 +150,9 @@ acpi.sys     = 1,,,,,,,4,1,,,1,4
 legide.sys   = 1,,,,,,,4,,,,1,4
 
 [SourceDisksFiles.amd64]
+acpi.sys     = 1,,,,,,x,4,,,,1,4
+
+[SourceDisksFiles.arm64]
 acpi.sys     = 1,,,,,,x,4,,,,1,4
 
 ;
