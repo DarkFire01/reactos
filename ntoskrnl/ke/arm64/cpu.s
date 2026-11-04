@@ -15,9 +15,11 @@
 //     _In_ PVOID Address);
 //
 // Drops the translations of one page for every ASID on every processor.
+// Only VA[55:12] goes in, a kernel address would otherwise fill the TTL
+// hint with ones and a CPU with FEAT_TTL may then skip the entry.
 //
     LEAF_ENTRY KeArm64FlushTbEntry
-    lsr     x0, x0, #12
+    ubfx    x0, x0, #12, #44
     dsb     ishst
     tlbi    vaae1is, x0
     dsb     ish
