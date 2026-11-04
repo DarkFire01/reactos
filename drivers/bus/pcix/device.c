@@ -52,6 +52,23 @@ Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
             /* Read the actual BAR value */
             Bar = BarArray[i];
 
+            /* The size probe and the current value have to agree on the kind of BAR */
+            if (!(Bar & PCI_ADDRESS_IO_SPACE) != (CmDescriptor->Type != CmResourceTypePort))
+            {
+                DPRINT1("PCIX - %02x:%02x.%x %04x:%04x BAR %lu is %08lx but probed as %08lx, left out\n",
+                        Context->PdoExtension->ParentFdoExtension->BaseBus,
+                        Context->PdoExtension->Slot.u.bits.DeviceNumber,
+                        Context->PdoExtension->Slot.u.bits.FunctionNumber,
+                        Context->PdoExtension->VendorId,
+                        Context->PdoExtension->DeviceId,
+                        i,
+                        Bar,
+                        Context->PciData->u.type0.BaseAddresses[i]);
+                CmDescriptor->Type = CmResourceTypeNull;
+                IoDescriptor->Type = CmResourceTypeNull;
+                continue;
+            }
+
             /* Check if this is an I/O BAR */
             if (Bar & PCI_ADDRESS_IO_SPACE)
             {
