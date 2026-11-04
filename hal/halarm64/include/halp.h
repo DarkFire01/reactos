@@ -121,6 +121,17 @@ typedef struct _HALP_GTDT
 /* GICv2 memory mapped CPU interface, GICC_DIR sits in the second page */
 #define HALP_GICC_SIZE          0x2000
 
+/* One MCFG allocation */
+#define HALP_MAX_ECAM_WINDOWS   16
+
+typedef struct _HALP_ECAM_WINDOW
+{
+    PHYSICAL_ADDRESS Base;
+    USHORT Segment;
+    UCHAR StartBus;
+    UCHAR EndBus;
+} HALP_ECAM_WINDOW, *PHALP_ECAM_WINDOW;
+
 /* What the ACPI tables told us about the platform */
 typedef struct _HALP_PLATFORM
 {
@@ -132,9 +143,8 @@ typedef struct _HALP_PLATFORM
     ULONG TimerIntId;
     USHORT ArmBootFlags;
     PHYSICAL_ADDRESS RootTable;
-    PHYSICAL_ADDRESS EcamBase;
-    UCHAR EcamStartBus;
-    UCHAR EcamEndBus;
+    HALP_ECAM_WINDOW Ecam[HALP_MAX_ECAM_WINDOWS];
+    ULONG EcamCount;
 } HALP_PLATFORM, *PHALP_PLATFORM;
 
 extern HALP_PLATFORM HalpPlatform;

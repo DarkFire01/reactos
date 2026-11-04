@@ -177,24 +177,32 @@ HalpRootTableEntry(
     return Address;
 }
 
-/* Only segment 0 is supported, the PCI driver sees a single root */
+/* Every root complex has its own window, keyed by segment and bus range */
 static
 VOID
 HalpParseMcfg(
     _In_ PMCFG_TABLE Mcfg)
 {
     PMCFG_ALLOCATION Entry, End;
+    PHALP_ECAM_WINDOW Window;
 
     End = (PMCFG_ALLOCATION)((PUCHAR)Mcfg + Mcfg->Header.Length);
     for (Entry = Mcfg->Allocation; Entry + 1 <= End; Entry++)
     {
-        if ((Entry->PciSegmentGroup != 0) || (Entry->EndBusNumber < Entry->StartBusNumber))
+        if (Entry->EndBusNumber < Entry->StartBusNumber)
             continue;
 
-        HalpPlatform.EcamBase.QuadPart = Entry->BaseAddress;
-        HalpPlatform.EcamStartBus = Entry->StartBusNumber;
-        HalpPlatform.EcamEndBus = Entry->EndBusNumber;
-        break;
+        if (HalpPlatform.EcamCount == HALP_MAX_ECAM_WINDOWS)
+        {
+            DPRINT1("Too many MCFG windows, segment %u is not reachable\n", Entry->PciSegmentGroup);
+            continue;
+        }
+
+        Window = &HalpPlatform.Ecam[HalpPlatform.EcamCount++];
+        Window->Base.QuadPart = Entry->BaseAddress;
+        Window->Segment = Entry->PciSegmentGroup;
+        Window->StartBus = Entry->StartBusNumber;
+        Window->EndBus = Entry->EndBusNumber;
     }
 }
 
