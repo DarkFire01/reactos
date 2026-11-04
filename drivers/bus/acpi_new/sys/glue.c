@@ -10,6 +10,9 @@
 #include <uacpi/tables.h>
 #include <uacpi/registers.h>
 #include <uacpi/acpi.h>
+#ifdef _M_ARM64
+#include <ndk/kefuncs.h>
+#endif
 #include <debug.h>
 
 /* Runs at DISPATCH_LEVEL from the SCI DPC or at PASSIVE_LEVEL from a work item */
@@ -123,6 +126,58 @@ UacpiNtQuiesceEvents(VOID)
         DPRINT1("uACPI-NT: clearing events failed: %s\n", uacpi_status_to_string(UacpiStatus));
 }
 
+#ifdef _M_ARM64
+static
+uacpi_iteration_decision
+UacpiNtFindNonCoherentDevice(
+    _In_ void *User,
+    _In_ uacpi_namespace_node *Node,
+    _In_ uacpi_u32 Depth)
+{
+    PBOOLEAN NotCoherent = User;
+    uacpi_object_type Type;
+    uacpi_u64 Cca;
+
+    UNREFERENCED_PARAMETER(Depth);
+
+    if (uacpi_unlikely_error(uacpi_namespace_node_type(Node, &Type)) || (Type != UACPI_OBJECT_DEVICE))
+        return UACPI_ITERATION_DECISION_CONTINUE;
+
+    /* No _CCA means coherent */
+    if (uacpi_unlikely_error(uacpi_eval_simple_integer(Node, "_CCA", &Cca)) || (Cca != 0))
+        return UACPI_ITERATION_DECISION_CONTINUE;
+
+    *NotCoherent = TRUE;
+    return UACPI_ITERATION_DECISION_BREAK;
+}
+
+/**
+ * @brief Turns on cache maintenance for all DMA when one master does not snoop the caches.
+ *
+ * Maintaining the caches for a coherent master is only slower, so one
+ * setting for the whole platform stays correct.
+ */
+static
+VOID
+NTAPI
+UacpiNtCheckDmaCoherency(VOID)
+{
+    uacpi_namespace_node *Root;
+    BOOLEAN NotCoherent = FALSE;
+
+    Root = uacpi_namespace_root();
+    if (!Root)
+        return;
+
+    uacpi_namespace_for_each_child_simple(Root, UacpiNtFindNonCoherentDevice, &NotCoherent);
+    if (!NotCoherent)
+        return;
+
+    DPRINT1("uACPI-NT: a device has _CCA 0, DMA buffers get cache maintenance\n");
+    KeSetDmaIoCoherency(KE_DMA_IO_NOT_COHERENT);
+}
+#endif
+
 NTSTATUS
 NTAPI
 UacpiNtBringUpInterpreter(
@@ -177,6 +232,9 @@ UacpiNtBringUpInterpreter(
 
     UacpiNtPlatformOscNegotiate();
     UacpiNtPowerResInit();
+#ifdef _M_ARM64
+    UacpiNtCheckDmaCoherency();
+#endif
 
     /* Handlers go in first, a GPE firing during install can deadlock */
     UacpiNtInstallEventHandlers(Fdo);
