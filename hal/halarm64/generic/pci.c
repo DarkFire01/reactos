@@ -16,44 +16,55 @@
 #define HALP_ECAM_FUNCTION_SIZE     0x1000
 #define HALP_ECAM_BUS_SIZE          (PCI_MAX_DEVICES * PCI_MAX_FUNCTION * HALP_ECAM_FUNCTION_SIZE)
 
-/* Buses are mapped the first time they are touched and stay mapped */
-static PUCHAR HalpEcamBus[256];
+/* Buses are mapped the first time they are touched and stay mapped, per MCFG window */
+static PUCHAR HalpEcamBus[HALP_MAX_ECAM_WINDOWS][256];
 
 /* FUNCTIONS *****************************************************************/
 
 static
 PUCHAR
 HalpPciFunctionConfig(
+    _In_ ULONG Segment,
     _In_ ULONG Bus,
     _In_ PCI_SLOT_NUMBER Slot)
 {
+    PHALP_ECAM_WINDOW Window = NULL;
     PHYSICAL_ADDRESS Address;
     PUCHAR View;
+    ULONG Index;
 
-    if (!HalpPlatform.EcamBase.QuadPart ||
-        (Bus < HalpPlatform.EcamStartBus) ||
-        (Bus > HalpPlatform.EcamEndBus))
+    for (Index = 0; Index < HalpPlatform.EcamCount; Index++)
     {
-        return NULL;
+        if ((HalpPlatform.Ecam[Index].Segment == Segment) &&
+            (Bus >= HalpPlatform.Ecam[Index].StartBus) &&
+            (Bus <= HalpPlatform.Ecam[Index].EndBus))
+        {
+            Window = &HalpPlatform.Ecam[Index];
+            break;
+        }
     }
 
-    View = HalpEcamBus[Bus];
+    /* A bus no window decodes is never touched, it may sit behind another root */
+    if (!Window)
+        return NULL;
+
+    View = HalpEcamBus[Index][Bus];
     if (!View)
     {
         if (KeGetCurrentIrql() > DISPATCH_LEVEL)
             return NULL;
 
-        Address.QuadPart = HalpPlatform.EcamBase.QuadPart +
-                           ((ULONG64)(Bus - HalpPlatform.EcamStartBus) * HALP_ECAM_BUS_SIZE);
+        Address.QuadPart = Window->Base.QuadPart +
+                           ((ULONG64)(Bus - Window->StartBus) * HALP_ECAM_BUS_SIZE);
         View = MmMapIoSpace(Address, HALP_ECAM_BUS_SIZE, MmNonCached);
         if (!View)
             return NULL;
 
         /* Another processor may have mapped it meanwhile */
-        if (InterlockedCompareExchangePointer((PVOID *)&HalpEcamBus[Bus], View, NULL))
+        if (InterlockedCompareExchangePointer((PVOID *)&HalpEcamBus[Index][Bus], View, NULL))
         {
             MmUnmapIoSpace(View, HALP_ECAM_BUS_SIZE);
-            View = HalpEcamBus[Bus];
+            View = HalpEcamBus[Index][Bus];
         }
     }
 
@@ -107,6 +118,9 @@ HalpPciTransfer(
  *
  * Reads of a missing function return all ones, the way a bus master abort
  * does. This backs the bus interface the ACPI driver hands to the PCI driver.
+ *
+ * @param[in] Bus
+ * The bus number, with the PCI segment in bits 8 to 23.
  */
 ULONG
 NTAPI
@@ -123,7 +137,7 @@ HalpPciRawConfig(
     if ((Offset >= HALP_ECAM_FUNCTION_SIZE) || (Length > (HALP_ECAM_FUNCTION_SIZE - Offset)))
         return 0;
 
-    Config = HalpPciFunctionConfig(Bus, Slot);
+    Config = HalpPciFunctionConfig(Bus >> 8, Bus & 0xFF, Slot);
     if (!Config)
     {
         if (!Write)
@@ -157,7 +171,8 @@ HalpPciReadConfig(
         return 0;
     Length = min(Length, sizeof(PCI_COMMON_CONFIG) - Offset);
 
-    Config = HalpPciFunctionConfig(Bus, Slot);
+    /* Bus data only names segment 0 */
+    Config = (Bus <= 0xFF) ? HalpPciFunctionConfig(0, Bus, Slot) : NULL;
     if (!Config || (READ_REGISTER_USHORT((PUSHORT)Config) == PCI_INVALID_VENDORID))
     {
         if (Offset >= sizeof(USHORT))
@@ -187,7 +202,7 @@ HalpPciWriteConfig(
         return 0;
     Length = min(Length, sizeof(PCI_COMMON_CONFIG) - Offset);
 
-    Config = HalpPciFunctionConfig(Bus, Slot);
+    Config = (Bus <= 0xFF) ? HalpPciFunctionConfig(0, Bus, Slot) : NULL;
     if (!Config || (READ_REGISTER_USHORT((PUSHORT)Config) == PCI_INVALID_VENDORID))
         return 0;
 
