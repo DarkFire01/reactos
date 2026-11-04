@@ -98,6 +98,9 @@ VidFbPutPixel(
 ULONG
 VidFbGetShadowSize(VOID);
 
+PVOID
+VidFbGetShadowBuffer(VOID);
+
 VOID
 VidFbSetShadowBuffer(
     _In_ PVOID Buffer);

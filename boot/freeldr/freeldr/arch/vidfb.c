@@ -336,6 +336,16 @@ VidFbGetShadowSize(VOID)
 
 /**
  * @brief
+ * Returns the copy of the screen, NULL without one.
+ **/
+PVOID
+VidFbGetShadowBuffer(VOID)
+{
+    return (PVOID)framebufInfo.ShadowAddress;
+}
+
+/**
+ * @brief
  * Keeps a copy of the screen in the given buffer of VidFbGetShadowSize() bytes.
  *
  * Video memory is uncached or device memory, reading it back is slow. With a
