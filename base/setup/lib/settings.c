@@ -280,6 +280,9 @@ GetComputerIdentifier(
 #else
     ComputerIdentifier = L"X64 UP";
 #endif
+#elif defined(_M_ARM64)
+    /* One kernel and HAL, secondary processors are not started yet */
+    ComputerIdentifier = L"ARM64 UP";
 #else
     if (IsAcpiComputer())
     {
