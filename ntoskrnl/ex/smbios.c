@@ -222,11 +222,20 @@ ExpInitializeSMBIOS(
             return;
         }
     }
+#if defined(_M_IX86) || defined(_M_AMD64)
     else if (!ExpSearchSmbiosEntryPoint(&TableAddress, &TableLength))
     {
         DPRINT1("No SMBIOS anchor was found\n");
         return;
     }
+#else
+    else
+    {
+        /* Only a PC has the BIOS area to search, elsewhere the loader is the only source */
+        DPRINT1("The loader handed over no SMBIOS anchor\n");
+        return;
+    }
+#endif
 
     ExpSmbiosTable.TableData = ExAllocatePoolWithTag(PagedPool, TableLength, TAG_SMBIOS);
     if (ExpSmbiosTable.TableData == NULL)
