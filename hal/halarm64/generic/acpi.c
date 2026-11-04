@@ -262,6 +262,7 @@ HalpAcpiInitialize(
     HalpPlatform.TimerIntId = HALP_VIRTUAL_TIMER_INTID;
 
     RootAddress = HalpAcpiFindRootTable(LoaderBlock);
+    HalpEarlyTrace("HAL: ACPI root table at %p\n", (PVOID)(ULONG_PTR)RootAddress.QuadPart);
     if (!RootAddress.QuadPart)
     {
         DPRINT1("No ACPI tables from the loader\n");
@@ -271,18 +272,27 @@ HalpAcpiInitialize(
     HalpPlatform.RootTable = RootAddress;
     Root = HalpMapTable(RootAddress);
     if (!Root)
+    {
+        HalpEarlyTrace("HAL: the root table could not be mapped\n");
         return;
+    }
 
     Count = HalpRootTableCount(Root);
+    HalpEarlyTrace("HAL: %.4s length %lx, %lu tables:", (PCSTR)&Root->Signature, Root->Length, Count);
     for (i = 0; i < Count; i++)
     {
         Header = HalpMapTable(HalpRootTableEntry(Root, i));
         if (!Header)
+        {
+            HalpEarlyTrace(" [%p unmapped]", (PVOID)(ULONG_PTR)HalpRootTableEntry(Root, i).QuadPart);
             continue;
+        }
 
+        HalpEarlyTrace(" %.4s", (PCSTR)&Header->Signature);
         HalpParseTable(Header);
         HalpUnmapTable(Header);
     }
+    HalpEarlyTrace("\n");
 
     HalpUnmapTable(Root);
 }
