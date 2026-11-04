@@ -134,6 +134,7 @@ VOID GetSystemCPU(WCHAR *szBuffer)
             break;
         }
         case PROCESSOR_ARCHITECTURE_AMD64:
+        case PROCESSOR_ARCHITECTURE_ARM64:
         {
             wsprintfW(szBuffer, L"64-bit");
             break;
