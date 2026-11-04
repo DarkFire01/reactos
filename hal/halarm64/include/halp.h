@@ -156,6 +156,12 @@ extern ULONG HalpBusType;
 extern ULONG64 HalpTimerFrequency;
 extern ULONG64 HalpProcessorMpidr[MAXIMUM_PROCESSORS];
 
+/* The loader console with DEBUGPORT=SCREEN, only while the boot processor is set up */
+extern ULONG (*HalpEarlyPrint)(const char *Format, ...);
+
+#define HalpEarlyTrace(...) \
+    do { if (HalpEarlyPrint) HalpEarlyPrint(__VA_ARGS__); } while (0)
+
 /* acpi.c */
 VOID
 NTAPI

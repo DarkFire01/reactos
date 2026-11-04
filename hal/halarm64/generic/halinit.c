@@ -26,6 +26,8 @@ ULONG HalpBusType = MACHINE_TYPE_ISA;
 
 BOOLEAN HalpProcessorsStarted;
 
+ULONG (*HalpEarlyPrint)(const char *Format, ...);
+
 /* FUNCTIONS *****************************************************************/
 
 /* Debug ports are device memory */
@@ -48,8 +50,18 @@ HalInitializeProcessor(
     /* The boot processor finds the platform before anything else runs */
     if (ProcessorNumber == 0)
     {
+        HalpEarlyPrint = LoaderBlock->u.I386.CommonDataArea;
+
         HalpAcpiInitialize(LoaderBlock);
+        HalpEarlyTrace("HAL: GICv%u, GICD %p, GICR %p length %lx, %lu GICC frames\n",
+                       HalpPlatform.GicVersion,
+                       (PVOID)(ULONG_PTR)HalpPlatform.GicdBase.QuadPart,
+                       (PVOID)(ULONG_PTR)HalpPlatform.GicrBase.QuadPart,
+                       HalpPlatform.GicrLength,
+                       HalpPlatform.GiccCount);
+
         HalpGicInitializeDistributor();
+        HalpEarlyTrace("HAL: distributor enabled\n");
 
         /* The debugger looks for its port right after this */
         KdGetAcpiTablePhase0 = HalAcpiGetTable;
@@ -58,9 +70,13 @@ HalInitializeProcessor(
     }
 
     HalpGicInitializeCpu(ProcessorNumber);
+    HalpEarlyTrace("HAL: processor %lu interrupt interface up\n", ProcessorNumber);
 
     /* Match the priority mask to the IRQL the kernel runs at */
     HalpSetPriorityMask(KeGetPcr()->CurrentIrql);
+
+    /* The kernel drops the loader mapping soon after */
+    HalpEarlyPrint = NULL;
 }
 
 CODE_SEG("INIT")

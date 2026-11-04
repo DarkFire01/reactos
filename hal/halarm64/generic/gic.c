@@ -271,10 +271,14 @@ HalpGicInitializeCpu(
     }
 
     if (!HalpGicFindRedistributor(ProcessorNumber, Mpidr))
+    {
+        HalpEarlyTrace("HAL: no redistributor for MPIDR %p\n", (PVOID)(ULONG_PTR)Mpidr);
         KeBugCheckEx(HAL_INITIALIZATION_FAILED, 0x6C1C, 2, ProcessorNumber, (ULONG_PTR)Mpidr);
+    }
 
     Control = HalpGicrControl[ProcessorNumber];
     Sgi = HalpGicrSgi[ProcessorNumber];
+    HalpEarlyTrace("HAL: redistributor of MPIDR %p found, waking it\n", (PVOID)(ULONG_PTR)Mpidr);
 
     /* Wake the redistributor up */
     HalpGicWrite(Control, GICR_WAKER, HalpGicRead(Control, GICR_WAKER) & ~GICR_WAKER_SLEEP);
