@@ -186,6 +186,7 @@ HalpGicInitializeDistributor(VOID)
 
     if (!HalpPlatform.GicdBase.QuadPart)
     {
+        HalpEarlyTrace("HAL: the MADT has no GIC distributor, stopping\n");
         KeBugCheckEx(HAL_INITIALIZATION_FAILED, 0x6C1C, 0, 0, 0);
     }
 
