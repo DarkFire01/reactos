@@ -335,6 +335,15 @@ KeSetDmaIoCoherency(
     _In_ ULONG Coherency
 );
 
+#ifdef _M_ARM64
+/* KeSetDmaIoCoherency, the DMA masters do not snoop the data caches */
+#define KE_DMA_IO_NOT_COHERENT      0x00000001
+
+ULONG
+NTAPI
+KeGetDmaIoCoherency(VOID);
+#endif
+
 VOID
 KeSetGdtSelector(
     _In_ ULONG Entry,
