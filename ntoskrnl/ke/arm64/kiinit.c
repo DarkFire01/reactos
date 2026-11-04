@@ -344,6 +344,12 @@ KiSystemStartup(
     if (Cpu == 0)
     {
         KeFeatureBits = Pcr->Prcb.FeatureBits;
+
+        /* What GetSystemInfo reports, left at 0 it would say x86 */
+        KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM64;
+        KeProcessorLevel = (USHORT)Pcr->Prcb.CpuType;
+        KeProcessorRevision = Pcr->Prcb.CpuStep;
+
         KiInitModuleList(LoaderBlock);
         KeInitExceptions();
         KiEarlyTrace("KiSystemStartup: exception vectors set\n");
