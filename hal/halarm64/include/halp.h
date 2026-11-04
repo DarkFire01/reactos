@@ -199,10 +199,22 @@ NTAPI
 HalpPublishMmConfigRanges(VOID);
 
 /* cache.s */
+ULONG64
+HalpCallEfiFirmware(
+    _In_ PVOID Function,
+    _In_ ULONG64 Argument1,
+    _In_ ULONG64 Argument2);
+
 VOID
 HalpSweepDcacheRange(
     _In_ PVOID BaseAddress,
     _In_ SIZE_T Length);
+
+/* misc.c */
+CODE_SEG("INIT")
+VOID
+HalpInitializeEfiRuntime(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock);
 
 /* pci.c */
 ULONG

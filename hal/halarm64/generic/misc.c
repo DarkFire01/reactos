@@ -33,6 +33,27 @@ HalpWaitForInterrupt(VOID);
 /* Without CMOS the last known good flag only lives as long as the boot */
 static BOOLEAN HalpLastKnownGood = TRUE;
 
+/* EFI_TIME from the UEFI specification */
+typedef struct _HALP_EFI_TIME
+{
+    USHORT Year;
+    UCHAR Month;
+    UCHAR Day;
+    UCHAR Hour;
+    UCHAR Minute;
+    UCHAR Second;
+    UCHAR Pad1;
+    ULONG Nanosecond;
+    SHORT TimeZone;
+    UCHAR Daylight;
+    UCHAR Pad2;
+} HALP_EFI_TIME, *PHALP_EFI_TIME;
+
+/* The runtime services are not reentrant */
+static KSPIN_LOCK HalpEfiLock;
+static PVOID HalpEfiGetTime;
+static PVOID HalpEfiSetTime;
+
 /* FUNCTIONS *****************************************************************/
 
 VOID
@@ -56,16 +77,85 @@ HalReturnToFirmware(
 }
 
 /**
- * @brief Reports the time of day.
+ * @brief Takes the clock services the loader moved to their virtual addresses.
+ */
+CODE_SEG("INIT")
+VOID
+HalpInitializeEfiRuntime(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    PEFI_FIRMWARE_INFORMATION EfiInformation = &LoaderBlock->FirmwareInformation.u.EfiInformation;
+    PVIRTUAL_EFI_RUNTIME_SERVICES Services;
+
+    KeInitializeSpinLock(&HalpEfiLock);
+
+    if (!LoaderBlock->FirmwareInformation.FirmwareTypeEfi ||
+        (EfiInformation->SetVirtualAddressMapStatus != 0) ||
+        !EfiInformation->VirtualEfiRuntimeServices)
+    {
+        DPRINT1("No UEFI runtime services, the clock starts from a fixed date\n");
+        return;
+    }
+
+    /* The loader block goes away, the entry points are kept */
+    Services = EfiInformation->VirtualEfiRuntimeServices;
+    HalpEfiGetTime = (PVOID)Services->GetTime;
+    HalpEfiSetTime = (PVOID)Services->SetTime;
+}
+
+/* A firmware call masks every interrupt, the firmware runs without the kernel's state */
+static
+ULONG64
+HalpCallEfiClock(
+    _In_ PVOID Function,
+    _Inout_ PHALP_EFI_TIME EfiTime)
+{
+    ULONG64 Status;
+    KIRQL OldIrql;
+
+    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpEfiLock);
+    Status = HalpCallEfiFirmware(Function, (ULONG64)EfiTime, 0);
+    KeReleaseSpinLockFromDpcLevel(&HalpEfiLock);
+    KeLowerIrql(OldIrql);
+
+    return Status;
+}
+
+/**
+ * @brief Reports the time of day from the firmware clock.
  *
- * ARM64 platforms have no architected RTC and the UEFI runtime services are
- * not mapped yet, so the clock starts from a fixed date.
+ * Without UEFI runtime services there is no RTC to read, the clock then
+ * starts from a fixed date.
  */
 BOOLEAN
 NTAPI
 HalQueryRealTimeClock(
     _Out_ PTIME_FIELDS Time)
 {
+    HALP_EFI_TIME EfiTime;
+    LARGE_INTEGER SystemTime;
+
+    RtlZeroMemory(Time, sizeof(*Time));
+
+    if (HalpEfiGetTime && (HalpCallEfiClock(HalpEfiGetTime, &EfiTime) == 0))
+    {
+        Time->Year = EfiTime.Year;
+        Time->Month = EfiTime.Month;
+        Time->Day = EfiTime.Day;
+        Time->Hour = EfiTime.Hour;
+        Time->Minute = EfiTime.Minute;
+        Time->Second = EfiTime.Second;
+        Time->Milliseconds = (CSHORT)(EfiTime.Nanosecond / 1000000);
+
+        /* The firmware has no weekday, a round trip through the system time fills it in */
+        if (RtlTimeFieldsToTime(Time, &SystemTime))
+        {
+            RtlTimeToTimeFields(&SystemTime, Time);
+            return TRUE;
+        }
+    }
+
     RtlZeroMemory(Time, sizeof(*Time));
     Time->Year = 2026;
     Time->Month = 1;
@@ -79,8 +169,24 @@ NTAPI
 HalSetRealTimeClock(
     _In_ PTIME_FIELDS Time)
 {
-    UNREFERENCED_PARAMETER(Time);
-    return TRUE;
+    HALP_EFI_TIME EfiTime;
+
+    if (!HalpEfiGetTime || !HalpEfiSetTime)
+        return FALSE;
+
+    /* Keep the time zone and daylight settings the firmware holds */
+    if (HalpCallEfiClock(HalpEfiGetTime, &EfiTime) != 0)
+        return FALSE;
+
+    EfiTime.Year = Time->Year;
+    EfiTime.Month = (UCHAR)Time->Month;
+    EfiTime.Day = (UCHAR)Time->Day;
+    EfiTime.Hour = (UCHAR)Time->Hour;
+    EfiTime.Minute = (UCHAR)Time->Minute;
+    EfiTime.Second = (UCHAR)Time->Second;
+    EfiTime.Nanosecond = Time->Milliseconds * 1000000;
+
+    return (HalpCallEfiClock(HalpEfiSetTime, &EfiTime) == 0);
 }
 
 ARC_STATUS

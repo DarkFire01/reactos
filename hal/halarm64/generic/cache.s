@@ -62,6 +62,29 @@ LABEL(HalpSweepDcacheDone)
     LEAF_END HalpSweepDcacheRange
 
 //
+// ULONG64
+// HalpCallEfiFirmware(
+//     _In_ PVOID Function,
+//     _In_ ULONG64 Argument1,
+//     _In_ ULONG64 Argument2);
+//
+// Calls a UEFI runtime service. The firmware does not have to keep x18,
+// which holds the processor control region here.
+//
+    LEAF_ENTRY HalpCallEfiFirmware
+    stp     fp, lr, [sp, #-32]!
+    mov     fp, sp
+    str     x18, [sp, #16]
+    mov     x16, x0
+    mov     x0, x1
+    mov     x1, x2
+    blr     x16
+    ldr     x18, [sp, #16]
+    ldp     fp, lr, [sp], #32
+    ret
+    LEAF_END HalpCallEfiFirmware
+
+//
 // VOID
 // HalpWaitForInterrupt(VOID);
 //
