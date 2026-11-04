@@ -357,6 +357,12 @@ MiFindContiguousMemory(IN PFN_NUMBER LowestPfn,
     BaseAddress = MmMapIoSpace(PhysicalAddress, SizeInPages << PAGE_SHIFT, CacheType);
     ASSERT(BaseAddress);
 
+#ifdef _M_ARM64
+    /* Lines left from cached use of these pages would later land on the uncached buffer */
+    if (CacheType != MmCached)
+        KeArm64SweepDcacheRange(BaseAddress, SizeInPages << PAGE_SHIFT);
+#endif
+
     /* Loop the PFN entries */
     Pfn1 = MiGetPfnEntry(Page);
     EndPfn = Pfn1 + SizeInPages;
