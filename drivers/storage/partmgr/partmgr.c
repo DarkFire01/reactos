@@ -1068,11 +1068,12 @@ FdoHandleDeviceRelations(
         // now fill the DeviceRelations structure
         TRACE("Reporting %u partitions\n", FdoExtension->EnumeratedPartitionsTotal);
 
+        /* A disk without partitions reports none, the count must not wrap below one */
         PDEVICE_RELATIONS deviceRelations =
             ExAllocatePoolWithTag(PagedPool,
-                                  sizeof(DEVICE_RELATIONS)
+                                  FIELD_OFFSET(DEVICE_RELATIONS, Objects)
                                   + sizeof(PDEVICE_OBJECT)
-                                  * (FdoExtension->EnumeratedPartitionsTotal - 1),
+                                  * FdoExtension->EnumeratedPartitionsTotal,
                                   TAG_PARTMGR);
 
         if (!deviceRelations)
