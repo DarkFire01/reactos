@@ -677,6 +677,42 @@ PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
     ExFreePoolWithTag(OutputBuffer, 0);
 }
 
+/**
+ * @brief Reads the PCI segment of a root bus, 0 without _SEG.
+ */
+static
+VOID
+NTAPI
+PciGetRootSegment(
+    _Inout_ PPCI_FDO_EXTENSION FdoExtension)
+{
+    ACPI_EVAL_INPUT_BUFFER InputBuffer;
+    ACPI_EVAL_OUTPUT_BUFFER OutputBuffer;
+    NTSTATUS Status;
+    PAGED_CODE();
+
+    FdoExtension->Segment = 0;
+
+    RtlZeroMemory(&OutputBuffer, sizeof(OutputBuffer));
+    *(PULONG)InputBuffer.MethodName = 'GES_';
+    InputBuffer.Signature = ACPI_EVAL_INPUT_BUFFER_SIGNATURE;
+    Status = PciSendIoctl(FdoExtension->PhysicalDeviceObject,
+                          IOCTL_ACPI_EVAL_METHOD,
+                          &InputBuffer,
+                          sizeof(InputBuffer),
+                          &OutputBuffer,
+                          sizeof(OutputBuffer));
+    if (!NT_SUCCESS(Status) ||
+        (OutputBuffer.Count != 1) ||
+        (OutputBuffer.Argument[0].Type != ACPI_METHOD_ARGUMENT_INTEGER))
+    {
+        return;
+    }
+
+    FdoExtension->Segment = (USHORT)OutputBuffer.Argument[0].Argument;
+    DPRINT("PCIX - Root FDO ext 0x%p is on segment %u\n", FdoExtension, FdoExtension->Segment);
+}
+
 VOID
 NTAPI
 PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,
@@ -856,6 +892,7 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
 
             /* This is the root bus */
             FdoExtension->BusRootFdoExtension = FdoExtension;
+            PciGetRootSegment(FdoExtension);
         }
 
         /* Get the HAL or ACPI Bus Handler Callbacks for Configuration Access */

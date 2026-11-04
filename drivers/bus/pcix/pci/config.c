@@ -29,14 +29,26 @@ PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
     /* Does the device have an interrupt pin? */
     if (PdoExtension->InterruptPin)
     {
-        /* Find the associated line on the parent bus */
-        Length = HalGetBusDataByOffset(PCIConfiguration,
-                                       PdoExtension->ParentFdoExtension->BaseBus,
-                                       PdoExtension->Slot.u.AsULONG,
-                                       &PciInterruptLine,
-                                       FIELD_OFFSET(PCI_COMMON_HEADER,
-                                                    u.type0.InterruptLine),
-                                       sizeof(UCHAR));
+        if (PdoExtension->ParentFdoExtension->BusRootFdoExtension->Segment != 0)
+        {
+            /* HAL bus data only names segment 0, ask the root instead */
+            PciReadDeviceConfig(PdoExtension,
+                                &PciInterruptLine,
+                                FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine),
+                                sizeof(UCHAR));
+            Length = sizeof(UCHAR);
+        }
+        else
+        {
+            /* Find the associated line on the parent bus */
+            Length = HalGetBusDataByOffset(PCIConfiguration,
+                                           PdoExtension->ParentFdoExtension->BaseBus,
+                                           PdoExtension->Slot.u.AsULONG,
+                                           &PciInterruptLine,
+                                           FIELD_OFFSET(PCI_COMMON_HEADER,
+                                                        u.type0.InterruptLine),
+                                           sizeof(UCHAR));
+        }
         if (Length) InterruptLine = PciInterruptLine;
     }
 
@@ -62,8 +74,10 @@ PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     /* Only the root FDO can access configuration space */
     ASSERT(PCI_IS_ROOT_FDO(DeviceExtension->BusRootFdoExtension));
 
-    /* The legacy mechanism cannot reach extended configuration space */
+    /* The legacy mechanism cannot reach extended configuration space.
+     * Only the segment 0 window is known here, other roots go through their interface. */
     if (((Offset + Length) > PCI_LEGACY_CONFIG_LENGTH) &&
+        (DeviceExtension->BusRootFdoExtension->Segment == 0) &&
         (PciEcamReadWriteConfig(DeviceExtension->BaseBus,
                                 Slot,
                                 Buffer,
