@@ -231,6 +231,7 @@ typedef struct _UACPINT_PDO
     CHAR                    Name[8];
     CHAR                    Instance[64];
     UCHAR                   PciRootBaseBus;    ///< cached _BBN
+    USHORT                  PciRootSegment;    ///< cached _SEG
 
     /* PCI roots only */
     struct
