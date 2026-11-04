@@ -937,6 +937,10 @@ ExpandInstallerPath(
             StringCchCatW(pInstallerPath, PathSize, L"AMD64");
             break;
 
+        case PROCESSOR_ARCHITECTURE_ARM64:
+            StringCchCatW(pInstallerPath, PathSize, L"ARM64");
+            break;
+
         // case PROCESSOR_ARCHITECTURE_MSIL: /* .NET CPU-independent code */
         case PROCESSOR_ARCHITECTURE_UNKNOWN:
         default:
