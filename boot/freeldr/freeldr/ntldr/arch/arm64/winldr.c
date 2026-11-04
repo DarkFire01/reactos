@@ -370,8 +370,8 @@ WinLdrpSetupEfiRuntime(
     PVIRTUAL_EFI_RUNTIME_SERVICES Services;
     ULONG_PTR Status;
 
-    /* For firmware that breaks while moving its services, the clock then starts from a fixed date */
-    if (NtLdrGetOption(VaToPa(LoaderBlock->LoadOptions), "NOEFIRUNTIME"))
+    /* Some firmware breaks while moving its services, so it is opt in. Without it the clock starts from a fixed date */
+    if (!NtLdrGetOption(VaToPa(LoaderBlock->LoadOptions), "EFIRUNTIME"))
     {
         WinLdrpTrace("freeldr: UEFI runtime services left out\n");
         return;
