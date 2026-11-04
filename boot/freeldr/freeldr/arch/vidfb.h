@@ -89,6 +89,19 @@ VidFbScrollUp(
     _In_ UINT32 Color,
     _In_ ULONG Scroll);
 
+VOID
+VidFbPutPixel(
+    _In_ ULONG X,
+    _In_ ULONG Y,
+    _In_ UINT32 Color);
+
+ULONG
+VidFbGetShadowSize(VOID);
+
+VOID
+VidFbSetShadowBuffer(
+    _In_ PVOID Buffer);
+
 #if 0
 VOID
 VidFbSetTextCursorPosition(UCHAR X, UCHAR Y);
