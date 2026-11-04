@@ -43,7 +43,12 @@ KMUTEX VideoPortInt10Mutex;
 
 /* X86 EMULATOR & V86 MODE INITIALIZATION *************************************/
 
-#if (NTDDI_VERSION < NTDDI_VISTA) && (DLL_EXPORT_VERSION < _WIN32_WINNT_VISTA)
+/* Only the x86 and x64 HALs carry the emulator, other HALs are asked at run time */
+#if ((NTDDI_VERSION < NTDDI_VISTA) && (DLL_EXPORT_VERSION < _WIN32_WINNT_VISTA)) ||     !(defined(_M_IX86) || defined(_M_AMD64))
+#define VIDEOPRT_LOOKUP_X86_EMULATOR
+#endif
+
+#ifdef VIDEOPRT_LOOKUP_X86_EMULATOR
 /*
  * x86 Emulator callbacks
  */
@@ -79,14 +84,14 @@ static NTSTATUS
     _In_reads_bytes_(Size) PVOID Buffer,
     _In_ ULONG Size);
 
-#else // (NTDDI_VERSION >= NTDDI_VISTA) || (DLL_EXPORT_VERSION >= _WIN32_WINNT_VISTA)
+#else // !VIDEOPRT_LOOKUP_X86_EMULATOR
 #include <ndk/halfuncs.h> // For x86Bios*()
 #endif
 
 static BOOLEAN
 IntInitializeX86Emu(VOID)
 {
-#if (NTDDI_VERSION < NTDDI_VISTA) && (DLL_EXPORT_VERSION < _WIN32_WINNT_VISTA)
+#ifdef VIDEOPRT_LOOKUP_X86_EMULATOR
     UNICODE_STRING ImportName;
 #define LOAD_IMPORT(func) \
     (RtlInitUnicodeString(&ImportName, L ## #func), \
