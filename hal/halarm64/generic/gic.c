@@ -128,10 +128,23 @@ HalpGicFindRedistributor(
     PHYSICAL_ADDRESS Frame;
     PUCHAR Control;
     ULONG64 Typer;
-    ULONG Stride, Affinity;
+    ULONG Stride, Affinity, i;
 
     Affinity = HalpMpidrToAffinity(Mpidr);
     Frame = HalpPlatform.GicrBase;
+
+    /* A GICC entry that names this processor's frame saves the walk */
+    if (!HalpPlatform.GicrLength)
+    {
+        for (i = 0; i < HalpPlatform.GiccCount; i++)
+        {
+            if ((HalpPlatform.GiccMpidr[i] & 0xFF00FFFFFFULL) == Mpidr)
+                Frame.QuadPart = HalpPlatform.GiccGicr[i];
+        }
+    }
+
+    if (!Frame.QuadPart)
+        return FALSE;
 
     for (;;)
     {
