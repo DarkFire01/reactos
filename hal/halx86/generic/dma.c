@@ -1034,7 +1034,6 @@ typedef struct _SCATTER_GATHER_CONTEXT {
 } SCATTER_GATHER_CONTEXT, *PSCATTER_GATHER_CONTEXT;
 
 // FIXME: This value needs to be calculated at runtime
-#define MAX_SG_ELEMENTS 0x30
 
 IO_ALLOCATION_ACTION
 NTAPI
@@ -1050,9 +1049,9 @@ HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
 	ULONG ElementCount = 0, RemainingLength = AdapterControlContext->Length;
 	PUCHAR CurrentVa = AdapterControlContext->CurrentVa;
     // RemainingLength / PAGE_SIZE + 1 for the remainder of our division
-    // + 1 for a safety cushion gives a good safe value. Using the
-    // min function with MAX_SG_ELEMENTS keeps us from getting too large.
-    ULONG Est_SG_Elements = min(RemainingLength / PAGE_SIZE + 2, MAX_SG_ELEMENTS);
+    // + 1 for a safety cushion gives a good safe value. Every page of the
+    // transfer can be its own element, so the list is never cut short.
+    ULONG Est_SG_Elements = RemainingLength / PAGE_SIZE + 2;
 
 	/* Store the map register base for later in HalPutScatterGatherList */
 	AdapterControlContext->MapRegisterBase = MapRegisterBase;
@@ -1068,7 +1067,7 @@ HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
 		return DeallocateObject;
 	}
 
-	while (RemainingLength > 0 && ElementCount < MAX_SG_ELEMENTS)
+	while (RemainingLength > 0 && ElementCount < Est_SG_Elements)
 	{
 	    TempElements[ElementCount].Length = RemainingLength;
 		TempElements[ElementCount].Reserved = 0;
