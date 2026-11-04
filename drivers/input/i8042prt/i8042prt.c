@@ -486,6 +486,12 @@ DriverEntry(
 	PI8042_DRIVER_EXTENSION DriverExtension;
 	NTSTATUS Status;
 
+#if defined(_M_ARM) || defined(_M_ARM64)
+	/* ARM has no 8042, port I/O to probe it would touch memory instead */
+	UNREFERENCED_PARAMETER(RegistryPath);
+	return STATUS_NO_SUCH_DEVICE;
+#endif
+
 	Status = IoAllocateDriverObjectExtension(
 		DriverObject,
 		DriverObject,
