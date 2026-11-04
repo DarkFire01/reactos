@@ -99,6 +99,13 @@ PciBusInterface_GetBusData(IN PVOID Context,
 
     UNREFERENCED_PARAMETER(WhichSpace);
 
+    /* HAL bus data only names segment 0, ask the root instead */
+    if (PdoExtension->ParentFdoExtension->BusRootFdoExtension->Segment != 0)
+    {
+        PciReadDeviceConfig(PdoExtension, Buffer, Offset, Length);
+        return Length;
+    }
+
     return HalGetBusDataByOffset(PCIConfiguration,
                                  PdoExtension->ParentFdoExtension->BaseBus,
                                  PdoExtension->Slot.u.AsULONG,
@@ -118,6 +125,12 @@ PciBusInterface_SetBusData(IN PVOID Context,
     PPCI_PDO_EXTENSION PdoExtension = (PPCI_PDO_EXTENSION)Context;
 
     UNREFERENCED_PARAMETER(WhichSpace);
+
+    if (PdoExtension->ParentFdoExtension->BusRootFdoExtension->Segment != 0)
+    {
+        PciWriteDeviceConfig(PdoExtension, Buffer, Offset, Length);
+        return Length;
+    }
 
     return HalSetBusDataByOffset(PCIConfiguration,
                                  PdoExtension->ParentFdoExtension->BaseBus,

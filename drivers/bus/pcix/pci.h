@@ -368,6 +368,7 @@ typedef struct _PCI_FDO_EXTENSION
     LONG BusHackFlags;
     LONG PciPmeInterfaceCount;
     PCI_ROOT_BUS_HARDWARE_CAPABILITY RootBusHardwareCapability;
+    USHORT Segment;
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_FUNCTION_RESOURCES

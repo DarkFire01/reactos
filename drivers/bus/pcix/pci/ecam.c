@@ -339,6 +339,10 @@ PciInitializeEcam(
     NTSTATUS Status;
     PAGED_CODE();
 
+    /* The window found here is segment 0, a bus of another root shares its numbers */
+    if (FdoExtension->BusRootFdoExtension->Segment != 0)
+        return;
+
     if (!PciEcamWindowQueried)
     {
         PciEcamWindowQueried = TRUE;
