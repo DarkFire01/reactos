@@ -401,7 +401,8 @@ DetectAcpiBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
         /* Fill the table */
         AcpiBiosData = (PACPI_BIOS_DATA)(PartialDescriptor + 1);
 
-        if (Rsdp->revision > 0)
+        /* An ACPI 2.0 RSDP may still leave the XSDT out, the RSDT is the only root then */
+        if ((Rsdp->revision > 0) && (Rsdp->xsdt_physical_address != 0))
         {
             TRACE("ACPI >1.0, using XSDT address\n");
             AcpiBiosData->RSDTAddress.QuadPart = Rsdp->xsdt_physical_address;
