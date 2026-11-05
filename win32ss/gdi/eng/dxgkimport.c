@@ -59,7 +59,8 @@ struct _DL_REGION
     RECT Rects[DL_REGION_MAX_RECTS];
 };
 
-static ERESOURCE gDwmStateLock;
+/* Nonpaged pool: an ERESOURCE in win32k's session image would put session addresses on the system resource list */
+static PERESOURCE gpDwmStateLock = NULL;
 
 /* GDI system memory present tokens would be queued behind this event; none are yet */
 static PKEVENT gpSfmTokenEvent = NULL;
@@ -537,14 +538,14 @@ NTAPI
 GreLockDwmState(VOID)
 {
     KeEnterCriticalRegion();
-    ExAcquireResourceExclusiveLite(&gDwmStateLock, TRUE);
+    ExAcquireResourceExclusiveLite(gpDwmStateLock, TRUE);
 }
 
 VOID
 NTAPI
 GreUnlockDwmState(VOID)
 {
-    ExReleaseResourceLite(&gDwmStateLock);
+    ExReleaseResourceLite(gpDwmStateLock);
     KeLeaveCriticalRegion();
 }
 
@@ -552,7 +553,7 @@ BOOL
 NTAPI
 GreIsDwmStateLocked(VOID)
 {
-    return ExIsResourceAcquiredSharedLite(&gDwmStateLock) != 0;
+    return ExIsResourceAcquiredSharedLite(gpDwmStateLock) != 0;
 }
 
 /**
@@ -655,7 +656,11 @@ DlInitializeDxgkImports(VOID)
     HANDLE Handle;
     NTSTATUS Status;
 
-    Status = ExInitializeResourceLite(&gDwmStateLock);
+    gpDwmStateLock = ExAllocatePoolWithTag(NonPagedPool, sizeof(*gpDwmStateLock), TAG_INTERNAL_SYNC);
+    if (!gpDwmStateLock)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = ExInitializeResourceLite(gpDwmStateLock);
     if (!NT_SUCCESS(Status))
         return Status;
 
