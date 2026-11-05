@@ -67,6 +67,7 @@ struct files_callback_info
 struct registry_callback_info
 {
     HKEY default_root;
+    HKEY property_root;
     BOOL delete;
 };
 
@@ -86,6 +87,7 @@ struct needs_callback_info
     HWND             owner;
     UINT             flags;
     HKEY             key_root;
+    HKEY             property_root;
     LPCWSTR          src_root;
     UINT             copy_flags;
     PVOID            callback;
@@ -97,6 +99,45 @@ struct needs_callback_info
 };
 
 typedef BOOL (*iterate_fields_func)( HINF hinf, PCWSTR field, void *arg );
+
+/* Values a hardware section names at the root of HKR that are device registry properties */
+static const WCHAR * const DevicePropertyValueNames[] =
+{
+    REGSTR_VAL_DEVDESC,
+    REGSTR_VAL_HARDWAREID,
+    REGSTR_VAL_COMPATIBLEIDS,
+    REGSTR_VAL_SERVICE,
+    REGSTR_VAL_CLASS,
+    REGSTR_VAL_CLASSGUID,
+    REGSTR_VAL_DRIVER,
+    REGSTR_VAL_CONFIGFLAGS,
+    REGSTR_VAL_MFG,
+    REGSTR_VAL_FRIENDLYNAME,
+    REGSTR_VAL_LOCATION_INFORMATION,
+    REGSTR_VAL_CAPABILITIES,
+    REGSTR_VAL_UI_NUMBER,
+    REGSTR_VAL_UPPERFILTERS,
+    REGSTR_VAL_LOWERFILTERS,
+    L"Security",
+    REGSTR_VAL_DEVICE_TYPE,
+    REGSTR_VAL_DEVICE_EXCLUSIVE,
+    REGSTR_VAL_DEVICE_CHARACTERISTICS,
+    L"UINumberDescFormat",
+    L"RemovalPolicy",
+};
+
+static BOOL is_device_property_value( PCWSTR name )
+{
+    UINT i;
+
+    for (i = 0; i < sizeof(DevicePropertyValueNames) / sizeof(DevicePropertyValueNames[0]); i++)
+    {
+        if (!strcmpiW( name, DevicePropertyValueNames[i] ))
+            return TRUE;
+    }
+
+    return FALSE;
+}
 static BOOL GetLineText( HINF hinf, PCWSTR section_name, PCWSTR key_name, PWSTR *value);
 typedef HRESULT (WINAPI *COINITIALIZE)(IN LPVOID pvReserved);
 typedef HRESULT (WINAPI *COCREATEINSTANCE)(IN REFCLSID rclsid, IN LPUNKNOWN pUnkOuter, IN DWORD dwClsContext, IN REFIID riid, OUT LPVOID *ppv);
@@ -467,6 +508,7 @@ static BOOL registry_callback( HINF hinf, PCWSTR field, void *arg )
     for (ok = TRUE; ok; ok = SetupFindNextLine( &context, &context ))
     {
         WCHAR buffer[MAX_INF_STRING_LENGTH];
+        WCHAR value_name[MAX_INF_STRING_LENGTH];
         INT flags;
 
         /* get root */
@@ -478,6 +520,17 @@ static BOOL registry_callback( HINF hinf, PCWSTR field, void *arg )
         /* get key */
         if (!SetupGetStringFieldW( &context, 2, buffer, sizeof(buffer)/sizeof(WCHAR), NULL ))
             *buffer = 0;
+
+        /* get value name */
+        if (!SetupGetStringFieldW( &context, 3, value_name, sizeof(value_name)/sizeof(WCHAR), NULL ))
+            *value_name = 0;
+
+        /* HKR of a hardware section is Device Parameters, but device properties live on the instance key */
+        if (info->property_root && root_key == info->default_root && !*buffer &&
+            is_device_property_value( value_name ))
+        {
+            root_key = info->property_root;
+        }
 
         /* get flags */
         if (!SetupGetIntField( &context, 4, &flags )) flags = 0;
@@ -504,12 +557,8 @@ static BOOL registry_callback( HINF hinf, PCWSTR field, void *arg )
         }
         TRACE( "key %p %s\n", root_key, debugstr_w(buffer) );
 
-        /* get value name */
-        if (!SetupGetStringFieldW( &context, 3, buffer, sizeof(buffer)/sizeof(WCHAR), NULL ))
-            *buffer = 0;
-
         /* and now do it */
-        if (!do_reg_operation( hkey, buffer, &context, flags ))
+        if (!do_reg_operation( hkey, value_name, &context, flags ))
         {
             if (hkey != root_key) RegCloseKey( hkey );
             if (sd) LocalFree( sd );
@@ -1311,9 +1360,9 @@ static BOOL needs_callback( HINF hinf, PCWSTR field, void *arg )
     switch (info->type)
     {
         case 0:
-            return SetupInstallFromInfSectionW(info->owner, *(HINF*)hinf, field, info->flags,
-               info->key_root, info->src_root, info->copy_flags, info->callback,
-               info->context, info->devinfo, info->devinfo_data);
+            return SETUPAPI_InstallFromInfSection(info->owner, *(HINF*)hinf, field, info->flags,
+               info->key_root, info->property_root, info->src_root, info->copy_flags,
+               info->callback, info->context, info->devinfo, info->devinfo_data);
         case 1:
             return SetupInstallServicesFromInfSectionExW(*(HINF*)hinf, field, info->flags,
                 info->devinfo, info->devinfo_data, info->reserved1, info->reserved2);
@@ -1332,6 +1381,35 @@ BOOL WINAPI SetupInstallFromInfSectionW( HWND owner, HINF hinf, PCWSTR section, 
                                          PSP_FILE_CALLBACK_W callback, PVOID context,
                                          HDEVINFO devinfo, PSP_DEVINFO_DATA devinfo_data )
 {
+    return SETUPAPI_InstallFromInfSection( owner, hinf, section, flags, key_root, NULL,
+                                           src_root, copy_flags, callback, context,
+                                           devinfo, devinfo_data );
+}
+
+/**
+ * @brief
+ * Installs an INF section like SetupInstallFromInfSectionW.
+ *
+ * @param[in] property_root
+ * When set, AddReg and DelReg lines that name a device registry property at the
+ * root of HKR write it here instead of under key_root. A hardware section passes
+ * the instance key, with Device Parameters as key_root.
+ */
+BOOL
+SETUPAPI_InstallFromInfSection(
+    _In_opt_ HWND owner,
+    _In_ HINF hinf,
+    _In_ PCWSTR section,
+    _In_ UINT flags,
+    _In_opt_ HKEY key_root,
+    _In_opt_ HKEY property_root,
+    _In_opt_ PCWSTR src_root,
+    _In_ UINT copy_flags,
+    _In_opt_ PSP_FILE_CALLBACK_W callback,
+    _In_opt_ PVOID context,
+    _In_opt_ HDEVINFO devinfo,
+    _In_opt_ PSP_DEVINFO_DATA devinfo_data)
+{
     struct needs_callback_info needs_info;
 
     /* Parse 'Include' and 'Needs' directives */
@@ -1340,6 +1418,7 @@ BOOL WINAPI SetupInstallFromInfSectionW( HWND owner, HINF hinf, PCWSTR section, 
     needs_info.owner = owner;
     needs_info.flags = flags;
     needs_info.key_root = key_root;
+    needs_info.property_root = property_root;
     needs_info.src_root = src_root;
     needs_info.copy_flags = copy_flags;
     needs_info.callback = callback;
@@ -1432,6 +1511,7 @@ BOOL WINAPI SetupInstallFromInfSectionW( HWND owner, HINF hinf, PCWSTR section, 
         struct registry_callback_info info;
 
         info.default_root = key_root;
+        info.property_root = property_root;
         info.delete = TRUE;
         if (!iterate_section_fields( hinf, section, DelReg, registry_callback, &info ))
             return FALSE;
