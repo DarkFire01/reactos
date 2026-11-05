@@ -239,6 +239,10 @@ $if (_NTDDK_)
 #define DO_SYSTEM_SYSTEM_PARTITION        0x00200000
 #define DO_SYSTEM_CRITICAL_PARTITION      0x00400000
 #define DO_DISALLOW_EXECUTE               0x00800000
+#ifdef __REACTOS__
+/* Set by the PCI driver on a function the kernel debugger drives */
+#define DO_DEVICE_ON_DEBUG_PATH           0x02000000
+#endif
 
 $endif (_NTDDK_)
 $if (_WDMDDK_)

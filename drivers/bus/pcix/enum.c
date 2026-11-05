@@ -2473,6 +2473,10 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             /* Check if this device is used for PCI debugger cards */
             NewExtension->OnDebugPath = PciIsDeviceOnDebugPath(NewExtension);
 
+            /* Lets the PnP manager keep other drivers off the debugger's function */
+            if ((NewExtension->OnDebugPath) && (NewExtension->HeaderType == PCI_DEVICE_TYPE))
+                DeviceObject->Flags |= DO_DEVICE_ON_DEBUG_PATH;
+
             /* Check for devices with invalid/bogus subsystem data */
             if (HackFlags & PCI_HACK_NO_SUBSYSTEM)
             {

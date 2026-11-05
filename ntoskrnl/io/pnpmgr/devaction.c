@@ -26,6 +26,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <ntoskrnl.h>
+#include <devpkey.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -600,6 +601,37 @@ PiAttachFilterDrivers(
 }
 
 /**
+ * @brief      Checks whether a device's drivers declared they can share it with the kernel debugger.
+ *
+ * @param[in]  Pdo   The physical device object of the device
+ *
+ * @return     TRUE if DEVPKEY_Device_DebuggerSafe holds a nonzero UINT32.
+ */
+static
+BOOLEAN
+PiIsDeviceDebuggerSafe(
+    _In_ PDEVICE_OBJECT Pdo)
+{
+    DEVPROPTYPE Type;
+    ULONG Size;
+    ULONG Value = 0;
+    NTSTATUS Status;
+
+    Status = IoGetDevicePropertyData(Pdo,
+                                     &DEVPKEY_Device_DebuggerSafe,
+                                     0,
+                                     0,
+                                     sizeof(Value),
+                                     &Value,
+                                     &Size,
+                                     &Type);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    return ((Type == DEVPROP_TYPE_UINT32) && (Size == sizeof(Value)) && (Value != 0));
+}
+
+/**
  * @brief      Loads all drivers for a device node (actual service and filters)
  *             and calls their AddDevice routine
  *
@@ -639,6 +671,16 @@ PiCallDriverAddDevice(
         DPRINT1("Failed to open a devnode instance key for \"%wZ\" (status %x)\n",
                 &DeviceNode->InstancePath, Status);
         return Status;
+    }
+
+    // the kernel debugger owns this function, so no driver is loaded unless it can share it
+    if ((DeviceNode->PhysicalDeviceObject->Flags & DO_DEVICE_ON_DEBUG_PATH) &&
+        !PiIsDeviceDebuggerSafe(DeviceNode->PhysicalDeviceObject))
+    {
+        DPRINT1("\"%wZ\" is in use by the kernel debugger\n", &DeviceNode->InstancePath);
+        ZwClose(SubKey);
+        PiSetDevNodeProblem(DeviceNode, CM_PROB_USED_BY_DEBUGGER);
+        return STATUS_PNP_RESTART_ENUMERATION;
     }
 
     // try to get the class GUID of an instance and its registry key
