@@ -157,6 +157,7 @@
 @ fastcall ExRundownCompletedCacheAware(ptr) ExfRundownCompletedCacheAware
 @ extern ExSemaphoreObjectType
 @ stdcall ExSetResourceOwnerPointer(ptr ptr)
+@ stdcall -version=0x601+ ExSetResourceOwnerPointerEx(ptr ptr long)
 @ stdcall ExSetTimerResolution(long long)
 @ stdcall ExSizeOfRundownProtectionCacheAware()
 @ stdcall ExSystemExceptionFilter()
@@ -389,6 +390,7 @@
 @ stdcall IoCreateStreamFileObjectLite(ptr ptr)
 @ stdcall IoCreateSymbolicLink(ptr ptr)
 @ stdcall IoCreateSynchronizationEvent(ptr ptr)
+@ stdcall -version=0x602+ IoCreateSystemThread(ptr ptr long ptr ptr ptr ptr ptr)
 @ stdcall IoCreateUnprotectedSymbolicLink(ptr ptr)
 @ stdcall IoCsqInitialize(ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall IoCsqInitializeEx(ptr ptr ptr ptr ptr ptr ptr)
@@ -1836,6 +1838,7 @@
 @ stdcall -version=0x603+ KeInitializeTimer2(ptr)
 @ fastcall -version=0x600+ KeInvalidateRangeAllCaches(ptr long)
 @ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
+@ stdcall -version=0x601+ KeQueryActiveGroupCount()
 @ stdcall -version=0x600+ KeQueryActiveProcessorCount(ptr)
 @ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
 @ stdcall -version=0x601+ KeQueryGroupAffinity(long)

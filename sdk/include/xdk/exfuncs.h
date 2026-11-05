@@ -1636,7 +1636,7 @@ ExFreeToLookasideListEx(
 
 #endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 NTKERNELAPI
@@ -1649,7 +1649,7 @@ ExSetResourceOwnerPointerEx(
 
 #define FLAG_OWNER_POINTER_IS_THREAD 0x1
 
-#endif /* (NTDDI_VERSION >= NTDDI_WIN7) */
+#endif /* (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__) */
 
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 

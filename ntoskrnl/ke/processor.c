@@ -411,6 +411,20 @@ KeQueryMaximumGroupCount(VOID)
 
 /**
  * @brief
+ * Returns how many processor groups have active processors.
+ *
+ * @return
+ * One, as ReactOS only ever builds group 0.
+ */
+USHORT
+NTAPI
+KeQueryActiveGroupCount(VOID)
+{
+    return 1;
+}
+
+/**
+ * @brief
  * Returns the affinity of the processors that are active in a group.
  *
  * @param[in] GroupNumber

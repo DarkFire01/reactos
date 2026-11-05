@@ -46,6 +46,38 @@ IoComputeDesiredAccessFileObject(IN PFILE_OBJECT FileObject,
     return STATUS_SUCCESS;
 }
 
+typedef struct _IOP_THREAD_LAUNCH
+{
+    PVOID IoObject;
+    PKSTART_ROUTINE StartRoutine;
+    PVOID StartContext;
+} IOP_THREAD_LAUNCH, *PIOP_THREAD_LAUNCH;
+
+/**
+ * @brief
+ * Runs a thread made by IoCreateSystemThread, then lets go of its I/O object.
+ *
+ * @param[in] Context
+ * The IOP_THREAD_LAUNCH block, freed here.
+ */
+static
+VOID
+NTAPI
+IopRunSystemThread(
+    _In_ PVOID Context)
+{
+    IOP_THREAD_LAUNCH Launch;
+
+    Launch = *(PIOP_THREAD_LAUNCH)Context;
+    ExFreePoolWithTag(Context, TAG_IO);
+
+    Launch.StartRoutine(Launch.StartContext);
+
+    /* A routine that terminates itself never gets here, which keeps its object held like on Windows */
+    ObDereferenceObject(Launch.IoObject);
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -350,4 +382,86 @@ IoCheckQuerySetVolumeInformation(IN FS_INFORMATION_CLASS FsInformationClass,
 {
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Creates a system thread that keeps a driver or device object referenced while it runs.
+ *
+ * @param[in,out] IoObject
+ * The driver object or device object the thread works for.
+ *
+ * @param[out] ThreadHandle
+ * Receives the handle of the new thread.
+ *
+ * @param[in] DesiredAccess
+ * Access wanted on the thread handle.
+ *
+ * @param[in] ObjectAttributes
+ * Optional attributes for the thread handle.
+ *
+ * @param[in] ProcessHandle
+ * Optional process to run the thread in, the system process when NULL.
+ *
+ * @param[out] ClientId
+ * Optionally receives the client ID of the thread.
+ *
+ * @param[in] StartRoutine
+ * Where the thread starts.
+ *
+ * @param[in] StartContext
+ * Passed to StartRoutine.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INSUFFICIENT_RESOURCES or a thread creation failure.
+ */
+NTSTATUS
+NTAPI
+IoCreateSystemThread(
+    _Inout_ PVOID IoObject,
+    _Out_ PHANDLE ThreadHandle,
+    _In_ ULONG DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_opt_ HANDLE ProcessHandle,
+    _Out_opt_ PCLIENT_ID ClientId,
+    _In_ PKSTART_ROUTINE StartRoutine,
+    _In_opt_ PVOID StartContext)
+{
+    PIOP_THREAD_LAUNCH Launch;
+    CSHORT ObjectType;
+    NTSTATUS Status;
+
+    ObjectType = ((PDEVICE_OBJECT)IoObject)->Type;
+    if (ObjectType != IO_TYPE_DEVICE && ObjectType != IO_TYPE_DRIVER)
+    {
+        KeBugCheckEx(IO_OBJECT_INVALID,
+                     0,
+                     (ULONG_PTR)StartRoutine,
+                     (ULONG_PTR)IoObject,
+                     0);
+    }
+
+    Launch = ExAllocatePoolWithTag(PagedPool, sizeof(*Launch), TAG_IO);
+    if (!Launch)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Launch->IoObject = IoObject;
+    Launch->StartRoutine = StartRoutine;
+    Launch->StartContext = StartContext;
+
+    ObReferenceObject(IoObject);
+    Status = PsCreateSystemThread(ThreadHandle,
+                                  DesiredAccess,
+                                  ObjectAttributes,
+                                  ProcessHandle,
+                                  ClientId,
+                                  IopRunSystemThread,
+                                  Launch);
+    if (!NT_SUCCESS(Status))
+    {
+        ObDereferenceObject(IoObject);
+        ExFreePoolWithTag(Launch, TAG_IO);
+    }
+
+    return Status;
 }
