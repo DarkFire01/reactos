@@ -370,6 +370,12 @@ PFILE_OBJECT             gpDxgkFileObject = NULL;
 DXGKWIN32K_INTERFACE_BUF gDxgkInterface = { 0 };
 BOOLEAN                  gbDxgkInitialized = FALSE;
 
+/* dxgkrnl creates its session data when the session opens, and the DWM needs it to register */
+static BOOLEAN           gbDlSessionOpened = FALSE;
+static BOOLEAN           gbDlSessionOpenDeferred = FALSE;
+
+VOID NTAPI DlNotifySessionOpen(VOID);
+
 /**
  * @brief Hands out a D3DKMT entry point from the interface dxgkrnl filled.
  *
@@ -566,6 +572,10 @@ DlRegisterDwmProcess(VOID)
 {
     if (!gbDxgkInitialized)
         return STATUS_SUCCESS;
+
+    /* dxgkrnl has no session data before the session opens and does not check for it */
+    if (!gbDlSessionOpened)
+        return STATUS_DEVICE_NOT_READY;
 
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
     if (gDxgkInterface.pfnDxgkRegisterDwmProcess != NULL)
@@ -806,6 +816,10 @@ DlInitDxgkrnl(VOID)
         if (!NT_SUCCESS(Status))
             DPRINT1("win32k: DxgRegisterAdapterCallbacks failed 0x%lX\n", Status);
         Status = STATUS_SUCCESS;   /* the D3DKMT table is optional for the display path */
+
+        /* CSRSS tried to open the session before dxgkrnl was ready, so open it now */
+        if (gbDlSessionOpenDeferred)
+            DlNotifySessionOpen();
     }
     else
     {
@@ -1227,6 +1241,9 @@ DlNotifySessionOpen(VOID)
     PPROCESSINFO ppi = PsGetCurrentProcessWin32Process();
     NTSTATUS Status;
 
+    if (gbDlSessionOpened)
+        return;
+
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
     /* Adapter arrival, removal and TDR reach win32k through this, whoever raises them */
     Status = SMgrRegisterGdiCallout((PVOID)VideoPortCallout);
@@ -1242,7 +1259,11 @@ DlNotifySessionOpen(VOID)
     if (!gbDxgkInitialized)
     {
         if (DlpIsDxgkrnlLoaded())
+        {
+            /* DlInitDxgkrnl opens it once the interface arrives */
+            gbDlSessionOpenDeferred = TRUE;
             return;
+        }
     }
     else if ((ppi == NULL) || (ppi->DxProcess == NULL))
     {
@@ -1262,7 +1283,13 @@ DlNotifySessionOpen(VOID)
     Status = SMgrNotifySessionChange(DL_SESSION_OPEN);
 #endif
     if (!NT_SUCCESS(Status))
+    {
         DPRINT1("win32k: SMgrNotifySessionChange failed 0x%lX\n", Status);
+        return;
+    }
+
+    gbDlSessionOpened = TRUE;
+    gbDlSessionOpenDeferred = FALSE;
 }
 
 /**
