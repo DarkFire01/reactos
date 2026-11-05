@@ -8,6 +8,98 @@
 
 #include "cmlib.h"
 
+/* Smallest block list, a list holds a power of two entries from here up */
+#define HV_BLOCK_LIST_MIN_ENTRIES   16
+
+/*
+ * Sits in front of a block list. Cells are looked up without the hive lock,
+ * so a list that is replaced stays allocated, linked here, until the hive goes.
+ */
+typedef struct _HV_BLOCK_LIST_HEADER
+{
+    PHMAP_ENTRY Retired;
+    ULONG_PTR Reserved;
+} HV_BLOCK_LIST_HEADER, *PHV_BLOCK_LIST_HEADER;
+
+static
+ULONG
+HvpBlockListCapacity(
+    _In_ ULONG Length)
+{
+    ULONG Capacity = HV_BLOCK_LIST_MIN_ENTRIES;
+
+    while (Capacity < Length)
+        Capacity <<= 1;
+
+    return Capacity;
+}
+
+/**
+ * @brief
+ * Allocates a block list with room for at least Length blocks.
+ *
+ * @param[in] Hive
+ * The hive that owns the list.
+ *
+ * @param[in] Length
+ * The number of blocks the list must hold.
+ *
+ * @param[in] Paged
+ * TRUE for paged pool.
+ *
+ * @param[in] Retired
+ * The list this one replaces, freed along with it, or NULL.
+ *
+ * @return
+ * The list, or NULL when out of memory.
+ */
+PHMAP_ENTRY
+CMAPI
+HvpAllocateBlockList(
+    _In_ PHHIVE Hive,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Paged,
+    _In_opt_ PHMAP_ENTRY Retired)
+{
+    PHV_BLOCK_LIST_HEADER Header;
+
+    Header = Hive->Allocate(sizeof(*Header) + HvpBlockListCapacity(Length) * sizeof(HMAP_ENTRY),
+                            Paged,
+                            TAG_CM);
+    if (!Header)
+        return NULL;
+
+    Header->Retired = Retired;
+    Header->Reserved = 0;
+    return (PHMAP_ENTRY)(Header + 1);
+}
+
+/**
+ * @brief
+ * Frees a block list and every list it replaced.
+ *
+ * @param[in] Hive
+ * The hive that owns the list.
+ *
+ * @param[in] BlockList
+ * The list, or NULL.
+ */
+VOID
+CMAPI
+HvpFreeBlockList(
+    _In_ PHHIVE Hive,
+    _In_opt_ PHMAP_ENTRY BlockList)
+{
+    PHV_BLOCK_LIST_HEADER Header;
+
+    while (BlockList)
+    {
+        Header = (PHV_BLOCK_LIST_HEADER)BlockList - 1;
+        BlockList = Header->Retired;
+        Hive->Free(Header, 0);
+    }
+}
+
 PHBIN CMAPI
 HvpAddBin(
     PHHIVE RegistryHive,
@@ -36,34 +128,37 @@ HvpAddBin(
                       HBLOCK_SIZE;
     Bin->Size = BinSize;
 
-    /* Allocate new block list */
+    /* Only move the block list when it has no room left */
     OldBlockListSize = RegistryHive->Storage[Storage].Length;
-    BlockList = RegistryHive->Allocate(sizeof(HMAP_ENTRY) *
-                                       (OldBlockListSize + BlockCount),
-                                       TRUE,
-                                       TAG_CM);
-    if (BlockList == NULL)
+    BlockList = RegistryHive->Storage[Storage].BlockList;
+    if ((BlockList == NULL) ||
+        (HvpBlockListCapacity(OldBlockListSize + BlockCount) > HvpBlockListCapacity(OldBlockListSize)))
     {
-        RegistryHive->Free(Bin, 0);
-        return NULL;
+        BlockList = HvpAllocateBlockList(RegistryHive,
+                                         OldBlockListSize + BlockCount,
+                                         TRUE,
+                                         RegistryHive->Storage[Storage].BlockList);
+        if (BlockList == NULL)
+        {
+            RegistryHive->Free(Bin, 0);
+            return NULL;
+        }
+
+        if (OldBlockListSize > 0)
+        {
+            RtlCopyMemory(BlockList, RegistryHive->Storage[Storage].BlockList,
+                          OldBlockListSize * sizeof(HMAP_ENTRY));
+        }
     }
 
-    if (OldBlockListSize > 0)
+    for (i = 0; i < BlockCount; i++)
     {
-        RtlCopyMemory(BlockList, RegistryHive->Storage[Storage].BlockList,
-                      OldBlockListSize * sizeof(HMAP_ENTRY));
-        RegistryHive->Free(RegistryHive->Storage[Storage].BlockList, 0);
+        BlockList[OldBlockListSize + i].BlockAddress = ((ULONG_PTR)Bin + (i * HBLOCK_SIZE));
+        BlockList[OldBlockListSize + i].BinAddress = (ULONG_PTR)Bin;
     }
 
     RegistryHive->Storage[Storage].BlockList = BlockList;
     RegistryHive->Storage[Storage].Length += BlockCount;
-
-    for (i = 0; i < BlockCount; i++)
-    {
-        RegistryHive->Storage[Storage].BlockList[OldBlockListSize + i].BlockAddress =
-            ((ULONG_PTR)Bin + (i * HBLOCK_SIZE));
-        RegistryHive->Storage[Storage].BlockList[OldBlockListSize + i].BinAddress = (ULONG_PTR)Bin;
-    }
 
     /* Initialize a free block in this heap. */
     Block = (PHCELL)(Bin + 1);
