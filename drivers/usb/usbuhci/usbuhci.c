@@ -196,35 +196,59 @@ UHCI_AllocateIsoBounceBuffer(IN PUHCI_ENDPOINT UhciEndpoint)
 
 VOID
 NTAPI
+UhciRebuildFrameListEntry(IN PUHCI_EXTENSION UhciExtension,
+                          IN ULONG Index);
+
+/* removes an iTD from the software list of its slot, wherever it is, and rebuilds the slot */
+static
+VOID
+UHCI_RemoveITDFromSlot(IN PUHCI_EXTENSION UhciExtension,
+                       IN PUHCI_HCD_TD ITD,
+                       IN ULONG Frame)
+{
+    PUHCI_HCD_TD * Link;
+    ULONG Index;
+
+    Index = Frame & UHCI_FRAME_LIST_INDEX_MASK;
+    for (Link = &UhciExtension->FrameIsoTD[Index]; *Link; Link = &(*Link)->NextHcdTD)
+    {
+        if (*Link == ITD)
+        {
+            *Link = ITD->NextHcdTD;
+            break;
+        }
+    }
+    ITD->NextHcdTD = NULL;
+
+    UhciRebuildFrameListEntry(UhciExtension, Index);
+}
+
+VOID
+NTAPI
 UHCI_UnlinkITDFromFrameList(IN PUHCI_EXTENSION UhciExtension,
                             IN PUHCI_HCD_TD ITD,
                             IN ULONG Frame,
                             IN PUHCI_TRANSFER UhciTransfer)
 {
-    PUHCI_HC_RESOURCES HcResourcesVA;
-
-    HcResourcesVA = UhciExtension->HcResourcesVA;
-
     DPRINT_UHCI("UHCI_UnlinkITDFromFrameList: Unlinking iTD %p from frame %d\n", ITD, Frame);
 
-    /* Search and unlink from frame list - simplified version */
-    KeMemoryBarrier();
-    HcResourcesVA->FrameList[Frame & UHCI_FRAME_LIST_INDEX_MASK] = ITD->HwTD.NextElement;
-    KeMemoryBarrier();
+    UHCI_RemoveITDFromSlot(UhciExtension, ITD, Frame);
 
     RemoveEntryList(&ITD->ActiveITDEntry);
 }
 
+/* records the result of an iTD, takes it out of the schedule and frees it. It does not
+ * complete the transfer, which is up to the caller */
+static
 VOID
-NTAPI
-UHCI_ProcessCompletedITD(IN PUHCI_EXTENSION UhciExtension,
-                         IN PUHCI_HCD_TD ITD)
+UHCI_RetireITD(IN PUHCI_EXTENSION UhciExtension,
+               IN PUHCI_HCD_TD ITD)
 {
     PUHCI_TRANSFER UhciTransfer;
     PUHCI_ENDPOINT UhciEndpoint;
     ULONG TotalBytesTransferred = 0;
 
-    DPRINT_UHCI("UHCI_ProcessCompletedITD: ITD - %p\n", ITD);
+    DPRINT_UHCI("UHCI_RetireITD: ITD - %p\n", ITD);
 
     UhciTransfer = ITD->UhciTransfer;
     UhciEndpoint = ITD->UhciEndpoint;
@@ -240,7 +264,16 @@ UHCI_ProcessCompletedITD(IN PUHCI_EXTENSION UhciExtension,
     else
         TotalBytesTransferred = ITD->HwTD.ControlStatus.ActualLength + 1;
 
-    if (ITD->HwTD.ControlStatus.Status & (1 << 6))
+    if (ITD->HwTD.ControlStatus.Status & UHCI_TD_STS_ACTIVE)
+    {
+        /* the frame of the iTD passed before the controller executed it */
+        ITD->IsoPacket->CompletionStatus = USBD_STATUS_ISO_NOT_ACCESSED_LATE;
+        ITD->IsoPacket->BytesTransferred = 0;
+
+        /* the controller must not execute it anymore, it may still be walking the slot */
+        ITD->HwTD.ControlStatus.Status &= ~UHCI_TD_STS_ACTIVE;
+    }
+    else if (ITD->HwTD.ControlStatus.Status & (1 << 6))
     {
         ITD->IsoPacket->CompletionStatus = USBD_STATUS_STALL_PID;
     }
@@ -301,6 +334,26 @@ UHCI_ProcessCompletedITD(IN PUHCI_EXTENSION UhciExtension,
 
     /* decrement pending count */
     UhciTransfer->PendingTds--;
+}
+
+VOID
+NTAPI
+UHCI_ProcessCompletedITD(IN PUHCI_EXTENSION UhciExtension,
+                         IN PUHCI_HCD_TD ITD)
+{
+    PUHCI_TRANSFER UhciTransfer;
+    PUHCI_ENDPOINT UhciEndpoint;
+
+    DPRINT_UHCI("UHCI_ProcessCompletedITD: ITD - %p\n", ITD);
+
+    /* retiring clears the members of the iTD */
+    UhciTransfer = ITD->UhciTransfer;
+    UhciEndpoint = ITD->UhciEndpoint;
+
+    if (!UhciTransfer || !UhciEndpoint)
+        return;
+
+    UHCI_RetireITD(UhciExtension, ITD);
 
     /* Complete the transfer only when ALL iTDs are done */
     if (IsListEmpty(&UhciTransfer->ActiveITDs))
@@ -345,34 +398,72 @@ UhciFixDataToggle(IN PUHCI_EXTENSION UhciExtension,
     UhciEndpoint->DataToggle = DataToggle;
 }
 
+/* returns the static frame list entry of a slot: the static TD for frame 0,
+ * the interrupt QH tree otherwise */
+static
+ULONG
+UhciGetStaticFrameListEntry(IN PUHCI_EXTENSION UhciExtension,
+                            IN ULONG Index)
+{
+    ULONG HeadIdx;
+
+    if (Index == 0)
+    {
+        return UhciExtension->StaticTD->PhysicalAddress |
+               UHCI_FRAME_LIST_POINTER_TD;
+    }
+
+    HeadIdx = (INTERRUPT_ENDPOINTs - ENDPOINT_INTERRUPT_32ms) +
+              (Index & (ENDPOINT_INTERRUPT_32ms - 1));
+
+    return UhciExtension->IntQH[HeadIdx]->PhysicalAddress |
+           UHCI_FRAME_LIST_POINTER_QH;
+}
+
+/* rebuilds the hardware chain of a frame list slot as iTDs -> SOF TD -> static entry.
+ * The links are written from the tail to the head, every intermediate state is a valid
+ * chain, so the controller may walk the slot meanwhile */
+VOID
+NTAPI
+UhciRebuildFrameListEntry(IN PUHCI_EXTENSION UhciExtension,
+                          IN ULONG Index)
+{
+    PUHCI_HC_RESOURCES UhciResources;
+    PUHCI_HCD_TD TD;
+    ULONG Link;
+
+    Index &= UHCI_FRAME_LIST_INDEX_MASK;
+    UhciResources = UhciExtension->HcResourcesVA;
+
+    Link = UhciGetStaticFrameListEntry(UhciExtension, Index);
+
+    TD = UhciExtension->FrameSofTD[Index];
+    if (TD)
+    {
+        TD->HwTD.NextElement = Link;
+        KeMemoryBarrier();
+        Link = (TD->PhysicalAddress & UHCI_TD_LINK_POINTER_MASK) | UHCI_FRAME_LIST_POINTER_TD;
+    }
+
+    for (TD = UhciExtension->FrameIsoTD[Index]; TD; TD = TD->NextHcdTD)
+    {
+        TD->HwTD.NextElement = Link;
+        KeMemoryBarrier();
+        Link = (TD->PhysicalAddress & UHCI_TD_LINK_POINTER_MASK) | UHCI_FRAME_LIST_POINTER_TD;
+    }
+
+    KeMemoryBarrier();
+    UhciResources->FrameList[Index] = Link;
+    KeMemoryBarrier();
+}
+
 VOID
 NTAPI
 UhciCleanupFrameListEntry(IN PUHCI_EXTENSION UhciExtension,
                           IN ULONG Index)
 {
-    PUHCI_HC_RESOURCES UhciResources;
-    ULONG PhysicalAddress;
-    ULONG HeadIdx;
-
-    UhciResources = UhciExtension->HcResourcesVA;
-
-    if (Index == 0)
-    {
-        PhysicalAddress = UhciExtension->StaticTD->PhysicalAddress;
-
-        UhciResources->FrameList[0] = PhysicalAddress |
-                                      UHCI_FRAME_LIST_POINTER_TD;
-    }
-    else
-    {
-        HeadIdx = (INTERRUPT_ENDPOINTs - ENDPOINT_INTERRUPT_32ms) +
-                  (Index & (ENDPOINT_INTERRUPT_32ms - 1));
-
-        PhysicalAddress = UhciExtension->IntQH[HeadIdx]->PhysicalAddress;
-
-        UhciResources->FrameList[Index] = PhysicalAddress |
-                                          UHCI_FRAME_LIST_POINTER_QH;
-    }
+    /* the slot keeps its scheduled iTDs, only stale hardware links are dropped */
+    UhciRebuildFrameListEntry(UhciExtension, Index);
 }
 
 VOID
@@ -443,6 +534,52 @@ UhciSetNextQH(IN PUHCI_HCD_QH QH,
 
     NextQH->PrevHcdQH = QH;
     NextQH->QhFlags |= UHCI_HCD_QH_FLAG_ACTIVE;
+}
+
+/* takes all iTDs of an iso endpoint out of the schedule before its TD pool is reused or
+ * freed. usbport does not abort the transfers of a removed device, their memory may be gone
+ * already, so this works on the TD pool only and touches neither transfers nor packets */
+static
+VOID
+UHCI_PurgeIsoEndpoint(IN PUHCI_EXTENSION UhciExtension,
+                      IN PUHCI_ENDPOINT UhciEndpoint)
+{
+    PUHCI_HCD_TD TD;
+    ULONG ix;
+    BOOLEAN Purged = FALSE;
+
+    if (UhciEndpoint->EndpointProperties.TransferType != USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
+        return;
+
+    TD = UhciEndpoint->FirstTD;
+
+    for (ix = 0; TD && ix < UhciEndpoint->MaxTDs; ++ix)
+    {
+        if (TD->Flags & UHCI_HCD_TD_FLAG_ALLOCATED)
+        {
+            TD->HwTD.ControlStatus.Status &= ~UHCI_TD_STS_ACTIVE;
+            UHCI_RemoveITDFromSlot(UhciExtension, TD, TD->ScheduledFrame);
+
+            TD->Flags &= ~UHCI_HCD_TD_FLAG_ALLOCATED;
+            TD->BounceIndex = UHCI_ISO_NO_BOUNCE_BUFFER;
+            TD->UhciTransfer = NULL;
+            TD->UhciEndpoint = NULL;
+            TD->IsoPacket = NULL;
+            Purged = TRUE;
+        }
+
+        TD = TD->NextTD;
+    }
+
+    UhciEndpoint->AllocatedTDs = 0;
+    UhciEndpoint->BounceBufferMask = 0;
+    InitializeListHead(&UhciEndpoint->ListTransfers);
+
+    if (Purged)
+    {
+        /* the controller may still hold a purged iTD of the current frame */
+        KeStallExecutionProcessor(2 * 1000);
+    }
 }
 
 MPSTATUS
@@ -572,6 +709,9 @@ UhciReopenEndpoint(IN PVOID uhciExtension,
     PUHCI_HCD_QH QH;
 
     DPRINT_UHCI("OHCI_ReopenEndpoint: ... \n");
+
+    /* the TD pool is initialized again below */
+    UHCI_PurgeIsoEndpoint(uhciExtension, UhciEndpoint);
 
     RtlCopyMemory(&UhciEndpoint->EndpointProperties,
                   EndpointProperties,
@@ -741,7 +881,10 @@ UhciCloseEndpoint(IN PVOID uhciExtension,
                   IN PVOID uhciEndpoint,
                   IN BOOLEAN IsDoDisablePeriodic)
 {
-    DPRINT_IMPL("UhciCloseEndpoint: UNIMPLEMENTED. FIXME\n");
+    DPRINT("UhciCloseEndpoint: uhciEndpoint - %p\n", uhciEndpoint);
+
+    /* usbport frees the TD pool after this call */
+    UHCI_PurgeIsoEndpoint(uhciExtension, uhciEndpoint);
 }
 
 MPSTATUS
@@ -990,6 +1133,10 @@ UhciInitializeSchedule(IN PUHCI_EXTENSION UhciExtension,
     PhysicalAddress = StaticBulkTdPA | UHCI_QH_ELEMENT_LINK_PTR_TD;
     UhciExtension->BulkQH->HwQH.NextElement = PhysicalAddress;
 
+    /* nothing is scheduled in the frame list yet */
+    RtlZeroMemory(UhciExtension->FrameIsoTD, sizeof(UhciExtension->FrameIsoTD));
+    RtlZeroMemory(UhciExtension->FrameSofTD, sizeof(UhciExtension->FrameSofTD));
+
     /* Set Frame List pointers */
     for (Idx = 0; Idx < UHCI_FRAME_LIST_MAX_ENTRIES; Idx++)
     {
@@ -1101,8 +1248,7 @@ UhciStartController(IN PVOID uhciExtension,
             WRITE_PORT_USHORT(PortControlRegister, PortControl.AsUSHORT);
         }
 
-        UhciExtension->HcResourcesVA->FrameList[0] =
-            UhciExtension->StaticTD->PhysicalAddress;
+        UhciRebuildFrameListEntry(UhciExtension, 0);
     }
 
     return MP_STATUS_SUCCESS;
@@ -2094,7 +2240,6 @@ UhciIsochTransfer(IN PVOID uhciExtension,
         ULONG BounceCount = 0;
         ULONG Index;
         PUHCI_HCD_TD ITD;
-        PUHCI_HC_RESOURCES HcResourcesVA;
         ULONG CurrentFrame;
         ULONG BufferPA;
         PUCHAR BounceBuffer;
@@ -2131,7 +2276,6 @@ UhciIsochTransfer(IN PVOID uhciExtension,
             }
         }
 
-        HcResourcesVA = UhciExtension->HcResourcesVA;
 
         /* Allocate and program iTDs, one per frame */
         while (PacketIndex < IsoTransfer->TotalPackets)
@@ -2212,9 +2356,10 @@ UhciIsochTransfer(IN PVOID uhciExtension,
             ITD->IsoPacket = Packet;
             KeMemoryBarrier();
 
-            ITD->HwTD.NextElement = HcResourcesVA->FrameList[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK];
-            KeMemoryBarrier();
-            HcResourcesVA->FrameList[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK] = (ITD->PhysicalAddress & 0xFFFFFFF0);
+            /* add the iTD to its slot, the hardware chain is rebuilt from the software list */
+            ITD->NextHcdTD = UhciExtension->FrameIsoTD[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK];
+            UhciExtension->FrameIsoTD[CurrentFrame & UHCI_FRAME_LIST_INDEX_MASK] = ITD;
+            UhciRebuildFrameListEntry(UhciExtension, CurrentFrame);
 
             ASSERT((ITD->PhysicalAddress & 0xF) == 0);
             DPRINT("ITD %p Phys %x SegmentCount %d LowPart1 %p LowPart2 %p\n", ITD,
@@ -2244,10 +2389,31 @@ VOID
 NTAPI
 UhciAbortIsoTransfer(IN PUHCI_EXTENSION UhciExtension,
                      IN PUHCI_ENDPOINT UhciEndpoint,
-                     IN PUHCI_TRANSFER UhciTransfer)
+                     IN PUHCI_TRANSFER UhciTransfer,
+                     IN PULONG CompletedLength)
 {
-    DPRINT1("UhciAbortIsoTransfer: UNIMPLEMENTED. FIXME\n");
-    ASSERT(FALSE);
+    PUHCI_HCD_TD ITD;
+
+    DPRINT("UhciAbortIsoTransfer: UhciEndpoint - %p, UhciTransfer - %p\n",
+           UhciEndpoint,
+           UhciTransfer);
+
+    /* usbport completes the transfer as canceled, so it is not reported as completed here */
+    while (!IsListEmpty(&UhciTransfer->ActiveITDs))
+    {
+        ITD = CONTAINING_RECORD(UhciTransfer->ActiveITDs.Flink,
+                                UHCI_HCD_TD,
+                                ActiveITDEntry);
+
+        UHCI_RetireITD(UhciExtension, ITD);
+    }
+
+    ASSERT(UhciTransfer->PendingTds == 0);
+
+    RemoveEntryList(&UhciTransfer->EndpointEntry);
+    UhciExtension->PendingTransfers--;
+
+    *CompletedLength = (ULONG)UhciTransfer->TransferLen;
 }
 
 VOID
@@ -2367,23 +2533,23 @@ UhciAbortTransfer(IN PVOID uhciExtension,
 
     DPRINT("UhciAbortTransfer: ...\n");
 
-    InterlockedDecrement(&UhciEndpoint->EndpointLock);
-
     TransferType = UhciEndpoint->EndpointProperties.TransferType;
 
     if (TransferType == USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
     {
-        InterlockedDecrement(&UhciExtension->ExtensionLock);
-
+        /* UhciIsochTransfer does not take EndpointLock or ExtensionLock */
         UhciAbortIsoTransfer(UhciExtension,
                              UhciEndpoint,
-                             UhciTransfer);
+                             UhciTransfer,
+                             CompletedLength);
     }
 
     if (TransferType == USBPORT_TRANSFER_TYPE_CONTROL ||
         TransferType == USBPORT_TRANSFER_TYPE_BULK ||
         TransferType == USBPORT_TRANSFER_TYPE_INTERRUPT)
     {
+        InterlockedDecrement(&UhciEndpoint->EndpointLock);
+
         UhciAbortNonIsoTransfer(UhciExtension,
                                 UhciEndpoint,
                                 UhciTransfer,
@@ -3068,12 +3234,30 @@ UhciGet32BitFrameNumber(IN PVOID uhciExtension)
     return Uhci32BitFrame;
 }
 
+/* removes a SOF_HcdTD from the frame list slot it is linked into */
+static
+VOID
+UhciReleaseSofTD(IN PUHCI_EXTENSION UhciExtension,
+                 IN PUHCI_HCD_TD SofTD)
+{
+    ULONG Idx;
+
+    if (!SofTD->Frame)
+        return;
+
+    Idx = SofTD->Frame & UHCI_FRAME_LIST_INDEX_MASK;
+    if (UhciExtension->FrameSofTD[Idx] == SofTD)
+    {
+        UhciExtension->FrameSofTD[Idx] = NULL;
+        UhciRebuildFrameListEntry(UhciExtension, Idx);
+    }
+}
+
 VOID
 NTAPI
 UhciInterruptNextSOF(IN PVOID uhciExtension)
 {
     PUHCI_EXTENSION UhciExtension = uhciExtension;
-    PUHCI_HC_RESOURCES UhciResources;
     ULONG CurrentFrame;
     PUHCI_HCD_TD SOF_HcdTDs;
     ULONG ix;
@@ -3097,17 +3281,17 @@ UhciInterruptNextSOF(IN PVOID uhciExtension)
 
         if (SofFrame < CurrentFrame)
         {
+            /* take the SOF_HcdTD out of the slot it was used for before, otherwise
+             * that slot would chain into the slot it is moved to */
+            UhciReleaseSofTD(UhciExtension, SOF_HcdTDs);
+
             SOF_HcdTDs->Frame = NextFrame;
             SOF_HcdTDs->Flags |= UHCI_HCD_TD_FLAG_GOOD_FRAME;
 
             /* Insert SOF_HcdTD (InterruptOnComplete = TRUE) in Frame List */
-            UhciResources = UhciExtension->HcResourcesVA;
             Idx = SOF_HcdTDs->Frame & UHCI_FRAME_LIST_INDEX_MASK;
-
-            InterlockedExchange((PLONG)&SOF_HcdTDs->HwTD.NextElement,
-                                UhciResources->FrameList[Idx]);
-
-            UhciResources->FrameList[Idx] = SOF_HcdTDs->PhysicalAddress;
+            UhciExtension->FrameSofTD[Idx] = SOF_HcdTDs;
+            UhciRebuildFrameListEntry(UhciExtension, Idx);
             break;
         }
 
@@ -3123,6 +3307,7 @@ UhciInterruptNextSOF(IN PVOID uhciExtension)
             (SOF_HcdTDs->Frame < CurrentFrame ||
              (SOF_HcdTDs->Frame - CurrentFrame) > UHCI_FRAME_LIST_MAX_ENTRIES))
         {
+            UhciReleaseSofTD(UhciExtension, SOF_HcdTDs);
             SOF_HcdTDs->Frame = 0;
         }
     }

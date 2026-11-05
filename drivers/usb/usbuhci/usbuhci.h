@@ -201,6 +201,10 @@ typedef struct _UHCI_EXTENSION {
   UCHAR SOF_Modify;
   UCHAR Padded2[3];
   ULONG PendingTransfers;
+  /* software view of the frame list, a slot is rebuilt from it as iTDs -> SOF TD -> static
+   * entry, so the hardware chain of a slot never depends on stale link pointers */
+  PUHCI_HCD_TD FrameIsoTD[UHCI_FRAME_LIST_MAX_ENTRIES]; // iTDs of a slot, linked by NextHcdTD
+  PUHCI_HCD_TD FrameSofTD[UHCI_FRAME_LIST_MAX_ENTRIES]; // SOF TD of a slot
 } UHCI_EXTENSION, *PUHCI_EXTENSION;
 
 /* roothub.c */
