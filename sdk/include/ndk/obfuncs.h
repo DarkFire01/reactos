@@ -207,6 +207,14 @@ NtCloseObjectAuditAlarm(
 NTSYSCALLAPI
 NTSTATUS
 NTAPI
+NtCompareObjects(
+    _In_ HANDLE FirstObjectHandle,
+    _In_ HANDLE SecondObjectHandle
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
 NtCreateDirectoryObject(
     _Out_ PHANDLE DirectoryHandle,
     _In_ ACCESS_MASK DesiredAccess,
@@ -419,6 +427,14 @@ ZwCloseObjectAuditAlarm(
     _In_ PUNICODE_STRING SubsystemName,
     _In_ PVOID HandleId,
     _In_ BOOLEAN GenerateOnClose
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwCompareObjects(
+    _In_ HANDLE FirstObjectHandle,
+    _In_ HANDLE SecondObjectHandle
 );
 
 NTSYSAPI

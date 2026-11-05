@@ -141,6 +141,35 @@ CloseHandle(IN HANDLE hObject)
     return FALSE;
 }
 
+/**
+ * @brief
+ * Tells whether two handles refer to the same kernel object.
+ *
+ * @param[in] hFirstObjectHandle
+ * A handle of any type and access.
+ *
+ * @param[in] hSecondObjectHandle
+ * A handle of any type and access.
+ *
+ * @return
+ * TRUE when both name one object. FALSE otherwise, with the last error set.
+ */
+BOOL
+WINAPI
+CompareObjectHandles(
+    _In_ HANDLE hFirstObjectHandle,
+    _In_ HANDLE hSecondObjectHandle)
+{
+    NTSTATUS Status;
+
+    Status = NtCompareObjects(hFirstObjectHandle, hSecondObjectHandle);
+    if (NT_SUCCESS(Status))
+        return TRUE;
+
+    BaseSetLastNTError(Status);
+    return FALSE;
+}
+
 /*
  * @implemented
  */

@@ -716,4 +716,5 @@ SVC_(CancelDeviceWakeupRequest, 1)
     SVC_(GetCurrentProcessorNumberEx, 1)
     SVC_(AlertThreadByThreadId, 1)
     SVC_(WaitForAlertByThreadId, 2)
+    SVC_(CompareObjects, 2)
 #endif
