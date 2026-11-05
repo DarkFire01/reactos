@@ -1582,13 +1582,10 @@ USBPORT_DmaEndpointPaused(IN PDEVICE_OBJECT FdoDevice,
 
                 if (Transfer->Flags & TRANSFER_FLAG_ISO)
                 {
-                    DPRINT1("USBPORT_DmaEndpointActive: FIXME call USBPORT_FlushIsoTransfer\n");
-                    ASSERT(FALSE); //USBPORT_FlushIsoTransfer();
+                    USBPORT_FlushIsoTransfer(Transfer);
                 }
-                else
-                {
-                    Transfer->CompletedTransferLen = CompletedLen;
-                }
+
+                Transfer->CompletedTransferLen = CompletedLen;
             }
 
             RemoveEntryList(&Transfer->TransferLink);

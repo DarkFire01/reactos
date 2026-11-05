@@ -985,17 +985,21 @@ USBPORT_HandleSubmitURB(IN PDEVICE_OBJECT PdoDevice,
 
             IsoPacket = &FdoExtension->MiniPortInterface->Packet;
 
-            /* Sample the current hardware frame counter */
-            KeAcquireSpinLock(&FdoExtension->MiniportSpinLock, &OldIrql);
-            HwFrame = IsoPacket->Get32BitFrameNumber(FdoExtension->MiniPortExt);
-            KeReleaseSpinLock(&FdoExtension->MiniportSpinLock, OldIrql);
-
             /* How many 1ms frames does this transfer span? */
             FrameSpan = IsHighSpeed ? ((PacketCount * Period) / 8) : PacketCount;
 
             /* Mark all URB packets as not yet touched */
             for (ix = 0; ix < PacketCount; ix++)
                 Urb->UrbIsochronousTransfer.IsoPacket[ix].Status = USBD_STATUS_NOT_ACCESSED;
+
+            /* The schedule is read and advanced atomically, transfers submitted
+             * concurrently (e.g. from a DPC and a thread) must never get the same frames */
+            KeAcquireSpinLock(&IsoEndpoint->EndpointSpinLock, &OldIrql);
+
+            /* Sample the current hardware frame counter */
+            KeAcquireSpinLockAtDpcLevel(&FdoExtension->MiniportSpinLock);
+            HwFrame = IsoPacket->Get32BitFrameNumber(FdoExtension->MiniPortExt);
+            KeReleaseSpinLockFromDpcLevel(&FdoExtension->MiniportSpinLock);
 
             /*
              * Determine the starting frame for this transfer.
@@ -1042,6 +1046,8 @@ USBPORT_HandleSubmitURB(IN PDEVICE_OBJECT PdoDevice,
                         Urb->UrbIsochronousTransfer.IsoPacket[ix].Status =
                             USBD_STATUS_ISO_NOT_ACCESSED_LATE;
 
+                    KeReleaseSpinLock(&IsoEndpoint->EndpointSpinLock, OldIrql);
+
                     Urb->UrbHeader.Status = USBD_STATUS_BAD_START_FRAME;
                     Status = STATUS_SUCCESS;
                     ASSERT(FALSE);
@@ -1052,6 +1058,8 @@ USBPORT_HandleSubmitURB(IN PDEVICE_OBJECT PdoDevice,
             IsoEndpoint->IsoScheduleStartFrame = ScheduledFrame;
             IsoEndpoint->IsoScheduleFrame = ScheduledFrame + FrameSpan;
             IsoEndpoint->FrameNumber = ScheduledFrame + FrameSpan;
+
+            KeReleaseSpinLock(&IsoEndpoint->EndpointSpinLock, OldIrql);
             DPRINT("IsoScheduleStartFrame %x Index %u End %x \n", ScheduledFrame, ScheduledFrame & 0x3FF, IsoEndpoint->IsoScheduleFrame);
 
             /* Set transfer direction based on endpoint direction */

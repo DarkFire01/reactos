@@ -203,6 +203,33 @@ USBPORT_InitializeIsoTransfer(PDEVICE_OBJECT FdoDevice,
     return USBD_STATUS_SUCCESS;
 }
 
+/*
+ * USBPORT_FlushIsoTransfer - Hand the packet results of an aborted
+ * transfer to the URB. The transfer is then completed as canceled,
+ * the packets the controller did not reach stay NOT_ACCESSED.
+ */
+VOID
+NTAPI
+USBPORT_FlushIsoTransfer(IN PUSBPORT_TRANSFER Transfer)
+{
+    PUSBPORT_ISO_TRANSFER_DATA IsoBlock;
+    struct _URB_ISOCH_TRANSFER *IsoUrb;
+    ULONG i;
+
+    IsoBlock = (PUSBPORT_ISO_TRANSFER_DATA)Transfer->IsoBlockPtr;
+    IsoUrb = (struct _URB_ISOCH_TRANSFER *)Transfer->Urb;
+
+    if (!IsoBlock || !IsoUrb)
+        return;
+
+    ASSERT(IsoBlock->TotalPackets == IsoUrb->NumberOfPackets);
+    for (i = 0; i < IsoUrb->NumberOfPackets; i++)
+    {
+        IsoUrb->IsoPacket[i].Status = IsoBlock->Packets[i].CompletionStatus;
+        IsoUrb->IsoPacket[i].Length = IsoBlock->Packets[i].BytesTransferred;
+    }
+}
+
 ULONG
 NTAPI
 USBPORT_CompleteIsoTransfer(IN PVOID MiniPortExtension,

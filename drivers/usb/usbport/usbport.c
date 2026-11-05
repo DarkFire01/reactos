@@ -1249,6 +1249,15 @@ USBPORT_WorkerThreadHandler(IN PDEVICE_OBJECT FdoDevice)
         KeReleaseSpinLockFromDpcLevel(&FdoExtension->EndpointListSpinLock);
 
         Result = USBPORT_EndpointWorker(Endpoint, FALSE);
+
+        /* the endpoint worker submitted the mapped transfers, map the pending ones */
+        if (!Result &&
+            USBPORT_GetEndpointState(Endpoint) == USBPORT_ENDPOINT_ACTIVE &&
+            !IsListEmpty(&Endpoint->PendingTransferList))
+        {
+            USBPORT_FlushPendingTransfers(Endpoint);
+        }
+
         KeAcquireSpinLockAtDpcLevel(&FdoExtension->EndpointListSpinLock);
 
         if (Result)
@@ -2614,6 +2623,13 @@ USBPORT_MapTransfer(IN PDEVICE_OBJECT FdoDevice,
         USBPORT_InvalidateEndpointHandler(FdoDevice,
                                           Endpoint,
                                           INVALIDATE_ENDPOINT_WORKER_THREAD);
+    }
+
+    /* the transfers queued while this one was mapped wait for a flush, otherwise
+     * they are mapped only on the next completion and isochronous ones get late */
+    if (!IsListEmpty(&Endpoint->PendingTransferList))
+    {
+        USBPORT_FlushPendingTransfers(Endpoint);
     }
 
     return DeallocateObjectKeepRegisters;

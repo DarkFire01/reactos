@@ -1068,6 +1068,11 @@ USBPORT_InitializeIsoTransfer(
   IN struct _URB_ISOCH_TRANSFER * Urb,
   IN PUSBPORT_TRANSFER Transfer);
 
+VOID
+NTAPI
+USBPORT_FlushIsoTransfer(
+  IN PUSBPORT_TRANSFER Transfer);
+
 ULONG
 NTAPI
 USBPORT_CompleteIsoTransfer(
