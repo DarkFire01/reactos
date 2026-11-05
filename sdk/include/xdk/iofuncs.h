@@ -3003,6 +3003,23 @@ IoGetDeviceInterfacePropertyData(
   _Out_ PDEVPROPTYPE Type);
 #endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
 
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoCreateSystemThread(
+  _Inout_ PVOID IoObject,
+  _Out_ PHANDLE ThreadHandle,
+  _In_ ULONG DesiredAccess,
+  _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+  _In_opt_ HANDLE ProcessHandle,
+  _Out_opt_ PCLIENT_ID ClientId,
+  _In_ PKSTART_ROUTINE StartRoutine,
+  _In_opt_ PVOID StartContext);
+#endif /* (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__) */
+
 #if (NTDDI_VERSION >= NTDDI_WIN10_VB)
 _IRQL_requires_max_(PASSIVE_LEVEL)
 _Must_inspect_result_
