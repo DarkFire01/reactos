@@ -706,7 +706,9 @@ HalpMasterAdapterForDevice(
     if (DeviceDescription->Version == DEVICE_DESCRIPTION_VERSION3)
         Addresses32Bits = (HalpGetDeviceDmaAddressWidth(DeviceDescription) >= 32);
     else
-        Addresses32Bits = DeviceDescription->Dma32BitAddresses || DeviceDescription->Dma64BitAddresses;
+        Addresses32Bits = DeviceDescription->Dma32BitAddresses ||
+                          DeviceDescription->Dma64BitAddresses ||
+                          DeviceDescription->ScatterGather;
 
     return Addresses32Bits ? HalpMasterAdapter32 : HalpMasterAdapter;
 }
@@ -1156,12 +1158,19 @@ HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
     }
     else
     {
-        AdapterObject->Dma32BitAddresses = DeviceDescription->Dma32BitAddresses;
+        BOOLEAN ScatterGatherMaster;
+
+        /* A scatter/gather bus master reaches 32 bits even when it sets neither flag */
+        ScatterGatherMaster = DeviceDescription->Master && DeviceDescription->ScatterGather;
+
+        AdapterObject->Dma32BitAddresses = DeviceDescription->Dma32BitAddresses ||
+                                           DeviceDescription->Dma64BitAddresses ||
+                                           ScatterGatherMaster;
         AdapterObject->Dma64BitAddresses = DeviceDescription->Dma64BitAddresses;
 
         if (DeviceDescription->Master && DeviceDescription->Dma64BitAddresses)
             AdapterObject->DmaAddressWidth = 64;
-        else if (DeviceDescription->Master && DeviceDescription->Dma32BitAddresses)
+        else if (DeviceDescription->Master && AdapterObject->Dma32BitAddresses)
             AdapterObject->DmaAddressWidth = 32;
         else
             AdapterObject->DmaAddressWidth = 24;
