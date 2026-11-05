@@ -75,6 +75,9 @@ ULONG (*FrLdrDbgPrint)(const char *Format, ...);
 #define KDNET_MCR_DTR_RTS   0x03
 #define KDNET_DIVISOR_115200 1
 
+/* Set once a byte times out, so a port nobody drains is not polled again. */
+static BOOLEAN KdNetSerialStalled;
+
 /**
  * @brief
  * Puts COM1 into a known state.
@@ -111,10 +114,19 @@ KdNetSerialPutByte(
 {
     ULONG Spin;
 
+    if (KdNetSerialStalled)
+        return;
+
     for (Spin = 0; Spin < 100000; Spin++)
     {
         if (READ_PORT_UCHAR((PUCHAR)KDNET_COM_LSR) & KDNET_LSR_THRE)
             break;
+    }
+
+    if (Spin == 100000)
+    {
+        KdNetSerialStalled = TRUE;
+        return;
     }
 
     WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_THR, Byte);
