@@ -260,6 +260,22 @@ typedef struct
     ULONG MaximumPacketSize;                                       /* max packet size */
     ULONG DataPacketLength;                                        /* max packet data length */
     ULONG RenderSampleRemainder;                                   /* fractional samples per frame carried between render packets, in 1/1000 samples */
+    ULONG RenderUrbBufferSize;                                     /* size of the transfer buffer of a render irp */
+    ULONG RenderPacketsPerUrb;                                     /* packets of a full render transfer */
+    BOOLEAN RenderStarted;                                         /* render transfers are streamed, cleared on underrun */
+    BOOLEAN RenderForceStart;                                      /* start streaming before the prebuffer is filled */
+    BOOLEAN RenderStartTimerArmed;                                 /* the start timer is pending */
+    ULONG RenderPrebufferSize;                                     /* bytes buffered before streaming starts */
+    KTIMER RenderStartTimer;                                       /* starts streaming of short sounds */
+    KDPC RenderStartDpc;
+    ULONGLONG RenderRunStartTime;                                  /* interrupt time when streaming started */
+    ULONGLONG RenderBytesIn;                                       /* bytes received since streaming started */
+    ULONGLONG RenderBytesOut;                                      /* bytes sent since streaming started */
+    ULONG RenderNextFrame;                                         /* expected start frame of the next completed transfer */
+    ULONG RenderRunStartFrame;                                     /* first USB frame of the stream run, 0 before the first completion */
+    ULONG RenderRunEndFrame;                                       /* last USB frame of the stream run */
+    LONG RenderPumpRequests;                                       /* serializes the render pump */
+    LONG RenderWaitingForSpace;                                    /* a stream frame waits for space in the render fifo */
     ULONG CaptureBufferOffset;
     ULONG CaptureBufferLength;
     PUCHAR CaptureBuffer;

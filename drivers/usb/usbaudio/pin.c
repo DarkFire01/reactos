@@ -11,7 +11,20 @@
 
 #define PACKET_COUNT 16
 #define IRP_CAPTURE_COUNT 16
-#define RENDER_IRP_COUNT (16)
+/* up to RENDER_IRP_COUNT * RENDER_PACKETS_PER_URB frames are scheduled, this has to stay
+ * below the 1024 entries of the frame list */
+#define RENDER_IRP_COUNT (32)
+/* render transfers carry up to 20ms of audio, always in whole packets */
+#define RENDER_PACKETS_PER_URB (20)
+/* below this number of pending render transfers the available packets are sent without
+ * waiting for a full transfer, so the device does not run dry */
+#define RENDER_LOW_WATER_IRPS (4)
+/* audio buffered before streaming (re)starts, absorbs the jitter of the client */
+#define RENDER_PREBUFFER_MS (200)
+/* streaming starts at the latest this long after the first data arrived, so sounds shorter
+ * than the prebuffer play too. It is longer than the prebuffer, a client delivering in real
+ * time fills the prebuffer before */
+#define RENDER_START_TIMEOUT_MS (RENDER_PREBUFFER_MS + 50)
 
 
 NTSTATUS
@@ -488,26 +501,6 @@ UsbAudioGetRenderPacketLength(
     return Samples * WaveFormat->WaveFormatEx.nBlockAlign;
 }
 
-static
-ULONG
-UsbAudioGetRenderPacketCount(
-    IN PKSDATAFORMAT_WAVEFORMATEX WaveFormat,
-    IN ULONG MaximumPacketSize,
-    IN ULONG SampleRemainder,
-    IN ULONG TransferBufferSize)
-{
-    ULONG PacketCount = 0;
-    ULONG Length = 0;
-
-    while (Length < TransferBufferSize && PacketCount < USB_AUDIO_MAX_ISO_PACKETS)
-    {
-        Length += UsbAudioGetRenderPacketLength(WaveFormat, MaximumPacketSize, &SampleRemainder);
-        PacketCount++;
-    }
-
-    return PacketCount;
-}
-
 NTSTATUS
 RenderInitializeUrbAndIrp(
     IN PKSPIN Pin,
@@ -533,6 +526,9 @@ RenderInitializeUrbAndIrp(
     Irp->IoStatus.Information = 0;
     Irp->Flags = 0;
     Irp->UserBuffer = NULL;
+
+    /* the transfer buffer belongs to the irp, keep it across IoInitializeIrp */
+    Irp->Tail.Overlay.DriverContext[2] = TransferBuffer;
 
     /* init stack location */
     IoStack = IoGetNextIrpStackLocation(Irp);
@@ -594,6 +590,213 @@ RenderInitializeUrbAndIrp(
 
     /* done */
     return STATUS_SUCCESS;
+}
+
+/* reports the data rates of the stream which ran dry. The client delivers too slow if the
+ * received rate is below the format rate, transfers complete too early if the sent rate is above */
+static
+VOID
+UsbAudioRenderReportUnderrun(
+    IN PKSPIN Pin,
+    IN PPIN_CONTEXT PinContext)
+{
+    PKSDATAFORMAT_WAVEFORMATEX WaveFormat;
+    ULONGLONG Elapsed;
+
+    WaveFormat = (PKSDATAFORMAT_WAVEFORMATEX)Pin->ConnectionFormat;
+
+    /* interrupt time is in 100ns units */
+    Elapsed = (KeQueryInterruptTime() - PinContext->RenderRunStartTime) / 10000;
+    if (Elapsed == 0)
+        Elapsed = 1;
+
+    /* a USB frame lasts 1ms, both clocks have to advance at the same rate */
+    DPRINT1("UsbAudioRenderPump underrun after %I64u ms / %u USB frames: received %I64u bytes (%I64u B/s) sent %I64u bytes (%I64u B/s) format %u B/s\n",
+            Elapsed,
+            PinContext->RenderRunEndFrame - PinContext->RenderRunStartFrame,
+            PinContext->RenderBytesIn, PinContext->RenderBytesIn * 1000 / Elapsed,
+            PinContext->RenderBytesOut, PinContext->RenderBytesOut * 1000 / Elapsed,
+            WaveFormat->WaveFormatEx.nAvgBytesPerSec);
+}
+
+static
+VOID
+UsbAudioRenderPump(
+    IN PKSPIN Pin);
+
+/* starts streaming of a sound which is shorter than the prebuffer */
+static
+VOID
+NTAPI
+UsbAudioRenderStartDpc(
+    IN PKDPC Dpc,
+    IN PVOID DeferredContext,
+    IN PVOID SystemArgument1,
+    IN PVOID SystemArgument2)
+{
+    PKSPIN Pin = DeferredContext;
+    PPIN_CONTEXT PinContext = Pin->Context;
+
+    KeAcquireSpinLockAtDpcLevel(&PinContext->IrpListLock);
+    PinContext->RenderStartTimerArmed = FALSE;
+    if (!PinContext->RenderStarted)
+        PinContext->RenderForceStart = TRUE;
+    KeReleaseSpinLockFromDpcLevel(&PinContext->IrpListLock);
+
+    UsbAudioRenderPump(Pin);
+}
+
+/* sends the audio data of the render fifo. Every transfer consists of whole packets, so the
+ * device receives the samples of exactly one frame in every packet, independent of the size
+ * of the stream frames the client sends */
+static
+VOID
+UsbAudioRenderSubmit(
+    IN PKSPIN Pin)
+{
+    PPIN_CONTEXT PinContext;
+    PKSDATAFORMAT_WAVEFORMATEX WaveFormat;
+    ULONG MaximumPacketSize;
+    ULONG SampleRemainder;
+    ULONG PacketCount;
+    ULONG PacketLength;
+    ULONG Length;
+    ULONG Copy;
+    PUCHAR TransferBuffer;
+    PLIST_ENTRY Entry;
+    PIRP Irp;
+    KIRQL OldLevel;
+    NTSTATUS Status;
+    LONG Pending;
+
+    PinContext = Pin->Context;
+    WaveFormat = (PKSDATAFORMAT_WAVEFORMATEX)Pin->ConnectionFormat;
+    MaximumPacketSize = PinContext->InterfaceInfo->Pipes[0].MaximumPacketSize;
+
+    while (TRUE)
+    {
+        KeAcquireSpinLock(&PinContext->IrpListLock, &OldLevel);
+
+        if (PinContext->StopStreaming || IsListEmpty(&PinContext->IrpListHead))
+        {
+            /* no irp available */
+            KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
+            break;
+        }
+
+        /* calculate the size of the next transfer from the packets available in the fifo */
+        SampleRemainder = PinContext->RenderSampleRemainder;
+        Length = 0;
+        for (PacketCount = 0; PacketCount < PinContext->RenderPacketsPerUrb; PacketCount++)
+        {
+            PacketLength = UsbAudioGetRenderPacketLength(WaveFormat, MaximumPacketSize, &SampleRemainder);
+            if (Length + PacketLength > PinContext->RenderUrbBufferSize ||
+                Length + PacketLength > PinContext->BufferLength)
+                break;
+
+            Length += PacketLength;
+        }
+
+        Pending = RENDER_IRP_COUNT - PinContext->StoppedStreamingIrps;
+
+        if (PinContext->RenderStarted && Pending == 0 && Length == 0)
+        {
+            /* all transfers completed and no packet is left, the device ran dry */
+            UsbAudioRenderReportUnderrun(Pin, PinContext);
+            PinContext->RenderStarted = FALSE;
+            PinContext->RenderForceStart = FALSE;
+        }
+
+        if (!PinContext->RenderStarted)
+        {
+            if (PinContext->BufferLength < PinContext->RenderPrebufferSize && !PinContext->RenderForceStart)
+            {
+                /* fill the prebuffer first, the timer starts the stream of a short sound */
+                if (PinContext->BufferLength && !PinContext->RenderStartTimerArmed)
+                {
+                    LARGE_INTEGER DueTime;
+
+                    DueTime.QuadPart = -10000LL * RENDER_START_TIMEOUT_MS;
+                    PinContext->RenderStartTimerArmed = TRUE;
+                    KeSetTimer(&PinContext->RenderStartTimer, DueTime, &PinContext->RenderStartDpc);
+                }
+                KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
+                break;
+            }
+
+            /* start streaming */
+            PinContext->RenderStarted = TRUE;
+            PinContext->RenderForceStart = FALSE;
+            PinContext->RenderRunStartTime = KeQueryInterruptTime();
+            PinContext->RenderRunStartFrame = 0;
+            PinContext->RenderBytesIn = PinContext->BufferLength;
+            PinContext->RenderBytesOut = 0;
+        }
+
+        if (Length == 0 || (PacketCount < PinContext->RenderPacketsPerUrb && Pending >= RENDER_LOW_WATER_IRPS))
+        {
+            /* wait for more audio data, unless the device is about to run dry */
+            KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
+            break;
+        }
+        PinContext->RenderBytesOut += Length;
+
+        Entry = RemoveHeadList(&PinContext->IrpListHead);
+        Irp = (PIRP)CONTAINING_RECORD(Entry, IRP, Tail.Overlay.ListEntry);
+        InterlockedDecrement(&PinContext->StoppedStreamingIrps);
+
+        /* copy the audio data out of the fifo, it may wrap */
+        TransferBuffer = Irp->Tail.Overlay.DriverContext[2];
+        Copy = min(Length, PinContext->BufferSize - PinContext->BufferOffset);
+        RtlCopyMemory(TransferBuffer, &PinContext->Buffer[PinContext->BufferOffset], Copy);
+        RtlCopyMemory(&TransferBuffer[Copy], PinContext->Buffer, Length - Copy);
+
+        PinContext->BufferOffset = (PinContext->BufferOffset + Length) % PinContext->BufferSize;
+        PinContext->BufferLength -= Length;
+
+        /* packet lengths are committed with the fifo update, so they always match the data */
+        Status = RenderInitializeUrbAndIrp(Pin, PinContext, Irp, TransferBuffer, Length, MaximumPacketSize, PacketCount);
+        if (!NT_SUCCESS(Status))
+        {
+            /* the audio data is lost, keep the irp */
+            InsertHeadList(&PinContext->IrpListHead, &Irp->Tail.Overlay.ListEntry);
+            InterlockedIncrement(&PinContext->StoppedStreamingIrps);
+            KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
+            break;
+        }
+
+        Irp->Tail.Overlay.DriverContext[1] = NULL;
+
+        KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
+
+        /* space was freed in the fifo, continue with the stream frame which did not fit */
+        if (InterlockedExchange(&PinContext->RenderWaitingForSpace, FALSE))
+        {
+            KsPinAttemptProcessing(Pin, TRUE);
+        }
+
+        DPRINT("UsbAudioRenderPump sending Irp %p PacketCount %u Length %u\n", Irp, PacketCount, Length);
+        IoCallDriver(PinContext->LowerDevice, Irp);
+    }
+}
+
+/* the pump runs from the pin worker, the completion routine and the start timer. Only one
+ * instance submits at a time, so the transfers reach usbport in the order of the audio data.
+ * A caller finding the pump active lets that instance run another round */
+static
+VOID
+UsbAudioRenderPump(
+    IN PKSPIN Pin)
+{
+    PPIN_CONTEXT PinContext = Pin->Context;
+
+    if (InterlockedIncrement(&PinContext->RenderPumpRequests) != 1)
+        return;
+
+    do
+    {
+        UsbAudioRenderSubmit(Pin);
+    } while (InterlockedDecrement(&PinContext->RenderPumpRequests) != 0);
 }
 
 VOID
@@ -875,6 +1078,8 @@ InitStreamPin(
     PPIN_CONTEXT PinContext;
     PKSDATAFORMAT_WAVEFORMATEX WaveFormatEx;
     PIO_STACK_LOCATION IoStack;
+    ULONG MaximumPacketLength;
+    PVOID TransferBuffer;
 
     DPRINT1("InitStreamPin\n");
 
@@ -890,11 +1095,35 @@ InitStreamPin(
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    /* init buffer size*/
+    /* the 1 sec buffer is the render fifo, BufferOffset is the read position, BufferLength the filled bytes */
     PinContext->BufferSize = WaveFormatEx->WaveFormatEx.nAvgBytesPerSec;
     PinContext->BufferOffset = 0;
     PinContext->BufferLength = 0;
     PinContext->RenderSampleRemainder = 0;
+    PinContext->RenderWaitingForSpace = FALSE;
+    PinContext->RenderStarted = FALSE;
+    PinContext->RenderForceStart = FALSE;
+    PinContext->RenderStartTimerArmed = FALSE;
+    PinContext->RenderPumpRequests = 0;
+    PinContext->RenderPrebufferSize = WaveFormatEx->WaveFormatEx.nAvgBytesPerSec / 1000 * RENDER_PREBUFFER_MS;
+    PinContext->RenderPrebufferSize -= PinContext->RenderPrebufferSize % WaveFormatEx->WaveFormatEx.nBlockAlign;
+    KeInitializeTimer(&PinContext->RenderStartTimer);
+    KeInitializeDpc(&PinContext->RenderStartDpc, UsbAudioRenderStartDpc, Pin);
+    KsAddItemToObjectBag(Pin->Bag, PinContext->Buffer, ExFreePool);
+
+    /* every render irp has its own page as transfer buffer. A page is physically contiguous,
+     * so no packet spans two pages which the host controller would have to bounce.
+     * A packet carries at most one sample more than nSamplesPerSec / 1000 */
+    MaximumPacketLength = (WaveFormatEx->WaveFormatEx.nSamplesPerSec / USB_AUDIO_FRAMES_PER_SECOND + 1) *
+                          WaveFormatEx->WaveFormatEx.nBlockAlign;
+    if (MaximumPacketLength == 0 || MaximumPacketLength > PAGE_SIZE)
+    {
+        DPRINT1("InitStreamPin invalid packet length %u\n", MaximumPacketLength);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    PinContext->RenderUrbBufferSize = PAGE_SIZE;
+    PinContext->RenderPacketsPerUrb = min(RENDER_PACKETS_PER_URB, PAGE_SIZE / MaximumPacketLength);
 
     /* initialize completion event */
     KeInitializeEvent(&PinContext->StoppedStreamingEvent, SynchronizationEvent, FALSE);
@@ -931,11 +1160,21 @@ InitStreamPin(
 
         IoSetCompletionRoutine(Irp, UsbAudioRenderComplete, Pin, TRUE, TRUE, TRUE);
 
-        /* insert into irp list */
-        InsertTailList(&PinContext->IrpListHead, &Irp->Tail.Overlay.ListEntry);
-
         /* add to object bag*/
         KsAddItemToObjectBag(Pin->Bag, Irp, ExFreePool);
+
+        /* assign the transfer buffer of the irp, a page sized allocation is page aligned */
+        TransferBuffer = AllocFunction(PinContext->RenderUrbBufferSize);
+        if (!TransferBuffer)
+        {
+            /* no memory */
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        KsAddItemToObjectBag(Pin->Bag, TransferBuffer, ExFreePool);
+        Irp->Tail.Overlay.DriverContext[2] = TransferBuffer;
+
+        /* insert into irp list */
+        InsertTailList(&PinContext->IrpListHead, &Irp->Tail.Overlay.ListEntry);
     }
 
     return STATUS_SUCCESS;
@@ -1134,6 +1373,13 @@ USBAudioPinClose(
         }
     }
 
+    if (Pin->DataFlow == KSPIN_DATAFLOW_IN)
+    {
+        /* the start timer must not fire after the pin is gone */
+        KeCancelTimer(&PinContext->RenderStartTimer);
+        KeFlushQueuedDpcs();
+    }
+
     /* now abort pipe*/
     Urb = AllocFunction(sizeof(URB));
     if (!Urb)
@@ -1170,6 +1416,62 @@ USBAudioPinClose(
     return Status;
 }
 
+/* reports render transfers which were not played completely. The start frame assigned by
+ * usbport has to continue the previous transfer while the stream runs */
+static
+VOID
+UsbAudioRenderCheckUrb(
+    IN PPIN_CONTEXT PinContext,
+    IN PURB Urb)
+{
+    ULONG Index;
+    ULONG Late = 0;
+    ULONG Failed = 0;
+    ULONG FailedStatus = 0;
+    ULONG StartFrame;
+    ULONG NumberOfPackets;
+    USBD_STATUS PacketStatus;
+
+    StartFrame = Urb->UrbIsochronousTransfer.StartFrame;
+    NumberOfPackets = Urb->UrbIsochronousTransfer.NumberOfPackets;
+
+    for (Index = 0; Index < NumberOfPackets; Index++)
+    {
+        PacketStatus = Urb->UrbIsochronousTransfer.IsoPacket[Index].Status;
+        if (PacketStatus == USBD_STATUS_ISO_NOT_ACCESSED_LATE ||
+            PacketStatus == USBD_STATUS_NOT_ACCESSED)
+        {
+            Late++;
+        }
+        else if (!USBD_SUCCESS(PacketStatus))
+        {
+            Failed++;
+            FailedStatus = PacketStatus;
+        }
+    }
+
+    /* the first completed transfer of a run gives the start of the USB clock measurement */
+    if (!PinContext->RenderRunStartFrame)
+    {
+        PinContext->RenderRunStartFrame = StartFrame;
+        PinContext->RenderRunEndFrame = StartFrame;
+    }
+
+    /* transfers may complete out of order, track the end of the latest one */
+    if ((LONG)(StartFrame + NumberOfPackets - PinContext->RenderRunEndFrame) > 0)
+        PinContext->RenderRunEndFrame = StartFrame + NumberOfPackets;
+
+    if (!USBD_SUCCESS(Urb->UrbHeader.Status) || Late || Failed)
+    {
+        DPRINT1("UsbAudioRenderComplete Status %x StartFrame %x Expected %x Packets %u Late %u Failed %u (%x) Pending %u\n",
+                Urb->UrbHeader.Status, StartFrame, PinContext->RenderNextFrame, NumberOfPackets,
+                Late, Failed, FailedStatus, RENDER_IRP_COUNT - PinContext->StoppedStreamingIrps);
+    }
+
+    /* transfers complete in order, the next one starts behind this one */
+    PinContext->RenderNextFrame = StartFrame + NumberOfPackets;
+}
+
 NTSTATUS
 NTAPI
 UsbAudioRenderComplete(
@@ -1180,9 +1482,9 @@ UsbAudioRenderComplete(
     PKSPIN Pin;
     PPIN_CONTEXT PinContext;
     KIRQL OldLevel;
-    PKSSTREAM_POINTER StreamPointerClone;
     NTSTATUS Status;
     PURB Urb;
+    BOOLEAN StopStreaming;
 
     DPRINT("UsbAudioRenderComplete Irp %p\n", Irp);
 
@@ -1192,41 +1494,40 @@ UsbAudioRenderComplete(
 
     /* get status */
     Status = Irp->IoStatus.Status;
-
-    /* get streampointer */
-    StreamPointerClone = Irp->Tail.Overlay.DriverContext[1];
+    if (!NT_SUCCESS(Status))
+    {
+        /* the stream frames were already completed when their data was copied to the fifo */
+        DPRINT1("UsbAudioRenderComplete failed with %x\n", Status);
+    }
 
     /* get urb */
     Urb = Irp->Tail.Overlay.DriverContext[0];
 
-    /* and free it */
-    FreeFunction(Urb);
-
     /* acquire lock */
     KeAcquireSpinLock(&PinContext->IrpListLock, &OldLevel);
+
+    UsbAudioRenderCheckUrb(PinContext, Urb);
+
+    /* and free it */
+    FreeFunction(Urb);
 
     /* insert entry into ready list */
     InsertTailList(&PinContext->IrpListHead, &Irp->Tail.Overlay.ListEntry);
     InterlockedIncrement(&PinContext->StoppedStreamingIrps);
+    StopStreaming = PinContext->StopStreaming && PinContext->StoppedStreamingIrps == RENDER_IRP_COUNT;
 
     /* release lock */
     KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
 
-    if (!NT_SUCCESS(Status) && StreamPointerClone)
+    if (StopStreaming)
     {
-        /* set status code because it failed */
-        KsStreamPointerSetStatusCode(StreamPointerClone, STATUS_DEVICE_DATA_ERROR);
-        DPRINT1("UsbAudioRenderComplete failed with %x\n", Status);
+        /* the last pending transfer completed, the pin may be closed */
+        KeSetEvent(&PinContext->StoppedStreamingEvent, IO_NO_INCREMENT, FALSE);
+        return STATUS_MORE_PROCESSING_REQUIRED;
     }
 
-    /* mark as complete */
-    StreamPointerClone->Offset->Remaining = 0;
-
-    if (StreamPointerClone)
-    {
-        /* lets delete the stream pointer clone */
-        KsStreamPointerDelete(StreamPointerClone);
-    }
+    /* keep the device fed with the data in the fifo */
+    UsbAudioRenderPump(Pin);
 
     /* done */
     return STATUS_MORE_PROCESSING_REQUIRED;
@@ -1347,14 +1648,10 @@ PinRenderProcess(
     IN PKSPIN Pin)
 {
     PKSSTREAM_POINTER LeadingStreamPointer;
-    PKSSTREAM_POINTER CloneStreamPointer;
-    NTSTATUS Status;
     PPIN_CONTEXT PinContext;
-    ULONG PacketCount, MaximumPacketSize, Offset;
-    PUCHAR TransferBuffer;
-    PIRP Irp = NULL;
+    ULONG Used, Valid, Available, Free, WriteOffset, Copy, Part;
+    PUCHAR Data;
     KIRQL OldLevel;
-    PLIST_ENTRY CurEntry;
 
     DPRINT("PinRenderProcess entered\n");
 
@@ -1365,24 +1662,10 @@ PinRenderProcess(
     {
         DPRINT1("PinRenderProcess StopStreaming == TRUE\n");
 
-        /* acquire spin lock */
-        KeAcquireSpinLock(&PinContext->IrpListLock, &OldLevel);
-
-        while (!IsListEmpty(&PinContext->IrpListHead))
+        /* the irps in the list are idle and already counted as stopped */
+        if (PinContext->StoppedStreamingIrps == RENDER_IRP_COUNT)
         {
-            /* remove entry from list */
-            CurEntry = RemoveHeadList(&PinContext->IrpListHead);
-
-            /* increment stopped irp count */
-            InterlockedIncrement(&PinContext->StoppedStreamingIrps);
-        }
-
-        /* release lock */
-        KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
-
-        if (PinContext->StoppedStreamingIrps == IRP_CAPTURE_COUNT)
-        {
-            DPRINT1("PinCaptureProcess entered signaling event\n");
+            DPRINT1("PinRenderProcess signaling event\n");
             KeSetEvent(&PinContext->StoppedStreamingEvent, 0, FALSE);
         }
         return STATUS_SUCCESS;
@@ -1390,74 +1673,66 @@ PinRenderProcess(
 
 
 
-    LeadingStreamPointer = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
-    if (LeadingStreamPointer == NULL)
+    /* copy the stream frames into the render fifo */
+    while (TRUE)
     {
-        DPRINT("PinRenderProcess NoData\n");
-        return STATUS_SUCCESS;
+        LeadingStreamPointer = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
+        if (LeadingStreamPointer == NULL)
+        {
+            DPRINT("PinRenderProcess NoData\n");
+            break;
+        }
+
+        Data = LeadingStreamPointer->StreamHeader->Data;
+        if (NULL == Data)
+        {
+            KsStreamPointerUnlock(LeadingStreamPointer, FALSE);
+            DPRINT("PinRenderProcess NoData\n");
+            break;
+        }
+
+        /* only DataUsed bytes of the frame contain audio data */
+        ASSERT(LeadingStreamPointer->Offset->Count >= LeadingStreamPointer->Offset->Remaining);
+        Used = LeadingStreamPointer->Offset->Count - LeadingStreamPointer->Offset->Remaining;
+        Valid = min(LeadingStreamPointer->StreamHeader->DataUsed, LeadingStreamPointer->Offset->Count);
+        Available = (Valid > Used) ? Valid - Used : 0;
+
+        KeAcquireSpinLock(&PinContext->IrpListLock, &OldLevel);
+        Free = PinContext->BufferSize - PinContext->BufferLength;
+        WriteOffset = (PinContext->BufferOffset + PinContext->BufferLength) % PinContext->BufferSize;
+        KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
+
+        /* the free part of the fifo is only written here, the pump only reads the filled part */
+        Copy = min(Available, Free);
+        if (Copy)
+        {
+            Part = min(Copy, PinContext->BufferSize - WriteOffset);
+            RtlCopyMemory(&PinContext->Buffer[WriteOffset], &Data[Used], Part);
+            RtlCopyMemory(PinContext->Buffer, &Data[Used + Part], Copy - Part);
+
+            KeAcquireSpinLock(&PinContext->IrpListLock, &OldLevel);
+            PinContext->BufferLength += Copy;
+            PinContext->RenderBytesIn += Copy;
+            KeReleaseSpinLock(&PinContext->IrpListLock, OldLevel);
+        }
+
+        if (Copy < Available)
+        {
+            /* the fifo is full, continue with this frame when transfers completed */
+            InterlockedExchange(&PinContext->RenderWaitingForSpace, TRUE);
+            KsStreamPointerAdvanceOffsets(LeadingStreamPointer, Copy, 0, FALSE);
+            KsStreamPointerUnlock(LeadingStreamPointer, FALSE);
+            break;
+        }
+
+        /* the whole frame is in the fifo, complete it */
+        KsStreamPointerAdvanceOffsetsAndUnlock(LeadingStreamPointer, LeadingStreamPointer->Offset->Remaining, 0, TRUE);
     }
 
-    if (NULL == LeadingStreamPointer->StreamHeader->Data)
-    {
-        KsStreamPointerUnlock(LeadingStreamPointer, FALSE);
-        DPRINT1("PinRenderProcess NoData\n");
-        return STATUS_SUCCESS;
-    }
+    /* send the audio data */
+    UsbAudioRenderPump(Pin);
 
-    /* get irp from ready list */
-    Irp = PinGetIrpFromReadyList(Pin);
-
-    if (!Irp)
-    {
-        /* no irps available */
-        DPRINT1("No irps available\n");
-        KsStreamPointerUnlock(LeadingStreamPointer, FALSE);
-        return STATUS_SUCCESS;
-    }
-
-    /* clone stream pointer */
-    Status = KsStreamPointerClone(LeadingStreamPointer, NULL, 0, &CloneStreamPointer);
-    if (!NT_SUCCESS(Status))
-    {
-        /* failed */
-        KsStreamPointerUnlock(LeadingStreamPointer, FALSE);
-        DPRINT1("Leaking Irp %p\n", Irp);
-        return STATUS_SUCCESS;
-    }
-
-    /* calculate packet count */
-    MaximumPacketSize = PinContext->InterfaceInfo->Pipes[0].MaximumPacketSize;
-    ASSERT(MaximumPacketSize);
-
-    /* init transfer buffer*/
-    TransferBuffer = CloneStreamPointer->StreamHeader->Data;
-
-    /* FIXME correct MaximumPacketSize ? */
-    ASSERT(CloneStreamPointer->Offset->Count > 0);
-    ASSERT(CloneStreamPointer->Offset->Count >= CloneStreamPointer->Offset->Remaining);
-
-    /* calculate offset */
-    Offset = CloneStreamPointer->Offset->Count - CloneStreamPointer->Offset->Remaining;
-
-    /* calculate packet count, every packet carries the samples of one frame */
-    PacketCount = UsbAudioGetRenderPacketCount((PKSDATAFORMAT_WAVEFORMATEX)Pin->ConnectionFormat,
-                                               MaximumPacketSize,
-                                               PinContext->RenderSampleRemainder,
-                                               CloneStreamPointer->Offset->Remaining);
-
-    Status = RenderInitializeUrbAndIrp(Pin, PinContext, Irp, &TransferBuffer[Offset], CloneStreamPointer->Offset->Remaining, MaximumPacketSize, PacketCount);
-    if (NT_SUCCESS(Status))
-    {
-        /* store in irp context */
-        Irp->Tail.Overlay.DriverContext[1] = CloneStreamPointer;
-
-        /* render audio bytes */
-        DPRINT("PinRenderProcess sending Irp %p PacketCount %u MaximumPacketSize %u\n", Irp, PacketCount, MaximumPacketSize);
-        Status = IoCallDriver(PinContext->LowerDevice, Irp);
-
-    }
-
-    return STATUS_PENDING;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
