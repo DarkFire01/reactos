@@ -43,3 +43,12 @@
 @ stdcall -stub HttpTerminate(long ptr)
 @ stub HttpWaitForDemandStart
 @ stub HttpWaitForDisconnect
+@ stdcall HttpCloseRequestQueue(ptr)
+@ stdcall HttpCloseServerSession(int64)
+@ stdcall HttpCloseUrlGroup(int64)
+@ stdcall HttpCreateRequestQueue(long wstr ptr long ptr)
+@ stdcall HttpCreateServerSession(long ptr long)
+@ stdcall HttpCreateUrlGroup(int64 ptr long)
+@ stdcall HttpSetRequestQueueProperty(ptr long ptr long long ptr)
+@ stdcall HttpSetUrlGroupProperty(int64 long ptr long)
+@ stdcall HttpShutdownRequestQueue(ptr)
