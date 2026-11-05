@@ -119,7 +119,8 @@ typedef struct _DCOMP_FRAME_RECORD
     DCOMP_FRAME_TARGET Targets[DCOMP_FRAME_MAX_TARGETS];
 } DCOMP_FRAME_RECORD, *PDCOMP_FRAME_RECORD;
 
-static ERESOURCE gDcompFrameLock;
+/* Nonpaged pool: an ERESOURCE in win32k's session image would put session addresses on the system resource list */
+static PERESOURCE gpDcompFrameLock = NULL;
 static PDCOMP_TOKEN_MANAGER gpTokenManager = NULL;
 static PDCOMP_FRAME_COLLECTION gpFrameCollection = NULL;
 static PDCOMP_FRAME_RECORD gpFrameHistory = NULL;
@@ -141,14 +142,14 @@ VOID
 DcompFrameLock(VOID)
 {
     KeEnterCriticalRegion();
-    ExAcquireResourceExclusiveLite(&gDcompFrameLock, TRUE);
+    ExAcquireResourceExclusiveLite(gpDcompFrameLock, TRUE);
 }
 
 static
 VOID
 DcompFrameUnlock(VOID)
 {
-    ExReleaseResourceLite(&gDcompFrameLock);
+    ExReleaseResourceLite(gpDcompFrameLock);
     KeLeaveCriticalRegion();
 }
 
@@ -411,7 +412,11 @@ NTSTATUS
 FASTCALL
 IntDcompFrameInitialize(VOID)
 {
-    return ExInitializeResourceLite(&gDcompFrameLock);
+    gpDcompFrameLock = ExAllocatePoolWithTag(NonPagedPool, sizeof(*gpDcompFrameLock), TAG_INTERNAL_SYNC);
+    if (!gpDcompFrameLock)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    return ExInitializeResourceLite(gpDcompFrameLock);
 }
 
 /**
