@@ -573,6 +573,18 @@ HvpAddBin(
    ULONG Size,
    HSTORAGE_TYPE Storage);
 
+PHMAP_ENTRY CMAPI
+HvpAllocateBlockList(
+    _In_ PHHIVE Hive,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Paged,
+    _In_opt_ PHMAP_ENTRY Retired);
+
+VOID CMAPI
+HvpFreeBlockList(
+    _In_ PHHIVE Hive,
+    _In_opt_ PHMAP_ENTRY BlockList);
+
 NTSTATUS CMAPI
 HvpCreateHiveFreeCellList(
    PHHIVE Hive);
