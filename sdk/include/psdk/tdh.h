@@ -322,6 +322,11 @@ TdhGetProperty(
     _In_ ULONG BufferSize,
     _Out_writes_bytes_(BufferSize) PBYTE pBuffer);
 
+TDHSTATUS
+WINAPI
+TdhLoadManifestFromBinary(
+    _In_ PWSTR pszBinaryPath);
+
 #ifdef __cplusplus
 }
 #endif
