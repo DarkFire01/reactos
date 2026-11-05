@@ -5892,6 +5892,7 @@ SetupDiInstallDevice(
     LPWSTR lpGuidString = NULL, lpFullGuidString = NULL;
     BOOL RebootRequired = FALSE;
     HKEY hKey = INVALID_HANDLE_VALUE;
+    HKEY hHardwareKey;
     BOOL NeedtoCopyFile;
     LARGE_INTEGER fullVersion;
     LONG rc;
@@ -6122,20 +6123,28 @@ SetupDiInstallDevice(
         RebootRequired = TRUE;
 
     /* Open device registry key */
-    hKey = SETUPDI_OpenDevKey(((struct DeviceInfoSet *)DeviceInfoSet)->HKLM, (struct DeviceInfo *)DeviceInfoData->Reserved, KEY_SET_VALUE);
+    hKey = SETUPDI_OpenDevKey(((struct DeviceInfoSet *)DeviceInfoSet)->HKLM, (struct DeviceInfo *)DeviceInfoData->Reserved, KEY_SET_VALUE | KEY_QUERY_VALUE | KEY_CREATE_SUB_KEY);
     if (hKey == INVALID_HANDLE_VALUE)
         goto cleanup;
 
-    /* Install .HW section */
+    /* Install .HW section into the hardware key, with device properties kept on the instance key */
     DoAction = 0;
     if (!(InstallParams.FlagsEx & DI_FLAGSEX_NO_DRVREG_MODIFY))
         DoAction |= SPINST_REGISTRY;
     strcpyW(pSectionName, DotHW);
-    Result = SetupInstallFromInfSectionW(InstallParams.hwndParent,
+    rc = RegCreateKeyExW(hKey, L"Device Parameters", 0, NULL, REG_OPTION_NON_VOLATILE,
+                         KEY_ALL_ACCESS, NULL, &hHardwareKey, NULL);
+    if (rc != ERROR_SUCCESS)
+    {
+        SetLastError(rc);
+        goto cleanup;
+    }
+    Result = SETUPAPI_InstallFromInfSection(InstallParams.hwndParent,
         SelectedDriver->InfFileDetails->hInf, SectionName,
-        DoAction, hKey, NULL, 0,
+        DoAction, hHardwareKey, hKey, NULL, 0,
         NULL, NULL,
         DeviceInfoSet, DeviceInfoData);
+    RegCloseKey(hHardwareKey);
     if (!Result)
         goto cleanup;
 

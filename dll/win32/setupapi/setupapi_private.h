@@ -350,6 +350,21 @@ DestroyDriverInfoElement(struct DriverInfoElement* driverInfo);
 BOOL
 GetStringField( PINFCONTEXT context, DWORD index, PWSTR *value);
 
+BOOL
+SETUPAPI_InstallFromInfSection(
+    _In_opt_ HWND owner,
+    _In_ HINF hinf,
+    _In_ PCWSTR section,
+    _In_ UINT flags,
+    _In_opt_ HKEY key_root,
+    _In_opt_ HKEY property_root,
+    _In_opt_ PCWSTR src_root,
+    _In_ UINT copy_flags,
+    _In_opt_ PSP_FILE_CALLBACK_W callback,
+    _In_opt_ PVOID context,
+    _In_opt_ HDEVINFO devinfo,
+    _In_opt_ PSP_DEVINFO_DATA devinfo_data);
+
 /* interface.c */
 
 BOOL
