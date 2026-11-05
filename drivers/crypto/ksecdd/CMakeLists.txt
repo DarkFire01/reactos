@@ -1,5 +1,5 @@
 
-spec2def(ksecdd.sys ksecdd.spec)
+spec2def(ksecdd.sys ksecdd.spec ADD_IMPORTLIB)
 
 include_directories(
     ${REACTOS_SOURCE_DIR}/sdk/include/reactos/drivers/ksecdd)
