@@ -2,3 +2,4 @@
 @ stdcall TdhGetEventMapInformation(ptr wstr ptr ptr)
 @ stdcall TdhGetProperty(ptr long ptr long ptr long ptr)
 @ stdcall TdhGetPropertySize(ptr long ptr long ptr ptr)
+@ stdcall TdhLoadManifestFromBinary(wstr)

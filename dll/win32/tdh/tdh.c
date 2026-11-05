@@ -7,6 +7,7 @@
 
 #include <windef.h>
 #include <winbase.h>
+#include <winuser.h>
 #include <tdh.h>
 
 /*
@@ -152,4 +153,41 @@ TdhGetProperty(
         return ERROR_INVALID_PARAMETER;
 
     return ERROR_NOT_FOUND;
+}
+
+/**
+ * @brief
+ * Loads the event manifest embedded in a binary for decoding its events.
+ *
+ * @param[in] pszBinaryPath
+ * Path of the image that carries a WEVT_TEMPLATE resource.
+ *
+ * @return
+ * The load or resource lookup failure, or ERROR_NOT_SUPPORTED for a binary that
+ * has a manifest, as no manifest decoder exists here.
+ */
+TDHSTATUS
+WINAPI
+TdhLoadManifestFromBinary(
+    _In_ PWSTR pszBinaryPath)
+{
+    HMODULE Module;
+    TDHSTATUS Status;
+
+    if (!pszBinaryPath || !*pszBinaryPath)
+        return ERROR_INVALID_PARAMETER;
+
+    Module = LoadLibraryExW(pszBinaryPath,
+                            NULL,
+                            LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+    if (!Module)
+        return GetLastError();
+
+    if (FindResourceW(Module, MAKEINTRESOURCEW(1), L"WEVT_TEMPLATE"))
+        Status = ERROR_NOT_SUPPORTED;
+    else
+        Status = GetLastError();
+
+    FreeLibrary(Module);
+    return Status;
 }
