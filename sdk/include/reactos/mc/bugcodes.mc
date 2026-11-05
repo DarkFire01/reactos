@@ -1752,12 +1752,28 @@ Language=English
 A fatal hardware error has occurred.
 .
 
+MessageId=0x132
+Severity=Success
+Facility=System
+SymbolicName=RESOURCE_OWNER_POINTER_INVALID
+Language=English
+An executive resource was handed a thread owner pointer that is not the caller.
+.
+
 MessageId=0x139
 Severity=Success
 Facility=System
 SymbolicName=KERNEL_SECURITY_CHECK_FAILURE
 Language=English
 A critical kernel security check failed.
+.
+
+MessageId=0x148
+Severity=Success
+Facility=System
+SymbolicName=IO_OBJECT_INVALID
+Language=English
+An I/O routine was passed an object that is not a driver or device object.
 .
 
 MessageId=0x152

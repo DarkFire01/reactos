@@ -1825,6 +1825,25 @@ ExReleaseResourceLite(IN PERESOURCE Resource)
     ExReleaseResourceForThreadLite(Resource, ExGetCurrentResourceThread());
 }
 
+/**
+ * @brief
+ * Drops the thread reference ExSetResourceOwnerPointerEx took for an owner entry.
+ *
+ * @param[in,out] Owner
+ * The owner entry whose count just reached zero.
+ */
+static
+VOID
+ExpReleaseOwnerReference(
+    _Inout_ POWNER_ENTRY Owner)
+{
+    if (!Owner->OwnerReferenced)
+        return;
+
+    Owner->OwnerReferenced = FALSE;
+    ObDereferenceObjectDeferDelete((PVOID)(Owner->OwnerThread & ~(ERESOURCE_THREAD)3));
+}
+
 /*++
  * @name ExReleaseResourceForThreadLite
  * @implemented NT4
@@ -1875,6 +1894,7 @@ ExReleaseResourceForThreadLite(IN PERESOURCE Resource,
         }
 
         /* Clear the owner */
+        ExpReleaseOwnerReference(&Resource->OwnerEntry);
         Resource->OwnerEntry.OwnerThread = 0;
 
         /* Decrement the number of active entries */
@@ -1983,6 +2003,7 @@ ExReleaseResourceForThreadLite(IN PERESOURCE Resource,
         }
 
         /* Clear owner */
+        ExpReleaseOwnerReference(Owner);
         Owner->OwnerThread = 0;
 
         /* See if the resource isn't being owned anymore */
@@ -2050,15 +2071,58 @@ NTAPI
 ExSetResourceOwnerPointer(IN PERESOURCE Resource,
                           IN PVOID OwnerPointer)
 {
+    ExSetResourceOwnerPointerEx(Resource, OwnerPointer, 0);
+}
+
+/**
+ * @brief
+ * Hands the caller's ownership of an executive resource to another owner pointer.
+ *
+ * @param[in,out] Resource
+ * The resource the caller owns.
+ *
+ * @param[in] OwnerPointer
+ * The new owner. Without FLAG_OWNER_POINTER_IS_THREAD its low two bits must be set.
+ *
+ * @param[in] Flags
+ * FLAG_OWNER_POINTER_IS_THREAD when OwnerPointer is the calling thread, which is then
+ * kept referenced until the resource is released for it.
+ */
+VOID
+NTAPI
+ExSetResourceOwnerPointerEx(
+    _Inout_ PERESOURCE Resource,
+    _In_ PVOID OwnerPointer,
+    _In_ ULONG Flags)
+{
     ERESOURCE_THREAD Thread;
+    ERESOURCE_THREAD NewOwner;
     KLOCK_QUEUE_HANDLE LockHandle;
     POWNER_ENTRY Owner, ThisOwner;
+    BOOLEAN HoldThread;
 
-    /* Sanity check */
-    ASSERT((OwnerPointer != 0) && (((ULONG_PTR)OwnerPointer & 3) == 3));
+    NewOwner = (ERESOURCE_THREAD)OwnerPointer;
+    HoldThread = ((Flags & FLAG_OWNER_POINTER_IS_THREAD) != 0);
 
     /* Get the thread */
     Thread = ExGetCurrentResourceThread();
+
+    /* A thread owner pointer may only name the caller */
+    if (HoldThread)
+    {
+        if ((NewOwner & ~(ERESOURCE_THREAD)3) != Thread)
+        {
+            KeBugCheckEx(RESOURCE_OWNER_POINTER_INVALID,
+                         (ULONG_PTR)Resource,
+                         (ULONG_PTR)Resource->OwnerTable,
+                         Thread,
+                         NewOwner);
+        }
+    }
+    else
+    {
+        ASSERT((NewOwner != 0) && ((NewOwner & 3) == 3));
+    }
 
     /* Sanity check */
     ExpVerifyResource(Resource);
@@ -2072,15 +2136,12 @@ ExSetResourceOwnerPointer(IN PERESOURCE Resource,
         /* If it's exclusive, set the first entry no matter what */
         ASSERT(Resource->OwnerEntry.OwnerThread == Thread);
         ASSERT(Resource->OwnerEntry.OwnerCount > 0);
-        Resource->OwnerEntry.OwnerThread = (ULONG_PTR)OwnerPointer;
+        Owner = &Resource->OwnerEntry;
     }
     else
     {
         /* Set the thread in both entries */
-        ThisOwner = ExpFindEntryForThread(Resource,
-                                          (ERESOURCE_THREAD)OwnerPointer,
-                                          0,
-                                          FALSE);
+        ThisOwner = ExpFindEntryForThread(Resource, NewOwner, 0, FALSE);
         Owner = ExpFindEntryForThread(Resource, Thread, 0, FALSE);
         if (!Owner)
         {
@@ -2092,22 +2153,26 @@ ExSetResourceOwnerPointer(IN PERESOURCE Resource,
                          3);
         }
 
-        /* Set if we are the owner */
-        if (ThisOwner)
+        /* Fold our count into the entry the new owner already has */
+        if (ThisOwner && ThisOwner != Owner)
         {
-            /* Update data */
             ThisOwner->OwnerCount += Owner->OwnerCount;
             Owner->OwnerCount = 0;
             Owner->OwnerThread = 0;
             ASSERT(Resource->ActiveEntries >= 2);
             Resource->ActiveEntries--;
-        }
-        else
-        {
-            /* Update the owner entry instead */
-            Owner->OwnerThread = (ERESOURCE_THREAD)OwnerPointer;
+            Owner = ThisOwner;
         }
     }
+
+    /* Keep the thread alive for as long as it is named as an owner */
+    if (HoldThread && !Owner->OwnerReferenced)
+    {
+        ObReferenceObject((PVOID)Thread);
+        Owner->OwnerReferenced = TRUE;
+    }
+
+    Owner->OwnerThread = NewOwner;
 
     /* Release the resource */
     ExReleaseResourceLock(Resource, &LockHandle);
