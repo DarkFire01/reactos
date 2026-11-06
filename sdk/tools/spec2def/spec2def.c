@@ -1068,6 +1068,8 @@ ParseFile(char* pcStart, FILE *fileDest, unsigned *cExports)
         {
             if (CompareToken(pc, "-arch="))
             {
+                int excluded = 0;
+
                 /* Default to not included */
                 included = 0;
                 pc += 5;
@@ -1103,9 +1105,18 @@ ParseFile(char* pcStart, FILE *fileDest, unsigned *cExports)
                         included = 1;
                     }
 
+                    /* An x86_64 export can still leave out ARM64EC explicitly */
+                    if ((giArch == ARCH_ARM64EC) && negated && CompareToken(pc, "arm64ec"))
+                    {
+                        excluded = 1;
+                    }
+
                     /* Skip to next arch or end */
                     while (*pc > ',') pc++;
                 } while (*pc == ',');
+
+                if (excluded)
+                    included = 0;
             }
             else if (CompareToken(pc, "-i386"))
             {
