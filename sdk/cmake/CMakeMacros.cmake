@@ -274,6 +274,14 @@ function(add_cd_file)
         set(_CD_DESTINATION "")
     endif()
 
+    # No media here, the ARM64 build picks up these files when it links the ARM64X images
+    if(USERMODE_ONLY_BUILD)
+        if(_CD_TARGET)
+            set_property(GLOBAL APPEND PROPERTY USERMODE_ONLY_TARGETS ${_CD_TARGET})
+        endif()
+        return()
+    endif()
+
     if(NOT _CD_FOR)
         message(FATAL_ERROR "You must provide a cd name (or \"all\" for all of them) to install the file on!")
     endif()
@@ -609,6 +617,11 @@ function(set_module_type MODULE TYPE)
     # Set our target property
     set_target_properties(${MODULE} PROPERTIES REACTOS_MODULE_TYPE ${TYPE})
 
+    # Every ARM64EC image carries the CHPE metadata and the emulator dispatch pointers
+    if(ARCH STREQUAL "arm64ec")
+        target_link_libraries(${MODULE} hybrid)
+    endif()
+
     # Add the module to the module group list, if it is defined
     if(DEFINED CURRENT_MODULE_GROUP)
         set_property(GLOBAL APPEND PROPERTY ${CURRENT_MODULE_GROUP}_MODULE_LIST "${MODULE}")
@@ -673,7 +686,7 @@ function(set_module_type MODULE TYPE)
             message(STATUS "${MODULE} has no base address")
         endif()
     elseif(TYPE IN_LIST KERNEL_MODULE_TYPES)
-        if(ARCH STREQUAL "arm64")
+        if(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
             # ARM64 images must be based above 4GB
             if(TYPE STREQUAL kerneldll)
                 set_image_base(${MODULE} 0x1C0000000)
