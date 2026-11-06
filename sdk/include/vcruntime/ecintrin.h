@@ -37,6 +37,83 @@
 #define __emul(a, b)                    ((__int64)(int)(a) * (__int64)(int)(b))
 #define __emulu(a, b)                   ((unsigned __int64)(unsigned int)(a) * (unsigned __int64)(unsigned int)(b))
 
+/* The x64 string instructions and 64 bit shift helpers have no ARM64EC intrinsic */
+#define __EC_STOS(Name, Type)                                                       \
+    static __inline void Name(Type *Destination, Type Data, unsigned __int64 Count) \
+    {                                                                               \
+        while (Count--)                                                             \
+            *Destination++ = Data;                                                  \
+    }
+#define __EC_MOVS(Name, Type)                                                                   \
+    static __inline void Name(Type *Destination, const Type *Source, unsigned __int64 Count)    \
+    {                                                                                           \
+        while (Count--)                                                                         \
+            *Destination++ = *Source++;                                                         \
+    }
+
+__EC_STOS(__ec_stosb, unsigned char)
+__EC_STOS(__ec_stosw, unsigned short)
+__EC_STOS(__ec_stosd, unsigned long)
+__EC_STOS(__ec_stosq, unsigned __int64)
+__EC_MOVS(__ec_movsb, unsigned char)
+__EC_MOVS(__ec_movsw, unsigned short)
+__EC_MOVS(__ec_movsd, unsigned long)
+__EC_MOVS(__ec_movsq, unsigned __int64)
+
+#undef __EC_STOS
+#undef __EC_MOVS
+
+#define __stosb(Destination, Data, Count)   __ec_stosb(Destination, Data, Count)
+#define __stosw(Destination, Data, Count)   __ec_stosw(Destination, Data, Count)
+#define __stosd(Destination, Data, Count)   __ec_stosd(Destination, Data, Count)
+#define __stosq(Destination, Data, Count)   __ec_stosq(Destination, Data, Count)
+#define __movsb(Destination, Source, Count) __ec_movsb(Destination, Source, Count)
+#define __movsw(Destination, Source, Count) __ec_movsw(Destination, Source, Count)
+#define __movsd(Destination, Source, Count) __ec_movsd(Destination, Source, Count)
+#define __movsq(Destination, Source, Count) __ec_movsq(Destination, Source, Count)
+
+/* MXCSR from FPCR and FPSR: rounding and flush to zero from FPCR, sticky flags from FPSR, exceptions masked */
+static __inline unsigned int __ec_mm_getcsr(void)
+{
+    unsigned __int64 Fpcr = _ReadStatusReg(ARM64_FPCR);
+    unsigned __int64 Fpsr = _ReadStatusReg(ARM64_FPSR);
+    unsigned int RMode = (unsigned int)(Fpcr >> 22) & 3;
+    unsigned int Csr = 0x1F80;
+
+    /* FPCR rounds up with 1 and down with 2, MXCSR the other way around */
+    Csr |= (((RMode & 1) << 1) | (RMode >> 1)) << 13;
+    Csr |= (unsigned int)((Fpcr >> 24) & 1) << 15;
+    Csr |= (unsigned int)(Fpsr & 1);
+    Csr |= (unsigned int)((Fpsr >> 1) & 0xF) << 2;
+    Csr |= (unsigned int)((Fpsr >> 7) & 1) << 1;
+    return Csr;
+}
+
+static __inline void __ec_mm_setcsr(unsigned int Csr)
+{
+    unsigned __int64 Fpcr = _ReadStatusReg(ARM64_FPCR) & ~((3ULL << 22) | (1ULL << 24));
+    unsigned __int64 Fpsr = _ReadStatusReg(ARM64_FPSR) & ~0x9FULL;
+    unsigned int Rc = (Csr >> 13) & 3;
+
+    Fpcr |= (unsigned __int64)(((Rc & 1) << 1) | (Rc >> 1)) << 22;
+    Fpcr |= (unsigned __int64)((Csr >> 15) & 1) << 24;
+    Fpsr |= Csr & 1;
+    Fpsr |= ((Csr >> 2) & 0xF) << 1;
+    Fpsr |= ((Csr >> 1) & 1) << 7;
+    _WriteStatusReg(ARM64_FPCR, (__int64)Fpcr);
+    _WriteStatusReg(ARM64_FPSR, (__int64)Fpsr);
+}
+
+#define _mm_getcsr                      __ec_mm_getcsr
+#define _mm_setcsr                      __ec_mm_setcsr
+
+/* int 2Ch raises an assertion failure, the ARM64 break code for it is 0xF001 */
+#define __int2c()                       __break(0xF001)
+
+#define __ll_lshift(Mask, Bit)         ((unsigned __int64)(Mask) << ((Bit) & 63))
+#define __ll_rshift(Mask, Bit)          ((__int64)(Mask) >> ((Bit) & 63))
+#define __ull_rshift(Mask, Bit)         ((unsigned __int64)(Mask) >> ((Bit) & 63))
+
 /* The non prefetching forms only differ in a cache hint */
 #define _InterlockedAnd_np              _InterlockedAnd
 #define _InterlockedAnd8_np             _InterlockedAnd8
