@@ -1547,6 +1547,20 @@ typedef struct _MOVEFILE_DESCRIPTOR {
      ULONG          Reserved1;
 } MOVEFILE_DESCRIPTOR, *PMOVEFILE_DESCRIPTOR;
 
+#ifdef __REACTOS__
+typedef struct _CLIENT_ID32
+{
+    ULONG UniqueProcess;
+    ULONG UniqueThread;
+} CLIENT_ID32, *PCLIENT_ID32;
+
+typedef struct _CLIENT_ID64
+{
+    ULONG64 UniqueProcess;
+    ULONG64 UniqueThread;
+} CLIENT_ID64, *PCLIENT_ID64;
+#endif
+
 #if defined(USE_LPC6432)
 #define LPC_CLIENT_ID CLIENT_ID64
 #define LPC_SIZE_T ULONGLONG
