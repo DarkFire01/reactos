@@ -791,6 +791,24 @@ typedef struct _TEB_ACTIVE_FRAME_EX
 } TEB_ACTIVE_FRAME_EX, *PTEB_ACTIVE_FRAME_EX;
 typedef const struct _TEB_ACTIVE_FRAME_EX *PCTEB_ACTIVE_FRAME_EX;
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+//
+// Per thread state of the x64 emulator, layout as in Wine
+//
+typedef struct _CHPE_V2_CPU_AREA_INFO
+{
+    BOOLEAN InSimulation;
+    BOOLEAN InSyscallCallback;
+    ULONG64 EmulatorStackBase;
+    ULONG64 EmulatorStackLimit;
+    struct _ARM64EC_NT_CONTEXT *ContextAmd64;
+    PULONG SuspendDoorbell;
+    ULONG64 LoadingModuleModflag;
+    PVOID EmulatorData[4];
+    ULONG64 EmulatorDataInline;
+} CHPE_V2_CPU_AREA_INFO, *PCHPE_V2_CPU_AREA_INFO;
+#endif
+
 #ifndef __REACTOS__
 typedef struct _CLIENT_ID32
 {

@@ -3119,6 +3119,15 @@ RtlIsDosDeviceName_U(
     _In_ PCWSTR Name
 );
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlIsEcCode(
+    _In_ ULONG64 CodePointer
+);
+#endif
+
 NTSYSAPI
 ULONG
 NTAPI
