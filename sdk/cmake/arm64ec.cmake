@@ -40,6 +40,9 @@ function(finish_arm64ec)
     if(_modules)
         add_dependencies(arm64ec-binaries ${_modules})
     endif()
+
+    # The ARM64X links add the native load config from this library
+    add_dependencies(arm64ec-binaries hybrid)
 endfunction()
 
 #

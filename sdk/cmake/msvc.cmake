@@ -33,7 +33,12 @@ endif()
 
 # ARM64X images share their writable data between the two halves, see sdk/tools/arm64xobj
 if(ARCH STREQUAL "arm64ec" OR (ARCH STREQUAL "arm64" AND ENABLE_ARM64EC))
-    set(_arm64xobj ${REACTOS_BINARY_DIR}/host-tools/bin/arm64xobj.exe)
+    # The ARM64EC build uses the outer build's tool, its own host tools may not be built yet
+    if(ARM64X_NATIVE_BINARY_DIR)
+        set(_arm64xobj ${ARM64X_NATIVE_BINARY_DIR}/host-tools/bin/arm64xobj.exe)
+    else()
+        set(_arm64xobj ${REACTOS_BINARY_DIR}/host-tools/bin/arm64xobj.exe)
+    endif()
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Gw>)
 
     if(ARCH STREQUAL "arm64")
