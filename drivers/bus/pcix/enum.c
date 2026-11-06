@@ -2181,15 +2181,22 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
         }
     }
 
+    DPRINT1("PCIX - Scanning bus %02x, %lu device(s)\n", DeviceExtension->BaseBus, MaxDevice);
+
     /* Loop every device on the bus */
     PciSlot.u.bits.Reserved = 0;
     i = DeviceExtension->BaseBus;
     for (j = 0; j < MaxDevice; j++)
     {
+        BOOLEAN MultiFunction = FALSE;
+
         /* Loop every function of each device */
         PciSlot.u.bits.DeviceNumber = j;
         for (k = 0; k < PCI_MAX_FUNCTION; k++)
         {
+            /* Functions 1-7 only exist when function 0 says the device has them */
+            if ((k != 0) && !MultiFunction) break;
+
             /* Build the final slot structure */
             PciSlot.u.bits.FunctionNumber = k;
 
@@ -2200,8 +2207,14 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                               0,
                               sizeof(USHORT));
 
-            /* Skip invalid device */
-            if (PciData->VendorID == PCI_INVALID_VENDORID) continue;
+            /* Skip invalid device, some host bridges read an absent function as zero */
+            if ((PciData->VendorID == PCI_INVALID_VENDORID) ||
+                (PciData->VendorID == 0x0000))
+            {
+                /* Without function 0 there is no device in this slot */
+                if (k == 0) break;
+                continue;
+            }
 
             /* Now read the whole header */
             PciReadSlotConfig(DeviceExtension,
@@ -2216,6 +2229,9 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                           PciSlot,
                           PCI_HACK_FIXUP_BEFORE_CONFIGURATION,
                           NULL);
+
+            /* Function 0 decides whether the other functions are scanned */
+            if (k == 0) MultiFunction = PCI_MULTIFUNCTION_DEVICE(PciData);
 
             /* Dump device that was found */
             DPRINT("PCIX - Scan Found Device 0x%x (b=0x%x, d=0x%x, f=0x%x)\n",

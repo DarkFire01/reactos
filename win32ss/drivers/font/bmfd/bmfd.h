@@ -13,16 +13,16 @@
 #include <wingdi.h>
 #include <winddi.h>
 
-#if defined(_M_IX86) || defined(_M_AMD64)
-/* on x86 and x64, unaligned access is allowed, byteorder is LE */
+#if defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM64)
+/* on x86, x64 and ARM64, unaligned access is allowed, byteorder is LE */
 #define GETVAL(x) (x)
 #else
 // FIXME: BE
 #define GETVAL(x) \
-    (sizeof(x) == 1) ? (x) : \
-    (sizeof(x) == 2) ? (((PCHAR)&(x))[0] + (((PCHAR)&(x))[1] << 8)) : \
-    (((PCHAR)&(x))[0] + (((PCHAR)&(x))[1] << 8) + (((PCHAR)&(x))[2] << 16) + \
-     (((PCHAR)&(x))[3] << 24))
+    ((sizeof(x) == 1) ? (x) : \
+     (sizeof(x) == 2) ? (((PUCHAR)&(x))[0] | (((PUCHAR)&(x))[1] << 8)) : \
+     (((PUCHAR)&(x))[0] | (((PUCHAR)&(x))[1] << 8) | (((PUCHAR)&(x))[2] << 16) | \
+      ((ULONG)((PUCHAR)&(x))[3] << 24)))
 
 #endif
 
