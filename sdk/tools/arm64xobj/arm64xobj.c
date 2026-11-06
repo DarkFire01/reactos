@@ -124,6 +124,42 @@ static int IsWritableData(OBJ_FILE *Obj, int16_t Section)
     return (Flags & SCN_MEM_WRITE) && !(Flags & SCN_CNT_CODE);
 }
 
+/* Function pointers differ between the halves, each half keeps data that holds them */
+static int HoldsCodePointers(OBJ_FILE *Obj, int16_t Section)
+{
+    uint8_t *Header = SectionHeader(Obj, Section);
+    uint32_t Relocs = Get32(Header + 24);
+    uint32_t Count = Get16(Header + 32);
+    uint32_t r;
+
+    if (Get32(Header + 36) & SCN_LNK_NRELOC_OVFL)
+        Count = Get32(Obj->Data + Relocs + 4);
+
+    for (r = 0; r < Count; r++)
+    {
+        uint32_t Index = Get32(Obj->Data + Relocs + r * RELOC_SIZE + 4);
+        uint8_t *Target;
+        int16_t TargetSection;
+
+        if (Index >= Obj->NumberOfSymbols)
+            continue;
+
+        Target = Symbol(Obj, Index);
+        TargetSection = (int16_t)Get16(Target + 12);
+
+        /* The function type, or a definition in a code section */
+        if ((Get16(Target + 14) & 0xF0) == 0x20)
+            return 1;
+        if (TargetSection > 0 && TargetSection <= Obj->NumberOfSections &&
+            (Get32(SectionHeader(Obj, TargetSection) + 36) & SCN_CNT_CODE))
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int LoadObject(const char *Path, OBJ_FILE *Obj)
 {
     FILE *File = fopen(Path, "rb");
@@ -228,7 +264,7 @@ static int RewriteObject(int Ec, const char *Source, const char *Object)
         }
 
         /* Section symbols carry an aux record, data items do not */
-        if (AuxCount || !IsWritableData(&Obj, Section))
+        if (AuxCount || !IsWritableData(&Obj, Section) || HoldsCodePointers(&Obj, Section))
             continue;
         if (Class != SYM_CLASS_EXTERNAL && Class != SYM_CLASS_STATIC)
             continue;
@@ -256,7 +292,7 @@ static int RewriteObject(int Ec, const char *Source, const char *Object)
         /* The definition stays as a dead local so its COMDAT keeps a leader, users move to an undefined twin */
         {
             uint8_t *Twin = NewSymbols + NewCount * SYMBOL_SIZE;
-            char Dead[64];
+            char Dead[sizeof(Name) + 16];
 
             memset(Twin, 0, SYMBOL_SIZE);
             SetSymbolName(&Obj, Twin, NewName);
@@ -264,9 +300,17 @@ static int RewriteObject(int Ec, const char *Source, const char *Object)
             Redirect[i] = Obj.NumberOfSymbols + NewCount;
             NewCount++;
 
-            snprintf(Dead, sizeof(Dead), "$arm64x$%u", i);
+            /* An exported item still needs this copy, it holds the ARM64EC pointers */
+            if (Class == SYM_CLASS_EXTERNAL)
+            {
+                snprintf(Dead, sizeof(Dead), "%s$arm64ec", Name);
+            }
+            else
+            {
+                snprintf(Dead, sizeof(Dead), "$arm64x$%u", i);
+                Sym[16] = SYM_CLASS_STATIC;
+            }
             SetSymbolName(&Obj, Sym, Dead);
-            Sym[16] = SYM_CLASS_STATIC;
         }
     }
 
@@ -398,14 +442,16 @@ static int RunCommand(ARG_LIST *Args)
 }
 
 static int NativePath(const char *Path, const char *EcRoot, const char *NativeRoot, char *Out, size_t OutSize);
+static void MapToNative(const char *Path, const char *EcRoot, const char *NativeRoot, char *Out, size_t OutSize);
 
 /* Compiler launcher: runs the compile, then rewrites the object it produced.
-   ARM64EC objects without an ARM64 twin keep their data, nothing else would define it. */
+   ARM64EC objects keep their data unless an image links their ARM64 twin directly. A twin
+   inside a static library may never be linked, nothing would define the data then. */
 static int CompileMode(int Ec, const char *EcRoot, const char *NativeRoot, int argc, char *argv[])
 {
     ARG_LIST Args = { 0 };
     const char *Object = NULL, *Source = NULL;
-    char Native[MAX_PATH + 32];
+    char Native[MAX_PATH + 32], NativeSource[MAX_PATH + 32];
     int i, Result;
 
     for (i = 0; i < argc; i++)
@@ -420,8 +466,19 @@ static int CompileMode(int Ec, const char *EcRoot, const char *NativeRoot, int a
     if (Result || !Object)
         return Result;
 
-    if (Ec && !NativePath(Object, EcRoot, NativeRoot, Native, sizeof(Native)))
-        return 0;
+    if (Ec)
+    {
+        if (!NativePath(Object, EcRoot, NativeRoot, Native, sizeof(Native)))
+            return 0;
+
+        strcat(Native, ".arm64xd");
+        if (GetFileAttributesA(Native) == INVALID_FILE_ATTRIBUTES)
+            return 0;
+
+        /* Generated sources live in each build tree, name statics after the ARM64 copy */
+        MapToNative(Source, EcRoot, NativeRoot, NativeSource, sizeof(NativeSource));
+        Source = NativeSource;
+    }
 
     return RewriteObject(Ec, Source, Object);
 }
@@ -500,6 +557,13 @@ static int NativePath(const char *Path, const char *EcRoot, const char *NativeRo
     return GetFileAttributesA(Out) != INVALID_FILE_ATTRIBUTES;
 }
 
+/* The ARM64 build's name of a path inside the ARM64EC build, other paths stay as they are */
+static void MapToNative(const char *Path, const char *EcRoot, const char *NativeRoot, char *Out, size_t OutSize)
+{
+    if (!NativePath(Path, EcRoot, NativeRoot, Out, OutSize))
+        snprintf(Out, OutSize, "%s", Path);
+}
+
 static void ExpandArgs(ARG_LIST *List, int argc, char *argv[])
 {
     int i;
@@ -533,6 +597,142 @@ static int IsInput(const char *Arg)
     return Arg[0] != '/' && Arg[0] != '-' && (EndsWith(Arg, ".obj") || EndsWith(Arg, ".lib"));
 }
 
+/* Tells whether a library holds a symbol, names in its symbol tables end with a NUL */
+static int LibraryHasSymbol(const char *Library, const char *Name)
+{
+    FILE *File = fopen(Library, "rb");
+    size_t Length, NameLength = strlen(Name) + 1, i;
+    char *Data;
+    int Found = 0;
+
+    if (!File)
+        return 0;
+
+    fseek(File, 0, SEEK_END);
+    Length = (size_t)ftell(File);
+    fseek(File, 0, SEEK_SET);
+    Data = malloc(Length + 1);
+    if (Data && fread(Data, 1, Length, File) == Length)
+    {
+        for (i = 1; i + NameLength <= Length && !Found; i++)
+            Found = !Data[i - 1] && !memcmp(Data + i, Name, NameLength);
+    }
+    free(Data);
+    fclose(File);
+    return Found;
+}
+
+/* The import library an ARM64EC link uses for a module, if it is one of the inputs */
+static const char *FindImportLibrary(ARG_LIST *List, const char *Module, size_t ModuleLength)
+{
+    char Name[MAX_PATH];
+    const char *Base;
+    int i;
+
+    snprintf(Name, sizeof(Name), "lib%.*s.lib", (int)ModuleLength, Module);
+    for (i = 1; i < List->Count; i++)
+    {
+        if (!IsInput(List->Items[i]))
+            continue;
+
+        Base = strrchr(List->Items[i], '\\');
+        if (!Base || (strrchr(List->Items[i], '/') > Base))
+            Base = strrchr(List->Items[i], '/');
+        Base = Base ? Base + 1 : List->Items[i];
+
+        if (!_stricmp(Base, Name))
+            return List->Items[i];
+    }
+    return NULL;
+}
+
+/* An ARM64EC export that forwards to a function the image imports takes that function's ARM64EC
+   import thunk away in an ARM64X link. Exporting the import itself keeps the thunk, and x64
+   callers of the export still end up in the same function. */
+static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output, char *NewDef, size_t NewDefSize, int *ExportsHandler)
+{
+    char Line[1024], Symbol[512];
+    const char *Name, *Equal, *Dot, *Target, *End, *Library;
+    FILE *In, *Out;
+
+    In = fopen(Def, "r");
+    if (!In)
+        return 0;
+
+    snprintf(NewDef, NewDefSize, "%s.ec.def", Output);
+    Out = fopen(NewDef, "w");
+    if (!Out)
+    {
+        fclose(In);
+        return 0;
+    }
+
+    while (fgets(Line, sizeof(Line), In))
+    {
+        Name = Line;
+        while (*Name == ' ' || *Name == '\t')
+            Name++;
+
+        if (!strncmp(Name, "__C_specific_handler", 20) && strchr("= \t\r\n", Name[20]))
+            *ExportsHandler = 1;
+
+        Equal = strchr(Name, '=');
+        Dot = Equal ? strchr(Equal, '.') : NULL;
+        Target = Dot ? Dot + 1 : NULL;
+        End = Target ? Target + strcspn(Target, " \t\r\n") : NULL;
+
+        if (Target && End > Target && *Target != '#' && !memchr(Name, ' ', Equal - Name))
+        {
+            Library = FindImportLibrary(List, Equal + 1, Dot - Equal - 1);
+            snprintf(Symbol, sizeof(Symbol), "__imp_%.*s", (int)(End - Target), Target);
+            if (Library && LibraryHasSymbol(Library, Symbol))
+            {
+                /* The same name is exported as is, a local definition of it wins over the import */
+                if ((size_t)(End - Target) == (size_t)(Equal - Name) && !memcmp(Name, Target, End - Target))
+                    fprintf(Out, "%.*s%s", (int)(Equal - Line), Line, End);
+                else
+                    fprintf(Out, "%.*s%s", (int)(Equal + 1 - Line), Line, Target);
+                continue;
+            }
+        }
+        /* Exported data the ARM64 half shares keeps its ARM64EC copy under another name */
+        if (!Equal && strstr(Name, " DATA"))
+        {
+            size_t NameLength = strcspn(Name, " \t\r\n");
+            int i;
+
+            snprintf(Symbol, sizeof(Symbol), "%.*s$arm64ec", (int)NameLength, Name);
+            for (i = 1; i < List->Count; i++)
+            {
+                if (EndsWith(List->Items[i], ".obj") && LibraryHasSymbol(List->Items[i], Symbol))
+                    break;
+            }
+            if (i < List->Count)
+            {
+                fprintf(Out, "%.*s=%s%s", (int)(Name + NameLength - Line), Line, Symbol, Name + NameLength);
+                continue;
+            }
+        }
+        fputs(Line, Out);
+    }
+
+    fclose(In);
+    fclose(Out);
+    return 1;
+}
+
+/* Marks an ARM64 object that an image links directly, its ARM64EC twin may then use its data */
+static void MarkLinked(const char *Object)
+{
+    char Path[MAX_PATH + 16];
+    FILE *File;
+
+    snprintf(Path, sizeof(Path), "%s.arm64xd", Object);
+    File = fopen(Path, "w");
+    if (File)
+        fclose(File);
+}
+
 /* Linker launcher for the ARM64 build: keeps the inputs of each image for its ARM64X link */
 static int RecordMode(int argc, char *argv[])
 {
@@ -554,7 +754,11 @@ static int RecordMode(int argc, char *argv[])
             {
                 const char *Arg = In.Items[i];
                 if (IsInput(Arg) && GetFullPathNameA(Arg, sizeof(Full), Full, NULL))
+                {
                     fprintf(File, "%s\n", Full);
+                    if (EndsWith(Full, ".obj"))
+                        MarkLinked(Full);
+                }
                 else if (IsOption(Arg, "DEF:") && GetFullPathNameA(Arg + 5, sizeof(Full), Full, NULL))
                     fprintf(File, "/defarm64native:%s\n", Full);
             }
@@ -569,10 +773,10 @@ static int RecordMode(int argc, char *argv[])
 static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *argv[])
 {
     ARG_LIST In = { 0 }, Out = { 0 };
-    char Native[MAX_PATH + 32], Line[MAX_PATH + 64];
+    char Native[MAX_PATH + 32], Line[MAX_PATH + 64], NewDef[MAX_PATH + 16];
     const char *Output;
     FILE *Record = NULL;
-    int i, IsDll = 0;
+    int i, IsDll = 0, ExportsHandler = 0;
 
     ExpandArgs(&In, argc, argv);
 
@@ -600,6 +804,17 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
             AddArg(&Out, "/machine:arm64x");
             AddArg(&Out, "/arm64xcrossresolve");
             AddArg(&Out, "/ignore:4293");
+            continue;
+        }
+        if (IsOption(In.Items[i], "DEF:") &&
+            RewriteForwarders(&In, In.Items[i] + 5, Output, NewDef, sizeof(NewDef), &ExportsHandler))
+        {
+            snprintf(Line, sizeof(Line), "/DEF:%s", NewDef);
+            AddArg(&Out, Line);
+
+            /* Import libraries define the handler too, an exported one has to be the local definition */
+            if (ExportsHandler)
+                AddArg(&Out, "/INCLUDE:#__C_specific_handler");
             continue;
         }
         AddArg(&Out, In.Items[i]);
