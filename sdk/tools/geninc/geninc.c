@@ -37,6 +37,7 @@ int main(int argc, char* argv[])
     ASMGENDATA data;
     int i, result = -1;
     int ms_format = 0;
+    int arm_syntax = 0;
     char header[20];
     uint32_t e_lfanew, signature;
     uint16_t Machine, NumberOfSections, SizeOfOptionalHeader;
@@ -56,6 +57,9 @@ int main(int argc, char* argv[])
     SECTION section;
 
     if (argc >= 4 && _stricmp(argv[3], "-ms") == 0) ms_format = 1;
+
+    /* ARM64EC images carry the AMD64 machine type but are assembled with armasm64 */
+    if (argc >= 5 && _stricmp(argv[4], "-armasm") == 0) arm_syntax = 1;
 
     /* Open the input file */
     input = fopen(argv[1], "rb");
@@ -188,7 +192,8 @@ int main(int argc, char* argv[])
                 if (ms_format)
                 {
                     if ((Machine == IMAGE_FILE_MACHINE_ARMNT) ||
-                        (Machine == IMAGE_FILE_MACHINE_ARM64))
+                        (Machine == IMAGE_FILE_MACHINE_ARM64) ||
+                        arm_syntax)
                     {
                         fprintf(output, "%s equ 0x%"PRIx64"\n", data.Name, data.Value);
                     }
