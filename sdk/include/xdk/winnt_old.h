@@ -672,6 +672,8 @@
 #define IMAGE_FILE_MACHINE_TRICORE    0x0520
 #define IMAGE_FILE_MACHINE_CEF        0x0CEF
 #define IMAGE_FILE_MACHINE_ARM64      0xAA64
+#define IMAGE_FILE_MACHINE_ARM64EC    0xA641
+#define IMAGE_FILE_MACHINE_ARM64X     0xA64E
 
 #define IMAGE_FILE_EXPORT_DIRECTORY        0
 #define IMAGE_FILE_IMPORT_DIRECTORY        1
@@ -3928,6 +3930,13 @@ typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY32 {
   DWORD SEHandlerCount;
 } IMAGE_LOAD_CONFIG_DIRECTORY32, *PIMAGE_LOAD_CONFIG_DIRECTORY32;
 
+typedef struct _IMAGE_LOAD_CONFIG_CODE_INTEGRITY {
+  WORD Flags;
+  WORD Catalog;
+  DWORD CatalogOffset;
+  DWORD Reserved;
+} IMAGE_LOAD_CONFIG_CODE_INTEGRITY, *PIMAGE_LOAD_CONFIG_CODE_INTEGRITY;
+
 typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY64 {
   DWORD Size;
   DWORD TimeDateStamp;
@@ -3949,7 +3958,90 @@ typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY64 {
   ULONGLONG SecurityCookie;
   ULONGLONG SEHandlerTable;
   ULONGLONG SEHandlerCount;
+  ULONGLONG GuardCFCheckFunctionPointer;
+  ULONGLONG GuardCFDispatchFunctionPointer;
+  ULONGLONG GuardCFFunctionTable;
+  ULONGLONG GuardCFFunctionCount;
+  DWORD GuardFlags;
+  IMAGE_LOAD_CONFIG_CODE_INTEGRITY CodeIntegrity;
+  ULONGLONG GuardAddressTakenIatEntryTable;
+  ULONGLONG GuardAddressTakenIatEntryCount;
+  ULONGLONG GuardLongJumpTargetTable;
+  ULONGLONG GuardLongJumpTargetCount;
+  ULONGLONG DynamicValueRelocTable;
+  ULONGLONG CHPEMetadataPointer;
+  ULONGLONG GuardRFFailureRoutine;
+  ULONGLONG GuardRFFailureRoutineFunctionPointer;
+  DWORD DynamicValueRelocTableOffset;
+  WORD DynamicValueRelocTableSection;
+  WORD Reserved2;
+  ULONGLONG GuardRFVerifyStackPointerFunctionPointer;
+  DWORD HotPatchTableOffset;
+  DWORD Reserved3;
+  ULONGLONG EnclaveConfigurationPointer;
+  ULONGLONG VolatileMetadataPointer;
+  ULONGLONG GuardEHContinuationTable;
+  ULONGLONG GuardEHContinuationCount;
+  ULONGLONG GuardXFGCheckFunctionPointer;
+  ULONGLONG GuardXFGDispatchFunctionPointer;
+  ULONGLONG GuardXFGTableDispatchFunctionPointer;
+  ULONGLONG CastGuardOsDeterminedFailureMode;
+  ULONGLONG GuardMemcpyFunctionPointer;
 } IMAGE_LOAD_CONFIG_DIRECTORY64, *PIMAGE_LOAD_CONFIG_DIRECTORY64;
+
+/* ARM64X and ARM64EC images, names as in Wine */
+typedef struct _IMAGE_ARM64EC_METADATA {
+  ULONG Version;
+  ULONG CodeMap;
+  ULONG CodeMapCount;
+  ULONG CodeRangesToEntryPoints;
+  ULONG RedirectionMetadata;
+  ULONG __os_arm64x_dispatch_call_no_redirect;
+  ULONG __os_arm64x_dispatch_ret;
+  ULONG __os_arm64x_dispatch_call;
+  ULONG __os_arm64x_dispatch_icall;
+  ULONG __os_arm64x_dispatch_icall_cfg;
+  ULONG AlternateEntryPoint;
+  ULONG AuxiliaryIAT;
+  ULONG CodeRangesToEntryPointsCount;
+  ULONG RedirectionMetadataCount;
+  ULONG GetX64InformationFunctionPointer;
+  ULONG SetX64InformationFunctionPointer;
+  ULONG ExtraRFETable;
+  ULONG ExtraRFETableSize;
+  ULONG __os_arm64x_dispatch_fptr;
+  ULONG AuxiliaryIATCopy;
+  ULONG AuxDelayloadIAT;
+  ULONG AuxDelayloadIATCopy;
+  ULONG ReservedBitField;
+} IMAGE_ARM64EC_METADATA, *PIMAGE_ARM64EC_METADATA;
+
+/* The low two bits of StartOffset give the kind of code in the range */
+#define IMAGE_CHPE_RANGE_ARM64   0
+#define IMAGE_CHPE_RANGE_ARM64EC 1
+#define IMAGE_CHPE_RANGE_AMD64   2
+
+typedef struct _IMAGE_CHPE_RANGE_ENTRY {
+  union {
+    ULONG StartOffset;
+    struct {
+      ULONG NativeCode : 1;
+      ULONG AddressBits : 31;
+    } DUMMYSTRUCTNAME;
+  } DUMMYUNIONNAME;
+  ULONG Length;
+} IMAGE_CHPE_RANGE_ENTRY, *PIMAGE_CHPE_RANGE_ENTRY;
+
+typedef struct _IMAGE_ARM64EC_REDIRECTION_ENTRY {
+  ULONG Source;
+  ULONG Destination;
+} IMAGE_ARM64EC_REDIRECTION_ENTRY, *PIMAGE_ARM64EC_REDIRECTION_ENTRY;
+
+typedef struct _IMAGE_ARM64EC_CODE_RANGE_ENTRY_POINT {
+  ULONG StartRva;
+  ULONG EndRva;
+  ULONG EntryPoint;
+} IMAGE_ARM64EC_CODE_RANGE_ENTRY_POINT, *PIMAGE_ARM64EC_CODE_RANGE_ENTRY_POINT;
 
 #ifdef _WIN64
 typedef IMAGE_LOAD_CONFIG_DIRECTORY64 IMAGE_LOAD_CONFIG_DIRECTORY;
