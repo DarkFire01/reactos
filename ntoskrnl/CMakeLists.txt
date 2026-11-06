@@ -1,6 +1,23 @@
 
 PROJECT(NTOS)
 
+# The system call stubs of ntdll, user mode only builds need nothing else from here
+include_directories(${REACTOS_SOURCE_DIR}/ntoskrnl/include)
+add_asm_files(ntdllsys_asm ntdll.S)
+add_library(ntdllsys ${ntdllsys_asm})
+set_target_properties(ntdllsys PROPERTIES LINKER_LANGUAGE "C")
+add_dependencies(ntdllsys asm)
+
+# NT6 syscalls for ntdll_vista
+add_asm_files(ntdllsys_nt6_asm ntdll_nt6.S)
+add_library(ntdllsys_nt6 ${ntdllsys_nt6_asm})
+set_target_properties(ntdllsys_nt6 PROPERTIES LINKER_LANGUAGE "C")
+add_dependencies(ntdllsys_nt6 asm)
+
+if(USERMODE_ONLY_BUILD)
+    return()
+endif()
+
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
     # Enable this again. CORE-17637
     add_compile_options(-Wunused-result)
@@ -36,7 +53,7 @@ endif()
 list(APPEND PCH_SKIP_SOURCE
     guid.c)
 
-if(NOT SYSWOW64_BUILD)
+if(NOT USERMODE_ONLY_BUILD)
     add_executable(ntoskrnl
         ${ntoskrnl_asm}
         ${NTOSKRNL_SOURCE}
@@ -60,14 +77,3 @@ if(NOT SYSWOW64_BUILD)
 
     add_subdirectory(ntkrnlmp)
 endif()
-
-add_asm_files(ntdllsys_asm ntdll.S)
-add_library(ntdllsys ${ntdllsys_asm})
-set_target_properties(ntdllsys PROPERTIES LINKER_LANGUAGE "C")
-add_dependencies(ntdllsys asm)
-
-# NT6 syscalls for ntdll_vista
-add_asm_files(ntdllsys_nt6_asm ntdll_nt6.S)
-add_library(ntdllsys_nt6 ${ntdllsys_nt6_asm})
-set_target_properties(ntdllsys_nt6 PROPERTIES LINKER_LANGUAGE "C")
-add_dependencies(ntdllsys_nt6 asm)

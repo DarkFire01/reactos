@@ -11,7 +11,7 @@
 
     END
 
-#elif defined(_M_ARM64)
+#elif defined(_M_ARM64) || defined(_M_ARM64EC)
 
     TEXTAREA
 

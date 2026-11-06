@@ -4,7 +4,7 @@
 /* This file only has the NT5 syscalls */
 #define SYSFUNCS_NT5_ONLY
 
-#if defined(_M_ARM) || defined(_M_ARM64)
+#if defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC)
 
     TEXTAREA
 

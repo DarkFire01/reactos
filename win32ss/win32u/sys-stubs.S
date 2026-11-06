@@ -1,7 +1,7 @@
 
 #include <syscalls.inc>
 
-#ifdef _M_ARM64
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
 
     TEXTAREA
 

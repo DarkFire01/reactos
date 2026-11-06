@@ -46,7 +46,7 @@ $NtFuncEndName
 $ZwFuncEndName
     MEND
 
-#elif defined(_M_ARM64)
+#elif defined(_M_ARM64) || defined(_M_ARM64EC)
 
 #include <kxarm64.h>
 
@@ -56,12 +56,68 @@ $ZwFuncEndName
     GBLA SyscallId
 SyscallId SETA 0
 
+#ifdef _ARM64EC_
+    GBLL SyscallThunkDone
+
+    /* x64 entry shared by all stubs: x4 is the x64 stack past the return address, arguments 5 to 8
+       go to x4-x7 and arguments 9 to 16, the most any system call takes, to the native stack. */
+    MACRO
+    SYSCALL_ENTRY_THUNK
+    IMPORT __os_arm64x_dispatch_ret
+    ALIGN 4
+|SyscallEntryThunk| PROC
+    stp     q6, q7, [sp, #-0xA0]!
+    stp     q8, q9, [sp, #0x20]
+    stp     q10, q11, [sp, #0x40]
+    stp     q12, q13, [sp, #0x60]
+    stp     q14, q15, [sp, #0x80]
+    stp     fp, lr, [sp, #-0x10]!
+    mov     fp, sp
+    sub     sp, sp, #0x40
+    ldp     x10, x11, [x4, #0x40]
+    stp     x10, x11, [sp, #0x00]
+    ldp     x10, x11, [x4, #0x50]
+    stp     x10, x11, [sp, #0x10]
+    ldp     x10, x11, [x4, #0x60]
+    stp     x10, x11, [sp, #0x20]
+    ldp     x10, x11, [x4, #0x70]
+    stp     x10, x11, [sp, #0x30]
+    ldp     x6, x7, [x4, #0x30]
+    ldp     x4, x5, [x4, #0x20]
+    blr     x9
+    mov     x8, x0
+    add     sp, sp, #0x40
+    ldp     fp, lr, [sp], #0x10
+    ldp     q14, q15, [sp, #0x80]
+    ldp     q12, q13, [sp, #0x60]
+    ldp     q10, q11, [sp, #0x40]
+    ldp     q8, q9, [sp, #0x20]
+    ldp     q6, q7, [sp], #0xA0
+    adrp    xip0, __os_arm64x_dispatch_ret
+    ldr     xip0, [xip0, __os_arm64x_dispatch_ret]
+    br      xip0
+    ENDP
+    MEND
+#endif
+
     MACRO
     STUB_U $Name
     LCLS NtFuncName
     LCLS ZwFuncName
+#ifdef _ARM64EC_
+NtFuncName SETS "|#Nt$Name|"
+ZwFuncName SETS "|#Zw$Name|"
+    IF :LNOT: SyscallThunkDone
+    SYSCALL_ENTRY_THUNK
+SyscallThunkDone SETL {TRUE}
+    ENDIF
+    ALIGN 4
+    /* The word before an ARM64EC function locates its x64 entry thunk */
+    DCD     (|SyscallEntryThunk| - ({PC} + 4)) + 1
+#else
 NtFuncName SETS "Nt$Name"
 ZwFuncName SETS "Zw$Name"
+#endif
     ALIGN 4
     EXPORT $NtFuncName
     EXPORT $ZwFuncName
