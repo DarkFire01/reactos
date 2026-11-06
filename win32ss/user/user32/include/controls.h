@@ -58,16 +58,23 @@
 #define CBF_BEENFOCUSED         0x4000  /* has it ever had focus           */
 #define CBF_EUI                 0x8000
 
+#ifdef BUILD_WOW6432
+/* win32k reads this structure with its 64-bit layout, so handles take 64-bit slots */
+#define COMBO_HANDLE(Type, Name) union { Type Name; ULONG64 Name##Slot; }
+#else
+#define COMBO_HANDLE(Type, Name) Type Name
+#endif
+
 /* combo state struct */
 typedef struct
 {
-   HWND           self;
-   HWND           owner;
+   COMBO_HANDLE(HWND, self);
+   COMBO_HANDLE(HWND, owner);
    UINT           dwStyle;
-   HWND           hWndEdit;
-   HWND           hWndLBox;
+   COMBO_HANDLE(HWND, hWndEdit);
+   COMBO_HANDLE(HWND, hWndLBox);
    UINT           wState;
-   HFONT          hFont;
+   COMBO_HANDLE(HFONT, hFont);
    RECT           textRect;
    RECT           buttonRect;
    RECT           droppedRect;

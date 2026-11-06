@@ -71,7 +71,11 @@ const struct builtin_class_descr COMBO_builtin_class =
     CS_PARENTDC | CS_DBLCLKS | CS_HREDRAW | CS_VREDRAW, /* style  */
     &pfnClientA.pfnComboBoxWndProc,        /* procA */
     &pfnClientW.pfnComboBoxWndProc,        /* procW */
+#ifdef BUILD_WOW6432
+    sizeof(ULONG64),      /* extra, win32k reads a 64-bit pointer here */
+#else
     sizeof(HEADCOMBO *),  /* extra */
+#endif
     IDC_ARROW,            /* cursor */
     0                     /* brush */
 };
