@@ -110,6 +110,8 @@ if(MSVC)
             arm64/cpp_vtables.s
             arm64/except_arm64.s
         )
+    elseif(ARCH STREQUAL "arm64ec")
+        list(APPEND SHARED_ASM_SOURCE arm64ec/cpp_alias.s)
     endif()
 endif()
 
