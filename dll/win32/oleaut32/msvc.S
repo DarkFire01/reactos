@@ -70,6 +70,7 @@ FUNC call_method
 ENDFUNC
 
 PUBLIC call_double_method
+ALIGN 16
 call_double_method:
     jmp call_method
 

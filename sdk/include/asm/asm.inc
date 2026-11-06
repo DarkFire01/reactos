@@ -51,6 +51,10 @@ __current_function_name EQU %name
 #ifdef _M_IX86
     %name PROC
 #else
+#ifdef _M_ARM64EC
+    /* The code map of an ARM64X image wants its x64 functions aligned */
+    ALIGN 16
+#endif
     %name PROC FRAME
 #endif
 ENDM
