@@ -93,6 +93,10 @@ else()
     set(_WINKD_ FALSE CACHE BOOL "Whether to compile with the KD protocol.")
 endif()
 
+if(ARCH STREQUAL "arm64")
+    option(ENABLE_ARM64EC "Build user mode modules for ARM64EC as well and put those builds on the media" OFF)
+endif()
+
 cmake_dependent_option(ISAPNP_ENABLE "Whether to enable the ISA PnP support." ON
                        "ARCH STREQUAL i386 AND NOT SARCH STREQUAL xbox" OFF)
 

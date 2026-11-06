@@ -188,6 +188,13 @@ else()
         add_custom_target(wow64-binaries)
     endif()
 
+    if(ARCH STREQUAL "arm64" AND ENABLE_ARM64EC)
+        include(sdk/cmake/arm64ec.cmake)
+        setup_arm64ec()
+    else()
+        add_custom_target(arm64ec-binaries)
+    endif()
+
     if (SYSWOW64_BUILD)
         add_definitions(-DBUILD_WOW6432)
         add_definitions(-DUSE_LPC6432)

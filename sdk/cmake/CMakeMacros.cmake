@@ -367,6 +367,10 @@ function(add_cd_file)
         if(NOT _CD_NAME_ON_CD)
             set(_CD_NAME_ON_CD "$<TARGET_FILE_NAME:${_CD_TARGET}>")
         endif()
+
+        if(ENABLE_ARM64EC)
+            stage_arm64ec_module(${_CD_TARGET} _CD_FILE _CD_TARGET)
+        endif()
     endif()
 
     # do we add it to all CDs?
@@ -716,6 +720,11 @@ function(set_module_type MODULE TYPE)
     # Every ARM64EC image carries the CHPE metadata and the emulator dispatch pointers
     if(ARCH STREQUAL "arm64ec")
         target_link_libraries(${MODULE} hybrid)
+    endif()
+
+    # Kernel mode modules come from the outer build, only build them when asked for
+    if(USERMODE_ONLY_BUILD AND TYPE IN_LIST KERNEL_MODULE_TYPES)
+        set_target_properties(${MODULE} PROPERTIES EXCLUDE_FROM_ALL TRUE)
     endif()
 
     # Add the module to the module group list, if it is defined

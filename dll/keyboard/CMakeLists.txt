@@ -1,4 +1,9 @@
 
+# Keyboard layouts are loaded by win32k, they stay native ARM64
+if(ARCH STREQUAL "arm64ec")
+    return()
+endif()
+
 list(APPEND _keyboard_layouts
     kbd101
     kbd101a
