@@ -30,7 +30,7 @@ set(CMAKE_CXX_STANDARD 11)
 
 # check that the ARCH (target architecture) variable is defined
 if(NOT ARCH)
-    message(FATAL_ERROR "Target architecture (ARCH) is not defined. Please, choose one of: i386, amd64, arm, arm64")
+    message(FATAL_ERROR "Target architecture (ARCH) is not defined. Please, choose one of: i386, amd64, arm, arm64, arm64ec")
 endif()
 # Now the ARCH variable will be in lowercase.
 # It is needed because STREQUAL comparison
@@ -40,7 +40,12 @@ endif()
 string(TOLOWER ${ARCH} ARCH)
 
 # set possible values for cmake GUI
-set_property(CACHE ARCH PROPERTY STRINGS "i386" "amd64" "arm" "arm64")
+set_property(CACHE ARCH PROPERTY STRINGS "i386" "amd64" "arm" "arm64" "arm64ec")
+
+# ARM64EC only provides the user mode half of an ARM64X image
+if(ARCH STREQUAL "arm64ec")
+    set(USERMODE_ONLY_BUILD TRUE)
+endif()
 
 # Alternative WinNT-compatible architecture string
 if(ARCH STREQUAL "i386")
@@ -276,6 +281,9 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
         endif()
         # GNU tools refer to arm64 as aarch64
         add_definitions(-D_ARM64_ -D__arm64__ -D__aarch64__ -D_WIN64)
+    elseif(ARCH STREQUAL "arm64ec")
+        # The compiler defines _M_ARM64EC, _M_AMD64 and _M_X64. Types follow the x64 ABI.
+        add_definitions(-D_AMD64_ -D__x86_64__ -D_ARM64EC_ -D_WIN64)
     endif()
 
     # Other
@@ -286,7 +294,7 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
         add_compile_definitions(USE_COMPILER_EXCEPTIONS)
     elseif(ARCH STREQUAL "arm")
         add_compile_definitions(USE_COMPILER_EXCEPTIONS)
-    elseif(ARCH STREQUAL "arm64")
+    elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
         add_compile_definitions(USE_COMPILER_EXCEPTIONS)
     endif()
 
@@ -366,24 +374,32 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
     endif()
 
     #begin with boot so reactos_cab target is defined before all other modules
-    add_subdirectory(boot)
+    if(NOT USERMODE_ONLY_BUILD)
+        add_subdirectory(boot)
+    endif()
     add_subdirectory(base)
     add_subdirectory(dll)
-    add_subdirectory(drivers)
-    add_subdirectory(hal)
+    if(NOT USERMODE_ONLY_BUILD)
+        add_subdirectory(drivers)
+        add_subdirectory(hal)
+    endif()
     add_subdirectory(sdk/lib)
     add_subdirectory(media)
     add_subdirectory(modules)
-    add_subdirectory(ntoskrnl)
+    if(NOT USERMODE_ONLY_BUILD)
+        add_subdirectory(ntoskrnl)
+    endif()
     add_subdirectory(subsystems)
     add_subdirectory(sdk/tools/wpp)
     add_subdirectory(win32ss)
 
-    # Create the registry hives
-    create_registry_hives()
+    if(NOT USERMODE_ONLY_BUILD)
+        # Create the registry hives
+        create_registry_hives()
 
-    # Create {bootcd, bootcdregtest, livecd}.lst
-    create_iso_lists()
+        # Create {bootcd, bootcdregtest, livecd}.lst
+        create_iso_lists()
+    endif()
 
     file(MAKE_DIRECTORY ${REACTOS_BINARY_DIR}/sdk/include/reactos)
 

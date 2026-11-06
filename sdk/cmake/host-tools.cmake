@@ -51,7 +51,14 @@ function(setup_host_tools)
         message(FATAL_ERROR "Unknown host architecture: ${lowercase_CMAKE_HOST_SYSTEM_PROCESSOR}")
     endif()
 
-    if(ARCH STREQUAL HOST_ARCH)
+    # Tools for ARM64EC images are the ARM64 ones, spec2def gets the arch on its command line
+    if(ARCH STREQUAL "arm64ec")
+        set(HOST_TOOLS_ARCH arm64)
+    else()
+        set(HOST_TOOLS_ARCH ${ARCH})
+    endif()
+
+    if(HOST_TOOLS_ARCH STREQUAL HOST_ARCH)
         set(HOST_TOOLS_CMAKE_COMMAND "${CMAKE_COMMAND}")
         message("Not cross-compiling, no special host-tools cmake command")
     elseif(MSVC)
@@ -105,7 +112,7 @@ function(setup_host_tools)
         CMAKE_COMMAND ${HOST_TOOLS_CMAKE_COMMAND}
         CMAKE_ARGS
             -UCMAKE_TOOLCHAIN_FILE
-            -DARCH:STRING=${ARCH}
+            -DARCH:STRING=${HOST_TOOLS_ARCH}
             -DCMAKE_INSTALL_PREFIX=${REACTOS_BINARY_DIR}/host-tools
             -DTOOLS_FOLDER=${REACTOS_BINARY_DIR}/host-tools/bin
             -DTARGET_COMPILER_ID=${CMAKE_C_COMPILER_ID}

@@ -10,7 +10,7 @@ elseif(ARCH STREQUAL "arm")
     set(SARCH "omap3-zoom2" CACHE STRING
     "Sub-architecture (board) to build for. Specify one of:
      kurobox versatile omap3-zoom2 omap3-beagle")
-elseif(ARCH STREQUAL "arm64")
+elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     # By design, arm64 kernels and OSes should be intercompatible, but
     # due to SoC vendors seemingly not being able to follow ARM design guidelines
     # properly, there might be a need for board-specific builds later on...
@@ -30,7 +30,7 @@ elseif(ARCH STREQUAL "arm")
     set(OARCH "armv7-a" CACHE STRING
     "Generate instructions for this CPU type. Specify one of:
      armv5te armv7-a")
-elseif(ARCH STREQUAL "arm64")
+elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     # This should not be bumped unless REALLY needed, because (as of 2021)
     # there are still new designs using the original A53 cores w/ armv8.0.
     set(OARCH "armv8-a" CACHE STRING
@@ -44,7 +44,7 @@ if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
 elseif(ARCH STREQUAL "arm")
     set(TUNE "generic-armv7-a" CACHE STRING
     "Which CPU ReactOS should be optimized for.")
-elseif(ARCH STREQUAL "arm64")
+elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     set(TUNE "generic" CACHE STRING
     "Which CPU ReactOS should be optimized for.")
 endif()
