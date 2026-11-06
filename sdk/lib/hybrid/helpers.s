@@ -8,6 +8,7 @@
 #include <kxarm64.h>
 
     IMPORT __os_arm64x_dispatch_icall
+    IMPORT __os_arm64x_dispatch_fptr
 
     TEXTAREA
 
@@ -27,6 +28,30 @@
 LABEL(IcallHelperEnd)
 
     NESTED_END __icall_helper_arm64ec
+
+//
+// C++ adjustor thunks land here with this already adjusted and the target in x11. Without an
+// exit thunk (x10 is 0) the check leaves 0 in x11 for x64 code and the x64 target in x9, which
+// the x64 jump continues at with our return address. Native and ARM64EC targets are jumped to.
+//
+    NESTED_ENTRY __adjthunk_helper
+
+    stp     fp, lr, [sp, #-16]!
+    mov     fp, sp
+    mov     x10, xzr
+    adrp    xip0, __os_arm64x_dispatch_icall
+    ldr     xip0, [xip0, __os_arm64x_dispatch_icall]
+    blr     xip0
+    ldp     fp, lr, [sp], #16
+    cbz     x11, AdjthunkX64
+    br      x11
+LABEL(AdjthunkX64)
+    adrp    xip0, __os_arm64x_dispatch_fptr
+    ldr     xip0, [xip0, __os_arm64x_dispatch_fptr]
+    br      xip0
+LABEL(AdjthunkHelperEnd)
+
+    NESTED_END __adjthunk_helper
 
 //
 // void __RTC_memset(void *Destination, ULONG64 Pattern, SIZE_T Length)
@@ -69,8 +94,19 @@ LABEL(IcallHelperXdata)
     dcb     0xE4                        // end
     dcb     0xE3                        // padding
 
+    XDATAAREA
+LABEL(AdjthunkHelperXdata)
+    /* Same frame as above, set_fp is not undone by the epilog */
+    dcd     ((AdjthunkHelperEnd - __adjthunk_helper) / 4) + 0x08600000
+    dcb     0xE1                        // set_fp
+    dcb     0x81                        // save_fplr_x 16
+    dcb     0xE4                        // end
+    dcb     0xE3                        // padding
+
     PDATAAREA
     DCRVA   __icall_helper_arm64ec
     DCRVA   IcallHelperXdata
+    DCRVA   __adjthunk_helper
+    DCRVA   AdjthunkHelperXdata
 
     END
