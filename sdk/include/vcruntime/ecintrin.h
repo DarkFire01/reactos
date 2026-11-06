@@ -107,6 +107,19 @@ static __inline void __ec_mm_setcsr(unsigned int Csr)
 #define _mm_getcsr                      __ec_mm_getcsr
 #define _mm_setcsr                      __ec_mm_setcsr
 
+/* The same plain x64 processor the x64 emulator reports to x64 code */
+static __inline void __ec_cpuidex(int CpuInfo[4], int Leaf, int SubLeaf)
+{
+    (void)SubLeaf;
+    CpuInfo[0] = (Leaf == 0) ? 1 : 0;
+    CpuInfo[1] = (Leaf == 0) ? 0x756E6547 : 0;
+    CpuInfo[2] = (Leaf == 0) ? 0x6C65746E : ((Leaf == 1) ? 0x00000001 : 0);
+    CpuInfo[3] = (Leaf == 0) ? 0x49656E69 : ((Leaf == 1) ? 0x06808001 : 0);
+}
+
+#define __cpuid(CpuInfo, Leaf)              __ec_cpuidex(CpuInfo, Leaf, 0)
+#define __cpuidex(CpuInfo, Leaf, SubLeaf)   __ec_cpuidex(CpuInfo, Leaf, SubLeaf)
+
 /* int 2Ch raises an assertion failure, the ARM64 break code for it is 0xF001 */
 #define __int2c()                       __break(0xF001)
 
