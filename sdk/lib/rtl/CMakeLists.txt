@@ -146,6 +146,22 @@ elseif(ARCH STREQUAL "arm64")
         arm64/thread.c
         arm64/unwind.c
         mem.c)
+elseif(ARCH STREQUAL "arm64ec")
+    # ARM64 instructions with the x64 structures, so the x64 C code and ARM64 asm
+    list(APPEND ASM_SOURCE
+        arm64/debug_asm.s
+        arm64/except_asm.s
+        arm64/slist.s)
+    list(REMOVE_ITEM SOURCE slist.c)
+    list(APPEND SOURCE
+        bitmap64.c
+        byteswap.c
+        amd64/dynfntbl.c
+        amd64/except.c
+        amd64/unwind.c
+        amd64/stubs.c
+        arm64/ecraise.c
+        mem.c)
 elseif(ARCH STREQUAL "arm")
     list(APPEND ASM_SOURCE arm/debug_asm.S)
     list(APPEND SOURCE
@@ -161,7 +177,7 @@ target_link_libraries(rtl PRIVATE pseh)
 add_pch(rtl rtl.h SOURCE)
 add_dependencies(rtl psdk asm)
 
-if(ARCH STREQUAL "arm64")
+if(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     add_asm_files(rtl_vista_asm arm64/ntuserdisp.s)
 else()
     add_asm_files(rtl_vista_asm ntuserdisp.s)
@@ -183,7 +199,7 @@ list(APPEND SOURCE_VISTA
     waitaddress.c
     wow64.c)
 
-if(ARCH STREQUAL "arm64")
+if(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     list(REMOVE_ITEM SOURCE_VISTA slist.c)
 endif()
 

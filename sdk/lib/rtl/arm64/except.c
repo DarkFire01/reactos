@@ -66,13 +66,20 @@ RtlDispatchException(
     return Handled;
 }
 
-/*! RtlRaiseException
- * \brief Raises a software exception on behalf of the caller.
+/**
+ * @brief
+ * Raises a software exception on behalf of the code that called into the raising frames.
+ *
+ * @param[in] CallerFrame
+ * An address inside the frame of the outermost function that raises, unwinding stops past it.
  */
+static
+DECLSPEC_NOINLINE
+DECLSPEC_NORETURN
 VOID
-NTAPI
-RtlRaiseException(
-    _In_ PEXCEPTION_RECORD ExceptionRecord)
+RtlpRaiseExceptionFrom(
+    _In_ PEXCEPTION_RECORD ExceptionRecord,
+    _In_ ULONG_PTR CallerFrame)
 {
     PRUNTIME_FUNCTION FunctionEntry;
     ULONG64 ImageBase, EstablisherFrame;
@@ -82,21 +89,24 @@ RtlRaiseException(
 
     ExceptionRecord->ExceptionFlags |= EXCEPTION_SOFTWARE_ORIGINATE;
 
-    /* The exception belongs to the caller, so unwind this function's own frame */
     RtlCaptureContext(&Context);
 
-    FunctionEntry = RtlLookupFunctionEntry(Context.Pc, &ImageBase, NULL);
-    if (FunctionEntry == NULL)
-        RtlRaiseStatus(STATUS_BAD_FUNCTION_TABLE);
+    /* Unwind this function and the raising frames, the exception belongs to their caller */
+    do
+    {
+        FunctionEntry = RtlLookupFunctionEntry(Context.Pc, &ImageBase, NULL);
+        if (FunctionEntry == NULL)
+            RtlRaiseStatus(STATUS_BAD_FUNCTION_TABLE);
 
-    RtlVirtualUnwind(UNW_FLAG_NHANDLER,
-                     ImageBase,
-                     Context.Pc,
-                     FunctionEntry,
-                     &Context,
-                     &HandlerData,
-                     &EstablisherFrame,
-                     NULL);
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+                         ImageBase,
+                         Context.Pc,
+                         FunctionEntry,
+                         &Context,
+                         &HandlerData,
+                         &EstablisherFrame,
+                         NULL);
+    } while (Context.Sp <= CallerFrame);
 
     ExceptionRecord->ExceptionAddress = (PVOID)Context.Pc;
 
@@ -115,4 +125,31 @@ RtlRaiseException(
     }
 
     RtlRaiseStatus(Status);
+}
+
+/*! RtlRaiseException
+ * rief Raises a software exception on behalf of the caller.
+ */
+VOID
+NTAPI
+RtlRaiseException(
+    _In_ PEXCEPTION_RECORD ExceptionRecord)
+{
+    RtlpRaiseExceptionFrom(ExceptionRecord, (ULONG_PTR)_AddressOfReturnAddress());
+}
+
+/**
+ * @brief
+ * The native half of the ARM64EC RtlRaiseException.
+ *
+ * @param[in] CallerFrame
+ * An address inside the frame of the ARM64EC RtlRaiseException.
+ */
+VOID
+NTAPI
+RtlpRaiseEcException(
+    _In_ PEXCEPTION_RECORD ExceptionRecord,
+    _In_ PVOID CallerFrame)
+{
+    RtlpRaiseExceptionFrom(ExceptionRecord, (ULONG_PTR)CallerFrame);
 }
