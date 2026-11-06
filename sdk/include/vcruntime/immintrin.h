@@ -82,6 +82,7 @@ void __cdecl _xsetbv(unsigned int, unsigned __int64);
 
 
 #if defined(_MSC_VER) && !defined(__clang__)
+#ifndef _M_ARM64EC
 
 #pragma intrinsic(_mm256_cmpeq_epi8)
 #pragma intrinsic(_mm256_cmpeq_epi16)
@@ -122,6 +123,7 @@ void __cdecl _xsetbv(unsigned int, unsigned __int64);
 #pragma intrinsic(_xgetbv)
 #pragma intrinsic(_xsetbv)
 
+#endif /* _M_ARM64EC */
 #else /* _MSC_VER */
 
 #ifdef __clang__

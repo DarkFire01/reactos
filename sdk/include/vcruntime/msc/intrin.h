@@ -1,3 +1,8 @@
+/* ARM64EC takes the x64 view of intrin.h, but these are not compiler intrinsics there */
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
+#define _INTRIN_AMD64_PRAGMAS
+#endif
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -6,7 +11,7 @@ extern "C" {
 /*** Stack frame juggling ***/
 #pragma intrinsic(_ReturnAddress)
 #pragma intrinsic(_AddressOfReturnAddress)
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__getcallerseflags)
 #endif
 
@@ -14,12 +19,12 @@ extern "C" {
 #pragma intrinsic(_ReadWriteBarrier)
 #pragma intrinsic(_ReadBarrier)
 #pragma intrinsic(_WriteBarrier)
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(_mm_mfence)
 #pragma intrinsic(_mm_lfence)
 #pragma intrinsic(_mm_sfence)
 #endif
-#if defined(_M_AMD64)
+#if defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__faststorefence)
 #elif defined(_M_ARM)
 #pragma intrinsic(__iso_volatile_load16)
@@ -60,7 +65,7 @@ extern "C" {
 #pragma intrinsic(_interlockedbittestandset)
 #if defined(_M_IX86)
 #pragma intrinsic(_InterlockedAddLargeStatistic)
-#elif defined(_M_AMD64)
+#elif defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(_InterlockedExchange64)
 #pragma intrinsic(_InterlockedExchangeAdd64)
 #pragma intrinsic(_InterlockedCompareExchangePointer)
@@ -93,11 +98,11 @@ extern "C" {
 
 #endif
 
-#if defined(_M_AMD64) || defined(_M_ARM)
+#if defined(_INTRIN_AMD64_PRAGMAS) || defined(_M_ARM)
 #endif
 
 /*** String operations ***/
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__stosb)
 #pragma intrinsic(__stosw)
 #pragma intrinsic(__stosd)
@@ -105,13 +110,13 @@ extern "C" {
 #pragma intrinsic(__movsw)
 #pragma intrinsic(__movsd)
 #endif
-#ifdef _M_AMD64
+#ifdef _INTRIN_AMD64_PRAGMAS
 #pragma intrinsic(__stosq)
 #pragma intrinsic(__movsq)
 #endif
 
 /*** GS segment addressing ***/
-#if defined(_M_AMD64)
+#if defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__writegsbyte)
 #pragma intrinsic(__writegsword)
 #pragma intrinsic(__writegsdword)
@@ -171,7 +176,7 @@ extern "C" {
 #pragma intrinsic(_byteswap_ushort)
 #pragma intrinsic(_byteswap_ulong)
 #pragma intrinsic(_byteswap_uint64)
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__ll_lshift)
 #pragma intrinsic(__ll_rshift)
 #pragma intrinsic(__ull_rshift)
@@ -180,7 +185,7 @@ extern "C" {
 #pragma intrinsic(__popcnt)
 #pragma intrinsic(__popcnt16)
 #endif
-#ifdef _M_AMD64
+#ifdef _INTRIN_AMD64_PRAGMAS
 #pragma intrinsic(__shiftleft128)
 #pragma intrinsic(__shiftright128)
 #pragma intrinsic(_bittest64)
@@ -195,11 +200,11 @@ extern "C" {
 
 /*** 64/128-bit math ***/
 #pragma intrinsic(_abs64)
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__emul)
 #pragma intrinsic(__emulu)
 #endif
-#ifdef _M_AMD64
+#ifdef _INTRIN_AMD64_PRAGMAS
 #pragma intrinsic(__mulh)
 #pragma intrinsic(__umulh)
 #pragma intrinsic(_mul128)
@@ -220,7 +225,7 @@ extern "C" {
 #endif
 
 /*** Port I/O ***/
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__inbyte)
 #pragma intrinsic(__inword)
 #pragma intrinsic(__indword)
@@ -248,7 +253,7 @@ extern "C" {
 #endif
 
 /*** System information ***/
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__cpuid)
 #pragma intrinsic(__cpuidex)
 #pragma intrinsic(__rdtsc)
@@ -261,7 +266,7 @@ extern "C" {
 #pragma intrinsic(__debugbreak)
 #pragma intrinsic(_disable)
 #pragma intrinsic(_enable)
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__int2c)
 #pragma intrinsic(__halt)
 #pragma intrinsic(__ud2)
@@ -287,7 +292,7 @@ void __fastfail(unsigned int Code);
 #endif
 
 /*** Protected memory management ***/
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__writecr0)
 #pragma intrinsic(__writecr3)
 #pragma intrinsic(__writecr4)
@@ -320,7 +325,7 @@ void  __forceinline __invlpg_fixed(void * Address)
 }
 #pragma warning(pop)
 #define __invlpg __invlpg_fixed
-#elif defined(_M_AMD64)
+#elif defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__invlpg)
 #pragma intrinsic(__readcr0)
 #pragma intrinsic(__readcr2)
@@ -334,7 +339,7 @@ void  __forceinline __invlpg_fixed(void * Address)
 #endif
 
 /*** System operations ***/
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__readmsr)
 #pragma intrinsic(__writemsr)
 #pragma intrinsic(__readpmc)
@@ -385,7 +390,7 @@ void _sgdt(void *Destination);
 #endif
 
 /** Secure virtual machine **/
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 #pragma intrinsic(__svm_clgi)
 #pragma intrinsic(__svm_invlpga)
 #pragma intrinsic(__svm_skinit)
@@ -396,10 +401,10 @@ void _sgdt(void *Destination);
 #endif
 
 /** Virtual machine extension **/
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_INTRIN_AMD64_PRAGMAS)
 
 #endif
-#if defined(_M_AMD64)
+#if defined(_INTRIN_AMD64_PRAGMAS)
 
 #endif
 

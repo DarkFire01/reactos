@@ -329,6 +329,7 @@ void _mm_pause(void);
 #define _mm_stream_si64 _mm_stream_si64x
 
 #if defined(_MSC_VER) && !defined(__clang__)
+#ifndef _M_ARM64EC
 
 #pragma intrinsic(_mm_add_sd)
 #pragma intrinsic(_mm_add_pd)
@@ -565,6 +566,7 @@ void _mm_pause(void);
 #pragma intrinsic(_mm_castsi128_pd)
 #pragma intrinsic(_mm_pause)
 
+#endif /* _M_ARM64EC */
 #else /* _MSC_VER */
 
 /*

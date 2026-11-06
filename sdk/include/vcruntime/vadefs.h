@@ -63,7 +63,7 @@ extern "C" {
 #define _VA_STRUCT_ALIGN 16
 #define _ALIGNOF(ap) ((((ap)+_VA_STRUCT_ALIGN - 1) & ~(_VA_STRUCT_ALIGN -1)) - (ap))
 #define _APALIGN(t,ap) (__alignof(t) > 8 ? _ALIGNOF((uintptr_t) ap) : 0)
-#elif defined(_M_ARM64)
+#elif defined(_M_ARM64) || defined(_M_ARM64EC)
 /* Arguments take 8 byte slots, only the padding to a wider alignment is skipped */
 #define _VA_ALIGN 8
 #define _SLOTSIZEOF(t) ((sizeof(t) + _VA_ALIGN - 1) & ~(_VA_ALIGN - 1))
@@ -86,6 +86,18 @@ extern "C" {
 #define __crt_va_start(v,l)	((void)((v) = (va_list)_ADDRESSOF(l) + _INTSIZEOF(l)))
 #define __crt_va_arg(v,l)	(*(l *)(((v) += _INTSIZEOF(l)) - _INTSIZEOF(l)))
 #define __crt_va_end(v)	((void)((v) = (va_list)0))
+#define __va_copy(d,s)	((void)((d) = (s)))
+#elif defined(_M_ARM64EC)
+/* x64 va_list, the register arguments are only next to the stack ones once __va_start homes them */
+extern void __cdecl __va_start(va_list*, ...);
+#define __crt_va_start(ap,v) ((void)(__va_start(&ap, _ADDRESSOF(v), _SLOTSIZEOF(v), __alignof(v), _ADDRESSOF(v))))
+/* As on x64, anything that is not 1, 2, 4 or 8 bytes is passed by reference */
+#define _ISBYREF(t) ((sizeof(t) > sizeof(__int64)) || ((sizeof(t) & (sizeof(t) - 1)) != 0))
+#define __crt_va_arg(ap, t)                                                \
+    (_ISBYREF(t)                                                           \
+        ? **(t**)((ap += sizeof(__int64)) - sizeof(__int64))               \
+        : *(t*)((ap += _SLOTSIZEOF(t) + _APALIGN(t,ap)) - _SLOTSIZEOF(t)))
+#define __crt_va_end(ap)       ((void)(ap = (va_list)0))
 #define __va_copy(d,s)	((void)((d) = (s)))
 #elif defined(_M_AMD64)
 #define _PTRSIZEOF(n) ((sizeof(n) + sizeof(void*) - 1) & ~(sizeof(void*) - 1))

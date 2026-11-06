@@ -402,6 +402,7 @@ do {                                              \
 
 /* Use intrinsics on MSVC */
 #if defined(_MSC_VER) && !defined(__clang__)
+#ifndef _M_ARM64EC
 #pragma intrinsic(_mm_prefetch)
 #pragma intrinsic(_mm_setzero_ps)
 #pragma intrinsic(_mm_add_ss)
@@ -522,6 +523,7 @@ do {                                              \
 #pragma intrinsic(_mm_cvtsi64_ss)
 #endif // _M_AMD64
 
+#endif /* _M_ARM64EC */
 #else /* _MSC_VER */
 
 /*

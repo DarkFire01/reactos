@@ -477,7 +477,8 @@ _InterlockedCompareExchangePointer(
 
 #endif /* _M_IX86 */
 
-#ifdef _M_AMD64
+/* ARM64EC has the ARM64 intrinsic */
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 
 FORCEINLINE
 LONG64
