@@ -63,6 +63,8 @@ ASMGENDATA Table[] =
 /* ARCHITECTURE SPECIFIC CONTSTANTS ******************************************/
 #ifdef _M_IX86
 #include "ks386.template.h"
+#elif defined(_M_ARM64EC)
+#include "ksarm64ec.template.h"
 #elif defined(_M_AMD64)
 #include "ksamd64.template.h"
 #elif defined(_M_ARM)
