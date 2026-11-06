@@ -15,6 +15,39 @@ __C_specific_handler_call(
     _In_ PVOID Funclet,
     _In_ PUCHAR NonVolatileRegisters);
 
+#ifdef _M_ARM64EC
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlIsEcCode(
+    _In_ ULONG64 CodePointer);
+
+/* EC frames get the extended dispatcher context with the ARM64 unwind state */
+#define DISPATCH_VIEW(Dc) ((PDISPATCHER_CONTEXT_ARM64EC)(Dc))
+#else
+#define DISPATCH_VIEW(Dc) (Dc)
+#endif
+
+static
+LONG
+CallScopeFunclet(
+    _In_ PVOID Argument,
+    _In_ PVOID EstablisherFrame,
+    _In_ PVOID Funclet,
+    _In_ struct _DISPATCHER_CONTEXT *DispatcherContext)
+{
+#ifdef _M_ARM64EC
+    /* Funclets of x64 frames take the x64 convention and need no register state */
+    if (!RtlIsEcCode(DispatcherContext->ControlPc))
+        return ((PEXCEPTION_FILTER)Funclet)(Argument, EstablisherFrame);
+#endif
+
+    return __C_specific_handler_call(Argument,
+                                     EstablisherFrame,
+                                     Funclet,
+                                     DISPATCH_VIEW(DispatcherContext)->NonVolatileRegisters);
+}
+
 /* The scope table lives elsewhere in the image when the top bit of its first word is set */
 static
 PSCOPE_TABLE_ARM64
@@ -71,12 +104,12 @@ __C_specific_handler(
     ULONG i;
 
     /* After a call the address is the return address, the scope check needs the call */
-    if (DispatcherContext->ControlPcIsUnwound)
+    if (DISPATCH_VIEW(DispatcherContext)->ControlPcIsUnwound)
         ControlPc -= 4;
 
     if (IS_UNWINDING(ExceptionRecord->ExceptionFlags))
     {
-        ULONG64 TargetPc = DispatcherContext->TargetPc - ImageBase;
+        ULONG64 TargetPc = DISPATCH_VIEW(DispatcherContext)->TargetPc - ImageBase;
 
         for (i = DispatcherContext->ScopeIndex; i < ScopeTable->Count; i++)
         {
@@ -103,10 +136,10 @@ __C_specific_handler(
 
             /* A __finally block, skip it if an unwind passes here again */
             DispatcherContext->ScopeIndex = i + 1;
-            __C_specific_handler_call((PVOID)TRUE,
-                                      EstablisherFrame,
-                                      (PVOID)(ImageBase + ScopeTable->ScopeRecord[i].HandlerAddress),
-                                      DispatcherContext->NonVolatileRegisters);
+            CallScopeFunclet((PVOID)TRUE,
+                             EstablisherFrame,
+                             (PVOID)(ImageBase + ScopeTable->ScopeRecord[i].HandlerAddress),
+                             DispatcherContext);
         }
 
         return ExceptionContinueSearch;
@@ -127,10 +160,10 @@ __C_specific_handler(
         /* A filter of EXCEPTION_EXECUTE_HANDLER is stored as the value itself */
         if (ScopeTable->ScopeRecord[i].HandlerAddress != EXCEPTION_EXECUTE_HANDLER)
         {
-            FilterResult = __C_specific_handler_call(&ExceptionPointers,
-                                                     EstablisherFrame,
-                                                     (PVOID)(ImageBase + ScopeTable->ScopeRecord[i].HandlerAddress),
-                                                     DispatcherContext->NonVolatileRegisters);
+            FilterResult = CallScopeFunclet(&ExceptionPointers,
+                                            EstablisherFrame,
+                                            (PVOID)(ImageBase + ScopeTable->ScopeRecord[i].HandlerAddress),
+                                            DispatcherContext);
             if (FilterResult < 0)
                 return ExceptionContinueExecution;
             if (FilterResult == 0)

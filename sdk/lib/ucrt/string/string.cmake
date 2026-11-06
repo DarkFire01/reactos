@@ -106,7 +106,7 @@ elseif(${ARCH} STREQUAL "amd64")
     )
 else()
     # The Microsoft ARM64 sources are armasm64 only, GCC and Clang use the C versions
-    if(${ARCH} STREQUAL "arm64" AND MSVC)
+    if((${ARCH} STREQUAL "arm64" OR ${ARCH} STREQUAL "arm64ec") AND MSVC)
         list(APPEND UCRT_STRING_ASM_SOURCES
             string/arm64/strlen.s
             string/arm64/wcslen.s

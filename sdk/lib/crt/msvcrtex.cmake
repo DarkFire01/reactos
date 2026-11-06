@@ -90,7 +90,7 @@ elseif(ARCH STREQUAL "arm")
         math/arm/__rt_srsh.s
         math/arm/__rt_udiv64.s
     )
-elseif(ARCH STREQUAL "arm64")
+elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     list(APPEND MSVCRTEX_ASM_SOURCE
         except/arm64/chkstk_asm.s)
     if(MSVC AND DLL_EXPORT_VERSION LESS 0x600)
