@@ -29,6 +29,9 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <arm64_neon.h>
 #endif
+#elif defined(_M_ARM64EC)
+/* ARM64 intrinsics stay available next to the x64 view */
+#include <arm64intr.h>
 #endif /* _M_ARM64 */
 
 #if defined(__cplusplus)
@@ -1009,7 +1012,7 @@ int _isunorderedf(float, float);
 
 #endif /* _M_ARM */
 
-#if defined(_M_ARM64)
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
 void __break(int);
 unsigned char _BitScanForward64(unsigned long * _Index, unsigned __int64 _Mask);
 unsigned char _BitScanReverse64(unsigned long * _Index, unsigned __int64 _Mask);
@@ -1045,7 +1048,7 @@ unsigned char _bittestandreset64(__int64 *, __int64);
 unsigned char _bittestandset64(__int64 *, __int64);
 unsigned char _interlockedbittestandreset64(__int64 volatile *, __int64);
 unsigned char _interlockedbittestandset64(__int64 volatile *, __int64);
-#endif /* _M_ARM64 */
+#endif /* _M_ARM64 || _M_ARM64EC */
 
 #if defined(_M_CEE_PURE)
 
@@ -1066,5 +1069,8 @@ long _InterlockedIncrement(_Interlocked_operand_ long volatile * _Addend);
 #else
 #  error Please implement intrinsics for your target compiler
 #endif
+
+/* After every x64 declaration, the mappings are function like macros */
+#include <ecintrin.h>
 
 #endif

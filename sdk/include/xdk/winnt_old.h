@@ -1608,6 +1608,28 @@ typedef struct _DISPATCHER_CONTEXT
     ULONG Fill0;
 } DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
 
+#ifdef _ARM64EC_
+typedef struct _DISPATCHER_CONTEXT_ARM64EC
+{
+    ULONG64 ControlPc;
+    ULONG64 ImageBase;
+    PRUNTIME_FUNCTION FunctionEntry;
+    ULONG64 EstablisherFrame;
+    union
+    {
+        ULONG64 TargetIp;
+        ULONG64 TargetPc;
+    } DUMMYUNIONNAME;
+    struct _CONTEXT *ContextRecord;
+    PEXCEPTION_ROUTINE LanguageHandler;
+    PVOID HandlerData;
+    PUNWIND_HISTORY_TABLE HistoryTable;
+    ULONG ScopeIndex;
+    BOOLEAN ControlPcIsUnwound;
+    PBYTE NonVolatileRegisters;
+} DISPATCHER_CONTEXT_ARM64EC, *PDISPATCHER_CONTEXT_ARM64EC;
+#endif
+
 typedef struct _SCOPE_TABLE_AMD64
 {
     DWORD Count;
