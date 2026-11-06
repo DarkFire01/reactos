@@ -13,17 +13,19 @@
 
     TEXTAREA
 
-    LEAF_ENTRY DbgBreakPoint
-    ALTERNATE_ENTRY DbgUserBreakPoint
+    ARM64EC_ENTRY_THUNK A64NAME(DbgBreakPoint),0,0
+    LEAF_ENTRY_COMDAT A64NAME(DbgBreakPoint)
+    ALTERNATE_ENTRY A64NAME(DbgUserBreakPoint)
     brk     #BREAKPOINT_BREAK
     ret
-    LEAF_END DbgBreakPoint
+    LEAF_END A64NAME(DbgBreakPoint)
 
-    LEAF_ENTRY DbgBreakPointWithStatus
-    ALTERNATE_ENTRY RtlpBreakWithStatusInstruction
+    ARM64EC_ENTRY_THUNK A64NAME(DbgBreakPointWithStatus),1,0
+    LEAF_ENTRY_COMDAT A64NAME(DbgBreakPointWithStatus)
+    ALTERNATE_ENTRY A64NAME(RtlpBreakWithStatusInstruction)
     brk     #BREAKPOINT_BREAK
     ret
-    LEAF_END DbgBreakPointWithStatus
+    LEAF_END A64NAME(DbgBreakPointWithStatus)
 
 //
 // NTSTATUS
@@ -37,7 +39,7 @@
 // The service number goes in x16 and the arguments move down to x0-x3.
 // The kernel steps over the brk that follows the service brk.
 //
-    LEAF_ENTRY DebugService
+    LEAF_ENTRY A64NAME(DebugService)
     mov     x16, x0
     mov     x0, x1
     mov     w1, w2
@@ -46,7 +48,7 @@
     brk     #BREAKPOINT_SERVICE
     brk     #BREAKPOINT_BREAK
     ret
-    LEAF_END DebugService
+    LEAF_END A64NAME(DebugService)
 
 //
 // VOID
@@ -55,11 +57,11 @@
 //     _In_ PVOID Argument2,
 //     _In_ ULONG Service);
 //
-    LEAF_ENTRY DebugService2
+    LEAF_ENTRY A64NAME(DebugService2)
     mov     w16, w2
     brk     #BREAKPOINT_SERVICE
     brk     #BREAKPOINT_BREAK
     ret
-    LEAF_END DebugService2
+    LEAF_END A64NAME(DebugService2)
 
     END

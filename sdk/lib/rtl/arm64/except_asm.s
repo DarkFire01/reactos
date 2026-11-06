@@ -9,6 +9,120 @@
 
     TEXTAREA
 
+#ifdef _ARM64EC_
+
+/* x64 CONTEXT_FULL, user mode code and stack selectors */
+#define CONTEXT_FULL_AMD64      0x0010000B
+#define KGDT64_R3_CODE_RPL      0x33
+#define KGDT64_R3_DATA_RPL      0x2B
+
+//
+// The context has the x64 layout, each register goes to the x64 register it stands for
+// and Rip is the return address. MXCSR is rebuilt from FPCR and FPSR.
+//
+    ARM64EC_ENTRY_THUNK A64NAME(RtlCaptureContext),1,0
+    LEAF_ENTRY_COMDAT A64NAME(RtlCaptureContext)
+
+    str     x8, [x0, #CxX8]
+    stp     x0, x1, [x0, #CxX0]
+    str     x27, [x0, #CxX27]
+    mov     x16, sp
+    stp     x16, fp, [x0, #CxSp]
+    stp     x25, x26, [x0, #CxX25]
+    stp     x2, x3, [x0, #CxX2]
+    stp     x4, x5, [x0, #CxX4]
+    stp     x19, x20, [x0, #CxX19]
+    stp     x21, x22, [x0, #CxX21]
+    str     lr, [x0, #CxPc]
+    str     lr, [x0, #CxLr]
+    str     x6, [x0, #CxX6]
+    str     x7, [x0, #CxX7]
+    str     x9, [x0, #CxX9]
+    str     x10, [x0, #CxX10]
+    str     x11, [x0, #CxX11]
+    str     x12, [x0, #CxX12]
+    str     x15, [x0, #CxX15]
+
+    mov     w16, #KGDT64_R3_CODE_RPL
+    strh    w16, [x0, #CxSegCs]
+    mov     w16, #KGDT64_R3_DATA_RPL
+    strh    w16, [x0, #CxSegSs]
+    mov     w16, #0x202
+    str     w16, [x0, #CxEFlags]
+
+    /* MXCSR with every exception masked, rounding and flush to zero from FPCR, sticky flags from FPSR */
+    mrs     x16, fpcr
+    ubfx    x9, x16, #22, #2
+    and     x10, x9, #1
+    lsr     x9, x9, #1
+    orr     x9, x9, x10, lsl #1
+    mov     w17, #0x1F80
+    orr     w17, w17, w9, lsl #13
+    ubfx    x10, x16, #24, #1
+    orr     w17, w17, w10, lsl #15
+    mrs     x16, fpsr
+    and     w10, w16, #1
+    orr     w17, w17, w10
+    ubfx    w10, w16, #1, #4
+    orr     w17, w17, w10, lsl #2
+    ubfx    w10, w16, #7, #1
+    orr     w17, w17, w10, lsl #1
+    str     w17, [x0, #CxMxCsr]
+    str     w17, [x0, #CxMxCsrCopy]
+
+    add     x16, x0, #CxV0
+    stp     q0, q1, [x16, #0x00]
+    stp     q2, q3, [x16, #0x20]
+    stp     q4, q5, [x16, #0x40]
+    stp     q6, q7, [x16, #0x60]
+    stp     q8, q9, [x16, #0x80]
+    stp     q10, q11, [x16, #0xA0]
+    stp     q12, q13, [x16, #0xC0]
+    stp     q14, q15, [x16, #0xE0]
+
+    ldr     w16, =CONTEXT_FULL_AMD64
+    str     w16, [x0, #CxContextFlags]
+    ret
+
+    LEAF_END A64NAME(RtlCaptureContext)
+
+    TEXTAREA
+
+//
+// Loads the x64 context into the ARM64 registers that stand for them and continues at Rip.
+//
+    LEAF_ENTRY A64NAME(RtlpRestoreContextInternal)
+
+    add     x16, x0, #CxV0
+    ldp     q0, q1, [x16, #0x00]
+    ldp     q2, q3, [x16, #0x20]
+    ldp     q4, q5, [x16, #0x40]
+    ldp     q6, q7, [x16, #0x60]
+    ldp     q8, q9, [x16, #0x80]
+    ldp     q10, q11, [x16, #0xA0]
+    ldp     q12, q13, [x16, #0xC0]
+    ldp     q14, q15, [x16, #0xE0]
+
+    ldr     x8, [x0, #CxX8]
+    ldr     x27, [x0, #CxX27]
+    ldr     fp, [x0, #CxFp]
+    ldp     x25, x26, [x0, #CxX25]
+    ldp     x2, x3, [x0, #CxX2]
+    ldp     x4, x5, [x0, #CxX4]
+    ldp     x19, x20, [x0, #CxX19]
+    ldp     x21, x22, [x0, #CxX21]
+    ldr     lr, [x0, #CxLr]
+
+    ldr     x16, [x0, #CxPc]
+    ldr     x17, [x0, #CxSp]
+    ldp     x0, x1, [x0, #CxX0]
+    mov     sp, x17
+    br      x16
+
+    LEAF_END A64NAME(RtlpRestoreContextInternal)
+
+#else
+
 //
 // VOID
 // RtlCaptureContext(
@@ -127,5 +241,7 @@
     br      x16
 
     LEAF_END RtlpRestoreContextInternal
+
+#endif
 
     END

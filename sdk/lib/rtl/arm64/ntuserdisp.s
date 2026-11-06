@@ -22,16 +22,16 @@
 #ifdef _MSC_VER
     MACRO
     NTUSER_PFN_THUNK $Index
-    LEAF_ENTRY RtlpNtUserPfnDispatch$Index
+    LEAF_ENTRY A64NAME(RtlpNtUserPfnDispatch$Index)
     ldr     x16, =RtlpNtUserPfns
     ldr     x16, [x16, #($Index * 8)]
     br      x16
-    LEAF_END RtlpNtUserPfnDispatch$Index
+    LEAF_END A64NAME(RtlpNtUserPfnDispatch$Index)
     MEND
 
     MACRO
     NTUSER_PFN_REF $Index
-    dcq     RtlpNtUserPfnDispatch$Index
+    dcq     A64NAME(RtlpNtUserPfnDispatch$Index)
     MEND
 #else
 .macro NTUSER_PFN_THUNK Index
