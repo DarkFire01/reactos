@@ -414,11 +414,12 @@ KiReadSystemTime(
 {
     LARGE_INTEGER Time;
 
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(_M_ARM64EC)
     /* Do a single atomic read */
     Time.QuadPart = *(volatile LONG64*)SystemTime;
 #else
-    /* Read in a loop until we get a match */
+    /* Read in a loop until we get a match. ARM64EC gets here too, its volatile
+       64 bit reads are acquire loads that need alignment the times lack. */
     for (;;)
     {
         Time.HighPart = SystemTime->High1Time;
