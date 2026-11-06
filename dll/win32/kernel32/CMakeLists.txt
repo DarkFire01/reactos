@@ -129,7 +129,7 @@ elseif(ARCH STREQUAL "arm")
     list(APPEND ASM_SOURCE
         client/arm/fiber.S
         client/arm/thread.S)
-elseif(ARCH STREQUAL "arm64")
+elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     list(APPEND ASM_SOURCE
         client/arm64/fiber.s)
 endif()
