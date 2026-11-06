@@ -235,6 +235,10 @@ elseif(ARCH STREQUAL "arm")
         math/arm/_logb.s
     )
 elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
+    # x64 code sets the FMA3 mode, ARM64EC reports no FMA3 so it stays off
+    if(ARCH STREQUAL "arm64ec")
+        list(APPEND LIBCNTPR_MATH_SOURCE math/libm_sse2/fma3_available.c)
+    endif()
     list(APPEND LIBCNTPR_MATH_SOURCE
         math/__cos.c
         math/__math_divzero.c

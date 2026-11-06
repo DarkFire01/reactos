@@ -25,6 +25,14 @@ void* __cdecl recalloc(void *mem, size_t num, size_t size)
     return ret;
 }
 
+#ifdef _M_ARM64EC
+/* ARM64EC callers call the import name directly instead of going through __imp__recalloc */
+void* __cdecl _recalloc(void *mem, size_t num, size_t size)
+{
+    return recalloc(mem, num, size);
+}
+#endif
+
 #ifdef _WIN64
 void* __imp__recalloc = recalloc;
 #else
