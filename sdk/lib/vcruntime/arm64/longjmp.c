@@ -38,7 +38,11 @@ void __cdecl longjmp(
     exceptionRecord.ExceptionInformation[0] = (ULONG_PTR)jumpBuffer;
 
     RtlUnwind((PVOID)jumpBuffer->Frame,
+#ifdef _M_ARM64EC
+                (PVOID)jumpBuffer->Rip,
+#else
                 (PVOID)jumpBuffer->Lr,
+#endif
                 &exceptionRecord,
                 (PVOID)(ULONG_PTR)_Value);
 }

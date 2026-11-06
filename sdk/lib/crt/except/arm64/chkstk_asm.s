@@ -13,8 +13,13 @@
 
     TEXTAREA
 
+#ifdef _ARM64EC_
+    /* __chkstk belongs to the x64 view, EC code probes through this one */
+    LEAF_ENTRY A64NAME(__chkstk_arm64ec)
+#else
     LEAF_ENTRY __chkstk
     ALTERNATE_ENTRY __alloca_probe
+#endif
 
     // x17 = page the allocation ends in, page 0 if the size wraps
     mov     x16, sp

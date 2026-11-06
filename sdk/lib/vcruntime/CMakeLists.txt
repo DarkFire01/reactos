@@ -43,7 +43,7 @@ elseif(${ARCH} STREQUAL "arm")
         arm/__longjmp_noframe.s
         arm/_setjmp.s
     )
-elseif(${ARCH} STREQUAL "arm64")
+elseif(${ARCH} STREQUAL "arm64" OR ${ARCH} STREQUAL "arm64ec")
     list(APPEND VCRT_SETJMP_SOURCES
         arm64/longjmp.c
     )

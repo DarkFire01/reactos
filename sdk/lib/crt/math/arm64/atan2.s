@@ -17,7 +17,9 @@
 //
 // double atan2(double y, double x)
 //
-    LEAF_ENTRY atan2
+    /* v6 and v7 are scratch here, x64 callers keep them */
+    ARM64EC_ENTRY_THUNK A64NAME(atan2),2,1
+    LEAF_ENTRY_COMDAT A64NAME(atan2)
 
     // Either argument NaN gives NaN
     fcmp    d0, d1
@@ -29,10 +31,10 @@
     and     x11, x9, #0x7FFFFFFFFFFFFFFF    // |y| bits
     and     x12, x10, #0x7FFFFFFFFFFFFFFF   // |x| bits
 
-    // x13 bit 0 = y negative, bit 1 = x negative
-    lsr     x13, x9, #63
-    lsr     x14, x10, #63
-    orr     x13, x13, x14, lsl #1
+    // x6 bit 0 = y negative, bit 1 = x negative
+    lsr     x6, x9, #63
+    lsr     x7, x10, #63
+    orr     x6, x6, x7, lsl #1
 
     mov     x16, #0x7FF0000000000000
     cbz     x11, Atan2YZero
@@ -43,12 +45,12 @@
     beq     Atan2PiOver2
 
     // Exponent gap between |y| and |x|
-    sub     x14, x11, x12
-    asr     x14, x14, #52
-    cmp     x14, #60
+    sub     x7, x11, x12
+    asr     x7, x7, #52
+    cmp     x7, #60
     bgt     Atan2Huge
-    tbz     x13, #1, Atan2Ratio
-    cmn     x14, #60
+    tbz     x6, #1, Atan2Ratio
+    cmn     x7, #60
     blt     Atan2Tiny
 
 LABEL(Atan2Ratio)
@@ -56,14 +58,14 @@ LABEL(Atan2Ratio)
     fabs    d3, d1
     fdiv    d2, d2, d3
 
-    // x14 = high word of t = |y / x|, x16 = reduction index or -1
-    fmov    x14, d2
-    lsr     x14, x14, #32
+    // x7 = high word of t = |y / x|, x16 = reduction index or -1
+    fmov    x7, d2
+    lsr     x7, x7, #32
     mov     w17, #0x3FDC0000
-    cmp     w14, w17
+    cmp     w7, w17
     bhs     Atan2Reduce
     mov     w17, #0x3E400000
-    cmp     w14, w17
+    cmp     w7, w17
     blo     Atan2Quadrant
     mov     x16, #-1
     b       Atan2Poly
@@ -71,10 +73,10 @@ LABEL(Atan2Ratio)
 LABEL(Atan2Reduce)
     fmov    d4, #1.0
     mov     w17, #0x3FF30000
-    cmp     w14, w17
+    cmp     w7, w17
     bhs     Atan2ReduceHigh
     mov     w17, #0x3FE60000
-    cmp     w14, w17
+    cmp     w7, w17
     bhs     Atan2ReduceOne
 
     // t in [7/16, 11/16): atan(1/2) + atan((2t - 1) / (2 + t))
@@ -97,7 +99,7 @@ LABEL(Atan2ReduceOne)
 LABEL(Atan2ReduceHigh)
     movz    w17, #0x4003, lsl #16
     movk    w17, #0x8000
-    cmp     w14, w17
+    cmp     w7, w17
     bhs     Atan2ReduceInf
 
     // t in [19/16, 39/16): atan(3/2) + atan((t - 3/2) / (1 + 3/2 t))
@@ -180,7 +182,7 @@ LABEL(Atan2Huge)
     fmov    d4, #0.5
     fmul    d3, d3, d4
     fadd    d2, d2, d3
-    and     x13, x13, #1
+    and     x6, x6, #1
     b       Atan2Quadrant
 
 LABEL(Atan2Tiny)
@@ -191,11 +193,11 @@ LABEL(Atan2Quadrant)
     // d2 = atan(|y / x|), place it in the quadrant of (x, y)
     ldr     d6, [x15, #168]
     ldr     d7, [x15, #160]
-    cmp     x13, #2
+    cmp     x6, #2
     beq     Atan2Quadrant2
     bhi     Atan2Quadrant3
     fmov    d0, d2
-    tbz     x13, #0, Atan2Done
+    tbz     x6, #0, Atan2Done
     fneg    d0, d0
     ret
 
@@ -213,7 +215,7 @@ LABEL(Atan2Quadrant3)
 
 LABEL(Atan2YZero)
     // y = +-0 keeps y for x >= +0 and gives +-pi otherwise
-    tbz     x13, #1, Atan2Done
+    tbz     x6, #1, Atan2Done
     ldr     d0, [x15, #160]
     b       Atan2SignOfY
 
@@ -226,17 +228,17 @@ LABEL(Atan2XInf)
     cmp     x11, x16
     beq     Atan2BothInf
     fmov    d0, xzr
-    tbz     x13, #1, Atan2SignOfY
+    tbz     x6, #1, Atan2SignOfY
     ldr     d0, [x15, #160]
     b       Atan2SignOfY
 
 LABEL(Atan2BothInf)
     ldr     d0, [x15, #176]
-    tbz     x13, #1, Atan2SignOfY
+    tbz     x6, #1, Atan2SignOfY
     ldr     d0, [x15, #184]
 
 LABEL(Atan2SignOfY)
-    tbz     x13, #0, Atan2Done
+    tbz     x6, #0, Atan2Done
     fneg    d0, d0
     ret
 
@@ -280,7 +282,7 @@ LABEL(Atan2Table)
     dcq     0x3FE921FB54442D18
     dcq     0x4002D97C7F3321D2
 
-    LEAF_END atan2
+    LEAF_END A64NAME(atan2)
 
     END
 /* EOF */

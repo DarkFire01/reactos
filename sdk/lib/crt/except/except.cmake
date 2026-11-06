@@ -24,7 +24,7 @@ elseif(ARCH STREQUAL "arm")
         except/arm/_local_unwind2.s
         except/arm/chkstk_asm.s
     )
-elseif(ARCH STREQUAL "arm64")
+elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     list(APPEND LIBCNTPR_EXCEPT_SOURCE
         except/arm64/ehandler.c
     )
@@ -40,7 +40,7 @@ elseif(ARCH STREQUAL "amd64")
     list(APPEND CHKSTK_ASM_SOURCE except/amd64/chkstk_ms.s)
 elseif(ARCH STREQUAL "arm")
     list(APPEND CHKSTK_ASM_SOURCE except/arm/chkstk_asm.s)
-elseif(ARCH STREQUAL "arm64")
+elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     list(APPEND CHKSTK_ASM_SOURCE except/arm64/chkstk_asm.s)
 endif()
 
