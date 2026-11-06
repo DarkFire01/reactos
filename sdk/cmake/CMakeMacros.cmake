@@ -662,6 +662,11 @@ function(add_importlibs _module)
         target_link_libraries(${_module} lib${LIB})
         add_dependency_edge(${_module} ${LIB})
     endforeach()
+
+    # ARM64EC import thunks call through the dispatch pointers, also for modules without a module type
+    if(ARCH STREQUAL "arm64ec")
+        target_link_libraries(${_module} hybrid ehandler)
+    endif()
 endfunction()
 
 # Some helper lists
