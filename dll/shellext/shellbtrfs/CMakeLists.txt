@@ -25,7 +25,8 @@ list(APPEND PCH_SKIP_SOURCE
     guid.c
     ${REACTOS_SOURCE_DIR}/drivers/filesystems/btrfs/crc32c.c)
 
-if((ARCH STREQUAL "i386") OR (ARCH STREQUAL "amd64"))
+# ARM64EC images take the x64 version, it only runs where CPUID reports SSE 4.2
+if((ARCH STREQUAL "i386") OR (ARCH STREQUAL "amd64") OR (ARCH STREQUAL "arm64ec"))
     list(APPEND ASM_SOURCE ${REACTOS_SOURCE_DIR}/drivers/filesystems/btrfs/crc32c.S)
     add_asm_files(btrfs_asm ${ASM_SOURCE})
 endif()
