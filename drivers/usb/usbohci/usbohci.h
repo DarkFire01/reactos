@@ -38,7 +38,7 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define OHCI_MAX_ISO_PACKETS         255
 #define OHCI_ISO_SCHEDULE_DELAY      2 // frames between now and the first frame of an unscheduled transfer
 
-#define OHCI_MAX_ISO_TD_COUNT        64
+#define OHCI_MAX_ISO_TD_COUNT        128
 #define OHCI_MAX_CONTROL_TD_COUNT    38
 #define OHCI_MAX_BULK_TD_COUNT       68
 #define OHCI_MAX_INTERRUPT_TD_COUNT  4

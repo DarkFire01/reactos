@@ -2161,11 +2161,11 @@ OHCI_ProcessDoneIsoTD(IN POHCI_EXTENSION OhciExtension,
 
     if (IsPortComplete && OhciTransfer->PendingTDs == 0)
     {
-        RegPacket.UsbPortCompleteTransfer(OhciExtension,
-                                          OhciEndpoint,
-                                          OhciTransfer->TransferParameters,
-                                          OhciTransfer->USBDStatus,
-                                          OhciTransfer->TransferLen);
+        /* this also hands the packet results to the URB */
+        RegPacket.UsbPortCompleteIsoTransfer(OhciExtension,
+                                             OhciEndpoint,
+                                             OhciTransfer->TransferParameters,
+                                             OhciTransfer->TransferLen);
     }
 }
 
