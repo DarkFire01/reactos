@@ -43,7 +43,8 @@ list(APPEND SOURCE
     ${CMAKE_CURRENT_BINARY_DIR}/epm_c.c)
 
 if(MSVC)
-    if(ARCH STREQUAL "arm64")
+    # FIXME: x64 callers of the ARM64EC stubless thunks need entry thunks
+    if(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
         add_asm_files(rpcrt4_asm arm64/msvc.s)
     else()
         add_asm_files(rpcrt4_asm msvc.S thunks-msvc.s)
