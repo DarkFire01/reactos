@@ -17,6 +17,7 @@ if(MSVC)
     add_compile_options("/wd4267")
 endif()
 
+add_host_tool(arm64xobj arm64xobj/arm64xobj.c)
 add_host_tool(bin2c bin2c.c)
 add_host_tool(gendib gendib/gendib.c)
 add_host_tool(geninc geninc/geninc.c)
