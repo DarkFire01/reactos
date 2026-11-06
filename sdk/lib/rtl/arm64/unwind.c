@@ -73,6 +73,28 @@ RtlLookupFunctionTable(
                                          IMAGE_DIRECTORY_ENTRY_EXCEPTION,
                                          &Size);
 
+    /* The x64 view of an ARM64X image keeps the ARM64 entries in its CHPE metadata */
+    if (RtlImageNtHeader((PVOID)*ImageBase)->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64)
+    {
+        PIMAGE_LOAD_CONFIG_DIRECTORY64 LoadConfig;
+        PIMAGE_ARM64EC_METADATA Metadata;
+        ULONG ConfigSize;
+
+        LoadConfig = RtlImageDirectoryEntryToData((PVOID)*ImageBase,
+                                                  TRUE,
+                                                  IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG,
+                                                  &ConfigSize);
+        if (LoadConfig &&
+            ConfigSize >= RTL_SIZEOF_THROUGH_FIELD(IMAGE_LOAD_CONFIG_DIRECTORY64, CHPEMetadataPointer) &&
+            LoadConfig->Size >= RTL_SIZEOF_THROUGH_FIELD(IMAGE_LOAD_CONFIG_DIRECTORY64, CHPEMetadataPointer) &&
+            LoadConfig->CHPEMetadataPointer)
+        {
+            Metadata = (PIMAGE_ARM64EC_METADATA)(ULONG_PTR)LoadConfig->CHPEMetadataPointer;
+            Table = (PVOID)(*ImageBase + Metadata->ExtraRFETable);
+            Size = Metadata->ExtraRFETableSize;
+        }
+    }
+
     *Length = Size / sizeof(RUNTIME_FUNCTION);
     return Table;
 }
