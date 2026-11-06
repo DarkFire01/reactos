@@ -46,10 +46,11 @@ elseif(ARCH STREQUAL "amd64")
 elseif(ARCH STREQUAL "arm")
     list(APPEND ASM_SOURCE dispatch/arm/stubs_asm.s)
 elseif(ARCH STREQUAL "arm64")
-    list(APPEND ASM_SOURCE dispatch/arm64/dispatch.s)
+    list(APPEND ASM_SOURCE dispatch/arm64/dispatch.s ldr/arm64/ldrecasm.s)
     list(APPEND SOURCE dispatch/dispatch.c ldr/ldrec.c)
 elseif(ARCH STREQUAL "arm64ec")
-    list(APPEND SOURCE dispatch/dispatch.c ldr/ldrec.c)
+    # x64 code imports _fltused from ntdll, the ARM64 half takes it from the runtime libraries
+    list(APPEND SOURCE dispatch/dispatch.c ldr/ldrec.c ${REACTOS_SOURCE_DIR}/sdk/lib/crt/misc/fltused.c)
 else()
     list(APPEND SOURCE dispatch/dispatch.c)
 endif()
@@ -76,6 +77,11 @@ target_link_libraries(ntdll ntdll_vista_static etwtrace rtl rtl_um rtl_vista ntd
 
 if (NOT SYSWOW64_BUILD)
     target_link_libraries(ntdll csrlib)
+endif()
+
+# Both halves of an ARM64X ntdll work on one heap, loader state and CSR connection, so both link the same runtime objects
+if(ARCH STREQUAL "arm64ec" OR (ARCH STREQUAL "arm64" AND ENABLE_ARM64EC))
+    target_sources(ntdll PRIVATE $<TARGET_OBJECTS:rtl> $<TARGET_OBJECTS:csrlib> $<TARGET_OBJECTS:ntdll_vista_static>)
 endif()
 
 if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)

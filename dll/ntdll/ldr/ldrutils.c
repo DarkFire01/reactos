@@ -487,6 +487,17 @@ LdrpCallTlsInitializers(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
                                 LdrEntry->DllBase, Callback);
                     }
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+                    /* The ARM64 half of an ARM64X image is not set up in an x64 process.
+                       FIXME: callbacks of x64 images have to run in the emulator. */
+                    if (LdrpX64Process && !LdrpIsArm64EcCode(LdrEntry->DllBase, (PVOID)Callback))
+                    {
+                        DPRINT1("LDR: Skipping Tls Callback %p of %wZ, it is not ARM64EC code\n",
+                                Callback, &LdrEntry->BaseDllName);
+                        continue;
+                    }
+#endif
+
                     /* Call it */
                     LdrpCallInitRoutine((PDLL_INIT_ROUTINE)Callback,
                                         LdrEntry->DllBase,
@@ -777,6 +788,12 @@ LdrpFetchAddressOfEntryPoint(IN PVOID ImageBase)
         EntryPoint = NtHeaders->OptionalHeader.AddressOfEntryPoint;
         if (EntryPoint) EntryPoint += (ULONG_PTR)ImageBase;
     }
+
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+    /* The x64 view of an ARM64X image enters through an x64 thunk to the ARM64EC entry */
+    if (EntryPoint && LdrpX64Process)
+        EntryPoint = (ULONG_PTR)LdrpResolveFastForward((PVOID)EntryPoint);
+#endif
 
     /* Return calculated pointer (or zero in case of failure) */
     return (PVOID)EntryPoint;
@@ -1196,6 +1213,12 @@ SkipCheck:
         return STATUS_INVALID_IMAGE_FORMAT;
     }
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+    /* x64 processes see the ARM64EC view of ARM64X images */
+    if (LdrpX64Process)
+        LdrpApplyArm64XView(ViewBase);
+#endif
+
     // FIXME: .NET support is missing
 
     /* Allocate an entry */
@@ -1505,6 +1528,11 @@ NoRelocNeeded:
             }
         }
     }
+
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+    if (LdrpX64Process)
+        LdrpUpdateHybridMetadata(ViewBase);
+#endif
 
     // FIXME: LdrpCheckCorImage() is missing
 

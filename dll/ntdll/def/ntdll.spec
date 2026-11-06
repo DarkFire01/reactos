@@ -150,7 +150,7 @@
 @ stdcall -arch=i386 KiFastSystemCallRet()
 @ stdcall -arch=i386 KiIntSystemCall()
 @ stdcall KiRaiseUserExceptionDispatcher()
-@ stdcall KiUserApcDispatcher(ptr ptr ptr ptr)
+@ stdcall -arch=!arm64ec KiUserApcDispatcher(ptr ptr ptr ptr)
 @ stdcall KiUserCallbackDispatcher(ptr ptr long) ; CHECKME
 @ stdcall KiUserExceptionDispatcher(ptr ptr)
 @ stdcall -version=0x502 LdrAccessOutOfProcessResource(ptr ptr ptr ptr ptr)
@@ -178,7 +178,7 @@
 @ stdcall -version=0x600+ LdrGetProcedureAddressEx(ptr ptr long ptr long)
 @ stdcall -stub LdrHotPatchRoutine(ptr)
 @ stdcall LdrInitShimEngineDynamic(ptr)
-@ stdcall LdrInitializeThunk(long long long long)
+@ stdcall -arch=!arm64ec LdrInitializeThunk(long long long long)
 @ stdcall LdrLoadAlternateResourceModule(ptr ptr)
 @ stdcall -stub -version=0x600+ LdrLoadAlternateResourceModuleEx(long long ptr ptr long)
 @ stdcall LdrLoadDll(wstr long ptr ptr)
@@ -1795,7 +1795,8 @@
 @ cdecl -arch=i386 _CIsin()
 @ cdecl -arch=i386 _CIsqrt()
 @ cdecl -arch=x86_64,arm,arm64 __C_specific_handler(ptr long ptr ptr)
-@ cdecl -arch=x86_64,arm,arm64 __chkstk()
+@ cdecl -arch=x86_64,arm,arm64,!arm64ec __chkstk()
+@ cdecl -arch=arm64ec __chkstk() __chkstk_arm64ec
 @ cdecl __isascii(long)
 @ cdecl __iscsym(long)
 @ cdecl __iscsymf(long)

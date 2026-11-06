@@ -168,6 +168,47 @@ LdrpMapDll(IN PWSTR SearchPath OPTIONAL,
 PVOID NTAPI
 LdrpFetchAddressOfEntryPoint(PVOID ImageBase);
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+/* ldrec.c */
+extern BOOLEAN LdrpX64Process;
+
+PIMAGE_ARM64EC_METADATA
+NTAPI
+LdrpGetArm64EcMetadata(
+    _In_ PVOID ImageBase);
+
+VOID
+NTAPI
+LdrpApplyArm64XView(
+    _In_ PVOID ImageBase);
+
+PVOID
+NTAPI
+LdrpResolveFastForward(
+    _In_ PVOID Address);
+
+BOOLEAN
+NTAPI
+LdrpIsArm64EcCode(
+    _In_ PVOID ImageBase,
+    _In_ PVOID Address);
+
+VOID
+NTAPI
+LdrpUpdateHybridMetadata(
+    _In_ PVOID ImageBase);
+
+NTSTATUS
+NTAPI
+LdrpInitializeX64Process(VOID);
+
+DECLSPEC_NORETURN
+VOID
+NTAPI
+LdrpStartX64Process(
+    _In_ PCONTEXT Context);
+#endif
+
 VOID NTAPI
 LdrpFreeUnicodeString(PUNICODE_STRING String);
 

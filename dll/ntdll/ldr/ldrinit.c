@@ -96,13 +96,17 @@ NTSTATUS LdrPerformRelocations(PIMAGE_NT_HEADERS NTHeaders, PVOID ImageBase);
 NTSTATUS NTAPI RtlpInitializeActCtx(PVOID* pOldShimData);
 extern BOOLEAN RtlpUse16ByteSLists;
 
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 extern ULONG NTAPI RtlGetCurrentDirectory_U_RtlpMsysDecoy(ULONG MaximumLength, PWSTR Buffer);
 VOID (*LdrpWow64LdrpInitialize)(PVOID) = NULL;
 BOOLEAN (*LdrpWow64PassExceptionToGuest)(PCONTEXT, PVOID) = NULL;
 ANSI_STRING LdrpWow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
 ANSI_STRING LdrpWow64PassExceptionToGuestImportName = RTL_CONSTANT_STRING("Wow64PassExceptionToGuest");
 PVOID LdrpWow64BaseAddress = NULL;
+#endif
+
+#ifdef _M_ARM64
+static LONG LdrpX64Started;
 #endif
 
 #ifdef _WIN64
@@ -113,7 +117,7 @@ PVOID LdrpWow64BaseAddress = NULL;
 
 /* FUNCTIONS *****************************************************************/
 
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 
 BOOLEAN
 LdrpTryWow64Exception(PCONTEXT Context, PVOID Ptr2)
@@ -581,7 +585,7 @@ LdrpInitializeThread(IN PCONTEXT Context)
     RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED ActCtx;
     NTSTATUS Status;
     PVOID EntryPoint;
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
     PIMAGE_NT_HEADERS NtHeader;
 #endif
 
@@ -601,7 +605,7 @@ LdrpInitializeThread(IN PCONTEXT Context)
         DPRINT1("Warning: Unable to allocate ActivationContextStack\n");
     }
 
-#ifdef _M_AMD64 
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
     /* Get the NT Headers */
     NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
     
@@ -1717,7 +1721,7 @@ LdrpInitializeProcessCompat(PVOID pProcessActctx, PVOID* pOldShimData)
             DPRINT1("LdrpInitializeProcessCompat: Corrupt pShimData (0x%x, %u)\n", pShimData->dwMagic, pShimData->dwSize);
             return;
         }
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
         pShimData->RtlGetCurrentDirectory_U_RtlpMsysDecoy = &RtlGetCurrentDirectory_U_RtlpMsysDecoy;   /* We need this private symbol for a MSYS shim */
 #endif
         if (pShimData->dwRosProcessCompatVersion)
@@ -1789,7 +1793,7 @@ LdrpInitializeProcessCompat(PVOID pProcessActctx, PVOID* pOldShimData)
 
                     pShimData->dwSize = sizeof(*pShimData);
                     pShimData->dwMagic = REACTOS_SHIMDATA_MAGIC;
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
                     /* The process did not ask for shims, but we want to make sure that if the Peb->pShimData is available, the data in it is complete */
                     pShimData->RtlGetCurrentDirectory_U_RtlpMsysDecoy = &RtlGetCurrentDirectory_U_RtlpMsysDecoy;
 #endif
@@ -2128,7 +2132,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
 
     /* Setup the Heap */
     RtlInitializeHeapManager();
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
     if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64)
     {
 #endif
@@ -2138,7 +2142,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
                                         NtHeader->OptionalHeader.SizeOfHeapCommit,
                                         NULL,
                                         &HeapParameters);
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
     }
     else
     {
@@ -2408,7 +2412,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     /* Initialize Wine's active context implementation for the current process */
     RtlpInitializeActCtx(&OldShimData);
 
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
     if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
     {
         Status = LdrpLoadWow64();
@@ -2421,6 +2425,16 @@ LdrpInitializeProcess(IN PCONTEXT Context,
         _InterlockedIncrement(&LdrpProcessInitialized);
         LdrpWow64LdrpInitialize(Context);
         return STATUS_SUCCESS;
+    }
+#endif
+
+#ifdef _M_ARM64
+    /* The emulator has to be up before the x64 image's imports are snapped */
+    if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64)
+    {
+        Status = LdrpInitializeX64Process();
+        if (!NT_SUCCESS(Status))
+            return Status;
     }
 #endif
 
@@ -2491,6 +2505,10 @@ LdrpInitializeProcess(IN PCONTEXT Context,
                 DPRINT1("LDR: Unable to find post-import process init function, Status=0x%08lx\n", Status);
             return Status;
         }
+#ifdef _M_ARM64
+        if (LdrpX64Process)
+            FunctionAddress = LdrpResolveFastForward(FunctionAddress);
+#endif
         Kernel32ProcessInitPostImportFunction = FunctionAddress;
 
         Status = LdrGetProcedureAddress(Kernel32BaseAddress,
@@ -2504,6 +2522,10 @@ LdrpInitializeProcess(IN PCONTEXT Context,
                 DPRINT1("LDR: Unable to find BaseQueryModuleData, Status=0x%08lx\n", Status);
             return Status;
         }
+#ifdef _M_ARM64
+        if (LdrpX64Process)
+            FunctionAddress = LdrpResolveFastForward(FunctionAddress);
+#endif
         Kernel32BaseQueryModuleData = FunctionAddress;
     }
 
@@ -2730,7 +2752,7 @@ LdrpInit(PCONTEXT Context,
         NtCurrentTeb()->RealClientId.UniqueProcess,
         NtCurrentTeb()->RealClientId.UniqueThread);
 
-#ifdef _M_AMD64
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
     /* Set the SList header usage */
     RtlpUse16ByteSLists = SharedUserData->ProcessorFeatures[PF_COMPARE_EXCHANGE128];
 #endif /* _M_AMD64 */
@@ -2841,6 +2863,12 @@ LdrpInit(PCONTEXT Context,
         LdrpInitFailure(LoaderStatus);
         RtlRaiseStatus(LoaderStatus);
     }
+
+#ifdef _M_ARM64
+    /* FIXME: Threads of an x64 process other than the first one start native */
+    if (LdrpX64Process && InterlockedCompareExchange(&LdrpX64Started, 1, 0) == 0)
+        LdrpStartX64Process(Context);
+#endif
 }
 
 /* EOF */
