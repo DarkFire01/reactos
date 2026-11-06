@@ -643,6 +643,26 @@ BaseInitializeContext(IN PCONTEXT Context,
     DPRINT("BaseInitializeContext: %p\n", Context);
     ASSERT(((ULONG_PTR)StackAddress & 15) == 0);
 
+#ifdef _M_ARM64EC
+    /* The native kernel starts threads from an ARM64 context, which fits in the x64 one.
+       Fibers keep the x64 layout, SwitchToFiber works on it. */
+    if (ContextType != 2)
+    {
+        PARM64_NT_CONTEXT NativeContext = (PARM64_NT_CONTEXT)Context;
+
+        C_ASSERT(sizeof(ARM64_NT_CONTEXT) <= sizeof(CONTEXT));
+        RtlZeroMemory(NativeContext, sizeof(*NativeContext));
+
+        /* ARM64EC functions take their arguments like ARM64 ones */
+        NativeContext->X0 = (ULONG_PTR)StartAddress;
+        NativeContext->X1 = (ULONG_PTR)Parameter;
+        NativeContext->Sp = (ULONG_PTR)StackAddress;
+        NativeContext->Pc = (ContextType == 1) ? (ULONG_PTR)BaseThreadStartup : (ULONG_PTR)BaseProcessStartup;
+        NativeContext->ContextFlags = CONTEXT_ARM64_FULL;
+        return;
+    }
+#endif
+
     RtlZeroMemory(Context, sizeof(*Context));
 
     /* Setup the Initial Win32 Thread Context */
