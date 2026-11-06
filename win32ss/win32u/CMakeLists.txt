@@ -10,6 +10,11 @@ add_library(win32u MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/win32u.def)
 
 set_module_type(win32u module)
+
+# The ARM64EC run time checks call memcpy instead of inlining it
+if(ARCH STREQUAL "arm64ec")
+    target_link_libraries(win32u libcntpr)
+endif()
 add_dependencies(win32u psdk)
 add_cd_file(TARGET win32u DESTINATION reactos/system32 FOR all)
 
