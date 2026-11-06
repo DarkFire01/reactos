@@ -95,4 +95,32 @@ LABEL(CallCheckDone)
 
     NESTED_END LdrpEcCallCheck
 
+//
+// ULONG_PTR LdrpCallX64(PVOID ExitToX64, PVOID Target, ULONG_PTR Arg1, ULONG_PTR Arg2, ULONG_PTR Arg3)
+//
+// Calls x64 code from native code the way an exit thunk does: the arguments go to the registers
+// that hold rcx, rdx and r8, the x64 home space sits right above the return address and the
+// emulator is entered with blr x16 so it knows where the x64 code returns to. rax comes back in x8.
+//
+    NESTED_ENTRY LdrpCallX64
+
+    stp     fp, lr, [sp, #-0x10]!
+    mov     fp, sp
+    sub     sp, sp, #0x20
+
+    mov     x16, x0
+    mov     x9, x1
+    mov     x0, x2
+    mov     x1, x3
+    mov     x2, x4
+    mov     x3, xzr
+    blr     x16
+    mov     x0, x8
+
+    mov     sp, fp
+    ldp     fp, lr, [sp], #0x10
+    ret
+
+    NESTED_END LdrpCallX64
+
     END

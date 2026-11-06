@@ -2849,6 +2849,11 @@ LdrpInit(PCONTEXT Context,
         else
         {
             /* This is a new thread initializing */
+#ifdef _M_ARM64
+            /* Every thread of an x64 process keeps its own emulator state */
+            if (LdrpX64Process)
+                LdrpInitializeX64Thread();
+#endif
             LdrpInitializeThread(Context);
         }
     }

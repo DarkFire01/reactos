@@ -102,6 +102,12 @@ LdrpCallInitRoutine(IN PDLL_INIT_ROUTINE EntryPoint,
                     IN ULONG Reason,
                     IN PVOID Context)
 {
+#ifdef _M_ARM64
+    /* Native code cannot call x64 code, the emulator runs it. ARM64EC code gets there by itself. */
+    if (LdrpX64Process && !RtlIsEcCode((ULONG64)EntryPoint))
+        return (BOOLEAN)LdrpCallX64Routine((PVOID)EntryPoint, BaseAddress, Reason, Context);
+#endif
+
     /* Call the entry */
     return EntryPoint(BaseAddress, Reason, Context);
 }
@@ -488,11 +494,12 @@ LdrpCallTlsInitializers(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
                     }
 
 #if defined(_M_ARM64) || defined(_M_ARM64EC)
-                    /* The ARM64 half of an ARM64X image is not set up in an x64 process.
-                       FIXME: callbacks of x64 images have to run in the emulator. */
-                    if (LdrpX64Process && !LdrpIsArm64EcCode(LdrEntry->DllBase, (PVOID)Callback))
+                    /* The ARM64 half of an ARM64X image is not set up in an x64 process, x64 callbacks run in the emulator */
+                    if (LdrpX64Process &&
+                        RtlIsEcCode((ULONG64)Callback) &&
+                        !LdrpIsArm64EcCode(LdrEntry->DllBase, (PVOID)Callback))
                     {
-                        DPRINT1("LDR: Skipping Tls Callback %p of %wZ, it is not ARM64EC code\n",
+                        DPRINT1("LDR: Skipping Tls Callback %p of %wZ, it is ARM64 code\n",
                                 Callback, &LdrEntry->BaseDllName);
                         continue;
                     }

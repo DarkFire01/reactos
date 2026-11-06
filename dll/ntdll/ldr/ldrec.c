@@ -439,12 +439,36 @@ LdrpLoadEmulator(VOID)
     return STATUS_SUCCESS;
 }
 
+/* ldrecasm.s */
+ULONG_PTR
+LdrpCallX64(
+    _In_ PVOID ExitToX64,
+    _In_ PVOID Target,
+    _In_ ULONG_PTR Arg1,
+    _In_ ULONG_PTR Arg2,
+    _In_ ULONG_PTR Arg3);
+
+/**
+ * @brief
+ * Runs an x64 DLL entry point or TLS callback in the emulator.
+ */
+ULONG_PTR
+NTAPI
+LdrpCallX64Routine(
+    _In_ PVOID Routine,
+    _In_ PVOID BaseAddress,
+    _In_ ULONG Reason,
+    _In_opt_ PVOID Context)
+{
+    return LdrpCallX64(LdrpExitToX64, Routine, (ULONG_PTR)BaseAddress, Reason, (ULONG_PTR)Context);
+}
+
 /**
  * @brief
  * Gives the current thread the CHPE CPU area the emulator keeps its state in.
  */
-static
 NTSTATUS
+NTAPI
 LdrpInitializeX64Thread(VOID)
 {
     PCHPE_V2_CPU_AREA_INFO CpuArea;

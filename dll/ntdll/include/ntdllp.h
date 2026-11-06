@@ -202,6 +202,18 @@ NTSTATUS
 NTAPI
 LdrpInitializeX64Process(VOID);
 
+NTSTATUS
+NTAPI
+LdrpInitializeX64Thread(VOID);
+
+ULONG_PTR
+NTAPI
+LdrpCallX64Routine(
+    _In_ PVOID Routine,
+    _In_ PVOID BaseAddress,
+    _In_ ULONG Reason,
+    _In_opt_ PVOID Context);
+
 DECLSPEC_NORETURN
 VOID
 NTAPI
