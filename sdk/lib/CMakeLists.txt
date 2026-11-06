@@ -34,7 +34,7 @@ add_subdirectory(epsapi)
 add_subdirectory(evtlib)
 add_subdirectory(fast486)
 add_subdirectory(fslib)
-if(ARCH STREQUAL "arm64ec")
+if(ARCH STREQUAL "arm64ec" OR (ARCH STREQUAL "arm64" AND ENABLE_ARM64EC))
     add_subdirectory(hybrid)
 endif()
 

@@ -48,3 +48,10 @@ add_asm_files(chkstk_lib_asm ${CHKSTK_ASM_SOURCE})
 add_library(chkstk ${CHKSTK_SOURCE} ${chkstk_lib_asm})
 set_target_properties(chkstk PROPERTIES LINKER_LANGUAGE "C")
 add_dependencies(chkstk asm)
+
+# An ARM64EC language handler has to live in the image, an import cannot be one
+if(ARCH STREQUAL "arm64ec")
+    add_asm_files(ehandler_lib_asm except/arm64/ehandler_asm.s)
+    add_library(ehandler except/arm64/ehandler.c ${ehandler_lib_asm})
+    add_dependencies(ehandler psdk asm)
+endif()

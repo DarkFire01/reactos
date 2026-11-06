@@ -87,6 +87,10 @@ IsTargetInScope(
     return FALSE;
 }
 
+#ifdef _M_ARM64EC
+/* x64 code reaches the import of this name, so it needs an entry thunk */
+__declspec(hybrid_patchable)
+#endif
 _CRTIMP
 EXCEPTION_DISPOSITION
 __cdecl
