@@ -31,6 +31,29 @@ else()
     add_link_options(/OPT:REF /OPT:ICF)
 endif()
 
+# ARM64X images share their writable data between the two halves, see sdk/tools/arm64xobj
+if(ARCH STREQUAL "arm64ec" OR (ARCH STREQUAL "arm64" AND ENABLE_ARM64EC))
+    set(_arm64xobj ${REACTOS_BINARY_DIR}/host-tools/bin/arm64xobj.exe)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Gw>)
+
+    if(ARCH STREQUAL "arm64")
+        set(CMAKE_C_COMPILER_LAUNCHER ${_arm64xobj} -cc -native)
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${_arm64xobj} -cc -native)
+    elseif(ARM64X_NATIVE_BINARY_DIR)
+        set(CMAKE_C_COMPILER_LAUNCHER ${_arm64xobj} -cc -ec ${REACTOS_BINARY_DIR} ${ARM64X_NATIVE_BINARY_DIR})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${_arm64xobj} -cc -ec ${REACTOS_BINARY_DIR} ${ARM64X_NATIVE_BINARY_DIR})
+    endif()
+
+    # The ARM64 build records what each image links, the ARM64EC build links the DLLs again as ARM64X with it
+    if(ARCH STREQUAL "arm64")
+        set(CMAKE_C_LINKER_LAUNCHER ${_arm64xobj} -record)
+        set(CMAKE_CXX_LINKER_LAUNCHER ${_arm64xobj} -record)
+    elseif(ARM64X_NATIVE_BINARY_DIR)
+        set(CMAKE_C_LINKER_LAUNCHER ${_arm64xobj} -link ${REACTOS_BINARY_DIR} ${ARM64X_NATIVE_BINARY_DIR})
+        set(CMAKE_CXX_LINKER_LAUNCHER ${_arm64xobj} -link ${REACTOS_BINARY_DIR} ${ARM64X_NATIVE_BINARY_DIR})
+    endif()
+endif()
+
 if(ARCH STREQUAL "i386")
     add_definitions(/DWIN32 /D_WINDOWS)
 endif()

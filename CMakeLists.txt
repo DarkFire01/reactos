@@ -165,7 +165,7 @@ if(NOT SYSWOW64_BUILD AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(sdk/tools)
     add_subdirectory(sdk/lib)
 
-    set(NATIVE_TARGETS asmpp bin2c widl gendib cabman fatten hpp isohybrid mkhive mkisofs obj2bin spec2def geninc mkshelllink utf16le xml2sdb)
+    set(NATIVE_TARGETS arm64xobj asmpp bin2c widl gendib cabman fatten hpp isohybrid mkhive mkisofs obj2bin spec2def geninc mkshelllink utf16le xml2sdb)
     if(NOT MSVC)
         list(APPEND NATIVE_TARGETS pefixup)
         if (ARCH STREQUAL "i386")
@@ -381,7 +381,7 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
 
     add_subdirectory(sdk/include)
 
-    if(ARCH MATCHES "64$")
+    if(ARCH MATCHES "64$" OR ARCH STREQUAL "arm64ec")
         include(sdk/cmake/baseaddress64.cmake)
     elseif(NO_ROSSYM)
         include(sdk/cmake/baseaddress_dwarf.cmake)
@@ -427,6 +427,10 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
     endif()
 
     file(MAKE_DIRECTORY ${REACTOS_BINARY_DIR}/sdk/include/reactos)
+
+    if(ARCH STREQUAL "arm64" AND ENABLE_ARM64EC)
+        finish_arm64ec()
+    endif()
 
     add_dependency_footer()
 endif()

@@ -1,5 +1,5 @@
 
-# The ARM64EC port is incomplete, modules that fail to build fall back to ARM64 on the media
+# The ARM64EC port is incomplete, modules that fail to link as ARM64X fall back to ARM64 on the media
 execute_process(
     COMMAND ${CMAKE_COMMAND} --build ${BINARY_DIR} -- -k 0
     RESULT_VARIABLE _result)

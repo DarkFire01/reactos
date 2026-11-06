@@ -1,5 +1,5 @@
 
-# Picks the ARM64EC build of a module when there is one, the ARM64 one otherwise
+# Picks the ARM64X build of a module when there is one, the ARM64 one otherwise
 if(EXISTS "${HYBRID}")
     set(_source "${HYBRID}")
 else()

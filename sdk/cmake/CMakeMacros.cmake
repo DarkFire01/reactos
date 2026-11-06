@@ -718,12 +718,17 @@ function(set_module_type MODULE TYPE)
     set_target_properties(${MODULE} PROPERTIES REACTOS_MODULE_TYPE ${TYPE})
 
     # Every ARM64EC image carries the CHPE metadata and the emulator dispatch pointers
-    if(ARCH STREQUAL "arm64ec")
-        target_link_libraries(${MODULE} hybrid)
+    if(ARCH STREQUAL "arm64ec" AND NOT TYPE IN_LIST KERNEL_MODULE_TYPES)
+        target_link_libraries(${MODULE} hybrid ehandler)
     endif()
 
     # Kernel mode modules come from the outer build, only build them when asked for
     if(USERMODE_ONLY_BUILD AND TYPE IN_LIST KERNEL_MODULE_TYPES)
+        set_target_properties(${MODULE} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
+
+    # Executables stay ARM64, the ARM64EC build only provides the other half of ARM64X DLLs
+    if(ARCH STREQUAL "arm64ec" AND TYPE MATCHES "cui$|gui$")
         set_target_properties(${MODULE} PROPERTIES EXCLUDE_FROM_ALL TRUE)
     endif()
 
