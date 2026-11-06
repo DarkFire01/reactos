@@ -7,7 +7,7 @@
 #define IMPSYM(name) __imp_##name
 #endif
 
-#if (defined(_M_IX86) || defined(_M_AMD64))
+#if (defined(_M_IX86) || defined(_M_AMD64)) && !defined(_M_ARM64EC)
 
 #include <asm.inc>
 
@@ -53,11 +53,32 @@ ENDM
     CREATE_ALIAS1 $alias, $target
     CREATE_ALIAS2 $alias, $target
     MEND
-#elif defined(_M_ARM64)
+#elif defined(_M_ARM64) || defined(_M_ARM64EC)
 
 #include <kxarm64.h>
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && defined(_M_ARM64EC)
+
+    /* ARM64EC callers use the #name and __imp_aux_ forms of an import too */
+    MACRO
+    CREATE_ALIAS1   $alias, $target
+    IMPORT  $alias, WEAK $target
+    IMPORT  |#$alias|, WEAK |#$target|
+    MEND
+
+    MACRO
+    CREATE_ALIAS2   $alias, $target
+    IMPORT  __imp_$alias, WEAK __imp_$target
+    IMPORT  __imp_aux_$alias, WEAK __imp_aux_$target
+    MEND
+
+    MACRO
+    CREATE_ALIAS   $alias, $target
+    CREATE_ALIAS1 $alias, $target
+    CREATE_ALIAS2 $alias, $target
+    MEND
+
+#elif defined(_MSC_VER)
 
     MACRO
     CREATE_ALIAS1   $alias, $target
