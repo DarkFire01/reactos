@@ -124,6 +124,35 @@ static int IsWritableData(OBJ_FILE *Obj, int16_t Section)
     return (Flags & SCN_MEM_WRITE) && !(Flags & SCN_CNT_CODE);
 }
 
+/* Tells whether the object exports a symbol with a linker directive, the export needs this half's definition */
+static int IsExported(OBJ_FILE *Obj, const char *Name)
+{
+    size_t NameLength = strlen(Name);
+    int s;
+
+    for (s = 1; s <= Obj->NumberOfSections; s++)
+    {
+        uint8_t *Header = SectionHeader(Obj, s);
+        const char *Data = (const char *)Obj->Data + Get32(Header + 20);
+        uint32_t Size = Get32(Header + 16), i;
+
+        if (memcmp(Header, ".drectve", 8) || Get32(Header + 20) + Size > Obj->Size)
+            continue;
+
+        for (i = 0; i + 8 + NameLength <= Size; i++)
+        {
+            if ((Data[i] == '/' || Data[i] == '-') && !_strnicmp(Data + i + 1, "EXPORT:", 7) &&
+                !memcmp(Data + i + 8, Name, NameLength) &&
+                (i + 8 + NameLength == Size || strchr(", \"", Data[i + 8 + NameLength])))
+            {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
 /* Function pointers differ between the halves, each half keeps data that holds them */
 static int HoldsCodePointers(OBJ_FILE *Obj, int16_t Section)
 {
@@ -249,6 +278,7 @@ static int RewriteObject(int Ec, const char *Source, const char *Object)
         int16_t Section = (int16_t)Get16(Sym + 12);
         uint8_t Class = Sym[16];
         uint8_t AuxCount = Sym[17];
+        int IsCommon = Class == SYM_CLASS_EXTERNAL && Section == 0 && Get32(Sym + 8) != 0;
 
         Redirect[i] = i;
 
@@ -256,20 +286,21 @@ static int RewriteObject(int Ec, const char *Source, const char *Object)
         if (Get32(Sym) == 0 && !strncmp((const char *)Obj.Strings + Get32(Sym + 4), "__@@_PchSym_", 12))
             continue;
 
-        /* Common data, the ARM64 half allocates it */
-        if (Ec && Class == SYM_CLASS_EXTERNAL && Section == 0 && Get32(Sym + 8) != 0)
+        /* Common data is shared like defined data, the ARM64 half allocates it */
+        if (!IsCommon)
         {
-            Put32(Sym + 8, 0);
-            continue;
+            /* Section symbols carry an aux record, data items do not */
+            if (AuxCount || !IsWritableData(&Obj, Section) || HoldsCodePointers(&Obj, Section))
+                continue;
+            if (Class != SYM_CLASS_EXTERNAL && Class != SYM_CLASS_STATIC)
+                continue;
         }
 
-        /* Section symbols carry an aux record, data items do not */
-        if (AuxCount || !IsWritableData(&Obj, Section) || HoldsCodePointers(&Obj, Section))
-            continue;
-        if (Class != SYM_CLASS_EXTERNAL && Class != SYM_CLASS_STATIC)
-            continue;
-
         SymbolName(&Obj, Sym, Name, sizeof(Name));
+
+        /* Data the object exports itself keeps its definition in each half */
+        if (Ec && Class == SYM_CLASS_EXTERNAL && IsExported(&Obj, Name))
+            continue;
 
         /* File local data gets a name both halves agree on */
         if (Class == SYM_CLASS_STATIC)
@@ -414,18 +445,49 @@ static void AppendQuoted(char **Line, size_t *Length, const char *Arg)
     *Length = (size_t)(Out - *Line);
 }
 
+/* Builds the command line, past the Windows limit the arguments go to a response file the caller deletes */
+static char *BuildCommandLine(ARG_LIST *Args, char *ResponseFile, size_t ResponseFileSize)
+{
+    char *Line = NULL, *Rest = NULL, Dir[MAX_PATH];
+    size_t Length = 0, RestLength = 0;
+    FILE *File;
+    int i;
+
+    *ResponseFile = 0;
+    for (i = 0; i < Args->Count; i++)
+        AppendQuoted(&Line, &Length, Args->Items[i]);
+    if (Length < 30000)
+        return Line;
+
+    for (i = 1; i < Args->Count; i++)
+        AppendQuoted(&Rest, &RestLength, Args->Items[i]);
+    if (!GetTempPathA(sizeof(Dir), Dir) || !GetTempFileNameA(Dir, "a64", 0, ResponseFile) ||
+        ResponseFileSize < MAX_PATH || !(File = fopen(ResponseFile, "wb")))
+    {
+        free(Rest);
+        return Line;
+    }
+    fwrite(Rest, 1, RestLength, File);
+    fclose(File);
+    free(Rest);
+    free(Line);
+
+    Line = NULL;
+    Length = 0;
+    AppendQuoted(&Line, &Length, Args->Items[0]);
+    Line = realloc(Line, Length + strlen(ResponseFile) + 4);
+    sprintf(Line + Length, " @%s", ResponseFile);
+    return Line;
+}
+
 static int RunCommand(ARG_LIST *Args)
 {
     STARTUPINFOA StartupInfo = { sizeof(StartupInfo) };
     PROCESS_INFORMATION ProcessInfo;
-    char *Line = NULL;
-    size_t Length = 0;
+    char ResponseFile[MAX_PATH], *Line;
     DWORD ExitCode = 1;
-    int i;
 
-    for (i = 0; i < Args->Count; i++)
-        AppendQuoted(&Line, &Length, Args->Items[i]);
-
+    Line = BuildCommandLine(Args, ResponseFile, sizeof(ResponseFile));
     if (!CreateProcessA(NULL, Line, NULL, NULL, TRUE, 0, NULL, NULL, &StartupInfo, &ProcessInfo))
     {
         fprintf(stderr, "arm64xobj: cannot run %s (%lu)\n", Args->Items[0], GetLastError());
@@ -437,6 +499,66 @@ static int RunCommand(ARG_LIST *Args)
     GetExitCodeProcess(ProcessInfo.hProcess, &ExitCode);
     CloseHandle(ProcessInfo.hProcess);
     CloseHandle(ProcessInfo.hThread);
+    if (*ResponseFile)
+        DeleteFileA(ResponseFile);
+    free(Line);
+    return (int)ExitCode;
+}
+
+/* Runs a command like RunCommand, passing its output on and keeping a copy */
+static int RunCaptured(ARG_LIST *Args, char **Output)
+{
+    SECURITY_ATTRIBUTES Security = { sizeof(Security), NULL, TRUE };
+    STARTUPINFOA StartupInfo = { sizeof(StartupInfo) };
+    PROCESS_INFORMATION ProcessInfo;
+    HANDLE Read, Write;
+    char ResponseFile[MAX_PATH], *Line, Buffer[4096], *Grown;
+    size_t Used = 0;
+    DWORD ExitCode = 1, Got;
+
+    *Output = calloc(1, 1);
+    if (!*Output || !CreatePipe(&Read, &Write, &Security, 0))
+        return RunCommand(Args);
+    SetHandleInformation(Read, HANDLE_FLAG_INHERIT, 0);
+
+    Line = BuildCommandLine(Args, ResponseFile, sizeof(ResponseFile));
+
+    StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    StartupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    StartupInfo.hStdOutput = Write;
+    StartupInfo.hStdError = Write;
+
+    if (!CreateProcessA(NULL, Line, NULL, NULL, TRUE, 0, NULL, NULL, &StartupInfo, &ProcessInfo))
+    {
+        fprintf(stderr, "arm64xobj: cannot run %s (%lu)\n", Args->Items[0], GetLastError());
+        CloseHandle(Read);
+        CloseHandle(Write);
+        free(Line);
+        return 1;
+    }
+    CloseHandle(Write);
+
+    while (ReadFile(Read, Buffer, sizeof(Buffer), &Got, NULL) && Got)
+    {
+        fwrite(Buffer, 1, Got, stdout);
+        Grown = realloc(*Output, Used + Got + 1);
+        if (Grown)
+        {
+            *Output = Grown;
+            memcpy(*Output + Used, Buffer, Got);
+            Used += Got;
+            (*Output)[Used] = 0;
+        }
+    }
+    fflush(stdout);
+
+    WaitForSingleObject(ProcessInfo.hProcess, INFINITE);
+    GetExitCodeProcess(ProcessInfo.hProcess, &ExitCode);
+    CloseHandle(ProcessInfo.hProcess);
+    CloseHandle(ProcessInfo.hThread);
+    CloseHandle(Read);
+    if (*ResponseFile)
+        DeleteFileA(ResponseFile);
     free(Line);
     return (int)ExitCode;
 }
@@ -646,14 +768,87 @@ static const char *FindImportLibrary(ARG_LIST *List, const char *Module, size_t 
     return NULL;
 }
 
+/* Collects the names of the ARM64EC copies of shared data in the objects of a link, each as \x01name */
+static char *CollectEcCopies(ARG_LIST *List)
+{
+    size_t Size = 1, Used = 0, Length, i;
+    char *Names = calloc(1, 1), *Data, *Grown;
+    FILE *File;
+    int n;
+
+    for (n = 1; n < List->Count && Names; n++)
+    {
+        if (!EndsWith(List->Items[n], ".obj") || !(File = fopen(List->Items[n], "rb")))
+            continue;
+
+        fseek(File, 0, SEEK_END);
+        Length = (size_t)ftell(File);
+        fseek(File, 0, SEEK_SET);
+        Data = malloc(Length + 1);
+        if (Data && fread(Data, 1, Length, File) == Length)
+        {
+            Data[Length] = 0;
+            for (i = 8; i + 1 < Length; i++)
+            {
+                /* Names in the string table end with the suffix and a NUL */
+                if (Data[i] == 0 && !memcmp(Data + i - 8, "$arm64ec", 8))
+                {
+                    size_t Start = i - 8;
+
+                    while (Start > 0 && Data[Start - 1] > ' ')
+                        Start--;
+                    Grown = realloc(Names, Size + (i - Start) + 2);
+                    if (!Grown)
+                        break;
+                    Names = Grown;
+                    Names[Used] = 0x01;
+                    memcpy(Names + Used + 1, Data + Start, i - Start);
+                    Used += i - Start + 1;
+                    Names[Used] = 0;
+                    Size = Used + 1;
+                }
+            }
+        }
+        free(Data);
+        fclose(File);
+    }
+
+    /* A trailing separator lets lookups match whole names */
+    if (Names && (Grown = realloc(Names, Size + 1)))
+    {
+        Names = Grown;
+        Names[Used] = 0x01;
+        Names[Used + 1] = 0;
+    }
+    return Names;
+}
+
+/* Tells whether the ARM64EC objects of the link call a function, by its ARM64EC name */
+static int ObjectsReference(ARG_LIST *List, const char *Name, size_t Length)
+{
+    char Symbol[512];
+    int i;
+
+    snprintf(Symbol, sizeof(Symbol), "#%.*s", (int)Length, Name);
+    for (i = 1; i < List->Count; i++)
+    {
+        if (EndsWith(List->Items[i], ".obj") && LibraryHasSymbol(List->Items[i], Symbol))
+            return 1;
+    }
+
+    return 0;
+}
+
 /* An ARM64EC export that forwards to a function the image imports takes that function's ARM64EC
    import thunk away in an ARM64X link. Exporting the import itself keeps the thunk, and x64
    callers of the export still end up in the same function. */
-static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output, char *NewDef, size_t NewDefSize, int *ExportsHandler)
+static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output, const char *Keep, char *NewDef, size_t NewDefSize, int *ExportsHandler)
 {
     char Line[1024], Symbol[512];
     const char *Name, *Equal, *Dot, *Target, *End, *Library;
     FILE *In, *Out;
+    int IsHandler;
+    char *EcCopies;
 
     In = fopen(Def, "r");
     if (!In)
@@ -667,13 +862,16 @@ static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output
         return 0;
     }
 
+    EcCopies = CollectEcCopies(List);
+
     while (fgets(Line, sizeof(Line), In))
     {
         Name = Line;
         while (*Name == ' ' || *Name == '\t')
             Name++;
 
-        if (!strncmp(Name, "__C_specific_handler", 20) && strchr("= \t\r\n", Name[20]))
+        IsHandler = !strncmp(Name, "__C_specific_handler", 20) && strchr("= \t\r\n", Name[20]);
+        if (IsHandler)
             *ExportsHandler = 1;
 
         Equal = strchr(Name, '=');
@@ -685,10 +883,23 @@ static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output
         {
             Library = FindImportLibrary(List, Equal + 1, Dot - Equal - 1);
             snprintf(Symbol, sizeof(Symbol), "__imp_%.*s", (int)(End - Target), Target);
-            if (Library && LibraryHasSymbol(Library, Symbol))
+            snprintf(Symbol, sizeof(Symbol), "%c%.*s%c", 0x01, (int)(End - Target), Target, 0x01);
+            if (Keep && strstr(Keep, Symbol))
+                Library = NULL;
+
+            snprintf(Symbol, sizeof(Symbol), "__imp_%.*s", (int)(End - Target), Target);
+            if (Library && LibraryHasSymbol(Library, Symbol) && ObjectsReference(List, Target, End - Target))
             {
-                /* The same name is exported as is, a local definition of it wins over the import */
-                if ((size_t)(End - Target) == (size_t)(Equal - Name) && !memcmp(Name, Target, End - Target))
+                int SameName = (size_t)(End - Target) == (size_t)(Equal - Name) && !memcmp(Name, Target, End - Target);
+
+                /* A forwarder to the same name stays one, only the handler is exported from the local definition */
+                if (SameName && !IsHandler)
+                {
+                    fputs(Line, Out);
+                    continue;
+                }
+
+                if (SameName)
                     fprintf(Out, "%.*s%s", (int)(Equal - Line), Line, End);
                 else
                     fprintf(Out, "%.*s%s", (int)(Equal + 1 - Line), Line, Target);
@@ -696,19 +907,15 @@ static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output
             }
         }
         /* Exported data the ARM64 half shares keeps its ARM64EC copy under another name */
-        if (!Equal && strstr(Name, " DATA"))
+        if (!Equal && EcCopies)
         {
             size_t NameLength = strcspn(Name, " \t\r\n");
-            int i;
 
-            snprintf(Symbol, sizeof(Symbol), "%.*s$arm64ec", (int)NameLength, Name);
-            for (i = 1; i < List->Count; i++)
+            snprintf(Symbol, sizeof(Symbol), "%c%.*s$arm64ec%c", 0x01, (int)NameLength, Name, 0x01);
+            if (strstr(EcCopies, Symbol))
             {
-                if (EndsWith(List->Items[i], ".obj") && LibraryHasSymbol(List->Items[i], Symbol))
-                    break;
-            }
-            if (i < List->Count)
-            {
+                Symbol[strlen(Symbol) - 1] = 0;
+                memmove(Symbol, Symbol + 1, strlen(Symbol));
                 fprintf(Out, "%.*s=%s%s", (int)(Name + NameLength - Line), Line, Symbol, Name + NameLength);
                 continue;
             }
@@ -716,6 +923,7 @@ static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output
         fputs(Line, Out);
     }
 
+    free(EcCopies);
     fclose(In);
     fclose(Out);
     return 1;
@@ -740,11 +948,18 @@ static int RecordMode(int argc, char *argv[])
     const char *Output;
     char Path[MAX_PATH + 16], Full[MAX_PATH];
     FILE *File;
-    int i;
+    int i, IsDll = 0;
 
     ExpandArgs(&In, argc, argv);
+    for (i = 1; i < In.Count; i++)
+    {
+        if (IsOption(In.Items[i], "dll"))
+            IsDll = 1;
+    }
+
+    /* Only DLLs become ARM64X images, programs stay ARM64 */
     Output = FindOutput(&In);
-    if (Output)
+    if (Output && IsDll)
     {
         snprintf(Path, sizeof(Path), "%s.arm64x", Output);
         File = fopen(Path, "w");
@@ -774,9 +989,10 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
 {
     ARG_LIST In = { 0 }, Out = { 0 };
     char Native[MAX_PATH + 32], Line[MAX_PATH + 64], NewDef[MAX_PATH + 16];
-    const char *Output;
+    char *Keep = NULL, *Log = NULL, *Grown;
+    const char *Output, *Def = NULL, *Hit;
     FILE *Record = NULL;
-    int i, IsDll = 0, ExportsHandler = 0;
+    int i, IsDll = 0, ExportsHandler = 0, Result, Tries;
 
     ExpandArgs(&In, argc, argv);
 
@@ -807,8 +1023,9 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
             continue;
         }
         if (IsOption(In.Items[i], "DEF:") &&
-            RewriteForwarders(&In, In.Items[i] + 5, Output, NewDef, sizeof(NewDef), &ExportsHandler))
+            RewriteForwarders(&In, In.Items[i] + 5, Output, NULL, NewDef, sizeof(NewDef), &ExportsHandler))
         {
+            Def = In.Items[i] + 5;
             snprintf(Line, sizeof(Line), "/DEF:%s", NewDef);
             AddArg(&Out, Line);
 
@@ -833,7 +1050,97 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
     if (GetFileAttributesA(Line) != INVALID_FILE_ATTRIBUTES)
         AddArg(&Out, Line);
 
-    return RunCommand(&Out);
+    /* An export of an import that ARM64EC code reaches without an exit thunk fails the link, those stay forwarders */
+    for (Tries = 0; ; Tries++)
+    {
+        free(Log);
+        Result = RunCaptured(&Out, &Log);
+        Hit = (Result && Def && Log) ? strstr(Log, "LNK1413: ARM64EC symbol '#") : NULL;
+        if (!Hit || Tries == 8)
+            break;
+
+        Hit += strlen("LNK1413: ARM64EC symbol '#");
+        Grown = realloc(Keep, (Keep ? strlen(Keep) : 0) + strcspn(Hit, "'") + 3);
+        if (!Grown)
+            break;
+        if (!Keep)
+            Grown[0] = 0;
+        Keep = Grown;
+        snprintf(Keep + strlen(Keep), strcspn(Hit, "'") + 3, "%c%.*s%c", 0x01, (int)strcspn(Hit, "'"), Hit, 0x01);
+
+        printf("arm64xobj: keeping the forwarder to %.*s and linking again\n", (int)strcspn(Hit, "'"), Hit);
+        RewriteForwarders(&In, Def, Output, Keep, NewDef, sizeof(NewDef), &ExportsHandler);
+    }
+
+    free(Log);
+    free(Keep);
+    return Result;
+}
+#endif
+
+#ifdef _WIN32
+/* Tells whether a preprocessed assembly file is x64 MASM: it has a .code segment and no armasm AREA */
+static int IsX64Assembly(const char *Path)
+{
+    FILE *File = fopen(Path, "rb");
+    char Line[1024];
+    int Code = 0, Area = 0;
+    const char *p;
+
+    if (!File)
+        return 0;
+
+    while (fgets(Line, sizeof(Line), File))
+    {
+        for (p = Line; *p == ' ' || *p == '\t'; p++);
+        if (!_strnicmp(p, ".code", 5))
+            Code = 1;
+        if (!strncmp(p, "AREA", 4) && (p[4] == ' ' || p[4] == '\t'))
+            Area = 1;
+    }
+
+    fclose(File);
+    return Code && !Area;
+}
+
+/* Assembler launcher for the ARM64EC build: sources that took the x64 path assemble with ml64 next to armasm64 */
+static int AsmMode(int argc, char *argv[])
+{
+    ARG_LIST Args = { 0 };
+    char Ml64[MAX_PATH], Fo[MAX_PATH + 4];
+    const char *Object = NULL, *Source = argv[argc - 1];
+    char *Slash;
+    int i;
+
+    for (i = 0; i < argc; i++)
+    {
+        if (!strcmp(argv[i], "-o") && i + 1 < argc)
+            Object = argv[i + 1];
+    }
+
+    if (!Object || !IsX64Assembly(Source))
+    {
+        for (i = 0; i < argc; i++)
+            AddArg(&Args, argv[i]);
+        return RunCommand(&Args);
+    }
+
+    snprintf(Ml64, sizeof(Ml64), "%s", argv[0]);
+    Slash = strrchr(Ml64, '\\');
+    if (!Slash || strrchr(Ml64, '/') > Slash)
+        Slash = strrchr(Ml64, '/');
+    snprintf(Slash ? Slash + 1 : Ml64, sizeof(Ml64) - (Slash ? (size_t)(Slash + 1 - Ml64) : 0), "ml64.exe");
+    snprintf(Fo, sizeof(Fo), "/Fo%s", Object);
+
+    AddArg(&Args, Ml64);
+    AddArg(&Args, "/nologo");
+    AddArg(&Args, "/quiet");
+    AddArg(&Args, "/Cp");
+    AddArg(&Args, Fo);
+    AddArg(&Args, "/c");
+    AddArg(&Args, "/Ta");
+    AddArg(&Args, Source);
+    return RunCommand(&Args);
 }
 #endif
 
@@ -854,6 +1161,9 @@ int main(int argc, char *argv[])
 
     if (argc > 2 && !strcmp(argv[1], "-record"))
         return RecordMode(argc - 2, argv + 2);
+
+    if (argc > 2 && !strcmp(argv[1], "-asm"))
+        return AsmMode(argc - 2, argv + 2);
 #endif
 
     fprintf(stderr,
@@ -861,6 +1171,7 @@ int main(int argc, char *argv[])
             "       arm64xobj -cc -native <compiler> <arguments>\n"
             "       arm64xobj -cc -ec <arm64ec tree> <arm64 tree> <compiler> <arguments>\n"
             "       arm64xobj -record <linker> <arguments>\n"
-            "       arm64xobj -link <arm64ec tree> <arm64 tree> <linker> <arguments>\n");
+            "       arm64xobj -link <arm64ec tree> <arm64 tree> <linker> <arguments>\n"
+            "       arm64xobj -asm <armasm64> <arguments>\n");
     return 1;
 }
