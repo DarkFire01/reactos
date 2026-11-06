@@ -271,7 +271,8 @@ typedef struct
     ULONGLONG RenderRunStartTime;                                  /* interrupt time when streaming started */
     ULONGLONG RenderBytesIn;                                       /* bytes received since streaming started */
     ULONGLONG RenderBytesOut;                                      /* bytes sent since streaming started */
-    ULONG RenderNextFrame;                                         /* expected start frame of the next completed transfer */
+    ULONG RenderLatePackets;                                       /* packets not sent since streaming started */
+    ULONG RenderFailedPackets;                                     /* packets failed since streaming started */
     ULONG RenderRunStartFrame;                                     /* first USB frame of the stream run, 0 before the first completion */
     ULONG RenderRunEndFrame;                                       /* last USB frame of the stream run */
     LONG RenderPumpRequests;                                       /* serializes the render pump */

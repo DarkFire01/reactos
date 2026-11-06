@@ -611,12 +611,13 @@ UsbAudioRenderReportUnderrun(
         Elapsed = 1;
 
     /* a USB frame lasts 1ms, both clocks have to advance at the same rate */
-    DPRINT1("UsbAudioRenderPump underrun after %I64u ms / %u USB frames: received %I64u bytes (%I64u B/s) sent %I64u bytes (%I64u B/s) format %u B/s\n",
+    DPRINT1("UsbAudioRenderPump underrun after %I64u ms / %u USB frames: received %I64u bytes (%I64u B/s) sent %I64u bytes (%I64u B/s) format %u B/s late %u failed %u\n",
             Elapsed,
             PinContext->RenderRunEndFrame - PinContext->RenderRunStartFrame,
             PinContext->RenderBytesIn, PinContext->RenderBytesIn * 1000 / Elapsed,
             PinContext->RenderBytesOut, PinContext->RenderBytesOut * 1000 / Elapsed,
-            WaveFormat->WaveFormatEx.nAvgBytesPerSec);
+            WaveFormat->WaveFormatEx.nAvgBytesPerSec,
+            PinContext->RenderLatePackets, PinContext->RenderFailedPackets);
 }
 
 static
@@ -729,6 +730,8 @@ UsbAudioRenderSubmit(
             PinContext->RenderForceStart = FALSE;
             PinContext->RenderRunStartTime = KeQueryInterruptTime();
             PinContext->RenderRunStartFrame = 0;
+            PinContext->RenderLatePackets = 0;
+            PinContext->RenderFailedPackets = 0;
             PinContext->RenderBytesIn = PinContext->BufferLength;
             PinContext->RenderBytesOut = 0;
         }
@@ -1461,15 +1464,18 @@ UsbAudioRenderCheckUrb(
     if ((LONG)(StartFrame + NumberOfPackets - PinContext->RenderRunEndFrame) > 0)
         PinContext->RenderRunEndFrame = StartFrame + NumberOfPackets;
 
-    if (!USBD_SUCCESS(Urb->UrbHeader.Status) || Late || Failed)
+    /* debug output is slow and this runs in the completion path with the lock held, so only
+     * the first problem of a run is printed, the underrun report has the totals */
+    if ((!USBD_SUCCESS(Urb->UrbHeader.Status) || Late || Failed) &&
+        !PinContext->RenderLatePackets && !PinContext->RenderFailedPackets)
     {
-        DPRINT1("UsbAudioRenderComplete Status %x StartFrame %x Expected %x Packets %u Late %u Failed %u (%x) Pending %u\n",
-                Urb->UrbHeader.Status, StartFrame, PinContext->RenderNextFrame, NumberOfPackets,
+        DPRINT1("UsbAudioRenderComplete first problem of run: Status %x StartFrame %x Packets %u Late %u Failed %u (%x) Pending %u\n",
+                Urb->UrbHeader.Status, StartFrame, NumberOfPackets,
                 Late, Failed, FailedStatus, RENDER_IRP_COUNT - PinContext->StoppedStreamingIrps);
     }
 
-    /* transfers complete in order, the next one starts behind this one */
-    PinContext->RenderNextFrame = StartFrame + NumberOfPackets;
+    PinContext->RenderLatePackets += Late;
+    PinContext->RenderFailedPackets += Failed;
 }
 
 NTSTATUS
