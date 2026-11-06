@@ -73,7 +73,11 @@ set_module_type(ntdll win32dll ENTRYPOINT 0)
 set_subsystem(ntdll console)
 ################# END  HACK #################
 
-target_link_libraries(ntdll ntdll_vista_static etwtrace rtl rtl_um rtl_vista ntdllsys ntdllsys_nt6 libcntpr setjmp uuid ${PSEH_LIB})
+if(ARCH STREQUAL "arm64ec" OR (ARCH STREQUAL "arm64" AND ENABLE_ARM64EC))
+    target_link_libraries(ntdll ntdll_vista_static etwtrace rtl rtl_um rtl_vista_ntdll ntdllsys ntdllsys_nt6 libcntpr setjmp uuid ${PSEH_LIB})
+else()
+    target_link_libraries(ntdll ntdll_vista_static etwtrace rtl rtl_um rtl_vista ntdllsys ntdllsys_nt6 libcntpr setjmp uuid ${PSEH_LIB})
+endif()
 
 if (NOT SYSWOW64_BUILD)
     target_link_libraries(ntdll csrlib)
