@@ -1017,6 +1017,7 @@
 @ stdcall RtlIsCriticalSectionLockedByThread(ptr)
 @ stdcall -stub -version=0x600+ RtlIsCurrentThreadAttachExempt()
 @ stdcall RtlIsDosDeviceName_U(wstr)
+@ stdcall -arch=arm64,arm64ec RtlIsEcCode(int64)
 @ stdcall RtlIsGenericTableEmpty(ptr)
 @ stdcall RtlIsGenericTableEmptyAvl(ptr)
 @ stdcall -version=0x601+ RtlIsNameInExpression(ptr ptr long ptr)
