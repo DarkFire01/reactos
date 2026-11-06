@@ -49,6 +49,9 @@ typedef struct _XTA_THREAD
     ULONG_PTR ResumeSp;
     ULONG_PTR NativeTarget;
     ULONG64 Gs;
+    /* Where the native code that entered the current x64 run continues, and its stack then */
+    ULONG_PTR ReturnPc;
+    ULONG_PTR ReturnSp;
 } XTA_THREAD, *PXTA_THREAD;
 
 PCHPE_V2_CPU_AREA_INFO

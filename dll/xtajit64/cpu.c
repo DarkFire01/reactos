@@ -1258,8 +1258,8 @@ XtapInterpret(
         /* Native code may come straight back to native code, run it until x64 code is next */
         do
         {
-            /* A native caller called x64 code with blr x16, returning there ends this run */
-            if (*(PULONG)(Context->Pc - 4) == 0xD63F0200)
+            /* Returning to the native code that entered this run ends it */
+            if (Context->Pc == Thread->ReturnPc && Context->Sp == Thread->ReturnSp)
                 return XtaExitReturnNative;
 
 #if DBG

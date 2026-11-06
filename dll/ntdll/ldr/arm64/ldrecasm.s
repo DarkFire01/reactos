@@ -99,8 +99,8 @@ LABEL(CallCheckDone)
 // ULONG_PTR LdrpCallX64(PVOID ExitToX64, PVOID Target, ULONG_PTR Arg1, ULONG_PTR Arg2, ULONG_PTR Arg3)
 //
 // Calls x64 code from native code the way an exit thunk does: the arguments go to the registers
-// that hold rcx, rdx and r8, the x64 home space sits right above the return address and the
-// emulator is entered with blr x16 so it knows where the x64 code returns to. rax comes back in x8.
+// that hold rcx, rdx and r8 and the x64 home space sits right above the return address the
+// emulator pushes. rax comes back in x8.
 //
     NESTED_ENTRY LdrpCallX64
 

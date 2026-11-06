@@ -23,6 +23,8 @@ CaThread            EQU 0x30
 ThCpuArea           EQU 0x00
 ThResumeSp          EQU 0x08
 ThNativeTarget      EQU 0x10
+ThReturnPc          EQU 0x20
+ThReturnSp          EQU 0x28
 
 /* ARM64EC_NT_CONTEXT, x64 register names in the comments */
 CtX8                EQU 0x078   /* Rax */
@@ -203,17 +205,28 @@ LABEL(RunNativeEnter)
     mov     w10, #1
     strb    w10, [x17, #CaInSimulation]
 
-    /* Interpret below any suspended interpreter frames */
+    /* The run ends when the x64 code returns to the address on its stack and pops it */
     ldr     x0, [x17, #CaThread]
+    ldr     x10, [x16, #CtSp]
+    ldr     x11, [x10]
+    add     x12, x10, #8
+    ldp     x13, x14, [x0, #ThReturnPc]
+    stp     x11, x12, [x0, #ThReturnPc]
+
+    /* Interpret below any suspended interpreter frames, keeping the outer run's return */
     ldr     x9, [x0, #ThResumeSp]
     cbnz    x9, ExitToX64Stack
     ldr     x9, [x17, #CaStackBase]
 LABEL(ExitToX64Stack)
     mov     sp, x9
+    stp     x13, x14, [sp, #-16]!
     bl      XtapInterpret
+    ldp     x13, x14, [sp], #16
 
     /* The x64 code returned to the native caller */
     ldr     x17, [x18, #TeCpuArea]
+    ldr     x0, [x17, #CaThread]
+    stp     x13, x14, [x0, #ThReturnPc]
     ldr     x16, [x17, #CaContext]
     strb    wzr, [x17, #CaInSimulation]
     LOAD_GUEST
