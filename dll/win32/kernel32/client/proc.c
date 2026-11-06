@@ -3772,6 +3772,11 @@ StartScan:
     if (ImageInformation.Machine == IMAGE_FILE_MACHINE_I386) {}
     else
 #endif
+#ifdef _M_ARM64
+    /* x64 images run in the emulator */
+    if (ImageInformation.Machine == IMAGE_FILE_MACHINE_AMD64) {}
+    else
+#endif
     /* Make sure the image was compiled for this processor */
     if ((ImageInformation.Machine < SharedUserData->ImageNumberLow) ||
         (ImageInformation.Machine > SharedUserData->ImageNumberHigh))
