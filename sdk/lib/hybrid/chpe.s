@@ -114,9 +114,11 @@ __chpe_metadata
     DCRVA   __os_arm64x_helper7
     DCRVA   __os_arm64x_helper8
 
-/* IMAGE_LOAD_CONFIG_DIRECTORY64, only CHPEMetadataPointer is set, the linker fills the DVRT fields */
+/* IMAGE_LOAD_CONFIG_DIRECTORY64, only CHPEMetadataPointer is set, the linker fills the DVRT fields.
+   The linker takes the x64 view load config from the start of the section holding it. */
+    AREA |.rdata$lcfg|,DATA,READONLY,ALIGN=3
+
     EXPORT _load_config_used
-    ALIGN 8
 _load_config_used
     DCD     0x140
     SPACE   0xC8 - 4

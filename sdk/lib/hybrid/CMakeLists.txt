@@ -1,7 +1,8 @@
 
 # The ARM64 half of an ARM64X image only needs its own load config
 if(ARCH STREQUAL "arm64ec")
-    add_asm_files(hybrid_asm chpe.s helpers.s)
+    # Large ARM64EC frames probe the stack through __chkstk_arm64ec in every module
+    add_asm_files(hybrid_asm chpe.s helpers.s ${REACTOS_SOURCE_DIR}/sdk/lib/crt/except/arm64/chkstk_asm.s)
 else()
     add_asm_files(hybrid_asm loadcfg.s)
 endif()
