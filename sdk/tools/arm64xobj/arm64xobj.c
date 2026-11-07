@@ -895,13 +895,7 @@ static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output
             {
                 int SameName = (size_t)(End - Target) == (size_t)(Equal - Name) && !memcmp(Name, Target, End - Target);
 
-                /* A forwarder to the same name stays one, only the handler is exported from the local definition */
-                if (SameName && !IsHandler)
-                {
-                    fputs(Line, Out);
-                    continue;
-                }
-
+                /* A forwarder to the same name exports the import, or the local definition for the handler */
                 if (SameName)
                     fprintf(Out, "%.*s%s", (int)(Equal - Line), Line, End);
                 else
@@ -1002,7 +996,7 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
     char *Keep = NULL, *Log = NULL, *Grown;
     const char *Output, *Def = NULL, *Hit;
     FILE *Record = NULL;
-    int i, IsDll = 0, ExportsHandler = 0, Result, Tries;
+    int i, IsDll = 0, ExportsHandler = 0, Result, Added;
 
     ExpandArgs(&In, argc, argv);
 
@@ -1085,34 +1079,42 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
     }
 
     /* An export of an import that ARM64EC code reaches without an exit thunk fails the link, those stay forwarders */
-    for (Tries = 0; ; Tries++)
+    for (;;)
     {
         free(Log);
         Result = RunCaptured(&Out, &Log);
         Hit = (Result && Def && Log) ? strstr(Log, "LNK1413: ARM64EC symbol '#") : NULL;
-        if (!Hit || Tries == 8)
-            break;
 
-        Hit += strlen("LNK1413: ARM64EC symbol '#");
-        Grown = realloc(Keep, (Keep ? strlen(Keep) : 0) + strcspn(Hit, "'") + 3);
-        if (!Grown)
-            break;
-        if (!Keep)
-            Grown[0] = 0;
-        Keep = Grown;
+        for (Added = 0; Hit; Hit = strstr(Hit, "LNK1413: ARM64EC symbol '#"))
+        {
+            Hit += strlen("LNK1413: ARM64EC symbol '#");
+            Grown = realloc(Keep, (Keep ? strlen(Keep) : 0) + strcspn(Hit, "'") + 3);
+            if (!Grown)
+                break;
+            if (!Keep)
+                Grown[0] = 0;
+            Keep = Grown;
 
-        /* A forwarder that fails as well leaves the x64 view, the native view still exports it */
-        snprintf(Line, sizeof(Line), "%c%.*s%c", 0x01, (int)strcspn(Hit, "'"), Hit, 0x01);
-        if (strstr(Keep, Line))
-        {
-            Line[0] = Line[strlen(Line) - 1] = 0x02;
-            printf("arm64xobj: warning: leaving the export of %.*s out of the x64 view\n", (int)strcspn(Hit, "'"), Hit);
+            /* A forwarder that fails as well leaves the x64 view, the native view still exports it */
+            snprintf(Line, sizeof(Line), "%c%.*s%c", 0x02, (int)strcspn(Hit, "'"), Hit, 0x02);
+            if (strstr(Keep, Line))
+                continue;
+
+            Line[0] = Line[strlen(Line) - 1] = 0x01;
+            if (strstr(Keep, Line))
+            {
+                Line[0] = Line[strlen(Line) - 1] = 0x02;
+                printf("arm64xobj: warning: leaving the export of %.*s out of the x64 view\n", (int)strcspn(Hit, "'"), Hit);
+            }
+            else
+            {
+                printf("arm64xobj: keeping the forwarder to %.*s and linking again\n", (int)strcspn(Hit, "'"), Hit);
+            }
+            strcat(Keep, Line);
+            Added = 1;
         }
-        else
-        {
-            printf("arm64xobj: keeping the forwarder to %.*s and linking again\n", (int)strcspn(Hit, "'"), Hit);
-        }
-        strcat(Keep, Line);
+        if (!Added)
+            break;
         RewriteForwarders(&In, Def, Output, Keep, NewDef, sizeof(NewDef), &ExportsHandler);
     }
 
