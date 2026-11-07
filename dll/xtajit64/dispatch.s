@@ -10,8 +10,8 @@
     IMPORT XtapInterpret
     IMPORT XtapX64Ret
 
-/* FIXME: TEB->Vdm holds the CHPE CPU area until the TEB has its ChpeV2CpuAreaInfo field */
-TeCpuArea           EQU 0x1690
+/* TEB->ChpeV2CpuAreaInfo */
+TeCpuArea           EQU 0x1788
 
 /* CHPE_V2_CPU_AREA_INFO */
 CaInSimulation      EQU 0x00

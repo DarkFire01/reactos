@@ -1,0 +1,24 @@
+
+# Toolchain for FEX: clang targeting MinGW from the llvm-mingw toolchain at LLVM_MINGW_PATH
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR ${MINGW_TRIPLE})
+
+set(_LLVM_MINGW_PREFIX ${LLVM_MINGW_PATH}/bin/${MINGW_TRIPLE})
+set(CMAKE_C_COMPILER ${_LLVM_MINGW_PREFIX}-clang${CMAKE_HOST_EXECUTABLE_SUFFIX})
+set(CMAKE_CXX_COMPILER ${_LLVM_MINGW_PREFIX}-clang++${CMAKE_HOST_EXECUTABLE_SUFFIX})
+set(CMAKE_RC_COMPILER ${_LLVM_MINGW_PREFIX}-windres${CMAKE_HOST_EXECUTABLE_SUFFIX})
+set(CMAKE_DLLTOOL ${_LLVM_MINGW_PREFIX}-dlltool${CMAKE_HOST_EXECUTABLE_SUFFIX})
+set(CMAKE_AR ${_LLVM_MINGW_PREFIX}-ar${CMAKE_HOST_EXECUTABLE_SUFFIX} CACHE FILEPATH "")
+
+# The same flags FEX uses for its own MinGW toolchain: static runtime, page aligned sections, no loop alignment
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "-static -Wl,--file-alignment=4096,/mllvm:-align-loops=1")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-static -Wl,--file-alignment=4096,/mllvm:-align-loops=1")
+
+set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
+set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
+set(CMAKE_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
+
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+# Compiler checks run in their own projects and need the toolchain location too
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES LLVM_MINGW_PATH MINGW_TRIPLE)

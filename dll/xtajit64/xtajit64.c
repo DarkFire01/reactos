@@ -26,8 +26,7 @@ PCHPE_V2_CPU_AREA_INFO
 NTAPI
 XtapGetCpuArea(VOID)
 {
-    /* FIXME: Move to the TEB ChpeV2CpuAreaInfo field once the TEB has one */
-    return (PCHPE_V2_CPU_AREA_INFO)NtCurrentTeb()->Vdm;
+    return NtCurrentTeb()->ChpeV2CpuAreaInfo;
 }
 
 /**
@@ -94,6 +93,15 @@ ThreadInit(VOID)
     CpuArea->EmulatorStackLimit = (ULONG64)Base;
     CpuArea->EmulatorStackBase = (ULONG64)Base + Size;
     CpuArea->EmulatorData[0] = Thread;
+
+    /* The loader fills in the stack and the entry point, the rest is the x64 start state */
+    RtlZeroMemory(CpuArea->ContextAmd64, sizeof(*CpuArea->ContextAmd64));
+    CpuArea->ContextAmd64->ContextFlags = 0x0010001F;
+    CpuArea->ContextAmd64->AMD64_EFlags = 0x202;
+    CpuArea->ContextAmd64->AMD64_SegCs = 0x33;
+    CpuArea->ContextAmd64->AMD64_SegSs = 0x2B;
+    CpuArea->ContextAmd64->AMD64_MxCsr = 0x1F80;
+    CpuArea->ContextAmd64->AMD64_MxCsr_copy = 0x1F80;
 
     return STATUS_SUCCESS;
 }
