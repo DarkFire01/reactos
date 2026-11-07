@@ -696,7 +696,6 @@ HidUsb_GetReportDescriptor(
     // get length to copy
     //
     Length = min(IoStack->Parameters.DeviceIoControl.OutputBufferLength, BufferLength);
-    ASSERT(Length);
 
     //
     // copy result
