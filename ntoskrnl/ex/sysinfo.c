@@ -23,6 +23,15 @@
 #define SIG_FIRM 0x4649524D
 #define SIG_RSMB 0x52534D42
 
+#define TAG_FIRMWARE_TABLE 'TFxE'
+
+/* A registered firmware table provider, linked on ExpFirmwareTableProviderListHead */
+typedef struct _SYSTEM_FIRMWARE_TABLE_HANDLER_NODE
+{
+    SYSTEM_FIRMWARE_TABLE_HANDLER SystemFWHandler;
+    LIST_ENTRY FirmwareTableProviderList;
+} SYSTEM_FIRMWARE_TABLE_HANDLER_NODE, *PSYSTEM_FIRMWARE_TABLE_HANDLER_NODE;
+
 extern LIST_ENTRY HandleTableListHead;
 extern EX_PUSH_LOCK HandleTableListLock;
 
@@ -2809,6 +2818,161 @@ QSI_DEF(SystemLogicalProcessorInformation)
     return Status;
 }
 
+/* Caller holds ExpFirmwareTableResource */
+static
+PSYSTEM_FIRMWARE_TABLE_HANDLER_NODE
+NTAPI
+ExpFindFirmwareTableProvider(
+    _In_ ULONG ProviderSignature)
+{
+    PSYSTEM_FIRMWARE_TABLE_HANDLER_NODE Node;
+    PLIST_ENTRY Entry;
+
+    for (Entry = ExpFirmwareTableProviderListHead.Flink;
+         Entry != &ExpFirmwareTableProviderListHead;
+         Entry = Entry->Flink)
+    {
+        Node = CONTAINING_RECORD(Entry,
+                                 SYSTEM_FIRMWARE_TABLE_HANDLER_NODE,
+                                 FirmwareTableProviderList);
+        if (Node->SystemFWHandler.ProviderSignature == ProviderSignature)
+            return Node;
+    }
+
+    return NULL;
+}
+
+/* Class 75 - Register or remove a firmware table provider */
+SSI_DEF(SystemRegisterFirmwareTableInformationHandler)
+{
+    PSYSTEM_FIRMWARE_TABLE_HANDLER_NODE Existing;
+    PSYSTEM_FIRMWARE_TABLE_HANDLER_NODE Node = NULL;
+    SYSTEM_FIRMWARE_TABLE_HANDLER Handler;
+    NTSTATUS Status;
+
+    if (Size < sizeof(Handler))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    /* Only kernel mode can install a provider */
+    if (ExGetPreviousMode() != KernelMode)
+        return STATUS_PRIVILEGE_NOT_HELD;
+
+    Handler = *(PSYSTEM_FIRMWARE_TABLE_HANDLER)Buffer;
+    if (!Handler.FirmwareTableHandler || !Handler.DriverObject)
+        return STATUS_INVALID_PARAMETER;
+
+    if (Handler.Register)
+    {
+        Node = ExAllocatePoolWithTag(PagedPool, sizeof(*Node), TAG_FIRMWARE_TABLE);
+        if (!Node)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Node->SystemFWHandler = Handler;
+    }
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceExclusiveLite(&ExpFirmwareTableResource, TRUE);
+
+    Existing = ExpFindFirmwareTableProvider(Handler.ProviderSignature);
+    if (Handler.Register)
+    {
+        if (Existing)
+        {
+            Status = STATUS_OBJECT_NAME_COLLISION;
+        }
+        else
+        {
+            InsertTailList(&ExpFirmwareTableProviderListHead, &Node->FirmwareTableProviderList);
+            Node = NULL;
+            Status = STATUS_SUCCESS;
+        }
+    }
+    else if (Existing &&
+             Existing->SystemFWHandler.FirmwareTableHandler == Handler.FirmwareTableHandler &&
+             Existing->SystemFWHandler.DriverObject == Handler.DriverObject)
+    {
+        RemoveEntryList(&Existing->FirmwareTableProviderList);
+        Node = Existing;
+        Status = STATUS_SUCCESS;
+    }
+    else
+    {
+        Status = STATUS_INVALID_PARAMETER;
+    }
+
+    ExReleaseResourceLite(&ExpFirmwareTableResource);
+    KeLeaveCriticalRegion();
+
+    /* Either the node that was not needed or the one just removed */
+    if (Node)
+        ExFreePoolWithTag(Node, TAG_FIRMWARE_TABLE);
+
+    return Status;
+}
+
+/* The provider works on a pool copy, it never touches the caller buffer */
+static
+NTSTATUS
+NTAPI
+ExpQueryFirmwareTableProvider(
+    _Inout_ PSYSTEM_FIRMWARE_TABLE_INFORMATION Request,
+    _In_ ULONG Size,
+    _Out_ PULONG ReqSize)
+{
+    ULONG HeaderSize = FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
+    PSYSTEM_FIRMWARE_TABLE_HANDLER_NODE Node;
+    PSYSTEM_FIRMWARE_TABLE_INFORMATION Copy;
+    NTSTATUS Status;
+    ULONG DataSize;
+
+    Copy = ExAllocatePoolWithTag(PagedPool, Size, TAG_FIRMWARE_TABLE);
+    if (!Copy)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Copy->ProviderSignature = Request->ProviderSignature;
+    Copy->Action = Request->Action;
+    Copy->TableID = Request->TableID;
+    Copy->TableBufferLength = Size - HeaderSize;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&ExpFirmwareTableResource, TRUE);
+
+    Node = ExpFindFirmwareTableProvider(Copy->ProviderSignature);
+    if (Node)
+        Status = Node->SystemFWHandler.FirmwareTableHandler(Copy);
+    else
+        Status = STATUS_NOT_IMPLEMENTED;
+
+    ExReleaseResourceLite(&ExpFirmwareTableResource);
+    KeLeaveCriticalRegion();
+
+    if (!Node)
+    {
+        DPRINT1("SystemFirmwareTableInformation: Unsupported provider (0x%x)\n",
+                Copy->ProviderSignature);
+        *ReqSize = 0;
+        Request->TableBufferLength = 0;
+        ExFreePoolWithTag(Copy, TAG_FIRMWARE_TABLE);
+        return Status;
+    }
+
+    /* A short buffer still reports what the provider needs */
+    *ReqSize = HeaderSize + Copy->TableBufferLength;
+    Request->TableBufferLength = Copy->TableBufferLength;
+
+    if (NT_SUCCESS(Status))
+    {
+        DataSize = Copy->TableBufferLength;
+        if (DataSize > Size - HeaderSize)
+            DataSize = Size - HeaderSize;
+
+        RtlCopyMemory(Request->TableBuffer, Copy->TableBuffer, DataSize);
+    }
+
+    ExFreePoolWithTag(Copy, TAG_FIRMWARE_TABLE);
+    return Status;
+}
+
 /* Class 76 - System firmware table information */
 QSI_DEF(SystemFirmwareTableInformation)
 {
@@ -2832,24 +2996,6 @@ QSI_DEF(SystemFirmwareTableInformation)
     DataBufSize = Size - *ReqSize;
     switch (SysFirmwareInfo->ProviderSignature)
     {
-        /*
-         * ExpFirmwareTableResource and ExpFirmwareTableProviderListHead
-         * variables should be used there somehow...
-         */
-        case SIG_ACPI:
-        {
-            /* FIXME: Not implemented yet */
-            DPRINT1("ACPI provider not implemented\n");
-            Status = STATUS_NOT_IMPLEMENTED;
-            break;
-        }
-        case SIG_FIRM:
-        {
-            /* FIXME: Not implemented yet */
-            DPRINT1("FIRM provider not implemented\n");
-            Status = STATUS_NOT_IMPLEMENTED;
-            break;
-        }
         case SIG_RSMB:
         {
             Status = ExpGetRawSMBiosTable(NULL, &DataSize, 0);
@@ -2874,12 +3020,18 @@ QSI_DEF(SystemFirmwareTableInformation)
             }
             break;
         }
+        /* ACPI, FIRM and the rest come from registered providers */
         default:
         {
-            DPRINT1("SystemFirmwareTableInformation: Unsupported provider (0x%x)\n",
-                    SysFirmwareInfo->ProviderSignature);
-            *ReqSize = 0;
-            Status = STATUS_NOT_IMPLEMENTED;
+            if (SysFirmwareInfo->Action != SystemFirmwareTable_Enumerate &&
+                SysFirmwareInfo->Action != SystemFirmwareTable_Get)
+            {
+                DPRINT1("SystemFirmwareTableInformation: Unsupported action (0x%x)\n",
+                        SysFirmwareInfo->Action);
+                return STATUS_ILLEGAL_FUNCTION;
+            }
+
+            return ExpQueryFirmwareTableProvider(SysFirmwareInfo, Size, ReqSize);
         }
     }
 
@@ -3068,7 +3220,7 @@ CallQS[] =
     SI_XX(SystemWatchdogTimerInformation), /* FIXME: not implemented */
     SI_QX(SystemLogicalProcessorInformation),
     SI_XX(SystemWow64SharedInformationObsolete), /* FIXME: not implemented */
-    SI_XX(SystemRegisterFirmwareTableInformationHandler), /* FIXME: not implemented */
+    SI_XS(SystemRegisterFirmwareTableInformationHandler),
     SI_QX(SystemFirmwareTableInformation),
 
     // Vista and later
