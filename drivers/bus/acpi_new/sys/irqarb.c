@@ -25,6 +25,7 @@
 #define UACPINT_MSI_GSIV_BASE   0xFFF00000ull
 #define UACPINT_MSI_GSIV_LAST   0xFFFFFFFEull
 #define UACPINT_MSI_MAX_COUNT   32
+#define UACPINT_MSI_MAX_RUN     16
 #define UACPINT_MSI_RECORD_MAX  64
 
 /* Range attributes of a placed GSIV, telling how it is triggered */
@@ -196,7 +197,11 @@ UacpiNtMsiCountLookup(
     return STATUS_NOT_FOUND;
 }
 
-/* Message count asked for by the requirement span, 1 when out of range */
+/*
+ * Message count asked for by the requirement span. An MSI device puts the
+ * message number in the low data bits, so a run is only granted as a power of
+ * two of at most 16 that one IRQL can hold, anything else falls back to one.
+ */
 static
 ULONG
 NTAPI
@@ -210,7 +215,7 @@ UacpiNtMsiCountFromRequirement(
 
     Span = (ULONGLONG)Descriptor->u.Interrupt.MaximumVector -
            Descriptor->u.Interrupt.MinimumVector + 1;
-    if (Span == 0 || Span > UACPINT_MSI_MAX_COUNT)
+    if (Span == 0 || Span > UACPINT_MSI_MAX_RUN || (Span & (Span - 1)))
         return 1;
 
     return (ULONG)Span;
@@ -266,7 +271,7 @@ UacpiNtIrqUnpackRequirement(
            Descriptor->u.Interrupt.MaximumVector,
            (ULONG)Span,
            Count,
-           (Span > 1 && Count != (ULONG)Span) ? " (malformed span)" : "");
+           (Span > 1 && Count != (ULONG)Span) ? " (one message instead)" : "");
 
     *Minimum = UACPINT_MSI_GSIV_BASE;
     *Maximum = UACPINT_MSI_GSIV_LAST;
