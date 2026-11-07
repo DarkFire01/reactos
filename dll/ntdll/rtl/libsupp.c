@@ -1263,4 +1263,17 @@ RtlGetTickCount(VOID)
     return KiTickCountToMs(TickCount);
 }
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+/**
+ * @brief
+ * Returns where the errno of the current thread is kept.
+ */
+int *
+__cdecl
+_errno(VOID)
+{
+    return (int *)&NtCurrentTeb()->TlsSlots[LDRP_ERRNO_TLS_SLOT];
+}
+#endif
+
 /* EOF */

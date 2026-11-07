@@ -23,6 +23,9 @@
 /* Page heap flags */
 #define DPH_FLAG_DLL_NOTIFY 0x40
 
+/* The TLS slot ntdll keeps errno in, the same one Windows uses */
+#define LDRP_ERRNO_TLS_SLOT 16
+
 typedef struct _LDRP_TLS_DATA
 {
     LIST_ENTRY TlsLinks;
@@ -193,10 +196,39 @@ LdrpIsArm64EcCode(
     _In_ PVOID ImageBase,
     _In_ PVOID Address);
 
+BOOLEAN
+NTAPI
+LdrpIsArm64Code(
+    _In_ PVOID ImageBase,
+    _In_ PVOID Address);
+
 VOID
 NTAPI
 LdrpUpdateHybridMetadata(
     _In_ PVOID ImageBase);
+
+VOID
+NTAPI
+LdrpNotifyImageMapped(
+    _In_ PVOID ViewBase,
+    _In_ SIZE_T ViewSize);
+
+NTSTATUS
+NTAPI
+LdrpUnmapImageView(
+    _In_ PVOID ViewBase);
+
+/* csrlib */
+NTSTATUS
+NTAPI
+CsrpConnectToServer(
+    _In_ PCWSTR ObjectDirectory);
+
+VOID
+NTAPI
+LdrpResetEmulatorState(
+    _In_ PEXCEPTION_RECORD ExceptionRecord,
+    _In_ PARM64_NT_CONTEXT Context);
 
 NTSTATUS
 NTAPI

@@ -631,6 +631,12 @@ LdrpInitializeThread(IN PCONTEXT Context)
     /* Allocate TLS */
     LdrpAllocateTls();
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+    /* The creator of the thread asked for no DLL notifications */
+    if (NtCurrentTeb()->DbgSkipThreadAttach)
+        goto Exit;
+#endif
+
     /* Start at the beginning */
     ListHead = &Peb->Ldr->InMemoryOrderModuleList;
     NextEntry = ListHead->Flink;
@@ -2089,6 +2095,9 @@ LdrpInitializeProcess(IN PCONTEXT Context,
                         Peb->TlsBitmapBits,
                         TLS_MINIMUM_AVAILABLE);
     RtlSetBit(&TlsBitMap, 0);
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+    RtlSetBit(&TlsBitMap, LDRP_ERRNO_TLS_SLOT);
+#endif
     RtlInitializeBitMap(&TlsExpansionBitMap,
                         Peb->TlsExpansionBitmapBits,
                         TLS_EXPANSION_SLOTS);
@@ -2850,6 +2859,10 @@ LdrpInit(PCONTEXT Context,
         {
             /* This is a new thread initializing */
 #ifdef _M_ARM64
+            /* The creator of the thread does all of its setup */
+            if (Teb->SkipLoaderInit)
+                return;
+
             /* Every thread of an x64 process keeps its own emulator state */
             if (LdrpX64Process)
                 LdrpInitializeX64Thread();
