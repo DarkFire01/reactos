@@ -120,6 +120,18 @@ static __inline void __ec_cpuidex(int CpuInfo[4], int Leaf, int SubLeaf)
 #define __cpuid(CpuInfo, Leaf)              __ec_cpuidex(CpuInfo, Leaf, 0)
 #define __cpuidex(CpuInfo, Leaf, SubLeaf)   __ec_cpuidex(CpuInfo, Leaf, SubLeaf)
 
+/* There is no RDRAND, report that no random value is available */
+static __inline int __ec_rdrand64_step(unsigned __int64 *Value)
+{
+    *Value = 0;
+    return 0;
+}
+
+#define _rdrand64_step(Value)           __ec_rdrand64_step(Value)
+
+/* The time stamp counter, the virtual counter is the ARM64 equivalent */
+#define __rdtsc()                       ((unsigned __int64)_ReadStatusReg(ARM64_CNTVCT))
+
 /* int 2Ch raises an assertion failure, the ARM64 break code for it is 0xF001 */
 #define __int2c()                       __break(0xF001)
 
