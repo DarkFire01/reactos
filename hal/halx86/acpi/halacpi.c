@@ -48,6 +48,11 @@ PWCHAR HalName = L"ACPI Compatible Eisa/Isa HAL";
 static ULONG HalpPmTimerPort;
 static BOOLEAN HalpPmTimerValExt;
 
+/* Ticks counted across TMR_STS carries, odd sequence values mean a carry is running */
+static volatile LONG HalpPmTimerSequence;
+static ULONGLONG HalpPmTimerTicks;
+static ULONG HalpPmTimerLastCount;
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 PDESCRIPTION_HEADER
@@ -770,6 +775,90 @@ HalpAcpiTableCacheInit(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     return Status;
 }
 
+static
+ULONG
+NTAPI
+HalpPmTimerMask(VOID)
+{
+    return HalpPmTimerValExt ? MAXULONG : 0x00FFFFFF;
+}
+
+static
+ULONG
+NTAPI
+HalpReadPmTimerCount(VOID)
+{
+    return READ_PORT_ULONG((PULONG)(ULONG_PTR)HalpPmTimerPort) & HalpPmTimerMask();
+}
+
+/**
+ * @brief
+ * Restarts the carry from the current counter value. The counter starts over
+ * on every boot and after a sleep state.
+ */
+VOID
+NTAPI
+HalpPmTimerResync(VOID)
+{
+    if (HalpPmTimerPort == 0)
+        return;
+
+    InterlockedIncrement(&HalpPmTimerSequence);
+    HalpPmTimerLastCount = HalpReadPmTimerCount();
+    InterlockedIncrement(&HalpPmTimerSequence);
+}
+
+/**
+ * @brief
+ * Folds the counter into the 64 bit tick count. The ACPI driver calls it from
+ * the SCI on TMR_STS, which fires before the counter can wrap twice.
+ */
+VOID
+NTAPI
+HalpPmTimerCarry(VOID)
+{
+    ULONG Count;
+
+    if (HalpPmTimerPort == 0)
+        return;
+
+    InterlockedIncrement(&HalpPmTimerSequence);
+
+    Count = HalpReadPmTimerCount();
+    HalpPmTimerTicks += (Count - HalpPmTimerLastCount) & HalpPmTimerMask();
+    HalpPmTimerLastCount = Count;
+
+    InterlockedIncrement(&HalpPmTimerSequence);
+}
+
+/**
+ * @brief
+ * Returns the PM timer ticks since it was set up, valid at any IRQL.
+ */
+ULONGLONG
+NTAPI
+HalpQueryPmTimerTicks(VOID)
+{
+    ULONGLONG Ticks;
+    ULONG Count;
+    ULONG Last;
+    LONG Sequence;
+
+    if (HalpPmTimerPort == 0)
+        return 0;
+
+    do
+    {
+        Sequence = HalpPmTimerSequence;
+        Ticks = HalpPmTimerTicks;
+        Last = HalpPmTimerLastCount;
+        Count = HalpReadPmTimerCount();
+        KeMemoryBarrier();
+    } while ((Sequence & 1) || (Sequence != HalpPmTimerSequence));
+
+    return Ticks + ((Count - Last) & HalpPmTimerMask());
+}
+
 VOID
 NTAPI
 HaliAcpiTimerInit(
@@ -785,12 +874,16 @@ HaliAcpiTimerInit(
         HalpPmTimerValExt = (HalpFixedAcpiDescTable.flags & ACPI_TMR_VAL_EXT) ? TRUE : FALSE;
 
         DPRINT1("ACPI timer at 0x%lX (%u-bit)\n", HalpPmTimerPort, HalpPmTimerValExt ? 32 : 24);
-        return;
+    }
+    else
+    {
+        HalpPmTimerPort = TimerPort;
+        HalpPmTimerValExt = TimerValExt;
     }
 
-    /* FIXME: timekeeping does not use the PM timer yet */
-    HalpPmTimerPort = TimerPort;
-    HalpPmTimerValExt = TimerValExt;
+    /* FIXME: timekeeping does not read HalpQueryPmTimerTicks yet */
+    HalpPmTimerTicks = 0;
+    HalpPmTimerResync();
 }
 
 CODE_SEG("INIT")

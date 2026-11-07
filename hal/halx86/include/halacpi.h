@@ -35,6 +35,25 @@ HaliAcpiTimerInit(
     _In_ BOOLEAN TimerValExt
 );
 
+/* TMR_STS carry from the ACPI driver and the extended count it keeps */
+VOID
+NTAPI
+HalpPmTimerCarry(
+    VOID
+);
+
+VOID
+NTAPI
+HalpPmTimerResync(
+    VOID
+);
+
+ULONGLONG
+NTAPI
+HalpQueryPmTimerTicks(
+    VOID
+);
+
 /* ACPI power management services (acpi/acpidisp.c) */
 NTSTATUS
 NTAPI

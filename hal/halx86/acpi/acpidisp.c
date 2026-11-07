@@ -598,6 +598,10 @@ HalpFinishWake(VOID)
     }
 
     HalpControllerIntact = FALSE;
+
+    /* The PM timer counted from zero again while asleep */
+    HalpPmTimerResync();
+
     HalpSetSciGpes(TRUE);
     HalpSyncFirmwareNvs(FALSE);
 }
@@ -1144,8 +1148,7 @@ VOID
 NTAPI
 HalpAcpiPmTimerOverflow(VOID)
 {
-    /* Timekeeping does not use the PM timer */
-    NOTHING;
+    HalpPmTimerCarry();
 }
 
 static
