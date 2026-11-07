@@ -8,6 +8,7 @@
 #include <uacpint.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
+#include <uacpi/event.h>
 #include <debug.h>
 
 #ifndef ACPI_DRIVER_INTERNAL
@@ -53,6 +54,34 @@ static ACPI_DRIVER_HAL_DISPATCH UacpiNtDriverHalTable;
 /* HAL PCI config accessors, valid after the handshake */
 static PACPI_HAL_PCI_CONFIG UacpiNtHalPciRead;
 static PACPI_HAL_PCI_CONFIG UacpiNtHalPciWrite;
+
+typedef
+BOOLEAN
+(NTAPI *PUACPINT_HAL_PIC_STATE_INTACT)(VOID);
+
+typedef
+ULONG
+(NTAPI *PUACPINT_HAL_RESTORE_PIC_STATE)(VOID);
+
+/* After a sleep the HAL only reprograms the I/O APIC when the ACPI driver asks */
+static PUACPINT_HAL_PIC_STATE_INTACT UacpiNtHalPicIntact;
+static PUACPINT_HAL_RESTORE_PIC_STATE UacpiNtHalPicRestore;
+
+#if (NTDDI_VERSION < NTDDI_WIN8)
+typedef
+VOID
+(NTAPI *PUACPINT_HAL_PM_TIMER_INIT)(
+    _In_opt_ PVOID TimerPort,
+    _In_ BOOLEAN TimerValExt);
+
+typedef
+VOID
+(NTAPI *PUACPINT_HAL_PM_TIMER_CARRY)(VOID);
+
+/* Before Windows 8 the HAL extends a 24 bit PM timer off the TMR_STS carry */
+static PUACPINT_HAL_PM_TIMER_INIT UacpiNtHalPmTimerInit;
+static PUACPINT_HAL_PM_TIMER_CARRY UacpiNtHalPmTimerCarry;
+#endif
 
 /*
  * The HAL sleep path calls back at HIGH_LEVEL with interrupts off, so the
@@ -559,6 +588,12 @@ UacpiNtHalPmHandshake(VOID)
 
     UacpiNtHalPciRead = HalTable->PciReadConfig;
     UacpiNtHalPciWrite = HalTable->PciWriteConfig;
+    UacpiNtHalPicIntact = (PUACPINT_HAL_PIC_STATE_INTACT)HalTable->PicStateValid;
+    UacpiNtHalPicRestore = (PUACPINT_HAL_RESTORE_PIC_STATE)HalTable->RestorePicState;
+#if (NTDDI_VERSION < NTDDI_WIN8)
+    UacpiNtHalPmTimerInit = (PUACPINT_HAL_PM_TIMER_INIT)HalTable->PmTimerInitialize;
+    UacpiNtHalPmTimerCarry = (PUACPINT_HAL_PM_TIMER_CARRY)HalTable->PmTimerOverflow;
+#endif
 
     /* The HAL reports the interrupt model and takes over the sleep path */
     HalTable->InitializeSleepStates(StateData, &Model);
@@ -604,6 +639,70 @@ UacpiNtHalPmHandshake(VOID)
     }
 
     return STATUS_SUCCESS;
+}
+
+#if (NTDDI_VERSION < NTDDI_WIN8)
+/* Runs from the SCI, the HAL folds the wrapped counter into its 64 bit time */
+static
+uacpi_interrupt_ret
+UacpiNtHalPmTimerOverflow(
+    _In_ uacpi_handle Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    UacpiNtHalPmTimerCarry();
+    return UACPI_INTERRUPT_HANDLED;
+}
+#endif
+
+/* Once the SCI is connected the HAL may start counting on TMR_STS */
+VOID
+NTAPI
+UacpiNtHalStartPmTimer(VOID)
+{
+#if (NTDDI_VERSION < NTDDI_WIN8)
+    uacpi_status UacpiStatus;
+
+    if (!UacpiNtHalPmTimerInit || !UacpiNtHalPmTimerCarry)
+        return;
+
+    /* The HAL reads PM_TMR_BLK and TMR_VAL_EXT from the FADT itself */
+    UacpiNtHalPmTimerInit(NULL, FALSE);
+
+    UacpiStatus = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_TIMER_STATUS,
+                                                    UacpiNtHalPmTimerOverflow,
+                                                    NULL);
+    if (uacpi_unlikely_error(UacpiStatus))
+    {
+        DPRINT1("uACPI-NT: PM timer carry not installed: %s\n",
+                uacpi_status_to_string(UacpiStatus));
+        return;
+    }
+
+    DPRINT("uACPI-NT: PM timer carry installed\n");
+#endif
+}
+
+BOOLEAN
+NTAPI
+UacpiNtHalInterruptStateIntact(VOID)
+{
+    if (!UacpiNtHalPicIntact)
+        return TRUE;
+
+    return UacpiNtHalPicIntact();
+}
+
+/* Reprograms the I/O APIC from the routing the HAL cached while devices connected */
+VOID
+NTAPI
+UacpiNtHalRestoreInterruptState(VOID)
+{
+    if (!UacpiNtHalPicRestore)
+        return;
+
+    UacpiNtHalPicRestore();
+    DPRINT("uACPI-NT: interrupt controller state restored\n");
 }
 
 /* Returns the byte count moved, zero before the handshake */

@@ -165,6 +165,8 @@ UacpiNtBringUpInterpreter(
         return Status;
     }
 
+    UacpiNtHalStartPmTimer();
+
     /* _INI methods often read the EC */
     UacpiNtEcInitialize();
 

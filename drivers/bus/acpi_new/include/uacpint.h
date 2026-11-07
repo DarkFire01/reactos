@@ -708,6 +708,18 @@ NTSTATUS
 NTAPI
 UacpiNtHalPmHandshake(VOID);
 
+VOID
+NTAPI
+UacpiNtHalStartPmTimer(VOID);
+
+BOOLEAN
+NTAPI
+UacpiNtHalInterruptStateIntact(VOID);
+
+VOID
+NTAPI
+UacpiNtHalRestoreInterruptState(VOID);
+
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID
 NTAPI

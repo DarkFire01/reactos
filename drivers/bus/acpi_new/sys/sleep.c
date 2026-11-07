@@ -71,8 +71,15 @@ UacpiNtResumeFromSleep(VOID)
     if (WokeFrom == UACPI_SLEEP_STATE_S4)
         UacpiNtWakeReArmAfterHibernate();
 
-    /* Firmware may have reset PCI link routing */
-    UacpiNtIrqLinksResume();
+    /*
+     * Firmware POST resets the link routing and the I/O APIC. The HAL rebuilds
+     * the I/O APIC only on request, after the links are back on their lines.
+     */
+    if (!UacpiNtHalInterruptStateIntact())
+    {
+        UacpiNtIrqLinksResume();
+        UacpiNtHalRestoreInterruptState();
+    }
 }
 
 static
