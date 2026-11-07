@@ -882,7 +882,10 @@ static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output
         if (Target && End > Target && *Target != '#' && !memchr(Name, ' ', Equal - Name))
         {
             Library = FindImportLibrary(List, Equal + 1, Dot - Equal - 1);
-            snprintf(Symbol, sizeof(Symbol), "__imp_%.*s", (int)(End - Target), Target);
+            snprintf(Symbol, sizeof(Symbol), "%c%.*s%c", 0x02, (int)(End - Target), Target, 0x02);
+            if (Keep && strstr(Keep, Symbol))
+                continue;
+
             snprintf(Symbol, sizeof(Symbol), "%c%.*s%c", 0x01, (int)(End - Target), Target, 0x01);
             if (Keep && strstr(Keep, Symbol))
                 Library = NULL;
@@ -929,7 +932,7 @@ static int RewriteForwarders(ARG_LIST *List, const char *Def, const char *Output
     return 1;
 }
 
-/* Marks an ARM64 object that an image links directly, its ARM64EC twin may then use its data */
+/* Marks an ARM64 object that a sharing image links directly, its ARM64EC twin may then use its data */
 static void MarkLinked(const char *Object)
 {
     char Path[MAX_PATH + 16];
@@ -944,17 +947,24 @@ static void MarkLinked(const char *Object)
 /* Linker launcher for the ARM64 build: keeps the inputs of each image for its ARM64X link */
 static int RecordMode(int argc, char *argv[])
 {
-    ARG_LIST In = { 0 };
+    ARG_LIST Args = { 0 }, In = { 0 };
     const char *Output;
     char Path[MAX_PATH + 16], Full[MAX_PATH];
     FILE *File;
-    int i, IsDll = 0;
+    int i, IsDll = 0, Share = 0;
 
-    ExpandArgs(&In, argc, argv);
-    for (i = 1; i < In.Count; i++)
+    /* /arm64xshare is ours: the image wants its data shared by both halves, the linker never sees it */
+    ExpandArgs(&Args, argc, argv);
+    for (i = 0; i < Args.Count; i++)
     {
-        if (IsOption(In.Items[i], "dll"))
+        if (i && IsOption(Args.Items[i], "arm64xshare"))
+        {
+            Share = 1;
+            continue;
+        }
+        if (i && IsOption(Args.Items[i], "dll"))
             IsDll = 1;
+        AddArg(&In, Args.Items[i]);
     }
 
     /* Only DLLs become ARM64X images, programs stay ARM64 */
@@ -971,7 +981,7 @@ static int RecordMode(int argc, char *argv[])
                 if (IsInput(Arg) && GetFullPathNameA(Arg, sizeof(Full), Full, NULL))
                 {
                     fprintf(File, "%s\n", Full);
-                    if (EndsWith(Full, ".obj"))
+                    if (Share && EndsWith(Full, ".obj"))
                         MarkLinked(Full);
                 }
                 else if (IsOption(Arg, "DEF:") && GetFullPathNameA(Arg + 5, sizeof(Full), Full, NULL))
@@ -1050,6 +1060,30 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
     if (GetFileAttributesA(Line) != INVALID_FILE_ATTRIBUTES)
         AddArg(&Out, Line);
 
+    /* An exported handler is the local one, import libraries searched before it would supply theirs */
+    if (ExportsHandler)
+    {
+        ARG_LIST Ordered = { 0 };
+        const char *Handler = NULL;
+        int Placed = 0;
+
+        for (i = 1; i < Out.Count; i++)
+        {
+            if (EndsWith(Out.Items[i], "ehandler.lib"))
+                Handler = Out.Items[i];
+        }
+        for (i = 0; i < Out.Count; i++)
+        {
+            if (Handler && !Placed && i && EndsWith(Out.Items[i], ".lib") && IsInput(Out.Items[i]))
+            {
+                AddArg(&Ordered, Handler);
+                Placed = 1;
+            }
+            AddArg(&Ordered, Out.Items[i]);
+        }
+        Out = Ordered;
+    }
+
     /* An export of an import that ARM64EC code reaches without an exit thunk fails the link, those stay forwarders */
     for (Tries = 0; ; Tries++)
     {
@@ -1066,9 +1100,19 @@ static int LinkMode(const char *EcRoot, const char *NativeRoot, int argc, char *
         if (!Keep)
             Grown[0] = 0;
         Keep = Grown;
-        snprintf(Keep + strlen(Keep), strcspn(Hit, "'") + 3, "%c%.*s%c", 0x01, (int)strcspn(Hit, "'"), Hit, 0x01);
 
-        printf("arm64xobj: keeping the forwarder to %.*s and linking again\n", (int)strcspn(Hit, "'"), Hit);
+        /* A forwarder that fails as well leaves the x64 view, the native view still exports it */
+        snprintf(Line, sizeof(Line), "%c%.*s%c", 0x01, (int)strcspn(Hit, "'"), Hit, 0x01);
+        if (strstr(Keep, Line))
+        {
+            Line[0] = Line[strlen(Line) - 1] = 0x02;
+            printf("arm64xobj: warning: leaving the export of %.*s out of the x64 view\n", (int)strcspn(Hit, "'"), Hit);
+        }
+        else
+        {
+            printf("arm64xobj: keeping the forwarder to %.*s and linking again\n", (int)strcspn(Hit, "'"), Hit);
+        }
+        strcat(Keep, Line);
         RewriteForwarders(&In, Def, Output, Keep, NewDef, sizeof(NewDef), &ExportsHandler);
     }
 

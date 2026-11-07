@@ -86,6 +86,10 @@ endif()
 # Both halves of an ARM64X ntdll work on one heap, loader state and CSR connection, so both link the same runtime objects
 if(ARCH STREQUAL "arm64ec" OR (ARCH STREQUAL "arm64" AND ENABLE_ARM64EC))
     target_sources(ntdll PRIVATE $<TARGET_OBJECTS:rtl> $<TARGET_OBJECTS:csrlib> $<TARGET_OBJECTS:ntdll_vista_static>)
+    if(ARCH STREQUAL "arm64")
+        # Only ntdll runs both halves in one process, the other ARM64X images keep data per half
+        target_link_options(ntdll PRIVATE /arm64xshare)
+    endif()
 endif()
 
 if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
