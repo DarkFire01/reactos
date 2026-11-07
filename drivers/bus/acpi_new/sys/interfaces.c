@@ -630,6 +630,108 @@ UacpiNtBuildIrqTranslator(
     return STATUS_SUCCESS;
 }
 
+/* Bus numbers above a root on a nonzero _SEG carry the segment in bits 8 to 23 */
+#define UACPINT_SEGMENT_BUS(Segment)    ((ULONG)(Segment) << 8)
+
+static
+NTSTATUS
+NTAPI
+UacpiNtTranslateBusNumber(
+    _Inout_opt_ PVOID Context,
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Source,
+    _In_ RESOURCE_TRANSLATION_DIRECTION Direction,
+    _In_opt_ ULONG AlternativesCount,
+    _In_reads_opt_(AlternativesCount) IO_RESOURCE_DESCRIPTOR Alternatives[],
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Target)
+{
+    UNREFERENCED_PARAMETER(AlternativesCount);
+    UNREFERENCED_PARAMETER(Alternatives);
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+
+    switch (Direction)
+    {
+        case TranslateChildToParent:
+            *Target = *Source;
+            Target->u.BusNumber.Start |= UACPINT_SEGMENT_BUS((ULONG_PTR)Context);
+            return STATUS_TRANSLATION_COMPLETE;
+
+        /* The child only ever sees the bus within its own segment */
+        case TranslateParentToChild:
+            *Target = *Source;
+            Target->u.BusNumber.Start = (UCHAR)Target->u.BusNumber.Start;
+            return STATUS_SUCCESS;
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+}
+
+static
+NTSTATUS
+NTAPI
+UacpiNtTranslateBusNumberRequirements(
+    _Inout_opt_ PVOID Context,
+    _In_ PIO_RESOURCE_DESCRIPTOR Source,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PULONG TargetCount,
+    _Out_writes_(*TargetCount) PIO_RESOURCE_DESCRIPTOR *Target)
+{
+    PIO_RESOURCE_DESCRIPTOR Copy;
+
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+
+    *Target = NULL;
+
+    Copy = ExAllocatePoolWithTag(PagedPool, sizeof(*Copy), UACPINT_POOL_TAG);
+    if (!Copy)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    *Copy = *Source;
+    Copy->u.BusNumber.MinBusNumber |= UACPINT_SEGMENT_BUS((ULONG_PTR)Context);
+    Copy->u.BusNumber.MaxBusNumber |= UACPINT_SEGMENT_BUS((ULONG_PTR)Context);
+
+    *TargetCount = 1;
+    *Target = Copy;
+    return STATUS_TRANSLATION_COMPLETE;
+}
+
+/* Only roots on a nonzero _SEG get one, STATUS_NOT_SUPPORTED leaves the IRP alone */
+static
+NTSTATUS
+NTAPI
+UacpiNtBuildBusNumberTranslator(
+    _In_ PUACPINT_PDO Pdo,
+    _In_ PIO_STACK_LOCATION IoStack)
+{
+    PTRANSLATOR_INTERFACE Translator;
+    uacpi_u64 Segment;
+
+    if (IoStack->Parameters.QueryInterface.Version != 0)
+        return STATUS_NOT_SUPPORTED;
+
+    Translator = (PTRANSLATOR_INTERFACE)IoStack->Parameters.QueryInterface.Interface;
+    if (IoStack->Parameters.QueryInterface.Size < sizeof(*Translator))
+        return STATUS_INVALID_PARAMETER;
+
+    if (uacpi_unlikely_error(uacpi_eval_simple_integer(Pdo->Node, "_SEG", &Segment)) ||
+        (USHORT)Segment == 0)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    Translator->Size = sizeof(*Translator);
+    Translator->Version = 0;
+    Translator->Context = (PVOID)(ULONG_PTR)(USHORT)Segment;
+    Translator->InterfaceReference = UacpiNtInterfaceNop;
+    Translator->InterfaceDereference = UacpiNtInterfaceNop;
+    Translator->TranslateResources = UacpiNtTranslateBusNumber;
+    Translator->TranslateResourceRequirements = UacpiNtTranslateBusNumberRequirements;
+
+    DPRINT("Bus number translator provided to %s, segment %u\n", Pdo->Name, (USHORT)Segment);
+    return STATUS_SUCCESS;
+}
+
 /* Logs PCI slots that stop answering vendor ID reads, safe at DISPATCH_LEVEL */
 static
 VOID
@@ -1490,6 +1592,16 @@ UacpiNtPdoQueryInterface(
         UacpiNtHidIsPciRoot(Pdo->Hid))
     {
         return UacpiNtBuildPciBusInterface(Pdo, IoStack);
+    }
+
+    if (IsEqualGUID(InterfaceType, &GUID_TRANSLATOR_INTERFACE_STANDARD) &&
+        (ULONG_PTR)IoStack->Parameters.QueryInterface.InterfaceSpecificData ==
+            CmResourceTypeBusNumber &&
+        UacpiNtHidIsPciRoot(Pdo->Hid))
+    {
+        Status = UacpiNtBuildBusNumberTranslator(Pdo, IoStack);
+        if (Status != STATUS_NOT_SUPPORTED)
+            return Status;
     }
 
     /* Memory, I/O and bus number arbiters, the IRQ ones live in fdo.c and filter.c */
