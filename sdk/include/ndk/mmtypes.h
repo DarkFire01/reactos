@@ -385,6 +385,49 @@ typedef struct _SECTION_IMAGE_INFORMATION
 #ifndef NTOS_MODE_USER
 
 //
+// Extended Parameters of NtAllocateVirtualMemoryEx, winnt.h has them for user mode
+//
+typedef enum MEM_EXTENDED_PARAMETER_TYPE
+{
+    MemExtendedParameterInvalidType,
+    MemExtendedParameterAddressRequirements,
+    MemExtendedParameterNumaNode,
+    MemExtendedParameterPartitionHandle,
+    MemExtendedParameterUserPhysicalHandle,
+    MemExtendedParameterAttributeFlags,
+    MemExtendedParameterImageMachine,
+    MemExtendedParameterMax
+} MEM_EXTENDED_PARAMETER_TYPE, *PMEM_EXTENDED_PARAMETER_TYPE;
+
+typedef struct _MEM_ADDRESS_REQUIREMENTS
+{
+    PVOID LowestStartingAddress;
+    PVOID HighestEndingAddress;
+    SIZE_T Alignment;
+} MEM_ADDRESS_REQUIREMENTS, *PMEM_ADDRESS_REQUIREMENTS;
+
+#define MEM_EXTENDED_PARAMETER_TYPE_BITS 8
+
+#define MEM_EXTENDED_PARAMETER_EC_CODE  0x00000040
+
+typedef struct DECLSPEC_ALIGN(8) MEM_EXTENDED_PARAMETER
+{
+    struct
+    {
+        ULONG64 Type : MEM_EXTENDED_PARAMETER_TYPE_BITS;
+        ULONG64 Reserved : 64 - MEM_EXTENDED_PARAMETER_TYPE_BITS;
+    } DUMMYSTRUCTNAME;
+    union
+    {
+        ULONG64 ULong64;
+        PVOID Pointer;
+        SIZE_T Size;
+        HANDLE Handle;
+        ULONG ULong;
+    } DUMMYUNIONNAME;
+} MEM_EXTENDED_PARAMETER, *PMEM_EXTENDED_PARAMETER;
+
+//
 // Section Extension Information
 //
 typedef struct _MMEXTEND_INFO

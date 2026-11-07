@@ -5277,7 +5277,54 @@ BOOLEAN
 NTAPI
 RtlTryAcquireSRWLockExclusive(PRTL_SRWLOCK SRWLock);
 
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlQueryPerformanceCounter(
+    _Out_ PLARGE_INTEGER PerformanceCounter);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlQueryPerformanceFrequency(
+    _Out_ PLARGE_INTEGER PerformanceFrequency);
+
+struct _CONTEXT_EX;
+
+NTSYSAPI
+PVOID
+NTAPI
+RtlLocateExtendedFeature(
+    _In_ struct _CONTEXT_EX *ContextEx,
+    _In_ ULONG FeatureId,
+    _Out_opt_ PULONG Length);
+
 #endif /* Win7 or ReactOS Ntdll build */
+
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN8) || (defined(__REACTOS__) && defined(_NTDLLBUILD_))
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlWaitOnAddress(
+    _In_reads_bytes_(AddressSize) const volatile VOID *Address,
+    _In_reads_bytes_(AddressSize) PVOID CompareAddress,
+    _In_ SIZE_T AddressSize,
+    _In_opt_ PLARGE_INTEGER Timeout);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlWakeAddressAll(
+    _In_ const volatile VOID *Address);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlWakeAddressSingle(
+    _In_ const volatile VOID *Address);
+
+#endif /* Win8 or ReactOS Ntdll build */
 
 #endif // NTOS_MODE_USER
 

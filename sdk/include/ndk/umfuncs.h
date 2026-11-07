@@ -113,6 +113,13 @@ LdrDisableThreadCalloutsForDll(
 
 NTSTATUS
 NTAPI
+LdrGetDllFullName(
+    _In_opt_ PVOID DllHandle,
+    _Inout_ PUNICODE_STRING FullDllName
+);
+
+NTSTATUS
+NTAPI
 LdrGetDllHandle(
     _In_opt_ PWSTR DllPath,
     _In_opt_ PULONG DllCharacteristics,

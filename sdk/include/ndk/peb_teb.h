@@ -42,6 +42,13 @@ Author:
   #define GDI_HANDLE_BUFFER_SIZE 34
 #endif
 
+/* The x64 emulator on ARM64 relies on the newer 64-bit layout */
+#if defined(_STRUCT64) && (defined(_M_ARM64) || defined(_M_ARM64EC))
+  #define _ARM64_HOST_LAYOUT
+#else
+  #undef _ARM64_HOST_LAYOUT
+#endif
+
 #if defined(_NTDDK_INCLUDED_) || defined(_NTIFS_)
 #define PPEB PPEB_RENAMED
 #endif
@@ -173,9 +180,12 @@ typedef struct STRUCT(_PEB)
     ULONG FlsBitmapBits[4]; // [FLS_MAXIMUM_AVAILABLE/(sizeof(ULONG)*8)];
     ULONG FlsHighIndex;
 #endif
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(_ARM64_HOST_LAYOUT)
     PTR(PVOID) WerRegistrationData;
     PTR(PVOID) WerShipAssertPtr;
+#endif
+#ifdef _ARM64_HOST_LAYOUT
+    PTR(PVOID) EcCodeBitMap;
 #endif
 } STRUCT(PEB), *STRUCT(PPEB);
 
@@ -195,6 +205,9 @@ C_ASSERT(FIELD_OFFSET(STRUCT(PEB), PostProcessInitRoutine) == 0x230);
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), SessionId) == 0x2C0);
 #if (NTDDI_VERSION >= NTDDI_WS03)
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), FlsHighIndex) == 0x350);
+#endif
+#ifdef _ARM64_HOST_LAYOUT
+C_ASSERT(FIELD_OFFSET(STRUCT(PEB), EcCodeBitMap) == 0x368);
 #endif
 #else
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), Mutant) == 0x04);
@@ -399,7 +412,11 @@ typedef struct STRUCT(_TEB)
 #endif
     PTR(PVOID*)            TlsExpansionSlots;
 #ifdef _STRUCT64
-    PTR(PVOID)             DeallocationBStore;
+    union
+    {
+        PTR(PVOID)         DeallocationBStore;
+        PTR(struct _CHPE_V2_CPU_AREA_INFO*) ChpeV2CpuAreaInfo;
+    };
     PTR(PVOID)             BStoreLimit;
 #endif
 #if (NTDDI_VERSION >= NTDDI_WIN10)
@@ -425,7 +442,7 @@ typedef struct STRUCT(_TEB)
     PTR(PVOID) FlsData;
 #endif
 
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(_ARM64_HOST_LAYOUT)
     PTR(PVOID) PreferredLanguages;
     PTR(PVOID) UserPrefLanguages;
     PTR(PVOID) MergedPrefLanguages;
@@ -450,7 +467,19 @@ typedef struct STRUCT(_TEB)
             USHORT DbgWerInShipAssertCode:1;
             USHORT DbgIssuedInitialBp:1;
             USHORT DbgClonedThread:1;
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(_ARM64_HOST_LAYOUT)
+            USHORT SuppressDebugMsg:1;
+            USHORT DisableUserStackWalk:1;
+            USHORT RtlExceptionAttached:1;
+            USHORT InitialThread:1;
+            USHORT SessionAware:1;
+            USHORT LoadOwner:1;
+            USHORT LoaderWorker:1;
+            USHORT SkipLoaderInit:1;
+            USHORT SkipFileAPIBrokering:1;
+#else
             USHORT SpareSameTebBits:9;
+#endif
         };
     };
     PTR(PVOID) TxnScopeEnterCallback;
@@ -501,8 +530,12 @@ C_ASSERT(FIELD_OFFSET(STRUCT(TEB), GdiBatchCount) == 0x1740);
 C_ASSERT(FIELD_OFFSET(STRUCT(TEB), IdealProcessor) == 0x1747);
 C_ASSERT(FIELD_OFFSET(STRUCT(TEB), WaitingOnLoaderLock) == 0x1760);
 C_ASSERT(FIELD_OFFSET(STRUCT(TEB), TlsExpansionSlots) == 0x1780);
+C_ASSERT(FIELD_OFFSET(STRUCT(TEB), ChpeV2CpuAreaInfo) == 0x1788);
 C_ASSERT(FIELD_OFFSET(STRUCT(TEB), WaitingOnLoaderLock) == 0x1760);
 C_ASSERT(FIELD_OFFSET(STRUCT(TEB), ActiveFrame) == 0x17C0);
+#ifdef _ARM64_HOST_LAYOUT
+C_ASSERT(FIELD_OFFSET(STRUCT(TEB), SameTebFlags) == 0x17EE);
+#endif
 #else
 C_ASSERT(FIELD_OFFSET(STRUCT(TEB), NtTib) == 0x000);
 C_ASSERT(FIELD_OFFSET(STRUCT(TEB), EnvironmentPointer) == 0x01C);
@@ -517,6 +550,7 @@ C_ASSERT(FIELD_OFFSET(STRUCT(TEB), ActiveFrame) == 0xFB0);
 #endif
 
 #undef _STRUCT64
+#undef _ARM64_HOST_LAYOUT
 #undef _SELECT3264
 #undef PTR
 #undef STRUCT

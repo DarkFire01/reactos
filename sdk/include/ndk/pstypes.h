@@ -760,6 +760,41 @@ typedef struct _INITIAL_TEB
 } INITIAL_TEB, *PINITIAL_TEB;
 
 //
+// NtCreateThreadEx
+//
+#define THREAD_CREATE_FLAGS_CREATE_SUSPENDED        0x00000001
+#define THREAD_CREATE_FLAGS_SKIP_THREAD_ATTACH      0x00000002
+#define THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER      0x00000004
+#define THREAD_CREATE_FLAGS_SKIP_LOADER_INIT        0x00000020
+#define THREAD_CREATE_FLAGS_BYPASS_PROCESS_FREEZE   0x00000040
+
+typedef NTSTATUS
+(NTAPI *PUSER_THREAD_START_ROUTINE)(
+    _In_ PVOID ThreadParameter
+);
+
+#define PS_ATTRIBUTE_CLIENT_ID      0x00010003
+#define PS_ATTRIBUTE_TEB_ADDRESS    0x00010004
+
+typedef struct _PS_ATTRIBUTE
+{
+    ULONG_PTR Attribute;
+    SIZE_T Size;
+    union
+    {
+        ULONG_PTR Value;
+        PVOID ValuePtr;
+    };
+    PSIZE_T ReturnLength;
+} PS_ATTRIBUTE, *PPS_ATTRIBUTE;
+
+typedef struct _PS_ATTRIBUTE_LIST
+{
+    SIZE_T TotalLength;
+    PS_ATTRIBUTE Attributes[1];
+} PS_ATTRIBUTE_LIST, *PPS_ATTRIBUTE_LIST;
+
+//
 // TEB Active Frame Structures
 //
 typedef struct _TEB_ACTIVE_FRAME_CONTEXT
