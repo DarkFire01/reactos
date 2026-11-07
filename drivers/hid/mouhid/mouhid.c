@@ -864,7 +864,6 @@ MouHid_StartDevice(
                                       HID_USAGE_PAGE_BUTTON,
                                       PreparsedData);
     DPRINT("[MOUHID] Buttons %lu\n", Buttons);
-    ASSERT(Buttons > 0);
 
     /* now allocate an array for those buttons */
     Buffer = ExAllocatePoolWithTag(NonPagedPool, sizeof(USAGE) * 4 * Buttons, MOUHID_TAG);
