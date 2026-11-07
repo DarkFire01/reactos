@@ -252,7 +252,8 @@ StorNvmeInitialize(
 
     DPRINT1("StorNvmeInitialize(%p)\n", DeviceExtension);
 
-    /* The controller was already started in HwFindAdapter */
+    /* The controller was already started in HwFindAdapter, with its pin masked */
+    NvmpMaskPinInterrupt(Adapter, FALSE);
     Adapter->InterruptsConnected = TRUE;
     Adapter->State = NvmeAdapterRunning;
 

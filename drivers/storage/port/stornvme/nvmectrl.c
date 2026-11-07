@@ -354,6 +354,26 @@ NvmpResetController(
 
 
 /**
+ * @brief Masks or unmasks the pin interrupt of the controller.
+ *
+ * Every completion asserts the pin, and nothing claims it until Storport connects the
+ * interrupt. MSI-X does not use these registers, and an MSI has nothing to hold off.
+ */
+VOID
+NvmpMaskPinInterrupt(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ BOOLEAN Mask)
+{
+    if (Adapter->MessageInterrupts)
+        return;
+
+    StorPortWriteRegisterUlong(Adapter,
+                               Mask ? &Adapter->Registers->INTMS : &Adapter->Registers->INTMC,
+                               MAXULONG);
+}
+
+
+/**
  * @brief Brings the controller from any state to ready with IO queues created.
  */
 BOOLEAN
@@ -366,6 +386,9 @@ NvmpStartController(
         DPRINT1("Controller would not go idle\n");
         return FALSE;
     }
+
+    /* The admin commands below are polled, and the reset above cleared the mask */
+    NvmpMaskPinInterrupt(Adapter, TRUE);
 
     if (!NvmpCreateAdminQueues(Adapter, ConfigInfo))
         return FALSE;

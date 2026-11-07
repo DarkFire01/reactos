@@ -296,6 +296,11 @@ NvmpStartController(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo);
 
+VOID
+NvmpMaskPinInterrupt(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ BOOLEAN Mask);
+
 BOOLEAN
 NvmpResetController(
     _In_ PNVME_ADAPTER_EXTENSION Adapter);
