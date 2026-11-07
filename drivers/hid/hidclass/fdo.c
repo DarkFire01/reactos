@@ -13,6 +13,8 @@
 #define NDEBUG
 #include <debug.h>
 
+#define HIDCLASS_REPORT_DESCRIPTOR_ATTEMPTS 3
+
 NTSTATUS
 NTAPI
 HidClassFDO_QueryCapabilitiesCompletionRoutine(
@@ -268,6 +270,8 @@ HidClassFDO_GetDescriptors(
     PIRP Irp;
     PIO_STACK_LOCATION IoStack;
     NTSTATUS Status;
+    ULONG ReportLength;
+    ULONG Attempt;
 
     //
     // get device extension
@@ -348,9 +352,8 @@ HidClassFDO_GetDescriptors(
     //
     // now allocate space for the report descriptor
     //
-    FDODeviceExtension->ReportDescriptor = ExAllocatePoolWithTag(NonPagedPool,
-                                                                 FDODeviceExtension->HidDescriptor.DescriptorList[0].wReportLength,
-                                                                 HIDCLASS_TAG);
+    ReportLength = FDODeviceExtension->HidDescriptor.DescriptorList[0].wReportLength;
+    FDODeviceExtension->ReportDescriptor = ExAllocatePoolZero(NonPagedPool, ReportLength, HIDCLASS_TAG);
     if (!FDODeviceExtension->ReportDescriptor)
     {
         //
@@ -360,32 +363,29 @@ HidClassFDO_GetDescriptors(
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    //
-    // init stack location
-    //
-    IoStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_HID_GET_REPORT_DESCRIPTOR;
-    IoStack->Parameters.DeviceIoControl.OutputBufferLength = FDODeviceExtension->HidDescriptor.DescriptorList[0].wReportLength;
-    Irp->UserBuffer = FDODeviceExtension->ReportDescriptor;
-
-    //
-    // send request
-    //
-    Status = HidClassFDO_DispatchRequestSynchronous(DeviceObject, Irp);
-    if (!NT_SUCCESS(Status))
+    /* A short descriptor would be parsed with whatever follows it, so only a full one is taken */
+    for (Attempt = 0; Attempt < HIDCLASS_REPORT_DESCRIPTOR_ATTEMPTS; Attempt++)
     {
-        //
-        // failed to get device descriptor
-        //
-        DPRINT1("[HIDCLASS] IOCTL_HID_GET_REPORT_DESCRIPTOR failed with %x\n", Status);
-        IoFreeIrp(Irp);
-        return Status;
+        IoStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_HID_GET_REPORT_DESCRIPTOR;
+        IoStack->Parameters.DeviceIoControl.OutputBufferLength = ReportLength;
+        Irp->UserBuffer = FDODeviceExtension->ReportDescriptor;
+        Irp->IoStatus.Information = 0;
+
+        Status = HidClassFDO_DispatchRequestSynchronous(DeviceObject, Irp);
+        if (NT_SUCCESS(Status) && (Irp->IoStatus.Information == ReportLength))
+        {
+            IoFreeIrp(Irp);
+            return STATUS_SUCCESS;
+        }
+
+        DPRINT1("[HIDCLASS] IOCTL_HID_GET_REPORT_DESCRIPTOR returned %lu of %lu bytes, status %x\n",
+                (ULONG)Irp->IoStatus.Information, ReportLength, Status);
     }
 
-    //
-    // completed successfully
-    //
+    ExFreePoolWithTag(FDODeviceExtension->ReportDescriptor, HIDCLASS_TAG);
+    FDODeviceExtension->ReportDescriptor = NULL;
     IoFreeIrp(Irp);
-    return STATUS_SUCCESS;
+    return NT_SUCCESS(Status) ? STATUS_DEVICE_DATA_ERROR : Status;
 }
 
 
