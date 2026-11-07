@@ -358,6 +358,54 @@ PopSetSystemPowerStateTraverse(PDEVICE_NODE DeviceNode,
 #endif
 }
 
+/**
+ * @brief
+ * Calls Action for every device node under Root, each one after all of its
+ * children. A bus can only leave D0 once the devices on it have.
+ */
+static
+VOID
+NTAPI
+PopTraverseDeviceTreeLeavesFirst(
+    _In_ PDEVICE_NODE Root,
+    _In_ DEVICETREE_TRAVERSE_ROUTINE Action,
+    _In_ PVOID Context)
+{
+    PDEVICE_NODE DeviceNode = Root;
+    PDEVICE_NODE Next;
+
+    while (DeviceNode->Child)
+        DeviceNode = DeviceNode->Child;
+
+    for (;;)
+    {
+        /* Pick the next node first, the action may change this one */
+        if (DeviceNode == Root)
+        {
+            Next = NULL;
+        }
+        else if (DeviceNode->Sibling)
+        {
+            Next = DeviceNode->Sibling;
+            while (Next->Child)
+                Next = Next->Child;
+        }
+        else
+        {
+            Next = DeviceNode->Parent;
+        }
+
+        ObReferenceObject(DeviceNode->PhysicalDeviceObject);
+        Action(DeviceNode, Context);
+        ObDereferenceObject(DeviceNode->PhysicalDeviceObject);
+
+        if (Next == NULL)
+            break;
+
+        DeviceNode = Next;
+    }
+}
+
 NTSTATUS
 NTAPI
 PopSetSystemPowerState(SYSTEM_POWER_STATE PowerState, POWER_ACTION PowerAction)
@@ -401,13 +449,22 @@ PopSetSystemPowerState(SYSTEM_POWER_STATE PowerState, POWER_ACTION PowerAction)
         DPRINT1("Query system power state failed; changing state anyway\n");
     }
 
-    /* Set system power change */
-    IopInitDeviceTreeTraverseContext(&Context,
-                                     IopRootDeviceNode,
-                                     PopSetSystemPowerStateTraverse,
-                                     &PowerContext);
+    /* Leaving the working state goes from the leaves up, entering it from the root down */
+    if (PowerState > PowerSystemWorking)
+    {
+        PopTraverseDeviceTreeLeavesFirst(IopRootDeviceNode,
+                                         PopSetSystemPowerStateTraverse,
+                                         &PowerContext);
+    }
+    else
+    {
+        IopInitDeviceTreeTraverseContext(&Context,
+                                         IopRootDeviceNode,
+                                         PopSetSystemPowerStateTraverse,
+                                         &PowerContext);
 
-    IopTraverseDeviceTree(&Context);
+        IopTraverseDeviceTree(&Context);
+    }
 
     if (!PopAcpiPresent) return STATUS_NOT_IMPLEMENTED;
 
