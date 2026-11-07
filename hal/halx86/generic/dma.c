@@ -977,11 +977,9 @@ typedef struct _SCATTER_GATHER_CONTEXT {
 	PVOID AdapterListControlContext, MapRegisterBase;
 	ULONG MapRegisterCount;
 	BOOLEAN WriteToDevice;
+	PSCATTER_GATHER_LIST ScatterGatherList;
 	WAIT_CONTEXT_BLOCK Wcb;
 } SCATTER_GATHER_CONTEXT, *PSCATTER_GATHER_CONTEXT;
-
-// FIXME: This value needs to be calculated at runtime
-#define MAX_SG_ELEMENTS 0x30
 
 IO_ALLOCATION_ACTION
 NTAPI
@@ -992,73 +990,42 @@ HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
 {
 	PSCATTER_GATHER_CONTEXT AdapterControlContext = Context;
 	PADAPTER_OBJECT AdapterObject = AdapterControlContext->AdapterObject;
-	PSCATTER_GATHER_LIST ScatterGatherList;
-	PSCATTER_GATHER_ELEMENT TempElements;
+	PSCATTER_GATHER_LIST ScatterGatherList = AdapterControlContext->ScatterGatherList;
+	PSCATTER_GATHER_ELEMENT Element;
 	ULONG ElementCount = 0, RemainingLength = AdapterControlContext->Length;
 	PUCHAR CurrentVa = AdapterControlContext->CurrentVa;
-    // RemainingLength / PAGE_SIZE + 1 for the remainder of our division
-    // + 1 for a safety cushion gives a good safe value. Using the
-    // min function with MAX_SG_ELEMENTS keeps us from getting too large.
-    ULONG Est_SG_Elements = min(RemainingLength / PAGE_SIZE + 2, MAX_SG_ELEMENTS);
 
 	/* Store the map register base for later in HalPutScatterGatherList */
 	AdapterControlContext->MapRegisterBase = MapRegisterBase;
 
-    // FIXME: HACK Allocate TempElements from pool to minimize stack usage.
-    // A more efficient algorithm should be found to avoid allocations during S/G I/O operations.
-    TempElements = ExAllocatePoolUninitialized(NonPagedPool,
-                                               sizeof(*TempElements) * Est_SG_Elements,
-                                               TAG_DMA);
-    if (!TempElements)
+	/* Each mapping covers at least the rest of a page, so the list sized by the span always fits */
+	while (RemainingLength > 0 && ElementCount < AdapterControlContext->MapRegisterCount)
 	{
-		DPRINT1("Scatter/gather list construction failed!\n");
-		return DeallocateObject;
-	}
-
-	while (RemainingLength > 0 && ElementCount < MAX_SG_ELEMENTS)
-	{
-	    TempElements[ElementCount].Length = RemainingLength;
-		TempElements[ElementCount].Reserved = 0;
-	    TempElements[ElementCount].Address = IoMapTransfer(AdapterObject,
-		                                                   AdapterControlContext->Mdl,
-														   MapRegisterBase,
-														   CurrentVa + (AdapterControlContext->Length - RemainingLength),
-														   &TempElements[ElementCount].Length,
-														   AdapterControlContext->WriteToDevice);
-		if (TempElements[ElementCount].Length == 0)
+		Element = &ScatterGatherList->Elements[ElementCount];
+		Element->Length = RemainingLength;
+		Element->Reserved = 0;
+		Element->Address = IoMapTransfer(AdapterObject,
+		                                 AdapterControlContext->Mdl,
+		                                 MapRegisterBase,
+		                                 CurrentVa + (AdapterControlContext->Length - RemainingLength),
+		                                 &Element->Length,
+		                                 AdapterControlContext->WriteToDevice);
+		if (Element->Length == 0)
 			break;
 
 		DPRINT("Allocated one S/G element: 0x%I64u with length: 0x%x\n",
-		        TempElements[ElementCount].Address.QuadPart,
-				TempElements[ElementCount].Length);
+		        Element->Address.QuadPart,
+				Element->Length);
 
-		ASSERT(TempElements[ElementCount].Length <= RemainingLength);
-		RemainingLength -= TempElements[ElementCount].Length;
+		ASSERT(Element->Length <= RemainingLength);
+		RemainingLength -= Element->Length;
 		ElementCount++;
 	}
 
-    DPRINT("Est_SG_Elements %d\n", Est_SG_Elements);
-    DPRINT("ElementCount is %d\n", ElementCount);
-
-	if (RemainingLength > 0)
-	{
-		DPRINT1("Scatter/gather list construction failed!\n");
-        ExFreePoolWithTag(TempElements, TAG_DMA);
-		return DeallocateObject;
-	}
-
-	ScatterGatherList = ExAllocatePoolWithTag(NonPagedPool,
-	                                          sizeof(SCATTER_GATHER_LIST) + sizeof(SCATTER_GATHER_ELEMENT) * ElementCount,
-											  TAG_DMA);
-	ASSERT(ScatterGatherList);
+	ASSERT(RemainingLength == 0);
 
 	ScatterGatherList->NumberOfElements = ElementCount;
 	ScatterGatherList->Reserved = (ULONG_PTR)AdapterControlContext;
-	RtlCopyMemory(ScatterGatherList->Elements,
-	              TempElements,
-				  sizeof(SCATTER_GATHER_ELEMENT) * ElementCount);
-
-    ExFreePoolWithTag(TempElements, TAG_DMA);
 
 	DPRINT("Initiating S/G DMA with %d element(s)\n", ElementCount);
 
@@ -1188,7 +1155,8 @@ HalCalculateScatterGatherListSize(
 
     UNIMPLEMENTED_ONCE;
 
-    NumberOfMapRegisters = PAGE_ROUND_UP(Length) >> PAGE_SHIFT;
+    /* A buffer that does not start on a page boundary spans one more page */
+    NumberOfMapRegisters = ADDRESS_AND_SIZE_TO_SPAN_PAGES(CurrentVa, Length);
     SgSize = sizeof(SCATTER_GATHER_CONTEXT);
 
     *ScatterGatherListSize = SgSize;
@@ -1280,6 +1248,18 @@ HalBuildScatterGatherList(
     {
         ScatterGatherContext = (PSCATTER_GATHER_CONTEXT)ScatterGatherBuffer;
 
+        /* The adapter control routine cannot fail the request, so the list is allocated here */
+        ScatterGatherContext->ScatterGatherList =
+            ExAllocatePoolWithTag(NonPagedPool,
+                                  FIELD_OFFSET(SCATTER_GATHER_LIST, Elements[NumberOfMapRegisters]),
+                                  TAG_DMA);
+        if (!ScatterGatherContext->ScatterGatherList)
+        {
+            if (!UsingUserBuffer)
+                ExFreePoolWithTag(ScatterGatherBuffer, TAG_DMA);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
         /* Fill the scatter-gather context */
         ScatterGatherContext->UsingUserBuffer = UsingUserBuffer;
         ScatterGatherContext->AdapterObject = AdapterObject;
@@ -1302,6 +1282,7 @@ HalBuildScatterGatherList(
 
         if (!NT_SUCCESS(Status))
         {
+            ExFreePoolWithTag(ScatterGatherContext->ScatterGatherList, TAG_DMA);
             if (!UsingUserBuffer)
                 ExFreePoolWithTag(ScatterGatherBuffer, TAG_DMA);
             return Status;
