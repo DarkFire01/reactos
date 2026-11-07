@@ -1039,6 +1039,10 @@ IopCmToFixedRequirement(
     ULONGLONG Start;
     ULONGLONG Length;
 
+    /* Callers size Io without device specific data, so it may be past the end */
+    if (Cm->Type == CmResourceTypeDeviceSpecific)
+        return FALSE;
+
     RtlZeroMemory(Io, sizeof(*Io));
     Io->Option = IO_RESOURCE_PREFERRED;
     Io->Type = Cm->Type;
@@ -1047,9 +1051,6 @@ IopCmToFixedRequirement(
 
     switch (Cm->Type)
     {
-        case CmResourceTypeDeviceSpecific:
-            return FALSE;
-
         case CmResourceTypeInterrupt:
             if (Cm->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
             {
