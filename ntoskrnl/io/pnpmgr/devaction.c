@@ -133,6 +133,10 @@ IopValidateID(
 
     PAGED_CODE();
 
+    /* A driver can complete the query with success and no string */
+    if (!Id)
+        return FALSE;
+
     switch (QueryType)
     {
         case BusQueryDeviceID:
@@ -234,6 +238,14 @@ IopCreateDeviceInstancePath(
     {
         DPRINT1("IopInitiatePnpIrp(BusQueryDeviceID) failed (Status %x)\n", Status);
         return Status;
+    }
+
+    /* Without a device ID there is no instance path to give the device */
+    if (!IoStatusBlock.Information)
+    {
+        DPRINT1("No DeviceID from %wZ for DeviceNode %p\n",
+                &DeviceNode->PhysicalDeviceObject->DriverObject->DriverName, DeviceNode);
+        return STATUS_UNSUCCESSFUL;
     }
 
     IsValidID = IopValidateID((PWCHAR)IoStatusBlock.Information, BusQueryDeviceID);
@@ -980,7 +992,7 @@ IopQueryHardwareIds(PDEVICE_NODE DeviceNode,
                                &IoStatusBlock,
                                IRP_MN_QUERY_ID,
                                &Stack);
-    if (NT_SUCCESS(Status))
+    if (NT_SUCCESS(Status) && IoStatusBlock.Information)
     {
         IsValidID = IopValidateID((PWCHAR)IoStatusBlock.Information, BusQueryHardwareIDs);
 
