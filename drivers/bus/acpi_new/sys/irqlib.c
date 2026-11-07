@@ -137,8 +137,8 @@ C_ASSERT(sizeof(INTERRUPT_VECTOR_DATA) == 0x48);
 
 ULONG UacpiNtIrqLibHalOverrides = 1;
 
-/* The property ID moved to 2 with the GROUP_AFFINITY vector layout */
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+/* The property ID moved to 2 with the GROUP_AFFINITY vector layout, ReactOS keys on 2 */
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
 #define UACPINT_CONNECTION_DATA_PID     2
 #else
 #define UACPINT_CONNECTION_DATA_PID     1
