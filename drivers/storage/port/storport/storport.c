@@ -1331,12 +1331,18 @@ StorPortGetUncachedExtension(
     if (DeviceExtension->UncachedExtensionVirtualBase != NULL)
         return DeviceExtension->UncachedExtensionVirtualBase;
 
-    // FIXME: Set DMA stuff here?
+    /* Fields left out here would reach the HAL as stack contents */
+    RtlZeroMemory(&DeviceDescription, sizeof(DeviceDescription));
     DeviceDescription.Version = DEVICE_DESCRIPTION_VERSION;
     DeviceDescription.Master = ConfigInfo->Master;
     DeviceDescription.ScatterGather = ConfigInfo->ScatterGather;
     DeviceDescription.DemandMode = ConfigInfo->DemandMode;
     DeviceDescription.Dma32BitAddresses = ConfigInfo->Dma32BitAddresses;
+
+    /* A miniport that takes 64 bit addresses needs no map registers for memory above 4GB */
+    DeviceDescription.Dma64BitAddresses =
+        (ConfigInfo->Dma64BitAddresses & (SCSI_DMA64_MINIPORT_SUPPORTED |
+                                          SCSI_DMA64_MINIPORT_FULL64BIT_SUPPORTED)) != 0;
     DeviceDescription.BusNumber = ConfigInfo->SystemIoBusNumber;
     DeviceDescription.DmaChannel = ConfigInfo->DmaChannel;
     DeviceDescription.InterfaceType = ConfigInfo->AdapterInterfaceType;
