@@ -27,8 +27,39 @@ BOOLEAN PopAcpiPresent = FALSE;
 POP_POWER_ACTION PopAction;
 WORK_QUEUE_ITEM PopShutdownWorkItem;
 SYSTEM_POWER_CAPABILITIES PopCapabilities;
+POWER_STATE_HANDLER PopPowerStateHandlers[PowerStateMaximum];
 
 /* PRIVATE FUNCTIONS *********************************************************/
+
+/**
+ * @brief
+ * Takes a power state handler for its slot. A slot is only free while it is
+ * empty or still holds the soft off fallback.
+ */
+static
+NTSTATUS
+NTAPI
+PopRegisterStateHandler(
+    _In_ PPOWER_STATE_HANDLER Handler)
+{
+    PPOWER_STATE_HANDLER Slot;
+
+    if ((ULONG)Handler->Type >= PowerStateMaximum)
+        return STATUS_INVALID_PARAMETER;
+
+    Slot = &PopPowerStateHandlers[Handler->Type];
+    if ((Slot->Handler != NULL) && (Slot->Handler != PopShutdownHandler))
+        return STATUS_INVALID_PARAMETER;
+
+    *Slot = *Handler;
+    RtlZeroMemory(Slot->Spare, sizeof(Slot->Spare));
+
+    /* FIXME: the sleep states are not advertised until they can be entered */
+    if (Slot->Type == PowerStateShutdownOff)
+        PopCapabilities.SystemS5 = TRUE;
+
+    return STATUS_SUCCESS;
+}
 
 static WORKER_THREAD_ROUTINE PopPassivePowerCall;
 _Use_decl_annotations_
@@ -440,6 +471,10 @@ PoInitSystem(IN ULONG BootPhase)
 
     /* Initialize the power capabilities */
     RtlZeroMemory(&PopCapabilities, sizeof(SYSTEM_POWER_CAPABILITIES));
+
+    /* Soft off shows the halt screen until a HAL registers a real handler */
+    PopPowerStateHandlers[PowerStateShutdownOff].Type = PowerStateShutdownOff;
+    PopPowerStateHandlers[PowerStateShutdownOff].Handler = PopShutdownHandler;
 
     /* Get the Command Line */
     CommandLine = KeLoaderBlock->LoadOptions;
@@ -1027,6 +1062,20 @@ NtPowerInformation(IN POWER_INFORMATION_LEVEL PowerInformationLevel,
             }
             _SEH2_END;
 
+            break;
+        }
+
+        case SystemPowerStateHandler:
+        {
+            /* Handlers run in kernel mode, so only the HAL and drivers may register one */
+            if (PreviousMode != KernelMode)
+                return STATUS_ACCESS_DENIED;
+            if ((InputBuffer == NULL) || (OutputBuffer != NULL))
+                return STATUS_INVALID_PARAMETER;
+            if (InputBufferLength < sizeof(POWER_STATE_HANDLER))
+                return STATUS_BUFFER_TOO_SMALL;
+
+            Status = PopRegisterStateHandler(InputBuffer);
             break;
         }
 

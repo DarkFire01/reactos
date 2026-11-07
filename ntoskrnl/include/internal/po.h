@@ -364,6 +364,20 @@ PopGracefulShutdown(
     IN PVOID Context
 );
 
+NTSTATUS
+NTAPI
+PopShutdownHandler(
+    _In_opt_ PVOID Context,
+    _In_opt_ PENTER_STATE_SYSTEM_HANDLER SystemHandler,
+    _In_opt_ PVOID SystemContext,
+    _In_ LONG NumberProcessors,
+    _In_opt_ LONG volatile *Number);
+
+NTSTATUS
+NTAPI
+PopInvokeSystemStateHandler(
+    _In_ POWER_STATE_HANDLER_TYPE Type);
+
 VOID
 NTAPI
 PopFlushVolumes(
@@ -379,4 +393,5 @@ extern LIST_ENTRY PopVolumeDevices;
 extern KSPIN_LOCK PopDopeGlobalLock;
 extern POP_POWER_ACTION PopAction;
 extern SYSTEM_POWER_CAPABILITIES PopCapabilities;
+extern POWER_STATE_HANDLER PopPowerStateHandlers[PowerStateMaximum];
 

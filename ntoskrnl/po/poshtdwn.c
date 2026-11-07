@@ -145,13 +145,34 @@ PopProcessShutDownLists(VOID)
     }
 }
 
-VOID
+/**
+ * @brief
+ * The soft off fallback when no HAL handler powers the machine off. Every
+ * processor runs it, only the boot processor draws the halt screen.
+ */
+NTSTATUS
 NTAPI
-PopShutdownHandler(VOID)
+PopShutdownHandler(
+    _In_opt_ PVOID Context,
+    _In_opt_ PENTER_STATE_SYSTEM_HANDLER SystemHandler,
+    _In_opt_ PVOID SystemContext,
+    _In_ LONG NumberProcessors,
+    _In_opt_ LONG volatile *Number)
 {
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(SystemHandler);
+    UNREFERENCED_PARAMETER(SystemContext);
+    UNREFERENCED_PARAMETER(NumberProcessors);
+    UNREFERENCED_PARAMETER(Number);
+
     /* Stop all interrupts */
     KeRaiseIrqlToDpcLevel();
     _disable();
+
+    if (KeGetCurrentProcessorNumber() != 0)
+    {
+        for (;;) HalHaltSystem();
+    }
 
     /* Do we have boot video */
     if (InbvIsBootDriverInstalled())
@@ -172,6 +193,116 @@ PopShutdownHandler(VOID)
     for (;;) HalHaltSystem();
 }
 
+/* Gathers every processor at DISPATCH_LEVEL so the state handler runs on all of them */
+typedef struct _POP_STATE_HANDLER_GATHER
+{
+    PPOWER_STATE_HANDLER Handler;
+    LONG NumberProcessors;
+    LONG volatile Joined;
+    LONG volatile Release;
+    LONG volatile Finished;
+    LONG volatile HandlerNumber;
+} POP_STATE_HANDLER_GATHER, *PPOP_STATE_HANDLER_GATHER;
+
+/* Only ever used by the one thread that shuts the system down */
+static KDPC PopStateHandlerDpcs[MAXIMUM_PROCESSORS];
+
+static
+NTSTATUS
+NTAPI
+PopCallStateHandler(
+    _In_ PPOP_STATE_HANDLER_GATHER Gather)
+{
+    return Gather->Handler->Handler(Gather->Handler->Context,
+                                    NULL,
+                                    NULL,
+                                    Gather->NumberProcessors,
+                                    &Gather->HandlerNumber);
+}
+
+static KDEFERRED_ROUTINE PopStateHandlerSecondaryDpc;
+
+static
+VOID
+NTAPI
+PopStateHandlerSecondaryDpc(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2)
+{
+    PPOP_STATE_HANDLER_GATHER Gather = DeferredContext;
+
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    InterlockedIncrement(&Gather->Joined);
+
+    while (!Gather->Release)
+        YieldProcessor();
+
+    PopCallStateHandler(Gather);
+    InterlockedIncrement(&Gather->Finished);
+}
+
+/**
+ * @brief
+ * Runs a registered power state handler on every processor, the boot
+ * processor last. A shutdown handler that works does not return.
+ *
+ * @return
+ * The status of the handler on the boot processor, or
+ * STATUS_DEVICE_DOES_NOT_EXIST when nothing is registered for Type.
+ */
+NTSTATUS
+NTAPI
+PopInvokeSystemStateHandler(
+    _In_ POWER_STATE_HANDLER_TYPE Type)
+{
+    POP_STATE_HANDLER_GATHER Gather;
+    NTSTATUS Status;
+    KIRQL OldIrql;
+    ULONG Index;
+    LONG Queued = 0;
+
+    if (((ULONG)Type >= PowerStateMaximum) || (PopPowerStateHandlers[Type].Handler == NULL))
+        return STATUS_DEVICE_DOES_NOT_EXIST;
+
+    RtlZeroMemory(&Gather, sizeof(Gather));
+    Gather.Handler = &PopPowerStateHandlers[Type];
+    Gather.NumberProcessors = KeNumberProcessors;
+
+    KeSetSystemAffinityThread(1);
+    KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
+
+    for (Index = 1; Index < (ULONG)KeNumberProcessors; Index++)
+    {
+        if (!(KeActiveProcessors & AFFINITY_MASK(Index)))
+            continue;
+
+        KeInitializeDpc(&PopStateHandlerDpcs[Index], PopStateHandlerSecondaryDpc, &Gather);
+        KeSetImportanceDpc(&PopStateHandlerDpcs[Index], HighImportance);
+        KeSetTargetProcessorDpc(&PopStateHandlerDpcs[Index], (CCHAR)Index);
+        KeInsertQueueDpc(&PopStateHandlerDpcs[Index], NULL, NULL);
+        Queued++;
+    }
+
+    /* Nobody enters the handler until every processor is spinning in its DPC */
+    while (Gather.Joined != Queued)
+        YieldProcessor();
+
+    InterlockedExchange(&Gather.Release, 1);
+    Status = PopCallStateHandler(&Gather);
+
+    while (Gather.Finished != Queued)
+        YieldProcessor();
+
+    KeLowerIrql(OldIrql);
+    KeRevertToUserAffinityThread();
+    return Status;
+}
+
 VOID
 NTAPI
 PopShutdownSystem(IN POWER_ACTION SystemAction)
@@ -182,46 +313,33 @@ PopShutdownSystem(IN POWER_ACTION SystemAction)
     DPRINT("It's the final countdown...%lx\n", SystemAction);
     DbgUnLoadImageSymbols(NULL, (PVOID)-1, 0);
 
-    /* Run the thread on the boot processor */
-    KeSetSystemAffinityThread(1);
+    /* FIXME: the devices should be in S5 before this point, as on Windows */
+    PopSetSystemPowerState(PowerSystemShutdown, SystemAction);
 
     /* Now check what the caller wants */
     switch (SystemAction)
     {
-        /* Reset */
         case PowerActionShutdownReset:
-
-            /* Try platform driver first, then legacy */
-            //PopInvokeSystemStateHandler(PowerStateShutdownReset, NULL);
-            PopSetSystemPowerState(PowerSystemShutdown, SystemAction);
-            HalReturnToFirmware(HalRebootRoutine);
+            PopInvokeSystemStateHandler(PowerStateShutdownReset);
             break;
 
         case PowerActionShutdown:
-
-            /* Check for group policy that says to use "it is now safe" screen */
+            /* The policy asks for the "it is now safe" screen instead of powering off */
             if (PopShutdownPowerOffPolicy)
-            {
-                /* FIXFIX: Switch to legacy shutdown handler */
-                //PopPowerStateHandlers[PowerStateShutdownOff].Handler = PopShutdownHandler;
-            }
+                PopPowerStateHandlers[PowerStateShutdownOff].Handler = PopShutdownHandler;
 
+            /* Fall through */
         case PowerActionShutdownOff:
-
-            /* Call shutdown handler */
-            //PopInvokeSystemStateHandler(PowerStateShutdownOff, NULL);
-
-            /* ReactOS Hack */
-            PopSetSystemPowerState(PowerSystemShutdown, SystemAction);
-            PopShutdownHandler();
-
-            /* If that didn't work, call the HAL */
+            PopInvokeSystemStateHandler(PowerStateShutdownOff);
             HalReturnToFirmware(HalPowerDownRoutine);
             break;
 
         default:
             break;
     }
+
+    /* A reset, or a power off the handler could not do */
+    HalReturnToFirmware(HalRebootRoutine);
 
     /* Anything else should not happen */
     KeBugCheckEx(INTERNAL_POWER_ERROR, 5, 0, 0, 0);
