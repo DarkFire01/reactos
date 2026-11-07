@@ -28,6 +28,13 @@ KdPortPutByteEx(
 
 #ifdef _NTOSKRNL_
 
+#if defined(_M_ARM64) && !defined(_WINKD_)
+VOID
+NTAPI
+KdpPrintArm64Backtrace(
+    _In_ PCONTEXT Context);
+#endif
+
 /* KD GLOBALS ****************************************************************/
 
 /* KD Internal Debug Services */

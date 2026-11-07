@@ -1045,6 +1045,22 @@ KeBugCheckWithTf(IN ULONG BugCheckCode,
     /* Check if we need to save the context for KD */
     if (!KdPitchDebugger) KdDebuggerDataBlock.SavedContext = (ULONG_PTR)&Context;
 
+#if defined(_M_ARM64) && !defined(_WINKD_)
+    /* Where the bugcheck came from, the trap frame tells where a fault happened */
+    DbgPrint("\n*** Bugcheck 0x%08lx backtrace:\n", BugCheckCode);
+    KdpPrintArm64Backtrace(&Prcb->ProcessorState.ContextFrame);
+    if (TrapFrame)
+    {
+        CONTEXT TrapContext;
+
+        RtlZeroMemory(&TrapContext, sizeof(TrapContext));
+        TrapContext.ContextFlags = CONTEXT_FULL;
+        KeTrapFrameToContext(TrapFrame, NULL, &TrapContext);
+        DbgPrint("*** Trap frame %p:\n", TrapFrame);
+        KdpPrintArm64Backtrace(&TrapContext);
+    }
+#endif
+
     /* Check if a debugger is connected */
     if ((BugCheckCode != MANUALLY_INITIATED_CRASH) && (KdDebuggerEnabled))
     {

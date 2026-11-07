@@ -599,6 +599,53 @@ extern const CSTRING KdbPromptStr;
 #endif
 
 #ifdef _M_ARM64
+/**
+ * @brief
+ * Finds the loaded module an address falls in, kernel modules first, then those of the current process.
+ *
+ * @remark
+ * Only memory that is mapped is read, user module lists can be paged out at the IRQL exceptions arrive at.
+ */
+static
+PLDR_DATA_TABLE_ENTRY
+KdpFindModule(
+    _In_ ULONG_PTR Address)
+{
+    PLIST_ENTRY ListHead = &PsLoadedModuleList, Entry;
+    PLDR_DATA_TABLE_ENTRY Module;
+    PPEB Peb;
+    ULONG Count;
+
+    if (Address < (ULONG_PTR)MmSystemRangeStart)
+    {
+        Peb = PsGetCurrentProcess()->Peb;
+        if (!Peb || !MmIsAddressValid(&Peb->Ldr) || !Peb->Ldr ||
+            !MmIsAddressValid(&Peb->Ldr->InLoadOrderModuleList))
+        {
+            return NULL;
+        }
+        ListHead = &Peb->Ldr->InLoadOrderModuleList;
+    }
+
+    /* A damaged list must not hang the debugger */
+    for (Entry = ListHead->Flink, Count = 0;
+         Entry && (Entry != ListHead) && (Count < 1024) && MmIsAddressValid(Entry);
+         Entry = Entry->Flink, Count++)
+    {
+        Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (!MmIsAddressValid(&Module->SizeOfImage))
+            break;
+
+        if ((Address >= (ULONG_PTR)Module->DllBase) &&
+            (Address < (ULONG_PTR)Module->DllBase + Module->SizeOfImage))
+        {
+            return Module;
+        }
+    }
+
+    return NULL;
+}
+
 /* Prints a code address as module+offset when it falls in a loaded image */
 static
 VOID
@@ -606,47 +653,47 @@ KdpPrintCodeAddress(
     _In_ PCSTR Label,
     _In_ ULONG_PTR Address)
 {
-    PLDR_DATA_TABLE_ENTRY Module;
-    PLIST_ENTRY Entry;
+    PLDR_DATA_TABLE_ENTRY Module = KdpFindModule(Address);
+    CHAR Name[32];
+    ULONG i;
 
-    for (Entry = PsLoadedModuleList.Flink;
-         Entry && (Entry != &PsLoadedModuleList) && MmIsAddressValid(Entry);
-         Entry = Entry->Flink)
+    if (!Module || !Module->BaseDllName.Buffer || !MmIsAddressValid(Module->BaseDllName.Buffer))
     {
-        Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-        if ((Address >= (ULONG_PTR)Module->DllBase) &&
-            (Address < (ULONG_PTR)Module->DllBase + Module->SizeOfImage))
-        {
-            KdIoPrintf("  %s %p %wZ+0x%Ix\n",
-                       Label,
-                       (PVOID)Address,
-                       &Module->BaseDllName,
-                       Address - (ULONG_PTR)Module->DllBase);
-            return;
-        }
+        KdIoPrintf("  %s %p\n", Label, (PVOID)Address);
+        return;
     }
 
-    KdIoPrintf("  %s %p\n", Label, (PVOID)Address);
+    /* No Unicode conversion here, it can fault at the IRQL exceptions arrive at */
+    for (i = 0; i < sizeof(Name) - 1 && i < Module->BaseDllName.Length / sizeof(WCHAR); i++)
+        Name[i] = (CHAR)Module->BaseDllName.Buffer[i];
+    Name[i] = ANSI_NULL;
+
+    KdIoPrintf("  %s %p %s+0x%Ix (base %p)\n",
+               Label,
+               (PVOID)Address,
+               Name,
+               Address - (ULONG_PTR)Module->DllBase,
+               Module->DllBase);
 }
 
 /**
- * @brief Prints the registers and the frame chain of an exception.
+ * @brief Prints the registers and the frame chain of an ARM64 context.
  *
  * Without a debugger attached this is what a photo of the screen can be
- * symbolized from.
+ * symbolized from, offsets are against each module's base.
  */
-static
 VOID
-KdpPrintExceptionBacktrace(
-    _In_ PEXCEPTION_RECORD64 ExceptionRecord)
+NTAPI
+KdpPrintArm64Backtrace(
+    _In_ PCONTEXT Context)
 {
-    PCONTEXT Context = &KeGetCurrentPrcb()->ProcessorState.ContextFrame;
-    ULONG_PTR Frame;
+    BOOLEAN UserFrames = (Context->Pc < (ULONG_PTR)MmSystemRangeStart);
+    ULONG_PTR Frame, Next;
     ULONG Depth;
 
-    KdIoPrintf("  Info[1] %p SP %p X0 %p X1 %p X2 %p\n",
-               (PVOID)(ULONG_PTR)ExceptionRecord->ExceptionInformation[1],
+    KdIoPrintf("  SP %p FP %p X0 %p X1 %p X2 %p\n",
                (PVOID)Context->Sp,
+               (PVOID)Context->Fp,
                (PVOID)Context->X0,
                (PVOID)Context->X1,
                (PVOID)Context->X2);
@@ -655,10 +702,10 @@ KdpPrintExceptionBacktrace(
 
     /* Every frame starts with the caller's frame pointer and return address */
     Frame = Context->Fp;
-    for (Depth = 0; Depth < 12; Depth++)
+    for (Depth = 0; Depth < 24; Depth++)
     {
         if ((Frame & 7) ||
-            (Frame < (ULONG_PTR)MmSystemRangeStart) ||
+            ((Frame < (ULONG_PTR)MmSystemRangeStart) != UserFrames) ||
             !MmIsAddressValid((PVOID)Frame) ||
             !MmIsAddressValid((PVOID)(Frame + sizeof(ULONG_PTR))))
         {
@@ -666,8 +713,22 @@ KdpPrintExceptionBacktrace(
         }
 
         KdpPrintCodeAddress("<-", ((PULONG_PTR)Frame)[1]);
-        Frame = ((PULONG_PTR)Frame)[0];
+
+        /* Frames go up the stack, anything else is a broken chain */
+        Next = ((PULONG_PTR)Frame)[0];
+        if (Next <= Frame)
+            break;
+        Frame = Next;
     }
+}
+
+static
+VOID
+KdpPrintExceptionBacktrace(
+    _In_ PEXCEPTION_RECORD64 ExceptionRecord)
+{
+    KdIoPrintf("  Info[1] %p\n", (PVOID)(ULONG_PTR)ExceptionRecord->ExceptionInformation[1]);
+    KdpPrintArm64Backtrace(&KeGetCurrentPrcb()->ProcessorState.ContextFrame);
 }
 #endif
 
@@ -710,8 +771,8 @@ KdSendPacket(
                        WaitStateChange->u.Exception.FirstChance ? "FirstChance" : "LastChance",
                        ExceptionRecord->ExceptionInformation[0]);
 #ifdef _M_ARM64
-            if (ExceptionRecord->ExceptionCode != STATUS_BREAKPOINT)
-                KdpPrintExceptionBacktrace(ExceptionRecord);
+            /* Breakpoints too, asserts and DbgBreakPoint stop there */
+            KdpPrintExceptionBacktrace(ExceptionRecord);
 #endif
 #if defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM) || defined(_M_ARM64)
 extern VOID NTAPI RtlpBreakWithStatusInstruction(VOID);
