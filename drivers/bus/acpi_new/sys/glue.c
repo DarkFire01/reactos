@@ -154,6 +154,7 @@ UacpiNtBringUpInterpreter(
 
     UacpiNtHalPmHandshake();
     UacpiNtIrqLibInitialize();
+    UacpiNtResInitialize();
     UacpiNtQuiesceEvents();
 
     /* The SCI needs IrqLib and has to be up before any GPE is enabled */

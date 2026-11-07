@@ -484,6 +484,39 @@ UacpiNtFilterPower(
 
 /* resource.c */
 
+VOID
+NTAPI
+UacpiNtResInitialize(VOID);
+
+BOOLEAN
+NTAPI
+UacpiNtCrsHoldsDebugPort(
+    _In_ uacpi_namespace_node *Node);
+
+/* Byte count behind a memory descriptor Length or Alignment field */
+ULONGLONG
+NTAPI
+UacpiNtMemoryValue(
+    _In_ UCHAR Type,
+    _In_ USHORT Flags,
+    _In_ ULONG Value);
+
+VOID
+NTAPI
+UacpiNtSetCmMemory(
+    _Inout_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG Length);
+
+VOID
+NTAPI
+UacpiNtSetIoMemory(
+    _Inout_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ ULONGLONG Length,
+    _In_ ULONGLONG Alignment,
+    _In_ ULONGLONG Minimum,
+    _In_ ULONGLONG Maximum);
+
 NTSTATUS
 NTAPI
 UacpiNtCrsToCmList(

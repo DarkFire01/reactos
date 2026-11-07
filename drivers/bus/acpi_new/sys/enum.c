@@ -198,7 +198,10 @@ UacpiNtNodeWillBecomePdo(
     if (!UacpiNtNodeReadHid(Node, Hid, sizeof(Hid)))
         return FALSE;
 
-    return !UacpiNtHidIsExcluded(Hid);
+    if (UacpiNtHidIsExcluded(Hid))
+        return FALSE;
+
+    return !UacpiNtCrsHoldsDebugPort(Node);
 }
 
 /* Instance ID is the absolute path without separators */
@@ -393,6 +396,9 @@ UacpiNtBuildChildPdosForNode(
         if (!UacpiNtNodeReadHid(Child, Hid, sizeof(Hid)) || UacpiNtHidIsExcluded(Hid))
             continue;
 
+        if (UacpiNtCrsHoldsDebugPort(Child))
+            continue;
+
         UacpiNtGetOrCreatePdo(Fdo, Child, Parent, FALSE);
 
         if (UacpiNtHidIsContainer(Hid))
@@ -513,6 +519,9 @@ UacpiNtEnumDiagVerdict(
 
     if (UacpiNtHidIsExcluded(Hid))
         return "skipped, _HID excluded from enumeration";
+
+    if (UacpiNtCrsHoldsDebugPort(Node))
+        return "skipped, the kernel debugger owns its port";
 
     if (UacpiNtHidIsContainer(Hid))
         return "container, gets a PDO and is enumerated through";

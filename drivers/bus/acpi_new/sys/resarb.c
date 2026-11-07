@@ -83,8 +83,14 @@ UacpiNtResUnpackRequirement(
         case CmResourceTypeMemoryLarge:
             *Minimum = (ULONGLONG)Descriptor->u.Memory.MinimumAddress.QuadPart;
             *Maximum = (ULONGLONG)Descriptor->u.Memory.MaximumAddress.QuadPart;
-            *Length = Descriptor->u.Memory.Length;
-            *Alignment = Descriptor->u.Memory.Alignment ? Descriptor->u.Memory.Alignment : 1;
+            *Length = UacpiNtMemoryValue(Descriptor->Type,
+                                         Descriptor->Flags,
+                                         Descriptor->u.Memory.Length);
+            *Alignment = UacpiNtMemoryValue(Descriptor->Type,
+                                            Descriptor->Flags,
+                                            Descriptor->u.Memory.Alignment);
+            if (*Alignment == 0)
+                *Alignment = 1;
             return STATUS_SUCCESS;
 
         case CmResourceTypePort:
@@ -124,9 +130,11 @@ UacpiNtResPackResource(
     {
         case CmResourceTypeMemory:
         case CmResourceTypeMemoryLarge:
-            Descriptor->Type = CmResourceTypeMemory;
-            Descriptor->u.Memory.Start.QuadPart = (LONGLONG)Start;
-            Descriptor->u.Memory.Length = Requirement->u.Memory.Length;
+            UacpiNtSetCmMemory(Descriptor,
+                               Start,
+                               UacpiNtMemoryValue(Requirement->Type,
+                                                  Requirement->Flags,
+                                                  Requirement->u.Memory.Length));
             return STATUS_SUCCESS;
 
         case CmResourceTypePort:
@@ -162,7 +170,9 @@ UacpiNtResUnpackResource(
         case CmResourceTypeMemory:
         case CmResourceTypeMemoryLarge:
             *Start = (ULONGLONG)Descriptor->u.Memory.Start.QuadPart;
-            *Length = Descriptor->u.Memory.Length;
+            *Length = UacpiNtMemoryValue(Descriptor->Type,
+                                         Descriptor->Flags,
+                                         Descriptor->u.Memory.Length);
             return STATUS_SUCCESS;
 
         case CmResourceTypePort:

@@ -17,8 +17,270 @@
 #define UACPINT_RES_SMALL_HEADER_SIZE   1
 #define UACPINT_RES_LARGE_HEADER_SIZE   3
 
+/* Largest page aligned length a plain memory descriptor can carry */
+#define UACPINT_RES_PLAIN_MEMORY_MAX    0xFFFFF000ull
+
 /* Log each window handed out and every dropped _CRS descriptor */
 ULONG UacpiNtResVerbose = 1;
+
+typedef
+NTSTATUS
+(NTAPI *PUACPINT_IO_ENCODE_MEMORY)(
+    _In_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ UCHAR Type,
+    _In_ ULONGLONG Length,
+    _In_ ULONGLONG Alignment,
+    _In_ ULONGLONG MinimumAddress,
+    _In_ ULONGLONG MaximumAddress);
+
+typedef
+NTSTATUS
+(NTAPI *PUACPINT_CM_ENCODE_MEMORY)(
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ UCHAR Type,
+    _In_ ULONGLONG Length,
+    _In_ ULONGLONG Start);
+
+/* NULL on kernels that predate CmResourceTypeMemoryLarge */
+static PUACPINT_IO_ENCODE_MEMORY UacpiNtIoEncodeMemory;
+static PUACPINT_CM_ENCODE_MEMORY UacpiNtCmEncodeMemory;
+
+/* HAL exports holding the kernel debugger UART base, the second is Windows 8 on */
+static PUCHAR *UacpiNtKdComPort;
+static PUCHAR *UacpiNtKdHvComPort;
+
+VOID
+NTAPI
+UacpiNtResInitialize(VOID)
+{
+    UNICODE_STRING RoutineName;
+
+    PAGED_CODE();
+
+    RtlInitUnicodeString(&RoutineName, L"RtlIoEncodeMemIoResource");
+    UacpiNtIoEncodeMemory = (PUACPINT_IO_ENCODE_MEMORY)MmGetSystemRoutineAddress(&RoutineName);
+
+    RtlInitUnicodeString(&RoutineName, L"RtlCmEncodeMemIoResource");
+    UacpiNtCmEncodeMemory = (PUACPINT_CM_ENCODE_MEMORY)MmGetSystemRoutineAddress(&RoutineName);
+
+    RtlInitUnicodeString(&RoutineName, L"KdComPortInUse");
+    UacpiNtKdComPort = (PUCHAR *)MmGetSystemRoutineAddress(&RoutineName);
+
+    RtlInitUnicodeString(&RoutineName, L"KdHvComPortInUse");
+    UacpiNtKdHvComPort = (PUCHAR *)MmGetSystemRoutineAddress(&RoutineName);
+
+    DPRINT("uACPI-NT: large memory descriptors %s\n",
+           (UacpiNtIoEncodeMemory && UacpiNtCmEncodeMemory) ? "available" : "unavailable");
+}
+
+ULONGLONG
+NTAPI
+UacpiNtMemoryValue(
+    _In_ UCHAR Type,
+    _In_ USHORT Flags,
+    _In_ ULONG Value)
+{
+    if (Type != CmResourceTypeMemoryLarge)
+        return Value;
+
+    switch (Flags & CM_RESOURCE_MEMORY_LARGE)
+    {
+        case CM_RESOURCE_MEMORY_LARGE_40:
+            return (ULONGLONG)Value << 8;
+
+        case CM_RESOURCE_MEMORY_LARGE_48:
+            return (ULONGLONG)Value << 16;
+
+        case CM_RESOURCE_MEMORY_LARGE_64:
+            return (ULONGLONG)Value << 32;
+
+        default:
+            return Value;
+    }
+}
+
+static
+ULONG
+NTAPI
+UacpiNtPlainMemoryLength(
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG Length)
+{
+    if (Length <= MAXULONG)
+        return (ULONG)Length;
+
+    DPRINT1("uACPI-NT: memory window %I64X len %I64X has no large form, clamped\n",
+            Start,
+            Length);
+    return (ULONG)UACPINT_RES_PLAIN_MEMORY_MAX;
+}
+
+/* Prefer the large memory form, a kernel without it gets a plain 32 bit window */
+VOID
+NTAPI
+UacpiNtSetCmMemory(
+    _Inout_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG Length)
+{
+    if (UacpiNtCmEncodeMemory &&
+        NT_SUCCESS(UacpiNtCmEncodeMemory(Descriptor, CmResourceTypeMemory, Length, Start)))
+    {
+        return;
+    }
+
+    Descriptor->Type = CmResourceTypeMemory;
+    Descriptor->Flags &= ~CM_RESOURCE_MEMORY_LARGE;
+    Descriptor->u.Memory.Start.QuadPart = Start;
+    Descriptor->u.Memory.Length = UacpiNtPlainMemoryLength(Start, Length);
+}
+
+VOID
+NTAPI
+UacpiNtSetIoMemory(
+    _Inout_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ ULONGLONG Length,
+    _In_ ULONGLONG Alignment,
+    _In_ ULONGLONG Minimum,
+    _In_ ULONGLONG Maximum)
+{
+    if (UacpiNtIoEncodeMemory &&
+        NT_SUCCESS(UacpiNtIoEncodeMemory(Descriptor,
+                                         CmResourceTypeMemory,
+                                         Length,
+                                         Alignment,
+                                         Minimum,
+                                         Maximum)))
+    {
+        return;
+    }
+
+    Descriptor->Type = CmResourceTypeMemory;
+    Descriptor->Flags &= ~CM_RESOURCE_MEMORY_LARGE;
+    Descriptor->u.Memory.Length = UacpiNtPlainMemoryLength(Minimum, Length);
+    Descriptor->u.Memory.Alignment = (Alignment <= MAXULONG) ? (ULONG)Alignment : 0x80000000;
+    Descriptor->u.Memory.MinimumAddress.QuadPart = Minimum;
+    Descriptor->u.Memory.MaximumAddress.QuadPart = Maximum;
+}
+
+static
+BOOLEAN
+NTAPI
+UacpiNtDebugPortInUse(VOID)
+{
+    return (UacpiNtKdComPort && *UacpiNtKdComPort) || (UacpiNtKdHvComPort && *UacpiNtKdHvComPort);
+}
+
+/* An I/O port base is compared as is, a memory mapped UART by its physical address */
+static
+BOOLEAN
+NTAPI
+UacpiNtIsDebugPortBase(
+    _In_ ULONGLONG Base,
+    _In_ BOOLEAN Memory)
+{
+    PUCHAR *Ports[2];
+    PHYSICAL_ADDRESS Physical;
+    ULONG_PTR Port;
+    ULONG Index;
+
+    Ports[0] = UacpiNtKdComPort;
+    Ports[1] = UacpiNtKdHvComPort;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(Ports); Index++)
+    {
+        if (!Ports[Index] || !*Ports[Index])
+            continue;
+
+        Port = (ULONG_PTR)*Ports[Index];
+        if (!Memory)
+        {
+            if (Port == Base)
+                return TRUE;
+
+            continue;
+        }
+
+        /* A port number is never a mapping */
+        if (Port <= MAXUSHORT)
+            continue;
+
+        Physical = MmGetPhysicalAddress((PVOID)Port);
+        if ((ULONGLONG)Physical.QuadPart == Base)
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static
+BOOLEAN
+NTAPI
+UacpiNtResourceIsDebugPort(
+    _In_ uacpi_resource *Resource)
+{
+    ULONGLONG Base;
+    UCHAR Type;
+
+    switch (Resource->type)
+    {
+        case UACPI_RESOURCE_TYPE_IO:
+            return UacpiNtIsDebugPortBase(Resource->io.minimum, FALSE);
+
+        case UACPI_RESOURCE_TYPE_FIXED_IO:
+            return UacpiNtIsDebugPortBase(Resource->fixed_io.address, FALSE);
+
+        case UACPI_RESOURCE_TYPE_ADDRESS16:
+            Type = Resource->address16.common.type;
+            Base = (ULONGLONG)Resource->address16.minimum + Resource->address16.translation_offset;
+            break;
+
+        case UACPI_RESOURCE_TYPE_ADDRESS32:
+            Type = Resource->address32.common.type;
+            Base = (ULONGLONG)Resource->address32.minimum + Resource->address32.translation_offset;
+            break;
+
+        case UACPI_RESOURCE_TYPE_ADDRESS64:
+            Type = Resource->address64.common.type;
+            Base = Resource->address64.minimum + Resource->address64.translation_offset;
+            break;
+
+        default:
+            return FALSE;
+    }
+
+    if (Type != UACPI_RANGE_MEMORY && Type != UACPI_RANGE_IO)
+        return FALSE;
+
+    return UacpiNtIsDebugPortBase(Base, (BOOLEAN)(Type == UACPI_RANGE_MEMORY));
+}
+
+/* The kernel debugger owns this device, so it is never enumerated */
+BOOLEAN
+NTAPI
+UacpiNtCrsHoldsDebugPort(
+    _In_ uacpi_namespace_node *Node)
+{
+    uacpi_resources *Resources = NULL;
+    uacpi_resource *Resource;
+    BOOLEAN Found = FALSE;
+
+    if (!UacpiNtDebugPortInUse())
+        return FALSE;
+
+    if (uacpi_unlikely_error(uacpi_get_current_resources(Node, &Resources)) || !Resources)
+        return FALSE;
+
+    for (Resource = Resources->entries;
+         !Found && Resource->type != UACPI_RESOURCE_TYPE_END_TAG;
+         Resource = UACPI_NEXT_RESOURCE(Resource))
+    {
+        Found = UacpiNtResourceIsDebugPort(Resource);
+    }
+
+    uacpi_free_resources(Resources);
+    return Found;
+}
 
 typedef struct _UACPINT_ADDRESS_WINDOW
 {
@@ -211,20 +473,7 @@ UacpiNtEmitCm(
             if (Window.WindowType == UACPI_RANGE_MEMORY)
             {
                 Descriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
-                if (Window.Length <= 0xFFFFFFFFull)
-                {
-                    Descriptor->Type = CmResourceTypeMemory;
-                    Descriptor->u.Memory.Start.QuadPart = Window.Start;
-                    Descriptor->u.Memory.Length = (ULONG)Window.Length;
-                }
-                else
-                {
-                    /* Length40 holds the length shifted right by 8 */
-                    Descriptor->Type = CmResourceTypeMemoryLarge;
-                    Descriptor->Flags |= CM_RESOURCE_MEMORY_LARGE_40;
-                    Descriptor->u.Memory40.Start.QuadPart = Window.Start;
-                    Descriptor->u.Memory40.Length40 = (ULONG)(Window.Length >> 8);
-                }
+                UacpiNtSetCmMemory(Descriptor, Window.Start, Window.Length);
             }
             else if (Window.WindowType == UACPI_RANGE_IO)
             {
@@ -358,24 +607,14 @@ UacpiNtEmitIo(
             RtlZeroMemory(Descriptor, sizeof(*Descriptor));
             Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 
-            if (Window.WindowType == UACPI_RANGE_MEMORY && Window.Length <= 0xFFFFFFFFull)
+            if (Window.WindowType == UACPI_RANGE_MEMORY)
             {
-                Descriptor->Type = CmResourceTypeMemory;
                 Descriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
-                Descriptor->u.Memory.Length = (ULONG)Window.Length;
-                Descriptor->u.Memory.Alignment = 1;
-                Descriptor->u.Memory.MinimumAddress.QuadPart = Window.Start;
-                Descriptor->u.Memory.MaximumAddress.QuadPart = Window.Start + Window.Length - 1;
-            }
-            else if (Window.WindowType == UACPI_RANGE_MEMORY)
-            {
-                /* Same 256 byte unit encoding as the CM path */
-                Descriptor->Type = CmResourceTypeMemoryLarge;
-                Descriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE | CM_RESOURCE_MEMORY_LARGE_40;
-                Descriptor->u.Memory40.Length40 = (ULONG)(Window.Length >> 8);
-                Descriptor->u.Memory40.Alignment40 = 1;
-                Descriptor->u.Memory40.MinimumAddress.QuadPart = Window.Start;
-                Descriptor->u.Memory40.MaximumAddress.QuadPart = Window.Start + Window.Length - 1;
+                UacpiNtSetIoMemory(Descriptor,
+                                   Window.Length,
+                                   1,
+                                   Window.Start,
+                                   Window.Start + Window.Length - 1);
             }
             else if (Window.WindowType == UACPI_RANGE_IO)
             {
@@ -439,17 +678,14 @@ UacpiNtDumpCmList(
         switch (Descriptors[i].Type)
         {
             case CmResourceTypeMemory:
-                DPRINT("uACPI-NT: %.4s MEM  %010I64X len %08lX\n",
-                       Name.text,
-                       Descriptors[i].u.Memory.Start.QuadPart,
-                       Descriptors[i].u.Memory.Length);
-                break;
-
             case CmResourceTypeMemoryLarge:
-                DPRINT("uACPI-NT: %.4s MEML %010I64X len40 %08lX\n",
+                DPRINT("uACPI-NT: %.4s %s %010I64X len %I64X\n",
                        Name.text,
-                       Descriptors[i].u.Memory40.Start.QuadPart,
-                       Descriptors[i].u.Memory40.Length40);
+                       (Descriptors[i].Type == CmResourceTypeMemoryLarge) ? "MEML" : "MEM ",
+                       Descriptors[i].u.Memory.Start.QuadPart,
+                       UacpiNtMemoryValue(Descriptors[i].Type,
+                                          Descriptors[i].Flags,
+                                          Descriptors[i].u.Memory.Length));
                 break;
 
             case CmResourceTypePort:

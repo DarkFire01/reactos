@@ -137,11 +137,18 @@ C_ASSERT(sizeof(INTERRUPT_VECTOR_DATA) == 0x48);
 
 ULONG UacpiNtIrqLibHalOverrides = 1;
 
-/* {F0E20F09-D97A-49A9-8046-BB6E22E6BB2E}, 2 */
+/* The property ID moved to 2 with the GROUP_AFFINITY vector layout */
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+#define UACPINT_CONNECTION_DATA_PID     2
+#else
+#define UACPINT_CONNECTION_DATA_PID     1
+#endif
+
+/* {F0E20F09-D97A-49A9-8046-BB6E22E6BB2E} */
 static const DEVPROPKEY UacpiNtConnectionDataKey =
 {
     { 0xF0E20F09, 0xD97A, 0x49A9, { 0x80, 0x46, 0xBB, 0x6E, 0x22, 0xE6, 0xBB, 0x2E } },
-    2
+    UACPINT_CONNECTION_DATA_PID
 };
 
 static FAST_MUTEX UacpiNtIrqLibLock;
