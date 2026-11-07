@@ -8,6 +8,7 @@
 /* INCLUDES *****************************************************************/
 
 #include "xtajit64.h"
+#include <math.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -26,6 +27,10 @@ typedef struct _XTA_INSN
     BOOLEAN RepE;
     BOOLEAN RepNE;
     BOOLEAN SegGs;
+    /* A LOCK prefixed update of memory, applied with a compare exchange against LockOld */
+    BOOLEAN Lock;
+    BOOLEAN Retry;
+    ULONG64 LockOld;
     UCHAR Size;
     UCHAR ModRm;
     UCHAR Reg;
@@ -220,8 +225,34 @@ ReadRm(
     _In_ UCHAR Size)
 {
     if (Insn->IsMem)
-        return ReadMem(Insn->Address, Size);
+    {
+        ULONG64 Value = ReadMem(Insn->Address, Size);
+        Insn->LockOld = Value;
+        return Value;
+    }
     return ReadReg(Thread->CpuArea->ContextAmd64, Insn, Insn->RmReg, Size);
+}
+
+/* Stores Value where Old was read, unless another thread changed it, then the instruction runs again */
+static
+VOID
+WriteLocked(
+    _Inout_ PXTA_INSN Insn,
+    _In_ UCHAR Size,
+    _In_ ULONG64 Value)
+{
+    ULONG64 Seen;
+
+    switch (Size)
+    {
+        case 1: Seen = (UCHAR)_InterlockedCompareExchange8((volatile char *)Insn->Address, (char)Value, (char)Insn->LockOld); break;
+        case 2: Seen = (USHORT)_InterlockedCompareExchange16((volatile short *)Insn->Address, (short)Value, (short)Insn->LockOld); break;
+        case 4: Seen = (ULONG)_InterlockedCompareExchange((volatile long *)Insn->Address, (long)Value, (long)Insn->LockOld); break;
+        default: Seen = (ULONG64)_InterlockedCompareExchange64((volatile __int64 *)Insn->Address, (__int64)Value, (__int64)Insn->LockOld); break;
+    }
+
+    if (Seen != (Insn->LockOld & SizeMask(Size)))
+        Insn->Retry = TRUE;
 }
 
 static
@@ -232,7 +263,9 @@ WriteRm(
     _In_ UCHAR Size,
     _In_ ULONG64 Value)
 {
-    if (Insn->IsMem)
+    if (Insn->IsMem && Insn->Lock)
+        WriteLocked(Insn, Size, Value);
+    else if (Insn->IsMem)
         WriteMem(Insn->Address, Size, Value);
     else
         WriteReg(Thread->CpuArea->ContextAmd64, Insn, Insn->RmReg, Size, Value);
@@ -407,6 +440,30 @@ Shift(
             SetFlags(Context, FLAG_CF, Flags);
             return Result;
 
+        /* RCL and RCR rotate through the carry, one bit at a time */
+        case 2:
+        case 3:
+        {
+            ULONG64 Carry = (Context->AMD64_EFlags & FLAG_CF) ? 1 : 0, Out;
+            Count %= Bits + 1;
+            while (Count--)
+            {
+                if (Op == 2)
+                {
+                    Out = (Result >> (Bits - 1)) & 1;
+                    Result = ((Result << 1) | Carry) & Mask;
+                }
+                else
+                {
+                    Out = Result & 1;
+                    Result = (Result >> 1) | (Carry << (Bits - 1));
+                }
+                Carry = Out;
+            }
+            SetFlags(Context, FLAG_CF, Carry ? FLAG_CF : 0);
+            return Result;
+        }
+
         case 4:
         case 6:
             if ((Value >> (Bits - Count)) & 1) Flags |= FLAG_CF;
@@ -481,6 +538,698 @@ Unsupported(
     DbgPrint("XTAJIT64: unsupported x64 instruction at %p: %02x %02x %02x %02x %02x %02x\n",
              (PVOID)Insn->Start, Bytes[0], Bytes[1], Bytes[2], Bytes[3], Bytes[4], Bytes[5]);
     NtTerminateProcess(NtCurrentProcess(), STATUS_ILLEGAL_INSTRUCTION);
+}
+
+/* An XMM register or 128 bit memory operand in all its lane views */
+typedef union _XTA_XMM
+{
+    UCHAR B[16];
+    CHAR SB[16];
+    USHORT W[8];
+    SHORT SW[8];
+    ULONG D[4];
+    LONG SD[4];
+    ULONG64 Q[2];
+    LONG64 SQ[2];
+    float F[4];
+    double Df[2];
+} XTA_XMM, *PXTA_XMM;
+
+static
+PXTA_XMM
+Xmm(
+    _In_ PARM64EC_NT_CONTEXT Context,
+    _In_ UCHAR Reg)
+{
+    return (PXTA_XMM)&Context->V[Reg & 15];
+}
+
+/* The source operand, a register or Width bytes of memory with the rest zero */
+static
+VOID
+ReadXmmSource(
+    _In_ PXTA_THREAD Thread,
+    _In_ PXTA_INSN Insn,
+    _In_ UCHAR Width,
+    _Out_ PXTA_XMM Source)
+{
+    if (!Insn->IsMem)
+    {
+        *Source = *Xmm(Thread->CpuArea->ContextAmd64, Insn->RmReg);
+        return;
+    }
+
+    RtlZeroMemory(Source, sizeof(*Source));
+    RtlCopyMemory(Source, (PVOID)Insn->Address, Width);
+}
+
+/* Rounds to the nearest integer, ties to even, which is the default MXCSR rounding */
+static
+double
+RoundEven(
+    _In_ double Value)
+{
+    double Whole = (double)(LONG64)Value;
+    double Fraction = Value - Whole;
+
+    if (Fraction > 0.5 || (Fraction == 0.5 && ((LONG64)Whole & 1)))
+        Whole += 1.0;
+    else if (Fraction < -0.5 || (Fraction == -0.5 && ((LONG64)Whole & 1)))
+        Whole -= 1.0;
+    return Whole;
+}
+
+/* Converts to an integer of Size bytes, out of range values give the integer indefinite value */
+static
+ULONG64
+ConvertToInteger(
+    _In_ double Value,
+    _In_ UCHAR Size,
+    _In_ BOOLEAN Truncate)
+{
+    double Limit = (Size == 8) ? 9223372036854775808.0 : 2147483648.0;
+    ULONG64 Indefinite = (Size == 8) ? 0x8000000000000000ULL : 0x80000000ULL;
+
+    if (!Truncate)
+        Value = RoundEven(Value);
+    if (Value != Value || Value >= Limit || Value < -Limit)
+        return Indefinite;
+    return (ULONG64)(LONG64)Value & SizeMask(Size);
+}
+
+/* Floating point arithmetic: 0 add, 1 mul, 4 sub, 5 min, 6 div, 7 max, as in opcodes 58 to 5F */
+static
+double
+FloatOp(
+    _In_ UCHAR Op,
+    _In_ double Left,
+    _In_ double Right)
+{
+    switch (Op)
+    {
+        case 0: return Left + Right;
+        case 1: return Left * Right;
+        case 4: return Left - Right;
+        case 5: return (Left < Right) ? Left : Right;
+        case 6: return Left / Right;
+        default: return (Left > Right) ? Left : Right;
+    }
+}
+
+/* CMPPS and friends: eq, lt, le, unord, neq, nlt, nle, ord */
+static
+BOOLEAN
+FloatCompare(
+    _In_ UCHAR Predicate,
+    _In_ double Left,
+    _In_ double Right)
+{
+    BOOLEAN Unordered = (Left != Left) || (Right != Right);
+
+    switch (Predicate & 7)
+    {
+        case 0: return !Unordered && Left == Right;
+        case 1: return !Unordered && Left < Right;
+        case 2: return !Unordered && Left <= Right;
+        case 3: return Unordered;
+        case 4: return Unordered || Left != Right;
+        case 5: return Unordered || !(Left < Right);
+        case 6: return Unordered || !(Left <= Right);
+        default: return !Unordered;
+    }
+}
+
+static
+LONG
+SaturateSigned(
+    _In_ LONG Value,
+    _In_ LONG Low,
+    _In_ LONG High)
+{
+    return (Value < Low) ? Low : ((Value > High) ? High : Value);
+}
+
+/* Packed integer arithmetic on Count lanes of Bytes each. Saturate is 0 none, 1 signed, 2 unsigned. */
+static
+VOID
+PackedAddSub(
+    _Inout_ PXTA_XMM Dest,
+    _In_ PXTA_XMM Source,
+    _In_ UCHAR Bytes,
+    _In_ BOOLEAN Subtract,
+    _In_ UCHAR Saturate)
+{
+    UCHAR Lanes = 16 / Bytes, i;
+
+    for (i = 0; i < Lanes; i++)
+    {
+        switch (Bytes)
+        {
+            case 1:
+            {
+                LONG Value = Saturate == 2 ? (Subtract ? (LONG)Dest->B[i] - Source->B[i] : (LONG)Dest->B[i] + Source->B[i]) :
+                                             (Subtract ? (LONG)Dest->SB[i] - Source->SB[i] : (LONG)Dest->SB[i] + Source->SB[i]);
+                if (Saturate == 1) Value = SaturateSigned(Value, -128, 127);
+                if (Saturate == 2) Value = SaturateSigned(Value, 0, 255);
+                Dest->B[i] = (UCHAR)Value;
+                break;
+            }
+            case 2:
+            {
+                LONG Value = Saturate == 2 ? (Subtract ? (LONG)Dest->W[i] - Source->W[i] : (LONG)Dest->W[i] + Source->W[i]) :
+                                             (Subtract ? (LONG)Dest->SW[i] - Source->SW[i] : (LONG)Dest->SW[i] + Source->SW[i]);
+                if (Saturate == 1) Value = SaturateSigned(Value, -32768, 32767);
+                if (Saturate == 2) Value = SaturateSigned(Value, 0, 65535);
+                Dest->W[i] = (USHORT)Value;
+                break;
+            }
+            case 4:
+                Dest->D[i] = Subtract ? Dest->D[i] - Source->D[i] : Dest->D[i] + Source->D[i];
+                break;
+            default:
+                Dest->Q[i] = Subtract ? Dest->Q[i] - Source->Q[i] : Dest->Q[i] + Source->Q[i];
+                break;
+        }
+    }
+}
+
+/* Packed shifts of Bytes wide lanes: 2 logical right, 4 arithmetic right, 6 left */
+static
+VOID
+PackedShift(
+    _Inout_ PXTA_XMM Dest,
+    _In_ UCHAR Bytes,
+    _In_ UCHAR Op,
+    _In_ ULONG64 Count)
+{
+    UCHAR Lanes = 16 / Bytes, Bits = Bytes * 8, i;
+
+    for (i = 0; i < Lanes; i++)
+    {
+        ULONG64 Lane = (Bytes == 2) ? Dest->W[i] : ((Bytes == 4) ? Dest->D[i] : Dest->Q[i]);
+        LONG64 Signed = (Bytes == 2) ? Dest->SW[i] : ((Bytes == 4) ? Dest->SD[i] : Dest->SQ[i]);
+
+        if (Op == 4)
+            Lane = (ULONG64)(Signed >> ((Count >= Bits) ? Bits - 1 : Count));
+        else if (Count >= Bits)
+            Lane = 0;
+        else
+            Lane = (Op == 6) ? (Lane << Count) : (Lane >> Count);
+
+        if (Bytes == 2) Dest->W[i] = (USHORT)Lane;
+        else if (Bytes == 4) Dest->D[i] = (ULONG)Lane;
+        else Dest->Q[i] = Lane;
+    }
+}
+
+/* SSE and SSE2 two byte opcodes, returns FALSE for an opcode it does not know */
+static
+BOOLEAN
+ExecuteSse(
+    _Inout_ PXTA_THREAD Thread,
+    _Inout_ PXTA_INSN Insn,
+    _In_ UCHAR Op)
+{
+    PARM64EC_NT_CONTEXT Context = Thread->CpuArea->ContextAmd64;
+    BOOLEAN Packed = !Insn->RepE && !Insn->RepNE;
+    BOOLEAN Double = Insn->OpSize16 || Insn->RepNE;
+    UCHAR ImmSize = (Op == 0x70 || Op == 0xC2 || Op == 0xC6 || (Op >= 0x71 && Op <= 0x73)) ? 1 : 0;
+    UCHAR Scalar = Insn->RepNE ? 8 : 4;
+    XTA_XMM Source, *Dest;
+    UCHAR i;
+
+    DecodeModRm(Thread, Insn, ImmSize);
+    Dest = Xmm(Context, Insn->Reg);
+
+    switch (Op)
+    {
+        /* MOVLPS/MOVLPD, MOVHLPS from a register */
+        case 0x12:
+            if (Insn->IsMem)
+                RtlCopyMemory(&Dest->Q[0], (PVOID)Insn->Address, 8);
+            else
+                Dest->Q[0] = Xmm(Context, Insn->RmReg)->Q[1];
+            return TRUE;
+        case 0x13:
+            WriteMem(Insn->Address, 8, Dest->Q[0]);
+            return TRUE;
+
+        /* MOVHPS/MOVHPD, MOVLHPS from a register */
+        case 0x16:
+            if (Insn->IsMem)
+                RtlCopyMemory(&Dest->Q[1], (PVOID)Insn->Address, 8);
+            else
+                Dest->Q[1] = Xmm(Context, Insn->RmReg)->Q[0];
+            return TRUE;
+        case 0x17:
+            WriteMem(Insn->Address, 8, Dest->Q[1]);
+            return TRUE;
+
+        /* UNPCKLPS/PD and UNPCKHPS/PD */
+        case 0x14:
+        case 0x15:
+        {
+            XTA_XMM Result;
+            UCHAR Half = (Op == 0x15) ? 1 : 0;
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            if (Insn->OpSize16)
+            {
+                Result.Q[0] = Dest->Q[Half];
+                Result.Q[1] = Source.Q[Half];
+            }
+            else
+            {
+                Result.D[0] = Dest->D[Half * 2];
+                Result.D[1] = Source.D[Half * 2];
+                Result.D[2] = Dest->D[Half * 2 + 1];
+                Result.D[3] = Source.D[Half * 2 + 1];
+            }
+            *Dest = Result;
+            return TRUE;
+        }
+
+        /* CVTSI2SS and CVTSI2SD */
+        case 0x2A:
+        {
+            LONG64 Value;
+            if (Packed)
+                return FALSE;
+            Value = SignExtend(ReadRm(Thread, Insn, (Insn->Rex & 8) ? 8 : 4), (Insn->Rex & 8) ? 8 : 4);
+            if (Insn->RepNE)
+                Dest->Df[0] = (double)Value;
+            else
+                Dest->F[0] = (float)Value;
+            return TRUE;
+        }
+
+        /* MOVNTPS and MOVNTPD */
+        case 0x2B:
+            RtlCopyMemory((PVOID)Insn->Address, Dest, 16);
+            return TRUE;
+
+        /* CVTTSS2SI, CVTTSD2SI, CVTSS2SI and CVTSD2SI */
+        case 0x2C:
+        case 0x2D:
+        {
+            UCHAR Size = (Insn->Rex & 8) ? 8 : 4;
+            double Value;
+            if (Packed)
+                return FALSE;
+            ReadXmmSource(Thread, Insn, Scalar, &Source);
+            Value = Insn->RepNE ? Source.Df[0] : Source.F[0];
+            WriteReg(Context, Insn, Insn->Reg, Size, ConvertToInteger(Value, Size, Op == 0x2C));
+            return TRUE;
+        }
+
+        /* UCOMISS/UCOMISD and COMISS/COMISD */
+        case 0x2E:
+        case 0x2F:
+        {
+            double Left, Right;
+            ULONG Flags = 0;
+            ReadXmmSource(Thread, Insn, Insn->OpSize16 ? 8 : 4, &Source);
+            Left = Insn->OpSize16 ? Dest->Df[0] : Dest->F[0];
+            Right = Insn->OpSize16 ? Source.Df[0] : Source.F[0];
+            if (Left != Left || Right != Right)
+                Flags = FLAG_ZF | FLAG_PF | FLAG_CF;
+            else if (Left < Right)
+                Flags = FLAG_CF;
+            else if (Left == Right)
+                Flags = FLAG_ZF;
+            SetFlags(Context, FLAG_CF | FLAG_PF | FLAG_AF | FLAG_ZF | FLAG_SF | FLAG_OF, Flags);
+            return TRUE;
+        }
+
+        /* MOVMSKPS and MOVMSKPD */
+        case 0x50:
+        {
+            ULONG Mask = 0;
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            if (Insn->OpSize16)
+                Mask = (ULONG)((Source.Q[0] >> 63) | ((Source.Q[1] >> 63) << 1));
+            else
+                for (i = 0; i < 4; i++) Mask |= (Source.D[i] >> 31) << i;
+            WriteReg(Context, Insn, Insn->Reg, 4, Mask);
+            return TRUE;
+        }
+
+        /* SQRTPS, SQRTPD, SQRTSS and SQRTSD */
+        case 0x51:
+            ReadXmmSource(Thread, Insn, Packed ? 16 : Scalar, &Source);
+            if (Double)
+                for (i = 0; i < (Packed ? 2 : 1); i++) Dest->Df[i] = sqrt(Source.Df[i]);
+            else
+                for (i = 0; i < (Packed ? 4 : 1); i++) Dest->F[i] = (float)sqrt(Source.F[i]);
+            return TRUE;
+
+        /* ANDPS, ANDNPS, ORPS and their PD forms */
+        case 0x54:
+        case 0x55:
+        case 0x56:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 2; i++)
+            {
+                if (Op == 0x54) Dest->Q[i] &= Source.Q[i];
+                else if (Op == 0x55) Dest->Q[i] = ~Dest->Q[i] & Source.Q[i];
+                else Dest->Q[i] |= Source.Q[i];
+            }
+            return TRUE;
+
+        /* ADD, MUL, SUB, MIN, DIV and MAX in their PS, PD, SS and SD forms */
+        case 0x58: case 0x59: case 0x5C: case 0x5D: case 0x5E: case 0x5F:
+            ReadXmmSource(Thread, Insn, Packed ? 16 : Scalar, &Source);
+            if (Double)
+                for (i = 0; i < (Packed ? 2 : 1); i++) Dest->Df[i] = FloatOp(Op - 0x58, Dest->Df[i], Source.Df[i]);
+            else
+                for (i = 0; i < (Packed ? 4 : 1); i++) Dest->F[i] = (float)FloatOp(Op - 0x58, Dest->F[i], Source.F[i]);
+            return TRUE;
+
+        /* CVTPS2PD, CVTPD2PS, CVTSS2SD and CVTSD2SS */
+        case 0x5A:
+            ReadXmmSource(Thread, Insn, Insn->RepNE ? 8 : (Insn->RepE ? 4 : (Insn->OpSize16 ? 16 : 8)), &Source);
+            if (Insn->RepNE)
+                Dest->F[0] = (float)Source.Df[0];
+            else if (Insn->RepE)
+                Dest->Df[0] = Source.F[0];
+            else if (Insn->OpSize16)
+            {
+                Dest->F[0] = (float)Source.Df[0];
+                Dest->F[1] = (float)Source.Df[1];
+                Dest->Q[1] = 0;
+            }
+            else
+            {
+                Dest->Df[1] = Source.F[1];
+                Dest->Df[0] = Source.F[0];
+            }
+            return TRUE;
+
+        /* CVTDQ2PS, CVTPS2DQ and CVTTPS2DQ */
+        case 0x5B:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 4; i++)
+            {
+                if (!Insn->OpSize16 && !Insn->RepE)
+                    Dest->F[i] = (float)Source.SD[i];
+                else
+                    Dest->D[i] = (ULONG)ConvertToInteger(Source.F[i], 4, Insn->RepE);
+            }
+            return TRUE;
+
+        /* CVTDQ2PD, CVTTPD2DQ and CVTPD2DQ */
+        case 0xE6:
+            ReadXmmSource(Thread, Insn, Insn->RepE ? 8 : 16, &Source);
+            if (Insn->RepE)
+            {
+                Dest->Df[0] = Source.SD[0];
+                Dest->Df[1] = Source.SD[1];
+            }
+            else
+            {
+                Dest->D[0] = (ULONG)ConvertToInteger(Source.Df[0], 4, Insn->OpSize16);
+                Dest->D[1] = (ULONG)ConvertToInteger(Source.Df[1], 4, Insn->OpSize16);
+                Dest->Q[1] = 0;
+            }
+            return TRUE;
+
+        /* CMPPS, CMPPD, CMPSS and CMPSD */
+        case 0xC2:
+        {
+            UCHAR Predicate;
+            ReadXmmSource(Thread, Insn, Packed ? 16 : Scalar, &Source);
+            Predicate = (UCHAR)FetchImm(Insn, 1);
+            if (Double)
+                for (i = 0; i < (Packed ? 2 : 1); i++) Dest->Q[i] = FloatCompare(Predicate, Dest->Df[i], Source.Df[i]) ? ~0ULL : 0;
+            else
+                for (i = 0; i < (Packed ? 4 : 1); i++) Dest->D[i] = FloatCompare(Predicate, Dest->F[i], Source.F[i]) ? ~0UL : 0;
+            return TRUE;
+        }
+
+        /* SHUFPS and SHUFPD */
+        case 0xC6:
+        {
+            XTA_XMM Result;
+            UCHAR Select;
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            Select = (UCHAR)FetchImm(Insn, 1);
+            if (Insn->OpSize16)
+            {
+                Result.Q[0] = Dest->Q[Select & 1];
+                Result.Q[1] = Source.Q[(Select >> 1) & 1];
+            }
+            else
+            {
+                Result.D[0] = Dest->D[Select & 3];
+                Result.D[1] = Dest->D[(Select >> 2) & 3];
+                Result.D[2] = Source.D[(Select >> 4) & 3];
+                Result.D[3] = Source.D[(Select >> 6) & 3];
+            }
+            *Dest = Result;
+            return TRUE;
+        }
+    }
+
+    /* The rest is packed integer SSE2, which needs the 66 prefix, the MMX forms are not done */
+    if (!Insn->OpSize16 && Op != 0x70)
+        return FALSE;
+
+    switch (Op)
+    {
+        /* PUNPCKL and PUNPCKH of bytes, words, dwords and qwords */
+        case 0x60: case 0x61: case 0x62: case 0x68: case 0x69: case 0x6A: case 0x6C: case 0x6D:
+        {
+            XTA_XMM Result;
+            UCHAR Bytes = (Op == 0x6C || Op == 0x6D) ? 8 : (UCHAR)(1 << ((Op & 3)));
+            UCHAR Base = (Op >= 0x68) ? 8 : 0;
+            UCHAR Lanes = 8 / Bytes;
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < Lanes; i++)
+            {
+                RtlCopyMemory(&Result.B[i * 2 * Bytes], &Dest->B[Base + i * Bytes], Bytes);
+                RtlCopyMemory(&Result.B[i * 2 * Bytes + Bytes], &Source.B[Base + i * Bytes], Bytes);
+            }
+            *Dest = Result;
+            return TRUE;
+        }
+
+        /* PACKSSWB, PACKUSWB and PACKSSDW */
+        case 0x63:
+        case 0x67:
+        case 0x6B:
+        {
+            XTA_XMM Result;
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 16 && Op != 0x6B; i++)
+            {
+                LONG Value = (i < 8) ? Dest->SW[i] : Source.SW[i - 8];
+                Result.B[i] = (UCHAR)((Op == 0x63) ? SaturateSigned(Value, -128, 127) : SaturateSigned(Value, 0, 255));
+            }
+            for (i = 0; i < 8 && Op == 0x6B; i++)
+            {
+                LONG64 Value = (i < 4) ? Dest->SD[i] : Source.SD[i - 4];
+                Result.SW[i] = (SHORT)((Value < -32768) ? -32768 : ((Value > 32767) ? 32767 : Value));
+            }
+            *Dest = Result;
+            return TRUE;
+        }
+
+        /* PCMPGTB/W/D and PCMPEQB/W/D */
+        case 0x64: case 0x65: case 0x66: case 0x74: case 0x75: case 0x76:
+        {
+            UCHAR Bytes = (UCHAR)(1 << (Op & 3));
+            BOOLEAN Equal = Op >= 0x74;
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 16 / Bytes; i++)
+            {
+                BOOLEAN Hit;
+                if (Bytes == 1) Hit = Equal ? Dest->B[i] == Source.B[i] : Dest->SB[i] > Source.SB[i];
+                else if (Bytes == 2) Hit = Equal ? Dest->W[i] == Source.W[i] : Dest->SW[i] > Source.SW[i];
+                else Hit = Equal ? Dest->D[i] == Source.D[i] : Dest->SD[i] > Source.SD[i];
+                RtlFillMemory(&Dest->B[i * Bytes], Bytes, Hit ? 0xFF : 0);
+            }
+            return TRUE;
+        }
+
+        /* PSHUFD, PSHUFHW and PSHUFLW */
+        case 0x70:
+        {
+            XTA_XMM Result;
+            UCHAR Select;
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            Select = (UCHAR)FetchImm(Insn, 1);
+            Result = Source;
+            if (Insn->OpSize16)
+                for (i = 0; i < 4; i++) Result.D[i] = Source.D[(Select >> (i * 2)) & 3];
+            else if (Insn->RepNE)
+                for (i = 0; i < 4; i++) Result.W[i] = Source.W[(Select >> (i * 2)) & 3];
+            else if (Insn->RepE)
+                for (i = 0; i < 4; i++) Result.W[4 + i] = Source.W[4 + ((Select >> (i * 2)) & 3)];
+            else
+                return FALSE;
+            *Dest = Result;
+            return TRUE;
+        }
+
+        /* Shifts by an immediate, including PSRLDQ and PSLLDQ on whole bytes */
+        case 0x71:
+        case 0x72:
+        case 0x73:
+        {
+            PXTA_XMM Target = Xmm(Context, Insn->RmReg);
+            UCHAR Count = (UCHAR)FetchImm(Insn, 1), Sub = Insn->Reg & 7;
+            if (Op == 0x73 && (Sub == 3 || Sub == 7))
+            {
+                XTA_XMM Result = { 0 };
+                for (i = 0; i < 16; i++)
+                {
+                    int From = (Sub == 3) ? i + Count : i - Count;
+                    if (From >= 0 && From < 16)
+                        Result.B[i] = Target->B[From];
+                }
+                *Target = Result;
+            }
+            else
+            {
+                PackedShift(Target, (UCHAR)(Op == 0x71 ? 2 : (Op == 0x72 ? 4 : 8)), Sub, Count);
+            }
+            return TRUE;
+        }
+
+        /* Shifts by the count in an XMM register */
+        case 0xD1: case 0xD2: case 0xD3: case 0xE1: case 0xE2: case 0xF1: case 0xF2: case 0xF3:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            PackedShift(Dest, (UCHAR)(1 << (Op & 3)), (UCHAR)((Op >> 4) == 0xD ? 2 : ((Op >> 4) == 0xE ? 4 : 6)), Source.Q[0]);
+            return TRUE;
+
+        /* PADDQ, PMULLW, PMOVMSKB */
+        case 0xD4:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            PackedAddSub(Dest, &Source, 8, FALSE, 0);
+            return TRUE;
+        case 0xD5:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 8; i++) Dest->W[i] = (USHORT)(Dest->SW[i] * Source.SW[i]);
+            return TRUE;
+        case 0xD7:
+        {
+            ULONG Mask = 0;
+            PXTA_XMM From = Xmm(Context, Insn->RmReg);
+            for (i = 0; i < 16; i++) Mask |= (ULONG)(From->B[i] >> 7) << i;
+            WriteReg(Context, Insn, Insn->Reg, 4, Mask);
+            return TRUE;
+        }
+
+        /* Saturating byte and word add and subtract */
+        case 0xD8: case 0xD9: case 0xDC: case 0xDD: case 0xE8: case 0xE9: case 0xEC: case 0xED:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            PackedAddSub(Dest, &Source, (Op & 1) ? 2 : 1, !(Op & 4), (Op < 0xE0) ? 2 : 1);
+            return TRUE;
+
+        /* PMINUB, PMAXUB, PMINSW, PMAXSW */
+        case 0xDA: case 0xDE: case 0xEA: case 0xEE:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 16 && Op < 0xE0; i++)
+                Dest->B[i] = (Op == 0xDA) ? min(Dest->B[i], Source.B[i]) : max(Dest->B[i], Source.B[i]);
+            for (i = 0; i < 8 && Op >= 0xE0; i++)
+                Dest->SW[i] = (Op == 0xEA) ? min(Dest->SW[i], Source.SW[i]) : max(Dest->SW[i], Source.SW[i]);
+            return TRUE;
+
+        /* PAND, PANDN, POR */
+        case 0xDB: case 0xDF: case 0xEB:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 2; i++)
+            {
+                if (Op == 0xDB) Dest->Q[i] &= Source.Q[i];
+                else if (Op == 0xDF) Dest->Q[i] = ~Dest->Q[i] & Source.Q[i];
+                else Dest->Q[i] |= Source.Q[i];
+            }
+            return TRUE;
+
+        /* PAVGB and PAVGW */
+        case 0xE0:
+        case 0xE3:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 16 && Op == 0xE0; i++) Dest->B[i] = (UCHAR)((Dest->B[i] + Source.B[i] + 1) >> 1);
+            for (i = 0; i < 8 && Op == 0xE3; i++) Dest->W[i] = (USHORT)((Dest->W[i] + Source.W[i] + 1) >> 1);
+            return TRUE;
+
+        /* PMULHUW and PMULHW */
+        case 0xE4:
+        case 0xE5:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 8; i++)
+                Dest->W[i] = (Op == 0xE4) ? (USHORT)(((ULONG)Dest->W[i] * Source.W[i]) >> 16) :
+                                            (USHORT)(((LONG)Dest->SW[i] * Source.SW[i]) >> 16);
+            return TRUE;
+
+        /* MOVNTDQ */
+        case 0xE7:
+            RtlCopyMemory((PVOID)Insn->Address, Dest, 16);
+            return TRUE;
+
+        /* PMULUDQ, PMADDWD, PSADBW */
+        case 0xF4:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            Dest->Q[0] = (ULONG64)Dest->D[0] * Source.D[0];
+            Dest->Q[1] = (ULONG64)Dest->D[2] * Source.D[2];
+            return TRUE;
+        case 0xF5:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 4; i++)
+                Dest->SD[i] = Dest->SW[i * 2] * Source.SW[i * 2] + Dest->SW[i * 2 + 1] * Source.SW[i * 2 + 1];
+            return TRUE;
+        case 0xF6:
+        {
+            ULONG Sum[2] = { 0, 0 };
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            for (i = 0; i < 16; i++)
+                Sum[i / 8] += (Dest->B[i] > Source.B[i]) ? Dest->B[i] - Source.B[i] : Source.B[i] - Dest->B[i];
+            Dest->Q[0] = Sum[0];
+            Dest->Q[1] = Sum[1];
+            return TRUE;
+        }
+
+        /* PSUBB/W/D/Q and PADDB/W/D */
+        case 0xF8: case 0xF9: case 0xFA: case 0xFB: case 0xFC: case 0xFD: case 0xFE:
+            ReadXmmSource(Thread, Insn, 16, &Source);
+            PackedAddSub(Dest, &Source, (UCHAR)(1 << (Op & 3)), Op < 0xFC, 0);
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+/* BT, BTS, BTR and BTC: 4 test, 5 set, 6 reset, 7 complement */
+static
+VOID
+TestBitOperand(
+    _Inout_ PXTA_THREAD Thread,
+    _Inout_ PXTA_INSN Insn,
+    _In_ UCHAR Op,
+    _In_ LONG64 Bit)
+{
+    PARM64EC_NT_CONTEXT Context = Thread->CpuArea->ContextAmd64;
+    UCHAR Size = Insn->Size, Bits = Size * 8;
+    ULONG64 Value, Mask;
+
+    /* A register bit offset reaches past the operand in memory */
+    if (Insn->IsMem)
+    {
+        Insn->Address += (ULONG_PTR)((Bit >> (Size == 8 ? 6 : (Size == 4 ? 5 : 4))) * Size);
+        Bit &= Bits - 1;
+    }
+    else
+    {
+        Bit &= Bits - 1;
+    }
+
+    Value = ReadRm(Thread, Insn, Size);
+    Mask = 1ULL << Bit;
+    SetFlags(Context, FLAG_CF, (Value & Mask) ? FLAG_CF : 0);
+
+    if (Op == 5) WriteRm(Thread, Insn, Size, Value | Mask);
+    else if (Op == 6) WriteRm(Thread, Insn, Size, Value & ~Mask);
+    else if (Op == 7) WriteRm(Thread, Insn, Size, Value ^ Mask);
 }
 
 /* Executes one two byte opcode, returns TRUE when control went to native code */
@@ -680,7 +1429,8 @@ Execute0F(
             Dest = ReadRm(Thread, Insn, OpSize);
             Src = ReadReg(Context, Insn, Insn->Reg, OpSize);
             WriteRm(Thread, Insn, OpSize, Alu(Context, 0, Dest, Src, OpSize));
-            WriteReg(Context, Insn, Insn->Reg, OpSize, Dest);
+            if (!Insn->Retry)
+                WriteReg(Context, Insn, Insn->Reg, OpSize, Dest);
             break;
         }
 
@@ -695,12 +1445,160 @@ Execute0F(
             break;
         }
 
+        /* PREFETCHW and PREFETCHh, nothing to do */
+        case 0x0D:
+        case 0x18:
+            DecodeModRm(Thread, Insn, 0);
+            break;
+
+        /* RDTSC, the virtual counter stands in for the time stamp counter */
+        case 0x31:
+        {
+            ULONG64 Counter = (ULONG64)_ReadStatusReg(ARM64_CNTVCT);
+            Gpr(Context)[REG_RAX] = (ULONG)Counter;
+            Gpr(Context)[REG_RDX] = Counter >> 32;
+            break;
+        }
+
+        /* BT, BTS, BTR and BTC with a register bit offset */
+        case 0xA3:
+        case 0xAB:
+        case 0xB3:
+        case 0xBB:
+            DecodeModRm(Thread, Insn, 0);
+            TestBitOperand(Thread, Insn, (UCHAR)(4 + ((Op >> 3) & 3)), SignExtend(ReadReg(Context, Insn, Insn->Reg, Size), Size));
+            break;
+
+        /* BT, BTS, BTR and BTC with an immediate bit offset */
+        case 0xBA:
+        {
+            UCHAR Bit;
+            DecodeModRm(Thread, Insn, 1);
+            Bit = (UCHAR)FetchImm(Insn, 1);
+            if ((Insn->Reg & 7) < 4)
+            {
+                Unsupported(Insn);
+                return TRUE;
+            }
+            /* An immediate offset stays inside the operand */
+            TestBitOperand(Thread, Insn, Insn->Reg & 7, Bit & (Size * 8 - 1));
+            break;
+        }
+
+        /* SHLD and SHRD by an immediate or CL */
+        case 0xA4:
+        case 0xA5:
+        case 0xAC:
+        case 0xAD:
+        {
+            UCHAR Bits = Size * 8, Count;
+            ULONG64 Dest, Fill, Result;
+            DecodeModRm(Thread, Insn, (Op & 1) ? 0 : 1);
+            Count = (Op & 1) ? (UCHAR)Gpr(Context)[REG_RCX] : (UCHAR)FetchImm(Insn, 1);
+            Count &= (Size == 8) ? 63 : 31;
+            Dest = ReadRm(Thread, Insn, Size);
+            Fill = ReadReg(Context, Insn, Insn->Reg, Size);
+            if (!Count || Count >= Bits)
+                break;
+            if (Op <= 0xA5)
+            {
+                Result = ((Dest << Count) | (Fill >> (Bits - Count))) & SizeMask(Size);
+                SetFlags(Context, FLAG_CF, ((Dest >> (Bits - Count)) & 1) ? FLAG_CF : 0);
+            }
+            else
+            {
+                Result = ((Dest >> Count) | (Fill << (Bits - Count))) & SizeMask(Size);
+                SetFlags(Context, FLAG_CF, ((Dest >> (Count - 1)) & 1) ? FLAG_CF : 0);
+            }
+            SetFlags(Context, FLAG_ZF | FLAG_SF | FLAG_PF,
+                     (!Result ? FLAG_ZF : 0) | ((Result & SignBit(Size)) ? FLAG_SF : 0) | (Parity(Result) ? FLAG_PF : 0));
+            WriteRm(Thread, Insn, Size, Result);
+            break;
+        }
+
+        /* Fences, LDMXCSR and STMXCSR */
+        case 0xAE:
+            DecodeModRm(Thread, Insn, 0);
+            if (!Insn->IsMem && (Insn->Reg & 7) >= 5)
+                __dmb(_ARM64_BARRIER_SY);
+            else if (Insn->IsMem && (Insn->Reg & 7) == 2)
+                Context->AMD64_MxCsr_copy = Context->AMD64_MxCsr = (ULONG)ReadMem(Insn->Address, 4);
+            else if (Insn->IsMem && (Insn->Reg & 7) == 3)
+                WriteMem(Insn->Address, 4, Context->AMD64_MxCsr_copy);
+            else
+            {
+                Unsupported(Insn);
+                return TRUE;
+            }
+            break;
+
+        /* POPCNT */
+        case 0xB8:
+            if (!Insn->RepE)
+            {
+                Unsupported(Insn);
+                return TRUE;
+            }
+            DecodeModRm(Thread, Insn, 0);
+            Value = ReadRm(Thread, Insn, Size);
+            WriteReg(Context, Insn, Insn->Reg, Size, (ULONG64)_CountOneBits64(Value));
+            SetFlags(Context, FLAG_CF | FLAG_PF | FLAG_AF | FLAG_ZF | FLAG_SF | FLAG_OF, Value ? 0 : FLAG_ZF);
+            break;
+
+        /* BSF and TZCNT, BSR and LZCNT */
+        case 0xBC:
+        case 0xBD:
+        {
+            UCHAR Bits = Size * 8;
+            ULONG Index;
+            DecodeModRm(Thread, Insn, 0);
+            Value = ReadRm(Thread, Insn, Size);
+            if (Insn->RepE)
+            {
+                /* TZCNT and LZCNT give the operand size for zero and set CF then */
+                ULONG64 Count;
+                if (!Value)
+                    Count = Bits;
+                else if (Op == 0xBC)
+                    Count = (_BitScanForward64(&Index, Value), Index);
+                else
+                    Count = Bits - 1 - (_BitScanReverse64(&Index, Value), Index);
+                WriteReg(Context, Insn, Insn->Reg, Size, Count);
+                SetFlags(Context, FLAG_CF | FLAG_ZF, (!Value ? FLAG_CF : 0) | (!Count ? FLAG_ZF : 0));
+            }
+            else if (!Value)
+            {
+                SetFlags(Context, FLAG_ZF, FLAG_ZF);
+            }
+            else
+            {
+                if (Op == 0xBC)
+                    _BitScanForward64(&Index, Value);
+                else
+                    _BitScanReverse64(&Index, Value);
+                WriteReg(Context, Insn, Insn->Reg, Size, Index);
+                SetFlags(Context, FLAG_ZF, 0);
+            }
+            break;
+        }
+
+        /* MOVNTI */
+        case 0xC3:
+            DecodeModRm(Thread, Insn, 0);
+            WriteMem(Insn->Address, Size, ReadReg(Context, Insn, Insn->Reg, Size));
+            break;
+
         default:
-            Unsupported(Insn);
-            return TRUE;
+            if (!ExecuteSse(Thread, Insn, Op))
+            {
+                Unsupported(Insn);
+                return TRUE;
+            }
+            break;
     }
 
-    Context->Pc = Insn->Next;
+    /* A locked update that lost a race runs again */
+    Context->Pc = Insn->Retry ? Insn->Start : Insn->Next;
     return FALSE;
 }
 
@@ -726,7 +1624,8 @@ Step(
         else if (Op == 0xF3) Insn.RepE = TRUE;
         else if (Op == 0xF2) Insn.RepNE = TRUE;
         else if (Op == 0x65) Insn.SegGs = TRUE;
-        else if (Op != 0xF0 && Op != 0x2E && Op != 0x3E && Op != 0x26 && Op != 0x36 && Op != 0x64) break;
+        else if (Op == 0xF0) Insn.Lock = TRUE;
+        else if (Op != 0x2E && Op != 0x3E && Op != 0x26 && Op != 0x36 && Op != 0x64) break;
         Insn.Next++;
     }
     if ((Op & 0xF0) == 0x40)
@@ -772,7 +1671,7 @@ Step(
                 WriteReg(Context, &Insn, REG_RAX, OpSize, Result);
         }
 
-        Context->Pc = Insn.Next;
+        Context->Pc = Insn.Retry ? Insn.Start : Insn.Next;
         return FALSE;
     }
 
@@ -890,9 +1789,12 @@ Step(
         {
             UCHAR OpSize = (Op == 0x86) ? 1 : Size;
             DecodeModRm(Thread, &Insn, 0);
+            /* XCHG with memory is locked without the prefix */
+            Insn.Lock = Insn.IsMem;
             Value = ReadRm(Thread, &Insn, OpSize);
             WriteRm(Thread, &Insn, OpSize, ReadReg(Context, &Insn, Insn.Reg, OpSize));
-            WriteReg(Context, &Insn, Insn.Reg, OpSize, Value);
+            if (!Insn.Retry)
+                WriteReg(Context, &Insn, Insn.Reg, OpSize, Value);
             break;
         }
 
@@ -978,6 +1880,85 @@ Step(
                 Regs[REG_RCX] = 0;
             break;
         }
+
+        /* CMPS, LODS and SCAS, with REPE and REPNE */
+        case 0xA6:
+        case 0xA7:
+        case 0xAC:
+        case 0xAD:
+        case 0xAE:
+        case 0xAF:
+        {
+            UCHAR OpSize = (Op & 1) ? Size : 1;
+            LONG64 Step = (Context->AMD64_EFlags & FLAG_DF) ? -(LONG64)OpSize : OpSize;
+            BOOLEAN Repeat = Insn.RepE || Insn.RepNE;
+
+            while (!Repeat || Regs[REG_RCX])
+            {
+                if (Op <= 0xA7)
+                {
+                    Alu(Context, 7, ReadMem(Regs[REG_RSI], OpSize), ReadMem(Regs[REG_RDI], OpSize), OpSize);
+                    Regs[REG_RSI] += Step;
+                    Regs[REG_RDI] += Step;
+                }
+                else if (Op <= 0xAD)
+                {
+                    WriteReg(Context, &Insn, REG_RAX, OpSize, ReadMem(Regs[REG_RSI], OpSize));
+                    Regs[REG_RSI] += Step;
+                }
+                else
+                {
+                    Alu(Context, 7, ReadReg(Context, &Insn, REG_RAX, OpSize), ReadMem(Regs[REG_RDI], OpSize), OpSize);
+                    Regs[REG_RDI] += Step;
+                }
+
+                if (!Repeat)
+                    break;
+                Regs[REG_RCX]--;
+
+                /* LODS ignores the condition, the compares stop on it */
+                if (Op <= 0xA7 || Op >= 0xAE)
+                {
+                    BOOLEAN Zero = (Context->AMD64_EFlags & FLAG_ZF) != 0;
+                    if ((Insn.RepE && !Zero) || (Insn.RepNE && Zero))
+                        break;
+                }
+            }
+            break;
+        }
+
+        /* PUSHFQ, POPFQ, SAHF and LAHF */
+        case 0x9C:
+            Push(Context, Context->AMD64_EFlags | 2);
+            break;
+        case 0x9D:
+            Context->AMD64_EFlags = ((ULONG)Pop(Context) & 0x00000ED5) | 0x202;
+            break;
+        case 0x9E:
+            SetFlags(Context, FLAG_CF | FLAG_PF | FLAG_AF | FLAG_ZF | FLAG_SF, (ULONG)(Regs[REG_RAX] >> 8));
+            break;
+        case 0x9F:
+            /* Byte register 4 without a REX prefix is AH */
+            Insn.Rex = 0;
+            WriteReg(Context, &Insn, REG_RSP, 1, (Context->AMD64_EFlags & 0xD5) | 2);
+            break;
+
+        /* LEAVE */
+        case 0xC9:
+            Context->Sp = Regs[REG_RBP];
+            Regs[REG_RBP] = Pop(Context);
+            break;
+
+        /* CMC, CLC and STC */
+        case 0xF5:
+            Context->AMD64_EFlags ^= FLAG_CF;
+            break;
+        case 0xF8:
+            Context->AMD64_EFlags &= ~FLAG_CF;
+            break;
+        case 0xF9:
+            Context->AMD64_EFlags |= FLAG_CF;
+            break;
 
         /* Group 2, shifts by imm8, 1 and CL */
         case 0xC0:
@@ -1232,7 +2213,8 @@ Step(
             return TRUE;
     }
 
-    Context->Pc = Insn.Next;
+    /* A locked update that lost a race runs again */
+    Context->Pc = Insn.Retry ? Insn.Start : Insn.Next;
     return FALSE;
 }
 
