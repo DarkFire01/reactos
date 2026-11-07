@@ -746,7 +746,6 @@ HalpRegisterSxHandler(
                                 sizeof(Handler),
                                 NULL,
                                 0);
-    /* FIXME: NtPowerInformation does not take SystemPowerStateHandler yet */
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Power state handler %d not registered: 0x%lx\n", Type, Status);
