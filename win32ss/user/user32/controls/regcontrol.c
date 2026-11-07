@@ -244,6 +244,45 @@ BOOL WINAPI RegisterClientPFN(VOID)
   return NT_SUCCESS(Status) ? TRUE : FALSE;
 }
 
+#ifdef _M_ARM64EC
+/**
+ * @brief
+ * Returns the procedure of this ARM64EC half for one of the shared client tables.
+ *
+ * win32k keeps the tables of the first process that registered them, a native one,
+ * so they point into the ARM64 half of user32.
+ */
+WNDPROC
+FASTCALL
+UserpGetLocalClientProc(
+    _In_ WNDPROC WndProc)
+{
+    const struct
+    {
+        const ULONG_PTR *Shared;
+        const ULONG_PTR *Local;
+        ULONG Count;
+    } Tables[] =
+    {
+        { (const ULONG_PTR *)&gpsi->apfnClientA, (const ULONG_PTR *)&pfnClientA, sizeof(pfnClientA) / sizeof(ULONG_PTR) },
+        { (const ULONG_PTR *)&gpsi->apfnClientW, (const ULONG_PTR *)&pfnClientW, sizeof(pfnClientW) / sizeof(ULONG_PTR) },
+        { (const ULONG_PTR *)&gpsi->apfnClientWorker, (const ULONG_PTR *)&pfnClientWorker, sizeof(pfnClientWorker) / sizeof(ULONG_PTR) },
+    };
+    ULONG i, j;
+
+    for (i = 0; i < RTL_NUMBER_OF(Tables); i++)
+    {
+        for (j = 0; j < Tables[i].Count; j++)
+        {
+            if (Tables[i].Shared[j] == (ULONG_PTR)WndProc)
+                return (WNDPROC)Tables[i].Local[j];
+        }
+    }
+
+    return WndProc;
+}
+#endif
+
 #if defined(BUILD_WOW6432)
     
 /* FIXME? */

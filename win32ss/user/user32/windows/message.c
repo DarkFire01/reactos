@@ -1442,6 +1442,11 @@ IntCallWindowProcW(BOOL IsAnsiProc,
       return FALSE;
   }
 
+#ifdef _M_ARM64EC
+  /* Built in procedures from win32k are the ones of the ARM64 half */
+  WndProc = UserpGetLocalClientProc(WndProc);
+#endif
+
   if (pWnd)
      Dialog = (pWnd->fnid == FNID_DIALOG);
   else
@@ -1603,6 +1608,11 @@ IntCallWindowProcA(BOOL IsAnsiProc,
       WARN("IntCallWindowsProcA() called with WndProc = NULL!\n");
       return FALSE;
   }
+
+#ifdef _M_ARM64EC
+  /* Built in procedures from win32k are the ones of the ARM64 half */
+  WndProc = UserpGetLocalClientProc(WndProc);
+#endif
 
   if (pWnd)
      Dialog = (pWnd->fnid == FNID_DIALOG);
