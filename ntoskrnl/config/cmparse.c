@@ -1893,6 +1893,10 @@ CmpParseKey(IN PVOID ParseObject,
     BOOLEAN Result, Last;
     PAGED_CODE();
 
+    /* REG_OPTION_OPEN_LINK asks for the link key itself */
+    if (ParseContext && (ParseContext->CreateOptions & REG_OPTION_OPEN_LINK))
+        Attributes |= OBJ_OPENLINK;
+
     /* Loop path separators at the end */
     while (RemainingName->Length &&
            (RemainingName->Buffer[(RemainingName->Length / sizeof(WCHAR)) - 1] ==

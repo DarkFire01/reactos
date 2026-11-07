@@ -4449,6 +4449,165 @@ NtQueryVirtualMemory(IN HANDLE ProcessHandle,
     return Status;
 }
 
+#ifdef _M_ARM64
+/**
+ * @brief
+ * Marks freshly allocated memory as ARM64EC code in the code bitmap ntdll keeps for x64 processes.
+ */
+static
+NTSTATUS
+MiMarkEcCode(
+    _In_ HANDLE ProcessHandle,
+    _In_ PVOID *UBaseAddress,
+    _In_ PSIZE_T URegionSize)
+{
+    KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+    ULONG_PTR Page, Last;
+    KAPC_STATE ApcState;
+    PEPROCESS Process;
+    PULONG64 Bitmap;
+    NTSTATUS Status;
+
+    Status = ObReferenceObjectByHandle(ProcessHandle,
+                                       PROCESS_VM_OPERATION,
+                                       PsProcessType,
+                                       PreviousMode,
+                                       (PVOID*)&Process,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    _SEH2_TRY
+    {
+        Page = (ULONG_PTR)*UBaseAddress >> PAGE_SHIFT;
+        Last = ((ULONG_PTR)*UBaseAddress + *URegionSize - 1) >> PAGE_SHIFT;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        ObDereferenceObject(Process);
+        _SEH2_YIELD(return _SEH2_GetExceptionCode());
+    }
+    _SEH2_END;
+
+    KeStackAttachProcess(&Process->Pcb, &ApcState);
+    _SEH2_TRY
+    {
+        Bitmap = Process->Peb ? Process->Peb->EcCodeBitMap : NULL;
+        if (Bitmap)
+        {
+            ProbeForWrite(&Bitmap[Page / 64], (Last / 64 - Page / 64 + 1) * sizeof(ULONG64), sizeof(ULONG64));
+            for (; Page <= Last; Page++)
+                InterlockedOr64((PLONG64)&Bitmap[Page / 64], 1LL << (Page % 64));
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+    KeUnstackDetachProcess(&ApcState);
+
+    ObDereferenceObject(Process);
+    return Status;
+}
+#endif
+
+/**
+ * @brief
+ * Allocates virtual memory with the placement given by extended parameters.
+ */
+NTSTATUS
+NTAPI
+NtAllocateVirtualMemoryEx(
+    _In_ HANDLE ProcessHandle,
+    _Inout_ PVOID *BaseAddress,
+    _Inout_ PSIZE_T RegionSize,
+    _In_ ULONG AllocationType,
+    _In_ ULONG PageProtection,
+    _Inout_updates_opt_(ExtendedParameterCount) PMEM_EXTENDED_PARAMETER ExtendedParameters,
+    _In_ ULONG ExtendedParameterCount)
+{
+    KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+    MEM_ADDRESS_REQUIREMENTS Requirements;
+    MEM_EXTENDED_PARAMETER Parameter;
+    ULONG_PTR ZeroBits = 0;
+    BOOLEAN EcCode = FALSE;
+    NTSTATUS Status;
+    ULONG i;
+    PAGED_CODE();
+
+    if (ExtendedParameterCount && !ExtendedParameters)
+        return STATUS_INVALID_PARAMETER;
+
+    for (i = 0; i < ExtendedParameterCount; i++)
+    {
+        RtlZeroMemory(&Requirements, sizeof(Requirements));
+
+        _SEH2_TRY
+        {
+            if (PreviousMode != KernelMode)
+                ProbeForRead(&ExtendedParameters[i], sizeof(Parameter), TYPE_ALIGNMENT(MEM_EXTENDED_PARAMETER));
+            Parameter = ExtendedParameters[i];
+
+            if (Parameter.Type == MemExtendedParameterAddressRequirements && Parameter.Pointer)
+            {
+                if (PreviousMode != KernelMode)
+                    ProbeForRead(Parameter.Pointer, sizeof(Requirements), TYPE_ALIGNMENT(MEM_ADDRESS_REQUIREMENTS));
+                Requirements = *(PMEM_ADDRESS_REQUIREMENTS)Parameter.Pointer;
+            }
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+
+        switch (Parameter.Type)
+        {
+            case MemExtendedParameterAddressRequirements:
+                /* Only an upper bound can be honored, it becomes the matching zero bits */
+                if (Requirements.LowestStartingAddress || Requirements.Alignment)
+                    return STATUS_NOT_SUPPORTED;
+
+                if (Requirements.HighestEndingAddress)
+                {
+                    while ((MAXULONG_PTR >> ZeroBits) > (ULONG_PTR)Requirements.HighestEndingAddress)
+                        ZeroBits++;
+                }
+                break;
+
+            case MemExtendedParameterNumaNode:
+                break;
+
+            case MemExtendedParameterAttributeFlags:
+#ifdef _M_ARM64
+                if (Parameter.ULong64 & MEM_EXTENDED_PARAMETER_EC_CODE)
+                    EcCode = TRUE;
+#else
+                if (Parameter.ULong64 & MEM_EXTENDED_PARAMETER_EC_CODE)
+                    return STATUS_NOT_SUPPORTED;
+#endif
+                break;
+
+            default:
+                return STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    Status = NtAllocateVirtualMemory(ProcessHandle,
+                                     BaseAddress,
+                                     ZeroBits,
+                                     RegionSize,
+                                     AllocationType,
+                                     PageProtection);
+#ifdef _M_ARM64
+    if (NT_SUCCESS(Status) && EcCode)
+        Status = MiMarkEcCode(ProcessHandle, BaseAddress, RegionSize);
+#endif
+
+    return Status;
+}
+
 /*
  * @implemented
  */

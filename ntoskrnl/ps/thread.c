@@ -951,6 +951,252 @@ PsSetThreadWin32Thread(
     }
 }
 
+/**
+ * @brief
+ * Builds a thread stack the way the image of the process asks for, in the current process.
+ */
+static
+NTSTATUS
+PspCreateUserStack(
+    _In_ ULONG_PTR ZeroBits,
+    _In_ SIZE_T Commit,
+    _In_ SIZE_T Reserve,
+    _Out_ PINITIAL_TEB InitialTeb)
+{
+    PIMAGE_NT_HEADERS NtHeaders;
+    PVOID Base = NULL, Guard;
+    SIZE_T Size, GuardSize = PAGE_SIZE;
+    ULONG OldProtect;
+    NTSTATUS Status;
+
+    if (!Commit || !Reserve)
+    {
+        _SEH2_TRY
+        {
+            NtHeaders = RtlImageNtHeader(PsGetCurrentProcess()->SectionBaseAddress);
+            if (NtHeaders)
+            {
+                if (!Commit)
+                    Commit = NtHeaders->OptionalHeader.SizeOfStackCommit;
+                if (!Reserve)
+                    Reserve = NtHeaders->OptionalHeader.SizeOfStackReserve;
+            }
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    Commit = ROUND_TO_PAGES(max(Commit, PAGE_SIZE));
+    if (Reserve <= Commit + GuardSize)
+        Reserve = ROUND_UP(Commit + GuardSize, 1024 * 1024);
+    Reserve = ROUND_UP(Reserve, MM_ALLOCATION_GRANULARITY);
+
+    Size = Reserve;
+    Status = ZwAllocateVirtualMemory(NtCurrentProcess(), &Base, ZeroBits, &Size, MEM_RESERVE, PAGE_READWRITE);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* The committed part sits at the top with a guard page under it */
+    Guard = (PUCHAR)Base + Reserve - Commit - GuardSize;
+    Size = Commit + GuardSize;
+    Status = ZwAllocateVirtualMemory(NtCurrentProcess(), &Guard, 0, &Size, MEM_COMMIT, PAGE_READWRITE);
+    if (NT_SUCCESS(Status))
+    {
+        Size = GuardSize;
+        Status = ZwProtectVirtualMemory(NtCurrentProcess(), &Guard, &Size, PAGE_READWRITE | PAGE_GUARD, &OldProtect);
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        Size = 0;
+        ZwFreeVirtualMemory(NtCurrentProcess(), &Base, &Size, MEM_RELEASE);
+        return Status;
+    }
+
+    RtlZeroMemory(InitialTeb, sizeof(*InitialTeb));
+    InitialTeb->AllocatedStackBase = Base;
+    InitialTeb->StackBase = (PUCHAR)Base + Reserve;
+    InitialTeb->StackLimit = (PUCHAR)Base + Reserve - Commit;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Creates a user mode thread with a new stack that starts at StartRoutine.
+ */
+NTSTATUS
+NTAPI
+NtCreateThreadEx(
+    _Out_ PHANDLE ThreadHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ HANDLE ProcessHandle,
+    _In_ PUSER_THREAD_START_ROUTINE StartRoutine,
+    _In_opt_ PVOID Argument,
+    _In_ ULONG CreateFlags,
+    _In_ SIZE_T ZeroBits,
+    _In_ SIZE_T StackSize,
+    _In_ SIZE_T MaximumStackSize,
+    _In_opt_ PPS_ATTRIBUTE_LIST AttributeList)
+{
+    KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+    PPS_ATTRIBUTE Attribute;
+    INITIAL_TEB InitialTeb;
+    KAPC_STATE ApcState;
+    CLIENT_ID ClientId;
+    CONTEXT Context;
+    PEPROCESS Process;
+    PETHREAD Thread;
+    HANDLE Handle;
+    SIZE_T Count, i, Size;
+    PTEB Teb;
+    NTSTATUS Status;
+    PAGED_CODE();
+
+    if (CreateFlags & ~(THREAD_CREATE_FLAGS_CREATE_SUSPENDED |
+                        THREAD_CREATE_FLAGS_SKIP_THREAD_ATTACH |
+                        THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER |
+                        THREAD_CREATE_FLAGS_SKIP_LOADER_INIT |
+                        THREAD_CREATE_FLAGS_BYPASS_PROCESS_FREEZE))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (PreviousMode != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            ProbeForWriteHandle(ThreadHandle);
+            if (AttributeList)
+            {
+                ProbeForRead(AttributeList, FIELD_OFFSET(PS_ATTRIBUTE_LIST, Attributes), sizeof(ULONG_PTR));
+                ProbeForRead(AttributeList, AttributeList->TotalLength, sizeof(ULONG_PTR));
+            }
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    Status = ObReferenceObjectByHandle(ProcessHandle,
+                                       PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION,
+                                       PsProcessType,
+                                       PreviousMode,
+                                       (PVOID*)&Process,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    KeStackAttachProcess(&Process->Pcb, &ApcState);
+    Status = PspCreateUserStack(ZeroBits, StackSize, MaximumStackSize, &InitialTeb);
+    KeUnstackDetachProcess(&ApcState);
+    if (!NT_SUCCESS(Status))
+    {
+        ObDereferenceObject(Process);
+        return Status;
+    }
+
+    RtlZeroMemory(&Context, sizeof(Context));
+    RtlInitializeContext(NtCurrentProcess(), &Context, Argument, (PTHREAD_START_ROUTINE)StartRoutine, InitialTeb.StackBase);
+
+    /* The thread waits until the requested TEB flags are in place */
+    Status = PspCreateThread(&Handle,
+                             DesiredAccess,
+                             ObjectAttributes,
+                             ProcessHandle,
+                             NULL,
+                             &ClientId,
+                             &Context,
+                             &InitialTeb,
+                             TRUE,
+                             NULL,
+                             NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        KeStackAttachProcess(&Process->Pcb, &ApcState);
+        Size = 0;
+        ZwFreeVirtualMemory(NtCurrentProcess(), &InitialTeb.AllocatedStackBase, &Size, MEM_RELEASE);
+        KeUnstackDetachProcess(&ApcState);
+        ObDereferenceObject(Process);
+        return Status;
+    }
+
+    Status = ObReferenceObjectByHandle(Handle, 0, PsThreadType, KernelMode, (PVOID*)&Thread, NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        ObDereferenceObject(Process);
+        return Status;
+    }
+    Teb = Thread->Tcb.Teb;
+
+    if (CreateFlags & THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER)
+        PspSetCrossThreadFlag(Thread, CT_HIDE_FROM_DEBUGGER_BIT);
+
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(_M_ARM64)
+    if (CreateFlags & (THREAD_CREATE_FLAGS_SKIP_THREAD_ATTACH | THREAD_CREATE_FLAGS_SKIP_LOADER_INIT))
+    {
+        KeStackAttachProcess(&Process->Pcb, &ApcState);
+        _SEH2_TRY
+        {
+            if (CreateFlags & THREAD_CREATE_FLAGS_SKIP_THREAD_ATTACH)
+                Teb->DbgSkipThreadAttach = 1;
+            if (CreateFlags & THREAD_CREATE_FLAGS_SKIP_LOADER_INIT)
+                Teb->SkipLoaderInit = 1;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+        KeUnstackDetachProcess(&ApcState);
+    }
+#endif
+
+    if (!(CreateFlags & THREAD_CREATE_FLAGS_CREATE_SUSPENDED))
+        KeResumeThread(&Thread->Tcb);
+
+    ObDereferenceObject(Thread);
+    ObDereferenceObject(Process);
+
+    _SEH2_TRY
+    {
+        *ThreadHandle = Handle;
+
+        if (AttributeList)
+        {
+            Count = (AttributeList->TotalLength - FIELD_OFFSET(PS_ATTRIBUTE_LIST, Attributes)) / sizeof(PS_ATTRIBUTE);
+            for (i = 0; i < Count; i++)
+            {
+                Attribute = &AttributeList->Attributes[i];
+                if (Attribute->Attribute == PS_ATTRIBUTE_CLIENT_ID && Attribute->Size >= sizeof(CLIENT_ID))
+                {
+                    if (PreviousMode != KernelMode)
+                        ProbeForWrite(Attribute->ValuePtr, sizeof(CLIENT_ID), sizeof(ULONG_PTR));
+                    *(PCLIENT_ID)Attribute->ValuePtr = ClientId;
+                }
+                else if (Attribute->Attribute == PS_ATTRIBUTE_TEB_ADDRESS && Attribute->Size >= sizeof(PTEB))
+                {
+                    if (PreviousMode != KernelMode)
+                        ProbeForWrite(Attribute->ValuePtr, sizeof(PTEB), sizeof(ULONG_PTR));
+                    *(PTEB *)Attribute->ValuePtr = Teb;
+                }
+            }
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 PsWrapApcWow64Thread(IN OUT PVOID *ApcContext,

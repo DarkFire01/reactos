@@ -336,13 +336,29 @@ NtOpenKey(OUT PHANDLE KeyHandle,
           IN ACCESS_MASK DesiredAccess,
           IN POBJECT_ATTRIBUTES ObjectAttributes)
 {
+    return NtOpenKeyEx(KeyHandle, DesiredAccess, ObjectAttributes, 0);
+}
+
+NTSTATUS
+NTAPI
+NtOpenKeyEx(
+    _Out_ PHANDLE KeyHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ULONG OpenOptions)
+{
     CM_PARSE_CONTEXT ParseContext = {0};
     HANDLE Handle;
     NTSTATUS Status;
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
     PAGED_CODE();
-    DPRINT("NtOpenKey(Path: %wZ, Root %x, Access: %x)\n",
-            ObjectAttributes->ObjectName, ObjectAttributes->RootDirectory, DesiredAccess);
+    DPRINT("NtOpenKeyEx(Path: %wZ, Root %x, Access: %x, Options: %x)\n",
+            ObjectAttributes->ObjectName, ObjectAttributes->RootDirectory, DesiredAccess, OpenOptions);
+
+    /* Backup and restore opens are checked like any other open */
+    if (OpenOptions & ~(REG_OPTION_BACKUP_RESTORE | REG_OPTION_OPEN_LINK))
+        return STATUS_INVALID_PARAMETER;
+    ParseContext.CreateOptions = OpenOptions;
 
     /* Ignore the WOW64 flag, it's not valid in the kernel */
     DesiredAccess &= ~KEY_WOW64_RES;
