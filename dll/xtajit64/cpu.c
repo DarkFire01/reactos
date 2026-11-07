@@ -27,6 +27,7 @@ typedef struct _XTA_INSN
     BOOLEAN RepE;
     BOOLEAN RepNE;
     BOOLEAN SegGs;
+    BOOLEAN AddrSize32;
     /* A LOCK prefixed update of memory, applied with a compare exchange against LockOld */
     BOOLEAN Lock;
     BOOLEAN Retry;
@@ -210,6 +211,10 @@ DecodeModRm(
 
     if (RipRelative)
         Address += Insn->Next + ImmSize;
+
+    /* The 67 prefix computes the address in 32 bits */
+    if (Insn->AddrSize32)
+        Address = (ULONG)Address;
 
     if (Insn->SegGs)
         Address += Thread->Gs;
@@ -1625,6 +1630,7 @@ Step(
         else if (Op == 0xF2) Insn.RepNE = TRUE;
         else if (Op == 0x65) Insn.SegGs = TRUE;
         else if (Op == 0xF0) Insn.Lock = TRUE;
+        else if (Op == 0x67) Insn.AddrSize32 = TRUE;
         else if (Op != 0x2E && Op != 0x3E && Op != 0x26 && Op != 0x36 && Op != 0x64) break;
         Insn.Next++;
     }
