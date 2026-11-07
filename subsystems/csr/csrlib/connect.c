@@ -43,7 +43,16 @@ PCSR_SERVER_API_ROUTINE CsrServerApiRoutine;
 
 /* FUNCTIONS ******************************************************************/
 
-static NTSTATUS
+/**
+ * @brief
+ * Connects the process to CSR and maps the CSR shared section, once.
+ *
+ * @remark
+ * ntdll calls it early for x64 processes, before the emulator takes address space
+ * from the top where the shared section has to go.
+ */
+NTSTATUS
+NTAPI
 CsrpConnectToServer(
     _In_ PCWSTR ObjectDirectory)
 {

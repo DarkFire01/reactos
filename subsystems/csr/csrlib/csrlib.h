@@ -24,6 +24,11 @@
 extern HANDLE CsrApiPort;
 extern HANDLE CsrPortHeap;
 
+NTSTATUS
+NTAPI
+CsrpConnectToServer(
+    _In_ PCWSTR ObjectDirectory);
+
 #endif /* _CSRLIB_H_ */
 
 /* EOF */
