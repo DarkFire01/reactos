@@ -189,6 +189,7 @@ list(APPEND SOURCE_VISTA
     locale.c
     name.c
     ntuserpfn.c
+    perfcnt.c
     processor.c
     runonce.c
     slist.c
@@ -197,7 +198,8 @@ list(APPEND SOURCE_VISTA
     unicode_vista.c
     utf8.c
     waitaddress.c
-    wow64.c)
+    wow64.c
+    xstate.c)
 
 if(ARCH STREQUAL "arm64" OR ARCH STREQUAL "arm64ec")
     list(REMOVE_ITEM SOURCE_VISTA slist.c)

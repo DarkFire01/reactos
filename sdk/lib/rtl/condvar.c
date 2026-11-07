@@ -39,6 +39,7 @@ typedef struct _COND_VAR_WAIT_ENTRY
 
 /* GLOBALS *******************************************************************/
 
+/* The ARM64EC half of an ARM64X ntdll never creates it, NULL selects the default keyed event */
 static HANDLE CondVarKeyedEventHandle = NULL;
 
 /* INTERNAL FUNCTIONS ********************************************************/
@@ -268,8 +269,6 @@ InternalWake(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
     LARGE_INTEGER Timeout;
     PCOND_VAR_WAIT_ENTRY RemoveOnUnlockEntry;
 
-    ASSERT(CondVarKeyedEventHandle != NULL);
-
     if (HeadEntry == NULL)
     {
         /* There is noone there to wake up. In this case do nothing
@@ -377,7 +376,6 @@ InternalSleep(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
     COND_VAR_WAIT_ENTRY OwnEntry;
     NTSTATUS Status;
 
-    ASSERT(CondVarKeyedEventHandle != NULL);
     ASSERT((CriticalSection == NULL) != (SRWLock == NULL));
 
     RtlZeroMemory(&OwnEntry, sizeof(OwnEntry));
