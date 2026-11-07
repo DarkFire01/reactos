@@ -18,6 +18,8 @@ typedef NTSTATUS (NTAPI *USER_CALL)(PVOID Argument, ULONG ArgumentLength);
 
 /* FUNCTIONS ****************************************************************/
 
+/* The ARM64EC entry is in dispatch/arm64ec/dispatch.s, only the emulator raises there */
+#ifndef _M_ARM64EC
 /*
  * @implemented
  */
@@ -28,6 +30,12 @@ KiUserExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord,
 {
     EXCEPTION_RECORD NestedExceptionRecord;
     NTSTATUS Status;
+
+#ifdef _M_ARM64
+    /* The emulator gets to put its state back first, it may continue the thread itself */
+    if (LdrpX64Process)
+        LdrpResetEmulatorState(ExceptionRecord, (PARM64_NT_CONTEXT)Context);
+#endif
 
     /* Dispatch the exception and check the result */
     if (RtlDispatchException(ExceptionRecord, Context))
@@ -50,6 +58,7 @@ KiUserExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord,
     /* Raise the exception */
     RtlRaiseException(&NestedExceptionRecord);
 }
+#endif
 
 /*
  * @implemented

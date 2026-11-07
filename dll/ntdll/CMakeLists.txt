@@ -49,6 +49,7 @@ elseif(ARCH STREQUAL "arm64")
     list(APPEND ASM_SOURCE dispatch/arm64/dispatch.s ldr/arm64/ldrecasm.s)
     list(APPEND SOURCE dispatch/dispatch.c ldr/ldrec.c)
 elseif(ARCH STREQUAL "arm64ec")
+    list(APPEND ASM_SOURCE dispatch/arm64ec/dispatch.s)
     # x64 code imports _fltused from ntdll, the ARM64 half takes it from the runtime libraries
     list(APPEND SOURCE dispatch/dispatch.c ldr/ldrec.c ${REACTOS_SOURCE_DIR}/sdk/lib/crt/misc/fltused.c)
 else()

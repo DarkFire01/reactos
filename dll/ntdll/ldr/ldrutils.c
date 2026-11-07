@@ -495,9 +495,7 @@ LdrpCallTlsInitializers(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 
 #if defined(_M_ARM64) || defined(_M_ARM64EC)
                     /* The ARM64 half of an ARM64X image is not set up in an x64 process, x64 callbacks run in the emulator */
-                    if (LdrpX64Process &&
-                        RtlIsEcCode((ULONG64)Callback) &&
-                        !LdrpIsArm64EcCode(LdrEntry->DllBase, (PVOID)Callback))
+                    if (LdrpX64Process && LdrpIsArm64Code(LdrEntry->DllBase, (PVOID)Callback))
                     {
                         DPRINT1("LDR: Skipping Tls Callback %p of %wZ, it is ARM64 code\n",
                                 Callback, &LdrEntry->BaseDllName);
@@ -1538,7 +1536,10 @@ NoRelocNeeded:
 
 #if defined(_M_ARM64) || defined(_M_ARM64EC)
     if (LdrpX64Process)
+    {
         LdrpUpdateHybridMetadata(ViewBase);
+        LdrpNotifyImageMapped(ViewBase, ViewSize);
+    }
 #endif
 
     // FIXME: LdrpCheckCorImage() is missing

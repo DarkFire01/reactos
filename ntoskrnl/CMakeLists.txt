@@ -3,7 +3,12 @@ PROJECT(NTOS)
 
 # The system call stubs of ntdll, user mode only builds need nothing else from here
 include_directories(${REACTOS_SOURCE_DIR}/ntoskrnl/include)
-add_asm_files(ntdllsys_asm ntdll.S)
+if(ARCH STREQUAL "arm64ec")
+    # The emulator finds system call numbers through the table of the ARM64EC stubs
+    add_asm_files(ntdllsys_asm ntdll.S ntdllffs.S)
+else()
+    add_asm_files(ntdllsys_asm ntdll.S)
+endif()
 add_library(ntdllsys ${ntdllsys_asm})
 set_target_properties(ntdllsys PROPERTIES LINKER_LANGUAGE "C")
 add_dependencies(ntdllsys asm)

@@ -102,6 +102,11 @@ LABEL(CallCheckDone)
 // that hold rcx, rdx and r8 and the x64 home space sits right above the return address the
 // emulator pushes. rax comes back in x8.
 //
+// The emulator only returns to x64 callers on pages of ARM64EC code, so this sits in a page of
+// its own that the loader marks as ARM64EC code, and calls with blr x16 like an exit thunk.
+//
+    AREA |.x64call|,ALIGN=12,CODE,READONLY
+
     NESTED_ENTRY LdrpCallX64
 
     stp     fp, lr, [sp, #-0x10]!

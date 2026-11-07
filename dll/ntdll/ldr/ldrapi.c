@@ -762,6 +762,44 @@ Quickie:
     return Status;
 }
 
+/**
+ * @brief
+ * Copies the full path of a loaded module, the main image when no handle is given.
+ */
+NTSTATUS
+NTAPI
+LdrGetDllFullName(
+    _In_opt_ PVOID DllHandle,
+    _Inout_ PUNICODE_STRING FullDllName)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    NTSTATUS Status = STATUS_SUCCESS;
+    USHORT Length;
+
+    if (!DllHandle)
+        DllHandle = NtCurrentPeb()->ImageBaseAddress;
+
+    RtlEnterCriticalSection(&LdrpLoaderLock);
+    if (!LdrpCheckForLoadedDllHandle(DllHandle, &LdrEntry))
+    {
+        RtlLeaveCriticalSection(&LdrpLoaderLock);
+        return STATUS_DLL_NOT_FOUND;
+    }
+
+    /* A short buffer still gets the start of the name */
+    Length = min(LdrEntry->FullDllName.Length, FullDllName->MaximumLength);
+    RtlCopyMemory(FullDllName->Buffer, LdrEntry->FullDllName.Buffer, Length);
+    FullDllName->Length = Length;
+    if (Length + sizeof(WCHAR) <= FullDllName->MaximumLength)
+        FullDllName->Buffer[Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    if (LdrEntry->FullDllName.Length > FullDllName->MaximumLength)
+        Status = STATUS_BUFFER_TOO_SMALL;
+
+    RtlLeaveCriticalSection(&LdrpLoaderLock);
+    return Status;
+}
+
 /*
  * @implemented
  */
@@ -1531,6 +1569,11 @@ LdrUnloadDll(
         if (!(CurrentEntry->Flags & LDR_COR_OWNS_UNMAP))
         {
             /* Unmap the DLL */
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+            if (LdrpX64Process)
+                Status = LdrpUnmapImageView(CurrentEntry->DllBase);
+            else
+#endif
             Status = NtUnmapViewOfSection(NtCurrentProcess(),
                                           CurrentEntry->DllBase);
             ASSERT(NT_SUCCESS(Status));
