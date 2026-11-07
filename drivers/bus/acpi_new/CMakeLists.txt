@@ -46,6 +46,7 @@ list(APPEND SOURCE
      sys/enum.c
      sys/fdo.c
      sys/filter.c
+     sys/fwtable.c
      sys/glue.c
      sys/guid.c
      sys/hal.c

@@ -190,6 +190,8 @@ UacpiNtBringUpInterpreter(
                 uacpi_status_to_string(UacpiStatus));
     }
 
+    UacpiNtRegisterFirmwareTables(Fdo->Shared.Self->DriverObject);
+
     Fdo->InterpreterReady = TRUE;
     DPRINT("uACPI-NT: interpreter up\n");
     return STATUS_SUCCESS;
@@ -202,5 +204,6 @@ UacpiNtTearDownInterpreter(
     _In_ PUACPINT_FDO Fdo)
 {
     UacpiNtMsiDiagDisarm();
+    UacpiNtUnregisterFirmwareTables(Fdo->Shared.Self->DriverObject);
     Fdo->InterpreterReady = FALSE;
 }
