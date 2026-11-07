@@ -218,6 +218,66 @@ Used Version: 2005-07-14
 License: "Public Domain"
 URL: https://www.catch22.net/tuts/cards/cardlib/
 
+Title: FEX (built as xtajit64.dll, the x64 emulator on ARM64)
+Path: sdk/lib/3rdparty/fex
+Used Version: FEX-2610-175-geff9f459d (git commit eff9f459d)
+License: MIT (https://spdx.org/licenses/MIT.html)
+URL: https://github.com/FEX-Emu/FEX
+
+Title: {fmt} (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/fmt
+Used Version: 12.2.1 (git commit c07e2aa)
+License: MIT (https://spdx.org/licenses/MIT.html)
+URL: https://github.com/fmtlib/fmt
+
+Title: xxHash (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/xxhash
+Used Version: git commit e626a72
+License: BSD-2-Clause (https://spdx.org/licenses/BSD-2-Clause.html)
+URL: https://github.com/Cyan4973/xxHash
+
+Title: unordered_dense (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/unordered_dense
+Used Version: git commit 3234af2
+License: MIT (https://spdx.org/licenses/MIT.html)
+URL: https://github.com/martinus/unordered_dense
+
+Title: range-v3 (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/range-v3
+Used Version: git commit ca1388f
+License: BSL-1.0 (https://spdx.org/licenses/BSL-1.0.html)
+URL: https://github.com/ericniebler/range-v3
+
+Title: rpmalloc (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/rpmalloc
+Used Version: git commit ed22744
+License: 0BSD (https://spdx.org/licenses/0BSD.html)
+URL: https://github.com/FEX-Emu/rpmalloc
+
+Title: tiny-json (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/tiny-json
+Used Version: as shipped with FEX-2610-175-geff9f459d
+License: MIT (https://spdx.org/licenses/MIT.html)
+URL: https://github.com/rafagafe/tiny-json
+
+Title: Berkeley SoftFloat (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/SoftFloat-3e
+Used Version: 3e
+License: BSD-3-Clause (https://spdx.org/licenses/BSD-3-Clause.html)
+URL: http://www.jhauser.us/arithmetic/SoftFloat.html
+
+Title: Cephes Math Library (used by FEX)
+Path: sdk/lib/3rdparty/fex/External/cephes
+Used Version: as shipped with FEX-2610-175-geff9f459d
+License: BSD (https://www.netlib.org/cephes/)
+URL: https://www.netlib.org/cephes/
+
+Title: cpp-optparse (used by FEX)
+Path: sdk/lib/3rdparty/fex/Source/Common/cpp-optparse
+Used Version: git commit 9f94388
+License: MIT (https://spdx.org/licenses/MIT.html)
+URL: https://github.com/Sonicadvance1/cpp-optparse
+
 Title: lwIP - A Lightweight TCP/IP stack
 Path: drivers/network/tcpip/lwip
 Used Version: 2.2.0
