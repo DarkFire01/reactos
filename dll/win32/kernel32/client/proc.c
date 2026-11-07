@@ -3767,12 +3767,12 @@ StartScan:
         }
     }
 
-#if defined(_M_AMD64) || defined(BUILD_WOW6432)
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(BUILD_WOW6432)
     /* Allow x86_32 */
     if (ImageInformation.Machine == IMAGE_FILE_MACHINE_I386) {}
     else
 #endif
-#ifdef _M_ARM64
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
     /* x64 images run in the emulator */
     if (ImageInformation.Machine == IMAGE_FILE_MACHINE_AMD64) {}
     else
