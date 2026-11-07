@@ -9,6 +9,7 @@
 #include <arbiter.h>
 
 static ARBITER_INSTANCE LegacyPCArbiter;
+static BOOLEAN LegacyPCArbiterReady;
 
 static
 CODE_SEG("PAGE")
@@ -127,6 +128,10 @@ HalpLegacyPCCreateArbiter(
 
     PAGED_CODE();
 
+    /* The bus FDO is asked again whenever PnP drops its cached handlers */
+    if (LegacyPCArbiterReady)
+        return STATUS_SUCCESS;
+
     LegacyPCArbiter.UnpackRequirement = HalpLegacyPCArbUnpackRequirement;
     LegacyPCArbiter.PackResource = HalpLegacyPCArbPackResource;
     LegacyPCArbiter.UnpackResource = HalpLegacyPCArbUnpackResource;
@@ -156,6 +161,7 @@ HalpLegacyPCCreateArbiter(
     RtlAddRange(LegacyPCArbiter.Allocation, PIC_CASCADE_IRQ, PIC_CASCADE_IRQ,
                 0, RTL_RANGE_LIST_ADD_IF_CONFLICT, NULL, NULL);
 
+    LegacyPCArbiterReady = TRUE;
     return Status;
 }
 
