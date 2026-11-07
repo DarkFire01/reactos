@@ -299,6 +299,15 @@ ApicSendEOI(void)
     ApicWrite(APIC_EOI, 0);
 }
 
+/* The local APIC sets the TMR bit of a vector it accepted from a level triggered source */
+FORCEINLINE
+BOOLEAN
+ApicIsLevelTriggeredVector(
+    _In_ UCHAR Vector)
+{
+    return (ApicRead(APIC_TMR + 0x10 * (Vector / 32)) & (1UL << (Vector % 32))) != 0;
+}
+
 FORCEINLINE
 KIRQL
 ApicGetProcessorIrql(VOID)
@@ -1197,6 +1206,9 @@ HalBeginSystemInterrupt(
     _Out_ PKIRQL OldIrql)
 {
     KIRQL CurrentIrql;
+#ifdef APIC_LAZY_IRQL
+    BOOLEAN LevelTriggered;
+#endif
 
     /* Get the current IRQL */
     CurrentIrql = ApicGetCurrentIrql();
@@ -1211,6 +1223,8 @@ HalBeginSystemInterrupt(
         /* Save the new hard IRQL in the IRR field */
         KeGetPcr()->IRR = CurrentIrql;
 
+        LevelTriggered = ApicIsLevelTriggeredVector((UCHAR)Vector);
+
         /* End this interrupt */
         ApicSendEOI();
 
@@ -1219,9 +1233,13 @@ HalBeginSystemInterrupt(
                (HalpVectorToIndex[Vector] == APIC_RESERVED_VECTOR) ||
                (HalpVectorToIndex[Vector] == APIC_MSI_VECTOR));
 
-        /* The EOI above already released the input, so re-request the vector
-           here to be handled once the Irql allows it */
-        ApicRequestSelfInterrupt(Vector);
+        /*
+         * A level source still asserts, so the EOI makes the I/O APIC send it again and the
+         * TPR holds it until the Irql drops. An edge copy would merge with that delivery and
+         * its EOI would never reach the I/O APIC, which leaves the input blocked.
+         */
+        if (!LevelTriggered)
+            ApicRequestSelfInterrupt((UCHAR)Vector);
 
         /* Pretend it was a spurious interrupt */
         return FALSE;
