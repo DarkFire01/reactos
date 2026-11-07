@@ -258,6 +258,7 @@ typedef struct _PCI_FDO_EXTENSION
     BOOLEAN MaxSubordinateBus;
     BUS_HANDLER *BusHandler;
     BOOLEAN BaseBus;
+    USHORT Segment;
     BOOLEAN Fake;
     BOOLEAN ChildDelete;
     BOOLEAN Scanned;
@@ -1295,9 +1296,15 @@ NTAPI
 PciApplyResizableBarSizes(
     _In_ PPCI_PDO_EXTENSION PdoExtension);
 
+USHORT
+NTAPI
+PciQueryRootSegment(
+    _In_ PPCI_FDO_EXTENSION FdoExtension);
+
 BOOLEAN
 NTAPI
 PciEcamReadWriteConfig(
+    _In_ USHORT Segment,
     _In_ ULONG Bus,
     _In_ PCI_SLOT_NUMBER Slot,
     _Inout_updates_bytes_(Length) PVOID Buffer,

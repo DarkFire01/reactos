@@ -8,6 +8,7 @@
 /* INCLUDES *******************************************************************/
 
 #include <pci.h>
+#include <ndk/exfuncs.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -16,18 +17,138 @@
 
 #define PCI_ECAM_BUS_COUNT  (PCI_MAX_BRIDGE_NUMBER + 1)
 #define PCI_ECAM_BUS_SIZE   (PCI_MAX_DEVICES * PCI_MAX_FUNCTION * PCI_EXTENDED_CONFIG_LENGTH)
+#define PCI_ECAM_MAX_WINDOWS    16
 
+/* 'ACPI' provider and the 'MCFG' table, as GetSystemFirmwareTable spells them */
+#define PCI_FIRMWARE_PROVIDER_ACPI  0x41435049
+#define PCI_FIRMWARE_TABLE_MCFG     0x4746434D
+
+/* MCFG: the common header, 8 reserved bytes, then one entry per window */
+#define PCI_MCFG_ENTRIES_OFFSET     44
+
+#include <pshpack1.h>
+typedef struct _PCI_ECAM_MCFG_ENTRY
+{
+    ULONGLONG Base;     ///< address of bus 0 in this segment
+    USHORT Segment;
+    UCHAR StartBus;
+    UCHAR EndBus;
+    ULONG Reserved;
+} PCI_ECAM_MCFG_ENTRY, *PPCI_ECAM_MCFG_ENTRY;
+#include <poppack.h>
+
+typedef struct _PCI_ECAM_WINDOW
+{
+    ULONGLONG Base;     ///< address of bus 0 in this segment
+    USHORT Segment;
+    UCHAR StartBus;
+    UCHAR EndBus;
+    PUCHAR BusView[PCI_ECAM_BUS_COUNT];
+} PCI_ECAM_WINDOW, *PPCI_ECAM_WINDOW;
+
+/* Segment 0 is compared against the legacy mechanism, no other segment has one */
 BOOLEAN PciEcamVerified = FALSE;
 
 static BOOLEAN PciEcamWindowQueried = FALSE;
 static BOOLEAN PciEcamSkipK8Northbridge = FALSE;
-static ULONGLONG PciEcamWindowStart;
-static ULONG PciEcamWindowBuses;
-static PUCHAR PciEcamBusView[PCI_ECAM_BUS_COUNT];
+static PCI_ECAM_WINDOW PciEcamWindows[PCI_ECAM_MAX_WINDOWS];
+static ULONG PciEcamWindowCount;
 
 /* FUNCTIONS ******************************************************************/
 
-/* Takes the first window, which is segment 0 since the HAL writes them in segment order */
+static
+PPCI_ECAM_WINDOW
+NTAPI
+PciEcamFindWindow(
+    _In_ USHORT Segment,
+    _In_ ULONG Bus)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < PciEcamWindowCount; Index++)
+    {
+        if ((PciEcamWindows[Index].Segment == Segment) &&
+            (Bus >= PciEcamWindows[Index].StartBus) &&
+            (Bus <= PciEcamWindows[Index].EndBus))
+        {
+            return &PciEcamWindows[Index];
+        }
+    }
+
+    return NULL;
+}
+
+/* Reads MCFG through the firmware table provider, the ACPI driver registers it */
+static
+BOOLEAN
+NTAPI
+PciEcamQueryMcfg(VOID)
+{
+    PSYSTEM_FIRMWARE_TABLE_INFORMATION Info;
+    SYSTEM_FIRMWARE_TABLE_INFORMATION Probe;
+    PPCI_ECAM_MCFG_ENTRY Entry;
+    PDESCRIPTION_HEADER Header;
+    ULONG Size = 0;
+    ULONG Offset;
+    NTSTATUS Status;
+    PAGED_CODE();
+
+    RtlZeroMemory(&Probe, sizeof(Probe));
+    Probe.ProviderSignature = PCI_FIRMWARE_PROVIDER_ACPI;
+    Probe.Action = SystemFirmwareTable_Get;
+    Probe.TableID = PCI_FIRMWARE_TABLE_MCFG;
+
+    Status = ZwQuerySystemInformation(SystemFirmwareTableInformation,
+                                      &Probe,
+                                      sizeof(Probe),
+                                      &Size);
+    if ((Status != STATUS_BUFFER_TOO_SMALL) ||
+        (Size < FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer) +
+                PCI_MCFG_ENTRIES_OFFSET))
+    {
+        return FALSE;
+    }
+
+    Info = ExAllocatePoolWithTag(PagedPool, Size, PCI_POOL_TAG);
+    if (!Info) return FALSE;
+
+    RtlCopyMemory(Info, &Probe, FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer));
+    Info->TableBufferLength = Size - FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
+
+    Status = ZwQuerySystemInformation(SystemFirmwareTableInformation, Info, Size, &Size);
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Info, PCI_POOL_TAG);
+        return FALSE;
+    }
+
+    Header = (PDESCRIPTION_HEADER)Info->TableBuffer;
+    if (Header->Length > Info->TableBufferLength)
+    {
+        ExFreePoolWithTag(Info, PCI_POOL_TAG);
+        return FALSE;
+    }
+
+    for (Offset = PCI_MCFG_ENTRIES_OFFSET;
+         (Offset + sizeof(*Entry) <= Header->Length) &&
+         (PciEcamWindowCount < PCI_ECAM_MAX_WINDOWS);
+         Offset += sizeof(*Entry))
+    {
+        Entry = (PPCI_ECAM_MCFG_ENTRY)((PUCHAR)Header + Offset);
+        if (Entry->EndBus < Entry->StartBus) continue;
+
+        PciEcamWindows[PciEcamWindowCount].Base = Entry->Base;
+        PciEcamWindows[PciEcamWindowCount].Segment = Entry->Segment;
+        PciEcamWindows[PciEcamWindowCount].StartBus = Entry->StartBus;
+        PciEcamWindows[PciEcamWindowCount].EndBus = Entry->EndBus;
+        PciEcamWindowCount++;
+    }
+
+    ExFreePoolWithTag(Info, PCI_POOL_TAG);
+    return (PciEcamWindowCount != 0);
+}
+
+/* Without the provider only the first range is known, the HAL writes segment 0 first */
 static
 BOOLEAN
 NTAPI
@@ -62,8 +183,11 @@ PciEcamParseWindow(
     Buses = (End - Start + 1) / PCI_ECAM_BUS_SIZE;
     if (!(Buses) || (Buses > PCI_ECAM_BUS_COUNT)) return FALSE;
 
-    PciEcamWindowStart = Start;
-    PciEcamWindowBuses = (ULONG)Buses;
+    PciEcamWindows[0].Base = Start;
+    PciEcamWindows[0].Segment = 0;
+    PciEcamWindows[0].StartBus = 0;
+    PciEcamWindows[0].EndBus = (UCHAR)(Buses - 1);
+    PciEcamWindowCount = 1;
     return TRUE;
 }
 
@@ -79,6 +203,9 @@ PciEcamQueryWindow(VOID)
     NTSTATUS Status;
     ULONG Size;
     PAGED_CODE();
+
+    /* MCFG names every segment, the published ranges only cover segment 0 */
+    if (PciEcamQueryMcfg()) return STATUS_SUCCESS;
 
     if (!PciOpenKey(L"\\Registry\\Machine\\System\\CurrentControlSet"
                     L"\\Control\\Arbiters\\ReservedResources",
@@ -160,22 +287,25 @@ static
 PUCHAR
 NTAPI
 PciEcamMapBus(
+    _In_ USHORT Segment,
     _In_ ULONG Bus)
 {
+    PPCI_ECAM_WINDOW Window;
     PHYSICAL_ADDRESS Address;
     PAGED_CODE();
 
-    if (Bus >= PciEcamWindowBuses) return NULL;
-    if (PciEcamBusView[Bus]) return PciEcamBusView[Bus];
+    Window = PciEcamFindWindow(Segment, Bus);
+    if (!Window) return NULL;
+    if (Window->BusView[Bus]) return Window->BusView[Bus];
 
-    Address.QuadPart = (LONGLONG)(PciEcamWindowStart + ((ULONGLONG)Bus * PCI_ECAM_BUS_SIZE));
-    PciEcamBusView[Bus] = MmMapIoSpace(Address, PCI_ECAM_BUS_SIZE, MmNonCached);
-    if (!PciEcamBusView[Bus])
+    Address.QuadPart = (LONGLONG)(Window->Base + ((ULONGLONG)Bus * PCI_ECAM_BUS_SIZE));
+    Window->BusView[Bus] = MmMapIoSpace(Address, PCI_ECAM_BUS_SIZE, MmNonCached);
+    if (!Window->BusView[Bus])
     {
-        DPRINT1("PCIX - Unable to map ECAM for bus 0x%lx\n", Bus);
+        DPRINT1("PCIX - Unable to map ECAM for segment 0x%x bus 0x%lx\n", Segment, Bus);
     }
 
-    return PciEcamBusView[Bus];
+    return Window->BusView[Bus];
 }
 
 static
@@ -183,32 +313,42 @@ VOID
 NTAPI
 PciEcamDiscardWindow(VOID)
 {
+    PPCI_ECAM_WINDOW Window;
+    ULONG Index;
     ULONG Bus;
     PAGED_CODE();
 
-    for (Bus = 0; Bus < PciEcamWindowBuses; Bus++)
+    for (Index = 0; Index < PciEcamWindowCount; Index++)
     {
-        if (!PciEcamBusView[Bus]) continue;
+        Window = &PciEcamWindows[Index];
+        for (Bus = 0; Bus < PCI_ECAM_BUS_COUNT; Bus++)
+        {
+            if (!Window->BusView[Bus]) continue;
 
-        MmUnmapIoSpace(PciEcamBusView[Bus], PCI_ECAM_BUS_SIZE);
-        PciEcamBusView[Bus] = NULL;
+            MmUnmapIoSpace(Window->BusView[Bus], PCI_ECAM_BUS_SIZE);
+            Window->BusView[Bus] = NULL;
+        }
     }
 
-    PciEcamWindowBuses = 0;
+    PciEcamWindowCount = 0;
 }
 
 static
 PUCHAR
 NTAPI
 PciEcamFunctionBase(
+    _In_ USHORT Segment,
     _In_ ULONG Bus,
     _In_ PCI_SLOT_NUMBER Slot)
 {
+    PPCI_ECAM_WINDOW Window;
     ULONG Index;
 
-    if ((Bus >= PciEcamWindowBuses) || !(PciEcamBusView[Bus])) return NULL;
+    Window = PciEcamFindWindow(Segment, Bus);
+    if (!Window || !(Window->BusView[Bus])) return NULL;
 
     if ((PciEcamSkipK8Northbridge) &&
+        (Segment == 0) &&
         (Bus == 0) &&
         (Slot.u.bits.DeviceNumber >= 0x18))
     {
@@ -216,7 +356,7 @@ PciEcamFunctionBase(
     }
 
     Index = (Slot.u.bits.DeviceNumber * PCI_MAX_FUNCTION) + Slot.u.bits.FunctionNumber;
-    return PciEcamBusView[Bus] + (Index * PCI_EXTENDED_CONFIG_LENGTH);
+    return Window->BusView[Bus] + (Index * PCI_EXTENDED_CONFIG_LENGTH);
 }
 
 /* Picks the same access widths as the HAL does for the legacy mechanism */
@@ -299,7 +439,7 @@ PciEcamVerifyBus(
     {
         Slot.u.bits.DeviceNumber = Device;
 
-        Function = PciEcamFunctionBase(FdoExtension->BaseBus, Slot);
+        Function = PciEcamFunctionBase(0, FdoExtension->BaseBus, Slot);
         if (!Function) continue;
 
         LegacyIds = MAXULONG;
@@ -353,12 +493,16 @@ PciInitializeEcam(
 #if defined(_M_IX86) || defined(_M_AMD64)
         PciEcamSkipK8Northbridge = PciEcamIsAmdK8();
 #endif
-        DPRINT("PCIX - ECAM window at 0x%I64x for 0x%lx buses\n",
-               PciEcamWindowStart,
-               PciEcamWindowBuses);
+        DPRINT("PCIX - %lu ECAM window(s), the first at 0x%I64x for segment 0x%x\n",
+               PciEcamWindowCount,
+               PciEcamWindows[0].Base,
+               PciEcamWindows[0].Segment);
     }
 
-    if (!PciEcamMapBus(FdoExtension->BaseBus) || PciEcamVerified) return;
+    if (!PciEcamMapBus(FdoExtension->Segment, FdoExtension->BaseBus)) return;
+
+    /* Other segments have no legacy path to be checked against */
+    if ((FdoExtension->Segment != 0) || PciEcamVerified) return;
 
     /* An empty bus proves nothing, so leave it to the next one */
     Status = PciEcamVerifyBus(FdoExtension);
@@ -399,6 +543,7 @@ PciReleaseEcam(VOID)
 BOOLEAN
 NTAPI
 PciEcamReadWriteConfig(
+    _In_ USHORT Segment,
     _In_ ULONG Bus,
     _In_ PCI_SLOT_NUMBER Slot,
     _Inout_updates_bytes_(Length) PVOID Buffer,
@@ -408,7 +553,7 @@ PciEcamReadWriteConfig(
 {
     PUCHAR Function;
 
-    if (!PciEcamVerified) return FALSE;
+    if ((Segment == 0) && !(PciEcamVerified)) return FALSE;
 
     if ((Offset >= PCI_EXTENDED_CONFIG_LENGTH) ||
         (Length > (PCI_EXTENDED_CONFIG_LENGTH - Offset)))
@@ -416,7 +561,7 @@ PciEcamReadWriteConfig(
         return FALSE;
     }
 
-    Function = PciEcamFunctionBase(Bus, Slot);
+    Function = PciEcamFunctionBase(Segment, Bus, Slot);
     if (!Function) return FALSE;
 
     PciEcamTransfer(Function, Buffer, Offset, Length, Read);

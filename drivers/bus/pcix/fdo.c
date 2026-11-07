@@ -805,6 +805,7 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
         {
             /* The child inherits root data */
             FdoExtension->BaseBus = PdoExtension->Dependent.type1.SecondaryBus;
+            FdoExtension->Segment = ParentExtension->Segment;
             FdoExtension->BusRootFdoExtension = ParentExtension->BusRootFdoExtension;
             PdoExtension->BridgeFdoExtension = FdoExtension;
             FdoExtension->ParentFdoExtension = ParentExtension;
@@ -856,6 +857,15 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
 
             /* This is the root bus */
             FdoExtension->BusRootFdoExtension = FdoExtension;
+
+            /* The bus number translator of the root carries its segment */
+            FdoExtension->Segment = PciQueryRootSegment(FdoExtension);
+            if (FdoExtension->Segment != 0)
+            {
+                DPRINT1("PCIX - Root bus 0x%x is on segment 0x%x\n",
+                        FdoExtension->BaseBus,
+                        FdoExtension->Segment);
+            }
         }
 
         /* Get the HAL or ACPI Bus Handler Callbacks for Configuration Access */

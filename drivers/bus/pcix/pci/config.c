@@ -29,14 +29,25 @@ PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
     /* Does the device have an interrupt pin? */
     if (PdoExtension->InterruptPin)
     {
-        /* Find the associated line on the parent bus */
-        Length = HalGetBusDataByOffset(PCIConfiguration,
-                                       PdoExtension->ParentFdoExtension->BaseBus,
-                                       PdoExtension->Slot.u.AsULONG,
-                                       &PciInterruptLine,
-                                       FIELD_OFFSET(PCI_COMMON_HEADER,
-                                                    u.type0.InterruptLine),
-                                       sizeof(UCHAR));
+        /* Find the associated line on the parent bus, the HAL only knows segment 0 */
+        if (PdoExtension->ParentFdoExtension->Segment != 0)
+        {
+            PciReadDeviceConfig(PdoExtension,
+                                &PciInterruptLine,
+                                FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine),
+                                sizeof(UCHAR));
+            Length = sizeof(UCHAR);
+        }
+        else
+        {
+            Length = HalGetBusDataByOffset(PCIConfiguration,
+                                           PdoExtension->ParentFdoExtension->BaseBus,
+                                           PdoExtension->Slot.u.AsULONG,
+                                           &PciInterruptLine,
+                                           FIELD_OFFSET(PCI_COMMON_HEADER,
+                                                        u.type0.InterruptLine),
+                                           sizeof(UCHAR));
+        }
         if (Length) InterruptLine = PciInterruptLine;
     }
 
@@ -62,9 +73,26 @@ PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     /* Only the root FDO can access configuration space */
     ASSERT(PCI_IS_ROOT_FDO(DeviceExtension->BusRootFdoExtension));
 
+    /* The HAL and the bus interface only reach segment 0, other segments need ECAM */
+    if (DeviceExtension->Segment != 0)
+    {
+        if (!PciEcamReadWriteConfig(DeviceExtension->Segment,
+                                    DeviceExtension->BaseBus,
+                                    Slot,
+                                    Buffer,
+                                    Offset,
+                                    Length,
+                                    Read) && Read)
+        {
+            RtlFillMemory(Buffer, Length, 0xFF);
+        }
+        return;
+    }
+
     /* The legacy mechanism cannot reach extended configuration space */
     if (((Offset + Length) > PCI_LEGACY_CONFIG_LENGTH) &&
-        (PciEcamReadWriteConfig(DeviceExtension->BaseBus,
+        (PciEcamReadWriteConfig(0,
+                                DeviceExtension->BaseBus,
                                 Slot,
                                 Buffer,
                                 Offset,
@@ -259,6 +287,89 @@ PciQueryForPciBusInterface(IN PPCI_FDO_EXTENSION FdoExtension)
 
     /* Return status code to caller */
     return Status;
+}
+
+/**
+ * @brief
+ * Asks the root PDO stack for its bus number translator and moves the base bus
+ * up to the parent. A root on a nonzero _SEG comes back with the segment in
+ * bits 8 to 23, every other root has no translator and stays on segment 0.
+ */
+USHORT
+NTAPI
+PciQueryRootSegment(
+    _In_ PPCI_FDO_EXTENSION FdoExtension)
+{
+    CM_PARTIAL_RESOURCE_DESCRIPTOR Translated;
+    CM_PARTIAL_RESOURCE_DESCRIPTOR Raw;
+    TRANSLATOR_INTERFACE Translator;
+    PIO_STACK_LOCATION IoStackLocation;
+    PDEVICE_OBJECT AttachedDevice;
+    IO_STATUS_BLOCK IoStatusBlock;
+    KEVENT Event;
+    NTSTATUS Status;
+    PIRP Irp;
+    PAGED_CODE();
+    ASSERT(PCI_IS_ROOT_FDO(FdoExtension));
+
+    RtlZeroMemory(&Translator, sizeof(Translator));
+
+    AttachedDevice = IoGetAttachedDeviceReference(FdoExtension->PhysicalDeviceObject);
+
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP,
+                                       AttachedDevice,
+                                       NULL,
+                                       0,
+                                       NULL,
+                                       &Event,
+                                       &IoStatusBlock);
+    if (!Irp)
+    {
+        ObDereferenceObject(AttachedDevice);
+        return 0;
+    }
+
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+    Irp->IoStatus.Information = 0;
+
+    IoStackLocation = IoGetNextIrpStackLocation(Irp);
+    IoStackLocation->MinorFunction = IRP_MN_QUERY_INTERFACE;
+    IoStackLocation->Parameters.QueryInterface.InterfaceType = &GUID_TRANSLATOR_INTERFACE_STANDARD;
+    IoStackLocation->Parameters.QueryInterface.Size = sizeof(Translator);
+    IoStackLocation->Parameters.QueryInterface.Version = 0;
+    IoStackLocation->Parameters.QueryInterface.Interface = (PINTERFACE)&Translator;
+    IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData =
+        UlongToPtr(CmResourceTypeBusNumber);
+
+    Status = IoCallDriver(AttachedDevice, Irp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = IoStatusBlock.Status;
+    }
+
+    ObDereferenceObject(AttachedDevice);
+
+    if (!NT_SUCCESS(Status) || !(Translator.TranslateResources)) return 0;
+
+    RtlZeroMemory(&Raw, sizeof(Raw));
+    Raw.Type = CmResourceTypeBusNumber;
+    Raw.u.BusNumber.Start = FdoExtension->BaseBus;
+    Raw.u.BusNumber.Length = 1;
+
+    Status = Translator.TranslateResources(Translator.Context,
+                                           &Raw,
+                                           TranslateChildToParent,
+                                           0,
+                                           NULL,
+                                           FdoExtension->PhysicalDeviceObject,
+                                           &Translated);
+
+    if (Translator.InterfaceDereference) Translator.InterfaceDereference(Translator.Context);
+
+    if (!NT_SUCCESS(Status)) return 0;
+    return (USHORT)(Translated.u.BusNumber.Start >> 8);
 }
 
 NTSTATUS
