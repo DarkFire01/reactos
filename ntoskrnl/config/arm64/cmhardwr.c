@@ -149,6 +149,53 @@ CmpGetSmbiosStringField(
     return ExpGetSmbiosString(Header, ((PUCHAR)Header)[Offset]);
 }
 
+/**
+ * @brief
+ * Stores the ID registers of the current processor in its key as "CP xxxx" values, named by register encoding.
+ */
+CODE_SEG("INIT")
+static
+VOID
+CmpSetIdRegisterValues(
+    _In_ HANDLE KeyHandle)
+{
+    const struct
+    {
+        ULONG Register;
+        ULONG64 Value;
+    } Registers[] =
+    {
+        { ARM64_MIDR_EL1, KeArm64ReadRegister(ARM64_MIDR_EL1) },
+        { ARM64_ID_AA64PFR0_EL1, KeArm64ReadRegister(ARM64_ID_AA64PFR0_EL1) },
+        { ARM64_ID_AA64PFR1_EL1, KeArm64ReadRegister(ARM64_ID_AA64PFR1_EL1) },
+        { ARM64_ID_AA64ZFR0_EL1, KeArm64ReadRegister(ARM64_ID_AA64ZFR0_EL1) },
+        { ARM64_ID_AA64DFR0_EL1, KeArm64ReadRegister(ARM64_ID_AA64DFR0_EL1) },
+        { ARM64_ID_AA64DFR1_EL1, KeArm64ReadRegister(ARM64_ID_AA64DFR1_EL1) },
+        { ARM64_ID_AA64ISAR0_EL1, KeArm64ReadRegister(ARM64_ID_AA64ISAR0_EL1) },
+        { ARM64_ID_AA64ISAR1_EL1, KeArm64ReadRegister(ARM64_ID_AA64ISAR1_EL1) },
+        { ARM64_ID_AA64ISAR2_EL1, KeArm64ReadRegister(ARM64_ID_AA64ISAR2_EL1) },
+        { ARM64_ID_AA64MMFR0_EL1, KeArm64ReadRegister(ARM64_ID_AA64MMFR0_EL1) },
+        { ARM64_ID_AA64MMFR1_EL1, KeArm64ReadRegister(ARM64_ID_AA64MMFR1_EL1) },
+        { ARM64_ID_AA64MMFR2_EL1, KeArm64ReadRegister(ARM64_ID_AA64MMFR2_EL1) },
+        { ARM64_CTR_EL0, KeArm64ReadRegister(ARM64_CTR_EL0) },
+    };
+    UNICODE_STRING ValueName;
+    WCHAR Name[16];
+    ULONG i;
+
+    for (i = 0; i < RTL_NUMBER_OF(Registers); i++)
+    {
+        RtlStringCbPrintfW(Name, sizeof(Name), L"CP %X", Registers[i].Register);
+        RtlInitUnicodeString(&ValueName, Name);
+        ZwSetValueKey(KeyHandle,
+                      &ValueName,
+                      0,
+                      REG_QWORD,
+                      (PVOID)&Registers[i].Value,
+                      sizeof(Registers[i].Value));
+    }
+}
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
@@ -218,6 +265,11 @@ CmpInitializeMachineDependentConfiguration(
         Data = Prcb->FeatureBits;
         RtlInitUnicodeString(&ValueName, L"FeatureSet");
         ZwSetValueKey(KeyHandle, &ValueName, 0, REG_DWORD, &Data, sizeof(Data));
+
+        /* The ID registers are read on the processor they describe */
+        KeSetSystemAffinityThread(Prcb->SetMember);
+        CmpSetIdRegisterValues(KeyHandle);
+        KeRevertToUserAffinityThread();
         ZwClose(KeyHandle);
 
         Status = CmpCreateProcessorKey(L"FloatingPointProcessor", i, &KeyHandle);
