@@ -55,37 +55,96 @@ typedef struct _PNP_WATCH_SLOT
 static PNP_WATCH_SLOT PnpWatchSlots[PNP_WATCH_SLOTS];
 static LONG PnpWatchStarted;
 
-/* Print the code addresses found between a blocked thread's saved stack pointer and its stack base */
-static VOID
-PnpWatchScanStack(
-    _In_ PKTHREAD Thread)
+/* The loaded module a code address on a stack falls into. PsLoadedModuleResource must be held */
+static PLDR_DATA_TABLE_ENTRY
+PnpWatchFindModule(
+    _In_ ULONG_PTR Value)
 {
-    PULONG_PTR Sp = Thread->KernelStack, Base = Thread->InitialStack;
     PLIST_ENTRY Entry;
     PLDR_DATA_TABLE_ENTRY LdrEntry;
-    ULONG Hits = 0;
+
+    for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList; Entry = Entry->Flink)
+    {
+        LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (Value > (ULONG_PTR)LdrEntry->DllBase + PAGE_SIZE &&
+            Value < (ULONG_PTR)LdrEntry->DllBase + LdrEntry->SizeOfImage)
+        {
+            return LdrEntry;
+        }
+    }
+    return NULL;
+}
+
+/*
+ * Print the code addresses found between a blocked thread's saved stack pointer and its stack
+ * base. With Filter, print nothing unless one of them lies in one of the named modules.
+ */
+static VOID
+PnpWatchScanStack(
+    _In_ PKTHREAD Thread,
+    _In_opt_ const PCWSTR *Filter,
+    _In_ ULONG FilterCount)
+{
+    PULONG_PTR Sp = Thread->KernelStack, Base = Thread->InitialStack, p;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    UNICODE_STRING Name;
+    BOOLEAN Match = (Filter == NULL);
+    ULONG Hits = 0, i;
 
     if (!Sp || !Base || Sp >= Base || (ULONG_PTR)(Base - Sp) > KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR))
         return;
 
     KeEnterCriticalRegion();
     ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
-    for (; Sp < Base && Hits < 48; Sp++)
+    for (p = Sp; p < Base && !Match; p++)
     {
-        for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList; Entry = Entry->Flink)
+        LdrEntry = PnpWatchFindModule(*p);
+        for (i = 0; LdrEntry && i < FilterCount; i++)
         {
-            LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-            if (*Sp > (ULONG_PTR)LdrEntry->DllBase + PAGE_SIZE &&
-                *Sp < (ULONG_PTR)LdrEntry->DllBase + LdrEntry->SizeOfImage)
+            RtlInitUnicodeString(&Name, Filter[i]);
+            if (RtlEqualUnicodeString(&Name, &LdrEntry->BaseDllName, TRUE))
+                Match = TRUE;
+        }
+    }
+    if (Match)
+    {
+        if (Filter)
+        {
+            DbgPrint("PNPWATCH: thread %p of %s, state %u, wait reason %u\n",
+                     Thread, PsGetThreadProcess((PETHREAD)Thread)->ImageFileName,
+                     Thread->State, Thread->WaitReason);
+        }
+        for (p = Sp; p < Base && Hits < 48; p++)
+        {
+            LdrEntry = PnpWatchFindModule(*p);
+            if (LdrEntry)
             {
-                DbgPrint("PNPWATCH:   %wZ+0x%Ix\n", &LdrEntry->BaseDllName, *Sp - (ULONG_PTR)LdrEntry->DllBase);
+                DbgPrint("PNPWATCH:   %wZ+0x%Ix\n", &LdrEntry->BaseDllName, *p - (ULONG_PTR)LdrEntry->DllBase);
                 Hits++;
-                break;
             }
         }
     }
     ExReleaseResourceLite(&PsLoadedModuleResource);
     KeLeaveCriticalRegion();
+}
+
+/* Display drivers being brought up: show every thread that is somewhere inside them */
+static VOID
+PnpWatchDumpDisplayThreads(VOID)
+{
+    static const PCWSTR Modules[] = { L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys" };
+    PEPROCESS Process;
+    PETHREAD Thread;
+
+    DbgPrint("PNPWATCH: threads in the display drivers at %I64d s\n", KeQueryInterruptTime() / 10000000);
+    for (Process = PsGetNextProcess(NULL); Process; Process = PsGetNextProcess(Process))
+    {
+        for (Thread = PsGetNextProcessThread(Process, NULL); Thread; Thread = PsGetNextProcessThread(Process, Thread))
+        {
+            if (Thread != PsGetCurrentThread())
+                PnpWatchScanStack(&Thread->Tcb, Modules, RTL_NUMBER_OF(Modules));
+        }
+    }
 }
 
 static VOID
@@ -98,6 +157,8 @@ PnpWatchThread(
     PDEVICE_NODE DeviceNode;
     PETHREAD Thread;
     ULONG i;
+    static const ULONG ThreadDumpTimes[] = { 75, 150 };   /* seconds since boot */
+    ULONG NextThreadDump = 0;
 
     UNREFERENCED_PARAMETER(Context);
     Period.QuadPart = PNP_WATCH_PERIOD;
@@ -107,6 +168,13 @@ PnpWatchThread(
         KeDelayExecutionThread(KernelMode, FALSE, &Period);
         /* Not the system time, which boot moves by the time zone bias */
         Now.QuadPart = KeQueryInterruptTime();
+
+        if (NextThreadDump < RTL_NUMBER_OF(ThreadDumpTimes) &&
+            Now.QuadPart >= ThreadDumpTimes[NextThreadDump] * 10000000LL)
+        {
+            NextThreadDump++;
+            PnpWatchDumpDisplayThreads();
+        }
 
         for (i = 0; i < PNP_WATCH_SLOTS; i++)
         {
@@ -122,7 +190,7 @@ PnpWatchThread(
                      Slot->MajorFunction, Slot->MinorFunction,
                      DeviceNode ? &DeviceNode->InstancePath : NULL,
                      (Now.QuadPart - Slot->StartTime.QuadPart) / 10000000, Thread);
-            PnpWatchScanStack(&Thread->Tcb);
+            PnpWatchScanStack(&Thread->Tcb, NULL, 0);
         }
     }
 }
