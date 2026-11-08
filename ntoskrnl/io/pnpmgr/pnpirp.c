@@ -32,6 +32,152 @@ IopSynchronousCallCompletion(
     return STATUS_CONTINUE_COMPLETION;
 }
 
+/*
+ * PnP watchdog, for bringing up binary drivers without a kernel debugger: every
+ * synchronous PnP request is tracked, and one still running after a while is
+ * reported with its device and the code addresses found on the waiting thread's
+ * stack, as module+offset. One stuck request blocks all device enumeration after it.
+ */
+#define PNP_WATCH_SLOTS         16
+#define PNP_WATCH_REPORT_AFTER  (15LL * 10000000)   /* 15 s */
+#define PNP_WATCH_PERIOD        (-5LL * 10000000)   /* 5 s */
+
+typedef struct _PNP_WATCH_SLOT
+{
+    PETHREAD volatile Thread;
+    PDEVICE_OBJECT DeviceObject;
+    UCHAR MajorFunction;
+    UCHAR MinorFunction;
+    BOOLEAN Reported;
+    LARGE_INTEGER StartTime;
+} PNP_WATCH_SLOT, *PPNP_WATCH_SLOT;
+
+static PNP_WATCH_SLOT PnpWatchSlots[PNP_WATCH_SLOTS];
+static LONG PnpWatchStarted;
+
+/* Print the code addresses found between a blocked thread's saved stack pointer and its stack base */
+static VOID
+PnpWatchScanStack(
+    _In_ PKTHREAD Thread)
+{
+    PULONG_PTR Sp = Thread->KernelStack, Base = Thread->InitialStack;
+    PLIST_ENTRY Entry;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    ULONG Hits = 0;
+
+    if (!Sp || !Base || Sp >= Base || (ULONG_PTR)(Base - Sp) > KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR))
+        return;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
+    for (; Sp < Base && Hits < 48; Sp++)
+    {
+        for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList; Entry = Entry->Flink)
+        {
+            LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+            if (*Sp > (ULONG_PTR)LdrEntry->DllBase + PAGE_SIZE &&
+                *Sp < (ULONG_PTR)LdrEntry->DllBase + LdrEntry->SizeOfImage)
+            {
+                DbgPrint("PNPWATCH:   %wZ+0x%Ix\n", &LdrEntry->BaseDllName, *Sp - (ULONG_PTR)LdrEntry->DllBase);
+                Hits++;
+                break;
+            }
+        }
+    }
+    ExReleaseResourceLite(&PsLoadedModuleResource);
+    KeLeaveCriticalRegion();
+}
+
+static VOID
+NTAPI
+PnpWatchThread(
+    _In_ PVOID Context)
+{
+    LARGE_INTEGER Period, Now;
+    PPNP_WATCH_SLOT Slot;
+    PDEVICE_NODE DeviceNode;
+    PETHREAD Thread;
+    ULONG i;
+
+    UNREFERENCED_PARAMETER(Context);
+    Period.QuadPart = PNP_WATCH_PERIOD;
+
+    for (;;)
+    {
+        KeDelayExecutionThread(KernelMode, FALSE, &Period);
+        KeQuerySystemTime(&Now);
+
+        for (i = 0; i < PNP_WATCH_SLOTS; i++)
+        {
+            Slot = &PnpWatchSlots[i];
+            Thread = Slot->Thread;
+            if (!Thread || Slot->Reported || Now.QuadPart - Slot->StartTime.QuadPart < PNP_WATCH_REPORT_AFTER)
+                continue;
+
+            /* Reported once per request; the slot is reused only after the request returns */
+            Slot->Reported = TRUE;
+            DeviceNode = IopGetDeviceNode(Slot->DeviceObject);
+            DbgPrint("PNPWATCH: IRP %02x/%02x to %wZ still running after %I64d s, thread %p\n",
+                     Slot->MajorFunction, Slot->MinorFunction,
+                     DeviceNode ? &DeviceNode->InstancePath : NULL,
+                     (Now.QuadPart - Slot->StartTime.QuadPart) / 10000000, Thread);
+            PnpWatchScanStack(&Thread->Tcb);
+        }
+    }
+}
+
+static PPNP_WATCH_SLOT
+PnpWatchBegin(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIO_STACK_LOCATION IoStackLocation)
+{
+    HANDLE ThreadHandle;
+    ULONG i;
+
+    if (!InterlockedCompareExchange(&PnpWatchStarted, 1, 0))
+    {
+        if (NT_SUCCESS(PsCreateSystemThread(&ThreadHandle, THREAD_ALL_ACCESS, NULL, NULL, NULL,
+                                            PnpWatchThread, NULL)))
+        {
+            ZwClose(ThreadHandle);
+        }
+    }
+
+    for (i = 0; i < PNP_WATCH_SLOTS; i++)
+    {
+        if (InterlockedCompareExchangePointer((PVOID *)&PnpWatchSlots[i].Thread, PsGetCurrentThread(), NULL) == NULL)
+        {
+            PnpWatchSlots[i].DeviceObject = DeviceObject;
+            PnpWatchSlots[i].MajorFunction = IoStackLocation->MajorFunction;
+            PnpWatchSlots[i].MinorFunction = IoStackLocation->MinorFunction;
+            PnpWatchSlots[i].Reported = FALSE;
+            KeQuerySystemTime(&PnpWatchSlots[i].StartTime);
+            return &PnpWatchSlots[i];
+        }
+    }
+    return NULL;
+}
+
+static VOID
+PnpWatchEnd(
+    _In_opt_ PPNP_WATCH_SLOT Slot,
+    _In_ NTSTATUS Status)
+{
+    PDEVICE_NODE DeviceNode;
+
+    if (!Slot)
+        return;
+
+    if (Slot->Reported)
+    {
+        DeviceNode = IopGetDeviceNode(Slot->DeviceObject);
+        DbgPrint("PNPWATCH: IRP %02x/%02x to %wZ finished late with 0x%lx\n",
+                 Slot->MajorFunction, Slot->MinorFunction,
+                 DeviceNode ? &DeviceNode->InstancePath : NULL, Status);
+    }
+    InterlockedExchangePointer((PVOID *)&Slot->Thread, NULL);
+}
+
 NTSTATUS
 IopSynchronousCall(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -45,7 +191,10 @@ IopSynchronousCall(
     KEVENT Event;
     NTSTATUS Status;
     PDEVICE_OBJECT TopDeviceObject;
+    PPNP_WATCH_SLOT WatchSlot;
     PAGED_CODE();
+
+    WatchSlot = PnpWatchBegin(DeviceObject, IoStackLocation);
 
     /* Call the top of the device stack */
     TopDeviceObject = IoGetAttachedDeviceReference(DeviceObject);
@@ -55,6 +204,7 @@ IopSynchronousCall(
     if (!Irp)
     {
         ObDereferenceObject(TopDeviceObject);
+        PnpWatchEnd(WatchSlot, STATUS_INSUFFICIENT_RESOURCES);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -131,6 +281,7 @@ IopSynchronousCall(
 
     /* Remove the reference */
     ObDereferenceObject(TopDeviceObject);
+    PnpWatchEnd(WatchSlot, Status);
 
     /* Return the information */
     *Information = (PVOID)Result.Information;
@@ -161,6 +312,7 @@ PiIrpStartDevice(
     // Vista+ does an asynchronous call
     NTSTATUS status = IopSynchronousCall(DeviceNode->PhysicalDeviceObject, &stack, &info);
     DeviceNode->CompletionStatus = status;
+    DPRINT1("Start %wZ -> 0x%lx\n", &DeviceNode->InstancePath, status);
     return status;
 }
 
