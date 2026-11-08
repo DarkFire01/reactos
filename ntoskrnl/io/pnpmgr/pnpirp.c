@@ -105,7 +105,8 @@ PnpWatchThread(
     for (;;)
     {
         KeDelayExecutionThread(KernelMode, FALSE, &Period);
-        KeQuerySystemTime(&Now);
+        /* Not the system time, which boot moves by the time zone bias */
+        Now.QuadPart = KeQueryInterruptTime();
 
         for (i = 0; i < PNP_WATCH_SLOTS; i++)
         {
@@ -151,7 +152,7 @@ PnpWatchBegin(
             PnpWatchSlots[i].MajorFunction = IoStackLocation->MajorFunction;
             PnpWatchSlots[i].MinorFunction = IoStackLocation->MinorFunction;
             PnpWatchSlots[i].Reported = FALSE;
-            KeQuerySystemTime(&PnpWatchSlots[i].StartTime);
+            PnpWatchSlots[i].StartTime.QuadPart = KeQueryInterruptTime();
             return &PnpWatchSlots[i];
         }
     }
