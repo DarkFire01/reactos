@@ -535,6 +535,34 @@ DlpDriverDrivesDisplay(
     return FALSE;
 }
 
+/*
+ * DxgkInitialize points the miniport's dispatch routines and AddDevice into dxgkrnl. Vendor
+ * drivers may put their own routine in front of some of them afterwards (nvlddmkm takes
+ * IRP_MJ_PNP and passes it on), so any one of them leading into dxgkrnl will do.
+ */
+static BOOLEAN
+DlpIsDxgkMiniport(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PDRIVER_OBJECT DxgkDriver)
+{
+    ULONG_PTR Start = (ULONG_PTR)DxgkDriver->DriverStart;
+    ULONG i;
+
+    if (DriverObject->DriverExtension &&
+        ((ULONG_PTR)DriverObject->DriverExtension->AddDevice - Start < DxgkDriver->DriverSize))
+    {
+        return TRUE;
+    }
+
+    for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+    {
+        if ((ULONG_PTR)DriverObject->MajorFunction[i] - Start < DxgkDriver->DriverSize)
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
 /**
  * @brief Is a WDDM display adapter there? dxgkrnl takes over the dispatch routines of every
  *        miniport, though a miniport may put its own in front of them again, and a display
@@ -602,17 +630,12 @@ DlpHasWddmDisplayAdapter(VOID)
 
         ulDispatch = (ULONG_PTR)DriverObject->MajorFunction[IRP_MJ_PNP];
         if ((DriverObject != DxgkDriver) &&
-            ((ulDispatch - (ULONG_PTR)DxgkDriver->DriverStart < DxgkDriver->DriverSize) ||
+            (DlpIsDxgkMiniport(DriverObject, DxgkDriver) ||
              (ulDispatch - (ULONG_PTR)DriverObject->DriverStart < DriverObject->DriverSize)))
         {
             bFound = DlpDriverDrivesDisplay(DriverObject);
-        }
-        else if ((DriverObject != DxgkDriver) && DlpDriverDrivesDisplay(DriverObject))
-        {
-            /* A display driver whose PnP requests do not go through dxgkrnl first */
-            DPRINT1("win32k: display driver %wZ dispatches PnP at %p (own image %p+%lx, dxgkrnl %p+%lx)\n",
-                    &DriverName, (PVOID)ulDispatch, DriverObject->DriverStart, DriverObject->DriverSize,
-                    DxgkDriver->DriverStart, DxgkDriver->DriverSize);
+            if (bFound)
+                DPRINT1("win32k: WDDM display driver %wZ\n", &DriverName);
         }
 
         ObDereferenceObject(DriverObject);
@@ -1357,6 +1380,12 @@ DlNotifySessionOpen(VOID)
     }
     else if ((ppi == NULL) || (ppi->DxProcess == NULL))
     {
+        return;
+    }
+    else if (gbBaseVideo)
+    {
+        /* /BASEVIDEO: keep the desktop on VGA even with a WDDM driver installed */
+        DPRINT1("win32k: VGA mode requested, the desktop stays on the XDDM drivers\n");
         return;
     }
     else if (!DlpHasWddmDisplayAdapter())
