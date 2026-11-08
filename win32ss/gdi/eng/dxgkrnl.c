@@ -607,6 +607,13 @@ DlpHasWddmDisplayAdapter(VOID)
         {
             bFound = DlpDriverDrivesDisplay(DriverObject);
         }
+        else if ((DriverObject != DxgkDriver) && DlpDriverDrivesDisplay(DriverObject))
+        {
+            /* A display driver whose PnP requests do not go through dxgkrnl first */
+            DPRINT1("win32k: display driver %wZ dispatches PnP at %p (own image %p+%lx, dxgkrnl %p+%lx)\n",
+                    &DriverName, (PVOID)ulDispatch, DriverObject->DriverStart, DriverObject->DriverSize,
+                    DxgkDriver->DriverStart, DxgkDriver->DriverSize);
+        }
 
         ObDereferenceObject(DriverObject);
     }
