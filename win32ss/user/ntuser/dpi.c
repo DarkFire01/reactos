@@ -45,12 +45,18 @@ FASTCALL
 UserUpdateClientDpi(
     _In_ PTHREADINFO pti)
 {
+    PULONG_PTR Slot;
+
     if (!pti->pClientInfo)
         return;
+    /* The client info lives in the thread's TEB, so it is only addressable from its own process */
+    if (pti->ppi != PsGetCurrentProcessWin32Process())
+        return;
+    Slot = &((PULONG_PTR)pti->pClientInfo)[USER_CLIENTINFO_VIRTUAL_DPI_SLOT];
     _SEH2_TRY
     {
-        ((PULONG_PTR)pti->pClientInfo)[USER_CLIENTINFO_VIRTUAL_DPI_SLOT] =
-            UserIsThreadDpiVirtualized(pti) ? USER_VIRTUAL_DPI : 0;
+        ProbeForWrite(Slot, sizeof(*Slot), sizeof(ULONG_PTR));
+        *Slot = UserIsThreadDpiVirtualized(pti) ? USER_VIRTUAL_DPI : 0;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
