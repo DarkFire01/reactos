@@ -535,10 +535,16 @@ DlpDriverDrivesDisplay(
     return FALSE;
 }
 
+/* dxgkrnl's per-miniport driver object extension, keyed by the driver object (DpiInitialize) */
+#define DLP_DPI_DRIVER_EXTENSION_SIGNATURE  0x74727044  /* 'Dprt' */
+#define DLP_DPI_DRIVER_EXTENSION_SIGNATURE_OFFSET   0x10
+#define DLP_DPI_DRIVER_EXTENSION_DRIVER_OFFSET      0x20
+
 /*
- * DxgkInitialize points the miniport's dispatch routines and AddDevice into dxgkrnl. Vendor
- * drivers may put their own routine in front of some of them afterwards (nvlddmkm takes
- * IRP_MJ_PNP and passes it on), so any one of them leading into dxgkrnl will do.
+ * DxgkInitialize points the miniport's dispatch routines and AddDevice into dxgkrnl and gives
+ * the driver object dxgkrnl's extension. Vendor drivers may put their own routines in front
+ * afterwards (nvlddmkm replaces all of them and passes the requests on), so the extension is
+ * what tells, with the dispatch routines as the fallback.
  */
 static BOOLEAN
 DlpIsDxgkMiniport(
@@ -546,7 +552,16 @@ DlpIsDxgkMiniport(
     _In_ PDRIVER_OBJECT DxgkDriver)
 {
     ULONG_PTR Start = (ULONG_PTR)DxgkDriver->DriverStart;
+    PUCHAR Extension;
     ULONG i;
+
+    Extension = IoGetDriverObjectExtension(DriverObject, DriverObject);
+    if (Extension &&
+        (*(PULONG)(Extension + DLP_DPI_DRIVER_EXTENSION_SIGNATURE_OFFSET) == DLP_DPI_DRIVER_EXTENSION_SIGNATURE) &&
+        (*(PDRIVER_OBJECT *)(Extension + DLP_DPI_DRIVER_EXTENSION_DRIVER_OFFSET) == DriverObject))
+    {
+        return TRUE;
+    }
 
     if (DriverObject->DriverExtension &&
         ((ULONG_PTR)DriverObject->DriverExtension->AddDevice - Start < DxgkDriver->DriverSize))
@@ -630,12 +645,12 @@ DlpHasWddmDisplayAdapter(VOID)
 
         ulDispatch = (ULONG_PTR)DriverObject->MajorFunction[IRP_MJ_PNP];
         if ((DriverObject != DxgkDriver) &&
+            DlpDriverDrivesDisplay(DriverObject) &&
             (DlpIsDxgkMiniport(DriverObject, DxgkDriver) ||
              (ulDispatch - (ULONG_PTR)DriverObject->DriverStart < DriverObject->DriverSize)))
         {
-            bFound = DlpDriverDrivesDisplay(DriverObject);
-            if (bFound)
-                DPRINT1("win32k: WDDM display driver %wZ\n", &DriverName);
+            bFound = TRUE;
+            DPRINT1("win32k: WDDM display driver %wZ\n", &DriverName);
         }
 
         ObDereferenceObject(DriverObject);
