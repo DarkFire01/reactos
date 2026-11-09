@@ -938,13 +938,17 @@ DlInitDxgkrnl(VOID)
 #if DL_DXGK_EXPORTS_D3DKMT
         DlpResolveD3DKMTExports();
         DlResolveDxgkForwards(gpDxgkDeviceObject->DriverObject->DriverStart);
-#endif
-
-        /* Also populate the D3DKMT callback table the NtGdiDdDDI* thunks route through. */
+#else
+        /*
+         * Also populate the D3DKMT callback table the NtGdiDdDDI* thunks route through.
+         * Only ReactOS's own dxgkrnl knows this IOCTL: Windows 11 dxgkrnl uses the same code for
+         * its capture interface and rejects the table. The thunks use the exports above instead.
+         */
         Status = DxgRegisterAdapterCallbacks(gpDxgkDeviceObject);
         if (!NT_SUCCESS(Status))
             DPRINT1("win32k: DxgRegisterAdapterCallbacks failed 0x%lX\n", Status);
         Status = STATUS_SUCCESS;   /* the D3DKMT table is optional for the display path */
+#endif
 
         /* CSRSS tried to open the session before dxgkrnl was ready, so open it now */
         if (gbDlSessionOpenDeferred)

@@ -60,6 +60,30 @@ DxgkpTraceNoProc(PCSTR Name, volatile LONG *pCount)
 #define DXGKMT_TRACE_NOPROC(name) \
     do { static volatile LONG C = 0; DxgkpTraceNoProc(name, &C); } while (0)
 
+/* Exported by ntoskrnl */
+PCHAR NTAPI PsGetProcessImageFileName(_In_ PEPROCESS Process);
+
+NTSTATUS
+NTAPI
+DlTraceD3DKMTFailure(
+    _In_ PCSTR Name,
+    _In_ NTSTATUS Status,
+    _Inout_ volatile LONG *Count)
+{
+    LONG Failures;
+
+    if (NT_SUCCESS(Status))
+        return Status;
+
+    Failures = InterlockedIncrement(Count);
+    if (Failures <= 8 || (Failures & (Failures - 1)) == 0)
+    {
+        DPRINT1("win32k: D3DKMT %s failed 0x%lX in %s (%p), failure %ld\n", Name, Status,
+                PsGetProcessImageFileName(PsGetCurrentProcess()), PsGetCurrentProcessId(), Failures);
+    }
+    return Status;
+}
+
 /**
  * @brief Populate DxgAdapterCallbacks from dxgkrnl. Sends IOCTL_VIDEO_REGISTER_RXGK to \Device\DxgKrnl;
  *        DxgKrnl_ms fills the RxgkIntPfn* slots with its D3DKMT entry points (device/reactosif.cpp).
@@ -359,7 +383,7 @@ NtGdiDdDDIGetProcessSchedulingPriorityClass(_In_  HANDLE unnamedParam1,
     pfn = (PFN_DXGK_GETPROCESSPRIORITYCLASS)DxgkGetD3DKMTSlot(
               DXGK_SLOT_GetProcessSchedulingPriorityClass);
     if (pfn != NULL)
-        return pfn(unnamedParam1, unnamedParam2);
+        DXGKMT_RETURN("GetProcessSchedulingPriorityClass", pfn(unnamedParam1, unnamedParam2));
 
     DXGKMT_TRACE_CANNED("GetProcessSchedulingPriorityClass");
 
@@ -380,7 +404,7 @@ NtGdiDdDDISetProcessSchedulingPriorityClass(_In_ HANDLE unnamedParam1,
     pfn = (PFN_DXGK_SETPROCESSPRIORITYCLASS)DxgkGetD3DKMTSlot(
               DXGK_SLOT_SetProcessSchedulingPriorityClass);
     if (pfn != NULL)
-        return pfn(unnamedParam1, unnamedParam2);
+        DXGKMT_RETURN("SetProcessSchedulingPriorityClass", pfn(unnamedParam1, unnamedParam2));
 
     DXGKMT_TRACE_CANNED("SetProcessSchedulingPriorityClass");
     return STATUS_SUCCESS;
@@ -625,7 +649,7 @@ NtGdiDdDDICreateAllocation(_Inout_ D3DKMT_CREATEALLOCATION* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CreateAllocation", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -647,7 +671,7 @@ NtGdiDdDDICheckMonitorPowerState(_In_ const D3DKMT_CHECKMONITORPOWERSTATE* unnam
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CheckMonitorPowerState", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -669,7 +693,7 @@ NtGdiDdDDICheckOcclusion(_In_ const D3DKMT_CHECKOCCLUSION* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CheckOcclusion", pfn((PVOID)unnamedParam1));
 }
 
 
@@ -692,7 +716,7 @@ NtGdiDdDDICloseAdapter(_In_ const D3DKMT_CLOSEADAPTER* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CloseAdapter", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -714,7 +738,7 @@ NtGdiDdDDICreateContext(_Inout_ D3DKMT_CREATECONTEXT* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CreateContext", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -736,7 +760,7 @@ NtGdiDdDDICreateDevice(_Inout_ D3DKMT_CREATEDEVICE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CreateDevice", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -758,7 +782,7 @@ NtGdiDdDDICreateOverlay(_Inout_ D3DKMT_CREATEOVERLAY* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CreateOverlay", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -780,7 +804,7 @@ NtGdiDdDDICreateSynchronizationObject(_Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("CreateSynchronizationObject", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -802,7 +826,7 @@ NtGdiDdDDIDestroyAllocation(_In_ const D3DKMT_DESTROYALLOCATION* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("DestroyAllocation", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -824,7 +848,7 @@ NtGdiDdDDIDestroyContext(_In_ const D3DKMT_DESTROYCONTEXT* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("DestroyContext", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -846,7 +870,7 @@ NtGdiDdDDIDestroyDevice(_In_ const D3DKMT_DESTROYDEVICE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("DestroyDevice", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -868,7 +892,7 @@ NtGdiDdDDIDestroyOverlay(_In_ const D3DKMT_DESTROYOVERLAY* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("DestroyOverlay", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -890,7 +914,7 @@ NtGdiDdDDIDestroySynchronizationObject(_In_ const D3DKMT_DESTROYSYNCHRONIZATIONO
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("DestroySynchronizationObject", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -912,7 +936,7 @@ NtGdiDdDDIEscape(_In_ const D3DKMT_ESCAPE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("Escape", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -934,7 +958,7 @@ NtGdiDdDDIFlipOverlay(_In_ const D3DKMT_FLIPOVERLAY* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("FlipOverlay", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -956,7 +980,7 @@ NtGdiDdDDIGetContextSchedulingPriority(_Inout_ D3DKMT_GETCONTEXTSCHEDULINGPRIORI
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetContextSchedulingPriority", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -978,7 +1002,7 @@ NtGdiDdDDIGetDeviceState(_Inout_ D3DKMT_GETDEVICESTATE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetDeviceState", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1000,7 +1024,7 @@ NtGdiDdDDIGetDisplayModeList(_Inout_ D3DKMT_GETDISPLAYMODELIST* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetDisplayModeList", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1022,7 +1046,7 @@ NtGdiDdDDIGetMultisampleMethodList(_Inout_ D3DKMT_GETMULTISAMPLEMETHODLIST* unna
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetMultisampleMethodList", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1044,7 +1068,7 @@ NtGdiDdDDIGetPresentHistory(_Inout_ D3DKMT_GETPRESENTHISTORY* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetPresentHistory", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1066,7 +1090,7 @@ NtGdiDdDDIGetRuntimeData(_In_ const D3DKMT_GETRUNTIMEDATA* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetRuntimeData", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1088,7 +1112,7 @@ NtGdiDdDDIGetScanLine(_In_ D3DKMT_GETSCANLINE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetScanLine", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1110,7 +1134,7 @@ NtGdiDdDDIGetSharedPrimaryHandle(_Inout_ D3DKMT_GETSHAREDPRIMARYHANDLE* unnamedP
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("GetSharedPrimaryHandle", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1132,7 +1156,7 @@ NtGdiDdDDIInvalidateActiveVidPn(_In_ const D3DKMT_INVALIDATEACTIVEVIDPN* unnamed
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("InvalidateActiveVidPn", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1154,7 +1178,7 @@ NtGdiDdDDILock(_Inout_ D3DKMT_LOCK* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("Lock", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1176,7 +1200,7 @@ NtGdiDdDDIOpenResource(_Inout_ D3DKMT_OPENRESOURCE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("OpenResource", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1198,7 +1222,7 @@ NtGdiDdDDIPollDisplayChildren(_In_ const D3DKMT_POLLDISPLAYCHILDREN* unnamedPara
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("PollDisplayChildren", pfn((PVOID)unnamedParam1));
 }
 
 /* dxgkrnl's present also takes whether GDI owns the display, it reports occlusion otherwise */
@@ -1224,7 +1248,7 @@ NtGdiDdDDIPresent(_In_ D3DKMT_PRESENT* unnamedParam1)
     }
 
     /* GDI is never powered off here, so it always owns the display */
-    return pfn(unnamedParam1, TRUE);
+    DXGKMT_RETURN("Present", pfn(unnamedParam1, TRUE));
 }
 
 NTSTATUS
@@ -1246,7 +1270,7 @@ NtGdiDdDDIQueryAdapterInfo(_Inout_ const D3DKMT_QUERYADAPTERINFO* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("QueryAdapterInfo", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1268,7 +1292,7 @@ NtGdiDdDDIQueryAllocationResidency(_In_ const D3DKMT_QUERYALLOCATIONRESIDENCY* u
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("QueryAllocationResidency", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1290,7 +1314,7 @@ NtGdiDdDDIQueryResourceInfo(_Inout_ D3DKMT_QUERYRESOURCEINFO* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("QueryResourceInfo", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1312,7 +1336,7 @@ NtGdiDdDDIQueryStatistics(_Inout_ const D3DKMT_QUERYSTATISTICS* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("QueryStatistics", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1334,7 +1358,7 @@ NtGdiDdDDIReleaseProcessVidPnSourceOwners(_In_ HANDLE unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("ReleaseProcessVidPnSourceOwners", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1356,7 +1380,7 @@ NtGdiDdDDIRender(_In_ D3DKMT_RENDER* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("Render", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1378,7 +1402,7 @@ NtGdiDdDDISetAllocationPriority(_In_ const D3DKMT_SETALLOCATIONPRIORITY* unnamed
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SetAllocationPriority", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1400,7 +1424,7 @@ NtGdiDdDDISetContextSchedulingPriority(_In_ const D3DKMT_SETCONTEXTSCHEDULINGPRI
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SetContextSchedulingPriority", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1422,7 +1446,7 @@ NtGdiDdDDISetDisplayMode(_In_ const D3DKMT_SETDISPLAYMODE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SetDisplayMode", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1444,7 +1468,7 @@ NtGdiDdDDISetDisplayPrivateDriverFormat(_In_ const D3DKMT_SETDISPLAYPRIVATEDRIVE
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SetDisplayPrivateDriverFormat", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1466,7 +1490,7 @@ NtGdiDdDDISetGammaRamp(_In_ const D3DKMT_SETGAMMARAMP* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SetGammaRamp", pfn((PVOID)unnamedParam1));
 }
 
 
@@ -1489,7 +1513,7 @@ NtGdiDdDDISetQueuedLimit(_Inout_ const D3DKMT_SETQUEUEDLIMIT* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SetQueuedLimit", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1511,7 +1535,7 @@ NtGdiDdDDISetVidPnSourceOwner(_In_ const D3DKMT_SETVIDPNSOURCEOWNER* unnamedPara
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SetVidPnSourceOwner", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1533,7 +1557,7 @@ NtGdiDdDDIUnlock(_In_ const D3DKMT_UNLOCK* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("Unlock", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1555,7 +1579,7 @@ NtGdiDdDDIUpdateOverlay(_In_ const D3DKMT_UPDATEOVERLAY* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("UpdateOverlay", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1577,7 +1601,7 @@ NtGdiDdDDIWaitForIdle(_In_ const D3DKMT_WAITFORIDLE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("WaitForIdle", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1599,7 +1623,7 @@ NtGdiDdDDIWaitForSynchronizationObject(_In_ const D3DKMT_WAITFORSYNCHRONIZATIONO
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("WaitForSynchronizationObject", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1621,7 +1645,7 @@ NtGdiDdDDIWaitForVerticalBlankEvent(_In_ const D3DKMT_WAITFORVERTICALBLANKEVENT*
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("WaitForVerticalBlankEvent", pfn((PVOID)unnamedParam1));
 }
 
 NTSTATUS
@@ -1643,7 +1667,7 @@ NtGdiDdDDISignalSynchronizationObject(_In_ const D3DKMT_SIGNALSYNCHRONIZATIONOBJ
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn((PVOID)unnamedParam1);
+    DXGKMT_RETURN("SignalSynchronizationObject", pfn((PVOID)unnamedParam1));
 }
 
 /*
@@ -1666,7 +1690,7 @@ NtGdiDdDDICheckSharedResourceAccess(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CheckSharedResourceAccess", pfn(unnamedParam1));
 }
 
 /*
@@ -1689,7 +1713,7 @@ NtGdiDdDDIAdjustFullscreenGamma(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("AdjustFullscreenGamma", pfn(unnamedParam1));
 }
 
 /*
@@ -1712,7 +1736,7 @@ NtGdiDdDDICheckMultiPlaneOverlaySupport3(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CheckMultiPlaneOverlaySupport3", pfn(unnamedParam1));
 }
 
 /*
@@ -1735,7 +1759,7 @@ NtGdiDdDDIPresentMultiPlaneOverlay3(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("PresentMultiPlaneOverlay3", pfn(unnamedParam1));
 }
 
 /*
@@ -1758,7 +1782,7 @@ NtGdiDdDDIQueryVidPnExclusiveOwnership(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("QueryVidPnExclusiveOwnership", pfn(unnamedParam1));
 }
 
 /*
@@ -1793,7 +1817,7 @@ NtGdiDdDDISetVidPnSourceHwProtection(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SetVidPnSourceHwProtection", pfn(unnamedParam1));
 }
 
 /*
@@ -1816,7 +1840,7 @@ NtGdiDdDDIEnumAdapters2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("EnumAdapters2", pfn(unnamedParam1));
 }
 
 /* dxgkrnl reads and writes the caller's buffer itself, clamped to user space, so it gets it as is */
@@ -1836,7 +1860,7 @@ NtGdiDdDDIOpenAdapterFromLuid(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenAdapterFromLuid", pfn(unnamedParam1));
 }
 
 /*
@@ -1859,7 +1883,7 @@ NtGdiDdDDISetVidPnSourceOwner1(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SetVidPnSourceOwner1", pfn(unnamedParam1));
 }
 
 /*
@@ -1896,7 +1920,7 @@ NtGdiDdDDIAcquireKeyedMutex(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("AcquireKeyedMutex", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -1915,7 +1939,7 @@ NtGdiDdDDIAcquireKeyedMutex2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("AcquireKeyedMutex2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -1934,7 +1958,7 @@ NtGdiDdDDIChangeVideoMemoryReservation(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("ChangeVideoMemoryReservation", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -1953,7 +1977,7 @@ NtGdiDdDDICheckMultiPlaneOverlaySupport2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CheckMultiPlaneOverlaySupport2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -1972,7 +1996,7 @@ NtGdiDdDDIConfigureSharedResource(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("ConfigureSharedResource", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -1991,7 +2015,7 @@ NtGdiDdDDICreateContextVirtual(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CreateContextVirtual", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2010,7 +2034,7 @@ NtGdiDdDDICreateKeyedMutex(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CreateKeyedMutex", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2029,7 +2053,7 @@ NtGdiDdDDICreateKeyedMutex2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CreateKeyedMutex2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2048,7 +2072,7 @@ NtGdiDdDDICreatePagingQueue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CreatePagingQueue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2067,7 +2091,7 @@ NtGdiDdDDIDestroyAllocation2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("DestroyAllocation2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2086,7 +2110,7 @@ NtGdiDdDDIDestroyKeyedMutex(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("DestroyKeyedMutex", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2105,7 +2129,7 @@ NtGdiDdDDIDestroyPagingQueue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("DestroyPagingQueue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2124,7 +2148,7 @@ NtGdiDdDDIEvict(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("Evict", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2143,7 +2167,7 @@ NtGdiDdDDIFreeGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("FreeGpuVirtualAddress", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2162,7 +2186,7 @@ NtGdiDdDDIGetOverlayState(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("GetOverlayState", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2181,7 +2205,7 @@ NtGdiDdDDIInvalidateCache(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("InvalidateCache", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2200,7 +2224,7 @@ NtGdiDdDDILock2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("Lock2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2219,7 +2243,7 @@ NtGdiDdDDIMakeResident(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("MakeResident", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2238,7 +2262,7 @@ NtGdiDdDDIMapGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("MapGpuVirtualAddress", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2257,7 +2281,7 @@ NtGdiDdDDIOpenKeyedMutex(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenKeyedMutex", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2276,7 +2300,7 @@ NtGdiDdDDIOpenKeyedMutex2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenKeyedMutex2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2295,7 +2319,7 @@ NtGdiDdDDIOpenNtHandleFromName(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenNtHandleFromName", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2314,7 +2338,7 @@ NtGdiDdDDIOpenResourceFromNtHandle(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenResourceFromNtHandle", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2333,7 +2357,7 @@ NtGdiDdDDIOpenSyncObjectFromNtHandle(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenSyncObjectFromNtHandle", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2352,7 +2376,7 @@ NtGdiDdDDIOpenSyncObjectFromNtHandle2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenSyncObjectFromNtHandle2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2371,7 +2395,7 @@ NtGdiDdDDIOpenSyncObjectNtHandleFromName(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenSyncObjectNtHandleFromName", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2390,7 +2414,7 @@ NtGdiDdDDIOpenSynchronizationObject(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("OpenSynchronizationObject", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2409,7 +2433,7 @@ NtGdiDdDDIPresentMultiPlaneOverlay2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("PresentMultiPlaneOverlay2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2428,7 +2452,7 @@ NtGdiDdDDIQueryResourceInfoFromNtHandle(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("QueryResourceInfoFromNtHandle", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2447,7 +2471,7 @@ NtGdiDdDDIReclaimAllocations2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("ReclaimAllocations2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2466,7 +2490,7 @@ NtGdiDdDDIReleaseKeyedMutex(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("ReleaseKeyedMutex", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2485,7 +2509,7 @@ NtGdiDdDDIReleaseKeyedMutex2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("ReleaseKeyedMutex2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2504,7 +2528,7 @@ NtGdiDdDDIReserveGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("ReserveGpuVirtualAddress", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2523,7 +2547,7 @@ NtGdiDdDDISetContextInProcessSchedulingPriority(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SetContextInProcessSchedulingPriority", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2542,7 +2566,7 @@ NtGdiDdDDISignalSynchronizationObjectFromCpu(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SignalSynchronizationObjectFromCpu", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2561,7 +2585,7 @@ NtGdiDdDDISignalSynchronizationObjectFromGpu(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SignalSynchronizationObjectFromGpu", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2580,7 +2604,7 @@ NtGdiDdDDISignalSynchronizationObjectFromGpu2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SignalSynchronizationObjectFromGpu2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2599,7 +2623,7 @@ NtGdiDdDDISubmitCommand(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SubmitCommand", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2618,7 +2642,7 @@ NtGdiDdDDIUnlock2(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("Unlock2", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2637,7 +2661,7 @@ NtGdiDdDDIUpdateGpuVirtualAddress(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("UpdateGpuVirtualAddress", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2656,7 +2680,7 @@ NtGdiDdDDIWaitForSynchronizationObjectFromCpu(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("WaitForSynchronizationObjectFromCpu", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2675,7 +2699,7 @@ NtGdiDdDDIWaitForSynchronizationObjectFromGpu(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("WaitForSynchronizationObjectFromGpu", pfn(unnamedParam1));
 }
 
 /* The one entry point here that is a parameter list rather than a block */
@@ -2703,7 +2727,7 @@ NtGdiDdDDIShareObjects(
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(ObjectCount, Objects, ObjectAttributes, DesiredAccess, SharedHandle);
+    DXGKMT_RETURN("ShareObjects", pfn(ObjectCount, Objects, ObjectAttributes, DesiredAccess, SharedHandle));
 }
 
 NTSTATUS
@@ -2722,7 +2746,7 @@ NtGdiDdDDIQueryClockCalibration(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("QueryClockCalibration", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2741,7 +2765,7 @@ NtGdiDdDDIMarkDeviceAsError(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("MarkDeviceAsError", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2760,7 +2784,7 @@ NtGdiDdDDICheckVidPnExclusiveOwnership(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CheckVidPnExclusiveOwnership", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2779,7 +2803,7 @@ NtGdiDdDDIQueryVideoMemoryInfo(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("QueryVideoMemoryInfo", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2798,7 +2822,7 @@ NtGdiDdDDICacheHybridQueryValue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CacheHybridQueryValue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2817,7 +2841,7 @@ NtGdiDdDDIGetCachedHybridQueryValue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("GetCachedHybridQueryValue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2836,7 +2860,7 @@ NtGdiDdDDIEnumAdapters(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("EnumAdapters", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2855,7 +2879,7 @@ NtGdiDdDDICreateHwQueue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("CreateHwQueue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2874,7 +2898,7 @@ NtGdiDdDDIDestroyHwQueue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("DestroyHwQueue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2893,7 +2917,7 @@ NtGdiDdDDISubmitCommandToHwQueue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SubmitCommandToHwQueue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2912,7 +2936,7 @@ NtGdiDdDDISubmitSignalSyncObjectsToHwQueue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SubmitSignalSyncObjectsToHwQueue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2931,7 +2955,7 @@ NtGdiDdDDISubmitWaitForSyncObjectsToHwQueue(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("SubmitWaitForSyncObjectsToHwQueue", pfn(unnamedParam1));
 }
 
 NTSTATUS
@@ -2950,5 +2974,5 @@ NtGdiDdDDIUpdateAllocationProperty(_Inout_ PVOID unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    return pfn(unnamedParam1);
+    DXGKMT_RETURN("UpdateAllocationProperty", pfn(unnamedParam1));
 }
