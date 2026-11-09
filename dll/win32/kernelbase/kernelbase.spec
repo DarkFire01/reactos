@@ -106,7 +106,7 @@
 @ stdcall CallNamedPipeW(wstr ptr long ptr long ptr long)
 @ stdcall CallbackMayRunLong(ptr)
 @ stdcall CancelIo(long)
-@ stdcall CancelIoEx(long ptr)
+@ stdcall CancelIoEx(ptr ptr)
 @ stdcall -stub CancelSynchronousIo(long)
 @ stdcall CancelThreadpoolIo(ptr) ntdll.TpCancelAsyncIoOperation
 @ stdcall CancelWaitableTimer(long)

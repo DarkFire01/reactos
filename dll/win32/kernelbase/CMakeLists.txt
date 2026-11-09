@@ -17,6 +17,7 @@ add_definitions(
 spec2def(${KERNELBASE_NAME}.dll kernelbase.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    client/CancelIoEx.c
     client/shared_utils.c
     client/file/fileutils.c
     client/actctx.c
