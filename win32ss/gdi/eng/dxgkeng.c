@@ -7,6 +7,9 @@
 
 #include <win32k.h>
 #include <d3dkmthk.h>
+
+/* Exported by ntoskrnl */
+PCHAR NTAPI PsGetProcessImageFileName(_In_ PEPROCESS Process);
 #include <reactos/rddm/rddm_private.h>
 
 #define NDEBUG
@@ -839,12 +842,13 @@ DxgkEngAssertGdiOutput(
     return bResult;
 }
 
+/* dxgkrnl asks for this after DxgkEngAssertGdiOutput brought a source back */
 static
 VOID
 APIENTRY
 DxgkEngResetPointer(VOID)
 {
-    UNIMPLEMENTED_ONCE;
+    DPRINT1("win32k: DxgkEngResetPointer, the pointer is not redrawn\n");
 }
 
 #if DXGKRNL_TARGET != DXGKRNL_TARGET_WIN11
@@ -1027,16 +1031,24 @@ DxgkEngFindViewDesktopPosition(
     return 0;
 }
 
+/* EnsureGdiOutput hands an unowned source to the CDD only while this says no DWM composes */
 static
 LONG
 APIENTRY
 DxgkEngIsDwmComposing(
     _Out_ PBOOL pbComposing)
 {
+    static LONG lLast = -1;
+    LONG lComposing;
+
     if (pbComposing != NULL)
         *pbComposing = FALSE;
 
-    return IntDwmIsActive();
+    lComposing = IntDwmIsActive() ? 1 : 0;
+    if (InterlockedExchange(&lLast, lComposing) != lComposing)
+        DPRINT1("win32k: DxgkEngIsDwmComposing -> %ld\n", lComposing);
+
+    return lComposing;
 }
 
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
@@ -1247,7 +1259,7 @@ VOID
 APIENTRY
 DxgkEngNotifyDisplayChange(VOID)
 {
-    UNIMPLEMENTED_ONCE;
+    DPRINT1("win32k: DxgkEngNotifyDisplayChange, nothing is done with it\n");
 }
 
 #if DXGKRNL_TARGET >= DXGKRNL_TARGET_19041
@@ -1274,6 +1286,11 @@ DxgkEngReleaseWin32kLocks(VOID)
 {
 }
 
+/*
+ * MANAGEDPRIMARIESTRACKER takes these around everything that can change what a source scans out:
+ * SetVidPnSourceOwner, DisableDWMVirtualMode, the release of a dying owner device and the destroy
+ * of a primary allocation. Rare, so each one is logged: the release path shows up here.
+ */
 static
 VOID
 APIENTRY
@@ -1281,8 +1298,8 @@ DxgkEngAcquireDwmStateAndPDevLocks(
     _In_ PVOID pAdapter,
     _In_ ULONG cSources)
 {
-    UNREFERENCED_PARAMETER(pAdapter);
-    UNREFERENCED_PARAMETER(cSources);
+    DPRINT1("win32k: dxgkrnl locks the PDEVs of adapter %p (%lu sources) in %s\n",
+            pAdapter, cSources, PsGetProcessImageFileName(PsGetCurrentProcess()));
 }
 
 static
@@ -1292,8 +1309,7 @@ DxgkEngReleasePDevAndDwmStateLocks(
     _In_ PVOID pAdapter,
     _In_ ULONG cSources)
 {
-    UNREFERENCED_PARAMETER(pAdapter);
-    UNREFERENCED_PARAMETER(cSources);
+    DPRINT1("win32k: dxgkrnl unlocks the PDEVs of adapter %p (%lu sources)\n", pAdapter, cSources);
 }
 #endif
 

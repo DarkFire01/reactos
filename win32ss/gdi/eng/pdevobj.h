@@ -202,6 +202,17 @@ NTAPI
 PDEVOBJ_vEnableCddPrimaries(
     _In_ PFN_PDEV_NEED_CDD_PRIMARY pfnNeedCddPrimary);
 
+typedef NTSTATUS (NTAPI *PFN_PDEV_DISPLAY_ON_OFF)(
+    _In_ const LUID *AdapterLuid,
+    _In_ ULONG VidPnSourceId,
+    _In_ BOOLEAN bOn,
+    _In_ BOOLEAN bReleaseOwners);
+
+VOID
+NTAPI
+PDEVOBJ_vRestoreCddScanout(
+    _In_ PFN_PDEV_DISPLAY_ON_OFF pfnDisplayOnOff);
+
 VOID
 NTAPI
 PDEVOBJ_vSynchronizeDrivers(
