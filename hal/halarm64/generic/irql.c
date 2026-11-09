@@ -14,11 +14,41 @@
 /*
  * The IRQL lives in the PCR and the GIC priority mask follows it, so only
  * interrupts above the current IRQL reach the processor. The software
- * interrupts are SGIs numbered like their IRQL, lowering the IRQL lets the
- * pending ones in on their own.
+ * interrupts are SGIs numbered like their IRQL.
  */
 
+/* GLOBALS *******************************************************************/
+
+/* Software interrupts each processor requested for itself and has not taken yet, one bit per IRQL */
+static volatile LONG HalpPendingSoftwareInterrupts[MAXIMUM_PROCESSORS];
+
 /* FUNCTIONS *****************************************************************/
+
+/**
+ * @brief
+ * Waits until the software interrupts this processor requested above an IRQL have run.
+ *
+ * NT runs them before the IRQL change or the request returns, an SGI takes a moment to arrive.
+ */
+static
+VOID
+HalpWaitForSoftwareInterrupts(
+    _In_ KIRQL Irql)
+{
+    volatile LONG *Pending = &HalpPendingSoftwareInterrupts[KeGetCurrentProcessorNumber()];
+    BOOLEAN Enabled;
+    ULONG Spins;
+
+    /* Nothing can be taken with interrupts off, they run once they are on again */
+    Enabled = KeDisableInterrupts();
+    KeRestoreInterrupts(Enabled);
+    if (!Enabled)
+        return;
+
+    /* Bounded, a lost SGI must not hang the processor */
+    for (Spins = 0; (*Pending >> (Irql + 1)) && (Spins < 1000000); Spins++)
+        YieldProcessor();
+}
 
 VOID
 NTAPI
@@ -74,6 +104,7 @@ KfLowerIrql(
         KeBugCheckEx(IRQL_NOT_LESS_OR_EQUAL, NewIrql, KeGetPcr()->CurrentIrql, 0, 9);
 
     HalpChangeIrql(NewIrql);
+    HalpWaitForSoftwareInterrupts(NewIrql);
 }
 
 VOID
@@ -81,7 +112,11 @@ FASTCALL
 HalRequestSoftwareInterrupt(
     _In_ KIRQL Irql)
 {
+    InterlockedOr(&HalpPendingSoftwareInterrupts[KeGetCurrentProcessorNumber()], 1L << Irql);
     HalpGicSendSgi(Irql, AFFINITY_MASK(KeGetCurrentProcessorNumber()));
+
+    if (Irql > KeGetPcr()->CurrentIrql)
+        HalpWaitForSoftwareInterrupts(KeGetPcr()->CurrentIrql);
 }
 
 VOID
@@ -140,7 +175,11 @@ HalBeginSystemInterrupt(
     HalpGicEndOfInterrupt(Vector);
 
     if (Irql > CurrentIrql)
+    {
+        if (Vector < GIC_SGI_COUNT)
+            InterlockedAnd(&HalpPendingSoftwareInterrupts[KeGetCurrentProcessorNumber()], ~(1L << Vector));
         return TRUE;
+    }
 
     /* It slipped in before the mask went up, send software interrupts again */
     if (Vector < GIC_SGI_COUNT)
