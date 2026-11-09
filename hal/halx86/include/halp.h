@@ -361,6 +361,9 @@ HalpMapPhysicalMemory64(
     IN PFN_COUNT PageCount
 );
 
+/* PCI DMA snoops the caches here, so the debugger context maps like any other range */
+#define HalpMapDebugMemory HalpMapPhysicalMemory64
+
 VOID
 NTAPI
 HalpUnmapVirtualAddress(

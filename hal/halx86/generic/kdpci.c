@@ -573,7 +573,8 @@ HalpSetupPciDeviceForDebugging(
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    PciDevice->Memory.VirtualAddress = HalpMapPhysicalMemory64(PhysicalAddress, PageCount);
+    /* The controller DMAs into this block, so it is not mapped like the register windows */
+    PciDevice->Memory.VirtualAddress = HalpMapDebugMemory(PhysicalAddress, PageCount);
 
     return STATUS_SUCCESS;
 }
