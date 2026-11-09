@@ -67,6 +67,10 @@ HalInitializeProcessor(
         KdGetAcpiTablePhase0 = HalAcpiGetTable;
         KdMapPhysicalMemory64 = HalpKdMapPhysicalMemory;
         KdUnmapVirtualAddress = HalpUnmapVirtualAddress;
+        KdSetupPciDeviceForDebugging = HalpSetupPciDeviceForDebugging;
+        KdGetPciDataByOffset = HalpGetPciDataByOffset;
+        KdSetPciDataByOffset = HalpSetPciDataByOffset;
+        KdReleasePciDeviceforDebugging = HalpReleasePciDeviceForDebugging;
     }
 
     HalpGicInitializeCpu(ProcessorNumber);
@@ -214,6 +218,9 @@ HalReportResourceUsage(VOID)
     /* Physical and bus addresses are the same, so both lists match */
     IoReportHalResourceUsage(&HalName, List, List, Size);
     ExFreePoolWithTag(List, TAG_HAL);
+
+    /* Keep the PCI driver off a controller the debugger is using */
+    HalpRegisterPciDebuggingDeviceInfo();
 }
 
 VOID
