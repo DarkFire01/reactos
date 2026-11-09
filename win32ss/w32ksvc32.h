@@ -1015,3 +1015,4 @@
     SVC_(UserIsTouchWindow, 2)
     SVC_(UserGetTouchInputInfo, 4)
     SVC_(UserCloseTouchInputHandle, 1)
+    SVC_(UserDisplayConfigGetDeviceInfo, 1)

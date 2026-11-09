@@ -197,6 +197,7 @@
 #define USERTAG_ATTACHINFO               'iasU'
 #define USERTAG_ALTTAB                   'lasU'
 #define USERTAG_DEBUG                    'gbsU'
+#define USERTAG_DISPLAYCONFIG            'cDsU'
 #define USERTAG_CLIPBOARD                'bcsU'
 #define USERTAG_CALLBACK                 'ccsU'
 #define USERTAG_COMPOSITIONPROP          'dcsU'
