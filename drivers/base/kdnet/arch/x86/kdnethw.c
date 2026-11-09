@@ -1,11 +1,11 @@
 /*
  * PROJECT:     ReactOS Networking Debugging Module
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Architecture-specific kdnet timing primitives (amd64)
+ * PURPOSE:     Architecture-specific kdnet timing primitives (x86)
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "../kdnet.h"
+#include "kdnet.h"
 
 /*
  * Time source for the early kdnet init path.
