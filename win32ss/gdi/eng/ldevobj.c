@@ -1043,7 +1043,10 @@ LDEVOBJ_bProbeAndCaptureDevmode(
         }
     }
 
-    /* Now, search the exact mode to return to caller */
+    /* Now, search the exact mode to return to caller. Unless the closest one will do, a mode
+     * the device does not list is DISP_CHANGE_BADMODE, as on Windows */
+    if (!bSearchClosestMode)
+        pdmSelected = NULL;
     bOrientation = LDEVOBJ_bListHasOrientation(pGraphicsDevice);
     for (i = 0; i < pGraphicsDevice->cDevModes; i++)
     {

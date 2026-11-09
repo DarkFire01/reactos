@@ -20,6 +20,14 @@ BOOL gbBaseVideo = FALSE;
 static PPROCESSINFO gpFullscreen = NULL;
 
 /*
+ * A WDDM mode saved but not set (CDS_UPDATEREGISTRY with CDS_NORESET or CDS_TEST) only sits in
+ * dxgkrnl's CDS journal, which the next apply of the saved configuration commits. The saved modes
+ * GDI keeps do not know it yet, so going back to the saved mode is not skipped meanwhile.
+ * Changed under the exclusive user lock.
+ */
+static BOOLEAN gbCdsJournalPending = FALSE;
+
+/*
  * The mode of a display device that is not part of the desktop: no size, at no position. Filled
  * once in InitVideo and never written again, because NtUserEnumDisplaySettings copies it out after
  * it has left the user lock, which it only held shared.
@@ -997,8 +1005,8 @@ UserChangeDisplaySettings(
     if ((dm.dmFields & DM_DISPLAYFREQUENCY) && (dm.dmDisplayFrequency == 0))
         dm.dmDisplayFrequency = ppdev->pdmwDev->dmDisplayFrequency;
 
-    /* Look for the requested DEVMODE */
-    if (!LDEVOBJ_bProbeAndCaptureDevmode(ppdev->pGraphicsDevice, &dm, &newDevMode, FALSE))
+    /* Look for the requested DEVMODE; the saved settings may settle for the closest listed mode */
+    if (!LDEVOBJ_bProbeAndCaptureDevmode(ppdev->pGraphicsDevice, &dm, &newDevMode, pdm == NULL))
     {
         ERR("Could not find a matching DEVMODE\n");
         lResult = DISP_CHANGE_BADMODE;
@@ -1428,7 +1436,8 @@ UserpChangeDisplaySettingsWddm(
     {
         if (pdm == NULL)
         {
-            if (EngpGetSavedDisplayMode(ppdev->pGraphicsDevice, &dmSaved) &&
+            if (!gbCdsJournalPending &&
+                EngpGetSavedDisplayMode(ppdev->pGraphicsDevice, &dmSaved) &&
                 UserpIsCurrentMode(ppdev->pdmwDev, &dmSaved))
             {
                 DPRINT1("win32k: '%S' already runs its saved mode\n", ppdev->pGraphicsDevice->szWinDeviceName);
@@ -1458,7 +1467,12 @@ UserpChangeDisplaySettingsWddm(
                                       &pmdevNew,
                                       &bApplied);
     if (!bSetMode)
+    {
+        /* DlChangeDisplaySettings only journaled it */
+        if ((lResult == DISP_CHANGE_SUCCESSFUL) && (pdm != NULL) && (flags & CDS_UPDATEREGISTRY))
+            gbCdsJournalPending = TRUE;
         return lResult;
+    }
 
     if ((lResult == DISP_CHANGE_SUCCESSFUL) && (pmdevNew != NULL))
     {
@@ -1472,6 +1486,10 @@ UserpChangeDisplaySettingsWddm(
     if (lResult == DISP_CHANGE_SUCCESSFUL)
     {
         UserpUpdateDisplayMetrics(gpmdev->ppdevGlobal, flags);
+
+        /* The saved configuration went in with the journal, and GDI keeps its modes now */
+        if ((pdm == NULL) || (flags & CDS_UPDATEREGISTRY))
+            gbCdsJournalPending = FALSE;
     }
     else
     {
