@@ -117,18 +117,28 @@ PnpWatchScanStack(
     _In_ ULONG FilterCount,
     _In_ ULONG FilterDepth)
 {
-    PULONG_PTR Sp = Thread->KernelStack, Base = Thread->InitialStack, p, End;
+    PEX_RUNDOWN_REF Rundown = &((PETHREAD)Thread)->RundownProtect;
+    PULONG_PTR Sp, Base, p, End;
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     UNICODE_STRING Name;
     BOOLEAN Match = (Filter == NULL);
     ULONG Hits = 0, Depth = 0, i;
 
-    if (Thread->State == Terminated)
-        return FALSE;
-    if (!Sp || !Base || Sp >= Base || (ULONG_PTR)(Base - Sp) > KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR))
+    /* PspExitThread waits for this before KeTerminateThread, so the reaper cannot free the stack */
+    if (!ExAcquireRundownProtection(Rundown))
         return FALSE;
 
+    Sp = Thread->KernelStack;
+    Base = Thread->InitialStack;
+    if (Thread->State == Terminated ||
+        !Sp || !Base || Sp >= Base || (ULONG_PTR)(Base - Sp) > KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR))
+    {
+        ExReleaseRundownProtection(Rundown);
+        return FALSE;
+    }
+
     End = PnpWatchStackCopy + PnpWatchCopyStack(Sp, Base);
+    ExReleaseRundownProtection(Rundown);
 
     KeEnterCriticalRegion();
     ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
@@ -234,8 +244,12 @@ PnpWatchDumpStalledGuiThreads(VOID)
     {
         for (Thread = PsGetNextProcessThread(Process, NULL); Thread; Thread = PsGetNextProcessThread(Process, Thread))
         {
-            if (Thread == PsGetCurrentThread() || !Thread->Tcb.Win32Thread || Thread->Tcb.State != Waiting)
+            /* Push locks and guarded mutexes wait in KeWaitForGate, which leaves the thread GateWait */
+            if (Thread == PsGetCurrentThread() || !Thread->Tcb.Win32Thread ||
+                (Thread->Tcb.State != Waiting && Thread->Tcb.State != GateWait))
+            {
                 continue;
+            }
 
             Waited = KeTickCount.LowPart - Thread->Tcb.WaitTime;
             if (Waited < Limit || PnpWatchGuiStallReports >= PNP_WATCH_GUI_STALL_REPORTS ||
