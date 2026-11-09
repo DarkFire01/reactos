@@ -387,6 +387,7 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
     PE1000_ADAPTER a;
     PUCHAR base;
     ULONG off, i, status;
+    USHORT Command;
 
     if (KdNetExtensibilityImports && KdNetDbgPrintf)
         KdNetDbgPrintf(
@@ -430,18 +431,23 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
 
     /* Ensure PCI Bus Master + Memory Space decode are enabled. QEMU's e1000
      * refuses to DMA received packets unless Bus Master is set, and the bit can
-     * be left clear here. Use direct config-space I/O (0xCF8/0xCFC). */
-     ULONG slot = KdNet->Device->Slot;
-     ULONG bus = KdNet->Device->Bus;
-     ULONG devn = slot & 0x1F;
-     ULONG func = (slot >> 5) & 0x7;
-     ULONG cfg = 0x80000000UL | (bus << 16) | (devn << 11) | (func << 8) | 0x04;
-     ULONG cmd;
-     __outdword(0xCF8, cfg);
-     cmd = __indword(0xCFC);
-     __outdword(0xCF8, cfg);
-     __outdword(0xCFC, cmd | 0x06);   /* Memory Space (1) + Bus Master (2) */
-     E1kDbg(a, "e1000: PCI cmd 0x%lx -> 0x%lx (BM+MEM)\n", cmd, cmd | 0x06);
+     * be left clear here. The HAL's accessors reach config space on every
+     * architecture, through port 0xCF8 on a PC and the ECAM window elsewhere. */
+    if (KdGetPciDataByOffset(KdNet->Device->Bus,
+                             KdNet->Device->Slot,
+                             &Command,
+                             FIELD_OFFSET(PCI_COMMON_HEADER, Command),
+                             sizeof(Command)) == sizeof(Command))
+    {
+        E1kDbg(a, "e1000: PCI cmd 0x%lx -> 0x%lx (BM+MEM)\n",
+               (ULONG)Command, (ULONG)(Command | PCI_ENABLE_MEMORY_SPACE | PCI_ENABLE_BUS_MASTER));
+        Command |= PCI_ENABLE_MEMORY_SPACE | PCI_ENABLE_BUS_MASTER;
+        KdSetPciDataByOffset(KdNet->Device->Bus,
+                             KdNet->Device->Slot,
+                             &Command,
+                             FIELD_OFFSET(PCI_COMMON_HEADER, Command),
+                             sizeof(Command));
+    }
 
 
     off = E1kAlignUp((ULONG)sizeof(E1000_ADAPTER), 128);
