@@ -329,6 +329,15 @@ HalpSetPriorityMask(
     _In_ KIRQL Irql);
 
 /* memory.c */
+CODE_SEG("INIT")
+ULONG64
+NTAPI
+HalpAllocPhysicalMemory(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ ULONG64 MaxAddress,
+    _In_ PFN_NUMBER PageCount,
+    _In_ BOOLEAN Aligned);
+
 PVOID
 NTAPI
 HalpMapPhysicalMemory(
