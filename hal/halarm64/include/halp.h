@@ -226,6 +226,68 @@ VOID
 HalpInitializeEfiRuntime(
     _In_ PLOADER_PARAMETER_BLOCK LoaderBlock);
 
+NTSTATUS
+NTAPI
+HalpOpenRegistryKey(
+    _Out_ PHANDLE KeyHandle,
+    _In_opt_ HANDLE RootKey,
+    _In_ PUNICODE_STRING KeyName,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ BOOLEAN Create);
+
+/* kdpci.c, shared with the x86 HALs. It keeps one of these per debug device. */
+typedef union _PCI_TYPE1_CFG_CYCLE_BITS
+{
+    struct
+    {
+        ULONG InUse:2;
+        ULONG RegisterNumber:6;
+        ULONG FunctionNumber:3;
+        ULONG DeviceNumber:5;
+        ULONG BusNumber:8;
+        ULONG Reserved2:8;
+    };
+    ULONG AsULONG;
+} PCI_TYPE1_CFG_CYCLE_BITS, *PPCI_TYPE1_CFG_CYCLE_BITS;
+
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+HalpSetupPciDeviceForDebugging(
+    _In_opt_ PVOID LoaderBlock,
+    _Inout_ PDEBUG_DEVICE_DESCRIPTOR PciDevice);
+
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+HalpReleasePciDeviceForDebugging(
+    _Inout_ PDEBUG_DEVICE_DESCRIPTOR PciDevice);
+
+CODE_SEG("INIT")
+ULONG
+NTAPI
+HalpGetPciDataByOffset(
+    _In_ ULONG BusNumber,
+    _In_ ULONG SlotNumber,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
+CODE_SEG("INIT")
+ULONG
+NTAPI
+HalpSetPciDataByOffset(
+    _In_ ULONG BusNumber,
+    _In_ ULONG SlotNumber,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+HalpRegisterPciDebuggingDeviceInfo(VOID);
+
 /* pci.c */
 ULONG
 NTAPI

@@ -56,6 +56,35 @@ static PVOID HalpEfiSetTime;
 
 /* FUNCTIONS *****************************************************************/
 
+/**
+ * @brief Opens a registry key, or creates it as volatile.
+ */
+NTSTATUS
+NTAPI
+HalpOpenRegistryKey(
+    _Out_ PHANDLE KeyHandle,
+    _In_opt_ HANDLE RootKey,
+    _In_ PUNICODE_STRING KeyName,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ BOOLEAN Create)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    ULONG Disposition;
+
+    InitializeObjectAttributes(&ObjectAttributes, KeyName, OBJ_CASE_INSENSITIVE, RootKey, NULL);
+
+    if (!Create)
+        return ZwOpenKey(KeyHandle, DesiredAccess, &ObjectAttributes);
+
+    return ZwCreateKey(KeyHandle,
+                       DesiredAccess,
+                       &ObjectAttributes,
+                       0,
+                       NULL,
+                       REG_OPTION_VOLATILE,
+                       &Disposition);
+}
+
 VOID
 NTAPI
 HalReturnToFirmware(

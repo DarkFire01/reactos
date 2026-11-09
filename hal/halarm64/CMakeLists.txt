@@ -22,7 +22,8 @@ list(APPEND SOURCE
     generic/timer.c
     ${REACTOS_SOURCE_DIR}/hal/halx86/acpi/halpnpdd.c
     ${REACTOS_SOURCE_DIR}/hal/halx86/acpi/mmconfig.c
-    ${REACTOS_SOURCE_DIR}/hal/halx86/generic/dma.c)
+    ${REACTOS_SOURCE_DIR}/hal/halx86/generic/dma.c
+    ${REACTOS_SOURCE_DIR}/hal/halx86/generic/kdpci.c)
 
 list(APPEND ASM_SOURCE
     generic/cache.s)
