@@ -53,6 +53,33 @@ MDEVOBJ_bDisable(
     return bSuccess;
 }
 
+/* Bring-up aid: the first modes of a device, and the ones the size of the mode dxgkrnl gave it */
+static
+VOID
+MDEVOBJ_vLogModes(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice)
+{
+    PDEVMODEW pdm, pdmConfig = pGraphicsDevice->pdmDisplayConfig;
+    ULONG i;
+
+    for (i = 0; (i < pGraphicsDevice->cDevModes) && (pGraphicsDevice->pDevModeList != NULL); i++)
+    {
+        pdm = pGraphicsDevice->pDevModeList[i].pdm;
+        if ((i >= 8) &&
+            ((pdmConfig == NULL) ||
+             (pdm->dmPelsWidth != pdmConfig->dmPelsWidth) ||
+             (pdm->dmPelsHeight != pdmConfig->dmPelsHeight)))
+        {
+            continue;
+        }
+
+        DPRINT1("win32k:   mode %lu: %lux%lux%lu %lu Hz, flags 0x%lx, fields 0x%lx, %u+%u bytes\n",
+                i, pdm->dmPelsWidth, pdm->dmPelsHeight, pdm->dmBitsPerPel,
+                pdm->dmDisplayFrequency, pdm->dmDisplayFlags, pdm->dmFields,
+                pdm->dmSize, pdm->dmDriverExtra);
+    }
+}
+
 PMDEVOBJ
 MDEVOBJ_Create(
     _In_opt_ PUNICODE_STRING pustrDeviceName,
@@ -126,6 +153,7 @@ MDEVOBJ_Create(
             /* The mode is dxgkrnl's, but the driver still gets the device's mode list when it enables */
             if (!LDEVOBJ_bBuildDevmodeList(pGraphicsDevice))
                 DPRINT1("win32k: '%S' has no mode list\n", pGraphicsDevice->szWinDeviceName);
+            MDEVOBJ_vLogModes(pGraphicsDevice);
 
             ppdev = PDEVOBJ_Create(pGraphicsDevice,
                                    pGraphicsDevice->pdmDisplayConfig,

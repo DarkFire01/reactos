@@ -1200,7 +1200,8 @@ DlpCommitPathsModality(
         return Status;
     }
 
-    DPRINT1("win32k: display configuration applied, %u path(s)\n", Modality->AppliedCount);
+    /* AppliedCount is not a path count on Windows 11: Functionalize zeroes it, and the apply leaves it be */
+    DPRINT1("win32k: display configuration applied\n");
     DlpDumpModality(Modality);
 
     Status = DlpRecordDisplayConfig(Modality);
