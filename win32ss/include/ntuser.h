@@ -3068,6 +3068,13 @@ NTAPI
 NtUserRemoveClipboardFormatListener(
     _In_ HWND hwnd);
 
+struct DISPLAYCONFIG_DEVICE_INFO_HEADER;
+
+NTSTATUS
+NTAPI
+NtUserDisplayConfigGetDeviceInfo(
+    _Inout_ struct DISPLAYCONFIG_DEVICE_INFO_HEADER *pPacket);
+
 BOOL
 NTAPI
 NtUserModifyWindowTouchCapability(

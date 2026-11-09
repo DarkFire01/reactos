@@ -1137,6 +1137,63 @@ EngpFindGraphicsDeviceByNtName(
     return pGraphicsDevice;
 }
 
+_Requires_lock_held_(ghsemGraphicsDeviceList)
+static
+PGRAPHICS_DEVICE
+EngpFindDisplayConfigDevice(
+    _In_ const ENGP_DISPLAY_PATH *pPath);
+
+/**
+ * @brief
+ * Finds the graphics device a WDDM source is shown through, and copies its GDI name while the
+ * device list is still locked.
+ *
+ * @param[in] pAdapterLuid
+ * The dxgkrnl adapter.
+ *
+ * @param[in] VidPnSourceId
+ * The source on that adapter.
+ *
+ * @param[out] pszWinDeviceName
+ * Receives the \\.\DISPLAYn name of the device, zero-filled behind it. Untouched when there is
+ * no such device.
+ *
+ * @param[in] cbWinDeviceName
+ * The size of pszWinDeviceName in bytes.
+ *
+ * @return
+ * The graphics device, or NULL when GDI has none for that source. Only compare it, never look
+ * into it: once the list is unlocked an adapter that leaves can take its devices with it.
+ */
+PGRAPHICS_DEVICE
+NTAPI
+EngpFindGraphicsDeviceBySource(
+    _In_ const LUID *pAdapterLuid,
+    _In_ ULONG VidPnSourceId,
+    _Out_writes_bytes_(cbWinDeviceName) PWSTR pszWinDeviceName,
+    _In_ SIZE_T cbWinDeviceName)
+{
+    ENGP_DISPLAY_PATH Path;
+    PGRAPHICS_DEVICE pGraphicsDevice;
+
+    Path.AdapterLuid = *pAdapterLuid;
+    Path.VidPnSourceId = VidPnSourceId;
+    Path.pdm = NULL;
+
+    EngAcquireSemaphoreShared(ghsemGraphicsDeviceList);
+
+    pGraphicsDevice = EngpFindDisplayConfigDevice(&Path);
+    if (pGraphicsDevice != NULL)
+    {
+        RtlZeroMemory(pszWinDeviceName, cbWinDeviceName);
+        RtlStringCbCopyW(pszWinDeviceName, cbWinDeviceName, pGraphicsDevice->szWinDeviceName);
+    }
+
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
+
+    return pGraphicsDevice;
+}
+
 /**
  * @brief
  * Has dxgkrnl applied a display configuration that now decides which devices make up the desktop?

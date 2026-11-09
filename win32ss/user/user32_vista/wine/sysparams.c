@@ -249,10 +249,20 @@ typedef enum ORIENTATION_PREFERENCE {
 /***********************************************************************
  *              DisplayConfigGetDeviceInfo (USER32.@)
  */
+#ifdef __REACTOS__
+/* win32k answers the packet; ntuser.h is not usable from the Wine code */
+LONG NTAPI NtUserDisplayConfigGetDeviceInfo(DISPLAYCONFIG_DEVICE_INFO_HEADER *packet);
+ULONG NTAPI RtlNtStatusToDosError(LONG status);
+#endif
+
 LONG WINAPI DisplayConfigGetDeviceInfo(DISPLAYCONFIG_DEVICE_INFO_HEADER *packet)
 {
+#ifdef __REACTOS__
+    return RtlNtStatusToDosError( NtUserDisplayConfigGetDeviceInfo( packet ) );
+#else
     FIXME( "DisplayConfigGetDeviceInfo: stub!\n" );
     return 1;
+#endif
 }
 
 /***********************************************************************

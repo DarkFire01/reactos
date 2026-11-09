@@ -10,6 +10,10 @@
 #include <reactos/rddm/rddm_private.h>
 DBG_DEFAULT_CHANNEL(UserDisplay);
 
+/* DPRINT1 for what bring-up logs need to show in release builds too */
+#define NDEBUG
+#include <debug.h>
+
 BOOL gbBaseVideo = FALSE;
 static PPROCESSINFO gpFullscreen = NULL;
 
@@ -1548,4 +1552,429 @@ VideoPortCallout(
     }
 
     KeWaitForSingleObject(&Request.Done, WrUserRequest, KernelMode, FALSE, NULL);
+}
+
+/* DisplayConfigGetDeviceInfo ************************************************/
+
+/*
+ * The info types, packet layouts and packet sizes below are those of Windows 11 build 26100.
+ *
+ * win32k builds for Windows Server 2003, where wingdi.h has none of the display configuration
+ * types, so the packets are spelled out here.
+ */
+typedef struct _DISPLAYCONFIG_PACKET_HEADER
+{
+    LONG Type;
+    ULONG Size;
+    LUID AdapterLuid;
+    ULONG Id;
+} DISPLAYCONFIG_PACKET_HEADER, *PDISPLAYCONFIG_PACKET_HEADER;
+
+C_ASSERT(sizeof(DISPLAYCONFIG_PACKET_HEADER) == 0x14);
+
+/* DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME */
+#define DISPLAYCONFIG_GET_SOURCE_NAME       1
+
+typedef struct _DISPLAYCONFIG_SOURCE_NAME_PACKET
+{
+    DISPLAYCONFIG_PACKET_HEADER Header;
+    WCHAR GdiDeviceName[CCHDEVICENAME];
+} DISPLAYCONFIG_SOURCE_NAME_PACKET, *PDISPLAYCONFIG_SOURCE_NAME_PACKET;
+
+C_ASSERT(sizeof(DISPLAYCONFIG_SOURCE_NAME_PACKET) == 0x54);
+
+/* DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE, its targetMode is 8-byte aligned at 0x20 */
+#define DISPLAYCONFIG_GET_TARGET_PREFERRED_MODE 3
+#define TARGET_PREFERRED_MODE_PADDING       0x1c
+
+/* DISPLAYCONFIG_DEVICE_INFO_GET_SUPPORT_VIRTUAL_RESOLUTION */
+#define DISPLAYCONFIG_GET_SUPPORT_VIRTUAL_RESOLUTION 7
+
+/*
+ * The undocumented info type the Direct3D 9 runtime learns its adapters from, d3d9.dll calls the
+ * packet _DISPLAYCONFIG_GET_DISPLAY_INFO. dxgkrnl's DxgkGetAdapterDeviceDesc fills in the adapters,
+ * the mode of the source and the flags from bit 5 up, win32k where the source sits on the desktop,
+ * its GDI name and the flags below. On Windows, types -30, -21 and -11 return the same packet;
+ * ReactOS only knows -2.
+ */
+#define DISPLAYCONFIG_GET_DISPLAY_INFO      (-2)
+
+#define DISPLAY_INFO_REMOTE                 0x00000001  /* off the desktop of a remote session, never in ReactOS */
+#define DISPLAY_INFO_AT_ORIGIN              0x00000002  /* the source starts at the desktop origin */
+#define DISPLAY_INFO_ON_DESKTOP             0x00000004  /* an enabled display PDEV shows the source */
+#define DISPLAY_INFO_WIN32K_FLAGS           0x00000007
+
+/* The mode win32k reports for a source that is off the desktop */
+#define DISPLAY_INFO_FORMAT_NONGDI          5           /* DISPLAYCONFIG_PIXELFORMAT_NONGDI */
+#define DISPLAY_INFO_ROTATION_IDENTITY      1           /* D3DKMDT_VPPR_IDENTITY */
+
+typedef struct _DISPLAYCONFIG_DISPLAY_INFO_PACKET
+{
+    DISPLAYCONFIG_PACKET_HEADER Header;     /* 0x000 */
+    UCHAR AdapterInfo[0x658];               /* 0x014 two adapter descriptions: PCI IDs, description,
+                                               device path, driver model. d3d9 takes its adapter
+                                               identifier from the second, at 0x340 */
+    RECTL rcDesktop;                        /* 0x66c */
+    WCHAR GdiDeviceName[128];               /* 0x67c */
+    ULONG TargetId;                         /* 0x77c the most important target of the source */
+    ULONG DisplayId;                        /* 0x780 */
+    ULONG Width;                            /* 0x784 the mode of the source */
+    ULONG Height;                           /* 0x788 */
+    ULONG PixelFormat;                      /* 0x78c DISPLAYCONFIG_PIXELFORMAT */
+    ULONG RefreshNumerator;                 /* 0x790 */
+    ULONG RefreshDenominator;               /* 0x794 */
+    ULONG Rotation;                         /* 0x798 D3DKMDT_VIDPN_PRESENT_PATH_ROTATION */
+    ULONG Reserved79C;                      /* 0x79c from the mode as well */
+    RECTL rcSource;                         /* 0x7a0 d3d9 reads it, turned with Rotation */
+    UCHAR ColorInfo[0x3c];                  /* 0x7b0 wire format, color space, colorimetry */
+    ULONG TargetUsage;                      /* 0x7ec nonzero when dxgkrnl set the target aside */
+    UCHAR Reserved7F0[0xc];                 /* 0x7f0 */
+    LUID PairedAdapterLuid;                 /* 0x7fc render adapter of an indirect display */
+    ULONG Flags;                            /* 0x804 */
+} DISPLAYCONFIG_DISPLAY_INFO_PACKET, *PDISPLAYCONFIG_DISPLAY_INFO_PACKET;
+
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, rcDesktop) == 0x66c);
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, GdiDeviceName) == 0x67c);
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, TargetId) == 0x77c);
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, Width) == 0x784);
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, rcSource) == 0x7a0);
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, TargetUsage) == 0x7ec);
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, PairedAdapterLuid) == 0x7fc);
+C_ASSERT(FIELD_OFFSET(DISPLAYCONFIG_DISPLAY_INFO_PACKET, Flags) == 0x804);
+C_ASSERT(sizeof(DISPLAYCONFIG_DISPLAY_INFO_PACKET) == 0x808);
+
+/* The info types dxgkrnl answers itself. A packet must have the exact size of its type */
+static const struct
+{
+    LONG Type;
+    ULONG Size;
+} gDxgkDisplayConfigTypes[] =
+{
+    { -37, 0x2c }, { -36, 0x18 }, { -34, 0x308 }, { -33, 0x178 }, { -29, 0x18 }, { -26, 0x18 },
+    { -24, 0x20 }, { -22, 0x1c }, { -14, 0x28 }, { -13, 0x24 }, { -12, 0x18 }, { -10, 0x1c },
+    { -5, 0x1c },
+    { 2, 0x1a4 },   /* GET_TARGET_NAME */
+    { 3, 0x50 },    /* GET_TARGET_PREFERRED_MODE */
+    { 4, 0x114 },   /* GET_ADAPTER_NAME */
+    { 6, 0x18 },    /* GET_TARGET_BASE_TYPE */
+    { 7, 0x18 },    /* GET_SUPPORT_VIRTUAL_RESOLUTION */
+    { 9, 0x20 },    /* GET_ADVANCED_COLOR_INFO */
+    { 11, 0x18 },   /* GET_SDR_WHITE_LEVEL */
+    { 12, 0x18 },   /* GET_MONITOR_SPECIALIZATION */
+    { 15, 0x24 },   /* GET_ADVANCED_COLOR_INFO_2 */
+    { 100, 0x18 },
+};
+
+NTSTATUS NTAPI DlConvertDisplayConfigAdapterAndId(_Inout_ PLUID pAdapterLuid, _Inout_ PULONG pId);
+NTSTATUS NTAPI DlDisplayConfigGetDeviceInfo(_Inout_ PVOID Packet);
+NTSTATUS NTAPI DlGetAdapterDeviceDesc(_In_ LUID AdapterLuid, _In_ ULONG VidPnSourceId, _Inout_ PVOID Packet);
+
+/**
+ * @brief Fills win32k's part of a display info packet: the GDI name of the source, where it sits
+ *        on the desktop and the flags that say so. dxgkrnl filled in its part already.
+ *
+ * @return STATUS_NOT_FOUND when GDI has no device for the source.
+ */
+_Requires_lock_held_(UserLock)
+static
+NTSTATUS
+UserGetDisplayInfo(
+    _Inout_ PDISPLAYCONFIG_DISPLAY_INFO_PACKET pInfo)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    PPDEVOBJ ppdev = NULL;
+    SIZEL sizl;
+    ULONG i;
+
+    pGraphicsDevice = EngpFindGraphicsDeviceBySource(&pInfo->Header.AdapterLuid,
+                                                     pInfo->Header.Id,
+                                                     pInfo->GdiDeviceName,
+                                                     sizeof(pInfo->GdiDeviceName));
+    if (pGraphicsDevice == NULL)
+        return STATUS_NOT_FOUND;
+
+    /* The source is on the desktop when an enabled display PDEV of the desktop shows it */
+    for (i = 0; (gpmdev != NULL) && (i < gpmdev->cDev); i++)
+    {
+        if ((gpmdev->dev[i].ppdev->pGraphicsDevice == pGraphicsDevice) &&
+            ((gpmdev->dev[i].ppdev->flFlags & (PDEV_DISPLAY | PDEV_DISABLED)) == PDEV_DISPLAY))
+        {
+            ppdev = gpmdev->dev[i].ppdev;
+            break;
+        }
+    }
+
+    pInfo->Flags &= ~DISPLAY_INFO_WIN32K_FLAGS;
+
+    if (ppdev != NULL)
+    {
+        PDEVOBJ_sizl(ppdev, &sizl);
+        pInfo->rcDesktop.left = ppdev->ptlOrigion.x;
+        pInfo->rcDesktop.top = ppdev->ptlOrigion.y;
+        pInfo->rcDesktop.right = ppdev->ptlOrigion.x + sizl.cx;
+        pInfo->rcDesktop.bottom = ppdev->ptlOrigion.y + sizl.cy;
+
+        pInfo->Flags |= DISPLAY_INFO_ON_DESKTOP;
+        if ((ppdev->ptlOrigion.x == 0) && (ppdev->ptlOrigion.y == 0))
+            pInfo->Flags |= DISPLAY_INFO_AT_ORIGIN;
+
+        return STATUS_SUCCESS;
+    }
+
+    /* Off the desktop it has no mode either, unless dxgkrnl set its target aside for another use */
+    if (pInfo->TargetUsage == 0)
+    {
+        pInfo->Width = 0;
+        pInfo->Height = 0;
+        pInfo->PixelFormat = DISPLAY_INFO_FORMAT_NONGDI;
+        pInfo->RefreshNumerator = 0;
+        pInfo->RefreshDenominator = 1;
+        pInfo->Rotation = DISPLAY_INFO_ROTATION_IDENTITY;
+        pInfo->Reserved79C = 0;
+        RtlZeroMemory(&pInfo->rcDesktop, sizeof(pInfo->rcDesktop));
+        RtlZeroMemory(&pInfo->rcSource, sizeof(pInfo->rcSource));
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Answers one DisplayConfigGetDeviceInfo packet, already copied into the kernel and checked
+ *        to have the size of its type.
+ */
+static
+NTSTATUS
+UserDisplayConfigGetDeviceInfo(
+    _Inout_ PDISPLAYCONFIG_PACKET_HEADER pPacket)
+{
+    PDISPLAYCONFIG_SOURCE_NAME_PACKET pSourceName;
+    PDISPLAYCONFIG_DISPLAY_INFO_PACKET pInfo;
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    NTSTATUS Status, StatusUser;
+    ULONG i;
+
+    /* The id of a QueryDisplayConfig path can carry dxgkrnl's virtual topology hash */
+    if (pPacket->Id != (ULONG)-1)
+    {
+        Status = DlConvertDisplayConfigAdapterAndId(&pPacket->AdapterLuid, &pPacket->Id);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    switch (pPacket->Type)
+    {
+        case DISPLAYCONFIG_GET_SOURCE_NAME:
+            pSourceName = (PDISPLAYCONFIG_SOURCE_NAME_PACKET)pPacket;
+
+            UserEnterShared();
+            pGraphicsDevice = EngpFindGraphicsDeviceBySource(&pPacket->AdapterLuid,
+                                                             pPacket->Id,
+                                                             pSourceName->GdiDeviceName,
+                                                             sizeof(pSourceName->GdiDeviceName));
+            UserLeave();
+
+            return (pGraphicsDevice != NULL) ? STATUS_SUCCESS : STATUS_NOT_FOUND;
+
+        case DISPLAYCONFIG_GET_DISPLAY_INFO:
+            pInfo = (PDISPLAYCONFIG_DISPLAY_INFO_PACKET)pPacket;
+
+            /* The flags are cleared before dxgkrnl sets its own, win32k's go in afterwards */
+            pInfo->Flags = 0;
+
+            Status = DlGetAdapterDeviceDesc(pPacket->AdapterLuid, pPacket->Id, pPacket);
+            if (Status == STATUS_NOT_SUPPORTED)
+                return Status;
+
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("win32k: DxgkGetAdapterDeviceDesc(%08lx:%08lx, %ld) failed 0x%lx\n",
+                        pPacket->AdapterLuid.HighPart, pPacket->AdapterLuid.LowPart,
+                        (LONG)pPacket->Id, Status);
+            }
+
+            /*
+             * win32k fills in its part even when dxgkrnl failed. A source GDI does not know fails
+             * the call, otherwise dxgkrnl's status stands.
+             */
+            if (pPacket->Id != (ULONG)-1)
+            {
+                UserEnterShared();
+                StatusUser = UserGetDisplayInfo(pInfo);
+                UserLeave();
+
+                if (!NT_SUCCESS(StatusUser))
+                    return StatusUser;
+            }
+
+            return NT_SUCCESS(Status) ? STATUS_SUCCESS : Status;
+
+        default:
+            for (i = 0; i < RTL_NUMBER_OF(gDxgkDisplayConfigTypes); i++)
+            {
+                if (gDxgkDisplayConfigTypes[i].Type == pPacket->Type)
+                    return DlDisplayConfigGetDeviceInfo(pPacket);
+            }
+            return STATUS_INVALID_PARAMETER;
+    }
+}
+
+/**
+ * @brief The packet size an info type takes, 0 for a type win32k does not answer.
+ */
+static
+ULONG
+UserDisplayConfigPacketSize(
+    _In_ LONG Type)
+{
+    ULONG i;
+
+    if (Type == DISPLAYCONFIG_GET_SOURCE_NAME)
+        return sizeof(DISPLAYCONFIG_SOURCE_NAME_PACKET);
+
+    if (Type == DISPLAYCONFIG_GET_DISPLAY_INFO)
+        return sizeof(DISPLAYCONFIG_DISPLAY_INFO_PACKET);
+
+    for (i = 0; i < RTL_NUMBER_OF(gDxgkDisplayConfigTypes); i++)
+    {
+        if (gDxgkDisplayConfigTypes[i].Type == Type)
+            return gDxgkDisplayConfigTypes[i].Size;
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Narrows a failure down to the codes that may reach a DisplayConfigGetDeviceInfo caller,
+ *        every other one becomes STATUS_UNSUCCESSFUL (ERROR_GEN_FAILURE once user32 has it).
+ */
+static
+NTSTATUS
+UserDisplayConfigMapStatus(
+    _In_ LONG Type,
+    _In_ NTSTATUS Status)
+{
+    if (NT_SUCCESS(Status) || (Status == STATUS_BUFFER_TOO_SMALL))
+        return Status;
+
+    if (Status == STATUS_BUFFER_OVERFLOW)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if ((Type == DISPLAYCONFIG_GET_SUPPORT_VIRTUAL_RESOLUTION) &&
+        ((Status == STATUS_ILLEGAL_FUNCTION) || (Status == STATUS_DEVICE_DOES_NOT_EXIST)))
+    {
+        return Status;
+    }
+
+    switch (Status)
+    {
+        case STATUS_ACCESS_DENIED:
+        case STATUS_INVALID_PARAMETER:
+        case STATUS_NO_MEMORY:
+        case STATUS_INVALID_PARAMETER_MIX:
+        case STATUS_NOT_SUPPORTED:
+            return Status;
+    }
+
+    if ((Status >= STATUS_INVALID_PARAMETER_1) && (Status <= STATUS_INVALID_PARAMETER_12))
+        return Status;
+
+    return STATUS_UNSUCCESSFUL;
+}
+
+/**
+ * @brief The kernel side of DisplayConfigGetDeviceInfo.
+ *
+ * @param pPacket The caller's packet, a DISPLAYCONFIG_DEVICE_INFO_HEADER followed by what its
+ *        type returns, 4-byte aligned. Its size has to be exactly the one of the type.
+ *
+ * @return An NTSTATUS, which user32 turns into a Win32 error. A packet that cannot be read or
+ *         written back, is smaller than its header or cannot be captured for lack of memory fails
+ *         with STATUS_UNSUCCESSFUL and leaves the reason as the thread's last error.
+ */
+NTSTATUS
+NTAPI
+NtUserDisplayConfigGetDeviceInfo(
+    _Inout_ struct DISPLAYCONFIG_DEVICE_INFO_HEADER *pPacket)
+{
+    PDISPLAYCONFIG_PACKET_HEADER pUserPacket = (PDISPLAYCONFIG_PACKET_HEADER)pPacket;
+    PDISPLAYCONFIG_PACKET_HEADER pCapture;
+    DISPLAYCONFIG_PACKET_HEADER Header;
+    NTSTATUS Status;
+    ULONG Size;
+
+    _SEH2_TRY
+    {
+        ProbeForRead(pUserPacket, sizeof(Header), sizeof(ULONG));
+        Header = *pUserPacket;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        SetLastNtError(_SEH2_GetExceptionCode());
+        _SEH2_YIELD(return STATUS_UNSUCCESSFUL);
+    }
+    _SEH2_END;
+
+    if (Header.Size < sizeof(Header))
+    {
+        SetLastNtError(STATUS_INVALID_PARAMETER);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    Size = UserDisplayConfigPacketSize(Header.Type);
+    if ((Size == 0) || (Header.Size != Size))
+        return STATUS_INVALID_PARAMETER;
+
+    pCapture = ExAllocatePoolZero(PagedPool, Size, USERTAG_DISPLAYCONFIG);
+    if (pCapture == NULL)
+    {
+        SetLastNtError(STATUS_NO_MEMORY);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    _SEH2_TRY
+    {
+        ProbeForRead(pUserPacket, Size, sizeof(ULONG));
+        RtlCopyMemory(pCapture, pUserPacket, Size);
+        Status = STATUS_SUCCESS;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        SetLastNtError(_SEH2_GetExceptionCode());
+        Status = STATUS_UNSUCCESSFUL;
+    }
+    _SEH2_END;
+
+    if (NT_SUCCESS(Status))
+    {
+        /* Decide on what was checked, not on what the caller may since have changed */
+        *pCapture = Header;
+
+        Status = UserDisplayConfigGetDeviceInfo(pCapture);
+        Status = UserDisplayConfigMapStatus(Header.Type, Status);
+
+        /*
+         * The padding in front of targetMode is not dxgkrnl's to fill: clear it, no kernel data
+         * goes out.
+         */
+        if ((Header.Type == DISPLAYCONFIG_GET_TARGET_PREFERRED_MODE) && NT_SUCCESS(Status))
+            *(PULONG)((PUCHAR)pCapture + TARGET_PREFERRED_MODE_PADDING) = 0;
+
+        /* The packet goes back whatever the outcome */
+        _SEH2_TRY
+        {
+            ProbeForWrite(pUserPacket, Size, sizeof(ULONG));
+            RtlCopyMemory(pUserPacket, pCapture, Size);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            SetLastNtError(_SEH2_GetExceptionCode());
+            Status = STATUS_UNSUCCESSFUL;
+        }
+        _SEH2_END;
+    }
+
+    ExFreePoolWithTag(pCapture, USERTAG_DISPLAYCONFIG);
+
+    TRACE("NtUserDisplayConfigGetDeviceInfo(%ld) -> 0x%lx\n", Header.Type, Status);
+    return Status;
 }

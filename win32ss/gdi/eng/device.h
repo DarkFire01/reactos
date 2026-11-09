@@ -50,6 +50,14 @@ NTAPI
 EngpFindGraphicsDeviceByNtName(
     _In_ PCUNICODE_STRING pustrNtDeviceName);
 
+PGRAPHICS_DEVICE
+NTAPI
+EngpFindGraphicsDeviceBySource(
+    _In_ const LUID *pAdapterLuid,
+    _In_ ULONG VidPnSourceId,
+    _Out_writes_bytes_(cbWinDeviceName) PWSTR pszWinDeviceName,
+    _In_ SIZE_T cbWinDeviceName);
+
 /* One active path of the display configuration dxgkrnl applied */
 typedef struct _ENGP_DISPLAY_PATH
 {
