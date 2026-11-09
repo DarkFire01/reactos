@@ -132,7 +132,7 @@ PnpWatchScanStack(
 static VOID
 PnpWatchDumpDisplayThreads(VOID)
 {
-    static const PCWSTR Modules[] = { L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys" };
+    static const PCWSTR Modules[] = { L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys", L"cdd.dll" };
     PEPROCESS Process;
     PETHREAD Thread;
 
