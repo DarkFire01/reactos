@@ -316,6 +316,18 @@ HalpMapPhysicalMemory(
     _In_ PFN_COUNT PageCount,
     _In_ BOOLEAN Device);
 
+PVOID
+NTAPI
+HalpMapPhysicalMemory64(
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ PFN_COUNT PageCount);
+
+PVOID
+NTAPI
+HalpMapDebugMemory(
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ PFN_COUNT PageCount);
+
 VOID
 NTAPI
 HalpUnmapVirtualAddress(

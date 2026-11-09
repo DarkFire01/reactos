@@ -45,13 +45,17 @@ HalpIsRunFree(
  *
  * The loader already created the page tables for this range, so this works
  * before the memory manager is up.
+ *
+ * @param[in] CacheType
+ * One of the MI_CACHE_TYPE_* slots the loader programmed into MAIR_EL1.
  */
+static
 PVOID
 NTAPI
-HalpMapPhysicalMemory(
+HalpMapPhysicalRange(
     _In_ PHYSICAL_ADDRESS PhysicalAddress,
     _In_ PFN_COUNT PageCount,
-    _In_ BOOLEAN Device)
+    _In_ ULONG CacheType)
 {
     PMMPTE FirstPte, LastPte, PointerPte;
     MMPTE TempPte;
@@ -81,15 +85,11 @@ HalpMapPhysicalMemory(
     TempPte.u.Hard.PrivilegedNoExecute = 1;
     TempPte.u.Hard.UserNoExecute = 1;
     TempPte.u.Hard.Writable = 1;
-    if (Device)
-    {
-        TempPte.u.Hard.CacheType = MI_CACHE_TYPE_DEVICE;
-    }
-    else
-    {
-        TempPte.u.Hard.CacheType = MI_CACHE_TYPE_CACHED;
+    TempPte.u.Hard.CacheType = CacheType;
+
+    /* Normal memory is inner shareable, device memory carries no shareability */
+    if (CacheType != MI_CACHE_TYPE_DEVICE)
         TempPte.u.Hard.Shareability = 3;
-    }
 
     Pfn = (PFN_NUMBER)(PhysicalAddress.QuadPart >> PAGE_SHIFT);
     for (i = 0; i < PageCount; i++)
@@ -102,6 +102,44 @@ HalpMapPhysicalMemory(
     HalpPublishPteWrites();
 
     return (PVOID)((ULONG_PTR)MiPteToAddress(PointerPte) + BYTE_OFFSET(PhysicalAddress.LowPart));
+}
+
+PVOID
+NTAPI
+HalpMapPhysicalMemory(
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ PFN_COUNT PageCount,
+    _In_ BOOLEAN Device)
+{
+    return HalpMapPhysicalRange(PhysicalAddress,
+                                PageCount,
+                                Device ? MI_CACHE_TYPE_DEVICE : MI_CACHE_TYPE_CACHED);
+}
+
+/* Register windows of the debug device */
+PVOID
+NTAPI
+HalpMapPhysicalMemory64(
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ PFN_COUNT PageCount)
+{
+    return HalpMapPhysicalRange(PhysicalAddress, PageCount, MI_CACHE_TYPE_DEVICE);
+}
+
+/**
+ * @brief Maps the block the debug device DMAs into.
+ *
+ * SoC controllers often do not snoop the caches, so the block is normal
+ * non-cacheable memory. Device memory would fault on the unaligned copies the
+ * debugger transports make into it.
+ */
+PVOID
+NTAPI
+HalpMapDebugMemory(
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ PFN_COUNT PageCount)
+{
+    return HalpMapPhysicalRange(PhysicalAddress, PageCount, MI_CACHE_TYPE_WRITE_COMBINED);
 }
 
 VOID
