@@ -1,0 +1,44 @@
+; TELEPHONY.INF
+
+; Installation file for the cellular telephony stack
+
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = System
+ClassGUID  = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 11/09/2026,1.00
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ReactOSMfg% = ReactOSMfg
+
+[ReactOSMfg]
+%MSRIL.DeviceDesc% = MSRIL_Inst, MODEM\MSRIL
+
+;------------------------------------------------------------------------------
+
+[MSRIL_Inst.NT]
+CopyFiles = MSRIL_CopyFiles.NT
+
+[MSRIL_CopyFiles.NT]
+msril.sys
+
+[MSRIL_Inst.NT.Services]
+AddService = msril, 0x00000002, MSRIL_Service_Inst
+
+[MSRIL_Service_Inst]
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\msril.sys
+
+;------------------------------------------------------------------------------
+
+[Strings]
+ReactOS = "ReactOS Project"
+ReactOSMfg = "ReactOS"
+MSRIL.DeviceDesc = "Radio Interface Layer Broker"

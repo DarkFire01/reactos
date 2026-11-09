@@ -24,6 +24,7 @@ list(APPEND INF_FILES
     ports.inf
     scsi.inf
     shortcuts.inf
+    telephony.inf
     unknown.inf
     usb.inf
     usbport.inf
