@@ -13,6 +13,10 @@ list(APPEND SOURCE
 
 if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
     list(APPEND SOURCE arch/x86/kdnethw.c)
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND SOURCE arch/arm64/kdnethw.c)
+else()
+    list(APPEND SOURCE arch/generic/kdnethw.c)
 endif()
 
 add_library(kdnet MODULE
