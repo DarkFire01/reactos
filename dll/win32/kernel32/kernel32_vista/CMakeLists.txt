@@ -7,6 +7,7 @@ include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys ..)
 spec2def(kernel32_vista.dll kernel32_vista.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    CancelIoEx.c
     EnumSystemLocalesEx.c
     firmware.c
     GetLocaleInfoEx.c
