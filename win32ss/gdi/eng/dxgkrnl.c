@@ -1036,6 +1036,68 @@ DlpIsFirstPathOfCloneGroup(
 }
 
 /**
+ * @brief Bring-up aid: print a block of the modality dxgkrnl filled in, as raw 32 bit words, since
+ *        part of the layout is still a guess.
+ */
+static VOID
+DlpDumpWords(
+    _In_ PCSTR What,
+    _In_ ULONG Index,
+    _In_reads_bytes_(Size) const VOID *Block,
+    _In_ ULONG Size)
+{
+    const ULONG *Words = Block;
+    ULONG Count = Size / sizeof(ULONG), i, j;
+    CHAR Line[8 * 9 + 1];
+    PSTR End;
+    size_t Left;
+
+    for (i = 0; i < Count; i += 8)
+    {
+        End = Line;
+        Left = sizeof(Line);
+        Line[0] = ANSI_NULL;
+        for (j = i; (j < i + 8) && (j < Count); j++)
+            RtlStringCbPrintfExA(End, Left, &End, &Left, 0, " %08lx", Words[j]);
+        DPRINT1("win32k: %s %lu +%03lx:%s\n", What, Index, (ULONG)(i * sizeof(ULONG)), Line);
+    }
+}
+
+/**
+ * @brief Bring-up aid: print the paths of an applied modality and the mode each one hands GDI,
+ *        including the refresh rate and pixel format dxgkrnl appends for the CDD.
+ */
+static VOID
+DlpDumpModality(
+    _In_ PD3DKMT_GETPATHSMODALITY Modality)
+{
+    PDL_MODALITY_PATH Paths = DL_MODALITY_PATHS(Modality);
+    const ULONG *Extra;
+    PDEVMODEW pdm;
+    USHORT i;
+
+    DlpDumpWords("modality", 0, Modality, DL_MODALITY_HEADER_SIZE);
+    for (i = 0; (i < Modality->PathCount) && (i < 4); i++)
+    {
+        DlpDumpWords("path", i, &Paths[i], sizeof(Paths[i]));
+
+        pdm = Paths[i].DevMode;
+        if (pdm == NULL)
+            continue;
+
+        DPRINT1("win32k: path %u mode '%.32S' %lux%lux%lu %lu Hz, flags 0x%lx, fields 0x%lx, %u+%u bytes\n",
+                i, pdm->dmDeviceName, pdm->dmPelsWidth, pdm->dmPelsHeight, pdm->dmBitsPerPel,
+                pdm->dmDisplayFrequency, pdm->dmDisplayFlags, pdm->dmFields,
+                pdm->dmSize, pdm->dmDriverExtra);
+        if (pdm->dmDriverExtra >= 3 * sizeof(ULONG))
+        {
+            Extra = (const ULONG *)((const UCHAR *)pdm + pdm->dmSize);
+            DPRINT1("win32k: path %u refresh %lu/%lu, format %lu\n", i, Extra[0], Extra[1], Extra[2]);
+        }
+    }
+}
+
+/**
  * @brief Tell GDI which sources the applied configuration turned on and in what mode, which is
  *        what the desktop is then built from. A path the apply failed, or one without a mode, has
  *        no source on the desktop.
@@ -1139,6 +1201,7 @@ DlpCommitPathsModality(
     }
 
     DPRINT1("win32k: display configuration applied, %u path(s)\n", Modality->AppliedCount);
+    DlpDumpModality(Modality);
 
     Status = DlpRecordDisplayConfig(Modality);
     if (!NT_SUCCESS(Status))

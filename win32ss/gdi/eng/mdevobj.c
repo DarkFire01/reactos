@@ -124,12 +124,15 @@ MDEVOBJ_Create(
         if (bDisplayConfig)
         {
             /* The mode is dxgkrnl's, but the driver still gets the device's mode list when it enables */
-            LDEVOBJ_bBuildDevmodeList(pGraphicsDevice);
+            if (!LDEVOBJ_bBuildDevmodeList(pGraphicsDevice))
+                DPRINT1("win32k: '%S' has no mode list\n", pGraphicsDevice->szWinDeviceName);
 
             ppdev = PDEVOBJ_Create(pGraphicsDevice,
                                    pGraphicsDevice->pdmDisplayConfig,
                                    dwAccelerationLevel,
                                    LDEV_DEVICE_DISPLAY);
+            DPRINT1("win32k: '%S' (%lu modes) -> PDEV %p\n",
+                    pGraphicsDevice->szWinDeviceName, pGraphicsDevice->cDevModes, ppdev);
         }
         else if (LDEVOBJ_bProbeAndCaptureDevmode(pGraphicsDevice, pdm ? pdm : &dmDefault, &localPdm, !pdm))
         {
@@ -174,7 +177,7 @@ MDEVOBJ_Create(
 
     if (pmdev->cDev == 0)
     {
-        TRACE("Failed to add any device to MDEV. Returning NULL\n");
+        DPRINT1("win32k: no display device could be enabled\n");
         MDEVOBJ_vDestroy(pmdev);
         return NULL;
     }
