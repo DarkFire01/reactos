@@ -290,6 +290,40 @@ typedef BOOLEAN (NTAPI *PFN_DxgkNeedToEnableCddPrimary)(
     _In_ PVOID Adapter,
     _In_ ULONG VidPnSourceId);
 
+/*
+ * Answers DisplayConfigGetDeviceInfo (bGet TRUE) and DisplayConfigSetDeviceInfo (bGet FALSE)
+ * for the info types dxgkrnl owns, on a kernel copy of the packet. It checks the size of the
+ * type again.
+ */
+typedef NTSTATUS (NTAPI *PFN_DxgkDisplayConfigDeviceInfo)(
+    _In_ BOOLEAN bGet,
+    _Inout_ PVOID Packet);
+
+/*
+ * Fills dxgkrnl's part of the 0x808 byte display info packet: the adapter descriptions, the mode of
+ * the source and the flags from bit 5 up. The third argument is reserved and passed as 0.
+ */
+typedef NTSTATUS (NTAPI *PFN_DxgkGetAdapterDeviceDesc)(
+    _In_ LUID AdapterLuid,
+    _In_ ULONG VidPnSourceId,
+    _In_ ULONG Reserved,
+    _Inout_ PVOID Packet);
+
+/*
+ * Maps the adapter and id of a DisplayConfig packet to the actual ones. Only an id that carries
+ * dxgkrnl's virtual topology hash changes, everything else is copied through. Input and output
+ * may be the same.
+ */
+typedef NTSTATUS (NTAPI *PFN_DxgkConvertLegacyQDCAdapterAndIdToActual)(
+    _In_ const LUID *pAdapterLuid,
+    _In_ ULONG Id,
+    _Out_ LUID *pActualAdapterLuid,
+    _Out_ ULONG *pActualId);
+
+/* What win32k reports when a session connects; the console one is where display calls go */
+typedef VOID (NTAPI *PFN_DxgkSessionConnected)(
+    _In_ BOOLEAN bConsole);
+
 typedef NTSTATUS (NTAPI *PFN_DxgkApplyCdsjToPathsModality)(
     _Inout_ PD3DKMT_GETPATHSMODALITY *Modality,
     _Inout_ PDL_CDS_REQUEST Request);
@@ -321,11 +355,18 @@ typedef struct _DXGKWIN32K_INTERFACE_BUF
     PFN_DxgkPersistPathsModality pfnDxgkPersistPathsModality; /* 22 */
     PFN_DxgkFreePathsModality pfnDxgkFreePathsModality; /* 23 */
     PFN_DxgkAugmentCdsj pfnDxgkAugmentCdsj;             /* 24 */
-    PVOID Reserved25[11];                               /* 25..35 */
+    PVOID Reserved25[6];                                /* 25..30 */
+    PFN_DxgkDisplayConfigDeviceInfo pfnDxgkDisplayConfigDeviceInfo; /* 31 */
+    PFN_DxgkGetAdapterDeviceDesc pfnDxgkGetAdapterDeviceDesc; /* 32 */
+    PVOID Reserved33[3];                                /* 33..35 */
     PFN_DxgkNeedToEnableCddPrimary pfnDxgkNeedToEnableCddPrimary; /* 36 */
-    PVOID Reserved37[21];                               /* 37..57 */
+    PVOID Reserved37[8];                                /* 37..44 */
+    PFN_DxgkSessionConnected pfnDxgkSessionConnected;   /* 45 */
+    PVOID Reserved46[12];                               /* 46..57 */
     PFN_DxgkRegisterDwmProcess pfnDxgkRegisterDwmProcess; /* 58 */
-    PVOID Reserved59[16];                               /* 59..74 */
+    PVOID Reserved59[10];                               /* 59..68 */
+    PFN_DxgkConvertLegacyQDCAdapterAndIdToActual pfnDxgkConvertLegacyQDCAdapterAndIdToActual; /* 69 */
+    PVOID Reserved70[5];                                /* 70..74 */
     PFN_DxgkApplyCdsjToPathsModality pfnDxgkApplyCdsjToPathsModality; /* 75 */
     PVOID Reserved76[28];                               /* 76..103 */
 } DXGKWIN32K_INTERFACE_BUF;
@@ -336,8 +377,12 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkOpenAdapter) == 8 * sizeo
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkGetPathsModality) == 18 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkAugmentCdsj) == 24 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkReleaseProcessVidPnSourceOwners) == 15 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkDisplayConfigDeviceInfo) == 31 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkGetAdapterDeviceDesc) == 32 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkNeedToEnableCddPrimary) == 36 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkSessionConnected) == 45 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkRegisterDwmProcess) == 58 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkConvertLegacyQDCAdapterAndIdToActual) == 69 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality) == 75 * sizeof(PVOID));
 
 #define DL_INTERFACE_VERSION    50
@@ -442,6 +487,9 @@ BOOLEAN                  gbDxgkInitialized = FALSE;
 
 /* dxgkrnl creates its session data when the session opens, and the DWM needs it to register */
 static BOOLEAN           gbDlSessionOpened = FALSE;
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+static BOOLEAN           gbDlSessionConnected = FALSE;
+#endif
 static BOOLEAN           gbDlSessionOpenDeferred = FALSE;
 
 VOID NTAPI DlNotifySessionOpen(VOID);
@@ -1496,6 +1544,103 @@ DlNotifySessionOpen(VOID)
 }
 
 /**
+ * @brief Tell dxgkrnl the session is connected to the console.
+ *
+ * Until then dxgkrnl has no console session, and what it only does for the console fails or is
+ * skipped: GetDisplayModeList, which every Direct3D 9 adapter needs, returns
+ * STATUS_INVALID_PARAMETER. Windows connects in CSRSS with the user lock held, once the first
+ * desktop has been built. ReactOS has only the console session, so it connects at the same point.
+ * The call takes locks of dxgkrnl's own, the same ones FinalizePathsModality just took on this
+ * thread, and calls nothing in win32k back synchronously.
+ */
+static VOID
+DlpConnectConsoleSession(VOID)
+{
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (gbDlSessionConnected || !gbDlSessionOpened || (gDxgkInterface.pfnDxgkSessionConnected == NULL))
+        return;
+
+    /* Logged before the call too, so a boot that stops in it says so */
+    DPRINT1("win32k: connecting the console session to dxgkrnl\n");
+    gDxgkInterface.pfnDxgkSessionConnected(TRUE);
+    gbDlSessionConnected = TRUE;
+    DPRINT1("win32k: console session connected to dxgkrnl\n");
+#endif
+}
+
+/**
+ * @brief Turn the adapter and id of a DisplayConfig packet into the actual ones, which Windows does
+ *        before it answers any type whose id is not -1: the id of a QueryDisplayConfig path can
+ *        carry a hash of dxgkrnl's virtual topology. Any other id stays as it is.
+ *
+ * @param pAdapterLuid The adapter, replaced by the actual one.
+ * @param pId The source or target on it, replaced by the actual one.
+ */
+NTSTATUS NTAPI
+DlConvertDisplayConfigAdapterAndId(
+    _Inout_ PLUID pAdapterLuid,
+    _Inout_ PULONG pId)
+{
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (gbDxgkInitialized && (gDxgkInterface.pfnDxgkConvertLegacyQDCAdapterAndIdToActual != NULL))
+    {
+        return gDxgkInterface.pfnDxgkConvertLegacyQDCAdapterAndIdToActual(pAdapterLuid, *pId,
+                                                                          pAdapterLuid, pId);
+    }
+#endif
+    UNREFERENCED_PARAMETER(pAdapterLuid);
+    UNREFERENCED_PARAMETER(pId);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Answer a DisplayConfigGetDeviceInfo info type that dxgkrnl owns.
+ *
+ * @param Packet A kernel copy of the caller's packet, of the size its type takes.
+ *
+ * @return STATUS_NOT_SUPPORTED when dxgkrnl offers no such routine.
+ */
+NTSTATUS NTAPI
+DlDisplayConfigGetDeviceInfo(
+    _Inout_ PVOID Packet)
+{
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (gbDxgkInitialized && (gDxgkInterface.pfnDxgkDisplayConfigDeviceInfo != NULL))
+        return gDxgkInterface.pfnDxgkDisplayConfigDeviceInfo(TRUE, Packet);
+#endif
+    UNREFERENCED_PARAMETER(Packet);
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Have dxgkrnl fill in its part of a display info packet (adapter IDs, description, driver
+ *        model, the mode of the source, the flags from bit 5 up).
+ *
+ * @param AdapterLuid The adapter.
+ * @param VidPnSourceId Its source, or -1 for the adapter alone.
+ * @param Packet A kernel copy of the 0x808 byte packet.
+ *
+ * @return STATUS_NOT_SUPPORTED when there is no dxgkrnl to ask. The 26100 dxgkrnl itself fails with
+ *         STATUS_INVALID_PARAMETER (unknown adapter or source), STATUS_DEVICE_REMOVED or what a
+ *         lock of its own returned.
+ */
+NTSTATUS NTAPI
+DlGetAdapterDeviceDesc(
+    _In_ LUID AdapterLuid,
+    _In_ ULONG VidPnSourceId,
+    _Inout_ PVOID Packet)
+{
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (gbDxgkInitialized && (gDxgkInterface.pfnDxgkGetAdapterDeviceDesc != NULL))
+        return gDxgkInterface.pfnDxgkGetAdapterDeviceDesc(AdapterLuid, VidPnSourceId, 0, Packet);
+#endif
+    UNREFERENCED_PARAMETER(AdapterLuid);
+    UNREFERENCED_PARAMETER(VidPnSourceId);
+    UNREFERENCED_PARAMETER(Packet);
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
  * @brief Commit the display configuration and build the first desktop from it. Must run in CSRSS,
  *        and only once the session owns the adapter: the CCD topology is built from the session's
  *        adapter views, which come from the session usage claim EngpRegisterGraphicsDevice sends.
@@ -1516,7 +1661,12 @@ DlApplyDisplayConfig(
 
     Status = DlpApplyDisplayConfig(NULL, ppmdev);
     if (!NT_SUCCESS(Status))
+    {
         DPRINT1("win32k: DlpApplyDisplayConfig failed 0x%lX\n", Status);
+        return Status;
+    }
+
+    DlpConnectConsoleSession();
 
     return Status;
 }
@@ -1534,13 +1684,20 @@ DlSetDisplayConfig(
     _Out_ PMDEVOBJ *ppmdevNew)
 {
     PPROCESSINFO ppi = PsGetCurrentProcessWin32Process();
+    NTSTATUS Status;
 
     *ppmdevNew = NULL;
 
     if (!gbDxgkInitialized || (ppi == NULL) || (ppi->DxProcess == NULL))
         return STATUS_NOT_SUPPORTED;
 
-    return DlpApplyDisplayConfig(pmdevOld, ppmdevNew);
+    Status = DlpApplyDisplayConfig(pmdevOld, ppmdevNew);
+
+    /* The first desktop may have come up on XDDM, then this is the first WDDM apply */
+    if (NT_SUCCESS(Status))
+        DlpConnectConsoleSession();
+
+    return Status;
 }
 
 /** @brief Release the dxgkrnl device. */
