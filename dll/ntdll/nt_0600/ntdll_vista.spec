@@ -2,6 +2,7 @@
 @ stdcall LdrUnregisterDllNotification(ptr)
 
 @ stdcall NtGetCurrentProcessorNumberEx(ptr)
+@ stdcall NtCancelIoFileEx(ptr ptr ptr)
 
 @ stdcall RtlGetProductInfo(long long long long ptr)
 @ stdcall RtlInitializeConditionVariable(ptr)
@@ -76,3 +77,14 @@
 @ stdcall TpWaitForTimer(ptr long)
 @ stdcall TpWaitForWait(ptr long)
 @ stdcall TpWaitForWork(ptr long)
+
+@ stdcall EtwEventActivityIdControl(long ptr)
+@ stdcall EtwEventEnabled(int64 ptr)
+@ stdcall EtwEventProviderEnabled(int64 long int64)
+@ stdcall EtwEventRegister(ptr ptr ptr ptr)
+@ stdcall EtwEventSetInformation(int64 long ptr long)
+@ stdcall EtwEventUnregister(int64)
+@ stdcall EtwEventWrite(int64 ptr long ptr)
+@ stdcall EtwEventWriteString(int64 long int64 wstr)
+@ stdcall EtwEventWriteTransfer(int64 ptr ptr ptr long ptr)
+@ stdcall EtwEventWriteEx(int64 ptr int64 long ptr ptr long ptr)
