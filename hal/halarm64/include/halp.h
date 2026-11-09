@@ -255,6 +255,26 @@ HalpPciWriteConfig(
     _In_ ULONG Offset,
     _In_ ULONG Length);
 
+extern BOOLEAN HalpPCIConfigInitialized;
+
+CODE_SEG("INIT")
+ULONG
+HalpPhase0GetPciDataByOffset(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER PciSlot,
+    _Out_writes_bytes_all_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
+CODE_SEG("INIT")
+ULONG
+HalpPhase0SetPciDataByOffset(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER PciSlot,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
 /* gic.c */
 VOID
 NTAPI

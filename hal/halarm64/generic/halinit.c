@@ -110,6 +110,9 @@ HalInitSystem(
     {
         HalpInitDma();
         HalpStartClockInterrupt();
+
+        /* MmMapIoSpace works from here, so the bus data routines can take over */
+        HalpPCIConfigInitialized = TRUE;
     }
 
     return TRUE;

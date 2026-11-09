@@ -19,18 +19,18 @@
 /* Buses are mapped the first time they are touched and stay mapped, per MCFG window */
 static PUCHAR HalpEcamBus[HALP_MAX_ECAM_WINDOWS][256];
 
+/* Set once MmMapIoSpace can back the bus data routines */
+BOOLEAN HalpPCIConfigInitialized;
+
 /* FUNCTIONS *****************************************************************/
 
 static
-PUCHAR
-HalpPciFunctionConfig(
+PHALP_ECAM_WINDOW
+HalpPciFindWindow(
     _In_ ULONG Segment,
     _In_ ULONG Bus,
-    _In_ PCI_SLOT_NUMBER Slot)
+    _Out_ PULONG WindowIndex)
 {
-    PHALP_ECAM_WINDOW Window = NULL;
-    PHYSICAL_ADDRESS Address;
-    PUCHAR View;
     ULONG Index;
 
     for (Index = 0; Index < HalpPlatform.EcamCount; Index++)
@@ -39,12 +39,28 @@ HalpPciFunctionConfig(
             (Bus >= HalpPlatform.Ecam[Index].StartBus) &&
             (Bus <= HalpPlatform.Ecam[Index].EndBus))
         {
-            Window = &HalpPlatform.Ecam[Index];
-            break;
+            *WindowIndex = Index;
+            return &HalpPlatform.Ecam[Index];
         }
     }
 
+    return NULL;
+}
+
+static
+PUCHAR
+HalpPciFunctionConfig(
+    _In_ ULONG Segment,
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot)
+{
+    PHALP_ECAM_WINDOW Window;
+    PHYSICAL_ADDRESS Address;
+    PUCHAR View;
+    ULONG Index;
+
     /* A bus no window decodes is never touched, it may sit behind another root */
+    Window = HalpPciFindWindow(Segment, Bus, &Index);
     if (!Window)
         return NULL;
 
@@ -208,6 +224,78 @@ HalpPciWriteConfig(
 
     HalpPciTransfer(Config, Buffer, Offset, Length, TRUE);
     return Length;
+}
+
+/**
+ * @brief Configuration access for the kernel debugger at boot.
+ *
+ * Phase 0 runs before MmMapIoSpace works, so the function's page is mapped
+ * through the HAL range for each access and dropped again. Only segment 0 is
+ * reachable, as with the bus data routines. A bus no window decodes reads as
+ * all ones, like a master abort.
+ */
+static
+ULONG
+HalpPhase0Config(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _Inout_updates_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Write)
+{
+    PHALP_ECAM_WINDOW Window;
+    PHYSICAL_ADDRESS Address;
+    PUCHAR Config;
+    ULONG Index;
+
+    if ((Offset >= HALP_ECAM_FUNCTION_SIZE) || (Length > (HALP_ECAM_FUNCTION_SIZE - Offset)))
+        return 0;
+
+    Window = HalpPciFindWindow(0, Bus, &Index);
+    if (!Window)
+    {
+        if (!Write)
+            RtlFillMemory(Buffer, Length, 0xFF);
+        return Length;
+    }
+
+    Address.QuadPart = Window->Base.QuadPart +
+                       ((ULONG64)(Bus - Window->StartBus) * HALP_ECAM_BUS_SIZE) +
+                       (((Slot.u.bits.DeviceNumber * PCI_MAX_FUNCTION) +
+                         Slot.u.bits.FunctionNumber) * HALP_ECAM_FUNCTION_SIZE);
+
+    Config = HalpMapPhysicalMemory64(Address, 1);
+    if (!Config)
+        return 0;
+
+    HalpPciTransfer(Config, Buffer, Offset, Length, Write);
+    HalpUnmapVirtualAddress(Config, 1);
+    return Length;
+}
+
+CODE_SEG("INIT")
+ULONG
+HalpPhase0GetPciDataByOffset(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER PciSlot,
+    _Out_writes_bytes_all_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    return HalpPhase0Config(Bus, PciSlot, Buffer, Offset, Length, FALSE);
+}
+
+CODE_SEG("INIT")
+ULONG
+HalpPhase0SetPciDataByOffset(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER PciSlot,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    return HalpPhase0Config(Bus, PciSlot, Buffer, Offset, Length, TRUE);
 }
 
 ULONG
