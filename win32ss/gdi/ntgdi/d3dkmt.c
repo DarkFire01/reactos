@@ -33,6 +33,11 @@ static REACTOS_WIN32K_DXGKRNL_INTERFACE DxgAdapterCallbacks = {0};
 /* WDDM bootstrap (gdi/eng/dxgkrnl.c) - idempotent, returns success if already up. */
 NTSTATUS NTAPI DlInitDxgkrnl(VOID);
 
+/* Exclusive VidPN source ownership win32k follows to give the scanout back to GDI (gdi/eng/dxgkrnl.c) */
+VOID NTAPI DlNoteVidPnSourceOwner(_In_ D3DKMT_HANDLE hDevice, _In_ ULONG cSources, _In_ ULONG FirstType,
+                                  _In_ ULONG Flags, _In_ NTSTATUS Status);
+VOID NTAPI DlNoteDeviceDestroyed(_In_ D3DKMT_HANDLE hDevice, _In_ NTSTATUS Status);
+
 /**
  * @brief Report a D3DKMT entry point that win32k answers itself without ever reaching dxgkrnl.
  *
@@ -164,6 +169,8 @@ DxgkpTraceSetVidPnSourceOwner(
     DPRINT1("win32k: SetVidPnSourceOwner(hDevice 0x%x, %u sources, first: source %u type %d, flags 0x%lx) -> 0x%lX in %s\n",
             Copy.Version0.hDevice, Copy.Version0.VidPnSourceCount, SourceId, (int)Type, Copy.Flags, Status,
             PsGetProcessImageFileName(PsGetCurrentProcess()));
+
+    DlNoteVidPnSourceOwner(Copy.Version0.hDevice, Copy.Version0.VidPnSourceCount, (ULONG)Type, Copy.Flags, Status);
 }
 
 static VOID
@@ -988,6 +995,8 @@ APIENTRY
 NtGdiDdDDIDestroyDevice(_In_ const D3DKMT_DESTROYDEVICE* unnamedParam1)
 {
     PFN_DXGK_D3DKMT pfn;
+    D3DKMT_HANDLE hDevice;
+    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
@@ -1002,7 +1011,22 @@ NtGdiDdDDIDestroyDevice(_In_ const D3DKMT_DESTROYDEVICE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    DXGKMT_RETURN("DestroyDevice", pfn((PVOID)unnamedParam1));
+    /* The handle is read before the call, dxgkrnl frees it */
+    _SEH2_TRY
+    {
+        ProbeForRead((PVOID)unnamedParam1, sizeof(*unnamedParam1), sizeof(ULONG));
+        hDevice = unnamedParam1->hDevice;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        hDevice = 0;
+    }
+    _SEH2_END;
+
+    Status = pfn((PVOID)unnamedParam1);
+    if (hDevice != 0)
+        DlNoteDeviceDestroyed(hDevice, Status);
+    DXGKMT_RETURN("DestroyDevice", Status);
 }
 
 NTSTATUS

@@ -282,6 +282,57 @@ PDEVOBJ_vEnableCddPrimaries(
 }
 
 /**
+ * @brief Put the CDD primary back on the scanout of every WDDM display, after an application that
+ *        owned a source exclusively let go of it.
+ *
+ * The display is turned off and on again through dxgkrnl: display off makes the source invisible
+ * and drops the CDD primary, display on enables the paths again, and the mode assert that follows
+ * makes the CDD redraw everything. Its first present creates a new CDD primary and, the source
+ * being invisible and unowned, dxgkrnl puts it on the scanout and shows it.
+ *
+ * @param[in] pfnDisplayOnOff
+ * dxgkrnl's DxgkDisplayOnOff.
+ */
+VOID
+NTAPI
+PDEVOBJ_vRestoreCddScanout(
+    _In_ PFN_PDEV_DISPLAY_ON_OFF pfnDisplayOnOff)
+{
+    PPDEVOBJ ppdev;
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    NTSTATUS StatusOff, StatusOn;
+
+    EngAcquireSemaphoreShared(ghsemPDEV);
+
+    for (ppdev = gppdevList; ppdev != NULL; ppdev = ppdev->ppdevNext)
+    {
+        if ((ppdev->flFlags & (PDEV_META_DEVICE | PDEV_DISABLED)) != 0)
+            continue;
+
+        pGraphicsDevice = ppdev->pGraphicsDevice;
+        if ((pGraphicsDevice == NULL) || (pGraphicsDevice->DxgAdapter == NULL) || (ppdev->pfn.AssertMode == NULL))
+            continue;
+
+        /* The device lock is held across the display off/on and the assert, as for a mode change */
+        EngAcquireSemaphore(ppdev->hsemDevLock);
+
+        StatusOff = pfnDisplayOnOff(&pGraphicsDevice->DxgAdapterLuid, pGraphicsDevice->VidPnSourceId, FALSE, FALSE);
+        StatusOn = pfnDisplayOnOff(&pGraphicsDevice->DxgAdapterLuid, pGraphicsDevice->VidPnSourceId, TRUE, FALSE);
+
+        DPRINT1("win32k: '%S' source %lu of adapter %lx:%lx: display off 0x%lx, on 0x%lx, CDD redraws\n",
+                pGraphicsDevice->szWinDeviceName, pGraphicsDevice->VidPnSourceId,
+                pGraphicsDevice->DxgAdapterLuid.HighPart, pGraphicsDevice->DxgAdapterLuid.LowPart,
+                StatusOff, StatusOn);
+
+        PDEVOBJ_vResetGdiOutput(ppdev);
+
+        EngReleaseSemaphore(ppdev->hsemDevLock);
+    }
+
+    EngReleaseSemaphore(ghsemPDEV);
+}
+
+/**
  * @brief Let each display driver that asked for it catch up on GDI output, the way the
  *        periodic sync timer and GdiFlush do. CDD only presents what it drew when told to.
  *

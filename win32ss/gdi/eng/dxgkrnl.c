@@ -311,6 +311,18 @@ typedef BOOLEAN (NTAPI *PFN_DxgkNeedToEnableCddPrimary)(
     _In_ ULONG VidPnSourceId);
 
 /*
+ * Turns the scanout of one source off or back on, for use around a mode change and when DirectDraw
+ * or the DWM let go of a display. Off disables the paths of the source: the source goes invisible
+ * and the CDD primary and shadow are dropped. On enables the paths again. bReleaseOwners also
+ * takes the source from any owner first.
+ */
+typedef NTSTATUS (NTAPI *PFN_DxgkDisplayOnOff)(
+    _In_ const LUID *AdapterLuid,
+    _In_ ULONG VidPnSourceId,
+    _In_ BOOLEAN bOn,
+    _In_ BOOLEAN bReleaseOwners);
+
+/*
  * Answers DisplayConfigGetDeviceInfo (bGet TRUE) and DisplayConfigSetDeviceInfo (bGet FALSE)
  * for the info types dxgkrnl owns, on a kernel copy of the packet. It checks the size of the
  * type again.
@@ -386,7 +398,8 @@ typedef struct _DXGKWIN32K_INTERFACE_BUF
     PFN_DxgkRegisterDwmProcess pfnDxgkRegisterDwmProcess; /* 58 */
     PVOID Reserved59[10];                               /* 59..68 */
     PFN_DxgkConvertLegacyQDCAdapterAndIdToActual pfnDxgkConvertLegacyQDCAdapterAndIdToActual; /* 69 */
-    PVOID Reserved70[5];                                /* 70..74 */
+    PFN_DxgkDisplayOnOff pfnDxgkDisplayOnOff;           /* 70 */
+    PVOID Reserved71[4];                                /* 71..74 */
     PFN_DxgkApplyCdsjToPathsModality pfnDxgkApplyCdsjToPathsModality; /* 75 */
     PVOID Reserved76[28];                               /* 76..103 */
 } DXGKWIN32K_INTERFACE_BUF;
@@ -403,6 +416,7 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkNeedToEnableCddPrimary) =
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkSessionConnected) == 45 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkRegisterDwmProcess) == 58 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkConvertLegacyQDCAdapterAndIdToActual) == 69 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkDisplayOnOff) == 70 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality) == 75 * sizeof(PVOID));
 
 #define DL_INTERFACE_VERSION    50
@@ -747,6 +761,72 @@ DlpIsDxgkrnlLoaded(VOID)
     return TRUE;
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* Exported by ntoskrnl */
+PCHAR NTAPI PsGetProcessImageFileName(_In_ PEPROCESS Process);
+
+/*
+ * The device that holds a source exclusively, and its process. dxgkrnl 26100 only puts the CDD
+ * primary back on the scanout when the owner's primary was made the displayed one through
+ * D3DKMTSetDisplayMode, or when a DWM takes over; a legacy d3d9 device that flipped its own
+ * primaries leaves the plane off once its primary goes while the source stays visible, so dxgkrnl
+ * does not restore the GDI scanout on its own. win32k restores the scanout itself once that owner
+ * is gone.
+ */
+static KSPIN_LOCK        gDlExclusiveOwnerLock;
+static PEPROCESS         gpDlExclusiveOwnerProcess = NULL;
+static D3DKMT_HANDLE     ghDlExclusiveOwnerDevice = 0;
+
+/* D3DKMT_VIDPNSOURCEOWNER_TYPE and the DisableDWMVirtualMode bit of D3DKMT_VIDPNSOURCEOWNER_FLAGS */
+#define DL_OWNER_UNOWNED            0
+#define DL_OWNER_EXCLUSIVE          2
+#define DL_OWNER_EXCLUSIVEGDI       3
+#define DL_OWNER_FLAG_DISABLE_DWM_VIRTUAL_MODE 0x2
+
+/**
+ * @brief Forget the exclusive owner if it matches, telling whether it did.
+ *
+ * @param Process The process that let go, NULL for any.
+ * @param hDevice The device that let go, 0 for any device of that process.
+ */
+static BOOLEAN
+DlpForgetExclusiveOwner(
+    _In_opt_ PEPROCESS Process,
+    _In_ D3DKMT_HANDLE hDevice)
+{
+    BOOLEAN bForgot = FALSE;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&gDlExclusiveOwnerLock, &OldIrql);
+    if ((gpDlExclusiveOwnerProcess != NULL) &&
+        ((Process == NULL) || (Process == gpDlExclusiveOwnerProcess)) &&
+        ((hDevice == 0) || (hDevice == ghDlExclusiveOwnerDevice)))
+    {
+        gpDlExclusiveOwnerProcess = NULL;
+        ghDlExclusiveOwnerDevice = 0;
+        bForgot = TRUE;
+    }
+    KeReleaseSpinLock(&gDlExclusiveOwnerLock, OldIrql);
+
+    return bForgot;
+}
+
+/** @brief Put the CDD primary back on every WDDM display after an exclusive owner let go. */
+static VOID
+DlpRestoreGdiScanout(
+    _In_ PCSTR Why)
+{
+    if (gDxgkInterface.pfnDxgkDisplayOnOff == NULL)
+    {
+        DPRINT1("win32k: %s, but dxgkrnl has no DxgkDisplayOnOff to restore the GDI scanout\n", Why);
+        return;
+    }
+
+    DPRINT1("win32k: %s, restoring the GDI scanout\n", Why);
+    PDEVOBJ_vRestoreCddScanout(gDxgkInterface.pfnDxgkDisplayOnOff);
+}
+#endif
+
 /**
  * @brief Create or drop a process's DXGPROCESS.
  *        dxgkrnl frees the DXGPROCESS itself when the process dies; the drop only clears DxProcess.
@@ -756,10 +836,90 @@ DlProcessCallout(
     _Inout_ PPROCESSINFO ppi,
     _In_ BOOLEAN Create)
 {
+    NTSTATUS Status;
+
     if (!gbDxgkInitialized)
         return STATUS_SUCCESS;
 
-    return gDxgkInterface.pfnDxgkProcessCallout(&ppi->DxProcess, &gDxgkWin32kEngInterface, Create);
+    Status = gDxgkInterface.pfnDxgkProcessCallout(&ppi->DxProcess, &gDxgkWin32kEngInterface, Create);
+
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    /* A process that dies holding a source never releases it, dxgkrnl did while destroying its devices */
+    if (!Create && DlpForgetExclusiveOwner(PsGetCurrentProcess(), 0))
+        DlpRestoreGdiScanout("the exclusive owner's process went away");
+#endif
+
+    return Status;
+}
+
+
+/**
+ * @brief Follow exclusive VidPN source ownership, from NtGdiDdDDISetVidPnSourceOwner once dxgkrnl
+ *        returned. The GDI scanout comes back when the exclusive owner releases its sources.
+ */
+VOID
+NTAPI
+DlNoteVidPnSourceOwner(
+    _In_ D3DKMT_HANDLE hDevice,
+    _In_ ULONG cSources,
+    _In_ ULONG FirstType,
+    _In_ ULONG Flags,
+    _In_ NTSTATUS Status)
+{
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    PEPROCESS Process = PsGetCurrentProcess();
+    KIRQL OldIrql;
+
+    if (!gbDxgkInitialized || !NT_SUCCESS(Status))
+        return;
+
+    /* DisableDWMVirtualMode only reapplies the topology, the type is not looked at */
+    if (Flags & DL_OWNER_FLAG_DISABLE_DWM_VIRTUAL_MODE)
+        return;
+
+    if ((cSources != 0) && ((FirstType == DL_OWNER_EXCLUSIVE) || (FirstType == DL_OWNER_EXCLUSIVEGDI)))
+    {
+        KeAcquireSpinLock(&gDlExclusiveOwnerLock, &OldIrql);
+        gpDlExclusiveOwnerProcess = Process;
+        ghDlExclusiveOwnerDevice = hDevice;
+        KeReleaseSpinLock(&gDlExclusiveOwnerLock, OldIrql);
+
+        DPRINT1("win32k: device 0x%x of %s owns its source exclusively (type %lu)\n",
+                hDevice, PsGetProcessImageFileName(Process), FirstType);
+        return;
+    }
+
+    if ((cSources == 0) || ((cSources == 1) && (FirstType == DL_OWNER_UNOWNED)))
+    {
+        if (DlpForgetExclusiveOwner(Process, hDevice))
+            DlpRestoreGdiScanout("the exclusive owner released its source");
+    }
+#else
+    UNREFERENCED_PARAMETER(hDevice);
+    UNREFERENCED_PARAMETER(cSources);
+    UNREFERENCED_PARAMETER(FirstType);
+    UNREFERENCED_PARAMETER(Flags);
+    UNREFERENCED_PARAMETER(Status);
+#endif
+}
+
+/** @brief A destroyed device releases the sources it owned, dxgkrnl does that on destruction. */
+VOID
+NTAPI
+DlNoteDeviceDestroyed(
+    _In_ D3DKMT_HANDLE hDevice,
+    _In_ NTSTATUS Status)
+{
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    if (!gbDxgkInitialized || !NT_SUCCESS(Status))
+        return;
+
+    if (DlpForgetExclusiveOwner(PsGetCurrentProcess(), hDevice))
+        DlpRestoreGdiScanout("the exclusive owner's device was destroyed");
+#else
+    UNREFERENCED_PARAMETER(hDevice);
+    UNREFERENCED_PARAMETER(Status);
+#endif
 }
 
 /** @brief Mark the current process as the session's DWM, which may then share VidPN source ownership. */
