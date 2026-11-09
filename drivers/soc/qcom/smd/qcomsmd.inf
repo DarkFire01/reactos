@@ -1,0 +1,55 @@
+; QCOMSMD.INF
+
+; Installation file for the Qualcomm shared memory and SMD driver
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/09/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomsmd.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ReactOSMfg% = ReactOSMfg
+
+[ReactOSMfg]
+%SMD.DeviceDesc% = SMD_Device, ACPI\QCOM2407
+
+[SMD_Device.NT]
+CopyFiles = SMD_CopyFiles
+
+[SMD_CopyFiles]
+qcomsmd.sys
+
+[SMD_Device.NT.HW]
+AddReg = SMD_Security
+
+[SMD_Security]
+HKR,,Security,,"D:P(A;;GA;;;BA)(A;;GA;;;SY)"
+
+[SMD_Device.NT.Services]
+AddService = qcomsmd, 0x00000002, SMD_Service
+
+[SMD_Service]
+DisplayName    = %SMD.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomsmd.sys
+LoadOrderGroup = Base
+
+[Strings]
+ReactOS = "ReactOS Project"
+ReactOSMfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+SMD.DeviceDesc = "Qualcomm Shared Memory Driver"
+SMD.ServiceDesc = "Qualcomm Shared Memory Driver"
