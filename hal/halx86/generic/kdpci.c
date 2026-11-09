@@ -179,10 +179,11 @@ HalpConfigureDebuggingDevice(
     PciDevice->SubClass = PciConfig->SubClass;
     PciDevice->ProgIf = PciConfig->ProgIf;
 
-    /* Enable decodes */
+    /* Enable decodes. INTx stays off: the debug device never gets a handler, so a raised line would stay up */
     PciConfig->Command |= (PCI_ENABLE_MEMORY_SPACE |
                            PCI_ENABLE_IO_SPACE |
-                           PCI_ENABLE_BUS_MASTER);
+                           PCI_ENABLE_BUS_MASTER |
+                           PCI_DISABLE_LEVEL_INTERRUPT);
     HalpPhase0SetPciDataByOffset(PciBus,
                                  PciSlot,
                                  &PciConfig->Command,
