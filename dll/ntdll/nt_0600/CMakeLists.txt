@@ -11,6 +11,7 @@ include_directories(
     ${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
 
 list(APPEND SOURCE
+    etw/eventprov.c
     ldr/ldrinit.c
     ldr/ldrnotify.c)
 
