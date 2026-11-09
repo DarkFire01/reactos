@@ -781,6 +781,36 @@ LDEVOBJ_bBuildDevmodeList(
     return TRUE;
 }
 
+/*
+ * The CDD lists each size again turned by 90, 180 and 270 degrees, with DM_DISPLAYORIENTATION
+ * set; the upright entry comes without it and counts as DMDO_DEFAULT. A driver whose list has
+ * no orientation at all matches any request.
+ */
+static BOOL
+LDEVOBJ_bListHasOrientation(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice)
+{
+    ULONG i;
+
+    for (i = 0; i < pGraphicsDevice->cDevModes; i++)
+    {
+        if (pGraphicsDevice->pDevModeList[i].pdm->dmFields & DM_DISPLAYORIENTATION)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+LDEVOBJ_bModeHasOrientation(
+    _In_ const DEVMODEW *pdm,
+    _In_ ULONG Orientation)
+{
+    ULONG ModeOrientation = (pdm->dmFields & DM_DISPLAYORIENTATION) ? pdm->dmDisplayOrientation : DMDO_DEFAULT;
+
+    return ModeOrientation == Orientation;
+}
+
+
 /* Search the closest display mode according to some settings.
  * Note that we don't care about the DM_* flags in dmFields, but check if value != 0 instead */
 static
@@ -792,6 +822,7 @@ LDEVOBJ_bGetClosestMode(
 {
     DEVMODEW dmDiff;
     PDEVMODEW pdmCurrent, pdmBest = NULL;
+    BOOL bOrientation;
     ULONG i;
 
     /*
@@ -809,6 +840,10 @@ LDEVOBJ_bGetClosestMode(
             /* Honor a requested color depth if there was one. */
             if (RequestedMode->dmBitsPerPel != 0 &&
                 pdmCurrent->dmBitsPerPel != RequestedMode->dmBitsPerPel)
+                continue;
+
+            /* The display's native size is the upright entry, not a turned copy */
+            if (!LDEVOBJ_bModeHasOrientation(pdmCurrent, DMDO_DEFAULT))
                 continue;
 
             if (pdmBest == NULL ||
@@ -833,6 +868,13 @@ LDEVOBJ_bGetClosestMode(
         /* No mode passed the color-depth filter - fall through to the general search. */
     }
 
+    /*
+     * Search the closest mode, first only among the modes in the requested orientation (upright
+     * unless asked otherwise): a turned copy of a size ties with the upright entry and comes later
+     * in the list, so it used to win the tie and turn the screen upside down.
+     */
+    bOrientation = LDEVOBJ_bListHasOrientation(pGraphicsDevice);
+SearchAgain:
     /* Use a DEVMODE to keep the differences between best mode found and expected mode.
      * Initialize fields to max value so we can find better modes. */
     dmDiff.dmPelsWidth = 0xffffffff;
@@ -840,11 +882,13 @@ LDEVOBJ_bGetClosestMode(
     dmDiff.dmBitsPerPel = 0xffffffff;
     dmDiff.dmDisplayFrequency = 0xffffffff;
 
-    /* Search the closest mode */
 #define DM_DIFF(field) (RequestedMode->field > pdmCurrent->field ? (RequestedMode->field - pdmCurrent->field) : (pdmCurrent->field - RequestedMode->field))
     for (i = 0; i < pGraphicsDevice->cDevModes; i++)
     {
         pdmCurrent = pGraphicsDevice->pDevModeList[i].pdm;
+
+        if (bOrientation && !LDEVOBJ_bModeHasOrientation(pdmCurrent, RequestedMode->dmDisplayOrientation))
+            continue;
 
         /* Skip current mode if it is worse than best mode found */
         if (RequestedMode->dmPelsWidth != 0 && DM_DIFF(dmPelsWidth) > dmDiff.dmPelsWidth)
@@ -864,6 +908,13 @@ LDEVOBJ_bGetClosestMode(
         pdmBest = pdmCurrent;
     }
 #undef DM_DIFF
+
+    /* Nothing in that orientation: take the closest mode in any */
+    if (!pdmBest && bOrientation)
+    {
+        bOrientation = FALSE;
+        goto SearchAgain;
+    }
 
     if (pdmBest)
     {
@@ -893,7 +944,7 @@ LDEVOBJ_bProbeAndCaptureDevmode(
     PDEVMODEW pdmCurrent, pdm, pdmSelected = NULL;
     ULONG i;
     ULONG ulVirtualWidth = 0, ulVirtualHeight = 0;
-    BOOL bResult = TRUE;
+    BOOL bResult = TRUE, bOrientation;
     NTSTATUS Status;
 
     if (!LDEVOBJ_bBuildDevmodeList(pGraphicsDevice))
@@ -993,6 +1044,7 @@ LDEVOBJ_bProbeAndCaptureDevmode(
     }
 
     /* Now, search the exact mode to return to caller */
+    bOrientation = LDEVOBJ_bListHasOrientation(pGraphicsDevice);
     for (i = 0; i < pGraphicsDevice->cDevModes; i++)
     {
         pdmCurrent = pGraphicsDevice->pDevModeList[i].pdm;
@@ -1006,15 +1058,9 @@ LDEVOBJ_bProbeAndCaptureDevmode(
             continue;
         if (pdmCurrent->dmDisplayFrequency != dmSearch.dmDisplayFrequency)
             continue;
-        /*
-         * The CDD lists each size again turned by 90, 180 and 270 degrees, with DM_DISPLAYORIENTATION
-         * set; the upright entry comes without it. A driver that lists no orientation matches any.
-         */
-        if ((pdmCurrent->dmFields & DM_DISPLAYORIENTATION) &&
-            (pdmCurrent->dmDisplayOrientation != dmSearch.dmDisplayOrientation))
-        {
+        /* In a list with turned copies the orientation has to match, the upright entry being DMDO_DEFAULT */
+        if (bOrientation && !LDEVOBJ_bModeHasOrientation(pdmCurrent, dmSearch.dmDisplayOrientation))
             continue;
-        }
 
         pdmSelected = pdmCurrent;
         break;
