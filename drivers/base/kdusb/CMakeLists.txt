@@ -8,6 +8,8 @@ list(APPEND SOURCE
 
 if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
     list(APPEND SOURCE arch/x86/kdusbhw.c)
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND SOURCE arch/arm64/kdusbhw.c)
 else()
     list(APPEND SOURCE arch/generic/kdusbhw.c)
 endif()
