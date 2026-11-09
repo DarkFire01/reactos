@@ -75,19 +75,38 @@ PnpWatchFindModule(
     return NULL;
 }
 
-/* A stack slot that can be read now: the start of every page is checked before reading on */
-static BOOLEAN
-PnpWatchCanRead(
-    _In_ PULONG_PTR p,
-    _In_ PULONG_PTR Sp)
+/* Only the watchdog thread scans stacks, one at a time */
+static ULONG_PTR PnpWatchStackCopy[KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR)];
+
+/*
+ * Copy a thread's stack from its saved stack pointer to its base, page by page while the pages
+ * are there. The thread may exit and the reaper unmap its stack at any time, so the scan works
+ * on the copy, and the window is one page copy, not a module list walk per slot.
+ */
+static ULONG
+PnpWatchCopyStack(
+    _In_ PULONG_PTR Sp,
+    _In_ PULONG_PTR Base)
 {
-    return (p != Sp && ((ULONG_PTR)p & (PAGE_SIZE - 1))) || MmIsAddressValid(p);
+    PUCHAR Source = (PUCHAR)Sp, End = (PUCHAR)Base;
+    ULONG_PTR Chunk, Copied = 0;
+
+    while (Source < End)
+    {
+        Chunk = min((ULONG_PTR)(End - Source), PAGE_SIZE - ((ULONG_PTR)Source & (PAGE_SIZE - 1)));
+        if (!MmIsAddressValid(Source))
+            break;
+        RtlCopyMemory((PUCHAR)PnpWatchStackCopy + Copied, Source, Chunk);
+        Copied += Chunk;
+        Source += Chunk;
+    }
+
+    return (ULONG)(Copied / sizeof(ULONG_PTR));
 }
 
 /*
  * Print the code addresses found between a blocked thread's saved stack pointer and its stack
- * base. With Filter, print nothing unless one of them lies in one of the named modules. The
- * thread may exit meanwhile and its stack go away, so a page that is gone ends the scan.
+ * base. With Filter, print nothing unless one of them lies in one of the named modules.
  */
 static VOID
 PnpWatchScanStack(
@@ -95,7 +114,7 @@ PnpWatchScanStack(
     _In_opt_ const PCWSTR *Filter,
     _In_ ULONG FilterCount)
 {
-    PULONG_PTR Sp = Thread->KernelStack, Base = Thread->InitialStack, p;
+    PULONG_PTR Sp = Thread->KernelStack, Base = Thread->InitialStack, p, End;
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     UNICODE_STRING Name;
     BOOLEAN Match = (Filter == NULL);
@@ -106,9 +125,11 @@ PnpWatchScanStack(
     if (!Sp || !Base || Sp >= Base || (ULONG_PTR)(Base - Sp) > KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR))
         return;
 
+    End = PnpWatchStackCopy + PnpWatchCopyStack(Sp, Base);
+
     KeEnterCriticalRegion();
     ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
-    for (p = Sp; p < Base && !Match && PnpWatchCanRead(p, Sp); p++)
+    for (p = PnpWatchStackCopy; p < End && !Match; p++)
     {
         LdrEntry = PnpWatchFindModule(*p);
         for (i = 0; LdrEntry && i < FilterCount; i++)
@@ -126,7 +147,7 @@ PnpWatchScanStack(
                      Thread, PsGetThreadProcess((PETHREAD)Thread)->ImageFileName,
                      Thread->State, Thread->WaitReason);
         }
-        for (p = Sp; p < Base && Hits < 48 && PnpWatchCanRead(p, Sp); p++)
+        for (p = PnpWatchStackCopy; p < End && Hits < 48; p++)
         {
             LdrEntry = PnpWatchFindModule(*p);
             if (LdrEntry)
