@@ -106,24 +106,27 @@ PnpWatchCopyStack(
 
 /*
  * Print the code addresses found between a blocked thread's saved stack pointer and its stack
- * base. With Filter, print nothing unless one of them lies in one of the named modules.
+ * base. With Filter, print nothing unless one of them lies in one of the named modules, among
+ * the first FilterDepth code addresses from the top when FilterDepth is not 0. Returns whether
+ * something was printed.
  */
-static VOID
+static BOOLEAN
 PnpWatchScanStack(
     _In_ PKTHREAD Thread,
     _In_opt_ const PCWSTR *Filter,
-    _In_ ULONG FilterCount)
+    _In_ ULONG FilterCount,
+    _In_ ULONG FilterDepth)
 {
     PULONG_PTR Sp = Thread->KernelStack, Base = Thread->InitialStack, p, End;
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     UNICODE_STRING Name;
     BOOLEAN Match = (Filter == NULL);
-    ULONG Hits = 0, i;
+    ULONG Hits = 0, Depth = 0, i;
 
     if (Thread->State == Terminated)
-        return;
+        return FALSE;
     if (!Sp || !Base || Sp >= Base || (ULONG_PTR)(Base - Sp) > KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR))
-        return;
+        return FALSE;
 
     End = PnpWatchStackCopy + PnpWatchCopyStack(Sp, Base);
 
@@ -132,7 +135,11 @@ PnpWatchScanStack(
     for (p = PnpWatchStackCopy; p < End && !Match; p++)
     {
         LdrEntry = PnpWatchFindModule(*p);
-        for (i = 0; LdrEntry && i < FilterCount; i++)
+        if (!LdrEntry)
+            continue;
+        if (FilterDepth && ++Depth > FilterDepth)
+            break;
+        for (i = 0; i < FilterCount; i++)
         {
             RtlInitUnicodeString(&Name, Filter[i]);
             if (RtlEqualUnicodeString(&Name, &LdrEntry->BaseDllName, TRUE))
@@ -159,6 +166,7 @@ PnpWatchScanStack(
     }
     ExReleaseResourceLite(&PsLoadedModuleResource);
     KeLeaveCriticalRegion();
+    return Match;
 }
 
 /* Display drivers being brought up: show every thread that is somewhere inside them */
@@ -175,7 +183,73 @@ PnpWatchDumpDisplayThreads(VOID)
         for (Thread = PsGetNextProcessThread(Process, NULL); Thread; Thread = PsGetNextProcessThread(Process, Thread))
         {
             if (Thread != PsGetCurrentThread())
-                PnpWatchScanStack(&Thread->Tcb, Modules, RTL_NUMBER_OF(Modules));
+                PnpWatchScanStack(&Thread->Tcb, Modules, RTL_NUMBER_OF(Modules), 0);
+        }
+    }
+}
+
+/*
+ * A GUI thread that waits inside the display drivers this long is reported once per boot, with
+ * its stack. A mode change, a present or a full screen switch that never returns holds the USER
+ * lock, so the desktop freezes or the screen stays dark and nothing else reaches the log. Only
+ * the innermost code addresses count, so a thread that merely went through the display drivers
+ * earlier is not taken for one stuck in them. Once per thread, not once per wait: a worker that
+ * idles in cdd.dll (boot 19 had a csrss.exe thread waiting there at 45, 75 and 150 s) would
+ * otherwise use up the reports long before the mode change they are meant for.
+ */
+#define PNP_WATCH_GUI_STALL_SECONDS 10
+#define PNP_WATCH_GUI_STALL_DEPTH   8
+#define PNP_WATCH_GUI_STALL_REPORTS 32
+
+static PKTHREAD PnpWatchGuiStalls[PNP_WATCH_GUI_STALL_REPORTS];
+static ULONG PnpWatchGuiStallReports;
+
+static BOOLEAN
+PnpWatchIsGuiStallReported(
+    _In_ PKTHREAD Thread)
+{
+    ULONG i;
+
+    for (i = 0; i < PnpWatchGuiStallReports; i++)
+    {
+        if (PnpWatchGuiStalls[i] == Thread)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static VOID
+PnpWatchDumpStalledGuiThreads(VOID)
+{
+    static const PCWSTR Modules[] = { L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys", L"cdd.dll" };
+    ULONG Limit = (ULONG)(PNP_WATCH_GUI_STALL_SECONDS * 10000000LL / KeMaximumIncrement);
+    PEPROCESS Process;
+    PETHREAD Thread;
+    ULONG Waited;
+
+    if (PnpWatchGuiStallReports >= PNP_WATCH_GUI_STALL_REPORTS)
+        return;
+
+    for (Process = PsGetNextProcess(NULL); Process; Process = PsGetNextProcess(Process))
+    {
+        for (Thread = PsGetNextProcessThread(Process, NULL); Thread; Thread = PsGetNextProcessThread(Process, Thread))
+        {
+            if (Thread == PsGetCurrentThread() || !Thread->Tcb.Win32Thread || Thread->Tcb.State != Waiting)
+                continue;
+
+            Waited = KeTickCount.LowPart - Thread->Tcb.WaitTime;
+            if (Waited < Limit || PnpWatchGuiStallReports >= PNP_WATCH_GUI_STALL_REPORTS ||
+                PnpWatchIsGuiStallReported(&Thread->Tcb))
+            {
+                continue;
+            }
+
+            if (PnpWatchScanStack(&Thread->Tcb, Modules, RTL_NUMBER_OF(Modules), PNP_WATCH_GUI_STALL_DEPTH))
+            {
+                DbgPrint("PNPWATCH: GUI thread %p has waited %I64u s inside the display drivers\n",
+                         Thread, (ULONG64)Waited * KeMaximumIncrement / 10000000);
+                PnpWatchGuiStalls[PnpWatchGuiStallReports++] = &Thread->Tcb;
+            }
         }
     }
 }
@@ -209,6 +283,8 @@ PnpWatchThread(
             PnpWatchDumpDisplayThreads();
         }
 
+        PnpWatchDumpStalledGuiThreads();
+
         for (i = 0; i < PNP_WATCH_SLOTS; i++)
         {
             Slot = &PnpWatchSlots[i];
@@ -223,7 +299,7 @@ PnpWatchThread(
                      Slot->MajorFunction, Slot->MinorFunction,
                      DeviceNode ? &DeviceNode->InstancePath : NULL,
                      (Now.QuadPart - Slot->StartTime.QuadPart) / 10000000, Thread);
-            PnpWatchScanStack(&Thread->Tcb, NULL, 0);
+            PnpWatchScanStack(&Thread->Tcb, NULL, 0, 0);
         }
     }
 }
