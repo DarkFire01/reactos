@@ -923,6 +923,8 @@ LDEVOBJ_bProbeAndCaptureDevmode(
             dmSearch.dmPelsHeight = RequestedMode->dmPelsHeight;
         if (RequestedMode->dmFields & DM_DISPLAYFREQUENCY && RequestedMode->dmDisplayFrequency != 0)
             dmSearch.dmDisplayFrequency = RequestedMode->dmDisplayFrequency;
+        if (RequestedMode->dmFields & DM_DISPLAYORIENTATION)
+            dmSearch.dmDisplayOrientation = RequestedMode->dmDisplayOrientation;
 
         if ((RequestedMode->dmFields & (DM_PANNINGWIDTH | DM_PANNINGHEIGHT)) == (DM_PANNINGWIDTH | DM_PANNINGHEIGHT) &&
             RequestedMode->dmPanningWidth != 0 && RequestedMode->dmPanningHeight != 0 &&
@@ -1004,6 +1006,15 @@ LDEVOBJ_bProbeAndCaptureDevmode(
             continue;
         if (pdmCurrent->dmDisplayFrequency != dmSearch.dmDisplayFrequency)
             continue;
+        /*
+         * The CDD lists each size again turned by 90, 180 and 270 degrees, with DM_DISPLAYORIENTATION
+         * set; the upright entry comes without it. A driver that lists no orientation matches any.
+         */
+        if ((pdmCurrent->dmFields & DM_DISPLAYORIENTATION) &&
+            (pdmCurrent->dmDisplayOrientation != dmSearch.dmDisplayOrientation))
+        {
+            continue;
+        }
 
         pdmSelected = pdmCurrent;
         break;

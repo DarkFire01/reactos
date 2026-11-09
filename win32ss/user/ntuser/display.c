@@ -14,8 +14,17 @@ DBG_DEFAULT_CHANNEL(UserDisplay);
 #define NDEBUG
 #include <debug.h>
 
+PCHAR NTAPI PsGetProcessImageFileName(_In_ PEPROCESS Process);
+
 BOOL gbBaseVideo = FALSE;
 static PPROCESSINFO gpFullscreen = NULL;
+
+/*
+ * The mode of a display device that is not part of the desktop: no size, at no position. Filled
+ * once in InitVideo and never written again, because NtUserEnumDisplaySettings copies it out after
+ * it has left the user lock, which it only held shared.
+ */
+static DEVMODEW gdmDetached;
 
 /* TRUE once InitVideo succeeded. Display callouts before that are turned away */
 BOOL gbVideoInitialized = FALSE;
@@ -201,6 +210,10 @@ InitVideo(VOID)
     TRACE("----------------------------- InitVideo() -------------------------------\n");
 
     KeInitializeEvent(&gVideoPortCalloutReady, NotificationEvent, FALSE);
+
+    gdmDetached.dmSize = sizeof(gdmDetached);
+    gdmDetached.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL |
+                           DM_DISPLAYFREQUENCY | DM_DISPLAYFLAGS | DM_DISPLAYORIENTATION;
 
     /* Check if VGA mode is requested, by finding the special volatile key created by VIDEOPRT */
     Status = RegOpenKey(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\GraphicsDrivers\\BaseVideo", &hkey);
@@ -538,6 +551,19 @@ UserEnumCurrentDisplaySettings(
     ppdev = EngpGetPDEV(pustrDevice);
     if (!ppdev)
     {
+        /*
+         * A display device that is off the desktop runs no mode, and is reported with an empty
+         * one rather than a failure, as Wine does: wined3d gives up restoring the desktop mode
+         * after a game as soon as the current mode of any listed device cannot be read, and the
+         * VGA device of the board's iGPU is always listed.
+         */
+        if ((pustrDevice != NULL) && (gdmDetached.dmSize != 0) &&
+            (EngpFindGraphicsDevice(pustrDevice, 0) != NULL))
+        {
+            *ppdm = &gdmDetached;
+            return STATUS_SUCCESS;
+        }
+
         /* No device found */
         ERR("No PDEV found!\n");
         return STATUS_INVALID_PARAMETER_1;
@@ -647,7 +673,22 @@ UserEnumRegistryDisplaySettings(
     OUT LPDEVMODEW pdm)
 {
     HKEY hkey;
-    NTSTATUS Status = UserOpenDisplaySettingsKey(&hkey, pustrDevice, 0);
+    NTSTATUS Status;
+    PGRAPHICS_DEVICE pGraphicsDevice;
+
+    /*
+     * A WDDM source keeps its settings in dxgkrnl's display database, not in DefaultSettings
+     * values, which its device key never has. Reading those gave an empty mode, so a runtime
+     * comparing it against the current one (wined3d, after a game) saw nothing to restore.
+     */
+    pGraphicsDevice = EngpFindGraphicsDevice(pustrDevice, 0);
+    if ((pGraphicsDevice != NULL) && (pGraphicsDevice->DxgAdapter != NULL) &&
+        EngpGetSavedDisplayMode(pGraphicsDevice, pdm))
+    {
+        return STATUS_SUCCESS;
+    }
+
+    Status = UserOpenDisplaySettingsKey(&hkey, pustrDevice, 0);
     if(NT_SUCCESS(Status))
     {
         RegReadDisplaySettings(hkey, pdm);
@@ -1074,6 +1115,7 @@ NtUserChangeDisplaySettings(
     DWORD dwflags,
     LPVOID lParam)
 {
+    static UNICODE_STRING ustrPrimary = RTL_CONSTANT_STRING(L"(primary)");
     WCHAR awcDevice[CCHDEVICENAME];
     UNICODE_STRING ustrDevice;
     DEVMODEW dmLocal;
@@ -1160,6 +1202,21 @@ NtUserChangeDisplaySettings(
 
     // FIXME: Copy videoparameters
 
+    /* One line per call, so a mode change that never returns shows who asked for what */
+    if (lpDevMode)
+    {
+        DPRINT1("win32k: %s asks '%wZ' for %lux%lux%lu %lu Hz (fields 0x%lx), flags 0x%lx\n",
+                PsGetProcessImageFileName(PsGetCurrentProcess()), pustrDevice ? pustrDevice : &ustrPrimary,
+                lpDevMode->dmPelsWidth, lpDevMode->dmPelsHeight, lpDevMode->dmBitsPerPel,
+                lpDevMode->dmDisplayFrequency, lpDevMode->dmFields, dwflags);
+    }
+    else
+    {
+        DPRINT1("win32k: %s asks '%wZ' for its saved mode, flags 0x%lx\n",
+                PsGetProcessImageFileName(PsGetCurrentProcess()), pustrDevice ? pustrDevice : &ustrPrimary,
+                dwflags);
+    }
+
     /* Acquire global USER lock */
     UserEnterExclusive();
 
@@ -1169,6 +1226,8 @@ NtUserChangeDisplaySettings(
     /* Release lock */
     UserLeave();
 
+    DPRINT1("win32k: ChangeDisplaySettings of %s returns %ld\n",
+            PsGetProcessImageFileName(PsGetCurrentProcess()), lRet);
     return lRet;
 }
 
@@ -1187,12 +1246,19 @@ LONG NTAPI
 DlChangeDisplaySettings(
     _In_ PGRAPHICS_DEVICE pGraphicsDevice,
     _In_opt_ PDEVMODEW pdmRequest,
+    _In_opt_ const DEVMODEW *pdmCurrent,
     _In_ BOOLEAN bTryClosest,
     _In_ BOOLEAN bSetMode,
     _In_ BOOLEAN bUpdateRegistry,
     _In_ BOOLEAN bFullScreen,
     _In_ PMDEVOBJ pmdevOld,
-    _Out_ PMDEVOBJ *ppmdevNew);
+    _Out_ PMDEVOBJ *ppmdevNew,
+    _Out_ PBOOLEAN pbApplied);
+
+_Requires_exclusive_lock_held_(UserLock)
+static
+NTSTATUS
+UserpSetDisplayConfig(VOID);
 
 VOID
 UserSignalVideoPortCalloutReady(VOID)
@@ -1277,6 +1343,46 @@ UserpInstallMdev(
 
 /**
  * @brief
+ * Does the source already run the mode asked for? Only the fields the caller set count, the way
+ * wined3d compares modes. A mode change to the running mode would still take the display down and
+ * up again, and full screen games and runtimes often ask for the mode the desktop already has.
+ */
+static
+BOOLEAN
+UserpIsCurrentMode(
+    _In_ const DEVMODEW *pdmCurrent,
+    _In_ const DEVMODEW *pdm)
+{
+    if ((pdm->dmFields & (DM_PELSWIDTH | DM_PELSHEIGHT)) != (DM_PELSWIDTH | DM_PELSHEIGHT))
+        return FALSE;
+
+    if ((pdm->dmPelsWidth != pdmCurrent->dmPelsWidth) || (pdm->dmPelsHeight != pdmCurrent->dmPelsHeight))
+        return FALSE;
+
+    if ((pdm->dmFields & DM_BITSPERPEL) && (pdm->dmBitsPerPel != 0) &&
+        (pdm->dmBitsPerPel != pdmCurrent->dmBitsPerPel))
+    {
+        return FALSE;
+    }
+
+    if ((pdm->dmFields & DM_DISPLAYFREQUENCY) && (pdm->dmDisplayFrequency > 1) &&
+        (pdm->dmDisplayFrequency != pdmCurrent->dmDisplayFrequency))
+    {
+        return FALSE;
+    }
+
+    if ((pdm->dmFields & DM_DISPLAYORIENTATION) &&
+        (pdm->dmDisplayOrientation != ((pdmCurrent->dmFields & DM_DISPLAYORIENTATION) ?
+                                       pdmCurrent->dmDisplayOrientation : DMDO_DEFAULT)))
+    {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief
  * Changes the mode of a WDDM source, the way Windows does for a legacy ChangeDisplaySettings
  * caller: dxgkrnl puts the mode into the display configuration and the desktop is rebuilt from it.
  *
@@ -1302,25 +1408,55 @@ UserpChangeDisplaySettingsWddm(
 {
     PMDEVOBJ pmdevNew = NULL;
     PVOID pvOldCursor = NULL;
+    DEVMODEW dmSaved;
     BOOLEAN bSetMode;
+    BOOLEAN bApplied = FALSE;
     WORD OrigBC;
     LONG lResult;
+    NTSTATUS Status;
 
     /* CDS_TEST only checks the mode, CDS_NORESET stores it for a later change */
     bSetMode = !(flags & (CDS_TEST | CDS_NORESET));
     OrigBC = gpsi->BitCount;
+
+    /*
+     * Asking for the mode the source already runs changes nothing, nor does going back to the
+     * saved mode while it runs, so dxgkrnl is not even asked: going through would at least take
+     * the CDD's display down and up again while the desktop is rebuilt. Saving still goes through.
+     */
+    if (bSetMode && !(flags & (CDS_UPDATEREGISTRY | CDS_RESET)) && (ppdev->pdmwDev != NULL))
+    {
+        if (pdm == NULL)
+        {
+            if (EngpGetSavedDisplayMode(ppdev->pGraphicsDevice, &dmSaved) &&
+                UserpIsCurrentMode(ppdev->pdmwDev, &dmSaved))
+            {
+                DPRINT1("win32k: '%S' already runs its saved mode\n", ppdev->pGraphicsDevice->szWinDeviceName);
+                UserUpdateFullscreen(flags);
+                return DISP_CHANGE_SUCCESSFUL;
+            }
+        }
+        else if (UserpIsCurrentMode(ppdev->pdmwDev, pdm))
+        {
+            DPRINT1("win32k: '%S' already runs %lux%lu\n", ppdev->pGraphicsDevice->szWinDeviceName,
+                    pdm->dmPelsWidth, pdm->dmPelsHeight);
+            return DISP_CHANGE_SUCCESSFUL;
+        }
+    }
 
     if (bSetMode)
         pvOldCursor = UserSetCursor(NULL, TRUE);
 
     lResult = DlChangeDisplaySettings(ppdev->pGraphicsDevice,
                                       pdm,
+                                      ppdev->pdmwDev,
                                       (flags & USERP_CDS_TRY_CLOSEST) != 0,
                                       bSetMode,
                                       (flags & CDS_UPDATEREGISTRY) != 0,
                                       (flags & CDS_FULLSCREEN) != 0,
                                       gpmdev,
-                                      &pmdevNew);
+                                      &pmdevNew,
+                                      &bApplied);
     if (!bSetMode)
         return lResult;
 
@@ -1334,9 +1470,26 @@ UserpChangeDisplaySettingsWddm(
     ASSERT(pvOldCursor == NULL);
 
     if (lResult == DISP_CHANGE_SUCCESSFUL)
+    {
         UserpUpdateDisplayMetrics(gpmdev->ppdevGlobal, flags);
+    }
     else
-        ERR("WDDM mode change failed %ld\n", lResult);
+    {
+        DPRINT1("win32k: WDDM mode change failed %ld%s\n", lResult,
+                bApplied ? ", the display runs a mode the desktop does not, going back to the saved configuration" : "");
+
+        /*
+         * dxgkrnl programmed the new mode but the desktop could not follow, so the monitor shows
+         * a source nothing draws to. Put the saved configuration back and build the desktop for
+         * it, as an adapter arrival does; it was running a moment ago.
+         */
+        if (bApplied)
+        {
+            Status = UserpSetDisplayConfig();
+            DPRINT1("win32k: back to the saved display configuration, 0x%lx\n", Status);
+            return lResult;
+        }
+    }
 
     /* Refresh even on failure, the display may have been left in a bad state */
     UserpBroadcastDisplayChange(gpmdev->ppdevGlobal, flags, OrigBC);
@@ -1535,6 +1688,20 @@ VideoPortCallout(
     if (!gbVideoInitialized)
     {
         CallbackParams->Status = STATUS_UNSUCCESSFUL;
+        return;
+    }
+
+    /*
+     * dxgkrnl raises some callouts synchronously on the thread that is inside it. If that thread
+     * holds the user lock (a ChangeDisplaySettings caller is in dxgkrnl's apply with it), the
+     * CSRSS thread below could never take the lock and both would wait for good, with the display
+     * in the middle of a mode change. Turn the callout away instead; dxgkrnl logs and goes on.
+     */
+    if (UserIsEntered())
+    {
+        DPRINT1("win32k: display callout %d from a thread inside the user lock turned away\n",
+                CallbackParams->CalloutType);
+        CallbackParams->Status = STATUS_DEVICE_BUSY;
         return;
     }
 

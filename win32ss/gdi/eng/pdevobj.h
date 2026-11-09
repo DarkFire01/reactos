@@ -78,6 +78,7 @@ typedef struct _GRAPHICS_DEVICE
     LUID             DxgAdapterLuid;
     ULONG            VidPnSourceId;
     PDEVMODEW        pdmDisplayConfig;               /* mode of this source in the applied display configuration, NULL when it has no path */
+    PDEVMODEW        pdmSavedConfig;                 /* mode of this source in the saved display configuration, what ENUM_REGISTRY_SETTINGS reports */
     BOOLEAN          bRemoved;                       /* dxgkrnl reported the adapter gone */
 } GRAPHICS_DEVICE, *PGRAPHICS_DEVICE;
 

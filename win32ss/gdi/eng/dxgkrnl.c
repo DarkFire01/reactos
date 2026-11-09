@@ -65,9 +65,24 @@ typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
 /*
  * A legacy mode change starts from the topology running now, or the saved one when the result is
  * to be saved, and asks Get for the CDS flavor of it.
+ *
+ * CURRENT_SCALED selects the running topology with each path's scaling taken from the saved
+ * configuration or the adapter default and the paths marked 0x10000. It is not used for a mode
+ * change that carries a devmode. The running path already carries scaling intent 4 (boot 19 dump,
+ * +0x8C), so it would change nothing here. Plain CURRENT is what the fixed VM run exercised.
  */
 #define DL_MODALITY_CURRENT         0x00000040
+#define DL_MODALITY_CURRENT_SCALED  0x02000000
 #define DL_MODALITY_CDS             0x00009000
+#define DL_MODALITY_CDS_RUNNING     DL_MODALITY_CURRENT
+
+/*
+ * Apply flags of a ChangeDisplaySettings mode change. Windows gives Apply APPLY alone, and
+ * NO_OPTIMIZE only goes to Get, for SDC_NO_OPTIMIZATION/FORCE_MODE_ENUMERATION.
+ * Kept at NO_OPTIMIZE | APPLY, what the boot apply and the fixed VM mode change ran with, until a
+ * native mode change has worked once; then try DL_MODALITY_APPLY alone.
+ */
+#define DL_APPLY_CDS                (DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY)
 
 /* Functionalize for a legacy mode change, relaxed when the closest mode will do */
 #define DL_FUNCTIONALIZE_CDS        0x00008000
@@ -1155,14 +1170,78 @@ DlpDumpModality(
     }
 }
 
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/*
+ * Where the 26100 path descriptor keeps the target timing, the source size and the scaling, as
+ * the boot log's raw path dump and dxgkrnl's CDS_JOURNAL::_FillPathDescriptor show them.
+ */
+#define DL_PATH_TARGET_TOTAL        0x24    /* D3DKMDT_VIDEO_SIGNAL_INFO.TotalSize */
+#define DL_PATH_TARGET_ACTIVE       0x2C    /* ...ActiveSize */
+#define DL_PATH_TARGET_VSYNC        0x34    /* ...VSyncFreq, numerator and denominator */
+#define DL_PATH_OUTPUT_TECHNOLOGY   0x58    /* D3DKMDT_VIDEO_OUTPUT_TECHNOLOGY of the target */
+#define DL_PATH_SOURCE_SIZE         0x60    /* the source mode, what a CDS pins */
+#define DL_PATH_ROTATION            0x84
+#define DL_PATH_SCALING             0x88    /* D3DKMDT_VIDPN_PRESENT_PATH_SCALING the path uses */
+#define DL_PATH_SCALING_INTENT      0x8C    /* the one asked for (4 = aspect ratio centered max) */
+#define DL_PATH_PINNED_REFRESH      0xE0    /* the refresh rate a CDS pinned, numerator/denominator */
+
+#define DL_PATH_ULONG(Path, Offset) (*(const ULONG *)((const UCHAR *)(Path) + (Offset)))
+#endif
+
+/**
+ * @brief Bring-up aid: say in one line per path what a configuration will drive: the source mode,
+ *        the target timing dxgkrnl picked for it and the scaling between the two. A target the
+ *        size of the source runs the monitor in that mode, one larger than the source scales.
+ */
+static VOID
+DlpLogPaths(
+    _In_ PCSTR What,
+    _In_ PD3DKMT_GETPATHSMODALITY Modality)
+{
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+    PDL_MODALITY_PATH Paths = DL_MODALITY_PATHS(Modality);
+    USHORT i;
+
+    for (i = 0; (i < Modality->PathCount) && (i < 4); i++)
+    {
+        DPRINT1("win32k: %s path %u: source %lu %lux%lu -> target 0x%lx %lux%lu (total %lux%lu) %lu/%lu Hz, "
+                "technology %ld, rotation %lu, scaling %lu (intent %lu), pinned %lu/%lu Hz, status 0x%lx\n",
+                What, i, Paths[i].VidPnSourceId,
+                DL_PATH_ULONG(&Paths[i], DL_PATH_SOURCE_SIZE),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_SOURCE_SIZE + 4),
+                Paths[i].VidPnTargetId,
+                DL_PATH_ULONG(&Paths[i], DL_PATH_TARGET_ACTIVE),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_TARGET_ACTIVE + 4),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_TARGET_TOTAL),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_TARGET_TOTAL + 4),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_TARGET_VSYNC),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_TARGET_VSYNC + 4),
+                (LONG)DL_PATH_ULONG(&Paths[i], DL_PATH_OUTPUT_TECHNOLOGY),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_ROTATION),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_SCALING),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_SCALING_INTENT),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_PINNED_REFRESH),
+                DL_PATH_ULONG(&Paths[i], DL_PATH_PINNED_REFRESH + 4),
+                Paths[i].StatusApply);
+    }
+#else
+    UNREFERENCED_PARAMETER(What);
+    UNREFERENCED_PARAMETER(Modality);
+#endif
+}
+
 /**
  * @brief Tell GDI which sources the applied configuration turned on and in what mode, which is
  *        what the desktop is then built from. A path the apply failed, or one without a mode, has
  *        no source on the desktop.
+ *
+ * @param bSaved The configuration is the saved one (or replaces it), so its modes are also what
+ *        ENUM_REGISTRY_SETTINGS reports. FALSE for a temporary mode change, CDS_FULLSCREEN.
  */
 static NTSTATUS
 DlpRecordDisplayConfig(
-    _In_ PD3DKMT_GETPATHSMODALITY Modality)
+    _In_ PD3DKMT_GETPATHSMODALITY Modality,
+    _In_ BOOLEAN bSaved)
 {
     PDL_MODALITY_PATH Paths = DL_MODALITY_PATHS(Modality);
     PENGP_DISPLAY_PATH ActivePaths;
@@ -1197,7 +1276,7 @@ DlpRecordDisplayConfig(
         ActiveCount++;
     }
 
-    Status = EngpSetDisplayConfig(ActiveCount, ActivePaths);
+    Status = EngpSetDisplayConfig(ActiveCount, ActivePaths, bSaved);
 
     ExFreePoolWithTag(ActivePaths, GDITAG_TEMP);
     return Status;
@@ -1207,22 +1286,34 @@ DlpRecordDisplayConfig(
  * @brief Functionalize the paths, apply them, tell GDI which sources came on and build the desktop
  *        from them, then finalize. The desktop is built between the apply and the finalize, as
  *
+ * Every step is logged before it runs: a step that never returns is the last line of the log.
+ *
  * @param Modality The paths to commit.
  * @param FunctionalizeFlags What Functionalize is given.
+ * @param ApplyFlags What Apply is given.
  * @param bValidateOnly Stop after Functionalize, which is all a CDS_TEST caller wants to know.
+ * @param bSaved The configuration is the saved one, see DlpRecordDisplayConfig.
  * @param pmdevOld The desktop to replace, or NULL when the first one is being built.
  * @param ppmdevNew Receives the new desktop. NULL leaves the desktop alone.
+ * @param pbApplied Receives TRUE once dxgkrnl applied the configuration, so the display runs it
+ *        whatever happened to the desktop afterwards.
  */
 static NTSTATUS
 DlpCommitPathsModality(
     _Inout_ PD3DKMT_GETPATHSMODALITY Modality,
     _In_ ULONG FunctionalizeFlags,
+    _In_ ULONG ApplyFlags,
     _In_ BOOLEAN bValidateOnly,
+    _In_ BOOLEAN bSaved,
     _In_opt_ PMDEVOBJ pmdevOld,
-    _Out_opt_ PMDEVOBJ *ppmdevNew)
+    _Out_opt_ PMDEVOBJ *ppmdevNew,
+    _Out_opt_ PBOOLEAN pbApplied)
 {
     NTSTATUS Status = STATUS_SUCCESS;
     LONG     lRet;
+
+    if (pbApplied != NULL)
+        *pbApplied = FALSE;
 
     /*
      * Pick a source mode for each path. Enumerating a path says the adapter could drive it, not
@@ -1233,24 +1324,26 @@ DlpCommitPathsModality(
      */
     if (gDxgkInterface.pfnDxgkFunctionalizePathsModality != NULL)
     {
+        DPRINT1("win32k: functionalizing %u path(s), flags 0x%lx\n", Modality->PathCount, FunctionalizeFlags);
         Status = gDxgkInterface.pfnDxgkFunctionalizePathsModality(FunctionalizeFlags, Modality);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("win32k: DxgkFunctionalizePathsModality failed 0x%lX\n", Status);
             return Status;
         }
+
+        /* What the apply is about to program, the target timing above all */
+        DlpLogPaths(bValidateOnly ? "validated" : "functional", Modality);
     }
 
     if (bValidateOnly)
         return Status;
 
+    DPRINT1("win32k: applying the display configuration, flags 0x%lx\n", ApplyFlags);
 #if DL_DXGK_APPLY_HAS_SCENARIO
-    Status = gDxgkInterface.pfnDxgkApplyPathsModality(DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY,
-                                                     Modality,
-                                                     NULL);
+    Status = gDxgkInterface.pfnDxgkApplyPathsModality(ApplyFlags, Modality, NULL);
 #else
-    Status = gDxgkInterface.pfnDxgkApplyPathsModality(DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY,
-                                                     Modality);
+    Status = gDxgkInterface.pfnDxgkApplyPathsModality(ApplyFlags, Modality);
 #endif
     if (!NT_SUCCESS(Status))
     {
@@ -1258,11 +1351,14 @@ DlpCommitPathsModality(
         return Status;
     }
 
+    if (pbApplied != NULL)
+        *pbApplied = TRUE;
+
     /* AppliedCount is not a path count on Windows 11: Functionalize zeroes it, and the apply leaves it be */
     DPRINT1("win32k: display configuration applied\n");
     DlpDumpModality(Modality);
 
-    Status = DlpRecordDisplayConfig(Modality);
+    Status = DlpRecordDisplayConfig(Modality, bSaved);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("win32k: no source of the display configuration reached GDI, 0x%lX\n", Status);
@@ -1270,16 +1366,24 @@ DlpCommitPathsModality(
     else if (ppmdevNew != NULL)
     {
         /* The desktop is made of the sources the configuration turned on */
+        DPRINT1("win32k: building the desktop for the display configuration\n");
         lRet = PDEVOBJ_lChangeDisplaySettings(NULL, NULL, pmdevOld, ppmdevNew, (pmdevOld == NULL));
         if (lRet != DISP_CHANGE_SUCCESSFUL)
         {
             DPRINT1("win32k: building the desktop for the display configuration failed %ld\n", lRet);
             Status = STATUS_UNSUCCESSFUL;
         }
+        else
+        {
+            DPRINT1("win32k: desktop built for the display configuration\n");
+        }
     }
 
     if (gDxgkInterface.pfnDxgkFinalizePathsModality != NULL)
+    {
+        DPRINT1("win32k: finalizing the display configuration\n");
         gDxgkInterface.pfnDxgkFinalizePathsModality(Modality);
+    }
 
     return Status;
 }
@@ -1330,14 +1434,118 @@ DlpApplyDisplayConfig(
 
     DPRINT1("win32k: display configuration has %u path(s)\n", Modality->PathCount);
 
+    /* Saved or enumerated, this is the configuration the desktop returns to */
     Status = DlpCommitPathsModality(Modality,
                                     Flags & DL_MODALITY_FUNCTIONALIZE,
+                                    DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY,
                                     FALSE,
+                                    TRUE,
                                     pmdevOld,
-                                    ppmdevNew);
+                                    ppmdevNew,
+                                    NULL);
 
     DlpFreePathsModality(Modality);
     return Status;
+}
+
+/** @brief Does the source list this mode? A mode that names no orientation is the upright one. */
+static BOOLEAN
+DlpSourceHasMode(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice,
+    _In_ ULONG Width,
+    _In_ ULONG Height,
+    _In_ ULONG BitsPerPel,
+    _In_ ULONG Frequency,
+    _In_ ULONG Orientation)
+{
+    PDEVMODEW pdm;
+    ULONG i;
+
+    for (i = 0; (i < pGraphicsDevice->cDevModes) && (pGraphicsDevice->pDevModeList != NULL); i++)
+    {
+        pdm = pGraphicsDevice->pDevModeList[i].pdm;
+        if ((pdm->dmPelsWidth == Width) &&
+            (pdm->dmPelsHeight == Height) &&
+            ((BitsPerPel == 0) || (pdm->dmBitsPerPel == BitsPerPel)) &&
+            (pdm->dmDisplayFrequency == Frequency) &&
+            (((pdm->dmFields & DM_DISPLAYORIENTATION) ? pdm->dmDisplayOrientation : DMDO_DEFAULT) == Orientation))
+        {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief Fill in what a ChangeDisplaySettings caller left out the way Windows does, starting
+ *        from the mode the path runs now: the orientation stays, and a size asked for without a
+ *        refresh rate gets the rate the source runs at now if the list has that size at it,
+ *        otherwise 60 Hz.
+ *
+ * The CDD lists a size at several refresh rates, those of the monitor's own timings among them
+ * (boot 19 lists 640x480 at 59, 60, 75, 100 and 120 Hz). Keeping the current rate leaves dxgkrnl
+ * a target timing at that rate, normally the one the monitor runs now, with the GPU scaling the
+ * smaller source; 60 Hz usually means the monitor's own 640x480 timing. LDEVOBJ's pick took the
+ * rate of the last matching entry of the list (no WDDM device has a DefaultSettings.VRefresh).
+ *
+ * @param pdmRequest The caller's mode, a kernel copy of at most sizeof(DEVMODEW) bytes.
+ * @param pdmCurrent The mode the source runs now, NULL if unknown.
+ * @param pdmComplete Receives the completed request, without driver extra data.
+ */
+static VOID
+DlpCompleteModeRequest(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice,
+    _In_ const DEVMODEW *pdmRequest,
+    _In_opt_ const DEVMODEW *pdmCurrent,
+    _Out_ PDEVMODEW pdmComplete)
+{
+    ULONG BitsPerPel, Frequency = 0;
+
+    RtlZeroMemory(pdmComplete, sizeof(*pdmComplete));
+    RtlCopyMemory(pdmComplete, pdmRequest, min(pdmRequest->dmSize, sizeof(*pdmComplete)));
+    pdmComplete->dmSize = sizeof(*pdmComplete);
+    pdmComplete->dmDriverExtra = 0;
+
+    if (!(pdmComplete->dmFields & DM_DISPLAYORIENTATION))
+    {
+        pdmComplete->dmDisplayOrientation =
+            ((pdmCurrent != NULL) && (pdmCurrent->dmFields & DM_DISPLAYORIENTATION)) ?
+            pdmCurrent->dmDisplayOrientation : DMDO_DEFAULT;
+        pdmComplete->dmFields |= DM_DISPLAYORIENTATION;
+    }
+
+    if (((pdmComplete->dmFields & (DM_PELSWIDTH | DM_PELSHEIGHT)) != (DM_PELSWIDTH | DM_PELSHEIGHT)) ||
+        ((pdmComplete->dmFields & DM_DISPLAYFREQUENCY) && (pdmComplete->dmDisplayFrequency != 0)))
+    {
+        return;
+    }
+
+    if (!LDEVOBJ_bBuildDevmodeList(pGraphicsDevice))
+        return;
+
+    BitsPerPel = pdmComplete->dmBitsPerPel;
+    if (!(pdmComplete->dmFields & DM_BITSPERPEL) || (BitsPerPel == 0))
+        BitsPerPel = (pdmCurrent != NULL) ? pdmCurrent->dmBitsPerPel : 0;
+
+    /* 1 Hz stands for a rate the driver did not specify, as BasicDisplay reports */
+    if ((pdmCurrent != NULL) && (pdmCurrent->dmDisplayFrequency > 1) &&
+        DlpSourceHasMode(pGraphicsDevice, pdmComplete->dmPelsWidth, pdmComplete->dmPelsHeight,
+                         BitsPerPel, pdmCurrent->dmDisplayFrequency, pdmComplete->dmDisplayOrientation))
+    {
+        Frequency = pdmCurrent->dmDisplayFrequency;
+    }
+    else if (DlpSourceHasMode(pGraphicsDevice, pdmComplete->dmPelsWidth, pdmComplete->dmPelsHeight,
+                              BitsPerPel, 60, pdmComplete->dmDisplayOrientation))
+    {
+        Frequency = 60;
+    }
+
+    if (Frequency != 0)
+    {
+        pdmComplete->dmDisplayFrequency = Frequency;
+        pdmComplete->dmFields |= DM_DISPLAYFREQUENCY;
+    }
 }
 
 /**
@@ -1345,14 +1553,21 @@ DlpApplyDisplayConfig(
  *        goes through dxgkrnl's CDS journal into the current paths, which are then committed like
  *        any other configuration. Must run in CSRSS or a GUI thread of the session.
  *
+ * The sequence dxgkrnl expects for this: Get (the running topology, or the saved one), AugmentCdsj
+ * to validate, capture the mode, put it in the paths with ApplyCdsjToPathsModality, Functionalize,
+ * Apply, build the desktop, Finalize.
+ *
  * @param pGraphicsDevice The source whose mode changes.
  * @param pdmRequest The mode asked for. NULL goes back to the saved configuration.
+ * @param pdmCurrent The mode the source runs now, what unspecified fields default to.
  * @param bTryClosest Settle for the closest mode the source has.
  * @param bSetMode Program the mode. FALSE only checks it, or only saves it with bUpdateRegistry.
  * @param bUpdateRegistry Save the new configuration in the display database.
  * @param bFullScreen The caller changes the mode for a full screen application.
  * @param pmdevOld The current desktop.
  * @param ppmdevNew Receives the new desktop when the mode was set.
+ * @param pbApplied Receives TRUE once dxgkrnl programmed a configuration, even if building the
+ *        desktop for it failed afterwards and the display no longer matches the desktop.
  *
  * @return A DISP_CHANGE_* value.
  */
@@ -1360,23 +1575,28 @@ LONG NTAPI
 DlChangeDisplaySettings(
     _In_ PGRAPHICS_DEVICE pGraphicsDevice,
     _In_opt_ PDEVMODEW pdmRequest,
+    _In_opt_ const DEVMODEW *pdmCurrent,
     _In_ BOOLEAN bTryClosest,
     _In_ BOOLEAN bSetMode,
     _In_ BOOLEAN bUpdateRegistry,
     _In_ BOOLEAN bFullScreen,
     _In_ PMDEVOBJ pmdevOld,
-    _Out_ PMDEVOBJ *ppmdevNew)
+    _Out_ PMDEVOBJ *ppmdevNew,
+    _Out_ PBOOLEAN pbApplied)
 {
     PPROCESSINFO             ppi = PsGetCurrentProcessWin32Process();
     PD3DKMT_GETPATHSMODALITY Modality = NULL;
     PDEVMODEW                pdmCaptured = NULL;
+    DEVMODEW                 dmComplete;
     DL_CDS_REQUEST           Request;
+    const ULONG             *Extra;
     ULONG                    FunctionalizeFlags;
     BOOLEAN                  bSaved;
     NTSTATUS                 Status;
     LONG                     lRet = DISP_CHANGE_FAILED;
 
     *ppmdevNew = NULL;
+    *pbApplied = FALSE;
 
     if (!gbDxgkInitialized || (ppi == NULL) || (ppi->DxProcess == NULL) ||
         (gDxgkInterface.pfnDxgkGetPathsModality == NULL) ||
@@ -1384,16 +1604,33 @@ DlChangeDisplaySettings(
         (gDxgkInterface.pfnDxgkAugmentCdsj == NULL) ||
         (gDxgkInterface.pfnDxgkApplyCdsjToPathsModality == NULL))
     {
+        DPRINT1("win32k: no WDDM mode change for '%S': interface %u, process %p, DXGPROCESS %p\n",
+                pGraphicsDevice->szWinDeviceName, gbDxgkInitialized, ppi, ppi ? ppi->DxProcess : NULL);
         return DISP_CHANGE_FAILED;
+    }
+
+    if (pdmRequest != NULL)
+    {
+        DPRINT1("win32k: mode change of '%S' to %lux%lux%lu %lu Hz (fields 0x%lx)%s%s%s%s\n",
+                pGraphicsDevice->szWinDeviceName,
+                pdmRequest->dmPelsWidth, pdmRequest->dmPelsHeight, pdmRequest->dmBitsPerPel,
+                pdmRequest->dmDisplayFrequency, pdmRequest->dmFields,
+                bSetMode ? "" : ", check only", bUpdateRegistry ? ", saved" : "",
+                bFullScreen ? ", full screen" : "", bTryClosest ? ", closest" : "");
+    }
+    else
+    {
+        DPRINT1("win32k: mode change of '%S' back to the saved configuration\n", pGraphicsDevice->szWinDeviceName);
     }
 
     /* The topology running now, or the saved one when the change is saved or undone */
     bSaved = bUpdateRegistry || (pdmRequest == NULL);
-    Status = DlpQueryPathsModality(DL_MODALITY_CDS | (bSaved ? DL_MODALITY_PERSISTED : DL_MODALITY_CURRENT),
+    Status = DlpQueryPathsModality(DL_MODALITY_CDS | (bSaved ? DL_MODALITY_PERSISTED : DL_MODALITY_CDS_RUNNING),
                                    &Modality);
-    if (!NT_SUCCESS(Status) && bSaved)
+    if (!NT_SUCCESS(Status) && (bSaved || (DL_MODALITY_CDS_RUNNING != DL_MODALITY_CURRENT)))
     {
-        DPRINT1("win32k: no saved display configuration (0x%lX), changing the running one\n", Status);
+        DPRINT1("win32k: no %s display configuration (0x%lX), changing the running one\n",
+                bSaved ? "saved" : "scaled", Status);
         Status = DlpQueryPathsModality(DL_MODALITY_CDS | DL_MODALITY_CURRENT, &Modality);
     }
     if (!NT_SUCCESS(Status))
@@ -1425,11 +1662,22 @@ DlChangeDisplaySettings(
     }
 
     /* Then it becomes a mode the source actually lists */
-    if (!LDEVOBJ_bProbeAndCaptureDevmode(pGraphicsDevice, pdmRequest, &pdmCaptured, bTryClosest))
+    DlpCompleteModeRequest(pGraphicsDevice, pdmRequest, pdmCurrent, &dmComplete);
+    if (!LDEVOBJ_bProbeAndCaptureDevmode(pGraphicsDevice, &dmComplete, &pdmCaptured, bTryClosest))
     {
+        DPRINT1("win32k: '%S' lists no %lux%lux%lu %lu Hz mode\n", pGraphicsDevice->szWinDeviceName,
+                dmComplete.dmPelsWidth, dmComplete.dmPelsHeight, dmComplete.dmBitsPerPel,
+                dmComplete.dmDisplayFrequency);
         lRet = DISP_CHANGE_BADMODE;
         goto Cleanup;
     }
+
+    Extra = (pdmCaptured->dmDriverExtra >= 3 * sizeof(ULONG)) ?
+            (const ULONG *)((const UCHAR *)pdmCaptured + pdmCaptured->dmSize) : NULL;
+    DPRINT1("win32k: mode change picks %lux%lux%lu %lu Hz (refresh %lu/%lu, format %lu), orientation %lu, fields 0x%lx\n",
+            pdmCaptured->dmPelsWidth, pdmCaptured->dmPelsHeight, pdmCaptured->dmBitsPerPel,
+            pdmCaptured->dmDisplayFrequency, Extra ? Extra[0] : 0, Extra ? Extra[1] : 0,
+            Extra ? Extra[2] : 0, pdmCaptured->dmDisplayOrientation, pdmCaptured->dmFields);
 
     Request.Flags = (bTryClosest ? DL_CDS_TRY_CLOSEST : 0) | (bFullScreen ? DL_CDS_FULLSCREEN : 0);
     Request.pDevMode = pdmCaptured;
@@ -1458,9 +1706,12 @@ Commit:
 
     Status = DlpCommitPathsModality(Modality,
                                     FunctionalizeFlags,
+                                    DL_APPLY_CDS,
                                     !bSetMode,
+                                    bSaved,
                                     pmdevOld,
-                                    bSetMode ? ppmdevNew : NULL);
+                                    bSetMode ? ppmdevNew : NULL,
+                                    pbApplied);
     if (!NT_SUCCESS(Status))
         goto Cleanup;
 
@@ -1474,6 +1725,8 @@ Commit:
     lRet = DISP_CHANGE_SUCCESSFUL;
 
 Cleanup:
+    DPRINT1("win32k: mode change of '%S' ends with %ld%s\n", pGraphicsDevice->szWinDeviceName, lRet,
+            *pbApplied ? ", the display runs the new configuration" : "");
     if (pdmCaptured != NULL)
         ExFreePoolWithTag(pdmCaptured, GDITAG_DEVMODE);
     if (Modality != NULL)
