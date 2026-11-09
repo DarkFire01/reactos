@@ -967,6 +967,28 @@ NtDxgkSetProperties(
     DXGKMT_RETURN("DxgkSetProperties", pfn(Param1));
 }
 
+/* Exported by ntoskrnl */
+PCHAR NTAPI PsGetProcessImageFileName(_In_ PEPROCESS Process);
+
+/*
+ * Bring-up aid: which present entry point a user mode driver takes. Under hardware scheduling a
+ * blt present from a hardware queue context has to come through one of these two; dxgkrnl fails
+ * the same present made with the legacy D3DKMTPresent (boot 19, NVIDIA OpenGL: "Hardware context
+ * present is not provided with hardware queue array", reported as PRESENT_OCCLUDED).
+ */
+static VOID
+DlpTraceFirstPresents(
+    _In_z_ PCSTR Name,
+    _In_ NTSTATUS Status,
+    _Inout_ volatile LONG *Count)
+{
+    if (InterlockedIncrement(Count) <= 4)
+    {
+        DPRINT1("win32k: %s -> 0x%lX in %s\n", Name, Status,
+                PsGetProcessImageFileName(PsGetCurrentProcess()));
+    }
+}
+
 NTSTATUS
 APIENTRY
 NtDxgkSubmitPresentBltToHwQueue(
@@ -974,10 +996,14 @@ NtDxgkSubmitPresentBltToHwQueue(
 {
     typedef NTSTATUS (APIENTRY *PFN_FORWARD)(PVOID);
     PFN_FORWARD pfn = (PFN_FORWARD)DlpGetDxgkForward(DxgkForward_DxgkSubmitPresentBltToHwQueue);
+    static volatile LONG Calls = 0;
+    NTSTATUS Status;
 
     if (!pfn)
         return STATUS_PROCEDURE_NOT_FOUND;
-    DXGKMT_RETURN("DxgkSubmitPresentBltToHwQueue", pfn(Param1));
+    Status = pfn(Param1);
+    DlpTraceFirstPresents("DxgkSubmitPresentBltToHwQueue", Status, &Calls);
+    DXGKMT_RETURN("DxgkSubmitPresentBltToHwQueue", Status);
 }
 
 NTSTATUS
@@ -987,10 +1013,14 @@ NtDxgkSubmitPresentToHwQueue(
 {
     typedef NTSTATUS (APIENTRY *PFN_FORWARD)(PVOID);
     PFN_FORWARD pfn = (PFN_FORWARD)DlpGetDxgkForward(DxgkForward_DxgkSubmitPresentToHwQueue);
+    static volatile LONG Calls = 0;
+    NTSTATUS Status;
 
     if (!pfn)
         return STATUS_PROCEDURE_NOT_FOUND;
-    DXGKMT_RETURN("DxgkSubmitPresentToHwQueue", pfn(Param1));
+    Status = pfn(Param1);
+    DlpTraceFirstPresents("DxgkSubmitPresentToHwQueue", Status, &Calls);
+    DXGKMT_RETURN("DxgkSubmitPresentToHwQueue", Status);
 }
 
 NTSTATUS

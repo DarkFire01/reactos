@@ -142,6 +142,8 @@ typedef struct _DXGKENG_SCALE_FACTORS
 #define DXGKENG_PROTOCOL_CONSOLE    0
 
 static ULONG gulVisRgnUniq = 0;
+static volatile LONG glDetectGdiPathCalls = 0;
+static volatile LONG glBltViaGdiCalls = 0;
 static ULONG gulSpriteUniq = 0;
 static volatile LONG glAdapterUniqueness = 0;
 
@@ -438,7 +440,6 @@ DxgkEngDetectGDIPath(
     INT iComplexity;
 
     UNREFERENCED_PARAMETER(pAdapter);
-    UNREFERENCED_PARAMETER(hwnd);
 
     if ((ppdev == NULL) || (hVisRgn == NULL))
         return FALSE;
@@ -453,6 +454,13 @@ DxgkEngDetectGDIPath(
 
     iComplexity = EngCombineRgn(hrgnDevice, hrgnDevice, hVisRgn, RGN_AND);
     EngDeleteRgn(hrgnDevice);
+
+    /* Bring-up aid: which way the first windowed presents went */
+    if (InterlockedIncrement(&glDetectGdiPathCalls) <= 4)
+    {
+        DPRINT1("win32k: DxgkEngDetectGDIPath(hwnd %p, PDEV %p at %ld,%ld %ldx%ld) -> complexity %d\n",
+                hwnd, ppdev, ppdev->ptlOrigion.x, ppdev->ptlOrigion.y, sizl.cx, sizl.cy, iComplexity);
+    }
 
     return ((iComplexity != ERROR) && (iComplexity != NULLREGION));
 }
@@ -524,12 +532,23 @@ DxgkEngBltViaGDI(
     ULONG i;
     INT iOldStretchMode;
 
+    /* Bring-up aid: this runs only once dxgkrnl found the window on a source of the desktop */
+    if (InterlockedIncrement(&glBltViaGdiCalls) <= 4)
+    {
+        DPRINT1("win32k: DxgkEngBltViaGDI(hwnd %p, hdc %p, %lux%lu pitch %lu, %u subrects, flags 0x%x, output %p)\n",
+                pPresent->hWindow, hdcWindow, cxBuffer, cyBuffer, ulPitch, pPresent->SubRectCnt,
+                pPresent->Flags.Value, prclOutput);
+    }
+
     if (hdcWindow == NULL)
         return FALSE;
 
     pdc = DC_LockDc(hdcWindow);
     if (pdc == NULL)
+    {
+        DPRINT1("win32k: DxgkEngBltViaGDI: hdc %p is gone\n", hdcWindow);
         return FALSE;
+    }
     rclWindow = pdc->erclWindow;
     dwLayout = pdc->pdcattr->dwLayout;
     DC_UnlockDc(pdc);
@@ -575,11 +594,15 @@ DxgkEngBltViaGDI(
                                   pvBits,
                                   0);
     if (hbmBuffer == NULL)
+    {
+        DPRINT1("win32k: DxgkEngBltViaGDI: no bitmap over %p (%lux%lu pitch %lu)\n", pvBits, cxBuffer, cyBuffer, ulPitch);
         return FALSE;
+    }
 
     hdcBuffer = GreCreateCompatibleDC(hdcWindow, FALSE);
     if (hdcBuffer == NULL)
     {
+        DPRINT1("win32k: DxgkEngBltViaGDI: no memory DC\n");
         GreDeleteObject(hbmBuffer);
         return FALSE;
     }
@@ -807,7 +830,10 @@ DxgkEngAssertGdiOutput(
     if ((pCddStates == NULL) || (pbResetPointer == NULL))
         return 0;
 
+    DPRINT1("win32k: DxgkEngAssertGdiOutput(adapter %p, %lu sources, CDD on source 0: %u)\n",
+            pAdapter, cSources, (cSources != 0) ? pCddStates[0] : 0);
     bResult = PDEVOBJ_bAssertGdiOutput(pAdapter, pCddStates, cSources, &bResetPointer);
+    DPRINT1("win32k: DxgkEngAssertGdiOutput -> %d, reset pointer %u\n", bResult, bResetPointer);
 
     *pbResetPointer = bResetPointer;
     return bResult;
@@ -1177,6 +1203,11 @@ DxgkEngQueryWin32Info(
     }
 }
 
+/**
+ * @brief The window rectangle in screen coordinates, what D3DKMTCheckOcclusion tests against the
+ *        sources of the desktop. dxgkrnl calls it inside DxgkEngEnterUserCrit and takes only 1
+ *        as success; anything else makes it report the window occluded.
+ */
 static
 LONG
 APIENTRY
@@ -1184,14 +1215,31 @@ DxgkEngGetWindowRect(
     _In_ HWND hwnd,
     _Out_ LPRECT prcl)
 {
-    UNIMPLEMENTED_ONCE;
+    PWND pWnd;
+    BOOL bLocked = FALSE;
+    LONG lRet = 0;
 
-    UNREFERENCED_PARAMETER(hwnd);
+    if (prcl == NULL)
+        return 0;
+    RtlZeroMemory(prcl, sizeof(*prcl));
 
-    if (prcl != NULL)
-        RtlZeroMemory(prcl, sizeof(*prcl));
+    if (!UserIsEntered())
+    {
+        UserEnterShared();
+        bLocked = TRUE;
+    }
 
-    return 0;
+    pWnd = UserGetWindowObject(hwnd);
+    if (pWnd != NULL)
+    {
+        *prcl = pWnd->rcWindow;
+        lRet = 1;
+    }
+
+    if (bLocked)
+        UserLeave();
+
+    return lRet;
 }
 
 static
@@ -1313,8 +1361,9 @@ DxgkEngSetDisplayModeCallback(
     _In_opt_ PVOID pContext,
     _In_ ULONG VidPnSourceId)
 {
-    UNREFERENCED_PARAMETER(pContext);
-    UNREFERENCED_PARAMETER(VidPnSourceId);
+    /* Windows passes the adapter LUID by value and updates the PDEV of the source here */
+    DPRINT1("win32k: DxgkEngSetDisplayModeCallback(%p, source %lu): the GDI side is not updated\n",
+            pContext, VidPnSourceId);
     return STATUS_SUCCESS;
 }
 

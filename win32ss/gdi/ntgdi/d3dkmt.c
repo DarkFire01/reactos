@@ -84,6 +84,138 @@ DlTraceD3DKMTFailure(
     return Status;
 }
 
+/*
+ * Bring-up aid for presenting: what a failed present, an ownership change or a display mode change
+ * asked dxgkrnl for. The caller's structure is read under SEH and only for the log.
+ */
+static BOOLEAN
+DxgkpCaptureForTrace(
+    _Out_writes_bytes_(Size) PVOID Copy,
+    _In_ const VOID *Source,
+    _In_ SIZE_T Size)
+{
+    BOOLEAN bCopied = FALSE;
+
+    _SEH2_TRY
+    {
+        if (ExGetPreviousMode() != KernelMode)
+            ProbeForRead((PVOID)Source, Size, sizeof(ULONG));
+        RtlCopyMemory(Copy, Source, Size);
+        bCopied = TRUE;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        bCopied = FALSE;
+    }
+    _SEH2_END;
+
+    return bCopied;
+}
+
+/* Which present entry points user mode drivers take, see also NtDxgkSubmitPresent*ToHwQueue */
+static volatile LONG glPresentCalls = 0;
+
+static VOID
+DxgkpTracePresentFailure(
+    _In_ const D3DKMT_PRESENT *pPresent,
+    _In_ NTSTATUS Status)
+{
+    static volatile LONG Count = 0;
+    D3DKMT_PRESENT Copy;
+    LONG n = InterlockedIncrement(&Count);
+
+    if ((n > 16) && ((n & (n - 1)) != 0))
+        return;
+
+    if (!DxgkpCaptureForTrace(&Copy, pPresent, FIELD_OFFSET(D3DKMT_PRESENT, BroadcastContext)))
+        return;
+
+    DPRINT1("win32k: Present 0x%lX (#%ld): hContext 0x%x hWindow %p source %u hSource 0x%x hDestination 0x%x "
+            "flags 0x%x subrects %u interval %d broadcast %lu\n",
+            Status, n, Copy.hContext, Copy.hWindow, Copy.VidPnSourceId, Copy.hSource, Copy.hDestination,
+            Copy.Flags.Value, Copy.SubRectCnt, (int)Copy.FlipInterval, Copy.BroadcastContextCount);
+}
+
+static VOID
+DxgkpTraceSetVidPnSourceOwner(
+    _In_ const D3DKMT_SETVIDPNSOURCEOWNER *pOwner,
+    _In_ NTSTATUS Status)
+{
+    /* gdi32 always hands dxgkrnl the Windows 11 layout: the flags follow the base description */
+    struct
+    {
+        D3DKMT_SETVIDPNSOURCEOWNER Version0;
+        ULONG Flags;
+    } Copy;
+    D3DKMT_VIDPNSOURCEOWNER_TYPE Type = D3DKMT_VIDPNSOURCEOWNER_UNOWNED;
+    D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId = (D3DDDI_VIDEO_PRESENT_SOURCE_ID)-1;
+
+    if (!DxgkpCaptureForTrace(&Copy, pOwner, sizeof(Copy)))
+        return;
+
+    if (Copy.Version0.VidPnSourceCount != 0)
+    {
+        if (Copy.Version0.pType != NULL)
+            DxgkpCaptureForTrace(&Type, Copy.Version0.pType, sizeof(Type));
+        if (Copy.Version0.pVidPnSourceId != NULL)
+            DxgkpCaptureForTrace(&SourceId, Copy.Version0.pVidPnSourceId, sizeof(SourceId));
+    }
+
+    DPRINT1("win32k: SetVidPnSourceOwner(hDevice 0x%x, %u sources, first: source %u type %d, flags 0x%lx) -> 0x%lX in %s\n",
+            Copy.Version0.hDevice, Copy.Version0.VidPnSourceCount, SourceId, (int)Type, Copy.Flags, Status,
+            PsGetProcessImageFileName(PsGetCurrentProcess()));
+}
+
+static VOID
+DxgkpTraceSetDisplayMode(
+    _In_ const D3DKMT_SETDISPLAYMODE *pMode,
+    _In_ NTSTATUS Status)
+{
+    D3DKMT_SETDISPLAYMODE Copy;
+
+    if (!DxgkpCaptureForTrace(&Copy, pMode, sizeof(Copy)))
+        return;
+
+    DPRINT1("win32k: SetDisplayMode(hDevice 0x%x, primary 0x%x, scanline %d, rotation %d, flags 0x%x) -> 0x%lX in %s\n",
+            Copy.hDevice, Copy.hPrimaryAllocation, (int)Copy.ScanLineOrdering, (int)Copy.DisplayOrientation,
+            *(const UINT *)&Copy.Flags, Status, PsGetProcessImageFileName(PsGetCurrentProcess()));
+}
+
+/* The leading part of D3DDDI_QUERYREGISTRY_INFO, which the tree only declares for WDDM 2.4 */
+typedef struct _DL_QUERYREGISTRY_NAME
+{
+    ULONG QueryType;
+    ULONG QueryFlags;
+    WCHAR ValueName[MAX_PATH];
+} DL_QUERYREGISTRY_NAME;
+
+#define DL_KMTQAITYPE_QUERYREGISTRY 48
+
+/* Which registry values a user mode driver missed: dxgkrnl fails absent ones, as on Windows */
+static VOID
+DxgkpTraceQueryRegistryFailure(
+    _In_ const D3DKMT_QUERYADAPTERINFO *pQuery,
+    _In_ NTSTATUS Status)
+{
+    static volatile LONG Count = 0;
+    D3DKMT_QUERYADAPTERINFO Query;
+    DL_QUERYREGISTRY_NAME Name;
+
+    if (!DxgkpCaptureForTrace(&Query, pQuery, sizeof(Query)) ||
+        (Query.Type != DL_KMTQAITYPE_QUERYREGISTRY) ||
+        (Query.pPrivateDriverData == NULL) ||
+        (Query.PrivateDriverDataSize < sizeof(Name)) ||
+        (InterlockedIncrement(&Count) > 64) ||
+        !DxgkpCaptureForTrace(&Name, Query.pPrivateDriverData, sizeof(Name)))
+    {
+        return;
+    }
+
+    Name.ValueName[MAX_PATH - 1] = UNICODE_NULL;
+    DPRINT1("win32k: QueryAdapterInfo(QUERYREGISTRY type %lu, '%S') -> 0x%lX in %s\n",
+            Name.QueryType, Name.ValueName, Status, PsGetProcessImageFileName(PsGetCurrentProcess()));
+}
+
 /**
  * @brief Populate DxgAdapterCallbacks from dxgkrnl. Sends IOCTL_VIDEO_REGISTER_RXGK to \Device\DxgKrnl;
  *        DxgKrnl_ms fills the RxgkIntPfn* slots with its D3DKMT entry points (device/reactosif.cpp).
@@ -1233,6 +1365,7 @@ APIENTRY
 NtGdiDdDDIPresent(_In_ D3DKMT_PRESENT* unnamedParam1)
 {
     PFN_DXGK_PRESENT pfn;
+    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
@@ -1248,7 +1381,12 @@ NtGdiDdDDIPresent(_In_ D3DKMT_PRESENT* unnamedParam1)
     }
 
     /* GDI is never powered off here, so it always owns the display */
-    DXGKMT_RETURN("Present", pfn(unnamedParam1, TRUE));
+    Status = pfn(unnamedParam1, TRUE);
+    if (!NT_SUCCESS(Status))
+        DxgkpTracePresentFailure(unnamedParam1, Status);
+    else if (InterlockedIncrement(&glPresentCalls) <= 4)
+        DPRINT1("win32k: Present -> 0x%lX in %s\n", Status, PsGetProcessImageFileName(PsGetCurrentProcess()));
+    DXGKMT_RETURN("Present", Status);
 }
 
 NTSTATUS
@@ -1256,6 +1394,7 @@ APIENTRY
 NtGdiDdDDIQueryAdapterInfo(_Inout_ const D3DKMT_QUERYADAPTERINFO* unnamedParam1)
 {
     PFN_DXGK_D3DKMT pfn;
+    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
@@ -1270,7 +1409,10 @@ NtGdiDdDDIQueryAdapterInfo(_Inout_ const D3DKMT_QUERYADAPTERINFO* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    DXGKMT_RETURN("QueryAdapterInfo", pfn((PVOID)unnamedParam1));
+    Status = pfn((PVOID)unnamedParam1);
+    if (!NT_SUCCESS(Status))
+        DxgkpTraceQueryRegistryFailure(unnamedParam1, Status);
+    DXGKMT_RETURN("QueryAdapterInfo", Status);
 }
 
 NTSTATUS
@@ -1432,6 +1574,7 @@ APIENTRY
 NtGdiDdDDISetDisplayMode(_In_ const D3DKMT_SETDISPLAYMODE* unnamedParam1)
 {
     PFN_DXGK_D3DKMT pfn;
+    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
@@ -1446,7 +1589,10 @@ NtGdiDdDDISetDisplayMode(_In_ const D3DKMT_SETDISPLAYMODE* unnamedParam1)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    DXGKMT_RETURN("SetDisplayMode", pfn((PVOID)unnamedParam1));
+    /* Rare and the moment a full screen application takes the scanout, so every call is logged */
+    Status = pfn((PVOID)unnamedParam1);
+    DxgkpTraceSetDisplayMode(unnamedParam1, Status);
+    DXGKMT_RETURN("SetDisplayMode", Status);
 }
 
 NTSTATUS
@@ -1521,6 +1667,7 @@ APIENTRY
 NtGdiDdDDISetVidPnSourceOwner(_In_ const D3DKMT_SETVIDPNSOURCEOWNER* unnamedParam1)
 {
     PFN_DXGK_D3DKMT pfn;
+    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
@@ -1535,7 +1682,10 @@ NtGdiDdDDISetVidPnSourceOwner(_In_ const D3DKMT_SETVIDPNSOURCEOWNER* unnamedPara
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    DXGKMT_RETURN("SetVidPnSourceOwner", pfn((PVOID)unnamedParam1));
+    /* Rare, and every full screen enter and exit goes through here */
+    Status = pfn((PVOID)unnamedParam1);
+    DxgkpTraceSetVidPnSourceOwner(unnamedParam1, Status);
+    DXGKMT_RETURN("SetVidPnSourceOwner", Status);
 }
 
 NTSTATUS
