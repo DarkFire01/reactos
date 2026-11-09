@@ -21,6 +21,13 @@ REDIRECT_HOSTS = {
     'gdi32full.dll': 'gdi32.dll'
 }
 
+# Apisets whose functions live in a different ReactOS dll than the rest of their Windows host
+REDIRECT_APISETS = {
+    'api-ms-win-core-registry-l1-': 'advapi32.dll',
+    'api-ms-win-eventing-classicprovider-l1-': 'advapi32.dll',
+    'api-ms-win-eventing-provider-l1-': 'advapi32.dll'
+}
+
 OUTPUT_HEADER = """/*
  * PROJECT:     ReactOS apisets
  * LICENSE:     LGPL-2.1-or-later (https://spdx.org/licenses/LGPL-2.1-or-later)
@@ -77,6 +84,9 @@ class Apiset:
         else:
             # Check to see if there is any dll we want to swap (kernelbase -> kernel32)
             replace = REDIRECT_HOSTS.get(host.lower(), None)
+            for apiset_prefix, apiset_host in REDIRECT_APISETS.items():
+                if name.lower().startswith(apiset_prefix):
+                    replace = apiset_host
             if replace:
                 postfix = ' // ' + host
                 host = replace
