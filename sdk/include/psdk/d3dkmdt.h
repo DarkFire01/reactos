@@ -470,7 +470,8 @@ typedef enum _D3DKMDT_VIDEO_OUTPUT_TECHNOLOGY
     D3DKMDT_VOT_INDIRECT_WIRED           = 16,
 #endif // (DXGKDDI_INTERFACE_VERSION >= DXGKDDI_INTERFACE_VERSION_WDDM2_1)
 #endif // (DXGKDDI_INTERFACE_VERSION >= DXGKDDI_INTERFACE_VERSION_WDDM1_3_M1)
-    D3DKMDT_VOT_INTERNAL                 = 0x80000000,
+    /* (int): with -2 and 0x80000000 GCC would make the enum 8 bytes, Windows' is 4 */
+    D3DKMDT_VOT_INTERNAL                 = (int)0x80000000,
 
     // Remove when DDI is unlocked.
     D3DKMDT_VOT_SVIDEO_4PIN          = D3DKMDT_VOT_SVIDEO,
@@ -501,7 +502,8 @@ typedef enum _DXGKMDT_OPM_CONNECTOR_TYPE
     DXGKMDT_OPM_CONNECTOR_TYPE_MIRACAST                             = 15,
     DXGKMDT_OPM_CONNECTOR_TYPE_TRANSPORT_AGNOSTIC_DIGITAL_MODE_A    = 16,
     DXGKMDT_OPM_CONNECTOR_TYPE_TRANSPORT_AGNOSTIC_DIGITAL_MODE_B    = 17,
-    DXGKMDT_OPM_COPP_COMPATIBLE_CONNECTOR_TYPE_INTERNAL = 0x80000000
+    /* (int): with -1 and 0x80000000 GCC would make the enum 8 bytes, Windows' is 4 */
+    DXGKMDT_OPM_COPP_COMPATIBLE_CONNECTOR_TYPE_INTERNAL = (int)0x80000000
 } DXGKMDT_OPM_CONNECTOR_TYPE;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////

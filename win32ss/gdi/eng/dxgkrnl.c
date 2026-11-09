@@ -273,6 +273,11 @@ typedef struct _DL_CDS_REQUEST
     const DEVMODEW *pDevMode;
 } DL_CDS_REQUEST, *PDL_CDS_REQUEST;
 
+/* dxgkrnl's CDS_JOURNAL::_PreVerify reads the DEVMODE pointer at 0x20 */
+C_ASSERT(sizeof(D3DKMDT_VIDEO_OUTPUT_TECHNOLOGY) == sizeof(ULONG));
+C_ASSERT(FIELD_OFFSET(DL_CDS_REQUEST, pDevMode) == 0x20);
+C_ASSERT(sizeof(DL_CDS_REQUEST) == 0x28);
+
 #define DL_CDS_TRY_CLOSEST          0x00000002
 #define DL_CDS_VALIDATE_ONLY        0x00000004
 #define DL_CDS_FULLSCREEN           0x00000008
