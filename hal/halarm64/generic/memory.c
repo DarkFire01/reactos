@@ -21,7 +21,104 @@ VOID
 NTAPI
 HalpPublishPteWrites(VOID);
 
+/* GLOBALS *******************************************************************/
+
+/* One allocation can split a loader block in three */
+#define HALP_MAX_ALLOC_DESCRIPTORS  64
+
+static MEMORY_ALLOCATION_DESCRIPTOR HalpAllocDescriptors[HALP_MAX_ALLOC_DESCRIPTORS];
+static ULONG HalpAllocDescriptorCount;
+
 /* FUNCTIONS *****************************************************************/
+
+/**
+ * @brief Takes physical pages out of the loader's free memory for good.
+ *
+ * The pages are described as HAL memory in the loader block, so the memory
+ * manager never hands them out.
+ *
+ * @param[in] MaxAddress
+ * The pages must end below this address.
+ *
+ * @param[in] Aligned
+ * TRUE to start the pages on a 64 KB boundary.
+ *
+ * @return The physical address of the first page, or 0 when nothing fits.
+ */
+CODE_SEG("INIT")
+ULONG64
+NTAPI
+HalpAllocPhysicalMemory(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ ULONG64 MaxAddress,
+    _In_ PFN_NUMBER PageCount,
+    _In_ BOOLEAN Aligned)
+{
+    PMEMORY_ALLOCATION_DESCRIPTOR Block = NULL, Taken, Rest;
+    PFN_NUMBER MaxPage = (PFN_NUMBER)(MaxAddress >> PAGE_SHIFT);
+    PFN_NUMBER Skip = 0;
+    PLIST_ENTRY Entry;
+
+    if ((HalpAllocDescriptorCount + 2) > HALP_MAX_ALLOC_DESCRIPTORS)
+        return 0;
+
+    for (Entry = LoaderBlock->MemoryDescriptorListHead.Flink;
+         Entry != &LoaderBlock->MemoryDescriptorListHead;
+         Entry = Entry->Flink)
+    {
+        Block = CONTAINING_RECORD(Entry, MEMORY_ALLOCATION_DESCRIPTOR, ListEntry);
+
+        if ((Block->MemoryType != LoaderFree) && (Block->MemoryType != LoaderFirmwareTemporary))
+            continue;
+
+        /* Page 0 is never handed out */
+        if (Block->BasePage == 0)
+            continue;
+
+        Skip = Aligned ? (ALIGN_UP_BY(Block->BasePage, 16) - Block->BasePage) : 0;
+        if ((Block->PageCount >= PageCount + Skip) &&
+            (Block->BasePage + Skip + PageCount < MaxPage))
+        {
+            break;
+        }
+    }
+
+    if (Entry == &LoaderBlock->MemoryDescriptorListHead)
+        return 0;
+
+    Taken = &HalpAllocDescriptors[HalpAllocDescriptorCount++];
+    Taken->MemoryType = LoaderHALCachedMemory;
+    Taken->BasePage = Block->BasePage + Skip;
+    Taken->PageCount = (PFN_COUNT)PageCount;
+
+    if (Skip)
+    {
+        /* The pages after the allocation stay what the block was */
+        if (Block->PageCount > PageCount + Skip)
+        {
+            Rest = &HalpAllocDescriptors[HalpAllocDescriptorCount++];
+            Rest->MemoryType = Block->MemoryType;
+            Rest->BasePage = Taken->BasePage + PageCount;
+            Rest->PageCount = Block->PageCount - (PFN_COUNT)(Skip + PageCount);
+            InsertHeadList(&Block->ListEntry, &Rest->ListEntry);
+        }
+
+        Block->PageCount = (PFN_COUNT)Skip;
+        InsertHeadList(&Block->ListEntry, &Taken->ListEntry);
+    }
+    else
+    {
+        Block->BasePage += PageCount;
+        Block->PageCount -= (PFN_COUNT)PageCount;
+
+        /* The list stays sorted, the allocation goes in front of what is left */
+        InsertTailList(&Block->ListEntry, &Taken->ListEntry);
+        if (Block->PageCount == 0)
+            RemoveEntryList(&Block->ListEntry);
+    }
+
+    return (ULONG64)Taken->BasePage << PAGE_SHIFT;
+}
 
 static
 BOOLEAN
