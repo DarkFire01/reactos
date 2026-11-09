@@ -312,6 +312,7 @@ typedef struct _IO_WORKITEM
     PDEVICE_OBJECT DeviceObject;
     PIO_WORKITEM_ROUTINE WorkerRoutine;
     PVOID Context;
+    PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
 } IO_WORKITEM;
 
 //

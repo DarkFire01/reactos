@@ -23,8 +23,11 @@ IopWorkItemCallback(IN PVOID Parameter)
     PDEVICE_OBJECT DeviceObject = IoWorkItem->DeviceObject;
     PAGED_CODE();
 
-    /* Call the work routine */
-    IoWorkItem->WorkerRoutine(DeviceObject, IoWorkItem->Context);
+    /* Call the work routine, the extended form also gets the work item */
+    if (IoWorkItem->WorkerRoutineEx)
+        IoWorkItem->WorkerRoutineEx(DeviceObject, IoWorkItem->Context, IoWorkItem);
+    else
+        IoWorkItem->WorkerRoutine(DeviceObject, IoWorkItem->Context);
 
     /* Dereference the device object */
     ObDereferenceObject(DeviceObject);
@@ -50,6 +53,7 @@ IoQueueWorkItem(IN PIO_WORKITEM IoWorkItem,
 
     /* Setup the work item */
     IoWorkItem->WorkerRoutine = WorkerRoutine;
+    IoWorkItem->WorkerRoutineEx = NULL;
     IoWorkItem->Context = Context;
 
     /* Queue the work item */
@@ -84,10 +88,68 @@ IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
 
     /* Initialize it */
     IoWorkItem->DeviceObject = DeviceObject;
+    IoWorkItem->WorkerRoutineEx = NULL;
     ExInitializeWorkItem(&IoWorkItem->Item, IopWorkItemCallback, IoWorkItem);
 
     /* Return it */
     return IoWorkItem;
+}
+
+/**
+ * @brief Queues a work item whose routine also receives the work item itself.
+ */
+VOID
+NTAPI
+IoQueueWorkItemEx(
+    _Inout_ PIO_WORKITEM IoWorkItem,
+    _In_ PIO_WORKITEM_ROUTINE_EX WorkerRoutine,
+    _In_ WORK_QUEUE_TYPE QueueType,
+    _In_opt_ PVOID Context)
+{
+    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+
+    ObReferenceObject(IoWorkItem->DeviceObject);
+
+    IoWorkItem->WorkerRoutine = NULL;
+    IoWorkItem->WorkerRoutineEx = WorkerRoutine;
+    IoWorkItem->Context = Context;
+
+    ExQueueWorkItem(&IoWorkItem->Item, QueueType);
+}
+
+/**
+ * @brief Size of the storage a caller provides to IoInitializeWorkItem.
+ */
+ULONG
+NTAPI
+IoSizeofWorkItem(VOID)
+{
+    return sizeof(IO_WORKITEM);
+}
+
+/**
+ * @brief Prepares caller allocated work item storage, IoObject may be a device or driver object.
+ */
+VOID
+NTAPI
+IoInitializeWorkItem(
+    _In_ PVOID IoObject,
+    _Out_ PIO_WORKITEM IoWorkItem)
+{
+    RtlZeroMemory(IoWorkItem, sizeof(*IoWorkItem));
+    IoWorkItem->DeviceObject = IoObject;
+    ExInitializeWorkItem(&IoWorkItem->Item, IopWorkItemCallback, IoWorkItem);
+}
+
+/**
+ * @brief Releases a work item set up with IoInitializeWorkItem, the storage stays with the caller.
+ */
+VOID
+NTAPI
+IoUninitializeWorkItem(
+    _Inout_ PIO_WORKITEM IoWorkItem)
+{
+    UNREFERENCED_PARAMETER(IoWorkItem);
 }
 
 /* EOF */
