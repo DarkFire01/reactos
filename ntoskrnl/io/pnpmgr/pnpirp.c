@@ -75,9 +75,19 @@ PnpWatchFindModule(
     return NULL;
 }
 
+/* A stack slot that can be read now: the start of every page is checked before reading on */
+static BOOLEAN
+PnpWatchCanRead(
+    _In_ PULONG_PTR p,
+    _In_ PULONG_PTR Sp)
+{
+    return (p != Sp && ((ULONG_PTR)p & (PAGE_SIZE - 1))) || MmIsAddressValid(p);
+}
+
 /*
  * Print the code addresses found between a blocked thread's saved stack pointer and its stack
- * base. With Filter, print nothing unless one of them lies in one of the named modules.
+ * base. With Filter, print nothing unless one of them lies in one of the named modules. The
+ * thread may exit meanwhile and its stack go away, so a page that is gone ends the scan.
  */
 static VOID
 PnpWatchScanStack(
@@ -91,12 +101,14 @@ PnpWatchScanStack(
     BOOLEAN Match = (Filter == NULL);
     ULONG Hits = 0, i;
 
+    if (Thread->State == Terminated)
+        return;
     if (!Sp || !Base || Sp >= Base || (ULONG_PTR)(Base - Sp) > KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR))
         return;
 
     KeEnterCriticalRegion();
     ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
-    for (p = Sp; p < Base && !Match; p++)
+    for (p = Sp; p < Base && !Match && PnpWatchCanRead(p, Sp); p++)
     {
         LdrEntry = PnpWatchFindModule(*p);
         for (i = 0; LdrEntry && i < FilterCount; i++)
@@ -114,7 +126,7 @@ PnpWatchScanStack(
                      Thread, PsGetThreadProcess((PETHREAD)Thread)->ImageFileName,
                      Thread->State, Thread->WaitReason);
         }
-        for (p = Sp; p < Base && Hits < 48; p++)
+        for (p = Sp; p < Base && Hits < 48 && PnpWatchCanRead(p, Sp); p++)
         {
             LdrEntry = PnpWatchFindModule(*p);
             if (LdrEntry)
@@ -157,7 +169,7 @@ PnpWatchThread(
     PDEVICE_NODE DeviceNode;
     PETHREAD Thread;
     ULONG i;
-    static const ULONG ThreadDumpTimes[] = { 75, 150 };   /* seconds since boot */
+    static const ULONG ThreadDumpTimes[] = { 45, 75, 150, 300 };   /* seconds since boot */
     ULONG NextThreadDump = 0;
 
     UNREFERENCED_PARAMETER(Context);
