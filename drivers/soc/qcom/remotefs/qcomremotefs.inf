@@ -1,0 +1,63 @@
+; QCOMREMOTEFS.INF
+
+; Installation file for the Qualcomm remote file system server
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/09/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomremotefs.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ReactOSMfg% = ReactOSMfg
+
+[ReactOSMfg]
+%RFS.DeviceDesc% = RFS_Device, ACPI\QCOM2423
+
+[RFS_Device.NT]
+CopyFiles = RFS_CopyFiles
+
+[RFS_CopyFiles]
+qcomremotefs.sys
+
+[RFS_Device.NT.HW]
+AddReg = RFS_Settings
+
+[RFS_Settings]
+HKR,,Security,,"D:P(A;;GA;;;BA)(A;;GA;;;SY)"
+HKR,,FileBased,0x00010001,0
+HKR,,PartitionNum,0x00010001,0
+
+[RFS_Device.NT.Services]
+AddService = qcomremotefs, 0x00000002, RFS_Service
+
+[RFS_Service]
+DisplayName    = %RFS.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomremotefs.sys
+LoadOrderGroup = Base
+
+[RFS_Device.NT.Wdf]
+KmdfService = qcomremotefs, RFS_wdfsect
+
+[RFS_wdfsect]
+KmdfLibraryVersion = 1.17
+
+[Strings]
+ReactOS = "ReactOS Project"
+ReactOSMfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+RFS.DeviceDesc = "Qualcomm Remote File System Server"
+RFS.ServiceDesc = "Qualcomm Remote File System Server"
