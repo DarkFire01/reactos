@@ -78,7 +78,8 @@ typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
 
 /*
  * The display configuration dxgkrnl applies to an adapter: this header followed by PathArraySize
- * entries of DL_MODALITY_PATH_SIZE bytes. AppliedCount/AppliedPaths are filled by the apply.
+ * entries of DL_MODALITY_PATH_SIZE bytes. On Windows 11, AppliedCount is not a path count
+ * (Functionalize zeroes it) and the ULONG at 0x28 counts the adapters the apply touched.
  */
 typedef struct _D3DKMT_GETPATHSMODALITY
 {
