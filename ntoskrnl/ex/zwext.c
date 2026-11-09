@@ -255,11 +255,15 @@ EtwpReenableStackWalkApc(
     UNREFERENCED_PARAMETER(PreviousState);
 }
 
+/* mm/ARM3/procsup.c */
+NTSTATUS NTAPI MmGrowKernelStackEx(IN PVOID StackPointer, IN ULONG GrowSize);
+
 /**
  * @brief Calls a routine on a stack with at least a given amount of room.
  *
- * @remarks Kernel stacks have a fixed size, the routine runs on the current one
- * when the room asked for fits in a large kernel stack.
+ * @remarks The routine runs on the current stack. A thread with a large kernel stack
+ * (every GUI thread) only has part of it committed, so the rest gets committed first
+ * when the room asked for is not there yet. Other threads cannot grow, they just call.
  */
 NTSTATUS
 NTAPI
@@ -270,11 +274,31 @@ KeExpandKernelStackAndCalloutEx(
     _In_ BOOLEAN Wait,
     _In_opt_ PVOID Context)
 {
+    PKTHREAD Thread = KeGetCurrentThread();
+    ULONG_PTR StackPointer = (ULONG_PTR)&Thread;
+    static LONG Reported;
+    NTSTATUS Status;
+
     UNREFERENCED_PARAMETER(Wait);
     UNREFERENCED_PARAMETER(Context);
 
     if (Size > KERNEL_LARGE_STACK_SIZE)
         return STATUS_INVALID_PARAMETER_3;
+
+    if (StackPointer - Thread->StackLimit < Size)
+    {
+        if (Thread->LargeStack && KeGetCurrentIrql() < DISPATCH_LEVEL)
+        {
+            Status = MmGrowKernelStackEx((PVOID)StackPointer, (ULONG)Size);
+            if (!NT_SUCCESS(Status))
+                return Status;
+        }
+        else if (InterlockedExchange(&Reported, 1) == 0)
+        {
+            DPRINT1("KeExpandKernelStackAndCalloutEx: 0x%Ix bytes asked for, only 0x%Ix left in thread %p\n",
+                    Size, StackPointer - Thread->StackLimit, Thread);
+        }
+    }
 
     Callout(Parameter);
     return STATUS_SUCCESS;

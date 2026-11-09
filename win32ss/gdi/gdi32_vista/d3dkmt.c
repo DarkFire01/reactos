@@ -9,6 +9,9 @@
 #include <d3dkmddi.h>
 #include <winuser.h>
 
+#define NDEBUG
+#include <debug.h>
+
 /*
  * <d3dkmthk.h> hides D3DKMT_OPENADAPTERFROMLUID and D3DKMT_QUERYVIDEOMEMORYINFO
  * behind DXGKDDI_INTERFACE_VERSION gates of WIN8 and WDDM2_2, while the tree
@@ -194,13 +197,16 @@ D3DKMTOpenAdapterFromGdiDisplayName(_Inout_ D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME
     D3DKMT_HANDLE hAdapter;
     LUID AdapterLuid;
     DWORD Index = 0;
+    NTSTATUS Status;
 
     if (!unnamedParam1)
         return STATUS_INVALID_PARAMETER;
 
     /* A display driven by WDDM gets its real dxgkrnl adapter */
-    if (NT_SUCCESS(NtGdiDdDDIOpenAdapterFromGdiDisplayName(unnamedParam1)))
+    Status = NtGdiDdDDIOpenAdapterFromGdiDisplayName(unnamedParam1);
+    if (NT_SUCCESS(Status))
         return STATUS_SUCCESS;
+    DPRINT1("gdi32: no dxgkrnl adapter for %.32S (0x%lx), emulating one\n", unnamedParam1->DeviceName, Status);
 
     /* Locate the GDI display device with this name to obtain its index, which
        doubles as the VidPN source ID */
@@ -255,8 +261,12 @@ D3DKMTOpenAdapterFromLuid(_Inout_ CONST D3DKMT_OPENADAPTERFROMLUID* unnamedParam
     }
     else
     {
-        if (NT_SUCCESS(NtGdiDdDDIOpenAdapterFromLuid(Desc)))
+        NTSTATUS Status = NtGdiDdDDIOpenAdapterFromLuid(Desc);
+
+        if (NT_SUCCESS(Status))
             return STATUS_SUCCESS;
+        DPRINT1("gdi32: no dxgkrnl adapter with LUID %lx:%lx (0x%lx), emulating one\n",
+                unnamedParam1->AdapterLuid.HighPart, unnamedParam1->AdapterLuid.LowPart, Status);
 
         VidPnSourceId = 0;
     }

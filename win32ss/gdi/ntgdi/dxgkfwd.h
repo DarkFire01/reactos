@@ -990,3 +990,17 @@ APIENTRY
 NtValidateCompositionSurfaceHandle(
     _In_opt_ PVOID Param1,
     _In_opt_ PVOID Param2);
+
+/*
+ * Logs a failed D3DKMT call dxgkrnl answered: the first 8 failures of each call site, then
+ * every power of two, with the calling process. Returns Status unchanged.
+ */
+NTSTATUS
+NTAPI
+DlTraceD3DKMTFailure(
+    _In_ PCSTR Name,
+    _In_ NTSTATUS Status,
+    _Inout_ volatile LONG *Count);
+
+#define DXGKMT_RETURN(name, call) \
+    do { static volatile LONG C = 0; return DlTraceD3DKMTFailure(name, (call), &C); } while (0)
