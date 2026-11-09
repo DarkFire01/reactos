@@ -3,9 +3,14 @@ spec2def(kdusb.dll kdusb.spec ADD_IMPORTLIB)
 list(APPEND SOURCE
     ehcidbg.c
     kdusb.c
-    kdusbhw.c
     xhcidbg.c
     kdusb.h)
+
+if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
+    list(APPEND SOURCE arch/x86/kdusbhw.c)
+else()
+    list(APPEND SOURCE arch/generic/kdusbhw.c)
+endif()
 
 add_library(kdusb MODULE
     ${SOURCE}

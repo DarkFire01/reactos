@@ -1,13 +1,11 @@
 /*
  * PROJECT:     ReactOS USB Kernel Debugger Transport
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Stall routine that works before the HAL calibrates its own
+ * PURPOSE:     x86 stall routine that works before the HAL calibrates its own
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 #include "kdusb.h"
-
-#if defined(_M_IX86) || defined(_M_AMD64)
 
 /*
  * Phase 0 runs before the HAL measures StallScaleFactor, so
@@ -225,15 +223,3 @@ KdUsbStall(
     for (Start = __rdtsc(); __rdtsc() - Start < Ticks; )
         YieldProcessor();
 }
-
-#else
-
-VOID
-NTAPI
-KdUsbStall(
-    _In_ ULONG Microseconds)
-{
-    KeStallExecutionProcessor(Microseconds);
-}
-
-#endif
