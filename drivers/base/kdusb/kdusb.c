@@ -525,13 +525,12 @@ KdDebuggerInitialize0(
         return Status;
     }
 
-#if defined(_M_IX86) || defined(_M_AMD64)
+    /* Every architecture's loader leaves its printer here, or NULL when it has none */
     if (LoaderBlock->LoadOptions != NULL &&
         KdUsbFindOption(LoaderBlock->LoadOptions, "FRLDRSCREENLOG") != NULL)
     {
         KdUsbBootPrint = (PKDUSB_BOOT_PRINT)LoaderBlock->u.I386.CommonDataArea;
     }
-#endif
 
     KdUsbTrace("phase 0, options '%s'\n",
                LoaderBlock->LoadOptions ? LoaderBlock->LoadOptions : "");
