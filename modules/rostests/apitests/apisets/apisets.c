@@ -76,6 +76,15 @@ START_TEST(apisets)
     test_single(&Heap1);
     test_single(&Heap2);
 
+    // Revisions missing from the table resolve through the same contract
+    UNICODE_STRING Revision1 = RTL_CONSTANT_STRING(L"api-ms-win-core-file-l1-2-2.dll");
+    UNICODE_STRING Revision2 = RTL_CONSTANT_STRING(L"api-ms-win-core-processthreads-l1-1-3");
+    UNICODE_STRING Revision3 = RTL_CONSTANT_STRING(L"api-ms-win-core-sysinfo-l1-2-3.dll");
+
+    test_single(&Revision1);
+    test_single(&Revision2);
+    test_single(&Revision3);
+
     // Walk the entire table, to ensure we can find each entry
     for (DWORD n = 0; n < g_ApisetsCount; ++n)
     {
