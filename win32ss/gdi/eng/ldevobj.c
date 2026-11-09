@@ -283,7 +283,7 @@ LDEVOBJ_bEnableDriver(
     RtlZeroMemory(&ded, sizeof(ded));
     if (!pfnEnableDriver(GDI_ENGINE_VERSION, sizeof(ded), &ded))
     {
-        ERR("DrvEnableDriver failed\n");
+        DPRINT1("win32k: DrvEnableDriver(%p) failed\n", pfnEnableDriver);
         return FALSE;
     }
 
@@ -638,11 +638,9 @@ LDEVOBJ_ulGetDriverModes(
 
     /* Call the driver to get the required size */
     cbSize = pldev->pfn.GetModes(hDriver, 0, NULL);
+    DPRINT1("win32k: %S DrvGetModes needs %lu bytes\n", pwszDriverName, cbSize);
     if (!cbSize)
-    {
-        ERR("DrvGetModes returned 0\n");
         goto cleanup;
-    }
 
     /* Allocate a buffer for the DEVMODE array */
     pdm = ExAllocatePoolWithTag(PagedPool, cbSize, GDITAG_DEVMODE);
@@ -764,12 +762,17 @@ LDEVOBJ_bBuildDevmodeList(
              (pdm + 1 <= pdmEnd) && (pdm->dmSize != 0);
              pdm = (PDEVMODEW)((PCHAR)pdm + pdm->dmSize + pdm->dmDriverExtra))
         {
-            TRACE("    %S has mode %lux%lux%lu(%lu Hz)\n",
-                  pdm->dmDeviceName,
-                  pdm->dmPelsWidth,
-                  pdm->dmPelsHeight,
-                  pdm->dmBitsPerPel,
-                  pdm->dmDisplayFrequency);
+            /* The first few, and the ones the size of the desktop dxgkrnl set up */
+            if ((i < 8) ||
+                ((pGraphicsDevice->pdmDisplayConfig != NULL) &&
+                 (pdm->dmPelsWidth == pGraphicsDevice->pdmDisplayConfig->dmPelsWidth) &&
+                 (pdm->dmPelsHeight == pGraphicsDevice->pdmDisplayConfig->dmPelsHeight)))
+            {
+                DPRINT1("win32k:   mode %lu: %lux%lux%lu %lu Hz, flags 0x%lx, fields 0x%lx, %u+%u bytes\n",
+                        i, pdm->dmPelsWidth, pdm->dmPelsHeight, pdm->dmBitsPerPel,
+                        pdm->dmDisplayFrequency, pdm->dmDisplayFlags, pdm->dmFields,
+                        pdm->dmSize, pdm->dmDriverExtra);
+            }
 
             /* Initialize the entry */
             pGraphicsDevice->pDevModeList[i].dwFlags = 0;

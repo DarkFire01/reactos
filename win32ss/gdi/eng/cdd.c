@@ -216,7 +216,13 @@ W32kCddInitPdev(
 
     pGraphicsDevice = EngpFindGraphicsDeviceByHandle(hDevObj);
     if (pGraphicsDevice == NULL)
+    {
+        DPRINT1("win32k: CDD initializes a PDEV for unknown device %p\n", hDevObj);
         return STATUS_INVALID_PARAMETER;
+    }
+
+    DPRINT1("win32k: CDD initializes PDEV %p of '%S', %lu modes\n",
+            hdev, pGraphicsDevice->szWinDeviceName, pGraphicsDevice->cDevModes);
 
     /* These are the modes the driver itself reported from DrvGetModes */
     if (pGraphicsDevice->pdevmodeInfo != NULL)
@@ -609,7 +615,10 @@ EngQueryW32kCddInterface(
 
     pGraphicsDevice = EngpFindGraphicsDeviceByHandle(hDevObj);
     if (pGraphicsDevice == NULL)
+    {
+        DPRINT1("win32k: CDD asks for the interface of unknown device %p\n", hDevObj);
         return STATUS_INVALID_PARAMETER;
+    }
 
     pW32kCddInterface->pfnW32kCddGetWin32kCommand = W32kCddGetWin32kCommand;
     pW32kCddInterface->pfnW32kCddClipRegion = W32kCddClipRegion;
@@ -636,6 +645,8 @@ EngQueryW32kCddInterface(
     /* Keep cdd's own entry points on the PDEV it is enabling */
     if (hDev != NULL)
     {
+        DPRINT1("win32k: CDD enables PDEV %p on adapter %p, source %lu\n",
+                hDev, pGraphicsDevice->DxgAdapter, pGraphicsDevice->VidPnSourceId);
         if (pW32kCddInterface->pfnCddW32kAddD3DDirtyRgn == NULL)
             return STATUS_INVALID_PARAMETER;
 

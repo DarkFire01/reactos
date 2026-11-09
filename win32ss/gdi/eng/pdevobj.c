@@ -405,7 +405,7 @@ PDEVOBJ_vRelease(
         if (ppdev->dhpdev != NULL)
         {
             /* Disable the PDEV */
-            TRACE("DrvDisablePDEV(dhpdev %p)\n", ppdev->dhpdev);
+            DPRINT1("win32k: DrvDisablePDEV(dhpdev %p)\n", ppdev->dhpdev);
             ppdev->pfn.DisablePDEV(ppdev->dhpdev);
         }
 
@@ -473,12 +473,14 @@ PDEVOBJ_bEnablePDEV(
                                   (HDEV)ppdev,
                                   ppdev->pGraphicsDevice ? ppdev->pGraphicsDevice->pwszDescription : NULL,
                                   ppdev->pGraphicsDevice ? ppdev->pGraphicsDevice->DeviceObject : NULL);
-    TRACE("DrvEnablePDEV(pdevmode %p hdev %p) => dhpdev %p\n", pdevmode, ppdev, ppdev->dhpdev);
+    DPRINT1("win32k: DrvEnablePDEV(hdev %p) -> dhpdev %p\n", ppdev, ppdev->dhpdev);
     if (ppdev->dhpdev == NULL)
-    {
-        ERR("Failed to enable PDEV\n");
         return FALSE;
-    }
+
+    DPRINT1("win32k: driver reports %lux%lu, %lu bpp in %lu planes, %lu Hz, caps 0x%lx/0x%lx, dither format %lu\n",
+            ppdev->gdiinfo.ulHorzRes, ppdev->gdiinfo.ulVertRes, ppdev->gdiinfo.cBitsPixel,
+            ppdev->gdiinfo.cPlanes, ppdev->gdiinfo.ulVRefresh, ppdev->devinfo.flGraphicsCaps,
+            ppdev->devinfo.flGraphicsCaps2, ppdev->devinfo.iDitherFormat);
 
     /* Fix up some values; a display reports the session's resolution whatever its driver says */
     if (ppdev->flFlags & PDEV_DISPLAY)
@@ -594,14 +596,11 @@ PDEVOBJ_pSurface(
     if (ppdev->pSurface == NULL)
     {
         /* Call the drivers DrvEnableSurface */
-        TRACE("DrvEnableSurface(dhpdev %p)\n", ppdev->dhpdev);
+        DPRINT1("win32k: DrvEnableSurface(dhpdev %p)\n", ppdev->dhpdev);
         hsurf = ppdev->pfn.EnableSurface(ppdev->dhpdev);
-        TRACE("DrvEnableSurface(dhpdev %p) => hsurf %p\n", ppdev->dhpdev, hsurf);
-        if (hsurf== NULL)
-        {
-            ERR("Failed to create PDEV surface!\n");
+        DPRINT1("win32k: DrvEnableSurface(dhpdev %p) -> hsurf %p\n", ppdev->dhpdev, hsurf);
+        if (hsurf == NULL)
             return NULL;
-        }
 
         /* Get a reference to the surface */
         ppdev->pSurface = SURFACE_ShareLockSurface(hsurf);
@@ -783,6 +782,10 @@ PDEVOBJ_Create(
     {
         ASSERT(pGraphicsDevice);
         ASSERT(pdm);
+        DPRINT1("win32k: PDEV for '%.32S' %lux%lux%lu %lu Hz, fields 0x%lx, %u+%u bytes, acceleration %lu\n",
+                pdm->dmDeviceName, pdm->dmPelsWidth, pdm->dmPelsHeight, pdm->dmBitsPerPel,
+                pdm->dmDisplayFrequency, pdm->dmFields, pdm->dmSize, pdm->dmDriverExtra,
+                dwAccelerationLevel);
         /* Search if we already have a PPDEV with the required characteristics.
          * We will compare the graphics device, the devmode and the desktop
          */
@@ -833,8 +836,8 @@ PDEVOBJ_Create(
     }
     if (!pldev)
     {
-        ERR("Could not load display driver '%S'\n",
-             (ldevtype == LDEV_DEVICE_META) ? L"" : pdm->dmDeviceName);
+        DPRINT1("win32k: could not load display driver '%.32S'\n",
+                (ldevtype == LDEV_DEVICE_META) ? L"" : pdm->dmDeviceName);
         return NULL;
     }
 
@@ -842,7 +845,8 @@ PDEVOBJ_Create(
     ppdev = PDEVOBJ_AllocPDEV();
     if (!ppdev)
     {
-        ERR("failed to allocate a PDEV\n");
+        DPRINT1("win32k: failed to allocate a PDEV\n");
+        EngUnloadImage(pldev);
         return NULL;
     }
 
@@ -896,12 +900,11 @@ PDEVOBJ_Create(
         ppdev->pfn = ppdev->pldev->pfn;
     }
 
-    /* Call the driver to enable the PDEV */
+    /* Call the driver to enable the PDEV. On failure, releasing the PDEV also unloads the driver */
     if (!PDEVOBJ_bEnablePDEV(ppdev, pdm, NULL))
     {
-        ERR("Failed to enable PDEV!\n");
+        DPRINT1("win32k: DrvEnablePDEV failed\n");
         PDEVOBJ_vRelease(ppdev);
-        EngUnloadImage(pldev);
         return NULL;
     }
 
@@ -912,18 +915,16 @@ PDEVOBJ_Create(
     pSurface = PDEVOBJ_pSurface(ppdev);
     if (!pSurface)
     {
-        ERR("Failed to create surface\n");
+        DPRINT1("win32k: DrvEnableSurface failed\n");
         PDEVOBJ_vRelease(ppdev);
-        EngUnloadImage(pldev);
         return NULL;
     }
 
     /* Enable DirectDraw */
     if (!PDEVOBJ_bEnableDirectDraw(ppdev))
     {
-        ERR("Failed to enable DirectDraw\n");
+        DPRINT1("win32k: enabling DirectDraw failed\n");
         PDEVOBJ_vRelease(ppdev);
-        EngUnloadImage(pldev);
         return NULL;
     }
 
