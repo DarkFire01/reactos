@@ -1,0 +1,6 @@
+add_subdirectory(ipcrouter)
+add_subdirectory(qmi)
+add_subdirectory(remotefs)
+add_subdirectory(smd)
+add_subdirectory(subsys)
+add_subdirectory(tz)
