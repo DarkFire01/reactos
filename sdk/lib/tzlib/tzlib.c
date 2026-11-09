@@ -296,10 +296,9 @@ GetAutoDaylight(VOID)
     if (lError != ERROR_SUCCESS)
         return FALSE;
 
-    // NOTE: On Vista+: REG_DWORD "DynamicDaylightTimeDisabled"
     dwValueSize = sizeof(dwDisabled);
     lError = RegQueryValueExW(hKey,
-                              L"DisableAutoDaylightTimeSet",
+                              L"DynamicDaylightTimeDisabled",
                               NULL,
                               &dwType,
                               (LPBYTE)&dwDisabled,
@@ -335,22 +334,13 @@ SetAutoDaylight(
     if (lError != ERROR_SUCCESS)
         return;
 
-    if (!EnableAutoDaylightTime)
-    {
-        /* Auto-Daylight disabled: set the value to TRUE */
-        // NOTE: On Vista+: REG_DWORD "DynamicDaylightTimeDisabled"
-        RegSetValueExW(hKey,
-                       L"DisableAutoDaylightTimeSet",
-                       0,
-                       REG_DWORD,
-                       (LPBYTE)&dwDisabled,
-                       sizeof(dwDisabled));
-    }
-    else
-    {
-        /* Auto-Daylight enabled: just delete the value */
-        RegDeleteValueW(hKey, L"DisableAutoDaylightTimeSet");
-    }
+    /* Auto-Daylight disabled: set the value to TRUE */
+    RegSetValueExW(hKey,
+                    L"DynamicDaylightTimeDisabled",
+                    0,
+                    REG_DWORD,
+                    (LPBYTE)&dwDisabled,
+                    sizeof(dwDisabled));
 
     RegCloseKey(hKey);
 }
