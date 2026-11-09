@@ -470,6 +470,28 @@ LdrpUpdateHybridMetadata(
 
 /**
  * @brief
+ * Marks the thread as inside an emulator notification, so memory calls the emulator makes from it are not reported back.
+ *
+ * @return
+ * The CPU area to clear the mark on, or NULL when the notification must be skipped.
+ */
+static
+PCHPE_V2_CPU_AREA_INFO
+LdrpEnterEmulatorCallback(
+    _In_opt_ PVOID Notify)
+{
+    PCHPE_V2_CPU_AREA_INFO CpuArea = NtCurrentTeb()->ChpeV2CpuAreaInfo;
+
+    /* Threads the emulator does not run have no CPU area, it cannot take notifications on them */
+    if (!Notify || !CpuArea || CpuArea->InSyscallCallback)
+        return NULL;
+
+    CpuArea->InSyscallCallback = TRUE;
+    return CpuArea;
+}
+
+/**
+ * @brief
  * Tells the emulator about an image view the loader mapped, so it knows the code in it.
  */
 VOID
@@ -478,9 +500,13 @@ LdrpNotifyImageMapped(
     _In_ PVOID ViewBase,
     _In_ SIZE_T ViewSize)
 {
-    /* Threads the emulator does not run have no CPU area, it cannot take notifications on them */
-    if (LdrpEmulatorNotifyMapViewOfSection && NtCurrentTeb()->ChpeV2CpuAreaInfo)
-        LdrpEmulatorNotifyMapViewOfSection(NULL, ViewBase, NULL, ViewSize, 0, PAGE_EXECUTE_WRITECOPY);
+    PCHPE_V2_CPU_AREA_INFO CpuArea = LdrpEnterEmulatorCallback((PVOID)LdrpEmulatorNotifyMapViewOfSection);
+
+    if (!CpuArea)
+        return;
+
+    LdrpEmulatorNotifyMapViewOfSection(NULL, ViewBase, NULL, ViewSize, 0, PAGE_EXECUTE_WRITECOPY);
+    CpuArea->InSyscallCallback = FALSE;
 }
 
 /**
@@ -492,17 +518,20 @@ NTAPI
 LdrpUnmapImageView(
     _In_ PVOID ViewBase)
 {
-    BOOLEAN Notify = LdrpEmulatorNotifyUnmapViewOfSection && NtCurrentTeb()->ChpeV2CpuAreaInfo;
+    PCHPE_V2_CPU_AREA_INFO CpuArea;
     NTSTATUS Status;
 
     LdrpMarkEcCode(ViewBase, FALSE);
 
-    if (Notify)
-        LdrpEmulatorNotifyUnmapViewOfSection(ViewBase, FALSE, STATUS_SUCCESS);
-    Status = NtUnmapViewOfSection(NtCurrentProcess(), ViewBase);
-    if (Notify)
-        LdrpEmulatorNotifyUnmapViewOfSection(ViewBase, TRUE, Status);
+    CpuArea = LdrpEnterEmulatorCallback((PVOID)LdrpEmulatorNotifyUnmapViewOfSection);
+    if (!CpuArea)
+        return NtUnmapViewOfSection(NtCurrentProcess(), ViewBase);
 
+    LdrpEmulatorNotifyUnmapViewOfSection(ViewBase, FALSE, STATUS_SUCCESS);
+    Status = NtUnmapViewOfSection(NtCurrentProcess(), ViewBase);
+    LdrpEmulatorNotifyUnmapViewOfSection(ViewBase, TRUE, Status);
+
+    CpuArea->InSyscallCallback = FALSE;
     return Status;
 }
 
@@ -669,14 +698,10 @@ LdrpBeginNotifiedMemoryCall(
     _In_ HANDLE ProcessHandle,
     _In_opt_ PVOID Notify)
 {
-    PCHPE_V2_CPU_AREA_INFO CpuArea = NtCurrentTeb()->ChpeV2CpuAreaInfo;
-
-    if (!Notify || !CpuArea || CpuArea->InSyscallCallback || ProcessHandle != NtCurrentProcess())
+    if (ProcessHandle != NtCurrentProcess())
         return NULL;
 
-    /* Memory the emulator allocates while it handles the notifications is not reported again */
-    CpuArea->InSyscallCallback = TRUE;
-    return CpuArea;
+    return LdrpEnterEmulatorCallback(Notify);
 }
 
 /**
