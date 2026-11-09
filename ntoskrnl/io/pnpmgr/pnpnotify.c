@@ -46,6 +46,7 @@ typedef struct _PNP_NOTIFY_ENTRY
     IO_NOTIFICATION_EVENT_CATEGORY EventCategory;
     UINT8 RefCount;
     BOOLEAN Deleted;
+    PKEVENT RundownEvent;
 } PNP_NOTIFY_ENTRY, *PPNP_NOTIFY_ENTRY;
 
 /* FUNCTIONS *****************************************************************/
@@ -82,6 +83,11 @@ PiDereferencePnpNotifyEntry(
             // IopGetRelatedTargetDevice referenced the device upon the notification registration
             ObDereferenceObject(Entry->DeviceObject);
         }
+
+        /* A synchronous unregister is waiting for in flight callbacks to drain */
+        if (Entry->RundownEvent)
+            KeSetEvent(Entry->RundownEvent, IO_NO_INCREMENT, FALSE);
+
         ExFreePoolWithTag(Entry, TAG_PNP_NOTIFY);
     }
 }
@@ -514,6 +520,69 @@ IoUnregisterPlugPlayNotification(
         DPRINT1("IoUnregisterPlugPlayNotification called two times for 0x%p\n", NotificationEntry);
     }
     KeReleaseGuardedMutex(Lock);
+
+    return STATUS_SUCCESS;
+}
+
+static
+CODE_SEG("PAGE")
+PKGUARDED_MUTEX
+PiGetNotifyLock(
+    _In_ IO_NOTIFICATION_EVENT_CATEGORY Category)
+{
+    switch (Category)
+    {
+        case EventCategoryDeviceInterfaceChange:
+            return &PiNotifyDeviceInterfaceLock;
+        case EventCategoryHardwareProfileChange:
+            return &PiNotifyHwProfileLock;
+        case EventCategoryTargetDeviceChange:
+            return &PiNotifyTargetDeviceLock;
+        default:
+            return NULL;
+    }
+}
+
+/**
+ * @brief Unregisters a PnP notification and returns only once no callback for it is running.
+ *
+ * @param[in] NotificationEntry Entry returned by IoRegisterPlugPlayNotification.
+ *
+ * @remarks Must not be called from the notification callback being unregistered.
+ */
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+IoUnregisterPlugPlayNotificationEx(
+    _In_ PVOID NotificationEntry)
+{
+    PPNP_NOTIFY_ENTRY Entry = NotificationEntry;
+    PKGUARDED_MUTEX Lock;
+    KEVENT Rundown;
+    BOOLEAN Wait = FALSE;
+
+    PAGED_CODE();
+
+    Lock = PiGetNotifyLock(Entry->EventCategory);
+    if (!Lock)
+        return STATUS_NOT_SUPPORTED;
+
+    KeInitializeEvent(&Rundown, NotificationEvent, FALSE);
+
+    KeAcquireGuardedMutex(Lock);
+    if (!Entry->Deleted)
+    {
+        Entry->Deleted = TRUE;
+        Entry->RundownEvent = &Rundown;
+
+        /* Any reference beyond ours belongs to a callback still running */
+        Wait = (Entry->RefCount > 1);
+        PiDereferencePnpNotifyEntry(Entry);
+    }
+    KeReleaseGuardedMutex(Lock);
+
+    if (Wait)
+        KeWaitForSingleObject(&Rundown, Executive, KernelMode, FALSE, NULL);
 
     return STATUS_SUCCESS;
 }
