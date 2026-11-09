@@ -42,9 +42,19 @@ KdNetInitializeExtensibility(
 ULONG KdpComputeChecksum(const UCHAR *Buffer, ULONG Length);
 
 /*
- * Architecture-specific timing primitives (implemented per-arch under i386/,
- * amd64/, ...). Used instead of KeStallExecutionProcessor in the kdnet init
- * path, which runs before the HAL calibrates the stall scale factor.
+ * Architecture-specific primitives, one implementation per directory under
+ * arch/. The timing ones are used instead of KeStallExecutionProcessor in the
+ * kdnet init path, which runs before the HAL calibrates the stall scale factor.
  */
 ULONG64 KdNetReadTimeStampCounter(VOID);
 ULONG64 KdNetGetTicksPerMicrosecond(VOID);
+
+/* Early serial output for the trace, FALSE when the architecture has none */
+BOOLEAN
+NTAPI
+KdNetArchSerialInitialize(VOID);
+
+VOID
+NTAPI
+KdNetArchSerialPutByte(
+    _In_ UCHAR Byte);
