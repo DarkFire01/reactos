@@ -209,19 +209,10 @@ VOID E1kWrite(PE1000_ADAPTER a, ULONG off, ULONG val)
     *(volatile ULONG *)(a->RegBase + off) = val;
 }
 
+/* The transport's stall is calibrated before any extension runs, on every architecture */
 static VOID E1kDelayMicroseconds(ULONG Microseconds)
 {
-    ULONG transitions = (Microseconds / 15) + 1;
-    UCHAR prev = (UCHAR)(READ_PORT_UCHAR((PUCHAR)0x61) & 0x10);
-    while (transitions)
-    {
-        UCHAR cur = (UCHAR)(READ_PORT_UCHAR((PUCHAR)0x61) & 0x10);
-        if (cur != prev)
-        {
-            prev = cur;
-            --transitions;
-        }
-    }
+    KeStallExecutionProcessor(Microseconds);
 }
 
 ULONG E1kAlignUp(ULONG v, ULONG a)
