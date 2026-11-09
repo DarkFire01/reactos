@@ -1,0 +1,80 @@
+; QCOMIPCROUTER.INF
+
+; Installation file for the Qualcomm IPC Router driver
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/09/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomipcrouter.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ReactOSMfg% = ReactOSMfg
+
+[ReactOSMfg]
+%IPC.DeviceDesc% = IPC_Device, ACPI\QCOM240A
+
+[IPC_Device.NT]
+CopyFiles = IPC_CopyFiles
+
+[IPC_CopyFiles]
+qcomipcrouter.sys
+
+[IPC_Device.NT.HW]
+AddReg = IPC_Security
+
+[IPC_Security]
+HKR,,Security,,"D:P(A;;GA;;;LS)(A;;GA;;;BA)(A;;GA;;;SY)"
+
+[IPC_Device.NT.Services]
+AddService = qcomipcrouter, 0x00000002, IPC_Service
+
+[IPC_Service]
+DisplayName    = %IPC.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomipcrouter.sys
+LoadOrderGroup = Base
+
+; Local node id and the SMD transports this node brings up
+[IPC_Service.AddReg]
+HKR, "Parameters",    "ProcessorID",   0x00010001, 0x1
+HKR, "Parameters",    "NumTransports", 0x00010001, 0x4
+HKR, "Parameters\0",  "Type",          0x00010001, 0x0
+HKR, "Parameters\0",  "Edge",          0x00010001, 0x0
+HKR, "Parameters\0",  "Flags",         0x00010001, 0x0
+HKR, "Parameters\0",  "FifoSize",      0x00010001, 0x400
+HKR, "Parameters\0",  "PortName",,                 "RPCRPY_CNTL"
+HKR, "Parameters\1",  "Type",          0x00010001, 0x0
+HKR, "Parameters\1",  "Edge",          0x00010001, 0x0
+HKR, "Parameters\1",  "Flags",         0x00010001, 0x0
+HKR, "Parameters\1",  "FifoSize",      0x00010001, 0x2000
+HKR, "Parameters\1",  "PortName",,                 "IPCRTR"
+HKR, "Parameters\2",  "Type",          0x00010001, 0x0
+HKR, "Parameters\2",  "Edge",          0x00010001, 0x1
+HKR, "Parameters\2",  "Flags",         0x00010001, 0x0
+HKR, "Parameters\2",  "FifoSize",      0x00010001, 0x400
+HKR, "Parameters\2",  "PortName",,                 "RPCRPY_CNTL"
+HKR, "Parameters\3",  "Type",          0x00010001, 0x0
+HKR, "Parameters\3",  "Edge",          0x00010001, 0x1
+HKR, "Parameters\3",  "Flags",         0x00010001, 0x0
+HKR, "Parameters\3",  "FifoSize",      0x00010001, 0x2000
+HKR, "Parameters\3",  "PortName",,                 "IPCRTR"
+
+[Strings]
+ReactOS = "ReactOS Project"
+ReactOSMfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+IPC.DeviceDesc = "Qualcomm IPC Router"
+IPC.ServiceDesc = "Qualcomm IPC Router"
