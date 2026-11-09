@@ -1280,6 +1280,11 @@ EngpIsDisplayConfigOrigin(
  * @param[in] pPaths
  * The active paths, one per clone group, in dxgkrnl's order.
  *
+ * @param[in] bSaved
+ * The configuration is the saved one, or replaces it, so its modes are also kept as what
+ * ENUM_REGISTRY_SETTINGS reports. FALSE for a temporary change, which a runtime undoes by
+ * comparing the current mode against that one.
+ *
  * @return
  * STATUS_UNSUCCESSFUL when no path reaches a device GDI knows, which leaves the previous
  * configuration in place.
@@ -1288,13 +1293,15 @@ NTSTATUS
 NTAPI
 EngpSetDisplayConfig(
     _In_ ULONG cPaths,
-    _In_reads_(cPaths) const ENGP_DISPLAY_PATH *pPaths)
+    _In_reads_(cPaths) const ENGP_DISPLAY_PATH *pPaths,
+    _In_ BOOLEAN bSaved)
 {
     PGRAPHICS_DEVICE pGraphicsDevice;
     PGRAPHICS_DEVICE pPrimary = NULL;
     PGRAPHICS_DEVICE pOrigin = NULL;
     PGRAPHICS_DEVICE pFirst = NULL;
     PDEVMODEW *ppdmNew;
+    PDEVMODEW *ppdmSaved = NULL;
     ULONG cAttached = 0;
     ULONG cjDevMode;
     ULONG i;
@@ -1302,6 +1309,16 @@ EngpSetDisplayConfig(
     ppdmNew = ExAllocatePoolZero(PagedPool, (cPaths ? cPaths : 1) * sizeof(*ppdmNew), GDITAG_TEMP);
     if (ppdmNew == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
+
+    if (bSaved)
+    {
+        ppdmSaved = ExAllocatePoolZero(PagedPool, (cPaths ? cPaths : 1) * sizeof(*ppdmSaved), GDITAG_TEMP);
+        if (ppdmSaved == NULL)
+        {
+            ExFreePoolWithTag(ppdmNew, GDITAG_TEMP);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+    }
 
     EngAcquireSemaphore(ghsemGraphicsDeviceList);
 
@@ -1323,6 +1340,15 @@ EngpSetDisplayConfig(
             break;
 
         RtlCopyMemory(ppdmNew[i], pPaths[i].pdm, cjDevMode);
+
+        if (ppdmSaved != NULL)
+        {
+            ppdmSaved[i] = ExAllocatePoolWithTag(PagedPool, cjDevMode, GDITAG_DEVMODE);
+            if (ppdmSaved[i] == NULL)
+                break;
+
+            RtlCopyMemory(ppdmSaved[i], pPaths[i].pdm, cjDevMode);
+        }
         cAttached++;
     }
 
@@ -1334,8 +1360,12 @@ EngpSetDisplayConfig(
         {
             if (ppdmNew[i] != NULL)
                 ExFreePoolWithTag(ppdmNew[i], GDITAG_DEVMODE);
+            if ((ppdmSaved != NULL) && (ppdmSaved[i] != NULL))
+                ExFreePoolWithTag(ppdmSaved[i], GDITAG_DEVMODE);
         }
         ExFreePoolWithTag(ppdmNew, GDITAG_TEMP);
+        if (ppdmSaved != NULL)
+            ExFreePoolWithTag(ppdmSaved, GDITAG_TEMP);
 
         return (cAttached == 0) ? STATUS_UNSUCCESSFUL : STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -1357,6 +1387,13 @@ EngpSetDisplayConfig(
             pGraphicsDevice->pdmDisplayConfig = NULL;
         }
 
+        /* A saved configuration replaces the saved mode of every source, a temporary one none */
+        if ((ppdmSaved != NULL) && (pGraphicsDevice->pdmSavedConfig != NULL))
+        {
+            ExFreePoolWithTag(pGraphicsDevice->pdmSavedConfig, GDITAG_DEVMODE);
+            pGraphicsDevice->pdmSavedConfig = NULL;
+        }
+
         pGraphicsDevice->StateFlags &= ~(DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE);
     }
 
@@ -1367,6 +1404,8 @@ EngpSetDisplayConfig(
 
         pGraphicsDevice = EngpFindDisplayConfigDevice(&pPaths[i]);
         pGraphicsDevice->pdmDisplayConfig = ppdmNew[i];
+        if (ppdmSaved != NULL)
+            pGraphicsDevice->pdmSavedConfig = ppdmSaved[i];
 
         if (pFirst == NULL)
             pFirst = pGraphicsDevice;
@@ -1390,9 +1429,51 @@ EngpSetDisplayConfig(
     EngReleaseSemaphore(ghsemGraphicsDeviceList);
 
     ExFreePoolWithTag(ppdmNew, GDITAG_TEMP);
+    if (ppdmSaved != NULL)
+        ExFreePoolWithTag(ppdmSaved, GDITAG_TEMP);
 
     TRACE("Display configuration: %lu source(s), primary %S\n", cAttached, pPrimary->szNtDeviceName);
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Copies the mode a WDDM source has in the saved display configuration, which is what
+ * EnumDisplaySettings with ENUM_REGISTRY_SETTINGS reports for it on Windows: the CCD database,
+ * not the DefaultSettings values a WDDM device never gets.
+ *
+ * @param[in] pGraphicsDevice
+ * The device of the source.
+ *
+ * @param[out] pdm
+ * Receives the public part of the mode, at most sizeof(DEVMODEW) bytes, without driver extra data.
+ *
+ * @return
+ * FALSE when the device is not WDDM or the saved configuration has no path for it.
+ */
+BOOLEAN
+NTAPI
+EngpGetSavedDisplayMode(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice,
+    _Out_ PDEVMODEW pdm)
+{
+    BOOLEAN bFound = FALSE;
+
+    EngAcquireSemaphoreShared(ghsemGraphicsDeviceList);
+
+    if ((pGraphicsDevice->DxgAdapter != NULL) && (pGraphicsDevice->pdmSavedConfig != NULL))
+    {
+        RtlZeroMemory(pdm, sizeof(*pdm));
+        RtlCopyMemory(pdm, pGraphicsDevice->pdmSavedConfig,
+                      min(pGraphicsDevice->pdmSavedConfig->dmSize, sizeof(*pdm)));
+        pdm->dmSize = sizeof(*pdm);
+        pdm->dmDriverExtra = 0;
+        bFound = TRUE;
+    }
+
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
+
+    return bFound;
 }
 
 /**
@@ -1451,6 +1532,9 @@ EngpFreeGraphicsDevice(
 
     if (pGraphicsDevice->pdmDisplayConfig != NULL)
         ExFreePoolWithTag(pGraphicsDevice->pdmDisplayConfig, GDITAG_DEVMODE);
+
+    if (pGraphicsDevice->pdmSavedConfig != NULL)
+        ExFreePoolWithTag(pGraphicsDevice->pdmSavedConfig, GDITAG_DEVMODE);
 
     if (pGraphicsDevice->pDiplayDrivers != NULL)
         ExFreePoolWithTag(pGraphicsDevice->pDiplayDrivers, GDITAG_DRVSUP);

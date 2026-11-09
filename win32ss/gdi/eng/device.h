@@ -70,7 +70,14 @@ NTSTATUS
 NTAPI
 EngpSetDisplayConfig(
     _In_ ULONG cPaths,
-    _In_reads_(cPaths) const ENGP_DISPLAY_PATH *pPaths);
+    _In_reads_(cPaths) const ENGP_DISPLAY_PATH *pPaths,
+    _In_ BOOLEAN bSaved);
+
+BOOLEAN
+NTAPI
+EngpGetSavedDisplayMode(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice,
+    _Out_ PDEVMODEW pdm);
 
 BOOLEAN
 NTAPI
