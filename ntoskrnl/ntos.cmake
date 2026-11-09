@@ -194,6 +194,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/mutex.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/processor.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/procobj.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/procgrp.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/profobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/queue.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/semphobj.c
@@ -222,6 +223,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/expool.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/hypermap.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/iosup.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/protmap.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/kdbg.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/largepag.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mdlsup.c
@@ -282,6 +284,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/win32.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/libsupp.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/misc.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/crtsec.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/access.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/accesschk.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/se/acl.c
@@ -303,6 +306,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/wmi/guidobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/wmi/smbios.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/wmi/wmi.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/wmi/etwprov.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/wmi/wmidrv.c)
 
 if(DBG)
