@@ -1,0 +1,61 @@
+; QCOMSUBSYS.INF
+
+; Installation file for the Qualcomm subsystem manager (modem)
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/09/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomsubsys.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ReactOSMfg% = ReactOSMfg
+
+[ReactOSMfg]
+%AMSS.DeviceDesc% = AMSS_Device, ACPI\QCOM242C
+
+[AMSS_Device.NT]
+CopyFiles = AMSS_CopyFiles
+
+[AMSS_CopyFiles]
+qcomsubsys.sys
+
+[AMSS_Device.NT.HW]
+AddReg = AMSS_Security
+
+[AMSS_Security]
+HKR,,Security,,"D:P(A;;GA;;;BA)(A;;GA;;;SY)"
+
+[AMSS_Device.NT.Services]
+AddService = qcomsubsys, 0x00000002, AMSS_Service
+
+[AMSS_Service]
+DisplayName    = %AMSS.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomsubsys.sys
+LoadOrderGroup = Base
+
+[AMSS_Device.NT.Wdf]
+KmdfService = qcomsubsys, AMSS_wdfsect
+
+[AMSS_wdfsect]
+KmdfLibraryVersion = 1.17
+
+[Strings]
+ReactOS = "ReactOS Project"
+ReactOSMfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+AMSS.DeviceDesc = "Qualcomm Advanced Modem Subsystem Device"
+AMSS.ServiceDesc = "Qualcomm Advanced Modem Subsystem Device"
