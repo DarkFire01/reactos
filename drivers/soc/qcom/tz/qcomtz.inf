@@ -1,0 +1,56 @@
+; QCOMTZ.INF
+
+; Installation file for the Qualcomm TrustZone driver
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/09/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomtz.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ReactOSMfg% = ReactOSMfg
+
+[ReactOSMfg]
+%TZ.DeviceDesc% = TZ_Device, ACPI\QCOM24BA
+%TZ.DeviceDesc% = TZ_Device, ACPI\QCOM24B9
+
+[TZ_Device.NT]
+CopyFiles = TZ_CopyFiles
+
+[TZ_CopyFiles]
+qcomtz.sys
+
+[TZ_Device.NT.HW]
+AddReg = TZ_Security
+
+[TZ_Security]
+HKR,,Security,,"D:P(A;;GA;;;BA)(A;;GA;;;SY)"
+
+[TZ_Device.NT.Services]
+AddService = qcomtz, 0x00000002, TZ_Service
+
+[TZ_Service]
+DisplayName    = %TZ.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomtz.sys
+LoadOrderGroup = Base
+
+[Strings]
+ReactOS = "ReactOS Project"
+ReactOSMfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+TZ.DeviceDesc = "Qualcomm TrustZone Monitor"
+TZ.ServiceDesc = "Qualcomm TrustZone Monitor"
