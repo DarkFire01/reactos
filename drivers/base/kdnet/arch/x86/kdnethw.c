@@ -252,3 +252,77 @@ KdNetGetTicksPerMicrosecond(VOID)
 
     return KdNetTicksPerUs;
 }
+
+/*
+ * kdnet's own serial output. COM1 at 115200 8N1; change the base for COM2.
+ *
+ * The transport cannot log through LoaderBlock->u.I386.CommonDataArea: that
+ * points at the loader's print routine, which runs from loader memory with the
+ * firmware already exited, and the kernel reclaims that memory underneath it.
+ * Everything here is self-contained port I/O, so a line printed at phase 0 does
+ * not depend on anything outside this module.
+ */
+#define KDNET_COM_BASE      0x3F8
+#define KDNET_COM_THR       (KDNET_COM_BASE + 0)
+#define KDNET_COM_DLL       (KDNET_COM_BASE + 0)
+#define KDNET_COM_IER       (KDNET_COM_BASE + 1)
+#define KDNET_COM_DLM       (KDNET_COM_BASE + 1)
+#define KDNET_COM_FCR       (KDNET_COM_BASE + 2)
+#define KDNET_COM_LCR       (KDNET_COM_BASE + 3)
+#define KDNET_COM_MCR       (KDNET_COM_BASE + 4)
+#define KDNET_COM_LSR       (KDNET_COM_BASE + 5)
+
+#define KDNET_LSR_THRE      0x20
+#define KDNET_LCR_DLAB      0x80
+#define KDNET_LCR_8N1       0x03
+#define KDNET_FCR_ENABLE    0x07  /* enable, clear both FIFOs */
+#define KDNET_MCR_DTR_RTS   0x03
+#define KDNET_DIVISOR_115200 1
+
+/**
+ * @brief
+ * Puts COM1 into a known state.
+ *
+ * The loader usually leaves it configured, but the transport has to be able to
+ * report even when it was not asked to run on the same port.
+ *
+ * @return
+ * TRUE, COM1 is always there to write to.
+ */
+BOOLEAN
+NTAPI
+KdNetArchSerialInitialize(VOID)
+{
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_IER, 0);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_LCR, KDNET_LCR_DLAB);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_DLL, KDNET_DIVISOR_115200);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_DLM, 0);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_LCR, KDNET_LCR_8N1);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_FCR, KDNET_FCR_ENABLE);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_MCR, KDNET_MCR_DTR_RTS);
+
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Writes one byte, waiting for the holding register to drain.
+ *
+ * @param[in] Byte
+ * The byte to write.
+ */
+VOID
+NTAPI
+KdNetArchSerialPutByte(
+    _In_ UCHAR Byte)
+{
+    ULONG Spin;
+
+    for (Spin = 0; Spin < 100000; Spin++)
+    {
+        if (READ_PORT_UCHAR((PUCHAR)KDNET_COM_LSR) & KDNET_LSR_THRE)
+            break;
+    }
+
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_THR, Byte);
+}
