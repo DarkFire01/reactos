@@ -236,6 +236,9 @@ PnpWatchDumpStalledGuiThreads(VOID)
     PEPROCESS Process;
     PETHREAD Thread;
     ULONG Waited;
+    BOOLEAN NewStall = FALSE;
+    static ULONG FullDumps;
+    static LONGLONG LastFullDump;
 
     if (PnpWatchGuiStallReports >= PNP_WATCH_GUI_STALL_REPORTS)
         return;
@@ -263,8 +266,20 @@ PnpWatchDumpStalledGuiThreads(VOID)
                 DbgPrint("PNPWATCH: GUI thread %p has waited %I64u s inside the display drivers\n",
                          Thread, (ULONG64)Waited * KeMaximumIncrement / 10000000);
                 PnpWatchGuiStalls[PnpWatchGuiStallReports++] = &Thread->Tcb;
+                NewStall = TRUE;
             }
         }
+    }
+
+    /* One stuck thread rarely shows who it waits for: when the screen stops
+     * updating, show everything that is inside the display drivers too, at most
+     * once a minute and five times per boot */
+    if (NewStall && FullDumps < 5 &&
+        (LastFullDump == 0 || KeQueryInterruptTime() - LastFullDump >= 60LL * 10000000))
+    {
+        FullDumps++;
+        LastFullDump = KeQueryInterruptTime();
+        PnpWatchDumpDisplayThreads();
     }
 }
 
