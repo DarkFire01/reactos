@@ -166,6 +166,18 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","LowerFilters",0x00010000,"qcomxhcif"
 
+; Qualcomm SDM845 pin, I2C and PMIC bus controllers, then the touch screen and battery on them
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","Service",0x00000000,"qcomtlmm"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","Service",0x00000000,"qcomgeni"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","Service",0x00000000,"qcomspmi"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","Service",0x00000000,"qcomtouch"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","ClassGUID",0x00000000,"{4D36E96F-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","Service",0x00000000,"qcombatt"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
+
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","Service",0x00000000,"hidusb"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
 
@@ -516,6 +528,11 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E975-E325-11CE-BFC1-08002BE103
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}",,0x00000000,"System Devices"
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}","Class",0x00000000,"System"
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}","Icon",0x00000000,"-27"
+
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{72631E54-78A4-11D0-BCF7-00AA00B7B32A}",,0x00000000,"Batteries"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{72631E54-78A4-11D0-BCF7-00AA00B7B32A}","Class",0x00000000,"Battery"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{72631E54-78A4-11D0-BCF7-00AA00B7B32A}","Icon",0x00000000,"2"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{72631E54-78A4-11D0-BCF7-00AA00B7B32A}","Installer32",0x00000000,"batt.dll,BatteryClassInstall"
 
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{745A17A0-74D3-11D0-B6FE-00A0C90F57DA}",,0x00000000,"Human Interface Devices"
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{745A17A0-74D3-11D0-B6FE-00A0C90F57DA}","Class",0x00000000,"HIDClass"
@@ -2027,56 +2044,6 @@ HKLM,"SYSTEM\CurrentControlSet\Services\mouhid","Group",0x00000000,"Pointer Port
 HKLM,"SYSTEM\CurrentControlSet\Services\mouhid","ImagePath",0x00020000,"system32\drivers\mouhid.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\mouhid","Start",0x00010001,0x00000003
 HKLM,"SYSTEM\CurrentControlSet\Services\mouhid","Type",0x00010001,0x00000001
-
-; Qualcomm bring-up log, shared by the platform drivers below
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","ErrorControl",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","Group",0x00000000,"Pointer Port"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","ImagePath",0x00020000,"system32\drivers\qcomdbg.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","Start",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","Type",0x00010001,0x00000001
-
-; Qualcomm GENI I2C master
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","ErrorControl",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","Group",0x00000000,"Pointer Port"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","ImagePath",0x00020000,"system32\drivers\qcomgeni.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","Start",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","Type",0x00010001,0x00000001
-
-; Qualcomm TLMM pin control
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","ErrorControl",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Group",0x00000000,"Pointer Port"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","ImagePath",0x00020000,"system32\drivers\qcomtlmm.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Start",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Type",0x00010001,0x00000001
-
-; Qualcomm RPMh regulator control
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","ErrorControl",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","Group",0x00000000,"Pointer Port"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","ImagePath",0x00020000,"system32\drivers\qcomrpmh.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","Start",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","Type",0x00010001,0x00000001
-
-; Qualcomm Synaptics RMI4 touch, reports as a mouse class pointer port
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","ErrorControl",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Group",0x00000000,"Pointer Port"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","ImagePath",0x00020000,"system32\drivers\qcomtouch.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Start",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Type",0x00010001,0x00000001
-
-; Mouse class driver, started so it connects the legacy pointer port above
-HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","ErrorControl",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Group",0x00000000,"Pointer Class"
-HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","ImagePath",0x00020000,"system32\drivers\mouclass.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Start",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Type",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\mouclass\Parameters","ConnectMultiplePorts",0x00010001,0x00000001
-
-; Qualcomm BQ27441 fuel gauge, a battery class miniport
-HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","ErrorControl",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Group",0x00000000,"Pointer Port"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","ImagePath",0x00020000,"system32\drivers\qcombatt.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Start",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Type",0x00010001,0x00000001
 
 ; USB hub driver
 HKLM,"SYSTEM\CurrentControlSet\Services\usbhub","ErrorControl",0x00010001,0x00000001
