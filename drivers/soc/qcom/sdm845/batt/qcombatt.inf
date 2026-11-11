@@ -1,0 +1,51 @@
+; QCOMBATT.INF
+
+; Installation file for the BQ27441 fuel gauge battery of Qualcomm SDM845 phones
+
+[Version]
+Signature = "$Windows NT$"
+Class = Battery
+ClassGuid = {72631E54-78A4-11D0-BCF7-00AA00B7B32A}
+Provider = %ReactOS%
+DriverVer = 11/11/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcombatt.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%Mfg% = Mfg
+
+[Mfg]
+%QCOMBATT.DeviceDesc% = QCOMBATT_Device, ACPI\QCOM0264
+
+[QCOMBATT_Device.NT]
+CopyFiles = QCOMBATT_CopyFiles
+
+[QCOMBATT_CopyFiles]
+qcombatt.sys
+
+[QCOMBATT_Device.NT.Services]
+AddService = qcombatt, 0x00000002, QCOMBATT_Service
+
+[QCOMBATT_Service]
+DisplayName    = %QCOMBATT.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcombatt.sys
+
+[Strings]
+ReactOS = "ReactOS Project"
+Mfg = "Texas Instruments"
+DiskId1 = "ReactOS Installation Disk"
+QCOMBATT.DeviceDesc = "BQ27441 Fuel Gauge Battery"
+QCOMBATT.ServiceDesc = "Qualcomm Fuel Gauge Battery"

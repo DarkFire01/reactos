@@ -9,6 +9,8 @@ add_library(qcombatt MODULE
     qcombatt.rc)
 
 set_module_type(qcombatt kernelmodedriver)
-target_link_libraries(qcombatt dmilib libcntpr)
+target_link_libraries(qcombatt qcompnp dmilib libcntpr)
 add_importlibs(qcombatt battc qcomdbg qcomgeni ntoskrnl hal)
 add_cd_file(TARGET qcombatt DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_driver_inf(qcombatt qcombatt.inf)
+add_registry_inf(qcombatt_reg.inf)
