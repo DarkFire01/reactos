@@ -1,0 +1,67 @@
+; QCOMXHCIF.INF
+
+; Installation file for the xHCI controller of Qualcomm SoCs, with its PHY filter
+
+[Version]
+Signature = "$Windows NT$"
+Class = USB
+ClassGuid = {36FC9E60-C465-11CF-8056-444553540000}
+Provider = %ReactOS%
+DriverVer = 11/10/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomxhcif.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%ReactOSMfg% = ReactOSMfg
+
+[ReactOSMfg]
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM24B6&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM24B7&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM2430
+
+[XHCIF_Device.NT]
+Include = usbxhci.inf
+Needs = Generic.Install.NT
+CopyFiles = XHCIF_CopyFiles
+
+[XHCIF_CopyFiles]
+qcomxhcif.sys
+
+[XHCIF_Device.NT.HW]
+AddReg = XHCIF_Filter
+
+[XHCIF_Filter]
+HKR,,LowerFilters,0x00010000,qcomxhcif
+
+[XHCIF_Device.NT.Services]
+Include = usbxhci.inf
+Needs = Generic.Install.NT.Services
+AddService = qcomxhcif,,XHCIF_Service
+
+[XHCIF_Service]
+DisplayName    = %XHCIF.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomxhcif.sys
+AddReg         = XHCIF_Service_AddReg
+
+[XHCIF_Service_AddReg]
+HKR,,BootFlags,0x00010003,4
+
+[Strings]
+ReactOS = "ReactOS Project"
+ReactOSMfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+XHCIF.DeviceDesc = "Qualcomm USB 3.0 xHCI Controller"
+XHCIF.ServiceDesc = "Qualcomm xHCI PHY Filter"
