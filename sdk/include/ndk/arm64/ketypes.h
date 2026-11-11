@@ -476,6 +476,14 @@ typedef struct _KPRCB
 } KPRCB, *PKPRCB;
 
 //
+// Interrupt dispatch table sizing. The in-PCR Idt array covers vectors
+// 0..255; IdtExtTable covers the rest up to the architectural GIC maximum.
+//
+#define KI_IDT_BASE_VECTORS     256
+#define KI_IDT_EXT_VECTORS      768
+#define KI_MAXIMUM_VECTOR       (KI_IDT_BASE_VECTORS + KI_IDT_EXT_VECTORS)
+
+//
 // Processor Control Region
 // Based on WoA
 //
@@ -550,13 +558,30 @@ typedef struct _KIPCR
     PVOID KvaUserModeTtbr1;
 
     /* Private members, not in ntddk.h */
-    /* One slot per GIC interrupt ID so SPIs up to the architectural maximum
-       can be connected, not just the first 256. */
-    PVOID Idt[1024];
+    PVOID Idt[256];
     PVOID* IdtExt;
     PVOID PcrAlign[15];
     KPRCB Prcb;
+    /* Slots for interrupt vectors 256 and above (GIC SPIs reach far higher).
+       Placed after Prcb so the earlier offsets, which asm reads, do not move.
+       IdtExt points here. */
+    PVOID IdtExtTable[KI_IDT_EXT_VECTORS];
 } KIPCR, *PKIPCR;
+
+//
+// Returns the interrupt object slot for a vector, from the in-PCR table for
+// the first 256 vectors and from the extension table above that.
+//
+FORCEINLINE
+PVOID*
+KiInterruptObjectSlot(
+    struct _KIPCR *Pcr,
+    ULONG Vector)
+{
+    if (Vector < KI_IDT_BASE_VECTORS)
+        return &Pcr->Idt[Vector];
+    return &Pcr->IdtExt[Vector - KI_IDT_BASE_VECTORS];
+}
 
 //
 // Macro to get current KPRCB

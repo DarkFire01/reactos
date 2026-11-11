@@ -13,9 +13,9 @@
 
 /* The public headers read these through x18 */
 C_ASSERT(FIELD_OFFSET(KIPCR, CurrentIrql) == 0x38);
-C_ASSERT(FIELD_OFFSET(KIPCR, Prcb) == 0x2180);
-C_ASSERT(FIELD_OFFSET(KIPCR, Prcb.CurrentThread) == 0x2188);
-C_ASSERT(FIELD_OFFSET(KIPCR, Prcb.Number) == 0x21A4);
+C_ASSERT(FIELD_OFFSET(KIPCR, Prcb) == 0x980);
+C_ASSERT(FIELD_OFFSET(KIPCR, Prcb.CurrentThread) == 0x988);
+C_ASSERT(FIELD_OFFSET(KIPCR, Prcb.Number) == 0x9A4);
 
 /* SCTLR_EL1 bits that open cache maintenance and DC ZVA to user mode */
 #define SCTLR_DZE           (1ULL << 14)
@@ -76,6 +76,7 @@ KiInitializePcr(
     RtlZeroMemory(Pcr, sizeof(*Pcr));
 
     Pcr->Self = (PKPCR)Pcr;
+    Pcr->IdtExt = Pcr->IdtExtTable;
     Pcr->LockArray = Pcr->Prcb.LockQueue;
     Pcr->MajorVersion = PCR_MAJOR_VERSION;
     Pcr->MinorVersion = PCR_MINOR_VERSION;
