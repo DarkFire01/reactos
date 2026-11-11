@@ -545,6 +545,8 @@ wWinMain(IN HINSTANCE hInst,
          IN int nCmdShow)
 {
     BOOL bIsLiveCD, Success = TRUE;
+    BOOL bShellFailed = FALSE, bDirect = FALSE;
+    WCHAR LiveShell[MAX_PATH];
     STATE State;
 
     hInstance = hInst;
@@ -556,7 +558,9 @@ Restart:
 
     if (bIsLiveCD)
     {
-        State.NextPage = LOCALEPAGE;
+        /* A shell that failed to start brings back the menu */
+        bDirect = !bShellFailed && IsLiveShellDirect();
+        State.NextPage = bDirect ? DONE : LOCALEPAGE;
         State.Run = SHELL;
     }
     else
@@ -583,7 +587,10 @@ Restart:
                 WARN("CreateEnvironmentBlock() failed, fall back to default (error %lu)\n",
                      GetLastError());
             }
-            Success = StartShell(pEnvironment);
+            if (bDirect && GetLiveShell(LiveShell, ARRAYSIZE(LiveShell)))
+                Success = StartProcess(LiveShell, pEnvironment);
+            else
+                Success = StartShell(pEnvironment);
             if (pEnvironment)
                 DestroyEnvironmentBlock(pEnvironment);
             if (Success)
@@ -614,7 +621,10 @@ Restart:
      * to either start the shell or the installer.
      */
     if (bIsLiveCD && !Success)
+    {
+        bShellFailed = (State.Run == SHELL);
         goto Restart;
+    }
 
     return 0;
 }
