@@ -34,7 +34,7 @@ typedef struct _QCKEYS_BUTTON
     USHORT MakeCode;
     USHORT ExtraFlags;
     BOOLEAN Down;
-} QCKEYS_BUTTON;
+} QCKEYS_BUTTON, *PQCKEYS_BUTTON;
 
 /* OnePlus 6: power on the PON of the PM8998, volume on its GPIOs 5 and 6 */
 static QCKEYS_BUTTON QcKeysButtons[] =
