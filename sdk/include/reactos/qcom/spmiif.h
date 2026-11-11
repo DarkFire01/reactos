@@ -19,3 +19,16 @@ QcSpmiRead(
     _In_ USHORT Address,
     _Out_writes_bytes_(Length) PUCHAR Buffer,
     _In_ ULONG Length);
+
+/*
+ * Writes registers of a PMIC peripheral this processor owns, same addressing
+ * as QcSpmiRead. Call at PASSIVE_LEVEL, the first write to a peripheral maps
+ * its channel.
+ */
+NTSTATUS
+NTAPI
+QcSpmiWrite(
+    _In_ UCHAR Sid,
+    _In_ USHORT Address,
+    _In_reads_bytes_(Length) const UCHAR *Buffer,
+    _In_ ULONG Length);
