@@ -550,7 +550,9 @@ typedef struct _KIPCR
     PVOID KvaUserModeTtbr1;
 
     /* Private members, not in ntddk.h */
-    PVOID Idt[256];
+    /* One slot per GIC interrupt ID so SPIs up to the architectural maximum
+       can be connected, not just the first 256. */
+    PVOID Idt[1024];
     PVOID* IdtExt;
     PVOID PcrAlign[15];
     KPRCB Prcb;
