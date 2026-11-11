@@ -2028,6 +2028,49 @@ HKLM,"SYSTEM\CurrentControlSet\Services\mouhid","ImagePath",0x00020000,"system32
 HKLM,"SYSTEM\CurrentControlSet\Services\mouhid","Start",0x00010001,0x00000003
 HKLM,"SYSTEM\CurrentControlSet\Services\mouhid","Type",0x00010001,0x00000001
 
+; Qualcomm bring-up log, shared by the platform drivers below
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","Group",0x00000000,"Pointer Port"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","ImagePath",0x00020000,"system32\drivers\qcomdbg.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomdbg","Type",0x00010001,0x00000001
+
+; Qualcomm GENI I2C master
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","Group",0x00000000,"Pointer Port"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","ImagePath",0x00020000,"system32\drivers\qcomgeni.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomgeni","Type",0x00010001,0x00000001
+
+; Qualcomm TLMM pin control
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Group",0x00000000,"Pointer Port"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","ImagePath",0x00020000,"system32\drivers\qcomtlmm.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Type",0x00010001,0x00000001
+
+; Qualcomm RPMh regulator control
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","Group",0x00000000,"Pointer Port"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","ImagePath",0x00020000,"system32\drivers\qcomrpmh.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomrpmh","Type",0x00010001,0x00000001
+
+; Qualcomm Synaptics RMI4 touch, reports as a mouse class pointer port
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Group",0x00000000,"Pointer Port"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","ImagePath",0x00020000,"system32\drivers\qcomtouch.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Type",0x00010001,0x00000001
+
+; Mouse class driver, started so it connects the legacy pointer port above
+HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Group",0x00000000,"Pointer Class"
+HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","ImagePath",0x00020000,"system32\drivers\mouclass.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\mouclass\Parameters","ConnectMultiplePorts",0x00010001,0x00000001
+
 ; USB hub driver
 HKLM,"SYSTEM\CurrentControlSet\Services\usbhub","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\usbhub","Group",0x00000000,"Boot Bus Extender"
