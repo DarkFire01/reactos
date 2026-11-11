@@ -106,6 +106,19 @@ typedef struct _XHCI_ACPI_DEVICE_INFO
     USHORT SubClassCode;
 } XHCI_ACPI_DEVICE_INFO, *PXHCI_ACPI_DEVICE_INFO;
 
+/* Bus information the USB role switch PDO returns for its controller */
+#define XHCI_URS_GET_BUS_INFORMATION \
+    CTL_CODE(FILE_DEVICE_BUS_EXTENDER, 1, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define XHCI_URS_BUS_INFO_FIRST_SIZE    0x130
+#define XHCI_URS_BUS_ACPI               1
+
+typedef struct _XHCI_URS_BUS_INFO
+{
+    ULONG Size;
+    ULONG BusType;
+    XHCI_ACPI_DEVICE_INFO Acpi;
+} XHCI_URS_BUS_INFO, *PXHCI_URS_BUS_INFO;
+
 typedef
 NTSTATUS
 (NTAPI *PFN_XHCI_QUERY_DEVICE_FLAGS)(
@@ -296,6 +309,45 @@ XhciCopyAcpiId(
     Destination[Index] = ANSI_NULL;
 }
 
+/** Fills the ACPI vendor, device and revision ids from a device information block of Size bytes. */
+static
+VOID
+NTAPI
+XhciParseAcpiIdentity(
+    _In_reads_bytes_(Size) const XHCI_ACPI_DEVICE_INFO* Info,
+    _In_ ULONG Size,
+    _Inout_ XhciIdentity* Id)
+{
+    const CHAR* Strings = (const CHAR*)Info;
+    ULONG VendorOffset;
+    ULONG DeviceOffset;
+    ULONG Length;
+
+    RtlStringCbPrintfA(Id->AcpiRevisionId, sizeof(Id->AcpiRevisionId), "%04X", Info->HardwareRevision);
+
+    VendorOffset = Info->VendorIdStringOffset;
+    DeviceOffset = Info->DeviceIdStringOffset;
+    Length = Info->VendorStringLength;
+    if (VendorOffset > Size || Length > Size - VendorOffset)
+        VendorOffset = 0;
+
+    if (VendorOffset == 0)
+    {
+        RtlStringCbCopyA(Id->AcpiVendorId, sizeof(Id->AcpiVendorId), "UKWN");
+        RtlStringCbCopyA(Id->AcpiDeviceId, sizeof(Id->AcpiDeviceId), "FFFF");
+    }
+    else if (DeviceOffset == 0 || DeviceOffset < VendorOffset || DeviceOffset > VendorOffset + Length)
+    {
+        XhciCopyAcpiId(Id->AcpiVendorId, Strings + VendorOffset, Length);
+        RtlStringCbCopyA(Id->AcpiDeviceId, sizeof(Id->AcpiDeviceId), "FFFF");
+    }
+    else
+    {
+        XhciCopyAcpiId(Id->AcpiVendorId, Strings + VendorOffset, DeviceOffset - VendorOffset);
+        XhciCopyAcpiId(Id->AcpiDeviceId, Strings + DeviceOffset, VendorOffset + Length - DeviceOffset);
+    }
+}
+
 static
 NTSTATUS
 NTAPI
@@ -307,12 +359,8 @@ XhciQueryAcpiIdentity(
     PXHCI_ACPI_DEVICE_INFO Info;
     WDF_MEMORY_DESCRIPTOR Output;
     WDFIOTARGET Target = WdfDeviceGetIoTarget(Device);
-    const CHAR* Strings;
     ULONG_PTR Returned;
     ULONG Size;
-    ULONG VendorOffset;
-    ULONG DeviceOffset;
-    ULONG Length;
     NTSTATUS Status;
 
     Id->PciVendorId = XHCI_ACPI_PARENT_ID;
@@ -353,29 +401,70 @@ XhciQueryAcpiIdentity(
         return Status;
     }
 
-    RtlStringCbPrintfA(Id->AcpiRevisionId, sizeof(Id->AcpiRevisionId), "%04X", Info->HardwareRevision);
+    XhciParseAcpiIdentity(Info, Size, Id);
 
-    Strings = (const CHAR*)Info;
-    VendorOffset = Info->VendorIdStringOffset;
-    DeviceOffset = Info->DeviceIdStringOffset;
-    Length = Info->VendorStringLength;
-    if (VendorOffset > Size || Length > Size - VendorOffset)
-        VendorOffset = 0;
+    ExFreePoolWithTag(Info, XHCI_TAG_CONTROLLER);
+    return STATUS_SUCCESS;
+}
 
-    if (VendorOffset == 0)
+/**
+ * @brief
+ * Asks the role switch PDO which bus its controller sits on, and takes the ACPI identity it hands back.
+ */
+static
+NTSTATUS
+NTAPI
+XhciQueryUrsIdentity(
+    _In_ WDFDEVICE Device,
+    _Inout_ XhciIdentity* Id)
+{
+    WDF_MEMORY_DESCRIPTOR Output;
+    WDFIOTARGET Target = WdfDeviceGetIoTarget(Device);
+    PXHCI_URS_BUS_INFO Info = NULL;
+    ULONG Size = XHCI_URS_BUS_INFO_FIRST_SIZE;
+    ULONG Attempt;
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+
+    for (Attempt = 0; Attempt < 2; Attempt++)
     {
-        RtlStringCbCopyA(Id->AcpiVendorId, sizeof(Id->AcpiVendorId), "UKWN");
-        RtlStringCbCopyA(Id->AcpiDeviceId, sizeof(Id->AcpiDeviceId), "FFFF");
+        Info = (PXHCI_URS_BUS_INFO)ExAllocatePoolZero(NonPagedPool, Size, XHCI_TAG_CONTROLLER);
+        if (Info == NULL)
+        {
+            DPRINT1("No memory for %lu bytes of role switch bus information\n", Size);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&Output, Info, Size);
+        Status = WdfIoTargetSendInternalIoctlSynchronously(Target, NULL, XHCI_URS_GET_BUS_INFORMATION,
+                                                           NULL, &Output, NULL, NULL);
+        if (Status != STATUS_BUFFER_OVERFLOW || Info->Size <= Size)
+            break;
+
+        /* The header says how large the whole block is */
+        Size = Info->Size;
+        ExFreePoolWithTag(Info, XHCI_TAG_CONTROLLER);
+        Info = NULL;
     }
-    else if (DeviceOffset == 0 || DeviceOffset < VendorOffset || DeviceOffset > VendorOffset + Length)
+
+    if (Info == NULL || !NT_SUCCESS(Status))
     {
-        XhciCopyAcpiId(Id->AcpiVendorId, Strings + VendorOffset, Length);
-        RtlStringCbCopyA(Id->AcpiDeviceId, sizeof(Id->AcpiDeviceId), "FFFF");
+        DPRINT1("Role switch bus information query failed 0x%lx\n", Status);
+        if (Info != NULL)
+            ExFreePoolWithTag(Info, XHCI_TAG_CONTROLLER);
+        return NT_SUCCESS(Status) ? STATUS_UNSUCCESSFUL : Status;
+    }
+
+    if (Info->BusType == XHCI_URS_BUS_ACPI && Size >= sizeof(*Info))
+    {
+        Id->ParentBus = UcxControllerParentBusTypeAcpi;
+        Id->PciVendorId = XHCI_ACPI_PARENT_ID;
+        Id->PciDeviceId = XHCI_ACPI_PARENT_ID;
+        XhciParseAcpiIdentity(&Info->Acpi, Size - FIELD_OFFSET(XHCI_URS_BUS_INFO, Acpi), Id);
     }
     else
     {
-        XhciCopyAcpiId(Id->AcpiVendorId, Strings + VendorOffset, DeviceOffset - VendorOffset);
-        XhciCopyAcpiId(Id->AcpiDeviceId, Strings + DeviceOffset, VendorOffset + Length - DeviceOffset);
+        /* PCI parents are not described by the role switch enumerator here, so their ids stay unknown */
+        Id->ParentBus = UcxControllerParentBusTypePci;
     }
 
     ExFreePoolWithTag(Info, XHCI_TAG_CONTROLLER);
@@ -409,10 +498,11 @@ XhciQueryIdentity(
     }
     else if (_wcsicmp(Enumerator, L"URS") == 0)
     {
-        /* ReactOS has no USB role switch enumerator */
-        UNIMPLEMENTED;
-        DPRINT1("Controllers below the role switch enumerator are not supported\n");
-        return STATUS_NOT_SUPPORTED;
+        Status = XhciQueryUrsIdentity(Device, Id);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("Controller identity unavailable 0x%lx\n", Status);
+
+        return Status;
     }
 
     if (Id->ParentBus == UcxControllerParentBusTypeAcpi)
