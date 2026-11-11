@@ -1,6 +1,7 @@
 add_subdirectory(dbg)
 add_subdirectory(geni)
 add_subdirectory(rpmh)
+add_subdirectory(spmi)
 add_subdirectory(tlmm)
 add_subdirectory(ipcrouter)
 add_subdirectory(qmi)

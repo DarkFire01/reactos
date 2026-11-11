@@ -1,0 +1,5 @@
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION  "Qualcomm SPMI PMIC Arbiter Driver"
+#define REACTOS_STR_INTERNAL_NAME     "qcomspmi"
+#define REACTOS_STR_ORIGINAL_FILENAME "qcomspmi.sys"
+#include <reactos/version.rc>
