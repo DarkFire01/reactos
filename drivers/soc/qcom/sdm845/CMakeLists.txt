@@ -1,0 +1,5 @@
+add_subdirectory(rpmh)
+add_subdirectory(spmi)
+add_subdirectory(batt)
+add_subdirectory(touch)
+#add_subdirectory(keys)
