@@ -1,5 +1,6 @@
 add_subdirectory(ucx01000)
 add_subdirectory(urscx01000)
+add_subdirectory(urssynopsys)
 add_subdirectory(usbccgp)
 add_subdirectory(usbd)
 add_subdirectory(usbehci)
