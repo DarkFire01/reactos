@@ -1,0 +1,6 @@
+@ stdcall DllInitialize(ptr)
+@ stdcall DllUnload()
+@ stdcall QcGeniI2cOpen(ptr ptr)
+@ stdcall QcGeniI2cClose(ptr)
+@ stdcall QcGeniI2cTransfer(ptr long ptr long ptr long)
+@ stdcall QcGeniI2cDump(ptr str)
