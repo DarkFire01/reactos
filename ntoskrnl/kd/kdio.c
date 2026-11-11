@@ -671,6 +671,9 @@ KdpPrintExceptionBacktrace(
 }
 #endif
 
+/* Set when the reported exception is a breakpoint this transport resumes past */
+static BOOLEAN KdpResumeBreakpoint;
+
 VOID
 NTAPI
 KdSendPacket(
@@ -734,6 +737,19 @@ extern VOID NTAPI RtlpBreakWithStatusInstruction(VOID);
 // #else
 // #error Unknown architecture
 #endif
+
+            /* Nobody can service a break here, so resume past it the way a debugger told to go would */
+            KdpResumeBreakpoint = FALSE;
+            if (ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT)
+            {
+                PCONTEXT ContextRecord = &KeGetCurrentPrcb()->ProcessorState.ContextFrame;
+
+                if (KeGetContextPc(ContextRecord) == (ULONG_PTR)ExceptionRecord->ExceptionAddress)
+                    KeSetContextPc(ContextRecord, KeGetContextPc(ContextRecord) + KD_BREAKPOINT_SIZE);
+
+                KdpResumeBreakpoint = TRUE;
+                KdIoPrintf("%s: no debugger attached, resuming after the breakpoint\n", __FUNCTION__);
+            }
             return;
         }
 
@@ -807,9 +823,11 @@ KdReceivePacket(
         RtlZeroMemory(MessageHeader->Buffer, MessageHeader->MaximumLength);
 
         /* The exception (notified via DbgKdExceptionStateChange in
-         * KdSendPacket()) cannot be handled: return a failure code */
+         * KdSendPacket()) cannot be handled: return a failure code.
+         * A breakpoint was already stepped over, so execution goes on. */
         ManipulateState->ApiNumber = DbgKdContinueApi;
-        ManipulateState->u.Continue.ContinueStatus = DBG_EXCEPTION_NOT_HANDLED;
+        ManipulateState->u.Continue.ContinueStatus = KdpResumeBreakpoint ? DBG_CONTINUE : DBG_EXCEPTION_NOT_HANDLED;
+        KdpResumeBreakpoint = FALSE;
         return KdPacketReceived;
     }
 
