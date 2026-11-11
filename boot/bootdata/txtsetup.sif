@@ -189,6 +189,7 @@ PCI\CC_0106 = pciide
 PCI\CC_010802 = stornvme
 PCI\CC_010900 = storufs
 PCI\CC_010901 = storufs
+ACPI\QCOM24A5 = storufs
 ;*PNP0600 = uniata
 *PNP0600 = atapi
 USB\CLASS_09 = usbhub

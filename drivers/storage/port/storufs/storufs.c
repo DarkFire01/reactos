@@ -30,38 +30,51 @@ UfsMapRegisters(
 {
     PCI_COMMON_HEADER Config;
     PACCESS_RANGE Range = NULL;
-    ULONGLONG Bar;
     ULONG Index;
 
-    if (StorPortGetBusData(Adapter,
+    /* On PCI the register window is BAR0, so match it against config space.
+       An ACPI enumerated controller has no config space, so fall through to
+       the first memory window its _CRS provided. */
+    if (ConfigInfo->AdapterInterfaceType == PCIBus &&
+        StorPortGetBusData(Adapter,
                            PCIConfiguration,
                            ConfigInfo->SystemIoBusNumber,
                            ConfigInfo->SlotNumber,
                            &Config,
-                           sizeof(Config)) != sizeof(Config))
+                           sizeof(Config)) == sizeof(Config))
     {
-        DPRINT1("UFS: could not read PCI configuration\n");
-        return FALSE;
-    }
+        ULONGLONG Bar = Config.u.type0.BaseAddresses[0] & UFS_BAR_ADDRESS_MASK;
 
-    Bar = Config.u.type0.BaseAddresses[0] & UFS_BAR_ADDRESS_MASK;
+        /* A 64 bit memory BAR carries its upper half in the next register. */
+        if ((Config.u.type0.BaseAddresses[0] & 0x6) == 0x4)
+            Bar |= (ULONGLONG)Config.u.type0.BaseAddresses[1] << 32;
 
-    /* A 64 bit memory BAR carries its upper half in the next register. */
-    if ((Config.u.type0.BaseAddresses[0] & 0x6) == 0x4)
-        Bar |= (ULONGLONG)Config.u.type0.BaseAddresses[1] << 32;
-
-    for (Index = 0; Index < ConfigInfo->NumberOfAccessRanges; Index++)
-    {
-        if ((ULONGLONG)(*ConfigInfo->AccessRanges)[Index].RangeStart.QuadPart == Bar)
+        for (Index = 0; Index < ConfigInfo->NumberOfAccessRanges; Index++)
         {
-            Range = &(*ConfigInfo->AccessRanges)[Index];
-            break;
+            if ((ULONGLONG)(*ConfigInfo->AccessRanges)[Index].RangeStart.QuadPart == Bar)
+            {
+                Range = &(*ConfigInfo->AccessRanges)[Index];
+                break;
+            }
         }
     }
 
     if (Range == NULL)
     {
-        DPRINT1("UFS: no access range at BAR0 0x%I64x\n", Bar);
+        for (Index = 0; Index < ConfigInfo->NumberOfAccessRanges; Index++)
+        {
+            if ((*ConfigInfo->AccessRanges)[Index].RangeInMemory &&
+                (*ConfigInfo->AccessRanges)[Index].RangeLength != 0)
+            {
+                Range = &(*ConfigInfo->AccessRanges)[Index];
+                break;
+            }
+        }
+    }
+
+    if (Range == NULL)
+    {
+        DPRINT1("UFS: no register window in the device resources\n");
         return FALSE;
     }
 
@@ -385,13 +398,14 @@ DriverEntry(
     _In_ PUNICODE_STRING RegistryPath)
 {
     HW_INITIALIZATION_DATA InitData;
+    NTSTATUS PciStatus;
+    NTSTATUS AcpiStatus;
 
     DPRINT1("StorUfs DriverEntry(%p)\n", DriverObject);
 
     RtlZeroMemory(&InitData, sizeof(InitData));
 
     InitData.HwInitializationDataSize = sizeof(InitData);
-    InitData.AdapterInterfaceType = PCIBus;
 
     InitData.HwFindAdapter = StorUfsFindAdapter;
     InitData.HwInitialize = StorUfsInitialize;
@@ -416,5 +430,13 @@ DriverEntry(
     InitData.AddressTypeFlags = ADDRESS_TYPE_FLAG_BTL8;
     InitData.FeatureSupport = STOR_FEATURE_DEVICE_NAME_NO_SUFFIX;
 
-    return StorPortInitialize(DriverObject, RegistryPath, &InitData, NULL);
+    /* Register for a PCI UFSHCI controller and for an ACPI enumerated one,
+       which StorPort reports under the Internal interface. */
+    InitData.AdapterInterfaceType = PCIBus;
+    PciStatus = StorPortInitialize(DriverObject, RegistryPath, &InitData, NULL);
+
+    InitData.AdapterInterfaceType = Internal;
+    AcpiStatus = StorPortInitialize(DriverObject, RegistryPath, &InitData, NULL);
+
+    return NT_SUCCESS(PciStatus) ? PciStatus : AcpiStatus;
 }
