@@ -79,12 +79,26 @@ XhcifEvtPrepareHardware(
         if (!Descriptor || Descriptor->Type != CmResourceTypeMemory)
             continue;
 
-        /* The window has to be the controller this filter knows how to drive */
+        /* The window has to be a controller this filter knows how to drive */
         Start = Descriptor->u.Memory.Start;
         Start.LowPart &= ~(PAGE_SIZE - 1);
-        if (Start.LowPart != XHCIF_CONTROLLER_BASE)
+        if (Start.HighPart == 0 && Start.LowPart == XHCIF_CONTROLLER_BASE)
+        {
+            Device->Soc = XhcifSocMsm8994;
+        }
+        else if (Start.HighPart == 0 && Start.LowPart == XHCIF_SDM845_CONTROLLER_BASE)
+        {
+            Device->Soc = XhcifSocSdm845;
+        }
+        else
         {
             DPRINT1("Unexpected controller window %I64x\n", Descriptor->u.Memory.Start.QuadPart);
+            return STATUS_INTERNAL_ERROR;
+        }
+
+        if (Descriptor->u.Memory.Length < XHCIF_CONTROLLER_MIN_SIZE)
+        {
+            DPRINT1("Controller window too small: 0x%lx\n", Descriptor->u.Memory.Length);
             return STATUS_INTERNAL_ERROR;
         }
 
@@ -99,6 +113,21 @@ XhcifEvtPrepareHardware(
     {
         DPRINT1("No controller window in the resources\n");
         return STATUS_INTERNAL_ERROR;
+    }
+
+    if (Device->Soc == XhcifSocSdm845)
+    {
+        Device->Gcc = XhcifMap(XHCIF_SDM845_GCC_BASE, XHCIF_SDM845_GCC_SIZE);
+        if (!Device->Gcc)
+            return STATUS_INTERNAL_ERROR;
+
+        Device->Qusb2 = XhcifMap(XHCIF_SDM845_QUSB2_BASE, XHCIF_SDM845_QUSB2_SIZE);
+        if (!Device->Qusb2)
+            return STATUS_INTERNAL_ERROR;
+
+        DPRINT("Bringing up the SDM845 controller\n");
+        XhcifInitializeHardware(Device);
+        return STATUS_SUCCESS;
     }
 
     Device->Gcc = XhcifMap(XHCIF_GCC_BASE, XHCIF_GCC_SIZE);
@@ -131,7 +160,8 @@ XhcifEvtReleaseHardware(
     UNREFERENCED_PARAMETER(ResourcesTranslated);
 
     XhcifUnmap(&Device->Controller, Device->ControllerSize);
-    XhcifUnmap(&Device->Gcc, XHCIF_GCC_SIZE);
+    XhcifUnmap(&Device->Gcc, (Device->Soc == XhcifSocSdm845) ? XHCIF_SDM845_GCC_SIZE : XHCIF_GCC_SIZE);
+    XhcifUnmap(&Device->Qusb2, XHCIF_SDM845_QUSB2_SIZE);
     XhcifUnmap(&Device->SsPhy, XHCIF_SS_PHY_SIZE);
     XhcifUnmap(&Device->TcsrUsb, XHCIF_TCSR_USB_SIZE);
     return STATUS_SUCCESS;

@@ -13,10 +13,20 @@
 
 #define XHCIF_POOL_TAG                  'fHcQ'
 
-/* The controller window the role switch hands down, nothing else is driven */
+/* Controller windows the role switch hands down, they also tell the SoCs apart */
 #define XHCIF_CONTROLLER_BASE           0xF9200000UL
+#define XHCIF_SDM845_CONTROLLER_BASE    0x0A600000UL
 
-/* Fixed blocks outside the controller window */
+/* The window has to reach the end of the Qualcomm wrapper */
+#define XHCIF_CONTROLLER_MIN_SIZE       0xF8C00
+
+typedef enum _XHCIF_SOC
+{
+    XhcifSocMsm8994,
+    XhcifSocSdm845
+} XHCIF_SOC;
+
+/* Fixed MSM8992 and MSM8994 blocks outside the controller window */
 #define XHCIF_GCC_BASE                  0xFC400000UL
 #define XHCIF_GCC_SIZE                  0x2000
 #define XHCIF_TCSR_USB_BASE             0xFD4AB000UL
@@ -43,6 +53,8 @@
 #define DWC3_GCTL_CORESOFTRESET         0x00000800
 #define DWC3_GCTL_PRTCAPDIR_MASK        0x00003000
 #define DWC3_GCTL_PRTCAPDIR_HOST        0x00001000
+#define DWC3_GUCTL1                     0xC11C
+#define DWC3_GUCTL1_PARKMODE_DISABLE_SS 0x00020000
 #define DWC3_GDBGLTSSM                  0xC164
 #define DWC3_GDBGLTSSM_STATE_MASK       0x03C00000
 #define DWC3_GDBGLTSSM_STATE_U3         0x00C00000
@@ -62,6 +74,10 @@
 #define QSCR(Offset)                    (0xF8800 + (Offset))
 #define QSCR_CTRL                       QSCR(0x04)
 #define QSCR_CTRL_HS_SUSPEND            0x00000003
+#define QSCR_GENERAL_CFG                QSCR(0x08)
+#define QSCR_GENERAL_CFG_UTMI_AS_PIPE   0x00000001
+#define QSCR_GENERAL_CFG_PHYSTATUS_SW   0x00000008
+#define QSCR_GENERAL_CFG_PIPE_CLK_GATE  0x00000100
 #define QSCR_HS_PHY_CTRL                QSCR(0x10)
 #define QSCR_HS_PHY_CTRL_SLEEP_CLAMP    0x00000001
 #define QSCR_HS_PHY_CTRL_RETENTION      0x00400000
@@ -100,6 +116,34 @@
 #define SSPHY_LOW_POWER_D               0x20E8
 #define SSPHY_LOW_POWER_E               0x20EC
 
+/* SDM845 clock controller, only the primary USB 3 controller is driven */
+#define XHCIF_SDM845_GCC_BASE           0x00100000UL
+#define XHCIF_SDM845_GCC_SIZE           0x83000
+#define SDM845_GCC_USB30_PRIM_BCR       0xF000
+#define SDM845_GCC_USB30_PRIM_GDSCR     0xF004
+#define SDM845_GCC_USB30_MASTER_CBCR    0xF00C
+#define SDM845_GCC_USB30_SLEEP_CBCR     0xF010
+#define SDM845_GCC_USB30_MOCK_UTMI_CBCR 0xF014
+#define SDM845_GCC_CFG_NOC_USB3_CBCR    0x502C
+#define SDM845_GCC_AHB2PHY_CBCR         0x6A004
+#define SDM845_GCC_AGGRE_USB3_CBCR      0x8201C
+#define SDM845_GCC_QUSB2PHY_PRIM_BCR    0x12000
+
+#define GCC_GDSC_SW_COLLAPSE            0x00000001
+#define GCC_GDSC_PWR_ON                 0x80000000
+#define GCC_CBCR_ENABLE                 0x00000001
+#define GCC_CBCR_CLK_OFF                0x80000000
+
+/* SDM845 high speed PHY of the primary port, the board has no SuperSpeed lanes wired */
+#define XHCIF_SDM845_QUSB2_BASE         0x088E2000UL
+#define XHCIF_SDM845_QUSB2_SIZE         0x400
+#define QUSB2_PLL_STATUS                0x01A0
+#define QUSB2_PLL_STATUS_CORE_READY     0x00000001
+#define QUSB2_POWERDOWN                 0x0210
+#define QUSB2_POWERDOWN_POWER_DOWN      0x00000001
+#define QUSB2_POWERDOWN_CLAMP_N_EN      0x00000002
+#define QUSB2_POWERDOWN_VREF_TRIM       0x00000020
+
 #define XHCIF_POLL_TRIES                3
 
 /* Method that hands out board tuning for the high speed PHY */
@@ -117,6 +161,8 @@ typedef struct _XHCIF_DEVICE
     PUCHAR Gcc;
     PUCHAR TcsrUsb;
     PUCHAR SsPhy;
+    PUCHAR Qusb2;
+    XHCIF_SOC Soc;
     BOOLEAN Msm8992;
 
     /* Set once the PHYs were left in their suspended setup, cleared when D0 undoes it */

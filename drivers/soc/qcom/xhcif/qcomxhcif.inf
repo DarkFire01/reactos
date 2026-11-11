@@ -27,6 +27,8 @@ ExcludeFromSelect = *
 [ReactOSMfg]
 %XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM24B6&HOST
 %XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM24B7&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM0304&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM0305&HOST
 %XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM2430
 
 [XHCIF_Device.NT]
