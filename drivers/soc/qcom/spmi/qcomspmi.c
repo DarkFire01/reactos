@@ -79,6 +79,12 @@ SpmiEnsureMapped(VOID)
         SpmiApidForPpid[Apid] = SPMI_APID_NONE;
 
     PeripheralCount = READ_REGISTER_ULONG((PULONG)(SpmiCore + SPMI_FEATURES)) & SPMI_PERIPH_MASK;
+
+    /* The identity map must stay inside the mapped core window, a bad read of
+     * the count would otherwise walk off the page */
+    if (PeripheralCount > (SPMI_CORE_LENGTH - 0x900) / sizeof(ULONG))
+        PeripheralCount = (SPMI_CORE_LENGTH - 0x900) / sizeof(ULONG);
+
     for (Apid = 0; Apid < PeripheralCount; Apid++)
     {
         ULONG Entry = READ_REGISTER_ULONG((PULONG)(SpmiCore + SPMI_APID_MAP(Apid)));
