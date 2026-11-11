@@ -572,8 +572,8 @@ KiArm64InterruptDispatch(
     }
     else
     {
-        if (Vector < RTL_NUMBER_OF(Pcr->Idt))
-            Interrupt = Pcr->Idt[Vector];
+        if (Vector < KI_MAXIMUM_VECTOR)
+            Interrupt = *KiInterruptObjectSlot(Pcr, Vector);
 
         if (!Interrupt)
         {
@@ -620,7 +620,7 @@ KiArm64InterruptDispatch(
                 Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
                 KeReleaseSpinLockFromDpcLevel(Interrupt->ActualLock);
                 Entry = Entry->Flink;
-            } while (Entry != &((PKINTERRUPT)Pcr->Idt[Vector])->InterruptListEntry);
+            } while (Entry != &((PKINTERRUPT)*KiInterruptObjectSlot(Pcr, Vector))->InterruptListEntry);
             break;
     }
 

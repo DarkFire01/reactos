@@ -69,10 +69,11 @@ KeConnectInterrupt(
 {
     PKINTERRUPT Connected;
     PKIPCR Pcr;
+    PVOID *Slot;
     KIRQL OldIrql;
 
     if ((Interrupt->Vector < KI_FIRST_DEVICE_VECTOR) ||
-        (Interrupt->Vector >= RTL_NUMBER_OF(Pcr->Idt)))
+        (Interrupt->Vector >= KI_MAXIMUM_VECTOR))
     {
         DPRINT1("Invalid interrupt vector: %lu\n", Interrupt->Vector);
         return FALSE;
@@ -89,18 +90,19 @@ KeConnectInterrupt(
     OldIrql = KiAcquireDispatcherLock();
 
     Pcr = (PKIPCR)KeGetPcr();
-    Connected = Pcr->Idt[Interrupt->Vector];
+    Slot = KiInterruptObjectSlot(Pcr, Interrupt->Vector);
+    Connected = *Slot;
 
     if (!Connected)
     {
         InitializeListHead(&Interrupt->InterruptListEntry);
 
         /* Publish the object before the line can fire */
-        Pcr->Idt[Interrupt->Vector] = Interrupt;
+        *Slot = Interrupt;
         if (!HalEnableSystemInterrupt(Interrupt->Vector, Interrupt->Irql, Interrupt->Mode))
         {
             DPRINT1("HalEnableSystemInterrupt failed\n");
-            Pcr->Idt[Interrupt->Vector] = NULL;
+            *Slot = NULL;
             goto Cleanup;
         }
     }
@@ -131,6 +133,7 @@ KeDisconnectInterrupt(
 {
     PKINTERRUPT Head, Next;
     PKIPCR Pcr;
+    PVOID *Slot;
     KIRQL OldIrql;
 
     KeSetSystemAffinityThread(AFFINITY_MASK(Interrupt->Number));
@@ -139,14 +142,15 @@ KeDisconnectInterrupt(
     if (Interrupt->Connected)
     {
         Pcr = (PKIPCR)KeGetPcr();
-        Head = Pcr->Idt[Interrupt->Vector];
+        Slot = KiInterruptObjectSlot(Pcr, Interrupt->Vector);
+        Head = *Slot;
 
         if (IsListEmpty(&Head->InterruptListEntry))
         {
             /* The last one on the line */
             ASSERT(Head == Interrupt);
             HalDisableSystemInterrupt(Interrupt->Vector, Interrupt->Irql);
-            Pcr->Idt[Interrupt->Vector] = NULL;
+            *Slot = NULL;
         }
         else if (Head == Interrupt)
         {
@@ -155,7 +159,7 @@ KeDisconnectInterrupt(
                                      KINTERRUPT,
                                      InterruptListEntry);
             RemoveEntryList(&Interrupt->InterruptListEntry);
-            Pcr->Idt[Interrupt->Vector] = Next;
+            *Slot = Next;
         }
         else
         {
