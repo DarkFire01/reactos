@@ -106,8 +106,8 @@ typedef struct _UACPINT_MSI_DIAG_TARGET
 } UACPINT_MSI_DIAG_TARGET, *PUACPINT_MSI_DIAG_TARGET;
 
 ULONG UacpiNtIrqArbEnabled = 1;
-ULONG UacpiNtIrqArbVerbose = 1;
-ULONG UacpiNtMsiDiagEnabled = 1;
+ULONG UacpiNtIrqArbVerbose = 0;
+ULONG UacpiNtMsiDiagEnabled = 0;
 ULONG UacpiNtMsiDiagDelaySeconds = 30;
 
 static ARBITER_INSTANCE UacpiNtIrqArbiter;

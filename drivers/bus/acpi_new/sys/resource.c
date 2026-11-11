@@ -18,7 +18,7 @@
 #define UACPINT_RES_LARGE_HEADER_SIZE   3
 
 /* Log each window handed out and every dropped _CRS descriptor */
-ULONG UacpiNtResVerbose = 1;
+ULONG UacpiNtResVerbose = 0;
 
 typedef struct _UACPINT_ADDRESS_WINDOW
 {

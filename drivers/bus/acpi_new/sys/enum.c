@@ -8,7 +8,7 @@
 #include <uacpint.h>
 #include <debug.h>
 
-ULONG UacpiNtEnumDiagEnabled = 1;
+ULONG UacpiNtEnumDiagEnabled = 0;
 ULONG UacpiNtEnumDiagDelaySeconds = 2;
 
 /* Processor instance IDs are the ACPI processor ID, hex from Windows 8 on */
