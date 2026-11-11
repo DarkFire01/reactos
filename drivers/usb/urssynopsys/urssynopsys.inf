@@ -1,0 +1,66 @@
+; URSSYNOPSYS.INF
+
+; Installation file for Synopsys USB 3.0 dual role controllers
+
+[Version]
+Signature = "$Windows NT$"
+Class = USB
+ClassGuid = {36FC9E60-C465-11CF-8056-444553540000}
+Provider = %ReactOS%
+DriverVer = 11/10/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+urssynopsys.sys = 1,,
+urscx01000.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%UrsSynopsys.Mfg% = UrsSynopsys
+
+[UrsSynopsys]
+%UrsSynopsys.DeviceDesc% = UrsSynopsys_Qcom, ACPI\QCOM24B6
+%UrsSynopsys.DeviceDesc% = UrsSynopsys_Device, ACPI\PNP0CA1
+
+[UrsSynopsys_Device.NT]
+CopyFiles = UrsSynopsys_CopyFiles
+
+[UrsSynopsys_Qcom.NT]
+CopyFiles = UrsSynopsys_CopyFiles
+
+[UrsSynopsys_CopyFiles]
+urssynopsys.sys
+urscx01000.sys
+
+; Nothing reports the connector role on these boards yet, so they start as host
+[UrsSynopsys_Qcom.NT.HW]
+AddReg = UrsSynopsys_HostRole
+
+[UrsSynopsys_HostRole]
+HKR,,RoleSwitchMode,0x00010001,1
+
+[UrsSynopsys_Device.NT.Services]
+AddService = UrsSynopsys, 0x00000002, UrsSynopsys_Service
+
+[UrsSynopsys_Qcom.NT.Services]
+AddService = UrsSynopsys, 0x00000002, UrsSynopsys_Service
+
+[UrsSynopsys_Service]
+DisplayName    = %UrsSynopsys.ServiceName%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\urssynopsys.sys
+LoadOrderGroup = Base
+Dependencies   = urscx01000
+
+[Strings]
+ReactOS = "ReactOS Project"
+UrsSynopsys.Mfg = "Synopsys"
+DiskId1 = "ReactOS Installation Disk"
+UrsSynopsys.DeviceDesc = "Synopsys USB 3.0 Dual-Role Controller"
+UrsSynopsys.ServiceName = "Synopsys USB Role-Switch Driver"
