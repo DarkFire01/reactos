@@ -1,3 +1,4 @@
+add_subdirectory(batt)
 add_subdirectory(dbg)
 add_subdirectory(geni)
 add_subdirectory(keys)
