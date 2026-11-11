@@ -24,6 +24,8 @@ DefaultDestDir = 12
 
 [UrsSynopsys]
 %UrsSynopsys.DeviceDesc% = UrsSynopsys_Qcom, ACPI\QCOM24B6
+%UrsSynopsys.DeviceDesc% = UrsSynopsys_Qcom, ACPI\QCOM0304
+%UrsSynopsys.DeviceDesc% = UrsSynopsys_Qcom, ACPI\QCOM0305
 %UrsSynopsys.DeviceDesc% = UrsSynopsys_Device, ACPI\PNP0CA1
 
 [UrsSynopsys_Device.NT]
