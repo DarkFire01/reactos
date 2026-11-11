@@ -322,10 +322,14 @@ PopControlSwitchIrpCompletion(
 
         case POP_CS_QUERY_EVENT_MODE:
         {
-            /* Perform a power action, depending on the inquired button event */
+            /*
+             * Completion can run at DISPATCH_LEVEL and the power action may shut
+             * the system down, so the CS handler performs it instead.
+             */
             IrpData = *(PULONG)Irp->AssociatedIrp.SystemBuffer;
             PopFreePool(Irp->AssociatedIrp.SystemBuffer, TAG_PO_CONTROL_SWITCH_IO_DATA);
-            PopPerformButtonAction(ControlSwitch, IrpData);
+            ControlSwitch->PendingEvent = IrpData;
+            ControlSwitch->EventPending = TRUE;
             break;
         }
 
@@ -516,15 +520,22 @@ PopControlSwitchHandler(
 
     PAGED_CODE();
 
-    /* We entered into a device policy handler, acquire the policy lock */
-    PopAcquirePowerPolicyLock();
-
     /*
      * Ensure we got the right policy device as this handler only processes
      * control switches and not anything else.
      */
     ASSERT(WorkItemData->PolicyType == PolicyDeviceSystemButton);
     ControlSwitch = WorkItemData->PolicyData;
+
+    /* Act on a captured button event before taking the policy lock, a shutdown may need it */
+    if (ControlSwitch->EventPending)
+    {
+        ControlSwitch->EventPending = FALSE;
+        PopPerformButtonAction(ControlSwitch, ControlSwitch->PendingEvent);
+    }
+
+    /* We entered into a device policy handler, acquire the policy lock */
+    PopAcquirePowerPolicyLock();
 
     /*
      * This control switch asked for cleanup. This could be caused by the ACPI
