@@ -1,0 +1,8 @@
+@ stdcall DllInitialize(ptr)
+@ stdcall DllUnload()
+@ stdcall QcTlmmConnect(int64 ptr ptr)
+@ stdcall QcTlmmDisconnect(ptr)
+@ stdcall QcTlmmConfigurePin(ptr ptr)
+@ stdcall QcTlmmSetLevel(ptr ptr long)
+@ stdcall QcTlmmGetLevel(ptr ptr)
+@ stdcall QcTlmmDumpPin(ptr ptr str)
