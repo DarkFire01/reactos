@@ -28,7 +28,7 @@ typedef struct tagDISKCONTEXT
     ULONG SectorSize;
     ULONGLONG SectorOffset;
     ULONGLONG SectorCount;
-    ULONGLONG SectorNumber;
+    ULONGLONG Position; /* Byte offset into the partition */
 } DISKCONTEXT;
 
 typedef struct _INTERNAL_UEFI_DISK
@@ -407,7 +407,7 @@ UefiDiskGetFileInformation(ULONG FileId, FILEINFORMATION *Information)
      */
     Information->StartingAddress.QuadPart = Context->SectorOffset * Context->SectorSize;
     Information->EndingAddress.QuadPart   = (Context->SectorOffset + Context->SectorCount) * Context->SectorSize;
-    Information->CurrentAddress.QuadPart  = Context->SectorNumber * Context->SectorSize;
+    Information->CurrentAddress.QuadPart  = Context->Position;
 
     Information->Type = DiskPeripheral; /* No floppy for you for now... */
 
@@ -497,7 +497,7 @@ UefiDiskOpen(CHAR *Path, OPENMODE OpenMode, ULONG *FileId)
     Context->SectorSize = SectorSize;
     Context->SectorOffset = SectorOffset;
     Context->SectorCount = SectorCount;
-    Context->SectorNumber = 0;
+    Context->Position = 0;
     FsSetDeviceSpecific(*FileId, Context);
 
     return ESUCCESS;
@@ -509,8 +509,8 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
 {
     DISKCONTEXT* Context = FsGetDeviceSpecific(FileId);
     UCHAR* Ptr = (UCHAR*)Buffer;
-    ULONG Length, TotalSectors, MaxSectors, ReadSectors;
-    ULONGLONG SectorOffset;
+    ULONG Length, MaxSectors, ReadSectors, InSector;
+    ULONGLONG Lba;
     BOOLEAN ret;
     EFI_BLOCK_IO* BlockIo;
     EFI_STATUS Status;
@@ -518,9 +518,7 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
 
     ASSERT(DiskReadBufferSize > 0);
 
-    TotalSectors = (N + Context->SectorSize - 1) / Context->SectorSize;
-    MaxSectors   = DiskReadBufferSize / Context->SectorSize;
-    SectorOffset = Context->SectorOffset + Context->SectorNumber;
+    MaxSectors = DiskReadBufferSize / Context->SectorSize;
 
     // If MaxSectors is 0, this will lead to infinite loop.
     // In release builds assertions are disabled, however we also have sanity checks in DiskOpen()
@@ -563,14 +561,18 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
 
     ret = TRUE;
 
-    while (TotalSectors)
+    /* File systems may use a smaller sector than the media, so reads are byte granular */
+    while (N)
     {
-        ReadSectors = min(TotalSectors, MaxSectors);
+        Lba = Context->SectorOffset + (Context->Position / Context->SectorSize);
+        InSector = (ULONG)(Context->Position % Context->SectorSize);
+        ReadSectors = (ULONG)min(((ULONGLONG)InSector + N + Context->SectorSize - 1) / Context->SectorSize,
+                                 MaxSectors);
 
         Status = BlockIo->ReadBlocks(
             BlockIo,
             BlockIo->Media->MediaId,
-            SectorOffset,
+            Lba,
             ReadSectors * Context->SectorSize,
             DiskReadBuffer);
 
@@ -581,19 +583,15 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
             break;
         }
 
-        Length = ReadSectors * Context->SectorSize;
-        Length = min(Length, N);
-
-        RtlCopyMemory(Ptr, DiskReadBuffer, Length);
+        Length = min(ReadSectors * Context->SectorSize - InSector, N);
+        RtlCopyMemory(Ptr, (PUCHAR)DiskReadBuffer + InSector, Length);
 
         Ptr += Length;
         N -= Length;
-        SectorOffset += ReadSectors;
-        TotalSectors -= ReadSectors;
+        Context->Position += Length;
     }
 
     *Count = (ULONG)((ULONG_PTR)Ptr - (ULONG_PTR)Buffer);
-    Context->SectorNumber = SectorOffset - Context->SectorOffset;
 
     return (ret ? ESUCCESS : EIO);
 }
@@ -610,24 +608,19 @@ UefiDiskSeek(ULONG FileId, LARGE_INTEGER *Position, SEEKMODE SeekMode)
         case SeekAbsolute:
             break;
         case SeekRelative:
-            NewPosition.QuadPart += (Context->SectorNumber * Context->SectorSize);
+            NewPosition.QuadPart += Context->Position;
             break;
         default:
             ASSERT(FALSE);
             return EINVAL;
     }
 
-    if (NewPosition.QuadPart & (Context->SectorSize - 1))
-        return EINVAL;
-
-    /* Convert in number of sectors */
-    NewPosition.QuadPart /= Context->SectorSize;
-
     /* HACK: CDROMs may have a SectorCount of 0 */
-    if (Context->SectorCount != 0 && NewPosition.QuadPart >= Context->SectorCount)
+    if (Context->SectorCount != 0 &&
+        (ULONGLONG)NewPosition.QuadPart >= Context->SectorCount * Context->SectorSize)
         return EINVAL;
 
-    Context->SectorNumber = NewPosition.QuadPart;
+    Context->Position = NewPosition.QuadPart;
     return ESUCCESS;
 }
 
@@ -699,6 +692,78 @@ GetHarddiskInformation(
     Identifier[18] = (ValidPartitionTable ? 'A' : 'X');
     Identifier[19] = ANSI_NULL;
     TRACE("Identifier: %s\n", Identifier);
+}
+
+/**
+ * @brief
+ * Checks that Child is a hard drive partition directly below Parent.
+ */
+static
+BOOLEAN
+UefiIsPartitionOfDevice(
+    _In_ EFI_DEVICE_PATH_PROTOCOL *Parent,
+    _In_ EFI_DEVICE_PATH_PROTOCOL *Child)
+{
+    ULONG Length;
+
+    while (!IsDevicePathEnd(Parent))
+    {
+        if (IsDevicePathEnd(Child))
+            return FALSE;
+
+        Length = DevicePathNodeLength(Parent);
+        if (Length < sizeof(EFI_DEVICE_PATH_PROTOCOL) ||
+            DevicePathNodeLength(Child) != Length ||
+            !RtlEqualMemory(Parent, Child, Length))
+        {
+            return FALSE;
+        }
+
+        Parent = NextDevicePathNode(Parent);
+        Child = NextDevicePathNode(Child);
+    }
+
+    return (DevicePathType(Child) == MEDIA_DEVICE_PATH &&
+            DevicePathSubType(Child) == MEDIA_HARDDRIVE_DP);
+}
+
+/**
+ * @brief
+ * Finds the ARC disk that holds the boot partition by its device path.
+ */
+static
+BOOLEAN
+UefiFindBootPartitionDisk(
+    _In_ ULONG DiskCount,
+    _Out_ PULONG ArcDriveIndex)
+{
+    EFI_GUID DevicePathGuid = EFI_DEVICE_PATH_PROTOCOL_GUID;
+    EFI_DEVICE_PATH_PROTOCOL *BootPath, *DiskPath;
+    EFI_STATUS Status;
+    ULONG i;
+
+    Status = GlobalSystemTable->BootServices->HandleProtocol(handles[UefiBootRootIndex],
+                                                             &DevicePathGuid,
+                                                             (VOID**)&BootPath);
+    if (EFI_ERROR(Status) || !BootPath)
+        return FALSE;
+
+    for (i = 0; i < DiskCount; i++)
+    {
+        Status = GlobalSystemTable->BootServices->HandleProtocol(InternalUefiDisk[i].Handle,
+                                                                 &DevicePathGuid,
+                                                                 (VOID**)&DiskPath);
+        if (EFI_ERROR(Status) || !DiskPath)
+            continue;
+
+        if (UefiIsPartitionOfDevice(DiskPath, BootPath))
+        {
+            *ArcDriveIndex = i;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
 }
 
 static
@@ -914,44 +979,56 @@ UefiSetupBlockDevices(VOID)
             /* For CD-ROMs: match BlockSize=2048 and RemovableMedia=TRUE */
             /* For hard disks: match BlockSize and find the root device before this partition */
             BOOLEAN FoundBootDevice = FALSE;
-            for (i = 0; i < BlockDeviceIndex; i++)
+
+            /* Disks with several LUNs share a block size, so match the device path first */
+            if (UefiFindBootPartitionDisk(BlockDeviceIndex, &i))
             {
-                EFI_BLOCK_IO* RootBlockIo;
-                Status = GlobalSystemTable->BootServices->HandleProtocol(
-                    InternalUefiDisk[i].Handle,
-                    &BlockIoGuid,
-                    (VOID**)&RootBlockIo);
-
-                if (EFI_ERROR(Status) || RootBlockIo == NULL)
-                    continue;
-
-                /* For CD-ROM: match BlockSize=2048 and RemovableMedia */
-                if (BlockIo->Media->BlockSize == 2048 && BlockIo->Media->RemovableMedia)
+                PublicBootArcDisk = i;
+                InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
+                FoundBootDevice = TRUE;
+                TRACE("Boot partition is on ARC drive index %lu by device path\n", i);
+            }
+            else
+            {
+                for (i = 0; i < BlockDeviceIndex; i++)
                 {
-                    if (RootBlockIo->Media->BlockSize == 2048 && 
-                        RootBlockIo->Media->RemovableMedia &&
-                        !RootBlockIo->Media->LogicalPartition)
+                    EFI_BLOCK_IO* RootBlockIo;
+                    Status = GlobalSystemTable->BootServices->HandleProtocol(
+                        InternalUefiDisk[i].Handle,
+                        &BlockIoGuid,
+                        (VOID**)&RootBlockIo);
+
+                    if (EFI_ERROR(Status) || RootBlockIo == NULL)
+                        continue;
+
+                    /* For CD-ROM: match BlockSize=2048 and RemovableMedia */
+                    if (BlockIo->Media->BlockSize == 2048 && BlockIo->Media->RemovableMedia)
                     {
-                        PublicBootArcDisk = i;
-                        InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
-                        FoundBootDevice = TRUE;
-                        TRACE("Found CD-ROM boot device at ARC drive index %lu\n", i);
-                        break;
+                        if (RootBlockIo->Media->BlockSize == 2048 && 
+                            RootBlockIo->Media->RemovableMedia &&
+                            !RootBlockIo->Media->LogicalPartition)
+                        {
+                            PublicBootArcDisk = i;
+                            InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
+                            FoundBootDevice = TRUE;
+                            TRACE("Found CD-ROM boot device at ARC drive index %lu\n", i);
+                            break;
+                        }
                     }
-                }
-                /* For hard disk partitions: the root device should be before the partition handle */
-                else if (InternalUefiDisk[i].UefiHandleIndex < UefiBootRootIndex)
-                {
-                    /* Check if this root device is likely the parent */
-                    if (RootBlockIo->Media->BlockSize == BlockIo->Media->BlockSize &&
-                        !RootBlockIo->Media->LogicalPartition)
+                    /* For hard disk partitions: the root device should be before the partition handle */
+                    else if (InternalUefiDisk[i].UefiHandleIndex < UefiBootRootIndex)
                     {
-                        /* This might be the parent, but we need to be more certain */
-                        /* For now, use the last root device before the boot handle */
-                        PublicBootArcDisk = i;
-                        InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
-                        FoundBootDevice = TRUE;
-                        TRACE("Found potential hard disk boot device at ARC drive index %lu\n", i);
+                        /* Check if this root device is likely the parent */
+                        if (RootBlockIo->Media->BlockSize == BlockIo->Media->BlockSize &&
+                            !RootBlockIo->Media->LogicalPartition)
+                        {
+                            /* This might be the parent, but we need to be more certain */
+                            /* For now, use the last root device before the boot handle */
+                            PublicBootArcDisk = i;
+                            InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
+                            FoundBootDevice = TRUE;
+                            TRACE("Found potential hard disk boot device at ARC drive index %lu\n", i);
+                        }
                     }
                 }
             }
