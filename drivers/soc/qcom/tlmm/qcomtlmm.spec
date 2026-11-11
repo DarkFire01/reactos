@@ -6,3 +6,6 @@
 @ stdcall QcTlmmSetLevel(ptr ptr long)
 @ stdcall QcTlmmGetLevel(ptr ptr)
 @ stdcall QcTlmmDumpPin(ptr ptr str)
+@ stdcall QcTlmmConfigureInterrupt(ptr ptr long)
+@ stdcall QcTlmmInterruptActive(ptr ptr)
+@ stdcall QcTlmmClearInterrupt(ptr ptr)
