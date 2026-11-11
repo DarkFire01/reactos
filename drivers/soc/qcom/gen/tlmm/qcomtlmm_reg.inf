@@ -1,0 +1,7 @@
+; Qualcomm TLMM Pin Controller
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","ImagePath",0x00020000,"system32\drivers\qcomtlmm.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtlmm","Type",0x00010001,0x00000001

@@ -12,6 +12,8 @@ add_library(qcomspmi MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/qcomspmi.def)
 
 set_module_type(qcomspmi kernelmodedriver)
-target_link_libraries(qcomspmi libcntpr)
+target_link_libraries(qcomspmi qcompnp libcntpr)
 add_importlibs(qcomspmi qcomdbg ntoskrnl hal)
 add_cd_file(TARGET qcomspmi DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_driver_inf(qcomspmi qcomspmi.inf)
+add_registry_inf(qcomspmi_reg.inf)

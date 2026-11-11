@@ -1,0 +1,7 @@
+; Qualcomm SPMI Arbiter
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomspmi","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomspmi","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomspmi","ImagePath",0x00020000,"system32\drivers\qcomspmi.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomspmi","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomspmi","Type",0x00010001,0x00000001

@@ -10,6 +10,7 @@
 
 #define QCDBG_COMPONENT "qcomspmi"
 #include <qcom/qcomdbg.h>
+#include <qcom/qcompnp.h>
 
 /*
  * SDM845 arbiter, version 5. The core window holds the peripheral map, the
@@ -195,9 +196,9 @@ DriverEntry(
     _In_ PDRIVER_OBJECT DriverObject,
     _In_ PUNICODE_STRING RegistryPath)
 {
-    UNREFERENCED_PARAMETER(DriverObject);
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    /* Export driver only, it never runs as a service */
+    /* The exports are the real work, the ACPI node is only claimed */
+    QcPnpInitializeClaimDriver(DriverObject, QCDBG_COMPONENT);
     return STATUS_SUCCESS;
 }
