@@ -1,0 +1,6 @@
+; Qualcomm PMI8998 Type-C Port
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtypec","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtypec","ImagePath",0x00020000,"system32\drivers\qcomtypec.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtypec","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtypec","Type",0x00010001,0x00000001

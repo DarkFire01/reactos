@@ -1,0 +1,51 @@
+; QCOMTYPEC.INF
+
+; Installation file for the PMI8998 Type-C port of Qualcomm SDM845 phones
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/11/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomtypec.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%Mfg% = Mfg
+
+[Mfg]
+%QCOMTYPEC.DeviceDesc% = QCOMTYPEC_Device, ACPI\QCOM02E6
+
+[QCOMTYPEC_Device.NT]
+CopyFiles = QCOMTYPEC_CopyFiles
+
+[QCOMTYPEC_CopyFiles]
+qcomtypec.sys
+
+[QCOMTYPEC_Device.NT.Services]
+AddService = qcomtypec, 0x00000002, QCOMTYPEC_Service
+
+[QCOMTYPEC_Service]
+DisplayName    = %QCOMTYPEC.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomtypec.sys
+
+[Strings]
+ReactOS = "ReactOS Project"
+Mfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+QCOMTYPEC.DeviceDesc = "Qualcomm PMIC Type-C Port Controller"
+QCOMTYPEC.ServiceDesc = "Qualcomm PMI8998 Type-C Port"
