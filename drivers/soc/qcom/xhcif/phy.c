@@ -75,6 +75,44 @@ static const SSPHY_TUNING SsPhyTuning[] =
     { 0x06AC, 0x05, 0x05, SSPHY_TUNE_ANY },
 };
 
+typedef struct _XHCIF_REG_WRITE
+{
+    USHORT Offset;
+    UCHAR Value;
+} XHCIF_REG_WRITE;
+
+/* SDM845 high speed PHY setup, applied in order before the board tuning */
+static const XHCIF_REG_WRITE Qusb2Setup[] =
+{
+    { 0x0004, 0x03 },
+    { 0x018C, 0x7C },
+    { 0x002C, 0x80 },
+    { 0x0184, 0x0A },
+    { 0x00B4, 0x19 },
+    { 0x0194, 0x40 },
+    { 0x0198, 0x20 },
+    { 0x0214, 0x21 },
+    { 0x0220, 0x00 },
+    { 0x0224, 0x58 },
+    { 0x0240, 0x30 },
+    { 0x0244, 0x29 },
+    { 0x0248, 0xCA },
+    { 0x024C, 0x04 },
+    { 0x0250, 0x03 },
+    { 0x023C, 0x00 },
+};
+
+/* SDM845 clock branches the controller and its PHY need, in enable order */
+static const ULONG Sdm845UsbBranches[] =
+{
+    SDM845_GCC_CFG_NOC_USB3_CBCR,
+    SDM845_GCC_USB30_MASTER_CBCR,
+    SDM845_GCC_AGGRE_USB3_CBCR,
+    SDM845_GCC_USB30_SLEEP_CBCR,
+    SDM845_GCC_USB30_MOCK_UTMI_CBCR,
+    SDM845_GCC_AHB2PHY_CBCR,
+};
+
 static
 ULONG
 XhcifRead(
@@ -298,11 +336,22 @@ XhcifApplyHsPhyTuning(
             break;
         }
 
-        /* Only the parameter override register of this controller is taken */
-        if (Fields[0] == XHCIF_PHY_ENTRY_WRITE &&
-            Fields[1] == XHCIF_CONTROLLER_BASE + QSCR_HS_PHY_PARAMS)
+        /* Only writes into this SoC's high speed PHY are taken */
+        if (Fields[0] == XHCIF_PHY_ENTRY_WRITE)
         {
-            XhcifWrite(Device->Controller, QSCR_HS_PHY_PARAMS, Fields[2]);
+            if (Device->Soc == XhcifSocSdm845)
+            {
+                if (Fields[1] >= XHCIF_SDM845_QUSB2_BASE &&
+                    Fields[1] < XHCIF_SDM845_QUSB2_BASE + XHCIF_SDM845_QUSB2_SIZE &&
+                    !(Fields[1] & 3))
+                {
+                    XhcifWrite(Device->Qusb2, Fields[1] - XHCIF_SDM845_QUSB2_BASE, Fields[2]);
+                }
+            }
+            else if (Fields[1] == XHCIF_CONTROLLER_BASE + QSCR_HS_PHY_PARAMS)
+            {
+                XhcifWrite(Device->Controller, QSCR_HS_PHY_PARAMS, Fields[2]);
+            }
         }
 
         Package = ACPI_METHOD_NEXT_ARGUMENT(Package);
@@ -310,6 +359,103 @@ XhcifApplyHsPhyTuning(
 
     ExFreePoolWithTag(Output, XHCIF_POOL_TAG);
     return Status;
+}
+
+/* Powers the controller domain, resets the core and turns its clock branches on, rates stay as firmware set them */
+static
+VOID
+XhcifSdm845EnableClocks(
+    _In_ PXHCIF_DEVICE Device)
+{
+    ULONG Tries = 0;
+    ULONG i;
+
+    XhcifModify(Device->Gcc, SDM845_GCC_USB30_PRIM_GDSCR, GCC_GDSC_SW_COLLAPSE, 0);
+    if (!XhcifPoll(Device->Gcc, SDM845_GCC_USB30_PRIM_GDSCR, GCC_GDSC_PWR_ON, GCC_GDSC_PWR_ON, &Tries))
+        DPRINT1("USB power domain did not come up\n");
+
+    XhcifModify(Device->Gcc, SDM845_GCC_USB30_PRIM_BCR, 0, 1);
+    XhcifStall();
+    XhcifModify(Device->Gcc, SDM845_GCC_USB30_PRIM_BCR, 1, 0);
+
+    for (i = 0; i < RTL_NUMBER_OF(Sdm845UsbBranches); i++)
+    {
+        Tries = 0;
+        XhcifModify(Device->Gcc, Sdm845UsbBranches[i], 0, GCC_CBCR_ENABLE);
+        if (!XhcifPoll(Device->Gcc, Sdm845UsbBranches[i], GCC_CBCR_CLK_OFF, 0, &Tries))
+            DPRINT1("USB clock branch 0x%x stayed off\n", Sdm845UsbBranches[i]);
+    }
+}
+
+static
+VOID
+XhcifSdm845StartHsPhy(
+    _In_ PXHCIF_DEVICE Device)
+{
+    NTSTATUS Status;
+    ULONG i;
+
+    XhcifModify(Device->Gcc, SDM845_GCC_QUSB2PHY_PRIM_BCR, 0, 1);
+    XhcifStall();
+    XhcifModify(Device->Gcc, SDM845_GCC_QUSB2PHY_PRIM_BCR, 1, 0);
+
+    /* Program the PHY while it is held powered down */
+    XhcifModify(Device->Qusb2,
+                QUSB2_POWERDOWN,
+                0,
+                QUSB2_POWERDOWN_POWER_DOWN | QUSB2_POWERDOWN_CLAMP_N_EN | QUSB2_POWERDOWN_VREF_TRIM);
+
+    for (i = 0; i < RTL_NUMBER_OF(Qusb2Setup); i++)
+        XhcifWrite(Device->Qusb2, Qusb2Setup[i].Offset, Qusb2Setup[i].Value);
+
+    Status = XhcifApplyHsPhyTuning(Device);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("No high speed PHY tuning from firmware: 0x%lx\n", Status);
+
+    XhcifModify(Device->Qusb2, QUSB2_POWERDOWN, QUSB2_POWERDOWN_POWER_DOWN, 0);
+    XhcifStall();
+
+    if (!(XhcifRead(Device->Qusb2, QUSB2_PLL_STATUS) & QUSB2_PLL_STATUS_CORE_READY))
+        DPRINT1("High speed PHY PLL did not lock: 0x%lx\n", XhcifRead(Device->Qusb2, QUSB2_PLL_STATUS));
+}
+
+/**
+ * @brief
+ * Brings up the SDM845 primary controller as a USB 2 host.
+ *
+ * @remarks
+ * The SuperSpeed PHY is never started, so the core takes its pipe clock from the UTMI side.
+ */
+static
+VOID
+XhcifSdm845InitializeHardware(
+    _In_ PXHCIF_DEVICE Device)
+{
+    XhcifSdm845EnableClocks(Device);
+    XhcifSdm845StartHsPhy(Device);
+
+    XhcifModify(Device->Controller, DWC3_GCTL, 0, DWC3_GCTL_CORESOFTRESET);
+    XhcifModify(Device->Controller, DWC3_GUSB2PHYCFG, 0, DWC3_GUSB2PHYCFG_PHYSOFTRST);
+    XhcifStall();
+    XhcifModify(Device->Controller, DWC3_GUSB2PHYCFG, DWC3_GUSB2PHYCFG_PHYSOFTRST, 0);
+
+    XhcifModify(Device->Controller, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_PIPE_CLK_GATE);
+    XhcifStall();
+    XhcifModify(Device->Controller,
+                QSCR_GENERAL_CFG,
+                0,
+                QSCR_GENERAL_CFG_UTMI_AS_PIPE | QSCR_GENERAL_CFG_PHYSTATUS_SW);
+    XhcifStall();
+    XhcifModify(Device->Controller, QSCR_GENERAL_CFG, QSCR_GENERAL_CFG_PIPE_CLK_GATE, 0);
+
+    XhcifModify(Device->Controller, DWC3_GCTL, DWC3_GCTL_CORESOFTRESET, 0);
+    XhcifStall();
+
+    /* This PHY misbehaves when the core suspends it or lets it sleep between transfers */
+    XhcifModify(Device->Controller, DWC3_GUSB2PHYCFG, DWC3_GUSB2PHYCFG_SUSPEND, 0);
+    XhcifModify(Device->Controller, DWC3_GUCTL1, 0, DWC3_GUCTL1_PARKMODE_DISABLE_SS);
+
+    XhcifModify(Device->Controller, DWC3_GCTL, DWC3_GCTL_PRTCAPDIR_MASK, DWC3_GCTL_PRTCAPDIR_HOST);
 }
 
 /**
@@ -322,6 +468,13 @@ XhcifInitializeHardware(
     _In_ PXHCIF_DEVICE Device)
 {
     NTSTATUS Status;
+
+    if (Device->Soc == XhcifSocSdm845)
+    {
+        XhcifSdm845InitializeHardware(Device);
+        Device->PhySuspended = FALSE;
+        return;
+    }
 
     XhcifModify(Device->TcsrUsb, 0, 0, 1);
     Device->PhySuspended = TRUE;
@@ -447,10 +600,15 @@ NTAPI
 XhcifSuspendPhys(
     _In_ PXHCIF_DEVICE Device)
 {
-    ULONG HsPort = XhcifRead(Device->Controller, XHCIF_PORTSC_HS);
-    ULONG SsPort = XhcifRead(Device->Controller, XHCIF_PORTSC_SS);
+    ULONG HsPort, SsPort;
     BOOLEAN HsSuspended, SsSuspended;
 
+    /* The SDM845 PHY is kept out of suspend, and nothing here gates its power */
+    if (Device->Soc == XhcifSocSdm845)
+        return;
+
+    HsPort = XhcifRead(Device->Controller, XHCIF_PORTSC_HS);
+    SsPort = XhcifRead(Device->Controller, XHCIF_PORTSC_SS);
     HsSuspended = (HsPort & XHCIF_PORTSC_CCS) && (HsPort & XHCIF_PORTSC_PLS_MASK) == XHCIF_PORTSC_PLS_U3;
     SsSuspended = (SsPort & XHCIF_PORTSC_CCS) && (SsPort & XHCIF_PORTSC_PLS_MASK) == XHCIF_PORTSC_PLS_U3;
     if (!HsSuspended && !SsSuspended && (HsPort & XHCIF_PORTSC_CCS) && (SsPort & XHCIF_PORTSC_CCS))
