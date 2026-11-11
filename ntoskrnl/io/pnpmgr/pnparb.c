@@ -4229,8 +4229,9 @@ IopFilterDeviceRequirements(
                                IRP_MN_FILTER_RESOURCE_REQUIREMENTS,
                                &Stack);
 
-    /* A failed filter is ignored, the device may still start without it */
-    if (!NT_SUCCESS(Status))
+    /* A failed filter is ignored, the device may still start without it.
+     * A stack that leaves the request unhandled still returns the list it ended up with. */
+    if (!NT_SUCCESS(Status) && Status != STATUS_NOT_SUPPORTED)
         return RequirementsList;
 
     /* A driver that changes the list frees the one it was given */
