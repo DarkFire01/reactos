@@ -54,10 +54,10 @@ AddService = UrsSynopsys, 0x00000002, UrsSynopsys_Service
 [UrsSynopsys_Service]
 DisplayName    = %UrsSynopsys.ServiceName%
 ServiceType    = 1
-StartType      = 3
+StartType      = 0
 ErrorControl   = 1
 ServiceBinary  = %12%\urssynopsys.sys
-LoadOrderGroup = Base
+LoadOrderGroup = System Bus Extender
 Dependencies   = urscx01000
 
 [Strings]

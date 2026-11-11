@@ -133,6 +133,28 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#VEN_1B36&DEV_0
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","Service",0x00000000,"qcsdhc"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
+; Qualcomm DWC3 dual-role controllers, started as host so USB boot media is reachable
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM24B6","Service",0x00000000,"urssynopsys"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM24B6","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM24B6\Device Parameters","RoleSwitchMode",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0304","Service",0x00000000,"urssynopsys"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0304","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0304\Device Parameters","RoleSwitchMode",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0305","Service",0x00000000,"urssynopsys"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0305","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0305\Device Parameters","RoleSwitchMode",0x00010001,1
+
+; Host role children of those controllers, xHCI over the Qualcomm PHY filter
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","Service",0x00000000,"usbxhci"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","LowerFilters",0x00010000,"qcomxhcif"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","Service",0x00000000,"usbxhci"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","LowerFilters",0x00010000,"qcomxhcif"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","Service",0x00000000,"usbxhci"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","LowerFilters",0x00010000,"qcomxhcif"
+
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","Service",0x00000000,"hidusb"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
 

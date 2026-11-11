@@ -1,0 +1,7 @@
+; Synopsys USB role switch client
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\urssynopsys","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\urssynopsys","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\urssynopsys","ImagePath",0x00020000,"system32\drivers\urssynopsys.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\urssynopsys","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\urssynopsys","Type",0x00010001,0x00000001
