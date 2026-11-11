@@ -21,10 +21,23 @@
 #define PMI8998_SUBTYPE             0x15
 
 /* SMB2 charger: OTG boost block */
+#define SMB_OTG_STATUS              0x1109
+#define SMB_OTG_SOFTSTART_DONE      0x08
+#define SMB_OTG_RT_STS              0x1110
+#define SMB_OTG_OVERCURRENT         0x02
 #define SMB_CMD_OTG                 0x1140
 #define SMB_CMD_OTG_EN              0x01
+#define SMB_OTG_CURRENT_LIMIT       0x1152
+#define SMB_OTG_CURRENT_MASK        0x07
 #define SMB_OTG_CFG                 0x1153
 #define SMB_OTG_CFG_EN_SRC          0x02
+#define SMB_OTG_ENG_CFG             0x11C0
+#define SMB_OTG_ENG_HALT_1_IN_8     0x01
+
+/* 250 mA steps from 250 mA, 1.5 A is the charger's own default for OTG */
+#define SMB_OTG_CURRENT_1P5A        0x05
+#define SMB_OTG_SOFTSTART_TRIES     15
+#define SMB_OTG_SOFTSTART_MS        5
 
 /* SMB2 charger: USB input block, where the Type-C state machine lives */
 #define SMB_TYPEC_STATUS_2          0x130C
@@ -35,6 +48,8 @@
 #define SMB_TYPEC_ATTACHED          0x01
 #define SMB_USBIN_RT_STS            0x1310
 #define SMB_USBIN_PLUGIN            0x10
+#define SMB_USBIN_CMD_IL            0x1340
+#define SMB_USBIN_SUSPEND           0x01
 #define SMB_TYPEC_SW_CTRL           0x1368
 #define SMB_TYPEC_ROLE_MASK         0x07
 
@@ -44,6 +59,8 @@ typedef struct _QCTYPEC_DEVICE
     PKTHREAD Thread;
     KEVENT StopEvent;
     BOOLEAN VbusOn;
+    BOOLEAN Faulted;
+    BOOLEAN SuspendedUsbin;
     UCHAR LastStatus2;
     UCHAR LastStatus4;
     UCHAR LastUsbin;
@@ -82,21 +99,90 @@ QcTypecModify(
 
 static
 VOID
-QcTypecSetVbus(
-    _In_ PQCTYPEC_DEVICE Device,
-    _In_ BOOLEAN On)
+QcTypecDelay(
+    _In_ ULONG Milliseconds)
+{
+    LARGE_INTEGER Delay;
+
+    Delay.QuadPart = -10000LL * Milliseconds;
+    KeDelayExecutionThread(KernelMode, FALSE, &Delay);
+}
+
+/* Lets the boost ramp, a missing soft start is logged but the boost stays on */
+static
+VOID
+QcTypecWaitSoftStart(VOID)
+{
+    UCHAR Value = 0;
+    ULONG Try;
+
+    for (Try = 0; Try < SMB_OTG_SOFTSTART_TRIES; Try++)
+    {
+        QcTypecDelay(SMB_OTG_SOFTSTART_MS);
+        if (NT_SUCCESS(QcTypecRead(SMB_OTG_STATUS, &Value)) && (Value & SMB_OTG_SOFTSTART_DONE))
+            return;
+    }
+
+    QC_LOG("boost soft start not reported, otg status %02x", Value);
+}
+
+static
+VOID
+QcTypecVbusOff(
+    _In_ PQCTYPEC_DEVICE Device)
 {
     NTSTATUS Status;
 
-    Status = QcTypecModify(SMB_CMD_OTG, SMB_CMD_OTG_EN, On ? SMB_CMD_OTG_EN : 0);
+    Status = QcTypecModify(SMB_CMD_OTG, SMB_CMD_OTG_EN, 0);
+    if (!NT_SUCCESS(Status))
+        QC_LOG("cannot turn VBUS off, %08lx", Status);
+
+    QcTypecModify(SMB_OTG_ENG_CFG, SMB_OTG_ENG_HALT_1_IN_8, 0);
+
+    /* Hand the input back to charging only if this driver took it */
+    if (Device->SuspendedUsbin)
+    {
+        QcTypecModify(SMB_USBIN_CMD_IL, SMB_USBIN_SUSPEND, 0);
+        Device->SuspendedUsbin = FALSE;
+    }
+
+    Device->VbusOn = FALSE;
+    QC_LOG("VBUS off");
+}
+
+static
+VOID
+QcTypecVbusOn(
+    _In_ PQCTYPEC_DEVICE Device)
+{
+    UCHAR Value;
+    NTSTATUS Status;
+
+    /* The charger must not try to draw from the boost it is feeding */
+    Status = QcTypecRead(SMB_USBIN_CMD_IL, &Value);
+    if (!NT_SUCCESS(Status))
+        return;
+    if (!(Value & SMB_USBIN_SUSPEND))
+    {
+        Status = QcTypecModify(SMB_USBIN_CMD_IL, 0, SMB_USBIN_SUSPEND);
+        if (!NT_SUCCESS(Status))
+            return;
+        Device->SuspendedUsbin = TRUE;
+    }
+
+    Status = QcTypecModify(SMB_OTG_ENG_CFG, 0, SMB_OTG_ENG_HALT_1_IN_8);
+    if (NT_SUCCESS(Status))
+        Status = QcTypecModify(SMB_CMD_OTG, 0, SMB_CMD_OTG_EN);
     if (!NT_SUCCESS(Status))
     {
-        QC_LOG("cannot turn VBUS %s, %08lx", On ? "on" : "off", Status);
+        QC_LOG("cannot turn VBUS on, %08lx", Status);
+        QcTypecVbusOff(Device);
         return;
     }
 
-    Device->VbusOn = On;
-    QC_LOG("VBUS %s", On ? "on" : "off");
+    Device->VbusOn = TRUE;
+    QcTypecWaitSoftStart();
+    QC_LOG("VBUS on");
 }
 
 /*
@@ -132,18 +218,30 @@ QcTypecPoll(
                    (Status4 & SMB_TYPEC_DFP_MODE) &&
                    (Status2 & (SMB_TYPEC_DFP_RD_OPEN | SMB_TYPEC_DFP_RD_RA_VCONN));
 
-    if (SinkAttached && !Device->VbusOn)
-    {
-        /* Our own boost also raises USBIN, so this only holds before it is on */
-        if (Usbin & SMB_USBIN_PLUGIN)
-            return;
+    /* A fault holds VBUS off until the device is unplugged */
+    if (!SinkAttached)
+        Device->Faulted = FALSE;
 
-        QcTypecSetVbus(Device, TRUE);
-    }
-    else if (!SinkAttached && Device->VbusOn)
+    if (Device->VbusOn)
     {
-        QcTypecSetVbus(Device, FALSE);
+        UCHAR Otg;
+
+        if (NT_SUCCESS(QcTypecRead(SMB_OTG_RT_STS, &Otg)) && (Otg & SMB_OTG_OVERCURRENT))
+        {
+            QC_LOG("VBUS overcurrent, holding it off until the device is removed");
+            Device->Faulted = TRUE;
+            QcTypecVbusOff(Device);
+            return;
+        }
+
+        if (!SinkAttached)
+            QcTypecVbusOff(Device);
+        return;
     }
+
+    /* Our own boost also raises USBIN, so this only holds before it is on */
+    if (SinkAttached && !Device->Faulted && !(Usbin & SMB_USBIN_PLUGIN))
+        QcTypecVbusOn(Device);
 }
 
 static
@@ -179,7 +277,7 @@ QcTypecStop(
     }
 
     if (Device->VbusOn)
-        QcTypecSetVbus(Device, FALSE);
+        QcTypecVbusOff(Device);
 }
 
 static
@@ -215,10 +313,19 @@ QcTypecStart(
             return Status;
     }
 
+    Status = QcTypecModify(SMB_OTG_CURRENT_LIMIT, SMB_OTG_CURRENT_MASK, SMB_OTG_CURRENT_1P5A);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Start from a known off state, the poll turns it back on if a device is there */
     Status = QcTypecRead(SMB_CMD_OTG, &Value);
     if (!NT_SUCCESS(Status))
         return Status;
     Device->VbusOn = (Value & SMB_CMD_OTG_EN) != 0;
+    Device->SuspendedUsbin = FALSE;
+    Device->Faulted = FALSE;
+    if (Device->VbusOn)
+        QcTypecVbusOff(Device);
 
     Device->LastStatus2 = 0xFF;
     Device->LastStatus4 = 0xFF;
@@ -232,7 +339,7 @@ QcTypecStart(
     ObReferenceObjectByHandle(Thread, THREAD_ALL_ACCESS, NULL, KernelMode, (PVOID *)&Device->Thread, NULL);
     ZwClose(Thread);
 
-    QC_LOG("Type-C port ready, VBUS %s", Device->VbusOn ? "on" : "off");
+    QC_LOG("Type-C port ready");
     return STATUS_SUCCESS;
 }
 
