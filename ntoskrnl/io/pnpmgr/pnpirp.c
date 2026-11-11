@@ -10,6 +10,21 @@
 #define NDEBUG
 #include <debug.h>
 
+/* The user IOSB is not written for an error that was not pended, so the result is taken here */
+static
+NTSTATUS
+NTAPI
+IopSynchronousCallCompletion(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    *(PIO_STATUS_BLOCK)Context = Irp->IoStatus;
+    return STATUS_CONTINUE_COMPLETION;
+}
+
 NTSTATUS
 IopSynchronousCall(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -19,6 +34,7 @@ IopSynchronousCall(
     PIRP Irp;
     PIO_STACK_LOCATION IrpStack;
     IO_STATUS_BLOCK IoStatusBlock;
+    IO_STATUS_BLOCK Result;
     KEVENT Event;
     NTSTATUS Status;
     PDEVICE_OBJECT TopDeviceObject;
@@ -48,6 +64,8 @@ IopSynchronousCall(
         IoStatusBlock.Information = (ULONG_PTR)IoStackLocation->Parameters.FilterResourceRequirements.IoResourceRequirementList;
     }
 
+    Result = IoStatusBlock;
+
     /* Initialize the event */
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
@@ -62,6 +80,7 @@ IopSynchronousCall(
     /* Copy-in the stack */
     IrpStack = IoGetNextIrpStackLocation(Irp);
     *IrpStack = *IoStackLocation;
+    IoSetCompletionRoutine(Irp, IopSynchronousCallCompletion, &Result, TRUE, TRUE, TRUE);
 
     /* Call the driver */
     Status = IoCallDriver(TopDeviceObject, Irp);
@@ -71,14 +90,15 @@ IopSynchronousCall(
     {
         /* Wait for it */
         KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-        Status = IoStatusBlock.Status;
     }
+
+    Status = Result.Status;
 
     /* Remove the reference */
     ObDereferenceObject(TopDeviceObject);
 
     /* Return the information */
-    *Information = (PVOID)IoStatusBlock.Information;
+    *Information = (PVOID)Result.Information;
     return Status;
 }
 
