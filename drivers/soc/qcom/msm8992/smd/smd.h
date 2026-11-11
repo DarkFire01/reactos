@@ -13,11 +13,13 @@
 #include <initguid.h>
 #include <qcom/smdif.h>
 
+#define QCDBG_COMPONENT "qcomsmd"
+#include <qcom/qcomdbg.h>
+
 #define SMD_TAG                     'dmSQ'
 
-/* Fatal shared memory corruption is not recoverable, the reference driver stops the system too */
-#define SMD_BUGCHECK_DRIVER_VIOLATION 0x121
-#define SMD_FATAL(Code)             KeBugCheckEx(SMD_BUGCHECK_DRIVER_VIOLATION, 0x534D44, (Code), 0, 0)
+/* Fatal shared memory corruption is not recoverable, freeze with the log on screen */
+#define SMD_FATAL(Code)             QC_FATAL(STATUS_INTERNAL_ERROR, "shared memory violation 0x%x", (Code))
 
 /* Resource order in _CRS */
 #define SMD_RES_SMEM                0

@@ -8,8 +8,8 @@
 #include "subsys.h"
 #include <ntstrsafe.h>
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomsubsys"
+#include <qcom/qcomdbg.h>
 
 #define SS_METHOD_CHLD              'DLHC'
 #define SS_CHLD_FIELDS              5
@@ -222,7 +222,7 @@ SsPreprocessPower(
         return WdfDeviceWdmDispatchPreprocessedIrp(WdfDevice, Irp);
 
     Child = &Pdo->Parent->Children[Pdo->Index];
-    DPRINT1("[subsys] child %lu holds a wait wake IRP\n", Pdo->Index);
+    QC_LOG("child %lu holds a wait wake IRP", Pdo->Index);
     IoMarkIrpPending(Irp);
     IoCsqInsertIrp(&Child->WakeQueue, Irp, NULL);
     return STATUS_PENDING;
@@ -249,8 +249,8 @@ SsEvtChildCreateDevice(
         return STATUS_INVALID_PARAMETER;
 
     Child = &Device->Children[Id->Index];
-    DPRINT1("[subsys] create child %lu '%wZ' type 0x%lx instance %lu\n",
-            Id->Index, &Child->DeviceId, Child->DeviceType, Child->Instance);
+    QC_LOG("create child %lu '%wZ' type 0x%lx instance %lu",
+           Id->Index, &Child->DeviceId, Child->DeviceType, Child->Instance);
 
     Status = WdfPdoInitAssignDeviceID(ChildInit, &Child->DeviceId);
     if (NT_SUCCESS(Status))
@@ -330,7 +330,7 @@ SsAnnounceChildren(
     if (!Device->ChildList)
         return;
 
-    DPRINT1("[subsys] announcing %lu children\n", Device->ChildCount);
+    QC_LOG("announcing %lu children", Device->ChildCount);
     WdfChildListBeginScan(Device->ChildList);
     for (i = 0; i < Device->ChildCount; i++)
     {

@@ -7,8 +7,8 @@
 
 #include "ipcrouter.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomipcrouter"
+#include <qcom/qcomdbg.h>
 
 /* A received data message held for the owning sink until it is read */
 typedef struct _IPC_RXMSG

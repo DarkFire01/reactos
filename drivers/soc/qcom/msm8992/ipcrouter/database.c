@@ -7,8 +7,8 @@
 
 #include "ipcrouter.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomipcrouter"
+#include <qcom/qcomdbg.h>
 
 typedef struct _IPC_NODE
 {

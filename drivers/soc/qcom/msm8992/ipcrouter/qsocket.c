@@ -7,8 +7,8 @@
 
 #include "ipcrouter.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomipcrouter"
+#include <qcom/qcomdbg.h>
 
 #define QSOCK_OK            0
 #define QSOCK_ETIMEDOUT     (-1)

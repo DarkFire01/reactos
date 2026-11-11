@@ -7,8 +7,8 @@
 
 #include "tz.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomtz"
+#include <qcom/qcomdbg.h>
 
 /* Bounce memory must be reachable by a monitor that only takes 32-bit addresses */
 static
@@ -126,12 +126,12 @@ TzSmcccCall(
     else
         SmcId &= ~QCOM_TZ_SMC64;
 
-    DPRINT1("[tz] SMC%s id 0x%08lx param 0x%lx args %lu: x2=0x%I64x x3=0x%I64x x4=0x%I64x x5=0x%I64x\n",
-            Wide ? "64" : "32", SmcId, ParamId, Count,
-            Registers[0], Registers[1], Registers[2], Registers[3]);
+    QC_LOG("SMC%s id 0x%08lx param 0x%lx args %lu: x2=0x%I64x x3=0x%I64x x4=0x%I64x x5=0x%I64x",
+           Wide ? "64" : "32", SmcId, ParamId, Count,
+           Registers[0], Registers[1], Registers[2], Registers[3]);
     Ret = TzSmcFast(SmcId, ParamId, Registers, &SessionValue);
-    DPRINT1("[tz] SMC id 0x%08lx -> %ld x1=0x%I64x x2=0x%I64x x3=0x%I64x\n",
-            SmcId, Ret, Registers[0], Registers[1], Registers[2]);
+    QC_LOG("SMC id 0x%08lx -> %ld x1=0x%I64x x2=0x%I64x x3=0x%I64x",
+           SmcId, Ret, Registers[0], Registers[1], Registers[2]);
     if (!Wide)
     {
         for (i = 0; i < TZ_REGISTER_ARGS - 1; i++)
@@ -148,7 +148,7 @@ TzSmcccCall(
     }
     else
     {
-        DPRINT1("SMC 0x%08lx returned %ld\n", SmcId, Ret);
+        QC_LOG("SMC 0x%08lx returned %ld", SmcId, Ret);
         if (Ret == TZ_SMC_RETURN_WITH_VALUE)
             Result[0] = Registers[0];
 
@@ -197,10 +197,10 @@ TzLegacyCall(
     TzCleanInvalidateDcache(Command, TZ_LEGACY_COMMAND_SIZE);
     Physical = MmGetPhysicalAddress(Command);
 
-    DPRINT1("[tz] legacy SMC cmd 0x%lx (id 0x%08lx) buffer 0x%I64x\n", Command[3], SmcId, Physical.QuadPart);
+    QC_LOG("legacy SMC cmd 0x%lx (id 0x%08lx) buffer 0x%I64x", Command[3], SmcId, Physical.QuadPart);
     if (TzSmcCommandBuffer((ULONG_PTR)Physical.QuadPart) != 0)
     {
-        DPRINT1("[tz] legacy SMC FAILED\n");
+        QC_LOG("legacy SMC FAILED");
         Status = STATUS_TRUST_FAILURE;
     }
 
@@ -258,7 +258,7 @@ TzServiceListener(
 {
     UNREFERENCED_PARAMETER(Device);
 
-    DPRINT1("Trusted OS asked for listener %lu\n", ListenerId);
+    QC_LOG("Trusted OS asked for listener %lu", ListenerId);
     return STATUS_UNSUCCESSFUL;
 }
 
@@ -295,7 +295,7 @@ TzOsCall(
 
         /* Answer the listener and resume, the remaining arguments carry over */
         ListenerId = (ULONG)Raw[3];
-        DPRINT1("[tz] trusted OS wants listener %lu, refusing and resuming\n", ListenerId);
+        QC_LOG("trusted OS wants listener %lu, refusing and resuming", ListenerId);
         Local[0] = ListenerId;
         Local[1] = NT_SUCCESS(TzServiceListener(Device, ListenerId)) ? 0 : 0xFFFFFFFF;
         SmcId = TZ_OS_LISTENER_RESPONSE;
@@ -340,12 +340,12 @@ TzProbeSmccc(
                          NULL);
     if (NT_SUCCESS(Status) && Result[1] >= TZ_SMC64_MIN_VERSION)
     {
-        DPRINT1("TrustZone: 64-bit SMC interface\n");
+        QC_LOG("TrustZone: 64-bit SMC interface");
         Device->Convention = TzConventionSmc64;
     }
     else
     {
-        DPRINT1("TrustZone: 32-bit SMC interface\n");
+        QC_LOG("TrustZone: 32-bit SMC interface");
         Device->Convention = TzConventionSmc32;
     }
 
@@ -370,7 +370,7 @@ TzInitializeMonitor(
     }
     else
     {
-        DPRINT1("TrustZone: legacy command buffer interface\n");
+        QC_LOG("TrustZone: legacy command buffer interface");
         Device->Convention = TzConventionLegacy;
         Size = TZ_SPILL_SIZE_LEGACY;
     }
@@ -378,15 +378,15 @@ TzInitializeMonitor(
     Status = TzAcquireBuffer(Device, Size, &Buffer, &Physical);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[tz] spill buffer alloc FAILED 0x%lx\n", Status);
+        QC_LOG("spill buffer alloc FAILED 0x%lx", Status);
         return Status;
     }
 
     Device->Spill = Buffer;
     Device->SpillPhysical = Physical;
     Device->SpillSize = Size;
-    DPRINT1("[tz] monitor ready, convention %u, spill %Iu bytes at 0x%I64x\n",
-            Device->Convention, Size, Physical.QuadPart);
+    QC_LOG("monitor ready, convention %u, spill %Iu bytes at 0x%I64x",
+           Device->Convention, Size, Physical.QuadPart);
     return STATUS_SUCCESS;
 }
 

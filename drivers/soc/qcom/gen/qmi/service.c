@@ -11,8 +11,8 @@
 #define QMI_TAG                     'imQc'
 #define QMI_RESPONSE_MAX            2048
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomqmi"
+#include <qcom/qcomdbg.h>
 
 typedef struct _QMI_SERVICE_CLIENT
 {
@@ -50,7 +50,7 @@ QmiServiceTrackClient(
     KeAcquireSpinLock(&Service->Lock, &OldIrql);
     InsertTailList(&Service->Clients, &Client->Link);
     KeReleaseSpinLock(&Service->Lock, OldIrql);
-    DPRINT1("[qmi] svc 0x%lx: new client %lu:%lu\n", Service->ServiceId, Addr->Node, Addr->Port);
+    QC_LOG("svc 0x%lx: new client %lu:%lu", Service->ServiceId, Addr->Node, Addr->Port);
 }
 
 static
@@ -70,19 +70,19 @@ QmiServiceDeliver(
 
     if (!QmiMessageValid(Message, Length))
     {
-        DPRINT1("[qmi] svc 0x%lx: malformed message (%lu bytes) from %lu:%lu\n",
-                Service->ServiceId, Length, Source->Node, Source->Port);
+        QC_LOG("svc 0x%lx: malformed message (%lu bytes) from %lu:%lu",
+               Service->ServiceId, Length, Source->Node, Source->Port);
         return;
     }
 
     if (Header->Type != QMI_TYPE_REQUEST)
     {
-        DPRINT1("[qmi] svc 0x%lx: ignoring type %u msg 0x%04x\n", Service->ServiceId, Header->Type, Header->MessageId);
+        QC_LOG("svc 0x%lx: ignoring type %u msg 0x%04x", Service->ServiceId, Header->Type, Header->MessageId);
         return;
     }
 
-    DPRINT1("[qmi] svc 0x%lx: request msg 0x%04x txn %u from %lu:%lu\n",
-            Service->ServiceId, Header->MessageId, Header->TransactionId, Source->Node, Source->Port);
+    QC_LOG("svc 0x%lx: request msg 0x%04x txn %u from %lu:%lu",
+           Service->ServiceId, Header->MessageId, Header->TransactionId, Source->Node, Source->Port);
     QmiServiceTrackClient(Service, Source);
 
     Buffer = ExAllocatePoolZero(NonPagedPool, QMI_RESPONSE_MAX, QMI_TAG);
@@ -101,8 +101,8 @@ QmiServiceDeliver(
                               Service->HandlerContext);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[qmi] svc 0x%lx: handler for msg 0x%04x FAILED 0x%lx, sending failure result\n",
-                Service->ServiceId, Header->MessageId, Status);
+        QC_LOG("svc 0x%lx: handler for msg 0x%04x FAILED 0x%lx, sending failure result",
+               Service->ServiceId, Header->MessageId, Status);
 
         /* Discard whatever the handler added and answer with a failure result */
         QmiEncodeBegin(&Response, Buffer, QMI_RESPONSE_MAX, QMI_TYPE_RESPONSE,
@@ -111,8 +111,8 @@ QmiServiceDeliver(
     }
 
     Final = QmiEncodeEnd(&Response);
-    DPRINT1("[qmi] svc 0x%lx: response msg 0x%04x txn %u, %lu bytes\n",
-            Service->ServiceId, Header->MessageId, Header->TransactionId, Final);
+    QC_LOG("svc 0x%lx: response msg 0x%04x txn %u, %lu bytes",
+           Service->ServiceId, Header->MessageId, Header->TransactionId, Final);
     Service->Transport->Ops->Send(Service->Transport, Source, Buffer, Final);
     ExFreePoolWithTag(Buffer, QMI_TAG);
 }
@@ -143,7 +143,7 @@ QmiServiceCreate(
     Transport->Deliver = QmiServiceDeliver;
 
     Status = Transport->Ops->RegisterService(Transport, ServiceId, Version, Instance);
-    DPRINT1("[qmi] service 0x%lx v%lu inst %lu create -> 0x%lx\n", ServiceId, Version, Instance, Status);
+    QC_LOG("service 0x%lx v%lu inst %lu create -> 0x%lx", ServiceId, Version, Instance, Status);
     if (!NT_SUCCESS(Status))
     {
         Transport->Sink = NULL;

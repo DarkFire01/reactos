@@ -7,8 +7,8 @@
 
 #include "ipcrouter.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomipcrouter"
+#include <qcom/qcomdbg.h>
 
 PIPC_DEVICE IpcGlobal;
 
@@ -518,7 +518,7 @@ IpcReceive(
 
     if (IpcHeaderDecode(Chain, &Header) != IPC_OK)
     {
-        DPRINT1("ipc_router_core: illegible message from proc %lu\n", Xport->Remote.Node);
+        QC_LOG("ipc_router_core: illegible message from proc %lu", Xport->Remote.Node);
         IpcMbufFreeChain(Chain);
         return;
     }
@@ -526,8 +526,8 @@ IpcReceive(
     Length = IpcMbufChainLength(*Chain);
     if (Length < Header.Size || Length > Header.Size + 4)
     {
-        DPRINT1("ipc_router_core: unexpected msg size %lu instead of %lu from proc %lu\n",
-                Length, Header.Size, Xport->Remote.Node);
+        QC_LOG("ipc_router_core: unexpected msg size %lu instead of %lu from proc %lu",
+               Length, Header.Size, Xport->Remote.Node);
         IpcMbufFreeChain(Chain);
         return;
     }
@@ -549,7 +549,7 @@ IpcReceive(
         if (IpcMbufCopyOut(Chain, &Body, IPC_CONTROL_SIZE) == IPC_CONTROL_SIZE)
             IpcHandleControl(Xport, &Header, &Body);
         else
-            DPRINT1("ipc_router_core: control message too short\n");
+            QC_LOG("ipc_router_core: control message too short");
 
         IpcMbufFreeChain(Chain);
         return;

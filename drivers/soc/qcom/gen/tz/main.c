@@ -7,8 +7,8 @@
 
 #include "tz.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomtz"
+#include <qcom/qcomdbg.h>
 
 DRIVER_INITIALIZE DriverEntry;
 static EVT_WDF_DRIVER_DEVICE_ADD TzEvtDeviceAdd;
@@ -50,8 +50,8 @@ TzDispatch(
         return STATUS_INVALID_PARAMETER;
     }
 
-    DPRINT1("[tz] request func 0x%lx smc 0x%08lx param 0x%lx\n",
-            Service->FunctionCode, Call->SmcId, Call->ParamId);
+    QC_LOG("request func 0x%lx smc 0x%08lx param 0x%lx",
+           Service->FunctionCode, Call->SmcId, Call->ParamId);
 
     if (Service->FunctionCode & QCOM_TZ_FUNCTION_ON_CPU0)
         OldAffinity = KeSetSystemAffinityThreadEx(1);
@@ -73,7 +73,7 @@ TzDispatch(
     if (NT_SUCCESS(Status))
         *BytesWritten = Service->OutputBufferSize;
 
-    DPRINT1("[tz] request smc 0x%08lx -> 0x%lx\n", Call->SmcId, Status);
+    QC_LOG("request smc 0x%08lx -> 0x%lx", Call->SmcId, Status);
     return Status;
 }
 
@@ -98,7 +98,7 @@ TzEvtIoDeviceControl(
 
     if (IoControlCode != IOCTL_QCOM_TZ_SERVICE_REQUEST)
     {
-        DPRINT1("[tz] unknown IOCTL 0x%08lx\n", IoControlCode);
+        QC_LOG("unknown IOCTL 0x%08lx", IoControlCode);
         WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);
         return;
     }
@@ -151,7 +151,7 @@ TzEvtPrepareHardware(
     if (NT_SUCCESS(Status))
         Device->Ready = TRUE;
     else
-        DPRINT1("TrustZone monitor setup failed 0x%lx\n", Status);
+        QC_LOG("TrustZone monitor setup failed 0x%lx", Status);
 
     WdfWaitLockRelease(Device->Lock);
     return Status;

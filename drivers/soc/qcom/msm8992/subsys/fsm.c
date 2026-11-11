@@ -7,8 +7,8 @@
 
 #include "subsys.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomsubsys"
+#include <qcom/qcomdbg.h>
 
 #define SS_SECONDS(s)               (-(LONGLONG)(s) * 10 * 1000 * 1000)
 #define SS_STOP_ACK_SECONDS         10
@@ -85,9 +85,9 @@ SsActBoot(
 
     /* Failed boots count against the restart limit too */
     Device->BootAttempts++;
-    DPRINT1("[subsys] BOOT attempt %lu (family 0x%lx)\n", Device->BootAttempts, Device->ChipFamily);
-    DPRINT1("[subsys]   fw '%ls'\n", Device->FwImagePath);
-    DPRINT1("[subsys]   sw '%ls'\n", Device->SwImagePath);
+    QC_LOG("BOOT attempt %lu (family 0x%lx)", Device->BootAttempts, Device->ChipFamily);
+    QC_LOG("  fw '%ls'", Device->FwImagePath);
+    QC_LOG("  sw '%ls'", Device->SwImagePath);
 
     if (!NT_SUCCESS(SsBroadcast(Device, "ssr:modem:before_powerup")))
         return SS_EV_FAILURE;
@@ -95,23 +95,23 @@ SsActBoot(
     Status = SsBringUpMba(Device);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[subsys] MBA bring up FAILED 0x%lx\n", Status);
+        QC_LOG("MBA bring up FAILED 0x%lx", Status);
         return SS_EV_MBA_FAILED;
     }
-    DPRINT1("[subsys] MBA is up\n");
+    QC_LOG("MBA is up");
 
     /* The MBA unlocked modem memory, the dump of the previous crash would be taken here */
     if (Device->State == SS_ST_REBOOTED_AFTER_SSR && !Device->NoDump)
-        DPRINT1("No dump collector, previous modem crash is not saved\n");
+        QC_LOG("No dump collector, previous modem crash is not saved");
     Device->NoDump = FALSE;
 
     Status = SsLoadModemImage(Device);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[subsys] modem image load FAILED 0x%lx\n", Status);
+        QC_LOG("modem image load FAILED 0x%lx", Status);
         return SS_EV_IMAGE_FAILED;
     }
-    DPRINT1("[subsys] modem image authenticated\n");
+    QC_LOG("modem image authenticated");
 
     if (!NT_SUCCESS(SsPublishState(Device, SS_PEER_BOOTING)))
         return SS_EV_FAILURE;
@@ -119,11 +119,11 @@ SsActBoot(
     Status = SsStartMonitor(Device);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[subsys] SMP2P monitor start FAILED 0x%lx\n", Status);
+        QC_LOG("SMP2P monitor start FAILED 0x%lx", Status);
         return SS_EV_FAILURE;
     }
 
-    DPRINT1("[subsys] waiting up to %lu s for modem ready/handover\n", Device->LoadTimerSeconds);
+    QC_LOG("waiting up to %lu s for modem ready/handover", Device->LoadTimerSeconds);
     SsStartTimer(Device, Device->LoadTimerSeconds);
     return SS_EV_BOOTED;
 }
@@ -202,7 +202,7 @@ SsActReady(
     UNREFERENCED_PARAMETER(Event);
     UNREFERENCED_PARAMETER(Param);
 
-    DPRINT1("Modem is ready\n");
+    QC_LOG("Modem is ready");
     SsCopyVersions(Device);
     return SS_EV_NONE;
 }
@@ -250,7 +250,7 @@ SsActDumpStart(
     SsMaskWatchdog(Device);
     SsSetFailure(Device, Param);
     if (Device->Failure)
-        DPRINT1("Modem failure: %s\n", Device->Failure->Reason);
+        QC_LOG("Modem failure: %s", Device->Failure->Reason);
 
     return SS_EV_DUMP_STARTED;
 }
@@ -787,37 +787,37 @@ SsDispatch(
 
     WdfWaitLockAcquire(Device->FsmLock, NULL);
 
-    DPRINT1("[subsys] dispatch begin state=%ld event=%lu param=0x%Ix\n", Device->State, Event, Param);
+    QC_LOG("dispatch begin state=%ld event=%lu param=0x%Ix", Device->State, Event, Param);
 
     while (Event != SS_EV_NONE)
     {
         Row = SsFindRow(Device->State, Event);
         if (!Row)
         {
-            DPRINT1("[subsys] state %ld DROPS event %lu\n", Device->State, Event);
+            QC_LOG("state %ld DROPS event %lu", Device->State, Event);
             break;
         }
 
         Previous = Device->State;
         Device->State = Row->Next;
         SsRecord(Device, Event);
-        DPRINT1("[subsys] state %ld -> %ld on event %lu%s\n",
-                Previous, Row->Next, Event, Row->Action ? " (action)" : "");
+        QC_LOG("state %ld -> %ld on event %lu%s",
+               Previous, Row->Next, Event, Row->Action ? " (action)" : "");
 
         if (!Row->Action)
             break;
 
         Event = Row->Action(Device, Event, Param);
-        DPRINT1("[subsys] action in state %ld returned event %lu\n", Device->State, Event);
+        QC_LOG("action in state %ld returned event %lu", Device->State, Event);
         if (Event == SS_EV_REVERT)
         {
             Device->State = Previous;
-            DPRINT1("[subsys] reverting to state %ld\n", Previous);
+            QC_LOG("reverting to state %ld", Previous);
             break;
         }
     }
 
-    DPRINT1("[subsys] dispatch end state=%ld\n", Device->State);
+    QC_LOG("dispatch end state=%ld", Device->State);
 
     WdfWaitLockRelease(Device->FsmLock);
 }
@@ -855,7 +855,7 @@ SsPost(
     Status = WdfWorkItemCreate(&Config, &Attributes, &WorkItem);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Lost event %lu, 0x%lx\n", Event, Status);
+        QC_LOG("Lost event %lu, 0x%lx", Event, Status);
         return Status;
     }
 
@@ -863,7 +863,7 @@ SsPost(
     Context->Device = Device;
     Context->Event = Event;
     Context->Param = Param;
-    DPRINT1("[subsys] post event %lu param 0x%Ix (state %ld)\n", Event, Param, Device->State);
+    QC_LOG("post event %lu param 0x%Ix (state %ld)", Event, Param, Device->State);
     WdfWorkItemEnqueue(WorkItem);
     return STATUS_SUCCESS;
 }
