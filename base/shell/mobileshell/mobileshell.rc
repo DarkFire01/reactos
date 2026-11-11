@@ -1,0 +1,22 @@
+#include <windef.h>
+#include <winuser.h>
+
+#include "resource.h"
+
+#define REACTOS_STR_FILE_DESCRIPTION  "ReactOS Mobile Shell"
+#define REACTOS_STR_INTERNAL_NAME     "mobileshell"
+#define REACTOS_STR_ORIGINAL_FILENAME "mobileshell.exe"
+#include <reactos/version.rc>
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+STRINGTABLE
+BEGIN
+    IDS_SHELL_TITLE          "ReactOS Mobile Emergency Shell"
+    IDS_DEVICE_MANAGER       "Device Manager"
+    IDS_PHONE_TEST           "Phone"
+    IDS_COMMAND_PROMPT       "Command Prompt"
+    IDS_KEYBOARD             "Keyboard"
+    IDS_EXPLORER             "Explorer"
+    IDS_LAUNCH_FAILED        "Could not start %s (error %lu)."
+END

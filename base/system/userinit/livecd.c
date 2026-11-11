@@ -124,6 +124,63 @@ IsMiniNT(VOID)
     return (rc == ERROR_SUCCESS);
 }
 
+/**
+ * @brief
+ * Tells whether the live environment goes straight to its shell without the language and start pages.
+ *
+ * @remarks
+ * Holding Ctrl+Shift+F10 brings the pages back, as it does for unattended setup.
+ */
+BOOL
+IsLiveShellDirect(VOID)
+{
+    DWORD Value = 0, Size = sizeof(Value), Type;
+    HKEY hKey;
+    LONG rc;
+
+    if ((GetKeyState(VK_CONTROL) & GetKeyState(VK_SHIFT) & GetKeyState(VK_F10)) < 0)
+        return FALSE;
+
+    rc = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\ReactOS\\LiveCD", 0, KEY_QUERY_VALUE, &hKey);
+    if (rc != ERROR_SUCCESS)
+        return FALSE;
+
+    rc = RegQueryValueExW(hKey, L"StartShell", NULL, &Type, (LPBYTE)&Value, &Size);
+    RegCloseKey(hKey);
+
+    return (rc == ERROR_SUCCESS && Type == REG_DWORD && Value != 0);
+}
+
+/**
+ * @brief
+ * Reads the command line of the shell the live environment starts directly.
+ *
+ * @remarks
+ * The Winlogon shell stays as it is, so a shell started later from this one still finds itself registered.
+ */
+BOOL
+GetLiveShell(
+    _Out_writes_z_(CommandLineSize) PWSTR CommandLine,
+    _In_ DWORD CommandLineSize)
+{
+    DWORD Size = CommandLineSize * sizeof(WCHAR), Type;
+    HKEY hKey;
+    LONG rc;
+
+    rc = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\ReactOS\\LiveCD", 0, KEY_QUERY_VALUE, &hKey);
+    if (rc != ERROR_SUCCESS)
+        return FALSE;
+
+    rc = RegQueryValueExW(hKey, L"Shell", NULL, &Type, (LPBYTE)CommandLine, &Size);
+    RegCloseKey(hKey);
+
+    if (rc != ERROR_SUCCESS || (Type != REG_SZ && Type != REG_EXPAND_SZ) || Size < sizeof(WCHAR))
+        return FALSE;
+
+    CommandLine[CommandLineSize - 1] = UNICODE_NULL;
+    return (*CommandLine != UNICODE_NULL);
+}
+
 
 static BOOL CALLBACK
 LocalesEnumProc(LPTSTR lpLocale)

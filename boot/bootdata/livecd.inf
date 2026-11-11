@@ -27,6 +27,10 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager","BootExecute",0x00010000
 ; Shell
 HKLM,"SYSTEM\Setup","CmdLine",0x00020000,"setup -mini"
 
+; Start the mobile shell directly, without the language and start pages (Ctrl+Shift+F10 brings them back)
+HKLM,"SOFTWARE\ReactOS\LiveCD","StartShell",0x00010001,1
+HKLM,"SOFTWARE\ReactOS\LiveCD","Shell",0x00020000,"%SystemRoot%\system32\mobileshell.exe"
+
 ; User Profile List
 HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList",,0x00000012
 HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList","Default",0x00000000,"%SystemDrive%\Users\Default"

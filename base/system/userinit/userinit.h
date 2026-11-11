@@ -67,6 +67,14 @@ extern HINSTANCE hInstance;
 BOOL
 IsMiniNT(VOID);
 
+BOOL
+IsLiveShellDirect(VOID);
+
+BOOL
+GetLiveShell(
+    _Out_writes_z_(CommandLineSize) PWSTR CommandLine,
+    _In_ DWORD CommandLineSize);
+
 VOID
 RunLiveCD(
     PSTATE State);
