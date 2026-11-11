@@ -1340,6 +1340,10 @@ typedef struct _POP_CONTROL_SWITCH
     /* The type of switch (power, sleep buttons or lid) */
     POP_SWITCH_TYPE SwitchType;
 
+    /* A button event the completion captured, acted on by the CS handler at PASSIVE_LEVEL */
+    BOOLEAN EventPending;
+    ULONG PendingEvent;
+
     /* Specific switch constructs */
     union
     {
