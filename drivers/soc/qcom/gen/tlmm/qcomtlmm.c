@@ -10,6 +10,7 @@
 
 #define QCDBG_COMPONENT "qcomtlmm"
 #include <qcom/qcomdbg.h>
+#include <qcom/qcompnp.h>
 
 #define TLMM_POOL_TAG           'mlTQ'
 
@@ -327,9 +328,9 @@ DriverEntry(
     _In_ PDRIVER_OBJECT DriverObject,
     _In_ PUNICODE_STRING RegistryPath)
 {
-    UNREFERENCED_PARAMETER(DriverObject);
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    /* Export driver only, it never runs as a service */
+    /* The exports are the real work, the ACPI node is only claimed */
+    QcPnpInitializeClaimDriver(DriverObject, QCDBG_COMPONENT);
     return STATUS_SUCCESS;
 }

@@ -1,0 +1,52 @@
+; QCOMTLMM.INF
+
+; Installation file for the TLMM pin and GPIO controller of Qualcomm SoCs
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/11/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomtlmm.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%Mfg% = Mfg
+
+[Mfg]
+%QCOMTLMM.DeviceDesc% = QCOMTLMM_Device, ACPI\QCOM0217
+
+[QCOMTLMM_Device.NT]
+CopyFiles = QCOMTLMM_CopyFiles
+
+[QCOMTLMM_CopyFiles]
+qcomtlmm.sys
+
+[QCOMTLMM_Device.NT.Services]
+AddService = qcomtlmm, 0x00000002, QCOMTLMM_Service
+
+[QCOMTLMM_Service]
+DisplayName    = %QCOMTLMM.ServiceDesc%
+ServiceType    = 1
+StartType      = 0
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomtlmm.sys
+LoadOrderGroup = System Bus Extender
+
+[Strings]
+ReactOS = "ReactOS Project"
+Mfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+QCOMTLMM.DeviceDesc = "Qualcomm TLMM GPIO Controller"
+QCOMTLMM.ServiceDesc = "Qualcomm TLMM Pin Controller"

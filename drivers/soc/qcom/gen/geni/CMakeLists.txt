@@ -12,6 +12,8 @@ add_library(qcomgeni MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/qcomgeni.def)
 
 set_module_type(qcomgeni kernelmodedriver)
-target_link_libraries(qcomgeni libcntpr)
+target_link_libraries(qcomgeni qcompnp libcntpr)
 add_importlibs(qcomgeni qcomdbg ntoskrnl hal)
 add_cd_file(TARGET qcomgeni DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_driver_inf(qcomgeni qcomgeni.inf)
+add_registry_inf(qcomgeni_reg.inf)
