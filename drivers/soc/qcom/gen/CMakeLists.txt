@@ -1,4 +1,5 @@
 add_subdirectory(dbg)
+add_subdirectory(pnp)
 add_subdirectory(geni)
 add_subdirectory(tlmm)
 add_subdirectory(qmi)
