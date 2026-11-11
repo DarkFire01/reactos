@@ -1,5 +1,8 @@
 add_subdirectory(buslogic)
 add_subdirectory(scsiport)
+add_subdirectory(sdport)
+add_subdirectory(sdhc)
+add_subdirectory(qcsdhc)
 add_subdirectory(storahci)
 add_subdirectory(stornvme)
 add_subdirectory(storport)

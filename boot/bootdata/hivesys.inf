@@ -114,6 +114,25 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\GenCdRom","ClassGU
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\GenDisk","Service",0x00000000,"disk"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\GenDisk","ClassGUID",0x00000000,"{4D36E967-E325-11CE-BFC1-08002BE10318}"
 
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\SD#GenMem","Service",0x00000000,"sdstor"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\SD#GenMem","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\GenSdMem","Service",0x00000000,"sdstor"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\GenSdMem","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; SD standard host controller (ACPI PNP0D40 / PCI class 080500)
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#PNP0D40","Service",0x00000000,"sdhc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#PNP0D40","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_080500","Service",0x00000000,"sdhc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_080500","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_080501","Service",0x00000000,"sdhc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_080501","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#VEN_1B36&DEV_0007","Service",0x00000000,"sdhc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#VEN_1B36&DEV_0007","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; Qualcomm SD host controller (ACPI HID must match the target platform's SDHC device)
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","Service",0x00000000,"qcsdhc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","Service",0x00000000,"hidusb"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
 
@@ -2010,6 +2029,34 @@ HKLM,"SYSTEM\CurrentControlSet\Services\usbstor","Group",0x00000000,"Primary Dis
 HKLM,"SYSTEM\CurrentControlSet\Services\usbstor","ImagePath",0x00020000,"system32\drivers\usbstor.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\usbstor","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\usbstor","Type",0x00010001,0x00000001
+
+; SD host controller port driver (loaded by a host controller miniport)
+HKLM,"SYSTEM\CurrentControlSet\Services\sdport","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\sdport","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\sdport","ImagePath",0x00020000,"system32\drivers\sdport.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\sdport","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\sdport","Type",0x00010001,0x00000001
+
+; SD storage class driver
+HKLM,"SYSTEM\CurrentControlSet\Services\sdstor","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\sdstor","Group",0x00000000,"SCSI Miniport"
+HKLM,"SYSTEM\CurrentControlSet\Services\sdstor","ImagePath",0x00020000,"system32\drivers\sdstor.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\sdstor","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\sdstor","Type",0x00010001,0x00000001
+
+; SD standard host controller miniport
+HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","ImagePath",0x00020000,"system32\drivers\sdhc.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","Type",0x00010001,0x00000001
+
+; Qualcomm SD host controller miniport
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ImagePath",0x00020000,"system32\drivers\qcsdhc.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Type",0x00010001,0x00000001
 
 ; USB composite generic parent
 HKLM,"SYSTEM\CurrentControlSet\Services\usbccgp","ErrorControl",0x00010001,0x00000001
