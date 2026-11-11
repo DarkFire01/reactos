@@ -584,7 +584,7 @@ NTAPI
 PoSetHiberRange(IN PVOID HiberContext,
                 IN ULONG Flags,
                 IN OUT PVOID StartPage,
-                IN ULONG Length,
+                IN ULONG_PTR Length,
                 IN ULONG PageTag)
 {
     UNIMPLEMENTED;
