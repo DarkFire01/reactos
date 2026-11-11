@@ -1,4 +1,5 @@
 add_subdirectory(dbg)
+add_subdirectory(geni)
 add_subdirectory(ipcrouter)
 add_subdirectory(qmi)
 add_subdirectory(remotefs)
