@@ -753,7 +753,8 @@ HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
     MaximumLength = DeviceDescription->MaximumLength & MAXLONG;
     if ((DeviceDescription->ScatterGather) &&
         ((DeviceDescription->InterfaceType == Eisa) ||
-         (DeviceDescription->InterfaceType == PCIBus)))
+         (DeviceDescription->InterfaceType == PCIBus) ||
+         (DeviceDescription->InterfaceType == Internal)))
     {
         MapRegisters = 0;
     }
