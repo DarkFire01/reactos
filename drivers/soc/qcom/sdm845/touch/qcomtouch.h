@@ -13,6 +13,7 @@
 #include <qcom/geniif.h>
 #include <qcom/tlmmif.h>
 #include <qcom/rpmhif.h>
+#include <qcom/qcompnp.h>
 
 #define QCTOUCH_POOL_TAG            'cTcQ'
 
@@ -123,8 +124,9 @@ typedef const QCTOUCH_BOARD *PCQCTOUCH_BOARD;
 
 typedef struct _QCTOUCH_DEVICE
 {
-    PDEVICE_OBJECT DeviceObject;
+    QCOM_PNP_DEVICE Pnp;
     PCQCTOUCH_BOARD Board;
+    BOOLEAN Started;
 
     PQCOM_GENI_I2C I2c;
     PQCOM_TLMM Tlmm;
