@@ -8,8 +8,8 @@
 #include "subsys.h"
 #include <ntstrsafe.h>
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomsubsys"
+#include <qcom/qcomdbg.h>
 
 #define SS_METHOD_SHUT              'TUHS'
 #define SS_METHOD_SSRE              'ERSS'
@@ -137,7 +137,7 @@ SsDetectChip(
         return;
 
     Part = (*Register >> 12) & 0xFFFF;
-    DPRINT1("[subsys] chip id reg 0x%08lx, part 0x%lx\n", *Register, Part);
+    QC_LOG("chip id reg 0x%08lx, part 0x%lx", *Register, Part);
     MmUnmapIoSpace(Register, sizeof(ULONG));
 
     if (Part == SS_PART_8992)
@@ -145,7 +145,7 @@ SsDetectChip(
     else if (Part == SS_PART_8994)
         Device->ChipFamily = SS_FAMILY_8994;
 
-    DPRINT1("[subsys] chip family 0x%lx\n", Device->ChipFamily);
+    QC_LOG("chip family 0x%lx", Device->ChipFamily);
 }
 
 static
@@ -225,11 +225,11 @@ SsLoadParameters(
         WdfRegistryClose(Key);
     }
 
-    DPRINT1("[subsys] params: SHUT=%u SSRE/restart=%u max=%lu window=%lu min load=%lu s crashdet=%u\n",
-            Device->GracefulShutdown, Device->RestartEnabled, Device->MaxRestartCount,
-            Device->RestartTimerMinutes, Device->LoadTimerSeconds, Device->CrashDetection);
-    DPRINT1("[subsys] fw image '%ls'\n", Device->FwImagePath);
-    DPRINT1("[subsys] sw image '%ls'\n", Device->SwImagePath);
+    QC_LOG("params: SHUT=%u SSRE/restart=%u max=%lu window=%lu min load=%lu s crashdet=%u",
+           Device->GracefulShutdown, Device->RestartEnabled, Device->MaxRestartCount,
+           Device->RestartTimerMinutes, Device->LoadTimerSeconds, Device->CrashDetection);
+    QC_LOG("fw image '%ls'", Device->FwImagePath);
+    QC_LOG("sw image '%ls'", Device->SwImagePath);
 }
 
 static
@@ -253,7 +253,7 @@ SsOpenByName(
     RtlInitUnicodeString(&TargetName, Name);
     WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&Params, &TargetName, GENERIC_READ | GENERIC_WRITE);
     Status = WdfIoTargetOpen(*Target, &Params);
-    DPRINT1("[subsys] open target '%ls' -> 0x%lx\n", Name, Status);
+    QC_LOG("open target '%ls' -> 0x%lx", Name, Status);
     if (!NT_SUCCESS(Status))
     {
         WdfObjectDelete(*Target);
@@ -271,18 +271,18 @@ SsEvtSelfManagedIoInit(
     PSS_DEVICE Device = SsGetDevice(WdfDevice);
     NTSTATUS Status;
 
-    DPRINT1("[subsys] SelfManagedIoInit\n");
+    QC_LOG("SelfManagedIoInit");
     Status = SsOpenByName(Device, QCOM_PIL_DEVICE_NAME, &Device->Pil);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("PIL target open failed 0x%lx\n", Status);
+        QC_LOG("PIL target open failed 0x%lx", Status);
         return Status;
     }
 
     Status = SsOpenByName(Device, L"\\Device\\SMD", &Device->Smd);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("SMD target open failed 0x%lx\n", Status);
+        QC_LOG("SMD target open failed 0x%lx", Status);
         return Status;
     }
 
@@ -315,11 +315,11 @@ SsEvtSelfManagedIoInit(
     }
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[subsys] SMD interface query FAILED 0x%lx (SMP2P %p SMEM %p SMDL %p)\n",
-                Status, Device->Smp2p.Create, Device->Smem.GetAddr, Device->Smdl.Open);
+        QC_LOG("SMD interface query FAILED 0x%lx (SMP2P %p SMEM %p SMDL %p)",
+               Status, Device->Smp2p.Create, Device->Smem.GetAddr, Device->Smdl.Open);
         return Status;
     }
-    DPRINT1("[subsys] SMD interfaces: SMP2P, SMEM, SMDL ok\n");
+    QC_LOG("SMD interfaces: SMP2P, SMEM, SMDL ok");
 
     /* TrustZone and the system monitor are not needed to boot the modem on this chip */
     SsSysmonOpen(Device);
@@ -327,11 +327,11 @@ SsEvtSelfManagedIoInit(
     Status = SsMapRegisters(Device);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[subsys] MSS register map FAILED 0x%lx\n", Status);
+        QC_LOG("MSS register map FAILED 0x%lx", Status);
         return Status;
     }
 
-    DPRINT1("[subsys] starting modem boot\n");
+    QC_LOG("starting modem boot");
     return SsPost(Device, SS_EV_START, 0);
 }
 
@@ -379,7 +379,7 @@ SsEvtWatchdogDpc(
 
     UNREFERENCED_PARAMETER(Interrupt);
 
-    DPRINT1("[subsys] WATCHDOG BITE from modem (armed %ld)\n", Device->WatchdogArmed);
+    QC_LOG("WATCHDOG BITE from modem (armed %ld)", Device->WatchdogArmed);
     SsPost(Device, SS_EV_FATAL, SS_FAULT_WATCHDOG);
 }
 
@@ -390,7 +390,7 @@ SsEvtTimer(
 {
     PSS_DEVICE Device = SsGetDevice(WdfTimerGetParentObject(Timer));
 
-    DPRINT1("[subsys] timer fired in state %ld\n", Device->State);
+    QC_LOG("timer fired in state %ld", Device->State);
     SsPost(Device, SS_EV_TIMEOUT, 0);
 }
 
@@ -466,8 +466,8 @@ SsEvtIoDeviceControl(
     ULONG_PTR Information = 0;
     PVOID Input;
 
-    DPRINT1("[subsys] AMSSStats IOCTL 0x%08lx in %Iu out %Iu (state %ld)\n",
-            IoControlCode, InputBufferLength, OutputBufferLength, Device->State);
+    QC_LOG("AMSSStats IOCTL 0x%08lx in %Iu out %Iu (state %ld)",
+           IoControlCode, InputBufferLength, OutputBufferLength, Device->State);
 
     switch (IoControlCode)
     {
@@ -499,7 +499,7 @@ SsEvtIoDeviceControl(
             break;
     }
 
-    DPRINT1("[subsys] AMSSStats IOCTL 0x%08lx -> 0x%lx\n", IoControlCode, Status);
+    QC_LOG("AMSSStats IOCTL 0x%08lx -> 0x%lx", IoControlCode, Status);
     WdfRequestCompleteWithInformation(Request, Status, Information);
 }
 
@@ -522,7 +522,7 @@ SsEvtDeviceAdd(
 
     UNREFERENCED_PARAMETER(Driver);
 
-    DPRINT1("[subsys] DeviceAdd\n");
+    QC_LOG("DeviceAdd");
 
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&PnpCallbacks);
     PnpCallbacks.EvtDeviceSelfManagedIoInit = SsEvtSelfManagedIoInit;
@@ -596,7 +596,7 @@ SsEvtDeviceAdd(
     SsDetectChip(Device);
     SsLoadParameters(Device);
     SsReadChildren(Device);
-    DPRINT1("[subsys] CHLD: %lu children\n", Device->ChildCount);
+    QC_LOG("CHLD: %lu children", Device->ChildCount);
 
     WdfWaitLockAcquire(SsDeviceListLock, NULL);
     InsertTailList(&SsDeviceList, &Device->Link);

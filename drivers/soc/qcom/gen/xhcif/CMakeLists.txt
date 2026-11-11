@@ -8,7 +8,7 @@ list(APPEND SOURCE
 add_library(qcomxhcif MODULE ${SOURCE} qcomxhcif.rc)
 set_module_type(qcomxhcif kmdfdriver)
 target_link_libraries(qcomxhcif ntoskrnl_vista libcntpr ${PSEH_LIB})
-add_importlibs(qcomxhcif wdfldr ntoskrnl hal)
+add_importlibs(qcomxhcif wdfldr qcomdbg ntoskrnl hal)
 add_cd_file(TARGET qcomxhcif DESTINATION reactos/system32/drivers NO_CAB FOR all)
 add_driver_inf(qcomxhcif qcomxhcif.inf)
 add_registry_inf(qcomxhcif_reg.inf)

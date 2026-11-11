@@ -13,6 +13,6 @@ list(APPEND SOURCE
 add_library(qcomipcrouter MODULE ${SOURCE} qcomipcrouter.rc)
 set_module_type(qcomipcrouter kmdfdriver)
 target_link_libraries(qcomipcrouter ntoskrnl_vista libcntpr ${PSEH_LIB})
-add_importlibs(qcomipcrouter wdfldr ntoskrnl hal)
+add_importlibs(qcomipcrouter wdfldr qcomdbg ntoskrnl hal)
 add_cd_file(TARGET qcomipcrouter DESTINATION reactos/system32/drivers FOR all)
 add_driver_inf(qcomipcrouter qcomipcrouter.inf)

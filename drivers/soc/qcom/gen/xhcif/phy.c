@@ -7,8 +7,8 @@
 
 #include "xhcif.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomxhcif"
+#include <qcom/qcomdbg.h>
 
 #define SSPHY_TUNE_ANY          0x00
 #define SSPHY_TUNE_MSM8992_ONLY 0x01
@@ -236,7 +236,7 @@ XhcifStartSsPhy(
     XhcifWrite(Device->SsPhy, SSPHY_START_CONTROL, 3);
 
     if (!XhcifPoll(Device->SsPhy, SSPHY_PCS_STATUS, SSPHY_PCS_STATUS_PHYSTATUS, 0, &Tries))
-        DPRINT1("SuperSpeed PHY did not come out of reset\n");
+        QC_LOG("SuperSpeed PHY did not come out of reset");
 }
 
 /**
@@ -372,7 +372,7 @@ XhcifSdm845EnableClocks(
 
     XhcifModify(Device->Gcc, SDM845_GCC_USB30_PRIM_GDSCR, GCC_GDSC_SW_COLLAPSE, 0);
     if (!XhcifPoll(Device->Gcc, SDM845_GCC_USB30_PRIM_GDSCR, GCC_GDSC_PWR_ON, GCC_GDSC_PWR_ON, &Tries))
-        DPRINT1("USB power domain did not come up\n");
+        QC_LOG("USB power domain did not come up");
 
     XhcifModify(Device->Gcc, SDM845_GCC_USB30_PRIM_BCR, 0, 1);
     XhcifStall();
@@ -383,7 +383,7 @@ XhcifSdm845EnableClocks(
         Tries = 0;
         XhcifModify(Device->Gcc, Sdm845UsbBranches[i], 0, GCC_CBCR_ENABLE);
         if (!XhcifPoll(Device->Gcc, Sdm845UsbBranches[i], GCC_CBCR_CLK_OFF, 0, &Tries))
-            DPRINT1("USB clock branch 0x%x stayed off\n", Sdm845UsbBranches[i]);
+            QC_LOG("USB clock branch 0x%x stayed off", Sdm845UsbBranches[i]);
     }
 }
 
@@ -410,13 +410,13 @@ XhcifSdm845StartHsPhy(
 
     Status = XhcifApplyHsPhyTuning(Device);
     if (!NT_SUCCESS(Status))
-        DPRINT1("No high speed PHY tuning from firmware: 0x%lx\n", Status);
+        QC_LOG("No high speed PHY tuning from firmware: 0x%lx", Status);
 
     XhcifModify(Device->Qusb2, QUSB2_POWERDOWN, QUSB2_POWERDOWN_POWER_DOWN, 0);
     XhcifStall();
 
     if (!(XhcifRead(Device->Qusb2, QUSB2_PLL_STATUS) & QUSB2_PLL_STATUS_CORE_READY))
-        DPRINT1("High speed PHY PLL did not lock: 0x%lx\n", XhcifRead(Device->Qusb2, QUSB2_PLL_STATUS));
+        QC_LOG("High speed PHY PLL did not lock: 0x%lx", XhcifRead(Device->Qusb2, QUSB2_PLL_STATUS));
 }
 
 /**
@@ -490,7 +490,7 @@ XhcifInitializeHardware(
 
     Status = XhcifApplyHsPhyTuning(Device);
     if (!NT_SUCCESS(Status))
-        DPRINT1("No high speed PHY tuning from firmware: 0x%lx\n", Status);
+        QC_LOG("No high speed PHY tuning from firmware: 0x%lx", Status);
 
     XhcifModify(Device->Controller, QSCR_HS_PHY_COMMON, 0, 0x4000);
 

@@ -7,8 +7,8 @@
 
 #include "xhcif.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomxhcif"
+#include <qcom/qcomdbg.h>
 
 DRIVER_INITIALIZE DriverEntry;
 static EVT_WDF_DRIVER_DEVICE_ADD XhcifEvtDeviceAdd;
@@ -92,13 +92,13 @@ XhcifEvtPrepareHardware(
         }
         else
         {
-            DPRINT1("Unexpected controller window %I64x\n", Descriptor->u.Memory.Start.QuadPart);
+            QC_LOG("Unexpected controller window %I64x", Descriptor->u.Memory.Start.QuadPart);
             return STATUS_INTERNAL_ERROR;
         }
 
         if (Descriptor->u.Memory.Length < XHCIF_CONTROLLER_MIN_SIZE)
         {
-            DPRINT1("Controller window too small: 0x%lx\n", Descriptor->u.Memory.Length);
+            QC_LOG("Controller window too small: 0x%lx", Descriptor->u.Memory.Length);
             return STATUS_INTERNAL_ERROR;
         }
 
@@ -111,7 +111,7 @@ XhcifEvtPrepareHardware(
 
     if (!Device->Controller)
     {
-        DPRINT1("No controller window in the resources\n");
+        QC_LOG("No controller window in the resources");
         return STATUS_INTERNAL_ERROR;
     }
 
@@ -125,7 +125,7 @@ XhcifEvtPrepareHardware(
         if (!Device->Qusb2)
             return STATUS_INTERNAL_ERROR;
 
-        DPRINT("Bringing up the SDM845 controller\n");
+        QC_LOG("Bringing up the SDM845 controller");
         XhcifInitializeHardware(Device);
         return STATUS_SUCCESS;
     }
@@ -143,7 +143,7 @@ XhcifEvtPrepareHardware(
         return STATUS_INTERNAL_ERROR;
 
     Device->Msm8992 = XhcifIsMsm8992();
-    DPRINT("Bringing up the controller, MSM8992 %u\n", Device->Msm8992);
+    QC_LOG("Bringing up the controller, MSM8992 %u", Device->Msm8992);
 
     XhcifInitializeHardware(Device);
     return STATUS_SUCCESS;
@@ -217,7 +217,7 @@ XhcifEvtDeviceAdd(
     Status = WdfDeviceCreate(&DeviceInit, &Attributes, &WdfDevice);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("WdfDeviceCreate failed: 0x%lx\n", Status);
+        QC_LOG("WdfDeviceCreate failed: 0x%lx", Status);
         return Status;
     }
 

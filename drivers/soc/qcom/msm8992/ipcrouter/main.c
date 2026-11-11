@@ -7,8 +7,8 @@
 
 #include "ipcrouter.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomipcrouter"
+#include <qcom/qcomdbg.h>
 
 DRIVER_INITIALIZE DriverEntry;
 static EVT_WDF_DRIVER_DEVICE_ADD IpcEvtDeviceAdd;

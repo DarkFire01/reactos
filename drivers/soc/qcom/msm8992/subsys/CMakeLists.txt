@@ -12,6 +12,6 @@ list(APPEND SOURCE
 add_library(qcomsubsys MODULE ${SOURCE} qcomsubsys.rc)
 set_module_type(qcomsubsys kmdfdriver)
 target_link_libraries(qcomsubsys ntoskrnl_vista libcntpr ${PSEH_LIB})
-add_importlibs(qcomsubsys wdfldr ntoskrnl hal)
+add_importlibs(qcomsubsys wdfldr qcomdbg ntoskrnl hal)
 add_cd_file(TARGET qcomsubsys DESTINATION reactos/system32/drivers FOR all)
 add_driver_inf(qcomsubsys qcomsubsys.inf)

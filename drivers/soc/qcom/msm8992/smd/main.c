@@ -7,8 +7,6 @@
 
 #include "smd.h"
 
-#define NDEBUG
-#include <debug.h>
 
 #define SMD_INTR_METHOD             'RTNI'
 
@@ -47,7 +45,7 @@ SmdEvtInterruptDpc(
 
     UNREFERENCED_PARAMETER(AssociatedObject);
 
-    DPRINT1("[smd] doorbell kind %lu host %lu\n", Context->Kind, Context->Host);
+    QC_LOG("doorbell kind %lu host %lu", Context->Kind, Context->Host);
 
     if (Context->Kind == SMD_IRQ_SMD)
         SmdProcessHost(Context->Device, Context->Host);
@@ -242,7 +240,7 @@ SmdBindDoorbells(
         Register = SmdIpcRegisterVa(Device, Irq->RegisterPhys);
         if (!Register)
         {
-            DPRINT1("Doorbell %I64x for host %lu is not a mapped resource\n", Irq->RegisterPhys, Irq->Host);
+            QC_LOG("Doorbell %I64x for host %lu is not a mapped resource", Irq->RegisterPhys, Irq->Host);
             continue;
         }
 
@@ -392,9 +390,9 @@ SmdEvtPrepareHardware(
         }
     }
 
-    DPRINT1("[smd] SMEM phys 0x%I64x size 0x%lx va %p, mutex %p stride 0x%lx, aux %p, %lu IPC regs\n",
-            Device->SmemPhys.QuadPart, Device->SmemSize, Device->SmemBase,
-            Device->MutexBase, Device->MutexStride, Device->AuxBase, Device->IpcRegCount);
+    QC_LOG("SMEM phys 0x%I64x size 0x%lx va %p, mutex %p stride 0x%lx, aux %p, %lu IPC regs",
+           Device->SmemPhys.QuadPart, Device->SmemSize, Device->SmemBase,
+           Device->MutexBase, Device->MutexStride, Device->AuxBase, Device->IpcRegCount);
 
     if (!Device->SmemBase || !Device->MutexBase)
     {
@@ -412,11 +410,11 @@ SmdEvtPrepareHardware(
     if (!NT_SUCCESS(Status))
         goto Fail;
 
-    DPRINT1("[smd] hardware ready\n");
+    QC_LOG("hardware ready");
     return STATUS_SUCCESS;
 
 Fail:
-    DPRINT1("[smd] hardware setup FAILED 0x%lx\n", Status);
+    QC_LOG("hardware setup FAILED 0x%lx", Status);
     SmdUnmapAll(Device);
     return Status;
 }
@@ -493,7 +491,7 @@ SmdEvtDeviceAdd(
     Status = SmdReadInterruptMap(Device);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("INTR evaluation failed 0x%lx\n", Status);
+        QC_LOG("INTR evaluation failed 0x%lx", Status);
         return Status;
     }
 

@@ -10,8 +10,8 @@
 
 #define QMI_TAG                     'imQc'
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomqmi"
+#include <qcom/qcomdbg.h>
 
 typedef struct _QMI_PENDING
 {
@@ -42,13 +42,13 @@ QmiClientDeliver(
 
     if (!QmiMessageValid(Message, Length))
     {
-        DPRINT1("[qmi] client: malformed message (%lu bytes)\n", Length);
+        QC_LOG("client: malformed message (%lu bytes)", Length);
         return;
     }
 
     if (Header->Type == QMI_TYPE_INDICATION)
     {
-        DPRINT1("[qmi] client: indication msg 0x%04x len %lu\n", Header->MessageId, Length);
+        QC_LOG("client: indication msg 0x%04x len %lu", Header->MessageId, Length);
         if (Client->IndicationHandler)
             Client->IndicationHandler(Client, Header->MessageId, Message, Length, Client->IndicationContext);
         return;
@@ -75,15 +75,15 @@ QmiClientDeliver(
             Pending->Status = STATUS_BUFFER_TOO_SMALL;
         }
         /* The waiter owns Pending and may return as soon as it is signaled */
-        DPRINT1("[qmi] client: response msg 0x%04x txn %u matched (0x%lx)\n",
-                Header->MessageId, Header->TransactionId, Pending->Status);
+        QC_LOG("client: response msg 0x%04x txn %u matched (0x%lx)",
+               Header->MessageId, Header->TransactionId, Pending->Status);
         RemoveEntryList(&Pending->Link);
         KeSetEvent(&Pending->Done, IO_NO_INCREMENT, FALSE);
         KeReleaseSpinLock(&Client->Lock, OldIrql);
         return;
     }
     KeReleaseSpinLock(&Client->Lock, OldIrql);
-    DPRINT1("[qmi] client: response txn %u has no waiter\n", Header->TransactionId);
+    QC_LOG("client: response txn %u has no waiter", Header->TransactionId);
 }
 
 NTSTATUS
@@ -107,7 +107,7 @@ QmiClientConnect(
     InitializeListHead(&Client->Pending);
 
     Status = Transport->Ops->LookupService(Transport, ServiceId, Version, Instance, &Client->Server);
-    DPRINT1("[qmi] client connect service 0x%lx inst %lu -> 0x%lx\n", ServiceId, Instance, Status);
+    QC_LOG("client connect service 0x%lx inst %lu -> 0x%lx", ServiceId, Instance, Status);
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -184,14 +184,14 @@ QmiClientRequest(
         return Status;
     }
 
-    DPRINT1("[qmi] client request msg 0x%04x txn %u sent, waiting %lu ms\n",
-            Header->MessageId, Pending.Transaction, TimeoutMs);
+    QC_LOG("client request msg 0x%04x txn %u sent, waiting %lu ms",
+           Header->MessageId, Pending.Transaction, TimeoutMs);
 
     Timeout.QuadPart = -(LONGLONG)TimeoutMs * 10 * 1000;
     Status = KeWaitForSingleObject(&Pending.Done, Executive, KernelMode, FALSE, &Timeout);
     if (Status == STATUS_TIMEOUT)
     {
-        DPRINT1("[qmi] client request msg 0x%04x txn %u TIMED OUT\n", Header->MessageId, Pending.Transaction);
+        QC_LOG("client request msg 0x%04x txn %u TIMED OUT", Header->MessageId, Pending.Transaction);
         KeAcquireSpinLock(&Client->Lock, &OldIrql);
         /* It may have completed in the race between timeout and the lock */
         if (!KeReadStateEvent(&Pending.Done))

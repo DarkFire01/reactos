@@ -162,9 +162,6 @@ DEFINE_GUID(GUID_BUS_TYPE_QCOM_AMSS,
 #define SS_SMEM_CRASH_REASON        421
 #define SS_SMEM_IMAGE_VERSIONS      469
 
-/* Bugcheck when the modem cannot be brought back */
-#define SS_BUGCHECK_SOC_SUBSYSTEM   0x14B
-
 /* Chip families selecting the Q6 power up sequence */
 #define SS_FAMILY_UNKNOWN           0
 #define SS_FAMILY_8994              0x32

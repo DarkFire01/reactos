@@ -7,8 +7,8 @@
 
 #include "subsys.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomsubsys"
+#include <qcom/qcomdbg.h>
 
 /* Waits for either the stop request or a change on the entry, TRUE means stop */
 static
@@ -41,12 +41,12 @@ SsHandleBits(
     _In_ PSS_DEVICE Device,
     _In_ ULONG Rising)
 {
-    DPRINT1("[subsys] SMP2P rising bits 0x%04lx%s%s%s%s%s\n", Rising,
-            (Rising & SS_SMP2P_ERR_FATAL) ? " ERR_FATAL" : "",
-            (Rising & SS_SMP2P_READY) ? " READY" : "",
-            (Rising & SS_SMP2P_HANDOVER) ? " HANDOVER" : "",
-            (Rising & SS_SMP2P_STOP_ACK) ? " STOP_ACK" : "",
-            (Rising & SS_SMP2P_NO_DUMP) ? " NO_DUMP" : "");
+    QC_LOG("SMP2P rising bits 0x%04lx%s%s%s%s%s", Rising,
+           (Rising & SS_SMP2P_ERR_FATAL) ? " ERR_FATAL" : "",
+           (Rising & SS_SMP2P_READY) ? " READY" : "",
+           (Rising & SS_SMP2P_HANDOVER) ? " HANDOVER" : "",
+           (Rising & SS_SMP2P_STOP_ACK) ? " STOP_ACK" : "",
+           (Rising & SS_SMP2P_NO_DUMP) ? " NO_DUMP" : "");
 
     if (Rising & SS_SMP2P_NO_DUMP)
         Device->NoDump = TRUE;
@@ -78,29 +78,29 @@ SsMonitorThread(
     ULONG Value, Previous, Rising;
     LONG Result;
 
-    DPRINT1("[subsys] SMP2P monitor thread start\n");
+    QC_LOG("SMP2P monitor thread start");
 
     /* Outbound entry may not be claimable until the modem is up */
     Result = Device->Smp2p.Create(&Device->Outbound, SS_SMP2P_HOST_MODEM, SS_SMP2P_OUT_NAME);
-    DPRINT1("[subsys] SMP2P create '%s' -> %ld\n", SS_SMP2P_OUT_NAME, Result);
+    QC_LOG("SMP2P create '%s' -> %ld", SS_SMP2P_OUT_NAME, Result);
     while (Result == SS_SMP2P_NOT_READY && Device->Outbound)
     {
         if (SsWaitEntry(Device, Device->Smp2p.GetEvent(Device->Outbound)))
             goto Stop;
         Result = Device->Smp2p.Create(&Device->Outbound, SS_SMP2P_HOST_MODEM, SS_SMP2P_OUT_NAME);
-        DPRINT1("[subsys] SMP2P create retry -> %ld\n", Result);
+        QC_LOG("SMP2P create retry -> %ld", Result);
     }
     if (Result < 0)
         goto Fail;
 
     Result = Device->Smp2p.Register(&Device->Inbound, SS_SMP2P_HOST_MODEM, SS_SMP2P_IN_NAME);
-    DPRINT1("[subsys] SMP2P register '%s' -> %ld\n", SS_SMP2P_IN_NAME, Result);
+    QC_LOG("SMP2P register '%s' -> %ld", SS_SMP2P_IN_NAME, Result);
     while (Result == SS_SMP2P_NOT_CREATED && Device->Inbound)
     {
         if (SsWaitEntry(Device, Device->Smp2p.GetEvent(Device->Inbound)))
             goto Stop;
         Result = Device->Smp2p.Register(&Device->Inbound, SS_SMP2P_HOST_MODEM, SS_SMP2P_IN_NAME);
-        DPRINT1("[subsys] SMP2P register retry -> %ld\n", Result);
+        QC_LOG("SMP2P register retry -> %ld", Result);
     }
     if (Result < 0 || !Device->Inbound)
         goto Fail;
@@ -116,7 +116,7 @@ SsMonitorThread(
         if (Device->Smp2p.Read(Device->Inbound, &Value) < 0)
             goto Fail;
 
-        DPRINT1("[subsys] SMP2P inbound value 0x%08lx (prev 0x%04lx)\n", Value, Previous);
+        QC_LOG("SMP2P inbound value 0x%08lx (prev 0x%04lx)", Value, Previous);
         Value &= 0xFFFF;
         Rising = Value & ~Previous;
         Previous = Value;
@@ -124,12 +124,12 @@ SsMonitorThread(
     }
 
 Fail:
-    DPRINT1("[subsys] SMP2P monitor thread FAILED (last result %ld)\n", Result);
+    QC_LOG("SMP2P monitor thread FAILED (last result %ld)", Result);
     SsPost(Device, SS_EV_FATAL, SS_FAULT_MONITOR);
     KeWaitForSingleObject(&Device->MonitorStop, Executive, KernelMode, FALSE, NULL);
 
 Stop:
-    DPRINT1("[subsys] SMP2P monitor thread exit\n");
+    QC_LOG("SMP2P monitor thread exit");
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
@@ -193,11 +193,11 @@ SsWriteOutbound(
 
     if (!Device->Outbound)
     {
-        DPRINT1("[subsys] SMP2P outbound write %lu: no entry\n", Value);
+        QC_LOG("SMP2P outbound write %lu: no entry", Value);
         return -1;
     }
 
     Result = Device->Smp2p.Write(Device->Outbound, Value);
-    DPRINT1("[subsys] SMP2P outbound write %lu -> %ld\n", Value, Result);
+    QC_LOG("SMP2P outbound write %lu -> %ld", Value, Result);
     return Result;
 }

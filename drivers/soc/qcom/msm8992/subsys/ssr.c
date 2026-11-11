@@ -7,8 +7,8 @@
 
 #include "subsys.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomsubsys"
+#include <qcom/qcomdbg.h>
 
 /* Driver wide list so a broadcast reaches the other subsystem FDOs */
 extern LIST_ENTRY SsDeviceList;
@@ -48,7 +48,7 @@ SsFillFailure(
     RtlCopyMemory(Record->Reason, Reason, Length);
     Record->Reason[Length] = ANSI_NULL;
     Device->Failure = Record;
-    DPRINT1("[subsys] failure record: '%s'\n", Record->Reason);
+    QC_LOG("failure record: '%s'", Record->Reason);
 }
 
 /* Reads the modem's own crash text out of shared memory */
@@ -115,7 +115,7 @@ SsDecideRestart(
 
     if (!Device->RestartEnabled)
     {
-        DPRINT1("[subsys] restart REFUSED: restart disabled\n");
+        QC_LOG("restart REFUSED: restart disabled");
         return SS_EV_RESTART_REFUSED;
     }
 
@@ -125,7 +125,7 @@ SsDecideRestart(
         Text = SsCrashReason(Device, &Length);
         if (Text && !strstr(Text, SsInjectMarker))
         {
-            DPRINT1("[subsys] restart REFUSED: crash detection, not an injected crash\n");
+            QC_LOG("restart REFUSED: crash detection, not an injected crash");
             return SS_EV_RESTART_REFUSED;
         }
     }
@@ -142,19 +142,19 @@ SsDecideRestart(
     {
         Device->WindowStart = Now;
         Device->WindowBase = Device->BootAttempts;
-        DPRINT1("[subsys] restart OK: new %lu min window\n", Device->RestartTimerMinutes);
+        QC_LOG("restart OK: new %lu min window", Device->RestartTimerMinutes);
         return SS_EV_RESTART_OK;
     }
 
     if (Device->BootAttempts - Device->WindowBase >= Device->MaxRestartCount)
     {
-        DPRINT1("[subsys] restart REFUSED: %lu attempts in window, limit %lu\n",
-                Device->BootAttempts - Device->WindowBase, Device->MaxRestartCount);
+        QC_LOG("restart REFUSED: %lu attempts in window, limit %lu",
+               Device->BootAttempts - Device->WindowBase, Device->MaxRestartCount);
         return SS_EV_RESTART_REFUSED;
     }
 
-    DPRINT1("[subsys] restart OK: %lu of %lu in window\n",
-            Device->BootAttempts - Device->WindowBase, Device->MaxRestartCount);
+    QC_LOG("restart OK: %lu of %lu in window",
+           Device->BootAttempts - Device->WindowBase, Device->MaxRestartCount);
     return SS_EV_RESTART_OK;
 }
 
@@ -163,9 +163,8 @@ VOID
 SsFatal(
     _Inout_ PSS_DEVICE Device)
 {
-    DPRINT1("[subsys] FATAL: modem cannot be recovered, bugchecking 0x%x\n", SS_BUGCHECK_SOC_SUBSYSTEM);
     if (Device->Failure)
-        DPRINT1("[subsys] FATAL reason: '%s'\n", Device->Failure->Reason);
+        QC_LOG("failure reason: '%s'", Device->Failure->Reason);
 
     /* Unlock modem memory first so the crash dump can read it */
     SsHaltAxi(Device);
@@ -173,11 +172,8 @@ SsFatal(
     SsClocksOff(Device);
     SsBringUpMba(Device);
 
-    KeBugCheckEx(SS_BUGCHECK_SOC_SUBSYSTEM,
-                 (ULONG_PTR)Device->Failure,
-                 0,
-                 0,
-                 (ULONG_PTR)Device->VersionPage);
+    QC_FATAL(STATUS_INTERNAL_ERROR, "modem cannot be recovered, failure record %p version page %p",
+             Device->Failure, Device->VersionPage);
 }
 
 NTSTATUS
@@ -188,7 +184,7 @@ SsBroadcast(
     PLIST_ENTRY Entry;
     PSS_DEVICE Other;
 
-    DPRINT1("[subsys] broadcast '%s'\n", Message);
+    QC_LOG("broadcast '%s'", Message);
     WdfWaitLockAcquire(SsDeviceListLock, NULL);
     for (Entry = SsDeviceList.Flink; Entry != &SsDeviceList; Entry = Entry->Flink)
     {
@@ -208,7 +204,7 @@ SsPublishState(
 {
     UNREFERENCED_PARAMETER(Device);
 
-    DPRINT1("[subsys] peer state %lu (no restart notifier, not published)\n", State);
+    QC_LOG("peer state %lu (no restart notifier, not published)", State);
     return STATUS_SUCCESS;
 }
 
@@ -224,7 +220,7 @@ SsSysmonNotify(
 
     UNREFERENCED_PARAMETER(Port);
 
-    DPRINT1("[subsys] sysmon channel event %lu\n", Event);
+    QC_LOG("sysmon channel event %lu", Event);
     if (Event == QCOM_SMDL_EVENT_OPEN)
         KeSetEvent(&Device->SysmonOpened, IO_NO_INCREMENT, FALSE);
     else if (Event == QCOM_SMDL_EVENT_READ)
@@ -248,7 +244,7 @@ SsSysmonOpen(
                                        1024,
                                        SsSysmonNotify,
                                        Device);
-    DPRINT1("[subsys] sysmon channel open -> %p\n", Device->Sysmon);
+    QC_LOG("sysmon channel open -> %p", Device->Sysmon);
     return Device->Sysmon ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
@@ -283,7 +279,7 @@ SsSysmonForward(
 
     KeClearEvent(&Device->SysmonReadable);
     Length = Device->Smdl.Write(Device->Sysmon, (ULONG)strlen(Message), Message, 0);
-    DPRINT1("[subsys] sysmon send '%s' -> %ld\n", Message, Length);
+    QC_LOG("sysmon send '%s' -> %ld", Message, Length);
 
     Timeout.QuadPart = -1LL * 10 * 1000 * 1000;
     KeWaitForSingleObject(&Device->SysmonReadable, Executive, KernelMode, FALSE, &Timeout);
@@ -292,13 +288,13 @@ SsSysmonForward(
     if (Length > 0)
     {
         Reply[Length] = ANSI_NULL;
-        DPRINT1("[subsys] sysmon reply '%s'\n", Reply);
+        QC_LOG("sysmon reply '%s'", Reply);
         if (strcmp(Reply, SS_SYSMON_ACK) != 0)
-            DPRINT1("[subsys] sysmon reply is not an ack\n");
+            QC_LOG("sysmon reply is not an ack");
     }
     else
     {
-        DPRINT1("[subsys] sysmon no reply (%ld)\n", Length);
+        QC_LOG("sysmon no reply (%ld)", Length);
     }
 
     WdfWaitLockRelease(Device->SysmonLock);
@@ -313,7 +309,7 @@ SsPowerVote(
 {
     UNREFERENCED_PARAMETER(Device);
 
-    DPRINT1("[subsys] power vote %lu (no power engine, treated as granted)\n", Vote);
+    QC_LOG("power vote %lu (no power engine, treated as granted)", Vote);
     return TRUE;
 }
 

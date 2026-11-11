@@ -12,8 +12,8 @@
 #define QMI_TAG                     'imQc'
 #define QMI_IPC_MAX_MESSAGE         8192
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomqmi"
+#include <qcom/qcomdbg.h>
 
 typedef struct _QMI_IPC
 {
@@ -96,14 +96,14 @@ QmiIpcSend(
 
     if (Length >= sizeof(QMI_HEADER))
     {
-        DPRINT1("[qmi] TX %lu:%lu -> %lu:%lu type %u txn %u msg 0x%04x len %lu -> 0x%lx\n",
-                Ipc->Self.Node, Ipc->Self.Port, Destination->Node, Destination->Port,
-                ((const QMI_HEADER *)Message)->Type, ((const QMI_HEADER *)Message)->TransactionId,
-                ((const QMI_HEADER *)Message)->MessageId, Length, Status);
+        QC_LOG("TX %lu:%lu -> %lu:%lu type %u txn %u msg 0x%04x len %lu -> 0x%lx",
+               Ipc->Self.Node, Ipc->Self.Port, Destination->Node, Destination->Port,
+               ((const QMI_HEADER *)Message)->Type, ((const QMI_HEADER *)Message)->TransactionId,
+               ((const QMI_HEADER *)Message)->MessageId, Length, Status);
     }
     else
     {
-        DPRINT1("[qmi] TX %lu bytes -> %lu:%lu -> 0x%lx\n", Length, Destination->Node, Destination->Port, Status);
+        QC_LOG("TX %lu bytes -> %lu:%lu -> 0x%lx", Length, Destination->Node, Destination->Port, Status);
     }
 
     ExFreePoolWithTag(Buffer, QMI_TAG);
@@ -163,7 +163,7 @@ QmiIpcRegister(
     UNREFERENCED_PARAMETER(Version);
 
     Status = QmiIpcNameIoctl(QmiIpcFromTransport(Transport), IPC_IOCTL_BIND_NAME, Service, Instance, NULL);
-    DPRINT1("[qmi] register service 0x%lx instance %lu -> 0x%lx\n", Service, Instance, Status);
+    QC_LOG("register service 0x%lx instance %lu -> 0x%lx", Service, Instance, Status);
     return Status;
 }
 
@@ -180,7 +180,7 @@ QmiIpcUnregister(
     UNREFERENCED_PARAMETER(Version);
 
     Status = QmiIpcNameIoctl(QmiIpcFromTransport(Transport), IPC_IOCTL_UNBIND_NAME, Service, Instance, NULL);
-    DPRINT1("[qmi] unregister service 0x%lx instance %lu -> 0x%lx\n", Service, Instance, Status);
+    QC_LOG("unregister service 0x%lx instance %lu -> 0x%lx", Service, Instance, Status);
     return Status;
 }
 
@@ -204,11 +204,11 @@ QmiIpcLookup(
     {
         Address->Node = Found.Node;
         Address->Port = Found.Port;
-        DPRINT1("[qmi] lookup service 0x%lx instance %lu -> %lu:%lu\n", Service, Instance, Found.Node, Found.Port);
+        QC_LOG("lookup service 0x%lx instance %lu -> %lu:%lu", Service, Instance, Found.Node, Found.Port);
     }
     else
     {
-        DPRINT1("[qmi] lookup service 0x%lx instance %lu FAILED 0x%lx\n", Service, Instance, Status);
+        QC_LOG("lookup service 0x%lx instance %lu FAILED 0x%lx", Service, Instance, Status);
     }
     return Status;
 }
@@ -256,13 +256,13 @@ QmiIpcRxThread(
         Status = QmiIpcAwait(Status, Event, &IoStatus);
         if (!NT_SUCCESS(Status))
         {
-            DPRINT1("[qmi] RX read ended 0x%lx (stopping %ld)\n", Status, Ipc->Stopping);
+            QC_LOG("RX read ended 0x%lx (stopping %ld)", Status, Ipc->Stopping);
             break;
         }
 
         if (IoStatus.Information < IPC_ADDR_PREFIX)
         {
-            DPRINT1("[qmi] RX short read %Iu\n", IoStatus.Information);
+            QC_LOG("RX short read %Iu", IoStatus.Information);
             continue;
         }
 
@@ -273,20 +273,20 @@ QmiIpcRxThread(
         if (Length >= sizeof(QMI_HEADER))
         {
             const QMI_HEADER *Header = (const QMI_HEADER *)(Ipc->RxBuffer + IPC_ADDR_PREFIX);
-            DPRINT1("[qmi] RX %lu:%lu <- %lu:%lu type %u txn %u msg 0x%04x len %lu\n",
-                    Ipc->Self.Node, Ipc->Self.Port, Source.Node, Source.Port,
-                    Header->Type, Header->TransactionId, Header->MessageId, Length);
+            QC_LOG("RX %lu:%lu <- %lu:%lu type %u txn %u msg 0x%04x len %lu",
+                   Ipc->Self.Node, Ipc->Self.Port, Source.Node, Source.Port,
+                   Header->Type, Header->TransactionId, Header->MessageId, Length);
         }
         else
         {
-            DPRINT1("[qmi] RX %lu bytes <- %lu:%lu\n", Length, Source.Node, Source.Port);
+            QC_LOG("RX %lu bytes <- %lu:%lu", Length, Source.Node, Source.Port);
         }
 
         QmiTransportDeliver(&Ipc->Base, &Source, Ipc->RxBuffer + IPC_ADDR_PREFIX, Length);
     }
 
     ZwClose(Event);
-    DPRINT1("[qmi] RX thread exit\n");
+    QC_LOG("RX thread exit");
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
@@ -337,7 +337,7 @@ QmiIpcCreate(
                           0);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[qmi] open %ls FAILED 0x%lx\n", IPC_DEVICE_NAME, Status);
+        QC_LOG("open %ls FAILED 0x%lx", IPC_DEVICE_NAME, Status);
         ExFreePoolWithTag(Ipc->RxBuffer, QMI_TAG);
         ExFreePoolWithTag(Ipc, QMI_TAG);
         return Status;
@@ -345,7 +345,7 @@ QmiIpcCreate(
 
     /* GET_SELF ignores the input, the name fields are simply unused here */
     Status = QmiIpcNameIoctl(Ipc, IPC_IOCTL_GET_SELF, 0, 0, &Ipc->Self);
-    DPRINT1("[qmi] transport open, self %lu:%lu (0x%lx)\n", Ipc->Self.Node, Ipc->Self.Port, Status);
+    QC_LOG("transport open, self %lu:%lu (0x%lx)", Ipc->Self.Node, Ipc->Self.Port, Status);
 
     InitializeObjectAttributes(&ThreadAttributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
     Status = PsCreateSystemThread(&ThreadHandle,

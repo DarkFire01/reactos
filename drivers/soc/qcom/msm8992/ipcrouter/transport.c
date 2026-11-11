@@ -7,8 +7,8 @@
 
 #include "ipcrouter.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomipcrouter"
+#include <qcom/qcomdbg.h>
 
 /* Carries the owning transport on the per channel receive work item */
 typedef struct _IPC_RXWORK
@@ -37,7 +37,7 @@ IpcSmdlAcquire(
     Status = WdfIoTargetOpen(Device->SmdTarget, &OpenParams);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Cannot open \\Device\\SMD 0x%lx\n", Status);
+        QC_LOG("Cannot open \\Device\\SMD 0x%lx", Status);
         return Status;
     }
 
@@ -49,7 +49,7 @@ IpcSmdlAcquire(
                                           NULL);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("SMD Lite interface unavailable 0x%lx\n", Status);
+        QC_LOG("SMD Lite interface unavailable 0x%lx", Status);
         return Status;
     }
 
@@ -251,7 +251,7 @@ IpcXportStartAll(
                                            IpcSmdlNotify,
                                            Xport);
         if (!Xport->Channel)
-            DPRINT1("Transport %s on edge %lu did not open\n", Xport->Name, Xport->Edge);
+            QC_LOG("Transport %s on edge %lu did not open", Xport->Name, Xport->Edge);
     }
 
     return STATUS_SUCCESS;

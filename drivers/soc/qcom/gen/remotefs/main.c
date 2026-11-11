@@ -8,8 +8,8 @@
 #include "remotefs.h"
 #include <ntstrsafe.h>
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomremotefs"
+#include <qcom/qcomdbg.h>
 
 DRIVER_INITIALIZE DriverEntry;
 static EVT_WDF_DRIVER_DEVICE_ADD RfsEvtDeviceAdd;
@@ -43,9 +43,9 @@ RfsEvtPrepareHardware(
         Device->Regions[Device->RegionCount].Length = Descriptor->u.Memory.Length;
         Device->Regions[Device->RegionCount].Base =
             MmMapIoSpace(Descriptor->u.Memory.Start, Descriptor->u.Memory.Length, MmNonCached);
-        DPRINT1("[rfs] region %lu: phys 0x%I64x len 0x%lx va %p\n",
-                Device->RegionCount, Descriptor->u.Memory.Start.QuadPart,
-                Descriptor->u.Memory.Length, Device->Regions[Device->RegionCount].Base);
+        QC_LOG("region %lu: phys 0x%I64x len 0x%lx va %p",
+               Device->RegionCount, Descriptor->u.Memory.Start.QuadPart,
+               Descriptor->u.Memory.Length, Device->Regions[Device->RegionCount].Base);
         Device->RegionCount++;
     }
 
@@ -108,7 +108,7 @@ RfsOpenStorage(
 
     if (Device->FileBased)
     {
-        DPRINT1("[rfs] file based storage, no raw partition\n");
+        QC_LOG("file based storage, no raw partition");
         return STATUS_SUCCESS;
     }
 
@@ -135,12 +135,12 @@ RfsOpenStorage(
                           0);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[rfs] storage open %wZ FAILED 0x%lx\n", &Device->StoragePath, Status);
+        QC_LOG("storage open %wZ FAILED 0x%lx", &Device->StoragePath, Status);
         Device->Storage = NULL;
     }
     else
     {
-        DPRINT1("[rfs] storage %wZ open\n", &Device->StoragePath);
+        QC_LOG("storage %wZ open", &Device->StoragePath);
     }
     return STATUS_SUCCESS;
 }
@@ -160,7 +160,7 @@ RfsEvtSelfManagedIoInit(
     Status = QmiIpcCreate(&Device->Transport);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[rfs] transport create FAILED 0x%lx\n", Status);
+        QC_LOG("transport create FAILED 0x%lx", Status);
         return Status;
     }
 
@@ -173,15 +173,15 @@ RfsEvtSelfManagedIoInit(
                               Device);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("[rfs] service 0x1C register FAILED 0x%lx\n", Status);
+        QC_LOG("service 0x1C register FAILED 0x%lx", Status);
         QmiIpcDestroy(Device->Transport);
         Device->Transport = NULL;
         return Status;
     }
 
     Device->ServiceUp = TRUE;
-    DPRINT1("[rfs] service 0x1C up (file based %u, partition %lu, storage %p)\n",
-            Device->FileBased, Device->PartitionNumber, Device->Storage);
+    QC_LOG("service 0x1C up (file based %u, partition %lu, storage %p)",
+           Device->FileBased, Device->PartitionNumber, Device->Storage);
     return STATUS_SUCCESS;
 }
 

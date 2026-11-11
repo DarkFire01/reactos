@@ -7,8 +7,8 @@
 
 #include "remotefs.h"
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomremotefs"
+#include <qcom/qcomdbg.h>
 
 /*
  * Request dispatch for service 0x1C. The transport and service registration
@@ -30,8 +30,8 @@ RfsRequest(
     UNREFERENCED_PARAMETER(Request);
     UNREFERENCED_PARAMETER(Context);
 
-    DPRINT1("[rfs] request 0x%04x from %lu:%lu, %lu bytes\n",
-            MessageId, Client->Node, Client->Port, RequestLength);
+    QC_LOG("request 0x%04x from %lu:%lu, %lu bytes",
+           MessageId, Client->Node, Client->Port, RequestLength);
 
     switch (MessageId)
     {
@@ -42,12 +42,12 @@ RfsRequest(
         case RFS_MSG_CLOSE:
         case RFS_MSG_WRITE:
         case RFS_MSG_READ:
-            DPRINT1("[rfs]   0x%04x not yet served, answering failure\n", MessageId);
+            QC_LOG("  0x%04x not yet served, answering failure", MessageId);
             QmiEncodeResult(Response, QMI_RESULT_FAILURE, 0);
             return STATUS_SUCCESS;
 
         default:
-            DPRINT1("[rfs]   unknown request 0x%04x\n", MessageId);
+            QC_LOG("  unknown request 0x%04x", MessageId);
             QmiEncodeResult(Response, QMI_RESULT_FAILURE, 0);
             return STATUS_SUCCESS;
     }

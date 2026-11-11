@@ -7,8 +7,6 @@
 
 #include "smd.h"
 
-#define NDEBUG
-#include <debug.h>
 
 /* Channel type field: edge in the low byte, transfer kind above it */
 #define SMD_TYPE_EDGE_MASK          0x000000FF
@@ -232,7 +230,7 @@ SmdEnterOpening(
     SmdHalfSet(Port, Port->TxHalf, SmdFieldStateFlag, 0);
     SmdHalfSet(Port, Port->TxHalf, SmdFieldState, SMD_STATE_OPENING);
     Port->LocalState = SMD_STATE_OPENING;
-    DPRINT1("[smd] '%s' edge %lu cid %lu -> OPENING\n", Port->Name, Port->Edge, Port->ChannelId);
+    QC_LOG("'%s' edge %lu cid %lu -> OPENING", Port->Name, Port->Edge, Port->ChannelId);
 }
 
 static
@@ -270,8 +268,8 @@ SmdEnterClosed(
         SmdHalfSet(Port, Port->TxHalf, Field, 0);
     Port->LocalState = SMD_STATE_CLOSED;
     SmdRaiseStateFlag(Port);
-    DPRINT1("[smd] '%s' edge %lu cid %lu -> CLOSED (remote %lu)\n",
-            Port->Name, Port->Edge, Port->ChannelId, SmdHalfGet(Port, Port->RxHalf, SmdFieldState));
+    QC_LOG("'%s' edge %lu cid %lu -> CLOSED (remote %lu)",
+           Port->Name, Port->Edge, Port->ChannelId, SmdHalfGet(Port, Port->RxHalf, SmdFieldState));
 
     /* With the other side already gone there is nothing left to wait for */
     return SmdHalfGet(Port, Port->RxHalf, SmdFieldState) == SMD_STATE_CLOSED;
@@ -290,7 +288,7 @@ SmdEnterReset(
     SmdHalfSet(Port, Port->TxHalf, SmdFieldState, SMD_STATE_RESET);
     Port->LocalState = SMD_STATE_RESET;
     Port->RemoteState = SMD_STATE_CLOSED;
-    DPRINT1("[smd] '%s' edge %lu cid %lu -> RESET\n", Port->Name, Port->Edge, Port->ChannelId);
+    QC_LOG("'%s' edge %lu cid %lu -> RESET", Port->Name, Port->Edge, Port->ChannelId);
 }
 
 static
@@ -300,7 +298,7 @@ SmdEnterOpened(
 {
     SmdHalfSet(Port, Port->TxHalf, SmdFieldState, SMD_STATE_OPENED);
     Port->LocalState = SMD_STATE_OPENED;
-    DPRINT1("[smd] '%s' edge %lu cid %lu -> OPENED\n", Port->Name, Port->Edge, Port->ChannelId);
+    QC_LOG("'%s' edge %lu cid %lu -> OPENED", Port->Name, Port->Edge, Port->ChannelId);
     SmdNotify(Port, QCOM_SMDL_EVENT_OPEN);
 }
 
@@ -559,8 +557,8 @@ SmdRemoteStateInput(
     if (New == Previous)
         return SMD_INPUT_NONE;
 
-    DPRINT1("[smd] '%s' edge %lu remote state %lu -> %lu (local %lu)\n",
-            Port->Name, Port->Edge, Previous, New, Port->LocalState);
+    QC_LOG("'%s' edge %lu remote state %lu -> %lu (local %lu)",
+           Port->Name, Port->Edge, Previous, New, Port->LocalState);
 
     if (New == SMD_STATE_CLOSED || New == SMD_STATE_CLOSING)
         return SMD_INPUT_REMOTE_CLOSE;
@@ -691,7 +689,7 @@ SmdResetHost(
     PSMD_PORT Port;
     BOOLEAN WasOpen;
 
-    DPRINT1("[smd] remote host %lu RESET, tearing down its channels\n", Host);
+    QC_LOG("remote host %lu RESET, tearing down its channels", Host);
     SmdRLockAcquire(&Target->Lock);
 
     SmemMutexReleaseHost(Device, Host);
@@ -855,14 +853,14 @@ SmdlOpen(
 
     if (!Device || !Device->SmemReady || !Name || !Name[0] || Edge >= QCOM_SMD_EDGE_COUNT)
     {
-        DPRINT1("[smd] open '%s' edge %lu rejected (device %p smem ready %u)\n",
-                Name ? Name : "(null)", Edge, Device, Device ? Device->SmemReady : 0);
+        QC_LOG("open '%s' edge %lu rejected (device %p smem ready %u)",
+               Name ? Name : "(null)", Edge, Device, Device ? Device->SmemReady : 0);
         return NULL;
     }
 
     if (SmdEdges[Edge].HostA != QCOM_HOST_APPS && SmdEdges[Edge].HostB != QCOM_HOST_APPS)
     {
-        DPRINT1("[smd] open '%s': edge %lu does not involve apps\n", Name, Edge);
+        QC_LOG("open '%s': edge %lu does not involve apps", Name, Edge);
         return NULL;
     }
 
@@ -870,7 +868,7 @@ SmdlOpen(
         FifoSize = SMD_DEFAULT_FIFO_SIZE;
     else if ((FifoSize & 31) || FifoSize < SMD_MIN_FIFO_SIZE || FifoSize > SMD_MAX_FIFO_SIZE)
     {
-        DPRINT1("[smd] open '%s': bad fifo size 0x%lx\n", Name, FifoSize);
+        QC_LOG("open '%s': bad fifo size 0x%lx", Name, FifoSize);
         return NULL;
     }
 
@@ -901,13 +899,13 @@ SmdlOpen(
     if (!NT_SUCCESS(Status))
     {
         SmdRLockRelease(&Host->Lock);
-        DPRINT1("[smd] open '%s' edge %lu FAILED 0x%lx\n", Name, Edge, Status);
+        QC_LOG("open '%s' edge %lu FAILED 0x%lx", Name, Edge, Status);
         ExFreePoolWithTag(Port, SMD_TAG);
         return NULL;
     }
 
-    DPRINT1("[smd] open '%s' edge %lu host %lu cid %lu fifo 0x%lx %s\n",
-            Name, Edge, Port->RemoteHost, Port->ChannelId, FifoSize, Port->Stream ? "stream" : "packet");
+    QC_LOG("open '%s' edge %lu host %lu cid %lu fifo 0x%lx %s",
+           Name, Edge, Port->RemoteHost, Port->ChannelId, FifoSize, Port->Stream ? "stream" : "packet");
 
     /* Our modem signals are up before the remote ever sees the channel opening */
     SmdHalfSet(Port, Port->TxHalf, SmdFieldDsr, 1);
@@ -933,7 +931,7 @@ SmdlClose(
         return -1;
 
     Host = &Port->Device->Hosts[Port->RemoteHost];
-    DPRINT1("[smd] close '%s' edge %lu (local %lu)\n", Port->Name, Port->Edge, Port->LocalState);
+    QC_LOG("close '%s' edge %lu (local %lu)", Port->Name, Port->Edge, Port->LocalState);
     SmdRLockAcquire(&Host->Lock);
 
     Port->CloseRequested = TRUE;
@@ -1383,7 +1381,7 @@ SmdInitialize(
     ULONG Size = sizeof(ULONG) * 8;
 
     if (!SmemIfVersionSet(SMEM_ITEM_SMD_VERSION, SMD_PROTOCOL_VERSION, 0xFFFFFFFF))
-        DPRINT1("SMD protocol version disagrees with a remote processor\n");
+        QC_LOG("SMD protocol version disagrees with a remote processor");
 
     /* Tell the remotes which optional features the apps side understands */
     if (SmemAllocate(Device, QCOM_HOST_GLOBAL, SMEM_ITEM_SMD_FEATURES, &Size, 0, (PVOID *)&Features) == SMEM_OK)

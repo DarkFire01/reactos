@@ -7,8 +7,6 @@
 
 #include "smd.h"
 
-#define NDEBUG
-#include <debug.h>
 
 #define SMEM_ALIGN(Value, To)       (((Value) + (To) - 1) & ~((To) - 1))
 
@@ -464,7 +462,7 @@ SmemLoadPartitions(
 
     if (Table->Version != 1 || Table->NumEntries > SMEM_PTABLE_MAX_ENTRIES)
     {
-        DPRINT1("Unsupported partition table v%lu with %lu entries\n", Table->Version, Table->NumEntries);
+        QC_LOG("Unsupported partition table v%lu with %lu entries", Table->Version, Table->NumEntries);
         return;
     }
 
@@ -553,8 +551,8 @@ SmemInitialize(
 {
     if (SmemHeapInfo(Device)->Initialized != 1)
     {
-        DPRINT1("[smd] SMEM heap was not set up by the boot loader (initialized=%lu)\n",
-                SmemHeapInfo(Device)->Initialized);
+        QC_LOG("SMEM heap was not set up by the boot loader (initialized=%lu)",
+               SmemHeapInfo(Device)->Initialized);
         return STATUS_DEVICE_NOT_READY;
     }
 
@@ -562,13 +560,13 @@ SmemInitialize(
 
     if (!SmemVersionCheck(Device, SMEM_ITEM_VERSION, SMEM_APPS_VERSION, SMEM_VERSION_MASK))
     {
-        DPRINT1("[smd] SMEM version mismatch\n");
+        QC_LOG("SMEM version mismatch");
         Device->SmemReady = FALSE;
         return STATUS_REVISION_MISMATCH;
     }
 
     SmemLoadPartitions(Device);
-    DPRINT1("[smd] SMEM ready\n");
+    QC_LOG("SMEM ready");
     return STATUS_SUCCESS;
 }
 

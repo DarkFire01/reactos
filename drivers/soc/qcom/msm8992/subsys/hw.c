@@ -8,8 +8,8 @@
 #include "subsys.h"
 #include <ntstrsafe.h>
 
-#define NDEBUG
-#include <debug.h>
+#define QCDBG_COMPONENT "qcomsubsys"
+#include <qcom/qcomdbg.h>
 
 /* CBCR layout, bit0 enables the branch, bit31 reports the branch stopped */
 #define SS_CBCR_ENABLE              0x00000001
@@ -103,7 +103,7 @@ SsMapRegisters(
         Device->Regs[i] = MmMapIoSpace(Address, sizeof(ULONG), MmNonCached);
         if (!Device->Regs[i])
         {
-            DPRINT1("[subsys] map of reg %lu (0x%08lx) FAILED\n", i, SsRegPhys[i]);
+            QC_LOG("map of reg %lu (0x%08lx) FAILED", i, SsRegPhys[i]);
             SsUnmapRegisters(Device);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
@@ -113,12 +113,12 @@ SsMapRegisters(
     Device->Rmb = MmMapIoSpace(Address, QCOM_RMB_SIZE, MmNonCached);
     if (!Device->Rmb)
     {
-        DPRINT1("[subsys] map of RMB 0x%08lx FAILED\n", SS_RMB_PHYS);
+        QC_LOG("map of RMB 0x%08lx FAILED", SS_RMB_PHYS);
         SsUnmapRegisters(Device);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    DPRINT1("[subsys] mapped %lu MSS regs, RMB at %p\n", (ULONG)SsRegCount, Device->Rmb);
+    QC_LOG("mapped %lu MSS regs, RMB at %p", (ULONG)SsRegCount, Device->Rmb);
     return STATUS_SUCCESS;
 }
 
@@ -150,7 +150,7 @@ SsArmWatchdog(
 {
     WdfInterruptEnable(Device->Watchdog);
     InterlockedExchange(&Device->WatchdogArmed, 1);
-    DPRINT1("[subsys] watchdog armed\n");
+    QC_LOG("watchdog armed");
 }
 
 VOID
@@ -159,7 +159,7 @@ SsMaskWatchdog(
 {
     InterlockedExchange(&Device->WatchdogArmed, 0);
     WdfInterruptDisable(Device->Watchdog);
-    DPRINT1("[subsys] watchdog masked\n");
+    QC_LOG("watchdog masked");
 }
 
 /* Fills one MSA record and hands it to the image loader, no output expected */
@@ -175,13 +175,13 @@ SsSendMsa(
 
     if (Device->Pil == NULL)
     {
-        DPRINT1("[subsys] PIL MSA: no PIL target\n");
+        QC_LOG("PIL MSA: no PIL target");
         return STATUS_DEVICE_NOT_CONNECTED;
     }
 
     WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&InDesc, Buffer, Length);
 
-    DPRINT1("[subsys] PIL MSA type %lu (%lu bytes) ->\n", ((PQCOM_PIL_MSA_HEADER)Buffer)->Type, Length);
+    QC_LOG("PIL MSA type %lu (%lu bytes) ->", ((PQCOM_PIL_MSA_HEADER)Buffer)->Type, Length);
     Status = WdfIoTargetSendIoctlSynchronously(Device->Pil,
                                                NULL,
                                                IOCTL_QCOM_PIL_MSA,
@@ -189,7 +189,7 @@ SsSendMsa(
                                                NULL,
                                                NULL,
                                                NULL);
-    DPRINT1("[subsys] PIL MSA type %lu <- 0x%lx\n", ((PQCOM_PIL_MSA_HEADER)Buffer)->Type, Status);
+    QC_LOG("PIL MSA type %lu <- 0x%lx", ((PQCOM_PIL_MSA_HEADER)Buffer)->Type, Status);
     return Status;
 }
 
@@ -259,7 +259,7 @@ SsSendUnload(
                                                NULL,
                                                NULL,
                                                NULL);
-    DPRINT1("[subsys] PIL unload {%08lx-...} -> 0x%lx\n", Local.Data1, Status);
+    QC_LOG("PIL unload {%08lx-...} -> 0x%lx", Local.Data1, Status);
     return Status;
 }
 
@@ -297,12 +297,12 @@ SsQ6PowerUp(
             break;
 
         default:
-            DPRINT1("[subsys] No Q6 power up for chip family 0x%lx\n", Device->ChipFamily);
+            QC_LOG("No Q6 power up for chip family 0x%lx", Device->ChipFamily);
             return;
     }
 
-    DPRINT1("[subsys] Q6 powered: PWR_CTL=0x%08lx RESET=0x%08lx GFMUX=0x%08lx\n",
-            SsRead(Device, SsRegQ6PwrCtl), SsRead(Device, SsRegQ6Reset), SsRead(Device, SsRegQ6GfmuxCtl));
+    QC_LOG("Q6 powered: PWR_CTL=0x%08lx RESET=0x%08lx GFMUX=0x%08lx",
+           SsRead(Device, SsRegQ6PwrCtl), SsRead(Device, SsRegQ6Reset), SsRead(Device, SsRegQ6GfmuxCtl));
 }
 
 /* PBL hands over once its status leaves the value seen at reset */
@@ -325,14 +325,14 @@ SsWaitPbl(
         Current = SsReadRmb(Device, QCOM_RMB_PBL_STATUS);
         if (Current != First)
         {
-            DPRINT1("[subsys] PBL status 0x%08lx -> 0x%08lx after %lu ms\n", First, Current, Waited + SS_RMB_POLL_MS);
+            QC_LOG("PBL status 0x%08lx -> 0x%08lx after %lu ms", First, Current, Waited + SS_RMB_POLL_MS);
             if ((LONG)Current < 0)
                 return STATUS_UNSUCCESSFUL;
             return STATUS_SUCCESS;
         }
     }
 
-    DPRINT1("[subsys] PBL status TIMEOUT, stuck at 0x%08lx\n", First);
+    QC_LOG("PBL status TIMEOUT, stuck at 0x%08lx", First);
     return STATUS_UNSUCCESSFUL;
 }
 
@@ -355,12 +355,12 @@ SsWaitMba(
         Current = SsReadRmb(Device, QCOM_RMB_MBA_STATUS);
         if ((LONG)Current > 0)
         {
-            DPRINT1("[subsys] MBA status 0x%08lx after %lu ms\n", Current, Waited + SS_RMB_POLL_MS);
+            QC_LOG("MBA status 0x%08lx after %lu ms", Current, Waited + SS_RMB_POLL_MS);
             return STATUS_SUCCESS;
         }
     }
 
-    DPRINT1("[subsys] MBA status TIMEOUT, last 0x%08lx\n", Current);
+    QC_LOG("MBA status TIMEOUT, last 0x%08lx", Current);
     return STATUS_UNSUCCESSFUL;
 }
 
@@ -376,11 +376,11 @@ SsBringUpMba(
 
     if (Device->Pil == NULL)
     {
-        DPRINT1("[subsys] MBA bring up: no PIL target\n");
+        QC_LOG("MBA bring up: no PIL target");
         return STATUS_DEVICE_NOT_CONNECTED;
     }
 
-    DPRINT1("[subsys] MBA bring up begin\n");
+    QC_LOG("MBA bring up begin");
     SsArmWatchdog(Device);
 
     Voted = (Device->ChipFamily == SS_FAMILY_8992 || Device->ChipFamily == SS_FAMILY_8994);
@@ -389,22 +389,22 @@ SsBringUpMba(
     SsWrite(Device, SsRegMssRestart, 0);
     KeStallExecutionProcessor(2);
     SsWrite(Device, SsRegMssQ6AxiCbcr, SsRead(Device, SsRegMssQ6AxiCbcr) | SS_CBCR_ENABLE);
-    DPRINT1("[subsys]   MSS reset released, Q6 AXI CBCR=0x%08lx\n", SsRead(Device, SsRegMssQ6AxiCbcr));
+    QC_LOG("  MSS reset released, Q6 AXI CBCR=0x%08lx", SsRead(Device, SsRegMssQ6AxiCbcr));
 
     ClockDone = FALSE;
     if (Voted)
     {
         SsWrite(Device, SsRegMssClockVote, SsRead(Device, SsRegMssClockVote) | SS_MSS_CLOCK_VOTE);
         ClockDone = SsPowerVote(Device, SS_VOTE_MSS_CLOCK);
-        DPRINT1("[subsys]   MSS clock vote=0x%08lx, power engine took AHB: %u\n",
-                SsRead(Device, SsRegMssClockVote), ClockDone);
+        QC_LOG("  MSS clock vote=0x%08lx, power engine took AHB: %u",
+               SsRead(Device, SsRegMssClockVote), ClockDone);
     }
 
     /* The power engine owns the config AHB clock once the vote lands */
     if (!ClockDone)
     {
         SsWrite(Device, SsRegMssCfgAhbCbcr, SsRead(Device, SsRegMssCfgAhbCbcr) | SS_CBCR_ENABLE);
-        DPRINT1("[subsys]   MSS cfg AHB CBCR=0x%08lx\n", SsRead(Device, SsRegMssCfgAhbCbcr));
+        QC_LOG("  MSS cfg AHB CBCR=0x%08lx", SsRead(Device, SsRegMssCfgAhbCbcr));
     }
 
     Status = SsSendMsaRmb(Device);
@@ -419,8 +419,8 @@ SsBringUpMba(
 
     Pbl = SsReadRmb(Device, QCOM_RMB_PBL_STATUS);
     Mba = SsReadRmb(Device, QCOM_RMB_MBA_STATUS);
-    DPRINT1("[subsys]   RMB: MBA_IMAGE=0x%08lx PBL=0x%08lx MBA=0x%08lx\n",
-            SsReadRmb(Device, QCOM_RMB_MBA_IMAGE), Pbl, Mba);
+    QC_LOG("  RMB: MBA_IMAGE=0x%08lx PBL=0x%08lx MBA=0x%08lx",
+           SsReadRmb(Device, QCOM_RMB_MBA_IMAGE), Pbl, Mba);
 
     if (Pbl != 1)
     {
@@ -447,15 +447,15 @@ SsLoadModemImage(
 
     if (Device->MsaMba.Header.Type != QCOM_PIL_MSA_LOAD_MBA)
     {
-        DPRINT1("[subsys] modem image: MBA record not loaded (type %lu)\n", Device->MsaMba.Header.Type);
+        QC_LOG("modem image: MBA record not loaded (type %lu)", Device->MsaMba.Header.Type);
         return STATUS_INVALID_DEVICE_STATE;
     }
 
     Status = SsSendMsaModem(Device);
-    DPRINT1("[subsys]   RMB after modem load: CMD=0x%08lx MBA=0x%08lx META=0x%08lx\n",
-            SsReadRmb(Device, QCOM_RMB_MBA_COMMAND),
-            SsReadRmb(Device, QCOM_RMB_MBA_STATUS),
-            SsReadRmb(Device, QCOM_RMB_PMI_META_DATA));
+    QC_LOG("  RMB after modem load: CMD=0x%08lx MBA=0x%08lx META=0x%08lx",
+           SsReadRmb(Device, QCOM_RMB_MBA_COMMAND),
+           SsReadRmb(Device, QCOM_RMB_MBA_STATUS),
+           SsReadRmb(Device, QCOM_RMB_PMI_META_DATA));
     return Status;
 }
 
@@ -490,7 +490,7 @@ SsHaltPort(
         KeDelayExecutionThread(KernelMode, FALSE, &Delay);
     }
 
-    DPRINT1("[subsys] AXI halt port %lu: ack 0x%lx idle 0x%lx\n", (ULONG)Req, SsRead(Device, Ack), SsRead(Device, Idle));
+    QC_LOG("AXI halt port %lu: ack 0x%lx idle 0x%lx", (ULONG)Req, SsRead(Device, Ack), SsRead(Device, Idle));
 
     SsWrite(Device, Req, 0);
 }
@@ -510,7 +510,7 @@ SsAssertReset(
 {
     SsWrite(Device, SsRegMssRestart, 1);
     KeStallExecutionProcessor(1);
-    DPRINT1("[subsys] MSS reset asserted\n");
+    QC_LOG("MSS reset asserted");
 }
 
 static
@@ -536,7 +536,7 @@ SsClocksOff(
     if (Device->ChipFamily == SS_FAMILY_8992 || Device->ChipFamily == SS_FAMILY_8994)
     {
         SsWrite(Device, SsRegMssClockVote, SsRead(Device, SsRegMssClockVote) & ~SS_MSS_CLOCK_VOTE);
-        DPRINT1("[subsys] MSS clock vote dropped, vote=0x%08lx\n", SsRead(Device, SsRegMssClockVote));
+        QC_LOG("MSS clock vote dropped, vote=0x%08lx", SsRead(Device, SsRegMssClockVote));
         return;
     }
 
