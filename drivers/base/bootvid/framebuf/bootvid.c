@@ -14,9 +14,12 @@
 /* Include the Boot-time (POST) display discovery helper functions */
 #include <drivers/bootvid/framebuf.c>
 
-/* Scaling of the bootvid 640x480 default virtual screen to the larger video framebuffer */
-#define SCALING_SUPPORT
-#define SCALING_PROPORTIONAL
+/*
+ * Scaling of the bootvid 640x480 default virtual screen to the larger video
+ * framebuffer. Nearest-neighbour fractional scaling enlarges the image to fill
+ * the panel while keeping its aspect ratio, so it is as big as the screen
+ * allows instead of snapping down to the nearest whole multiple.
+ */
 
 /* Keep borders black or controlled with palette */
 // #define COLORED_BORDERS
@@ -27,9 +30,13 @@
 #define BB_PIXEL(x, y) \
     ((PUCHAR)BackBuffer + (y) * SCREEN_WIDTH + (x))
 
+/* Destination edge of each source column and row within the scaled image */
+static ULONG DstColEdge[SCREEN_WIDTH + 1];
+static ULONG DstRowEdge[SCREEN_HEIGHT + 1];
+
 #define FB_PIXEL(x, y) \
-    ((PUCHAR)FrameBufferStart + (PanV + VidpYScale * (y)) * BytesPerScanLine \
-                              + (PanH + VidpXScale * (x)) * BytesPerPixel)
+    ((PUCHAR)FrameBufferStart + (PanV + DstRowEdge[y]) * BytesPerScanLine \
+                              + (PanH + DstColEdge[x]) * BytesPerPixel)
 
 static ULONG_PTR FrameBufferStart = 0;
 static ULONG FrameBufferSize;
@@ -38,13 +45,7 @@ static UCHAR BytesPerPixel;
 static PUCHAR BackBuffer = NULL;
 static SIZE_T BackBufferSize;
 
-#ifdef SCALING_SUPPORT
-static USHORT VidpXScale = 1;
-static USHORT VidpYScale = 1;
-#else
-#define VidpXScale 1
-#define VidpYScale 1
-#endif
+static ULONG ScaledWidth, ScaledHeight;
 static ULONG PanH, PanV;
 
 static RGBQUAD CachedPalette[BV_MAX_COLORS];
@@ -64,15 +65,18 @@ DrawBackBufferRun(
     _In_ ULONG Count)
 {
     PUCHAR Line = FB_PIXEL(Left, Top);
+    ULONG Height = DstRowEdge[Top + 1] - DstRowEdge[Top];
 
-    for (ULONG i = VidpYScale; i > 0; --i, Line += BytesPerScanLine)
+    for (ULONG i = Height; i > 0; --i, Line += BytesPerScanLine)
     {
         PUCHAR Back = BB_PIXEL(Left, Top);
         PULONG Pixel = (PULONG)Line;
         for (ULONG x = 0; x < Count; ++x, ++Back)
         {
-            for (ULONG j = VidpXScale; j > 0; --j)
-                *Pixel++ = CachedPalette[*Back];
+            ULONG Width = DstColEdge[Left + x + 1] - DstColEdge[Left + x];
+            ULONG Value = CachedPalette[*Back];
+            for (ULONG j = Width; j > 0; --j)
+                *Pixel++ = Value;
         }
     }
 }
@@ -92,7 +96,7 @@ ApplyPalette(VOID)
     }
 
     /* Left border */
-    for (y = 0; y < VidpYScale * SCREEN_HEIGHT; ++y)
+    for (y = 0; y < ScaledHeight; ++y)
     {
         // Frame = (PULONG)(FrameBufferStart + FB_OFFSET(-(LONG)PanH, y));
         Frame = (PULONG)(FrameBufferStart + (PanV + y) * BytesPerScanLine);
@@ -109,10 +113,10 @@ ApplyPalette(VOID)
 
 #ifdef COLORED_BORDERS
     /* Right border */
-    for (y = 0; y < VidpYScale * SCREEN_HEIGHT; ++y)
+    for (y = 0; y < ScaledHeight; ++y)
     {
         // Frame = (PULONG)(FrameBufferStart + FB_OFFSET(SCREEN_WIDTH, y));
-        Frame = (PULONG)(FrameBufferStart + (PanV + y) * BytesPerScanLine + (PanH + VidpXScale * SCREEN_WIDTH) * BytesPerPixel);
+        Frame = (PULONG)(FrameBufferStart + (PanV + y) * BytesPerScanLine + (PanH + ScaledWidth) * BytesPerPixel);
         for (x = 0; x < PanH; ++x)
         {
             *Frame++ = CachedPalette[BV_COLOR_BLACK];
@@ -121,7 +125,7 @@ ApplyPalette(VOID)
 
     /* Bottom border */
     // Frame = (PULONG)(FrameBufferStart + FB_OFFSET(-(LONG)PanH, SCREEN_HEIGHT));
-    Frame = (PULONG)(FrameBufferStart + (PanV + VidpYScale * SCREEN_HEIGHT) * BytesPerScanLine);
+    Frame = (PULONG)(FrameBufferStart + (PanV + ScaledHeight) * BytesPerScanLine);
     for (x = 0; x < PanV * ScreenWidth; ++x)
     {
         *Frame++ = CachedPalette[BV_COLOR_BLACK];
@@ -274,23 +278,25 @@ VidInitialize(
         }
     }
 
-#ifdef SCALING_SUPPORT
-    /* Compute autoscaling; only integer (not fractional) scaling is supported */
-    VidpXScale = ScreenWidth / SCREEN_WIDTH;
-    VidpYScale = ScreenHeight / SCREEN_HEIGHT;
-    ASSERT(VidpXScale >= 1);
-    ASSERT(VidpYScale >= 1);
-#ifdef SCALING_PROPORTIONAL
-    VidpXScale = min(VidpXScale, VidpYScale);
-    VidpYScale = VidpXScale;
-#endif
-    DPRINT1("Scaling X = %hu, Y = %hu\n", VidpXScale, VidpYScale);
-#endif // SCALING_SUPPORT
+    /*
+     * Nearest-neighbour stretch: fill the whole panel on both axes. Aspect ratio
+     * is not kept, so text is a little taller than wide on a portrait screen, but
+     * the boot log uses the entire display instead of a 4:3 band with black bars.
+     * The edge tables map each source pixel onto its destination run per axis.
+     */
+    ScaledWidth = ScreenWidth;
+    ScaledHeight = ScreenHeight;
 
-    /* Calculate left/right and top/bottom border values
-     * to keep the displayed area centered on the screen */
-    PanH = (ScreenWidth - VidpXScale * SCREEN_WIDTH) / 2;
-    PanV = (ScreenHeight - VidpYScale * SCREEN_HEIGHT) / 2;
+    for (ULONG x = 0; x <= SCREEN_WIDTH; ++x)
+        DstColEdge[x] = (ULONG)((ULONGLONG)x * ScaledWidth / SCREEN_WIDTH);
+    for (ULONG y = 0; y <= SCREEN_HEIGHT; ++y)
+        DstRowEdge[y] = (ULONG)((ULONGLONG)y * ScaledHeight / SCREEN_HEIGHT);
+
+    DPRINT1("Scaled image %lux%lu in %lux%lu\n", ScaledWidth, ScaledHeight, ScreenWidth, ScreenHeight);
+
+    /* The stretched image already spans the screen, so no borders */
+    PanH = (ScreenWidth - ScaledWidth) / 2;
+    PanV = (ScreenHeight - ScaledHeight) / 2;
     DPRINT1("Borders X = %lu, Y = %lu\n", PanH, PanV);
 
     /* Reset the video mode if requested */
@@ -355,13 +361,16 @@ SetPixel(
 {
     PUCHAR Back = BB_PIXEL(Left, Top);
     PULONG Frame = (PULONG)FB_PIXEL(Left, Top);
+    ULONG Width = DstColEdge[Left + 1] - DstColEdge[Left];
+    ULONG Height = DstRowEdge[Top + 1] - DstRowEdge[Top];
+    ULONG Value = CachedPalette[Color];
 
     *Back = Color;
-    for (ULONG i = VidpYScale; i > 0; --i)
+    for (ULONG i = Height; i > 0; --i)
     {
         PULONG Pixel = Frame;
-        for (ULONG j = VidpXScale; j > 0; --j)
-            *Pixel++ = CachedPalette[Color];
+        for (ULONG j = Width; j > 0; --j)
+            *Pixel++ = Value;
         Frame = (PULONG)((ULONG_PTR)Frame + BytesPerScanLine);
     }
 }
