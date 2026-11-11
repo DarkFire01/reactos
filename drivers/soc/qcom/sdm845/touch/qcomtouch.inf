@@ -1,0 +1,52 @@
+; QCOMTOUCH.INF
+
+; Installation file for the Synaptics RMI4 touch screen of Qualcomm SDM845 phones
+
+[Version]
+Signature = "$Windows NT$"
+Class = Mouse
+ClassGuid = {4D36E96F-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/11/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcomtouch.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%Mfg% = Mfg
+
+[Mfg]
+%QCOMTOUCH.DeviceDesc% = QCOMTOUCH_Device, ACPI\QCOM0029
+
+[QCOMTOUCH_Device.NT]
+CopyFiles = QCOMTOUCH_CopyFiles
+
+[QCOMTOUCH_CopyFiles]
+qcomtouch.sys
+
+[QCOMTOUCH_Device.NT.Services]
+AddService = qcomtouch, 0x00000002, QCOMTOUCH_Service
+
+[QCOMTOUCH_Service]
+DisplayName    = %QCOMTOUCH.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcomtouch.sys
+LoadOrderGroup = Pointer Port
+
+[Strings]
+ReactOS = "ReactOS Project"
+Mfg = "Synaptics"
+DiskId1 = "ReactOS Installation Disk"
+QCOMTOUCH.DeviceDesc = "Synaptics RMI4 Touch Screen"
+QCOMTOUCH.ServiceDesc = "Qualcomm RMI4 Touch Screen"

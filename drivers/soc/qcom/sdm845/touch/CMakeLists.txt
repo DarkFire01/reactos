@@ -11,6 +11,8 @@ list(APPEND SOURCE
 
 add_library(qcomtouch MODULE ${SOURCE} qcomtouch.rc)
 set_module_type(qcomtouch kernelmodedriver)
-target_link_libraries(qcomtouch dmilib libcntpr)
+target_link_libraries(qcomtouch qcompnp dmilib libcntpr)
 add_importlibs(qcomtouch qcomdbg qcomgeni qcomtlmm qcomrpmh ntoskrnl hal)
 add_cd_file(TARGET qcomtouch DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_driver_inf(qcomtouch qcomtouch.inf)
+add_registry_inf(qcomtouch_reg.inf)
