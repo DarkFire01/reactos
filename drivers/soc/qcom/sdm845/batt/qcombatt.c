@@ -8,6 +8,7 @@
 #include <ntddk.h>
 #include <batclass.h>
 #include <qcom/geniif.h>
+#include <qcom/qcompnp.h>
 #include <wmistr.h>
 #include <wmiguid.h>
 #include <wmidata.h>
@@ -29,7 +30,7 @@ static const GUID QcBattSmbiosGuid = SMBIOS_DATA_GUID;
 
 typedef struct _QCBATT_DEVICE
 {
-    PDEVICE_OBJECT DeviceObject;
+    QCOM_PNP_DEVICE Pnp;
     PQCOM_GENI_I2C I2c;
     PVOID ClassData;
     PKTHREAD Thread;
@@ -37,8 +38,6 @@ typedef struct _QCBATT_DEVICE
     ULONG Percent;
     ULONG MilliVolts;
 } QCBATT_DEVICE, *PQCBATT_DEVICE;
-
-static UNICODE_STRING QcBattDeviceName = RTL_CONSTANT_STRING(L"\\Device\\QcomBattery");
 
 static
 BOOLEAN
@@ -260,81 +259,59 @@ QcBattDeviceControl(
     _Inout_ PIRP Irp)
 {
     PQCBATT_DEVICE Device = DeviceObject->DeviceExtension;
+    NTSTATUS Status;
 
-    return BatteryClassIoctl(Device->ClassData, Irp);
+    if (!Device->ClassData)
+        return QcPnpPassDown(&Device->Pnp, Irp);
+
+    /* The class leaves anything that is not a battery request for us to send on */
+    Status = BatteryClassIoctl(Device->ClassData, Irp);
+    if (Status == STATUS_NOT_SUPPORTED)
+        return QcPnpPassDown(&Device->Pnp, Irp);
+
+    return Status;
 }
 
-static
-NTSTATUS
-NTAPI
-QcBattCreateClose(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP Irp)
-{
-    UNREFERENCED_PARAMETER(DeviceObject);
-
-    Irp->IoStatus.Status = STATUS_SUCCESS;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
-}
-
+/* Safe on a half started device, every piece is torn down only if it exists */
 static
 VOID
-NTAPI
-QcBattUnload(
-    _In_ PDRIVER_OBJECT DriverObject)
+QcBattStop(
+    _In_ PQCBATT_DEVICE Device)
 {
-    PDEVICE_OBJECT DeviceObject = DriverObject->DeviceObject;
-    PQCBATT_DEVICE Device;
-
-    if (!DeviceObject)
-        return;
-
-    Device = DeviceObject->DeviceExtension;
     if (Device->Thread)
     {
         KeSetEvent(&Device->StopEvent, IO_NO_INCREMENT, FALSE);
         KeWaitForSingleObject(Device->Thread, Executive, KernelMode, FALSE, NULL);
         ObDereferenceObject(Device->Thread);
+        Device->Thread = NULL;
     }
     if (Device->ClassData)
+    {
         BatteryClassUnload(Device->ClassData);
+        Device->ClassData = NULL;
+    }
     if (Device->I2c)
+    {
         QcGeniI2cClose(Device->I2c);
-
-    IoDeleteDevice(DeviceObject);
+        Device->I2c = NULL;
+    }
 }
 
+static
 NTSTATUS
-NTAPI
-DriverEntry(
-    _In_ PDRIVER_OBJECT DriverObject,
-    _In_ PUNICODE_STRING RegistryPath)
+QcBattStart(
+    _In_ PQCBATT_DEVICE Device)
 {
     QCOM_GENI_I2C_CONFIG Config;
     BATTERY_MINIPORT_INFO Miniport;
-    PDEVICE_OBJECT DeviceObject;
-    PQCBATT_DEVICE Device;
     HANDLE Thread;
     NTSTATUS Status;
 
-    UNREFERENCED_PARAMETER(RegistryPath);
-
+    /* The ACPI node is the PMIC gauge, this board routes the cell to a BQ27441 instead */
     if (!QcBattIsSupportedBoard())
         return STATUS_NO_SUCH_DEVICE;
 
-    Status = IoCreateDevice(DriverObject, sizeof(QCBATT_DEVICE), &QcBattDeviceName,
-                            FILE_DEVICE_BATTERY, 0, FALSE, &DeviceObject);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    DeviceObject->Flags |= DO_BUFFERED_IO;
-
-    Device = DeviceObject->DeviceExtension;
-    RtlZeroMemory(Device, sizeof(*Device));
-    Device->DeviceObject = DeviceObject;
-    KeInitializeEvent(&Device->StopEvent, NotificationEvent, FALSE);
+    KeClearEvent(&Device->StopEvent);
 
     /* The fuel gauge hangs off QUPv3 wrap1 S2 at 100 kHz */
     RtlZeroMemory(&Config, sizeof(Config));
@@ -348,10 +325,7 @@ DriverEntry(
 
     Status = QcGeniI2cOpen(&Config, &Device->I2c);
     if (!NT_SUCCESS(Status))
-    {
-        IoDeleteDevice(DeviceObject);
         return Status;
-    }
 
     QcBattRefresh(Device);
     QC_LOG("fuel gauge ready, %lu%% at %lu mV", Device->Percent, Device->MilliVolts);
@@ -365,29 +339,124 @@ DriverEntry(
     Miniport.QueryStatus = QcBattQueryStatus;
     Miniport.SetStatusNotify = QcBattSetStatusNotify;
     Miniport.DisableStatusNotify = QcBattDisableStatusNotify;
-    Miniport.Pdo = DeviceObject;
-    Miniport.DeviceName = &QcBattDeviceName;
+
+    /* A real PDO lets the class publish GUID_DEVICE_BATTERY for the power UI */
+    Miniport.Pdo = Device->Pnp.Pdo;
 
     Status = BatteryClassInitializeDevice(&Miniport, &Device->ClassData);
     if (!NT_SUCCESS(Status))
     {
-        QcGeniI2cClose(Device->I2c);
-        IoDeleteDevice(DeviceObject);
+        QcBattStop(Device);
         return Status;
     }
 
-    DriverObject->MajorFunction[IRP_MJ_CREATE] = QcBattCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_CLOSE] = QcBattCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = QcBattDeviceControl;
-    DriverObject->DriverUnload = QcBattUnload;
-
     Status = PsCreateSystemThread(&Thread, THREAD_ALL_ACCESS, NULL, NULL, NULL, QcBattPollThread, Device);
-    if (NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status))
     {
-        ObReferenceObjectByHandle(Thread, THREAD_ALL_ACCESS, NULL, KernelMode, (PVOID *)&Device->Thread, NULL);
-        ZwClose(Thread);
+        QcBattStop(Device);
+        return Status;
     }
+    ObReferenceObjectByHandle(Thread, THREAD_ALL_ACCESS, NULL, KernelMode, (PVOID *)&Device->Thread, NULL);
+    ZwClose(Thread);
 
-    DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NTAPI
+QcBattDispatchPnp(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp)
+{
+    PQCBATT_DEVICE Device = DeviceObject->DeviceExtension;
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    NTSTATUS Status;
+
+    switch (Stack->MinorFunction)
+    {
+        case IRP_MN_START_DEVICE:
+            Status = QcPnpForwardAndWait(&Device->Pnp, Irp);
+            if (NT_SUCCESS(Status))
+                Status = QcBattStart(Device);
+            return QcPnpComplete(Irp, Status);
+
+        /* The gauge has no resources to move, so a rebalance is refused */
+        case IRP_MN_QUERY_STOP_DEVICE:
+            return QcPnpComplete(Irp, STATUS_UNSUCCESSFUL);
+
+        case IRP_MN_STOP_DEVICE:
+        case IRP_MN_SURPRISE_REMOVAL:
+            QcBattStop(Device);
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            return QcPnpPassDown(&Device->Pnp, Irp);
+
+        case IRP_MN_REMOVE_DEVICE:
+            QcBattStop(Device);
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            Status = QcPnpPassDown(&Device->Pnp, Irp);
+            QcPnpDeleteDevice(&Device->Pnp);
+            return Status;
+
+        case IRP_MN_QUERY_REMOVE_DEVICE:
+        case IRP_MN_CANCEL_REMOVE_DEVICE:
+        case IRP_MN_CANCEL_STOP_DEVICE:
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            return QcPnpPassDown(&Device->Pnp, Irp);
+
+        default:
+            return QcPnpPassDown(&Device->Pnp, Irp);
+    }
+}
+
+static
+NTSTATUS
+NTAPI
+QcBattAddDevice(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PDEVICE_OBJECT Pdo)
+{
+    PQCOM_PNP_DEVICE Pnp;
+    PQCBATT_DEVICE Device;
+    NTSTATUS Status;
+
+    Status = QcPnpCreateDevice(DriverObject, Pdo, sizeof(*Device), FILE_DEVICE_BATTERY, &Pnp);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Pnp->Self->Flags |= DO_BUFFERED_IO;
+
+    Device = CONTAINING_RECORD(Pnp, QCBATT_DEVICE, Pnp);
+    KeInitializeEvent(&Device->StopEvent, NotificationEvent, FALSE);
+    return STATUS_SUCCESS;
+}
+
+static
+VOID
+NTAPI
+QcBattUnload(
+    _In_ PDRIVER_OBJECT DriverObject)
+{
+    /* Every device was stopped and deleted by its REMOVE */
+    UNREFERENCED_PARAMETER(DriverObject);
+}
+
+NTSTATUS
+NTAPI
+DriverEntry(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath)
+{
+    UNREFERENCED_PARAMETER(RegistryPath);
+
+    DriverObject->DriverExtension->AddDevice = QcBattAddDevice;
+    DriverObject->DriverUnload = QcBattUnload;
+    DriverObject->MajorFunction[IRP_MJ_CREATE] = QcPnpDispatchCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_CLOSE] = QcPnpDispatchCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = QcBattDeviceControl;
+    DriverObject->MajorFunction[IRP_MJ_PNP] = QcBattDispatchPnp;
+    DriverObject->MajorFunction[IRP_MJ_POWER] = QcPnpDispatchPower;
+    DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = QcPnpDispatchPassDown;
+
     return STATUS_SUCCESS;
 }

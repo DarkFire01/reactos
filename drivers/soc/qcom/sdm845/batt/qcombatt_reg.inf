@@ -1,0 +1,6 @@
+; Qualcomm Fuel Gauge Battery
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","ImagePath",0x00020000,"system32\drivers\qcombatt.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Type",0x00010001,0x00000001
