@@ -6,6 +6,8 @@
  */
 
 #include <uacpint.h>
+#include <uacpi/tables.h>
+#include <uacpi/acpi.h>
 #include <wdmguid.h>
 #include <debug.h>
 
@@ -317,6 +319,159 @@ UacpiNtFilterQueryCapabilities(
     return UacpiNtCompleteIrp(Irp, Status, Irp->IoStatus.Information);
 }
 
+/**
+ * @brief
+ * Tells whether a _CRS descriptor is one the bus below cannot know about.
+ *
+ * @remarks
+ * From ACPI 5 every fixed resource qualifies except the interrupts the bus routes itself.
+ * A single vector interrupt always qualifies.
+ */
+static
+BOOLEAN
+NTAPI
+UacpiNtIsSidebandResource(
+    _In_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ BOOLEAN Acpi5)
+{
+    if (Descriptor->Type == CmResourceTypeConfigData)
+        return FALSE;
+
+    if (Acpi5 && Descriptor->Type != CmResourceTypeInterrupt)
+        return TRUE;
+
+    return (Descriptor->u.Generic.Length == Descriptor->u.Generic.Alignment);
+}
+
+/**
+ * @brief
+ * Builds a requirements list with the sideband resources of Bios added to every configuration of Original.
+ */
+static
+NTSTATUS
+NTAPI
+UacpiNtAddSidebandResources(
+    _In_opt_ PIO_RESOURCE_REQUIREMENTS_LIST Original,
+    _In_ PIO_RESOURCE_REQUIREMENTS_LIST Bios,
+    _Out_ PIO_RESOURCE_REQUIREMENTS_LIST *Merged)
+{
+    PIO_RESOURCE_LIST BiosList = &Bios->List[0];
+    PIO_RESOURCE_DESCRIPTOR Sideband[32];
+    PIO_RESOURCE_REQUIREMENTS_LIST Result;
+    PIO_RESOURCE_LIST Source, Target;
+    struct acpi_fadt *Fadt = NULL;
+    ULONG SidebandCount = 0, Alternatives, Size, i, j;
+    BOOLEAN Acpi5;
+
+    *Merged = NULL;
+
+    Acpi5 = !uacpi_unlikely_error(uacpi_table_fadt(&Fadt)) && Fadt && Fadt->hdr.revision >= 5;
+
+    for (i = 0; i < BiosList->Count && SidebandCount < RTL_NUMBER_OF(Sideband); i++)
+    {
+        if (!UacpiNtIsSidebandResource(&BiosList->Descriptors[i], Acpi5))
+            continue;
+
+        /* The same resource is only added once */
+        for (j = 0; j < SidebandCount; j++)
+        {
+            if (RtlEqualMemory(Sideband[j], &BiosList->Descriptors[i], sizeof(*Sideband[j])))
+                break;
+        }
+
+        if (j == SidebandCount)
+            Sideband[SidebandCount++] = &BiosList->Descriptors[i];
+    }
+
+    if (SidebandCount == 0)
+        return STATUS_NOT_FOUND;
+
+    Alternatives = (Original && Original->AlternativeLists) ? Original->AlternativeLists : 1;
+
+    Size = FIELD_OFFSET(IO_RESOURCE_REQUIREMENTS_LIST, List);
+    Source = Original ? &Original->List[0] : NULL;
+    for (i = 0; i < Alternatives; i++)
+    {
+        ULONG Count = Source ? Source->Count : 0;
+
+        Size += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + (Count + SidebandCount) * sizeof(IO_RESOURCE_DESCRIPTOR);
+        if (Source)
+            Source = (PIO_RESOURCE_LIST)&Source->Descriptors[Source->Count];
+    }
+
+    Result = ExAllocatePoolZero(PagedPool, Size, UACPINT_POOL_TAG);
+    if (!Result)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    if (Original)
+        RtlCopyMemory(Result, Original, FIELD_OFFSET(IO_RESOURCE_REQUIREMENTS_LIST, List));
+    else
+        RtlCopyMemory(Result, Bios, FIELD_OFFSET(IO_RESOURCE_REQUIREMENTS_LIST, List));
+
+    Result->ListSize = Size;
+    Result->AlternativeLists = Alternatives;
+
+    Source = Original ? &Original->List[0] : NULL;
+    Target = &Result->List[0];
+    for (i = 0; i < Alternatives; i++)
+    {
+        ULONG Count = Source ? Source->Count : 0;
+
+        Target->Version = Source ? Source->Version : BiosList->Version;
+        Target->Revision = Source ? Source->Revision : BiosList->Revision;
+        if (Count)
+            RtlCopyMemory(Target->Descriptors, Source->Descriptors, Count * sizeof(IO_RESOURCE_DESCRIPTOR));
+
+        for (j = 0; j < SidebandCount; j++)
+            Target->Descriptors[Count + j] = *Sideband[j];
+
+        Target->Count = Count + SidebandCount;
+        Target = (PIO_RESOURCE_LIST)&Target->Descriptors[Target->Count];
+        if (Source)
+            Source = (PIO_RESOURCE_LIST)&Source->Descriptors[Source->Count];
+    }
+
+    *Merged = Result;
+    return STATUS_SUCCESS;
+}
+
+/* The bus answers first, then the resources only the _CRS of the node describes are added */
+static
+NTSTATUS
+NTAPI
+UacpiNtFilterResourceRequirements(
+    _In_ PUACPINT_FLT Filter,
+    _In_ PIRP Irp)
+{
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PIO_RESOURCE_REQUIREMENTS_LIST Original, Bios = NULL, Merged;
+    NTSTATUS Status;
+
+    Status = UacpiNtForwardAndWait(Filter->LowerDevice, Irp);
+    if ((!NT_SUCCESS(Status) && Status != STATUS_NOT_SUPPORTED) || !Filter->Node)
+        return UacpiNtCompleteIrp(Irp, Status, Irp->IoStatus.Information);
+
+    Original = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+    if (!Original)
+        Original = IoStack->Parameters.FilterResourceRequirements.IoResourceRequirementList;
+
+    if (!NT_SUCCESS(UacpiNtCrsToRequirements(Filter->Node, NULL, &Bios)) || !Bios)
+        return UacpiNtCompleteIrp(Irp, Status, Irp->IoStatus.Information);
+
+    if (NT_SUCCESS(UacpiNtAddSidebandResources(Original, Bios, &Merged)))
+    {
+        /* Whoever changes the list frees the one it was handed */
+        if (Original)
+            ExFreePool(Original);
+
+        Irp->IoStatus.Information = (ULONG_PTR)Merged;
+        Status = STATUS_SUCCESS;
+    }
+
+    ExFreePoolWithTag(Bios, UACPINT_POOL_TAG);
+    return UacpiNtCompleteIrp(Irp, Status, Irp->IoStatus.Information);
+}
+
 /* Answers the interfaces served here and always sends the IRP down */
 static
 NTSTATUS
@@ -430,6 +585,9 @@ UacpiNtFilterPnp(
 
         case IRP_MN_QUERY_CAPABILITIES:
             return UacpiNtFilterQueryCapabilities(Filter, Irp);
+
+        case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+            return UacpiNtFilterResourceRequirements(Filter, Irp);
 
         case IRP_MN_QUERY_INTERFACE:
             return UacpiNtFilterQueryInterface(Filter, Irp);
