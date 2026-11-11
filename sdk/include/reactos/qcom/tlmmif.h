@@ -74,3 +74,37 @@ QcTlmmDumpPin(
     _In_ PQCOM_TLMM Tlmm,
     _In_ PCQCOM_TLMM_PIN Pin,
     _In_z_ PCSTR Label);
+
+/* How a pin's interrupt latches */
+typedef enum _QCOM_TLMM_TRIGGER
+{
+    TlmmTriggerLevelLow,
+    TlmmTriggerLevelHigh,
+    TlmmTriggerRisingEdge,
+    TlmmTriggerFallingEdge
+} QCOM_TLMM_TRIGGER;
+
+/*
+ * Routes a pin's interrupt to the applications processor summary line and
+ * clears any stale latch. The caller owns the summary GIC interrupt and demuxes
+ * with QcTlmmInterruptActive and QcTlmmClearInterrupt, both of which touch only
+ * the one pin and take no lock, so they are safe from an interrupt service.
+ */
+NTSTATUS
+NTAPI
+QcTlmmConfigureInterrupt(
+    _In_ PQCOM_TLMM Tlmm,
+    _In_ PCQCOM_TLMM_PIN Pin,
+    _In_ QCOM_TLMM_TRIGGER Trigger);
+
+BOOLEAN
+NTAPI
+QcTlmmInterruptActive(
+    _In_ PQCOM_TLMM Tlmm,
+    _In_ PCQCOM_TLMM_PIN Pin);
+
+VOID
+NTAPI
+QcTlmmClearInterrupt(
+    _In_ PQCOM_TLMM Tlmm,
+    _In_ PCQCOM_TLMM_PIN Pin);

@@ -30,6 +30,21 @@
 #define TLMM_IO_INPUT           0x1
 #define TLMM_IO_OUTPUT          0x2
 
+/* Interrupt configuration, the detection field selects edge or level */
+#define TLMM_INTR_ENABLE        0x001
+#define TLMM_INTR_POLARITY      0x002
+#define TLMM_INTR_DECT_SHIFT    2
+#define TLMM_INTR_DECT_MASK     0x00C
+#define TLMM_INTR_RAW_STATUS_EN 0x010
+#define TLMM_INTR_TARGET_SHIFT  5
+#define TLMM_INTR_TARGET_MASK   0x0E0
+#define TLMM_INTR_TARGET_APPS   3
+#define TLMM_INTR_STATUS_BIT    0x001
+
+#define TLMM_DECT_LEVEL         0
+#define TLMM_DECT_RISING        1
+#define TLMM_DECT_FALLING       2
+
 #define TLMM_MAX_FUNCTION       15
 
 typedef struct _QCOM_TLMM
@@ -218,6 +233,76 @@ QcTlmmDumpPin(
            Io,
            IntrConfig,
            IntrStatus);
+}
+
+NTSTATUS
+NTAPI
+QcTlmmConfigureInterrupt(
+    _In_ PQCOM_TLMM Tlmm,
+    _In_ PCQCOM_TLMM_PIN Pin,
+    _In_ QCOM_TLMM_TRIGGER Trigger)
+{
+    PUCHAR Registers;
+    ULONG Config;
+    KIRQL OldIrql;
+
+    Registers = TlmmPinRegisters(Tlmm, Pin);
+
+    KeAcquireSpinLock(&Tlmm->Lock, &OldIrql);
+
+    Config = READ_REGISTER_ULONG((PULONG)(Registers + TLMM_PIN_INTR_CONFIG));
+    Config &= ~(TLMM_INTR_DECT_MASK | TLMM_INTR_POLARITY | TLMM_INTR_TARGET_MASK);
+    Config |= TLMM_INTR_RAW_STATUS_EN;
+    Config |= TLMM_INTR_TARGET_APPS << TLMM_INTR_TARGET_SHIFT;
+
+    switch (Trigger)
+    {
+        case TlmmTriggerFallingEdge:
+            Config |= (TLMM_DECT_FALLING << TLMM_INTR_DECT_SHIFT) | TLMM_INTR_POLARITY;
+            break;
+        case TlmmTriggerRisingEdge:
+            Config |= (TLMM_DECT_RISING << TLMM_INTR_DECT_SHIFT) | TLMM_INTR_POLARITY;
+            break;
+        case TlmmTriggerLevelHigh:
+            Config |= TLMM_INTR_POLARITY;
+            break;
+        case TlmmTriggerLevelLow:
+            break;
+    }
+
+    Config |= TLMM_INTR_ENABLE;
+    WRITE_REGISTER_ULONG((PULONG)(Registers + TLMM_PIN_INTR_CONFIG), Config);
+
+    /* Drop any latch the configuration change may have set */
+    WRITE_REGISTER_ULONG((PULONG)(Registers + TLMM_PIN_INTR_STATUS), 0);
+
+    KeReleaseSpinLock(&Tlmm->Lock, OldIrql);
+
+    QC_LOG("pin %lu interrupt cfg %03lx trigger %d", Pin->Number, Config, Trigger);
+    return STATUS_SUCCESS;
+}
+
+BOOLEAN
+NTAPI
+QcTlmmInterruptActive(
+    _In_ PQCOM_TLMM Tlmm,
+    _In_ PCQCOM_TLMM_PIN Pin)
+{
+    PUCHAR Registers = TlmmPinRegisters(Tlmm, Pin);
+
+    return (READ_REGISTER_ULONG((PULONG)(Registers + TLMM_PIN_INTR_STATUS)) & TLMM_INTR_STATUS_BIT) != 0;
+}
+
+VOID
+NTAPI
+QcTlmmClearInterrupt(
+    _In_ PQCOM_TLMM Tlmm,
+    _In_ PCQCOM_TLMM_PIN Pin)
+{
+    PUCHAR Registers = TlmmPinRegisters(Tlmm, Pin);
+    ULONG Status = READ_REGISTER_ULONG((PULONG)(Registers + TLMM_PIN_INTR_STATUS));
+
+    WRITE_REGISTER_ULONG((PULONG)(Registers + TLMM_PIN_INTR_STATUS), Status & ~TLMM_INTR_STATUS_BIT);
 }
 
 NTSTATUS
