@@ -2071,6 +2071,13 @@ HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Start",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\mouclass","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\mouclass\Parameters","ConnectMultiplePorts",0x00010001,0x00000001
 
+; Qualcomm BQ27441 fuel gauge, a battery class miniport
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Group",0x00000000,"Pointer Port"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","ImagePath",0x00020000,"system32\drivers\qcombatt.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcombatt","Type",0x00010001,0x00000001
+
 ; USB hub driver
 HKLM,"SYSTEM\CurrentControlSet\Services\usbhub","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\usbhub","Group",0x00000000,"Boot Bus Extender"
