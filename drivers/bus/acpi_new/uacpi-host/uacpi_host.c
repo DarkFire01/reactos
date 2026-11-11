@@ -54,7 +54,7 @@ typedef struct _UACPINT_HOST_ECAM_WINDOW
     uacpi_u8  EndBus;
 } UACPINT_HOST_ECAM_WINDOW, *PUACPINT_HOST_ECAM_WINDOW;
 
-ULONG UacpiNtHostVerbose = 1;
+ULONG UacpiNtHostVerbose = 0;
 
 /* QuadPart 0 means no override */
 static PHYSICAL_ADDRESS UacpiNtHostRsdpOverridePa;
