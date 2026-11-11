@@ -188,10 +188,16 @@ DiskInitialize(
     /* Detect disk partition type */
     DiskDetectPartitionType(DriveNumber);
 
-    /* Add partitions */
-    i = FIRST_PARTITION;
-    while (DiskGetPartitionEntry(DriveNumber, Geometry.BytesPerSector, i, &PartitionEntry))
+    /* Add partitions, GPT tables may leave unused entries between used ones */
+    for (i = FIRST_PARTITION; ; i++)
     {
+        if (!DiskGetPartitionEntry(DriveNumber, Geometry.BytesPerSector, i, &PartitionEntry))
+        {
+            if (GptDiskGuid && i < GptHeader.NumberOfPartitionEntries)
+                continue;
+            break;
+        }
+
         if (PartitionEntry.PartitionType != PARTITION_ENTRY_UNUSED)
         {
             NtStatus = RtlStringCbPrintfA(ArcName, sizeof(ArcName),
@@ -201,7 +207,6 @@ DiskInitialize(
             if (!FsRegisterDevice(ArcName, FuncTable))
                 return ENOMEM;
         }
-        i++;
     }
 
     return ESUCCESS;
