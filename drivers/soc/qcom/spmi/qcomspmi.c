@@ -24,7 +24,7 @@
 
 /* Core window: number of peripherals and the per peripheral identity map */
 #define SPMI_FEATURES           0x0004
-#define SPMI_PERIPH_MASK        0x7FF
+#define SPMI_PERIPH_MASK        0x3FF
 #define SPMI_APID_MAP(Apid)     (0x0900 + 0x4 * (Apid))
 #define SPMI_PPID_SHIFT         8
 #define SPMI_PPID_MASK          0xFFF
@@ -52,10 +52,15 @@ static PUCHAR SpmiCore = NULL;
 static PUCHAR SpmiObs = NULL;
 static USHORT SpmiApidForPpid[SPMI_PPID_COUNT];
 static BOOLEAN SpmiReady = FALSE;
+static BOOLEAN SpmiFailed = FALSE;
 
-/* Reads the identity map once so a peripheral can be found by its PPID */
+/*
+ * Reads the identity map once so a peripheral can be found by its PPID. A
+ * mapping failure is reported, never fatal, so a consumer that cannot reach the
+ * arbiter fails its own read rather than taking the machine down.
+ */
 static
-VOID
+BOOLEAN
 SpmiEnsureMapped(VOID)
 {
     PHYSICAL_ADDRESS Base;
@@ -63,17 +68,20 @@ SpmiEnsureMapped(VOID)
     ULONG Apid;
 
     if (SpmiReady)
-        return;
+        return TRUE;
+    if (SpmiFailed)
+        return FALSE;
 
     Base.QuadPart = SPMI_CORE_BASE;
     SpmiCore = MmMapIoSpace(Base, SPMI_CORE_LENGTH, MmNonCached);
-    if (!SpmiCore)
-        QC_FATAL(STATUS_INSUFFICIENT_RESOURCES, "cannot map the SPMI core window");
-
     Base.QuadPart = SPMI_OBS_BASE;
     SpmiObs = MmMapIoSpace(Base, SPMI_OBS_LENGTH, MmNonCached);
-    if (!SpmiObs)
-        QC_FATAL(STATUS_INSUFFICIENT_RESOURCES, "cannot map the SPMI observer window");
+    if (!SpmiCore || !SpmiObs)
+    {
+        QC_LOG("cannot map the SPMI arbiter, core %p observer %p", SpmiCore, SpmiObs);
+        SpmiFailed = TRUE;
+        return FALSE;
+    }
 
     for (Apid = 0; Apid < SPMI_PPID_COUNT; Apid++)
         SpmiApidForPpid[Apid] = SPMI_APID_NONE;
@@ -100,6 +108,7 @@ SpmiEnsureMapped(VOID)
 
     QC_LOG("mapped the SPMI arbiter, %lu peripherals", PeripheralCount);
     SpmiReady = TRUE;
+    return TRUE;
 }
 
 NTSTATUS
@@ -122,7 +131,8 @@ QcSpmiRead(
     if (Length == 0 || Length > SPMI_MAX_BYTES)
         return STATUS_INVALID_PARAMETER;
 
-    SpmiEnsureMapped();
+    if (!SpmiEnsureMapped())
+        return STATUS_DEVICE_NOT_READY;
 
     Ppid = ((ULONG)Sid << 8) | (Address >> 8);
     if (Ppid >= SPMI_PPID_COUNT || SpmiApidForPpid[Ppid] == SPMI_APID_NONE)
