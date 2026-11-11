@@ -194,6 +194,57 @@ IopCopyCriticalDeviceParameters(
     ZwClose(SourceKey);
 }
 
+/**
+ * @brief
+ * Carries the lower and upper filter lists of a critical device entry over to the device instance.
+ */
+static
+VOID
+NTAPI
+IopCopyCriticalDeviceFilters(
+    _In_ HANDLE DatabaseEntryKey,
+    _In_ HANDLE InstanceKey)
+{
+    static PCWSTR FilterValues[] = { L"LowerFilters", L"UpperFilters" };
+    PKEY_VALUE_PARTIAL_INFORMATION Filters;
+    UNICODE_STRING ValueName;
+    ULONG Length, i;
+    NTSTATUS Status;
+
+    for (i = 0; i < RTL_NUMBER_OF(FilterValues); i++)
+    {
+        RtlInitUnicodeString(&ValueName, FilterValues[i]);
+
+        Status = ZwQueryValueKey(DatabaseEntryKey, &ValueName, KeyValuePartialInformation, NULL, 0, &Length);
+        if (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL)
+            continue;
+
+        Filters = ExAllocatePoolWithTag(PagedPool, Length, TAG_IO);
+        if (!Filters)
+            return;
+
+        Status = ZwQueryValueKey(DatabaseEntryKey,
+                                 &ValueName,
+                                 KeyValuePartialInformation,
+                                 Filters,
+                                 Length,
+                                 &Length);
+        if (NT_SUCCESS(Status) && Filters->Type == REG_MULTI_SZ)
+        {
+            Status = ZwSetValueKey(InstanceKey,
+                                   &ValueName,
+                                   0,
+                                   REG_MULTI_SZ,
+                                   Filters->Data,
+                                   Filters->DataLength);
+            if (!NT_SUCCESS(Status))
+                DPRINT1("Failed to set %wZ for a critical device (Status 0x%08lx)\n", &ValueName, Status);
+        }
+
+        ExFreePoolWithTag(Filters, TAG_IO);
+    }
+}
+
 VOID
 NTAPI
 IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
@@ -514,6 +565,7 @@ IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
                         DPRINT1("Installed NULL service for critical device '%wZ'\n", &ChildIdNameU);
                     }
 
+                    IopCopyCriticalDeviceFilters(ChildKeyHandle, InstanceKey);
                     IopCopyCriticalDeviceParameters(ChildKeyHandle, InstanceKey);
 
                     ExFreePool(OriginalIdBuffer);
