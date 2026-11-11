@@ -1,0 +1,7 @@
+; Qualcomm xHCI lower filter
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomxhcif","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomxhcif","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomxhcif","ImagePath",0x00020000,"system32\drivers\qcomxhcif.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomxhcif","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomxhcif","Type",0x00010001,0x00000001

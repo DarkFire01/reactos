@@ -53,7 +53,7 @@ AddService = qcomxhcif,,XHCIF_Service
 [XHCIF_Service]
 DisplayName    = %XHCIF.ServiceDesc%
 ServiceType    = 1
-StartType      = 3
+StartType      = 0
 ErrorControl   = 1
 ServiceBinary  = %12%\qcomxhcif.sys
 AddReg         = XHCIF_Service_AddReg

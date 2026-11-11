@@ -8,5 +8,6 @@ target_compile_definitions(urssynopsys PRIVATE
 
 target_link_libraries(urssynopsys ursstub ntoskrnl_vista libcntpr ${PSEH_LIB})
 add_importlibs(urssynopsys wdfldr ntoskrnl hal)
-add_cd_file(TARGET urssynopsys DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET urssynopsys DESTINATION reactos/system32/drivers NO_CAB FOR all)
 add_driver_inf(urssynopsys urssynopsys.inf)
+add_registry_inf(urssynopsys_reg.inf)
