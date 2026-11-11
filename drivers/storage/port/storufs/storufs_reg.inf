@@ -1,0 +1,8 @@
+; UFS host controller miniport driver
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs","Group",0x00000000,"SCSI Miniport"
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs","ImagePath",0x00020000,"system32\drivers\storufs.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs","Tag",0x00010001,0x00000023
