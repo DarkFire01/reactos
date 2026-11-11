@@ -149,6 +149,12 @@ typedef struct _QCTOUCH_DEVICE
     BOOLEAN FingerDown;
     LONG LastX;
     LONG LastY;
+
+    /* Attention interrupt: the service routine wakes the reader through the DPC */
+    QCOM_TLMM_PIN InterruptPin;
+    PKINTERRUPT Interrupt;
+    KDPC Dpc;
+    KEVENT DataReady;
 } QCTOUCH_DEVICE, *PQCTOUCH_DEVICE;
 
 #define QCDBG_COMPONENT "qcomtouch"

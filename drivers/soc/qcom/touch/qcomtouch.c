@@ -246,6 +246,50 @@ QcTouchReport(
     KeLowerIrql(OldIrql);
 }
 
+/* The attention line fired, wake the reader through the DPC off the interrupt */
+static
+BOOLEAN
+NTAPI
+QcTouchIsr(
+    _In_ PKINTERRUPT Interrupt,
+    _In_ PVOID Context)
+{
+    PQCTOUCH_DEVICE Device = Context;
+
+    UNREFERENCED_PARAMETER(Interrupt);
+
+    /* The summary line is shared, only claim it when our pin latched */
+    if (!QcTlmmInterruptActive(Device->Tlmm, &Device->InterruptPin))
+        return FALSE;
+
+    QcTlmmClearInterrupt(Device->Tlmm, &Device->InterruptPin);
+    KeInsertQueueDpc(&Device->Dpc, NULL, NULL);
+    return TRUE;
+}
+
+static
+VOID
+NTAPI
+QcTouchDpc(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID Context,
+    _In_opt_ PVOID Argument1,
+    _In_opt_ PVOID Argument2)
+{
+    PQCTOUCH_DEVICE Device = Context;
+
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(Argument1);
+    UNREFERENCED_PARAMETER(Argument2);
+
+    KeSetEvent(&Device->DataReady, IO_NO_INCREMENT, FALSE);
+}
+
+/*
+ * The reader waits on the attention event and reads the controller when it
+ * fires. A short fall-back timeout keeps a drag smooth and covers a missed
+ * attention, a longer one while idle keeps the bus quiet.
+ */
 static
 VOID
 NTAPI
@@ -253,14 +297,23 @@ QcTouchPollThread(
     _In_ PVOID Context)
 {
     PQCTOUCH_DEVICE Device = Context;
+    PVOID Objects[2];
     LARGE_INTEGER Period;
     ULONG X;
     ULONG Y;
     BOOLEAN Down;
+    NTSTATUS Status;
 
-    Period.QuadPart = -10000LL * 10;
-    while (KeWaitForSingleObject(&Device->StopEvent, Executive, KernelMode, FALSE, &Period) == STATUS_TIMEOUT)
+    Objects[0] = &Device->StopEvent;
+    Objects[1] = &Device->DataReady;
+
+    for (;;)
     {
+        Period.QuadPart = -10000LL * (Device->FingerDown ? 10 : 50);
+        Status = KeWaitForMultipleObjects(2, Objects, WaitAny, Executive, KernelMode, FALSE, &Period, NULL);
+        if (Status == STATUS_WAIT_0)
+            break;
+
         if (RmiReadFinger(Device, &X, &Y, &Down))
             QcTouchReport(Device, X, Y, Down);
     }
@@ -354,6 +407,47 @@ QcTouchRegisterDeviceMap(VOID)
     ZwClose(Key);
 }
 
+/* SDM845 funnels every TLMM interrupt into one summary line, GIC SPI 208 */
+#define QCTOUCH_TLMM_GIC_SPI    208
+#define QCTOUCH_GIC_SPI_BASE    32
+
+static
+VOID
+QcTouchConnectInterrupt(
+    _In_ PQCTOUCH_DEVICE Device)
+{
+    PCQCTOUCH_BOARD Board = Device->Board;
+    ULONG Intid = QCTOUCH_GIC_SPI_BASE + QCTOUCH_TLMM_GIC_SPI;
+    KIRQL Irql;
+    KAFFINITY Affinity;
+    ULONG Vector;
+    NTSTATUS Status;
+
+    RtlZeroMemory(&Device->InterruptPin, sizeof(Device->InterruptPin));
+    Device->InterruptPin.Number = Board->InterruptPin;
+    Device->InterruptPin.TileOffset = Board->InterruptTile;
+
+    QcTlmmConfigureInterrupt(Device->Tlmm, &Device->InterruptPin, TlmmTriggerFallingEdge);
+
+    Vector = HalGetInterruptVector(Internal, 0, Intid, Intid, &Irql, &Affinity);
+    if (!Vector)
+    {
+        QC_LOG("no vector for the attention interrupt, polling only");
+        return;
+    }
+
+    Status = IoConnectInterrupt(&Device->Interrupt, QcTouchIsr, Device, NULL,
+                                Vector, Irql, Irql, LevelSensitive, TRUE, Affinity, FALSE);
+    if (!NT_SUCCESS(Status))
+    {
+        Device->Interrupt = NULL;
+        QC_LOG("attention interrupt connect failed %08lx, polling only", Status);
+        return;
+    }
+
+    QC_LOG("attention interrupt connected on gic %lu", Intid);
+}
+
 static
 VOID
 NTAPI
@@ -367,6 +461,10 @@ QcTouchUnload(
         return;
 
     Device = DeviceObject->DeviceExtension;
+
+    /* Stop new attentions before the reader goes away */
+    if (Device->Interrupt)
+        IoDisconnectInterrupt(Device->Interrupt);
 
     if (Device->Thread)
     {
@@ -414,6 +512,8 @@ DriverEntry(
     Device->DeviceObject = DeviceObject;
     Device->Board = Board;
     KeInitializeEvent(&Device->StopEvent, NotificationEvent, FALSE);
+    KeInitializeEvent(&Device->DataReady, SynchronizationEvent, FALSE);
+    KeInitializeDpc(&Device->Dpc, QcTouchDpc, Device);
 
     Device->Attributes.MouseIdentifier = MOUSE_HID_HARDWARE;
     Device->Attributes.NumberOfButtons = 2;
@@ -446,6 +546,9 @@ DriverEntry(
     }
     ObReferenceObjectByHandle(Thread, THREAD_ALL_ACCESS, NULL, KernelMode, (PVOID *)&Device->Thread, NULL);
     ZwClose(Thread);
+
+    /* Drive the reader from the attention line, the poll is only a fall-back */
+    QcTouchConnectInterrupt(Device);
 
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
