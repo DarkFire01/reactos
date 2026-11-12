@@ -18,6 +18,7 @@
 #include <miniport.h>
 #include <video.h>
 #include <devioctl.h>
+#include <drivers/video/panelpower.h>
 
 #include <stdio.h> // <ntstrsafe.h>
 
@@ -90,6 +91,9 @@ typedef struct _GENFB_DEVICE_EXTENSION
 
     /* The one and only video mode we support */
     VIDEO_MODE_INFORMATION CurrentVideoMode;
+
+    /* The output was powered down, the panel driver was told so */
+    BOOLEAN OutputOff;
 } GENFB_DEVICE_EXTENSION, *PGENFB_DEVICE_EXTENSION;
 
 /* The unique boot-time display available */
@@ -1422,6 +1426,35 @@ GenFbVmpStartIO(
 }
 
 /**
+ * @brief
+ * Tells whichever driver owns the real panel that the output was powered
+ * on or off, nothing happens when no such driver is loaded.
+ **/
+CODE_SEG("PAGE")
+static
+VOID
+GenFbVmpNotifyPanelPower(
+    _In_ BOOLEAN PowerOn)
+{
+    UNICODE_STRING CallbackName = RTL_CONSTANT_STRING(DISPLAY_PANEL_POWER_CALLBACK);
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    PCALLBACK_OBJECT Callback;
+
+    PAGED_CODE();
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &CallbackName,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               NULL,
+                               NULL);
+    if (!NT_SUCCESS(ExCreateCallback(&Callback, &ObjectAttributes, TRUE, TRUE)))
+        return;
+
+    ExNotifyCallback(Callback, (PVOID)(ULONG_PTR)PowerOn, NULL);
+    ObDereferenceObject(Callback);
+}
+
+/**
  * @brief   Set the device power state.
  **/
 CODE_SEG("PAGE")
@@ -1431,10 +1464,37 @@ GenFbVmpSetPowerState(
     _In_ ULONG HwId,
     _In_ PVIDEO_POWER_MANAGEMENT VideoPowerControl)
 {
+    PGENFB_DEVICE_EXTENSION DeviceExtension = HwDeviceExtension;
+    BOOLEAN OutputOff;
+
     PAGED_CODE();
 
-    /* Unused */
-    DPRINT1("GenFbVmpSetPowerState(%p)\n", HwDeviceExtension);
+    UNREFERENCED_PARAMETER(HwId);
+
+    switch (VideoPowerControl->PowerState)
+    {
+        case VideoPowerOn:
+            OutputOff = FALSE;
+            break;
+
+        case VideoPowerStandBy:
+        case VideoPowerSuspend:
+        case VideoPowerOff:
+        case VideoPowerHibernate:
+        case VideoPowerShutdown:
+            OutputOff = TRUE;
+            break;
+
+        default:
+            return ERROR_INVALID_PARAMETER;
+    }
+
+    if (OutputOff != DeviceExtension->OutputOff)
+    {
+        DeviceExtension->OutputOff = OutputOff;
+        GenFbVmpNotifyPanelPower(!OutputOff);
+    }
+
     return NO_ERROR;
 }
 
@@ -1450,9 +1510,21 @@ GenFbVmpGetPowerState(
 {
     PAGED_CODE();
 
-    /* Unused */
-    DPRINT1("GenFbVmpGetPowerState(%p)\n", HwDeviceExtension);
-    return ERROR_DEVICE_REINITIALIZATION_NEEDED; // NO_ERROR;
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(HwId);
+
+    /* The framebuffer itself never loses state, any of these can be entered */
+    switch (VideoPowerControl->PowerState)
+    {
+        case VideoPowerOn:
+        case VideoPowerStandBy:
+        case VideoPowerSuspend:
+        case VideoPowerOff:
+            return NO_ERROR;
+
+        default:
+            return ERROR_DEVICE_REINITIALIZATION_NEEDED;
+    }
 }
 
 #if (DRIVER_MODE & DRIVER_PNP)
