@@ -269,7 +269,7 @@ PopAddPolicyDevice(
     /* The power policy lock must be owned */
     POP_ASSERT_POWER_POLICY_LOCK_OWNERSHIP();
 
-    DPRINT1("Connecting with policy device %wZ\n", NotificationStructure->SymbolicLinkName);
+    DPRINT("Connecting with policy device %wZ\n", NotificationStructure->SymbolicLinkName);
 
     /*
      * This is an upcoming composite battery. There is only one instance of a
@@ -352,7 +352,7 @@ PopAddPolicyDevice(
 
         case PolicyDeviceThermalZone:
         {
-            DPRINT1("Policy thermal zone device not currently implemented yet\n");
+            DPRINT("Policy thermal zone device not currently implemented yet\n");
             Status = STATUS_NOT_IMPLEMENTED;
             break;
         }
@@ -386,10 +386,11 @@ PopAddPolicyDevice(
         }
     }
 
-    /* Bail out if the creation of policy device data has failed */
+    /* Bail out if the creation of policy device data has failed, a policy device we do not handle yet is not an error */
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Failed to create data for the policy device (Status 0x%08lx, policy device %lu)\n", Status, PolicyDeviceType);
+        if (Status != STATUS_NOT_IMPLEMENTED && Status != STATUS_NOT_SUPPORTED)
+            DPRINT1("Failed to create data for the policy device (Status 0x%08lx, policy device %lu)\n", Status, PolicyDeviceType);
         PopFreePool(PolicyWorkItemData, TAG_PO_POLICY_DEVICE_WORKITEM_DATA);
         ObDereferenceObject(PolicyDeviceObject);
         return Status;
@@ -1106,8 +1107,11 @@ PopDevicePolicyCallback(
     /* Bail out if the policy device processing has failed */
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("The %s of policy device %wZ has failed (Status 0x%lx)\n",
-                Arrival ? "arrival" : "removal", Notification->SymbolicLinkName, Status);
+        if (Status != STATUS_NOT_IMPLEMENTED && Status != STATUS_NOT_SUPPORTED)
+        {
+            DPRINT1("The %s of policy device %wZ has failed (Status 0x%lx)\n",
+                    Arrival ? "arrival" : "removal", Notification->SymbolicLinkName, Status);
+        }
         return Status;
     }
 
