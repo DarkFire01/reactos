@@ -160,6 +160,13 @@ PopPerformButtonAction(
         DPRINT("PopPerformButtonAction: Power button pressed, action %d\n",
                PopDefaultPowerPolicy->PowerButton.Action);
 
+        /* Modern Standby platforms never enter a sleep state, they stay in S0 with the display off */
+        if (PopAoAcPresent && PopDefaultPowerPolicy->PowerButton.Action == PowerActionSleep)
+        {
+            PopAoAcHandleSleepButton();
+            return;
+        }
+
         NtInitiatePowerAction(PopDefaultPowerPolicy->PowerButton.Action,
                               PopDefaultPowerPolicy->MinSleep,
                               PopDefaultPowerPolicy->PowerButton.Flags,

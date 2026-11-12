@@ -683,7 +683,9 @@ PopInitializePowerPolicy(
     PowerPolicy->ReducedLatencySleep = PowerSystemSleeping1;
     PowerPolicy->MinSleep = PowerSystemSleeping1;
     PowerPolicy->MaxSleep = PowerSystemSleeping3;
-    PopSetButtonPowerAction(&PowerPolicy->PowerButton, PowerActionShutdownOff);
+    /* A Modern Standby platform sleeps on the power button, which turns the display off */
+    PopSetButtonPowerAction(&PowerPolicy->PowerButton,
+                            PopAoAcPresent ? PowerActionSleep : PowerActionShutdownOff);
     PopSetButtonPowerAction(&PowerPolicy->SleepButton, PowerActionSleep);
 
     /* Setup the default minimum sleep state for all the discharge policies */

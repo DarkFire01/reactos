@@ -1809,6 +1809,19 @@ VOID
 PopDispatchPowerEvent(
     _In_ PWIN32_POWEREVENT_PARAMETERS Win32PwrEventParams);
 
+//
+// Modern Standby routines
+//
+CODE_SEG("INIT")
+VOID
+NTAPI
+PopInitializeAoAc(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock);
+
+VOID
+NTAPI
+PopAoAcHandleSleepButton(VOID);
+
 VOID
 NTAPI
 PopPowerPolicyNotification(
@@ -2365,6 +2378,7 @@ extern POBJECT_TYPE PoThermalRequestObjectType;
 extern BOOLEAN PopSimulate;
 extern BOOLEAN PopAcpiPresent;
 extern BOOLEAN PopAoAcPresent;
+extern BOOLEAN PopAoAcInStandby;
 extern WORK_QUEUE_ITEM PopUnlockMemoryWorkItem;
 extern KEVENT PopUnlockMemoryCompleteEvent;
 
