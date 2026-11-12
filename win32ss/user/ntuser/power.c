@@ -55,6 +55,16 @@ IntHandlePowerEventWorker(
             break;
         }
 
+        case PsW32DisplayState:
+        {
+            /*
+             * The power manager wants the console display on (1) or off (0),
+             * a dimmed display (2) stays on until dimming is supported.
+             */
+            EngpSetDisplayPowerState(Code != 0);
+            break;
+        }
+
         default:
         {
             TRACE("Power event of type %d is currently UNIMPLEMENTED (code %lu)\n", PwrEventType, Code);

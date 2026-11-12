@@ -37,6 +37,12 @@ EngpRegisterGraphicsDevice(
 NTSTATUS
 EngpUpdateGraphicsDeviceList(VOID);
 
+/* Turns the output of every display device on or off */
+VOID
+NTAPI
+EngpSetDisplayPowerState(
+    _In_ BOOLEAN PowerOn);
+
 /* Read configuration of a graphics card from registry:
  * - pGraphicsDevice: instance of the graphics card
  * - pdm: on output, contains the values read in registry
