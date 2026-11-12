@@ -383,6 +383,10 @@ PopInitSystemPhase0(VOID)
         PopAcpiPresent = KeLoaderBlock->Extension->AcpiTable != NULL ? TRUE : FALSE;
     }
 
+    /* Find out whether the platform idles in S0 instead of sleeping, the default policies depend on it */
+    if (PopAcpiPresent)
+        PopInitializeAoAc(KeLoaderBlock);
+
     /* Do not apply any power action as we are initializing the power manager */
     PopApplyPowerAction(PowerActionNone);
 
