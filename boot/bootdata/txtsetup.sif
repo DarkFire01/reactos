@@ -131,6 +131,7 @@ qcomrpmh.sys = 1,,,,,,x,4,,,,1,4
 qcomspmi.sys = 1,,,,,,x,4,,,,1,4
 qcomtypec.sys = 1,,,,,,x,4,,,,1,4
 qcompwrkey.sys = 1,,,,,,x,4,,,,1,4
+qcompanel.sys = 1,,,,,,x,4,,,,1,4
 qcomtouch.sys   = 1,,,,,,x,4,,,,1,4
 qcombatt.sys = 1,,,,,,x,4,,,,1,4
 usbstor.sys  = 1,,,,,,x,4,,,,1,4
