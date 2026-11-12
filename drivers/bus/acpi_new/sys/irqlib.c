@@ -1183,6 +1183,10 @@ UacpiNtWriteMessageConnectionData(
     return Status;
 }
 
+/* Byte size of an interrupt connection data blob holding Count vectors */
+#define UACPINT_CONNECTION_DATA_SIZE(Count) \
+    (FIELD_OFFSET(INTERRUPT_CONNECTION_DATA, Vectors) + (Count) * sizeof(INTERRUPT_VECTOR_DATA))
+
 /* Publish the assignment as the device's interrupt connection data property */
 NTSTATUS
 NTAPI
@@ -1191,17 +1195,21 @@ UacpiNtIrqLibWriteConnectionData(
     _In_ ULONG Gsiv,
     _In_ ULONG Count)
 {
-    INTERRUPT_CONNECTION_DATA Data;
-    INTERRUPT_CONNECTION_DATA Readback;
-    DEVPROPTYPE ReadbackType = 0;
-    ULONG ReadbackSize = 0;
+    PINTERRUPT_CONNECTION_DATA Existing = NULL;
+    PINTERRUPT_CONNECTION_DATA NewData;
+    DEVPROPTYPE ExistingType = 0;
+    ULONG ExistingSize = 0;
+    ULONG NewSize;
+    ULONG KeepCount = 0;
+    ULONG NewCount;
+    ULONG i;
+    ULONG j;
     KAFFINITY Affinity = 0;
     KIRQL Irql = 0;
     ULONG Vector = 0;
     ULONG Polarity = 0;
     ULONG Mode = 0;
     BOOLEAN HasMessages;
-    NTSTATUS ReadbackStatus;
     NTSTATUS Status;
 
     if (Gsiv >= UACPINT_MESSAGE_GSIV_BASE)
@@ -1223,40 +1231,80 @@ UacpiNtIrqLibWriteConnectionData(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    RtlZeroMemory(&Data, sizeof(Data));
-    Data.Count = 1;
-    Data.Vectors[0].Type = InterruptTypeControllerInput;
-    Data.Vectors[0].Vector = Vector;
-    Data.Vectors[0].Irql = Irql;
-    Data.Vectors[0].Polarity = (KINTERRUPT_POLARITY)Polarity;
-    Data.Vectors[0].Mode = (KINTERRUPT_MODE)Mode;
-    Data.Vectors[0].ControllerInput.Gsiv = Gsiv;
-    UacpiNtSetVectorTarget(&Data.Vectors[0], Affinity);
+    /*
+     * A device may own several interrupt lines. Each arrives here as its own
+     * GSIV, so accumulate them: read the device's current vectors and keep the
+     * ones for other GSIVs, then append (or replace) this one. Writing a single
+     * vector each time would leave the device with only its last interrupt.
+     */
+    if (UacpiNtGetConnectionData(Pdo, NULL, 0, &ExistingSize, &ExistingType) == STATUS_BUFFER_TOO_SMALL &&
+        ExistingSize >= UACPINT_CONNECTION_DATA_SIZE(1))
+    {
+        Existing = ExAllocatePoolZero(NonPagedPool, ExistingSize, UACPINT_POOL_TAG);
+        if (Existing != NULL &&
+            !NT_SUCCESS(UacpiNtGetConnectionData(Pdo, Existing, ExistingSize, &ExistingSize, &ExistingType)))
+        {
+            ExFreePoolWithTag(Existing, UACPINT_POOL_TAG);
+            Existing = NULL;
+        }
+    }
 
-    Status = UacpiNtSetConnectionData(Pdo, &Data, sizeof(Data));
-    DPRINT("uACPI-NT: PDO %p connection data for GSIV %lu vector 0x%lx IRQL %u: 0x%lx\n",
+    if (Existing != NULL)
+    {
+        for (i = 0; i < Existing->Count; i++)
+        {
+            if (Existing->Vectors[i].Type == InterruptTypeControllerInput &&
+                Existing->Vectors[i].ControllerInput.Gsiv != Gsiv)
+            {
+                KeepCount++;
+            }
+        }
+    }
+
+    NewCount = KeepCount + 1;
+    NewSize = UACPINT_CONNECTION_DATA_SIZE(NewCount);
+    NewData = ExAllocatePoolZero(NonPagedPool, NewSize, UACPINT_POOL_TAG);
+    if (NewData == NULL)
+    {
+        if (Existing != NULL)
+            ExFreePoolWithTag(Existing, UACPINT_POOL_TAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    NewData->Count = NewCount;
+    j = 0;
+    if (Existing != NULL)
+    {
+        for (i = 0; i < Existing->Count; i++)
+        {
+            if (Existing->Vectors[i].Type == InterruptTypeControllerInput &&
+                Existing->Vectors[i].ControllerInput.Gsiv != Gsiv)
+            {
+                NewData->Vectors[j++] = Existing->Vectors[i];
+            }
+        }
+    }
+
+    NewData->Vectors[j].Type = InterruptTypeControllerInput;
+    NewData->Vectors[j].Vector = Vector;
+    NewData->Vectors[j].Irql = Irql;
+    NewData->Vectors[j].Polarity = (KINTERRUPT_POLARITY)Polarity;
+    NewData->Vectors[j].Mode = (KINTERRUPT_MODE)Mode;
+    NewData->Vectors[j].ControllerInput.Gsiv = Gsiv;
+    UacpiNtSetVectorTarget(&NewData->Vectors[j], Affinity);
+
+    Status = UacpiNtSetConnectionData(Pdo, NewData, NewSize);
+    DPRINT("uACPI-NT: PDO %p connection data +GSIV %lu vector 0x%lx IRQL %u, %lu vectors total: 0x%lx\n",
            Pdo,
            Gsiv,
            Vector,
            Irql,
+           NewCount,
            Status);
 
-    if (NT_SUCCESS(Status))
-    {
-        RtlZeroMemory(&Readback, sizeof(Readback));
-        ReadbackStatus = UacpiNtGetConnectionData(Pdo, &Readback, sizeof(Readback), &ReadbackSize,
-                                                  &ReadbackType);
-        DPRINT("uACPI-NT: GSIV %lu readback 0x%lx type 0x%lx size %lu of %lu, vector 0x%lx IRQL %u target %p GSIV %lu\n",
-               Gsiv,
-               ReadbackStatus,
-               ReadbackType,
-               ReadbackSize,
-               (ULONG)sizeof(Data),
-               Readback.Vectors[0].Vector,
-               Readback.Vectors[0].Irql,
-               (PVOID)UacpiNtGetVectorTarget(&Readback.Vectors[0]),
-               Readback.Vectors[0].ControllerInput.Gsiv);
-    }
+    if (Existing != NULL)
+        ExFreePoolWithTag(Existing, UACPINT_POOL_TAG);
+    ExFreePoolWithTag(NewData, UACPINT_POOL_TAG);
 
     return Status;
 }
