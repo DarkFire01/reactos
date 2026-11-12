@@ -753,6 +753,66 @@ VideoPortForwardDeviceControl(
     }
 }
 
+/**
+ * @brief
+ * Sets or queries the power state of the adapter output through the
+ * miniport power routines.
+ *
+ * @param[in] DeviceObject
+ * The video port device of the adapter.
+ *
+ * @param[in,out] Irp
+ * The request, its system buffer holds a VIDEO_POWER_MANAGEMENT.
+ *
+ * @param[in] Set
+ * TRUE to set the power state, FALSE to query it.
+ *
+ * @return
+ * STATUS_SUCCESS when the miniport accepted the request.
+ */
+static
+NTSTATUS
+IntVideoPortOutputPowerState(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp,
+    _In_ BOOLEAN Set)
+{
+    PIO_STACK_LOCATION IrpStack = IoGetCurrentIrpStackLocation(Irp);
+    PVIDEO_PORT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    PVIDEO_PORT_DRIVER_EXTENSION DriverExtension = DeviceExtension->DriverExtension;
+    PVIDEO_POWER_MANAGEMENT PowerManagement = Irp->AssociatedIrp.SystemBuffer;
+    ULONG Length;
+    VP_STATUS VpStatus;
+
+    Length = Set ? IrpStack->Parameters.DeviceIoControl.InputBufferLength :
+                   IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
+    if (!PowerManagement || Length < sizeof(*PowerManagement))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if (Set)
+    {
+        if (!DriverExtension->InitializationData.HwSetPowerState)
+            return STATUS_NOT_IMPLEMENTED;
+
+        VpStatus = DriverExtension->InitializationData.HwSetPowerState(&DeviceExtension->MiniPortDeviceExtension,
+                                                                       DISPLAY_ADAPTER_HW_ID,
+                                                                       PowerManagement);
+        Irp->IoStatus.Information = 0;
+    }
+    else
+    {
+        if (!DriverExtension->InitializationData.HwGetPowerState)
+            return STATUS_NOT_IMPLEMENTED;
+
+        VpStatus = DriverExtension->InitializationData.HwGetPowerState(&DeviceExtension->MiniPortDeviceExtension,
+                                                                       DISPLAY_ADAPTER_HW_ID,
+                                                                       PowerManagement);
+        Irp->IoStatus.Information = sizeof(*PowerManagement);
+    }
+
+    return (VpStatus == NO_ERROR) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+}
+
 /*
  * IntVideoPortDispatchDeviceControl
  *
@@ -816,8 +876,9 @@ IntVideoPortDispatchDeviceControl(
 
         case IOCTL_VIDEO_SET_OUTPUT_DEVICE_POWER_STATE:
         case IOCTL_VIDEO_GET_OUTPUT_DEVICE_POWER_STATE:
-            WARN_(VIDEOPRT, "- IOCTL_VIDEO_GET/SET_OUTPUT_DEVICE_POWER_STATE are UNIMPLEMENTED!\n");
-            Status = STATUS_NOT_IMPLEMENTED;
+            Status = IntVideoPortOutputPowerState(DeviceObject,
+                                                  Irp,
+                                                  IoControlCode == IOCTL_VIDEO_SET_OUTPUT_DEVICE_POWER_STATE);
             break;
 
         case IOCTL_VIDEO_SET_POWER_MANAGEMENT:
