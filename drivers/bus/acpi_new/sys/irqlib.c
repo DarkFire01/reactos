@@ -10,6 +10,7 @@
 #include <rtlrangelist.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
+#define NDEBUG
 #include <debug.h>
 
 #ifndef ACPI_DRIVER_INTERNAL

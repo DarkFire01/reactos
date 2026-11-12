@@ -9,6 +9,7 @@
 #include <acpiioct.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
+#define NDEBUG
 #include <debug.h>
 
 /* Codes and signatures the WDK hides below their NTDDI floor */

@@ -6,6 +6,7 @@
  */
 
 #include <uacpint.h>
+#define NDEBUG
 #include <debug.h>
 
 ULONG UacpiNtEnumDiagEnabled = 0;

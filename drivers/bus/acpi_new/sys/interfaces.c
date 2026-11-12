@@ -9,6 +9,7 @@
 #include <wdmguid.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
+#define NDEBUG
 #include <debug.h>
 
 /* PCI root _OSC support and control DWORDs */

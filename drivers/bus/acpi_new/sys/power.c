@@ -6,6 +6,7 @@
  */
 
 #include <uacpint.h>
+#define NDEBUG
 #include <debug.h>
 
 /* Most wake blocks one sleep or resume pass handles */
