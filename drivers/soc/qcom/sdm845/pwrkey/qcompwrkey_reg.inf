@@ -1,0 +1,6 @@
+; Qualcomm PM8998 Power Key
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompwrkey","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompwrkey","ImagePath",0x00020000,"system32\drivers\qcompwrkey.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompwrkey","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompwrkey","Type",0x00010001,0x00000001

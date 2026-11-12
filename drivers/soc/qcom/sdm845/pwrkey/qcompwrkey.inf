@@ -1,0 +1,51 @@
+; QCOMPWRKEY.INF
+
+; Installation file for the PM8998 power key of Qualcomm SDM845 phones
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/11/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcompwrkey.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%Mfg% = Mfg
+
+[Mfg]
+%QCOMPWRKEY.DeviceDesc% = QCOMPWRKEY_Device, ACPI\ACPI0011
+
+[QCOMPWRKEY_Device.NT]
+CopyFiles = QCOMPWRKEY_CopyFiles
+
+[QCOMPWRKEY_CopyFiles]
+qcompwrkey.sys
+
+[QCOMPWRKEY_Device.NT.Services]
+AddService = qcompwrkey, 0x00000002, QCOMPWRKEY_Service
+
+[QCOMPWRKEY_Service]
+DisplayName    = %QCOMPWRKEY.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcompwrkey.sys
+
+[Strings]
+ReactOS = "ReactOS Project"
+Mfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+QCOMPWRKEY.DeviceDesc = "Qualcomm PMIC Power Button"
+QCOMPWRKEY.ServiceDesc = "Qualcomm PM8998 Power Key"
