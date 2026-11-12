@@ -16,6 +16,9 @@
 
 #define QCPWRKEY_POLL_MS        50
 
+/* Held this long the key powers the phone off, a shorter press is the display key */
+#define QCPWRKEY_LONG_PRESS_MS  2000
+
 /* PM8998 sits at SPMI slave 0, its revision block names the part */
 #define PM8998_SID              0
 #define PM8998_REVID_SUBTYPE    0x0105
@@ -33,6 +36,8 @@ typedef struct _QCPWRKEY_DEVICE
     PKTHREAD Thread;
     KEVENT StopEvent;
     BOOLEAN Held;
+    BOOLEAN LongPressSent;
+    ULONGLONG PressTime;
 
     /* Event IRPs the power manager keeps pending, and a press nobody waited for */
     KSPIN_LOCK Lock;
@@ -181,6 +186,7 @@ QcPwrKeyThread(
 {
     PQCPWRKEY_DEVICE Device = Context;
     LARGE_INTEGER Period;
+    ULONGLONG Now;
     UCHAR Status;
     BOOLEAN Held;
 
@@ -190,13 +196,28 @@ QcPwrKeyThread(
         if (!NT_SUCCESS(QcSpmiRead(PM8998_SID, PM8998_PON_RT_STS, &Status, sizeof(Status))))
             continue;
 
-        /* A press is the edge from released to held */
         Held = (Status & PM8998_PON_KPDPWR) != 0;
+        Now = KeQueryInterruptTime();
+
         if (Held && !Device->Held)
         {
-            QC_LOG("power key pressed");
+            Device->PressTime = Now;
+            Device->LongPressSent = FALSE;
+        }
+        else if (Held && !Device->LongPressSent &&
+                 Now - Device->PressTime >= 10000ULL * QCPWRKEY_LONG_PRESS_MS)
+        {
+            /* Still held, the power manager turns this into a shutdown */
+            QC_LOG("power key held, shutting down");
+            Device->LongPressSent = TRUE;
             QcPwrKeyDeliver(Device, SYS_BUTTON_POWER);
         }
+        else if (!Held && Device->Held && !Device->LongPressSent)
+        {
+            /* FIXME: A quick press should turn the display off */
+            QC_LOG("power key tapped, display off is not implemented");
+        }
+
         Device->Held = Held;
     }
 
@@ -276,6 +297,7 @@ QcPwrKeyStart(
     if (!NT_SUCCESS(Status))
         return Status;
     Device->Held = (Value & PM8998_PON_KPDPWR) != 0;
+    Device->LongPressSent = Device->Held;
     Device->Latched = 0;
     KeClearEvent(&Device->StopEvent);
 
