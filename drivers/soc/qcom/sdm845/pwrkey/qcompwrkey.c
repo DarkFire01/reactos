@@ -5,9 +5,10 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include <ntddk.h>
+#include <ntifs.h>
 #include <initguid.h>
 #include <poclass.h>
+#include <ndk/pofuncs.h>
 #include <qcom/spmiif.h>
 #include <qcom/qcompnp.h>
 
@@ -16,7 +17,7 @@
 
 #define QCPWRKEY_POLL_MS        50
 
-/* Held this long the key powers the phone off, a shorter press is the display key */
+/* Held this long the key powers the phone off, a shorter press is the power button */
 #define QCPWRKEY_LONG_PRESS_MS  2000
 
 /* PM8998 sits at SPMI slave 0, its revision block names the part */
@@ -180,6 +181,17 @@ QcPwrKeyDeviceControl(
 
 static
 VOID
+QcPwrKeyShutdown(VOID)
+{
+    NTSTATUS Status;
+
+    Status = ZwInitiatePowerAction(PowerActionShutdownOff, PowerSystemShutdown, 0, TRUE);
+    if (!NT_SUCCESS(Status))
+        QC_LOG("shutdown request failed, %08lx", Status);
+}
+
+static
+VOID
 NTAPI
 QcPwrKeyThread(
     _In_ PVOID Context)
@@ -207,15 +219,15 @@ QcPwrKeyThread(
         else if (Held && !Device->LongPressSent &&
                  Now - Device->PressTime >= 10000ULL * QCPWRKEY_LONG_PRESS_MS)
         {
-            /* Still held, the power manager turns this into a shutdown */
+            /* Still held, power the phone off whatever the button policy says */
             QC_LOG("power key held, shutting down");
             Device->LongPressSent = TRUE;
-            QcPwrKeyDeliver(Device, SYS_BUTTON_POWER);
+            QcPwrKeyShutdown();
         }
         else if (!Held && Device->Held && !Device->LongPressSent)
         {
-            /* FIXME: A quick press should turn the display off */
-            QC_LOG("power key tapped, display off is not implemented");
+            /* A quick press is the power button, Modern Standby makes it the display key */
+            QcPwrKeyDeliver(Device, SYS_BUTTON_POWER);
         }
 
         Device->Held = Held;
