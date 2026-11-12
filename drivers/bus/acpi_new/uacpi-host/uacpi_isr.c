@@ -8,6 +8,7 @@
 #include <uacpint.h>
 #include <uacpi/kernel_api.h>
 #include "uacpintsci.h"
+#define NDEBUG
 #include <debug.h>
 
 /* Seconds between reports while a work drain is stuck */

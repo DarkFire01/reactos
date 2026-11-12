@@ -9,6 +9,7 @@
 #include <uacpi/registers.h>
 #include <uacpi/acpi.h>
 #include <uacpi/kernel_api.h>
+#define NDEBUG
 #include <debug.h>
 
 volatile LONG UacpiNtSystemResuming;

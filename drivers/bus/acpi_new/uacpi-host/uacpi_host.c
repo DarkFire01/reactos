@@ -13,6 +13,7 @@
 #include <arc/arc.h>
 #include <reactos/drivers/acpi/acpi.h>
 #include "uacpintsci.h"
+#define NDEBUG
 #include <debug.h>
 
 /* Exported by ntoskrnl but not declared in the WDK */
