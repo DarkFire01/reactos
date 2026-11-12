@@ -417,6 +417,18 @@ IntHandlePowerEvent(
 
 /**
  * @brief
+ * Processes the power callouts queued for CSRSS, called from its
+ * power request thread once the power request event is signaled.
+ */
+VOID
+NTAPI
+IntUserPowerCalloutWorker(VOID)
+{
+    IntDeployPowerCallout();
+}
+
+/**
+ * @brief
  * Handles an incoming power state callout from the NT power
  * manager.
  *

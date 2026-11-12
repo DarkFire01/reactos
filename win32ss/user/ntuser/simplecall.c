@@ -112,6 +112,12 @@ NtUserCallNoParam(DWORD Routine)
             Result = (DWORD_PTR)IntReleaseCapture();
             break;
 
+        case NOPARAM_ROUTINE_USERPWRCALLOUTWORKER:
+            /* CSRSS drains the power callouts raised where Win32k could not run them */
+            if (PsGetCurrentProcess() == gpepCSRSS)
+                IntUserPowerCalloutWorker();
+            break;
+
         case NOPARAM_ROUTINE_LOADUSERAPIHOOK:
             Result = UserLoadApiHook();
             break;

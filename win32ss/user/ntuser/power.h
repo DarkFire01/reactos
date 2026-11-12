@@ -70,6 +70,10 @@ NTAPI
 IntHandlePowerState(
     _In_ PWIN32_POWERSTATE_PARAMETERS pWin32PwrStateParams);
 
+VOID
+NTAPI
+IntUserPowerCalloutWorker(VOID);
+
 //
 // Power Callout locking mechanism
 //
