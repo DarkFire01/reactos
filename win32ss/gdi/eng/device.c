@@ -988,6 +988,52 @@ EngFileIoControl(
 /*
  * @implemented
  */
+/**
+ * @brief
+ * Turns the output of every display device on or off, the miniport decides
+ * what powering its output down means for its hardware.
+ *
+ * @param[in] PowerOn
+ * TRUE to bring the displays back on, FALSE to turn them off.
+ */
+VOID
+NTAPI
+EngpSetDisplayPowerState(
+    _In_ BOOLEAN PowerOn)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    VIDEO_POWER_MANAGEMENT PowerManagement;
+    DWORD BytesReturned;
+    DWORD Error;
+
+    RtlZeroMemory(&PowerManagement, sizeof(PowerManagement));
+    PowerManagement.Length = sizeof(PowerManagement);
+    PowerManagement.PowerState = PowerOn ? VideoPowerOn : VideoPowerOff;
+
+    EngAcquireSemaphore(ghsemGraphicsDeviceList);
+    for (pGraphicsDevice = gpGraphicsDeviceFirst;
+         pGraphicsDevice;
+         pGraphicsDevice = pGraphicsDevice->pNextGraphicsDevice)
+    {
+        if (!pGraphicsDevice->DeviceObject)
+            continue;
+
+        Error = EngDeviceIoControl(pGraphicsDevice->DeviceObject,
+                                   IOCTL_VIDEO_SET_OUTPUT_DEVICE_POWER_STATE,
+                                   &PowerManagement,
+                                   sizeof(PowerManagement),
+                                   NULL,
+                                   0,
+                                   &BytesReturned);
+        if (Error != ERROR_SUCCESS)
+        {
+            TRACE("Display '%S' did not take power state %lu (error %lu)\n",
+                  pGraphicsDevice->szNtDeviceName, PowerManagement.PowerState, Error);
+        }
+    }
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
+}
+
 _Success_(return==0)
 DWORD
 APIENTRY
