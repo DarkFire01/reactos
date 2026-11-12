@@ -233,6 +233,57 @@ UserClientConnect(IN PCSR_PROCESS CsrProcess,
     return Status;
 }
 
+/**
+ * @brief
+ * Waits for Win32k to queue power callouts it could not run where they
+ * were raised, such as from the kernel power manager's own threads, and
+ * runs them.
+ */
+static
+ULONG
+NTAPI
+UserPowerRequestThread(
+    _In_ PVOID Parameter)
+{
+    UNREFERENCED_PARAMETER(Parameter);
+
+    for (;;)
+    {
+        if (!NT_SUCCESS(NtWaitForSingleObject(ghPowerRequestEvent, FALSE, NULL)))
+            break;
+
+        NtUserCallNoParam(NOPARAM_ROUTINE_USERPWRCALLOUTWORKER);
+    }
+
+    return 0;
+}
+
+static
+NTSTATUS
+UserStartPowerRequestThread(VOID)
+{
+    CLIENT_ID ClientId;
+    HANDLE hThread;
+    NTSTATUS Status;
+
+    Status = RtlCreateUserThread(NtCurrentProcess(),
+                                 NULL,
+                                 TRUE,
+                                 0,
+                                 0,
+                                 0,
+                                 (PVOID)UserPowerRequestThread,
+                                 NULL,
+                                 &hThread,
+                                 &ClientId);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* CSR keeps the handle of a static server thread */
+    CsrAddStaticServerThread(hThread, &ClientId, 0);
+    return NtResumeThread(hThread, NULL);
+}
+
 CSR_SERVER_DLL_INIT(UserServerDllInitialization)
 {
     NTSTATUS Status;
@@ -293,6 +344,14 @@ CSR_SERVER_DLL_INIT(UserServerDllInitialization)
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("NtUserInitialize failed with Status 0x%08x\n", Status);
+        return Status;
+    }
+
+    /* Power callouts Win32k cannot run in the caller's context wait for this thread */
+    Status = UserStartPowerRequestThread();
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Power request thread creation failed with Status 0x%08x\n", Status);
         return Status;
     }
 
