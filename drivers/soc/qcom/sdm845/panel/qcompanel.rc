@@ -1,0 +1,5 @@
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION  "Qualcomm SDM845 DSI Panel Power Driver"
+#define REACTOS_STR_INTERNAL_NAME     "qcompanel"
+#define REACTOS_STR_ORIGINAL_FILENAME "qcompanel.sys"
+#include <reactos/version.rc>

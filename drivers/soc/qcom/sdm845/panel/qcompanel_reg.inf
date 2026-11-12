@@ -1,0 +1,6 @@
+; Qualcomm SDM845 DSI Panel Power
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompanel","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompanel","ImagePath",0x00020000,"system32\drivers\qcompanel.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompanel","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcompanel","Type",0x00010001,0x00000001

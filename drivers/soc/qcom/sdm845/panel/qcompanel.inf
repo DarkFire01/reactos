@@ -1,0 +1,51 @@
+; QCOMPANEL.INF
+
+; Installation file for the DSI panel power control of Qualcomm SDM845 phones
+
+[Version]
+Signature = "$Windows NT$"
+Class = System
+ClassGuid = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider = %ReactOS%
+DriverVer = 11/11/2026,1.00
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+qcompanel.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%Mfg% = Mfg
+
+[Mfg]
+%QCOMPANEL.DeviceDesc% = QCOMPANEL_Device, ACPI\QCOM027E
+
+[QCOMPANEL_Device.NT]
+CopyFiles = QCOMPANEL_CopyFiles
+
+[QCOMPANEL_CopyFiles]
+qcompanel.sys
+
+[QCOMPANEL_Device.NT.Services]
+AddService = qcompanel, 0x00000002, QCOMPANEL_Service
+
+[QCOMPANEL_Service]
+DisplayName    = %QCOMPANEL.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\qcompanel.sys
+
+[Strings]
+ReactOS = "ReactOS Project"
+Mfg = "Qualcomm"
+DiskId1 = "ReactOS Installation Disk"
+QCOMPANEL.DeviceDesc = "Qualcomm Display Subsystem"
+QCOMPANEL.ServiceDesc = "Qualcomm SDM845 DSI Panel Power"
