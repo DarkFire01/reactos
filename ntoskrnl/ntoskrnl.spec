@@ -1745,11 +1745,6 @@
 # =========================================================================
 
 # C runtime helpers
-@ cdecl _strtoui64()
-@ cdecl memcpy_s()
-@ cdecl strncpy_s()
-@ cdecl strtok_s()
-@ cdecl wcsncpy_s()
 
 # Errata Manager
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
@@ -1758,10 +1753,6 @@
 @ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
 
 # Event Tracing for Windows
-@ stdcall -version=0x600+ EtwEventEnabled(int64 ptr)
-@ stdcall -version=0x600+ EtwRegister(ptr ptr ptr ptr)
-@ stdcall -version=0x600+ EtwUnregister(int64)
-@ stdcall -version=0x600+ EtwWrite(int64 ptr ptr long ptr)
 
 # Executive
 @ fastcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
@@ -1776,47 +1767,11 @@
 @ stdcall -version=0xa00+ HvlQueryActiveHypervisorProcessorCount()
 
 # I/O Manager
-@ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
-@ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
 @ stdcall -version=0xA00+ IoGetInitiatorProcess(ptr)
-@ stdcall -version=0x600+ IoInitializeWorkItem(ptr ptr)
 @ stdcall -version=0xA00+ IoOpenDriverRegistryKey(ptr long long long ptr)
-@ stdcall -version=0x600+ IoQueueWorkItemEx(ptr ptr long ptr)
-@ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)
-@ stdcall -version=0x602+ IoReportInterruptActive(ptr)
-@ stdcall -version=0x602+ IoReportInterruptInactive(ptr)
-@ stdcall -version=0x601+ IoRequestDeviceEjectEx(ptr ptr ptr ptr)
-@ stdcall -version=0x602+ IoRequestDeviceRemovalForReset(ptr long)
-@ stdcall -version=0x602+ IoReserveDependency(ptr ptr)
-@ stdcall -version=0x602+ IoResolveDependency(ptr)
-@ stdcall -version=0x602+ IoSetDependency(ptr ptr)
-@ stdcall -version=0x600+ IoSizeofWorkItem()
-@ stdcall -version=0x600+ IoSynchronousCallDriver(ptr ptr)
-@ stdcall -version=0x602+ IoTestDependency(ptr)
-@ stdcall -version=0x600+ IoUninitializeWorkItem(ptr)
-@ stdcall -version=0x601+ IoUnregisterContainerNotification(ptr)
-@ stdcall -version=0x601+ IoUnregisterPlugPlayNotificationEx(ptr)
 
 # Kernel
-@ stdcall -version=0x603+ KeCancelTimer2(ptr)
-@ stdcall -version=0x601+ KeGetProcessorIndexFromNumber(ptr)
-@ stdcall -version=0x601+ KeGetProcessorNumberFromIndex(long ptr)
-@ stdcall -version=0x603+ KeInitializeTimer2(ptr)
-@ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
-@ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
-@ stdcall -version=0x601+ KeQueryGroupAffinity(long)
-@ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
-@ stdcall -version=0x601+ KeQueryMaximumGroupCount()
-@ stdcall -version=0x601+ KeQueryMaximumProcessorCountEx(long)
-@ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
 @ stdcall -version=0x602+ KeQuerySystemTimePrecise(ptr)
-@ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
-@ stdcall -version=0x600+ KeRevertToUserAffinityThreadEx(long)
-@ stdcall -version=0x601+ KeRevertToUserGroupAffinityThread(ptr)
-@ stdcall -version=0x600+ KeSetSystemAffinityThreadEx(long)
-@ stdcall -version=0x601+ KeSetSystemGroupAffinityThread(ptr ptr)
-@ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
-@ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
 
 # Memory Manager
 @ stdcall -version=0xa00+ MmMapInSpaceEx(int64 long long)
