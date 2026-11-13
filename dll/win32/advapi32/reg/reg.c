@@ -2001,9 +2001,6 @@ RegGetValueW(HKEY hKey,
 
     if (pvData && !pcbData)
         return ERROR_INVALID_PARAMETER;
-    if ((dwFlags & RRF_RT_REG_EXPAND_SZ) && !(dwFlags & RRF_NOEXPAND) &&
-            ((dwFlags & RRF_RT_ANY) != RRF_RT_ANY))
-        return ERROR_INVALID_PARAMETER;
 
     if (pszSubKey && pszSubKey[0])
     {
@@ -2106,9 +2103,6 @@ RegGetValueA(HKEY hKey,
           cbData);
 
     if (pvData && !pcbData)
-        return ERROR_INVALID_PARAMETER;
-    if ((dwFlags & RRF_RT_REG_EXPAND_SZ) && !(dwFlags & RRF_NOEXPAND) &&
-            ((dwFlags & RRF_RT_ANY) != RRF_RT_ANY))
         return ERROR_INVALID_PARAMETER;
 
     if (pszSubKey && pszSubKey[0])

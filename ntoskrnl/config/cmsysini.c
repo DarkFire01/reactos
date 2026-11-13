@@ -2388,6 +2388,24 @@ CmpSetVersionData(VOID)
                   ValueData.Buffer,
                   ValueData.Length + sizeof(WCHAR));
 
+    /* Set the 'CurrentMajorVersionNumber' value */
+    RtlInitUnicodeString(&ValueName, L"CurrentMajorVersionNumber");
+    NtSetValueKey(CurrentVersionKeyHandle,
+                  &ValueName,
+                  0,
+                  REG_DWORD,
+                  &NtMajorVersion,
+                  sizeof(NtMajorVersion));
+
+    /* Set the 'CurrentMinorVersionNumber' value */
+    RtlInitUnicodeString(&ValueName, L"CurrentMinorVersionNumber");
+    NtSetValueKey(CurrentVersionKeyHandle,
+                  &ValueName,
+                  0,
+                  REG_DWORD,
+                  &NtMinorVersion,
+                  sizeof(NtMinorVersion));
+
     /* Set the 'BuildLab' value */
     RtlInitUnicodeString(&ValueName, L"BuildLab");
     RtlInitAnsiString(&TempString, NtBuildLab);

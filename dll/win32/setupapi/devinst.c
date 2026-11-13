@@ -162,7 +162,7 @@ CheckSectionValid(
     LPWSTR Section = NULL;
     //LPCWSTR pExtensionPlatform;
     LPCWSTR pExtensionArchitecture;
-    LPWSTR Fields[6];
+    LPWSTR Fields[7];
     DWORD i;
     BOOL ret = FALSE;
 
@@ -242,6 +242,7 @@ CheckSectionValid(
      * Field[3] Minor version
      * Field[4] Product type
      * Field[5] Suite mask
+     * Field[6] Build number
      * Remark: these fields may be NULL if the information is not provided
      */
     Fields[0] = Section;
@@ -253,8 +254,8 @@ CheckSectionValid(
         goto cleanup;
     }
     Fields[1] = Fields[0] + 1;
-    Fields[2] = Fields[3] = Fields[4] = Fields[5] = NULL;
-    for (i = 2; Fields[i - 1] != NULL && i < 6; i++)
+    Fields[2] = Fields[3] = Fields[4] = Fields[5] = Fields[6] = NULL;
+    for (i = 2; Fields[i - 1] != NULL && i < ARRAYSIZE(Fields); i++)
     {
         Fields[i] = wcschr(Fields[i - 1], '.');
         if (Fields[i])
@@ -299,10 +300,10 @@ CheckSectionValid(
         goto cleanup;
     }
 
-    /* Check if informations are matching */
+    /* Any OS version matches, and the highest one wins */
     if (Fields[2] && *Fields[2])
     {
-        DWORD MajorVersion, MinorVersion = 0;
+        DWORD MajorVersion, MinorVersion = 0, BuildNumber = 0;
         MajorVersion = strtoulW(Fields[2], NULL, 0);
         if ((MajorVersion == 0 || MajorVersion == ULONG_MAX) &&
             (errno == ERANGE || errno == EINVAL))
@@ -320,18 +321,24 @@ CheckSectionValid(
                 goto cleanup;
             }
         }
-        if (PlatformInfo->MajorVersion < MajorVersion ||
-            (PlatformInfo->MajorVersion == MajorVersion && PlatformInfo->MinorVersion < MinorVersion))
+        if (Fields[6] && *Fields[6])
         {
-            TRACE("Mismatch on version field (%lu.%lu and %lu.%lu)\n",
-                MajorVersion, MinorVersion, PlatformInfo->MajorVersion, PlatformInfo->MinorVersion);
-            goto cleanup;
+            BuildNumber = strtoulW(Fields[6], NULL, 0);
+            if ((BuildNumber == 0 || BuildNumber == ULONG_MAX) &&
+                (errno == ERANGE || errno == EINVAL))
+            {
+                TRACE("Wrong BuildNumber ('%s')\n", debugstr_w(Fields[6]));
+                goto cleanup;
+            }
         }
-        *ScoreMajorVersion = MajorVersion - PlatformInfo->MajorVersion;
-        if (MajorVersion == PlatformInfo->MajorVersion)
-            *ScoreMinorVersion = MinorVersion - PlatformInfo->MinorVersion;
-        else
-            *ScoreMinorVersion = MinorVersion;
+        if (MinorVersion > 0xFFFF)
+            MinorVersion = 0xFFFF;
+        if (BuildNumber > 0xFFFF)
+            BuildNumber = 0xFFFF;
+
+        /* Lower scores win, and the minor version and build share one score */
+        *ScoreMajorVersion = ~MajorVersion;
+        *ScoreMinorVersion = ~((MinorVersion << 16) | BuildNumber);
     }
     else if (Fields[3] && *Fields[3])
     {
@@ -340,8 +347,8 @@ CheckSectionValid(
     }
     else
     {
-        *ScoreMajorVersion = PlatformInfo->MajorVersion;
-        *ScoreMinorVersion = PlatformInfo->MinorVersion;
+        *ScoreMajorVersion = ULONG_MAX;
+        *ScoreMinorVersion = ULONG_MAX;
     }
 
     if (Fields[4] && *Fields[4])
