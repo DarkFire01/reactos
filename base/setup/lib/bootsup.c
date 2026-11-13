@@ -88,7 +88,7 @@ CreateFreeLoaderReactOSEntries(
     /* ReactOS_Debug_Net */
     // BootEntry->BootEntryKey = MAKESTRKEY(L"ReactOS_Debug_Net");
     BootEntry->FriendlyName = L"\"ReactOS (Debug) Network\"";
-    Options->OsLoadOptions  = L"/DEBUG /DEBUGPORT=NET /HOST_IP=10.0.0.0 /HOST_PORT=50000 /ENCRYPTION_KEY=make.reactos.great.again /SOS";
+    Options->OsLoadOptions  = L"/DEBUG /DEBUGPORT=NET /HOST_IP=10.0.0.124 /HOST_PORT=50000 /ENCRYPTION_KEY=make.reactos.great.again /SOS";
     AddBootStoreEntry(BootStoreHandle, BootEntry, MAKESTRKEY(L"ReactOS_Debug_Net"));
 
         /* ReactOS_Debug_USB */

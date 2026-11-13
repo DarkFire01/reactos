@@ -83,6 +83,10 @@ static const WCHAR *create_system_dirid( int dirid )
         GetSystemDirectoryW( buffer, MAX_PATH );
         break;
     case DIRID_DRIVERS:
+#ifdef __REACTOS__
+    /* There is no driver store, so its files go beside the drivers that load them */
+    case DIRID_DRIVER_STORE:
+#endif
         GetSystemDirectoryW( buffer, MAX_PATH );
         strcatW( buffer, Drivers );
         break;
