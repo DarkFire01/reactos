@@ -16,6 +16,21 @@ static struct wgl_dc_data* dc_data_list = NULL;
 
 LIST_ENTRY ContextListHead;
 
+/* The entry of a window or memory DC, NULL if there is none yet. Called with dc_data_cs held. */
+static
+struct wgl_dc_data*
+find_dc_data(HANDLE owner)
+{
+    struct wgl_dc_data* data;
+
+    for(data = dc_data_list; data; data = data->next)
+    {
+        if(data->owner.u == owner)
+            return data;
+    }
+    return NULL;
+}
+
 /* FIXME: suboptimal */
 static
 struct wgl_dc_data*
@@ -23,6 +38,7 @@ get_dc_data_ex(HDC hdc, INT format, UINT size, PIXELFORMATDESCRIPTOR *descr)
 {
     HWND hwnd = NULL;
     struct wgl_dc_data* data;
+    struct wgl_dc_data* new_data;
     DWORD objType = GetObjectType(hdc);
     ULONG flags = 0;
     union
@@ -51,39 +67,49 @@ get_dc_data_ex(HDC hdc, INT format, UINT size, PIXELFORMATDESCRIPTOR *descr)
     }
 
     EnterCriticalSection(&dc_data_cs);
-    data = dc_data_list;
-    while(data)
-    {
-        if(data->owner.u == id.u)
-        {
-            LeaveCriticalSection(&dc_data_cs);
-            return data;
-        }
-        data = data->next;
-    }
-    data= HeapAlloc(GetProcessHeap(), 0, sizeof(*data));
+    data = find_dc_data(id.u);
+    LeaveCriticalSection(&dc_data_cs);
+    if(data)
+        return data;
+
+    /*
+     * Ask the ICD without holding dc_data_cs. An ICD's DrvDescribePixelFormat may wait for a
+     * thread of its own that describes a pixel format through gdi32 too: NVIDIA's nvoglv64 does
+     * so on a machine with more than one core, and with the lock held here that thread blocked in
+     * this function for good (the second DXGI factory of the Vulkan loader, boots 51 to 53).
+     * Entries are never freed, so a second search under the lock is enough to catch another
+     * thread that added the same DC meanwhile.
+     */
+    new_data = HeapAlloc(GetProcessHeap(), 0, sizeof(*new_data));
+    if(!new_data)
+        return NULL;
+    /* initialize the structure */
+    new_data->owner.u = id.u;
+    new_data->flags = flags;
+    new_data->pixelformat = 0;
+    new_data->sw_data = NULL;
+    /* Load the driver */
+    new_data->icd_data = IntGetIcdData(hdc);
+    /* Get the number of available formats for this DC once and for all (and fill descr) */
+    if(new_data->icd_data && new_data->icd_data->DrvDescribePixelFormat)
+        new_data->nb_icd_formats = new_data->icd_data->DrvDescribePixelFormat(hdc, format, size, descr);
+    else
+        new_data->nb_icd_formats = 0;
+    TRACE("ICD %S has %u formats for HDC %x.\n", new_data->icd_data ? new_data->icd_data->DriverName : NULL, new_data->nb_icd_formats, hdc);
+    new_data->nb_sw_formats = sw_DescribePixelFormat(hdc, 0, 0, NULL);
+
+    EnterCriticalSection(&dc_data_cs);
+    data = find_dc_data(id.u);
     if(!data)
     {
-        LeaveCriticalSection(&dc_data_cs);
-        return NULL;
+        new_data->next = dc_data_list;
+        dc_data_list = new_data;
+        data = new_data;
+        new_data = NULL;
     }
-    /* initialize the structure */
-    data->owner.u = id.u;
-    data->flags = flags;
-    data->pixelformat = 0;
-    data->sw_data = NULL;
-    /* Load the driver */
-    data->icd_data = IntGetIcdData(hdc);
-    /* Get the number of available formats for this DC once and for all */
-    if(data->icd_data && data->icd_data->DrvDescribePixelFormat)
-        data->nb_icd_formats = data->icd_data->DrvDescribePixelFormat(hdc, format, size, descr);
-    else
-        data->nb_icd_formats = 0;
-    TRACE("ICD %S has %u formats for HDC %x.\n", data->icd_data ? data->icd_data->DriverName : NULL, data->nb_icd_formats, hdc);
-    data->nb_sw_formats = sw_DescribePixelFormat(hdc, 0, 0, NULL);
-    data->next = dc_data_list;
-    dc_data_list = data;
     LeaveCriticalSection(&dc_data_cs);
+    if(new_data)
+        HeapFree(GetProcessHeap(), 0, new_data);
     return data;
 }
 
