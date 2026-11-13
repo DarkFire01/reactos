@@ -430,7 +430,7 @@ DlpOpenDxgkrnl(VOID)
                                     &gpDxgkFileObject, &gpDxgkDeviceObject);
 }
 
-/** @brief Does one of the driver's devices sit on a display class device? */
+/** @brief Is one of the driver's video function devices on a display class device? */
 static BOOLEAN
 DlpDriverDrivesDisplay(
     _In_ PDRIVER_OBJECT DriverObject)
@@ -445,7 +445,17 @@ DlpDriverDrivesDisplay(
          DeviceObject != NULL;
          DeviceObject = DeviceObject->NextDevice)
     {
+        if (DeviceObject->DeviceType != FILE_DEVICE_VIDEO)
+            continue;
+
+        /* The bus driver owns the adapter's PDO, only the device above it is the miniport's */
         Pdo = IoGetDeviceAttachmentBaseRef(DeviceObject);
+        if (Pdo == DeviceObject)
+        {
+            ObDereferenceObject(Pdo);
+            continue;
+        }
+
         Status = IoGetDeviceProperty(Pdo, DevicePropertyClassGuid, sizeof(szClass), szClass, &cbClass);
         ObDereferenceObject(Pdo);
 
@@ -458,8 +468,10 @@ DlpDriverDrivesDisplay(
 
 /**
  * @brief Is a WDDM display adapter there? dxgkrnl takes over the dispatch routines of every
- *        miniport, and a display adapter, unlike a render only one, is in the display class.
- *        This holds from the miniport's AddDevice on, before dxgkrnl starts the adapter.
+ *        miniport, though a miniport may put its own in front of them again, and a display
+ *        adapter, unlike a render only one, is in the display class. An XDDM miniport's
+ *        dispatch is in videoprt, so it matches neither. This holds from the miniport's
+ *        AddDevice on, before dxgkrnl starts the adapter.
  */
 static BOOLEAN
 DlpHasWddmDisplayAdapter(VOID)
@@ -521,7 +533,8 @@ DlpHasWddmDisplayAdapter(VOID)
 
         ulDispatch = (ULONG_PTR)DriverObject->MajorFunction[IRP_MJ_PNP];
         if ((DriverObject != DxgkDriver) &&
-            (ulDispatch - (ULONG_PTR)DxgkDriver->DriverStart < DxgkDriver->DriverSize))
+            ((ulDispatch - (ULONG_PTR)DxgkDriver->DriverStart < DxgkDriver->DriverSize) ||
+             (ulDispatch - (ULONG_PTR)DriverObject->DriverStart < DriverObject->DriverSize)))
         {
             bFound = DlpDriverDrivesDisplay(DriverObject);
         }
