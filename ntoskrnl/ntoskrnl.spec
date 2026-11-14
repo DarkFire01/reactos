@@ -1711,6 +1711,7 @@
 @ cdecl _wcsnicmp()
 @ cdecl _wcsnset()
 @ cdecl _wcsrev()
+@ cdecl _wsplitpath_s()
 @ cdecl _wcsupr()
 @ cdecl _wtoi()
 @ cdecl _wtol()

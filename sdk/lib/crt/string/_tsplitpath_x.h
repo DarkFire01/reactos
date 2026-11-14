@@ -58,8 +58,10 @@ _tsplitpath_x(
                          ((fname != NULL) && (fname_size == 0)) ||
                          ((ext != NULL) && (ext_size == 0))))
     {
+#ifndef _LIBCNT_
         errno = EINVAL;
-        return -1;
+#endif
+        return EINVAL;
     }
 #endif
 
@@ -93,6 +95,15 @@ _tsplitpath_x(
     /* Check if we have a drive letter (only 1 char supported) */
     if (path[1] == ':')
     {
+#if IS_SECAPI
+        if (drive && (drive_size < 3))
+        {
+#ifndef _LIBCNT_
+            errno = ERANGE;
+#endif
+            return ERANGE;
+        }
+#endif
         if (drive && (drive_size >= 3))
         {
             drive[0] = path[0];
@@ -129,6 +140,20 @@ _tsplitpath_x(
         file_start = dir_start;
     if (!ext_start || (ext_start < file_start))
         ext_start = path;
+
+#if IS_SECAPI
+    /* A part that does not fit fails the call and leaves every output empty */
+    if ((dir && (size_t)(file_start - dir_start) >= dir_size) ||
+        (fname && (size_t)(ext_start - file_start) >= fname_size) ||
+        (ext && (size_t)(path - ext_start) >= ext_size))
+    {
+        if (drive) drive[0] = '\0';
+#ifndef _LIBCNT_
+        errno = ERANGE;
+#endif
+        return ERANGE;
+    }
+#endif
 
     if (dir)
     {
