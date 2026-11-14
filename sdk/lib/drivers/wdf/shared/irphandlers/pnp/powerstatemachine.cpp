@@ -2260,11 +2260,21 @@ Return Value:
     // m_DevicePowerState is the "old" state because we update it after the
     // D0Entry callback.
     //
+    DoTraceLevelMessage(
+        This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "%s EvtDeviceD0Entry on thread %p",
+        This->GetDriverGlobals()->Public.DriverName, PsGetCurrentThreadId());
+
     status = This->m_DeviceD0Entry.Invoke(
         This->m_Device->GetHandle(),
         (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState,
         &progress);
     if (!NT_SUCCESS(status)) {
+        DoTraceLevelMessage(
+            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+            "WDFDEVICE %p initial EvtDeviceD0Entry failed, %!STATUS!",
+            This->m_Device->GetHandle(), status);
+
         if (progress >= FxCxCallbackProgressClientSucceeded) {
             return WdfDevStatePowerInitialPowerUpFailedPowerDown;
         }
@@ -3532,6 +3542,11 @@ Return Value:
     // m_DevicePowerState is the "old" state because we update it after the
     // D0Entry callback in SelfManagedIo or PowerPolicyStopped
     //
+    DoTraceLevelMessage(
+        This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "%s EvtDeviceD0Entry on thread %p",
+        This->GetDriverGlobals()->Public.DriverName, PsGetCurrentThreadId());
+
     status = This->m_DeviceD0Entry.Invoke(
         This->m_Device->GetHandle(),
         (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState,
@@ -3587,6 +3602,11 @@ Return Value:
     // m_DevicePowerState is the "old" state because we update it after the
     // D0Entry callback in SelfManagedIoNP or PowerPolicyStopped
     //
+    DoTraceLevelMessage(
+        This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "%s EvtDeviceD0Entry on thread %p",
+        This->GetDriverGlobals()->Public.DriverName, PsGetCurrentThreadId());
+
     status = This->m_DeviceD0Entry.Invoke(
         This->m_Device->GetHandle(),
         (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState,
