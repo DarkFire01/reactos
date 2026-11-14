@@ -4,16 +4,17 @@
 
 [Version]
 Signature = "$Windows NT$"
-Class = Mouse
-ClassGuid = {4D36E96F-E325-11CE-BFC1-08002BE10318}
+Class = HIDClass
+ClassGuid = {745a17a0-74d3-11d0-b6fe-00a0c90f57da}
 Provider = %ReactOS%
-DriverVer = 11/11/2026,1.00
+DriverVer = 11/13/2026,2.00
 
 [SourceDisksNames]
 1 = %DiskId1%,,,""
 
 [SourceDisksFiles]
 qcomtouch.sys = 1,,
+mshidkmdf.sys = 1,,
 
 [DestinationDirs]
 DefaultDestDir = 12
@@ -32,9 +33,24 @@ CopyFiles = QCOMTOUCH_CopyFiles
 
 [QCOMTOUCH_CopyFiles]
 qcomtouch.sys
+mshidkmdf.sys
+
+[QCOMTOUCH_Device.NT.HW]
+AddReg = QCOMTOUCH_Filter_AddReg
+
+[QCOMTOUCH_Filter_AddReg]
+HKR,,"LowerFilters",0x00010000,"qcomtouch"
 
 [QCOMTOUCH_Device.NT.Services]
-AddService = qcomtouch, 0x00000002, QCOMTOUCH_Service
+AddService = mshidkmdf, 0x00000002, MSHIDKMDF_Service
+AddService = qcomtouch, , QCOMTOUCH_Service
+
+[MSHIDKMDF_Service]
+DisplayName    = %MSHIDKMDF.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\mshidkmdf.sys
 
 [QCOMTOUCH_Service]
 DisplayName    = %QCOMTOUCH.ServiceDesc%
@@ -42,11 +58,11 @@ ServiceType    = 1
 StartType      = 3
 ErrorControl   = 1
 ServiceBinary  = %12%\qcomtouch.sys
-LoadOrderGroup = Pointer Port
 
 [Strings]
 ReactOS = "ReactOS Project"
 Mfg = "Synaptics"
 DiskId1 = "ReactOS Installation Disk"
 QCOMTOUCH.DeviceDesc = "Synaptics RMI4 Touch Screen"
-QCOMTOUCH.ServiceDesc = "Qualcomm RMI4 Touch Screen"
+QCOMTOUCH.ServiceDesc = "Synaptics RMI4 HID Touch Filter"
+MSHIDKMDF.ServiceDesc = "Pass-through HID to KMDF Filter Driver"

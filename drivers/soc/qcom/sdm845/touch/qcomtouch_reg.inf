@@ -1,7 +1,7 @@
-; Qualcomm RMI4 Touch Screen
+; Synaptics RMI4 HID touch filter, below mshidkmdf
 [AddReg]
 HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","ErrorControl",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Group",0x00000000,"Pointer Port"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Group",0x00000000,"PNP Filter"
 HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","ImagePath",0x00020000,"system32\drivers\qcomtouch.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Start",0x00010001,0x00000003
 HKLM,"SYSTEM\CurrentControlSet\Services\qcomtouch","Type",0x00010001,0x00000001

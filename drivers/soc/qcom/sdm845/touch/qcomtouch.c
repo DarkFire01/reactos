@@ -1,8 +1,14 @@
 /*
  * PROJECT:     ReactOS Qualcomm platform drivers
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Synaptics RMI4 touch controller as a mouse class pointer port
+ * PURPOSE:     Synaptics RMI4 touch controller as a HID digitizer under mshidkmdf
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+/*
+ * Lower filter below mshidkmdf on the ACPI touch device. The I2C target, the
+ * attention GpioInt and the reset and rail GpioIo lines all come from the
+ * resource hub, so the same code runs on any board ACPI describes this way.
  */
 
 #include "qcomtouch.h"
@@ -11,32 +17,30 @@
 #include <wmidata.h>
 #include <dmilib.h>
 
+#include <debug.h>
+
+DRIVER_INITIALIZE DriverEntry;
+static EVT_WDF_DRIVER_DEVICE_ADD QcTouchEvtDeviceAdd;
+static EVT_WDF_DEVICE_PREPARE_HARDWARE QcTouchEvtPrepareHardware;
+static EVT_WDF_DEVICE_RELEASE_HARDWARE QcTouchEvtReleaseHardware;
+static EVT_WDF_DEVICE_D0_ENTRY QcTouchEvtD0Entry;
+static EVT_WDF_DEVICE_D0_ENTRY_POST_INTERRUPTS_ENABLED QcTouchEvtD0EntryPostInterruptsEnabled;
+static EVT_WDF_DEVICE_D0_EXIT QcTouchEvtD0Exit;
+static EVT_WDF_INTERRUPT_ISR QcTouchEvtInterruptIsr;
+static EVT_WDF_INTERRUPT_WORKITEM QcTouchEvtInterruptWorkItem;
+static EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL QcTouchEvtIoInternalDeviceControl;
+
 static const GUID QcTouchSmbiosGuid = SMBIOS_DATA_GUID;
 
-/*
- * Each board is told apart by its firmware SMBIOS identity. The OnePlus 6 and
- * 6T are the same SDM845 wiring: a Synaptics S3706 on the QUPv3 wrap1 S4 I2C
- * engine, the 1.8 V rail gated by one GPIO and the attention line on another.
- */
+/* The OnePlus 6 and 6T feed the sensor core from an RPMh LDO ACPI leaves out */
 static const QCTOUCH_BOARD QcTouchBoards[] =
 {
-    {
-        "OnePlus", "6",
-        0x00A90000, 0x00100000, 0x5200C, 0x04300000, 0x184D4, 0x184D8, 400000,
-        0x20, 0x03400000, 0xC00000,
-        88, QCTOUCH_TLMM_EAST, 125, QCTOUCH_TLMM_EAST, 99, QCTOUCH_TLMM_NORTH,
-        49, 50, QCTOUCH_TLMM_NORTH, 1, 200,
-        "ldoa28", 3000000, 1664000, 8000, 7
-    },
-    {
-        "OnePlus", "6T",
-        0x00A90000, 0x00100000, 0x5200C, 0x04300000, 0x184D4, 0x184D8, 400000,
-        0x20, 0x03400000, 0xC00000,
-        88, QCTOUCH_TLMM_EAST, 125, QCTOUCH_TLMM_EAST, 99, QCTOUCH_TLMM_NORTH,
-        49, 50, QCTOUCH_TLMM_NORTH, 1, 200,
-        "ldoa28", 3000000, 1664000, 8000, 7
-    },
+    { "OnePlus", "6",  200, "ldoa28", 3000000, 1664000, 8000, 7 },
+    { "OnePlus", "6T", 200, "ldoa28", 3000000, 1664000, 8000, 7 },
 };
+
+/* Attention reads per interrupt before giving the line back */
+#define QCTOUCH_ATTENTION_LOOPS     4
 
 static
 PCQCTOUCH_BOARD
@@ -52,10 +56,7 @@ QcTouchDetectBoard(VOID)
 
     Status = IoWMIOpenBlock((LPGUID)&QcTouchSmbiosGuid, WMIGUID_QUERY, &DataBlock);
     if (!NT_SUCCESS(Status))
-    {
-        QC_LOG("cannot open the SMBIOS data block, %08lx", Status);
         return NULL;
-    }
 
     Status = IoWMIQueryAllData(DataBlock, &BufferSize, NULL);
     if (Status != STATUS_BUFFER_TOO_SMALL && !NT_SUCCESS(Status))
@@ -76,10 +77,6 @@ QcTouchDetectBoard(VOID)
     {
         ParseSMBiosTables(AllData + 1, AllData->WnodeHeader.BufferSize, Strings);
 
-        QC_LOG("SMBIOS vendor '%s' product '%s'",
-               Strings[SYS_VENDOR] ? Strings[SYS_VENDOR] : "?",
-               Strings[SYS_PRODUCT] ? Strings[SYS_PRODUCT] : "?");
-
         for (Index = 0; Index < RTL_NUMBER_OF(QcTouchBoards); Index++)
         {
             if (Strings[SYS_VENDOR] && Strings[SYS_PRODUCT] &&
@@ -99,40 +96,149 @@ QcTouchDetectBoard(VOID)
 
 static
 VOID
-QcTouchConfigurePin(
-    _In_ PQCTOUCH_DEVICE Device,
-    _In_ ULONG Number,
-    _In_ ULONG TileOffset,
-    _In_ ULONG Function,
-    _In_ QCOM_TLMM_PULL Pull,
-    _In_ ULONG DriveMilliamps,
-    _In_ QCOM_TLMM_DIRECTION Direction)
+QcTouchDelay(
+    _In_ ULONG Milliseconds)
 {
-    QCOM_TLMM_PIN Pin;
+    LARGE_INTEGER Interval;
 
-    RtlZeroMemory(&Pin, sizeof(Pin));
-    Pin.Number = Number;
-    Pin.TileOffset = TileOffset;
-    Pin.Function = Function;
-    Pin.Pull = Pull;
-    Pin.DriveMilliamps = DriveMilliamps;
-    Pin.Direction = Direction;
-    QcTlmmConfigurePin(Device->Tlmm, &Pin);
+    Interval.QuadPart = -10000LL * Milliseconds;
+    KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+}
+
+/**
+ * @brief Records the hub ids of the I2C target and the two GpioIo lines.
+ *
+ * The _CRS lists the reset line before the rail enable.
+ */
+static
+NTSTATUS
+NTAPI
+QcTouchEvtPrepareHardware(
+    _In_ WDFDEVICE WdfDevice,
+    _In_ WDFCMRESLIST Resources,
+    _In_ WDFCMRESLIST ResourcesTranslated)
+{
+    PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor;
+    ULONG Count;
+    ULONG Index;
+    NTSTATUS Status;
+
+    UNREFERENCED_PARAMETER(Resources);
+
+    Count = WdfCmResourceListGetCount(ResourcesTranslated);
+    for (Index = 0; Index < Count; Index++)
+    {
+        Descriptor = WdfCmResourceListGetDescriptor(ResourcesTranslated, Index);
+        if (Descriptor == NULL || Descriptor->Type != CmResourceTypeConnection)
+            continue;
+
+        if (Descriptor->u.Connection.Class == CM_RESOURCE_CONNECTION_CLASS_SERIAL &&
+            Descriptor->u.Connection.Type == CM_RESOURCE_CONNECTION_TYPE_SERIAL_I2C &&
+            !Device->HasI2c)
+        {
+            Device->I2cId.LowPart = Descriptor->u.Connection.IdLowPart;
+            Device->I2cId.HighPart = Descriptor->u.Connection.IdHighPart;
+            Device->HasI2c = TRUE;
+        }
+        else if (Descriptor->u.Connection.Class == CM_RESOURCE_CONNECTION_CLASS_GPIO &&
+                 Descriptor->u.Connection.Type == CM_RESOURCE_CONNECTION_TYPE_GPIO_IO)
+        {
+            if (!Device->HasReset)
+            {
+                Device->ResetId.LowPart = Descriptor->u.Connection.IdLowPart;
+                Device->ResetId.HighPart = Descriptor->u.Connection.IdHighPart;
+                Device->HasReset = TRUE;
+            }
+            else if (!Device->HasEnable)
+            {
+                Device->EnableId.LowPart = Descriptor->u.Connection.IdLowPart;
+                Device->EnableId.HighPart = Descriptor->u.Connection.IdHighPart;
+                Device->HasEnable = TRUE;
+            }
+        }
+    }
+
+    if (!Device->HasI2c)
+    {
+        DPRINT1("no I2C connection in the resources\n");
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
+    Status = QcTouchOpenConnection(Device, Device->I2cId, &Device->I2c);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (Device->HasReset)
+    {
+        Status = QcTouchOpenConnection(Device, Device->ResetId, &Device->Reset);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    if (Device->HasEnable)
+    {
+        Status = QcTouchOpenConnection(Device, Device->EnableId, &Device->Enable);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    Device->Board = QcTouchDetectBoard();
+    return STATUS_SUCCESS;
 }
 
 static
 NTSTATUS
-QcTouchBringUp(
-    _In_ PQCTOUCH_DEVICE Device)
+NTAPI
+QcTouchEvtReleaseHardware(
+    _In_ WDFDEVICE WdfDevice,
+    _In_ WDFCMRESLIST ResourcesTranslated)
 {
-    QCOM_GENI_I2C_CONFIG Config;
-    PHYSICAL_ADDRESS TlmmBase;
-    LARGE_INTEGER Delay;
+    PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
+
+    UNREFERENCED_PARAMETER(ResourcesTranslated);
+
+    if (Device->Enable)
+    {
+        WdfObjectDelete(Device->Enable);
+        Device->Enable = NULL;
+    }
+
+    if (Device->Reset)
+    {
+        WdfObjectDelete(Device->Reset);
+        Device->Reset = NULL;
+    }
+
+    if (Device->I2c)
+    {
+        WdfObjectDelete(Device->I2c);
+        Device->I2c = NULL;
+    }
+
+    Device->HasI2c = FALSE;
+    Device->HasReset = FALSE;
+    Device->HasEnable = FALSE;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Powers the sensor, takes it out of reset and configures RMI4.
+ */
+static
+NTSTATUS
+NTAPI
+QcTouchEvtD0Entry(
+    _In_ WDFDEVICE WdfDevice,
+    _In_ WDF_POWER_DEVICE_STATE PreviousState)
+{
+    PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
     PCQCTOUCH_BOARD Board = Device->Board;
     NTSTATUS Status;
 
-    /* The 3.0 V core rail is an RPMh regulator, bring it up before anything else */
-    if (Board->VddResource)
+    UNREFERENCED_PARAMETER(PreviousState);
+
+    if (Board && Board->VddResource)
     {
         QCOM_RPMH_VRM_REQUEST Vdd;
 
@@ -144,435 +250,214 @@ QcTouchBringUp(
 
         Status = QcRpmhEnableRegulator(&Vdd);
         if (!NT_SUCCESS(Status))
+            DPRINT1("%s did not come up, 0x%08lx\n", Board->VddResource, Status);
+    }
+
+    if (Device->Enable)
+    {
+        Status = QcTouchGpioWrite(Device->Enable, TRUE);
+        if (!NT_SUCCESS(Status))
             return Status;
     }
 
-    /* Pin control next, the rails power the chip the I2C engine then talks to */
-    TlmmBase.QuadPart = Board->TlmmBase;
-    Status = QcTlmmConnect(TlmmBase, Board->TlmmLength, &Device->Tlmm);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    if (Device->Reset)
+    {
+        Status = QcTouchGpioWrite(Device->Reset, TRUE);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
 
-    QcTouchConfigurePin(Device, Board->PowerPin, Board->PowerTile, 0, TlmmPullNone, 2, TlmmOutputHigh);
-    QcTouchConfigurePin(Device, Board->InterruptPin, Board->InterruptTile, 0, TlmmPullUp, 16, TlmmInput);
-    QcTouchConfigurePin(Device, Board->ResetPin, Board->ResetTile, 0, TlmmPullUp, 16, TlmmInput);
+    QcTouchDelay(10);
 
-    /* Hand the SDA and SCL lines to the QUP engine */
-    QcTouchConfigurePin(Device, Board->SdaPin, Board->I2cTile, Board->I2cFunction, TlmmPullUp, 2, TlmmInput);
-    QcTouchConfigurePin(Device, Board->SclPin, Board->I2cTile, Board->I2cFunction, TlmmPullUp, 2, TlmmInput);
+    WdfWaitLockAcquire(Device->RmiLock, NULL);
 
-    /* Let the rail settle before the first transfer */
-    Delay.QuadPart = -10000LL * 10;
-    KeDelayExecutionThread(KernelMode, FALSE, &Delay);
-
-    RtlZeroMemory(&Config, sizeof(Config));
-    Config.EngineBase.QuadPart = Board->EngineBase;
-    Config.ClockControllerBase.QuadPart = Board->ClockBase;
-    Config.ClockVoteOffset = Board->ClockVoteOffset;
-    Config.ClockVoteMask = Board->ClockVoteMask;
-    Config.EngineBranchOffset = Board->EngineBranchOffset;
-    Config.EngineRcgOffset = Board->EngineRcgOffset;
-    Config.BusSpeedHz = Board->BusSpeedHz;
-
-    Status = QcGeniI2cOpen(&Config, &Device->I2c);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    /* Unknown page after power on, force the first page select to go out */
     Device->Page = 0xFF;
+    RtlZeroMemory(&Device->F01, sizeof(Device->F01));
+    RtlZeroMemory(&Device->F12, sizeof(Device->F12));
 
     Status = RmiScanFunctions(Device);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    if (NT_SUCCESS(Status))
+        Status = RmiConfigure(Device);
 
-    return RmiConfigure(Device);
+    Device->Ready = NT_SUCCESS(Status);
+    WdfWaitLockRelease(Device->RmiLock);
+
+    if (!NT_SUCCESS(Status))
+        DPRINT1("RMI4 bring-up failed, 0x%08lx\n", Status);
+
+    return Status;
+}
+
+/**
+ * @brief Reads attention until the sensor has nothing pending.
+ */
+static
+VOID
+QcTouchServiceAttention(
+    _In_ PQCTOUCH_DEVICE Device)
+{
+    UCHAR Packet[RMI_READ_MAX];
+    BOOLEAN HasObjects;
+    ULONG Loop;
+    NTSTATUS Status;
+
+    WdfWaitLockAcquire(Device->RmiLock, NULL);
+
+    for (Loop = 0; Device->Ready && Loop < QCTOUCH_ATTENTION_LOOPS; Loop++)
+    {
+        Status = RmiReadAttention(Device, &HasObjects, Packet);
+        if (!NT_SUCCESS(Status) || Status == STATUS_NO_MORE_ENTRIES)
+            break;
+
+        if (HasObjects)
+            QcTouchReportObjects(Device, Packet);
+    }
+
+    WdfWaitLockRelease(Device->RmiLock);
+}
+
+/* An edge raised before the interrupt was connected is otherwise lost */
+static
+NTSTATUS
+NTAPI
+QcTouchEvtD0EntryPostInterruptsEnabled(
+    _In_ WDFDEVICE WdfDevice,
+    _In_ WDF_POWER_DEVICE_STATE PreviousState)
+{
+    UNREFERENCED_PARAMETER(PreviousState);
+
+    QcTouchServiceAttention(QcTouchGetDevice(WdfDevice));
+    return STATUS_SUCCESS;
 }
 
 static
-VOID
-QcTouchReport(
-    _In_ PQCTOUCH_DEVICE Device,
-    _In_ ULONG X,
-    _In_ ULONG Y,
-    _In_ BOOLEAN Down)
+NTSTATUS
+NTAPI
+QcTouchEvtD0Exit(
+    _In_ WDFDEVICE WdfDevice,
+    _In_ WDF_POWER_DEVICE_STATE TargetState)
 {
-    MOUSE_INPUT_DATA Input;
-    PSERVICE_CALLBACK_ROUTINE Callback;
-    ULONG Consumed = 0;
-    KIRQL OldIrql;
-    LONG ScaledX;
-    LONG ScaledY;
+    PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
 
-    if (X >= Device->MaxX)
-        X = Device->MaxX - 1;
-    if (Y >= Device->MaxY)
-        Y = Device->MaxY - 1;
+    UNREFERENCED_PARAMETER(TargetState);
 
-    ScaledX = (LONG)(((ULONGLONG)X * 65535) / (Device->MaxX - 1));
-    ScaledY = (LONG)(((ULONGLONG)Y * 65535) / (Device->MaxY - 1));
+    WdfWaitLockAcquire(Device->RmiLock, NULL);
 
-    /* Only a change in the contact or a move while down is worth a packet */
-    if (Down == Device->FingerDown &&
-        (!Down || (ScaledX == Device->LastX && ScaledY == Device->LastY)))
-    {
-        return;
-    }
+    if (Device->Ready)
+        RmiSleep(Device);
 
-    RtlZeroMemory(&Input, sizeof(Input));
-    Input.Flags = MOUSE_MOVE_ABSOLUTE;
-    Input.LastX = Down ? ScaledX : Device->LastX;
-    Input.LastY = Down ? ScaledY : Device->LastY;
+    Device->Ready = FALSE;
+    QcTouchReleaseAll(Device);
 
-    if (Down && !Device->FingerDown)
-        Input.ButtonFlags |= MOUSE_LEFT_BUTTON_DOWN;
-    else if (!Down && Device->FingerDown)
-        Input.ButtonFlags |= MOUSE_LEFT_BUTTON_UP;
-
-    Device->FingerDown = Down;
-    if (Down)
-    {
-        Device->LastX = ScaledX;
-        Device->LastY = ScaledY;
-    }
-
-    Callback = (PSERVICE_CALLBACK_ROUTINE)Device->ClassConnect.ClassService;
-    if (!Callback)
-        return;
-
-    KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
-    Callback(Device->ClassConnect.ClassDeviceObject, &Input, &Input + 1, &Consumed);
-    KeLowerIrql(OldIrql);
+    WdfWaitLockRelease(Device->RmiLock);
+    return STATUS_SUCCESS;
 }
 
-/* The attention line fired, wake the reader through the DPC off the interrupt */
+/* The line is a GPIO behind msgpioclx, the bus work has to wait for passive level */
 static
 BOOLEAN
 NTAPI
-QcTouchIsr(
-    _In_ PKINTERRUPT Interrupt,
-    _In_ PVOID Context)
+QcTouchEvtInterruptIsr(
+    _In_ WDFINTERRUPT Interrupt,
+    _In_ ULONG MessageID)
 {
-    PQCTOUCH_DEVICE Device = Context;
+    UNREFERENCED_PARAMETER(MessageID);
 
-    UNREFERENCED_PARAMETER(Interrupt);
-
-    /* The summary line is shared, only claim it when our pin latched */
-    if (!QcTlmmInterruptActive(Device->Tlmm, &Device->InterruptPin))
-        return FALSE;
-
-    QcTlmmClearInterrupt(Device->Tlmm, &Device->InterruptPin);
-    KeInsertQueueDpc(&Device->Dpc, NULL, NULL);
+    WdfInterruptQueueWorkItemForIsr(Interrupt);
     return TRUE;
 }
 
 static
 VOID
 NTAPI
-QcTouchDpc(
-    _In_ PKDPC Dpc,
-    _In_opt_ PVOID Context,
-    _In_opt_ PVOID Argument1,
-    _In_opt_ PVOID Argument2)
+QcTouchEvtInterruptWorkItem(
+    _In_ WDFINTERRUPT Interrupt,
+    _In_ WDFOBJECT AssociatedObject)
 {
-    PQCTOUCH_DEVICE Device = Context;
+    UNREFERENCED_PARAMETER(AssociatedObject);
 
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(Argument1);
-    UNREFERENCED_PARAMETER(Argument2);
-
-    KeSetEvent(&Device->DataReady, IO_NO_INCREMENT, FALSE);
+    QcTouchServiceAttention(QcTouchGetDevice(WdfInterruptGetDevice(Interrupt)));
 }
 
-/*
- * The reader waits on the attention event and reads the controller when it
- * fires. A short fall-back timeout keeps a drag smooth and covers a missed
- * attention, a longer one while idle keeps the bus quiet.
- */
 static
 VOID
 NTAPI
-QcTouchPollThread(
-    _In_ PVOID Context)
+QcTouchEvtIoInternalDeviceControl(
+    _In_ WDFQUEUE Queue,
+    _In_ WDFREQUEST Request,
+    _In_ size_t OutputBufferLength,
+    _In_ size_t InputBufferLength,
+    _In_ ULONG IoControlCode)
 {
-    PQCTOUCH_DEVICE Device = Context;
-    PVOID Objects[2];
-    LARGE_INTEGER Period;
-    ULONG X;
-    ULONG Y;
-    BOOLEAN Down;
-    NTSTATUS Status;
-
-    Objects[0] = &Device->StopEvent;
-    Objects[1] = &Device->DataReady;
-
-    for (;;)
-    {
-        Period.QuadPart = -10000LL * (Device->FingerDown ? 10 : 50);
-        Status = KeWaitForMultipleObjects(2, Objects, WaitAny, Executive, KernelMode, FALSE, &Period, NULL);
-        if (Status == STATUS_WAIT_0)
-            break;
-
-        if (RmiReadFinger(Device, &X, &Y, &Down))
-            QcTouchReport(Device, X, Y, Down);
-    }
-
-    PsTerminateSystemThread(STATUS_SUCCESS);
+    QcTouchHidInternalIoctl(Queue, Request, OutputBufferLength, InputBufferLength, IoControlCode);
 }
 
 static
 NTSTATUS
 NTAPI
-QcTouchInternalDeviceControl(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP Irp)
+QcTouchEvtDeviceAdd(
+    _In_ WDFDRIVER Driver,
+    _Inout_ PWDFDEVICE_INIT DeviceInit)
 {
-    PQCTOUCH_DEVICE Device = DeviceObject->DeviceExtension;
-    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
-    NTSTATUS Status;
-
-    switch (Stack->Parameters.DeviceIoControl.IoControlCode)
-    {
-        case IOCTL_INTERNAL_MOUSE_CONNECT:
-            if (Device->ClassConnect.ClassService)
-            {
-                Status = STATUS_SHARING_VIOLATION;
-                break;
-            }
-            Device->ClassConnect = *(PCONNECT_DATA)Stack->Parameters.DeviceIoControl.Type3InputBuffer;
-            Status = STATUS_SUCCESS;
-            break;
-
-        case IOCTL_INTERNAL_MOUSE_DISCONNECT:
-            Device->ClassConnect.ClassService = NULL;
-            Device->ClassConnect.ClassDeviceObject = NULL;
-            Status = STATUS_SUCCESS;
-            break;
-
-        case IOCTL_MOUSE_QUERY_ATTRIBUTES:
-            if (Stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(MOUSE_ATTRIBUTES))
-            {
-                Status = STATUS_BUFFER_TOO_SMALL;
-                break;
-            }
-            *(PMOUSE_ATTRIBUTES)Irp->AssociatedIrp.SystemBuffer = Device->Attributes;
-            Irp->IoStatus.Information = sizeof(MOUSE_ATTRIBUTES);
-            Status = STATUS_SUCCESS;
-            break;
-
-        default:
-            return QcPnpPassDown(&Device->Pnp, Irp);
-    }
-
-    return QcPnpComplete(Irp, Status);
-}
-
-/* SDM845 funnels every TLMM interrupt into one summary line, GIC SPI 208 */
-#define QCTOUCH_TLMM_GIC_SPI    208
-#define QCTOUCH_GIC_SPI_BASE    32
-
-static
-VOID
-QcTouchConnectInterrupt(
-    _In_ PQCTOUCH_DEVICE Device)
-{
-    PCQCTOUCH_BOARD Board = Device->Board;
-    ULONG Intid = QCTOUCH_GIC_SPI_BASE + QCTOUCH_TLMM_GIC_SPI;
-    KIRQL Irql;
-    KAFFINITY Affinity;
-    ULONG Vector;
-    NTSTATUS Status;
-
-    RtlZeroMemory(&Device->InterruptPin, sizeof(Device->InterruptPin));
-    Device->InterruptPin.Number = Board->InterruptPin;
-    Device->InterruptPin.TileOffset = Board->InterruptTile;
-
-    QcTlmmConfigureInterrupt(Device->Tlmm, &Device->InterruptPin, TlmmTriggerFallingEdge);
-
-    Vector = HalGetInterruptVector(Internal, 0, Intid, Intid, &Irql, &Affinity);
-    if (!Vector)
-    {
-        QC_LOG("no vector for the attention interrupt, polling only");
-        return;
-    }
-
-    Status = IoConnectInterrupt(&Device->Interrupt, QcTouchIsr, Device, NULL,
-                                Vector, Irql, Irql, LevelSensitive, TRUE, Affinity, FALSE);
-    if (!NT_SUCCESS(Status))
-    {
-        Device->Interrupt = NULL;
-        QC_LOG("attention interrupt connect failed %08lx, polling only", Status);
-        return;
-    }
-
-    QC_LOG("attention interrupt connected on gic %lu", Intid);
-}
-
-/* Safe on a half started device, every piece is torn down only if it exists */
-static
-VOID
-QcTouchStop(
-    _In_ PQCTOUCH_DEVICE Device)
-{
-    /* Stop new attentions before the reader goes away */
-    if (Device->Interrupt)
-    {
-        IoDisconnectInterrupt(Device->Interrupt);
-        Device->Interrupt = NULL;
-    }
-    KeFlushQueuedDpcs();
-
-    if (Device->Thread)
-    {
-        KeSetEvent(&Device->StopEvent, IO_NO_INCREMENT, FALSE);
-        KeWaitForSingleObject(Device->Thread, Executive, KernelMode, FALSE, NULL);
-        ObDereferenceObject(Device->Thread);
-        Device->Thread = NULL;
-    }
-
-    /* Do not leave mouclass holding the button down */
-    if (Device->Started && Device->FingerDown)
-        QcTouchReport(Device, 0, 0, FALSE);
-    Device->Started = FALSE;
-
-    if (Device->I2c)
-    {
-        QcGeniI2cClose(Device->I2c);
-        Device->I2c = NULL;
-    }
-    if (Device->Tlmm)
-    {
-        QcTlmmDisconnect(Device->Tlmm);
-        Device->Tlmm = NULL;
-    }
-}
-
-static
-NTSTATUS
-QcTouchStart(
-    _In_ PQCTOUCH_DEVICE Device)
-{
-    HANDLE Thread;
-    NTSTATUS Status;
-
-    /* ACPI does not describe the I2C and GPIO wiring to us, the board table does */
-    Device->Board = QcTouchDetectBoard();
-    if (!Device->Board)
-        return STATUS_NO_SUCH_DEVICE;
-
-    QC_LOG("bringing up the %s %s touch controller", Device->Board->Manufacturer, Device->Board->Product);
-
-    KeClearEvent(&Device->StopEvent);
-    KeClearEvent(&Device->DataReady);
-    Device->FingerDown = FALSE;
-
-    Status = QcTouchBringUp(Device);
-    if (!NT_SUCCESS(Status))
-    {
-        QcTouchStop(Device);
-        return Status;
-    }
-    Device->Started = TRUE;
-
-    Status = PsCreateSystemThread(&Thread, THREAD_ALL_ACCESS, NULL, NULL, NULL, QcTouchPollThread, Device);
-    if (!NT_SUCCESS(Status))
-    {
-        QcTouchStop(Device);
-        return Status;
-    }
-    ObReferenceObjectByHandle(Thread, THREAD_ALL_ACCESS, NULL, KernelMode, (PVOID *)&Device->Thread, NULL);
-    ZwClose(Thread);
-
-    /* Drive the reader from the attention line, the poll is only a fall-back */
-    QcTouchConnectInterrupt(Device);
-    return STATUS_SUCCESS;
-}
-
-static
-NTSTATUS
-NTAPI
-QcTouchDispatchPnp(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP Irp)
-{
-    PQCTOUCH_DEVICE Device = DeviceObject->DeviceExtension;
-    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
-    NTSTATUS Status;
-
-    switch (Stack->MinorFunction)
-    {
-        case IRP_MN_START_DEVICE:
-            Status = QcPnpForwardAndWait(&Device->Pnp, Irp);
-            if (NT_SUCCESS(Status))
-                Status = QcTouchStart(Device);
-            return QcPnpComplete(Irp, Status);
-
-        /* The controller has no resources to move, so a rebalance is refused */
-        case IRP_MN_QUERY_STOP_DEVICE:
-            return QcPnpComplete(Irp, STATUS_UNSUCCESSFUL);
-
-        case IRP_MN_STOP_DEVICE:
-        case IRP_MN_SURPRISE_REMOVAL:
-            QcTouchStop(Device);
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            return QcPnpPassDown(&Device->Pnp, Irp);
-
-        case IRP_MN_REMOVE_DEVICE:
-            QcTouchStop(Device);
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            Status = QcPnpPassDown(&Device->Pnp, Irp);
-            QcPnpDeleteDevice(&Device->Pnp);
-            return Status;
-
-        case IRP_MN_QUERY_REMOVE_DEVICE:
-        case IRP_MN_CANCEL_REMOVE_DEVICE:
-        case IRP_MN_CANCEL_STOP_DEVICE:
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            return QcPnpPassDown(&Device->Pnp, Irp);
-
-        default:
-            return QcPnpPassDown(&Device->Pnp, Irp);
-    }
-}
-
-/* mouclass stacks on top from the Mouse class filter and connects before START */
-static
-NTSTATUS
-NTAPI
-QcTouchAddDevice(
-    _In_ PDRIVER_OBJECT DriverObject,
-    _In_ PDEVICE_OBJECT Pdo)
-{
-    PQCOM_PNP_DEVICE Pnp;
+    WDF_PNPPOWER_EVENT_CALLBACKS PnpPower;
+    WDF_OBJECT_ATTRIBUTES Attributes;
+    WDF_IO_QUEUE_CONFIG QueueConfig;
+    WDF_INTERRUPT_CONFIG InterruptConfig;
     PQCTOUCH_DEVICE Device;
+    WDFDEVICE WdfDevice;
     NTSTATUS Status;
 
-    Status = QcPnpCreateDevice(DriverObject, Pdo, sizeof(*Device), FILE_DEVICE_MOUSE, &Pnp);
+    UNREFERENCED_PARAMETER(Driver);
+
+    WdfFdoInitSetFilter(DeviceInit);
+
+    WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&PnpPower);
+    PnpPower.EvtDevicePrepareHardware = QcTouchEvtPrepareHardware;
+    PnpPower.EvtDeviceReleaseHardware = QcTouchEvtReleaseHardware;
+    PnpPower.EvtDeviceD0Entry = QcTouchEvtD0Entry;
+    PnpPower.EvtDeviceD0EntryPostInterruptsEnabled = QcTouchEvtD0EntryPostInterruptsEnabled;
+    PnpPower.EvtDeviceD0Exit = QcTouchEvtD0Exit;
+    WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &PnpPower);
+
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&Attributes, QCTOUCH_DEVICE);
+    Status = WdfDeviceCreate(&DeviceInit, &Attributes, &WdfDevice);
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Pnp->Self->Flags |= DO_BUFFERED_IO;
+    Device = QcTouchGetDevice(WdfDevice);
+    Device->Device = WdfDevice;
+    Device->PrimaryContact = MAXULONG;
 
-    Device = CONTAINING_RECORD(Pnp, QCTOUCH_DEVICE, Pnp);
-    KeInitializeEvent(&Device->StopEvent, NotificationEvent, FALSE);
-    KeInitializeEvent(&Device->DataReady, SynchronizationEvent, FALSE);
-    KeInitializeDpc(&Device->Dpc, QcTouchDpc, Device);
+    WDF_OBJECT_ATTRIBUTES_INIT(&Attributes);
+    Attributes.ParentObject = WdfDevice;
+    Status = WdfWaitLockCreate(&Attributes, &Device->RmiLock);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-    Device->Attributes.MouseIdentifier = MOUSE_HID_HARDWARE;
-    Device->Attributes.NumberOfButtons = 2;
-    Device->Attributes.SampleRate = 100;
-    Device->Attributes.InputDataQueueLength = 16;
+    Status = WdfSpinLockCreate(&Attributes, &Device->ReportLock);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-    return STATUS_SUCCESS;
-}
+    /* hidclass talks to the minidriver only through internal device controls */
+    WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&QueueConfig, WdfIoQueueDispatchParallel);
+    QueueConfig.EvtIoInternalDeviceControl = QcTouchEvtIoInternalDeviceControl;
+    Status = WdfIoQueueCreate(WdfDevice, &QueueConfig, WDF_NO_OBJECT_ATTRIBUTES, NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-static
-VOID
-NTAPI
-QcTouchUnload(
-    _In_ PDRIVER_OBJECT DriverObject)
-{
-    /* Every device was stopped and deleted by its REMOVE */
-    UNREFERENCED_PARAMETER(DriverObject);
+    WDF_IO_QUEUE_CONFIG_INIT(&QueueConfig, WdfIoQueueDispatchManual);
+    QueueConfig.PowerManaged = WdfFalse;
+    Status = WdfIoQueueCreate(WdfDevice, &QueueConfig, WDF_NO_OBJECT_ATTRIBUTES, &Device->ReadQueue);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    WDF_INTERRUPT_CONFIG_INIT(&InterruptConfig, QcTouchEvtInterruptIsr, NULL);
+    InterruptConfig.EvtInterruptWorkItem = QcTouchEvtInterruptWorkItem;
+    Status = WdfInterruptCreate(WdfDevice, &InterruptConfig, WDF_NO_OBJECT_ATTRIBUTES, &Device->Interrupt);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("WdfInterruptCreate failed, 0x%08lx\n", Status);
+
+    return Status;
 }
 
 NTSTATUS
@@ -581,16 +466,8 @@ DriverEntry(
     _In_ PDRIVER_OBJECT DriverObject,
     _In_ PUNICODE_STRING RegistryPath)
 {
-    UNREFERENCED_PARAMETER(RegistryPath);
+    WDF_DRIVER_CONFIG Config;
 
-    DriverObject->DriverExtension->AddDevice = QcTouchAddDevice;
-    DriverObject->DriverUnload = QcTouchUnload;
-    DriverObject->MajorFunction[IRP_MJ_CREATE] = QcPnpDispatchCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_CLOSE] = QcPnpDispatchCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = QcTouchInternalDeviceControl;
-    DriverObject->MajorFunction[IRP_MJ_PNP] = QcTouchDispatchPnp;
-    DriverObject->MajorFunction[IRP_MJ_POWER] = QcPnpDispatchPower;
-    DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = QcPnpDispatchPassDown;
-
-    return STATUS_SUCCESS;
+    WDF_DRIVER_CONFIG_INIT(&Config, QcTouchEvtDeviceAdd);
+    return WdfDriverCreate(DriverObject, RegistryPath, WDF_NO_OBJECT_ATTRIBUTES, &Config, WDF_NO_HANDLE);
 }
