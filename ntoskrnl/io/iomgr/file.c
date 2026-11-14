@@ -3279,6 +3279,49 @@ IoCreateStreamFileObjectLite(IN PFILE_OBJECT FileObject OPTIONAL,
     return CreatedFileObject;
 }
 
+/**
+ * @brief
+ * Gives a file object a new name, usually before a create returns STATUS_REPARSE.
+ *
+ * @return
+ * STATUS_INSUFFICIENT_RESOURCES when a larger buffer cannot be had, the old
+ * name is kept then.
+ */
+NTSTATUS
+NTAPI
+IoReplaceFileObjectName(
+    _In_ PFILE_OBJECT FileObject,
+    _In_reads_bytes_(FileNameLength) PWSTR NewFileName,
+    _In_ USHORT FileNameLength)
+{
+    PWSTR Buffer;
+
+    PAGED_CODE();
+
+    /* Reuse the buffer when the new name fits */
+    if (FileObject->FileName.Buffer && FileNameLength <= FileObject->FileName.MaximumLength)
+    {
+        RtlMoveMemory(FileObject->FileName.Buffer, NewFileName, FileNameLength);
+        FileObject->FileName.Length = FileNameLength;
+        return STATUS_SUCCESS;
+    }
+
+    Buffer = ExAllocatePoolWithTag(PagedPool, FileNameLength, TAG_IO_NAME);
+    if (!Buffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlCopyMemory(Buffer, NewFileName, FileNameLength);
+
+    /* A filesystem may have put its own buffer here, so no tag check on the free */
+    if (FileObject->FileName.Buffer)
+        ExFreePoolWithTag(FileObject->FileName.Buffer, 0);
+
+    FileObject->FileName.Buffer = Buffer;
+    FileObject->FileName.Length = FileNameLength;
+    FileObject->FileName.MaximumLength = FileNameLength;
+    return STATUS_SUCCESS;
+}
+
 /*
  * @implemented
  */
