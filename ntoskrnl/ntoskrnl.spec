@@ -1890,6 +1890,7 @@
 @ stdcall -version=0x602+ MmAllocateMdlForIoSpace(ptr long ptr)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ stdcall -version=0xA00+ MmIsUserAddress(ptr)
+@ stdcall -version=0x603+ MmCopyMemory(ptr int64 long long ptr)
 
 @ stdcall -version=0x600+ MmMapViewInSystemSpaceEx(ptr ptr ptr ptr long)
 @ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)

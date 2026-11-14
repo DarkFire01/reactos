@@ -264,6 +264,144 @@ MmIsUserAddress(
     return (VirtualAddress <= MM_HIGHEST_USER_ADDRESS);
 }
 
+/**
+ * @brief Copies one page or less from a physical address through a temporary mapping.
+ */
+static
+NTSTATUS
+MiCopyFromPhysicalPage(
+    _Out_writes_bytes_(Length) PVOID Target,
+    _In_ ULONGLONG Source,
+    _In_ SIZE_T Length)
+{
+    PHYSICAL_ADDRESS Page;
+    NTSTATUS Status = STATUS_SUCCESS;
+    PUCHAR Mapping;
+
+    /* RAM keeps the attributes of its other mappings, anything else is read uncached */
+    Page.QuadPart = Source & ~(ULONGLONG)(PAGE_SIZE - 1);
+    Mapping = MmMapIoSpace(Page, PAGE_SIZE, MiGetPfnEntry((PFN_NUMBER)(Source >> PAGE_SHIFT)) ? MmCached : MmNonCached);
+    if (!Mapping)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    _SEH2_TRY
+    {
+        RtlCopyMemory(Target, Mapping + (Source & (PAGE_SIZE - 1)), Length);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    MmUnmapIoSpace(Mapping, PAGE_SIZE);
+    return Status;
+}
+
+/**
+ * @brief
+ * Copies from a physical or virtual range without ever faulting a page in.
+ *
+ * @param[in] Flags
+ * Exactly one of MM_COPY_MEMORY_PHYSICAL or MM_COPY_MEMORY_VIRTUAL.
+ *
+ * @param[out] NumberOfBytesTransferred
+ * Receives how much was copied, also when the copy stops early.
+ *
+ * @return
+ * STATUS_INVALID_PARAMETER for bad flags, an empty or wrapping range, or a virtual
+ * range that is neither all user nor all system. The copy stops at the first page
+ * that is not resident and returns its failure.
+ */
+NTSTATUS
+NTAPI
+MmCopyMemory(
+    _In_ PVOID TargetAddress,
+    _In_ MM_COPY_ADDRESS SourceAddress,
+    _In_ SIZE_T NumberOfBytes,
+    _In_ ULONG Flags,
+    _Out_ PSIZE_T NumberOfBytesTransferred)
+{
+    ULONGLONG Source, End;
+    PUCHAR Target = TargetAddress;
+    NTSTATUS Status = STATUS_SUCCESS;
+    SIZE_T Chunk;
+    BOOLEAN Physical;
+
+    *NumberOfBytesTransferred = 0;
+
+    if (!Flags || (Flags & ~(MM_COPY_MEMORY_PHYSICAL | MM_COPY_MEMORY_VIRTUAL)) || (Flags & (Flags - 1)) ||
+        KeGetCurrentIrql() > APC_LEVEL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Physical = (Flags & MM_COPY_MEMORY_PHYSICAL) != 0;
+    Source = Physical ? (ULONGLONG)SourceAddress.PhysicalAddress.QuadPart : (ULONG_PTR)SourceAddress.VirtualAddress;
+    End = Source + NumberOfBytes;
+    if (End <= Source)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!Physical && Source <= (ULONG_PTR)MM_HIGHEST_USER_ADDRESS)
+    {
+        /* A user range is read from the current process and must not reach into system space */
+        if (End - 1 > (ULONG_PTR)MM_HIGHEST_USER_ADDRESS)
+            return STATUS_INVALID_PARAMETER;
+
+        _SEH2_TRY
+        {
+            ProbeForRead((PVOID)(ULONG_PTR)Source, NumberOfBytes, 1);
+            RtlCopyMemory(Target, (PVOID)(ULONG_PTR)Source, NumberOfBytes);
+            *NumberOfBytesTransferred = NumberOfBytes;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+
+        return Status;
+    }
+
+    if (!Physical && Source < (ULONG_PTR)MmSystemRangeStart)
+        return STATUS_INVALID_PARAMETER;
+
+    while (Source < End)
+    {
+        Chunk = (SIZE_T)min(End - Source, PAGE_SIZE - (Source & (PAGE_SIZE - 1)));
+
+        if (Physical)
+        {
+            Status = MiCopyFromPhysicalPage(Target, Source, Chunk);
+        }
+        else if (!MmIsAddressValid((PVOID)(ULONG_PTR)Source))
+        {
+            Status = STATUS_ACCESS_VIOLATION;
+        }
+        else
+        {
+            _SEH2_TRY
+            {
+                RtlCopyMemory(Target, (PVOID)(ULONG_PTR)Source, Chunk);
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+        }
+
+        if (!NT_SUCCESS(Status))
+            break;
+
+        *NumberOfBytesTransferred += Chunk;
+        Target += Chunk;
+        Source += Chunk;
+    }
+
+    return Status;
+}
+
 /*
  * @unimplemented
  */

@@ -602,6 +602,17 @@ NTAPI
 MmAddPhysicalMemory(
   _In_ PPHYSICAL_ADDRESS StartAddress,
   _Inout_ PLARGE_INTEGER NumberOfBytes);
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+MmCopyMemory(
+  _In_ PVOID TargetAddress,
+  _In_ MM_COPY_ADDRESS SourceAddress,
+  _In_ SIZE_T NumberOfBytes,
+  _In_ ULONG Flags,
+  _Out_ PSIZE_T NumberOfBytesTransferred);
 $endif (_NTDDK_)
 $if (_NTIFS_)
 
