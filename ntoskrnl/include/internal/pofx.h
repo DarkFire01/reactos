@@ -3,6 +3,7 @@
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Internal header for the Power Manager Framework (PoFx)
  * COPYRIGHT:   Copyright 2023 George Bișoc <george.bisoc@reactos.org>
+ *              Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 //
@@ -34,136 +35,88 @@
 #define POFXTRACE(x, fmt, ...) DPRINT(fmt, ##__VA_ARGS__)
 #endif
 
-//
-// PoFx component flags
-//
-typedef union _POP_FX_COMPONENT_FLAGS
-{
-    struct
-    {
-        LONG Value;
-        LONG Value2;
-    };
-    ULONG RefCount:30;
-    ULONG Idling:1;
-    struct
-    {
-        ULONG Active:1;
-        ULONG CriticalIdleOverride:1;
-        ULONG ResidentOverride:1;
-        ULONG CompleteIdleStatePending:1;
-    };
-    ULONG Reserved:29;
-} POP_FX_COMPONENT_FLAGS, *PPOP_FX_COMPONENT_FLAGS;
+/* Work items a plug-in may have running at once when it allows concurrency */
+#define POP_FX_PLUGIN_WORKERS                           4
 
-//
-// PoFx device status
-//
-typedef union _POP_FX_DEVICE_STATUS
-{
-    LONG Value;
-    ULONG SystemTransition:1;
-    ULONG PepD0Notify:1;
-    ULONG IdleTimerOn:1;
-    ULONG IgnoreIdleTimeout:1;
-    ULONG IrpInUse:1;
-    ULONG IrpPending:1;
-    ULONG DPNRDeviceNotified:1;
-    ULONG DPNRReceivedFromPep:1;
-    ULONG Reserved:24;
-} POP_FX_DEVICE_STATUS, *PPOP_FX_DEVICE_STATUS;
+/* The device registered with only the directed power callbacks */
+#define POP_FX_DEVICE_DIRECTED_ONLY                     0x40
 
-//
-// PoFx device and component accounting
-//
-typedef struct _POP_FX_ACCOUNTING
-{
-    ULONG Lock;
-    BOOLEAN Active;
-    ULONG DripsRequiredState;
-    LONG Level;
-    LONGLONG ActiveStamp;
-    ULONGLONG CsActiveTime;
-    LONGLONG CriticalActiveTime;
-} POP_FX_ACCOUNTING, *PPOP_FX_ACCOUNTING;
+/* No F-state transition is in flight */
+#define POP_FX_NO_TRANSITION                            MAXULONG
 
-//
-// PoFx dependents
-//
-typedef struct _POP_FX_DEPENDENT
-{
-    ULONG Index;
-    ULONG ProviderIndex;
-} POP_FX_DEPENDENT, *PPOP_FX_DEPENDENT;
+struct _POP_FX_PLUGIN;
 
-//
-// PoFx providers
-//
-typedef struct _POP_FX_PROVIDER
-{
-    ULONG Index;
-    BOOLEAN Activating;
-} POP_FX_PROVIDER, *PPOP_FX_PROVIDER;
-
-//
-// PoFx power idle state
-//
-typedef struct _POP_FX_IDLE_STATE
-{
-    ULONGLONG TransitionLatency;
-    ULONGLONG ResidencyRequirement;
-    ULONG NominalPower;
-} POP_FX_IDLE_STATE, *PPOP_FX_IDLE_STATE;
-
-//
-// PoFx driver callbacks
-//
-typedef struct _POP_FX_DRIVER_CALLBACKS
-{
-    VOID (*ComponentActive)(PVOID arg1, ULONG arg2);
-    VOID (*ComponentIdle)(PVOID arg1, ULONG arg2);
-    VOID (*ComponentIdleState)(PVOID arg1, ULONG arg2, ULONG arg3);
-    VOID (*DevicePowerRequired)(PVOID arg1);
-    VOID (*DevicePowerNotRequired)(PVOID arg1);
-    LONG (*PowerControl)(PVOID arg1, PGUID arg2, PVOID arg3, ULONG arg4, PVOID arg5, ULONG arg6, PULONG arg7);
-    VOID (*ComponentCriticalTransition)(PVOID arg1, ULONG arg2, UCHAR arg3);
-} POP_FX_DRIVER_CALLBACKS, *PPOP_FX_DRIVER_CALLBACKS;
-
-//
-// PoFx worker watchdog info
-//
-typedef struct _POP_FX_WORK_ORDER_WATCHDOG_INFO
-{
-    KTIMER Timer;
-    KDPC Dpc;
-    struct _POP_FX_WORK_ORDER* WorkOrder;
-} POP_FX_WORK_ORDER_WATCHDOG_INFO, *PPOP_FX_WORK_ORDER_WATCHDOG_INFO;
-
-//
-// PoFx worker order
-//
-typedef struct _POP_FX_WORK_ORDER
+typedef struct _POP_FX_PLUGIN_WORKER
 {
     WORK_QUEUE_ITEM WorkItem;
-    LONG WorkCount;
-    PVOID Context;
-    PPOP_FX_WORK_ORDER_WATCHDOG_INFO WatchdogTimerInfo;
-} POP_FX_WORK_ORDER, *PPOP_FX_WORK_ORDER;
+    struct _POP_FX_PLUGIN *Plugin;
+    LONG Slot;
+} POP_FX_PLUGIN_WORKER, *PPOP_FX_PLUGIN_WORKER;
 
 //
-// PoFx power extension plug-in (PEP)
+// PoFx power engine plug-in (PEP)
 //
 typedef struct _POP_FX_PLUGIN
 {
     LIST_ENTRY Link;
     ULONG Version;
     ULONGLONG Flags;
-    KQUEUE WorkQueue;
-    UCHAR (*AcceptDeviceNotification)(ULONG arg1, PVOID arg2);
-    UCHAR (*AcceptProcessorNotification)(PPEPHANDLE__ arg1, ULONG arg2, PVOID arg3);
-    ULONG WorkOrderCount;
-    POP_FX_WORK_ORDER WorkOrders[1];
+    PPEPCALLBACKNOTIFYDPM AcceptDeviceNotification;
+    PPEPCALLBACKNOTIFYPPM AcceptProcessorNotification;
+    PPEPCALLBACKNOTIFYACPI AcceptAcpiNotification;
+    volatile LONG WorkRequests;
+    volatile LONG WorkersBusy;
+    POP_FX_PLUGIN_WORKER Workers[POP_FX_PLUGIN_WORKERS];
 } POP_FX_PLUGIN, *PPOP_FX_PLUGIN;
+
+//
+// A device a plug-in claimed with PEP_DPM_PREPARE_DEVICE
+//
+typedef struct _POP_FX_PREPARED_DEVICE
+{
+    LIST_ENTRY Link;
+    PDEVICE_OBJECT Pdo;
+    PPOP_FX_PLUGIN Plugin;
+    UNICODE_STRING DeviceId;
+} POP_FX_PREPARED_DEVICE, *PPOP_FX_PREPARED_DEVICE;
+
+struct _POP_FX_DEVICE;
+
+//
+// PoFx component
+//
+typedef struct _POP_FX_COMPONENT
+{
+    struct _POP_FX_DEVICE *Device;
+    ULONG Index;
+    GUID Id;
+    ULONGLONG Flags;
+    ULONG DeepestWakeableIdleState;
+    ULONG IdleStateCount;
+    PPO_FX_COMPONENT_IDLE_STATE IdleStates;
+    PEP_COMPONENT_V2 PepComponent;
+
+    /* Activation references, the component is in the active condition while nonzero */
+    LONG ActiveCount;
+    BOOLEAN Active;
+    BOOLEAN IdleConditionPending;
+    BOOLEAN DriverStatePending;
+    BOOLEAN PepStatePending;
+    ULONG FState;
+    ULONG TargetFState;
+    ULONGLONG Latency;
+    ULONGLONG Residency;
+    KEVENT ActiveEvent;
+
+    /* Performance states */
+    PPO_FX_COMPONENT_PERF_INFO PerfInfo;
+    PPO_FX_COMPONENT_PERF_STATE_CALLBACK PerfStateCallback;
+    PULONGLONG PerfCurrent;
+    PVOID PerfRequestContext;
+    BOOLEAN PerfRequestPending;
+    BOOLEAN PerfSucceeded;
+    KEVENT PerfEvent;
+} POP_FX_COMPONENT, *PPOP_FX_COMPONENT;
 
 //
 // PoFx device
@@ -171,66 +124,109 @@ typedef struct _POP_FX_PLUGIN
 typedef struct _POP_FX_DEVICE
 {
     LIST_ENTRY Link;
-    PIRP Irp;
-    struct _POP_IRP_DATA* IrpData;
-    volatile POP_FX_DEVICE_STATUS Status;
-    LONG PowerReqCall;
-    LONG PowerNotReqCall;
+    ULONG Version;
+    ULONGLONG Flags;
+    PDEVICE_OBJECT Pdo;
     PPOP_FX_PLUGIN Plugin;
-    PPEPHANDLE__ PluginHandle;
-    PPOP_FX_PLUGIN MiniPlugin;
-    PPEPHANDLE__ MiniPluginHandle;
-    PDEVICE_NODE DevNode;
-    PDEVICE_OBJECT DeviceObject;
-    PDEVICE_OBJECT TargetDevice;
-    POP_FX_DRIVER_CALLBACKS Callbacks;
+    PEPHANDLE PluginHandle;
+    UNICODE_STRING DeviceId;
+    KSPIN_LOCK Lock;
+
+    PPO_FX_COMPONENT_ACTIVE_CONDITION_CALLBACK ComponentActiveConditionCallback;
+    PPO_FX_COMPONENT_IDLE_CONDITION_CALLBACK ComponentIdleConditionCallback;
+    PPO_FX_COMPONENT_IDLE_STATE_CALLBACK ComponentIdleStateCallback;
+    PPO_FX_DEVICE_POWER_REQUIRED_CALLBACK DevicePowerRequiredCallback;
+    PPO_FX_DEVICE_POWER_NOT_REQUIRED_CALLBACK DevicePowerNotRequiredCallback;
+    PPO_FX_POWER_CONTROL_CALLBACK PowerControlCallback;
+    PPO_FX_DIRECTED_POWER_UP_CALLBACK DirectedPowerUpCallback;
+    PPO_FX_DIRECTED_POWER_DOWN_CALLBACK DirectedPowerDownCallback;
+    ULONG DirectedFxTimeout;
     PVOID DriverContext;
-    IO_REMOVE_LOCK RemoveLock;
-    POP_FX_WORK_ORDER WorkOrder;
-    ULONG IdleLock;
+
+    BOOLEAN Started;
+    BOOLEAN PowerRequired;
+    BOOLEAN PoweredOnPending;
+    BOOLEAN PowerNotRequiredPending;
+    BOOLEAN IdleTimerArmed;
+    ULONGLONG IdleTimeout;
     KTIMER IdleTimer;
     KDPC IdleDpc;
-    ULONGLONG IdleTimeout;
-    ULONGLONG IdleStamp;
-    PDEVICE_OBJECT NextIrpDeviceObject;
-    POWER_STATE NextIrpPowerState;
-    VOID (*NextIrpCallerCompletion)(PDEVICE_OBJECT arg1, UCHAR arg2, POWER_STATE arg3, PVOID arg4, PIO_STATUS_BLOCK arg5);
-    PVOID NextIrpCallerContext;
-    KEVENT IrpCompleteEvent;
-    UCHAR (*PowerOnDumpDeviceCallback)(PPEP_CRASHDUMP_INFORMATION arg1);
-    POP_FX_ACCOUNTING Accounting;
+
+    PPEPCALLBACKPOWERONCRASHDUMPDEVICE PowerOnDumpDeviceCallback;
+
+    PPEP_DEVICE_REGISTER_V2 PepRegister;
     ULONG ComponentCount;
-    struct _POP_FX_COMPONENT* Components[1];
+    POP_FX_COMPONENT Components[ANYSIZE_ARRAY];
 } POP_FX_DEVICE, *PPOP_FX_DEVICE;
 
-//
-// PoFx component
-//
-typedef struct _POP_FX_COMPONENT
-{
-    GUID Id;
-    ULONG Index;
-    POP_FX_WORK_ORDER WorkOrder;
-    PPOP_FX_DEVICE Device;
-    volatile POP_FX_COMPONENT_FLAGS Flags;
-    volatile LONG Resident;
-    KEVENT ActiveEvent;
-    ULONG IdleLock;
-    volatile LONG IdleConditionComplete;
-    volatile LONG IdleStateComplete;
-    ULONGLONG IdleStamp;
-    volatile ULONG CurrentIdleState;
-    ULONG IdleStateCount;
-    PPOP_FX_IDLE_STATE IdleStates;
-    ULONG DeepestWakeableIdleState;
-    ULONG ProviderCount;
-    PPOP_FX_PROVIDER Providers;
-    ULONG IdleProviderCount;
-    ULONG DependentCount;
-    PPOP_FX_DEPENDENT Dependents;
-    POP_FX_ACCOUNTING Accounting;
-    PPO_FX_COMPONENT_PERF_INFO PerfInfo;
-    PPO_FX_COMPONENT_PERF_STATE_CALLBACK PerfStateCallback;
-} POP_FX_COMPONENT, *PPOP_FX_COMPONENT;
+/* plugin.c */
+
+PPOP_FX_PLUGIN
+NTAPI
+PopFxNextPlugin(
+    _In_opt_ PPOP_FX_PLUGIN Plugin);
+
+BOOLEAN
+NTAPI
+PopFxNotifyPlugin(
+    _In_ PPOP_FX_PLUGIN Plugin,
+    _In_ ULONG Notification,
+    _Inout_ PVOID Data);
+
+PPOP_FX_PLUGIN
+NTAPI
+PopFxFindPreparedDevice(
+    _In_ PDEVICE_OBJECT Pdo,
+    _Out_ PUNICODE_STRING DeviceId);
+
+NTSTATUS
+NTAPI
+PopFxQueryDeviceId(
+    _In_ PDEVICE_OBJECT Pdo,
+    _Out_ PUNICODE_STRING DeviceId);
+
+VOID
+NTAPI
+PopFxPrepareDevice(
+    _In_ PDEVICE_OBJECT Pdo);
+
+VOID
+NTAPI
+PopFxAbandonDevice(
+    _In_ PDEVICE_OBJECT Pdo);
+
+/* fxapi.c */
+
+PPOP_FX_DEVICE
+NTAPI
+PopFxFindDevice(
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+VOID
+NTAPI
+PopFxNotifyDevicePowerState(
+    _In_ PPOP_FX_DEVICE FxDevice,
+    _In_ DEVICE_POWER_STATE PowerState,
+    _In_ BOOLEAN Complete,
+    _In_ BOOLEAN SystemTransition);
+
+VOID
+NTAPI
+PopFxCompletePepIdleState(
+    _In_ PPOP_FX_DEVICE FxDevice,
+    _In_ ULONG Component);
+
+VOID
+NTAPI
+PopFxCompletePepPerfState(
+    _In_ PPOP_FX_DEVICE FxDevice,
+    _In_ ULONG Component,
+    _In_ BOOLEAN Succeeded);
+
+VOID
+NTAPI
+PopFxRunPepPowerControl(
+    _In_ PPOP_FX_DEVICE FxDevice,
+    _In_ PPEP_WORK_POWER_CONTROL Request);
 
 /* EOF */

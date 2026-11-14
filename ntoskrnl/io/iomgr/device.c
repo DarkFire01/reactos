@@ -57,7 +57,10 @@ IopDeleteDevice(IN PVOID ObjectBody)
 
     /* Cleanup and free the device node */
     if (DeviceNode)
+    {
+        PopFxAbandonDevice(DeviceObject);
         IopFreeDeviceNode(DeviceNode);
+    }
 
     PiPropReleaseDevice(DeviceObject);
 

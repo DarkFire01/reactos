@@ -1520,6 +1520,10 @@ PopRequestPowerIrpCompletion(
     ASSERT(IrpData);
     PopReleaseIrpLock(&IrpLockHandle);
 
+    /* The plug-in owning the device hears the D-IRP has finished */
+    if (IrpData->FxDevice)
+        PopFxNotifyDevicePowerState(IrpData->FxDevice, IrpData->PowerState.DeviceState, TRUE, FALSE);
+
     /* Dispatch the function completion with the desired power state to the device */
     CompletionRoutine = IrpData->Device.CallerCompletion;
     if (CompletionRoutine)
@@ -1784,6 +1788,14 @@ PopRequestPowerIrp(
     if (Irp != NULL)
     {
         *Irp = PwrIrp;
+    }
+
+    /* A plug-in owning the device hears of a D-IRP before the stack does */
+    if (MinorFunction == IRP_MN_SET_POWER)
+    {
+        IrpData->FxDevice = PopFxFindDevice(DeviceObject);
+        if (IrpData->FxDevice)
+            PopFxNotifyDevicePowerState(IrpData->FxDevice, PowerState.DeviceState, FALSE, FALSE);
     }
 
     /* And setup the dedicated power IRP completion routine */

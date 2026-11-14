@@ -12,7 +12,7 @@
 //
 // Power Manager Dependencies
 //
-#include "pep.h"
+#include <pepfx.h>
 #include "pofx.h"
 #include "ppm.h"
 
@@ -2368,7 +2368,7 @@ extern POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[];
 extern LIST_ENTRY PopFxDeviceList;
 extern KSPIN_LOCK PopFxDeviceLock;
 extern LIST_ENTRY PopFxPluginList;
-extern KSPIN_LOCK PopFxPluginLock;
+extern KGUARDED_MUTEX PopFxPluginLock;
 extern ULONG PopFxTraceLevel;
 
 /* Power Manager Thermal Request constructs */
