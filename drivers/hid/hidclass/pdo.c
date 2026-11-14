@@ -468,8 +468,10 @@ HidClassPDO_PnP(
             // override some capabilities
             //
             IoStack->Parameters.DeviceCapabilities.Capabilities->Removable = FALSE;
+            IoStack->Parameters.DeviceCapabilities.Capabilities->DockDevice = FALSE;
             IoStack->Parameters.DeviceCapabilities.Capabilities->SilentInstall = TRUE;
             IoStack->Parameters.DeviceCapabilities.Capabilities->SurpriseRemovalOK = TRUE;
+            IoStack->Parameters.DeviceCapabilities.Capabilities->Address = PDODeviceExtension->CollectionNumber;
             IoStack->Parameters.DeviceCapabilities.Capabilities->RawDeviceOK = !PDODeviceExtension->IsKeyboardOrMouse;
 
             /* The collection number only tells collections of one device apart */
