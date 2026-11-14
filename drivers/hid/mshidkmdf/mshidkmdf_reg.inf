@@ -1,0 +1,7 @@
+; Pass-through HID to KMDF filter driver
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\mshidkmdf","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\mshidkmdf","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\mshidkmdf","ImagePath",0x00020000,"system32\drivers\mshidkmdf.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\mshidkmdf","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\mshidkmdf","Type",0x00010001,0x00000001
