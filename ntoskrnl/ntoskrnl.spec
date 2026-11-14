@@ -1778,6 +1778,7 @@
 @ cdecl wcsspn()
 @ cdecl wcsstr()
 @ cdecl wcstombs()
+@ cdecl wcstoul()
 @ cdecl wctomb()
 
 # FIXME: check if this is correct
