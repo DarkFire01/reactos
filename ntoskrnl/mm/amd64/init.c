@@ -455,6 +455,24 @@ MiBuildSystemPteSpace(VOID)
     MiDebugMapping = MiPteToAddress(MmDebugPte);
 }
 
+/* RAM the loader mapped keeps the caching of its mapping, which is cached for anything but device memory */
+static
+MI_PFN_CACHE_ATTRIBUTE
+MiCacheAttributeFromPte(
+    _In_ PMMPTE PointerPte)
+{
+#ifdef _M_ARM64
+    if (PointerPte->u.Hard.CacheType == MI_CACHE_TYPE_DEVICE)
+        return MiNonCached;
+    if (PointerPte->u.Hard.CacheType == MI_CACHE_TYPE_WRITE_COMBINED)
+        return MiWriteCombined;
+#else
+    if (PointerPte->u.Hard.CacheDisable)
+        return MiNonCached;
+#endif
+    return MiCached;
+}
+
 static
 VOID
 MiSetupPfnForPageTable(
@@ -489,7 +507,7 @@ MiSetupPfnForPageTable(
         Pfn->OriginalPte = *PointerPte;
 #endif
         Pfn->u3.e1.PageLocation = ActiveAndValid;
-        Pfn->u3.e1.CacheAttribute = MiNonCached;
+        Pfn->u3.e1.CacheAttribute = MiCacheAttributeFromPte(PointerPte);
         Pfn->u3.e2.ReferenceCount = 1;
         Pfn->u4.PteFrame = PFN_FROM_PTE(MiAddressToPte(PointerPte));
     }
@@ -536,7 +554,7 @@ MiBuildPfnDatabaseFromPageTables(VOID)
     Pfn->u1.WsIndex = 0;
     Pfn->u2.ShareCount = 1;
     Pfn->PteAddress = NULL;
-    Pfn->u3.e1.CacheAttribute = MiNonCached;
+    Pfn->u3.e1.CacheAttribute = MiCached;
     Pfn->u3.e2.ReferenceCount = 1;
     Pfn->u4.PteFrame = 0;
 
