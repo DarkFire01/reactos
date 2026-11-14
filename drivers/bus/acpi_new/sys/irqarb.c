@@ -1304,6 +1304,218 @@ UacpiNtPrtClimbBridge(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Gets the interrupt routing interface of the PCI bus driver.
+ *
+ * Only PCI bus FDOs answer it, so it is asked of the stack of a PCI root this driver enumerated.
+ * The interface describes any PCI function, whichever root it is under.
+ */
+static
+NTSTATUS
+NTAPI
+UacpiNtQueryRouteInterface(
+    _Out_ PINT_ROUTE_INTERFACE_STANDARD Route)
+{
+    PDEVICE_OBJECT RootPdo = NULL;
+    PDEVICE_OBJECT TopDevice;
+    PIO_STACK_LOCATION IoStack;
+    IO_STATUS_BLOCK IoStatus;
+    PUACPINT_PDO Child;
+    PLIST_ENTRY Entry;
+    KEVENT Event;
+    NTSTATUS Status;
+    PIRP Irp;
+
+    RtlZeroMemory(Route, sizeof(*Route));
+
+    if (!GlobalAcpiFdo)
+        return STATUS_NOT_SUPPORTED;
+
+    ExAcquireFastMutex(&GlobalAcpiFdo->ChildLock);
+    for (Entry = GlobalAcpiFdo->ChildList.Flink; Entry != &GlobalAcpiFdo->ChildList; Entry = Entry->Flink)
+    {
+        Child = CONTAINING_RECORD(Entry, UACPINT_PDO, Link);
+        if (UacpiNtHidIsPciRoot(Child->Hid) && Child->Started)
+        {
+            RootPdo = Child->Shared.Self;
+            ObReferenceObject(RootPdo);
+            break;
+        }
+    }
+    ExReleaseFastMutex(&GlobalAcpiFdo->ChildLock);
+
+    if (!RootPdo)
+        return STATUS_NOT_SUPPORTED;
+
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    TopDevice = IoGetAttachedDeviceReference(RootPdo);
+    ObDereferenceObject(RootPdo);
+
+    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, TopDevice, NULL, 0, NULL, &Event, &IoStatus);
+    if (!Irp)
+    {
+        ObDereferenceObject(TopDevice);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+
+    IoStack = IoGetNextIrpStackLocation(Irp);
+    IoStack->MajorFunction = IRP_MJ_PNP;
+    IoStack->MinorFunction = IRP_MN_QUERY_INTERFACE;
+    IoStack->Parameters.QueryInterface.InterfaceType = &GUID_INT_ROUTE_INTERFACE_STANDARD;
+    IoStack->Parameters.QueryInterface.Size = sizeof(*Route);
+    IoStack->Parameters.QueryInterface.Version = PCI_INT_ROUTE_INTRF_STANDARD_VER;
+    IoStack->Parameters.QueryInterface.Interface = (PINTERFACE)Route;
+    IoStack->Parameters.QueryInterface.InterfaceSpecificData = NULL;
+
+    Status = IoCallDriver(TopDevice, Irp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = IoStatus.Status;
+    }
+
+    ObDereferenceObject(TopDevice);
+
+    if (NT_SUCCESS(Status) && !Route->GetInterruptRouting)
+        Status = STATUS_NOT_SUPPORTED;
+
+    return Status;
+}
+
+/**
+ * @brief Namespace node of a PCI bus PDO: ours for a root, the filter's for a bridge ACPI describes.
+ */
+static
+uacpi_namespace_node *
+NTAPI
+UacpiNtNodeOfBusPdo(
+    _In_ PDEVICE_OBJECT Pdo,
+    _Out_ PBOOLEAN IsRoot)
+{
+    uacpi_namespace_node *Node = NULL;
+    PUACPINT_SHARED Shared;
+    PUACPINT_FLT Filter;
+    PLIST_ENTRY Entry;
+
+    *IsRoot = FALSE;
+
+    if (Pdo->DriverObject == GlobalAcpiDriverObj)
+    {
+        Shared = Pdo->DeviceExtension;
+        if (Shared->Type != UacpiNtDevObjPdo)
+            return NULL;
+
+        *IsRoot = UacpiNtHidIsPciRoot(((PUACPINT_PDO)Shared)->Hid);
+        return ((PUACPINT_PDO)Shared)->Node;
+    }
+
+    if (!GlobalAcpiFdo)
+        return NULL;
+
+    ExAcquireFastMutex(&GlobalAcpiFdo->ChildLock);
+    for (Entry = GlobalAcpiFdo->FilterList.Flink; Entry != &GlobalAcpiFdo->FilterList; Entry = Entry->Flink)
+    {
+        Filter = CONTAINING_RECORD(Entry, UACPINT_FLT, Link);
+        if (Filter->ForeignPdo == Pdo)
+        {
+            Node = Filter->Node;
+            break;
+        }
+    }
+    ExReleaseFastMutex(&GlobalAcpiFdo->ChildLock);
+
+    return Node;
+}
+
+/**
+ * @brief Routed GSIV of a PCI function, found by asking the PCI driver where its pin is wired.
+ *
+ * The PCI driver names the bus a function sits on by the PDO of that bus, so the walk reaches the
+ * right root and _PRT on every segment without reading configuration space itself.
+ *
+ * @return STATUS_NOT_SUPPORTED when the PCI driver cannot be asked, so the caller may route another way.
+ */
+static
+NTSTATUS
+NTAPI
+UacpiNtPrtResolveGsivByRoute(
+    _In_ PDEVICE_OBJECT DevicePdo,
+    _Out_ PULONG Gsiv)
+{
+    INT_ROUTE_INTERFACE_STANDARD Route;
+    PCI_SLOT_NUMBER SlotNumber;
+    uacpi_namespace_node *Node;
+    PDEVICE_OBJECT BusPdo;
+    PDEVICE_OBJECT NextBusPdo;
+    ROUTING_TOKEN Token;
+    NTSTATUS Status;
+    BOOLEAN IsRoot;
+    ULONG Bus;
+    ULONG Slot;
+    ULONG Device;
+    ULONG Depth;
+    UCHAR Line;
+    UCHAR Pin;
+    UCHAR BridgePin;
+    UCHAR Class;
+    UCHAR SubClass;
+    UCHAR Flags;
+
+    Status = UacpiNtQueryRouteInterface(&Route);
+    if (!NT_SUCCESS(Status))
+        return STATUS_NOT_SUPPORTED;
+
+    Status = Route.GetInterruptRouting(DevicePdo, &Bus, &Slot, &Line, &Pin, &Class, &SubClass,
+                                       &BusPdo, &Token, &Flags);
+    if (!NT_SUCCESS(Status))
+    {
+        Status = STATUS_NOT_SUPPORTED;
+        goto Done;
+    }
+
+    if (Pin == 0 || Pin > 4)
+    {
+        Status = STATUS_NOT_FOUND;
+        goto Done;
+    }
+
+    SlotNumber.u.AsULONG = Slot;
+    Device = SlotNumber.u.bits.DeviceNumber;
+    Status = STATUS_NOT_FOUND;
+
+    for (Depth = 0; Depth < UACPINT_PRT_MAX_DEPTH && BusPdo; Depth++)
+    {
+        Node = UacpiNtNodeOfBusPdo(BusPdo, &IsRoot);
+        if (Node)
+        {
+            Status = UacpiNtCrackPrt(Node, Device, Pin, Gsiv);
+            if (NT_SUCCESS(Status) || IsRoot)
+                break;
+        }
+
+        /* A bridge without its own _PRT swizzles the pin onto the bus above it */
+        if (!NT_SUCCESS(Route.GetInterruptRouting(BusPdo, &Bus, &Slot, &Line, &BridgePin, &Class,
+                                                  &SubClass, &NextBusPdo, &Token, &Flags)))
+        {
+            Status = STATUS_NOT_FOUND;
+            break;
+        }
+
+        Pin = (UCHAR)(((Device + (Pin - 1)) & 3) + 1);
+        SlotNumber.u.AsULONG = Slot;
+        Device = SlotNumber.u.bits.DeviceNumber;
+        BusPdo = NextBusPdo;
+        Status = STATUS_NOT_FOUND;
+    }
+
+Done:
+    if (Route.InterfaceDereference)
+        Route.InterfaceDereference(Route.Context);
+    return Status;
+}
+
 /* Routed GSIV of a PCI function, climbing bridges until a _PRT answers */
 static
 NTSTATUS
@@ -1322,6 +1534,13 @@ UacpiNtPrtResolveGsiv(
     ULONG Device;
     ULONG Depth;
     UCHAR Pin;
+
+    /* The bus number alone names a bus on segment 0 only */
+    Status = UacpiNtPrtResolveGsivByRoute(DevicePdo, Gsiv);
+    if (Status != STATUS_NOT_SUPPORTED)
+        return Status;
+
+    DPRINT1("uACPI-NT: PCI driver cannot route PDO %p, reading segment 0 directly\n", DevicePdo);
 
     Status = IoGetDeviceProperty(DevicePdo, DevicePropertyBusNumber, sizeof(Bus), &Bus, &Length);
     if (!NT_SUCCESS(Status))
