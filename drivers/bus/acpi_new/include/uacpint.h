@@ -213,6 +213,15 @@ typedef struct _UACPINT_EC
 /*
  * ACPI Enumerated Device
  */
+/* What _CCA says about a device's DMA */
+typedef enum _UACPINT_CCA_STATE
+{
+    UacpiNtCcaUnknown = 0,
+    UacpiNtCcaAbsent,
+    UacpiNtCcaCoherent,
+    UacpiNtCcaNotCoherent
+} UACPINT_CCA_STATE;
+
 typedef struct _UACPINT_PDO
 {
     UACPINT_SHARED          Shared;
@@ -232,6 +241,7 @@ typedef struct _UACPINT_PDO
     CHAR                    Instance[64];
     UCHAR                   PciRootBaseBus;    ///< cached _BBN
     USHORT                  PciRootSegment;    ///< cached _SEG
+    UACPINT_CCA_STATE       CacheCoherency;    ///< from _CCA, read once at creation
 
     /* PCI roots only */
     struct
@@ -553,6 +563,11 @@ UacpiNtTranslateConnectionDescriptor(
     _Out_ PIO_RESOURCE_DESCRIPTOR IoDescriptor);
 
 /* interfaces.c */
+
+VOID
+NTAPI
+UacpiNtPdoReadCacheCoherency(
+    _In_ PUACPINT_PDO Pdo);
 
 NTSTATUS
 NTAPI

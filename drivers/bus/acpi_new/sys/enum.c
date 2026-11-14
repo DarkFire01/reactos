@@ -340,6 +340,9 @@ UacpiNtGetOrCreatePdo(
 
     UacpiNtButtonClassify(Pdo);
 
+    /* Before any driver on this device builds a DMA adapter */
+    UacpiNtPdoReadCacheCoherency(Pdo);
+
     DeviceObject->Flags |= DO_BUFFERED_IO | DO_POWER_PAGABLE;
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
