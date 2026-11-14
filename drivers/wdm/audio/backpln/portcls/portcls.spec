@@ -48,6 +48,10 @@
 @ stdcall PcGetDeviceProperty(ptr long long ptr ptr)
 @ stdcall PcGetPhysicalDeviceObject(ptr ptr)
 
+; Stream resources (streamres.cpp)
+@ stdcall PcAddStreamResource(ptr ptr ptr ptr)
+@ stdcall PcRemoveStreamResource(ptr)
+
 ; Timeouts
 @ stdcall PcRegisterIoTimeout(ptr ptr ptr)
 @ stdcall PcUnregisterIoTimeout(ptr ptr ptr)
