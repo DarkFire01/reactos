@@ -279,8 +279,14 @@ MiCaptureImageHeaders(
         case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
         {
 #ifdef _WIN64
+#ifdef _M_ARM64
+            /* ARM64EC images carry the AMD64 machine type */
+            if ((Machine != IMAGE_FILE_MACHINE_ARM64) && (Machine != IMAGE_FILE_MACHINE_AMD64))
+                return STATUS_INVALID_IMAGE_FORMAT;
+#else
             if (Machine != IMAGE_FILE_MACHINE_AMD64)
                 return STATUS_INVALID_IMAGE_FORMAT;
+#endif
 
             Optional64 = (PIMAGE_OPTIONAL_HEADER64)Optional32;
 
