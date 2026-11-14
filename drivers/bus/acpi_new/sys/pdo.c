@@ -7,8 +7,67 @@
 
 #include <uacpint.h>
 #include <wdmguid.h>
+#include <devpkey.h>
 #define NDEBUG
 #include <debug.h>
+
+/**
+ * @brief Stores the namespace path as the BIOS device name, as \_SB.GPU0 without segment padding.
+ *
+ * @remarks Power engine plug-ins match devices on this name.
+ */
+static
+VOID
+NTAPI
+UacpiNtPdoSetBiosDeviceName(
+    _In_ PUACPINT_PDO Pdo)
+{
+    const uacpi_char *AbsolutePath;
+    PWCHAR Name;
+    SIZE_T Index;
+    ULONG Length = 0, Padding = 0;
+
+    if (!Pdo->Node)
+        return;
+
+    AbsolutePath = uacpi_namespace_node_generate_absolute_path(Pdo->Node);
+    if (!AbsolutePath)
+        return;
+
+    Name = ExAllocatePoolWithTag(PagedPool, (strlen(AbsolutePath) + 1) * sizeof(WCHAR), UACPINT_POOL_TAG);
+    if (Name)
+    {
+        for (Index = 0; ; Index++)
+        {
+            CHAR Character = AbsolutePath[Index];
+
+            /* Padding only counts when a separator or the end follows it */
+            if (Character == '_' && Length > 0 && Name[Length - 1] != L'\\' && Name[Length - 1] != L'.')
+            {
+                Padding++;
+                continue;
+            }
+            if (Character == '.' || Character == ANSI_NULL)
+                Padding = 0;
+            for (; Padding; Padding--)
+                Name[Length++] = L'_';
+            Name[Length++] = (WCHAR)Character;
+            if (Character == ANSI_NULL)
+                break;
+        }
+
+        IoSetDevicePropertyData(Pdo->Shared.Self,
+                                &DEVPKEY_Device_BiosDeviceName,
+                                LOCALE_NEUTRAL,
+                                0,
+                                DEVPROP_TYPE_STRING,
+                                Length * sizeof(WCHAR),
+                                Name);
+        ExFreePoolWithTag(Name, UACPINT_POOL_TAG);
+    }
+
+    uacpi_free_absolute_path(AbsolutePath);
+}
 
 /* _STA bit 2, the device should be shown in the UI */
 #define UACPINT_STA_SHOW_IN_UI  0x00000004u
@@ -377,6 +436,8 @@ UacpiNtPdoPnp(
             break;
 
         case IRP_MN_QUERY_BUS_INFORMATION:
+            /* The first IRP after the instance key exists, so the property can be stored */
+            UacpiNtPdoSetBiosDeviceName(Pdo);
             BusInformation = UacpiNtPdoBusInformation();
             if (BusInformation)
             {
