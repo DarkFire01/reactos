@@ -1768,6 +1768,14 @@ Language=English
 An executive resource was handed a thread owner pointer that is not the caller.
 .
 
+MessageId=0x138
+Severity=Success
+Facility=System
+SymbolicName=GPIO_CONTROLLER_DRIVER_ERROR
+Language=English
+A GPIO controller driver broke the GPIO framework extension contract.
+.
+
 MessageId=0x139
 Severity=Success
 Facility=System
