@@ -169,6 +169,9 @@ UfsSmmuReadParameters(
 VOID
 UfsSmmuHandoff(VOID);
 
+VOID
+UfsSmmuReport(VOID);
+
 NTSTATUS
 UfsRunSlotSynchronous(
     _In_ PUFS_ADAPTER_EXTENSION Adapter,
