@@ -670,8 +670,9 @@ IopParseDevice(IN PVOID ParseObject,
             OpenPacket->TraversedMountPoint = FALSE;
         }
 
-        /* Check if this is a secure FSD */
+        /* Check if this is a secure FSD, kernel callers only get checked when they ask for it */
         if ((DeviceObject->Characteristics & FILE_DEVICE_SECURE_OPEN) &&
+            ((AccessMode != KernelMode) || (OpenPacket->Options & IO_FORCE_ACCESS_CHECK)) &&
             ((OpenPacket->RelatedFileObject) || (RemainingName->Length)) &&
             (!VolumeOpen))
         {
@@ -1189,6 +1190,10 @@ IopParseDevice(IN PVOID ParseObject,
                                  (ULONG_PTR)CompleteName,
                                  OpenPacket->Information);
                 }
+
+                /* The new target is checked against the whole request again */
+                AccessState->RemainingDesiredAccess = AccessState->OriginalDesiredAccess;
+                AccessState->PreviouslyGrantedAccess = 0;
 
                 /* Return to IO/OB so that information can be upgraded */
                 return STATUS_REPARSE;
