@@ -689,37 +689,137 @@ KiWalkBugCheckStack(
 }
 #endif
 
+#ifdef _M_ARM64
 /**
  * @brief
- * Prints the bug checking thread's call stack on the blue screen, as
- * module+offset, three frames to a line.
+ * Follows the x29/x30 frame records, which still work through code the
+ * unwinder has no data for, such as drivers without .pdata it can use.
+ */
+static
+ULONG
+KiWalkFramePointers(
+    _Out_writes_(MaxFrames) PVOID *Frames,
+    _In_ ULONG MaxFrames)
+{
+    PKTHREAD Thread = KeGetCurrentThread();
+    ULONG_PTR Low = (ULONG_PTR)Thread->StackLimit;
+    ULONG_PTR High = (ULONG_PTR)Thread->InitialStack;
+    ULONG_PTR Frame = (ULONG_PTR)__getReg(29);
+    ULONG Count = 0;
+
+    /* The DPC or interrupt stack is not the thread stack, allow it too */
+    if (Frame < Low || Frame >= High)
+    {
+        Low = Frame & ~(ULONG_PTR)(KERNEL_STACK_SIZE - 1);
+        High = Low + 2 * KERNEL_STACK_SIZE;
+    }
+
+    while (Count < MaxFrames && Frame >= Low && Frame + 2 * sizeof(ULONG_PTR) <= High && !(Frame & 0xF))
+    {
+        /* A fault here would bug check again from inside the bug check */
+        if (!MmIsAddressValid((PVOID)Frame))
+            break;
+
+        Frames[Count] = ((PVOID *)Frame)[1];
+        if (!Frames[Count])
+            break;
+        Count++;
+
+        /* Frame records only move toward the stack base */
+        if (((PULONG_PTR)Frame)[0] <= Frame)
+            break;
+        Frame = ((PULONG_PTR)Frame)[0];
+    }
+
+    return Count;
+}
+#endif
+
+/**
+ * @brief
+ * Prints readable strings that the bug checking thread's stack points at,
+ * skipping the kernel's own. Driver asserts often keep the names they were
+ * working on there.
  */
 static
 VOID
-KiDisplayBugCheckBackTrace(VOID)
+KiDisplayBugCheckStackStrings(VOID)
 {
-    PVOID Frames[18];
+    PKTHREAD Thread = KeGetCurrentThread();
+    ULONG_PTR Low = (ULONG_PTR)&Thread;
+    ULONG_PTR High = (ULONG_PTR)Thread->InitialStack;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PULONG_PTR Slot;
+    PCHAR String;
+    CHAR Line[80];
+    BOOLEAN InSystem;
+    ULONG_PTR Last = 0;
+    ULONG Shown = 0;
+    ULONG Length;
+
+    /* Off the thread stack only a nearby window is safe to read */
+    if (High <= Low || High - Low > KERNEL_STACK_SIZE * 2)
+        High = Low + 0x2000;
+
+    for (Slot = (PULONG_PTR)ALIGN_UP_BY(Low, sizeof(ULONG_PTR));
+         (ULONG_PTR)(Slot + 1) <= High && Shown < 4;
+         Slot++)
+    {
+        if (!MmIsAddressValid(Slot))
+            break;
+
+        String = (PCHAR)*Slot;
+        if ((ULONG_PTR)String <= (ULONG_PTR)MmHighestUserAddress || (ULONG_PTR)String == Last)
+            continue;
+        if (!MmIsAddressValid(String) || !MmIsAddressValid(String + 47))
+            continue;
+        if (KiPcToFileHeader(String, &LdrEntry, FALSE, &InSystem) && InSystem)
+            continue;
+
+        for (Length = 0; Length < 48 && String[Length] >= 0x20 && String[Length] < 0x7F; Length++);
+        if (Length < 5 || Length == 48 || String[Length] != ANSI_NULL)
+            continue;
+
+        Last = (ULONG_PTR)String;
+        RtlStringCbPrintfA(Line, sizeof(Line), "  %s\r\n", String);
+        if (!Shown)
+            InbvDisplayString("Strings:\r\n");
+        InbvDisplayString(Line);
+        Shown++;
+    }
+}
+
+/* The thread dumps go to the debug log while the system still runs, to the screen on a bug check */
+static BOOLEAN KiDumpToDebugLog;
+
+static
+VOID
+KiDumpPrint(
+    _In_z_ PCHAR Text)
+{
+    if (KiDumpToDebugLog)
+        DbgPrint("%s", Text);
+    else
+        InbvDisplayString(Text);
+}
+
+/**
+ * @brief
+ * Prints return addresses as module+offset, three to a line.
+ */
+static
+VOID
+KiDisplayFrames(
+    _In_reads_(Count) PVOID *Frames,
+    _In_ ULONG Count)
+{
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     CHAR Line[96];
     CHAR Entry[32];
     CHAR Name[16];
     BOOLEAN InSystem;
-    ULONG Count, i;
     SIZE_T Used;
-
-#ifdef _M_AMD64
-    Count = KiWalkBugCheckStack(Frames, RTL_NUMBER_OF(Frames));
-#else
-    /* Skip this routine so the trace starts at the bug check itself */
-    Count = RtlCaptureStackBackTrace(1, RTL_NUMBER_OF(Frames), Frames, NULL);
-#endif
-    if (Count == 0)
-    {
-        InbvDisplayString("Stack: unavailable\r\n\r\n");
-        return;
-    }
-
-    InbvDisplayString("Stack:\r\n");
+    ULONG i;
 
     Line[0] = ANSI_NULL;
     for (i = 0; i < Count; i++)
@@ -749,12 +849,242 @@ KiDisplayBugCheckBackTrace(VOID)
         if ((i % 3) == 2 || i == Count - 1)
         {
             RtlStringCbCatA(Line, sizeof(Line), "\r\n");
-            InbvDisplayString(Line);
+            KiDumpPrint(Line);
             Line[0] = ANSI_NULL;
         }
     }
+}
 
+/**
+ * @brief
+ * Prints the bug checking thread's call stack on the blue screen, as
+ * module+offset, three frames to a line.
+ */
+static
+VOID
+KiDisplayBugCheckBackTrace(VOID)
+{
+    PVOID Frames[18];
+    CHAR Line[48];
+    ULONG Count;
+
+#ifdef _M_AMD64
+    Count = KiWalkBugCheckStack(Frames, RTL_NUMBER_OF(Frames));
+#else
+    /* Skip this routine so the trace starts at the bug check itself */
+    Count = RtlCaptureStackBackTrace(1, RTL_NUMBER_OF(Frames), Frames, NULL);
+#ifdef _M_ARM64
+    {
+        PVOID ChainFrames[RTL_NUMBER_OF(Frames)];
+        ULONG ChainCount = KiWalkFramePointers(ChainFrames, RTL_NUMBER_OF(ChainFrames));
+
+        /* Use whichever walk got further */
+        if (ChainCount > Count)
+        {
+            RtlCopyMemory(Frames, ChainFrames, ChainCount * sizeof(PVOID));
+            Count = ChainCount;
+        }
+    }
+#endif
+#endif
+    if (Count == 0)
+    {
+        InbvDisplayString("Stack: unavailable\r\n\r\n");
+        return;
+    }
+
+    RtlStringCbPrintfA(Line, sizeof(Line), "Stack (thread %p):\r\n", PsGetCurrentThreadId());
+    InbvDisplayString(Line);
+    KiDisplayFrames(Frames, Count);
     InbvDisplayString("\r\n");
+}
+
+#ifdef _M_ARM64
+/**
+ * @brief
+ * Prints the call stacks of switched out system threads that are inside a
+ * driver, from the frame each one saved when it switched out. On one
+ * processor these are the threads the bug checking one ran ahead of.
+ */
+static
+VOID
+KiDisplayWaitingThreads(VOID)
+{
+    PKPROCESS Process = &PsInitialSystemProcess->Pcb;
+    PKTHREAD Current = KeGetCurrentThread();
+    PKSWITCH_FRAME SwitchFrame;
+    PLIST_ENTRY Entry;
+    PKTHREAD Thread;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PVOID StartAddress;
+    PVOID Frames[12];
+    BOOLEAN InSystem;
+    BOOLEAN InDriver;
+    ULONG i;
+    ULONG_PTR Frame;
+    ULONG Count;
+    ULONG Shown = 0;
+    CHAR Line[96];
+
+    for (Entry = Process->ThreadListHead.Flink;
+         Entry != &Process->ThreadListHead && Shown < (KiDumpToDebugLog ? 8 : 3);
+         Entry = Entry->Flink)
+    {
+        if (!MmIsAddressValid(Entry))
+            break;
+
+        Thread = CONTAINING_RECORD(Entry, KTHREAD, ThreadListEntry);
+        if (Thread == Current ||
+            (Thread->State != Waiting && Thread->State != Ready &&
+             Thread->State != Standby && Thread->State != DeferredReady))
+        {
+            continue;
+        }
+
+        SwitchFrame = (PKSWITCH_FRAME)Thread->KernelStack;
+        if ((ULONG_PTR)SwitchFrame < (ULONG_PTR)Thread->StackLimit ||
+            (ULONG_PTR)(SwitchFrame + 1) > (ULONG_PTR)Thread->InitialStack ||
+            !MmIsAddressValid(SwitchFrame) ||
+            !MmIsAddressValid(SwitchFrame + 1))
+        {
+            continue;
+        }
+
+        Count = 0;
+        Frames[Count++] = (PVOID)SwitchFrame->Return;
+        Frame = SwitchFrame->Fp;
+        while (Count < RTL_NUMBER_OF(Frames) &&
+               Frame >= (ULONG_PTR)Thread->StackLimit &&
+               Frame + 2 * sizeof(ULONG_PTR) <= (ULONG_PTR)Thread->InitialStack &&
+               !(Frame & 0xF))
+        {
+            if (!MmIsAddressValid((PVOID)Frame))
+                break;
+
+            Frames[Count] = ((PVOID *)Frame)[1];
+            if (!Frames[Count])
+                break;
+            Count++;
+            if (((PULONG_PTR)Frame)[0] <= Frame)
+                break;
+            Frame = ((PULONG_PTR)Frame)[0];
+        }
+
+        /* Threads parked in the kernel alone are the usual system workers */
+        InDriver = FALSE;
+        for (i = 0; i < Count && !InDriver; i++)
+        {
+            InDriver = KiPcToFileHeader(Frames[i], &LdrEntry, FALSE, &InSystem) && !InSystem;
+        }
+        if (!InDriver && Thread != KiPhase1Thread)
+            continue;
+
+        RtlStringCbPrintfA(Line,
+                           sizeof(Line),
+                           "%s (thread %p, priority %d, base %d) from:\r\n",
+                           Thread->State == Waiting ? "Waiting" : "Ready",
+                           CONTAINING_RECORD(Thread, ETHREAD, Tcb)->Cid.UniqueThread,
+                           Thread->Priority,
+                           Thread->BasePriority);
+        KiDumpPrint(Line);
+        StartAddress = CONTAINING_RECORD(Thread, ETHREAD, Tcb)->StartAddress;
+        KiDisplayFrames(&StartAddress, 1);
+        KiDisplayFrames(Frames, Count);
+        Shown++;
+    }
+}
+
+static volatile BOOLEAN KiBootWatchStop;
+
+/* Dumps the blocked threads every 20 seconds until the session manager runs, to show where boot stalls */
+static
+VOID
+NTAPI
+KiBootWatchThread(
+    _In_ PVOID Context)
+{
+    LARGE_INTEGER Interval;
+    ULONG Pass = 0;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
+    Interval.QuadPart = -20LL * 10 * 1000 * 1000;
+
+    for (;;)
+    {
+        KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+        if (KiBootWatchStop)
+            break;
+
+        DbgPrint("Boot watch %lu: threads in drivers\n", ++Pass);
+        KiDumpToDebugLog = TRUE;
+        KiDisplayWaitingThreads();
+        KiDumpToDebugLog = FALSE;
+    }
+
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+VOID
+NTAPI
+KiStartBootWatch(VOID)
+{
+    HANDLE Handle;
+
+    if (NT_SUCCESS(PsCreateSystemThread(&Handle, THREAD_ALL_ACCESS, NULL, NULL, NULL, KiBootWatchThread, NULL)))
+        ZwClose(Handle);
+}
+
+VOID
+NTAPI
+KiStopBootWatch(VOID)
+{
+    KiBootWatchStop = TRUE;
+}
+#endif
+
+PKTHREAD KiPhase1Thread;
+KPRIORITY KiPhase1Priority;
+
+/**
+ * @brief
+ * Prints the priority the phase 1 thread got and the recent drops out of the
+ * real-time range, with the calls that made them.
+ */
+static
+VOID
+KiDisplayRealTimeDrop(VOID)
+{
+    PKI_REALTIME_DROP Drop;
+    CHAR Line[96];
+    ULONG Count, i, Total;
+
+    if (KiPhase1Thread)
+    {
+        RtlStringCbPrintfA(Line,
+                           sizeof(Line),
+                           "Phase 1 thread %p raised to %d\r\n",
+                           CONTAINING_RECORD(KiPhase1Thread, ETHREAD, Tcb)->Cid.UniqueThread,
+                           KiPhase1Priority);
+        InbvDisplayString(Line);
+    }
+
+    Total = min(KiRealTimeDropCount, RTL_NUMBER_OF(KiRealTimeDrops));
+    for (i = 0; i < Total; i++)
+    {
+        Drop = &KiRealTimeDrops[(KiRealTimeDropCount - Total + i) % RTL_NUMBER_OF(KiRealTimeDrops)];
+        for (Count = 0; Count < RTL_NUMBER_OF(Drop->Frames) && Drop->Frames[Count]; Count++);
+
+        RtlStringCbPrintfA(Line,
+                           sizeof(Line),
+                           "Priority drop (thread %p, %d to %d) by:\r\n",
+                           CONTAINING_RECORD(Drop->Thread, ETHREAD, Tcb)->Cid.UniqueThread,
+                           Drop->From,
+                           Drop->To);
+        InbvDisplayString(Line);
+        KiDisplayFrames(Drop->Frames, Count);
+    }
 }
 
 VOID
@@ -853,6 +1183,11 @@ KiDisplayBlueScreen(IN ULONG MessageId,
     InbvDisplayString(AnsiName);
 
     KiDisplayBugCheckBackTrace();
+#ifdef _M_ARM64
+    KiDisplayWaitingThreads();
+#endif
+    KiDisplayRealTimeDrop();
+    KiDisplayBugCheckStackStrings();
 
     /* Check if we have a driver*/
     if (KiBugCheckDriver)

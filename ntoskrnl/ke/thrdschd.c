@@ -601,6 +601,40 @@ KiAdjustQuantumThread(IN PKTHREAD Thread)
     KiExitDispatcher(Thread->WaitIrql);
 }
 
+/* Threads knocked out of the real-time range, shown on the bug check screen */
+KI_REALTIME_DROP KiRealTimeDrops[4];
+ULONG KiRealTimeDropCount;
+
+static
+VOID
+KiRecordRealTimeDrop(
+    _In_ PKTHREAD Thread,
+    _In_ KPRIORITY Priority)
+{
+    PKI_REALTIME_DROP Drop = &KiRealTimeDrops[KiRealTimeDropCount++ % RTL_NUMBER_OF(KiRealTimeDrops)];
+    ULONG_PTR Frame;
+    ULONG Count = 0;
+
+    RtlZeroMemory(Drop, sizeof(*Drop));
+    Drop->Thread = Thread;
+    Drop->From = Thread->Priority;
+    Drop->To = Priority;
+
+#ifdef _M_ARM64
+    Frame = (ULONG_PTR)__getReg(29);
+    while (Count < RTL_NUMBER_OF(Drop->Frames) && Frame && !(Frame & 0xF) && MmIsAddressValid((PVOID)Frame))
+    {
+        Drop->Frames[Count++] = ((PVOID *)Frame)[1];
+        if (((PULONG_PTR)Frame)[0] <= Frame)
+            break;
+        Frame = ((PULONG_PTR)Frame)[0];
+    }
+#else
+    UNREFERENCED_PARAMETER(Frame);
+    RtlCaptureStackBackTrace(0, RTL_NUMBER_OF(Drop->Frames), Drop->Frames, NULL);
+#endif
+}
+
 VOID
 FASTCALL
 KiSetPriorityThread(IN PKTHREAD Thread,
@@ -612,6 +646,9 @@ KiSetPriorityThread(IN PKTHREAD Thread,
     KPRIORITY OldPriority;
     PKTHREAD NewThread;
     ASSERT((Priority >= 0) && (Priority <= HIGH_PRIORITY));
+
+    if (Thread->Priority >= LOW_REALTIME_PRIORITY && Priority < LOW_REALTIME_PRIORITY)
+        KiRecordRealTimeDrop(Thread, Priority);
 
     /* Check if priority changed */
     if (Thread->Priority != Priority)

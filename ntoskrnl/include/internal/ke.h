@@ -567,6 +567,29 @@ LONG
 NTAPI
 KeQueryBasePriorityThread(IN PKTHREAD Thread);
 
+typedef struct _KI_REALTIME_DROP
+{
+    PKTHREAD Thread;
+    KPRIORITY From;
+    KPRIORITY To;
+    PVOID Frames[6];
+} KI_REALTIME_DROP, *PKI_REALTIME_DROP;
+
+#ifdef _M_ARM64
+VOID
+NTAPI
+KiStartBootWatch(VOID);
+
+VOID
+NTAPI
+KiStopBootWatch(VOID);
+#endif
+
+extern KI_REALTIME_DROP KiRealTimeDrops[4];
+extern ULONG KiRealTimeDropCount;
+extern PKTHREAD KiPhase1Thread;
+extern KPRIORITY KiPhase1Priority;
+
 VOID
 FASTCALL
 KiSetPriorityThread(
