@@ -182,6 +182,30 @@ KsecGenerateRandom(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Folds entropy a hardware source provided into the DRBG with a reseed.
+ */
+VOID
+NTAPI
+KsecMixEntropy(
+    _In_reads_bytes_(Length) const VOID *Data,
+    _In_ SIZE_T Length)
+{
+    BYTE Digest[SYMCRYPT_SHA512_RESULT_SIZE];
+    KIRQL OldIrql;
+
+    KsecInitializeCng();
+
+    SymCryptSha512(Data, Length, Digest);
+
+    KeAcquireSpinLock(&KsecRngLock, &OldIrql);
+    SymCryptRngAesReseed(&KsecRngState, Digest, sizeof(Digest));
+    KeReleaseSpinLock(&KsecRngLock, OldIrql);
+
+    RtlSecureZeroMemory(Digest, sizeof(Digest));
+}
+
 /* HELPERS ********************************************************************/
 
 PKSEC_PROVIDER

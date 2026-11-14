@@ -108,6 +108,12 @@ KsecGenerateRandom(
 
 VOID
 NTAPI
+KsecMixEntropy(
+    _In_reads_bytes_(Length) const VOID *Data,
+    _In_ SIZE_T Length);
+
+VOID
+NTAPI
 KsecInitializeEncryptionSupport (
     VOID);
 

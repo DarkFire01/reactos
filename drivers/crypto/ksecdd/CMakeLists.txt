@@ -10,6 +10,7 @@ list(APPEND SOURCE
     bcryptkey.c
     dispatch.c
     crypt.c
+    entropy.c
     random.c
     scenv.c
     stubs.c
