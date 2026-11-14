@@ -11,8 +11,8 @@
 #include <windef.h>
 #include <ntstrsafe.h>
 #include <wdmguid.h>
-#include <fxldr.h>
 #include <wdf.h>
+#include <fxldr.h>
 #include <ucxclass.h>
 #include <usbbusif.h>
 #include <usbdlib.h>
@@ -61,14 +61,14 @@ NTSTATUS
 NTAPI
 UcxOnClientBind(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _Outptr_ PWDF_COMPONENT_GLOBALS* ComponentGlobals);
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID
 NTAPI
 UcxOnClientUnbind(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _In_ PWDF_COMPONENT_GLOBALS* ComponentGlobals);
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals);
 
 extern PFN_UCXFUNC UcxExportTable[UcxFunctionTableNumEntries];
 

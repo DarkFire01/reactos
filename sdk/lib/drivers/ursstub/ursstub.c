@@ -9,8 +9,8 @@
 
 #include <ntddk.h>
 #include <windef.h>
-#include <fxldr.h>
 #include <wdf.h>
+#include <fxldr.h>
 #include <ursdevice.h>
 #include "ursstub.h"
 
@@ -49,8 +49,7 @@ UrsStubBindClass(VOID)
     Info->FunctionTableCount = UrsFunctionTableNumEntries;
     Info->ClassBindInfo = &UrsDriverGlobals;
 
-    /* Typed as PWDF_COMPONENT_GLOBALS*, but clients pass the globals pointer itself */
-    Status = WdfVersionBindClass(&BindInfo, (PWDF_COMPONENT_GLOBALS *)WdfDriverGlobals, Info);
+    Status = WdfVersionBindClass(&BindInfo, (PWDF_COMPONENT_GLOBALS)WdfDriverGlobals, Info);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("URS class bind failed 0x%lx\n", Status);

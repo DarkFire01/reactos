@@ -43,7 +43,7 @@ NTSTATUS
 NTAPI
 UrsOnClientBind(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _Outptr_ PWDF_COMPONENT_GLOBALS *ComponentGlobals)
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals)
 {
     PURS_DRIVER_GLOBALS *ClientGlobals = (PURS_DRIVER_GLOBALS *)ClassBindInfo->ClassBindInfo;
     PURS_GLOBALS_HEADER Header;
@@ -82,7 +82,7 @@ VOID
 NTAPI
 UrsOnClientUnbind(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _In_ PWDF_COMPONENT_GLOBALS *ComponentGlobals)
+    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals)
 {
     PURS_DRIVER_GLOBALS *ClientGlobals = (PURS_DRIVER_GLOBALS *)ClassBindInfo->ClassBindInfo;
 
