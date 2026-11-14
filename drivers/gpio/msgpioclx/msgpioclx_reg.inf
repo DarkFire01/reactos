@@ -1,0 +1,10 @@
+; GPIO class extension
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\msgpioclx","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\msgpioclx","Group",0x00000000,"Boot Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\msgpioclx","ImagePath",0x00020000,"system32\drivers\msgpioclx.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\msgpioclx","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\msgpioclx","Type",0x00010001,0x00000001
+
+; KMDF class extension registration
+HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\GPIOClx\Versions\1\1","Service",0x00000000,"msgpioclx"
