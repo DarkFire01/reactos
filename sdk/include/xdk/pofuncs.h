@@ -419,6 +419,17 @@ PoFxIssueComponentPerfStateChange(
   _In_ PPO_FX_PERF_STATE_CHANGE PerfChange,
   _In_ PVOID Context);
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PoFxQueryCurrentComponentPerfState(
+  _In_ POHANDLE Handle,
+  _In_ ULONG Flags,
+  _In_ ULONG Component,
+  _In_ ULONG SetIndex,
+  _Out_ PULONGLONG CurrentPerf);
+
 #endif /* (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__) */
 
 #if (NTDDI_VERSION >= NTDDI_WIN10_RS5) || defined(__REACTOS__)

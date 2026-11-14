@@ -1,6 +1,6 @@
 /* Hardware Abstraction Layer Types */
 
-$if (_WDMDDK_)
+$if (_NTDDK_)
 typedef NTSTATUS
 NTAPI
 PROCESSOR_HALT_ROUTINE(
@@ -8,7 +8,7 @@ PROCESSOR_HALT_ROUTINE(
 );
 
 typedef PROCESSOR_HALT_ROUTINE *PPROCESSOR_HALT_ROUTINE;
-$endif (_WDMDDK_)
+$endif (_NTDDK_)
 
 $if (_NTDDK_)
 typedef BOOLEAN

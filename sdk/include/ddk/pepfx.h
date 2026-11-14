@@ -1,0 +1,594 @@
+/*
+ * PROJECT:     ReactOS DDK
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     Power engine plug-in (PEP) interface
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#pragma once
+
+#include <acpiioct.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+DECLARE_HANDLE(PEPHANDLE);
+
+/* Kernel services handed to a plug-in */
+
+typedef
+VOID
+POFXCALLBACKREQUESTWORKER(
+    _In_ POHANDLE PluginHandle);
+typedef POFXCALLBACKREQUESTWORKER *PPOFXCALLBACKREQUESTWORKER;
+
+typedef
+_IRQL_requires_max_(HIGH_LEVEL)
+VOID
+POFXCALLBACKCRITICALRESOURCE(
+    _In_ POHANDLE DeviceHandle,
+    _In_ ULONG Component,
+    _In_ BOOLEAN Active);
+typedef POFXCALLBACKCRITICALRESOURCE *PPOFXCALLBACKCRITICALRESOURCE;
+
+typedef
+_IRQL_requires_max_(HIGH_LEVEL)
+NTSTATUS
+POFXCALLBACKPROCESSORHALT(
+    _In_ ULONG Flags,
+    _Inout_opt_ PVOID Context,
+    _In_ PPROCESSOR_HALT_ROUTINE Halt);
+typedef POFXCALLBACKPROCESSORHALT *PPOFXCALLBACKPROCESSORHALT;
+
+typedef
+_IRQL_requires_max_(HIGH_LEVEL)
+NTSTATUS
+POFXCALLBACKREQUESTINTERRUPT(
+    _In_ ULONG Gsiv);
+typedef POFXCALLBACKREQUESTINTERRUPT *PPOFXCALLBACKREQUESTINTERRUPT;
+
+#define PEP_UNMASKED_INTERRUPT_INFORMATION_V1 0x00000001
+#define PEP_ENUMERATE_UNMASKED_INTERRUPT_FLAGS_NONE 0x0
+
+typedef union _PEP_UNMASKED_INTERRUPT_FLAGS
+{
+    struct
+    {
+        USHORT SecondaryInterrupt:1;
+        USHORT Reserved:15;
+    };
+    USHORT AsUSHORT;
+} PEP_UNMASKED_INTERRUPT_FLAGS, *PPEP_UNMASKED_INTERRUPT_FLAGS;
+
+typedef struct _PEP_UNMASKED_INTERRUPT_INFORMATION
+{
+    USHORT Version;
+    USHORT Size;
+    PEP_UNMASKED_INTERRUPT_FLAGS Flags;
+    KINTERRUPT_MODE Mode;
+    KINTERRUPT_POLARITY Polarity;
+    ULONG Gsiv;
+    USHORT PinNumber;
+    PEPHANDLE DeviceHandle;
+} PEP_UNMASKED_INTERRUPT_INFORMATION, *PPEP_UNMASKED_INTERRUPT_INFORMATION;
+
+typedef
+_IRQL_requires_max_(HIGH_LEVEL)
+BOOLEAN
+(*PPO_ENUMERATE_INTERRUPT_SOURCE_CALLBACK)(
+    _In_ PVOID CallbackContext,
+    _In_ PPEP_UNMASKED_INTERRUPT_INFORMATION InterruptInformation);
+
+typedef
+_IRQL_requires_max_(HIGH_LEVEL)
+NTSTATUS
+POFXCALLBACKENUMERATEUNMASKEDINTERRUPTS(
+    _In_opt_ POHANDLE PluginHandle,
+    _In_opt_ ULONG EnumerateFlags,
+    _In_ PPO_ENUMERATE_INTERRUPT_SOURCE_CALLBACK Callback,
+    _In_ PVOID CallbackContext,
+    _Inout_ PPEP_UNMASKED_INTERRUPT_INFORMATION InterruptInformation);
+typedef POFXCALLBACKENUMERATEUNMASKEDINTERRUPTS *PPOFXCALLBACKENUMERATEUNMASKEDINTERRUPTS;
+
+typedef
+NTSTATUS
+POFXCALLBACKPROCESSORIDLEVETO(
+    _In_ POHANDLE ProcessorHandle,
+    _In_ ULONG ProcessorState,
+    _In_ ULONG VetoReason,
+    _In_ BOOLEAN Increment);
+typedef POFXCALLBACKPROCESSORIDLEVETO *PPOFXCALLBACKPROCESSORIDLEVETO;
+
+typedef
+NTSTATUS
+POFXCALLBACKPLATFORMIDLEVETO(
+    _In_ POHANDLE ProcessorHandle,
+    _In_ ULONG PlatformState,
+    _In_ ULONG VetoReason,
+    _In_ BOOLEAN Increment);
+typedef POFXCALLBACKPLATFORMIDLEVETO *PPOFXCALLBACKPLATFORMIDLEVETO;
+
+typedef struct _PEP_PROCESSOR_IDLE_STATE_UPDATE
+{
+    ULONG Version;
+    ULONG Latency;
+    ULONG BreakEvenDuration;
+} PEP_PROCESSOR_IDLE_STATE_UPDATE, *PPEP_PROCESSOR_IDLE_STATE_UPDATE;
+
+typedef
+NTSTATUS
+POFXCALLBACKUPDATEPROCESSORIDLESTATE(
+    _In_ POHANDLE ProcessorHandle,
+    _In_ ULONG ProcessorState,
+    _In_ PPEP_PROCESSOR_IDLE_STATE_UPDATE Update);
+typedef POFXCALLBACKUPDATEPROCESSORIDLESTATE *PPOFXCALLBACKUPDATEPROCESSORIDLESTATE;
+
+typedef struct _PEP_PLATFORM_IDLE_STATE_UPDATE
+{
+    ULONG Version;
+    ULONG Latency;
+    ULONG BreakEvenDuration;
+} PEP_PLATFORM_IDLE_STATE_UPDATE, *PPEP_PLATFORM_IDLE_STATE_UPDATE;
+
+typedef
+NTSTATUS
+POFXCALLBACKUPDATEPLATFORMIDLESTATE(
+    _In_ POHANDLE ProcessorHandle,
+    _In_ ULONG PlatformState,
+    _In_ PPEP_PLATFORM_IDLE_STATE_UPDATE Update);
+typedef POFXCALLBACKUPDATEPLATFORMIDLESTATE *PPOFXCALLBACKUPDATEPLATFORMIDLESTATE;
+
+typedef
+_IRQL_requires_max_(HIGH_LEVEL)
+NTSTATUS
+POFXCALLBACKREQUESTCOMMON(
+    _In_ ULONG RequestId,
+    _Inout_opt_ PVOID Data);
+typedef POFXCALLBACKREQUESTCOMMON *PPOFXCALLBACKREQUESTCOMMON;
+
+#define PEP_KERNEL_INFORMATION_V1 0x00000001
+#define PEP_KERNEL_INFORMATION_V2 0x00000002
+#define PEP_KERNEL_INFORMATION_V3 0x00000003
+
+typedef struct _PEP_KERNEL_INFORMATION_STRUCT_V3
+{
+    USHORT Version;
+    USHORT Size;
+    POHANDLE Plugin;
+    PPOFXCALLBACKREQUESTWORKER RequestWorker;
+    PPOFXCALLBACKENUMERATEUNMASKEDINTERRUPTS EnumerateUnmaskedInterrupts;
+    PPOFXCALLBACKPROCESSORHALT ProcessorHalt;
+    PPOFXCALLBACKREQUESTINTERRUPT RequestInterrupt;
+    PPOFXCALLBACKCRITICALRESOURCE TransitionCriticalResource;
+    PPOFXCALLBACKPROCESSORIDLEVETO ProcessorIdleVeto;
+    PPOFXCALLBACKPLATFORMIDLEVETO PlatformIdleVeto;
+    PPOFXCALLBACKUPDATEPROCESSORIDLESTATE UpdateProcessorIdleState;
+    PPOFXCALLBACKUPDATEPLATFORMIDLESTATE UpdatePlatformIdleState;
+    PPOFXCALLBACKREQUESTCOMMON RequestCommon;
+} PEP_KERNEL_INFORMATION_STRUCT_V3, *PPEP_KERNEL_INFORMATION_STRUCT_V3;
+
+typedef PEP_KERNEL_INFORMATION_STRUCT_V3 PEP_KERNEL_INFORMATION, *PPEP_KERNEL_INFORMATION;
+
+/* Device registration */
+
+typedef PO_FX_COMPONENT_IDLE_STATE PEP_IDLE_STATE, *PPEP_IDLE_STATE;
+
+typedef struct _PEP_COMPONENT_V2
+{
+    GUID Id;
+    ULONGLONG Flags;
+    ULONG DeepestWakeableIdleState;
+    ULONG IdleStateCount;
+    _Field_size_full_(IdleStateCount) PPO_FX_COMPONENT_IDLE_STATE IdleStates;
+} PEP_COMPONENT_V2, *PPEP_COMPONENT_V2;
+
+#define PEP_DEVICE_FLAG_POWER_REQUIRED 0x0000000000000001
+
+typedef struct _PEP_DEVICE_REGISTER_V2
+{
+    ULONGLONG Flags;
+    ULONG ComponentCount;
+    _Field_size_full_(ComponentCount) PPEP_COMPONENT_V2 Components[ANYSIZE_ARRAY];
+} PEP_DEVICE_REGISTER_V2, *PPEP_DEVICE_REGISTER_V2;
+
+typedef enum _PEP_DEVICE_ACCEPTANCE_TYPE
+{
+    PepDeviceNotAccepted,
+    PepDeviceAcceptedReserved,
+    PepDeviceAccepted,
+    PepDeviceAceptedMax
+} PEP_DEVICE_ACCEPTANCE_TYPE, *PPEP_DEVICE_ACCEPTANCE_TYPE;
+
+/* Work a plug-in hands back from PEP_DPM_WORK */
+
+typedef enum _PEP_WORK_TYPE
+{
+    PepWorkRequestPowerControl = 3,
+    PepWorkCompleteIdleState = 5,
+    PepWorkCompletePerfState,
+    PepWorkAcpiNotify,
+    PepWorkAcpiEvaluateControlMethodComplete,
+    PepWorkMax
+} PEP_WORK_TYPE, *PPEP_WORK_TYPE;
+
+typedef struct _PEP_WORK_POWER_CONTROL
+{
+    POHANDLE DeviceHandle;
+    LPCGUID PowerControlCode;
+    PVOID RequestContext;
+    PVOID InBuffer;
+    SIZE_T InBufferSize;
+    PVOID OutBuffer;
+    SIZE_T OutBufferSize;
+} PEP_WORK_POWER_CONTROL, *PPEP_WORK_POWER_CONTROL;
+
+typedef struct _PEP_WORK_COMPLETE_IDLE_STATE
+{
+    POHANDLE DeviceHandle;
+    ULONG Component;
+} PEP_WORK_COMPLETE_IDLE_STATE, *PPEP_WORK_COMPLETE_IDLE_STATE;
+
+typedef struct _PEP_WORK_COMPLETE_PERF_STATE
+{
+    POHANDLE DeviceHandle;
+    ULONG Component;
+    BOOLEAN Succeeded;
+} PEP_WORK_COMPLETE_PERF_STATE, *PPEP_WORK_COMPLETE_PERF_STATE;
+
+typedef struct _PEP_WORK_ACPI_NOTIFY
+{
+    POHANDLE DeviceHandle;
+    ULONG NotifyCode;
+} PEP_WORK_ACPI_NOTIFY, *PPEP_WORK_ACPI_NOTIFY;
+
+typedef struct _PEP_WORK_ACPI_EVALUATE_CONTROL_METHOD_COMPLETE
+{
+    POHANDLE DeviceHandle;
+    ULONG CompletionFlags;
+    NTSTATUS MethodStatus;
+    PVOID CompletionContext;
+    SIZE_T OutputArgumentSize;
+    PACPI_METHOD_ARGUMENT OutputArguments;
+} PEP_WORK_ACPI_EVALUATE_CONTROL_METHOD_COMPLETE, *PPEP_WORK_ACPI_EVALUATE_CONTROL_METHOD_COMPLETE;
+
+typedef struct _PEP_WORK_INFORMATION
+{
+    PEP_WORK_TYPE WorkType;
+    union
+    {
+        PEP_WORK_POWER_CONTROL PowerControl;
+        PEP_WORK_COMPLETE_IDLE_STATE CompleteIdleState;
+        PEP_WORK_COMPLETE_PERF_STATE CompletePerfState;
+        PEP_WORK_ACPI_NOTIFY AcpiNotify;
+        PEP_WORK_ACPI_EVALUATE_CONTROL_METHOD_COMPLETE ControlMethodComplete;
+    };
+} PEP_WORK_INFORMATION, *PPEP_WORK_INFORMATION;
+
+/* Plug-in notification handlers */
+
+typedef
+_Function_class_(PEPCALLBACKNOTIFYDPM)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN
+PEPCALLBACKNOTIFYDPM(
+    _In_ ULONG Notification,
+    _In_ PVOID Data);
+typedef PEPCALLBACKNOTIFYDPM *PPEPCALLBACKNOTIFYDPM;
+
+typedef
+_Function_class_(PEPCALLBACKNOTIFYPPM)
+_IRQL_requires_max_(HIGH_LEVEL)
+BOOLEAN
+PEPCALLBACKNOTIFYPPM(
+    _In_ PEPHANDLE Handle,
+    _In_ ULONG Notification,
+    _Inout_opt_ PVOID Data);
+typedef PEPCALLBACKNOTIFYPPM *PPEPCALLBACKNOTIFYPPM;
+
+typedef
+_Function_class_(PEPCALLBACKNOTIFYACPI)
+_IRQL_requires_max_(HIGH_LEVEL)
+BOOLEAN
+PEPCALLBACKNOTIFYACPI(
+    _In_ ULONG Notification,
+    _Inout_opt_ PVOID Data);
+typedef PEPCALLBACKNOTIFYACPI *PPEPCALLBACKNOTIFYACPI;
+
+typedef struct _PEP_CRASHDUMP_INFORMATION
+{
+    PEPHANDLE DeviceHandle;
+    PVOID DeviceContext;
+} PEP_CRASHDUMP_INFORMATION, *PPEP_CRASHDUMP_INFORMATION;
+
+typedef
+_Function_class_(PEPCALLBACKPOWERONCRASHDUMPDEVICE)
+_IRQL_requires_max_(HIGH_LEVEL)
+BOOLEAN
+PEPCALLBACKPOWERONCRASHDUMPDEVICE(
+    _In_ PPEP_CRASHDUMP_INFORMATION CrashdumpInformation);
+typedef PEPCALLBACKPOWERONCRASHDUMPDEVICE *PPEPCALLBACKPOWERONCRASHDUMPDEVICE;
+
+/* Device power management notifications */
+
+#define PEP_DPM_PREPARE_DEVICE                          0x01
+#define PEP_DPM_ABANDON_DEVICE                          0x02
+#define PEP_DPM_REGISTER_DEVICE                         0x03
+#define PEP_DPM_UNREGISTER_DEVICE                       0x04
+#define PEP_DPM_DEVICE_POWER_STATE                      0x05
+#define PEP_DPM_WORK                                    0x0D
+#define PEP_DPM_POWER_CONTROL_REQUEST                   0x0E
+#define PEP_DPM_POWER_CONTROL_COMPLETE                  0x0F
+#define PEP_DPM_SYSTEM_LATENCY_UPDATE                   0x10
+#define PEP_DPM_DEVICE_STARTED                          0x12
+#define PEP_DPM_NOTIFY_COMPONENT_IDLE_STATE             0x13
+#define PEP_DPM_REGISTER_DEBUGGER                       0x15
+#define PEP_DPM_REGISTER_CRASHDUMP_DEVICE               0x19
+#define PEP_DPM_DEVICE_IDLE_CONSTRAINTS                 0x1A
+#define PEP_DPM_COMPONENT_IDLE_CONSTRAINTS              0x1B
+#define PEP_DPM_QUERY_COMPONENT_PERF_CAPABILTIES        0x1C
+#define PEP_DPM_QUERY_COMPONENT_PERF_SET                0x1D
+#define PEP_DPM_QUERY_COMPONENT_PERF_SET_NAME           0x1E
+#define PEP_DPM_QUERY_COMPONENT_PERF_STATES             0x1F
+#define PEP_DPM_REGISTER_COMPONENT_PERF_STATES          0x20
+#define PEP_DPM_REQUEST_COMPONENT_PERF_STATE            0x21
+#define PEP_DPM_QUERY_CURRENT_COMPONENT_PERF_STATE      0x22
+#define PEP_DPM_QUERY_DEBUGGER_TRANSITION_REQUIREMENTS  0x23
+#define PEP_DPM_QUERY_SOC_SUBSYSTEM_COUNT               0x24
+#define PEP_DPM_QUERY_SOC_SUBSYSTEM                     0x25
+#define PEP_DPM_RESET_SOC_SUBSYSTEM_ACCOUNTING          0x26
+#define PEP_DPM_QUERY_SOC_SUBSYSTEM_BLOCKING_TIME       0x27
+#define PEP_DPM_QUERY_SOC_SUBSYSTEM_METADATA            0x28
+
+typedef struct _PEP_PREPARE_DEVICE
+{
+    PCUNICODE_STRING DeviceId;
+    BOOLEAN DeviceAccepted;
+} PEP_PREPARE_DEVICE, *PPEP_PREPARE_DEVICE;
+
+typedef struct _PEP_ABANDON_DEVICE
+{
+    PCUNICODE_STRING DeviceId;
+    BOOLEAN DeviceAccepted;
+} PEP_ABANDON_DEVICE, *PPEP_ABANDON_DEVICE;
+
+typedef struct _PEP_REGISTER_DEVICE_V2
+{
+    PCUNICODE_STRING DeviceId;
+    POHANDLE KernelHandle;
+    PPEP_DEVICE_REGISTER_V2 Register;
+    PEPHANDLE DeviceHandle;
+    PEP_DEVICE_ACCEPTANCE_TYPE DeviceAccepted;
+} PEP_REGISTER_DEVICE_V2, *PPEP_REGISTER_DEVICE_V2;
+
+typedef struct _PEP_UNREGISTER_DEVICE
+{
+    PEPHANDLE DeviceHandle;
+} PEP_UNREGISTER_DEVICE, *PPEP_UNREGISTER_DEVICE;
+
+typedef struct _PEP_DEVICE_POWER_STATE
+{
+    PEPHANDLE DeviceHandle;
+    DEVICE_POWER_STATE PowerState;
+    BOOLEAN Complete;
+    BOOLEAN SystemTransition;
+} PEP_DEVICE_POWER_STATE, *PPEP_DEVICE_POWER_STATE;
+
+typedef struct _PEP_WORK
+{
+    PPEP_WORK_INFORMATION WorkInformation;
+    BOOLEAN NeedWork;
+} PEP_WORK, *PPEP_WORK;
+
+typedef struct _PEP_POWER_CONTROL_REQUEST
+{
+    PEPHANDLE DeviceHandle;
+    LPCGUID PowerControlCode;
+    PVOID InBuffer;
+    SIZE_T InBufferSize;
+    PVOID OutBuffer;
+    SIZE_T OutBufferSize;
+    SIZE_T BytesReturned;
+    NTSTATUS Status;
+} PEP_POWER_CONTROL_REQUEST, *PPEP_POWER_CONTROL_REQUEST;
+
+typedef struct _PEP_POWER_CONTROL_COMPLETE
+{
+    PEPHANDLE DeviceHandle;
+    LPCGUID PowerControlCode;
+    PVOID RequestContext;
+    SIZE_T BytesReturned;
+    NTSTATUS Status;
+} PEP_POWER_CONTROL_COMPLETE, *PPEP_POWER_CONTROL_COMPLETE;
+
+typedef struct _PEP_SYSTEM_LATENCY
+{
+    ULONGLONG Latency;
+} PEP_SYSTEM_LATENCY, *PPEP_SYSTEM_LATENCY;
+
+typedef struct _PEP_DEVICE_STARTED
+{
+    PEPHANDLE DeviceHandle;
+} PEP_DEVICE_STARTED, *PPEP_DEVICE_STARTED;
+
+typedef struct _PEP_NOTIFY_COMPONENT_IDLE_STATE
+{
+    PEPHANDLE DeviceHandle;
+    ULONG Component;
+    ULONG IdleState;
+    BOOLEAN DriverNotified;
+    BOOLEAN Completed;
+} PEP_NOTIFY_COMPONENT_IDLE_STATE, *PPEP_NOTIFY_COMPONENT_IDLE_STATE;
+
+typedef struct _PEP_REGISTER_DEBUGGER
+{
+    PEPHANDLE DeviceHandle;
+} PEP_REGISTER_DEBUGGER, *PPEP_REGISTER_DEBUGGER;
+
+typedef struct _PEP_REGISTER_CRASHDUMP_DEVICE
+{
+    PPEPCALLBACKPOWERONCRASHDUMPDEVICE PowerOnDumpDeviceCallback;
+    PEPHANDLE DeviceHandle;
+} PEP_REGISTER_CRASHDUMP_DEVICE, *PPEP_REGISTER_CRASHDUMP_DEVICE;
+
+#define PEP_UNSPECIFIED_MINIMUM_STATE (MAXULONG)
+
+typedef struct _PEP_DEVICE_PLATFORM_CONSTRAINTS
+{
+    PEPHANDLE DeviceHandle;
+    _Field_size_full_(PlatformStateCount) PDEVICE_POWER_STATE MinimumDStates;
+    ULONG PlatformStateCount;
+} PEP_DEVICE_PLATFORM_CONSTRAINTS, *PPEP_DEVICE_PLATFORM_CONSTRAINTS;
+
+typedef struct _PEP_COMPONENT_PLATFORM_CONSTRAINTS
+{
+    PEPHANDLE DeviceHandle;
+    ULONG Component;
+    _Field_size_full_(PlatformStateCount) PULONG MinimumFStates;
+    ULONG PlatformStateCount;
+} PEP_COMPONENT_PLATFORM_CONSTRAINTS, *PPEP_COMPONENT_PLATFORM_CONSTRAINTS;
+
+/* Component performance states */
+
+typedef enum _PEP_PERF_STATE_UNIT
+{
+    PepPerfStateUnitOther,
+    PepPerfStateUnitFrequency,
+    PepPerfStateUnitBandwidth,
+    PepPerfStateUnitMax
+} PEP_PERF_STATE_UNIT, *PPEP_PERF_STATE_UNIT;
+
+typedef enum _PEP_PERF_STATE_TYPE
+{
+    PepPerfStateTypeDiscrete,
+    PepPerfStateTypeRange,
+    PepPerfStateTypeMax
+} PEP_PERF_STATE_TYPE, *PPEP_PERF_STATE_TYPE;
+
+typedef struct _PEP_PERF_STATE
+{
+    ULONGLONG Value;
+    PVOID Context;
+} PEP_PERF_STATE, *PPEP_PERF_STATE;
+
+typedef struct _PEP_COMPONENT_PERF_SET
+{
+    UNICODE_STRING Name;
+    ULONGLONG Flags;
+    PEP_PERF_STATE_UNIT Unit;
+    PEP_PERF_STATE_TYPE Type;
+    union
+    {
+        struct
+        {
+            ULONG Count;
+            _Field_size_full_(Count) PPEP_PERF_STATE States;
+        } Discrete;
+        struct
+        {
+            ULONGLONG Minimum;
+            ULONGLONG Maximum;
+        } Range;
+    };
+} PEP_COMPONENT_PERF_SET, *PPEP_COMPONENT_PERF_SET;
+
+typedef struct _PEP_COMPONENT_PERF_INFO
+{
+    ULONG SetCount;
+    PEP_COMPONENT_PERF_SET PerfStateSets[ANYSIZE_ARRAY];
+} PEP_COMPONENT_PERF_INFO, *PPEP_COMPONENT_PERF_INFO;
+
+typedef struct _PEP_REGISTER_COMPONENT_PERF_STATES
+{
+    PEPHANDLE DeviceHandle;
+    ULONG Component;
+    ULONGLONG Flags;
+    PPEP_COMPONENT_PERF_INFO PerfStateInfo;
+} PEP_REGISTER_COMPONENT_PERF_STATES, *PPEP_REGISTER_COMPONENT_PERF_STATES;
+
+typedef struct _PEP_COMPONENT_PERF_STATE_REQUEST
+{
+    ULONG Set;
+    union
+    {
+        ULONG StateIndex;
+        ULONGLONG StateValue;
+    };
+} PEP_COMPONENT_PERF_STATE_REQUEST, *PPEP_COMPONENT_PERF_STATE_REQUEST;
+
+typedef struct _PEP_REQUEST_COMPONENT_PERF_STATE
+{
+    PEPHANDLE DeviceHandle;
+    ULONG Component;
+    BOOLEAN Completed;
+    BOOLEAN Succeeded;
+    ULONG PerfRequestsCount;
+    _Field_size_full_(PerfRequestsCount) PPEP_COMPONENT_PERF_STATE_REQUEST PerfRequests;
+} PEP_REQUEST_COMPONENT_PERF_STATE, *PPEP_REQUEST_COMPONENT_PERF_STATE;
+
+typedef struct _PEP_QUERY_CURRENT_COMPONENT_PERF_STATE
+{
+    PEPHANDLE DeviceHandle;
+    ULONG Component;
+    ULONG Set;
+    union
+    {
+        ULONG StateIndex;
+        ULONGLONG StateValue;
+    };
+} PEP_QUERY_CURRENT_COMPONENT_PERF_STATE, *PPEP_QUERY_CURRENT_COMPONENT_PERF_STATE;
+
+/* ACPI notifications */
+
+#define PEP_NOTIFY_ACPI_PREPARE_DEVICE                              0x01
+#define PEP_NOTIFY_ACPI_ABANDON_DEVICE                              0x02
+#define PEP_NOTIFY_ACPI_REGISTER_DEVICE                             0x03
+#define PEP_NOTIFY_ACPI_UNREGISTER_DEVICE                           0x04
+#define PEP_NOTIFY_ACPI_ENUMERATE_DEVICE_NAMESPACE                  0x05
+#define PEP_NOTIFY_ACPI_QUERY_OBJECT_INFORMATION                    0x06
+#define PEP_NOTIFY_ACPI_EVALUATE_CONTROL_METHOD                     0x07
+#define PEP_NOTIFY_ACPI_QUERY_DEVICE_CONTROL_RESOURCES              0x08
+#define PEP_NOTIFY_ACPI_TRANSLATED_DEVICE_CONTROL_RESOURCES         0x09
+#define PEP_NOTIFY_ACPI_WORK                                        0x0A
+
+/* Registration */
+
+#define PEP_INFORMATION_V1 0x00000001
+#define PEP_INFORMATION_V2 0x00000002
+#define PEP_INFORMATION_V3 0x00000003
+
+typedef struct _PEP_INFORMATION
+{
+    USHORT Version;
+    USHORT Size;
+    PPEPCALLBACKNOTIFYDPM AcceptDeviceNotification;
+    PPEPCALLBACKNOTIFYPPM AcceptProcessorNotification;
+    PPEPCALLBACKNOTIFYACPI AcceptAcpiNotification;
+} PEP_INFORMATION, *PPEP_INFORMATION;
+
+typedef PEP_COMPONENT_V2 PEP_COMPONENT, *PPEP_COMPONENT;
+typedef PEP_DEVICE_REGISTER_V2 PEP_DEVICE_REGISTER, *PPEP_DEVICE_REGISTER;
+typedef PEP_REGISTER_DEVICE_V2 PEP_REGISTER_DEVICE, *PPEP_REGISTER_DEVICE;
+
+#define PEP_FLAG_WORKER_CONCURRENCY 0x00000001
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PoFxRegisterPlugin(
+    _In_ PPEP_INFORMATION PepInformation,
+    _Inout_ PPEP_KERNEL_INFORMATION KernelInformation);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PoFxRegisterPluginEx(
+    _In_ PPEP_INFORMATION PepInformation,
+    _In_ ULONGLONG Flags,
+    _Inout_ PPEP_KERNEL_INFORMATION KernelInformation);
+
+#ifdef __cplusplus
+}
+#endif
