@@ -492,7 +492,8 @@ PiAttachFilterDriversCallback(
         }
         else
         {
-            DPRINT("Service \"%wZ\" will not be loaded now\n", &serviceName);
+            DPRINT1("Service \"%wZ\" for %wZ will not be loaded now\n",
+                    &serviceName, &context->DeviceNode->InstancePath);
             // return failure, the driver will be loaded later (in a subsequent call)
             Status = STATUS_UNSUCCESSFUL;
             goto Cleanup;
@@ -504,6 +505,11 @@ PiAttachFilterDriversCallback(
         driverEntry->DriverObject = DriverObject;
         driverEntry->DriverType = context->DriverType;
         InsertTailList(context->DriversListHead, &driverEntry->ListEntry);
+        if (context->DriverType != DeviceDriver)
+        {
+            DPRINT1("Filter \"%wZ\" (type %u) attaches to %wZ\n",
+                    &serviceName, context->DriverType, &context->DeviceNode->InstancePath);
+        }
         ZwClose(serviceHandle);
         return STATUS_SUCCESS;
     }
@@ -1918,6 +1924,7 @@ NTAPI
 IopSendSurpriseRemoval(IN PDEVICE_OBJECT DeviceObject)
 {
     ASSERT(IopGetDeviceNode(DeviceObject)->State == DeviceNodeAwaitingQueuedRemoval);
+    DPRINT1("Surprise removal of %wZ\n", &IopGetDeviceNode(DeviceObject)->InstancePath);
     /* Drivers should never fail a IRP_MN_SURPRISE_REMOVAL request */
     PiIrpSendRemoveCheckVpb(DeviceObject, IRP_MN_SURPRISE_REMOVAL);
 }
@@ -2833,6 +2840,7 @@ PipDeviceActionWorker(
                 break;
         }
 
+Complete:
         if (Request->CompletionStatus)
         {
             *Request->CompletionStatus = status;
@@ -2840,7 +2848,6 @@ PipDeviceActionWorker(
 
         if (Request->CompletionEvent)
         {
-Complete:
             KeSetEvent(Request->CompletionEvent, IO_NO_INCREMENT, FALSE);
         }
 
