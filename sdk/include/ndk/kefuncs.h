@@ -342,6 +342,10 @@ KeSetDmaIoCoherency(
 ULONG
 NTAPI
 KeGetDmaIoCoherency(VOID);
+
+VOID
+NTAPI
+KeReportCacheIncoherentDevice(VOID);
 #endif
 
 VOID

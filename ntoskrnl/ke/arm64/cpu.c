@@ -220,6 +220,23 @@ KeGetDmaIoCoherency(VOID)
     return KiDmaIoCoherency;
 }
 
+/**
+ * @brief Records that a DMA master does not snoop the caches, so buffers get cache maintenance.
+ */
+VOID
+NTAPI
+KeReportCacheIncoherentDevice(VOID)
+{
+    InterlockedOr((PLONG)&KiDmaIoCoherency, KE_DMA_IO_NOT_COHERENT);
+}
+
+BOOLEAN
+NTAPI
+KeSystemFullyCacheCoherent(VOID)
+{
+    return !(KiDmaIoCoherency & KE_DMA_IO_NOT_COHERENT);
+}
+
 VOID
 NTAPI
 KeFlushIoBuffers(
