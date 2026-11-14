@@ -139,6 +139,9 @@ PhSetRadioPower(
     PPH_REQUEST Request;
     HRESULT hr;
 
+    if (!PhRil)
+        return RIL_E_RADIONOTAVAILABLE;
+
     Request = PhBeginRequest();
     if (!Request)
         return E_OUTOFMEMORY;

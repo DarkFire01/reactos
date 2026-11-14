@@ -4,6 +4,7 @@ add_definitions(-D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00)
 list(APPEND SOURCE
     audio.c
     calls.c
+    info.c
     main.c
     pipe.c
     radio.c

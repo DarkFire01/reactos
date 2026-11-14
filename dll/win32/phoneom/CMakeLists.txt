@@ -12,5 +12,5 @@ add_library(phoneom MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/phoneom.def)
 
 set_module_type(phoneom win32dll UNICODE)
-add_importlibs(phoneom msvcrt kernel32 ntdll)
+add_importlibs(phoneom advapi32 msvcrt kernel32 ntdll)
 add_cd_file(TARGET phoneom DESTINATION reactos/system32 FOR all)

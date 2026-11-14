@@ -111,6 +111,36 @@ RIL_SendMsgAck(
     _In_ DWORD Protocol,
     _In_ DWORD OverIms);
 
+HRESULT
+WINAPI
+RIL_GetDeviceInfo(
+    _In_ HRIL hRil,
+    _In_ ULONGLONG Context,
+    _In_ DWORD Type,
+    _In_ DWORD Reserved);
+
+HRESULT
+WINAPI
+RIL_GetCardInfo(
+    _In_ HRIL hRil,
+    _In_ ULONGLONG Context,
+    _In_ DWORD Slot);
+
+HRESULT
+WINAPI
+RIL_GetCurrentRegStatus(
+    _In_ HRIL hRil,
+    _In_ ULONGLONG Context,
+    _In_ DWORD Class);
+
+HRESULT
+WINAPI
+RIL_DevSpecific(
+    _In_ HRIL hRil,
+    _In_ ULONGLONG Context,
+    _In_reads_bytes_(Size) const BYTE *Data,
+    _In_ DWORD Size);
+
 #ifdef __cplusplus
 }
 #endif

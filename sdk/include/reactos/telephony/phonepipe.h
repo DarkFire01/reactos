@@ -34,7 +34,13 @@ typedef enum _PHONE_PIPE_REQUEST
     PhoneRequestSendMessage,
     PhoneRequestGetMessages,
     PhoneRequestMarkRead,
-    PhoneRequestDeleteMessage
+    PhoneRequestDeleteMessage,
+    PhoneRequestGetDeviceInfo,
+    PhoneRequestGetSubscriber,
+    PhoneRequestGetNetwork,
+    PhoneRequestGetDataConfig,
+    PhoneRequestSetDataConfig,
+    PhoneRequestConnectData
 } PHONE_PIPE_REQUEST;
 
 /* Every pipe message starts with this, the payload follows */
