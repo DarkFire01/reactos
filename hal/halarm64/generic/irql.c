@@ -207,6 +207,10 @@ HalEnableSystemInterrupt(
     _In_ KIRQL Irql,
     _In_ KINTERRUPT_MODE InterruptMode)
 {
+    /* A secondary controller arms its own lines once the ISR is connected */
+    if (HalpIsSecondaryGsiv(Vector))
+        return TRUE;
+
     if ((Vector < GIC_SGI_COUNT) || (Vector > GIC_MAX_INTID))
         return FALSE;
 
@@ -248,6 +252,9 @@ HalGetInterruptVector(
     UNREFERENCED_PARAMETER(InterfaceType);
     UNREFERENCED_PARAMETER(BusNumber);
     UNREFERENCED_PARAMETER(BusInterruptLevel);
+
+    if (HalpGetSecondaryVector(BusInterruptVector, Irql, Affinity))
+        return BusInterruptVector;
 
     if ((BusInterruptVector < GIC_PPI_FIRST) || (BusInterruptVector > GIC_MAX_INTID))
     {
@@ -314,6 +321,9 @@ HalEnableInterrupt(
     if (!VectorData)
         return STATUS_INVALID_PARAMETER;
 
+    if (HalpIsSecondaryGsiv(VectorData->Vector))
+        return HalpEnableSecondaryLine(VectorData->Vector, VectorData->Mode, VectorData->Polarity);
+
     if (!HalEnableSystemInterrupt(VectorData->Vector, VectorData->Irql, VectorData->Mode))
         return STATUS_UNSUCCESSFUL;
 
@@ -329,6 +339,9 @@ HalDisableInterrupt(
 
     if (!VectorData)
         return STATUS_INVALID_PARAMETER;
+
+    if (HalpIsSecondaryGsiv(VectorData->Vector))
+        return HalpDisableSecondaryLine(VectorData->Vector);
 
     HalDisableSystemInterrupt(VectorData->Vector, VectorData->Irql);
     return STATUS_SUCCESS;
