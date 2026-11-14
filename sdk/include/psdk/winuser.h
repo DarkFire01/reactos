@@ -1883,6 +1883,10 @@ typedef enum tagHANDEDNESS
 #define WM_DPICHANGED_AFTERPARENT   0x02E3
 #define WM_GETDPISCALEDSIZE         0x02E4
 
+#if (WINVER >= 0x0601) || defined(__REACTOS__)
+#define WM_TOUCH                    0x0240
+#endif
+
 #if (_WIN32_WINNT >= 0x0501)
 #define WTS_CONSOLE_CONNECT 0x1
 #define WTS_CONSOLE_DISCONNECT 0x2
@@ -4065,6 +4069,44 @@ typedef struct tagRAWINPUT {
 	} data;
 } RAWINPUT,*PRAWINPUT,*LPRAWINPUT;
 
+#if (WINVER >= 0x0601) || defined(__REACTOS__)
+
+DECLARE_HANDLE(HTOUCHINPUT);
+
+typedef struct tagTOUCHINPUT {
+  LONG x;
+  LONG y;
+  HANDLE hSource;
+  DWORD dwID;
+  DWORD dwFlags;
+  DWORD dwMask;
+  DWORD dwTime;
+  ULONG_PTR dwExtraInfo;
+  DWORD cxContact;
+  DWORD cyContact;
+} TOUCHINPUT, *PTOUCHINPUT;
+typedef TOUCHINPUT const *PCTOUCHINPUT;
+
+#define TOUCH_COORD_TO_PIXEL(l) ((l) / 100)
+
+#define TOUCHEVENTF_MOVE       0x0001
+#define TOUCHEVENTF_DOWN       0x0002
+#define TOUCHEVENTF_UP         0x0004
+#define TOUCHEVENTF_INRANGE    0x0008
+#define TOUCHEVENTF_PRIMARY    0x0010
+#define TOUCHEVENTF_NOCOALESCE 0x0020
+#define TOUCHEVENTF_PEN        0x0040
+#define TOUCHEVENTF_PALM       0x0080
+
+#define TOUCHINPUTMASKF_TIMEFROMSYSTEM 0x0001
+#define TOUCHINPUTMASKF_EXTRAINFO      0x0002
+#define TOUCHINPUTMASKF_CONTACTAREA    0x0004
+
+#define TWF_FINETOUCH 0x00000001
+#define TWF_WANTPALM  0x00000002
+
+#endif /* (WINVER >= 0x0601) */
+
 typedef struct tagRAWINPUTDEVICE {
 	USHORT usUsagePage;
 	USHORT usUsage;
@@ -5002,6 +5044,23 @@ GetRegisteredRawInputDevices(
   _In_ UINT cbSize);
 
 #endif /* (_WIN32_WINNT >= 0x0501) */
+
+#if (WINVER >= 0x0601) || defined(__REACTOS__)
+
+BOOL
+WINAPI
+GetTouchInputInfo(
+  _In_ HTOUCHINPUT hTouchInput,
+  _In_ UINT cInputs,
+  _Out_writes_(cInputs) PTOUCHINPUT pInputs,
+  _In_ int cbSize);
+
+BOOL WINAPI CloseTouchInputHandle(_In_ HTOUCHINPUT hTouchInput);
+BOOL WINAPI RegisterTouchWindow(_In_ HWND hwnd, _In_ ULONG ulFlags);
+BOOL WINAPI UnregisterTouchWindow(_In_ HWND hwnd);
+BOOL WINAPI IsTouchWindow(_In_ HWND hwnd, _Out_opt_ PULONG pulFlags);
+
+#endif /* (WINVER >= 0x0601) */
 
 DWORD WINAPI GetQueueStatus(_In_ UINT);
 BOOL WINAPI GetScrollInfo(_In_ HWND, _In_ int, _Inout_ LPSCROLLINFO);
