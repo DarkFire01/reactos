@@ -278,6 +278,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/poapi.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/pocs.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/policy.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/po/pomode.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/poreq.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/posett.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/shtdwn.c

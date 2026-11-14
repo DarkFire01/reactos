@@ -35,12 +35,6 @@
 #endif
 
 //
-// PoFx activation/idle flags (PoFxActivateComponent / PoFxIdleComponent)
-//
-#define PO_FX_FLAG_BLOCKING     0x1  // Operation is synchronous (caller blocks until done)
-#define PO_FX_FLAG_ASYNC_ONLY   0x2  // Operation is asynchronous (returns immediately)
-
-//
 // PoFx component flags
 //
 typedef union _POP_FX_COMPONENT_FLAGS
@@ -235,6 +229,8 @@ typedef struct _POP_FX_COMPONENT
     ULONG DependentCount;
     PPOP_FX_DEPENDENT Dependents;
     POP_FX_ACCOUNTING Accounting;
+    PPO_FX_COMPONENT_PERF_INFO PerfInfo;
+    PPO_FX_COMPONENT_PERF_STATE_CALLBACK PerfStateCallback;
 } POP_FX_COMPONENT, *PPOP_FX_COMPONENT;
 
 /* EOF */

@@ -260,6 +260,10 @@ CleanupComponents:
             {
                 PopFreePool(FxComponent->IdleStates, TAG_PO_FX_COMPONENT);
             }
+            if (FxComponent->PerfInfo != NULL)
+            {
+                PopFreePool(FxComponent->PerfInfo, TAG_PO_FX_COMPONENT);
+            }
             PopFreePool(FxComponent, TAG_PO_FX_COMPONENT);
         }
     }
@@ -317,6 +321,10 @@ PoFxUnregisterDevice(
             if (FxComponent->IdleStates != NULL)
             {
                 PopFreePool(FxComponent->IdleStates, TAG_PO_FX_COMPONENT);
+            }
+            if (FxComponent->PerfInfo != NULL)
+            {
+                PopFreePool(FxComponent->PerfInfo, TAG_PO_FX_COMPONENT);
             }
             PopFreePool(FxComponent, TAG_PO_FX_COMPONENT);
         }
@@ -982,18 +990,6 @@ PoFxPowerControl(
 }
 
 /**
- * @brief Reports that a device finished powering down for a directed power transition.
- * @remarks Directed power transitions are never started, so there is nothing to complete.
- */
-VOID
-NTAPI
-PoFxCompleteDirectedPowerDown(
-    _In_ POHANDLE Handle)
-{
-    UNREFERENCED_PARAMETER(Handle);
-}
-
-/**
  * @brief Makes the power state of one component depend on another.
  * @return STATUS_NOT_SUPPORTED, components are managed one by one.
  */
@@ -1030,6 +1026,177 @@ PoFxRemoveComponentRelation(
     UNREFERENCED_PARAMETER(Relation);
 
     return STATUS_NOT_FOUND;
+}
+
+/**
+ * @brief
+ * Registers the performance states of a component.
+ *
+ * @param[in] InputStateInfo
+ * The perf state sets the driver supports.
+ *
+ * @param[out] OutputStateInfo
+ * Receives the copy PoFx keeps. It stays valid until the device is unregistered.
+ *
+ * @return
+ * STATUS_INVALID_PARAMETER for a bad component, or one that already registered its perf states.
+ */
+NTSTATUS
+NTAPI
+PoFxRegisterComponentPerfStates(
+    _In_ POHANDLE Handle,
+    _In_ ULONG Component,
+    _In_ ULONGLONG Flags,
+    _In_ PPO_FX_COMPONENT_PERF_STATE_CALLBACK ComponentPerfStateCallback,
+    _In_ PPO_FX_COMPONENT_PERF_INFO InputStateInfo,
+    _Out_ PPO_FX_COMPONENT_PERF_INFO *OutputStateInfo)
+{
+    PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
+    PPOP_FX_COMPONENT FxComponent;
+    PPO_FX_COMPONENT_PERF_INFO PerfInfo;
+    PPO_FX_PERF_STATE States;
+    SIZE_T SetsSize, StatesSize = 0;
+    ULONG SetIndex;
+
+    PAGED_CODE();
+    UNREFERENCED_PARAMETER(Flags);
+
+    if (FxDevice == NULL || Component >= FxDevice->ComponentCount ||
+        InputStateInfo == NULL || OutputStateInfo == NULL)
+    {
+        DPRINT1("PoFxRegisterComponentPerfStates: invalid parameter\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    FxComponent = FxDevice->Components[Component];
+    if (FxComponent == NULL || FxComponent->PerfInfo != NULL)
+    {
+        DPRINT1("PoFxRegisterComponentPerfStates: component %lu already has perf states\n", Component);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* One allocation holds the sets and, behind them, every discrete state array */
+    SetsSize = FIELD_OFFSET(PO_FX_COMPONENT_PERF_INFO, PerfStateSets) +
+               InputStateInfo->PerfStateSetsCount * sizeof(PO_FX_COMPONENT_PERF_SET);
+    for (SetIndex = 0; SetIndex < InputStateInfo->PerfStateSetsCount; SetIndex++)
+    {
+        if (InputStateInfo->PerfStateSets[SetIndex].Type == PoFxPerfStateTypeDiscrete)
+            StatesSize += InputStateInfo->PerfStateSets[SetIndex].Discrete.Count * sizeof(PO_FX_PERF_STATE);
+    }
+
+    PerfInfo = PopAllocatePool(SetsSize + StatesSize, FALSE, TAG_PO_FX_COMPONENT);
+    if (PerfInfo == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlCopyMemory(PerfInfo, InputStateInfo, SetsSize);
+    States = (PPO_FX_PERF_STATE)((PUCHAR)PerfInfo + SetsSize);
+    for (SetIndex = 0; SetIndex < PerfInfo->PerfStateSetsCount; SetIndex++)
+    {
+        PPO_FX_COMPONENT_PERF_SET Set = &PerfInfo->PerfStateSets[SetIndex];
+
+        if (Set->Type != PoFxPerfStateTypeDiscrete)
+            continue;
+
+        RtlCopyMemory(States, Set->Discrete.States, Set->Discrete.Count * sizeof(*States));
+        Set->Discrete.States = States;
+        States += Set->Discrete.Count;
+    }
+
+    FxComponent->PerfStateCallback = ComponentPerfStateCallback;
+    FxComponent->PerfInfo = PerfInfo;
+    *OutputStateInfo = PerfInfo;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Moves a component to new performance states.
+ *
+ * @remarks
+ * With no power engine plugin to consult, every change is taken as made and the
+ * driver is told it succeeded through its perf state callback.
+ */
+VOID
+NTAPI
+PoFxIssueComponentPerfStateChange(
+    _In_ POHANDLE Handle,
+    _In_ ULONG Flags,
+    _In_ ULONG Component,
+    _In_ PPO_FX_PERF_STATE_CHANGE PerfChange,
+    _In_ PVOID Context)
+{
+    PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
+    PPOP_FX_COMPONENT FxComponent;
+
+    UNREFERENCED_PARAMETER(PerfChange);
+
+    /* A blocking change cannot wait at DISPATCH_LEVEL, nor be both blocking and asynchronous */
+    if (((Flags & PO_FX_FLAG_BLOCKING) && KeGetCurrentIrql() >= DISPATCH_LEVEL) ||
+        ((Flags & (PO_FX_FLAG_BLOCKING | PO_FX_FLAG_ASYNC_ONLY)) == (PO_FX_FLAG_BLOCKING | PO_FX_FLAG_ASYNC_ONLY)))
+    {
+        DPRINT1("PoFxIssueComponentPerfStateChange: invalid flags 0x%lx\n", Flags);
+        return;
+    }
+
+    if (FxDevice == NULL || Component >= FxDevice->ComponentCount)
+    {
+        DPRINT1("PoFxIssueComponentPerfStateChange: invalid parameter\n");
+        return;
+    }
+
+    FxComponent = FxDevice->Components[Component];
+    if (FxComponent == NULL || FxComponent->PerfStateCallback == NULL)
+        return;
+
+    FxComponent->PerfStateCallback(FxDevice->DriverContext, Component, TRUE, Context);
+}
+
+/**
+ * @brief
+ * Marks a device as the one the crash dump goes to, so its power engine plugin keeps it reachable.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED when no power engine plugin owns the device.
+ */
+NTSTATUS
+NTAPI
+PoFxRegisterCrashdumpDevice(
+    _In_ POHANDLE Handle)
+{
+    PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
+
+    if (FxDevice == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    /* Only a plugin knows how to keep the device powered through the dump */
+    if (FxDevice->Plugin == NULL)
+        return STATUS_NOT_SUPPORTED;
+
+    DPRINT1("PoFxRegisterCrashdumpDevice: plugin crash dump support is not implemented\n");
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief
+ * Powers a crash dump device back on while the system writes the dump.
+ *
+ * @return
+ * STATUS_UNSUCCESSFUL when no plugin registered a way to power the device on.
+ */
+NTSTATUS
+NTAPI
+PoFxPowerOnCrashdumpDevice(
+    _In_ POHANDLE Handle,
+    _In_opt_ PVOID Context)
+{
+    PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    if (FxDevice == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    return STATUS_UNSUCCESSFUL;
 }
 
 /* EOF */

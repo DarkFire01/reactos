@@ -396,5 +396,47 @@ PoFxPowerControl(
     _In_ SIZE_T OutBufferSize,
     _Out_opt_ PSIZE_T BytesReturned);
 
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PoFxRegisterComponentPerfStates(
+  _In_ POHANDLE Handle,
+  _In_ ULONG Component,
+  _In_ ULONGLONG Flags,
+  _In_ PPO_FX_COMPONENT_PERF_STATE_CALLBACK ComponentPerfStateCallback,
+  _In_ PPO_FX_COMPONENT_PERF_INFO InputStateInfo,
+  _Out_ PPO_FX_COMPONENT_PERF_INFO *OutputStateInfo);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+PoFxIssueComponentPerfStateChange(
+  _In_ POHANDLE Handle,
+  _In_ ULONG Flags,
+  _In_ ULONG Component,
+  _In_ PPO_FX_PERF_STATE_CHANGE PerfChange,
+  _In_ PVOID Context);
+
 #endif /* (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__) */
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS5) || defined(__REACTOS__)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PoRegisterForEffectivePowerModeNotifications(
+  _In_ ULONG Version,
+  _In_ PEFFECTIVE_POWER_MODE_CALLBACK Callback,
+  _In_opt_ PVOID Context,
+  _Outptr_ PVOID *RegistrationHandle);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PoUnregisterFromEffectivePowerModeNotifications(
+  _In_ PVOID RegistrationHandle);
+#endif
 $endif (_WDMDDK_)
