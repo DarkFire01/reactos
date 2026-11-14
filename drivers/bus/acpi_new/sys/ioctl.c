@@ -226,7 +226,17 @@ UacpiNtArgumentToObject(
     switch (Argument->Type)
     {
         case ACPI_METHOD_ARGUMENT_INTEGER:
-            *Object = uacpi_object_create_integer(Argument->Argument);
+            if (Argument->DataLength >= sizeof(ULONG64))
+            {
+                ULONG64 Wide;
+
+                RtlCopyMemory(&Wide, Argument->Data, sizeof(Wide));
+                *Object = uacpi_object_create_integer(Wide);
+            }
+            else
+            {
+                *Object = uacpi_object_create_integer(Argument->Argument);
+            }
             break;
 
         /* DataLength counts the NUL */
@@ -318,6 +328,19 @@ UacpiNtArgumentsToObjects(
     return STATUS_SUCCESS;
 }
 
+/* Plain eval requests get 32 bit integers, the extended ones get 64 bit */
+static
+ULONG
+NTAPI
+UacpiNtIntegerWireLength(
+    _In_ ULONG IoControlCode)
+{
+    if (IoControlCode == IOCTL_ACPI_EVAL_METHOD || IoControlCode == IOCTL_ACPI_ASYNC_EVAL_METHOD)
+        return sizeof(ULONG);
+
+    return sizeof(ULONG64);
+}
+
 /* Wire size of an object once serialized */
 static
 NTSTATUS
@@ -325,6 +348,7 @@ NTAPI
 UacpiNtObjectWireSize(
     _In_ uacpi_object *Object,
     _In_ ULONG Depth,
+    _In_ ULONG IntegerLength,
     _Out_ PULONG Size)
 {
     uacpi_object_array Package;
@@ -340,7 +364,7 @@ UacpiNtObjectWireSize(
     switch (uacpi_object_get_type(Object))
     {
         case UACPI_OBJECT_INTEGER:
-            *Size = ACPI_METHOD_ARGUMENT_LENGTH(sizeof(ULONG));
+            *Size = ACPI_METHOD_ARGUMENT_LENGTH(IntegerLength);
             return STATUS_SUCCESS;
 
         /* The view excludes the NUL, the wire string carries it */
@@ -369,7 +393,7 @@ UacpiNtObjectWireSize(
             Total = 0;
             for (i = 0; i < Package.count; i++)
             {
-                Status = UacpiNtObjectWireSize(Package.objects[i], Depth + 1, &ElementSize);
+                Status = UacpiNtObjectWireSize(Package.objects[i], Depth + 1, IntegerLength, &ElementSize);
                 if (!NT_SUCCESS(Status))
                     return Status;
                 Total += ElementSize;
@@ -392,6 +416,7 @@ NTSTATUS
 NTAPI
 UacpiNtObjectToArgument(
     _In_ uacpi_object *Object,
+    _In_ ULONG IntegerLength,
     _Out_ PACPI_METHOD_ARGUMENT Argument,
     _Out_ PULONG Written)
 {
@@ -408,12 +433,14 @@ UacpiNtObjectToArgument(
 
     switch (uacpi_object_get_type(Object))
     {
-        /* Version 1 wire integers are 32 bits wide */
         case UACPI_OBJECT_INTEGER:
             (VOID)uacpi_object_get_integer(Object, &Value);
             Argument->Type = ACPI_METHOD_ARGUMENT_INTEGER;
-            Argument->DataLength = sizeof(ULONG);
-            Argument->Argument = (ULONG)Value;
+            Argument->DataLength = (USHORT)IntegerLength;
+            if (Argument->DataLength == sizeof(ULONG64))
+                RtlCopyMemory(Argument->Data, &Value, sizeof(ULONG64));
+            else
+                Argument->Argument = (ULONG)Value;
             break;
 
         case UACPI_OBJECT_STRING:
@@ -441,7 +468,7 @@ UacpiNtObjectToArgument(
             Nested = (PACPI_METHOD_ARGUMENT)Argument->Data;
             for (i = 0; i < Package.count; i++)
             {
-                Status = UacpiNtObjectToArgument(Package.objects[i], Nested, &ElementSize);
+                Status = UacpiNtObjectToArgument(Package.objects[i], IntegerLength, Nested, &ElementSize);
                 if (!NT_SUCCESS(Status))
                     return Status;
 
@@ -622,6 +649,7 @@ NTSTATUS
 NTAPI
 UacpiNtWriteEvalOutput(
     _In_ uacpi_object *Result,
+    _In_ ULONG IntegerLength,
     _Out_writes_bytes_opt_(OutputLength) PVOID Output,
     _In_ ULONG OutputLength,
     _Out_ PULONG_PTR Information)
@@ -656,7 +684,7 @@ UacpiNtWriteEvalOutput(
     Required = FIELD_OFFSET(ACPI_EVAL_OUTPUT_BUFFER, Argument);
     for (i = 0; i < Count; i++)
     {
-        Status = UacpiNtObjectWireSize(Objects[i], Depth, &Size);
+        Status = UacpiNtObjectWireSize(Objects[i], Depth, IntegerLength, &Size);
         if (!NT_SUCCESS(Status))
             return Status;
         Required += Size;
@@ -680,7 +708,7 @@ UacpiNtWriteEvalOutput(
     Argument = (PACPI_METHOD_ARGUMENT)OutputBuffer->Argument;
     for (i = 0; i < Count; i++)
     {
-        Status = UacpiNtObjectToArgument(Objects[i], Argument, &Size);
+        Status = UacpiNtObjectToArgument(Objects[i], IntegerLength, Argument, &Size);
         if (!NT_SUCCESS(Status))
             return Status;
         Argument = (PACPI_METHOD_ARGUMENT)((PUCHAR)Argument + Size);
@@ -728,7 +756,20 @@ UacpiNtEvaluate(
         while (Length > 0 && Path[Length - 1] == ' ')
             Path[--Length] = ANSI_NULL;
 
-        DPRINT("EVAL %s on %s\n", Path, TraceName);
+        /* qcpep loads its device data through PEP0, show what it reads */
+        if (strstr(TraceName, "PEP"))
+        {
+            DPRINT1("EVAL %s on %s, ioctl 0x%lx, %lu bytes, thread %p\n",
+                    Path,
+                    TraceName,
+                    IoStack->Parameters.DeviceIoControl.IoControlCode,
+                    IoStack->Parameters.DeviceIoControl.OutputBufferLength,
+                    PsGetCurrentThreadId());
+        }
+        else
+        {
+            DPRINT("EVAL %s on %s\n", Path, TraceName);
+        }
         UacpiStatus = uacpi_eval(Node, Path, Args.count ? &Args : NULL, &Result);
         if (uacpi_unlikely_error(UacpiStatus))
         {
@@ -747,6 +788,7 @@ UacpiNtEvaluate(
         else if (Result)
         {
             Status = UacpiNtWriteEvalOutput(Result,
+                                            UacpiNtIntegerWireLength(IoStack->Parameters.DeviceIoControl.IoControlCode),
                                             Buffer,
                                             IoStack->Parameters.DeviceIoControl.OutputBufferLength,
                                             &Information);
