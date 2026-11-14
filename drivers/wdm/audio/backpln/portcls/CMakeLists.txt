@@ -43,6 +43,7 @@ list(APPEND SOURCE
     registry.cpp
     resource.cpp
     service_group.cpp
+    streamres.cpp
     undoc.cpp
     unregister.cpp
     version.cpp)
