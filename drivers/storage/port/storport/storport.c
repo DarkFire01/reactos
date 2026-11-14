@@ -1311,7 +1311,6 @@ StorPortGetUncachedExtension(
 {
     PMINIPORT_DEVICE_EXTENSION MiniportExtension;
     PFDO_DEVICE_EXTENSION DeviceExtension;
-    PHYSICAL_ADDRESS LowestAddress, HighestAddress, Alignment;
     DEVICE_DESCRIPTION DeviceDescription;
     ULONG NumberOfMapRegisters;
 
@@ -1331,7 +1330,7 @@ StorPortGetUncachedExtension(
     if (DeviceExtension->UncachedExtensionVirtualBase != NULL)
         return DeviceExtension->UncachedExtensionVirtualBase;
 
-    // FIXME: Set DMA stuff here?
+    RtlZeroMemory(&DeviceDescription, sizeof(DeviceDescription));
     DeviceDescription.Version = DEVICE_DESCRIPTION_VERSION;
     DeviceDescription.Master = ConfigInfo->Master;
     DeviceDescription.ScatterGather = ConfigInfo->ScatterGather;
@@ -1348,7 +1347,8 @@ StorPortGetUncachedExtension(
     DeviceExtension->DmaAdapter =
         IoGetDmaAdapter(DeviceExtension->PhysicalDevice, &DeviceDescription, &NumberOfMapRegisters);
 
-    NT_ASSERT(DeviceExtension->DmaAdapter);
+    if (DeviceExtension->DmaAdapter == NULL)
+        return NULL;
 
     /* FIXME: AdapterInterfaceType is exposed here and I think it's convenient to initialize
        HwInitData in FDO extension right here. Needs review. */
@@ -1356,19 +1356,16 @@ StorPortGetUncachedExtension(
         DeviceDescription.InterfaceType);
     NT_ASSERT(DeviceExtension->HwInitData);
 
-    /* Allocate the uncached extension */
-    Alignment.QuadPart = 0;
-    LowestAddress.QuadPart = 0;
-    HighestAddress.QuadPart = 0x00000000FFFFFFFF;
-    DeviceExtension->UncachedExtensionVirtualBase = MmAllocateContiguousMemorySpecifyCache(NumberOfBytes,
-                                                                                           LowestAddress,
-                                                                                           HighestAddress,
-                                                                                           Alignment,
-                                                                                           MmCached);
+    /* A master that does not snoop the caches only sees this memory if it is never cached */
+    DeviceExtension->UncachedExtensionVirtualBase =
+        DeviceExtension->DmaAdapter->DmaOperations->AllocateCommonBuffer(DeviceExtension->DmaAdapter,
+                                                                         NumberOfBytes,
+                                                                         &DeviceExtension->UncachedExtensionPhysicalBase,
+                                                                         FALSE);
     if (DeviceExtension->UncachedExtensionVirtualBase == NULL)
         return NULL;
 
-    DeviceExtension->UncachedExtensionPhysicalBase = MmGetPhysicalAddress(DeviceExtension->UncachedExtensionVirtualBase);
+    RtlZeroMemory(DeviceExtension->UncachedExtensionVirtualBase, NumberOfBytes);
     DeviceExtension->UncachedExtensionSize = NumberOfBytes;
 
     return DeviceExtension->UncachedExtensionVirtualBase;
