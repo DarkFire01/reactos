@@ -6,3 +6,5 @@ add_subdirectory(ndisuio)
 add_subdirectory(netio)
 add_subdirectory(tcpip)
 add_subdirectory(tdi)
+
+add_subdirectory(wdiwifi)
