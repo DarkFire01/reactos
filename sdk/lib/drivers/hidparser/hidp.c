@@ -317,9 +317,7 @@ HidP_GetLinkCollectionNodes(
     IN OUT PULONG  LinkCollectionNodesLength,
     IN PHIDP_PREPARSED_DATA  PreparsedData)
 {
-    UNIMPLEMENTED;
-    ASSERT(FALSE);
-    return STATUS_NOT_IMPLEMENTED;
+    return HidParser_GetLinkCollectionNodes(PreparsedData, LinkCollectionNodes, LinkCollectionNodesLength);
 }
 
 NTSTATUS
