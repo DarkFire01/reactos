@@ -188,12 +188,13 @@ ScxQueryConnectionProperties(
             break;
         }
 
+        /* A failed buffered request returns no header, so the size may be unknown */
         if (NT_SUCCESS(Status))
             Status = STATUS_UNSUCCESSFUL;
         else if (Status == STATUS_BUFFER_TOO_SMALL && Output->PropertiesLength != 0)
             OutputLength = HeaderLength + Output->PropertiesLength;
         else if (Status == STATUS_BUFFER_TOO_SMALL)
-            Status = STATUS_UNSUCCESSFUL;
+            OutputLength = HeaderLength + SCX_HUB_PROPERTIES_LIMIT;
 
         ExFreePoolWithTag(Output, SCX_POOL_TAG);
     }
