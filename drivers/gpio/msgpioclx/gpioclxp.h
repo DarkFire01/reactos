@@ -211,11 +211,13 @@ typedef struct _GCX_SECONDARY_PROVIDER
     PVOID QueryLineInformation;
 } GCX_SECONDARY_PROVIDER, *PGCX_SECONDARY_PROVIDER;
 
+/* Claimed receives nonzero when a service routine took the interrupt */
 typedef
-BOOLEAN
+NTSTATUS
 (NTAPI *PGCX_HAL_INVOKE_ISR)(
     _In_ ULONG Gsiv,
-    _In_ PVOID ControllerContext);
+    _In_ PVOID ControllerContext,
+    _Out_ PULONG Claimed);
 
 typedef
 NTSTATUS
