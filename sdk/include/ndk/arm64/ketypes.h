@@ -484,11 +484,14 @@ typedef struct _KPRCB
 
 //
 // Interrupt dispatch table sizing. The in-PCR Idt array covers vectors
-// 0..255; IdtExtTable covers the rest up to the architectural GIC maximum.
+// 0..255; IdtExtTable covers the rest up to the architectural GIC maximum,
+// then the GSIVs a secondary interrupt controller such as a GPIO block serves.
 //
 #define KI_IDT_BASE_VECTORS     256
 #define KI_IDT_EXT_VECTORS      768
-#define KI_MAXIMUM_VECTOR       (KI_IDT_BASE_VECTORS + KI_IDT_EXT_VECTORS)
+#define KI_SECONDARY_VECTOR_BASE (KI_IDT_BASE_VECTORS + KI_IDT_EXT_VECTORS)
+#define KI_SECONDARY_VECTORS    256
+#define KI_MAXIMUM_VECTOR       (KI_SECONDARY_VECTOR_BASE + KI_SECONDARY_VECTORS)
 
 //
 // Processor Control Region
@@ -572,7 +575,7 @@ typedef struct _KIPCR
     /* Slots for interrupt vectors 256 and above (GIC SPIs reach far higher).
        Placed after Prcb so the earlier offsets, which asm reads, do not move.
        IdtExt points here. */
-    PVOID IdtExtTable[KI_IDT_EXT_VECTORS];
+    PVOID IdtExtTable[KI_IDT_EXT_VECTORS + KI_SECONDARY_VECTORS];
 } KIPCR, *PKIPCR;
 
 //
