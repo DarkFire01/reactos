@@ -633,6 +633,8 @@ NtCreateSection(
   _In_opt_ HANDLE FileHandle);
 
 #endif
+/* Unprototyped stubs: C accepts them beside the real declarations, C++ does not */
+#ifndef __cplusplus
 // Stubs
 NTSYSCALLAPI NTSTATUS NTAPI NtThawRegistry();
 NTSYSCALLAPI NTSTATUS NTAPI NtThawTransactions();
@@ -771,7 +773,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtNtRevertContainerImpersonation();
 NTSYSCALLAPI NTSTATUS NTAPI NtNtSetCachedSigningLevel();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetIRTimer();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetInformationSymbolicLink();
-NTSYSCALLAPI NTSTATUS NTAPI NtSetInformationVirtualMemory();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetTimer2();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetWnfProcessNotificationEvent();
 NTSYSCALLAPI NTSTATUS NTAPI NtAlpcImpersonateClientContainerOfPort();
@@ -781,6 +782,8 @@ NTSYSCALLAPI NTSTATUS NTAPI NtInitializeEnclave();
 NTSYSCALLAPI NTSTATUS NTAPI NtLoadEnclaveData();
 NTSYSCALLAPI NTSTATUS NTAPI NtRevertContainerImpersonation();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetCachedSigningLevel();
+#endif
+
 #define COMPRESSION_FORMAT_NONE         (0x0000)
 #define COMPRESSION_FORMAT_DEFAULT      (0x0001)
 #define COMPRESSION_FORMAT_LZNT1        (0x0002)

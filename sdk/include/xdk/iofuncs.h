@@ -2872,12 +2872,6 @@ IoGetInitiatorProcess(
 #endif
 
 #if (NTDDI_VERSION >= NTDDI_WIN10_VB)
-typedef enum _DRIVER_REGKEY_TYPE {
-  DriverRegKeyParameters,
-  DriverRegKeyPersistentState,
-  DriverRegKeySharedPersistentState
-} DRIVER_REGKEY_TYPE, *PDRIVER_REGKEY_TYPE;
-
 _IRQL_requires_max_(PASSIVE_LEVEL)
 _Must_inspect_result_
 NTKERNELAPI
