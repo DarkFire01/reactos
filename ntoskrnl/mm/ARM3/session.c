@@ -391,7 +391,7 @@ MiDeleteSessionSpace(VOID)
          Va += PDE_MAPPED_VA, Index++)
     {
         PointerPde = MiAddressToPde(Va);
-#ifdef _M_AMD64
+#ifdef _WIN64
         if (PointerPde->u.Hard.Valid == 0)
             continue;
 #else
@@ -417,7 +417,7 @@ MiDeleteSessionSpace(VOID)
             continue;
 
         MI_ERASE_PTE((PMMPTE)PointerPde);
-#ifndef _M_AMD64
+#ifndef _WIN64
         MmSessionSpace->PageTables[Index].u.Long = 0;
 #endif
         MiFreeSessionTablePage(PageTableIndex);

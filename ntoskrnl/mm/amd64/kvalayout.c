@@ -190,7 +190,11 @@ MiInitializeKernelVaLayout(
         MiRandomSeed ^= (ULONG)LoaderBlock->Extension->LoaderPerformanceData->StartTime;
         MiRandomSeed ^= _rotl((ULONG)LoaderBlock->Extension->LoaderPerformanceData->EndTime, 16);
     }
+#ifdef _M_ARM64
+    MiRandomSeed ^= _rotl((ULONG)_ReadStatusReg(ARM64_CNTVCT), MiRandomSeed & 0x1F);
+#else
     MiRandomSeed ^= _rotl((ULONG)__rdtsc(), MiRandomSeed & 0x1F);
+#endif
 
     /* These are at a fixed address, the page tables and hyperspace are hardcoded */
     MiReserveVaRange(KI_USER_SHARED_DATA, PAGE_SIZE);

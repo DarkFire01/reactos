@@ -1815,7 +1815,7 @@ MiBuildPagedPool(VOID)
     Size *= ((MmNumberOfPhysicalPages * PAGE_SIZE) / _1GB);
 #endif
 
-#ifdef _M_AMD64
+#ifdef _WIN64
     /* But never past the region it was given */
     if (Size > MiSystemVaRegions[AssignedRegionPagedPool].NumberOfBytes)
         Size = MiSystemVaRegions[AssignedRegionPagedPool].NumberOfBytes;
@@ -2564,17 +2564,13 @@ MmArmInitSystem(IN ULONG Phase,
         }
 
         /* Define limits for system cache */
-#ifdef _M_AMD64
+#ifdef _WIN64
         MmSizeOfSystemCacheInPages = MiSystemVaRegions[AssignedRegionSystemCache].NumberOfBytes / PAGE_SIZE;
-#elif defined(_WIN64)
-        MmSizeOfSystemCacheInPages = ((MI_SYSTEM_CACHE_END + 1) - MI_SYSTEM_CACHE_START) / PAGE_SIZE;
 #else
         MmSizeOfSystemCacheInPages = ((ULONG_PTR)MI_PAGED_POOL_START - (ULONG_PTR)MI_SYSTEM_CACHE_START) / PAGE_SIZE;
 #endif
         MmSystemCacheEnd = (PVOID)((ULONG_PTR)MmSystemCacheStart + (MmSizeOfSystemCacheInPages * PAGE_SIZE) - 1);
-#if defined(_WIN64) && !defined(_M_AMD64)
-        ASSERT(MmSystemCacheEnd == (PVOID)MI_SYSTEM_CACHE_END);
-#elif !defined(_M_AMD64)
+#ifndef _WIN64
         ASSERT(MmSystemCacheEnd == (PVOID)((ULONG_PTR)MI_PAGED_POOL_START - 1));
 #endif
 

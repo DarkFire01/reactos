@@ -430,7 +430,7 @@ MiAllocateSessionPoolPages(
     NTSTATUS Status;
     MMPTE TempPte;
     ULONG i;
-#ifndef _M_AMD64
+#ifndef _WIN64
     ULONG Index;
 #endif
 
@@ -457,7 +457,7 @@ MiAllocateSessionPoolPages(
                                           TRUE);
         ASSERT(Status == STATUS_SUCCESS);
 
-#ifndef _M_AMD64
+#ifndef _WIN64
         /* Other processes of the session pick up the PDE from here */
         Index = (ULONG)(((ULONG_PTR)MiPteToAddress(MiPdeToPte(PointerPde)) -
                          (ULONG_PTR)MmSessionBase) / PDE_MAPPED_VA);
@@ -511,7 +511,7 @@ MiFreeSessionPoolPages(
     PKGUARDED_MUTEX PoolMutex = &MmSessionSpace->GlobalVirtualAddress->PagedPoolMutex;
     PFN_COUNT FreePages;
     ULONG i, End, NumberOfPages;
-#ifndef _M_AMD64
+#ifndef _WIN64
     PMMPTE PointerPte;
 #endif
 
@@ -520,7 +520,7 @@ MiFreeSessionPoolPages(
     while (!RtlTestBit(PagedPoolInfo->EndOfPagedPoolBitmap, End)) End++;
     NumberOfPages = End - i + 1;
 
-#ifndef _M_AMD64
+#ifndef _WIN64
     /* This process may lack a session PDE, fault it in before the working set is locked */
     for (PointerPte = PagedPoolInfo->FirstPteForPagedPool + i;
          PointerPte <= PagedPoolInfo->FirstPteForPagedPool + End;

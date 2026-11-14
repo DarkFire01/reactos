@@ -1765,7 +1765,7 @@ MiDispatchFault(IN ULONG FaultCode,
     return Status;
 }
 
-#if (_MI_PAGING_LEVELS == 4)
+#if defined(_M_AMD64)
 /* TMPDBG: report user access violations on addresses that have a VAD */
 NTSTATUS
 NTAPI
@@ -1900,7 +1900,7 @@ MmAccessFault(IN ULONG FaultCode,
         {
             /* Was it to a read-only page? */
             Pfn1 = MI_PFN_ELEMENT(PointerPte->u.Hard.PageFrameNumber);
-            if (!PointerPte->u.Hard.Write &&
+            if (!MI_IS_PAGE_WRITEABLE(PointerPte) &&
                 !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE))
             {
                 /* Crash with distinguished bugcheck code */
@@ -1977,7 +1977,7 @@ MmAccessFault(IN ULONG FaultCode,
                     {
                         /* Was it to a read-only page? */
                         Pfn1 = MI_PFN_ELEMENT(PointerPte->u.Hard.PageFrameNumber);
-                        if (!TempPte.u.Hard.Write &&
+                        if (!MI_IS_PAGE_WRITEABLE(&TempPte) &&
                             !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE))
                         {
                             /* Crash with distinguished bugcheck code */
@@ -2089,7 +2089,7 @@ RetryKernel:
             {
                 /* Was it to a read-only page that is not copy on write? */
                 Pfn1 = MI_PFN_ELEMENT(PointerPte->u.Hard.PageFrameNumber);
-                if (!TempPte.u.Hard.Write &&
+                if (!MI_IS_PAGE_WRITEABLE(&TempPte) &&
                     !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE) &&
                     !MI_IS_PAGE_COPY_ON_WRITE(&TempPte))
                 {

@@ -371,7 +371,7 @@ TrimWsList(PMMSUPPORT Vm, ULONG TrimAge, ULONG Target)
             MI_WRITE_INVALID_PTE(PointerPte, TempPte);
             KeInvalidateTlbEntry(VirtualAddress);
 
-            if (OldPte.u.Hard.Dirty)
+            if (MI_IS_PAGE_DIRTY(&OldPte))
                 Pfn->u3.e1.Modified = 1;
 
             MiDecrementShareCount(MiGetPfnEntry(PageTable), PageTable);

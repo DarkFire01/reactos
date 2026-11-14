@@ -366,6 +366,9 @@ KiSystemStartup(
         KiEarlyTrace("KiSystemStartup: debugger initialized\n");
         if (KdPollBreakIn())
             DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+
+        /* Decide where the kernel address space regions go */
+        MiInitializeKernelVaLayout(KeLoaderBlock);
     }
 
     KfRaiseIrql(HIGH_LEVEL);
