@@ -15,8 +15,7 @@ list(APPEND SOURCE
     nt.c
     rtl.c
     string.c
-    whea.c
-    ${REACTOS_SOURCE_DIR}/sdk/lib/rtl/utf8.c)
+    whea.c)
 
 add_library(ntoskrnl_vista ${SOURCE})
 target_link_libraries(ntoskrnl_vista PRIVATE pseh) # rtl_vista)
