@@ -103,6 +103,7 @@ HalpInvokeSecondaryIsr(
     PKINTERRUPT Head, Interrupt;
     PLIST_ENTRY Entry;
     BOOLEAN Handled = FALSE;
+    KIRQL OldIrql;
 
     UNREFERENCED_PARAMETER(ControllerContext);
 
@@ -119,10 +120,20 @@ HalpInvokeSecondaryIsr(
     do
     {
         Interrupt = CONTAINING_RECORD(Entry, KINTERRUPT, InterruptListEntry);
+
+        /* A controller served at PASSIVE_LEVEL calls in below the line's IRQL */
+        OldIrql = KeGetCurrentIrql();
+        if (OldIrql < Interrupt->SynchronizeIrql)
+            KfRaiseIrql(Interrupt->SynchronizeIrql);
+
         KeAcquireSpinLockAtDpcLevel(Interrupt->ActualLock);
         if (Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext))
             Handled = TRUE;
         KeReleaseSpinLockFromDpcLevel(Interrupt->ActualLock);
+
+        if (OldIrql < Interrupt->SynchronizeIrql)
+            KfLowerIrql(OldIrql);
+
         Entry = Entry->Flink;
     } while (Entry != &Head->InterruptListEntry);
 
