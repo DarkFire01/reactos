@@ -844,6 +844,7 @@ IopConnectFullySpecifiedInterrupt(
     BOOLEAN Passive;
     ULONG VectorCount;
     ULONG Index;
+    ULONG Fallback;
     NTSTATUS Status = STATUS_NOT_SUPPORTED;
 
     PAGED_CODE();
@@ -880,12 +881,30 @@ IopConnectFullySpecifiedInterrupt(
 
     VectorCount = (ConnectionData != NULL) ? ConnectionData->Count : 0;
 
+    /* Prefer the exact element, else the one carrying the same vector */
+    Fallback = VectorCount;
     for (Index = 0; Index < VectorCount; Index++)
     {
-        PINTERRUPT_VECTOR_DATA Match = &ConnectionData->Vectors[Index];
+        if (IopVectorMatchesRequest(&ConnectionData->Vectors[Index], Request, Group))
+            break;
+        if (Fallback == VectorCount && ConnectionData->Vectors[Index].Vector == Request->Vector)
+            Fallback = Index;
+    }
 
-        if (!IopVectorMatchesRequest(Match, Request, Group))
-            continue;
+    if (Index == VectorCount && Fallback != VectorCount)
+    {
+        PINTERRUPT_VECTOR_DATA Near = &ConnectionData->Vectors[Fallback];
+
+        DPRINT1("IoConnectInterruptEx: vector %lu differs from the connection data:"
+                " irql %u/%u mode %u/%u affinity 0x%p/0x%p, using the connection data\n",
+                Request->Vector, Request->Irql, Near->Irql, Request->InterruptMode, Near->Mode,
+                (PVOID)(ULONG_PTR)Request->ProcessorEnableMask, (PVOID)(ULONG_PTR)IopGetVectorTarget(Near));
+        Index = Fallback;
+    }
+
+    for (; Index < VectorCount; Index++)
+    {
+        PINTERRUPT_VECTOR_DATA Match = &ConnectionData->Vectors[Index];
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
         /* Wake interrupts are always shared */
@@ -916,6 +935,18 @@ IopConnectFullySpecifiedInterrupt(
                 " mode %u group %u affinity 0x%p\n",
                 Request->PhysicalDeviceObject, Request->Vector, Request->Irql,
                 Request->InterruptMode, Group, (PVOID)(ULONG_PTR)Request->ProcessorEnableMask);
+
+        for (Index = 0; Index < VectorCount; Index++)
+        {
+            DPRINT1("  element %lu: type %u vector %lu irql %u mode %u group %u affinity 0x%p\n",
+                    Index,
+                    ConnectionData->Vectors[Index].Type,
+                    ConnectionData->Vectors[Index].Vector,
+                    ConnectionData->Vectors[Index].Irql,
+                    ConnectionData->Vectors[Index].Mode,
+                    IopGetVectorGroup(&ConnectionData->Vectors[Index]),
+                    (PVOID)(ULONG_PTR)IopGetVectorTarget(&ConnectionData->Vectors[Index]));
+        }
     }
 
     if (ConnectionData != NULL)
