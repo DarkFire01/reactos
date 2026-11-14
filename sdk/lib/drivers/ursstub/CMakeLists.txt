@@ -9,6 +9,6 @@ target_compile_definitions(ursstub
 target_include_directories(ursstub
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
     ${REACTOS_SOURCE_DIR}/sdk/include/urs/1.0
-    ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.17
+    ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.33
     PRIVATE ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/shared/inc/private/common
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/kmdf/inc/private)

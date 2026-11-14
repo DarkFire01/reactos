@@ -9,8 +9,8 @@
 
 #include <ntddk.h>
 #include <windef.h>
-#include <fxldr.h>
 #include <wdf.h>
+#include <fxldr.h>
 #include <acpiioct.h>
 #include <ntstrsafe.h>
 #include <wdfcx.h>
