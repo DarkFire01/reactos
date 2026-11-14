@@ -188,8 +188,14 @@ StorUfsFindAdapter(
     ConfigInfo->MaximumTransferLength = UFS_MAX_TRANSFER;
     ConfigInfo->NumberOfPhysicalBreaks = UFS_PRDT_ENTRIES;
 
-    if (ConfigInfo->Dma64BitAddresses == SCSI_DMA64_SYSTEM_SUPPORTED)
+    if ((ConfigInfo->Dma64BitAddresses & SCSI_DMA64_SYSTEM_SUPPORTED) &&
+        (Adapter->Capabilities & UFS_CAP_64AS))
+    {
         ConfigInfo->Dma64BitAddresses = SCSI_DMA64_MINIPORT_FULL64BIT_SUPPORTED;
+    }
+
+    DPRINT1("UFS: CAP 0x%08lx, Dma64BitAddresses 0x%02x\n",
+            Adapter->Capabilities, ConfigInfo->Dma64BitAddresses);
 
     if (ConfigInfo->InterruptMode == Latched)
     {
