@@ -150,6 +150,11 @@ KeFlushIoBuffers(
     _In_ BOOLEAN ReadOperation,
     _In_ BOOLEAN DmaOperation);
 
+NTKERNELAPI
+BOOLEAN
+NTAPI
+KeSystemFullyCacheCoherent(VOID);
+
 #define DbgRaiseAssertionFailure() __break(0xf001)
 
 $endif (_WDMDDK_)

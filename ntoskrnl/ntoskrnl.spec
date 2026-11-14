@@ -744,6 +744,8 @@
 @ stdcall KeSetBasePriorityThread(ptr long)
 @ stdcall KeSetDmaIoCoherency(long)
 @ stdcall -arch=arm64 KeGetDmaIoCoherency()
+@ stdcall -arch=arm64 KeReportCacheIncoherentDevice()
+@ stdcall -arch=arm64 KeSystemFullyCacheCoherent()
 @ stdcall KeSetEvent(ptr long long)
 @ stdcall KeSetEventBoostPriority(ptr ptr)
 @ stdcall KeSetIdealProcessorThread(ptr long)
