@@ -1,0 +1,7 @@
+; ACPI extension driver, the resource hub
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Group",0x00000000,"Boot Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ImagePath",0x00020000,"system32\drivers\acpiex.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Type",0x00010001,0x00000001
