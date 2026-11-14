@@ -3229,7 +3229,6 @@ Return Value:
     //
     // IdleTimeoutType is available only on > 1.9
     //
-#ifndef __REACTOS__
     if (Settings->Size > sizeof(WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS_V1_9)) {
         if (firstTime) {
              if ((SystemManagedIdleTimeout == Settings->IdleTimeoutType) ||
@@ -3364,7 +3363,6 @@ Return Value:
             }
         }
     }
-#endif
 
     if (Settings->IdleCaps == IdleCannotWakeFromS0) {
         //
