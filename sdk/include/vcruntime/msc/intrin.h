@@ -387,6 +387,7 @@ void _sgdt(void *Destination);
 
 #if defined(_M_ARM64)
 #pragma intrinsic(__getReg)
+#pragma intrinsic(_InterlockedCompareExchange128)
 #endif
 
 /** Secure virtual machine **/
