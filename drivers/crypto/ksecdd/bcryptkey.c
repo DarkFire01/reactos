@@ -989,6 +989,59 @@ BCryptExportKey(
 
 /**
  * @brief
+ * Builds a symmetric key from a key blob, the reverse of BCryptExportKey().
+ *
+ * @param[in] ImportKey
+ * Key that would unwrap the blob. Wrapped blobs are not supported, so it must be NULL.
+ *
+ * @param[in] BlobType
+ * BCRYPT_KEY_DATA_BLOB.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INVALID_HANDLE, STATUS_INVALID_PARAMETER,
+ * STATUS_NOT_SUPPORTED, STATUS_BUFFER_TOO_SMALL or STATUS_NO_MEMORY.
+ */
+NTSTATUS
+WINAPI
+BCryptImportKey(
+    _In_ BCRYPT_ALG_HANDLE Algorithm,
+    _In_opt_ BCRYPT_KEY_HANDLE ImportKey,
+    _In_ LPCWSTR BlobType,
+    _Out_ BCRYPT_KEY_HANDLE *Key,
+    _Out_writes_bytes_opt_(KeyObjectLength) PUCHAR KeyObject,
+    _In_ ULONG KeyObjectLength,
+    _In_reads_bytes_(InputLength) PUCHAR Input,
+    _In_ ULONG InputLength,
+    _In_ ULONG Flags)
+{
+    BCRYPT_KEY_DATA_BLOB_HEADER *Header = (BCRYPT_KEY_DATA_BLOB_HEADER *)Input;
+
+    if (BlobType == NULL || Key == NULL || Input == NULL)
+        return STATUS_INVALID_PARAMETER;
+    if (ImportKey != NULL)
+        return STATUS_NOT_SUPPORTED;
+    if (_wcsicmp(BlobType, BCRYPT_KEY_DATA_BLOB) != 0)
+        return STATUS_NOT_SUPPORTED;
+
+    if (InputLength < sizeof(*Header) ||
+        Header->dwMagic != BCRYPT_KEY_DATA_BLOB_MAGIC ||
+        Header->dwVersion != BCRYPT_KEY_DATA_BLOB_VERSION1 ||
+        Header->cbKeyData > InputLength - sizeof(*Header))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return BCryptGenerateSymmetricKey(Algorithm,
+                                      Key,
+                                      KeyObject,
+                                      KeyObjectLength,
+                                      Input + sizeof(*Header),
+                                      Header->cbKeyData,
+                                      Flags);
+}
+
+/**
+ * @brief
  * Starts an RSA or ECDSA key pair; BCryptFinalizeKeyPair() generates it.
  *
  * @param[in] Length
