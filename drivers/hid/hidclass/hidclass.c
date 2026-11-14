@@ -1239,6 +1239,32 @@ HidClassDispatch(
     }
 }
 
+/**
+ * @brief
+ * Lets a minidriver report that its device came or went.
+ *
+ * @param[in] DeviceObject
+ * The functional device object hidclass created for the minidriver.
+ */
+NTSTATUS
+NTAPI
+HidNotifyPresence(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ BOOLEAN IsPresent)
+{
+    PHIDCLASS_FDO_EXTENSION FDODeviceExtension = DeviceObject->DeviceExtension;
+
+    if (!FDODeviceExtension || !FDODeviceExtension->Common.IsFDO)
+        return STATUS_INVALID_PARAMETER;
+
+    if (FDODeviceExtension->NotPresent == !IsPresent)
+        return STATUS_SUCCESS;
+
+    FDODeviceExtension->NotPresent = !IsPresent;
+    IoInvalidateDeviceRelations(FDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject, BusRelations);
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 HidRegisterMinidriver(

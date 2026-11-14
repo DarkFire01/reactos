@@ -77,6 +77,9 @@ typedef struct
     //
     PDEVICE_RELATIONS DeviceRelations;
 
+    /* The minidriver reported the device gone, its collections are hidden */
+    BOOLEAN NotPresent;
+
 } HIDCLASS_FDO_EXTENSION, *PHIDCLASS_FDO_EXTENSION;
 
 typedef struct

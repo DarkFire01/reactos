@@ -610,6 +610,16 @@ HidClassFDO_DeviceRelations(
         ASSERT(FDODeviceExtension->DeviceRelations->Count > 0);
     }
 
+    /* An absent device reports no collections, so PnP removes them */
+    if (FDODeviceExtension->NotPresent)
+    {
+        DeviceRelations = ExAllocatePoolZero(PagedPool, sizeof(DEVICE_RELATIONS), HIDCLASS_TAG);
+        Irp->IoStatus.Status = DeviceRelations ? STATUS_SUCCESS : STATUS_INSUFFICIENT_RESOURCES;
+        Irp->IoStatus.Information = (ULONG_PTR)DeviceRelations;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return Irp->IoStatus.Status;
+    }
+
     //
     // now copy device relations
     //
