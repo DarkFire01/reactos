@@ -179,12 +179,19 @@ GcxProcessAddDevicePreDeviceCreate(
 {
     DECLARE_UNICODE_STRING_SIZE(DeviceName, 32);
     WDF_PNPPOWER_EVENT_CALLBACKS PnpPowerCallbacks;
+    WDF_OBJECT_ATTRIBUTES FileAttributes;
+    WDF_FILEOBJECT_CONFIG FileConfig;
     PGCX_CLIENT Client;
     NTSTATUS Status;
 
     Client = GcxLookupClient(Driver);
     if (Client == NULL)
         return STATUS_INVALID_PARAMETER;
+
+    /* GpioIo connections arrive as opens the resource hub sends on */
+    WDF_FILEOBJECT_CONFIG_INIT(&FileConfig, GcxEvtDeviceFileCreate, GcxEvtFileClose, WDF_NO_EVENT_CALLBACK);
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&FileAttributes, GCX_IO_CONNECTION);
+    WdfDeviceInitSetFileObjectConfig(DeviceInit, &FileConfig, &FileAttributes);
 
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&PnpPowerCallbacks);
     PnpPowerCallbacks.EvtDevicePrepareHardware = GcxEvtDevicePrepareHardware;
@@ -232,8 +239,10 @@ GcxProcessAddDevicePostDeviceCreate(
     WDFDRIVER Driver,
     WDFDEVICE Device)
 {
+    WDF_IO_QUEUE_CONFIG QueueConfig;
     PGCX_CONTROLLER Controller;
     PGCX_CLIENT Client;
+    NTSTATUS Status;
 
     Client = GcxLookupClient(Driver);
     if (Client == NULL || Device == NULL)
@@ -252,6 +261,14 @@ GcxProcessAddDevicePostDeviceCreate(
     Controller->PrimaryGsiv = GCX_NO_PRIMARY_GSIV;
     InitializeListHead(&Controller->ControllerLink);
     Controller->State = GcxControllerStopped;
+
+    /* Pin reads and writes on open connections */
+    WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&QueueConfig, WdfIoQueueDispatchParallel);
+    QueueConfig.EvtIoDeviceControl = GcxEvtIoDeviceControl;
+    Status = WdfIoQueueCreate(Device, &QueueConfig, WDF_NO_OBJECT_ATTRIBUTES, NULL);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("GpioClx: no I/O queue on %p, GpioIo connections will not work, 0x%08lx\n", Device, Status);
+
     return STATUS_SUCCESS;
 }
 
@@ -287,20 +304,19 @@ GcxControllerFromContext(
     return Controller;
 }
 
+/**
+ * @brief
+ * Takes the lock that keeps a bank's registers away from the demultiplexer.
+ */
 _Use_decl_annotations_
 VOID
 NTAPI
-GcxAcquireInterruptLock(
-    PVOID Context,
+GcxLockBank(
+    PGCX_CONTROLLER Controller,
     BANK_ID BankId)
 {
-    PGCX_CONTROLLER Controller;
-    PKTHREAD Self;
-    PGCX_BANK Bank;
-
-    Controller = GcxControllerFromContext(Context, BankId);
-    Bank = &Controller->Banks[BankId];
-    Self = KeGetCurrentThread();
+    PGCX_BANK Bank = &Controller->Banks[BankId];
+    PKTHREAD Self = KeGetCurrentThread();
 
     if (Bank->LockOwner == Self)
         KeBugCheckEx(GPIO_CONTROLLER_DRIVER_ERROR, 2, (ULONG_PTR)Controller, 3, 0);
@@ -330,15 +346,11 @@ GcxAcquireInterruptLock(
 _Use_decl_annotations_
 VOID
 NTAPI
-GcxReleaseInterruptLock(
-    PVOID Context,
+GcxUnlockBank(
+    PGCX_CONTROLLER Controller,
     BANK_ID BankId)
 {
-    PGCX_CONTROLLER Controller;
-    PGCX_BANK Bank;
-
-    Controller = GcxControllerFromContext(Context, BankId);
-    Bank = &Controller->Banks[BankId];
+    PGCX_BANK Bank = &Controller->Banks[BankId];
 
     if (Bank->LockOwner != KeGetCurrentThread())
         KeBugCheckEx(GPIO_CONTROLLER_DRIVER_ERROR, 2, (ULONG_PTR)Controller, 4, 0);
@@ -358,4 +370,24 @@ GcxReleaseInterruptLock(
         Controller->InterruptLockOwner = NULL;
         WdfInterruptReleaseLock(Controller->Interrupt);
     }
+}
+
+_Use_decl_annotations_
+VOID
+NTAPI
+GcxAcquireInterruptLock(
+    PVOID Context,
+    BANK_ID BankId)
+{
+    GcxLockBank(GcxControllerFromContext(Context, BankId), BankId);
+}
+
+_Use_decl_annotations_
+VOID
+NTAPI
+GcxReleaseInterruptLock(
+    PVOID Context,
+    BANK_ID BankId)
+{
+    GcxUnlockBank(GcxControllerFromContext(Context, BankId), BankId);
 }
