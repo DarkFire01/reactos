@@ -6,6 +6,7 @@ modules/livecd_extras
 modules/3rdparty
 modules/x64
 modules/x86
+modules/arm64
 modules/[Aa][Hh][Kk]_[Tt]ests
 DarkFiresReactOSModules
 .cache
