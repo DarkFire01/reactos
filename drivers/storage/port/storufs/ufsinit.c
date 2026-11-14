@@ -207,7 +207,6 @@ UfsStartAdapter(
     if (!UfsProgramLists(Adapter))
         return FALSE;
 
-    UfsSmmuReport();
     DPRINT1("UFS: first NOP OUT (first DMA)\n");
     for (Attempt = 0; Attempt < UFS_NOPOUT_ATTEMPTS; Attempt++)
     {
