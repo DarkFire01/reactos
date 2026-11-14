@@ -250,6 +250,11 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
                     -DDXGKDDI_INTERFACE_VERSION=0x1052 # Vista
                     -DDLL_EXPORT_VERSION=${DLL_EXPORT_VERSION})
 
+    if(NOT DXGKRNL_TARGET MATCHES "^(1607|19041|WIN11)$")
+        message(FATAL_ERROR "DXGKRNL_TARGET must be 1607, 19041 or WIN11")
+    endif()
+    add_definitions(-DDXGKRNL_TARGET=DXGKRNL_TARGET_${DXGKRNL_TARGET})
+
     if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
         add_definitions(
             -DVER_USE_OTHER_MAJOR_MINOR_VER

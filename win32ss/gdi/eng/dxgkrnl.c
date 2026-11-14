@@ -12,7 +12,7 @@
 #define NDEBUG
 #include <debug.h>
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_EXPORTS_D3DKMT
 /* Exported by ntoskrnl */
 NTSYSAPI
 PVOID
@@ -39,7 +39,7 @@ typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
     _In_ BOOLEAN Create);
 
 #define DL_MODALITY_PATH_SIZE       sizeof(DL_MODALITY_PATH)
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_MODALITY_TWO_POINTERS
 /* The fixed fields and two pointers dxgkrnl frees along with the modality */
 #define DL_MODALITY_HEADER_SIZE     (40 + 2 * sizeof(PVOID))
 #else
@@ -88,7 +88,7 @@ typedef struct _D3DKMT_GETPATHSMODALITY
     ULONG  Reserved24[3];
     ULONG  AppliedCount;
     PVOID  AppliedPaths;
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_MODALITY_TWO_POINTERS
     PVOID  Reserved48;
 #endif
 } D3DKMT_GETPATHSMODALITY, *PD3DKMT_GETPATHSMODALITY;
@@ -98,7 +98,7 @@ C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, PathArraySize) == 22);
 C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, AppliedCount) == 36);
 C_ASSERT(FIELD_OFFSET(D3DKMT_GETPATHSMODALITY, AppliedPaths) == 40);
 C_ASSERT(sizeof(D3DKMT_GETPATHSMODALITY) == DL_MODALITY_HEADER_SIZE);
-#if defined(_WIN64) && (DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11)
+#if defined(_WIN64) && DL_DXGK_MODALITY_TWO_POINTERS
 C_ASSERT(DL_MODALITY_HEADER_SIZE == 56);
 #elif defined(_WIN64)
 /* Windows is 64 bit, where the header comes to 48 bytes */
@@ -144,6 +144,28 @@ C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, CloneGroupId) == 0xB8);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, DevMode) == 0xF8);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, StatusApply) == 0x110);
 C_ASSERT(sizeof(DL_MODALITY_PATH) == 0x128);
+#elif DXGKRNL_TARGET == DXGKRNL_TARGET_19041
+typedef struct _DL_MODALITY_PATH
+{
+    ULONG64            Flags;
+    ULONG64            Reserved08;
+    LUID               AdapterLuid;
+    ULONG              VidPnSourceId;
+    ULONG              VidPnTargetId;
+    UCHAR              Reserved20[0x98];
+    ULONG              CloneGroupId;
+    ULONG              ReservedBC;
+    LONG               StatusApply;
+    UCHAR              ReservedC4[0x1C];
+    PDEVMODEW          DevMode;
+    UCHAR              ReservedE8[0x28];
+} DL_MODALITY_PATH, *PDL_MODALITY_PATH;
+
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, AdapterLuid) == 0x10);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, CloneGroupId) == 0xB8);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, StatusApply) == 0xC0);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, DevMode) == 0xE0);
+C_ASSERT(sizeof(DL_MODALITY_PATH) == 0x110);
 #else
 typedef struct _DL_MODALITY_PATH
 {
@@ -212,7 +234,7 @@ typedef NTSTATUS (NTAPI *PFN_DxgkFunctionalizePathsModality)(
     _In_ ULONG Flags,
     _Inout_ PD3DKMT_GETPATHSMODALITY Modality);
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_APPLY_HAS_SCENARIO
 /* The display scenario context may be NULL */
 typedef NTSTATUS (NTAPI *PFN_DxgkApplyPathsModality)(
     _In_ ULONG Flags,
@@ -319,8 +341,50 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality)
 
 #define DL_INTERFACE_VERSION    50
 
-/* The D3DKMT entry point of each slot number, taken from the exports of dxgkrnl */
-static PVOID DlpD3DKMTEntries[236];
+#elif DXGKRNL_TARGET == DXGKRNL_TARGET_19041
+/*
+ * The 19041 DXGKWIN32K_INTERFACE: Size and Version, the image dxgkrnl looks win32k routines up in,
+ * Context/InterfaceReference/InterfaceDereference and 96 slots dxgkrnl fills, 808 bytes. dxgkrnl
+ * takes no other size or version. It has no NeedToEnableCddPrimary.
+ */
+typedef struct _DXGKWIN32K_INTERFACE_BUF
+{
+    USHORT Size;
+    USHORT Version;
+    PVOID Win32kImageBase;                              /* 1 */
+    PVOID Context;                                      /* 2 */
+    PVOID InterfaceReference;                           /* 3 */
+    PVOID InterfaceDereference;                         /* 4 */
+    PFN_DxgkProcessCallout pfnDxgkProcessCallout;       /* 5 */
+    PVOID Reserved6[2];                                 /* 6..7 */
+    PVOID pfnDxgkOpenAdapter;                           /* 8 */
+    PVOID Reserved9[6];                                 /* 9..14 */
+    PFN_DxgkReleaseProcessVidPnSourceOwners pfnDxgkReleaseProcessVidPnSourceOwners; /* 15 */
+    PVOID Reserved16[2];                                /* 16..17 */
+    PFN_DxgkPathsModality pfnDxgkGetPathsModality;      /* 18 */
+    PFN_DxgkFunctionalizePathsModality pfnDxgkFunctionalizePathsModality; /* 19 */
+    PFN_DxgkApplyPathsModality pfnDxgkApplyPathsModality; /* 20 */
+    PFN_DxgkFinalizePathsModality pfnDxgkFinalizePathsModality; /* 21 */
+    PFN_DxgkPersistPathsModality pfnDxgkPersistPathsModality; /* 22 */
+    PFN_DxgkFreePathsModality pfnDxgkFreePathsModality; /* 23 */
+    PFN_DxgkAugmentCdsj pfnDxgkAugmentCdsj;             /* 24 */
+    PVOID Reserved25[33];                               /* 25..57 */
+    PFN_DxgkRegisterDwmProcess pfnDxgkRegisterDwmProcess; /* 58 */
+    PVOID Reserved59[17];                               /* 59..75 */
+    PFN_DxgkApplyCdsjToPathsModality pfnDxgkApplyCdsjToPathsModality; /* 76 */
+    PVOID Reserved77[24];                               /* 77..100 */
+} DXGKWIN32K_INTERFACE_BUF;
+
+C_ASSERT(sizeof(DXGKWIN32K_INTERFACE_BUF) == 101 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkProcessCallout) == 5 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkOpenAdapter) == 8 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkReleaseProcessVidPnSourceOwners) == 15 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkGetPathsModality) == 18 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkAugmentCdsj) == 24 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkRegisterDwmProcess) == 58 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality) == 76 * sizeof(PVOID));
+
+#define DL_INTERFACE_VERSION    44
 
 #else
 /*
@@ -360,6 +424,11 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality)
 #define DL_INTERFACE_VERSION    22
 #endif /* DXGKRNL_TARGET */
 
+#if DL_DXGK_EXPORTS_D3DKMT
+/* The D3DKMT entry point of each slot number, taken from the exports of dxgkrnl */
+static PVOID DlpD3DKMTEntries[236];
+#endif
+
 
 /* Fills the NtGdiDdDDI* D3DKMT callback table (gdi/ntgdi/d3dkmt.c) via IOCTL_VIDEO_REGISTER_RXGK. */
 NTSTATUS NTAPI DxgRegisterAdapterCallbacks(_In_ PDEVICE_OBJECT pDxgkrnl);
@@ -391,7 +460,7 @@ DxgkGetD3DKMTSlot(
     if (!gbDxgkInitialized)
         return NULL;
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_EXPORTS_D3DKMT
     if (Slot == DXGK_SLOT_OpenAdapter)
         return (PFN_DXGK_D3DKMT)gDxgkInterface.pfnDxgkOpenAdapter;
 
@@ -407,8 +476,8 @@ DxgkGetD3DKMTSlot(
 #endif
 }
 
-/* Exported by watchdog.sys, the Windows 11 one keeps the callout for the session it opens */
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+/* Exported by watchdog.sys, from 19041 on it keeps the callout for the session it opens */
+#if DL_SMGR_SESSION_CALLOUT
 NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState, _In_opt_ PVOID VideoPortCallout);
 #else
 NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
@@ -590,7 +659,7 @@ DlRegisterDwmProcess(VOID)
     if (!gbDlSessionOpened)
         return STATUS_DEVICE_NOT_READY;
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DXGKRNL_TARGET >= DXGKRNL_TARGET_19041
     if (gDxgkInterface.pfnDxgkRegisterDwmProcess != NULL)
         return gDxgkInterface.pfnDxgkRegisterDwmProcess();
 #endif
@@ -609,16 +678,17 @@ DlDwmShutdown(VOID)
     if (!gbDxgkInitialized)
         return;
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DXGKRNL_TARGET >= DXGKRNL_TARGET_19041
     if (gDxgkInterface.pfnDxgkReleaseProcessVidPnSourceOwners != NULL)
         gDxgkInterface.pfnDxgkReleaseProcessVidPnSourceOwners(NtCurrentProcess());
-
+#endif
+#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
     if (gDxgkInterface.pfnDxgkNeedToEnableCddPrimary != NULL)
         PDEVOBJ_vEnableCddPrimaries(gDxgkInterface.pfnDxgkNeedToEnableCddPrimary);
 #endif
 }
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_EXPORTS_D3DKMT
 /* Each D3DKMT slot win32k uses and the dxgkrnl export that took its place */
 static const struct
 {
@@ -784,7 +854,7 @@ DlInitDxgkrnl(VOID)
     gDxgkInterface.Version = DL_INTERFACE_VERSION;
     gDxgkInterface.Size    = sizeof(gDxgkInterface);
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_EXPORTS_D3DKMT
     /* dxgkrnl looks the routines it calls back by name up in this image */
     Status = DlInitializeDxgkImports();
     if (!NT_SUCCESS(Status))
@@ -819,7 +889,7 @@ DlInitDxgkrnl(VOID)
         if (!NT_SUCCESS(Status))
             DPRINT1("win32k: DxgkProcessCallout for CSRSS failed 0x%lX\n", Status);
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_EXPORTS_D3DKMT
         DlpResolveD3DKMTExports();
         DlResolveDxgkForwards(gpDxgkDeviceObject->DriverObject->DriverStart);
 #endif
@@ -1009,7 +1079,7 @@ DlpCommitPathsModality(
     if (bValidateOnly)
         return Status;
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_DXGK_APPLY_HAS_SCENARIO
     Status = gDxgkInterface.pfnDxgkApplyPathsModality(DL_MODALITY_NO_OPTIMIZE | DL_MODALITY_APPLY,
                                                      Modality,
                                                      NULL);
@@ -1257,7 +1327,7 @@ DlNotifySessionOpen(VOID)
     if (gbDlSessionOpened)
         return;
 
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
+#if !DL_SMGR_SESSION_CALLOUT
     /* Adapter arrival, removal and TDR reach win32k through this, whoever raises them */
     Status = SMgrRegisterGdiCallout((PVOID)VideoPortCallout);
     if (!NT_SUCCESS(Status))
@@ -1290,7 +1360,7 @@ DlNotifySessionOpen(VOID)
     }
 
     DPRINT1("win32k: opening session, dxgkrnl waits for its display and render adapters to start\n");
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DL_SMGR_SESSION_CALLOUT
     Status = SMgrNotifySessionChange(DL_SESSION_OPEN, (PVOID)VideoPortCallout);
 #else
     Status = SMgrNotifySessionChange(DL_SESSION_OPEN);
