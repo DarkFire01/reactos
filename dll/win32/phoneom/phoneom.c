@@ -8,12 +8,16 @@
 #define WIN32_NO_STATUS
 #include <windef.h>
 #include <winbase.h>
+#include <winsvc.h>
 #include <ndk/rtlfuncs.h>
 #include <stdlib.h>
 #include <strsafe.h>
 
 #include <telephony/phoneom.h>
 #include <telephony/phonepipe.h>
+
+#define PHONEOM_SERVICE_NAME        L"PhoneSvc"
+#define PHONEOM_SERVICE_WAIT_MS     8000
 
 #define PHONEOM_CONNECT_TIMEOUT_MS  5000
 #define PHONEOM_REPLY_TIMEOUT_MS    75000
@@ -358,6 +362,39 @@ PhOmFreeSession(
     HeapFree(GetProcessHeap(), 0, Session);
 }
 
+/* Starts the phone service and waits for it to run, for boots that do not
+ * auto start it such as a live session. Best effort, failure is not fatal. */
+static
+VOID
+PhOmStartService(VOID)
+{
+    SC_HANDLE Manager, Service;
+    SERVICE_STATUS Status;
+    DWORD Elapsed;
+
+    Manager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+    if (!Manager)
+        return;
+
+    Service = OpenServiceW(Manager, PHONEOM_SERVICE_NAME, SERVICE_START | SERVICE_QUERY_STATUS);
+    if (Service)
+    {
+        if (QueryServiceStatus(Service, &Status) && Status.dwCurrentState == SERVICE_STOPPED)
+            StartServiceW(Service, 0, NULL);
+
+        for (Elapsed = 0; Elapsed < PHONEOM_SERVICE_WAIT_MS; Elapsed += 100)
+        {
+            if (QueryServiceStatus(Service, &Status) && Status.dwCurrentState == SERVICE_RUNNING)
+                break;
+            Sleep(100);
+        }
+
+        CloseServiceHandle(Service);
+    }
+
+    CloseServiceHandle(Manager);
+}
+
 HRESULT
 WINAPI
 PhoneOmOpen(
@@ -367,6 +404,7 @@ PhoneOmOpen(
 {
     PPHONEOM_SESSION Session;
     DWORD Mode = PIPE_READMODE_MESSAGE;
+    BOOL Started = FALSE;
     HRESULT hr;
 
     if (!Phone)
@@ -399,6 +437,8 @@ PhoneOmOpen(
 
     for (;;)
     {
+        DWORD Error;
+
         Session->Pipe = CreateFileW(PHONE_PIPE_NAME,
                                     GENERIC_READ | GENERIC_WRITE,
                                     0,
@@ -409,11 +449,25 @@ PhoneOmOpen(
         if (Session->Pipe != INVALID_HANDLE_VALUE)
             break;
 
-        if (GetLastError() != ERROR_PIPE_BUSY || !WaitNamedPipeW(PHONE_PIPE_NAME, PHONEOM_CONNECT_TIMEOUT_MS))
+        Error = GetLastError();
+        if (Error == ERROR_PIPE_BUSY)
         {
+            if (WaitNamedPipeW(PHONE_PIPE_NAME, PHONEOM_CONNECT_TIMEOUT_MS))
+                continue;
             hr = HRESULT_FROM_WIN32(GetLastError());
             goto Fail;
         }
+
+        /* The pipe is missing because the service has not started yet, so start it once */
+        if ((Error == ERROR_FILE_NOT_FOUND || Error == ERROR_PATH_NOT_FOUND) && !Started)
+        {
+            Started = TRUE;
+            PhOmStartService();
+            continue;
+        }
+
+        hr = HRESULT_FROM_WIN32(Error);
+        goto Fail;
     }
 
     if (!SetNamedPipeHandleState(Session->Pipe, &Mode, NULL, NULL))
@@ -670,4 +724,96 @@ PhoneOmDeleteMessage(
     _In_ DWORD MessageId)
 {
     return PhOmTransactDword(Phone, PhoneRequestDeleteMessage, MessageId);
+}
+
+/* Fixed size query reply, fails unless the whole record came back */
+static
+HRESULT
+PhOmQuery(
+    _In_ HPHONEOM Phone,
+    _In_ DWORD Code,
+    _Out_writes_bytes_(Size) PVOID Out,
+    _In_ DWORD Size)
+{
+    DWORD Returned;
+    HRESULT hr;
+
+    ZeroMemory(Out, Size);
+    hr = PhOmTransact(Phone, Code, NULL, 0, Out, Size, &Returned);
+    if (SUCCEEDED(hr) && Returned != Size)
+        hr = HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+    return hr;
+}
+
+HRESULT
+WINAPI
+PhoneOmGetDeviceInfo(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_DEVICE_INFO Info)
+{
+    if (!Info)
+        return E_POINTER;
+    return PhOmQuery(Phone, PhoneRequestGetDeviceInfo, Info, sizeof(*Info));
+}
+
+HRESULT
+WINAPI
+PhoneOmGetSubscriber(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_SUBSCRIBER Subscriber)
+{
+    if (!Subscriber)
+        return E_POINTER;
+    return PhOmQuery(Phone, PhoneRequestGetSubscriber, Subscriber, sizeof(*Subscriber));
+}
+
+HRESULT
+WINAPI
+PhoneOmGetNetwork(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_NETWORK Network)
+{
+    if (!Network)
+        return E_POINTER;
+    return PhOmQuery(Phone, PhoneRequestGetNetwork, Network, sizeof(*Network));
+}
+
+HRESULT
+WINAPI
+PhoneOmGetDataConfig(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_DATA_CONFIG Config)
+{
+    if (!Config)
+        return E_POINTER;
+    return PhOmQuery(Phone, PhoneRequestGetDataConfig, Config, sizeof(*Config));
+}
+
+HRESULT
+WINAPI
+PhoneOmSetDataConfig(
+    _In_ HPHONEOM Phone,
+    _In_ const PHONEOM_DATA_CONFIG *Config)
+{
+    if (!Config)
+        return E_POINTER;
+    return PhOmTransact(Phone, PhoneRequestSetDataConfig, Config, sizeof(*Config), NULL, 0, NULL);
+}
+
+HRESULT
+WINAPI
+PhoneOmConnectData(
+    _In_ HPHONEOM Phone,
+    _In_ BOOL Connect,
+    _Out_opt_ PPHONEOM_DATA_STATUS Status)
+{
+    PHONEOM_DATA_STATUS Local;
+    DWORD Value = Connect ? 1 : 0;
+    DWORD Returned;
+    HRESULT hr;
+
+    hr = PhOmTransact(Phone, PhoneRequestConnectData, &Value, sizeof(Value), &Local, sizeof(Local), &Returned);
+    if (SUCCEEDED(hr) && Status)
+        *Status = Local;
+    return hr;
 }

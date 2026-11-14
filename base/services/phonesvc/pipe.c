@@ -146,9 +146,15 @@ PhDispatch(
     PHONE_REQUEST_DIAL *Dial;
     PHONE_REQUEST_MESSAGE *Message;
     PHONE_REQUEST_RANGE Range;
+    PHONEOM_DEVICE_INFO DeviceInfo;
+    PHONEOM_SUBSCRIBER Subscriber;
+    PHONEOM_NETWORK Network;
+    PHONEOM_DATA_CONFIG DataConfig;
+    PHONEOM_DATA_STATUS DataStatus;
     PVOID Reply = NULL;
     DWORD ReplySize = 0;
     DWORD Value, Result = 0;
+    BOOL ReplyHeap = FALSE;
     HRESULT hr = S_OK;
 
     switch (Header->Code)
@@ -205,6 +211,7 @@ PhDispatch(
                 hr = E_OUTOFMEMORY;
                 break;
             }
+            ReplyHeap = TRUE;
             ReplySize = PhGetCalls(Reply, PHONEOM_MAX_CALLS) * sizeof(PHONEOM_CALL);
             break;
 
@@ -248,6 +255,7 @@ PhDispatch(
                 hr = E_OUTOFMEMORY;
                 break;
             }
+            ReplyHeap = TRUE;
             ReplySize = PhStoreEnumerate(Range.FirstId, Reply, Range.MaxCount) * sizeof(PHONEOM_MESSAGE);
             break;
 
@@ -265,6 +273,52 @@ PhDispatch(
                 hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
             break;
 
+        case PhoneRequestGetDeviceInfo:
+            hr = PhGetDeviceInfo(&DeviceInfo);
+            Reply = &DeviceInfo;
+            ReplySize = sizeof(DeviceInfo);
+            break;
+
+        case PhoneRequestGetSubscriber:
+            hr = PhGetSubscriber(&Subscriber);
+            Reply = &Subscriber;
+            ReplySize = sizeof(Subscriber);
+            break;
+
+        case PhoneRequestGetNetwork:
+            hr = PhGetNetwork(&Network);
+            Reply = &Network;
+            ReplySize = sizeof(Network);
+            break;
+
+        case PhoneRequestGetDataConfig:
+            PhGetDataConfig(&DataConfig);
+            Reply = &DataConfig;
+            ReplySize = sizeof(DataConfig);
+            break;
+
+        case PhoneRequestSetDataConfig:
+            if (Header->DataSize < sizeof(DataConfig))
+            {
+                hr = E_INVALIDARG;
+                break;
+            }
+            CopyMemory(&DataConfig, Payload, sizeof(DataConfig));
+            DataConfig.Apn[_countof(DataConfig.Apn) - 1] = UNICODE_NULL;
+            DataConfig.Username[_countof(DataConfig.Username) - 1] = UNICODE_NULL;
+            DataConfig.Password[_countof(DataConfig.Password) - 1] = UNICODE_NULL;
+            hr = PhSetDataConfig(&DataConfig);
+            break;
+
+        case PhoneRequestConnectData:
+            hr = PhPayloadDword(Header, &Value) ? PhConnectData(Value != 0, &DataStatus) : E_INVALIDARG;
+            if (SUCCEEDED(hr))
+            {
+                Reply = &DataStatus;
+                ReplySize = sizeof(DataStatus);
+            }
+            break;
+
         default:
             hr = E_NOTIMPL;
             break;
@@ -272,7 +326,7 @@ PhDispatch(
 
     PhPipeWrite(Client, PhonePipeReply, Header->Code, Header->Sequence, hr, FAILED(hr) ? NULL : Reply, FAILED(hr) ? 0 : ReplySize);
 
-    if (Reply && Reply != &Radio && Reply != &Result)
+    if (ReplyHeap)
         HeapFree(GetProcessHeap(), 0, Reply);
 }
 

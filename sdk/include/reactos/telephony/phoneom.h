@@ -72,6 +72,83 @@ typedef enum _PHONEOM_AUDIO_ROUTE
     PhoneAudioHeadset
 } PHONEOM_AUDIO_ROUTE;
 
+#define PHONEOM_INFO_STRING         40
+#define PHONEOM_INFO_REVISION       80
+#define PHONEOM_INFO_OPERATOR       48
+#define PHONEOM_APN_LENGTH          64
+#define PHONEOM_CREDENTIAL_LENGTH   48
+
+/* PHONEOM_SUBSCRIBER.SimState */
+#define PHONEOM_SIM_ABSENT          0
+#define PHONEOM_SIM_READY           1
+#define PHONEOM_SIM_PIN             2
+#define PHONEOM_SIM_PUK             3
+#define PHONEOM_SIM_ERROR           4
+
+/* PHONEOM_NETWORK.RegState */
+#define PHONEOM_REG_NONE            0
+#define PHONEOM_REG_HOME            1
+#define PHONEOM_REG_SEARCHING       2
+#define PHONEOM_REG_DENIED          3
+#define PHONEOM_REG_UNKNOWN         4
+#define PHONEOM_REG_ROAMING         5
+
+/* PHONEOM_NETWORK.Rat */
+#define PHONEOM_RAT_NONE            0
+#define PHONEOM_RAT_GSM             1
+#define PHONEOM_RAT_UMTS            2
+#define PHONEOM_RAT_LTE             3
+#define PHONEOM_RAT_CDMA            4
+#define PHONEOM_RAT_TDSCDMA         5
+#define PHONEOM_RAT_EVDO            6
+
+/* PHONEOM_DATA_CONFIG.AuthType */
+#define PHONEOM_AUTH_NONE           0
+#define PHONEOM_AUTH_PAP            1
+#define PHONEOM_AUTH_CHAP           2
+
+typedef struct _PHONEOM_DEVICE_INFO
+{
+    WCHAR Imei[PHONEOM_INFO_STRING];
+    WCHAR Manufacturer[PHONEOM_INFO_STRING];
+    WCHAR Model[PHONEOM_INFO_STRING];
+    WCHAR Revision[PHONEOM_INFO_REVISION];
+} PHONEOM_DEVICE_INFO, *PPHONEOM_DEVICE_INFO;
+
+typedef struct _PHONEOM_SUBSCRIBER
+{
+    DWORD SimState;
+    WCHAR Imsi[PHONEOM_INFO_STRING];
+    WCHAR Number[PHONEOM_INFO_STRING];
+} PHONEOM_SUBSCRIBER, *PPHONEOM_SUBSCRIBER;
+
+typedef struct _PHONEOM_NETWORK
+{
+    DWORD RegState;
+    DWORD Rat;
+    LONG SignalDbm;
+    DWORD SignalBars;
+    DWORD Mcc;
+    DWORD Mnc;
+    DWORD Roaming;
+    WCHAR Operator[PHONEOM_INFO_OPERATOR];
+} PHONEOM_NETWORK, *PPHONEOM_NETWORK;
+
+typedef struct _PHONEOM_DATA_CONFIG
+{
+    DWORD Enabled;
+    DWORD AuthType;
+    WCHAR Apn[PHONEOM_APN_LENGTH];
+    WCHAR Username[PHONEOM_CREDENTIAL_LENGTH];
+    WCHAR Password[PHONEOM_CREDENTIAL_LENGTH];
+} PHONEOM_DATA_CONFIG, *PPHONEOM_DATA_CONFIG;
+
+typedef struct _PHONEOM_DATA_STATUS
+{
+    DWORD Connected;
+    DWORD Reserved;
+} PHONEOM_DATA_STATUS, *PPHONEOM_DATA_STATUS;
+
 typedef enum _PHONEOM_EVENT
 {
     /* Data is PHONEOM_RADIO */
@@ -198,6 +275,43 @@ WINAPI
 PhoneOmDeleteMessage(
     _In_ HPHONEOM Phone,
     _In_ DWORD MessageId);
+
+HRESULT
+WINAPI
+PhoneOmGetDeviceInfo(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_DEVICE_INFO Info);
+
+HRESULT
+WINAPI
+PhoneOmGetSubscriber(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_SUBSCRIBER Subscriber);
+
+HRESULT
+WINAPI
+PhoneOmGetNetwork(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_NETWORK Network);
+
+HRESULT
+WINAPI
+PhoneOmGetDataConfig(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_DATA_CONFIG Config);
+
+HRESULT
+WINAPI
+PhoneOmSetDataConfig(
+    _In_ HPHONEOM Phone,
+    _In_ const PHONEOM_DATA_CONFIG *Config);
+
+HRESULT
+WINAPI
+PhoneOmConnectData(
+    _In_ HPHONEOM Phone,
+    _In_ BOOL Connect,
+    _Out_opt_ PPHONEOM_DATA_STATUS Status);
 
 #ifdef __cplusplus
 }

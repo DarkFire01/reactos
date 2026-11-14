@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS Phone Test
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Minimal call and SMS front end for the phone service
+ * PURPOSE:     Call, SMS, status and data front end for the phone service
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
@@ -17,8 +17,20 @@
 
 #define WM_PHONE_EVENT              (WM_APP + 1)
 
+/* Dark theme shared with the mobile shell */
+#define PT_BG                       RGB(0x12, 0x12, 0x14)
+#define PT_TILE                     RGB(0x24, 0x25, 0x2A)
+#define PT_ACCENT                   RGB(0x3A, 0x96, 0xDD)
+#define PT_TEXT                     RGB(0xF2, 0xF2, 0xF4)
+#define PT_SUBTEXT                  RGB(0x9A, 0x9B, 0xA3)
+#define PT_FIELD                    RGB(0x1A, 0x1A, 0x1E)
+
 enum
 {
+    IDC_TAB_PHONE = 200,
+    IDC_TAB_STATUS,
+    IDC_TAB_DATA,
+
     IDC_RADIO_STATUS = 100,
     IDC_RADIO_ON,
     IDC_RADIO_OFF,
@@ -35,7 +47,25 @@ enum
     IDC_SMS_TEXT,
     IDC_SMS_SEND,
     IDC_MESSAGES,
-    IDC_LOG
+    IDC_LOG,
+
+    IDC_STATUS_REFRESH = 210,
+
+    IDC_DATA_APN_LABEL = 220,
+    IDC_DATA_APN,
+    IDC_DATA_USER_LABEL,
+    IDC_DATA_USER,
+    IDC_DATA_PASS_LABEL,
+    IDC_DATA_PASS,
+    IDC_DATA_AUTH_LABEL,
+    IDC_DATA_AUTH,
+    IDC_DATA_ENABLED,
+    IDC_DATA_SAVE,
+    IDC_DATA_CONNECT,
+    IDC_DATA_DISCONNECT,
+    IDC_DATA_STATUS,
+
+    IDC_EXIT = 240
 };
 
 typedef struct _PT_EVENT
@@ -49,11 +79,100 @@ static HINSTANCE PtInstance;
 static HWND PtWindow;
 static HPHONEOM PtPhone;
 static HFONT PtFont;
+static HFONT PtBigFont;
+static HFONT PtButtonFont;
+static HFONT PtHeadFont;
+static HBRUSH PtBgBrush;
+static HBRUSH PtFieldBrush;
+static int PtPage;
+static WCHAR PtStatusText[2048];
+
+/* Touch sized layout metrics in pixels, chosen for a high density phone panel */
+#define PT_MARGIN                   28
+/* Keep the top row clear of the camera cutout at the top of the panel */
+#define PT_SAFE_TOP                 120
+#define PT_GAP                      16
+#define PT_ROW                      88
+#define PT_PILL_H                   56
+#define PT_TAB_H                    76
+#define PT_HEAD_H                   64
+#define PT_RADIUS                   18
+
+#define PT_PAGE_PHONE               0
+#define PT_PAGE_STATUS              1
+#define PT_PAGE_DATA                2
 
 static const LPCWSTR PtStateNames[] =
 {
     L"idle", L"dialing", L"incoming", L"active", L"held", L"ended"
 };
+
+static const LPCWSTR PtSimNames[] =
+{
+    L"absent", L"ready", L"PIN required", L"PUK required", L"error"
+};
+
+static const LPCWSTR PtRegNames[] =
+{
+    L"not registered", L"home", L"searching", L"denied", L"unknown", L"roaming"
+};
+
+static const LPCWSTR PtRatNames[] =
+{
+    L"none", L"GSM", L"UMTS", L"LTE", L"CDMA", L"TD-SCDMA", L"EV-DO"
+};
+
+static const LPCWSTR PtPageHeadings[] =
+{
+    L"Phone", L"Status", L"Mobile data"
+};
+
+static const UINT PtPhoneControls[] =
+{
+    IDC_RADIO_STATUS, IDC_RADIO_ON, IDC_RADIO_OFF, IDC_NUMBER, IDC_DIAL,
+    IDC_ANSWER, IDC_HANGUP, IDC_SWAP, IDC_DTMF, IDC_SPEAKER, IDC_MUTE,
+    IDC_CALLS, IDC_SMS_TO, IDC_SMS_TEXT, IDC_SMS_SEND, IDC_MESSAGES, IDC_LOG
+};
+
+static const UINT PtStatusControls[] =
+{
+    IDC_STATUS_REFRESH
+};
+
+static const UINT PtDataControls[] =
+{
+    IDC_DATA_APN_LABEL, IDC_DATA_APN, IDC_DATA_USER_LABEL, IDC_DATA_USER,
+    IDC_DATA_PASS_LABEL, IDC_DATA_PASS, IDC_DATA_AUTH_LABEL, IDC_DATA_AUTH,
+    IDC_DATA_ENABLED, IDC_DATA_SAVE, IDC_DATA_CONNECT, IDC_DATA_DISCONNECT,
+    IDC_DATA_STATUS
+};
+
+static
+BOOL
+PtIsToggle(
+    _In_ UINT Id)
+{
+    return Id == IDC_SPEAKER || Id == IDC_MUTE || Id == IDC_DATA_ENABLED;
+}
+
+static
+VOID
+PtFillRound(
+    _In_ HDC Dc,
+    _In_ const RECT *Rect,
+    _In_ int Radius,
+    _In_ COLORREF Color)
+{
+    HBRUSH Brush = CreateSolidBrush(Color);
+    HGDIOBJ OldBrush = SelectObject(Dc, Brush);
+    HGDIOBJ OldPen = SelectObject(Dc, GetStockObject(NULL_PEN));
+
+    RoundRect(Dc, Rect->left, Rect->top, Rect->right + 1, Rect->bottom + 1, Radius, Radius);
+
+    SelectObject(Dc, OldPen);
+    SelectObject(Dc, OldBrush);
+    DeleteObject(Brush);
+}
 
 static
 VOID
@@ -87,7 +206,6 @@ PtCheck(
         PtLog(L"%s ok", What);
 }
 
-/* Event callback runs on the phoneom dispatch thread, the window owns the data from here */
 static
 VOID
 CALLBACK
@@ -125,13 +243,13 @@ PtRefreshRadio(VOID)
 
     if (!PtPhone || FAILED(PhoneOmGetRadio(PtPhone, &Radio)))
     {
-        SetDlgItemTextW(PtWindow, IDC_RADIO_STATUS, L"Radio: no phone service");
+        SetDlgItemTextW(PtWindow, IDC_RADIO_STATUS, L"No phone service");
         return;
     }
 
     StringCchPrintfW(Text,
                      _countof(Text),
-                     L"Radio: %s, %s",
+                     L"Radio %s  \x2022  %s",
                      Radio.Present ? L"present" : L"absent",
                      Radio.PoweredOn ? L"on" : L"off");
     SetDlgItemTextW(PtWindow, IDC_RADIO_STATUS, Text);
@@ -230,6 +348,124 @@ PtRefreshMessages(VOID)
 }
 
 static
+LPCWSTR
+PtName(
+    _In_ const LPCWSTR *Table,
+    _In_ DWORD Count,
+    _In_ DWORD Index)
+{
+    return (Index < Count) ? Table[Index] : L"?";
+}
+
+static
+VOID
+PtRefreshStatus(VOID)
+{
+    PHONEOM_DEVICE_INFO Device;
+    PHONEOM_SUBSCRIBER Subscriber;
+    PHONEOM_NETWORK Network;
+    WCHAR Line[256];
+
+    PtStatusText[0] = UNICODE_NULL;
+
+    if (!PtPhone)
+    {
+        StringCchCopyW(PtStatusText, _countof(PtStatusText), L"No phone service.");
+        goto Done;
+    }
+
+    if (SUCCEEDED(PhoneOmGetNetwork(PtPhone, &Network)))
+    {
+        StringCchPrintfW(Line, _countof(Line),
+                         L"%s\n%s%s  \x2022  %s\n%ld dBm  (%lu/5)\nMCC/MNC %03lu/%02lu\n\n",
+                         Network.Operator[0] ? Network.Operator : L"No service",
+                         PtName(PtRegNames, _countof(PtRegNames), Network.RegState),
+                         Network.Roaming ? L" (roaming)" : L"",
+                         PtName(PtRatNames, _countof(PtRatNames), Network.Rat),
+                         Network.SignalDbm, Network.SignalBars,
+                         Network.Mcc, Network.Mnc);
+        StringCchCatW(PtStatusText, _countof(PtStatusText), Line);
+    }
+
+    if (SUCCEEDED(PhoneOmGetSubscriber(PtPhone, &Subscriber)))
+    {
+        StringCchPrintfW(Line, _countof(Line),
+                         L"SIM  \x2022  %s\nPhone number  %s\nIMSI  %s\n\n",
+                         PtName(PtSimNames, _countof(PtSimNames), Subscriber.SimState),
+                         Subscriber.Number[0] ? Subscriber.Number : L"unknown",
+                         Subscriber.Imsi[0] ? Subscriber.Imsi : L"unknown");
+        StringCchCatW(PtStatusText, _countof(PtStatusText), Line);
+    }
+
+    if (SUCCEEDED(PhoneOmGetDeviceInfo(PtPhone, &Device)))
+    {
+        StringCchPrintfW(Line, _countof(Line),
+                         L"%s %s\nFirmware  %s\nIMEI  %s",
+                         Device.Manufacturer, Device.Model, Device.Revision, Device.Imei);
+        StringCchCatW(PtStatusText, _countof(PtStatusText), Line);
+    }
+
+    if (PtStatusText[0] == UNICODE_NULL)
+        StringCchCopyW(PtStatusText, _countof(PtStatusText), L"Modem information is not available yet.");
+
+Done:
+    InvalidateRect(PtWindow, NULL, FALSE);
+}
+
+static
+VOID
+PtLoadData(VOID)
+{
+    PHONEOM_DATA_CONFIG Config;
+
+    if (!PtPhone || FAILED(PhoneOmGetDataConfig(PtPhone, &Config)))
+        return;
+
+    SetDlgItemTextW(PtWindow, IDC_DATA_APN, Config.Apn);
+    SetDlgItemTextW(PtWindow, IDC_DATA_USER, Config.Username);
+    SetDlgItemTextW(PtWindow, IDC_DATA_PASS, Config.Password);
+    SendDlgItemMessageW(PtWindow, IDC_DATA_AUTH, CB_SETCURSEL, Config.AuthType, 0);
+    CheckDlgButton(PtWindow, IDC_DATA_ENABLED, Config.Enabled ? BST_CHECKED : BST_UNCHECKED);
+}
+
+static
+VOID
+PtSaveData(VOID)
+{
+    PHONEOM_DATA_CONFIG Config;
+    LRESULT Auth;
+
+    if (!PtPhone)
+        return;
+
+    ZeroMemory(&Config, sizeof(Config));
+    GetDlgItemTextW(PtWindow, IDC_DATA_APN, Config.Apn, _countof(Config.Apn));
+    GetDlgItemTextW(PtWindow, IDC_DATA_USER, Config.Username, _countof(Config.Username));
+    GetDlgItemTextW(PtWindow, IDC_DATA_PASS, Config.Password, _countof(Config.Password));
+    Auth = SendDlgItemMessageW(PtWindow, IDC_DATA_AUTH, CB_GETCURSEL, 0, 0);
+    Config.AuthType = (Auth == CB_ERR) ? PHONEOM_AUTH_NONE : (DWORD)Auth;
+    Config.Enabled = (IsDlgButtonChecked(PtWindow, IDC_DATA_ENABLED) == BST_CHECKED);
+
+    PtCheck(L"Save data profile", PhoneOmSetDataConfig(PtPhone, &Config));
+}
+
+static
+VOID
+PtRefreshData(VOID)
+{
+    PHONEOM_DATA_STATUS Status;
+
+    if (!PtPhone || FAILED(PhoneOmConnectData(PtPhone, FALSE, &Status)))
+    {
+        SetDlgItemTextW(PtWindow, IDC_DATA_STATUS, L"Data status unknown");
+        return;
+    }
+
+    SetDlgItemTextW(PtWindow, IDC_DATA_STATUS,
+                    Status.Connected ? L"Data connected" : L"Data disconnected");
+}
+
+static
 DWORD
 PtSelectedCall(VOID)
 {
@@ -263,6 +499,7 @@ PtOpenPhone(VOID)
     PtRefreshRadio();
     PtRefreshCalls();
     PtRefreshMessages();
+    PtLoadData();
 }
 
 static
@@ -337,6 +574,9 @@ PtCommand(
     DWORD Value;
     HRESULT hr;
 
+    if (Id == IDC_TAB_PHONE || Id == IDC_TAB_STATUS || Id == IDC_TAB_DATA)
+        return;
+
     if (!PtPhone)
     {
         PtOpenPhone();
@@ -399,7 +639,50 @@ PtCommand(
                 SetDlgItemTextW(PtWindow, IDC_SMS_TEXT, L"");
             PtRefreshMessages();
             break;
+
+        case IDC_STATUS_REFRESH:
+            PtRefreshStatus();
+            break;
+
+        case IDC_DATA_SAVE:
+            PtSaveData();
+            break;
+
+        case IDC_DATA_CONNECT:
+        {
+            PHONEOM_DATA_STATUS Status;
+            PtSaveData();
+            PtCheck(L"Data connect", PhoneOmConnectData(PtPhone, TRUE, &Status));
+            PtRefreshData();
+            break;
+        }
+
+        case IDC_DATA_DISCONNECT:
+        {
+            PHONEOM_DATA_STATUS Status;
+            PtCheck(L"Data disconnect", PhoneOmConnectData(PtPhone, FALSE, &Status));
+            PtRefreshData();
+            break;
+        }
     }
+}
+
+static
+HFONT
+PtMakeFont(
+    _In_ int Height,
+    _In_ int Weight)
+{
+    return CreateFontW(Height,
+                       0, 0, 0,
+                       Weight,
+                       FALSE, FALSE, FALSE,
+                       DEFAULT_CHARSET,
+                       OUT_DEFAULT_PRECIS,
+                       CLIP_DEFAULT_PRECIS,
+                       CLEARTYPE_QUALITY,
+                       DEFAULT_PITCH | FF_DONTCARE,
+                       L"Tahoma");
 }
 
 static
@@ -409,33 +692,74 @@ PtControl(
     _In_ LPCWSTR Class,
     _In_opt_ LPCWSTR Text,
     _In_ DWORD Style,
-    _In_ int X,
-    _In_ int Y,
-    _In_ int Width,
-    _In_ int Height,
-    _In_ UINT Id)
+    _In_ UINT Id,
+    _In_opt_ HFONT Font)
 {
     HWND Control;
-    DWORD ExStyle = 0;
 
-    if (!wcscmp(Class, L"EDIT") || !wcscmp(Class, L"LISTBOX"))
-        ExStyle = WS_EX_CLIENTEDGE;
-
-    Control = CreateWindowExW(ExStyle,
+    Control = CreateWindowExW(0,
                               Class,
                               Text,
-                              WS_CHILD | WS_VISIBLE | Style,
-                              X,
-                              Y,
-                              Width,
-                              Height,
+                              WS_CHILD | Style,
+                              0, 0, 10, 10,
                               Parent,
                               (HMENU)(ULONG_PTR)Id,
                               PtInstance,
                               NULL);
     if (Control)
-        SendMessageW(Control, WM_SETFONT, (WPARAM)PtFont, FALSE);
+        SendMessageW(Control, WM_SETFONT, (WPARAM)(Font ? Font : PtFont), FALSE);
     return Control;
+}
+
+/* An owner drawn pill button, flat with an accent fill when active or pressed */
+static
+HWND
+PtButton(
+    _In_ HWND Parent,
+    _In_ LPCWSTR Text,
+    _In_ DWORD Style,
+    _In_ UINT Id)
+{
+    return PtControl(Parent, L"BUTTON", Text, Style | BS_OWNERDRAW, Id, PtButtonFont);
+}
+
+static
+VOID
+PtDrawButton(
+    _In_ const DRAWITEMSTRUCT *Item)
+{
+    WCHAR Text[64];
+    RECT Rect = Item->rcItem;
+    UINT Id = Item->CtlID;
+    BOOL Pressed = (Item->itemState & ODS_SELECTED) != 0;
+    BOOL Active = FALSE;
+    COLORREF Fill, Ink;
+    int Radius = (Rect.bottom - Rect.top) / 3;
+
+    if (Id == IDC_TAB_PHONE || Id == IDC_TAB_STATUS || Id == IDC_TAB_DATA)
+        Active = (PtPage == (int)(Id - IDC_TAB_PHONE));
+    else if (PtIsToggle(Id))
+        Active = (SendMessageW(Item->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED);
+
+    if (Active || Pressed)
+    {
+        Fill = PT_ACCENT;
+        Ink = PT_TEXT;
+    }
+    else
+    {
+        Fill = PT_TILE;
+        Ink = (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_DATA) ? PT_SUBTEXT : PT_TEXT;
+    }
+
+    FillRect(Item->hDC, &Rect, PtBgBrush);
+    PtFillRound(Item->hDC, &Rect, Radius, Fill);
+
+    GetWindowTextW(Item->hwndItem, Text, _countof(Text));
+    SetBkMode(Item->hDC, TRANSPARENT);
+    SetTextColor(Item->hDC, Ink);
+    SelectObject(Item->hDC, PtButtonFont);
+    DrawTextW(Item->hDC, Text, -1, &Rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS);
 }
 
 static
@@ -443,26 +767,278 @@ VOID
 PtCreateControls(
     _In_ HWND Window)
 {
-    PtControl(Window, L"STATIC", L"Radio: ?", 0, 10, 12, 260, 20, IDC_RADIO_STATUS);
-    PtControl(Window, L"BUTTON", L"Radio on", WS_TABSTOP, 280, 8, 90, 26, IDC_RADIO_ON);
-    PtControl(Window, L"BUTTON", L"Radio off", WS_TABSTOP, 376, 8, 90, 26, IDC_RADIO_OFF);
+    PtButton(Window, L"Phone", WS_VISIBLE, IDC_TAB_PHONE);
+    PtButton(Window, L"Status", WS_VISIBLE, IDC_TAB_STATUS);
+    PtButton(Window, L"Data", WS_VISIBLE, IDC_TAB_DATA);
 
-    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, 10, 44, 200, 24, IDC_NUMBER);
-    PtControl(Window, L"BUTTON", L"Dial", WS_TABSTOP, 216, 42, 60, 26, IDC_DIAL);
-    PtControl(Window, L"BUTTON", L"Answer", WS_TABSTOP, 280, 42, 60, 26, IDC_ANSWER);
-    PtControl(Window, L"BUTTON", L"Hang up", WS_TABSTOP, 344, 42, 60, 26, IDC_HANGUP);
-    PtControl(Window, L"BUTTON", L"Swap", WS_TABSTOP, 408, 42, 58, 26, IDC_SWAP);
-    PtControl(Window, L"BUTTON", L"Tone", WS_TABSTOP, 10, 74, 60, 24, IDC_DTMF);
-    PtControl(Window, L"BUTTON", L"Speaker", WS_TABSTOP | BS_AUTOCHECKBOX, 80, 76, 90, 20, IDC_SPEAKER);
-    PtControl(Window, L"BUTTON", L"Mute", WS_TABSTOP | BS_AUTOCHECKBOX, 176, 76, 80, 20, IDC_MUTE);
-    PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, 10, 104, 456, 70, IDC_CALLS);
+    /* Phone page */
+    PtControl(Window, L"STATIC", L"Radio", SS_CENTERIMAGE, IDC_RADIO_STATUS, PtFont);
+    PtButton(Window, L"Radio on", WS_TABSTOP, IDC_RADIO_ON);
+    PtButton(Window, L"Radio off", WS_TABSTOP, IDC_RADIO_OFF);
+    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, IDC_NUMBER, PtBigFont);
+    PtButton(Window, L"Dial", WS_TABSTOP, IDC_DIAL);
+    PtButton(Window, L"Answer", WS_TABSTOP, IDC_ANSWER);
+    PtButton(Window, L"Hang up", WS_TABSTOP, IDC_HANGUP);
+    PtButton(Window, L"Swap", WS_TABSTOP, IDC_SWAP);
+    PtButton(Window, L"Tone", WS_TABSTOP, IDC_DTMF);
+    PtButton(Window, L"Speaker", WS_TABSTOP | BS_AUTOCHECKBOX, IDC_SPEAKER);
+    PtButton(Window, L"Mute", WS_TABSTOP | BS_AUTOCHECKBOX, IDC_MUTE);
+    PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IDC_CALLS, PtFont);
+    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, IDC_SMS_TO, PtFont);
+    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, IDC_SMS_TEXT, PtFont);
+    PtButton(Window, L"Send", WS_TABSTOP, IDC_SMS_SEND);
+    PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | WS_HSCROLL | LBS_NOINTEGRALHEIGHT, IDC_MESSAGES, PtFont);
+    PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | LBS_NOINTEGRALHEIGHT, IDC_LOG, PtFont);
 
-    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, 10, 184, 140, 24, IDC_SMS_TO);
-    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, 156, 184, 244, 24, IDC_SMS_TEXT);
-    PtControl(Window, L"BUTTON", L"Send", WS_TABSTOP, 406, 182, 60, 26, IDC_SMS_SEND);
-    PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | WS_HSCROLL | LBS_NOINTEGRALHEIGHT, 10, 214, 456, 130, IDC_MESSAGES);
+    /* Status page draws its own text, only the refresh button is a control */
+    PtButton(Window, L"Refresh", WS_TABSTOP, IDC_STATUS_REFRESH);
 
-    PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | LBS_NOINTEGRALHEIGHT, 10, 350, 456, 110, IDC_LOG);
+    /* Data page */
+    PtControl(Window, L"STATIC", L"Access point (APN)", SS_CENTERIMAGE, IDC_DATA_APN_LABEL, PtFont);
+    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, IDC_DATA_APN, PtFont);
+    PtControl(Window, L"STATIC", L"User name", SS_CENTERIMAGE, IDC_DATA_USER_LABEL, PtFont);
+    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL, IDC_DATA_USER, PtFont);
+    PtControl(Window, L"STATIC", L"Password", SS_CENTERIMAGE, IDC_DATA_PASS_LABEL, PtFont);
+    PtControl(Window, L"EDIT", NULL, WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD, IDC_DATA_PASS, PtFont);
+    PtControl(Window, L"STATIC", L"Authentication", SS_CENTERIMAGE, IDC_DATA_AUTH_LABEL, PtFont);
+    PtControl(Window, L"COMBOBOX", NULL, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, IDC_DATA_AUTH, PtFont);
+    PtButton(Window, L"Mobile data enabled", WS_TABSTOP | BS_AUTOCHECKBOX, IDC_DATA_ENABLED);
+    PtButton(Window, L"Save", WS_TABSTOP, IDC_DATA_SAVE);
+    PtButton(Window, L"Connect", WS_TABSTOP, IDC_DATA_CONNECT);
+    PtButton(Window, L"Disconnect", WS_TABSTOP, IDC_DATA_DISCONNECT);
+    PtControl(Window, L"STATIC", L"Data status unknown", SS_CENTERIMAGE, IDC_DATA_STATUS, PtFont);
+
+    /* Always visible, returns to the shell */
+    PtButton(Window, L"Exit", WS_VISIBLE | WS_TABSTOP, IDC_EXIT);
+
+    SendDlgItemMessageW(Window, IDC_DATA_AUTH, CB_ADDSTRING, 0, (LPARAM)L"None");
+    SendDlgItemMessageW(Window, IDC_DATA_AUTH, CB_ADDSTRING, 0, (LPARAM)L"PAP");
+    SendDlgItemMessageW(Window, IDC_DATA_AUTH, CB_ADDSTRING, 0, (LPARAM)L"CHAP");
+    SendDlgItemMessageW(Window, IDC_DATA_AUTH, CB_SETCURSEL, 0, 0);
+}
+
+static
+VOID
+PtMove(
+    _In_ HWND Window,
+    _In_ UINT Id,
+    _In_ int X,
+    _In_ int Y,
+    _In_ int Width,
+    _In_ int Height)
+{
+    MoveWindow(GetDlgItem(Window, Id), X, Y, Width, Height, TRUE);
+}
+
+static
+VOID
+PtContentRect(
+    _In_ HWND Window,
+    _Out_ RECT *Area)
+{
+    RECT Client;
+
+    GetClientRect(Window, &Client);
+    Area->left = PT_MARGIN;
+    Area->right = Client.right - PT_MARGIN;
+    Area->top = PT_SAFE_TOP + PT_TAB_H + PT_GAP + PT_HEAD_H;
+    /* The exit button owns the bottom row on every page */
+    Area->bottom = Client.bottom - PT_MARGIN - PT_ROW - PT_GAP;
+}
+
+static
+VOID
+PtLayoutPhone(
+    _In_ HWND Window,
+    _In_ const RECT *Area)
+{
+    int Width = Area->right - Area->left;
+    int Half = (Width - PT_GAP) / 2;
+    int Quarter = (Width - 3 * PT_GAP) / 4;
+    int Third = (Width - 2 * PT_GAP) / 3;
+    int Left = Area->left;
+    int Y = Area->top;
+    int ListH;
+
+    ListH = (Area->bottom - Area->top - 7 * PT_GAP - PT_PILL_H - 5 * PT_ROW) / 3;
+    if (ListH < PT_ROW)
+        ListH = PT_ROW;
+
+    PtMove(Window, IDC_RADIO_STATUS, Left, Y, Width, PT_PILL_H);
+    Y += PT_PILL_H + PT_GAP;
+    PtMove(Window, IDC_RADIO_ON, Left, Y, Half, PT_ROW);
+    PtMove(Window, IDC_RADIO_OFF, Left + Half + PT_GAP, Y, Half, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_NUMBER, Left, Y, Width, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DIAL, Left, Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_ANSWER, Left + (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_HANGUP, Left + 2 * (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_SWAP, Left + 3 * (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DTMF, Left, Y, Third, PT_ROW);
+    PtMove(Window, IDC_SPEAKER, Left + (Third + PT_GAP), Y, Third, PT_ROW);
+    PtMove(Window, IDC_MUTE, Left + 2 * (Third + PT_GAP), Y, Third, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_CALLS, Left, Y, Width, ListH);
+    Y += ListH + PT_GAP;
+    PtMove(Window, IDC_SMS_TO, Left, Y, Third, PT_ROW);
+    PtMove(Window, IDC_SMS_TEXT, Left + (Third + PT_GAP), Y, Third, PT_ROW);
+    PtMove(Window, IDC_SMS_SEND, Left + 2 * (Third + PT_GAP), Y, Third, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_MESSAGES, Left, Y, Width, ListH);
+    Y += ListH + PT_GAP;
+    PtMove(Window, IDC_LOG, Left, Y, Width, ListH);
+}
+
+static
+VOID
+PtLayoutStatus(
+    _In_ HWND Window,
+    _In_ const RECT *Area)
+{
+    PtMove(Window, IDC_STATUS_REFRESH, Area->left, Area->bottom - PT_ROW,
+           Area->right - Area->left, PT_ROW);
+}
+
+static
+VOID
+PtLayoutData(
+    _In_ HWND Window,
+    _In_ const RECT *Area)
+{
+    int Width = Area->right - Area->left;
+    int Third = (Width - 2 * PT_GAP) / 3;
+    int Left = Area->left;
+    int Y = Area->top;
+
+    PtMove(Window, IDC_DATA_APN_LABEL, Left, Y, Width, PT_PILL_H);
+    Y += PT_PILL_H;
+    PtMove(Window, IDC_DATA_APN, Left, Y, Width, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DATA_USER_LABEL, Left, Y, Width, PT_PILL_H);
+    Y += PT_PILL_H;
+    PtMove(Window, IDC_DATA_USER, Left, Y, Width, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DATA_PASS_LABEL, Left, Y, Width, PT_PILL_H);
+    Y += PT_PILL_H;
+    PtMove(Window, IDC_DATA_PASS, Left, Y, Width, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DATA_AUTH_LABEL, Left, Y, Width, PT_PILL_H);
+    Y += PT_PILL_H;
+    PtMove(Window, IDC_DATA_AUTH, Left, Y, Width, 240);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DATA_ENABLED, Left, Y, Width, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DATA_SAVE, Left, Y, Third, PT_ROW);
+    PtMove(Window, IDC_DATA_CONNECT, Left + (Third + PT_GAP), Y, Third, PT_ROW);
+    PtMove(Window, IDC_DATA_DISCONNECT, Left + 2 * (Third + PT_GAP), Y, Third, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_DATA_STATUS, Left, Y, Width, PT_PILL_H);
+}
+
+static
+VOID
+PtLayout(
+    _In_ HWND Window)
+{
+    RECT Client, Area;
+    int Width, Segment, i;
+    static const UINT Tabs[] = { IDC_TAB_PHONE, IDC_TAB_STATUS, IDC_TAB_DATA };
+
+    GetClientRect(Window, &Client);
+    Width = Client.right - 2 * PT_MARGIN;
+    if (Width < 120)
+        return;
+
+    Segment = (Width - 2 * PT_GAP) / 3;
+    for (i = 0; i < 3; i++)
+        PtMove(Window, Tabs[i], PT_MARGIN + i * (Segment + PT_GAP), PT_SAFE_TOP, Segment, PT_TAB_H);
+
+    PtMove(Window, IDC_EXIT, PT_MARGIN, Client.bottom - PT_MARGIN - PT_ROW, Width, PT_ROW);
+
+    PtContentRect(Window, &Area);
+    if (Area.bottom - Area.top < PT_ROW)
+        return;
+
+    switch (PtPage)
+    {
+        case PT_PAGE_PHONE: PtLayoutPhone(Window, &Area); break;
+        case PT_PAGE_STATUS: PtLayoutStatus(Window, &Area); break;
+        case PT_PAGE_DATA: PtLayoutData(Window, &Area); break;
+    }
+}
+
+static
+VOID
+PtPaint(
+    _In_ HWND Window)
+{
+    PAINTSTRUCT Paint;
+    RECT Client, Head, Area;
+    HDC Dc = BeginPaint(Window, &Paint);
+
+    GetClientRect(Window, &Client);
+    FillRect(Dc, &Client, PtBgBrush);
+
+    /* Heading band under the tab bar */
+    Head.left = PT_MARGIN;
+    Head.right = Client.right - PT_MARGIN;
+    Head.top = PT_SAFE_TOP + PT_TAB_H + PT_GAP;
+    Head.bottom = Head.top + PT_HEAD_H;
+    SetBkMode(Dc, TRANSPARENT);
+    SetTextColor(Dc, PT_TEXT);
+    SelectObject(Dc, PtHeadFont);
+    DrawTextW(Dc, PtPageHeadings[PtPage], -1, &Head, DT_SINGLELINE | DT_LEFT | DT_VCENTER);
+
+    if (PtPage == PT_PAGE_STATUS)
+    {
+        PtContentRect(Window, &Area);
+        Area.bottom -= PT_ROW + PT_GAP;
+        SetTextColor(Dc, PT_TEXT);
+        SelectObject(Dc, PtFont);
+        DrawTextW(Dc, PtStatusText, -1, &Area, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX | DT_EXPANDTABS);
+    }
+
+    EndPaint(Window, &Paint);
+}
+
+static
+VOID
+PtShowGroup(
+    _In_ HWND Window,
+    _In_ const UINT *Ids,
+    _In_ DWORD Count,
+    _In_ BOOL Show)
+{
+    DWORD i;
+
+    for (i = 0; i < Count; i++)
+        ShowWindow(GetDlgItem(Window, Ids[i]), Show ? SW_SHOW : SW_HIDE);
+}
+
+static
+VOID
+PtSelectPage(
+    _In_ HWND Window,
+    _In_ int Page)
+{
+    PtPage = Page;
+
+    PtShowGroup(Window, PtPhoneControls, _countof(PtPhoneControls), Page == PT_PAGE_PHONE);
+    PtShowGroup(Window, PtStatusControls, _countof(PtStatusControls), Page == PT_PAGE_STATUS);
+    PtShowGroup(Window, PtDataControls, _countof(PtDataControls), Page == PT_PAGE_DATA);
+
+    PtLayout(Window);
+    InvalidateRect(Window, NULL, FALSE);
+
+    if (Page == PT_PAGE_STATUS)
+        PtRefreshStatus();
+    else if (Page == PT_PAGE_DATA)
+    {
+        PtLoadData();
+        PtRefreshData();
+    }
 }
 
 static
@@ -479,10 +1055,38 @@ PtWndProc(
         case WM_CREATE:
             PtWindow = Window;
             PtCreateControls(Window);
+            PtSelectPage(Window, PT_PAGE_PHONE);
             PtOpenPhone();
             if (!PtPhone)
                 SetTimer(Window, 1, 3000, NULL);
             return 0;
+
+        case WM_SIZE:
+            PtLayout(Window);
+            InvalidateRect(Window, NULL, FALSE);
+            return 0;
+
+        case WM_ERASEBKGND:
+            return 1;
+
+        case WM_PAINT:
+            PtPaint(Window);
+            return 0;
+
+        case WM_DRAWITEM:
+            PtDrawButton((const DRAWITEMSTRUCT *)lParam);
+            return TRUE;
+
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX:
+            SetTextColor((HDC)wParam, PT_TEXT);
+            SetBkColor((HDC)wParam, PT_FIELD);
+            return (LRESULT)PtFieldBrush;
+
+        case WM_CTLCOLORSTATIC:
+            SetTextColor((HDC)wParam, PT_SUBTEXT);
+            SetBkColor((HDC)wParam, PT_BG);
+            return (LRESULT)PtBgBrush;
 
         case WM_TIMER:
             PtOpenPhone();
@@ -492,7 +1096,15 @@ PtWndProc(
 
         case WM_COMMAND:
             if (HIWORD(wParam) == BN_CLICKED)
-                PtCommand(LOWORD(wParam));
+            {
+                UINT Id = LOWORD(wParam);
+                if (Id == IDC_EXIT)
+                    DestroyWindow(Window);
+                else if (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_DATA)
+                    PtSelectPage(Window, (int)(Id - IDC_TAB_PHONE));
+                else
+                    PtCommand(Id);
+            }
             return 0;
 
         case WM_PHONE_EVENT:
@@ -507,6 +1119,18 @@ PtWndProc(
                 PhoneOmClose(PtPhone);
                 PtPhone = NULL;
             }
+            if (PtFont)
+                DeleteObject(PtFont);
+            if (PtBigFont)
+                DeleteObject(PtBigFont);
+            if (PtButtonFont)
+                DeleteObject(PtButtonFont);
+            if (PtHeadFont)
+                DeleteObject(PtHeadFont);
+            if (PtBgBrush)
+                DeleteObject(PtBgBrush);
+            if (PtFieldBrush)
+                DeleteObject(PtFieldBrush);
             PostQuitMessage(0);
             return 0;
     }
@@ -523,15 +1147,29 @@ wWinMain(
     _In_ int nShowCmd)
 {
     WNDCLASSEXW Class;
-    RECT Rect = { 0, 0, 476, 470 };
     HWND Window;
     MSG Msg;
 
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
+    UNREFERENCED_PARAMETER(nShowCmd);
 
     PtInstance = hInstance;
-    PtFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    PtFont = PtMakeFont(34, FW_NORMAL);
+    PtBigFont = PtMakeFont(54, FW_NORMAL);
+    PtButtonFont = PtMakeFont(32, FW_SEMIBOLD);
+    PtHeadFont = PtMakeFont(48, FW_SEMIBOLD);
+    if (!PtFont)
+        PtFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    if (!PtBigFont)
+        PtBigFont = PtFont;
+    if (!PtButtonFont)
+        PtButtonFont = PtFont;
+    if (!PtHeadFont)
+        PtHeadFont = PtFont;
+
+    PtBgBrush = CreateSolidBrush(PT_BG);
+    PtFieldBrush = CreateSolidBrush(PT_FIELD);
 
     ZeroMemory(&Class, sizeof(Class));
     Class.cbSize = sizeof(Class);
@@ -539,21 +1177,19 @@ wWinMain(
     Class.hInstance = hInstance;
     Class.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     Class.hIcon = LoadIconW(NULL, (LPCWSTR)IDI_APPLICATION);
-    Class.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    Class.hbrBackground = PtBgBrush;
     Class.lpszClassName = L"ReactOSPhoneTest";
     if (!RegisterClassExW(&Class))
         return 1;
 
-    AdjustWindowRect(&Rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
-
     Window = CreateWindowExW(0,
                              Class.lpszClassName,
-                             L"Phone Test",
-                             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                             L"Phone",
+                             WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                              CW_USEDEFAULT,
                              CW_USEDEFAULT,
-                             Rect.right - Rect.left,
-                             Rect.bottom - Rect.top,
+                             CW_USEDEFAULT,
+                             CW_USEDEFAULT,
                              NULL,
                              NULL,
                              hInstance,
@@ -561,7 +1197,7 @@ wWinMain(
     if (!Window)
         return 1;
 
-    ShowWindow(Window, nShowCmd);
+    ShowWindow(Window, SW_SHOWMAXIMIZED);
     UpdateWindow(Window);
 
     while (GetMessageW(&Msg, NULL, 0, 0) > 0)

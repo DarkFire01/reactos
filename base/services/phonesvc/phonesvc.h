@@ -37,7 +37,7 @@ typedef struct _PH_RIL_RESULT
     DWORD ResultType;
     HRESULT Error;
     DWORD DataSize;
-    BYTE Data[64];
+    BYTE Data[256];
 } PH_RIL_RESULT, *PPH_RIL_RESULT;
 
 typedef struct _PH_REQUEST
@@ -168,6 +168,32 @@ PhAudioSetRoute(
 HRESULT
 PhAudioSetMute(
     _In_ BOOL Mute);
+
+/* info.c */
+HRESULT
+PhGetDeviceInfo(
+    _Out_ PPHONEOM_DEVICE_INFO Info);
+
+HRESULT
+PhGetSubscriber(
+    _Out_ PPHONEOM_SUBSCRIBER Subscriber);
+
+HRESULT
+PhGetNetwork(
+    _Out_ PPHONEOM_NETWORK Network);
+
+VOID
+PhGetDataConfig(
+    _Out_ PPHONEOM_DATA_CONFIG Config);
+
+HRESULT
+PhSetDataConfig(
+    _In_ const PHONEOM_DATA_CONFIG *Config);
+
+HRESULT
+PhConnectData(
+    _In_ BOOL Connect,
+    _Out_ PPHONEOM_DATA_STATUS Status);
 
 /* pipe.c */
 BOOL
