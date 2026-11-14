@@ -184,6 +184,16 @@ typedef enum _MM_ROTATE_DIRECTION {
   MmMaximumRotateDirection
 } MM_ROTATE_DIRECTION, *PMM_ROTATE_DIRECTION;
 
+typedef struct _MM_COPY_ADDRESS {
+  union {
+    PVOID VirtualAddress;
+    PHYSICAL_ADDRESS PhysicalAddress;
+  };
+} MM_COPY_ADDRESS, *PMMCOPY_ADDRESS;
+
+#define MM_COPY_MEMORY_PHYSICAL 0x1
+#define MM_COPY_MEMORY_VIRTUAL  0x2
+
 $endif (_NTDDK_)
 $if (_NTIFS_)
 typedef enum _MMFLUSH_TYPE {
