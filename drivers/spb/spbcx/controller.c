@@ -178,6 +178,9 @@ ScxDeviceInitialize(
     QueueConfig.EvtIoRead = ScxEvtControllerIoRead;
     QueueConfig.EvtIoWrite = ScxEvtControllerIoWrite;
 
+    /* Owning the queue is what routes its requests through our caller context callback */
+    QueueConfig.Driver = WdfGetDriver();
+
     WDF_OBJECT_ATTRIBUTES_INIT(&Attributes);
     Attributes.ExecutionLevel = WdfExecutionLevelPassive;
 
