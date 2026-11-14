@@ -7,6 +7,10 @@
 
 #include <uacpint.h>
 #include <wdmguid.h>
+#include <drivers/acpi/dmacoherency.h>
+#ifdef _M_ARM64
+#include <ndk/kefuncs.h>
+#endif
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
 #define NDEBUG
@@ -1468,6 +1472,96 @@ UacpiNtBuildAcpiInterface(
     return STATUS_NOT_SUPPORTED;
 }
 
+/**
+ * @brief Reads _CCA once per device, reporting a master that does not snoop the caches.
+ */
+VOID
+NTAPI
+UacpiNtPdoReadCacheCoherency(
+    _In_ PUACPINT_PDO Pdo)
+{
+    uacpi_object_type Type = UACPI_OBJECT_UNINITIALIZED;
+    uacpi_namespace_node *Cca;
+    uacpi_status UacpiStatus;
+    uacpi_u64 Value;
+
+    if (Pdo->CacheCoherency != UacpiNtCcaUnknown)
+        return;
+
+    UacpiStatus = uacpi_namespace_node_find(Pdo->Node, "_CCA", &Cca);
+    if (UacpiStatus == UACPI_STATUS_NOT_FOUND)
+    {
+        Pdo->CacheCoherency = UacpiNtCcaAbsent;
+        return;
+    }
+
+    UacpiStatus = uacpi_eval_simple_integer(Pdo->Node, "_CCA", &Value);
+    if (UacpiStatus == UACPI_STATUS_TYPE_MISMATCH)
+    {
+        uacpi_namespace_node_type(Cca, &Type);
+        KeBugCheckEx(ACPI_BIOS_ERROR,
+                     8,
+                     (ULONG_PTR)Pdo->Shared.Self,
+                     (ULONG_PTR)Pdo->Node,
+                     (ULONG_PTR)Type);
+    }
+
+    if (uacpi_unlikely_error(UacpiStatus))
+    {
+        DPRINT1("%s: _CCA failed: %s\n", Pdo->Name, uacpi_status_to_string(UacpiStatus));
+        return;
+    }
+
+    if (Value & 1)
+    {
+        Pdo->CacheCoherency = UacpiNtCcaCoherent;
+        return;
+    }
+
+    Pdo->CacheCoherency = UacpiNtCcaNotCoherent;
+    DPRINT1("%s: _CCA 0, its DMA buffers get cache maintenance\n", Pdo->Name);
+#ifdef _M_ARM64
+    KeReportCacheIncoherentDevice();
+#endif
+}
+
+static
+NTSTATUS
+NTAPI
+UacpiNtBuildDmaCoherencyInterface(
+    _In_ PUACPINT_PDO Pdo,
+    _In_ PIO_STACK_LOCATION IoStack)
+{
+    PACPI_DMA_COHERENCY_INTERFACE Interface;
+
+    if (IoStack->Parameters.QueryInterface.Size < sizeof(*Interface))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    /* Only a device whose firmware states its coherency answers */
+    if (IoStack->Parameters.QueryInterface.Version == 0)
+        return STATUS_NOT_SUPPORTED;
+
+    switch (Pdo->CacheCoherency)
+    {
+        case UacpiNtCcaCoherent:
+        case UacpiNtCcaNotCoherent:
+            break;
+
+        default:
+            return STATUS_NOT_SUPPORTED;
+    }
+
+    Interface = (PACPI_DMA_COHERENCY_INTERFACE)IoStack->Parameters.QueryInterface.Interface;
+    Interface->CacheCoherent = (Pdo->CacheCoherency == UacpiNtCcaCoherent);
+    Interface->Header.Size = sizeof(*Interface);
+    Interface->Header.Version = ACPI_DMA_COHERENCY_INTERFACE_VERSION;
+    Interface->Header.Context = NULL;
+    Interface->Header.InterfaceReference = UacpiNtInterfaceNop;
+    Interface->Header.InterfaceDereference = UacpiNtInterfaceNop;
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 UacpiNtPdoQueryInterface(
@@ -1507,6 +1601,9 @@ UacpiNtPdoQueryInterface(
     {
         return UacpiNtBuildAcpiInterface(Pdo->Shared.Self, Pdo->Name, IoStack);
     }
+
+    if (IsEqualGUID(InterfaceType, &GUID_DMA_CACHE_COHERENCY_INTERFACE))
+        return UacpiNtBuildDmaCoherencyInterface(Pdo, IoStack);
 
     if ((IsEqualGUID(InterfaceType, &GUID_PCI_BUS_INTERFACE_STANDARD) ||
          IsEqualGUID(InterfaceType, &GUID_PCI_BUS_INTERFACE_STANDARD2)) &&
