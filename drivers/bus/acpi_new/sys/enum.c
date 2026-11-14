@@ -202,7 +202,7 @@ UacpiNtNodeWillBecomePdo(
     return !UacpiNtHidIsExcluded(Hid);
 }
 
-/* Instance ID is the absolute path without separators */
+/* Instance ID is the zone name for thermal zones, else the _UID, else the absolute path without separators */
 static
 VOID
 NTAPI
@@ -210,9 +210,24 @@ UacpiNtPdoSetInstance(
     _Inout_ PUACPINT_PDO Pdo)
 {
     uacpi_processor_info Info;
+    uacpi_id_string *Uid = NULL;
     const uacpi_char *Path;
     ULONG Out = 0;
     ULONG In;
+
+    /* Every thermal zone shares one device ID, so the zone name tells them apart */
+    if (Pdo->IsThermalZone)
+    {
+        RtlStringCbCopyA(Pdo->Instance, sizeof(Pdo->Instance), Pdo->Name);
+        return;
+    }
+
+    if (uacpi_likely_success(uacpi_eval_uid(Pdo->Node, &Uid)) && Uid)
+    {
+        RtlStringCbCopyA(Pdo->Instance, sizeof(Pdo->Instance), Uid->value);
+        uacpi_free_id_string(Uid);
+        goto Processor;
+    }
 
     Path = uacpi_namespace_node_generate_absolute_path(Pdo->Node);
     if (Path)
@@ -230,6 +245,7 @@ UacpiNtPdoSetInstance(
         RtlStringCbCopyA(Pdo->Instance, sizeof(Pdo->Instance), Pdo->Name);
     }
 
+Processor:
     if (!Pdo->IsProcessor)
         return;
 
@@ -862,6 +878,127 @@ UacpiNtBuildCompatibleIds(
     return UacpiNtAsciiToMultiSz(IdList, Count);
 }
 
+#define UACPINT_VENDOR_ID_MAX   4
+#define UACPINT_VENDOR_ID_CHARS 96
+
+/* A 3 or 4 character alphanumeric vendor followed by a hex device number */
+static
+BOOLEAN
+NTAPI
+UacpiNtIsVendorDeviceId(
+    _In_z_ PCSTR Hid,
+    _In_ SIZE_T Length,
+    _In_ SIZE_T VendorLength)
+{
+    SIZE_T Index;
+    CHAR Char;
+
+    if (Length != 7 && Length != 8)
+        return FALSE;
+
+    for (Index = 0; Index < Length; Index++)
+    {
+        Char = Hid[Index];
+        if (Index < VendorLength)
+        {
+            if (!((Char >= '0' && Char <= '9') || (Char >= 'A' && Char <= 'Z') || (Char >= 'a' && Char <= 'z')))
+                return FALSE;
+        }
+        else if (!((Char >= '0' && Char <= '9') || (Char >= 'A' && Char <= 'F') || (Char >= 'a' && Char <= 'f')))
+        {
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/* The ACPI\VEN_x&DEV_y hardware IDs, most specific first, that come before ACPI\<_HID> */
+static
+ULONG
+NTAPI
+UacpiNtBuildVendorIds(
+    _In_ PUACPINT_PDO Pdo,
+    _Out_writes_(UACPINT_VENDOR_ID_MAX) CHAR Ids[][UACPINT_VENDOR_ID_CHARS])
+{
+    CHAR Vendor[8] = { 0 };
+    CHAR Device[16] = { 0 };
+    CHAR Sub[32] = { 0 };
+    uacpi_id_string *Cls = NULL;
+    uacpi_object *SubObject;
+    uacpi_data_view View;
+    uacpi_u64 Hrv = 0;
+    BOOLEAN HasSub = FALSE;
+    BOOLEAN HasHrv;
+    BOOLEAN HasCls;
+    SIZE_T Length;
+    SIZE_T VendorLength;
+    ULONG ClsValue = 0;
+    ULONG Count = 0;
+
+    if (!Pdo->Node || !Pdo->Hid[0] || Pdo->IsThermalZone)
+        return 0;
+
+    if (uacpi_likely_success(uacpi_eval_simple_string(Pdo->Node, "_SUB", &SubObject)))
+    {
+        if (uacpi_likely_success(uacpi_object_get_string(SubObject, &View)) && View.length)
+        {
+            RtlStringCbCopyNA(Sub, sizeof(Sub), View.text, View.length);
+            HasSub = (Sub[0] != ANSI_NULL);
+        }
+        uacpi_object_unref(SubObject);
+    }
+
+    HasHrv = uacpi_likely_success(uacpi_eval_simple_integer(Pdo->Node, "_HRV", &Hrv));
+    HasCls = uacpi_likely_success(uacpi_eval_cls(Pdo->Node, &Cls)) && Cls;
+    if (HasCls)
+    {
+        if (!NT_SUCCESS(RtlCharToInteger(Cls->value, 16, &ClsValue)))
+            HasCls = FALSE;
+        uacpi_free_id_string(Cls);
+    }
+
+    Length = strlen(Pdo->Hid);
+    VendorLength = (Length == 7) ? 3 : 4;
+    if (!UacpiNtIsVendorDeviceId(Pdo->Hid, Length, VendorLength) && !HasSub && !HasHrv && !HasCls)
+        return 0;
+
+    RtlStringCbCopyNA(Vendor, sizeof(Vendor), Pdo->Hid, min(Length, VendorLength));
+    if (Length > VendorLength)
+        RtlStringCbCopyA(Device, sizeof(Device), &Pdo->Hid[VendorLength]);
+
+    if (HasSub)
+    {
+        if (HasHrv)
+        {
+            RtlStringCbPrintfA(Ids[Count++], UACPINT_VENDOR_ID_CHARS, "ACPI\\VEN_%s&DEV_%s&SUBSYS_%s&REV_%04X",
+                               Vendor, Device, Sub, (ULONG)(Hrv & 0xFFFF));
+        }
+        RtlStringCbPrintfA(Ids[Count++], UACPINT_VENDOR_ID_CHARS, "ACPI\\VEN_%s&DEV_%s&SUBSYS_%s",
+                           Vendor, Device, Sub);
+    }
+    else
+    {
+        if (HasHrv)
+        {
+            RtlStringCbPrintfA(Ids[Count++], UACPINT_VENDOR_ID_CHARS, "ACPI\\VEN_%s&DEV_%s&REV_%04X",
+                               Vendor, Device, (ULONG)(Hrv & 0xFFFF));
+        }
+        RtlStringCbPrintfA(Ids[Count++], UACPINT_VENDOR_ID_CHARS, "ACPI\\VEN_%s&DEV_%s", Vendor, Device);
+    }
+
+    /* _CLS comes back as CCSSPP: class, subclass, programming interface */
+    if (HasCls)
+    {
+        RtlStringCbPrintfA(Ids[Count++], UACPINT_VENDOR_ID_CHARS, "ACPI\\VEN_%s&DEV_%s&CLS_%04X&SUBCLS_%04X&PI_%02X",
+                           Vendor, Device, (ClsValue >> 16) & 0xFF, (ClsValue >> 8) & 0xFF, ClsValue & 0xFF);
+        RtlStringCbPrintfA(Ids[Count++], UACPINT_VENDOR_ID_CHARS, "ACPI\\VEN_%s&DEV_%s&CLS_%04X&SUBCLS_%04X",
+                           Vendor, Device, (ClsValue >> 16) & 0xFF, (ClsValue >> 8) & 0xFF);
+    }
+
+    return Count;
+}
+
 NTSTATUS
 NTAPI
 UacpiNtPdoQueryId(
@@ -869,11 +1006,14 @@ UacpiNtPdoQueryId(
     _In_ PIRP Irp)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    CHAR VendorIds[UACPINT_VENDOR_ID_MAX][UACPINT_VENDOR_ID_CHARS];
     CHAR Id[64];
     CHAR StarId[64];
-    PCSTR IdList[2];
+    PCSTR IdList[UACPINT_VENDOR_ID_MAX + 2];
     PCSTR Fixed;
     PWSTR Result;
+    ULONG Count;
+    ULONG Index;
 
     if (Pdo->IsProcessor)
         return UacpiNtProcessorQueryId(Pdo, Irp);
@@ -896,17 +1036,17 @@ UacpiNtPdoQueryId(
                 break;
             }
 
-            IdList[0] = Id;
+            Count = UacpiNtBuildVendorIds(Pdo, VendorIds);
+            for (Index = 0; Index < Count; Index++)
+                IdList[Index] = VendorIds[Index];
+
+            IdList[Count++] = Id;
             if (Pdo->Hid[0])
             {
                 RtlStringCbPrintfA(StarId, sizeof(StarId), "*%s", Pdo->Hid);
-                IdList[1] = StarId;
-                Result = UacpiNtAsciiToMultiSz(IdList, 2);
+                IdList[Count++] = StarId;
             }
-            else
-            {
-                Result = UacpiNtAsciiToMultiSz(IdList, 1);
-            }
+            Result = UacpiNtAsciiToMultiSz(IdList, Count);
             break;
 
         /* No compatible IDs at all is a valid answer */
