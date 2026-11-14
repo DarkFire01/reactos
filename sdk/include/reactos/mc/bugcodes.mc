@@ -1744,6 +1744,14 @@ Language=English
 A fatal error occurred in the USB driver stack.
 .
 
+MessageId=0x121
+Severity=Success
+Facility=System
+SymbolicName=DRIVER_VIOLATION
+Language=English
+A driver has violated a rule of the I/O or kernel interfaces.
+.
+
 MessageId=0x124
 Severity=Success
 Facility=System

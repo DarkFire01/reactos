@@ -2401,7 +2401,23 @@ IoGetIommuInterfaceEx(
     UNREFERENCED_PARAMETER(Flags);
     UNREFERENCED_PARAMETER(InterfaceOut);
 
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+        KeBugCheckEx(DRIVER_VIOLATION, 1, KeGetCurrentIrql(), 0, 0);
+
     return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Gets the interface to the IOMMU, the form without flags.
+ * @return STATUS_NOT_SUPPORTED, no IOMMU is ever driven.
+ */
+NTSTATUS
+NTAPI
+IoGetIommuInterface(
+    _In_ ULONG Version,
+    _Out_ PVOID InterfaceOut)
+{
+    return IoGetIommuInterfaceEx(Version, 0, InterfaceOut);
 }
 
 /* EOF */

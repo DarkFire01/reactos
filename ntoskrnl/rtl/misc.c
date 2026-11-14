@@ -343,125 +343,19 @@ AVrfInternalHeapFreeNotification(PVOID AllocationBase, SIZE_T AllocationSize)
 }
 
 
-
 /**
- * @brief Formats wide characters into a buffer that must hold the whole result.
+ * @brief Fills memory with a byte, the same as RtlFillMemory.
  *
- * @return Characters written without the terminator, or -1 when the result did not fit.
+ * @remarks The ARM64 kernel fills with ordinary vector stores here, there is no cache bypassing form.
  */
-int
-__cdecl
-vswprintf_s(
-    _Out_writes_(SizeInWords) wchar_t *Buffer,
-    _In_ size_t SizeInWords,
-    _In_z_ _Printf_format_string_ const wchar_t *Format,
-    _In_ va_list ArgList)
+VOID
+NTAPI
+RtlFillMemoryNonTemporal(
+    _Out_writes_bytes_all_(Length) PVOID Destination,
+    _In_ SIZE_T Length,
+    _In_ UCHAR Fill)
 {
-    int Written;
-
-    if (!Buffer || (SizeInWords == 0) || !Format)
-        return -1;
-
-    Written = _vsnwprintf(Buffer, SizeInWords, Format, ArgList);
-    if ((Written < 0) || ((size_t)Written >= SizeInWords))
-    {
-        Buffer[0] = UNICODE_NULL;
-        return -1;
-    }
-
-    return Written;
-}
-
-/**
- * @brief Formats wide characters into a buffer that must hold the whole result.
- *
- * @return Characters written without the terminator, or -1 when the result did not fit.
- */
-int
-__cdecl
-swprintf_s(
-    _Out_writes_(SizeInWords) wchar_t *Buffer,
-    _In_ size_t SizeInWords,
-    _In_z_ _Printf_format_string_ const wchar_t *Format,
-    ...)
-{
-    va_list ArgList;
-    int Written;
-
-    va_start(ArgList, Format);
-    Written = vswprintf_s(Buffer, SizeInWords, Format, ArgList);
-    va_end(ArgList);
-
-    return Written;
-}
-
-/*
- * A count below the buffer size truncates the output to that many characters,
- * as does _TRUNCATE to the buffer. Output that overruns the buffer otherwise
- * leaves an empty string. Each case of cut output returns -1.
- */
-#define RTLP_SECURE_SNPRINTF(Name, CharType, Formatter)                           \
-int                                                                             \
-__cdecl                                                                         \
-Name(                                                                           \
-    _Out_writes_z_(BufferSize) CharType *Buffer,                                \
-    _In_ size_t BufferSize,                                                     \
-    _In_ size_t Count,                                                          \
-    _In_z_ _Printf_format_string_ const CharType *Format,                       \
-    _In_ va_list ArgList)                                                       \
-{                                                                               \
-    BOOLEAN Truncate = (Count == _TRUNCATE) || (Count < BufferSize);            \
-    size_t Limit;                                                               \
-    int Written;                                                                \
-                                                                                \
-    if (!Buffer || (BufferSize == 0) || !Format)                                \
-        return -1;                                                              \
-                                                                                \
-    if (BufferSize > INT_MAX)                                                   \
-    {                                                                           \
-        Buffer[0] = 0;                                                          \
-        return -1;                                                              \
-    }                                                                           \
-                                                                                \
-    Limit = ((Count != _TRUNCATE) && (Count < BufferSize)) ? Count + 1 : BufferSize; \
-    Written = Formatter(Buffer, Limit, Format, ArgList);                        \
-    if ((Written < 0) || ((size_t)Written >= Limit))                            \
-    {                                                                           \
-        Buffer[Limit - 1] = 0;                                                  \
-        if (!Truncate)                                                          \
-            Buffer[0] = 0;                                                      \
-        return -1;                                                              \
-    }                                                                           \
-                                                                                \
-    Buffer[Written] = 0;                                                        \
-    return Written;                                                             \
-}
-
-RTLP_SECURE_SNPRINTF(_vsnprintf_s, char, _vsnprintf)
-RTLP_SECURE_SNPRINTF(_vsnwprintf_s, wchar_t, _vsnwprintf)
-
-/**
- * @brief Formats wide characters into a buffer, at most Count of them or _TRUNCATE for as many as fit.
- *
- * @return Characters written without the terminator, or -1 when the output was cut.
- */
-int
-__cdecl
-_snwprintf_s(
-    _Out_writes_z_(SizeInWords) wchar_t *Buffer,
-    _In_ size_t SizeInWords,
-    _In_ size_t Count,
-    _In_z_ _Printf_format_string_ const wchar_t *Format,
-    ...)
-{
-    va_list ArgList;
-    int Written;
-
-    va_start(ArgList, Format);
-    Written = _vsnwprintf_s(Buffer, SizeInWords, Count, Format, ArgList);
-    va_end(ArgList);
-
-    return Written;
+    memset(Destination, Fill, Length);
 }
 
 /* EOF */
