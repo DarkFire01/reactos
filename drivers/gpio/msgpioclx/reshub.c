@@ -25,6 +25,9 @@
 
 #define GCX_HUB_FIRST_GUESS 95
 
+/* Largest connection descriptor asked for when the hub does not say */
+#define GCX_HUB_PROPERTIES_LIMIT 0x1000
+
 static PDEVICE_OBJECT GcxHubDevice;
 static PFILE_OBJECT GcxHubFile;
 
@@ -253,14 +256,15 @@ GcxQueryHubDescriptor(
                           &Information);
     if (Status == STATUS_BUFFER_TOO_SMALL)
     {
-        /* The header carries the full length even when the body did not fit */
+        /* A failed buffered request returns no header, so the size may be unknown */
         Header = *Buffer;
         ExFreePoolWithTag(Buffer, GCX_POOL_TAG);
 
         Length = FIELD_OFFSET(RH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER, ConnectionProperties) +
                  Header.PropertiesLength;
         if (Length <= GCX_HUB_FIRST_GUESS)
-            return STATUS_INVALID_BUFFER_SIZE;
+            Length = FIELD_OFFSET(RH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER, ConnectionProperties) +
+                     GCX_HUB_PROPERTIES_LIMIT;
 
         Buffer = ExAllocatePoolZero(NonPagedPoolNx, Length, GCX_POOL_TAG);
         if (Buffer == NULL)
@@ -399,8 +403,10 @@ GcxResolveGsivToPin(
     PGCX_CONTROLLER *Controller,
     PBANK_ID BankId,
     PPIN_NUMBER PinNumber,
-    PUSHORT DebounceTimeout)
+    PUSHORT DebounceTimeout,
+    PKINTERRUPT_POLARITY Polarity)
 {
+    PPNP_GPIO_INTERRUPT_IO_DESCRIPTOR Descriptor;
     PRH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER Output;
     PGCX_CONTROLLER Owner = NULL;
     UNICODE_STRING Name;
@@ -411,13 +417,30 @@ GcxResolveGsivToPin(
 
     *Controller = NULL;
     *DebounceTimeout = 0;
+    *Polarity = InterruptPolarityUnknown;
 
     Status = GcxQueryHubDescriptor(Gsiv, &Output);
     if (!NT_SUCCESS(Status))
         return Status;
 
-    if (GcxGpioDescriptor(Output) != NULL)
-        *DebounceTimeout = GcxGpioDescriptor(Output)->DebounceTimeout;
+    /* The interrupt resource carries no polarity, the descriptor does */
+    Descriptor = GcxGpioDescriptor(Output);
+    if (Descriptor != NULL)
+    {
+        *DebounceTimeout = Descriptor->DebounceTimeout;
+        switch (Descriptor->InterruptIoFlags & PNP_GPIO_IRQ_POLARITY)
+        {
+            case PNP_GPIO_IRQ_POLARITY_LOW:
+                *Polarity = InterruptActiveLow;
+                break;
+            case PNP_GPIO_IRQ_POLARITY_BOTH:
+                *Polarity = InterruptActiveBoth;
+                break;
+            default:
+                *Polarity = InterruptActiveHigh;
+                break;
+        }
+    }
 
     Status = GcxDescriptorPin(Output, &ControllerPin);
     if (NT_SUCCESS(Status))

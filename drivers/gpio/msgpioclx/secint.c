@@ -22,6 +22,7 @@ typedef struct _GCX_VIRQ
     BANK_ID BankId;
     PIN_NUMBER PinNumber;
     USHORT DebounceTimeout;
+    KINTERRUPT_POLARITY Polarity;
 } GCX_VIRQ, *PGCX_VIRQ;
 
 static GCX_HAL_SECONDARY_INFO GcxHalInfo;
@@ -75,6 +76,72 @@ GcxRemoveController(
 
 /**
  * @brief
+ * Returns the length of an ACPI name segment without its padding underscores.
+ */
+static
+USHORT
+GcxSegmentLength(
+    _In_reads_(Count) PCWSTR Segment,
+    _In_ USHORT Count)
+{
+    while (Count > 1 && Segment[Count - 1] == L'_')
+        Count--;
+
+    return Count;
+}
+
+/**
+ * @brief
+ * Compares two ACPI paths segment by segment, so \_SB_.GIO0 matches \_SB.GIO0.
+ */
+static
+BOOLEAN
+GcxBiosNamesMatch(
+    _In_ PCUNICODE_STRING First,
+    _In_ PCUNICODE_STRING Second)
+{
+    USHORT FirstCount = First->Length / sizeof(WCHAR);
+    USHORT SecondCount = Second->Length / sizeof(WCHAR);
+    USHORT FirstStart = 0, SecondStart = 0;
+    USHORT FirstEnd, SecondEnd, Length, Index;
+
+    while (FirstStart < FirstCount && SecondStart < SecondCount)
+    {
+        /* Separators and the root prefix must line up */
+        if (First->Buffer[FirstStart] == L'\\' || First->Buffer[FirstStart] == L'.')
+        {
+            if (First->Buffer[FirstStart] != Second->Buffer[SecondStart])
+                return FALSE;
+            FirstStart++;
+            SecondStart++;
+            continue;
+        }
+
+        for (FirstEnd = FirstStart; FirstEnd < FirstCount && First->Buffer[FirstEnd] != L'.'; FirstEnd++);
+        for (SecondEnd = SecondStart; SecondEnd < SecondCount && Second->Buffer[SecondEnd] != L'.'; SecondEnd++);
+
+        Length = GcxSegmentLength(&First->Buffer[FirstStart], FirstEnd - FirstStart);
+        if (Length != GcxSegmentLength(&Second->Buffer[SecondStart], SecondEnd - SecondStart))
+            return FALSE;
+
+        for (Index = 0; Index < Length; Index++)
+        {
+            if (RtlUpcaseUnicodeChar(First->Buffer[FirstStart + Index]) !=
+                RtlUpcaseUnicodeChar(Second->Buffer[SecondStart + Index]))
+            {
+                return FALSE;
+            }
+        }
+
+        FirstStart = FirstEnd;
+        SecondStart = SecondEnd;
+    }
+
+    return (FirstStart == FirstCount && SecondStart == SecondCount);
+}
+
+/**
+ * @brief
  * The controller the firmware knows by a given ACPI path, or NULL.
  */
 _Use_decl_annotations_
@@ -92,7 +159,7 @@ GcxFindControllerByBiosName(
     for (Entry = GcxControllerList.Flink; Entry != &GcxControllerList; Entry = Entry->Flink)
     {
         Candidate = CONTAINING_RECORD(Entry, GCX_CONTROLLER, ControllerLink);
-        if (RtlEqualUnicodeString(&Candidate->BiosName, BiosName, TRUE))
+        if (GcxBiosNamesMatch(&Candidate->BiosName, BiosName))
         {
             Match = Candidate;
             break;
@@ -184,7 +251,8 @@ GcxGetVirq(
                                  &Virq->Controller,
                                  &Virq->BankId,
                                  &Virq->PinNumber,
-                                 &Virq->DebounceTimeout);
+                                 &Virq->DebounceTimeout,
+                                 &Virq->Polarity);
     if (!NT_SUCCESS(Status))
     {
         ExFreePoolWithTag(Virq, GCX_POOL_TAG);
@@ -234,6 +302,9 @@ GcxHubEnableInterrupt(
         return Status;
 
     Controller = Virq.Controller;
+    if (Polarity == InterruptPolarityUnknown)
+        Polarity = Virq.Polarity;
+    ArmPolarity = Polarity;
 
     /* The token has to be in place before the pin can fire */
     Pin = GcxPin(Controller, Virq.BankId, Virq.PinNumber);

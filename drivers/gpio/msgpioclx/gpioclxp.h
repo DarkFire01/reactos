@@ -433,7 +433,8 @@ GcxResolveGsivToPin(
     _Outptr_ PGCX_CONTROLLER *Controller,
     _Out_ PBANK_ID BankId,
     _Out_ PPIN_NUMBER PinNumber,
-    _Out_ PUSHORT DebounceTimeout);
+    _Out_ PUSHORT DebounceTimeout,
+    _Out_ PKINTERRUPT_POLARITY Polarity);
 
 NTSTATUS
 NTAPI
