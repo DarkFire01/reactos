@@ -439,7 +439,7 @@ UacpiNtHalGpeEnableWakeEvents(VOID)
     return STATUS_SUCCESS;
 }
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
 /* The driver globals are already part of the hibernate image */
 static
 NTSTATUS
@@ -521,7 +521,7 @@ UacpiNtHalPmHandshake(VOID)
         (PVOID)(ULONG_PTR)UacpiNtHalEnableDisableGpeEvents;
     UacpiNtDriverHalTable.InitEnableAcpi = (PVOID)(ULONG_PTR)UacpiNtHalInitEnableAcpi;
     UacpiNtDriverHalTable.GpeEnableWakeEvents = (PVOID)(ULONG_PTR)UacpiNtHalGpeEnableWakeEvents;
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     UacpiNtDriverHalTable.MarkHiberPhase = (PVOID)(ULONG_PTR)UacpiNtHalMarkHiberPhase;
 #endif
 

@@ -800,7 +800,7 @@ NTAPI
 UacpiNtIsSecondaryGsiv(
     _In_ ULONG Gsiv)
 {
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     if (!HALPRIVATEDISPATCH->HalIsInterruptTypeSecondary)
         return FALSE;
 
@@ -859,7 +859,7 @@ UacpiNtResolveSecondaryVector(
     _Out_ PULONG Vector,
     _Out_ PKIRQL Irql)
 {
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     INTERRUPT_CONNECTION_DATA Query;
     ULONG PrimaryGsiv = 0;
     ULONG PrimaryVector = 0;
@@ -872,7 +872,7 @@ UacpiNtResolveSecondaryVector(
 
     *Irql = HIGH_LEVEL;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     if (!HALPRIVATEDISPATCH->HalSecondaryInterruptQueryPrimaryInformation)
         return STATUS_SUCCESS;
 
@@ -882,7 +882,7 @@ UacpiNtResolveSecondaryVector(
     Query.Vectors[0].ControllerInput.Gsiv = Gsiv;
 
     /* Windows 10 takes the vector data, Windows 8 the whole connection data */
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
     Status = HALPRIVATEDISPATCH->HalSecondaryInterruptQueryPrimaryInformation(&Query.Vectors[0],
                                                                               &PrimaryGsiv);
 #else
