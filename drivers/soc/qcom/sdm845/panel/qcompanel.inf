@@ -25,7 +25,6 @@ ExcludeFromSelect = *
 %Mfg% = Mfg
 
 [Mfg]
-%QCOMPANEL.DeviceDesc% = QCOMPANEL_Device, ACPI\QCOM027E
 
 [QCOMPANEL_Device.NT]
 CopyFiles = QCOMPANEL_CopyFiles

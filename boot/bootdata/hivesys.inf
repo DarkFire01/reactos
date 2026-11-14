@@ -181,8 +181,6 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","Se
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","Service",0x00000000,"qcompwrkey"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","Service",0x00000000,"qcompanel"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","Service",0x00000000,"hidusb"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
@@ -2566,6 +2564,30 @@ HKLM,"SYSTEM\CurrentControlSet\Enum\PCI\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00
 HKLM,"SYSTEM\CurrentControlSet\Enum\PCI\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00\3&e5016b12&10","ClassGUID",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}"
 HKLM,"SYSTEM\CurrentControlSet\Enum\PCI\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00\3&e5016b12&10","Class",0x00000000,"Display"
 HKLM,"SYSTEM\CurrentControlSet\Enum\PCI\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00\3&e5016b12&10","Driver",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}\0000"
+
+; Qualcomm Adreno 630 (SDM845/SDM850) WDDM adapter, owns GPU0 and the panel; values from qcdx850.inf
+HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","DisplayName",0x00000000,"Qualcomm(R) Adreno(TM) 630 GPU"
+HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","Group",0x00000000,"Video"
+HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","ImagePath",0x00020000,"system32\drivers\qcdxkm850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","Service",0x00000000,"QCDX"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","ClassGUID",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","DriverDesc",0x00000000,"Qualcomm(R) Adreno(TM) 630 GPU"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","InstalledDisplayDrivers",0x00010000,"qcdx11arm64xum850","qcdx11arm64xum850","qcdx11arm64xum850","qcdx12arm64xum850"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","UserModeDriverName",0x00010000,"<>","qcdx11arm64xum850.dll","qcdx11arm64xum850.dll","qcdx12arm64xum850.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","UserModeDriverNameX64",0x00010000,""
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","GpuStatisticsDriverName",0x00000000,"qcdxsdarm64x.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","VgaCompatible",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\_SB_GPU0","Service",0x00000000,"QCDX"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\_SB_GPU0","ClassGUID",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\_SB_GPU0","Class",0x00000000,"Display"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\_SB_GPU0","Driver",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}\0010"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\2&ccb86d17&_SB_GPU0","Service",0x00000000,"QCDX"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\2&ccb86d17&_SB_GPU0","ClassGUID",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\2&ccb86d17&_SB_GPU0","Class",0x00000000,"Display"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\2&ccb86d17&_SB_GPU0","Driver",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}\0010"
 
 ; Virtual FAT filesystem driver
 HKLM,"SYSTEM\CurrentControlSet\Services\fastfat","ErrorControl",0x00010001,0x00000001
