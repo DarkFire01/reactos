@@ -7,7 +7,12 @@
 
 #include <windows.h>
 #include <fenv.h>
+#ifdef _M_ARM64
+#include <intrin.h>
+#define __ATTRIBUTE_SSE__
+#else
 #include <xmmintrin.h>
+#endif
 
 /*
  * fenv_t and fexcept_t hold the x87 unit in bits 16-23, SSE in bits 24-31
@@ -78,7 +83,7 @@ static
 BOOLEAN
 FpHasSse(VOID)
 {
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) || defined(_M_ARM64)
     return TRUE;
 #elif defined(_M_IX86)
     static LONG Present = -1;
@@ -91,6 +96,91 @@ FpHasSse(VOID)
     return FALSE;
 #endif
 }
+
+#ifdef _M_ARM64
+
+/*
+ * ARM64 keeps the SSE fields in FPCR and FPSR. The rest of this file works in
+ * MXCSR layout, so the two registers are translated to and from it here.
+ */
+#define FP_ARM_FPSR_IDC     0x80
+#define FP_ARM_FPCR_IDE     0x8000
+#define FP_ARM_FPCR_RMODE   22
+#define FP_ARM_FPCR_FZ      0x01000000
+
+/* FPSR cumulative flags IOC, DZC, OFC, UFC, IXC in MXCSR flag order (IE, ZE, OE, UE, PE) */
+static const unsigned char FpArmToCsrFlag[5] = { 0x01, 0x04, 0x08, 0x10, 0x20 };
+
+/* MXCSR rounding is nearest, down, up, zero; FPCR is nearest, up, down, zero */
+static const unsigned char FpArmRounding[4] = { 0, 2, 1, 3 };
+
+static
+unsigned int
+FpGetCsr(VOID)
+{
+    unsigned int Fpcr = (unsigned int)_ReadStatusReg(ARM64_FPCR);
+    unsigned int Fpsr = (unsigned int)_ReadStatusReg(ARM64_FPSR);
+    unsigned int Csr = 0, Index;
+
+    for (Index = 0; Index < ARRAYSIZE(FpArmToCsrFlag); Index++)
+    {
+        if (Fpsr & (1 << Index))
+            Csr |= FpArmToCsrFlag[Index];
+
+        /* A trap enable is the inverse of an MXCSR mask */
+        if (!(Fpcr & (0x100 << Index)))
+            Csr |= FpArmToCsrFlag[Index] << FP_CSR_MASK_SHIFT;
+    }
+
+    if (Fpsr & FP_ARM_FPSR_IDC)
+        Csr |= 0x02;
+    if (!(Fpcr & FP_ARM_FPCR_IDE))
+        Csr |= 0x02 << FP_CSR_MASK_SHIFT;
+
+    Csr |= FpArmRounding[(Fpcr >> FP_ARM_FPCR_RMODE) & 3] << FP_CSR_RC_SHIFT;
+
+    /* FZ flushes both results and inputs, so it stands for FZ and DAZ */
+    if (Fpcr & FP_ARM_FPCR_FZ)
+        Csr |= FP_CSR_FZ | FP_CSR_DAZ;
+
+    return Csr;
+}
+
+static
+void
+FpSetCsr(
+    _In_ unsigned int Csr)
+{
+    unsigned int Fpcr = (unsigned int)_ReadStatusReg(ARM64_FPCR);
+    unsigned int Fpsr = (unsigned int)_ReadStatusReg(ARM64_FPSR);
+    unsigned int Index;
+
+    Fpcr &= ~(0x1F00 | FP_ARM_FPCR_IDE | (3 << FP_ARM_FPCR_RMODE) | FP_ARM_FPCR_FZ);
+    Fpsr &= ~(0x1F | FP_ARM_FPSR_IDC);
+
+    for (Index = 0; Index < ARRAYSIZE(FpArmToCsrFlag); Index++)
+    {
+        if (Csr & FpArmToCsrFlag[Index])
+            Fpsr |= 1 << Index;
+        if (!(Csr & (FpArmToCsrFlag[Index] << FP_CSR_MASK_SHIFT)))
+            Fpcr |= 0x100 << Index;
+    }
+
+    if (Csr & 0x02)
+        Fpsr |= FP_ARM_FPSR_IDC;
+    if (!(Csr & (0x02 << FP_CSR_MASK_SHIFT)))
+        Fpcr |= FP_ARM_FPCR_IDE;
+
+    Fpcr |= FpArmRounding[(Csr >> FP_CSR_RC_SHIFT) & 3] << FP_ARM_FPCR_RMODE;
+
+    if (Csr & (FP_CSR_FZ | FP_CSR_DAZ))
+        Fpcr |= FP_ARM_FPCR_FZ;
+
+    _WriteStatusReg(ARM64_FPCR, Fpcr);
+    _WriteStatusReg(ARM64_FPSR, Fpsr);
+}
+
+#else
 
 static
 __ATTRIBUTE_SSE__
@@ -108,6 +198,8 @@ FpSetCsr(
 {
     _mm_setcsr(Csr);
 }
+
+#endif
 
 #ifdef _M_IX86
 
