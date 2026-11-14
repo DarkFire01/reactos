@@ -61,6 +61,14 @@ CmpFindDrivers(
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
+CmpAddDependentDrivers(
+    _In_ PHHIVE Hive,
+    _In_ HCELL_INDEX ControlSet,
+    _Inout_ PLIST_ENTRY DriverListHead);
+
+CODE_SEG("INIT")
+BOOLEAN
+NTAPI
 CmpSortDriverList(
     _In_ PHHIVE Hive,
     _In_ HCELL_INDEX ControlSet,

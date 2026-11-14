@@ -804,6 +804,129 @@ CmpFindDrivers(
     return TRUE;
 }
 
+#ifdef _BLDR_
+/**
+ * @brief
+ * Adds every service a listed driver names in DependOnService, whatever its start type.
+ *
+ * @param[in]   Hive
+ * The SYSTEM hive.
+ *
+ * @param[in]   ControlSet
+ * The control set registry key's hive cell.
+ *
+ * @param[in,out]   DriverListHead
+ * The driver list to extend. Added drivers are walked too, so chains resolve.
+ *
+ * @return
+ * TRUE if the services and group order keys were found, FALSE if not.
+ **/
+CODE_SEG("INIT")
+BOOLEAN
+NTAPI
+CmpAddDependentDrivers(
+    _In_ PHHIVE Hive,
+    _In_ HCELL_INDEX ControlSet,
+    _Inout_ PLIST_ENTRY DriverListHead)
+{
+    HCELL_INDEX ServicesCell, ControlCell, GroupOrderCell, DriverCell, ValueCell;
+    PCM_KEY_NODE ControlNode, ServicesNode, Node;
+    PBOOT_DRIVER_NODE DriverNode;
+    PCM_KEY_VALUE Value;
+    PLIST_ENTRY Entry;
+    UNICODE_STRING Name;
+    UNICODE_STRING KeyPath;
+    UNICODE_STRING Dependency;
+    PWCHAR Cursor;
+    PWCHAR End;
+    ULONG Length;
+
+    ASSERT(Hive->ReleaseCellRoutine == NULL);
+
+    ControlNode = (PCM_KEY_NODE)HvGetCell(Hive, ControlSet);
+    if (!ControlNode)
+        return FALSE;
+
+    RtlInitUnicodeString(&Name, L"Services");
+    ServicesCell = CmpFindSubKeyByName(Hive, ControlNode, &Name);
+    if (ServicesCell == HCELL_NIL)
+        return FALSE;
+
+    ServicesNode = (PCM_KEY_NODE)HvGetCell(Hive, ServicesCell);
+    if (!ServicesNode)
+        return FALSE;
+
+    RtlInitUnicodeString(&Name, L"Control");
+    ControlCell = CmpFindSubKeyByName(Hive, ControlNode, &Name);
+    if (ControlCell == HCELL_NIL)
+        return FALSE;
+
+    Node = (PCM_KEY_NODE)HvGetCell(Hive, ControlCell);
+    if (!Node)
+        return FALSE;
+
+    RtlInitUnicodeString(&Name, L"GroupOrderList");
+    GroupOrderCell = CmpFindSubKeyByName(Hive, Node, &Name);
+    if (GroupOrderCell == HCELL_NIL)
+        return FALSE;
+
+    RtlInitUnicodeString(&KeyPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\");
+
+    /* New drivers go in at the head, walking from the tail reaches them as well */
+    for (Entry = DriverListHead->Blink; Entry != DriverListHead; Entry = Entry->Blink)
+    {
+        DriverNode = CONTAINING_RECORD(Entry, BOOT_DRIVER_NODE, ListEntry.Link);
+
+        DriverCell = CmpFindSubKeyByName(Hive, ServicesNode, &DriverNode->Name);
+        if (DriverCell == HCELL_NIL)
+            continue;
+
+        Node = (PCM_KEY_NODE)HvGetCell(Hive, DriverCell);
+        if (!Node)
+            continue;
+
+        RtlInitUnicodeString(&Name, L"DependOnService");
+        ValueCell = CmpFindValueByName(Hive, Node, &Name);
+        if (ValueCell == HCELL_NIL)
+            continue;
+
+        Value = (PCM_KEY_VALUE)HvGetCell(Hive, ValueCell);
+        if (!Value || Value->Type != REG_MULTI_SZ)
+            continue;
+
+        Cursor = (PWCHAR)CmpValueToData(Hive, Value, &Length);
+        if (!Cursor)
+            continue;
+
+        End = Cursor + Length / sizeof(WCHAR);
+        while (Cursor < End && *Cursor)
+        {
+            Dependency.Buffer = Cursor;
+            Dependency.Length = 0;
+            while (Cursor < End && *Cursor)
+            {
+                Dependency.Length += sizeof(WCHAR);
+                Cursor++;
+            }
+            Dependency.MaximumLength = Dependency.Length;
+            Cursor++;
+
+            if (CmpIsDriverInList(DriverListHead, &Dependency, NULL))
+                continue;
+
+            DriverCell = CmpFindSubKeyByName(Hive, ServicesNode, &Dependency);
+            if (DriverCell == HCELL_NIL)
+                continue;
+
+            if (!CmpAddDriverToList(Hive, DriverCell, GroupOrderCell, &KeyPath, DriverListHead))
+                CMTRACE(CM_BOOT_DEBUG, "  Failed to add dependency '%wZ'\n", &Dependency);
+        }
+    }
+
+    return TRUE;
+}
+#endif /* _BLDR_ */
+
 /**
  * @brief
  * Performs the driver list sorting, according to the ordering list.
