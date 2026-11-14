@@ -34,10 +34,17 @@ GcxDispatchBank(
             continue;
 
         Pin = &Bank->Pins[PinNumber];
-        if ((Pin->Flags & GCX_PIN_INTERRUPT_ENABLED) != 0 && GcxDeliverPinInterrupt(Pin))
+        if ((Pin->Flags & GCX_PIN_INTERRUPT_ENABLED) == 0 || !GcxDeliverPinInterrupt(Pin))
+        {
+            Unclaimed |= 1ULL << PinNumber;
             continue;
+        }
 
-        Unclaimed |= 1ULL << PinNumber;
+        /* The edge that fired is gone, wait for the other one */
+        if ((Pin->Flags & GCX_PIN_EMULATED_ACTIVE_BOTH) != 0)
+            GcxFlipPinPolarity(Controller, Bank->BankId, PinNumber);
+
+        GcxStartDebounce(Controller, Pin);
     }
 
     if (Unclaimed != 0)

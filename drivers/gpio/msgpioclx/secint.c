@@ -21,6 +21,7 @@ typedef struct _GCX_VIRQ
     PGCX_CONTROLLER Controller;
     BANK_ID BankId;
     PIN_NUMBER PinNumber;
+    USHORT DebounceTimeout;
 } GCX_VIRQ, *PGCX_VIRQ;
 
 static GCX_HAL_SECONDARY_INFO GcxHalInfo;
@@ -179,7 +180,11 @@ GcxGetVirq(
     if (Virq == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Status = GcxResolveGsivToPin(Gsiv, &Virq->Controller, &Virq->BankId, &Virq->PinNumber);
+    Status = GcxResolveGsivToPin(Gsiv,
+                                 &Virq->Controller,
+                                 &Virq->BankId,
+                                 &Virq->PinNumber,
+                                 &Virq->DebounceTimeout);
     if (!NT_SUCCESS(Status))
     {
         ExFreePoolWithTag(Virq, GCX_POOL_TAG);
@@ -215,6 +220,9 @@ GcxHubEnableInterrupt(
     _In_ KINTERRUPT_POLARITY Polarity,
     _In_ PVOID ControllerContext)
 {
+    KINTERRUPT_POLARITY ArmPolarity = Polarity;
+    PGCX_CONTROLLER Controller;
+    BOOLEAN EmulateBoth;
     GCX_VIRQ Virq;
     PGCX_PIN Pin;
     NTSTATUS Status;
@@ -225,24 +233,49 @@ GcxHubEnableInterrupt(
     if (!NT_SUCCESS(Status))
         return Status;
 
+    Controller = Virq.Controller;
+
     /* The token has to be in place before the pin can fire */
-    Pin = GcxPin(Virq.Controller, Virq.BankId, Virq.PinNumber);
+    Pin = GcxPin(Controller, Virq.BankId, Virq.PinNumber);
     if (Pin == NULL)
         return STATUS_INVALID_DEVICE_STATE;
 
+    /* A controller without both edge support waits for one level at a time */
+    EmulateBoth = (Polarity == InterruptActiveBoth || Polarity == InterruptActiveBothTriggerHigh) &&
+                  Controller->Information.Flags.EmulateActiveBoth;
+    if (EmulateBoth)
+    {
+        GcxQueryActiveBothInitialPolarity(Gsiv, &ArmPolarity);
+        if (ArmPolarity == InterruptPolarityUnknown)
+            ArmPolarity = InterruptActiveHigh;
+    }
+
     Pin->Gsiv = Gsiv;
     Pin->TargetContext = ControllerContext;
+    Pin->DebounceTimeout = Controller->Information.Flags.EmulateDebouncing ? Virq.DebounceTimeout : 0;
+    if (Pin->DebounceTimeout != 0)
+    {
+        Status = GcxArmDebounce(Controller, Virq.BankId, Virq.PinNumber);
+        if (!NT_SUCCESS(Status))
+            Pin->DebounceTimeout = 0;
+    }
 
-    Status = GcxEnableInterrupt(Virq.Controller,
+    Status = GcxEnableInterrupt(Controller,
                                 Virq.BankId,
                                 Virq.PinNumber,
                                 Mode,
-                                Polarity,
+                                ArmPolarity,
                                 GPIO_PIN_PULL_CONFIGURATION_DEFAULT);
     if (!NT_SUCCESS(Status))
+    {
         Pin->TargetContext = NULL;
+        return Status;
+    }
 
-    return Status;
+    if (EmulateBoth)
+        Pin->Flags |= GCX_PIN_EMULATED_ACTIVE_BOTH;
+
+    return STATUS_SUCCESS;
 }
 
 static
