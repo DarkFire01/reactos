@@ -855,6 +855,53 @@ KiDisplayFrames(
     }
 }
 
+#ifdef _M_ARM64
+/**
+ * @brief
+ * For an unhandled exception, prints where it hit and the frames that led there,
+ * taken from the exception context rather than the dispatch path.
+ */
+static
+VOID
+KiDisplayExceptionContext(VOID)
+{
+    PCONTEXT Context;
+    PVOID Frames[10];
+    ULONG_PTR Frame;
+    ULONG Count = 0;
+
+    /* The _M forms of these codes only add bit 28 */
+    if ((KiBugCheckData[0] & ~0x10000000UL) != SYSTEM_THREAD_EXCEPTION_NOT_HANDLED &&
+        (KiBugCheckData[0] & ~0x10000000UL) != KERNEL_MODE_EXCEPTION_NOT_HANDLED)
+    {
+        return;
+    }
+
+    Context = (PCONTEXT)KiBugCheckData[4];
+    if (!Context || !MmIsAddressValid(Context) || !MmIsAddressValid((PUCHAR)(Context + 1) - 1))
+        return;
+
+    Frames[Count++] = (PVOID)Context->Pc;
+    Frames[Count++] = (PVOID)Context->Lr;
+
+    /* Each frame record holds the caller's frame pointer and return address */
+    Frame = Context->Fp;
+    while (Count < RTL_NUMBER_OF(Frames) && Frame && !(Frame & 0xF) &&
+           MmIsAddressValid((PVOID)Frame) && MmIsAddressValid((PVOID)(Frame + sizeof(PVOID))))
+    {
+        Frames[Count] = ((PVOID *)Frame)[1];
+        if (!Frames[Count])
+            break;
+        Count++;
+        Frame = ((PULONG_PTR)Frame)[0];
+    }
+
+    InbvDisplayString("Exception at, then returning to:\r\n");
+    KiDisplayFrames(Frames, Count);
+    InbvDisplayString("\r\n");
+}
+#endif
+
 /**
  * @brief
  * Prints the bug checking thread's call stack on the blue screen, as
@@ -1182,6 +1229,9 @@ KiDisplayBlueScreen(IN ULONG MessageId,
                        (PVOID)KiBugCheckData[4]);
     InbvDisplayString(AnsiName);
 
+#ifdef _M_ARM64
+    KiDisplayExceptionContext();
+#endif
     KiDisplayBugCheckBackTrace();
 #ifdef _M_ARM64
     KiDisplayWaitingThreads();
