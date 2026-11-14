@@ -120,9 +120,9 @@ CALLBACK
 MidiWriteDone(
     _In_ DWORD ErrorCode,
     _In_ DWORD Bytes,
-    _In_ LPOVERLAPPED Overlapped)
+    _Inout_ PSOUND_OVERLAPPED Overlapped)
 {
-    PMIDI_PACKET Packet = CONTAINING_RECORD(Overlapped, MIDI_PACKET, Overlap.Standard);
+    PMIDI_PACKET Packet = CONTAINING_RECORD(Overlapped, MIDI_PACKET, Overlap);
     PSOUND_DEVICE_INSTANCE Instance = Packet->Overlap.SoundDeviceInstance;
 
     Instance->MidiPending--;
@@ -427,7 +427,7 @@ CALLBACK
 MidiReadDone(
     _In_ DWORD ErrorCode,
     _In_ DWORD Bytes,
-    _In_ LPOVERLAPPED Overlapped);
+    _Inout_ PSOUND_OVERLAPPED Overlapped);
 
 static
 MMRESULT
@@ -455,9 +455,9 @@ CALLBACK
 MidiReadDone(
     _In_ DWORD ErrorCode,
     _In_ DWORD Bytes,
-    _In_ LPOVERLAPPED Overlapped)
+    _Inout_ PSOUND_OVERLAPPED Overlapped)
 {
-    PMIDI_PACKET Packet = CONTAINING_RECORD(Overlapped, MIDI_PACKET, Overlap.Standard);
+    PMIDI_PACKET Packet = CONTAINING_RECORD(Overlapped, MIDI_PACKET, Overlap);
     PSOUND_DEVICE_INSTANCE Instance = Packet->Overlap.SoundDeviceInstance;
     PKSMUSICFORMAT Record;
     DWORD Offset = 0, Count, Index, Time;
