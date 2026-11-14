@@ -1328,6 +1328,9 @@ IopBuildFixedConfiguration(
             {
                 IsAfterArbitrated = TRUE;
 
+                /* What the firmware set up stands when the arbiter leaves the entry alone */
+                Requirement->Device.Assignment = *Cm;
+
                 Status = IopFindRequirementHandlers(Requirement, ListInterfaceType);
                 if (!NT_SUCCESS(Status))
                 {
@@ -1430,7 +1433,18 @@ IopBuildResourceLists(
             continue;
         }
 
-        Status = IopTranslateAssignmentToDevice(Requirement);
+        /* A boot entry the arbiter passed over keeps the firmware's descriptor */
+        if (Requirement->Top->Entry.Result == ArbiterResultUndefined &&
+            Requirement->Top->Assignment.Type == CmResourceTypeMaximum &&
+            Requirement->Device.Assignment.Type != CmResourceTypeMaximum)
+        {
+            Status = STATUS_SUCCESS;
+        }
+        else
+        {
+            Status = IopTranslateAssignmentToDevice(Requirement);
+        }
+
         if (NT_SUCCESS(Status))
         {
             *Raw = Requirement->Device.Assignment;
