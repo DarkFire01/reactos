@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS Qualcomm RIL
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     QMI transport over the IPC router \Device\IPC port
+ * PURPOSE:     QMI transport over the Qualcomm IPC router (\Device\IPC)
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
@@ -9,12 +9,40 @@
 #include <winioctl.h>
 #include <string.h>
 
-/* The router control interface, FILE_DEVICE_NETWORK function codes 0x800.. */
+/* The Qualcomm IPC router control interface, FILE_DEVICE_NETWORK function codes 0x800.. */
 #define QC_FILE_DEVICE_NETWORK      0x00000012
-#define QC_IOCTL_LOOKUP_SERVER      CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define QC_IOCTL_GET_SELF           CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x805, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define QC_IOCTL_TX_EVENT           CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define QC_IOCTL_FIND_SERVERS       CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define QC_IOCTL_PORT_OPEN          CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x807, METHOD_NEITHER, FILE_ANY_ACCESS)
+#define QC_IOCTL_PORT_CLOSE         CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x808, METHOD_NEITHER, FILE_ANY_ACCESS)
 
 #define QC_IPC_DEVICE               L"\\\\.\\IPC"
+
+/* A send refused with ERROR_BUSY may go again once the router reports this event */
+#define QC_TX_EVENT_RESUME          0
+#define QC_TX_EVENT_SIZE            20
+
+typedef struct _QC_FIND_SERVERS
+{
+    ULONG ServiceId;
+    ULONG Instance;
+    ULONG InstanceMask;
+    ULONG Capacity;
+} QC_FIND_SERVERS;
+
+typedef struct _QC_SERVER_ENTRY
+{
+    ULONG ServiceId;
+    ULONG Instance;
+    QC_ADDR Addr;
+} QC_SERVER_ENTRY;
+
+typedef struct _QC_FOUND_SERVERS
+{
+    ULONG Total;
+    ULONG Returned;
+    QC_SERVER_ENTRY Servers[1];
+} QC_FOUND_SERVERS;
 
 /* The wire service ids, indexed by QC_SVC */
 static const ULONG QcServiceIds[QcSvcCount] =
@@ -74,13 +102,12 @@ QcIpcOpen(
 {
     ULONG Attempt;
     DWORD Returned;
-    QC_ADDR Self;
 
     for (Attempt = 0; Attempt < QC_RESOLVE_RETRY; Attempt++)
     {
         Modem->Ipc = CreateFileW(QC_IPC_DEVICE,
                                  GENERIC_READ | GENERIC_WRITE,
-                                 0,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                                  NULL,
                                  OPEN_EXISTING,
                                  FILE_FLAG_OVERLAPPED,
@@ -97,13 +124,16 @@ QcIpcOpen(
         return FALSE;
     }
 
-    if (QcIoctl(Modem->Ipc, QC_IOCTL_GET_SELF, NULL, 0, &Self, sizeof(Self), &Returned) &&
-        Returned >= sizeof(Self))
+    /* The handle has no router port until it asks for one */
+    if (!QcIoctl(Modem->Ipc, QC_IOCTL_PORT_OPEN, NULL, 0, NULL, 0, &Returned))
     {
-        Modem->Self = Self;
+        QcTrace("IPC router refused a port (%lu)\n", GetLastError());
+        CloseHandle(Modem->Ipc);
+        Modem->Ipc = INVALID_HANDLE_VALUE;
+        return FALSE;
     }
 
-    QcTrace("IPC router port %lu:%lu\n", Modem->Self.Node, Modem->Self.Port);
+    QcTrace("IPC router port open\n");
     return TRUE;
 }
 
@@ -111,8 +141,11 @@ VOID
 QcIpcClose(
     _In_ PQC_MODEM Modem)
 {
+    DWORD Returned;
+
     if (Modem->Ipc != INVALID_HANDLE_VALUE)
     {
+        QcIoctl(Modem->Ipc, QC_IOCTL_PORT_CLOSE, NULL, 0, NULL, 0, &Returned);
         CloseHandle(Modem->Ipc);
         Modem->Ipc = INVALID_HANDLE_VALUE;
     }
@@ -123,7 +156,8 @@ QcServiceEnsure(
     _In_ PQC_MODEM Modem,
     _In_ QC_SVC Which)
 {
-    ULONG Lookup[2];
+    QC_FIND_SERVERS Find;
+    QC_FOUND_SERVERS Found;
     QC_ADDR Addr;
     DWORD Returned;
     BOOL Ready;
@@ -134,16 +168,22 @@ QcServiceEnsure(
     if (Ready)
         return TRUE;
 
-    Lookup[0] = QcServiceIds[Which];
-    Lookup[1] = QC_ROUTER_NAME(QC_INSTANCE_DEFAULT, QC_VERSION_DEFAULT);
+    Find.ServiceId = QcServiceIds[Which];
+    Find.Instance = QC_ROUTER_NAME(QC_INSTANCE_DEFAULT, QC_VERSION_DEFAULT);
+    Find.InstanceMask = MAXULONG;
+    Find.Capacity = 1;
 
-    if (!QcIoctl(Modem->Ipc, QC_IOCTL_LOOKUP_SERVER, Lookup, sizeof(Lookup),
-                 &Addr, sizeof(Addr), &Returned) ||
-        Returned < sizeof(Addr))
+    /* The router wants the output sized for exactly the entries asked for */
+    ZeroMemory(&Found, sizeof(Found));
+    if (!QcIoctl(Modem->Ipc, QC_IOCTL_FIND_SERVERS, &Find, sizeof(Find),
+                 &Found, sizeof(Found), &Returned) ||
+        Found.Returned == 0)
     {
-        QcTrace("service %lu not registered yet (0x%lx)", QcServiceIds[Which], GetLastError());
+        QcTrace("service %lu not registered yet (0x%lx)\n", QcServiceIds[Which], GetLastError());
         return FALSE;
     }
+
+    Addr = Found.Servers[0].Addr;
 
     EnterCriticalSection(&Modem->ServiceLock);
     Modem->Services[Which].ServiceId = QcServiceIds[Which];
@@ -154,6 +194,26 @@ QcServiceEnsure(
 
     QcTrace("service %lu at %lu:%lu\n", QcServiceIds[Which], Addr.Node, Addr.Port);
     return TRUE;
+}
+
+/* Waits for the router to take writes again after one was refused as busy */
+static
+BOOL
+QcWaitTxResume(
+    _In_ PQC_MODEM Modem)
+{
+    ULONG Event[QC_TX_EVENT_SIZE / sizeof(ULONG)];
+    DWORD Returned;
+
+    for (;;)
+    {
+        ZeroMemory(Event, sizeof(Event));
+        if (!QcIoctl(Modem->Ipc, QC_IOCTL_TX_EVENT, NULL, 0, Event, sizeof(Event), &Returned))
+            return FALSE;
+
+        if (Event[0] == QC_TX_EVENT_RESUME)
+            return TRUE;
+    }
 }
 
 /* Sends one framed message to a destination port */
@@ -187,8 +247,14 @@ QcSendTo(
     }
 
     EnterCriticalSection(&Modem->SendLock);
-    Ok = WriteFile(Modem->Ipc, Frame, 8 + Length, NULL, &Overlapped);
-    Ok = QcOverlapped(Modem->Ipc, Ok, &Overlapped, &Written);
+    for (;;)
+    {
+        ResetEvent(Overlapped.hEvent);
+        Ok = WriteFile(Modem->Ipc, Frame, 8 + Length, NULL, &Overlapped);
+        Ok = QcOverlapped(Modem->Ipc, Ok, &Overlapped, &Written);
+        if (Ok || GetLastError() != ERROR_BUSY || !QcWaitTxResume(Modem))
+            break;
+    }
     LeaveCriticalSection(&Modem->SendLock);
 
     CloseHandle(Overlapped.hEvent);
