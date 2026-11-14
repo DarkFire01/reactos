@@ -174,6 +174,27 @@ KeInvalidateAllCaches(VOID)
     return TRUE;
 }
 
+/**
+ * @brief Writes a range back to memory and drops it from the data and instruction caches.
+ *
+ * @remarks DC CIVAC and IC IALLUIS are broadcast to the inner shareable domain, so no IPI is needed.
+ */
+VOID
+NTAPI
+KeInvalidateRangeAllCaches(
+    _In_ PVOID BaseAddress,
+    _In_ ULONG Length)
+{
+    KeArm64SweepDcacheRange(BaseAddress, Length);
+
+    /* CTR_EL0.DIC means instruction fetches already see the data side */
+    if (!(KeArm64ReadRegister(ARM64_CTR_EL0) & (1ULL << 29)))
+        KeArm64SweepIcacheRange(BaseAddress, Length);
+
+    __dsb(_ARM64_BARRIER_SY);
+    __isb(_ARM64_BARRIER_SY);
+}
+
 ULONG
 NTAPI
 KeGetRecommendedSharedDataAlignment(VOID)
