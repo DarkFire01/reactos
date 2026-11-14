@@ -53,6 +53,8 @@ typedef struct _HALP_EFI_TIME
 static KSPIN_LOCK HalpEfiLock;
 static PVOID HalpEfiGetTime;
 static PVOID HalpEfiSetTime;
+static PVOID HalpEfiGetVariable;
+static PVOID HalpEfiSetVariable;
 
 /* FUNCTIONS *****************************************************************/
 
@@ -130,6 +132,8 @@ HalpInitializeEfiRuntime(
     Services = EfiInformation->VirtualEfiRuntimeServices;
     HalpEfiGetTime = (PVOID)Services->GetTime;
     HalpEfiSetTime = (PVOID)Services->SetTime;
+    HalpEfiGetVariable = (PVOID)Services->GetVariable;
+    HalpEfiSetVariable = (PVOID)Services->SetVariable;
 }
 
 /* A firmware call masks every interrupt, the firmware runs without the kernel's state */
@@ -144,7 +148,7 @@ HalpCallEfiClock(
 
     KeRaiseIrql(HIGH_LEVEL, &OldIrql);
     KeAcquireSpinLockAtDpcLevel(&HalpEfiLock);
-    Status = HalpCallEfiFirmware(Function, (ULONG64)EfiTime, 0);
+    Status = HalpCallEfiFirmware(Function, (ULONG64)EfiTime, 0, 0, 0, 0);
     KeReleaseSpinLockFromDpcLevel(&HalpEfiLock);
     KeLowerIrql(OldIrql);
 
@@ -216,6 +220,203 @@ HalSetRealTimeClock(
     EfiTime.Nanosecond = Time->Milliseconds * 1000000;
 
     return (HalpCallEfiClock(HalpEfiSetTime, &EfiTime) == 0);
+}
+
+/* UEFI status codes GetVariable returns, the high bit marks an error */
+#define HALP_EFI_ERROR(Code)            (0x8000000000000000ULL | (Code))
+#define HALP_EFI_INVALID_PARAMETER      HALP_EFI_ERROR(2)
+#define HALP_EFI_UNSUPPORTED            HALP_EFI_ERROR(3)
+#define HALP_EFI_BUFFER_TOO_SMALL       HALP_EFI_ERROR(5)
+#define HALP_EFI_NOT_FOUND              HALP_EFI_ERROR(14)
+#define HALP_EFI_SECURITY_VIOLATION     HALP_EFI_ERROR(26)
+#define HALP_EFI_OUT_OF_RESOURCES       HALP_EFI_ERROR(9)
+#define HALP_EFI_WRITE_PROTECTED        HALP_EFI_ERROR(8)
+
+/**
+ * @brief Reads a UEFI variable through the runtime services.
+ *
+ * @return STATUS_BUFFER_TOO_SMALL with the needed size in ValueLength when Value is too small.
+ */
+NTSTATUS
+NTAPI
+HalGetEnvironmentVariableEx(
+    _In_ PCWSTR VariableName,
+    _In_ LPGUID VendorGuid,
+    _Out_writes_bytes_opt_(*ValueLength) PVOID Value,
+    _Inout_ PULONG ValueLength,
+    _Out_opt_ PULONG Attributes)
+{
+    struct
+    {
+        GUID Guid;
+        ULONG Attributes;
+        ULONG64 DataSize;
+    } *Call;
+    SIZE_T NameSize;
+    PWSTR Name;
+    PVOID Data = NULL;
+    ULONG64 EfiStatus;
+    NTSTATUS Status;
+    KIRQL OldIrql;
+
+    if (!HalpEfiGetVariable)
+        return STATUS_NOT_IMPLEMENTED;
+
+    /* The firmware runs at HIGH_LEVEL, so everything it touches lives in nonpaged pool */
+    NameSize = (wcslen(VariableName) + 1) * sizeof(WCHAR);
+    Name = ExAllocatePoolWithTag(NonPagedPool, NameSize, TAG_HAL);
+    Call = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Call), TAG_HAL);
+    if (*ValueLength)
+        Data = ExAllocatePoolWithTag(NonPagedPool, *ValueLength, TAG_HAL);
+    if (!Name || !Call || (*ValueLength && !Data))
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
+    RtlCopyMemory(Name, VariableName, NameSize);
+    Call->Guid = *VendorGuid;
+    Call->Attributes = 0;
+    Call->DataSize = *ValueLength;
+
+    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpEfiLock);
+    EfiStatus = HalpCallEfiFirmware(HalpEfiGetVariable,
+                                    (ULONG64)Name,
+                                    (ULONG64)&Call->Guid,
+                                    (ULONG64)&Call->Attributes,
+                                    (ULONG64)&Call->DataSize,
+                                    (ULONG64)Data);
+    KeReleaseSpinLockFromDpcLevel(&HalpEfiLock);
+    KeLowerIrql(OldIrql);
+
+    switch (EfiStatus)
+    {
+        case 0:
+            if (Value && Call->DataSize)
+                RtlCopyMemory(Value, Data, (SIZE_T)Call->DataSize);
+            if (Attributes)
+                *Attributes = Call->Attributes;
+            Status = STATUS_SUCCESS;
+            break;
+        case HALP_EFI_BUFFER_TOO_SMALL:
+            Status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        case HALP_EFI_NOT_FOUND:
+            Status = STATUS_VARIABLE_NOT_FOUND;
+            break;
+        case HALP_EFI_INVALID_PARAMETER:
+            Status = STATUS_INVALID_PARAMETER;
+            break;
+        case HALP_EFI_UNSUPPORTED:
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
+        case HALP_EFI_SECURITY_VIOLATION:
+            Status = STATUS_ACCESS_DENIED;
+            break;
+        default:
+            Status = STATUS_UNSUCCESSFUL;
+            break;
+    }
+
+    *ValueLength = (ULONG)Call->DataSize;
+
+Exit:
+    if (Data)
+        ExFreePoolWithTag(Data, TAG_HAL);
+    if (Call)
+        ExFreePoolWithTag(Call, TAG_HAL);
+    if (Name)
+        ExFreePoolWithTag(Name, TAG_HAL);
+    return Status;
+}
+
+/**
+ * @brief
+ * Writes, or with a zero length deletes, a UEFI variable through the runtime services.
+ */
+NTSTATUS
+NTAPI
+HalSetEnvironmentVariableEx(
+    _In_ PCWSTR VariableName,
+    _In_ LPGUID VendorGuid,
+    _In_reads_bytes_opt_(ValueLength) PVOID Value,
+    _In_ ULONG ValueLength,
+    _In_ ULONG Attributes)
+{
+    SIZE_T NameSize;
+    PWSTR Name;
+    LPGUID Guid;
+    PVOID Data = NULL;
+    ULONG64 EfiStatus;
+    NTSTATUS Status;
+    KIRQL OldIrql;
+
+    if (!HalpEfiSetVariable)
+        return STATUS_NOT_IMPLEMENTED;
+
+    /* The firmware runs at HIGH_LEVEL, so everything it touches lives in nonpaged pool */
+    NameSize = (wcslen(VariableName) + 1) * sizeof(WCHAR);
+    Name = ExAllocatePoolWithTag(NonPagedPool, NameSize, TAG_HAL);
+    Guid = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Guid), TAG_HAL);
+    if (ValueLength)
+        Data = ExAllocatePoolWithTag(NonPagedPool, ValueLength, TAG_HAL);
+    if (!Name || !Guid || (ValueLength && !Data))
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
+    RtlCopyMemory(Name, VariableName, NameSize);
+    *Guid = *VendorGuid;
+    if (ValueLength)
+        RtlCopyMemory(Data, Value, ValueLength);
+
+    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpEfiLock);
+    EfiStatus = HalpCallEfiFirmware(HalpEfiSetVariable,
+                                    (ULONG64)Name,
+                                    (ULONG64)Guid,
+                                    Attributes,
+                                    ValueLength,
+                                    (ULONG64)Data);
+    KeReleaseSpinLockFromDpcLevel(&HalpEfiLock);
+    KeLowerIrql(OldIrql);
+
+    switch (EfiStatus)
+    {
+        case 0:
+            Status = STATUS_SUCCESS;
+            break;
+        case HALP_EFI_NOT_FOUND:
+            Status = STATUS_VARIABLE_NOT_FOUND;
+            break;
+        case HALP_EFI_INVALID_PARAMETER:
+            Status = STATUS_INVALID_PARAMETER;
+            break;
+        case HALP_EFI_UNSUPPORTED:
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
+        case HALP_EFI_OUT_OF_RESOURCES:
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            break;
+        case HALP_EFI_WRITE_PROTECTED:
+        case HALP_EFI_SECURITY_VIOLATION:
+            Status = STATUS_ACCESS_DENIED;
+            break;
+        default:
+            Status = STATUS_UNSUCCESSFUL;
+            break;
+    }
+
+Exit:
+    if (Data)
+        ExFreePoolWithTag(Data, TAG_HAL);
+    if (Guid)
+        ExFreePoolWithTag(Guid, TAG_HAL);
+    if (Name)
+        ExFreePoolWithTag(Name, TAG_HAL);
+    return Status;
 }
 
 ARC_STATUS

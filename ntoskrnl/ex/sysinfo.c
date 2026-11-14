@@ -616,6 +616,43 @@ ExGetFirmwareEnvironmentVariable(
     return Status;
 }
 
+/**
+ * @brief
+ * Writes a UEFI variable, or deletes it when ValueLength is zero.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED unless the system booted from UEFI.
+ */
+NTSTATUS
+NTAPI
+ExSetFirmwareEnvironmentVariable(
+    _In_ PUNICODE_STRING VariableName,
+    _In_ LPGUID VendorGuid,
+    _In_reads_bytes_opt_(ValueLength) PVOID Value,
+    _In_ ULONG ValueLength,
+    _In_ ULONG Attributes)
+{
+    NTSTATUS Status;
+    PWSTR Name;
+
+    PAGED_CODE();
+
+    if (ExpFirmwareType != FirmwareTypeUefi)
+        return STATUS_NOT_IMPLEMENTED;
+
+    Name = ExAllocatePoolWithTag(NonPagedPool, VariableName->Length + sizeof(UNICODE_NULL), 'rvnE');
+    if (Name == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlCopyMemory(Name, VariableName->Buffer, VariableName->Length);
+    Name[VariableName->Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    Status = HalSetEnvironmentVariableEx(Name, VendorGuid, Value, ValueLength, Attributes);
+
+    ExFreePoolWithTag(Name, 'rvnE');
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 NtQuerySystemEnvironmentValueEx(

@@ -213,7 +213,10 @@ ULONG64
 HalpCallEfiFirmware(
     _In_ PVOID Function,
     _In_ ULONG64 Argument1,
-    _In_ ULONG64 Argument2);
+    _In_ ULONG64 Argument2,
+    _In_ ULONG64 Argument3,
+    _In_ ULONG64 Argument4,
+    _In_ ULONG64 Argument5);
 
 VOID
 HalpSweepDcacheRange(
