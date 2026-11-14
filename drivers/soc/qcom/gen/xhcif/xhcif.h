@@ -13,7 +13,7 @@
 
 #define XHCIF_POOL_TAG                  'fHcQ'
 
-/* Controller windows the role switch hands down, they also tell the SoCs apart */
+/* Controller windows the brought up controllers must have */
 #define XHCIF_CONTROLLER_BASE           0xF9200000UL
 #define XHCIF_SDM845_CONTROLLER_BASE    0x0A600000UL
 
@@ -22,9 +22,43 @@
 
 typedef enum _XHCIF_SOC
 {
+    /* Firmware left the controller running and owns its clocks and PHYs */
+    XhcifSocFirmware,
     XhcifSocMsm8994,
-    XhcifSocSdm845
+    XhcifSocSdm845,
+
+    /* Snapdragon X, firmware brings up the PHYs and the core setup is done here */
+    XhcifSocX1
 } XHCIF_SOC;
+
+/* A zero base means the SoC has several controllers told apart by their window */
+typedef struct _XHCIF_CONTROLLER_ID
+{
+    PCWSTR Id;
+    XHCIF_SOC Soc;
+    ULONG Base;
+} XHCIF_CONTROLLER_ID, *PXHCIF_CONTROLLER_ID;
+
+typedef enum _XHCIF_X1_CONTROLLER
+{
+    XhcifX1Primary,
+    XhcifX1Secondary,
+    XhcifX1Tertiary,
+    XhcifX1Multiport,
+    XhcifX1HighSpeed
+} XHCIF_X1_CONTROLLER;
+
+typedef struct _XHCIF_X1_WINDOW
+{
+    ULONG Base;
+    XHCIF_X1_CONTROLLER Controller;
+} XHCIF_X1_WINDOW, *PXHCIF_X1_WINDOW;
+
+#define XHCIF_X1_PRIMARY_BASE           0x0A600000UL
+#define XHCIF_X1_SECONDARY_BASE         0x0A800000UL
+#define XHCIF_X1_TERTIARY_BASE          0x0A000000UL
+#define XHCIF_X1_MULTIPORT_BASE         0x0A400000UL
+#define XHCIF_X1_HIGH_SPEED_BASE        0x0A200000UL
 
 /* Fixed MSM8992 and MSM8994 blocks outside the controller window */
 #define XHCIF_GCC_BASE                  0xFC400000UL
@@ -46,15 +80,43 @@ typedef enum _XHCIF_SOC
 #define XHCIF_PORTSC_PR                 0x00000010
 #define XHCIF_PORTSC_PLS_MASK           0x000001E0
 #define XHCIF_PORTSC_PLS_U3             0x00000060
+#define XHCIF_PORTSC_WCE                0x02000000
+#define XHCIF_PORTSC(Port)              (0x420 + (Port) * 0x10)
 
 /* DWC3 global and device registers */
+#define DWC3_GSBUSCFG1                  0xC104
+#define DWC3_GSBUSCFG1_PIPETRANSLIMIT_MASK 0x00000F00
+#define DWC3_GSBUSCFG1_PIPETRANSLIMIT(n) ((n) << 8)
+#define DWC3_GSBUSCFG1_EN_1KPAGE        0x00001000
+#define DWC3_GRXTHRCFG                  0xC10C
+#define DWC3_GRXTHRCFG_PKTCNTSEL        0x20000000
+#define DWC3_GRXTHRCFG_PKTCNT_MASK      0x0F000000
+#define DWC3_GRXTHRCFG_PKTCNT(n)        ((n) << 24)
+#define DWC3_GRXTHRCFG_MAXBURST_MASK    0x00F80000
+#define DWC3_GRXTHRCFG_MAXBURST(n)      ((n) << 19)
 #define DWC3_GCTL                       0xC110
 #define DWC3_GCTL_DSBLCLKGTNG           0x00000001
+#define DWC3_GCTL_U2EXIT_LFPS           0x00000004
 #define DWC3_GCTL_CORESOFTRESET         0x00000800
 #define DWC3_GCTL_PRTCAPDIR_MASK        0x00003000
 #define DWC3_GCTL_PRTCAPDIR_HOST        0x00001000
+#define DWC3_GCTL_U2RSTECN              0x00010000
 #define DWC3_GUCTL1                     0xC11C
 #define DWC3_GUCTL1_PARKMODE_DISABLE_SS 0x00020000
+#define DWC3_GUCTL1_IP_GAP_ADD_ON_MASK  0x00E00000
+#define DWC3_GUCTL1_IP_GAP_ADD_ON(n)    ((n) << 21)
+#define DWC3_GUCTL                      0xC12C
+#define DWC3_GUCTL_TIMEOUT_MASK         0x000007FF
+#define DWC3_GUCTL_SPRSCTRLTRANSEN      0x00020000
+#define DWC3_GUCTL3                     0xC60C
+#define DWC3_GUCTL3_USB20_RETRY_DISABLE 0x00010000
+#define DWC3_GUSB2PHYCFG_N(Port)        (0xC200 + (Port) * 4)
+#define DWC3_GUSB2PHYCFG_HOST_TUNE      0x00004000
+#define DWC3_GUSB3PIPECTL_N(Port)       (0xC2C0 + (Port) * 4)
+#define DWC3_GUSB3PIPECTL_P3EXSIGP2     0x00000400
+#define DWC3_GUSB3PIPECTL_UX_EXIT_PX    0x08000000
+#define DWC3_LINK_TUNE                  0xD058
+#define DWC3_LINK_TUNE_ENABLE           0x80000000
 #define DWC3_GDBGLTSSM                  0xC164
 #define DWC3_GDBGLTSSM_STATE_MASK       0x03C00000
 #define DWC3_GDBGLTSSM_STATE_U3         0x00C00000
@@ -78,6 +140,11 @@ typedef enum _XHCIF_SOC
 #define QSCR_GENERAL_CFG_UTMI_AS_PIPE   0x00000001
 #define QSCR_GENERAL_CFG_PHYSTATUS_SW   0x00000008
 #define QSCR_GENERAL_CFG_PIPE_CLK_GATE  0x00000100
+#define QSCR_GENERAL_CFG_BIT1           0x00000002
+#define QSCR_GENERAL_CFG_BIT9           0x00000200
+#define QSCR_CFG_28                     QSCR(0x28)
+#define QSCR_CFG_28_BIT1                0x00000002
+#define QSCR_CFG_28_BIT2                0x00000004
 #define QSCR_HS_PHY_CTRL                QSCR(0x10)
 #define QSCR_HS_PHY_CTRL_SLEEP_CLAMP    0x00000001
 #define QSCR_HS_PHY_CTRL_RETENTION      0x00400000
@@ -163,6 +230,8 @@ typedef struct _XHCIF_DEVICE
     PUCHAR SsPhy;
     PUCHAR Qusb2;
     XHCIF_SOC Soc;
+    ULONG ControllerBase;
+    XHCIF_X1_CONTROLLER X1Controller;
     BOOLEAN Msm8992;
 
     /* Set once the PHYs were left in their suspended setup, cleared when D0 undoes it */
