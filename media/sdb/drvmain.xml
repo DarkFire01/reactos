@@ -19,6 +19,11 @@
             <FIX_ID>{b120afe6-7bdd-4672-a990-00b13d507805}</FIX_ID>
         </KSHIM>
 
+        <KSHIM NAME="KeepRealTimePriority">
+            <MODULE>NT kernel component</MODULE>
+            <FIX_ID>{4d598a44-510c-4d0f-9d4d-a201d3347510}</FIX_ID>
+        </KSHIM>
+
         <!-- Frees pool with the wrong tag (CORE-14623) -->
         <KDRIVER NAME="vmx_svga.sys" APP_NAME="VMware SVGA 3D" VENDOR="VMware, Inc.">
             <MATCHING_FILE NAME="*" LINK_DATE="0x546ab93b" />
@@ -28,6 +33,12 @@
         <!-- DriverEntry fails when the major version is above 5 -->
         <KDRIVER NAME="nv4_mini.sys" APP_NAME="NVIDIA Windows XP / Server 2003 display driver" VENDOR="NVIDIA Corporation">
             <KSHIM_REF NAME="KmWin2k3VersionLie" />
+        </KDRIVER>
+
+        <!-- Drops the PnP thread that starts it to priority 0 instead of its new worker -->
+        <KDRIVER NAME="qcpep850.sys" APP_NAME="Qualcomm Power Engine Plug-in" VENDOR="Qualcomm Technologies, Inc.">
+            <MATCHING_FILE NAME="*" LINK_DATE="0x5f585361" />
+            <KSHIM_REF NAME="KeepRealTimePriority" />
         </KDRIVER>
     </DATABASE>
 </SDB>
