@@ -179,11 +179,15 @@ PnpWatchScanStack(
     return Match;
 }
 
+static const PCWSTR PnpWatchDisplayModules[] =
+{
+    L"qcdxkm850.sys", L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys", L"cdd.dll"
+};
+
 /* Display drivers being brought up: show every thread that is somewhere inside them */
 static VOID
 PnpWatchDumpDisplayThreads(VOID)
 {
-    static const PCWSTR Modules[] = { L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys", L"cdd.dll" };
     PEPROCESS Process;
     PETHREAD Thread;
 
@@ -193,7 +197,7 @@ PnpWatchDumpDisplayThreads(VOID)
         for (Thread = PsGetNextProcessThread(Process, NULL); Thread; Thread = PsGetNextProcessThread(Process, Thread))
         {
             if (Thread != PsGetCurrentThread())
-                PnpWatchScanStack(&Thread->Tcb, Modules, RTL_NUMBER_OF(Modules), 0);
+                PnpWatchScanStack(&Thread->Tcb, PnpWatchDisplayModules, RTL_NUMBER_OF(PnpWatchDisplayModules), 0);
         }
     }
 }
@@ -231,7 +235,6 @@ PnpWatchIsGuiStallReported(
 static VOID
 PnpWatchDumpStalledGuiThreads(VOID)
 {
-    static const PCWSTR Modules[] = { L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys", L"cdd.dll" };
     ULONG Limit = (ULONG)(PNP_WATCH_GUI_STALL_SECONDS * 10000000LL / KeMaximumIncrement);
     PEPROCESS Process;
     PETHREAD Thread;
@@ -261,7 +264,7 @@ PnpWatchDumpStalledGuiThreads(VOID)
                 continue;
             }
 
-            if (PnpWatchScanStack(&Thread->Tcb, Modules, RTL_NUMBER_OF(Modules), PNP_WATCH_GUI_STALL_DEPTH))
+            if (PnpWatchScanStack(&Thread->Tcb, PnpWatchDisplayModules, RTL_NUMBER_OF(PnpWatchDisplayModules), PNP_WATCH_GUI_STALL_DEPTH))
             {
                 DbgPrint("PNPWATCH: GUI thread %p has waited %I64u s inside the display drivers\n",
                          Thread, (ULONG64)Waited * KeMaximumIncrement / 10000000);
