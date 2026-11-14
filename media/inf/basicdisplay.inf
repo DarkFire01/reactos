@@ -17,7 +17,7 @@ ExcludeFromSelect = *
 [Manufacturer]
 %StdMfg% = StdMfg
 
-; The kernel only reports this device on UEFI boots
+; The driver reports this device itself, on every boot
 [StdMfg]
 %BasicDisplay.DeviceDesc% = BasicDisplay_Inst,ROOT\BASICDISPLAY
 

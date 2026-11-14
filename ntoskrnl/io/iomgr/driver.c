@@ -2067,7 +2067,6 @@ IopLoadDriver(
     _In_ HANDLE ServiceHandle,
     _Out_ PDRIVER_OBJECT *DriverObject)
 {
-    static const UNICODE_STRING BasicDisplayImage = RTL_CONSTANT_STRING(L"\\BasicDisplay.sys");
     UNICODE_STRING ImagePath;
     NTSTATUS Status;
     PLDR_DATA_TABLE_ENTRY ModuleObject;
@@ -2120,14 +2119,6 @@ IopLoadDriver(
     }
 
     DPRINT("FullImagePath: '%wZ'\n", &ImagePath);
-
-    /* The basic display driver draws on the firmware framebuffer, which only a UEFI boot hands over */
-    if ((ExpFirmwareType != FirmwareTypeUefi) &&
-        IopSuffixUnicodeString(&BasicDisplayImage, &ImagePath, TRUE))
-    {
-        RtlFreeUnicodeString(&ImagePath);
-        return STATUS_NOT_SUPPORTED;
-    }
 
     KeEnterCriticalRegion();
     ExAcquireResourceExclusiveLite(&IopDriverLoadResource, TRUE);

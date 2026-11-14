@@ -2525,7 +2525,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\DXGKrnl","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\DXGKrnl","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\DXGKrnl","Tag",0x00010001,0x00000001
 
-; WDDM Basic Display Driver, only given a device on UEFI boots
+; WDDM Basic Display Driver, the fallback for a display without its own driver
 HKLM,"SYSTEM\CurrentControlSet\Services\BasicDisplay","DisplayName",0x00000000,"Basic Display Driver"
 HKLM,"SYSTEM\CurrentControlSet\Services\BasicDisplay","ErrorControl",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\BasicDisplay","Group",0x00000000,"Video"
