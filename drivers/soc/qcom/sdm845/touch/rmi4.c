@@ -1,16 +1,17 @@
 /*
  * PROJECT:     ReactOS Qualcomm platform drivers
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Synaptics RMI4 register protocol over the GENI I2C master
+ * PURPOSE:     Synaptics RMI4 register protocol over an SPB I2C target
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 #include "qcomtouch.h"
 
+#include <debug.h>
+
 #define RMI_WRITE_MAX           32
 #define RMI_PRESENCE_MAX        35
 #define RMI_STRUCT_MAX          128
-#define RMI_READ_MAX            128
 
 static
 USHORT
@@ -34,15 +35,17 @@ RmiSetPage(
 
     Command[0] = RMI_PAGE_SELECT;
     Command[1] = Page;
-    Status = QcGeniI2cTransfer(Device->I2c, Device->Board->SlaveAddress, Command, sizeof(Command), NULL, 0);
+    Status = QcTouchI2cWrite(Device, Command, sizeof(Command));
     if (NT_SUCCESS(Status))
         Device->Page = Page;
+    else
+        Device->Page = 0xFF;
 
     return Status;
 }
 
+static
 NTSTATUS
-NTAPI
 RmiReadBlock(
     _In_ PQCTOUCH_DEVICE Device,
     _In_ USHORT Address,
@@ -56,11 +59,11 @@ RmiReadBlock(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    return QcGeniI2cTransfer(Device->I2c, Device->Board->SlaveAddress, &Register, 1, Buffer, Length);
+    return QcTouchI2cWriteRead(Device, &Register, sizeof(Register), Buffer, Length);
 }
 
+static
 NTSTATUS
-NTAPI
 RmiWriteBlock(
     _In_ PQCTOUCH_DEVICE Device,
     _In_ USHORT Address,
@@ -71,7 +74,7 @@ RmiWriteBlock(
     NTSTATUS Status;
 
     if (Length > RMI_WRITE_MAX)
-        QC_FATAL(STATUS_INVALID_PARAMETER, "write of %lu bytes at %04x is too long", Length, Address);
+        return STATUS_INVALID_PARAMETER;
 
     Status = RmiSetPage(Device, (UCHAR)(Address >> 8));
     if (!NT_SUCCESS(Status))
@@ -80,7 +83,7 @@ RmiWriteBlock(
     Command[0] = (UCHAR)(Address & 0xFF);
     RtlCopyMemory(&Command[1], Buffer, Length);
 
-    return QcGeniI2cTransfer(Device->I2c, Device->Board->SlaveAddress, Command, Length + 1, NULL, 0);
+    return QcTouchI2cWrite(Device, Command, Length + 1);
 }
 
 static
@@ -182,7 +185,10 @@ RmiReadRegisterDesc(
     if (!NT_SUCCESS(Status))
         return Status;
     if (SizePresence < 1 || SizePresence > RMI_PRESENCE_MAX)
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "F12 presence register size %u", SizePresence);
+    {
+        DPRINT1("F12 presence register size %u\n", SizePresence);
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
     Status = RmiReadBlock(Device, Address + 1, Presence, SizePresence);
     if (!NT_SUCCESS(Status))
@@ -200,7 +206,10 @@ RmiReadRegisterDesc(
     }
 
     if (StructSize == 0 || StructSize > RMI_STRUCT_MAX)
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "F12 structure size %lu", StructSize);
+    {
+        DPRINT1("F12 structure size %lu\n", StructSize);
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
     for (Index = PresenceOffset; Index < SizePresence; Index++)
     {
@@ -322,9 +331,10 @@ RmiScanFunctions(
     }
 
     if (!NT_SUCCESS(Status))
-        QC_FATAL(Status, "touch controller never acknowledged at %02x", Device->Board->SlaveAddress);
-
-    QC_LOG("controller answered after %lu tries", Retry);
+    {
+        DPRINT1("touch controller never acknowledged, 0x%08lx\n", Status);
+        return Status;
+    }
 
     for (Page = 0; Page <= 0xFF; Page++)
     {
@@ -386,12 +396,13 @@ RmiScanFunctions(
     if (Device->InterruptRegisters > 4)
         Device->InterruptRegisters = 4;
 
-    if (!Device->F01.Found)
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "no F01 in the descriptor table");
-    if (!Device->F12.Found)
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "no F12 in the descriptor table");
+    if (!Device->F01.Found || !Device->F12.Found)
+    {
+        DPRINT1("descriptor table lacks F01 or F12\n");
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
-    QC_LOG("F01 ctrl %04x data %04x irq %lu, F12 query %04x data %04x irq %lu, %lu irq regs",
+    DPRINT("F01 ctrl %04x data %04x irq %lu, F12 query %04x data %04x irq %lu, %lu irq regs\n",
            Device->F01.ControlBase, Device->F01.DataBase, Device->F01.InterruptPosition,
            Device->F12.QueryBase, Device->F12.DataBase, Device->F12.InterruptPosition,
            Device->InterruptRegisters);
@@ -418,7 +429,7 @@ RmiConfigureF12(
     if (!NT_SUCCESS(Status))
         return Status;
     if (!(General & RMI_F12_QUERY_HAS_DESC))
-        QC_FATAL(STATUS_NOT_SUPPORTED, "F12 has no register descriptors");
+        return STATUS_NOT_SUPPORTED;
 
     QueryAddress = Device->F12.QueryBase + 1;
     Status = RmiReadRegisterDesc(Device, QueryAddress, &QueryDesc);
@@ -434,7 +445,7 @@ RmiConfigureF12(
     /* Control 8 carries the maximum X and Y the sensor reports */
     Item = RmiFindRegister(&ControlDesc, RMI_F12_CTRL_SENSOR_TUNING);
     if (!Item || Item->Size > sizeof(Tuning))
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "F12 sensor tuning register missing");
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
 
     Index = RmiRegisterIndex(&ControlDesc, RMI_F12_CTRL_SENSOR_TUNING);
     Status = RmiReadBlock(Device, Device->F12.ControlBase + (USHORT)Index, Tuning, Item->Size);
@@ -447,25 +458,28 @@ RmiConfigureF12(
         Device->MaxY = RmiLe16(&Tuning[2]);
     }
     if (Device->MaxX == 0 || Device->MaxY == 0)
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "F12 reports max %lu x %lu", Device->MaxX, Device->MaxY);
+    {
+        DPRINT1("F12 reports max %lu x %lu\n", Device->MaxX, Device->MaxY);
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
     /* Data 1 is the list of sensed objects, one eight byte slot each */
     Item = RmiFindRegister(&DataDesc, RMI_F12_DATA_SENSED_OBJECTS);
     if (!Item)
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "F12 object data register missing");
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
 
     Device->Data1Offset = RmiRegisterByteOffset(&DataDesc, RMI_F12_DATA_SENSED_OBJECTS);
-    Device->FingerCount = Item->SubpacketCount;
+    Device->FingerCount = min(Item->SubpacketCount, QCTOUCH_MAX_CONTACTS);
 
     /* The reader only pulls the object slots, so bound them to one short read */
     while (Device->Data1Offset + Device->FingerCount * RMI_F12_FINGER_BYTES > RMI_READ_MAX)
         Device->FingerCount--;
     if (Device->FingerCount == 0)
-        QC_FATAL(STATUS_DEVICE_CONFIGURATION_ERROR, "F12 object slots do not fit a read");
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
 
     Device->DataPacketSize = Device->Data1Offset + Device->FingerCount * RMI_F12_FINGER_BYTES;
 
-    QC_LOG("F12 max %lu x %lu, %lu slots at data offset %lu",
+    DPRINT1("F12 max %lu x %lu, %lu slots at data offset %lu\n",
            Device->MaxX, Device->MaxY, Device->FingerCount, Device->Data1Offset);
 
     return STATUS_SUCCESS;
@@ -488,7 +502,7 @@ RmiConfigure(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Delay.QuadPart = -10000LL * Device->Board->StartupDelayMs;
+    Delay.QuadPart = -10000LL * (Device->Board ? Device->Board->StartupDelayMs : 200);
     KeDelayExecutionThread(KernelMode, FALSE, &Delay);
 
     Status = RmiConfigureF12(Device);
@@ -520,49 +534,71 @@ RmiConfigure(
 
     Status = RmiReadByte(Device, Device->F01.DataBase, &Status8);
     if (NT_SUCCESS(Status) && (Status8 & RMI_F01_STATUS_UNCONFIGURED))
-        QC_LOG("F01 still reports unconfigured, status %02x", Status8);
+        DPRINT1("F01 still reports unconfigured, status %02x\n", Status8);
 
     return STATUS_SUCCESS;
 }
 
-BOOLEAN
+NTSTATUS
 NTAPI
-RmiReadFinger(
-    _In_ PQCTOUCH_DEVICE Device,
-    _Out_ PULONG X,
-    _Out_ PULONG Y,
-    _Out_ PBOOLEAN Down)
+RmiSleep(
+    _In_ PQCTOUCH_DEVICE Device)
 {
-    UCHAR Interrupt[4];
-    UCHAR Packet[RMI_READ_MAX];
-    ULONG Index;
+    UCHAR Control0;
     NTSTATUS Status;
 
-    *Down = FALSE;
-    *X = 0;
-    *Y = 0;
-
-    /* Reading the interrupt status also acknowledges the attention */
-    Status = RmiReadBlock(Device, Device->F01.DataBase + 1, Interrupt, Device->InterruptRegisters);
+    Status = RmiReadByte(Device, Device->F01.ControlBase, &Control0);
     if (!NT_SUCCESS(Status))
-        return FALSE;
+        return Status;
 
-    Status = RmiReadBlock(Device, Device->F12.DataBase, Packet, Device->DataPacketSize);
+    Control0 &= ~(RMI_F01_CTRL0_SLEEP_MASK | RMI_F01_CTRL0_NOSLEEP);
+    Control0 |= RMI_F01_CTRL0_SENSOR_SLEEP;
+    return RmiWriteByte(Device, Device->F01.ControlBase, Control0);
+}
+
+/**
+ * @brief Reads and so acknowledges the interrupt status, then the F12 object
+ * slots when F12 raised it.
+ *
+ * @return STATUS_NO_MORE_ENTRIES when no source is pending.
+ */
+NTSTATUS
+NTAPI
+RmiReadAttention(
+    _In_ PQCTOUCH_DEVICE Device,
+    _Out_ PBOOLEAN HasObjects,
+    _Out_writes_bytes_(RMI_READ_MAX) PUCHAR Packet)
+{
+    UCHAR Pending[4] = { 0 };
+    ULONG Bit;
+    BOOLEAN Any = FALSE;
+    NTSTATUS Status;
+
+    *HasObjects = FALSE;
+
+    Status = RmiReadBlock(Device, Device->F01.DataBase + 1, Pending, Device->InterruptRegisters);
     if (!NT_SUCCESS(Status))
-        return FALSE;
+        return Status;
 
-    for (Index = 0; Index < Device->FingerCount; Index++)
+    for (Bit = 0; Bit < Device->InterruptRegisters; Bit++)
     {
-        const UCHAR *Object = &Packet[Device->Data1Offset + Index * RMI_F12_FINGER_BYTES];
-
-        if (Object[0] != RMI_F12_OBJECT_FINGER && Object[0] != RMI_F12_OBJECT_GLOVED)
-            continue;
-
-        *X = RmiLe16(&Object[1]);
-        *Y = RmiLe16(&Object[3]);
-        *Down = TRUE;
-        break;
+        if (Pending[Bit])
+            Any = TRUE;
     }
 
-    return TRUE;
+    if (!Any)
+        return STATUS_NO_MORE_ENTRIES;
+
+    for (Bit = Device->F12.InterruptPosition;
+         Bit < Device->F12.InterruptPosition + Device->F12.InterruptCount;
+         Bit++)
+    {
+        if (Pending[Bit / 8] & (1 << (Bit % 8)))
+            *HasObjects = TRUE;
+    }
+
+    if (!*HasObjects)
+        return STATUS_SUCCESS;
+
+    return RmiReadBlock(Device, Device->F12.DataBase, Packet, Device->DataPacketSize);
 }
