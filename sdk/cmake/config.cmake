@@ -118,3 +118,6 @@ set(USE_DUMMY_PSEH FALSE CACHE BOOL
 
 set(DLL_EXPORT_VERSION "0x601" CACHE STRING
 "The NT version the user mode DLLs target.")
+
+set(DXGKRNL_TARGET "WIN11" CACHE STRING
+"The Windows graphics kernel (dxgkrnl, watchdog, cdd) win32k drives: 1607, 19041 or WIN11.")

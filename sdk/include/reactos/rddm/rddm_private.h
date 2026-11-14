@@ -8,15 +8,48 @@
 #pragma once
 
 /*
- * The Windows graphics kernel win32k drives: dxgkrnl.sys, watchdog.sys and cdd.dll from either
- * Windows 10 1607 or Windows 11. Every table win32k shares with them differs between the two.
+ * The Windows graphics kernel win32k drives: dxgkrnl.sys, watchdog.sys and cdd.dll from Windows 10
+ * 1607, Windows 10 20H1 to 22H2 (19041 to 19045) or Windows 11. The tables win32k shares with them
+ * differ between all three, and 19041 takes some from each of the others.
  */
 #define DXGKRNL_TARGET_1607     1607
+#define DXGKRNL_TARGET_19041    1904
 #define DXGKRNL_TARGET_WIN11    2600
 
 #ifndef DXGKRNL_TARGET
 #define DXGKRNL_TARGET          DXGKRNL_TARGET_WIN11
 #endif
+
+#if (DXGKRNL_TARGET != DXGKRNL_TARGET_1607) &&     (DXGKRNL_TARGET != DXGKRNL_TARGET_19041) &&     (DXGKRNL_TARGET != DXGKRNL_TARGET_WIN11)
+#error Unknown DXGKRNL_TARGET
+#endif
+
+/*
+ * dxgkrnl exports the D3DKMT entry points and the composition system calls, and looks up the
+ * win32k routines it calls by name in the image win32k names in its interface
+ */
+#define DL_DXGK_EXPORTS_D3DKMT          (DXGKRNL_TARGET >= DXGKRNL_TARGET_19041)
+
+/* ApplyPathsModality takes a display scenario context */
+#define DL_DXGK_APPLY_HAS_SCENARIO      (DXGKRNL_TARGET >= DXGKRNL_TARGET_19041)
+
+/* The modality header ends with a second pointer dxgkrnl frees */
+#define DL_DXGK_MODALITY_TWO_POINTERS   (DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11)
+
+/* SMgrNotifySessionChange takes the session's callout, there is no SMgrRegisterGdiCallout */
+#define DL_SMGR_SESSION_CALLOUT         (DXGKRNL_TARGET >= DXGKRNL_TARGET_19041)
+
+/* The GDI view information ends with a reserved quadword */
+#define DL_GDI_VIEW_HAS_RESERVED        (DXGKRNL_TARGET >= DXGKRNL_TARGET_19041)
+
+/* cdd.dll starts as a driver and hands out DrvEnableDriver through \Device\cdd */
+#define DL_CDD_IS_DRIVER                (DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11)
+
+/* W32KCDD_INTERFACE version 4, with IsRemoteConnection and SetDeviceBitmapAdapterLuid */
+#define DL_CDD_REMOTE_SLOTS             (DXGKRNL_TARGET >= DXGKRNL_TARGET_19041)
+
+/* W32kCddClipRegion gets the destination region by reference */
+#define DL_CDD_CLIP_BY_REFERENCE        (DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11)
 
 /*
  * Create an IO request to fill out the function pointer list.
@@ -43,7 +76,7 @@
 	CTL_CODE( FILE_DEVICE_VIDEO, 0x11, METHOD_NEITHER, FILE_ANY_ACCESS  )
 
 /*
- * win32k passes a PDXGKWIN32K_INTERFACE (rxgkwddminterface.h, Version 22, 944 bytes) in
+ * win32k passes a PDXGKWIN32K_INTERFACE (rxgkwddminterface.h, Version 22, 944 bytes, on 1607) in
  * Irp->UserBuffer; dxgkrnl fills its pfnDxgk* slots with the D3DKMT entry points. METHOD_NEITHER:
  * the buffer is the caller's. 0x23E057, the code win32k sends.
  */
@@ -89,8 +122,8 @@ typedef struct _DXGK_GDI_VIEW_INFORMATION
     ULONG VidPnSourceId;
     PVOID Adapter;          /* NULL when nothing WDDM drives this device */
     LUID AdapterLuid;
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
-    ULONG64 Reserved;       /* Win11 refuses a buffer without it */
+#if DL_GDI_VIEW_HAS_RESERVED
+    ULONG64 Reserved;       /* 19041 and later refuse a buffer without it */
 #endif
 } DXGK_GDI_VIEW_INFORMATION, *PDXGK_GDI_VIEW_INFORMATION;
 

@@ -31,7 +31,7 @@ typedef struct _W32KCDD_INTERFACE
     PVOID pfnW32kCddGenerateMoveData;
     PVOID pfnW32kCddAcquireDynamicModeChangeLockShared;
     PVOID pfnW32kCddReleaseDynamicModeChangeLockShared;
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_REMOTE_SLOTS
     PVOID pfnW32kCddIsRemoteConnection;
     PVOID pfnW32kCddSetDeviceBitmapAdapterLuid;
 #endif
@@ -43,7 +43,7 @@ typedef struct _W32KCDD_INTERFACE
     PVOID pfnCddW32kDeleteDeviceBitmapEx;
 } W32KCDD_INTERFACE, *PW32KCDD_INTERFACE;
 
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_REMOTE_SLOTS
 #define W32KCDD_INTERFACE_VERSION   4
 #else
 #define W32KCDD_INTERFACE_VERSION   3
@@ -106,7 +106,7 @@ static
 INT
 APIENTRY
 W32kCddClipRegion(
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_CLIP_BY_REFERENCE
     _In_ PHANDLE phDstRgn,
 #else
     _In_ HANDLE hDstRgn,
@@ -114,7 +114,7 @@ W32kCddClipRegion(
     _In_ HANDLE hSrcRgn,
     _In_ const CLIPOBJ *pco)
 {
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_CLIP_BY_REFERENCE
     HANDLE hDstRgn = *phDstRgn;
 #endif
     const XCLIPOBJ *pxco = (const XCLIPOBJ *)pco;
@@ -359,7 +359,7 @@ W32kCddReleaseDynamicModeChangeLockShared(VOID)
 {
 }
 
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_REMOTE_SLOTS
 /**
  * @brief
  * Tells cdd whether the session is remote. Every session here is local.
@@ -624,7 +624,7 @@ EngQueryW32kCddInterface(
         W32kCddAcquireDynamicModeChangeLockShared;
     pW32kCddInterface->pfnW32kCddReleaseDynamicModeChangeLockShared =
         W32kCddReleaseDynamicModeChangeLockShared;
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_REMOTE_SLOTS
     pW32kCddInterface->pfnW32kCddIsRemoteConnection = W32kCddIsRemoteConnection;
     pW32kCddInterface->pfnW32kCddSetDeviceBitmapAdapterLuid = W32kCddSetDeviceBitmapAdapterLuid;
 #endif

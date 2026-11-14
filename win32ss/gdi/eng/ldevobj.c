@@ -112,7 +112,7 @@ LDEVOBJ_vFreeLDEV(
     ExFreePoolWithTag(pldev, GDITAG_LDEV);
 }
 
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_IS_DRIVER
 static
 BOOLEAN
 LDEVOBJ_bIsCdd(
@@ -246,7 +246,7 @@ LDEVOBJ_bLoadImage(
         return FALSE;
     }
 
-#if (DXGKRNL_TARGET >= DXGKRNL_TARGET_WIN11)
+#if DL_CDD_IS_DRIVER
     /* This CDD is a driver of its own, DrvEnableDriver comes from its device */
     if (LDEVOBJ_bIsCdd(pustrPathName) && !LDEVOBJ_bStartCddDriver(pDriverInfo))
     {
