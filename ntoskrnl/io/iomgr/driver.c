@@ -1057,6 +1057,139 @@ Cleanup:
  * Return Value
  *    None
  */
+/**
+ * @brief
+ * Tells whether a boot driver's service belongs to a load order group.
+ */
+CODE_SEG("INIT")
+static
+BOOLEAN
+IopIsBootDriverInGroup(
+    _In_ PDRIVER_INFORMATION DriverInfo,
+    _In_ PCUNICODE_STRING GroupName)
+{
+    PKEY_VALUE_FULL_INFORMATION KeyInfo;
+    UNICODE_STRING Group;
+    BOOLEAN Match = FALSE;
+
+    if (!DriverInfo->ServiceHandle || DriverInfo->ServiceHandle == (HANDLE)1)
+        return FALSE;
+
+    if (!NT_SUCCESS(IopGetRegistryValue(DriverInfo->ServiceHandle, L"Group", &KeyInfo)))
+        return FALSE;
+
+    if (KeyInfo->Type == REG_SZ && KeyInfo->DataLength >= sizeof(UNICODE_NULL))
+    {
+        Group.Buffer = (PWCHAR)((ULONG_PTR)KeyInfo + KeyInfo->DataOffset);
+        Group.Length = (USHORT)(KeyInfo->DataLength - sizeof(UNICODE_NULL));
+        Group.MaximumLength = Group.Length;
+        Match = RtlEqualUnicodeString(&Group, GroupName, TRUE);
+    }
+
+    ExFreePool(KeyInfo);
+    return Match;
+}
+
+/**
+ * @brief
+ * Tells whether a boot driver is one of the named services.
+ */
+CODE_SEG("INIT")
+static
+BOOLEAN
+IopIsBootDriverNamed(
+    _In_ PDRIVER_INFORMATION DriverInfo,
+    _In_ PCUNICODE_STRING ServiceName)
+{
+    PCUNICODE_STRING Path = &DriverInfo->DataTableEntry->RegistryPath;
+    UNICODE_STRING Name;
+    USHORT Start = Path->Length / sizeof(WCHAR);
+
+    while (Start && Path->Buffer[Start - 1] != L'\\')
+        Start--;
+
+    Name.Buffer = &Path->Buffer[Start];
+    Name.Length = Path->Length - Start * sizeof(WCHAR);
+    Name.MaximumLength = Name.Length;
+    return RtlEqualUnicodeString(&Name, ServiceName, TRUE);
+}
+
+/* One early boot driver pass: either a set of services or a load order group */
+typedef struct _IOP_CORE_PASS
+{
+    const UNICODE_STRING *Names;
+    ULONG Count;
+    BOOLEAN ByGroup;
+} IOP_CORE_PASS;
+
+/**
+ * @brief
+ * Starts the core boot drivers ahead of every other boot driver, as Windows does.
+ * The framework and its peers come first, then the platform and security
+ * extensions such as the TrEE class that later boot drivers bind to.
+ */
+CODE_SEG("INIT")
+static
+VOID
+IopInitializeCoreExtensions(VOID)
+{
+    static const UNICODE_STRING CoreServices[] =
+    {
+        RTL_CONSTANT_STRING(L"verifierext"),
+        RTL_CONSTANT_STRING(L"Wdf01000"),
+        RTL_CONSTANT_STRING(L"acpiex"),
+        RTL_CONSTANT_STRING(L"cng"),
+        RTL_CONSTANT_STRING(L"msseccore"),
+        RTL_CONSTANT_STRING(L"sgrmagent"),
+        RTL_CONSTANT_STRING(L"lxss")
+    };
+    static const UNICODE_STRING PlatformGroup = RTL_CONSTANT_STRING(L"Core Platform Extensions");
+    static const UNICODE_STRING SecurityGroup = RTL_CONSTANT_STRING(L"Core Security Extensions");
+    static const IOP_CORE_PASS Passes[] =
+    {
+        { CoreServices, RTL_NUMBER_OF(CoreServices), FALSE },
+        { &PlatformGroup, 1, TRUE },
+        { &SecurityGroup, 1, TRUE }
+    };
+    PDRIVER_INFORMATION DriverInfo;
+    PLIST_ENTRY NextEntry;
+    PLIST_ENTRY Entry;
+    BOOLEAN Match;
+    ULONG Pass;
+    ULONG Name;
+    ULONG i;
+
+    for (Pass = 0; Pass < RTL_NUMBER_OF(Passes); Pass++)
+    {
+        /* Boot list order is kept within a pass */
+        for (i = 0; i < IopGroupIndex; i++)
+        {
+            for (Entry = IopGroupTable[i].Flink; Entry != &IopGroupTable[i]; Entry = NextEntry)
+            {
+                NextEntry = Entry->Flink;
+                DriverInfo = CONTAINING_RECORD(Entry, DRIVER_INFORMATION, Link);
+
+                Match = FALSE;
+                for (Name = 0; Name < Passes[Pass].Count && !Match; Name++)
+                {
+                    if (Passes[Pass].ByGroup)
+                        Match = IopIsBootDriverInGroup(DriverInfo, &Passes[Pass].Names[Name]);
+                    else
+                        Match = IopIsBootDriverNamed(DriverInfo, &Passes[Pass].Names[Name]);
+                }
+                if (!Match)
+                    continue;
+
+                /* Taken out of its group so the regular pass skips it */
+                RemoveEntryList(Entry);
+                InitializeListHead(Entry);
+                IopInitializeBuiltinDriver(DriverInfo->DataTableEntry->LdrEntry,
+                                           &DriverInfo->DataTableEntry->RegistryPath);
+            }
+        }
+    }
+}
+
 CODE_SEG("INIT")
 VOID
 FASTCALL
@@ -1212,6 +1345,9 @@ IopInitializeBootDrivers(VOID)
             break;
         }
     }
+
+    /* Class extensions other boot drivers bind to come up first */
+    IopInitializeCoreExtensions();
 
     /* Loop each group index */
     for (i = 0; i < IopGroupIndex; i++)
