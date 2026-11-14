@@ -9,6 +9,8 @@ endif()
 # name on the CD; Wine's still builds, since other Wine modules link against it.
 if(ARCH STREQUAL "amd64")
     set(WINE_DIRECTX_SLIPSTREAM ${REACTOS_SOURCE_DIR}/modules/x64/system32)
+elseif(ARCH STREQUAL "arm64")
+    set(WINE_DIRECTX_SLIPSTREAM ${REACTOS_SOURCE_DIR}/modules/arm64/system32)
 else()
     set(WINE_DIRECTX_SLIPSTREAM ${REACTOS_SOURCE_DIR}/modules/x86/system32)
 endif()
