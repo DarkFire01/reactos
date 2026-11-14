@@ -158,7 +158,7 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0305\Devi
 ; Host role children of those controllers, xHCI over the Qualcomm PHY filter
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","LowerFilters",0x00010000,"qcomxhcif"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","LowerFilters",0x00010000,"QcXhciFilter"
