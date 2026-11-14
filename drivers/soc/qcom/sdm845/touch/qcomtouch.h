@@ -100,7 +100,6 @@ typedef const QCTOUCH_BOARD *PCQCTOUCH_BOARD;
 #define QCTOUCH_LOGICAL_MAX         0x7FFF
 
 #define QCTOUCH_REPORT_ID_TOUCH     0x01
-#define QCTOUCH_REPORT_ID_MOUSE     0x02
 #define QCTOUCH_REPORT_ID_MAXCOUNT  0x03
 #define QCTOUCH_REPORT_ID_CONFIG    0x04
 
@@ -120,13 +119,6 @@ typedef struct _QCTOUCH_TOUCH_REPORT
     UCHAR ContactCount;
 } QCTOUCH_TOUCH_REPORT, *PQCTOUCH_TOUCH_REPORT;
 
-typedef struct _QCTOUCH_MOUSE_REPORT
-{
-    UCHAR ReportId;
-    UCHAR Buttons;
-    USHORT X;
-    USHORT Y;
-} QCTOUCH_MOUSE_REPORT, *PQCTOUCH_MOUSE_REPORT;
 #include <poppack.h>
 
 #define QCTOUCH_CONTACT_TIP         0x01
@@ -176,9 +168,6 @@ typedef struct _QCTOUCH_DEVICE
     ULONG ContactMask;
     USHORT ContactX[QCTOUCH_MAX_CONTACTS];
     USHORT ContactY[QCTOUCH_MAX_CONTACTS];
-    ULONG PrimaryContact;
-    USHORT PrimaryX;
-    USHORT PrimaryY;
     UCHAR InputMode;
 
     /* hidclass reads and the reports waiting for them */

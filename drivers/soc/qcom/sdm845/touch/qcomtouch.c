@@ -426,7 +426,6 @@ QcTouchEvtDeviceAdd(
 
     Device = QcTouchGetDevice(WdfDevice);
     Device->Device = WdfDevice;
-    Device->PrimaryContact = MAXULONG;
 
     WDF_OBJECT_ATTRIBUTES_INIT(&Attributes);
     Attributes.ParentObject = WdfDevice;
