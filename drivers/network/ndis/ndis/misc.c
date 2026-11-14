@@ -424,6 +424,25 @@ NdisGetSystemUpTime(OUT PULONG pSystemUpTime)
 /*
  * @implemented
  */
+VOID
+EXPORT
+NdisGetSystemUpTimeEx(OUT PLARGE_INTEGER pSystemUpTime)
+{
+    ULONG Increment;
+    LARGE_INTEGER TickCount;
+
+    /* The 64 bit form does not wrap after 49 days like NdisGetSystemUpTime */
+    Increment = KeQueryTimeIncrement();
+    KeQueryTickCount(&TickCount);
+
+    TickCount.QuadPart *= Increment;
+    TickCount.QuadPart /= (10 * 1000);
+    *pSystemUpTime = TickCount;
+}
+
+/*
+ * @implemented
+ */
 #undef NdisInterlockedDecrement
 LONG
 EXPORT
@@ -570,6 +589,26 @@ NdisGetVersion(VOID)
 /*
  * @implemented
  */
+COMPARTMENT_ID
+EXPORT
+NdisGetProcessObjectCompartmentId(
+    IN PEPROCESS ProcessObject)
+{
+    NDIS_DbgPrint(MAX_TRACE, ("Called.\n"));
+
+    UNREFERENCED_PARAMETER(ProcessObject);
+
+    /*
+     * A process is put in a compartment by the job it belongs to, or failing
+     * that by its session. Nothing here puts either of them anywhere, so every
+     * process is where a process starts, which is the first compartment.
+     */
+    return NET_IF_COMPARTMENT_ID_PRIMARY;
+}
+
+/*
+ * @implemented
+ */
 UCHAR
 EXPORT
 NdisGeneratePartialCancelId(VOID)
@@ -581,6 +620,49 @@ NdisGeneratePartialCancelId(VOID)
     NDIS_DbgPrint(MAX_TRACE, ("Cancel ID %u\n", PartialCancelId));
 
     return PartialCancelId;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+EXPORT
+NdisConvertNdisStatusToNtStatus(
+    _In_ NDIS_STATUS NdisStatus)
+{
+    /* Pending and every warning or error keep their value */
+    if (NdisStatus == NDIS_STATUS_BUFFER_TOO_SHORT)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if ((NdisStatus > 0) &&
+        (NdisStatus != NDIS_STATUS_PENDING) &&
+        (NdisStatus != NDIS_STATUS_INDICATION_REQUIRED))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return (NTSTATUS)NdisStatus;
+}
+
+/*
+ * @implemented
+ */
+NDIS_STATUS
+EXPORT
+NdisConvertNtStatusToNdisStatus(
+    _In_ NTSTATUS NtStatus)
+{
+    if (NtStatus == STATUS_BUFFER_TOO_SMALL)
+        return NDIS_STATUS_BUFFER_TOO_SHORT;
+
+    if (NT_SUCCESS(NtStatus) &&
+        (NtStatus != STATUS_PENDING) &&
+        (NtStatus != STATUS_NDIS_INDICATION_REQUIRED))
+    {
+        return NDIS_STATUS_SUCCESS;
+    }
+
+    return (NDIS_STATUS)NtStatus;
 }
 
 /* EOF */

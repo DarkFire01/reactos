@@ -179,6 +179,9 @@ NdisMAllocateSharedMemory(
 
   *VirtualAddress = Adapter->NdisMiniportBlock.SystemAdapterObject->DmaOperations->AllocateCommonBuffer(
       Adapter->NdisMiniportBlock.SystemAdapterObject, Length, PhysicalAddress, Cached);
+  if (*VirtualAddress == NULL)
+      NDIS_DbgPrint(MIN_TRACE, ("No %lu bytes of shared memory for %wZ.\n",
+                                Length, &Adapter->NdisMiniportBlock.MiniportName));
 }
 
 VOID

@@ -1,0 +1,107 @@
+/*
+ * PROJECT:     ReactOS NDIS 6 support
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     NET_BUFFER_LIST queue helpers
+ */
+
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * Last points at the Next field of the final entry, or at First when the
+ * queue is empty, so appending never has to test for the empty case.
+ */
+typedef struct _NBL_QUEUE
+{
+    PNET_BUFFER_LIST First;
+    PNET_BUFFER_LIST *Last;
+} NBL_QUEUE, *PNBL_QUEUE;
+
+typedef struct _NBL_COUNTED_QUEUE
+{
+    NBL_QUEUE Queue;
+    SIZE_T NblCount;
+} NBL_COUNTED_QUEUE, *PNBL_COUNTED_QUEUE;
+
+FORCEINLINE
+VOID
+NdisInitializeNblQueue(
+    _Out_ PNBL_QUEUE Queue)
+{
+    Queue->First = NULL;
+    Queue->Last = &Queue->First;
+}
+
+FORCEINLINE
+VOID
+NdisInitializeNblCountedQueue(
+    _Out_ PNBL_COUNTED_QUEUE Queue)
+{
+    NdisInitializeNblQueue(&Queue->Queue);
+    Queue->NblCount = 0;
+}
+
+FORCEINLINE
+BOOLEAN
+NdisIsNblQueueEmpty(
+    _In_ const NBL_QUEUE *Queue)
+{
+    return Queue->First == NULL;
+}
+
+FORCEINLINE
+VOID
+NdisAppendSingleNblToNblQueue(
+    _Inout_ PNBL_QUEUE Queue,
+    _In_ PNET_BUFFER_LIST NetBufferList)
+{
+    *Queue->Last = NetBufferList;
+    NET_BUFFER_LIST_NEXT_NBL(NetBufferList) = NULL;
+    Queue->Last = &NET_BUFFER_LIST_NEXT_NBL(NetBufferList);
+}
+
+/* Fast because the caller already knows where the chain ends. */
+FORCEINLINE
+VOID
+NdisAppendNblChainToNblQueueFast(
+    _Inout_ PNBL_QUEUE Queue,
+    _In_ PNET_BUFFER_LIST FirstNetBufferList,
+    _In_ PNET_BUFFER_LIST LastNetBufferList)
+{
+    *Queue->Last = FirstNetBufferList;
+    NET_BUFFER_LIST_NEXT_NBL(LastNetBufferList) = NULL;
+    Queue->Last = &NET_BUFFER_LIST_NEXT_NBL(LastNetBufferList);
+}
+
+FORCEINLINE
+VOID
+NdisAppendNblQueueToNblQueueFast(
+    _Inout_ PNBL_QUEUE Queue,
+    _Inout_ PNBL_QUEUE Source)
+{
+    if (!NdisIsNblQueueEmpty(Source))
+    {
+        *Queue->Last = Source->First;
+        Queue->Last = Source->Last;
+        NdisInitializeNblQueue(Source);
+    }
+}
+
+FORCEINLINE
+PNET_BUFFER_LIST
+NdisPopAllFromNblQueue(
+    _Inout_ PNBL_QUEUE Queue)
+{
+    PNET_BUFFER_LIST NetBufferList = Queue->First;
+
+    NdisInitializeNblQueue(Queue);
+
+    return NetBufferList;
+}
+
+#ifdef __cplusplus
+}
+#endif

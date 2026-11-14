@@ -143,6 +143,8 @@ typedef enum _NET_IF_MEDIA_DUPLEX_STATE {
     MediaDuplexStateFull    = 2
 } NET_IF_MEDIA_DUPLEX_STATE, *PNET_IF_MEDIA_DUPLEX_STATE;
 
+#define NET_IF_LINK_SPEED_UNKNOWN   ((ULONG64)(-1))
+
 typedef struct _NET_PHYSICAL_LOCATION_LH {
     ULONG BusNumber;
     ULONG SlotNumber;

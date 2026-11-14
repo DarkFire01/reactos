@@ -47,7 +47,8 @@ NdisQueryPciBusInterface(
     IrpStack->MinorFunction = IRP_MN_QUERY_INTERFACE;
     IrpStack->Parameters.QueryInterface.InterfaceType = &GUID_BUS_INTERFACE_STANDARD;
     IrpStack->Parameters.QueryInterface.Size = sizeof(Adapter->BusInterface);
-    IrpStack->Parameters.QueryInterface.Version = PCI_BUS_INTERFACE_STANDARD_VERSION;
+    /* The generic bus interface is version 1, unlike PCI_BUS_INTERFACE_STANDARD */
+    IrpStack->Parameters.QueryInterface.Version = 1;
     IrpStack->Parameters.QueryInterface.Interface = (PINTERFACE)&Adapter->BusInterface;
     IrpStack->Parameters.QueryInterface.InterfaceSpecificData = NULL;
 
