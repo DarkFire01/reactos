@@ -261,7 +261,9 @@ UrsFdoEvtWdmDeviceControl(
         case IOCTL_URS_GET_PLD_LIST:
             return WdfDeviceWdmDispatchIrpToIoQueue(Device, Irp, Fdo->PldQueue, 0);
 
+        /* The framework advances the stack like IoCallDriver does */
         default:
+            IoSkipCurrentIrpStackLocation(Irp);
             return WdfDeviceWdmDispatchIrp(Device, Irp, DispatchContext);
     }
 }

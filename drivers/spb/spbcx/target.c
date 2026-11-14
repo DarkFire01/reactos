@@ -309,7 +309,10 @@ ScxEvtFileCleanup(
     UNREFERENCED_PARAMETER(FileObject);
 }
 
-/* The create goes on to the framework, which routes it to ScxEvtDeviceFileCreate */
+/*
+ * The create goes on to the framework, which routes it to ScxEvtDeviceFileCreate.
+ * The framework advances the stack like IoCallDriver does, so it is skipped first.
+ */
 NTSTATUS
 NTAPI
 ScxEvtWdmIrpPreprocessCreate(
@@ -317,6 +320,7 @@ ScxEvtWdmIrpPreprocessCreate(
     _Inout_ PIRP Irp,
     _In_ WDFCONTEXT DispatchContext)
 {
+    IoSkipCurrentIrpStackLocation(Irp);
     return WdfDeviceWdmDispatchIrp(Device, Irp, DispatchContext);
 }
 
