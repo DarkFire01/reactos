@@ -115,6 +115,11 @@ UfsAllocateCommonBuffer(
     Adapter->CommonBufferPhysical =
         StorPortGetPhysicalAddress(Adapter, NULL, Adapter->CommonBuffer, &Length);
 
+    DPRINT1("UFS: common buffer %p at physical %I64x, %lu bytes\n",
+            Adapter->CommonBuffer, Adapter->CommonBufferPhysical.QuadPart, Length);
+    if (Adapter->CommonBufferPhysical.QuadPart == 0)
+        return FALSE;
+
     Adapter->UtrdList =
         (PUFS_UTRD)((PUCHAR)Adapter->CommonBuffer + UFS_UTRD_LIST_OFFSET);
     Adapter->UtrdListPhysical = Adapter->CommonBufferPhysical;
