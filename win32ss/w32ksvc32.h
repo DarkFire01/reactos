@@ -1011,3 +1011,7 @@
     SVC_(UserGetUpdatedClipboardFormats, 3)
     SVC_(UserAddClipboardFormatListener, 1)
     SVC_(UserRemoveClipboardFormatListener, 1)
+    SVC_(UserModifyWindowTouchCapability, 3)
+    SVC_(UserIsTouchWindow, 2)
+    SVC_(UserGetTouchInputInfo, 4)
+    SVC_(UserCloseTouchInputHandle, 1)

@@ -273,7 +273,7 @@ static const struct
     { AllocInputContextObject,  UserDestroyInputContext,    UserFreeInputContext }, /* TYPE_INPUTCONTEXT */
     { NULL,                     NULL,                       NULL },                 /* TYPE_HIDDATA */
     { NULL,                     NULL,                       NULL },                 /* TYPE_DEVICEINFO */
-    { NULL,                     NULL,                       NULL },                 /* TYPE_TOUCHINPUTINFO */
+    { AllocThreadObject,        UserDestroyTouchInput,      FreeThreadObject },     /* TYPE_TOUCHINPUTINFO */
     { NULL,                     NULL,                       NULL },                 /* TYPE_GESTUREINFOOBJ */
 };
 

@@ -66,6 +66,11 @@ typedef struct _HID_DEVICE_INFO
     PHIDP_PREPARSED_DATA PreparsedData;
     HID_COLLECTION_INFORMATION CollectionInformation;
     HIDP_CAPS Caps;
+
+    /* Touch screens: the report being read and the parser state, see touch.c */
+    PCHAR ReportBuffer;
+    ULONG ReportLength;
+    PVOID TouchContext;
 } HID_DEVICE_INFO, *PHID_DEVICE_INFO;
 
 typedef struct _INPUT_DEVICE_INFO
@@ -118,6 +123,12 @@ extern BOOL gbEnableHexNumpad;
 WORD FASTCALL UserGetMouseButtonsState(VOID);
 VOID NTAPI UserProcessMouseInput(PINPUT_DEVICE_INFO pDeviceInfo, PMOUSE_INPUT_DATA pMouseInputData);
 BOOL NTAPI UserSendMouseInput(MOUSEINPUT *pMouseInput, BOOL bInjected);
+
+/* Touch */
+BOOLEAN NTAPI UserInitTouchDevice(_Inout_ struct _INPUT_DEVICE_INFO *DeviceInfo);
+VOID NTAPI UserCleanupTouchDevice(_Inout_ struct _INPUT_DEVICE_INFO *DeviceInfo);
+VOID NTAPI UserProcessTouchReport(_In_ struct _INPUT_DEVICE_INFO *DeviceInfo, _In_reads_bytes_(Length) PCHAR Report, _In_ ULONG Length);
+BOOLEAN UserDestroyTouchInput(_In_ PVOID Object);
 
 /* Raw input */
 extern BOOLEAN RawInputEnabled;

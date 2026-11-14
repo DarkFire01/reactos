@@ -157,6 +157,7 @@ list(APPEND SOURCE
     user/ntuser/power.c
     user/ntuser/prop.c
     user/ntuser/rawinput.c
+    user/ntuser/touch.c
     user/ntuser/scrollbar.c
     user/ntuser/scrollex.c
     user/ntuser/security.c
@@ -269,7 +270,7 @@ if(USE_DIBLIB)
     target_link_libraries(win32k diblib)
 endif()
 
-add_importlibs(win32k ntoskrnl hal ftfd watchdog)
+add_importlibs(win32k ntoskrnl hal ftfd watchdog hidparse)
 add_cd_file(TARGET win32k DESTINATION reactos/system32 FOR all)
 
 if(ARCH STREQUAL "amd64")

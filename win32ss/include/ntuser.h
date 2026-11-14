@@ -686,6 +686,9 @@ typedef struct _SBINFOEX
 #define WS_EX2_HASOVERLAY               0X00000200
 #define WS_EX2_CONSOLEWINDOW            0X00000400
 #define WS_EX2_CHILDNOACTIVATE          0X00000800
+#define WS_EX2_TOUCHREGISTERED          0X00001000
+#define WS_EX2_TOUCHFINE                0X00002000
+#define WS_EX2_TOUCHWANTPALM            0X00004000
 
 #define WPF_MININIT 0x0008
 #define WPF_MAXINIT 0x0010
@@ -3064,6 +3067,32 @@ BOOL
 NTAPI
 NtUserRemoveClipboardFormatListener(
     _In_ HWND hwnd);
+
+BOOL
+NTAPI
+NtUserModifyWindowTouchCapability(
+    _In_ HWND hwnd,
+    _In_ ULONG ulFlags,
+    _In_ BOOL Register);
+
+BOOL
+NTAPI
+NtUserIsTouchWindow(
+    _In_ HWND hwnd,
+    _Out_opt_ PULONG pulFlags);
+
+BOOL
+NTAPI
+NtUserGetTouchInputInfo(
+    _In_ HTOUCHINPUT hTouchInput,
+    _In_ UINT cInputs,
+    _Out_writes_(cInputs) PTOUCHINPUT pInputs,
+    _In_ int cbSize);
+
+BOOL
+NTAPI
+NtUserCloseTouchInputHandle(
+    _In_ HTOUCHINPUT hTouchInput);
 
 BOOL
 NTAPI

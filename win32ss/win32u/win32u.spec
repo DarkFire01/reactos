@@ -986,3 +986,7 @@
 @ stdcall NtUserGetUpdatedClipboardFormats(ptr long ptr)
 @ stdcall NtUserAddClipboardFormatListener(ptr)
 @ stdcall NtUserRemoveClipboardFormatListener(ptr)
+@ stdcall NtUserModifyWindowTouchCapability(ptr long long)
+@ stdcall NtUserIsTouchWindow(ptr ptr)
+@ stdcall NtUserGetTouchInputInfo(ptr long ptr long)
+@ stdcall NtUserCloseTouchInputHandle(ptr)

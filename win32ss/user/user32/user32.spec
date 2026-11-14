@@ -71,7 +71,7 @@
 @ stdcall CloseClipboard() NtUserCloseClipboard
 @ stdcall CloseDesktop(long) NtUserCloseDesktop
 @ stdcall -version=0x601+ CloseGestureInfoHandle(ptr)
-@ stdcall -version=0x601+ CloseTouchInputHandle(ptr)
+@ stdcall -version=0x601+ CloseTouchInputHandle(ptr) NtUserCloseTouchInputHandle
 @ stdcall CloseWindow(long)
 @ stdcall CloseWindowStation(long) NtUserCloseWindowStation
 @ stdcall CopyAcceleratorTableA(long ptr long)
@@ -469,7 +469,7 @@
 @ stdcall IsServerSideWindow(long)
 @ stdcall -version=0x602+ InitializeTouchInjection(long long)
 @ stdcall -version=0x602+ InjectTouchInput(long ptr)
-@ stdcall -version=0x601+ IsTouchWindow(long ptr)
+@ stdcall -version=0x601+ IsTouchWindow(long ptr) NtUserIsTouchWindow
 @ stdcall -version=0xA00+ IsValidDpiAwarenessContext(long)
 @ stdcall IsWinEventHookInstalled(long)
 @ stdcall IsWindow(long)
