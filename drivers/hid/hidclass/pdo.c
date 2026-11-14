@@ -465,8 +465,13 @@ HidClassPDO_PnP(
             // override some capabilities
             //
             IoStack->Parameters.DeviceCapabilities.Capabilities->Removable = FALSE;
+            IoStack->Parameters.DeviceCapabilities.Capabilities->DockDevice = FALSE;
             IoStack->Parameters.DeviceCapabilities.Capabilities->SilentInstall = TRUE;
             IoStack->Parameters.DeviceCapabilities.Capabilities->SurpriseRemovalOK = TRUE;
+            IoStack->Parameters.DeviceCapabilities.Capabilities->Address = PDODeviceExtension->CollectionNumber;
+
+            /* A collection no driver claims still starts, so user mode and win32k can open it */
+            IoStack->Parameters.DeviceCapabilities.Capabilities->RawDeviceOK = TRUE;
 
             /* The collection number only tells collections of one device apart */
             IoStack->Parameters.DeviceCapabilities.Capabilities->UniqueID = FALSE;
