@@ -444,3 +444,116 @@ HalpInitializeClock(VOID);
 VOID
 NTAPI
 HalpStartClockInterrupt(VOID);
+
+/* secint.c */
+
+/* GSIVs past the GIC that a secondary controller, such as a GPIO block, serves */
+#define HALP_SECONDARY_GSIV_BASE    KI_SECONDARY_VECTOR_BASE
+#define HALP_SECONDARY_GSIV_COUNT   KI_SECONDARY_VECTORS
+
+#define HalpIsSecondaryGsiv(Gsiv) \
+    (((Gsiv) >= HALP_SECONDARY_GSIV_BASE) && ((Gsiv) - HALP_SECONDARY_GSIV_BASE < HALP_SECONDARY_GSIV_COUNT))
+
+/* The line a secondary GSIV is delivered through */
+typedef struct _HALP_PRIMARY_LINE
+{
+    USHORT Size;
+    USHORT Version;
+    ULONG PrimaryGsiv;
+    KIRQL PrimaryIrql;
+    GROUP_AFFINITY PrimaryAffinity;
+    KINTERRUPT_MODE InterruptMode;
+    KINTERRUPT_POLARITY Polarity;
+} HALP_PRIMARY_LINE, *PHALP_PRIMARY_LINE;
+
+typedef NTSTATUS (NTAPI *PHALP_SECONDARY_ENABLE)(_In_ PVOID Context, _In_ ULONG Gsiv, _In_ KINTERRUPT_MODE Mode, _In_ KINTERRUPT_POLARITY Polarity, _In_ PVOID ControllerContext);
+typedef NTSTATUS (NTAPI *PHALP_SECONDARY_DISABLE)(_In_ PVOID Context, _In_ ULONG Gsiv);
+typedef NTSTATUS (NTAPI *PHALP_SECONDARY_MASK)(_In_ PVOID Context, _In_ ULONG Flags, _In_ ULONG Gsiv);
+typedef NTSTATUS (NTAPI *PHALP_SECONDARY_QUERY_PRIMARY)(_In_ PVOID Context, _In_ ULONG Gsiv, _Out_ PHALP_PRIMARY_LINE PrimaryLine);
+
+#define HALP_SECONDARY_PROVIDER_VERSION 1
+
+/* What a secondary controller registers with HalRegisterSecondaryInterruptInterface */
+typedef struct _HALP_SECONDARY_PROVIDER
+{
+    USHORT Size;
+    USHORT Version;
+    PVOID Context;
+    ULONG GsivBase;
+    USHORT GsivSize;
+    PDRIVER_OBJECT DriverObject;
+    PHALP_SECONDARY_ENABLE EnableInterrupt;
+    PHALP_SECONDARY_DISABLE DisableInterrupt;
+    PHALP_SECONDARY_MASK MaskInterrupt;
+    PHALP_SECONDARY_MASK UnmaskInterrupt;
+    PHALP_SECONDARY_QUERY_PRIMARY QueryPrimaryInterrupt;
+    PVOID RequestInterrupt;
+    PVOID QueryLineInformation;
+} HALP_SECONDARY_PROVIDER, *PHALP_SECONDARY_PROVIDER;
+
+#define HALP_SECONDARY_INFORMATION_VERSION 1
+
+/* What HalSecondaryInterruptInformation returns to a secondary controller */
+typedef struct _HALP_SECONDARY_INFORMATION
+{
+    USHORT Version;
+    ULONG GsivRangeStart;
+    ULONG GsivRangeSize;
+    PVOID MaskInterrupt;
+    PVOID UnmaskInterrupt;
+    PVOID InvokeIsrForGsiv;
+    PVOID UnregisterInterface;
+    PVOID RequestInterrupt;
+} HALP_SECONDARY_INFORMATION, *PHALP_SECONDARY_INFORMATION;
+
+VOID
+NTAPI
+HalpInitializeSecondaryInterrupts(VOID);
+
+NTSTATUS
+NTAPI
+HalpQuerySecondaryInformation(
+    _Out_writes_bytes_(BufferSize) PVOID Buffer,
+    _In_ ULONG BufferSize,
+    _Out_ PULONG ReturnedLength);
+
+NTSTATUS
+NTAPI
+HalpRegisterSecondaryProvider(
+    _In_reads_bytes_(BufferSize) PVOID Buffer,
+    _In_ ULONG BufferSize);
+
+BOOLEAN
+NTAPI
+HalpGetSecondaryVector(
+    _In_ ULONG Gsiv,
+    _Out_ PKIRQL Irql,
+    _Out_ PKAFFINITY Affinity);
+
+NTSTATUS
+NTAPI
+HalpEnableSecondaryLine(
+    _In_ ULONG Gsiv,
+    _In_ KINTERRUPT_MODE Mode,
+    _In_ KINTERRUPT_POLARITY Polarity);
+
+NTSTATUS
+NTAPI
+HalpDisableSecondaryLine(
+    _In_ ULONG Gsiv);
+
+/* sysinfo.c */
+NTSTATUS
+NTAPI
+HaliQuerySystemInformation(
+    _In_ HAL_QUERY_INFORMATION_CLASS InformationClass,
+    _In_ ULONG BufferSize,
+    _Inout_ PVOID Buffer,
+    _Out_ PULONG ReturnedLength);
+
+NTSTATUS
+NTAPI
+HaliSetSystemInformation(
+    _In_ HAL_SET_INFORMATION_CLASS InformationClass,
+    _In_ ULONG BufferSize,
+    _In_ PVOID Buffer);

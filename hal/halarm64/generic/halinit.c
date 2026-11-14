@@ -109,6 +109,11 @@ HalInitSystem(
         /* The ACPI driver enumerates the platform below the HAL device */
         HalInitPnpDriver = HaliInitPnpDriver;
         HalInitPowerManagement = HaliInitPowerManagement;
+        HalQuerySystemInformation = HaliQuerySystemInformation;
+        HalSetSystemInformation = HaliSetSystemInformation;
+
+        /* GPIO blocks register for the GSIVs above the GIC once they start */
+        HalpInitializeSecondaryInterrupts();
     }
     else if (BootPhase == 1)
     {

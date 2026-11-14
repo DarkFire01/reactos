@@ -19,6 +19,8 @@ list(APPEND SOURCE
     generic/memory.c
     generic/misc.c
     generic/pci.c
+    generic/secint.c
+    generic/sysinfo.c
     generic/timer.c
     ${REACTOS_SOURCE_DIR}/hal/halx86/acpi/halpnpdd.c
     ${REACTOS_SOURCE_DIR}/hal/halx86/acpi/mmconfig.c
