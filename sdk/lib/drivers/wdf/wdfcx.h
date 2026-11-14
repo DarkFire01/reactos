@@ -10,11 +10,15 @@
 
 #include "kmdf/inc/private/wdfldr.h"
 
-typedef BOOLEAN
-(NTAPI *PFN_WDFCX_DEVICE_FILE_CREATE) (
+typedef
+_Function_class_(EVT_WDFCX_DEVICE_FILE_CREATE)
+BOOLEAN
+NTAPI
+EVT_WDFCX_DEVICE_FILE_CREATE(
     _In_ WDFDEVICE Device,
     _In_ WDFREQUEST Request,
     _In_opt_ WDFFILEOBJECT FileObject);
+typedef EVT_WDFCX_DEVICE_FILE_CREATE *PFN_WDFCX_DEVICE_FILE_CREATE;
 
 // _WDFCX_FILEOBJECT_CONFIG_V1_17
 
@@ -190,5 +194,92 @@ typedef NTSTATUS (NTAPI *PFN_WDF_CLIENT_BIND_CLASS)(
 typedef VOID (NTAPI *PFN_WDF_CLIENT_UNBIND_CLASS)(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
     _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals);
+
+/* Class extension side of the client interface, reached through the bound function table */
+#ifndef FX_CORE_MODE
+
+FORCEINLINE
+VOID
+WDFCX_FILEOBJECT_CONFIG_INIT(
+    _Out_ PWDFCX_FILEOBJECT_CONFIG FileEventCallbacks,
+    _In_opt_ PFN_WDFCX_DEVICE_FILE_CREATE EvtCxDeviceFileCreate,
+    _In_opt_ PFN_WDF_FILE_CLOSE EvtFileClose,
+    _In_opt_ PFN_WDF_FILE_CLEANUP EvtFileCleanup)
+{
+    RtlZeroMemory(FileEventCallbacks, sizeof(*FileEventCallbacks));
+    FileEventCallbacks->Size = sizeof(*FileEventCallbacks);
+    FileEventCallbacks->EvtCxDeviceFileCreate = EvtCxDeviceFileCreate;
+    FileEventCallbacks->EvtFileClose = EvtFileClose;
+    FileEventCallbacks->EvtFileCleanup = EvtFileCleanup;
+    FileEventCallbacks->FileObjectClass = WdfFileObjectWdfCannotUseFsContexts;
+    FileEventCallbacks->AutoForwardCleanupClose = WdfUseDefault;
+}
+
+FORCEINLINE
+PWDFCXDEVICE_INIT
+WdfCxDeviceInitAllocate(
+    _In_ PWDFDEVICE_INIT DeviceInit)
+{
+    return ((PFN_WDFCXDEVICEINITALLOCATE)WdfFunctions[WdfCxDeviceInitAllocateTableIndex])(WdfDriverGlobals,
+                                                                                         DeviceInit);
+}
+
+FORCEINLINE
+NTSTATUS
+WdfCxDeviceInitAssignWdmIrpPreprocessCallback(
+    _In_ PWDFCXDEVICE_INIT CxDeviceInit,
+    _In_ PFN_WDFCXDEVICE_WDM_IRP_PREPROCESS EvtCxDeviceWdmIrpPreprocess,
+    _In_ UCHAR MajorFunction,
+    _In_reads_opt_(NumMinorFunctions) PUCHAR MinorFunctions,
+    _In_ ULONG NumMinorFunctions)
+{
+    return ((PFN_WDFCXDEVICEINITASSIGNWDMIRPPREPROCESSCALLBACK)
+            WdfFunctions[WdfCxDeviceInitAssignWdmIrpPreprocessCallbackTableIndex])(WdfDriverGlobals,
+                                                                                   CxDeviceInit,
+                                                                                   EvtCxDeviceWdmIrpPreprocess,
+                                                                                   MajorFunction,
+                                                                                   MinorFunctions,
+                                                                                   NumMinorFunctions);
+}
+
+FORCEINLINE
+VOID
+WdfCxDeviceInitSetIoInCallerContextCallback(
+    _In_ PWDFCXDEVICE_INIT CxDeviceInit,
+    _In_ PFN_WDF_IO_IN_CALLER_CONTEXT EvtIoInCallerContext)
+{
+    ((PFN_WDFCXDEVICEINITSETIOINCALLERCONTEXTCALLBACK)
+     WdfFunctions[WdfCxDeviceInitSetIoInCallerContextCallbackTableIndex])(WdfDriverGlobals,
+                                                                          CxDeviceInit,
+                                                                          EvtIoInCallerContext);
+}
+
+FORCEINLINE
+VOID
+WdfCxDeviceInitSetRequestAttributes(
+    _In_ PWDFCXDEVICE_INIT CxDeviceInit,
+    _In_ PWDF_OBJECT_ATTRIBUTES RequestAttributes)
+{
+    ((PFN_WDFCXDEVICEINITSETREQUESTATTRIBUTES)
+     WdfFunctions[WdfCxDeviceInitSetRequestAttributesTableIndex])(WdfDriverGlobals,
+                                                                  CxDeviceInit,
+                                                                  RequestAttributes);
+}
+
+FORCEINLINE
+VOID
+WdfCxDeviceInitSetFileObjectConfig(
+    _In_ PWDFCXDEVICE_INIT CxDeviceInit,
+    _In_ PWDFCX_FILEOBJECT_CONFIG CxFileObjectConfig,
+    _In_opt_ PWDF_OBJECT_ATTRIBUTES FileObjectAttributes)
+{
+    ((PFN_WDFCXDEVICEINITSETFILEOBJECTCONFIG)
+     WdfFunctions[WdfCxDeviceInitSetFileObjectConfigTableIndex])(WdfDriverGlobals,
+                                                                 CxDeviceInit,
+                                                                 CxFileObjectConfig,
+                                                                 FileObjectAttributes);
+}
+
+#endif /* FX_CORE_MODE */
 
 #endif // _WDFCX_H_
