@@ -27,6 +27,12 @@ ExcludeFromSelect = *
 [ReactOSMfg]
 %XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM24B6&HOST
 %XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM24B7&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM0C8B&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM0C8C&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, URS\QCOM0D07&HOST
+%XHCIF.DeviceDesc% = XHCIF_Device, ACPI\QCOM0CA1
+%XHCIF.DeviceDesc% = XHCIF_Device, ACPI\QCOM0D08
+%XHCIF.DeviceDesc% = XHCIF_Device, ACPI\QCOM0D09
 
 [XHCIF_Device.NT]
 Include = usbxhci.inf

@@ -460,6 +460,126 @@ XhcifSdm845InitializeHardware(
 
 /**
  * @brief
+ * Snapdragon X core setup, done after firmware has brought up the PHYs.
+ */
+static
+VOID
+XhcifX1ConfigureCore(
+    _In_ PXHCIF_DEVICE Device)
+{
+    PUCHAR Core = Device->Controller;
+    ULONG Pipe;
+
+    switch (Device->X1Controller)
+    {
+        case XhcifX1HighSpeed:
+            /* There is no SuperSpeed PHY, the pipe side runs from the UTMI clock */
+            XhcifModify(Core, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_PIPE_CLK_GATE);
+            XhcifStall();
+            XhcifModify(Core, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_UTMI_AS_PIPE);
+            XhcifModify(Core, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_BIT9);
+            XhcifModify(Core, QSCR_GENERAL_CFG, QSCR_GENERAL_CFG_BIT9, 0);
+            XhcifStall();
+            XhcifModify(Core, QSCR_GENERAL_CFG, QSCR_GENERAL_CFG_PIPE_CLK_GATE, 0);
+
+            XhcifModify(Core, DWC3_GCTL, 0, DWC3_GCTL_DSBLCLKGTNG);
+            XhcifModify(Core,
+                        DWC3_GUSB3PIPECTL,
+                        0,
+                        DWC3_GUSB3PIPECTL_P3EXSIGP2 | DWC3_GUSB3PIPECTL_UX_EXIT_PX);
+            break;
+
+        case XhcifX1Multiport:
+            for (Pipe = 0; Pipe < 2; Pipe++)
+            {
+                XhcifModify(Core,
+                            DWC3_GUSB3PIPECTL_N(Pipe),
+                            DWC3_GUSB3PIPECTL_DELAYP1TRANS,
+                            DWC3_GUSB3PIPECTL_P3EXSIGP2 | DWC3_GUSB3PIPECTL_UX_EXIT_PX);
+            }
+
+            XhcifModify(Core, DWC3_GUCTL3, 0, DWC3_GUCTL3_USB20_RETRY_DISABLE);
+            XhcifModify(Core, DWC3_GCTL, 0, DWC3_GCTL_DSBLCLKGTNG);
+            break;
+
+        default:
+            XhcifModify(Core,
+                        DWC3_GUSB3PIPECTL,
+                        DWC3_GUSB3PIPECTL_DELAYP1TRANS | DWC3_GUSB3PIPECTL_P3EXSIGP2 | DWC3_GUSB3PIPECTL_UX_EXIT_PX,
+                        0);
+            XhcifModify(Core, DWC3_GCTL, 0, DWC3_GCTL_DSBLCLKGTNG);
+            XhcifModify(Core, DWC3_GUCTL3, 0, DWC3_GUCTL3_USB20_RETRY_DISABLE);
+            break;
+    }
+
+    XhcifModify(Core, QSCR_CFG_28, 0, QSCR_CFG_28_BIT1);
+    XhcifModify(Core, QSCR_GENERAL_CFG, QSCR_GENERAL_CFG_BIT1, 0);
+    XhcifModify(Core, QSCR_CFG_28, 0, QSCR_CFG_28_BIT2);
+    XhcifModify(Core, DWC3_GUCTL1, DWC3_GUCTL1_IP_GAP_ADD_ON_MASK, DWC3_GUCTL1_IP_GAP_ADD_ON(3));
+    XhcifModify(Core, DWC3_GUCTL, 0, DWC3_GUCTL_SPRSCTRLTRANSEN);
+
+    if (Device->X1Controller != XhcifX1HighSpeed)
+        XhcifModify(Core, DWC3_GUCTL, DWC3_GUCTL_TIMEOUT_MASK, 6);
+}
+
+/**
+ * @brief
+ * Snapdragon X host mode setup of the core and its ports.
+ */
+static
+VOID
+XhcifX1ConfigureHost(
+    _In_ PXHCIF_DEVICE Device)
+{
+    PUCHAR Core = Device->Controller;
+
+    switch (Device->X1Controller)
+    {
+        case XhcifX1Multiport:
+            XhcifModify(Core,
+                        DWC3_GCTL,
+                        DWC3_GCTL_PRTCAPDIR_MASK | DWC3_GCTL_U2EXIT_LFPS | DWC3_GCTL_U2RSTECN,
+                        DWC3_GCTL_PRTCAPDIR_HOST | DWC3_GCTL_U2EXIT_LFPS | DWC3_GCTL_U2RSTECN);
+            XhcifModify(Core, XHCIF_PORTSC(0), 0, XHCIF_PORTSC_WCE);
+            XhcifModify(Core, XHCIF_PORTSC(2), 0, XHCIF_PORTSC_WCE);
+            XhcifModify(Core, DWC3_GUSB2PHYCFG_N(0), 0, DWC3_GUSB2PHYCFG_HOST_TUNE);
+            XhcifModify(Core, XHCIF_PORTSC(1), 0, XHCIF_PORTSC_WCE);
+            XhcifModify(Core, XHCIF_PORTSC(3), 0, XHCIF_PORTSC_WCE);
+            XhcifModify(Core, DWC3_GUSB2PHYCFG_N(1), 0, DWC3_GUSB2PHYCFG_HOST_TUNE);
+            break;
+
+        case XhcifX1HighSpeed:
+            XhcifModify(Core,
+                        DWC3_GCTL,
+                        DWC3_GCTL_PRTCAPDIR_MASK | DWC3_GCTL_U2EXIT_LFPS,
+                        DWC3_GCTL_PRTCAPDIR_HOST | DWC3_GCTL_U2EXIT_LFPS);
+            XhcifModify(Core, XHCIF_PORTSC(0), 0, XHCIF_PORTSC_WCE);
+            XhcifModify(Core,
+                        DWC3_GRXTHRCFG,
+                        DWC3_GRXTHRCFG_PKTCNTSEL | DWC3_GRXTHRCFG_PKTCNT_MASK | DWC3_GRXTHRCFG_MAXBURST_MASK,
+                        DWC3_GRXTHRCFG_PKTCNTSEL | DWC3_GRXTHRCFG_PKTCNT(3) | DWC3_GRXTHRCFG_MAXBURST(3));
+            XhcifModify(Core,
+                        DWC3_GSBUSCFG1,
+                        DWC3_GSBUSCFG1_PIPETRANSLIMIT_MASK | DWC3_GSBUSCFG1_EN_1KPAGE,
+                        DWC3_GSBUSCFG1_PIPETRANSLIMIT(0xE) | DWC3_GSBUSCFG1_EN_1KPAGE);
+            XhcifModify(Core, DWC3_GUSB2PHYCFG, 0, DWC3_GUSB2PHYCFG_HOST_TUNE);
+            break;
+
+        default:
+            XhcifModify(Core,
+                        DWC3_GCTL,
+                        DWC3_GCTL_PRTCAPDIR_MASK | DWC3_GCTL_U2EXIT_LFPS,
+                        DWC3_GCTL_PRTCAPDIR_HOST | DWC3_GCTL_U2EXIT_LFPS);
+            XhcifModify(Core, XHCIF_PORTSC(0), 0, XHCIF_PORTSC_WCE);
+            XhcifModify(Core, XHCIF_PORTSC(1), 0, XHCIF_PORTSC_WCE);
+            XhcifModify(Core, DWC3_LINK_TUNE, 0, DWC3_LINK_TUNE_ENABLE);
+            XhcifModify(Core, DWC3_GUSB2PHYCFG, 0, DWC3_GUSB2PHYCFG_HOST_TUNE);
+            break;
+    }
+}
+
+/**
+ * @brief
  * Resets the controller and both PHYs and brings the core up as a host.
  */
 VOID
@@ -468,6 +588,14 @@ XhcifInitializeHardware(
     _In_ PXHCIF_DEVICE Device)
 {
     NTSTATUS Status;
+
+    if (Device->Soc == XhcifSocX1)
+    {
+        XhcifX1ConfigureCore(Device);
+        XhcifX1ConfigureHost(Device);
+        Device->PhySuspended = FALSE;
+        return;
+    }
 
     if (Device->Soc == XhcifSocSdm845)
     {
@@ -603,8 +731,8 @@ XhcifSuspendPhys(
     ULONG HsPort, SsPort;
     BOOLEAN HsSuspended, SsSuspended;
 
-    /* The SDM845 PHY is kept out of suspend, and nothing here gates its power */
-    if (Device->Soc == XhcifSocSdm845)
+    /* Only the MSM8994 family PHYs are suspended here, the SDM845 one stays awake */
+    if (Device->Soc != XhcifSocMsm8994)
         return;
 
     HsPort = XhcifRead(Device->Controller, XHCIF_PORTSC_HS);

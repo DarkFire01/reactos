@@ -17,6 +17,54 @@ static EVT_WDF_DEVICE_RELEASE_HARDWARE XhcifEvtReleaseHardware;
 static EVT_WDF_DEVICE_D0_ENTRY XhcifEvtD0Entry;
 static EVT_WDF_DEVICE_D0_EXIT XhcifEvtD0Exit;
 
+/* Controllers this filter brings up itself, any other one is left as firmware set it up */
+static const XHCIF_CONTROLLER_ID XhcifControllers[] =
+{
+    { L"QCOM24B6", XhcifSocMsm8994, XHCIF_CONTROLLER_BASE },
+    { L"QCOM24B7", XhcifSocMsm8994, XHCIF_CONTROLLER_BASE },
+    { L"QCOM2430", XhcifSocMsm8994, XHCIF_CONTROLLER_BASE },
+    { L"QCOM0304", XhcifSocSdm845, XHCIF_SDM845_CONTROLLER_BASE },
+    { L"QCOM0305", XhcifSocSdm845, XHCIF_SDM845_CONTROLLER_BASE },
+    { L"QCOM0C8B", XhcifSocX1, 0 },
+    { L"QCOM0C8C", XhcifSocX1, 0 },
+    { L"QCOM0D07", XhcifSocX1, 0 },
+    { L"QCOM0CA1", XhcifSocX1, 0 },
+    { L"QCOM0D08", XhcifSocX1, 0 },
+    { L"QCOM0D09", XhcifSocX1, 0 },
+};
+
+static const XHCIF_X1_WINDOW XhcifX1Windows[] =
+{
+    { XHCIF_X1_PRIMARY_BASE, XhcifX1Primary },
+    { XHCIF_X1_SECONDARY_BASE, XhcifX1Secondary },
+    { XHCIF_X1_TERTIARY_BASE, XhcifX1Tertiary },
+    { XHCIF_X1_MULTIPORT_BASE, XhcifX1Multiport },
+    { XHCIF_X1_HIGH_SPEED_BASE, XhcifX1HighSpeed },
+};
+
+static
+BOOLEAN
+XhcifX1FindController(
+    _In_ PHYSICAL_ADDRESS Start,
+    _Out_ XHCIF_X1_CONTROLLER *Controller)
+{
+    ULONG i;
+
+    if (Start.HighPart)
+        return FALSE;
+
+    for (i = 0; i < RTL_NUMBER_OF(XhcifX1Windows); i++)
+    {
+        if (Start.LowPart == XhcifX1Windows[i].Base)
+        {
+            *Controller = XhcifX1Windows[i].Controller;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
 static
 PVOID
 XhcifMap(
@@ -66,53 +114,74 @@ XhcifEvtPrepareHardware(
     _In_ WDFCMRESLIST ResourcesTranslated)
 {
     PXHCIF_DEVICE Device = XhcifGetDevice(WdfDevice);
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor = NULL;
     PHYSICAL_ADDRESS Start;
-    ULONG Count, i;
+    BOOLEAN Supported;
+    ULONG Count, Length, i;
 
     UNREFERENCED_PARAMETER(ResourcesRaw);
+
+    if (Device->Soc == XhcifSocFirmware)
+    {
+        QC_LOG("Controller left as firmware set it up");
+        return STATUS_SUCCESS;
+    }
 
     Count = WdfCmResourceListGetCount(ResourcesTranslated);
     for (i = 0; i < Count; i++)
     {
         Descriptor = WdfCmResourceListGetDescriptor(ResourcesTranslated, i);
-        if (!Descriptor || Descriptor->Type != CmResourceTypeMemory)
-            continue;
-
-        /* The window has to be a controller this filter knows how to drive */
-        Start = Descriptor->u.Memory.Start;
-        Start.LowPart &= ~(PAGE_SIZE - 1);
-        if (Start.HighPart == 0 && Start.LowPart == XHCIF_CONTROLLER_BASE)
-        {
-            Device->Soc = XhcifSocMsm8994;
-        }
-        else if (Start.HighPart == 0 && Start.LowPart == XHCIF_SDM845_CONTROLLER_BASE)
-        {
-            Device->Soc = XhcifSocSdm845;
-        }
-        else
-        {
-            QC_LOG("Unexpected controller window %I64x", Descriptor->u.Memory.Start.QuadPart);
-            return STATUS_INTERNAL_ERROR;
-        }
-
-        if (Descriptor->u.Memory.Length < XHCIF_CONTROLLER_MIN_SIZE)
-        {
-            QC_LOG("Controller window too small: 0x%lx", Descriptor->u.Memory.Length);
-            return STATUS_INTERNAL_ERROR;
-        }
-
-        XhcifUnmap(&Device->Controller, Device->ControllerSize);
-        Device->Controller = MmMapIoSpace(Start, Descriptor->u.Memory.Length, MmNonCached);
-        Device->ControllerSize = Descriptor->u.Memory.Length;
-        if (!Device->Controller)
-            return STATUS_INTERNAL_ERROR;
+        if (Descriptor && Descriptor->Type == CmResourceTypeMemory)
+            break;
     }
 
-    if (!Device->Controller)
+    if (i == Count)
     {
         QC_LOG("No controller window in the resources");
         return STATUS_INTERNAL_ERROR;
+    }
+
+    Start = Descriptor->u.Memory.Start;
+    Start.LowPart &= ~(PAGE_SIZE - 1);
+    Length = Descriptor->u.Memory.Length;
+
+    /* A known ID at another address is a board this filter was not written for */
+    if (Device->Soc == XhcifSocX1)
+    {
+        Supported = XhcifX1FindController(Start, &Device->X1Controller);
+
+        /* The high speed only controller lists just its xHCI registers */
+        Length = max(Length, XHCIF_CONTROLLER_MIN_SIZE);
+    }
+    else
+    {
+        Supported = Start.HighPart == 0 &&
+                    Start.LowPart == Device->ControllerBase &&
+                    Length >= XHCIF_CONTROLLER_MIN_SIZE;
+    }
+
+    if (!Supported)
+    {
+        QC_LOG("Controller window %I64x length 0x%lx not expected, left as firmware set it up",
+               Descriptor->u.Memory.Start.QuadPart,
+               Descriptor->u.Memory.Length);
+        Device->Soc = XhcifSocFirmware;
+        return STATUS_SUCCESS;
+    }
+
+    XhcifUnmap(&Device->Controller, Device->ControllerSize);
+    Device->Controller = MmMapIoSpace(Start, Length, MmNonCached);
+    Device->ControllerSize = Length;
+    if (!Device->Controller)
+        return STATUS_INTERNAL_ERROR;
+
+    if (Device->Soc == XhcifSocX1)
+    {
+        QC_LOG("Setting up the Snapdragon X controller at %I64x, kind %u",
+               Start.QuadPart,
+               Device->X1Controller);
+        XhcifInitializeHardware(Device);
+        return STATUS_SUCCESS;
     }
 
     if (Device->Soc == XhcifSocSdm845)
@@ -191,19 +260,61 @@ XhcifEvtD0Exit(
     return STATUS_SUCCESS;
 }
 
+/* Finds the controller in the table by any of its hardware IDs */
+static
+const XHCIF_CONTROLLER_ID *
+XhcifIdentify(
+    _In_ PWDFDEVICE_INIT DeviceInit)
+{
+    const XHCIF_CONTROLLER_ID *Found = NULL;
+    WDFMEMORY Memory;
+    PCWSTR Ids, Id, End;
+    size_t Size;
+    ULONG i;
+
+    if (!NT_SUCCESS(WdfFdoInitAllocAndQueryProperty(DeviceInit,
+                                                    DevicePropertyHardwareID,
+                                                    PagedPool,
+                                                    WDF_NO_OBJECT_ATTRIBUTES,
+                                                    &Memory)))
+    {
+        return NULL;
+    }
+
+    Ids = WdfMemoryGetBuffer(Memory, &Size);
+    End = Ids + Size / sizeof(WCHAR);
+    for (Id = Ids; !Found && Id < End && *Id; Id += wcslen(Id) + 1)
+    {
+        for (i = 0; i < RTL_NUMBER_OF(XhcifControllers); i++)
+        {
+            if (wcsstr(Id, XhcifControllers[i].Id))
+            {
+                Found = &XhcifControllers[i];
+                break;
+            }
+        }
+    }
+
+    WdfObjectDelete(Memory);
+    return Found;
+}
+
 static
 NTSTATUS
 XhcifEvtDeviceAdd(
     _In_ WDFDRIVER Driver,
     _Inout_ PWDFDEVICE_INIT DeviceInit)
 {
+    const XHCIF_CONTROLLER_ID *Controller;
     WDF_PNPPOWER_EVENT_CALLBACKS PnpPower;
     WDF_OBJECT_ATTRIBUTES Attributes;
+    PXHCIF_DEVICE Device;
     WDFDEVICE WdfDevice;
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(Driver);
 
+    Controller = XhcifIdentify(DeviceInit);
     WdfFdoInitSetFilter(DeviceInit);
 
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&PnpPower);
@@ -221,7 +332,14 @@ XhcifEvtDeviceAdd(
         return Status;
     }
 
-    XhcifGetDevice(WdfDevice)->WdfDevice = WdfDevice;
+    Device = XhcifGetDevice(WdfDevice);
+    Device->WdfDevice = WdfDevice;
+    if (Controller)
+    {
+        Device->Soc = Controller->Soc;
+        Device->ControllerBase = Controller->Base;
+    }
+
     return STATUS_SUCCESS;
 }
 
