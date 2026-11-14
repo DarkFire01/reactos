@@ -6,6 +6,8 @@
  */
 
 #include "riladapt.h"
+#include <stdarg.h>
+#include <stdio.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -87,6 +89,21 @@ RilServiceControl(
 
 static
 VOID
+RilLog(
+    _In_ PCSTR Format,
+    ...)
+{
+    CHAR Line[256];
+    va_list Args;
+
+    va_start(Args, Format);
+    _vsnprintf(Line, sizeof(Line) - 1, Format, Args);
+    va_end(Args);
+    Line[sizeof(Line) - 1] = '\0';
+    OutputDebugStringA(Line);
+}
+
+VOID
 WINAPI
 RilServiceMain(
     _In_ DWORD Argc,
@@ -97,6 +114,8 @@ RilServiceMain(
 
     UNREFERENCED_PARAMETER(Argc);
     UNREFERENCED_PARAMETER(Argv);
+
+    OutputDebugStringA("[riladapt] service main entry\n");
 
     StatusHandle = RegisterServiceCtrlHandlerExW(RILADAPT_SERVICE_NAME, RilServiceControl, NULL);
     if (!StatusHandle)
@@ -114,10 +133,13 @@ RilServiceMain(
     RilPublishInstanceCount(0);
 
     Found = RilFindModems(Configs, _countof(Configs));
+    RilLog("[riladapt] found %lu modem config(s)\n", Found);
     for (i = 0; i < Found; i++)
     {
+        RilLog("[riladapt] starting modem %lu (%S)\n", i, Configs[i].LibraryPath);
         CopyMemory(&Modems[ModemCount].Config, &Configs[i], sizeof(Configs[i]));
         Error = RilStartModem(&Modems[ModemCount], StopEvent);
+        RilLog("[riladapt] modem %lu start -> %lu\n", i, Error);
         if (Error != ERROR_SUCCESS)
         {
             DPRINT1("Modem %lu failed to start (%lu)\n", i, Error);
@@ -133,11 +155,13 @@ RilServiceMain(
     /* A device without a cellular radio has nothing to host */
     if (ModemCount == 0)
     {
+        RilLog("[riladapt] no modems started, stopping\n");
         CloseHandle(StopEvent);
         RilReportStatus(SERVICE_STOPPED, NO_ERROR, 0);
         return;
     }
 
+    RilLog("[riladapt] running with %lu modem(s)\n", ModemCount);
     RilPublishInstanceCount(ModemCount);
     RilReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
