@@ -315,6 +315,7 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     /* Initialize the list heads and locks */
     InitializeListHead(&Thread->LpcReplyChain);
     InitializeListHead(&Thread->IrpList);
+    PspInitializePropertySet(&Thread->PropertySet);
     InitializeListHead(&Thread->PostBlockList);
     InitializeListHead(&Thread->ActiveTimerListHead);
     KeInitializeSpinLock(&Thread->ActiveTimerListLock);

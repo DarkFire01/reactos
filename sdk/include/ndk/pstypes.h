@@ -1306,6 +1306,15 @@ typedef struct _PSP_RATE_APC
 //
 // Executive Thread (ETHREAD)
 //
+//
+// Objects attached to a thread by key, see PsSetThreadProperty
+//
+typedef struct _PS_PROPERTY_SET
+{
+    LIST_ENTRY ListHead;
+    KSPIN_LOCK Lock;
+} PS_PROPERTY_SET, *PPS_PROPERTY_SET;
+
 typedef struct _ETHREAD
 {
     KTHREAD Tcb;
@@ -1466,6 +1475,7 @@ typedef struct _ETHREAD
     // TODO: Missing Vista+ members
 #if (NTDDI_VERSION >= NTDDI_WIN10_RS1) || defined(__REACTOS__)
     PUNICODE_STRING ThreadName;
+    PS_PROPERTY_SET PropertySet;
     // TODO: Missing Win10+ members
 #endif
 #if defined(__REACTOS__)
