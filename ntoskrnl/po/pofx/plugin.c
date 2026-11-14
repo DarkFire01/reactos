@@ -344,6 +344,11 @@ PopFxPrepareExistingDevices(VOID)
                 continue;
             }
             while (Node && !Node->Sibling)
+    /* Legacy resource devnodes are not PnP devices and have no properties */
+    DeviceNode = IopGetDeviceNode(Pdo);
+    if (!DeviceNode || (DeviceNode->Flags & DNF_LEGACY_RESOURCE_DEVICENODE) || !DeviceNode->InstancePath.Length)
+        return STATUS_NOT_FOUND;
+
                 Node = Node->Parent;
             if (Node)
                 Node = Node->Sibling;
@@ -429,10 +434,6 @@ PopFxQueryDeviceId(
 
         ExFreePoolWithTag(Buffer, TAG_PO_FX_PLUGIN);
     }
-
-    DeviceNode = IopGetDeviceNode(Pdo);
-    if (!DeviceNode || !DeviceNode->InstancePath.Length)
-        return STATUS_NOT_FOUND;
 
     Size = DeviceNode->InstancePath.Length + sizeof(UNICODE_NULL);
     Buffer = ExAllocatePoolWithTag(PagedPool, Size, TAG_PO_FX_PLUGIN);
