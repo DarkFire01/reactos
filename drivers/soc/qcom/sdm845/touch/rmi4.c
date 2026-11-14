@@ -502,7 +502,7 @@ RmiConfigure(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Delay.QuadPart = -10000LL * (Device->Board ? Device->Board->StartupDelayMs : 200);
+    Delay.QuadPart = -10000LL * RMI_RESET_DELAY_MS;
     KeDelayExecutionThread(KernelMode, FALSE, &Delay);
 
     Status = RmiConfigureF12(Device);

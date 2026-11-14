@@ -153,7 +153,6 @@ storufs.sys  = 1,,,,,,x,4,,,,1,4
 sdport.sys   = 1,,,,,,,4,,,,1,4
 sdstor.sys   = 1,,,,,,,4,,,,1,4
 sdhc.sys     = 1,,,,,,,4,,,,1,4
-qcsdhc.sys   = 1,,,,,,,4,,,,1,4
 fastfat.sys  = 1,,,,,,x,4,,,,1,4
 btrfs.sys    = 1,,,,,,x,4,,,,1,4
 ntfs.sys     = 1,,,,,,x,4,,,,1,4

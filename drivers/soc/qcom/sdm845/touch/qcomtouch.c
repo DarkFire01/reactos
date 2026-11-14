@@ -12,10 +12,6 @@
  */
 
 #include "qcomtouch.h"
-#include <wmistr.h>
-#include <wmiguid.h>
-#include <wmidata.h>
-#include <dmilib.h>
 
 #include <debug.h>
 
@@ -30,69 +26,8 @@ static EVT_WDF_INTERRUPT_ISR QcTouchEvtInterruptIsr;
 static EVT_WDF_INTERRUPT_WORKITEM QcTouchEvtInterruptWorkItem;
 static EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL QcTouchEvtIoInternalDeviceControl;
 
-static const GUID QcTouchSmbiosGuid = SMBIOS_DATA_GUID;
-
-/* The OnePlus 6 and 6T feed the sensor core from an RPMh LDO ACPI leaves out */
-static const QCTOUCH_BOARD QcTouchBoards[] =
-{
-    { "OnePlus", "6",  200, "ldoa28", 3000000, 1664000, 8000, 7 },
-    { "OnePlus", "6T", 200, "ldoa28", 3000000, 1664000, 8000, 7 },
-};
-
 /* Attention reads per interrupt before giving the line back */
 #define QCTOUCH_ATTENTION_LOOPS     4
-
-static
-PCQCTOUCH_BOARD
-QcTouchDetectBoard(VOID)
-{
-    PVOID DataBlock;
-    PWNODE_ALL_DATA AllData;
-    PCHAR Strings[ID_STRINGS_MAX] = { 0 };
-    PCQCTOUCH_BOARD Board = NULL;
-    ULONG BufferSize = 0;
-    ULONG Index;
-    NTSTATUS Status;
-
-    Status = IoWMIOpenBlock((LPGUID)&QcTouchSmbiosGuid, WMIGUID_QUERY, &DataBlock);
-    if (!NT_SUCCESS(Status))
-        return NULL;
-
-    Status = IoWMIQueryAllData(DataBlock, &BufferSize, NULL);
-    if (Status != STATUS_BUFFER_TOO_SMALL && !NT_SUCCESS(Status))
-    {
-        ObDereferenceObject(DataBlock);
-        return NULL;
-    }
-
-    AllData = ExAllocatePoolWithTag(PagedPool, BufferSize, QCTOUCH_POOL_TAG);
-    if (!AllData)
-    {
-        ObDereferenceObject(DataBlock);
-        return NULL;
-    }
-
-    Status = IoWMIQueryAllData(DataBlock, &BufferSize, AllData);
-    if (NT_SUCCESS(Status))
-    {
-        ParseSMBiosTables(AllData + 1, AllData->WnodeHeader.BufferSize, Strings);
-
-        for (Index = 0; Index < RTL_NUMBER_OF(QcTouchBoards); Index++)
-        {
-            if (Strings[SYS_VENDOR] && Strings[SYS_PRODUCT] &&
-                !strcmp(Strings[SYS_VENDOR], QcTouchBoards[Index].Manufacturer) &&
-                !strcmp(Strings[SYS_PRODUCT], QcTouchBoards[Index].Product))
-            {
-                Board = &QcTouchBoards[Index];
-                break;
-            }
-        }
-    }
-
-    ExFreePoolWithTag(AllData, QCTOUCH_POOL_TAG);
-    ObDereferenceObject(DataBlock);
-    return Board;
-}
 
 static
 VOID
@@ -183,7 +118,6 @@ QcTouchEvtPrepareHardware(
             return Status;
     }
 
-    Device->Board = QcTouchDetectBoard();
     return STATUS_SUCCESS;
 }
 
@@ -233,25 +167,9 @@ QcTouchEvtD0Entry(
     _In_ WDF_POWER_DEVICE_STATE PreviousState)
 {
     PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
-    PCQCTOUCH_BOARD Board = Device->Board;
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(PreviousState);
-
-    if (Board && Board->VddResource)
-    {
-        QCOM_RPMH_VRM_REQUEST Vdd;
-
-        Vdd.Resource = Board->VddResource;
-        Vdd.TargetMicrovolts = Board->VddMicrovolts;
-        Vdd.MinMicrovolts = Board->VddMinMicrovolts;
-        Vdd.StepMicrovolts = Board->VddStepMicrovolts;
-        Vdd.Mode = Board->VddMode;
-
-        Status = QcRpmhEnableRegulator(&Vdd);
-        if (!NT_SUCCESS(Status))
-            DPRINT1("%s did not come up, 0x%08lx\n", Board->VddResource, Status);
-    }
 
     if (Device->Enable)
     {

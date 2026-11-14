@@ -1,0 +1,27 @@
+; Windows Trusted Execution Environment class extension and its secure service proxy,
+; slipstreamed from modules/arm64 with the values Windows 10 19045 installs
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRT","DisplayName",0x00000000,"Windows Trusted Execution Environment Class Extension"
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRT","ErrorControl",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRT","Group",0x00000000,"Core Security Extensions"
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRT","ImagePath",0x00020000,"system32\drivers\WindowsTrustedRT.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRT","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRT","Tag",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRT","Type",0x00010001,0x00000001
+
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRTProxy","DisplayName",0x00000000,"Microsoft Windows Trusted Runtime Secure Service"
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRTProxy","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRTProxy","Group",0x00000000,"Core Security Extensions"
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRTProxy","ImagePath",0x00020000,"system32\drivers\WindowsTrustedRTProxy.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRTProxy","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRTProxy","Tag",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Services\WindowsTrustedRTProxy","Type",0x00010001,0x00000001
+
+HKLM,"SYSTEM\CurrentControlSet\Control\GroupOrderList","Core Security Extensions",0x00000001,02,00,00,00,01,00,00,00,02,00,00,00
+
+; KMDF class extension registration
+HKLM,"SYSTEM\CurrentControlSet\Control\Wdf\Kmdf\WindowsTrustedRT\Versions\1\1","Service",0x00000000,"WindowsTrustedRT"
+
+; The class extension enumerates one of these per secure service
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\{4E815EE1-20F8-41EF-8CFF-3C283F02D722}#SecureService","Service",0x00000000,"WindowsTrustedRTProxy"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\{4E815EE1-20F8-41EF-8CFF-3C283F02D722}#SecureService","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"

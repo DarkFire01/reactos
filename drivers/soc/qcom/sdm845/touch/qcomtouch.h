@@ -15,7 +15,6 @@
 #include <spb.h>
 #include <gpio.h>
 #include <reshub.h>
-#include <qcom/rpmhif.h>
 
 #define QCTOUCH_POOL_TAG            'cTcQ'
 
@@ -54,6 +53,9 @@
 #define RMI_REG_DESC_MAX_REGS       64
 #define RMI_READ_MAX                128
 
+/* How long the controller takes to come back from an F01 reset */
+#define RMI_RESET_DELAY_MS          200
+
 typedef struct _RMI_REG_ITEM
 {
     ULONG Register;
@@ -79,21 +81,6 @@ typedef struct _RMI_FUNCTION
     ULONG InterruptCount;
     ULONG InterruptPosition;
 } RMI_FUNCTION, *PRMI_FUNCTION;
-
-/* Board details ACPI does not describe, picked by the SMBIOS identity */
-typedef struct _QCTOUCH_BOARD
-{
-    PCSTR Manufacturer;
-    PCSTR Product;
-    ULONG StartupDelayMs;
-    PCSTR VddResource;
-    ULONG VddMicrovolts;
-    ULONG VddMinMicrovolts;
-    ULONG VddStepMicrovolts;
-    ULONG VddMode;
-} QCTOUCH_BOARD, *PQCTOUCH_BOARD;
-
-typedef const QCTOUCH_BOARD *PCQCTOUCH_BOARD;
 
 /* HID layout, see hid.c */
 #define QCTOUCH_MAX_CONTACTS        10
@@ -136,7 +123,6 @@ typedef struct _QCTOUCH_PENDING_REPORT
 typedef struct _QCTOUCH_DEVICE
 {
     WDFDEVICE Device;
-    PCQCTOUCH_BOARD Board;
 
     /* Resource hub connections from the _CRS */
     LARGE_INTEGER I2cId;

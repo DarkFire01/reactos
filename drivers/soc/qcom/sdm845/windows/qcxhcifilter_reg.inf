@@ -1,0 +1,11 @@
+; QcXhciFilter (URS host children), QcXhciFilter850.inf, QcXhciFilter850.sys
+; Boot start here, Windows gets the same from BootFlags when it boots off USB
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter","DisplayName",0x00000000,"Qualcomm(R) Bus Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter","ImagePath",0x00020000,"system32\drivers\QcXhciFilter850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter\Parameters","BootFlags",0x00010003,0x00000004
+HKLM,"SYSTEM\CurrentControlSet\Services\QcXhciFilter\Parameters","VerboseOn",0x00010001,0x00000001
