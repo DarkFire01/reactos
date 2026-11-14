@@ -23,6 +23,9 @@
 #include <spbcx.h>
 #include <debug.h>
 
+/* Largest connection descriptor asked for when the hub does not say */
+#define SCX_HUB_PROPERTIES_LIMIT 0x1000
+
 #define SCX_POOL_TAG 'xbpS'
 
 #define SCX_CLIENT_GLOBALS_SIGNATURE 'XbpS'
