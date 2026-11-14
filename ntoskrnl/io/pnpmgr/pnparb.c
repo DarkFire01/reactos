@@ -915,7 +915,12 @@ IopTranslateAssignmentToDevice(
 
         if (Level->Entry.AlternativeCount == 0 || Level->Assignment.Type == CmResourceTypeMaximum)
         {
-            DPRINT1("Requirement level without assignment\n");
+            DPRINT1("Requirement level %s without assignment: %lu alternatives, alternative type %u, result %u, translator %p\n",
+                    Level == Requirement->Top ? "top" : "below top",
+                    Level->Entry.AlternativeCount,
+                    Level->Entry.AlternativeCount ? Level->Entry.Alternatives[0].Type : 0,
+                    Level->Entry.Result,
+                    Level->Translator);
             return STATUS_INVALID_PARAMETER;
         }
 

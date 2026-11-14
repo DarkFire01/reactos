@@ -217,8 +217,11 @@ PciFdoIrpStartDevice(IN PIRP Irp,
     /* Only a root bus seeds its arbiters from these, a bus behind a bridge uses its windows */
     Resources = IoStackLocation->Parameters.StartDevice.AllocatedResources;
 
+    DPRINT1("PCIX - Starting the bus %02x FDO, arbiters next\n", DeviceExtension->BaseBus);
+
     /* Initialize the arbiter for this FDO */
     Status = PciInitializeArbiterRanges(DeviceExtension, Resources);
+    DPRINT1("PCIX - Bus %02x arbiters -> 0x%lx\n", DeviceExtension->BaseBus, Status);
     if (!NT_SUCCESS(Status))
     {
         /* Cancel the transition if this failed */
