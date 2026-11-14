@@ -16,3 +16,7 @@
 @ stdcall BCryptOpenAlgorithmProvider(ptr wstr wstr long) ksecdd.BCryptOpenAlgorithmProvider
 @ stdcall BCryptSetProperty(ptr wstr ptr long long) ksecdd.BCryptSetProperty
 @ stdcall BCryptVerifySignature(ptr ptr ptr long ptr long long) ksecdd.BCryptVerifySignature
+@ stdcall EntropyProvideData(ptr ptr long long) ksecdd.EntropyProvideData
+@ stdcall EntropyRegisterCallback(ptr ptr ptr) ksecdd.EntropyRegisterCallback
+@ stdcall EntropyRegisterSource(ptr long ptr) ksecdd.EntropyRegisterSource
+@ stdcall EntropyUnregisterSource(ptr) ksecdd.EntropyUnregisterSource
