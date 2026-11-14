@@ -547,13 +547,27 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     function(concatenate_files _output _file1)
         file(TO_NATIVE_PATH "${_output}" _real_output)
         file(TO_NATIVE_PATH "${_file1}" _file_list)
+        set(_commands)
+        set(_count 0)
+
+        # cmd.exe cuts a line at 8191 characters, so the files are appended in batches
         foreach(_file ${ARGN})
             file(TO_NATIVE_PATH "${_file}" _real_file)
             set(_file_list "${_file_list} + ${_real_file}")
+            math(EXPR _count "${_count} + 1")
+            if(_count EQUAL 32)
+                list(APPEND _commands COMMAND cmd.exe /C "copy /Y /B ${_file_list} ${_real_output}.tmp > nul")
+                list(APPEND _commands COMMAND cmd.exe /C "move /Y ${_real_output}.tmp ${_real_output} > nul")
+                set(_file_list "${_real_output}")
+                set(_count 0)
+            endif()
         endforeach()
+
+        list(APPEND _commands COMMAND cmd.exe /C "copy /Y /B ${_file_list} ${_real_output}.tmp > nul")
+        list(APPEND _commands COMMAND cmd.exe /C "move /Y ${_real_output}.tmp ${_real_output} > nul")
         add_custom_command(
             OUTPUT ${_output}
-            COMMAND cmd.exe /C "copy /Y /B ${_file_list} ${_real_output} > nul"
+            ${_commands}
             DEPENDS ${_file1} ${ARGN})
     endfunction()
 else()
