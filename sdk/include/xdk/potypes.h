@@ -759,7 +759,96 @@ typedef PO_FX_DEVICE_V3 PO_FX_DEVICE, *PPO_FX_DEVICE;
 
 #define PO_FX_UNKNOWN_POWER                         0xFFFFFFFF
 
+#define PO_FX_FLAG_BLOCKING                         0x1
+#define PO_FX_FLAG_ASYNC_ONLY                       0x2
+
+typedef enum _PO_FX_PERF_STATE_UNIT {
+  PoFxPerfStateUnitOther,
+  PoFxPerfStateUnitFrequency,
+  PoFxPerfStateUnitBandwidth,
+  PoFxPerfStateUnitMaximum
+} PO_FX_PERF_STATE_UNIT, *PPO_FX_PERF_STATE_UNIT;
+
+typedef enum _PO_FX_PERF_STATE_TYPE {
+  PoFxPerfStateTypeDiscrete,
+  PoFxPerfStateTypeRange,
+  PoFxPerfStateTypeMaximum
+} PO_FX_PERF_STATE_TYPE, *PPO_FX_PERF_STATE_TYPE;
+
+typedef struct _PO_FX_PERF_STATE {
+  ULONGLONG Value;
+  PVOID Context;
+} PO_FX_PERF_STATE, *PPO_FX_PERF_STATE;
+
+typedef struct _PO_FX_COMPONENT_PERF_SET {
+  UNICODE_STRING Name;
+  ULONGLONG Flags;
+  PO_FX_PERF_STATE_UNIT Unit;
+  PO_FX_PERF_STATE_TYPE Type;
+  union {
+    struct {
+      ULONG Count;
+      _Field_size_full_(Count) PPO_FX_PERF_STATE States;
+    } Discrete;
+    struct {
+      ULONGLONG Minimum;
+      ULONGLONG Maximum;
+    } Range;
+  };
+} PO_FX_COMPONENT_PERF_SET, *PPO_FX_COMPONENT_PERF_SET;
+
+typedef struct _PO_FX_COMPONENT_PERF_INFO {
+  ULONG PerfStateSetsCount;
+  PO_FX_COMPONENT_PERF_SET PerfStateSets[ANYSIZE_ARRAY];
+} PO_FX_COMPONENT_PERF_INFO, *PPO_FX_COMPONENT_PERF_INFO;
+
+typedef struct _PO_FX_PERF_STATE_CHANGE {
+  ULONG Set;
+  union {
+    ULONG StateIndex;
+    ULONGLONG StateValue;
+  };
+} PO_FX_PERF_STATE_CHANGE, *PPO_FX_PERF_STATE_CHANGE;
+
+typedef
+_Function_class_(PO_FX_COMPONENT_PERF_STATE_CALLBACK)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+PO_FX_COMPONENT_PERF_STATE_CALLBACK(
+  _In_ PVOID Context,
+  _In_ ULONG Component,
+  _In_ BOOLEAN Succeeded,
+  _In_ PVOID RequestContext);
+typedef PO_FX_COMPONENT_PERF_STATE_CALLBACK *PPO_FX_COMPONENT_PERF_STATE_CALLBACK;
+
+#define PO_FX_FLAG_PERF_PEP_OPTIONAL                0x1
+#define PO_FX_FLAG_PERF_QUERY_ON_F0                 0x2
+#define PO_FX_FLAG_PERF_QUERY_ON_ALL_IDLE_STATES    0x4
+
 #endif // NTDDI_WIN8 || defined(__REACTOS__)
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS5) || defined(__REACTOS__)
+typedef enum _EFFECTIVE_POWER_MODE {
+  EffectivePowerModeBatterySaver,
+  EffectivePowerModeBetterBattery,
+  EffectivePowerModeBalanced,
+  EffectivePowerModeHighPerformance,
+  EffectivePowerModeMaxPerformance,
+  EffectivePowerModeGameMode,
+  EffectivePowerModeMixedReality,
+} EFFECTIVE_POWER_MODE;
+
+#define EFFECTIVE_POWER_MODE_V1 (0x00000001)
+#define EFFECTIVE_POWER_MODE_V2 (0x00000002)
+
+typedef
+_Function_class_(EFFECTIVE_POWER_MODE_CALLBACK)
+VOID
+EFFECTIVE_POWER_MODE_CALLBACK(
+  _In_ EFFECTIVE_POWER_MODE Mode,
+  _In_opt_ PVOID Context);
+typedef EFFECTIVE_POWER_MODE_CALLBACK *PEFFECTIVE_POWER_MODE_CALLBACK;
+#endif
 
 $endif (_WDMDDK_)
 $if (_NTIFS_)
