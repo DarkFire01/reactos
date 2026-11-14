@@ -836,6 +836,11 @@ IntDefWindowProc(
           }
           break;
 
+      /* An unhandled WM_TOUCH still owns its input handle */
+      case WM_TOUCH:
+          if (UserGetObjectNoErr(gHandleTable, (HANDLE)lParam, TYPE_TOUCHINPUTINFO))
+              UserDeleteObject((HANDLE)lParam, TYPE_TOUCHINPUTINFO);
+          break;
 
       case WM_CONTEXTMENU:
       {

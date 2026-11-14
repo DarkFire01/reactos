@@ -37,6 +37,22 @@ PERESOURCE gpDeviceInfoListMutex = NULL;
 static DWORD LastInputTick = 0;
 static PKEVENT gDeviceListChangedEvent;
 
+/* HID collections are rescanned on this period, win32k cannot take PnP callbacks in session space */
+#define HID_SCAN_PERIOD_MS 2000
+static PKTIMER gHidScanTimer;
+
+static const GUID HidInterfaceGuid =
+    { 0x4D1E55B2, 0xF16F, 0x11CF, { 0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30 } };
+
+/* HID collections already looked at that are not touch screens */
+typedef struct _HID_SKIPPED_DEVICE
+{
+    struct _HID_SKIPPED_DEVICE *Next;
+    UNICODE_STRING Name;
+} HID_SKIPPED_DEVICE, *PHID_SKIPPED_DEVICE;
+
+static PHID_SKIPPED_DEVICE gHidSkippedDevices;
+
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -241,6 +257,11 @@ StartReadInputDevice(
         Buffer = &DeviceInfo->Mouse.Data,
         BufferSize = sizeof(DeviceInfo->Mouse.Data);
     }
+    else if (DeviceInfo->DeviceType == RIM_TYPEHID && DeviceInfo->Hid.ReportBuffer)
+    {
+        Buffer = DeviceInfo->Hid.ReportBuffer;
+        BufferSize = DeviceInfo->Hid.ReportLength;
+    }
     else
         return;
 
@@ -293,9 +314,273 @@ RITReadApc(
             UserProcessMouseInput(DeviceInfo, &DeviceInfo->Mouse.Data);
             UserLeave();
         }
+        else if (DeviceInfo->DeviceType == RIM_TYPEHID)
+        {
+            IntLastInputTick(TRUE);
+
+            UserEnterExclusive();
+            UserProcessTouchReport(DeviceInfo, DeviceInfo->Hid.ReportBuffer, (ULONG)IoStatusBlock->Information);
+            UserLeave();
+        }
+    }
+
+    /* A failed HID read means the collection went away, the next scan drops it */
+    if (DeviceInfo->DeviceType == RIM_TYPEHID && !NT_SUCCESS(IoStatusBlock->Status))
+    {
+        DeviceInfo->Status = IoStatusBlock->Status;
+        return;
     }
 
     StartReadInputDevice(DeviceInfo);
+}
+
+static
+BOOLEAN
+HidIsKnownDevice(
+    _In_ PUNICODE_STRING Name)
+{
+    PINPUT_DEVICE_INFO DeviceInfo;
+    PHID_SKIPPED_DEVICE Skipped;
+
+    for (DeviceInfo = gpInputDeviceInfo; DeviceInfo; DeviceInfo = DeviceInfo->pNextDeviceInfo)
+    {
+        if (RtlEqualUnicodeString(&DeviceInfo->DeviceName, Name, TRUE))
+            return TRUE;
+    }
+
+    for (Skipped = gHidSkippedDevices; Skipped; Skipped = Skipped->Next)
+    {
+        if (RtlEqualUnicodeString(&Skipped->Name, Name, TRUE))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static
+VOID
+HidSkipDevice(
+    _In_ PUNICODE_STRING Name)
+{
+    PHID_SKIPPED_DEVICE Skipped;
+
+    Skipped = ExAllocatePoolWithTag(PagedPool, sizeof(*Skipped) + Name->Length, USERTAG_PNP);
+    if (!Skipped)
+        return;
+
+    Skipped->Name.Buffer = (PWCH)(Skipped + 1);
+    Skipped->Name.Length = 0;
+    Skipped->Name.MaximumLength = Name->Length;
+    RtlCopyUnicodeString(&Skipped->Name, Name);
+    Skipped->Next = gHidSkippedDevices;
+    gHidSkippedDevices = Skipped;
+}
+
+/**
+ * @brief Reads the collection information and parsed descriptor of one HID collection.
+ */
+static
+NTSTATUS
+HidQueryCollection(
+    _In_ PUNICODE_STRING Name,
+    _Out_ PHID_DEVICE_INFO Hid)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    IO_STATUS_BLOCK Iosb;
+    HANDLE Handle;
+    NTSTATUS Status;
+
+    RtlZeroMemory(Hid, sizeof(*Hid));
+
+    InitializeObjectAttributes(&ObjectAttributes, Name, OBJ_KERNEL_HANDLE, NULL, NULL);
+    Status = ZwOpenFile(&Handle,
+                        GENERIC_READ | SYNCHRONIZE,
+                        &ObjectAttributes,
+                        &Iosb,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        FILE_SYNCHRONOUS_IO_NONALERT);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = ZwDeviceIoControlFile(Handle, NULL, NULL, NULL, &Iosb,
+                                   IOCTL_HID_GET_COLLECTION_INFORMATION,
+                                   NULL, 0,
+                                   &Hid->CollectionInformation, sizeof(Hid->CollectionInformation));
+    if (NT_SUCCESS(Status) && Hid->CollectionInformation.DescriptorSize == 0)
+        Status = STATUS_DEVICE_DATA_ERROR;
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    Hid->PreparsedData = ExAllocatePoolWithTag(PagedPool, Hid->CollectionInformation.DescriptorSize, USERTAG_PNP);
+    if (!Hid->PreparsedData)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
+    Status = ZwDeviceIoControlFile(Handle, NULL, NULL, NULL, &Iosb,
+                                   IOCTL_HID_GET_COLLECTION_DESCRIPTOR,
+                                   NULL, 0,
+                                   Hid->PreparsedData, Hid->CollectionInformation.DescriptorSize);
+    if (NT_SUCCESS(Status) && HidP_GetCaps(Hid->PreparsedData, &Hid->Caps) != HIDP_STATUS_SUCCESS)
+        Status = STATUS_DEVICE_DATA_ERROR;
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Hid->PreparsedData, USERTAG_PNP);
+        Hid->PreparsedData = NULL;
+    }
+
+Exit:
+    ObCloseHandle(Handle, KernelMode);
+    return Status;
+}
+
+static
+VOID
+HidFreeDevice(
+    _In_ PINPUT_DEVICE_INFO DeviceInfo)
+{
+    if (DeviceInfo->Handle)
+        ObCloseHandle(DeviceInfo->Handle, KernelMode);
+
+    UserEnterExclusive();
+    UserCleanupTouchDevice(DeviceInfo);
+    UserLeave();
+
+    if (DeviceInfo->Hid.PreparsedData)
+        ExFreePoolWithTag(DeviceInfo->Hid.PreparsedData, USERTAG_PNP);
+    ExFreePoolWithTag(DeviceInfo, USERTAG_PNP);
+}
+
+/**
+ * @brief Opens a touch screen collection and starts reading it.
+ */
+static
+VOID
+HidAddTouchDevice(
+    _In_ PUNICODE_STRING Name)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    PINPUT_DEVICE_INFO DeviceInfo;
+    PINPUT_DEVICE_INFO *Link;
+    IO_STATUS_BLOCK Iosb;
+    HID_DEVICE_INFO Hid;
+    BOOLEAN IsTouch;
+    NTSTATUS Status;
+
+    /* Collections kbdhid or mouhid hold exclusively fail here and are skipped */
+    Status = HidQueryCollection(Name, &Hid);
+    if (!NT_SUCCESS(Status))
+    {
+        HidSkipDevice(Name);
+        return;
+    }
+
+    DeviceInfo = CreateInputDevice(RIM_TYPEHID, Name);
+    if (!DeviceInfo)
+    {
+        ExFreePoolWithTag(Hid.PreparsedData, USERTAG_PNP);
+        return;
+    }
+
+    DeviceInfo->Hid = Hid;
+
+    UserEnterExclusive();
+    IsTouch = UserInitTouchDevice(DeviceInfo);
+    UserLeave();
+
+    if (IsTouch)
+    {
+        InitializeObjectAttributes(&ObjectAttributes, Name, OBJ_KERNEL_HANDLE, NULL, NULL);
+        Status = ZwOpenFile(&DeviceInfo->Handle,
+                            GENERIC_READ,
+                            &ObjectAttributes,
+                            &Iosb,
+                            FILE_SHARE_READ | FILE_SHARE_WRITE,
+                            0);
+        if (NT_SUCCESS(Status))
+        {
+            StartReadInputDevice(DeviceInfo);
+            return;
+        }
+
+        DeviceInfo->Handle = NULL;
+    }
+
+    /* Not a usable touch screen: drop the entry, remember the name */
+    AcquireDeviceInfoListMutex();
+    for (Link = &gpInputDeviceInfo; *Link; Link = &(*Link)->pNextDeviceInfo)
+    {
+        if (*Link == DeviceInfo)
+        {
+            *Link = DeviceInfo->pNextDeviceInfo;
+            break;
+        }
+    }
+    ReleaseDeviceInfoListMutex();
+
+    HidFreeDevice(DeviceInfo);
+    HidSkipDevice(Name);
+}
+
+/**
+ * @brief Drops HID devices whose reads failed, then picks up new collections.
+ */
+static
+VOID
+ScanHidDevices(
+    VOID)
+{
+    PINPUT_DEVICE_INFO *Link;
+    PINPUT_DEVICE_INFO DeviceInfo;
+    PINPUT_DEVICE_INFO Dead = NULL;
+    UNICODE_STRING Name;
+    PWSTR List;
+    PWSTR Entry;
+    BOOLEAN Known;
+    NTSTATUS Status;
+
+    AcquireDeviceInfoListMutex();
+    Link = &gpInputDeviceInfo;
+    while ((DeviceInfo = *Link) != NULL)
+    {
+        if (DeviceInfo->DeviceType != RIM_TYPEHID || NT_SUCCESS(DeviceInfo->Status))
+        {
+            Link = &DeviceInfo->pNextDeviceInfo;
+            continue;
+        }
+
+        *Link = DeviceInfo->pNextDeviceInfo;
+        DeviceInfo->pNextDeviceInfo = Dead;
+        Dead = DeviceInfo;
+    }
+    ReleaseDeviceInfoListMutex();
+
+    while (Dead)
+    {
+        DeviceInfo = Dead;
+        Dead = DeviceInfo->pNextDeviceInfo;
+        HidFreeDevice(DeviceInfo);
+    }
+
+    Status = IoGetDeviceInterfaces(&HidInterfaceGuid, NULL, 0, &List);
+    if (!NT_SUCCESS(Status))
+        return;
+
+    for (Entry = List; *Entry; Entry += wcslen(Entry) + 1)
+    {
+        RtlInitUnicodeString(&Name, Entry);
+
+        AcquireDeviceInfoListMutex();
+        Known = HidIsKnownDevice(&Name);
+        ReleaseDeviceInfoListMutex();
+
+        if (!Known)
+            HidAddTouchDevice(&Name);
+    }
+
+    ExFreePool(List);
 }
 
 static
@@ -411,7 +696,8 @@ RawInputThreadMain(VOID)
     PINPUT_DEVICE_INFO DeviceInfo;
     NTSTATUS Status;
     //LARGE_INTEGER WaitTimeout;
-    PVOID WaitObjects[3], pSignaledObject = NULL;
+    PVOID WaitObjects[4], pSignaledObject = NULL;
+    LARGE_INTEGER DueTime;
     KWAIT_BLOCK WaitBlockArray[RTL_NUMBER_OF(WaitObjects)];
     PVOID ShutdownEvent;
     HWINSTA hWinSta;
@@ -469,6 +755,12 @@ RawInputThreadMain(VOID)
     NT_ASSERT(ghKeyboardDevice == NULL);
     ghKeyboardDevice = Keyboard->Handle;
 
+    gHidScanTimer = ExAllocatePoolWithTag(NonPagedPool, sizeof(*gHidScanTimer), USERTAG_PNP);
+    ASSERT(gHidScanTimer);
+    KeInitializeTimerEx(gHidScanTimer, SynchronizationTimer);
+    DueTime.QuadPart = -10000LL * HID_SCAN_PERIOD_MS;
+    KeSetTimerEx(gHidScanTimer, DueTime, HID_SCAN_PERIOD_MS, NULL);
+
     PoRequestShutdownEvent(&ShutdownEvent);
     for (;;)
     {
@@ -476,6 +768,7 @@ RawInputThreadMain(VOID)
         WaitObjects[0] = ShutdownEvent;
         WaitObjects[1] = MasterTimer;
         WaitObjects[2] = gDeviceListChangedEvent;
+        WaitObjects[3] = gHidScanTimer;
 
         Status = KeWaitForMultipleObjects(RTL_NUMBER_OF(WaitObjects),
                                           WaitObjects,
@@ -500,6 +793,10 @@ RawInputThreadMain(VOID)
             {
                 ProcessTimers();
             }
+            else if (pSignaledObject == gHidScanTimer)
+            {
+                ScanHidDevices();
+            }
             else if (pSignaledObject == ShutdownEvent)
             {
                 break;
@@ -522,6 +819,9 @@ RawInputThreadMain(VOID)
     ExDeleteResourceLite(gpDeviceInfoListMutex);
     ExFreePoolWithTag(gpDeviceInfoListMutex, USERTAG_SYSTEM);
     ExFreePoolWithTag(gDeviceListChangedEvent, USERTAG_PNP);
+
+    KeCancelTimer(gHidScanTimer);
+    ExFreePoolWithTag(gHidScanTimer, USERTAG_PNP);
 
     ERR("Raw Input Thread Exit!\n");
 }

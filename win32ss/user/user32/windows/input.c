@@ -1122,3 +1122,37 @@ mouse_event(
 }
 
 /* EOF */
+
+BOOL
+WINAPI
+RegisterTouchWindow(
+    _In_ HWND hwnd,
+    _In_ ULONG ulFlags)
+{
+    return NtUserModifyWindowTouchCapability(hwnd, ulFlags, TRUE);
+}
+
+BOOL
+WINAPI
+UnregisterTouchWindow(
+    _In_ HWND hwnd)
+{
+    return NtUserModifyWindowTouchCapability(hwnd, 0, FALSE);
+}
+
+BOOL
+WINAPI
+GetTouchInputInfo(
+    _In_ HTOUCHINPUT hTouchInput,
+    _In_ UINT cInputs,
+    _Out_writes_(cInputs) PTOUCHINPUT pInputs,
+    _In_ int cbSize)
+{
+    if (cbSize != sizeof(TOUCHINPUT))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    return NtUserGetTouchInputInfo(hTouchInput, cInputs, pInputs, cbSize);
+}

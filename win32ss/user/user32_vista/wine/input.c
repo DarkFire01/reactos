@@ -48,24 +48,6 @@ typedef enum ORIENTATION_PREFERENCE {
     ORIENTATION_PREFERENCE_PORTRAIT_FLIPPED  = 0x8
 } ORIENTATION_PREFERENCE;
 
-/* Touch input definitions */
-DECLARE_HANDLE(HTOUCHINPUT);
-
-
-typedef struct tagTOUCHINPUT {
-    LONG      x;
-    LONG      y;
-    HANDLE    hSource;
-    DWORD     dwID;
-    DWORD     dwFlags;
-    DWORD     dwMask;
-    DWORD     dwTime;
-    ULONG_PTR dwExtraInfo;
-    DWORD     cxContact;
-    DWORD     cyContact;
-} TOUCHINPUT, *PTOUCHINPUT;
-typedef TOUCHINPUT const * PCTOUCHINPUT;
-
 DECLARE_HANDLE(HGESTUREINFO);
 
 #define GF_BEGIN    0x00000001
@@ -811,53 +793,6 @@ LRESULT WINAPI DefRawInputProc( RAWINPUT **data, INT data_count, UINT header_siz
     return header_size == sizeof(RAWINPUTHEADER) ? 0 : -1;
 }
 #endif
-
-/*****************************************************************************
- * CloseTouchInputHandle (USER32.@)
- */
-BOOL WINAPI CloseTouchInputHandle( HTOUCHINPUT handle )
-{
-    FIXME( "handle %p stub!\n", handle );
-    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
-    return FALSE;
-}
-
-/*****************************************************************************
- * GetTouchInputInfo (USER32.@)
- */
-BOOL WINAPI GetTouchInputInfo( HTOUCHINPUT handle, UINT count, TOUCHINPUT *ptr, int size )
-{
-    FIXME( "handle %p, count %u, ptr %p, size %u stub!\n", handle, count, ptr, size );
-    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
-    return FALSE;
-}
-
-/**********************************************************************
- * IsTouchWindow (USER32.@)
- */
-BOOL WINAPI IsTouchWindow( HWND hwnd, ULONG *flags )
-{
-    FIXME( "hwnd %p, flags %p stub!\n", hwnd, flags );
-    return FALSE;
-}
-
-/*****************************************************************************
- * RegisterTouchWindow (USER32.@)
- */
-BOOL WINAPI RegisterTouchWindow( HWND hwnd, ULONG flags )
-{
-    FIXME( "hwnd %p, flags %#lx stub!\n", hwnd, flags );
-    return TRUE;
-}
-
-/*****************************************************************************
- * UnregisterTouchWindow (USER32.@)
- */
-BOOL WINAPI UnregisterTouchWindow( HWND hwnd )
-{
-    FIXME( "hwnd %p stub!\n", hwnd );
-    return TRUE;
-}
 
 /*****************************************************************************
  * GetGestureInfo (USER32.@)
