@@ -37,6 +37,10 @@ ULONG
 NTAPI
 HvlQueryActiveHypervisorProcessorCount(VOID);
 
+ULONG64
+NTAPI
+HvlGetHypervisorVendorId(VOID);
+
 /* ERRATA MANAGER *************************************************************/
 
 NTKRNLVISTAAPI

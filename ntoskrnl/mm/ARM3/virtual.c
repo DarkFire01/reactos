@@ -4256,7 +4256,7 @@ MiAreMemoryRangesValid(
  */
 NTSTATUS
 NTAPI
-ZwSetInformationVirtualMemory(
+NtSetInformationVirtualMemory(
     _In_ HANDLE ProcessHandle,
     _In_ VIRTUAL_MEMORY_INFORMATION_CLASS VmInformationClass,
     _In_ ULONG_PTR NumberOfEntries,
@@ -4328,6 +4328,29 @@ ZwSetInformationVirtualMemory(
         ObDereferenceObject(Process);
 
     return Status;
+}
+
+/**
+ * @brief
+ * Kernel mode entry to NtSetInformationVirtualMemory. There is no system call
+ * for it yet, so both names reach the same code from kernel callers.
+ */
+NTSTATUS
+NTAPI
+ZwSetInformationVirtualMemory(
+    _In_ HANDLE ProcessHandle,
+    _In_ VIRTUAL_MEMORY_INFORMATION_CLASS VmInformationClass,
+    _In_ ULONG_PTR NumberOfEntries,
+    _In_reads_(NumberOfEntries) PMEMORY_RANGE_ENTRY VirtualAddresses,
+    _In_reads_bytes_(VmInformationLength) PVOID VmInformation,
+    _In_ ULONG VmInformationLength)
+{
+    return NtSetInformationVirtualMemory(ProcessHandle,
+                                         VmInformationClass,
+                                         NumberOfEntries,
+                                         VirtualAddresses,
+                                         VmInformation,
+                                         VmInformationLength);
 }
 
 /* SYSTEM CALLS ***************************************************************/

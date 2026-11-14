@@ -1993,6 +1993,77 @@ MmAllocateNodePagesForMdlEx(
                                    Flags);
 }
 
+/* Flags MmAllocatePagesForMdlEx and its node and partition variants know about */
+#define MI_ALLOCATE_PAGES_FOR_MDL_VALID_FLAGS 0x7FF
+
+/**
+ * @brief
+ * Allocates physical pages from a memory partition, preferring a node, and describes them with an MDL.
+ *
+ * @param[in] PartitionObject
+ * The partition to allocate from, NULL for the system partition.
+ *
+ * @return
+ * The MDL, or NULL for an unknown node or flag, a partition other than the system one, or a lack of pages.
+ */
+PMDL
+NTAPI
+MmAllocatePartitionNodePagesForMdlEx(
+    _In_ PHYSICAL_ADDRESS LowAddress,
+    _In_ PHYSICAL_ADDRESS HighAddress,
+    _In_ PHYSICAL_ADDRESS SkipBytes,
+    _In_ SIZE_T TotalBytes,
+    _In_ MEMORY_CACHING_TYPE CacheType,
+    _In_ ULONG IdealNode,
+    _In_ ULONG Flags,
+    _In_opt_ PVOID PartitionObject)
+{
+    if (IdealNode >= KeNumberNodes)
+        return NULL;
+
+    if (Flags & ~MI_ALLOCATE_PAGES_FOR_MDL_VALID_FLAGS)
+        return NULL;
+
+    /* Only the system partition exists */
+    if (PartitionObject)
+        return NULL;
+
+    return MmAllocateNodePagesForMdlEx(LowAddress,
+                                       HighAddress,
+                                       SkipBytes,
+                                       TotalBytes,
+                                       CacheType,
+                                       IdealNode,
+                                       Flags);
+}
+
+/**
+ * @brief
+ * Creates a memory partition.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED, memory is one system partition.
+ */
+NTSTATUS
+NTAPI
+ZwCreatePartition(
+    _In_opt_ HANDLE ParentPartitionHandle,
+    _Out_ PHANDLE PartitionHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ULONG PreferredNode)
+{
+    UNREFERENCED_PARAMETER(ParentPartitionHandle);
+    UNREFERENCED_PARAMETER(DesiredAccess);
+    UNREFERENCED_PARAMETER(ObjectAttributes);
+    UNREFERENCED_PARAMETER(PreferredNode);
+
+    if (PartitionHandle)
+        *PartitionHandle = NULL;
+
+    return STATUS_NOT_SUPPORTED;
+}
+
 /**
  * @brief
  * Describes ranges of I/O space, never RAM, with a locked MDL.

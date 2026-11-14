@@ -39,4 +39,19 @@ HvlQueryActiveHypervisorProcessorCount(VOID)
     return 0;
 }
 
+/**
+ * @brief
+ * Returns the vendor of the hypervisor the system runs under.
+ *
+ * @return
+ * Zero, matching HvlIsAnyHypervisorPresent(). Windows also answers zero for a
+ * QCOM firmware hypervisor, which is the only kind present on Qualcomm devices.
+ */
+ULONG64
+NTAPI
+HvlGetHypervisorVendorId(VOID)
+{
+    return 0;
+}
+
 /* EOF */

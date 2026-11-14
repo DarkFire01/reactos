@@ -1279,7 +1279,7 @@ PsSetProcessDxgProcess(
     Process->DxgProcess = DxgProcess;
 }
 
-#ifdef _M_AMD64
+#ifdef _WIN64
 /**
  * @brief
  * Returns the WOW64 state of a process.
@@ -1298,6 +1298,50 @@ PsGetProcessWow64Process(
     return Process->Wow64Process;
 }
 #endif
+
+/* The machine a process runs natively, the one a process without WoW64 reports */
+#if defined(_M_ARM64)
+#define PSP_NATIVE_MACHINE IMAGE_FILE_MACHINE_ARM64
+#elif defined(_M_AMD64)
+#define PSP_NATIVE_MACHINE IMAGE_FILE_MACHINE_AMD64
+#else
+#define PSP_NATIVE_MACHINE IMAGE_FILE_MACHINE_I386
+#endif
+
+/**
+ * @brief
+ * Returns the machine type of the image a process runs.
+ *
+ * @remarks
+ * ReactOS starts only native processes, so this is the native machine.
+ */
+USHORT
+NTAPI
+PsGetProcessMachine(
+    _In_ PEPROCESS Process)
+{
+    UNREFERENCED_PARAMETER(Process);
+    return PSP_NATIVE_MACHINE;
+}
+
+/**
+ * @brief
+ * Returns the machine a WoW64 process emulates, or the native machine for any other process.
+ */
+USHORT
+NTAPI
+PsWow64GetProcessMachine(
+    _In_ PEPROCESS Process)
+{
+#ifdef _WIN64
+    /* The only WoW64 layer ReactOS has runs 32-bit x86 code */
+    if (Process->Wow64Process)
+        return IMAGE_FILE_MACHINE_I386;
+#else
+    UNREFERENCED_PARAMETER(Process);
+#endif
+    return PSP_NATIVE_MACHINE;
+}
 
 /**
  * @brief

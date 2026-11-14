@@ -242,6 +242,28 @@ MmIsAddressValid(IN PVOID VirtualAddress)
     return TRUE;
 }
 
+/**
+ * @brief Tells whether an address lies in system space.
+ */
+BOOLEAN
+NTAPI
+MmIsKernelAddress(
+    _In_ PVOID VirtualAddress)
+{
+    return (VirtualAddress >= MmSystemRangeStart);
+}
+
+/**
+ * @brief Tells whether an address lies in the user range of the address space.
+ */
+BOOLEAN
+NTAPI
+MmIsUserAddress(
+    _In_ PVOID VirtualAddress)
+{
+    return (VirtualAddress <= MM_HIGHEST_USER_ADDRESS);
+}
+
 /*
  * @unimplemented
  */
