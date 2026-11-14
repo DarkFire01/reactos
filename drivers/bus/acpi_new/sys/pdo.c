@@ -144,8 +144,8 @@ UacpiNtPdoQueryCapabilities(
     if (!(Sta & UACPINT_STA_SHOW_IN_UI))
         Capabilities->NoDisplayInUI = TRUE;
 
-    /* The instance ID is the namespace path, so _UID makes it unique */
-    Capabilities->UniqueID = UacpiNtNodeHasChild(Pdo->Node, "_UID");
+    /* The _UID or the thermal zone name is the instance, either is unique on its own */
+    Capabilities->UniqueID = Pdo->IsThermalZone || UacpiNtNodeHasChild(Pdo->Node, "_UID");
     return STATUS_SUCCESS;
 }
 
