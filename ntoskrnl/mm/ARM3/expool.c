@@ -2617,18 +2617,9 @@ ExFreePoolWithTag(IN PVOID P,
             Tag &= ~PROTECTED_POOL;
         }
 
-        //
-        // Check block tag
-        //
+        /* Windows takes the free regardless of the tag, so a mismatch is only reported */
         if (TagToFree && TagToFree != Tag)
-        {
             DPRINT1("Freeing pool - invalid tag specified: %.4s != %.4s\n", (char*)&TagToFree, (char*)&Tag);
-#if DBG
-            /* Do not bugcheck in case this is a big allocation for which we didn't manage to insert the tag */
-            if (Tag != ' GIB')
-                KeBugCheckEx(BAD_POOL_CALLER, 0x0A, (ULONG_PTR)P, Tag, TagToFree);
-#endif
-        }
 
         //
         // We have our tag and our page count, so we can go ahead and remove this
@@ -2704,15 +2695,17 @@ ExFreePoolWithTag(IN PVOID P,
     Tag = Entry->PoolTag;
     if (Tag & PROTECTED_POOL) Tag &= ~PROTECTED_POOL;
 
-    //
-    // Check block tag
-    //
+    /* Windows takes the free regardless of the tag, so a mismatch is only reported, once per pair */
     if (TagToFree && TagToFree != Tag)
     {
-        DPRINT1("Freeing pool - invalid tag specified: %.4s != %.4s\n", (char*)&TagToFree, (char*)&Tag);
-#if DBG
-        KeBugCheckEx(BAD_POOL_CALLER, 0x0A, (ULONG_PTR)P, Tag, TagToFree);
-#endif
+        static ULONG LastTagToFree, LastTag;
+
+        if (TagToFree != LastTagToFree || Tag != LastTag)
+        {
+            LastTagToFree = TagToFree;
+            LastTag = Tag;
+            DPRINT1("Freeing pool - invalid tag specified: %.4s != %.4s\n", (char*)&TagToFree, (char*)&Tag);
+        }
     }
 
     //
