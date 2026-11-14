@@ -509,7 +509,7 @@ IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     Timeout = IopGetBootPartitionTimeout();
     Interval.QuadPart = Int32x32To64(IOP_BOOT_PARTITION_POLL_INTERVAL, -10000);
     if (Timeout > 0)
-        DPRINT1("Polling up to %ld ms for the boot device\n", Timeout);
+        DPRINT1("Polling up to %ld ms for boot device %wZ\n", Timeout, &DeviceName);
 
     /* A boot disk behind a USB hub can still be enumerating, so name the disks
        that arrived since the last pass and try again until the timeout runs out */
@@ -518,6 +518,8 @@ IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     {
         KeDelayExecutionThread(KernelMode, FALSE, &Interval);
         Timeout -= IOP_BOOT_PARTITION_POLL_INTERVAL;
+        if ((Timeout % 10000) < IOP_BOOT_PARTITION_POLL_INTERVAL)
+            DPRINT1("Still waiting for %wZ (0x%lx), %ld ms left\n", &DeviceName, Status, Timeout);
 
         IopCreateArcNames(LoaderBlock);
         Status = IopOpenBootPartition(&DeviceName);
