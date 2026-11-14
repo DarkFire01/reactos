@@ -51,6 +51,10 @@ InitializeConfiguration(
     PortConfig->AtdiskPrimaryClaimed = ConfigInfo->AtDiskPrimaryAddressClaimed;
     PortConfig->AtdiskSecondaryClaimed = ConfigInfo->AtDiskSecondaryAddressClaimed;
     PortConfig->Dma32BitAddresses = TRUE;
+#ifdef _WIN64
+    /* The miniport answers with what it can address */
+    PortConfig->Dma64BitAddresses = SCSI_DMA64_SYSTEM_SUPPORTED;
+#endif
     PortConfig->DemandMode = FALSE;
     PortConfig->MapBuffers = InitData->MapBuffers;
 

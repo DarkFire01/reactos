@@ -1336,6 +1336,9 @@ StorPortGetUncachedExtension(
     DeviceDescription.ScatterGather = ConfigInfo->ScatterGather;
     DeviceDescription.DemandMode = ConfigInfo->DemandMode;
     DeviceDescription.Dma32BitAddresses = ConfigInfo->Dma32BitAddresses;
+    DeviceDescription.Dma64BitAddresses =
+        (ConfigInfo->Dma64BitAddresses & (SCSI_DMA64_MINIPORT_SUPPORTED |
+                                          SCSI_DMA64_MINIPORT_FULL64BIT_SUPPORTED)) != 0;
     DeviceDescription.BusNumber = ConfigInfo->SystemIoBusNumber;
     DeviceDescription.DmaChannel = ConfigInfo->DmaChannel;
     DeviceDescription.InterfaceType = ConfigInfo->AdapterInterfaceType;
