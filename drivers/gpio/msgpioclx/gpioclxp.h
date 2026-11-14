@@ -10,6 +10,8 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include <gpioclx.h>
+#include <gpio.h>
+#include <reshub.h>
 
 #include <debug.h>
 
@@ -133,6 +135,23 @@ typedef struct _GCX_CONTROLLER
 } GCX_CONTROLLER, *PGCX_CONTROLLER;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GCX_CONTROLLER, GcxGetController);
+
+/* A GpioIo connection, as a context on the file object that opened it */
+typedef struct _GCX_IO_CONNECTION
+{
+    PGCX_CONTROLLER Controller;
+    BANK_ID BankId;
+    USHORT PinCount;
+    PPIN_NUMBER Pins;
+    GPIO_CONNECT_IO_PINS_MODE Mode;
+    UCHAR Restriction;
+    UCHAR PullConfiguration;
+    USHORT DriveStrength;
+    USHORT DebounceTimeout;
+    BOOLEAN Connected;
+} GCX_IO_CONNECTION, *PGCX_IO_CONNECTION;
+
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GCX_IO_CONNECTION, GcxGetIoConnection);
 
 #define GCX_CLIENT_CONTEXT_OFFSET \
     ALIGN_UP_BY(sizeof(GCX_CONTROLLER), MEMORY_ALLOCATION_ALIGNMENT)
@@ -435,6 +454,29 @@ GcxResolveGsivToPin(
     _Out_ PPIN_NUMBER PinNumber,
     _Out_ PUSHORT DebounceTimeout,
     _Out_ PKINTERRUPT_POLARITY Polarity);
+
+NTSTATUS
+NTAPI
+GcxQueryHubConnection(
+    _In_ LARGE_INTEGER ConnectionId,
+    _Outptr_ PRH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER *Output);
+
+VOID
+NTAPI
+GcxLockBank(
+    _In_ struct _GCX_CONTROLLER *Controller,
+    _In_ BANK_ID BankId);
+
+VOID
+NTAPI
+GcxUnlockBank(
+    _In_ struct _GCX_CONTROLLER *Controller,
+    _In_ BANK_ID BankId);
+
+/* iopins.c */
+EVT_WDF_DEVICE_FILE_CREATE GcxEvtDeviceFileCreate;
+EVT_WDF_FILE_CLOSE GcxEvtFileClose;
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL GcxEvtIoDeviceControl;
 
 NTSTATUS
 NTAPI

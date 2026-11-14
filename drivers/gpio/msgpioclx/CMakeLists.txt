@@ -5,6 +5,7 @@ list(APPEND SOURCE
     controller.c
     gpioclx.c
     interrupt.c
+    iopins.c
     pins.c
     reshub.c
     secint.c

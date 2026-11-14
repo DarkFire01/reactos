@@ -209,7 +209,7 @@ GcxOpenResourceHub(VOID)
 
 /**
  * @brief
- * Fetches the firmware descriptor behind an interrupt vector.
+ * Fetches the firmware descriptor behind an interrupt vector or a connection id.
  *
  * @param[out] Output
  * Receives the hub's answer in GCX_POOL_TAG pool the caller frees.
@@ -217,8 +217,9 @@ GcxOpenResourceHub(VOID)
 static
 NTSTATUS
 NTAPI
-GcxQueryHubDescriptor(
-    _In_ ULONG Gsiv,
+GcxQueryHub(
+    _In_ RH_QUERY_CONNECTION_PROPERTIES_INPUT_TYPE QueryType,
+    _In_ LARGE_INTEGER Key,
     _Outptr_ PRH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER *Output)
 {
     RH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER Header;
@@ -238,8 +239,11 @@ GcxQueryHubDescriptor(
 
     RtlZeroMemory(&Input, sizeof(Input));
     Input.Version = RH_QUERY_CONNECTION_PROPERTIES_INPUT_VERSION;
-    Input.QueryType = InterruptVectorType;
-    Input.u.InterruptVector = Gsiv;
+    Input.QueryType = QueryType;
+    if (QueryType == ConnectionIdType)
+        Input.u.ConnectionId = Key;
+    else
+        Input.u.InterruptVector = Key.LowPart;
 
     Length = GCX_HUB_FIRST_GUESS;
     Buffer = ExAllocatePoolZero(NonPagedPoolNx, Length, GCX_POOL_TAG);
@@ -288,6 +292,29 @@ GcxQueryHubDescriptor(
 
     *Output = Buffer;
     return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NTAPI
+GcxQueryHubDescriptor(
+    _In_ ULONG Gsiv,
+    _Outptr_ PRH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER *Output)
+{
+    LARGE_INTEGER Key;
+
+    Key.QuadPart = Gsiv;
+    return GcxQueryHub(InterruptVectorType, Key, Output);
+}
+
+_Use_decl_annotations_
+NTSTATUS
+NTAPI
+GcxQueryHubConnection(
+    LARGE_INTEGER ConnectionId,
+    PRH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER *Output)
+{
+    return GcxQueryHub(ConnectionIdType, ConnectionId, Output);
 }
 
 /**
