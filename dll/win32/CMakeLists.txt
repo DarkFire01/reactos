@@ -328,6 +328,9 @@ endif()
 
 if(DLL_EXPORT_VERSION GREATER_EQUAL 0x603)
     add_subdirectory(bcp47langs)
-    add_subdirectory(dcomp)
+    # DarkFiresReactOSModules/dwm_win11 builds its own dcomp when present
+    if(NOT EXISTS ${REACTOS_SOURCE_DIR}/DarkFiresReactOSModules/dwm_win11/dcomp/CMakeLists.txt)
+        add_subdirectory(dcomp)
+    endif()
     add_subdirectory(rtworkq)
 endif()
