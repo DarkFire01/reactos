@@ -440,7 +440,7 @@
 @ stdcall IoGetCurrentProcess()
 @ stdcall IoGetDeviceAttachmentBaseRef(ptr)
 @ stdcall IoGetDeviceInterfaceAlias(ptr ptr ptr)
-@ stdcall -version=0x602+ IoGetDeviceInterfacePropertyData(ptr ptr long long long ptr ptr ptr)
+@ stdcall IoGetDeviceInterfacePropertyData(ptr ptr long long long ptr ptr ptr)
 @ stdcall IoGetDeviceInterfaces(ptr ptr long ptr)
 @ stdcall IoGetDeviceObjectPointer(ptr long ptr ptr)
 @ stdcall IoGetDeviceProperty(ptr long long ptr ptr)
@@ -512,7 +512,7 @@
 @ stdcall IoRequestDeviceEject(ptr)
 @ stdcall IoReuseIrp(ptr long)
 @ stdcall IoSetCompletionRoutineEx(ptr ptr ptr ptr long long long)
-@ stdcall -version=0x602+ IoSetDeviceInterfacePropertyData(ptr ptr long long long long ptr)
+@ stdcall IoSetDeviceInterfacePropertyData(ptr ptr long long long long ptr)
 @ stdcall IoSetDeviceInterfaceState(ptr long)
 @ stdcall IoSetDevicePropertyData(ptr ptr long long long long ptr)
 @ stdcall IoSetDeviceToVerify(ptr ptr)
@@ -1782,10 +1782,7 @@
 
 @ cdecl -arch=i386 _chkstk()
 @ cdecl _ltoa_s()
-@ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
 @ cdecl wcsncat_s()
-@ cdecl wcsncpy_s()
-@ cdecl wcsnlen()
 
 # Errata Manager
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)

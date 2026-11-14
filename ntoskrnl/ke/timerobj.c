@@ -479,14 +479,3 @@ KeQueryUnbiasedInterruptTime(VOID)
 {
     return (ULONGLONG)KeQueryInterruptTime();
 }
-
-/**
- * @brief Gets the system time in 100ns units.
- */
-VOID
-NTAPI
-KeQuerySystemTimePrecise(
-    _Out_ PLARGE_INTEGER CurrentTime)
-{
-    KeQuerySystemTime(CurrentTime);
-}

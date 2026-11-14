@@ -35,7 +35,6 @@ NTSTATUS NTAPI NtAlpcRevokeSecurityContext() { UNIMPLEMENTED; return STATUS_NOT_
 NTSTATUS NTAPI NtAlpcSendWaitReceivePort() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtAlpcSetInformation() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtAssociateWaitCompletionPacket() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
-NTSTATUS NTAPI NtCancelIoFileEx() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtCancelSynchronousIoFile() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtNtCancelTimer2() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtCancelWaitCompletionPacket() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
@@ -144,7 +143,6 @@ NTSTATUS NTAPI NtNtRevertContainerImpersonation() { UNIMPLEMENTED; return STATUS
 NTSTATUS NTAPI NtNtSetCachedSigningLevel() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtSetIRTimer() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtSetInformationSymbolicLink() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
-NTSTATUS NTAPI NtSetInformationVirtualMemory() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtSetTimer2() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtSetWnfProcessNotificationEvent() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtAlpcImpersonateClientContainerOfPort() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
@@ -157,7 +155,6 @@ NTSTATUS NTAPI NtSetCachedSigningLevel() { UNIMPLEMENTED; return STATUS_NOT_IMPL
 NTSTATUS NTAPI NtSavepointTransaction() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 
 
-NTSTATUS NTAPI IoUnregisterPlugPlayNotificationEx() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI KeQueryPrcbAddress() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI ObGetFilterVersion() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI ObRegisterCallbacks() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
@@ -171,22 +168,5 @@ NTSTATUS NTAPI PsReleaseProcessExitSynchronization() { UNIMPLEMENTED; return STA
 
 
 
-
-int NTAPI strcpy_s( _Out_writes_z_(_Size) char *_Dst,
-    _In_ size_t _Size,
-    _In_z_ const char *_Src)
-{
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-int NTAPI strncpy_s(    _Out_writes_z_(_DstSizeInChars) char *_Dst,
-    _In_ size_t _DstSizeInChars,
-    _In_z_ const char *_Src,
-    _In_ size_t _MaxCount)
-{
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
 
 #pragma warning( pop )
