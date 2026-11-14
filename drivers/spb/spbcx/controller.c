@@ -389,6 +389,15 @@ ScxEvtControllerIoDeviceControl(
             if (Request->TransferList == NULL)
                 break;
 
+            if (!Controller->FirstSequenceLogged)
+            {
+                Controller->FirstSequenceLogged = TRUE;
+                DPRINT1("SpbCx: first sequence of %lu transfers to controller %p, connection %I64x\n",
+                        Request->TransferCount,
+                        Device,
+                        Request->Target->ConnectionId.QuadPart);
+            }
+
             Config->EvtSpbIoSequence(Device, Target, SpbRequest, Request->TransferCount);
             return;
 

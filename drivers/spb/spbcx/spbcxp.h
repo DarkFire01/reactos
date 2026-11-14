@@ -54,6 +54,7 @@ typedef struct _SCX_CONTROLLER
     BOOLEAN TargetAttributesSet;
 
     WDFQUEUE ControllerQueue;
+    BOOLEAN FirstSequenceLogged;
 } SCX_CONTROLLER, *PSCX_CONTROLLER;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(SCX_CONTROLLER, ScxGetControllerContext)
