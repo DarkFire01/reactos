@@ -198,6 +198,27 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     Changed = PciComputeNewCurrentSettings(DeviceExtension,
                                            IoStackLocation->Parameters.
                                            StartDevice.AllocatedResources);
+    DPRINT1("PCIX - Starting %04x:%04x at %02x.%02x.%x, resources %s\n",
+            DeviceExtension->VendorId,
+            DeviceExtension->DeviceId,
+            DeviceExtension->ParentFdoExtension->BaseBus,
+            DeviceExtension->Slot.u.bits.DeviceNumber,
+            DeviceExtension->Slot.u.bits.FunctionNumber,
+            Changed ? "moved" : "kept");
+    if (DeviceExtension->Resources)
+    {
+        for (i = 0; i < RTL_NUMBER_OF(DeviceExtension->Resources->Current); i++)
+        {
+            if (DeviceExtension->Resources->Current[i].Type == CmResourceTypeNull)
+                continue;
+            DPRINT1("PCIX -   %lu: type %u start %I64x length %lx\n",
+                    i,
+                    DeviceExtension->Resources->Current[i].Type,
+                    DeviceExtension->Resources->Current[i].u.Generic.Start.QuadPart,
+                    DeviceExtension->Resources->Current[i].u.Generic.Length);
+        }
+    }
+
     if (Changed)
     {
         /* Remember this for later */
@@ -232,6 +253,8 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     /* Check if the device was sleeping */
     if (DeviceExtension->PowerState.CurrentDeviceState != PowerDeviceD0)
     {
+        DPRINT1("PCIX - Powering up from D%u\n", DeviceExtension->PowerState.CurrentDeviceState - 1);
+
         /* Power it up */
         Status = PciSetPowerManagedDevicePowerState(DeviceExtension,
                                                     PowerDeviceD0,
@@ -257,15 +280,22 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     }
 
     /* Update resource information now that the device is powered up and active */
+    DPRINT1("PCIX - Programming the resources, reset %u\n", DoReset);
     Status = PciSetResources(DeviceExtension, DoReset, TRUE);
 
     /* With the BARs decoding, the granted interrupt can be programmed */
     if (NT_SUCCESS(Status))
     {
+        DPRINT1("PCIX - Programming the interrupt\n");
         Status = PciProgramGrantedInterrupt(DeviceExtension,
                                             IoStackLocation->Parameters.
                                             StartDevice.AllocatedResources);
     }
+
+    DPRINT1("PCIX - Start of %04x:%04x -> 0x%lx\n",
+            DeviceExtension->VendorId,
+            DeviceExtension->DeviceId,
+            Status);
 
     if (!NT_SUCCESS(Status))
     {
