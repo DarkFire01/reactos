@@ -592,6 +592,13 @@ WinLdrScanRegistry(
     if (!Success)
         goto Quit;
 
+    /* Services a boot driver depends on load with it */
+    Success = CmpAddDependentDrivers(SystemHive,
+                                     HKEY_TO_HCI(CurrentControlSetKey),
+                                     BootDriverListHead);
+    if (!Success)
+        goto Quit;
+
     /* Sort by group/tag */
     Success = CmpSortDriverList(SystemHive,
                                 HKEY_TO_HCI(CurrentControlSetKey),
