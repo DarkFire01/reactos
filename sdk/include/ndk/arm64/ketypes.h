@@ -473,6 +473,13 @@ typedef struct _KPRCB
     UINT64 StartCycles;
     UINT64 CycleTime;
     ULONG FeatureBitsHigh;
+    /* IPI packet and DPC watchdog state, as in the i386 KPRCB */
+    PVOID IpiFrame;
+    volatile PVOID CurrentPacket[3];
+    volatile PKIPI_WORKER WorkerRoutine;
+    ULONG DpcTimeCount;
+    LONG DpcWatchdogCount;
+    UCHAR LogicalProcessorsPerPhysicalProcessor;
 } KPRCB, *PKPRCB;
 
 //
