@@ -3596,6 +3596,11 @@ Return Value:
                         FXDEVICE_CALLBACK_IN_PREPARE_HARDWARE
                         );
 
+    DoTraceLevelMessage(
+        GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "%s EvtDevicePrepareHardware on thread %p",
+        GetDriverGlobals()->Public.DriverName, PsGetCurrentThreadId());
+
     status = m_DevicePrepareHardware.Invoke(m_Device->GetHandle(),
                                             m_ResourcesRaw->GetHandle(),
                                             m_Resources->GetHandle(),
@@ -3667,6 +3672,11 @@ Return Value:
     NTSTATUS        status;
     FxInterrupt*    interrupt;
     PLIST_ENTRY     le;
+
+    DoTraceLevelMessage(
+        GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "WDFDEVICE %p releasing hardware from PnP state %!WDF_DEVICE_PNP_STATE!",
+        m_Device->GetHandle(), m_Device->GetDevicePnpState());
 
     //
     // Invoke the device's release hardware callback.

@@ -374,6 +374,11 @@ Return Value:
 {
     FxCxCallbackProgress progress;
 
+    DoTraceLevelMessage(
+        This->m_PkgPnp->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "%s EvtDeviceSelfManagedIoInit on thread %p",
+        This->m_PkgPnp->GetDriverGlobals()->Public.DriverName, PsGetCurrentThreadId());
+
     *Status = This->m_DeviceSelfManagedIoInit.Invoke(This->GetDeviceHandle(), &progress);
 
     if (Progress) {
@@ -383,7 +388,13 @@ Return Value:
     if (NT_SUCCESS(*Status))  {
         return FxSelfManagedIoStarted;
     }
-    else if (progress < FxCxCallbackProgressClientCalled) {
+
+    DoTraceLevelMessage(
+        This->m_PkgPnp->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "WDFDEVICE %p EvtDeviceSelfManagedIoInit failed, %!STATUS!",
+        This->GetDeviceHandle(), *Status);
+
+    if (progress < FxCxCallbackProgressClientCalled) {
         //
         // One of the Pre callback(s) failed so we go back to Created and wait
         // for cleanup
@@ -465,6 +476,11 @@ Return Value:
   --*/
 {
     FxCxCallbackProgress progress;
+
+    DoTraceLevelMessage(
+        This->m_PkgPnp->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+        "%s EvtDeviceSelfManagedIoRestart on thread %p",
+        This->m_PkgPnp->GetDriverGlobals()->Public.DriverName, PsGetCurrentThreadId());
 
     *Status = This->m_DeviceSelfManagedIoRestart.Invoke(This->GetDeviceHandle(),
                                                         &progress);
