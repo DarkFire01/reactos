@@ -73,6 +73,10 @@
 
 #include <hal.h>
 #include <suppress.h>
+#ifdef _M_ARM64
+#include <wdmguid.h>
+#include <drivers/acpi/dmacoherency.h>
+#endif
 
 #define NDEBUG
 #include <debug.h>
@@ -96,14 +100,73 @@ static PADAPTER_OBJECT HalpMasterAdapter32;
 /* DMA masters that do not snoop the caches only see what reached memory */
 static
 BOOLEAN
-HalpDmaNotCoherent(VOID)
+HalpDmaNotCoherent(
+    _In_ PADAPTER_OBJECT AdapterObject)
 {
-    return (KeGetDmaIoCoherency() & KE_DMA_IO_NOT_COHERENT) != 0;
+    return !AdapterObject->CacheCoherent;
+}
+
+/**
+ * @brief Asks the device's stack what its firmware says about its coherency,
+ * falling back to the platform when nobody answers.
+ */
+static
+BOOLEAN
+HalpQueryDeviceCacheCoherent(
+    _In_opt_ PDEVICE_OBJECT PhysicalDeviceObject)
+{
+    ACPI_DMA_COHERENCY_INTERFACE Coherency;
+    IO_STATUS_BLOCK IoStatus;
+    PIO_STACK_LOCATION IoStack;
+    PDEVICE_OBJECT TopDevice;
+    KEVENT Event;
+    NTSTATUS Status;
+    PIRP Irp;
+
+    if (!PhysicalDeviceObject || (PhysicalDeviceObject->Type != IO_TYPE_DEVICE))
+        return KeSystemFullyCacheCoherent();
+
+    RtlZeroMemory(&Coherency, sizeof(Coherency));
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+
+    TopDevice = IoGetAttachedDeviceReference(PhysicalDeviceObject);
+    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, TopDevice, NULL, 0, NULL, &Event, &IoStatus);
+    if (!Irp)
+    {
+        ObDereferenceObject(TopDevice);
+        return KeSystemFullyCacheCoherent();
+    }
+
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+    IoStack = IoGetNextIrpStackLocation(Irp);
+    IoStack->MinorFunction = IRP_MN_QUERY_INTERFACE;
+    IoStack->Parameters.QueryInterface.InterfaceType = &GUID_DMA_CACHE_COHERENCY_INTERFACE;
+    IoStack->Parameters.QueryInterface.Size = sizeof(Coherency);
+    IoStack->Parameters.QueryInterface.Version = ACPI_DMA_COHERENCY_INTERFACE_VERSION;
+    IoStack->Parameters.QueryInterface.Interface = (PINTERFACE)&Coherency;
+    IoStack->Parameters.QueryInterface.InterfaceSpecificData = NULL;
+
+    Status = IoCallDriver(TopDevice, Irp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = IoStatus.Status;
+    }
+    ObDereferenceObject(TopDevice);
+
+    if (!NT_SUCCESS(Status))
+        return KeSystemFullyCacheCoherent();
+
+    if (Coherency.Header.InterfaceDereference)
+        Coherency.Header.InterfaceDereference(Coherency.Header.Context);
+
+    return Coherency.CacheCoherent;
 }
 
 static
 VOID
 HalpSweepDmaBuffer(
+    _In_ PADAPTER_OBJECT AdapterObject,
     _In_ PMDL Mdl,
     _In_ PVOID CurrentVa,
     _In_ ULONG Length)
@@ -111,7 +174,7 @@ HalpSweepDmaBuffer(
     PUCHAR Buffer;
     ULONG Offset;
 
-    if (!HalpDmaNotCoherent() || !Mdl || !Length)
+    if (!HalpDmaNotCoherent(AdapterObject) || !Mdl || !Length)
         return;
 
     Offset = (ULONG)((PUCHAR)CurrentVa - (PUCHAR)MmGetMdlVirtualAddress(Mdl));
@@ -772,6 +835,11 @@ HalpDmaAllocateChildAdapter(IN ULONG NumberOfMapRegisters,
     AdapterObject->Dma32BitAddresses = DeviceDescription->Dma32BitAddresses;
     AdapterObject->ChannelNumber = 0xFF;
     AdapterObject->MasterAdapter = HalpMasterAdapterForDevice(DeviceDescription);
+#ifdef _M_ARM64
+    AdapterObject->CacheCoherent = KeSystemFullyCacheCoherent();
+#else
+    AdapterObject->CacheCoherent = TRUE;
+#endif
     KeInitializeDeviceQueue(&AdapterObject->ChannelWaitQueue);
 
     return AdapterObject;
@@ -1210,7 +1278,19 @@ HalpGetDmaAdapter(IN PVOID Context,
                   IN PDEVICE_DESCRIPTION DeviceDescription,
                   OUT PULONG NumberOfMapRegisters)
 {
-    return &HalGetAdapter(DeviceDescription, NumberOfMapRegisters)->DmaHeader;
+    PADAPTER_OBJECT AdapterObject;
+
+    AdapterObject = HalGetAdapter(DeviceDescription, NumberOfMapRegisters);
+    if (!AdapterObject)
+        return NULL;
+
+#ifdef _M_ARM64
+    /* The shared ISA channel objects keep the platform answer */
+    if (AdapterObject->ChannelNumber == 0xFF)
+        AdapterObject->CacheCoherent = HalpQueryDeviceCacheCoherent(Context);
+#endif
+
+    return &AdapterObject->DmaHeader;
 }
 
 /**
@@ -1293,7 +1373,7 @@ HalAllocateCommonBuffer(IN PADAPTER_OBJECT AdapterObject,
 
 #ifdef _M_ARM64
     /* Drivers never flush common buffers, a master that does not snoop needs them uncached */
-    if (HalpDmaNotCoherent())
+    if (HalpDmaNotCoherent(AdapterObject))
         CacheEnabled = FALSE;
 #endif
 
@@ -1328,7 +1408,7 @@ HalFreeCommonBuffer(IN PADAPTER_OBJECT AdapterObject,
                     IN BOOLEAN CacheEnabled)
 {
 #ifdef _M_ARM64
-    if (HalpDmaNotCoherent())
+    if (HalpDmaNotCoherent(AdapterObject))
         CacheEnabled = FALSE;
 #endif
 
@@ -2151,11 +2231,16 @@ HalAllocateCommonBufferEx(
     else
         BoundaryAddressMultiple.LowPart = 0x10000;
 
+#ifdef _M_ARM64
+    if (HalpDmaNotCoherent(AdapterObject))
+        CacheEnabled = FALSE;
+#endif
+
     VirtualAddress = MmAllocateContiguousMemorySpecifyCache(Length,
                                                             LowestAcceptableAddress,
                                                             HighestAcceptableAddress,
                                                             BoundaryAddressMultiple,
-                                                            CacheEnabled ? MmCached : MmNonCached);
+                                                            CacheEnabled ? MmCached : HALP_DMA_UNCACHED);
     if (VirtualAddress == NULL) return NULL;
 
     *LogicalAddress = MmGetPhysicalAddress(VirtualAddress);
@@ -3164,7 +3249,7 @@ IoFlushAdapterBuffers(IN PADAPTER_OBJECT AdapterObject,
 #ifdef _M_ARM64
     /* Drop lines the CPU may have pulled in while the device wrote memory */
     if (!WriteToDevice)
-        HalpSweepDmaBuffer(Mdl, CurrentVa, Length);
+        HalpSweepDmaBuffer(AdapterObject, Mdl, CurrentVa, Length);
 #endif
 
     if (!AdapterObject->MasterDevice)
@@ -3302,7 +3387,7 @@ IoMapTransfer(IN PADAPTER_OBJECT AdapterObject,
 
 #ifdef _M_ARM64
     /* Write back what the device reads and drop lines over what it writes */
-    HalpSweepDmaBuffer(Mdl, CurrentVa, *Length);
+    HalpSweepDmaBuffer(AdapterObject, Mdl, CurrentVa, *Length);
 #endif
 
     /*

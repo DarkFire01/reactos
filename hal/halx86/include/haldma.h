@@ -357,6 +357,7 @@ typedef struct _ADAPTER_OBJECT {
    BOOLEAN Dma64BitAddresses;
    ULONG DmaAddressWidth;
    LIST_ENTRY AdapterList;
+   BOOLEAN CacheCoherent;
 } ADAPTER_OBJECT;
 
 typedef struct _GROW_WORK_ITEM {
