@@ -140,9 +140,9 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_080501","Cl
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#VEN_1B36&DEV_0007","Service",0x00000000,"sdhc"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#VEN_1B36&DEV_0007","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
-; Qualcomm SD host controller (ACPI HID must match the target platform's SDHC device)
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","Service",0x00000000,"qcsdhc"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; Qualcomm SD host controller, off while the Windows Qualcomm drivers own the hardware
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","Service",0x00000000,"qcsdhc"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
 ; Qualcomm DWC3 dual-role controllers, started as host so USB boot media is reachable
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM24B6","Service",0x00000000,"urssynopsys"
@@ -158,30 +158,32 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0305\Devi
 ; Host role children of those controllers, xHCI over the Qualcomm PHY filter
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","LowerFilters",0x00010000,"qcomxhcif"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","LowerFilters",0x00010000,"qcomxhcif"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","LowerFilters",0x00010000,"QcXhciFilter"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","LowerFilters",0x00010000,"qcomxhcif"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","LowerFilters",0x00010000,"QcXhciFilter"
 
-; Qualcomm SDM845 pin, I2C and PMIC bus controllers, then the touch screen and battery on them
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","Service",0x00000000,"qcomtlmm"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","Service",0x00000000,"qcomgeni"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","Service",0x00000000,"qcomspmi"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; Qualcomm SDM845 pin, I2C and PMIC bus controllers, then the touch screen and battery on them.
+; The Windows SDM850 drivers own SPMI, GPIO and I2C now (drivers/soc/qcom/sdm845/windows), so these
+; and the drivers that reach that hardware through them stay unbound.
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","Service",0x00000000,"qcomtlmm"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","Service",0x00000000,"qcomgeni"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","Service",0x00000000,"qcomspmi"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","Service",0x00000000,"mshidkmdf"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","LowerFilters",0x00010000,"qcomtouch"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","Service",0x00000000,"qcombatt"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","Service",0x00000000,"qcomtypec"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","Service",0x00000000,"qcompwrkey"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","Service",0x00000000,"qcombatt"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","Service",0x00000000,"qcomtypec"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","Service",0x00000000,"qcompwrkey"
+; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","Service",0x00000000,"hidusb"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
@@ -2110,11 +2112,11 @@ HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","Type",0x00010001,0x00000001
 
 ; Qualcomm SD host controller miniport
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ErrorControl",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Group",0x00000000,"System Bus Extender"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ImagePath",0x00020000,"system32\drivers\qcsdhc.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Start",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Type",0x00010001,0x00000001
+; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ErrorControl",0x00010001,0x00000001
+; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Group",0x00000000,"System Bus Extender"
+; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ImagePath",0x00020000,"system32\drivers\qcsdhc.sys"
+; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Start",0x00010001,0x00000000
+; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Type",0x00010001,0x00000001
 
 ; USB composite generic parent
 HKLM,"SYSTEM\CurrentControlSet\Services\usbccgp","ErrorControl",0x00010001,0x00000001
@@ -2576,10 +2578,10 @@ HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","Service",0x00000000,"QCDX"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","ClassGUID",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}"
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","DriverDesc",0x00000000,"Qualcomm(R) Adreno(TM) 630 GPU"
-HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","InstalledDisplayDrivers",0x00010000,"qcdx11arm64xum850","qcdx11arm64xum850","qcdx11arm64xum850","qcdx12arm64xum850"
-HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","UserModeDriverName",0x00010000,"<>","qcdx11arm64xum850.dll","qcdx11arm64xum850.dll","qcdx12arm64xum850.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","InstalledDisplayDrivers",0x00010000,"qcdx11arm64um850","qcdx11arm64um850","qcdx11arm64um850","qcdx12arm64um850"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","UserModeDriverName",0x00010000,"<>","qcdx11arm64um850.dll","qcdx11arm64um850.dll","qcdx12arm64um850.dll"
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","UserModeDriverNameX64",0x00010000,""
-HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","GpuStatisticsDriverName",0x00000000,"qcdxsdarm64x.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","GpuStatisticsDriverName",0x00000000,"qcdxsdarm64.dll"
 HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E968-E325-11CE-BFC1-08002BE10318}\0010","VgaCompatible",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\_SB_GPU0","Service",0x00000000,"QCDX"
 HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM027E\_SB_GPU0","ClassGUID",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}"
