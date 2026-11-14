@@ -1586,7 +1586,6 @@ MiResolveImageReferences(IN PVOID ImageBase,
     ULONG ImportSize, ImportCount = 0, LoadedImportsSize, ExportSize;
     PLOAD_IMPORTS LoadedImports, NewImports;
     ULONG i;
-    BOOLEAN GdiLink, NormalLink;
     BOOLEAN ReferenceNeeded, Loaded;
     ANSI_STRING TempString;
     UNICODE_STRING NameString, DllName, ApiSetHost;
@@ -1646,38 +1645,13 @@ MiResolveImageReferences(IN PVOID ImageBase,
     }
 
     /* Reset the import count and loop descriptors again */
-    GdiLink = NormalLink = FALSE;
     ImportCount = 0;
     while ((ImportDescriptor->Name) && (ImportDescriptor->OriginalFirstThunk))
     {
         /* Get the name */
         ImportName = (PCHAR)((ULONG_PTR)ImageBase + ImportDescriptor->Name);
 
-        /* Check if this is a GDI driver */
-        GdiLink = GdiLink ||
-                  !(_strnicmp(ImportName, "win32k", sizeof("win32k") - 1));
-
-        /*
-         * We can also allow dxapi (for Windows compat, allow IRT and coverage), and
-         * watchdog, which the WDDM display driver logs through. Windows 10 dropped
-         * this restriction entirely.
-         */
-        NormalLink = NormalLink ||
-                     ((_strnicmp(ImportName, "win32k", sizeof("win32k") - 1)) &&
-                      (_strnicmp(ImportName, "ntoskrnl", sizeof("ntoskrnl") - 1)) &&
-                      (_strnicmp(ImportName, "dxapi", sizeof("dxapi") - 1)) &&
-                      (_strnicmp(ImportName, "watchdog", sizeof("watchdog") - 1)) &&
-                      (_strnicmp(ImportName, "coverage", sizeof("coverage") - 1)) &&
-                      (_strnicmp(ImportName, "irt", sizeof("irt") - 1)));
-
-        /* Check if this is a valid GDI driver */
-        if (GdiLink && NormalLink)
-        {
-            /* It's not, it's importing stuff it shouldn't be! */
-            DPRINT1("GDI driver imports '%s', which is not allowed\n", ImportName);
-            Status = STATUS_PROCEDURE_NOT_FOUND;
-            goto Failure;
-        }
+        /* A GDI driver may import any kernel module, as on Windows 10 */
 
         /* Check for user-mode printer or video card drivers, which don't belong */
         if (!(_strnicmp(ImportName, "ntdll", sizeof("ntdll") - 1)) ||
