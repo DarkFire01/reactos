@@ -2088,8 +2088,8 @@ MiReleaseSystemPtes(
     IN MMSYSTEM_PTE_POOL_TYPE SystemPtePoolType
 );
 
-#ifndef _M_AMD64
-/* Only amd64 gives kernel stacks a region of their own */
+#ifndef _WIN64
+/* Only 64-bit gives kernel stacks a region of their own */
 FORCEINLINE
 PMMPTE
 MiReserveKernelStackPtes(

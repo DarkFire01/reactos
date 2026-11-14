@@ -17,26 +17,32 @@
 #define HYPER_SPACE                            0xFFFFF70000000000ULL
 #define HYPER_SPACE_END                        0xFFFFF77FFFFFFFFFULL
 #define MI_SYSTEM_CACHE_WS_START               0xFFFFF78000001000ULL
-#define MM_SYSTEM_SPACE_START                  0xFFFFF88000000000ULL
-#define MI_DEBUG_MAPPING                (PVOID)0xFFFFF89FFFFFF000ULL
-#define MI_PAGED_POOL_START             (PVOID)0xFFFFF8A000000000ULL
+#define MI_LOADER_MAPPINGS                     KSEG0_BASE
+#define MI_SESSION_SPACE_START                 0xFFFFF90000000000ULL
 #define MI_SESSION_SPACE_END                   0xFFFFF98000000000ULL
-#define MI_SYSTEM_CACHE_START                  0xFFFFF98000000000ULL
-#define MI_SYSTEM_CACHE_END                    0xFFFFFA7FFFFFFFFFULL
-#define MI_PFN_DATABASE                        0xFFFFFA8000000000ULL
-#define MI_NONPAGED_POOL_END            (PVOID)0xFFFFFFFFFFBFFFFFULL
 #define MI_HIGHEST_SYSTEM_ADDRESS       (PVOID)0xFFFFFFFFFFFFFFFFULL
 #define MmSystemRangeStart              ((PVOID)MI_REAL_SYSTEM_RANGE_START)
+
+/* These regions get a randomized address, the globals hold the real one */
+#define MI_NONPAGED_POOL_END                   0
+#define MI_PAGED_POOL_START                    0
+#define MI_SYSTEM_CACHE_START                  0
+#define MI_DEBUG_MAPPING                       0
 
 /* WOW64 address definitions */
 #define MM_HIGHEST_USER_ADDRESS_WOW64   0x7FFEFFFF
 #define MM_SYSTEM_RANGE_START_WOW64     0x80000000
 
-/* The size of the virtual memory area that is mapped using a single PDE */
-#define PDE_MAPPED_VA (PTE_PER_PAGE * PAGE_SIZE)
+/* The size of the virtual memory area that is mapped using a single table */
+#define PDE_MAPPED_VA (PTE_PER_PAGE * (ULONG64)PAGE_SIZE)
+#define PPE_MAPPED_VA (PDE_PER_PAGE * PDE_MAPPED_VA)
+#define PXE_MAPPED_VA (PPE_PER_PAGE * PPE_MAPPED_VA)
+
+extern PVOID MiSystemPteSpaceStart;
+extern PVOID MiSystemPteBaseAddress;
 
 /* Misc address definitions */
-#define MI_SYSTEM_PTE_BASE              (PVOID)MiAddressToPte(KSEG0_BASE)
+#define MI_SYSTEM_PTE_BASE              (PVOID)MiAddressToPte(MiSystemPteBaseAddress)
 #define MM_HIGHEST_VAD_ADDRESS          (PVOID)((ULONG_PTR)MM_HIGHEST_USER_ADDRESS - (16 * PAGE_SIZE))
 #define MI_MAPPING_RANGE_START          HYPER_SPACE
 #define MI_MAPPING_RANGE_END            (MI_MAPPING_RANGE_START + MI_HYPERSPACE_PTES * PAGE_SIZE)
@@ -180,6 +186,15 @@ MiAddressToPxi(
     return (ULONG)(((ULONG64)Address >> PXI_SHIFT) & PXI_MASK);
 }
 
+/* Convert a PXE index into the first address it maps, sign extending bit 47 */
+FORCEINLINE
+PVOID
+MiPxiToAddress(
+    _In_ ULONG Pxi)
+{
+    return (PVOID)((((LONG64)Pxi) << 55) >> 16);
+}
+
 /* An entry address maps back by dropping one level and sign extending bit 47 */
 FORCEINLINE
 PVOID
@@ -266,3 +281,53 @@ MiIsPdeForAddressValid(
             (MiAddressToPpe(Address)->u.Hard.Valid) &&
             (MiAddressToPde(Address)->u.Hard.Valid));
 }
+
+/* The kernel address space is divided into these regions */
+typedef enum _MI_ASSIGNED_REGION_TYPES
+{
+    AssignedRegionNonPagedPool = 0,
+    AssignedRegionPagedPool = 1,
+    AssignedRegionSystemCache = 2,
+    AssignedRegionSystemPtes = 3,
+    AssignedRegionUltraZero = 4,
+    AssignedRegionPfnDatabase = 5,
+    AssignedRegionCfg = 6,
+    AssignedRegionHyperSpace = 7,
+    AssignedRegionKernelStacks = 8,
+    AssignedRegionPageTables = 9,
+    AssignedRegionSession = 10,
+    AssignedRegionSecureNonPagedPool = 11,
+    AssignedRegionSystemImages = 12,
+    AssignedRegionMaximum = 13
+} MI_ASSIGNED_REGION_TYPES, *PMI_ASSIGNED_REGION_TYPES;
+
+typedef struct _MI_SYSTEM_VA_ASSIGNMENT
+{
+    PVOID BaseAddress;
+    ULONGLONG NumberOfBytes;
+} MI_SYSTEM_VA_ASSIGNMENT, *PMI_SYSTEM_VA_ASSIGNMENT;
+
+extern MI_SYSTEM_VA_ASSIGNMENT MiSystemVaRegions[AssignedRegionMaximum];
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+MiInitializeKernelVaLayout(
+    _In_ const LOADER_PARAMETER_BLOCK *LoaderBlock);
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+MiInitializeStackAllocator(
+    VOID);
+
+PMMPTE
+NTAPI
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes);
+
+VOID
+NTAPI
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes);

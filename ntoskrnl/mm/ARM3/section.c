@@ -1052,7 +1052,7 @@ MiSessionHasPageTable(
     _In_ PMMPDE PointerPde,
     _In_ ULONG Index)
 {
-#ifdef _M_AMD64
+#ifdef _WIN64
     UNREFERENCED_PARAMETER(Index);
     return (PointerPde->u.Hard.Valid != 0);
 #else
@@ -1122,7 +1122,7 @@ MiSessionCommitPageTables(IN PVOID StartVa,
             TempPde.u.Hard.PageFrameNumber = PageFrameNumber;
             MI_WRITE_VALID_PDE(StartPde, TempPde);
 
-#ifndef _M_AMD64
+#ifndef _WIN64
             /* Write the page table in session space structure */
             ASSERT(MmSessionSpace->PageTables[Index].u.Long == 0);
             MmSessionSpace->PageTables[Index] = TempPde;

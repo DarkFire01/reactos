@@ -455,6 +455,8 @@ elseif(ARCH STREQUAL "arm64")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/trapc.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/usercall.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/amd64/init.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/amd64/kstack.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/amd64/kvalayout.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/amd64/procsup.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/i386/page.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/amd64/psctx.c)
