@@ -53,6 +53,7 @@ list(APPEND SOURCE
      sys/ioctl.c
      sys/irqarb.c
      sys/irqlib.c
+     sys/opregion.c
      sys/pdo.c
      sys/power.c
      sys/powerres.c
@@ -64,9 +65,12 @@ list(APPEND SOURCE
      uacpi-host/uacpi_host.c
      uacpi-host/uacpi_isr.c)
 
+spec2def(acpi.sys acpi.spec)
+
 add_library(acpi MODULE
             ${SOURCE}
-            sys/acpi.rc)
+            sys/acpi.rc
+            ${CMAKE_CURRENT_BINARY_DIR}/acpi.def)
 
 set_module_type(acpi kernelmodedriver)
 target_link_libraries(acpi uacpi arbiter ntoskrnl_vista wdmguid memcmp ${PSEH_LIB})
