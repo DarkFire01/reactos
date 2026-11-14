@@ -438,6 +438,8 @@ PspDeleteThread(IN PVOID ObjectBody)
     PspDeleteThreadSecurity(Thread);
 
     /* Free the thread name if set */
+    PspDeletePropertySet(&Thread->PropertySet);
+
     if (Thread->ThreadName)
     {
         ExFreePoolWithTag(Thread->ThreadName, TAG_THREAD_NAME);

@@ -292,6 +292,19 @@ PspDeleteThreadSecurity(
 );
 
 //
+// Property sets
+//
+VOID
+NTAPI
+PspInitializePropertySet(
+    _Out_ PPS_PROPERTY_SET PropertySet);
+
+VOID
+NTAPI
+PspDeletePropertySet(
+    _Inout_ PPS_PROPERTY_SET PropertySet);
+
+//
 // Reaping and Deletion
 //
 VOID

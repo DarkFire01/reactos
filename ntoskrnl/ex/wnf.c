@@ -94,6 +94,33 @@ ZwUpdateWnfStateData(
  * @return
  * STATUS_NOT_SUPPORTED.
  */
+/**
+ * @brief Reads the data last published under a state name.
+ *
+ * Nothing publishes WNF state data yet, so every name reads as present and empty.
+ */
+NTSTATUS
+NTAPI
+ZwQueryWnfStateData(
+    _In_ const VOID *StateName,
+    _In_opt_ LPCGUID TypeId,
+    _In_opt_ const VOID *ExplicitScope,
+    _Out_ PULONG ChangeStamp,
+    _Out_writes_bytes_to_opt_(*BufferSize, *BufferSize) PVOID Buffer,
+    _Inout_ PULONG BufferSize)
+{
+    UNREFERENCED_PARAMETER(TypeId);
+    UNREFERENCED_PARAMETER(ExplicitScope);
+    UNREFERENCED_PARAMETER(Buffer);
+
+    if ((StateName == NULL) || (ChangeStamp == NULL) || (BufferSize == NULL))
+        return STATUS_INVALID_PARAMETER;
+
+    *ChangeStamp = 0;
+    *BufferSize = 0;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 ExSubscribeWnfStateChange(

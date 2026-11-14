@@ -82,3 +82,15 @@ NtQueryLicenseValue(
 }
 
 /* EOF */
+
+/**
+ * @brief Tells whether a developer license for the fast cache is installed.
+ *
+ * @return FALSE, ReactOS loads no product policy.
+ */
+BOOLEAN
+NTAPI
+ExQueryFastCacheDevLicense(VOID)
+{
+    return FALSE;
+}
