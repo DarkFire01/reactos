@@ -31,6 +31,9 @@ typedef struct _BASEP_CONTEXT_EX
 #define BASEP_CONTEXT_LEGACY_STATE  CONTEXT_EXTENDED_REGISTERS
 #define BASEP_LEGACY_SSE_LENGTH     (8 * sizeof(M128A))
 #define BasepLegacyArea(Context)    ((PUCHAR)(Context)->ExtendedRegisters)
+#elif defined(_M_ARM64)
+/* An ARM64 context has no x87/SSE legacy area and carries no XSAVE chunk */
+#define BASEP_CONTEXT_ARCH          CONTEXT_ARM64
 #endif
 
 /* The x87 part of the legacy area, ahead of the XMM registers */
@@ -58,6 +61,11 @@ BasepLocateXStateHeader(
     _In_ PCONTEXT Context,
     _Out_opt_ PULONG ChunkLength)
 {
+#if defined(_M_ARM64)
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(ChunkLength);
+    return NULL;
+#else
     PBASEP_CONTEXT_EX ContextEx;
 
     if (!BasepHasContextFlags(Context, CONTEXT_XSTATE))
@@ -71,6 +79,7 @@ BasepLocateXStateHeader(
         *ChunkLength = ContextEx->XState.Length;
 
     return (PXSAVE_AREA_HEADER)((PUCHAR)ContextEx + ContextEx->XState.Offset);
+#endif
 }
 
 /**
@@ -146,8 +155,10 @@ GetXStateFeaturesMask(
         return FALSE;
     }
 
+#if !defined(_M_ARM64)
     if (BasepHasContextFlags(Context, BASEP_CONTEXT_LEGACY_STATE))
         Mask = XSTATE_MASK_LEGACY;
+#endif
 
     Header = BasepLocateXStateHeader(Context, NULL);
     if (Header)
@@ -185,6 +196,9 @@ LocateXStateFeature(
 
     if (FeatureId == XSTATE_LEGACY_FLOATING_POINT || FeatureId == XSTATE_LEGACY_SSE)
     {
+#if defined(_M_ARM64)
+        return NULL;
+#else
         if (!BasepHasContextFlags(Context, BASEP_CONTEXT_LEGACY_STATE))
             return NULL;
 
@@ -198,6 +212,7 @@ LocateXStateFeature(
         if (Length)
             *Length = BASEP_LEGACY_SSE_LENGTH;
         return BasepLegacyArea(Context) + BASEP_LEGACY_X87_LENGTH;
+#endif
     }
 
     if (FeatureId >= MAXIMUM_XSTATE_FEATURES ||
