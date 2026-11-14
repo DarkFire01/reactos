@@ -158,9 +158,6 @@ StorUfsFindAdapter(
     RtlZeroMemory(Adapter, sizeof(*Adapter));
     Adapter->DumpMode = (ConfigInfo->DumpMode != 0);
 
-    if (!Adapter->DumpMode)
-        UfsSmmuHandoff();
-
     if (!UfsMapRegisters(Adapter, ConfigInfo))
     {
         Adapter->State = UfsAdapterFailed;
@@ -410,8 +407,6 @@ DriverEntry(
     NTSTATUS AcpiStatus;
 
     DPRINT1("StorUfs DriverEntry(%p)\n", DriverObject);
-
-    UfsSmmuReadParameters(RegistryPath);
 
     RtlZeroMemory(&InitData, sizeof(InitData));
 
