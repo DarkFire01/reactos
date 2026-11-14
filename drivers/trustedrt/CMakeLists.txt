@@ -1,0 +1,3 @@
+
+add_subdirectory(windowstrustedrt)
+add_subdirectory(windowstrustedrtproxy)
