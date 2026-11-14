@@ -164,12 +164,17 @@ RilpCloseDeviceLocked(
     Client->Device = INVALID_HANDLE_VALUE;
 }
 
+/* The broker publishes the client interface when a devnode binds it, but it
+   also comes up as a plain service reachable by this dos name. */
+#define RIL_BROKER_FALLBACK_NAME    L"\\\\.\\MSRil1"
+
 static
 BOOL
 RilpTryConnect(
     _In_ PRIL_CLIENT Client)
 {
     PWSTR List = NULL;
+    PCWSTR Path;
     ULONG Length = 0;
     HANDLE Device;
     CONFIGRET Cr;
@@ -178,32 +183,35 @@ RilpTryConnect(
                                             (LPGUID)&GUID_DEVINTERFACE_RIL_CLIENT,
                                             NULL,
                                             CM_GET_DEVICE_INTERFACE_LIST_ALL_DEVICES);
-    if (Cr != CR_SUCCESS || Length <= 5)
-        return FALSE;
-
-    List = HeapAlloc(GetProcessHeap(), 0, Length * sizeof(WCHAR));
-    if (!List)
-        return FALSE;
-
-    Cr = CM_Get_Device_Interface_ListW((LPGUID)&GUID_DEVINTERFACE_RIL_CLIENT,
-                                       NULL,
-                                       List,
-                                       Length,
-                                       CM_GET_DEVICE_INTERFACE_LIST_ALL_DEVICES);
-    if (Cr != CR_SUCCESS)
+    if (Cr == CR_SUCCESS && Length > 5)
     {
-        HeapFree(GetProcessHeap(), 0, List);
-        return FALSE;
+        List = HeapAlloc(GetProcessHeap(), 0, Length * sizeof(WCHAR));
+        if (List)
+        {
+            Cr = CM_Get_Device_Interface_ListW((LPGUID)&GUID_DEVINTERFACE_RIL_CLIENT,
+                                               NULL,
+                                               List,
+                                               Length,
+                                               CM_GET_DEVICE_INTERFACE_LIST_ALL_DEVICES);
+            if (Cr != CR_SUCCESS || List[0] == UNICODE_NULL)
+            {
+                HeapFree(GetProcessHeap(), 0, List);
+                List = NULL;
+            }
+        }
     }
 
-    Device = CreateFileW(List,
+    Path = List ? List : RIL_BROKER_FALLBACK_NAME;
+
+    Device = CreateFileW(Path,
                          GENERIC_READ | GENERIC_WRITE,
                          FILE_SHARE_READ | FILE_SHARE_WRITE,
                          NULL,
                          OPEN_EXISTING,
                          FILE_FLAG_OVERLAPPED,
                          NULL);
-    HeapFree(GetProcessHeap(), 0, List);
+    if (List)
+        HeapFree(GetProcessHeap(), 0, List);
     if (Device == INVALID_HANDLE_VALUE)
         return FALSE;
 
@@ -406,6 +414,9 @@ RilpSend(
     PRIL_PENDING Pending;
     DWORD Written = 0;
     HRESULT hr = S_OK;
+
+    if (!Client)
+        return RIL_E_RADIONOTAVAILABLE;
 
     Header->Type = RIL_RECORD_COMMAND;
     Header->Command = Command;
