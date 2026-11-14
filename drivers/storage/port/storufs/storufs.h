@@ -161,6 +161,14 @@ NTSTATUS
 UfsHceReset(
     _In_ PUFS_ADAPTER_EXTENSION Adapter);
 
+/* ufssmmu.c */
+VOID
+UfsSmmuReadParameters(
+    _In_ PUNICODE_STRING RegistryPath);
+
+VOID
+UfsSmmuHandoff(VOID);
+
 NTSTATUS
 UfsRunSlotSynchronous(
     _In_ PUFS_ADAPTER_EXTENSION Adapter,
