@@ -2568,6 +2568,11 @@ HKLM,"SYSTEM\CurrentControlSet\Enum\PCI\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00
 HKLM,"SYSTEM\CurrentControlSet\Enum\PCI\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00\3&e5016b12&10","Class",0x00000000,"Display"
 HKLM,"SYSTEM\CurrentControlSet\Enum\PCI\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00\3&e5016b12&10","Driver",0x00000000,"{4D36E968-E325-11CE-BFC1-08002BE10318}\0000"
 
+; Built-in ETW debug session, prints provider events up to this level (0 off, 3 warnings, 5 verbose)
+HKLM,"SYSTEM\CurrentControlSet\Control\WMI\EtwDebugPrint","Level",0x00010001,3
+; qcpep runs a rundown of state it has not built yet when enabled during DriverEntry
+HKLM,"SYSTEM\CurrentControlSet\Control\WMI\EtwDebugPrint","SkipEnableCallback",0x00010000,"qcpep850.sys"
+
 ; Qualcomm Adreno 630 (SDM845/SDM850) WDDM adapter, owns GPU0 and the panel; values from qcdx850.inf
 HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","DisplayName",0x00000000,"Qualcomm(R) Adreno(TM) 630 GPU"
 HKLM,"SYSTEM\CurrentControlSet\Services\QCDX","ErrorControl",0x00010001,0x00000000
