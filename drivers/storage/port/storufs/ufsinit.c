@@ -195,15 +195,19 @@ UfsStartAdapter(
 {
     ULONG Attempt;
 
+    DPRINT1("UFS: HCE reset, HCS 0x%lx\n", UfsRead(Adapter, UFS_REG_HCS));
     if (!NT_SUCCESS(UfsHceReset(Adapter)))
         return FALSE;
 
+    DPRINT1("UFS: link startup\n");
     if (!UfsLinkStartup(Adapter))
         return FALSE;
 
+    DPRINT1("UFS: programming lists, HCS 0x%lx\n", UfsRead(Adapter, UFS_REG_HCS));
     if (!UfsProgramLists(Adapter))
         return FALSE;
 
+    DPRINT1("UFS: first NOP OUT (first DMA)\n");
     for (Attempt = 0; Attempt < UFS_NOPOUT_ATTEMPTS; Attempt++)
     {
         if (NT_SUCCESS(UfsSendNopOut(Adapter)))
@@ -215,6 +219,7 @@ UfsStartAdapter(
         return FALSE;
     }
 
+    DPRINT1("UFS: NOP IN received, setting fDeviceInit\n");
     if (!UfsDeviceInit(Adapter))
         return FALSE;
 
