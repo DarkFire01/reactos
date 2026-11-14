@@ -207,7 +207,7 @@ PopInitPoFxManager(VOID)
 
     /* Initialize the global list of Platform Extension Plug-ins and its lock */
     InitializeListHead(&PopFxPluginList);
-    KeInitializeSpinLock(&PopFxPluginLock);
+    KeInitializeGuardedMutex(&PopFxPluginLock);
 
     return;
 }

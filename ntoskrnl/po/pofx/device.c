@@ -35,9 +35,9 @@ LIST_ENTRY PopFxPluginList;
 
 /**
  * @brief
- * The spin lock that protects the PEP plugin list from concurrent access.
+ * The mutex that guards the PEP plugin list and the devices plugins prepared.
  */
-KSPIN_LOCK PopFxPluginLock;
+KGUARDED_MUTEX PopFxPluginLock;
 
 /**
  * @brief
