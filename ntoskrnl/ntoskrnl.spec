@@ -1809,6 +1809,7 @@
 @ stdcall -version=0x600+ ExFlushLookasideListEx(ptr)
 @ stdcall -version=0xA00+ ExFreeToNPagedLookasideList(ptr ptr) ExiFreeToNPagedLookasideList
 @ stdcall -version=0x602+ ExGetFirmwareEnvironmentVariable(ptr ptr ptr ptr ptr)
+@ stdcall -version=0x602+ ExSetFirmwareEnvironmentVariable(ptr ptr ptr long long)
 @ stdcall -version=0x600+ ExInitializeLookasideListEx(ptr ptr ptr long long long long long)
 @ stdcall -version=0x602+ ExQueryWnfStateData(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
