@@ -386,6 +386,8 @@ NTAPI
 GcxDeliverPinInterrupt(
     PGCX_PIN Pin)
 {
+    ULONG Claimed = 0;
+
     if (GcxSecondaryOwner == NULL ||
         GcxHalInfo.InvokeIsrForGsiv == NULL ||
         Pin->TargetContext == NULL)
@@ -393,7 +395,8 @@ GcxDeliverPinInterrupt(
         return FALSE;
     }
 
-    return GcxHalInfo.InvokeIsrForGsiv(Pin->Gsiv, Pin->TargetContext);
+    GcxHalInfo.InvokeIsrForGsiv(Pin->Gsiv, Pin->TargetContext, &Claimed);
+    return (Claimed != 0);
 }
 
 /**
