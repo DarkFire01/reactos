@@ -255,6 +255,7 @@ HidParser_GetSpecificValueCapsWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,
     IN USHORT UsagePage,
+    IN USHORT LinkCollection,
     IN USHORT Usage,
     OUT PHIDP_VALUE_CAPS  ValueCaps,
     IN OUT PUSHORT  ValueCapsLength)
@@ -285,6 +286,9 @@ HidParser_GetSpecificValueCapsWithReport(
         CurrentUsagePage = (Report->Items[Index].UsageMinimum >> 16);
         CurrentUsage = (Report->Items[Index].UsageMinimum & 0xFFFF);
 
+        if (!HidParser_MatchLinkCollection(Report->Items[Index].LinkCollection, LinkCollection))
+            continue;
+
         if ((Usage == CurrentUsage && UsagePage == CurrentUsagePage) || (Usage == 0 && UsagePage == CurrentUsagePage) || (Usage == CurrentUsage && UsagePage == 0) || (Usage == 0 && UsagePage == 0))
         {
             //
@@ -306,6 +310,9 @@ HidParser_GetSpecificValueCapsWithReport(
                 ValueCaps[ItemCount].LogicalMax = Report->Items[Index].Maximum;
                 ValueCaps[ItemCount].IsAbsolute = !Report->Items[Index].Relative;
                 ValueCaps[ItemCount].BitSize = Report->Items[Index].BitCount;
+                ValueCaps[ItemCount].ReportCount = 1;
+                ValueCaps[ItemCount].LinkCollection = Report->Items[Index].LinkCollection;
+                ValueCaps[ItemCount].NotRange.Usage = CurrentUsage;
 
                 //
                 // FIXME: FILLMEIN
@@ -344,6 +351,7 @@ HidParser_GetUsagesWithReport(
     IN PVOID CollectionContext,
     IN UCHAR  ReportType,
     IN USAGE  UsagePage,
+    IN USHORT LinkCollection,
     OUT USAGE  *UsageList,
     IN OUT PULONG UsageLength,
     IN PCHAR  ReportDescriptor,
@@ -400,6 +408,13 @@ HidParser_GetUsagesWithReport(
         // does it have data
         //
         if (!ReportItem->HasData)
+            continue;
+
+        /* Multi-bit variables are values, only buttons and arrays carry usages */
+        if (!ReportItem->Array && ReportItem->BitCount > 1)
+            continue;
+
+        if (!HidParser_MatchLinkCollection(ReportItem->LinkCollection, LinkCollection))
             continue;
 
         //
@@ -551,6 +566,7 @@ HidParser_GetUsageValueWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,
     IN USAGE UsagePage,
+    IN USHORT LinkCollection,
     IN USAGE  Usage,
     OUT PULONG UsageValue,
     IN PCHAR ReportDescriptor,
@@ -600,6 +616,9 @@ HidParser_GetUsageValueWithReport(
         if (UsagePage != CurrentUsagePage)
             continue;
 
+        if (!HidParser_MatchLinkCollection(ReportItem->LinkCollection, LinkCollection))
+            continue;
+
         //
         // does the usage match
         //
@@ -647,6 +666,7 @@ HidParser_GetScaledUsageValueWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,
     IN USAGE UsagePage,
+    IN USHORT LinkCollection,
     IN USAGE  Usage,
     OUT PLONG UsageValue,
     IN PCHAR ReportDescriptor,
@@ -694,6 +714,9 @@ HidParser_GetScaledUsageValueWithReport(
         // does usage page match
         //
         if (UsagePage != CurrentUsagePage)
+            continue;
+
+        if (!HidParser_MatchLinkCollection(ReportItem->LinkCollection, LinkCollection))
             continue;
 
         //

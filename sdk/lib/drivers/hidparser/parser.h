@@ -198,6 +198,7 @@ typedef struct
     ULONG UsageMaximum;
     ULONG Data;
     UCHAR Valid;
+    USHORT LinkCollection;
 }HID_REPORT_ITEM, *PHID_REPORT_ITEM;
 
 struct _HID_REPORT;
@@ -214,6 +215,9 @@ typedef struct __HID_COLLECTION__
     struct __HID_COLLECTION__ ** Nodes;
     struct __HID_COLLECTION__ * Root;
     struct _HID_REPORT ** Reports;
+
+    /* Index of this collection in the link collection list of its top-level collection */
+    USHORT LinkIndex;
 
     ULONG Offsets[1];
 
@@ -255,6 +259,9 @@ typedef struct
     // collection index
     //
     ULONG CollectionIndex;
+
+    /* Next link collection index inside the current top-level collection */
+    USHORT NextLinkIndex;
 
 }HID_PARSER_CONTEXT, *PHID_PARSER_CONTEXT;
 
@@ -300,6 +307,7 @@ HidParser_GetSpecificValueCapsWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,
     IN USHORT UsagePage,
+    IN USHORT LinkCollection,
     IN USHORT Usage,
     OUT PHIDP_VALUE_CAPS  ValueCaps,
     IN OUT PUSHORT  ValueCapsLength);
@@ -310,6 +318,7 @@ HidParser_GetUsagesWithReport(
     IN PVOID CollectionContext,
     IN UCHAR  ReportType,
     IN USAGE  UsagePage,
+    IN USHORT LinkCollection,
     OUT USAGE  *UsageList,
     IN OUT PULONG UsageLength,
     IN PCHAR  ReportDescriptor,
@@ -320,6 +329,7 @@ HidParser_GetScaledUsageValueWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,
     IN USAGE UsagePage,
+    IN USHORT LinkCollection,
     IN USAGE  Usage,
     OUT PLONG UsageValue,
     IN PCHAR ReportDescriptor,
@@ -330,6 +340,7 @@ HidParser_GetUsageValueWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,
     IN USAGE UsagePage,
+    IN USHORT LinkCollection,
     IN USAGE  Usage,
     OUT PULONG UsageValue,
     IN PCHAR ReportDescriptor,
@@ -384,5 +395,16 @@ PHID_REPORT
 HidParser_GetReportInCollection(
     IN PVOID Context,
     IN UCHAR ReportType);
+
+ULONG
+HidParser_FillLinkCollectionNodes(
+    IN PVOID Context,
+    OUT PHIDP_LINK_COLLECTION_NODE Nodes,
+    IN ULONG NodeCount);
+
+BOOLEAN
+HidParser_MatchLinkCollection(
+    IN USHORT ItemLinkCollection,
+    IN USHORT LinkCollection);
 
 #endif /* _HIDPARSER_H_ */

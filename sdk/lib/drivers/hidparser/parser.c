@@ -691,6 +691,8 @@ HidParser_AddMainItem(
             return Status;
         }
 
+        NewReport->Items[NewReport->ItemCount].LinkCollection = Collection->LinkIndex;
+
         //
         // increment report item count
         //
@@ -877,6 +879,11 @@ HidParser_ParseReportDescriptor(
                     //
                     Status = HidParser_AddCollection(CurrentCollection, NewCollection);
                     ASSERT(Status == HIDP_STATUS_SUCCESS);
+
+                    /* Link collections are numbered in declaration order, the top-level one is zero */
+                    if (CurrentCollection == ParserContext->RootCollection)
+                        ParserContext->NextLinkIndex = 0;
+                    NewCollection->LinkIndex = ParserContext->NextLinkIndex++;
 
                     //
                     // make new collection current

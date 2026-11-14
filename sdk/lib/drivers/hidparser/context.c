@@ -342,3 +342,72 @@ HidParser_GetTotalCollectionCount(
     //
     return HidParser_GetCollectionCount(CollectionContext, (PHID_COLLECTION)CollectionContext->RawData);
 }
+
+static
+USHORT
+HidParser_FillLinkNode(
+    IN PHID_COLLECTION_CONTEXT CollectionContext,
+    IN PHID_COLLECTION Collection,
+    IN USHORT Parent,
+    IN OUT PUSHORT Next,
+    OUT PHIDP_LINK_COLLECTION_NODE Nodes,
+    IN ULONG NodeCount)
+{
+    PHID_COLLECTION SubCollection;
+    USHORT Self = (*Next)++;
+    USHORT Child;
+    USHORT Previous = 0;
+    ULONG Index;
+
+    if (Self < NodeCount)
+    {
+        ZeroFunction(&Nodes[Self], sizeof(HIDP_LINK_COLLECTION_NODE));
+        Nodes[Self].LinkUsage = (USAGE)(Collection->Usage & 0xFFFF);
+        Nodes[Self].LinkUsagePage = (USAGE)(Collection->Usage >> 16);
+        Nodes[Self].Parent = Parent;
+        Nodes[Self].NumberOfChildren = Collection->NodeCount;
+        Nodes[Self].CollectionType = Collection->Type;
+    }
+
+    /* Children chain from the last declared one back to the first */
+    for (Index = 0; Index < Collection->NodeCount; Index++)
+    {
+        SubCollection = (PHID_COLLECTION)(CollectionContext->RawData + Collection->Offsets[Collection->ReportCount + Index]);
+        Child = HidParser_FillLinkNode(CollectionContext, SubCollection, Self, Next, Nodes, NodeCount);
+        if (Child < NodeCount)
+            Nodes[Child].NextSibling = Previous;
+        Previous = Child;
+    }
+
+    if (Self < NodeCount)
+        Nodes[Self].FirstChild = Previous;
+
+    return Self;
+}
+
+ULONG
+HidParser_FillLinkCollectionNodes(
+    IN PVOID Context,
+    OUT PHIDP_LINK_COLLECTION_NODE Nodes,
+    IN ULONG NodeCount)
+{
+    PHID_COLLECTION_CONTEXT CollectionContext = (PHID_COLLECTION_CONTEXT)Context;
+    USHORT Next = 0;
+
+    HidParser_FillLinkNode(CollectionContext, (PHID_COLLECTION)CollectionContext->RawData, 0, &Next, Nodes, NodeCount);
+    return Next;
+}
+
+BOOLEAN
+HidParser_MatchLinkCollection(
+    IN USHORT ItemLinkCollection,
+    IN USHORT LinkCollection)
+{
+    if (LinkCollection == HIDP_LINK_COLLECTION_UNSPECIFIED)
+        return TRUE;
+
+    if (LinkCollection == HIDP_LINK_COLLECTION_ROOT)
+        return ItemLinkCollection == 0;
+
+    return ItemLinkCollection == LinkCollection;
+}
