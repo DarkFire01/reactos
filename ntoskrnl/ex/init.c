@@ -1432,6 +1432,8 @@ Phase1InitializationDiscard(IN PVOID Context)
 
     /* Set us at maximum priority */
     KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
+    KiPhase1Thread = KeGetCurrentThread();
+    KiPhase1Priority = KiPhase1Thread->Priority;
 
     /* Do Phase 1 HAL Initialization */
     if (!HalInitSystem(1, LoaderBlock)) KeBugCheck(HAL1_INITIALIZATION_FAILED);
@@ -1903,6 +1905,9 @@ Phase1InitializationDiscard(IN PVOID Context)
     InbvSetProgressBarSubset(25, 75);
 
     /* Initialize the I/O Subsystem */
+#ifdef _M_ARM64
+    KiStartBootWatch();
+#endif
     if (!IoInitSystem(LoaderBlock)) KeBugCheck(IO1_INITIALIZATION_FAILED);
 
     /* Set maximum update to 100% */
@@ -2075,6 +2080,9 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Launch initial process */
     ProcessInfo = &InitBuffer->ProcessInfo;
     ExpLoadInitialProcess(InitBuffer, &ProcessParameters, &Environment);
+#ifdef _M_ARM64
+    KiStopBootWatch();
+#endif
 
     /* Wait 5 seconds for initial process to initialize */
     Timeout.QuadPart = Int32x32To64(5, -10000000);
