@@ -97,32 +97,6 @@ static const UCHAR QcTouchReportDescriptor[] =
     0xC0,                           /*   End Collection */
     0xC0,                           /* End Collection */
 
-    /* Absolute pointer for consumers that do not understand touch */
-    0x05, 0x01,                     /* Usage Page (Generic Desktop) */
-    0x09, 0x02,                     /* Usage (Mouse) */
-    0xA1, 0x01,                     /* Collection (Application) */
-    0x85, QCTOUCH_REPORT_ID_MOUSE,  /*   Report ID */
-    0x09, 0x01,                     /*   Usage (Pointer) */
-    0xA1, 0x00,                     /*   Collection (Physical) */
-    0x05, 0x09,                     /*     Usage Page (Button) */
-    0x19, 0x01,                     /*     Usage Minimum (1) */
-    0x29, 0x01,                     /*     Usage Maximum (1) */
-    0x15, 0x00,                     /*     Logical Minimum (0) */
-    0x25, 0x01,                     /*     Logical Maximum (1) */
-    0x75, 0x01,                     /*     Report Size (1) */
-    0x95, 0x01,                     /*     Report Count (1) */
-    0x81, 0x02,                     /*     Input (Data, Variable, Absolute) */
-    0x95, 0x07,                     /*     Report Count (7) */
-    0x81, 0x03,                     /*     Input (Constant, Variable, Absolute) */
-    0x05, 0x01,                     /*     Usage Page (Generic Desktop) */
-    0x09, 0x30,                     /*     Usage (X) */
-    0x09, 0x31,                     /*     Usage (Y) */
-    0x26, 0xFF, 0x7F,               /*     Logical Maximum (32767) */
-    0x75, 0x10,                     /*     Report Size (16) */
-    0x95, 0x02,                     /*     Report Count (2) */
-    0x81, 0x02,                     /*     Input (Data, Variable, Absolute) */
-    0xC0,                           /*   End Collection */
-    0xC0,                           /* End Collection */
 };
 
 static
@@ -222,23 +196,8 @@ QcTouchScale(
     return (USHORT)((Value * QCTOUCH_LOGICAL_MAX) / Maximum);
 }
 
-static
-VOID
-QcTouchSendMouse(
-    _In_ PQCTOUCH_DEVICE Device,
-    _In_ BOOLEAN Down)
-{
-    QCTOUCH_MOUSE_REPORT Mouse;
-
-    Mouse.ReportId = QCTOUCH_REPORT_ID_MOUSE;
-    Mouse.Buttons = Down ? 1 : 0;
-    Mouse.X = Device->PrimaryX;
-    Mouse.Y = Device->PrimaryY;
-    QcTouchQueueReport(Device, &Mouse, sizeof(Mouse));
-}
-
 /**
- * @brief Turns one F12 object list into a touch report and a pointer report.
+ * @brief Turns one F12 object list into a touch report.
  *
  * Contacts that lifted since the last list go out once more without the tip
  * bit, so the host sees every contact end.
@@ -253,8 +212,6 @@ QcTouchReportObjects(
     PQCTOUCH_CONTACT_REPORT Contact;
     ULONG Mask = 0;
     ULONG Slot;
-    ULONG Primary = MAXULONG;
-    BOOLEAN WasDown;
 
     RtlZeroMemory(&Touch, sizeof(Touch));
     Touch.ReportId = QCTOUCH_REPORT_ID_TOUCH;
@@ -290,37 +247,12 @@ QcTouchReportObjects(
         Device->ContactY[Slot] = Contact->Y;
 
         Mask |= 1 << Slot;
-        if (Primary == MAXULONG)
-            Primary = Slot;
-        if (Slot == Device->PrimaryContact && (Device->ContactMask & (1 << Slot)))
-            Primary = Slot;
     }
 
     if (Touch.ContactCount != 0)
         QcTouchQueueReport(Device, &Touch, sizeof(Touch));
 
-    WasDown = Device->ContactMask != 0;
     Device->ContactMask = Mask;
-
-    /* The pointer follows the first contact down until it lifts */
-    if (Primary != MAXULONG)
-    {
-        for (Slot = 0; Slot < Touch.ContactCount; Slot++)
-        {
-            if (Touch.Contacts[Slot].ContactId == Primary)
-            {
-                Device->PrimaryX = Touch.Contacts[Slot].X;
-                Device->PrimaryY = Touch.Contacts[Slot].Y;
-            }
-        }
-
-        Device->PrimaryContact = Primary;
-        QcTouchSendMouse(Device, TRUE);
-    }
-    else if (WasDown)
-    {
-        QcTouchSendMouse(Device, FALSE);
-    }
 }
 
 /**
@@ -353,7 +285,6 @@ QcTouchReleaseAll(
 
     Device->ContactMask = 0;
     QcTouchQueueReport(Device, &Touch, sizeof(Touch));
-    QcTouchSendMouse(Device, FALSE);
 }
 
 static
