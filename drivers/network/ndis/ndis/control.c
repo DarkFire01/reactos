@@ -61,7 +61,7 @@ NdisAcquireReadWriteLock(
       KeAcquireSpinLock(&Lock->SpinLock, &LockState->OldIrql);
       /* Check if any other processor helds a shared lock. */
       for (ProcessorNumber = KeNumberProcessors; ProcessorNumber--; ) {
-        if (ProcessorNumber != KeGetCurrentProcessorNumber()) {
+        if (ProcessorNumber != KeGetCurrentProcessorIndex()) {
           /* Wait till the shared lock is released. */
           while (Lock->RefCount[ProcessorNumber].RefCount != 0) {
             for (BusyLoop = 32; BusyLoop--; )
@@ -74,15 +74,15 @@ NdisAcquireReadWriteLock(
     }
   } else {
     KeRaiseIrql(DISPATCH_LEVEL, &LockState->OldIrql);
-    RefCount = InterlockedIncrement((PLONG)&Lock->RefCount[KeGetCurrentProcessorNumber()].RefCount);
+    RefCount = InterlockedIncrement((PLONG)&Lock->RefCount[KeGetCurrentProcessorIndex()].RefCount);
     /* Racing with a exclusive write lock case. */
     if (Lock->SpinLock != 0) {
       if (RefCount == 1) {
         if (Lock->Context != PsGetCurrentThread()) {
           /* Wait for the exclusive lock to be released. */
-          Lock->RefCount[KeGetCurrentProcessorNumber()].RefCount--;
+          Lock->RefCount[KeGetCurrentProcessorIndex()].RefCount--;
           KeAcquireSpinLockAtDpcLevel(&Lock->SpinLock);
-          Lock->RefCount[KeGetCurrentProcessorNumber()].RefCount++;
+          Lock->RefCount[KeGetCurrentProcessorIndex()].RefCount++;
           KeReleaseSpinLockFromDpcLevel(&Lock->SpinLock);
         }
       }
@@ -112,7 +112,7 @@ NdisReleaseReadWriteLock(
       return;
 
     case 3: /* Shared read lock */
-      Lock->RefCount[KeGetCurrentProcessorNumber()].RefCount--;
+      Lock->RefCount[KeGetCurrentProcessorIndex()].RefCount--;
       LockState->LockState = -1;
       if (LockState->OldIrql < DISPATCH_LEVEL)
         KeLowerIrql(LockState->OldIrql);
@@ -300,11 +300,17 @@ NdisWaitEvent(
  */
 {
   LARGE_INTEGER Timeout;
+  PLARGE_INTEGER TimeoutPtr = NULL;
   NTSTATUS Status;
 
-  Timeout.QuadPart = Int32x32To64(MsToWait, -10000);
+  /* A zero wait means wait indefinitely, not poll */
+  if (MsToWait)
+  {
+    Timeout.QuadPart = Int32x32To64(MsToWait, -10000);
+    TimeoutPtr = &Timeout;
+  }
 
-  Status = KeWaitForSingleObject(&Event->Event, Executive, KernelMode, TRUE, &Timeout);
+  Status = KeWaitForSingleObject(&Event->Event, Executive, KernelMode, FALSE, TimeoutPtr);
 
   return (Status == STATUS_SUCCESS);
 }

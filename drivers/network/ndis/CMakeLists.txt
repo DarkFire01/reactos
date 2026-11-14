@@ -1,8 +1,11 @@
 
 include_directories(BEFORE include)
+include_directories(xlate)
 spec2def(ndis.sys ndis.spec ADD_IMPORTLIB)
 
 add_definitions(
+    -D_WIN32_WINNT=0x602
+    -DNTDDI_VERSION=0x06020000
     -DNDIS_WRAPPER
     -DNDIS51
     -DNDIS51_MINIPORT
@@ -28,10 +31,27 @@ list(APPEND SOURCE
     ndis/main.c
     ndis/memory.c
     ndis/miniport.c
+    ndis/miniport6.c
     ndis/misc.c
+    ndis/mp5shim.c
+    ndis/mpcore.c
+    ndis/mpdata.c
+    ndis/mpdma.c
+    ndis/mphook.c
+    ndis/mpif.c
+    ndis/mpintr.c
+    ndis/mpoid.c
+    ndis/mpport.c
+    ndis/mpsvc.c
+    ndis/mpwdf.c
+    ndis/mpwmi.c
+    ndis/native80211.c
+    ndis/nbl.c
+    ndis/pro5shim.c
     ndis/protocol.c
     ndis/string.c
     ndis/time.c
+    xlate/xlate.c
     include/ndissys.h)
 
 add_library(ndis MODULE
@@ -40,6 +60,6 @@ add_library(ndis MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/ndis.def)
 
 set_module_type(ndis kernelmodedriver)
-add_importlibs(ndis ntoskrnl hal)
+add_importlibs(ndis ntoskrnl hal netio)
 add_pch(ndis include/ndissys.h SOURCE)
 add_cd_file(TARGET ndis DESTINATION reactos/system32/drivers FOR all)

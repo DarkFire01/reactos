@@ -44,8 +44,6 @@
 
 typedef _Return_type_success_(return >= 0) int NDIS_STATUS, *PNDIS_STATUS;
 
-#include "ntddndis.h"
-
 #if !defined(_WINDEF_H)
 typedef unsigned int UINT, *PUINT;
 #endif
@@ -82,6 +80,16 @@ typedef enum _NET_PNP_EVENT_CODE {
   NetEventPortActivation,
   NetEventPortDeactivation,
   NetEventIMReEnableDevice,
+  NetEventNDKEnable,
+  NetEventNDKDisable,
+  NetEventFilterPreDetach,
+  NetEventBindFailed,
+  NetEventSwitchActivate,
+  NetEventAllowBindsAbove,
+  NetEventInhibitBindsAbove,
+  NetEventAllowStart,
+  NetEventRequirePause,
+  NetEventUploadGftFlowEntries,
   NetEventMaximum
 } NET_PNP_EVENT_CODE, *PNET_PNP_EVENT_CODE;
 
@@ -110,7 +118,55 @@ typedef struct _NET_PNP_EVENT {
 
 #if defined(NDIS_MINIPORT_DRIVER)
 
-#if defined(NDIS620_MINIPORT)
+#if defined(NDIS689_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 89
+#elif defined(NDIS688_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 88
+#elif defined(NDIS687_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 87
+#elif defined(NDIS686_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 86
+#elif defined(NDIS685_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 85
+#elif defined(NDIS684_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 84
+#elif defined(NDIS683_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 83
+#elif defined(NDIS682_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 82
+#elif defined(NDIS681_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 81
+#elif defined(NDIS680_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 80
+#elif defined(NDIS670_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 70
+#elif defined(NDIS660_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 60
+#elif defined(NDIS651_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 51
+#elif defined(NDIS650_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 50
+#elif defined(NDIS640_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 40
+#elif defined(NDIS630_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 30
+#elif defined(NDIS620_MINIPORT)
 #define NDIS_MINIPORT_MAJOR_VERSION 6
 #define NDIS_MINIPORT_MINOR_VERSION 20
 #elif defined(NDIS61_MINIPORT)
@@ -130,8 +186,15 @@ typedef struct _NET_PNP_EVENT {
 #endif
 
 #if ((NDIS_MINIPORT_MAJOR_VERSION == 6) &&    \
+       (NDIS_MINIPORT_MINOR_VERSION < 80) &&  \
+       (NDIS_MINIPORT_MINOR_VERSION != 70) && \
+       (NDIS_MINIPORT_MINOR_VERSION != 60) && \
+       (NDIS_MINIPORT_MINOR_VERSION != 51) && \
+       (NDIS_MINIPORT_MINOR_VERSION != 50) && \
+       (NDIS_MINIPORT_MINOR_VERSION != 40) && \
+       (NDIS_MINIPORT_MINOR_VERSION != 30) && \
        (NDIS_MINIPORT_MINOR_VERSION != 20) && \
-       (NDIS_MINIPORT_MINOR_VERSION != 1) &&  \
+       (NDIS_MINIPORT_MINOR_VERSION != 1) && \
        (NDIS_MINIPORT_MINOR_VERSION != 0))
 #error "Invalid miniport major/minor version combination"
 #elif ((NDIS_MINIPORT_MAJOR_VERSION == 5) &&  \
@@ -140,6 +203,10 @@ typedef struct _NET_PNP_EVENT {
 #error "Invalid miniport major/minor version combination"
 #endif
 
+/*
+ * No floor is set past 6.20. KMDF drivers here are pinned to NTDDI_WINBLUE by
+ * sdk/lib/drivers/wdf, and ndis.sys provides the later contracts regardless.
+ */
 #if  (NDIS_MINIPORT_MAJOR_VERSION == 6) && \
      ((NDIS_MINIPORT_MINOR_VERSION == 20 && NTDDI_VERSION < NTDDI_WIN7)  || \
       (NDIS_MINIPORT_MINOR_VERSION == 1 && NTDDI_VERSION < NTDDI_VISTA) || \
@@ -287,6 +354,231 @@ typedef struct _NET_PNP_EVENT {
 
 #endif /* !defined(NDIS_SUPPORT_NDIS620) */
 
+#if !defined(NDIS_SUPPORT_NDIS630)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 30))) ||       (defined (NDIS630)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS630      1
+#else
+#define NDIS_SUPPORT_NDIS630      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS630) */
+
+#if !defined(NDIS_SUPPORT_NDIS640)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 40))) ||       (defined (NDIS640)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS640      1
+#else
+#define NDIS_SUPPORT_NDIS640      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS640) */
+
+#if !defined(NDIS_SUPPORT_NDIS650)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 50))) ||       (defined (NDIS650)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS650      1
+#else
+#define NDIS_SUPPORT_NDIS650      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS650) */
+
+#if !defined(NDIS_SUPPORT_NDIS660)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 60))) ||       (defined (NDIS660)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS660      1
+#else
+#define NDIS_SUPPORT_NDIS660      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS660) */
+
+#if !defined(NDIS_SUPPORT_NDIS670)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 70))) ||       (defined (NDIS670)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS670      1
+#else
+#define NDIS_SUPPORT_NDIS670      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS670) */
+
+#if !defined(NDIS_SUPPORT_NDIS680)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 80))) ||       (defined (NDIS680)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS680      1
+#else
+#define NDIS_SUPPORT_NDIS680      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS680) */
+
+#if !defined(NDIS_SUPPORT_NDIS681)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 81))) ||       (defined (NDIS681)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS681      1
+#else
+#define NDIS_SUPPORT_NDIS681      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS681) */
+
+#if !defined(NDIS_SUPPORT_NDIS682)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 82))) ||       (defined (NDIS682)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS682      1
+#else
+#define NDIS_SUPPORT_NDIS682      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS682) */
+
+#if !defined(NDIS_SUPPORT_NDIS683)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 83))) ||       (defined (NDIS683)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS683      1
+#else
+#define NDIS_SUPPORT_NDIS683      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS683) */
+
+#if !defined(NDIS_SUPPORT_NDIS684)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 84))) ||       (defined (NDIS684)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS684      1
+#else
+#define NDIS_SUPPORT_NDIS684      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS684) */
+
+#if !defined(NDIS_SUPPORT_NDIS685)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 85))) ||       (defined (NDIS685)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS685      1
+#else
+#define NDIS_SUPPORT_NDIS685      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS685) */
+
+#if !defined(NDIS_SUPPORT_NDIS686)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 86))) ||       (defined (NDIS686)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS686      1
+#else
+#define NDIS_SUPPORT_NDIS686      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS686) */
+
+#if !defined(NDIS_SUPPORT_NDIS687)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 87))) ||       (defined (NDIS687)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS687      1
+#else
+#define NDIS_SUPPORT_NDIS687      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS687) */
+
+#if !defined(NDIS_SUPPORT_NDIS689)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 89))) ||       (defined (NDIS689)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS689      1
+#else
+#define NDIS_SUPPORT_NDIS689      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS689) */
+
+#if (NDIS_SUPPORT_NDIS689)
+#undef NDIS_SUPPORT_NDIS688
+#define NDIS_SUPPORT_NDIS688 1
+#endif
+
+#if !defined(NDIS_SUPPORT_NDIS688)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 88))) ||       (defined (NDIS688)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS688      1
+#else
+#define NDIS_SUPPORT_NDIS688      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS688) */
+
+#if (NDIS_SUPPORT_NDIS688)
+#undef NDIS_SUPPORT_NDIS687
+#define NDIS_SUPPORT_NDIS687 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS687)
+#undef NDIS_SUPPORT_NDIS686
+#define NDIS_SUPPORT_NDIS686 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS686)
+#undef NDIS_SUPPORT_NDIS685
+#define NDIS_SUPPORT_NDIS685 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS685)
+#undef NDIS_SUPPORT_NDIS684
+#define NDIS_SUPPORT_NDIS684 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS684)
+#undef NDIS_SUPPORT_NDIS683
+#define NDIS_SUPPORT_NDIS683 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS683)
+#undef NDIS_SUPPORT_NDIS682
+#define NDIS_SUPPORT_NDIS682 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS682)
+#undef NDIS_SUPPORT_NDIS681
+#define NDIS_SUPPORT_NDIS681 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS681)
+#undef NDIS_SUPPORT_NDIS680
+#define NDIS_SUPPORT_NDIS680 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS680)
+#undef NDIS_SUPPORT_NDIS670
+#define NDIS_SUPPORT_NDIS670 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS670)
+#undef NDIS_SUPPORT_NDIS660
+#define NDIS_SUPPORT_NDIS660 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS660)
+#undef NDIS_SUPPORT_NDIS650
+#define NDIS_SUPPORT_NDIS650 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS650)
+#undef NDIS_SUPPORT_NDIS640
+#define NDIS_SUPPORT_NDIS640 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS640)
+#undef NDIS_SUPPORT_NDIS630
+#define NDIS_SUPPORT_NDIS630 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS630)
+#undef NDIS_SUPPORT_NDIS620
+#define NDIS_SUPPORT_NDIS620 1
+#endif
+
 #if (NDIS_SUPPORT_NDIS620)
 #undef NDIS_SUPPORT_NDIS61
 #define NDIS_SUPPORT_NDIS61 1
@@ -296,6 +588,9 @@ typedef struct _NET_PNP_EVENT {
 #undef NDIS_SUPPORT_NDIS6
 #define NDIS_SUPPORT_NDIS6 1
 #endif
+
+/* After the NDIS_SUPPORT_* macros, which gate parts of it */
+#include "ntddndis.h"
 
 #if defined(NDIS61_MINIPORT) || defined(NDIS60_MINIPORT) || defined(NDIS61) || \
     defined(NDIS60) || defined(NDIS_WRAPPER) || defined(NDIS_LEGACY_DRIVER)
@@ -339,6 +634,9 @@ typedef PVOID NDIS_HANDLE, *PNDIS_HANDLE;
 
 typedef ANSI_STRING NDIS_ANSI_STRING, *PNDIS_ANSI_STRING;
 typedef UNICODE_STRING NDIS_STRING, *PNDIS_STRING;
+
+/* Initializer for an NDIS_STRING over a string literal. */
+#define NDIS_STRING_CONST(x) {sizeof(L##x) - 2, sizeof(L##x), L##x}
 
 typedef MDL NDIS_BUFFER, *PNDIS_BUFFER;
 
@@ -456,6 +754,16 @@ typedef MDL NDIS_BUFFER, *PNDIS_BUFFER;
 #define NDIS_STATUS_PM_WOL_PATTERN_REJECTED     ((NDIS_STATUS)0x40030051L)
 #define NDIS_STATUS_PM_OFFLOAD_REJECTED         ((NDIS_STATUS)0x40030052L)
 #define NDIS_STATUS_PM_CAPABILITIES_CHANGE      ((NDIS_STATUS)0x40030053L)
+#endif
+
+#if (NDIS_SUPPORT_NDIS630)
+#define NDIS_STATUS_PM_HARDWARE_CAPABILITIES    ((NDIS_STATUS)0x40030054L)
+#define NDIS_STATUS_PM_WAKE_REASON              ((NDIS_STATUS)0x40030055L)
+#endif
+
+#if (NDIS_SUPPORT_NDIS650)
+#define NDIS_STATUS_CURRENT_MAC_ADDRESS_CHANGE  ((NDIS_STATUS)0x400200B0L)
+#define NDIS_STATUS_L2_MTU_SIZE_CHANGE          ((NDIS_STATUS)0x400200B1L)
 #endif
 
 #define NDIS_STATUS_NOT_RESETTABLE              ((NDIS_STATUS)0x80010001L)
@@ -590,6 +898,8 @@ typedef MDL NDIS_BUFFER, *PNDIS_BUFFER;
 #define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK       0x00000080
 #define NDIS_ATTRIBUTE_NOT_CO_NDIS              0x00000100
 #define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS    0x00000200
+#define NDIS_ATTRIBUTE_DO_NOT_BIND_TO_ALL_CO    0x00000400
+#define NDIS_ATTRIBUTE_MINIPORT_PADS_SHORT_PACKETS 0x00000800
 
 /* Lock */
 
@@ -694,7 +1004,9 @@ typedef CM_PARTIAL_RESOURCE_LIST NDIS_RESOURCE_LIST, *PNDIS_RESOURCE_LIST;
 #define	NDIS_GUID_UNICODE_STRING          0x00000008
 #define	NDIS_GUID_ARRAY                   0x00000010
 
-#if NDIS_LEGACY_DRIVER
+/* The NDIS 5 packet model types are declared unconditionally. They cost a
+ * 6.x driver nothing, and hiding them left every later use in this header
+ * referring to types that were not there. */
 
 /* NDIS_PACKET_PRIVATE.Flags constants */
 #define fPACKET_WRAPPER_RESERVED             0x3f
@@ -755,7 +1067,6 @@ typedef struct _NDIS_PACKET_STACK {
   ULONG_PTR NdisReserved[4];
 } NDIS_PACKET_STACK, *PNDIS_PACKET_STACK;
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 typedef enum _NDIS_CLASS_ID {
   NdisClass802_3Priority,
@@ -771,7 +1082,6 @@ typedef struct _MEDIA_SPECIFIC_INFORMATION {
   UCHAR ClassInformation[1];
 } MEDIA_SPECIFIC_INFORMATION, *PMEDIA_SPECIFIC_INFORMATION;
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_PACKET_OOB_DATA {
   __MINGW_EXTENSION union {
     ULONGLONG TimeToSend;
@@ -783,7 +1093,6 @@ typedef struct _NDIS_PACKET_OOB_DATA {
   PVOID MediaSpecificInformation;
   NDIS_STATUS Status;
 } NDIS_PACKET_OOB_DATA, *PNDIS_PACKET_OOB_DATA;
-#endif
 
 /* Request types used by NdisRequest */
 typedef enum _NDIS_REQUEST_TYPE {
@@ -804,7 +1113,6 @@ typedef enum _NDIS_REQUEST_TYPE {
 #endif
 } NDIS_REQUEST_TYPE, *PNDIS_REQUEST_TYPE;
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_REQUEST {
   UCHAR MacReserved[4 * sizeof(PVOID)];
   NDIS_REQUEST_TYPE RequestType;
@@ -833,11 +1141,9 @@ typedef struct _NDIS_REQUEST {
   UCHAR MiniportReserved[2 * sizeof(PVOID)];
 #endif
 } NDIS_REQUEST, *PNDIS_REQUEST;
-#endif /* NDIS_LEGACY_DRIVER */
 
 /* Wide Area Networks definitions */
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_WAN_PACKET {
   LIST_ENTRY WanPacketQueue;
   PUCHAR CurrentBuffer;
@@ -853,7 +1159,6 @@ typedef struct _NDIS_WAN_PACKET {
   PVOID MacReserved3;
   PVOID MacReserved4;
 } NDIS_WAN_PACKET, *PNDIS_WAN_PACKET;
-#endif
 
 /* DMA channel information */
 
@@ -945,6 +1250,19 @@ typedef struct _NDIS_CONFIGURATION_PARAMETER {
 } NDIS_CONFIGURATION_PARAMETER, *PNDIS_CONFIGURATION_PARAMETER;
 
 typedef PHYSICAL_ADDRESS NDIS_PHYSICAL_ADDRESS, *PNDIS_PHYSICAL_ADDRESS;
+
+#if (NDIS_SUPPORT_NDIS6)
+#include <ndis/nbl.h>
+#include <ndis/nblaccessors.h>
+#include <ndis/nblapi.h>
+#include <ndis/nbloffload.h>
+#include <ndis/nblqueue.h>
+#include <ndis/nblchain.h>
+#include <ndis/nblsend.h>
+#include <ndis/nblreceive.h>
+#include <ndis/nbl8021q.h>
+#include <ndis/nblrsc.h>
+#endif
 
 typedef struct _NDIS_PHYSICAL_ADDRESS_UNIT {
   NDIS_PHYSICAL_ADDRESS PhysicalAddress;
@@ -1102,7 +1420,6 @@ typedef struct _CO_SAP {
   UCHAR Sap[1];
 } CO_SAP, *PCO_SAP;
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_IPSEC_PACKET_INFO {
   __MINGW_EXTENSION union {
     struct {
@@ -1117,7 +1434,6 @@ typedef struct _NDIS_IPSEC_PACKET_INFO {
     } Receive;
   };
 } NDIS_IPSEC_PACKET_INFO, *PNDIS_IPSEC_PACKET_INFO;
-#endif
 
 #if (NDIS_SUPPORT_NDIS6 || NDIS60)
 typedef struct _NDIS_IPSEC_OFFLOAD_V1_NET_BUFFER_LIST_INFO {
@@ -1190,7 +1506,6 @@ typedef enum _NDIS_PER_PACKET_INFO {
   MaxPerPacketInfo
 } NDIS_PER_PACKET_INFO, *PNDIS_PER_PACKET_INFO;
 
-#if NDIS_LEGACY_DRIVER
 
 typedef struct _NDIS_PACKET_EXTENSION {
   PVOID NdisPacketInfo[MaxPerPacketInfo];
@@ -1304,7 +1619,6 @@ typedef struct _NDIS_TASK_IPSEC {
   } V4ESP;
 } NDIS_TASK_IPSEC, *PNDIS_TASK_IPSEC;
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 #define IPSEC_TPT_UDPESP_ENCAPTYPE_IKE                 0x00000001
 #define IPSEC_TUN_UDPESP_ENCAPTYPE_IKE                 0x00000002
@@ -1315,7 +1629,6 @@ typedef struct _NDIS_TASK_IPSEC {
 #define IPSEC_TPTOVERTUN_UDPESP_ENCAPTYPE_OTHER        0x00000040
 #define IPSEC_TPT_UDPESP_OVER_PURE_TUN_ENCAPTYPE_OTHER 0x00000080
 
-#if NDIS_LEGACY_DRIVER
 
 /*
  * PNDIS_PACKET
@@ -1373,7 +1686,6 @@ typedef struct _NDIS_TASK_IPSEC {
 #define NdisSetPacketCancelId(_Packet, _CancelId) NDIS_SET_PACKET_CANCEL_ID(_Packet, _CancelId)
 #define NdisGetPacketCancelId(_Packet) NDIS_GET_PACKET_CANCEL_ID(_Packet)
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 #if NDIS_SUPPORT_NDIS6
 typedef struct _NDIS_GENERIC_OBJECT {
@@ -2687,7 +2999,6 @@ struct _NDIS_MINIPORT_BLOCK {
 #endif /* _NDIS_ */
 };
 
-#if NDIS_LEGACY_DRIVER
 
 typedef NDIS_STATUS
 (NTAPI *WAN_SEND_HANDLER)(
@@ -2724,7 +3035,6 @@ typedef NDIS_STATUS
   _In_ NDIS_HANDLE NdisBindingHandle,
   _In_ PNDIS_REQUEST NdisRequest);
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 #if defined(NDIS_WRAPPER)
 #define NDIS_COMMON_OPEN_BLOCK_WRAPPER_S \
@@ -3389,7 +3699,6 @@ NdisQueryBufferOffset(
   *(NextBuffer) = (CurrentBuffer)->Next;  \
 }
 
-#if NDIS_LEGACY_DRIVER
 
 #define NDIS_PACKET_FIRST_NDIS_BUFFER(_Packet) ((_Packet)->Private.Head)
 #define NDIS_PACKET_LAST_NDIS_BUFFER(_Packet) ((_Packet)->Private.Tail)
@@ -3651,7 +3960,6 @@ NdisQueryPacket(
   else *(_TotalPacketLength) = (_Packet)->Private.TotalLength;      \
 }
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 /* Memory management routines */
 
@@ -4571,6 +4879,12 @@ NTAPI
 NdisGetSystemUpTime(
   OUT PULONG pSystemUpTime);
 #endif
+
+NDISAPI
+VOID
+NTAPI
+NdisGetSystemUpTimeEx(
+  _Out_ PLARGE_INTEGER pSystemUpTime);
 
 #if NDIS_SUPPORT_60_COMPATIBLE_API
 
@@ -6218,6 +6532,23 @@ typedef struct _NDIS_MAC_CHARACTERISTICS {
 
 typedef	NDIS_MAC_CHARACTERISTICS        NDIS_WAN_MAC_CHARACTERISTICS;
 typedef	NDIS_WAN_MAC_CHARACTERISTICS    *PNDIS_WAN_MAC_CHARACTERISTICS;
+
+#if NDIS_SUPPORT_NDIS6
+#include <ifdef.h>
+#include <ndis/offload.h>
+#include <ndis/powermanagement.h>
+#include <ndis/receivescale.h>
+#include <ndis/nblhash.h>
+#include <ndis/oid.h>
+#include <ndis/oidrequest.h>
+#include <ndis/statusindication.h>
+#include <ndis/statusconvert.h>
+#include <ndis/ndis6.h>
+#include <ndis/interrupt.h>
+#include <ndis/sgdma.h>
+#include <ndis/services.h>
+#include <ndis/port.h>
+#endif /* NDIS_SUPPORT_NDIS6 */
 
 #ifdef __cplusplus
 }
