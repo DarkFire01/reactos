@@ -813,12 +813,15 @@ IopGetDeviceObjectFromDeviceInstance(PUNICODE_STRING DeviceInstance);
 /*
  * IopInitializeBuiltinDriver
  *
- * Initialize a driver that is already loaded in memory.
+ * Initialize a driver that is already loaded in memory. The service key is the one the loader
+ * recorded for it; the image name only stands in when there is none, as under SETUPLDR.
  */
 CODE_SEG("INIT")
 static
 BOOLEAN
-IopInitializeBuiltinDriver(IN PLDR_DATA_TABLE_ENTRY BootLdrEntry)
+IopInitializeBuiltinDriver(
+    _In_ PLDR_DATA_TABLE_ENTRY BootLdrEntry,
+    _In_opt_ PCUNICODE_STRING ServiceKeyPath)
 {
     PDRIVER_OBJECT DriverObject;
     NTSTATUS Status;
@@ -836,67 +839,81 @@ IopInitializeBuiltinDriver(IN PLDR_DATA_TABLE_ENTRY BootLdrEntry)
     IopDisplayLoadingMessage(ModuleName);
     InbvIndicateProgress();
 
-    Buffer = ExAllocatePoolWithTag(PagedPool,
-                                   ModuleName->Length + sizeof(UNICODE_NULL),
-                                   TAG_IO);
-    if (Buffer == NULL)
-    {
-        return FALSE;
-    }
+    HANDLE serviceHandle;
 
-    RtlCopyMemory(Buffer, ModuleName->Buffer, ModuleName->Length);
-    Buffer[ModuleName->Length / sizeof(WCHAR)] = UNICODE_NULL;
-
-    /*
-     * Generate filename without path (not needed by freeldr)
-     */
-    FileNameWithoutPath = wcsrchr(Buffer, L'\\');
-    if (FileNameWithoutPath == NULL)
+    /* The image name need not be the service name, so use the key the loader found */
+    if ((ServiceKeyPath != NULL) && (ServiceKeyPath->Length != 0))
     {
-        FileNameWithoutPath = Buffer;
+        Status = IopOpenRegistryKeyEx(&serviceHandle, NULL, (PUNICODE_STRING)ServiceKeyPath, KEY_READ);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Cannot open '%wZ' for '%wZ' (Status 0x%08lx)\n", ServiceKeyPath, ModuleName, Status);
+            return FALSE;
+        }
     }
     else
     {
-        FileNameWithoutPath++;
-    }
+        Buffer = ExAllocatePoolWithTag(PagedPool,
+                                       ModuleName->Length + sizeof(UNICODE_NULL),
+                                       TAG_IO);
+        if (Buffer == NULL)
+        {
+            return FALSE;
+        }
 
-    /*
-     * Strip the file extension from ServiceName
-     */
-    Success = RtlCreateUnicodeString(&ServiceName, FileNameWithoutPath);
-    ExFreePoolWithTag(Buffer, TAG_IO);
-    if (!Success)
-    {
-        return FALSE;
-    }
+        RtlCopyMemory(Buffer, ModuleName->Buffer, ModuleName->Length);
+        Buffer[ModuleName->Length / sizeof(WCHAR)] = UNICODE_NULL;
 
-    FileExtension = wcsrchr(ServiceName.Buffer, L'.');
-    if (FileExtension != NULL)
-    {
-        ServiceName.Length -= (USHORT)wcslen(FileExtension) * sizeof(WCHAR);
-        FileExtension[0] = UNICODE_NULL;
-    }
+        /*
+         * Generate filename without path (not needed by freeldr)
+         */
+        FileNameWithoutPath = wcsrchr(Buffer, L'\\');
+        if (FileNameWithoutPath == NULL)
+        {
+            FileNameWithoutPath = Buffer;
+        }
+        else
+        {
+            FileNameWithoutPath++;
+        }
 
-    UNICODE_STRING RegistryPath;
+        /*
+         * Strip the file extension from ServiceName
+         */
+        Success = RtlCreateUnicodeString(&ServiceName, FileNameWithoutPath);
+        ExFreePoolWithTag(Buffer, TAG_IO);
+        if (!Success)
+        {
+            return FALSE;
+        }
 
-    // Make the registry path for the driver
-    RegistryPath.Length = 0;
-    RegistryPath.MaximumLength = sizeof(ServicesKeyName) + ServiceName.Length;
-    RegistryPath.Buffer = ExAllocatePoolWithTag(PagedPool, RegistryPath.MaximumLength, TAG_IO);
-    if (RegistryPath.Buffer == NULL)
-    {
-        return FALSE;
-    }
-    RtlAppendUnicodeToString(&RegistryPath, ServicesKeyName);
-    RtlAppendUnicodeStringToString(&RegistryPath, &ServiceName);
-    RtlFreeUnicodeString(&ServiceName);
+        FileExtension = wcsrchr(ServiceName.Buffer, L'.');
+        if (FileExtension != NULL)
+        {
+            ServiceName.Length -= (USHORT)wcslen(FileExtension) * sizeof(WCHAR);
+            FileExtension[0] = UNICODE_NULL;
+        }
 
-    HANDLE serviceHandle;
-    Status = IopOpenRegistryKeyEx(&serviceHandle, NULL, &RegistryPath, KEY_READ);
-    RtlFreeUnicodeString(&RegistryPath);
-    if (!NT_SUCCESS(Status))
-    {
-        return FALSE;
+        UNICODE_STRING RegistryPath;
+
+        // Make the registry path for the driver
+        RegistryPath.Length = 0;
+        RegistryPath.MaximumLength = sizeof(ServicesKeyName) + ServiceName.Length;
+        RegistryPath.Buffer = ExAllocatePoolWithTag(PagedPool, RegistryPath.MaximumLength, TAG_IO);
+        if (RegistryPath.Buffer == NULL)
+        {
+            return FALSE;
+        }
+        RtlAppendUnicodeToString(&RegistryPath, ServicesKeyName);
+        RtlAppendUnicodeStringToString(&RegistryPath, &ServiceName);
+        RtlFreeUnicodeString(&ServiceName);
+
+        Status = IopOpenRegistryKeyEx(&serviceHandle, NULL, &RegistryPath, KEY_READ);
+        RtlFreeUnicodeString(&RegistryPath);
+        if (!NT_SUCCESS(Status))
+        {
+            return FALSE;
+        }
     }
 
     /* Lookup the new Ldr entry in PsLoadedModuleList */
@@ -1213,7 +1230,7 @@ IopInitializeBootDrivers(VOID)
             LdrEntry = DriverInfo->DataTableEntry->LdrEntry;
 
             /* Initialize it */
-            if (IopInitializeBuiltinDriver(LdrEntry))
+            if (IopInitializeBuiltinDriver(LdrEntry, &DriverInfo->DataTableEntry->RegistryPath))
             {
                 // it does not make sense to enumerate the tree if there are no new devices added
                 PiQueueDeviceAction(IopRootDeviceNode->PhysicalDeviceObject,
