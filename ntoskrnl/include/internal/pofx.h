@@ -188,7 +188,8 @@ PopFxQueryDeviceId(
 VOID
 NTAPI
 PopFxPrepareDevice(
-    _In_ PDEVICE_OBJECT Pdo);
+    _In_ PDEVICE_OBJECT Pdo,
+    _In_ BOOLEAN StartDevice);
 
 VOID
 NTAPI
