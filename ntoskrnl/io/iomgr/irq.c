@@ -353,6 +353,19 @@ IopGetVectorTarget(
  * The IRQL the service routine is synchronized at. PASSIVE_LEVEL asks for a
  * passive level interrupt, which the kernel does not support.
  */
+/* A secondary controller line runs inside another ISR, so it must not fire before its own is connected */
+static
+BOOLEAN
+NTAPI
+IopIsSecondaryVector(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData)
+{
+    if (!HalIsInterruptTypeSecondary || VectorData->Type != InterruptTypeControllerInput)
+        return FALSE;
+
+    return HalIsInterruptTypeSecondary(VectorData->Type, VectorData->ControllerInput.Gsiv);
+}
+
 static
 NTSTATUS
 NTAPI
@@ -366,6 +379,7 @@ IopConnectVector(
     _In_ BOOLEAN FloatingSave,
     _Out_ PIOP_VECTOR_CONNECTION Connection)
 {
+    BOOLEAN Secondary;
     NTSTATUS Status;
 
     PAGED_CODE();
@@ -380,9 +394,13 @@ IopConnectVector(
         return STATUS_NOT_SUPPORTED;
     }
 
-    Status = HalEnableInterrupt(&Connection->Vector);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    Secondary = IopIsSecondaryVector(VectorData);
+    if (!Secondary)
+    {
+        Status = HalEnableInterrupt(&Connection->Vector);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
 
     Status = IoConnectInterrupt(&Connection->Interrupt,
                                 ServiceRoutine,
@@ -396,7 +414,18 @@ IopConnectVector(
                                 IopGetVectorTarget(VectorData),
                                 FloatingSave);
     if (!NT_SUCCESS(Status))
-        HalDisableInterrupt(&Connection->Vector);
+    {
+        if (!Secondary)
+            HalDisableInterrupt(&Connection->Vector);
+        return Status;
+    }
+
+    if (Secondary)
+    {
+        Status = HalEnableInterrupt(&Connection->Vector);
+        if (!NT_SUCCESS(Status))
+            IoDisconnectInterrupt(Connection->Interrupt);
+    }
 
     return Status;
 }
@@ -407,6 +436,14 @@ NTAPI
 IopDisconnectVector(
     _In_ PIOP_VECTOR_CONNECTION Connection)
 {
+    /* A secondary line goes quiet first, nothing else would drop it once its ISR is gone */
+    if (IopIsSecondaryVector(&Connection->Vector.Vectors[0]))
+    {
+        HalDisableInterrupt(&Connection->Vector);
+        IoDisconnectInterrupt(Connection->Interrupt);
+        return;
+    }
+
     IoDisconnectInterrupt(Connection->Interrupt);
     HalDisableInterrupt(&Connection->Vector);
 }
