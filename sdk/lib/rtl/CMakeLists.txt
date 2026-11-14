@@ -141,6 +141,7 @@ elseif(ARCH STREQUAL "arm64")
     list(REMOVE_ITEM SOURCE slist.c)
     list(APPEND SOURCE
         bitmap64.c
+        bitmapex.c
         byteswap.c
         amd64/dynfntbl.c
         arm64/except.c
