@@ -1865,6 +1865,13 @@ HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ImagePath",0x00020000,"system32
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Type",0x00010001,0x00000001
 
+; RIL broker driver. System start so it creates its broker device at boot
+; without depending on a devnode install; the RIL host and clients open it.
+HKLM,"SYSTEM\CurrentControlSet\Services\msril","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\msril","ImagePath",0x00020000,"system32\drivers\msril.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\msril","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\msril","Type",0x00010001,0x00000001
+
 ; Audio Service
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","DisplayName",0x00000000,%AUDIO_SERVICE%
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Description",0x00000000,%AUDIO_SERVICE_DESCRIPTION%

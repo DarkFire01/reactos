@@ -12,6 +12,7 @@
 #include <debug.h>
 
 static LONG MsRilInstanceCount;
+static PDEVICE_OBJECT MsRilControlDevice;
 
 DRIVER_INITIALIZE DriverEntry;
 static DRIVER_ADD_DEVICE MsRilAddDevice;
@@ -845,13 +846,81 @@ MsRilAddDevice(
     return STATUS_SUCCESS;
 }
 
+/*
+ * The broker has no hardware behind it, so it does not depend on a devnode
+ * being installed. It comes up as a plain service and creates its own device
+ * and dos name, which the RIL host and the clients open directly. The PnP
+ * AddDevice path above still works if a devnode is ever bound.
+ */
+static
+NTSTATUS
+MsRilCreateControlDevice(
+    _In_ PDRIVER_OBJECT DriverObject)
+{
+    WCHAR DeviceNameBuffer[32];
+    UNICODE_STRING DeviceName;
+    PMSRIL_EXTENSION Extension;
+    PDEVICE_OBJECT DeviceObject;
+    ULONG Instance;
+    NTSTATUS Status;
+
+    Instance = (ULONG)InterlockedIncrement(&MsRilInstanceCount);
+
+    RtlInitEmptyUnicodeString(&DeviceName, DeviceNameBuffer, sizeof(DeviceNameBuffer));
+    RtlUnicodeStringPrintf(&DeviceName, L"\\Device\\MSRil%lu", Instance);
+
+    Status = IoCreateDevice(DriverObject,
+                            sizeof(*Extension),
+                            &DeviceName,
+                            FILE_DEVICE_MSRIL,
+                            FILE_DEVICE_SECURE_OPEN,
+                            FALSE,
+                            &DeviceObject);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Extension = DeviceObject->DeviceExtension;
+    RtlZeroMemory(Extension, sizeof(*Extension));
+    Extension->Self = DeviceObject;
+    Extension->Instance = Instance;
+    KeInitializeSpinLock(&Extension->Lock);
+    InitializeListHead(&Extension->Clients);
+
+    RtlInitEmptyUnicodeString(&Extension->LinkName,
+                              Extension->LinkNameBuffer,
+                              sizeof(Extension->LinkNameBuffer));
+    RtlUnicodeStringPrintf(&Extension->LinkName, L"\\DosDevices\\MSRil%lu", Instance);
+
+    Status = IoCreateSymbolicLink(&Extension->LinkName, &DeviceName);
+    if (!NT_SUCCESS(Status))
+    {
+        IoDeleteDevice(DeviceObject);
+        return Status;
+    }
+
+    DeviceObject->Flags |= DO_BUFFERED_IO;
+    DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+    MsRilControlDevice = DeviceObject;
+    return STATUS_SUCCESS;
+}
+
 static
 VOID
 NTAPI
 MsRilUnload(
     _In_ PDRIVER_OBJECT DriverObject)
 {
+    PMSRIL_EXTENSION Extension;
+
     UNREFERENCED_PARAMETER(DriverObject);
+
+    if (MsRilControlDevice)
+    {
+        Extension = MsRilControlDevice->DeviceExtension;
+        IoDeleteSymbolicLink(&Extension->LinkName);
+        IoDeleteDevice(MsRilControlDevice);
+        MsRilControlDevice = NULL;
+    }
 }
 
 NTSTATUS
@@ -873,6 +942,9 @@ DriverEntry(
     DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = MsRilSystemControl;
     DriverObject->DriverExtension->AddDevice = MsRilAddDevice;
     DriverObject->DriverUnload = MsRilUnload;
+
+    /* Bring the broker up without waiting for a devnode to be installed */
+    MsRilCreateControlDevice(DriverObject);
 
     return STATUS_SUCCESS;
 }
