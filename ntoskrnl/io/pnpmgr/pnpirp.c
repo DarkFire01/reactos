@@ -147,6 +147,9 @@ PiIrpStartDevice(
     ASSERT(DeviceNode);
     ASSERT(DeviceNode->State == DeviceNodeResourcesAssigned);
 
+    /* A device added before its plug-in registered gets the offer here */
+    PopFxPrepareDevice(DeviceNode->PhysicalDeviceObject, TRUE);
+
     PVOID info;
     IO_STACK_LOCATION stack = {
         .MajorFunction = IRP_MJ_PNP,
@@ -176,6 +179,8 @@ PiIrpStopDevice(
         .MajorFunction = IRP_MJ_PNP,
         .MinorFunction = IRP_MN_STOP_DEVICE
     };
+
+    DPRINT1("Stopping %wZ\n", &DeviceNode->InstancePath);
 
     // Drivers should never fail a IRP_MN_STOP_DEVICE request
     NTSTATUS status = IopSynchronousCall(DeviceNode->PhysicalDeviceObject, &stack, &info);

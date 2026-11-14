@@ -684,7 +684,7 @@ PiCallDriverAddDevice(
     }
 
     // a power engine plug-in that owns the device powers it up before any driver touches it
-    PopFxPrepareDevice(DeviceNode->PhysicalDeviceObject);
+    PopFxPrepareDevice(DeviceNode->PhysicalDeviceObject, FALSE);
 
     // try to get the class GUID of an instance and its registry key
     Status = IopGetRegistryValue(SubKey, REGSTR_VAL_CLASSGUID, &kvInfo);

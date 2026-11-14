@@ -305,75 +305,6 @@ PopFxRequestCommon(
     return STATUS_NOT_SUPPORTED;
 }
 
-/**
- * @brief Offers every device already in the tree to a plug-in that registered after it was enumerated.
- */
-static
-VOID
-PopFxPrepareExistingDevices(VOID)
-{
-    PDEVICE_OBJECT *Pdos;
-    PDEVICE_NODE Node;
-    ULONG Count = 0, Capacity = 64, Index;
-    KIRQL OldIrql;
-
-    for (;;)
-    {
-        Pdos = ExAllocatePoolWithTag(NonPagedPool, Capacity * sizeof(*Pdos), TAG_PO_FX_PLUGIN);
-        if (!Pdos)
-            return;
-
-        /* Walk the tree depth first, taking a reference on each PDO so it outlives the lock */
-        Count = 0;
-        KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
-        Node = IopRootDeviceNode;
-        while (Node)
-        {
-            if (Count < Capacity && Node->PhysicalDeviceObject)
-                ObReferenceObject(Node->PhysicalDeviceObject);
-            if (Node->PhysicalDeviceObject)
-            {
-                if (Count < Capacity)
-                    Pdos[Count] = Node->PhysicalDeviceObject;
-                Count++;
-            }
-
-            if (Node->Child)
-            {
-                Node = Node->Child;
-                continue;
-            }
-            while (Node && !Node->Sibling)
-    /* Legacy resource devnodes are not PnP devices and have no properties */
-    DeviceNode = IopGetDeviceNode(Pdo);
-    if (!DeviceNode || (DeviceNode->Flags & DNF_LEGACY_RESOURCE_DEVICENODE) || !DeviceNode->InstancePath.Length)
-        return STATUS_NOT_FOUND;
-
-                Node = Node->Parent;
-            if (Node)
-                Node = Node->Sibling;
-        }
-        KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
-
-        if (Count <= Capacity)
-            break;
-
-        /* The tree outgrew the buffer, drop what was taken and retry with room for all of it */
-        for (Index = 0; Index < Capacity; Index++)
-            ObDereferenceObject(Pdos[Index]);
-        ExFreePoolWithTag(Pdos, TAG_PO_FX_PLUGIN);
-        Capacity = Count + 16;
-    }
-
-    for (Index = 0; Index < Count; Index++)
-    {
-        PopFxPrepareDevice(Pdos[Index]);
-        ObDereferenceObject(Pdos[Index]);
-    }
-
-    ExFreePoolWithTag(Pdos, TAG_PO_FX_PLUGIN);
-}
-
 /* INTERNAL FUNCTIONS *********************************************************/
 
 /**
@@ -412,6 +343,11 @@ PopFxQueryDeviceId(
     PAGED_CODE();
 
     RtlInitEmptyUnicodeString(DeviceId, NULL, 0);
+
+    /* Legacy resource devnodes are not PnP devices and have no properties */
+    DeviceNode = IopGetDeviceNode(Pdo);
+    if (!DeviceNode || (DeviceNode->Flags & DNF_LEGACY_RESOURCE_DEVICENODE) || !DeviceNode->InstancePath.Length)
+        return STATUS_NOT_FOUND;
 
     Status = IoGetDevicePropertyData(Pdo, &DEVPKEY_Device_BiosDeviceName, LOCALE_NEUTRAL, 0,
                                      0, NULL, &Size, &Type);
@@ -473,6 +409,10 @@ PopFxFindPreparedDevice(
         if (Prepared->Pdo != Pdo)
             continue;
 
+        /* Offered at start and turned down by every plug-in */
+        if (!Prepared->Plugin)
+            break;
+
         Buffer = ExAllocatePoolWithTag(PagedPool, Prepared->DeviceId.MaximumLength, TAG_PO_FX_PLUGIN);
         if (Buffer)
         {
@@ -488,12 +428,18 @@ PopFxFindPreparedDevice(
 }
 
 /**
- * @brief Offers a device about to get its drivers to the plug-ins, the first that accepts powers it up.
+ * @brief Offers a device to the plug-ins, the first that accepts powers it up.
+ *
+ * @param[in] StartDevice
+ * TRUE when the device is about to start. A device no plug-in takes at start
+ * is not offered again, one turned down while being added is offered again
+ * when it starts.
  */
 VOID
 NTAPI
 PopFxPrepareDevice(
-    _In_ PDEVICE_OBJECT Pdo)
+    _In_ PDEVICE_OBJECT Pdo,
+    _In_ BOOLEAN StartDevice)
 {
     PPOP_FX_PREPARED_DEVICE Prepared;
     PEP_PREPARE_DEVICE Prepare;
@@ -503,7 +449,7 @@ PopFxPrepareDevice(
 
     PAGED_CODE();
 
-    if (!PopFxNextPlugin(NULL))
+    if (!PopFxNextPlugin(NULL) && !StartDevice)
         return;
 
     /* A device is prepared once, until its PDO goes away */
@@ -525,28 +471,33 @@ PopFxPrepareDevice(
     {
         Prepare.DeviceId = &DeviceId;
         Prepare.DeviceAccepted = FALSE;
-        if (!PopFxNotifyPlugin(Plugin, PEP_DPM_PREPARE_DEVICE, &Prepare) || !Prepare.DeviceAccepted)
-            continue;
-
-        Prepared = ExAllocatePoolWithTag(PagedPool, sizeof(*Prepared), TAG_PO_FX_PLUGIN);
-        if (!Prepared)
-        {
-            DPRINT1("No memory to track %wZ, its plug-in keeps it prepared\n", &DeviceId);
+        if (PopFxNotifyPlugin(Plugin, PEP_DPM_PREPARE_DEVICE, &Prepare) && Prepare.DeviceAccepted)
             break;
-        }
+    }
 
-        DPRINT("PEP %p prepared %wZ\n", Plugin, &DeviceId);
-        Prepared->Pdo = Pdo;
-        Prepared->Plugin = Plugin;
-        Prepared->DeviceId = DeviceId;
-
-        KeAcquireGuardedMutex(&PopFxPluginLock);
-        InsertTailList(&PopFxPreparedList, &Prepared->Link);
-        KeReleaseGuardedMutex(&PopFxPluginLock);
+    /* Turned down while being added, the start gets another try */
+    if (!Plugin && !StartDevice)
+    {
+        RtlFreeUnicodeString(&DeviceId);
         return;
     }
 
-    RtlFreeUnicodeString(&DeviceId);
+    Prepared = ExAllocatePoolWithTag(PagedPool, sizeof(*Prepared), TAG_PO_FX_PLUGIN);
+    if (!Prepared)
+    {
+        DPRINT1("No memory to track %wZ\n", &DeviceId);
+        RtlFreeUnicodeString(&DeviceId);
+        return;
+    }
+
+    DPRINT("PEP %p prepared %wZ\n", Plugin, &DeviceId);
+    Prepared->Pdo = Pdo;
+    Prepared->Plugin = Plugin;
+    Prepared->DeviceId = DeviceId;
+
+    KeAcquireGuardedMutex(&PopFxPluginLock);
+    InsertTailList(&PopFxPreparedList, &Prepared->Link);
+    KeReleaseGuardedMutex(&PopFxPluginLock);
 }
 
 /**
@@ -578,9 +529,12 @@ PopFxAbandonDevice(
     if (!Prepared)
         return;
 
-    Abandon.DeviceId = &Prepared->DeviceId;
-    Abandon.DeviceAccepted = FALSE;
-    PopFxNotifyPlugin(Prepared->Plugin, PEP_DPM_ABANDON_DEVICE, &Abandon);
+    if (Prepared->Plugin)
+    {
+        Abandon.DeviceId = &Prepared->DeviceId;
+        Abandon.DeviceAccepted = FALSE;
+        PopFxNotifyPlugin(Prepared->Plugin, PEP_DPM_ABANDON_DEVICE, &Abandon);
+    }
 
     RtlFreeUnicodeString(&Prepared->DeviceId);
     ExFreePoolWithTag(Prepared, TAG_PO_FX_PLUGIN);
@@ -685,9 +639,6 @@ PoFxRegisterPluginEx(
         KernelInformation->RequestCommon = PopFxRequestCommon;
 
     DPRINT1("Registered PEP %p, version %u, flags 0x%I64x\n", Plugin, Plugin->Version, Flags);
-
-    /* Devices enumerated before the plug-in loaded get their prepare now */
-    PopFxPrepareExistingDevices();
     return STATUS_SUCCESS;
 }
 
