@@ -217,6 +217,14 @@ IopFindDeviceInstanceTraverse(
 {
     PIOP_FIND_DEVICE_INSTANCE_TRAVERSE_CONTEXT DeviceInstanceContext = Context;
 
+    /* A removed device gives up its instance path even while its PDO is still referenced */
+    if (DeviceNode->State == DeviceNodeRemoved ||
+        DeviceNode->State == DeviceNodeDeletePendingCloses ||
+        DeviceNode->State == DeviceNodeDeleted)
+    {
+        return STATUS_SUCCESS;
+    }
+
     if (RtlEqualUnicodeString(&DeviceNode->InstancePath,
                               DeviceInstanceContext->InstancePath, TRUE))
     {
