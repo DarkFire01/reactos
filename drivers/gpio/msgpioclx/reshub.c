@@ -398,7 +398,8 @@ GcxResolveGsivToPin(
     ULONG Gsiv,
     PGCX_CONTROLLER *Controller,
     PBANK_ID BankId,
-    PPIN_NUMBER PinNumber)
+    PPIN_NUMBER PinNumber,
+    PUSHORT DebounceTimeout)
 {
     PRH_QUERY_CONNECTION_PROPERTIES_OUTPUT_BUFFER Output;
     PGCX_CONTROLLER Owner = NULL;
@@ -409,10 +410,14 @@ GcxResolveGsivToPin(
     PAGED_CODE();
 
     *Controller = NULL;
+    *DebounceTimeout = 0;
 
     Status = GcxQueryHubDescriptor(Gsiv, &Output);
     if (!NT_SUCCESS(Status))
         return Status;
+
+    if (GcxGpioDescriptor(Output) != NULL)
+        *DebounceTimeout = GcxGpioDescriptor(Output)->DebounceTimeout;
 
     Status = GcxDescriptorPin(Output, &ControllerPin);
     if (NT_SUCCESS(Status))
@@ -440,6 +445,59 @@ GcxResolveGsivToPin(
     }
 
     *Controller = Owner;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Asks the hub which level an emulated both edge pin should first wait for.
+ *
+ * @remarks
+ * The hub answers 0 for high and 2 for low, anything else leaves it open.
+ */
+_Use_decl_annotations_
+NTSTATUS
+NTAPI
+GcxQueryActiveBothInitialPolarity(
+    ULONG Gsiv,
+    PKINTERRUPT_POLARITY Polarity)
+{
+    RH_QUERY_ACTIVE_BOTH_INITIAL_POLARITY_OUTPUT_BUFFER Output;
+    RH_QUERY_ACTIVE_BOTH_INITIAL_POLARITY_INPUT_BUFFER Input;
+    ULONG_PTR Information;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    *Polarity = InterruptActiveHigh;
+
+    Status = GcxOpenResourceHub();
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RtlZeroMemory(&Input, sizeof(Input));
+    Input.Version = RH_QUERY_ACTIVE_BOTH_INITIAL_POLARITY_INPUT_VERSION;
+    Input.InterruptVector = Gsiv;
+    RtlZeroMemory(&Output, sizeof(Output));
+
+    Status = GcxSendIoctl(GcxHubDevice,
+                          GcxHubFile,
+                          IOCTL_RH_QUERY_ACTIVE_BOTH_INITIAL_POLARITY,
+                          &Input,
+                          sizeof(Input),
+                          &Output,
+                          sizeof(Output),
+                          &Information);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (Output.InitialPolarity == 2)
+        *Polarity = InterruptActiveLow;
+    else if (Output.InitialPolarity == 0)
+        *Polarity = InterruptActiveHigh;
+    else
+        *Polarity = InterruptPolarityUnknown;
+
     return STATUS_SUCCESS;
 }
 

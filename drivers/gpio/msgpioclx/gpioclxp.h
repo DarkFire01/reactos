@@ -43,7 +43,23 @@ typedef enum _GCX_CONTROLLER_STATE
 } GCX_CONTROLLER_STATE;
 
 /* The pin is armed and the rest of its entry is meaningful */
-#define GCX_PIN_INTERRUPT_ENABLED 0x0001
+#define GCX_PIN_INTERRUPT_ENABLED   0x0001
+
+/* Both edges are emulated by flipping the polarity after every interrupt */
+#define GCX_PIN_EMULATED_ACTIVE_BOTH 0x0002
+
+struct _GCX_CONTROLLER;
+
+/* Keeps an emulated debounce pin masked until its timeout passes */
+typedef struct _GCX_DEBOUNCE
+{
+    KTIMER Timer;
+    KDPC Dpc;
+    WORK_QUEUE_ITEM WorkItem;
+    struct _GCX_CONTROLLER *Controller;
+    BANK_ID BankId;
+    PIN_NUMBER PinNumber;
+} GCX_DEBOUNCE, *PGCX_DEBOUNCE;
 
 typedef struct _GCX_PIN
 {
@@ -54,6 +70,10 @@ typedef struct _GCX_PIN
     /* GSIV the pin was connected as, and the HAL token to quote back on delivery */
     ULONG Gsiv;
     PVOID TargetContext;
+
+    /* Firmware debounce time in hundredths of a millisecond, emulated when the controller asks */
+    USHORT DebounceTimeout;
+    PGCX_DEBOUNCE Debounce;
 } GCX_PIN, *PGCX_PIN;
 
 typedef struct _GCX_BANK
@@ -412,7 +432,34 @@ GcxResolveGsivToPin(
     _In_ ULONG Gsiv,
     _Outptr_ PGCX_CONTROLLER *Controller,
     _Out_ PBANK_ID BankId,
-    _Out_ PPIN_NUMBER PinNumber);
+    _Out_ PPIN_NUMBER PinNumber,
+    _Out_ PUSHORT DebounceTimeout);
+
+NTSTATUS
+NTAPI
+GcxQueryActiveBothInitialPolarity(
+    _In_ ULONG Gsiv,
+    _Out_ PKINTERRUPT_POLARITY Polarity);
+
+VOID
+NTAPI
+GcxFlipPinPolarity(
+    _In_ struct _GCX_CONTROLLER *Controller,
+    _In_ BANK_ID BankId,
+    _In_ PIN_NUMBER PinNumber);
+
+NTSTATUS
+NTAPI
+GcxArmDebounce(
+    _In_ struct _GCX_CONTROLLER *Controller,
+    _In_ BANK_ID BankId,
+    _In_ PIN_NUMBER PinNumber);
+
+VOID
+NTAPI
+GcxStartDebounce(
+    _In_ struct _GCX_CONTROLLER *Controller,
+    _In_ PGCX_PIN Pin);
 
 VOID
 NTAPI
