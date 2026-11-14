@@ -34,6 +34,19 @@
 static ULONG UfsSmmuPhysical;
 static ULONG UfsSmmuStream;
 static ULONG UfsSmmuStreamMask;
+static ULONG UfsSmmuMatches;
+static ULONG UfsSmmuDisabled;
+static ULONG UfsSmmuLastSmr;
+static ULONG UfsSmmuLastS2cr;
+static ULONG UfsSmmuLastSctlr;
+
+VOID
+UfsSmmuReport(VOID)
+{
+    DPRINT1("UFS: SMMU base %lx, %lu SMR match(es), %lu bank(s) turned off, SMR 0x%lx S2CR 0x%lx SCTLR 0x%lx\n",
+            UfsSmmuPhysical, UfsSmmuMatches, UfsSmmuDisabled,
+            UfsSmmuLastSmr, UfsSmmuLastS2cr, UfsSmmuLastSctlr);
+}
 
 VOID
 UfsSmmuReadParameters(
@@ -147,7 +160,10 @@ UfsSmmuHandoff(VOID)
             continue;
 
         Matched = TRUE;
+        UfsSmmuMatches++;
         S2cr = UfsSmmuRead(Smmu, SMMU_S2CR_BASE + Group * 4);
+        UfsSmmuLastSmr = Smr;
+        UfsSmmuLastS2cr = S2cr;
         DPRINT1("UFS: SMR%lu 0x%lx S2CR 0x%lx\n", Group, Smr, S2cr);
 
         if (SMMU_S2CR_KIND(S2cr) != SMMU_S2CR_TRANSLATE)
@@ -160,6 +176,7 @@ UfsSmmuHandoff(VOID)
         Context = Smmu + (SIZE_T)(HalfPages + Bank) * PageSize;
         Sctlr = UfsSmmuRead(Context, SMMU_CTX_SCTLR);
         Fsr = UfsSmmuRead(Context, SMMU_CTX_FSR);
+        UfsSmmuLastSctlr = Sctlr;
         DPRINT1("UFS: CB%lu CBAR 0x%lx SCTLR 0x%lx TTBR0 0x%lx%08lx FSR 0x%lx\n",
                 Bank,
                 UfsSmmuRead(Smmu, PageSize + Bank * 4),
@@ -172,6 +189,7 @@ UfsSmmuHandoff(VOID)
         {
             UfsSmmuWrite(Context, SMMU_CTX_SCTLR, Sctlr & ~SMMU_SCTLR_ENABLE);
             UfsSmmuWrite(Context, SMMU_CTX_FSR, Fsr);
+            UfsSmmuDisabled++;
             DPRINT1("UFS: CB%lu translation off, SCTLR now 0x%lx\n",
                     Bank, UfsSmmuRead(Context, SMMU_CTX_SCTLR));
         }
