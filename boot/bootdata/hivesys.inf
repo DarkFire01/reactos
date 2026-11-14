@@ -2428,6 +2428,8 @@ HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation","ObjectName",0x00000000,"
 HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation","Start",0x00010001,0x00000002
 HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation","Type",0x00010001,0x00000010
 HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters","MSRilInstances",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters\Modems\0","RILPath",0x00020000,"%SystemRoot%\system32\qcril.dll"
+HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters\Modems\0","RILInitIndex",0x00010001,0x00000000
 ; Phone service
 HKLM,"SYSTEM\CurrentControlSet\Services\PhoneSvc","DisplayName",0x00000000,%PHONESVC_SERVICE%
 HKLM,"SYSTEM\CurrentControlSet\Services\PhoneSvc","Description",0x00000000,%PHONESVC_SERVICE_DESCRIPTION%

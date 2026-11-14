@@ -1,0 +1,5 @@
+@ stdcall RIL_Version(long long)
+@ stdcall RIL_Init(long)
+@ stdcall RIL_Open(long)
+@ stdcall RIL_Close(long)
+@ stdcall RIL_IOControl(long long ptr long ptr long ptr)
