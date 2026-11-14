@@ -16,7 +16,7 @@ typedef enum _ACPI_NT_INTERRUPT_MODEL {
 /* Reads "IPCA" in memory */
 #define ACPI_DRV_HAL_DISP_SIG 'ACPI'
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
 #define ACPI_DRIVER_HAL_VERSION 2
 #else
 #define ACPI_DRIVER_HAL_VERSION 1
@@ -48,7 +48,7 @@ typedef struct _ACPI_DRIVER_HAL_DISPATCH
     PVOID EnableDisableGpeEvents;
     PVOID InitEnableAcpi;
     PVOID GpeEnableWakeEvents;
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     PVOID MarkHiberPhase;
 #endif
 } ACPI_DRIVER_HAL_DISPATCH;

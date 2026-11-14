@@ -29,7 +29,7 @@ UacpiNtRhAllocateSecondaryGsiv(
     _In_ ULONG DescriptorNameSize,
     _Out_ PULONG Gsiv)
 {
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     NTSTATUS Status;
 
     /* A GSIV made up here could never be connected */
