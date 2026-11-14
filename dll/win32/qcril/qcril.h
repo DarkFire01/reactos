@@ -139,7 +139,6 @@ struct _QC_MODEM
 {
     LONG RefCount;
     HANDLE Ipc;
-    QC_ADDR Self;
 
     QC_SERVICE Services[QcSvcCount];
     CRITICAL_SECTION ServiceLock;
