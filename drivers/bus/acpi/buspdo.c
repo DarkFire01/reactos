@@ -3,6 +3,7 @@
 
 #include <initguid.h>
 #include <poclass.h>
+#include <devpkey.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -257,6 +258,8 @@ Bus_PDO_PnP (
 
     case IRP_MN_QUERY_BUS_INFORMATION:
 
+        /* The first IRP after the instance key exists, so the property can be stored */
+        Bus_PDO_SetBiosDeviceName(DeviceData);
         status = Bus_PDO_QueryBusInformation(DeviceData, Irp);
 
         break;
@@ -1919,6 +1922,64 @@ Return Value:
     }
 
     return status;
+}
+
+/**
+ * @brief
+ * Stores the ACPI namespace path of a device as its BIOS device name.
+ *
+ * @remarks
+ * Segments drop their trailing underscore padding, so \_SB_.GPU0 reads \_SB.GPU0.
+ * Power engine plug-ins match devices on this name.
+ */
+VOID
+Bus_PDO_SetBiosDeviceName(
+    _In_ PPDO_DEVICE_DATA DeviceData)
+{
+    ACPI_BUFFER Buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+    PCSTR Source;
+    PWCHAR Name;
+    ULONG Length = 0, Padding = 0;
+
+    PAGED_CODE();
+
+    if (!DeviceData->AcpiHandle ||
+        ACPI_FAILURE(AcpiGetName(DeviceData->AcpiHandle, ACPI_FULL_PATHNAME, &Buffer)))
+    {
+        return;
+    }
+
+    Name = ExAllocatePoolWithTag(PagedPool, (strlen(Buffer.Pointer) + 1) * sizeof(WCHAR), 'IpcA');
+    if (Name)
+    {
+        for (Source = Buffer.Pointer; ; Source++)
+        {
+            /* Padding only counts when a separator or the end follows it */
+            if (*Source == '_' && Length > 0 && Name[Length - 1] != L'\' && Name[Length - 1] != L'.')
+            {
+                Padding++;
+                continue;
+            }
+            if (*Source == '.' || *Source == ANSI_NULL)
+                Padding = 0;
+            for (; Padding; Padding--)
+                Name[Length++] = L'_';
+            Name[Length++] = (WCHAR)*Source;
+            if (*Source == ANSI_NULL)
+                break;
+        }
+
+        IoSetDevicePropertyData(DeviceData->Common.Self,
+                                &DEVPKEY_Device_BiosDeviceName,
+                                LOCALE_NEUTRAL,
+                                0,
+                                DEVPROP_TYPE_STRING,
+                                Length * sizeof(WCHAR),
+                                Name);
+        ExFreePoolWithTag(Name, 'IpcA');
+    }
+
+    ACPI_FREE(Buffer.Pointer);
 }
 
 NTSTATUS

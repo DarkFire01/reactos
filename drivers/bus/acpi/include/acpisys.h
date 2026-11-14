@@ -254,6 +254,10 @@ Bus_PDO_QueryDeviceRelations(
      PPDO_DEVICE_DATA     DeviceData,
       PIRP   Irp );
 
+VOID
+Bus_PDO_SetBiosDeviceName(
+    _In_ PPDO_DEVICE_DATA DeviceData);
+
 NTSTATUS
 Bus_PDO_QueryBusInformation(
      PPDO_DEVICE_DATA     DeviceData,
