@@ -2748,7 +2748,13 @@ PipDeviceActionWorker(
         ASSERT(Request->DeviceObject);
 
         deviceNode = IopGetDeviceNode(Request->DeviceObject);
-        ASSERT(deviceNode);
+        if (!deviceNode)
+        {
+            /* The PDO was deleted after the request was queued */
+            DPRINT1("Dropping PnP request %u for deleted PDO %p\n", Request->Action, Request->DeviceObject);
+            status = STATUS_NO_SUCH_DEVICE;
+            goto Complete;
+        }
 
         status = STATUS_SUCCESS;
 
@@ -2834,6 +2840,7 @@ PipDeviceActionWorker(
 
         if (Request->CompletionEvent)
         {
+Complete:
             KeSetEvent(Request->CompletionEvent, IO_NO_INCREMENT, FALSE);
         }
 
