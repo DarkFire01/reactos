@@ -1,0 +1,5 @@
+; storufs: UFS0 DMA goes through the apps SMMU as stream 0x100-0x10F
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs\Parameters","SmmuBase",0x00010001,0x15000000
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs\Parameters","SmmuStreamId",0x00010001,0x00000100
+HKLM,"SYSTEM\CurrentControlSet\Services\storufs\Parameters","SmmuStreamMask",0x00010001,0x0000000F
