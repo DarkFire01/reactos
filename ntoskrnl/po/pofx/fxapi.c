@@ -221,6 +221,9 @@ PopFxNotifyPepState(
     Notify.DriverNotified = (Component->TargetFState > Component->FState);
     Notify.Completed = FALSE;
 
+    DPRINT1("PoFx %wZ component %lu F%lu -> F%lu, PEP %p\n",
+            &Device->DeviceId, Component->Index, Component->FState, Component->TargetFState, Device->Plugin);
+
     /* A plug-in that does not complete inline answers with PepWorkCompleteIdleState */
     if (Device->Plugin &&
         PopFxNotifyPlugin(Device->Plugin, PEP_DPM_NOTIFY_COMPONENT_IDLE_STATE, &Notify) &&
