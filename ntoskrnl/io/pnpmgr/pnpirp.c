@@ -10,6 +10,13 @@
 #define NDEBUG
 #include <debug.h>
 
+/* The interrupt mask the debug output reports: EFLAGS on x86, DAIF on ARM64 */
+#if defined(_M_ARM64)
+#define IopReadInterruptFlags() ((ULONG_PTR)_ReadStatusReg(ARM64_SYSREG(3, 3, 4, 2, 1)))
+#else
+#define IopReadInterruptFlags() __readeflags()
+#endif
+
 /* The user IOSB is not written for an error that was not pended, so the result is taken here */
 static
 NTSTATUS
@@ -108,7 +115,7 @@ IopSynchronousCall(
                     KeGetCurrentThread()->ApcState.KernelApcPending,
                     KeGetCurrentThread()->KernelApcDisable,
                     KeGetCurrentThread()->SpecialApcDisable,
-                    __readeflags());
+                    IopReadInterruptFlags());
             DbgBreakPoint();
             break;
         }
