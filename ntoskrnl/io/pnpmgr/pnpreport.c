@@ -28,8 +28,8 @@ typedef struct _INTERNAL_WORK_QUEUE_ITEM
 #define IOP_ROOT_DEVICE_PREFIX      L"ROOT\\"
 #define IOP_ROOT_DEVICE_ID_CHARS    200
 
-/* Only a UEFI boot hands over the framebuffer the basic display driver draws on */
-#define IOP_UEFI_ONLY_DISPLAY       L"BasicDisplay"
+/* The basic display driver, the fallback adapter for a display without its own driver */
+#define IOP_BASIC_DISPLAY           L"BasicDisplay"
 
 /* The basic display adapter is a display adapter from the start, before its INF is processed */
 #define IOP_DISPLAY_CLASS_GUID      L"{4d36e968-e325-11ce-bfc1-08002be10318}"
@@ -442,8 +442,7 @@ FreeLists:
  *
  * @return
  * STATUS_SUCCESS if the device exists afterwards, STATUS_OBJECT_NAME_INVALID
- * if the service name is too long, STATUS_NOT_SUPPORTED for BasicDisplay on a
- * legacy BIOS boot, or a registry failure.
+ * if the service name is too long, or a registry failure.
  *
  * @remarks
  * Only the first report creates the device, later ones find it in place.
@@ -456,7 +455,7 @@ IoReportRootDevice(
     _In_ PDRIVER_OBJECT DriverObject)
 {
     UNICODE_STRING EnumName = RTL_CONSTANT_STRING(ENUM_ROOT);
-    UNICODE_STRING UefiOnlyDisplay = RTL_CONSTANT_STRING(IOP_UEFI_ONLY_DISPLAY);
+    UNICODE_STRING BasicDisplay = RTL_CONSTANT_STRING(IOP_BASIC_DISPLAY);
     UNICODE_STRING ValueName;
     UNICODE_STRING InstancePath;
     PUNICODE_STRING ServiceName = &DriverObject->DriverExtension->ServiceKeyName;
@@ -470,10 +469,6 @@ IoReportRootDevice(
     NTSTATUS Status;
 
     PAGED_CODE();
-
-    if ((ExpFirmwareType != FirmwareTypeUefi) &&
-        RtlEqualUnicodeString(ServiceName, &UefiOnlyDisplay, TRUE))
-        return STATUS_NOT_SUPPORTED;
 
     RtlInitEmptyUnicodeString(&InstancePath, InstanceBuffer, sizeof(InstanceBuffer));
     Status = RtlAppendUnicodeToString(&InstancePath, IOP_ROOT_DEVICE_PREFIX);
@@ -543,7 +538,7 @@ IoReportRootDevice(
     if (!NT_SUCCESS(Status))
         goto Undo;
 
-    if (RtlEqualUnicodeString(ServiceName, &UefiOnlyDisplay, TRUE))
+    if (RtlEqualUnicodeString(ServiceName, &BasicDisplay, TRUE))
     {
         RtlInitUnicodeString(&ValueName, REGSTR_VAL_CLASSGUID);
         Status = ZwSetValueKey(InstanceKey,
