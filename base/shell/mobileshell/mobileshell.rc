@@ -12,11 +12,5 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 STRINGTABLE
 BEGIN
-    IDS_SHELL_TITLE          "ReactOS Mobile Emergency Shell"
-    IDS_DEVICE_MANAGER       "Device Manager"
-    IDS_PHONE_TEST           "Phone"
-    IDS_COMMAND_PROMPT       "Command Prompt"
-    IDS_KEYBOARD             "Keyboard"
-    IDS_EXPLORER             "Explorer"
-    IDS_LAUNCH_FAILED        "Could not start %s (error %lu)."
+    IDS_SHELL_TITLE          "ReactOS Mobile"
 END
