@@ -120,8 +120,13 @@ UfsSubmitScsi(
     if (UfsTraceBudget > 0)
     {
         UfsTraceBudget--;
-        DPRINT1("UFS: submit slot %ld LUN %u op 0x%02x len %lu prdt %u\n",
-                Slot, Lun, Cdb ? Cdb->AsByte[0] : 0xFF, DataLength, PrdtEntries);
+        PUFS_PRDT_ENTRY Prdt = (PUFS_PRDT_ENTRY)(Ucd + UFS_UCD_PRDT_OFFSET);
+
+        DPRINT1("UFS: submit slot %ld LUN %u op 0x%02x len %lu prdt %u at %lx%08lx count %lu\n",
+                Slot, Lun, Cdb ? Cdb->AsByte[0] : 0xFF, DataLength, PrdtEntries,
+                PrdtEntries ? Prdt[0].BaseUpper : 0,
+                PrdtEntries ? Prdt[0].BaseLower : 0,
+                PrdtEntries ? Prdt[0].ByteCount + 1 : 0);
     }
 
     Adapter->SlotSrb[Slot] = Srb;
