@@ -10,18 +10,18 @@
     TEXTAREA
 
 //
-// The compiler calls this from a prologue before it saves x8, the indirect
-// result register, so only x0 to x3 may change here.
+// The compiler calls this from a prologue before it saves the incoming
+// arguments past x2 and x8, the indirect result register, so only x0 to x2
+// may change here. The fill runs from the end so x0 stays the destination.
 //
 // x0 = destination, w1 = fill byte, x2 = count, returns the destination.
 //
     LEAF_ENTRY memset_fallback
-    mov     x3, x0
     cbz     x2, Done
 Fill
-    strb    w1, [x3], #1
-    subs    x2, x2, #1
-    b.ne    Fill
+    sub     x2, x2, #1
+    strb    w1, [x0, x2]
+    cbnz    x2, Fill
 Done
     ret
     LEAF_END memset_fallback

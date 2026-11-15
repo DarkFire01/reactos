@@ -6,6 +6,8 @@ list(APPEND SOURCE
 
 if(ARCH STREQUAL "i386")
     list(APPEND ASM_SOURCE i386/_RTC_CheckEsp.S)
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND ASM_SOURCE arm64/memset.s)
 endif()
 
 add_asm_files(runtmchk_asm ${ASM_SOURCE})
