@@ -106,6 +106,13 @@ Signature = "$Windows NT$"
 83 = Globalization\Sorting
 84 = Resources\Themes\Horizon
 85 = Resources\Themes\Horizon\Shell\NormalColor
+86 = MobileShell
+87 = MobileShell\skins
+88 = MobileShell\skins\WM61
+89 = MobileShell\skins\WM61\apps
+90 = MobileShell\skins\WM61\assets
+91 = MobileShell\skins\WM61\assets\icons
+92 = MobileShell\skins\WM61\themes
 
 .InfEnd
 
