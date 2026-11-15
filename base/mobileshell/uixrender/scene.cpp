@@ -90,6 +90,7 @@ CUixScene::CUixScene(
       m_Dragging(FALSE),
       m_Swiper(NULL),
       m_Swiping(FALSE),
+      m_SwipeVertical(FALSE),
       m_DownX(0.0f),
       m_DownY(0.0f),
       m_LastY(0.0f)
@@ -1270,7 +1271,8 @@ CUixScene::SwiperAt(
         if (Found)
             return Found;
     }
-    return (Element->Get(L"SwipeLeft") || Element->Get(L"SwipeRight")) ? Element : NULL;
+    return (Element->Get(L"SwipeLeft") || Element->Get(L"SwipeRight") ||
+            Element->Get(L"SwipeUp") || Element->Get(L"SwipeDown")) ? Element : NULL;
 }
 
 BOOL
@@ -1406,19 +1408,30 @@ CUixScene::PointerEvent(
             return TRUE;
 
         case UixPointerMove:
-            /* A mostly sideways drag on a SwipeLeft/SwipeRight element becomes a swipe */
-            if (m_Swiper && !m_Dragging && !m_Swiping &&
-                fabsf(X - m_DownX) > m_Engine->ResolveNumber(L"@DragSlop", 6.0f) &&
-                fabsf(X - m_DownX) > fabsf(Y - m_DownY) * 2.0f)
+            /* A drag mostly along one axis on an element with a swipe command for it becomes a swipe */
+            if (m_Swiper && !m_Dragging && !m_Swiping)
             {
-                m_Swiping = TRUE;
-                if (m_Pressed)
+                FLOAT Slop = m_Engine->ResolveNumber(L"@DragSlop", 6.0f);
+                FLOAT DX = fabsf(X - m_DownX);
+                FLOAT DY = fabsf(Y - m_DownY);
+
+                if (DX > Slop && DX > DY * 2.0f && (m_Swiper->Get(L"SwipeLeft") || m_Swiper->Get(L"SwipeRight")))
                 {
-                    MarkLayerDirty(m_Selected);
-                    m_Selected = m_SelectedBeforePress;
-                    MarkLayerDirty(m_Selected);
-                    m_Pressed = NULL;
+                    m_Swiping = TRUE;
+                    m_SwipeVertical = FALSE;
                 }
+                else if (DY > Slop && DY > DX * 2.0f && (m_Swiper->Get(L"SwipeUp") || m_Swiper->Get(L"SwipeDown")))
+                {
+                    m_Swiping = TRUE;
+                    m_SwipeVertical = TRUE;
+                }
+            }
+            if (m_Swiping && m_Pressed)
+            {
+                MarkLayerDirty(m_Selected);
+                m_Selected = m_SelectedBeforePress;
+                MarkLayerDirty(m_Selected);
+                m_Pressed = NULL;
             }
             if (m_Swiping)
                 return TRUE;
@@ -1467,9 +1480,16 @@ CUixScene::PointerEvent(
             if (m_Swiping)
             {
                 m_Swiping = FALSE;
-                if (Kind == UixPointerUp && fabsf(X - m_DownX) >= m_Engine->ResolveNumber(L"@SwipeDistance", 40.0f))
+                if (Kind == UixPointerUp && !m_SwipeVertical &&
+                    fabsf(X - m_DownX) >= m_Engine->ResolveNumber(L"@SwipeDistance", 40.0f))
                 {
                     m_ScratchValue = Value(m_Swiper, (X < m_DownX) ? L"SwipeLeft" : L"SwipeRight", FALSE);
+                    *Command = m_ScratchValue.c_str();
+                }
+                else if (Kind == UixPointerUp && m_SwipeVertical &&
+                         fabsf(Y - m_DownY) >= m_Engine->ResolveNumber(L"@SwipeDistance", 40.0f))
+                {
+                    m_ScratchValue = Value(m_Swiper, (Y < m_DownY) ? L"SwipeUp" : L"SwipeDown", FALSE);
                     *Command = m_ScratchValue.c_str();
                 }
                 m_Swiper = NULL;
