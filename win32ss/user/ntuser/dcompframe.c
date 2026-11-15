@@ -7,6 +7,7 @@
 
 #include <win32k.h>
 #include <reactos/dcompprotocol.h>
+#include <reactos/rddm/rddm_private.h>
 #include "../../gdi/ntgdi/dxgkfwd.h"
 
 DBG_DEFAULT_CHANNEL(UserMisc);
@@ -30,7 +31,7 @@ DBG_DEFAULT_CHANNEL(UserMisc);
 
 /*
  * The objects dxgkrnl's token manager hands out, called through their tables. Only the slots
- * win32k uses are named; dxgkrnl itself is x64 only.
+ * win32k uses are named. These are the Windows 11 layouts, see DL_DXGK_COMPOSITION_FRAMES.
  */
 typedef struct _DCOMP_FRAME_OBJECT DCOMP_FRAME_OBJECT, *PDCOMP_FRAME_OBJECT;
 
@@ -513,8 +514,10 @@ NtDCompositionBeginFrame(
         RtlZeroMemory(gpFrameHistory, DCOMP_FRAME_HISTORY * sizeof(*gpFrameHistory));
     }
 
+#if DL_DXGK_COMPOSITION_FRAMES
     if (!gpTokenManager && !NT_SUCCESS(DlGetSessionTokenManager((PVOID*)&gpTokenManager)))
         gpTokenManager = NULL;
+#endif
 
     if (gpTokenManager)
     {

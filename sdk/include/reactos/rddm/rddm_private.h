@@ -52,6 +52,12 @@
 #define DL_CDD_CLIP_BY_REFERENCE        (DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11)
 
 /*
+ * The token manager's composition frames carry an id and take a confirm, the tables win32k's
+ * compositor clock calls. Earlier frames have neither, and their tables are laid out differently.
+ */
+#define DL_DXGK_COMPOSITION_FRAMES      (DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11)
+
+/*
  * Create an IO request to fill out the function pointer list.
  *
  * A WDDM miniport's DriverEntry calls DxgkInitialize, which is not an export but an inline stub in
