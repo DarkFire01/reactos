@@ -1470,6 +1470,19 @@ uacpi_status uacpi_for_each_aml_resource(
 
             serial = (struct acpi_resource_serial*)data;
 
+            /*
+             * ACPI leaves types 0xC0 to 0xFF to vendors, Qualcomm describes SPMI
+             * with them. There is no native form, the OS reads them raw.
+             */
+            if (serial->type >= 0xC0) {
+                uacpi_size total_size = resource_size;
+
+                total_size += aml_resource_kind_to_header_size[spec->resource_kind];
+                data += total_size;
+                bytes_left -= total_size;
+                continue;
+            }
+
             ret = validate_aml_serial_type(serial->type);
             if (uacpi_unlikely_error(ret))
                 return ret;
