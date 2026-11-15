@@ -118,6 +118,9 @@ QcTouchCopyOut(
     return STATUS_SUCCESS;
 }
 
+static volatile LONG QcTouchTracedQueues;
+static volatile LONG QcTouchTracedDrains;
+
 /**
  * @brief Hands queued reports to pending reads until one side runs dry.
  */
@@ -152,6 +155,8 @@ QcTouchDrainReports(
         WdfSpinLockRelease(Device->ReportLock);
 
         Status = QcTouchCopyOut(Request, Report.Data, Report.Length);
+        if (InterlockedIncrement(&QcTouchTracedDrains) <= QCTOUCH_TRACE_LIMIT)
+            DPRINT1("report of %lu bytes to hidclass: 0x%08lx\n", Report.Length, Status);
         WdfRequestComplete(Request, Status);
     }
 }
@@ -178,6 +183,9 @@ QcTouchQueueReport(
     RtlCopyMemory(Slot->Data, Data, Length);
     Slot->Length = Length;
     Device->ReportCount++;
+
+    if (InterlockedIncrement(&QcTouchTracedQueues) <= QCTOUCH_TRACE_LIMIT)
+        DPRINT1("report queued, %lu waiting for a read\n", Device->ReportCount);
 
     WdfSpinLockRelease(Device->ReportLock);
 

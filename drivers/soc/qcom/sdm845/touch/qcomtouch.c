@@ -225,7 +225,13 @@ QcTouchServiceAttention(
 
     for (Loop = 0; Device->Ready && Loop < QCTOUCH_ATTENTION_LOOPS; Loop++)
     {
+        static volatile LONG Traced;
+
+        HasObjects = FALSE;
         Status = RmiReadAttention(Device, &HasObjects, Packet);
+        if (InterlockedIncrement(&Traced) <= QCTOUCH_TRACE_LIMIT)
+            DPRINT1("attention read 0x%08lx, objects %d\n", Status, HasObjects);
+
         if (!NT_SUCCESS(Status) || Status == STATUS_NO_MORE_ENTRIES)
             break;
 
