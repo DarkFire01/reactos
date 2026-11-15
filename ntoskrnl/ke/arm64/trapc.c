@@ -240,6 +240,42 @@ KiArm64HandleAbort(
     }
 }
 
+/**
+ * @brief Prints where a kernel mode trap came from, as module+offset, before a bugcheck hides it.
+ */
+static
+VOID
+KiPrintKernelFrames(
+    _In_ PKTRAP_FRAME TrapFrame)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    BOOLEAN InSystem;
+    ULONG_PTR Frame, Address;
+    PVOID Base;
+    ULONG Count;
+
+    DbgPrint("KE: trap on processor %lu, PC %p LR %p, frames:", KeGetCurrentProcessorNumber(), (PVOID)TrapFrame->Pc, (PVOID)TrapFrame->Lr);
+    Frame = TrapFrame->Fp;
+    Address = TrapFrame->Pc;
+    for (Count = 0; Count < 12; Count++)
+    {
+        LdrEntry = NULL;
+        Base = KiPcToFileHeader((PVOID)Address, &LdrEntry, FALSE, &InSystem);
+        if (Base && LdrEntry)
+            DbgPrint(" %wZ+%Ix", &LdrEntry->BaseDllName, Address - (ULONG_PTR)Base);
+        else
+            DbgPrint(" %p", (PVOID)Address);
+
+        if (!Frame || (Frame & 0xF) || !MmIsAddressValid((PVOID)Frame) || !MmIsAddressValid((PVOID)(Frame + 8)))
+            break;
+        Address = ((PULONG_PTR)Frame)[1];
+        if (!Address || (((PULONG_PTR)Frame)[0] <= Frame))
+            break;
+        Frame = ((PULONG_PTR)Frame)[0];
+    }
+    DbgPrint("\n");
+}
+
 static
 VOID
 KiArm64HandleBreak(
@@ -273,7 +309,10 @@ KiArm64HandleBreak(
 
         case KI_BRK_FASTFAIL:
             if (!KiUserTrap(TrapFrame))
+            {
+                KiPrintKernelFrames(TrapFrame);
                 KeBugCheckEx(KERNEL_SECURITY_CHECK_FAILURE, TrapFrame->X0, (ULONG_PTR)TrapFrame, (ULONG_PTR)ExceptionFrame, 0);
+            }
             KiArm64DispatchTrapException(TrapFrame, ExceptionFrame, STATUS_STACK_BUFFER_OVERRUN, 1, TrapFrame->X0, 0, 0);
             break;
 
@@ -534,6 +573,14 @@ KiArm64DpcInterrupt(VOID)
     {
         KiAcquirePrcbLock(Prcb);
 
+        /* The idle loop takes the thread itself, the idle thread is the one running then */
+        if (!Prcb->NextThread || (Prcb->NextThread == Prcb->CurrentThread))
+        {
+            ASSERT(!Prcb->NextThread || (Prcb->NextThread == Prcb->IdleThread));
+            KiReleasePrcbLock(Prcb);
+            return;
+        }
+
         OldThread = Prcb->CurrentThread;
         NewThread = Prcb->NextThread;
         Prcb->NextThread = NULL;
@@ -541,9 +588,60 @@ KiArm64DpcInterrupt(VOID)
         NewThread->State = Running;
         OldThread->WaitReason = WrDispatchInt;
 
+        if ((OldThread->State != Running) || (OldThread->NextProcessor != Prcb->Number) || (OldThread == NewThread))
+        {
+            DbgPrint("KE: DPC switch on %lu from %p state %u next %u to %p, idle %p\n",
+                     Prcb->Number, OldThread, OldThread->State, OldThread->NextProcessor,
+                     NewThread, Prcb->IdleThread);
+            KeBugCheckEx(ATTEMPTED_SWITCH_FROM_DPC, (ULONG_PTR)OldThread, (ULONG_PTR)NewThread, OldThread->State, OldThread->NextProcessor);
+        }
+
         KxQueueReadyThread(OldThread, Prcb);
         KiSwapContext(APC_LEVEL, OldThread);
     }
+}
+
+/*
+ * An interrupt the GIC delivered at or below the current IRQL means the priority
+ * mask and the IRQL disagree. The last one per processor is kept for a debugger
+ * or the QEMU monitor, printing from here could wait on a frozen processor.
+ */
+typedef struct _KI_REFUSED_INTERRUPT
+{
+    ULONG Count;
+    ULONG Vector;
+    UCHAR Irql;
+    UCHAR CurrentIrql;
+    UCHAR Reserved[6];
+    ULONG64 PriorityMask;
+    ULONG64 Pc;
+    ULONG64 Lr;
+    ULONG64 Fp;
+} KI_REFUSED_INTERRUPT, *PKI_REFUSED_INTERRUPT;
+
+KI_REFUSED_INTERRUPT KiRefusedInterrupts[MAXIMUM_PROCESSORS];
+
+static
+VOID
+KiNoteRefusedInterrupt(
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ ULONG Vector,
+    _In_ KIRQL Irql)
+{
+    PKI_REFUSED_INTERRUPT Note = &KiRefusedInterrupts[KeGetCurrentProcessorNumber()];
+
+    /* Software interrupts land here by design when they race an IRQL raise */
+    if (Vector < 16)
+        return;
+
+    Note->Count++;
+    Note->Vector = Vector;
+    Note->Irql = Irql;
+    Note->CurrentIrql = KeGetCurrentIrql();
+    Note->PriorityMask = (ULONG64)_ReadStatusReg(ARM64_SYSREG(3, 0, 4, 6, 0));
+    Note->Pc = TrapFrame->Pc;
+    Note->Lr = TrapFrame->Lr;
+    Note->Fp = TrapFrame->Fp;
 }
 
 /* Software interrupts and devices all come through the GIC */
@@ -573,14 +671,6 @@ KiArm64InterruptDispatch(
     else
     {
         if (Vector < KI_MAXIMUM_VECTOR)
-        /* The idle loop takes the thread itself, the idle thread is the one running then */
-        if (!Prcb->NextThread || (Prcb->NextThread == Prcb->CurrentThread))
-        {
-            ASSERT(!Prcb->NextThread || (Prcb->NextThread == Prcb->IdleThread));
-            KiReleasePrcbLock(Prcb);
-            return;
-        }
-
             Interrupt = *KiInterruptObjectSlot(Pcr, Vector);
 
         if (!Interrupt)
@@ -595,7 +685,10 @@ KiArm64InterruptDispatch(
     }
 
     if (!HalBeginSystemInterrupt(Irql, Vector, &OldIrql))
+    {
+        KiNoteRefusedInterrupt(TrapFrame, Vector, Irql);
         return;
+    }
 
     /* Interrupt frames carry the IRQL they interrupted, the clock reads it */
     PreviousMode = TrapFrame->PreviousMode;
