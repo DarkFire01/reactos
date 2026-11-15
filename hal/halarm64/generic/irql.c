@@ -24,20 +24,38 @@ static volatile LONG HalpPendingSoftwareInterrupts[MAXIMUM_PROCESSORS];
 
 /* FUNCTIONS *****************************************************************/
 
-/**
- * @brief
- * Waits until the software interrupts this processor requested above an IRQL have run.
- *
- * NT runs them before the IRQL change or the request returns, an SGI takes a moment to arrive.
+/*
+ * Below DISPATCH_LEVEL a thread can move to another processor between any two
+ * instructions, and x18 then names the new one. The PCR is only read with
+ * interrupts off, and the barrier keeps the compiler from reading x18 earlier.
  */
+FORCEINLINE
+PKPCR
+HalpLockPcr(
+    _Out_ PBOOLEAN Enabled)
+{
+    *Enabled = KeDisableInterrupts();
+    _ReadWriteBarrier();
+    return KeGetPcr();
+}
+
+FORCEINLINE
+VOID
+HalpUnlockPcr(
+    _In_ BOOLEAN Enabled)
+{
+    _ReadWriteBarrier();
+    KeRestoreInterrupts(Enabled);
+}
+
 static
 VOID
 HalpWaitForSoftwareInterrupts(
     _In_ KIRQL Irql)
 {
-    volatile LONG *Pending = &HalpPendingSoftwareInterrupts[KeGetCurrentProcessorNumber()];
     BOOLEAN Enabled;
     ULONG Spins;
+    LONG Pending;
 
     /* Nothing can be taken with interrupts off, they run once they are on again */
     Enabled = KeDisableInterrupts();
@@ -45,9 +63,17 @@ HalpWaitForSoftwareInterrupts(
     if (!Enabled)
         return;
 
-    /* Bounded, a lost SGI must not hang the processor */
-    for (Spins = 0; (*Pending >> (Irql + 1)) && (Spins < 1000000); Spins++)
+    /* Bounded, a lost SGI must not hang the processor. A thread that moved has nothing left to wait for */
+    for (Spins = 0; Spins < 1000000; Spins++)
+    {
+        HalpLockPcr(&Enabled);
+        Pending = HalpPendingSoftwareInterrupts[KeGetCurrentProcessorNumber()];
+        HalpUnlockPcr(Enabled);
+
+        if (!(Pending >> (Irql + 1)))
+            break;
         YieldProcessor();
+    }
 }
 
 VOID
@@ -58,20 +84,6 @@ HalpSetPriorityMask(
     HalpGicSetPriorityMask(HalpIrqlToPriority(Irql));
 }
 
-/* Updates the PCR and the mask together so an interrupt never sees them disagree */
-static
-VOID
-HalpChangeIrql(
-    _In_ KIRQL NewIrql)
-{
-    BOOLEAN Enabled;
-
-    Enabled = KeDisableInterrupts();
-    KeGetPcr()->CurrentIrql = NewIrql;
-    HalpSetPriorityMask(NewIrql);
-    KeRestoreInterrupts(Enabled);
-}
-
 #undef KeGetCurrentIrql
 KIRQL
 NTAPI
@@ -80,18 +92,27 @@ KeGetCurrentIrql(VOID)
     return KeGetPcr()->CurrentIrql;
 }
 
+/* The PCR and the mask change together, on one processor, so an interrupt never sees them disagree */
 KIRQL
 FASTCALL
 KfRaiseIrql(
     _In_ KIRQL NewIrql)
 {
+    BOOLEAN Enabled;
     KIRQL OldIrql;
+    PKPCR Pcr;
 
-    OldIrql = KeGetPcr()->CurrentIrql;
+    Pcr = HalpLockPcr(&Enabled);
+    OldIrql = Pcr->CurrentIrql;
     if (NewIrql < OldIrql)
+    {
+        HalpUnlockPcr(Enabled);
         KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL, OldIrql, NewIrql, 0, 9);
+    }
 
-    HalpChangeIrql(NewIrql);
+    Pcr->CurrentIrql = NewIrql;
+    HalpSetPriorityMask(NewIrql);
+    HalpUnlockPcr(Enabled);
     return OldIrql;
 }
 
@@ -100,10 +121,22 @@ FASTCALL
 KfLowerIrql(
     _In_ KIRQL NewIrql)
 {
-    if (NewIrql > KeGetPcr()->CurrentIrql)
-        KeBugCheckEx(IRQL_NOT_LESS_OR_EQUAL, NewIrql, KeGetPcr()->CurrentIrql, 0, 9);
+    BOOLEAN Enabled;
+    KIRQL OldIrql;
+    PKPCR Pcr;
 
-    HalpChangeIrql(NewIrql);
+    Pcr = HalpLockPcr(&Enabled);
+    OldIrql = Pcr->CurrentIrql;
+    if (NewIrql > OldIrql)
+    {
+        HalpUnlockPcr(Enabled);
+        KeBugCheckEx(IRQL_NOT_LESS_OR_EQUAL, NewIrql, OldIrql, 0, 9);
+    }
+
+    Pcr->CurrentIrql = NewIrql;
+    HalpSetPriorityMask(NewIrql);
+    HalpUnlockPcr(Enabled);
+
     HalpWaitForSoftwareInterrupts(NewIrql);
 }
 
@@ -112,11 +145,21 @@ FASTCALL
 HalRequestSoftwareInterrupt(
     _In_ KIRQL Irql)
 {
-    InterlockedOr(&HalpPendingSoftwareInterrupts[KeGetCurrentProcessorNumber()], 1L << Irql);
-    HalpGicSendSgi(Irql, AFFINITY_MASK(KeGetCurrentProcessorNumber()));
+    BOOLEAN Enabled;
+    KIRQL CurrentIrql;
+    ULONG Number;
+    PKPCR Pcr;
 
-    if (Irql > KeGetPcr()->CurrentIrql)
-        HalpWaitForSoftwareInterrupts(KeGetPcr()->CurrentIrql);
+    /* The request belongs to the processor the caller runs on when it is made */
+    Pcr = HalpLockPcr(&Enabled);
+    Number = KeGetCurrentProcessorNumber();
+    CurrentIrql = Pcr->CurrentIrql;
+    InterlockedOr(&HalpPendingSoftwareInterrupts[Number], 1L << Irql);
+    HalpGicSendSgi(Irql, AFFINITY_MASK(Number));
+    HalpUnlockPcr(Enabled);
+
+    if (Irql > CurrentIrql)
+        HalpWaitForSoftwareInterrupts(CurrentIrql);
 }
 
 VOID
