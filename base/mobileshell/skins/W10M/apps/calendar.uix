@@ -48,7 +48,7 @@
 
   <Element Name="PageAgenda" Layout="Stack" Height="*" Visible="false">
     <Text Content="CALENDAR" Font="@BaseFont" Padding="12,12,12,0"/>
-    <Text Content="agenda" Font="@TitleText" Padding="12,2,12,8"/>
+    <Text Content="Agenda" Font="@TitleText" Padding="12,2,12,8"/>
     <Element Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
       <Repeater Name="AgendaItems" Layout="Stack">
         <Element Layout="Stack" Command="appt:{Item.Id}" HoldCommand="apptmenu:{Item.Id}" Selectable="true"
@@ -67,7 +67,7 @@
 
   <Element Name="PageEdit" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
     <Text Content="CALENDAR" Font="@BaseFont" Padding="0,12,0,0"/>
-    <Text Content="new event" Font="@TitleText" Margin="0,2,0,12"/>
+    <Text Content="New event" Font="@TitleText" Margin="0,2,0,12"/>
     <Text Content="Event name" Font="@Caption" Foreground="@AppSubText"/>
     <Element Height="32" Command="edit.subject" Background="@FieldFill" BorderBrush="@Accent" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{EditSubject}"/>

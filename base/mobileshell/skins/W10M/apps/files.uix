@@ -49,7 +49,7 @@
 
   <Element Name="PageRename" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
     <Text Content="FILE EXPLORER" Font="@BaseFont" Padding="0,12,0,0"/>
-    <Text Content="rename" Font="@TitleText" Margin="0,2,0,12"/>
+    <Text Content="Rename" Font="@TitleText" Margin="0,2,0,12"/>
     <Text Content="Name" Font="@Caption" Foreground="@AppSubText"/>
     <Element Height="32" Background="@FieldFill" BorderBrush="@Accent" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{RenameText}" Highlight="{RenameSelected}"/>
