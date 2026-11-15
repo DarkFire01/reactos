@@ -1277,6 +1277,15 @@ KeBugCheckWithTf(IN ULONG BugCheckCode,
     PULONG_PTR HardErrorParameters;
     KIRQL OldIrql;
 
+#if defined(_M_ARM64) && defined(CONFIG_SMP)
+    /* A processor still starting cannot show a bugcheck, the one starting it does */
+    KiParkStartingProcessor(BugCheckCode,
+                            BugCheckParameter1,
+                            BugCheckParameter2,
+                            BugCheckParameter3,
+                            (ULONG_PTR)_ReturnAddress());
+#endif
+
     /* Set active bugcheck */
     KeBugCheckActive = TRUE;
     KiBugCheckDriver = NULL;
