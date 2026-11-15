@@ -75,7 +75,7 @@ KiApReportStep(
     Text[3] = (CHAR)('0' + (Prcb->Number % 10));
     Text[10] = (CHAR)('0' + ((Step / 10) % 10));
     Text[11] = (CHAR)('0' + (Step % 10));
-    VidDisplayStringXY(Text, 8, 400 + 16 * (Prcb->Number % 8), FALSE);
+    VidDisplayStringXY(Text, 8, 300 + 16 * (Prcb->Number % 8), FALSE);
 }
 static LDR_DATA_TABLE_ENTRY LdrCoreEntries[3];
 ULONG64 KeFeatureBits;
