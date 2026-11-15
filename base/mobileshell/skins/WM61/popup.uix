@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Soft key and context menus, owned by MobileUI. Items come from the app over the pipe. -->
+<Uix Name="Popup">
+  <Element Name="PopupRoot" Visible="false">
+
+    <!-- Taps outside the menu dismiss it -->
+    <Element Command="popup.dismiss" Momentary="true"/>
+
+    <Element Name="PopupMenu" Layer="true" X="{PopupX}" Y="{PopupY}" HAlign="Left" VAlign="Top" Layout="Stack"
+             Background="@MenuBackground" BorderBrush="@MenuBorder" BorderThickness="1" Padding="1"
+             Foreground="@MenuText" Font="@MenuFont" Reveal="0,0,0.08,0">
+      <Element Width="@PopupMinWidth" Height="0"/>
+      <Repeater Name="PopupItems" Layout="Stack">
+        <Element Height="{Item.Height}" Command="{Item.Command}" Selectable="true" Momentary="true"
+                 SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="8,0,14,0">
+          <Element Height="1" VAlign="Center" Background="{Item.Fill}"/>
+          <Text Content="{Item.Text}"/>
+        </Element>
+      </Repeater>
+    </Element>
+
+  </Element>
+</Uix>

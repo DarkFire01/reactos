@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Start menu, owned by MobileUI. Items are plain commands, so remapping is editing this file. -->
+<Uix Name="StartMenu">
+  <Element Name="StartMenuRoot" Visible="false">
+
+    <!-- Taps outside the menu close it -->
+    <Element Command="start.dismiss" Momentary="true"/>
+
+    <Element Name="StartMenu" Layer="true" Y="@TitleHeight" Width="@StartMenuWidth" HAlign="Left" VAlign="Top"
+             Layout="Stack" Background="@MenuBackground" BorderBrush="@MenuBorder" BorderThickness="1" Padding="1"
+             Foreground="@MenuText" Font="@MenuFont" Reveal="0,-6,0.08">
+
+      <Element Layout="Row" Height="@MenuItemHeight" Command="home" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Today" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Today" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Office" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Office" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Office" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Calendar" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Calendar" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Calendar" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Contacts" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Contacts" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Contacts" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Browser" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.IE" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Internet" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Messaging" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Msg" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Messaging" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Phone" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Phone" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Phone" Width="*"/>
+      </Element>
+
+      <Element Height="1" Background="@MenuSeparator" Margin="2,2,2,2"/>
+
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Files" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.FileExp" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="File Explorer" Width="*"/>
+      </Element>
+
+      <Element Height="1" Background="@MenuSeparator" Margin="2,2,2,2"/>
+
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Programs" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Games" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Programs" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Settings" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Settings" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Settings" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@MenuItemHeight" Command="launch:Help" Selectable="true"
+               SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="2,0,4,0">
+        <Image Source="@Icon.Help" Width="@MenuIcon" Height="@MenuIcon" VAlign="Center" Margin="0,0,4,0"/>
+        <Text Content="Help" Width="*"/>
+      </Element>
+    </Element>
+
+  </Element>
+</Uix>

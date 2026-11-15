@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Today screen, owned by MobileUI. Root attributes drive the chrome while no app is shown. -->
+<Uix Name="Home"
+     Title="@StartLabel"
+     SoftKeyLeft="Calendar" SoftKeyLeftCommand="launch:Calendar"
+     SoftKeyRight="Contacts" SoftKeyRightCommand="launch:Contacts"
+     AppReveal="0,0,0">
+
+  <Element Name="Today" Layer="true" Background="@TodayBackground" Layout="Stack"
+           Padding="0,@TitleHeight,0,@SoftKeyHeight" Foreground="@TodayText" Font="@ItemFont">
+
+    <Element Name="DateRow" Layout="Row" Height="@TodayDateHeight" BorderBrush="@TodaySeparator" BorderThickness="0,0,0,1"
+             Padding="3,2,4,2" Command="launch:ClockSettings" Selectable="true" SelectedBackground="@TodaySelected">
+      <Image Source="@Icon.Clock" Width="@TodayIcon" Height="@TodayIcon" VAlign="Top" Margin="0,2,6,0"/>
+      <Element Layout="Stack" Width="*">
+        <Text Content="{Weekday}" Font="@DateFont"/>
+        <Text Content="{Date}" Font="@DateFont"/>
+      </Element>
+      <Element Layout="Stack">
+        <Text Content="{Time}" Font="@DateFont" TextAlign="Right"/>
+        <Text Content="&#xEA8F;" Font="@BellGlyph" TextAlign="Right"/>
+      </Element>
+    </Element>
+
+    <Element Name="ItemGettingStarted" Layout="Row" Height="@TodayItemHeight" BorderBrush="@TodaySeparator" BorderThickness="0,0,0,1"
+             Padding="3,0,3,0" Command="launch:Help" Selectable="true" SelectedBackground="@TodaySelected">
+      <Image Source="@Icon.Welcome" Width="@TodayIcon" Height="@TodayIcon" VAlign="Center" Margin="0,0,6,0"/>
+      <Text Content="Getting Started" Font="@ItemBold" Width="*"/>
+    </Element>
+
+    <Element Name="ItemOwner" Layout="Row" Height="@TodayItemHeight" BorderBrush="@TodaySeparator" BorderThickness="0,0,0,1"
+             Padding="3,0,3,0" Command="launch:OwnerInfo" Selectable="true" SelectedBackground="@TodaySelected">
+      <Image Source="@Icon.Owner" Width="@TodayIcon" Height="@TodayIcon" VAlign="Center" Margin="0,0,6,0"/>
+      <Text Content="{OwnerLine}" Width="*"/>
+    </Element>
+
+    <Element Name="ItemMessages" Layout="Row" Height="@TodayItemHeight" BorderBrush="@TodaySeparator" BorderThickness="0,0,0,1"
+             Padding="3,0,3,0" Command="launch:Messaging" Selectable="true" SelectedBackground="@TodaySelected">
+      <Image Source="@Icon.Msg" Width="@TodayIcon" Height="@TodayIcon" VAlign="Center" Margin="0,0,6,0"/>
+      <Text Content="No unread messages" Width="*"/>
+    </Element>
+
+    <Element Name="ItemTasks" Layout="Row" Height="@TodayItemHeight" BorderBrush="@TodaySeparator" BorderThickness="0,0,0,1"
+             Padding="3,0,3,0" Command="launch:Tasks" Selectable="true" SelectedBackground="@TodaySelected">
+      <Image Source="@Icon.Tasks" Width="@TodayIcon" Height="@TodayIcon" VAlign="Center" Margin="0,0,6,0"/>
+      <Text Content="No tasks" Width="*"/>
+    </Element>
+
+    <Element Name="ItemCalendar" Layout="Row" Height="@TodayItemHeight" BorderBrush="@TodaySeparator" BorderThickness="0,0,0,1"
+             Padding="3,0,3,0" Command="launch:Calendar" Selectable="true" SelectedBackground="@TodaySelected">
+      <Image Source="@Icon.Calendar" Width="@TodayIcon" Height="@TodayIcon" VAlign="Center" Margin="0,0,6,0"/>
+      <Text Content="No upcoming appointments" Width="*"/>
+    </Element>
+
+    <Element Name="ItemLock" Layout="Row" Height="@TodayItemHeight"
+             Padding="3,0,3,0" Command="launch:LockSettings" Selectable="true" SelectedBackground="@TodaySelected">
+      <Image Source="@Icon.Lock" Width="@TodayIcon" Height="@TodayIcon" VAlign="Center" Margin="0,0,6,0"/>
+      <Text Content="Device unlocked" Width="*"/>
+    </Element>
+  </Element>
+
+  <!-- The band hosted apps are composed into -->
+  <Element Name="AppHost" Margin="0,@TitleHeight,0,@SoftKeyHeight"/>
+
+</Uix>

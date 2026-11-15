@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Windows Mobile 6.1 style skin. Canvas is the logical QVGA portrait size, scaled by the host. -->
+<Skin Name="Windows Mobile 6.1" Width="240" Height="320" DefaultTheme="Green">
+  <Theme Name="Green" File="themes\green.xml"/>
+  <Theme Name="Blue" File="themes\blue.xml"/>
+</Skin>

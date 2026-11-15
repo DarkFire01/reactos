@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings app, rendered out of process by settings.exe. Grid items are open:<Page> commands. -->
+<Uix Name="Settings" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+
+  <Element Name="PagePersonal" Scroll="true" Height="*" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+   <Element Layout="Wrap" Padding="0,4,0,4">
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Buttons" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Buttons" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Buttons" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Input" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Input" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Input" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Lock" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Lock" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Lock" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Owner" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Owner" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Owner Information" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Phone" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.PhoneSet" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Phone" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Sounds" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Sounds" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Sounds &amp; Notifications" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Today" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.TodaySet" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Today" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+   </Element>
+  </Element>
+  <Element Name="PageSystem" Scroll="true" Height="*" Visible="false" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+   <Element Layout="Wrap" Padding="0,4,0,4">
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:About" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.About" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="About" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Backlight" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Backlight" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Backlight" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Certificates" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Certificates" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Certificates" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Clock" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Clock" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Clock &amp; Alarms" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Encryption" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Encryption" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Encryption" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Error Reporting" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Watson" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Error Reporting" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Memory" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Memory" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Memory" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Power" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Power" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Power" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Regional" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Regional" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Regional Settings" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Programs" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.RemoveProg" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Remove Programs" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Screen" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Screen" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Screen" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:TaskManager" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.TaskMgr" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Task Manager" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+   </Element>
+  </Element>
+  <Element Name="PageConnections" Scroll="true" Height="*" Visible="false" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+   <Element Layout="Wrap" Padding="0,4,0,4">
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Beam" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Beam" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Beam" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Bluetooth" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Bluetooth" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Bluetooth" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Connections" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Connections" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Connections" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Domain Enroll" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.DEnroll" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Domain Enroll" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:USB to PC" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.PCCon" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="USB to PC" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:WiFi" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Wifi" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Wi-Fi" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="@SettingsCellHeight" Layout="Stack" Command="open:Wireless" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.WirelessMgr" Width="@SettingsIcon" Height="@SettingsIcon" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Wireless Manager" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+   </Element>
+  </Element>
+
+  <Element Name="PageInfo" Layout="Stack" Height="*" Visible="false">
+    <Text Content="{InfoTitle}" Font="@AppHeaderFont" Foreground="@AppHeaderText" Padding="6,4,6,3" BorderBrush="@AppHeaderLine" BorderThickness="0,0,0,1"/>
+    <Element Name="InfoScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+      <Repeater Name="InfoRows" Layout="Stack">
+        <Element Layout="Stack" Padding="7,3,9,3" BorderBrush="@ListSeparator" BorderThickness="0,0,0,1">
+          <Text Content="{Item.Label}" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="{Item.Value}" Wrap="true"/>
+        </Element>
+      </Repeater>
+    </Element>
+  </Element>
+
+  <Element Name="PageOwner" Layout="Stack" Height="*" Padding="6,4,6,4" Visible="false">
+    <Text Content="Owner Information" Font="@AppHeaderFont" Foreground="@AppHeaderText" Margin="0,0,0,4"/>
+    <Text Content="Name:" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Height="19" Command="owner:0" Background="{OwnerFill0}" BorderBrush="@FieldBorder" BorderThickness="1" Padding="3,0,3,0" Margin="0,1,0,4">
+      <Text Content="{Owner0}"/>
+    </Element>
+    <Text Content="Company:" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Height="19" Command="owner:1" Background="{OwnerFill1}" BorderBrush="@FieldBorder" BorderThickness="1" Padding="3,0,3,0" Margin="0,1,0,4">
+      <Text Content="{Owner1}"/>
+    </Element>
+    <Text Content="Telephone:" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Height="19" Command="owner:2" Background="{OwnerFill2}" BorderBrush="@FieldBorder" BorderThickness="1" Padding="3,0,3,0" Margin="0,1,0,4">
+      <Text Content="{Owner2}"/>
+    </Element>
+    <Text Content="E-mail:" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Height="19" Command="owner:3" Background="{OwnerFill3}" BorderBrush="@FieldBorder" BorderThickness="1" Padding="3,0,3,0" Margin="0,1,0,4">
+      <Text Content="{Owner3}"/>
+    </Element>
+    <Text Content="Notes:" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Height="19" Command="owner:4" Background="{OwnerFill4}" BorderBrush="@FieldBorder" BorderThickness="1" Padding="3,0,3,0" Margin="0,1,0,4">
+      <Text Content="{Owner4}"/>
+    </Element>
+  </Element>
+
+  <Element Name="PageSounds" Layout="Stack" Height="*" Padding="6,4,6,4" Visible="false">
+    <Text Content="Sounds" Font="@AppHeaderFont" Foreground="@AppHeaderText" Margin="0,0,0,6"/>
+    <Text Content="{SoundVolume}" Font="@ItemBold" Margin="0,0,0,4"/>
+    <Element Layout="Row" Height="24" Margin="0,0,0,6">
+      <Element Width="26" Command="volume.down" Momentary="true" Background="@ButtonFace" BorderBrush="@ButtonBorder" BorderThickness="1" SelectedBackground="@ItemSelected">
+        <Text Content="&#xE738;" Font="@SipGlyph" TextAlign="Center"/>
+      </Element>
+      <Element Layout="Row" Width="*" Padding="6,5,6,5">
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol1}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol2}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol3}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol4}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol5}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol6}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol7}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol8}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol9}"/>
+        <Element Width="*" Margin="0,0,1,0" Background="{Vol10}"/>
+      </Element>
+      <Element Width="26" Command="volume.up" Momentary="true" Background="@ButtonFace" BorderBrush="@ButtonBorder" BorderThickness="1" SelectedBackground="@ItemSelected">
+        <Text Content="&#xE710;" Font="@SipGlyph" TextAlign="Center"/>
+      </Element>
+    </Element>
+    <Element Height="22" Command="volume.mute" Momentary="true" Background="@ButtonFace" BorderBrush="@ButtonBorder" BorderThickness="1" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Text Content="{MuteLabel}" TextAlign="Center" Font="@ItemBold"/>
+    </Element>
+    <Text Content="Changes apply to the system volume." Font="@SmallFont" Foreground="@AppSubText" Margin="0,8,0,0" Wrap="true"/>
+  </Element>
+
+  <Element Name="PageToday" Layout="Stack" Height="*" Padding="6,4,6,4" Visible="false">
+    <Text Content="Appearance" Font="@AppHeaderFont" Foreground="@AppHeaderText" Margin="0,0,0,4"/>
+    <Text Content="Select a theme for the Today screen and the whole shell:" Font="@SmallFont" Foreground="@AppSubText" Wrap="true" Margin="0,0,0,4"/>
+    <Repeater Name="Themes" Layout="Stack" BorderBrush="@FieldBorder" BorderThickness="1">
+      <Element Height="20" Command="{Item.Command}" Background="{Item.Fill}" Padding="6,0,6,0" Selectable="true" Momentary="true"
+               SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText" BorderBrush="@ListSeparator" BorderThickness="0,0,0,1">
+        <Text Content="{Item.Name}"/>
+      </Element>
+    </Repeater>
+  </Element>
+
+  <!-- About, laid out like 6.1's: brand band, details, and Version / Device ID / Copyrights tabs -->
+  <Element Name="PageAbout" Layout="Stack" Height="*" Visible="false">
+    <Element Name="AboutBrand" Layout="Row" Height="48" Padding="8,6,8,6" Background="@TitleBar" Foreground="@TitleText">
+      <Image Source="@StartFlag" Width="32" Height="32" VAlign="Center" Margin="0,0,8,0"/>
+      <Element Layout="Stack" Width="*">
+        <Text Content="{AboutProduct}" Font="@LargeBold" Height="*"/>
+        <Text Content="{AboutEdition}" Font="@SmallFont" Height="*"/>
+      </Element>
+    </Element>
+    <Element Name="AboutScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+      <Repeater Name="AboutRows" Layout="Stack">
+        <Element Layout="Stack" Padding="7,3,9,3" BorderBrush="@ListSeparator" BorderThickness="0,0,0,1">
+          <Text Content="{Item.Label}" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="{Item.Value}" Wrap="true"/>
+        </Element>
+      </Repeater>
+    </Element>
+    <Element Layout="Row" Height="@TabHeight" Background="@TabStrip" BorderBrush="@AppHeaderLine" BorderThickness="0,1,0,0">
+      <Element Command="about:Version" Background="{AboutTabVersion}" Padding="7,0,7,0" BorderBrush="@TabBorder" BorderThickness="0,0,1,0">
+        <Text Content="Version" Font="@TabFont"/>
+      </Element>
+      <Element Command="about:Device" Background="{AboutTabDevice}" Padding="7,0,7,0" BorderBrush="@TabBorder" BorderThickness="0,0,1,0">
+        <Text Content="Device ID" Font="@TabFont"/>
+      </Element>
+      <Element Command="about:Copyrights" Background="{AboutTabCopyrights}" Padding="7,0,7,0" BorderBrush="@TabBorder" BorderThickness="0,0,1,0">
+        <Text Content="Copyrights" Font="@TabFont"/>
+      </Element>
+    </Element>
+  </Element>
+
+  <Element Name="PageDetail" Layout="Stack" Height="*" Padding="8,8,8,8" Visible="false">
+    <Text Content="{DetailTitle}" Font="@AppHeaderFont" Foreground="@AppHeaderText" Margin="0,0,0,6"/>
+    <Text Content="This setting is not available yet." Wrap="true"/>
+  </Element>
+
+  <Element Name="Tabs" Layout="Row" Height="@TabHeight" Background="@TabStrip" BorderBrush="@AppHeaderLine" BorderThickness="0,1,0,0">
+    <Element Command="tab:Personal" Background="{TabPersonal}" Padding="7,0,7,0" BorderBrush="@TabBorder" BorderThickness="0,0,1,0">
+      <Text Content="Personal" Font="@TabFont"/>
+    </Element>
+    <Element Command="tab:System" Background="{TabSystem}" Padding="7,0,7,0" BorderBrush="@TabBorder" BorderThickness="0,0,1,0">
+      <Text Content="System" Font="@TabFont"/>
+    </Element>
+    <Element Command="tab:Connections" Background="{TabConnections}" Padding="7,0,7,0" BorderBrush="@TabBorder" BorderThickness="0,0,1,0">
+      <Text Content="Connections" Font="@TabFont"/>
+    </Element>
+  </Element>
+
+</Uix>

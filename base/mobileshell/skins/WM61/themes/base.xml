@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared fonts, metrics, images and strings. Color themes inherit this with Base="base.xml". -->
+<Theme Name="Base">
+  <Font Name="Default" Family="Tahoma" Size="11.5"/>
+  <Font Name="TitleFont" Family="Tahoma" Size="12.5" Weight="Bold"/>
+  <Font Name="ClockFont" Family="Tahoma" Size="11" Weight="Bold"/>
+  <Font Name="DateFont" Family="Tahoma" Size="12" Weight="Bold"/>
+  <Font Name="ItemFont" Family="Tahoma" Size="11.5"/>
+  <Font Name="ItemBold" Family="Tahoma" Size="11.5" Weight="Bold"/>
+  <Font Name="SoftKeyFont" Family="Tahoma" Size="12" Weight="Bold"/>
+  <Font Name="MenuFont" Family="Tahoma" Size="11" Weight="Bold"/>
+  <Font Name="StatusGlyph" Family="Segoe MDL2 Assets" Size="11"/>
+  <Font Name="BellGlyph" Family="Segoe MDL2 Assets" Size="10"/>
+  <Font Name="SmallFont" Family="Tahoma" Size="9"/>
+  <Font Name="AppHeaderFont" Family="Tahoma" Size="12" Weight="Bold"/>
+  <Font Name="TabFont" Family="Tahoma" Size="10.5"/>
+
+  <Metric Name="TitleHeight" Value="26"/>
+  <Metric Name="SoftKeyHeight" Value="25"/>
+  <Metric Name="TodayDateHeight" Value="33"/>
+  <Metric Name="TodayItemHeight" Value="21"/>
+  <Metric Name="TodayIcon" Value="16"/>
+  <Metric Name="StartMenuWidth" Value="138"/>
+  <Metric Name="MenuItemHeight" Value="18"/>
+  <Metric Name="MenuIcon" Value="14"/>
+  <Metric Name="FlagSize" Value="18"/>
+  <Metric Name="TabHeight" Value="22"/>
+  <Metric Name="SettingsCellWidth" Value="80"/>
+  <Metric Name="SettingsCellHeight" Value="46"/>
+  <Metric Name="SettingsIcon" Value="22"/>
+
+  <Image Name="StartFlag" Source="..\assets\startflag.png" Scale="4"/>
+  <ImageSet Prefix="Icon." Directory="..\assets\icons" Scale="2"/>
+
+  <String Name="StartLabel" Value="Start"/>
+  <String Name="CloseOk" Value="ok"/>
+  <String Name="CloseX" Value="X"/>
+
+  <!-- Light app surfaces, shared by every color theme unless overridden -->
+  <Color Name="AppBackground" Value="#FFFFFF"/>
+  <Color Name="AppText" Value="#000000"/>
+  <Color Name="AppSubText" Value="#555555"/>
+  <Color Name="AppHeaderLine" Value="#B0B0B0"/>
+  <Color Name="TabBorder" Value="#A0A0A0"/>
+  <Brush Name="TabStrip" Type="Gradient">
+    <Stop Offset="0" Color="#E8E8E8"/>
+    <Stop Offset="1" Color="#C8C8C8"/>
+  </Brush>
+  <Color Name="TabActive" Value="#FFFFFF"/>
+  <Brush Name="TabInactive" Type="Gradient">
+    <Stop Offset="0" Color="#E0E0E0"/>
+    <Stop Offset="1" Color="#BDBDBD"/>
+  </Brush>
+  <Color Name="ItemSelectedText" Value="#FFFFFF"/>
+
+  <!-- File Explorer -->
+  <Font Name="FileGlyph" Family="Segoe MDL2 Assets" Size="13"/>
+  <Color Name="FolderColor" Value="#E2A82A"/>
+  <Color Name="DriveColor" Value="#66778A"/>
+  <Metric Name="FileRowHeight" Value="20"/>
+  <Image Name="FolderIcon" Source="..\assets\folder.png" Scale="3"/>
+
+  <!-- Office Mobile -->
+  <Font Name="DocFont" Family="Tahoma" Size="11.5"/>
+  <Font Name="SlideTitleFont" Family="Tahoma" Size="17" Weight="Bold"/>
+  <Font Name="SlideFont" Family="Tahoma" Size="12"/>
+  <Metric Name="SheetHeaderWidth" Value="20"/>
+  <Metric Name="SheetCellWidth" Value="44"/>
+  <Metric Name="SheetRowHeight" Value="17"/>
+  <Color Name="SlideText" Value="#F2F2F2"/>
+  <Color Name="SlideTitleText" Value="#FFFFFF"/>
+
+  <!-- Status indicators and the status panel -->
+  <Color Name="TitleDim" Value="#55FFFFFF"/>
+  <Color Name="BatteryLow" Value="#FF5A4A"/>
+  <Font Name="ChargeGlyph" Family="Segoe MDL2 Assets" Size="9"/>
+  <Color Name="VolumeOff" Value="#40FFFFFF"/>
+  <Color Name="VolumeOn" Value="#FFFFFF"/>
+  <Metric Name="StatusPanelWidth" Value="168"/>
+  <String Name="OwnerPrompt" Value="Tap here to set owner information"/>
+
+  <!-- Menus, notifications, input panel, tap and hold -->
+  <Font Name="SipFont" Family="Tahoma" Size="8.5"/>
+  <Font Name="SipGlyph" Family="Segoe MDL2 Assets" Size="8"/>
+  <Font Name="SmallItalic" Family="Tahoma" Size="10" Style="Italic"/>
+  <Font Name="LargeBold" Family="Tahoma" Size="14" Weight="Bold"/>
+  <Font Name="CalcDisplayFont" Family="Tahoma" Size="20" Weight="Bold"/>
+  <Font Name="CalcKeyFont" Family="Tahoma" Size="12" Weight="Bold"/>
+  <Metric Name="PopupItemHeight" Value="18"/>
+  <Metric Name="PopupSeparatorHeight" Value="5"/>
+  <Metric Name="PopupMinWidth" Value="96"/>
+  <Metric Name="NotifyCaptionHeight" Value="20"/>
+  <Metric Name="SipKeyHeight" Value="16"/>
+  <Metric Name="HoldRingSize" Value="32"/>
+  <Metric Name="HoldRingOffset" Value="-16"/>
+  <Metric Name="DragSlop" Value="6"/>
+  <Metric Name="ListItemHeight" Value="30"/>
+  <Metric Name="DayCellWidth" Value="34"/>
+  <Metric Name="DayCellHeight" Value="23"/>
+  <Image Name="HoldRing" Source="..\assets\holdring.png" Scale="3"/>
+  <String Name="NotInstalled" Value="This program is not installed yet."/>
+  <String Name="NotifyDismiss" Value="Dismiss"/>
+  <String Name="NotifyHide" Value="Hide"/>
+
+  <Color Name="NotifyBackground" Value="#FFFFFF"/>
+  <Color Name="NotifyBorder" Value="#707070"/>
+  <Color Name="NotifyText" Value="#000000"/>
+  <Brush Name="ButtonFace" Type="Gradient">
+    <Stop Offset="0" Color="#FFFFFF"/>
+    <Stop Offset="1" Color="#DADADA"/>
+  </Brush>
+  <Color Name="ButtonBorder" Value="#8A8A8A"/>
+
+  <Color Name="SipBackground" Value="#C8C8C8"/>
+  <Color Name="SipText" Value="#000000"/>
+  <Color Name="SipKeyBorder" Value="#808080"/>
+  <Brush Name="SipKey" Type="Gradient">
+    <Stop Offset="0" Color="#FFFFFF"/>
+    <Stop Offset="1" Color="#E2E2E2"/>
+  </Brush>
+  <Color Name="SipKeyPressedText" Value="#FFFFFF"/>
+
+  <Color Name="ScrollTrack" Value="#E4E4E4"/>
+  <Color Name="ListSeparator" Value="#D8D8D8"/>
+  <Color Name="FieldNormal" Value="#FFFFFF"/>
+  <Color Name="FieldActive" Value="#FFFFE6"/>
+  <Color Name="FieldBorder" Value="#8C8C8C"/>
+  <Brush Name="IndexBar" Type="Gradient">
+    <Stop Offset="0" Color="#F2F2F2"/>
+    <Stop Offset="1" Color="#D9D9D9"/>
+  </Brush>
+
+  <Color Name="DayText" Value="#000000"/>
+  <Color Name="DayOtherText" Value="#A8A8A8"/>
+  <Color Name="DayGrid" Value="#D4D4D4"/>
+
+  <Color Name="CalcDisplay" Value="#F4F8F0"/>
+  <Brush Name="CalcKey" Type="Gradient">
+    <Stop Offset="0" Color="#FFFFFF"/>
+    <Stop Offset="1" Color="#D8D8D8"/>
+  </Brush>
+  <Color Name="CalcKeyBorder" Value="#8C8C8C"/>
+</Theme>

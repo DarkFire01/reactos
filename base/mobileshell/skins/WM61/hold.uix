@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tap and hold feedback: a ring of dots circling the press point until the context menu opens. -->
+<Uix Name="Hold">
+  <Element Name="HoldRoot" Visible="false">
+    <Image Name="HoldRing" Layer="true" Source="@HoldRing" Width="@HoldRingSize" Height="@HoldRingSize"
+           HAlign="Left" VAlign="Top" X="{HoldX}" Y="{HoldY}" Margin="@HoldRingOffset,@HoldRingOffset,0,0"
+           Spin="0.5" Reveal="0,0,0.1,0"/>
+  </Element>
+</Uix>

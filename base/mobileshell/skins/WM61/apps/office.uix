@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Office Mobile folder, hosted by markupapp.exe. -->
+<Uix Name="Office" Title="Office Mobile" Close="ok" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+  <Element Layout="Row" Height="40" Padding="8,4,8,4" Background="@IndexBar" BorderBrush="@ListSeparator" BorderThickness="0,0,0,1">
+    <Image Source="@Icon.Office" Width="30" Height="30" VAlign="Center" Margin="0,0,8,0"/>
+    <Element Layout="Stack" Width="*">
+      <Text Content="ReactOS Office Mobile" Font="@ItemBold" Foreground="@AppHeaderText"/>
+      <Text Content="Productivity, pocket sized" Font="@SmallFont" Foreground="@AppSubText"/>
+    </Element>
+  </Element>
+  <Element Layout="Wrap" Padding="0,8,0,4">
+    <Element Width="@SettingsCellWidth" Height="58" Layout="Stack" Command="launch:Writer" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Word" Width="32" Height="32" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Writer Mobile" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="58" Layout="Stack" Command="launch:Sheets" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Excel" Width="32" Height="32" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Sheets Mobile" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="58" Layout="Stack" Command="launch:Slides" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.PowerPoint" Width="32" Height="32" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Slides Mobile" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+    <Element Width="@SettingsCellWidth" Height="58" Layout="Stack" Command="launch:Notes" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.OneNote" Width="32" Height="32" HAlign="Center" Margin="0,3,0,1"/>
+      <Text Content="Notes Mobile" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+    </Element>
+  </Element>
+  <Text Wrap="true" Font="@SmallFont" Foreground="@AppSubText" Padding="8,6,8,4"
+        Content="Documents live in My Documents. Every list has a find box that searches names and what is inside. Menu, Show All Folders also lists the PC's own Documents, read only."/>
+</Uix>

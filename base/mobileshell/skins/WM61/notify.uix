@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification bubble, owned by MobileUI. It drops from the title bar and takes over the soft keys. -->
+<Uix Name="Notify" SoftKeyLeft="@NotifyDismiss" SoftKeyRight="@NotifyHide">
+  <Element Name="NotifyRoot" Visible="false">
+    <Element Name="NotifyBubble" Layer="true" Y="@TitleHeight" Margin="3,1,3,0" VAlign="Top" Layout="Stack"
+             Background="@NotifyBackground" BorderBrush="@NotifyBorder" BorderThickness="1"
+             Foreground="@NotifyText" Reveal="0,-12,0.14,0">
+
+      <Element Layout="Row" Height="@NotifyCaptionHeight" Background="@TitleBar" Padding="6,0,2,0" Foreground="@TitleText">
+        <Text Content="{NotifyTitle}" Font="@ItemBold" Width="*"/>
+        <Element Width="20" Command="notify.hide" Momentary="true" SelectedBackground="@TitlePressed">
+          <Text Content="&#xE70D;" Font="@StatusGlyph" TextAlign="Center"/>
+        </Element>
+      </Element>
+
+      <Text Content="{NotifyBody}" Wrap="true" Padding="7,7,7,6"/>
+
+      <Element Layout="Row" Padding="6,0,6,6">
+        <Element Width="*"/>
+        <Element Command="notify.dismiss" Momentary="true" Padding="12,3,12,3" Background="@ButtonFace"
+                 BorderBrush="@ButtonBorder" BorderThickness="1" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+          <Text Content="@NotifyDismiss" Font="@ItemBold"/>
+        </Element>
+      </Element>
+    </Element>
+  </Element>
+</Uix>

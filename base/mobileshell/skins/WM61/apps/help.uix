@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Getting Started, hosted by MarkupApp. Plain scrolling text with links to the apps it talks about. -->
+<Uix Name="Help" Title="Getting Started" Close="ok" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+  <Element Scroll="true" Height="*" Layout="Stack" Padding="7,6,9,6" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+    <Text Content="Getting Started" Font="@AppHeaderFont" Foreground="@AppHeaderText" Margin="0,0,0,6"/>
+
+    <Text Content="Start menu" Font="@ItemBold"/>
+    <Text Wrap="true" Margin="0,0,0,8" Content="Tap Start in the title bar to open your programs. Tap anywhere outside the menu to close it."/>
+
+    <Text Content="Soft keys" Font="@ItemBold"/>
+    <Text Wrap="true" Margin="0,0,0,8" Content="The two labels at the bottom change with every screen. The right one usually opens a menu. On a keyboard, F1 and F2 press them."/>
+
+    <Text Content="Tap and hold" Font="@ItemBold"/>
+    <Text Wrap="true" Margin="0,0,0,8" Content="Hold the stylus on an item until the circle of dots completes to see more commands for it, for example on a contact."/>
+
+    <Text Content="Entering text" Font="@ItemBold"/>
+    <Text Wrap="true" Margin="0,0,0,8" Content="Tap the keyboard button in the middle of the soft key bar to show or hide the input panel."/>
+
+    <Text Content="Notifications" Font="@ItemBold"/>
+    <Text Wrap="true" Margin="0,0,0,8" Content="Messages drop down from the title bar. Hide keeps them for later behind the bell icon, Dismiss removes them."/>
+
+    <Text Content="Try it" Font="@ItemBold" Margin="0,4,0,4"/>
+    <Element Layout="Row" Height="22" Command="launch:Contacts" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Contacts" Width="16" Height="16" VAlign="Center" Margin="2,0,6,0"/>
+      <Text Content="Open Contacts" Width="*"/>
+    </Element>
+    <Element Layout="Row" Height="22" Command="launch:Calendar" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Calendar" Width="16" Height="16" VAlign="Center" Margin="2,0,6,0"/>
+      <Text Content="Open Calendar" Width="*"/>
+    </Element>
+    <Element Layout="Row" Height="22" Command="launch:Settings" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+      <Image Source="@Icon.Owner" Width="16" Height="16" VAlign="Center" Margin="2,0,6,0"/>
+      <Text Content="Set owner information" Width="*"/>
+    </Element>
+  </Element>
+</Uix>

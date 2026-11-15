@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calculator app. Keys are plain calc:<key> commands. -->
+<Uix Name="Calculator" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@CalcKeyFont" Padding="4">
+  <Element Layout="Row" Height="38" Background="@CalcDisplay" BorderBrush="@FieldBorder" BorderThickness="1" Padding="5,0,6,0" Margin="2,2,2,6">
+    <Text Content="{Memory}" Font="@SmallFont" Foreground="@AppSubText" Width="14" TextVAlign="Top"/>
+    <Text Content="{Display}" Font="@CalcDisplayFont" TextAlign="Right" Width="*"/>
+  </Element>
+  <Element Layout="Stack" Height="*">
+    <Element Layout="Row" Height="*">
+      <Element Width="*" Command="calc:MC" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="MC" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:7" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="7" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:8" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="8" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:9" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="9" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:/" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="÷" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:C" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="C" TextAlign="Center"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="*">
+      <Element Width="*" Command="calc:MR" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="MR" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:4" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="4" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:5" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="5" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:6" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="6" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:*" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="×" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:CE" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="CE" TextAlign="Center"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="*">
+      <Element Width="*" Command="calc:M+" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="M+" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:1" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="1" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:2" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="2" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:3" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="3" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:-" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="−" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:sqrt" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="√" TextAlign="Center"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="*">
+      <Element Width="*" Command="calc:%" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="%" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:0" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="0" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:neg" Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="±" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:." Margin="2" Background="@CalcKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="." TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:+" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="+" TextAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="calc:=" Margin="2" Background="@CalcOpKey" BorderBrush="@CalcKeyBorder" BorderThickness="1" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+        <Text Content="=" TextAlign="Center"/>
+      </Element>
+    </Element>
+  </Element>
+</Uix>
