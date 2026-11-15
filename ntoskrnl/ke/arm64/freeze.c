@@ -24,6 +24,9 @@ PKPRCB KiFreezeOwner;
 /* The processors the current freeze stopped, one still starting up is left alone */
 static KAFFINITY KiFreezeSet;
 
+/* Processors that never answered a freeze IPI, they are left running */
+KAFFINITY KiFreezeUnanswered;
+
 /* FUNCTIONS *****************************************************************/
 
 VOID
@@ -92,7 +95,7 @@ KxFreezeExecution(VOID)
 {
     PKPRCB CurrentPrcb = KeGetCurrentPrcb();
     PKPRCB TargetPrcb;
-    ULONG i;
+    ULONG i, Waited;
 
     if (KiFreezeOwner == CurrentPrcb)
         return;
@@ -110,7 +113,7 @@ KxFreezeExecution(VOID)
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_OWNER | IPI_FROZEN_FLAG_ACTIVE;
 
     /* Only processors that take interrupts can answer the IPI */
-    KiFreezeSet = KeActiveProcessors & ~CurrentPrcb->SetMember;
+    KiFreezeSet = KeActiveProcessors & ~CurrentPrcb->SetMember & ~KiFreezeUnanswered;
     for (i = 0; i < (ULONG)KeNumberProcessors; i++)
     {
         if (KiFreezeSet & AFFINITY_MASK(i))
@@ -125,10 +128,19 @@ KxFreezeExecution(VOID)
         if (!(KiFreezeSet & AFFINITY_MASK(i)))
             continue;
 
+        /* A lost IPI must not hang the debugger, about a second is plenty */
         TargetPrcb = KiProcessorBlock[i];
-        while (TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_FROZEN)
+        for (Waited = 0; TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_FROZEN; Waited++)
         {
-            YieldProcessor();
+            if (Waited >= 100000)
+            {
+                TargetPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
+                KiFreezeSet &= ~AFFINITY_MASK(i);
+                KiFreezeUnanswered |= AFFINITY_MASK(i);
+                break;
+            }
+
+            KeStallExecutionProcessor(10);
             KeMemoryBarrier();
         }
     }
