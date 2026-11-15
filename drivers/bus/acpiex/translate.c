@@ -237,21 +237,9 @@ RhTranslateConnection(
             break;
 
         case SERIAL_BUS_DESCRIPTOR:
+            /* The bus type goes through as is, vendor types 0xC0 and up included, like SPMI */
             Translated->u.Connection.Class = CM_RESOURCE_CONNECTION_CLASS_SERIAL;
-            switch (Descriptor[RH_SERIAL_TYPE])
-            {
-                case SERIAL_BUS_I2C_DESCRIPTOR_TYPE:
-                    Translated->u.Connection.Type = CM_RESOURCE_CONNECTION_TYPE_SERIAL_I2C;
-                    break;
-                case SERIAL_BUS_SPI_DESCRIPTOR_TYPE:
-                    Translated->u.Connection.Type = CM_RESOURCE_CONNECTION_TYPE_SERIAL_SPI;
-                    break;
-                case SERIAL_BUS_UART_DESCRIPTOR_TYPE:
-                    Translated->u.Connection.Type = CM_RESOURCE_CONNECTION_TYPE_SERIAL_UART;
-                    break;
-                default:
-                    return STATUS_NOT_SUPPORTED;
-            }
+            Translated->u.Connection.Type = Descriptor[RH_SERIAL_TYPE];
             Shared = (Descriptor[RH_SERIAL_GENERAL_FLAGS] & 0x4) != 0;
             break;
 
