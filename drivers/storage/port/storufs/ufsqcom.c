@@ -92,7 +92,7 @@ UfsIsQualcommController(
             }
         }
 
-        DPRINT1("UFS: hardware ID %ws, Qualcomm %u\n", HardwareIds, Found);
+        DPRINT("UFS: hardware ID %ws, Qualcomm %u\n", HardwareIds, Found);
     }
 
     ExFreePoolWithTag(HardwareIds, 'sfuS');
@@ -117,7 +117,7 @@ UfsQcomBeforeLinkStartup(
     }
 
     Version = UfsRead(Adapter, QCOM_UFS_HW_VERSION);
-    DPRINT1("UFS: Qualcomm HW 0x%08lx, TX FSM %lu\n", Version, State);
+    DPRINT("UFS: Qualcomm HW 0x%08lx, TX FSM %lu\n", Version, State);
 
     if ((Version >> 16) < 0x4000)
     {
@@ -144,5 +144,5 @@ UfsQcomAfterLinkStartup(
         Lanes = 0;
 
     UfsWrite(Adapter, QCOM_UFS_PHY_TX_LANE_ENABLE, (1 << Lanes) - 1);
-    DPRINT1("UFS: Qualcomm TX lanes %lu enabled\n", Lanes);
+    DPRINT("UFS: Qualcomm TX lanes %lu enabled\n", Lanes);
 }
