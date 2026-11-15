@@ -924,6 +924,29 @@ UacpiNtIrqLibResolveVector(
     ULONG Assigned = 0;
     NTSTATUS Status;
 
+#ifdef _M_ARM64
+    /*
+     * The kernel dispatches a secondary line by its GSIV and the HAL takes its
+     * IRQL from the primary, so the HAL answers here as for any other line.
+     */
+    if (UacpiNtIsSecondaryGsiv(Gsiv) && UacpiNtHalGetInterruptVector)
+    {
+        HalVector = UacpiNtHalGetInterruptVector(Isa, 0, Gsiv, Gsiv, &HalIrql, &HalAffinity);
+        if (!HalVector)
+        {
+            DPRINT1("uACPI-NT: HAL has no vector for secondary GSIV %lu\n", Gsiv);
+            return STATUS_NOT_SUPPORTED;
+        }
+
+        *Vector = HalVector;
+        *Irql = HalIrql;
+        *Affinity = HalAffinity ? HalAffinity : KeQueryActiveProcessors();
+        *Polarity = UacpiNtGsivPolarity(Gsiv);
+        *Mode = UacpiNtGsivMode(Gsiv);
+        return STATUS_SUCCESS;
+    }
+#endif
+
     if (UacpiNtIsSecondaryGsiv(Gsiv))
     {
         Status = UacpiNtResolveSecondaryVector(Gsiv, &Assigned, &VectorIrql);
