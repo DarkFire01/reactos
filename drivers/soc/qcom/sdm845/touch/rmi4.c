@@ -429,7 +429,10 @@ RmiConfigureF12(
     if (!NT_SUCCESS(Status))
         return Status;
     if (!(General & RMI_F12_QUERY_HAS_DESC))
+    {
+        DPRINT1("F12 has no register descriptors, query 0 is %02x\n", General);
         return STATUS_NOT_SUPPORTED;
+    }
 
     QueryAddress = Device->F12.QueryBase + 1;
     Status = RmiReadRegisterDesc(Device, QueryAddress, &QueryDesc);
@@ -445,7 +448,11 @@ RmiConfigureF12(
     /* Control 8 carries the maximum X and Y the sensor reports */
     Item = RmiFindRegister(&ControlDesc, RMI_F12_CTRL_SENSOR_TUNING);
     if (!Item || Item->Size > sizeof(Tuning))
+    {
+        DPRINT1("F12 control 8 %s, %lu control registers\n",
+                Item ? "too large" : "missing", ControlDesc.Count);
         return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
     Index = RmiRegisterIndex(&ControlDesc, RMI_F12_CTRL_SENSOR_TUNING);
     Status = RmiReadBlock(Device, Device->F12.ControlBase + (USHORT)Index, Tuning, Item->Size);
@@ -466,7 +473,10 @@ RmiConfigureF12(
     /* Data 1 is the list of sensed objects, one eight byte slot each */
     Item = RmiFindRegister(&DataDesc, RMI_F12_DATA_SENSED_OBJECTS);
     if (!Item)
+    {
+        DPRINT1("F12 data 1 missing, %lu data registers\n", DataDesc.Count);
         return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
     Device->Data1Offset = RmiRegisterByteOffset(&DataDesc, RMI_F12_DATA_SENSED_OBJECTS);
     Device->FingerCount = min(Item->SubpacketCount, QCTOUCH_MAX_CONTACTS);
@@ -475,7 +485,10 @@ RmiConfigureF12(
     while (Device->Data1Offset + Device->FingerCount * RMI_F12_FINGER_BYTES > RMI_READ_MAX)
         Device->FingerCount--;
     if (Device->FingerCount == 0)
+    {
+        DPRINT1("F12 data 1 at offset %lu leaves no room for an object\n", Device->Data1Offset);
         return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
     Device->DataPacketSize = Device->Data1Offset + Device->FingerCount * RMI_F12_FINGER_BYTES;
 
