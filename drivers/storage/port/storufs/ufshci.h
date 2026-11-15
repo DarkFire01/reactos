@@ -170,11 +170,17 @@ typedef struct _UFS_UTRD
     ULONG Dw3;
     ULONG UcdbaLower;         /* UTP Command Descriptor base, low */
     ULONG UcdbaUpper;         /* UTP Command Descriptor base, high */
-    USHORT ResponseOffset;    /* in dwords from UCD base */
     USHORT ResponseLength;    /* in dwords */
-    USHORT PrdtOffset;        /* in dwords from UCD base */
+    USHORT ResponseOffset;    /* in dwords from UCD base */
     USHORT PrdtLength;        /* in entries (0 for no data) */
+    USHORT PrdtOffset;        /* in dwords from UCD base */
 } UFS_UTRD, *PUFS_UTRD;
+
+/* UFSHCI transfer request descriptor layout */
+C_ASSERT(sizeof(UFS_UTRD) == 32);
+C_ASSERT(FIELD_OFFSET(UFS_UTRD, ResponseLength) == 24);
+C_ASSERT(FIELD_OFFSET(UFS_UTRD, PrdtLength) == 28);
+C_ASSERT(FIELD_OFFSET(UFS_UTRD, PrdtOffset) == 30);
 
 /* PRDT entry, 16 bytes. ByteCount holds (length - 1), dword granular. */
 typedef struct _UFS_PRDT_ENTRY
