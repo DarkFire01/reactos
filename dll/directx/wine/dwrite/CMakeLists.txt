@@ -34,5 +34,7 @@ set_module_type(dwrite win32dll ENTRYPOINT DllMain 12)
 target_link_libraries(dwrite wine uuid oldnames freetype)
 add_dependencies(dwrite psdk)
 add_importlibs(dwrite shell32 shlwapi oleaut32 ole32 combase user32 user32_vista gdi32 msvcrt advapi32 advapi32_vista kernel32 kernel32_vista ntdll)
-add_cd_file(TARGET dwrite DESTINATION reactos/system32 FOR all)
+if(NOT EXISTS ${WINE_DIRECTX_SLIPSTREAM}/dwrite.dll)
+    add_cd_file(TARGET dwrite DESTINATION reactos/system32 FOR all)
+endif()
 set_wine_module_FIXME(dwrite) # CORE-5743: No ARRAY_SIZE macro
