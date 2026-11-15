@@ -65,7 +65,7 @@ KiApReportStep(
     _In_ PKPRCB Prcb,
     _In_ ULONG Step)
 {
-    CHAR Text[] = "AP 0 step 0";
+    CHAR Text[] = "AP 0 step 00";
 
     KiApStartStep = Step;
     KeMemoryBarrier();
@@ -73,8 +73,9 @@ KiApReportStep(
         return;
 
     Text[3] = (CHAR)('0' + (Prcb->Number % 10));
-    Text[10] = (CHAR)('0' + (Step % 10));
-    VidDisplayStringXY(Text, 8, 1200 + 16 * (Prcb->Number % 8), FALSE);
+    Text[10] = (CHAR)('0' + ((Step / 10) % 10));
+    Text[11] = (CHAR)('0' + (Step % 10));
+    VidDisplayStringXY(Text, 8, 400 + 16 * (Prcb->Number % 8), FALSE);
 }
 static LDR_DATA_TABLE_ENTRY LdrCoreEntries[3];
 ULONG64 KeFeatureBits;
@@ -367,6 +368,8 @@ KiSystemStartup(
 
     /* Secondary processors start one at a time, the count goes up once this one is set up */
     Cpu = KeNumberProcessors;
+    if (Cpu)
+        KiApStartStep = 10;
 
     if (Cpu == 0)
     {
@@ -385,15 +388,19 @@ KiSystemStartup(
     Pcr = CONTAINING_RECORD(LoaderBlock->Prcb, KIPCR, Prcb);
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
     KiInitializePcr(Pcr, Cpu, InitialThread);
+    if (Cpu)
+        KiApStartStep = 11;
     KiArm64SetPcr(Pcr);
     if (Cpu)
-        KiApReportStep(&Pcr->Prcb, 0);
+        KiApReportStep(&Pcr->Prcb, 12);
     KiEarlyTrace("KiSystemStartup: PCR %p\n", Pcr);
 
     KiProcessorBlock[Cpu] = &Pcr->Prcb;
     InitialThread->ApcState.Process = (PVOID)LoaderBlock->Process;
 
     KiInitializeCpu(Pcr);
+    if (Cpu)
+        KiApReportStep(&Pcr->Prcb, 13);
     KiEarlyTrace("KiSystemStartup: processor %d set up\n", Cpu);
 
     /* Code walking the processors finds a PRCB for every number below the count */
