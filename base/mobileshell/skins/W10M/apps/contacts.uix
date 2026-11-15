@@ -3,18 +3,18 @@
 <Uix Name="Contacts" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
 
   <Element Name="PageList" Layout="Stack" Height="*">
-    <Text Content="PEOPLE" Font="@AppHeaderFont" Padding="12,10,12,8"/>
-    <Element Layout="Row" Height="36" Margin="12,0,12,6" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldNormal">
+    <Text Content="PEOPLE" Font="@BaseFont" Padding="12,12,12,8"/>
+    <Element Layout="Row" Height="32" Margin="12,0,12,8" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldFill">
       <Element Width="*" Command="search.focus" Padding="8,0,8,0">
         <Text Name="SearchHint" Content="Search" Foreground="@AppSubText"/>
         <Text Content="{SearchText}"/>
       </Element>
       <Element Width="36" Command="search.clear" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE721;" Font="@StatusGlyph" TextAlign="Center" Foreground="@AppSubText"/>
+        <Text Content="&#xE721;" Font="@Glyph16" TextAlign="Center" Foreground="@AppSubText"/>
       </Element>
     </Element>
 
-    <Element Layout="Row" Height="32" Padding="8,0,8,0" Font="@SmallFont" Foreground="@AccentText">
+    <Element Layout="Row" Height="32" Padding="8,0,8,0" Font="@Caption" Foreground="@AccentText">
       <Element Width="*" Command="jump:#ab" Momentary="true" SelectedBackground="@ListPressed"><Text Content="#ab" TextAlign="Center"/></Element>
       <Element Width="*" Command="jump:cde" Momentary="true" SelectedBackground="@ListPressed"><Text Content="cde" TextAlign="Center"/></Element>
       <Element Width="*" Command="jump:fgh" Momentary="true" SelectedBackground="@ListPressed"><Text Content="fgh" TextAlign="Center"/></Element>
@@ -29,15 +29,15 @@
     <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack"
              ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
       <Repeater Name="ContactList" Layout="Stack">
-        <Element Name="c{Item.Id}" Layout="Row" Height="@ListItemHeight" Padding="12,6,12,6"
+        <Element Name="c{Item.Id}" Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11"
                  Command="open:{Item.Id}" HoldCommand="hold:{Item.Id}" Selectable="true"
                  SelectedBackground="@ListPressed">
-          <Element Width="44" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
-            <Text Content="&#xE77B;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+          <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+            <Text Content="&#xE77B;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
           </Element>
           <Element Layout="Stack" Width="*" VAlign="Center">
             <Text Content="{Item.Name}"/>
-            <Text Content="{Item.Detail}" Font="@SmallFont" Foreground="@AppSubText"/>
+            <Text Content="{Item.Detail}" Font="@Caption" Foreground="@AppSubText"/>
           </Element>
         </Element>
       </Repeater>
@@ -46,53 +46,53 @@
   </Element>
 
   <Element Name="PageCard" Layout="Stack" Height="*" Visible="false">
-    <Text Content="PROFILE" Font="@AppHeaderFont" Padding="12,10,12,8"/>
+    <Text Content="PROFILE" Font="@BaseFont" Padding="12,12,12,8"/>
     <Element Layout="Row" Height="100" Padding="12,0,12,12">
       <Element Width="88" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
         <Text Content="&#xE77B;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
       </Element>
-      <Text Content="{CardName}" Font="@PageTitleFont" Wrap="true" Width="*"/>
+      <Text Content="{CardName}" Font="@TitleText" Wrap="true" Width="*"/>
     </Element>
     <Element Name="CardPhoneRow" Layout="Row" Height="60" Padding="12,0,12,0">
       <Text Content="&#xE717;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
       <Element Layout="Stack" Width="*" VAlign="Center">
         <Text Content="Call mobile"/>
-        <Text Content="{CardPhone}" Font="@SmallFont" Foreground="@AppSubText"/>
+        <Text Content="{CardPhone}" Font="@Caption" Foreground="@AppSubText"/>
       </Element>
     </Element>
     <Element Name="CardEmailRow" Layout="Row" Height="60" Padding="12,0,12,0">
       <Text Content="&#xE715;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
       <Element Layout="Stack" Width="*" VAlign="Center">
         <Text Content="Send email"/>
-        <Text Content="{CardEmail}" Font="@SmallFont" Foreground="@AppSubText"/>
+        <Text Content="{CardEmail}" Font="@Caption" Foreground="@AppSubText"/>
       </Element>
     </Element>
     <Element Name="CardCompanyRow" Layout="Row" Height="60" Padding="12,0,12,0">
       <Text Content="&#xE821;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
       <Element Layout="Stack" Width="*" VAlign="Center">
         <Text Content="Company"/>
-        <Text Content="{CardCompany}" Font="@SmallFont" Foreground="@AppSubText"/>
+        <Text Content="{CardCompany}" Font="@Caption" Foreground="@AppSubText"/>
       </Element>
     </Element>
   </Element>
 
   <Element Name="PageEdit" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
-    <Text Content="PEOPLE" Font="@AppHeaderFont" Padding="0,10,0,0"/>
-    <Text Content="{EditTitle}" Font="@PageTitleFont" Margin="0,2,0,12"/>
-    <Text Content="Name" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="field:0" Background="{Fill0}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="PEOPLE" Font="@BaseFont" Padding="0,12,0,0"/>
+    <Text Content="{EditTitle}" Font="@TitleText" Margin="0,2,0,12"/>
+    <Text Content="Name" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="field:0" Background="@FieldFill" BorderBrush="{Fill0}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Edit0}"/>
     </Element>
-    <Text Content="Mobile phone" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="field:1" Background="{Fill1}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="Mobile phone" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="field:1" Background="@FieldFill" BorderBrush="{Fill1}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Edit1}"/>
     </Element>
-    <Text Content="Email" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="field:2" Background="{Fill2}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="Email" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="field:2" Background="@FieldFill" BorderBrush="{Fill2}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Edit2}"/>
     </Element>
-    <Text Content="Company" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="field:3" Background="{Fill3}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="Company" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="field:3" Background="@FieldFill" BorderBrush="{Fill3}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Edit3}"/>
     </Element>
   </Element>

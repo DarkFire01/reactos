@@ -2,17 +2,17 @@
 <!-- Writer Mobile, part of ReactOS Office Mobile (office.exe). -->
 <Uix Name="Writer" Mode="Writer" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
   <Element Name="PageList" Layout="Stack" Height="*">
-    <Text Content="WRITER" Font="@AppHeaderFont" Padding="12,10,12,8"/>
-    <Element Layout="Row" Height="36" Margin="12,0,12,6" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldNormal">
+    <Text Content="WRITER" Font="@BaseFont" Padding="12,12,12,8"/>
+    <Element Layout="Row" Height="32" Margin="12,0,12,8" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldFill">
       <Element Width="*" Command="find.focus" Padding="8,0,8,0">
         <Text Name="FindHint" Content="Search documents" Foreground="@AppSubText"/>
         <Text Content="{FindText}"/>
       </Element>
       <Element Width="36" Command="find.clear" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE721;" Font="@StatusGlyph" TextAlign="Center" Foreground="@AppSubText"/>
+        <Text Content="&#xE721;" Font="@Glyph16" TextAlign="Center" Foreground="@AppSubText"/>
       </Element>
     </Element>
-    <Element Layout="Row" Height="32" Padding="12,0,12,0" Font="@SmallFont">
+    <Element Layout="Row" Height="32" Padding="12,0,12,0" Font="@Caption">
       <Text Content="{ListHeader}" Width="*" Foreground="@AccentText"/>
       <Text Content="{SortLabel}" Foreground="@AppSubText"/>
     </Element>
@@ -23,7 +23,7 @@
           <Image Source="@Icon.Word" Width="40" Height="40" VAlign="Center" Margin="0,0,12,0"/>
           <Element Layout="Stack" Width="*" VAlign="Center">
             <Text Content="{Item.Name}"/>
-            <Text Content="{Item.Detail}" Font="@SmallFont" Foreground="@AppSubText"/>
+            <Text Content="{Item.Detail}" Font="@Caption" Foreground="@AppSubText"/>
           </Element>
         </Element>
       </Repeater>
@@ -32,9 +32,9 @@
   </Element>
   <Element Name="PageEdit" Layout="Stack" Height="*" Visible="false">
     <Element Name="FindBar" Layout="Row" Height="36" Padding="12,0,12,0" Background="@IndexBar" Visible="false">
-      <Text Content="&#xE721;" Font="@StatusGlyph" Foreground="@AppSubText" Margin="0,0,8,0"/>
+      <Text Content="&#xE721;" Font="@Glyph16" Foreground="@AppSubText" Margin="0,0,8,0"/>
       <Text Content="{DocFindText}" Width="*"/>
-      <Text Content="{DocFindCount}" Font="@SmallFont" Foreground="@AppSubText"/>
+      <Text Content="{DocFindCount}" Font="@Caption" Foreground="@AppSubText"/>
     </Element>
     <Element Name="DocScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
       <Text Content="{DocText}" Highlight="{DocFind}" Wrap="true" Font="@DocFont" TextVAlign="Top" Padding="12,10,12,10"/>

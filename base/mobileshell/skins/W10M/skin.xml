@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Windows 10 Mobile style skin. Canvas is the 360x640 effective pixel portrait size, scaled by the host. -->
-<Skin Name="Windows 10 Mobile" Width="360" Height="640" DefaultTheme="Dark">
+<!--
+  Windows 10 Mobile style skin. Fluid: the host picks the scale from the panel density and the
+  canvas width follows the device; 320x533 view pixels is the smallest layout.
+-->
+<Skin Name="Windows 10 Mobile" Width="320" Height="533" Fluid="true" DefaultTheme="Dark">
   <Theme Name="Dark" File="themes\dark.xml"/>
   <Theme Name="Light" File="themes\light.xml"/>
+  <Theme Name="Cobalt" File="themes\cobalt.xml"/>
   <Theme Name="Emerald" File="themes\emerald.xml"/>
   <Theme Name="Crimson" File="themes\crimson.xml"/>
 </Skin>

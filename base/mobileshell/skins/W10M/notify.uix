@@ -1,23 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Toast banner, owned by MobileUI. Slides down over the status bar; tap to keep it for later, X to dismiss. -->
+<!-- Toast, owned by MobileUI. Slides over the status bar; tap keeps it for later, a sideways swipe dismisses it. -->
 <Uix Name="Notify" SoftKeyLeft="@NotifyDismiss" SoftKeyRight="@NotifyHide">
   <Element Name="NotifyRoot" Visible="false">
-    <Element Name="NotifyBanner" Layer="true" VAlign="Top" Layout="Row" Background="@NotifyBackground"
-             BorderBrush="@Accent" BorderThickness="0,0,0,2" Foreground="@NotifyText" Font="@SmallFont"
-             Reveal="0,-60,0.2,0">
+    <Element Name="NotifyBanner" Layer="true" VAlign="Top" Layout="Stack" Background="@NotifyBackground"
+             Foreground="@NotifyText" Font="@Body" Reveal="0,-80,0.3,0"
+             SwipeLeft="notify.dismiss" SwipeRight="notify.dismiss">
 
-      <Element Width="*" Layout="Row" Padding="12,10,0,10" Command="notify.hide" Momentary="true" SelectedBackground="@ListPressed">
-        <Element Width="32" Height="32" VAlign="Top" Background="@Accent" Foreground="@TileText" Margin="0,0,12,0">
-          <Text Content="&#xEA8F;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+      <Element Layout="Row" Height="80" Padding="12,16,12,0" Command="notify.hide" Momentary="true" SelectedBackground="@ListPress">
+        <Element Width="20" Height="20" VAlign="Top" Background="@Accent" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xEA8F;" Font="@Glyph12" TextAlign="Center" TextVAlign="Center"/>
         </Element>
         <Element Layout="Stack" Width="*">
-          <Text Content="{NotifyTitle}" Font="@ToastTitle"/>
-          <Text Content="{NotifyBody}" Wrap="true"/>
+          <Text Content="{NotifyTitle}" Font="@BaseFont" Margin="0,0,0,2"/>
+          <Text Content="{NotifyBody}" Foreground="@BaseMid" Wrap="true" Margin="0,0,0,8"/>
         </Element>
       </Element>
 
-      <Element Width="48" Command="notify.dismiss" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE711;" Font="@StatusGlyph" TextAlign="Center" TextVAlign="Center"/>
+      <!-- Handle bar -->
+      <Element Height="16" Command="notify.dismiss" Momentary="true">
+        <Text Content="&#xE76F;" Font="@Glyph16" Foreground="@BaseHigh" TextAlign="Center" TextVAlign="Center"/>
       </Element>
     </Element>
   </Element>

@@ -1,74 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Shared fonts, metrics, images and strings. dark.xml and light.xml add the colors. -->
+<!-- Shared fonts, metrics, images and strings, in view pixels. The theme files add the colors. -->
 <Theme Name="Base">
-  <!-- Segoe UI when installed, otherwise a font ReactOS ships -->
-  <Font Name="Default" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15"/>
-  <Font Name="TitleFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15" Weight="SemiBold"/>
-  <Font Name="ClockFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="12"/>
-  <Font Name="DateFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15"/>
-  <Font Name="ItemFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15"/>
-  <Font Name="ItemBold" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15" Weight="SemiBold"/>
-  <Font Name="ItemLarge" Family="Segoe UI, Source Sans Pro, Tahoma" Size="20"/>
-  <Font Name="SoftKeyFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="13"/>
-  <Font Name="MenuFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15"/>
-  <Font Name="SmallFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="12"/>
-  <Font Name="SmallItalic" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15"/>
-  <Font Name="AppHeaderFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15" Weight="SemiBold"/>
-  <Font Name="PageTitleFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="24" Weight="Light"/>
-  <Font Name="PivotFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="24" Weight="Light"/>
-  <Font Name="TabFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="24" Weight="Light"/>
-  <Font Name="LargeBold" Family="Segoe UI, Source Sans Pro, Tahoma" Size="20" Weight="SemiBold"/>
-  <Font Name="TileFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="12"/>
-  <Font Name="TileNumber" Family="Segoe UI, Source Sans Pro, Tahoma" Size="34" Weight="Light"/>
-  <Font Name="TileBig" Family="Segoe UI, Source Sans Pro, Tahoma" Size="40" Weight="Light"/>
-  <Font Name="LetterFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="20"/>
-  <Font Name="ToastTitle" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15" Weight="SemiBold"/>
-  <Font Name="DocFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="15"/>
-  <Font Name="SlideTitleFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="26" Weight="Light"/>
-  <Font Name="SlideFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="16"/>
-  <Font Name="SipFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="20"/>
-  <Font Name="SipSmall" Family="Segoe UI, Source Sans Pro, Tahoma" Size="14"/>
-  <Font Name="CalcDisplayFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="46" Weight="Light"/>
-  <Font Name="CalcKeyFont" Family="Segoe UI, Source Sans Pro, Tahoma" Size="20"/>
+  <!-- Type ramp: caption 12, body 15, base 15 semibold, subtitle 20, title 24, subheader 34, header 46 -->
+  <Font Name="Default" Family="Segoe UI, Source Sans Pro" Size="15"/>
+  <Font Name="Body" Family="Segoe UI, Source Sans Pro" Size="15"/>
+  <Font Name="BaseFont" Family="Segoe UI, Source Sans Pro" Size="15" Weight="600"/>
+  <Font Name="Caption" Family="Segoe UI, Source Sans Pro" Size="12"/>
+  <Font Name="Subtitle" Family="Segoe UI, Source Sans Pro" Size="20"/>
+  <Font Name="TitleText" Family="Segoe UI, Source Sans Pro" Size="24" Weight="350"/>
+  <Font Name="SubHeader" Family="Segoe UI, Source Sans Pro" Size="34" Weight="300"/>
+  <Font Name="Header" Family="Segoe UI, Source Sans Pro" Size="46" Weight="300"/>
+  <Font Name="Pivot" Family="Segoe UI, Source Sans Pro" Size="24" Weight="350"/>
+  <Font Name="ClockFont" Family="Segoe UI, Source Sans Pro" Size="13"/>
+  <Font Name="TileLabel" Family="Segoe UI, Source Sans Pro" Size="11"/>
+  <Font Name="TileLive" Family="Segoe UI, Source Sans Pro" Size="15"/>
+  <Font Name="TileNumber" Family="Segoe UI, Source Sans Pro" Size="46" Weight="300"/>
+  <Font Name="AppBarLabel" Family="Segoe UI, Source Sans Pro" Size="15" Weight="600"/>
+  <Font Name="MenuFont" Family="Segoe UI, Source Sans Pro" Size="15"/>
+  <Font Name="KeyFont" Family="Segoe UI, Source Sans Pro" Size="20"/>
+  <Font Name="KeySmall" Family="Segoe UI, Source Sans Pro" Size="15"/>
+  <Font Name="DocFont" Family="Segoe UI, Source Sans Pro" Size="15"/>
+  <Font Name="SlideTitleFont" Family="Segoe UI, Source Sans Pro" Size="34" Weight="300"/>
+  <Font Name="SlideFont" Family="Segoe UI, Source Sans Pro" Size="20"/>
+  <Font Name="CalcDisplayFont" Family="Segoe UI, Source Sans Pro" Size="46" Weight="300"/>
+  <Font Name="CalcKeyFont" Family="Segoe UI, Source Sans Pro" Size="20"/>
 
   <!-- Segoe MDL2 Assets glyphs -->
-  <Font Name="StatusGlyph" Family="Segoe MDL2 Assets" Size="12"/>
-  <Font Name="ChargeGlyph" Family="Segoe MDL2 Assets" Size="10"/>
-  <Font Name="BellGlyph" Family="Segoe MDL2 Assets" Size="12"/>
+  <Font Name="TrayGlyph" Family="Segoe MDL2 Assets" Size="16"/>
   <Font Name="NavGlyph" Family="Segoe MDL2 Assets" Size="20"/>
-  <Font Name="AppBarGlyph" Family="Segoe MDL2 Assets" Size="16"/>
-  <Font Name="TileGlyph" Family="Segoe MDL2 Assets" Size="32"/>
-  <Font Name="ListGlyph" Family="Segoe MDL2 Assets" Size="20"/>
-  <Font Name="ActionGlyph" Family="Segoe MDL2 Assets" Size="18"/>
-  <Font Name="SipGlyph" Family="Segoe MDL2 Assets" Size="16"/>
-  <Font Name="FileGlyph" Family="Segoe MDL2 Assets" Size="22"/>
+  <Font Name="Glyph16" Family="Segoe MDL2 Assets" Size="16"/>
+  <Font Name="Glyph12" Family="Segoe MDL2 Assets" Size="12"/>
+  <Font Name="Glyph20" Family="Segoe MDL2 Assets" Size="20"/>
+  <Font Name="Glyph24" Family="Segoe MDL2 Assets" Size="24"/>
+  <Font Name="ListGlyph" Family="Segoe MDL2 Assets" Size="28"/>
+  <Font Name="TileGlyph" Family="Segoe MDL2 Assets" Size="40"/>
+  <Font Name="TileGlyphSmall" Family="Segoe MDL2 Assets" Size="22"/>
+  <Font Name="KeyGlyph" Family="Segoe MDL2 Assets" Size="18"/>
+  <Font Name="FileGlyph" Family="Segoe MDL2 Assets" Size="28"/>
 
-  <Metric Name="TitleHeight" Value="24"/>
+  <!-- Chrome -->
+  <Metric Name="TrayHeight" Value="24"/>
   <Metric Name="NavBarHeight" Value="48"/>
-  <Metric Name="SoftKeyHeight" Value="44"/>
-  <Metric Name="ChromeBottom" Value="92"/>
-  <Metric Name="TileSmall" Value="54"/>
-  <Metric Name="TileMedium" Value="112"/>
-  <Metric Name="TileWide" Value="228"/>
-  <Metric Name="ListItemHeight" Value="56"/>
-  <Metric Name="AppListItemHeight" Value="52"/>
-  <Metric Name="AppIcon" Value="40"/>
-  <Metric Name="TabHeight" Value="44"/>
-  <Metric Name="SettingsCellWidth" Value="360"/>
-  <Metric Name="SettingsCellHeight" Value="56"/>
+  <Metric Name="AppBarHeight" Value="48"/>
+  <Metric Name="ChromeBottom" Value="96"/>
+  <Metric Name="TitleHeight" Value="24"/>
+  <Metric Name="SoftKeyHeight" Value="48"/>
+
+  <!-- Start and lists -->
+  <Metric Name="TileGap" Value="7"/>
+  <Metric Name="AppIcon" Value="42"/>
+  <Metric Name="ListItemHeight" Value="44"/>
+  <Metric Name="IconItemHeight" Value="63"/>
+  <Metric Name="FileRowHeight" Value="63"/>
+  <Metric Name="SettingsCellWidth" Value="320"/>
+  <Metric Name="SettingsCellHeight" Value="63"/>
+  <Metric Name="TabHeight" Value="40"/>
   <Metric Name="PopupItemHeight" Value="44"/>
   <Metric Name="PopupSeparatorHeight" Value="9"/>
-  <Metric Name="PopupMinWidth" Value="200"/>
-  <Metric Name="SipKeyHeight" Value="48"/>
-  <Metric Name="FileRowHeight" Value="56"/>
-  <Metric Name="DayCellWidth" Value="51"/>
-  <Metric Name="DayCellHeight" Value="44"/>
-  <Metric Name="SheetHeaderWidth" Value="30"/>
-  <Metric Name="SheetCellWidth" Value="64"/>
-  <Metric Name="SheetRowHeight" Value="28"/>
-  <Metric Name="StatusPanelWidth" Value="360"/>
+  <Metric Name="PopupMinWidth" Value="240"/>
+  <Metric Name="SipKeyHeight" Value="56"/>
+  <Metric Name="DayCellWidth" Value="45"/>
+  <Metric Name="DayCellHeight" Value="40"/>
+  <Metric Name="SheetHeaderWidth" Value="26"/>
+  <Metric Name="SheetCellWidth" Value="58"/>
+  <Metric Name="SheetRowHeight" Value="32"/>
   <Metric Name="DragSlop" Value="8"/>
-  <Metric Name="SwipeDistance" Value="48"/>
+  <Metric Name="SwipeDistance" Value="40"/>
 
   <Image Name="FolderIcon" Source="..\assets\folder.png" Scale="2"/>
   <ImageSet Prefix="Icon." Directory="..\assets\icons" Scale="2"/>
@@ -79,16 +76,17 @@
   <String Name="NotInstalled" Value="This app isn't installed yet."/>
   <String Name="NotifyDismiss" Value="dismiss"/>
   <String Name="NotifyHide" Value="later"/>
-  <String Name="OwnerPrompt" Value="Tap to set up your profile"/>
+  <String Name="OwnerPrompt" Value="Tap to add your name"/>
 
-  <!-- Colors that do not follow the light or dark theme -->
-  <Color Name="White" Value="#FFFFFF"/>
+  <!-- Colors that do not follow the theme -->
+  <Color Name="BaseWhite" Value="#FFFFFF"/>
+  <Color Name="BaseBlack" Value="#000000"/>
   <Color Name="TileText" Value="#FFFFFF"/>
   <Color Name="BatteryLow" Value="#E81123"/>
   <Color Name="FolderColor" Value="#E8B33A"/>
   <Color Name="DriveColor" Value="#8A8A8A"/>
-  <Color Name="SlideText" Value="#E6E6E6"/>
-  <Color Name="SlideTitleText" Value="#FFFFFF"/>
-  <Color Name="SlideBackground" Value="#1F1F1F"/>
   <Color Name="Transparent" Value="#00000000"/>
+  <Color Name="SlideBackground" Value="#1F1F1F"/>
+  <Color Name="SlideText" Value="#CCFFFFFF"/>
+  <Color Name="SlideTitleText" Value="#FFFFFF"/>
 </Theme>

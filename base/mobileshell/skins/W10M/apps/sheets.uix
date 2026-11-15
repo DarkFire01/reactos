@@ -2,17 +2,17 @@
 <!-- Sheets Mobile, part of ReactOS Office Mobile (office.exe). Formulas: + - * / ^, SUM AVERAGE MIN MAX COUNT. -->
 <Uix Name="Sheets" Mode="Sheets" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
   <Element Name="PageList" Layout="Stack" Height="*">
-    <Text Content="SHEETS" Font="@AppHeaderFont" Padding="12,10,12,8"/>
-    <Element Layout="Row" Height="36" Margin="12,0,12,6" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldNormal">
+    <Text Content="SHEETS" Font="@BaseFont" Padding="12,12,12,8"/>
+    <Element Layout="Row" Height="32" Margin="12,0,12,8" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldFill">
       <Element Width="*" Command="find.focus" Padding="8,0,8,0">
         <Text Name="FindHint" Content="Search workbooks" Foreground="@AppSubText"/>
         <Text Content="{FindText}"/>
       </Element>
       <Element Width="36" Command="find.clear" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE721;" Font="@StatusGlyph" TextAlign="Center" Foreground="@AppSubText"/>
+        <Text Content="&#xE721;" Font="@Glyph16" TextAlign="Center" Foreground="@AppSubText"/>
       </Element>
     </Element>
-    <Element Layout="Row" Height="32" Padding="12,0,12,0" Font="@SmallFont">
+    <Element Layout="Row" Height="32" Padding="12,0,12,0" Font="@Caption">
       <Text Content="{ListHeader}" Width="*" Foreground="@AccentText"/>
       <Text Content="{SortLabel}" Foreground="@AppSubText"/>
     </Element>
@@ -23,17 +23,17 @@
           <Image Source="@Icon.Excel" Width="40" Height="40" VAlign="Center" Margin="0,0,12,0"/>
           <Element Layout="Stack" Width="*" VAlign="Center">
             <Text Content="{Item.Name}"/>
-            <Text Content="{Item.Detail}" Font="@SmallFont" Foreground="@AppSubText"/>
+            <Text Content="{Item.Detail}" Font="@Caption" Foreground="@AppSubText"/>
           </Element>
         </Element>
       </Repeater>
       <Text Name="ListEmpty" Content="No documents found." TextAlign="Center" Margin="0,24,0,0" Foreground="@AppSubText" Visible="false"/>
     </Element>
   </Element>
-  <Element Name="PageSheet" Layout="Stack" Height="*" Visible="false" Font="@SmallFont">
+  <Element Name="PageSheet" Layout="Stack" Height="*" Visible="false" Font="@Caption">
     <Element Layout="Row" Height="36" Background="@IndexBar">
-      <Text Content="{CellRef}" Width="48" TextAlign="Center" Font="@ItemBold"/>
-      <Element Width="*" Background="@FieldActive" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,6,4">
+      <Text Content="{CellRef}" Width="48" TextAlign="Center" Font="@BaseFont"/>
+      <Element Width="*" Background="@FieldFill" BorderBrush="@Accent" BorderThickness="2" Padding="8,0,8,0" Margin="0,2,6,2">
         <Text Content="{CellEdit}" Font="@Default"/>
       </Element>
     </Element>

@@ -1,7 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Dark background, crimson accent -->
-<Theme Name="Crimson" Base="dark.xml">
+<!-- Dark theme, crimson accent -->
+<Theme Name="Crimson" Base="base.xml">
+  <Color Name="PageBackground" Value="#000000"/>
+  <Color Name="Chrome" Value="#1F1F1F"/>
+  <Color Name="ChromeMediumLow" Value="#2B2B2B"/>
+  <Color Name="ChromeHigh" Value="#767676"/>
+  <Color Name="BaseHigh" Value="#FFFFFF"/>
+  <Color Name="BaseMidHigh" Value="#CCFFFFFF"/>
+  <Color Name="BaseMid" Value="#99FFFFFF"/>
+  <Color Name="BaseMidLow" Value="#66FFFFFF"/>
+  <Color Name="BaseLow" Value="#33FFFFFF"/>
+  <Color Name="AltMidLow" Value="#66000000"/>
+  <Color Name="ListHover" Value="#19FFFFFF"/>
+  <Color Name="ListPress" Value="#33FFFFFF"/>
+  <Color Name="TrayText" Value="#BFFFFFFF"/>
+  <Color Name="TrayDim" Value="#60FFFFFF"/>
+  <Color Name="NavBar" Value="#000000"/>
+  <Color Name="NavGlyphColor" Value="#BFFFFFFF"/>
+  <Color Name="KeyNormal" Value="#333333"/>
+  <Color Name="KeyFunction" Value="#4C4C4C"/>
+  <Color Name="KeyText" Value="#FFFFFF"/>
+  <Color Name="PivotOff" Value="#66FFFFFF"/>
+  <Color Name="ToastScrim" Value="#E6000000"/>
   <Color Name="Accent" Value="#A20025"/>
+  <Color Name="AccentDim" Value="#7A001C"/>
   <Color Name="AccentText" Value="#A20025"/>
   <Color Name="TileFill" Value="#A20025"/>
   <Color Name="TilePressed" Value="#7A001C"/>
@@ -9,7 +31,7 @@
   <Color Name="CellSelected" Value="#A20025"/>
   <Color Name="DaySelected" Value="#A20025"/>
   <Color Name="DayMark" Value="#A20025"/>
-  <Color Name="DayToday" Value="#33A20025"/>
+  <Color Name="DayToday" Value="#40A20025"/>
   <Color Name="SipKeyActive" Value="#A20025"/>
   <Color Name="SipKeyPressed" Value="#A20025"/>
   <Color Name="CalcKeyPressed" Value="#A20025"/>
@@ -17,5 +39,51 @@
   <Color Name="SlideAccent" Value="#A20025"/>
   <Color Name="VolumeOn" Value="#A20025"/>
   <Color Name="ActionOn" Value="#A20025"/>
-  <Color Name="ToggleOn" Value="#A20025"/>
+  <Color Name="FieldActive" Value="#A20025"/>
+  <Color Name="AppBackground" Value="@PageBackground"/>
+  <Color Name="AppText" Value="@BaseHigh"/>
+  <Color Name="AppSubText" Value="@BaseMid"/>
+  <Color Name="TitleText" Value="@TrayText"/>
+  <Color Name="TitleDim" Value="@TrayDim"/>
+  <Color Name="StatusBar" Value="@PageBackground"/>
+  <Color Name="AppBar" Value="@Chrome"/>
+  <Color Name="AppBarText" Value="@BaseHigh"/>
+  <Color Name="AppBarPressed" Value="@ListPress"/>
+  <Color Name="MenuBackground" Value="@ChromeMediumLow"/>
+  <Color Name="MenuBorder" Value="@ChromeHigh"/>
+  <Color Name="MenuText" Value="@BaseHigh"/>
+  <Color Name="MenuSelected" Value="@ListPress"/>
+  <Color Name="MenuSelectedText" Value="@BaseHigh"/>
+  <Color Name="PopupSeparator" Value="@BaseLow"/>
+  <Color Name="ListSeparator" Value="@BaseLow"/>
+  <Color Name="ListPressed" Value="@ListPress"/>
+  <Color Name="FieldFill" Value="@AltMidLow"/>
+  <Color Name="FieldNormal" Value="@BaseMidLow"/>
+  <Color Name="FieldBorder" Value="@BaseMidLow"/>
+  <Color Name="IndexBar" Value="@Chrome"/>
+  <Color Name="ScrollTrack" Value="@BaseMidLow"/>
+  <Color Name="ScrollThumb" Value="@BaseMidLow"/>
+  <Color Name="DayText" Value="@BaseHigh"/>
+  <Color Name="DayOtherText" Value="@BaseMidLow"/>
+  <Color Name="DayGrid" Value="@BaseLow"/>
+  <Color Name="SipBackground" Value="@Chrome"/>
+  <Color Name="SipKey" Value="@KeyNormal"/>
+  <Color Name="SipFunctionKey" Value="@KeyFunction"/>
+  <Color Name="SipText" Value="@KeyText"/>
+  <Color Name="SipKeyPressedText" Value="@BaseWhite"/>
+  <Color Name="ButtonFace" Value="@BaseLow"/>
+  <Color Name="ButtonPressed" Value="@BaseMidLow"/>
+  <Color Name="NotifyBackground" Value="@Chrome"/>
+  <Color Name="NotifyText" Value="@BaseHigh"/>
+  <Color Name="TabActive" Value="@BaseHigh"/>
+  <Color Name="TabInactive" Value="@PivotOff"/>
+  <Color Name="ActionOff" Value="@BaseLow"/>
+  <Color Name="ActionText" Value="@BaseHigh"/>
+  <Color Name="PanelBackground" Value="@PageBackground"/>
+  <Color Name="VolumeOff" Value="@BaseMidLow"/>
+  <Color Name="ItemSelectedText" Value="@BaseWhite"/>
+  <Color Name="CalcDisplay" Value="@PageBackground"/>
+  <Color Name="CalcKey" Value="@KeyNormal"/>
+  <Color Name="CalcOpKey" Value="@KeyFunction"/>
+  <Color Name="StartBackground" Value="@PageBackground"/>
 </Theme>

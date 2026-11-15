@@ -82,11 +82,12 @@ UIXRender, CoreMessaging). The host stands where DWM stood and drives the engine
 ## Skins and themes
 
 Two skins ship: `skins\WM61` (Windows Mobile 6.1, 240x320) and `skins\W10M` (Windows 10
-Mobile, 360x640, Dark, Light, Emerald and Crimson themes). Set `Skin=` in `shell.xml` to pick
-one. W10M has Start tiles, the All apps list (swipe left or All apps), the action center from
-the status bar, toasts, and soft keys in an app bar above the Back / Start / Search bar; Back
-does what ok and X did. It looks for Segoe UI and Segoe MDL2 Assets, which ReactOS does not
-ship: text falls back to Source Sans Pro, glyphs need the font installed.
+Mobile; Dark, Light, Cobalt, Emerald and Crimson). Set `Skin=` in `shell.xml` to pick one. W10M is
+fluid (`Fluid="true"` in `skin.xml`): full screen picks the scale from the panel density, so the
+view is about 320 to 400 units wide depending on the device, and `Scale=` in `shell.xml` can force
+it. Its sizes follow the W10M shell: 24 status bar, 48 app bar and navigation bar, Start tiles
+packed by the Tiles layout, keyboard 0.7 of the width. It looks for Segoe UI and Segoe MDL2 Assets,
+which ReactOS does not ship: text falls back to Source Sans Pro, glyphs need the font installed.
 
 `shell.xml` picks the skin; `skins\<name>\skin.xml` sets the logical canvas and lists themes.
 Themes are XML with `Color`, `Brush` (solid, gradient, image), `Font`, `Metric`, `Image`,
@@ -126,6 +127,9 @@ Elements: `Element`, `Text`, `Image`, `Repeater`. Layouts: `Overlay` (default), 
 `Foreground`, `Font`, `TextAlign`. Text: `Content`, `Wrap`, `TextVAlign`, `Collapse`, `Highlight` (bolds and underlines matches).
 Image: `Source`, `Stretch`.
 
+* `Layout="Tiles"`: `Columns` square cells `Gap` apart, sized from the width; children take
+  `Span="columns,rows"` and fill the first free cell, two wide tiles on even columns.
+* `HeightRatio="0.7"`: the height follows the width.
 * `SwipeLeft` / `SwipeRight`: commands run when a mostly sideways drag of `@SwipeDistance`
   (default 40) starts on the element. A swipe cancels the tap like a scroll drag does.
 * Theme fonts can list fallbacks, `Family="Segoe UI, Source Sans Pro"`; the first installed one wins.
