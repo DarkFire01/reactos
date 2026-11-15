@@ -2229,6 +2229,35 @@ GetSystemWow64DirectoryW(
 
 #endif
 
+#if (_WIN32_WINNT >= 0x0A00)
+
+_Success_(return != 0 && return < uSize)
+UINT
+WINAPI
+GetSystemWow64Directory2A(
+  _Out_writes_to_opt_(uSize, return + 1) LPSTR lpBuffer,
+  _In_ UINT uSize,
+  _In_ WORD ImageFileMachineType);
+
+_Success_(return != 0 && return < uSize)
+UINT
+WINAPI
+GetSystemWow64Directory2W(
+  _Out_writes_to_opt_(uSize, return + 1) LPWSTR lpBuffer,
+  _In_ UINT uSize,
+  _In_ WORD ImageFileMachineType);
+
+BOOL
+WINAPI
+SetProcessValidCallTargets(
+  _In_ HANDLE hProcess,
+  _In_ PVOID VirtualAddress,
+  _In_ SIZE_T RegionSize,
+  _In_ ULONG NumberOfOffsets,
+  _Inout_updates_(NumberOfOffsets) PCFG_CALL_TARGET_INFO OffsetInformation);
+
+#endif
+
 DWORD
 WINAPI
 GetTapeParameters(
