@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Shell configuration: active skin, key remapping and the app registry. FullScreen fills the
      monitor and stretches the canvas to its height; the windowed switch on the command line overrides it. -->
-<Shell Skin="skins\WM61" Theme="Green" FullScreen="true">
+<Shell Skin="skins\W10M" Theme="Dark" FullScreen="true">
   <Keys>
     <Key Vk="F1" Command="softkey.left"/>
     <Key Vk="F2" Command="softkey.right"/>
