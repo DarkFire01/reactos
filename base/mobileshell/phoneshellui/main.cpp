@@ -154,6 +154,15 @@ private:
     VOID
     Resize(VOID);
 
+    FLOAT
+    PickScale(VOID);
+
+    VOID
+    ApplyScale(
+        _In_ FLOAT Scale,
+        _In_ LONG Width,
+        _In_ LONG Height);
+
     VOID
     Frame(VOID);
 
@@ -214,6 +223,8 @@ private:
     FLOAT m_SkinWidth = 240.0f;
     FLOAT m_SkinHeight = 320.0f;
     BOOL m_FullScreen = FALSE;
+    BOOL m_Fluid = FALSE;
+    FLOAT m_ConfigScale = 0.0f;
     LONG m_OriginX;
     LONG m_OriginY;
     IShellComponent *m_Capture;
@@ -365,6 +376,7 @@ CShellHost::LoadConfig(VOID)
 
     /* A phone fills its screen; --windowed keeps a desktop window for testing */
     m_FullScreen = !m_Windowed && _wcsicmp(Root.Attr(L"FullScreen", L"false"), L"true") == 0;
+    m_ConfigScale = static_cast<FLOAT>(_wtof(Root.Attr(L"Scale", L"0")));
 
     m_Keys.clear();
     for (const UIX_XML_NODE &Section : Root.Children)
@@ -403,6 +415,7 @@ CShellHost::LoadSkin(VOID)
         return E_INVALIDARG;
     m_SkinWidth = m_CanvasWidth;
     m_SkinHeight = m_CanvasHeight;
+    m_Fluid = _wcsicmp(Root.Attr(L"Fluid", L"false"), L"true") == 0;
 
     m_Themes.clear();
     for (const UIX_XML_NODE &Node : Root.Children)
@@ -610,6 +623,24 @@ CShellHost::Resize(VOID)
         return;
 
     /*
+     * A fluid skin gets the screen at a DPI picked scale, so the logical width changes with the
+     * device and the markup reflows. Width and Height in skin.xml are then the smallest canvas.
+     */
+    if (m_Fluid)
+    {
+        Scale = m_FullScreen ? ((m_ConfigScale > 0.0f) ? m_ConfigScale : PickScale())
+                             : m_InitialScale * GetDpiForWindow(m_Window) / 96.0f;
+        if (Width / Scale < m_SkinWidth)
+            Scale = Width / m_SkinWidth;
+        m_CanvasWidth = Width / Scale;
+        m_CanvasHeight = Height / Scale;
+        m_OriginX = 0;
+        m_OriginY = 0;
+        ApplyScale(Scale, Width, Height);
+        return;
+    }
+
+    /*
      * Full screen keeps the skin's logical width and gives it the screen's full height, so a tall
      * phone gets a tall canvas instead of bars. A window, or a screen shorter than the skin, letterboxes.
      */
@@ -623,7 +654,42 @@ CShellHost::Resize(VOID)
     }
     m_OriginX = (Width - lroundf(m_CanvasWidth * Scale)) / 2;
     m_OriginY = (Height - lroundf(m_CanvasHeight * Scale)) / 2;
+    ApplyScale(Scale, Width, Height);
+}
 
+/*
+ * Phone panels pick a scale plateau from their physical density, about 150 pixels per
+ * inch per logical unit. Monitors without a real size, or desktop densities, use the system DPI.
+ */
+FLOAT
+CShellHost::PickScale(VOID)
+{
+    static const FLOAT Plateaus[] = { 1.0f, 1.2f, 1.4f, 1.5f, 1.6f, 1.8f, 2.0f, 2.2f, 2.4f, 2.5f, 2.8f, 3.0f, 3.2f, 3.5f, 4.0f };
+    HDC Screen = GetDC(m_Window);
+    INT Pixels = GetDeviceCaps(Screen, HORZRES);
+    INT Millimeters = GetDeviceCaps(Screen, HORZSIZE);
+    FLOAT Density;
+    FLOAT Picked = Plateaus[0];
+
+    ReleaseDC(m_Window, Screen);
+    Density = (Millimeters > 0) ? Pixels * 25.4f / Millimeters : 0.0f;
+    if (Density < 200.0f)
+        return GetDpiForWindow(m_Window) / 96.0f;
+
+    for (FLOAT Plateau : Plateaus)
+    {
+        if (Plateau <= Density / 150.0f)
+            Picked = Plateau;
+    }
+    return Picked;
+}
+
+VOID
+CShellHost::ApplyScale(
+    _In_ FLOAT Scale,
+    _In_ LONG Width,
+    _In_ LONG Height)
+{
     m_Engine->SetScale(Scale);
     m_Backdrop->SetTransform(UixD2D::Scale(static_cast<FLOAT>(Width), static_cast<FLOAT>(Height)));
     for (ULONG Band = 0; Band < ShellBandCount; Band++)
