@@ -421,6 +421,7 @@ HidClassFDO_StartDevice(
     //
     IoSkipCurrentIrpStackLocation(Irp);
     Status = HidClassFDO_DispatchRequestSynchronous(DeviceObject, Irp);
+    DPRINT1("[HIDCLASS] FDO %p lower start %x\n", DeviceObject, Status);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("[HIDCLASS] Failed to start lower device with %x\n", Status);
@@ -472,6 +473,8 @@ HidClassFDO_StartDevice(
     //
     // complete request
     //
+    DPRINT1("[HIDCLASS] FDO %p started, %u collections, status %x\n",
+            DeviceObject, FDODeviceExtension->Common.DeviceDescription.CollectionDescLength, Status);
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Status;
