@@ -224,15 +224,17 @@ InbvAcquireLock(VOID)
 {
     KIRQL OldIrql;
 
-    /* Check if we're at dispatch level or lower */
+    /*
+     * Held at HIGH_LEVEL: the debugger freezes the other processors with an IPI
+     * and then draws through this lock, so a holder must never be frozen with it
+     */
     OldIrql = KeGetCurrentIrql();
-    if (OldIrql <= DISPATCH_LEVEL)
+    if (OldIrql < HIGH_LEVEL)
     {
         /* Loop until the lock is free */
         while (!KeTestSpinLock(&BootDriverLock));
 
-        /* Raise IRQL to dispatch level */
-        KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
+        KeRaiseIrql(HIGH_LEVEL, &OldIrql);
     }
 
     /* Acquire the lock */
@@ -252,8 +254,8 @@ InbvReleaseLock(VOID)
     /* Release the driver lock */
     KiReleaseSpinLock(&BootDriverLock);
 
-    /* If we were at dispatch level or lower, restore the old IRQL */
-    if (InbvOldIrql <= DISPATCH_LEVEL) KeLowerIrql(OldIrql);
+    /* Restore the IRQL InbvAcquireLock raised from */
+    if (OldIrql < HIGH_LEVEL) KeLowerIrql(OldIrql);
 }
 
 VOID
