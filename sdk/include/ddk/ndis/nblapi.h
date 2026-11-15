@@ -99,6 +99,24 @@ NdisFreeCloneNetBufferList(
     _In_ ULONG FreeCloneFlags);
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
+PNET_BUFFER_LIST
+NTAPI
+NdisAllocateReassembledNetBufferList(
+    _In_ PNET_BUFFER_LIST FragmentNetBufferList,
+    _In_ NDIS_HANDLE NetBufferAndNetBufferListPoolHandle,
+    _In_ ULONG StartOffset,
+    _In_ ULONG DataOffsetDelta,
+    _In_ ULONG DataBackFill,
+    _In_ ULONG AllocateReassembleFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFreeReassembledNetBufferList(
+    _In_ __drv_freesMem(mem) PNET_BUFFER_LIST ReassembledNetBufferList,
+    _In_ ULONG FreeReassembleFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
 VOID
 NTAPI
 NdisCopySendNetBufferListInfo(
