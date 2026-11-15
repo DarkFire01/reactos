@@ -291,6 +291,45 @@ ScxEvtControllerIoDefault(
 }
 
 /**
+ * @brief Reports a request and its transfers while the controller's trace budget lasts.
+ */
+static
+VOID
+NTAPI
+ScxTraceRequest(
+    _Inout_ PSCX_REQUEST Request,
+    _In_ ULONG IoControlCode)
+{
+    PSPB_TRANSFER_LIST_ENTRY Entry;
+    ULONG Index;
+
+    if (InterlockedIncrement(&Request->Controller->TracedRequests) > SCX_TRACE_LIMIT)
+        return;
+
+    Request->Traced = TRUE;
+    DPRINT1("SpbCx: request %p type %d IOCTL 0x%lx connection %I64x, length %Iu, %lu transfers\n",
+            Request->FxRequest,
+            Request->Parameters.Type,
+            IoControlCode,
+            Request->Target->ConnectionId.QuadPart,
+            Request->Parameters.Length,
+            Request->TransferCount);
+
+    for (Index = 0; Request->TransferList && Index < Request->TransferCount; Index++)
+    {
+        Entry = &Request->TransferList->Transfers[Index];
+        DPRINT1("SpbCx:   transfer %lu %s format %d, %lu bytes, delay %lu us, MDL %p\n",
+                Index,
+                (Entry->Direction == SpbTransferDirectionFromDevice) ? "from device" : "to device",
+                Entry->Buffer.Format,
+                (Entry->Buffer.Format == SpbTransferBufferFormatMdl && Entry->Buffer.Mdl) ?
+                    MmGetMdlByteCount(Entry->Buffer.Mdl) : (ULONG)Entry->Buffer.Simple.BufferCb,
+                Entry->DelayInUs,
+                Request->TransferMdls ? Request->TransferMdls[Index] : NULL);
+    }
+}
+
+/**
  * @brief Binds a queued request to the target its file object carries.
  *
  * @return The request context, or NULL when the open never resolved to a connection.
@@ -376,27 +415,20 @@ ScxEvtControllerIoDeviceControl(
     Request = ScxBindRequestToTarget(FxRequest, Type, InputBufferLength);
     if (Controller == NULL || Request == NULL)
     {
+        DPRINT1("SpbCx: IOCTL 0x%lx on %p has no bound target\n", IoControlCode, Device);
         WdfRequestComplete(FxRequest, STATUS_INVALID_DEVICE_REQUEST);
         return;
     }
 
     Config = &Controller->Config;
     Target = (SPBTARGET)Request->Target->FileObject;
+    ScxTraceRequest(Request, IoControlCode);
 
     switch (Type)
     {
         case SpbRequestTypeSequence:
             if (Request->TransferList == NULL)
                 break;
-
-            if (!Controller->FirstSequenceLogged)
-            {
-                Controller->FirstSequenceLogged = TRUE;
-                DPRINT1("SpbCx: first sequence of %lu transfers to controller %p, connection %I64x\n",
-                        Request->TransferCount,
-                        Device,
-                        Request->Target->ConnectionId.QuadPart);
-            }
 
             Config->EvtSpbIoSequence(Device, Target, SpbRequest, Request->TransferCount);
             return;
@@ -467,9 +499,12 @@ ScxDispatchReadWrite(
                                      Length);
     if (Controller == NULL || Request == NULL)
     {
+        DPRINT1("SpbCx: %s of %Iu bytes on %p has no bound target\n", IsRead ? "read" : "write", Length, Device);
         WdfRequestComplete(FxRequest, STATUS_INVALID_DEVICE_REQUEST);
         return;
     }
+
+    ScxTraceRequest(Request, 0);
 
     if (IsRead)
     {
