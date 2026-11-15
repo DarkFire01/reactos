@@ -271,7 +271,8 @@ HalpGicInitializeCpu(
         return;
     }
 
-    if (!HalpGicFindRedistributor(ProcessorNumber, Mpidr))
+    /* A secondary processor's frame was mapped by the processor that started it */
+    if (!HalpGicrControl[ProcessorNumber] && !HalpGicFindRedistributor(ProcessorNumber, Mpidr))
     {
         HalpEarlyTrace("HAL: no redistributor for MPIDR %p\n", (PVOID)(ULONG_PTR)Mpidr);
         KeBugCheckEx(HAL_INITIALIZATION_FAILED, 0x6C1C, 2, ProcessorNumber, (ULONG_PTR)Mpidr);
@@ -308,22 +309,46 @@ HalpGicInitializeCpu(
     HalpGicWrite(Sgi, GICR_ISENABLER0, (1 << APC_LEVEL) | (1 << DISPATCH_LEVEL) | (1 << IPI_LEVEL));
 }
 
+BOOLEAN
+NTAPI
+HalpGicIsVersion2(VOID)
+{
+    return HalpGicV2;
+}
+
+/**
+ * @brief Maps the redistributor of a processor about to be started, from a thread that may map memory.
+ */
+BOOLEAN
+NTAPI
+HalpGicMapProcessor(
+    _In_ ULONG ProcessorNumber,
+    _In_ ULONG64 Mpidr)
+{
+    ASSERT(ProcessorNumber < MAXIMUM_PROCESSORS);
+
+    if (HalpGicV2)
+        return TRUE;
+
+    if (HalpGicrControl[ProcessorNumber])
+        return TRUE;
+
+    return HalpGicFindRedistributor(ProcessorNumber, Mpidr);
+}
+
 VOID
 NTAPI
 HalpGicSetPriority(
     _In_ ULONG IntId,
     _In_ UCHAR Priority)
 {
-    ULONG Cpu;
+    ULONG Cpu = KeGetCurrentProcessorNumber();
 
-    /* GICv2 banks the private lines in the distributor, the write only reaches this processor */
+    /* Private lines belong to each processor, the caller runs on the one it sets up */
     if ((IntId < GIC_SPI_FIRST) && !HalpGicV2)
     {
-        for (Cpu = 0; Cpu < MAXIMUM_PROCESSORS; Cpu++)
-        {
-            if (HalpGicrSgi[Cpu])
-                WRITE_REGISTER_UCHAR(HalpGicrSgi[Cpu] + GICR_IPRIORITYR + IntId, Priority);
-        }
+        ASSERT(HalpGicrSgi[Cpu] != NULL);
+        WRITE_REGISTER_UCHAR(HalpGicrSgi[Cpu] + GICR_IPRIORITYR + IntId, Priority);
     }
     else
     {
@@ -351,15 +376,17 @@ HalpGicEnableInterrupt(
 
     if (IntId < GIC_SPI_FIRST)
     {
-        for (Cpu = 0; Cpu < MAXIMUM_PROCESSORS; Cpu++)
-        {
-            if (HalpGicrSgi[Cpu])
-                HalpGicWrite(HalpGicrSgi[Cpu], GICR_ISENABLER0, 1 << IntId);
-        }
+        Cpu = KeGetCurrentProcessorNumber();
+        ASSERT(HalpGicrSgi[Cpu] != NULL);
+        HalpGicWrite(HalpGicrSgi[Cpu], GICR_ISENABLER0, 1 << IntId);
         return TRUE;
     }
 
-    KeAcquireSpinLock(&HalpGicLock, &OldIrql);
+    /* Callers may already hold the dispatcher lock, which is above DISPATCH_LEVEL */
+    OldIrql = KeGetCurrentIrql();
+    if (OldIrql < HIGH_LEVEL)
+        KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpGicLock);
 
     /* Two bits per line, bit 1 selects edge triggering */
     Shift = (IntId % 16) * 2 + 1;
@@ -378,7 +405,9 @@ HalpGicEnableInterrupt(
 
     HalpGicWrite(HalpGicd, GICD_ISENABLER + (IntId / 32) * 4, 1 << (IntId % 32));
 
-    KeReleaseSpinLock(&HalpGicLock, OldIrql);
+    KeReleaseSpinLockFromDpcLevel(&HalpGicLock);
+    if (OldIrql < HIGH_LEVEL)
+        KeLowerIrql(OldIrql);
     return TRUE;
 }
 
@@ -400,11 +429,9 @@ HalpGicDisableInterrupt(
 
     if (IntId < GIC_SPI_FIRST)
     {
-        for (Cpu = 0; Cpu < MAXIMUM_PROCESSORS; Cpu++)
-        {
-            if (HalpGicrSgi[Cpu])
-                HalpGicWrite(HalpGicrSgi[Cpu], GICR_ICENABLER0, 1 << IntId);
-        }
+        Cpu = KeGetCurrentProcessorNumber();
+        ASSERT(HalpGicrSgi[Cpu] != NULL);
+        HalpGicWrite(HalpGicrSgi[Cpu], GICR_ICENABLER0, 1 << IntId);
         return;
     }
 
