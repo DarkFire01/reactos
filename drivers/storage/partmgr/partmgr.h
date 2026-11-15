@@ -177,7 +177,8 @@ VerifyIrpOutBufferSize(
     PIO_STACK_LOCATION ioStack = IoGetCurrentIrpStackLocation(Irp);
     if (ioStack->Parameters.DeviceIoControl.OutputBufferLength < Size)
     {
-        Irp->IoStatus.Information = Size;
+        /* A failed request returns nothing, the caller retries with more room */
+        Irp->IoStatus.Information = 0;
         return FALSE;
     }
     return TRUE;
@@ -192,7 +193,8 @@ VerifyIrpInBufferSize(
     PIO_STACK_LOCATION ioStack = IoGetCurrentIrpStackLocation(Irp);
     if (ioStack->Parameters.DeviceIoControl.InputBufferLength < Size)
     {
-        Irp->IoStatus.Information = Size;
+        /* A failed request returns nothing, the caller retries with more room */
+        Irp->IoStatus.Information = 0;
         return FALSE;
     }
     return TRUE;
