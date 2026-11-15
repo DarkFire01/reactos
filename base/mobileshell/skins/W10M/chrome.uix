@@ -5,27 +5,28 @@
   <!-- Tapping the status bar opens the action center -->
   <Element Name="StatusBar" Layer="true" VAlign="Top" Height="@TrayHeight" Background="@StatusBar" Layout="Row"
            Command="status" Momentary="true" Padding="12,0,0,0">
-    <Element Width="16" Height="16" VAlign="Center" Layout="Row" Padding="1,2,1,1" Margin="0,0,6,0">
-      <Element Width="2" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,1,0"/>
-      <Element Width="2" Height="5" VAlign="Bottom" Background="{Bar2}" Margin="0,0,1,0"/>
-      <Element Width="2" Height="7" VAlign="Bottom" Background="{Bar3}" Margin="0,0,1,0"/>
-      <Element Width="2" Height="10" VAlign="Bottom" Background="{Bar4}" Margin="0,0,1,0"/>
-      <Element Width="2" Height="13" VAlign="Bottom" Background="{Bar5}"/>
+    <!-- Tray icons are 16x16 boxes centered in the bar; their ink, the battery and the clock baseline share one bottom line -->
+    <Element Width="16" Height="16" VAlign="Center" Layout="Row" Padding="0.5,4,0,0.5" Margin="0,0,6,0">
+      <Element Width="2.2" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,0.9,0"/>
+      <Element Width="2.2" Height="5" VAlign="Bottom" Background="{Bar2}" Margin="0,0,0.9,0"/>
+      <Element Width="2.2" Height="7" VAlign="Bottom" Background="{Bar3}" Margin="0,0,0.9,0"/>
+      <Element Width="2.2" Height="9" VAlign="Bottom" Background="{Bar4}" Margin="0,0,0.9,0"/>
+      <Element Width="2.2" Height="11" VAlign="Bottom" Background="{Bar5}"/>
     </Element>
-    <Text Name="NetActive" Content="&#xE701;" Font="@TrayGlyph" Width="16" TextAlign="Center" Margin="0,0,6,0"/>
-    <Text Name="NetOff" Content="&#xE871;" Font="@TrayGlyph" Width="16" TextAlign="Center" Margin="0,0,6,0" Visible="false"/>
-    <Element Name="NotifyIcon" Command="notify.show" Momentary="true" Visible="false" Margin="0,0,6,0">
-      <Text Content="&#xE91C;" Font="@TrayGlyph" Width="16" TextAlign="Center"/>
+    <Text Name="NetActive" Content="&#xE701;" Font="@TrayGlyph" Width="16" Height="16" VAlign="Center" TextAlign="Center" TextVAlign="Center" Margin="0,0,6,0"/>
+    <Text Name="NetOff" Content="&#xE871;" Font="@TrayGlyph" Width="16" Height="16" VAlign="Center" TextAlign="Center" TextVAlign="Center" Margin="0,0,6,0" Visible="false"/>
+    <Element Name="NotifyIcon" Command="notify.show" Momentary="true" Visible="false" Width="16" Height="16" VAlign="Center" Margin="0,0,6,0">
+      <Text Content="&#xE8BD;" Font="@TrayGlyph" TextAlign="Center" TextVAlign="Center"/>
     </Element>
     <Element Width="*"/>
-    <Text Name="BatteryCharging" Content="&#xE945;" Font="@Glyph12" Margin="0,0,2,0" Visible="false"/>
-    <Element Width="16" Height="16" VAlign="Center" Layout="Row" Padding="0,4,0,4">
-      <Element Width="14" BorderBrush="@TitleText" BorderThickness="1" Padding="1">
+    <Text Name="BatteryCharging" Content="&#xE945;" Font="@TrayGlyph" Width="16" Height="16" VAlign="Center" TextAlign="Center" TextVAlign="Center" Visible="false"/>
+    <Element Width="16" Height="16" VAlign="Center" Layout="Row" Padding="0,8.5,0,0.5">
+      <Element Width="15" BorderBrush="@TitleText" BorderThickness="1" Padding="1">
         <Element Width="{BatteryLevel}" HAlign="Left" Background="{BatteryBrush}"/>
       </Element>
       <Element Width="1" Background="@TitleText" Margin="0,2,0,2"/>
     </Element>
-    <Text Name="StatusTime" Content="{Time}" TextAlign="Right" Padding="10,0,12,0"/>
+    <Text Name="StatusTime" Content="{Time}" TextAlign="Right" Padding="10,5.5,12,0"/>
   </Element>
 
   <!-- Shown only while an app is up; the keyboard and the toast cover it -->
