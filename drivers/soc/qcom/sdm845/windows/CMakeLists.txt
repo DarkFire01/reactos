@@ -4,3 +4,4 @@
 add_registry_inf(qcom850_reg.inf)
 add_registry_inf(trustedrt_reg.inf)
 add_registry_inf(qcxhcifilter_reg.inf)
+add_registry_inf(storufs_dma_reg.inf)
