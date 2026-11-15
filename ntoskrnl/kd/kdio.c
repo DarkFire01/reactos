@@ -636,33 +636,6 @@ KdpPrintMapping(
     KdIoPrintf("\n");
 }
 
-PMMVAD
-NTAPI
-MiLocateAddress(
-    _In_ PVOID VirtualAddress);
-
-/* Prints the VAD that covers a user address */
-static
-VOID
-KdpPrintVad(
-    _In_ ULONG_PTR Address)
-{
-    PMMVAD Vad = MiLocateAddress((PVOID)Address);
-
-    if (!Vad)
-    {
-        KdIoPrintf("  No VAD\n");
-        return;
-    }
-
-    KdIoPrintf("  VAD %p-%p type %lu protect %lu private %lu\n",
-               (PVOID)(Vad->StartingVpn << PAGE_SHIFT),
-               (PVOID)((Vad->EndingVpn << PAGE_SHIFT) | (PAGE_SIZE - 1)),
-               (ULONG)Vad->u.VadFlags.VadType,
-               (ULONG)Vad->u.VadFlags.Protection,
-               (ULONG)Vad->u.VadFlags.PrivateMemory);
-}
-
 /* Looks a user address up in the module list of the current process */
 static
 PLDR_DATA_TABLE_ENTRY
@@ -777,7 +750,6 @@ KdpPrintExceptionBacktrace(
             ExceptionRecord->ExceptionInformation[1] < (ULONG64)(ULONG_PTR)MmSystemRangeStart)
         {
             KdpPrintMapping("Data", (ULONG_PTR)ExceptionRecord->ExceptionInformation[1]);
-            KdpPrintVad((ULONG_PTR)ExceptionRecord->ExceptionInformation[1]);
         }
     }
     if (KdpIsRangeReadable(Context->Pc - 0x40, 0x48))
