@@ -74,10 +74,6 @@
 /* A namespace name is four characters and the NUL */
 #define UACPINT_NODE_NAME_LENGTH                5
 
-/* ENUM_CHILDREN records are packed, the caller does not round the stride */
-#define UACPINT_ENUM_CHILD_RECORD_LENGTH \
-    ((ULONG)(FIELD_OFFSET(ACPI_ENUM_CHILD, Name) + UACPINT_NODE_NAME_LENGTH))
-
 /*
  * Pended evaluation, used when an eval IOCTL arrives above PASSIVE_LEVEL
  */
@@ -995,7 +991,78 @@ UacpiNtNodeHasChildren(
     return uacpi_likely_success(uacpi_namespace_node_next(Node, &Child)) && Child != UACPI_NULL;
 }
 
-/* Immediate children only, by their four character names */
+/* What one IOCTL_ACPI_ENUM_CHILDREN walk collects, sized first and written on the second pass */
+typedef struct _UACPINT_ENUM_WALK
+{
+    BOOLEAN ImmediateOnly;
+    BOOLEAN Filtered;
+    CHAR Filter[4];
+    ULONG Count;
+    ULONG Bytes;
+    PUCHAR Cursor;
+} UACPINT_ENUM_WALK, *PUACPINT_ENUM_WALK;
+
+static
+VOID
+NTAPI
+UacpiNtEnumAddNode(
+    _Inout_ PUACPINT_ENUM_WALK Walk,
+    _In_ uacpi_namespace_node *Node)
+{
+    PACPI_ENUM_CHILD Entry;
+    const uacpi_char *Path;
+    uacpi_object_name Name;
+    ULONG Length;
+
+    Name = uacpi_namespace_node_name(Node);
+    if (Walk->Filtered && RtlCompareMemory(Name.text, Walk->Filter, sizeof(Walk->Filter)) != sizeof(Walk->Filter))
+        return;
+
+    /* Full path, \_SB_.DEV0 style */
+    Path = uacpi_namespace_node_generate_absolute_path(Node);
+    if (!Path)
+        return;
+
+    Length = (ULONG)strlen(Path) + 1;
+    Walk->Count++;
+    Walk->Bytes += FIELD_OFFSET(ACPI_ENUM_CHILD, Name) + Length;
+
+    if (Walk->Cursor)
+    {
+        Entry = (PACPI_ENUM_CHILD)Walk->Cursor;
+        Entry->Flags = UacpiNtNodeHasChildren(Node) ? ACPI_OBJECT_HAS_CHILDREN : 0;
+        Entry->NameLength = Length;
+        RtlCopyMemory(Entry->Name, Path, Length);
+        Walk->Cursor = (PUCHAR)ACPI_ENUM_CHILD_NEXT(Entry);
+    }
+
+    uacpi_free_absolute_path(Path);
+}
+
+/* Preorder below Node, one level deep for IMMEDIATE_ONLY */
+static
+VOID
+NTAPI
+UacpiNtEnumWalk(
+    _Inout_ PUACPINT_ENUM_WALK Walk,
+    _In_ uacpi_namespace_node *Node)
+{
+    uacpi_namespace_node *Child = UACPI_NULL;
+
+    while (uacpi_likely_success(uacpi_namespace_node_next(Node, &Child)) && Child)
+    {
+        UacpiNtEnumAddNode(Walk, Child);
+        if (!Walk->ImmediateOnly)
+            UacpiNtEnumWalk(Walk, Child);
+    }
+}
+
+/**
+ * @brief IOCTL_ACPI_ENUM_CHILDREN: the device itself, then its children or its whole subtree.
+ *
+ * @remarks Every object counts, not just devices, each one by its full path. A name
+ * filter keeps the objects with that four character name, padded with underscores.
+ */
 static
 NTSTATUS
 NTAPI
@@ -1006,72 +1073,89 @@ UacpiNtEnumChildren(
     _Out_ PULONG_PTR Information)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    ULONG InputLength = IoStack->Parameters.DeviceIoControl.InputBufferLength;
     ULONG OutputLength = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
     PACPI_ENUM_CHILDREN_INPUT_BUFFER Request = Irp->AssociatedIrp.SystemBuffer;
     PACPI_ENUM_CHILDREN_OUTPUT_BUFFER Output = Irp->AssociatedIrp.SystemBuffer;
-    CHAR Name[UACPINT_NODE_NAME_LENGTH];
-    uacpi_namespace_node *Child;
-    PACPI_ENUM_CHILD Entry;
-    ULONG Needed;
-    ULONG Count;
+    UACPINT_ENUM_WALK Walk;
+    ULONG Flags, NameLength, Needed, Index;
 
     *Information = 0;
+
+    if (InputLength < FIELD_OFFSET(ACPI_ENUM_CHILDREN_INPUT_BUFFER, Name) + sizeof(ULONG))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    if (OutputLength < sizeof(*Output))
+        return STATUS_BUFFER_TOO_SMALL;
 
     if (!Node)
         return STATUS_INVALID_DEVICE_REQUEST;
 
-    if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(ULONG) * 2)
-        return STATUS_INVALID_PARAMETER;
+    if (Request->Signature != ACPI_ENUM_CHILDREN_INPUT_BUFFER_SIGNATURE)
+        return STATUS_INVALID_PARAMETER_1;
 
-    if (!Request || Request->Signature != ACPI_ENUM_CHILDREN_INPUT_BUFFER_SIGNATURE)
-        return STATUS_INVALID_PARAMETER;
+    Flags = Request->Flags;
+    NameLength = Request->NameLength;
+    if (((Flags & (ENUM_CHILDREN_IMMEDIATE_ONLY | ENUM_CHILDREN_MULTILEVEL)) ==
+         (ENUM_CHILDREN_IMMEDIATE_ONLY | ENUM_CHILDREN_MULTILEVEL)) ||
+        !(Flags & (ENUM_CHILDREN_IMMEDIATE_ONLY | ENUM_CHILDREN_MULTILEVEL | ENUM_CHILDREN_NAME_IS_FILTER)) ||
+        ((Flags & ENUM_CHILDREN_NAME_IS_FILTER) && !NameLength))
+    {
+        return STATUS_ACPI_INVALID_DATA;
+    }
 
-    Count = 0;
-    Child = NULL;
-    while (uacpi_likely_success(uacpi_namespace_node_next(Node, &Child)) && Child)
-        Count++;
+    RtlZeroMemory(&Walk, sizeof(Walk));
+    Walk.ImmediateOnly = !!(Flags & ENUM_CHILDREN_IMMEDIATE_ONLY);
 
-    Needed = FIELD_OFFSET(ACPI_ENUM_CHILDREN_OUTPUT_BUFFER, Children) +
-             Count * UACPINT_ENUM_CHILD_RECORD_LENGTH;
+    /* The output overwrites the request, so the filter is taken first */
+    if (NameLength)
+    {
+        if (NameLength > InputLength - FIELD_OFFSET(ACPI_ENUM_CHILDREN_INPUT_BUFFER, Name))
+            return STATUS_INFO_LENGTH_MISMATCH;
 
+        RtlFillMemory(Walk.Filter, sizeof(Walk.Filter), '_');
+        for (Index = 0; Index < NameLength && Request->Name[Index]; Index++)
+        {
+            if (Index >= sizeof(Walk.Filter))
+                return STATUS_OBJECT_NAME_INVALID;
+            Walk.Filter[Index] = RtlUpperChar(Request->Name[Index]);
+        }
+        Walk.Filtered = TRUE;
+    }
+
+    UacpiNtEnumAddNode(&Walk, Node);
+    UacpiNtEnumWalk(&Walk, Node);
+
+    if (!Walk.Count)
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+
+    Needed = FIELD_OFFSET(ACPI_ENUM_CHILDREN_OUTPUT_BUFFER, Children) + Walk.Bytes;
     if (OutputLength < Needed)
     {
-        /* The required size goes in NumberOfChildren when the header fits */
-        if (OutputLength < sizeof(*Output))
-        {
-            DPRINT("%s: enum children buffer of %lu bytes is too small\n", TraceName, OutputLength);
-            return STATUS_BUFFER_TOO_SMALL;
-        }
-
-        RtlZeroMemory(Output, OutputLength);
+        /* The size it takes goes back in NumberOfChildren */
+        RtlZeroMemory(Output, sizeof(*Output));
         Output->Signature = ACPI_ENUM_CHILDREN_OUTPUT_BUFFER_SIGNATURE;
         Output->NumberOfChildren = Needed;
         *Information = sizeof(*Output);
-
-        DPRINT("%s: %lu children need %lu bytes, got %lu\n", TraceName, Count, Needed,
-               OutputLength);
+        DPRINT("%s: %lu objects need %lu bytes, got %lu\n", TraceName, Walk.Count, Needed, OutputLength);
         return STATUS_BUFFER_OVERFLOW;
     }
 
     RtlZeroMemory(Output, Needed);
     Output->Signature = ACPI_ENUM_CHILDREN_OUTPUT_BUFFER_SIGNATURE;
-    Output->NumberOfChildren = Count;
+    Output->NumberOfChildren = Walk.Count;
 
-    Entry = Output->Children;
-    Child = NULL;
-    while (uacpi_likely_success(uacpi_namespace_node_next(Node, &Child)) && Child)
-    {
-        UacpiNtCopyNodeName(Child, Name);
-        Entry->Flags = UacpiNtNodeHasChildren(Child) ? ACPI_OBJECT_HAS_CHILDREN : 0;
-        Entry->NameLength = sizeof(Name);
-        RtlCopyMemory(Entry->Name, Name, sizeof(Name));
+    Walk.Count = 0;
+    Walk.Bytes = 0;
+    Walk.Cursor = (PUCHAR)Output->Children;
+    UacpiNtEnumAddNode(&Walk, Node);
+    UacpiNtEnumWalk(&Walk, Node);
 
-        /* Same stride as the caller's ACPI_ENUM_CHILD_NEXT */
-        Entry = ACPI_ENUM_CHILD_NEXT(Entry);
-    }
+    /* The namespace cannot grow between the passes, it is only loaded at boot */
+    ASSERT(Walk.Count == Output->NumberOfChildren);
 
-    *Information = (ULONG_PTR)((PUCHAR)Entry - (PUCHAR)Output);
-    DPRINT("%s: %lu children, %lu bytes\n", TraceName, Count, (ULONG)*Information);
+    *Information = Needed;
+    DPRINT("%s: %lu objects, %lu bytes\n", TraceName, Walk.Count, Needed);
     return STATUS_SUCCESS;
 }
 
