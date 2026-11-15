@@ -114,6 +114,9 @@ typedef struct _QCTOUCH_TOUCH_REPORT
 /* Input reports wait here until hidclass has a read pending */
 #define QCTOUCH_REPORT_RING         32
 
+/* Events per stage reported before the trace goes quiet */
+#define QCTOUCH_TRACE_LIMIT         16
+
 typedef struct _QCTOUCH_PENDING_REPORT
 {
     ULONG Length;
