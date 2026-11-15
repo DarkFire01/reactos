@@ -588,6 +588,7 @@ CUixScene::Measure(
     FLOAT ContentHeight;
     FLOAT Width;
     FLOAT Height;
+    FLOAT Ratio;
 
     Resolve(Element);
     if (!Element->Visible)
@@ -603,6 +604,14 @@ CUixScene::Measure(
     ChromeHeight = Element->Padding.Top + Element->Padding.Bottom + Element->Border.Top + Element->Border.Bottom;
 
     BoxWidth = (Element->Width.Kind == UixLengthFixed) ? Element->Width.Value : Max0(AvailableWidth - MarginWidth);
+
+    /* HeightRatio="0.7" makes the height follow the width */
+    Ratio = m_Engine->ResolveNumber(Value(Element, L"HeightRatio", FALSE), 0.0f);
+    if (Ratio > 0.0f && BoxWidth < UIX_INFINITE / 2)
+    {
+        Element->Height.Kind = UixLengthFixed;
+        Element->Height.Value = BoxWidth * Ratio;
+    }
     BoxHeight = (Element->Height.Kind == UixLengthFixed) ? Element->Height.Value : Max0(AvailableHeight - MarginHeight);
 
     MeasureContent(Element, Max0(BoxWidth - ChromeWidth), Max0(BoxHeight - ChromeHeight), &ContentWidth, &ContentHeight);
