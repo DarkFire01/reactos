@@ -222,6 +222,8 @@ typedef enum _UACPINT_CCA_STATE
     UacpiNtCcaNotCoherent
 } UACPINT_CCA_STATE;
 
+#define UACPINT_MAX_DEPENDS 8
+
 typedef struct _UACPINT_PDO
 {
     UACPINT_SHARED          Shared;
@@ -242,6 +244,9 @@ typedef struct _UACPINT_PDO
     UCHAR                   PciRootBaseBus;    ///< cached _BBN
     USHORT                  PciRootSegment;    ///< cached _SEG
     UACPINT_CCA_STATE       CacheCoherency;    ///< from _CCA, read once at creation
+    uacpi_namespace_node   *Depends[UACPINT_MAX_DEPENDS]; ///< _DEP and GPIO controllers, started first
+    ULONG                   DependCount;
+    BOOLEAN                 HeldBack;          ///< left out of relations until those start
 
     /* PCI roots only */
     struct
@@ -561,6 +566,24 @@ UacpiNtTranslateConnectionDescriptor(
     _In_reads_bytes_(DescriptorLength) PVOID Descriptor,
     _In_ ULONG DescriptorLength,
     _Out_ PIO_RESOURCE_DESCRIPTOR IoDescriptor);
+
+/* depend.c */
+
+VOID
+NTAPI
+UacpiNtPdoReadDependencies(
+    _Inout_ PUACPINT_PDO Pdo);
+
+BOOLEAN
+NTAPI
+UacpiNtPdoDependenciesMet(
+    _In_ PUACPINT_FDO Fdo,
+    _In_ PUACPINT_PDO Pdo);
+
+VOID
+NTAPI
+UacpiNtReleaseDependents(
+    _In_ PUACPINT_FDO Fdo);
 
 /* interfaces.c */
 
