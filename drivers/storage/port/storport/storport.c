@@ -1001,6 +1001,24 @@ StorPortExtendedFunction(
             break;
         }
 
+        case ExtFunctionInitializePoFxPower:
+        {
+            PSTOR_ADDRESS Address = va_arg(va, PSTOR_ADDRESS);
+            PSTOR_POFX_DEVICE PoFxDevice = va_arg(va, PSTOR_POFX_DEVICE);
+            PBOOLEAN D3ColdEnabled = va_arg(va, PBOOLEAN);
+
+            /* Units get no power components of their own yet */
+            if (Address != NULL)
+            {
+                Status = STOR_STATUS_NOT_IMPLEMENTED;
+                break;
+            }
+
+            DeviceExtension = StorpGetMiniportFdo(HwDeviceExtension);
+            Status = PortInitializeAdapterPoFx(DeviceExtension, PoFxDevice, D3ColdEnabled);
+            break;
+        }
+
         case ExtFunctionInitializePerformanceOptimizations:
         {
             /* Completions are not spread over processors yet, accept and ignore */

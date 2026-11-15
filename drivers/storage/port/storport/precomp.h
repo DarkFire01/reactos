@@ -247,6 +247,7 @@ typedef struct _FDO_DEVICE_EXTENSION
     PDEVICE_OBJECT LowerDevice;
     PDEVICE_OBJECT PhysicalDevice;
     PDRIVER_OBJECT_EXTENSION DriverExtension;
+    POHANDLE PoFxHandle;
     DEVICE_STATE PnpState;
     LIST_ENTRY AdapterListEntry;
     MINIPORT Miniport;
@@ -736,6 +737,14 @@ StorpCompleteExtendedSrb(
     _In_ PSCSI_REQUEST_BLOCK Srb,
     _In_ PEXTENDED_REQUEST Request);
 
+
+/* pofx.c */
+
+ULONG
+PortInitializeAdapterPoFx(
+    _In_ PFDO_DEVICE_EXTENSION DeviceExtension,
+    _In_ PSTOR_POFX_DEVICE StorDevice,
+    _Out_opt_ PBOOLEAN D3ColdEnabled);
 
 /* storport.c */
 
