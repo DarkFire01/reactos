@@ -388,6 +388,8 @@ CUixScene::Resolve(
         Element->Layout = UixLayoutRow;
     else if (_wcsicmp(Text.c_str(), L"Wrap") == 0)
         Element->Layout = UixLayoutWrap;
+    else if (_wcsicmp(Text.c_str(), L"Tiles") == 0)
+        Element->Layout = UixLayoutTiles;
     else
         Element->Layout = UixLayoutOverlay;
 
@@ -510,6 +512,23 @@ CUixScene::MeasureContent(
     RowWidth = 0.0f;
     RowHeight = 0.0f;
 
+    if (Element->Layout == UixLayoutTiles)
+    {
+        ULONG Columns;
+        ULONG Rows = PlaceTiles(Element, &Columns);
+        FLOAT Cell = TileCell(Element, Columns, Width);
+        FLOAT Gap = m_Engine->ResolveNumber(Value(Element, L"Gap", FALSE), 0.0f);
+
+        for (PUIX_ELEMENT Child : Element->Children)
+        {
+            Measure(Child, Child->SpanX * Cell + (Child->SpanX - 1) * Gap,
+                    Child->SpanY * Cell + (Child->SpanY - 1) * Gap);
+        }
+        *ContentWidth = Width;
+        *ContentHeight = Rows ? Rows * Cell + (Rows - 1) * Gap : 0.0f;
+        return;
+    }
+
     for (PUIX_ELEMENT Child : Element->Children)
     {
         switch (Element->Layout)
@@ -606,6 +625,86 @@ CUixScene::Measure(
 
     Element->DesiredWidth = Width + MarginWidth;
     Element->DesiredHeight = Height + MarginHeight;
+}
+
+/*
+ * Start style packing: each child takes the first free cell, row by row, where its
+ * Span="columns,rows" fits. Tiles two or more columns wide start on an even column.
+ */
+ULONG
+CUixScene::PlaceTiles(
+    _In_ PUIX_ELEMENT Element,
+    _Out_ ULONG *Columns)
+{
+    std::vector<BOOL> Used;
+    ULONG Count = (ULONG)max(1.0f, m_Engine->ResolveNumber(Value(Element, L"Columns", FALSE), 4.0f));
+    ULONG Rows = 0;
+
+    *Columns = Count;
+    for (PUIX_ELEMENT Child : Element->Children)
+    {
+        std::wstring Span = Value(Child, L"Span", FALSE);
+        ULONG X = 1;
+        ULONG Y = 1;
+        ULONG Align;
+        ULONG Row;
+        ULONG Column;
+        BOOL Placed = FALSE;
+
+        if (!Span.empty())
+            swscanf(Span.c_str(), L"%lu,%lu", &X, &Y);
+        Child->SpanX = min(max(X, 1UL), Count);
+        Child->SpanY = max(Y, 1UL);
+        Child->TileX = 0;
+        Child->TileY = 0;
+        if (!Child->Visible)
+            continue;
+
+        Align = (Child->SpanX >= 2) ? 2 : 1;
+        for (Row = 0; !Placed; Row++)
+        {
+            for (Column = 0; Column + Child->SpanX <= Count && !Placed; Column += Align)
+            {
+                BOOL Free = TRUE;
+
+                for (ULONG DY = 0; DY < Child->SpanY && Free; DY++)
+                {
+                    for (ULONG DX = 0; DX < Child->SpanX && Free; DX++)
+                    {
+                        SIZE_T Index = (Row + DY) * Count + Column + DX;
+                        Free = Index >= Used.size() || !Used[Index];
+                    }
+                }
+                if (!Free)
+                    continue;
+
+                if (Used.size() < (Row + Child->SpanY) * Count)
+                    Used.resize((Row + Child->SpanY) * Count, FALSE);
+                for (ULONG DY = 0; DY < Child->SpanY; DY++)
+                {
+                    for (ULONG DX = 0; DX < Child->SpanX; DX++)
+                        Used[(Row + DY) * Count + Column + DX] = TRUE;
+                }
+                Child->TileX = Column;
+                Child->TileY = Row;
+                Rows = max(Rows, Row + Child->SpanY);
+                Placed = TRUE;
+            }
+        }
+    }
+    return Rows;
+}
+
+/* Square cells: the width less the gaps, shared by the columns */
+FLOAT
+CUixScene::TileCell(
+    _In_ PUIX_ELEMENT Element,
+    _In_ ULONG Columns,
+    _In_ FLOAT Width)
+{
+    FLOAT Gap = m_Engine->ResolveNumber(Value(Element, L"Gap", FALSE), 0.0f);
+
+    return Max0((Width - Gap * (Columns - 1)) / Columns);
 }
 
 VOID
@@ -719,6 +818,30 @@ CUixScene::Arrange(
                 else
                     Arrange(Child, { Cursor, Content.Top, Cursor + Size, Content.Bottom });
                 Cursor += Size;
+            }
+            break;
+        }
+
+        case UixLayoutTiles:
+        {
+            ULONG Columns;
+            FLOAT Cell;
+            FLOAT Step;
+
+            PlaceTiles(Element, &Columns);
+            Cell = TileCell(Element, Columns, Content.Right - Content.Left);
+            Step = Cell + m_Engine->ResolveNumber(Value(Element, L"Gap", FALSE), 0.0f);
+            for (PUIX_ELEMENT Child : Element->Children)
+            {
+                FLOAT Left = Content.Left + Child->TileX * Step;
+                FLOAT Top = Content.Top + Child->TileY * Step;
+
+                if (!Child->Visible)
+                {
+                    Arrange(Child, { Content.Left, Content.Top, Content.Left, Content.Top });
+                    continue;
+                }
+                Arrange(Child, { Left, Top, Left + Child->SpanX * Step - (Step - Cell), Top + Child->SpanY * Step - (Step - Cell) });
             }
             break;
         }
