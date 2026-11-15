@@ -75,6 +75,32 @@ PnpWatchFindModule(
     return NULL;
 }
 
+/* Whether a stack value points into an executable section, so data pointers are not taken for frames */
+static BOOLEAN
+PnpWatchIsCode(
+    _In_ PLDR_DATA_TABLE_ENTRY LdrEntry,
+    _In_ ULONG_PTR Value)
+{
+    PIMAGE_NT_HEADERS NtHeaders = RtlImageNtHeader(LdrEntry->DllBase);
+    PIMAGE_SECTION_HEADER Section;
+    ULONG_PTR Rva = Value - (ULONG_PTR)LdrEntry->DllBase;
+    ULONG i;
+
+    if (!NtHeaders)
+        return TRUE;
+
+    Section = IMAGE_FIRST_SECTION(NtHeaders);
+    for (i = 0; i < NtHeaders->FileHeader.NumberOfSections; i++, Section++)
+    {
+        if (Rva >= Section->VirtualAddress &&
+            Rva < Section->VirtualAddress + max(Section->Misc.VirtualSize, Section->SizeOfRawData))
+        {
+            return (Section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
+        }
+    }
+    return FALSE;
+}
+
 /* Only the watchdog thread scans stacks, one at a time */
 static ULONG_PTR PnpWatchStackCopy[KERNEL_LARGE_STACK_SIZE / sizeof(ULONG_PTR)];
 
@@ -164,15 +190,22 @@ PnpWatchScanStack(
                      Thread, PsGetThreadProcess((PETHREAD)Thread)->ImageFileName,
                      Thread->State, Thread->WaitReason);
         }
-        for (p = PnpWatchStackCopy; p < End && Hits < 48; p++)
+        /* Code addresses only, three to a line, so the innermost ones stay on a phone screen */
+        for (p = PnpWatchStackCopy; p < End && Hits < 24; p++)
         {
             LdrEntry = PnpWatchFindModule(*p);
-            if (LdrEntry)
-            {
-                DbgPrint("PNPWATCH:   %wZ+0x%Ix\n", &LdrEntry->BaseDllName, *p - (ULONG_PTR)LdrEntry->DllBase);
-                Hits++;
-            }
+            if (!LdrEntry || !PnpWatchIsCode(LdrEntry, *p))
+                continue;
+
+            DbgPrint("%s%wZ+0x%Ix%s",
+                     (Hits % 3) ? " " : "PNPWATCH: ",
+                     &LdrEntry->BaseDllName,
+                     *p - (ULONG_PTR)LdrEntry->DllBase,
+                     (Hits % 3 == 2) ? "\n" : "");
+            Hits++;
         }
+        if (Hits % 3)
+            DbgPrint("\n");
     }
     ExReleaseResourceLite(&PsLoadedModuleResource);
     KeLeaveCriticalRegion();
