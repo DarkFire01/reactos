@@ -706,6 +706,14 @@ MiDeleteVirtualAddresses(
             PointerPte++;
         } while ((Va & (PDE_MAPPED_VA - 1)) && (Va <= EndingAddress));
 
+#ifdef _M_ARM64
+        /*
+         * The pages and page tables freed above go back to the lists once the PFN lock drops.
+         * ASID tagged translations outlive a context switch, so no processor may keep one.
+         */
+        KeFlushProcessTb();
+#endif
+
         /* Release the lock */
         MiReleasePfnLock(OldIrql);
 
