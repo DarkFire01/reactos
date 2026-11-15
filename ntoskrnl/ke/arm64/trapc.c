@@ -573,6 +573,14 @@ KiArm64InterruptDispatch(
     else
     {
         if (Vector < KI_MAXIMUM_VECTOR)
+        /* The idle loop takes the thread itself, the idle thread is the one running then */
+        if (!Prcb->NextThread || (Prcb->NextThread == Prcb->CurrentThread))
+        {
+            ASSERT(!Prcb->NextThread || (Prcb->NextThread == Prcb->IdleThread));
+            KiReleasePrcbLock(Prcb);
+            return;
+        }
+
             Interrupt = *KiInterruptObjectSlot(Pcr, Vector);
 
         if (!Interrupt)

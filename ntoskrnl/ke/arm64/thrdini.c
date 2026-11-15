@@ -199,16 +199,33 @@ KiIdleLoop(VOID)
         {
             _enable();
 
+#ifdef CONFIG_SMP
+            KfRaiseIrql(SYNCH_LEVEL);
+#endif
+            /* Other processors hand threads over under the PRCB lock */
+            KiSetThreadSwapBusy(Prcb->IdleThread);
+            KiAcquirePrcbLock(Prcb);
             OldThread = Prcb->CurrentThread;
             NewThread = Prcb->NextThread;
             Prcb->NextThread = NULL;
             Prcb->CurrentThread = NewThread;
+            KiReleasePrcbLock(Prcb);
+
+            ASSERT(NewThread != NULL);
             NewThread->State = Running;
 
-#ifdef CONFIG_SMP
-            KfRaiseIrql(SYNCH_LEVEL);
-#endif
-            KiSwapContext(APC_LEVEL, OldThread);
+            if (NewThread != OldThread)
+            {
+                InterlockedAnd64((PLONG64)&KiIdleSummary, ~(LONG64)Prcb->SetMember);
+                KiSwapContext(APC_LEVEL, OldThread);
+                InterlockedOr64((PLONG64)&KiIdleSummary, (LONG64)Prcb->SetMember);
+            }
+            else
+            {
+                /* Rescheduled to itself, it stays the idle thread */
+                NewThread->SwapBusy = FALSE;
+            }
+
 #ifdef CONFIG_SMP
             KeLowerIrql(DISPATCH_LEVEL);
 #endif
