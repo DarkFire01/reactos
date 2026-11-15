@@ -777,6 +777,16 @@ KiArm64TrapDispatch(
     _Inout_ PKEXCEPTION_FRAME ExceptionFrame,
     _In_ ULONG TrapType)
 {
+    /* A processor still starting does not take traps, it stops and reports */
+    if (TrapType == KI_TRAP_SYNCHRONOUS)
+    {
+        KiParkStartingProcessor(KI_AP_START_TRAP | TrapFrame->Esr,
+                                TrapFrame->Pc,
+                                TrapFrame->FaultAddress,
+                                TrapFrame->Lr,
+                                TrapFrame->Fp);
+    }
+
     switch (TrapType)
     {
         case KI_TRAP_SYNCHRONOUS:

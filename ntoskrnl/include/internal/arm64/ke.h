@@ -353,6 +353,18 @@ HalAllocateAdapterChannel(
     _In_ ULONG NumberOfMapRegisters,
     _In_ PDRIVER_CONTROL ExecutionRoutine);
 
+/* Trap code KiParkStartingProcessor reports for a starting processor */
+#define KI_AP_START_TRAP    (0xA9ULL << 32)
+
+VOID
+NTAPI
+KiParkStartingProcessor(
+    _In_ ULONG_PTR Code,
+    _In_ ULONG_PTR Parameter1,
+    _In_ ULONG_PTR Parameter2,
+    _In_ ULONG_PTR Parameter3,
+    _In_ ULONG_PTR Parameter4);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

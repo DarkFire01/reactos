@@ -29,6 +29,7 @@ typedef struct _KI_AP_BLOCK
 PVOID KiStartingDpcStack;
 
 extern volatile ULONG KiApStartStep;
+extern volatile ULONG_PTR KiApStartFailure[5];
 
 /* FUNCTIONS *****************************************************************/
 
@@ -88,6 +89,7 @@ KeStartAllProcessors(VOID)
         KeLoaderBlock->Process = (ULONG_PTR)&KiInitialProcess.Pcb;
         KiStartingDpcStack = DpcStack;
         KiApStartStep = 0;
+        KiApStartFailure[0] = 0;
         KeMemoryBarrier();
         KeLoaderBlock->Prcb = (ULONG_PTR)&Block->Pcr.Prcb;
         KeMemoryBarrier();
@@ -102,15 +104,31 @@ KeStartAllProcessors(VOID)
             break;
         }
 
-        for (Waited = 0; KeLoaderBlock->Prcb && (Waited < KI_AP_TIMEOUT_MS); Waited++)
+        for (Waited = 0; KeLoaderBlock->Prcb && !KiApStartFailure[0] && (Waited < KI_AP_TIMEOUT_MS); Waited++)
         {
             KeStallExecutionProcessor(1000);
             KeMemoryBarrier();
         }
 
         /* It runs somewhere with this block, nothing can be freed */
+        /* A trap or bugcheck on it: code, then the trap PC and syndrome or its parameters */
+        if (KiApStartFailure[0])
+        {
+            DPRINT1("Processor %lu stopped at step %lu: %Ix %Ix %Ix %Ix %Ix\n", Number, KiApStartStep,
+                    KiApStartFailure[0], KiApStartFailure[1], KiApStartFailure[2],
+                    KiApStartFailure[3], KiApStartFailure[4]);
+            KeBugCheckEx(PHASE1_INITIALIZATION_FAILED,
+                         (KiApStartStep << 8) | Number,
+                         KiApStartFailure[0],
+                         KiApStartFailure[1],
+                         KiApStartFailure[2]);
+        }
+
         if (KeLoaderBlock->Prcb)
+        {
+            DPRINT1("Processor %lu never checked in, it got to step %lu\n", Number, KiApStartStep);
             KeBugCheckEx(PHASE1_INITIALIZATION_FAILED, 0x5C1, Number, KiApStartStep, KeNumberProcessors);
+        }
 
         ASSERT(KeNumberProcessors == (CCHAR)(Number + 1));
         ASSERT(KiProcessorBlock[Number] == &Block->Pcr.Prcb);
@@ -120,4 +138,42 @@ KeStartAllProcessors(VOID)
 
     KiStartingDpcStack = NULL;
     DPRINT1("%u processor(s) running\n", KeNumberProcessors);
+}
+
+/* What stopped the processor being started, read by KeStartAllProcessors */
+volatile ULONG_PTR KiApStartFailure[5];
+
+/**
+ * @brief Parks a processor that is still starting and hit a trap or a bugcheck.
+ *
+ * The debugger would freeze the running processors and then fault again on a
+ * processor that is half set up, so the failure is only recorded here.
+ */
+VOID
+NTAPI
+KiParkStartingProcessor(
+    _In_ ULONG_PTR Code,
+    _In_ ULONG_PTR Parameter1,
+    _In_ ULONG_PTR Parameter2,
+    _In_ ULONG_PTR Parameter3,
+    _In_ ULONG_PTR Parameter4)
+{
+    PKPRCB Prcb = KeGetCurrentPrcb();
+
+    if (!Prcb->Number || (KeActiveProcessors & Prcb->SetMember))
+        return;
+
+    KiApStartFailure[1] = Parameter1;
+    KiApStartFailure[2] = Parameter2;
+    KiApStartFailure[3] = Parameter3;
+    KiApStartFailure[4] = Parameter4;
+    KeMemoryBarrier();
+    KiApStartFailure[0] = Code;
+    KeMemoryBarrier();
+
+    for (;;)
+    {
+        _disable();
+        __wfi();
+    }
 }
