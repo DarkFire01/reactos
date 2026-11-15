@@ -64,6 +64,16 @@
 /* GICv2 IAR keeps the sending processor of an SGI above the INTID */
 #define GICC_IAR_INTID      0x3FF
 
+/*
+ * Software interrupts use the SGI numbered like their IRQL, except the IPI:
+ * secure firmware commonly keeps SGIs 8 to 15 for itself, so it takes SGI 3,
+ * which no software interrupt uses, at the IPI_LEVEL priority.
+ */
+#define HALP_IPI_SGI        3
+
+#define HalpSgiFromVector(Vector)   (((Vector) == IPI_LEVEL) ? HALP_IPI_SGI : (Vector))
+#define HalpVectorFromSgi(IntId)    (((IntId) == HALP_IPI_SGI) ? IPI_LEVEL : (IntId))
+
 /* GLOBALS *******************************************************************/
 
 static PUCHAR HalpGicd;
@@ -263,14 +273,14 @@ HalpGicInitializeCpu(
         HalpGicWrite(HalpGicd, GICD_ICFGR + 4, 0);
 
         for (i = 0; i < GIC_SPI_FIRST; i++)
-            WRITE_REGISTER_UCHAR(HalpGicd + GICD_IPRIORITYR + i, HalpIrqlToPriority(i < GIC_SGI_COUNT ? (i & 0xF) : PASSIVE_LEVEL));
+            WRITE_REGISTER_UCHAR(HalpGicd + GICD_IPRIORITYR + i, HalpIrqlToPriority(i < GIC_SGI_COUNT ? HalpVectorFromSgi(i) : PASSIVE_LEVEL));
 
         /* No priority grouping, group 0 signalled as IRQ since FIQEn stays clear */
         HalpGicWrite(HalpGicc, GICC_PMR, HalpIrqlToPriority(HIGH_LEVEL));
         HalpGicWrite(HalpGicc, GICC_BPR, 0);
         HalpGicWrite(HalpGicc, GICC_CTLR, GICV2_CTLR_ENABLE);
 
-        HalpGicWrite(HalpGicd, GICD_ISENABLER, (1 << APC_LEVEL) | (1 << DISPATCH_LEVEL) | (1 << IPI_LEVEL));
+        HalpGicWrite(HalpGicd, GICD_ISENABLER, (1 << APC_LEVEL) | (1 << DISPATCH_LEVEL) | (1 << HALP_IPI_SGI));
         return;
     }
 
@@ -297,7 +307,7 @@ HalpGicInitializeCpu(
 
     /* Software interrupts use their IRQL as the SGI number */
     for (i = 0; i < GIC_SPI_FIRST; i++)
-        WRITE_REGISTER_UCHAR(Sgi + GICR_IPRIORITYR + i, HalpIrqlToPriority(i < GIC_SGI_COUNT ? (i & 0xF) : PASSIVE_LEVEL));
+        WRITE_REGISTER_UCHAR(Sgi + GICR_IPRIORITYR + i, HalpIrqlToPriority(i < GIC_SGI_COUNT ? HalpVectorFromSgi(i) : PASSIVE_LEVEL));
 
     /* System register access, no priority grouping, group 1 on */
     KeArm64WriteRegister(ARM64_ICC_SRE_EL1, KeArm64ReadRegister(ARM64_ICC_SRE_EL1) | 1);
@@ -309,13 +319,13 @@ HalpGicInitializeCpu(
     __isb(_ARM64_BARRIER_SY);
 
     /* The software interrupts are always live, the priority mask holds them */
-    HalpGicWrite(Sgi, GICR_ISENABLER0, (1 << APC_LEVEL) | (1 << DISPATCH_LEVEL) | (1 << IPI_LEVEL));
+    HalpGicWrite(Sgi, GICR_ISENABLER0, (1 << APC_LEVEL) | (1 << DISPATCH_LEVEL) | (1 << HALP_IPI_SGI));
 
     /* Firmware with the security extensions may keep some of this from the non-secure side */
     HalpGicCpuState[ProcessorNumber].Waker = HalpGicRead(Control, GICR_WAKER);
     HalpGicCpuState[ProcessorNumber].Group = HalpGicRead(Sgi, GICR_IGROUPR0);
     HalpGicCpuState[ProcessorNumber].Enable = HalpGicRead(Sgi, GICR_ISENABLER0);
-    HalpGicCpuState[ProcessorNumber].IpiPriority = READ_REGISTER_UCHAR(Sgi + GICR_IPRIORITYR + IPI_LEVEL);
+    HalpGicCpuState[ProcessorNumber].IpiPriority = READ_REGISTER_UCHAR(Sgi + GICR_IPRIORITYR + HALP_IPI_SGI);
     HalpGicCpuState[ProcessorNumber].Sre = (ULONG)KeArm64ReadRegister(ARM64_ICC_SRE_EL1);
     HalpGicCpuState[ProcessorNumber].Ctlr = (ULONG)KeArm64ReadRegister(ARM64_ICC_CTLR_EL1);
     HalpGicCpuState[ProcessorNumber].GroupEnable = (ULONG)KeArm64ReadRegister(ARM64_ICC_IGRPEN1_EL1);
@@ -466,6 +476,8 @@ HalpGicSendSgi(
     ULONG64 Mpidr, Value;
     ULONG Cpu, Targets;
 
+    IntId = HalpSgiFromVector(IntId);
+
     if (HalpGicV2)
     {
         /* Sending to ourselves needs no CPU interface number */
@@ -519,7 +531,7 @@ HalpGicAcknowledge(VOID)
     {
         Iar = HalpGicRead(HalpGicc, GICC_IAR);
         HalpGicLastIar[KeGetCurrentProcessorNumber()] = Iar;
-        return Iar & GICC_IAR_INTID;
+        return HalpVectorFromSgi(Iar & GICC_IAR_INTID);
     }
 
     Iar = (ULONG)KeArm64ReadRegister(ARM64_ICC_IAR1_EL1) & 0xFFFFFF;
@@ -527,7 +539,9 @@ HalpGicAcknowledge(VOID)
         HalpGicCpuState[KeGetCurrentProcessorNumber()].Acknowledged++;
     else
         HalpGicCpuState[KeGetCurrentProcessorNumber()].Spurious++;
-    return Iar;
+
+    /* The kernel sees the IPI under its IRQL, like the other software interrupts */
+    return HalpVectorFromSgi(Iar);
 }
 
 VOID
@@ -536,6 +550,8 @@ HalpGicEndOfInterrupt(
     _In_ ULONG IntId)
 {
     ULONG Iar;
+
+    IntId = HalpSgiFromVector(IntId);
 
     if (HalpGicV2)
     {
