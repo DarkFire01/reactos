@@ -1232,6 +1232,8 @@ KiDisplayBlueScreen(IN ULONG MessageId,
 #ifdef _M_ARM64
     KiDisplayExceptionContext();
 #endif
+    if (BugCheckCode == BAD_POOL_HEADER && KiBugCheckData[4])
+        ExpDisplayPoolPage((PVOID)KiBugCheckData[4]);
     KiDisplayBugCheckBackTrace();
 #ifdef _M_ARM64
     KiDisplayWaitingThreads();
