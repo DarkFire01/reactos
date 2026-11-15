@@ -599,6 +599,51 @@ extern const CSTRING KdbPromptStr;
 #endif
 
 #ifdef _M_ARM64
+/* Checks that a range can be read at any IRQL without taking a fault */
+static
+BOOLEAN
+KdpIsRangeReadable(
+    _In_ ULONG_PTR Address,
+    _In_ SIZE_T Size)
+{
+    return (Address != 0) &&
+           MmIsAddressValid((PVOID)Address) &&
+           MmIsAddressValid((PVOID)(Address + Size - 1));
+}
+
+/* Looks a user address up in the module list of the current process */
+static
+PLDR_DATA_TABLE_ENTRY
+KdpFindUserModule(
+    _In_ ULONG_PTR Address)
+{
+    PPEB Peb = PsGetCurrentProcess()->Peb;
+    PLDR_DATA_TABLE_ENTRY Module;
+    PLIST_ENTRY Head, Entry;
+    ULONG Count = 0;
+
+    if (!KdpIsRangeReadable((ULONG_PTR)Peb, sizeof(*Peb)) ||
+        !KdpIsRangeReadable((ULONG_PTR)Peb->Ldr, sizeof(*Peb->Ldr)))
+    {
+        return NULL;
+    }
+
+    Head = &Peb->Ldr->InLoadOrderModuleList;
+    for (Entry = Head->Flink;
+         (Entry != Head) && (Count < 512) && KdpIsRangeReadable((ULONG_PTR)Entry, sizeof(*Module));
+         Entry = Entry->Flink, Count++)
+    {
+        Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if ((Address >= (ULONG_PTR)Module->DllBase) &&
+            (Address < (ULONG_PTR)Module->DllBase + Module->SizeOfImage))
+        {
+            return Module;
+        }
+    }
+
+    return NULL;
+}
+
 /* Prints a code address as module+offset when it falls in a loaded image */
 static
 VOID
@@ -606,24 +651,39 @@ KdpPrintCodeAddress(
     _In_ PCSTR Label,
     _In_ ULONG_PTR Address)
 {
-    PLDR_DATA_TABLE_ENTRY Module;
+    PLDR_DATA_TABLE_ENTRY Module = NULL;
     PLIST_ENTRY Entry;
 
-    for (Entry = PsLoadedModuleList.Flink;
-         Entry && (Entry != &PsLoadedModuleList) && MmIsAddressValid(Entry);
-         Entry = Entry->Flink)
+    if (Address < (ULONG_PTR)MmSystemRangeStart)
     {
-        Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-        if ((Address >= (ULONG_PTR)Module->DllBase) &&
-            (Address < (ULONG_PTR)Module->DllBase + Module->SizeOfImage))
+        Module = KdpFindUserModule(Address);
+    }
+    else
+    {
+        for (Entry = PsLoadedModuleList.Flink;
+             Entry && (Entry != &PsLoadedModuleList) && MmIsAddressValid(Entry);
+             Entry = Entry->Flink)
         {
-            KdIoPrintf("  %s %p %wZ+0x%Ix\n",
-                       Label,
-                       (PVOID)Address,
-                       &Module->BaseDllName,
-                       Address - (ULONG_PTR)Module->DllBase);
-            return;
+            PLDR_DATA_TABLE_ENTRY Candidate = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+
+            if ((Address >= (ULONG_PTR)Candidate->DllBase) &&
+                (Address < (ULONG_PTR)Candidate->DllBase + Candidate->SizeOfImage))
+            {
+                Module = Candidate;
+                break;
+            }
         }
+    }
+
+    if (Module &&
+        KdpIsRangeReadable((ULONG_PTR)Module->BaseDllName.Buffer, Module->BaseDllName.Length + 1))
+    {
+        KdIoPrintf("  %s %p %wZ+0x%Ix\n",
+                   Label,
+                   (PVOID)Address,
+                   &Module->BaseDllName,
+                   Address - (ULONG_PTR)Module->DllBase);
+        return;
     }
 
     KdIoPrintf("  %s %p\n", Label, (PVOID)Address);
@@ -641,6 +701,7 @@ KdpPrintExceptionBacktrace(
     _In_ PEXCEPTION_RECORD64 ExceptionRecord)
 {
     PCONTEXT Context = &KeGetCurrentPrcb()->ProcessorState.ContextFrame;
+    BOOLEAN UserFrames;
     ULONG_PTR Frame;
     ULONG Depth;
 
@@ -651,16 +712,18 @@ KdpPrintExceptionBacktrace(
                (PVOID)Context->X1,
                (PVOID)Context->X2);
     KdpPrintCodeAddress("PC", Context->Pc);
+    if (KdpIsRangeReadable(Context->Pc, sizeof(ULONG)))
+        KdIoPrintf("  Instruction %08lx\n", *(PULONG)Context->Pc);
     KdpPrintCodeAddress("LR", Context->Lr);
 
     /* Every frame starts with the caller's frame pointer and return address */
+    UserFrames = (Context->Pc < (ULONG_PTR)MmSystemRangeStart);
     Frame = Context->Fp;
     for (Depth = 0; Depth < 12; Depth++)
     {
         if ((Frame & 7) ||
-            (Frame < (ULONG_PTR)MmSystemRangeStart) ||
-            !MmIsAddressValid((PVOID)Frame) ||
-            !MmIsAddressValid((PVOID)(Frame + sizeof(ULONG_PTR))))
+            ((Frame < (ULONG_PTR)MmSystemRangeStart) != UserFrames) ||
+            !KdpIsRangeReadable(Frame, 2 * sizeof(ULONG_PTR)))
         {
             break;
         }
