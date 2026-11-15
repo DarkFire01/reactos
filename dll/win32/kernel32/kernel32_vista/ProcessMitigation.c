@@ -213,3 +213,40 @@ GetProcessMitigationPolicy(
     /* Nothing else is enforced, so nothing else is enabled */
     return TRUE;
 }
+
+/**
+ * @brief Marks call targets valid for Control Flow Guard.
+ * Without CFG every target is already valid, so each entry is only reported as processed.
+ */
+BOOL
+WINAPI
+SetProcessValidCallTargets(
+    _In_ HANDLE hProcess,
+    _In_ PVOID VirtualAddress,
+    _In_ SIZE_T RegionSize,
+    _In_ ULONG NumberOfOffsets,
+    _Inout_updates_(NumberOfOffsets) PCFG_CALL_TARGET_INFO OffsetInformation)
+{
+    ULONG Index;
+
+    UNREFERENCED_PARAMETER(hProcess);
+
+    if (!VirtualAddress || (NumberOfOffsets && !OffsetInformation))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    for (Index = 0; Index < NumberOfOffsets; Index++)
+    {
+        if (OffsetInformation[Index].Offset >= RegionSize)
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return FALSE;
+        }
+
+        OffsetInformation[Index].Flags |= CFG_CALL_TARGET_PROCESSED;
+    }
+
+    return TRUE;
+}
