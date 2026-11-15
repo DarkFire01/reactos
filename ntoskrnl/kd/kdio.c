@@ -611,6 +611,31 @@ KdpIsRangeReadable(
            MmIsAddressValid((PVOID)(Address + Size - 1));
 }
 
+/* Prints the page table entries that map an address, down to the first one that is not valid */
+static
+VOID
+KdpPrintMapping(
+    _In_ PCSTR Label,
+    _In_ ULONG_PTR Address)
+{
+    PMMPTE Entries[4];
+    ULONG Level;
+
+    Entries[0] = MiAddressToPxe((PVOID)Address);
+    Entries[1] = MiAddressToPpe((PVOID)Address);
+    Entries[2] = MiAddressToPde((PVOID)Address);
+    Entries[3] = MiAddressToPte((PVOID)Address);
+
+    KdIoPrintf("  %s %p map", Label, (PVOID)Address);
+    for (Level = 0; Level < 4; Level++)
+    {
+        KdIoPrintf(" %I64x", Entries[Level]->u.Long);
+        if (!Entries[Level]->u.Hard.Valid)
+            break;
+    }
+    KdIoPrintf("\n");
+}
+
 /* Looks a user address up in the module list of the current process */
 static
 PLDR_DATA_TABLE_ENTRY
@@ -712,8 +737,26 @@ KdpPrintExceptionBacktrace(
                (PVOID)Context->X1,
                (PVOID)Context->X2);
     KdpPrintCodeAddress("PC", Context->Pc);
-    if (KdpIsRangeReadable(Context->Pc, sizeof(ULONG)))
-        KdIoPrintf("  Instruction %08lx\n", *(PULONG)Context->Pc);
+    KdIoPrintf("  FP %p X19 %p X20 %p X21 %p\n",
+               (PVOID)Context->Fp,
+               (PVOID)Context->X19,
+               (PVOID)Context->X20,
+               (PVOID)Context->X21);
+    if (Context->Pc < (ULONG_PTR)MmSystemRangeStart)
+    {
+        KdpPrintMapping("PC", Context->Pc);
+        KdpPrintMapping("SP", Context->Sp);
+    }
+    if (KdpIsRangeReadable(Context->Pc - 0x40, 0x48))
+    {
+        PULONG Code = (PULONG)(Context->Pc - 0x40);
+        ULONG Index;
+
+        KdIoPrintf("  Code");
+        for (Index = 0; Index < 18; Index++)
+            KdIoPrintf(" %08lx", Code[Index]);
+        KdIoPrintf("\n");
+    }
     KdpPrintCodeAddress("LR", Context->Lr);
 
     /* Every frame starts with the caller's frame pointer and return address */
