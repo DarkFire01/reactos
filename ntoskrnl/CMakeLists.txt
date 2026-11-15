@@ -44,6 +44,15 @@ add_executable(ntoskrnl
     ${CMAKE_CURRENT_BINARY_DIR}/ntoskrnl.def)
 set_module_type(ntoskrnl kernel)
 
+# ARM64 has only the multiprocessor kernel, like Windows on ARM64
+if(ARCH STREQUAL "arm64")
+    target_compile_definitions(ntoskrnl PRIVATE CONFIG_SMP)
+    target_sources(ntoskrnl PRIVATE ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/mproc.c)
+    if(MSVC_IDE)
+        set_source_files_properties(${NTOSKRNL_ASM_SOURCE} PROPERTIES COMPILE_DEFINITIONS "CONFIG_SMP")
+    endif()
+endif()
+
 source_group(TREE ${REACTOS_SOURCE_DIR}/ntoskrnl PREFIX "Source Files" FILES ${NTOSKRNL_SOURCE})
 
 target_link_libraries(ntoskrnl ntoskrnl_vista cportlib csq ${PSEH_LIB} arbiter cmlib ntlsalib rtl rtl_vista cryptlib ${ROSSYM_LIB} libcntpr setjmp wdmguid poguid ioevent sdbread_km)
