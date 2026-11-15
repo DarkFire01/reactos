@@ -10,6 +10,50 @@
 #define NDEBUG
 #include <debug.h>
 
+/* One component, F0 running and F1 off, as the platform describes the controller */
+#define UFS_POFX_FSTATES 2
+
+typedef struct _UFS_POFX_DESCRIPTION
+{
+    STOR_POFX_DEVICE Device;
+    STOR_POFX_COMPONENT_IDLE_STATE MoreStates[UFS_POFX_FSTATES - 1];
+} UFS_POFX_DESCRIPTION;
+
+/**
+ * @brief Registers the controller with the power framework, which is what has the
+ * platform turn on its clocks (the inline crypto engine on the data path among them).
+ */
+static
+VOID
+UfsRegisterPowerComponent(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter)
+{
+    UFS_POFX_DESCRIPTION Description;
+    PSTOR_POFX_COMPONENT Component = &Description.Device.Components[0];
+    BOOLEAN D3Cold = FALSE;
+    ULONG State;
+    ULONG Status;
+
+    RtlZeroMemory(&Description, sizeof(Description));
+    Description.Device.Version = STOR_POFX_DEVICE_VERSION_V1;
+    Description.Device.Size = sizeof(Description);
+    Description.Device.ComponentCount = 1;
+
+    Component->Version = STOR_POFX_COMPONENT_VERSION_V1;
+    Component->Size = FIELD_OFFSET(STOR_POFX_COMPONENT, FStates[UFS_POFX_FSTATES]);
+    Component->FStateCount = UFS_POFX_FSTATES;
+    Component->DeepestWakeableFState = 1;
+
+    for (State = 0; State < UFS_POFX_FSTATES; State++)
+    {
+        Component->FStates[State].Version = STOR_POFX_COMPONENT_IDLE_STATE_VERSION_V1;
+        Component->FStates[State].Size = sizeof(STOR_POFX_COMPONENT_IDLE_STATE);
+    }
+
+    Status = StorPortInitializePoFxPower(Adapter, NULL, &Description.Device, &D3Cold);
+    DPRINT1("UFS: power component registration 0x%lx\n", Status);
+}
+
 #define UFS_BAR_ADDRESS_MASK 0xFFFFFFF0
 
 VOID
@@ -157,6 +201,9 @@ StorUfsFindAdapter(
 
     RtlZeroMemory(Adapter, sizeof(*Adapter));
     Adapter->DumpMode = (ConfigInfo->DumpMode != 0);
+
+    if (!Adapter->DumpMode)
+        UfsRegisterPowerComponent(Adapter);
 
     if (!UfsMapRegisters(Adapter, ConfigInfo))
     {
