@@ -140,7 +140,7 @@ ExpReportRunningWork(
         if (!Thread || ExpRunningWork[Slot].Queue != Queue)
             continue;
 
-        DbgPrint("EX:   busy %p", Thread);
+        DbgPrint("EX:   busy %p state %u reason %u", Thread, Thread->State, Thread->WaitReason);
         ExpPrintCode(" in ", ExpRunningWork[Slot].Routine);
         if (ExpRunningWork[Slot].DeviceObject)
             DbgPrint(" for %wZ", &ExpRunningWork[Slot].DeviceObject->DriverObject->DriverName);
@@ -148,7 +148,7 @@ ExpReportRunningWork(
 
 #ifdef _M_ARM64
         /* Where it waits: the frame chain saved when it switched out */
-        if (Thread->State != Waiting)
+        if (Thread->State != Waiting && Thread->State != GateWait)
             continue;
 
         SwitchFrame = (PKSWITCH_FRAME)Thread->KernelStack;
