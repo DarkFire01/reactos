@@ -16,7 +16,11 @@
 #endif
 
 // Provide a fallback memset for libraries like kbdrost.dll
-#if defined(_M_ARM) || defined(_M_ARM64)
+#if defined(_M_ARM64)
+/* In arm64/memset.s, prologues expect it to change only x0 to x2 */
+#pragma comment(linker, "/alternatename:memset=memset_fallback")
+#pragma comment(linker, "/alternatename:__RTC_memset=memset_fallback")
+#elif defined(_M_ARM)
 void* __cdecl memset_fallback(void* src, int val, size_t count)
 {
     char *char_src = (char *)src;
