@@ -29,6 +29,10 @@ typedef struct _KI_AP_BLOCK
 PVOID KiStartingDpcStack;
 
 extern volatile ULONG KiApStartStep;
+
+/* ke/arm64/boot.s */
+VOID
+KiApEarlyVectors(VOID);
 extern KAFFINITY KiFreezeUnanswered;
 extern volatile ULONG_PTR KiApStartFailure[5];
 
@@ -84,6 +88,7 @@ KeStartAllProcessors(VOID)
         ProcessorState.ContextFrame.Pc = (ULONG64)KiSystemStartup;
         ProcessorState.ContextFrame.Sp = (ULONG64)DpcStack;
         ProcessorState.ContextFrame.X0 = (ULONG64)KeLoaderBlock;
+        ProcessorState.ArchState.Vbar_El1 = (ULONG64)KiApEarlyVectors;
 
         KeLoaderBlock->KernelStack = (ULONG_PTR)KernelStack;
         KeLoaderBlock->Thread = (ULONG_PTR)&Block->IdleThread.Tcb;

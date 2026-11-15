@@ -43,4 +43,72 @@
     b       KiSystemStartupBootStack
     LEAF_END KiSwitchToBootStack
 
+    IMPORT KiApStartFailure
+
+//
+// Vectors a secondary processor runs with until KeInitExceptions, before it
+// has a PCR to take a real trap with. Every exception is recorded in
+// KiApStartFailure as 0xEA:ESR, ELR, FAR, and the processor parks.
+//
+#ifdef _MSC_VER
+    AREA |.text$apv|,ALIGN=11,CODE,READONLY
+#else
+    .section .text$apv, "xr"
+    .p2align 11
+#endif
+
+    LEAF_ENTRY KiApEarlyVectors
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+    b       KiApEarlyTrap
+    ALIGN   128
+
+LABEL(KiApEarlyTrap)
+    mrs     x0, esr_el1
+    mrs     x1, elr_el1
+    mrs     x2, far_el1
+    ldr     x3, =KiApStartFailure
+    str     x1, [x3, #8]
+    str     x2, [x3, #16]
+    mov     x4, #0xEA
+    lsl     x4, x4, #32
+    mov     w0, w0
+    orr     x0, x0, x4
+    dmb     ish
+    str     x0, [x3]
+    dsb     ish
+LABEL(KiApEarlyPark)
+    wfi
+    b       KiApEarlyPark
+    LTORG
+    LEAF_END KiApEarlyVectors
+
     END
