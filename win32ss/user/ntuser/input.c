@@ -324,6 +324,14 @@ RITReadApc(
         }
     }
 
+    if (DeviceInfo->DeviceType == RIM_TYPEHID)
+    {
+        static LONG TracedReads;
+
+        if (InterlockedIncrement(&TracedReads) <= 16)
+            ERR("Touch read 0x%08lx, %Iu bytes\n", IoStatusBlock->Status, IoStatusBlock->Information);
+    }
+
     /* A failed HID read means the collection went away, the next scan drops it */
     if (DeviceInfo->DeviceType == RIM_TYPEHID && !NT_SUCCESS(IoStatusBlock->Status))
     {
@@ -473,6 +481,7 @@ HidAddTouchDevice(
     Status = HidQueryCollection(Name, &Hid);
     if (!NT_SUCCESS(Status))
     {
+        ERR("HID collection %wZ not queried, 0x%08lx\n", Name, Status);
         HidSkipDevice(Name);
         return;
     }
@@ -490,6 +499,9 @@ HidAddTouchDevice(
     IsTouch = UserInitTouchDevice(DeviceInfo);
     UserLeave();
 
+    ERR("HID collection %wZ, usage %x:%x, input report %u bytes, touch %d\n",
+        Name, Hid.Caps.UsagePage, Hid.Caps.Usage, Hid.Caps.InputReportByteLength, IsTouch);
+
     if (IsTouch)
     {
         InitializeObjectAttributes(&ObjectAttributes, Name, OBJ_KERNEL_HANDLE, NULL, NULL);
@@ -499,6 +511,7 @@ HidAddTouchDevice(
                             &Iosb,
                             FILE_SHARE_READ | FILE_SHARE_WRITE,
                             0);
+        ERR("Touch screen open 0x%08lx\n", Status);
         if (NT_SUCCESS(Status))
         {
             StartReadInputDevice(DeviceInfo);
