@@ -199,6 +199,8 @@ CShellChrome::ApplyState(VOID)
     /* Today shows its own time; apps get the clock only when no close button needs the room */
     m_Scene->SetVisible(L"Clock", m_Mode == ShellModeApp && m_CloseKind == ShellCloseNone);
     m_Scene->SetVisible(L"NotifyIcon", m_Notifications != 0);
+    /* Skins whose soft keys live in an app bar hide it on the home screen */
+    m_Scene->SetVisible(L"AppBar", m_Mode == ShellModeApp);
     m_Host->RequestFrame();
 }
 
