@@ -15,6 +15,8 @@
 
 HALP_PLATFORM HalpPlatform;
 ULONG64 HalpProcessorMpidr[MAXIMUM_PROCESSORS];
+ULONG64 HalpMadtMpidr[MAXIMUM_PROCESSORS];
+ULONG HalpMadtCount;
 
 /* FUNCTIONS *****************************************************************/
 
@@ -97,7 +99,6 @@ HalpParseMadt(
     PHALP_MADT_ENTRY Entry;
     PUCHAR Current, End;
     PHALP_MADT_GICC Gicc;
-    ULONG Cpu = 0;
 
     Current = Madt->Entries;
     End = (PUCHAR)Madt + Madt->Header.Length;
@@ -114,10 +115,10 @@ HalpParseMadt(
                 Gicc = (PHALP_MADT_GICC)Entry;
 
                 /* Bit 0 is the enabled flag */
-                if (!(Gicc->Flags & 1) || (Cpu >= MAXIMUM_PROCESSORS))
+                if (!(Gicc->Flags & 1) || (HalpMadtCount >= MAXIMUM_PROCESSORS))
                     break;
 
-                HalpProcessorMpidr[Cpu++] = Gicc->Mpidr;
+                HalpMadtMpidr[HalpMadtCount++] = Gicc->Mpidr & 0xFF00FFFFFFULL;
 
                 /* GICv2 has one CPU interface address, banked per processor */
                 if (!HalpPlatform.GiccBase.QuadPart)

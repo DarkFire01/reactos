@@ -73,6 +73,10 @@ HalInitializeProcessor(
         KdReleasePciDeviceforDebugging = HalpReleasePciDeviceForDebugging;
     }
 
+    /* A secondary processor's timer stays quiet until its clock interrupt is connected */
+    if (ProcessorNumber != 0)
+        KeArm64WriteRegister(ARM64_CNTV_CTL_EL0, HALP_CNTV_CTL_IMASK);
+
     HalpGicInitializeCpu(ProcessorNumber);
     HalpEarlyTrace("HAL: processor %lu interrupt interface up\n", ProcessorNumber);
 
@@ -131,20 +135,10 @@ BOOLEAN
 NTAPI
 HalAllProcessorsStarted(VOID)
 {
+    /* Every processor schedules threads now, so each can connect its own clock */
+    HalpStartProcessorClocks();
     HalpProcessorsStarted = TRUE;
     return TRUE;
-}
-
-BOOLEAN
-NTAPI
-HalStartNextProcessor(
-    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
-    _In_ PKPROCESSOR_STATE ProcessorState)
-{
-    /* Secondary processors are not brought up yet */
-    UNREFERENCED_PARAMETER(LoaderBlock);
-    UNREFERENCED_PARAMETER(ProcessorState);
-    return FALSE;
 }
 
 VOID
