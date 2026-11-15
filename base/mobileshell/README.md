@@ -68,6 +68,13 @@ UIXRender, CoreMessaging). The host stands where DWM stood and drives the engine
 * `Reveal="dx,dy,seconds"` on a layer runs a compositor side ease out when it is shown.
 * The host owns three z ordered bands: content (home, then apps), chrome, overlay (Start menu).
 
+### Task switcher
+
+`switcher` (hold Back in W10M, F4 on a keyboard) lays out a card slot per running app, most recent
+first, behind the app band. The apps' own visuals are then scaled and moved into the slots by the
+compositor (ease out over `ZoomSeconds`), so the cards show each app as it last presented. Picking a
+card zooms it back to full screen; closing one ends its process.
+
 ### Apps (sandbox ready)
 
 * Each app is its own process in a Job object (kill on close, UI restrictions). The shell talks
@@ -107,6 +114,7 @@ A skin provides these files. Anything not listed is free form.
 | `popup.uix` (optional) | elements `PopupRoot`, `PopupMenu`; repeater `PopupItems` (fields `Text`, `Height`, `Fill`, `Command`); bindings `PopupX`, `PopupY` |
 | `notify.uix` (optional) | root `SoftKeyLeft`, `SoftKeyRight`; element `NotifyRoot`; bindings `NotifyTitle`, `NotifyBody` |
 | `sip.uix` (optional) | elements `SipRoot`, `SipLetters`, `SipSymbols`; bindings `K.<char>`, `ShiftFill`, `CapsFill`, `SymbolsFill` |
+| `switcher.uix` (optional) | root `CardScale`, `ZoomSeconds`; element `SwitcherRoot`, `SwitcherEmpty`; repeater `SwitcherItems` (fields `Id`, `Title`) whose item holds a `card{Item.Id}` slot; bindings `CardWidth`, `CardHeight`, `SwitcherX` |
 | `hold.uix` (optional) | element `HoldRoot`; bindings `HoldX`, `HoldY` |
 | `status.uix` (optional) | element `StatusRoot`; bindings `StatusNetwork`, `StatusVolume`, `StatusBattery`, `MuteLabel`, `VolumeGlyph`, `Vol1..Vol10` |
 | `chrome.uix` status | root `BatteryFillWidth`; bindings `BatteryLevel`, `BatteryBrush`, `Bar1..Bar5`, `VolumeGlyph`; elements `BatteryCharging`, `NetActive`, `NetOff`; command `status` |
@@ -114,7 +122,7 @@ A skin provides these files. Anything not listed is free form.
 | theme strings | `CloseOk`, `CloseX`, `NotInstalled`, `NotifyDismiss`, `NotifyHide` |
 
 Shell commands usable from any markup: `start`, `start.dismiss`, `home`, `launch:<AppId>`,
-`back`, `nav.up/down/select`, `sip`, `sip.<key>`, `notify:<Title>|<Body>`, `notify.show`,
+`back`, `switcher`, `switcher.next/prev`, `switcher.pick:<Id>`, `switcher.close:<Id>`, `nav.up/down/select`, `sip`, `sip.<key>`, `notify:<Title>|<Body>`, `notify.show`,
 `notify.hide`, `notify.dismiss`, `popup.dismiss`, `status`, `volume.up/down/mute`, `theme:<Name>`, `theme.next`, `reload`, `exit`.
 
 ### Markup reference
@@ -130,8 +138,8 @@ Image: `Source`, `Stretch`.
 * `Layout="Tiles"`: `Columns` square cells `Gap` apart, sized from the width; children take
   `Span="columns,rows"` and fill the first free cell, two wide tiles on even columns.
 * `HeightRatio="0.7"`: the height follows the width.
-* `SwipeLeft` / `SwipeRight`: commands run when a mostly sideways drag of `@SwipeDistance`
-  (default 40) starts on the element. A swipe cancels the tap like a scroll drag does.
+* `SwipeLeft` / `SwipeRight` / `SwipeUp` / `SwipeDown`: commands run when a drag mostly along one axis of `@SwipeDistance`
+  (default 40) starts on the element; the deepest element with a swipe for that axis takes it. A swipe cancels the tap like a scroll drag does.
 * Theme fonts can list fallbacks, `Family="Segoe UI, Source Sans Pro"`; the first installed one wins.
 
 * `Scroll="true"`: a vertical viewport. Drag past `@DragSlop` scrolls instead of tapping,
