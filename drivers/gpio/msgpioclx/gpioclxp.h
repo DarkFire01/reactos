@@ -17,6 +17,9 @@
 
 #define GCX_POOL_TAG 'xCpG'
 
+/* Interrupt deliveries reported before the trace goes quiet */
+#define GCX_TRACE_LIMIT 64
+
 /* Stamped on every controller so a context handed back by a client can be checked */
 #define GCX_CONTROLLER_SIGNATURE 'rCpG'
 

@@ -337,6 +337,15 @@ GcxHubEnableInterrupt(
                                 Mode,
                                 ArmPolarity,
                                 GPIO_PIN_PULL_CONFIGURATION_DEFAULT);
+    DPRINT1("GpioClx: enable GSIV %lu, bank %u pin %u, %s, polarity %d armed %d, debounce %u: 0x%08lx\n",
+            Gsiv,
+            Virq.BankId,
+            Virq.PinNumber,
+            (Mode == Latched) ? "edge" : "level",
+            Polarity,
+            ArmPolarity,
+            Pin->DebounceTimeout,
+            Status);
     if (!NT_SUCCESS(Status))
     {
         Pin->TargetContext = NULL;
@@ -361,8 +370,12 @@ GcxHubDisableInterrupt(
     UNREFERENCED_PARAMETER(Context);
 
     if (!GcxLookupVirq(Gsiv, &Virq))
+    {
+        DPRINT1("GpioClx: disable of unknown GSIV %lu\n", Gsiv);
         return STATUS_NOT_FOUND;
+    }
 
+    DPRINT1("GpioClx: disable GSIV %lu, bank %u pin %u\n", Gsiv, Virq.BankId, Virq.PinNumber);
     return GcxDisableInterrupt(Virq.Controller, Virq.BankId, Virq.PinNumber);
 }
 
@@ -490,16 +503,27 @@ NTAPI
 GcxDeliverPinInterrupt(
     PGCX_PIN Pin)
 {
+    static volatile LONG Traced, Unclaimed;
     ULONG Claimed = 0;
 
     if (GcxSecondaryOwner == NULL ||
         GcxHalInfo.InvokeIsrForGsiv == NULL ||
         Pin->TargetContext == NULL)
     {
+        if (InterlockedIncrement(&Traced) <= GCX_TRACE_LIMIT)
+            DPRINT1("GpioClx: GSIV %lu fired with no target\n", Pin->Gsiv);
         return FALSE;
     }
 
     GcxHalInfo.InvokeIsrForGsiv(Pin->Gsiv, Pin->TargetContext, &Claimed);
+
+    /* Unclaimed deliveries get their own budget, a stuck level would use up the shared one */
+    if (Claimed ? (InterlockedIncrement(&Traced) <= GCX_TRACE_LIMIT) :
+                  (InterlockedIncrement(&Unclaimed) <= GCX_TRACE_LIMIT))
+    {
+        DPRINT1("GpioClx: GSIV %lu delivered, %s\n", Pin->Gsiv, Claimed ? "claimed" : "NOT claimed");
+    }
+
     return (Claimed != 0);
 }
 

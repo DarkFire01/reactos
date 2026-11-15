@@ -217,6 +217,16 @@ GcxEvtDeviceFileCreate(
     if (NT_SUCCESS(Status))
         Connection->Connected = TRUE;
 
+    DPRINT1("GpioClx: open %wZ, bank %u first pin %u of %u, %s, pull %u, drive %u: 0x%08lx\n",
+            Name,
+            Connection->BankId,
+            Connection->PinCount ? Connection->Pins[0] : 0,
+            Connection->PinCount,
+            (Connection->Mode == ConnectModeOutput) ? "output" : "input",
+            Connection->PullConfiguration,
+            Connection->DriveStrength,
+            Status);
+
 Exit:
     if (!NT_SUCCESS(Status))
     {
@@ -437,6 +447,16 @@ GcxEvtIoDeviceControl(
         default:
             Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
+    }
+
+    if (IoControlCode == IOCTL_GPIO_READ_PINS || IoControlCode == IOCTL_GPIO_WRITE_PINS || !NT_SUCCESS(Status))
+    {
+        DPRINT1("GpioClx: IOCTL 0x%lx bank %u first pin %u, value 0x%I64x: 0x%08lx\n",
+                IoControlCode,
+                Connection->BankId,
+                Connection->PinCount ? Connection->Pins[0] : 0,
+                Values,
+                Status);
     }
 
     WdfRequestCompleteWithInformation(Request, Status, Information);
