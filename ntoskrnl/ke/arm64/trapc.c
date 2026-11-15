@@ -214,6 +214,17 @@ KiArm64HandleAbort(
     if (NT_SUCCESS(Status))
         return;
 
+    /* A fault the memory manager refused for the IRQL is fatal, no handler may run at that level */
+    if (Status == (STATUS_IN_PAGE_ERROR | 0x10000000) && !UserFault)
+    {
+        KeBugCheckWithTf(IRQL_NOT_LESS_OR_EQUAL,
+                         (ULONG_PTR)Address,
+                         KeGetCurrentIrql(),
+                         Execute ? 8 : Write,
+                         TrapFrame->Pc,
+                         TrapFrame);
+    }
+
     switch (Status)
     {
         case STATUS_ACCESS_VIOLATION:
