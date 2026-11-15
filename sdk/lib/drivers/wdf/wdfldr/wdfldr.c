@@ -767,7 +767,7 @@ WdfRegisterClassLibrary(
 
     if (!NT_SUCCESS(status))
     {
-        __DBGPRINT(("ERROR: ClassOpen(%wZ) failed, status 0x%x\n", ObjectName, status));
+        DbgPrint("WdfLdr: WdfRegisterClassLibrary: opening %wZ for %wZ failed 0x%lx\n", ObjectName, SourceString, status);
         ClassRemoveFromLibraryList(pClassModule);
         return status;
     }
@@ -778,7 +778,7 @@ WdfRegisterClassLibrary(
         status = fnClassLibInit();
         if (!NT_SUCCESS(status))
         {
-            __DBGPRINT(("ERROR: WdfRegisterClassLibrary: ClassLibraryInitialize failed, status 0x%x\n", status));
+            DbgPrint("WdfLdr: WdfRegisterClassLibrary: %wZ failed to initialize 0x%lx\n", SourceString, status);
             pClassModule->ClassLibraryInfo = NULL;
             ClassClose(pClassModule);
         }
@@ -816,6 +816,15 @@ WdfVersionBindClass(
     {
         ExFreePoolWithTag(pClassClientModule, WDFLDR_TAG);
         return status;
+    }
+
+    /* A class that never registered, or failed its own initialization, has nothing to bind to */
+    if (pClassModule->ClassLibraryInfo == NULL)
+    {
+        DbgPrint("WdfLdr: WdfVersionBindClass: class %S is not registered\n", ClassBindInfo->ClassName);
+        DereferenceClassVersion(ClassBindInfo, BindInfo, ClientGlobals);
+        ExFreePoolWithTag(pClassClientModule, WDFLDR_TAG);
+        return STATUS_DRIVER_INTERNAL_ERROR;
     }
 
     status = ClassLinkInClient(pClassModule, ClassBindInfo, BindInfo, pClassClientModule);
