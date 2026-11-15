@@ -997,6 +997,7 @@
 @ stdcall PoFxCompleteDevicePowerNotRequired(ptr)
 @ stdcall PoFxCompleteIdleCondition(ptr long)
 @ stdcall PoFxCompleteIdleState(ptr long)
+@ stdcall PoFxEnableDStateReporting(ptr)
 @ stdcall PoFxIdleComponent(ptr long long)
 @ stdcall PoFxRegisterDevice(ptr ptr ptr)
 @ stdcall -version=0x602+ PoFxRegisterCrashdumpDevice(ptr)

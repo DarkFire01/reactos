@@ -281,6 +281,13 @@ PoFxRegisterDevice(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 NTKERNELAPI
+NTSTATUS
+NTAPI
+PoFxEnableDStateReporting(
+    _In_ PDEVICE_OBJECT Pdo);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
 VOID
 NTAPI
 PoFxUnregisterDevice(

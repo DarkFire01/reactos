@@ -839,6 +839,81 @@ PoFxUnregisterDevice(
 }
 
 /**
+ * @brief Registers a device whose drivers do not use PoFx, so the plug-in still sees its D-state changes.
+ *
+ * @remarks The registration has one component with only F0 and no driver callbacks. It belongs
+ * to the kernel and goes away with the PDO.
+ */
+NTSTATUS
+NTAPI
+PoFxEnableDStateReporting(
+    _In_ PDEVICE_OBJECT Pdo)
+{
+    PO_FX_COMPONENT_IDLE_STATE IdleState;
+    PO_FX_DEVICE_V2 Device;
+    PPOP_FX_DEVICE FxDevice;
+    POHANDLE Handle;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    if (!Pdo)
+        return STATUS_INVALID_PARAMETER;
+
+    /* A restart keeps the registration made on the first start */
+    FxDevice = PopFxFindDevice(Pdo);
+    if (FxDevice)
+        return FxDevice->DStateOnly ? STATUS_SUCCESS : STATUS_INVALID_DEVICE_REQUEST;
+
+    RtlZeroMemory(&IdleState, sizeof(IdleState));
+    RtlZeroMemory(&Device, sizeof(Device));
+    Device.Version = PO_FX_VERSION_V2;
+    Device.ComponentCount = 1;
+    Device.Components[0].IdleStateCount = 1;
+    Device.Components[0].IdleStates = &IdleState;
+
+    Status = PoFxRegisterDevice(Pdo, (PPO_FX_DEVICE)&Device, &Handle);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    ((PPOP_FX_DEVICE)Handle)->DStateOnly = TRUE;
+    PoFxStartDevicePowerManagement(Handle);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Drops the registration PoFxEnableDStateReporting made for a PDO that is being deleted.
+ */
+VOID
+NTAPI
+PopFxReleaseDStateReporting(
+    _In_ PDEVICE_OBJECT Pdo)
+{
+    PPOP_FX_DEVICE Found = NULL;
+    KLOCK_QUEUE_HANDLE LockHandle;
+    PLIST_ENTRY Entry;
+
+    PAGED_CODE();
+
+    /* The PDO has no references left, so it is matched by address alone */
+    KeAcquireInStackQueuedSpinLock(&PopFxDeviceLock, &LockHandle);
+    for (Entry = PopFxDeviceList.Flink; Entry != &PopFxDeviceList; Entry = Entry->Flink)
+    {
+        PPOP_FX_DEVICE Device = CONTAINING_RECORD(Entry, POP_FX_DEVICE, Link);
+
+        if (Device->Pdo == Pdo && Device->DStateOnly)
+        {
+            Found = Device;
+            break;
+        }
+    }
+    KeReleaseInStackQueuedSpinLock(&LockHandle);
+
+    if (Found)
+        PoFxUnregisterDevice((POHANDLE)Found);
+}
+
+/**
  * @brief Finishes registration and drops the activation reference every component started with.
  */
 VOID
