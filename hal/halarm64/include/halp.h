@@ -179,11 +179,13 @@ typedef struct _HALP_AP_START
     ULONG64 Argument;
     ULONG64 PageVa;
     volatile ULONG64 Progress;
+    ULONG64 Vbar;
 } HALP_AP_START, *PHALP_AP_START;
 
 C_ASSERT(FIELD_OFFSET(HALP_AP_START, IdentityRoot) == 0x20);
 C_ASSERT(FIELD_OFFSET(HALP_AP_START, PageVa) == 0x48);
 C_ASSERT(FIELD_OFFSET(HALP_AP_START, Progress) == 0x50);
+C_ASSERT(FIELD_OFFSET(HALP_AP_START, Vbar) == 0x58);
 
 /* mp.s */
 VOID

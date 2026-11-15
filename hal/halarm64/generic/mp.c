@@ -171,6 +171,7 @@ HalpFillApStart(
     Start->Entry = ProcessorState->ContextFrame.Pc;
     Start->Argument = ProcessorState->ContextFrame.X0;
     Start->PageVa = (ULONG64)HalpApPage;
+    Start->Vbar = ProcessorState->ArchState.Vbar_El1;
     Start->Progress = 0;
 
     ASSERT(Start->Stack && Start->Entry && Start->Argument);

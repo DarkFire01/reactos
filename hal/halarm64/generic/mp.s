@@ -19,6 +19,7 @@
 #define ApArgument      0x40
 #define ApPageVa        0x48
 #define ApProgress      0x50
+#define ApVbar          0x58
 
     TEXTAREA
 
@@ -56,6 +57,7 @@
     ldr     x22, [x19, #ApEntry]
     ldr     x23, [x19, #ApArgument]
     ldr     x24, [x19, #ApPageVa]
+    ldr     x25, [x19, #ApVbar]
 
     ldr     x1, [x19, #ApSctlr]
     msr     sctlr_el1, x1
@@ -80,6 +82,11 @@ LABEL(HalpApTrampolineHigh)
     dsb     nsh
     isb
 
+    /* Early vectors from the kernel, so a fault before it has a PCR is not lost */
+    cbz     x25, HalpApTrampolineNoVbar
+    msr     vbar_el1, x25
+    isb
+LABEL(HalpApTrampolineNoVbar)
     mov     sp, x21
     mov     x29, #0
     mov     x30, #0
