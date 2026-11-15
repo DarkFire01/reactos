@@ -562,7 +562,7 @@ PortPdoScsi(
     Srb = Stack->Parameters.Scsi.Srb;
 
     if (Srb == NULL) {
-        DPRINT1("Srb is NULL!");
+        DPRINT("Srb is NULL!");
         DbgBreakPoint();
         Status = STATUS_UNSUCCESSFUL;
 
@@ -684,7 +684,7 @@ PortPdoScsi(
         }
 
         default:
-            DPRINT1("Unsupported Srb Function %02X!", Srb->Function);
+            DPRINT("Unsupported Srb Function %02X!", Srb->Function);
             // DbgBreakPoint();
             Status = STATUS_NOT_IMPLEMENTED;
             StorpCompleteRequest(Irp, SRB_STATUS_INVALID_REQUEST, Status);

@@ -715,7 +715,7 @@ PortPdoPnp(
     PIO_STACK_LOCATION Stack;
     PPDO_DEVICE_EXTENSION DeviceExtension;
 
-    DPRINT1("PortPdoPnp(%p %p)\n", DeviceObject, Irp);
+    DPRINT("PortPdoPnp(%p %p)\n", DeviceObject, Irp);
 
     DeviceExtension = (PPDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     ASSERT(DeviceExtension->ExtensionType == PdoExtension);

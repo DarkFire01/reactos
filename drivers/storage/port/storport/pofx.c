@@ -45,7 +45,7 @@ PortPoFxComponentIdleState(
 {
     PFDO_DEVICE_EXTENSION DeviceExtension = Context;
 
-    DPRINT1("Storport adapter %p component %lu to F%lu\n", DeviceExtension, Component, State);
+    DPRINT("Storport adapter %p component %lu to F%lu\n", DeviceExtension, Component, State);
     PoFxCompleteIdleState(DeviceExtension->PoFxHandle, Component);
 }
 
@@ -163,7 +163,7 @@ PortInitializeAdapterPoFx(
     for (Index = 0; Index < StorDevice->ComponentCount; Index++)
         PoFxActivateComponent(DeviceExtension->PoFxHandle, Index, PO_FX_FLAG_BLOCKING);
 
-    DPRINT1("Storport adapter %p registered %lu power component(s)\n",
+    DPRINT("Storport adapter %p registered %lu power component(s)\n",
             DeviceExtension, StorDevice->ComponentCount);
     return STOR_STATUS_SUCCESS;
 }
