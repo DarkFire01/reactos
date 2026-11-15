@@ -52,13 +52,7 @@
     </Element>
     <Element Width="48"/>
     <Element Width="48" Command="home" HoldCommand="start" Momentary="true" SelectedBackground="@ListPress">
-      <!-- Drawn, so it shows without the glyph font -->
-      <Element Width="17" Height="17" HAlign="Center" VAlign="Center" Layout="Wrap">
-        <Element Width="8.5" Height="8.5" Padding="0,0,0.75,0.75"><Element Background="@NavGlyphColor"/></Element>
-        <Element Width="8.5" Height="8.5" Padding="0.75,0,0,0.75"><Element Background="@NavGlyphColor"/></Element>
-        <Element Width="8.5" Height="8.5" Padding="0,0.75,0.75,0"><Element Background="@NavGlyphColor"/></Element>
-        <Element Width="8.5" Height="8.5" Padding="0.75,0.75,0,0"><Element Background="@NavGlyphColor"/></Element>
-      </Element>
+      <Image Source="@StartLogo" Width="28" Height="28" HAlign="Center" VAlign="Center"/>
     </Element>
     <Element Width="48"/>
     <Element Width="48" Command="launch:Search" Momentary="true" SelectedBackground="@ListPress">
