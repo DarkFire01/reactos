@@ -32,6 +32,10 @@ C_ASSERT(RTL_FIELD_SIZE(NET_BUFFER_LIST, NetBufferListInfo) ==
 #define NDIS_TAG_NB_POOL    'PBNn'
 #define NDIS_TAG_NBL_POOL   'PLNn'
 #define NDIS_TAG_NBL_CTX    'CLNn'
+#define NDIS_TAG_REASSEMBLY 'ARNn'
+
+/* The front block a reassembled NET_BUFFER owns, so the free routine finds it */
+#define NDIS_REASSEMBLY_HEADER(_Nb)  (*(PMDL *)&(_Nb)->NdisReserved[1])
 
 /*
  * One pool serves both NET_BUFFERs and NET_BUFFER_LISTs. BlockSize covers the
@@ -1158,6 +1162,171 @@ NdisAllocateCloneNetBufferList(
         NET_BUFFER_LIST_INFO(OriginalNetBufferList, NblOriginalInterfaceIfIndex);
 
     return Clone;
+}
+
+/* Gives back the front block NdispReassemblyHeader made, if there is one */
+static
+VOID
+NTAPI
+NdispFreeReassemblyHeader(
+    _Inout_ PNET_BUFFER NetBuffer)
+{
+    PMDL Header = NDIS_REASSEMBLY_HEADER(NetBuffer);
+
+    if (Header == NULL)
+        return;
+
+    NDIS_REASSEMBLY_HEADER(NetBuffer) = NULL;
+    ExFreePoolWithTag(MmGetMdlVirtualAddress(Header), NDIS_TAG_REASSEMBLY);
+    IoFreeMdl(Header);
+}
+
+/*
+ * Puts Length writable bytes in front of the data, with Backfill more ahead of
+ * them for later retreats, in a block the NET_BUFFER owns.
+ */
+static
+BOOLEAN
+NTAPI
+NdispReassemblyHeader(
+    _Inout_ PNET_BUFFER NetBuffer,
+    _In_ ULONG Length,
+    _In_ ULONG Backfill)
+{
+    PVOID Buffer;
+    PMDL Header;
+    ULONG Size = Length + Backfill;
+
+    Buffer = ExAllocatePoolZero(NonPagedPoolNx, Size, NDIS_TAG_REASSEMBLY);
+    if (Buffer == NULL)
+        return FALSE;
+
+    Header = IoAllocateMdl(Buffer, Size, FALSE, FALSE, NULL);
+    if (Header == NULL)
+    {
+        ExFreePoolWithTag(Buffer, NDIS_TAG_REASSEMBLY);
+        return FALSE;
+    }
+
+    MmBuildMdlForNonPagedPool(Header);
+    Header->Next = NET_BUFFER_FIRST_MDL(NetBuffer);
+
+    NDIS_REASSEMBLY_HEADER(NetBuffer) = Header;
+    NET_BUFFER_FIRST_MDL(NetBuffer) = Header;
+    NET_BUFFER_CURRENT_MDL(NetBuffer) = Header;
+    NET_BUFFER_CURRENT_MDL_OFFSET(NetBuffer) = Backfill;
+    NET_BUFFER_DATA_OFFSET(NetBuffer) = Backfill;
+    NET_BUFFER_DATA_LENGTH(NetBuffer) += Length;
+    return TRUE;
+}
+
+_Use_decl_annotations_
+PNET_BUFFER_LIST
+NTAPI
+NdisAllocateReassembledNetBufferList(
+    PNET_BUFFER_LIST FragmentNetBufferList,
+    NDIS_HANDLE NetBufferAndNetBufferListPoolHandle,
+    ULONG StartOffset,
+    ULONG DataOffsetDelta,
+    ULONG DataBackFill,
+    ULONG AllocateReassembleFlags)
+{
+    PNDIS_NBL_POOL Pool = (PNDIS_NBL_POOL)NetBufferAndNetBufferListPoolHandle;
+    PNET_BUFFER_LIST Reassembled;
+    PNET_BUFFER Fragment;
+    PNET_BUFFER NetBuffer;
+    PMDL Chain;
+    PMDL *Tail;
+    ULONG Length;
+    SIZE_T Total = 0;
+
+    UNREFERENCED_PARAMETER(AllocateReassembleFlags);
+
+    /* The one NET_BUFFER comes with the list, so the pool has to carry it */
+    if (Pool == NULL || !Pool->AllocateNetBuffer)
+        return NULL;
+
+    ASSERT(Pool->Signature == NBL_POOL_SIGNATURE);
+
+    Reassembled = NdisAllocateNetBufferList(NetBufferAndNetBufferListPoolHandle, 0, 0);
+    if (Reassembled == NULL)
+        return NULL;
+
+    NetBuffer = NET_BUFFER_LIST_FIRST_NB(Reassembled);
+    NET_BUFFER_FIRST_MDL(NetBuffer) = NULL;
+    NDIS_REASSEMBLY_HEADER(NetBuffer) = NULL;
+    Tail = &NET_BUFFER_FIRST_MDL(NetBuffer);
+
+    /* Each fragment gives its data past StartOffset, chained in order */
+    for (Fragment = NET_BUFFER_LIST_FIRST_NB(FragmentNetBufferList);
+         Fragment != NULL;
+         Fragment = NET_BUFFER_NEXT_NB(Fragment))
+    {
+        if (NET_BUFFER_DATA_LENGTH(Fragment) <= StartOffset)
+            continue;
+
+        Length = NET_BUFFER_DATA_LENGTH(Fragment) - StartOffset;
+        Chain = NdispCloneMdlChain(NET_BUFFER_FIRST_MDL(Fragment),
+                                   NET_BUFFER_DATA_OFFSET(Fragment) + StartOffset,
+                                   Length);
+        if (Chain == NULL)
+        {
+            NdisFreeReassembledNetBufferList(Reassembled, 0);
+            return NULL;
+        }
+
+        *Tail = Chain;
+        while (*Tail != NULL)
+            Tail = &(*Tail)->Next;
+
+        Total += Length;
+    }
+
+    NET_BUFFER_CURRENT_MDL(NetBuffer) = NET_BUFFER_FIRST_MDL(NetBuffer);
+    NET_BUFFER_CURRENT_MDL_OFFSET(NetBuffer) = 0;
+    NET_BUFFER_DATA_OFFSET(NetBuffer) = 0;
+    NET_BUFFER_DATA_LENGTH(NetBuffer) = (ULONG)Total;
+
+    if (DataOffsetDelta != 0 &&
+        !NdispReassemblyHeader(NetBuffer, DataOffsetDelta, DataBackFill))
+    {
+        NdisFreeReassembledNetBufferList(Reassembled, 0);
+        return NULL;
+    }
+
+    Reassembled->ParentNetBufferList = FragmentNetBufferList;
+    Reassembled->SourceHandle = FragmentNetBufferList->SourceHandle;
+    NdisCopyReceiveNetBufferListInfo(Reassembled, FragmentNetBufferList);
+
+    return Reassembled;
+}
+
+_Use_decl_annotations_
+VOID
+NTAPI
+NdisFreeReassembledNetBufferList(
+    PNET_BUFFER_LIST ReassembledNetBufferList,
+    ULONG FreeReassembleFlags)
+{
+    PNET_BUFFER NetBuffer = NET_BUFFER_LIST_FIRST_NB(ReassembledNetBufferList);
+    PMDL Mdl;
+
+    UNREFERENCED_PARAMETER(FreeReassembleFlags);
+
+    if (NetBuffer != NULL)
+    {
+        /* The front block is not a partial MDL, it goes back on its own */
+        Mdl = NET_BUFFER_FIRST_MDL(NetBuffer);
+        if (Mdl != NULL && Mdl == NDIS_REASSEMBLY_HEADER(NetBuffer))
+            Mdl = Mdl->Next;
+
+        NdispFreeReassemblyHeader(NetBuffer);
+        NdispFreeMdlChain(Mdl);
+        NET_BUFFER_FIRST_MDL(NetBuffer) = NULL;
+    }
+
+    ReassembledNetBufferList->ParentNetBufferList = NULL;
+    NdisFreeNetBufferList(ReassembledNetBufferList);
 }
 
 _Use_decl_annotations_
