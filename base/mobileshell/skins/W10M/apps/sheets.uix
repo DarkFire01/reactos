@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sheets Mobile, part of ReactOS Office Mobile (office.exe). Formulas: + - * / ^, SUM AVERAGE MIN MAX COUNT. -->
+<Uix Name="Sheets" Mode="Sheets" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+  <Element Name="PageList" Layout="Stack" Height="*">
+    <Text Content="SHEETS" Font="@AppHeaderFont" Padding="12,10,12,8"/>
+    <Element Layout="Row" Height="36" Margin="12,0,12,6" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldNormal">
+      <Element Width="*" Command="find.focus" Padding="8,0,8,0">
+        <Text Name="FindHint" Content="Search workbooks" Foreground="@AppSubText"/>
+        <Text Content="{FindText}"/>
+      </Element>
+      <Element Width="36" Command="find.clear" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE721;" Font="@StatusGlyph" TextAlign="Center" Foreground="@AppSubText"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="32" Padding="12,0,12,0" Font="@SmallFont">
+      <Text Content="{ListHeader}" Width="*" Foreground="@AccentText"/>
+      <Text Content="{SortLabel}" Foreground="@AppSubText"/>
+    </Element>
+    <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="Docs" Layout="Stack">
+        <Element Name="d{Item.Id}" Layout="Row" Height="@ListItemHeight" Padding="12,6,12,6"
+                 Command="open:{Item.Id}" HoldCommand="hold:{Item.Id}" Selectable="true" SelectedBackground="@ListPressed">
+          <Image Source="@Icon.Excel" Width="40" Height="40" VAlign="Center" Margin="0,0,12,0"/>
+          <Element Layout="Stack" Width="*" VAlign="Center">
+            <Text Content="{Item.Name}"/>
+            <Text Content="{Item.Detail}" Font="@SmallFont" Foreground="@AppSubText"/>
+          </Element>
+        </Element>
+      </Repeater>
+      <Text Name="ListEmpty" Content="No documents found." TextAlign="Center" Margin="0,24,0,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+  </Element>
+  <Element Name="PageSheet" Layout="Stack" Height="*" Visible="false" Font="@SmallFont">
+    <Element Layout="Row" Height="36" Background="@IndexBar">
+      <Text Content="{CellRef}" Width="48" TextAlign="Center" Font="@ItemBold"/>
+      <Element Width="*" Background="@FieldActive" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,6,4">
+        <Text Content="{CellEdit}" Font="@Default"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="24" Background="@IndexBar" Foreground="@AppSubText">
+      <Element Width="@SheetHeaderWidth"/>
+      <Text Content="A" Width="@SheetCellWidth" TextAlign="Center"/>
+      <Text Content="B" Width="@SheetCellWidth" TextAlign="Center"/>
+      <Text Content="C" Width="@SheetCellWidth" TextAlign="Center"/>
+      <Text Content="D" Width="@SheetCellWidth" TextAlign="Center"/>
+      <Text Content="E" Width="@SheetCellWidth" TextAlign="Center"/>
+    </Element>
+    <Element Name="SheetScroll" Scroll="true" Height="*" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="Cells" Layout="Wrap">
+        <Element Name="{Item.Id}" Width="{Item.W}" Height="@SheetRowHeight" Background="{Item.Fill}" Command="{Item.Command}"
+                 Selectable="true" SelectedBackground="@CellSelected" SelectedForeground="@ItemSelectedText"
+                 BorderBrush="@DayGrid" BorderThickness="0,0,1,1" Padding="4,0,4,0">
+          <Text Content="{Item.Text}" TextAlign="{Item.Align}"/>
+        </Element>
+      </Repeater>
+    </Element>
+  </Element>
+</Uix>

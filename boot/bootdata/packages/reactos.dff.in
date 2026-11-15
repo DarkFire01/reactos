@@ -113,6 +113,11 @@ Signature = "$Windows NT$"
 90 = MobileShell\skins\WM61\assets
 91 = MobileShell\skins\WM61\assets\icons
 92 = MobileShell\skins\WM61\themes
+93 = MobileShell\skins\W10M
+94 = MobileShell\skins\W10M\apps
+95 = MobileShell\skins\W10M\assets
+96 = MobileShell\skins\W10M\assets\icons
+97 = MobileShell\skins\W10M\themes
 
 .InfEnd
 

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Action center, owned by MobileUI. Drops from the status bar with quick actions, volume and battery. -->
+<Uix Name="Status">
+  <Element Name="StatusRoot" Visible="false">
+
+    <Element Command="status.close" Momentary="true" Background="@ScrimColor" Margin="0,@TitleHeight,0,0"/>
+
+    <Element Name="StatusPanel" Layer="true" Y="@TitleHeight" VAlign="Top" Layout="Stack"
+             Background="@PanelBackground" Foreground="@ActionText" Font="@SmallFont" Padding="8,8,4,4"
+             Reveal="0,-40,0.18,0" SwipeLeft="status.close" SwipeRight="status.close">
+
+      <!-- Quick actions -->
+      <Element Layout="Row" Height="72">
+        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="@ActionOn" Foreground="@TileText" Padding="8,8,8,6"
+                 Command="launch:WiFi" Momentary="true" SelectedBackground="@TilePressed">
+          <Text Content="&#xE701;" Font="@ActionGlyph" Height="*"/>
+          <Text Content="Wi-Fi"/>
+        </Element>
+        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="@ActionOff" Padding="8,8,8,6"
+                 Command="volume.mute" Momentary="true" SelectedBackground="@ListPressed">
+          <Text Content="{VolumeGlyph}" Font="@ActionGlyph" Height="*"/>
+          <Text Content="{MuteLabel}"/>
+        </Element>
+        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="@ActionOff" Padding="8,8,8,6"
+                 Command="launch:Power" Momentary="true" SelectedBackground="@ListPressed">
+          <Text Content="&#xE83F;" Font="@ActionGlyph" Height="*"/>
+          <Text Content="Battery"/>
+        </Element>
+        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="@ActionOff" Padding="8,8,8,6"
+                 Command="launch:Settings" Momentary="true" SelectedBackground="@ListPressed">
+          <Text Content="&#xE713;" Font="@ActionGlyph" Height="*"/>
+          <Text Content="All settings"/>
+        </Element>
+      </Element>
+
+      <!-- Volume -->
+      <Text Content="{StatusVolume}" Font="@ItemFont" Margin="0,12,0,4"/>
+      <Element Layout="Row" Height="36" Margin="0,0,4,4">
+        <Element Width="36" Command="volume.down" Momentary="true" SelectedBackground="@ListPressed">
+          <Text Content="&#xE738;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Element Layout="Row" Width="*" Padding="6,15,6,15">
+          <Element Width="*" Background="{Vol1}"/>
+          <Element Width="*" Background="{Vol2}"/>
+          <Element Width="*" Background="{Vol3}"/>
+          <Element Width="*" Background="{Vol4}"/>
+          <Element Width="*" Background="{Vol5}"/>
+          <Element Width="*" Background="{Vol6}"/>
+          <Element Width="*" Background="{Vol7}"/>
+          <Element Width="*" Background="{Vol8}"/>
+          <Element Width="*" Background="{Vol9}"/>
+          <Element Width="*" Background="{Vol10}"/>
+        </Element>
+        <Element Width="36" Command="volume.up" Momentary="true" SelectedBackground="@ListPressed">
+          <Text Content="&#xE710;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+      </Element>
+
+      <!-- Connection and battery details -->
+      <Element Layout="Row" Height="40" Command="launch:WiFi" Momentary="true" SelectedBackground="@ListPressed" Padding="4,0,4,0">
+        <Text Content="&#xE701;" Font="@AppBarGlyph" Width="28"/>
+        <Text Content="{StatusNetwork}" Font="@ItemFont" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="40" Command="launch:Power" Momentary="true" SelectedBackground="@ListPressed" Padding="4,0,4,0">
+        <Text Content="&#xE83F;" Font="@AppBarGlyph" Width="28"/>
+        <Text Content="{StatusBattery}" Font="@ItemFont" Width="*"/>
+      </Element>
+
+      <Element Height="1" Background="@ListSeparator" Margin="0,6,4,6"/>
+      <Element Layout="Row" Height="36" Padding="4,0,4,0" Command="notify.show" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="Notifications" Font="@ItemBold" Width="*"/>
+        <Text Content="&#xE70D;" Font="@StatusGlyph"/>
+      </Element>
+      <Element Layout="Row" Height="28" Command="status.close" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE70E;" Font="@StatusGlyph" TextAlign="Center" Width="*"/>
+      </Element>
+    </Element>
+
+  </Element>
+</Uix>

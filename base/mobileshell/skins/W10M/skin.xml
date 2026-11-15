@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Windows 10 Mobile style skin. Canvas is the 360x640 effective pixel portrait size, scaled by the host. -->
+<Skin Name="Windows 10 Mobile" Width="360" Height="640" DefaultTheme="Dark">
+  <Theme Name="Dark" File="themes\dark.xml"/>
+  <Theme Name="Light" File="themes\light.xml"/>
+  <Theme Name="Emerald" File="themes\emerald.xml"/>
+  <Theme Name="Crimson" File="themes\crimson.xml"/>
+</Skin>

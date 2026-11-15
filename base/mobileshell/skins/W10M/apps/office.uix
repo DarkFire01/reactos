@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Office hub, hosted by markupapp.exe. -->
+<Uix Name="Office" Title="Office Mobile" Close="ok" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+  <Text Content="OFFICE" Font="@AppHeaderFont" Padding="12,10,12,0"/>
+  <Text Content="ReactOS Office Mobile" Font="@PageTitleFont" Padding="12,2,12,12"/>
+
+  <Element Layout="Row" Height="64" Padding="12,8,12,8" Command="launch:Writer" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+    <Image Source="@Icon.Word" Width="48" Height="48" Margin="0,0,12,0"/>
+    <Element Layout="Stack" Width="*" VAlign="Center">
+      <Text Content="Writer Mobile"/>
+      <Text Content="Documents" Font="@SmallFont" Foreground="@AppSubText"/>
+    </Element>
+  </Element>
+  <Element Layout="Row" Height="64" Padding="12,8,12,8" Command="launch:Sheets" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+    <Image Source="@Icon.Excel" Width="48" Height="48" Margin="0,0,12,0"/>
+    <Element Layout="Stack" Width="*" VAlign="Center">
+      <Text Content="Sheets Mobile"/>
+      <Text Content="Workbooks and formulas" Font="@SmallFont" Foreground="@AppSubText"/>
+    </Element>
+  </Element>
+  <Element Layout="Row" Height="64" Padding="12,8,12,8" Command="launch:Slides" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+    <Image Source="@Icon.PowerPoint" Width="48" Height="48" Margin="0,0,12,0"/>
+    <Element Layout="Stack" Width="*" VAlign="Center">
+      <Text Content="Slides Mobile"/>
+      <Text Content="Presentations" Font="@SmallFont" Foreground="@AppSubText"/>
+    </Element>
+  </Element>
+  <Element Layout="Row" Height="64" Padding="12,8,12,8" Command="launch:Notes" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+    <Image Source="@Icon.OneNote" Width="48" Height="48" Margin="0,0,12,0"/>
+    <Element Layout="Stack" Width="*" VAlign="Center">
+      <Text Content="Notes Mobile"/>
+      <Text Content="Quick notes" Font="@SmallFont" Foreground="@AppSubText"/>
+    </Element>
+  </Element>
+
+  <Text Wrap="true" Font="@SmallFont" Foreground="@AppSubText" Padding="12,16,12,4"
+        Content="Documents live in My Documents. Every list has a search box that looks at names and what is inside. The menu can also list the PC's own Documents, read only."/>
+</Uix>

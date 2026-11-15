@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- All apps list, owned by MobileUI. Opened from Start with a left swipe or All apps; swipe right or Back to return. -->
+<Uix Name="StartMenu">
+  <Element Name="StartMenuRoot" Visible="false">
+
+    <Element Name="AppList" Layer="true" Margin="0,@TitleHeight,0,@NavBarHeight" Background="@StartBackground"
+             Foreground="@AppText" Font="@ItemFont" Reveal="48,0,0.16,0" SwipeRight="start.dismiss">
+      <Element Scroll="true" Layout="Stack" ScrollBarWidth="0" Padding="0,8,0,8">
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="a" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:ClockSettings" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE823;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Alarms &amp; Clock" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="c" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Calculator" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE8EF;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Calculator" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Calendar" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE787;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Calendar" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Camera" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE722;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Camera" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="f" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Files" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE8B7;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="File Explorer" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="g" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Help" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE82F;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Getting Started" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="i" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Browser" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE774;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Internet" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="m" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Messaging" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE8BD;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Messaging" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:MediaPlayer" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE8D6;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Music" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="n" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Notes" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE70B;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Notes Mobile" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="o" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Office" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE8A5;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Office Mobile" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="p" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Contacts" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE716;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="People" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Phone" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE717;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Phone" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Pictures" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE91B;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Photos" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Programs" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE71D;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Programs" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="s" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Settings" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE713;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Settings" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Sheets" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE80A;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Sheets Mobile" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Slides" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE7F4;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Slides Mobile" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Store" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE719;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Store" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,0,6">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="1" Background="@LetterTile">
+          <Text Content="w" Font="@LetterFont" Foreground="@AccentText" Padding="5,0,0,2" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@AppListItemHeight" Padding="12,6,12,6" Command="launch:Writer" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE8A5;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Writer Mobile" Width="*"/>
+      </Element>
+      </Element>
+    </Element>
+
+  </Element>
+</Uix>

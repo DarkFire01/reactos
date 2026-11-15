@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Slides Mobile, part of ReactOS Office Mobile (office.exe). A viewer. -->
+<Uix Name="Slides" Mode="Slides" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+  <Element Name="PageList" Layout="Stack" Height="*">
+    <Text Content="SLIDES" Font="@AppHeaderFont" Padding="12,10,12,8"/>
+    <Element Layout="Row" Height="36" Margin="12,0,12,6" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldNormal">
+      <Element Width="*" Command="find.focus" Padding="8,0,8,0">
+        <Text Name="FindHint" Content="Search presentations" Foreground="@AppSubText"/>
+        <Text Content="{FindText}"/>
+      </Element>
+      <Element Width="36" Command="find.clear" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE721;" Font="@StatusGlyph" TextAlign="Center" Foreground="@AppSubText"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="32" Padding="12,0,12,0" Font="@SmallFont">
+      <Text Content="{ListHeader}" Width="*" Foreground="@AccentText"/>
+      <Text Content="{SortLabel}" Foreground="@AppSubText"/>
+    </Element>
+    <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="Docs" Layout="Stack">
+        <Element Name="d{Item.Id}" Layout="Row" Height="@ListItemHeight" Padding="12,6,12,6"
+                 Command="open:{Item.Id}" HoldCommand="hold:{Item.Id}" Selectable="true" SelectedBackground="@ListPressed">
+          <Image Source="@Icon.PowerPoint" Width="40" Height="40" VAlign="Center" Margin="0,0,12,0"/>
+          <Element Layout="Stack" Width="*" VAlign="Center">
+            <Text Content="{Item.Name}"/>
+            <Text Content="{Item.Detail}" Font="@SmallFont" Foreground="@AppSubText"/>
+          </Element>
+        </Element>
+      </Repeater>
+      <Text Name="ListEmpty" Content="No documents found." TextAlign="Center" Margin="0,24,0,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+  </Element>
+  <Element Name="PageShow" Layout="Stack" Height="*" Visible="false" Background="@SlideBackground" Command="slide.next" Padding="20,16,20,10">
+    <Text Content="{SlideTitle}" Font="@SlideTitleFont" Foreground="@SlideTitleText" Wrap="true" Margin="0,8,0,8"/>
+    <Element Height="3" Width="64" HAlign="Left" Background="@SlideAccent" Margin="0,0,0,16"/>
+    <Text Content="{SlideBody}" Collapse="true" Wrap="true" Font="@SlideFont" Foreground="@SlideText" Margin="0,0,0,10"/>
+    <Repeater Name="Bullets" Layout="Stack">
+      <Text Content="{Item.Text}" Wrap="true" Font="@SlideFont" Foreground="@SlideText" Margin="0,0,0,8"/>
+    </Repeater>
+    <Element Height="*"/>
+    <Text Content="{SlideNumber}" Font="@SmallFont" Foreground="@SlideText" TextAlign="Right"/>
+  </Element>
+</Uix>
