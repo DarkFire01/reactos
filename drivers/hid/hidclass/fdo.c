@@ -419,7 +419,7 @@ HidClassFDO_StartDevice(
     //
     // let's start the lower device too
     //
-    IoSkipCurrentIrpStackLocation(Irp);
+    IoCopyCurrentIrpStackLocationToNext(Irp);
     Status = HidClassFDO_DispatchRequestSynchronous(DeviceObject, Irp);
     DPRINT1("[HIDCLASS] FDO %p lower start %x\n", DeviceObject, Status);
     if (!NT_SUCCESS(Status))
@@ -499,7 +499,7 @@ HidClassFDO_RemoveDevice(
     //
     // dispatch to minidriver
     //
-    IoSkipCurrentIrpStackLocation(Irp);
+    IoCopyCurrentIrpStackLocationToNext(Irp);
     Status = HidClassFDO_DispatchRequestSynchronous(DeviceObject, Irp);
 
     //
