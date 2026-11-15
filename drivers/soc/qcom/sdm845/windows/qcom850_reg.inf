@@ -1284,3 +1284,962 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Devi
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mobile\2","FriendlyName",0x00000000,"MBB Device 1"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\22cbedc3d6344b3a560857873b9f43378c3e08181c61472922f6d4e069217804","Remote",0x00000000,\rfs\msm\mpss\readonly\firmware\image\wlanmdsp.mbn
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\22cbedc3d6344b3a560857873b9f43378c3e08181c61472922f6d4e069217804","Local",0x00000000,\SystemRoot\System32\drivers\wlanmdsp.mbn
+
+; qcbam (BAM1@1 BAM5@5 BAM6@6 BAM7@7 BAMD@13 BAME@14 BAMF@15), qckmbam850.inf, qckmbam850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbam","DisplayName",0x00000000,"Qualcomm(R) BAM DMA controller"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbam","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbam","ImagePath",0x00020000,"system32\drivers\qckmbam850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbam","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbam","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbam\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115","DriverDesc",0x00000000,"Qualcomm(R) BAM DMA controller"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115","InfPath",0x00000000,"qckmbam850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115","InfSection",0x00000000,"bam_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\1","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\1","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\1","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\1","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\5","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\5","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\5","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\5","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\6","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\6","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\6","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\7","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\7","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\7","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\7","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\13","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\13","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\13","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\13","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\14","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\14","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\14","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\14","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\15","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\15","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\15","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0213\15","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0115"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0213","Service",0x00000000,"qcbam"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0213","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcGPI (QGP0@0 QGP1@1), qcgpi850.inf, qcgpi850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcGPI","DisplayName",0x00000000,"Qualcomm(R) GPI DMA controller"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcGPI","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcGPI","ImagePath",0x00020000,"system32\drivers\qcgpi850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcGPI","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcGPI","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\QCGPI\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0116","DriverDesc",0x00000000,"Qualcomm(R) GPI DMA controller"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0116","InfPath",0x00000000,"qcgpi850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0116","InfSection",0x00000000,"qcgpi_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\0","Service",0x00000000,"qcGPI"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0116"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\1","Service",0x00000000,"qcGPI"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\1","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\1","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F4\1","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0116"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F4","Service",0x00000000,"qcGPI"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F4","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcspi (SPI9@9), qcspi850.inf, qcspi850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcspi","DisplayName",0x00000000,"Qualcomm SPI Driver"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcspi","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcspi","ImagePath",0x00020000,"system32\drivers\qcspi850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcspi","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcspi","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcspi","DependOnService",0x00010000,"SpbCx"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcspi\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.23"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0117","DriverDesc",0x00000000,"Qualcomm SPI Driver"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0117","InfPath",0x00000000,"qcspi850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0117","InfSection",0x00000000,"spi_install"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9","Service",0x00000000,"qcspi"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0117"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel","NumberOfPerfLevel",0x00010000,"7","7"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel\0","SclkFreq",0x00010000,"19200000","19200000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel\1","SclkFreq",0x00010000,"32000000","32000000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel\2","SclkFreq",0x00010000,"38400000","48000000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel\3","SclkFreq",0x00010000,"48000000","64000000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel\4","SclkFreq",0x00010000,"64000000","96000000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel\5","SclkFreq",0x00010000,"96000000","100000000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\PerfLevel\6","SclkFreq",0x00010000,"100000000","120000000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\9","GPII",0x00010001,3
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\9","OpMode",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\9","QUPBlock",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\6","GPII",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\6","OpMode",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\6","QUPBlock",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\16","GPII",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\16","OpMode",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM021E\9\Device Parameters\Instance\16","QUPBlock",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E","Service",0x00000000,"qcspi"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel","NumberOfPerfLevel",0x00010000,"7","7"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel\0","SclkFreq",0x00010000,"19200000","19200000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel\1","SclkFreq",0x00010000,"32000000","32000000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel\2","SclkFreq",0x00010000,"38400000","48000000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel\3","SclkFreq",0x00010000,"48000000","64000000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel\4","SclkFreq",0x00010000,"64000000","96000000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel\5","SclkFreq",0x00010000,"96000000","100000000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\PerfLevel\6","SclkFreq",0x00010000,"100000000","120000000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\9","GPII",0x00010001,3
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\9","OpMode",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\9","QUPBlock",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\6","GPII",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\6","OpMode",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\6","QUPBlock",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\16","GPII",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\16","OpMode",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM021E\Device Parameters\Instance\16","QUPBlock",0x00010001,1
+
+; qcuart (UAR7@7 UARD@10), qcuart850.inf, qcuart850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcuart","DisplayName",0x00000000,"Qualcomm(R) UART Controller"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcuart","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcuart","ImagePath",0x00020000,"system32\drivers\qcuart850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcuart","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcuart","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcuart\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E978-E325-11CE-BFC1-08002BE10318}\0118","DriverDesc",0x00000000,"Qualcomm(R) UART Controller"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E978-E325-11CE-BFC1-08002BE10318}\0118","InfPath",0x00000000,"qcuart850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E978-E325-11CE-BFC1-08002BE10318}\0118","InfSection",0x00000000,"uart_install"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7","Service",0x00000000,"qcuart"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7","ClassGUID",0x00000000,"{4D36E978-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7","Class",0x00000000,"Ports"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7","Driver",0x00000000,"{4D36E978-E325-11CE-BFC1-08002BE10318}\0118"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\7","UartClass",0x00010001,0x02
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\7","EnableGsi",0x00010001,0x00
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\7","GpiiId",0x00010001,0x6
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\7","QupType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\10","UartClass",0x00010001,0x02
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\10","EnableGsi",0x00010001,0x00
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\10","GpiiId",0x00010001,0x04
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\7\Device Parameters\Instance\10","QupType",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10","Service",0x00000000,"qcuart"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10","ClassGUID",0x00000000,"{4D36E978-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10","Class",0x00000000,"Ports"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10","Driver",0x00000000,"{4D36E978-E325-11CE-BFC1-08002BE10318}\0118"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\7","UartClass",0x00010001,0x02
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\7","EnableGsi",0x00010001,0x00
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\7","GpiiId",0x00010001,0x6
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\7","QupType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\10","UartClass",0x00010001,0x02
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\10","EnableGsi",0x00010001,0x00
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\10","GpiiId",0x00010001,0x04
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0236\10\Device Parameters\Instance\10","QupType",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236","Service",0x00000000,"qcuart"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236","ClassGUID",0x00000000,"{4D36E978-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\7","UartClass",0x00010001,0x02
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\7","EnableGsi",0x00010001,0x00
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\7","GpiiId",0x00010001,0x6
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\7","QupType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\10","UartClass",0x00010001,0x02
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\10","EnableGsi",0x00010001,0x00
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\10","GpiiId",0x00010001,0x04
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0236\Device Parameters\Instance\10","QupType",0x00010001,1
+
+; qcADC (ADC1@0), qcadc850.inf, qcadc850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcADC","DisplayName",0x00000000,"Qualcomm ADC Driver"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcADC","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcADC","ImagePath",0x00020000,"system32\drivers\qcadc850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcADC","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcADC","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcADC\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0119","DriverDesc",0x00000000,"Qualcomm ADC Driver"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0119","InfPath",0x00000000,"qcadc850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0119","InfSection",0x00000000,"adc_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0221\0","Service",0x00000000,"qcADC"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0221\0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0221\0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0221\0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0119"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0221","Service",0x00000000,"qcADC"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0221","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcABD (ABD@0), qcabd850.inf, qcabd850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcABD","DisplayName",0x00000000,"Qualcomm(R) ACPI Bridge Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcABD","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcABD","ImagePath",0x00020000,"system32\drivers\qcabd850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcABD","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcABD","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcABD\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011A","DriverDesc",0x00000000,"Qualcomm(R) ACPI Bridge Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011A","InfPath",0x00000000,"qcabd850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011A","InfSection",0x00000000,"abd_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0242\0","Service",0x00000000,"qcABD"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0242\0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0242\0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0242\0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011A"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0242","Service",0x00000000,"qcABD"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0242","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcpmicapps (PMAP), qcpmicapps850.inf, qcpmicapps850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmicapps","DisplayName",0x00000000,"Qualcomm(R) PMIC Apps Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmicapps","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmicapps","ImagePath",0x00020000,"system32\drivers\qcpmicapps850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmicapps","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmicapps","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011B","DriverDesc",0x00000000,"Qualcomm(R) PMIC Apps Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011B","InfPath",0x00000000,"qcpmicapps850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011B","InfSection",0x00000000,"pmic_inst"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP","Service",0x00000000,"qcpmicapps"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011B"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\RtcAlarm","RtcAlarmSupport",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\WledFault","MaxIrqRetries",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\WledFault","RetryFreq",0x00010001,500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\IbbLabFault","MaxIrqRetries",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\IbbLabFault","RetryFreq",0x00010001,500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","bFCPEnabled",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","VoltTolerance",0x00010001,50
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","TraceResistance",0x00010001,50
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","BobEfficiency",0x00010001,90
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","MaxBattCurrent",0x00010001,4500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","MaxLedVoltage",0x00010001,3500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","MinBobVoltage",0x00010001,3300
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","DefaultSysResistance",0x00010001,20
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","ChgrMitigationMaxTemp",0x00010001,80
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\_SB_PMAP\Device Parameters\FlashCurrentPrediction","DbgBoardFlashCurrent",0x00010001,2000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP","Service",0x00000000,"qcpmicapps"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011B"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\RtcAlarm","RtcAlarmSupport",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\WledFault","MaxIrqRetries",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\WledFault","RetryFreq",0x00010001,500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\IbbLabFault","MaxIrqRetries",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\IbbLabFault","RetryFreq",0x00010001,500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","bFCPEnabled",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","VoltTolerance",0x00010001,50
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","TraceResistance",0x00010001,50
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","BobEfficiency",0x00010001,90
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","MaxBattCurrent",0x00010001,4500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","MaxLedVoltage",0x00010001,3500
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","MinBobVoltage",0x00010001,3300
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","DefaultSysResistance",0x00010001,20
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","ChgrMitigationMaxTemp",0x00010001,80
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0268\2&ccb86d17&_SB_PMAP\Device Parameters\FlashCurrentPrediction","DbgBoardFlashCurrent",0x00010001,2000
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268","Service",0x00000000,"qcpmicapps"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\RtcAlarm","RtcAlarmSupport",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\WledFault","MaxIrqRetries",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\WledFault","RetryFreq",0x00010001,500
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\IbbLabFault","MaxIrqRetries",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\IbbLabFault","RetryFreq",0x00010001,500
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","bFCPEnabled",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","VoltTolerance",0x00010001,50
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","TraceResistance",0x00010001,50
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","BobEfficiency",0x00010001,90
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","MaxBattCurrent",0x00010001,4500
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","MaxLedVoltage",0x00010001,3500
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","MinBobVoltage",0x00010001,3300
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","DefaultSysResistance",0x00010001,20
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","ChgrMitigationMaxTemp",0x00010001,80
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0268\Device Parameters\FlashCurrentPrediction","DbgBoardFlashCurrent",0x00010001,2000
+
+; qcpmgpio (PM01@1), qcpmicgpio850.inf, qcpmicgpio850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmgpio","DisplayName",0x00000000,"Qualcomm(R) PMIC GPIO Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmgpio","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmgpio","ImagePath",0x00020000,"system32\drivers\qcpmicgpio850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmgpio","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpmgpio","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011C","DriverDesc",0x00000000,"Qualcomm(R) PMIC GPIO Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011C","InfPath",0x00000000,"qcpmicgpio850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011C","InfSection",0x00000000,"pmio_inst"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0269\1","Service",0x00000000,"qcpmgpio"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0269\1","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0269\1","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0269\1","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011C"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0269","Service",0x00000000,"qcpmgpio"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0269","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; QCCDI (CDI), qccdi850.inf, qccdi850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI","DisplayName",0x00000000,"Qualcomm Crash Dump Injector Service"
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI","ImagePath",0x00020000,"system32\drivers\qccdi850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI\Parameters","PreserveOld",0x00010001,00
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI\Parameters","DumpSubFolder",0x00000000,"ssr_dumps"
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI\Parameters","DumpRoot",0x00000000,"%24%\Qualcomm\"
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI\Parameters","WDBaseAddress",0x00010001,0x17980000
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI\Parameters","MiniDumpConfigRegAddr",0x00010001,0x01FD3000
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI\Parameters","MiniDumpConfigRegValue",0x00010001,0x20
+HKLM,"SYSTEM\CurrentControlSet\Services\QCCDI\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.11"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011D","DriverDesc",0x00000000,"Qualcomm Crash Dump Injector Service"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011D","InfPath",0x00000000,"qccdi850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011D","InfSection",0x00000000,"qccdi_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI","Service",0x00000000,"QCCDI"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011D"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","GUID",0x00000000,"{6FAE2F68-3B80-4931-8E0E-E30A3580F14C}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","GUID",0x00000000,"{2d79304a-543b-4147-bf69-465bbdd69fe0}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","GUID",0x00000000,"{AA795F4D-3B0A-44A4-BB84-B7ECF3EE056A}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\AMSS","GUID",0x00000000,"{936dc601-5530-4b82-9d2a-72a488bec7c1}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\AMSS","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\ADSP","GUID",0x00000000,"{d58464d3-5b28-4ea6-a2e2-e8e57c5c69b8}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\ADSP","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SCSS","GUID",0x00000000,"{53435353-1638-47e0-bb6d-0a646b8628bf}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SCSS","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\CDSP","GUID",0x00000000,"{6169B2D4-1B44-41A0-95Cf-8Df8D8DD050D}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\CDSP","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM\1","BaseAddress",0x00010001,0x146BF000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM\1","Size",0x00010001,0x1000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG\1","BaseAddress",0x00010001,0x146BF720
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG\1","Size",0x00010001,0x2000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG\1","BaseAddress",0x00010001,0x146BFB30
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG\1","Size",0x00010001,0x2000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI","Service",0x00000000,"QCCDI"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011D"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","GUID",0x00000000,"{6FAE2F68-3B80-4931-8E0E-E30A3580F14C}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","GUID",0x00000000,"{2d79304a-543b-4147-bf69-465bbdd69fe0}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","GUID",0x00000000,"{AA795F4D-3B0A-44A4-BB84-B7ECF3EE056A}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\AMSS","GUID",0x00000000,"{936dc601-5530-4b82-9d2a-72a488bec7c1}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\AMSS","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\ADSP","GUID",0x00000000,"{d58464d3-5b28-4ea6-a2e2-e8e57c5c69b8}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\ADSP","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SCSS","GUID",0x00000000,"{53435353-1638-47e0-bb6d-0a646b8628bf}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SCSS","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\CDSP","GUID",0x00000000,"{6169B2D4-1B44-41A0-95Cf-8Df8D8DD050D}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\CDSP","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM\1","BaseAddress",0x00010001,0x146BF000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\SHAREDIMEM\1","Size",0x00010001,0x1000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG\1","BaseAddress",0x00010001,0x146BF720
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\TZ_LOG\1","Size",0x00010001,0x2000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG\1","BaseAddress",0x00010001,0x146BFB30
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM026C\2&ccb86d17&_SB_CDI\Device Parameters\MEMRUNS\HYP_LOG\1","Size",0x00010001,0x2000
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C","Service",0x00000000,"QCCDI"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SHAREDIMEM","GUID",0x00000000,"{6FAE2F68-3B80-4931-8E0E-E30A3580F14C}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SHAREDIMEM","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SHAREDIMEM","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\HYP_LOG","GUID",0x00000000,"{2d79304a-543b-4147-bf69-465bbdd69fe0}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\HYP_LOG","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\HYP_LOG","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\TZ_LOG","GUID",0x00000000,"{AA795F4D-3B0A-44A4-BB84-B7ECF3EE056A}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\TZ_LOG","CDIDumpType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\TZ_LOG","UnlockType",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\AMSS","GUID",0x00000000,"{936dc601-5530-4b82-9d2a-72a488bec7c1}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\AMSS","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\ADSP","GUID",0x00000000,"{d58464d3-5b28-4ea6-a2e2-e8e57c5c69b8}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\ADSP","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SCSS","GUID",0x00000000,"{53435353-1638-47e0-bb6d-0a646b8628bf}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SCSS","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\CDSP","GUID",0x00000000,"{6169B2D4-1B44-41A0-95Cf-8Df8D8DD050D}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\CDSP","CDIDumpType",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SHAREDIMEM","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SHAREDIMEM\1","BaseAddress",0x00010001,0x146BF000
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\SHAREDIMEM\1","Size",0x00010001,0x1000
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\TZ_LOG","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\TZ_LOG\1","BaseAddress",0x00010001,0x146BF720
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\TZ_LOG\1","Size",0x00010001,0x2000
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\HYP_LOG","NumMemRuns",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\HYP_LOG\1","BaseAddress",0x00010001,0x146BFB30
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM026C\Device Parameters\MEMRUNS\HYP_LOG\1","Size",0x00010001,0x2000
+
+; qcbattminiclass (PMBM), qcbattminiclass850.inf, qcbattminiclass850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattminiclass","DisplayName",0x00000000,"Qualcomm PMIC Battery Miniclass Driver"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattminiclass","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattminiclass","ImagePath",0x00020000,"system32\drivers\qcbattminiclass850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattminiclass","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattminiclass","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{72631E54-78A4-11D0-BCF7-00AA00B7B32A}\011E","DriverDesc",0x00000000,"Qualcomm PMIC Battery Miniclass Driver"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{72631E54-78A4-11D0-BCF7-00AA00B7B32A}\011E","InfPath",0x00000000,"qcbattminiclass850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{72631E54-78A4-11D0-BCF7-00AA00B7B32A}\011E","InfSection",0x00000000,"pmic_inst"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\_SB_PMBM","Service",0x00000000,"qcbattminiclass"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\_SB_PMBM","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\_SB_PMBM","Class",0x00000000,"Battery"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\_SB_PMBM","Driver",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}\011E"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\2&ccb86d17&_SB_PMBM","Service",0x00000000,"qcbattminiclass"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\2&ccb86d17&_SB_PMBM","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\2&ccb86d17&_SB_PMBM","Class",0x00000000,"Battery"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0263\2&ccb86d17&_SB_PMBM","Driver",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}\011E"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0263","Service",0x00000000,"qcbattminiclass"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0263","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
+
+; qcfgbcl (BCL1), qcfgbcl850.inf, qcfgbcl850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","DisplayName",0x00000000,"Qualcomm Fuel Gauge and Battery Current Limit Monitor"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","ImagePath",0x00020000,"system32\drivers\qcfgbcl850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011F","DriverDesc",0x00000000,"Qualcomm Fuel Gauge and Battery Current Limit Monitor"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011F","InfPath",0x00000000,"qcfgbcl850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\011F","InfSection",0x00000000,"pmic_inst"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\_SB_BCL1","Service",0x00000000,"qcfgbcl"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\_SB_BCL1","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\_SB_BCL1","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\_SB_BCL1","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\2&ccb86d17&_SB_BCL1","Service",0x00000000,"qcfgbcl"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\2&ccb86d17&_SB_BCL1","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\2&ccb86d17&_SB_BCL1","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D6\2&ccb86d17&_SB_BCL1","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\011F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D6","Service",0x00000000,"qcfgbcl"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcpep (AGR0@0), qcpep.wd850.inf, qcpep850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep","DisplayName",0x00000000,"Qualcomm(R) Power Engine Plug-in Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep","Group",0x00000000,"Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep","ImagePath",0x00020000,"system32\drivers\qcpep850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisableCpuRet",0x00010001,0xFF
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisableCpuVdd",0x00010001,0x0000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisableCCI",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableProcessorManagement",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableIdleCrashDebug",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisablePhaseScaling",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisablePCE",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableCVSPerfSelection",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableCVSThermalPerfSelection",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","CprFlags",0x00010001,0xffff
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableMsftSdPStates",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisablePEPQDSSLogs",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\CPRH_APC0","DisableCloseLoop",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\CPRH_APC0","DisableCoreTempMargin",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\CPRH_APC1","DisableCloseLoop",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\CPRH_APC1","DisableCoreTempMargin",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisableBWMonBusDCVS",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisableAVS",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","CprRpmStat",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","RpmCprStatsMillis",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableACPILPIPEP",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DisableSystemLPM",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnbRELAlgo",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnbCrntAlgo",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableLTVR",0x00010001,0x1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DDRIBFloorFactor",0x00010001,0xAF
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","DDRIBFloorCpuFreqThresholdMhz",0x00010001,0x7D0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\Audio","Name",0x00000000,"adsp"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\Audio","Val",0x00000000,"on"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\ComputeDSP","Name",0x00000000,"cdsp"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\ComputeDSP","Val",0x00000000,"on"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\Modem","Name",0x00000000,"modem"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\Modem","Val",0x00000000,"on"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\SecureProcessor","Name",0x00000000,"spss"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\SecureProcessor","Val",0x00000000,"off"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\Sensors","Name",0x00000000,"slpi"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\HWDRIPS\Sensors","Val",0x00000000,"on"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1","SamplingInterval",0x00010001,0x002dc6c0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1","PerfStateCount",0x00010001,0x00000004
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P0","MaxUtilizationThreshold",0x00010001,0x00000064
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P0","MinUtilizationThreshold",0x00010001,0x00000023
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P0","Frequency",0x00010001,0x00061a80
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P0","Performance",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P1","MaxUtilizationThreshold",0x00010001,0x00000064
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P1","MinUtilizationThreshold",0x00010001,0x00000023
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P1","Frequency",0x00010001,0x00030d40
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P1","Performance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P2","MaxUtilizationThreshold",0x00010001,0x00000064
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P2","MinUtilizationThreshold",0x00010001,0x00000023
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P2","Frequency",0x00010001,0x000186a0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P2","Performance",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P3","MaxUtilizationThreshold",0x00010001,0x00000050
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P3","MinUtilizationThreshold",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P3","Frequency",0x00010001,0x00004e20
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC1\P3","Performance",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2","SamplingInterval",0x00010001,0x002dc6c0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2","PerfStateCount",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P0","MaxUtilizationThreshold",0x00010001,0x00000064
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P0","MinUtilizationThreshold",0x00010001,0x00000023
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P0","Frequency",0x00010001,0x00030d40
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P0","Performance",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P1","MaxUtilizationThreshold",0x00010001,0x0000000f
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P1","MinUtilizationThreshold",0x00010001,0x0000000a
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P1","Frequency",0x00010001,0x000186a0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P1","Performance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P2","MaxUtilizationThreshold",0x00010001,0x00000050
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P2","MinUtilizationThreshold",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P2","Frequency",0x00010001,0x00004e20
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\SDC2\P2","Performance",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\PARKSEL","DisableParkSelection",0x00010001,0x0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\PARKSEL\ReliabilityBased","Timer_APC1",0x00010001,0xe10
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\DirectedPState","EnableDirectedPStateFeatures",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters\OSM_CLUSTER_1","PerformanceBoost",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","WPPEnabled",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcpep\Parameters","EnableBugcheck",0x00010001,9
+HKLM,"SYSTEM\CurrentControlSet\Control\Power","PoFxSystemIrpWaitForReportDevicePowered",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0120","DriverDesc",0x00000000,"Qualcomm(R) Power Engine Plug-in Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0120","InfPath",0x00000000,"qcpep.wd850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0120","InfSection",0x00000000,"pep_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B0\0","Service",0x00000000,"qcpep"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B0\0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B0\0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B0\0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0120"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02B0","Service",0x00000000,"qcpep"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02B0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcsubsys (ADSP), qcsubsys850.inf, qcsubsys850.sys qcslpi850_cls.mbn qcslpi850.mbn qcdsp2850_nm.mbn qcdsp2850.mbn qcdsp1v2850_nm.mbn qcdsp1v2850.mbn qccdsp850.mbn qcadsp850.mbn wlanmdsp.mbn
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","DisplayName",0x00000000,"Qualcomm(R) Subsystem Dependency Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ImagePath",0x00020000,"system32\drivers\qcsubsys850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DogBiteRegDump",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DebugSmp2pTimeout",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","SCSSRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","AMSSRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","CdspRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121","DriverDesc",0x00000000,"Qualcomm(R) Subsystem Dependency Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121","InfPath",0x00000000,"qcsubsys850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121","InfSection",0x00000000,"subsys_device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121","AdspImagePath",0x00000000,"\SystemRoot\System32\drivers\qcadsp850.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121","CdspImagePath",0x00000000,"\SystemRoot\System32\drivers\qccdsp850.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121\0\ADSP","RPEC",0x00010000,"{99CA9C16-4E1E-4970-B49E-2CA56753588B}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121\0\ADSP","Interfaces",0x00010000,{E2EB84C1-4068-4994-A48F-F3AC0D38DC29},{E022FF1A-C06C-42D8-94FE-90D876FC0B75}
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121\0\CDSP","Interfaces",0x00010000,{E2EB84C1-4068-4994-A48F-F3AC0D38DC29},{E022FF1A-C06C-42D8-94FE-90D876FC0B75}
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121\0\SPSS","Interfaces",0x00010000,{E2EB84C1-4068-4994-A48F-F3AC0D38DC29}
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121\QSM","DHMS",0x00010000,"Diag","{00000000-0000-0000-0000-000000000000}","0"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121\QSM","QSMG",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121\ADSP","MANU",0x00010001,0x06be0baf
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Desktop\1","FriendlyName",0x00000000,"Slimbus Device 1"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\_SB_ADSP\Device Parameters\Mobile\1","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0121"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Desktop\1","FriendlyName",0x00000000,"Slimbus Device 1"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023D\2&ccb86d17&_SB_ADSP\Device Parameters\Mobile\1","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Desktop\1","FriendlyName",0x00000000,"Slimbus Device 1"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023D\Device Parameters\Mobile\1","FriendlyName",0x00000000,"Slimbus Device 0"
+
+; qcsubsys (CDSP), qcsubsys850.inf, qcsubsys850.sys qcslpi850_cls.mbn qcslpi850.mbn qcdsp2850_nm.mbn qcdsp2850.mbn qcdsp1v2850_nm.mbn qcdsp1v2850.mbn qccdsp850.mbn qcadsp850.mbn wlanmdsp.mbn
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","DisplayName",0x00000000,"Qualcomm(R) Subsystem Dependency Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ImagePath",0x00020000,"system32\drivers\qcsubsys850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DogBiteRegDump",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DebugSmp2pTimeout",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","SCSSRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","AMSSRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","CdspRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122","DriverDesc",0x00000000,"Qualcomm(R) Subsystem Dependency Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122","InfPath",0x00000000,"qcsubsys850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122","InfSection",0x00000000,"subsys_device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122","AdspImagePath",0x00000000,"\SystemRoot\System32\drivers\qcadsp850.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122","CdspImagePath",0x00000000,"\SystemRoot\System32\drivers\qccdsp850.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122\0\ADSP","RPEC",0x00010000,"{99CA9C16-4E1E-4970-B49E-2CA56753588B}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122\0\ADSP","Interfaces",0x00010000,{E2EB84C1-4068-4994-A48F-F3AC0D38DC29},{E022FF1A-C06C-42D8-94FE-90D876FC0B75}
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122\0\CDSP","Interfaces",0x00010000,{E2EB84C1-4068-4994-A48F-F3AC0D38DC29},{E022FF1A-C06C-42D8-94FE-90D876FC0B75}
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122\0\SPSS","Interfaces",0x00010000,{E2EB84C1-4068-4994-A48F-F3AC0D38DC29}
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122\QSM","DHMS",0x00010000,"Diag","{00000000-0000-0000-0000-000000000000}","0"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122\QSM","QSMG",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122\ADSP","MANU",0x00010001,0x06be0baf
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Desktop\1","FriendlyName",0x00000000,"Slimbus Device 1"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\_SB_CDSP\Device Parameters\Mobile\1","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0122"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Desktop\1","FriendlyName",0x00000000,"Slimbus Device 1"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F7\2&ccb86d17&_SB_CDSP\Device Parameters\Mobile\1","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Desktop\1","FriendlyName",0x00000000,"Slimbus Device 1"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile","NumChildren",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\0","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\0","_UID",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\0","_ADR",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\0","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\0","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\0","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\0","FriendlyName",0x00000000,"Slimbus Device 0"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\1","_HID",0x00000000,"QCOM021F"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\1","_UID",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\1","_ADR",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\1","DeviceType",0x00010001,0x0000001D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\1","SupriseRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\1","ChildRemoval",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F7\Device Parameters\Mobile\1","FriendlyName",0x00000000,"Slimbus Device 0"
+
+; qcsubsys (SCSS), qcsubsys850.inf, qcsubsys850.sys qcslpi850_cls.mbn qcslpi850.mbn qcdsp2850_nm.mbn qcdsp2850.mbn qcdsp1v2850_nm.mbn qcdsp1v2850.mbn qccdsp850.mbn qcadsp850.mbn
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","DisplayName",0x00000000,"Qualcomm(R) Subsystem Dependency Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ImagePath",0x00020000,"system32\drivers\qcsubsys850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DogBiteRegDump",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DebugSmp2pTimeout",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","SCSSRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","AMSSRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","CdspRestartEnabled",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123","DriverDesc",0x00000000,"Qualcomm(R) Subsystem Dependency Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123","InfPath",0x00000000,"qcsubsys850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123","InfSection",0x00000000,"subsys_device_cls"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123","ScssImagePath",0x00000000,"\SystemRoot\System32\drivers\qcslpi850_CLS.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123\0\SCSS","RPEC",0x00010000,"{2c17a886-fe66-4e10-a6ec-9e9ea942eb24}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123\0\SCSS","Interfaces",0x00010000,{E2EB84C1-4068-4994-A48F-F3AC0D38DC29},{E022FF1A-C06C-42D8-94FE-90D876FC0B75}
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\_SB_SCSS","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\_SB_SCSS","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\_SB_SCSS","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\_SB_SCSS","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\2&ccb86d17&_SB_SCSS","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\2&ccb86d17&_SB_SCSS","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\2&ccb86d17&_SB_SCSS","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02BE\2&ccb86d17&_SB_SCSS","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0123"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02BE","Service",0x00000000,"qcsubsys"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02BE","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcadsprpc (ARPC), qcadsprpc850.inf, qcadsprpc850.sys libcdsprpc.dll libsdsprpc.dll libadsprpc.dll libcdsprpcarm32.dll libsdsprpcarm32.dll libadsprpcarm32.dll
+HKLM,"SYSTEM\CurrentControlSet\Services\qcadsprpc","DisplayName",0x00000000,"Qualcomm(R) ADSP RPC Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcadsprpc","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcadsprpc","ImagePath",0x00020000,"system32\drivers\qcadsprpc850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcadsprpc","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcadsprpc","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcadsprpc\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0124","DriverDesc",0x00000000,"Qualcomm(R) ADSP RPC Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0124","InfPath",0x00000000,"qcadsprpc850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0124","InfSection",0x00000000,"adsprpc_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC","Service",0x00000000,"qcadsprpc"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0124"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC\Device Parameters","DeviceCharacteristics",0x10001,0x100
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCADSPAridBase",0x00000001,0x02,0x17,0x03,0x00,0x0C,0x17,0x03,0x00,0x0D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCADSPCbIndex",0x00000001,0x02,0x1F,0x20
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCADSPSidInfo",0x00000001,0x02,0x18,0x23,0x18,0x24
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCCDSPAridBase",0x00000001,0x01,0x17,0x03,0x00,0x00
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCCDSPCbIndex",0x00000001,0x01,0x19
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCCDSPSidInfo",0x00000001,0x01,0x14,0x01
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC","Service",0x00000000,"qcadsprpc"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0124"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC\Device Parameters","DeviceCharacteristics",0x10001,0x100
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCADSPAridBase",0x00000001,0x02,0x17,0x03,0x00,0x0C,0x17,0x03,0x00,0x0D
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCADSPCbIndex",0x00000001,0x02,0x1F,0x20
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCADSPSidInfo",0x00000001,0x02,0x18,0x23,0x18,0x24
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCCDSPAridBase",0x00000001,0x01,0x17,0x03,0x00,0x00
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCCDSPCbIndex",0x00000001,0x01,0x19
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0297\2&ccb86d17&_SB_ARPC\Device Parameters\ARPC\SMMU","FastRPCCDSPSidInfo",0x00000001,0x01,0x14,0x01
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297","Service",0x00000000,"qcadsprpc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297\Device Parameters","DeviceCharacteristics",0x10001,0x100
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297\Device Parameters\ARPC\SMMU","FastRPCADSPAridBase",0x00000001,0x02,0x17,0x03,0x00,0x0C,0x17,0x03,0x00,0x0D
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297\Device Parameters\ARPC\SMMU","FastRPCADSPCbIndex",0x00000001,0x02,0x1F,0x20
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297\Device Parameters\ARPC\SMMU","FastRPCADSPSidInfo",0x00000001,0x02,0x18,0x23,0x18,0x24
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297\Device Parameters\ARPC\SMMU","FastRPCCDSPAridBase",0x00000001,0x01,0x17,0x03,0x00,0x00
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297\Device Parameters\ARPC\SMMU","FastRPCCDSPCbIndex",0x00000001,0x01,0x19
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0297\Device Parameters\ARPC\SMMU","FastRPCCDSPSidInfo",0x00000001,0x01,0x14,0x01
+
+; QcBluetooth (BTH0), qcbtfmuart850.inf, crnv21_chain2.bin crnv21_chain2.b3c crnv21.bin crnv21.b3c crnv20_chain2.bin crnv20.bin crbtfw21.tlv crbtfw20.tlv qcbtfmuart850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth","DisplayName",0x00000000,"Bluetooth UART Transport Driver"
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth","ImagePath",0x00020000,"system32\drivers\qcbtfmuart850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","DebugFlags",0x10001,0xC000C000
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","DebugLevel",0x10001,0x0001FFFF
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","BtLogEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","HCIDumpEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","HciDumpRawDataForEventsNotDecoded",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","AclDumpRawData",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","HciDumpTruncateSize",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","RamPatchDumpEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","RamPsDumpEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","RamPsOveride",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","UART_TO_READ",0x10001,40
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","UART_TO_WRITE",0x10001,1500
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","BaudRate",0x10001,3200000
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","DefaultBaudRate",0x10001,115200
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","ExplicitRtsWakeup",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","CmdAclOutUseUnifiedQ",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","EvtAclInUseUnifiedQ",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","EvtAclInGoThroughIoWorker",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","EvtInPrioritized",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","AclPassupDelay",0x10001,10
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","RadioRtD2Enabled",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","RadioGPIOControled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","WriteRetryEnabled",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","WlanCoexEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","FwLogToFileEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","LTECoexEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","SSREnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","IsRome",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","SWInBandSleepEnabled",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","RomeDeepSleepEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","QcaMemoryDumpEnable",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","AFHEnabled",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","FWLogEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","RandomBTAddrEnabled",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","BtSnoopHciEnabled",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","BtSnoopLogNew",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","HandleOffWipower",0x10001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\QcBluetooth\Parameters","DynamicSwitch",0x10001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0125","DriverDesc",0x00000000,"Bluetooth UART Transport Driver"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0125","InfPath",0x00000000,"qcbtfmuart850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0125","InfSection",0x00000000,"qcabtuart"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\_SB_BTH0","Service",0x00000000,"QcBluetooth"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\_SB_BTH0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\_SB_BTH0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\_SB_BTH0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0125"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\_SB_BTH0\Device Parameters","DeviceCharacteristics",0x10001,0x0100
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\2&ccb86d17&_SB_BTH0","Service",0x00000000,"QcBluetooth"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\2&ccb86d17&_SB_BTH0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\2&ccb86d17&_SB_BTH0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\2&ccb86d17&_SB_BTH0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0125"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02B5\2&ccb86d17&_SB_BTH0\Device Parameters","DeviceCharacteristics",0x10001,0x0100
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02B5","Service",0x00000000,"QcBluetooth"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02B5","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02B5\Device Parameters","DeviceCharacteristics",0x10001,0x0100
+
+; qcusbc (UCP0), qcusbc850.inf, qcusbc850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcusbc","DisplayName",0x00000000,"Qualcomm(R) USB Type-C/PD Switch"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcusbc","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcusbc","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcusbc","ImagePath",0x00020000,"system32\drivers\qcusbc850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcusbc","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcusbc","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcusbc\Parameters","VerboseOn",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0126","DriverDesc",0x00000000,"Qualcomm(R) USB Type-C/PD Switch"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0126","InfPath",0x00000000,"qcusbc850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0126","InfSection",0x00000000,"qcusbc_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\_SB_UCP0","Service",0x00000000,"qcusbc"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\_SB_UCP0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\_SB_UCP0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\_SB_UCP0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0126"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\2&ccb86d17&_SB_UCP0","Service",0x00000000,"qcusbc"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\2&ccb86d17&_SB_UCP0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\2&ccb86d17&_SB_UCP0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02D0\2&ccb86d17&_SB_UCP0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0126"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D0","Service",0x00000000,"qcusbc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcsyscache (LLC), qcsyscache850.inf, qcsyscache850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache","DisplayName",0x00000000,"Qualcomm(R) Last Level Cache Controller"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache","ImagePath",0x00020000,"system32\drivers\qcsyscache850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache","EnableTestInterface",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache\Parameters","Guid",0x00000000,"{48192C45-CCE1-4A40-864A-CBC9F78E10D8}"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache\Parameters","LLCI",0x00000001,0x00,0x01,0x01,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x01,0x01,0x0d,0x0d,0x04,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x01,0x02,0x02,0x02,0x08,0x00,0x02,0x00,0x00,0x00,0xF0,0x00,0x01,0x00,0x01,0x00,0x03,0x03,0x03,0x08,0x00,0x02,0x00,0x00,0x00,0xF0,0x00,0x01,0x00,0x01,0x00,0x04,0x11,0x11,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x05,0x10,0x10,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x06,0x0B,0x0B,0x08,0x00,0x01,0x00,0x0C,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x07,0x0C,0x0C,0x24,0x00,0x01,0x0F,0xF0,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x08,0x04,0x04,0x08,0xCC,0x02,0x00,0x00,0x00,0x0E,0x02,0x01,0x00,0x01,0x00,0x09,0x05,0x05,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x0A,0x06,0x06,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x0B,0x07,0x07,0x10,0x00,0x02,0x00,0xFC,0x0F,0x00,0x00,0x00,0x00,0x01,0x00,0x0C,0x08,0x08,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x0E,0x0A,0x0A,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x10,0x0F,0x0F,0x2C,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x00,0x00,0x01,0x00,0x13,0x14,0x14,0x10,0x00,0x02,0x00,0x00,0x0F,0x00,0x00,0x01,0x00,0x01,0x00,0x14,0x15,0x15,0x10,0x00,0x00,0x00,0x1E,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x15,0x16,0x16,0x10,0x00,0x01,0x0F,0xFC,0x00,0x02,0x00,0x01,0x00,0x01,0x00
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsyscache\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.13"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0127","DriverDesc",0x00000000,"Qualcomm(R) Last Level Cache Controller"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0127","InfPath",0x00000000,"qcsyscache850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0127","InfSection",0x00000000,"syscache_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\_SB_LLC","Service",0x00000000,"qcsyscache"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\_SB_LLC","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\_SB_LLC","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\_SB_LLC","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0127"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\2&ccb86d17&_SB_LLC","Service",0x00000000,"qcsyscache"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\2&ccb86d17&_SB_LLC","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\2&ccb86d17&_SB_LLC","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F8\2&ccb86d17&_SB_LLC","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0127"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F8","Service",0x00000000,"qcsyscache"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F8","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; qcRng (QRNG@0), qcRng850.inf, qcRng850.sys
+HKLM,"SYSTEM\CurrentControlSet\Services\qcRng","DisplayName",0x00000000,"Qualcomm(R) Random Number Generator Device"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcRng","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcRng","ImagePath",0x00020000,"system32\drivers\qcRng850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcRng","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcRng","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcRng\Parameters\Wdf","KmdfLibraryVersion",0x00000000,"1.25"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0128","DriverDesc",0x00000000,"Qualcomm(R) Random Number Generator Device"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0128","InfPath",0x00000000,"qcrng850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E97D-E325-11CE-BFC1-08002BE10318}\0128","InfSection",0x00000000,"qcrng_device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02FE\0","Service",0x00000000,"qcRng"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02FE\0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02FE\0","Class",0x00000000,"SYSTEM"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02FE\0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0128"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02FE","Service",0x00000000,"qcRng"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02FE","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
