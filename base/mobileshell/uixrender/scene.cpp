@@ -88,6 +88,9 @@ CUixScene::CUixScene(
       m_Attached(FALSE),
       m_Scroller(NULL),
       m_Dragging(FALSE),
+      m_Swiper(NULL),
+      m_Swiping(FALSE),
+      m_DownX(0.0f),
       m_DownY(0.0f),
       m_LastY(0.0f)
 {
@@ -1117,6 +1120,27 @@ CUixScene::ScrollerAt(
     return Element->Scroll ? Element : NULL;
 }
 
+PUIX_ELEMENT
+CUixScene::SwiperAt(
+    _In_ PUIX_ELEMENT Element,
+    _In_ FLOAT X,
+    _In_ FLOAT Y) const
+{
+    PUIX_ELEMENT Found;
+    SIZE_T Index;
+
+    if (!Element->Visible || !Contains(Element->Rect, X, Y))
+        return NULL;
+
+    for (Index = Element->Children.size(); Index > 0; Index -= 1)
+    {
+        Found = SwiperAt(Element->Children[Index - 1], X, Y);
+        if (Found)
+            return Found;
+    }
+    return (Element->Get(L"SwipeLeft") || Element->Get(L"SwipeRight")) ? Element : NULL;
+}
+
 BOOL
 CUixScene::ScrollBy(
     _In_ PUIX_ELEMENT Scroller,
@@ -1233,11 +1257,14 @@ CUixScene::PointerEvent(
         case UixPointerDown:
             Hit = HitTest(m_Root, X, Y);
             m_Scroller = ScrollerAt(m_Root, X, Y);
+            m_Swiper = SwiperAt(m_Root, X, Y);
             m_Dragging = FALSE;
+            m_Swiping = FALSE;
+            m_DownX = X;
             m_DownY = Y;
             m_LastY = Y;
             if (!Hit)
-                return m_Scroller != NULL;
+                return m_Scroller != NULL || m_Swiper != NULL;
 
             m_Pressed = Hit;
             m_SelectedBeforePress = m_Selected;
@@ -1247,6 +1274,23 @@ CUixScene::PointerEvent(
             return TRUE;
 
         case UixPointerMove:
+            /* A mostly sideways drag on a SwipeLeft/SwipeRight element becomes a swipe */
+            if (m_Swiper && !m_Dragging && !m_Swiping &&
+                fabsf(X - m_DownX) > m_Engine->ResolveNumber(L"@DragSlop", 6.0f) &&
+                fabsf(X - m_DownX) > fabsf(Y - m_DownY) * 2.0f)
+            {
+                m_Swiping = TRUE;
+                if (m_Pressed)
+                {
+                    MarkLayerDirty(m_Selected);
+                    m_Selected = m_SelectedBeforePress;
+                    MarkLayerDirty(m_Selected);
+                    m_Pressed = NULL;
+                }
+            }
+            if (m_Swiping)
+                return TRUE;
+
             if (m_Scroller)
             {
                 /* Past the slop a press turns into a drag and gives up its tap */
@@ -1285,9 +1329,21 @@ CUixScene::PointerEvent(
         case UixPointerUp:
         case UixPointerCancel:
             Pressed = m_Pressed;
-            Dragged = m_Dragging || m_Scroller;
+            Dragged = m_Dragging || m_Scroller || m_Swiper;
             m_Scroller = NULL;
             m_Dragging = FALSE;
+            if (m_Swiping)
+            {
+                m_Swiping = FALSE;
+                if (Kind == UixPointerUp && fabsf(X - m_DownX) >= m_Engine->ResolveNumber(L"@SwipeDistance", 40.0f))
+                {
+                    m_ScratchValue = Value(m_Swiper, (X < m_DownX) ? L"SwipeLeft" : L"SwipeRight", FALSE);
+                    *Command = m_ScratchValue.c_str();
+                }
+                m_Swiper = NULL;
+                return TRUE;
+            }
+            m_Swiper = NULL;
             if (!Pressed)
                 return Dragged;
 
