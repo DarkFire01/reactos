@@ -38,11 +38,17 @@ HalpGetSecondaryProvider(
     BOOLEAN Registered;
     KIRQL OldIrql;
 
-    KeAcquireSpinLock(&HalpSecondaryLock, &OldIrql);
+    /* Masking and unmasking come from interrupt service routines, above DISPATCH_LEVEL */
+    OldIrql = KeGetCurrentIrql();
+    if (OldIrql < HIGH_LEVEL)
+        KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpSecondaryLock);
     Registered = HalpSecondaryRegistered;
     if (Registered)
         *Provider = HalpSecondaryProvider;
-    KeReleaseSpinLock(&HalpSecondaryLock, OldIrql);
+    KeReleaseSpinLockFromDpcLevel(&HalpSecondaryLock);
+    if (OldIrql < HIGH_LEVEL)
+        KeLowerIrql(OldIrql);
 
     return Registered;
 }
@@ -155,7 +161,8 @@ HalpUnregisterSecondaryProvider(
     NTSTATUS Status = STATUS_NOT_FOUND;
     KIRQL OldIrql;
 
-    KeAcquireSpinLock(&HalpSecondaryLock, &OldIrql);
+    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpSecondaryLock);
     if (HalpSecondaryRegistered &&
         HalpSecondaryProvider.GsivBase == GsivBase &&
         HalpSecondaryProvider.GsivSize == GsivSize &&
@@ -165,7 +172,8 @@ HalpUnregisterSecondaryProvider(
         RtlZeroMemory(&HalpSecondaryProvider, sizeof(HalpSecondaryProvider));
         Status = STATUS_SUCCESS;
     }
-    KeReleaseSpinLock(&HalpSecondaryLock, OldIrql);
+    KeReleaseSpinLockFromDpcLevel(&HalpSecondaryLock);
+    KeLowerIrql(OldIrql);
 
     return Status;
 }
@@ -324,7 +332,8 @@ HalpRegisterSecondaryProvider(
         return STATUS_INVALID_PARAMETER;
     }
 
-    KeAcquireSpinLock(&HalpSecondaryLock, &OldIrql);
+    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpSecondaryLock);
     if (HalpSecondaryRegistered)
     {
         Status = STATUS_ALREADY_REGISTERED;
@@ -334,7 +343,8 @@ HalpRegisterSecondaryProvider(
         HalpSecondaryProvider = *Provider;
         HalpSecondaryRegistered = TRUE;
     }
-    KeReleaseSpinLock(&HalpSecondaryLock, OldIrql);
+    KeReleaseSpinLockFromDpcLevel(&HalpSecondaryLock);
+    KeLowerIrql(OldIrql);
 
     DPRINT1("Secondary interrupt controller %p owns GSIV %lu, %u lines: 0x%lx\n",
             Provider->DriverObject, Provider->GsivBase, Provider->GsivSize, Status);
