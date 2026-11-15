@@ -43,8 +43,9 @@ LIST_ENTRY ExpWorkerListHead;
 #define EXP_RUNNING_SLOTS 32
 static struct
 {
-    PVOID Thread;
+    PKTHREAD Thread;
     PVOID Routine;
+    PDEVICE_OBJECT DeviceObject;
     ULONG Queue;
 } ExpRunningWork[EXP_RUNNING_SLOTS];
 FAST_MUTEX ExpWorkerSwapinMutex;
@@ -59,21 +60,37 @@ PETHREAD ExpLastWorkerThread;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
+VOID
+NTAPI
+IopWorkItemCallback(
+    _In_ PVOID Parameter);
+
 static
 ULONG
 NTAPI
 ExpTrackWork(
-    _In_ PVOID Thread,
-    _In_ PVOID Routine,
+    _In_ PKTHREAD Thread,
+    _In_ PWORK_QUEUE_ITEM WorkItem,
     _In_ ULONG Queue)
 {
+    PIO_WORKITEM IoWorkItem;
     ULONG Slot;
 
     for (Slot = 0; Slot < EXP_RUNNING_SLOTS; Slot++)
     {
-        if (InterlockedCompareExchangePointer(&ExpRunningWork[Slot].Thread, Thread, NULL) == NULL)
+        if (InterlockedCompareExchangePointer((PVOID *)&ExpRunningWork[Slot].Thread, Thread, NULL) == NULL)
         {
-            ExpRunningWork[Slot].Routine = Routine;
+            /* An I/O work item only shows its wrapper, so look at the driver routine inside it */
+            ExpRunningWork[Slot].Routine = WorkItem->WorkerRoutine;
+            ExpRunningWork[Slot].DeviceObject = NULL;
+            if (WorkItem->WorkerRoutine == IopWorkItemCallback)
+            {
+                IoWorkItem = WorkItem->Parameter;
+                ExpRunningWork[Slot].DeviceObject = IoWorkItem->DeviceObject;
+                ExpRunningWork[Slot].Routine = IoWorkItem->WorkerRoutineEx ?
+                                               (PVOID)IoWorkItem->WorkerRoutineEx :
+                                               (PVOID)IoWorkItem->WorkerRoutine;
+            }
             ExpRunningWork[Slot].Queue = Queue;
             return Slot;
         }
@@ -85,32 +102,81 @@ ExpTrackWork(
 static
 VOID
 NTAPI
+ExpPrintCode(
+    _In_ PCSTR Prefix,
+    _In_ PVOID Address)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
+    BOOLEAN InKernel;
+    PVOID Base;
+
+    Base = KiPcToFileHeader(Address, &LdrEntry, FALSE, &InKernel);
+    if (Base && LdrEntry)
+        DbgPrint("%s%wZ+0x%Ix", Prefix, &LdrEntry->BaseDllName, (ULONG_PTR)Address - (ULONG_PTR)Base);
+    else
+        DbgPrint("%s%p", Prefix, Address);
+}
+
+/**
+ * @brief Prints the routine, device and innermost frames of every item running on a stalled queue.
+ */
+static
+VOID
+NTAPI
 ExpReportRunningWork(
     _In_ ULONG Queue)
 {
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
-    BOOLEAN InKernel;
-    PVOID Base;
+    PKTHREAD Thread;
     ULONG Slot;
+#ifdef _M_ARM64
+    PKSWITCH_FRAME SwitchFrame;
+    ULONG_PTR Frame;
+    ULONG Count;
+#endif
 
     for (Slot = 0; Slot < EXP_RUNNING_SLOTS; Slot++)
     {
-        if (!ExpRunningWork[Slot].Thread || ExpRunningWork[Slot].Queue != Queue)
+        Thread = ExpRunningWork[Slot].Thread;
+        if (!Thread || ExpRunningWork[Slot].Queue != Queue)
             continue;
 
-        LdrEntry = NULL;
-        Base = KiPcToFileHeader(ExpRunningWork[Slot].Routine, &LdrEntry, FALSE, &InKernel);
-        if (Base && LdrEntry)
+        DbgPrint("EX:   busy %p", Thread);
+        ExpPrintCode(" in ", ExpRunningWork[Slot].Routine);
+        if (ExpRunningWork[Slot].DeviceObject)
+            DbgPrint(" for %wZ", &ExpRunningWork[Slot].DeviceObject->DriverObject->DriverName);
+        DbgPrint("\n");
+
+#ifdef _M_ARM64
+        /* Where it waits: the frame chain saved when it switched out */
+        if (Thread->State != Waiting)
+            continue;
+
+        SwitchFrame = (PKSWITCH_FRAME)Thread->KernelStack;
+        if ((ULONG_PTR)SwitchFrame < (ULONG_PTR)Thread->StackLimit ||
+            (ULONG_PTR)(SwitchFrame + 1) > (ULONG_PTR)Thread->InitialStack ||
+            !MmIsAddressValid(SwitchFrame))
         {
-            DPRINT1("EX:   busy %p in %wZ+0x%Ix\n",
-                    ExpRunningWork[Slot].Thread,
-                    &LdrEntry->BaseDllName,
-                    (ULONG_PTR)ExpRunningWork[Slot].Routine - (ULONG_PTR)Base);
+            continue;
         }
-        else
+
+        DbgPrint("EX:    ");
+        Frame = SwitchFrame->Fp;
+        for (Count = 0; Count < 9; Count++)
         {
-            DPRINT1("EX:   busy %p in %p\n", ExpRunningWork[Slot].Thread, ExpRunningWork[Slot].Routine);
+            if (Frame < (ULONG_PTR)Thread->StackLimit ||
+                Frame + 2 * sizeof(ULONG_PTR) > (ULONG_PTR)Thread->InitialStack ||
+                (Frame & 0xF) || !MmIsAddressValid((PVOID)Frame) || !((PVOID *)Frame)[1])
+            {
+                break;
+            }
+
+            ExpPrintCode(" ", ((PVOID *)Frame)[1]);
+            if (((PULONG_PTR)Frame)[0] <= Frame)
+                break;
+            Frame = ((PULONG_PTR)Frame)[0];
         }
+        DbgPrint("\n");
+#endif
     }
 }
 
@@ -219,10 +285,10 @@ ProcessLoop:
         ASSERT((ULONG_PTR)WorkItem->WorkerRoutine > MmUserProbeAddress);
 
         /* Call the Worker Routine */
-        Slot = ExpTrackWork(Thread, WorkItem->WorkerRoutine, WorkQueueType);
+        Slot = ExpTrackWork(&Thread->Tcb, WorkItem, WorkQueueType);
         WorkItem->WorkerRoutine(WorkItem->Parameter);
         if (Slot < EXP_RUNNING_SLOTS)
-            InterlockedExchangePointer(&ExpRunningWork[Slot].Thread, NULL);
+            InterlockedExchangePointer((PVOID *)&ExpRunningWork[Slot].Thread, NULL);
 
         /* Make sure APCs are not disabled */
         if (Thread->Tcb.CombinedApcDisable != 0)
