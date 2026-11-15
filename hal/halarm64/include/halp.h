@@ -187,6 +187,24 @@ C_ASSERT(FIELD_OFFSET(HALP_AP_START, PageVa) == 0x48);
 C_ASSERT(FIELD_OFFSET(HALP_AP_START, Progress) == 0x50);
 C_ASSERT(FIELD_OFFSET(HALP_AP_START, Vbar) == 0x58);
 
+/* A processor's GIC CPU interface after setup, for bring up on new platforms */
+typedef struct _HALP_GIC_CPU_STATE
+{
+    ULONG Waker;
+    ULONG Group;
+    ULONG Enable;
+    ULONG Sre;
+    ULONG Ctlr;
+    ULONG GroupEnable;
+    ULONG DistributorControl;
+    UCHAR IpiPriority;
+    BOOLEAN NoSgi;
+    volatile ULONG Acknowledged;
+    volatile ULONG Spurious;
+} HALP_GIC_CPU_STATE, *PHALP_GIC_CPU_STATE;
+
+extern HALP_GIC_CPU_STATE HalpGicCpuState[MAXIMUM_PROCESSORS];
+
 /* mp.s */
 VOID
 HalpApTrampoline(VOID);

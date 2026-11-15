@@ -282,8 +282,34 @@ VOID
 NTAPI
 HalpStartProcessorClocks(VOID)
 {
-    ULONG Number;
+    PHALP_GIC_CPU_STATE State;
+    ULONG Number, Before, Waited;
+
+    for (Number = 0; Number < (ULONG)KeNumberProcessors; Number++)
+    {
+        State = &HalpGicCpuState[Number];
+
+        /* An SGI the processor never takes leaves it deaf to the scheduler and the debugger */
+        if (Number != 0)
+        {
+            Before = State->Acknowledged;
+            HalpGicSendSgi(IPI_LEVEL, AFFINITY_MASK(Number));
+            for (Waited = 0; (State->Acknowledged == Before) && (Waited < 20000); Waited += 10)
+                KeStallExecutionProcessor(10);
+            State->NoSgi = (State->Acknowledged == Before);
+        }
+
+        DbgPrint("HAL: CPU %lu MPIDR %I64x SGI %s, WAKER %lx GROUP %lx ENABLE %lx PRIO %x SRE %lx CTLR %lx GRPEN1 %lx GICD %lx, %lu taken %lu spurious\n",
+                 Number, HalpProcessorMpidr[Number], State->NoSgi ? "LOST" : "ok",
+                 State->Waker, State->Group, State->Enable, State->IpiPriority, State->Sre,
+                 State->Ctlr, State->GroupEnable, State->DistributorControl,
+                 State->Acknowledged, State->Spurious);
+    }
 
     for (Number = 1; Number < (ULONG)KeNumberProcessors; Number++)
-        HalpStartProcessorClock(Number);
+    {
+        /* It idles by polling, its clock would never be connected */
+        if (!HalpGicCpuState[Number].NoSgi)
+            HalpStartProcessorClock(Number);
+    }
 }
