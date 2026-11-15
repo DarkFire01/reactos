@@ -52,7 +52,7 @@
     </Element>
     <Element Width="48"/>
     <Element Width="48" Command="home" HoldCommand="start" Momentary="true" SelectedBackground="@ListPress">
-      <Image Source="@StartLogo" Width="28" Height="28" HAlign="Center" VAlign="Center"/>
+      <Image Source="@StartLogo" Width="32" Height="32" HAlign="Center" VAlign="Center"/>
     </Element>
     <Element Width="48"/>
     <Element Width="48" Command="launch:Search" Momentary="true" SelectedBackground="@ListPress">
