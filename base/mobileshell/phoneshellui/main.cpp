@@ -271,6 +271,57 @@ JoinPath(
     return Joined;
 }
 
+#ifdef __REACTOS__
+/* The DWM's notification window exists only while dwm.exe composes */
+#define DWM_NOTIFY_CLASS L"Dwm"
+#define DWM_LOGON_WAIT_MS 20000
+#define DWM_OWN_START_WAIT_MS 15000
+
+static
+BOOL
+WaitForComposition(
+    _In_ DWORD Milliseconds)
+{
+    ULONGLONG Deadline = GetTickCount64() + Milliseconds;
+
+    while (!FindWindowW(DWM_NOTIFY_CLASS, NULL))
+    {
+        if (GetTickCount64() >= Deadline)
+            return FALSE;
+        Sleep(100);
+    }
+    return TRUE;
+}
+
+/*
+ * Winlogon starts the DWM through dwminit at logon but does not wait for it, so the shell can
+ * come up first. Wait for composition, and start dwm.exe ourselves when nothing else did.
+ */
+static
+VOID
+EnsureComposition(VOID)
+{
+    STARTUPINFOW Startup = { sizeof(Startup) };
+    PROCESS_INFORMATION Process;
+    WCHAR Path[MAX_PATH];
+    UINT Length;
+
+    if (WaitForComposition(DWM_LOGON_WAIT_MS))
+        return;
+
+    Length = GetSystemDirectoryW(Path, ARRAYSIZE(Path));
+    if (!Length || FAILED(StringCchCatW(Path, ARRAYSIZE(Path), L"\\dwm.exe")))
+        return;
+
+    if (CreateProcessW(Path, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &Startup, &Process))
+    {
+        CloseHandle(Process.hThread);
+        CloseHandle(Process.hProcess);
+        WaitForComposition(DWM_OWN_START_WAIT_MS);
+    }
+}
+#endif
+
 CShellHost::CShellHost()
     : m_InitialScale(2.0f),
       m_Window(NULL),
@@ -1098,6 +1149,11 @@ CShellHost::Run(
     if (FAILED(Status))
         return Status;
     m_Session->SetWake(Wake, this);
+
+#ifdef __REACTOS__
+    /* DirectComposition needs a composing DWM before the device and target are made */
+    EnsureComposition();
+#endif
 
     Status = UixCreateEngine(m_Engine.Put());
     if (FAILED(Status))
