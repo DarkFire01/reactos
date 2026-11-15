@@ -38,6 +38,15 @@ ULONG ExpAdditionalDelayedWorkerThreads;
 /* Future support for stack swapping worker threads */
 BOOLEAN ExpWorkersCanSwap;
 LIST_ENTRY ExpWorkerListHead;
+
+/* Routines currently running on worker threads, reported when a queue stalls */
+#define EXP_RUNNING_SLOTS 32
+static struct
+{
+    PVOID Thread;
+    PVOID Routine;
+    ULONG Queue;
+} ExpRunningWork[EXP_RUNNING_SLOTS];
 FAST_MUTEX ExpWorkerSwapinMutex;
 
 /* The worker balance set manager events */
@@ -49,6 +58,61 @@ PETHREAD ExpWorkerThreadBalanceManagerPtr;
 PETHREAD ExpLastWorkerThread;
 
 /* PRIVATE FUNCTIONS *********************************************************/
+
+static
+ULONG
+NTAPI
+ExpTrackWork(
+    _In_ PVOID Thread,
+    _In_ PVOID Routine,
+    _In_ ULONG Queue)
+{
+    ULONG Slot;
+
+    for (Slot = 0; Slot < EXP_RUNNING_SLOTS; Slot++)
+    {
+        if (InterlockedCompareExchangePointer(&ExpRunningWork[Slot].Thread, Thread, NULL) == NULL)
+        {
+            ExpRunningWork[Slot].Routine = Routine;
+            ExpRunningWork[Slot].Queue = Queue;
+            return Slot;
+        }
+    }
+
+    return EXP_RUNNING_SLOTS;
+}
+
+static
+VOID
+NTAPI
+ExpReportRunningWork(
+    _In_ ULONG Queue)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    BOOLEAN InKernel;
+    PVOID Base;
+    ULONG Slot;
+
+    for (Slot = 0; Slot < EXP_RUNNING_SLOTS; Slot++)
+    {
+        if (!ExpRunningWork[Slot].Thread || ExpRunningWork[Slot].Queue != Queue)
+            continue;
+
+        LdrEntry = NULL;
+        Base = KiPcToFileHeader(ExpRunningWork[Slot].Routine, &LdrEntry, FALSE, &InKernel);
+        if (Base && LdrEntry)
+        {
+            DPRINT1("EX:   busy %p in %wZ+0x%Ix\n",
+                    ExpRunningWork[Slot].Thread,
+                    &LdrEntry->BaseDllName,
+                    (ULONG_PTR)ExpRunningWork[Slot].Routine - (ULONG_PTR)Base);
+        }
+        else
+        {
+            DPRINT1("EX:   busy %p in %p\n", ExpRunningWork[Slot].Thread, ExpRunningWork[Slot].Routine);
+        }
+    }
+}
 
 /*++
  * @name ExpWorkerThreadEntryPoint
@@ -77,6 +141,7 @@ NTAPI
 ExpWorkerThreadEntryPoint(IN PVOID Context)
 {
     PWORK_QUEUE_ITEM WorkItem;
+    ULONG Slot;
     PLIST_ENTRY QueueEntry;
     WORK_QUEUE_TYPE WorkQueueType;
     PEX_WORK_QUEUE WorkQueue;
@@ -154,7 +219,10 @@ ProcessLoop:
         ASSERT((ULONG_PTR)WorkItem->WorkerRoutine > MmUserProbeAddress);
 
         /* Call the Worker Routine */
+        Slot = ExpTrackWork(Thread, WorkItem->WorkerRoutine, WorkQueueType);
         WorkItem->WorkerRoutine(WorkItem->Parameter);
+        if (Slot < EXP_RUNNING_SLOTS)
+            InterlockedExchangePointer(&ExpRunningWork[Slot].Thread, NULL);
 
         /* Make sure APCs are not disabled */
         if (Thread->Tcb.CombinedApcDisable != 0)
@@ -352,6 +420,7 @@ ExpDetectWorkerThreadDeadlock(VOID)
         {
             /* Stuff is still on the queue and nobody did anything about it */
             DPRINT1("EX: Work Queue Deadlock detected: %lu\n", i);
+            ExpReportRunningWork(i);
             ExpCreateWorkerThread(i, TRUE);
             DPRINT1("Dynamic threads queued %d\n", Queue->DynamicThreadCount);
         }
