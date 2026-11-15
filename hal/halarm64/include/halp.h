@@ -31,6 +31,9 @@
 /* Every interrupt gets a GIC priority from its IRQL, higher IRQL is more urgent */
 #define HalpIrqlToPriority(Irql)    ((UCHAR)((HIGH_LEVEL - (Irql)) << 4))
 
+/* CNTV_CTL_EL0 interrupt mask */
+#define HALP_CNTV_CTL_IMASK         0x2
+
 /* 10 ms clock, in 100 ns units */
 #define HALP_CLOCK_INCREMENT        100000
 
@@ -154,7 +157,45 @@ typedef struct _HALP_PLATFORM
 extern HALP_PLATFORM HalpPlatform;
 extern ULONG HalpBusType;
 extern ULONG64 HalpTimerFrequency;
+
+/* MPIDR of each logical processor, by processor number */
 extern ULONG64 HalpProcessorMpidr[MAXIMUM_PROCESSORS];
+
+/* Enabled processors in MADT order, the boot processor is one of them */
+extern ULONG64 HalpMadtMpidr[MAXIMUM_PROCESSORS];
+extern ULONG HalpMadtCount;
+
+/* What a secondary processor reads in HalpApTrampoline, offsets match mp.s */
+typedef struct _HALP_AP_START
+{
+    ULONG64 Mair;
+    ULONG64 Tcr;
+    ULONG64 Sctlr;
+    ULONG64 Cpacr;
+    ULONG64 IdentityRoot;
+    ULONG64 Root;
+    ULONG64 Stack;
+    ULONG64 Entry;
+    ULONG64 Argument;
+    ULONG64 PageVa;
+    volatile ULONG64 Progress;
+} HALP_AP_START, *PHALP_AP_START;
+
+C_ASSERT(FIELD_OFFSET(HALP_AP_START, IdentityRoot) == 0x20);
+C_ASSERT(FIELD_OFFSET(HALP_AP_START, PageVa) == 0x48);
+C_ASSERT(FIELD_OFFSET(HALP_AP_START, Progress) == 0x50);
+
+/* mp.s */
+VOID
+HalpApTrampoline(VOID);
+
+VOID
+HalpApTrampolineEnd(VOID);
+
+/* mp.c */
+VOID
+NTAPI
+HalpStartProcessorClocks(VOID);
 
 /* The loader console with DEBUGPORT=SCREEN, only while the boot processor is set up */
 extern ULONG (*HalpEarlyPrint)(const char *Format, ...);
@@ -387,6 +428,16 @@ NTAPI
 HalpGicSetPriorityMask(
     _In_ UCHAR Priority);
 
+BOOLEAN
+NTAPI
+HalpGicIsVersion2(VOID);
+
+BOOLEAN
+NTAPI
+HalpGicMapProcessor(
+    _In_ ULONG ProcessorNumber,
+    _In_ ULONG64 Mpidr);
+
 /* irql.c */
 VOID
 NTAPI
@@ -444,6 +495,18 @@ HalpInitializeClock(VOID);
 VOID
 NTAPI
 HalpStartClockInterrupt(VOID);
+
+VOID
+NTAPI
+HalpStartProcessorClock(
+    _In_ ULONG ProcessorNumber);
+
+/* Kernel export, the clock of every processor but the first one calls it */
+VOID
+NTAPI
+KeUpdateRunTime(
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ KIRQL Irql);
 
 /* secint.c */
 

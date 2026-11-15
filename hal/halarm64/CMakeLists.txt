@@ -1,7 +1,8 @@
 
 add_definitions(
     -D_NTHALDLL_
-    -D_NTHAL_)
+    -D_NTHAL_
+    -DCONFIG_SMP)
 
 include_directories(
     include
@@ -18,6 +19,7 @@ list(APPEND SOURCE
     generic/irql.c
     generic/memory.c
     generic/misc.c
+    generic/mp.c
     generic/pci.c
     generic/secint.c
     generic/sysinfo.c
@@ -28,7 +30,8 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/hal/halx86/generic/kdpci.c)
 
 list(APPEND ASM_SOURCE
-    generic/cache.s)
+    generic/cache.s
+    generic/mp.s)
 
 add_asm_files(hal_asm ${ASM_SOURCE})
 
