@@ -157,6 +157,9 @@ UfsSendUic(
     _In_ ULONG Arg3,
     _Out_opt_ PULONG Result);
 
+VOID
+UfsMapGccForCheck(VOID);
+
 NTSTATUS
 UfsHceReset(
     _In_ PUFS_ADAPTER_EXTENSION Adapter);

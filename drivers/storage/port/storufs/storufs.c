@@ -203,7 +203,10 @@ StorUfsFindAdapter(
     Adapter->DumpMode = (ConfigInfo->DumpMode != 0);
 
     if (!Adapter->DumpMode)
+    {
         UfsRegisterPowerComponent(Adapter);
+        UfsMapGccForCheck();
+    }
 
     if (!UfsMapRegisters(Adapter, ConfigInfo))
     {

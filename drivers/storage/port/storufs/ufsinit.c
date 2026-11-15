@@ -189,6 +189,51 @@ UfsDeviceInit(
     return FALSE;
 }
 
+/* Bring-up check of the SDM845 GCC UFS branch clocks, bit 31 of a branch control register is CLK_OFF */
+#define UFS_GCC_UFS_PHY_BLOCK   0x00177000
+#define UFS_GCC_AXI_CBCR        0x010
+#define UFS_GCC_ICE_CORE_CBCR   0x058
+#define UFS_GCC_CLK_OFF         0x80000000
+#define UFS_GCC_CLK_ENABLE      0x00000001
+
+static PUCHAR UfsGcc;
+
+/* Mapped at passive level from HwFindAdapter, HwInitialize may run raised */
+VOID
+UfsMapGccForCheck(VOID)
+{
+    PHYSICAL_ADDRESS Physical;
+
+    if (UfsGcc)
+        return;
+
+    Physical.QuadPart = UFS_GCC_UFS_PHY_BLOCK;
+    UfsGcc = MmMapIoSpace(Physical, PAGE_SIZE, MmNonCached);
+}
+
+static
+VOID
+UfsCheckIceClock(VOID)
+{
+    PUCHAR Gcc = UfsGcc;
+    ULONG Axi, Ice;
+
+    if (!Gcc)
+        return;
+
+    Axi = READ_REGISTER_ULONG((PULONG)(Gcc + UFS_GCC_AXI_CBCR));
+    Ice = READ_REGISTER_ULONG((PULONG)(Gcc + UFS_GCC_ICE_CORE_CBCR));
+    DPRINT1("UFS: GCC axi CBCR 0x%08lx, ice core CBCR 0x%08lx\n", Axi, Ice);
+
+    if (Ice & UFS_GCC_CLK_OFF)
+    {
+        WRITE_REGISTER_ULONG((PULONG)(Gcc + UFS_GCC_ICE_CORE_CBCR), Ice | UFS_GCC_CLK_ENABLE);
+        StorPortStallExecution(100);
+        DPRINT1("UFS: ice core clock was off, CBCR now 0x%08lx\n",
+                READ_REGISTER_ULONG((PULONG)(Gcc + UFS_GCC_ICE_CORE_CBCR)));
+    }
+}
+
 /**
  * @brief Bring-up probe: a polled INQUIRY into the slot's own descriptor, with
  * interrupts still off, so a data transfer is tried without the interrupt path.
@@ -275,6 +320,7 @@ UfsStartAdapter(
     if (!UfsDeviceInit(Adapter))
         return FALSE;
 
+    UfsCheckIceClock();
     UfsProbeInquiry(Adapter);
 
     /* Clear any latched status, then arm the interrupts the ISR services. */
