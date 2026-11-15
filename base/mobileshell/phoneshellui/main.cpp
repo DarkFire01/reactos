@@ -658,8 +658,9 @@ CShellHost::Resize(VOID)
 }
 
 /*
- * Phone panels pick a scale plateau from their physical density, about 150 pixels per
- * inch per logical unit. Monitors without a real size, or desktop densities, use the system DPI.
+ * Phone panels pick a scale plateau from their physical density, about 135 pixels per
+ * inch per logical unit, so a 768x1280 phone gets a 320 unit wide view. Monitors without
+ * a real size, or desktop densities, use the system DPI.
  */
 FLOAT
 CShellHost::PickScale(VOID)
@@ -678,7 +679,7 @@ CShellHost::PickScale(VOID)
 
     for (FLOAT Plateau : Plateaus)
     {
-        if (Plateau <= Density / 150.0f)
+        if (Plateau <= Density / 135.0f)
             Picked = Plateau;
     }
     return Picked;
