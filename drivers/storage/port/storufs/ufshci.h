@@ -173,7 +173,7 @@ typedef struct _UFS_UTRD
     USHORT ResponseOffset;    /* in dwords from UCD base */
     USHORT ResponseLength;    /* in dwords */
     USHORT PrdtOffset;        /* in dwords from UCD base */
-    USHORT PrdtLength;        /* in dwords (0 for no data) */
+    USHORT PrdtLength;        /* in entries (0 for no data) */
 } UFS_UTRD, *PUFS_UTRD;
 
 /* PRDT entry, 16 bytes. ByteCount holds (length - 1), dword granular. */

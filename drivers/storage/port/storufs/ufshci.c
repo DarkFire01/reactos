@@ -89,7 +89,8 @@ UfsBuildUtrd(
     Utrd->ResponseOffset = UFS_RESP_OFFSET_DW;
     Utrd->ResponseLength = (UFS_UCD_PRDT_OFFSET - UFS_UCD_RESP_OFFSET) / sizeof(ULONG);
     Utrd->PrdtOffset = (PrdtEntries != 0) ? UFS_PRDT_OFFSET_DW : 0;
-    Utrd->PrdtLength = (USHORT)(PrdtEntries * (sizeof(UFS_PRDT_ENTRY) / sizeof(ULONG)));
+    /* PRDTL counts entries, only the offsets are in dwords */
+    Utrd->PrdtLength = PrdtEntries;
 }
 
 VOID
