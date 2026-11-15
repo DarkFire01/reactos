@@ -635,6 +635,10 @@ private:
         _In_z_ PCWSTR Path,
         _Outptr_ ID2D1Bitmap1 **Bitmap);
 
+    std::wstring
+    PickFamily(
+        _In_ const std::wstring &Families);
+
     LONG m_Refs;
     HWND m_Window;
     FLOAT m_Scale;

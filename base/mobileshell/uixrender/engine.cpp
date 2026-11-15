@@ -416,6 +416,40 @@ CUixEngine::ResolveString(
     return Value;
 }
 
+/* Family="A, B" takes the first installed family, so a skin can name a fallback */
+std::wstring
+CUixEngine::PickFamily(
+    _In_ const std::wstring &Families)
+{
+    UixPtr<IDWriteFontCollection> Fonts;
+    std::wstring Name;
+    SIZE_T Start = 0;
+    SIZE_T End;
+    UINT32 Index;
+    BOOL Exists;
+
+    if (Families.find(L',') == std::wstring::npos)
+        return Families;
+    if (FAILED(m_Write->GetSystemFontCollection(Fonts.Put(), FALSE)))
+        return Families.substr(0, Families.find(L','));
+
+    while (Start < Families.size())
+    {
+        End = Families.find(L',', Start);
+        if (End == std::wstring::npos)
+            End = Families.size();
+
+        Name = Families.substr(Start, End - Start);
+        Name.erase(0, Name.find_first_not_of(L' '));
+        Name.erase(Name.find_last_not_of(L' ') + 1);
+        Exists = FALSE;
+        if (!Name.empty() && SUCCEEDED(Fonts->FindFamilyName(Name.c_str(), &Index, &Exists)) && Exists)
+            return Name;
+        Start = End + 1;
+    }
+    return Name;
+}
+
 IDWriteTextFormat *
 CUixEngine::GetTextFormat(
     _In_ const std::wstring &Value)
@@ -446,6 +480,7 @@ CUixEngine::GetTextFormat(
         Font.Style = DWRITE_FONT_STYLE_NORMAL;
     }
 
+    Font.Family = PickFamily(Font.Family);
     if (FAILED(m_Write->CreateTextFormat(Font.Family.c_str(), NULL, Font.Weight, Font.Style,
                                          DWRITE_FONT_STRETCH_NORMAL, Font.Size, L"en-us", Format.Put())))
     {
