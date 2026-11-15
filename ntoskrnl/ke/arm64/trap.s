@@ -334,7 +334,9 @@ LABEL(KiArm64ReturnToKernelRestore)
     ldp     x12, x13, [sp, #TrX12]
     ldp     x14, x15, [sp, #TrX14]
     ldp     x16, x17, [sp, #TrX16]
-    ldr     x18, [sp, #TrX18]
+
+    /* The thread may have moved to another processor while it was in the trap */
+    mrs     x18, tpidr_el1
     ldp     x30, x29, [sp, #TrLr]
     add     sp, sp, #KTRAP_FRAME_LENGTH
     eret
