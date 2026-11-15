@@ -155,6 +155,16 @@ KeAcquireInterruptSpinLock(IN PKINTERRUPT Interrupt)
 {
     KIRQL OldIrql;
 
+#ifdef _WIN64
+    /* A passive level interrupt is guarded by its passive lock, an event, not by IRQL */
+    if (Interrupt->SynchronizeIrql == PASSIVE_LEVEL && Interrupt->Reserved)
+    {
+        ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+        KeWaitForSingleObject(Interrupt->Reserved, Executive, KernelMode, FALSE, NULL);
+        return PASSIVE_LEVEL;
+    }
+#endif
+
     /* Raise IRQL */
     KeRaiseIrql(Interrupt->SynchronizeIrql, &OldIrql);
 
@@ -171,6 +181,14 @@ NTAPI
 KeReleaseInterruptSpinLock(IN PKINTERRUPT Interrupt,
                            IN KIRQL OldIrql)
 {
+#ifdef _WIN64
+    if (Interrupt->SynchronizeIrql == PASSIVE_LEVEL && Interrupt->Reserved)
+    {
+        KeSetEvent(Interrupt->Reserved, IO_NO_INCREMENT, FALSE);
+        return;
+    }
+#endif
+
     /* Release lock on MP */
     KeReleaseSpinLockFromDpcLevel(Interrupt->ActualLock);
 

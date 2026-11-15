@@ -246,6 +246,7 @@ typedef struct _IOP_PASSIVE_INTERRUPT
     BOOLEAN Masked;
     KDPC Dpc;
     KEVENT Pending;
+    KEVENT PassiveLock;
     volatile BOOLEAN Stopping;
     PKTHREAD Thread;
 } IOP_PASSIVE_INTERRUPT, *PIOP_PASSIVE_INTERRUPT;
@@ -450,7 +451,10 @@ IopPassiveInterruptWorker(
         if (Passive->Stopping)
             break;
 
+        /* Serialized against KeSynchronizeExecution and the interrupt lock */
+        KeWaitForSingleObject(&Passive->PassiveLock, Executive, KernelMode, FALSE, NULL);
         Passive->ServiceRoutine(&Passive->Interrupt, Passive->ServiceContext);
+        KeSetEvent(&Passive->PassiveLock, IO_NO_INCREMENT, FALSE);
         ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
         if (Passive->Masked)
@@ -551,6 +555,8 @@ IopConnectPassiveVector(
                           ShareVector,
                           0,
                           FALSE);
+    KeInitializeEvent(&Passive->PassiveLock, SynchronizationEvent, TRUE);
+    Passive->Interrupt.Reserved = &Passive->PassiveLock;
 
     Status = PsCreateSystemThread(&ThreadHandle, THREAD_ALL_ACCESS, NULL, NULL, NULL,
                                   IopPassiveInterruptWorker, Passive);
