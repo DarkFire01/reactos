@@ -132,6 +132,16 @@ ScxRequestGetTransferParameters(
 
     if (TransferBuffer != NULL)
         *TransferBuffer = Mdl;
+
+    if (Request->Traced)
+    {
+        DPRINT1("SpbCx: request %p transfer %lu asked for, %s MDL %p, %lu bytes\n",
+                Request->FxRequest,
+                Index,
+                TransferDescriptor ? "descriptor and" : "only",
+                Mdl,
+                Mdl ? MmGetMdlByteCount(Mdl) : 0);
+    }
 }
 
 VOID
@@ -141,8 +151,20 @@ ScxRequestComplete(
     _In_ SPBREQUEST SpbRequest,
     _In_ NTSTATUS CompletionStatus)
 {
-    if (ScxGlobalsFromClient(DriverGlobals) == NULL || SpbRequest == NULL)
+    PSCX_REQUEST Request = ScxRequestFromClient(DriverGlobals, SpbRequest);
+
+    if (Request == NULL)
         return;
+
+    if (Request->Traced || !NT_SUCCESS(CompletionStatus))
+    {
+        DPRINT1("SpbCx: request %p type %d connection %I64x completed 0x%lx, %Iu bytes\n",
+                SpbRequest,
+                Request->Parameters.Type,
+                Request->Target ? Request->Target->ConnectionId.QuadPart : 0,
+                CompletionStatus,
+                WdfRequestGetInformation((WDFREQUEST)SpbRequest));
+    }
 
     WdfRequestComplete((WDFREQUEST)SpbRequest, CompletionStatus);
 }

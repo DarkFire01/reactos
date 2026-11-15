@@ -28,6 +28,9 @@
 
 #define SCX_POOL_TAG 'xbpS'
 
+/* Requests per controller traced in full, failures are always reported */
+#define SCX_TRACE_LIMIT 64
+
 #define SCX_CLIENT_GLOBALS_SIGNATURE 'XbpS'
 
 /* The client is handed &ClientGlobals; the signature validates it on the way back */
@@ -54,7 +57,7 @@ typedef struct _SCX_CONTROLLER
     BOOLEAN TargetAttributesSet;
 
     WDFQUEUE ControllerQueue;
-    BOOLEAN FirstSequenceLogged;
+    volatile LONG TracedRequests;
 } SCX_CONTROLLER, *PSCX_CONTROLLER;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(SCX_CONTROLLER, ScxGetControllerContext)
@@ -90,6 +93,9 @@ typedef struct _SCX_REQUEST
     /* A read or write is presented as one transfer over the request buffer */
     PMDL BufferMdl;
     SPB_TRANSFER_DIRECTION BufferDirection;
+
+    /* Reported in full from dispatch through completion */
+    BOOLEAN Traced;
 } SCX_REQUEST, *PSCX_REQUEST;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(SCX_REQUEST, ScxGetRequestContext)

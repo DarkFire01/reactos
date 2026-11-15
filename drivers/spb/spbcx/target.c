@@ -275,6 +275,9 @@ ScxEvtDeviceFileCreate(
         Target->ConnectionProperties = NULL;
     }
 
+    DPRINT1("SpbCx: open of connection %I64x on %p, file %p, descriptor %lu bytes: 0x%lx\n",
+            ConnectionId.QuadPart, Device, FileObject, Target->PropertiesLength, Status);
+
     WdfRequestComplete(Request, Status);
     return TRUE;
 }
@@ -292,6 +295,8 @@ ScxEvtFileClose(
     Target = ScxGetTargetContext(FileObject);
     if (Target == NULL || Target->ConnectionProperties == NULL)
         return;
+
+    DPRINT1("SpbCx: close of connection %I64x, file %p\n", Target->ConnectionId.QuadPart, FileObject);
 
     Controller = Target->Controller;
     if (Controller != NULL && Controller->Config.EvtSpbTargetDisconnect != NULL)
