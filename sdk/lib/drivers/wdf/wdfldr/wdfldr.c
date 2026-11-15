@@ -753,6 +753,10 @@ WdfRegisterClassLibrary(
                 LibraryAddToClassListLocked(libModule, pClassModule);
             ClassAddReference(pClassModule);
         }
+
+        /* A class kept on no library's list is invisible to the clients that bind it later */
+        if (!libModule)
+            DbgPrint("WdfLdr: WdfRegisterClassLibrary: %wZ registered with no library loaded\n", SourceString);
     }
     FxLdrReleaseLoadedModuleLock();
 
@@ -818,7 +822,21 @@ WdfVersionBindClass(
         return status;
     }
 
-    /* A class that never registered, or failed its own initialization, has nothing to bind to */
+    /*
+     * A class that never registered has nothing to bind to. Dropping the reference unloads
+     * a class loaded outside of us, and loading it again registers it where we look.
+     */
+    if (pClassModule->ClassLibraryInfo == NULL)
+    {
+        DereferenceClassVersion(ClassBindInfo, BindInfo, ClientGlobals);
+        status = ReferenceClassVersion(ClassBindInfo, BindInfo, &pClassModule);
+        if (!NT_SUCCESS(status))
+        {
+            ExFreePoolWithTag(pClassClientModule, WDFLDR_TAG);
+            return status;
+        }
+    }
+
     if (pClassModule->ClassLibraryInfo == NULL)
     {
         DbgPrint("WdfLdr: WdfVersionBindClass: class %S is not registered\n", ClassBindInfo->ClassName);
