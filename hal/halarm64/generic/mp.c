@@ -306,6 +306,18 @@ HalpStartProcessorClocks(VOID)
                  State->Acknowledged, State->Spurious);
     }
 
+    /* Leave the report on a screen debug port long enough to read */
+    for (Number = 1; Number < (ULONG)KeNumberProcessors; Number++)
+    {
+        if (HalpGicCpuState[Number].NoSgi)
+        {
+            DbgPrint("HAL: some processors miss SGIs, pausing 10 seconds\n");
+            for (Waited = 0; Waited < 10000; Waited++)
+                KeStallExecutionProcessor(1000);
+            break;
+        }
+    }
+
     for (Number = 1; Number < (ULONG)KeNumberProcessors; Number++)
     {
         /* It idles by polling, its clock would never be connected */
