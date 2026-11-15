@@ -46,12 +46,6 @@
 
 struct _POP_FX_PLUGIN;
 
-typedef struct _POP_FX_PLUGIN_WORKER
-{
-    WORK_QUEUE_ITEM WorkItem;
-    struct _POP_FX_PLUGIN *Plugin;
-    LONG Slot;
-} POP_FX_PLUGIN_WORKER, *PPOP_FX_PLUGIN_WORKER;
 
 //
 // PoFx power engine plug-in (PEP)
@@ -64,9 +58,7 @@ typedef struct _POP_FX_PLUGIN
     PPEPCALLBACKNOTIFYDPM AcceptDeviceNotification;
     PPEPCALLBACKNOTIFYPPM AcceptProcessorNotification;
     PPEPCALLBACKNOTIFYACPI AcceptAcpiNotification;
-    volatile LONG WorkRequests;
-    volatile LONG WorkersBusy;
-    POP_FX_PLUGIN_WORKER Workers[POP_FX_PLUGIN_WORKERS];
+    KSEMAPHORE WorkRequests;
 } POP_FX_PLUGIN, *PPOP_FX_PLUGIN;
 
 //

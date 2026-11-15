@@ -86,6 +86,9 @@ PopFxRunPluginWork(
 
 /**
  * @brief Worker thread body, serves RequestWorker calls one PEP_DPM_WORK at a time.
+ *
+ * @remarks The plug-in waits for its own work inside D-state notifications that
+ * system worker threads deliver, so this work never runs on a system work queue.
  */
 static
 VOID
@@ -93,59 +96,43 @@ NTAPI
 PopFxPluginWorker(
     _In_ PVOID Parameter)
 {
-    PPOP_FX_PLUGIN_WORKER Worker = Parameter;
-    PPOP_FX_PLUGIN Plugin = Worker->Plugin;
-    LONG Slot = Worker->Slot;
-    LONG Pending;
+    PPOP_FX_PLUGIN Plugin = Parameter;
 
     for (;;)
     {
-        /* Take one request, every RequestWorker call is answered by exactly one PEP_DPM_WORK */
-        Pending = Plugin->WorkRequests;
-        while (Pending > 0)
-        {
-            LONG Seen = InterlockedCompareExchange(&Plugin->WorkRequests, Pending - 1, Pending);
-            if (Seen == Pending)
-                break;
-            Pending = Seen;
-        }
-
-        if (Pending > 0)
-        {
-            PopFxRunPluginWork(Plugin);
-            continue;
-        }
-
-        /* Release the slot, then look again so a request raced in after the check is not lost */
-        InterlockedAnd(&Plugin->WorkersBusy, ~(1L << Slot));
-        if (Plugin->WorkRequests <= 0 ||
-            (InterlockedOr(&Plugin->WorkersBusy, 1L << Slot) & (1L << Slot)))
-        {
-            return;
-        }
+        /* Every RequestWorker call is answered by exactly one PEP_DPM_WORK */
+        KeWaitForSingleObject(&Plugin->WorkRequests, Executive, KernelMode, FALSE, NULL);
+        PopFxRunPluginWork(Plugin);
     }
 }
 
 /**
- * @brief Queues a worker for the plug-in unless enough of them are already running.
+ * @brief Starts the plug-in's own worker threads, as many as its concurrency flag allows.
  */
 static
-VOID
-PopFxStartPluginWorker(
+NTSTATUS
+PopFxStartPluginWorkers(
     _In_ PPOP_FX_PLUGIN Plugin)
 {
-    LONG Slots;
-    LONG Slot;
+    HANDLE Thread;
+    ULONG Slots;
+    ULONG Slot;
+    NTSTATUS Status;
 
     Slots = (Plugin->Flags & PEP_FLAG_WORKER_CONCURRENCY) ? POP_FX_PLUGIN_WORKERS : 1;
     for (Slot = 0; Slot < Slots; Slot++)
     {
-        if (InterlockedOr(&Plugin->WorkersBusy, 1L << Slot) & (1L << Slot))
-            continue;
+        Status = PsCreateSystemThread(&Thread, THREAD_ALL_ACCESS, NULL, NULL, NULL, PopFxPluginWorker, Plugin);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("PEP %p worker %lu failed to start 0x%lx\n", Plugin, Slot, Status);
+            return (Slot == 0) ? Status : STATUS_SUCCESS;
+        }
 
-        ExQueueWorkItem(&Plugin->Workers[Slot].WorkItem, DelayedWorkQueue);
-        return;
+        ZwClose(Thread);
     }
+
+    return STATUS_SUCCESS;
 }
 
 /* Kernel services the plug-in gets back from PoFxRegisterPluginEx */
@@ -171,8 +158,7 @@ PopFxRequestWorker(
     if (!Plugin)
         return;
 
-    InterlockedIncrement(&Plugin->WorkRequests);
-    PopFxStartPluginWorker(Plugin);
+    KeReleaseSemaphore(&Plugin->WorkRequests, IO_NO_INCREMENT, 1, FALSE);
 }
 
 /**
@@ -566,7 +552,7 @@ PoFxRegisterPluginEx(
     _Inout_ PPEP_KERNEL_INFORMATION KernelInformation)
 {
     PPOP_FX_PLUGIN Plugin;
-    ULONG Slot;
+    NTSTATUS Status;
 
     PAGED_CODE();
 
@@ -611,11 +597,13 @@ PoFxRegisterPluginEx(
     Plugin->AcceptProcessorNotification = PepInformation->AcceptProcessorNotification;
     if (PepInformation->Version >= PEP_INFORMATION_V3)
         Plugin->AcceptAcpiNotification = PepInformation->AcceptAcpiNotification;
-    for (Slot = 0; Slot < POP_FX_PLUGIN_WORKERS; Slot++)
+    KeInitializeSemaphore(&Plugin->WorkRequests, 0, MAXLONG);
+
+    Status = PopFxStartPluginWorkers(Plugin);
+    if (!NT_SUCCESS(Status))
     {
-        Plugin->Workers[Slot].Plugin = Plugin;
-        Plugin->Workers[Slot].Slot = (LONG)Slot;
-        ExInitializeWorkItem(&Plugin->Workers[Slot].WorkItem, PopFxPluginWorker, &Plugin->Workers[Slot]);
+        ExFreePoolWithTag(Plugin, TAG_PO_FX_PLUGIN);
+        return Status;
     }
 
     KeAcquireGuardedMutex(&PopFxPluginLock);
