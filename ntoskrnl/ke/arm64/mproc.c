@@ -28,6 +28,8 @@ typedef struct _KI_AP_BLOCK
 /* The DPC stack of the processor being started, its startup code takes it */
 PVOID KiStartingDpcStack;
 
+extern volatile ULONG KiApStartStep;
+
 /* FUNCTIONS *****************************************************************/
 
 /**
@@ -85,6 +87,7 @@ KeStartAllProcessors(VOID)
         KeLoaderBlock->Thread = (ULONG_PTR)&Block->IdleThread.Tcb;
         KeLoaderBlock->Process = (ULONG_PTR)&KiInitialProcess.Pcb;
         KiStartingDpcStack = DpcStack;
+        KiApStartStep = 0;
         KeMemoryBarrier();
         KeLoaderBlock->Prcb = (ULONG_PTR)&Block->Pcr.Prcb;
         KeMemoryBarrier();
@@ -107,7 +110,7 @@ KeStartAllProcessors(VOID)
 
         /* It runs somewhere with this block, nothing can be freed */
         if (KeLoaderBlock->Prcb)
-            KeBugCheckEx(PHASE1_INITIALIZATION_FAILED, 0x5C1, Number, (ULONG_PTR)Block, KeNumberProcessors);
+            KeBugCheckEx(PHASE1_INITIALIZATION_FAILED, 0x5C1, Number, KiApStartStep, KeNumberProcessors);
 
         ASSERT(KeNumberProcessors == (CCHAR)(Number + 1));
         ASSERT(KiProcessorBlock[Number] == &Block->Pcr.Prcb);
