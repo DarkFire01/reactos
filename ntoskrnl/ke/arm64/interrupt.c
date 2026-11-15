@@ -184,6 +184,16 @@ KeSynchronizeExecution(
     BOOLEAN Success;
     KIRQL OldIrql;
 
+    /* A passive level interrupt runs its routine under the passive lock, at PASSIVE_LEVEL */
+    if (Interrupt->SynchronizeIrql == PASSIVE_LEVEL && Interrupt->Reserved)
+    {
+        ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+        KeWaitForSingleObject(Interrupt->Reserved, Executive, KernelMode, FALSE, NULL);
+        Success = SynchronizeRoutine(SynchronizeContext);
+        KeSetEvent(Interrupt->Reserved, IO_NO_INCREMENT, FALSE);
+        return Success;
+    }
+
     OldIrql = KfRaiseIrql(Interrupt->SynchronizeIrql);
     KeAcquireSpinLockAtDpcLevel(Interrupt->ActualLock);
 
