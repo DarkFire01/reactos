@@ -145,7 +145,8 @@ typedef enum _UIX_LAYOUT
     UixLayoutOverlay,
     UixLayoutStack,
     UixLayoutRow,
-    UixLayoutWrap
+    UixLayoutWrap,
+    UixLayoutTiles
 } UIX_LAYOUT;
 
 typedef enum _UIX_ALIGN
@@ -213,6 +214,12 @@ typedef struct _UIX_ELEMENT
     FLOAT DesiredWidth;
     FLOAT DesiredHeight;
     UIX_RECT Rect;
+
+    /* Cell and span inside a Tiles parent */
+    ULONG TileX;
+    ULONG TileY;
+    ULONG SpanX;
+    ULONG SpanY;
 
     /* Composition state, shell mode only */
     UixPtr<IDCompositionVisual> Visual;
@@ -406,6 +413,17 @@ private:
     Arrange(
         _In_ PUIX_ELEMENT Element,
         _In_ const UIX_RECT &Slot);
+
+    ULONG
+    PlaceTiles(
+        _In_ PUIX_ELEMENT Element,
+        _Out_ ULONG *Columns);
+
+    FLOAT
+    TileCell(
+        _In_ PUIX_ELEMENT Element,
+        _In_ ULONG Columns,
+        _In_ FLOAT Width);
 
     VOID
     UpdatePixels(
