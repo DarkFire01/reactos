@@ -1178,6 +1178,38 @@ LdrpApisetVersion(VOID)
     return CachedApisetVersion;
 }
 
+/**
+ * @brief Reports whether an API set contract resolves to a host binary for this process.
+ */
+NTSTATUS
+NTAPI
+ApiSetQueryApiSetPresence(
+    _In_ PCUNICODE_STRING Namespace,
+    _Out_ PBOOLEAN Present)
+{
+    UNICODE_STRING Host;
+    BOOLEAN Resolved = FALSE;
+    DWORD ApisetVersion;
+    NTSTATUS Status;
+
+    if (!Namespace || !Present)
+        return STATUS_INVALID_PARAMETER;
+
+    *Present = FALSE;
+
+    ApisetVersion = LdrpApisetVersion();
+    if (!ApisetVersion)
+        return STATUS_SUCCESS;
+
+    RtlInitEmptyUnicodeString(&Host, NULL, 0);
+    Status = ApiSetResolveToHost(ApisetVersion, Namespace, &Resolved, &Host);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *Present = (Resolved && Host.Length != 0);
+    return STATUS_SUCCESS;
+}
+
 NTSYSAPI
 NTSTATUS
 NTAPI
