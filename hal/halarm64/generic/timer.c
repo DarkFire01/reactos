@@ -20,7 +20,8 @@
 ULONG64 HalpTimerFrequency;
 static ULONG64 HalpClockPeriod;
 static ULONG HalpCurrentTimeIncrement = HALP_CLOCK_INCREMENT;
-static KINTERRUPT HalpClockInterrupt;
+/* Every processor has its own generic timer, the boot processor keeps the system time */
+static KINTERRUPT HalpClockInterrupt[MAXIMUM_PROCESSORS];
 
 /* FUNCTIONS *****************************************************************/
 
@@ -76,15 +77,28 @@ HalpClockInterruptHandler(
     KeArm64WriteRegister(ARM64_CNTV_CVAL_EL0, Compare);
 
     TrapFrame = Interrupt->TrapFrame;
-    KeUpdateSystemTime(TrapFrame, HalpCurrentTimeIncrement, TrapFrame->PreviousIrql);
+    if (KeGetCurrentProcessorNumber() == 0)
+        KeUpdateSystemTime(TrapFrame, HalpCurrentTimeIncrement, TrapFrame->PreviousIrql);
+    else
+        KeUpdateRunTime(TrapFrame, TrapFrame->PreviousIrql);
     return TRUE;
 }
 
+/**
+ * @brief Arms the generic timer of one processor and connects its clock interrupt there.
+ */
 VOID
 NTAPI
-HalpStartClockInterrupt(VOID)
+HalpStartProcessorClock(
+    _In_ ULONG ProcessorNumber)
 {
-    KeInitializeInterrupt(&HalpClockInterrupt,
+    PKINTERRUPT Interrupt;
+
+    ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    ASSERT(ProcessorNumber < (ULONG)KeNumberProcessors);
+
+    Interrupt = &HalpClockInterrupt[ProcessorNumber];
+    KeInitializeInterrupt(Interrupt,
                           HalpClockInterruptHandler,
                           NULL,
                           NULL,
@@ -93,14 +107,27 @@ HalpStartClockInterrupt(VOID)
                           CLOCK_LEVEL,
                           LevelSensitive,
                           FALSE,
-                          0,
+                          (CHAR)ProcessorNumber,
                           FALSE);
 
+    /* The timer registers are banked, so this runs on the processor being set up */
+    KeSetSystemAffinityThread(AFFINITY_MASK(ProcessorNumber));
+    ASSERT(KeGetCurrentProcessorNumber() == ProcessorNumber);
     KeArm64WriteRegister(ARM64_CNTV_CVAL_EL0, HalpReadCounter() + HalpClockPeriod);
     KeArm64WriteRegister(ARM64_CNTV_CTL_EL0, CNTV_CTL_ENABLE);
+    __isb(_ARM64_BARRIER_SY);
+    KeRevertToUserAffinityThread();
 
-    if (!KeConnectInterrupt(&HalpClockInterrupt))
-        KeBugCheckEx(HAL_INITIALIZATION_FAILED, 0x7173, 1, HalpPlatform.TimerIntId, 0);
+    /* The line stays off until this, connecting moves to the processor on its own */
+    if (!KeConnectInterrupt(Interrupt))
+        KeBugCheckEx(HAL_INITIALIZATION_FAILED, 0x7173, 1, HalpPlatform.TimerIntId, ProcessorNumber);
+}
+
+VOID
+NTAPI
+HalpStartClockInterrupt(VOID)
+{
+    HalpStartProcessorClock(0);
 }
 
 VOID
