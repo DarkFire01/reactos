@@ -551,6 +551,8 @@
 @ stdcall GetProcessInformation(long long ptr long)
 @ stdcall -version=0x603+ GetStagedPackagePathByFullName(wstr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetStagedPackagePathByFullName
 @ stdcall -version=0xA00+ GetSystemCpuSetInformation(ptr long ptr ptr long)
+@ stdcall -version=0xA00+ GetSystemWow64Directory2A(ptr long long)
+@ stdcall -version=0xA00+ GetSystemWow64Directory2W(ptr long long)
 @ stdcall -version=0xA00+ GetTempPath2A(long ptr)
 @ stdcall -version=0xA00+ GetTempPath2W(long ptr)
 @ stdcall -version=0x601+ GetThreadIdealProcessorEx(ptr ptr)
@@ -1224,6 +1226,7 @@
 @ stdcall -arch=x86_64,arm64 RtlUnwindEx(ptr ptr ptr ptr ptr ptr) ntdll.RtlUnwindEx
 @ stdcall -arch=x86_64,arm64 RtlVirtualUnwind(long int64 int64 ptr ptr ptr ptr ptr) ntdll.RtlVirtualUnwind
 @ stdcall RtlZeroMemory(ptr long) ntdll.RtlZeroMemory
+@ stdcall -version=0xA00+ SetProcessValidCallTargets(ptr ptr long long ptr)
 @ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll_vista.TpSetTimerEx
 @ stdcall -version=0x601+ SetThreadToken(ptr ptr) advapi32.SetThreadToken
 @ stdcall SHExpandEnvironmentStringsA(str ptr long) ExpandEnvironmentStringsA

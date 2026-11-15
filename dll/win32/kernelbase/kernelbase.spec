@@ -739,8 +739,8 @@
 @ stdcall GetSystemTimes(ptr ptr ptr)
 @ stdcall GetSystemWindowsDirectoryA(ptr long)
 @ stdcall GetSystemWindowsDirectoryW(ptr long)
-@ stdcall -stub -version=0xA00+ GetSystemWow64Directory2A(ptr long long)
-@ stdcall -stub -version=0xA00+ GetSystemWow64Directory2W(ptr long long)
+@ stdcall -version=0xA00+ GetSystemWow64Directory2A(ptr long long)
+@ stdcall -version=0xA00+ GetSystemWow64Directory2W(ptr long long)
 @ stdcall GetSystemWow64DirectoryA(ptr long)
 @ stdcall GetSystemWow64DirectoryW(ptr long)
 # @ stub GetTargetPlatformContext
@@ -1514,7 +1514,7 @@
 @ stdcall SetProcessPreferredUILanguages(long ptr ptr)
 @ stdcall SetProcessPriorityBoost(long long)
 @ stdcall SetProcessShutdownParameters(long long)
-# @ stub SetProcessValidCallTargets
+@ stdcall -version=0xA00+ SetProcessValidCallTargets(ptr ptr long long ptr)
 @ stdcall SetProcessWorkingSetSizeEx(long long long long)
 # @ stub SetProtectedPolicy
 # @ stub SetRoamingLastObservedChangeTime

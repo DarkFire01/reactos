@@ -2554,17 +2554,148 @@ GetSystemWindowsDirectoryW(OUT LPWSTR lpBuffer,
     return ReturnLength / sizeof(WCHAR);
 }
 
+/* Returns the guest system folder name for a machine type, or NULL if this host has none for it */
+static
+PCWSTR
+BasepWow64FolderName(
+    _In_ USHORT Machine)
+{
+#ifdef _WIN64
+    switch (Machine)
+    {
+        case IMAGE_FILE_MACHINE_I386:
+            return L"SysWOW64";
+#ifdef _M_ARM64
+        case IMAGE_FILE_MACHINE_ARMNT:
+            return L"SysArm32";
+#endif
+        default:
+            break;
+    }
+#endif
+    return NULL;
+}
+
+static
+NTSTATUS
+BasepGetWow64Directory(
+    _In_ USHORT Machine,
+    _Out_ PUNICODE_STRING Directory)
+{
+    PCWSTR Folder;
+    USHORT Size;
+
+    Folder = BasepWow64FolderName(Machine);
+    if (!Folder)
+        return STATUS_NOT_SUPPORTED;
+
+    Size = BaseWindowsDirectory.Length + sizeof(WCHAR) + (USHORT)(wcslen(Folder) * sizeof(WCHAR));
+    Directory->Buffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size + sizeof(UNICODE_NULL));
+    if (!Directory->Buffer)
+        return STATUS_NO_MEMORY;
+
+    Directory->Length = 0;
+    Directory->MaximumLength = Size + sizeof(UNICODE_NULL);
+    RtlAppendUnicodeStringToString(Directory, &BaseWindowsDirectory);
+    RtlAppendUnicodeToString(Directory, L"\\");
+    RtlAppendUnicodeToString(Directory, Folder);
+    return STATUS_SUCCESS;
+}
+
 /*
- * @unimplemented
+ * @implemented
  */
 UINT
 WINAPI
-GetSystemWow64DirectoryW(OUT LPWSTR lpBuffer,
-                         IN UINT uSize)
+GetSystemWow64Directory2W(
+    _Out_writes_opt_(uSize) LPWSTR lpBuffer,
+    _In_ UINT uSize,
+    _In_ WORD ImageFileMachineType)
+{
+    UNICODE_STRING Directory;
+    NTSTATUS Status;
+    UINT Length;
+
+    Status = BasepGetWow64Directory(ImageFileMachineType, &Directory);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return 0;
+    }
+
+    Length = Directory.Length / sizeof(WCHAR);
+    if (uSize > Length)
+    {
+        RtlCopyMemory(lpBuffer, Directory.Buffer, Directory.Length);
+        lpBuffer[Length] = UNICODE_NULL;
+    }
+    else
+    {
+        Length++;
+    }
+
+    RtlFreeUnicodeString(&Directory);
+    return Length;
+}
+
+/*
+ * @implemented
+ */
+UINT
+WINAPI
+GetSystemWow64Directory2A(
+    _Out_writes_opt_(uSize) LPSTR lpBuffer,
+    _In_ UINT uSize,
+    _In_ WORD ImageFileMachineType)
+{
+    UNICODE_STRING Directory;
+    ANSI_STRING AnsiString;
+    ULONG AnsiLength;
+    NTSTATUS Status;
+    UINT Length = 0;
+
+    Status = BasepGetWow64Directory(ImageFileMachineType, &Directory);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return 0;
+    }
+
+    /* The size includes the terminator, since MaximumLength covers it */
+    Status = RtlUnicodeToMultiByteSize(&AnsiLength, Directory.Buffer, Directory.Length + sizeof(UNICODE_NULL));
+    if (NT_SUCCESS(Status))
+    {
+        if (uSize < AnsiLength)
+        {
+            Length = AnsiLength;
+        }
+        else
+        {
+            RtlInitEmptyAnsiString(&AnsiString, lpBuffer, (USHORT)min(uSize, MAXUSHORT));
+            Status = BasepUnicodeStringTo8BitString(&AnsiString, &Directory, FALSE);
+            if (NT_SUCCESS(Status))
+                Length = AnsiString.Length;
+        }
+    }
+
+    if (!NT_SUCCESS(Status))
+        BaseSetLastNTError(Status);
+
+    RtlFreeUnicodeString(&Directory);
+    return Length;
+}
+
+/*
+ * @implemented
+ */
+UINT
+WINAPI
+GetSystemWow64DirectoryW(
+    _Out_writes_opt_(uSize) LPWSTR lpBuffer,
+    _In_ UINT uSize)
 {
 #ifdef _WIN64
-    UNIMPLEMENTED;
-    return 0;
+    return GetSystemWow64Directory2W(lpBuffer, uSize, IMAGE_FILE_MACHINE_I386);
 #else
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
     return 0;
@@ -2572,16 +2703,16 @@ GetSystemWow64DirectoryW(OUT LPWSTR lpBuffer,
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 UINT
 WINAPI
-GetSystemWow64DirectoryA(OUT LPSTR lpBuffer,
-                         IN UINT uSize)
+GetSystemWow64DirectoryA(
+    _Out_writes_opt_(uSize) LPSTR lpBuffer,
+    _In_ UINT uSize)
 {
 #ifdef _WIN64
-    UNIMPLEMENTED;
-    return 0;
+    return GetSystemWow64Directory2A(lpBuffer, uSize, IMAGE_FILE_MACHINE_I386);
 #else
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
     return 0;
