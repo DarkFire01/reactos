@@ -294,6 +294,12 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
         Thread->AdjustReason = AdjustNone;
     }
 
+    /*
+     * Priority changes take the thread lock, so hold it until the thread is
+     * queued at the priority read here
+     */
+    KiAcquireThreadLock(Thread);
+
     /* Clear thread preemption status and save current values */
     Preempted = Thread->Preempted;
     OldPriority = Thread->Priority;
@@ -318,6 +324,7 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
 
         /* Unlock the PRCB and return */
         KiReleasePrcbLock(Prcb);
+        KiReleaseThreadLock(Thread);
         return;
     }
 #endif // !CONFIG_SMP
@@ -344,6 +351,7 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
             NextThread->State = DeferredReady;
             NextThread->DeferredProcessor = Prcb->Number;
             KiReleasePrcbLock(Prcb);
+            KiReleaseThreadLock(Thread);
             KiDeferredReadyThread(NextThread);
             return;
         }
@@ -362,8 +370,9 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
             ASSERT(Prcb->NextThread != Thread);
             Prcb->NextThread = Thread;
 
-            /* Release the lock */
+            /* Release the locks */
             KiReleasePrcbLock(Prcb);
+            KiReleaseThreadLock(Thread);
 
             /* Check if we're running on another CPU */
             if (KeGetCurrentProcessorNumber() != Thread->NextProcessor)
@@ -394,8 +403,9 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
     /* Sanity check */
     ASSERT(OldPriority == Thread->Priority);
 
-    /* Release the lock */
+    /* Release the locks */
     KiReleasePrcbLock(Prcb);
+    KiReleaseThreadLock(Thread);
 }
 
 PKTHREAD
