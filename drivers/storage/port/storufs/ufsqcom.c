@@ -61,24 +61,42 @@ UfsIsQualcommController(
     _In_ PUFS_ADAPTER_EXTENSION Adapter)
 {
     PDEVICE_OBJECT AdapterDevice = NULL, Pdo = NULL, Lower = NULL;
-    WCHAR HardwareId[64];
+    PWCHAR HardwareIds, Id;
     ULONG Length = 0;
+    BOOLEAN Found = FALSE;
 
     if (StorPortExtendedFunction(ExtFunctionGetDeviceObjects, Adapter, &AdapterDevice, &Pdo, &Lower) !=
         STOR_STATUS_SUCCESS || Pdo == NULL)
     {
+        DPRINT1("UFS: no PDO to identify the controller\n");
         return FALSE;
     }
 
-    RtlZeroMemory(HardwareId, sizeof(HardwareId));
-    if (!NT_SUCCESS(IoGetDeviceProperty(Pdo, DevicePropertyHardwareID,
-                                        sizeof(HardwareId) - sizeof(WCHAR), HardwareId, &Length)))
+    /* A multi-string of every ID, sized by asking first */
+    IoGetDeviceProperty(Pdo, DevicePropertyHardwareID, 0, NULL, &Length);
+    if (Length == 0)
+        return FALSE;
+
+    HardwareIds = ExAllocatePoolZero(PagedPool, Length + 2 * sizeof(WCHAR), 'sfuS');
+    if (!HardwareIds)
+        return FALSE;
+
+    if (NT_SUCCESS(IoGetDeviceProperty(Pdo, DevicePropertyHardwareID, Length, HardwareIds, &Length)))
     {
-        return FALSE;
+        for (Id = HardwareIds; *Id != UNICODE_NULL; Id += wcslen(Id) + 1)
+        {
+            if ((_wcsnicmp(Id, L"ACPI\\QCOM", 9) == 0) || (_wcsnicmp(Id, L"ACPI\\VEN_QCOM", 13) == 0))
+            {
+                Found = TRUE;
+                break;
+            }
+        }
+
+        DPRINT1("UFS: hardware ID %ws, Qualcomm %u\n", HardwareIds, Found);
     }
 
-    return (_wcsnicmp(HardwareId, L"ACPI\\QCOM", 9) == 0) ||
-           (_wcsnicmp(HardwareId, L"ACPI\\VEN_QCOM", 13) == 0);
+    ExFreePoolWithTag(HardwareIds, 'sfuS');
+    return Found;
 }
 
 /**
