@@ -355,6 +355,12 @@ private:
         _In_ FLOAT X,
         _In_ FLOAT Y) const;
 
+    PUIX_ELEMENT
+    SwiperAt(
+        _In_ PUIX_ELEMENT Element,
+        _In_ FLOAT X,
+        _In_ FLOAT Y) const;
+
     BOOL
     ScrollBy(
         _In_ PUIX_ELEMENT Scroller,
@@ -494,6 +500,9 @@ private:
     PUIX_ELEMENT m_SelectedBeforePress;
     PUIX_ELEMENT m_Scroller;
     BOOL m_Dragging;
+    PUIX_ELEMENT m_Swiper;
+    BOOL m_Swiping;
+    FLOAT m_DownX;
     FLOAT m_DownY;
     FLOAT m_LastY;
     UixPtr<IDCompositionVisual> m_Visual;
