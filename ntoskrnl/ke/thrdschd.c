@@ -794,15 +794,9 @@ KiSetPriorityThread(IN PKTHREAD Thread,
                     continue;
                 }
             }
-            else if (Thread->State == DeferredReady)
-            {
-                /* FIXME: TODO */
-                DPRINT1("Deferred state not yet supported\n");
-                ASSERT(FALSE);
-            }
             else
             {
-                /* Any other state, just change priority */
+                /* Any other state, just change priority. A deferred ready thread picks it up when readied */
                 Thread->Priority = (SCHAR)Priority;
             }
 
