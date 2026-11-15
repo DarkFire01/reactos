@@ -21,6 +21,9 @@
 
 PKPRCB KiFreezeOwner;
 
+/* The processors the current freeze stopped, one still starting up is left alone */
+static KAFFINITY KiFreezeSet;
+
 /* FUNCTIONS *****************************************************************/
 
 VOID
@@ -106,21 +109,23 @@ KxFreezeExecution(VOID)
 
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_OWNER | IPI_FROZEN_FLAG_ACTIVE;
 
+    /* Only processors that take interrupts can answer the IPI */
+    KiFreezeSet = KeActiveProcessors & ~CurrentPrcb->SetMember;
     for (i = 0; i < (ULONG)KeNumberProcessors; i++)
     {
-        TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb != CurrentPrcb)
-            TargetPrcb->IpiFrozen = IPI_FROZEN_STATE_TARGET_FREEZE;
+        if (KiFreezeSet & AFFINITY_MASK(i))
+            KiProcessorBlock[i]->IpiFrozen = IPI_FROZEN_STATE_TARGET_FREEZE;
     }
 
-    HalRequestIpi(KeActiveProcessors & ~CurrentPrcb->SetMember);
+    if (KiFreezeSet)
+        HalRequestIpi(KiFreezeSet);
 
     for (i = 0; i < (ULONG)KeNumberProcessors; i++)
     {
-        TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb == CurrentPrcb)
+        if (!(KiFreezeSet & AFFINITY_MASK(i)))
             continue;
 
+        TargetPrcb = KiProcessorBlock[i];
         while (TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_FROZEN)
         {
             YieldProcessor();
@@ -141,17 +146,16 @@ KxThawExecution(VOID)
 
     for (i = 0; i < (ULONG)KeNumberProcessors; i++)
     {
-        TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb != CurrentPrcb)
-            TargetPrcb->IpiFrozen = IPI_FROZEN_STATE_THAW;
+        if (KiFreezeSet & AFFINITY_MASK(i))
+            KiProcessorBlock[i]->IpiFrozen = IPI_FROZEN_STATE_THAW;
     }
 
     for (i = 0; i < (ULONG)KeNumberProcessors; i++)
     {
-        TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb == CurrentPrcb)
+        if (!(KiFreezeSet & AFFINITY_MASK(i)))
             continue;
 
+        TargetPrcb = KiProcessorBlock[i];
         while (TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_RUNNING)
         {
             YieldProcessor();
@@ -159,6 +163,7 @@ KxThawExecution(VOID)
         }
     }
 
+    KiFreezeSet = 0;
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
     InterlockedExchangePointer((PVOID *)&KiFreezeOwner, NULL);
 }
