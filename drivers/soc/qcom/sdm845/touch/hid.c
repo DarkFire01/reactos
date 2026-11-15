@@ -423,5 +423,6 @@ QcTouchHidInternalIoctl(
             break;
     }
 
+    DPRINT1("HID IOCTL 0x%lx: 0x%08lx\n", IoControlCode, Status);
     WdfRequestComplete(Request, Status);
 }
