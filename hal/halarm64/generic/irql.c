@@ -22,8 +22,53 @@
 /* Software interrupts each processor requested for itself and has not taken yet, one bit per IRQL */
 static volatile LONG HalpPendingSoftwareInterrupts[MAXIMUM_PROCESSORS];
 
+/* The last IRQL changes of each processor, for a debugger or the QEMU monitor */
+#define HALP_IRQL_TRACE_DEPTH   16
+
+typedef struct _HALP_IRQL_TRACE
+{
+    ULONG64 Caller;
+    UCHAR OldIrql;
+    UCHAR NewIrql;
+    UCHAR Kind;
+    UCHAR Reserved[5];
+} HALP_IRQL_TRACE, *PHALP_IRQL_TRACE;
+
+typedef struct _HALP_IRQL_TRACE_RING
+{
+    ULONG Next;
+    ULONG Reserved;
+    HALP_IRQL_TRACE Entries[HALP_IRQL_TRACE_DEPTH];
+} HALP_IRQL_TRACE_RING;
+
+HALP_IRQL_TRACE_RING HalpIrqlTrace[MAXIMUM_PROCESSORS];
+
 /* FUNCTIONS *****************************************************************/
 
+/* Interrupts are off while this runs */
+FORCEINLINE
+VOID
+HalpTraceIrql(
+    _In_ UCHAR Kind,
+    _In_ KIRQL OldIrql,
+    _In_ KIRQL NewIrql,
+    _In_ PVOID Caller)
+{
+    HALP_IRQL_TRACE_RING *Ring = &HalpIrqlTrace[KeGetCurrentProcessorNumber()];
+    PHALP_IRQL_TRACE Entry = &Ring->Entries[Ring->Next++ % HALP_IRQL_TRACE_DEPTH];
+
+    Entry->Caller = (ULONG64)Caller;
+    Entry->OldIrql = OldIrql;
+    Entry->NewIrql = NewIrql;
+    Entry->Kind = Kind;
+}
+
+/**
+ * @brief
+ * Waits until the software interrupts this processor requested above an IRQL have run.
+ *
+ * NT runs them before the IRQL change or the request returns, an SGI takes a moment to arrive.
+ */
 /*
  * Below DISPATCH_LEVEL a thread can move to another processor between any two
  * instructions, and x18 then names the new one. The PCR is only read with
@@ -92,6 +137,23 @@ KeGetCurrentIrql(VOID)
     return KeGetPcr()->CurrentIrql;
 }
 
+/* An IRQL bugcheck alone does not say who asked, so the callers go to the debug log first */
+static
+VOID
+HalpReportIrqlMisuse(
+    _In_ KIRQL CurrentIrql,
+    _In_ KIRQL NewIrql)
+{
+    PVOID Frames[10];
+    USHORT Count, Index;
+
+    Count = RtlCaptureStackBackTrace(1, RTL_NUMBER_OF(Frames), Frames, NULL);
+    DbgPrint("HAL: IRQL %u to %u on processor %u from", CurrentIrql, NewIrql, KeGetCurrentProcessorNumber());
+    for (Index = 0; Index < Count; Index++)
+        DbgPrint(" %p", Frames[Index]);
+    DbgPrint("\n");
+}
+
 /* The PCR and the mask change together, on one processor, so an interrupt never sees them disagree */
 KIRQL
 FASTCALL
@@ -107,9 +169,11 @@ KfRaiseIrql(
     if (NewIrql < OldIrql)
     {
         HalpUnlockPcr(Enabled);
-        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL, OldIrql, NewIrql, 0, 9);
+        HalpReportIrqlMisuse(OldIrql, NewIrql);
+        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL, OldIrql, NewIrql, (ULONG_PTR)_ReturnAddress(), 9);
     }
 
+    HalpTraceIrql('R', OldIrql, NewIrql, _ReturnAddress());
     Pcr->CurrentIrql = NewIrql;
     HalpSetPriorityMask(NewIrql);
     HalpUnlockPcr(Enabled);
@@ -130,9 +194,11 @@ KfLowerIrql(
     if (NewIrql > OldIrql)
     {
         HalpUnlockPcr(Enabled);
-        KeBugCheckEx(IRQL_NOT_LESS_OR_EQUAL, NewIrql, OldIrql, 0, 9);
+        HalpReportIrqlMisuse(OldIrql, NewIrql);
+        KeBugCheckEx(IRQL_NOT_LESS_OR_EQUAL, NewIrql, OldIrql, (ULONG_PTR)_ReturnAddress(), 9);
     }
 
+    HalpTraceIrql('L', OldIrql, NewIrql, _ReturnAddress());
     Pcr->CurrentIrql = NewIrql;
     HalpSetPriorityMask(NewIrql);
     HalpUnlockPcr(Enabled);
@@ -211,6 +277,7 @@ HalBeginSystemInterrupt(
 
     if (Irql > CurrentIrql)
     {
+        HalpTraceIrql('B', CurrentIrql, Irql, (PVOID)(ULONG_PTR)Vector);
         KeGetPcr()->CurrentIrql = Irql;
         HalpSetPriorityMask(Irql);
     }
@@ -239,6 +306,7 @@ HalEndSystemInterrupt(
 {
     UNREFERENCED_PARAMETER(TrapFrame);
 
+    HalpTraceIrql('E', KeGetPcr()->CurrentIrql, OldIrql, _ReturnAddress());
     KeGetPcr()->CurrentIrql = OldIrql;
     HalpSetPriorityMask(OldIrql);
 }
