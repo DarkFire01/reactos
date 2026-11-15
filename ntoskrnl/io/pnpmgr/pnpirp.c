@@ -81,11 +81,16 @@ PnpWatchIsCode(
     _In_ PLDR_DATA_TABLE_ENTRY LdrEntry,
     _In_ ULONG_PTR Value)
 {
-    PIMAGE_NT_HEADERS NtHeaders = RtlImageNtHeader(LdrEntry->DllBase);
+    PIMAGE_NT_HEADERS NtHeaders;
     PIMAGE_SECTION_HEADER Section;
     ULONG_PTR Rva = Value - (ULONG_PTR)LdrEntry->DllBase;
     ULONG i;
 
+    /* A session image such as cdd.dll is not mapped in the System process the watch runs in */
+    if (!MmIsAddressValid(LdrEntry->DllBase))
+        return TRUE;
+
+    NtHeaders = RtlImageNtHeader(LdrEntry->DllBase);
     if (!NtHeaders)
         return TRUE;
 
