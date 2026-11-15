@@ -455,7 +455,6 @@ KseInitialize(
         /* A shim that fails to register does not prevent the others from working */
         KseIgnoreFreePoolTagInitialize();
         KseVersionLieInitialize();
-        KseKeepRealTimePriorityInitialize();
         Status = STATUS_SUCCESS;
     }
 

@@ -188,8 +188,3 @@ CODE_SEG("INIT")
 NTSTATUS
 NTAPI
 KseVersionLieInitialize(VOID);
-
-CODE_SEG("INIT")
-NTSTATUS
-NTAPI
-KseKeepRealTimePriorityInitialize(VOID);
