@@ -185,7 +185,8 @@ QcTouchEvtD0Entry(
             return Status;
     }
 
-    QcTouchDelay(10);
+    /* The S3706 takes about 200 ms to boot its firmware once the rails are up */
+    QcTouchDelay(200);
 
     WdfWaitLockAcquire(Device->RmiLock, NULL);
 
