@@ -26,7 +26,7 @@ InitializeConfiguration(
     PCONFIGURATION_INFORMATION ConfigInfo;
     ULONG i;
 
-    DPRINT1("InitializeConfiguration(%p %p %lu %lu)\n",
+    DPRINT("InitializeConfiguration(%p %p %lu %lu)\n",
             PortConfig, InitData, BusNumber, SlotNumber);
 
     /* Get the configurration information */
@@ -73,7 +73,7 @@ InitializeConfiguration(
     PortConfig->WmiDataProvider = TRUE;
 
     PortConfig->NumberOfAccessRanges = InitData->NumberOfAccessRanges;
-    DPRINT1("NumberOfAccessRanges: %lu\n", PortConfig->NumberOfAccessRanges);
+    DPRINT("NumberOfAccessRanges: %lu\n", PortConfig->NumberOfAccessRanges);
     if (PortConfig->NumberOfAccessRanges != 0)
     {
         PortConfig->AccessRanges = ExAllocatePoolWithTag(NonPagedPool,
@@ -106,7 +106,7 @@ InitializeConfiguration(
     /* Bus, target and LUN is the only addressing we hand out */
     PortConfig->AddressType = STORAGE_ADDRESS_TYPE_BTL8;
 
-    DPRINT1("SrbType: %u\n", PortConfig->SrbType);
+    DPRINT("SrbType: %u\n", PortConfig->SrbType);
 
     return STATUS_SUCCESS;
 }
@@ -126,7 +126,7 @@ AssignResourcesToConfiguration(
     INT i, j;
     ULONG RangeNumber = 0, Interrupt = 0, Dma = 0;
 
-    DPRINT1("AssignResourceToConfiguration(%p %p %lu)\n",
+    DPRINT("AssignResourceToConfiguration(%p %p %lu)\n",
             PortConfiguration, ResourceList, NumberOfAccessRanges);
 
     /* A virtual miniport sits on a bus that hands out no resources at all */
@@ -145,7 +145,7 @@ AssignResourcesToConfiguration(
             switch (PartialDescriptor->Type)
             {
                 case CmResourceTypePort:
-                    DPRINT1("Port: 0x%I64x (0x%lx)\n",
+                    DPRINT("Port: 0x%I64x (0x%lx)\n",
                             PartialDescriptor->u.Port.Start.QuadPart,
                             PartialDescriptor->u.Port.Length);
                     if (RangeNumber < NumberOfAccessRanges)
@@ -159,7 +159,7 @@ AssignResourcesToConfiguration(
                     break;
 
                 case CmResourceTypeMemory:
-                    DPRINT1("Memory: 0x%I64x (0x%lx)\n",
+                    DPRINT("Memory: 0x%I64x (0x%lx)\n",
                             PartialDescriptor->u.Memory.Start.QuadPart,
                             PartialDescriptor->u.Memory.Length);
                     if (RangeNumber < NumberOfAccessRanges)
@@ -185,7 +185,7 @@ AssignResourcesToConfiguration(
                         Level = 0;
                         Vector = PartialDescriptor->u.MessageInterrupt.Raw.Vector;
 
-                        DPRINT1("Message interrupt: %u messages  Vector %lu\n",
+                        DPRINT("Message interrupt: %u messages  Vector %lu\n",
                                 PartialDescriptor->u.MessageInterrupt.Raw.MessageCount,
                                 Vector);
                     }
@@ -199,7 +199,7 @@ AssignResourcesToConfiguration(
                         Level = PartialDescriptor->u.Interrupt.Level;
                         Vector = PartialDescriptor->u.Interrupt.Vector;
 
-                        DPRINT1("Interrupt: Level %lu  Vector %lu\n", Level, Vector);
+                        DPRINT("Interrupt: Level %lu  Vector %lu\n", Level, Vector);
                     }
 
                     if (Interrupt == 0)
@@ -219,7 +219,7 @@ AssignResourcesToConfiguration(
                 }
 
                 case CmResourceTypeDma:
-                    DPRINT1("Dma: Channel: %lu  Port: %lu\n",
+                    DPRINT("Dma: Channel: %lu  Port: %lu\n",
                             PartialDescriptor->u.Dma.Channel,
                             PartialDescriptor->u.Dma.Port);
                     if (Dma == 0)
@@ -252,7 +252,7 @@ AssignResourcesToConfiguration(
                     break;
 
                 default:
-                    DPRINT1("Other: %u\n", PartialDescriptor->Type);
+                    DPRINT("Other: %u\n", PartialDescriptor->Type);
                     break;
             }
         }
@@ -274,7 +274,7 @@ MiniportInitialize(
     ULONG Size;
     NTSTATUS Status;
 
-    DPRINT1("MiniportInitialize(%p %p %p)\n",
+    DPRINT("MiniportInitialize(%p %p %p)\n",
             Miniport, DeviceExtension, InitData);
 
     Miniport->DeviceExtension = DeviceExtension;
@@ -284,7 +284,7 @@ MiniportInitialize(
     Miniport->IsVirtual = (InitData->HwInitializationDataSize == HW_INIT_DATA_SIZE_VIRTUAL_LEGACY) ||
                           ((InitData->HwInitializationDataSize == sizeof(*InitData)) &&
                            (InitData->FeatureSupport & STOR_FEATURE_VIRTUAL_MINIPORT));
-    DPRINT1("Miniport is %s\n", Miniport->IsVirtual ? "virtual" : "physical");
+    DPRINT("Miniport is %s\n", Miniport->IsVirtual ? "virtual" : "physical");
 
     /* Calculate the miniport device extension size */
     Status = RtlULongAdd(sizeof(*MiniportExtension),
@@ -334,7 +334,7 @@ MiniportFindAdapter(
     ULONG Result;
     NTSTATUS Status;
 
-    DPRINT1("MiniportFindAdapter(%p)\n", Miniport);
+    DPRINT("MiniportFindAdapter(%p)\n", Miniport);
 
     /* HwFindAdapter is typeless since Win8, a virtual miniport puts a PVIRTUAL_HW_FIND_ADAPTER there */
     if (Miniport->IsVirtual)
@@ -364,18 +364,18 @@ MiniportFindAdapter(
                              &Miniport->PortConfig,
                              &Reserved);
     }
-    DPRINT1("HwFindAdapter() returned %lu\n", Result);
+    DPRINT("HwFindAdapter() returned %lu\n", Result);
 
     /* Convert the result to a status code */
     switch (Result)
     {
         case SP_RETURN_NOT_FOUND:
-            DPRINT1("SP_RETURN_NOT_FOUND\n");
+            DPRINT("SP_RETURN_NOT_FOUND\n");
             Status = STATUS_NOT_FOUND;
             break;
 
         case SP_RETURN_FOUND:
-            DPRINT1("SP_RETURN_FOUND\n");
+            DPRINT("SP_RETURN_FOUND\n");
             Status = STATUS_SUCCESS;
             break;
 
@@ -430,7 +430,7 @@ MiniportFreeAdapterResources(
         return;
     }
 
-    DPRINT1("MiniportFreeAdapterResources(%p)\n", Miniport);
+    DPRINT("MiniportFreeAdapterResources(%p)\n", Miniport);
 
     Miniport->InitData->HwFreeAdapterResources(&Miniport->MiniportExtension->HwDeviceExtension);
 }
@@ -490,7 +490,7 @@ MiniportQueryAdapterControl(
 
             if (List->SupportedTypeList[Type])
             {
-                DPRINT1("Adapter control %lu supported\n", Type);
+                DPRINT("Adapter control %lu supported\n", Type);
                 Miniport->AdapterControlSupportedBitmap |= 1 << Type;
             }
         }
@@ -567,7 +567,7 @@ MiniportQueryUnitControl(
 
             if (List->SupportedTypeList[Type])
             {
-                DPRINT1("Unit control %lu supported\n", Type);
+                DPRINT("Unit control %lu supported\n", Type);
                 Miniport->UnitControlSupportedBitmap |= 1 << Type;
             }
         }

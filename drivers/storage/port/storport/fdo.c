@@ -290,7 +290,7 @@ PortFdoConnectMessageInterrupt(
         DeviceExtension->Interrupt = (PKINTERRUPT)DeviceExtension->MessageInfo;
         DeviceExtension->MessageInfo = NULL;
 
-        DPRINT1("Adapter fell back to a line interrupt\n");
+        DPRINT("Adapter fell back to a line interrupt\n");
         return STATUS_SUCCESS;
     }
 
@@ -301,7 +301,7 @@ PortFdoConnectMessageInterrupt(
     if (DeviceExtension->MessageInfo->MessageCount > 0)
         DeviceExtension->Interrupt = DeviceExtension->MessageInfo->MessageInfo[0].InterruptObject;
 
-    DPRINT1("Connected %lu message interrupts at IRQL %lu\n",
+    DPRINT("Connected %lu message interrupts at IRQL %lu\n",
             DeviceExtension->MessageInfo->MessageCount,
             DeviceExtension->InterruptIrql);
 
@@ -349,10 +349,10 @@ PortFdoConnectInterrupt(
         return Status;
     }
 
-    DPRINT1("Vector: %lu\n", Vector);
-    DPRINT1("Irql: %lu\n", Irql);
+    DPRINT("Vector: %lu\n", Vector);
+    DPRINT("Irql: %lu\n", Irql);
 
-    DPRINT1("Affinity: 0x%08lx\n", Affinity);
+    DPRINT("Affinity: 0x%08lx\n", Affinity);
 
     /* Connect the interrupt */
     Status = IoConnectInterrupt(&DeviceExtension->Interrupt,
@@ -417,7 +417,7 @@ PortFdoStartMiniport(
     ULONG RequestSize;
     NTSTATUS Status;
 
-    DPRINT1("PortFdoStartMiniport(%p)\n", DeviceExtension);
+    DPRINT("PortFdoStartMiniport(%p)\n", DeviceExtension);
 
     /* Query the physical device, a filter may sit between us and it */
     InterfaceType = GetBusInterface(DeviceExtension->PhysicalDevice);
@@ -502,7 +502,7 @@ PortFdoStartMiniport(
     /* Call the HwPassiveInitRoutine function, if available */
     if (DeviceExtension->HwPassiveInitRoutine != NULL)
     {
-        DPRINT1("Calling HwPassiveInitRoutine()\n");
+        DPRINT("Calling HwPassiveInitRoutine()\n");
         if (!DeviceExtension->HwPassiveInitRoutine(&DeviceExtension->Miniport.MiniportExtension->HwDeviceExtension))
         {
             DPRINT1("HwPassiveInitRoutine() failed\n");
@@ -524,7 +524,7 @@ PortFdoStartDevice(
     PIO_STACK_LOCATION Stack;
     NTSTATUS Status;
 
-    DPRINT1("PortFdoStartDevice(%p %p)\n",
+    DPRINT("PortFdoStartDevice(%p %p)\n",
             DeviceExtension, Irp);
 
     ASSERT(DeviceExtension->ExtensionType == FdoExtension);
@@ -576,10 +576,10 @@ PortFdoStartDevice(
                                1,
                                &DeviceExtension->BusInterface,
                                NULL);
-    DPRINT1("Status: 0x%08lx\n", Status);
+    DPRINT("Status: 0x%08lx\n", Status);
     if (NT_SUCCESS(Status))
     {
-        DPRINT1("Context: %p\n", DeviceExtension->BusInterface.Context);
+        DPRINT("Context: %p\n", DeviceExtension->BusInterface.Context);
         DeviceExtension->BusInitialized = TRUE;
     }
 
@@ -712,7 +712,7 @@ PortSendReportLuns(
         /* Wait for it to complete */
         if (Status == STATUS_PENDING || Srb.SrbStatus == SRB_STATUS_PENDING)
         {
-            DPRINT1("PortSendReportLuns(): Waiting for the driver to process request...\n");
+            DPRINT("PortSendReportLuns(): Waiting for the driver to process request...\n");
             KeWaitForSingleObject(&Event,
                                   Executive,
                                   KernelMode,
@@ -790,7 +790,7 @@ PortSendReportLuns(
             /* Something weird happened, deal with it (unfreeze the queue) */
             KeepTrying = FALSE;
 
-            DPRINT1("PortSendReportLuns(): the queue is frozen at TargetId %d\n", Srb.TargetId);
+            DPRINT("PortSendReportLuns(): the queue is frozen at TargetId %d\n", Srb.TargetId);
             /* TODO: What do we do with this crap */
 #if 0
             LunExtension = SpiGetLunExtension(DeviceExtension,
@@ -820,7 +820,7 @@ PortSendReportLuns(
             /* If the buffer has already been reallocated we ditch the device */
             if (BufferReallocated)
             {
-                DPRINT1("Data overrun again (!) at TargetId %d, give up\n", PdoExtension->Target);
+                DPRINT("Data overrun again (!) at TargetId %d, give up\n", PdoExtension->Target);
 
                 Status = STATUS_IO_DEVICE_ERROR;
                 KeepTrying = FALSE;
@@ -835,7 +835,7 @@ PortSendReportLuns(
             BufferSize |= (((ULONG)ReportLunsData->LunListLength[3]) << (8*0));
             BufferSize += FIELD_OFFSET(REPORT_LUNS_DATA, LunDescriptor);
 
-            DPRINT1("Data overrun at TargetId %d, %d bytes needed\n",
+            DPRINT("Data overrun at TargetId %d, %d bytes needed\n",
                    PdoExtension->Target,
                    BufferSize);
 
@@ -887,7 +887,7 @@ PortSendReportLuns(
     ExFreePoolWithTag(ReportLunsData, TAG_REPORT_LUN_DATA);
     ExFreePoolWithTag(SenseBuffer, TAG_SENSE_DATA);
 
-    DPRINT1("PortSendReportLuns() done with Status 0x%08X\n", Status);
+    DPRINT("PortSendReportLuns() done with Status 0x%08X\n", Status);
 
     return Status;
 }
@@ -989,7 +989,7 @@ PortSendInquiry(
         /* Wait for it to complete */
         if (Status == STATUS_PENDING)
         {
-            DPRINT1("PortSendInquiry(): Waiting for the driver to process request...\n");
+            DPRINT("PortSendInquiry(): Waiting for the driver to process request...\n");
             KeWaitForSingleObject(&Event,
                                   Executive,
                                   KernelMode,
@@ -998,11 +998,11 @@ PortSendInquiry(
             Status = IoStatusBlock.Status;
         }
 
-        DPRINT1("PortSendInquiry(): Request processed by driver, status = 0x%08X\n", Status);
+        DPRINT("PortSendInquiry(): Request processed by driver, status = 0x%08X\n", Status);
 
         if (SRB_STATUS(Srb.SrbStatus) == SRB_STATUS_SUCCESS)
         {
-            DPRINT1("Found a device!\n");
+            DPRINT("Found a device!\n");
 
             /* Quit the loop */
             Status = STATUS_SUCCESS;
@@ -1018,7 +1018,7 @@ PortSendInquiry(
             /* Something weird happened, deal with it (unfreeze the queue) */
             KeepTrying = FALSE;
 
-            DPRINT1("SpiSendInquiry(): the queue is frozen at TargetId %d\n", Srb.TargetId);
+            DPRINT("SpiSendInquiry(): the queue is frozen at TargetId %d\n", Srb.TargetId);
 
 //            LunExtension = SpiGetLunExtension(DeviceExtension,
 //                                              LunInfo->PathId,
@@ -1090,7 +1090,7 @@ PortSendInquiry(
     /* Free the sense buffer */
     ExFreePoolWithTag(SenseBuffer, TAG_SENSE_DATA);
 
-    DPRINT1("PortSendInquiry() done with Status 0x%08X\n", Status);
+    DPRINT("PortSendInquiry() done with Status 0x%08X\n", Status);
 
     return Status;
 }
@@ -1202,7 +1202,7 @@ PortFdoQueryBusRelations(
 
     PdoCount = DeviceExtension->PdoCount;
 
-    DPRINT1("Units found: %lu\n", PdoCount);
+    DPRINT("Units found: %lu\n", PdoCount);
 
     /* Following part referred to SCSIport */
     DeviceRelations = ExAllocatePoolWithTag(PagedPool,
@@ -1525,7 +1525,7 @@ PortFdoPnp(
     ULONG_PTR Information = 0;
     NTSTATUS Status = STATUS_NOT_SUPPORTED;
 
-    DPRINT1("PortFdoPnp(%p %p)\n",
+    DPRINT("PortFdoPnp(%p %p)\n",
             DeviceObject, Irp);
 
     DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
@@ -1542,11 +1542,11 @@ PortFdoPnp(
             break;
 
         case IRP_MN_QUERY_REMOVE_DEVICE: /* 0x01 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_REMOVE_DEVICE\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_REMOVE_DEVICE\n");
             break;
 
         case IRP_MN_REMOVE_DEVICE: /* 0x02 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_REMOVE_DEVICE\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_REMOVE_DEVICE\n");
             PortFdoStopAdapter(DeviceExtension);
             PortFdoDisconnectInterrupt(DeviceExtension);
 
@@ -1565,11 +1565,11 @@ PortFdoPnp(
             break;
 
         case IRP_MN_CANCEL_REMOVE_DEVICE: /* 0x03 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_CANCEL_REMOVE_DEVICE\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_CANCEL_REMOVE_DEVICE\n");
             break;
 
         case IRP_MN_STOP_DEVICE: /* 0x04 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_STOP_DEVICE\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_STOP_DEVICE\n");
             PortFdoStopAdapter(DeviceExtension);
             PortFdoDisconnectInterrupt(DeviceExtension);
             MiniportFreeAdapterResources(&DeviceExtension->Miniport);
@@ -1577,11 +1577,11 @@ PortFdoPnp(
             break;
 
         case IRP_MN_QUERY_STOP_DEVICE: /* 0x05 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_STOP_DEVICE\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_STOP_DEVICE\n");
             break;
 
         case IRP_MN_CANCEL_STOP_DEVICE: /* 0x06 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_CANCEL_STOP_DEVICE\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_CANCEL_STOP_DEVICE\n");
             break;
 
         case IRP_MN_QUERY_DEVICE_RELATIONS: /* 0x07 */
@@ -1593,7 +1593,7 @@ PortFdoPnp(
                     break;
 
                 case RemovalRelations:
-                    DPRINT1("    IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / RemovalRelations\n");
+                    DPRINT("    IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / RemovalRelations\n");
                     return ForwardIrpAndForget(DeviceExtension->LowerDevice, Irp);
 
                 default:
@@ -1609,19 +1609,19 @@ PortFdoPnp(
             return ForwardIrpAndForget(DeviceExtension->LowerDevice, Irp);
 
         case IRP_MN_QUERY_PNP_DEVICE_STATE: /* 0x14 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_PNP_DEVICE_STATE\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_PNP_DEVICE_STATE\n");
             break;
 
         case IRP_MN_DEVICE_USAGE_NOTIFICATION: /* 0x16 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_DEVICE_USAGE_NOTIFICATION\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_DEVICE_USAGE_NOTIFICATION\n");
             break;
 
         case IRP_MN_SURPRISE_REMOVAL: /* 0x17 */
-            DPRINT1("IRP_MJ_PNP / IRP_MN_SURPRISE_REMOVAL\n");
+            DPRINT("IRP_MJ_PNP / IRP_MN_SURPRISE_REMOVAL\n");
             break;
 
         default:
-            DPRINT1("IRP_MJ_PNP / Unknown IOCTL 0x%lx\n", Stack->MinorFunction);
+            DPRINT("IRP_MJ_PNP / Unknown IOCTL 0x%lx\n", Stack->MinorFunction);
             return ForwardIrpAndForget(DeviceExtension->LowerDevice, Irp);
     }
 
