@@ -47,6 +47,9 @@ UCHAR DECLSPEC_ALIGN(16) KiP0BootStackData[KERNEL_STACK_SIZE] = {0};
 PVOID KiP0BootStack = &KiP0BootStackData[KERNEL_STACK_SIZE];
 
 KSPIN_LOCK KiFreezeExecutionLock;
+
+/* Handed over by KeStartAllProcessors for the processor being started */
+extern PVOID KiStartingDpcStack;
 static LDR_DATA_TABLE_ENTRY LdrCoreEntries[3];
 ULONG64 KeFeatureBits;
 
@@ -166,7 +169,7 @@ KiInitializeHandBuiltThread(
     Thread->State = Running;
     Thread->Affinity = AFFINITY_MASK(Prcb->Number);
     Thread->WaitIrql = DISPATCH_LEVEL;
-    Process->ActiveProcessors |= AFFINITY_MASK(Prcb->Number);
+    InterlockedOr64((PLONG64)&Process->ActiveProcessors, (LONG64)AFFINITY_MASK(Prcb->Number));
 }
 
 CODE_SEG("INIT")
@@ -278,9 +281,20 @@ KiSystemStartupBootStack(VOID)
     KiEarlyTrace("KiSystemStartupBootStack: on the boot stack\n");
 
     if (Prcb->Number == 0)
+    {
         KiInitializeKernel(Process, Thread, KernelStack, Prcb, LoaderBlock);
+    }
     else
+    {
+        Prcb->MultiThreadSetMaster = Prcb;
         KiInitializeHandBuiltThread(Thread, Process, KernelStack);
+
+        ASSERT(KiStartingDpcStack != NULL);
+        Prcb->DpcStack = KiStartingDpcStack;
+        Prcb->MaximumDpcQueueDepth = KiMaximumDpcQueueDepth;
+        Prcb->MinimumDpcRate = KiMinimumDpcRate;
+        Prcb->AdjustDpcThreshold = KiAdjustDpcThreshold;
+    }
 
     /* Become the idle thread */
     KfRaiseIrql(DISPATCH_LEVEL);
@@ -288,10 +302,12 @@ KiSystemStartupBootStack(VOID)
 
     KiAcquirePrcbLock(Prcb);
     if (!Prcb->NextThread)
-        KiIdleSummary |= Prcb->SetMember;
+        InterlockedOr64((PLONG64)&KiIdleSummary, (LONG64)Prcb->SetMember);
     KiReleasePrcbLock(Prcb);
 
+    /* The processor that started this one waits for the PRCB to go */
     KfRaiseIrql(HIGH_LEVEL);
+    KeMemoryBarrier();
     LoaderBlock->Prcb = 0;
 
     Thread = KeGetCurrentThread();
@@ -315,13 +331,15 @@ KiSystemStartup(
     PKIPCR Pcr;
     CCHAR Cpu;
 
-    FrLdrDbgPrint = LoaderBlock->u.I386.CommonDataArea;
-    KiEarlyTrace("KiSystemStartup: loader block %p\n", LoaderBlock);
-
-    Cpu = KeNumberProcessors++;
+    /* Secondary processors start one at a time, the count goes up once this one is set up */
+    Cpu = KeNumberProcessors;
 
     if (Cpu == 0)
     {
+        /* Only the boot processor runs while the loader is still mapped */
+        FrLdrDbgPrint = LoaderBlock->u.I386.CommonDataArea;
+        KiEarlyTrace("KiSystemStartup: loader block %p\n", LoaderBlock);
+
         KeLoaderBlock = LoaderBlock;
         LoaderBlock->KernelStack = (ULONG_PTR)KiP0BootStack;
         LoaderBlock->Thread = (ULONG_PTR)&KiInitialThread.Tcb;
@@ -342,6 +360,10 @@ KiSystemStartup(
     KiInitializeCpu(Pcr);
     KiEarlyTrace("KiSystemStartup: processor %d set up\n", Cpu);
 
+    /* Code walking the processors finds a PRCB for every number below the count */
+    KeMemoryBarrier();
+    KeNumberProcessors = Cpu + 1;
+
     if (Cpu == 0)
     {
         KeFeatureBits = Pcr->Prcb.FeatureBits;
@@ -352,12 +374,19 @@ KiSystemStartup(
         KeProcessorRevision = Pcr->Prcb.CpuStep;
 
         KiInitModuleList(LoaderBlock);
-        KeInitExceptions();
-        KiEarlyTrace("KiSystemStartup: exception vectors set\n");
+    }
+    else if (Pcr->Prcb.FeatureBits != KiProcessorBlock[0]->FeatureBits)
+    {
+        /* Big and little cores can differ, the boot processor's set is what the system reports */
+        DPRINT1("Processor %d features %lx, boot processor %lx\n",
+                Cpu, Pcr->Prcb.FeatureBits, KiProcessorBlock[0]->FeatureBits);
     }
 
+    KeInitExceptions();
+    KiEarlyTrace("KiSystemStartup: exception vectors set\n");
+
     HalInitializeProcessor(Cpu, KeLoaderBlock);
-    KeActiveProcessors |= AFFINITY_MASK(Cpu);
+    InterlockedOr64((PLONG64)&KeActiveProcessors, (LONG64)AFFINITY_MASK(Cpu));
     KiEarlyTrace("KiSystemStartup: HAL processor init done\n");
 
     if (Cpu == 0)
