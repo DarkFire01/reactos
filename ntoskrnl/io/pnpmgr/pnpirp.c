@@ -522,7 +522,8 @@ PiIrpStartDevice(
     // Vista+ does an asynchronous call
     NTSTATUS status = IopSynchronousCall(DeviceNode->PhysicalDeviceObject, &stack, &info);
     DeviceNode->CompletionStatus = status;
-    DPRINT1("Start %wZ -> 0x%lx\n", &DeviceNode->InstancePath, status);
+    if (!NT_SUCCESS(status))
+        DPRINT1("Start %wZ -> 0x%lx\n", &DeviceNode->InstancePath, status);
     return status;
 }
 

@@ -492,7 +492,7 @@ PiAttachFilterDriversCallback(
         }
         else
         {
-            DPRINT1("Service \"%wZ\" for %wZ will not be loaded now\n",
+            DPRINT("Service \"%wZ\" for %wZ will not be loaded now\n",
                     &serviceName, &context->DeviceNode->InstancePath);
             // return failure, the driver will be loaded later (in a subsequent call)
             Status = STATUS_UNSUCCESSFUL;
@@ -507,7 +507,7 @@ PiAttachFilterDriversCallback(
         InsertTailList(context->DriversListHead, &driverEntry->ListEntry);
         if (context->DriverType != DeviceDriver)
         {
-            DPRINT1("Filter \"%wZ\" (type %u) attaches to %wZ\n",
+            DPRINT("Filter \"%wZ\" (type %u) attaches to %wZ\n",
                     &serviceName, context->DriverType, &context->DeviceNode->InstancePath);
         }
         ZwClose(serviceHandle);
@@ -859,7 +859,7 @@ PiCallDriverAddDevice(
          * port driver's AddDevice by now, so this says both whether one was installed and
          * what it made of the device.
          */
-        if (driverObject != NULL)
+        if (driverObject != NULL && !NT_SUCCESS(Status))
         {
             DPRINT1("AddDevice: %wZ %s -> 0x%08lx\n",
                     &driverObject->DriverName,
