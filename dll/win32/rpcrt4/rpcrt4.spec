@@ -130,6 +130,7 @@
 @ stdcall NdrAllocate(ptr long)
 @ varargs NdrAsyncClientCall(ptr ptr)
 @ stdcall NdrAsyncServerCall(ptr)
+@ stub -arch=win64 Ndr64AsyncServerCallAll
 @ stdcall NdrAsyncStubCall(ptr ptr ptr ptr)
 @ stdcall NdrByteCountPointerBufferSize(ptr ptr ptr)
 @ stdcall NdrByteCountPointerFree(ptr ptr ptr)
@@ -288,7 +289,7 @@
 @ stdcall NdrSendReceive(ptr ptr)
 @ stdcall NdrServerCall2(ptr)
 @ stdcall NdrServerCall(ptr)
-@ stdcall -arch=x86_64 NdrServerCallAll(ptr)
+@ stdcall -arch=win64 NdrServerCallAll(ptr)
 @ stdcall NdrServerContextMarshall(ptr ptr ptr)
 @ stdcall NdrServerContextNewMarshall(ptr ptr ptr ptr)
 @ stdcall NdrServerContextNewUnmarshall(ptr ptr)
@@ -353,7 +354,9 @@
 @ stdcall RpcAsyncGetCallStatus(ptr)
 @ stdcall RpcAsyncInitializeHandle(ptr long)
 @ stub RpcAsyncRegisterInfo
+@ stdcall RpcBindingBind(ptr ptr ptr)
 @ stdcall RpcBindingCopy(ptr ptr)
+@ stdcall RpcBindingCreateW(ptr ptr ptr ptr)
 @ stdcall RpcBindingFree(ptr)
 @ stdcall RpcBindingFromStringBindingA(str  ptr)
 @ stdcall RpcBindingFromStringBindingW(wstr ptr)
@@ -377,6 +380,7 @@
 @ stdcall RpcBindingSetOption(ptr long long)
 @ stdcall RpcBindingToStringBindingA(ptr ptr)
 @ stdcall RpcBindingToStringBindingW(ptr ptr)
+@ stdcall RpcBindingUnbind(ptr)
 @ stdcall RpcBindingVectorFree(ptr)
 @ stdcall RpcCancelAsyncCall(ptr long) RpcAsyncCancelCall
 @ stdcall RpcCancelThread(ptr)
