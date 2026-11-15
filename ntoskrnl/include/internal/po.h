@@ -1508,6 +1508,9 @@ typedef struct _POP_IRP_DATA
     /* If set to TRUE, this IRP causes a PEP to be notified upon IRP completion */
     BOOLEAN NotifyPEP;
 
+    /* Sends the IRP down at PASSIVE_LEVEL when the plug-in has to hear of it first */
+    WORK_QUEUE_ITEM SendWorkItem;
+
     union
     {
         /* Device related power IRP data */

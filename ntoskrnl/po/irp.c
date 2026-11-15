@@ -1023,6 +1023,46 @@ PopCancelIrpWatchdog(
     KeCancelTimer(&IrpData->WatchdogTimer);
 }
 
+static
+VOID
+NTAPI
+PopSendPowerIrpAtPassive(
+    _In_ PVOID Context)
+{
+    PPOP_IRP_DATA IrpData = Context;
+
+    PopFxNotifyDevicePowerState(IrpData->FxDevice, IrpData->PowerState.DeviceState, FALSE, FALSE);
+    IoCallDriver(IrpData->TargetDevice, IrpData->Irp);
+}
+
+/**
+ * @brief Sends a dequeued or unqueued power IRP down its stack.
+ *
+ * @remarks The plug-in hears a D-IRP is starting right before the stack gets it, once the
+ * device's previous D-IRP completed, and at PASSIVE_LEVEL since it may wait for its own
+ * work from the previous transition. From a raised IRQL the send moves to a worker.
+ */
+static
+VOID
+PopSendPowerIrp(
+    _In_ PPOP_IRP_DATA IrpData)
+{
+    if (IrpData->MinorFunction != IRP_MN_SET_POWER || !IrpData->FxDevice)
+    {
+        IoCallDriver(IrpData->TargetDevice, IrpData->Irp);
+        return;
+    }
+
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL)
+    {
+        PopSendPowerIrpAtPassive(IrpData);
+        return;
+    }
+
+    ExInitializeWorkItem(&IrpData->SendWorkItem, PopSendPowerIrpAtPassive, IrpData);
+    ExQueueWorkItem(&IrpData->SendWorkItem, CriticalWorkQueue);
+}
+
 /**
  * @brief
  * Enqueues a power IRP if the target device is still
@@ -1182,7 +1222,7 @@ DispatchNow:
     PopSetDoeActiveFlags(StateType, PdoDevObjExts);
     PopEnableIrpWatchdog(IrpData);
     PopReleaseIrpLock(&IrpLockHandle);
-    IoCallDriver(TopTargetDevice, Irp);
+    PopSendPowerIrp(IrpData);
 }
 
 /**
@@ -1312,7 +1352,7 @@ PopDequeuePowerIrp(
     PopSetDoeActiveFlags(StateType, PdoDevObjExts);
     PopEnableIrpWatchdog(IrpDataToDispatch);
     PopReleaseIrpLock(&IrpLockHandle);
-    IoCallDriver(IrpDataToDispatch->TargetDevice, IrpDataToDispatch->Irp);
+    PopSendPowerIrp(IrpDataToDispatch);
 }
 
 
@@ -1790,13 +1830,9 @@ PopRequestPowerIrp(
         *Irp = PwrIrp;
     }
 
-    /* A plug-in owning the device hears of a D-IRP before the stack does */
+    /* The plug-in owning the device hears of the D-IRP once it is sent, see PopSendPowerIrp */
     if (MinorFunction == IRP_MN_SET_POWER)
-    {
         IrpData->FxDevice = PopFxFindDevice(DeviceObject);
-        if (IrpData->FxDevice)
-            PopFxNotifyDevicePowerState(IrpData->FxDevice, PowerState.DeviceState, FALSE, FALSE);
-    }
 
     /* And setup the dedicated power IRP completion routine */
     IoSetCompletionRoutine(PwrIrp,
