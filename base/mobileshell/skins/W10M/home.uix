@@ -1,118 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Start screen, owned by MobileUI. Tiles are plain launch commands; swipe left or All apps opens the app list. -->
+<!-- Start, owned by MobileUI. Tiles are launch commands packed by the Tiles layout; swipe left for All apps. -->
 <Uix Name="Home"
      Title="@StartLabel"
      SoftKeyLeft="" SoftKeyLeftCommand=""
      SoftKeyRight="" SoftKeyRightCommand=""
-     AppReveal="0,40,0.18,0">
+     AppReveal="0,40,0.3,0">
 
   <Element Name="StartBackdrop" Layer="true" Background="@StartBackground"/>
 
   <!-- Margins keep the status and navigation bars free for the chrome -->
-  <Element Name="Start" Layer="true" Margin="0,@TitleHeight,0,@NavBarHeight" Scroll="true" SwipeLeft="start"
-           ScrollBarWidth="0" Layout="Stack" Foreground="@TileText" Font="@TileFont">
-
-    <Element Layout="Wrap" Padding="8,8,4,4">
-
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Phone" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+  <Element Name="Start" Layer="true" Margin="0,@TrayHeight,0,@NavBarHeight" Scroll="true" SwipeLeft="start"
+           ScrollBarWidth="0" Layout="Stack">
+    <Element Layout="Tiles" Columns="4" Gap="@TileGap" Padding="7,7,7,7">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Phone" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE717;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="Phone" VAlign="Bottom" Margin="8,0,8,6"/>
+        <Text Content="Phone" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Contacts" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Contacts" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE716;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="People" VAlign="Bottom" Margin="8,0,8,6"/>
+        <Text Content="People" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Messaging" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Messaging" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE8BD;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="Messaging" VAlign="Bottom" Margin="8,0,8,6"/>
+        <Text Content="Messaging" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
-
-      <!-- Live calendar: today's weekday and date -->
-      <Element Width="@TileWide" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Calendar" Selectable="true" Momentary="true" SelectedBackground="@TilePressed" Padding="10,8,10,6" Layout="Stack">
-        <Text Content="{Weekday}" Font="@ItemLarge"/>
-        <Text Content="{Date}" Font="@DateFont"/>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Calculator" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE8EF;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:ClockSettings" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE823;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Camera" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE722;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Store" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE719;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="4,2" Background="@TileFill" Foreground="@TileText" Command="launch:Calendar" Selectable="true" Momentary="true" SelectedBackground="@TilePressed" Layout="Stack" Padding="8,8,8,6">
+        <Text Content="{Weekday}" Font="@TileLive"/>
+        <Text Content="{Date}" Font="@TileLive"/>
         <Element Height="*"/>
         <Element Layout="Row">
-          <Text Content="Calendar" Width="*"/>
-          <Text Content="&#xE787;" Font="@StatusGlyph"/>
+          <Text Content="Calendar" Font="@TileLabel" Width="*"/>
+          <Text Content="&#xE787;" Font="@Glyph16"/>
         </Element>
       </Element>
-      <Element Width="116" Height="116" Layout="Wrap">
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:Calculator" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE8EF;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:ClockSettings" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE823;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:Camera" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE722;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:Store" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE719;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-      </Element>
-
-      <!-- Live profile: owner name and number from Settings -->
-      <Element Width="@TileWide" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:OwnerInfo" Selectable="true" Momentary="true" SelectedBackground="@TilePressed" Padding="10,8,10,6" Layout="Stack">
-        <Element Layout="Row" Height="*">
-          <Element Width="56" Height="56" VAlign="Top" Background="@TilePressed" Margin="0,0,10,0">
-            <Text Content="&#xE77B;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-          </Element>
-          <Text Content="{OwnerLine}" Font="@DateFont" Wrap="true" Width="*"/>
-        </Element>
-        <Text Content="Me"/>
-      </Element>
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Settings" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Settings" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE713;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="Settings" VAlign="Bottom" Margin="8,0,8,6"/>
+        <Text Content="Settings" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
-
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Browser" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Files" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xEC50;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="File Explorer" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
+      </Element>
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Browser" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE774;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="Internet" VAlign="Bottom" Margin="8,0,8,6"/>
+        <Text Content="Internet" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Files" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-        <Text Content="&#xE8B7;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="File Explorer" VAlign="Bottom" Margin="8,0,8,6"/>
-      </Element>
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Office" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-        <Text Content="&#xE8A5;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="Office" VAlign="Bottom" Margin="8,0,8,6"/>
-      </Element>
-
-      <Element Width="116" Height="116" Layout="Wrap">
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:Writer" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE8A5;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:Sheets" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE80A;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:Slides" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE7F4;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-        <Element Width="@TileSmall" Height="@TileSmall" Margin="0,0,4,4" Background="@TileFill" Command="launch:Notes" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
-          <Text Content="&#xE70B;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
-        </Element>
-      </Element>
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Pictures" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Pictures" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE91B;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="Photos" VAlign="Bottom" Margin="8,0,8,6"/>
+        <Text Content="Photos" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
-      <Element Width="@TileMedium" Height="@TileMedium" Margin="0,0,4,4" Background="@TileFill" Command="launch:Help" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Office" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE8A5;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="Office" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
+      </Element>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Writer" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE8A5;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Sheets" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE80A;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Slides" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE7F4;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Notes" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE70B;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Span="4,2" Background="@TileFill" Foreground="@TileText" Command="launch:OwnerInfo" Selectable="true" Momentary="true" SelectedBackground="@TilePressed" Layout="Stack" Padding="8,8,8,6">
+        <Text Content="&#xE77B;" Font="@Glyph24" Margin="0,0,0,6"/>
+        <Text Content="{OwnerLine}" Font="@TileLive" Wrap="true"/>
+        <Element Height="*"/>
+        <Text Content="Me" Font="@TileLabel"/>
+      </Element>
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Help" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE82F;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
-        <Text Content="Getting Started" VAlign="Bottom" Margin="8,0,8,6"/>
+        <Text Content="Getting Started" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
-
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:MediaPlayer" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE8D6;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="Music" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
+      </Element>
     </Element>
 
-    <Element Layout="Row" Height="48" Padding="0,0,14,0" Command="start" Momentary="true" SelectedForeground="@AccentText" Foreground="@AppText">
+    <Element Layout="Row" Height="44" Padding="0,0,12,0" Command="start" Momentary="true" Foreground="@BaseMid" Font="@Body">
       <Element Width="*"/>
-      <Text Content="All apps" Font="@ItemFont" Margin="0,0,8,0"/>
-      <Text Content="&#xE72A;" Font="@AppBarGlyph"/>
+      <Text Content="All apps" Margin="0,0,8,0"/>
+      <Text Content="&#xE72A;" Font="@Glyph16"/>
     </Element>
   </Element>
 
   <!-- The band hosted apps are composed into -->
-  <Element Name="AppHost" Margin="0,@TitleHeight,0,@ChromeBottom"/>
+  <Element Name="AppHost" Margin="0,@TrayHeight,0,@ChromeBottom"/>
 
 </Uix>

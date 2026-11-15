@@ -1,64 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Status bar, app bar and navigation bar, owned by ShellChrome. Soft keys are app bar buttons; ok and X are Back. -->
-<Uix Name="Chrome" Foreground="@TitleText" Font="@ClockFont" BatteryFillWidth="14">
+<!-- Status bar, app bar and navigation bar, owned by ShellChrome. Soft keys are app bar buttons; Back does ok and X. -->
+<Uix Name="Chrome" Foreground="@TitleText" Font="@ClockFont" BatteryFillWidth="11">
 
   <!-- Tapping the status bar opens the action center -->
-  <Element Name="StatusBar" Layer="true" VAlign="Top" Height="@TitleHeight" Background="@StatusBar" Layout="Row"
-           Command="status" Momentary="true" Padding="8,0,8,0">
-    <Element Layout="Row" Margin="0,7,6,7">
-      <Element Width="3" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,1,0"/>
-      <Element Width="3" Height="5" VAlign="Bottom" Background="{Bar2}" Margin="0,0,1,0"/>
-      <Element Width="3" Height="7" VAlign="Bottom" Background="{Bar3}" Margin="0,0,1,0"/>
-      <Element Width="3" Height="8" VAlign="Bottom" Background="{Bar4}" Margin="0,0,1,0"/>
-      <Element Width="3" Height="10" VAlign="Bottom" Background="{Bar5}"/>
+  <Element Name="StatusBar" Layer="true" VAlign="Top" Height="@TrayHeight" Background="@StatusBar" Layout="Row"
+           Command="status" Momentary="true" Padding="12,0,0,0">
+    <Element Width="16" Height="16" VAlign="Center" Layout="Row" Padding="1,2,1,1" Margin="0,0,6,0">
+      <Element Width="2" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,1,0"/>
+      <Element Width="2" Height="5" VAlign="Bottom" Background="{Bar2}" Margin="0,0,1,0"/>
+      <Element Width="2" Height="7" VAlign="Bottom" Background="{Bar3}" Margin="0,0,1,0"/>
+      <Element Width="2" Height="10" VAlign="Bottom" Background="{Bar4}" Margin="0,0,1,0"/>
+      <Element Width="2" Height="13" VAlign="Bottom" Background="{Bar5}"/>
     </Element>
-    <Text Name="NetActive" Content="&#xE701;" Font="@StatusGlyph" Margin="0,0,6,0"/>
-    <Text Name="NetOff" Content="&#xE711;" Font="@StatusGlyph" Margin="0,0,6,0" Visible="false"/>
-    <Element Name="NotifyIcon" Command="notify.show" Momentary="true" Visible="false" Padding="2,0,2,0">
-      <Text Content="&#xE91C;" Font="@StatusGlyph"/>
+    <Text Name="NetActive" Content="&#xE701;" Font="@TrayGlyph" Width="16" TextAlign="Center" Margin="0,0,6,0"/>
+    <Text Name="NetOff" Content="&#xE871;" Font="@TrayGlyph" Width="16" TextAlign="Center" Margin="0,0,6,0" Visible="false"/>
+    <Element Name="NotifyIcon" Command="notify.show" Momentary="true" Visible="false" Margin="0,0,6,0">
+      <Text Content="&#xE91C;" Font="@TrayGlyph" Width="16" TextAlign="Center"/>
     </Element>
     <Element Width="*"/>
-    <Text Content="{VolumeGlyph}" Font="@StatusGlyph" Margin="0,0,8,0"/>
-    <Text Name="BatteryCharging" Content="&#xE945;" Font="@ChargeGlyph" Margin="0,0,2,0" Visible="false"/>
-    <Element Layout="Row" Margin="0,8,7,8">
-      <Element Width="18" BorderBrush="@TitleText" BorderThickness="1" Padding="1">
+    <Text Name="BatteryCharging" Content="&#xE945;" Font="@Glyph12" Margin="0,0,2,0" Visible="false"/>
+    <Element Width="16" Height="16" VAlign="Center" Layout="Row" Padding="0,4,0,4">
+      <Element Width="14" BorderBrush="@TitleText" BorderThickness="1" Padding="1">
         <Element Width="{BatteryLevel}" HAlign="Left" Background="{BatteryBrush}"/>
       </Element>
-      <Element Width="2" Background="@TitleText" Margin="0,2,0,2"/>
+      <Element Width="1" Background="@TitleText" Margin="0,2,0,2"/>
     </Element>
-    <Text Name="StatusTime" Content="{Time}"/>
+    <Text Name="StatusTime" Content="{Time}" TextAlign="Right" Padding="10,0,12,0"/>
   </Element>
 
-  <!-- Hidden while Start shows; apps get their soft keys here -->
-  <Element Name="AppBar" Layer="true" VAlign="Bottom" Height="@SoftKeyHeight" Margin="0,0,0,@NavBarHeight"
-           Background="@AppBar" Layout="Row" Foreground="@AppBarText" Font="@SoftKeyFont">
-    <Element Width="*" Command="softkey.left" Momentary="true" SelectedBackground="@AppBarPressed">
-      <Text Content="{SoftKeyLeft}" TextAlign="Center"/>
+  <!-- Shown only while an app is up; the keyboard and the toast cover it -->
+  <Element Name="AppBar" Layer="true" VAlign="Bottom" Height="@AppBarHeight" Margin="0,0,0,@NavBarHeight"
+           Background="@AppBar" Layout="Row" Foreground="@AppBarText" Font="@AppBarLabel" Padding="8,0,0,0">
+    <Element Width="*"/>
+    <Element Command="softkey.left" Momentary="true" SelectedBackground="@AppBarPressed" Padding="12,0,12,0">
+      <Text Content="{SoftKeyLeft}" TextVAlign="Center"/>
     </Element>
-    <Element Width="*" Command="softkey.right" Momentary="true" SelectedBackground="@AppBarPressed">
-      <Text Content="{SoftKeyRight}" TextAlign="Center"/>
+    <Element Command="softkey.right" Momentary="true" SelectedBackground="@AppBarPressed" Padding="12,0,12,0" Margin="4,0,0,0">
+      <Text Content="{SoftKeyRight}" TextVAlign="Center"/>
     </Element>
+    <!-- The "..." spot opens the keyboard here; menus come from the right soft key -->
     <Element Width="48" Command="softkey.center" Momentary="true" SelectedBackground="@AppBarPressed">
-      <Text Content="&#xE765;" Font="@AppBarGlyph" TextAlign="Center"/>
+      <Text Content="&#xE712;" Font="@Glyph16" TextAlign="Center" TextVAlign="Center"/>
     </Element>
   </Element>
 
-  <Element Name="NavBar" Layer="true" VAlign="Bottom" Height="@NavBarHeight" Background="@NavBar" Layout="Row" Foreground="@NavText">
-    <Element Width="*" Command="back" Momentary="true" SelectedBackground="@NavPressed">
-      <Text Content="&#xE72B;" Font="@NavGlyph" TextAlign="Center"/>
+  <Element Name="NavBar" Layer="true" VAlign="Bottom" Height="@NavBarHeight" Background="@NavBar" Layout="Row" Foreground="@NavGlyphColor">
+    <Element Width="*"/>
+    <Element Width="48" Command="back" Momentary="true" SelectedBackground="@ListPress">
+      <Text Content="&#xE72B;" Font="@NavGlyph" TextAlign="Center" TextVAlign="Center"/>
     </Element>
-    <Element Width="*" Command="home" HoldCommand="start" Momentary="true" SelectedBackground="@NavPressed">
-      <!-- Four squares, drawn so they show without the glyph font -->
-      <Element Width="18" Height="18" HAlign="Center" VAlign="Center" Layout="Wrap">
-        <Element Width="9" Height="9" Padding="0,0,1,1"><Element Background="@NavText"/></Element>
-        <Element Width="9" Height="9" Padding="1,0,0,1"><Element Background="@NavText"/></Element>
-        <Element Width="9" Height="9" Padding="0,1,1,0"><Element Background="@NavText"/></Element>
-        <Element Width="9" Height="9" Padding="1,1,0,0"><Element Background="@NavText"/></Element>
+    <Element Width="48"/>
+    <Element Width="48" Command="home" HoldCommand="start" Momentary="true" SelectedBackground="@ListPress">
+      <!-- Drawn, so it shows without the glyph font -->
+      <Element Width="17" Height="17" HAlign="Center" VAlign="Center" Layout="Wrap">
+        <Element Width="8.5" Height="8.5" Padding="0,0,0.75,0.75"><Element Background="@NavGlyphColor"/></Element>
+        <Element Width="8.5" Height="8.5" Padding="0.75,0,0,0.75"><Element Background="@NavGlyphColor"/></Element>
+        <Element Width="8.5" Height="8.5" Padding="0,0.75,0.75,0"><Element Background="@NavGlyphColor"/></Element>
+        <Element Width="8.5" Height="8.5" Padding="0.75,0.75,0,0"><Element Background="@NavGlyphColor"/></Element>
       </Element>
     </Element>
-    <Element Width="*" Command="launch:Search" Momentary="true" SelectedBackground="@NavPressed">
-      <Text Content="&#xE721;" Font="@NavGlyph" TextAlign="Center"/>
+    <Element Width="48"/>
+    <Element Width="48" Command="launch:Search" Momentary="true" SelectedBackground="@ListPress">
+      <Text Content="&#xE721;" Font="@NavGlyph" TextAlign="Center" TextVAlign="Center"/>
     </Element>
+    <Element Width="*"/>
   </Element>
 
 </Uix>

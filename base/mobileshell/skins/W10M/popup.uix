@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Menu flyouts for soft keys and tap and hold, owned by MobileUI. Items come from the app over the pipe. -->
+<!-- Context menus and soft key menus, owned by MobileUI. Items come from the app over the pipe. -->
 <Uix Name="Popup">
   <Element Name="PopupRoot" Visible="false">
 
-    <!-- Taps outside the flyout dismiss it -->
+    <!-- Taps outside the menu dismiss it -->
     <Element Command="popup.dismiss" Momentary="true"/>
 
     <Element Name="PopupMenu" Layer="true" X="{PopupX}" Y="{PopupY}" HAlign="Left" VAlign="Top" Layout="Stack"
-             Background="@MenuBackground" BorderBrush="@MenuBorder" BorderThickness="1" Padding="0,6,0,6"
-             Foreground="@MenuText" Font="@MenuFont" Reveal="0,8,0.12,0">
+             Background="@MenuBackground" BorderBrush="@MenuBorder" BorderThickness="1" Padding="0,8,0,8"
+             Foreground="@MenuText" Font="@MenuFont" Reveal="0,-12,0.2,0">
       <Element Width="@PopupMinWidth" Height="0"/>
       <Repeater Name="PopupItems" Layout="Stack">
         <Element Height="{Item.Height}" Command="{Item.Command}" Selectable="true" Momentary="true"
-                 SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="12,0,24,0">
+                 SelectedBackground="@MenuSelected" SelectedForeground="@MenuSelectedText" Padding="12,0,12,0">
           <Element Height="1" VAlign="Center" Background="{Item.Fill}"/>
-          <Text Content="{Item.Text}"/>
+          <Text Content="{Item.Text}" TextVAlign="Center"/>
         </Element>
       </Repeater>
     </Element>

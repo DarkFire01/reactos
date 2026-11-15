@@ -1,41 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Getting Started, hosted by MarkupApp. Plain scrolling text with links to the apps it talks about. -->
 <Uix Name="Help" Title="Getting Started" Close="ok" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
-  <Element Scroll="true" Height="*" Layout="Stack" Padding="12,10,12,12" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
-    <Text Content="GETTING STARTED" Font="@AppHeaderFont"/>
-    <Text Content="welcome" Font="@PageTitleFont" Margin="0,2,0,12"/>
+  <Element Scroll="true" Height="*" Layout="Stack" Padding="12,12,12,12" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+    <Text Content="GETTING STARTED" Font="@BaseFont"/>
+    <Text Content="welcome" Font="@TitleText" Margin="0,2,0,12"/>
 
-    <Text Content="Start" Font="@ItemBold" Foreground="@AccentText"/>
+    <Text Content="Start" Font="@BaseFont" Foreground="@AccentText"/>
     <Text Wrap="true" Margin="0,0,0,12" Content="Your tiles live on Start. Tap one to open its app. Swipe left or tap All apps at the bottom to see every app."/>
 
-    <Text Content="Navigation bar" Font="@ItemBold" Foreground="@AccentText"/>
+    <Text Content="Navigation bar" Font="@BaseFont" Foreground="@AccentText"/>
     <Text Wrap="true" Margin="0,0,0,12" Content="Back goes back a page, closes menus and hides the keyboard. The middle button returns to Start, and holding it opens the app list."/>
 
-    <Text Content="App bar" Font="@ItemBold" Foreground="@AccentText"/>
-    <Text Wrap="true" Margin="0,0,0,12" Content="Commands for the open app sit above the navigation bar. The keyboard button on its right shows or hides the keyboard. F1 and F2 press the two commands."/>
+    <Text Content="App bar" Font="@BaseFont" Foreground="@AccentText"/>
+    <Text Wrap="true" Margin="0,0,0,12" Content="Commands for the open app sit above the navigation bar. The ... button on its right shows or hides the keyboard. F1 and F2 press the two commands."/>
 
-    <Text Content="Press and hold" Font="@ItemBold" Foreground="@AccentText"/>
+    <Text Content="Press and hold" Font="@BaseFont" Foreground="@AccentText"/>
     <Text Wrap="true" Margin="0,0,0,12" Content="Hold your finger on an item, like a contact or a file, to see more things you can do with it."/>
 
-    <Text Content="Action center" Font="@ItemBold" Foreground="@AccentText"/>
-    <Text Wrap="true" Margin="0,0,0,12" Content="Tap the status bar at the top for Wi-Fi, volume and battery. Notifications slide in from the top; tap one to keep it for later or X to dismiss it."/>
+    <Text Content="Action center" Font="@BaseFont" Foreground="@AccentText"/>
+    <Text Wrap="true" Margin="0,0,0,12" Content="Tap the status bar at the top for Wi-Fi, volume and battery. Notifications slide in from the top; tap one to keep it for later or swipe it sideways to dismiss it."/>
 
-    <Text Content="Try it" Font="@ItemBold" Margin="0,4,0,4"/>
+    <Text Content="Try it" Font="@BaseFont" Margin="0,4,0,4"/>
     <Element Layout="Row" Height="52" Command="launch:Contacts" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
       <Element Width="40" Height="40" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0" VAlign="Center">
-        <Text Content="&#xE716;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="&#xE716;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
       </Element>
       <Text Content="Open People" Width="*"/>
     </Element>
     <Element Layout="Row" Height="52" Command="launch:Calendar" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
       <Element Width="40" Height="40" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0" VAlign="Center">
-        <Text Content="&#xE787;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="&#xE787;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
       </Element>
       <Text Content="Open Calendar" Width="*"/>
     </Element>
     <Element Layout="Row" Height="52" Command="launch:OwnerInfo" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
       <Element Width="40" Height="40" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0" VAlign="Center">
-        <Text Content="&#xE77B;" Font="@ListGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="&#xE77B;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
       </Element>
       <Text Content="Set up your profile" Width="*"/>
     </Element>

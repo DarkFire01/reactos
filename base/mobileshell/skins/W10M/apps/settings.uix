@@ -3,11 +3,11 @@
 <Uix Name="Settings" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
 
   <Element Name="Tabs" Layout="Stack">
-    <Text Content="SETTINGS" Font="@AppHeaderFont" Padding="12,10,12,0"/>
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
     <Element Layout="Row" Height="@TabHeight" Padding="12,0,0,0">
-      <Element Command="tab:Personal" Margin="0,0,18,0"><Text Content="personal" Font="@PivotFont" Foreground="{TabPersonal}"/></Element>
-      <Element Command="tab:System" Margin="0,0,18,0"><Text Content="system" Font="@PivotFont" Foreground="{TabSystem}"/></Element>
-      <Element Command="tab:Connections"><Text Content="connections" Font="@PivotFont" Foreground="{TabConnections}"/></Element>
+      <Element Command="tab:Personal" Margin="0,0,18,0"><Text Content="personal" Font="@Pivot" Foreground="{TabPersonal}"/></Element>
+      <Element Command="tab:System" Margin="0,0,18,0"><Text Content="system" Font="@Pivot" Foreground="{TabSystem}"/></Element>
+      <Element Command="tab:Connections"><Text Content="connections" Font="@Pivot" Foreground="{TabConnections}"/></Element>
     </Element>
   </Element>
 
@@ -16,49 +16,49 @@
         <Text Content="&#xE7C9;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Buttons"/>
-          <Text Content="Hardware buttons and shortcuts" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Hardware buttons and shortcuts" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Input" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE765;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Input"/>
-          <Text Content="Keyboard and input panel" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Keyboard and input panel" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Lock" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE72E;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Lock screen"/>
-          <Text Content="Password and device lock" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Password and device lock" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Owner" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE77B;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Owner information"/>
-          <Text Content="Your name and contact details" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Your name and contact details" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Phone" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE717;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Phone"/>
-          <Text Content="Calls and voicemail" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Calls and voicemail" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Sounds" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE767;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Sounds"/>
-          <Text Content="Volume and ringtones" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Volume and ringtones" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Today" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE771;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Personalization"/>
-          <Text Content="Theme and accent color" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Theme and accent color" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
   </Element>
@@ -68,84 +68,84 @@
         <Text Content="&#xE946;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="About"/>
-          <Text Content="Device information" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Device information" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Backlight" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE706;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Display"/>
-          <Text Content="Brightness and screen timeout" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Brightness and screen timeout" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Certificates" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xEB95;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Certificates"/>
-          <Text Content="Trusted root authorities" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Trusted root authorities" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Clock" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE823;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Time &amp; alarms"/>
-          <Text Content="Date, time and alarms" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Date, time and alarms" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Encryption" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE8D7;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Encryption"/>
-          <Text Content="Storage card encryption" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Storage card encryption" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Error Reporting" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE7BA;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Error reporting"/>
-          <Text Content="Send problem reports" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Send problem reports" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Memory" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xEDA2;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Storage"/>
-          <Text Content="Memory and storage use" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Memory and storage use" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Power" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE83F;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Battery"/>
-          <Text Content="Battery level and power saving" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Battery level and power saving" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Regional" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE775;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Region"/>
-          <Text Content="Language, region and formats" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Language, region and formats" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Programs" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE71D;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Apps"/>
-          <Text Content="Installed programs" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Installed programs" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Screen" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE7F4;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Screen"/>
-          <Text Content="Orientation and text size" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Orientation and text size" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:TaskManager" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE9D9;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Running apps"/>
-          <Text Content="See and stop running programs" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="See and stop running programs" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
   </Element>
@@ -155,60 +155,60 @@
         <Text Content="&#xE95A;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Beam"/>
-          <Text Content="Receive files from nearby devices" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Receive files from nearby devices" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Bluetooth" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE702;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Bluetooth"/>
-          <Text Content="Pair and manage devices" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Pair and manage devices" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Connections" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE774;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Network"/>
-          <Text Content="Data and dial up connections" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Data and dial up connections" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Domain Enroll" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE821;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Work access"/>
-          <Text Content="Join a work domain" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Join a work domain" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:USB to PC" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xECF0;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="USB"/>
-          <Text Content="Connect to a PC" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Connect to a PC" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:WiFi" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE701;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Wi-Fi"/>
-          <Text Content="Wireless networks" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Wireless networks" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Wireless" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE709;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Airplane mode"/>
-          <Text Content="Turn radios on and off" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="Turn radios on and off" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
   </Element>
 
   <Element Name="PageInfo" Layout="Stack" Height="*" Visible="false">
-    <Text Content="SETTINGS" Font="@AppHeaderFont" Padding="12,10,12,0"/>
-    <Text Content="{InfoTitle}" Font="@PageTitleFont" Padding="12,2,12,8"/>
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
+    <Text Content="{InfoTitle}" Font="@TitleText" Padding="12,2,12,8"/>
     <Element Name="InfoScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
       <Repeater Name="InfoRows" Layout="Stack">
         <Element Layout="Stack" Padding="12,6,12,6">
-          <Text Content="{Item.Label}" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="{Item.Label}" Font="@Caption" Foreground="@AppSubText"/>
           <Text Content="{Item.Value}" Wrap="true"/>
         </Element>
       </Repeater>
@@ -216,37 +216,37 @@
   </Element>
 
   <Element Name="PageOwner" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
-    <Text Content="SETTINGS" Font="@AppHeaderFont" Padding="0,10,0,0"/>
-    <Text Content="Owner information" Font="@PageTitleFont" Margin="0,2,0,12"/>
-    <Text Content="Name" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="owner:0" Background="{OwnerFill0}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="0,12,0,0"/>
+    <Text Content="Owner information" Font="@TitleText" Margin="0,2,0,12"/>
+    <Text Content="Name" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="owner:0" Background="@FieldFill" BorderBrush="{OwnerFill0}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Owner0}"/>
     </Element>
-    <Text Content="Company" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="owner:1" Background="{OwnerFill1}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="Company" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="owner:1" Background="@FieldFill" BorderBrush="{OwnerFill1}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Owner1}"/>
     </Element>
-    <Text Content="Phone" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="owner:2" Background="{OwnerFill2}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="Phone" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="owner:2" Background="@FieldFill" BorderBrush="{OwnerFill2}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Owner2}"/>
     </Element>
-    <Text Content="Email" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="owner:3" Background="{OwnerFill3}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="Email" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="owner:3" Background="@FieldFill" BorderBrush="{OwnerFill3}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Owner3}"/>
     </Element>
-    <Text Content="Notes" Font="@SmallFont" Foreground="@AppSubText"/>
-    <Element Height="36" Command="owner:4" Background="{OwnerFill4}" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+    <Text Content="Notes" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="owner:4" Background="@FieldFill" BorderBrush="{OwnerFill4}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
       <Text Content="{Owner4}"/>
     </Element>
   </Element>
 
   <Element Name="PageSounds" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
-    <Text Content="SETTINGS" Font="@AppHeaderFont" Padding="0,10,0,0"/>
-    <Text Content="Sounds" Font="@PageTitleFont" Margin="0,2,0,12"/>
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="0,12,0,0"/>
+    <Text Content="Sounds" Font="@TitleText" Margin="0,2,0,12"/>
     <Text Content="{SoundVolume}" Margin="0,0,0,4"/>
     <Element Layout="Row" Height="40" Margin="0,0,0,12">
       <Element Width="40" Command="volume.down" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE738;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="&#xE738;" Font="@Glyph16" TextAlign="Center" TextVAlign="Center"/>
       </Element>
       <Element Layout="Row" Width="*" Padding="6,16,6,16">
         <Element Width="*" Margin="0,0,2,0" Background="{Vol1}"/>
@@ -261,19 +261,19 @@
         <Element Width="*" Margin="0,0,2,0" Background="{Vol10}"/>
       </Element>
       <Element Width="40" Command="volume.up" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE710;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="&#xE710;" Font="@Glyph16" TextAlign="Center" TextVAlign="Center"/>
       </Element>
     </Element>
     <Element Height="36" Command="volume.mute" Momentary="true" Background="@ButtonFace" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText" Padding="20,0,20,0">
       <Text Content="{MuteLabel}" TextAlign="Center" TextVAlign="Center"/>
     </Element>
-    <Text Content="Changes apply to the system volume." Font="@SmallFont" Foreground="@AppSubText" Margin="0,12,0,0" Wrap="true"/>
+    <Text Content="Changes apply to the system volume." Font="@Caption" Foreground="@AppSubText" Margin="0,12,0,0" Wrap="true"/>
   </Element>
 
   <Element Name="PageToday" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
-    <Text Content="SETTINGS" Font="@AppHeaderFont" Padding="0,10,0,0"/>
-    <Text Content="Personalization" Font="@PageTitleFont" Margin="0,2,0,12"/>
-    <Text Content="Choose a theme for Start and every app." Font="@SmallFont" Foreground="@AppSubText" Wrap="true" Margin="0,0,0,8"/>
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="0,12,0,0"/>
+    <Text Content="Personalization" Font="@TitleText" Margin="0,2,0,12"/>
+    <Text Content="Choose a theme for Start and every app." Font="@Caption" Foreground="@AppSubText" Wrap="true" Margin="0,0,0,8"/>
     <Repeater Name="Themes" Layout="Stack">
       <Element Height="44" Command="{Item.Command}" Background="{Item.Fill}" Padding="12,0,12,0" Selectable="true" Momentary="true"
                SelectedBackground="@ListPressed" Margin="0,0,0,2">
@@ -284,20 +284,20 @@
 
   <!-- About: product name, details, and version / device / legal pivots -->
   <Element Name="PageAbout" Layout="Stack" Height="*" Visible="false">
-    <Text Content="SETTINGS" Font="@AppHeaderFont" Padding="12,10,12,0"/>
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
     <Element Layout="Row" Height="@TabHeight" Padding="12,0,0,0">
-      <Element Command="about:Version" Margin="0,0,18,0"><Text Content="version" Font="@PivotFont" Foreground="{AboutTabVersion}"/></Element>
-      <Element Command="about:Device" Margin="0,0,18,0"><Text Content="device" Font="@PivotFont" Foreground="{AboutTabDevice}"/></Element>
-      <Element Command="about:Copyrights"><Text Content="legal" Font="@PivotFont" Foreground="{AboutTabCopyrights}"/></Element>
+      <Element Command="about:Version" Margin="0,0,18,0"><Text Content="version" Font="@Pivot" Foreground="{AboutTabVersion}"/></Element>
+      <Element Command="about:Device" Margin="0,0,18,0"><Text Content="device" Font="@Pivot" Foreground="{AboutTabDevice}"/></Element>
+      <Element Command="about:Copyrights"><Text Content="legal" Font="@Pivot" Foreground="{AboutTabCopyrights}"/></Element>
     </Element>
     <Element Name="AboutBrand" Layout="Stack" Padding="12,8,12,8">
-      <Text Content="{AboutProduct}" Font="@LargeBold"/>
-      <Text Content="{AboutEdition}" Font="@SmallFont" Foreground="@AppSubText"/>
+      <Text Content="{AboutProduct}" Font="@Subtitle"/>
+      <Text Content="{AboutEdition}" Font="@Caption" Foreground="@AppSubText"/>
     </Element>
     <Element Name="AboutScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
       <Repeater Name="AboutRows" Layout="Stack">
         <Element Layout="Stack" Padding="12,6,12,6">
-          <Text Content="{Item.Label}" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="{Item.Label}" Font="@Caption" Foreground="@AppSubText"/>
           <Text Content="{Item.Value}" Wrap="true"/>
         </Element>
       </Repeater>
@@ -305,8 +305,8 @@
   </Element>
 
   <Element Name="PageDetail" Layout="Stack" Height="*" Padding="12,0,12,8" Visible="false">
-    <Text Content="SETTINGS" Font="@AppHeaderFont" Padding="0,10,0,0"/>
-    <Text Content="{DetailTitle}" Font="@PageTitleFont" Margin="0,2,0,12"/>
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="0,12,0,0"/>
+    <Text Content="{DetailTitle}" Font="@TitleText" Margin="0,2,0,12"/>
     <Text Content="This setting is not available yet." Foreground="@AppSubText" Wrap="true"/>
   </Element>
 
