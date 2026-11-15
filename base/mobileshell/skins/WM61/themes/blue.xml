@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Theme Name="Blue" Base="base.xml">
+  <Color Name="Accent" Value="#3C8CE8"/>
+  <Color Name="TitleText" Value="#FFFFFF"/>
+  <Color Name="TitleDivider" Value="#70FFFFFF"/>
+  <Brush Name="TitleBar" Type="Gradient">
+    <Stop Offset="0" Color="#3A6CB8"/>
+    <Stop Offset="0.08" Color="#1A4A94"/>
+    <Stop Offset="1" Color="#0A2A62"/>
+  </Brush>
+  <Brush Name="TitlePressed" Type="Gradient">
+    <Stop Offset="0" Color="#7AB6FF"/>
+    <Stop Offset="1" Color="#2E6CC8"/>
+  </Brush>
+
+  <Image Name="Wallpaper" Source="..\assets\wallpaper_blue.png" Scale="3"/>
+  <Brush Name="TodayBackground" Type="Image" Image="@Wallpaper" Stretch="UniformToFill"/>
+  <Color Name="TodayText" Value="#FFFFFF"/>
+  <Color Name="TodaySeparator" Value="#C05AA0F0"/>
+  <Brush Name="TodaySelected" Type="Gradient">
+    <Stop Offset="0" Color="#8AC4FF"/>
+    <Stop Offset="0.5" Color="#3C88E0"/>
+    <Stop Offset="1" Color="#2468C0"/>
+  </Brush>
+
+  <Color Name="SoftKeyText" Value="#FFFFFF"/>
+  <Brush Name="SoftKeyBar" Type="Gradient">
+    <Stop Offset="0" Color="#A8CCF8"/>
+    <Stop Offset="0.12" Color="#5C94DE"/>
+    <Stop Offset="0.5" Color="#2E68BA"/>
+    <Stop Offset="0.52" Color="#1C54A4"/>
+    <Stop Offset="1" Color="#2D6CC4"/>
+  </Brush>
+  <Brush Name="SoftKeyPressed" Type="Gradient">
+    <Stop Offset="0" Color="#1C4A8E"/>
+    <Stop Offset="1" Color="#0E2E62"/>
+  </Brush>
+
+  <Color Name="MenuText" Value="#FFFFFF"/>
+  <Color Name="MenuSelectedText" Value="#FFFFFF"/>
+  <Color Name="MenuBorder" Value="#9AAAC8"/>
+  <Color Name="MenuSeparator" Value="#5A78A8"/>
+  <Brush Name="MenuBackground" Type="Gradient" Direction="Horizontal">
+    <Stop Offset="0" Color="#0A2A5E"/>
+    <Stop Offset="1" Color="#103A78"/>
+  </Brush>
+  <Brush Name="MenuSelected" Type="Gradient">
+    <Stop Offset="0" Color="#8AC4FF"/>
+    <Stop Offset="1" Color="#2E6CC8"/>
+  </Brush>
+
+  <Color Name="AppHeaderText" Value="#1A4A94"/>
+  <Color Name="CellSelected" Value="#3C7DD8"/>
+  <Color Name="SlideAccent" Value="#8CC2FF"/>
+  <Brush Name="SlideBackground" Type="Gradient">
+    <Stop Offset="0" Color="#16468E"/>
+    <Stop Offset="1" Color="#061C42"/>
+  </Brush>
+  <Brush Name="SipKeyActive" Type="Gradient">
+    <Stop Offset="0" Color="#9CC8FF"/>
+    <Stop Offset="1" Color="#4C88DC"/>
+  </Brush>
+  <Brush Name="SipKeyPressed" Type="Gradient">
+    <Stop Offset="0" Color="#3C88E0"/>
+    <Stop Offset="1" Color="#1E5CB4"/>
+  </Brush>
+  <Color Name="ScrollThumb" Value="#3C74C8"/>
+  <Color Name="DayToday" Value="#D6E6FA"/>
+  <Color Name="DaySelected" Value="#90BCF2"/>
+  <Color Name="DayMark" Value="#1E5CB4"/>
+  <Brush Name="CalHeader" Type="Gradient">
+    <Stop Offset="0" Color="#E6EEFA"/>
+    <Stop Offset="1" Color="#C2D6F2"/>
+  </Brush>
+  <Brush Name="CalcOpKey" Type="Gradient">
+    <Stop Offset="0" Color="#D6E4FA"/>
+    <Stop Offset="1" Color="#9ABCEB"/>
+  </Brush>
+  <Brush Name="CalcKeyPressed" Type="Gradient">
+    <Stop Offset="0" Color="#5C9CE8"/>
+    <Stop Offset="1" Color="#2C64B8"/>
+  </Brush>
+  <Brush Name="ItemSelected" Type="Gradient">
+    <Stop Offset="0" Color="#5C9CE8"/>
+    <Stop Offset="1" Color="#2C64B8"/>
+  </Brush>
+</Theme>

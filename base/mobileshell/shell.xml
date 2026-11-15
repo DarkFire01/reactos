@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shell configuration: active skin, key remapping and the app registry. FullScreen fills the
+     monitor and stretches the canvas to its height; the windowed switch on the command line overrides it. -->
+<Shell Skin="skins\WM61" Theme="Green" FullScreen="true">
+  <Keys>
+    <Key Vk="F1" Command="softkey.left"/>
+    <Key Vk="F2" Command="softkey.right"/>
+    <Key Vk="F3" Command="sip"/>
+    <Key Vk="LWin" Command="start"/>
+    <Key Vk="Home" Command="home"/>
+    <Key Vk="Escape" Command="back"/>
+    <Key Vk="Up" Command="nav.up"/>
+    <Key Vk="Down" Command="nav.down"/>
+    <Key Vk="Enter" Command="nav.select"/>
+    <Key Vk="F5" Command="reload"/>
+    <Key Vk="F9" Command="theme.next"/>
+  </Keys>
+  <Apps>
+    <App Id="Settings" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings"/>
+    <!-- Shortcuts into one Settings page, used by Today and the status panel -->
+    <App Id="OwnerInfo" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page Owner"/>
+    <App Id="ClockSettings" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page Clock"/>
+    <App Id="LockSettings" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page Lock"/>
+    <App Id="About" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page About"/>
+    <App Id="Memory" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page Memory"/>
+    <App Id="Power" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page Power"/>
+    <App Id="WiFi" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page WiFi"/>
+    <App Id="Sounds" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Args="--page Sounds"/>
+    <!-- On the device File Explorer may change every drive; drop Args to keep it inside My Documents -->
+    <App Id="Files" Exe="mobfiles.exe" Markup="apps\files.uix" Title="File Explorer" Args="--writable all"/>
+    <App Id="Office" Exe="mobmarkup.exe" Markup="apps\office.uix" Title="Office Mobile"/>
+    <App Id="Writer" Exe="moboffice.exe" Markup="apps\writer.uix" Title="Writer Mobile"/>
+    <App Id="Sheets" Exe="moboffice.exe" Markup="apps\sheets.uix" Title="Sheets Mobile"/>
+    <App Id="Slides" Exe="moboffice.exe" Markup="apps\slides.uix" Title="Slides Mobile"/>
+    <App Id="Notes" Exe="moboffice.exe" Markup="apps\notes.uix" Title="Notes Mobile"/>
+    <App Id="Contacts" Exe="mobcontacts.exe" Markup="apps\contacts.uix" Title="Contacts"/>
+    <App Id="Calendar" Exe="mobcalendar.exe" Markup="apps\calendar.uix" Title="Calendar"/>
+    <App Id="Calculator" Exe="mobcalc.exe" Markup="apps\calculator.uix" Title="Calculator"/>
+    <App Id="Programs" Exe="mobmarkup.exe" Markup="apps\programs.uix" Title="Programs"/>
+    <App Id="Help" Exe="mobmarkup.exe" Markup="apps\help.uix" Title="Getting Started"/>
+    <!-- Same app rendered at base resolution and scaled up by the compositor -->
+    <App Id="SettingsLegacy" Exe="mobsettings.exe" Markup="apps\settings.uix" Title="Settings" Scale="Legacy"/>
+  </Apps>
+</Shell>

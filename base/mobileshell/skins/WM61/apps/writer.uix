@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Writer Mobile, part of ReactOS Office Mobile (office.exe). -->
+<Uix Name="Writer" Mode="Writer" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+  <Element Name="PageList" Layout="Stack" Height="*">
+    <Element Layout="Row" Height="23" Padding="3,3,3,2">
+      <Element Width="*" Command="find.focus" Background="@FieldNormal" BorderBrush="@FieldBorder" BorderThickness="1" Padding="3,0,3,0">
+        <Text Name="FindHint" Content="Find a document..." Font="@SmallItalic" Foreground="@AppSubText"/>
+        <Text Content="{FindText}"/>
+      </Element>
+      <Element Width="20" Command="find.clear" Momentary="true" Margin="2,0,0,0" SelectedBackground="@ItemSelected">
+        <Text Content="&#xE711;" Font="@StatusGlyph" TextAlign="Center" Foreground="@AppSubText"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="16" Background="@IndexBar" Padding="5,0,6,0" Font="@SmallFont" BorderBrush="@ListSeparator" BorderThickness="0,1,0,1">
+      <Text Content="{ListHeader}" Width="*" Font="@ItemBold"/>
+      <Text Content="{SortLabel}" Foreground="@AppSubText"/>
+    </Element>
+    <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+      <Repeater Name="Docs" Layout="Stack">
+        <Element Name="d{Item.Id}" Layout="Row" Height="@ListItemHeight" Padding="4,1,9,1" BorderBrush="@ListSeparator" BorderThickness="0,0,0,1"
+                 Command="open:{Item.Id}" HoldCommand="hold:{Item.Id}" Selectable="true"
+                 SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+          <Image Source="@Icon.Word" Width="18" Height="18" VAlign="Center" Margin="0,0,6,0"/>
+          <Element Layout="Stack" Width="*">
+            <Text Content="{Item.Name}" Font="@ItemBold" Height="*"/>
+            <Text Content="{Item.Detail}" Font="@SmallFont" Foreground="@AppSubText" Height="*"/>
+          </Element>
+        </Element>
+      </Repeater>
+      <Text Name="ListEmpty" Content="No documents found." TextAlign="Center" Margin="0,24,0,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+  </Element>
+  <Element Name="PageEdit" Layout="Stack" Height="*" Visible="false">
+    <Element Name="FindBar" Layout="Row" Height="20" Padding="5,0,6,0" Background="@FieldActive" BorderBrush="@FieldBorder" BorderThickness="0,0,0,1" Visible="false">
+      <Text Content="Find: " Font="@ItemBold"/>
+      <Text Content="{DocFindText}" Width="*"/>
+      <Text Content="{DocFindCount}" Font="@SmallFont" Foreground="@AppSubText"/>
+    </Element>
+    <Element Name="DocScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+      <Text Content="{DocText}" Highlight="{DocFind}" Wrap="true" Font="@DocFont" TextVAlign="Top" Padding="5,4,9,4"/>
+    </Element>
+  </Element>
+</Uix>

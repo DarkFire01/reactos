@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status panel, owned by MobileUI: opened from the title bar icons, like the 6.1 drop down. -->
+<Uix Name="Status">
+  <Element Name="StatusRoot" Visible="false">
+
+    <Element Command="status.close" Momentary="true"/>
+
+    <Element Name="StatusPanel" Layer="true" Y="@TitleHeight" Width="@StatusPanelWidth" HAlign="Right" VAlign="Top"
+             Layout="Stack" Background="@MenuBackground" BorderBrush="@MenuBorder" BorderThickness="1" Padding="1"
+             Foreground="@MenuText" Font="@MenuFont" Reveal="0,-8,0.1,0">
+
+      <!-- Connectivity -->
+      <Element Layout="Row" Height="@PopupItemHeight" Padding="4,0,6,0" Command="launch:WiFi" Momentary="true" SelectedBackground="@MenuSelected">
+        <Text Content="&#xE701;" Font="@StatusGlyph" Width="18"/>
+        <Text Content="{StatusNetwork}" Width="*"/>
+      </Element>
+      <Element Height="1" Background="@MenuSeparator" Margin="2,1,2,1"/>
+
+      <!-- Volume: level bar, buttons and mute -->
+      <Element Layout="Row" Height="@PopupItemHeight" Padding="4,0,6,0">
+        <Text Content="{VolumeGlyph}" Font="@StatusGlyph" Width="18"/>
+        <Text Content="{StatusVolume}" Width="*"/>
+      </Element>
+      <Element Layout="Row" Height="20" Padding="4,2,4,3">
+        <Element Width="20" Command="volume.down" Momentary="true" Background="@SipKey" BorderBrush="@SipKeyBorder" BorderThickness="1" Foreground="@SipText" SelectedBackground="@MenuSelected">
+          <Text Content="&#xE738;" Font="@SipGlyph" TextAlign="Center"/>
+        </Element>
+        <Element Layout="Row" Width="*" Padding="4,3,4,3">
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol1}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol2}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol3}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol4}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol5}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol6}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol7}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol8}"/>
+          <Element Width="*" Margin="0,0,1,0" Background="{Vol9}"/>
+          <Element Width="*" Background="{Vol10}"/>
+        </Element>
+        <Element Width="20" Command="volume.up" Momentary="true" Background="@SipKey" BorderBrush="@SipKeyBorder" BorderThickness="1" Foreground="@SipText" SelectedBackground="@MenuSelected">
+          <Text Content="&#xE710;" Font="@SipGlyph" TextAlign="Center"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@PopupItemHeight" Padding="22,0,6,0" Command="volume.mute" Momentary="true" SelectedBackground="@MenuSelected">
+        <Text Content="{MuteLabel}" Width="*"/>
+      </Element>
+      <Element Height="1" Background="@MenuSeparator" Margin="2,1,2,1"/>
+
+      <!-- Power -->
+      <Element Layout="Row" Height="@PopupItemHeight" Padding="4,0,6,0" Command="launch:Power" Momentary="true" SelectedBackground="@MenuSelected">
+        <Text Content="&#xE83F;" Font="@StatusGlyph" Width="18"/>
+        <Text Content="{StatusBattery}" Width="*"/>
+      </Element>
+    </Element>
+
+  </Element>
+</Uix>

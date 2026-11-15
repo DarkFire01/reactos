@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Title bar and soft key bar, owned by ShellChrome. -->
+<Uix Name="Chrome" Foreground="@TitleText" BatteryFillWidth="11">
+
+  <Element Name="TitleBar" Layer="true" VAlign="Top" Height="@TitleHeight" Background="@TitleBar" Layout="Row">
+    <!-- The title takes what is left and trims, so status icons and ok always fit -->
+    <Element Name="StartButton" Width="*" Command="start" Momentary="true" Layout="Row" SelectedBackground="@TitlePressed" Padding="3,0,4,0">
+      <Image Source="@StartFlag" Width="@FlagSize" Height="@FlagSize" VAlign="Center"/>
+      <Element Width="1" Background="@TitleDivider" Margin="5,4,6,4"/>
+      <Text Content="{Title}" Font="@TitleFont" Width="*"/>
+    </Element>
+
+    <!-- Status area: pending notifications, sync, signal, volume, battery -->
+    <Element Name="NotifyIcon" Command="notify.show" Momentary="true" SelectedBackground="@TitlePressed" Padding="3,0,3,0" Visible="false">
+      <Text Content="&#xEA8F;" Font="@StatusGlyph"/>
+    </Element>
+    <!-- Tapping any status icon opens the status panel -->
+    <Element Name="StatusIcons" Layout="Row" Command="status" Momentary="true" SelectedBackground="@TitlePressed">
+      <Text Name="NetActive" Content="&#xE895;" Font="@StatusGlyph" Margin="2,0,3,0"/>
+      <Text Name="NetOff" Content="&#xE711;" Font="@StatusGlyph" Margin="2,0,1,0" Visible="false"/>
+      <Element Layout="Row" Margin="1,7,4,7">
+        <Element Width="2" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,1,0"/>
+        <Element Width="2" Height="5" VAlign="Bottom" Background="{Bar2}" Margin="0,0,1,0"/>
+        <Element Width="2" Height="7" VAlign="Bottom" Background="{Bar3}" Margin="0,0,1,0"/>
+        <Element Width="2" Height="9" VAlign="Bottom" Background="{Bar4}" Margin="0,0,1,0"/>
+        <Element Width="2" Height="12" VAlign="Bottom" Background="{Bar5}"/>
+      </Element>
+      <Text Content="{VolumeGlyph}" Font="@StatusGlyph" Margin="2,0,3,0"/>
+      <Text Name="BatteryCharging" Content="&#xE945;" Font="@ChargeGlyph" Margin="1,0,0,0" Visible="false"/>
+      <Element Layout="Row" Margin="1,8,3,8">
+        <Element Width="15" BorderBrush="@TitleText" BorderThickness="1" Padding="1">
+          <Element Width="{BatteryLevel}" HAlign="Left" Background="{BatteryBrush}"/>
+        </Element>
+        <Element Width="2" Background="@TitleText" Margin="0,3,0,3"/>
+      </Element>
+    </Element>
+    <Text Name="Clock" Content="{Time}" Font="@ClockFont" Margin="2,0,3,0"/>
+
+    <Element Name="CloseButton" Command="close" Momentary="true" SelectedBackground="@TitlePressed" Padding="6,0,6,0" Visible="false">
+      <Text Content="{CloseLabel}" Font="@TitleFont"/>
+    </Element>
+  </Element>
+
+  <Element Name="SoftKeyBar" Layer="true" VAlign="Bottom" Height="@SoftKeyHeight" Background="@SoftKeyBar" Layout="Row" Foreground="@SoftKeyText">
+    <Element Width="*" Command="softkey.left" Momentary="true" SelectedBackground="@SoftKeyPressed">
+      <Text Content="{SoftKeyLeft}" Font="@SoftKeyFont" TextAlign="Center"/>
+    </Element>
+    <Element Width="40" Command="softkey.center" Momentary="true" SelectedBackground="@SoftKeyPressed">
+      <Text Content="&#xE765;" Font="@StatusGlyph" TextAlign="Center"/>
+    </Element>
+    <Element Width="*" Command="softkey.right" Momentary="true" SelectedBackground="@SoftKeyPressed">
+      <Text Content="{SoftKeyRight}" Font="@SoftKeyFont" TextAlign="Center"/>
+    </Element>
+  </Element>
+
+</Uix>

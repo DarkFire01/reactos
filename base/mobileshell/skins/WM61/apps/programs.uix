@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Programs folder, hosted by MarkupApp. Each icon is a launch:<AppId> command, so remap here. -->
+<Uix Name="Programs" Title="Programs" Close="ok" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+  <Element Scroll="true" Height="*" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+    <Element Layout="Wrap" Padding="0,4,0,4">
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Games" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Games" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Games" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:ActiveSync" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.PCCon" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="ActiveSync" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Calculator" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Calc" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Calculator" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Calendar" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Calendar" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Calendar" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Camera" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Camera" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Camera" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Contacts" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Contacts" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Contacts" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Files" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.FileExp" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="File Explorer" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Help" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Welcome" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Getting Started" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:InternetSharing" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.IS" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Internet Sharing" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Messenger" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Messenger" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Messenger" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Notes" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Notes" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Notes" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Office" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Office" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Office" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Pictures" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Photos" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Pictures &amp; Videos" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Search" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Search" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Search" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Settings" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Settings" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Settings" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:TaskManager" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.TaskMgr" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Task Manager" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Tasks" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Tasks" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Tasks" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:MediaPlayer" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.WMP" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Media Player" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:WirelessManager" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.WirelessMgr" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Wireless Manager" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Solitaire" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Solitaire" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Solitaire" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+      <Element Width="@SettingsCellWidth" Height="54" Layout="Stack" Command="launch:Help" Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Image Source="@Icon.Help" Width="28" Height="28" HAlign="Center" Margin="0,3,0,1"/>
+        <Text Content="Help" Font="@SmallFont" TextAlign="Center" Wrap="true"/>
+      </Element>
+    </Element>
+  </Element>
+</Uix>

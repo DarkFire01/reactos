@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- File Explorer, rendered out of process by files.exe. Folder and sort drop downs on top, like 6.1. -->
+<Uix Name="Files" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+
+  <Element Name="PageList" Layout="Stack" Height="*">
+    <Element Layout="Row" Height="22" Background="@IndexBar" BorderBrush="@ListSeparator" BorderThickness="0,0,0,1">
+      <Element Width="*" Layout="Row" Command="folder.menu" Momentary="true" Padding="5,0,4,0" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Text Content="{FolderName}" Font="@ItemBold" Width="*"/>
+        <Text Content="&#xE70D;" Font="@SipGlyph" Width="12"/>
+      </Element>
+      <Element Width="1" Background="@ListSeparator" Margin="0,3,0,3"/>
+      <Element Width="66" Layout="Row" Command="sort.menu" Momentary="true" Padding="6,0,4,0" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+        <Text Content="{SortName}" Width="*"/>
+        <Text Content="&#xE70D;" Font="@SipGlyph" Width="12"/>
+      </Element>
+    </Element>
+
+    <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+      <Repeater Name="Entries" Layout="Stack">
+        <Element Name="e{Item.Id}" Layout="Row" Height="@FileRowHeight" Padding="3,0,8,0" Command="{Item.Command}" HoldCommand="hold:{Item.Id}"
+                 Selectable="true" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText">
+          <Element Width="16" Height="16" VAlign="Center" Margin="0,0,5,0">
+            <Text Content="{Item.Glyph}" Font="@FileGlyph" Foreground="{Item.Ink}" TextAlign="Center"/>
+            <Image Source="{Item.Icon}"/>
+          </Element>
+          <Text Content="{Item.Name}" Width="*"/>
+          <Text Content="{Item.Detail}" Font="@SmallFont" Foreground="@AppSubText" Margin="6,0,0,0"/>
+        </Element>
+      </Repeater>
+      <Text Name="ListEmpty" Content="This folder is empty." TextAlign="Center" Margin="0,24,0,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+  </Element>
+
+  <Element Name="PageDetails" Layout="Stack" Height="*" Visible="false">
+    <Text Content="{DetailName}" Font="@AppHeaderFont" Foreground="@AppHeaderText" Wrap="true" Padding="6,4,6,3" BorderBrush="@AppHeaderLine" BorderThickness="0,0,0,1"/>
+    <Element Name="DetailScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@ScrollTrack" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="5">
+      <Image Name="Preview" Source="{PreviewSource}" Height="110" Margin="6,6,6,4" Visible="false"/>
+      <Repeater Name="Properties" Layout="Stack">
+        <Element Layout="Stack" Padding="7,3,9,3" BorderBrush="@ListSeparator" BorderThickness="0,0,0,1">
+          <Text Content="{Item.Label}" Font="@SmallFont" Foreground="@AppSubText"/>
+          <Text Content="{Item.Value}" Wrap="true"/>
+        </Element>
+      </Repeater>
+    </Element>
+  </Element>
+
+  <Element Name="PageRename" Layout="Stack" Height="*" Padding="6,6,6,6" Visible="false">
+    <Text Content="Name:" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Height="20" Background="@FieldActive" BorderBrush="@FieldBorder" BorderThickness="1" Padding="3,0,3,0" Margin="0,1,0,6">
+      <Text Content="{RenameText}" Highlight="{RenameSelected}"/>
+    </Element>
+    <Text Content="Tap Done or ok to rename." Font="@SmallFont" Foreground="@AppSubText" Wrap="true"/>
+  </Element>
+
+</Uix>
