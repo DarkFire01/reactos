@@ -51,7 +51,7 @@ UfsRegisterPowerComponent(
     }
 
     Status = StorPortInitializePoFxPower(Adapter, NULL, &Description.Device, &D3Cold);
-    DPRINT1("UFS: power component registration 0x%lx\n", Status);
+    DPRINT("UFS: power component registration 0x%lx\n", Status);
 }
 
 #define UFS_BAR_ADDRESS_MASK 0xFFFFFFF0
@@ -159,7 +159,7 @@ UfsAllocateCommonBuffer(
     Adapter->CommonBufferPhysical =
         StorPortGetPhysicalAddress(Adapter, NULL, Adapter->CommonBuffer, &Length);
 
-    DPRINT1("UFS: common buffer %p at physical %I64x, %lu bytes\n",
+    DPRINT("UFS: common buffer %p at physical %I64x, %lu bytes\n",
             Adapter->CommonBuffer, Adapter->CommonBufferPhysical.QuadPart, Length);
     if (Adapter->CommonBufferPhysical.QuadPart == 0)
         return FALSE;
@@ -242,7 +242,7 @@ StorUfsFindAdapter(
         ConfigInfo->Dma64BitAddresses = SCSI_DMA64_MINIPORT_FULL64BIT_SUPPORTED;
     }
 
-    DPRINT1("UFS: CAP 0x%08lx, Dma64BitAddresses 0x%02x\n",
+    DPRINT("UFS: CAP 0x%08lx, Dma64BitAddresses 0x%02x\n",
             Adapter->Capabilities, ConfigInfo->Dma64BitAddresses);
 
     if (ConfigInfo->InterruptMode == Latched)
