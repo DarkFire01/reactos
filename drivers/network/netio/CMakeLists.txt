@@ -16,6 +16,7 @@ include_directories(
 
 list(APPEND SOURCE
     netio.c
+    ipapi.c
     nmr.c
     workqueue.c
     ../tdihelpers/tdi.c
