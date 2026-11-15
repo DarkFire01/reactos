@@ -291,7 +291,7 @@ ScxEvtControllerIoDefault(
 }
 
 /**
- * @brief Reports a request and its transfers while the controller's trace budget lasts.
+ * @brief Reports a request in one line while the controller's trace budget lasts.
  */
 static
 VOID
@@ -300,33 +300,16 @@ ScxTraceRequest(
     _Inout_ PSCX_REQUEST Request,
     _In_ ULONG IoControlCode)
 {
-    PSPB_TRANSFER_LIST_ENTRY Entry;
-    ULONG Index;
-
     if (InterlockedIncrement(&Request->Controller->TracedRequests) > SCX_TRACE_LIMIT)
         return;
 
     Request->Traced = TRUE;
-    DPRINT1("SpbCx: request %p type %d IOCTL 0x%lx connection %I64x, length %Iu, %lu transfers\n",
-            Request->FxRequest,
+    DPRINT1("SpbCx: type %d IOCTL 0x%lx connection %I64x, length %Iu, %lu transfers\n",
             Request->Parameters.Type,
             IoControlCode,
             Request->Target->ConnectionId.QuadPart,
             Request->Parameters.Length,
             Request->TransferCount);
-
-    for (Index = 0; Request->TransferList && Index < Request->TransferCount; Index++)
-    {
-        Entry = &Request->TransferList->Transfers[Index];
-        DPRINT1("SpbCx:   transfer %lu %s format %d, %lu bytes, delay %lu us, MDL %p\n",
-                Index,
-                (Entry->Direction == SpbTransferDirectionFromDevice) ? "from device" : "to device",
-                Entry->Buffer.Format,
-                (Entry->Buffer.Format == SpbTransferBufferFormatMdl && Entry->Buffer.Mdl) ?
-                    MmGetMdlByteCount(Entry->Buffer.Mdl) : (ULONG)Entry->Buffer.Simple.BufferCb,
-                Entry->DelayInUs,
-                Request->TransferMdls ? Request->TransferMdls[Index] : NULL);
-    }
 }
 
 /**

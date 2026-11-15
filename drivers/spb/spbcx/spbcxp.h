@@ -29,7 +29,7 @@
 #define SCX_POOL_TAG 'xbpS'
 
 /* Requests per controller traced in full, failures are always reported */
-#define SCX_TRACE_LIMIT 64
+#define SCX_TRACE_LIMIT 16
 
 #define SCX_CLIENT_GLOBALS_SIGNATURE 'XbpS'
 
