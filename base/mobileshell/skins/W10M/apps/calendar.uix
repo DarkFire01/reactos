@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calendar app: month view with the selected day's agenda, agenda view and the event editor. -->
+<Uix Name="Calendar" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+
+  <Element Name="PageMonth" Layout="Stack" Height="*">
+    <Text Content="CALENDAR" Font="@AppHeaderFont" Padding="12,10,12,0"/>
+    <Element Layout="Row" Height="44" Padding="12,0,4,0">
+      <Text Content="{MonthTitle}" Font="@PageTitleFont" Width="*"/>
+      <Element Width="40" Command="month:-1" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE70E;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Width="40" Command="month:1" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE70D;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+
+    <Element Layout="Row" Height="24" Font="@SmallFont" Foreground="@AppSubText" Padding="1,0,2,0">
+      <Text Content="Su" TextAlign="Center" Width="*"/>
+      <Text Content="Mo" TextAlign="Center" Width="*"/>
+      <Text Content="Tu" TextAlign="Center" Width="*"/>
+      <Text Content="We" TextAlign="Center" Width="*"/>
+      <Text Content="Th" TextAlign="Center" Width="*"/>
+      <Text Content="Fr" TextAlign="Center" Width="*"/>
+      <Text Content="Sa" TextAlign="Center" Width="*"/>
+    </Element>
+
+    <Repeater Name="Days" Layout="Wrap" Padding="1,0,2,0">
+      <Element Width="@DayCellWidth" Height="@DayCellHeight" Layout="Stack" Command="day:{Item.Date}"
+               Background="{Item.Fill}" BorderBrush="@DayGrid" BorderThickness="0,1,0,0">
+        <Text Content="{Item.Day}" Foreground="{Item.Ink}" Padding="6,4,0,0" Height="*"/>
+        <Element Height="4" Margin="6,0,30,5" Background="{Item.Mark}"/>
+      </Element>
+    </Repeater>
+
+    <Text Content="{DayTitle}" Font="@ItemBold" Padding="12,10,12,4" BorderBrush="@DayGrid" BorderThickness="0,1,0,0"/>
+    <Element Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="DayItems" Layout="Stack">
+        <Element Layout="Row" Height="44" Padding="12,0,12,0" Command="appt:{Item.Id}" HoldCommand="apptmenu:{Item.Id}"
+                 Selectable="true" SelectedBackground="@ListPressed">
+          <Element Width="4" Background="@Accent" Margin="0,6,10,6"/>
+          <Text Content="{Item.Time}" Foreground="@AppSubText" Width="64"/>
+          <Text Content="{Item.Subject}" Width="*"/>
+        </Element>
+      </Repeater>
+      <Text Name="DayEmpty" Content="No events" Foreground="@AppSubText" Padding="12,4,12,4" Visible="false"/>
+    </Element>
+  </Element>
+
+  <Element Name="PageAgenda" Layout="Stack" Height="*" Visible="false">
+    <Text Content="CALENDAR" Font="@AppHeaderFont" Padding="12,10,12,0"/>
+    <Text Content="agenda" Font="@PageTitleFont" Padding="12,2,12,8"/>
+    <Element Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="AgendaItems" Layout="Stack">
+        <Element Layout="Stack" Command="appt:{Item.Id}" HoldCommand="apptmenu:{Item.Id}" Selectable="true"
+                 SelectedBackground="@ListPressed">
+          <Text Content="{Item.Header}" Collapse="true" Font="@ItemBold" Foreground="@AccentText" Padding="12,10,12,2"/>
+          <Element Layout="Row" Height="40" Padding="12,0,12,0">
+            <Element Width="4" Background="@Accent" Margin="0,6,10,6"/>
+            <Text Content="{Item.Time}" Foreground="@AppSubText" Width="64"/>
+            <Text Content="{Item.Subject}" Width="*"/>
+          </Element>
+        </Element>
+      </Repeater>
+      <Text Name="AgendaEmpty" Content="No upcoming events" Foreground="@AppSubText" Padding="12,6,12,6" Visible="false"/>
+    </Element>
+  </Element>
+
+  <Element Name="PageEdit" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
+    <Text Content="CALENDAR" Font="@AppHeaderFont" Padding="0,10,0,0"/>
+    <Text Content="new event" Font="@PageTitleFont" Margin="0,2,0,12"/>
+    <Text Content="Event name" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Height="36" Command="edit.subject" Background="@FieldActive" BorderBrush="@FieldBorder" BorderThickness="2" Padding="8,0,8,0" Margin="0,4,0,12">
+      <Text Content="{EditSubject}"/>
+    </Element>
+    <Text Content="Date" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Layout="Row" Height="40" Margin="0,4,0,12" Background="@ButtonFace">
+      <Element Width="40" Command="edit.day:-1" Momentary="true" SelectedBackground="@ItemSelected">
+        <Text Content="&#xE76B;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Text Content="{EditDate}" TextAlign="Center" Width="*"/>
+      <Element Width="40" Command="edit.day:1" Momentary="true" SelectedBackground="@ItemSelected">
+        <Text Content="&#xE76C;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+    <Text Content="Start time" Font="@SmallFont" Foreground="@AppSubText"/>
+    <Element Layout="Row" Height="40" Margin="0,4,0,12" Background="@ButtonFace">
+      <Element Width="40" Command="edit.time:-30" Momentary="true" SelectedBackground="@ItemSelected">
+        <Text Content="&#xE738;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Text Content="{EditTime}" TextAlign="Center" Width="*"/>
+      <Element Width="40" Command="edit.time:30" Momentary="true" SelectedBackground="@ItemSelected">
+        <Text Content="&#xE710;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+  </Element>
+
+</Uix>

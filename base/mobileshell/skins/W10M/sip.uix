@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Touch keyboard, owned by MobileUI. Sits on top of the app bar; Back hides it. Generated once, edit freely. -->
+<Uix Name="Sip">
+  <Element Name="SipRoot" Visible="false">
+    <Element Name="SipPanel" Layer="true" VAlign="Bottom" Margin="0,0,0,@ChromeBottom" Layout="Stack" Padding="2,4,2,4"
+             Background="@SipBackground" Foreground="@SipText" Font="@SipFont" Reveal="0,40,0.16">
+      <Element Name="SipLetters" Layout="Stack">
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="0,0,0,0">
+          <Element Width="*" Margin="2" Command="sip.char:q" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.q}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:w" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.w}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:e" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.e}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:r" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.r}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:t" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.t}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:y" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.y}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:u" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.u}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:i" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.i}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:o" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.o}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:p" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.p}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="18,0,18,0">
+          <Element Width="*" Margin="2" Command="sip.char:a" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.a}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:s" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.s}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:d" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.d}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:f" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.f}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:g" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.g}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:h" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.h}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:j" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.j}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:k" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.k}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:l" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.l}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="0,0,0,0">
+          <Element Width="1.5*" Margin="2" Command="sip.shift" Background="{ShiftFill}" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE752;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:z" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.z}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:x" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.x}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:c" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.c}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:v" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.v}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:b" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.b}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:n" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.n}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:m" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.m}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="1.5*" Margin="2" Command="sip.back" Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE750;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+        </Element>
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="0,0,0,0">
+          <Element Width="1.5*" Margin="2" Command="sip.123" Background="{SymbolsFill}" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&amp;123" TextAlign="Center" TextVAlign="Center" Font="@SipSmall"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:," Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K.,}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="5*" Margin="2" Command="sip.space" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:." Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="{K..}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="1.5*" Margin="2" Command="sip.enter" Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE751;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+        </Element>
+      </Element>
+      <Element Name="SipSymbols" Layout="Stack" Visible="false">
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="0,0,0,0">
+          <Element Width="*" Margin="2" Command="sip.char:1" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="1" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:2" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="2" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:3" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="3" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:4" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="4" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:5" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="5" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:6" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="6" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:7" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="7" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:8" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="8" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:9" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="9" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:0" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="0" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="0,0,0,0">
+          <Element Width="*" Margin="2" Command="sip.char:@" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="@" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:#" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="#" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:$" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="$" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:%" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="%" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:&amp;" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&amp;" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:*" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="*" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:-" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="-" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:+" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="+" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:(" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="(" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:)" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content=")" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="0,0,0,0">
+          <Element Width="1.5*" Margin="2" Command="sip.caps" Background="{CapsFill}" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE84A;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:!" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="!" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:&quot;" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&quot;" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:'" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="'" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char::" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content=":" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:;" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content=";" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:/" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="/" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.char:?" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="?" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="1.5*" Margin="2" Command="sip.back" Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE750;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+        </Element>
+        <Element Layout="Row" Height="@SipKeyHeight" Padding="0,0,0,0">
+          <Element Width="1.5*" Margin="2" Command="sip.123" Background="{SymbolsFill}" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="abc" TextAlign="Center" TextVAlign="Center" Font="@SipSmall"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.left" Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE76B;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+          <Element Width="5*" Margin="2" Command="sip.space" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Width="*" Margin="2" Command="sip.right" Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE76C;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+          <Element Width="1.5*" Margin="2" Command="sip.enter" Background="@SipFunctionKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
+            <Text Content="&#xE751;" TextAlign="Center" TextVAlign="Center" Font="@SipGlyph"/>
+          </Element>
+        </Element>
+      </Element>
+    </Element>
+  </Element>
+</Uix>

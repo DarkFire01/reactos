@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Toast banner, owned by MobileUI. Slides down over the status bar; tap to keep it for later, X to dismiss. -->
+<Uix Name="Notify" SoftKeyLeft="@NotifyDismiss" SoftKeyRight="@NotifyHide">
+  <Element Name="NotifyRoot" Visible="false">
+    <Element Name="NotifyBanner" Layer="true" VAlign="Top" Layout="Row" Background="@NotifyBackground"
+             BorderBrush="@Accent" BorderThickness="0,0,0,2" Foreground="@NotifyText" Font="@SmallFont"
+             Reveal="0,-60,0.2,0">
+
+      <Element Width="*" Layout="Row" Padding="12,10,0,10" Command="notify.hide" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="32" Height="32" VAlign="Top" Background="@Accent" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xEA8F;" Font="@AppBarGlyph" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Element Layout="Stack" Width="*">
+          <Text Content="{NotifyTitle}" Font="@ToastTitle"/>
+          <Text Content="{NotifyBody}" Wrap="true"/>
+        </Element>
+      </Element>
+
+      <Element Width="48" Command="notify.dismiss" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE711;" Font="@StatusGlyph" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+  </Element>
+</Uix>

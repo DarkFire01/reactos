@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark background, crimson accent -->
+<Theme Name="Crimson" Base="dark.xml">
+  <Color Name="Accent" Value="#A20025"/>
+  <Color Name="AccentText" Value="#A20025"/>
+  <Color Name="TileFill" Value="#A20025"/>
+  <Color Name="TilePressed" Value="#7A001C"/>
+  <Color Name="ItemSelected" Value="#A20025"/>
+  <Color Name="CellSelected" Value="#A20025"/>
+  <Color Name="DaySelected" Value="#A20025"/>
+  <Color Name="DayMark" Value="#A20025"/>
+  <Color Name="DayToday" Value="#33A20025"/>
+  <Color Name="SipKeyActive" Value="#A20025"/>
+  <Color Name="SipKeyPressed" Value="#A20025"/>
+  <Color Name="CalcKeyPressed" Value="#A20025"/>
+  <Color Name="CalcEquals" Value="#A20025"/>
+  <Color Name="SlideAccent" Value="#A20025"/>
+  <Color Name="VolumeOn" Value="#A20025"/>
+  <Color Name="ActionOn" Value="#A20025"/>
+  <Color Name="ToggleOn" Value="#A20025"/>
+</Theme>

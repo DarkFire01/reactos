@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark background, emerald accent -->
+<Theme Name="Emerald" Base="dark.xml">
+  <Color Name="Accent" Value="#008A00"/>
+  <Color Name="AccentText" Value="#008A00"/>
+  <Color Name="TileFill" Value="#008A00"/>
+  <Color Name="TilePressed" Value="#006400"/>
+  <Color Name="ItemSelected" Value="#008A00"/>
+  <Color Name="CellSelected" Value="#008A00"/>
+  <Color Name="DaySelected" Value="#008A00"/>
+  <Color Name="DayMark" Value="#008A00"/>
+  <Color Name="DayToday" Value="#33008A00"/>
+  <Color Name="SipKeyActive" Value="#008A00"/>
+  <Color Name="SipKeyPressed" Value="#008A00"/>
+  <Color Name="CalcKeyPressed" Value="#008A00"/>
+  <Color Name="CalcEquals" Value="#008A00"/>
+  <Color Name="SlideAccent" Value="#008A00"/>
+  <Color Name="VolumeOn" Value="#008A00"/>
+  <Color Name="ActionOn" Value="#008A00"/>
+  <Color Name="ToggleOn" Value="#008A00"/>
+</Theme>

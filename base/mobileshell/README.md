@@ -81,6 +81,13 @@ UIXRender, CoreMessaging). The host stands where DWM stood and drives the engine
 
 ## Skins and themes
 
+Two skins ship: `skins\WM61` (Windows Mobile 6.1, 240x320) and `skins\W10M` (Windows 10
+Mobile, 360x640, Dark, Light, Emerald and Crimson themes). Set `Skin=` in `shell.xml` to pick
+one. W10M has Start tiles, the All apps list (swipe left or All apps), the action center from
+the status bar, toasts, and soft keys in an app bar above the Back / Start / Search bar; Back
+does what ok and X did. It looks for Segoe UI and Segoe MDL2 Assets, which ReactOS does not
+ship: text falls back to Source Sans Pro, glyphs need the font installed.
+
 `shell.xml` picks the skin; `skins\<name>\skin.xml` sets the logical canvas and lists themes.
 Themes are XML with `Color`, `Brush` (solid, gradient, image), `Font`, `Metric`, `Image`,
 `ImageSet` and `String`, and can inherit with `Base=`. Markup refers to them with `@Name`,
@@ -102,7 +109,7 @@ A skin provides these files. Anything not listed is free form.
 | `hold.uix` (optional) | element `HoldRoot`; bindings `HoldX`, `HoldY` |
 | `status.uix` (optional) | element `StatusRoot`; bindings `StatusNetwork`, `StatusVolume`, `StatusBattery`, `MuteLabel`, `VolumeGlyph`, `Vol1..Vol10` |
 | `chrome.uix` status | root `BatteryFillWidth`; bindings `BatteryLevel`, `BatteryBrush`, `Bar1..Bar5`, `VolumeGlyph`; elements `BatteryCharging`, `NetActive`, `NetOff`; command `status` |
-| `chrome.uix` extra | element `NotifyIcon` (shown while notifications are pending) |
+| `chrome.uix` extra | element `NotifyIcon` (shown while notifications are pending), `AppBar` (shown only while an app is active) |
 | theme strings | `CloseOk`, `CloseX`, `NotInstalled`, `NotifyDismiss`, `NotifyHide` |
 
 Shell commands usable from any markup: `start`, `start.dismiss`, `home`, `launch:<AppId>`,
@@ -118,6 +125,10 @@ Elements: `Element`, `Text`, `Image`, `Repeater`. Layouts: `Overlay` (default), 
 `Selectable`, `Momentary`, `SelectedBackground`, `SelectedForeground`. Inherited:
 `Foreground`, `Font`, `TextAlign`. Text: `Content`, `Wrap`, `TextVAlign`, `Collapse`, `Highlight` (bolds and underlines matches).
 Image: `Source`, `Stretch`.
+
+* `SwipeLeft` / `SwipeRight`: commands run when a mostly sideways drag of `@SwipeDistance`
+  (default 40) starts on the element. A swipe cancels the tap like a scroll drag does.
+* Theme fonts can list fallbacks, `Family="Segoe UI, Source Sans Pro"`; the first installed one wins.
 
 * `Scroll="true"`: a vertical viewport. Drag past `@DragSlop` scrolls instead of tapping,
   the wheel scrolls `ScrollStep`, `ScrollThumbBrush` / `ScrollBarBrush` / `ScrollBarWidth`
