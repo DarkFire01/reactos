@@ -72,6 +72,9 @@ static PUCHAR HalpGicrSgi[MAXIMUM_PROCESSORS];
 static ULONG HalpGicLineCount;
 static KSPIN_LOCK HalpGicLock;
 
+/* What each processor's CPU interface looked like once set up, and what it took */
+HALP_GIC_CPU_STATE HalpGicCpuState[MAXIMUM_PROCESSORS];
+
 /* Nothing touches the CPU interface before the version is known */
 static BOOLEAN HalpGicReady;
 
@@ -307,6 +310,16 @@ HalpGicInitializeCpu(
 
     /* The software interrupts are always live, the priority mask holds them */
     HalpGicWrite(Sgi, GICR_ISENABLER0, (1 << APC_LEVEL) | (1 << DISPATCH_LEVEL) | (1 << IPI_LEVEL));
+
+    /* Firmware with the security extensions may keep some of this from the non-secure side */
+    HalpGicCpuState[ProcessorNumber].Waker = HalpGicRead(Control, GICR_WAKER);
+    HalpGicCpuState[ProcessorNumber].Group = HalpGicRead(Sgi, GICR_IGROUPR0);
+    HalpGicCpuState[ProcessorNumber].Enable = HalpGicRead(Sgi, GICR_ISENABLER0);
+    HalpGicCpuState[ProcessorNumber].IpiPriority = READ_REGISTER_UCHAR(Sgi + GICR_IPRIORITYR + IPI_LEVEL);
+    HalpGicCpuState[ProcessorNumber].Sre = (ULONG)KeArm64ReadRegister(ARM64_ICC_SRE_EL1);
+    HalpGicCpuState[ProcessorNumber].Ctlr = (ULONG)KeArm64ReadRegister(ARM64_ICC_CTLR_EL1);
+    HalpGicCpuState[ProcessorNumber].GroupEnable = (ULONG)KeArm64ReadRegister(ARM64_ICC_IGRPEN1_EL1);
+    HalpGicCpuState[ProcessorNumber].DistributorControl = HalpGicRead(HalpGicd, GICD_CTLR);
 }
 
 BOOLEAN
@@ -509,7 +522,12 @@ HalpGicAcknowledge(VOID)
         return Iar & GICC_IAR_INTID;
     }
 
-    return (ULONG)KeArm64ReadRegister(ARM64_ICC_IAR1_EL1) & 0xFFFFFF;
+    Iar = (ULONG)KeArm64ReadRegister(ARM64_ICC_IAR1_EL1) & 0xFFFFFF;
+    if (Iar < GIC_SPURIOUS_INTID)
+        HalpGicCpuState[KeGetCurrentProcessorNumber()].Acknowledged++;
+    else
+        HalpGicCpuState[KeGetCurrentProcessorNumber()].Spurious++;
+    return Iar;
 }
 
 VOID

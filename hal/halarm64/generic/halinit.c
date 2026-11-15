@@ -145,6 +145,14 @@ VOID
 NTAPI
 HalProcessorIdle(VOID)
 {
+    /* A processor that misses SGIs would sleep through work handed to it, so it polls */
+    if (HalpGicCpuState[KeGetCurrentProcessorNumber()].NoSgi)
+    {
+        _enable();
+        YieldProcessor();
+        return;
+    }
+
     /* The kernel calls this with interrupts off, wfi wakes on a pending one */
     HalpWaitForInterrupt();
     _enable();
