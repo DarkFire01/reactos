@@ -139,10 +139,6 @@ typedef struct _QCTOUCH_DEVICE
     WDFWAITLOCK RmiLock;
     BOOLEAN Ready;
 
-    /* qcpep applies the D0 rail votes only on a D3 to D0 change */
-    WDFWORKITEM HoldPowerWork;
-    BOOLEAN HoldingPower;
-
     /* RMI4 state */
     UCHAR Page;
     RMI_FUNCTION F01;

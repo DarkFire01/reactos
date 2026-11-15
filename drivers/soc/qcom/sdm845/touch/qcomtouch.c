@@ -118,38 +118,12 @@ QcTouchEvtPrepareHardware(
             return Status;
     }
 
-    /* The sensor rail is a PEP vote tied to D-state changes, which needs a PoFx registration */
+    /* The sensor rail is a PEP vote tied to D-states, which needs a PoFx registration */
     Status = PoFxEnableDStateReporting(WdfDeviceWdmGetPhysicalDevice(WdfDevice));
     if (!NT_SUCCESS(Status))
         DPRINT1("D-state reporting not enabled, 0x%08lx\n", Status);
 
     return STATUS_SUCCESS;
-}
-
-/**
- * @brief Keeps the device in D0 from here on.
- *
- * @remarks Until the sensor answers, the device is left to idle once, so the
- * D3 to D0 change makes the PEP apply the rail votes.
- */
-static
-VOID
-NTAPI
-QcTouchEvtHoldPower(
-    _In_ WDFWORKITEM WorkItem)
-{
-    WDFDEVICE WdfDevice = (WDFDEVICE)WdfWorkItemGetParentObject(WorkItem);
-    PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
-    NTSTATUS Status;
-
-    if (Device->HoldingPower)
-        return;
-
-    Status = WdfDeviceStopIdle(WdfDevice, FALSE);
-    if (NT_SUCCESS(Status))
-        Device->HoldingPower = TRUE;
-    else
-        DPRINT1("WdfDeviceStopIdle failed, 0x%08lx\n", Status);
 }
 
 static
@@ -162,13 +136,6 @@ QcTouchEvtReleaseHardware(
     PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
 
     UNREFERENCED_PARAMETER(ResourcesTranslated);
-
-    WdfWorkItemFlush(Device->HoldPowerWork);
-    if (Device->HoldingPower)
-    {
-        WdfDeviceResumeIdle(WdfDevice);
-        Device->HoldingPower = FALSE;
-    }
 
     if (Device->Enable)
     {
@@ -207,8 +174,6 @@ QcTouchEvtD0Entry(
     PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
     NTSTATUS Status;
 
-    UNREFERENCED_PARAMETER(PreviousState);
-
     if (Device->Enable)
     {
         Status = QcTouchGpioWrite(Device->Enable, TRUE);
@@ -239,20 +204,7 @@ QcTouchEvtD0Entry(
     Device->Ready = NT_SUCCESS(Status);
     WdfWaitLockRelease(Device->RmiLock);
 
-    if (Device->Ready)
-    {
-        WdfWorkItemEnqueue(Device->HoldPowerWork);
-        return STATUS_SUCCESS;
-    }
-
-    /* Unpowered on the first start, the idle trip to D3 and back gets the rail voted */
-    if (!Device->HoldingPower)
-    {
-        DPRINT1("RMI4 bring-up failed, 0x%08lx, retrying after an idle power cycle\n", Status);
-        return STATUS_SUCCESS;
-    }
-
-    DPRINT1("RMI4 bring-up failed, 0x%08lx\n", Status);
+    DPRINT1("D0 entry from D%d: RMI4 bring-up 0x%08lx\n", PreviousState - WdfPowerDeviceD0, Status);
     return Status;
 }
 
@@ -307,6 +259,8 @@ QcTouchEvtD0Exit(
 {
     PQCTOUCH_DEVICE Device = QcTouchGetDevice(WdfDevice);
 
+    DPRINT1("D0 exit to D%d, sensor %s\n", TargetState - WdfPowerDeviceD0, Device->Ready ? "ready" : "not ready");
+
     WdfWaitLockAcquire(Device->RmiLock, NULL);
 
     if (Device->Ready)
@@ -316,11 +270,6 @@ QcTouchEvtD0Exit(
     QcTouchReleaseAll(Device);
 
     WdfWaitLockRelease(Device->RmiLock);
-
-    /* An idle drop to D3: ask for D0 again, the PEP now powers the rails on the way up */
-    if (TargetState == WdfPowerDeviceD3 && !Device->HoldingPower)
-        WdfWorkItemEnqueue(Device->HoldPowerWork);
-
     return STATUS_SUCCESS;
 }
 
@@ -378,15 +327,9 @@ QcTouchEvtDeviceAdd(
     WDFDEVICE WdfDevice;
     NTSTATUS Status;
 
-    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS IdleSettings;
-    WDF_WORKITEM_CONFIG WorkItemConfig;
-
     UNREFERENCED_PARAMETER(Driver);
 
     WdfFdoInitSetFilter(DeviceInit);
-
-    /* mshidkmdf passes power through, so the idle policy is ours */
-    WdfDeviceInitSetPowerPolicyOwnership(DeviceInit, TRUE);
 
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&PnpPower);
     PnpPower.EvtDevicePrepareHardware = QcTouchEvtPrepareHardware;
@@ -411,20 +354,6 @@ QcTouchEvtDeviceAdd(
         return Status;
 
     Status = WdfSpinLockCreate(&Attributes, &Device->ReportLock);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    WDF_WORKITEM_CONFIG_INIT(&WorkItemConfig, QcTouchEvtHoldPower);
-    Status = WdfWorkItemCreate(&WorkItemConfig, &Attributes, &Device->HoldPowerWork);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    /* Driver managed, so KMDF leaves the PoFx registration to PoFxEnableDStateReporting */
-    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS_INIT(&IdleSettings, IdleCannotWakeFromS0);
-    IdleSettings.IdleTimeout = 100;
-    IdleSettings.IdleTimeoutType = DriverManagedIdleTimeout;
-    IdleSettings.UserControlOfIdleSettings = IdleDoNotAllowUserControl;
-    Status = WdfDeviceAssignS0IdleSettings(WdfDevice, &IdleSettings);
     if (!NT_SUCCESS(Status))
         return Status;
 
