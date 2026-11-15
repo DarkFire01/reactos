@@ -969,6 +969,11 @@ ExpCheckPoolAllocation(
 
 VOID
 NTAPI
+ExpDisplayPoolPage(
+    _In_ PVOID Address);
+
+VOID
+NTAPI
 ExReturnPoolQuota(
     IN PVOID P);
 

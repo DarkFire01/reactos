@@ -371,6 +371,44 @@ ExpCheckPoolAllocation(
     }
 }
 
+/**
+ * @brief Lists the pool headers of the page holding Address on the boot screen, for BAD_POOL_HEADER.
+ */
+VOID
+NTAPI
+ExpDisplayPoolPage(
+    _In_ PVOID Address)
+{
+    PPOOL_HEADER Entry = PAGE_ALIGN(Address);
+    CHAR Line[96];
+    ULONG Size = 0;
+    ULONG Count = 0;
+
+    if (!MmIsAddressValid(Entry))
+        return;
+
+    InbvDisplayString("Pool page (offset size prev type tag):\r\n");
+    while (Size < (PAGE_SIZE / POOL_BLOCK_SIZE) && Count < 48)
+    {
+        RtlStringCbPrintfA(Line,
+                           sizeof(Line),
+                           " %03lx %3u %3u %2u %.4s%s",
+                           (ULONG)((ULONG_PTR)Entry & (PAGE_SIZE - 1)),
+                           Entry->BlockSize,
+                           Entry->PreviousSize,
+                           Entry->PoolType,
+                           (PCHAR)&Entry->PoolTag,
+                           (++Count % 4) ? " " : "\r\n");
+        InbvDisplayString(Line);
+
+        if (!Entry->BlockSize)
+            break;
+        Size += Entry->BlockSize;
+        Entry = POOL_NEXT_BLOCK(Entry);
+    }
+    InbvDisplayString("\r\n\r\n");
+}
+
 VOID
 NTAPI
 ExpCheckPoolBlocks(IN PVOID Block)
