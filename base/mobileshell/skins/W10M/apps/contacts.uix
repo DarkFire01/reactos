@@ -15,15 +15,15 @@
     </Element>
 
     <Element Layout="Row" Height="32" Padding="8,0,8,0" Font="@Caption" Foreground="@AccentText">
-      <Element Width="*" Command="jump:#ab" Momentary="true" SelectedBackground="@ListPressed"><Text Content="#ab" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:cde" Momentary="true" SelectedBackground="@ListPressed"><Text Content="cde" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:fgh" Momentary="true" SelectedBackground="@ListPressed"><Text Content="fgh" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:ijk" Momentary="true" SelectedBackground="@ListPressed"><Text Content="ijk" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:lmn" Momentary="true" SelectedBackground="@ListPressed"><Text Content="lmn" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:opq" Momentary="true" SelectedBackground="@ListPressed"><Text Content="opq" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:rst" Momentary="true" SelectedBackground="@ListPressed"><Text Content="rst" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:uvw" Momentary="true" SelectedBackground="@ListPressed"><Text Content="uvw" TextAlign="Center"/></Element>
-      <Element Width="*" Command="jump:xyz" Momentary="true" SelectedBackground="@ListPressed"><Text Content="xyz" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:#ab" Momentary="true" SelectedBackground="@ListPressed"><Text Content="#AB" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:cde" Momentary="true" SelectedBackground="@ListPressed"><Text Content="CDE" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:fgh" Momentary="true" SelectedBackground="@ListPressed"><Text Content="FGH" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:ijk" Momentary="true" SelectedBackground="@ListPressed"><Text Content="IJK" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:lmn" Momentary="true" SelectedBackground="@ListPressed"><Text Content="LMN" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:opq" Momentary="true" SelectedBackground="@ListPressed"><Text Content="OPQ" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:rst" Momentary="true" SelectedBackground="@ListPressed"><Text Content="RST" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:uvw" Momentary="true" SelectedBackground="@ListPressed"><Text Content="UVW" TextAlign="Center"/></Element>
+      <Element Width="*" Command="jump:xyz" Momentary="true" SelectedBackground="@ListPressed"><Text Content="XYZ" TextAlign="Center"/></Element>
     </Element>
 
     <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack"

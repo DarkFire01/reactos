@@ -13,7 +13,7 @@
         </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="a" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="A" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:ClockSettings" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -24,7 +24,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="c" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="C" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Calculator" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -47,7 +47,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="f" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="F" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Files" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -58,7 +58,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="g" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="G" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Help" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -69,7 +69,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="i" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="I" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Browser" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -80,7 +80,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="m" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="M" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Messaging" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -97,7 +97,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="n" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="N" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Notes" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -108,7 +108,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="o" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="O" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Office" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -119,7 +119,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="p" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="P" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Contacts" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -148,7 +148,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="s" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="S" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Settings" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
@@ -177,7 +177,7 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
-          <Text Content="w" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+          <Text Content="W" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Writer" Selectable="true" Momentary="true" SelectedBackground="@ListPress">

@@ -5,9 +5,9 @@
   <Element Name="Tabs" Layout="Stack">
     <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
     <Element Layout="Row" Height="@TabHeight" Padding="12,0,0,0">
-      <Element Command="tab:Personal" Margin="0,0,18,0"><Text Content="personal" Font="@Pivot" Foreground="{TabPersonal}"/></Element>
-      <Element Command="tab:System" Margin="0,0,18,0"><Text Content="system" Font="@Pivot" Foreground="{TabSystem}"/></Element>
-      <Element Command="tab:Connections"><Text Content="connections" Font="@Pivot" Foreground="{TabConnections}"/></Element>
+      <Element Command="tab:Personal" Margin="0,0,18,0"><Text Content="Personal" Font="@Pivot" Foreground="{TabPersonal}"/></Element>
+      <Element Command="tab:System" Margin="0,0,18,0"><Text Content="System" Font="@Pivot" Foreground="{TabSystem}"/></Element>
+      <Element Command="tab:Connections"><Text Content="Connections" Font="@Pivot" Foreground="{TabConnections}"/></Element>
     </Element>
   </Element>
 
@@ -286,9 +286,9 @@
   <Element Name="PageAbout" Layout="Stack" Height="*" Visible="false">
     <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
     <Element Layout="Row" Height="@TabHeight" Padding="12,0,0,0">
-      <Element Command="about:Version" Margin="0,0,18,0"><Text Content="version" Font="@Pivot" Foreground="{AboutTabVersion}"/></Element>
-      <Element Command="about:Device" Margin="0,0,18,0"><Text Content="device" Font="@Pivot" Foreground="{AboutTabDevice}"/></Element>
-      <Element Command="about:Copyrights"><Text Content="legal" Font="@Pivot" Foreground="{AboutTabCopyrights}"/></Element>
+      <Element Command="about:Version" Margin="0,0,18,0"><Text Content="Version" Font="@Pivot" Foreground="{AboutTabVersion}"/></Element>
+      <Element Command="about:Device" Margin="0,0,18,0"><Text Content="Device" Font="@Pivot" Foreground="{AboutTabDevice}"/></Element>
+      <Element Command="about:Copyrights"><Text Content="Legal" Font="@Pivot" Foreground="{AboutTabCopyrights}"/></Element>
     </Element>
     <Element Name="AboutBrand" Layout="Stack" Padding="12,8,12,8">
       <Text Content="{AboutProduct}" Font="@Subtitle"/>

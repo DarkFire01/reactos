@@ -71,11 +71,11 @@
   <ImageSet Prefix="Icon." Directory="..\assets\icons" Scale="2"/>
 
   <String Name="StartLabel" Value="Start"/>
-  <String Name="CloseOk" Value="done"/>
-  <String Name="CloseX" Value="close"/>
+  <String Name="CloseOk" Value="Done"/>
+  <String Name="CloseX" Value="Close"/>
   <String Name="NotInstalled" Value="This app isn't installed yet."/>
-  <String Name="NotifyDismiss" Value="dismiss"/>
-  <String Name="NotifyHide" Value="later"/>
+  <String Name="NotifyDismiss" Value="Dismiss"/>
+  <String Name="NotifyHide" Value="Later"/>
   <String Name="OwnerPrompt" Value="Tap to add your name"/>
 
   <!-- Colors that do not follow the theme -->

@@ -3,7 +3,7 @@
 <Uix Name="Help" Title="Getting Started" Close="ok" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
   <Element Scroll="true" Height="*" Layout="Stack" Padding="12,12,12,12" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
     <Text Content="GETTING STARTED" Font="@BaseFont"/>
-    <Text Content="welcome" Font="@TitleText" Margin="0,2,0,12"/>
+    <Text Content="Welcome" Font="@TitleText" Margin="0,2,0,12"/>
 
     <Text Content="Start" Font="@BaseFont" Foreground="@AccentText"/>
     <Text Wrap="true" Margin="0,0,0,12" Content="Your tiles live on Start. Tap one to open its app. Swipe left or tap All apps at the bottom to see every app."/>
