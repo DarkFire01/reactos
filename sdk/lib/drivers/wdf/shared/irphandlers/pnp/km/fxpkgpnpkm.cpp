@@ -963,7 +963,11 @@ Return Value:
 
     Lock(&irql);
 
-    ASSERT(m_SleepStudy->WnfContext != NULL);
+    /* A failed WNF subscription leaves nothing to stop */
+    if (m_SleepStudy->WnfContext == NULL) {
+        Unlock(irql);
+        return;
+    }
 
     wnfContext = m_SleepStudy->WnfContext;
     m_SleepStudy->WnfContext = NULL;
