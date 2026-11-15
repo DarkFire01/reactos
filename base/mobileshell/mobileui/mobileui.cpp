@@ -67,6 +67,12 @@ typedef struct _MOBILE_APP
     WCHAR SoftKeys[2][APP_TEXT_MAX];
     SHELL_CLOSE_KIND CloseKind;
     BOOL Shown;
+
+    /* Where the compositor last put the visual, so the switcher animates from there */
+    UixPtr<IDCompositionScaleTransform> Zoom;
+    FLOAT ShownX;
+    FLOAT ShownY;
+    FLOAT ShownZoom;
 } MOBILE_APP, *PMOBILE_APP;
 
 typedef struct _MOBILE_APP_POST
@@ -143,7 +149,8 @@ private:
         PointerNotify,
         PointerSip,
         PointerHome,
-        PointerApp
+        PointerApp,
+        PointerSwitcher
     } POINTER_TARGET;
 
     /* Overlay band order, bottom first */
@@ -324,6 +331,42 @@ private:
     PresentApp(
         _In_ PMOBILE_APP App);
 
+    /* Task switcher */
+    VOID
+    MoveVisual(
+        _In_ PMOBILE_APP App,
+        _In_ FLOAT X,
+        _In_ FLOAT Y,
+        _In_ FLOAT Zoom,
+        _In_ FLOAT Seconds);
+
+    VOID
+    FillSwitcher(VOID);
+
+    VOID
+    PlaceCards(
+        _In_ BOOL Animate);
+
+    VOID
+    ShowSwitcher(
+        _In_ BOOL Open);
+
+    VOID
+    PickSwitcher(
+        _In_ ULONG AppId);
+
+    VOID
+    TouchRecent(
+        _In_ ULONG AppId);
+
+    VOID
+    ForgetRecent(
+        _In_ ULONG AppId);
+
+    BOOL
+    SwitcherCommand(
+        _In_z_ PCWSTR Command);
+
     IShellHost *m_Host;
     MSG_ENDPOINT m_Endpoint;
     MSG_ENDPOINT m_ChromeEndpoint;
@@ -337,6 +380,12 @@ private:
     UixPtr<IUixScene> m_Popup;
     UixPtr<IUixScene> m_Hold;
     UixPtr<IUixScene> m_StatusPanel;
+    UixPtr<IUixScene> m_Switcher;
+    UixPtr<IDCompositionVisual> m_SwitcherLayer;
+    BOOL m_SwitcherOpen = FALSE;
+    SIZE_T m_SwitcherIndex = 0;
+    FLOAT m_SwitcherSeconds = 0.3f;
+    std::vector<ULONG> m_Recent;
     BOOL m_StatusOpen = FALSE;
     BOOL m_PopupOpen = FALSE;
     ULONG m_PopupApp = 0;
@@ -388,6 +437,12 @@ CMobileUI::Initialize(
         Status = Content->AddVisual(m_HomeLayer.Get(), FALSE, NULL);
     if (SUCCEEDED(Status))
         Status = Content->AddVisual(m_AppLayer.Get(), TRUE, m_HomeLayer.Get());
+
+    /* The switcher backdrop goes between home and the apps, so app visuals can be its cards */
+    if (SUCCEEDED(Status))
+        Status = Device->CreateVisual(m_SwitcherLayer.Put());
+    if (SUCCEEDED(Status))
+        Status = Content->AddVisual(m_SwitcherLayer.Get(), TRUE, m_HomeLayer.Get());
     if (FAILED(Status))
         return Status;
 
@@ -501,6 +556,18 @@ CMobileUI::Reload(VOID)
     LoadOverlay(L"popup.uix", OverlayPopup, m_Popup);
     LoadOverlay(L"status.uix", OverlayStatus, m_StatusPanel);
     LoadOverlay(L"hold.uix", OverlayHold, m_Hold);
+
+    m_Switcher.Reset();
+    if (m_Host->GetSkinFile(L"switcher.uix", Path, ARRAYSIZE(Path)) &&
+        SUCCEEDED(m_Host->GetEngine()->CreateScene(Path, m_Switcher.Put())) &&
+        FAILED(m_Switcher->Attach(m_SwitcherLayer.Get())))
+    {
+        m_Switcher.Reset();
+    }
+    if (m_Switcher)
+        m_Switcher->SetVisible(L"SwitcherRoot", m_SwitcherOpen);
+    else
+        m_SwitcherOpen = FALSE;
     m_PopupOpen = FALSE;
     if (m_Sip)
     {
@@ -541,7 +608,7 @@ CMobileUI::Layout(VOID)
         if (!m_Home->GetElementRect(L"AppHost", &m_AppRect))
             m_AppRect = { 0.0f, 0.0f, Width, Height };
     }
-    for (IUixScene *Scene : { m_Menu.Get(), m_Sip.Get(), m_Notify.Get(), m_Popup.Get(), m_Hold.Get(), m_StatusPanel.Get() })
+    for (IUixScene *Scene : { m_Menu.Get(), m_Sip.Get(), m_Notify.Get(), m_Popup.Get(), m_Hold.Get(), m_StatusPanel.Get(), m_Switcher.Get() })
     {
         if (Scene)
             Scene->Layout(Width, Height);
@@ -549,6 +616,12 @@ CMobileUI::Layout(VOID)
 
     for (PMOBILE_APP App : m_Apps)
         ActivateApp(App);
+
+    if (m_SwitcherOpen)
+    {
+        FillSwitcher();
+        PlaceCards(FALSE);
+    }
 
     m_Host->RequestFrame();
 }
@@ -614,7 +687,7 @@ CMobileUI::UpdateChrome(VOID)
 
     SendChrome(ShellMsgSetNotify, static_cast<ULONG>(m_Notes.size()), NULL, NULL);
 
-    if (m_Active)
+    if (m_Active && !m_SwitcherOpen)
     {
         Left = m_Active->SoftKeys[0];
         Right = m_Active->SoftKeys[1];
@@ -663,6 +736,7 @@ VOID
 CMobileUI::GoHome(VOID)
 {
     ShowMenu(FALSE);
+    ShowSwitcher(FALSE);
     if (m_Active)
     {
         m_Active->Shown = FALSE;
@@ -803,7 +877,10 @@ CMobileUI::Command(
     FLOAT Y;
     WCHAR Text[16];
 
-    if (_wcsnicmp(Command, L"popup.pick:", 11) == 0)
+    if (SwitcherCommand(Command))
+    {
+    }
+    else if (_wcsnicmp(Command, L"popup.pick:", 11) == 0)
     {
         ClosePopup(_wtoi(Command + 11));
     }
@@ -926,7 +1003,15 @@ CMobileUI::Command(
     }
     else if (_wcsicmp(Command, L"close") == 0 || _wcsicmp(Command, L"back") == 0)
     {
-        if (m_PopupOpen)
+        if (m_SwitcherOpen)
+        {
+            /* Back leaves the switcher for the app it was opened over */
+            if (m_Active)
+                PickSwitcher(m_Active->Id);
+            else
+                GoHome();
+        }
+        else if (m_PopupOpen)
             ClosePopup(-1);
         else if (m_StatusOpen)
             ShowStatus(FALSE);
@@ -995,6 +1080,10 @@ CMobileUI::PointerEvent(
         {
             Target = PointerStatus;
         }
+        else if (m_SwitcherOpen && m_Switcher)
+        {
+            Target = PointerSwitcher;
+        }
         else if (m_NoteShown && m_Notify && m_Notify->PointerEvent(Kind, X, Y, &Command))
         {
             Target = PointerNotify;
@@ -1061,6 +1150,10 @@ CMobileUI::PointerEvent(
             if (m_Active)
                 WriteApp(m_Active, &Message);
             Handled = TRUE;
+            break;
+
+        case PointerSwitcher:
+            Handled = m_Switcher->PointerEvent(Kind, X, Y, &Command);
             break;
 
         case PointerHome:
@@ -1876,6 +1969,9 @@ CMobileUI::PlaceApp(
 
     App->Visual->SetClip(static_cast<IDCompositionClip *>(NULL));
     App->Visual->SetOffsetX(X);
+    App->ShownX = X;
+    App->ShownY = Y;
+    App->ShownZoom = App->Def.Legacy ? Scale : 1.0f;
 
     /* Legacy apps render at base resolution and the compositor scales them */
     if (App->Def.Legacy)
@@ -1909,6 +2005,8 @@ VOID
 CMobileUI::ShowApp(
     _In_ PMOBILE_APP App)
 {
+    ShowSwitcher(FALSE);
+    TouchRecent(App->Id);
     if (m_Active && m_Active != App)
     {
         m_Active->Shown = FALSE;
@@ -1960,6 +2058,7 @@ CMobileUI::CloseApp(
 
     if (App->Visual)
         m_AppLayer->RemoveVisual(App->Visual.Get());
+    ForgetRecent(App->Id);
 
     if (m_PopupOpen && m_PopupApp == App->Id)
     {
@@ -1984,6 +2083,300 @@ CMobileUI::CloseApp(
 
     delete App;
     m_Host->RequestFrame();
+}
+
+/*
+ * Task switcher. The running apps' own visuals are scaled and moved into the card slots the
+ * skin lays out, so the compositor animates the real app content in and out of the cards.
+ */
+VOID
+CMobileUI::MoveVisual(
+    _In_ PMOBILE_APP App,
+    _In_ FLOAT X,
+    _In_ FLOAT Y,
+    _In_ FLOAT Zoom,
+    _In_ FLOAT Seconds)
+{
+    UixPtr<IDCompositionDevice> Device;
+    UixPtr<IDCompositionAnimation> Animation;
+    const FLOAT From[3] = { App->ShownX, App->ShownY, App->ShownZoom };
+    const FLOAT To[3] = { X, Y, Zoom };
+
+    if (!App->Visual || FAILED(m_Host->GetEngine()->GetCompositionDevice(Device.Put())))
+        return;
+    if (!App->Zoom && FAILED(Device->CreateScaleTransform(App->Zoom.Put())))
+        return;
+
+    App->Visual->SetTransform(App->Zoom.Get());
+    App->Visual->SetBitmapInterpolationMode(UIX_BITMAP_INTERPOLATION_LINEAR);
+    for (ULONG Index = 0; Index < 3; Index++)
+    {
+        FLOAT Distance = To[Index] - From[Index];
+
+        Animation.Reset();
+        if (Seconds > 0.0f && Distance != 0.0f && SUCCEEDED(Device->CreateAnimation(Animation.Put())))
+        {
+            /* Ease out: fast start, settles on the target */
+            Animation->AddCubic(0.0, From[Index], 2.0f * Distance / Seconds, -Distance / (Seconds * Seconds), 0.0f);
+            Animation->End(Seconds, To[Index]);
+        }
+
+        if (Index == 0)
+        {
+            if (Animation)
+                App->Visual->SetOffsetX(Animation.Get());
+            else
+                App->Visual->SetOffsetX(To[0]);
+        }
+        else if (Index == 1)
+        {
+            if (Animation)
+                App->Visual->SetOffsetY(Animation.Get());
+            else
+                App->Visual->SetOffsetY(To[1]);
+        }
+        else if (Animation)
+        {
+            App->Zoom->SetScaleX(Animation.Get());
+            App->Zoom->SetScaleY(Animation.Get());
+        }
+        else
+        {
+            App->Zoom->SetScaleX(To[2]);
+            App->Zoom->SetScaleY(To[2]);
+        }
+    }
+
+    App->ShownX = X;
+    App->ShownY = Y;
+    App->ShownZoom = Zoom;
+}
+
+VOID
+CMobileUI::FillSwitcher(VOID)
+{
+    static PCWSTR const Fields[] = { L"Id", L"Title" };
+    std::vector<std::wstring> Storage;
+    std::vector<PCWSTR> Values;
+    PCWSTR Spec = m_Switcher->GetAttribute(NULL, L"CardScale");
+    FLOAT CardScale = Spec ? static_cast<FLOAT>(_wtof(Spec)) : 0.5f;
+    FLOAT Width;
+    FLOAT Height;
+    UIX_RECT Card;
+    WCHAR Text[32];
+
+    for (ULONG Id : m_Recent)
+    {
+        PMOBILE_APP App = FindApp(Id);
+
+        Storage.push_back(std::to_wstring(Id));
+        Storage.push_back(App ? App->Title : L"");
+    }
+    for (const std::wstring &Value : Storage)
+        Values.push_back(Value.c_str());
+    m_Switcher->SetItems(L"SwitcherItems", static_cast<ULONG>(m_Recent.size()), ARRAYSIZE(Fields), Fields, Values.data());
+    m_Switcher->SetVisible(L"SwitcherEmpty", m_Recent.empty());
+
+    StringCchPrintfW(Text, ARRAYSIZE(Text), L"%.2f", (m_AppRect.Right - m_AppRect.Left) * CardScale);
+    m_Switcher->SetBinding(L"CardWidth", Text);
+    StringCchPrintfW(Text, ARRAYSIZE(Text), L"%.2f", (m_AppRect.Bottom - m_AppRect.Top) * CardScale);
+    m_Switcher->SetBinding(L"CardHeight", Text);
+
+    /* Lay the strip out at zero, then shift it so the selected card sits in the middle */
+    m_Host->GetCanvas(&Width, &Height);
+    m_Switcher->SetBinding(L"SwitcherX", L"0");
+    m_Switcher->Layout(Width, Height);
+    if (m_SwitcherIndex < m_Recent.size())
+    {
+        StringCchPrintfW(Text, ARRAYSIZE(Text), L"card%lu", m_Recent[m_SwitcherIndex]);
+        if (m_Switcher->GetElementRect(Text, &Card))
+        {
+            StringCchPrintfW(Text, ARRAYSIZE(Text), L"%.2f", Width / 2.0f - (Card.Left + Card.Right) / 2.0f);
+            m_Switcher->SetBinding(L"SwitcherX", Text);
+            m_Switcher->Layout(Width, Height);
+        }
+    }
+}
+
+VOID
+CMobileUI::PlaceCards(
+    _In_ BOOL Animate)
+{
+    FLOAT Scale = m_Host->GetEngine()->GetScale();
+    FLOAT AppWidth = m_AppRect.Right - m_AppRect.Left;
+    UIX_RECT Card;
+    WCHAR Name[32];
+
+    for (ULONG Id : m_Recent)
+    {
+        PMOBILE_APP App = FindApp(Id);
+        FLOAT Zoom;
+        FLOAT X;
+        FLOAT Y;
+
+        StringCchPrintfW(Name, ARRAYSIZE(Name), L"card%lu", Id);
+        if (!App || !App->Visual || AppWidth <= 0.0f || !m_Switcher->GetElementRect(Name, &Card))
+            continue;
+
+        /* Apps that were not on screen start in their card; the shown one zooms out of the screen */
+        Zoom = (Card.Right - Card.Left) / AppWidth * (App->Def.Legacy ? Scale : 1.0f);
+        X = static_cast<FLOAT>(lroundf(Card.Left * Scale));
+        Y = static_cast<FLOAT>(lroundf(Card.Top * Scale));
+        if (!App->Shown)
+        {
+            App->ShownX = X;
+            App->ShownY = Y;
+            App->ShownZoom = Zoom;
+        }
+        App->Shown = TRUE;
+        App->Visual->SetClip(static_cast<IDCompositionClip *>(NULL));
+        MoveVisual(App, X, Y, Zoom, Animate ? m_SwitcherSeconds : 0.0f);
+    }
+    m_Host->RequestFrame();
+}
+
+VOID
+CMobileUI::ShowSwitcher(
+    _In_ BOOL Open)
+{
+    PCWSTR Spec;
+
+    if (!m_Switcher || m_SwitcherOpen == Open)
+        return;
+
+    if (Open)
+    {
+        ShowMenu(FALSE);
+        ShowSip(FALSE);
+        ShowStatus(FALSE);
+        if (m_PopupOpen)
+            ClosePopup(-1);
+
+        Spec = m_Switcher->GetAttribute(NULL, L"ZoomSeconds");
+        m_SwitcherSeconds = Spec ? static_cast<FLOAT>(_wtof(Spec)) : 0.3f;
+        m_SwitcherIndex = 0;
+        m_SwitcherOpen = TRUE;
+        m_Switcher->SetVisible(L"SwitcherRoot", TRUE);
+        FillSwitcher();
+        PlaceCards(TRUE);
+    }
+    else
+    {
+        m_SwitcherOpen = FALSE;
+        m_Switcher->SetVisible(L"SwitcherRoot", FALSE);
+        for (PMOBILE_APP App : m_Apps)
+        {
+            if (App != m_Active)
+            {
+                App->Shown = FALSE;
+                PlaceApp(App, FALSE);
+            }
+        }
+    }
+    UpdateChrome();
+    m_Host->RequestFrame();
+}
+
+/* The picked card zooms back to full screen and becomes the active app */
+VOID
+CMobileUI::PickSwitcher(
+    _In_ ULONG AppId)
+{
+    FLOAT Scale = m_Host->GetEngine()->GetScale();
+    PMOBILE_APP App = FindApp(AppId);
+
+    if (!App)
+        return;
+
+    m_Active = App;
+    ShowSwitcher(FALSE);
+    App->Shown = TRUE;
+    MoveVisual(App, static_cast<FLOAT>(lroundf(m_AppRect.Left * Scale)), static_cast<FLOAT>(lroundf(m_AppRect.Top * Scale)),
+               App->Def.Legacy ? Scale : 1.0f, m_SwitcherSeconds);
+    TouchRecent(App->Id);
+    UpdateChrome();
+    m_Host->RequestFrame();
+}
+
+VOID
+CMobileUI::TouchRecent(
+    _In_ ULONG AppId)
+{
+    ForgetRecent(AppId);
+    m_Recent.insert(m_Recent.begin(), AppId);
+}
+
+VOID
+CMobileUI::ForgetRecent(
+    _In_ ULONG AppId)
+{
+    for (SIZE_T Index = 0; Index < m_Recent.size(); Index++)
+    {
+        if (m_Recent[Index] == AppId)
+        {
+            m_Recent.erase(m_Recent.begin() + Index);
+            break;
+        }
+    }
+}
+
+BOOL
+CMobileUI::SwitcherCommand(
+    _In_z_ PCWSTR Command)
+{
+    PMOBILE_APP App;
+
+    if (_wcsicmp(Command, L"switcher") == 0)
+    {
+        if (m_SwitcherOpen && m_SwitcherIndex < m_Recent.size())
+            PickSwitcher(m_Recent[m_SwitcherIndex]);
+        else
+            ShowSwitcher(TRUE);
+    }
+    else if (!m_SwitcherOpen)
+    {
+        return FALSE;
+    }
+    else if (_wcsicmp(Command, L"switcher.next") == 0)
+    {
+        if (m_SwitcherIndex + 1 < m_Recent.size())
+            m_SwitcherIndex++;
+        FillSwitcher();
+        PlaceCards(TRUE);
+    }
+    else if (_wcsicmp(Command, L"switcher.prev") == 0)
+    {
+        if (m_SwitcherIndex > 0)
+            m_SwitcherIndex--;
+        FillSwitcher();
+        PlaceCards(TRUE);
+    }
+    else if (_wcsnicmp(Command, L"switcher.pick:", 14) == 0)
+    {
+        PickSwitcher(wcstoul(Command + 14, NULL, 10));
+    }
+    else if (_wcsnicmp(Command, L"switcher.close:", 15) == 0)
+    {
+        App = FindApp(wcstoul(Command + 15, NULL, 10));
+        if (App)
+            CloseApp(App);
+        if (m_SwitcherIndex >= m_Recent.size() && m_SwitcherIndex > 0)
+            m_SwitcherIndex--;
+
+        /* Closing the last app ends up on Start, like W10M */
+        if (m_Recent.empty())
+        {
+            GoHome();
+            return TRUE;
+        }
+        FillSwitcher();
+        PlaceCards(TRUE);
+    }
+    else
+    {
+        return FALSE;
+    }
+    return TRUE;
 }
 
 VOID
