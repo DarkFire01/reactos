@@ -160,6 +160,9 @@ FsRecReadBlock(IN PDEVICE_OBJECT DeviceObject,
     KEVENT Event;
     PIRP Irp;
     NTSTATUS Status;
+    LARGE_INTEGER AlignedOffset;
+    ULONG Skip, ReadLength;
+    PVOID ReadBuffer;
     PAGED_CODE();
 
     /* Assume failure */
@@ -177,6 +180,15 @@ FsRecReadBlock(IN PDEVICE_OBJECT DeviceObject,
         Length = ROUND_UP(Length, SectorSize);
     }
 
+    /*
+     * Structures sit at fixed byte offsets, such as 1 KB for ext, which are not
+     * sector aligned on disks with 4 KB sectors. The aligned span is read and
+     * the caller gets the bytes from the offset it asked for.
+     */
+    Skip = (ULONG)(Offset->QuadPart % SectorSize);
+    AlignedOffset.QuadPart = Offset->QuadPart - Skip;
+    ReadLength = ROUND_UP(Skip + Length, SectorSize);
+
     /* Check if the caller gave us a buffer */
     if (!*Buffer)
     {
@@ -187,16 +199,27 @@ FsRecReadBlock(IN PDEVICE_OBJECT DeviceObject,
         if (!*Buffer) return FALSE;
     }
 
+    ReadBuffer = *Buffer;
+    if (Skip)
+    {
+        ReadBuffer = ExAllocatePoolWithTag(NonPagedPool, ROUND_TO_PAGES(ReadLength), FSREC_TAG);
+        if (!ReadBuffer) return FALSE;
+    }
+
     /* Build the IRP */
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ,
                                        DeviceObject,
-                                       *Buffer,
-                                       Length,
-                                       Offset,
+                                       ReadBuffer,
+                                       ReadLength,
+                                       &AlignedOffset,
                                        &Event,
                                        &IoStatusBlock);
-    if (!Irp) return FALSE;
+    if (!Irp)
+    {
+        if (Skip) ExFreePoolWithTag(ReadBuffer, FSREC_TAG);
+        return FALSE;
+    }
 
     /* Override verification */
     IoGetNextIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
@@ -212,6 +235,13 @@ FsRecReadBlock(IN PDEVICE_OBJECT DeviceObject,
                               FALSE,
                               NULL);
         Status = IoStatusBlock.Status;
+    }
+
+    if (Skip)
+    {
+        if (NT_SUCCESS(Status))
+            RtlCopyMemory(*Buffer, (PUCHAR)ReadBuffer + Skip, Length);
+        ExFreePoolWithTag(ReadBuffer, FSREC_TAG);
     }
 
     /* Check if we couldn't get the data */
