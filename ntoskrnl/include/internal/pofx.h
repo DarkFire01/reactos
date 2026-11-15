@@ -140,6 +140,7 @@ typedef struct _POP_FX_DEVICE
     BOOLEAN PoweredOnPending;
     BOOLEAN PowerNotRequiredPending;
     BOOLEAN IdleTimerArmed;
+    BOOLEAN DStateOnly;
     ULONGLONG IdleTimeout;
     KTIMER IdleTimer;
     KDPC IdleDpc;
@@ -194,6 +195,11 @@ PPOP_FX_DEVICE
 NTAPI
 PopFxFindDevice(
     _In_ PDEVICE_OBJECT DeviceObject);
+
+VOID
+NTAPI
+PopFxReleaseDStateReporting(
+    _In_ PDEVICE_OBJECT Pdo);
 
 VOID
 NTAPI
