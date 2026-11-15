@@ -520,6 +520,7 @@ private:
     BOOL m_Dragging;
     PUIX_ELEMENT m_Swiper;
     BOOL m_Swiping;
+    BOOL m_SwipeVertical;
     FLOAT m_DownX;
     FLOAT m_DownY;
     FLOAT m_LastY;
