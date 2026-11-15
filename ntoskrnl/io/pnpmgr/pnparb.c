@@ -915,7 +915,7 @@ IopTranslateAssignmentToDevice(
 
         if (Level->Entry.AlternativeCount == 0 || Level->Assignment.Type == CmResourceTypeMaximum)
         {
-            DPRINT1("Requirement level %s without assignment: %lu alternatives, alternative type %u, result %u, translator %p\n",
+            DPRINT("Requirement level %s without assignment: %lu alternatives, alternative type %u, result %u, translator %p\n",
                     Level == Requirement->Top ? "top" : "below top",
                     Level->Entry.AlternativeCount,
                     Level->Entry.AlternativeCount ? Level->Entry.Alternatives[0].Type : 0,
@@ -3329,12 +3329,12 @@ IopTryConfiguration(
             CONTAINING_RECORD(ListEntry, PI_RESOURCE_ARBITER_ENTRY, ActiveArbiterList);
         PLIST_ENTRY Tested;
 
-        DPRINT1("Testing type %u for %wZ%s\n",
+        DPRINT("Testing type %u for %wZ%s\n",
                 Arbiter->ResourceType, &DeviceNode->InstancePath, UseBootRanges ? " with boot ranges" : "");
         Status = IopArbiterInvoke(Arbiter->ArbiterInterface,
                                   ArbiterActionTestAllocation,
                                   &Arbiter->ResourceList);
-        DPRINT1("Type %u -> 0x%lx\n", Arbiter->ResourceType, Status);
+        DPRINT("Type %u -> 0x%lx\n", Arbiter->ResourceType, Status);
         if (NT_SUCCESS(Status))
             continue;
 
@@ -4556,12 +4556,12 @@ IopAssignResourcesToSubtree(
 
     for (Index = 0; Index < Count; Index++)
     {
-        DPRINT1("Assigning %wZ, requirements 0x%lx\n",
+        DPRINT("Assigning %wZ, requirements 0x%lx\n",
                 &Requests[Index].DeviceNode->InstancePath, Requests[Index].Status);
     }
 
     IopAllocateRequests(Requests, Count);
-    DPRINT1("Assignment of %lu device(s) done\n", Count);
+    DPRINT("Assignment of %lu device(s) done\n", Count);
 
     for (Index = 0; Index < Count; Index++)
     {
