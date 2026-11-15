@@ -10,6 +10,8 @@
 #define NDEBUG
 #include <debug.h>
 
+static ULONG UfsDma32BitOnly;
+
 #define UFS_BAR_ADDRESS_MASK 0xFFFFFFF0
 
 VOID
@@ -189,7 +191,8 @@ StorUfsFindAdapter(
     ConfigInfo->NumberOfPhysicalBreaks = UFS_PRDT_ENTRIES;
 
     if ((ConfigInfo->Dma64BitAddresses & SCSI_DMA64_SYSTEM_SUPPORTED) &&
-        (Adapter->Capabilities & UFS_CAP_64AS))
+        (Adapter->Capabilities & UFS_CAP_64AS) &&
+        !UfsDma32BitOnly)
     {
         ConfigInfo->Dma64BitAddresses = SCSI_DMA64_MINIPORT_FULL64BIT_SUPPORTED;
     }
@@ -402,6 +405,33 @@ StorUfsUnitControl(
     }
 }
 
+/* A platform whose interconnect cannot reach memory past 4GB for this controller sets Dma32BitOnly */
+static
+VOID
+UfsReadParameters(
+    _In_ PUNICODE_STRING RegistryPath)
+{
+    RTL_QUERY_REGISTRY_TABLE Table[2];
+    UNICODE_STRING KeyPath;
+
+    KeyPath.Length = 0;
+    KeyPath.MaximumLength = RegistryPath->Length + sizeof(L"\\Parameters");
+    KeyPath.Buffer = ExAllocatePoolWithTag(PagedPool, KeyPath.MaximumLength, 'sfuS');
+    if (KeyPath.Buffer == NULL)
+        return;
+
+    RtlCopyUnicodeString(&KeyPath, RegistryPath);
+    RtlAppendUnicodeToString(&KeyPath, L"\\Parameters");
+
+    RtlZeroMemory(Table, sizeof(Table));
+    Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT;
+    Table[0].Name = L"Dma32BitOnly";
+    Table[0].EntryContext = &UfsDma32BitOnly;
+
+    RtlQueryRegistryValues(RTL_REGISTRY_ABSOLUTE, KeyPath.Buffer, Table, NULL, NULL);
+    ExFreePoolWithTag(KeyPath.Buffer, 'sfuS');
+}
+
 NTSTATUS
 NTAPI
 DriverEntry(
@@ -413,6 +443,8 @@ DriverEntry(
     NTSTATUS AcpiStatus;
 
     DPRINT1("StorUfs DriverEntry(%p)\n", DriverObject);
+
+    UfsReadParameters(RegistryPath);
 
     RtlZeroMemory(&InitData, sizeof(InitData));
 
