@@ -189,6 +189,58 @@ UfsDeviceInit(
     return FALSE;
 }
 
+/**
+ * @brief Bring-up probe: a polled INQUIRY into the slot's own descriptor, with
+ * interrupts still off, so a data transfer is tried without the interrupt path.
+ */
+static
+VOID
+UfsProbeInquiry(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter)
+{
+    PUFS_COMMAND_UPIU Command;
+    PUFS_PRDT_ENTRY Prdt;
+    STOR_PHYSICAL_ADDRESS Data;
+    PUCHAR Ucd;
+    LONG Slot;
+    NTSTATUS Status;
+
+    Slot = UfsAllocSlot(Adapter);
+    if (Slot < 0)
+        return;
+
+    Ucd = UfsSlotUcd(Adapter, Slot);
+    RtlZeroMemory(Ucd, UFS_UCD_SIZE);
+
+    Command = (PUFS_COMMAND_UPIU)Ucd;
+    Command->TransactionType = UFS_UPIU_COMMAND;
+    Command->Flags = UFS_UPIU_FLAG_READ;
+    Command->TaskTag = (UCHAR)Slot;
+    Command->ExpectedDataLength = RtlUlongByteSwap(36);
+    Command->Cdb[0] = 0x12;
+    Command->Cdb[4] = 36;
+
+    /* The data lands in the unused tail of the same descriptor */
+    Data = UfsSlotUcdPhysical(Adapter, Slot);
+    Data.QuadPart += 0x200;
+    Prdt = (PUFS_PRDT_ENTRY)(Ucd + UFS_UCD_PRDT_OFFSET);
+    Prdt->BaseLower = Data.LowPart;
+    Prdt->BaseUpper = Data.HighPart;
+    Prdt->ByteCount = 36 - 1;
+
+    DPRINT1("UFS: probe INQUIRY, polled, data at %lx%08lx\n", Data.HighPart, Data.LowPart);
+    UfsBuildUtrd(Adapter, Slot, UFS_UTRD_DD_READ, 1);
+    Status = UfsRunSlotSynchronous(Adapter, Slot);
+
+    DPRINT1("UFS: probe INQUIRY 0x%lx, SCSI 0x%02x, '%.8s' '%.16s'\n",
+            Status,
+            Ucd[UFS_UCD_RESP_OFFSET + 7],
+            (PCHAR)Ucd + 0x200 + 8,
+            (PCHAR)Ucd + 0x200 + 16);
+
+    UfsFreeSlot(Adapter, Slot);
+}
+
 BOOLEAN
 UfsStartAdapter(
     _In_ PUFS_ADAPTER_EXTENSION Adapter)
@@ -222,6 +274,8 @@ UfsStartAdapter(
     DPRINT1("UFS: NOP IN received, setting fDeviceInit\n");
     if (!UfsDeviceInit(Adapter))
         return FALSE;
+
+    UfsProbeInquiry(Adapter);
 
     /* Clear any latched status, then arm the interrupts the ISR services. */
     UfsWrite(Adapter, UFS_REG_IS, 0xFFFFFFFF);
