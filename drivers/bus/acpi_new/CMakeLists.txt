@@ -43,6 +43,7 @@ list(APPEND SOURCE
      drivers/processor.c
      drivers/thermal.c
      sys/driver.c
+     sys/depend.c
      sys/enum.c
      sys/fdo.c
      sys/filter.c

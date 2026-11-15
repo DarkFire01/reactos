@@ -356,6 +356,7 @@ UacpiNtPdoPnp(
         case IRP_MN_START_DEVICE:
             Pdo->Started = TRUE;
             UacpiNtDriversStartDevice(Pdo);
+            UacpiNtReleaseDependents(Pdo->Parent);
 
             /* Connection() descriptors reparse through the resource hub */
             UacpiNtRegisterBiosNameForPdo(Pdo);

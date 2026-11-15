@@ -342,6 +342,7 @@ UacpiNtGetOrCreatePdo(
 
     /* Before any driver on this device builds a DMA adapter */
     UacpiNtPdoReadCacheCoherency(Pdo);
+    UacpiNtPdoReadDependencies(Pdo);
 
     DeviceObject->Flags |= DO_BUFFERED_IO | DO_POWER_PAGABLE;
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
@@ -459,6 +460,7 @@ UacpiNtMergeChildRelations(
         Pdo = CONTAINING_RECORD(Entry, UACPINT_PDO, Link);
         if (UacpiNtPdoBelongsTo(Pdo, Parent, SecondParent))
             Added++;
+
     }
 
     Size = FIELD_OFFSET(DEVICE_RELATIONS, Objects) +
@@ -483,6 +485,14 @@ UacpiNtMergeChildRelations(
         Pdo = CONTAINING_RECORD(Entry, UACPINT_PDO, Link);
         if (!UacpiNtPdoBelongsTo(Pdo, Parent, SecondParent))
             continue;
+
+        /* Once reported a device stays, dropping it would read as a removal */
+        if (!Pdo->Reported && !UacpiNtPdoDependenciesMet(Fdo, Pdo))
+        {
+            Pdo->HeldBack = TRUE;
+            continue;
+        }
+        Pdo->HeldBack = FALSE;
 
         for (Index = 0; Index < ExistingCount; Index++)
         {
