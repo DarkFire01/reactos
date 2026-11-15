@@ -759,7 +759,7 @@ UacpiNtEvaluate(
         /* qcpep loads its device data through PEP0, show what it reads */
         if (strstr(TraceName, "PEP"))
         {
-            DPRINT1("EVAL %s on %s, ioctl 0x%lx, %lu bytes, thread %p\n",
+            DPRINT("EVAL %s on %s, ioctl 0x%lx, %lu bytes, thread %p\n",
                     Path,
                     TraceName,
                     IoStack->Parameters.DeviceIoControl.IoControlCode,
