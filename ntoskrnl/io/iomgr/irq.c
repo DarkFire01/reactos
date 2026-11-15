@@ -229,6 +229,30 @@ typedef struct _IOP_MESSAGE_INTERRUPTS
     (FIELD_OFFSET(IOP_MESSAGE_INTERRUPTS, Table.MessageInfo) + \
      (Count) * sizeof(IO_INTERRUPT_MESSAGE_INFO_ENTRY))
 
+/*
+ * A passive level interrupt. The line is connected at its DIRQL to a stub that
+ * masks it and wakes a worker thread, which calls the driver's routine at
+ * PASSIVE_LEVEL and unmasks the line again. The driver gets Interrupt, which
+ * is never connected itself. Controllers reached over a serial bus, like a
+ * PMIC behind SPMI, need this: their registers cannot be touched at DIRQL.
+ */
+typedef struct _IOP_PASSIVE_INTERRUPT
+{
+    KINTERRUPT Interrupt;
+    LIST_ENTRY Link;
+    PKSERVICE_ROUTINE ServiceRoutine;
+    PVOID ServiceContext;
+    IOP_VECTOR_CONNECTION Line;
+    BOOLEAN Masked;
+    KDPC Dpc;
+    KEVENT Pending;
+    volatile BOOLEAN Stopping;
+    PKTHREAD Thread;
+} IOP_PASSIVE_INTERRUPT, *PIOP_PASSIVE_INTERRUPT;
+
+static LIST_ENTRY IopPassiveInterrupts = { &IopPassiveInterrupts, &IopPassiveInterrupts };
+static KSPIN_LOCK IopPassiveInterruptLock;
+
 /**
  * @brief
  * Reads the INTERRUPT_CONNECTION_DATA property of a device.
@@ -366,6 +390,204 @@ IopIsSecondaryVector(
     return HalIsInterruptTypeSecondary(VectorData->Type, VectorData->ControllerInput.Gsiv);
 }
 
+/* Runs at the line's DIRQL: keep a level line from firing again until the driver ran */
+static
+BOOLEAN
+NTAPI
+IopPassiveInterruptStub(
+    _In_ PKINTERRUPT Interrupt,
+    _In_ PVOID ServiceContext)
+{
+    PIOP_PASSIVE_INTERRUPT Passive = ServiceContext;
+    PINTERRUPT_VECTOR_DATA VectorData = &Passive->Line.Vector.Vectors[0];
+
+    UNREFERENCED_PARAMETER(Interrupt);
+
+    /* A secondary line is masked at its controller by the one that dispatches it */
+    if (!Passive->Masked && !IopIsSecondaryVector(VectorData))
+    {
+        HalDisableSystemInterrupt(VectorData->Vector, VectorData->Irql);
+        Passive->Masked = TRUE;
+    }
+
+    KeInsertQueueDpc(&Passive->Dpc, NULL, NULL);
+    return TRUE;
+}
+
+static
+VOID
+NTAPI
+IopPassiveInterruptDpc(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2)
+{
+    PIOP_PASSIVE_INTERRUPT Passive = DeferredContext;
+
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    KeSetEvent(&Passive->Pending, IO_NO_INCREMENT, FALSE);
+}
+
+static
+VOID
+NTAPI
+IopPassiveInterruptWorker(
+    _In_ PVOID Context)
+{
+    PIOP_PASSIVE_INTERRUPT Passive = Context;
+    PINTERRUPT_VECTOR_DATA VectorData = &Passive->Line.Vector.Vectors[0];
+
+    /* Interrupt work goes ahead of ordinary threads */
+    KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY + 1);
+
+    for (;;)
+    {
+        KeWaitForSingleObject(&Passive->Pending, Executive, KernelMode, FALSE, NULL);
+        if (Passive->Stopping)
+            break;
+
+        Passive->ServiceRoutine(&Passive->Interrupt, Passive->ServiceContext);
+        ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+
+        if (Passive->Masked)
+        {
+            Passive->Masked = FALSE;
+            HalEnableSystemInterrupt(VectorData->Vector, VectorData->Irql, VectorData->Mode);
+        }
+    }
+
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+/* The passive connection the driver's interrupt object belongs to, if it is one */
+static
+PIOP_PASSIVE_INTERRUPT
+NTAPI
+IopFindPassiveInterrupt(
+    _In_ PKINTERRUPT InterruptObject)
+{
+    PIOP_PASSIVE_INTERRUPT Found = NULL;
+    PLIST_ENTRY Entry;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&IopPassiveInterruptLock, &OldIrql);
+    for (Entry = IopPassiveInterrupts.Flink; Entry != &IopPassiveInterrupts; Entry = Entry->Flink)
+    {
+        if (&CONTAINING_RECORD(Entry, IOP_PASSIVE_INTERRUPT, Link)->Interrupt == InterruptObject)
+        {
+            Found = CONTAINING_RECORD(Entry, IOP_PASSIVE_INTERRUPT, Link);
+            break;
+        }
+    }
+    KeReleaseSpinLock(&IopPassiveInterruptLock, OldIrql);
+
+    return Found;
+}
+
+static
+VOID
+NTAPI
+IopDisconnectPassiveInterrupt(
+    _In_ PIOP_PASSIVE_INTERRUPT Passive);
+
+static
+NTSTATUS
+NTAPI
+IopConnectVector(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData,
+    _In_ PKSERVICE_ROUTINE ServiceRoutine,
+    _In_opt_ PVOID ServiceContext,
+    _In_opt_ PKSPIN_LOCK SpinLock,
+    _In_ KIRQL SynchronizeIrql,
+    _In_ BOOLEAN ShareVector,
+    _In_ BOOLEAN FloatingSave,
+    _Out_ PIOP_VECTOR_CONNECTION Connection);
+
+/**
+ * @brief Connects one line for a driver that handles it at PASSIVE_LEVEL.
+ */
+static
+NTSTATUS
+NTAPI
+IopConnectPassiveVector(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData,
+    _In_ PKSERVICE_ROUTINE ServiceRoutine,
+    _In_opt_ PVOID ServiceContext,
+    _In_ BOOLEAN ShareVector,
+    _Out_ PIOP_VECTOR_CONNECTION Connection)
+{
+    PIOP_PASSIVE_INTERRUPT Passive;
+    HANDLE ThreadHandle;
+    KIRQL OldIrql;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    if (VectorData->Irql <= DISPATCH_LEVEL)
+        return STATUS_NOT_SUPPORTED;
+
+    Passive = ExAllocatePoolZero(NonPagedPool, sizeof(*Passive), TAG_IO_INTERRUPT);
+    if (!Passive)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Passive->ServiceRoutine = ServiceRoutine;
+    Passive->ServiceContext = ServiceContext;
+    KeInitializeEvent(&Passive->Pending, SynchronizationEvent, FALSE);
+    KeInitializeDpc(&Passive->Dpc, IopPassiveInterruptDpc, Passive);
+
+    /* What the driver sees, it reports PASSIVE_LEVEL like on Windows */
+    KeInitializeInterrupt(&Passive->Interrupt,
+                          ServiceRoutine,
+                          ServiceContext,
+                          NULL,
+                          VectorData->Vector,
+                          PASSIVE_LEVEL,
+                          PASSIVE_LEVEL,
+                          VectorData->Mode,
+                          ShareVector,
+                          0,
+                          FALSE);
+
+    Status = PsCreateSystemThread(&ThreadHandle, THREAD_ALL_ACCESS, NULL, NULL, NULL,
+                                  IopPassiveInterruptWorker, Passive);
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Passive, TAG_IO_INTERRUPT);
+        return Status;
+    }
+
+    ObReferenceObjectByHandle(ThreadHandle, SYNCHRONIZE, PsThreadType, KernelMode, (PVOID *)&Passive->Thread, NULL);
+    ZwClose(ThreadHandle);
+
+    KeAcquireSpinLock(&IopPassiveInterruptLock, &OldIrql);
+    InsertTailList(&IopPassiveInterrupts, &Passive->Link);
+    KeReleaseSpinLock(&IopPassiveInterruptLock, OldIrql);
+
+    Status = IopConnectVector(VectorData,
+                              IopPassiveInterruptStub,
+                              Passive,
+                              NULL,
+                              VectorData->Irql,
+                              ShareVector,
+                              FALSE,
+                              &Passive->Line);
+    if (!NT_SUCCESS(Status))
+    {
+        Passive->Line.Interrupt = NULL;
+        IopDisconnectPassiveInterrupt(Passive);
+        return Status;
+    }
+
+    RtlZeroMemory(Connection, sizeof(*Connection));
+    Connection->Interrupt = &Passive->Interrupt;
+    Connection->Vector = Passive->Line.Vector;
+    return STATUS_SUCCESS;
+}
+
 static
 NTSTATUS
 NTAPI
@@ -389,10 +611,7 @@ IopConnectVector(
     Connection->Vector.Vectors[0] = *VectorData;
 
     if (SynchronizeIrql == PASSIVE_LEVEL)
-    {
-        DPRINT1("Passive level interrupts are not supported (vector %lu)\n", VectorData->Vector);
-        return STATUS_NOT_SUPPORTED;
-    }
+        return IopConnectPassiveVector(VectorData, ServiceRoutine, ServiceContext, ShareVector, Connection);
 
     Secondary = IopIsSecondaryVector(VectorData);
     if (!Secondary)
@@ -446,6 +665,38 @@ IopDisconnectVector(
 
     IoDisconnectInterrupt(Connection->Interrupt);
     HalDisableInterrupt(&Connection->Vector);
+}
+
+/* Stops the worker of a passive interrupt once its line is gone, then frees it */
+static
+VOID
+NTAPI
+IopDisconnectPassiveInterrupt(
+    _In_ PIOP_PASSIVE_INTERRUPT Passive)
+{
+    KIRQL OldIrql;
+
+    PAGED_CODE();
+
+    if (Passive->Line.Interrupt)
+        IopDisconnectVector(&Passive->Line);
+
+    /* Nothing queues the DPC any more, let it finish and wake the worker for the last time */
+    KeFlushQueuedDpcs();
+    Passive->Stopping = TRUE;
+    KeSetEvent(&Passive->Pending, IO_NO_INCREMENT, FALSE);
+
+    if (Passive->Thread)
+    {
+        KeWaitForSingleObject(Passive->Thread, Executive, KernelMode, FALSE, NULL);
+        ObDereferenceObject(Passive->Thread);
+    }
+
+    KeAcquireSpinLock(&IopPassiveInterruptLock, &OldIrql);
+    RemoveEntryList(&Passive->Link);
+    KeReleaseSpinLock(&IopPassiveInterruptLock, OldIrql);
+
+    ExFreePoolWithTag(Passive, TAG_IO_INTERRUPT);
 }
 
 /* Disconnects the line interrupts of a device and frees them */
@@ -1030,13 +1281,19 @@ NTAPI
 IoDisconnectInterruptEx(
     _In_ PIO_DISCONNECT_INTERRUPT_PARAMETERS Parameters)
 {
+    PIOP_PASSIVE_INTERRUPT Passive;
+
     PAGED_CODE();
 
     switch (Parameters->Version)
     {
         case CONNECT_FULLY_SPECIFIED:
         case CONNECT_FULLY_SPECIFIED_GROUP:
-            IoDisconnectInterrupt(Parameters->ConnectionContext.InterruptObject);
+            Passive = IopFindPassiveInterrupt(Parameters->ConnectionContext.InterruptObject);
+            if (Passive)
+                IopDisconnectPassiveInterrupt(Passive);
+            else
+                IoDisconnectInterrupt(Parameters->ConnectionContext.InterruptObject);
             break;
 
         case CONNECT_LINE_BASED:
