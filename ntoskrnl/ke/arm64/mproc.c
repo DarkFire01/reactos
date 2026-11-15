@@ -29,6 +29,7 @@ typedef struct _KI_AP_BLOCK
 PVOID KiStartingDpcStack;
 
 extern volatile ULONG KiApStartStep;
+extern KAFFINITY KiFreezeUnanswered;
 extern volatile ULONG_PTR KiApStartFailure[5];
 
 /* FUNCTIONS *****************************************************************/
@@ -108,6 +109,10 @@ KeStartAllProcessors(VOID)
         {
             KeStallExecutionProcessor(1000);
             KeMemoryBarrier();
+
+            /* Shows this processor is still alive while the other one comes up */
+            if ((Waited % 1000) == 999)
+                DPRINT1("Waiting for processor %lu, it is at step %lu\n", Number, KiApStartStep);
         }
 
         /* It runs somewhere with this block, nothing can be freed */
@@ -134,6 +139,8 @@ KeStartAllProcessors(VOID)
         ASSERT(KiProcessorBlock[Number] == &Block->Pcr.Prcb);
         ASSERT(KeActiveProcessors & AFFINITY_MASK(Number));
         DPRINT1("Processor %lu is up\n", Number);
+        if (KiFreezeUnanswered)
+            DPRINT1("Processors %Ix never answered the debugger's freeze IPI\n", KiFreezeUnanswered);
     }
 
     KiStartingDpcStack = NULL;

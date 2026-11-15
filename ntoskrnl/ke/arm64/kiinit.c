@@ -53,6 +53,29 @@ extern PVOID KiStartingDpcStack;
 
 /* How far the processor being started got, KeStartAllProcessors reports it if it never checks in */
 volatile ULONG KiApStartStep;
+
+/*
+ * Records a startup step of a secondary processor and draws it straight to the
+ * boot screen, past the debugger and the display lock, so it shows even when the
+ * other processors are stuck.
+ */
+static
+VOID
+KiApReportStep(
+    _In_ PKPRCB Prcb,
+    _In_ ULONG Step)
+{
+    CHAR Text[] = "AP 0 step 0";
+
+    KiApStartStep = Step;
+    KeMemoryBarrier();
+    if (!InbvBootDriverInstalled)
+        return;
+
+    Text[3] = (CHAR)('0' + (Prcb->Number % 10));
+    Text[10] = (CHAR)('0' + (Step % 10));
+    VidDisplayStringXY(Text, 8, 1200 + 16 * (Prcb->Number % 8), FALSE);
+}
 static LDR_DATA_TABLE_ENTRY LdrCoreEntries[3];
 ULONG64 KeFeatureBits;
 
@@ -269,7 +292,7 @@ KiSystemStartupBootStack(VOID)
     Prcb->ParentNode = KeNodeBlock[0];
     InterlockedOr64((PLONG64)&Prcb->ParentNode->ProcessorMask, (LONG64)Prcb->SetMember);
     if (Prcb->Number)
-        KiApStartStep = 4;
+        KiApReportStep(Prcb, 4);
 
     PoInitializePrcb(Prcb);
     KiSaveProcessorControlState(&Prcb->ProcessorState);
@@ -282,7 +305,7 @@ KiSystemStartupBootStack(VOID)
 
     ExInitPoolLookasidePointers();
     if (Prcb->Number)
-        KiApStartStep = 5;
+        KiApReportStep(Prcb, 5);
 
     KeLowerIrql(APC_LEVEL);
     KiEarlyTrace("KiSystemStartupBootStack: on the boot stack\n");
@@ -295,7 +318,7 @@ KiSystemStartupBootStack(VOID)
     {
         Prcb->MultiThreadSetMaster = Prcb;
         KiInitializeHandBuiltThread(Thread, Process, KernelStack);
-        KiApStartStep = 6;
+        KiApReportStep(Prcb, 6);
 
         ASSERT(KiStartingDpcStack != NULL);
         Prcb->DpcStack = KiStartingDpcStack;
@@ -308,7 +331,7 @@ KiSystemStartupBootStack(VOID)
     KfRaiseIrql(DISPATCH_LEVEL);
     KeSetPriorityThread(Thread, 0);
     if (Prcb->Number)
-        KiApStartStep = 7;
+        KiApReportStep(Prcb, 7);
 
     KiAcquirePrcbLock(Prcb);
     if (!Prcb->NextThread)
@@ -317,6 +340,7 @@ KiSystemStartupBootStack(VOID)
 
     /* The processor that started this one waits for the PRCB to go */
     KfRaiseIrql(HIGH_LEVEL);
+    KiApReportStep(Prcb, 8);
     KeMemoryBarrier();
     LoaderBlock->Prcb = 0;
 
@@ -362,6 +386,8 @@ KiSystemStartup(
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
     KiInitializePcr(Pcr, Cpu, InitialThread);
     KiArm64SetPcr(Pcr);
+    if (Cpu)
+        KiApReportStep(&Pcr->Prcb, 0);
     KiEarlyTrace("KiSystemStartup: PCR %p\n", Pcr);
 
     KiProcessorBlock[Cpu] = &Pcr->Prcb;
@@ -391,17 +417,17 @@ KiSystemStartup(
          * A starting processor never prints: the debugger would freeze the others and
          * could wait for a lock one of them holds. KeStartAllProcessors reports for it.
          */
-        KiApStartStep = 1;
+        KiApReportStep(&Pcr->Prcb, 1);
     }
 
     KeInitExceptions();
     KiEarlyTrace("KiSystemStartup: exception vectors set\n");
     if (Cpu)
-        KiApStartStep = 2;
+        KiApReportStep(&Pcr->Prcb, 2);
 
     HalInitializeProcessor(Cpu, KeLoaderBlock);
     if (Cpu)
-        KiApStartStep = 3;
+        KiApReportStep(&Pcr->Prcb, 3);
     InterlockedOr64((PLONG64)&KeActiveProcessors, (LONG64)AFFINITY_MASK(Cpu));
     KiEarlyTrace("KiSystemStartup: HAL processor init done\n");
 
