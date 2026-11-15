@@ -68,6 +68,7 @@
   <Metric Name="SwipeDistance" Value="40"/>
 
   <Image Name="FolderIcon" Source="..\assets\folder.png" Scale="2"/>
+  <Image Name="StartLogo" Source="..\assets\startlogo.png" Scale="2"/>
   <ImageSet Prefix="Icon." Directory="..\assets\icons" Scale="2"/>
 
   <String Name="StartLabel" Value="Start"/>
