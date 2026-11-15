@@ -1466,6 +1466,13 @@ CUixScene::PointerEvent(
             if (Hold.empty())
                 return FALSE;
 
+            /* A momentary element only showed the press; the hold must not leave it selected */
+            if (m_Pressed->Momentary)
+            {
+                MarkLayerDirty(m_Selected);
+                m_Selected = m_SelectedBeforePress;
+                MarkLayerDirty(m_Selected);
+            }
             m_Pressed = NULL;
             m_ScratchValue = Hold;
             *Command = m_ScratchValue.c_str();
