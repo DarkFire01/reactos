@@ -47,7 +47,7 @@
 
   <Element Name="NavBar" Layer="true" VAlign="Bottom" Height="@NavBarHeight" Background="@NavBar" Layout="Row" Foreground="@NavGlyphColor">
     <Element Width="*"/>
-    <Element Width="48" Command="back" Momentary="true" SelectedBackground="@ListPress">
+    <Element Width="48" Command="back" HoldCommand="switcher" Momentary="true" SelectedBackground="@ListPress">
       <Text Content="&#xE72B;" Font="@NavGlyph" TextAlign="Center" TextVAlign="Center"/>
     </Element>
     <Element Width="48"/>

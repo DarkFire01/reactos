@@ -22,6 +22,8 @@
   <Color Name="KeyText" Value="#FFFFFF"/>
   <Color Name="PivotOff" Value="#66FFFFFF"/>
   <Color Name="ToastScrim" Value="#E6000000"/>
+  <Color Name="SwitcherBackground" Value="#333333"/>
+  <Color Name="CloseHover" Value="#CCE81123"/>
   <Color Name="Accent" Value="#008A00"/>
   <Color Name="AccentDim" Value="#006400"/>
   <Color Name="AccentText" Value="#008A00"/>

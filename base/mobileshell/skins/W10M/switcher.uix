@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Task switcher, owned by MobileUI. Hold Back to open. Each card{Id} is a slot the app's own
+  visual is scaled into; tap a card to go back to it, X or a downward swipe closes the app.
+-->
+<Uix Name="Switcher" CardScale="0.5" ZoomSeconds="0.3">
+  <Element Name="SwitcherRoot" Layer="true" Visible="false" Margin="0,@TrayHeight,0,@NavBarHeight"
+           Background="@SwitcherBackground" Foreground="@BaseHigh" Font="@Caption"
+           SwipeLeft="switcher.next" SwipeRight="switcher.prev">
+
+    <Element Name="SwitcherStrip" X="{SwitcherX}" HAlign="Left" VAlign="Center" Layout="Row">
+      <Repeater Name="SwitcherItems" Layout="Row">
+        <Element Layout="Stack" Margin="6,0,6,0">
+          <Element Layout="Row" Height="32">
+            <Element Width="24" Height="24" VAlign="Center" Background="@Accent"/>
+            <Text Content="{Item.Title}" Width="*" Margin="8,0,4,0" TextVAlign="Center"/>
+            <Element Width="32" Command="switcher.close:{Item.Id}" Momentary="true" SelectedBackground="@CloseHover">
+              <Text Content="&#xE8BB;" Font="@Glyph12" TextAlign="Center" TextVAlign="Center"/>
+            </Element>
+          </Element>
+          <Element Name="card{Item.Id}" Width="{CardWidth}" Height="{CardHeight}" Background="@PageBackground"
+                   Command="switcher.pick:{Item.Id}" Momentary="true"
+                   SwipeLeft="switcher.next" SwipeRight="switcher.prev" SwipeDown="switcher.close:{Item.Id}"/>
+        </Element>
+      </Repeater>
+    </Element>
+
+    <Text Name="SwitcherEmpty" Content="No recent apps" Font="@Body" Foreground="@BaseMid"
+          TextAlign="Center" TextVAlign="Center" Visible="false"/>
+  </Element>
+</Uix>
