@@ -8,6 +8,7 @@ list(APPEND SOURCE
     ufshci.c
     ufsinit.c
     ufsscsi.c
+    ufsqcom.c
     storufs.c)
 
 add_library(storufs MODULE ${SOURCE} storufs.rc)
