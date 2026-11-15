@@ -251,9 +251,15 @@ UfsStartAdapter(
     if (!NT_SUCCESS(UfsHceReset(Adapter)))
         return FALSE;
 
+    if (Adapter->Qualcomm)
+        UfsQcomBeforeLinkStartup(Adapter);
+
     DPRINT1("UFS: link startup\n");
     if (!UfsLinkStartup(Adapter))
         return FALSE;
+
+    if (Adapter->Qualcomm)
+        UfsQcomAfterLinkStartup(Adapter);
 
     DPRINT1("UFS: programming lists, HCS 0x%lx\n", UfsRead(Adapter, UFS_REG_HCS));
     if (!UfsProgramLists(Adapter))

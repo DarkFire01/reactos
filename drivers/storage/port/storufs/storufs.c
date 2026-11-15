@@ -204,6 +204,7 @@ StorUfsFindAdapter(
 
     if (!Adapter->DumpMode)
         UfsRegisterPowerComponent(Adapter);
+        Adapter->Qualcomm = UfsIsQualcommController(Adapter);
 
     if (!UfsMapRegisters(Adapter, ConfigInfo))
     {

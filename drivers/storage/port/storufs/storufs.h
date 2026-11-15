@@ -59,6 +59,7 @@ typedef struct _UFS_ADAPTER_EXTENSION
     PUCHAR Registers;             /* mapped UFSHCI BAR */
     UFS_ADAPTER_STATE State;
     BOOLEAN DumpMode;
+    BOOLEAN Qualcomm;             /* vendor setup around link startup */
     BOOLEAN MessageInterrupts;
 
     ULONG Capabilities;
@@ -156,6 +157,19 @@ UfsSendUic(
     _In_ ULONG Arg2,
     _In_ ULONG Arg3,
     _Out_opt_ PULONG Result);
+
+/* ufsqcom.c */
+BOOLEAN
+UfsIsQualcommController(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter);
+
+VOID
+UfsQcomBeforeLinkStartup(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter);
+
+VOID
+UfsQcomAfterLinkStartup(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter);
 
 NTSTATUS
 UfsHceReset(
