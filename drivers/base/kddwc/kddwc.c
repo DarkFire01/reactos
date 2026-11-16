@@ -24,6 +24,7 @@
 #define KDDWC_SEND_TIMEOUT_US           200000
 
 PKDDWC_BOOT_PRINT KdDwcBootPrint;
+BOOLEAN KdDwcTraceTraffic;
 
 static BOOLEAN KdDwcRunning;
 static UCHAR KdDwcRing[KDDWC_RING_BYTES];
@@ -350,6 +351,7 @@ KdDebuggerInitialize0(
     Options = LoaderBlock->LoadOptions;
     if (KdDwcFindOption(Options, "FRLDRSCREENLOG") != NULL)
         KdDwcBootPrint = (PKDDWC_BOOT_PRINT)LoaderBlock->u.I386.CommonDataArea;
+    KdDwcTraceTraffic = (KdDwcBootPrint != NULL) && (KdDwcFindOption(Options, "DWCTRACE") != NULL);
     KdDwcTrace("starting, options '%s'\n", Options ? Options : "");
 
     Value = KdDwcFindOption(Options, "DWCSOC=");
@@ -390,7 +392,7 @@ KdDebuggerInitialize0(
     while (!KdDwcIsConfigured() && KdDwcMicroseconds() - Start < (ULONG64)WaitSeconds * 1000000)
     {
         KdDwcService();
-        if (KdDwcMicroseconds() - Beat >= KDDWC_HEARTBEAT_US)
+        if (KdDwcTraceTraffic && KdDwcMicroseconds() - Beat >= KDDWC_HEARTBEAT_US)
         {
             Beat = KdDwcMicroseconds();
             KdDwcTrace("%I64u ms\n", (Beat - Start) / 1000);
@@ -399,6 +401,7 @@ KdDebuggerInitialize0(
     }
 
     KdDwcTrace("host %s\n", KdDwcIsConfigured() ? "configured the port" : "has not configured the port yet");
+    KdDwcTraceTraffic = FALSE;
     KdDwcBootPrint = NULL;
     return STATUS_SUCCESS;
 }
