@@ -440,6 +440,7 @@ KiSystemStartup(
 
     if (Cpu == 0)
     {
+        KiEarlyTrace("KiSystemStartup: starting the debugger\n");
         KdInitSystem(0, KeLoaderBlock);
         KiEarlyTrace("KiSystemStartup: debugger initialized\n");
         if (KdPollBreakIn())
