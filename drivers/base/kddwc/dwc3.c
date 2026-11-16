@@ -791,7 +791,9 @@ KdDwcHandleEvent(
                 KdDwcModify(Dwc.Core, DWC_DCFG, DWC_DCFG_ADDRESS_MASK, 0);
                 if (Dwc.Ep0State != Ep0Setup)
                 {
+                    /* The control endpoints hold the first two transfer resources */
                     KdDwcEndTransfer(KDDWC_EP0_OUT, 0);
+                    KdDwcEndTransfer(KDDWC_EP0_IN, 1);
                     KdDwcArmSetup();
                 }
                 break;
