@@ -67,7 +67,7 @@ Sm8350PowerUp(
 const KDDWC_PLATFORM KdDwcPlatformSm8350 =
 {
     "SM8350",
-    { "SM8350", NULL, NULL, NULL },
+    { "SM8350", "SDM8350", NULL, NULL },
     SM8350_CORE_BASE,
     Sm8350PowerUp,
     0

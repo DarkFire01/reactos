@@ -75,7 +75,7 @@ Sc7180PowerUp(
 const KDDWC_PLATFORM KdDwcPlatformSc7180 =
 {
     "SC7180",
-    { "SC7180", NULL, NULL, NULL },
+    { "SC7180", "SDM7180", NULL, NULL },
     SC7180_CORE_BASE,
     Sc7180PowerUp,
     0
