@@ -32,7 +32,39 @@ static const UCHAR UsbCfgUsbExitCode[] =
     0xE8, 0x03, 0x1F, 0xAA, 0xA8, 0x83, 0x1E, 0xF8, 0x01, 0x00, 0x00, 0x14, 0x68, 0x00, 0x00, 0xF0
 };
 
+/* File name of UsbConfigDxe in the firmware volume */
+static const EFI_GUID UsbCfgFileGuid =
+    { 0xCD823A4D, 0x7DEC, 0x4531, { 0xAE, 0x5D, 0x41, 0x34, 0xFA, 0x41, 0x27, 0xB8 } };
+
 extern EFI_SYSTEM_TABLE* GlobalSystemTable;
+
+/* TRUE when the image was loaded from the firmware volume file of UsbConfigDxe */
+static
+BOOLEAN
+UefiIsUsbConfigFile(
+    _In_opt_ const EFI_DEVICE_PATH_PROTOCOL* Path)
+{
+    const MEDIA_FW_VOL_FILEPATH_DEVICE_PATH* File;
+    USHORT Length;
+
+    while (Path != NULL && Path->Type != END_DEVICE_PATH_TYPE)
+    {
+        Length = (USHORT)(Path->Length[0] | (Path->Length[1] << 8));
+        if (Length < sizeof(*Path))
+            return FALSE;
+
+        if (Path->Type == MEDIA_DEVICE_PATH && Path->SubType == MEDIA_PIWG_FW_FILE_DP &&
+            Length >= sizeof(*File))
+        {
+            File = (const MEDIA_FW_VOL_FILEPATH_DEVICE_PATH*)Path;
+            return RtlEqualMemory(&File->FvFileName, &UsbCfgFileGuid, sizeof(UsbCfgFileGuid));
+        }
+
+        Path = (const EFI_DEVICE_PATH_PROTOCOL*)((const UCHAR*)Path + Length);
+    }
+
+    return FALSE;
+}
 
 /* TRUE when the image is the UsbConfigDxe build whose layout is known */
 static
@@ -71,15 +103,26 @@ UefiKeepUsbIommuDomain(VOID)
                                                                  &Count,
                                                                  &Handles);
     if (Status != EFI_SUCCESS)
+    {
+        TuiPrintf("freeldr: no loaded images to look at: %lx\n", (ULONG)Status);
         return;
+    }
 
+    TuiPrintf("freeldr: looking for the firmware's USB driver in %lu images\n", (ULONG)Count);
     for (i = 0; i < Count; i++)
     {
         Status = GlobalSystemTable->BootServices->HandleProtocol(Handles[i],
                                                                  &LoadedImageGuid,
                                                                  (VOID**)&Image);
-        if (Status != EFI_SUCCESS || !UefiIsKnownUsbConfig(Image))
+        if (Status != EFI_SUCCESS || !UefiIsUsbConfigFile(Image->FilePath))
             continue;
+
+        TuiPrintf("freeldr: USB driver at %p, size %lx\n", Image->ImageBase, (ULONG)Image->ImageSize);
+        if (!UefiIsKnownUsbConfig(Image))
+        {
+            TuiPrintf("freeldr: unknown build of the USB driver, left alone\n");
+            break;
+        }
 
         Valid = (PUCHAR)Image->ImageBase + USBCFG_DOMAIN_VALID;
         if (*Valid != 1)
