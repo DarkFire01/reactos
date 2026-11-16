@@ -67,6 +67,8 @@ extern const KDDWC_PLATFORM KdDwcPlatformSc8280xp;
 extern const KDDWC_PLATFORM KdDwcPlatformX1e80100;
 
 /* DWC3 global registers, offsets inside the core register page */
+#define DWC_GSBUSCFG0                   0x100
+#define DWC_GSBUSCFG1                   0x104
 #define DWC_GCTL                        0x110
 #define DWC_GCTL_CORESOFTRESET          0x00000800
 #define DWC_GCTL_PRTCAPDIR_MASK         0x00003000
