@@ -58,6 +58,18 @@ Sc7280PowerUp(
             return FALSE;
     }
 
+    return TRUE;
+}
+
+/* Runs after the core has stopped suspending its PHY, as the core driver orders it */
+static
+BOOLEAN
+NTAPI
+Sc7280StartPhy(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+
     if (KdDwcSnpsHsIsRunning(SC7280_HSPHY_BASE))
         return TRUE;
 
@@ -110,5 +122,6 @@ const KDDWC_PLATFORM KdDwcPlatformSc7280 =
     Sc7280PowerUp,
     0,
     &Sc7280Rpmh,
-    Sc7280IsPowered
+    Sc7280IsPowered,
+    Sc7280StartPhy
 };

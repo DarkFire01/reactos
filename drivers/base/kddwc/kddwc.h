@@ -27,6 +27,14 @@ typedef struct _KDDWC_REG_WRITE
     UCHAR Value;
 } KDDWC_REG_WRITE, *PKDDWC_REG_WRITE;
 
+/** A read, modify and write of one register: clear some bits, then set others. */
+typedef struct _KDDWC_REG_MODIFY
+{
+    ULONG Offset;
+    ULONG Clear;
+    ULONG Set;
+} KDDWC_REG_MODIFY;
+
 typedef struct _KDDWC_PLATFORM KDDWC_PLATFORM, *PKDDWC_PLATFORM;
 
 typedef
@@ -82,6 +90,10 @@ typedef struct _KDDWC_RPMH
     ULONG NodeCount;
     const KDDWC_SUPPLY* Supplies;
     ULONG SupplyCount;
+
+    /* The logic rail the controller's clocks need and the level they need, NULL when none */
+    PCSTR Rail;
+    USHORT RailLevel;
 } KDDWC_RPMH;
 
 /* What the controller asks of its buses at high speed, in kB/s */
@@ -97,6 +109,9 @@ typedef struct _KDDWC_RPMH
 
 /* The memory controller's ACV manager is switched on, not given a bandwidth */
 #define KDDWC_ACV_NODE                  { "ACV", 4, 1, 0, 0, 0x8 }
+
+/* Rail level RPMh calls nominal */
+#define KDDWC_RAIL_NOMINAL              256
 
 /* The apps RSC gives the application processor DRV 2, its TCSs start 0xD00 in, the active ones first */
 #define KDDWC_RPMH_DRV2_TCS_OFFSET      0xD00
@@ -124,10 +139,11 @@ struct _KDDWC_PLATFORM
 
     /* TRUE while the controller's power domain and clocks run, NULL when that cannot be told */
     PKDDWC_IS_POWERED IsPowered;
+
+    /* Brings the high speed PHY up once the core stopped suspending it, NULL to keep firmware's PHY */
+    PKDDWC_POWER_UP StartPhy;
 };
 
-/* The PHY only works as firmware set it up, so the core never resets it */
-#define KDDWC_PLATFORM_KEEP_PHY         0x00000001
 
 /* soc/<name>.c */
 extern const KDDWC_PLATFORM KdDwcPlatformMsm8994;
@@ -144,16 +160,41 @@ extern const KDDWC_PLATFORM KdDwcPlatformX1e80100;
 /* DWC3 global registers, offsets inside the core register page */
 #define DWC_GSBUSCFG0                   0x100
 #define DWC_GSBUSCFG1                   0x104
+#define DWC_GRXTHRCFG                   0x10C
+#define DWC_GRXTHRCFG_PKTCNTSEL         0x20000000
 #define DWC_GCTL                        0x110
-#define DWC_GCTL_CORESOFTRESET          0x00000800
+#define DWC_GCTL_DSBLCLKGTNG            0x00000001
+#define DWC_GCTL_DISSCRAMBLE            0x00000008
+#define DWC_GCTL_SCALEDOWN_MASK         0x00000030
 #define DWC_GCTL_PRTCAPDIR_MASK         0x00003000
 #define DWC_GCTL_PRTCAPDIR_DEVICE       0x00002000
 #define DWC_GUCTL1                      0x11C
 #define DWC_GUCTL1_PARKMODE_DISABLE_SS  0x00020000
+#define DWC_GUCTL1_DEV_L1_EXIT_BY_HW    0x01000000
+#define DWC_GUCTL1_DEV_FORCE_20_CLK     0x04000000
+#define DWC_GUCTL1_DEV_DECOUPLE_L1L2    0x80000000
 #define DWC_GSNPSID                     0x120
+#define DWC_GSNPSID_REVISION(Id)        ((Id) & 0xFFFF)
+#define DWC_GSNPSID_IS_USB3(Id)         (((Id) & 0xFFFF0000) == 0x55330000)
+#define DWC_GHWPARAMS0                  0x140
+#define DWC_GHWPARAMS0_MDWIDTH(Value)   (((Value) >> 8) & 0xFF)
+#define DWC_GHWPARAMS1                  0x144
+#define DWC_GHWPARAMS1_PWROPT(Value)    (((Value) >> 24) & 0x3)
+#define DWC_GHWPARAMS1_PWROPT_CLOCK     1
+#define DWC_GHWPARAMS7                  0x15C
+#define DWC_GHWPARAMS7_RAM2_DEPTH(Value) (((Value) >> 16) & 0xFFFF)
+#define DWC_GUCTL2                      0x19C
+#define DWC_GUCTL2_RST_ACTBITLATER      0x00004000
 #define DWC_GUSB2PHYCFG                 0x200
 #define DWC_GUSB2PHYCFG_SUSPEND         0x00000140
-#define DWC_GUSB2PHYCFG_PHYSOFTRST      0x80000000
+#define DWC_GUSB3PIPECTL                0x2C0
+#define DWC_GUSB3PIPECTL_SUSPHY         0x00020000
+#define DWC_GUSB3PIPECTL_UX_EXIT_PX     0x08000000
+
+/* Core revisions some settings depend on */
+#define DWC_REVISION_290A               0x290A
+#define DWC_REVISION_300A               0x300A
+#define DWC_REVISION_310A               0x310A
 #define DWC_GEVNTADRLO                  0x400
 #define DWC_GEVNTADRHI                  0x404
 #define DWC_GEVNTSIZ                    0x408
@@ -167,13 +208,24 @@ extern const KDDWC_PLATFORM KdDwcPlatformX1e80100;
 #define DWC_DCFG_SPEED_HIGH             0x00000000
 #define DWC_DCFG_ADDRESS_MASK           0x000003F8
 #define DWC_DCFG_ADDRESS(Address)       ((ULONG)(Address) << 3)
+#define DWC_DCFG_NUMP_MASK              0x003E0000
+#define DWC_DCFG_NUMP_SHIFT             17
+#define DWC_DCFG_IGNSTRMPP              0x00800000
 #define DWC_DCTL                        0x704
 #define DWC_DCTL_RUN_STOP               0x80000000
 #define DWC_DCTL_CSFTRST                0x40000000
+#define DWC_DCTL_KEEP_CONNECT           0x00080000
 #define DWC_DEVTEN                      0x708
 #define DWC_DEVTEN_DISCONNECT           0x00000001
 #define DWC_DEVTEN_RESET                0x00000002
 #define DWC_DEVTEN_CONNECT_DONE         0x00000004
+#define DWC_DEVTEN_LINK_CHANGE          0x00000008
+#define DWC_DEVTEN_WAKEUP               0x00000010
+#define DWC_DEVTEN_SUSPEND              0x00000040
+#define DWC_DEVTEN_ERRATIC              0x00000200
+#define DWC_DEVTEN_COMMAND_DONE         0x00000400
+#define DWC_DEVTEN_OVERFLOW             0x00000800
+#define DWC_DEV_IMOD                    0xA00
 #define DWC_DSTS                        0x70C
 #define DWC_DSTS_SPEED_MASK             0x00000007
 #define DWC_DSTS_SPEED_FULL             0x00000001
@@ -411,7 +463,23 @@ KdDwcStartQusb2(
     _In_ ULONG64 PhyBcr,
     _In_ UCHAR PowerDownBits,
     _In_reads_(Count) const KDDWC_REG_WRITE* Table,
-    _In_ ULONG Count);
+    _In_ ULONG Count,
+    _In_reads_opt_(TuningCount) const KDDWC_REG_MODIFY* Tuning,
+    _In_ ULONG TuningCount,
+    _In_ ULONG64 TrimFuse);
+
+BOOLEAN
+NTAPI
+KdDwcConfigureRoot(
+    _In_ ULONG64 CmdRcgr,
+    _In_ ULONG Config);
+
+BOOLEAN
+NTAPI
+KdDwcPllOn(
+    _In_ ULONG64 Mode,
+    _In_ ULONG64 Vote,
+    _In_ ULONG VoteBit);
 
 BOOLEAN
 NTAPI

@@ -69,7 +69,8 @@ const KDDWC_PLATFORM KdDwcPlatformMsm8994 =
     { "MSM8994", "MSM8992", NULL, NULL },
     MSM8994_CORE_BASE,
     Msm8994PowerUp,
-    KDDWC_PLATFORM_KEEP_PHY,
+    0,
     NULL,
-    Msm8994IsPowered
+    Msm8994IsPowered,
+    NULL
 };

@@ -58,6 +58,18 @@ Sc8280xpPowerUp(
             return FALSE;
     }
 
+    return TRUE;
+}
+
+/* Runs after the core has stopped suspending its PHY, as the core driver orders it */
+static
+BOOLEAN
+NTAPI
+Sc8280xpStartPhy(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+
     if (KdDwcSnpsHsIsRunning(SC8280XP_HSPHY_BASE))
         return TRUE;
 
@@ -109,5 +121,6 @@ const KDDWC_PLATFORM KdDwcPlatformSc8280xp =
     Sc8280xpPowerUp,
     0,
     &Sc8280xpRpmh,
-    Sc8280xpIsPowered
+    Sc8280xpIsPowered,
+    Sc8280xpStartPhy
 };

@@ -411,17 +411,22 @@ KdDwcStartTransfer(
                                 Resource);
 }
 
+/* The core is not polled for an end of transfer it reports no completion for, it gets time instead */
 static
 VOID
 KdDwcEndTransfer(
     _In_ ULONG Endpoint,
     _In_ UCHAR Resource)
 {
-    KdDwcEndpointCommand(Endpoint,
-                         DWC_DEPCMD_ENDTRANSFER | DWC_DEPCMD_FORCERM | DWC_DEPCMD_PARAM(Resource),
-                         0,
-                         0,
-                         NULL);
+    KdDwcTraceUsb("endpoint %lu end transfer %u\n", Endpoint, Resource);
+    KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, DWC_GUSB2PHYCFG_SUSPEND, 0);
+    KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR2(Endpoint), 0);
+    KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR1(Endpoint), 0);
+    KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR0(Endpoint), 0);
+    KdDwcWrite(Dwc.Core,
+               DWC_DEPCMD(Endpoint),
+               DWC_DEPCMD_ENDTRANSFER | DWC_DEPCMD_FORCERM | DWC_DEPCMD_CMDACT | DWC_DEPCMD_PARAM(Resource));
+    KdDwcStall(100);
 }
 
 /* CONTROL ENDPOINT ***********************************************************/
@@ -991,39 +996,48 @@ KdDwcTakeInput(
 
 /* BRING-UP *******************************************************************/
 
-/* Resets the core onto the high speed PHY alone, with UTMI standing in for the pipe */
+/* The core has no SuperSpeed PHY here, so its pipe side runs from the UTMI clock. Done before any core access */
 static
-BOOLEAN
-KdDwcResetCore(
-    _In_ BOOLEAN KeepPhy)
+VOID
+KdDwcSelectUtmiClock(VOID)
 {
-    KdDwcTrace("core soft reset, GCTL 0x%lx GUSB2PHYCFG 0x%lx\n",
-               KdDwcRead(Dwc.Core, DWC_GCTL), KdDwcRead(Dwc.Core, DWC_GUSB2PHYCFG));
-    KdDwcTrace("bus config 0x%lx 0x%lx, event buffer 0x%lx%08lx size 0x%lx\n",
-               KdDwcRead(Dwc.Core, DWC_GSBUSCFG0), KdDwcRead(Dwc.Core, DWC_GSBUSCFG1),
-               KdDwcRead(Dwc.Core, DWC_GEVNTADRHI), KdDwcRead(Dwc.Core, DWC_GEVNTADRLO),
-               KdDwcRead(Dwc.Core, DWC_GEVNTSIZ));
-    KdDwcModify(Dwc.Core, DWC_GCTL, 0, DWC_GCTL_CORESOFTRESET);
-    if (!KeepPhy)
-    {
-        KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, 0, DWC_GUSB2PHYCFG_PHYSOFTRST);
-        KdDwcStall(100);
-        KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, DWC_GUSB2PHYCFG_PHYSOFTRST, 0);
-    }
-
-    KdDwcTrace("reading glue GENERAL_CFG 0x%lx\n", KdDwcRead(Dwc.Glue, QSCR_GENERAL_CFG));
+    KdDwcTrace("glue GENERAL_CFG 0x%lx\n", KdDwcRead(Dwc.Glue, QSCR_GENERAL_CFG));
     KdDwcModify(Dwc.Glue, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_PIPE_CLK_GATE);
+    KdDwcRead(Dwc.Glue, QSCR_GENERAL_CFG);
     KdDwcStall(100);
     KdDwcModify(Dwc.Glue, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_UTMI_AS_PIPE | QSCR_GENERAL_CFG_PHYSTATUS_SW);
     KdDwcStall(100);
     KdDwcModify(Dwc.Glue, QSCR_GENERAL_CFG, QSCR_GENERAL_CFG_PIPE_CLK_GATE, 0);
+}
 
-    KdDwcModify(Dwc.Core, DWC_GCTL, DWC_GCTL_CORESOFTRESET, 0);
-    KdDwcStall(100);
-    KdDwcTrace("glue GENERAL_CFG 0x%lx\n", KdDwcRead(Dwc.Glue, QSCR_GENERAL_CFG));
+/* The core may not suspend its PHYs or let the USB 2 one sleep while the PHY comes up */
+static
+VOID
+KdDwcHoldPhysAwake(VOID)
+{
+    KdDwcModify(Dwc.Core, DWC_GUSB3PIPECTL, DWC_GUSB3PIPECTL_UX_EXIT_PX | DWC_GUSB3PIPECTL_SUSPHY, 0);
+    KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, DWC_GUSB2PHYCFG_SUSPEND, 0);
+}
 
-    /* The device logic gets its own reset after the role is set */
-    KdDwcModify(Dwc.Core, DWC_GCTL, DWC_GCTL_PRTCAPDIR_MASK, DWC_GCTL_PRTCAPDIR_DEVICE);
+/**
+ * @brief Resets the device logic and sets the core up for a high speed device, in the core driver's order.
+ *
+ * @param[in] Id
+ * The core's GSNPSID, some settings depend on its revision.
+ */
+static
+BOOLEAN
+KdDwcResetCore(
+    _In_ ULONG Id)
+{
+    ULONG Revision = DWC_GSNPSID_REVISION(Id);
+    BOOLEAN Usb3 = DWC_GSNPSID_IS_USB3(Id);
+    ULONG Control;
+    ULONG Settings;
+
+    /* The PIPE side has nothing behind it, only the USB 2 PHY is kept from suspending */
+    KdDwcModify(Dwc.Core, DWC_GUSB3PIPECTL, 0, DWC_GUSB3PIPECTL_SUSPHY);
+
     KdDwcTrace("device soft reset, DCTL 0x%lx\n", KdDwcRead(Dwc.Core, DWC_DCTL));
     KdDwcModify(Dwc.Core, DWC_DCTL, DWC_DCTL_RUN_STOP, DWC_DCTL_CSFTRST);
     if (!KdDwcWaitFor(Dwc.Core, DWC_DCTL, DWC_DCTL_CSFTRST, 0, KDDWC_RESET_TIMEOUT_US))
@@ -1032,24 +1046,78 @@ KdDwcResetCore(
         return FALSE;
     }
 
-    /* This PHY misbehaves when the core suspends it or lets it sleep between transfers */
-    KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, DWC_GUSB2PHYCFG_SUSPEND, 0);
-    KdDwcModify(Dwc.Core, DWC_GUCTL1, 0, DWC_GUCTL1_PARKMODE_DISABLE_SS);
+    /* Full speed timing and scrambling, clock gating where the core was built with it */
+    Control = KdDwcRead(Dwc.Core, DWC_GCTL) & ~(DWC_GCTL_SCALEDOWN_MASK | DWC_GCTL_DISSCRAMBLE);
+    if (DWC_GHWPARAMS1_PWROPT(KdDwcRead(Dwc.Core, DWC_GHWPARAMS1)) == DWC_GHWPARAMS1_PWROPT_CLOCK)
+        Control &= ~DWC_GCTL_DSBLCLKGTNG;
+    KdDwcWrite(Dwc.Core, DWC_GCTL, Control);
+
+    if (Usb3 && Revision >= DWC_REVISION_310A)
+        KdDwcModify(Dwc.Core, DWC_GUCTL2, 0, DWC_GUCTL2_RST_ACTBITLATER);
+
+    /* At high speed only the device logic runs from the UTMI clock instead of a pipe clock */
+    Settings = DWC_GUCTL1_PARKMODE_DISABLE_SS;
+    if (Usb3 && Revision >= DWC_REVISION_290A)
+        Settings |= DWC_GUCTL1_DEV_L1_EXIT_BY_HW | DWC_GUCTL1_DEV_FORCE_20_CLK;
+    if (Usb3 && Revision >= DWC_REVISION_300A)
+        Settings |= DWC_GUCTL1_DEV_DECOUPLE_L1L2;
+    KdDwcModify(Dwc.Core, DWC_GUCTL1, 0, Settings);
+
+    /* A change of role happens with the PHYs held awake */
+    if ((KdDwcRead(Dwc.Core, DWC_GCTL) & DWC_GCTL_PRTCAPDIR_MASK) != DWC_GCTL_PRTCAPDIR_DEVICE)
+        KdDwcHoldPhysAwake();
     KdDwcModify(Dwc.Core, DWC_GCTL, DWC_GCTL_PRTCAPDIR_MASK, DWC_GCTL_PRTCAPDIR_DEVICE);
 
-    /* Nothing reports VBUS to the core in device mode, so the glue says it is there */
-    KdDwcModify(Dwc.Glue, QSCR_HS_PHY_CTRL, 0, QSCR_HS_PHY_CTRL_VBUS_VALID | QSCR_HS_PHY_CTRL_SESSVLD_SEL);
-    KdDwcModify(Dwc.Glue, QSCR_SS_PHY_CTRL, 0, QSCR_SS_PHY_CTRL_LANE0_PWR);
-    KdDwcTrace("glue HS_PHY_CTRL 0x%lx SS_PHY_CTRL 0x%lx\n",
-               KdDwcRead(Dwc.Glue, QSCR_HS_PHY_CTRL), KdDwcRead(Dwc.Glue, QSCR_SS_PHY_CTRL));
+    KdDwcTrace("core reset, GCTL 0x%lx GUCTL1 0x%lx GUSB2PHYCFG 0x%lx GUSB3PIPECTL 0x%lx\n",
+               KdDwcRead(Dwc.Core, DWC_GCTL),
+               KdDwcRead(Dwc.Core, DWC_GUCTL1),
+               KdDwcRead(Dwc.Core, DWC_GUSB2PHYCFG),
+               KdDwcRead(Dwc.Core, DWC_GUSB3PIPECTL));
     return TRUE;
 }
 
+/* Nothing reports VBUS to the core in device mode, so the glue says it is there */
+static
+VOID
+KdDwcOverrideVbus(VOID)
+{
+    KdDwcModify(Dwc.Glue, QSCR_SS_PHY_CTRL, 0, QSCR_SS_PHY_CTRL_LANE0_PWR);
+    KdDwcModify(Dwc.Glue, QSCR_HS_PHY_CTRL, 0, QSCR_HS_PHY_CTRL_VBUS_VALID | QSCR_HS_PHY_CTRL_SESSVLD_SEL);
+}
+
+/* How many packets the device may have in flight, from the size of its receive RAM */
+static
+ULONG
+KdDwcPacketsInFlight(VOID)
+{
+    ULONG Depth = DWC_GHWPARAMS7_RAM2_DEPTH(KdDwcRead(Dwc.Core, DWC_GHWPARAMS7));
+    ULONG Width = DWC_GHWPARAMS0_MDWIDTH(KdDwcRead(Dwc.Core, DWC_GHWPARAMS0));
+    ULONG Bytes = Depth * Width / 8;
+
+    /* Room the control endpoint and the header area keep for themselves */
+    if (Bytes <= 4 * 2 + 3 * (3 + 1))
+        return 1;
+
+    return min((Bytes - 4 * 2 - 3 * (3 + 1)) / 16, 16UL);
+}
+
+/**
+ * @brief Starts the device side and connects to the host, in the gadget driver's order.
+ *
+ * @param[in] Id
+ * The core's GSNPSID.
+ */
 static
 BOOLEAN
-KdDwcStartDevice(VOID)
+KdDwcStartDevice(
+    _In_ ULONG Id)
 {
     ULONG Count;
+    ULONG Config;
+
+    if (DWC_GSNPSID_IS_USB3(Id) && DWC_GSNPSID_REVISION(Id) >= DWC_REVISION_300A)
+        KdDwcWrite(Dwc.Core, DWC_DEV_IMOD, 0);
+    KdDwcModify(Dwc.Core, DWC_GRXTHRCFG, DWC_GRXTHRCFG_PKTCNTSEL, 0);
 
     /* One event buffer, masked: everything is polled */
     KdDwcWrite(Dwc.Core, DWC_GEVNTADRLO, (ULONG)KdDwcPhysical(Dwc.Dma->Events));
@@ -1060,8 +1128,10 @@ KdDwcStartDevice(VOID)
         KdDwcWrite(Dwc.Core, DWC_GEVNTCOUNT, Count);
     Dwc.EventOffset = 0;
 
-    KdDwcModify(Dwc.Core, DWC_DCFG, DWC_DCFG_SPEED_MASK | DWC_DCFG_ADDRESS_MASK, DWC_DCFG_SPEED_HIGH);
-    KdDwcWrite(Dwc.Core, DWC_DEVTEN, DWC_DEVTEN_DISCONNECT | DWC_DEVTEN_RESET | DWC_DEVTEN_CONNECT_DONE);
+    Config = KdDwcRead(Dwc.Core, DWC_DCFG);
+    Config &= ~(DWC_DCFG_SPEED_MASK | DWC_DCFG_ADDRESS_MASK | DWC_DCFG_NUMP_MASK);
+    Config |= DWC_DCFG_SPEED_HIGH | DWC_DCFG_IGNSTRMPP | (KdDwcPacketsInFlight() << DWC_DCFG_NUMP_SHIFT);
+    KdDwcWrite(Dwc.Core, DWC_DCFG, Config);
 
     if (!KdDwcEndpointCommand(KDDWC_EP0_OUT, DWC_DEPCMD_DEPSTARTCFG, 0, 0, NULL) ||
         !KdDwcConfigureEndpoint(KDDWC_EP0_OUT, 0, KDDWC_EP0_PACKET, 0,
@@ -1076,8 +1146,17 @@ KdDwcStartDevice(VOID)
     KdDwcWrite(Dwc.Core, DWC_DALEPENA, (1 << KDDWC_EP0_OUT) | (1 << KDDWC_EP0_IN));
     KdDwcArmSetup();
 
+    KdDwcWrite(Dwc.Core,
+               DWC_DEVTEN,
+               DWC_DEVTEN_DISCONNECT | DWC_DEVTEN_RESET | DWC_DEVTEN_CONNECT_DONE | DWC_DEVTEN_WAKEUP |
+               DWC_DEVTEN_SUSPEND | DWC_DEVTEN_ERRATIC | DWC_DEVTEN_COMMAND_DONE | DWC_DEVTEN_OVERFLOW);
+    KdDwcModify(Dwc.Core, DWC_GUSB3PIPECTL, 0, DWC_GUSB3PIPECTL_SUSPHY);
+
+    /* Run, with the USB 2 PHY awake and VBUS reported again right before */
     KdDwcTrace("control endpoint armed, setting run\n");
-    KdDwcModify(Dwc.Core, DWC_DCTL, 0, DWC_DCTL_RUN_STOP);
+    KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, DWC_GUSB2PHYCFG_SUSPEND, 0);
+    KdDwcOverrideVbus();
+    KdDwcModify(Dwc.Core, DWC_DCTL, DWC_DCTL_KEEP_CONNECT, DWC_DCTL_RUN_STOP);
     if (!KdDwcWaitFor(Dwc.Core, DWC_DSTS, DWC_DSTS_DEVCTRLHLT, 0, KDDWC_RESET_TIMEOUT_US))
     {
         KdDwcTrace("device controller did not start\n");
@@ -1136,17 +1215,20 @@ KdDwcBringUp(VOID)
     if (!Platform->PowerUp(Platform))
         return STATUS_DEVICE_NOT_READY;
 
+    KdDwcSelectUtmiClock();
+
     KdDwcTrace("power up done, reading the core id\n");
     Id = KdDwcRead(Dwc.Core, DWC_GSNPSID);
     KdDwcTrace("core id 0x%lx\n", Id);
     if ((Id & 0xFFFF0000) != 0x55330000 && (Id & 0xFFFF0000) != 0x33310000)
         return STATUS_DEVICE_DOES_NOT_EXIST;
 
-    if (!KdDwcResetCore((Platform->Flags & KDDWC_PLATFORM_KEEP_PHY) != 0))
+    /* The PHY comes up with the core holding it awake, as the core driver does it */
+    KdDwcHoldPhysAwake();
+    if (Platform->StartPhy != NULL && !Platform->StartPhy(Platform))
         return STATUS_DEVICE_NOT_READY;
 
-    KdDwcTrace("core reset, GCTL 0x%lx DSTS 0x%lx\n", KdDwcRead(Dwc.Core, DWC_GCTL), KdDwcRead(Dwc.Core, DWC_DSTS));
-    if (!KdDwcStartDevice())
+    if (!KdDwcResetCore(Id) || !KdDwcStartDevice(Id))
         return STATUS_DEVICE_NOT_READY;
 
     Dwc.Up = TRUE;
