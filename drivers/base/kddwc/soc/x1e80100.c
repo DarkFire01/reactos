@@ -81,6 +81,17 @@ static const KDDWC_RPMH X1e80100Rpmh =
     0
 };
 
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+static
+BOOLEAN
+NTAPI
+X1e80100IsPowered(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+    return KdDwcClocksRunning(KDDWC_GCC_BASE, X1E80100_USB30_PRIM_GDSCR, X1e80100Branches, RTL_NUMBER_OF(X1e80100Branches));
+}
+
 const KDDWC_PLATFORM KdDwcPlatformX1e80100 =
 {
     "X1E80100",
@@ -88,5 +99,6 @@ const KDDWC_PLATFORM KdDwcPlatformX1e80100 =
     X1E80100_CORE_BASE,
     X1e80100PowerUp,
     KDDWC_PLATFORM_KEEP_PHY,
-    &X1e80100Rpmh
+    &X1e80100Rpmh,
+    X1e80100IsPowered
 };

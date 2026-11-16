@@ -106,6 +106,17 @@ static const KDDWC_RPMH Sdm845Rpmh =
     RTL_NUMBER_OF(Sdm845Supplies)
 };
 
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+static
+BOOLEAN
+NTAPI
+Sdm845IsPowered(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+    return KdDwcClocksRunning(KDDWC_GCC_BASE, SDM845_USB30_PRIM_GDSCR, Sdm845Branches, RTL_NUMBER_OF(Sdm845Branches));
+}
+
 const KDDWC_PLATFORM KdDwcPlatformSdm845 =
 {
     "SDM845",
@@ -113,5 +124,6 @@ const KDDWC_PLATFORM KdDwcPlatformSdm845 =
     SDM845_CORE_BASE,
     Sdm845PowerUp,
     0,
-    &Sdm845Rpmh
+    &Sdm845Rpmh,
+    Sdm845IsPowered
 };

@@ -76,7 +76,21 @@ typedef struct _KDDWC_CONTROLLER
     UCHAR Input[KDDWC_INPUT_BYTES];
     ULONG InputHead;
     ULONG InputTail;
+
+    /* The controller can lose its power to the operating system and come back */
+    const KDDWC_PLATFORM* Platform;
+    BOOLEAN Up;
+    ULONG64 DownSince;
+    ULONG64 NextRevival;
+    ULONG64 NextCheck;
 } KDDWC_CONTROLLER;
+
+/* How often a live core is checked for still being ours, and a dead one retried */
+#define KDDWC_CHECK_US                  100000
+#define KDDWC_REVIVE_US                 2000000
+
+/* How long power taken away by someone else is left alone before the debugger restores it */
+#define KDDWC_RECLAIM_US                10000000
 
 static KDDWC_CONTROLLER Dwc;
 
@@ -184,7 +198,14 @@ KdDwcWaitFor(
     return TRUE;
 }
 
-/* Maps the page that holds a physical register and returns the register's address */
+/* Register pages stay mapped, bring up runs again whenever the controller lost its power */
+#define KDDWC_MAPPED_PAGES              32
+
+static ULONG64 KdDwcMappedPhysical[KDDWC_MAPPED_PAGES];
+static PUCHAR KdDwcMappedVirtual[KDDWC_MAPPED_PAGES];
+static ULONG KdDwcMappedCount;
+
+/* Maps the page that holds a physical register once and returns the register's address */
 PUCHAR
 NTAPI
 KdDwcMapRegister(
@@ -192,12 +213,25 @@ KdDwcMapRegister(
 {
     PHYSICAL_ADDRESS Page;
     PUCHAR Base;
+    ULONG i;
 
     Page.QuadPart = PhysicalAddress & ~(ULONG64)(PAGE_SIZE - 1);
+    for (i = 0; i < KdDwcMappedCount; i++)
+    {
+        if (KdDwcMappedPhysical[i] == (ULONG64)Page.QuadPart)
+            return KdDwcMappedVirtual[i] + (PhysicalAddress & (PAGE_SIZE - 1));
+    }
+
+    if (KdDwcMappedCount == KDDWC_MAPPED_PAGES)
+        return NULL;
+
     Base = KdMapPhysicalMemory64(Page, 1);
     if (Base == NULL)
         return NULL;
 
+    KdDwcMappedPhysical[KdDwcMappedCount] = Page.QuadPart;
+    KdDwcMappedVirtual[KdDwcMappedCount] = Base;
+    KdDwcMappedCount++;
     return Base + (PhysicalAddress & (PAGE_SIZE - 1));
 }
 
@@ -840,6 +874,10 @@ KdDwcHandleEvent(
 
 /* EXPORTED TO THE TRANSPORT **************************************************/
 
+static
+BOOLEAN
+KdDwcCheckAlive(VOID);
+
 /**
  * @brief Handles every event the controller has posted since the last call.
  */
@@ -850,7 +888,7 @@ KdDwcService(VOID)
     ULONG Count;
     ULONG Event;
 
-    if (Dwc.Core == NULL)
+    if (!KdDwcCheckAlive())
         return;
 
     Count = KdDwcRead(Dwc.Core, DWC_GEVNTCOUNT) & DWC_GEVNTCOUNT_MASK;
@@ -874,7 +912,7 @@ VOID
 NTAPI
 KdDwcTraceState(VOID)
 {
-    if (Dwc.Core == NULL)
+    if (!Dwc.Up)
         return;
 
     KdDwcTraceUsb("state %lu, DSTS 0x%lx count 0x%lx EP0 commands 0x%lx 0x%lx TRB control 0x%lx\n",
@@ -904,7 +942,7 @@ BOOLEAN
 NTAPI
 KdDwcIsSending(VOID)
 {
-    return Dwc.TxBusy;
+    return Dwc.Up && Dwc.TxBusy;
 }
 
 /**
@@ -1061,6 +1099,74 @@ KdDwcStartDevice(VOID)
  * @param[in] CoreBase
  * Physical base of the DWC3 controller.
  */
+/* Clears what the host set up, a new bring up starts from an unconfigured device */
+static
+VOID
+KdDwcForgetHost(VOID)
+{
+    Dwc.EventOffset = 0;
+    Dwc.Ep0State = Ep0Setup;
+    Dwc.Ep0ThreeStage = FALSE;
+    Dwc.BulkPacket = KDDWC_BULK_PACKET_HIGH;
+    Dwc.Configuration = 0;
+    Dwc.Configured = FALSE;
+    Dwc.Listening = FALSE;
+    Dwc.RxArmed = FALSE;
+    Dwc.TxBusy = FALSE;
+}
+
+/**
+ * @brief Votes, powers and starts the controller as a USB serial device. Runs again after a power loss.
+ */
+static
+NTSTATUS
+KdDwcBringUp(VOID)
+{
+    const KDDWC_PLATFORM* Platform = Dwc.Platform;
+    ULONG Id;
+
+    Dwc.Up = FALSE;
+    KdDwcForgetHost();
+
+    /* Firmware dropped the controller's bus and supply votes at exit, DMA stalls without them */
+    if (Platform->Rpmh != NULL && !KdDwcVoteRpmh(Platform->Rpmh))
+        KdDwcTrace("some RPMh votes did not go through\n");
+
+    /* Without its clocks the core would stall the bus on the first access */
+    if (!Platform->PowerUp(Platform))
+        return STATUS_DEVICE_NOT_READY;
+
+    KdDwcTrace("power up done, reading the core id\n");
+    Id = KdDwcRead(Dwc.Core, DWC_GSNPSID);
+    KdDwcTrace("core id 0x%lx\n", Id);
+    if ((Id & 0xFFFF0000) != 0x55330000 && (Id & 0xFFFF0000) != 0x33310000)
+        return STATUS_DEVICE_DOES_NOT_EXIST;
+
+    if (!KdDwcResetCore((Platform->Flags & KDDWC_PLATFORM_KEEP_PHY) != 0))
+        return STATUS_DEVICE_NOT_READY;
+
+    KdDwcTrace("core reset, GCTL 0x%lx DSTS 0x%lx\n", KdDwcRead(Dwc.Core, DWC_GCTL), KdDwcRead(Dwc.Core, DWC_DSTS));
+    if (!KdDwcStartDevice())
+        return STATUS_DEVICE_NOT_READY;
+
+    Dwc.Up = TRUE;
+    Dwc.NextCheck = KdDwcMicroseconds() + KDDWC_CHECK_US;
+    KdDwcTrace("device controller running\n");
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Takes the controller from firmware and connects to the host as a serial port.
+ *
+ * @param[in] LoaderBlock
+ * The loader block, where the DMA block comes from.
+ *
+ * @param[in] Platform
+ * The SoC, which knows how to power the controller and its PHY.
+ *
+ * @param[in] CoreBase
+ * Physical base of the DWC3 controller.
+ */
 NTSTATUS
 NTAPI
 KdDwcStartController(
@@ -1070,10 +1176,10 @@ KdDwcStartController(
 {
     PHYSICAL_ADDRESS DmaAddress;
     PFN_COUNT DmaPages = BYTES_TO_PAGES(sizeof(*Dwc.Dma));
-    ULONG Id;
+    NTSTATUS Status;
 
     RtlZeroMemory(&Dwc, sizeof(Dwc));
-    Dwc.BulkPacket = KDDWC_BULK_PACKET_HIGH;
+    Dwc.Platform = Platform;
 
     /* 115200 8N1 until the host says otherwise */
     Dwc.LineCoding[0] = 0x00;
@@ -1104,42 +1210,109 @@ KdDwcStartController(
     Dwc.Glue -= (CoreBase + KDDWC_GLUE_PAGE_OFFSET) & (PAGE_SIZE - 1);
 
     KdDwcTrace("DMA PA 0x%I64x VA %p, core %p glue %p\n", Dwc.DmaAddress, Dwc.Dma, Dwc.Core, Dwc.Glue);
-
-    /* Without its clocks the core would stall the bus on the first access */
     KdDwcTrace("%s at 0x%I64x\n", Platform->Name, CoreBase);
 
-    /* Firmware dropped the controller's bus and supply votes at exit, DMA stalls without them */
-    if (Platform->Rpmh != NULL && !KdDwcVoteRpmh(Platform->Rpmh))
-        KdDwcTrace("some RPMh votes did not go through\n");
-
-    if (!Platform->PowerUp(Platform))
+    /* A controller that is there but not ready yet is retried from the poll, a missing one is not */
+    Status = KdDwcBringUp();
+    if (Status == STATUS_DEVICE_NOT_READY)
     {
-        Dwc.Core = NULL;
+        KdDwcTrace("controller not ready, retrying later\n");
+        Dwc.NextRevival = KdDwcMicroseconds() + KDDWC_REVIVE_US;
+        return STATUS_SUCCESS;
+    }
+
+    return Status;
+}
+
+/**
+ * @brief Forgets the controller without touching it, its power is going away.
+ */
+VOID
+NTAPI
+KdDwcPowerDown(VOID)
+{
+    if (Dwc.Platform == NULL)
+        return;
+
+    if (Dwc.Up)
+        Dwc.DownSince = KdDwcMicroseconds();
+
+    Dwc.Up = FALSE;
+    KdDwcForgetHost();
+    Dwc.NextRevival = KdDwcMicroseconds() + KDDWC_REVIVE_US;
+}
+
+/**
+ * @brief Brings the controller back right away, its power has returned.
+ */
+NTSTATUS
+NTAPI
+KdDwcPowerUp(VOID)
+{
+    if (Dwc.Platform == NULL)
         return STATUS_DEVICE_NOT_READY;
-    }
 
-    KdDwcTrace("power up done, reading the core id\n");
-    Id = KdDwcRead(Dwc.Core, DWC_GSNPSID);
-    KdDwcTrace("core id 0x%lx\n", Id);
-    if ((Id & 0xFFFF0000) != 0x55330000 && (Id & 0xFFFF0000) != 0x33310000)
+    if (Dwc.Up)
+        return STATUS_SUCCESS;
+
+    return KdDwcBringUp();
+}
+
+/* TRUE while the core still holds the device setup this driver gave it */
+static
+BOOLEAN
+KdDwcCoreIsOurs(VOID)
+{
+    if ((KdDwcRead(Dwc.Core, DWC_GCTL) & DWC_GCTL_PRTCAPDIR_MASK) != DWC_GCTL_PRTCAPDIR_DEVICE)
+        return FALSE;
+    if (!(KdDwcRead(Dwc.Core, DWC_DCTL) & DWC_DCTL_RUN_STOP))
+        return FALSE;
+
+    return KdDwcRead(Dwc.Core, DWC_GEVNTADRLO) == (ULONG)KdDwcPhysical(Dwc.Dma->Events);
+}
+
+/*
+ * Decides whether the controller may be touched. Power and clocks are read
+ * from the clock controller, which always answers; the core is only read once
+ * they are known to be on.
+ */
+static
+BOOLEAN
+KdDwcCheckAlive(VOID)
+{
+    const KDDWC_PLATFORM* Platform = Dwc.Platform;
+    ULONG64 Now;
+
+    if (Platform == NULL || Dwc.Core == NULL)
+        return FALSE;
+
+    Now = KdDwcMicroseconds();
+    if (!Dwc.Up)
     {
-        Dwc.Core = NULL;
-        return STATUS_DEVICE_DOES_NOT_EXIST;
+        if (Now < Dwc.NextRevival)
+            return FALSE;
+
+        Dwc.NextRevival = Now + KDDWC_REVIVE_US;
+
+        /* Whoever took the power gets a while to give it back before the debugger takes it again */
+        if (Platform->IsPowered != NULL && !Platform->IsPowered(Platform) && Now - Dwc.DownSince < KDDWC_RECLAIM_US)
+            return FALSE;
+
+        return NT_SUCCESS(KdDwcBringUp());
     }
 
-    if (!KdDwcResetCore((Platform->Flags & KDDWC_PLATFORM_KEEP_PHY) != 0))
+    if (Platform->IsPowered != NULL && !Platform->IsPowered(Platform))
     {
-        Dwc.Core = NULL;
-        return STATUS_DEVICE_NOT_READY;
+        KdDwcPowerDown();
+        return FALSE;
     }
 
-    KdDwcTrace("core reset, GCTL 0x%lx DSTS 0x%lx\n", KdDwcRead(Dwc.Core, DWC_GCTL), KdDwcRead(Dwc.Core, DWC_DSTS));
-    if (!KdDwcStartDevice())
+    if (Now >= Dwc.NextCheck)
     {
-        Dwc.Core = NULL;
-        return STATUS_DEVICE_NOT_READY;
+        Dwc.NextCheck = Now + KDDWC_CHECK_US;
+        if (!KdDwcCoreIsOurs())
+            return NT_SUCCESS(KdDwcBringUp());
     }
 
-    KdDwcTrace("device controller running\n");
-    return STATUS_SUCCESS;
+    return TRUE;
 }

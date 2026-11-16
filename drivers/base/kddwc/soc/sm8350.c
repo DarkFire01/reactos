@@ -90,6 +90,17 @@ static const KDDWC_RPMH Sm8350Rpmh =
     0
 };
 
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+static
+BOOLEAN
+NTAPI
+Sm8350IsPowered(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+    return KdDwcClocksRunning(KDDWC_GCC_BASE, SM8350_USB30_PRIM_GDSCR, Sm8350Branches, RTL_NUMBER_OF(Sm8350Branches));
+}
+
 const KDDWC_PLATFORM KdDwcPlatformSm8350 =
 {
     "SM8350",
@@ -97,5 +108,6 @@ const KDDWC_PLATFORM KdDwcPlatformSm8350 =
     SM8350_CORE_BASE,
     Sm8350PowerUp,
     0,
-    &Sm8350Rpmh
+    &Sm8350Rpmh,
+    Sm8350IsPowered
 };

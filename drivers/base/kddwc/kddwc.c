@@ -281,17 +281,29 @@ KdTransportPoll(VOID)
 
 /* KD TRANSPORT EXPORTS *******************************************************/
 
+/**
+ * @brief The debug device has power again, so the controller is brought back now.
+ */
 NTSTATUS
 NTAPI
 KdD0Transition(VOID)
 {
-    return STATUS_SUCCESS;
+    if (!KdDwcRunning)
+        return STATUS_SUCCESS;
+
+    return KdDwcPowerUp();
 }
 
+/**
+ * @brief The debug device is losing power, so the controller is left alone until it returns.
+ */
 NTSTATUS
 NTAPI
 KdD3Transition(VOID)
 {
+    if (KdDwcRunning)
+        KdDwcPowerDown();
+
     return STATUS_SUCCESS;
 }
 
@@ -342,8 +354,9 @@ KdDebuggerInitialize0(
     ULONG WaitSeconds = KDDWC_DEFAULT_WAIT_SECONDS;
     NTSTATUS Status;
 
+    /* Without a loader block the link is being brought back, after a power loss for one */
     if (LoaderBlock == NULL)
-        return KdDwcRunning ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+        return KdDwcRunning ? KdDwcPowerUp() : STATUS_DEVICE_NOT_READY;
 
     if (KdDwcRunning)
         return STATUS_SUCCESS;
