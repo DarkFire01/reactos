@@ -67,7 +67,7 @@ Sc7280PowerUp(
 const KDDWC_PLATFORM KdDwcPlatformSc7280 =
 {
     "SC7280",
-    { "SC7280", NULL, NULL, NULL },
+    { "SC7280", "SDM7280", NULL, NULL },
     SC7280_CORE_BASE,
     Sc7280PowerUp,
     0
