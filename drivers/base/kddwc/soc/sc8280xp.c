@@ -64,11 +64,38 @@ Sc8280xpPowerUp(
     return KdDwcStartSnpsHs(SC8280XP_HSPHY_BASE, KDDWC_GCC_BASE + SC8280XP_QUSB2PHY_PRIM_BCR);
 }
 
+/* Buses from the controller to memory and from the processor to its registers */
+static const KDDWC_BUS_NODE Sc8280xpBusNodes[] =
+{
+    KDDWC_MEMORY_NODE("SN5", 16, 1),
+    KDDWC_MEMORY_NODE("SN0", 16, 1),
+    KDDWC_MEMORY_NODE("SH0", 16, 8),
+    KDDWC_MEMORY_NODE("MC0", 4, 8),
+    KDDWC_ACV_NODE,
+    KDDWC_REGISTER_NODE("SH2", 32, 2),
+    KDDWC_REGISTER_NODE("CN0", 16, 1),
+    KDDWC_REGISTER_NODE("CN1", 4, 1)
+};
+
+static const KDDWC_RPMH Sc8280xpRpmh =
+{
+    0x18220000ULL,
+    KDDWC_RPMH_DRV2_TCS_OFFSET,
+    KDDWC_RPMH_FIRST_ACTIVE_TCS,
+    0x80860000ULL,
+    KDDWC_CMD_DB_BYTES,
+    Sc8280xpBusNodes,
+    RTL_NUMBER_OF(Sc8280xpBusNodes),
+    NULL,
+    0
+};
+
 const KDDWC_PLATFORM KdDwcPlatformSc8280xp =
 {
     "SC8280XP",
     { "SC8280XP", "SC8280X", "SC8280", NULL },
     SC8280XP_CORE_BASE,
     Sc8280xpPowerUp,
-    0
+    0,
+    &Sc8280xpRpmh
 };

@@ -71,11 +71,47 @@ Sdm845PowerUp(
                            RTL_NUMBER_OF(Sdm845Qusb2Setup));
 }
 
+/* Buses from the controller to memory and from the processor to its registers */
+static const KDDWC_BUS_NODE Sdm845BusNodes[] =
+{
+    KDDWC_MEMORY_NODE("SN11", 16, 1),
+    KDDWC_MEMORY_NODE("SN0", 16, 1),
+    KDDWC_MEMORY_NODE("SH0", 16, 4),
+    KDDWC_MEMORY_NODE("MC0", 4, 4),
+    KDDWC_ACV_NODE,
+    KDDWC_REGISTER_NODE("SN12", 8, 1),
+    KDDWC_REGISTER_NODE("SN3", 8, 1),
+    KDDWC_REGISTER_NODE("CN0", 8, 1),
+    KDDWC_REGISTER_NODE("CN0", 4, 1)
+};
+
+/* The supplies of the high speed PHY on the boards this SoC ships in */
+static const KDDWC_SUPPLY Sdm845Supplies[] =
+{
+    { "ldoa1", 880 },
+    { "ldoa12", 1800 },
+    { "ldoa24", 3088 }
+};
+
+static const KDDWC_RPMH Sdm845Rpmh =
+{
+    0x179E0000ULL,
+    KDDWC_RPMH_DRV2_TCS_OFFSET,
+    KDDWC_RPMH_FIRST_ACTIVE_TCS,
+    0x85FE0000ULL,
+    KDDWC_CMD_DB_BYTES,
+    Sdm845BusNodes,
+    RTL_NUMBER_OF(Sdm845BusNodes),
+    Sdm845Supplies,
+    RTL_NUMBER_OF(Sdm845Supplies)
+};
+
 const KDDWC_PLATFORM KdDwcPlatformSdm845 =
 {
     "SDM845",
     { "SDM845", "SDM850", NULL, NULL },
     SDM845_CORE_BASE,
     Sdm845PowerUp,
-    0
+    0,
+    &Sdm845Rpmh
 };
