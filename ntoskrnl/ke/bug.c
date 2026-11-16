@@ -30,6 +30,10 @@ ULONG KiHardwareTrigger;
 PUNICODE_STRING KiBugCheckDriver;
 ULONG_PTR KiBugCheckData[5];
 
+#ifdef _M_ARM64
+extern ULONG (*FrLdrDbgPrint)(const char *Format, ...);
+#endif
+
 PKNMI_HANDLER_CALLBACK KiNmiCallbackListHead = NULL;
 KSPIN_LOCK KiNmiCallbackListLock;
 
@@ -1278,6 +1282,27 @@ KeBugCheckWithTf(IN ULONG BugCheckCode,
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     PULONG_PTR HardErrorParameters;
     KIRQL OldIrql;
+
+#ifdef _M_ARM64
+    /* Before phase 0 of the executive only the loader's console can show anything */
+    if (FrLdrDbgPrint)
+    {
+        FrLdrDbgPrint("*** STOP 0x%08lx (%p, %p, %p, %p) from %p\n",
+                      BugCheckCode,
+                      (PVOID)BugCheckParameter1,
+                      (PVOID)BugCheckParameter2,
+                      (PVOID)BugCheckParameter3,
+                      (PVOID)BugCheckParameter4,
+                      _ReturnAddress());
+        if (TrapFrame)
+        {
+            FrLdrDbgPrint("*** PC %p LR %p SP %p\n",
+                          (PVOID)TrapFrame->Pc,
+                          (PVOID)TrapFrame->Lr,
+                          (PVOID)TrapFrame->Sp);
+        }
+    }
+#endif
 
 #if defined(_M_ARM64) && defined(CONFIG_SMP)
     /* A processor still starting cannot show a bugcheck, the one starting it does */
