@@ -1468,19 +1468,6 @@ LoadAndBootWindowsCommon(
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
 
-#if defined(UEFIBOOT) && defined(_M_ARM64)
-    {
-        extern VOID UefiKeepUsbIommuDomain(VOID);
-        PCSTR Port;
-        ULONG PortLength = 0;
-
-        /* The USB debugger needs the DMA path the firmware takes down when boot services exit */
-        Port = NtLdrGetOptionEx(BootOptions, "DEBUGPORT=", &PortLength);
-        if (Port != NULL && PortLength >= 13 && !_strnicmp(Port + 10, "DWC", 3))
-            UefiKeepUsbIommuDomain();
-    }
-#endif
-
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
 
