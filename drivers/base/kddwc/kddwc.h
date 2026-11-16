@@ -333,6 +333,10 @@ VOID
 NTAPI
 KdDwcService(VOID);
 
+VOID
+NTAPI
+KdDwcTraceState(VOID);
+
 BOOLEAN
 NTAPI
 KdDwcIsConfigured(VOID);
