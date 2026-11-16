@@ -227,11 +227,19 @@ ULONG
 /* Set only while phase 0 runs with /FRLDRSCREENLOG; prints on the loader's screen */
 extern PKDDWC_BOOT_PRINT KdDwcBootPrint;
 
-#define KdDwcTrace(...)                             \
-    do                                              \
-    {                                               \
-        if (KdDwcBootPrint != NULL)                 \
-            KdDwcBootPrint("kddwc: " __VA_ARGS__);  \
+ULONG64
+NTAPI
+KdDwcMicroseconds(VOID);
+
+/* Each line carries the time since the counter started, which is close to power on */
+#define KdDwcTrace(...)                                                         \
+    do                                                                          \
+    {                                                                           \
+        if (KdDwcBootPrint != NULL)                                             \
+        {                                                                       \
+            KdDwcBootPrint("kddwc %I64u: ", KdDwcMicroseconds() / 1000);        \
+            KdDwcBootPrint(__VA_ARGS__);                                        \
+        }                                                                       \
     } while (0)
 
 /* Set by DWCTRACE; every event and request then goes to the screen, which slows them enough for a host to give up */
