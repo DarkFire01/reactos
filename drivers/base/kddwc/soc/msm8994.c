@@ -52,11 +52,24 @@ Msm8994PowerUp(
     return TRUE;
 }
 
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+static
+BOOLEAN
+NTAPI
+Msm8994IsPowered(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+    return KdDwcClocksRunning(MSM8994_GCC_BASE, MSM8994_USB30_GDSCR, Msm8994Branches, RTL_NUMBER_OF(Msm8994Branches));
+}
+
 const KDDWC_PLATFORM KdDwcPlatformMsm8994 =
 {
     "MSM8994",
     { "MSM8994", "MSM8992", NULL, NULL },
     MSM8994_CORE_BASE,
     Msm8994PowerUp,
-    KDDWC_PLATFORM_KEEP_PHY
+    KDDWC_PLATFORM_KEEP_PHY,
+    NULL,
+    Msm8994IsPowered
 };

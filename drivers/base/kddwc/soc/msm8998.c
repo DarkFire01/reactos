@@ -71,11 +71,24 @@ Msm8998PowerUp(
                            RTL_NUMBER_OF(Msm8998Qusb2Setup));
 }
 
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+static
+BOOLEAN
+NTAPI
+Msm8998IsPowered(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+    return KdDwcClocksRunning(KDDWC_GCC_BASE, MSM8998_USB30_GDSCR, Msm8998Branches, RTL_NUMBER_OF(Msm8998Branches));
+}
+
 const KDDWC_PLATFORM KdDwcPlatformMsm8998 =
 {
     "MSM8998",
     { "MSM8998", NULL, NULL, NULL },
     MSM8998_CORE_BASE,
     Msm8998PowerUp,
-    0
+    0,
+    NULL,
+    Msm8998IsPowered
 };

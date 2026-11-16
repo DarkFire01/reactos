@@ -90,6 +90,17 @@ static const KDDWC_RPMH Sc8280xpRpmh =
     0
 };
 
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+static
+BOOLEAN
+NTAPI
+Sc8280xpIsPowered(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+    return KdDwcClocksRunning(KDDWC_GCC_BASE, SC8280XP_USB30_PRIM_GDSCR, Sc8280xpBranches, RTL_NUMBER_OF(Sc8280xpBranches));
+}
+
 const KDDWC_PLATFORM KdDwcPlatformSc8280xp =
 {
     "SC8280XP",
@@ -97,5 +108,6 @@ const KDDWC_PLATFORM KdDwcPlatformSc8280xp =
     SC8280XP_CORE_BASE,
     Sc8280xpPowerUp,
     0,
-    &Sc8280xpRpmh
+    &Sc8280xpRpmh,
+    Sc8280xpIsPowered
 };

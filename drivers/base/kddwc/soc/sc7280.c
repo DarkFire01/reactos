@@ -91,6 +91,17 @@ static const KDDWC_RPMH Sc7280Rpmh =
     0
 };
 
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+static
+BOOLEAN
+NTAPI
+Sc7280IsPowered(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+    return KdDwcClocksRunning(KDDWC_GCC_BASE, SC7280_USB30_PRIM_GDSCR, Sc7280Branches, RTL_NUMBER_OF(Sc7280Branches));
+}
+
 const KDDWC_PLATFORM KdDwcPlatformSc7280 =
 {
     "SC7280",
@@ -98,5 +109,6 @@ const KDDWC_PLATFORM KdDwcPlatformSc7280 =
     SC7280_CORE_BASE,
     Sc7280PowerUp,
     0,
-    &Sc7280Rpmh
+    &Sc7280Rpmh,
+    Sc7280IsPowered
 };

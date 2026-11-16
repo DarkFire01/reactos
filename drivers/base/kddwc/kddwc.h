@@ -34,6 +34,12 @@ BOOLEAN
 (NTAPI *PKDDWC_POWER_UP)(
     _In_ const KDDWC_PLATFORM* Platform);
 
+/* Reads only the clock controller, so it is safe to call whatever state the controller is in */
+typedef
+BOOLEAN
+(NTAPI *PKDDWC_IS_POWERED)(
+    _In_ const KDDWC_PLATFORM* Platform);
+
 /** One interconnect node on a path the controller uses, and the bus clock manager that runs it. */
 typedef struct _KDDWC_BUS_NODE
 {
@@ -115,6 +121,9 @@ struct _KDDWC_PLATFORM
 
     /* Bus and supply votes made before the power up, NULL on SoCs without RPMh */
     const KDDWC_RPMH* Rpmh;
+
+    /* TRUE while the controller's power domain and clocks run, NULL when that cannot be told */
+    PKDDWC_IS_POWERED IsPowered;
 };
 
 /* The PHY only works as firmware set it up, so the core never resets it */
@@ -415,6 +424,14 @@ KdDwcStartSnpsHs(
     _In_ ULONG64 Phy,
     _In_ ULONG64 PhyBcr);
 
+BOOLEAN
+NTAPI
+KdDwcClocksRunning(
+    _In_ ULONG64 Gcc,
+    _In_ ULONG PowerDomain,
+    _In_reads_(Count) const ULONG* Branches,
+    _In_ ULONG Count);
+
 /* rpmh.c */
 BOOLEAN
 NTAPI
@@ -428,6 +445,14 @@ KdDwcService(VOID);
 VOID
 NTAPI
 KdDwcTraceState(VOID);
+
+VOID
+NTAPI
+KdDwcPowerDown(VOID);
+
+NTSTATUS
+NTAPI
+KdDwcPowerUp(VOID);
 
 BOOLEAN
 NTAPI

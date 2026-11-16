@@ -283,6 +283,45 @@ KdDwcVotedClockIsOn(
     return TRUE;
 }
 
+/**
+ * @brief Tells whether a power domain is on and its clock branches run, from the clock controller alone.
+ *
+ * @param[in] Gcc
+ * Physical base of the clock controller.
+ *
+ * @param[in] PowerDomain
+ * Offset of the domain's GDSC.
+ *
+ * @param[in] Branches
+ * Offsets of the branches the controller needs.
+ *
+ * @param[in] Count
+ * Number of branches.
+ */
+BOOLEAN
+NTAPI
+KdDwcClocksRunning(
+    _In_ ULONG64 Gcc,
+    _In_ ULONG PowerDomain,
+    _In_reads_(Count) const ULONG* Branches,
+    _In_ ULONG Count)
+{
+    PUCHAR Register = KdDwcMapRegister(Gcc + PowerDomain);
+    ULONG i;
+
+    if (Register == NULL || !(KdDwcRead(Register, 0) & GCC_GDSC_PWR_ON))
+        return FALSE;
+
+    for (i = 0; i < Count; i++)
+    {
+        Register = KdDwcMapRegister(Gcc + Branches[i]);
+        if (Register == NULL || (KdDwcRead(Register, 0) & GCC_CBCR_CLK_OFF))
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
 VOID
 NTAPI
 KdDwcPulseReset(
