@@ -445,13 +445,37 @@ static KSPIN_LOCK KdpTransportSpinLock;
 static PKDP_TRANSPORT_PRINT KdpTransportPrintRoutine;
 static PKDP_TRANSPORT_POLL KdpTransportPollRoutine;
 
+/* The NLS tables are not loaded this early, so names are compared with an ASCII case fold */
+static
+BOOLEAN
+KdpIsTransportName(
+    _In_ PCUNICODE_STRING Name)
+{
+    static const CHAR Expected[] = "kdcom.dll";
+    WCHAR Char;
+    ULONG i;
+
+    if (Name->Length != (sizeof(Expected) - 1) * sizeof(WCHAR))
+        return FALSE;
+
+    for (i = 0; i < sizeof(Expected) - 1; i++)
+    {
+        Char = Name->Buffer[i];
+        if (Char >= L'A' && Char <= L'Z')
+            Char += L'a' - L'A';
+        if (Char != (WCHAR)Expected[i])
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
 /* The loader puts the transport DEBUGPORT named in the module list as kdcom.dll */
 static
 PVOID
 KdpFindTransportImage(
     _In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"kdcom.dll");
     PLDR_DATA_TABLE_ENTRY Module;
     PLIST_ENTRY Entry;
 
@@ -460,7 +484,7 @@ KdpFindTransportImage(
          Entry = Entry->Flink)
     {
         Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-        if (RtlEqualUnicodeString(&Module->BaseDllName, &Name, TRUE))
+        if (KdpIsTransportName(&Module->BaseDllName))
             return Module->DllBase;
     }
 
