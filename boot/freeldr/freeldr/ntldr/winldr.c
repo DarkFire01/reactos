@@ -1468,6 +1468,19 @@ LoadAndBootWindowsCommon(
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
 
+#if defined(UEFIBOOT) && defined(_M_ARM64)
+    {
+        extern VOID UefiKeepUsbIommuDomain(VOID);
+        PCSTR Port;
+        ULONG PortLength = 0;
+
+        /* The USB debugger needs the DMA path the firmware takes down when boot services exit */
+        Port = NtLdrGetOptionEx(BootOptions, "DEBUGPORT=", &PortLength);
+        if (Port != NULL && PortLength >= 13 && !_strnicmp(Port + 10, "DWC", 3))
+            UefiKeepUsbIommuDomain();
+    }
+#endif
+
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
 
@@ -1496,16 +1509,6 @@ LoadAndBootWindowsCommon(
         TuiPrintf("You need to connect a debugger on port %.*s\n"
                   "For more information, visit https://reactos.org/wiki/Debugging.\n",
                   DebugPortLength, DebugPort);
-
-#if defined(UEFIBOOT) && defined(_M_ARM64)
-        {
-            extern VOID UefiKeepUsbIommuDomain(VOID);
-
-            /* The USB debugger needs the DMA path the firmware takes down when boot services exit */
-            if (DebugPortLength >= 3 && !_strnicmp(DebugPort, "DWC", 3))
-                UefiKeepUsbIommuDomain();
-        }
-#endif
     }
 
     /* Debugging... */
