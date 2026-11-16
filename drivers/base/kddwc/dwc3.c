@@ -1208,7 +1208,7 @@ KdDwcBringUp(VOID)
     KdDwcForgetHost();
 
     /* Firmware dropped the controller's bus and supply votes at exit, DMA stalls without them */
-    if (Platform->Rpmh != NULL && !KdDwcVoteRpmh(Platform->Rpmh))
+    if (Platform->Rpmh != NULL && !KdDwcSkipRpmh && !KdDwcVoteRpmh(Platform->Rpmh))
         KdDwcTrace("some RPMh votes did not go through\n");
 
     /* Without its clocks the core would stall the bus on the first access */
