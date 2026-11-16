@@ -349,6 +349,7 @@ KdDebuggerInitialize0(
     KdDwcTrace("starting, options '%s'\n", Options ? Options : "");
 
     Value = KdDwcFindOption(Options, "DWCSOC=");
+    KdDwcTrace("looking for the SoC %s\n", Value ? "by name" : "in the ACPI tables");
     Platform = KdDwcFindPlatform(LoaderBlock, Value);
     if (Platform == NULL)
     {
@@ -356,6 +357,7 @@ KdDebuggerInitialize0(
         KdDwcBootPrint = NULL;
         return STATUS_NOT_FOUND;
     }
+    KdDwcTrace("SoC %s\n", Platform->Name);
 
     CoreBase = Platform->CoreBase;
     Value = KdDwcFindOption(Options, "DWCBASE=");
@@ -366,6 +368,7 @@ KdDebuggerInitialize0(
     if (Value != NULL)
         WaitSeconds = (ULONG)KdDwcParseNumber(Value);
 
+    KdDwcTrace("starting the controller at 0x%I64x\n", CoreBase);
     Status = KdDwcStartController(LoaderBlock, Platform, CoreBase);
     if (!NT_SUCCESS(Status))
     {

@@ -188,6 +188,7 @@ KdDwcPowerDomainOn(
         return FALSE;
     }
 
+    KdDwcTrace("power domain 0x%I64x now 0x%lx\n", Gdscr, KdDwcRead(Register, 0));
     return TRUE;
 }
 
@@ -215,6 +216,7 @@ KdDwcClockOn(
         return FALSE;
     }
 
+    KdDwcTrace("clock 0x%I64x now 0x%lx\n", Cbcr, KdDwcRead(Register, 0));
     return TRUE;
 }
 
@@ -256,6 +258,7 @@ KdDwcPulseReset(
     KdDwcStall(150);
     KdDwcModify(Register, 0, 1, 0);
     KdDwcStall(150);
+    KdDwcTrace("reset 0x%I64x released\n", Bcr);
 }
 
 /* QUSB2 PHY ******************************************************************/
@@ -311,13 +314,16 @@ KdDwcStartQusb2(
 
     KdDwcPulseReset(PhyBcr);
 
-    KdDwcTrace("QUSB2 0x%I64x powerdown 0x%lx\n", Phy, KdDwcRead(Base, QUSB2_POWERDOWN));
+    KdDwcTrace("reading QUSB2 0x%I64x at %p\n", Phy, Base);
+    KdDwcTrace("QUSB2 powerdown 0x%lx\n", KdDwcRead(Base, QUSB2_POWERDOWN));
     KdDwcModify(Base, QUSB2_POWERDOWN, 0, PowerDownBits);
     for (i = 0; i < Count; i++)
         KdDwcWrite(Base, Table[i].Offset, Table[i].Value);
 
+    KdDwcTrace("QUSB2 programmed, powering up\n");
     KdDwcModify(Base, QUSB2_POWERDOWN, QUSB2_POWERDOWN_POWER_DOWN, 0);
     KdDwcStall(260);
+    KdDwcTrace("QUSB2 PLL status 0x%lx\n", KdDwcRead(Base, QUSB2_PLL_STATUS));
 
     if (!(KdDwcRead(Base, QUSB2_PLL_STATUS) & QUSB2_PLL_STATUS_CORE_READY))
     {

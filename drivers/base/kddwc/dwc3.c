@@ -584,6 +584,7 @@ KdDwcHandleSetup(VOID)
     Request = Setup[1];
     Value = (USHORT)(Setup[2] | (Setup[3] << 8));
     Length = (USHORT)(Setup[6] | (Setup[7] << 8));
+    KdDwcTrace("setup %02x %02x value %04x length %u\n", RequestType, Request, Value, Length);
 
     if ((RequestType & USB_TYPE_MASK) == USB_TYPE_CLASS)
     {
@@ -778,6 +779,7 @@ KdDwcHandleEvent(
     ULONG Endpoint;
     ULONG Speed;
 
+    KdDwcTrace("event 0x%08lx\n", Event);
     if (Event & DWC_EVENT_IS_DEVICE)
     {
         switch (DWC_EVENT_DEVICE_TYPE(Event))
@@ -932,6 +934,8 @@ BOOLEAN
 KdDwcResetCore(
     _In_ BOOLEAN KeepPhy)
 {
+    KdDwcTrace("core soft reset, GCTL 0x%lx GUSB2PHYCFG 0x%lx\n",
+               KdDwcRead(Dwc.Core, DWC_GCTL), KdDwcRead(Dwc.Core, DWC_GUSB2PHYCFG));
     KdDwcModify(Dwc.Core, DWC_GCTL, 0, DWC_GCTL_CORESOFTRESET);
     if (!KeepPhy)
     {
@@ -940,6 +944,7 @@ KdDwcResetCore(
         KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, DWC_GUSB2PHYCFG_PHYSOFTRST, 0);
     }
 
+    KdDwcTrace("reading glue GENERAL_CFG 0x%lx\n", KdDwcRead(Dwc.Glue, QSCR_GENERAL_CFG));
     KdDwcModify(Dwc.Glue, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_PIPE_CLK_GATE);
     KdDwcStall(100);
     KdDwcModify(Dwc.Glue, QSCR_GENERAL_CFG, 0, QSCR_GENERAL_CFG_UTMI_AS_PIPE | QSCR_GENERAL_CFG_PHYSTATUS_SW);
@@ -952,6 +957,7 @@ KdDwcResetCore(
 
     /* The device logic gets its own reset after the role is set */
     KdDwcModify(Dwc.Core, DWC_GCTL, DWC_GCTL_PRTCAPDIR_MASK, DWC_GCTL_PRTCAPDIR_DEVICE);
+    KdDwcTrace("device soft reset, DCTL 0x%lx\n", KdDwcRead(Dwc.Core, DWC_DCTL));
     KdDwcModify(Dwc.Core, DWC_DCTL, DWC_DCTL_RUN_STOP, DWC_DCTL_CSFTRST);
     if (!KdDwcWaitFor(Dwc.Core, DWC_DCTL, DWC_DCTL_CSFTRST, 0, KDDWC_RESET_TIMEOUT_US))
     {
@@ -967,6 +973,8 @@ KdDwcResetCore(
     /* Nothing reports VBUS to the core in device mode, so the glue says it is there */
     KdDwcModify(Dwc.Glue, QSCR_HS_PHY_CTRL, 0, QSCR_HS_PHY_CTRL_VBUS_VALID | QSCR_HS_PHY_CTRL_SESSVLD_SEL);
     KdDwcModify(Dwc.Glue, QSCR_SS_PHY_CTRL, 0, QSCR_SS_PHY_CTRL_LANE0_PWR);
+    KdDwcTrace("glue HS_PHY_CTRL 0x%lx SS_PHY_CTRL 0x%lx\n",
+               KdDwcRead(Dwc.Glue, QSCR_HS_PHY_CTRL), KdDwcRead(Dwc.Glue, QSCR_SS_PHY_CTRL));
     return TRUE;
 }
 
@@ -1001,6 +1009,7 @@ KdDwcStartDevice(VOID)
     KdDwcWrite(Dwc.Core, DWC_DALEPENA, (1 << KDDWC_EP0_OUT) | (1 << KDDWC_EP0_IN));
     KdDwcArmSetup();
 
+    KdDwcTrace("control endpoint armed, setting run\n");
     KdDwcModify(Dwc.Core, DWC_DCTL, 0, DWC_DCTL_RUN_STOP);
     if (!KdDwcWaitFor(Dwc.Core, DWC_DSTS, DWC_DSTS_DEVCTRLHLT, 0, KDDWC_RESET_TIMEOUT_US))
     {
@@ -1075,6 +1084,7 @@ KdDwcStartController(
         return STATUS_DEVICE_NOT_READY;
     }
 
+    KdDwcTrace("power up done, reading the core id\n");
     Id = KdDwcRead(Dwc.Core, DWC_GSNPSID);
     KdDwcTrace("core id 0x%lx\n", Id);
     if ((Id & 0xFFFF0000) != 0x55330000 && (Id & 0xFFFF0000) != 0x33310000)
