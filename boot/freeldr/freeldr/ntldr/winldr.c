@@ -1496,6 +1496,16 @@ LoadAndBootWindowsCommon(
         TuiPrintf("You need to connect a debugger on port %.*s\n"
                   "For more information, visit https://reactos.org/wiki/Debugging.\n",
                   DebugPortLength, DebugPort);
+
+#if defined(UEFIBOOT) && defined(_M_ARM64)
+        {
+            extern VOID UefiKeepUsbIommuDomain(VOID);
+
+            /* The USB debugger needs the DMA path the firmware takes down when boot services exit */
+            if (DebugPortLength >= 3 && !_strnicmp(DebugPort, "DWC", 3))
+                UefiKeepUsbIommuDomain();
+        }
+#endif
     }
 
     /* Debugging... */
