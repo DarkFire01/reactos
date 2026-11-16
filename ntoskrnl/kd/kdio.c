@@ -53,6 +53,7 @@ PKDP_INIT_ROUTINE InitRoutines[KdMax] =
     KdpScreenInit,
     KdpSerialInit,
     KdpDebugLogInit,
+    KdpTransportInit,
 #ifdef KDBG // See kdb_cli.c
     KdpKdbgInit
 #endif
@@ -421,6 +422,132 @@ KdpSerialInit(
     {
         /* Announce ourselves */
         HalDisplayString("   Serial debugging enabled\r\n");
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/* TRANSPORT FUNCTIONS *******************************************************/
+
+typedef NTSTATUS (NTAPI *PKDP_TRANSPORT_START)(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock);
+typedef VOID (NTAPI *PKDP_TRANSPORT_PRINT)(_In_reads_bytes_(Length) PCCH String, _In_ ULONG Length);
+typedef VOID (NTAPI *PKDP_TRANSPORT_POLL)(VOID);
+
+static KSPIN_LOCK KdpTransportSpinLock;
+static PKDP_TRANSPORT_PRINT KdpTransportPrintRoutine;
+static PKDP_TRANSPORT_POLL KdpTransportPollRoutine;
+
+/* The loader puts the transport DEBUGPORT named in the module list as kdcom.dll */
+static
+PVOID
+KdpFindTransportImage(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"kdcom.dll");
+    PLDR_DATA_TABLE_ENTRY Module;
+    PLIST_ENTRY Entry;
+
+    for (Entry = LoaderBlock->LoadOrderListHead.Flink;
+         Entry != &LoaderBlock->LoadOrderListHead;
+         Entry = Entry->Flink)
+    {
+        Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (RtlEqualUnicodeString(&Module->BaseDllName, &Name, TRUE))
+            return Module->DllBase;
+    }
+
+    return NULL;
+}
+
+static VOID
+NTAPI
+KdpTransportPrint(
+    _In_ PCCH String,
+    _In_ ULONG Length)
+{
+    KIRQL OldIrql;
+
+    OldIrql = KdbpAcquireLock(&KdpTransportSpinLock);
+    KdpTransportPrintRoutine(String, Length);
+    KdbpReleaseLock(&KdpTransportSpinLock, OldIrql);
+}
+
+/**
+ * @brief Lets the transport service its device from the clock tick.
+ *
+ * A USB host drops a device that stops answering, so the transport is serviced
+ * even while nothing prints. A print running on another processor already
+ * services it, so a busy lock is simply skipped.
+ */
+VOID
+KdpTransportPoll(VOID)
+{
+    KIRQL OldIrql;
+
+    if (!KdpTransportPollRoutine)
+        return;
+
+    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    if (KeTryToAcquireSpinLockAtDpcLevel(&KdpTransportSpinLock))
+    {
+        KdpTransportPollRoutine();
+        KiReleaseSpinLock(&KdpTransportSpinLock);
+    }
+    KeLowerIrql(OldIrql);
+}
+
+NTSTATUS
+NTAPI
+KdpTransportInit(
+    _In_ PKD_DISPATCH_TABLE DispatchTable,
+    _In_ ULONG BootPhase)
+{
+    PKDP_TRANSPORT_START Start;
+    PVOID Image;
+    NTSTATUS Status;
+
+    if (!KdpDebugMode.Transport)
+        return STATUS_PORT_DISCONNECTED;
+
+    if (BootPhase == 0)
+    {
+        Image = KeLoaderBlock ? KdpFindTransportImage(KeLoaderBlock) : NULL;
+        if (!Image)
+        {
+            KdpDebugMode.Transport = FALSE;
+            return STATUS_DEVICE_DOES_NOT_EXIST;
+        }
+
+        Start = (PKDP_TRANSPORT_START)RtlFindExportedRoutineByName(Image, "KdDebuggerInitialize0");
+        KdpTransportPrintRoutine = (PKDP_TRANSPORT_PRINT)RtlFindExportedRoutineByName(Image, "KdTransportPrint");
+        KdpTransportPollRoutine = (PKDP_TRANSPORT_POLL)RtlFindExportedRoutineByName(Image, "KdTransportPoll");
+        if (!Start || !KdpTransportPrintRoutine)
+        {
+            KdpTransportPrintRoutine = NULL;
+            KdpTransportPollRoutine = NULL;
+            KdpDebugMode.Transport = FALSE;
+            return STATUS_PROCEDURE_NOT_FOUND;
+        }
+
+        Status = Start(KeLoaderBlock);
+        if (!NT_SUCCESS(Status))
+        {
+            KdpTransportPrintRoutine = NULL;
+            KdpTransportPollRoutine = NULL;
+            KdpDebugMode.Transport = FALSE;
+            return Status;
+        }
+
+        KeInitializeSpinLock(&KdpTransportSpinLock);
+        DispatchTable->KdpPrintRoutine = KdpTransportPrint;
+
+        /* Register for BootPhase 1 initialization and as a Provider */
+        DispatchTable->KdpInitRoutine = KdpTransportInit;
+        InsertTailList(&KdProviders, &DispatchTable->KdProvidersList);
+    }
+    else if (BootPhase == 1)
+    {
+        HalDisplayString("   USB serial debugging enabled\r\n");
     }
 
     return STATUS_SUCCESS;
@@ -924,7 +1051,8 @@ KdReceivePacket(
 
     if (PacketType == PACKET_TYPE_KD_POLL_BREAKIN)
     {
-        /* We don't support breaks-in */
+        /* We don't support breaks-in, but a transport gets to service its device */
+        KdpTransportPoll();
         return KdPacketTimedOut;
     }
 

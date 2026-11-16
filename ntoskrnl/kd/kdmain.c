@@ -91,6 +91,12 @@ KdpGetDebugMode(
             }
         }
     }
+    /* Check for the DWC3 USB serial transport */
+    else if (!_strnicmp(p2, "DWC", CONST_STR_LEN("DWC")))
+    {
+        p2 += CONST_STR_LEN("DWC");
+        KdpDebugMode.Transport = TRUE;
+    }
     /* Check for Debug Log Debugging */
     else if (!_strnicmp(p2, "FILE", CONST_STR_LEN("FILE")))
     {
