@@ -346,6 +346,7 @@ KdDebuggerInitialize0(
     Options = LoaderBlock->LoadOptions;
     if (KdDwcFindOption(Options, "FRLDRSCREENLOG") != NULL)
         KdDwcBootPrint = (PKDDWC_BOOT_PRINT)LoaderBlock->u.I386.CommonDataArea;
+    KdDwcTrace("starting, options '%s'\n", Options ? Options : "");
 
     Value = KdDwcFindOption(Options, "DWCSOC=");
     Platform = KdDwcFindPlatform(LoaderBlock, Value);
@@ -374,6 +375,7 @@ KdDebuggerInitialize0(
     }
 
     KdDwcRunning = TRUE;
+    KdDwcTrace("waiting %lu s for the host\n", WaitSeconds);
 
     /* Nothing else runs this early, so the host gets the whole wait to enumerate the port */
     Start = KdDwcMicroseconds();

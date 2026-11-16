@@ -177,6 +177,7 @@ KdDwcPowerDomainOn(
     if (Register == NULL)
         return FALSE;
 
+    KdDwcTrace("power domain 0x%I64x is 0x%lx\n", Gdscr, KdDwcRead(Register, 0));
     if (KdDwcRead(Register, 0) & GCC_GDSC_PWR_ON)
         return TRUE;
 
@@ -203,6 +204,7 @@ KdDwcClockOn(
     if (Register == NULL)
         return FALSE;
 
+    KdDwcTrace("clock 0x%I64x is 0x%lx\n", Cbcr, KdDwcRead(Register, 0));
     if (!(KdDwcRead(Register, 0) & GCC_CBCR_CLK_OFF))
         return TRUE;
 
@@ -229,6 +231,7 @@ KdDwcVotedClockIsOn(
     if (Register == NULL)
         return FALSE;
 
+    KdDwcTrace("voted clock 0x%I64x is 0x%lx\n", Cbcr, KdDwcRead(Register, 0));
     if (KdDwcRead(Register, 0) & GCC_CBCR_CLK_OFF)
     {
         KdDwcTrace("voted clock 0x%I64x is off\n", Cbcr);
@@ -248,6 +251,7 @@ KdDwcPulseReset(
     if (Register == NULL)
         return;
 
+    KdDwcTrace("pulsing reset 0x%I64x\n", Bcr);
     KdDwcModify(Register, 0, 0, 1);
     KdDwcStall(150);
     KdDwcModify(Register, 0, 1, 0);
@@ -307,6 +311,7 @@ KdDwcStartQusb2(
 
     KdDwcPulseReset(PhyBcr);
 
+    KdDwcTrace("QUSB2 0x%I64x powerdown 0x%lx\n", Phy, KdDwcRead(Base, QUSB2_POWERDOWN));
     KdDwcModify(Base, QUSB2_POWERDOWN, 0, PowerDownBits);
     for (i = 0; i < Count; i++)
         KdDwcWrite(Base, Table[i].Offset, Table[i].Value);
