@@ -48,6 +48,18 @@ Sm8150PowerUp(
             return FALSE;
     }
 
+    return TRUE;
+}
+
+/* Runs after the core has stopped suspending its PHY, as the core driver orders it */
+static
+BOOLEAN
+NTAPI
+Sm8150StartPhy(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+
     if (KdDwcSnpsHsIsRunning(SM8150_HSPHY_BASE))
         return TRUE;
 
@@ -102,5 +114,6 @@ const KDDWC_PLATFORM KdDwcPlatformSm8150 =
     Sm8150PowerUp,
     0,
     &Sm8150Rpmh,
-    Sm8150IsPowered
+    Sm8150IsPowered,
+    Sm8150StartPhy
 };

@@ -61,6 +61,18 @@ Msm8998PowerUp(
             return FALSE;
     }
 
+    return TRUE;
+}
+
+/* Runs after the core has stopped suspending its PHY, as the core driver orders it */
+static
+BOOLEAN
+NTAPI
+Msm8998StartPhy(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+
     if (KdDwcQusb2IsRunning(MSM8998_QUSB2_BASE))
         return TRUE;
 
@@ -68,7 +80,10 @@ Msm8998PowerUp(
                            KDDWC_GCC_BASE + MSM8998_QUSB2PHY_PRIM_BCR,
                            MSM8998_QUSB2_HOLD,
                            Msm8998Qusb2Setup,
-                           RTL_NUMBER_OF(Msm8998Qusb2Setup));
+                           RTL_NUMBER_OF(Msm8998Qusb2Setup),
+                           NULL,
+                           0,
+                           0);
 }
 
 /* Reads only the clock controller, so it can run whatever state the controller is in */
@@ -90,5 +105,6 @@ const KDDWC_PLATFORM KdDwcPlatformMsm8998 =
     Msm8998PowerUp,
     0,
     NULL,
-    Msm8998IsPowered
+    Msm8998IsPowered,
+    Msm8998StartPhy
 };

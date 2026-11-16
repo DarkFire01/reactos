@@ -58,6 +58,18 @@ Sc8180xPowerUp(
             return FALSE;
     }
 
+    return TRUE;
+}
+
+/* Runs after the core has stopped suspending its PHY, as the core driver orders it */
+static
+BOOLEAN
+NTAPI
+Sc8180xStartPhy(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+
     if (KdDwcSnpsHsIsRunning(SC8180X_HSPHY_BASE))
         return TRUE;
 
@@ -112,5 +124,6 @@ const KDDWC_PLATFORM KdDwcPlatformSc8180x =
     Sc8180xPowerUp,
     0,
     &Sc8180xRpmh,
-    Sc8180xIsPowered
+    Sc8180xIsPowered,
+    Sc8180xStartPhy
 };

@@ -404,6 +404,46 @@ KdDwcVoteBuses(
     return KdDwcRpmhSend(Commands, Count);
 }
 
+/*
+ * A rail is voted by the index of a level, the levels being the 16 bit words
+ * of the rail's auxiliary data. The first level at or above the one asked for
+ * is the vote.
+ */
+static
+BOOLEAN
+KdDwcVoteRail(
+    _In_ const KDDWC_RPMH* Rpmh)
+{
+    KDDWC_RPMH_COMMAND Command;
+    ULONG Address, AuxOffset, AuxLength;
+    ULONG Index, Count;
+
+    if (Rpmh->Rail == NULL)
+        return TRUE;
+
+    if (!KdDwcCmdDbFind(Rpmh->Rail, &Address, &AuxOffset, &AuxLength))
+        return FALSE;
+
+    Count = AuxLength / sizeof(USHORT);
+    for (Index = 0; Index < Count; Index++)
+    {
+        if (KdDwcCmdDbRead(AuxOffset + Index * sizeof(USHORT), sizeof(USHORT)) >= Rpmh->RailLevel)
+            break;
+    }
+
+    if (Index == Count)
+    {
+        KdDwcTrace("%s has no level %u\n", Rpmh->Rail, Rpmh->RailLevel);
+        return FALSE;
+    }
+
+    Command.Address = Address;
+    Command.Data = Index;
+    Command.Wait = TRUE;
+    KdDwcTrace("rail %s at 0x%lx, level %u is index %lu\n", Rpmh->Rail, Address, Rpmh->RailLevel, Index);
+    return KdDwcRpmhSend(&Command, 1);
+}
+
 /* Sets each PHY supply's voltage, then its high power mode, then turns it on */
 static
 BOOLEAN
@@ -488,7 +528,9 @@ KdDwcVoteRpmh(
     if (KdDwcTcsCommands == 0)
         return FALSE;
 
-    Ok = KdDwcVoteSupplies(Rpmh);
+    /* The rail goes first, the clocks set up after this need it */
+    Ok = KdDwcVoteRail(Rpmh);
+    Ok = KdDwcVoteSupplies(Rpmh) && Ok;
     Ok = KdDwcVoteBuses(Rpmh) && Ok;
 
     KdUnmapVirtualAddress(Rsc, Pages);

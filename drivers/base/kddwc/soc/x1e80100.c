@@ -98,7 +98,8 @@ const KDDWC_PLATFORM KdDwcPlatformX1e80100 =
     { "X1E80100", "SC8380XP", "SC8380", "X1E" },
     X1E80100_CORE_BASE,
     X1e80100PowerUp,
-    KDDWC_PLATFORM_KEEP_PHY,
+    0,
     &X1e80100Rpmh,
-    X1e80100IsPowered
+    X1e80100IsPowered,
+    NULL
 };

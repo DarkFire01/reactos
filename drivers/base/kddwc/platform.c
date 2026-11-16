@@ -10,7 +10,16 @@
 
 /* Clock controller register bits */
 #define GCC_GDSC_SW_COLLAPSE            0x00000001
+#define GCC_GDSC_HW_CONTROL             0x00000002
+#define GCC_GDSC_SW_OVERRIDE            0x00000004
+#define GCC_GDSC_WAIT_MASK              0x00FFF000
+#define GCC_GDSC_WAIT_VALUES            0x00282000
 #define GCC_GDSC_PWR_ON                 0x80000000
+#define GCC_RCG_UPDATE                  0x00000001
+#define GCC_RCG_ROOT_EN                 0x00000002
+#define GCC_RCG_ROOT_OFF                0x80000000
+#define GCC_RCG_CFG_MASK                0x0013371F
+#define GCC_PLL_LOCK_DET                0x80000000
 #define GCC_CBCR_ENABLE                 0x00000001
 #define GCC_CBCR_CLK_OFF                0x80000000
 
@@ -19,6 +28,11 @@
 #define QUSB2_PLL_STATUS_CORE_READY     0x01
 #define QUSB2_POWERDOWN                 0x0210
 #define QUSB2_POWERDOWN_POWER_DOWN      0x01
+#define QUSB2_TUNE1                     0x0240
+#define QUSB2_TUNE1_HSTX_MASK           0xF0
+#define QUSB2_TUNE1_HSTX_SHIFT          4
+#define QUSB2_TRIM_SHIFT                1
+#define QUSB2_TRIM_MASK                 0x0F
 
 /* Synopsys 7 nm and 5 nm high speed PHY */
 #define SNPS_UTMI_CTRL0                 0x3C
@@ -205,7 +219,11 @@ KdDwcFindPlatform(
 /* CLOCKS AND RESETS **********************************************************/
 
 /**
- * @brief Makes sure a power domain is on, turning it on only when firmware left it collapsed.
+ * @brief Brings a power domain into the state the clock driver keeps it in and turns it on.
+ *
+ * Software alone controls it afterwards: hardware control and the override
+ * are cleared and the wait times are the clock driver's, whether firmware
+ * left the domain on or off.
  */
 BOOLEAN
 NTAPI
@@ -213,22 +231,106 @@ KdDwcPowerDomainOn(
     _In_ ULONG64 Gdscr)
 {
     PUCHAR Register = KdDwcMapRegister(Gdscr);
+    ULONG Value;
 
     if (Register == NULL)
         return FALSE;
 
-    KdDwcTrace("power domain 0x%I64x is 0x%lx\n", Gdscr, KdDwcRead(Register, 0));
-    if (KdDwcRead(Register, 0) & GCC_GDSC_PWR_ON)
+    Value = KdDwcRead(Register, 0);
+    KdDwcTrace("power domain 0x%I64x is 0x%lx\n", Gdscr, Value);
+
+    Value &= ~(GCC_GDSC_HW_CONTROL | GCC_GDSC_SW_OVERRIDE | GCC_GDSC_WAIT_MASK);
+    Value |= GCC_GDSC_WAIT_VALUES;
+    KdDwcWrite(Register, 0, Value);
+
+    if (!(Value & GCC_GDSC_SW_COLLAPSE) && (Value & GCC_GDSC_PWR_ON))
         return TRUE;
 
-    KdDwcModify(Register, 0, GCC_GDSC_SW_COLLAPSE, 0);
+    KdDwcWrite(Register, 0, Value & ~GCC_GDSC_SW_COLLAPSE);
     if (!KdDwcWaitFor(Register, 0, GCC_GDSC_PWR_ON, GCC_GDSC_PWR_ON, KDDWC_DOMAIN_TIMEOUT_US))
     {
         KdDwcTrace("power domain 0x%I64x stayed off: 0x%lx\n", Gdscr, KdDwcRead(Register, 0));
         return FALSE;
     }
 
+    KdDwcStall(1);
     KdDwcTrace("power domain 0x%I64x now 0x%lx\n", Gdscr, KdDwcRead(Register, 0));
+    return TRUE;
+}
+
+/**
+ * @brief Points a clock root at a source and divider, the way the clock driver configures it.
+ *
+ * The root is held on while the new setting latches, and hardware clock
+ * control is cleared so only software decides when it runs.
+ *
+ * @param[in] CmdRcgr
+ * Physical address of the root's command register, its configuration follows it.
+ *
+ * @param[in] Config
+ * Source select and divider.
+ */
+BOOLEAN
+NTAPI
+KdDwcConfigureRoot(
+    _In_ ULONG64 CmdRcgr,
+    _In_ ULONG Config)
+{
+    PUCHAR Register = KdDwcMapRegister(CmdRcgr);
+    BOOLEAN Ok;
+
+    if (Register == NULL)
+        return FALSE;
+
+    KdDwcTrace("clock root 0x%I64x was 0x%lx 0x%lx\n", CmdRcgr, KdDwcRead(Register, 0), KdDwcRead(Register, 4));
+
+    KdDwcModify(Register, 0, 0, GCC_RCG_ROOT_EN);
+    if (!KdDwcWaitFor(Register, 0, GCC_RCG_ROOT_OFF, 0, KDDWC_CLOCK_TIMEOUT_US))
+        KdDwcTrace("clock root 0x%I64x did not come on\n", CmdRcgr);
+
+    KdDwcModify(Register, 4, GCC_RCG_CFG_MASK, Config);
+    KdDwcModify(Register, 0, 0, GCC_RCG_UPDATE);
+    Ok = KdDwcWaitFor(Register, 0, GCC_RCG_UPDATE, 0, KDDWC_CLOCK_TIMEOUT_US);
+    KdDwcModify(Register, 0, GCC_RCG_ROOT_EN, 0);
+
+    if (!Ok)
+        KdDwcTrace("clock root 0x%I64x did not take 0x%lx\n", CmdRcgr, Config);
+
+    return Ok;
+}
+
+/**
+ * @brief Votes a PLL on for the application processor and waits for it to lock.
+ *
+ * @param[in] Mode
+ * Physical address of the PLL's mode register.
+ *
+ * @param[in] Vote
+ * Physical address of the application processor's PLL vote register.
+ *
+ * @param[in] VoteBit
+ * The PLL's bit in that register.
+ */
+BOOLEAN
+NTAPI
+KdDwcPllOn(
+    _In_ ULONG64 Mode,
+    _In_ ULONG64 Vote,
+    _In_ ULONG VoteBit)
+{
+    PUCHAR VoteRegister = KdDwcMapRegister(Vote);
+    PUCHAR ModeRegister = KdDwcMapRegister(Mode);
+
+    if (VoteRegister == NULL || ModeRegister == NULL)
+        return FALSE;
+
+    KdDwcModify(VoteRegister, 0, 0, VoteBit);
+    if (!KdDwcWaitFor(ModeRegister, 0, GCC_PLL_LOCK_DET, GCC_PLL_LOCK_DET, KDDWC_CLOCK_TIMEOUT_US))
+    {
+        KdDwcTrace("PLL 0x%I64x did not lock: 0x%lx\n", Mode, KdDwcRead(ModeRegister, 0));
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -375,6 +477,15 @@ KdDwcQusb2IsRunning(
  *
  * @param[in] Count
  * Number of writes in the table.
+ *
+ * @param[in] Tuning
+ * Board tuning applied over the table, or NULL.
+ *
+ * @param[in] TuningCount
+ * Number of tuning changes.
+ *
+ * @param[in] TrimFuse
+ * Physical address of the fuse byte that holds the transmit current trim, 0 for none.
  */
 BOOLEAN
 NTAPI
@@ -383,9 +494,14 @@ KdDwcStartQusb2(
     _In_ ULONG64 PhyBcr,
     _In_ UCHAR PowerDownBits,
     _In_reads_(Count) const KDDWC_REG_WRITE* Table,
-    _In_ ULONG Count)
+    _In_ ULONG Count,
+    _In_reads_opt_(TuningCount) const KDDWC_REG_MODIFY* Tuning,
+    _In_ ULONG TuningCount,
+    _In_ ULONG64 TrimFuse)
 {
     PUCHAR Base = KdDwcMapRegister(Phy);
+    PUCHAR Fuse;
+    ULONG Trim;
     ULONG i;
 
     if (Base == NULL)
@@ -398,6 +514,19 @@ KdDwcStartQusb2(
     KdDwcModify(Base, QUSB2_POWERDOWN, 0, PowerDownBits);
     for (i = 0; i < Count; i++)
         KdDwcWrite(Base, Table[i].Offset, Table[i].Value);
+
+    for (i = 0; i < TuningCount; i++)
+        KdDwcModify(Base, Tuning[i].Offset, Tuning[i].Clear, Tuning[i].Set);
+
+    /* The factory trim wins over the board's transmit current when it was programmed */
+    Fuse = (TrimFuse != 0) ? KdDwcMapRegister(TrimFuse) : NULL;
+    if (Fuse != NULL)
+    {
+        Trim = (READ_REGISTER_UCHAR(Fuse) >> QUSB2_TRIM_SHIFT) & QUSB2_TRIM_MASK;
+        KdDwcTrace("QUSB2 transmit trim fuse %lu\n", Trim);
+        if (Trim != 0)
+            KdDwcModify(Base, QUSB2_TUNE1, QUSB2_TUNE1_HSTX_MASK, Trim << QUSB2_TUNE1_HSTX_SHIFT);
+    }
 
     KdDwcTrace("QUSB2 programmed, powering up\n");
     KdDwcModify(Base, QUSB2_POWERDOWN, QUSB2_POWERDOWN_POWER_DOWN, 0);

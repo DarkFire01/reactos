@@ -62,6 +62,18 @@ Sc7180PowerUp(
             return FALSE;
     }
 
+    return TRUE;
+}
+
+/* Runs after the core has stopped suspending its PHY, as the core driver orders it */
+static
+BOOLEAN
+NTAPI
+Sc7180StartPhy(
+    _In_ const KDDWC_PLATFORM* Platform)
+{
+    UNREFERENCED_PARAMETER(Platform);
+
     if (KdDwcQusb2IsRunning(SC7180_QUSB2_BASE))
         return TRUE;
 
@@ -69,7 +81,10 @@ Sc7180PowerUp(
                            KDDWC_GCC_BASE + SC7180_QUSB2PHY_PRIM_BCR,
                            SC7180_QUSB2_HOLD,
                            Sc7180Qusb2Setup,
-                           RTL_NUMBER_OF(Sc7180Qusb2Setup));
+                           RTL_NUMBER_OF(Sc7180Qusb2Setup),
+                           NULL,
+                           0,
+                           0);
 }
 
 /* Buses from the controller to memory and from the processor to its registers */
@@ -118,5 +133,6 @@ const KDDWC_PLATFORM KdDwcPlatformSc7180 =
     Sc7180PowerUp,
     0,
     &Sc7180Rpmh,
-    Sc7180IsPowered
+    Sc7180IsPowered,
+    Sc7180StartPhy
 };
