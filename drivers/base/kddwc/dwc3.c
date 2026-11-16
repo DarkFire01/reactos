@@ -961,6 +961,10 @@ KdDwcResetCore(
 {
     KdDwcTrace("core soft reset, GCTL 0x%lx GUSB2PHYCFG 0x%lx\n",
                KdDwcRead(Dwc.Core, DWC_GCTL), KdDwcRead(Dwc.Core, DWC_GUSB2PHYCFG));
+    KdDwcTrace("bus config 0x%lx 0x%lx, event buffer 0x%lx%08lx size 0x%lx\n",
+               KdDwcRead(Dwc.Core, DWC_GSBUSCFG0), KdDwcRead(Dwc.Core, DWC_GSBUSCFG1),
+               KdDwcRead(Dwc.Core, DWC_GEVNTADRHI), KdDwcRead(Dwc.Core, DWC_GEVNTADRLO),
+               KdDwcRead(Dwc.Core, DWC_GEVNTSIZ));
     KdDwcModify(Dwc.Core, DWC_GCTL, 0, DWC_GCTL_CORESOFTRESET);
     if (!KeepPhy)
     {
