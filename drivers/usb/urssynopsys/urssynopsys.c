@@ -397,6 +397,59 @@ UrssRegisterPowerFramework(
     return WdfDeviceAssignS0IdleSettings(WdfDevice, &Idle);
 }
 
+/**
+ * @brief Tells whether the kernel debugger was started on this controller.
+ *
+ * kddwc drives the controller as a USB serial port from boot, and resetting
+ * it into a role here would cut the debugger off.
+ */
+static
+BOOLEAN
+UrssIsDebuggerController(VOID)
+{
+    UNICODE_STRING KeyName = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control");
+    UNICODE_STRING ValueName = RTL_CONSTANT_STRING(L"SystemStartOptions");
+    UNICODE_STRING Options, Port = RTL_CONSTANT_STRING(L"DEBUGPORT=DWC");
+    OBJECT_ATTRIBUTES Attributes;
+    PKEY_VALUE_PARTIAL_INFORMATION Value;
+    UCHAR Buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 512];
+    HANDLE Key;
+    ULONG Length;
+    USHORT i;
+    BOOLEAN Found = FALSE;
+    NTSTATUS Status;
+
+    if (!KD_DEBUGGER_ENABLED)
+        return FALSE;
+
+    InitializeObjectAttributes(&Attributes, &KeyName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+    Status = ZwOpenKey(&Key, KEY_QUERY_VALUE, &Attributes);
+    if (!NT_SUCCESS(Status))
+        return FALSE;
+
+    Value = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
+    Status = ZwQueryValueKey(Key, &ValueName, KeyValuePartialInformation, Value, sizeof(Buffer) - sizeof(WCHAR), &Length);
+    ZwClose(Key);
+    if (!NT_SUCCESS(Status) || Value->Type != REG_SZ)
+        return FALSE;
+
+    Options.Buffer = (PWCH)Value->Data;
+    Options.Length = (USHORT)(Value->DataLength & ~1);
+    Options.MaximumLength = Options.Length;
+
+    for (i = 0; !Found && i + Port.Length <= Options.Length; i += sizeof(WCHAR))
+    {
+        UNICODE_STRING Window;
+
+        Window.Buffer = (PWCH)((PUCHAR)Options.Buffer + i);
+        Window.Length = Port.Length;
+        Window.MaximumLength = Port.Length;
+        Found = RtlEqualUnicodeString(&Window, &Port, TRUE);
+    }
+
+    return Found;
+}
+
 static
 NTSTATUS
 UrssEvtDeviceAdd(
@@ -410,6 +463,12 @@ UrssEvtDeviceAdd(
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(Driver);
+
+    if (UrssIsDebuggerController())
+    {
+        DPRINT1("The kernel debugger owns this controller, leaving it alone\n");
+        return STATUS_DEVICE_BUSY;
+    }
 
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&PnpPower);
     PnpPower.EvtDevicePrepareHardware = UrssEvtPrepareHardware;
