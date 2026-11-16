@@ -69,6 +69,15 @@ KdpDebugLogInit(
     _In_ struct _KD_DISPATCH_TABLE *DispatchTable,
     _In_ ULONG BootPhase);
 
+NTSTATUS
+NTAPI
+KdpTransportInit(
+    _In_ struct _KD_DISPATCH_TABLE *DispatchTable,
+    _In_ ULONG BootPhase);
+
+VOID
+KdpTransportPoll(VOID);
+
 #ifdef KDBG
 #define KdpKdbgInit KdbInitialize
 #endif
@@ -80,11 +89,12 @@ KdpDebugLogInit(
 // #define KdScreen    0
 // #define KdSerial    1
 // #define KdFile      2
+// #define KdTransport 3
 #ifdef KDBG
-// #define KdKdbg      3
-#define KdMax       4
+// #define KdKdbg      4
+#define KdMax       5
 #else
-#define KdMax       3
+#define KdMax       4
 #endif
 
 /* KD Private Debug Modes */
@@ -98,6 +108,9 @@ typedef struct _KDP_DEBUG_MODE
             UCHAR Screen :1;
             UCHAR Serial :1;
             UCHAR File   :1;
+
+            /* Text through the transport DLL the loader picked for DEBUGPORT */
+            UCHAR Transport :1;
         };
 
         /* Generic Value */
