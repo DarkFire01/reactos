@@ -5,6 +5,7 @@ list(APPEND SOURCE
     dwc3.c
     kddwc.c
     platform.c
+    rpmh.c
     soc/msm8994.c
     soc/msm8998.c
     soc/sc7180.c

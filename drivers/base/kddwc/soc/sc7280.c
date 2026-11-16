@@ -64,11 +64,39 @@ Sc7280PowerUp(
     return KdDwcStartSnpsHs(SC7280_HSPHY_BASE, KDDWC_GCC_BASE + SC7280_QUSB2PHY_PRIM_BCR);
 }
 
+/* Buses from the controller to memory and from the processor to its registers */
+static const KDDWC_BUS_NODE Sc7280BusNodes[] =
+{
+    KDDWC_MEMORY_NODE("SN7", 16, 1),
+    KDDWC_MEMORY_NODE("SN0", 16, 1),
+    KDDWC_MEMORY_NODE("SH0", 16, 2),
+    KDDWC_MEMORY_NODE("MC0", 4, 2),
+    KDDWC_ACV_NODE,
+    KDDWC_REGISTER_NODE("SH4", 32, 1),
+    KDDWC_REGISTER_NODE("CN0", 16, 1),
+    KDDWC_REGISTER_NODE("CN1", 8, 1),
+    KDDWC_REGISTER_NODE("CN1", 4, 1)
+};
+
+static const KDDWC_RPMH Sc7280Rpmh =
+{
+    0x18220000ULL,
+    KDDWC_RPMH_DRV2_TCS_OFFSET,
+    KDDWC_RPMH_FIRST_ACTIVE_TCS,
+    0x80860000ULL,
+    KDDWC_CMD_DB_BYTES,
+    Sc7280BusNodes,
+    RTL_NUMBER_OF(Sc7280BusNodes),
+    NULL,
+    0
+};
+
 const KDDWC_PLATFORM KdDwcPlatformSc7280 =
 {
     "SC7280",
     { "SC7280", "SDM7280", NULL, NULL },
     SC7280_CORE_BASE,
     Sc7280PowerUp,
-    0
+    0,
+    &Sc7280Rpmh
 };

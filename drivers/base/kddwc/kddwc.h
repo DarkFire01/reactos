@@ -34,6 +34,69 @@ BOOLEAN
 (NTAPI *PKDDWC_POWER_UP)(
     _In_ const KDDWC_PLATFORM* Platform);
 
+/** One interconnect node on a path the controller uses, and the bus clock manager that runs it. */
+typedef struct _KDDWC_BUS_NODE
+{
+    /* Command DB name of the bus clock manager */
+    PCSTR Bcm;
+    USHORT BusWidth;
+    USHORT Channels;
+
+    /* What the node carries for the controller, in kB/s */
+    ULONG AverageKBps;
+    ULONG PeakKBps;
+
+    /* Nonzero for a manager switched on and off instead of given a bandwidth */
+    ULONG EnableMask;
+} KDDWC_BUS_NODE;
+
+/** A PMIC regulator behind the high speed PHY, voted through RPMh. */
+typedef struct _KDDWC_SUPPLY
+{
+    /* Command DB name, such as ldoa12 */
+    PCSTR Name;
+    ULONG Millivolts;
+} KDDWC_SUPPLY;
+
+/** How the debugger votes the controller's buses and supplies when firmware dropped them. */
+typedef struct _KDDWC_RPMH
+{
+    /* The application processor's own DRV of the apps RSC and where its TCSs start */
+    ULONG64 RscBase;
+    ULONG TcsOffset;
+
+    /* A TCS of the active group, which RPMh acts on right away */
+    ULONG ActiveTcs;
+
+    /* Where firmware keeps the command DB */
+    ULONG64 CmdDbBase;
+    ULONG CmdDbSize;
+
+    const KDDWC_BUS_NODE* Nodes;
+    ULONG NodeCount;
+    const KDDWC_SUPPLY* Supplies;
+    ULONG SupplyCount;
+} KDDWC_RPMH;
+
+/* What the controller asks of its buses at high speed, in kB/s */
+#define KDDWC_MEMORY_AVERAGE_KBPS       240000
+#define KDDWC_MEMORY_PEAK_KBPS          700000
+#define KDDWC_REGISTER_PEAK_KBPS        40000
+
+/* A node on the path from the controller to memory, and one on the path from the processor to its registers */
+#define KDDWC_MEMORY_NODE(Bcm, BusWidth, Channels) \
+    { Bcm, BusWidth, Channels, KDDWC_MEMORY_AVERAGE_KBPS, KDDWC_MEMORY_PEAK_KBPS, 0 }
+#define KDDWC_REGISTER_NODE(Bcm, BusWidth, Channels) \
+    { Bcm, BusWidth, Channels, 0, KDDWC_REGISTER_PEAK_KBPS, 0 }
+
+/* The memory controller's ACV manager is switched on, not given a bandwidth */
+#define KDDWC_ACV_NODE                  { "ACV", 4, 1, 0, 0, 0x8 }
+
+/* The apps RSC gives the application processor DRV 2, its TCSs start 0xD00 in, the active ones first */
+#define KDDWC_RPMH_DRV2_TCS_OFFSET      0xD00
+#define KDDWC_RPMH_FIRST_ACTIVE_TCS     0
+#define KDDWC_CMD_DB_BYTES              0x20000
+
 /** What a SoC file tells the controller code. */
 struct _KDDWC_PLATFORM
 {
@@ -49,6 +112,9 @@ struct _KDDWC_PLATFORM
     PKDDWC_POWER_UP PowerUp;
 
     ULONG Flags;
+
+    /* Bus and supply votes made before the power up, NULL on SoCs without RPMh */
+    const KDDWC_RPMH* Rpmh;
 };
 
 /* The PHY only works as firmware set it up, so the core never resets it */
@@ -348,6 +414,12 @@ NTAPI
 KdDwcStartSnpsHs(
     _In_ ULONG64 Phy,
     _In_ ULONG64 PhyBcr);
+
+/* rpmh.c */
+BOOLEAN
+NTAPI
+KdDwcVoteRpmh(
+    _In_ const KDDWC_RPMH* Rpmh);
 
 VOID
 NTAPI

@@ -64,11 +64,38 @@ Sm8350PowerUp(
     return KdDwcStartSnpsHs(SM8350_HSPHY_BASE, KDDWC_GCC_BASE + SM8350_QUSB2PHY_PRIM_BCR);
 }
 
+/* Buses from the controller to memory and from the processor to its registers */
+static const KDDWC_BUS_NODE Sm8350BusNodes[] =
+{
+    KDDWC_MEMORY_NODE("SN7", 16, 1),
+    KDDWC_MEMORY_NODE("SN0", 16, 1),
+    KDDWC_MEMORY_NODE("SH0", 16, 4),
+    KDDWC_MEMORY_NODE("MC0", 4, 4),
+    KDDWC_ACV_NODE,
+    KDDWC_REGISTER_NODE("SH4", 32, 2),
+    KDDWC_REGISTER_NODE("CN0", 16, 1),
+    KDDWC_REGISTER_NODE("CN1", 4, 1)
+};
+
+static const KDDWC_RPMH Sm8350Rpmh =
+{
+    0x18220000ULL,
+    KDDWC_RPMH_DRV2_TCS_OFFSET,
+    KDDWC_RPMH_FIRST_ACTIVE_TCS,
+    0x80860000ULL,
+    KDDWC_CMD_DB_BYTES,
+    Sm8350BusNodes,
+    RTL_NUMBER_OF(Sm8350BusNodes),
+    NULL,
+    0
+};
+
 const KDDWC_PLATFORM KdDwcPlatformSm8350 =
 {
     "SM8350",
     { "SM8350", "SDM8350", NULL, NULL },
     SM8350_CORE_BASE,
     Sm8350PowerUp,
-    0
+    0,
+    &Sm8350Rpmh
 };

@@ -54,11 +54,39 @@ X1e80100PowerUp(
     return TRUE;
 }
 
+/* Buses from the controller to memory and from the processor to its registers */
+static const KDDWC_BUS_NODE X1e80100BusNodes[] =
+{
+    KDDWC_MEMORY_NODE("SN4", 64, 1),
+    KDDWC_MEMORY_NODE("SN0", 64, 1),
+    KDDWC_MEMORY_NODE("SH0", 16, 8),
+    KDDWC_MEMORY_NODE("MC0", 4, 8),
+    KDDWC_ACV_NODE,
+    KDDWC_REGISTER_NODE("SH1", 32, 6),
+    KDDWC_REGISTER_NODE("SH1", 16, 1),
+    KDDWC_REGISTER_NODE("CN0", 16, 1),
+    KDDWC_REGISTER_NODE("CN0", 4, 1)
+};
+
+static const KDDWC_RPMH X1e80100Rpmh =
+{
+    0x17520000ULL,
+    KDDWC_RPMH_DRV2_TCS_OFFSET,
+    KDDWC_RPMH_FIRST_ACTIVE_TCS,
+    0x81C60000ULL,
+    KDDWC_CMD_DB_BYTES,
+    X1e80100BusNodes,
+    RTL_NUMBER_OF(X1e80100BusNodes),
+    NULL,
+    0
+};
+
 const KDDWC_PLATFORM KdDwcPlatformX1e80100 =
 {
     "X1E80100",
     { "X1E80100", "SC8380XP", "SC8380", "X1E" },
     X1E80100_CORE_BASE,
     X1e80100PowerUp,
-    KDDWC_PLATFORM_KEEP_PHY
+    KDDWC_PLATFORM_KEEP_PHY,
+    &X1e80100Rpmh
 };

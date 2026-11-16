@@ -72,11 +72,39 @@ Sc7180PowerUp(
                            RTL_NUMBER_OF(Sc7180Qusb2Setup));
 }
 
+/* Buses from the controller to memory and from the processor to its registers */
+static const KDDWC_BUS_NODE Sc7180BusNodes[] =
+{
+    KDDWC_MEMORY_NODE("SN9", 16, 1),
+    KDDWC_MEMORY_NODE("SN0", 16, 1),
+    KDDWC_MEMORY_NODE("SH0", 16, 1),
+    KDDWC_MEMORY_NODE("MC0", 4, 2),
+    KDDWC_ACV_NODE,
+    KDDWC_REGISTER_NODE("SH4", 16, 1),
+    KDDWC_REGISTER_NODE("SN12", 8, 1),
+    KDDWC_REGISTER_NODE("CN0", 8, 1),
+    KDDWC_REGISTER_NODE("CN0", 4, 1)
+};
+
+static const KDDWC_RPMH Sc7180Rpmh =
+{
+    0x18220000ULL,
+    KDDWC_RPMH_DRV2_TCS_OFFSET,
+    KDDWC_RPMH_FIRST_ACTIVE_TCS,
+    0x80820000ULL,
+    KDDWC_CMD_DB_BYTES,
+    Sc7180BusNodes,
+    RTL_NUMBER_OF(Sc7180BusNodes),
+    NULL,
+    0
+};
+
 const KDDWC_PLATFORM KdDwcPlatformSc7180 =
 {
     "SC7180",
     { "SC7180", "SDM7180", NULL, NULL },
     SC7180_CORE_BASE,
     Sc7180PowerUp,
-    0
+    0,
+    &Sc7180Rpmh
 };

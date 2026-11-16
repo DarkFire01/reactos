@@ -1107,6 +1107,11 @@ KdDwcStartController(
 
     /* Without its clocks the core would stall the bus on the first access */
     KdDwcTrace("%s at 0x%I64x\n", Platform->Name, CoreBase);
+
+    /* Firmware dropped the controller's bus and supply votes at exit, DMA stalls without them */
+    if (Platform->Rpmh != NULL && !KdDwcVoteRpmh(Platform->Rpmh))
+        KdDwcTrace("some RPMh votes did not go through\n");
+
     if (!Platform->PowerUp(Platform))
     {
         Dwc.Core = NULL;

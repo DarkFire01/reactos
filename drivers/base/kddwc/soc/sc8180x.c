@@ -64,11 +64,41 @@ Sc8180xPowerUp(
     return KdDwcStartSnpsHs(SC8180X_HSPHY_BASE, KDDWC_GCC_BASE + SC8180X_QUSB2PHY_PRIM_BCR);
 }
 
+/* Buses from the controller to memory and from the processor to its registers */
+static const KDDWC_BUS_NODE Sc8180xBusNodes[] =
+{
+    KDDWC_MEMORY_NODE("SN9", 32, 1),
+    KDDWC_MEMORY_NODE("SN0", 32, 1),
+    KDDWC_MEMORY_NODE("SH0", 16, 8),
+    KDDWC_MEMORY_NODE("MC0", 4, 8),
+    KDDWC_ACV_NODE,
+    KDDWC_REGISTER_NODE("SH3", 64, 4),
+    KDDWC_REGISTER_NODE("SH2", 8, 1),
+    KDDWC_REGISTER_NODE("SN15", 8, 1),
+    KDDWC_REGISTER_NODE("SN3", 8, 1),
+    KDDWC_REGISTER_NODE("CN0", 8, 1),
+    KDDWC_REGISTER_NODE("CN0", 4, 1)
+};
+
+static const KDDWC_RPMH Sc8180xRpmh =
+{
+    0x18220000ULL,
+    KDDWC_RPMH_DRV2_TCS_OFFSET,
+    KDDWC_RPMH_FIRST_ACTIVE_TCS,
+    0x85F20000ULL,
+    KDDWC_CMD_DB_BYTES,
+    Sc8180xBusNodes,
+    RTL_NUMBER_OF(Sc8180xBusNodes),
+    NULL,
+    0
+};
+
 const KDDWC_PLATFORM KdDwcPlatformSc8180x =
 {
     "SC8180X",
     { "SC8180X", "SC8180XP", "SDM8180", "SC8180" },
     SC8180X_CORE_BASE,
     Sc8180xPowerUp,
-    0
+    0,
+    &Sc8180xRpmh
 };
