@@ -234,6 +234,16 @@ extern PKDDWC_BOOT_PRINT KdDwcBootPrint;
             KdDwcBootPrint("kddwc: " __VA_ARGS__);  \
     } while (0)
 
+/* Set by DWCTRACE; every event and request then goes to the screen, which slows them enough for a host to give up */
+extern BOOLEAN KdDwcTraceTraffic;
+
+#define KdDwcTraceUsb(...)                          \
+    do                                              \
+    {                                               \
+        if (KdDwcTraceTraffic)                      \
+            KdDwcTrace(__VA_ARGS__);                \
+    } while (0)
+
 /* dwc3.c */
 NTSTATUS
 NTAPI
