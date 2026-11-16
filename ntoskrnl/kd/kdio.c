@@ -433,6 +433,14 @@ typedef NTSTATUS (NTAPI *PKDP_TRANSPORT_START)(_In_opt_ PLOADER_PARAMETER_BLOCK 
 typedef VOID (NTAPI *PKDP_TRANSPORT_PRINT)(_In_reads_bytes_(Length) PCCH String, _In_ ULONG Length);
 typedef VOID (NTAPI *PKDP_TRANSPORT_POLL)(VOID);
 
+#ifdef _M_ARM64
+extern ULONG (*FrLdrDbgPrint)(const char *Format, ...);
+#define KdpTransportTrace(...) \
+    do { if (FrLdrDbgPrint) FrLdrDbgPrint(__VA_ARGS__); } while (0)
+#else
+#define KdpTransportTrace(...)
+#endif
+
 static KSPIN_LOCK KdpTransportSpinLock;
 static PKDP_TRANSPORT_PRINT KdpTransportPrintRoutine;
 static PKDP_TRANSPORT_POLL KdpTransportPollRoutine;
@@ -512,6 +520,7 @@ KdpTransportInit(
     if (BootPhase == 0)
     {
         Image = KeLoaderBlock ? KdpFindTransportImage(KeLoaderBlock) : NULL;
+        KdpTransportTrace("KD: transport image %p\n", Image);
         if (!Image)
         {
             KdpDebugMode.Transport = FALSE;
@@ -530,6 +539,7 @@ KdpTransportInit(
         }
 
         Status = Start(KeLoaderBlock);
+        KdpTransportTrace("KD: transport start returned 0x%lx\n", Status);
         if (!NT_SUCCESS(Status))
         {
             KdpTransportPrintRoutine = NULL;
