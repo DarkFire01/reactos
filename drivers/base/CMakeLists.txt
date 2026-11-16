@@ -7,6 +7,10 @@ add_subdirectory(kd_02_8086)
 add_subdirectory(kdnet)
 add_subdirectory(kdusb)
 
+if(ARCH STREQUAL "arm64")
+    add_subdirectory(kddwc)
+endif()
+
 if(_WINKD_)
     add_subdirectory(kdcom)
     if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
