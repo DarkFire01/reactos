@@ -948,6 +948,7 @@ KdDwcResetCore(
 
     KdDwcModify(Dwc.Core, DWC_GCTL, DWC_GCTL_CORESOFTRESET, 0);
     KdDwcStall(100);
+    KdDwcTrace("glue GENERAL_CFG 0x%lx\n", KdDwcRead(Dwc.Glue, QSCR_GENERAL_CFG));
 
     /* The device logic gets its own reset after the role is set */
     KdDwcModify(Dwc.Core, DWC_GCTL, DWC_GCTL_PRTCAPDIR_MASK, DWC_GCTL_PRTCAPDIR_DEVICE);
@@ -1082,7 +1083,14 @@ KdDwcStartController(
         return STATUS_DEVICE_DOES_NOT_EXIST;
     }
 
-    if (!KdDwcResetCore((Platform->Flags & KDDWC_PLATFORM_KEEP_PHY) != 0) || !KdDwcStartDevice())
+    if (!KdDwcResetCore((Platform->Flags & KDDWC_PLATFORM_KEEP_PHY) != 0))
+    {
+        Dwc.Core = NULL;
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    KdDwcTrace("core reset, GCTL 0x%lx DSTS 0x%lx\n", KdDwcRead(Dwc.Core, DWC_GCTL), KdDwcRead(Dwc.Core, DWC_DSTS));
+    if (!KdDwcStartDevice())
     {
         Dwc.Core = NULL;
         return STATUS_DEVICE_NOT_READY;
