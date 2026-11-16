@@ -17,6 +17,9 @@
 /* How long a byte the debugger protocol waits for may take to arrive */
 #define KDDWC_RECEIVE_TIMEOUT_US        50000
 
+/* How often the boot wait shows the controller state */
+#define KDDWC_HEARTBEAT_US              250000
+
 /* How long output may wait for a listening host before it is dropped */
 #define KDDWC_SEND_TIMEOUT_US           200000
 
@@ -334,6 +337,7 @@ KdDebuggerInitialize0(
     PCSTR Options, Value;
     ULONG64 CoreBase;
     ULONG64 Start;
+    ULONG64 Beat;
     ULONG WaitSeconds = KDDWC_DEFAULT_WAIT_SECONDS;
     NTSTATUS Status;
 
@@ -382,8 +386,17 @@ KdDebuggerInitialize0(
 
     /* Nothing else runs this early, so the host gets the whole wait to enumerate the port */
     Start = KdDwcMicroseconds();
+    Beat = Start;
     while (!KdDwcIsConfigured() && KdDwcMicroseconds() - Start < (ULONG64)WaitSeconds * 1000000)
+    {
         KdDwcService();
+        if (KdDwcMicroseconds() - Beat >= KDDWC_HEARTBEAT_US)
+        {
+            Beat = KdDwcMicroseconds();
+            KdDwcTrace("%I64u ms\n", (Beat - Start) / 1000);
+            KdDwcTraceState();
+        }
+    }
 
     KdDwcTrace("host %s\n", KdDwcIsConfigured() ? "configured the port" : "has not configured the port yet");
     KdDwcBootPrint = NULL;

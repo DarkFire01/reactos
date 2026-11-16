@@ -721,6 +721,7 @@ KdDwcControlEvent(
     {
         case Ep0Setup:
             KdDwcHandleSetup();
+            KdDwcTraceState();
             break;
 
         case Ep0DataIn:
@@ -859,6 +860,25 @@ KdDwcService(VOID)
 
         KdDwcHandleEvent(Event);
     }
+}
+
+/**
+ * @brief Prints the controller and control endpoint state on the loader screen.
+ */
+VOID
+NTAPI
+KdDwcTraceState(VOID)
+{
+    if (Dwc.Core == NULL)
+        return;
+
+    KdDwcTrace("state %lu, DSTS 0x%lx count 0x%lx EP0 commands 0x%lx 0x%lx TRB control 0x%lx\n",
+               (ULONG)Dwc.Ep0State,
+               KdDwcRead(Dwc.Core, DWC_DSTS),
+               KdDwcRead(Dwc.Core, DWC_GEVNTCOUNT),
+               KdDwcRead(Dwc.Core, DWC_DEPCMD(KDDWC_EP0_OUT)),
+               KdDwcRead(Dwc.Core, DWC_DEPCMD(KDDWC_EP0_IN)),
+               READ_REGISTER_ULONG(&Dwc.Dma->Ep0Trb.Control));
 }
 
 BOOLEAN
