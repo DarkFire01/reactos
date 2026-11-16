@@ -48,7 +48,10 @@
 #define RSC_ID_MAJOR(Id)                (((Id) >> 16) & 0xFF)
 #define RSC_CONFIG                      0x0C
 #define RSC_CONFIG_COMMANDS(Config)     (((Config) >> 27) & 0x1F)
+#define RSC_CONFIG_TCS(Config, Drv)     (((Config) >> ((Drv) * 6)) & 0x3F)
 #define RSC_TCS_STRIDE                  672
+#define RSC_MAX_TCS                     0x3F
+#define RSC_APPS_DRV                    2
 
 /* Relative to where the TCSs start */
 #define TCS_IRQ_ENABLE                  0x00
@@ -93,6 +96,7 @@ typedef struct _KDDWC_BCM_VOTE
     ULONG X;
     ULONG Y;
     UCHAR Vcd;
+    BOOLEAN Mask;
 } KDDWC_BCM_VOTE;
 
 static volatile UCHAR* KdDwcCmdDb;
@@ -100,6 +104,7 @@ static ULONG KdDwcCmdDbSize;
 static PUCHAR KdDwcTcs;
 static ULONG KdDwcTcsId;
 static ULONG KdDwcTcsCommands;
+static ULONG KdDwcTcsCount;
 static const KDDWC_TCS_LAYOUT* KdDwcLayout;
 
 /* COMMAND DB *****************************************************************/
@@ -340,6 +345,7 @@ KdDwcBuildBcmVotes(
         if (Node->EnableMask != 0)
         {
             Votes[j].Y |= Node->EnableMask;
+            Votes[j].Mask = TRUE;
             continue;
         }
 
@@ -356,6 +362,48 @@ KdDwcBuildBcmVotes(
     }
 
     return Count;
+}
+
+/*
+ * A vote replaces everything the application processor had on that manager,
+ * the processor's own path to memory included. Firmware's votes are still in
+ * the TCSs it used, so no vote goes below them.
+ */
+static
+VOID
+KdDwcKeepFirmwareVotes(
+    _Inout_updates_(Count) KDDWC_BCM_VOTE* Votes,
+    _In_ ULONG Count)
+{
+    ULONG Active = KdDwcTcsId;
+    ULONG Command, Address, Data, i;
+
+    for (KdDwcTcsId = 0; KdDwcTcsId < KdDwcTcsCount; KdDwcTcsId++)
+    {
+        for (Command = 0; Command < KdDwcTcsCommands; Command++)
+        {
+            Address = KdDwcRead(KdDwcTcsCommand(Command, KdDwcLayout->Address), 0);
+            for (i = 0; i < Count && Votes[i].Address != Address; i++);
+            if (i == Count)
+                continue;
+
+            Data = KdDwcRead(KdDwcTcsCommand(Command, KdDwcLayout->Data), 0);
+            if (!(Data & BCM_VALID))
+                continue;
+
+            KdDwcTrace("firmware TCS %lu voted 0x%lx = 0x%lx\n", KdDwcTcsId, Address, Data);
+            if (Votes[i].Mask)
+            {
+                Votes[i].Y |= Data & BCM_VOTE_MAX;
+                continue;
+            }
+
+            Votes[i].X = max(Votes[i].X, (Data >> BCM_VOTE_X_SHIFT) & BCM_VOTE_MAX);
+            Votes[i].Y = max(Votes[i].Y, Data & BCM_VOTE_MAX);
+        }
+    }
+
+    KdDwcTcsId = Active;
 }
 
 /**
@@ -375,6 +423,8 @@ KdDwcVoteBuses(
     Count = KdDwcBuildBcmVotes(Rpmh, Votes);
     if (Count == 0)
         return FALSE;
+
+    KdDwcKeepFirmwareVotes(Votes, Count);
 
     for (i = 1; i < Count; i++)
     {
@@ -512,7 +562,7 @@ KdDwcVoteRpmh(
         return FALSE;
     }
 
-    Pages = BYTES_TO_PAGES(Rpmh->TcsOffset + (Rpmh->ActiveTcs + 1) * RSC_TCS_STRIDE);
+    Pages = BYTES_TO_PAGES(Rpmh->TcsOffset + RSC_MAX_TCS * RSC_TCS_STRIDE);
     Address.QuadPart = Rpmh->RscBase;
     Rsc = KdMapPhysicalMemory64(Address, Pages);
     if (Rsc == NULL)
@@ -521,17 +571,19 @@ KdDwcVoteRpmh(
     Id = KdDwcRead(Rsc, RSC_ID);
     KdDwcLayout = (RSC_ID_MAJOR(Id) >= 3) ? &KdDwcTcsLayout3 : &KdDwcTcsLayout2;
     KdDwcTcsCommands = RSC_CONFIG_COMMANDS(KdDwcRead(Rsc, RSC_CONFIG));
+    KdDwcTcsCount = max(RSC_CONFIG_TCS(KdDwcRead(Rsc, RSC_CONFIG), RSC_APPS_DRV), Rpmh->ActiveTcs + 1);
     KdDwcTcs = Rsc + Rpmh->TcsOffset;
     KdDwcTcsId = Rpmh->ActiveTcs;
-    KdDwcTrace("RSC 0x%lx, %lu commands per TCS, voting through TCS %lu\n", Id, KdDwcTcsCommands, KdDwcTcsId);
+    KdDwcTrace("RSC 0x%lx, %lu TCSs of %lu commands, voting through TCS %lu\n",
+               Id, KdDwcTcsCount, KdDwcTcsCommands, KdDwcTcsId);
 
     if (KdDwcTcsCommands == 0)
         return FALSE;
 
-    /* The rail goes first, the clocks set up after this need it */
-    Ok = KdDwcVoteRail(Rpmh);
+    /* Buses first, before the active TCS loses the commands firmware left in it */
+    Ok = KdDwcVoteBuses(Rpmh);
+    Ok = KdDwcVoteRail(Rpmh) && Ok;
     Ok = KdDwcVoteSupplies(Rpmh) && Ok;
-    Ok = KdDwcVoteBuses(Rpmh) && Ok;
 
     KdUnmapVirtualAddress(Rsc, Pages);
     KdUnmapVirtualAddress((PVOID)KdDwcCmdDb, BYTES_TO_PAGES(Rpmh->CmdDbSize));
