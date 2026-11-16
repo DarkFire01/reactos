@@ -374,6 +374,9 @@ KdDwcMicroseconds(VOID);
 /* Set by DWCTRACE; every event and request then goes to the screen, which slows them enough for a host to give up */
 extern BOOLEAN KdDwcTraceTraffic;
 
+/* Set by DWCNORPMH; the controller then runs on whatever votes firmware left */
+extern BOOLEAN KdDwcSkipRpmh;
+
 #define KdDwcTraceUsb(...)                          \
     do                                              \
     {                                               \

@@ -25,6 +25,7 @@
 
 PKDDWC_BOOT_PRINT KdDwcBootPrint;
 BOOLEAN KdDwcTraceTraffic;
+BOOLEAN KdDwcSkipRpmh;
 
 static BOOLEAN KdDwcRunning;
 static UCHAR KdDwcRing[KDDWC_RING_BYTES];
@@ -365,6 +366,7 @@ KdDebuggerInitialize0(
     if (KdDwcFindOption(Options, "FRLDRSCREENLOG") != NULL)
         KdDwcBootPrint = (PKDDWC_BOOT_PRINT)LoaderBlock->u.I386.CommonDataArea;
     KdDwcTraceTraffic = (KdDwcBootPrint != NULL) && (KdDwcFindOption(Options, "DWCTRACE") != NULL);
+    KdDwcSkipRpmh = (KdDwcFindOption(Options, "DWCNORPMH") != NULL);
     KdDwcTrace("starting, options '%s'\n", Options ? Options : "");
 
     Value = KdDwcFindOption(Options, "DWCSOC=");
