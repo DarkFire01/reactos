@@ -82,35 +82,60 @@ KdDwcSameId(
 
 static
 const KDDWC_PLATFORM*
-KdDwcMatchTable(
-    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
-    _In_ ULONG Signature)
+KdDwcMatchId(
+    _In_ const DESCRIPTION_HEADER* Header)
 {
-    const KDDWC_PLATFORM* Found = NULL;
-    PDESCRIPTION_HEADER Header;
     ULONG i, j;
-
-    Header = KdGetAcpiTablePhase0(LoaderBlock, Signature);
-    if (Header == NULL)
-        return NULL;
 
     KdDwcTrace("ACPI %.4s OEM table ID '%.8s'\n", (PCSTR)&Header->Signature, Header->OEMTableID);
 
-    for (i = 0; i < RTL_NUMBER_OF(KdDwcPlatforms) && Found == NULL; i++)
+    for (i = 0; i < RTL_NUMBER_OF(KdDwcPlatforms); i++)
     {
         for (j = 0; j < RTL_NUMBER_OF(KdDwcPlatforms[i]->AcpiIds); j++)
         {
             if (KdDwcPlatforms[i]->AcpiIds[j] != NULL &&
                 KdDwcSameId((const CHAR*)Header->OEMTableID, KdDwcPlatforms[i]->AcpiIds[j]))
             {
-                Found = KdDwcPlatforms[i];
-                break;
+                return KdDwcPlatforms[i];
             }
         }
     }
 
-    KdUnmapVirtualAddress(Header, BYTES_TO_PAGES(Header->Length));
-    return Found;
+    return NULL;
+}
+
+/*
+ * The DSDT is not in the root table, the FADT points at it. Only its header is
+ * read, a byte at a time, since the debugger maps it as device memory.
+ */
+static
+BOOLEAN
+KdDwcReadDsdtHeader(
+    _In_ const FADT* Fadt,
+    _Out_ PDESCRIPTION_HEADER Header)
+{
+    PHYSICAL_ADDRESS Address;
+    volatile UCHAR* Mapped;
+    PUCHAR Copy = (PUCHAR)Header;
+    ULONG i;
+
+    Address.QuadPart = 0;
+    if (Fadt->Header.Length >= FIELD_OFFSET(FADT, x_dsdt) + sizeof(Fadt->x_dsdt))
+        Address = Fadt->x_dsdt;
+    if (Address.QuadPart == 0)
+        Address.QuadPart = Fadt->dsdt;
+    if (Address.QuadPart == 0)
+        return FALSE;
+
+    Mapped = KdMapPhysicalMemory64(Address, 1);
+    if (Mapped == NULL)
+        return FALSE;
+
+    for (i = 0; i < sizeof(*Header); i++)
+        Copy[i] = Mapped[i];
+
+    KdUnmapVirtualAddress((PVOID)Mapped, 1);
+    return Header->Signature == DSDT_SIGNATURE;
 }
 
 /**
@@ -128,7 +153,9 @@ KdDwcFindPlatform(
     _In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock,
     _In_opt_ PCSTR Name)
 {
-    const KDDWC_PLATFORM* Platform;
+    const KDDWC_PLATFORM* Platform = NULL;
+    DESCRIPTION_HEADER Dsdt;
+    PFADT Fadt;
     ULONG i, j;
 
     if (Name != NULL)
@@ -155,10 +182,23 @@ KdDwcFindPlatform(
     if (LoaderBlock == NULL)
         return NULL;
 
-    Platform = KdDwcMatchTable(LoaderBlock, DSDT_SIGNATURE);
-    if (Platform == NULL)
-        Platform = KdDwcMatchTable(LoaderBlock, FADT_SIGNATURE);
+    /* Qualcomm firmware gives its static tables a generic ID, only the DSDT names the SoC */
+    Fadt = KdGetAcpiTablePhase0(LoaderBlock, FADT_SIGNATURE);
+    if (Fadt == NULL)
+    {
+        KdDwcTrace("no FADT\n");
+        return NULL;
+    }
 
+    if (KdDwcReadDsdtHeader(Fadt, &Dsdt))
+        Platform = KdDwcMatchId(&Dsdt);
+    else
+        KdDwcTrace("the FADT has no usable DSDT\n");
+
+    if (Platform == NULL)
+        Platform = KdDwcMatchId(&Fadt->Header);
+
+    KdUnmapVirtualAddress(Fadt, BYTES_TO_PAGES(Fadt->Header.Length));
     return Platform;
 }
 
