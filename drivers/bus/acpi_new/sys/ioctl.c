@@ -788,6 +788,11 @@ UacpiNtEvaluate(
                                             Buffer,
                                             IoStack->Parameters.DeviceIoControl.OutputBufferLength,
                                             &Information);
+            if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW)
+            {
+                DPRINT1("EVAL %s on %s: %s result not returned, 0x%08lx\n", Path, TraceName,
+                        uacpi_object_type_to_string(uacpi_object_get_type(Result)), Status);
+            }
         }
     }
 
@@ -1101,6 +1106,7 @@ UacpiNtEnumChildren(
         !(Flags & (ENUM_CHILDREN_IMMEDIATE_ONLY | ENUM_CHILDREN_MULTILEVEL | ENUM_CHILDREN_NAME_IS_FILTER)) ||
         ((Flags & ENUM_CHILDREN_NAME_IS_FILTER) && !NameLength))
     {
+        DPRINT1("ENUM_CHILDREN rejected, flags 0x%lx name length %lu\n", Flags, NameLength);
         return STATUS_ACPI_INVALID_DATA;
     }
 
