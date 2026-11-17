@@ -18,6 +18,12 @@ CAppClient::~CAppClient()
 {
     if (m_Pipe != INVALID_HANDLE_VALUE)
         CloseHandle(m_Pipe);
+    if (m_ReadEvent)
+        CloseHandle(m_ReadEvent);
+    if (m_WriteEvent)
+        CloseHandle(m_WriteEvent);
+    if (m_WakeEvent)
+        CloseHandle(m_WakeEvent);
 }
 
 HRESULT
@@ -44,9 +50,16 @@ CAppClient::Initialize(
     if (!PipeName || m_MarkupFile.empty())
         return E_INVALIDARG;
 
+    m_ReadEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    m_WriteEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    m_WakeEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (!m_ReadEvent || !m_WriteEvent || !m_WakeEvent)
+        return HRESULT_FROM_WIN32(GetLastError());
+
+    /* Overlapped, so the app thread can wait for the shell and for Wake at once */
     for (Index = 0; Index < 50; Index++)
     {
-        m_Pipe = CreateFileW(PipeName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        m_Pipe = CreateFileW(PipeName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
         if (m_Pipe != INVALID_HANDLE_VALUE)
             break;
         if (GetLastError() != ERROR_PIPE_BUSY && GetLastError() != ERROR_FILE_NOT_FOUND)
@@ -85,9 +98,41 @@ BOOL
 CAppClient::Write(
     _In_ const APP_MESSAGE *Message)
 {
+    OVERLAPPED Overlapped = {};
     DWORD Written = 0;
 
-    return WriteFile(m_Pipe, Message, sizeof(*Message), &Written, NULL) && Written == sizeof(*Message);
+    Overlapped.hEvent = m_WriteEvent;
+    if (!WriteFile(m_Pipe, Message, sizeof(*Message), NULL, &Overlapped) && GetLastError() != ERROR_IO_PENDING)
+        return FALSE;
+    return GetOverlappedResult(m_Pipe, &Overlapped, &Written, TRUE) && Written == sizeof(*Message);
+}
+
+VOID
+CAppClient::Wake(VOID)
+{
+    SetEvent(m_WakeEvent);
+}
+
+BOOL
+CAppClient::ReadMessage(
+    _Out_ APP_MESSAGE *Message)
+{
+    OVERLAPPED Overlapped = {};
+    HANDLE Events[2] = { m_ReadEvent, m_WakeEvent };
+    DWORD Read = 0;
+
+    Overlapped.hEvent = m_ReadEvent;
+    if (!ReadFile(m_Pipe, Message, sizeof(*Message), NULL, &Overlapped) && GetLastError() != ERROR_IO_PENDING)
+        return FALSE;
+
+    /* The read stays pending across wakes, its buffer is the caller's */
+    while (WaitForMultipleObjects(ARRAYSIZE(Events), Events, FALSE, INFINITE) == WAIT_OBJECT_0 + 1)
+    {
+        OnWake();
+        Present();
+    }
+
+    return GetOverlappedResult(m_Pipe, &Overlapped, &Read, TRUE) && Read == sizeof(*Message);
 }
 
 HRESULT
@@ -387,11 +432,10 @@ INT
 CAppClient::Run(VOID)
 {
     APP_MESSAGE Message;
-    DWORD Read;
 
     while (m_Running)
     {
-        if (!ReadFile(m_Pipe, &Message, sizeof(Message), &Read, NULL) || Read != sizeof(Message))
+        if (!ReadMessage(&Message))
             break;
 
         switch (Message.Id)
