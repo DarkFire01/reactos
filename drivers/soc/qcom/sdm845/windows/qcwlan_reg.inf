@@ -1,0 +1,63 @@
+; qcwlan (WCN3990 Wi-Fi, QCMS\VEN_QCOM&DEV_02E5 child of qcsubsys), qcwlan850.inf, qcwlan850.sys
+; The board data and Data.msc sit beside the driver, it looks for them in its own directory
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","DisplayName",0x00000000,"Qualcomm(R) WCN3990 Wi-Fi B/G/N/AC (2x2) Svc"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Group",0x00000000,"NDIS"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","ImagePath",0x00020000,"system32\drivers\qcwlan850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\EventLog\System\qcwlan","EventMessageFile",0x00020000,"%SystemRoot%\System32\netevent.dll"
+HKLM,"SYSTEM\CurrentControlSet\Services\EventLog\System\qcwlan","TypesSupported",0x00010001,0x00000007
+
+; Driver key, with what the class installer copies from the INF and each Ndi\params default
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","DriverDesc",0x00000000,"Qualcomm(R) WCN3990 Wi-Fi B/G/N/AC (2x2) Svc"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","ProviderName",0x00000000,"Qualcomm Technologies, Inc."
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","DriverVersion",0x00000000,"1.0.10730.0000"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","MatchingDeviceId",0x00000000,"qcms\ven_qcom&dev_02e5"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","InfPath",0x00000000,"qcwlan850.inf"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","InfSection",0x00000000,"QcWlan.ndi.NTARM64"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","NetCfgInstanceId",0x00000000,"{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*IfType",0x00010001,71
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*MediaType",0x00010001,16
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*PhysicalMediaType",0x00010001,9
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","Characteristics",0x00010001,0x84
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","BusType",0x00000000,"15"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Ndi","Service",0x00000000,"qcwlan"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Ndi\Interfaces","UpperRange",0x00000000,"ndis5"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Ndi\Interfaces","LowerRange",0x00000000,"wlan,ethernet,vwifi"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Ndi\Interfaces","DefUpper",0x00000000,"ndis5"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Ndi\Interfaces","DefLower",0x00000000,"ethernet"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*ReceiveBuffers",0x00000000,"256"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*TransmitBuffers",0x00000000,"896"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","EnableACS",0x00000000,"0"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","PreferredSapBand",0x00000000,"0"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","roamPolicy",0x00000000,"3"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","shortPreamble",0x00000000,"1"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","scanTimeValid",0x00000000,"60"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","D0PCEnable",0x00000000,"1"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*RscIPv4",0x00000000,"1"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*RscIPv6",0x00000000,"1"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*LsoV2IPv4",0x00000000,"1"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","*LsoV2IPv6",0x00000000,"1"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","wowEnable",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","gAOACSupported",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","TxBfeeEnable",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","AdaptiveSchedulerEnable",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","DriverMode",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","NetBand",0x00010001,0xFFFE6F
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","wModeSelect",0x00010001,0xFFFE6F
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","fwVersion",0x00000000,"02391"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100","fwImagePath",0x00000000,"\SystemRoot\System32\drivers"
+
+; qcsubsys names the child by the _UID of AMSS Device Parameters\Desktop\0
+HKLM,"SYSTEM\CurrentControlSet\Enum\QCMS\VEN_QCOM&DEV_02E5\0","DeviceDesc",0x00000000,"Qualcomm(R) WCN3990 Wi-Fi B/G/N/AC (2x2) Svc"
+HKLM,"SYSTEM\CurrentControlSet\Enum\QCMS\VEN_QCOM&DEV_02E5\0","Service",0x00000000,"qcwlan"
+HKLM,"SYSTEM\CurrentControlSet\Enum\QCMS\VEN_QCOM&DEV_02E5\0","ClassGUID",0x00000000,"{4D36E972-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\QCMS\VEN_QCOM&DEV_02E5\0","Class",0x00000000,"Net"
+HKLM,"SYSTEM\CurrentControlSet\Enum\QCMS\VEN_QCOM&DEV_02E5\0","Driver",0x00000000,"{4D36E972-E325-11CE-BFC1-08002BE10318}\0100"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\QCMS#VEN_QCOM&DEV_02E5","Service",0x00000000,"qcwlan"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\QCMS#VEN_QCOM&DEV_02E5","ClassGUID",0x00000000,"{4D36E972-E325-11CE-BFC1-08002BE10318}"
+
+; Address from DHCP once the adapter binds
+HKLM,"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}","EnableDHCP",0x00010001,1
