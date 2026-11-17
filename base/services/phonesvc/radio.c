@@ -159,6 +159,7 @@ PhSetRadioPower(
     if (Request)
         PhFinishRequest(Request, RIL_SetExecutorRFState(PhRil, Request->Id, PHONE_EXECUTOR, On ? 1 : 0), NULL);
 
+    DPRINT1("Equipment state %u set\n", On);
     PhRadioPowered = On;
     PhPublishRadio();
     return S_OK;
@@ -178,6 +179,7 @@ PhRadioArrived(
     UNREFERENCED_PARAMETER(Instance);
     UNREFERENCED_PARAMETER(Context);
 
+    DPRINT1("Radio arrived, turning it on\n");
     Request = PhBeginRequest();
     if (!Request)
         return;
