@@ -794,6 +794,18 @@ UacpiNtEvaluate(
                         uacpi_object_type_to_string(uacpi_object_get_type(Result)), Status);
             }
         }
+
+        /* The modem subsystem driver rejects an answer it does not like with nothing in its log */
+        if (strstr(TraceName, "AMSS"))
+        {
+            DPRINT1("EVAL %s on %s, ioctl 0x%lx: %s, status 0x%08lx, %s result, %lu of %lu bytes\n",
+                    Path, TraceName,
+                    IoStack->Parameters.DeviceIoControl.IoControlCode,
+                    uacpi_status_to_string(UacpiStatus), Status,
+                    Result ? uacpi_object_type_to_string(uacpi_object_get_type(Result)) : "no",
+                    (ULONG)Information,
+                    IoStack->Parameters.DeviceIoControl.OutputBufferLength);
+        }
     }
 
     if (Result)
