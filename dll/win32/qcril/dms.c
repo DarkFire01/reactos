@@ -53,7 +53,12 @@ QcDmsSetRadioPower(
 
         hr = QcQmiRequest(Modem, QcSvcDms, Message, Length, Response, sizeof(Response), &ResponseLen);
         if (SUCCEEDED(hr))
+        {
+            QcTrace("operating mode %u accepted", Mode);
             return S_OK;
+        }
+        QcTrace("operating mode %u attempt %lu: 0x%08lx, QMI error 0x%x", Mode, Attempt, hr,
+                QmiGetResult(Response, ResponseLen, &Result) ? Result.Error : 0xFFFF);
 
         /* The modem rejects an operating mode change while the radio stack is
          * still coming up, so wait for it before giving up */
