@@ -824,6 +824,7 @@ KdDwcHandleEvent(
     ULONG Endpoint;
     ULONG Speed;
 
+    KdDwcLastEvent = KdDwcMicroseconds();
     KdDwcTraceUsb("event 0x%08lx\n", Event);
     KdDwcTraceSpeed("event");
     if (Event & DWC_EVENT_IS_DEVICE)

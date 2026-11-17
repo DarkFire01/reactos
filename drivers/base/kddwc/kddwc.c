@@ -6,6 +6,7 @@
  */
 
 #include "kddwc.h"
+#include <stdio.h>
 
 /* Generic timer registers, the counter runs from reset at the rate firmware left in CNTFRQ */
 #define KDDWC_CNTFRQ_EL0                ARM64_SYSREG(3, 3, 14, 0, 0)
@@ -26,9 +27,22 @@
 /* How long output may wait for a listening host before it is dropped */
 #define KDDWC_SEND_TIMEOUT_US           200000
 
+/* How long the host has to stay quiet after configuring the port before the boot wait ends */
+#define KDDWC_QUIET_US                  1000000
+
+/* Trace lines held while the host is busy */
+#define KDDWC_LOG_BYTES                 0x8000
+#define KDDWC_LOG_LINE                  240
+
 PKDDWC_BOOT_PRINT KdDwcBootPrint;
 BOOLEAN KdDwcTraceTraffic;
 BOOLEAN KdDwcSkipRpmh;
+BOOLEAN KdDwcHoldLog;
+ULONG64 KdDwcLastEvent;
+
+static CHAR KdDwcLogText[KDDWC_LOG_BYTES];
+static ULONG KdDwcLogUsed;
+static ULONG KdDwcLogDropped;
 
 static BOOLEAN KdDwcRunning;
 static UCHAR KdDwcRing[KDDWC_RING_BYTES];
@@ -104,6 +118,75 @@ KdDwcTraceSpeed(
     }
 
     KdDwcTrace("speed %s: %I64u to %I64u us\n", Where, Fastest, Slowest);
+}
+
+/* TRACE **********************************************************************/
+
+/**
+ * @brief Prints one trace line on the loader screen, or keeps it for later while the log is held.
+ */
+VOID
+__cdecl
+KdDwcLog(
+    _In_z_ _Printf_format_string_ PCSTR Format,
+    ...)
+{
+    CHAR Line[KDDWC_LOG_LINE];
+    va_list Arguments;
+    INT Prefix, Length;
+
+    if (KdDwcBootPrint == NULL)
+        return;
+
+    Prefix = _snprintf(Line, sizeof(Line), "kddwc %I64u: ", KdDwcMicroseconds() / 1000);
+    if (Prefix < 0)
+        Prefix = 0;
+
+    va_start(Arguments, Format);
+    Length = _vsnprintf(Line + Prefix, sizeof(Line) - Prefix - 1, Format, Arguments);
+    va_end(Arguments);
+
+    if (Length < 0 || Length >= (INT)(sizeof(Line) - Prefix - 1))
+        Length = sizeof(Line) - Prefix - 2;
+    Line[Prefix + Length] = ANSI_NULL;
+    Length += Prefix + 1;
+
+    if (!KdDwcHoldLog)
+    {
+        KdDwcBootPrint("%s", Line);
+        return;
+    }
+
+    if (KdDwcLogUsed + Length > sizeof(KdDwcLogText))
+    {
+        KdDwcLogDropped++;
+        return;
+    }
+
+    RtlCopyMemory(&KdDwcLogText[KdDwcLogUsed], Line, Length);
+    KdDwcLogUsed += Length;
+}
+
+/**
+ * @brief Draws every held trace line.
+ */
+VOID
+NTAPI
+KdDwcFlushLog(VOID)
+{
+    ULONG Offset;
+
+    if (KdDwcBootPrint != NULL)
+    {
+        for (Offset = 0; Offset < KdDwcLogUsed; Offset += (ULONG)strlen(&KdDwcLogText[Offset]) + 1)
+            KdDwcBootPrint("%s", &KdDwcLogText[Offset]);
+
+        if (KdDwcLogDropped != 0)
+            KdDwcBootPrint("kddwc: %lu trace lines did not fit\n", KdDwcLogDropped);
+    }
+
+    KdDwcLogUsed = 0;
+    KdDwcLogDropped = 0;
 }
 
 /* OPTIONS ********************************************************************/
@@ -437,12 +520,21 @@ KdDebuggerInitialize0(
     KdDwcRunning = TRUE;
     KdDwcTrace("waiting %lu s for the host\n", WaitSeconds);
 
-    /* Nothing else runs this early, so the host gets the whole wait to enumerate the port */
+    /*
+     * Nothing else runs this early, so the host gets the whole wait to set the
+     * port up, and the requests that follow the configuration are answered here
+     * too. The trace is only drawn once the host is done.
+     */
+    KdDwcHoldLog = TRUE;
     Start = KdDwcMicroseconds();
     Beat = Start;
-    while (!KdDwcIsConfigured() && KdDwcMicroseconds() - Start < (ULONG64)WaitSeconds * 1000000)
+    KdDwcLastEvent = Start;
+    while (KdDwcMicroseconds() - Start < (ULONG64)WaitSeconds * 1000000)
     {
         KdDwcService();
+        if (KdDwcIsConfigured() && KdDwcMicroseconds() - KdDwcLastEvent >= KDDWC_QUIET_US)
+            break;
+
         if (KdDwcTraceTraffic && KdDwcMicroseconds() - Beat >= KDDWC_HEARTBEAT_US)
         {
             Beat = KdDwcMicroseconds();
@@ -453,6 +545,8 @@ KdDebuggerInitialize0(
     }
 
     KdDwcTrace("host %s\n", KdDwcIsConfigured() ? "configured the port" : "has not configured the port yet");
+    KdDwcHoldLog = FALSE;
+    KdDwcFlushLog();
     KdDwcTraceTraffic = FALSE;
     KdDwcBootPrint = NULL;
     return STATUS_SUCCESS;

@@ -360,15 +360,28 @@ ULONG64
 NTAPI
 KdDwcMicroseconds(VOID);
 
+VOID
+__cdecl
+KdDwcLog(
+    _In_z_ _Printf_format_string_ PCSTR Format,
+    ...);
+
+VOID
+NTAPI
+KdDwcFlushLog(VOID);
+
+/* While set, trace lines are kept in memory: drawing them is slow enough to make the host give up */
+extern BOOLEAN KdDwcHoldLog;
+
+/* When the controller last posted an event */
+extern ULONG64 KdDwcLastEvent;
+
 /* Each line carries the time since the counter started, which is close to power on */
 #define KdDwcTrace(...)                                                         \
     do                                                                          \
     {                                                                           \
         if (KdDwcBootPrint != NULL)                                             \
-        {                                                                       \
-            KdDwcBootPrint("kddwc %I64u: ", KdDwcMicroseconds() / 1000);        \
-            KdDwcBootPrint(__VA_ARGS__);                                        \
-        }                                                                       \
+            KdDwcLog(__VA_ARGS__);                                              \
     } while (0)
 
 /* Set by DWCTRACE; every event and request then goes to the screen, which slows them enough for a host to give up */
