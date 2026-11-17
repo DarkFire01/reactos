@@ -153,11 +153,26 @@ WDFEXPORT(WdfRegistryOpenKey)(
             *Key = keyHandle;
         }
         else {
+#ifdef __REACTOS__
+            /* Name the parent too, a relative open is only as good as the key it starts from */
+            UCHAR parentInfo[sizeof(KEY_NAME_INFORMATION) + 256 * sizeof(WCHAR)];
+            PKEY_NAME_INFORMATION parentName = (PKEY_NAME_INFORMATION)parentInfo;
+            UNICODE_STRING parentPath = { 0 };
+            ULONG length;
+
+            if (parentHandle != NULL &&
+                NT_SUCCESS(ZwQueryKey(parentHandle, KeyNameInformation, parentName,
+                                      sizeof(parentInfo) - sizeof(WCHAR), &length))) {
+                parentPath.Buffer = parentName->Name;
+                parentPath.Length = (USHORT)parentName->NameLength;
+                parentPath.MaximumLength = parentPath.Length;
+            }
+#endif
             DoTraceLevelMessage(
                 pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
 #ifdef __REACTOS__
-                "new WDFKEY object open of %wZ failed, %!STATUS!",
-                KeyName, status);
+                "new WDFKEY object open of %wZ under %wZ failed, %!STATUS!",
+                KeyName, &parentPath, status);
 #else
                 "new WDFKEY object open failed, %!STATUS!", status);
 #endif
