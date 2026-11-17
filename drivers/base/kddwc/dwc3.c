@@ -825,6 +825,7 @@ KdDwcHandleEvent(
     ULONG Speed;
 
     KdDwcTraceUsb("event 0x%08lx\n", Event);
+    KdDwcTraceSpeed("event");
     if (Event & DWC_EVENT_IS_DEVICE)
     {
         switch (DWC_EVENT_DEVICE_TYPE(Event))
@@ -1206,6 +1207,7 @@ KdDwcBringUp(VOID)
 
     Dwc.Up = FALSE;
     KdDwcForgetHost();
+    KdDwcTraceSpeed("start");
 
     /* Firmware dropped the controller's bus and supply votes at exit, DMA stalls without them */
     if (Platform->Rpmh != NULL && !KdDwcSkipRpmh && !KdDwcVoteRpmh(Platform->Rpmh))
@@ -1216,6 +1218,7 @@ KdDwcBringUp(VOID)
         return STATUS_DEVICE_NOT_READY;
 
     KdDwcSelectUtmiClock();
+    KdDwcTraceSpeed("powered");
 
     KdDwcTrace("power up done, reading the core id\n");
     Id = KdDwcRead(Dwc.Core, DWC_GSNPSID);
@@ -1228,12 +1231,14 @@ KdDwcBringUp(VOID)
     if (Platform->StartPhy != NULL && !Platform->StartPhy(Platform))
         return STATUS_DEVICE_NOT_READY;
 
+    KdDwcTraceSpeed("PHY up");
     if (!KdDwcResetCore(Id) || !KdDwcStartDevice(Id))
         return STATUS_DEVICE_NOT_READY;
 
     Dwc.Up = TRUE;
     Dwc.NextCheck = KdDwcMicroseconds() + KDDWC_CHECK_US;
     KdDwcTrace("device controller running\n");
+    KdDwcTraceSpeed("running");
     return STATUS_SUCCESS;
 }
 
