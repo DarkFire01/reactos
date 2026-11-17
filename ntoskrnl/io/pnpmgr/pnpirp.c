@@ -245,7 +245,7 @@ static const PNP_WATCH_QCDX_RING PnpWatchQcdxRings[] =
     { 0x190BD0, 0x190BE4, 0x190AE8, "info" }
 };
 
-static VOID
+VOID
 PnpWatchDumpQcdxLog(VOID)
 {
     UNICODE_STRING QcdxName = RTL_CONSTANT_STRING(L"qcdxkm850.sys");

@@ -1686,6 +1686,7 @@ PiUpdateDeviceState(
     else if (PnPFlags & PNP_DEVICE_FAILED)
     {
         DPRINT1("%wZ reported itself failed after it started\n", &DeviceNode->InstancePath);
+        PnpWatchDumpQcdxLog();
         PiSetDevNodeProblem(DeviceNode, CM_PROB_FAILED_POST_START);
         PiSetDevNodeState(DeviceNode, DeviceNodeAwaitingQueuedRemoval);
     }

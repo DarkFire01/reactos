@@ -881,6 +881,10 @@ PiSetDevNodeProblem(
     _In_ PDEVICE_NODE DeviceNode,
     _In_ UINT32 Problem);
 
+/* Prints the event log rings of qcdxkm850.sys, which logs nothing else */
+VOID
+PnpWatchDumpQcdxLog(VOID);
+
 VOID
 PiClearDevNodeProblem(
     _In_ PDEVICE_NODE DeviceNode);
