@@ -239,6 +239,17 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
         return FALSE;
     }
 
+#ifdef UEFIBOOT
+    /* UEFILDR can be above the 2GB-ish range, we don't want to map the whole area.
+     * Done before the descriptors are built, so the page tables this takes are not handed out as free. */
+    {
+        extern PVOID OsLoaderBase;
+        extern SIZE_T OsLoaderSize;
+
+        MempSetupPaging((ULONG_PTR)OsLoaderBase / PAGE_SIZE, OsLoaderSize / PAGE_SIZE, FALSE);
+    }
+#endif
+
     /* Before creating the map, we need to map pages to kernel mode */
     LastPageIndex = 1;
     LastPageType = MemoryMap[1].PageAllocated;
@@ -333,13 +344,6 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
     TRACE("MadCount: %d\n", MadCount);
 
     WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
-
-#ifdef UEFIBOOT
-    extern PVOID OsLoaderBase;
-    extern SIZE_T OsLoaderSize;
-    /* UEFILDR can be above the 2GB-ish range, we don't want to map the whole area */
-    Status = MempSetupPaging((ULONG_PTR)OsLoaderBase / PAGE_SIZE, OsLoaderSize / PAGE_SIZE, FALSE);
-#endif
 
     // Map our loader image, so we can continue running
     /*Status = MempSetupPaging(OsLoaderBase >> MM_PAGE_SHIFT, OsLoaderSize >> MM_PAGE_SHIFT);
