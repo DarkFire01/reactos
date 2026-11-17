@@ -370,7 +370,7 @@ CShellHost::LoadConfig(VOID)
     if (FAILED(Status))
         return Status;
 
-    m_SkinDirectory = JoinPath(m_BinDirectory, Root.Attr(L"Skin", L"skins\\WM61"));
+    m_SkinDirectory = JoinPath(m_BinDirectory, Root.Attr(L"Skin", L"skins\\W10M"));
     if (m_InitialTheme.empty())
         m_InitialTheme = Root.Attr(L"Theme", L"");
 
