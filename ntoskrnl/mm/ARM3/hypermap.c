@@ -150,8 +150,12 @@ MiMapPagesInZeroSpace(IN PMMPFN Pfn1,
     PointerPte += (Offset + 1);
     TempPte = ValidKernelPte;
 
+#ifndef _M_ARM64
     /* Disable caching */
     MI_MAKE_PTE_NON_CACHED(&TempPte);
+#else
+    /* Caches here do not snoop a non cached alias, dirty lines from the page's last use would land on the zeros */
+#endif
 
     /* Make sure the list isn't empty and loop it */
     ASSERT(Pfn1 != (PVOID)LIST_HEAD);
