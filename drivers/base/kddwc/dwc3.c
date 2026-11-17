@@ -904,6 +904,17 @@ KdDwcService(VOID)
     }
 }
 
+/* The physical range the controller does DMA into */
+VOID
+NTAPI
+KdDwcDmaRange(
+    _Out_ PULONG64 Base,
+    _Out_ PULONG Bytes)
+{
+    *Base = Dwc.DmaAddress;
+    *Bytes = sizeof(*Dwc.Dma);
+}
+
 BOOLEAN
 NTAPI
 KdDwcIsConfigured(VOID)
