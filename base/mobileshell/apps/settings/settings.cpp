@@ -5,6 +5,7 @@
  */
 
 #include <devstatus.h>
+#include <cellstatus.h>
 #include <appclient.h>
 #include <uixxml.h>
 #include <strsafe.h>
@@ -17,12 +18,18 @@
  * Markup contract (settings.uix):
  *   Pages: PagePersonal, PageSystem, PageConnections, PageInfo, PageOwner, PageSounds,
  *          PageToday, PageDetail, PageAbout; element Tabs
- *   Repeaters: InfoRows and AboutRows (Label, Value), Themes (Name, Fill, Command)
+ *   Optional pages: PageCellular, PageApn, PageAirplane; without them the same state shows in PageInfo
+ *   Repeaters: InfoRows, AboutRows and CellRows (Label, Value), Themes (Name, Fill, Command)
  *   Bindings: TabPersonal/System/Connections, InfoTitle, DetailTitle, Owner0..4, OwnerFill0..4,
  *             SoundVolume, SoundDevice, MuteLabel, Vol1..Vol10, AboutProduct, AboutEdition,
- *             AboutTabVersion/Device/Copyrights
- *   Commands: tab:<Name>, open:<Page>, owner:<n>, volume.up, volume.down, volume.mute, theme:<Name>, about:<Tab>
+ *             AboutTabVersion/Device/Copyrights, CellSummary, DataTrack, DataBorder, DataSwitch,
+ *             DataState, Apn0..2, ApnFill0..2, ApnAuth, AirTrack, AirBorder, AirSwitch, AirState
+ *   Elements: DataKnobOff/On, AirKnobOff/On
+ *   Commands: tab:<Name>, open:<Page>, owner:<n>, volume.up, volume.down, volume.mute, theme:<Name>, about:<Tab>,
+ *             cell:data, cell:airplane, apn:<n>, apn.auth
  */
+
+#define APN_FIELDS 3
 
 #define OWNER_FIELDS 5
 #define OWNER_KEY L"Software\\ReactOSMobile\\Owner"
@@ -38,7 +45,10 @@ typedef enum _SETTINGS_PAGE
     PageSounds,
     PageToday,
     PageDetail,
-    PageAbout
+    PageAbout,
+    PageCellular,
+    PageApn,
+    PageAirplane
 } SETTINGS_PAGE;
 
 typedef struct _INFO_ROW
@@ -91,7 +101,44 @@ protected:
     VOID OnKey(
         _In_ UINT VirtualKey) override;
 
+    VOID OnWake(VOID) override;
+
 private:
+    static
+    VOID
+    CALLBACK
+    OnCellChanged(
+        _In_opt_ PVOID Context)
+    {
+        static_cast<CSettingsApp *>(Context)->Wake();
+    }
+
+    BOOL
+    HasPage(
+        _In_z_ PCWSTR Name)
+    {
+        return Scene()->GetAttribute(Name, L"Name") != NULL;
+    }
+
+    VOID
+    CellRows(
+        _In_ const CELL_STATUS &Cell,
+        _Inout_ std::vector<INFO_ROW> &Rows);
+
+    VOID
+    SetSwitch(
+        _In_z_ PCWSTR Prefix,
+        _In_ BOOL On,
+        _In_ BOOL Enabled);
+
+    VOID
+    RefreshCellular(VOID);
+
+    VOID
+    RefreshApn(VOID);
+
+    VOID
+    SaveApn(VOID);
     VOID
     ShowTab(
         _In_ ULONG Tab);
@@ -148,7 +195,276 @@ private:
     std::wstring m_AboutTab = L"Version";
     BOOL m_Started = FALSE;
     BOOL m_Direct = FALSE;
+
+    CCellMonitor m_Cell;
+    /* Generation of the poll that answered the last switch, 0 while none is outstanding */
+    ULONG m_CellBusy = 0;
+    std::wstring m_Apn[APN_FIELDS];
+    DWORD m_ApnAuth = PHONEOM_AUTH_NONE;
+    LONG m_ApnField = 0;
+    BOOL m_ApnLoaded = FALSE;
+    /* A skin without PageCellular shows the cellular state on the info page */
+    BOOL m_InfoCellular = FALSE;
 };
+
+static
+PCWSTR
+RegStateText(
+    _In_ DWORD State)
+{
+    switch (State)
+    {
+        case PHONEOM_REG_HOME: return L"Connected";
+        case PHONEOM_REG_ROAMING: return L"Connected, roaming";
+        case PHONEOM_REG_SEARCHING: return L"Searching for service";
+        case PHONEOM_REG_DENIED: return L"Registration denied";
+        case PHONEOM_REG_NONE: return L"Not registered";
+        default: return L"Unknown";
+    }
+}
+
+static
+PCWSTR
+RatText(
+    _In_ DWORD Rat)
+{
+    switch (Rat)
+    {
+        case PHONEOM_RAT_LTE: return L"4G (LTE)";
+        case PHONEOM_RAT_UMTS: return L"3G (UMTS)";
+        case PHONEOM_RAT_TDSCDMA: return L"3G (TD-SCDMA)";
+        case PHONEOM_RAT_EVDO: return L"3G (EV-DO)";
+        case PHONEOM_RAT_GSM: return L"2G (GSM)";
+        case PHONEOM_RAT_CDMA: return L"1X (CDMA)";
+        default: return L"None";
+    }
+}
+
+static
+PCWSTR
+SimText(
+    _In_ DWORD State)
+{
+    switch (State)
+    {
+        case PHONEOM_SIM_ABSENT: return L"No SIM";
+        case PHONEOM_SIM_READY: return L"Ready";
+        case PHONEOM_SIM_PIN: return L"Locked, enter the SIM PIN";
+        case PHONEOM_SIM_PUK: return L"Blocked, enter the PUK";
+        default: return L"SIM error";
+    }
+}
+
+static
+PCWSTR
+AuthText(
+    _In_ DWORD Auth)
+{
+    switch (Auth)
+    {
+        case PHONEOM_AUTH_PAP: return L"PAP";
+        case PHONEOM_AUTH_CHAP: return L"CHAP";
+        default: return L"None";
+    }
+}
+
+static
+std::wstring
+OrNotAvailable(
+    _In_z_ PCWSTR Text)
+{
+    return Text[0] ? Text : L"Not available";
+}
+
+VOID
+CSettingsApp::CellRows(
+    _In_ const CELL_STATUS &Cell,
+    _Inout_ std::vector<INFO_ROW> &Rows)
+{
+    ULONG Bars;
+
+    if (!Cell.Generation)
+    {
+        Rows.push_back({ L"Phone service", L"Checking..." });
+        return;
+    }
+    if (!Cell.ServiceUp)
+    {
+        Rows.push_back({ L"Phone service", Format(L"Not available (0x%08lx)", Cell.LastError) });
+        return;
+    }
+    if (!Cell.HaveRadio || !Cell.Radio.Present)
+    {
+        Rows.push_back({ L"Cellular radio", L"No modem found" });
+        return;
+    }
+
+    Rows.push_back({ L"Radio", Cell.Radio.PoweredOn ? L"On" : L"Off, airplane mode" });
+    if (Cell.Radio.PoweredOn && Cell.HaveNetwork)
+    {
+        Bars = CellSignalBars(&Cell);
+        Rows.push_back({ L"Network", Cell.Network.Operator[0] ? Cell.Network.Operator : RegStateText(Cell.Network.RegState) });
+        Rows.push_back({ L"Status", RegStateText(Cell.Network.RegState) });
+        Rows.push_back({ L"Network type", RatText(Cell.Network.Rat) });
+        if (Cell.Network.SignalDbm < 0)
+            Rows.push_back({ L"Signal strength", Format(L"%lu of 5 bars, %ld dBm", Bars, Cell.Network.SignalDbm) });
+        else
+            Rows.push_back({ L"Signal strength", L"No signal" });
+        if (Cell.Network.Mcc)
+            Rows.push_back({ L"Network code", Format(L"MCC %03lu, MNC %02lu", Cell.Network.Mcc, Cell.Network.Mnc) });
+    }
+
+    if (Cell.HaveSim)
+    {
+        Rows.push_back({ L"SIM", SimText(Cell.Sim.SimState) });
+        if (Cell.Sim.SimState != PHONEOM_SIM_ABSENT)
+        {
+            Rows.push_back({ L"Phone number", OrNotAvailable(Cell.Sim.Number) });
+            Rows.push_back({ L"IMSI", OrNotAvailable(Cell.Sim.Imsi) });
+        }
+    }
+
+    if (Cell.HaveData)
+        Rows.push_back({ L"Access point", Cell.Data.Apn[0] ? Cell.Data.Apn : L"Not set" });
+
+    if (Cell.HaveDevice)
+    {
+        Rows.push_back({ L"IMEI", OrNotAvailable(Cell.Device.Imei) });
+        Rows.push_back({ L"Manufacturer", OrNotAvailable(Cell.Device.Manufacturer) });
+        Rows.push_back({ L"Model", OrNotAvailable(Cell.Device.Model) });
+        Rows.push_back({ L"Modem firmware", OrNotAvailable(Cell.Device.Revision) });
+    }
+
+    if (FAILED(Cell.ActionResult))
+        Rows.push_back({ L"Last change", Format(L"Failed (0x%08lx)", Cell.ActionResult) });
+}
+
+VOID
+CSettingsApp::SetSwitch(
+    _In_z_ PCWSTR Prefix,
+    _In_ BOOL On,
+    _In_ BOOL Enabled)
+{
+    std::wstring Name = Prefix;
+
+    Scene()->SetBinding((Name + L"Track").c_str(), On ? L"@Accent" : L"@Transparent");
+    Scene()->SetBinding((Name + L"Border").c_str(), On ? L"@Accent" : (Enabled ? L"@AppText" : L"@AppSubText"));
+    Scene()->SetBinding((Name + L"Switch").c_str(), On ? L"On" : L"Off");
+    Scene()->SetVisible((Name + L"KnobOff").c_str(), !On);
+    Scene()->SetVisible((Name + L"KnobOn").c_str(), On);
+}
+
+VOID
+CSettingsApp::RefreshCellular(VOID)
+{
+    static PCWSTR const Fields[] = { L"Label", L"Value" };
+    std::vector<INFO_ROW> Rows;
+    std::vector<PCWSTR> Values;
+    CELL_STATUS Cell;
+    BOOL Radio;
+    BOOL DataOn;
+
+    m_Cell.Snapshot(&Cell);
+    if (m_CellBusy && Cell.Generation > m_CellBusy)
+        m_CellBusy = 0;
+
+    Radio = Cell.ServiceUp && Cell.HaveRadio && Cell.Radio.Present;
+    DataOn = Cell.HaveData && Cell.Data.Enabled;
+
+    if (!Radio)
+        Scene()->SetBinding(L"CellSummary", L"No cellular radio");
+    else if (!Cell.Radio.PoweredOn)
+        Scene()->SetBinding(L"CellSummary", L"Airplane mode is on");
+    else if (Cell.HaveNetwork && Cell.Network.Operator[0])
+        Scene()->SetBinding(L"CellSummary", Cell.Network.Operator);
+    else
+        Scene()->SetBinding(L"CellSummary", Cell.HaveNetwork ? RegStateText(Cell.Network.RegState) : L"Data, SIM and network");
+
+    SetSwitch(L"Data", DataOn, Radio && Cell.HaveData);
+    if (m_CellBusy)
+        Scene()->SetBinding(L"DataState", L"Working on it...");
+    else if (!Radio || !Cell.Radio.PoweredOn)
+        Scene()->SetBinding(L"DataState", L"Cellular data needs the radio on.");
+    else if (Cell.HaveDataStatus)
+        Scene()->SetBinding(L"DataState", Cell.DataStatus.Connected ? L"Connected" : L"Not connected");
+    else
+        Scene()->SetBinding(L"DataState", DataOn ? L"On, connects when the network is available" : L"Off");
+
+    SetSwitch(L"Air", Radio && !Cell.Radio.PoweredOn, Radio);
+    if (m_CellBusy)
+        Scene()->SetBinding(L"AirState", L"Working on it...");
+    else if (!Radio)
+        Scene()->SetBinding(L"AirState", Cell.ServiceUp ? L"No cellular radio was found." : L"The phone service is not running.");
+    else
+        Scene()->SetBinding(L"AirState", Cell.Radio.PoweredOn ? L"Cellular radio is on." : L"Cellular radio is off.");
+
+    CellRows(Cell, Rows);
+    for (const INFO_ROW &Row : Rows)
+    {
+        Values.push_back(Row.Label.c_str());
+        Values.push_back(Row.Value.c_str());
+    }
+    if (m_Page == PageCellular)
+        Scene()->SetItems(L"CellRows", static_cast<ULONG>(Rows.size()), ARRAYSIZE(Fields), Fields, Values.data());
+    else if (m_Page == PageInfo && m_InfoCellular)
+        Scene()->SetItems(L"InfoRows", static_cast<ULONG>(Rows.size()), ARRAYSIZE(Fields), Fields, Values.data());
+
+    /* The APN fields fill once from the service, after that they are the user's */
+    if (!m_ApnLoaded && Cell.HaveData)
+    {
+        m_Apn[0] = Cell.Data.Apn;
+        m_Apn[1] = Cell.Data.Username;
+        m_Apn[2] = Cell.Data.Password;
+        m_ApnAuth = Cell.Data.AuthType;
+        m_ApnLoaded = TRUE;
+        if (m_Page == PageApn)
+            RefreshApn();
+    }
+}
+
+VOID
+CSettingsApp::RefreshApn(VOID)
+{
+    WCHAR Name[16];
+    std::wstring Text;
+
+    for (LONG Index = 0; Index < APN_FIELDS; Index++)
+    {
+        Text = (Index == 2) ? std::wstring(m_Apn[Index].size(), L'\x2022') : m_Apn[Index];
+        if (Index == m_ApnField)
+            Text += L"|";
+        StringCchPrintfW(Name, ARRAYSIZE(Name), L"Apn%ld", Index);
+        Scene()->SetBinding(Name, Text.c_str());
+        StringCchPrintfW(Name, ARRAYSIZE(Name), L"ApnFill%ld", Index);
+        Scene()->SetBinding(Name, (Index == m_ApnField) ? L"@FieldActive" : L"@FieldNormal");
+    }
+    Scene()->SetBinding(L"ApnAuth", AuthText(m_ApnAuth));
+}
+
+VOID
+CSettingsApp::SaveApn(VOID)
+{
+    PHONEOM_DATA_CONFIG Config = {};
+    CELL_STATUS Cell;
+
+    m_Cell.Snapshot(&Cell);
+    if (!Cell.HaveData)
+        return;
+
+    Config = Cell.Data;
+    Config.AuthType = m_ApnAuth;
+    StringCchCopyW(Config.Apn, ARRAYSIZE(Config.Apn), m_Apn[0].c_str());
+    StringCchCopyW(Config.Username, ARRAYSIZE(Config.Username), m_Apn[1].c_str());
+    StringCchCopyW(Config.Password, ARRAYSIZE(Config.Password), m_Apn[2].c_str());
+    m_CellBusy = Cell.Generation;
+    m_Cell.SetDataConfig(&Config);
+}
+
+VOID
+CSettingsApp::OnWake(VOID)
+{
+    RefreshCellular();
+}
 
 VOID
 CSettingsApp::OnActivate(VOID)
@@ -159,6 +475,8 @@ CSettingsApp::OnActivate(VOID)
     if (!m_Started)
     {
         m_Started = TRUE;
+        Scene()->SetBinding(L"CellSummary", L"Data, SIM and network");
+        m_Cell.Start(5000, TRUE, OnCellChanged, this);
         Page = Argument(L"page");
         if (Page)
         {
@@ -179,10 +497,12 @@ CSettingsApp::ShowPage(
     _In_ SETTINGS_PAGE Page,
     _In_z_ PCWSTR Title)
 {
-    static PCWSTR const Pages[] = { L"PageInfo", L"PageOwner", L"PageSounds", L"PageToday", L"PageDetail", L"PageAbout" };
+    static PCWSTR const Pages[] = { L"PageInfo", L"PageOwner", L"PageSounds", L"PageToday", L"PageDetail", L"PageAbout",
+                                    L"PageCellular", L"PageApn", L"PageAirplane" };
     WCHAR Name[32];
 
     m_Page = Page;
+    m_InfoCellular = FALSE;
     for (ULONG Index = 0; Index < ARRAYSIZE(g_Tabs); Index++)
     {
         StringCchPrintfW(Name, ARRAYSIZE(Name), L"Page%s", g_Tabs[Index]);
@@ -194,9 +514,14 @@ CSettingsApp::ShowPage(
     Scene()->SetVisible(L"Tabs", Page == PageTabs);
     Scene()->SetSelected(NULL);
     Scene()->ResetScroll(L"InfoScroll");
+    Scene()->ResetScroll(L"CellScroll");
 
     if (Page == PageOwner)
         SetChrome(Title, L"Done", L"", ShellCloseOk);
+    else if (Page == PageApn)
+        SetChrome(Title, L"Save", L"", ShellCloseOk);
+    else if (Page == PageCellular)
+        SetChrome(Title, L"Refresh", L"", ShellCloseOk);
     else
         SetChrome(Title, L"", L"", ShellCloseOk);
 }
@@ -784,6 +1109,34 @@ CSettingsApp::Open(
         InfoTasks(Rows);
         ShowInfo(L"Task Manager", Rows);
     }
+    else if (_wcsicmp(Page, L"Cellular") == 0)
+    {
+        if (HasPage(L"PageCellular"))
+        {
+            ShowPage(PageCellular, L"Cellular & SIM");
+        }
+        else
+        {
+            Scene()->SetBinding(L"InfoTitle", L"Cellular & SIM");
+            ShowPage(PageInfo, L"Cellular & SIM");
+            m_InfoCellular = TRUE;
+        }
+        RefreshCellular();
+        m_Cell.Refresh();
+    }
+    else if (_wcsicmp(Page, L"Apn") == 0 && HasPage(L"PageApn"))
+    {
+        m_ApnField = 0;
+        RefreshApn();
+        ShowPage(PageApn, L"SIM settings");
+        ShowInputPanel(TRUE);
+    }
+    else if ((_wcsicmp(Page, L"Wireless") == 0 || _wcsicmp(Page, L"Airplane") == 0) && HasPage(L"PageAirplane"))
+    {
+        RefreshCellular();
+        ShowPage(PageAirplane, L"Airplane mode");
+        m_Cell.Refresh();
+    }
     else if (_wcsicmp(Page, L"WiFi") == 0 || _wcsicmp(Page, L"Connections") == 0 || _wcsicmp(Page, L"Wireless") == 0)
     {
         InfoNetwork(Rows);
@@ -858,6 +1211,41 @@ CSettingsApp::OnCommand(
         RefreshSounds();
         Request(L"status.refresh");
     }
+    else if (_wcsicmp(Command, L"cell:data") == 0 || _wcsicmp(Command, L"cell:airplane") == 0)
+    {
+        CELL_STATUS Cell;
+        PHONEOM_DATA_CONFIG Config;
+
+        m_Cell.Snapshot(&Cell);
+        if (m_CellBusy || !Cell.ServiceUp || !Cell.HaveRadio || !Cell.Radio.Present)
+            return;
+
+        if (_wcsicmp(Command + 5, L"airplane") == 0)
+        {
+            m_CellBusy = Cell.Generation;
+            m_Cell.SetRadioPower(!Cell.Radio.PoweredOn);
+        }
+        else if (Cell.HaveData)
+        {
+            Config = Cell.Data;
+            Config.Enabled = !Config.Enabled;
+            m_CellBusy = Cell.Generation;
+            m_Cell.SetDataConfig(&Config);
+        }
+        RefreshCellular();
+        Request(L"status.refresh");
+    }
+    else if (_wcsnicmp(Command, L"apn:", 4) == 0)
+    {
+        m_ApnField = min(max(_wtol(Command + 4), 0L), APN_FIELDS - 1L);
+        RefreshApn();
+        ShowInputPanel(TRUE);
+    }
+    else if (_wcsicmp(Command, L"apn.auth") == 0)
+    {
+        m_ApnAuth = (m_ApnAuth + 1) % (PHONEOM_AUTH_CHAP + 1);
+        RefreshApn();
+    }
     else if (_wcsnicmp(Command, L"theme:", 6) == 0)
     {
         /* The shell switches the theme and sends it back to every app, this one included */
@@ -875,8 +1263,15 @@ VOID
 CSettingsApp::OnSoftKey(
     _In_ SHELL_SOFTKEY Key)
 {
-    if (m_Page == PageOwner && Key == ShellSoftKeyLeft)
+    if ((m_Page == PageOwner || m_Page == PageApn) && Key == ShellSoftKeyLeft)
+    {
         OnCloseButton();
+    }
+    else if (m_Page == PageCellular && Key == ShellSoftKeyLeft)
+    {
+        Scene()->SetBinding(L"DataState", L"Refreshing...");
+        m_Cell.Refresh();
+    }
 }
 
 VOID
@@ -887,6 +1282,16 @@ CSettingsApp::OnCloseButton(VOID)
         SaveOwner();
         ShowInputPanel(FALSE);
         Request(L"status.refresh");
+    }
+
+    /* SIM settings belong to Cellular & SIM, ok saves and goes back there */
+    if (m_Page == PageApn)
+    {
+        SaveApn();
+        ShowInputPanel(FALSE);
+        ShowPage(PageCellular, L"Cellular & SIM");
+        RefreshCellular();
+        return;
     }
 
     /* ok backs out of a page to its tab, or closes when the page was opened directly */
@@ -900,7 +1305,18 @@ VOID
 CSettingsApp::OnChar(
     _In_ WCHAR Char)
 {
-    if (m_Page != PageOwner || Char < 0x20)
+    if (Char < 0x20)
+        return;
+
+    if (m_Page == PageApn)
+    {
+        if (m_Apn[m_ApnField].size() + 1 < ((m_ApnField == 0) ? PHONEOM_APN_LENGTH : PHONEOM_CREDENTIAL_LENGTH))
+            m_Apn[m_ApnField] += Char;
+        RefreshApn();
+        return;
+    }
+
+    if (m_Page != PageOwner)
         return;
 
     m_Owner[m_Field] += Char;
@@ -920,6 +1336,18 @@ CSettingsApp::OnKey(
         else if (VirtualKey == VK_UP)
             m_Field = (m_Field + OWNER_FIELDS - 1) % OWNER_FIELDS;
         RefreshOwner();
+        Present();
+        return;
+    }
+    if (m_Page == PageApn)
+    {
+        if (VirtualKey == VK_BACK && !m_Apn[m_ApnField].empty())
+            m_Apn[m_ApnField].pop_back();
+        else if (VirtualKey == VK_RETURN || VirtualKey == VK_DOWN)
+            m_ApnField = (m_ApnField + 1) % APN_FIELDS;
+        else if (VirtualKey == VK_UP)
+            m_ApnField = (m_ApnField + APN_FIELDS - 1) % APN_FIELDS;
+        RefreshApn();
         Present();
         return;
     }
