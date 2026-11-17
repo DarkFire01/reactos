@@ -6,6 +6,7 @@
  */
 
 #include "kddwc.h"
+#include <stdio.h>
 
 /* Generic timer registers, the counter runs from reset at the rate firmware left in CNTFRQ */
 #define KDDWC_CNTFRQ_EL0                ARM64_SYSREG(3, 3, 14, 0, 0)
@@ -353,6 +354,9 @@ KdDebuggerInitialize0(
     ULONG64 CoreBase;
     ULONG64 Start;
     ULONG WaitSeconds = KDDWC_DEFAULT_WAIT_SECONDS;
+    ULONG64 DmaBase;
+    ULONG DmaBytes;
+    CHAR Line[80];
     NTSTATUS Status;
 
     /* Without a loader block the link is being brought back, after a power loss for one */
@@ -414,6 +418,12 @@ KdDebuggerInitialize0(
 
     KdDwcTrace("host %s\n", KdDwcIsConfigured() ? "configured the port" : "has not configured the port yet");
     KdDwcBootPrint = NULL;
+
+    /* Queued for the host, so a memory corruption report can be matched against it */
+    KdDwcDmaRange(&DmaBase, &DmaBytes);
+    _snprintf(Line, sizeof(Line), "kddwc: DMA block 0x%I64x to 0x%I64x\n", DmaBase, DmaBase + DmaBytes - 1);
+    Line[sizeof(Line) - 1] = ANSI_NULL;
+    KdTransportPrint(Line, (ULONG)strlen(Line));
     return STATUS_SUCCESS;
 }
 

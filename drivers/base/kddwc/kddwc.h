@@ -511,6 +511,12 @@ NTSTATUS
 NTAPI
 KdDwcPowerUp(VOID);
 
+VOID
+NTAPI
+KdDwcDmaRange(
+    _Out_ PULONG64 Base,
+    _Out_ PULONG Bytes);
+
 BOOLEAN
 NTAPI
 KdDwcIsConfigured(VOID);
