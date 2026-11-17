@@ -6,6 +6,7 @@
 
 #define SHELLCOMP_EXPORTS
 #include <devstatus.h>
+#include <cellstatus.h>
 #include <shellcomp.h>
 #include <shellmsg.h>
 #include <uixptr.h>
@@ -14,8 +15,9 @@
 /*
  * Skin contract (chrome.uix):
  *   Bindings: Title, SoftKeyLeft, SoftKeyRight, CloseLabel, Time, Battery, BatteryLevel,
- *             BatteryBrush, Bar1..Bar5, VolumeGlyph; root BatteryFillWidth
- *   Elements: BatteryCharging, NetActive, NetOff, NotifyIcon
+ *             BatteryBrush, Bar1..Bar5, CellRat, VolumeGlyph; root BatteryFillWidth
+ *   Elements: BatteryCharging, NetActive, NetWired, NetOff, NotifyIcon, CellBars, CellOff, CellNoSim
+ *   Bars show the cellular signal when a radio is present and Wi-Fi quality otherwise
  *   Elements: CloseButton (shown when the app asks for one), Clock (shown in apps)
  *   Commands: start, softkey.left, softkey.right, softkey.center, close
  */
@@ -108,6 +110,7 @@ private:
         _In_ BOOL Everything);
 
     DEV_STATUS m_Status = {};
+    CCellMonitor m_Cell;
     ULONG m_Ticks = 0;
 
     IShellHost *m_Host;
@@ -141,6 +144,8 @@ CShellChrome::Initialize(
     if (FAILED(Status))
         return Status;
 
+    /* The phone service can take seconds to answer, the tick only reads the last answer */
+    m_Cell.Start(5000, FALSE, NULL, NULL);
     return Reload();
 }
 
@@ -215,11 +220,15 @@ VOID
 CShellChrome::Refresh(
     _In_ BOOL Everything)
 {
+    CELL_STATUS Cell;
     WCHAR Text[32];
     WCHAR Name[8];
     ULONG Percent;
     ULONG Bars;
     PCWSTR Glyph;
+    BOOL HasRadio;
+    BOOL RadioOn;
+    BOOL NoSim;
 
     if (!m_Scene)
         return;
@@ -243,17 +252,37 @@ CShellChrome::Refresh(
     m_Scene->SetBinding(L"BatteryBrush", (m_Status.HasBattery && Percent <= 20 && !m_Status.OnAc) ? L"@BatteryLow" : L"@TitleText");
     m_Scene->SetVisible(L"BatteryCharging", m_Status.OnAc);
 
-    /* Five bars from Wi-Fi quality; wired counts as full, nothing as none */
-    Bars = (m_Status.Network == DevNetworkNone) ? 0 : (m_Status.Quality + 19) / 20;
-    if (m_Status.Network == DevNetworkWireless && Bars == 0)
-        Bars = 1;
+    m_Cell.Snapshot(&Cell);
+    HasRadio = Cell.ServiceUp && Cell.HaveRadio && Cell.Radio.Present;
+    RadioOn = HasRadio && Cell.Radio.PoweredOn;
+    NoSim = RadioOn && Cell.HaveSim && Cell.Sim.SimState == PHONEOM_SIM_ABSENT;
+
+    if (HasRadio)
+    {
+        Bars = RadioOn ? CellSignalBars(&Cell) : 0;
+    }
+    else
+    {
+        /* Five bars from Wi-Fi quality; wired counts as full, nothing as none */
+        Bars = (m_Status.Network == DevNetworkNone) ? 0 : (m_Status.Quality + 19) / 20;
+        if (m_Status.Network == DevNetworkWireless && Bars == 0)
+            Bars = 1;
+    }
     for (ULONG Bar = 1; Bar <= 5; Bar++)
     {
         StringCchPrintfW(Name, ARRAYSIZE(Name), L"Bar%lu", Bar);
         m_Scene->SetBinding(Name, (Bar <= Bars) ? L"@TitleText" : L"@TitleDim");
     }
-    m_Scene->SetVisible(L"NetActive", m_Status.Network != DevNetworkNone);
-    m_Scene->SetVisible(L"NetOff", m_Status.Network == DevNetworkNone);
+
+    /* Airplane mode replaces the bars, a missing SIM crosses them out */
+    m_Scene->SetVisible(L"CellBars", !HasRadio || RadioOn);
+    m_Scene->SetVisible(L"CellOff", HasRadio && !RadioOn);
+    m_Scene->SetVisible(L"CellNoSim", NoSim);
+    m_Scene->SetBinding(L"CellRat", (RadioOn && !NoSim && Bars) ? CellRatLabel(Cell.Network.Rat) : L"");
+
+    m_Scene->SetVisible(L"NetActive", m_Status.Network == DevNetworkWireless);
+    m_Scene->SetVisible(L"NetWired", m_Status.Network == DevNetworkWired);
+    m_Scene->SetVisible(L"NetOff", m_Status.Network == DevNetworkNone && !HasRadio);
 
     if (m_Status.Volume < 0 || m_Status.Muted)
         Glyph = L"\xE74F";
@@ -379,6 +408,7 @@ CShellChrome::Shutdown(VOID)
     if (m_Endpoint != MSG_ENDPOINT_NONE)
         m_Host->GetSession()->CloseEndpoint(m_Endpoint);
     m_Endpoint = MSG_ENDPOINT_NONE;
+    m_Cell.Stop();
     m_Scene.Reset();
 }
 

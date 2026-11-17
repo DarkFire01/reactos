@@ -6,14 +6,21 @@
   <Element Name="StatusBar" Layer="true" VAlign="Top" Height="@TrayHeight" Background="@StatusBar" Layout="Row"
            Command="status" Momentary="true" Padding="12,0,0,0">
     <!-- Tray icons are 16x16 boxes centered in the bar; their ink, the battery and the clock baseline share one bottom line -->
-    <Element Width="16" Height="16" VAlign="Center" Layout="Row" Padding="0.5,4,0,0.5" Margin="0,0,6,0">
-      <Element Width="2.2" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,0.9,0"/>
-      <Element Width="2.2" Height="5" VAlign="Bottom" Background="{Bar2}" Margin="0,0,0.9,0"/>
-      <Element Width="2.2" Height="7" VAlign="Bottom" Background="{Bar3}" Margin="0,0,0.9,0"/>
-      <Element Width="2.2" Height="9" VAlign="Bottom" Background="{Bar4}" Margin="0,0,0.9,0"/>
-      <Element Width="2.2" Height="11" VAlign="Bottom" Background="{Bar5}"/>
+    <!-- Cellular signal, or Wi-Fi quality on a device without a radio; a cross over it means no SIM -->
+    <Element Name="CellBars" Width="16" Height="16" VAlign="Center" Margin="0,0,2,0">
+      <Element Layout="Row" Padding="0.5,4,0,0.5">
+        <Element Width="2.2" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,0.9,0"/>
+        <Element Width="2.2" Height="5" VAlign="Bottom" Background="{Bar2}" Margin="0,0,0.9,0"/>
+        <Element Width="2.2" Height="7" VAlign="Bottom" Background="{Bar3}" Margin="0,0,0.9,0"/>
+        <Element Width="2.2" Height="9" VAlign="Bottom" Background="{Bar4}" Margin="0,0,0.9,0"/>
+        <Element Width="2.2" Height="11" VAlign="Bottom" Background="{Bar5}"/>
+      </Element>
+      <Text Name="CellNoSim" Content="&#xE711;" Font="@TrayGlyph" TextAlign="Left" TextVAlign="Top" Visible="false"/>
     </Element>
+    <Text Name="CellOff" Content="&#xE709;" Font="@TrayGlyph" Width="16" Height="16" VAlign="Center" TextAlign="Center" TextVAlign="Center" Margin="0,0,2,0" Visible="false"/>
+    <Text Content="{CellRat}" Font="@Caption" VAlign="Center" Margin="0,0,6,0"/>
     <Text Name="NetActive" Content="&#xE701;" Font="@TrayGlyph" Width="16" Height="16" VAlign="Center" TextAlign="Center" TextVAlign="Center" Margin="0,0,6,0"/>
+    <Text Name="NetWired" Content="&#xE839;" Font="@TrayGlyph" Width="16" Height="16" VAlign="Center" TextAlign="Center" TextVAlign="Center" Margin="0,0,6,0" Visible="false"/>
     <Text Name="NetOff" Content="&#xE871;" Font="@TrayGlyph" Width="16" Height="16" VAlign="Center" TextAlign="Center" TextVAlign="Center" Margin="0,0,6,0" Visible="false"/>
     <Element Name="NotifyIcon" Command="notify.show" Momentary="true" Visible="false" Width="16" Height="16" VAlign="Center" Margin="0,0,6,0">
       <Text Content="&#xE8BD;" Font="@TrayGlyph" TextAlign="Center" TextVAlign="Center"/>
