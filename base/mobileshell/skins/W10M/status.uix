@@ -11,7 +11,12 @@
 
       <!-- Quick actions: 60 high, 4 apart, icon top left, caption bottom left -->
       <Element Layout="Row" Height="60" Margin="4,20,4,4" Font="@Caption">
-        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="@ActionOn" Foreground="@BaseWhite"
+        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="{AirplaneFill}" Foreground="{AirplaneText}"
+                 Command="cell.airplane" Momentary="true" SelectedBackground="@AccentDim">
+          <Text Content="&#xE709;" Font="@Glyph16" Margin="4,4,0,0" Height="*"/>
+          <Text Content="Airplane mode" Margin="4,0,0,6"/>
+        </Element>
+        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="{WifiFill}" Foreground="{WifiText}"
                  Command="launch:WiFi" Momentary="true" SelectedBackground="@AccentDim">
           <Text Content="&#xE701;" Font="@Glyph16" Margin="4,4,0,0" Height="*"/>
           <Text Content="Wi-Fi" Margin="4,0,0,6"/>
@@ -20,11 +25,6 @@
                  Command="volume.mute" Momentary="true" SelectedBackground="@BaseMidLow">
           <Text Content="{VolumeGlyph}" Font="@Glyph16" Margin="4,4,0,0" Height="*"/>
           <Text Content="{MuteLabel}" Margin="4,0,0,6"/>
-        </Element>
-        <Element Width="*" Margin="0,0,4,0" Layout="Stack" Background="@ActionOff"
-                 Command="launch:Power" Momentary="true" SelectedBackground="@BaseMidLow">
-          <Text Content="&#xE83F;" Font="@Glyph16" Margin="4,4,0,0" Height="*"/>
-          <Text Content="Battery saver" Margin="4,0,0,6"/>
         </Element>
         <Element Width="*" Layout="Stack" Background="@ActionOff"
                  Command="launch:Settings" Momentary="true" SelectedBackground="@BaseMidLow">
@@ -57,6 +57,9 @@
       </Element>
 
       <!-- Connection and battery -->
+      <Element Layout="Row" Height="44" Padding="12,0,12,0" Command="launch:Cellular" Momentary="true" SelectedBackground="@ListPress">
+        <Text Content="{StatusCellular}" Width="*" TextVAlign="Center"/>
+      </Element>
       <Element Layout="Row" Height="44" Padding="12,0,12,0" Command="launch:WiFi" Momentary="true" SelectedBackground="@ListPress">
         <Text Content="{StatusNetwork}" Width="*" TextVAlign="Center"/>
       </Element>

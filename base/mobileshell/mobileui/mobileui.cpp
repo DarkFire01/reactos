@@ -6,6 +6,7 @@
 
 #define SHELLCOMP_EXPORTS
 #include <devstatus.h>
+#include <cellstatus.h>
 #include <shellcomp.h>
 #include <shellmsg.h>
 #include <appwire.h>
@@ -387,6 +388,7 @@ private:
     FLOAT m_SwitcherSeconds = 0.3f;
     std::vector<ULONG> m_Recent;
     BOOL m_StatusOpen = FALSE;
+    CCellMonitor m_Cell;
     BOOL m_PopupOpen = FALSE;
     ULONG m_PopupApp = 0;
     std::vector<NOTE> m_Notes;
@@ -460,6 +462,7 @@ CMobileUI::Initialize(
             return Status;
     }
 
+    m_Cell.Start(5000, FALSE, NULL, NULL);
     LoadConfig();
     return Reload();
 }
@@ -921,6 +924,15 @@ CMobileUI::Command(
     else if (_wcsicmp(Command, L"status.close") == 0)
     {
         ShowStatus(FALSE);
+    }
+    else if (_wcsicmp(Command, L"cell.airplane") == 0)
+    {
+        CELL_STATUS Cell;
+
+        /* Airplane mode is the radio switched off; the icons follow on the next poll */
+        m_Cell.Snapshot(&Cell);
+        if (Cell.ServiceUp && Cell.HaveRadio && Cell.Radio.Present)
+            m_Cell.SetRadioPower(!Cell.Radio.PoweredOn);
     }
     else if (_wcsnicmp(Command, L"volume.", 7) == 0)
     {
@@ -1397,9 +1409,11 @@ VOID
 CMobileUI::RefreshStatus(VOID)
 {
     DEV_STATUS Status;
+    CELL_STATUS Cell;
     WCHAR Text[96];
     WCHAR Name[8];
     LONG Lit;
+    BOOL Airplane;
 
     if (!m_StatusPanel || !m_StatusOpen)
         return;
@@ -1413,6 +1427,39 @@ CMobileUI::RefreshStatus(VOID)
     else
         StringCchCopyW(Text, ARRAYSIZE(Text), L"Not connected");
     m_StatusPanel->SetBinding(L"StatusNetwork", Text);
+
+    m_Cell.Snapshot(&Cell);
+    Airplane = FALSE;
+    if (!Cell.ServiceUp || !Cell.HaveRadio || !Cell.Radio.Present)
+    {
+        StringCchCopyW(Text, ARRAYSIZE(Text), L"Cellular: no radio");
+    }
+    else if (!Cell.Radio.PoweredOn)
+    {
+        Airplane = TRUE;
+        StringCchCopyW(Text, ARRAYSIZE(Text), L"Cellular: off, airplane mode");
+    }
+    else if (Cell.HaveSim && Cell.Sim.SimState == PHONEOM_SIM_ABSENT)
+    {
+        StringCchCopyW(Text, ARRAYSIZE(Text), L"Cellular: no SIM");
+    }
+    else if (Cell.HaveNetwork &&
+             (Cell.Network.RegState == PHONEOM_REG_HOME || Cell.Network.RegState == PHONEOM_REG_ROAMING))
+    {
+        StringCchPrintfW(Text, ARRAYSIZE(Text), L"Cellular: %s %s%s",
+                         Cell.Network.Operator[0] ? Cell.Network.Operator : L"Connected",
+                         CellRatLabel(Cell.Network.Rat),
+                         (Cell.Network.RegState == PHONEOM_REG_ROAMING) ? L", roaming" : L"");
+    }
+    else
+    {
+        StringCchCopyW(Text, ARRAYSIZE(Text), L"Cellular: searching for service");
+    }
+    m_StatusPanel->SetBinding(L"StatusCellular", Text);
+    m_StatusPanel->SetBinding(L"AirplaneFill", Airplane ? L"@ActionOn" : L"@ActionOff");
+    m_StatusPanel->SetBinding(L"AirplaneText", Airplane ? L"@BaseWhite" : L"@BaseHigh");
+    m_StatusPanel->SetBinding(L"WifiFill", (Status.Network == DevNetworkWireless) ? L"@ActionOn" : L"@ActionOff");
+    m_StatusPanel->SetBinding(L"WifiText", (Status.Network == DevNetworkWireless) ? L"@BaseWhite" : L"@BaseHigh");
 
     if (Status.Volume < 0)
         StringCchCopyW(Text, ARRAYSIZE(Text), L"No sound device");
@@ -2565,6 +2612,7 @@ CMobileUI::Shutdown(VOID)
     while (!m_Apps.empty())
         CloseApp(m_Apps.back());
 
+    m_Cell.Stop();
     m_Sip.Reset();
     m_Notify.Reset();
     m_Popup.Reset();

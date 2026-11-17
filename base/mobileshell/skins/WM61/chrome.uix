@@ -17,6 +17,7 @@
     <!-- Tapping any status icon opens the status panel -->
     <Element Name="StatusIcons" Layout="Row" Command="status" Momentary="true" SelectedBackground="@TitlePressed">
       <Text Name="NetActive" Content="&#xE895;" Font="@StatusGlyph" Margin="2,0,3,0"/>
+      <Text Name="NetWired" Content="&#xE895;" Font="@StatusGlyph" Margin="2,0,3,0" Visible="false"/>
       <Text Name="NetOff" Content="&#xE711;" Font="@StatusGlyph" Margin="2,0,1,0" Visible="false"/>
       <Element Layout="Row" Margin="1,7,4,7">
         <Element Width="2" Height="3" VAlign="Bottom" Background="{Bar1}" Margin="0,0,1,0"/>
