@@ -222,6 +222,83 @@ static const PCWSTR PnpWatchDisplayModules[] =
     L"qcdxkm850.sys", L"nvlddmkm.sys", L"dxgkrnl.sys", L"dxgmms2.sys", L"cdd.dll"
 };
 
+/*
+ * qcdxkm850.sys of 2018-10-01 logs into three rings of 40 byte records in its image, an event
+ * code at +36 and five arguments from +16. Nothing else reports why its start failed.
+ */
+#define PNP_WATCH_QCDX_TIMESTAMP    0x5BB2469B
+#define PNP_WATCH_QCDX_IMAGE_SIZE   0x415000
+#define PNP_WATCH_QCDX_RECORD       40
+#define PNP_WATCH_QCDX_SHOWN        48
+
+typedef struct _PNP_WATCH_QCDX_RING
+{
+    ULONG RecordsRva;
+    ULONG CapacityRva;
+    ULONG WrittenRva;
+    PCSTR Name;
+} PNP_WATCH_QCDX_RING;
+
+static const PNP_WATCH_QCDX_RING PnpWatchQcdxRings[] =
+{
+    { 0x190B70, 0x190B88, 0x190BC4, "error" },
+    { 0x190BF0, 0x190BB0, 0x190BE0, "warning" },
+    { 0x190BD0, 0x190BE4, 0x190AE8, "info" }
+};
+
+static VOID
+PnpWatchDumpQcdxLog(VOID)
+{
+    UNICODE_STRING QcdxName = RTL_CONSTANT_STRING(L"qcdxkm850.sys");
+    PLDR_DATA_TABLE_ENTRY LdrEntry, Qcdx = NULL;
+    PNP_WATCH_QCDX_RING const *Ring;
+    PULONG Record;
+    PUCHAR Base, Records;
+    ULONG Capacity, Written, i, r;
+    PLIST_ENTRY Entry;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
+    for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList; Entry = Entry->Flink)
+    {
+        LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (RtlEqualUnicodeString(&LdrEntry->BaseDllName, &QcdxName, TRUE))
+        {
+            Qcdx = LdrEntry;
+            break;
+        }
+    }
+
+    if (Qcdx && Qcdx->TimeDateStamp == PNP_WATCH_QCDX_TIMESTAMP && Qcdx->SizeOfImage == PNP_WATCH_QCDX_IMAGE_SIZE)
+    {
+        Base = Qcdx->DllBase;
+        for (r = 0; r < RTL_NUMBER_OF(PnpWatchQcdxRings); r++)
+        {
+            Ring = &PnpWatchQcdxRings[r];
+            Records = *(PUCHAR *)(Base + Ring->RecordsRva);
+            Capacity = *(PULONG)(Base + Ring->CapacityRva);
+            Written = *(PULONG)(Base + Ring->WrittenRva);
+            DbgPrint("PNPWATCH: qcdx %s log, %lu records\n", Ring->Name, Written);
+            if (!Records || !Capacity)
+                continue;
+
+            for (i = Written - min(Written, min(Capacity, PNP_WATCH_QCDX_SHOWN)); i < Written; i++)
+            {
+                Record = (PULONG)(Records + (i % Capacity) * PNP_WATCH_QCDX_RECORD);
+                if (!MmIsAddressValid(Record))
+                    break;
+
+                DbgPrint("PNPWATCH: qcdx %s %lu: code %lu, %lx %lx %lx %lx %lx\n",
+                         Ring->Name, Record[2], Record[9],
+                         Record[4], Record[5], Record[6], Record[7], Record[8]);
+            }
+        }
+    }
+
+    ExReleaseResourceLite(&PsLoadedModuleResource);
+    KeLeaveCriticalRegion();
+}
+
 /* Display drivers being brought up: show every thread that is somewhere inside them */
 static VOID
 PnpWatchDumpDisplayThreads(VOID)
@@ -229,6 +306,7 @@ PnpWatchDumpDisplayThreads(VOID)
     PEPROCESS Process;
     PETHREAD Thread;
 
+    PnpWatchDumpQcdxLog();
     DbgPrint("PNPWATCH: threads in the display drivers at %I64d s\n", KeQueryInterruptTime() / 10000000);
     for (Process = PsGetNextProcess(NULL); Process; Process = PsGetNextProcess(Process))
     {
