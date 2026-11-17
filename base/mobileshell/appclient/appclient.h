@@ -90,6 +90,16 @@ protected:
     OnKey(
         _In_ UINT VirtualKey);
 
+    /* Runs on the app thread after Wake, the scene is presented afterwards */
+    virtual VOID
+    OnWake(VOID)
+    {
+    }
+
+    /* Safe from any thread, several wakes before the app thread runs fold into one OnWake */
+    VOID
+    Wake(VOID);
+
     VOID
     Present(VOID);
 
@@ -173,7 +183,14 @@ private:
     Pointer(
         _In_ const APP_MESSAGE *Message);
 
+    BOOL
+    ReadMessage(
+        _Out_ APP_MESSAGE *Message);
+
     HANDLE m_Pipe;
+    HANDLE m_ReadEvent = NULL;
+    HANDLE m_WriteEvent = NULL;
+    HANDLE m_WakeEvent = NULL;
     BOOL m_Running;
     BOOL m_Opened = FALSE;
     std::vector<std::wstring> m_Arguments;
