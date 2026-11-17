@@ -321,6 +321,12 @@ QcModemSelfTest(
         QmiFindTlv(Response, RespLen, 0x01, &Value, &ValueLen) && ValueLen >= 1)
     {
         QcTrace("selftest: operating mode %u", *(const UCHAR *)Value);
+
+        /* Why the modem stays out of online, when it says */
+        if (QmiFindTlv(Response, RespLen, 0x10, &Value, &ValueLen) && ValueLen >= 2)
+            QcTrace("selftest: offline reason 0x%04x", *(const USHORT UNALIGNED *)Value);
+        if (QmiFindTlv(Response, RespLen, 0x11, &Value, &ValueLen) && ValueLen >= 1)
+            QcTrace("selftest: hardware restricted mode %u", *(const UCHAR *)Value);
     }
 
     /* Signal and registration, the radio searches and reports these with no SIM */
