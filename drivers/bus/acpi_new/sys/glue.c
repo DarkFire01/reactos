@@ -190,6 +190,8 @@ UacpiNtBringUpInterpreter(
 
     Fdo->InterpreterReady = TRUE;
     DPRINT("uACPI-NT: interpreter up\n");
+
+    UacpiNtRegisterFirmwareTables();
     return STATUS_SUCCESS;
 }
 

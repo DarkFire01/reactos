@@ -407,6 +407,11 @@ NTAPI
 UacpiNtTearDownInterpreter(
     _In_ PUACPINT_FDO Fdo);
 
+/* sys/fwtable.c */
+VOID
+NTAPI
+UacpiNtRegisterFirmwareTables(VOID);
+
 /* Public API version of uACPI's internal uacpi_clear_all_events */
 uacpi_status
 NTAPI
