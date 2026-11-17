@@ -802,7 +802,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ErrorControl",0x00010001,0x00
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ImagePath",0x00020000,"system32\drivers\qcsubsys850.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Start",0x00010001,0x00000003
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Type",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,0
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DogBiteRegDump",0x00010001,1
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DebugSmp2pTimeout",0x00010001,1
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","SCSSRestartEnabled",0x00010001,1
@@ -930,7 +930,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ErrorControl",0x00010001,0x00
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ImagePath",0x00020000,"system32\drivers\qcsubsys850.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Start",0x00010001,0x00000003
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Type",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,0
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DogBiteRegDump",0x00010001,1
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DebugSmp2pTimeout",0x00010001,1
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","SCSSRestartEnabled",0x00010001,1
@@ -1174,7 +1174,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ErrorControl",0x00010001,0x00
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","ImagePath",0x00020000,"system32\drivers\qcsubsys850.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Start",0x00010001,0x00000003
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys","Type",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters\DIAG","FreeReservedMemory",0x00010001,0
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DogBiteRegDump",0x00010001,1
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","DebugSmp2pTimeout",0x00010001,1
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsubsys\Parameters","SCSSRestartEnabled",0x00010001,1
