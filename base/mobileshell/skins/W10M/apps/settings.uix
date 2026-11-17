@@ -40,13 +40,6 @@
           <Text Content="Your name and contact details" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Phone" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE717;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="Phone"/>
-          <Text Content="Calls and voicemail" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Sounds" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE767;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
@@ -78,32 +71,11 @@
           <Text Content="Brightness and screen timeout" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Certificates" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xEB95;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="Certificates"/>
-          <Text Content="Trusted root authorities" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Clock" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE823;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Time &amp; alarms"/>
           <Text Content="Date, time and alarms" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Encryption" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE8D7;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="Encryption"/>
-          <Text Content="Storage card encryption" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Error Reporting" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE7BA;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="Error reporting"/>
-          <Text Content="Send problem reports" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Memory" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
@@ -151,39 +123,11 @@
   </Element>
 
   <Element Name="PageConnections" Scroll="true" Height="*" Layout="Stack" Padding="0,4,0,8" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3" Visible="false">
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Beam" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE95A;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="Beam"/>
-          <Text Content="Receive files from nearby devices" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Bluetooth" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE702;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="Bluetooth"/>
-          <Text Content="Pair and manage devices" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Connections" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE774;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
           <Text Content="Network"/>
           <Text Content="Data and dial up connections" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Domain Enroll" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xE821;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="Work access"/>
-          <Text Content="Join a work domain" Font="@Caption" Foreground="@AppSubText"/>
-        </Element>
-      </Element>
-      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:USB to PC" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
-        <Text Content="&#xECF0;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
-        <Element Layout="Stack" Width="*" VAlign="Center">
-          <Text Content="USB"/>
-          <Text Content="Connect to a PC" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:WiFi" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
