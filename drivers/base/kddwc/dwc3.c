@@ -826,7 +826,6 @@ KdDwcHandleEvent(
 
     KdDwcLastEvent = KdDwcMicroseconds();
     KdDwcTraceUsb("event 0x%08lx\n", Event);
-    KdDwcTraceSpeed("event");
     if (Event & DWC_EVENT_IS_DEVICE)
     {
         switch (DWC_EVENT_DEVICE_TYPE(Event))
@@ -1239,7 +1238,6 @@ KdDwcBringUp(VOID)
     Dwc.Up = TRUE;
     Dwc.NextCheck = KdDwcMicroseconds() + KDDWC_CHECK_US;
     KdDwcTrace("device controller running\n");
-    KdDwcTraceSpeed("running");
     return STATUS_SUCCESS;
 }
 
