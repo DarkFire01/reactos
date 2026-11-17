@@ -123,6 +123,13 @@
   </Element>
 
   <Element Name="PageConnections" Scroll="true" Height="*" Layout="Stack" Padding="0,4,0,8" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3" Visible="false">
+      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Cellular" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xEC3B;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
+        <Element Layout="Stack" Width="*" VAlign="Center">
+          <Text Content="Cellular &amp; SIM"/>
+          <Text Content="{CellSummary}" Font="@Caption" Foreground="@AppSubText"/>
+        </Element>
+      </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Connections" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE774;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
@@ -246,6 +253,73 @@
         </Element>
       </Repeater>
     </Element>
+  </Element>
+
+  <!-- Cellular & SIM: data switch, live radio, SIM and network state, then SIM settings -->
+  <Element Name="PageCellular" Layout="Stack" Height="*" Visible="false">
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
+    <Text Content="Cellular &amp; SIM" Font="@TitleText" Padding="12,2,12,8"/>
+    <Element Name="CellScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Text Content="Cellular data connection" Padding="12,0,12,0"/>
+      <Element Layout="Row" Height="44" Padding="12,0,12,0" Command="cell:data" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Element Width="44" Height="20" VAlign="Center" Background="{DataTrack}" BorderBrush="{DataBorder}" BorderThickness="2" Margin="0,0,12,0">
+          <Element Name="DataKnobOff" Width="10" Height="10" HAlign="Left" VAlign="Center" Margin="3,0,0,0" Background="@AppText"/>
+          <Element Name="DataKnobOn" Width="10" Height="10" HAlign="Right" VAlign="Center" Margin="0,0,3,0" Background="@BaseWhite" Visible="false"/>
+        </Element>
+        <Text Content="{DataSwitch}" Width="*" TextVAlign="Center"/>
+      </Element>
+      <Text Content="{DataState}" Font="@Caption" Foreground="@AppSubText" Wrap="true" Padding="12,0,12,12"/>
+
+      <Repeater Name="CellRows" Layout="Stack">
+        <Element Layout="Stack" Padding="12,6,12,6">
+          <Text Content="{Item.Label}" Font="@Caption" Foreground="@AppSubText"/>
+          <Text Content="{Item.Value}" Wrap="true"/>
+        </Element>
+      </Repeater>
+
+      <Element Height="36" Margin="12,12,12,12" Command="open:Apn" Momentary="true" Background="@ButtonFace" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText" Padding="20,0,20,0" HAlign="Left">
+        <Text Content="SIM settings" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+  </Element>
+
+  <!-- SIM settings: the internet APN the data connection dials -->
+  <Element Name="PageApn" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="0,12,0,0"/>
+    <Text Content="SIM settings" Font="@TitleText" Margin="0,2,0,12"/>
+    <Text Content="Internet APN" Font="@Caption" Foreground="@AppSubText" Margin="0,0,0,8"/>
+    <Text Content="Access point name" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="apn:0" Background="@FieldFill" BorderBrush="{ApnFill0}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
+      <Text Content="{Apn0}"/>
+    </Element>
+    <Text Content="User name" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="apn:1" Background="@FieldFill" BorderBrush="{ApnFill1}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
+      <Text Content="{Apn1}"/>
+    </Element>
+    <Text Content="Password" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="apn:2" Background="@FieldFill" BorderBrush="{ApnFill2}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14">
+      <Text Content="{Apn2}"/>
+    </Element>
+    <Text Content="Type of sign-in info" Font="@Caption" Foreground="@AppSubText"/>
+    <Element Height="32" Command="apn.auth" Momentary="true" Background="@FieldFill" BorderBrush="@FieldBorder" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,14" SelectedBackground="@ListPressed">
+      <Text Content="{ApnAuth}"/>
+    </Element>
+    <Text Content="Save applies the APN and reconnects cellular data when it is on." Font="@Caption" Foreground="@AppSubText" Wrap="true"/>
+  </Element>
+
+  <!-- Airplane mode: the cellular radio's power -->
+  <Element Name="PageAirplane" Layout="Stack" Height="*" Padding="0,0,0,4" Visible="false">
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
+    <Text Content="Airplane mode" Font="@TitleText" Padding="12,2,12,8"/>
+    <Text Content="Turn this on to stop all wireless communication." Wrap="true" Padding="12,0,12,4"/>
+    <Element Layout="Row" Height="44" Padding="12,0,12,0" Command="cell:airplane" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+      <Element Width="44" Height="20" VAlign="Center" Background="{AirTrack}" BorderBrush="{AirBorder}" BorderThickness="2" Margin="0,0,12,0">
+        <Element Name="AirKnobOff" Width="10" Height="10" HAlign="Left" VAlign="Center" Margin="3,0,0,0" Background="@AppText"/>
+        <Element Name="AirKnobOn" Width="10" Height="10" HAlign="Right" VAlign="Center" Margin="0,0,3,0" Background="@BaseWhite" Visible="false"/>
+      </Element>
+      <Text Content="{AirSwitch}" Width="*" TextVAlign="Center"/>
+    </Element>
+    <Text Content="{AirState}" Font="@Caption" Foreground="@AppSubText" Wrap="true" Padding="12,4,12,0"/>
   </Element>
 
   <Element Name="PageDetail" Layout="Stack" Height="*" Padding="12,0,12,8" Visible="false">
