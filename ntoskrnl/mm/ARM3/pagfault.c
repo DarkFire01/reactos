@@ -2417,6 +2417,13 @@ UserFault:
     }
     else
     {
+        if (MI_IS_PAGE_LARGE(PointerPde))
+        {
+            DPRINT1("User fault at %p in %p: PDE %p = 0x%I64x, PPE %p = 0x%I64x\n",
+                    Address, CurrentProcess, PointerPde, (ULONG64)PointerPde->u.Long,
+                    PointerPpe, (ULONG64)PointerPpe->u.Long);
+        }
+
         /* Not yet implemented in ReactOS */
         ASSERT(MI_IS_PAGE_LARGE(PointerPde) == FALSE);
     }
