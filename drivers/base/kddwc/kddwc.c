@@ -20,6 +20,9 @@
 /* How often the boot wait shows the controller state */
 #define KDDWC_HEARTBEAT_US              250000
 
+/* Iterations of the speed probe loop, about 100 us at full clock */
+#define KDDWC_SPEED_LOOPS               50000
+
 /* How long output may wait for a listening host before it is dropped */
 #define KDDWC_SEND_TIMEOUT_US           200000
 
@@ -68,6 +71,39 @@ KdDwcStall(
 
     while (KdDwcMicroseconds() - Start < Microseconds)
         YieldProcessor();
+}
+
+/**
+ * @brief Times a fixed loop several times and prints the fastest and slowest run.
+ *
+ * A processor clock that dropped slows every run, time taken away by a higher
+ * exception level leaves some runs at full speed.
+ */
+VOID
+NTAPI
+KdDwcTraceSpeed(
+    _In_ PCSTR Where)
+{
+    volatile ULONG Counter;
+    ULONG64 Start, Elapsed;
+    ULONG64 Fastest = ~0ULL;
+    ULONG64 Slowest = 0;
+    ULONG Run;
+
+    if (!KdDwcTraceTraffic)
+        return;
+
+    for (Run = 0; Run < 8; Run++)
+    {
+        Start = KdDwcMicroseconds();
+        for (Counter = 0; Counter < KDDWC_SPEED_LOOPS; Counter++);
+        Elapsed = KdDwcMicroseconds() - Start;
+
+        Fastest = min(Fastest, Elapsed);
+        Slowest = max(Slowest, Elapsed);
+    }
+
+    KdDwcTrace("speed %s: %I64u to %I64u us\n", Where, Fastest, Slowest);
 }
 
 /* OPTIONS ********************************************************************/
@@ -411,6 +447,7 @@ KdDebuggerInitialize0(
         {
             Beat = KdDwcMicroseconds();
             KdDwcTrace("%I64u ms\n", (Beat - Start) / 1000);
+            KdDwcTraceSpeed("heartbeat");
             KdDwcTraceState();
         }
     }
