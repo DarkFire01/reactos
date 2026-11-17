@@ -226,7 +226,6 @@ static const PCWSTR PnpWatchDisplayModules[] =
  * qcdxkm850.sys of 2018-10-01 logs into three rings of 40 byte records in its image, an event
  * code at +36 and five arguments from +16. Nothing else reports why its start failed.
  */
-#define PNP_WATCH_QCDX_TIMESTAMP    0x5BB2469B
 #define PNP_WATCH_QCDX_IMAGE_SIZE   0x415000
 #define PNP_WATCH_QCDX_RECORD       40
 #define PNP_WATCH_QCDX_SHOWN        48
@@ -269,7 +268,11 @@ PnpWatchDumpQcdxLog(VOID)
         }
     }
 
-    if (Qcdx && Qcdx->TimeDateStamp == PNP_WATCH_QCDX_TIMESTAMP && Qcdx->SizeOfImage == PNP_WATCH_QCDX_IMAGE_SIZE)
+    if (!Qcdx)
+        DbgPrint("PNPWATCH: qcdxkm850.sys is not loaded\n");
+    else if (Qcdx->SizeOfImage != PNP_WATCH_QCDX_IMAGE_SIZE)
+        DbgPrint("PNPWATCH: qcdxkm850.sys is another build, its log is not read\n");
+    else
     {
         Base = Qcdx->DllBase;
         for (r = 0; r < RTL_NUMBER_OF(PnpWatchQcdxRings); r++)
