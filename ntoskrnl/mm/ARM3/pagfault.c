@@ -939,6 +939,18 @@ MiResolvePageFileFault(_In_ BOOLEAN StoreInstruction,
     ASSERT(TempPte.u.Soft.PageFileHigh != 0);
     ASSERT(TempPte.u.Soft.PageFileHigh != MI_PTE_LOOKUP_NEEDED);
 
+    /* An entry for a page file that does not exist means the PTE is corrupt */
+    if (PageFileIndex >= MmNumberOfPagingFiles || MmPagingFile[PageFileIndex] == NULL)
+    {
+        DPRINT1("PTE %p = 0x%I64x for %p names page file %lu, there are %lu\n",
+                PointerPte, (ULONG64)TempPte.u.Long, FaultingAddress, PageFileIndex, MmNumberOfPagingFiles);
+        KeBugCheckEx(MEMORY_MANAGEMENT,
+                     0x41792,
+                     (ULONG_PTR)PointerPte,
+                     (ULONG_PTR)TempPte.u.Long,
+                     (ULONG_PTR)FaultingAddress);
+    }
+
     /* Get any page, it will be overwritten */
     if (CurrentProcess > HYDRA_PROCESS)
         Color = MI_GET_NEXT_PROCESS_COLOR(CurrentProcess);
