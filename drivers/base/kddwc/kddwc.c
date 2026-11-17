@@ -541,7 +541,6 @@ KdDebuggerInitialize0(
         {
             Beat = KdDwcMicroseconds();
             KdDwcTrace("%I64u ms\n", (Beat - Start) / 1000);
-            KdDwcTraceSpeed("heartbeat");
             KdDwcTraceState();
         }
     }
@@ -549,6 +548,7 @@ KdDebuggerInitialize0(
     KdDwcTrace("host %s\n", KdDwcIsConfigured() ? "configured the port" : "has not configured the port yet");
     KdDwcHoldLog = FALSE;
     KdDwcFlushLog();
+    KdDwcTraceSpeed("after the wait");
     KdDwcTraceTraffic = FALSE;
     KdDwcBootPrint = NULL;
     return STATUS_SUCCESS;
