@@ -54,28 +54,17 @@ extern PVOID KiStartingDpcStack;
 /* How far the processor being started got, KeStartAllProcessors reports it if it never checks in */
 volatile ULONG KiApStartStep;
 
-/*
- * Records a startup step of a secondary processor and draws it straight to the
- * boot screen, past the debugger and the display lock, so it shows even when the
- * other processors are stuck.
- */
+/* Records a startup step of a secondary processor, for KeStartAllProcessors to report if it never checks in */
 static
 VOID
 KiApReportStep(
     _In_ PKPRCB Prcb,
     _In_ ULONG Step)
 {
-    CHAR Text[] = "AP 0 step 00";
+    UNREFERENCED_PARAMETER(Prcb);
 
     KiApStartStep = Step;
     KeMemoryBarrier();
-    if (!InbvBootDriverInstalled)
-        return;
-
-    Text[3] = (CHAR)('0' + (Prcb->Number % 10));
-    Text[10] = (CHAR)('0' + ((Step / 10) % 10));
-    Text[11] = (CHAR)('0' + (Step % 10));
-    VidDisplayStringXY(Text, 8, 300 + 16 * (Prcb->Number % 8), FALSE);
 }
 static LDR_DATA_TABLE_ENTRY LdrCoreEntries[3];
 ULONG64 KeFeatureBits;
