@@ -360,19 +360,6 @@ ULONG64
 NTAPI
 KdDwcMicroseconds(VOID);
 
-VOID
-__cdecl
-KdDwcLog(
-    _In_z_ _Printf_format_string_ PCSTR Format,
-    ...);
-
-VOID
-NTAPI
-KdDwcFlushLog(VOID);
-
-/* While set, trace lines are kept in memory: drawing them is slow enough to make the host give up */
-extern BOOLEAN KdDwcHoldLog;
-
 /* When the controller last posted an event */
 extern ULONG64 KdDwcLastEvent;
 
@@ -381,25 +368,10 @@ extern ULONG64 KdDwcLastEvent;
     do                                                                          \
     {                                                                           \
         if (KdDwcBootPrint != NULL)                                             \
-            KdDwcLog(__VA_ARGS__);                                              \
-    } while (0)
-
-/* Set by DWCTRACE; every event and request then goes to the screen, which slows them enough for a host to give up */
-extern BOOLEAN KdDwcTraceTraffic;
-
-VOID
-NTAPI
-KdDwcTraceSpeed(
-    _In_ PCSTR Where);
-
-/* Set by DWCNORPMH; the controller then runs on whatever votes firmware left */
-extern BOOLEAN KdDwcSkipRpmh;
-
-#define KdDwcTraceUsb(...)                          \
-    do                                              \
-    {                                               \
-        if (KdDwcTraceTraffic)                      \
-            KdDwcTrace(__VA_ARGS__);                \
+        {                                                                       \
+            KdDwcBootPrint("kddwc %I64u: ", KdDwcMicroseconds() / 1000);        \
+            KdDwcBootPrint(__VA_ARGS__);                                        \
+        }                                                                       \
     } while (0)
 
 /* dwc3.c */
@@ -530,10 +502,6 @@ KdDwcVoteRpmh(
 VOID
 NTAPI
 KdDwcService(VOID);
-
-VOID
-NTAPI
-KdDwcTraceState(VOID);
 
 VOID
 NTAPI

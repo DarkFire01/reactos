@@ -347,12 +347,10 @@ KdDwcEndpointCommand(
 {
     ULONG Value;
 
-    KdDwcTraceUsb("endpoint %lu command 0x%lx 0x%lx 0x%lx\n", Endpoint, Command, Parameter0, Parameter1);
     KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR2(Endpoint), 0);
     KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR1(Endpoint), Parameter1);
     KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR0(Endpoint), Parameter0);
     KdDwcWrite(Dwc.Core, DWC_DEPCMD(Endpoint), Command | DWC_DEPCMD_CMDACT);
-    KdDwcTraceUsb("issued\n");
 
     if (!KdDwcWaitFor(Dwc.Core, DWC_DEPCMD(Endpoint), DWC_DEPCMD_CMDACT, 0, KDDWC_COMMAND_TIMEOUT_US))
     {
@@ -361,7 +359,6 @@ KdDwcEndpointCommand(
     }
 
     Value = KdDwcRead(Dwc.Core, DWC_DEPCMD(Endpoint));
-    KdDwcTraceUsb("done 0x%lx\n", Value);
     if (Resource != NULL)
         *Resource = (UCHAR)DWC_DEPCMD_RESOURCE(Value);
 
@@ -420,7 +417,6 @@ KdDwcEndTransfer(
     _In_ ULONG Endpoint,
     _In_ UCHAR Resource)
 {
-    KdDwcTraceUsb("endpoint %lu end transfer %u\n", Endpoint, Resource);
     KdDwcModify(Dwc.Core, DWC_GUSB2PHYCFG, DWC_GUSB2PHYCFG_SUSPEND, 0);
     KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR2(Endpoint), 0);
     KdDwcWrite(Dwc.Core, DWC_DEPCMDPAR1(Endpoint), 0);
@@ -463,9 +459,7 @@ KdDwcControlIn(
     _In_ ULONG Requested)
 {
     Length = min(Length, min(Requested, (ULONG)KDDWC_EP0_BYTES));
-    KdDwcTraceUsb("control in %lu bytes from %p to %p\n", Length, Data, Dwc.Dma->Ep0Buffer);
     KdDwcCopyToDma(Dwc.Dma->Ep0Buffer, Data, Length);
-    KdDwcTraceUsb("copied, TRB control 0x%lx\n", READ_REGISTER_ULONG(&Dwc.Dma->Ep0Trb.Control));
 
     KdDwcWriteTrb(&Dwc.Dma->Ep0Trb,
                   Dwc.Dma->Ep0Buffer,
@@ -630,7 +624,6 @@ KdDwcHandleSetup(VOID)
     Request = Setup[1];
     Value = (USHORT)(Setup[2] | (Setup[3] << 8));
     Length = (USHORT)(Setup[6] | (Setup[7] << 8));
-    KdDwcTraceUsb("setup %02x %02x value %04x length %u\n", RequestType, Request, Value, Length);
 
     if ((RequestType & USB_TYPE_MASK) == USB_TYPE_CLASS)
     {
@@ -767,7 +760,6 @@ KdDwcControlEvent(
     {
         case Ep0Setup:
             KdDwcHandleSetup();
-            KdDwcTraceState();
             break;
 
         case Ep0DataIn:
@@ -827,7 +819,6 @@ KdDwcHandleEvent(
     ULONG Speed;
 
     KdDwcLastEvent = KdDwcMicroseconds();
-    KdDwcTraceUsb("event 0x%08lx\n", Event);
     if (Event & DWC_EVENT_IS_DEVICE)
     {
         switch (DWC_EVENT_DEVICE_TYPE(Event))
@@ -911,25 +902,6 @@ KdDwcService(VOID)
 
         KdDwcHandleEvent(Event);
     }
-}
-
-/**
- * @brief Prints the controller and control endpoint state on the loader screen.
- */
-VOID
-NTAPI
-KdDwcTraceState(VOID)
-{
-    if (!Dwc.Up)
-        return;
-
-    KdDwcTraceUsb("state %lu, DSTS 0x%lx count 0x%lx EP0 commands 0x%lx 0x%lx TRB control 0x%lx\n",
-               (ULONG)Dwc.Ep0State,
-               KdDwcRead(Dwc.Core, DWC_DSTS),
-               KdDwcRead(Dwc.Core, DWC_GEVNTCOUNT),
-               KdDwcRead(Dwc.Core, DWC_DEPCMD(KDDWC_EP0_OUT)),
-               KdDwcRead(Dwc.Core, DWC_DEPCMD(KDDWC_EP0_IN)),
-               READ_REGISTER_ULONG(&Dwc.Dma->Ep0Trb.Control));
 }
 
 BOOLEAN
@@ -1209,10 +1181,9 @@ KdDwcBringUp(VOID)
 
     Dwc.Up = FALSE;
     KdDwcForgetHost();
-    KdDwcTraceSpeed("start");
 
     /* Firmware dropped the controller's bus and supply votes at exit, DMA stalls without them */
-    if (Platform->Rpmh != NULL && !KdDwcSkipRpmh && !KdDwcVoteRpmh(Platform->Rpmh))
+    if (Platform->Rpmh != NULL && !KdDwcVoteRpmh(Platform->Rpmh))
         KdDwcTrace("some RPMh votes did not go through\n");
 
     /* Without its clocks the core would stall the bus on the first access */
@@ -1220,7 +1191,6 @@ KdDwcBringUp(VOID)
         return STATUS_DEVICE_NOT_READY;
 
     KdDwcSelectUtmiClock();
-    KdDwcTraceSpeed("powered");
 
     KdDwcTrace("power up done, reading the core id\n");
     Id = KdDwcRead(Dwc.Core, DWC_GSNPSID);
@@ -1233,7 +1203,6 @@ KdDwcBringUp(VOID)
     if (Platform->StartPhy != NULL && !Platform->StartPhy(Platform))
         return STATUS_DEVICE_NOT_READY;
 
-    KdDwcTraceSpeed("PHY up");
     if (!KdDwcResetCore(Id) || !KdDwcStartDevice(Id))
         return STATUS_DEVICE_NOT_READY;
 
