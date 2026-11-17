@@ -36,9 +36,9 @@
 #define USB_DESC_STRING                 0x03
 #define USB_DESC_QUALIFIER              0x06
 
-/* Offsets of the two bulk packet sizes inside the configuration descriptor */
-#define KDDWC_CONFIG_OUT_MPS            67
-#define KDDWC_CONFIG_IN_MPS             74
+/* Offsets of the two bulk packet sizes inside the configuration descriptor, the endpoints start at 61 and 68 */
+#define KDDWC_CONFIG_OUT_MPS            65
+#define KDDWC_CONFIG_IN_MPS             72
 
 typedef enum _KDDWC_EP0_STATE
 {
@@ -136,6 +136,8 @@ static UCHAR KdDwcConfigDescriptor[75] =
     7, 0x05, KDDWC_USB_DATA_OUT, 0x02, 0x00, 0x02, 0,
     7, 0x05, KDDWC_USB_DATA_IN, 0x02, 0x00, 0x02, 0
 };
+
+C_ASSERT(KDDWC_CONFIG_IN_MPS + 2 < sizeof(KdDwcConfigDescriptor));
 
 static const PCWSTR KdDwcStrings[] =
 {
