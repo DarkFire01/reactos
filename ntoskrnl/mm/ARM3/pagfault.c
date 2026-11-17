@@ -944,6 +944,7 @@ MiResolvePageFileFault(_In_ BOOLEAN StoreInstruction,
     {
         DPRINT1("PTE %p = 0x%I64x for %p names page file %lu, there are %lu\n",
                 PointerPte, (ULONG64)TempPte.u.Long, FaultingAddress, PageFileIndex, MmNumberOfPagingFiles);
+        DPRINT1("PDE %p = 0x%I64x\n", MiPteToPde(PointerPte), (ULONG64)MiPteToPde(PointerPte)->u.Long);
         KeBugCheckEx(MEMORY_MANAGEMENT,
                      0x41792,
                      (ULONG_PTR)PointerPte,
