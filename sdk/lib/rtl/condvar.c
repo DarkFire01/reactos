@@ -194,7 +194,7 @@ static VOID __fastcall CvDispatchWake(PRTL_CONDITION_VARIABLE *ConditionVariable
         waitHead = CV_NODE(ConditionVariableStatus);
         if ((ConditionVariableStatus & 0x7) == 0x7)
         {
-            ConditionVariableStatus = (SIZE_T)InterlockedExchangePointer((PVOID*)ConditionVariable, 0);
+            ConditionVariableStatus = (SIZE_T)InterlockedExchangePointer(&(*ConditionVariable)->Ptr, NULL);
             *insertAt = CV_NODE(ConditionVariableStatus);
             break;
         }
