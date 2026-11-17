@@ -599,6 +599,52 @@ CreateMutexW(IN LPSECURITY_ATTRIBUTES lpMutexAttributes  OPTIONAL,
                                bInitialOwner);
 }
 
+/**
+ * @brief
+ * Creates a mutex with the given access.
+ *
+ * @param[in] dwFlags
+ * CREATE_MUTEX_INITIAL_OWNER.
+ */
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateMutexExW(
+    _In_opt_ LPSECURITY_ATTRIBUTES lpMutexAttributes,
+    _In_opt_ LPCWSTR lpName,
+    _In_ DWORD dwFlags,
+    _In_ DWORD dwDesiredAccess)
+{
+    if (dwFlags & ~CREATE_MUTEX_INITIAL_OWNER)
+    {
+        BaseSetLastNTError(STATUS_INVALID_PARAMETER_3);
+        return NULL;
+    }
+
+    CreateNtObjectFromWin32Api(Mutex, Mutant, dwDesiredAccess,
+                               lpMutexAttributes,
+                               lpName,
+                               (dwFlags & CREATE_MUTEX_INITIAL_OWNER) != 0);
+}
+
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateMutexExA(
+    _In_opt_ LPSECURITY_ATTRIBUTES lpMutexAttributes,
+    _In_opt_ LPCSTR lpName,
+    _In_ DWORD dwFlags,
+    _In_ DWORD dwDesiredAccess)
+{
+    ConvertAnsiToUnicodePrologue
+    if (!lpName)
+        return CreateMutexExW(lpMutexAttributes, NULL, dwFlags, dwDesiredAccess);
+    ConvertAnsiToUnicodeBody(lpName)
+    if (NT_SUCCESS(Status))
+        return CreateMutexExW(lpMutexAttributes, UnicodeCache->Buffer, dwFlags, dwDesiredAccess);
+    ConvertAnsiToUnicodeEpilogue
+}
+
 /*
  * @implemented
  */
