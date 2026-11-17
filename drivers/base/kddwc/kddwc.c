@@ -235,7 +235,9 @@ KdDwcParseNumber(
 
     for (;; String++)
     {
-        Character = RtlUpperChar(*String);
+        Character = *String;
+        if (Character >= 'a' && Character <= 'f')
+            Character -= 'a' - 'A';
         if (Character >= '0' && Character <= '9')
             Digit = Character - '0';
         else if (Base == 16 && Character >= 'A' && Character <= 'F')
