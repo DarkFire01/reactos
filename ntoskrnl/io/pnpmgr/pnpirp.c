@@ -245,6 +245,98 @@ static const PNP_WATCH_QCDX_RING PnpWatchQcdxRings[] =
     { 0x190BD0, 0x190BE4, 0x190AE8, "info" }
 };
 
+/* SDM845 Adreno 630 clock controller and GMU, read when qcdxkm850.sys gives up */
+#define PNP_WATCH_GPUCC_BASE        0x05090000
+#define PNP_WATCH_GPUCC_SIZE        0x9000
+#define PNP_WATCH_GMU_BASE          0x05060000
+#define PNP_WATCH_GMU_SIZE          0x3F000
+#define PNP_WATCH_GDSC_ON           0x80000000
+#define PNP_WATCH_BRANCH_OFF        0x80000000
+
+typedef struct _PNP_WATCH_GPU_REG
+{
+    ULONG Offset;
+    PCSTR Name;
+} PNP_WATCH_GPU_REG;
+
+static const PNP_WATCH_GPU_REG PnpWatchGpuccRegs[] =
+{
+    { 0x106C, "cx gdscr" },
+    { 0x100C, "gx gdscr" },
+    { 0x1098, "gmu cbcr" },
+    { 0x109C, "cxo cbcr" }
+};
+
+/* GMU offsets are relative to 0x05060000 */
+static const PNP_WATCH_GPU_REG PnpWatchGmuRegs[] =
+{
+    { 0x1E070, "fw init result" },
+    { 0x1E068, "fw busy" },
+    { 0x12FE0, "boot slumber option" },
+    { 0x12FE4, "gx vote" },
+    { 0x12FE8, "mx vote" },
+    { 0x1E648, "gmu2host info" },
+    { 0x1E658, "host2gmu raw" },
+    { 0x1E340, "sptprac status" },
+    { 0x1E3B0, "rpmh power state" },
+    { 0x2EC14, "ao host irq status" },
+    { 0x2EC20, "rscc control ack" },
+    { 0x2EC30, "cx busy status" }
+};
+
+static ULONG
+PnpWatchDumpGpuBlock(
+    _In_ ULONG Base,
+    _In_ ULONG Size,
+    _In_reads_(Count) PNP_WATCH_GPU_REG const *Regs,
+    _In_ ULONG Count,
+    _Out_writes_(Count) PULONG Values)
+{
+    PHYSICAL_ADDRESS Physical;
+    PUCHAR Va;
+    ULONG i;
+
+    Physical.QuadPart = Base;
+    Va = MmMapIoSpace(Physical, Size, MmNonCached);
+    if (!Va)
+    {
+        DbgPrint("PNPWATCH: cannot map GPU registers at %lx\n", Base);
+        return 0;
+    }
+
+    for (i = 0; i < Count; i++)
+    {
+        Values[i] = READ_REGISTER_ULONG((PULONG)(Va + Regs[i].Offset));
+        DbgPrint("PNPWATCH: gpu %s %08lx\n", Regs[i].Name, Values[i]);
+    }
+
+    MmUnmapIoSpace(Va, Size);
+    return Count;
+}
+
+static VOID
+PnpWatchDumpGpuState(VOID)
+{
+    ULONG Gpucc[RTL_NUMBER_OF(PnpWatchGpuccRegs)];
+    ULONG Gmu[RTL_NUMBER_OF(PnpWatchGmuRegs)];
+
+    if (!PnpWatchDumpGpuBlock(PNP_WATCH_GPUCC_BASE, PNP_WATCH_GPUCC_SIZE,
+                              PnpWatchGpuccRegs, RTL_NUMBER_OF(PnpWatchGpuccRegs), Gpucc))
+    {
+        return;
+    }
+
+    /* A GMU without CX power or its clock stalls the bus instead of answering */
+    if (!(Gpucc[0] & PNP_WATCH_GDSC_ON) || (Gpucc[2] & PNP_WATCH_BRANCH_OFF))
+    {
+        DbgPrint("PNPWATCH: GMU is not powered, its registers are not read\n");
+        return;
+    }
+
+    PnpWatchDumpGpuBlock(PNP_WATCH_GMU_BASE, PNP_WATCH_GMU_SIZE,
+                         PnpWatchGmuRegs, RTL_NUMBER_OF(PnpWatchGmuRegs), Gmu);
+}
+
 VOID
 PnpWatchDumpQcdxLog(VOID)
 {
@@ -300,6 +392,9 @@ PnpWatchDumpQcdxLog(VOID)
 
     ExReleaseResourceLite(&PsLoadedModuleResource);
     KeLeaveCriticalRegion();
+
+    if (Qcdx)
+        PnpWatchDumpGpuState();
 }
 
 /* Display drivers being brought up: show every thread that is somewhere inside them */
