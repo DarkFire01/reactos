@@ -337,6 +337,19 @@ UacpiNtIntegerWireLength(
     return sizeof(ULONG64);
 }
 
+/* uACPI strings normally carry their NUL in the length, the wire string always ends in exactly one */
+static
+ULONG
+NTAPI
+UacpiNtStringWireLength(
+    _In_ const uacpi_data_view *View)
+{
+    if (View->length && View->const_text[View->length - 1] == ANSI_NULL)
+        return (ULONG)View->length;
+
+    return (ULONG)View->length + 1;
+}
+
 /* Wire size of an object once serialized */
 static
 NTSTATUS
@@ -363,13 +376,12 @@ UacpiNtObjectWireSize(
             *Size = ACPI_METHOD_ARGUMENT_LENGTH(IntegerLength);
             return STATUS_SUCCESS;
 
-        /* The view excludes the NUL, the wire string carries it */
         case UACPI_OBJECT_STRING:
             if (uacpi_unlikely_error(uacpi_object_get_string(Object, &View)))
                 return STATUS_UNSUCCESSFUL;
-            if (View.length + 1 > MAXUSHORT)
+            if (UacpiNtStringWireLength(&View) > MAXUSHORT)
                 return STATUS_ACPI_INVALID_DATA;
-            *Size = ACPI_METHOD_ARGUMENT_LENGTH((ULONG)View.length + 1);
+            *Size = ACPI_METHOD_ARGUMENT_LENGTH(UacpiNtStringWireLength(&View));
             return STATUS_SUCCESS;
 
         case UACPI_OBJECT_BUFFER:
@@ -443,9 +455,9 @@ UacpiNtObjectToArgument(
             if (uacpi_unlikely_error(uacpi_object_get_string(Object, &View)))
                 return STATUS_UNSUCCESSFUL;
             Argument->Type = ACPI_METHOD_ARGUMENT_STRING;
-            Argument->DataLength = (USHORT)(View.length + 1);
+            Argument->DataLength = (USHORT)UacpiNtStringWireLength(&View);
             RtlCopyMemory(Argument->Data, View.const_bytes, View.length);
-            Argument->Data[View.length] = '\0';
+            Argument->Data[Argument->DataLength - 1] = '\0';
             break;
 
         case UACPI_OBJECT_BUFFER:
