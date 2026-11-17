@@ -191,6 +191,10 @@ PspReapRoutine(IN PVOID Context)
             /* Get the first Thread Entry */
             Thread = CONTAINING_RECORD(NextEntry, ETHREAD, ReaperLink);
 
+            /* The thread may still be switching away from its stack on another processor */
+            while (*(volatile BOOLEAN *)&Thread->Tcb.SwapBusy)
+                YieldProcessor();
+
             /* Delete this entry's kernel stack */
             MmDeleteKernelStack((PVOID)Thread->Tcb.StackBase,
                                 Thread->Tcb.LargeStack);
