@@ -476,7 +476,8 @@ PopFxPrepareDevice(
         return;
     }
 
-    DPRINT("PEP %p prepared %wZ\n", Plugin, &DeviceId);
+    if (Plugin)
+        DPRINT1("PEP %p prepared %wZ\n", Plugin, &DeviceId);
     Prepared->Pdo = Pdo;
     Prepared->Plugin = Plugin;
     Prepared->DeviceId = DeviceId;
