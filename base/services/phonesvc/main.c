@@ -76,6 +76,7 @@ PhServiceMain(
     UNREFERENCED_PARAMETER(Argc);
     UNREFERENCED_PARAMETER(Argv);
 
+    DPRINT1("Phone service main\n");
     PhStatusHandle = RegisterServiceCtrlHandlerExW(PHONE_SERVICE_NAME, PhServiceControl, NULL);
     if (!PhStatusHandle)
         return;
@@ -130,5 +131,12 @@ wmain(
     UNREFERENCED_PARAMETER(argc);
     UNREFERENCED_PARAMETER(argv);
 
-    return StartServiceCtrlDispatcherW(Table) ? 0 : (int)GetLastError();
+    DPRINT1("Phone service process started\n");
+    if (!StartServiceCtrlDispatcherW(Table))
+    {
+        DPRINT1("Service dispatcher failed %lu\n", GetLastError());
+        return (int)GetLastError();
+    }
+
+    return 0;
 }
