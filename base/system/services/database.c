@@ -1688,6 +1688,16 @@ ScmWaitForServiceConnect(PSERVICE Service)
                             lpLogStrings);
 #endif
                 DPRINT1("Log EVENT_CONNECTION_TIMEOUT by %S\n", Service->lpDisplayName);
+                {
+                    DWORD ExitCode = 0;
+
+                    if (Service->lpImage->hProcess &&
+                        GetExitCodeProcess(Service->lpImage->hProcess, &ExitCode))
+                    {
+                        DPRINT1("%S process %lu exit code 0x%lx\n",
+                                Service->lpDisplayName, Service->lpImage->dwProcessId, ExitCode);
+                    }
+                }
 
                 return ERROR_SERVICE_REQUEST_TIMEOUT;
             }
