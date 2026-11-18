@@ -281,7 +281,65 @@ static const PNP_WATCH_GPU_REG PnpWatchGmuRegs[] =
     { 0x1E3B0, "rpmh power state" },
     { 0x2EC14, "ao host irq status" },
     { 0x2EC20, "rscc control ack" },
-    { 0x2EC30, "cx busy status" }
+    { 0x2EC30, "cx busy status" },
+    { 0x1E000, "cm3 sysreset" },
+    { 0x1E004, "cm3 boot config" },
+    { 0x1E0B4, "cm3 cfg" },
+    { 0x1E220, "always on count" },
+    { 0x1E300, "ifpc ctrl" },
+    { 0x1E3A0, "rpmh ctrl" },
+    { 0x1E600, "hfi ctrl status" },
+    { 0x1E604, "hfi version" },
+    { 0x1E608, "hfi sfr addr" },
+    { 0x1E714, "general 0" },
+    { 0x1E718, "general 1" },
+    { 0x1E72C, "general 6" },
+    { 0x1E730, "general 7" },
+    { 0x1E7C0, "lm handshake" },
+    { 0x2EC0C, "ao irq enable" },
+    { 0x2EC18, "ao host irq mask" },
+    { 0x2EC1C, "rscc control req" },
+    { 0x2EC40, "ahb fence ctrl" },
+    { 0x2EC4C, "ahb fence status" },
+    /* RSC block inside the GMU, its sequencer is loaded by the host on a630 */
+    { 0x2D010, "rscc status0" },
+    { 0x2D020, "rscc pdc seq start" },
+    { 0x2D024, "rscc pdc match lo" },
+    { 0x2D028, "rscc pdc match hi" },
+    { 0x2D02C, "rscc pdc slave id" },
+    { 0x2D404, "rscc seq busy" },
+    { 0x2D600, "rscc seq mem 0" },
+    { 0x2D610, "rscc seq mem 4" },
+    { 0x2DFB8, "rscc tcs1 status" },
+    { 0x2E4F8, "rscc tcs3 status" }
+};
+
+/* GPU power domain controller in AOSS, programmed by the host on a630 */
+#define PNP_WATCH_GPU_PDC_BASE      0x0B280000
+#define PNP_WATCH_GPU_PDC_SIZE      0x6000
+#define PNP_WATCH_GPU_PDC_SEQ_BASE  0x0B480000
+#define PNP_WATCH_GPU_PDC_SEQ_SIZE  0x1000
+
+static const PNP_WATCH_GPU_REG PnpWatchGpuPdcRegs[] =
+{
+    { 0x4500, "pdc enable" },
+    { 0x4520, "pdc seq start" },
+    { 0x55C8, "pdc tcs1 control" },
+    { 0x55CC, "pdc tcs1 enable bank" },
+    { 0x55D4, "pdc tcs1 cmd0 msgid" },
+    { 0x55D8, "pdc tcs1 cmd0 addr" },
+    { 0x55DC, "pdc tcs1 cmd0 data" },
+    { 0x55F8, "pdc tcs1 cmd2 addr" },
+    { 0x575C, "pdc tcs3 enable bank" },
+    { 0x5768, "pdc tcs3 cmd0 addr" },
+    { 0x576C, "pdc tcs3 cmd0 data" }
+};
+
+static const PNP_WATCH_GPU_REG PnpWatchGpuPdcSeqRegs[] =
+{
+    { 0x0, "pdc seq mem 0" },
+    { 0x4, "pdc seq mem 1" },
+    { 0x10, "pdc seq mem 4" }
 };
 
 static ULONG
@@ -319,12 +377,20 @@ PnpWatchDumpGpuState(VOID)
 {
     ULONG Gpucc[RTL_NUMBER_OF(PnpWatchGpuccRegs)];
     ULONG Gmu[RTL_NUMBER_OF(PnpWatchGmuRegs)];
+    ULONG Pdc[RTL_NUMBER_OF(PnpWatchGpuPdcRegs)];
+    ULONG PdcSeq[RTL_NUMBER_OF(PnpWatchGpuPdcSeqRegs)];
 
     if (!PnpWatchDumpGpuBlock(PNP_WATCH_GPUCC_BASE, PNP_WATCH_GPUCC_SIZE,
                               PnpWatchGpuccRegs, RTL_NUMBER_OF(PnpWatchGpuccRegs), Gpucc))
     {
         return;
     }
+
+    /* The PDC sits in the always on domain, it answers whatever state the GPU is in */
+    PnpWatchDumpGpuBlock(PNP_WATCH_GPU_PDC_BASE, PNP_WATCH_GPU_PDC_SIZE,
+                         PnpWatchGpuPdcRegs, RTL_NUMBER_OF(PnpWatchGpuPdcRegs), Pdc);
+    PnpWatchDumpGpuBlock(PNP_WATCH_GPU_PDC_SEQ_BASE, PNP_WATCH_GPU_PDC_SEQ_SIZE,
+                         PnpWatchGpuPdcSeqRegs, RTL_NUMBER_OF(PnpWatchGpuPdcSeqRegs), PdcSeq);
 
     /* A GMU without CX power or its clock stalls the bus instead of answering */
     if (!(Gpucc[0] & PNP_WATCH_GDSC_ON) || (Gpucc[2] & PNP_WATCH_BRANCH_OFF))
