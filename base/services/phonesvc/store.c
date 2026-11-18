@@ -6,7 +6,6 @@
  */
 
 #include "phonesvc.h"
-#include <shlobj.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -112,6 +111,41 @@ PhStoreFind(
     return -1;
 }
 
+/* The ProgramData root, read from the profile list so the service never loads shell32 or user32 */
+static
+BOOL
+PhStoreGetDataRoot(
+    _Out_writes_z_(Count) PWSTR Path,
+    _In_ DWORD Count)
+{
+    WCHAR Raw[MAX_PATH];
+    DWORD Size = sizeof(Raw) - sizeof(WCHAR);
+    DWORD Type, Length;
+    HKEY Key;
+    LONG Error;
+
+    Error = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                          L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList",
+                          0,
+                          KEY_QUERY_VALUE,
+                          &Key);
+    if (Error != ERROR_SUCCESS)
+        return FALSE;
+
+    ZeroMemory(Raw, sizeof(Raw));
+    Error = RegQueryValueExW(Key, L"ProgramData", NULL, &Type, (LPBYTE)Raw, &Size);
+    RegCloseKey(Key);
+    if (Error != ERROR_SUCCESS || (Type != REG_SZ && Type != REG_EXPAND_SZ))
+        return FALSE;
+
+    Length = ExpandEnvironmentStringsW(Raw, Path, Count);
+    if (Length == 0 || Length > Count)
+        return FALSE;
+
+    CreateDirectoryW(Path, NULL);
+    return TRUE;
+}
+
 static
 BOOL
 PhStoreOpenFile(VOID)
@@ -119,10 +153,8 @@ PhStoreOpenFile(VOID)
     WCHAR Path[MAX_PATH];
     LARGE_INTEGER FileSize;
     DWORD Read, Count;
-    HRESULT hr;
 
-    hr = SHGetFolderPathW(NULL, CSIDL_COMMON_APPDATA | CSIDL_FLAG_CREATE, NULL, SHGFP_TYPE_CURRENT, Path);
-    if (FAILED(hr))
+    if (!PhStoreGetDataRoot(Path, _countof(Path)))
         return FALSE;
 
     if (FAILED(StringCchCatW(Path, _countof(Path), L"\\ReactOS")))

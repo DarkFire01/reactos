@@ -15,5 +15,5 @@ list(APPEND SOURCE
 add_executable(phonesvc ${SOURCE} phonesvc.rc)
 target_link_libraries(phonesvc uuid)
 set_module_type(phonesvc win32cui UNICODE)
-add_importlibs(phonesvc rilproxy setupapi shell32 advapi32 kernel32_vista msvcrt kernel32 ntdll)
+add_importlibs(phonesvc rilproxy setupapi advapi32 kernel32_vista msvcrt kernel32 ntdll)
 add_cd_file(TARGET phonesvc DESTINATION reactos/system32 FOR all)
