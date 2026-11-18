@@ -105,6 +105,7 @@ PhServiceMain(
         DPRINT1("No RIL session, phone functions are unavailable\n");
 
     PhReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
+    DPRINT1("Phone service running\n");
 
     WaitForSingleObject(PhStopEvent, INFINITE);
 
