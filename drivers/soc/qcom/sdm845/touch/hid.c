@@ -120,6 +120,7 @@ QcTouchCopyOut(
 
 static volatile LONG QcTouchTracedQueues;
 static volatile LONG QcTouchTracedDrains;
+static volatile LONG QcTouchTracedContacts;
 
 /**
  * @brief Hands queued reports to pending reads until one side runs dry.
@@ -245,6 +246,8 @@ QcTouchReportObjects(
 
         X = Object[1] | ((ULONG)Object[2] << 8);
         Y = Object[3] | ((ULONG)Object[4] << 8);
+        if (InterlockedIncrement(&QcTouchTracedContacts) <= QCTOUCH_TRACE_LIMIT * 3)
+            DPRINT1("slot %lu at %lu,%lu\n", Slot, X, Y);
 
         Contact = &Touch.Contacts[Touch.ContactCount++];
         Contact->Flags = QCTOUCH_CONTACT_TIP | QCTOUCH_CONTACT_IN_RANGE;
