@@ -93,11 +93,7 @@ UacpiNtRhSetInterruptProperties(
     _In_ KINTERRUPT_MODE Mode,
     _In_ KINTERRUPT_POLARITY Polarity)
 {
-    if (Mode == Latched)
-        UacpiNtIrqLibNoteEdgeGsiv(Gsiv);
-    else
-        UacpiNtIrqLibNoteLevelGsiv(Gsiv);
-    UacpiNtIrqLibNoteGsivPolarity(Gsiv, Polarity);
+    UacpiNtIrqLibNoteGsivTrigger(Gsiv, Mode, Polarity);
 
     DPRINT("uACPI-NT: GSIV %lu is %s, polarity %lu\n",
            Gsiv,

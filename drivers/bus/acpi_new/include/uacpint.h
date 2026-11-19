@@ -782,8 +782,9 @@ UacpiNtIrqLibNoteEdgeGsiv(
 
 VOID
 NTAPI
-UacpiNtIrqLibNoteGsivPolarity(
+UacpiNtIrqLibNoteGsivTrigger(
     _In_ ULONG Gsiv,
+    _In_ KINTERRUPT_MODE Mode,
     _In_ KINTERRUPT_POLARITY Polarity);
 
 BOOLEAN
