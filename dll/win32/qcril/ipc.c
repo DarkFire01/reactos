@@ -55,6 +55,17 @@ static const ULONG QcServiceIds[QcSvcCount] =
     QC_SERVICE_WDS
 };
 
+/* Interface major version each service registers with, part of its router name */
+static const UCHAR QcServiceVersions[QcSvcCount] =
+{
+    1,
+    1,
+    1,
+    2,
+    1,
+    1
+};
+
 static
 BOOL
 QcOverlapped(
@@ -169,7 +180,7 @@ QcServiceEnsure(
         return TRUE;
 
     Find.ServiceId = QcServiceIds[Which];
-    Find.Instance = QC_ROUTER_NAME(QC_INSTANCE_DEFAULT, QC_VERSION_DEFAULT);
+    Find.Instance = QC_ROUTER_NAME(QC_INSTANCE_DEFAULT, QcServiceVersions[Which]);
     Find.InstanceMask = MAXULONG;
     Find.Capacity = 1;
 
