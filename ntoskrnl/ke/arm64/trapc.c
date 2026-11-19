@@ -463,6 +463,56 @@ KiArm64ServiceNeedsGuiThread(
            (ServiceNumber >= KeServiceDescriptorTable[TableIndex].Limit);
 }
 
+/* MRS Xn, CurrentEL with the register field masked off */
+#define KI_MRS_CURRENTEL_MASK   0xFFFFFFE0
+#define KI_MRS_CURRENTEL        0xD5384240
+
+/**
+ * @brief Reads CurrentEL for user mode, which sees itself at EL0.
+ *
+ * The C runtime probes it while it starts, so it must not fault.
+ */
+static
+BOOLEAN
+KiArm64EmulateCurrentEl(
+    _Inout_ PKTRAP_FRAME TrapFrame,
+    _Inout_ PKEXCEPTION_FRAME ExceptionFrame)
+{
+    ULONG Instruction = 0;
+    ULONG Register;
+    BOOLEAN Readable = TRUE;
+
+    if (KiGetPreviousMode(TrapFrame) != UserMode)
+        return FALSE;
+
+    _SEH2_TRY
+    {
+        ProbeForRead((PVOID)TrapFrame->Pc, sizeof(Instruction), sizeof(Instruction));
+        Instruction = *(volatile ULONG *)TrapFrame->Pc;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Readable = FALSE;
+    }
+    _SEH2_END;
+
+    if (!Readable || (Instruction & KI_MRS_CURRENTEL_MASK) != KI_MRS_CURRENTEL)
+        return FALSE;
+
+    Register = Instruction & 0x1F;
+    if (Register <= 18)
+        TrapFrame->X[Register] = 0;
+    else if (Register <= 28)
+        (&ExceptionFrame->X19)[Register - 19] = 0;
+    else if (Register == 29)
+        TrapFrame->Fp = 0;
+    else if (Register == 30)
+        TrapFrame->Lr = 0;
+
+    TrapFrame->Pc += sizeof(Instruction);
+    return TRUE;
+}
+
 /**
  * @brief Handles a synchronous exception and returns the trap frame to exit with.
  *
@@ -552,6 +602,8 @@ KiArm64HandleSynchronous(
             KeBugCheckEx(UNEXPECTED_KERNEL_MODE_TRAP, TrapFrame->Esr, TrapFrame->Pc, TrapFrame->FaultAddress, 0);
 
         default:
+            if (KiArm64EmulateCurrentEl(TrapFrame, ExceptionFrame))
+                break;
             KiArm64DispatchTrapException(TrapFrame, ExceptionFrame, STATUS_ILLEGAL_INSTRUCTION, 0, 0, 0, 0);
             break;
     }
