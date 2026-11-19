@@ -47,7 +47,6 @@ typedef enum _QC_SVC
 #define QC_SERVICE_UIM              0x0B
 
 #define QC_INSTANCE_DEFAULT         0
-#define QC_VERSION_DEFAULT          1
 
 /* The router name packs the QMI instance and version, version in the low byte,
  * exactly as the modem announces its services. */
