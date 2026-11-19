@@ -804,9 +804,9 @@ HidClassPDO_CreatePDO(
                                                  CollectionDescription->Usage == HID_USAGE_GENERIC_KEYPAD);
 
         //
-        // set device flags
+        // reads complete into an MDL, so any reader gets one from the I/O manager
         //
-        PDODeviceObject->Flags |= DO_MAP_IO_BUFFER;
+        PDODeviceObject->Flags |= DO_DIRECT_IO | DO_POWER_PAGABLE;
 
         //
         // device is initialized
