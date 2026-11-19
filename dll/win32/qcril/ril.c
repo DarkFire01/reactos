@@ -190,10 +190,12 @@ QcDispatch(
         case RilCmdSendMsg:
             return QcWmsSend(Modem, In, InSize, Resp);
 
+        case RilCmdSendMsgAck:
+            return QcWmsAck(Modem, In, InSize);
+
         /* Accepted without modem traffic during bring-up */
         case RilCmdSetExecutorRfState:
         case RilCmdSetRfState:
-        case RilCmdSendMsgAck:
         case RilCmdSendDtmf:
         case RilCmdStartDtmf:
         case RilCmdStopDtmf:
