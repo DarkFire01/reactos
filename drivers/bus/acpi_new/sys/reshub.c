@@ -97,6 +97,7 @@ UacpiNtRhSetInterruptProperties(
         UacpiNtIrqLibNoteEdgeGsiv(Gsiv);
     else
         UacpiNtIrqLibNoteLevelGsiv(Gsiv);
+    UacpiNtIrqLibNoteGsivPolarity(Gsiv, Polarity);
 
     DPRINT("uACPI-NT: GSIV %lu is %s, polarity %lu\n",
            Gsiv,
