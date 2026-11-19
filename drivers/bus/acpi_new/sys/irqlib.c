@@ -181,6 +181,18 @@ static UACPINT_MESSAGE_RUN UacpiNtMessageRuns[UACPINT_MAX_MESSAGE_RUNS];
 static ULONG UacpiNtSecondaryVectorGsiv[UACPINT_SECONDARY_VECTOR_COUNT];
 static ULONG UacpiNtSecondaryVectorCount;
 
+/* Secondary GSIVs sit above the primary tables, their GpioInt trigger is kept here */
+typedef struct _UACPINT_SECONDARY_TRIGGER
+{
+    ULONG Gsiv;
+    KINTERRUPT_MODE Mode;
+    KINTERRUPT_POLARITY Polarity;
+} UACPINT_SECONDARY_TRIGGER, *PUACPINT_SECONDARY_TRIGGER;
+
+static UACPINT_SECONDARY_TRIGGER UacpiNtSecondaryTrigger[UACPINT_SECONDARY_VECTOR_COUNT];
+static ULONG UacpiNtSecondaryTriggerCount;
+static KSPIN_LOCK UacpiNtSecondaryTriggerLock;
+
 /* MADT interrupt source overrides, ISA IRQ to GSIV */
 static UACPINT_ISA_OVERRIDE UacpiNtIsaOverride[UACPINT_ISA_IRQ_COUNT];
 
@@ -353,15 +365,72 @@ UacpiNtIrqLibNoteEdgeGsiv(
         UacpiNtSetBit(UacpiNtGsivForcedEdge, Gsiv);
 }
 
-/* GpioInt descriptors carry their own polarity, which has to survive to the HAL */
+static
+BOOLEAN
+NTAPI
+UacpiNtFindSecondaryTrigger(
+    _In_ ULONG Gsiv,
+    _Out_opt_ KINTERRUPT_MODE *Mode,
+    _Out_opt_ KINTERRUPT_POLARITY *Polarity)
+{
+    BOOLEAN Found = FALSE;
+    KIRQL OldIrql;
+    ULONG Index;
+
+    KeAcquireSpinLock(&UacpiNtSecondaryTriggerLock, &OldIrql);
+    for (Index = 0; Index < UacpiNtSecondaryTriggerCount; Index++)
+    {
+        if (UacpiNtSecondaryTrigger[Index].Gsiv != Gsiv)
+            continue;
+
+        if (Mode)
+            *Mode = UacpiNtSecondaryTrigger[Index].Mode;
+        if (Polarity)
+            *Polarity = UacpiNtSecondaryTrigger[Index].Polarity;
+        Found = TRUE;
+        break;
+    }
+    KeReleaseSpinLock(&UacpiNtSecondaryTriggerLock, OldIrql);
+
+    return Found;
+}
+
+/* GpioInt descriptors carry their own trigger and polarity, which have to survive to the HAL */
 VOID
 NTAPI
-UacpiNtIrqLibNoteGsivPolarity(
+UacpiNtIrqLibNoteGsivTrigger(
     _In_ ULONG Gsiv,
+    _In_ KINTERRUPT_MODE Mode,
     _In_ KINTERRUPT_POLARITY Polarity)
 {
+    KIRQL OldIrql;
+    ULONG Index;
+
     if (Gsiv >= UACPINT_MAX_GSIV)
+    {
+        KeAcquireSpinLock(&UacpiNtSecondaryTriggerLock, &OldIrql);
+        for (Index = 0; Index < UacpiNtSecondaryTriggerCount; Index++)
+        {
+            if (UacpiNtSecondaryTrigger[Index].Gsiv == Gsiv)
+                break;
+        }
+
+        if (Index < RTL_NUMBER_OF(UacpiNtSecondaryTrigger))
+        {
+            UacpiNtSecondaryTrigger[Index].Gsiv = Gsiv;
+            UacpiNtSecondaryTrigger[Index].Mode = Mode;
+            UacpiNtSecondaryTrigger[Index].Polarity = Polarity;
+            if (Index == UacpiNtSecondaryTriggerCount)
+                UacpiNtSecondaryTriggerCount++;
+        }
+        KeReleaseSpinLock(&UacpiNtSecondaryTriggerLock, OldIrql);
         return;
+    }
+
+    if (Mode == Latched)
+        UacpiNtIrqLibNoteEdgeGsiv(Gsiv);
+    else
+        UacpiNtIrqLibNoteLevelGsiv(Gsiv);
 
     UacpiNtClearBit(UacpiNtGsivForcedHigh, Gsiv);
     UacpiNtClearBit(UacpiNtGsivForcedLow, Gsiv);
@@ -417,6 +486,11 @@ NTAPI
 UacpiNtGsivPolarity(
     _In_ ULONG Gsiv)
 {
+    KINTERRUPT_POLARITY Polarity;
+
+    if (UacpiNtFindSecondaryTrigger(Gsiv, NULL, &Polarity))
+        return Polarity;
+
     if (Gsiv < UACPINT_MAX_GSIV && UacpiNtTestBit(UacpiNtGsivBothEdges, Gsiv))
         return InterruptActiveBoth;
 
@@ -429,6 +503,11 @@ NTAPI
 UacpiNtGsivMode(
     _In_ ULONG Gsiv)
 {
+    KINTERRUPT_MODE Mode;
+
+    if (UacpiNtFindSecondaryTrigger(Gsiv, &Mode, NULL))
+        return Mode;
+
     return UacpiNtGsivIsLevel(Gsiv) ? LevelSensitive : Latched;
 }
 
