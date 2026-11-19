@@ -4,6 +4,11 @@ NTSTATUS
 NTAPI
 RtlpInitializeLocaleTable(VOID);
 
+/* This module carries its own thread pool, whose queue locks start out zeroed */
+VOID
+NTAPI
+RtlpInitializeThreadPooling(VOID);
+
 BOOL
 WINAPI
 DllMain(HANDLE hDll,
@@ -16,6 +21,7 @@ DllMain(HANDLE hDll,
     {
         LdrDisableThreadCalloutsForDll(hDll);
         RtlpInitializeKeyedEvent();
+        RtlpInitializeThreadPooling();
         Status = RtlpInitializeLocaleTable();
         if (!NT_SUCCESS(Status))
         {
