@@ -300,7 +300,13 @@ static const PNP_WATCH_GPU_REG PnpWatchGmuRegs[] =
     { 0x2EC18, "ao host irq mask" },
     { 0x2EC1C, "rscc control req" },
     { 0x2EC40, "ahb fence ctrl" },
+    { 0x2EC44, "ahb fence range 0" },
     { 0x2EC4C, "ahb fence status" },
+    { 0x1E610, "hfi qtbl info" },
+    { 0x1E614, "hfi qtbl addr" },
+    { 0x1E400, "log buffer msg" },
+    { 0x1E404, "log buffer resp" },
+    { 0x1E64C, "gmu2host irq mask" },
     /* RSC block inside the GMU, its sequencer is loaded by the host on a630 */
     { 0x2D010, "rscc status0" },
     { 0x2D020, "rscc pdc seq start" },
@@ -341,6 +347,60 @@ static const PNP_WATCH_GPU_REG PnpWatchGpuPdcSeqRegs[] =
     { 0x4, "pdc seq mem 1" },
     { 0x10, "pdc seq mem 4" }
 };
+
+/* Adreno SMMU (MMU1), the GMU reaches its HFI queues and log through stream 5 */
+#define PNP_WATCH_GPU_SMMU_BASE     0x05040000
+#define PNP_WATCH_GPU_SMMU_SIZE     0x10000
+#define PNP_WATCH_GPU_SMMU_SLOTS    8
+#define PNP_WATCH_GPU_SMMU_GR1      0x1000
+#define PNP_WATCH_GPU_SMMU_CB       0x8000
+#define PNP_WATCH_GPU_SMMU_CB_SIZE  0x1000
+
+static VOID
+PnpWatchDumpGpuSmmu(VOID)
+{
+    PHYSICAL_ADDRESS Physical;
+    PUCHAR Va, Cb;
+    ULONG i;
+
+    Physical.QuadPart = PNP_WATCH_GPU_SMMU_BASE;
+    Va = MmMapIoSpace(Physical, PNP_WATCH_GPU_SMMU_SIZE, MmNonCached);
+    if (!Va)
+    {
+        DbgPrint("PNPWATCH: cannot map the GPU SMMU\n");
+        return;
+    }
+
+    DbgPrint("PNPWATCH: gpu smmu cr0 %08lx id0 %08lx id1 %08lx gfsr %08lx gfsynr0 %08lx\n",
+             READ_REGISTER_ULONG((PULONG)(Va + 0x0)),
+             READ_REGISTER_ULONG((PULONG)(Va + 0x20)),
+             READ_REGISTER_ULONG((PULONG)(Va + 0x24)),
+             READ_REGISTER_ULONG((PULONG)(Va + 0x48)),
+             READ_REGISTER_ULONG((PULONG)(Va + 0x50)));
+
+    for (i = 0; i < PNP_WATCH_GPU_SMMU_SLOTS; i++)
+    {
+        DbgPrint("PNPWATCH: gpu smmu smr%lu %08lx s2cr %08lx cbar %08lx\n",
+                 i,
+                 READ_REGISTER_ULONG((PULONG)(Va + 0x800 + i * sizeof(ULONG))),
+                 READ_REGISTER_ULONG((PULONG)(Va + 0xC00 + i * sizeof(ULONG))),
+                 READ_REGISTER_ULONG((PULONG)(Va + PNP_WATCH_GPU_SMMU_GR1 + i * sizeof(ULONG))));
+    }
+
+    for (i = 0; i < PNP_WATCH_GPU_SMMU_SLOTS; i++)
+    {
+        Cb = Va + PNP_WATCH_GPU_SMMU_CB + i * PNP_WATCH_GPU_SMMU_CB_SIZE;
+        DbgPrint("PNPWATCH: gpu smmu cb%lu sctlr %08lx fsr %08lx far %08lx%08lx fsynr0 %08lx\n",
+                 i,
+                 READ_REGISTER_ULONG((PULONG)(Cb + 0x0)),
+                 READ_REGISTER_ULONG((PULONG)(Cb + 0x58)),
+                 READ_REGISTER_ULONG((PULONG)(Cb + 0x64)),
+                 READ_REGISTER_ULONG((PULONG)(Cb + 0x60)),
+                 READ_REGISTER_ULONG((PULONG)(Cb + 0x68)));
+    }
+
+    MmUnmapIoSpace(Va, PNP_WATCH_GPU_SMMU_SIZE);
+}
 
 static ULONG
 PnpWatchDumpGpuBlock(
@@ -401,6 +461,9 @@ PnpWatchDumpGpuState(VOID)
 
     PnpWatchDumpGpuBlock(PNP_WATCH_GMU_BASE, PNP_WATCH_GMU_SIZE,
                          PnpWatchGmuRegs, RTL_NUMBER_OF(PnpWatchGmuRegs), Gmu);
+
+    /* Last, a powered down SMMU stalls the bus instead of answering */
+    PnpWatchDumpGpuSmmu();
 }
 
 VOID
