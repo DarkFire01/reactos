@@ -386,7 +386,8 @@ RilpReadCompleted(
     }
     else if (Error != ERROR_SUCCESS)
     {
-        DPRINT("Read failed with %lu, treating as disconnect\n", Error);
+        if (InterlockedIncrement(&RilpConnectTraces) <= 8)
+            DPRINT1("Read from the RIL broker failed with %lu, reconnecting\n", Error);
         RilpHandleDisconnect(Client);
         return;
     }
