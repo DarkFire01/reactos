@@ -674,6 +674,18 @@ CShellHost::PickScale(VOID)
 
     ReleaseDC(m_Window, Screen);
     Density = (Millimeters > 0) ? Pixels * 25.4f / Millimeters : 0.0f;
+
+    /* A portrait panel with no real size is a phone, it gets at least 360 units of width */
+    if (Density < 200.0f && m_FullScreen && GetSystemMetrics(SM_CYSCREEN) > Pixels)
+    {
+        for (FLOAT Plateau : Plateaus)
+        {
+            if (Pixels / Plateau >= 360.0f)
+                Picked = Plateau;
+        }
+        return Picked;
+    }
+
     if (Density < 200.0f)
         return GetDpiForWindow(m_Window) / 96.0f;
 
@@ -1054,6 +1066,15 @@ CShellHost::HandleMessage(
             Resize();
             return 0;
 
+        /* A phone has no pointer to show, touch arrives as mouse input underneath */
+        case WM_SETCURSOR:
+            if (m_FullScreen && LOWORD(LParam) == HTCLIENT)
+            {
+                SetCursor(NULL);
+                return TRUE;
+            }
+            break;
+
         case WM_DPICHANGED:
         {
             const RECT *Suggested = reinterpret_cast<const RECT *>(LParam);
@@ -1265,6 +1286,8 @@ CShellHost::Run(
     m_Session->Dispatch();
     Resize();
     ShowWindow(m_Window, ShowCommand);
+    if (m_FullScreen)
+        SetCursor(NULL);
     SetTimer(m_Window, TIMER_TICK, 1000, NULL);
     if (!m_Script.empty())
     {
