@@ -18,6 +18,9 @@
 PIRP IopDeadIrp;
 RESERVE_IRP_ALLOCATOR IopReserveIrpAllocator;
 
+/* What qcsubsys asks each device it depends on before bringing a subsystem up */
+#define IOP_WATCH_SUBSYS_IOCTL  0x00212030
+
 /* PRIVATE FUNCTIONS  ********************************************************/
 
 VOID
@@ -1334,6 +1337,17 @@ IofCallDriver(IN PDEVICE_OBJECT DeviceObject,
         return PoHandlePowerIrp(Irp);
     }
 
+    /* qcsubsys shuts the modem down when a dependency fails this request */
+    if (StackPtr->MajorFunction == IRP_MJ_DEVICE_CONTROL &&
+        StackPtr->Parameters.DeviceIoControl.IoControlCode == IOP_WATCH_SUBSYS_IOCTL)
+    {
+        NTSTATUS Status;
+
+        Status = DriverObject->MajorFunction[StackPtr->MajorFunction](DeviceObject, Irp);
+        DPRINT1("Subsystem dependency query to %wZ returned 0x%lx\n", &DriverObject->DriverName, Status);
+        return Status;
+    }
+
     /* Otherwise call the function of the driver */
     return DriverObject->MajorFunction[StackPtr->MajorFunction](DeviceObject,
                                                                 Irp);
@@ -1388,6 +1402,15 @@ IofCompleteRequest(IN PIRP Irp,
     ASSERT(!Irp->CancelRoutine);
     ASSERT(Irp->IoStatus.Status != STATUS_PENDING);
     ASSERT(Irp->IoStatus.Status != (NTSTATUS)0xFFFFFFFF);
+
+    StackPtr = IoGetCurrentIrpStackLocation(Irp);
+    if (Irp->CurrentLocation <= Irp->StackCount &&
+        StackPtr->MajorFunction == IRP_MJ_DEVICE_CONTROL &&
+        StackPtr->Parameters.DeviceIoControl.IoControlCode == IOP_WATCH_SUBSYS_IOCTL)
+    {
+        DPRINT1("Subsystem dependency query completed 0x%lx, %Iu bytes\n",
+                Irp->IoStatus.Status, Irp->IoStatus.Information);
+    }
 
     /* Get the last stack */
     LastStackPtr = (PIO_STACK_LOCATION)(Irp + 1);
