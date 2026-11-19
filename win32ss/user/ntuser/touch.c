@@ -317,6 +317,13 @@ TouchPromotePrimary(
     else if (Contact->Flags & TOUCHEVENTF_UP)
         Input.dwFlags |= MOUSEEVENTF_LEFTUP;
 
+    {
+        static LONG Traced;
+
+        if (InterlockedIncrement(&Traced) <= 48)
+            ERR("Touch primary %ld,%ld flags 0x%lx\n", Contact->Point.x, Contact->Point.y, Input.dwFlags);
+    }
+
     UserSendMouseInput(&Input, FALSE);
 }
 
