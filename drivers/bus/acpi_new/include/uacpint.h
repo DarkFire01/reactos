@@ -780,6 +780,12 @@ NTAPI
 UacpiNtIrqLibNoteEdgeGsiv(
     _In_ ULONG Gsiv);
 
+VOID
+NTAPI
+UacpiNtIrqLibNoteGsivPolarity(
+    _In_ ULONG Gsiv,
+    _In_ KINTERRUPT_POLARITY Polarity);
+
 BOOLEAN
 NTAPI
 UacpiNtIrqLibGsivForcedEdge(

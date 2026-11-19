@@ -170,6 +170,7 @@ static ULONG UacpiNtGsivLevel[UACPINT_MAX_GSIV / 32];
 static ULONG UacpiNtGsivForcedEdge[UACPINT_MAX_GSIV / 32];
 static ULONG UacpiNtGsivForcedHigh[UACPINT_MAX_GSIV / 32];
 static ULONG UacpiNtGsivForcedLow[UACPINT_MAX_GSIV / 32];
+static ULONG UacpiNtGsivBothEdges[UACPINT_MAX_GSIV / 32];
 
 /* IDT vectors the HAL granted the ACPI root at start */
 static ULONG UacpiNtHalGrantedVectors[(UACPINT_MAX_IDT_VECTOR + 1) / 32];
@@ -201,6 +202,16 @@ UacpiNtSetBit(
     _In_ ULONG Bit)
 {
     Map[Bit / 32] |= 1UL << (Bit % 32);
+}
+
+static
+VOID
+NTAPI
+UacpiNtClearBit(
+    _Inout_updates_(UACPINT_MAX_GSIV / 32) PULONG Map,
+    _In_ ULONG Bit)
+{
+    Map[Bit / 32] &= ~(1UL << (Bit % 32));
 }
 
 static
@@ -342,6 +353,28 @@ UacpiNtIrqLibNoteEdgeGsiv(
         UacpiNtSetBit(UacpiNtGsivForcedEdge, Gsiv);
 }
 
+/* GpioInt descriptors carry their own polarity, which has to survive to the HAL */
+VOID
+NTAPI
+UacpiNtIrqLibNoteGsivPolarity(
+    _In_ ULONG Gsiv,
+    _In_ KINTERRUPT_POLARITY Polarity)
+{
+    if (Gsiv >= UACPINT_MAX_GSIV)
+        return;
+
+    UacpiNtClearBit(UacpiNtGsivForcedHigh, Gsiv);
+    UacpiNtClearBit(UacpiNtGsivForcedLow, Gsiv);
+    UacpiNtClearBit(UacpiNtGsivBothEdges, Gsiv);
+
+    if (Polarity == InterruptActiveLow)
+        UacpiNtSetBit(UacpiNtGsivForcedLow, Gsiv);
+    else if (Polarity == InterruptActiveBoth)
+        UacpiNtSetBit(UacpiNtGsivBothEdges, Gsiv);
+    else if (Polarity == InterruptActiveHigh)
+        UacpiNtSetBit(UacpiNtGsivForcedHigh, Gsiv);
+}
+
 BOOLEAN
 NTAPI
 UacpiNtIrqLibGsivForcedEdge(
@@ -384,6 +417,9 @@ NTAPI
 UacpiNtGsivPolarity(
     _In_ ULONG Gsiv)
 {
+    if (Gsiv < UACPINT_MAX_GSIV && UacpiNtTestBit(UacpiNtGsivBothEdges, Gsiv))
+        return InterruptActiveBoth;
+
     return UacpiNtGsivIsActiveLow(Gsiv) ? InterruptActiveLow : InterruptActiveHigh;
 }
 
