@@ -168,6 +168,8 @@ RilpCloseDeviceLocked(
    also comes up as a plain service reachable by this dos name. */
 #define RIL_BROKER_FALLBACK_NAME    L"\\\\.\\MSRil1"
 
+static volatile LONG RilpConnectTraces;
+
 static
 BOOL
 RilpTryConnect(
@@ -202,6 +204,8 @@ RilpTryConnect(
     }
 
     Path = List ? List : RIL_BROKER_FALLBACK_NAME;
+    if (InterlockedIncrement(&RilpConnectTraces) <= 4)
+        DPRINT1("Connecting to the RIL broker at %S (interface lookup 0x%lx)\n", Path, Cr);
 
     Device = CreateFileW(Path,
                          GENERIC_READ | GENERIC_WRITE,
