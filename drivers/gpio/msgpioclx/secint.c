@@ -503,7 +503,7 @@ NTAPI
 GcxDeliverPinInterrupt(
     PGCX_PIN Pin)
 {
-    static volatile LONG Traced, Unclaimed;
+    static volatile LONG Traced, Unclaimed, Delivered;
     ULONG Claimed = 0;
 
     if (GcxSecondaryOwner == NULL ||
@@ -517,8 +517,8 @@ GcxDeliverPinInterrupt(
 
     GcxHalInfo.InvokeIsrForGsiv(Pin->Gsiv, Pin->TargetContext, &Claimed);
 
-    /* Unclaimed deliveries get their own budget, a stuck level would use up the shared one */
-    if (Claimed ? (InterlockedIncrement(&Traced) <= GCX_TRACE_LIMIT) :
+    /* A claimed delivery is the normal case, a few prove the path and the rest stay quiet */
+    if (Claimed ? (InterlockedIncrement(&Delivered) <= GCX_DELIVERY_TRACE_LIMIT) :
                   (InterlockedIncrement(&Unclaimed) <= GCX_TRACE_LIMIT))
     {
         DPRINT1("GpioClx: GSIV %lu delivered, %s\n", Pin->Gsiv, Claimed ? "claimed" : "NOT claimed");
