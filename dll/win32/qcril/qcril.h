@@ -244,6 +244,7 @@ VOID QcVoiceSeed(_In_ PQC_MODEM Modem);
 /* wms.c */
 HRESULT QcWmsSend(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const VOID *In,
                   _In_ ULONG InSize, _Inout_ PQC_RESP Resp);
+HRESULT QcWmsAck(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const VOID *In, _In_ ULONG InSize);
 VOID QcWmsConfigureRoutes(_In_ PQC_MODEM Modem);
 VOID QcWmsIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                      _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);

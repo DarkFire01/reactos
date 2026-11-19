@@ -12,11 +12,22 @@
 #define QCRIL_WMS_EVENT_REPORT_IND      0x0001
 #define QCRIL_WMS_RAW_SEND              0x0020
 #define QCRIL_WMS_SET_ROUTES            0x0032
+#define QCRIL_WMS_SEND_ACK              0x0037
 
 #define QCRIL_WMS_TLV_RAW_MESSAGE       0x01
 #define QCRIL_WMS_TLV_REPORT_MT         0x10
 #define QCRIL_WMS_TLV_ROUTE_LIST        0x01
 #define QCRIL_WMS_TLV_TRANSFER_ROUTE    0x11
+#define QCRIL_WMS_TLV_ACK_INFO          0x01
+#define QCRIL_WMS_TLV_ACK_3GPP_FAILURE  0x11
+#define QCRIL_WMS_TLV_ACK_OVER_IMS      0x12
+
+/* Ack protocol and the RP/TP causes reported when a message is refused */
+#define QCRIL_WMS_PROTOCOL_3GPP         0x01
+#define QCRIL_RP_MEMORY_EXCEEDED        0x16
+#define QCRIL_RP_PROTOCOL_ERROR         0x6F
+#define QCRIL_TP_MEMORY_EXCEEDED        0xD3
+#define QCRIL_TP_UNSPECIFIED            0xFF
 
 /* wms_message_format_enum_v01, GSM/WCDMA point to point */
 #define QCRIL_WMS_FORMAT_GW_PP          0x06
@@ -432,6 +443,53 @@ QcWmsSend(
     }
 
     return S_OK;
+}
+
+/* In: size, executor, reserved, ack id, status, protocol, over IMS, all DWORDs */
+HRESULT
+QcWmsAck(
+    _In_ PQC_MODEM Modem,
+    _In_reads_bytes_(InSize) const VOID *In,
+    _In_ ULONG InSize)
+{
+    const DWORD *Args = In;
+    QMI_ENCODER Encoder;
+    BYTE Request[64];
+    BYTE Response[64];
+    BYTE AckInfo[6];
+    BYTE Failure[2];
+    ULONG Length, ResponseLen;
+    UCHAR OverIms;
+    BOOL Success;
+
+    if (InSize < 7 * sizeof(DWORD))
+        return E_INVALIDARG;
+
+    Success = (Args[4] == RIL_MSGACK_OK);
+    OverIms = Args[6] ? 1 : 0;
+
+    /* ack_information: transaction id u32, protocol u8, success u8 */
+    memcpy(AckInfo, &Args[3], sizeof(DWORD));
+    AckInfo[4] = QCRIL_WMS_PROTOCOL_3GPP;
+    AckInfo[5] = Success ? 1 : 0;
+
+    QmiEncodeBegin(&Encoder, Request, sizeof(Request), QMI_TYPE_REQUEST, 0, QCRIL_WMS_SEND_ACK);
+    if (!QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_ACK_INFO, AckInfo, sizeof(AckInfo)))
+        return E_FAIL;
+
+    if (!Success)
+    {
+        Failure[0] = (Args[4] == RIL_MSGACK_MEMORYFULL) ? QCRIL_RP_MEMORY_EXCEEDED : QCRIL_RP_PROTOCOL_ERROR;
+        Failure[1] = (Args[4] == RIL_MSGACK_MEMORYFULL) ? QCRIL_TP_MEMORY_EXCEEDED : QCRIL_TP_UNSPECIFIED;
+        if (!QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_ACK_3GPP_FAILURE, Failure, sizeof(Failure)))
+            return E_FAIL;
+    }
+
+    if (OverIms && !QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_ACK_OVER_IMS, &OverIms, sizeof(OverIms)))
+        return E_FAIL;
+
+    Length = QmiEncodeEnd(&Encoder);
+    return QcQmiRequest(Modem, QcSvcWms, Request, Length, Response, sizeof(Response), &ResponseLen);
 }
 
 VOID
