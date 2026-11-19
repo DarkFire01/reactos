@@ -79,6 +79,7 @@ endfunction()
 
 mobileshell_app(mobsettings apps/settings/settings.cpp)
 mobileshell_app(mobcontacts apps/contacts/contacts.cpp)
+mobileshell_app(mobmessaging apps/messaging/messaging.cpp)
 mobileshell_app(mobcalendar apps/calendar/calendar.cpp)
 mobileshell_app(mobcalc apps/calculator/calculator.cpp)
 mobileshell_app(mobmarkup apps/markupapp/markupapp.cpp)

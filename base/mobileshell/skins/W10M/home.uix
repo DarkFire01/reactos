@@ -16,6 +16,10 @@
         <Text Content="&#xE716;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
         <Text Content="People" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
       </Element>
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Messaging" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE8BD;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="Messaging" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
+      </Element>
       <Element Span="1,1" Background="@TileFill" Foreground="@TileText" Command="launch:Calculator" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE8EF;" Font="@TileGlyphSmall" TextAlign="Center" TextVAlign="Center"/>
       </Element>
