@@ -28,11 +28,56 @@
 #define QCRIL_DMS_TLV_STRING            0x01
 #define QCRIL_DMS_TLV_OPERATING_MODE    0x01
 
+/* Follows the radio for a minute after it was asked online, from what the modem reports */
+static
+DWORD
+WINAPI
+QcDmsWatchRadio(
+    _In_ LPVOID Parameter)
+{
+    static const ULONG Marks[] = { 10, 30, 60 };
+    PQC_MODEM Modem = Parameter;
+    QMI_ENCODER Encoder;
+    BYTE Request[16];
+    BYTE Response[512];
+    const VOID *Value;
+    USHORT ValueLen;
+    ULONG ReqLen, RespLen, Index, Waited = 0;
+    QC_RESP Resp;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(Marks) && !Modem->Stopping; Index++)
+    {
+        Sleep((Marks[Index] - Waited) * 1000);
+        Waited = Marks[Index];
+
+        QmiEncodeBegin(&Encoder, Request, sizeof(Request), QMI_TYPE_REQUEST, 0, 0x002D);
+        ReqLen = QmiEncodeEnd(&Encoder);
+        if (SUCCEEDED(QcQmiRequest(Modem, QcSvcDms, Request, ReqLen, Response, sizeof(Response), &RespLen)) &&
+            QmiFindTlv(Response, RespLen, QCRIL_DMS_TLV_OPERATING_MODE, &Value, &ValueLen) && ValueLen >= 1)
+        {
+            QcTrace("radio after %lus: operating mode %u\n", Waited, *(const UCHAR *)Value);
+        }
+
+        QcRespInit(&Resp, Response, sizeof(Response));
+        if (SUCCEEDED(QcNasGetNetwork(Modem, &Resp)) && Resp.Length >= sizeof(RIL_NETWORK_INFO))
+        {
+            const RIL_NETWORK_INFO *Net = (const RIL_NETWORK_INFO *)Resp.Data;
+
+            QcTrace("radio after %lus: signal %ld dBm, %lu bars, reg state %lu, rat %lu, mcc %lu mnc %lu\n",
+                    Waited, Net->SignalDbm, Net->SignalBars, Net->RegState, Net->Rat, Net->Mcc, Net->Mnc);
+        }
+    }
+
+    return 0;
+}
+
 HRESULT
 QcDmsSetRadioPower(
     _In_ PQC_MODEM Modem,
     _In_ BOOL On)
 {
+    static volatile LONG Watching;
+    HANDLE Watch;
     QMI_ENCODER Encoder;
     BYTE Message[32];
     BYTE Response[256];
@@ -54,7 +99,13 @@ QcDmsSetRadioPower(
         hr = QcQmiRequest(Modem, QcSvcDms, Message, Length, Response, sizeof(Response), &ResponseLen);
         if (SUCCEEDED(hr))
         {
-            QcTrace("operating mode %u accepted", Mode);
+            QcTrace("operating mode %u accepted\n", Mode);
+            if (On && InterlockedExchange(&Watching, TRUE) == FALSE)
+            {
+                Watch = CreateThread(NULL, 0, QcDmsWatchRadio, Modem, 0, NULL);
+                if (Watch)
+                    CloseHandle(Watch);
+            }
             return S_OK;
         }
         QcTrace("operating mode %u attempt %lu: 0x%08lx, QMI error 0x%x", Mode, Attempt, hr,
