@@ -19,6 +19,7 @@
 
 /* Interrupt deliveries reported before the trace goes quiet */
 #define GCX_TRACE_LIMIT 64
+#define GCX_DELIVERY_TRACE_LIMIT 8
 
 /* Stamped on every controller so a context handed back by a client can be checked */
 #define GCX_CONTROLLER_SIGNATURE 'rCpG'
