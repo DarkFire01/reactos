@@ -94,16 +94,19 @@ PhServiceMain(
     PhSmsInitialize();
     PhAudioInitialize();
     PhStoreInitialize();
+    DPRINT1("Message store ready\n");
 
     if (!PhPipeStart())
     {
         PhReportStatus(SERVICE_STOPPED, GetLastError(), 0);
         return;
     }
+    DPRINT1("Client pipe listening\n");
 
     /* rilproxy keeps retrying in the background, a radio that shows up later is picked up then */
     if (!PhRadioStart())
         DPRINT1("No RIL session, phone functions are unavailable\n");
+    DPRINT1("RIL session started\n");
 
     PhReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
     DPRINT1("Phone service running\n");
