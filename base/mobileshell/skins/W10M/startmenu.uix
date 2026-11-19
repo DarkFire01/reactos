@@ -58,6 +58,17 @@
       </Element>
       <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
         <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
+          <Text Content="M" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Messaging" Selectable="true" Momentary="true" SelectedBackground="@ListPress">
+        <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+          <Text Content="&#xE8BD;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Text Content="Messaging" Width="*" TextVAlign="Center"/>
+      </Element>
+      <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11">
+        <Element Width="@AppIcon" BorderBrush="@Accent" BorderThickness="2">
           <Text Content="N" Font="@Subtitle" Foreground="@BaseHigh" Padding="5,0,0,1" TextVAlign="Bottom"/>
         </Element>
       </Element>

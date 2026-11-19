@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Messaging: conversation list, one conversation with bubbles and the compose box. -->
+<Uix Name="Messaging" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+
+  <Element Name="PageThreads" Layout="Stack" Height="*">
+    <Text Content="MESSAGING" Font="@BaseFont" Padding="12,12,12,4"/>
+    <Text Content="conversations" Font="@TitleText" Padding="12,0,12,8"/>
+
+    <Text Name="ServiceDown" Content="{ServiceText}" Font="@Caption" Foreground="@AccentText" Wrap="true" Margin="12,0,12,8" Visible="false"/>
+
+    <Element Name="ThreadsScroll" Scroll="true" Height="*" Layout="Stack"
+             ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="ThreadList" Layout="Stack">
+        <Element Name="t{Item.Id}" Layout="Row" Height="72" Padding="12,8,12,8"
+                 Command="open:{Item.Id}" HoldCommand="hold:{Item.Id}" Selectable="true"
+                 SelectedBackground="@ListPressed">
+          <Element Width="48" Height="48" VAlign="Center" CornerRadius="24" Background="@Accent" Foreground="@BaseWhite" Margin="0,0,12,0">
+            <Text Content="{Item.Glyph}" Font="@Glyph20" TextAlign="Center" TextVAlign="Center"/>
+            <Text Content="{Item.Initial}" Font="@Subtitle" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Layout="Stack" Width="*" VAlign="Center">
+            <Element Layout="Row">
+              <Text Content="{Item.Name}" Width="*"/>
+              <Text Content="{Item.Time}" Font="@Caption" Foreground="@AppSubText" Margin="8,0,0,0"/>
+            </Element>
+            <Text Content="{Item.Preview}" Font="@Caption" Foreground="{Item.Tone}"/>
+          </Element>
+        </Element>
+      </Repeater>
+      <Text Name="ThreadsEmpty" Content="No conversations yet. Tap New to start one." TextAlign="Center" Wrap="true" Margin="12,24,12,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+  </Element>
+
+  <Element Name="PageThread" Layout="Stack" Height="*" Visible="false">
+    <Element Layout="Stack" Padding="12,12,12,8">
+      <Text Content="{ThreadName}" Font="@Subtitle"/>
+      <Text Content="{ThreadNumber}" Font="@Caption" Foreground="@AppSubText" Collapse="true"/>
+    </Element>
+
+    <Element Name="ToRow" Layout="Stack" Padding="12,0,12,8" Visible="false">
+      <Text Content="To" Font="@Caption" Foreground="@AppSubText"/>
+      <Element Height="32" Command="to.focus" Background="@FieldFill" BorderBrush="{ToFill}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,0">
+        <Text Name="ToHint" Content="Phone number" Foreground="@AppSubText" TextVAlign="Center"/>
+        <Text Content="{ToText}" TextVAlign="Center"/>
+      </Element>
+    </Element>
+
+    <Element Name="MessageScroll" Scroll="true" Height="*" Layout="Stack"
+             ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="MessageList" Layout="Stack">
+        <Element Name="m{Item.Id}" Layout="Stack" Padding="{Item.Pad}"
+                 Command="bubble:{Item.Id}" HoldCommand="bubblehold:{Item.Id}" Selectable="true">
+          <Element Layout="Stack" HAlign="{Item.Side}" CornerRadius="2" Background="{Item.Fill}" Foreground="{Item.Ink}" Padding="10,7,10,7">
+            <Text Content="{Item.Text}" Wrap="true"/>
+          </Element>
+          <Text Content="{Item.Detail}" HAlign="{Item.Side}" Font="@Caption" Foreground="{Item.Note}" Margin="2,3,2,0" Collapse="true"/>
+        </Element>
+      </Repeater>
+      <Text Name="ThreadEmpty" Content="Say hello." TextAlign="Center" Margin="12,24,12,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+
+    <Element Layout="Row" Padding="12,6,6,6" Background="@ChromeMediumLow">
+      <Element Width="*" Command="compose.focus" Background="@FieldFill" BorderBrush="{ComposeFill}" BorderThickness="2" Padding="10,6,10,6">
+        <Text Name="ComposeHint" Content="Type a message" Foreground="@AppSubText"/>
+        <Text Content="{ComposeText}" Wrap="true"/>
+      </Element>
+      <Element Width="44" Command="send" Momentary="true" Selectable="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE724;" Font="@Glyph20" Foreground="{SendTone}" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+    <Text Content="{ComposeCount}" Font="@Caption" Foreground="@AppSubText" TextAlign="Right" Padding="12,2,12,2" Collapse="true"/>
+  </Element>
+
+</Uix>

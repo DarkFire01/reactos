@@ -36,6 +36,7 @@
     <App Id="Slides" Exe="moboffice.exe" Markup="apps\slides.uix" Title="Slides Mobile"/>
     <App Id="Notes" Exe="moboffice.exe" Markup="apps\notes.uix" Title="Notes Mobile"/>
     <App Id="Contacts" Exe="mobcontacts.exe" Markup="apps\contacts.uix" Title="Contacts"/>
+    <App Id="Messaging" Exe="mobmessaging.exe" Markup="apps\messaging.uix" Title="Messaging"/>
     <App Id="Calendar" Exe="mobcalendar.exe" Markup="apps\calendar.uix" Title="Calendar"/>
     <App Id="Calculator" Exe="mobcalc.exe" Markup="apps\calculator.uix" Title="Calculator"/>
     <App Id="Programs" Exe="mobmarkup.exe" Markup="apps\programs.uix" Title="Programs"/>
