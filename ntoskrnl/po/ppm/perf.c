@@ -24,6 +24,7 @@ static BOOLEAN PpmPepFailureLogged;
 
 static PPM_PERF_DOMAIN PpmPerfDomains[MAXIMUM_PROCESSORS];
 static ULONG PpmPerfDomainCount;
+static BOOLEAN PpmPerfInStandby;
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -187,6 +188,70 @@ PpmRegisterPepProcessor(
     return NULL;
 }
 
+/**
+ * @brief Tells every processor of a domain its new performance request.
+ *
+ * @remarks The plug-in only records the request, PpmCompletePerfCheck makes it act on it.
+ */
+static
+BOOLEAN
+PpmSendPerfDomain(
+    _In_ ULONG Domain,
+    _In_ PPPM_PERF_REQUEST Request)
+{
+    PPPM_PEP_PROCESSOR Processor;
+    PEP_PPM_PERF_SET PerfSet;
+    BOOLEAN Sent = FALSE;
+    ULONG Index;
+
+    RtlZeroMemory(&PerfSet, sizeof(PerfSet));
+    PerfSet.MinimumPerformance = Request->Minimum;
+    PerfSet.MaximumPerformance = Request->Maximum;
+    PerfSet.DesiredPerformance = Request->Desired;
+
+    for (Index = 0; Index < PpmPepProcessorCount; Index++)
+    {
+        Processor = &PpmPepProcessors[Index];
+        if (Processor->Domain != Domain)
+            continue;
+
+        if (!Processor->Plugin->AcceptProcessorNotification(Processor->PepHandle, PEP_NOTIFY_PPM_PERF_SET, &PerfSet))
+            return FALSE;
+
+        Sent = TRUE;
+    }
+
+    if (Sent)
+        PpmPerfDomains[Domain].Current = *Request;
+
+    return Sent;
+}
+
+/**
+ * @brief Ends a round of performance requests, the plug-in changes the clocks from here.
+ */
+static
+VOID
+PpmCompletePerfCheck(VOID)
+{
+    PEP_PPM_PERF_CHECK_COMPLETE Complete;
+    PPPM_PEP_PROCESSOR Processor;
+    ULONG Index;
+
+    for (Index = 0; Index < PpmPepProcessorCount; Index++)
+    {
+        Processor = &PpmPepProcessors[Index];
+        if (Processor->Domain == MAXULONG)
+            continue;
+
+        Complete.EvaluationTime = KeQueryInterruptTime();
+        Processor->Plugin->AcceptProcessorNotification(Processor->PepHandle,
+                                                       PEP_NOTIFY_PPM_PERF_CHECK_COMPLETE,
+                                                       &Complete);
+        return;
+    }
+}
+
 /* PUBLIC FUNCTIONS ***********************************************************/
 
 CODE_SEG("INIT")
@@ -284,6 +349,109 @@ PpmPepRegisterProcessors(VOID)
         }
     }
     PpmReleasePerfLock();
+}
+
+/**
+ * @brief Sets the performance request for one domain, held back while in connected standby.
+ *
+ * @param[in] Request
+ * Limits and desired level in plug-in units, clamped to the domain's range. A
+ * desired level of zero lets the plug-in pick.
+ */
+NTSTATUS
+NTAPI
+PpmSetPerfDomainState(
+    _In_ ULONG Domain,
+    _In_ PPPM_PERF_REQUEST Request)
+{
+    PPM_PERF_REQUEST Clamped;
+    PPPM_PERF_DOMAIN PerfDomain;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    PAGED_CODE();
+
+    PpmAcquirePerfLock();
+    if (Domain >= PpmPerfDomainCount)
+    {
+        PpmReleasePerfLock();
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    PerfDomain = &PpmPerfDomains[Domain];
+    Clamped.Minimum = max(Request->Minimum, PerfDomain->Lowest);
+    Clamped.Maximum = min(Request->Maximum, PerfDomain->Highest);
+    Clamped.Maximum = max(Clamped.Maximum, Clamped.Minimum);
+    Clamped.Desired = Request->Desired;
+    if (Clamped.Desired)
+        Clamped.Desired = min(max(Clamped.Desired, Clamped.Minimum), Clamped.Maximum);
+
+    PerfDomain->Requested = Clamped;
+    if (!PpmPerfInStandby)
+    {
+        if (PpmSendPerfDomain(Domain, &Clamped))
+            PpmCompletePerfCheck();
+        else
+            Status = STATUS_UNSUCCESSFUL;
+    }
+    PpmReleasePerfLock();
+
+    return Status;
+}
+
+/**
+ * @brief Drops every domain to its lowest level for connected standby, or puts the requests back.
+ *
+ * @param[in] Enter
+ * TRUE when the console display turns off in connected standby, FALSE when it comes back on.
+ */
+VOID
+NTAPI
+PpmConnectedStandby(
+    _In_ BOOLEAN Enter)
+{
+    PPM_PERF_REQUEST Request;
+    PPPM_PERF_DOMAIN Domain;
+    ULONG Applied = 0;
+    ULONG Index;
+
+    PAGED_CODE();
+
+    PpmAcquirePerfLock();
+    if (PpmPerfInStandby == Enter)
+    {
+        PpmReleasePerfLock();
+        return;
+    }
+
+    PpmPerfInStandby = Enter;
+    for (Index = 0; Index < PpmPerfDomainCount; Index++)
+    {
+        Domain = &PpmPerfDomains[Index];
+        if (Enter)
+        {
+            Request.Minimum = Domain->Lowest;
+            Request.Maximum = Domain->Lowest;
+            Request.Desired = Domain->Lowest;
+        }
+        else
+        {
+            Request = Domain->Requested;
+        }
+
+        if (PpmSendPerfDomain(Index, &Request))
+            Applied++;
+    }
+
+    if (Applied)
+        PpmCompletePerfCheck();
+    PpmReleasePerfLock();
+
+    if (PpmPerfDomainCount)
+    {
+        DPRINT1("PPM: %s connected standby, %lu of %lu perf domains %s\n",
+                Enter ? "entered" : "left", Applied, PpmPerfDomainCount,
+                Enter ? "at lowest" : "restored");
+    }
 }
 
 /**

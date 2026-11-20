@@ -236,6 +236,17 @@ VOID
 NTAPI
 PpmPepRegisterProcessors(VOID);
 
+NTSTATUS
+NTAPI
+PpmSetPerfDomainState(
+    _In_ ULONG Domain,
+    _In_ PPPM_PERF_REQUEST Request);
+
+VOID
+NTAPI
+PpmConnectedStandby(
+    _In_ BOOLEAN Enter);
+
 VOID
 NTAPI
 PpmPerfIdleDpcRoutine(
