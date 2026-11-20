@@ -640,11 +640,18 @@ PnpWatchDumpStalledGuiThreads(VOID)
 #define PNP_WATCH_GPU_TRACE_LINES   800
 #define PNP_WATCH_GPU_TRACE_WAIT    (-50LL * 10000)
 
+/* RPMh CPR floor window (GPU_RPMH_CPRF), qcdx sets bit 2 here when it wakes the RSC */
+#define PNP_WATCH_GPU_CPRF_BASE     0x0C200000
+#define PNP_WATCH_GPU_CPRF_SIZE     0x10000
+#define PNP_WATCH_GPU_CPRF_CTRL     0x6004
+#define PNP_WATCH_GPU_CPRF_HANDSHAKE 0x4
+
 typedef enum _PNP_WATCH_GPU_BLOCK
 {
     PnpWatchGpuGpucc,
     PnpWatchGpuGmu,
     PnpWatchGpuPdc,
+    PnpWatchGpuCprf,
     PnpWatchGpuBlockCount
 } PNP_WATCH_GPU_BLOCK;
 
@@ -661,6 +668,7 @@ static const PNP_WATCH_GPU_TRACE_REG PnpWatchGpuTraceRegs[] =
     { PnpWatchGpuGpucc, 0x100C, "gx gdscr" },
     { PnpWatchGpuGpucc, 0x1098, "gmu cbcr" },
     { PnpWatchGpuPdc, 0x4500, "pdc enable" },
+    { PnpWatchGpuCprf, PNP_WATCH_GPU_CPRF_CTRL, "cprf ctrl" },
     { PnpWatchGpuGmu, 0x1E000, "cm3 sysreset" },
     { PnpWatchGpuGmu, 0x1E070, "fw init result" },
     { PnpWatchGpuGmu, 0x1E068, "fw busy" },
@@ -725,9 +733,9 @@ PnpWatchGpuTraceThread(
     _In_ PVOID Context)
 {
     static const ULONG Bases[PnpWatchGpuBlockCount] =
-        { PNP_WATCH_GPUCC_BASE, PNP_WATCH_GMU_BASE, PNP_WATCH_GPU_PDC_BASE };
+        { PNP_WATCH_GPUCC_BASE, PNP_WATCH_GMU_BASE, PNP_WATCH_GPU_PDC_BASE, PNP_WATCH_GPU_CPRF_BASE };
     static const ULONG Sizes[PnpWatchGpuBlockCount] =
-        { PNP_WATCH_GPUCC_SIZE, PNP_WATCH_GMU_SIZE, PNP_WATCH_GPU_PDC_SIZE };
+        { PNP_WATCH_GPUCC_SIZE, PNP_WATCH_GMU_SIZE, PNP_WATCH_GPU_PDC_SIZE, PNP_WATCH_GPU_CPRF_SIZE };
     ULONG Values[RTL_NUMBER_OF(PnpWatchGpuTraceRegs)];
     BOOLEAN Known[RTL_NUMBER_OF(PnpWatchGpuTraceRegs)];
     PUCHAR Va[PnpWatchGpuBlockCount];
@@ -782,6 +790,14 @@ PnpWatchGpuTraceThread(
             {
                 DbgPrint("GPUTRACE: %7I64d.%03I64d ms %-20s %08lx -> %08lx\n",
                          Micro / 1000, Micro % 1000, Reg->Name, Known[Index] ? Values[Index] : 0, Value);
+                Lines++;
+            }
+            /* Experiment: Linux never sets the CPR floor handshake qcdx enables for v2 parts */
+            if (Reg->Block == PnpWatchGpuCprf && (Value & PNP_WATCH_GPU_CPRF_HANDSHAKE))
+            {
+                Value &= ~PNP_WATCH_GPU_CPRF_HANDSHAKE;
+                WRITE_REGISTER_ULONG((PULONG)(Va[Reg->Block] + Reg->Offset), Value);
+                DbgPrint("GPUTRACE: %7I64d.%03I64d ms cprf handshake cleared\n", Micro / 1000, Micro % 1000);
                 Lines++;
             }
             Values[Index] = Value;
