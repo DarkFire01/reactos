@@ -472,16 +472,6 @@ ExNotifyCallback(IN PCALLBACK_OBJECT CallbackObject,
     PCALLBACK_REGISTRATION CallbackRegistration;
     KIRQL OldIrql;
 
-    if (CallbackObject && CallbackObject == PowerStateCallback)
-    {
-        DPRINT1("PowerState callback %p %p from %p\n",
-                Argument1, Argument2, _ReturnAddress());
-
-        /* HACK: the phone has no lid, a closed lid makes the display driver drop the panel */
-        if ((ULONG_PTR)Argument1 == PO_CB_LID_SWITCH_STATE)
-            return;
-    }
-
     /* Check if we don't have an object or registrations */
     if (!(CallbackObject) ||
         (IsListEmpty(&CallbackObject->RegisteredCallbacks)))
