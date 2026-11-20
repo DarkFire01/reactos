@@ -147,6 +147,48 @@ UfsSendUic(
     return (Code == 0) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
+static
+BOOLEAN
+UfsDmeRead(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG Opcode,
+    _In_ USHORT Attribute,
+    _Out_ PULONG Value)
+{
+    if (!NT_SUCCESS(UfsSendUic(Adapter, Opcode, (ULONG)Attribute << 16, 0, 0, NULL)))
+        return FALSE;
+
+    *Value = UfsRead(Adapter, UFS_REG_UCMDARG3);
+    return TRUE;
+}
+
+BOOLEAN
+UfsDmeGet(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ USHORT Attribute,
+    _Out_ PULONG Value)
+{
+    return UfsDmeRead(Adapter, UFS_UIC_DME_GET, Attribute, Value);
+}
+
+BOOLEAN
+UfsDmePeerGet(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ USHORT Attribute,
+    _Out_ PULONG Value)
+{
+    return UfsDmeRead(Adapter, UFS_UIC_DME_PEER_GET, Attribute, Value);
+}
+
+BOOLEAN
+UfsDmeSet(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ USHORT Attribute,
+    _In_ ULONG Value)
+{
+    return NT_SUCCESS(UfsSendUic(Adapter, UFS_UIC_DME_SET, (ULONG)Attribute << 16, 0, Value, NULL));
+}
+
 NTSTATUS
 UfsHceReset(
     _In_ PUFS_ADAPTER_EXTENSION Adapter)

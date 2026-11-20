@@ -189,6 +189,78 @@ UfsDeviceInit(
     return FALSE;
 }
 
+/* Gear 3 is the highest UFS 2.x links run */
+#define UFS_MAX_HS_GEAR 3
+
+/**
+ * @brief Moves the link out of the PWM gear link startup leaves it in, to the fastest gear both ends take.
+ *
+ * @remarks The HS series stays whatever the link reports. A failed change leaves the link in PWM.
+ */
+static
+VOID
+UfsEnterHighSpeed(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter)
+{
+    ULONG HostGear, DeviceGear, Gear, TxLanes, RxLanes, Series, Status, Spin, OldMode = 0;
+
+    UfsDmeGet(Adapter, UFS_PA_PWR_MODE, &OldMode);
+    if (!UfsDmeGet(Adapter, UFS_PA_MAX_RX_HS_GEAR, &HostGear) ||
+        !UfsDmePeerGet(Adapter, UFS_PA_MAX_RX_HS_GEAR, &DeviceGear) ||
+        !UfsDmeGet(Adapter, UFS_PA_CONNECTED_TX_LANES, &TxLanes) ||
+        !UfsDmeGet(Adapter, UFS_PA_CONNECTED_RX_LANES, &RxLanes) ||
+        !UfsDmeGet(Adapter, UFS_PA_HS_SERIES, &Series))
+    {
+        DPRINT1("UFS: link attributes unreadable, staying in PWM\n");
+        return;
+    }
+
+    Gear = min(min(HostGear, DeviceGear), UFS_MAX_HS_GEAR);
+    if (Gear == 0 || TxLanes == 0 || RxLanes == 0)
+    {
+        DPRINT1("UFS: no HS gear (host %lu, device %lu, lanes %lu/%lu), staying in PWM\n",
+                HostGear, DeviceGear, TxLanes, RxLanes);
+        return;
+    }
+
+    if (!UfsDmeSet(Adapter, UFS_PA_TX_GEAR, Gear) ||
+        !UfsDmeSet(Adapter, UFS_PA_RX_GEAR, Gear) ||
+        !UfsDmeSet(Adapter, UFS_PA_ACTIVE_TX_LANES, TxLanes) ||
+        !UfsDmeSet(Adapter, UFS_PA_ACTIVE_RX_LANES, RxLanes) ||
+        !UfsDmeSet(Adapter, UFS_PA_TX_TERMINATION, TRUE) ||
+        !UfsDmeSet(Adapter, UFS_PA_RX_TERMINATION, TRUE) ||
+        !UfsDmeSet(Adapter, UFS_PA_HS_SERIES, Series))
+    {
+        DPRINT1("UFS: HS parameters rejected, staying in PWM\n");
+        return;
+    }
+
+    UfsWrite(Adapter, UFS_REG_IS, UFS_IS_UPMS);
+    if (!UfsDmeSet(Adapter, UFS_PA_PWR_MODE, UFS_PWR_MODE(UFS_PWR_FAST_MODE, UFS_PWR_FAST_MODE)))
+    {
+        DPRINT1("UFS: power mode change rejected, staying in PWM\n");
+        return;
+    }
+
+    for (Spin = 0; Spin < UFS_UIC_POLL_COUNT; Spin++)
+    {
+        if (UfsRead(Adapter, UFS_REG_IS) & UFS_IS_UPMS)
+            break;
+        StorPortStallExecution(10);
+    }
+    UfsWrite(Adapter, UFS_REG_IS, UFS_IS_UPMS);
+
+    Status = (UfsRead(Adapter, UFS_REG_HCS) & UFS_HCS_UPMCRS_MASK) >> UFS_HCS_UPMCRS_SHIFT;
+    if (Spin >= UFS_UIC_POLL_COUNT || Status != UFS_UPMCRS_PWR_LOCAL)
+    {
+        DPRINT1("UFS: power mode change failed, status %lu\n", Status);
+        return;
+    }
+
+    DPRINT1("UFS: link at HS-G%lu series %c, %lu TX and %lu RX lanes, was mode 0x%lx\n",
+            Gear, (Series == 2) ? 'B' : 'A', TxLanes, RxLanes, OldMode);
+}
+
 BOOLEAN
 UfsStartAdapter(
     _In_ PUFS_ADAPTER_EXTENSION Adapter)
@@ -223,6 +295,8 @@ UfsStartAdapter(
 
     if (!UfsDeviceInit(Adapter))
         return FALSE;
+
+    UfsEnterHighSpeed(Adapter);
 
     /* Clear any latched status, then arm the interrupts the ISR services. */
     UfsWrite(Adapter, UFS_REG_IS, 0xFFFFFFFF);

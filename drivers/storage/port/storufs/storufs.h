@@ -158,6 +158,24 @@ UfsSendUic(
     _In_ ULONG Arg3,
     _Out_opt_ PULONG Result);
 
+BOOLEAN
+UfsDmeGet(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ USHORT Attribute,
+    _Out_ PULONG Value);
+
+BOOLEAN
+UfsDmePeerGet(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ USHORT Attribute,
+    _Out_ PULONG Value);
+
+BOOLEAN
+UfsDmeSet(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ USHORT Attribute,
+    _In_ ULONG Value);
+
 /* ufsqcom.c */
 BOOLEAN
 UfsIsQualcommController(

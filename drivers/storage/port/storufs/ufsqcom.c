@@ -29,30 +29,6 @@
 #define QCOM_TX_SYMBOL_PWM          0x1401
 #define QCOM_LINK_STARTUP_TICKS     20000000
 
-static
-BOOLEAN
-UfsDmeGet(
-    _In_ PUFS_ADAPTER_EXTENSION Adapter,
-    _In_ USHORT Attribute,
-    _Out_ PULONG Value)
-{
-    if (!NT_SUCCESS(UfsSendUic(Adapter, UFS_UIC_DME_GET, (ULONG)Attribute << 16, 0, 0, NULL)))
-        return FALSE;
-
-    *Value = UfsRead(Adapter, UFS_REG_UCMDARG3);
-    return TRUE;
-}
-
-static
-BOOLEAN
-UfsDmeSet(
-    _In_ PUFS_ADAPTER_EXTENSION Adapter,
-    _In_ USHORT Attribute,
-    _In_ ULONG Value)
-{
-    return NT_SUCCESS(UfsSendUic(Adapter, UFS_UIC_DME_SET, (ULONG)Attribute << 16, 0, Value, NULL));
-}
-
 /**
  * @brief Tells whether the controller is a Qualcomm one, from the hardware ID of its PDO.
  */

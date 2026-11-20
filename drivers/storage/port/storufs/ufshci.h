@@ -52,6 +52,26 @@
 #define UFS_HCS_UTRLRDY      0x00000002  /* UTR list ready */
 #define UFS_HCS_UTMRLRDY     0x00000004  /* UTMR list ready */
 #define UFS_HCS_UCRDY        0x00000008  /* UIC command ready */
+#define UFS_HCS_UPMCRS_MASK  0x00000700  /* power mode change request status */
+#define UFS_HCS_UPMCRS_SHIFT 8
+#define UFS_UPMCRS_PWR_LOCAL 1
+
+/* UniPro PHY adapter attributes */
+#define UFS_PA_ACTIVE_TX_LANES    0x1560
+#define UFS_PA_CONNECTED_TX_LANES 0x1561
+#define UFS_PA_TX_GEAR            0x1568
+#define UFS_PA_TX_TERMINATION     0x1569
+#define UFS_PA_HS_SERIES          0x156A
+#define UFS_PA_PWR_MODE           0x1571
+#define UFS_PA_ACTIVE_RX_LANES    0x1580
+#define UFS_PA_CONNECTED_RX_LANES 0x1581
+#define UFS_PA_RX_GEAR            0x1583
+#define UFS_PA_RX_TERMINATION     0x1584
+#define UFS_PA_MAX_RX_HS_GEAR     0x1587
+
+/* PA_PWRMode carries the RX mode in the high nibble and the TX mode in the low one */
+#define UFS_PWR_FAST_MODE         1
+#define UFS_PWR_MODE(Rx, Tx)      (((Rx) << 4) | (Tx))
 
 /* HCE register fields. */
 #define UFS_HCE_ENABLE       0x00000001
