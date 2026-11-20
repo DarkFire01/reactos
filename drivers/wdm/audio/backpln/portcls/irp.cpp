@@ -93,6 +93,9 @@ PortClsPnp(
             if (!NT_SUCCESS(Status))
             {
                 DPRINT("StartDevice returned a failure code [0x%8x]\n", Status);
+
+                // a port the adapter registered before failing must not stay open to clients
+                PcUnregisterSubdevices(DeviceObject);
                 Irp->IoStatus.Status = Status;
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
                 return Status;
@@ -120,6 +123,8 @@ PortClsPnp(
 
             // sanity check
             PC_ASSERT(DeviceExt);
+
+            PcUnregisterSubdevices(DeviceObject);
 
             // FIXME more cleanup */
             if (DeviceExt->resources)
