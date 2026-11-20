@@ -326,11 +326,9 @@ UacpiNtGetOrCreatePdo(
 
     UacpiNtPdoSetInstance(Pdo);
 
-    /* Thermal zones have no _HID, thermal.sys binds to this fixed ID */
-    if (ThermalZone)
+    /* A zone with a _HID binds to its own driver, the rest share the fixed ID thermal.sys binds to */
+    if (!UacpiNtNodeReadHid(Node, Pdo->Hid, sizeof(Pdo->Hid)) && ThermalZone)
         RtlStringCbCopyA(Pdo->Hid, sizeof(Pdo->Hid), "ThermalZone");
-    else
-        UacpiNtNodeReadHid(Node, Pdo->Hid, sizeof(Pdo->Hid));
 
     if (UacpiNtNodeReadAdr(Node, &Adr))
     {
@@ -949,7 +947,7 @@ UacpiNtBuildVendorIds(
     ULONG ClsValue = 0;
     ULONG Count = 0;
 
-    if (!Pdo->Node || !Pdo->Hid[0] || Pdo->IsThermalZone)
+    if (!Pdo->Node || !Pdo->Hid[0] || (Pdo->IsThermalZone && !_stricmp(Pdo->Hid, "ThermalZone")))
         return 0;
 
     if (uacpi_likely_success(uacpi_eval_simple_string(Pdo->Node, "_SUB", &SubObject)))
