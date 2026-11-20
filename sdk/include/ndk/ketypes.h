@@ -2259,7 +2259,8 @@ typedef struct _KPROCESS
             LONG AutoAlignment:1;
             LONG DisableBoost:1;
             LONG DisableQuantum:1;
-            LONG ReservedFlags:29;
+            LONG DeepFreeze:1;
+            LONG ReservedFlags:28;
         };
         LONG ProcessFlags;
     };
