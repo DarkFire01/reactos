@@ -288,6 +288,7 @@ PopCreatePowerRequestAsLegacy(
     PowerRequestObject->RequestorMode = KernelMode;
     PowerRequestObject->LegacyStateFlags = EsFlags;
     PowerRequestObject->Context = NULL;
+    PowerRequestObject->OwnerProcessId = (ExGetPreviousMode() == UserMode) ? PsGetCurrentProcessId() : NULL;
 
     /* Copy the image filename that created this power request */
     RtlCopyMemory(PowerRequestObject->ImageFileName,
@@ -774,6 +775,7 @@ PopCreatePowerRequestObject(
     PowerRequest->RequestorMode = PreviousMode;
     PowerRequest->LegacyStateFlags = 0;
     PowerRequest->Context = ReasonContext;
+    PowerRequest->OwnerProcessId = (PreviousMode == UserMode) ? PsGetCurrentProcessId() : NULL;
 
     /* Copy the image filename that created this power request */
     RtlCopyMemory(PowerRequest->ImageFileName,
@@ -869,6 +871,48 @@ PopTerminatePowerRequests(VOID)
 
     /* We're done here */
     PopReleasePowerRequestLock(&LockHandle);
+}
+
+/**
+ * @brief
+ * Tells whether a process holds a request that keeps work going while the
+ * display is off, execution, system or away mode required. Terminated
+ * requests no longer count.
+ *
+ * @param[in] ProcessId
+ * The process to look for.
+ */
+BOOLEAN
+NTAPI
+PopProcessKeepsSystemAwake(
+    _In_ HANDLE ProcessId)
+{
+    KLOCK_QUEUE_HANDLE LockHandle;
+    PPOP_POWER_REQUEST PowerRequest;
+    PLIST_ENTRY Entry;
+    BOOLEAN Awake = FALSE;
+
+    PopAcquirePowerRequestLock(&LockHandle);
+    for (Entry = PopPowerRequestsList.Flink; Entry != &PopPowerRequestsList && !Awake; Entry = Entry->Flink)
+    {
+        PowerRequest = CONTAINING_RECORD(Entry, POP_POWER_REQUEST, Link);
+        if (PowerRequest->OwnerProcessId != ProcessId || PowerRequest->Terminate)
+            continue;
+
+        if (PowerRequest->Legacy)
+        {
+            Awake = (PowerRequest->LegacyStateFlags & ES_SYSTEM_REQUIRED) != 0;
+        }
+        else
+        {
+            Awake = PowerRequest->ActiveRequests.ActiveExecutionRequests ||
+                    PowerRequest->ActiveRequests.ActiveSystemRequiredRequests ||
+                    PowerRequest->ActiveRequests.ActiveAwayModeRequiredRequests;
+        }
+    }
+    PopReleasePowerRequestLock(&LockHandle);
+
+    return Awake;
 }
 
 /**

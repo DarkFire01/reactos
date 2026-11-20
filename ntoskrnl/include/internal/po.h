@@ -1631,6 +1631,9 @@ typedef struct _POP_POWER_REQUEST
     /* The filename of an image process that made request for a power request, used for debugging purposes */
     UCHAR ImageFileName[16];
 
+    /* The user mode process the request belongs to, NULL for requests drivers make */
+    HANDLE OwnerProcessId;
+
     /* Context reason provided by the requestor that describes the reason for this power request to be created */
     PCOUNTED_REASON_CONTEXT Context;
 } POP_POWER_REQUEST, *PPOP_POWER_REQUEST;
@@ -1830,6 +1833,11 @@ PopInitializeAoAc(
 VOID
 NTAPI
 PopAoAcHandleSleepButton(VOID);
+
+BOOLEAN
+NTAPI
+PopProcessKeepsSystemAwake(
+    _In_ HANDLE ProcessId);
 
 VOID
 NTAPI

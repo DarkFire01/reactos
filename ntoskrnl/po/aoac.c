@@ -218,6 +218,14 @@ PopAoAcFreezeWorker(
             if (Entry->Frozen || Entry->Process->ProcessDelete)
                 continue;
 
+            /* An app that asked to keep working, a download or playback, only stays slowed */
+            if (PopProcessKeepsSystemAwake(Entry->Process->UniqueProcessId))
+            {
+                DPRINT1("Connected standby leaves %.16s running, it holds a power request\n",
+                        Entry->Process->ImageFileName);
+                continue;
+            }
+
             Entry->Frozen = KeFreezeProcess(&Entry->Process->Pcb);
             if (Entry->Frozen)
                 Count++;
