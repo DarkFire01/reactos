@@ -17,6 +17,7 @@ BEGIN
     IDS_PHONE_TEST           "Phone"
     IDS_MESSAGES             "Messages"
     IDS_SETTINGS             "Settings"
+    IDS_BROWSER              "Browser"
     IDS_COMMAND_PROMPT       "Command Prompt"
     IDS_KEYBOARD             "Keyboard"
     IDS_EXPLORER             "Explorer"
