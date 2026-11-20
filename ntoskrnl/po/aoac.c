@@ -441,6 +441,24 @@ PopAoAcHandleSleepButton(VOID)
 
 /**
  * @brief
+ * A sleep request on a Modern Standby platform enters connected standby, the
+ * platform stays in S0 with the display off.
+ *
+ * @return
+ * STATUS_SUCCESS, also when the platform was in connected standby already.
+ */
+NTSTATUS
+NTAPI
+PopAoAcSleep(VOID)
+{
+    PAGED_CODE();
+
+    PopAoAcEnterStandby();
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
  * A wake trigger fired, an alarm or an incoming call. The display comes back
  * on as if the power button had been pressed.
  *
