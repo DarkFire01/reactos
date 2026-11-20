@@ -100,6 +100,40 @@ HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0237\2&ccb86d17&_SB_PEP0","Class",0
 HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM0237\2&ccb86d17&_SB_PEP0","Driver",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}\0100"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0237","Service",0x00000000,"qcpep"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0237","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; The eight cores, \_SB.SYSM.CLUS.CPU0 to CPU7, installed with no driver as on Windows
+; so the device installer leaves them alone
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\0","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\0","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\0","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\0","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\1","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\1","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\1","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\1","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\2","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\2","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\2","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\2","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\3","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\3","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\3","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\3","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\4","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\4","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\4","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\4","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\5","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\5","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\5","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\5","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\6","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\6","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\6","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\6","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","DeviceDesc",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","Class",0x00000000,"Processor"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","ConfigFlags",0x00010001,0x00000000
 ; qcpep drives the thermal zones its INF lists, TSENS thermal init runs from their AddDevice
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02AB","Service",0x00000000,"qcpep"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02AB","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
