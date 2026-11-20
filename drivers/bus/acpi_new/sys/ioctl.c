@@ -808,7 +808,7 @@ UacpiNtEvaluate(
         }
 
         /* The modem subsystem driver rejects an answer it does not like with nothing in its log */
-        if (strstr(TraceName, "AMSS"))
+        if (strstr(TraceName, "AMSS") || strstr(TraceName, "GPU0"))
         {
             DPRINT1("EVAL %s on %s, ioctl 0x%lx: %s, status 0x%08lx, %s result, %lu of %lu bytes\n",
                     Path, TraceName,
