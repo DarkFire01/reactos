@@ -1989,6 +1989,10 @@ KeBugCheckEx(IN ULONG BugCheckCode,
              IN ULONG_PTR BugCheckParameter3,
              IN ULONG_PTR BugCheckParameter4)
 {
+    /* qcdx keeps why it gave up in its own log, read it while the caller can still wait */
+    if (BugCheckCode == VIDEO_DRIVER_INIT_FAILURE && KeGetCurrentIrql() <= APC_LEVEL)
+        PnpWatchDumpQcdxLog();
+
     /* Call the internal API */
     KeBugCheckWithTf(BugCheckCode,
                      BugCheckParameter1,
