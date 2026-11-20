@@ -5,17 +5,8 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#define WIN32_NO_STATUS
-#include <windef.h>
-#include <winbase.h>
-#include <winuser.h>
-#include <wingdi.h>
-#include <stdlib.h>
-#include <strsafe.h>
-
+#include "phonetest.h"
 #include <telephony/phoneom.h>
-
-#define WM_PHONE_EVENT              (WM_APP + 1)
 
 /* Dark theme shared with the mobile shell */
 #define PT_BG                       RGB(0x12, 0x12, 0x14)
@@ -24,49 +15,6 @@
 #define PT_TEXT                     RGB(0xF2, 0xF2, 0xF4)
 #define PT_SUBTEXT                  RGB(0x9A, 0x9B, 0xA3)
 #define PT_FIELD                    RGB(0x1A, 0x1A, 0x1E)
-
-enum
-{
-    IDC_TAB_PHONE = 200,
-    IDC_TAB_STATUS,
-    IDC_TAB_DATA,
-
-    IDC_RADIO_STATUS = 100,
-    IDC_RADIO_ON,
-    IDC_RADIO_OFF,
-    IDC_NUMBER,
-    IDC_DIAL,
-    IDC_ANSWER,
-    IDC_HANGUP,
-    IDC_SWAP,
-    IDC_DTMF,
-    IDC_SPEAKER,
-    IDC_MUTE,
-    IDC_CALLS,
-    IDC_SMS_TO,
-    IDC_SMS_TEXT,
-    IDC_SMS_SEND,
-    IDC_MESSAGES,
-    IDC_LOG,
-
-    IDC_STATUS_REFRESH = 210,
-
-    IDC_DATA_APN_LABEL = 220,
-    IDC_DATA_APN,
-    IDC_DATA_USER_LABEL,
-    IDC_DATA_USER,
-    IDC_DATA_PASS_LABEL,
-    IDC_DATA_PASS,
-    IDC_DATA_AUTH_LABEL,
-    IDC_DATA_AUTH,
-    IDC_DATA_ENABLED,
-    IDC_DATA_SAVE,
-    IDC_DATA_CONNECT,
-    IDC_DATA_DISCONNECT,
-    IDC_DATA_STATUS,
-
-    IDC_EXIT = 240
-};
 
 typedef struct _PT_EVENT
 {
@@ -82,6 +30,7 @@ static HFONT PtFont;
 static HFONT PtBigFont;
 static HFONT PtButtonFont;
 static HFONT PtHeadFont;
+static HFONT PtSmallFont;
 static HBRUSH PtBgBrush;
 static HBRUSH PtFieldBrush;
 static int PtPage;
@@ -101,6 +50,7 @@ static WCHAR PtStatusText[2048];
 #define PT_PAGE_PHONE               0
 #define PT_PAGE_STATUS              1
 #define PT_PAGE_DATA                2
+#define PT_PAGE_MODEM               3
 
 static const LPCWSTR PtStateNames[] =
 {
@@ -124,7 +74,7 @@ static const LPCWSTR PtRatNames[] =
 
 static const LPCWSTR PtPageHeadings[] =
 {
-    L"Phone", L"Status", L"Mobile data"
+    L"Phone", L"Status", L"Mobile data", L"Modem"
 };
 
 static const UINT PtPhoneControls[] =
@@ -145,6 +95,14 @@ static const UINT PtDataControls[] =
     IDC_DATA_PASS_LABEL, IDC_DATA_PASS, IDC_DATA_AUTH_LABEL, IDC_DATA_AUTH,
     IDC_DATA_ENABLED, IDC_DATA_SAVE, IDC_DATA_CONNECT, IDC_DATA_DISCONNECT,
     IDC_DATA_STATUS
+};
+
+static const UINT PtModemControls[] =
+{
+    IDC_MODEM_STATUS, IDC_MODEM_SERVICES, IDC_MODEM_MODE, IDC_MODEM_ONLINE,
+    IDC_MODEM_LOW_POWER, IDC_MODEM_OFFLINE, IDC_MODEM_RESET, IDC_MODEM_SIGNAL,
+    IDC_MODEM_SERVING, IDC_MODEM_SIM, IDC_MODEM_IDENTITY, IDC_MODEM_RAW,
+    IDC_MODEM_SEND, IDC_MODEM_CLEAR, IDC_MODEM_LOG
 };
 
 static
@@ -574,8 +532,15 @@ PtCommand(
     DWORD Value;
     HRESULT hr;
 
-    if (Id == IDC_TAB_PHONE || Id == IDC_TAB_STATUS || Id == IDC_TAB_DATA)
+    if (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_MODEM)
         return;
+
+    /* The modem page talks to the router itself, it works without the phone service */
+    if (PtModemIsCommand(Id))
+    {
+        PtModemCommand(Id);
+        return;
+    }
 
     if (!PtPhone)
     {
@@ -736,7 +701,7 @@ PtDrawButton(
     COLORREF Fill, Ink;
     int Radius = (Rect.bottom - Rect.top) / 3;
 
-    if (Id == IDC_TAB_PHONE || Id == IDC_TAB_STATUS || Id == IDC_TAB_DATA)
+    if (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_MODEM)
         Active = (PtPage == (int)(Id - IDC_TAB_PHONE));
     else if (PtIsToggle(Id))
         Active = (SendMessageW(Item->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED);
@@ -749,7 +714,7 @@ PtDrawButton(
     else
     {
         Fill = PT_TILE;
-        Ink = (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_DATA) ? PT_SUBTEXT : PT_TEXT;
+        Ink = (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_MODEM) ? PT_SUBTEXT : PT_TEXT;
     }
 
     FillRect(Item->hDC, &Rect, PtBgBrush);
@@ -770,6 +735,7 @@ PtCreateControls(
     PtButton(Window, L"Phone", WS_VISIBLE, IDC_TAB_PHONE);
     PtButton(Window, L"Status", WS_VISIBLE, IDC_TAB_STATUS);
     PtButton(Window, L"Data", WS_VISIBLE, IDC_TAB_DATA);
+    PtButton(Window, L"Modem", WS_VISIBLE, IDC_TAB_MODEM);
 
     /* Phone page */
     PtControl(Window, L"STATIC", L"Radio", SS_CENTERIMAGE, IDC_RADIO_STATUS, PtFont);
@@ -807,6 +773,24 @@ PtCreateControls(
     PtButton(Window, L"Connect", WS_TABSTOP, IDC_DATA_CONNECT);
     PtButton(Window, L"Disconnect", WS_TABSTOP, IDC_DATA_DISCONNECT);
     PtControl(Window, L"STATIC", L"Data status unknown", SS_CENTERIMAGE, IDC_DATA_STATUS, PtFont);
+
+    /* Modem page, QMI straight on the router */
+    PtControl(Window, L"STATIC", L"IPC router closed", SS_CENTERIMAGE, IDC_MODEM_STATUS, PtFont);
+    PtButton(Window, L"Services", WS_TABSTOP, IDC_MODEM_SERVICES);
+    PtButton(Window, L"Mode", WS_TABSTOP, IDC_MODEM_MODE);
+    PtButton(Window, L"Online", WS_TABSTOP, IDC_MODEM_ONLINE);
+    PtButton(Window, L"Low pwr", WS_TABSTOP, IDC_MODEM_LOW_POWER);
+    PtButton(Window, L"Offline", WS_TABSTOP, IDC_MODEM_OFFLINE);
+    PtButton(Window, L"Reset", WS_TABSTOP, IDC_MODEM_RESET);
+    PtButton(Window, L"Signal", WS_TABSTOP, IDC_MODEM_SIGNAL);
+    PtButton(Window, L"Network", WS_TABSTOP, IDC_MODEM_SERVING);
+    PtButton(Window, L"SIM", WS_TABSTOP, IDC_MODEM_SIM);
+    PtButton(Window, L"Identity", WS_TABSTOP, IDC_MODEM_IDENTITY);
+    PtControl(Window, L"EDIT", L"2 2d", WS_TABSTOP | ES_AUTOHSCROLL, IDC_MODEM_RAW, PtFont);
+    PtButton(Window, L"Send", WS_TABSTOP, IDC_MODEM_SEND);
+    PtButton(Window, L"Clear", WS_TABSTOP, IDC_MODEM_CLEAR);
+    PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | WS_HSCROLL | LBS_NOINTEGRALHEIGHT, IDC_MODEM_LOG, PtSmallFont);
+    SendDlgItemMessageW(Window, IDC_MODEM_LOG, LB_SETHORIZONTALEXTENT, 2400, 0);
 
     /* Always visible, returns to the shell */
     PtButton(Window, L"Exit", WS_VISIBLE | WS_TABSTOP, IDC_EXIT);
@@ -939,20 +923,59 @@ PtLayoutData(
 
 static
 VOID
+PtLayoutModem(
+    _In_ HWND Window,
+    _In_ const RECT *Area)
+{
+    int Width = Area->right - Area->left;
+    int Half = (Width - PT_GAP) / 2;
+    int Quarter = (Width - 3 * PT_GAP) / 4;
+    int Left = Area->left;
+    int Y = Area->top;
+    int LogH;
+
+    PtMove(Window, IDC_MODEM_STATUS, Left, Y, Width, PT_PILL_H);
+    Y += PT_PILL_H + PT_GAP;
+    PtMove(Window, IDC_MODEM_SERVICES, Left, Y, Half, PT_ROW);
+    PtMove(Window, IDC_MODEM_MODE, Left + Half + PT_GAP, Y, Half, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_MODEM_ONLINE, Left, Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_MODEM_LOW_POWER, Left + (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_MODEM_OFFLINE, Left + 2 * (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_MODEM_RESET, Left + 3 * (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_MODEM_SIGNAL, Left, Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_MODEM_SERVING, Left + (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_MODEM_SIM, Left + 2 * (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_MODEM_IDENTITY, Left + 3 * (Quarter + PT_GAP), Y, Quarter, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_MODEM_RAW, Left, Y, Width - 2 * (Quarter + PT_GAP), PT_ROW);
+    PtMove(Window, IDC_MODEM_SEND, Left + Width - 2 * Quarter - PT_GAP, Y, Quarter, PT_ROW);
+    PtMove(Window, IDC_MODEM_CLEAR, Left + Width - Quarter, Y, Quarter, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+
+    LogH = Area->bottom - Y;
+    if (LogH < PT_ROW)
+        LogH = PT_ROW;
+    PtMove(Window, IDC_MODEM_LOG, Left, Y, Width, LogH);
+}
+
+static
+VOID
 PtLayout(
     _In_ HWND Window)
 {
     RECT Client, Area;
     int Width, Segment, i;
-    static const UINT Tabs[] = { IDC_TAB_PHONE, IDC_TAB_STATUS, IDC_TAB_DATA };
+    static const UINT Tabs[] = { IDC_TAB_PHONE, IDC_TAB_STATUS, IDC_TAB_DATA, IDC_TAB_MODEM };
 
     GetClientRect(Window, &Client);
     Width = Client.right - 2 * PT_MARGIN;
     if (Width < 120)
         return;
 
-    Segment = (Width - 2 * PT_GAP) / 3;
-    for (i = 0; i < 3; i++)
+    Segment = (Width - ((int)_countof(Tabs) - 1) * PT_GAP) / (int)_countof(Tabs);
+    for (i = 0; i < (int)_countof(Tabs); i++)
         PtMove(Window, Tabs[i], PT_MARGIN + i * (Segment + PT_GAP), PT_SAFE_TOP, Segment, PT_TAB_H);
 
     PtMove(Window, IDC_EXIT, PT_MARGIN, Client.bottom - PT_MARGIN - PT_ROW, Width, PT_ROW);
@@ -966,6 +989,7 @@ PtLayout(
         case PT_PAGE_PHONE: PtLayoutPhone(Window, &Area); break;
         case PT_PAGE_STATUS: PtLayoutStatus(Window, &Area); break;
         case PT_PAGE_DATA: PtLayoutData(Window, &Area); break;
+        case PT_PAGE_MODEM: PtLayoutModem(Window, &Area); break;
     }
 }
 
@@ -1028,6 +1052,7 @@ PtSelectPage(
     PtShowGroup(Window, PtPhoneControls, _countof(PtPhoneControls), Page == PT_PAGE_PHONE);
     PtShowGroup(Window, PtStatusControls, _countof(PtStatusControls), Page == PT_PAGE_STATUS);
     PtShowGroup(Window, PtDataControls, _countof(PtDataControls), Page == PT_PAGE_DATA);
+    PtShowGroup(Window, PtModemControls, _countof(PtModemControls), Page == PT_PAGE_MODEM);
 
     PtLayout(Window);
     InvalidateRect(Window, NULL, FALSE);
@@ -1039,6 +1064,8 @@ PtSelectPage(
         PtLoadData();
         PtRefreshData();
     }
+    else if (Page == PT_PAGE_MODEM)
+        PtModemOpen(Window);
 }
 
 static
@@ -1100,7 +1127,7 @@ PtWndProc(
                 UINT Id = LOWORD(wParam);
                 if (Id == IDC_EXIT)
                     DestroyWindow(Window);
-                else if (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_DATA)
+                else if (Id >= IDC_TAB_PHONE && Id <= IDC_TAB_MODEM)
                     PtSelectPage(Window, (int)(Id - IDC_TAB_PHONE));
                 else
                     PtCommand(Id);
@@ -1112,8 +1139,14 @@ PtWndProc(
             HeapFree(GetProcessHeap(), 0, (PVOID)lParam);
             return 0;
 
+        case WM_MODEM_PACKET:
+            PtModemPacket((const PT_MODEM_PACKET *)lParam);
+            HeapFree(GetProcessHeap(), 0, (PVOID)lParam);
+            return 0;
+
         case WM_DESTROY:
             KillTimer(Window, 1);
+            PtModemClose();
             if (PtPhone)
             {
                 PhoneOmClose(PtPhone);
@@ -1127,6 +1160,8 @@ PtWndProc(
                 DeleteObject(PtButtonFont);
             if (PtHeadFont)
                 DeleteObject(PtHeadFont);
+            if (PtSmallFont)
+                DeleteObject(PtSmallFont);
             if (PtBgBrush)
                 DeleteObject(PtBgBrush);
             if (PtFieldBrush)
@@ -1159,6 +1194,7 @@ wWinMain(
     PtBigFont = PtMakeFont(54, FW_NORMAL);
     PtButtonFont = PtMakeFont(32, FW_SEMIBOLD);
     PtHeadFont = PtMakeFont(48, FW_SEMIBOLD);
+    PtSmallFont = PtMakeFont(24, FW_NORMAL);
     if (!PtFont)
         PtFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
     if (!PtBigFont)
@@ -1167,6 +1203,8 @@ wWinMain(
         PtButtonFont = PtFont;
     if (!PtHeadFont)
         PtHeadFont = PtFont;
+    if (!PtSmallFont)
+        PtSmallFont = PtFont;
 
     PtBgBrush = CreateSolidBrush(PT_BG);
     PtFieldBrush = CreateSolidBrush(PT_FIELD);
