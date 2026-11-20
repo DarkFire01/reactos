@@ -1,0 +1,44 @@
+; Qualcomm audio speaker on \_SB.ARPD, the audio RPC node no Windows driver claims here.
+; PortCls publishes the render and topology filters on it.
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomaudio","DisplayName",0x00000000,"Qualcomm Audio Speaker"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomaudio","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomaudio","ImagePath",0x00020000,"system32\drivers\qcomaudio.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomaudio","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomaudio","Type",0x00010001,0x00000001
+
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E96C-E325-11CE-BFC1-08002BE10318}","",0x00000000,"Sound, video and game controllers"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E96C-E325-11CE-BFC1-08002BE10318}","Class",0x00000000,"MEDIA"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E96C-E325-11CE-BFC1-08002BE10318}\0000","DriverDesc",0x00000000,"Qualcomm Audio Speaker"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E96C-E325-11CE-BFC1-08002BE10318}\0000","ProviderName",0x00000000,"ReactOS"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E96C-E325-11CE-BFC1-08002BE10318}\0000","MatchingDeviceId",0x00000000,"acpi\qcom02f3"
+
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\_SB_ARPD","DeviceDesc",0x00000000,"Qualcomm Audio Speaker"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\_SB_ARPD","Service",0x00000000,"qcomaudio"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\_SB_ARPD","ClassGUID",0x00000000,"{4D36E96C-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\_SB_ARPD","Class",0x00000000,"MEDIA"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\_SB_ARPD","Driver",0x00000000,"{4D36E96C-E325-11CE-BFC1-08002BE10318}\0000"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\2&ccb86d17&_SB_ARPD","DeviceDesc",0x00000000,"Qualcomm Audio Speaker"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\2&ccb86d17&_SB_ARPD","Service",0x00000000,"qcomaudio"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\2&ccb86d17&_SB_ARPD","ClassGUID",0x00000000,"{4D36E96C-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\2&ccb86d17&_SB_ARPD","Class",0x00000000,"MEDIA"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM02F3\2&ccb86d17&_SB_ARPD","Driver",0x00000000,"{4D36E96C-E325-11CE-BFC1-08002BE10318}\0000"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F3","Service",0x00000000,"qcomaudio"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02F3","ClassGUID",0x00000000,"{4D36E96C-E325-11CE-BFC1-08002BE10318}"
+
+; What the media class installer (mmsys.cpl) sets up when a sound device installs:
+; the system audio services, AudioSrv on auto start, and wdmaud as the wave driver
+HKLM,"SYSTEM\CurrentControlSet\Services\sysaudio","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\sysaudio","ImagePath",0x00020000,"system32\drivers\sysaudio.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\sysaudio","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\sysaudio","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\wdmaud","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\wdmaud","ImagePath",0x00020000,"system32\drivers\wdmaud.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\wdmaud","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\wdmaud","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\kmixer","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\kmixer","ImagePath",0x00020000,"system32\drivers\kmixer.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\kmixer","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\kmixer","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Start",0x00010001,0x00000002
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32","wave1",0x00000000,"wdmaud.drv"
