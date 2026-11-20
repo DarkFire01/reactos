@@ -591,6 +591,17 @@ PoFxRegisterDevice(
     if (!Pdo || !Device || !Handle)
         return STATUS_INVALID_PARAMETER;
 
+    /* dxgkrnl hands in the device it created on the stack, plug-ins know the PDO under it */
+    if (!IopGetDeviceNode(Pdo))
+    {
+        PDEVICE_OBJECT Base = IoGetDeviceAttachmentBaseRef(Pdo);
+
+        DPRINT1("PoFx: %wZ registered device %p, not a PDO, using %p under it\n",
+                &Pdo->DriverObject->DriverName, Pdo, Base);
+        ObDereferenceObject(Base);
+        Pdo = Base;
+    }
+
     switch (DeviceV1->Version)
     {
         case PO_FX_VERSION_V1:
