@@ -223,10 +223,10 @@ static const PCWSTR PnpWatchDisplayModules[] =
 };
 
 /*
- * qcdxkm850.sys of 2018-10-01 logs into three rings of 40 byte records in its image, an event
+ * qcdxkm850.sys 26.18.10790 logs into three rings of 40 byte records in its image, an event
  * code at +36 and five arguments from +16. Nothing else reports why its start failed.
  */
-#define PNP_WATCH_QCDX_IMAGE_SIZE   0x415000
+#define PNP_WATCH_QCDX_IMAGE_SIZE   0x417000
 #define PNP_WATCH_QCDX_RECORD       40
 #define PNP_WATCH_QCDX_SHOWN        48
 
@@ -240,9 +240,9 @@ typedef struct _PNP_WATCH_QCDX_RING
 
 static const PNP_WATCH_QCDX_RING PnpWatchQcdxRings[] =
 {
-    { 0x190B70, 0x190B88, 0x190BC4, "error" },
-    { 0x190BF0, 0x190BB0, 0x190BE0, "warning" },
-    { 0x190BD0, 0x190BE4, 0x190AE8, "info" }
+    { 0x1ADB80, 0x1ADB9C, 0x1ADBE4, "error" },
+    { 0x1ADBF0, 0x1ADC04, 0x1ADB7C, "warning" },
+    { 0x1ADC10, 0x1ADBD0, 0x1ADC00, "info" }
 };
 
 /* SDM845 Adreno 630 clock controller and GMU, read when qcdxkm850.sys gives up */
