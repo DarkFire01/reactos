@@ -2011,13 +2011,21 @@ DlpLateAdapterThread(
     {
         if (DlpHasWddmDisplayAdapter())
         {
+            /* Without the user lock, so the arrival callout dxgkrnl raises from here can run */
             DPRINT1("win32k: WDDM display adapter arrived %lu ms after the desktop\n", Waited);
-            UserEnterExclusive();
             DlNotifySessionOpen();
-            UserLeave();
             break;
         }
         KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+    }
+
+    /* The session open thread of CSRSS never exits, whatever dxgkrnl left entered stays so here too */
+    if (KeAreApcsDisabled())
+    {
+        DPRINT1("win32k: session open returned with APCs disabled, keeping its thread\n");
+        Interval.QuadPart = -3600LL * 10000000;
+        for (;;)
+            KeDelayExecutionThread(KernelMode, FALSE, &Interval);
     }
 
     PsTerminateSystemThread(STATUS_SUCCESS);
