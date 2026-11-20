@@ -780,17 +780,9 @@ PoRegisterPowerSettingCallback(
 
     /* Get the power setting worker */
     Routine = PopGetPowerSettingHelper(SettingGuid);
+    /* Settings with no live state of their own take their value from the power scheme */
     if (Routine == NULL)
-    {
-        /*
-         * FIXME: If a specific power setting doesn't come with a dedicated
-         * setting worker then use the default worker which takes care of
-         * unimplemented power settings. This is a placebo solution and
-         * it must be treated as such. As every power setting is implemented
-         * this workaround must be removed!
-         */
-        Routine = PopUnimplementedPowerSettingWorker;
-    }
+        Routine = PopSchemeSettingWorker;
 
     /* Service this callback to a worker thread */
     Status = PopCreateWorkerThread(Routine,

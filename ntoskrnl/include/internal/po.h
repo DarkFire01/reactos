@@ -263,7 +263,7 @@ typedef VOID
 //
 // Maximum number of power setting elements the PopPowerSettingsDatabase array can hold
 //
-#define POP_MAX_POWER_SETTINGS                  109
+#define POP_MAX_POWER_SETTINGS                  111
 
 //
 // Power setting callback flags
@@ -1739,7 +1739,13 @@ PopMasterDispatchIrp(
 _Function_class_(KSTART_ROUTINE)
 VOID
 NTAPI
-PopUnimplementedPowerSettingWorker(
+PopSchemeSettingWorker(
+    _In_ PVOID StartContext);
+
+_Function_class_(KSTART_ROUTINE)
+VOID
+NTAPI
+PopStandbyStateSettingWorker(
     _In_ PVOID StartContext);
 
 _Function_class_(KSTART_ROUTINE)
@@ -2390,6 +2396,8 @@ extern LIST_ENTRY PopPowerSettingCallbacksList;
 extern ULONG PopPowerSettingCallbacksCount;
 extern PKTHREAD PopPowerSettingOwnerLockThread;
 extern POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[];
+extern const GUID PopIdleResiliencySettingGuid;
+extern const GUID PopLowPowerPhaseSettingGuid;
 
 /* Power Manager Power Framework (PoFx) constructs */
 extern LIST_ENTRY PopFxDeviceList;

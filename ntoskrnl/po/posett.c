@@ -18,6 +18,15 @@ ULONG PopPowerSettingCallbacksCount;
 PKTHREAD PopPowerSettingOwnerLockThread;
 FAST_MUTEX PopPowerSettingLock;
 
+/* Connected standby state settings the graphics kernel listens to */
+const GUID PopIdleResiliencySettingGuid =
+    {0x307bcc77, 0xe09b, 0x43ce, {0x8d, 0x97, 0x46, 0x75, 0x6f, 0xfb, 0x04, 0xa7}};
+const GUID PopLowPowerPhaseSettingGuid =
+    {0xe1233993, 0xeaa4, 0x470f, {0x9d, 0xe7, 0xa3, 0x51, 0xc1, 0xb6, 0xfb, 0x71}};
+
+/* The scheme used when none was ever made active */
+static const UNICODE_STRING PopBalancedSchemeName = RTL_CONSTANT_STRING(L"381b4222-f694-41f0-9685-ff5bb260df2e");
+
 /* POWER SETTINGS DATABASE ****************************************************/
 
 POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[POP_MAX_POWER_SETTINGS] =
@@ -131,6 +140,8 @@ POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[POP_MAX_POWER_SETTINGS] =
     {&GUID_PCIEXPRESS_SETTINGS_SUBGROUP, NULL},
     {&GUID_PCIEXPRESS_ASPM_POLICY, NULL},
     {&GUID_ENABLE_SWITCH_FORCED_SHUTDOWN, NULL},
+    {&PopIdleResiliencySettingGuid, PopStandbyStateSettingWorker},
+    {&PopLowPowerPhaseSettingGuid, PopStandbyStateSettingWorker},
 };
 
 /* PRIVATE FUNCTIONS **********************************************************/
@@ -393,6 +404,259 @@ PopBatteryRemainingSettingWorker(
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
+/* Reads a DWORD setting index from an open key */
+static
+NTSTATUS
+PopReadSettingIndex(
+    _In_ HANDLE RootKey,
+    _In_ PCWSTR Path,
+    _In_ PCWSTR IndexName,
+    _Out_ PULONG Value)
+{
+    UCHAR Buffer[FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) + sizeof(ULONG)];
+    PKEY_VALUE_PARTIAL_INFORMATION Info = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
+    OBJECT_ATTRIBUTES Attributes;
+    UNICODE_STRING Name;
+    HANDLE Key;
+    ULONG Length;
+    NTSTATUS Status;
+
+    RtlInitUnicodeString(&Name, Path);
+    InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, RootKey, NULL);
+    Status = ZwOpenKey(&Key, KEY_QUERY_VALUE, &Attributes);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RtlInitUnicodeString(&Name, IndexName);
+    Status = ZwQueryValueKey(Key, &Name, KeyValuePartialInformation, Info, sizeof(Buffer), &Length);
+    ZwClose(Key);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    if (Info->Type != REG_DWORD || Info->DataLength != sizeof(ULONG))
+        return STATUS_OBJECT_TYPE_MISMATCH;
+
+    *Value = *(PULONG)Info->Data;
+    return STATUS_SUCCESS;
+}
+
+/* Finds the subgroup a setting is filed under, every setting has exactly one */
+static
+NTSTATUS
+PopFindSettingSubgroup(
+    _In_ HANDLE SettingsKey,
+    _In_ PCWSTR Setting,
+    _Out_writes_(SubgroupCount) PWCHAR Subgroup,
+    _In_ ULONG SubgroupCount)
+{
+    UCHAR Buffer[FIELD_OFFSET(KEY_BASIC_INFORMATION, Name) + 64 * sizeof(WCHAR)];
+    PKEY_BASIC_INFORMATION Info = (PKEY_BASIC_INFORMATION)Buffer;
+    OBJECT_ATTRIBUTES Attributes;
+    UNICODE_STRING Name;
+    WCHAR Path[96];
+    HANDLE Key;
+    ULONG Index, Length;
+    NTSTATUS Status;
+
+    for (Index = 0; ; Index++)
+    {
+        Status = ZwEnumerateKey(SettingsKey, Index, KeyBasicInformation, Info, sizeof(Buffer) - sizeof(WCHAR), &Length);
+        if (Status == STATUS_NO_MORE_ENTRIES)
+            return STATUS_OBJECT_NAME_NOT_FOUND;
+        if (Status == STATUS_BUFFER_OVERFLOW)
+            continue;
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        Info->Name[Info->NameLength / sizeof(WCHAR)] = UNICODE_NULL;
+        RtlStringCbPrintfW(Path, sizeof(Path), L"%s\\%s", Info->Name, Setting);
+
+        RtlInitUnicodeString(&Name, Path);
+        InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, SettingsKey, NULL);
+        if (NT_SUCCESS(ZwOpenKey(&Key, KEY_QUERY_VALUE, &Attributes)))
+        {
+            ZwClose(Key);
+            return RtlStringCchCopyW(Subgroup, SubgroupCount, Info->Name);
+        }
+    }
+}
+
+/**
+ * @brief
+ * Reads a setting's value for the current power source from the active
+ * power scheme, the user's own value first and the scheme default after it.
+ */
+static
+NTSTATUS
+PopQuerySchemeSettingValue(
+    _In_ LPCGUID SettingGuid,
+    _Out_ PULONG Value)
+{
+    UNICODE_STRING PowerName = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control\\Power");
+    UCHAR SchemeBuffer[FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) + 40 * sizeof(WCHAR)];
+    PKEY_VALUE_PARTIAL_INFORMATION SchemeInfo = (PKEY_VALUE_PARTIAL_INFORMATION)SchemeBuffer;
+    OBJECT_ATTRIBUTES Attributes;
+    UNICODE_STRING Name, GuidString;
+    HANDLE PowerKey, SchemesKey = NULL, SettingsKey = NULL;
+    WCHAR Scheme[40], Setting[40], Subgroup[40], Path[160];
+    PCWSTR IndexName;
+    ULONG Length;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    /* The value pair for the power source the system runs from */
+    IndexName = (PopDefaultPowerPolicy == &PopAcPowerPolicy) ? L"ACSettingIndex" : L"DCSettingIndex";
+
+    /* Registry keys carry the GUID without its braces */
+    Status = RtlStringFromGUID(SettingGuid, &GuidString);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    RtlStringCchCopyNW(Setting, RTL_NUMBER_OF(Setting), GuidString.Buffer + 1, 36);
+    RtlFreeUnicodeString(&GuidString);
+
+    InitializeObjectAttributes(&Attributes, &PowerName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    Status = ZwOpenKey(&PowerKey, KEY_READ, &Attributes);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RtlCopyMemory(Scheme, PopBalancedSchemeName.Buffer, PopBalancedSchemeName.Length);
+    Scheme[PopBalancedSchemeName.Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    RtlInitUnicodeString(&Name, L"User\\PowerSchemes");
+    InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, PowerKey, NULL);
+    if (NT_SUCCESS(ZwOpenKey(&SchemesKey, KEY_READ, &Attributes)))
+    {
+        RtlInitUnicodeString(&Name, L"ActivePowerScheme");
+        if (NT_SUCCESS(ZwQueryValueKey(SchemesKey, &Name, KeyValuePartialInformation,
+                                       SchemeInfo, sizeof(SchemeBuffer) - sizeof(WCHAR), &Length)) &&
+            SchemeInfo->Type == REG_SZ && SchemeInfo->DataLength >= 36 * sizeof(WCHAR))
+        {
+            RtlStringCchCopyNW(Scheme, RTL_NUMBER_OF(Scheme), (PCWSTR)SchemeInfo->Data, 36);
+        }
+    }
+
+    RtlInitUnicodeString(&Name, L"PowerSettings");
+    InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, PowerKey, NULL);
+    Status = ZwOpenKey(&SettingsKey, KEY_READ, &Attributes);
+    if (NT_SUCCESS(Status))
+        Status = PopFindSettingSubgroup(SettingsKey, Setting, Subgroup, RTL_NUMBER_OF(Subgroup));
+
+    if (NT_SUCCESS(Status))
+    {
+        /* A value the user picked for this scheme wins over the scheme default */
+        Status = STATUS_OBJECT_NAME_NOT_FOUND;
+        if (SchemesKey)
+        {
+            RtlStringCbPrintfW(Path, sizeof(Path), L"%s\\%s\\%s", Scheme, Subgroup, Setting);
+            Status = PopReadSettingIndex(SchemesKey, Path, IndexName, Value);
+        }
+
+        if (!NT_SUCCESS(Status))
+        {
+            RtlStringCbPrintfW(Path, sizeof(Path), L"%s\\%s\\DefaultPowerSchemeValues\\%s", Subgroup, Setting, Scheme);
+            Status = PopReadSettingIndex(SettingsKey, Path, IndexName, Value);
+        }
+    }
+
+    if (SettingsKey)
+        ZwClose(SettingsKey);
+    if (SchemesKey)
+        ZwClose(SchemesKey);
+    ZwClose(PowerKey);
+    return Status;
+}
+
+/**
+ * @brief
+ * Worker for settings that only live in the power scheme. A setting the
+ * scheme does not know gets no callback, as there is no value to give.
+ */
+_Function_class_(KSTART_ROUTINE)
+VOID
+NTAPI
+PopSchemeSettingWorker(
+    _In_ PVOID StartContext)
+{
+    PPOP_POWER_SETTING_CALLBACK SettingCallback = (PPOP_POWER_SETTING_CALLBACK)StartContext;
+    ULONG Value;
+
+    PAGED_CODE();
+
+    ASSERT(SettingCallback != NULL);
+
+    if (NT_SUCCESS(PopQuerySchemeSettingValue(&SettingCallback->SettingGuid, &Value)))
+    {
+        PopExecutePowerSettingCallback(SettingCallback, &Value, sizeof(Value));
+    }
+    else
+    {
+        DPRINT("Power setting %p has no scheme value\n", SettingCallback);
+        PopPowerSettingClearAttribute(SettingCallback, POP_PSC_GETTING_NOTIFIED);
+        PopAlertCallbackReturned(SettingCallback);
+    }
+
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+/**
+ * @brief
+ * Worker for the connected standby state settings, 1 while the system is in
+ * connected standby and 0 while it is not.
+ */
+_Function_class_(KSTART_ROUTINE)
+VOID
+NTAPI
+PopStandbyStateSettingWorker(
+    _In_ PVOID StartContext)
+{
+    PPOP_POWER_SETTING_CALLBACK SettingCallback = (PPOP_POWER_SETTING_CALLBACK)StartContext;
+    ULONG InStandby;
+
+    PAGED_CODE();
+
+    ASSERT(SettingCallback != NULL);
+
+    InStandby = PopAoAcInStandby ? 1 : 0;
+    PopExecutePowerSettingCallback(SettingCallback, &InStandby, sizeof(InStandby));
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+/* A power source change moves every scheme setting to its other value */
+static
+VOID
+PopNotifySchemeSettings(VOID)
+{
+    PPOP_POWER_SETTING_CALLBACK SettingCallback, Earlier;
+    PLIST_ENTRY Entry, Scan;
+    BOOLEAN Seen;
+
+    PAGED_CODE();
+
+    PopAcquirePowerSettingLock();
+    for (Entry = PopPowerSettingCallbacksList.Flink; Entry != &PopPowerSettingCallbacksList; Entry = Entry->Flink)
+    {
+        SettingCallback = CONTAINING_RECORD(Entry, POP_POWER_SETTING_CALLBACK, Link);
+        if (PopGetPowerSettingHelper(&SettingCallback->SettingGuid))
+            continue;
+
+        /* One notification per setting reaches all of its callbacks */
+        Seen = FALSE;
+        for (Scan = PopPowerSettingCallbacksList.Flink; Scan != Entry; Scan = Scan->Flink)
+        {
+            Earlier = CONTAINING_RECORD(Scan, POP_POWER_SETTING_CALLBACK, Link);
+            if (IsEqualGUID(&Earlier->SettingGuid, &SettingCallback->SettingGuid))
+            {
+                Seen = TRUE;
+                break;
+            }
+        }
+
+        if (!Seen)
+            PopNotifyPowerSettingChange(&SettingCallback->SettingGuid);
+    }
+    PopReleasePowerSettingLock();
+}
+
 /**
  * @brief
  * Main core worker thread of the power settings mechanism that deploys
@@ -467,17 +731,9 @@ PopDeployPowerSettingWorkers(
              */
             PowerSettingWorker = PopGetPowerSettingHelper(&SettingGuid);
 
-            /*
-             * FIXME: If a specific power setting doesn't come with a dedicated
-             * setting worker then use the default worker which takes care of
-             * unimplemented power settings. This is a placebo solution and
-             * it must be treated as such. As every power setting is implemented
-             * this workaround must be removed!
-             */
+            /* Settings with no live state of their own take their value from the power scheme */
             if (PowerSettingWorker == NULL)
-            {
-                PowerSettingWorker = PopUnimplementedPowerSettingWorker;
-            }
+                PowerSettingWorker = PopSchemeSettingWorker;
 
             /*
              * Now service this power setting callback with a power manager
@@ -507,71 +763,12 @@ PopDeployPowerSettingWorkers(
 
     /* We're done deploying power setting workers */
     PopReleasePowerSettingLock();
+
+    if (IsEqualGUID(&SettingGuid, &GUID_ACDC_POWER_SOURCE))
+        PopNotifySchemeSettings();
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/
-
-/**
- * @brief
- * The dummy worker thread used to invoke power setting callbacks for unimplemented
- * power settings. This is a placebo solution.
- *
- * @param[in] StartContext
- * A pointer to a start argument context, usually pointing to a setting callback
- * to be notified.
- */
-_Function_class_(KSTART_ROUTINE)
-VOID
-NTAPI
-PopUnimplementedPowerSettingWorker(
-    _In_ PVOID StartContext)
-{
-    NTSTATUS Status;
-    UNICODE_STRING GuidString;
-    ULONG DummyValue = 0;
-    PPOP_POWER_SETTING_CALLBACK SettingCallback = (PPOP_POWER_SETTING_CALLBACK)StartContext;
-
-    PAGED_CODE();
-
-    ASSERT(SettingCallback != NULL);
-
-    /* Display the power setting GUID for debugging purposes */
-    Status = RtlStringFromGUID(&SettingCallback->SettingGuid, &GuidString);
-    ASSERT(NT_SUCCESS(Status));
-    DPRINT1("WARNING: Dummy worker called for power setting GUID, expect driver issues! (Guid: %wZ)\n", &GuidString);
-    RtlFreeUnicodeString(&GuidString);
-
-    /*
-     * No callback must be executing at the time of calling this worker
-     * to handle this power setting.
-     */
-    POP_ASSERT_NO_RUNNING_CALLBACK(SettingCallback);
-
-    /*
-     * This power setting is notified, acknowledge the Power Manager
-     * that this power setting is entering into the driver's callback
-     * to deliver the state change of the power setting.
-     */
-    PopPowerSettingClearAttribute(SettingCallback, POP_PSC_GETTING_NOTIFIED);
-    PopPowerSettingApplyAttribute(SettingCallback, POP_PSC_ENTERING_CALLBACK);
-
-    /* Execute the driver's supplied callback */
-    Status = SettingCallback->Callback(&SettingCallback->SettingGuid,
-                                       &DummyValue,
-                                       sizeof(ULONG),
-                                       SettingCallback->Context);
-
-    /* Log to the debugger what happened with the callback */
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("The driver's callback of power setting 0x%p has failed (Status 0x%lx)\n", SettingCallback, Status);
-    }
-
-    /* Operation done, alert the Power Manager this power setting has finished its job */
-    PopPowerSettingClearAttribute(SettingCallback, POP_PSC_ENTERING_CALLBACK);
-    PopAlertCallbackReturned(SettingCallback);
-    PsTerminateSystemThread(STATUS_SUCCESS);
-}
 
 /**
  * @brief

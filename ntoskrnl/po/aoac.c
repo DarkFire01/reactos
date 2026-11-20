@@ -340,6 +340,8 @@ PopAoAcNotifyDisplayState(VOID)
     PopNotifyPowerSettingChange(&GUID_CONSOLE_DISPLAY_STATE);
     PopNotifyPowerSettingChange(&GUID_SESSION_DISPLAY_STATE);
     PopNotifyPowerSettingChange(&GUID_MONITOR_POWER_ON);
+    PopNotifyPowerSettingChange(&PopIdleResiliencySettingGuid);
+    PopNotifyPowerSettingChange(&PopLowPowerPhaseSettingGuid);
 }
 
 /* The display events call into win32k, so they go out with the lock dropped */
