@@ -425,7 +425,7 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality)
 /*
  * The 19041 DXGKWIN32K_INTERFACE: Size and Version, the image dxgkrnl looks win32k routines up in,
  * Context/InterfaceReference/InterfaceDereference and 96 slots dxgkrnl fills, 808 bytes. dxgkrnl
- * takes no other size or version. It has no NeedToEnableCddPrimary.
+ * takes no other size or version. 19041.3758 fills the same display slots as Windows 11 up to 58.
  */
 typedef struct _DXGKWIN32K_INTERFACE_BUF
 {
@@ -448,7 +448,9 @@ typedef struct _DXGKWIN32K_INTERFACE_BUF
     PFN_DxgkPersistPathsModality pfnDxgkPersistPathsModality; /* 22 */
     PFN_DxgkFreePathsModality pfnDxgkFreePathsModality; /* 23 */
     PFN_DxgkAugmentCdsj pfnDxgkAugmentCdsj;             /* 24 */
-    PVOID Reserved25[33];                               /* 25..57 */
+    PVOID Reserved25[20];                               /* 25..44 */
+    PFN_DxgkSessionConnected pfnDxgkSessionConnected;   /* 45 */
+    PVOID Reserved46[12];                               /* 46..57 */
     PFN_DxgkRegisterDwmProcess pfnDxgkRegisterDwmProcess; /* 58 */
     PVOID Reserved59[17];                               /* 59..75 */
     PFN_DxgkApplyCdsjToPathsModality pfnDxgkApplyCdsjToPathsModality; /* 76 */
@@ -461,6 +463,7 @@ C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkOpenAdapter) == 8 * sizeo
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkReleaseProcessVidPnSourceOwners) == 15 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkGetPathsModality) == 18 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkAugmentCdsj) == 24 * sizeof(PVOID));
+C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkSessionConnected) == 45 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkRegisterDwmProcess) == 58 * sizeof(PVOID));
 C_ASSERT(FIELD_OFFSET(DXGKWIN32K_INTERFACE_BUF, pfnDxgkApplyCdsjToPathsModality) == 76 * sizeof(PVOID));
 
@@ -521,7 +524,7 @@ BOOLEAN                  gbDxgkInitialized = FALSE;
 
 /* dxgkrnl creates its session data when the session opens, and the DWM needs it to register */
 static BOOLEAN           gbDlSessionOpened = FALSE;
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DXGKRNL_TARGET >= DXGKRNL_TARGET_19041
 static BOOLEAN           gbDlSessionConnected = FALSE;
 #endif
 static BOOLEAN           gbDlSessionOpenDeferred = FALSE;
@@ -2147,7 +2150,7 @@ DlNotifySessionOpen(VOID)
 static VOID
 DlpConnectConsoleSession(VOID)
 {
-#if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
+#if DXGKRNL_TARGET >= DXGKRNL_TARGET_19041
     if (gbDlSessionConnected || !gbDlSessionOpened || (gDxgkInterface.pfnDxgkSessionConnected == NULL))
         return;
 
