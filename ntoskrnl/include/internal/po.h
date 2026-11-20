@@ -1712,6 +1712,17 @@ typedef struct _POP_POWER_SETTING_NOTIFY_BLOCK
 } POP_POWER_SETTING_NOTIFY_BLOCK, *PPOP_POWER_SETTING_NOTIFY_BLOCK;
 
 //
+// A setting's values as the power service set them, one per power condition
+//
+typedef struct _POP_SETTING_VALUE_SLOT
+{
+    LIST_ENTRY Link;
+    GUID SettingGuid;
+    ULONG DataLength[PoConditionMaximum];
+    PUCHAR Data[PoConditionMaximum];
+} POP_SETTING_VALUE_SLOT, *PPOP_SETTING_VALUE_SLOT;
+
+//
 // Power settings database
 //
 typedef struct _POP_POWER_SETTING_DATABASE
@@ -2276,6 +2287,14 @@ NTAPI
 PopNotifyPowerSettingChange(
     _In_ LPCGUID SettingGuid);
 
+NTSTATUS
+NTAPI
+PopSetPowerSettingValue(
+    _In_ LPCGUID SettingGuid,
+    _In_ SYSTEM_POWER_CONDITION Condition,
+    _In_ ULONG DataLength,
+    _In_reads_bytes_(DataLength) PVOID Data);
+
 PKSTART_ROUTINE
 NTAPI
 PopGetPowerSettingHelper(
@@ -2396,6 +2415,8 @@ extern LIST_ENTRY PopPowerSettingCallbacksList;
 extern ULONG PopPowerSettingCallbacksCount;
 extern PKTHREAD PopPowerSettingOwnerLockThread;
 extern POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[];
+extern LIST_ENTRY PopSettingValueList;
+extern FAST_MUTEX PopSettingValueLock;
 extern const GUID PopIdleResiliencySettingGuid;
 extern const GUID PopLowPowerPhaseSettingGuid;
 

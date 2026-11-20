@@ -141,6 +141,10 @@ PopInitPowerSettingCallbacks(VOID)
     ExInitializeFastMutex(&PopPowerSettingLock);
     PopPowerSettingOwnerLockThread = NULL;
 
+    /* The power service fills these with the active scheme's values */
+    InitializeListHead(&PopSettingValueList);
+    ExInitializeFastMutex(&PopSettingValueLock);
+
     /*
      * Setup the power setting callbacks counter. The Power Manager will
      * increment this counter as device drivers register new callbacks.
