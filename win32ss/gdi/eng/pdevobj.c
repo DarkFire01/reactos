@@ -955,6 +955,14 @@ PDEVOBJ_Create(
     if (!PDEVOBJ_bEnablePDEV(ppdev, pdm, NULL))
     {
         DPRINT1("win32k: DrvEnablePDEV failed\n");
+
+        /* cdd fails when dxgkrnl's adapter is not active (1), its state word sits at +0xC8 */
+        if (ppdev->pGraphicsDevice && ppdev->pGraphicsDevice->DxgAdapter &&
+            MmIsAddressValid((PUCHAR)ppdev->pGraphicsDevice->DxgAdapter + 0xC8))
+        {
+            DPRINT1("win32k: dxgkrnl adapter %p state %lu\n", ppdev->pGraphicsDevice->DxgAdapter,
+                    *(volatile ULONG *)((PUCHAR)ppdev->pGraphicsDevice->DxgAdapter + 0xC8));
+        }
         PDEVOBJ_vRelease(ppdev);
         return NULL;
     }
