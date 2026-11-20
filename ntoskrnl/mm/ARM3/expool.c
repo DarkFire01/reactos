@@ -2491,9 +2491,9 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
                          OriginalType);
 
     //
-    // And return the pool allocation
+    // And return the pool allocation. The page was checked above, once its free
+    // fragment is listed another processor may be splitting it without our lock
     //
-    ExpCheckPoolBlocks(Entry);
     Entry->PoolTag = Tag;
     return POOL_FREE_BLOCK(Entry);
 }
