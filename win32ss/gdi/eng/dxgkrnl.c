@@ -525,6 +525,8 @@ static BOOLEAN           gbDlSessionOpened = FALSE;
 static BOOLEAN           gbDlSessionConnected = FALSE;
 #endif
 static BOOLEAN           gbDlSessionOpenDeferred = FALSE;
+static BOOLEAN           gbDlGdiCalloutRegistered = FALSE;
+static BOOLEAN           gbDlLateAdapterWatch = FALSE;
 
 VOID NTAPI DlNotifySessionOpen(VOID);
 
@@ -1987,6 +1989,62 @@ Cleanup:
     return lRet;
 }
 
+#define DL_LATE_ADAPTER_LIMIT_MS    120000
+
+/**
+ * @brief Opens the session once a WDDM display adapter shows up after CSRSS started.
+ *
+ * @remarks Runs in CSRSS. Its arrival callout then moves the desktop onto the adapter.
+ */
+static VOID
+NTAPI
+DlpLateAdapterThread(
+    _In_ PVOID Context)
+{
+    LARGE_INTEGER Interval;
+    ULONG Waited;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    Interval.QuadPart = -(LONGLONG)DL_ADAPTER_WAIT_STEP_MS * 10000;
+    for (Waited = 0; Waited < DL_LATE_ADAPTER_LIMIT_MS; Waited += DL_ADAPTER_WAIT_STEP_MS)
+    {
+        if (DlpHasWddmDisplayAdapter())
+        {
+            DPRINT1("win32k: WDDM display adapter arrived %lu ms after the desktop\n", Waited);
+            UserEnterExclusive();
+            DlNotifySessionOpen();
+            UserLeave();
+            break;
+        }
+        KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+    }
+
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+/* A miniport can still load after the desktop is up, the ACPI driver may hold its device back */
+static VOID
+DlpWatchForLateAdapter(VOID)
+{
+    HANDLE hThread;
+    NTSTATUS Status;
+
+    if (gbDlLateAdapterWatch)
+        return;
+
+    Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NtCurrentProcess(), NULL,
+                                  DlpLateAdapterThread, NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("win32k: no thread to watch for a late display adapter 0x%lX\n", Status);
+        return;
+    }
+
+    gbDlLateAdapterWatch = TRUE;
+    ZwClose(hThread);
+}
+
 /**
  * @brief Report the console session to watchdog, which is what lets dxgkrnl start its adapters.
  *        Must run in CSRSS.
@@ -2002,9 +2060,13 @@ DlNotifySessionOpen(VOID)
 
 #if !DL_SMGR_SESSION_CALLOUT
     /* Adapter arrival, removal and TDR reach win32k through this, whoever raises them */
-    Status = SMgrRegisterGdiCallout((PVOID)VideoPortCallout);
-    if (!NT_SUCCESS(Status))
-        DPRINT1("win32k: SMgrRegisterGdiCallout failed 0x%lX\n", Status);
+    if (!gbDlGdiCalloutRegistered)
+    {
+        Status = SMgrRegisterGdiCallout((PVOID)VideoPortCallout);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("win32k: SMgrRegisterGdiCallout failed 0x%lX\n", Status);
+        gbDlGdiCalloutRegistered = TRUE;
+    }
 #endif
 
     /*
@@ -2035,6 +2097,7 @@ DlNotifySessionOpen(VOID)
     {
         /* dxgkrnl would hold the session for a display adapter that never comes, GDI stays on XDDM */
         DPRINT1("win32k: no WDDM display adapter, the desktop stays on the XDDM drivers\n");
+        DlpWatchForLateAdapter();
         return;
     }
 
