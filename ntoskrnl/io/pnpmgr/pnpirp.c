@@ -628,6 +628,8 @@ PnpWatchDumpDisplayThreads(VOID)
     PEPROCESS Process;
     PETHREAD Thread;
 
+    /* First, the GPU dump after it can stall on a powered down block */
+    PnpWatchDumpWatchdogLog();
     PnpWatchDumpQcdxLog();
     DbgPrint("PNPWATCH: threads in the display drivers at %I64d s\n", KeQueryInterruptTime() / 10000000);
     for (Process = PsGetNextProcess(NULL); Process; Process = PsGetNextProcess(Process))
@@ -728,7 +730,6 @@ PnpWatchDumpStalledGuiThreads(VOID)
 #define PNP_WATCH_GPU_TRACE_TIME    (300LL * 10000000)
 #define PNP_WATCH_GPU_TRACE_LINES   800
 #define PNP_WATCH_GPU_TRACE_WAIT    (-50LL * 10000)
-#define PNP_WATCH_GPU_WD_DUMP_US   (30LL * 1000000)
 
 /* RPMh CPR floor window (GPU_RPMH_CPRF), qcdx sets bit 2 here when it wakes the RSC */
 #define PNP_WATCH_GPU_CPRF_BASE     0x0C200000
@@ -832,7 +833,7 @@ PnpWatchGpuTraceThread(
     PHYSICAL_ADDRESS Physical;
     LARGE_INTEGER Wait, Start, Now, Frequency;
     ULONG Lines = 0, Loops = 0, Index, Value, Block;
-    BOOLEAN GmuOn, WasGmuOn = FALSE, WdDumped = FALSE;
+    BOOLEAN GmuOn, WasGmuOn = FALSE;
     LONGLONG Micro;
 
     UNREFERENCED_PARAMETER(Context);
@@ -862,13 +863,6 @@ PnpWatchGpuTraceThread(
         Micro = (Now.QuadPart - Start.QuadPart) * 1000000 / Frequency.QuadPart;
         if (Micro * 10 >= PNP_WATCH_GPU_TRACE_TIME || Lines >= PNP_WATCH_GPU_TRACE_LINES)
             break;
-
-        /* By then the desktop is presenting, or failing to, through cdd */
-        if (!WdDumped && Micro >= PNP_WATCH_GPU_WD_DUMP_US)
-        {
-            PnpWatchDumpWatchdogLog();
-            WdDumped = TRUE;
-        }
 
         GmuOn = FALSE;
         for (Index = 0; Index < RTL_NUMBER_OF(PnpWatchGpuTraceRegs); Index++)
