@@ -281,10 +281,36 @@ WlanQueryInterface(IN HANDLE hClientHandle,
                    OUT PVOID *ppData,
                    WLAN_OPCODE_VALUE_TYPE *pWlanOpcodeValueType)
 {
+    DWORD dwResult = ERROR_SUCCESS;
+    DWORD dwSize = 0;
+    LPBYTE pData = NULL;
+    DWORD dwValueType = wlan_opcode_value_type_invalid;
+
     if ((pReserved != NULL) || (pInterfaceGuid == NULL) || (hClientHandle == NULL) || (pdwDataSize == NULL) || (ppData == NULL))
         return ERROR_INVALID_PARAMETER;
 
-    UNIMPLEMENTED;
+    RpcTryExcept
+    {
+        dwResult = _RpcQueryInterface(hClientHandle, pInterfaceGuid, (LONG)OpCode, &dwSize, &pData, &dwValueType);
+    }
+    RpcExcept(EXCEPTION_EXECUTE_HANDLER)
+    {
+        dwResult = WlanRpcStatusToWinError(RpcExceptionCode());
+    }
+    RpcEndExcept;
+
+    if (dwResult != ERROR_SUCCESS)
+    {
+        if (pData != NULL)
+            WlanFreeMemory(pData);
+        return dwResult;
+    }
+
+    *pdwDataSize = dwSize;
+    *ppData = pData;
+    if (pWlanOpcodeValueType != NULL)
+        *pWlanOpcodeValueType = (WLAN_OPCODE_VALUE_TYPE)dwValueType;
+
     return ERROR_SUCCESS;
 }
 
