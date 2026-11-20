@@ -7,10 +7,32 @@
 
 #include "qcril.h"
 #include <string.h>
+#include <winioctl.h>
+#include <telephony/rmnetioctl.h>
 
 #define QCRIL_WDS_START_NETWORK         0x0020
 #define QCRIL_WDS_STOP_NETWORK          0x0021
 #define QCRIL_WDS_GET_PKT_STATUS        0x0022
+#define QCRIL_WDS_GET_RUNTIME_SETTINGS  0x002D
+#define QCRIL_WDS_SET_IP_FAMILY         0x004D
+#define QCRIL_WDS_BIND_MUX_DATA_PORT    0x00A2
+
+/* BIND_MUX_DATA_PORT records: the IPA endpoint and the mux the adapter registered as */
+#define QCRIL_WDS_TLV_ENDPOINT          0x10
+#define QCRIL_WDS_TLV_MUX_ID            0x11
+
+/* GET_RUNTIME_SETTINGS: what to ask for, and the IPv4 records of the answer */
+#define QCRIL_WDS_TLV_REQUESTED         0x10
+#define QCRIL_WDS_TLV_DNS1              0x15
+#define QCRIL_WDS_TLV_DNS2              0x16
+#define QCRIL_WDS_TLV_ADDRESS           0x1E
+#define QCRIL_WDS_TLV_GATEWAY           0x20
+#define QCRIL_WDS_TLV_SUBNET            0x21
+#define QCRIL_WDS_TLV_MTU               0x29
+#define QCRIL_WDS_WANT_DNS              (1 << 4)
+#define QCRIL_WDS_WANT_ADDRESS          (1 << 8)
+#define QCRIL_WDS_WANT_GATEWAY          (1 << 9)
+#define QCRIL_WDS_WANT_MTU              (1 << 13)
 
 /* START request records */
 #define QCRIL_WDS_TLV_APN               0x14
@@ -30,6 +52,161 @@
 
 /* A single packet data session, serialised through the command worker */
 static DWORD gWdsHandle;
+
+#include <pshpack1.h>
+typedef struct _QCRIL_WDS_ENDPOINT
+{
+    ULONG Type;
+    ULONG InterfaceId;
+} QCRIL_WDS_ENDPOINT;
+#include <poppack.h>
+
+/* Talks to the cellular data adapter, which carries the session's packets through IPA */
+static
+BOOL
+QcRmNetIoctl(
+    _In_ DWORD Code,
+    _In_reads_bytes_opt_(InSize) PVOID In,
+    _In_ DWORD InSize,
+    _Out_writes_bytes_opt_(OutSize) PVOID Out,
+    _In_ DWORD OutSize)
+{
+    HANDLE Device;
+    DWORD Returned;
+    BOOL Ok;
+
+    Device = CreateFileW(RMNET_CONTROL_DEVICE, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (Device == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    Ok = DeviceIoControl(Device, Code, In, InSize, Out, OutSize, &Returned, NULL);
+    CloseHandle(Device);
+    return Ok;
+}
+
+static
+ULONG
+QcNetworkOrder(
+    _In_ ULONG Value)
+{
+    return ((Value & 0xFF) << 24) | ((Value & 0xFF00) << 8) | ((Value >> 8) & 0xFF00) | (Value >> 24);
+}
+
+/* The session must be bound to the adapter's mux before it starts, or its packets go nowhere */
+static
+VOID
+QcWdsBindDataPath(
+    _In_ PQC_MODEM Modem,
+    _In_ const RMNET_QUERY *Adapter)
+{
+    QCRIL_WDS_ENDPOINT Endpoint;
+    QMI_ENCODER Encoder;
+    BYTE Message[64];
+    ULONG Length;
+    UCHAR Family = QCRIL_WDS_IP_V4;
+    UCHAR Mux = (UCHAR)Adapter->MuxId;
+    HRESULT hr;
+
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_SET_IP_FAMILY);
+    QmiEncodeTlv(&Encoder, 0x01, &Family, sizeof(Family));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcQmiCommand(Modem, QcSvcWds, Message, Length);
+    if (FAILED(hr))
+        QcTrace("data: IPv4 family preference 0x%08lx\n", hr);
+
+    Endpoint.Type = Adapter->EndpointType;
+    Endpoint.InterfaceId = Adapter->InterfaceId;
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_BIND_MUX_DATA_PORT);
+    QmiEncodeTlv(&Encoder, QCRIL_WDS_TLV_ENDPOINT, &Endpoint, sizeof(Endpoint));
+    QmiEncodeTlv(&Encoder, QCRIL_WDS_TLV_MUX_ID, &Mux, sizeof(Mux));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcQmiCommand(Modem, QcSvcWds, Message, Length);
+    QcTrace("data: bind to endpoint %lu interface %lu mux %u: 0x%08lx\n",
+            Endpoint.Type, Endpoint.InterfaceId, Mux, hr);
+}
+
+static
+ULONG
+QcWdsAddress(
+    _In_reads_bytes_(ResponseLen) const VOID *Response,
+    _In_ ULONG ResponseLen,
+    _In_ UCHAR Type)
+{
+    const VOID *Value;
+    USHORT ValueLen;
+    ULONG Address;
+
+    if (!QmiFindTlv(Response, ResponseLen, Type, &Value, &ValueLen) || ValueLen < sizeof(ULONG))
+        return 0;
+
+    memcpy(&Address, Value, sizeof(Address));
+    return QcNetworkOrder(Address);
+}
+
+/* Hands the address the network gave the session to the adapter, which serves it to tcpip */
+static
+HRESULT
+QcWdsLinkUp(
+    _In_ PQC_MODEM Modem)
+{
+    QMI_ENCODER Encoder;
+    BYTE Message[32];
+    BYTE Response[512];
+    ULONG Length, ResponseLen, Wanted;
+    const VOID *Value;
+    USHORT ValueLen;
+    RMNET_LINK Link;
+    HRESULT hr;
+
+    Wanted = QCRIL_WDS_WANT_DNS | QCRIL_WDS_WANT_ADDRESS | QCRIL_WDS_WANT_GATEWAY | QCRIL_WDS_WANT_MTU;
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_GET_RUNTIME_SETTINGS);
+    QmiEncodeTlv(&Encoder, QCRIL_WDS_TLV_REQUESTED, &Wanted, sizeof(Wanted));
+    Length = QmiEncodeEnd(&Encoder);
+
+    hr = QcQmiRequest(Modem, QcSvcWds, Message, Length, Response, sizeof(Response), &ResponseLen);
+    if (FAILED(hr))
+    {
+        QcTrace("data: runtime settings 0x%08lx\n", hr);
+        return hr;
+    }
+
+    ZeroMemory(&Link, sizeof(Link));
+    Link.Version = RMNET_INTERFACE_VERSION;
+    Link.Up = TRUE;
+    Link.Address = QcWdsAddress(Response, ResponseLen, QCRIL_WDS_TLV_ADDRESS);
+    Link.SubnetMask = QcWdsAddress(Response, ResponseLen, QCRIL_WDS_TLV_SUBNET);
+    Link.Gateway = QcWdsAddress(Response, ResponseLen, QCRIL_WDS_TLV_GATEWAY);
+    Link.PrimaryDns = QcWdsAddress(Response, ResponseLen, QCRIL_WDS_TLV_DNS1);
+    Link.SecondaryDns = QcWdsAddress(Response, ResponseLen, QCRIL_WDS_TLV_DNS2);
+    if (QmiFindTlv(Response, ResponseLen, QCRIL_WDS_TLV_MTU, &Value, &ValueLen) && ValueLen >= sizeof(ULONG))
+        memcpy(&Link.Mtu, Value, sizeof(Link.Mtu));
+
+    QcTrace("data: address %08lx mask %08lx gateway %08lx dns %08lx %08lx mtu %lu\n",
+            QcNetworkOrder(Link.Address), QcNetworkOrder(Link.SubnetMask), QcNetworkOrder(Link.Gateway),
+            QcNetworkOrder(Link.PrimaryDns), QcNetworkOrder(Link.SecondaryDns), Link.Mtu);
+
+    if (!Link.Address)
+        return E_FAIL;
+
+    if (!QcRmNetIoctl(IOCTL_RMNET_SET_LINK, &Link, sizeof(Link), NULL, 0))
+    {
+        QcTrace("data: the data adapter refused the link (%lu)\n", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    return S_OK;
+}
+
+static
+VOID
+QcWdsLinkDown(VOID)
+{
+    RMNET_LINK Link;
+
+    ZeroMemory(&Link, sizeof(Link));
+    Link.Version = RMNET_INTERFACE_VERSION;
+    QcRmNetIoctl(IOCTL_RMNET_SET_LINK, &Link, sizeof(Link), NULL, 0);
+}
 
 static
 HRESULT
@@ -148,10 +325,30 @@ QcWdsData(
     switch (Request->Op)
     {
         case RIL_DATA_OP_CONNECT:
+        {
+            RMNET_QUERY Adapter;
+
+            /* Without the data adapter the session still comes up, it just carries nothing */
+            ZeroMemory(&Adapter, sizeof(Adapter));
+            if (QcRmNetIoctl(IOCTL_RMNET_QUERY, NULL, 0, &Adapter, sizeof(Adapter)) &&
+                Adapter.State != RMNET_STATE_NO_IPA)
+            {
+                QcWdsBindDataPath(Modem, &Adapter);
+            }
+            else
+            {
+                QcTrace("data: no cellular data adapter (%lu), the session will carry no packets\n",
+                        GetLastError());
+            }
+
             hr = QcWdsConnect(Modem, Request, &gWdsHandle);
+            if (SUCCEEDED(hr))
+                QcWdsLinkUp(Modem);
             break;
+        }
 
         case RIL_DATA_OP_DISCONNECT:
+            QcWdsLinkDown();
             hr = QcWdsDisconnect(Modem, gWdsHandle);
             gWdsHandle = 0;
             break;
