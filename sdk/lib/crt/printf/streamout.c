@@ -100,7 +100,9 @@ format_float(
     if (precision < 0) precision = 6;
     else if (precision > 17)
     {
+        /* The zeros past 17 digits have to fit the buffer with everything else */
         padding = precision - 17;
+        if (padding > BUFFER_SIZE - 17 - 8) padding = BUFFER_SIZE - 17 - 8;
         precision = 17;
     }
 
@@ -168,6 +170,9 @@ format_float(
 
         case _T('f'):
         default:
+            /* Too many integer digits for the buffer, show it as an exponent instead */
+            if (exponent + 1 + precision + 2 > BUFFER_SIZE) goto case_e;
+
             /* Shift the decimal point and round */
             fpval2 = round(sign * fpval * pow(10., precision));
             break;
