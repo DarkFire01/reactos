@@ -36,6 +36,27 @@ static volatile LONG IopPilGpuDone;
 static volatile LONG IopPilModemHeld;
 
 static
+BOOLEAN
+IopPilIsGpuDriverLoaded(VOID)
+{
+    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"qcdxkm850.sys");
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PLIST_ENTRY Entry;
+    BOOLEAN Found = FALSE;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
+    for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList && !Found; Entry = Entry->Flink)
+    {
+        LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        Found = RtlEqualUnicodeString(&LdrEntry->BaseDllName, &Name, TRUE);
+    }
+    ExReleaseResourceLite(&PsLoadedModuleResource);
+    KeLeaveCriticalRegion();
+    return Found;
+}
+
+static
 VOID
 IopPilHoldModem(
     _In_ PIRP Irp,
@@ -62,6 +83,13 @@ IopPilHoldModem(
         return;
     if (InterlockedExchange(&IopPilModemHeld, 1))
         return;
+
+    /* Without the Adreno driver no zap shader is coming, so there is nothing to wait for */
+    if (!IopPilGpuIrp && !IopPilIsGpuDriverLoaded())
+    {
+        IopPilGpuDone = TRUE;
+        return;
+    }
 
     DPRINT1("PIL: holding the modem on thread %p until the GPU zap shader is loaded\n", PsGetCurrentThread());
     Interval.QuadPart = -100 * 10000LL;
