@@ -401,7 +401,7 @@ static const INFORMATION_CLASS_INFO PoPowerInformationClass[] =
     IQS_NONE,
 
     /* PowerInformationInternal */
-    IQS_NONE,
+    IQS_SAME(POWER_ACTIVATOR_REQUEST, ULONG, ICIF_SET),
 
     /* ThermalStandby */
     IQS_NONE,
@@ -992,6 +992,35 @@ NtPowerInformation(
                 Status = _SEH2_GetExceptionCode();
             }
             _SEH2_END;
+            break;
+        }
+
+        case PowerInformationInternal:
+        {
+            PPOWER_ACTIVATOR_REQUEST Request = (PPOWER_ACTIVATOR_REQUEST)LocalBuffer;
+
+            /* Waking the device and running frozen apps is for system services only */
+            if (PreviousMode != KernelMode && !SeSinglePrivilegeCheck(SeTcbPrivilege, PreviousMode))
+            {
+                Status = STATUS_PRIVILEGE_NOT_HELD;
+                goto Quit;
+            }
+
+            if (!Request || Request->Version != POWER_ACTIVATOR_REQUEST_VERSION)
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                goto Quit;
+            }
+
+            /* Both actions wait on the standby state, the policy lock is not needed for them */
+            PopReleasePowerPolicyLock();
+            if (Request->Action == PowerActivatorWake)
+                Status = PopAoAcWake();
+            else if (Request->Action == PowerActivatorRunProcess)
+                Status = PopAoAcActivateProcess(Request->ProcessId, Request->BudgetMs);
+            else
+                Status = STATUS_INVALID_PARAMETER;
+            PopAcquirePowerPolicyLock();
             break;
         }
 

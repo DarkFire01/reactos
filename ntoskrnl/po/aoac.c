@@ -35,7 +35,14 @@ typedef struct _POP_AOAC_THROTTLED
     PEPROCESS Process;
     UCHAR PriorityClass;
     BOOLEAN Frozen;
+
+    /* An activator let the app run until this interrupt time */
+    ULONGLONG ActiveUntil;
 } POP_AOAC_THROTTLED, *PPOP_AOAC_THROTTLED;
+
+/* Bounds of the time an activator may let a frozen app run */
+#define POP_AOAC_ACTIVATE_MIN_MS    1000
+#define POP_AOAC_ACTIVATE_MAX_MS    300000
 
 static LIST_ENTRY PopAoAcThrottledList = { &PopAoAcThrottledList, &PopAoAcThrottledList };
 
@@ -45,6 +52,9 @@ static KTIMER PopAoAcFreezeTimer;
 static KDPC PopAoAcFreezeDpc;
 static WORK_QUEUE_ITEM PopAoAcFreezeItem;
 static volatile LONG PopAoAcFreezeQueued;
+
+/* When the freeze timer is due, 0 while it is not set */
+static ULONGLONG PopAoAcFreezeDue;
 
 static KDEFERRED_ROUTINE PopAoAcFreezeDpcRoutine;
 static WORKER_THREAD_ROUTINE PopAoAcFreezeWorker;
@@ -181,6 +191,7 @@ PopAoAcThrottleProcesses(VOID)
         Entry->Process = Process;
         Entry->PriorityClass = Process->PriorityClass;
         Entry->Frozen = FALSE;
+        Entry->ActiveUntil = 0;
         InsertTailList(&PopAoAcThrottledList, &Entry->Link);
 
         Process->PriorityClass = PROCESS_PRIORITY_CLASS_IDLE;
@@ -196,6 +207,23 @@ PopAoAcThrottleProcesses(VOID)
  * The grace period is over, the moderated apps stop until the display comes
  * back. Runs as a work item, the standby may have ended meanwhile.
  */
+/* Moves the freeze timer earlier, never later. Called with the lock held. */
+static
+VOID
+PopAoAcScheduleFreeze(
+    _In_ ULONGLONG Due)
+{
+    ULONGLONG Now = KeQueryInterruptTime();
+    LARGE_INTEGER DueTime;
+
+    if (PopAoAcFreezeDue && PopAoAcFreezeDue <= Due)
+        return;
+
+    PopAoAcFreezeDue = Due;
+    DueTime.QuadPart = -(LONGLONG)max(Due > Now ? Due - Now : 0, 10000);
+    KeSetTimer(&PopAoAcFreezeTimer, DueTime, &PopAoAcFreezeDpc);
+}
+
 static
 VOID
 NTAPI
@@ -204,6 +232,7 @@ PopAoAcFreezeWorker(
 {
     PPOP_AOAC_THROTTLED Entry;
     PLIST_ENTRY Link;
+    ULONGLONG Now, Next = 0;
     ULONG Count = 0;
 
     UNREFERENCED_PARAMETER(Parameter);
@@ -211,13 +240,23 @@ PopAoAcFreezeWorker(
     InterlockedExchange(&PopAoAcFreezeQueued, 0);
 
     ExAcquireFastMutex(&PopAoAcLock);
+    PopAoAcFreezeDue = 0;
     if (PopAoAcInStandby)
     {
+        Now = KeQueryInterruptTime();
         for (Link = PopAoAcThrottledList.Flink; Link != &PopAoAcThrottledList; Link = Link->Flink)
         {
             Entry = CONTAINING_RECORD(Link, POP_AOAC_THROTTLED, Link);
             if (Entry->Frozen || Entry->Process->ProcessDelete)
                 continue;
+
+            /* Still inside its activation, it is frozen once the time is up */
+            if (Entry->ActiveUntil > Now)
+            {
+                if (!Next || Entry->ActiveUntil < Next)
+                    Next = Entry->ActiveUntil;
+                continue;
+            }
 
             /* An app that asked to keep working, a download or playback, only stays slowed */
             if (PopProcessKeepsSystemAwake(Entry->Process->UniqueProcessId))
@@ -232,7 +271,10 @@ PopAoAcFreezeWorker(
                 Count++;
         }
 
-        DPRINT1("Connected standby froze %lu desktop processes\n", Count);
+        if (Count)
+            DPRINT1("Connected standby froze %lu desktop processes\n", Count);
+        if (Next)
+            PopAoAcScheduleFreeze(Next);
     }
     ExReleaseFastMutex(&PopAoAcLock);
 }
@@ -300,52 +342,58 @@ PopAoAcNotifyDisplayState(VOID)
     PopNotifyPowerSettingChange(&GUID_MONITOR_POWER_ON);
 }
 
-/* PUBLIC FUNCTIONS ***********************************************************/
-
-/**
- * @brief
- * Handles a power button sleep request on a Modern Standby platform. Instead
- * of entering a sleep state the console display goes off and the platform
- * stays in S0, the next press brings the display back.
- */
+/* The display events call into win32k, so they go out with the lock dropped */
+static
 VOID
-NTAPI
-PopAoAcHandleSleepButton(VOID)
+PopAoAcEnterStandby(VOID)
 {
     WIN32_POWEREVENT_PARAMETERS Params;
-    LARGE_INTEGER DueTime;
 
-    PAGED_CODE();
-
-    /* The display events call into win32k, so they go out with the lock dropped */
     ExAcquireFastMutex(&PopAoAcLock);
-    PopAoAcInStandby = !PopAoAcInStandby;
     if (PopAoAcInStandby)
     {
         ExReleaseFastMutex(&PopAoAcLock);
-
-        DPRINT1("Entering connected standby, turning the display off\n");
-        Params.EventNumber = PsW32DisplayState;
-        Params.Code = 0;
-        PopDispatchPowerEvent(&Params);
-        PopAoAcNotifyDisplayState();
-
-        ExAcquireFastMutex(&PopAoAcLock);
-        if (PopAoAcInStandby)
-            PopAoAcThrottleProcesses();
-        ExReleaseFastMutex(&PopAoAcLock);
-
-        /* The processors drop to their lowest performance while the display is off */
-        PpmConnectedStandby(TRUE);
-
-        DueTime.QuadPart = -10000LL * POP_AOAC_FREEZE_DELAY_MS;
-        KeSetTimer(&PopAoAcFreezeTimer, DueTime, &PopAoAcFreezeDpc);
         return;
     }
+    PopAoAcInStandby = TRUE;
+    ExReleaseFastMutex(&PopAoAcLock);
 
-    /* Apps run again before win32k sends them the display on messages */
+    DPRINT1("Entering connected standby, turning the display off\n");
+    Params.EventNumber = PsW32DisplayState;
+    Params.Code = 0;
+    PopDispatchPowerEvent(&Params);
+    PopAoAcNotifyDisplayState();
+
+    ExAcquireFastMutex(&PopAoAcLock);
+    if (PopAoAcInStandby)
+    {
+        PopAoAcThrottleProcesses();
+        PopAoAcScheduleFreeze(KeQueryInterruptTime() + 10000ULL * POP_AOAC_FREEZE_DELAY_MS);
+    }
+    ExReleaseFastMutex(&PopAoAcLock);
+
+    /* The processors drop to their lowest performance while the display is off */
+    PpmConnectedStandby(TRUE);
+}
+
+/* Apps run again before win32k sends them the display on messages */
+static
+BOOLEAN
+PopAoAcLeaveStandby(VOID)
+{
+    WIN32_POWEREVENT_PARAMETERS Params;
+
+    ExAcquireFastMutex(&PopAoAcLock);
+    if (!PopAoAcInStandby)
+    {
+        ExReleaseFastMutex(&PopAoAcLock);
+        return FALSE;
+    }
+
     DPRINT1("Leaving connected standby, turning the display on\n");
+    PopAoAcInStandby = FALSE;
     KeCancelTimer(&PopAoAcFreezeTimer);
+    PopAoAcFreezeDue = 0;
     PopAoAcRestoreProcesses();
     ExReleaseFastMutex(&PopAoAcLock);
 
@@ -360,6 +408,111 @@ PopAoAcHandleSleepButton(VOID)
     PopDispatchPowerEvent(&Params);
 
     PopAoAcNotifyDisplayState();
+    return TRUE;
+}
+
+/* PUBLIC FUNCTIONS ***********************************************************/
+
+/**
+ * @brief
+ * Handles a power button sleep request on a Modern Standby platform. Instead
+ * of entering a sleep state the console display goes off and the platform
+ * stays in S0, the next press brings the display back.
+ */
+VOID
+NTAPI
+PopAoAcHandleSleepButton(VOID)
+{
+    BOOLEAN InStandby;
+
+    PAGED_CODE();
+
+    ExAcquireFastMutex(&PopAoAcLock);
+    InStandby = PopAoAcInStandby;
+    ExReleaseFastMutex(&PopAoAcLock);
+
+    if (InStandby)
+        PopAoAcLeaveStandby();
+    else
+        PopAoAcEnterStandby();
+}
+
+/**
+ * @brief
+ * A wake trigger fired, an alarm or an incoming call. The display comes back
+ * on as if the power button had been pressed.
+ *
+ * @return
+ * STATUS_SUCCESS when the platform left connected standby, STATUS_ALREADY_COMPLETE
+ * when the display was on already.
+ */
+NTSTATUS
+NTAPI
+PopAoAcWake(VOID)
+{
+    PAGED_CODE();
+
+    return PopAoAcLeaveStandby() ? STATUS_SUCCESS : STATUS_ALREADY_COMPLETE;
+}
+
+/**
+ * @brief
+ * Lets one moderated app run for a while with the display still off, the
+ * way a background trigger does. It is frozen again once the time is up.
+ *
+ * @param[in] ProcessId
+ * The app to run.
+ *
+ * @param[in] BudgetMs
+ * How long it may run, clamped to the activation bounds.
+ *
+ * @return
+ * STATUS_SUCCESS also when the app is not moderated, it runs already.
+ */
+NTSTATUS
+NTAPI
+PopAoAcActivateProcess(
+    _In_ HANDLE ProcessId,
+    _In_ ULONG BudgetMs)
+{
+    PPOP_AOAC_THROTTLED Entry;
+    PLIST_ENTRY Link;
+    ULONGLONG Until;
+
+    PAGED_CODE();
+
+    BudgetMs = min(max(BudgetMs, POP_AOAC_ACTIVATE_MIN_MS), POP_AOAC_ACTIVATE_MAX_MS);
+
+    ExAcquireFastMutex(&PopAoAcLock);
+    if (!PopAoAcInStandby)
+    {
+        ExReleaseFastMutex(&PopAoAcLock);
+        return STATUS_SUCCESS;
+    }
+
+    for (Link = PopAoAcThrottledList.Flink; Link != &PopAoAcThrottledList; Link = Link->Flink)
+    {
+        Entry = CONTAINING_RECORD(Link, POP_AOAC_THROTTLED, Link);
+        if (Entry->Process->UniqueProcessId != ProcessId)
+            continue;
+
+        Until = KeQueryInterruptTime() + 10000ULL * BudgetMs;
+        if (Until > Entry->ActiveUntil)
+            Entry->ActiveUntil = Until;
+
+        if (Entry->Frozen)
+        {
+            KeThawProcess(&Entry->Process->Pcb);
+            Entry->Frozen = FALSE;
+        }
+
+        PopAoAcScheduleFreeze(Entry->ActiveUntil);
+        DPRINT1("Connected standby lets %.16s run for %lu ms\n", Entry->Process->ImageFileName, BudgetMs);
+        break;
+    }
+    ExReleaseFastMutex(&PopAoAcLock);
+
+    return STATUS_SUCCESS;
 }
 
 /* EOF */

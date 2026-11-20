@@ -175,4 +175,25 @@ typedef struct _PO_IRP_MANAGER
 
 #endif // !NTOS_MODE_USER
 
+//
+// PowerInformationInternal request from a trusted service. Wakes the display
+// out of connected standby or lets a moderated app run for a while.
+//
+#define POWER_ACTIVATOR_REQUEST_VERSION     1
+
+typedef enum _POWER_ACTIVATOR_ACTION
+{
+    PowerActivatorWake = 1,
+    PowerActivatorRunProcess = 2
+} POWER_ACTIVATOR_ACTION;
+
+typedef struct _POWER_ACTIVATOR_REQUEST
+{
+    ULONG Version;
+    POWER_ACTIVATOR_ACTION Action;
+    HANDLE ProcessId;
+    ULONG BudgetMs;
+    ULONG Reserved;
+} POWER_ACTIVATOR_REQUEST, *PPOWER_ACTIVATOR_REQUEST;
+
 #endif // _POTYPES_H
