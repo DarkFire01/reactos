@@ -53,6 +53,7 @@ enum
     ST_PAGE_WIFI,
     ST_PAGE_NETWORK,
     ST_PAGE_SOUND,
+    ST_PAGE_POWER,
     ST_PAGE_ABOUT
 };
 
@@ -94,7 +95,16 @@ enum
     IDC_SND_LOUDER,
     IDC_SND_MUTE,
     IDC_SND_TEST,
-    IDC_SND_REFRESH
+    IDC_SND_REFRESH,
+
+    IDC_PWR_SETTING = 500,
+    IDC_PWR_SOURCE,
+    IDC_PWR_LOWER,
+    IDC_PWR_HIGHER,
+    IDC_PWR_RESET,
+    IDC_PWR_SLEEP,
+    IDC_PWR_RESTART,
+    IDC_PWR_SHUTDOWN
 };
 
 /* One page of the app, reached from its tab */
@@ -293,3 +303,39 @@ StSndDone(
 
 VOID
 StSndCleanup(VOID);
+
+/* Power page */
+extern const UINT StPwrControls[];
+extern const DWORD StPwrControlCount;
+
+VOID
+StPwrCreateControls(VOID);
+
+VOID
+StPwrShow(VOID);
+
+VOID
+StPwrLayout(
+    _In_ const RECT *Area);
+
+VOID
+StPwrPaint(
+    _In_ HDC Dc,
+    _In_ const RECT *Area);
+
+VOID
+StPwrHeading(
+    _Out_writes_(Count) LPWSTR Text,
+    _In_ DWORD Count);
+
+VOID
+StPwrCommand(
+    _In_ UINT Id,
+    _In_ UINT Code);
+
+VOID
+StPwrTimer(VOID);
+
+BOOL
+StPwrIsActive(
+    _In_ UINT Id);
