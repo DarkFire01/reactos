@@ -18,8 +18,63 @@
 PIRP IopDeadIrp;
 RESERVE_IRP_ALLOCATOR IopReserveIrpAllocator;
 
-/* What qcsubsys asks each device it depends on before bringing a subsystem up */
-#define IOP_WATCH_SUBSYS_IOCTL  0x00212030
+/* qcsubsys dependency query, and what qcdx asks the subsystem driver after the GMU is up */
+static const ULONG IopWatchedIoctls[] = { 0x00212030, 0x9C41241C, 0x9C412410 };
+
+static
+BOOLEAN
+IopIsWatchedIoctl(
+    _In_ PIO_STACK_LOCATION StackPtr)
+{
+    ULONG Index;
+
+    if (StackPtr->MajorFunction != IRP_MJ_DEVICE_CONTROL &&
+        StackPtr->MajorFunction != IRP_MJ_INTERNAL_DEVICE_CONTROL)
+    {
+        return FALSE;
+    }
+
+    for (Index = 0; Index < RTL_NUMBER_OF(IopWatchedIoctls); Index++)
+    {
+        if (StackPtr->Parameters.DeviceIoControl.IoControlCode == IopWatchedIoctls[Index])
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* Shows the start of a buffered input, as text when it reads like a path */
+static
+VOID
+IopWatchDumpInput(
+    _In_ PIRP Irp,
+    _In_ PIO_STACK_LOCATION StackPtr)
+{
+    ULONG Length = StackPtr->Parameters.DeviceIoControl.InputBufferLength;
+    PUCHAR Input = Irp->AssociatedIrp.SystemBuffer;
+    WCHAR Text[65];
+    ULONG Index, Chars = 0;
+
+    if (!Input || Length < 16 || METHOD_FROM_CTL_CODE(StackPtr->Parameters.DeviceIoControl.IoControlCode) != METHOD_BUFFERED)
+        return;
+
+    DPRINT1("  input %lu bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+            Length,
+            Input[0], Input[1], Input[2], Input[3], Input[4], Input[5], Input[6], Input[7],
+            Input[8], Input[9], Input[10], Input[11], Input[12], Input[13], Input[14], Input[15]);
+
+    for (Index = 0; Index + 1 < Length && Chars < RTL_NUMBER_OF(Text) - 1; Index += 2)
+    {
+        WCHAR Char = *(PWCHAR)(Input + Index);
+
+        if (Char >= 0x20 && Char < 0x7F)
+            Text[Chars++] = Char;
+        else if (Chars != 0)
+            break;
+    }
+    Text[Chars] = UNICODE_NULL;
+    if (Chars > 3)
+        DPRINT1("  input text '%S'\n", Text);
+}
 
 /* PRIVATE FUNCTIONS  ********************************************************/
 
@@ -1338,13 +1393,15 @@ IofCallDriver(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* qcsubsys shuts the modem down when a dependency fails this request */
-    if (StackPtr->MajorFunction == IRP_MJ_DEVICE_CONTROL &&
-        StackPtr->Parameters.DeviceIoControl.IoControlCode == IOP_WATCH_SUBSYS_IOCTL)
+    if (IopIsWatchedIoctl(StackPtr))
     {
+        ULONG Code = StackPtr->Parameters.DeviceIoControl.IoControlCode;
         NTSTATUS Status;
 
+        DPRINT1("IOCTL 0x%08lx to %wZ\n", Code, &DriverObject->DriverName);
+        IopWatchDumpInput(Irp, StackPtr);
         Status = DriverObject->MajorFunction[StackPtr->MajorFunction](DeviceObject, Irp);
-        DPRINT1("Subsystem dependency query to %wZ returned 0x%lx\n", &DriverObject->DriverName, Status);
+        DPRINT1("IOCTL 0x%08lx to %wZ returned 0x%lx\n", Code, &DriverObject->DriverName, Status);
         return Status;
     }
 
@@ -1404,11 +1461,10 @@ IofCompleteRequest(IN PIRP Irp,
     ASSERT(Irp->IoStatus.Status != (NTSTATUS)0xFFFFFFFF);
 
     StackPtr = IoGetCurrentIrpStackLocation(Irp);
-    if (Irp->CurrentLocation <= Irp->StackCount &&
-        StackPtr->MajorFunction == IRP_MJ_DEVICE_CONTROL &&
-        StackPtr->Parameters.DeviceIoControl.IoControlCode == IOP_WATCH_SUBSYS_IOCTL)
+    if (Irp->CurrentLocation <= Irp->StackCount && IopIsWatchedIoctl(StackPtr))
     {
-        DPRINT1("Subsystem dependency query completed 0x%lx, %Iu bytes\n",
+        DPRINT1("IOCTL 0x%08lx completed 0x%lx, %Iu bytes\n",
+                StackPtr->Parameters.DeviceIoControl.IoControlCode,
                 Irp->IoStatus.Status, Irp->IoStatus.Information);
     }
 
