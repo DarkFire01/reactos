@@ -221,6 +221,7 @@ StorpCheckFlowControl(
     PLIST_ENTRY PdoEntry;
     ULONG PdoOutstandingSum = 0;
     ULONG PdoStrongOrderedSum = 0;
+    ULONG FdoBlockedCount = 0;
 
     FdoFlowControl = &FdoExtension->FlowControl;
 
@@ -243,8 +244,16 @@ StorpCheckFlowControl(
 
     UNREFERENCED_PARAMETER(PdoStrongOrderedSum); /* Don't know what to do with it */
 
+    /* A request blocked at the FDO is already counted by its PDO but not yet by the FDO */
+    for (PdoEntry = FdoFlowControl->FdoBlockedRequestsListHead.Flink;
+         PdoEntry != &FdoFlowControl->FdoBlockedRequestsListHead;
+         PdoEntry = PdoEntry->Flink)
+    {
+        FdoBlockedCount++;
+    }
+
     /* Compare */
-    NT_ASSERT(PdoOutstandingSum == FdoFlowControl->OutstandingRequestCount);
+    NT_ASSERT(PdoOutstandingSum == FdoFlowControl->OutstandingRequestCount + FdoBlockedCount);
 
     KeReleaseInStackQueuedSpinLock(&LockHandle);
 }

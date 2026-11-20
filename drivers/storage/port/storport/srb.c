@@ -506,12 +506,13 @@ PortPdoScheduleRequestFlowControlled(
         /* Check FDO flow control status. */
 
         /* If the FDO can't handle more requests, then the request should be queued. */
-        if (FlowControl->IsBusy || FlowControl->IsPaused ||
-            FlowControl->OutstandingRequestCount == FdoExtension->OutstandingRequestMax)
+        if (FdoExtension->FlowControl.IsBusy || FdoExtension->FlowControl.IsPaused ||
+            FdoExtension->FlowControl.OutstandingRequestCount == FdoExtension->OutstandingRequestMax)
         {
-            /* Put into FDO queue */
+            /* Put into FDO queue, a completion issues it later */
             InsertHeadList(&FdoExtension->FlowControl.FdoBlockedRequestsListHead,
                            &RequestReference->FdoEntry);
+            IssueRequest = FALSE;
 
             /*
             * Now the request is in PDO active list, in FDO awaiting queue, not issued.
@@ -724,8 +725,8 @@ PortScheduleComingRequestsOnCompletion(
         NT_ASSERT(FdoExtension->FlowControl.OutstandingRequestCount <=
                   FdoExtension->OutstandingRequestMax);
 
-        /* Call the start routine */
-        PortPdoIssueRequest(PdoExtension, RequestReference);
+        /* Call the start routine, the waiting request may belong to another LUN */
+        PortPdoIssueRequest(RequestReference->PdoExtension, RequestReference);
 
         /* Our task is done */
         return;
@@ -745,10 +746,11 @@ PortScheduleComingRequestsOnCompletion(
         /* This one goes to active list */
         InsertHeadList(&PdoExtension->FlowControl.ActiveRequestsListHead, Entry);
 
-        /* Increment PDO request counter */
+        /* It is issued now, so both the PDO and the FDO count it */
         ++PdoExtension->FlowControl.OutstandingRequestCount;
         NT_ASSERT(PdoExtension->FlowControl.OutstandingRequestCount <=
                   PdoExtension->OutstandingRequestMax);
+        ++FdoExtension->FlowControl.OutstandingRequestCount;
 
         /* FIXME: should be false. Allocate resource if it is determined required */
         if (RequestReference->Srb->SrbExtension == NULL)
