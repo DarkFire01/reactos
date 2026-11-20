@@ -698,7 +698,8 @@ PopInitSystemPhase1(VOID)
                  &PopIdleScanDevicesDpc);
 
     /* The boot devices are up, the plug-in can now build the processors' performance tables */
-    PpmPepAllowRegistration();
+    /* DIAG: processors stay off the PEP while the late freeze is bisected */
+    //PpmPepAllowRegistration();
 
     return TRUE;
 }
