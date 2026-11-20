@@ -191,14 +191,59 @@ UfsDeviceInit(
 
 /* Gear 3 is the highest UFS 2.x links run */
 #define UFS_MAX_HS_GEAR 3
+#define UFS_HS_SERIES_A 1
+#define UFS_HS_SERIES_B 2
+
+/**
+ * @brief Asks the link which power mode and HS series the firmware ran it in, before a reset forgets them.
+ */
+static
+VOID
+UfsReadFirmwareLink(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter)
+{
+    Adapter->FirmwareLinkRead = TRUE;
+
+    if (!(UfsRead(Adapter, UFS_REG_HCE) & UFS_HCE_ENABLE) || !(UfsRead(Adapter, UFS_REG_HCS) & UFS_HCS_DP))
+    {
+        DPRINT1("UFS: firmware left the controller off\n");
+        return;
+    }
+
+    if (!UfsDmeGet(Adapter, UFS_PA_PWR_MODE, &Adapter->FirmwareMode) ||
+        !UfsDmeGet(Adapter, UFS_PA_HS_SERIES, &Adapter->FirmwareSeries))
+    {
+        Adapter->FirmwareMode = 0;
+        Adapter->FirmwareSeries = 0;
+    }
+
+    DPRINT1("UFS: firmware left the link in mode 0x%lx, series %lu\n",
+            Adapter->FirmwareMode, Adapter->FirmwareSeries);
+}
+
+/* The PHY is set up for one series, the firmware's when it ran HS, otherwise B on Qualcomm */
+static
+ULONG
+UfsPickHsSeries(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG LinkSeries)
+{
+    if (Adapter->FirmwareMode == UFS_PWR_MODE(UFS_PWR_FAST_MODE, UFS_PWR_FAST_MODE) &&
+        (Adapter->FirmwareSeries == UFS_HS_SERIES_A || Adapter->FirmwareSeries == UFS_HS_SERIES_B))
+    {
+        return Adapter->FirmwareSeries;
+    }
+
+    return Adapter->Qualcomm ? UFS_HS_SERIES_B : LinkSeries;
+}
 
 /**
  * @brief Moves the link out of the PWM gear link startup leaves it in, to the fastest gear both ends take.
  *
- * @remarks The HS series stays whatever the link reports. A failed change leaves the link in PWM.
+ * @return FALSE when the link may no longer carry traffic and has to be brought up again.
  */
 static
-VOID
+BOOLEAN
 UfsEnterHighSpeed(
     _In_ PUFS_ADAPTER_EXTENSION Adapter)
 {
@@ -212,7 +257,7 @@ UfsEnterHighSpeed(
         !UfsDmeGet(Adapter, UFS_PA_HS_SERIES, &Series))
     {
         DPRINT1("UFS: link attributes unreadable, staying in PWM\n");
-        return;
+        return TRUE;
     }
 
     Gear = min(min(HostGear, DeviceGear), UFS_MAX_HS_GEAR);
@@ -220,9 +265,10 @@ UfsEnterHighSpeed(
     {
         DPRINT1("UFS: no HS gear (host %lu, device %lu, lanes %lu/%lu), staying in PWM\n",
                 HostGear, DeviceGear, TxLanes, RxLanes);
-        return;
+        return TRUE;
     }
 
+    Series = UfsPickHsSeries(Adapter, Series);
     if (!UfsDmeSet(Adapter, UFS_PA_TX_GEAR, Gear) ||
         !UfsDmeSet(Adapter, UFS_PA_RX_GEAR, Gear) ||
         !UfsDmeSet(Adapter, UFS_PA_ACTIVE_TX_LANES, TxLanes) ||
@@ -232,14 +278,14 @@ UfsEnterHighSpeed(
         !UfsDmeSet(Adapter, UFS_PA_HS_SERIES, Series))
     {
         DPRINT1("UFS: HS parameters rejected, staying in PWM\n");
-        return;
+        return TRUE;
     }
 
     UfsWrite(Adapter, UFS_REG_IS, UFS_IS_UPMS);
     if (!UfsDmeSet(Adapter, UFS_PA_PWR_MODE, UFS_PWR_MODE(UFS_PWR_FAST_MODE, UFS_PWR_FAST_MODE)))
     {
         DPRINT1("UFS: power mode change rejected, staying in PWM\n");
-        return;
+        return TRUE;
     }
 
     for (Spin = 0; Spin < UFS_UIC_POLL_COUNT; Spin++)
@@ -254,15 +300,25 @@ UfsEnterHighSpeed(
     if (Spin >= UFS_UIC_POLL_COUNT || Status != UFS_UPMCRS_PWR_LOCAL)
     {
         DPRINT1("UFS: power mode change failed, status %lu\n", Status);
-        return;
+        return FALSE;
+    }
+
+    /* The change can complete on a PHY that cannot run the series, only traffic tells */
+    if (!NT_SUCCESS(UfsSendNopOut(Adapter)))
+    {
+        DPRINT1("UFS: HS-G%lu series %c does not answer a NOP\n", Gear, (Series == UFS_HS_SERIES_B) ? 'B' : 'A');
+        return FALSE;
     }
 
     DPRINT1("UFS: link at HS-G%lu series %c, %lu TX and %lu RX lanes, was mode 0x%lx\n",
-            Gear, (Series == 2) ? 'B' : 'A', TxLanes, RxLanes, OldMode);
+            Gear, (Series == UFS_HS_SERIES_B) ? 'B' : 'A', TxLanes, RxLanes, OldMode);
+    return TRUE;
 }
 
+/* Reset, link startup and device init, leaving the link in the startup gear */
+static
 BOOLEAN
-UfsStartAdapter(
+UfsBringUpLink(
     _In_ PUFS_ADAPTER_EXTENSION Adapter)
 {
     ULONG Attempt;
@@ -293,10 +349,26 @@ UfsStartAdapter(
         return FALSE;
     }
 
-    if (!UfsDeviceInit(Adapter))
+    return UfsDeviceInit(Adapter);
+}
+
+BOOLEAN
+UfsStartAdapter(
+    _In_ PUFS_ADAPTER_EXTENSION Adapter)
+{
+    if (!Adapter->FirmwareLinkRead)
+        UfsReadFirmwareLink(Adapter);
+
+    if (!UfsBringUpLink(Adapter))
         return FALSE;
 
-    UfsEnterHighSpeed(Adapter);
+    if (!Adapter->PwmOnly && !UfsEnterHighSpeed(Adapter))
+    {
+        DPRINT1("UFS: bringing the link up again in PWM\n");
+        Adapter->PwmOnly = TRUE;
+        if (!UfsBringUpLink(Adapter))
+            return FALSE;
+    }
 
     /* Clear any latched status, then arm the interrupts the ISR services. */
     UfsWrite(Adapter, UFS_REG_IS, 0xFFFFFFFF);

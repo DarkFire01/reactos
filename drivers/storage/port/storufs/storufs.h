@@ -66,6 +66,11 @@ typedef struct _UFS_ADAPTER_EXTENSION
     ULONG Version;
     ULONG Nutrs;                  /* transfer request slots in use */
 
+    BOOLEAN FirmwareLinkRead;     /* the link was asked what the firmware left it in */
+    BOOLEAN PwmOnly;              /* HS did not carry traffic, stay in the startup gear */
+    ULONG FirmwareMode;           /* PA_PWRMode before the first reset, 0 if unknown */
+    ULONG FirmwareSeries;         /* PA_HSSeries before the first reset, 0 if unknown */
+
     PVOID CommonBuffer;           /* uncached extension base (virtual) */
     STOR_PHYSICAL_ADDRESS CommonBufferPhysical;
 
