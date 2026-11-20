@@ -638,6 +638,12 @@ MsPaintBar(
     SelectObject(Dc, MsBarFont);
     DrawTextW(Dc, Label, -1, &Text, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
 
+    /* The volume pill takes the space left of the keyboard button */
+    Text = Button;
+    Text.left = Button.top;
+    Text.right = Button.left - Button.top;
+    MsButtonsPaint(Dc, &Text, MsBarFont);
+
     EndPaint(Window, &Paint);
 }
 
@@ -657,6 +663,12 @@ MsBarProc(
     {
         case WM_CREATE:
             SetTimer(Window, MS_TOPMOST_TIMER, MS_TOPMOST_INTERVAL_MS, NULL);
+            MsButtonsStart(Window);
+            return 0;
+
+        case WM_MS_BUTTON:
+            if (MsButtonsHandle(Window, WParam, LParam))
+                InvalidateRect(Window, NULL, FALSE);
             return 0;
 
         /* Taps must leave the focus with the window being typed into */
@@ -711,6 +723,11 @@ MsBarProc(
             {
                 SetWindowPos(Window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 MsKeyboardKeepOnTop();
+            }
+            else if (WParam == MS_VOLUME_TIMER)
+            {
+                MsButtonsHide(Window);
+                InvalidateRect(Window, NULL, FALSE);
             }
             return 0;
 
