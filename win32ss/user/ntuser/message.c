@@ -1651,7 +1651,9 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
         goto Cleanup; // Return FALSE
     }
 
-    if ((uFlags & SMTO_ABORTIFHUNG) && MsqIsHung(ptiSendTo, 4 * MSQ_HUNG))
+    /* An app frozen by connected standby will not answer before the display comes back */
+    if ((uFlags & SMTO_ABORTIFHUNG) &&
+        (MsqIsHung(ptiSendTo, 4 * MSQ_HUNG) || ptiSendTo->ppi->peProcess->Pcb.DeepFreeze))
     {
         // FIXME: Set window hung and add to a list.
         /* FIXME: Set a LastError? */
