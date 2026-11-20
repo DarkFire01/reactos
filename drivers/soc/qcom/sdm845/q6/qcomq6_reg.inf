@@ -1,0 +1,7 @@
+; Qualcomm Q6 audio core, system start; it probes the dsp once the apr channel is up
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6","ImagePath",0x00020000,"system32\drivers\qcomq6.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6","Type",0x00010001,0x00000001
