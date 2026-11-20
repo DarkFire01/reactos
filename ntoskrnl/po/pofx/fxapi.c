@@ -1321,12 +1321,161 @@ PoFxRemoveComponentRelation(
     return STATUS_NOT_FOUND;
 }
 
+/* Frees what PopFxQueryPerfStates built, the names and state arrays are separate blocks */
+static
+VOID
+NTAPI
+PopFxFreeQueriedPerfInfo(
+    _In_opt_ PPO_FX_COMPONENT_PERF_INFO PerfInfo)
+{
+    PPO_FX_COMPONENT_PERF_SET Set;
+    ULONG SetIndex;
+
+    if (!PerfInfo)
+        return;
+
+    for (SetIndex = 0; SetIndex < PerfInfo->PerfStateSetsCount; SetIndex++)
+    {
+        Set = &PerfInfo->PerfStateSets[SetIndex];
+        if (Set->Name.Buffer)
+            ExFreePoolWithTag(Set->Name.Buffer, TAG_PO_FX_COMPONENT);
+        if (Set->Type == PoFxPerfStateTypeDiscrete && Set->Discrete.States)
+            ExFreePoolWithTag(Set->Discrete.States, TAG_PO_FX_COMPONENT);
+    }
+
+    ExFreePoolWithTag(PerfInfo, TAG_PO_FX_COMPONENT);
+}
+
+/**
+ * @brief
+ * Asks the plug-in of a device which performance states a component has.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED when no plug-in describes the component.
+ */
+static
+NTSTATUS
+NTAPI
+PopFxQueryPerfStates(
+    _In_ PPOP_FX_DEVICE FxDevice,
+    _In_ ULONG Component,
+    _Out_ PPO_FX_COMPONENT_PERF_INFO *PerfInfoOut)
+{
+    PEP_QUERY_COMPONENT_PERF_CAPABILITIES Capabilities;
+    PEP_QUERY_COMPONENT_PERF_SET_NAME NameQuery;
+    PEP_QUERY_COMPONENT_PERF_STATES StatesQuery;
+    PEP_QUERY_COMPONENT_PERF_SET SetQuery;
+    PPO_FX_COMPONENT_PERF_INFO PerfInfo;
+    PPO_FX_COMPONENT_PERF_SET Set;
+    ULONG SetIndex;
+
+    *PerfInfoOut = NULL;
+
+    RtlZeroMemory(&Capabilities, sizeof(Capabilities));
+    Capabilities.DeviceHandle = FxDevice->PluginHandle;
+    Capabilities.Component = Component;
+    if (!FxDevice->Plugin ||
+        !PopFxNotifyPlugin(FxDevice->Plugin, PEP_DPM_QUERY_COMPONENT_PERF_CAPABILTIES, &Capabilities))
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    PerfInfo = ExAllocatePoolZero(NonPagedPool,
+                                  FIELD_OFFSET(PO_FX_COMPONENT_PERF_INFO, PerfStateSets[Capabilities.SetCount]),
+                                  TAG_PO_FX_COMPONENT);
+    if (!PerfInfo)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    PerfInfo->PerfStateSetsCount = Capabilities.SetCount;
+
+    for (SetIndex = 0; SetIndex < Capabilities.SetCount; SetIndex++)
+    {
+        Set = &PerfInfo->PerfStateSets[SetIndex];
+
+        RtlZeroMemory(&SetQuery, sizeof(SetQuery));
+        SetQuery.DeviceHandle = FxDevice->PluginHandle;
+        SetQuery.Component = Component;
+        SetQuery.Set = SetIndex;
+        if (!PopFxNotifyPlugin(FxDevice->Plugin, PEP_DPM_QUERY_COMPONENT_PERF_SET, &SetQuery))
+            goto PluginFailed;
+
+        Set->Unit = (PO_FX_PERF_STATE_UNIT)SetQuery.Unit;
+        Set->Type = (PO_FX_PERF_STATE_TYPE)SetQuery.Type;
+        if (Set->Type == PoFxPerfStateTypeDiscrete)
+        {
+            if (!SetQuery.Count)
+                goto PluginFailed;
+
+            Set->Discrete.Count = SetQuery.Count;
+            Set->Discrete.States = ExAllocatePoolZero(NonPagedPool, SetQuery.Count * sizeof(*Set->Discrete.States),
+                                                      TAG_PO_FX_COMPONENT);
+            if (!Set->Discrete.States)
+            {
+                PopFxFreeQueriedPerfInfo(PerfInfo);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            StatesQuery.DeviceHandle = FxDevice->PluginHandle;
+            StatesQuery.Component = Component;
+            StatesQuery.Set = SetIndex;
+            StatesQuery.States = (PPEP_PERF_STATE)Set->Discrete.States;
+            if (!PopFxNotifyPlugin(FxDevice->Plugin, PEP_DPM_QUERY_COMPONENT_PERF_STATES, &StatesQuery))
+                goto PluginFailed;
+        }
+        else
+        {
+            Set->Range.Minimum = SetQuery.Minimum;
+            Set->Range.Maximum = SetQuery.Maximum;
+        }
+
+        /* The first pass sizes the name, the second fills it */
+        RtlInitEmptyUnicodeString(&Set->Name, NULL, 0);
+        NameQuery.DeviceHandle = FxDevice->PluginHandle;
+        NameQuery.Component = Component;
+        NameQuery.Set = SetIndex;
+        NameQuery.Name = &Set->Name;
+        if (!PopFxNotifyPlugin(FxDevice->Plugin, PEP_DPM_QUERY_COMPONENT_PERF_SET_NAME, &NameQuery))
+            goto PluginFailed;
+
+        if (Set->Name.MaximumLength >= sizeof(WCHAR))
+        {
+            Set->Name.Buffer = ExAllocatePoolZero(NonPagedPool, Set->Name.MaximumLength, TAG_PO_FX_COMPONENT);
+            if (!Set->Name.Buffer)
+            {
+                PopFxFreeQueriedPerfInfo(PerfInfo);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            Set->Name.Length = Set->Name.MaximumLength - sizeof(WCHAR);
+            if (!PopFxNotifyPlugin(FxDevice->Plugin, PEP_DPM_QUERY_COMPONENT_PERF_SET_NAME, &NameQuery))
+                goto PluginFailed;
+        }
+        else
+        {
+            RtlInitEmptyUnicodeString(&Set->Name, NULL, 0);
+        }
+    }
+
+    *PerfInfoOut = PerfInfo;
+    return STATUS_SUCCESS;
+
+PluginFailed:
+    /* The plug-in claimed the component's states and then did not describe them */
+    DPRINT1("PoFx: %wZ component %lu, plug-in left perf set %lu undescribed\n",
+            &FxDevice->DeviceId, Component, SetIndex);
+    PopFxFreeQueriedPerfInfo(PerfInfo);
+    return STATUS_UNSUCCESSFUL;
+}
+
 /**
  * @brief
  * Registers the performance states of a component and hands them to the plug-in.
  *
+ * @param[in] InputStateInfo
+ * The states the driver describes, NULL to take them from the plug-in.
+ *
  * @param[out] OutputStateInfo
- * Receives the copy PoFx keeps. It stays valid until the device is unregistered.
+ * NULL when the driver describes the states, otherwise receives the copy PoFx keeps.
+ * It stays valid until the device is unregistered.
  *
  * @return
  * STATUS_NOT_SUPPORTED when no plug-in takes the states and
@@ -1345,10 +1494,12 @@ PoFxRegisterComponentPerfStates(
     PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
     PEP_REGISTER_COMPONENT_PERF_STATES Register;
     PPOP_FX_COMPONENT FxComponent;
-    PPO_FX_COMPONENT_PERF_INFO PerfInfo;
+    PPO_FX_COMPONENT_PERF_INFO PerfInfo, Queried = NULL;
     PPO_FX_PERF_STATE States;
-    SIZE_T SetsSize, CurrentSize, StatesSize = 0;
+    SIZE_T SetsSize, CurrentSize, StatesSize = 0, NamesSize = 0;
+    PWCHAR Names;
     ULONG SetIndex;
+    NTSTATUS Status;
 
     PAGED_CODE();
 
@@ -1356,14 +1507,24 @@ PoFxRegisterComponentPerfStates(
     /* The states come either from the driver or from the plug-in, never both */
     if (!FxComponent || (InputStateInfo != NULL) == (OutputStateInfo != NULL))
         return STATUS_INVALID_PARAMETER;
-    if (!InputStateInfo)
-        return STATUS_NOT_SUPPORTED;
-    if (!InputStateInfo->PerfStateSetsCount)
-        return STATUS_INVALID_PARAMETER;
     if (FxComponent->PerfInfo)
         return STATUS_INVALID_PARAMETER;
 
-    /* One block holds the sets, the current value of each set and every discrete state array */
+    if (!InputStateInfo)
+    {
+        Status = PopFxQueryPerfStates(FxDevice, Component, &Queried);
+        if (!NT_SUCCESS(Status))
+            return Status;
+        InputStateInfo = Queried;
+    }
+
+    if (!InputStateInfo->PerfStateSetsCount)
+    {
+        PopFxFreeQueriedPerfInfo(Queried);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* One block holds the sets, the current value of each set, every discrete state array and the names */
     SetsSize = FIELD_OFFSET(PO_FX_COMPONENT_PERF_INFO, PerfStateSets[InputStateInfo->PerfStateSetsCount]);
     SetsSize = ALIGN_UP_BY(SetsSize, sizeof(ULONGLONG));
     CurrentSize = InputStateInfo->PerfStateSetsCount * sizeof(ULONGLONG);
@@ -1371,18 +1532,36 @@ PoFxRegisterComponentPerfStates(
     {
         if (InputStateInfo->PerfStateSets[SetIndex].Type == PoFxPerfStateTypeDiscrete)
             StatesSize += InputStateInfo->PerfStateSets[SetIndex].Discrete.Count * sizeof(PO_FX_PERF_STATE);
+        if (InputStateInfo->PerfStateSets[SetIndex].Name.Length)
+            NamesSize += InputStateInfo->PerfStateSets[SetIndex].Name.Length + sizeof(WCHAR);
     }
 
-    PerfInfo = ExAllocatePoolZero(NonPagedPool, SetsSize + CurrentSize + StatesSize, TAG_PO_FX_COMPONENT);
+    PerfInfo = ExAllocatePoolZero(NonPagedPool, SetsSize + CurrentSize + StatesSize + NamesSize, TAG_PO_FX_COMPONENT);
     if (!PerfInfo)
+    {
+        PopFxFreeQueriedPerfInfo(Queried);
         return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     RtlCopyMemory(PerfInfo, InputStateInfo,
                   FIELD_OFFSET(PO_FX_COMPONENT_PERF_INFO, PerfStateSets[InputStateInfo->PerfStateSetsCount]));
     States = (PPO_FX_PERF_STATE)((PUCHAR)PerfInfo + SetsSize + CurrentSize);
+    Names = (PWCHAR)((PUCHAR)States + StatesSize);
     for (SetIndex = 0; SetIndex < PerfInfo->PerfStateSetsCount; SetIndex++)
     {
         PPO_FX_COMPONENT_PERF_SET Set = &PerfInfo->PerfStateSets[SetIndex];
+        PCUNICODE_STRING Name = &InputStateInfo->PerfStateSets[SetIndex].Name;
+
+        if (Name->Length)
+        {
+            RtlInitEmptyUnicodeString(&Set->Name, Names, Name->Length + sizeof(WCHAR));
+            RtlCopyUnicodeString(&Set->Name, Name);
+            Names += Name->Length / sizeof(WCHAR) + 1;
+        }
+        else
+        {
+            RtlInitEmptyUnicodeString(&Set->Name, NULL, 0);
+        }
 
         if (Set->Type != PoFxPerfStateTypeDiscrete)
             continue;
@@ -1391,6 +1570,7 @@ PoFxRegisterComponentPerfStates(
         Set->Discrete.States = States;
         States += Set->Discrete.Count;
     }
+    PopFxFreeQueriedPerfInfo(Queried);
 
     /* PEP_COMPONENT_PERF_INFO and PO_FX_COMPONENT_PERF_INFO share their layout */
     Register.DeviceHandle = FxDevice->PluginHandle;
@@ -1408,6 +1588,8 @@ PoFxRegisterComponentPerfStates(
     FxComponent->PerfCurrent = (PULONGLONG)((PUCHAR)PerfInfo + SetsSize);
     FxComponent->PerfStateCallback = ComponentPerfStateCallback;
     FxComponent->PerfInfo = PerfInfo;
+    if (OutputStateInfo)
+        *OutputStateInfo = PerfInfo;
     return STATUS_SUCCESS;
 }
 

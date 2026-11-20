@@ -506,6 +506,48 @@ typedef struct _PEP_REGISTER_COMPONENT_PERF_STATES
     PPEP_COMPONENT_PERF_INFO PerfStateInfo;
 } PEP_REGISTER_COMPONENT_PERF_STATES, *PPEP_REGISTER_COMPONENT_PERF_STATES;
 
+typedef struct _PEP_QUERY_COMPONENT_PERF_CAPABILITIES
+{
+    _In_ PEPHANDLE DeviceHandle;
+    _In_ ULONG Component;
+    _Out_ ULONG SetCount;
+} PEP_QUERY_COMPONENT_PERF_CAPABILITIES, *PPEP_QUERY_COMPONENT_PERF_CAPABILITIES;
+
+typedef struct _PEP_QUERY_COMPONENT_PERF_SET
+{
+    _In_ PEPHANDLE DeviceHandle;
+    _In_ ULONG Component;
+    _In_ ULONG Set;
+    _Out_ ULONGLONG Flags;
+    _Out_ PEP_PERF_STATE_UNIT Unit;
+    _Out_ PEP_PERF_STATE_TYPE Type;
+    union
+    {
+        _Out_ ULONG Count;
+        struct
+        {
+            _Out_ ULONGLONG Minimum;
+            _Out_ ULONGLONG Maximum;
+        };
+    };
+} PEP_QUERY_COMPONENT_PERF_SET, *PPEP_QUERY_COMPONENT_PERF_SET;
+
+typedef struct _PEP_QUERY_COMPONENT_PERF_SET_NAME
+{
+    _In_ PEPHANDLE DeviceHandle;
+    _In_ ULONG Component;
+    _In_ ULONG Set;
+    _Inout_ PUNICODE_STRING Name;
+} PEP_QUERY_COMPONENT_PERF_SET_NAME, *PPEP_QUERY_COMPONENT_PERF_SET_NAME;
+
+typedef struct _PEP_QUERY_COMPONENT_PERF_STATES
+{
+    _In_ PEPHANDLE DeviceHandle;
+    _In_ ULONG Component;
+    _In_ ULONG Set;
+    _Inout_ PPEP_PERF_STATE States;
+} PEP_QUERY_COMPONENT_PERF_STATES, *PPEP_QUERY_COMPONENT_PERF_STATES;
+
 typedef struct _PEP_COMPONENT_PERF_STATE_REQUEST
 {
     ULONG Set;
