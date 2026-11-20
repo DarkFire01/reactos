@@ -334,6 +334,9 @@ PopAoAcHandleSleepButton(VOID)
             PopAoAcThrottleProcesses();
         ExReleaseFastMutex(&PopAoAcLock);
 
+        /* The processors drop to their lowest performance while the display is off */
+        PpmConnectedStandby(TRUE);
+
         DueTime.QuadPart = -10000LL * POP_AOAC_FREEZE_DELAY_MS;
         KeSetTimer(&PopAoAcFreezeTimer, DueTime, &PopAoAcFreezeDpc);
         return;
@@ -344,6 +347,8 @@ PopAoAcHandleSleepButton(VOID)
     KeCancelTimer(&PopAoAcFreezeTimer);
     PopAoAcRestoreProcesses();
     ExReleaseFastMutex(&PopAoAcLock);
+
+    PpmConnectedStandby(FALSE);
 
     Params.EventNumber = PsW32DisplayState;
     Params.Code = 1;
