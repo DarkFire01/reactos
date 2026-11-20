@@ -35,7 +35,7 @@ UacpiNtSerialConsumer(
 
     for (Node = uacpi_namespace_node_parent(RegionNode); Node; Node = uacpi_namespace_node_parent(Node))
     {
-        Pdo = UacpiNtFindPdoByNode(NULL, Node);
+        Pdo = UacpiNtFindPdoByNode(GlobalAcpiFdo, Node);
         if (Pdo && Pdo->Shared.Self)
             return Pdo->Shared.Self;
     }
