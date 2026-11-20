@@ -663,6 +663,16 @@ KeFreezeAllThreads(
 
 BOOLEAN
 NTAPI
+KeFreezeProcess(
+    _Inout_ PKPROCESS Process);
+
+VOID
+NTAPI
+KeThawProcess(
+    _Inout_ PKPROCESS Process);
+
+BOOLEAN
+NTAPI
 KeDisableThreadApcQueueing(IN PKTHREAD Thread);
 
 VOID

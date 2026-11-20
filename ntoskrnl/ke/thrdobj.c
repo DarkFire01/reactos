@@ -324,6 +324,139 @@ KeForceResumeThread(IN PKTHREAD Thread)
     return PreviousCount;
 }
 
+/* Adds one freeze to a thread. Called with the process lock held at SYNCH_LEVEL. */
+static
+VOID
+KiFreezeThread(
+    _In_ PKTHREAD Thread)
+{
+    KLOCK_QUEUE_HANDLE ApcLock;
+
+    KiAcquireApcLockAtSynchLevel(Thread, &ApcLock);
+
+    if (Thread->ApcQueueable)
+    {
+        ASSERT(Thread->FreezeCount != MAXIMUM_SUSPEND_COUNT);
+
+        /* A thread that was running needs the suspend APC to stop */
+        if (!Thread->SuspendCount && !Thread->FreezeCount)
+        {
+            if (!Thread->SuspendApc.Inserted)
+            {
+                Thread->SuspendApc.Inserted = TRUE;
+                KiInsertQueueApc(&Thread->SuspendApc, IO_NO_INCREMENT);
+            }
+            else
+            {
+                /* The APC is still queued from an earlier stop, so make its wait block again */
+                KiAcquireDispatcherLockAtSynchLevel();
+                Thread->SuspendSemaphore.Header.SignalState--;
+                KiReleaseDispatcherLockFromSynchLevel();
+            }
+        }
+
+        Thread->FreezeCount++;
+    }
+
+    KiReleaseApcLockFromSynchLevel(&ApcLock);
+}
+
+/* Takes one freeze off a thread and lets it run once nothing else holds it */
+static
+VOID
+KiThawThread(
+    _In_ PKTHREAD Thread)
+{
+    KLOCK_QUEUE_HANDLE ApcLock;
+
+    KiAcquireApcLockAtSynchLevel(Thread, &ApcLock);
+
+    if (Thread->FreezeCount)
+    {
+        Thread->FreezeCount--;
+        if (!Thread->SuspendCount && !Thread->FreezeCount)
+        {
+            KiAcquireDispatcherLockAtSynchLevel();
+            Thread->SuspendSemaphore.Header.SignalState++;
+            KiWaitTest(&Thread->SuspendSemaphore, 0);
+            KiReleaseDispatcherLockFromSynchLevel();
+        }
+    }
+
+    KiReleaseApcLockFromSynchLevel(&ApcLock);
+}
+
+/**
+ * @brief
+ * Freezes every thread of a process, and every thread it creates until it is
+ * thawed. The process cannot resume itself, its threads only stop at their
+ * next safe point and never while they hold kernel state.
+ *
+ * @return
+ * FALSE when the process was already frozen.
+ */
+BOOLEAN
+NTAPI
+KeFreezeProcess(
+    _Inout_ PKPROCESS Process)
+{
+    KLOCK_QUEUE_HANDLE LockHandle;
+    PKTHREAD Current, CurrentThread = KeGetCurrentThread();
+    PLIST_ENTRY Entry;
+
+    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+
+    KiAcquireProcessLockRaiseToSynch(Process, &LockHandle);
+
+    if (Process->DeepFreeze)
+    {
+        KiReleaseProcessLock(&LockHandle);
+        return FALSE;
+    }
+
+    Process->DeepFreeze = TRUE;
+    for (Entry = Process->ThreadListHead.Flink; Entry != &Process->ThreadListHead; Entry = Entry->Flink)
+    {
+        Current = CONTAINING_RECORD(Entry, KTHREAD, ThreadListEntry);
+        if (Current != CurrentThread)
+            KiFreezeThread(Current);
+    }
+
+    KiReleaseProcessLockFromSynchLevel(&LockHandle);
+    KiExitDispatcher(LockHandle.OldIrql);
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Undoes KeFreezeProcess. Threads stopped by a suspend of their own stay stopped.
+ */
+VOID
+NTAPI
+KeThawProcess(
+    _Inout_ PKPROCESS Process)
+{
+    KLOCK_QUEUE_HANDLE LockHandle;
+    PLIST_ENTRY Entry;
+
+    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+
+    KiAcquireProcessLockRaiseToSynch(Process, &LockHandle);
+
+    if (!Process->DeepFreeze)
+    {
+        KiReleaseProcessLock(&LockHandle);
+        return;
+    }
+
+    Process->DeepFreeze = FALSE;
+    for (Entry = Process->ThreadListHead.Flink; Entry != &Process->ThreadListHead; Entry = Entry->Flink)
+        KiThawThread(CONTAINING_RECORD(Entry, KTHREAD, ThreadListEntry));
+
+    KiReleaseProcessLockFromSynchLevel(&LockHandle);
+    KiExitDispatcher(LockHandle.OldIrql);
+}
+
 VOID
 NTAPI
 KeFreezeAllThreads(VOID)
@@ -576,8 +709,12 @@ KeStartThread(IN OUT PKTHREAD Thread)
     ASSERT(Process->StackCount != MAXULONG_PTR);
     Process->StackCount++;
 
-    /* Release locks and return */
     KiReleaseDispatcherLockFromSynchLevel();
+
+    /* A thread born into a frozen process starts frozen, decided under the process lock so a thaw cannot miss it */
+    if (Process->DeepFreeze)
+        KiFreezeThread(Thread);
+
     KiReleaseProcessLock(&LockHandle);
 }
 
