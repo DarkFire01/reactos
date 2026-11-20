@@ -1,0 +1,8 @@
+; ACPI Time and Alarm Device, the platform clock when the firmware clock services have none
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\acpitime","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\acpitime","ImagePath",0x00020000,"system32\drivers\acpitime.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\acpitime","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\acpitime","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI000E","Service",0x00000000,"acpitime"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI000E","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
