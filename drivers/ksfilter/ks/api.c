@@ -974,8 +974,50 @@ KspObjectFreeCreateItems(
     IN  KSDEVICE_HEADER Header,
     IN  PKSOBJECT_CREATE_ITEM CreateItem)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    PKSIDEVICE_HEADER DeviceHeader = (PKSIDEVICE_HEADER)Header;
+    PCREATE_ITEM_ENTRY CreateEntry;
+    PKSOBJECT_CREATE_ITEM Item;
+    PLIST_ENTRY Entry;
+    BOOLEAN Match;
+    NTSTATUS Status = STATUS_OBJECT_NAME_NOT_FOUND;
+
+    if (!DeviceHeader)
+        return STATUS_INVALID_PARAMETER_1;
+
+    /* A name picks one item, without one every item of the context goes */
+    for (Entry = DeviceHeader->ItemList.Flink; Entry != &DeviceHeader->ItemList; Entry = Entry->Flink)
+    {
+        CreateEntry = CONTAINING_RECORD(Entry, CREATE_ITEM_ENTRY, Entry);
+        Item = CreateEntry->CreateItem;
+        if (!Item->Create)
+            continue;
+
+        if (CreateItem->ObjectClass.Buffer)
+            Match = Item->ObjectClass.Buffer && !_wcsicmp(Item->ObjectClass.Buffer, CreateItem->ObjectClass.Buffer);
+        else
+            Match = (Item->Context == CreateItem->Context);
+
+        if (!Match)
+            continue;
+
+        if (CreateEntry->ItemFreeCallback)
+            CreateEntry->ItemFreeCallback(Item);
+
+        /* The slot stays in the list, a free slot is one with no create routine */
+        Item->Create = NULL;
+        Item->Context = NULL;
+        RtlInitUnicodeString(&Item->ObjectClass, NULL);
+        Item->SecurityDescriptor = NULL;
+        Item->Flags = 0;
+        CreateEntry->ItemFreeCallback = NULL;
+        InterlockedDecrement(&DeviceHeader->ItemListCount);
+        Status = STATUS_SUCCESS;
+
+        if (CreateItem->ObjectClass.Buffer)
+            break;
+    }
+
+    return Status;
 }
 
 /*
