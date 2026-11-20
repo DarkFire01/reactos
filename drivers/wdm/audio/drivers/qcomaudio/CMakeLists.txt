@@ -21,4 +21,4 @@ endif()
 
 add_pch(qcomaudio precomp.h "guid.cpp")
 add_cd_file(TARGET qcomaudio DESTINATION reactos/system32/drivers FOR all)
-add_registry_inf(qcomaudio_reg.inf)
+# DIAG: off while the SIM and modem are tested add_registry_inf(qcomaudio_reg.inf)
