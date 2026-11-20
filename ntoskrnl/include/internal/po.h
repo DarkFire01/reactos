@@ -1757,6 +1757,12 @@ NTAPI
 PopPowerSourceSettingWorker(
     _In_ PVOID StartContext);
 
+_Function_class_(KSTART_ROUTINE)
+VOID
+NTAPI
+PopDisplayStateSettingWorker(
+    _In_ PVOID StartContext);
+
 //
 // Power Manager Executive Worker Thread routines
 //

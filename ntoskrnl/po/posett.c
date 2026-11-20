@@ -34,13 +34,13 @@ POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[POP_MAX_POWER_SETTINGS] =
     {&GUID_VIDEO_ADAPTIVE_PERCENT_INCREASE, NULL},
     {&GUID_VIDEO_DIM_TIMEOUT, NULL},
     {&GUID_VIDEO_ADAPTIVE_POWERDOWN, NULL},
-    {&GUID_MONITOR_POWER_ON, NULL},
+    {&GUID_MONITOR_POWER_ON, PopDisplayStateSettingWorker},
     {&GUID_DEVICE_POWER_POLICY_VIDEO_BRIGHTNESS, NULL},
     {&GUID_DEVICE_POWER_POLICY_VIDEO_DIM_BRIGHTNESS, NULL},
     {&GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS, NULL},
     {&GUID_VIDEO_ADAPTIVE_DISPLAY_BRIGHTNESS, NULL},
-    {&GUID_SESSION_DISPLAY_STATE, NULL},
-    {&GUID_CONSOLE_DISPLAY_STATE, NULL},
+    {&GUID_SESSION_DISPLAY_STATE, PopDisplayStateSettingWorker},
+    {&GUID_CONSOLE_DISPLAY_STATE, PopDisplayStateSettingWorker},
     {&GUID_ALLOW_DISPLAY_REQUIRED, NULL},
     {&GUID_DISK_SUBGROUP, NULL},
     {&GUID_DISK_POWERDOWN_TIMEOUT, NULL},
@@ -234,6 +234,33 @@ PopPowerSourceSettingWorker(
 
     /* Execute the callback now */
     PopExecutePowerSettingCallback(SettingCallback, &PowerCondition, sizeof(SYSTEM_POWER_CONDITION));
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+/**
+ * @brief
+ * Worker for the display state settings. The console and session states and
+ * the monitor power setting all read 0 while connected standby has the display
+ * off and 1 while it is on.
+ *
+ * @param[in] StartContext
+ * The setting callback to notify.
+ */
+_Function_class_(KSTART_ROUTINE)
+VOID
+NTAPI
+PopDisplayStateSettingWorker(
+    _In_ PVOID StartContext)
+{
+    PPOP_POWER_SETTING_CALLBACK SettingCallback = (PPOP_POWER_SETTING_CALLBACK)StartContext;
+    ULONG DisplayOn;
+
+    PAGED_CODE();
+
+    ASSERT(SettingCallback != NULL);
+
+    DisplayOn = PopAoAcInStandby ? 0 : 1;
+    PopExecutePowerSettingCallback(SettingCallback, &DisplayOn, sizeof(DisplayOn));
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
