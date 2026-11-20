@@ -593,6 +593,93 @@ typedef struct _PEP_QUERY_CURRENT_COMPONENT_PERF_STATE
 #define PEP_NOTIFY_ACPI_TRANSLATED_DEVICE_CONTROL_RESOURCES         0x09
 #define PEP_NOTIFY_ACPI_WORK                                        0x0A
 
+/* Processor power management notifications */
+
+#define PEP_NOTIFY_PPM_QUERY_CAPABILITIES               0x01
+#define PEP_NOTIFY_PPM_IDLE_EXECUTE                     0x05
+#define PEP_NOTIFY_PPM_IDLE_COMPLETE                    0x06
+#define PEP_NOTIFY_PPM_IS_PROCESSOR_HALTED              0x07
+#define PEP_NOTIFY_PPM_INITIATE_WAKE                    0x08
+#define PEP_NOTIFY_PPM_QUERY_FEEDBACK_COUNTERS          0x09
+#define PEP_NOTIFY_PPM_FEEDBACK_READ                    0x0A
+#define PEP_NOTIFY_PPM_QUERY_PERF_CAPABILITIES          0x0B
+#define PEP_NOTIFY_PPM_PERF_CONSTRAINTS                 0x0C
+#define PEP_NOTIFY_PPM_PERF_SET                         0x0D
+#define PEP_NOTIFY_PPM_PARK_SELECTION                   0x0E
+#define PEP_NOTIFY_PPM_CST_STATES                       0x0F
+#define PEP_NOTIFY_PPM_QUERY_PLATFORM_STATES            0x10
+#define PEP_NOTIFY_PPM_QUERY_IDLE_STATES_V2             0x12
+#define PEP_NOTIFY_PPM_QUERY_PLATFORM_STATE             0x13
+#define PEP_NOTIFY_PPM_TEST_IDLE_STATE                  0x14
+#define PEP_NOTIFY_PPM_IDLE_PRE_EXECUTE                 0x15
+#define PEP_NOTIFY_PPM_UPDATE_PLATFORM_STATE            0x16
+#define PEP_NOTIFY_PPM_QUERY_PLATFORM_STATE_RESIDENCIES 0x17
+#define PEP_NOTIFY_PPM_QUERY_VETO_REASONS               0x18
+#define PEP_NOTIFY_PPM_QUERY_VETO_REASON                0x19
+#define PEP_NOTIFY_PPM_ENUMERATE_BOOT_VETOES            0x1A
+#define PEP_NOTIFY_PPM_QUERY_COORDINATED_STATE_NAME     0x1B
+#define PEP_NOTIFY_PPM_QUERY_PROCESSOR_STATE_NAME       0x1C
+#define PEP_NOTIFY_PPM_QUERY_COORDINATED_STATES         0x1D
+#define PEP_NOTIFY_PPM_QUERY_COORDINATED_DEPENDENCY     0x1E
+#define PEP_NOTIFY_PPM_PARK_SELECTION_V2                0x1F
+#define PEP_NOTIFY_PPM_PARK_MASK                        0x20
+#define PEP_NOTIFY_PPM_PERF_CHECK_COMPLETE              0x21
+#define PEP_NOTIFY_PPM_LPI_SUPPORTED                    0x22
+#define PEP_NOTIFY_PPM_LPI_PROCESSOR_STATES             0x23
+#define PEP_NOTIFY_PPM_LPI_COORDINATED_STATES           0x24
+#define PEP_NOTIFY_PPM_LPI_PRE_EXECUTE                  0x25
+#define PEP_NOTIFY_PPM_LPI_COMPLETE                     0x26
+#define PEP_NOTIFY_PPM_ENTER_SYSTEM_STATE               0x27
+#define PEP_NOTIFY_PPM_RESUME_FROM_SYSTEM_STATE         0x28
+#define PEP_NOTIFY_PPM_QUERY_DISCRETE_PERF_STATES       0x29
+#define PEP_NOTIFY_PPM_QUERY_DOMAIN_INFO                0x2A
+#define PEP_NOTIFY_PPM_PERF_SET_STATE                   0x2B
+#define PEP_NOTIFY_PPM_QUERY_PERF_EPP_SUPPORT           0x2C
+
+typedef struct _PEP_PPM_QUERY_CAPABILITIES
+{
+    ULONG FeedbackCounterCount;
+    ULONG IdleStateCount;
+    BOOLEAN PerformanceStatesSupported;
+    BOOLEAN ParkingSupported;
+    UCHAR DiscretePerformanceStateCount;
+    UCHAR Reserved;
+} PEP_PPM_QUERY_CAPABILITIES, *PPEP_PPM_QUERY_CAPABILITIES;
+
+typedef struct _PEP_PPM_QUERY_PERF_CAPABILITIES
+{
+    ULONG HighestPerformance;
+    ULONG NominalPerformance;
+    ULONG LowestNonlinearPerformance;
+    ULONG LowestPerformance;
+    ULONG DomainId;
+    ULONG DomainMembers;
+} PEP_PPM_QUERY_PERF_CAPABILITIES, *PPEP_PPM_QUERY_PERF_CAPABILITIES;
+
+#define PERFORMANCE_LIMIT_THERMAL               (1 << 0)
+#define PERFORMANCE_LIMIT_POWER                 (1 << 1)
+#define PERFORMANCE_LIMIT_DOMAIN_DEPENDENCY     (1 << 2)
+
+typedef struct _PEP_PPM_QUERY_PERF_CONSTRAINTS
+{
+    ULONG GuaranteedPerformanceLimit;
+    ULONG LimitReasons;
+} PEP_PPM_PERF_CONSTRAINTS, *PPEP_PPM_PERF_CONSTRAINTS;
+
+typedef struct _PEP_PPM_PERF_SET
+{
+    ULONG MinimumPerformance;
+    ULONG MaximumPerformance;
+    ULONG DesiredPerformance;
+    ULONG TimeWindow;
+    ULONG PerformanceTolerance;
+} PEP_PPM_PERF_SET, *PPEP_PPM_PERF_SET;
+
+typedef struct _PEP_PPM_PERF_CHECK_COMPLETE
+{
+    ULONGLONG EvaluationTime;
+} PEP_PPM_PERF_CHECK_COMPLETE, *PPEP_PPM_PERF_CHECK_COMPLETE;
+
 /* Registration */
 
 #define PEP_INFORMATION_V1 0x00000001
