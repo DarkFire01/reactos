@@ -661,15 +661,13 @@ DlpIsDxgkMiniport(
     return FALSE;
 }
 
-/**
- * @brief Is a WDDM display adapter there? dxgkrnl takes over the dispatch routines of every
- *        miniport, though a miniport may put its own in front of them again, and a display
- *        adapter, unlike a render only one, is in the display class. An XDDM miniport's
- *        dispatch is in videoprt, so it matches neither. This holds from the miniport's
- *        AddDevice on, before dxgkrnl starts the adapter.
- */
+typedef BOOLEAN (NTAPI *PDLP_DRIVER_MATCH)(_In_ PDRIVER_OBJECT DriverObject, _In_opt_ PVOID Context);
+
+/** @brief Walks every driver object in \Driver until Match takes one. */
 static BOOLEAN
-DlpHasWddmDisplayAdapter(VOID)
+DlpFindDriver(
+    _In_ PDLP_DRIVER_MATCH Match,
+    _In_opt_ PVOID Context)
 {
     UNICODE_STRING DirectoryName = RTL_CONSTANT_STRING(L"\\Driver");
     union
@@ -680,17 +678,12 @@ DlpHasWddmDisplayAdapter(VOID)
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING DriverName;
     WCHAR szDriverName[160];
-    PDRIVER_OBJECT DxgkDriver, DriverObject;
-    ULONG_PTR ulDispatch;
+    PDRIVER_OBJECT DriverObject;
     HANDLE hDirectory;
     ULONG ulContext = 0;
     ULONG cbReturned;
     BOOLEAN bFound = FALSE;
     NTSTATUS Status;
-
-    if (gpDxgkDeviceObject == NULL)
-        return FALSE;
-    DxgkDriver = gpDxgkDeviceObject->DriverObject;
 
     InitializeObjectAttributes(&ObjectAttributes,
                                &DirectoryName,
@@ -726,21 +719,121 @@ DlpHasWddmDisplayAdapter(VOID)
         if (!NT_SUCCESS(Status))
             continue;
 
-        ulDispatch = (ULONG_PTR)DriverObject->MajorFunction[IRP_MJ_PNP];
-        if ((DriverObject != DxgkDriver) &&
-            DlpDriverDrivesDisplay(DriverObject) &&
-            (DlpIsDxgkMiniport(DriverObject, DxgkDriver) ||
-             (ulDispatch - (ULONG_PTR)DriverObject->DriverStart < DriverObject->DriverSize)))
-        {
-            bFound = TRUE;
-            DPRINT1("win32k: WDDM display driver %wZ\n", &DriverName);
-        }
-
+        bFound = Match(DriverObject, Context);
         ObDereferenceObject(DriverObject);
     }
 
     ZwClose(hDirectory);
     return bFound;
+}
+
+static BOOLEAN
+NTAPI
+DlpIsWddmDisplayDriver(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ PVOID Context)
+{
+    PDRIVER_OBJECT DxgkDriver = Context;
+    ULONG_PTR ulDispatch = (ULONG_PTR)DriverObject->MajorFunction[IRP_MJ_PNP];
+
+    if ((DriverObject == DxgkDriver) ||
+        !DlpDriverDrivesDisplay(DriverObject) ||
+        (!DlpIsDxgkMiniport(DriverObject, DxgkDriver) &&
+         (ulDispatch - (ULONG_PTR)DriverObject->DriverStart >= DriverObject->DriverSize)))
+    {
+        return FALSE;
+    }
+
+    DPRINT1("win32k: WDDM display driver %wZ\n", &DriverObject->DriverName);
+    return TRUE;
+}
+
+/**
+ * @brief Is a WDDM display adapter there? dxgkrnl takes over the dispatch routines of every
+ *        miniport, though a miniport may put its own in front of them again, and a display
+ *        adapter, unlike a render only one, is in the display class. An XDDM miniport's
+ *        dispatch is in videoprt, so it matches neither. This holds from the miniport's
+ *        AddDevice on, before dxgkrnl starts the adapter.
+ */
+static BOOLEAN
+DlpHasWddmDisplayAdapter(VOID)
+{
+    if (gpDxgkDeviceObject == NULL)
+        return FALSE;
+
+    return DlpFindDriver(DlpIsWddmDisplayDriver, gpDxgkDeviceObject->DriverObject);
+}
+
+/* A bus driver reported a display class device that no function driver sits on yet */
+static BOOLEAN
+NTAPI
+DlpHasDriverlessDisplay(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ PVOID Context)
+{
+    static const WCHAR szDisplayClass[] = L"{4d36e968-e325-11ce-bfc1-08002be10318}";
+    WCHAR szClass[ARRAYSIZE(szDisplayClass)];
+    PDEVICE_OBJECT DeviceObject;
+    ULONG cbClass;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    for (DeviceObject = DriverObject->DeviceObject;
+         DeviceObject != NULL;
+         DeviceObject = DeviceObject->NextDevice)
+    {
+        if (!(DeviceObject->Flags & DO_BUS_ENUMERATED_DEVICE) || (DeviceObject->AttachedDevice != NULL))
+            continue;
+
+        if (NT_SUCCESS(IoGetDeviceProperty(DeviceObject, DevicePropertyClassGuid,
+                                           sizeof(szClass), szClass, &cbClass)) &&
+            (_wcsicmp(szClass, szDisplayClass) == 0))
+        {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief Is a display adapter still waiting for its driver? A demand start miniport only loads
+ *        once PnP reaches its device, which can be after CSRSS asks for the session.
+ */
+static BOOLEAN
+DlpIsDisplayAdapterPending(VOID)
+{
+    return DlpFindDriver(DlpHasDriverlessDisplay, NULL);
+}
+
+#define DL_ADAPTER_WAIT_STEP_MS     250
+#define DL_ADAPTER_WAIT_LIMIT_MS    30000
+
+/**
+ * @brief Waits for a WDDM display adapter while a display device is still without its driver.
+ *
+ * @return TRUE once a WDDM display adapter is there, FALSE when none is or none will be.
+ */
+static BOOLEAN
+DlpWaitForWddmDisplayAdapter(VOID)
+{
+    LARGE_INTEGER Interval;
+    ULONG Waited;
+
+    Interval.QuadPart = -(LONGLONG)DL_ADAPTER_WAIT_STEP_MS * 10000;
+    for (Waited = 0; !DlpHasWddmDisplayAdapter(); Waited += DL_ADAPTER_WAIT_STEP_MS)
+    {
+        if (Waited >= DL_ADAPTER_WAIT_LIMIT_MS || !DlpIsDisplayAdapterPending())
+            return FALSE;
+
+        if (Waited == 0)
+            DPRINT1("win32k: a display adapter has no driver yet, waiting for it\n");
+        KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+    }
+
+    if (Waited)
+        DPRINT1("win32k: WDDM display adapter arrived after %lu ms\n", Waited);
+    return TRUE;
 }
 
 /** @brief Is dxgkrnl loaded at all, whether or not win32k got its interface? */
@@ -1938,7 +2031,7 @@ DlNotifySessionOpen(VOID)
         DPRINT1("win32k: VGA mode requested, the desktop stays on the XDDM drivers\n");
         return;
     }
-    else if (!DlpHasWddmDisplayAdapter())
+    else if (!DlpWaitForWddmDisplayAdapter())
     {
         /* dxgkrnl would hold the session for a display adapter that never comes, GDI stays on XDDM */
         DPRINT1("win32k: no WDDM display adapter, the desktop stays on the XDDM drivers\n");
