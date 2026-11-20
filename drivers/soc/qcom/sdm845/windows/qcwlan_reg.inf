@@ -5,7 +5,8 @@ HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","DisplayName",0x00000000,"Qualco
 HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Group",0x00000000,"NDIS"
 HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","ImagePath",0x00020000,"system32\drivers\qcwlan850.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Start",0x00010001,0x00000003
+; DIAG: disabled while the late freeze is bisected, 3 is the normal start type
+HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Start",0x00010001,0x00000004
 HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\EventLog\System\qcwlan","EventMessageFile",0x00020000,"%SystemRoot%\System32\netevent.dll"
 HKLM,"SYSTEM\CurrentControlSet\Services\EventLog\System\qcwlan","TypesSupported",0x00010001,0x00000007
