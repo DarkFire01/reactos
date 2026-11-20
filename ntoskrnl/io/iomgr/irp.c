@@ -22,13 +22,13 @@ RESERVE_IRP_ALLOCATOR IopReserveIrpAllocator;
 static const ULONG IopWatchedIoctls[] = { 0x00212030 };
 #define IOP_WATCH_PIL_DEVICE_TYPE 0x9C41
 
-/* PIL clients name themselves with these GUIDs in the first 16 bytes of a request */
-static const GUID IopPilClientMba = { 0xba58766d, 0xabf2, 0x4402, { 0x88, 0xd7, 0x90, 0xab, 0x24, 0x3f, 0x6c, 0x77 } };
-static const GUID IopPilClientModem = { 0x936dc601, 0x5530, 0x4b82, { 0x9d, 0x2a, 0x72, 0xa4, 0x88, 0xbe, 0xc7, 0xc1 } };
+/* qcdx names itself with this GUID in the first 16 bytes of its load request */
 static const GUID IopPilClientGpu = { 0xc7e8fde3, 0x884c, 0x42c4, { 0x82, 0x26, 0xbb, 0xd6, 0xaf, 0x3e, 0x22, 0x81 } };
 
 #define IOP_PIL_LOAD 0x9C41241C
-#define IOP_PIL_MODEM_HOLD_LIMIT_MS 20000
+/* qcsubsys drives the MBA and modem loads through this request */
+#define IOP_PIL_SUBSYSTEM_LOAD 0x9C412428
+#define IOP_PIL_MODEM_HOLD_LIMIT_MS 30000
 
 /* qcPILC loads one image at a time and the 60 MB modem image outlasts the 15 s qcdx waits for its zap shader */
 static PIRP IopPilGpuIrp;
@@ -43,26 +43,27 @@ IopPilHoldModem(
 {
     LARGE_INTEGER Interval;
     ULONG Waited;
+    ULONG Code = StackPtr->Parameters.DeviceIoControl.IoControlCode;
     const GUID *Client = Irp->AssociatedIrp.SystemBuffer;
 
-    if (!Client || StackPtr->Parameters.DeviceIoControl.InputBufferLength < sizeof(*Client))
-        return;
-
-    if (StackPtr->Parameters.DeviceIoControl.IoControlCode == IOP_PIL_LOAD &&
+    if (Code == IOP_PIL_LOAD &&
+        Client &&
+        StackPtr->Parameters.DeviceIoControl.InputBufferLength >= sizeof(*Client) &&
         IsEqualGUID(Client, &IopPilClientGpu))
     {
+        DPRINT1("PIL: GPU zap shader load on thread %p\n", PsGetCurrentThread());
         IopPilGpuIrp = Irp;
         return;
     }
 
-    if (!IsEqualGUID(Client, &IopPilClientMba) && !IsEqualGUID(Client, &IopPilClientModem))
+    if (Code != IOP_PIL_SUBSYSTEM_LOAD)
         return;
     if (IopPilGpuDone || KeGetCurrentIrql() != PASSIVE_LEVEL)
         return;
     if (InterlockedExchange(&IopPilModemHeld, 1))
         return;
 
-    DPRINT1("PIL: holding the modem until the GPU zap shader is loaded\n");
+    DPRINT1("PIL: holding the modem on thread %p until the GPU zap shader is loaded\n", PsGetCurrentThread());
     Interval.QuadPart = -100 * 10000LL;
     for (Waited = 0; !IopPilGpuDone && Waited < IOP_PIL_MODEM_HOLD_LIMIT_MS; Waited += 100)
         KeDelayExecutionThread(KernelMode, FALSE, &Interval);
