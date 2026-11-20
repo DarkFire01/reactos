@@ -1,4 +1,0 @@
-; On ARM64 the WDDM display driver owns the panel, the framebuffer miniport stays off
-
-[AddReg]
-HKLM,"SYSTEM\CurrentControlSet\Services\GenericFramebuffer","Start",0x00010001,0x00000004
