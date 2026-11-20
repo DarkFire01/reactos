@@ -361,7 +361,7 @@ PnpWatchDumpGpuSmmu(VOID)
 {
     PHYSICAL_ADDRESS Physical;
     PUCHAR Va, Cb;
-    ULONG i;
+    ULONG Id0, Id1, Groups, Banks, i;
 
     Physical.QuadPart = PNP_WATCH_GPU_SMMU_BASE;
     Va = MmMapIoSpace(Physical, PNP_WATCH_GPU_SMMU_SIZE, MmNonCached);
@@ -371,14 +371,20 @@ PnpWatchDumpGpuSmmu(VOID)
         return;
     }
 
+    Id0 = READ_REGISTER_ULONG((PULONG)(Va + 0x20));
+    Id1 = READ_REGISTER_ULONG((PULONG)(Va + 0x24));
     DbgPrint("PNPWATCH: gpu smmu cr0 %08lx id0 %08lx id1 %08lx gfsr %08lx gfsynr0 %08lx\n",
              READ_REGISTER_ULONG((PULONG)(Va + 0x0)),
-             READ_REGISTER_ULONG((PULONG)(Va + 0x20)),
-             READ_REGISTER_ULONG((PULONG)(Va + 0x24)),
+             Id0,
+             Id1,
              READ_REGISTER_ULONG((PULONG)(Va + 0x48)),
              READ_REGISTER_ULONG((PULONG)(Va + 0x50)));
 
-    for (i = 0; i < PNP_WATCH_GPU_SMMU_SLOTS; i++)
+    /* Registers past the implemented groups and banks fault on the config NOC */
+    Groups = min(Id0 & 0xFF, PNP_WATCH_GPU_SMMU_SLOTS);
+    Banks = min(Id1 & 0xFF, PNP_WATCH_GPU_SMMU_SLOTS);
+
+    for (i = 0; i < Groups; i++)
     {
         DbgPrint("PNPWATCH: gpu smmu smr%lu %08lx s2cr %08lx cbar %08lx\n",
                  i,
@@ -387,7 +393,7 @@ PnpWatchDumpGpuSmmu(VOID)
                  READ_REGISTER_ULONG((PULONG)(Va + PNP_WATCH_GPU_SMMU_GR1 + i * sizeof(ULONG))));
     }
 
-    for (i = 0; i < PNP_WATCH_GPU_SMMU_SLOTS; i++)
+    for (i = 0; i < Banks; i++)
     {
         Cb = Va + PNP_WATCH_GPU_SMMU_CB + i * PNP_WATCH_GPU_SMMU_CB_SIZE;
         DbgPrint("PNPWATCH: gpu smmu cb%lu sctlr %08lx fsr %08lx far %08lx%08lx fsynr0 %08lx\n",
@@ -630,7 +636,7 @@ PnpWatchDumpStalledGuiThreads(VOID)
 }
 
 /* GMU bring-up timeline: every register change from the moment qcdx loads */
-#define PNP_WATCH_GPU_TRACE_TIME    (60LL * 10000000)
+#define PNP_WATCH_GPU_TRACE_TIME    (300LL * 10000000)
 #define PNP_WATCH_GPU_TRACE_LINES   800
 #define PNP_WATCH_GPU_TRACE_WAIT    (-50LL * 10000)
 
@@ -672,7 +678,6 @@ static const PNP_WATCH_GPU_TRACE_REG PnpWatchGpuTraceRegs[] =
     { PnpWatchGpuGmu, 0x2EC14, "ao host irq status" },
     { PnpWatchGpuGmu, 0x2EC1C, "rscc control req" },
     { PnpWatchGpuGmu, 0x2EC20, "rscc control ack" },
-    { PnpWatchGpuGmu, 0x2EC30, "cx busy status" },
     { PnpWatchGpuGmu, 0x2EC4C, "ahb fence status" },
     { PnpWatchGpuGmu, 0x2D010, "rscc status0" },
     { PnpWatchGpuGmu, 0x2D404, "rscc seq busy" },
