@@ -310,8 +310,52 @@ PcRegisterSubdevice(
         }
     }
 
-    // release SubDevice reference
-    SubDevice->Release();
-
+    // The create item keeps the reference until the subdevice is unregistered
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Takes back every subdevice the adapter registered, as a failed start
+ * or a removal leaves nothing behind for clients to open.
+ */
+VOID
+NTAPI
+PcUnregisterSubdevices(
+    _In_ PDEVICE_OBJECT DeviceObject)
+{
+    PPCLASS_DEVICE_EXTENSION DeviceExt = (PPCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PSUBDEVICE_DESCRIPTOR SubDeviceDescriptor;
+    PSYMBOLICLINK_ENTRY SymEntry;
+    ISubdevice *SubDevice;
+    PLIST_ENTRY Entry;
+    ULONG Index;
+
+    PC_ASSERT_IRQL_EQUAL(PASSIVE_LEVEL);
+
+    if (!DeviceExt || !DeviceExt->CreateItems)
+        return;
+
+    for (Index = 0; Index < DeviceExt->MaxSubDevices; Index++)
+    {
+        if (DeviceExt->CreateItems[Index].Create != PcCreateItemDispatch || !DeviceExt->CreateItems[Index].Context)
+            continue;
+
+        SubDevice = (ISubdevice*)DeviceExt->CreateItems[Index].Context;
+
+        // clients find the subdevice through its interfaces, those go first
+        if (NT_SUCCESS(SubDevice->GetDescriptor(&SubDeviceDescriptor)))
+        {
+            while (!IsListEmpty(&SubDeviceDescriptor->SymbolicLinkList))
+            {
+                Entry = RemoveHeadList(&SubDeviceDescriptor->SymbolicLinkList);
+                SymEntry = CONTAINING_RECORD(Entry, SYMBOLICLINK_ENTRY, Entry);
+                IoSetDeviceInterfaceState(&SymEntry->SymbolicLink, FALSE);
+                RtlFreeUnicodeString(&SymEntry->SymbolicLink);
+                FreeItem(SymEntry, TAG_PORTCLASS);
+            }
+        }
+
+        KsFreeObjectCreateItemsByContext(DeviceExt->KsDeviceHeader, SubDevice);
+        SubDevice->Release();
+    }
 }

@@ -295,6 +295,11 @@ PcCreateItemDispatch(
     IN  PDEVICE_OBJECT DeviceObject,
     IN  PIRP Irp);
 
+VOID
+NTAPI
+PcUnregisterSubdevices(
+    _In_ PDEVICE_OBJECT DeviceObject);
+
 PDEVICE_OBJECT
 GetDeviceObject(
     IPortWaveCyclic* iface);
