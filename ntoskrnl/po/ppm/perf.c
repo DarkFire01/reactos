@@ -21,6 +21,7 @@ static PPM_PEP_PROCESSOR PpmPepProcessors[MAXIMUM_PROCESSORS];
 static ULONG PpmPepProcessorCount;
 static volatile LONG PpmPepProcessorsPending;
 static BOOLEAN PpmPepFailureLogged;
+static BOOLEAN PpmPepRegistrationAllowed;
 
 static PPM_PERF_DOMAIN PpmPerfDomains[MAXIMUM_PROCESSORS];
 static ULONG PpmPerfDomainCount;
@@ -309,6 +310,23 @@ PpmPepTrackProcessor(
 }
 
 /**
+ * @brief Lets the processors go to the plug-in once the boot devices have started.
+ *
+ * @remarks The Qualcomm plug-in builds its CPU performance tables from the thermal
+ * zones it drives and bugchecks when they are not up yet.
+ */
+VOID
+NTAPI
+PpmPepAllowRegistration(VOID)
+{
+    PAGED_CODE();
+
+    PpmPepRegistrationAllowed = TRUE;
+    if (PopFxNextPlugin(NULL))
+        PpmPepRegisterProcessors();
+}
+
+/**
  * @brief Registers the processors not yet offered to a plug-in.
  *
  * @remarks Called once a plug-in is known. Each processor gets one try, a refusal
@@ -324,7 +342,7 @@ PpmPepRegisterProcessors(VOID)
 
     PAGED_CODE();
 
-    if (!ReadNoFence(&PpmPepProcessorsPending))
+    if (!PpmPepRegistrationAllowed || !ReadNoFence(&PpmPepProcessorsPending))
         return;
 
     PpmAcquirePerfLock();

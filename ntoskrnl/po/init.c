@@ -697,6 +697,9 @@ PopInitSystemPhase1(VOID)
                  1000, // Recurring interval in 1 second (1000 ms = 1 s)
                  &PopIdleScanDevicesDpc);
 
+    /* The boot devices are up, the plug-in can now build the processors' performance tables */
+    PpmPepAllowRegistration();
+
     return TRUE;
 }
 
