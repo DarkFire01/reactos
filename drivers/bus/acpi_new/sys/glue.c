@@ -46,6 +46,7 @@ UacpiNtInstallEventHandlers(
 
     /* The resource hub must be bound before enumeration, failure is not fatal */
     UacpiNtConnectResourceHub();
+    UacpiNtSerialBusInit();
 
     UacpiNtFixedButtonInit(Fdo);
 }

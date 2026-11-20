@@ -611,6 +611,10 @@ UacpiNtFindPdoByNode(
 
 VOID
 NTAPI
+UacpiNtSerialBusInit(VOID);
+
+VOID
+NTAPI
 UacpiNtRouteNotify(
     _In_ uacpi_namespace_node *Node,
     _In_ ULONG Value);
