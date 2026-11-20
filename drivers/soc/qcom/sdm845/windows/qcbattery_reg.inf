@@ -1,0 +1,18 @@
+; Qualcomm battery stack from the SDM845 WOA set: the battery manager on \_SB.PMBT, which the
+; miniclass on \_SB.PMBM waits for, and the battery current limiter on \_SB.BCL1
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr","DisplayName",0x00000000,"Qualcomm Battery Manager Driver"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr","ImagePath",0x00020000,"system32\drivers\qcbattmngr850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","Service",0x00000000,"qcbattmngr"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","DisplayName",0x00000000,"Qualcomm Fuel Gauge Battery Current Limiter"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","ImagePath",0x00020000,"system32\drivers\qcfgbcl850.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D6","Service",0x00000000,"qcfgbcl"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
