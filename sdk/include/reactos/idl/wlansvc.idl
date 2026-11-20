@@ -100,7 +100,7 @@ interface wlansvc_interface
         [in] const GUID* pInterfaceGuid,
         [in] /* enum32 */ long OpCode,
         [in, out] LPDWORD pdwDataSize,
-        [out][ref][size_is(*pdwDataSize)] LPBYTE* ppData,
+        [out][ref][size_is(, *pdwDataSize)] LPBYTE* ppData,
         [out] /* enum32 */ LPDWORD pWlanOpcodeValueType);
 
     /* Function: 0x08 */
