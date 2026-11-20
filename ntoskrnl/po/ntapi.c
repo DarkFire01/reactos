@@ -554,6 +554,10 @@ NtInitiatePowerAction(
     DPRINT("NtInitiatePowerAction: Action %u, MinState %u, Flags 0x%lx, Async %u\n",
            SystemAction, MinSystemState, Flags, Asynchronous);
 
+    /* Modern Standby platforms never enter a sleep state, they stay in S0 with the display off */
+    if (PopAoAcPresent && SystemAction == PowerActionSleep)
+        return PopAoAcSleep();
+
     Status = ZwSetSystemPowerState(SystemAction, MinSystemState, Flags);
     return Status;
 }
