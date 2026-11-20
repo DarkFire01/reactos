@@ -8,3 +8,4 @@
 #define IDS_SHELL_TITLE             108
 #define IDS_EXPLORER                109
 #define IDS_MESSAGES                110
+#define IDS_SETTINGS                111
