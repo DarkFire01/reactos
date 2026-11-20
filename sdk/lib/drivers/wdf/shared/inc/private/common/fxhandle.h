@@ -339,9 +339,11 @@ Arguments:
 
     //
     // The only DDI you can call on an object which has a ref count of zero is
-    // WdfObjectGetTypedContextWorker().
+    // WdfObjectGetTypedContextWorker(). Shipping drivers call others from their
+    // destroy callbacks and the release framework lets them, so only the
+    // verifier holds a driver to it.
     //
-    ASSERT(pObject->GetRefCnt() > 0);
+    ASSERT(!FxDriverGlobals->FxVerifierOn || pObject->GetRefCnt() > 0);
 
     //
     // Do a quick non virtual call for the type and only do the slow QI if
@@ -408,9 +410,11 @@ Arguments:
 
     //
     // The only DDI you can call on an object which has a ref count of zero is
-    // WdfObjectGetTypedContextWorker().
+    // WdfObjectGetTypedContextWorker(). Shipping drivers call others from their
+    // destroy callbacks and the release framework lets them, so only the
+    // verifier holds a driver to it.
     //
-    ASSERT(pObject->GetRefCnt() > 0);
+    ASSERT(!FxDriverGlobals->FxVerifierOn || pObject->GetRefCnt() > 0);
 
     //
     // Do a quick non virtual call for the type and only do the slow QI if
