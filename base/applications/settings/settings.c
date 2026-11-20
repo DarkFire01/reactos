@@ -1,88 +1,17 @@
 /*
  * PROJECT:     ReactOS Settings
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Touch settings app for the phone, starting with Wi-Fi
+ * PURPOSE:     Touch settings app for the phone
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#define WIN32_NO_STATUS
-#include <windef.h>
-#include <winbase.h>
-#include <winuser.h>
-#include <wingdi.h>
-#include <stdlib.h>
-#include <winreg.h>
-#include <winnls.h>
+#include "settings.h"
 #include <winver.h>
 #include <wlanapi.h>
-#include <strsafe.h>
-#include <wchar.h>
-
-#define WM_WIFI_DONE                (WM_APP + 1)
-#define ST_REFRESH_TIMER            1
-#define ST_REFRESH_MS               5000
-
-/* Dark theme shared with the mobile shell */
-#define ST_BG                       RGB(0x12, 0x12, 0x14)
-#define ST_TILE                     RGB(0x24, 0x25, 0x2A)
-#define ST_ACCENT                   RGB(0x3A, 0x96, 0xDD)
-#define ST_TEXT                     RGB(0xF2, 0xF2, 0xF4)
-#define ST_SUBTEXT                  RGB(0x9A, 0x9B, 0xA3)
-#define ST_FIELD                    RGB(0x1A, 0x1A, 0x1E)
-#define ST_DIM                      RGB(0x3A, 0x3B, 0x42)
-
-/* Touch sized layout in pixels, the top row stays clear of the camera cutout */
-#define ST_MARGIN                   28
-#define ST_SAFE_TOP                 120
-#define ST_GAP                      16
-#define ST_ROW                      88
-#define ST_PILL_H                   56
-#define ST_TAB_H                    76
-#define ST_HEAD_H                   64
-#define ST_STATUS_H                 48
-#define ST_CARD_H                   156
-#define ST_CARD_PAD                 24
-#define ST_ITEM_H                   140
-#define ST_RADIUS                   24
 
 /* The longest WPA passphrase, a 64 digit hex key is not taken by the supplicant */
 #define ST_PASSPHRASE_MAX           63
 #define ST_PASSPHRASE_MIN           8
-
-enum
-{
-    ST_PAGE_WIFI,
-    ST_PAGE_ABOUT
-};
-
-enum
-{
-    IDC_TAB_FIRST = 100,
-    IDC_EXIT = 200,
-    IDC_STATUS,
-    IDC_WIFI_ADAPTER,
-    IDC_WIFI_SCAN,
-    IDC_WIFI_REFRESH,
-    IDC_WIFI_DISCONNECT,
-    IDC_WIFI_LIST,
-    IDC_WIFI_PASSWORD_LABEL,
-    IDC_WIFI_PASSWORD,
-    IDC_WIFI_SHOW_PASSWORD,
-    IDC_WIFI_CONNECT,
-    IDC_WIFI_BACK
-};
-
-/* One page of the app, reached from its tab */
-typedef struct _ST_PAGE
-{
-    LPCWSTR Tab;
-    const UINT *Controls;
-    DWORD ControlCount;
-    VOID (*Show)(VOID);
-    VOID (*Layout)(_In_ const RECT *Area);
-    VOID (*Paint)(_In_ HDC Dc, _In_ const RECT *Area);
-    VOID (*Heading)(_Out_writes_(Count) LPWSTR Text, _In_ DWORD Count);
-} ST_PAGE, *PST_PAGE;
 
 typedef enum _ST_WIFI_OPERATION
 {
@@ -118,22 +47,16 @@ typedef struct _ST_WIFI_JOB
     WLAN_CONNECTION_ATTRIBUTES Connection;
 } ST_WIFI_JOB, *PST_WIFI_JOB;
 
-typedef struct _ST_ABOUT_ROW
-{
-    WCHAR Label[32];
-    WCHAR Value[160];
-} ST_ABOUT_ROW, *PST_ABOUT_ROW;
-
-static HINSTANCE StInstance;
-static HWND StWindow;
-static HFONT StFont;
-static HFONT StSmallFont;
-static HFONT StBigFont;
+HINSTANCE StInstance;
+HWND StWindow;
+HFONT StFont;
+HFONT StSmallFont;
+HFONT StBigFont;
+HFONT StButtonFont;
+HBRUSH StBgBrush;
+DWORD StPage;
 static HFONT StHeadFont;
-static HFONT StButtonFont;
-static HBRUSH StBgBrush;
 static HBRUSH StFieldBrush;
-static DWORD StPage;
 
 /* Wi-Fi page state, owned by the UI thread */
 static ST_WIFI_STATE StWifiState = StWifiChecking;
@@ -152,7 +75,7 @@ static BOOL StJoining;
 static BOOL StShowPassword;
 static WLAN_AVAILABLE_NETWORK StJoinNetwork;
 
-static ST_ABOUT_ROW StAboutRows[10];
+static ST_INFO_ROW StAboutRows[10];
 static DWORD StAboutCount;
 
 static const UINT StWifiListControls[] =
@@ -170,8 +93,8 @@ static const UINT StWifiControls[] =
     IDC_WIFI_ADAPTER, IDC_WIFI_SCAN, IDC_WIFI_REFRESH, IDC_WIFI_DISCONNECT, IDC_WIFI_LIST,
     IDC_WIFI_PASSWORD_LABEL, IDC_WIFI_PASSWORD, IDC_WIFI_SHOW_PASSWORD, IDC_WIFI_CONNECT, IDC_WIFI_BACK
 };
+static const DWORD StWifiControlCount = _countof(StWifiControls);
 
-static
 VOID
 StFillRound(
     _In_ HDC Dc,
@@ -190,7 +113,101 @@ StFillRound(
     DeleteObject(Brush);
 }
 
-static
+/* The summary card at the top of a page, a title over a wrapped detail line */
+VOID
+StDrawCard(
+    _In_ HDC Dc,
+    _In_ const RECT *Card,
+    _In_ LPCWSTR Title,
+    _In_ LPCWSTR Detail,
+    _In_ BOOL Highlight)
+{
+    RECT Text;
+
+    StFillRound(Dc, Card, ST_RADIUS, ST_TILE);
+    SetBkMode(Dc, TRANSPARENT);
+
+    Text = *Card;
+    InflateRect(&Text, -ST_CARD_PAD, -ST_CARD_PAD / 2);
+    Text.bottom = Text.top + 56;
+    SelectObject(Dc, StBigFont);
+    SetTextColor(Dc, Highlight ? ST_ACCENT : ST_TEXT);
+    DrawTextW(Dc, Title, -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+    Text.top = Text.bottom;
+    Text.bottom = Card->bottom - ST_CARD_PAD / 2;
+    SelectObject(Dc, StSmallFont);
+    SetTextColor(Dc, ST_SUBTEXT);
+    DrawTextW(Dc, Detail, -1, &Text, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS | DT_NOPREFIX);
+}
+
+VOID
+StSetInfoRow(
+    _Out_ PST_INFO_ROW Row,
+    _In_ LPCWSTR Label,
+    _In_ LPCWSTR Format,
+    ...)
+{
+    va_list Args;
+
+    StringCchCopyW(Row->Label, _countof(Row->Label), Label);
+
+    va_start(Args, Format);
+    StringCchVPrintfW(Row->Value, _countof(Row->Value), Format, Args);
+    va_end(Args);
+
+    if (!Row->Value[0])
+        StringCchCopyW(Row->Value, _countof(Row->Value), L"Unknown");
+}
+
+VOID
+StPaintInfoRows(
+    _In_ HDC Dc,
+    _In_ const RECT *Area,
+    _In_reads_(Count) const ST_INFO_ROW *Rows,
+    _In_ DWORD Count)
+{
+    RECT Row = *Area;
+    DWORD i;
+
+    SetBkMode(Dc, TRANSPARENT);
+
+    for (i = 0; i < Count && Row.top + ST_INFO_ROW_H <= Area->bottom; i++)
+    {
+        RECT Text;
+
+        Row.bottom = Row.top + ST_INFO_ROW_H;
+
+        Text = Row;
+        Text.bottom = Text.top + 34;
+        SelectObject(Dc, StSmallFont);
+        SetTextColor(Dc, ST_SUBTEXT);
+        DrawTextW(Dc, Rows[i].Label, -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_NOPREFIX);
+
+        Text.top = Text.bottom;
+        Text.bottom = Row.bottom - ST_GAP;
+        SelectObject(Dc, StFont);
+        SetTextColor(Dc, ST_TEXT);
+        DrawTextW(Dc, Rows[i].Value, -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+        Row.top = Row.bottom;
+    }
+}
+
+BOOL
+StStartWorker(
+    _In_ LPTHREAD_START_ROUTINE Routine,
+    _In_ PVOID Parameter)
+{
+    HANDLE Thread = CreateThread(NULL, 0, Routine, Parameter, 0, NULL);
+
+    if (!Thread)
+        return FALSE;
+
+    CloseHandle(Thread);
+    return TRUE;
+}
+
 VOID
 StSetStatus(
     _In_ LPCWSTR Format,
@@ -206,7 +223,6 @@ StSetStatus(
     SetDlgItemTextW(StWindow, IDC_STATUS, Text);
 }
 
-static
 VOID
 StShowGroup(
     _In_reads_(Count) const UINT *Ids,
@@ -219,7 +235,6 @@ StShowGroup(
         ShowWindow(GetDlgItem(StWindow, Ids[i]), Show ? SW_SHOW : SW_HIDE);
 }
 
-static
 VOID
 StMove(
     _In_ UINT Id,
@@ -230,10 +245,6 @@ StMove(
 {
     MoveWindow(GetDlgItem(StWindow, Id), X, Y, Width, Height, TRUE);
 }
-
-static
-VOID
-StRelayout(VOID);
 
 /* Wi-Fi helpers */
 
@@ -343,7 +354,6 @@ StCurrentInterface(VOID)
     return NULL;
 }
 
-static
 VOID
 StErrorText(
     _In_ DWORD Error,
@@ -593,7 +603,6 @@ StWifiStart(
     _In_opt_ LPCWSTR Passphrase)
 {
     PST_WIFI_JOB Job;
-    HANDLE Thread;
 
     if (StBusy)
     {
@@ -615,13 +624,11 @@ StWifiStart(
     if (Passphrase)
         StringCchCopyW(Job->Passphrase, _countof(Job->Passphrase), Passphrase);
 
-    Thread = CreateThread(NULL, 0, StWifiWorker, Job, 0, NULL);
-    if (!Thread)
+    if (!StStartWorker(StWifiWorker, Job))
     {
         StFreeJob(Job);
         return FALSE;
     }
-    CloseHandle(Thread);
 
     StBusy = TRUE;
     return TRUE;
@@ -1112,11 +1119,10 @@ StWifiPaint(
     WCHAR Title[128];
     WCHAR Detail[400];
     WCHAR Name[DOT11_SSID_MAX_LENGTH + 1];
-    RECT Card, Text;
+    RECT Card;
 
     Card = *Area;
     Card.bottom = Card.top + ST_CARD_H;
-    StFillRound(Dc, &Card, ST_RADIUS, ST_TILE);
 
     if (StJoining)
     {
@@ -1178,20 +1184,8 @@ StWifiPaint(
         }
     }
 
-    SetBkMode(Dc, TRANSPARENT);
-
-    Text = Card;
-    InflateRect(&Text, -ST_CARD_PAD, -ST_CARD_PAD / 2);
-    Text.bottom = Text.top + 56;
-    SelectObject(Dc, StBigFont);
-    SetTextColor(Dc, (StConnected && !StJoining) || (StJoining && StIsConnectedNetwork(&StJoinNetwork)) ? ST_ACCENT : ST_TEXT);
-    DrawTextW(Dc, Title, -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-    Text.top = Text.bottom;
-    Text.bottom = Card.bottom - ST_CARD_PAD / 2;
-    SelectObject(Dc, StSmallFont);
-    SetTextColor(Dc, ST_SUBTEXT);
-    DrawTextW(Dc, Detail, -1, &Text, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS | DT_NOPREFIX);
+    StDrawCard(Dc, &Card, Title, Detail,
+               StJoining ? StIsConnectedNetwork(&StJoinNetwork) : (StConnected && StWifiState == StWifiReady));
 }
 
 /* Four bars, lit by signal quality */
@@ -1350,21 +1344,17 @@ StAboutAdd(
     _In_ LPCWSTR Format,
     ...)
 {
-    PST_ABOUT_ROW Row;
+    WCHAR Value[160];
     va_list Args;
 
     if (StAboutCount >= _countof(StAboutRows))
         return;
 
-    Row = &StAboutRows[StAboutCount++];
-    StringCchCopyW(Row->Label, _countof(Row->Label), Label);
-
     va_start(Args, Format);
-    StringCchVPrintfW(Row->Value, _countof(Row->Value), Format, Args);
+    StringCchVPrintfW(Value, _countof(Value), Format, Args);
     va_end(Args);
 
-    if (!Row->Value[0])
-        StringCchCopyW(Row->Value, _countof(Row->Value), L"Unknown");
+    StSetInfoRow(&StAboutRows[StAboutCount++], Label, L"%s", Value);
 }
 
 static
@@ -1457,38 +1447,58 @@ StAboutPaint(
     _In_ HDC Dc,
     _In_ const RECT *Area)
 {
-    RECT Row = *Area;
-    DWORD i;
+    StPaintInfoRows(Dc, Area, StAboutRows, StAboutCount);
+}
 
-    SetBkMode(Dc, TRANSPARENT);
-
-    for (i = 0; i < StAboutCount && Row.top < Area->bottom; i++)
+static
+VOID
+StWifiPageCommand(
+    _In_ UINT Id,
+    _In_ UINT Code)
+{
+    if (Id == IDC_WIFI_LIST)
     {
-        RECT Text;
-
-        Row.bottom = Row.top + 96;
-
-        Text = Row;
-        Text.bottom = Text.top + 34;
-        SelectObject(Dc, StSmallFont);
-        SetTextColor(Dc, ST_SUBTEXT);
-        DrawTextW(Dc, StAboutRows[i].Label, -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_NOPREFIX);
-
-        Text.top = Text.bottom;
-        Text.bottom = Row.bottom - ST_GAP;
-        SelectObject(Dc, StFont);
-        SetTextColor(Dc, ST_TEXT);
-        DrawTextW(Dc, StAboutRows[i].Value, -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-        Row.top = Row.bottom;
+        if (Code == LBN_SELCHANGE)
+            StWifiPick();
     }
+    else if (Code == BN_CLICKED || Id == IDOK)
+    {
+        StWifiCommand(Id);
+    }
+}
+
+/* Keeps the list and status current, and notices an adapter that appears */
+static
+VOID
+StWifiTimer(VOID)
+{
+    if (!StJoining && !StBusy)
+        StWifiStart(StWifiRefresh, TRUE, NULL, NULL);
+}
+
+static
+BOOL
+StWifiIsActive(
+    _In_ UINT Id)
+{
+    if (Id == IDC_WIFI_SHOW_PASSWORD)
+        return StShowPassword;
+    if (Id == IDC_WIFI_CONNECT)
+        return IsWindowEnabled(GetDlgItem(StWindow, Id));
+    return FALSE;
 }
 
 /* Pages in tab order, a new page needs only an entry here */
 static const ST_PAGE StPages[] =
 {
-    { L"Wi-Fi", StWifiControls, _countof(StWifiControls), StWifiShow, StWifiLayout, StWifiPaint, StWifiHeading },
-    { L"About", NULL, 0, StAboutShow, StAboutLayout, StAboutPaint, StAboutHeading },
+    { L"Wi-Fi", StWifiControls, &StWifiControlCount, StWifiShow, StWifiLayout, StWifiPaint, StWifiHeading,
+      StWifiPageCommand, StWifiTimer, StWifiIsActive },
+    { L"Network", StNetControls, &StNetControlCount, StNetShow, StNetLayout, StNetPaint, StNetHeading,
+      StNetCommand, StNetTimer, StNetIsActive },
+    { L"Sound", StSndControls, &StSndControlCount, StSndShow, StSndLayout, StSndPaint, StSndHeading,
+      StSndCommand, StSndTimer, StSndIsActive },
+    { L"About", NULL, 0, StAboutShow, StAboutLayout, StAboutPaint, StAboutHeading,
+      NULL, NULL, NULL },
 };
 
 /* Window */
@@ -1508,7 +1518,6 @@ StContentRect(
     Area->bottom = Client.bottom - ST_MARGIN - ST_ROW - ST_GAP - ST_STATUS_H - ST_GAP;
 }
 
-static
 VOID
 StRelayout(VOID)
 {
@@ -1546,8 +1555,8 @@ StSelectPage(
 
     for (i = 0; i < _countof(StPages); i++)
     {
-        if (i != Page)
-            StShowGroup(StPages[i].Controls, StPages[i].ControlCount, FALSE);
+        if (i != Page && StPages[i].Controls)
+            StShowGroup(StPages[i].Controls, *StPages[i].ControlCount, FALSE);
     }
 
     /* The tabs are child windows, the parent repaint does not reach them */
@@ -1606,10 +1615,8 @@ StDrawButton(
 
     if (Tab)
         Active = (StPage == Id - IDC_TAB_FIRST);
-    else if (Id == IDC_WIFI_SHOW_PASSWORD)
-        Active = StShowPassword;
-    else if (Id == IDC_WIFI_CONNECT)
-        Active = !Disabled;
+    else if (StPages[StPage].IsActive)
+        Active = StPages[StPage].IsActive(Id);
 
     if (Disabled)
     {
@@ -1649,7 +1656,6 @@ StMakeFont(
                        DEFAULT_PITCH | FF_DONTCARE, L"Tahoma");
 }
 
-static
 HWND
 StControl(
     _In_ LPCWSTR Class,
@@ -1667,7 +1673,6 @@ StControl(
     return Control;
 }
 
-static
 HWND
 StButton(
     _In_ LPCWSTR Text,
@@ -1700,6 +1705,9 @@ StCreateControls(VOID)
     StButton(L"Show password", WS_TABSTOP, IDC_WIFI_SHOW_PASSWORD);
     StButton(L"Connect", WS_TABSTOP, IDC_WIFI_CONNECT);
     StButton(L"Back", WS_TABSTOP, IDC_WIFI_BACK);
+
+    StNetCreateControls();
+    StSndCreateControls();
 
     StControl(L"STATIC", L"", WS_VISIBLE | SS_CENTERIMAGE | SS_ENDELLIPSIS, IDC_STATUS, StSmallFont);
     StButton(L"Exit", WS_VISIBLE | WS_TABSTOP, IDC_EXIT);
@@ -1748,6 +1756,8 @@ StWndProc(
 
             if (Item->CtlID == IDC_WIFI_LIST)
                 StDrawNetwork(Item);
+            else if (Item->CtlID == IDC_NET_LIST)
+                StNetDrawItem(Item);
             else
                 StDrawButton(Item);
             return TRUE;
@@ -1769,37 +1779,33 @@ StWndProc(
             return (LRESULT)StBgBrush;
 
         case WM_TIMER:
-            /* Keeps the list and status current, and notices an adapter that appears */
-            if (wParam == ST_REFRESH_TIMER && StPage == ST_PAGE_WIFI && !StJoining && !StBusy)
-                StWifiStart(StWifiRefresh, TRUE, NULL, NULL);
+            if (wParam == ST_REFRESH_TIMER && StPages[StPage].Timer)
+                StPages[StPage].Timer();
             return 0;
 
         case WM_COMMAND:
         {
             UINT Id = LOWORD(wParam);
 
-            if (Id == IDC_WIFI_LIST)
-            {
-                if (HIWORD(wParam) == LBN_SELCHANGE)
-                    StWifiPick();
-            }
-            else if (Id == IDC_EXIT)
-            {
+            if (Id == IDC_EXIT)
                 DestroyWindow(Window);
-            }
             else if (Id >= IDC_TAB_FIRST && Id < IDC_TAB_FIRST + _countof(StPages))
-            {
                 StSelectPage(Id - IDC_TAB_FIRST);
-            }
-            else if (StPage == ST_PAGE_WIFI && (HIWORD(wParam) == BN_CLICKED || Id == IDOK))
-            {
-                StWifiCommand(Id);
-            }
+            else if (StPages[StPage].Command)
+                StPages[StPage].Command(Id, HIWORD(wParam));
             return 0;
         }
 
         case WM_WIFI_DONE:
             StWifiDone((PST_WIFI_JOB)lParam);
+            return 0;
+
+        case WM_NET_DONE:
+            StNetDone(lParam);
+            return 0;
+
+        case WM_SND_DONE:
+            StSndDone(lParam);
             return 0;
 
         case WM_DESTROY:
@@ -1881,6 +1887,8 @@ wWinMain(
     if (StNetworks)
         WlanFreeMemory(StNetworks);
     HeapFree(GetProcessHeap(), 0, StOrder);
+    StNetCleanup();
+    StSndCleanup();
     DeleteObject(StBgBrush);
     DeleteObject(StFieldBrush);
     return (int)Msg.wParam;
