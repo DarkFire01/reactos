@@ -886,6 +886,9 @@ VOID
 PnpWatchDumpQcdxLog(VOID);
 
 VOID
+PnpWatchDumpWatchdogLog(VOID);
+
+VOID
 PiClearDevNodeProblem(
     _In_ PDEVICE_NODE DeviceNode);
 
