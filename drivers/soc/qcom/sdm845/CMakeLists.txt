@@ -1,3 +1,4 @@
+add_subdirectory(amp)
 add_subdirectory(apr)
 add_subdirectory(touch)
 add_subdirectory(firmware)
