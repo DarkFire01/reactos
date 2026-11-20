@@ -73,6 +73,18 @@ enum
 
 #ifndef _USER32_WSPRINTF
 
+/* 10^Power alone overflows for subnormal values, two steps keep the product finite */
+static
+long double
+scale_pow10(
+    _In_ long double Value,
+    _In_ int Power)
+{
+    int Half = Power / 2;
+
+    return Value * pow(10., Half) * pow(10., Power - Half);
+}
+
 void
 #ifdef _LIBCNT_
 /* Due to restrictions in kernel mode regarding the use of floating point,
@@ -135,13 +147,13 @@ format_float(
         case _T('e'):
         case_e:
             /* Shift the decimal point and round */
-            fpval2 = round(sign * fpval * pow(10., precision - exponent));
+            fpval2 = round(scale_pow10(sign * fpval, precision - exponent));
 
             /* Compensate for changed exponent through rounding */
             if (fpval2 >= (unsigned __int64)pow(10., precision + 1))
             {
                 exponent++;
-                fpval2 = round(sign * fpval * pow(10., precision - exponent));
+                fpval2 = round(scale_pow10(sign * fpval, precision - exponent));
             }
 
             val32 = exponent >= 0 ? exponent : -exponent;
@@ -171,7 +183,7 @@ format_float(
         case _T('f'):
         default:
             /* Too many integer digits for the buffer, show it as an exponent instead */
-            if (exponent + 1 + precision + 2 > BUFFER_SIZE) goto case_e;
+            if (exponent + 1 + precision + padding + 2 > BUFFER_SIZE) goto case_e;
 
             /* Shift the decimal point and round */
             fpval2 = round(sign * fpval * pow(10., precision));
