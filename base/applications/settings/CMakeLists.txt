@@ -4,6 +4,7 @@ add_definitions(-D_WIN32_WINNT=0x600 -DWINVER=0x600)
 list(APPEND SOURCE
     settings.c
     network.c
+    power.c
     sound.c)
 
 add_executable(settings ${SOURCE} settings.rc)

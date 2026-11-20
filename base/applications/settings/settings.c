@@ -1497,6 +1497,8 @@ static const ST_PAGE StPages[] =
       StNetCommand, StNetTimer, StNetIsActive },
     { L"Sound", StSndControls, &StSndControlCount, StSndShow, StSndLayout, StSndPaint, StSndHeading,
       StSndCommand, StSndTimer, StSndIsActive },
+    { L"Power", StPwrControls, &StPwrControlCount, StPwrShow, StPwrLayout, StPwrPaint, StPwrHeading,
+      StPwrCommand, StPwrTimer, StPwrIsActive },
     { L"About", NULL, 0, StAboutShow, StAboutLayout, StAboutPaint, StAboutHeading,
       NULL, NULL, NULL },
 };
@@ -1708,6 +1710,7 @@ StCreateControls(VOID)
 
     StNetCreateControls();
     StSndCreateControls();
+    StPwrCreateControls();
 
     StControl(L"STATIC", L"", WS_VISIBLE | SS_CENTERIMAGE | SS_ENDELLIPSIS, IDC_STATUS, StSmallFont);
     StButton(L"Exit", WS_VISIBLE | WS_TABSTOP, IDC_EXIT);
