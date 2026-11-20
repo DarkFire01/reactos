@@ -15,6 +15,7 @@ BEGIN
     IDS_SHELL_TITLE          "ReactOS Mobile Emergency Shell"
     IDS_DEVICE_MANAGER       "Device Manager"
     IDS_PHONE_TEST           "Phone"
+    IDS_MESSAGES             "Messages"
     IDS_COMMAND_PROMPT       "Command Prompt"
     IDS_KEYBOARD             "Keyboard"
     IDS_EXPLORER             "Explorer"

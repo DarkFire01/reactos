@@ -7,3 +7,4 @@
 #define IDS_LAUNCH_FAILED           107
 #define IDS_SHELL_TITLE             108
 #define IDS_EXPLORER                109
+#define IDS_MESSAGES                110
