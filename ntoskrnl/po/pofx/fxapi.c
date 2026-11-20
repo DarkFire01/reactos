@@ -1353,8 +1353,12 @@ PoFxRegisterComponentPerfStates(
     PAGED_CODE();
 
     FxComponent = PopFxGetComponent(Handle, Component);
-    /* A driver that describes its own states does not need them back */
-    if (!FxComponent || !InputStateInfo || !InputStateInfo->PerfStateSetsCount)
+    /* The states come either from the driver or from the plug-in, never both */
+    if (!FxComponent || (InputStateInfo != NULL) == (OutputStateInfo != NULL))
+        return STATUS_INVALID_PARAMETER;
+    if (!InputStateInfo)
+        return STATUS_NOT_SUPPORTED;
+    if (!InputStateInfo->PerfStateSetsCount)
         return STATUS_INVALID_PARAMETER;
     if (FxComponent->PerfInfo)
         return STATUS_INVALID_PARAMETER;
@@ -1404,8 +1408,6 @@ PoFxRegisterComponentPerfStates(
     FxComponent->PerfCurrent = (PULONGLONG)((PUCHAR)PerfInfo + SetsSize);
     FxComponent->PerfStateCallback = ComponentPerfStateCallback;
     FxComponent->PerfInfo = PerfInfo;
-    if (OutputStateInfo)
-        *OutputStateInfo = PerfInfo;
     return STATUS_SUCCESS;
 }
 
