@@ -3381,8 +3381,8 @@ MmMapViewOfSection(
         return STATUS_INVALID_PAGE_PROTECTION;
     }
 
-    /* We only handle pagefile-backed sections, which cannot be writecombined */
-    if (Protect & PAGE_WRITECOMBINE)
+    /* The pages take their caching from the section, a combined view needs a combined section */
+    if ((Protect & PAGE_WRITECOMBINE) && !(Section->InitialPageProtection & PAGE_WRITECOMBINE))
     {
         DPRINT1("Cannot write combine a pagefile-backed section\n");
         return STATUS_INVALID_PARAMETER_10;
