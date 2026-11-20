@@ -534,7 +534,6 @@ PnpWatchDumpQcdxLog(VOID)
 
 /* Windows watchdog.sys keeps what cdd and dxgkrnl log in rings of 64 byte records, one per level */
 #define PNP_WATCH_WD_IMAGE_SIZE     0x17000
-#define PNP_WATCH_WD_SHOWN          24
 
 typedef struct _PNP_WATCH_WD_ENTRY
 {
@@ -551,15 +550,21 @@ C_ASSERT(sizeof(PNP_WATCH_WD_ENTRY) == 64);
 typedef struct _PNP_WATCH_WD_RING
 {
     ULONG Rva;
+    ULONG Shown;
     PCSTR Name;
 } PNP_WATCH_WD_RING;
 
 static const PNP_WATCH_WD_RING PnpWatchWdRings[] =
 {
-    { 0x9020, "critical" },
-    { 0x9038, "assertion" },
-    { 0x9050, "error" },
-    { 0x9068, "warning" }
+    { 0x9020, 24, "critical" },
+    { 0x9038, 24, "assertion" },
+    { 0x9050, 24, "error" },
+    { 0x9068, 24, "warning" },
+    { 0x9080, 48, "event" },
+    { 0x9098, 160, "trace" },
+    { 0x90B0, 24, "low resource" },
+    { 0x90C8, 64, "dmm" },
+    { 0x90F8, 24, "power" }
 };
 
 VOID
@@ -600,7 +605,7 @@ PnpWatchDumpWatchdogLog(VOID)
         if (!Records || !Capacity)
             continue;
 
-        for (i = Written - min(Written, min(Capacity, PNP_WATCH_WD_SHOWN)); i < Written; i++)
+        for (i = Written - min(Written, min(Capacity, PnpWatchWdRings[r].Shown)); i < Written; i++)
         {
             Record = &Records[i & (Capacity - 1)];
             if (!MmIsAddressValid(Record))
