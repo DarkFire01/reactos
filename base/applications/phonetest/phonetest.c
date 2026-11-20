@@ -1047,6 +1047,8 @@ PtSelectPage(
     _In_ HWND Window,
     _In_ int Page)
 {
+    UINT Tab;
+
     PtPage = Page;
 
     PtShowGroup(Window, PtPhoneControls, _countof(PtPhoneControls), Page == PT_PAGE_PHONE);
@@ -1056,6 +1058,10 @@ PtSelectPage(
 
     PtLayout(Window);
     InvalidateRect(Window, NULL, FALSE);
+
+    /* The tabs are child windows, the parent repaint does not reach them */
+    for (Tab = IDC_TAB_PHONE; Tab <= IDC_TAB_MODEM; Tab++)
+        InvalidateRect(GetDlgItem(Window, Tab), NULL, FALSE);
 
     if (Page == PT_PAGE_STATUS)
         PtRefreshStatus();
