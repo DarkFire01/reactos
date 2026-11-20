@@ -9,3 +9,4 @@
 #define IDS_EXPLORER                109
 #define IDS_MESSAGES                110
 #define IDS_SETTINGS                111
+#define IDS_BROWSER                 112

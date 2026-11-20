@@ -11,7 +11,7 @@ HINSTANCE MsInstance;
 HWND MsLauncherWindow;
 HWND MsBarWindow;
 
-#define MS_TILE_COUNT       5
+#define MS_TILE_COUNT       6
 #define MS_TILE_FIRST_ID    1000
 #define MS_EXPLORER_ID      1100
 #define MS_CLOCK_TIMER      1
@@ -31,6 +31,7 @@ static MS_TILE MsTiles[MS_TILE_COUNT] =
     { IDS_PHONE_TEST, L"phonetest.exe", NULL, NULL },
     { IDS_MESSAGES, L"messages.exe", NULL, NULL },
     { IDS_SETTINGS, L"settings.exe", NULL, NULL },
+    { IDS_BROWSER, L"webbrowser.exe", NULL, NULL },
     { IDS_COMMAND_PROMPT, L"cmd.exe", NULL, NULL },
 };
 
