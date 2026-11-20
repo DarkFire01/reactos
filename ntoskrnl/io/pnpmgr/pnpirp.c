@@ -532,11 +532,8 @@ PnpWatchDumpQcdxLog(VOID)
         PnpWatchDumpGpuState();
 }
 
-/* Windows watchdog.sys keeps the WdError entries cdd and dxgkrnl write in a ring of 64 byte records */
+/* Windows watchdog.sys keeps what cdd and dxgkrnl log in rings of 64 byte records, one per level */
 #define PNP_WATCH_WD_IMAGE_SIZE     0x17000
-#define PNP_WATCH_WD_ERROR_RING     0x9050
-#define PNP_WATCH_WD_ERROR_CAPACITY 0x9058
-#define PNP_WATCH_WD_ERROR_WRITTEN  0x905C
 #define PNP_WATCH_WD_SHOWN          24
 
 typedef struct _PNP_WATCH_WD_ENTRY
@@ -550,13 +547,28 @@ typedef struct _PNP_WATCH_WD_ENTRY
 
 C_ASSERT(sizeof(PNP_WATCH_WD_ENTRY) == 64);
 
+/* Each ring is described by its records, their count and the next write index */
+typedef struct _PNP_WATCH_WD_RING
+{
+    ULONG Rva;
+    PCSTR Name;
+} PNP_WATCH_WD_RING;
+
+static const PNP_WATCH_WD_RING PnpWatchWdRings[] =
+{
+    { 0x9020, "critical" },
+    { 0x9038, "assertion" },
+    { 0x9050, "error" },
+    { 0x9068, "warning" }
+};
+
 VOID
 PnpWatchDumpWatchdogLog(VOID)
 {
     UNICODE_STRING WdName = RTL_CONSTANT_STRING(L"watchdog.sys");
     PLDR_DATA_TABLE_ENTRY LdrEntry, Wd = NULL, Owner;
-    PPNP_WATCH_WD_ENTRY Ring, Record;
-    ULONG Capacity, Written, i;
+    PPNP_WATCH_WD_ENTRY Records, Record;
+    ULONG Capacity, Written, i, r;
     PLIST_ENTRY Entry;
     PUCHAR Base;
 
@@ -579,26 +591,29 @@ PnpWatchDumpWatchdogLog(VOID)
     }
 
     Base = Wd->DllBase;
-    Ring = *(PPNP_WATCH_WD_ENTRY *)(Base + PNP_WATCH_WD_ERROR_RING);
-    Capacity = *(PULONG)(Base + PNP_WATCH_WD_ERROR_CAPACITY);
-    Written = *(PULONG)(Base + PNP_WATCH_WD_ERROR_WRITTEN);
-    DbgPrint("PNPWATCH: watchdog error log, %lu records\n", Written);
-    if (!Ring || !Capacity)
-        goto Done;
-
-    for (i = Written - min(Written, min(Capacity, PNP_WATCH_WD_SHOWN)); i < Written; i++)
+    for (r = 0; r < RTL_NUMBER_OF(PnpWatchWdRings); r++)
     {
-        Record = &Ring[i & (Capacity - 1)];
-        if (!MmIsAddressValid(Record))
-            break;
+        Records = *(PPNP_WATCH_WD_ENTRY *)(Base + PnpWatchWdRings[r].Rva);
+        Capacity = *(PULONG)(Base + PnpWatchWdRings[r].Rva + 8);
+        Written = *(PULONG)(Base + PnpWatchWdRings[r].Rva + 12);
+        DbgPrint("PNPWATCH: watchdog %s log, %lu records\n", PnpWatchWdRings[r].Name, Written);
+        if (!Records || !Capacity)
+            continue;
 
-        Owner = PnpWatchFindModule(Record->Caller);
-        DbgPrint("PNPWATCH: wd %lu from %wZ+0x%Ix: %Ix %Ix %Ix %Ix %Ix\n",
-                 Record->Sequence,
-                 Owner ? &Owner->BaseDllName : &WdName,
-                 Owner ? Record->Caller - (ULONG_PTR)Owner->DllBase : Record->Caller,
-                 Record->Values[0], Record->Values[1], Record->Values[2],
-                 Record->Values[3], Record->Values[4]);
+        for (i = Written - min(Written, min(Capacity, PNP_WATCH_WD_SHOWN)); i < Written; i++)
+        {
+            Record = &Records[i & (Capacity - 1)];
+            if (!MmIsAddressValid(Record))
+                break;
+
+            Owner = PnpWatchFindModule(Record->Caller);
+            DbgPrint("PNPWATCH: wd %s %lu from %wZ+0x%Ix: %Ix %Ix %Ix %Ix %Ix\n",
+                     PnpWatchWdRings[r].Name, Record->Sequence,
+                     Owner ? &Owner->BaseDllName : &WdName,
+                     Owner ? Record->Caller - (ULONG_PTR)Owner->DllBase : Record->Caller,
+                     Record->Values[0], Record->Values[1], Record->Values[2],
+                     Record->Values[3], Record->Values[4]);
+        }
     }
 
 Done:
@@ -713,6 +728,7 @@ PnpWatchDumpStalledGuiThreads(VOID)
 #define PNP_WATCH_GPU_TRACE_TIME    (300LL * 10000000)
 #define PNP_WATCH_GPU_TRACE_LINES   800
 #define PNP_WATCH_GPU_TRACE_WAIT    (-50LL * 10000)
+#define PNP_WATCH_GPU_WD_DUMP_US   (30LL * 1000000)
 
 /* RPMh CPR floor window (GPU_RPMH_CPRF), qcdx sets bit 2 here when it wakes the RSC */
 #define PNP_WATCH_GPU_CPRF_BASE     0x0C200000
@@ -816,7 +832,7 @@ PnpWatchGpuTraceThread(
     PHYSICAL_ADDRESS Physical;
     LARGE_INTEGER Wait, Start, Now, Frequency;
     ULONG Lines = 0, Loops = 0, Index, Value, Block;
-    BOOLEAN GmuOn, WasGmuOn = FALSE;
+    BOOLEAN GmuOn, WasGmuOn = FALSE, WdDumped = FALSE;
     LONGLONG Micro;
 
     UNREFERENCED_PARAMETER(Context);
@@ -846,6 +862,13 @@ PnpWatchGpuTraceThread(
         Micro = (Now.QuadPart - Start.QuadPart) * 1000000 / Frequency.QuadPart;
         if (Micro * 10 >= PNP_WATCH_GPU_TRACE_TIME || Lines >= PNP_WATCH_GPU_TRACE_LINES)
             break;
+
+        /* By then the desktop is presenting, or failing to, through cdd */
+        if (!WdDumped && Micro >= PNP_WATCH_GPU_WD_DUMP_US)
+        {
+            PnpWatchDumpWatchdogLog();
+            WdDumped = TRUE;
+        }
 
         GmuOn = FALSE;
         for (Index = 0; Index < RTL_NUMBER_OF(PnpWatchGpuTraceRegs); Index++)
