@@ -23,6 +23,32 @@ BOOLEAN PopAoAcPresent = FALSE;
 /* The console display is off and the platform idles in connected standby */
 BOOLEAN PopAoAcInStandby = FALSE;
 
+#define TAG_PO_AOAC_THROTTLE    'tAoP'
+
+/* A desktop process moved to idle priority for the standby, and the class it had */
+typedef struct _POP_AOAC_THROTTLED
+{
+    LIST_ENTRY Link;
+    PEPROCESS Process;
+    UCHAR PriorityClass;
+} POP_AOAC_THROTTLED, *PPOP_AOAC_THROTTLED;
+
+static LIST_ENTRY PopAoAcThrottledList = { &PopAoAcThrottledList, &PopAoAcThrottledList };
+
+/* The shell and the session plumbing keep their priority, as on Windows they are never moderated */
+static const CHAR *PopAoAcExemptImages[] =
+{
+    "smss.exe",
+    "csrss.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "services.exe",
+    "lsass.exe",
+    "dwm.exe",
+    "explorer.exe",
+    "mobileshell.exe",
+};
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 /**
@@ -60,6 +86,132 @@ PopInitializeAoAc(
     }
 }
 
+static
+BOOLEAN
+PopAoAcIsImage(
+    _In_ PEPROCESS Process,
+    _In_z_ const CHAR *Name)
+{
+    return _strnicmp((const CHAR *)Process->ImageFileName, Name, sizeof(Process->ImageFileName)) == 0;
+}
+
+/**
+ * @brief
+ * Tells whether a process is a desktop app the standby slows down. System
+ * processes, critical ones, services and the shell keep running as they are.
+ */
+static
+BOOLEAN
+PopAoAcIsModerated(
+    _In_ PEPROCESS Process,
+    _In_opt_ HANDLE ServicesId)
+{
+    ULONG i;
+
+    if (Process == PsInitialSystemProcess || Process == PsIdleProcess)
+        return FALSE;
+    if (Process->BreakOnTermination || Process->ProcessDelete)
+        return FALSE;
+
+    /* Children of the service control manager are services */
+    if (ServicesId && Process->InheritedFromUniqueProcessId == ServicesId)
+        return FALSE;
+
+    for (i = 0; i < RTL_NUMBER_OF(PopAoAcExemptImages); i++)
+    {
+        if (PopAoAcIsImage(Process, PopAoAcExemptImages[i]))
+            return FALSE;
+    }
+
+    return Process->PriorityClass != PROCESS_PRIORITY_CLASS_IDLE &&
+           Process->PriorityClass != PROCESS_PRIORITY_CLASS_REALTIME;
+}
+
+/**
+ * @brief
+ * Drops every desktop app to idle priority for the time the display is off,
+ * remembering the class each had so the wake gives it back.
+ */
+static
+VOID
+PopAoAcThrottleProcesses(VOID)
+{
+    PPOP_AOAC_THROTTLED Entry;
+    PEPROCESS Process;
+    HANDLE ServicesId = NULL;
+    ULONG Count = 0;
+
+    PAGED_CODE();
+
+    for (Process = PsGetNextProcess(NULL); Process; Process = PsGetNextProcess(Process))
+    {
+        if (PopAoAcIsImage(Process, "services.exe"))
+            ServicesId = Process->UniqueProcessId;
+    }
+
+    for (Process = PsGetNextProcess(NULL); Process; Process = PsGetNextProcess(Process))
+    {
+        if (!PopAoAcIsModerated(Process, ServicesId))
+            continue;
+
+        Entry = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Entry), TAG_PO_AOAC_THROTTLE);
+        if (!Entry)
+            continue;
+
+        ObReferenceObject(Process);
+        Entry->Process = Process;
+        Entry->PriorityClass = Process->PriorityClass;
+        InsertTailList(&PopAoAcThrottledList, &Entry->Link);
+
+        Process->PriorityClass = PROCESS_PRIORITY_CLASS_IDLE;
+        PsSetProcessPriorityByClass(Process, PsProcessPriorityBackground);
+        Count++;
+    }
+
+    DPRINT1("Connected standby moved %lu processes to idle priority\n", Count);
+}
+
+/**
+ * @brief
+ * Gives every throttled process its old class back. A process that changed
+ * its class itself meanwhile keeps what it chose.
+ */
+static
+VOID
+PopAoAcRestoreProcesses(VOID)
+{
+    PPOP_AOAC_THROTTLED Entry;
+    PLIST_ENTRY Link;
+
+    PAGED_CODE();
+
+    while (!IsListEmpty(&PopAoAcThrottledList))
+    {
+        Link = RemoveHeadList(&PopAoAcThrottledList);
+        Entry = CONTAINING_RECORD(Link, POP_AOAC_THROTTLED, Link);
+
+        if (!Entry->Process->ProcessDelete &&
+            Entry->Process->PriorityClass == PROCESS_PRIORITY_CLASS_IDLE)
+        {
+            Entry->Process->PriorityClass = Entry->PriorityClass;
+            PsSetProcessPriorityByClass(Entry->Process, PsProcessPriorityBackground);
+        }
+
+        ObDereferenceObject(Entry->Process);
+        ExFreePoolWithTag(Entry, TAG_PO_AOAC_THROTTLE);
+    }
+}
+
+/* Drivers watching the display find out through the console and session display settings */
+static
+VOID
+PopAoAcNotifyDisplayState(VOID)
+{
+    PopNotifyPowerSettingChange(&GUID_CONSOLE_DISPLAY_STATE);
+    PopNotifyPowerSettingChange(&GUID_SESSION_DISPLAY_STATE);
+    PopNotifyPowerSettingChange(&GUID_MONITOR_POWER_ON);
+}
+
 /* PUBLIC FUNCTIONS ***********************************************************/
 
 /**
@@ -83,10 +235,15 @@ PopAoAcHandleSleepButton(VOID)
         Params.EventNumber = PsW32DisplayState;
         Params.Code = 0;
         PopDispatchPowerEvent(&Params);
+
+        PopAoAcNotifyDisplayState();
+        PopAoAcThrottleProcesses();
         return;
     }
 
     DPRINT1("Leaving connected standby, turning the display on\n");
+    PopAoAcRestoreProcesses();
+
     Params.EventNumber = PsW32DisplayState;
     Params.Code = 1;
     PopDispatchPowerEvent(&Params);
@@ -94,6 +251,8 @@ PopAoAcHandleSleepButton(VOID)
     Params.EventNumber = PsW32FullWake;
     Params.Code = 0;
     PopDispatchPowerEvent(&Params);
+
+    PopAoAcNotifyDisplayState();
 }
 
 /* EOF */
