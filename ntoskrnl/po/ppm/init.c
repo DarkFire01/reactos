@@ -23,6 +23,8 @@ PpmInitialize(
 {
     /* FIXME */
     UNREFERENCED_PARAMETER(EarlyPhase);
+
+    PpmPerfInitialize();
     return STATUS_SUCCESS;
 }
 
