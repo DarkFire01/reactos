@@ -85,6 +85,7 @@ UacpiNtPdoIsRawDevice(
     static PCSTR RawHids[] =
     {
         "ACPI0004",                    /* module container */
+        "ACPI0010",                    /* processor container */
         "PNP0A05", "PNP0A06",          /* generic containers */
         "PNP0B00",                     /* RTC */
         "PNP0C09",                     /* embedded controller */
