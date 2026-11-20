@@ -162,6 +162,47 @@ typedef struct _PPM_IDLE_STATE
 } PPM_IDLE_STATE, *PPPM_IDLE_STATE;
 
 //
+// Performance request for one domain, in plug-in performance units
+//
+typedef struct _PPM_PERF_REQUEST
+{
+    ULONG Minimum;
+    ULONG Maximum;
+    ULONG Desired;
+} PPM_PERF_REQUEST, *PPPM_PERF_REQUEST;
+
+//
+// Processors a plug-in changes performance for together
+//
+typedef struct _PPM_PERF_DOMAIN
+{
+    ULONG DomainId;
+    ULONG Members;
+    ULONG Highest;
+    ULONG Nominal;
+    ULONG LowestNonlinear;
+    ULONG Lowest;
+
+    /* Requested is what policy asks for, Current is what the plug-in was last told */
+    PPM_PERF_REQUEST Requested;
+    PPM_PERF_REQUEST Current;
+} PPM_PERF_DOMAIN, *PPPM_PERF_DOMAIN;
+
+//
+// Processor device the PPM registers with a power engine plug-in
+//
+typedef struct _PPM_PEP_PROCESSOR
+{
+    PDEVICE_OBJECT Pdo;
+    UNICODE_STRING DeviceId;
+    struct _POP_FX_PLUGIN *Plugin;
+    PEPHANDLE PepHandle;
+    ULONG Number;
+    ULONG Domain;
+    BOOLEAN Attempted;
+} PPM_PEP_PROCESSOR, *PPPM_PEP_PROCESSOR;
+
+//
 // Initialization routines
 //
 CODE_SEG("INIT")
@@ -181,6 +222,20 @@ PpmIdle(
 //
 // Processor performance functions
 //
+CODE_SEG("INIT")
+VOID
+NTAPI
+PpmPerfInitialize(VOID);
+
+BOOLEAN
+NTAPI
+PpmPepTrackProcessor(
+    _In_ PDEVICE_OBJECT Pdo);
+
+VOID
+NTAPI
+PpmPepRegisterProcessors(VOID);
+
 VOID
 NTAPI
 PpmPerfIdleDpcRoutine(

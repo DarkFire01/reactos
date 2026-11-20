@@ -432,8 +432,16 @@ PopFxPrepareDevice(
     PPOP_FX_PLUGIN Plugin;
     UNICODE_STRING DeviceId;
     PLIST_ENTRY Entry;
+    BOOLEAN Processor;
 
     PAGED_CODE();
+
+    /* Processors are added before any plug-in, the PPM registers them on the next device that comes */
+    Processor = PpmPepTrackProcessor(Pdo);
+    if (PopFxNextPlugin(NULL))
+        PpmPepRegisterProcessors();
+    if (Processor)
+        return;
 
     if (!PopFxNextPlugin(NULL) && !StartDevice)
         return;
