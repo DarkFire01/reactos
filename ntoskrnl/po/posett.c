@@ -18,14 +18,15 @@ ULONG PopPowerSettingCallbacksCount;
 PKTHREAD PopPowerSettingOwnerLockThread;
 FAST_MUTEX PopPowerSettingLock;
 
+/* Values the power service set, a separate lock as they are read under the callback lock */
+LIST_ENTRY PopSettingValueList;
+FAST_MUTEX PopSettingValueLock;
+
 /* Connected standby state settings the graphics kernel listens to */
 const GUID PopIdleResiliencySettingGuid =
     {0x307bcc77, 0xe09b, 0x43ce, {0x8d, 0x97, 0x46, 0x75, 0x6f, 0xfb, 0x04, 0xa7}};
 const GUID PopLowPowerPhaseSettingGuid =
     {0xe1233993, 0xeaa4, 0x470f, {0x9d, 0xe7, 0xa3, 0x51, 0xc1, 0xb6, 0xfb, 0x71}};
-
-/* The scheme used when none was ever made active */
-static const UNICODE_STRING PopBalancedSchemeName = RTL_CONSTANT_STRING(L"381b4222-f694-41f0-9685-ff5bb260df2e");
 
 /* POWER SETTINGS DATABASE ****************************************************/
 
@@ -404,172 +405,185 @@ PopBatteryRemainingSettingWorker(
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
-/* Reads a DWORD setting index from an open key */
+/* The power condition whose values the setting callbacks get */
 static
-NTSTATUS
-PopReadSettingIndex(
-    _In_ HANDLE RootKey,
-    _In_ PCWSTR Path,
-    _In_ PCWSTR IndexName,
-    _Out_ PULONG Value)
+SYSTEM_POWER_CONDITION
+PopCurrentPowerCondition(VOID)
 {
-    UCHAR Buffer[FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) + sizeof(ULONG)];
-    PKEY_VALUE_PARTIAL_INFORMATION Info = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
-    OBJECT_ATTRIBUTES Attributes;
-    UNICODE_STRING Name;
-    HANDLE Key;
-    ULONG Length;
-    NTSTATUS Status;
+    if (PopCapabilities.BatteriesAreShortTerm)
+        return PoHot;
 
-    RtlInitUnicodeString(&Name, Path);
-    InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, RootKey, NULL);
-    Status = ZwOpenKey(&Key, KEY_QUERY_VALUE, &Attributes);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    RtlInitUnicodeString(&Name, IndexName);
-    Status = ZwQueryValueKey(Key, &Name, KeyValuePartialInformation, Info, sizeof(Buffer), &Length);
-    ZwClose(Key);
-    if (!NT_SUCCESS(Status))
-        return Status;
-    if (Info->Type != REG_DWORD || Info->DataLength != sizeof(ULONG))
-        return STATUS_OBJECT_TYPE_MISMATCH;
-
-    *Value = *(PULONG)Info->Data;
-    return STATUS_SUCCESS;
+    return (PopDefaultPowerPolicy == &PopAcPowerPolicy) ? PoAc : PoDc;
 }
 
-/* Finds the subgroup a setting is filed under, every setting has exactly one */
+/* Must be called with the value lock held */
 static
-NTSTATUS
-PopFindSettingSubgroup(
-    _In_ HANDLE SettingsKey,
-    _In_ PCWSTR Setting,
-    _Out_writes_(SubgroupCount) PWCHAR Subgroup,
-    _In_ ULONG SubgroupCount)
+PPOP_SETTING_VALUE_SLOT
+PopFindSettingValueSlot(
+    _In_ LPCGUID SettingGuid)
 {
-    UCHAR Buffer[FIELD_OFFSET(KEY_BASIC_INFORMATION, Name) + 64 * sizeof(WCHAR)];
-    PKEY_BASIC_INFORMATION Info = (PKEY_BASIC_INFORMATION)Buffer;
-    OBJECT_ATTRIBUTES Attributes;
-    UNICODE_STRING Name;
-    WCHAR Path[96];
-    HANDLE Key;
-    ULONG Index, Length;
-    NTSTATUS Status;
+    PPOP_SETTING_VALUE_SLOT Slot;
+    PLIST_ENTRY Entry;
 
-    for (Index = 0; ; Index++)
+    for (Entry = PopSettingValueList.Flink; Entry != &PopSettingValueList; Entry = Entry->Flink)
     {
-        Status = ZwEnumerateKey(SettingsKey, Index, KeyBasicInformation, Info, sizeof(Buffer) - sizeof(WCHAR), &Length);
-        if (Status == STATUS_NO_MORE_ENTRIES)
-            return STATUS_OBJECT_NAME_NOT_FOUND;
-        if (Status == STATUS_BUFFER_OVERFLOW)
-            continue;
-        if (!NT_SUCCESS(Status))
-            return Status;
-
-        Info->Name[Info->NameLength / sizeof(WCHAR)] = UNICODE_NULL;
-        RtlStringCbPrintfW(Path, sizeof(Path), L"%s\\%s", Info->Name, Setting);
-
-        RtlInitUnicodeString(&Name, Path);
-        InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, SettingsKey, NULL);
-        if (NT_SUCCESS(ZwOpenKey(&Key, KEY_QUERY_VALUE, &Attributes)))
-        {
-            ZwClose(Key);
-            return RtlStringCchCopyW(Subgroup, SubgroupCount, Info->Name);
-        }
+        Slot = CONTAINING_RECORD(Entry, POP_SETTING_VALUE_SLOT, Link);
+        if (IsEqualGUID(&Slot->SettingGuid, SettingGuid))
+            return Slot;
     }
+
+    return NULL;
 }
 
 /**
  * @brief
- * Reads a setting's value for the current power source from the active
- * power scheme, the user's own value first and the scheme default after it.
+ * Stores the value of a setting for one power condition, as the power service
+ * pushes it from the active power scheme.
+ *
+ * @return
+ * STATUS_SUCCESS, also when the value did not change. Callbacks are notified
+ * only for a new value of the condition the system runs on.
  */
-static
 NTSTATUS
-PopQuerySchemeSettingValue(
+NTAPI
+PopSetPowerSettingValue(
     _In_ LPCGUID SettingGuid,
-    _Out_ PULONG Value)
+    _In_ SYSTEM_POWER_CONDITION Condition,
+    _In_ ULONG DataLength,
+    _In_reads_bytes_(DataLength) PVOID Data)
 {
-    UNICODE_STRING PowerName = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control\\Power");
-    UCHAR SchemeBuffer[FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) + 40 * sizeof(WCHAR)];
-    PKEY_VALUE_PARTIAL_INFORMATION SchemeInfo = (PKEY_VALUE_PARTIAL_INFORMATION)SchemeBuffer;
-    OBJECT_ATTRIBUTES Attributes;
-    UNICODE_STRING Name, GuidString;
-    HANDLE PowerKey, SchemesKey = NULL, SettingsKey = NULL;
-    WCHAR Scheme[40], Setting[40], Subgroup[40], Path[160];
-    PCWSTR IndexName;
-    ULONG Length;
-    NTSTATUS Status;
+    PPOP_SETTING_VALUE_SLOT Slot;
+    PUCHAR Copy, Previous = NULL;
+    BOOLEAN Notify = FALSE;
 
     PAGED_CODE();
 
-    /* The value pair for the power source the system runs from */
-    IndexName = (PopDefaultPowerPolicy == &PopAcPowerPolicy) ? L"ACSettingIndex" : L"DCSettingIndex";
+    if (Condition >= PoConditionMaximum || DataLength == 0)
+        return STATUS_INVALID_PARAMETER;
 
-    /* Registry keys carry the GUID without its braces */
-    Status = RtlStringFromGUID(SettingGuid, &GuidString);
-    if (!NT_SUCCESS(Status))
-        return Status;
-    RtlStringCchCopyNW(Setting, RTL_NUMBER_OF(Setting), GuidString.Buffer + 1, 36);
-    RtlFreeUnicodeString(&GuidString);
+    Copy = ExAllocatePoolWithTag(PagedPool, DataLength, TAG_PO_POWER_SETTING_VALUE);
+    if (!Copy)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    RtlCopyMemory(Copy, Data, DataLength);
 
-    InitializeObjectAttributes(&Attributes, &PowerName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-    Status = ZwOpenKey(&PowerKey, KEY_READ, &Attributes);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    ExAcquireFastMutex(&PopSettingValueLock);
 
-    RtlCopyMemory(Scheme, PopBalancedSchemeName.Buffer, PopBalancedSchemeName.Length);
-    Scheme[PopBalancedSchemeName.Length / sizeof(WCHAR)] = UNICODE_NULL;
-
-    RtlInitUnicodeString(&Name, L"User\\PowerSchemes");
-    InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, PowerKey, NULL);
-    if (NT_SUCCESS(ZwOpenKey(&SchemesKey, KEY_READ, &Attributes)))
+    Slot = PopFindSettingValueSlot(SettingGuid);
+    if (!Slot)
     {
-        RtlInitUnicodeString(&Name, L"ActivePowerScheme");
-        if (NT_SUCCESS(ZwQueryValueKey(SchemesKey, &Name, KeyValuePartialInformation,
-                                       SchemeInfo, sizeof(SchemeBuffer) - sizeof(WCHAR), &Length)) &&
-            SchemeInfo->Type == REG_SZ && SchemeInfo->DataLength >= 36 * sizeof(WCHAR))
+        Slot = ExAllocatePoolZero(PagedPool, sizeof(*Slot), TAG_PO_POWER_SETTING_VALUE);
+        if (!Slot)
         {
-            RtlStringCchCopyNW(Scheme, RTL_NUMBER_OF(Scheme), (PCWSTR)SchemeInfo->Data, 36);
+            ExReleaseFastMutex(&PopSettingValueLock);
+            ExFreePoolWithTag(Copy, TAG_PO_POWER_SETTING_VALUE);
+            return STATUS_INSUFFICIENT_RESOURCES;
         }
+
+        Slot->SettingGuid = *SettingGuid;
+        InsertTailList(&PopSettingValueList, &Slot->Link);
     }
 
-    RtlInitUnicodeString(&Name, L"PowerSettings");
-    InitializeObjectAttributes(&Attributes, &Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, PowerKey, NULL);
-    Status = ZwOpenKey(&SettingsKey, KEY_READ, &Attributes);
-    if (NT_SUCCESS(Status))
-        Status = PopFindSettingSubgroup(SettingsKey, Setting, Subgroup, RTL_NUMBER_OF(Subgroup));
-
-    if (NT_SUCCESS(Status))
+    /* The same value again changes nothing */
+    if (Slot->Data[Condition] &&
+        Slot->DataLength[Condition] == DataLength &&
+        RtlCompareMemory(Slot->Data[Condition], Copy, DataLength) == DataLength)
     {
-        /* A value the user picked for this scheme wins over the scheme default */
-        Status = STATUS_OBJECT_NAME_NOT_FOUND;
-        if (SchemesKey)
-        {
-            RtlStringCbPrintfW(Path, sizeof(Path), L"%s\\%s\\%s", Scheme, Subgroup, Setting);
-            Status = PopReadSettingIndex(SchemesKey, Path, IndexName, Value);
-        }
-
-        if (!NT_SUCCESS(Status))
-        {
-            RtlStringCbPrintfW(Path, sizeof(Path), L"%s\\%s\\DefaultPowerSchemeValues\\%s", Subgroup, Setting, Scheme);
-            Status = PopReadSettingIndex(SettingsKey, Path, IndexName, Value);
-        }
+        ExReleaseFastMutex(&PopSettingValueLock);
+        ExFreePoolWithTag(Copy, TAG_PO_POWER_SETTING_VALUE);
+        return STATUS_SUCCESS;
     }
 
-    if (SettingsKey)
-        ZwClose(SettingsKey);
-    if (SchemesKey)
-        ZwClose(SchemesKey);
-    ZwClose(PowerKey);
-    return Status;
+    Previous = Slot->Data[Condition];
+    Slot->Data[Condition] = Copy;
+    Slot->DataLength[Condition] = DataLength;
+    Notify = (Condition == PopCurrentPowerCondition());
+
+    ExReleaseFastMutex(&PopSettingValueLock);
+
+    if (Previous)
+        ExFreePoolWithTag(Previous, TAG_PO_POWER_SETTING_VALUE);
+
+    if (Notify)
+        PopNotifyPowerSettingChange(SettingGuid);
+
+    return STATUS_SUCCESS;
 }
 
 /**
  * @brief
- * Worker for settings that only live in the power scheme. A setting the
- * scheme does not know gets no callback, as there is no value to give.
+ * Copies out the stored value of a setting for the power condition the system
+ * runs on.
+ *
+ * @return
+ * STATUS_NOT_FOUND when the power service has not set one yet.
+ */
+static
+NTSTATUS
+PopQuerySettingValue(
+    _In_ LPCGUID SettingGuid,
+    _Out_writes_bytes_to_(BufferLength, *DataLength) PVOID Buffer,
+    _In_ ULONG BufferLength,
+    _Out_ PULONG DataLength)
+{
+    SYSTEM_POWER_CONDITION Condition = PopCurrentPowerCondition();
+    PPOP_SETTING_VALUE_SLOT Slot;
+    NTSTATUS Status = STATUS_NOT_FOUND;
+
+    *DataLength = 0;
+
+    ExAcquireFastMutex(&PopSettingValueLock);
+    Slot = PopFindSettingValueSlot(SettingGuid);
+    if (Slot && Slot->Data[Condition])
+    {
+        *DataLength = Slot->DataLength[Condition];
+        if (Slot->DataLength[Condition] <= BufferLength)
+        {
+            RtlCopyMemory(Buffer, Slot->Data[Condition], Slot->DataLength[Condition]);
+            Status = STATUS_SUCCESS;
+        }
+        else
+        {
+            Status = STATUS_BUFFER_TOO_SMALL;
+        }
+    }
+    ExReleaseFastMutex(&PopSettingValueLock);
+
+    return Status;
+}
+
+/* A power source change matters to a setting whose values for the two sources differ */
+static
+BOOLEAN
+PopSettingDiffersAcrossConditions(
+    _In_ LPCGUID SettingGuid)
+{
+    PPOP_SETTING_VALUE_SLOT Slot;
+    BOOLEAN Differs = FALSE;
+    ULONG Condition;
+
+    ExAcquireFastMutex(&PopSettingValueLock);
+    Slot = PopFindSettingValueSlot(SettingGuid);
+    if (Slot)
+    {
+        for (Condition = PoDc; Condition < PoConditionMaximum && !Differs; Condition++)
+        {
+            if (!Slot->Data[Condition] || !Slot->Data[PoAc])
+                continue;
+
+            Differs = Slot->DataLength[Condition] != Slot->DataLength[PoAc] ||
+                      RtlCompareMemory(Slot->Data[Condition], Slot->Data[PoAc], Slot->DataLength[PoAc]) !=
+                      Slot->DataLength[PoAc];
+        }
+    }
+    ExReleaseFastMutex(&PopSettingValueLock);
+
+    return Differs;
+}
+
+/**
+ * @brief
+ * Worker for settings that only live in the power scheme. Until the power
+ * service sets a value there is nothing to give, the callback runs once it does.
  */
 _Function_class_(KSTART_ROUTINE)
 VOID
@@ -578,22 +592,35 @@ PopSchemeSettingWorker(
     _In_ PVOID StartContext)
 {
     PPOP_POWER_SETTING_CALLBACK SettingCallback = (PPOP_POWER_SETTING_CALLBACK)StartContext;
-    ULONG Value;
+    UCHAR Small[sizeof(ULONG) * 4];
+    PVOID Value = Small;
+    ULONG Length;
+    NTSTATUS Status;
 
     PAGED_CODE();
 
     ASSERT(SettingCallback != NULL);
 
-    if (NT_SUCCESS(PopQuerySchemeSettingValue(&SettingCallback->SettingGuid, &Value)))
+    Status = PopQuerySettingValue(&SettingCallback->SettingGuid, Small, sizeof(Small), &Length);
+    if (Status == STATUS_BUFFER_TOO_SMALL)
     {
-        PopExecutePowerSettingCallback(SettingCallback, &Value, sizeof(Value));
+        Value = ExAllocatePoolWithTag(PagedPool, Length, TAG_PO_POWER_SETTING_VALUE);
+        Status = Value ? PopQuerySettingValue(&SettingCallback->SettingGuid, Value, Length, &Length)
+                       : STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        PopExecutePowerSettingCallback(SettingCallback, Value, Length);
     }
     else
     {
-        DPRINT("Power setting %p has no scheme value\n", SettingCallback);
         PopPowerSettingClearAttribute(SettingCallback, POP_PSC_GETTING_NOTIFIED);
         PopAlertCallbackReturned(SettingCallback);
     }
+
+    if (Value && Value != Small)
+        ExFreePoolWithTag(Value, TAG_PO_POWER_SETTING_VALUE);
 
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
@@ -621,7 +648,7 @@ PopStandbyStateSettingWorker(
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
-/* A power source change moves every scheme setting to its other value */
+/* A power source change reaches the scheme settings whose AC and DC values differ */
 static
 VOID
 PopNotifySchemeSettings(VOID)
@@ -636,8 +663,11 @@ PopNotifySchemeSettings(VOID)
     for (Entry = PopPowerSettingCallbacksList.Flink; Entry != &PopPowerSettingCallbacksList; Entry = Entry->Flink)
     {
         SettingCallback = CONTAINING_RECORD(Entry, POP_POWER_SETTING_CALLBACK, Link);
-        if (PopGetPowerSettingHelper(&SettingCallback->SettingGuid))
+        if (PopGetPowerSettingHelper(&SettingCallback->SettingGuid) ||
+            !PopSettingDiffersAcrossConditions(&SettingCallback->SettingGuid))
+        {
             continue;
+        }
 
         /* One notification per setting reaches all of its callbacks */
         Seen = FALSE;

@@ -144,6 +144,7 @@
 #define TAG_PO_POWER_SETTING_CALLBACK             'cSoP'
 #define TAG_PO_POWER_SETTING_NOTIFY_BLOCK         'bNsP'
 #define TAG_PO_POWER_SETTING_NOTIFY_ENTRY         'eNsP'
+#define TAG_PO_POWER_SETTING_VALUE                'vSoP'
 #define TAG_PO_TRIGGER_WAIT                       'tWoP'
 #define TAG_PO_HIBER                              'rHoP'
 #define TAG_PO_COOLING_EXTENSION                  'xCoP'

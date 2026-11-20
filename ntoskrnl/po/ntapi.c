@@ -215,7 +215,7 @@ static const INFORMATION_CLASS_INFO PoPowerInformationClass[] =
     IQS_NONE,
 
     /* SetPowerSettingValue */
-    IQS_NONE,
+    IQS_SAME(SET_POWER_SETTING_VALUE, ULONG, ICIF_SET | ICIF_SET_SIZE_VARIABLE),
 
     /* NotifyUserPowerSetting */
     IQS_NONE,
@@ -1020,6 +1020,47 @@ NtPowerInformation(
                 Status = PopAoAcActivateProcess(Request->ProcessId, Request->BudgetMs);
             else
                 Status = STATUS_INVALID_PARAMETER;
+            PopAcquirePowerPolicyLock();
+            break;
+        }
+
+        case SetPowerSettingValue:
+        {
+            PSET_POWER_SETTING_VALUE Setting = (PSET_POWER_SETTING_VALUE)LocalBuffer;
+            const ULONG Header = FIELD_OFFSET(SET_POWER_SETTING_VALUE, Data);
+
+            /* The power service hands in one value for one power condition, nothing comes back */
+            if (!Setting || OutputBuffer || InputBufferLength < Header ||
+                Setting->DataLength == 0 || (ULONG)Setting->PowerCondition >= PoConditionMaximum)
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                goto Quit;
+            }
+
+            if (Setting->Version != POWER_SETTING_VALUE_VERSION)
+            {
+                Status = STATUS_UNKNOWN_REVISION;
+                goto Quit;
+            }
+
+            if (Setting->DataLength > MAXULONG - Header)
+            {
+                Status = STATUS_INTEGER_OVERFLOW;
+                goto Quit;
+            }
+
+            if (InputBufferLength < Header + Setting->DataLength)
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                goto Quit;
+            }
+
+            /* Callbacks run on their own threads, the policy lock is not needed here */
+            PopReleasePowerPolicyLock();
+            Status = PopSetPowerSettingValue(&Setting->Guid,
+                                             Setting->PowerCondition,
+                                             Setting->DataLength,
+                                             Setting->Data);
             PopAcquirePowerPolicyLock();
             break;
         }
