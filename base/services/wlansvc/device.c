@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <wchar.h>
+#include <winnls.h>
 #include <strsafe.h>
 #include <nuiouser.h>
 
@@ -66,6 +67,46 @@ typedef struct _WLAN_DOT11_BYTE_ARRAY
 /* How long a connection attempt is polled before it is called a failure */
 #define WLAN_CONNECT_TIMEOUT_MS     8000
 #define WLAN_CONNECT_POLL_MS        250
+
+/* wlanapi.h values the RPC header leaves out */
+#ifndef WLAN_MAX_NAME_LENGTH
+#define WLAN_MAX_NAME_LENGTH                        256
+#endif
+#ifndef WLAN_AVAILABLE_NETWORK_CONNECTED
+#define WLAN_AVAILABLE_NETWORK_CONNECTED            0x00000001
+#endif
+
+/* What the service knows about the link on one adapter */
+typedef struct _WLAN_LINK
+{
+    GUID InterfaceGuid;
+    WLAN_INTERFACE_STATE State;
+    WLAN_CONNECTION_MODE Mode;
+    DOT11_SSID Ssid;
+    DOT11_AUTH_ALGORITHM Auth;
+    DOT11_CIPHER_ALGORITHM Cipher;
+    WCHAR ProfileName[WLAN_MAX_NAME_LENGTH];
+} WLAN_LINK, *PWLAN_LINK;
+
+#define WLAN_MAX_LINKS              8
+
+static WLAN_LINK WlanLinks[WLAN_MAX_LINKS];
+static ULONG WlanLinkCount;
+static CRITICAL_SECTION WlanLinkLock;
+
+/* NDISUIO opens an adapter exclusively, so every adapter access is serialized */
+static CRITICAL_SECTION WlanDeviceLock;
+
+/**
+ * @brief
+ * Sets up the locks the adapter code relies on, before the RPC server starts.
+ */
+VOID
+WlanInitializeDevices(VOID)
+{
+    InitializeCriticalSection(&WlanLinkLock);
+    InitializeCriticalSection(&WlanDeviceLock);
+}
 
 /**
  * @brief
@@ -222,9 +263,14 @@ WlanScan(
     DOT11_SCAN_REQUEST_V2 Request;
     DWORD Error;
 
+    EnterCriticalSection(&WlanDeviceLock);
+
     Interface = WlanOpenInterface(InterfaceGuid);
     if (Interface == NULL)
+    {
+        LeaveCriticalSection(&WlanDeviceLock);
         return ERROR_BAD_UNIT;
+    }
 
     RtlZeroMemory(&Request, sizeof(Request));
     Request.dot11BSSType = dot11_BSS_type_any;
@@ -233,6 +279,7 @@ WlanScan(
 
     Error = WlanSetOid(Interface, OID_DOT11_SCAN_REQUEST, &Request, sizeof(Request));
     CloseHandle(Interface);
+    LeaveCriticalSection(&WlanDeviceLock);
 
     if (Error == ERROR_SUCCESS)
         Sleep(WLAN_SCAN_SETTLE_MS);
@@ -240,13 +287,10 @@ WlanScan(
     return Error;
 }
 
-/**
- * @brief
- * Reads the networks the last scan found as a DOT11_BYTE_ARRAY of
- * DOT11_BSS_ENTRY, returned to the caller to free.
- */
+/* WlanGetBssList with the device lock held by the caller */
+static
 DWORD
-WlanGetBssList(
+WlanReadBssList(
     _In_ const GUID *InterfaceGuid,
     _Outptr_result_maybenull_ PWLAN_DOT11_BYTE_ARRAY *BssList)
 {
@@ -297,6 +341,24 @@ WlanGetBssList(
 
     CloseHandle(Interface);
     return Error != ERROR_SUCCESS ? Error : ERROR_GEN_FAILURE;
+}
+
+/**
+ * @brief
+ * Reads the networks the last scan found as a DOT11_BYTE_ARRAY of
+ * DOT11_BSS_ENTRY, returned to the caller to free.
+ */
+DWORD
+WlanGetBssList(
+    _In_ const GUID *InterfaceGuid,
+    _Outptr_result_maybenull_ PWLAN_DOT11_BYTE_ARRAY *BssList)
+{
+    DWORD Error;
+
+    EnterCriticalSection(&WlanDeviceLock);
+    Error = WlanReadBssList(InterfaceGuid, BssList);
+    LeaveCriticalSection(&WlanDeviceLock);
+    return Error;
 }
 
 /* Reads the interface GUID out of a "\DEVICE\{guid}" binding name */
@@ -363,13 +425,10 @@ WlanOpenByName(
     return Device;
 }
 
-/**
- * @brief
- * Enumerates the native 802.11 adapters as a WLAN_INTERFACE_INFO_LIST, returned
- * to the caller to free.
- */
+/* WlanEnumWifiInterfaces with the device lock held by the caller */
+static
 DWORD
-WlanEnumWifiInterfaces(
+WlanReadInterfaces(
     _Outptr_result_maybenull_ PWLAN_INTERFACE_INFO_LIST *List)
 {
     HANDLE Ndisuio;
@@ -483,6 +542,23 @@ WlanEnumWifiInterfaces(
     Result->dwIndex = 0;
     *List = Result;
     return ERROR_SUCCESS;
+}
+
+/**
+ * @brief
+ * Enumerates the native 802.11 adapters as a WLAN_INTERFACE_INFO_LIST, returned
+ * to the caller to free.
+ */
+DWORD
+WlanEnumWifiInterfaces(
+    _Outptr_result_maybenull_ PWLAN_INTERFACE_INFO_LIST *List)
+{
+    DWORD Error;
+
+    EnterCriticalSection(&WlanDeviceLock);
+    Error = WlanReadInterfaces(List);
+    LeaveCriticalSection(&WlanDeviceLock);
+    return Error;
 }
 
 /* Finds one information element by id in a beacon or probe response body */
@@ -649,6 +725,277 @@ WlanParseSecurity(
         *Cipher = DOT11_CIPHER_ALGO_WEP;
 }
 
+/* Finds the link record of one adapter, the caller holds WlanLinkLock */
+static
+PWLAN_LINK
+WlanFindLink(
+    _In_ const GUID *InterfaceGuid,
+    _In_ BOOLEAN Create)
+{
+    PWLAN_LINK Link;
+    ULONG i;
+
+    for (i = 0; i < WlanLinkCount; i++)
+    {
+        if (RtlEqualMemory(&WlanLinks[i].InterfaceGuid, InterfaceGuid, sizeof(*InterfaceGuid)))
+            return &WlanLinks[i];
+    }
+
+    if (!Create || WlanLinkCount == WLAN_MAX_LINKS)
+        return NULL;
+
+    Link = &WlanLinks[WlanLinkCount++];
+    RtlZeroMemory(Link, sizeof(*Link));
+    Link->InterfaceGuid = *InterfaceGuid;
+    Link->State = wlan_interface_state_disconnected;
+    Link->Auth = DOT11_AUTH_ALGO_80211_OPEN;
+    Link->Cipher = DOT11_CIPHER_ALGO_NONE;
+    return Link;
+}
+
+/* Copies the link record of one adapter, a disconnected one if there is none */
+static
+VOID
+WlanGetLink(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ PWLAN_LINK Snapshot)
+{
+    PWLAN_LINK Link;
+
+    EnterCriticalSection(&WlanLinkLock);
+    Link = WlanFindLink(InterfaceGuid, FALSE);
+    if (Link != NULL)
+    {
+        *Snapshot = *Link;
+    }
+    else
+    {
+        RtlZeroMemory(Snapshot, sizeof(*Snapshot));
+        Snapshot->InterfaceGuid = *InterfaceGuid;
+        Snapshot->State = wlan_interface_state_disconnected;
+        Snapshot->Auth = DOT11_AUTH_ALGO_80211_OPEN;
+        Snapshot->Cipher = DOT11_CIPHER_ALGO_NONE;
+    }
+    LeaveCriticalSection(&WlanLinkLock);
+}
+
+/* Records a new link state, taking the network from Network when one is given.
+   Going disconnected without one forgets the network. */
+static
+VOID
+WlanSetLink(
+    _In_ const GUID *InterfaceGuid,
+    _In_ WLAN_INTERFACE_STATE State,
+    _In_opt_ const WLAN_LINK *Network)
+{
+    PWLAN_LINK Link;
+
+    EnterCriticalSection(&WlanLinkLock);
+    Link = WlanFindLink(InterfaceGuid, TRUE);
+    if (Link != NULL)
+    {
+        if (Network != NULL)
+        {
+            *Link = *Network;
+        }
+        else if (State == wlan_interface_state_disconnected)
+        {
+            RtlZeroMemory(&Link->Ssid, sizeof(Link->Ssid));
+            Link->ProfileName[0] = UNICODE_NULL;
+            Link->Auth = DOT11_AUTH_ALGO_80211_OPEN;
+            Link->Cipher = DOT11_CIPHER_ALGO_NONE;
+        }
+
+        Link->InterfaceGuid = *InterfaceGuid;
+        Link->State = State;
+    }
+    LeaveCriticalSection(&WlanLinkLock);
+}
+
+/* Reads the link record and, when the adapter is free, checks it against the
+   media state. A link that dropped on its own is forgotten here. */
+static
+VOID
+WlanRefreshLink(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ PWLAN_LINK Snapshot)
+{
+    HANDLE Interface;
+    ULONG Status = 0;
+    ULONG Got = 0;
+
+    WlanGetLink(InterfaceGuid, Snapshot);
+
+    /* A connect in progress owns the adapter and keeps the record current */
+    if (Snapshot->State != wlan_interface_state_connected &&
+        Snapshot->State != wlan_interface_state_disconnected)
+    {
+        return;
+    }
+
+    if (!TryEnterCriticalSection(&WlanDeviceLock))
+        return;
+
+    Interface = WlanOpenInterface(InterfaceGuid);
+    if (Interface != NULL)
+    {
+        if (WlanQueryOid(Interface, OID_GEN_MEDIA_CONNECT_STATUS, &Status, sizeof(Status), &Got) == ERROR_SUCCESS &&
+            Got >= sizeof(Status))
+        {
+            if (Status == NdisMediaStateConnected && Snapshot->State != wlan_interface_state_connected)
+            {
+                Snapshot->State = wlan_interface_state_connected;
+                WlanSetLink(InterfaceGuid, wlan_interface_state_connected, Snapshot);
+            }
+            else if (Status != NdisMediaStateConnected && Snapshot->State == wlan_interface_state_connected)
+            {
+                WlanSetLink(InterfaceGuid, wlan_interface_state_disconnected, NULL);
+                WlanGetLink(InterfaceGuid, Snapshot);
+            }
+        }
+        CloseHandle(Interface);
+    }
+
+    LeaveCriticalSection(&WlanDeviceLock);
+}
+
+static
+BOOLEAN
+WlanSameSsid(
+    _In_ const DOT11_SSID *Ssid,
+    _In_reads_bytes_opt_(Length) const UCHAR *Other,
+    _In_ ULONG Length)
+{
+    if (Ssid->uSSIDLength != Length)
+        return FALSE;
+
+    return (Length == 0 || RtlEqualMemory(Ssid->ucSSID, Other, Length));
+}
+
+/* SSIDs are raw bytes, most are UTF-8 and the rest are read as ANSI */
+static
+VOID
+WlanSsidToText(
+    _In_ const DOT11_SSID *Ssid,
+    _Out_writes_(Count) PWSTR Text,
+    _In_ int Count)
+{
+    int Length;
+
+    Length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (LPCSTR)Ssid->ucSSID,
+                                 (int)Ssid->uSSIDLength, Text, Count - 1);
+    if (Length <= 0)
+    {
+        Length = MultiByteToWideChar(CP_ACP, 0, (LPCSTR)Ssid->ucSSID,
+                                     (int)Ssid->uSSIDLength, Text, Count - 1);
+    }
+
+    if (Length < 0)
+        Length = 0;
+    Text[Length] = UNICODE_NULL;
+}
+
+/* Fills the BSSID, PHY and signal of the strongest BSS of the connected SSID,
+   when the adapter is free to be read */
+static
+VOID
+WlanFillAssociation(
+    _In_ const GUID *InterfaceGuid,
+    _Inout_ PWLAN_ASSOCIATION_ATTRIBUTES Association)
+{
+    PWLAN_DOT11_BYTE_ARRAY Bss = NULL;
+    ULONG Offset = 0;
+    ULONG Total;
+    DWORD Error;
+
+    if (!TryEnterCriticalSection(&WlanDeviceLock))
+        return;
+    Error = WlanReadBssList(InterfaceGuid, &Bss);
+    LeaveCriticalSection(&WlanDeviceLock);
+
+    if (Error != ERROR_SUCCESS)
+        return;
+
+    Total = Bss->uNumOfBytes;
+    while (Offset + FIELD_OFFSET(DOT11_BSS_ENTRY, ucBuffer) <= Total)
+    {
+        PDOT11_BSS_ENTRY Entry = (PDOT11_BSS_ENTRY)(Bss->ucBuffer + Offset);
+        const UCHAR *Ssid;
+        UCHAR SsidLength;
+
+        if (Offset + FIELD_OFFSET(DOT11_BSS_ENTRY, ucBuffer) + Entry->uBufferLength > Total)
+            break;
+
+        Ssid = WlanIeFind(Entry->ucBuffer, Entry->uBufferLength, WLAN_IE_SSID, &SsidLength);
+        if (WlanSameSsid(&Association->dot11Ssid, Ssid, SsidLength) &&
+            Entry->uLinkQuality >= Association->wlanSignalQuality)
+        {
+            RtlCopyMemory(&Association->dot11Bssid, &Entry->dot11BSSID, sizeof(Association->dot11Bssid));
+            Association->uDot11PhyIndex = Entry->uPhyId;
+            Association->wlanSignalQuality = Entry->uLinkQuality;
+        }
+
+        Offset += (FIELD_OFFSET(DOT11_BSS_ENTRY, ucBuffer) + Entry->uBufferLength + 3) & ~3u;
+    }
+
+    HeapFree(GetProcessHeap(), 0, Bss);
+}
+
+/**
+ * @brief
+ * Reports the link state of one adapter.
+ */
+DWORD
+WlanQueryInterfaceState(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ WLAN_INTERFACE_STATE *State)
+{
+    WLAN_LINK Link;
+
+    WlanRefreshLink(InterfaceGuid, &Link);
+    *State = Link.State;
+    return ERROR_SUCCESS;
+}
+
+/**
+ * @brief
+ * Describes the network one adapter is connected to.
+ *
+ * @return
+ * ERROR_INVALID_STATE when the adapter is not connected.
+ */
+DWORD
+WlanQueryConnection(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ PWLAN_CONNECTION_ATTRIBUTES Attributes)
+{
+    PWLAN_ASSOCIATION_ATTRIBUTES Association = &Attributes->wlanAssociationAttributes;
+    PWLAN_SECURITY_ATTRIBUTES Security = &Attributes->wlanSecurityAttributes;
+    WLAN_LINK Link;
+
+    RtlZeroMemory(Attributes, sizeof(*Attributes));
+
+    WlanRefreshLink(InterfaceGuid, &Link);
+    if (Link.State != wlan_interface_state_connected)
+        return ERROR_INVALID_STATE;
+
+    Attributes->isState = Link.State;
+    Attributes->wlanConnectionMode = Link.Mode;
+    StringCchCopyW(Attributes->strProfileName, ARRAYSIZE(Attributes->strProfileName), Link.ProfileName);
+
+    Association->dot11Ssid = Link.Ssid;
+    Association->dot11BssType = dot11_BSS_type_infrastructure;
+    Association->dot11PhyType = dot11_phy_type_erp;
+    if (Link.Ssid.uSSIDLength != 0)
+        WlanFillAssociation(InterfaceGuid, Association);
+
+    Security->bSecurityEnabled = (Link.Auth != DOT11_AUTH_ALGO_80211_OPEN);
+    Security->bOneXEnabled = FALSE;
+    Security->dot11AuthAlgorithm = Link.Auth;
+    Security->dot11CipherAlgorithm = Link.Cipher;
+    return ERROR_SUCCESS;
+}
+
 /**
  * @brief
  * Turns the last scan's BSS list into a WLAN_AVAILABLE_NETWORK_LIST, one entry
@@ -661,6 +1008,7 @@ WlanGetAvailableNetworkList(
 {
     PWLAN_DOT11_BYTE_ARRAY Bss = NULL;
     PWLAN_AVAILABLE_NETWORK_LIST List;
+    WLAN_LINK Link;
     DWORD Error;
     ULONG Total;
     ULONG Offset;
@@ -748,6 +1096,25 @@ WlanGetAvailableNetworkList(
     }
 
     HeapFree(GetProcessHeap(), 0, Bss);
+
+    /* Mark the network the adapter is on */
+    WlanRefreshLink(InterfaceGuid, &Link);
+    if (Link.State == wlan_interface_state_connected && Link.Ssid.uSSIDLength != 0)
+    {
+        ULONG n;
+
+        for (n = 0; n < Count; n++)
+        {
+            PWLAN_AVAILABLE_NETWORK Network = &List->Network[n];
+
+            if (WlanSameSsid(&Network->dot11Ssid, Link.Ssid.ucSSID, Link.Ssid.uSSIDLength))
+            {
+                Network->dwFlags |= WLAN_AVAILABLE_NETWORK_CONNECTED;
+                StringCchCopyW(Network->strProfileName, ARRAYSIZE(Network->strProfileName), Link.ProfileName);
+                break;
+            }
+        }
+    }
 
     List->dwNumberOfItems = Count;
     List->dwIndex = 0;
@@ -848,7 +1215,7 @@ WlanProfileTag(
 /**
  * @brief
  * Connects using a temporary profile: a secured one runs the WPA handshake, an
- * open one connects directly.
+ * open one connects directly. The link record follows the attempt.
  */
 DWORD
 WlanConnectProfile(
@@ -856,8 +1223,25 @@ WlanConnectProfile(
     _In_ PDOT11_SSID Ssid,
     _In_opt_ PCWSTR Profile)
 {
+    WLAN_LINK Network;
     WCHAR Authentication[32];
     WCHAR Key[128];
+    BOOLEAN Wpa = FALSE;
+    DWORD Error;
+
+    RtlZeroMemory(&Network, sizeof(Network));
+    Network.InterfaceGuid = *InterfaceGuid;
+    Network.Ssid = *Ssid;
+    Network.Mode = (Profile != NULL) ? wlan_connection_mode_temporary_profile
+                                     : wlan_connection_mode_discovery_unsecure;
+    Network.Auth = DOT11_AUTH_ALGO_80211_OPEN;
+    Network.Cipher = DOT11_CIPHER_ALGO_NONE;
+
+    if (Profile == NULL ||
+        !WlanProfileTag(Profile, L"<name>", L"</name>", Network.ProfileName, ARRAYSIZE(Network.ProfileName)))
+    {
+        WlanSsidToText(Ssid, Network.ProfileName, ARRAYSIZE(Network.ProfileName));
+    }
 
     if (Profile != NULL &&
         WlanProfileTag(Profile, L"<authentication>", L"</authentication>",
@@ -865,10 +1249,28 @@ WlanConnectProfile(
         (_wcsicmp(Authentication, L"WPA2PSK") == 0 || _wcsicmp(Authentication, L"WPAPSK") == 0) &&
         WlanProfileTag(Profile, L"<keyMaterial>", L"</keyMaterial>", Key, ARRAYSIZE(Key)))
     {
-        return WlanConnectWpa(InterfaceGuid, Ssid, Key);
+        Wpa = TRUE;
+        Network.Auth = (_wcsicmp(Authentication, L"WPAPSK") == 0) ? DOT11_AUTH_ALGO_WPA_PSK
+                                                                  : DOT11_AUTH_ALGO_RSNA_PSK;
+        Network.Cipher = DOT11_CIPHER_ALGO_CCMP;
     }
 
-    return WlanConnect(InterfaceGuid, Ssid);
+    EnterCriticalSection(&WlanDeviceLock);
+    WlanSetLink(InterfaceGuid, wlan_interface_state_associating, &Network);
+
+    if (Wpa)
+        Error = WlanConnectWpa(InterfaceGuid, Ssid, Key);
+    else
+        Error = WlanConnect(InterfaceGuid, Ssid);
+
+    if (Error == ERROR_SUCCESS)
+        WlanSetLink(InterfaceGuid, wlan_interface_state_connected, &Network);
+    else
+        WlanSetLink(InterfaceGuid, wlan_interface_state_disconnected, NULL);
+    LeaveCriticalSection(&WlanDeviceLock);
+
+    RtlSecureZeroMemory(Key, sizeof(Key));
+    return Error;
 }
 
 /**
@@ -883,11 +1285,20 @@ WlanDisconnect(
     ULONG Reason = 0;
     DWORD Error;
 
+    EnterCriticalSection(&WlanDeviceLock);
+
     Interface = WlanOpenInterface(InterfaceGuid);
     if (Interface == NULL)
+    {
+        LeaveCriticalSection(&WlanDeviceLock);
         return ERROR_BAD_UNIT;
+    }
 
     Error = WlanSetOid(Interface, OID_DOT11_DISCONNECT_REQUEST, &Reason, sizeof(Reason));
     CloseHandle(Interface);
+
+    if (Error == ERROR_SUCCESS)
+        WlanSetLink(InterfaceGuid, wlan_interface_state_disconnected, NULL);
+    LeaveCriticalSection(&WlanDeviceLock);
     return Error;
 }
