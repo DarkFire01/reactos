@@ -18,8 +18,9 @@
 PIRP IopDeadIrp;
 RESERVE_IRP_ALLOCATOR IopReserveIrpAllocator;
 
-/* qcsubsys dependency query, and what qcdx asks the subsystem driver after the GMU is up */
-static const ULONG IopWatchedIoctls[] = { 0x00212030, 0x9C41241C, 0x9C412410 };
+/* qcsubsys dependency query, PIL requests are matched by device type */
+static const ULONG IopWatchedIoctls[] = { 0x00212030 };
+#define IOP_WATCH_PIL_DEVICE_TYPE 0x9C41
 
 static
 BOOLEAN
@@ -33,6 +34,9 @@ IopIsWatchedIoctl(
     {
         return FALSE;
     }
+
+    if (DEVICE_TYPE_FROM_CTL_CODE(StackPtr->Parameters.DeviceIoControl.IoControlCode) == IOP_WATCH_PIL_DEVICE_TYPE)
+        return TRUE;
 
     for (Index = 0; Index < RTL_NUMBER_OF(IopWatchedIoctls); Index++)
     {
@@ -61,6 +65,8 @@ IopWatchDumpInput(
             Length,
             Input[0], Input[1], Input[2], Input[3], Input[4], Input[5], Input[6], Input[7],
             Input[8], Input[9], Input[10], Input[11], Input[12], Input[13], Input[14], Input[15]);
+    if (Length >= 20)
+        DPRINT1("  input dword at 16: 0x%lx\n", *(PULONG)(Input + 16));
 
     for (Index = 0; Index + 1 < Length && Chars < RTL_NUMBER_OF(Text) - 1; Index += 2)
     {
@@ -1398,11 +1404,28 @@ IofCallDriver(IN PDEVICE_OBJECT DeviceObject,
         ULONG Code = StackPtr->Parameters.DeviceIoControl.IoControlCode;
         NTSTATUS Status;
 
-        DPRINT1("IOCTL 0x%08lx to %wZ\n", Code, &DriverObject->DriverName);
+        DPRINT1("IOCTL 0x%08lx to %wZ at %I64u ms, file %p, thread %p\n",
+                Code, &DriverObject->DriverName, KeQueryInterruptTime() / 10000,
+                StackPtr->FileObject, Irp->Tail.Overlay.Thread);
         IopWatchDumpInput(Irp, StackPtr);
         Status = DriverObject->MajorFunction[StackPtr->MajorFunction](DeviceObject, Irp);
         DPRINT1("IOCTL 0x%08lx to %wZ returned 0x%lx\n", Code, &DriverObject->DriverName, Status);
         return Status;
+    }
+
+    /* qcpil hands the load slot to the next client when a handle is cleaned up */
+    if (StackPtr->MajorFunction == IRP_MJ_CREATE ||
+        StackPtr->MajorFunction == IRP_MJ_CLEANUP ||
+        StackPtr->MajorFunction == IRP_MJ_CLOSE)
+    {
+        static const UNICODE_STRING PilName = RTL_CONSTANT_STRING(L"\\Driver\\qcPILC");
+
+        if (RtlEqualUnicodeString(&DriverObject->DriverName, &PilName, TRUE))
+        {
+            DPRINT1("qcPILC major %u at %I64u ms, file %p, thread %p\n",
+                    StackPtr->MajorFunction, KeQueryInterruptTime() / 10000,
+                    StackPtr->FileObject, Irp->Tail.Overlay.Thread);
+        }
     }
 
     /* Otherwise call the function of the driver */
@@ -1463,9 +1486,10 @@ IofCompleteRequest(IN PIRP Irp,
     StackPtr = IoGetCurrentIrpStackLocation(Irp);
     if (Irp->CurrentLocation <= Irp->StackCount && IopIsWatchedIoctl(StackPtr))
     {
-        DPRINT1("IOCTL 0x%08lx completed 0x%lx, %Iu bytes\n",
+        DPRINT1("IOCTL 0x%08lx completed 0x%lx, %Iu bytes at %I64u ms\n",
                 StackPtr->Parameters.DeviceIoControl.IoControlCode,
-                Irp->IoStatus.Status, Irp->IoStatus.Information);
+                Irp->IoStatus.Status, Irp->IoStatus.Information,
+                KeQueryInterruptTime() / 10000);
     }
 
     /* Get the last stack */
