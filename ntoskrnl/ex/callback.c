@@ -472,6 +472,12 @@ ExNotifyCallback(IN PCALLBACK_OBJECT CallbackObject,
     PCALLBACK_REGISTRATION CallbackRegistration;
     KIRQL OldIrql;
 
+    if (CallbackObject && CallbackObject == PowerStateCallback)
+    {
+        DPRINT1("PowerState callback %p %p from %p\n",
+                Argument1, Argument2, _ReturnAddress());
+    }
+
     /* Check if we don't have an object or registrations */
     if (!(CallbackObject) ||
         (IsListEmpty(&CallbackObject->RegisteredCallbacks)))
