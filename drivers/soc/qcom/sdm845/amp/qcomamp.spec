@@ -4,3 +4,4 @@
 @ stdcall QcAmpStart(long long long)
 @ stdcall QcAmpStop()
 @ stdcall QcAmpSetVolume(long)
+@ stdcall QcAmpSetMute(long)

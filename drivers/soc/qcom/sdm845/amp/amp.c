@@ -65,9 +65,9 @@
 #define AMP_VMON_SLOT               1
 #define AMP_IMON_SLOT               0
 
-/* Volume register: 0x00 mutes, 0x7F is the top step, 0x38 is the +13 dB default */
+/* Digital volume: 0.25 dB per step from -16 dB at 0x00; the default 0x38 is the loudest we allow */
 #define AMP_VOLUME_DEFAULT          0x38
-#define AMP_VOLUME_MAX              0x7F
+#define AMP_VOLUME_STEP_DB          (65536 / 4)
 
 typedef struct _AMP_PIN
 {
@@ -130,6 +130,7 @@ typedef struct _AMP_STATE
     PQCOM_TLMM Tlmm;
     PQCOM_GENI_I2C I2c;
     UCHAR Volume;
+    BOOLEAN Muted;
 } AMP_STATE;
 
 static AMP_STATE AmpState;
@@ -271,7 +272,7 @@ AmpBringUp(VOID)
     AmpUpdate(AMP_REG_SPK_SOURCE, 0x03, 0x00);
     AmpUpdate(AMP_REG_PDM_RX, 0x01, 0x00);
 
-    AmpState.Volume = AMP_VOLUME_DEFAULT;
+    AmpWrite(AMP_REG_VOLUME, AmpState.Volume);
     QC_LOG("max98927 revision 0x%02x configured", Revision);
     return STATUS_SUCCESS;
 }
@@ -356,7 +357,7 @@ QcAmpStart(
     AmpUpdate(AMP_REG_PCM_RATE2, 0xFF, (UCHAR)((RateCode << 4) | RateCode));
     AmpUpdate(AMP_REG_PCM_CLOCK, 0x0F, AmpBclkCode(Bits * Channels));
 
-    AmpUpdate(AMP_REG_AMP_ENABLE, 0x01, 0x01);
+    AmpUpdate(AMP_REG_AMP_ENABLE, 0x01, AmpState.Muted ? 0x00 : 0x01);
     Status = AmpUpdate(AMP_REG_GLOBAL_ENABLE, 0x01, 0x01);
     if (NT_SUCCESS(Status))
     {
@@ -385,21 +386,42 @@ QcAmpStop(VOID)
     ExReleaseFastMutex(&AmpState.Lock);
 }
 
-/* Level is 0 to 100, mapped onto the amp's digital volume steps */
+/* Level is in 1/65536 dB below the default, the amp steps by 0.25 dB down to 14 dB under it */
 VOID
 NTAPI
 QcAmpSetVolume(
-    _In_ ULONG Level)
+    _In_ LONG Level)
+{
+    LONG Steps;
+
+    PAGED_CODE();
+
+    if (Level > 0)
+        Level = 0;
+
+    Steps = -Level / AMP_VOLUME_STEP_DB;
+    if (Steps > AMP_VOLUME_DEFAULT)
+        Steps = AMP_VOLUME_DEFAULT;
+
+    ExAcquireFastMutex(&AmpState.Lock);
+    AmpState.Volume = (UCHAR)(AMP_VOLUME_DEFAULT - Steps);
+    if (AmpState.Ready)
+        AmpWrite(AMP_REG_VOLUME, AmpState.Volume);
+    ExReleaseFastMutex(&AmpState.Lock);
+}
+
+/* The digital volume has no off step, so mute gates the amp output stage */
+VOID
+NTAPI
+QcAmpSetMute(
+    _In_ BOOLEAN Mute)
 {
     PAGED_CODE();
 
-    if (Level > 100)
-        Level = 100;
-
     ExAcquireFastMutex(&AmpState.Lock);
-    AmpState.Volume = (UCHAR)((Level * AMP_VOLUME_MAX + 50) / 100);
-    if (AmpState.Ready)
-        AmpWrite(AMP_REG_VOLUME, AmpState.Volume);
+    AmpState.Muted = Mute;
+    if (AmpState.Running)
+        AmpUpdate(AMP_REG_AMP_ENABLE, 0x01, Mute ? 0x00 : 0x01);
     ExReleaseFastMutex(&AmpState.Lock);
 }
 
@@ -412,6 +434,7 @@ DllInitialize(
 
     /* Runs when the first importer loads us, before any export is called */
     ExInitializeFastMutex(&AmpState.Lock);
+    AmpState.Volume = AMP_VOLUME_DEFAULT;
     return STATUS_SUCCESS;
 }
 
