@@ -36,3 +36,11 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM020E","Cl
 
 ; tcpip takes its address from the adapter's own DHCP answer once the session is up
 HKLM,"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{ACD88133-6664-4857-8360-EB884C4CC07A}","EnableDHCP",0x00010001,1
+
+; What netcfgx writes at install: the device NDIS creates for the adapter, and its connection
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0101\Linkage","Export",0x00000000,"\Device\{ACD88133-6664-4857-8360-EB884C4CC07A}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0101\Linkage","RootDevice",0x00000000,"{ACD88133-6664-4857-8360-EB884C4CC07A}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0101\Linkage","UpperBind",0x00000000,"Tcpip"
+HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{ACD88133-6664-4857-8360-EB884C4CC07A}\Connection","Name",0x00000000,"Cellular"
+HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{ACD88133-6664-4857-8360-EB884C4CC07A}\Connection","PnpInstanceID",0x00000000,"ACPI\QCOM020E\2&ccb86d17&_SB_RMNT"
+HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{ACD88133-6664-4857-8360-EB884C4CC07A}\Connection","ShowIcon",0x00010001,1

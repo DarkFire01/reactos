@@ -69,3 +69,11 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\QCMS#VEN_QCOM&DEV_
 
 ; Address from DHCP once the adapter binds
 HKLM,"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}","EnableDHCP",0x00010001,1
+
+; What netcfgx writes at install: the device NDIS creates for the adapter, and its connection
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Linkage","Export",0x00000000,"\Device\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Linkage","RootDevice",0x00000000,"{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}"
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}\0100\Linkage","UpperBind",0x00000000,"Tcpip"
+HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}\Connection","Name",0x00000000,"Wi-Fi"
+HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}\Connection","PnpInstanceID",0x00000000,"QCMS\VEN_QCOM&DEV_02E5&SUBSYS_MTP00850\3&7e537d43&0"
+HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}\Connection","ShowIcon",0x00010001,1
