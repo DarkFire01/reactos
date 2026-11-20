@@ -626,12 +626,38 @@ Done:
     KeLeaveCriticalRegion();
 }
 
+static BOOLEAN
+PnpWatchIsModuleLoaded(
+    _In_ PCWSTR Name)
+{
+    UNICODE_STRING ModuleName;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PLIST_ENTRY Entry;
+    BOOLEAN Found = FALSE;
+
+    RtlInitUnicodeString(&ModuleName, Name);
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
+    for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList && !Found; Entry = Entry->Flink)
+    {
+        LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        Found = RtlEqualUnicodeString(&LdrEntry->BaseDllName, &ModuleName, TRUE);
+    }
+    ExReleaseResourceLite(&PsLoadedModuleResource);
+    KeLeaveCriticalRegion();
+    return Found;
+}
+
 /* Display drivers being brought up: show every thread that is somewhere inside them */
 static VOID
 PnpWatchDumpDisplayThreads(VOID)
 {
     PEPROCESS Process;
     PETHREAD Thread;
+
+    /* Only the Adreno bring-up needs these, the framebuffer has nothing to show */
+    if (!PnpWatchIsModuleLoaded(L"qcdxkm850.sys"))
+        return;
 
     /* First, the GPU dump after it can stall on a powered down block */
     PnpWatchDumpWatchdogLog();
