@@ -19,6 +19,7 @@
 #define QCRIL_VOICE_TLV_DIAL_CALL_ID    0x10
 #define QCRIL_VOICE_TLV_CALL_INFO       0x01
 #define QCRIL_VOICE_TLV_REMOTE_NUMBER   0x10
+#define QCRIL_VOICE_TLV_END_REASON      0x14
 
 /* The phone service drives a single executor */
 #define QCRIL_EXECUTOR                  0
@@ -195,6 +196,33 @@ QcVoiceManage(
     return QcQmiCommand(Modem, QcSvcVoice, Message, Length);
 }
 
+/* The modem's reason for ending one call, from the call_id and reason array */
+static
+BOOL
+QcVoiceFindEndReason(
+    _In_reads_bytes_(Length) const UCHAR *Array,
+    _In_ USHORT Length,
+    _In_ UCHAR CallId,
+    _Out_ PUSHORT Reason)
+{
+    ULONG Offset;
+
+    *Reason = 0;
+    if (Length < 1)
+        return FALSE;
+
+    for (Offset = 1; Offset + 3 <= Length; Offset += 3)
+    {
+        if (Array[Offset] == CallId)
+        {
+            *Reason = Array[Offset + 1] | (Array[Offset + 2] << 8);
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
 /* Finds the remote number record for one call in the remote party array */
 static
 BOOL
@@ -244,8 +272,8 @@ QcVoiceIndication(
     _In_reads_bytes_(Length) const VOID *Message,
     _In_ ULONG Length)
 {
-    const VOID *Info, *Numbers = NULL;
-    USHORT InfoLen, NumbersLen = 0;
+    const VOID *Info, *Numbers = NULL, *Ends = NULL;
+    USHORT InfoLen, NumbersLen = 0, EndsLen = 0;
     const UCHAR *Bytes;
     UCHAR Count, i;
     ULONG Offset = 1;
@@ -257,6 +285,7 @@ QcVoiceIndication(
         return;
 
     QmiFindTlv(Message, Length, QCRIL_VOICE_TLV_REMOTE_NUMBER, &Numbers, &NumbersLen);
+    QmiFindTlv(Message, Length, QCRIL_VOICE_TLV_END_REASON, &Ends, &EndsLen);
 
     Bytes = Info;
     Count = Bytes[0];
@@ -266,6 +295,7 @@ QcVoiceIndication(
         QCRIL_CALL_INFO Call;
         RIL_CALL_RECORD Record;
         CHAR Number[96];
+        USHORT EndReason;
 
         if (Offset + sizeof(Call) > InfoLen)
             break;
@@ -286,6 +316,11 @@ QcVoiceIndication(
         Number[0] = '\0';
         if (Numbers)
             QcVoiceFindNumber(Numbers, NumbersLen, Call.CallId, Number, sizeof(Number));
+
+        if (Ends && QcVoiceFindEndReason(Ends, EndsLen, Call.CallId, &EndReason))
+            QcTrace("call %u state %u, ended by the modem, reason %u\n", Call.CallId, Call.CallState, EndReason);
+        else
+            QcTrace("call %u state %u\n", Call.CallId, Call.CallState);
 
         if (Number[0])
         {
