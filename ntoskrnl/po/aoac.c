@@ -25,15 +25,29 @@ BOOLEAN PopAoAcInStandby = FALSE;
 
 #define TAG_PO_AOAC_THROTTLE    'tAoP'
 
-/* A desktop process moved to idle priority for the standby, and the class it had */
+/* Desktop apps get this long with the display off to finish what they were doing */
+#define POP_AOAC_FREEZE_DELAY_MS    30000
+
+/* A desktop process moderated for the standby, the class it had and whether it is frozen */
 typedef struct _POP_AOAC_THROTTLED
 {
     LIST_ENTRY Link;
     PEPROCESS Process;
     UCHAR PriorityClass;
+    BOOLEAN Frozen;
 } POP_AOAC_THROTTLED, *PPOP_AOAC_THROTTLED;
 
 static LIST_ENTRY PopAoAcThrottledList = { &PopAoAcThrottledList, &PopAoAcThrottledList };
+
+/* Guards the standby state and the list against the delayed freeze */
+static FAST_MUTEX PopAoAcLock;
+static KTIMER PopAoAcFreezeTimer;
+static KDPC PopAoAcFreezeDpc;
+static WORK_QUEUE_ITEM PopAoAcFreezeItem;
+static volatile LONG PopAoAcFreezeQueued;
+
+static KDEFERRED_ROUTINE PopAoAcFreezeDpcRoutine;
+static WORKER_THREAD_ROUTINE PopAoAcFreezeWorker;
 
 /* The shell and the session plumbing keep their priority, as on Windows they are never moderated */
 static const CHAR *PopAoAcExemptImages[] =
@@ -66,6 +80,11 @@ PopInitializeAoAc(
     _In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     PFADT Fadt;
+
+    ExInitializeFastMutex(&PopAoAcLock);
+    KeInitializeTimer(&PopAoAcFreezeTimer);
+    KeInitializeDpc(&PopAoAcFreezeDpc, PopAoAcFreezeDpcRoutine, NULL);
+    ExInitializeWorkItem(&PopAoAcFreezeItem, PopAoAcFreezeWorker, NULL);
 
     /* Only a HAL that knows its firmware tables can tell us */
     if (!KdGetAcpiTablePhase0)
@@ -173,6 +192,63 @@ PopAoAcThrottleProcesses(VOID)
 
 /**
  * @brief
+ * The grace period is over, the moderated apps stop until the display comes
+ * back. Runs as a work item, the standby may have ended meanwhile.
+ */
+static
+VOID
+NTAPI
+PopAoAcFreezeWorker(
+    _In_ PVOID Parameter)
+{
+    PPOP_AOAC_THROTTLED Entry;
+    PLIST_ENTRY Link;
+    ULONG Count = 0;
+
+    UNREFERENCED_PARAMETER(Parameter);
+
+    InterlockedExchange(&PopAoAcFreezeQueued, 0);
+
+    ExAcquireFastMutex(&PopAoAcLock);
+    if (PopAoAcInStandby)
+    {
+        for (Link = PopAoAcThrottledList.Flink; Link != &PopAoAcThrottledList; Link = Link->Flink)
+        {
+            Entry = CONTAINING_RECORD(Link, POP_AOAC_THROTTLED, Link);
+            if (Entry->Frozen || Entry->Process->ProcessDelete)
+                continue;
+
+            Entry->Frozen = KeFreezeProcess(&Entry->Process->Pcb);
+            if (Entry->Frozen)
+                Count++;
+        }
+
+        DPRINT1("Connected standby froze %lu desktop processes\n", Count);
+    }
+    ExReleaseFastMutex(&PopAoAcLock);
+}
+
+static
+VOID
+NTAPI
+PopAoAcFreezeDpcRoutine(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(DeferredContext);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    /* One work item, a second timer expiry before it ran finds it queued */
+    if (!InterlockedExchange(&PopAoAcFreezeQueued, 1))
+        ExQueueWorkItem(&PopAoAcFreezeItem, DelayedWorkQueue);
+}
+
+/**
+ * @brief
  * Gives every throttled process its old class back. A process that changed
  * its class itself meanwhile keeps what it chose.
  */
@@ -189,6 +265,9 @@ PopAoAcRestoreProcesses(VOID)
     {
         Link = RemoveHeadList(&PopAoAcThrottledList);
         Entry = CONTAINING_RECORD(Link, POP_AOAC_THROTTLED, Link);
+
+        if (Entry->Frozen)
+            KeThawProcess(&Entry->Process->Pcb);
 
         if (!Entry->Process->ProcessDelete &&
             Entry->Process->PriorityClass == PROCESS_PRIORITY_CLASS_IDLE)
@@ -225,24 +304,38 @@ NTAPI
 PopAoAcHandleSleepButton(VOID)
 {
     WIN32_POWEREVENT_PARAMETERS Params;
+    LARGE_INTEGER DueTime;
 
     PAGED_CODE();
 
+    /* The display events call into win32k, so they go out with the lock dropped */
+    ExAcquireFastMutex(&PopAoAcLock);
     PopAoAcInStandby = !PopAoAcInStandby;
     if (PopAoAcInStandby)
     {
+        ExReleaseFastMutex(&PopAoAcLock);
+
         DPRINT1("Entering connected standby, turning the display off\n");
         Params.EventNumber = PsW32DisplayState;
         Params.Code = 0;
         PopDispatchPowerEvent(&Params);
-
         PopAoAcNotifyDisplayState();
-        PopAoAcThrottleProcesses();
+
+        ExAcquireFastMutex(&PopAoAcLock);
+        if (PopAoAcInStandby)
+            PopAoAcThrottleProcesses();
+        ExReleaseFastMutex(&PopAoAcLock);
+
+        DueTime.QuadPart = -10000LL * POP_AOAC_FREEZE_DELAY_MS;
+        KeSetTimer(&PopAoAcFreezeTimer, DueTime, &PopAoAcFreezeDpc);
         return;
     }
 
+    /* Apps run again before win32k sends them the display on messages */
     DPRINT1("Leaving connected standby, turning the display on\n");
+    KeCancelTimer(&PopAoAcFreezeTimer);
     PopAoAcRestoreProcesses();
+    ExReleaseFastMutex(&PopAoAcLock);
 
     Params.EventNumber = PsW32DisplayState;
     Params.Code = 1;
