@@ -1,4 +1,4 @@
-; Qualcomm PM8998 Power Key
+; Qualcomm generic buttons device, power, volume and camera keys
 [AddReg]
 HKLM,"SYSTEM\CurrentControlSet\Services\qcompwrkey","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\qcompwrkey","ImagePath",0x00020000,"system32\drivers\qcompwrkey.sys"
