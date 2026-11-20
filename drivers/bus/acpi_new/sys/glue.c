@@ -174,6 +174,19 @@ UacpiNtBringUpInterpreter(
         return STATUS_UNSUCCESSFUL;
     }
 
+    /* Drivers that tell SoC revisions apart read these, firmware patches them at boot */
+    {
+        static const char *const Names[] = { "\\_SB.SOID", "\\_SB.SIDV", "\\_SB.SVMJ", "\\_SB.SVMI", "\\_SB.SDFE" };
+        uacpi_u64 Value;
+        ULONG Index;
+
+        for (Index = 0; Index < RTL_NUMBER_OF(Names); Index++)
+        {
+            if (uacpi_likely_success(uacpi_eval_simple_integer(NULL, Names[Index], &Value)))
+                DPRINT1("uACPI-NT: %s = 0x%I64x\n", Names[Index], Value);
+        }
+    }
+
     UacpiNtPlatformOscNegotiate();
     UacpiNtPowerResInit();
 
