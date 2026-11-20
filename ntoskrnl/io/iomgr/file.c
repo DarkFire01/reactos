@@ -3821,6 +3821,36 @@ IoSetFileOrigin(IN PFILE_OBJECT FileObject,
 /*
  * @implemented
  */
+/* DIAG: logs kernel opens under \DriverData and of the WLAN PD image */
+static
+VOID
+IopTraceModemFileOpen(
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ULONG Disposition,
+    _In_ NTSTATUS Status)
+{
+    UNICODE_STRING DataRoot = RTL_CONSTANT_STRING(L"\\DriverData");
+    UNICODE_STRING WlanImage = RTL_CONSTANT_STRING(L"wlanmdsp.mbn");
+    UNICODE_STRING Tail;
+    PUNICODE_STRING Name;
+
+    if (!ObjectAttributes || !ObjectAttributes->ObjectName || ObjectAttributes->RootDirectory)
+        return;
+
+    Name = ObjectAttributes->ObjectName;
+    Tail.Length = Tail.MaximumLength = 0;
+    Tail.Buffer = NULL;
+    if (Name->Length >= WlanImage.Length)
+    {
+        Tail.Buffer = (PWCHAR)((PUCHAR)Name->Buffer + Name->Length - WlanImage.Length);
+        Tail.Length = Tail.MaximumLength = WlanImage.Length;
+    }
+
+    if (RtlPrefixUnicodeString(&DataRoot, Name, TRUE) ||
+        (Tail.Buffer && RtlEqualUnicodeString(&Tail, &WlanImage, TRUE)))
+        DPRINT1("open '%wZ' disposition %lu -> 0x%lx\n", Name, Disposition, Status);
+}
+
 NTSTATUS
 NTAPI
 NtCreateFile(PHANDLE FileHandle,
@@ -3835,21 +3865,29 @@ NtCreateFile(PHANDLE FileHandle,
              PVOID EaBuffer,
              ULONG EaLength)
 {
+    NTSTATUS Status;
+
     /* Call the I/O Function */
-    return IoCreateFile(FileHandle,
-                        DesiredAccess,
-                        ObjectAttributes,
-                        IoStatusBlock,
-                        AllocateSize,
-                        FileAttributes,
-                        ShareAccess,
-                        CreateDisposition,
-                        CreateOptions,
-                        EaBuffer,
-                        EaLength,
-                        CreateFileTypeNone,
-                        NULL,
-                        0);
+    Status = IoCreateFile(FileHandle,
+                          DesiredAccess,
+                          ObjectAttributes,
+                          IoStatusBlock,
+                          AllocateSize,
+                          FileAttributes,
+                          ShareAccess,
+                          CreateDisposition,
+                          CreateOptions,
+                          EaBuffer,
+                          EaLength,
+                          CreateFileTypeNone,
+                          NULL,
+                          0);
+
+    /* DIAG: show the modem files the TFTP server opens for it */
+    if (ExGetPreviousMode() == KernelMode)
+        IopTraceModemFileOpen(ObjectAttributes, CreateDisposition, Status);
+
+    return Status;
 }
 
 NTSTATUS
