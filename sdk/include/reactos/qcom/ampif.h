@@ -24,8 +24,13 @@ VOID
 NTAPI
 QcAmpStop(VOID);
 
-/* Level is 0 to 100 */
+/* Level in 1/65536 dB, 0 is the loudest step, clamped at -14 dB */
 VOID
 NTAPI
 QcAmpSetVolume(
-    _In_ ULONG Level);
+    _In_ LONG Level);
+
+VOID
+NTAPI
+QcAmpSetMute(
+    _In_ BOOLEAN Mute);
