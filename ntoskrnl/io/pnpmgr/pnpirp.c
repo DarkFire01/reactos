@@ -532,6 +532,80 @@ PnpWatchDumpQcdxLog(VOID)
         PnpWatchDumpGpuState();
 }
 
+/* Windows watchdog.sys keeps the WdError entries cdd and dxgkrnl write in a ring of 64 byte records */
+#define PNP_WATCH_WD_IMAGE_SIZE     0x17000
+#define PNP_WATCH_WD_ERROR_RING     0x9050
+#define PNP_WATCH_WD_ERROR_CAPACITY 0x9058
+#define PNP_WATCH_WD_ERROR_WRITTEN  0x905C
+#define PNP_WATCH_WD_SHOWN          24
+
+typedef struct _PNP_WATCH_WD_ENTRY
+{
+    ULONG Sequence;
+    ULONG Reserved;
+    PVOID Thread;
+    ULONG_PTR Caller;
+    ULONG_PTR Values[5];
+} PNP_WATCH_WD_ENTRY, *PPNP_WATCH_WD_ENTRY;
+
+C_ASSERT(sizeof(PNP_WATCH_WD_ENTRY) == 64);
+
+VOID
+PnpWatchDumpWatchdogLog(VOID)
+{
+    UNICODE_STRING WdName = RTL_CONSTANT_STRING(L"watchdog.sys");
+    PLDR_DATA_TABLE_ENTRY LdrEntry, Wd = NULL, Owner;
+    PPNP_WATCH_WD_ENTRY Ring, Record;
+    ULONG Capacity, Written, i;
+    PLIST_ENTRY Entry;
+    PUCHAR Base;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
+    for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList; Entry = Entry->Flink)
+    {
+        LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (RtlEqualUnicodeString(&LdrEntry->BaseDllName, &WdName, TRUE))
+        {
+            Wd = LdrEntry;
+            break;
+        }
+    }
+
+    if (!Wd || Wd->SizeOfImage != PNP_WATCH_WD_IMAGE_SIZE)
+    {
+        DbgPrint("PNPWATCH: watchdog.sys is missing or another build, its log is not read\n");
+        goto Done;
+    }
+
+    Base = Wd->DllBase;
+    Ring = *(PPNP_WATCH_WD_ENTRY *)(Base + PNP_WATCH_WD_ERROR_RING);
+    Capacity = *(PULONG)(Base + PNP_WATCH_WD_ERROR_CAPACITY);
+    Written = *(PULONG)(Base + PNP_WATCH_WD_ERROR_WRITTEN);
+    DbgPrint("PNPWATCH: watchdog error log, %lu records\n", Written);
+    if (!Ring || !Capacity)
+        goto Done;
+
+    for (i = Written - min(Written, min(Capacity, PNP_WATCH_WD_SHOWN)); i < Written; i++)
+    {
+        Record = &Ring[i & (Capacity - 1)];
+        if (!MmIsAddressValid(Record))
+            break;
+
+        Owner = PnpWatchFindModule(Record->Caller);
+        DbgPrint("PNPWATCH: wd %lu from %wZ+0x%Ix: %Ix %Ix %Ix %Ix %Ix\n",
+                 Record->Sequence,
+                 Owner ? &Owner->BaseDllName : &WdName,
+                 Owner ? Record->Caller - (ULONG_PTR)Owner->DllBase : Record->Caller,
+                 Record->Values[0], Record->Values[1], Record->Values[2],
+                 Record->Values[3], Record->Values[4]);
+    }
+
+Done:
+    ExReleaseResourceLite(&PsLoadedModuleResource);
+    KeLeaveCriticalRegion();
+}
+
 /* Display drivers being brought up: show every thread that is somewhere inside them */
 static VOID
 PnpWatchDumpDisplayThreads(VOID)
