@@ -180,6 +180,7 @@ PopAoAcThrottleProcesses(VOID)
         ObReferenceObject(Process);
         Entry->Process = Process;
         Entry->PriorityClass = Process->PriorityClass;
+        Entry->Frozen = FALSE;
         InsertTailList(&PopAoAcThrottledList, &Entry->Link);
 
         Process->PriorityClass = PROCESS_PRIORITY_CLASS_IDLE;
