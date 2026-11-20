@@ -1,0 +1,5 @@
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION  "Qualcomm APR Audio Transport"
+#define REACTOS_STR_INTERNAL_NAME     "qcomapr"
+#define REACTOS_STR_ORIGINAL_FILENAME "qcomapr.sys"
+#include <reactos/version.rc>
