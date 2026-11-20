@@ -2474,6 +2474,15 @@ HKLM,"SYSTEM\CurrentControlSet\Services\PhoneSvc","ObjectName",0x00000000,"Local
 HKLM,"SYSTEM\CurrentControlSet\Services\PhoneSvc","Start",0x00010001,0x00000002
 HKLM,"SYSTEM\CurrentControlSet\Services\PhoneSvc","Type",0x00010001,0x00000010
 
+; Power service
+HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","DisplayName",0x00000000,%POWERSVC_SERVICE%
+HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","Description",0x00000000,%POWERSVC_SERVICE_DESCRIPTION%
+HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","ImagePath",0x00020000,"%SystemRoot%\system32\powersvc.exe"
+HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","ObjectName",0x00000000,"LocalSystem"
+HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","Start",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","Type",0x00010001,0x00000010
+
 
 ; Simple TCP services
 HKLM,"SYSTEM\CurrentControlSet\Services\tcpsvcs","Description",0x00000000,%TCPSVCS_SERVICE_DECRIPTION%
@@ -2766,6 +2775,8 @@ RILADAPT_SERVICE="RIL Adaptation Service"
 RILADAPT_SERVICE_DESCRIPTION="Hosts the cellular radio driver and serves telephony clients"
 PHONESVC_SERVICE="Phone Service"
 PHONESVC_SERVICE_DESCRIPTION="Manages voice calls and text messages over the cellular radio"
+POWERSVC_SERVICE="Power"
+POWERSVC_SERVICE_DESCRIPTION="Applies the active power plan to the system and to drivers"
 
 WORKSTATION_SERVICE="Workstation"
 WORKSTATION_SERVICE_DESCRIPTION="Responsible for creating and maintaining network connections to servers."
