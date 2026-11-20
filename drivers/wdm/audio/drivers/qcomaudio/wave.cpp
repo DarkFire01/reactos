@@ -137,7 +137,7 @@ CMiniportWaveQcomStream::~CMiniportWaveQcomStream()
     FreeSharedBuffer();
 
     if (Miniport && Miniport->StreamCount)
-        Miniport->StreamCount--;
+        Miniport->StreamCount -= 1;
     if (PortStream)
         PortStream->Release();
 }
