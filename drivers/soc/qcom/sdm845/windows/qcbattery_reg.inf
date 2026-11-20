@@ -16,3 +16,15 @@ HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","Start",0x00010001,0x00000003
 HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D6","Service",0x00000000,"qcfgbcl"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02D6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+
+; The power manager reaches every battery through the composite battery, a root device as on Windows
+HKLM,"SYSTEM\CurrentControlSet\Services\compbatt","DisplayName",0x00000000,"Composite Battery Driver"
+HKLM,"SYSTEM\CurrentControlSet\Services\compbatt","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\compbatt","ImagePath",0x00020000,"system32\drivers\compbatt.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\compbatt","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\compbatt","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\COMPOSITE_BATTERY\0000","HardwareID",0x00010000,"COMPOSITE_BATTERY"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\COMPOSITE_BATTERY\0000","DeviceDesc",0x00000000,"Composite Battery"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\COMPOSITE_BATTERY\0000","Service",0x00000000,"compbatt"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\COMPOSITE_BATTERY\0000","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\COMPOSITE_BATTERY\0000","ConfigFlags",0x00010001,0x00000000
