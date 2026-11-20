@@ -89,12 +89,39 @@ NdisWriteErrorLogEntry(
  *     Variable: list of log items
  * NOTES:
  *     - THIS IS >CDECL<
- *     - This needs to be fixed to do var args
- *     - FIXME - this needs to be properly implemented once we have an event log
+ *     - The values go out as the entry's dump data, where miniports record why they failed
  */
 {
-  NDIS_DbgPrint(MIN_TRACE, ("ERROR: ErrorCode 0x%x\n", ErrorCode));
-  /* ASSERT(0); */
+  PLOGICAL_ADAPTER Adapter = (PLOGICAL_ADAPTER)NdisAdapterHandle;
+  PIO_ERROR_LOG_PACKET Packet = NULL;
+  ULONG Values[8];
+  ULONG Count, Index;
+  va_list Arguments;
+
+  Count = min(NumberOfErrorValues, RTL_NUMBER_OF(Values));
+  va_start(Arguments, NumberOfErrorValues);
+  for (Index = 0; Index < Count; Index++)
+      Values[Index] = va_arg(Arguments, ULONG);
+  va_end(Arguments);
+
+  NDIS_DbgPrint(MIN_TRACE, ("ERROR: ErrorCode 0x%x, %lu value(s)\n", ErrorCode, NumberOfErrorValues));
+  for (Index = 0; Index < Count; Index++)
+      NDIS_DbgPrint(MIN_TRACE, ("    value %lu: 0x%08lx\n", Index, Values[Index]));
+
+  if (Adapter && Adapter->NdisMiniportBlock.DeviceObject)
+  {
+      Packet = IoAllocateErrorLogEntry(Adapter->NdisMiniportBlock.DeviceObject,
+                                       (UCHAR)(FIELD_OFFSET(IO_ERROR_LOG_PACKET, DumpData) + Count * sizeof(ULONG)));
+  }
+
+  if (!Packet)
+      return;
+
+  RtlZeroMemory(Packet, FIELD_OFFSET(IO_ERROR_LOG_PACKET, DumpData));
+  Packet->ErrorCode = (NTSTATUS)ErrorCode;
+  Packet->DumpDataSize = (USHORT)(Count * sizeof(ULONG));
+  RtlCopyMemory(Packet->DumpData, Values, Count * sizeof(ULONG));
+  IoWriteErrorLogEntry(Packet);
 }
 
 
