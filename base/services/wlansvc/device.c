@@ -1183,6 +1183,54 @@ WlanConnect(
     return ERROR_TIMEOUT;
 }
 
+/* Turns the predefined XML entities in a value back into the characters */
+static
+VOID
+WlanXmlUnescape(
+    _Inout_ PWSTR Value)
+{
+    static const struct
+    {
+        PCWSTR Entity;
+        WCHAR Character;
+    } Entities[] =
+    {
+        { L"&amp;", L'&' },
+        { L"&lt;", L'<' },
+        { L"&gt;", L'>' },
+        { L"&quot;", L'"' },
+        { L"&apos;", L'\'' },
+    };
+    PWSTR Read = Value;
+    PWSTR Write = Value;
+    ULONG i;
+
+    while (*Read != UNICODE_NULL)
+    {
+        if (*Read == L'&')
+        {
+            for (i = 0; i < ARRAYSIZE(Entities); i++)
+            {
+                SIZE_T Length = wcslen(Entities[i].Entity);
+
+                if (wcsncmp(Read, Entities[i].Entity, Length) == 0)
+                {
+                    *Write++ = Entities[i].Character;
+                    Read += Length;
+                    break;
+                }
+            }
+
+            if (i < ARRAYSIZE(Entities))
+                continue;
+        }
+
+        *Write++ = *Read++;
+    }
+
+    *Write = UNICODE_NULL;
+}
+
 /* Copies the text between two tags out of a profile, if it is there */
 static
 BOOL
@@ -1209,6 +1257,7 @@ WlanProfileTag(
         Length = Count - 1;
     RtlCopyMemory(Value, Start, Length * sizeof(WCHAR));
     Value[Length] = L'\0';
+    WlanXmlUnescape(Value);
     return TRUE;
 }
 
