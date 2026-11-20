@@ -1834,6 +1834,16 @@ VOID
 NTAPI
 PopAoAcHandleSleepButton(VOID);
 
+NTSTATUS
+NTAPI
+PopAoAcWake(VOID);
+
+NTSTATUS
+NTAPI
+PopAoAcActivateProcess(
+    _In_ HANDLE ProcessId,
+    _In_ ULONG BudgetMs);
+
 BOOLEAN
 NTAPI
 PopProcessKeepsSystemAwake(
