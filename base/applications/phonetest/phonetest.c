@@ -152,13 +152,55 @@ PtLog(
     SendMessageW(Log, LB_SETCURSEL, Index, 0);
 }
 
+/* Names the RIL errors, the low byte of a modem error is its QMI error code */
+static
+LPCWSTR
+PtRilErrorText(
+    _In_ HRESULT hr)
+{
+    if ((hr & 0xFFFFFF00) != 0x81000000)
+        return NULL;
+
+    if (hr & 0x80)
+    {
+        switch (hr & 0x7F)
+        {
+            case 0x01: return L"the modem could not parse the request";
+            case 0x03: return L"the modem reported an internal error";
+            case 0x0D: return L"no network found";
+            case 0x0E: return L"the call failed";
+            case 0x10: return L"the SIM is not provisioned";
+            case 0x11: return L"the request is missing an argument";
+            default: return L"the modem refused the request";
+        }
+    }
+
+    switch (hr & 0xFF)
+    {
+        case 0x04: return L"operation not allowed";
+        case 0x05: return L"operation not supported";
+        case 0x06: return L"no SIM inserted";
+        case 0x0D: return L"not found";
+        case 0x11: return L"number too long";
+        case 0x12: return L"not a dialable number";
+        case 0x15: return L"emergency calls only";
+        case 0x50: return L"the radio is not available";
+        case 0x51: return L"the radio is off";
+        default: return NULL;
+    }
+}
+
 static
 VOID
 PtCheck(
     _In_ LPCWSTR What,
     _In_ HRESULT hr)
 {
-    if (FAILED(hr))
+    LPCWSTR Reason = PtRilErrorText(hr);
+
+    if (FAILED(hr) && Reason)
+        PtLog(L"%s failed 0x%08lx, %s", What, hr, Reason);
+    else if (FAILED(hr))
         PtLog(L"%s failed 0x%08lx", What, hr);
     else
         PtLog(L"%s ok", What);
@@ -559,6 +601,12 @@ PtCommand(
 
         case IDC_DIAL:
             GetDlgItemTextW(PtWindow, IDC_NUMBER, Number, _countof(Number));
+            if (!Number[wcsspn(Number, L" ")])
+            {
+                PtLog(L"Enter a number to dial");
+                break;
+            }
+
             hr = PhoneOmDial(PtPhone, Number, &Value);
             if (SUCCEEDED(hr))
                 PtLog(L"Dialing %s as call %lu", Number, Value);
