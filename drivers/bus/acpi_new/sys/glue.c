@@ -187,6 +187,43 @@ UacpiNtBringUpInterpreter(
         }
     }
 
+    /* The display driver programs whatever panel GPU0._ROM describes */
+    {
+        uacpi_namespace_node *Gpu;
+        uacpi_object *Args[3], *Result = NULL;
+        uacpi_object_array ArgList;
+        uacpi_data_view View;
+        const char *Name, *End;
+
+        if (uacpi_likely_success(uacpi_namespace_node_find(NULL, "\\_SB.GPU0", &Gpu)))
+        {
+            Args[0] = uacpi_object_create_integer(0);
+            Args[1] = uacpi_object_create_integer(0x200);
+            Args[2] = uacpi_object_create_integer(0x8010);
+            ArgList.objects = Args;
+            ArgList.count = 3;
+            if (Args[0] && Args[1] && Args[2] &&
+                uacpi_likely_success(uacpi_eval_typed(Gpu, "_ROM", &ArgList, UACPI_OBJECT_BUFFER_BIT, &Result)) &&
+                uacpi_likely_success(uacpi_object_get_string_or_buffer(Result, &View)))
+            {
+                Name = strstr(View.const_text, "<PanelDescription>");
+                End = Name ? strstr(Name, "</PanelDescription>") : NULL;
+                if (Name && End)
+                    DPRINT1("uACPI-NT: GPU0 panel '%.*s'\n", (int)(End - Name - 18), Name + 18);
+                else
+                    DPRINT1("uACPI-NT: GPU0 _ROM has no panel description\n");
+            }
+            if (Result)
+                uacpi_object_unref(Result);
+            if (Args[0])
+                uacpi_object_unref(Args[0]);
+            if (Args[1])
+                uacpi_object_unref(Args[1]);
+            if (Args[2])
+                uacpi_object_unref(Args[2]);
+        }
+    }
+
     UacpiNtPlatformOscNegotiate();
     UacpiNtPowerResInit();
 
