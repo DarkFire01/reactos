@@ -1,0 +1,5 @@
+@ stdcall QcAprRegister(long long ptr ptr)
+@ stdcall QcAprUnregister(ptr)
+@ stdcall QcAprSend(ptr long long long ptr long)
+@ stdcall QcAprSendTo(ptr long long long long long ptr long)
+@ stdcall QcAprIsConnected()

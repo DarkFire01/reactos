@@ -1,0 +1,7 @@
+; Qualcomm APR audio transport, system start; it waits for glink and the adsp channel
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomapr","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomapr","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomapr","ImagePath",0x00020000,"system32\drivers\qcomapr.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomapr","Start",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomapr","Type",0x00010001,0x00000001
