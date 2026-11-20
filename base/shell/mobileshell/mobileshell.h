@@ -35,6 +35,10 @@
 /* How often the bar and keyboard put themselves back on top */
 #define MS_TOPMOST_INTERVAL_MS  500
 
+/* A hardware button event, posted to the bar by the buttons thread */
+#define WM_MS_BUTTON            (WM_APP + 1)
+#define MS_VOLUME_TIMER         3
+
 extern HINSTANCE MsInstance;
 extern HWND MsLauncherWindow;
 extern HWND MsBarWindow;
@@ -64,6 +68,31 @@ NTAPI
 MsBatteryRead(
     _Out_ PULONG Percent,
     _Out_ PBOOL Charging);
+
+/* buttons.c */
+VOID
+NTAPI
+MsButtonsStart(
+    _In_ HWND Notify);
+
+BOOL
+NTAPI
+MsButtonsHandle(
+    _In_ HWND Bar,
+    _In_ WPARAM State,
+    _In_ LPARAM Usage);
+
+VOID
+NTAPI
+MsButtonsHide(
+    _In_ HWND Bar);
+
+VOID
+NTAPI
+MsButtonsPaint(
+    _In_ HDC Dc,
+    _In_ const RECT *Area,
+    _In_ HFONT Font);
 
 /* keyboard.c */
 BOOL
