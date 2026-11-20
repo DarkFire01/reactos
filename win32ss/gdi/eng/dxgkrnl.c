@@ -809,7 +809,12 @@ DlpIsDisplayAdapterPending(VOID)
 }
 
 #define DL_ADAPTER_WAIT_STEP_MS     250
+#ifdef _M_ARM64
+/* ARM64 boards have no XDDM display worth starting on, the desktop waits for the GPU */
+#define DL_ADAPTER_WAIT_LIMIT_MS    120000
+#else
 #define DL_ADAPTER_WAIT_LIMIT_MS    30000
+#endif
 
 /**
  * @brief Waits for a WDDM display adapter while a display device is still without its driver.
@@ -825,11 +830,15 @@ DlpWaitForWddmDisplayAdapter(VOID)
     Interval.QuadPart = -(LONGLONG)DL_ADAPTER_WAIT_STEP_MS * 10000;
     for (Waited = 0; !DlpHasWddmDisplayAdapter(); Waited += DL_ADAPTER_WAIT_STEP_MS)
     {
-        if (Waited >= DL_ADAPTER_WAIT_LIMIT_MS || !DlpIsDisplayAdapterPending())
+        if (Waited >= DL_ADAPTER_WAIT_LIMIT_MS)
             return FALSE;
+#ifndef _M_ARM64
+        if (!DlpIsDisplayAdapterPending())
+            return FALSE;
+#endif
 
         if (Waited == 0)
-            DPRINT1("win32k: a display adapter has no driver yet, waiting for it\n");
+            DPRINT1("win32k: no WDDM display adapter yet, waiting for it\n");
         KeDelayExecutionThread(KernelMode, FALSE, &Interval);
     }
 
