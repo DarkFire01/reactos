@@ -539,6 +539,45 @@ IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 }
 
 CODE_SEG("INIT")
+static
+VOID
+IopCreateDriverDataLink(VOID)
+{
+    UNICODE_STRING LinkName = RTL_CONSTANT_STRING(L"\\DriverData");
+    UNICODE_STRING TargetName = RTL_CONSTANT_STRING(L"\\SystemRoot\\System32\\Drivers\\DriverData");
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    IO_STATUS_BLOCK IoStatusBlock;
+    HANDLE DirectoryHandle;
+    NTSTATUS Status;
+
+    /* Drivers keep writable data there, so create the folder when the volume allows it */
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &TargetName,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               NULL,
+                               NULL);
+    Status = ZwCreateFile(&DirectoryHandle,
+                          FILE_LIST_DIRECTORY | SYNCHRONIZE,
+                          &ObjectAttributes,
+                          &IoStatusBlock,
+                          NULL,
+                          FILE_ATTRIBUTE_NORMAL,
+                          FILE_SHARE_READ | FILE_SHARE_WRITE,
+                          FILE_OPEN_IF,
+                          FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+                          NULL,
+                          0);
+    if (NT_SUCCESS(Status))
+        ZwClose(DirectoryHandle);
+    else
+        DPRINT1("No DriverData folder under SystemRoot: 0x%lx\n", Status);
+
+    Status = IoCreateSymbolicLink(&LinkName, &TargetName);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Creating \\DriverData failed: 0x%lx\n", Status);
+}
+
+CODE_SEG("INIT")
 BOOLEAN
 NTAPI
 IoInitSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
@@ -731,6 +770,9 @@ IoInitSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         DPRINT1("PsLocateSystemDll failed: %lx\n", Status);
         return FALSE;
     }
+
+    /* Same as Windows, \DriverData points at System32\Drivers\DriverData */
+    IopCreateDriverDataLink();
 
     /* Return success */
     return TRUE;
