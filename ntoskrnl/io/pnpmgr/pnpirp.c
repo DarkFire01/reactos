@@ -629,6 +629,181 @@ PnpWatchDumpStalledGuiThreads(VOID)
     }
 }
 
+/* GMU bring-up timeline: every register change from the moment qcdx loads */
+#define PNP_WATCH_GPU_TRACE_TIME    (60LL * 10000000)
+#define PNP_WATCH_GPU_TRACE_LINES   800
+#define PNP_WATCH_GPU_TRACE_WAIT    (-50LL * 10000)
+
+typedef enum _PNP_WATCH_GPU_BLOCK
+{
+    PnpWatchGpuGpucc,
+    PnpWatchGpuGmu,
+    PnpWatchGpuPdc,
+    PnpWatchGpuBlockCount
+} PNP_WATCH_GPU_BLOCK;
+
+typedef struct _PNP_WATCH_GPU_TRACE_REG
+{
+    PNP_WATCH_GPU_BLOCK Block;
+    ULONG Offset;
+    PCSTR Name;
+} PNP_WATCH_GPU_TRACE_REG;
+
+static const PNP_WATCH_GPU_TRACE_REG PnpWatchGpuTraceRegs[] =
+{
+    { PnpWatchGpuGpucc, 0x106C, "cx gdscr" },
+    { PnpWatchGpuGpucc, 0x100C, "gx gdscr" },
+    { PnpWatchGpuGpucc, 0x1098, "gmu cbcr" },
+    { PnpWatchGpuPdc, 0x4500, "pdc enable" },
+    { PnpWatchGpuGmu, 0x1E000, "cm3 sysreset" },
+    { PnpWatchGpuGmu, 0x1E070, "fw init result" },
+    { PnpWatchGpuGmu, 0x1E068, "fw busy" },
+    { PnpWatchGpuGmu, 0x12FE0, "boot slumber option" },
+    { PnpWatchGpuGmu, 0x12FE4, "gx vote" },
+    { PnpWatchGpuGmu, 0x12FE8, "mx vote" },
+    { PnpWatchGpuGmu, 0x1E658, "host2gmu raw" },
+    { PnpWatchGpuGmu, 0x1E648, "gmu2host info" },
+    { PnpWatchGpuGmu, 0x1E340, "sptprac status" },
+    { PnpWatchGpuGmu, 0x1E3A0, "rpmh ctrl" },
+    { PnpWatchGpuGmu, 0x1E3B0, "rpmh power state" },
+    { PnpWatchGpuGmu, 0x1E600, "hfi ctrl status" },
+    { PnpWatchGpuGmu, 0x1E714, "general 0" },
+    { PnpWatchGpuGmu, 0x1E730, "general 7" },
+    { PnpWatchGpuGmu, 0x2EC14, "ao host irq status" },
+    { PnpWatchGpuGmu, 0x2EC1C, "rscc control req" },
+    { PnpWatchGpuGmu, 0x2EC20, "rscc control ack" },
+    { PnpWatchGpuGmu, 0x2EC30, "cx busy status" },
+    { PnpWatchGpuGmu, 0x2EC4C, "ahb fence status" },
+    { PnpWatchGpuGmu, 0x2D010, "rscc status0" },
+    { PnpWatchGpuGmu, 0x2D404, "rscc seq busy" },
+    { PnpWatchGpuGmu, 0x2DD18, "rscc tcs0 status" },
+    { PnpWatchGpuGmu, 0x2DFB8, "rscc tcs1 status" },
+    { PnpWatchGpuGmu, 0x2E258, "rscc tcs2 status" },
+    { PnpWatchGpuGmu, 0x2E4F8, "rscc tcs3 status" }
+};
+
+static LONG PnpWatchGpuTraceStarted;
+
+static BOOLEAN
+PnpWatchIsQcdxLoaded(VOID)
+{
+    UNICODE_STRING QcdxName = RTL_CONSTANT_STRING(L"qcdxkm850.sys");
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PLIST_ENTRY Entry;
+    BOOLEAN Found = FALSE;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
+    for (Entry = PsLoadedModuleList.Flink; Entry != &PsLoadedModuleList; Entry = Entry->Flink)
+    {
+        LdrEntry = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (RtlEqualUnicodeString(&LdrEntry->BaseDllName, &QcdxName, TRUE))
+        {
+            Found = TRUE;
+            break;
+        }
+    }
+    ExReleaseResourceLite(&PsLoadedModuleResource);
+    KeLeaveCriticalRegion();
+
+    return Found;
+}
+
+/*
+ * Polls the GPU clock controller, GMU, RSC and PDC while qcdx brings the GMU up and
+ * prints what changed. GMU registers are only read while CX is powered and the GMU
+ * clock runs, a gated block stalls the bus instead of answering.
+ */
+static VOID
+NTAPI
+PnpWatchGpuTraceThread(
+    _In_ PVOID Context)
+{
+    static const ULONG Bases[PnpWatchGpuBlockCount] =
+        { PNP_WATCH_GPUCC_BASE, PNP_WATCH_GMU_BASE, PNP_WATCH_GPU_PDC_BASE };
+    static const ULONG Sizes[PnpWatchGpuBlockCount] =
+        { PNP_WATCH_GPUCC_SIZE, PNP_WATCH_GMU_SIZE, PNP_WATCH_GPU_PDC_SIZE };
+    ULONG Values[RTL_NUMBER_OF(PnpWatchGpuTraceRegs)];
+    BOOLEAN Known[RTL_NUMBER_OF(PnpWatchGpuTraceRegs)];
+    PUCHAR Va[PnpWatchGpuBlockCount];
+    PHYSICAL_ADDRESS Physical;
+    LARGE_INTEGER Wait, Start, Now, Frequency;
+    ULONG Lines = 0, Loops = 0, Index, Value, Block;
+    BOOLEAN GmuOn, WasGmuOn = FALSE;
+    LONGLONG Micro;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    Wait.QuadPart = PNP_WATCH_GPU_TRACE_WAIT;
+    while (!PnpWatchIsQcdxLoaded())
+        KeDelayExecutionThread(KernelMode, FALSE, &Wait);
+
+    for (Block = 0; Block < PnpWatchGpuBlockCount; Block++)
+    {
+        Physical.QuadPart = Bases[Block];
+        Va[Block] = MmMapIoSpace(Physical, Sizes[Block], MmNonCached);
+        if (!Va[Block])
+        {
+            DbgPrint("GPUTRACE: cannot map block %lu\n", Block);
+            return;
+        }
+    }
+
+    RtlZeroMemory(Known, sizeof(Known));
+    Start = KeQueryPerformanceCounter(&Frequency);
+    DbgPrint("GPUTRACE: qcdx loaded, tracing for %I64d s\n", PNP_WATCH_GPU_TRACE_TIME / 10000000);
+
+    for (;;)
+    {
+        Now = KeQueryPerformanceCounter(NULL);
+        Micro = (Now.QuadPart - Start.QuadPart) * 1000000 / Frequency.QuadPart;
+        if (Micro * 10 >= PNP_WATCH_GPU_TRACE_TIME || Lines >= PNP_WATCH_GPU_TRACE_LINES)
+            break;
+
+        GmuOn = FALSE;
+        for (Index = 0; Index < RTL_NUMBER_OF(PnpWatchGpuTraceRegs); Index++)
+        {
+            const PNP_WATCH_GPU_TRACE_REG *Reg = &PnpWatchGpuTraceRegs[Index];
+
+            /* The clock controller entries come first and decide whether the GMU can be read */
+            if (Reg->Block == PnpWatchGpuGmu && !GmuOn)
+            {
+                Known[Index] = FALSE;
+                continue;
+            }
+
+            Value = READ_REGISTER_ULONG((PULONG)(Va[Reg->Block] + Reg->Offset));
+            if (!Known[Index] || Values[Index] != Value)
+            {
+                DbgPrint("GPUTRACE: %7I64d.%03I64d ms %-20s %08lx -> %08lx\n",
+                         Micro / 1000, Micro % 1000, Reg->Name, Known[Index] ? Values[Index] : 0, Value);
+                Lines++;
+            }
+            Values[Index] = Value;
+            Known[Index] = TRUE;
+
+            if (Index == 2)
+                GmuOn = (Values[0] & PNP_WATCH_GDSC_ON) && !(Values[2] & PNP_WATCH_BRANCH_OFF);
+        }
+
+        if (GmuOn != WasGmuOn)
+        {
+            DbgPrint("GPUTRACE: %7I64d.%03I64d ms GMU %s\n", Micro / 1000, Micro % 1000,
+                     GmuOn ? "readable" : "unpowered");
+            WasGmuOn = GmuOn;
+            Lines++;
+        }
+
+        KeStallExecutionProcessor(200);
+        if (++Loops % 25 == 0)
+            ZwYieldExecution();
+    }
+
+    DbgPrint("GPUTRACE: done after %lu lines\n", Lines);
+    for (Block = 0; Block < PnpWatchGpuBlockCount; Block++)
+        MmUnmapIoSpace(Va[Block], Sizes[Block]);
+}
+
 static VOID
 NTAPI
 PnpWatchThread(
@@ -691,6 +866,15 @@ PnpWatchBegin(
     {
         if (NT_SUCCESS(PsCreateSystemThread(&ThreadHandle, THREAD_ALL_ACCESS, NULL, NULL, NULL,
                                             PnpWatchThread, NULL)))
+        {
+            ZwClose(ThreadHandle);
+        }
+    }
+
+    if (!InterlockedCompareExchange(&PnpWatchGpuTraceStarted, 1, 0))
+    {
+        if (NT_SUCCESS(PsCreateSystemThread(&ThreadHandle, THREAD_ALL_ACCESS, NULL, NULL, NULL,
+                                            PnpWatchGpuTraceThread, NULL)))
         {
             ZwClose(ThreadHandle);
         }
