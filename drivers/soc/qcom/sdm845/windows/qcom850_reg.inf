@@ -134,6 +134,15 @@ HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","DeviceDesc",0x00000000,"Pr
 HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","Class",0x00000000,"Processor"
 HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","ClassGUID",0x00000000,"{50127DC3-0F36-415E-A6CC-4CB3BE910B65}"
 HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI0007\7","ConfigFlags",0x00010001,0x00000000
+; The processor aggregator has no driver, the time and alarm device runs on acpitime
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000C\2&ccb86d17&_SB_AGR0","DeviceDesc",0x00000000,"Processor Aggregator"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000C\2&ccb86d17&_SB_AGR0","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000C\2&ccb86d17&_SB_AGR0","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000C\2&ccb86d17&_SB_AGR0","ConfigFlags",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000E\2&ccb86d17&_SB_PRTC","DeviceDesc",0x00000000,"Time and Alarm Device"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000E\2&ccb86d17&_SB_PRTC","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000E\2&ccb86d17&_SB_PRTC","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\ACPI000E\2&ccb86d17&_SB_PRTC","ConfigFlags",0x00010001,0x00000000
 ; qcpep drives the thermal zones its INF lists, TSENS thermal init runs from their AddDevice
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02AB","Service",0x00000000,"qcpep"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02AB","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
