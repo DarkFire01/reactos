@@ -956,12 +956,36 @@ PDEVOBJ_Create(
     {
         DPRINT1("win32k: DrvEnablePDEV failed\n");
 
-        /* cdd fails when dxgkrnl's adapter is not active (1), its state word sits at +0xC8 */
+        /* cdd fails when dxgkrnl's adapter or the render adapter it is paired with is not active */
         if (ppdev->pGraphicsDevice && ppdev->pGraphicsDevice->DxgAdapter &&
-            MmIsAddressValid((PUCHAR)ppdev->pGraphicsDevice->DxgAdapter + 0xC8))
+            MmIsAddressValid((PUCHAR)ppdev->pGraphicsDevice->DxgAdapter + 0xAC0))
         {
-            DPRINT1("win32k: dxgkrnl adapter %p state %lu\n", ppdev->pGraphicsDevice->DxgAdapter,
-                    *(volatile ULONG *)((PUCHAR)ppdev->pGraphicsDevice->DxgAdapter + 0xC8));
+            PUCHAR Adapter = ppdev->pGraphicsDevice->DxgAdapter;
+
+            DPRINT1("win32k: dxgkrnl adapter %p state %lu flags 0x%lx byte209 %u byte352 %u "
+                    "query %p createdevice %p render core %p\n",
+                    Adapter, *(volatile ULONG *)(Adapter + 0xC8), *(volatile ULONG *)(Adapter + 0x15C),
+                    Adapter[0xD1], Adapter[0x160], *(PVOID *)(Adapter + 0x168), *(PVOID *)(Adapter + 0x170),
+                    *(PVOID *)(Adapter + 0xAC0));
+        }
+
+        /* dxgkrnl keeps what the miniport registered in DxgkInitialize on its driver object */
+        {
+            UNICODE_STRING QcdxName = RTL_CONSTANT_STRING(L"\\Driver\\QCDX");
+            PDRIVER_OBJECT Qcdx;
+            PUCHAR Ext;
+
+            if (NT_SUCCESS(ObReferenceObjectByName(&QcdxName, OBJ_CASE_INSENSITIVE, NULL, 0,
+                                                   IoDriverObjectType, KernelMode, NULL, (PVOID *)&Qcdx)))
+            {
+                Ext = IoGetDriverObjectExtension(Qcdx, Qcdx);
+                if (Ext)
+                {
+                    DPRINT1("win32k: QCDX registered version 0x%lx, query %p, createdevice %p, kmdod %u\n",
+                            *(PULONG)(Ext + 0x1C), *(PVOID *)(Ext + 0x110), *(PVOID *)(Ext + 0x118), Ext[0x85]);
+                }
+                ObDereferenceObject(Qcdx);
+            }
         }
         PDEVOBJ_vRelease(ppdev);
         return NULL;
