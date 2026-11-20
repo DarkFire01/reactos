@@ -236,6 +236,10 @@ VOID
 NTAPI
 PpmPepRegisterProcessors(VOID);
 
+VOID
+NTAPI
+PpmPepAllowRegistration(VOID);
+
 NTSTATUS
 NTAPI
 PpmSetPerfDomainState(
