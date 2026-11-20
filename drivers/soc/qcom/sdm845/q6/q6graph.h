@@ -1,0 +1,40 @@
+/*
+ * PROJECT:     ReactOS Qualcomm audio support (SDM845)
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     Q6 playback graph exports consumed by the wave miniport
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#pragma once
+
+/* Called at DISPATCH_LEVEL each time the dsp finishes rendering one period */
+typedef VOID
+(NTAPI *PQC_Q6_PERIOD_DONE)(
+    _In_opt_ PVOID Context,
+    _In_ ULONG Period);
+
+VOID
+NTAPI
+QcQ6GraphInit(VOID);
+
+/* Brings up the AFE/ADM/ASM playback graph over the shared pcm buffer */
+NTSTATUS
+NTAPI
+QcQ6PlaybackStart(
+    _In_ ULONGLONG BufferPhys,
+    _In_ ULONG BufferBytes,
+    _In_ ULONG PeriodBytes,
+    _In_ ULONG Rate,
+    _In_ ULONG Channels,
+    _In_ ULONG Bits,
+    _In_opt_ PQC_Q6_PERIOD_DONE PeriodDone,
+    _In_opt_ PVOID Context);
+
+VOID
+NTAPI
+QcQ6PlaybackStop(VOID);
+
+/* Total bytes the dsp has rendered since the stream started */
+ULONGLONG
+NTAPI
+QcQ6PlaybackPosition(VOID);
