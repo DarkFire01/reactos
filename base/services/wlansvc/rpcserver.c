@@ -19,6 +19,7 @@ DWORD WINAPI RpcThreadRoutine(LPVOID lpParameter)
     RPC_STATUS Status;
 
     InitializeListHead(&WlanSvcHandleListHead);
+    WlanInitializeDevices();
 
     Status = RpcServerUseProtseqEpW(L"ncalrpc", 20, L"wlansvc", NULL);
     if (Status != RPC_S_OK)
@@ -181,8 +182,52 @@ DWORD _RpcQueryInterface(
     LPBYTE *ppData,
     LPDWORD pWlanOpcodeValueType)
 {
-    UNIMPLEMENTED;
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    PVOID Data;
+    DWORD Size;
+    DWORD Error;
+
+    if (WlanSvcGetHandleEntry(hClientHandle) == NULL)
+        return ERROR_INVALID_HANDLE;
+
+    if (pInterfaceGuid == NULL || pdwDataSize == NULL || ppData == NULL || pWlanOpcodeValueType == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    *ppData = NULL;
+    *pdwDataSize = 0;
+    *pWlanOpcodeValueType = wlan_opcode_value_type_query_only;
+
+    switch (OpCode)
+    {
+        case wlan_intf_opcode_interface_state:
+            Size = sizeof(WLAN_INTERFACE_STATE);
+            break;
+
+        case wlan_intf_opcode_current_connection:
+            Size = sizeof(WLAN_CONNECTION_ATTRIBUTES);
+            break;
+
+        default:
+            return ERROR_NOT_SUPPORTED;
+    }
+
+    Data = midl_user_allocate(Size);
+    if (Data == NULL)
+        return ERROR_NOT_ENOUGH_MEMORY;
+
+    if (OpCode == wlan_intf_opcode_interface_state)
+        Error = WlanQueryInterfaceState(pInterfaceGuid, Data);
+    else
+        Error = WlanQueryConnection(pInterfaceGuid, Data);
+
+    if (Error != ERROR_SUCCESS)
+    {
+        midl_user_free(Data);
+        return Error;
+    }
+
+    *ppData = Data;
+    *pdwDataSize = Size;
+    return ERROR_SUCCESS;
 }
 
 DWORD _RpcIhvControl(

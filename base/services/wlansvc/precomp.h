@@ -26,6 +26,19 @@ typedef struct _WLANSVCHANDLE
 struct _DOT11_SSID;
 struct _WLAN_DOT11_BYTE_ARRAY;
 
+VOID
+WlanInitializeDevices(VOID);
+
+DWORD
+WlanQueryInterfaceState(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ WLAN_INTERFACE_STATE *State);
+
+DWORD
+WlanQueryConnection(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ PWLAN_CONNECTION_ATTRIBUTES Attributes);
+
 DWORD
 WlanEnumWifiInterfaces(
     _Outptr_result_maybenull_ PWLAN_INTERFACE_INFO_LIST *List);
