@@ -85,7 +85,7 @@ UacpiNtPdoIsRawDevice(
     static PCSTR RawHids[] =
     {
         "ACPI0004",                    /* module container */
-        /* DIAG: "ACPI0010" processor container left out while the freeze is bisected */
+        "ACPI0010",                    /* processor container */
         "PNP0A05", "PNP0A06",          /* generic containers */
         "PNP0B00",                     /* RTC */
         "PNP0C09",                     /* embedded controller */
