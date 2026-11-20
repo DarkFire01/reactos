@@ -111,13 +111,13 @@ NdispAllocateFromPool(
     _In_ PNDIS_NBL_POOL Pool)
 {
     PNDIS_POOL_BLOCK Block;
-    PLIST_ENTRY Entry;
+    PLIST_ENTRY Entry = NULL;
     KIRQL OldIrql;
 
+    /* The list checks treat taking from an empty list as corruption */
     KeAcquireSpinLock(&Pool->Lock, &OldIrql);
-    Entry = RemoveHeadList(&Pool->FreeList);
-    if (Entry == &Pool->FreeList)
-        Entry = NULL;
+    if (!IsListEmpty(&Pool->FreeList))
+        Entry = RemoveHeadList(&Pool->FreeList);
     KeReleaseSpinLock(&Pool->Lock, OldIrql);
 
     if (Entry != NULL)
