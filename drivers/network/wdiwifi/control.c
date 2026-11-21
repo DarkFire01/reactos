@@ -167,7 +167,8 @@ WdiQueryBssList(
     for (i = 0; i < Adapter->BssCount; i++)
         Total += WdiBssEntrySize(&Adapter->Bss[i]);
 
-    if (BufferLength < Total)
+    /* Without room for the header the caller only learns the size */
+    if (BufferLength < FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer))
     {
         KeReleaseSpinLock(&Adapter->BssLock, OldIrql);
         *Needed = Total;
@@ -177,15 +178,19 @@ WdiQueryBssList(
     Array->Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
     Array->Header.Revision = DOT11_BSS_ENTRY_BYTE_ARRAY_REVISION_1;
     Array->Header.Size = sizeof(DOT11_BYTE_ARRAY);
-    Array->uNumOfBytes = Total - FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer);
-    Array->uTotalNumOfBytes = Array->uNumOfBytes;
+    Array->uNumOfBytes = 0;
+    Array->uTotalNumOfBytes = Total - FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer);
 
+    /* A short buffer still gets every whole entry that fits, plus the total */
     At = Array->ucBuffer;
     for (i = 0; i < Adapter->BssCount; i++)
     {
         PDOT11_BSS_ENTRY Entry = (PDOT11_BSS_ENTRY)At;
         PWDI_BSS Bss = &Adapter->Bss[i];
         ULONG IeLength = WdiBssIeLength(Bss);
+
+        if ((ULONG)(At - Buffer) + WdiBssEntrySize(Bss) > BufferLength)
+            break;
 
         RtlZeroMemory(Entry, WdiBssEntrySize(Bss));
         Entry->uPhyId = Bss->BandId;
@@ -201,11 +206,18 @@ WdiQueryBssList(
             RtlCopyMemory(Entry->ucBuffer, Bss->Beacon + WDI_FRAME_BODY_FIXED_LENGTH, IeLength);
 
         At += WdiBssEntrySize(Bss);
+        Array->uNumOfBytes += WdiBssEntrySize(Bss);
     }
 
     KeReleaseSpinLock(&Adapter->BssLock, OldIrql);
 
-    *Written = Total;
+    *Written = (ULONG)(At - Buffer);
+    if (*Written < Total)
+    {
+        *Needed = Total;
+        return NDIS_STATUS_BUFFER_OVERFLOW;
+    }
+
     return NDIS_STATUS_SUCCESS;
 }
 
