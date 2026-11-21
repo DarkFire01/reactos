@@ -308,13 +308,13 @@ QcModemSelfTest(
     QcTrace("selftest: modem reachable, reading what it reports");
 
     if (SUCCEEDED(QcDmsReadString(Modem, 0x0021, 0x01, Text, sizeof(Text))))
-        QcTrace("selftest: manufacturer = '%s'", Text);
+        QcTrace("selftest: manufacturer = '%s'\n", Text);
     if (SUCCEEDED(QcDmsReadString(Modem, 0x0022, 0x01, Text, sizeof(Text))))
-        QcTrace("selftest: model = '%s'", Text);
+        QcTrace("selftest: model = '%s'\n", Text);
     if (SUCCEEDED(QcDmsReadString(Modem, 0x0023, 0x01, Text, sizeof(Text))))
-        QcTrace("selftest: revision = '%s'", Text);
+        QcTrace("selftest: revision = '%s'\n", Text);
     if (SUCCEEDED(QcDmsReadString(Modem, 0x0025, 0x11, Text, sizeof(Text))))
-        QcTrace("selftest: imei = '%s'", Text);
+        QcTrace("selftest: imei = '%s'\n", Text);
 
     /* Current operating mode, reported with or without a SIM */
     QmiEncodeBegin(&Encoder, Request, sizeof(Request), QMI_TYPE_REQUEST, 0, 0x002D);
@@ -322,13 +322,13 @@ QcModemSelfTest(
     if (SUCCEEDED(QcQmiRequest(Modem, QcSvcDms, Request, ReqLen, Response, sizeof(Response), &RespLen)) &&
         QmiFindTlv(Response, RespLen, 0x01, &Value, &ValueLen) && ValueLen >= 1)
     {
-        QcTrace("selftest: operating mode %u", *(const UCHAR *)Value);
+        QcTrace("selftest: operating mode %u\n", *(const UCHAR *)Value);
 
         /* Why the modem stays out of online, when it says */
         if (QmiFindTlv(Response, RespLen, 0x10, &Value, &ValueLen) && ValueLen >= 2)
-            QcTrace("selftest: offline reason 0x%04x", *(const USHORT UNALIGNED *)Value);
+            QcTrace("selftest: offline reason 0x%04x\n", *(const USHORT UNALIGNED *)Value);
         if (QmiFindTlv(Response, RespLen, 0x11, &Value, &ValueLen) && ValueLen >= 1)
-            QcTrace("selftest: hardware restricted mode %u", *(const UCHAR *)Value);
+            QcTrace("selftest: hardware restricted mode %u\n", *(const UCHAR *)Value);
     }
 
     /* Signal and registration, the radio searches and reports these with no SIM */
@@ -338,12 +338,12 @@ QcModemSelfTest(
         if (SUCCEEDED(QcNasGetNetwork(Modem, &Resp)) && Resp.Length >= sizeof(RIL_NETWORK_INFO))
         {
             const RIL_NETWORK_INFO *Net = (const RIL_NETWORK_INFO *)Resp.Data;
-            QcTrace("selftest: signal %ld dBm, %lu bars, reg state %lu, rat %lu, mcc %lu mnc %lu",
+            QcTrace("selftest: signal %ld dBm, %lu bars, reg state %lu, rat %lu, mcc %lu mnc %lu\n",
                     Net->SignalDbm, Net->SignalBars, Net->RegState, Net->Rat, Net->Mcc, Net->Mnc);
         }
     }
 
-    QcTrace("selftest: done");
+    QcTrace("selftest: done\n");
 }
 
 /* Waits for each modem service to appear, then runs its one time setup */
