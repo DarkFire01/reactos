@@ -36,8 +36,16 @@ typedef enum _QC_SVC
     QcSvcWms,
     QcSvcWds,
     QcSvcPdc,
+    QcSvcImss,
+    QcSvcImsa,
     QcSvcCount
 } QC_SVC;
+
+/* The services a modem restart is detected by, the rest come and go on their own */
+#define QC_SVC_IS_CORE(Which)       ((Which) < QcSvcWds)
+
+/* Present only when the carrier configuration enables them, set up once announced */
+#define QC_SVC_IS_OPTIONAL(Which)   ((Which) == QcSvcImss || (Which) == QcSvcImsa)
 
 /* Wire service ids on the router, matching the modem qrtr names */
 #define QC_SERVICE_WDS              1
@@ -47,6 +55,9 @@ typedef enum _QC_SVC
 #define QC_SERVICE_VOICE            9
 #define QC_SERVICE_UIM              0x0B
 #define QC_SERVICE_PDC              0x24
+#define QC_SERVICE_IMSS             0x12
+#define QC_SERVICE_IMSP             0x1F
+#define QC_SERVICE_IMSA             0x21
 
 #define QC_INSTANCE_DEFAULT         0
 
@@ -89,6 +100,7 @@ typedef struct _QC_SERVICE
     QC_ADDR Addr;
     BOOL Ready;
     BOOL Configured;
+    BOOL Announced;         /* the router reported the server, cleared when it goes */
 } QC_SERVICE, *PQC_SERVICE;
 
 /* A request waiting for its response, matched by server address and transaction */
@@ -226,6 +238,13 @@ typedef struct _QC_PDC_STATE
     BOOL Done;              /* the card was read and the configuration handled, until a modem restart */
 } QC_PDC_STATE;
 
+/* IMS registration as the IMS application service last reported it */
+typedef struct _QC_IMS_STATE
+{
+    ULONG Registration;     /* 0 not registered, 1 registering, 2 registered, 3 limited */
+    ULONG Voice;            /* 0 unavailable, 1 limited, 2 available */
+} QC_IMS_STATE;
+
 /* RIL call id to modem call id, the modem reuses its ids */
 #define QC_VOICE_MAX_CALLS          8
 
@@ -284,6 +303,7 @@ struct _QC_MODEM
     QC_NAS_STATE Nas;
     QC_UIM_STATE Uim;
     QC_PDC_STATE Pdc;
+    QC_IMS_STATE Ims;
     QC_CALL Calls[QC_VOICE_MAX_CALLS];
     DWORD NextCallId;
 };
@@ -364,6 +384,12 @@ HRESULT QcDmsReadString(_In_ PQC_MODEM Modem, _In_ USHORT MessageId, _In_ UCHAR 
                         _Out_writes_z_(OutSize) PSTR Out, _In_ ULONG OutSize);
 VOID QcDmsIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                      _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
+
+/* ims.c */
+VOID QcImssSetup(_In_ PQC_MODEM Modem);
+VOID QcImsaSetup(_In_ PQC_MODEM Modem);
+VOID QcImsaIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
+                      _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
 
 /* pdc.c */
 VOID QcPdcSetup(_In_ PQC_MODEM Modem);

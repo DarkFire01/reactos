@@ -64,7 +64,9 @@ static const ULONG QcServiceIds[QcSvcCount] =
     QC_SERVICE_VOICE,
     QC_SERVICE_WMS,
     QC_SERVICE_WDS,
-    QC_SERVICE_PDC
+    QC_SERVICE_PDC,
+    QC_SERVICE_IMSS,
+    QC_SERVICE_IMSA
 };
 
 /* Interface major version each service registers with, part of its router name */
@@ -74,6 +76,8 @@ static const UCHAR QcServiceVersions[QcSvcCount] =
     1,
     1,
     2,
+    1,
+    1,
     1,
     1,
     1
@@ -87,7 +91,9 @@ static const PCSTR QcServiceNames[QcSvcCount] =
     "VOICE",
     "WMS",
     "WDS",
-    "PDC"
+    "PDC",
+    "IMSS",
+    "IMSA"
 };
 
 PCSTR
@@ -503,7 +509,20 @@ QcServerEvent(
         }
 
         if (Which == QcSvcCount)
+        {
+            /* An IMS server on another interface version would otherwise go unnoticed */
+            if (Event->ServiceId == QC_SERVICE_IMSS || Event->ServiceId == QC_SERVICE_IMSP ||
+                Event->ServiceId == QC_SERVICE_IMSA)
+            {
+                QcTrace("router: ims service 0x%lx instance 0x%lx up at %lu:%lu, not matched\n",
+                        Event->ServiceId, Event->Instance, Event->Addr.Node, Event->Addr.Port);
+            }
             return;
+        }
+
+        EnterCriticalSection(&Modem->ServiceLock);
+        Modem->Services[Which].Announced = TRUE;
+        LeaveCriticalSection(&Modem->ServiceLock);
 
         QcTrace("router: %s server up at %lu:%lu\n", QcServiceNames[Which], Event->Addr.Node, Event->Addr.Port);
         QcKickSetup(Modem);
@@ -521,6 +540,7 @@ QcServerEvent(
             Which = i;
             Modem->Services[i].Ready = FALSE;
             Modem->Services[i].Configured = FALSE;
+            Modem->Services[i].Announced = FALSE;
         }
     }
     LeaveCriticalSection(&Modem->ServiceLock);
@@ -532,7 +552,7 @@ QcServerEvent(
     QcAbortPending(Modem, &Event->Addr);
 
     /* Losing a core service means the modem itself restarted */
-    if (Which != QcSvcWds && InterlockedExchange(&Modem->ModemUp, 0) != 0)
+    if (QC_SVC_IS_CORE(Which) && InterlockedExchange(&Modem->ModemUp, 0) != 0)
         QcModemLost(Modem);
 
     QcKickSetup(Modem);
@@ -847,6 +867,10 @@ QcIndication(
 
         case QcSvcPdc:
             QcPdcIndication(Modem, MessageId, Message, Length);
+            break;
+
+        case QcSvcImsa:
+            QcImsaIndication(Modem, MessageId, Message, Length);
             break;
 
         default:
