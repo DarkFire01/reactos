@@ -510,6 +510,33 @@ BatteryClassStatusNotify(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Takes a non catastrophic event the miniport reports, like a change of charger or charge limit.
+ * @return STATUS_INVALID_PARAMETER for a missing or unknown update, STATUS_SUCCESS otherwise.
+ */
+BCLASSAPI
+NTSTATUS
+NTAPI
+BatteryClassUpdateData(
+    _In_ PVOID ClassData,
+    _In_ PBATTERY_MINIPORT_UPDATE_DATA UpdateData)
+{
+    if (ClassData == NULL || UpdateData == NULL ||
+        UpdateData->Version < BATTERY_MINIPORT_UPDATE_DATA_VER_1 ||
+        UpdateData->Version > BATTERY_MINIPORT_UPDATE_DATA_VER_2)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    DPRINT("Battery %p charging state %u, charge limit %u\n", ClassData,
+           UpdateData->NotifyEvent.BatteryChargingState,
+           UpdateData->NotifyEvent.BatteryChargeLimitState);
+
+    /* What the event changes is read back through the status the waiters ask for */
+    BattcQueueRecheck(ClassData);
+    return STATUS_SUCCESS;
+}
+
 BCLASSAPI
 NTSTATUS
 NTAPI
