@@ -46,7 +46,9 @@
 #define QCRIL_WDS_TLV_CONN_STATUS       0x01
 
 /* wds_connection_status_enum_v01 */
+#define QCRIL_WDS_DISCONNECTED          0x01
 #define QCRIL_WDS_CONNECTED             0x02
+#define QCRIL_WDS_PKT_SRV_STATUS_IND    0x0022
 
 #define QCRIL_WDS_IP_V4                 0x04
 
@@ -206,6 +208,47 @@ QcWdsLinkDown(VOID)
     ZeroMemory(&Link, sizeof(Link));
     Link.Version = RMNET_INTERFACE_VERSION;
     QcRmNetIoctl(IOCTL_RMNET_SET_LINK, &Link, sizeof(Link), NULL, 0);
+}
+
+/* Packet service status: the modem ended the call, so the adapter loses its address */
+VOID
+QcWdsIndication(
+    _In_ PQC_MODEM Modem,
+    _In_ USHORT MessageId,
+    _In_reads_bytes_(Length) const VOID *Message,
+    _In_ ULONG Length)
+{
+    const UCHAR *Status;
+    const VOID *Value;
+    USHORT ValueLen;
+    USHORT Reason = 0;
+    USHORT VerboseType = 0, VerboseReason = 0;
+
+    UNREFERENCED_PARAMETER(Modem);
+
+    if (MessageId != QCRIL_WDS_PKT_SRV_STATUS_IND)
+    {
+        QcTrace("ind WDS 0x%04X not handled\n", MessageId);
+        return;
+    }
+
+    if (!QmiFindTlv(Message, Length, 0x01, &Value, &ValueLen) || ValueLen < 2)
+        return;
+    Status = Value;
+
+    if (QmiFindTlv(Message, Length, 0x10, &Value, &ValueLen) && ValueLen >= 2)
+        memcpy(&Reason, Value, sizeof(Reason));
+    if (QmiFindTlv(Message, Length, 0x11, &Value, &ValueLen) && ValueLen >= 4)
+    {
+        memcpy(&VerboseType, Value, sizeof(VerboseType));
+        memcpy(&VerboseReason, (const UCHAR *)Value + 2, sizeof(VerboseReason));
+    }
+
+    QcTrace("data: packet service status %u reconfigure %u, end reason %u (type %u reason %u)\n",
+            Status[0], Status[1], Reason, VerboseType, VerboseReason);
+
+    if (Status[0] == QCRIL_WDS_DISCONNECTED)
+        QcWdsLinkDown();
 }
 
 static

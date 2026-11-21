@@ -822,6 +822,10 @@ QcIndication(
             QcWmsIndication(Modem, MessageId, Message, Length);
             break;
 
+        case QcSvcWds:
+            QcWdsIndication(Modem, MessageId, Message, Length);
+            break;
+
         default:
             QcTrace("ind %s 0x%04X not handled\n", QcServiceNames[Which], MessageId);
             break;
