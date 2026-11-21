@@ -10,49 +10,19 @@
 #define NDEBUG
 #include <debug.h>
 
-/* Qualcomm MSM core register offsets, relative to the standard host controller
-   register base (the unified layout used by the newer SDCC cores).  On the
-   split-window v4 cores the core block is a separate memory resource and these
-   offsets must be reached through that second window; the values below follow
-   the documented MSM register map and need validation on the target silicon. */
-#define QCSDHC_CORE_POWER          0x0000
-#define QCSDHC_CORE_MCI_VERSION    0x0050
-#define QCSDHC_CORE_HC_MODE        0x0078
-#define QCSDHC_CORE_PWRCTL_STATUS  0x00DC
-#define QCSDHC_CORE_PWRCTL_MASK    0x00E0
-#define QCSDHC_CORE_PWRCTL_CLEAR   0x00E4
-#define QCSDHC_CORE_PWRCTL_CTL     0x00E8
-#define QCSDHC_CORE_VENDOR_SPEC    0x010C
-
-#define QCSDHC_HC_MODE_ENABLE      0x00000001
-#define QCSDHC_HC_FF_CLK_RST_DIS   0x00000002
-#define QCSDHC_VENDOR_SPEC_RESET   0x00000001
-#define QCSDHC_PWRCTL_ALL          0x0000000F
-
+/*
+ * The ACPI tables of Qualcomm boards hand out only the standard host
+ * controller window, not the SDCC core registers behind it, and firmware has
+ * already switched the core into host controller mode before boot. Card detect
+ * always goes through a TLMM GPIO on these boards, never the controller's own
+ * line, so the slot is run as if its card were always there.
+ */
 static
 NTSTATUS
 QcsdhcVendorInitialize(
     _In_ PSDHCI_EXTENSION Extension)
 {
-    ULONG Mode;
-
-    /* Put the core into SD Host Controller mode and keep the feedback clock out
-       of software reset so the standard SDHCI reset that follows can complete. */
-    Mode = SdPortReadRegisterUlong(Extension->BaseAddress, QCSDHC_CORE_HC_MODE);
-    Mode |= QCSDHC_HC_MODE_ENABLE | QCSDHC_HC_FF_CLK_RST_DIS;
-    SdPortWriteRegisterUlong(Extension->BaseAddress, QCSDHC_CORE_HC_MODE, Mode);
-
-    /* Release the vendor specific block from reset. */
-    Mode = SdPortReadRegisterUlong(Extension->BaseAddress, QCSDHC_CORE_VENDOR_SPEC);
-    Mode &= ~QCSDHC_VENDOR_SPEC_RESET;
-    SdPortWriteRegisterUlong(Extension->BaseAddress, QCSDHC_CORE_VENDOR_SPEC, Mode);
-
-    /* Acknowledge and unmask the power control interrupt.  The MSM core raises a
-       dedicated power IRQ for bus power and voltage switch handshakes; leaving it
-       unacknowledged stalls command completion. */
-    SdPortWriteRegisterUlong(Extension->BaseAddress, QCSDHC_CORE_PWRCTL_CLEAR, QCSDHC_PWRCTL_ALL);
-    SdPortWriteRegisterUlong(Extension->BaseAddress, QCSDHC_CORE_PWRCTL_MASK, QCSDHC_PWRCTL_ALL);
-
+    Extension->ForceCardPresent = TRUE;
     return STATUS_SUCCESS;
 }
 
