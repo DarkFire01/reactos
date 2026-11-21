@@ -26,6 +26,8 @@
 #define PHONE_SERVICE_NAME          L"PhoneSvc"
 #define PHONE_EXECUTOR              0
 #define PHONE_RIL_TIMEOUT_MS        60000
+#define PHONE_RADIO_ON_ATTEMPTS     60
+#define PHONE_RADIO_ON_RETRY_MS     2000
 #define PHONE_DIAL_MAX_DIGITS       81
 
 /* main.c */
