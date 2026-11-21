@@ -52,7 +52,7 @@ C_ASSERT(sizeof(RIL_RESPONSE_RECORD) == 20);
 C_ASSERT(sizeof(RIL_NOTIFICATION_RECORD) == 8);
 
 /* Largest record either side accepts */
-#define RIL_RECORD_MAX_LENGTH       (64 * 1024)
+#define RIL_RECORD_MAX_LENGTH       0x3BE4
 
 /*
  * Host side of the broker. The host opens \\.\MSRil<N>\Host, the clients open

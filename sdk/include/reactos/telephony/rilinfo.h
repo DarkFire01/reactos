@@ -18,22 +18,27 @@
 #define RIL_INFO_REVISION           80
 #define RIL_INFO_OPERATOR           48
 
-/* Radio access technology reported in RIL_NETWORK_INFO.Rat */
-#define RIL_RAT_NONE                0
-#define RIL_RAT_GSM                 1
-#define RIL_RAT_UMTS                2
-#define RIL_RAT_LTE                 3
-#define RIL_RAT_CDMA                4
-#define RIL_RAT_TDSCDMA             5
-#define RIL_RAT_EVDO                6
+/* System type of RIL_NETWORK_INFO.Rat, the Windows RIL system type bits */
+#define RIL_RAT_NONE                0x00
+#define RIL_RAT_CDMA                0x01
+#define RIL_RAT_EVDO                0x02
+#define RIL_RAT_GSM                 0x04
+#define RIL_RAT_UMTS                0x08
+#define RIL_RAT_LTE                 0x10
+#define RIL_RAT_TDSCDMA             0x20
 
-/* Registration state in RIL_NETWORK_INFO.RegState */
-#define RIL_REG_NOT_REGISTERED      0
-#define RIL_REG_HOME                1
-#define RIL_REG_SEARCHING           2
-#define RIL_REG_DENIED              3
-#define RIL_REG_UNKNOWN             4
+/* Registration state in RIL_NETWORK_INFO.RegState, the Windows RIL values */
+#define RIL_REG_UNKNOWN             0
+#define RIL_REG_UNREGISTERED        1
+#define RIL_REG_HOME                2
+#define RIL_REG_ATTEMPTING          3
+#define RIL_REG_DENIED              4
 #define RIL_REG_ROAMING             5
+#define RIL_REG_ROAMING_DOMESTIC    6
+
+/* Older names for the same states */
+#define RIL_REG_NOT_REGISTERED      RIL_REG_UNREGISTERED
+#define RIL_REG_SEARCHING           RIL_REG_ATTEMPTING
 
 /* SIM state in RIL_SUBSCRIBER_INFO.SimState */
 #define RIL_SIM_ABSENT              0
