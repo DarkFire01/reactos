@@ -6,6 +6,7 @@ spec2def(qcril.dll qcril.spec)
 
 list(APPEND SOURCE
     codec.c
+    dcm.c
     ipc.c
     ril.c
     dms.c

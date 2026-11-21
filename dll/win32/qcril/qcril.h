@@ -331,6 +331,7 @@ BOOL QcIpcStartReceive(_In_ PQC_MODEM Modem);
 VOID QcIpcClose(_In_ PQC_MODEM Modem);
 BOOL QcIpcOpenPort(_Out_ PHANDLE Port);
 VOID QcIpcClosePort(_In_ HANDLE Port);
+BOOL QcIpcRegisterServer(_In_ HANDLE Port, _In_ ULONG ServiceId, _In_ ULONG Instance);
 BOOL QcIpcSendOn(_In_ HANDLE Port, _In_ const QC_ADDR *Dest,
                  _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
 BOOL QcServiceEnsure(_In_ PQC_MODEM Modem, _In_ QC_SVC Which);
@@ -401,11 +402,21 @@ VOID QcImsModemLost(_In_ PQC_MODEM Modem);
 VOID QcImsStartPdn(_In_ PQC_MODEM Modem);
 
 /* imsdata.c */
-VOID QcImsDataStart(_In_ PQC_MODEM Modem, _In_ UCHAR Profile);
+VOID QcImsDataInitialize(VOID);
+HRESULT QcImsDataConnect(_In_ PQC_MODEM Modem, _In_ UCHAR Profile, _In_ UCHAR Family,
+                         _Out_writes_z_(AddressSize) PSTR Address, _In_ ULONG AddressSize);
+VOID QcImsDataDisconnect(VOID);
+HRESULT QcImsDataAddress(_In_ UCHAR Family, _Out_writes_z_(Size) PSTR Address, _In_ ULONG Size);
 VOID QcImsDataModemLost(VOID);
 BOOL QcWdsDataPath(_Out_ PULONG EndpointType, _Out_ PULONG InterfaceId, _Out_ PULONG MuxId);
 VOID QcImsaIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                       _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
+
+/* dcm.c */
+VOID QcDcmInitialize(VOID);
+VOID QcDcmStart(_In_ PQC_MODEM Modem, _In_ UCHAR FallbackProfile);
+VOID QcDcmPdnLost(VOID);
+VOID QcDcmModemLost(VOID);
 
 /* pdc.c */
 VOID QcPdcSetup(_In_ PQC_MODEM Modem);

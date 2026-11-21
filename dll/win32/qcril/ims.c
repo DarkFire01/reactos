@@ -364,7 +364,7 @@ QcImsaSetup(
     QcImsStartPdn(Modem);
 }
 
-/* Registration runs over the IMS PDN, which the modem waits for the host to bring up */
+/* Registration runs over the IMS PDN, which the modem asks the host for through DCM */
 VOID
 QcImsStartPdn(
     _In_ PQC_MODEM Modem)
@@ -374,10 +374,10 @@ QcImsStartPdn(
     Modem->Ims.PdnPending = FALSE;
 
     Profile = QcImsListProfiles(Modem);
-    if (Profile && Modem->Ims.Registration != 2)
-        QcImsDataStart(Modem, Profile);
-    else if (!Profile)
+    if (!Profile)
         QcTrace("ims: no data profile with the ims apn\n");
+
+    QcDcmStart(Modem, Profile);
 }
 
 /* The registration went with the modem, it is set up again once IMS returns */
