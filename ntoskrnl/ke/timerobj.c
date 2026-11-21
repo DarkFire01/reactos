@@ -479,3 +479,58 @@ KeQueryUnbiasedInterruptTime(VOID)
 {
     return (ULONGLONG)KeQueryInterruptTime();
 }
+
+/**
+ * @brief Gets the frequency of the platform's auxiliary counter.
+ * @return STATUS_NOT_SUPPORTED, the HAL exposes no auxiliary counter; callers fall back to the performance counter.
+ */
+NTSTATUS
+NTAPI
+KeQueryAuxiliaryCounterFrequency(
+    _Out_opt_ PULONG64 AuxiliaryCounterFrequency)
+{
+    if (AuxiliaryCounterFrequency)
+        *AuxiliaryCounterFrequency = 0;
+
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Converts an auxiliary counter value to a performance counter value.
+ * @return STATUS_NOT_SUPPORTED, there is no auxiliary counter to convert from.
+ */
+NTSTATUS
+NTAPI
+KeConvertAuxiliaryCounterToPerformanceCounter(
+    _In_ ULONG64 AuxiliaryCounterValue,
+    _Out_ PULONG64 PerformanceCounterValue,
+    _Out_opt_ PULONG64 ConversionError)
+{
+    UNREFERENCED_PARAMETER(AuxiliaryCounterValue);
+
+    *PerformanceCounterValue = 0;
+    if (ConversionError)
+        *ConversionError = 0;
+
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Converts a performance counter value to an auxiliary counter value.
+ * @return STATUS_NOT_SUPPORTED, there is no auxiliary counter to convert to.
+ */
+NTSTATUS
+NTAPI
+KeConvertPerformanceCounterToAuxiliaryCounter(
+    _In_ ULONG64 PerformanceCounterValue,
+    _Out_ PULONG64 AuxiliaryCounterValue,
+    _Out_opt_ PULONG64 ConversionError)
+{
+    UNREFERENCED_PARAMETER(PerformanceCounterValue);
+
+    *AuxiliaryCounterValue = 0;
+    if (ConversionError)
+        *ConversionError = 0;
+
+    return STATUS_NOT_SUPPORTED;
+}
