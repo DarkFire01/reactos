@@ -27,9 +27,12 @@
 #define RILADAPT_PARAMETERS_KEY     L"SYSTEM\\CurrentControlSet\\Services\\RILAdaptation\\Parameters"
 #define RILADAPT_MAX_MODEMS         2
 
-/* Host interface versions offered to the OEM library */
-#define RILADAPT_VERSION_MIN        1
-#define RILADAPT_VERSION_MAX        2
+/* Defaults of the WatchdogTimeout and MessageHoldTimeout parameters, in seconds */
+#define RILADAPT_WATCHDOG_DEFAULT   10
+#define RILADAPT_HOLD_DEFAULT       30
+
+/* SendMsgAck keys remembered for duplicate suppression */
+#define RILADAPT_ACK_HISTORY        10
 
 typedef struct _RIL_MODEM_CONFIG
 {
@@ -38,43 +41,33 @@ typedef struct _RIL_MODEM_CONFIG
     WCHAR BrokerId[64];
     WCHAR BrokerInstance[16];
     WCHAR BrokerName[64];
+    DWORD WatchdogTimeout;
+    DWORD MessageHoldTimeout;
 } RIL_MODEM_CONFIG, *PRIL_MODEM_CONFIG;
 
+/* A command the library accepted and will answer through its notification queue */
 typedef struct _RIL_HOST_COMMAND
 {
     LIST_ENTRY Link;
     DWORD CommandId;
+    DWORD ClientId;
     DWORD Command;
     ULONGLONG Context;
 } RIL_HOST_COMMAND, *PRIL_HOST_COMMAND;
 
-struct _RIL_MODEM;
-
-typedef struct _RIL_HOST_CLIENT
+/* A notification kept back until the hold timer releases it */
+typedef struct _RIL_HELD_NOTIFICATION
 {
     LIST_ENTRY Link;
-    struct _RIL_MODEM *Modem;
-    DWORD ClientId;
-    DWORD ProcessId;
-    DWORD OemClient;
-    HANDLE CancelEvent;
-    HANDLE NotifyEvent;
-    PTP_WAIT NotifyWait;
-    PBYTE QueueBuffer;
-    DWORD QueueBufferSize;
-
-    CRITICAL_SECTION CommandLock;
-    LIST_ENTRY Commands;
-    DWORD NextCommandId;
-
-    /* Notification codes the client asked for, guarded by CommandLock */
-    PDWORD EnabledCodes;
-    DWORD EnabledCount;
-} RIL_HOST_CLIENT, *PRIL_HOST_CLIENT;
+    DWORD Code;
+    DWORD DataSize;
+    BYTE Data[ANYSIZE_ARRAY];
+} RIL_HELD_NOTIFICATION, *PRIL_HELD_NOTIFICATION;
 
 typedef struct _RIL_MODEM
 {
     RIL_MODEM_CONFIG Config;
+    DWORD Index;
     HMODULE Library;
     PFN_RIL_VERSION RilVersion;
     PFN_RIL_INIT RilInit;
@@ -83,14 +76,51 @@ typedef struct _RIL_MODEM
     PFN_RIL_IOCONTROL RilIoControl;
     DWORD Version;
     DWORD OemDriver;
+    DWORD OemClient;
 
     HANDLE Broker;
     CRITICAL_SECTION DeliverLock;
     HANDLE DeliverEvent;
+    HANDLE BrokerThread;
+    BOOL Stopping;
 
-    LIST_ENTRY Clients;
-    HANDLE Thread;
+    /* Guards the command list and the acknowledgement history */
+    CRITICAL_SECTION CommandLock;
+    LIST_ENTRY Commands;
+    DWORD NextCommandId;
+    ULONGLONG AckKeys[RILADAPT_ACK_HISTORY];
+    BOOL AckValid[RILADAPT_ACK_HISTORY];
+    DWORD AckNext;
+
+    /* Notification thread state */
+    HANDLE StopEvent;
+    HANDLE CancelEvent;
+    HANDLE CancelHandle;
+    HANDLE NotifyEvent;
+    HANDLE NotifyThread;
+    PBYTE QueueBuffer;
+    DWORD QueueBufferSize;
+    HANDLE HoldTimer;
+    BOOL HoldReleased;
+    LIST_ENTRY Held;
+
+    PTP_TIMER CommandWatchdog;
+    PTP_TIMER FetchWatchdog;
 } RIL_MODEM, *PRIL_MODEM;
+
+/* main.c */
+VOID
+__cdecl
+RilLog(
+    _In_z_ _Printf_format_string_ PCSTR Format,
+    ...);
+
+DECLSPEC_NORETURN
+VOID
+__cdecl
+RilFatal(
+    _In_z_ _Printf_format_string_ PCSTR Format,
+    ...);
 
 /* config.c */
 DWORD
@@ -109,10 +139,9 @@ RilGetBrokerHostPath(
     _In_ DWORD Chars);
 
 /* host.c */
-DWORD
+VOID
 RilStartModem(
-    _Inout_ PRIL_MODEM Modem,
-    _In_ HANDLE StopEvent);
+    _Inout_ PRIL_MODEM Modem);
 
 VOID
 RilStopModem(
