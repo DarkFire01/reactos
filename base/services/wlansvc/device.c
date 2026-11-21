@@ -328,14 +328,23 @@ WlanReadBssList(
             return ERROR_SUCCESS;
         }
 
-        HeapFree(GetProcessHeap(), 0, Array);
-
-        if (Error == ERROR_MORE_DATA && Returned > Size)
+        /* The overflow header carries the full list size, without it just grow */
+        if (Error == ERROR_MORE_DATA)
         {
-            Size = Returned;
+            ULONG Needed = Size * 2;
+
+            if (Returned >= FIELD_OFFSET(WLAN_DOT11_BYTE_ARRAY, ucBuffer))
+                Needed = FIELD_OFFSET(WLAN_DOT11_BYTE_ARRAY, ucBuffer) + Array->uTotalNumOfBytes;
+            DPRINT1("BSS list needs %lu bytes, had %lu\n", Needed, Size);
+
+            HeapFree(GetProcessHeap(), 0, Array);
+            if (Needed <= Size)
+                Needed = Size * 2;
+            Size = Needed;
             continue;
         }
 
+        HeapFree(GetProcessHeap(), 0, Array);
         break;
     }
 
