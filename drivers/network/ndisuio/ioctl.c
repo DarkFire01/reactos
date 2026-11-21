@@ -267,7 +267,15 @@ QueryAdapterOid(PIRP Irp, PIO_STACK_LOCATION IrpSp)
             Status == NDIS_STATUS_BUFFER_TOO_SHORT ||
             Status == NDIS_STATUS_BUFFER_OVERFLOW)
         {
+            /* Whatever the miniport managed to write goes back with the warning */
             Status = STATUS_BUFFER_OVERFLOW;
+            if (Request.DATA.QUERY_INFORMATION.BytesWritten <= Request.DATA.QUERY_INFORMATION.InformationBufferLength)
+                Irp->IoStatus.Information = sizeof(NDIS_OID) + Request.DATA.QUERY_INFORMATION.BytesWritten;
+            DPRINT1("OID 0x%x overflowed, %lu of %lu bytes written, %lu needed\n",
+                    QueryOidRequest->Oid,
+                    Request.DATA.QUERY_INFORMATION.BytesWritten,
+                    Request.DATA.QUERY_INFORMATION.InformationBufferLength,
+                    Request.DATA.QUERY_INFORMATION.BytesNeeded);
         }
         else if (Status == NDIS_STATUS_SUCCESS)
         {
