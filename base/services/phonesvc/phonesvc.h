@@ -76,6 +76,11 @@ HRESULT
 PhSetRadioPower(
     _In_ BOOL On);
 
+/* wake.c */
+VOID
+PhWakeDevice(
+    _In_z_ PCSTR Reason);
+
 /* calls.c */
 VOID
 PhCallsInitialize(VOID);

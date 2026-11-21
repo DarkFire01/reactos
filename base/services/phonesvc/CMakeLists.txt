@@ -13,6 +13,7 @@ list(APPEND SOURCE
     radio.c
     sms.c
     store.c
+    wake.c
     mmspdu.h
     phonesvc.h)
 

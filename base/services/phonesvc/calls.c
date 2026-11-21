@@ -104,6 +104,7 @@ PhCallStateChanged(
     PPHONEOM_CALL Call;
     DWORD State;
     LONG Slot;
+    BOOL Ringing;
 
     if (Size < FIELD_OFFSET(RIL_CALL_RECORD, NumberPresentation))
         return;
@@ -125,6 +126,8 @@ PhCallStateChanged(
     Call = &PhCalls[Slot];
     if (Call->State != PhoneCallActive && State == PhoneCallActive)
         GetSystemTimeAsFileTime(&Call->StartTime);
+
+    Ringing = (Call->State != PhoneCallIncoming && State == PhoneCallIncoming);
 
     Call->State = State;
     Call->Flags = 0;
@@ -164,6 +167,9 @@ PhCallStateChanged(
 
     PhRefreshVoicePath(Record->Domain == RIL_CALL_DOMAIN_IMS);
     LeaveCriticalSection(&PhCallLock);
+
+    if (Ringing)
+        PhWakeDevice("an incoming call");
 
     PhBroadcast(PhoneEventCall, &Snapshot, sizeof(Snapshot));
 }
