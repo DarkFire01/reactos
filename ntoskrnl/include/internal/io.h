@@ -1776,6 +1776,8 @@ PiIrpQueryPnPDeviceState(
 extern POBJECT_TYPE IoCompletionType;
 extern PDEVICE_NODE IopRootDeviceNode;
 extern KSPIN_LOCK IopDeviceTreeLock;
+extern PDEVICE_NODE PiWalkDeviceNode;
+extern BOOLEAN PiWalkDeviceNodeFreed;
 extern ULONG IopTraceLevel;
 extern ULONG IopCaseInsensitive;
 extern GENERAL_LOOKASIDE IopMdlLookasideList;

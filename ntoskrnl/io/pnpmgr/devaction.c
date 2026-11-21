@@ -2506,10 +2506,17 @@ PiDevNodeStateMachine(
     PDEVICE_NODE currentNode = RootNode;
     PDEVICE_OBJECT referencedObject;
     PDEVICE_OBJECT nextObject;
+    PDEVICE_NODE freedNode;
+    KIRQL OldIrql;
 
     /* The node being worked on is held by its PDO, so it can be removed yet still be walked from */
     referencedObject = RootNode->PhysicalDeviceObject;
     ObReferenceObject(referencedObject);
+
+    KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
+    PiWalkDeviceNode = RootNode;
+    PiWalkDeviceNodeFreed = FALSE;
+    KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
 
     do
     {
@@ -2666,12 +2673,25 @@ PiDevNodeStateMachine(
         }
 
 skipEnum:
+        /* A node freed while it was worked on has nothing left to process */
+        if (PiWalkDeviceNodeFreed)
+            doProcessAgain = FALSE;
+
         if (!doProcessAgain)
         {
-            KIRQL OldIrql;
+            freedNode = NULL;
             KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
+
+            /* The links of a freed node are stale, so the walk starts over from the root */
+            if (PiWalkDeviceNodeFreed)
+            {
+                DPRINT1("Devnode %p was freed while being walked, walking the tree again\n", currentNode);
+                freedNode = currentNode;
+                PiWalkDeviceNodeFreed = FALSE;
+                currentNode = RootNode;
+            }
             /* If we have a child, simply go down the tree */
-            if (currentNode->State != DeviceNodeRemoved && currentNode->Child != NULL)
+            else if (currentNode->State != DeviceNodeRemoved && currentNode->Child != NULL)
             {
                 ASSERT(currentNode->Child->Parent == currentNode);
                 currentNode = currentNode->Child;
@@ -2713,7 +2733,11 @@ skipEnum:
                 nextObject = RootNode->PhysicalDeviceObject;
                 ObReferenceObject(nextObject);
             }
+            PiWalkDeviceNode = currentNode;
             KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
+
+            if (freedNode != NULL)
+                ExFreePoolWithTag(freedNode, TAG_IO_DEVNODE);
 
             ObDereferenceObject(referencedObject);
             referencedObject = nextObject;
@@ -2723,6 +2747,10 @@ skipEnum:
         if (!doProcessAgain && currentNode == RootNode && IopTakeAssignmentRetry())
             doProcessAgain = TRUE;
     } while (doProcessAgain || currentNode != RootNode);
+
+    KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
+    PiWalkDeviceNode = NULL;
+    KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
 
     ObDereferenceObject(referencedObject);
 }
