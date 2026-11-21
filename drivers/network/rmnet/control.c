@@ -68,6 +68,15 @@ RmNetSetLink(
         if (!Link->Address)
             return STATUS_INVALID_PARAMETER;
 
+        /* A session that came back with another address is a new link, tcpip must drop the old lease */
+        if (WasConnected && Adapter->Link.Address != Link->Address)
+        {
+            DPRINT1("rmnet: data session replaced, the old address goes away first\n");
+            Adapter->Connected = FALSE;
+            RmNetIndicateLinkState(Adapter);
+            WasConnected = FALSE;
+        }
+
         Adapter->Link = *Link;
         Adapter->Link.SubnetMask = RmNetOnLinkMask(Link->Address, Link->Gateway, Link->SubnetMask);
         if (!Adapter->Link.Mtu || Adapter->Link.Mtu > RMNET_MAX_MTU)
