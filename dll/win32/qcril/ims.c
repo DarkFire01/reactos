@@ -14,6 +14,7 @@
 
 #include "qcril.h"
 #include <string.h>
+#include <strsafe.h>
 
 /* IMS settings */
 #define QCRIL_IMSS_SET_SERVICES         0x008F
@@ -122,6 +123,94 @@ QcImsBind(
     Length = QmiEncodeEnd(&Encoder);
 
     return QcQmiRequest(Modem, Service, Message, Length, Response, sizeof(Response), &ResponseLen);
+}
+
+/* Data profiles, for finding the one IMS registers over */
+#define QCRIL_WDS_GET_PROFILE_LIST      0x002A
+#define QCRIL_WDS_GET_PROFILE_SETTINGS  0x002B
+#define QCRIL_WDS_PROFILE_3GPP          0
+
+static
+PCSTR
+QcImsPdpName(
+    _In_ UCHAR Type)
+{
+    switch (Type)
+    {
+        case 0: return "ipv4";
+        case 1: return "ppp";
+        case 2: return "ipv6";
+        case 3: return "ipv4v6";
+        default: return "?";
+    }
+}
+
+/* Logs every 3GPP data profile the carrier configuration carries */
+static
+VOID
+QcImsListProfiles(
+    _In_ PQC_MODEM Modem)
+{
+    QMI_ENCODER Encoder;
+    BYTE Message[32];
+    BYTE List[512], Settings[512];
+    const VOID *Value;
+    const UCHAR *Entry, *End;
+    CHAR Name[64], Apn[104];
+    ULONG Length, ListLen, SettingsLen;
+    USHORT ValueLen;
+    UCHAR Type = QCRIL_WDS_PROFILE_3GPP, Key[2], Count, NameLen, Pdp, i;
+    HRESULT hr;
+
+    if (!QcServiceEnsure(Modem, QcSvcWds))
+        return;
+
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_GET_PROFILE_LIST);
+    QmiEncodeTlv(&Encoder, 0x10, &Type, sizeof(Type));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcQmiRequest(Modem, QcSvcWds, Message, Length, List, sizeof(List), &ListLen);
+    if (FAILED(hr) || !QmiFindTlv(List, ListLen, 0x01, &Value, &ValueLen) || ValueLen < 1)
+    {
+        QcTrace("ims: reading the data profiles failed 0x%08lx\n", hr);
+        return;
+    }
+
+    Entry = Value;
+    End = Entry + ValueLen;
+    Count = *Entry++;
+    QcTrace("ims: %u data profile(s)\n", Count);
+
+    for (i = 0; i < Count && Entry + 3 <= End; i++)
+    {
+        Key[0] = Entry[0];
+        Key[1] = Entry[1];
+        NameLen = Entry[2];
+        Entry += 3;
+        if (Entry + NameLen > End)
+            break;
+        Entry += NameLen;
+
+        QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_GET_PROFILE_SETTINGS);
+        QmiEncodeTlv(&Encoder, 0x01, Key, sizeof(Key));
+        Length = QmiEncodeEnd(&Encoder);
+        hr = QcQmiRequest(Modem, QcSvcWds, Message, Length, Settings, sizeof(Settings), &SettingsLen);
+        if (FAILED(hr))
+        {
+            QcTrace("ims: profile %u settings failed 0x%08lx\n", Key[1], hr);
+            continue;
+        }
+
+        Name[0] = Apn[0] = '\0';
+        Pdp = 0xFF;
+        if (QmiFindTlv(Settings, SettingsLen, 0x10, &Value, &ValueLen))
+            StringCchCopyNA(Name, sizeof(Name), Value, ValueLen);
+        if (QmiFindTlv(Settings, SettingsLen, 0x14, &Value, &ValueLen))
+            StringCchCopyNA(Apn, sizeof(Apn), Value, ValueLen);
+        if (QmiFindTlv(Settings, SettingsLen, 0x11, &Value, &ValueLen) && ValueLen >= 1)
+            Pdp = *(const UCHAR *)Value;
+
+        QcTrace("ims: profile %u '%s' apn '%s' %s\n", Key[1], Name, Apn, QcImsPdpName(Pdp));
+    }
 }
 
 /* Registration status, technology and error, from a response or an indication */
@@ -259,6 +348,8 @@ QcImsaSetup(
     hr = QcQmiRequest(Modem, QcSvcImsa, Message, Length, Response, sizeof(Response), &ResponseLen);
     if (SUCCEEDED(hr))
         QcImsLogServices(Modem, Response, ResponseLen, "services");
+
+    QcImsListProfiles(Modem);
 }
 
 VOID
