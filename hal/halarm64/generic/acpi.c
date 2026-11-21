@@ -152,6 +152,10 @@ HalpParseMadt(
 
         Current += Entry->Length;
     }
+
+    /* Older firmware leaves the GICC base out of the entries and gives it in the header, as on x86 */
+    if (!HalpPlatform.GiccBase.QuadPart && Madt->LocalInterruptControllerAddress)
+        HalpPlatform.GiccBase.QuadPart = Madt->LocalInterruptControllerAddress;
 }
 
 /* The loader hands over the XSDT when there is one, the RSDT otherwise */
