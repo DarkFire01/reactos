@@ -12,6 +12,11 @@
 #define QC_DRIVER_HANDLE            1
 #define QC_RESPONSE_MAX             4096
 
+/* Version this library reports through RIL_GetDriverVersion */
+#define QC_DRIVER_INTERFACE         2
+#define QC_DRIVER_MAJOR             1
+#define QC_DRIVER_MINOR             0
+
 static PQC_MODEM gModem;
 static CRITICAL_SECTION gInitLock;
 static LONG gInitLockReady;
@@ -21,21 +26,60 @@ QcTrace(
     _In_ PCSTR Format,
     ...)
 {
-    CHAR Line[256];
+    static const CHAR Prefix[] = "[qcril] ";
+    CHAR Line[512];
     va_list Args;
     int Length;
 
+    memcpy(Line, Prefix, sizeof(Prefix) - 1);
+
     va_start(Args, Format);
-    Length = _vsnprintf(Line, sizeof(Line) - 8, Format, Args);
+    Length = _vsnprintf(Line + sizeof(Prefix) - 1, sizeof(Line) - sizeof(Prefix) - 1, Format, Args);
     va_end(Args);
 
     if (Length < 0)
-        Length = sizeof(Line) - 8;
+        Length = sizeof(Line) - sizeof(Prefix) - 1;
+    Length += sizeof(Prefix) - 1;
 
-    memmove(Line + 7, Line, Length + 1);
-    memcpy(Line, "[qcril] ", 7);
-    Line[7 + Length] = '\0';
+    /* Every line ends in a newline, even one that was cut short */
+    if (Length == 0 || Line[Length - 1] != '\n')
+        Line[Length++] = '\n';
+    Line[Length] = '\0';
+
     OutputDebugStringA(Line);
+}
+
+static
+PCSTR
+QcCommandName(
+    _In_ DWORD Command)
+{
+    switch (Command)
+    {
+        case RilCmdEnableNotifications: return "EnableNotifications";
+        case RilCmdDisableNotifications: return "DisableNotifications";
+        case RilCmdGetDriverVersion: return "GetDriverVersion";
+        case RilCmdGetDevCaps: return "GetDevCaps";
+        case RilCmdGetDeviceInfo: return "GetDeviceInfo";
+        case RilCmdGetEquipmentState: return "GetEquipmentState";
+        case RilCmdSetEquipmentState: return "SetEquipmentState";
+        case RilCmdEnumerateSlots: return "EnumerateSlots";
+        case RilCmdGetCardInfo: return "GetCardInfo";
+        case RilCmdSetExecutorConfig: return "SetExecutorConfig";
+        case RilCmdGetCurrentRegStatus: return "GetCurrentRegStatus";
+        case RilCmdGetSignalQuality: return "GetSignalQuality";
+        case RilCmdDial: return "Dial";
+        case RilCmdManageCalls: return "ManageCalls";
+        case RilCmdSendDtmf: return "SendDtmf";
+        case RilCmdStartDtmf: return "StartDtmf";
+        case RilCmdStopDtmf: return "StopDtmf";
+        case RilCmdSendMsg: return "SendMsg";
+        case RilCmdSendMsgAck: return "SendMsgAck";
+        case RilCmdDevSpecific: return "DevSpecific";
+        case RilCmdSetRfState: return "SetRfState";
+        case RilCmdSetExecutorRfState: return "SetExecutorRfState";
+        default: return "other";
+    }
 }
 
 static
@@ -139,15 +183,55 @@ QcNotifyAll(
     _In_ DWORD Size)
 {
     PLIST_ENTRY Entry;
+    ULONG Count = 0;
 
     EnterCriticalSection(&Modem->ClientLock);
     for (Entry = Modem->Clients.Flink; Entry != &Modem->Clients; Entry = Entry->Flink)
     {
         PQC_CLIENT Client = CONTAINING_RECORD(Entry, QC_CLIENT, Link);
         if (Client->Open)
+        {
             QcQueueItem(Client, Code, 0, Data, Size);
+            Count++;
+        }
     }
     LeaveCriticalSection(&Modem->ClientLock);
+
+    QcTrace("notify 0x%08lx size %lu to %lu client(s)\n", Code, Size, Count);
+}
+
+/* Wakes the setup thread to bring services up or reevaluate the card */
+VOID
+QcKickSetup(
+    _In_ PQC_MODEM Modem)
+{
+    if (Modem->SetupSignal)
+        SetEvent(Modem->SetupSignal);
+}
+
+/* In: minimum and maximum interface version, the interface in the high word */
+static
+HRESULT
+QcGetDriverVersion(
+    _In_reads_bytes_(InSize) const VOID *In,
+    _In_ ULONG InSize,
+    _Inout_ PQC_RESP Resp)
+{
+    const DWORD *Range = In;
+    DWORD Version;
+
+    if (InSize < 2 * sizeof(DWORD))
+        return E_INVALIDARG;
+
+    if (QC_DRIVER_INTERFACE < HIWORD(Range[0]) || QC_DRIVER_INTERFACE > HIWORD(Range[1]))
+    {
+        QcTrace("driver version: interface %u outside 0x%08lx..0x%08lx\n", QC_DRIVER_INTERFACE, Range[0], Range[1]);
+        return RIL_ERROR(0x65);
+    }
+
+    Version = ((((QC_DRIVER_INTERFACE << 4) | (QC_DRIVER_MAJOR & 0xF)) << 12) | 0x50 | (QC_DRIVER_MINOR & 0xF));
+    QcRespDword(Resp, Version);
+    return S_OK;
 }
 
 /* Maps one RIL command to the QMI services, filling Resp on success */
@@ -165,18 +249,29 @@ QcDispatch(
         case RilCmdSetEquipmentState:
             if (InSize < sizeof(DWORD))
                 return E_INVALIDARG;
-            return QcDmsSetRadioPower(Modem, *(const DWORD *)In == RIL_EQSTATE_FULL);
+            return QcDmsSetEquipmentState(Modem, *(const DWORD *)In);
+
+        case RilCmdGetEquipmentState:
+            return QcDmsGetEquipmentState(Modem, Resp);
 
         case RilCmdGetDeviceInfo:
-            return QcDmsGetDeviceInfo(Modem, Resp);
+            return QcDmsGetDeviceInfo(Modem, In, InSize, Resp);
+
+        case RilCmdGetDriverVersion:
+            return QcGetDriverVersion(In, InSize, Resp);
 
         case RilCmdGetSignalQuality:
+            return QcNasGetSignalQuality(Modem, Resp);
+
         case RilCmdGetCurrentRegStatus:
-            return QcNasGetNetwork(Modem, Resp);
+            return QcNasGetRegStatus(Modem, Resp);
 
         case RilCmdGetCardInfo:
         case RilCmdEnumerateSlots:
             return QcUimGetSubscriber(Modem, Resp);
+
+        case RilCmdSetExecutorConfig:
+            return QcUimSetExecutorConfig(Modem, In, InSize);
 
         case RilCmdDevSpecific:
             return QcWdsData(Modem, In, InSize, Resp);
@@ -187,6 +282,11 @@ QcDispatch(
         case RilCmdManageCalls:
             return QcVoiceManage(Modem, In, InSize);
 
+        case RilCmdSendDtmf:
+        case RilCmdStartDtmf:
+        case RilCmdStopDtmf:
+            return QcVoiceDtmf(Modem, Command, In, InSize);
+
         case RilCmdSendMsg:
             return QcWmsSend(Modem, In, InSize, Resp);
 
@@ -196,9 +296,6 @@ QcDispatch(
         /* Accepted without modem traffic during bring-up */
         case RilCmdSetExecutorRfState:
         case RilCmdSetRfState:
-        case RilCmdSendDtmf:
-        case RilCmdStartDtmf:
-        case RilCmdStopDtmf:
         case RilCmdEnableModemFilters:
         case RilCmdDisableModemFilters:
         case RilCmdStartModemLogs:
@@ -275,7 +372,13 @@ QcWorkerThread(
         Work = CONTAINING_RECORD(Entry, QC_WORK, Link);
 
         QcRespInit(&Resp, Buffer, sizeof(Buffer));
+        QcTrace("cmd %lu (%s) id 0x%lx client %lu in %lu\n", Work->Command, QcCommandName(Work->Command),
+                Work->CommandId, Work->Client->Id, Work->InSize);
         hr = QcDispatch(Modem, Work->Command, Work->In, Work->InSize, &Resp);
+        if (SUCCEEDED(hr) && Resp.Failed)
+            hr = E_FAIL;
+        QcTrace("cmd %lu (%s) id 0x%lx done 0x%08lx out %lu\n", Work->Command, QcCommandName(Work->Command),
+                Work->CommandId, hr, SUCCEEDED(hr) ? Resp.Length : 0);
         QcComplete(Work->Client, Work->CommandId, hr, &Resp);
 
         QcClientRelease(Work->Client);
@@ -286,44 +389,104 @@ QcWorkerThread(
     return 0;
 }
 
-/* Waits for each modem service to appear, then runs its one time setup */
+/* Runs the one time setup of one service, in the order WMRil initializes them */
+static
+VOID
+QcSetupService(
+    _In_ PQC_MODEM Modem,
+    _In_ QC_SVC Which)
+{
+    QcTrace("setup: %s\n", QcServiceName(Which));
+
+    switch (Which)
+    {
+        case QcSvcDms:
+            QcDmsSetup(Modem);
+            break;
+
+        case QcSvcNas:
+            QcNasSetup(Modem);
+            break;
+
+        case QcSvcWms:
+            QcWmsSetup(Modem);
+            break;
+
+        case QcSvcVoice:
+            QcVoiceSetup(Modem);
+            break;
+
+        case QcSvcUim:
+            QcUimSetup(Modem);
+            break;
+
+        default:
+            break;
+    }
+}
+
+/* Brings the modem services up, again after every modem restart, and runs card work */
 static
 DWORD
 WINAPI
 QcSetupThread(
     _In_ LPVOID Parameter)
 {
+    static const QC_SVC Order[] = { QcSvcDms, QcSvcNas, QcSvcWms, QcSvcVoice, QcSvcUim };
     PQC_MODEM Modem = Parameter;
-    BOOL Dms = FALSE, Wms = FALSE, Nas = FALSE, Voice = FALSE;
-    ULONG Attempt;
+    BOOL Missing, Configured, Recheck;
+    ULONG i;
 
-    for (Attempt = 0; Attempt < QC_SETUP_RETRY && !Modem->Stopping; Attempt++)
+    while (!Modem->Stopping)
     {
-        if (!Dms && QcServiceEnsure(Modem, QcSvcDms))
-            Dms = TRUE;
-        if (!Wms && QcServiceEnsure(Modem, QcSvcWms))
+        Missing = FALSE;
+
+        for (i = 0; i < RTL_NUMBER_OF(Order) && !Modem->Stopping; i++)
         {
-            QcWmsConfigureRoutes(Modem);
-            Wms = TRUE;
-        }
-        if (!Nas && QcServiceEnsure(Modem, QcSvcNas))
-        {
-            QcNasEnableIndications(Modem);
-            Nas = TRUE;
-        }
-        if (!Voice && QcServiceEnsure(Modem, QcSvcVoice))
-        {
-            QcVoiceSeed(Modem);
-            Voice = TRUE;
+            EnterCriticalSection(&Modem->ServiceLock);
+            Configured = Modem->Services[Order[i]].Configured;
+            LeaveCriticalSection(&Modem->ServiceLock);
+            if (Configured)
+                continue;
+
+            if (!QcServiceEnsure(Modem, Order[i]))
+            {
+                Missing = TRUE;
+                continue;
+            }
+
+            QcSetupService(Modem, Order[i]);
+
+            EnterCriticalSection(&Modem->ServiceLock);
+            Modem->Services[Order[i]].Configured = Modem->Services[Order[i]].Ready;
+            LeaveCriticalSection(&Modem->ServiceLock);
         }
 
-        if (Dms && Wms && Nas && Voice)
-            break;
+        /* The modem counts as up once its core services are, the rest may trail */
+        EnterCriticalSection(&Modem->ServiceLock);
+        Configured = Modem->Services[QcSvcDms].Configured && Modem->Services[QcSvcNas].Configured;
+        LeaveCriticalSection(&Modem->ServiceLock);
 
-        Sleep(QC_RESOLVE_DELAY_MS);
+        if (Configured && InterlockedCompareExchange(&Modem->ModemUp, 1, 0) == 0)
+        {
+            QcTrace("setup: core modem services configured%s\n", Missing ? ", others still missing" : "");
+            if (InterlockedExchange(&Modem->Restarted, 0) != 0)
+            {
+                QcTrace("ssr: services back, restoring the requested equipment state\n");
+                QcDmsRestore(Modem);
+            }
+        }
+
+        EnterCriticalSection(&Modem->StateLock);
+        Recheck = Modem->Uim.Recheck;
+        Modem->Uim.Recheck = FALSE;
+        LeaveCriticalSection(&Modem->StateLock);
+        if (Recheck)
+            QcUimEvaluate(Modem);
+
+        WaitForSingleObject(Modem->SetupSignal, Missing ? QC_RESOLVE_DELAY_MS : INFINITE);
     }
 
-    QcTrace("service setup done: dms %u wms %u nas %u voice %u\n", Dms, Wms, Nas, Voice);
     return 0;
 }
 
@@ -343,23 +506,31 @@ QcModemCreate(VOID)
     InitializeCriticalSection(&Modem->PendingLock);
     InitializeCriticalSection(&Modem->WorkLock);
     InitializeCriticalSection(&Modem->ClientLock);
+    InitializeCriticalSection(&Modem->StateLock);
     InitializeListHead(&Modem->Pending);
     InitializeListHead(&Modem->WorkQueue);
     InitializeListHead(&Modem->Clients);
 
+    Modem->Dms.Equipment = RIL_EQSTATE_MINIMUM;
+    Modem->Dms.Requested = RIL_EQSTATE_MINIMUM;
+    Modem->Nas.Net.Size = sizeof(Modem->Nas.Net);
+    Modem->Nas.Net.RegState = RIL_REG_UNKNOWN;
+    Modem->Uim.GwPrimary = 0xFFFF;
+    Modem->NextCallId = 1;
+
     Modem->WorkSignal = CreateEventW(NULL, FALSE, FALSE, NULL);
-    if (!Modem->WorkSignal)
+    Modem->SetupSignal = CreateEventW(NULL, FALSE, FALSE, NULL);
+    Modem->TxResume = CreateEventW(NULL, TRUE, FALSE, NULL);
+    Modem->Dms.ChangeEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!Modem->WorkSignal || !Modem->SetupSignal || !Modem->TxResume || !Modem->Dms.ChangeEvent)
     {
-        HeapFree(GetProcessHeap(), 0, Modem);
+        QcTrace("cannot create the modem events\n");
         return NULL;
     }
 
+    /* The modem object lives for the process, a failed open keeps it around unused */
     if (!QcIpcOpen(Modem))
-    {
-        CloseHandle(Modem->WorkSignal);
-        HeapFree(GetProcessHeap(), 0, Modem);
         return NULL;
-    }
 
     QcIpcStartReceive(Modem);
     Modem->Worker = CreateThread(NULL, 0, QcWorkerThread, Modem, 0, NULL);
@@ -369,7 +540,7 @@ QcModemCreate(VOID)
     return Modem;
 }
 
-/* ---- Exported host interface ---- */
+/* Exported host interface */
 
 DWORD
 WINAPI
@@ -377,10 +548,11 @@ RIL_Version(
     _In_ DWORD MinVersion,
     _In_ DWORD MaxVersion)
 {
-    if (MaxVersion >= 2 && MinVersion <= 2)
-        return 2;
-    if (MinVersion <= 1 && MaxVersion >= 1)
-        return 1;
+    QcTrace("RIL_Version(%lu, %lu)\n", MinVersion, MaxVersion);
+
+    /* The host interface is pinned to version 1 */
+    if (MinVersion <= RIL_HOST_VERSION && MaxVersion >= RIL_HOST_VERSION)
+        return RIL_HOST_VERSION;
     return 0;
 }
 
@@ -389,8 +561,6 @@ WINAPI
 RIL_Init(
     _In_ DWORD Index)
 {
-    UNREFERENCED_PARAMETER(Index);
-
     QcEnsureInitLock();
 
     EnterCriticalSection(&gInitLock);
@@ -398,13 +568,17 @@ RIL_Init(
         gModem = QcModemCreate();
     LeaveCriticalSection(&gInitLock);
 
+    QcTrace("RIL_Init(%lu): %s\n", Index, gModem ? "ready" : "no modem");
+
     return gModem ? QC_DRIVER_HANDLE : 0;
 }
 
 DWORD
 WINAPI
 RIL_Open(
-    _In_ DWORD Driver)
+    _In_ DWORD Driver,
+    _In_ DWORD Access,
+    _In_ DWORD Share)
 {
     PQC_MODEM Modem = gModem;
     PQC_CLIENT Client;
@@ -431,6 +605,7 @@ RIL_Open(
     InsertTailList(&Modem->Clients, &Client->Link);
     LeaveCriticalSection(&Modem->ClientLock);
 
+    QcTrace("RIL_Open: client %lu access 0x%lx share 0x%lx\n", Id, Access, Share);
     return Id;
 }
 
@@ -456,6 +631,8 @@ RIL_Close(
 
     if (!Client)
         return FALSE;
+
+    QcTrace("RIL_Close: client %lu\n", ClientId);
 
     /* Drop the reference the open held, a worker in flight keeps it alive */
     QcClientRelease(Client);
@@ -502,7 +679,7 @@ QcGetNextNotification(
     _In_ ULONG OutSize,
     _Out_ PDWORD Actual)
 {
-    RIL_HOST_QUEUED_V2 Header;
+    RIL_HOST_QUEUED_V1 Header;
     PQC_QITEM Item = NULL;
     PLIST_ENTRY Entry;
     DWORD Provided, Required;
@@ -547,6 +724,8 @@ QcGetNextNotification(
     }
 
     RemoveEntryList(&Item->Link);
+    if (IsListEmpty(&Client->Queue) && Client->NotifyEvent)
+        ResetEvent(Client->NotifyEvent);
     LeaveCriticalSection(&Client->Lock);
 
     memcpy(Out, &Header, sizeof(Header));
@@ -573,17 +752,19 @@ RIL_IOControl(
     PQC_CLIENT Client;
     PQC_WORK Work;
     DWORD Token, Scratch = 0;
+    HRESULT Failure;
 
     if (!Actual)
         Actual = &Scratch;
     *Actual = 0;
 
-    if (!Modem)
-        return FALSE;
-
-    Client = QcClientAcquire(Modem, ClientId);
+    Client = Modem ? QcClientAcquire(Modem, ClientId) : NULL;
     if (!Client)
-        return FALSE;
+    {
+        QcTrace("ioctl %lu for unknown client %lu\n", Code, ClientId);
+        Failure = RIL_E_RADIONOTPRESENT;
+        goto Fail;
+    }
 
     if (Code == RilCmdInitNotifications)
     {
@@ -601,8 +782,9 @@ RIL_IOControl(
 
     /* Every other command is answered through the notification queue. The host
      * preset Out to the command id it tracks, keep it to mark the call accepted. */
-    if (OutSize < sizeof(DWORD))
+    if (!Out || OutSize < sizeof(DWORD))
     {
+        QcTrace("cmd %lu without a result word\n", Code);
         QcClientRelease(Client);
         return FALSE;
     }
@@ -613,7 +795,8 @@ RIL_IOControl(
     if (!Work)
     {
         QcClientRelease(Client);
-        return FALSE;
+        Failure = E_OUTOFMEMORY;
+        goto Fail;
     }
 
     /* The work item holds its own reference until the worker answers it */
@@ -630,7 +813,17 @@ RIL_IOControl(
     SetEvent(Modem->WorkSignal);
     LeaveCriticalSection(&Modem->WorkLock);
 
+    /* The preset command id stays in Out, the answer comes through the queue */
     QcClientRelease(Client);
+    *Actual = sizeof(DWORD);
+    return TRUE;
+
+Fail:
+    /* A synchronous failure is reported as a negative HRESULT in the result word */
+    if (!Out || OutSize < sizeof(DWORD))
+        return FALSE;
+
+    memcpy(Out, &Failure, sizeof(Failure));
     *Actual = sizeof(DWORD);
     return TRUE;
 }

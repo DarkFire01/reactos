@@ -204,3 +204,22 @@ QcRespDword(
 {
     QcRespBytes(Resp, &Value, sizeof(Value));
 }
+
+/* Appends Text as a terminated UTF-16 string */
+VOID
+QcRespWide(
+    _Inout_ PQC_RESP Resp,
+    _In_z_ PCSTR Text)
+{
+    WCHAR Ch;
+    ULONG i;
+
+    for (i = 0; Text[i]; i++)
+    {
+        Ch = (WCHAR)(UCHAR)Text[i];
+        QcRespBytes(Resp, &Ch, sizeof(Ch));
+    }
+
+    Ch = UNICODE_NULL;
+    QcRespBytes(Resp, &Ch, sizeof(Ch));
+}

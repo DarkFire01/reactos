@@ -18,9 +18,20 @@
 
 #define QC_IPC_DEVICE               L"\\\\.\\IPC"
 
-/* A send refused with ERROR_BUSY may go again once the router reports this event */
-#define QC_TX_EVENT_RESUME          0
-#define QC_TX_EVENT_SIZE            20
+/* Router events read through the event control code */
+#define QC_ROUTER_EVENT_RESUME_TX   0
+#define QC_ROUTER_EVENT_NEW_SERVER  1
+#define QC_ROUTER_EVENT_DEL_SERVER  2
+
+typedef struct _QC_ROUTER_EVENT
+{
+    ULONG Event;
+    ULONG ServiceId;
+    ULONG Instance;
+    QC_ADDR Addr;
+} QC_ROUTER_EVENT;
+
+C_ASSERT(sizeof(QC_ROUTER_EVENT) == 20);
 
 typedef struct _QC_FIND_SERVERS
 {
@@ -65,6 +76,87 @@ static const UCHAR QcServiceVersions[QcSvcCount] =
     1,
     1
 };
+
+static const PCSTR QcServiceNames[QcSvcCount] =
+{
+    "DMS",
+    "NAS",
+    "UIM",
+    "VOICE",
+    "WMS",
+    "WDS"
+};
+
+PCSTR
+QcServiceName(
+    _In_ QC_SVC Which)
+{
+    return (Which < QcSvcCount) ? QcServiceNames[Which] : "?";
+}
+
+/* QMI error to the RIL result WMRil reports for it */
+HRESULT
+QcMapQmiError(
+    _In_ USHORT Error)
+{
+    switch (Error)
+    {
+        case 0x00: return S_OK;
+        case 0x02: return E_OUTOFMEMORY;
+        case 0x03:
+        case 0x04:
+        case 0x17: return RIL_ERROR(0x01);
+        case 0x05: return RIL_ERROR(0x3B);
+        case 0x06: return RIL_ERROR(0x48);
+        case 0x0B: return RIL_ERROR(0x6E);
+        case 0x0C: return RIL_ERROR(0x0A);
+        case 0x0D:
+        case 0x35: return RIL_ERROR(0x13);
+        case 0x0E: return RIL_ERROR(0x38);
+        case 0x18: return RIL_ERROR(0x36);
+        case 0x19:
+        case 0x47: return RIL_ERROR(0x05);
+        case 0x23:
+        case 0x6A: return RIL_ERROR(0x6B);
+        case 0x24: return RIL_ERROR(0x6C);
+        case 0x30: return E_INVALIDARG;
+        case 0x31:
+        case 0x32: return RIL_ERROR(0x0C);
+        case 0x33: return RIL_ERROR(0x29);
+        case 0x34:
+        case 0x67: return RIL_ERROR(0x47);
+        case 0x36: return RIL_ERROR(0x46);
+        case 0x39: return RIL_ERROR(0x3E);
+        case 0x3A: return RIL_ERROR(0x2E);
+        case 0x49: return RIL_ERROR(0x2F);
+        case 0x50:
+        case 0x71: return RIL_ERROR(0x0D);
+        case 0x5A: return RIL_ERROR(0x04);
+        case 0x5B:
+        case 0x62: return RIL_ERROR(0x62);
+        case 0x5C: return RIL_ERROR(0x45);
+        case 0x60: return RIL_ERROR(0x66);
+        case 0x66: return RIL_ERROR(0x06);
+        case 0x68: return RIL_ERROR(0x6A);
+        case 0x6E: return RIL_ERROR(0x0F);
+        case 0x6F: return RIL_ERROR(0x11);
+        case 0x72: return RIL_ERROR(0x0E);
+        default: return E_FAIL;
+    }
+}
+
+USHORT
+QcQmiError(
+    _In_reads_bytes_(Length) const VOID *Response,
+    _In_ ULONG Length)
+{
+    QMI_RESULT Result;
+
+    if (!QmiGetResult(Response, Length, &Result) || Result.Result == QMI_RESULT_SUCCESS)
+        return QC_QMI_ERR_NONE;
+
+    return Result.Error;
+}
 
 static
 BOOL
@@ -144,7 +236,7 @@ QcIpcOpen(
         return FALSE;
     }
 
-    QcTrace("IPC router port open\n");
+    QcTrace("IPC router port open after %lu attempt(s)\n", Attempt + 1);
     return TRUE;
 }
 
@@ -190,7 +282,8 @@ QcServiceEnsure(
                  &Found, sizeof(Found), &Returned) ||
         Found.Returned == 0)
     {
-        QcTrace("service %lu not registered yet (0x%lx)\n", QcServiceIds[Which], GetLastError());
+        QcTrace("%s (service %lu) not registered yet (0x%lx)\n",
+                QcServiceNames[Which], QcServiceIds[Which], GetLastError());
         return FALSE;
     }
 
@@ -203,28 +296,23 @@ QcServiceEnsure(
     Modem->Services[Which].Ready = TRUE;
     LeaveCriticalSection(&Modem->ServiceLock);
 
-    QcTrace("service %lu at %lu:%lu\n", QcServiceIds[Which], Addr.Node, Addr.Port);
+    QcTrace("%s (service %lu) at %lu:%lu\n", QcServiceNames[Which], QcServiceIds[Which], Addr.Node, Addr.Port);
     return TRUE;
 }
 
-/* Waits for the router to take writes again after one was refused as busy */
+/* Waits for the event thread to see the router take writes again */
 static
 BOOL
 QcWaitTxResume(
     _In_ PQC_MODEM Modem)
 {
-    ULONG Event[QC_TX_EVENT_SIZE / sizeof(ULONG)];
-    DWORD Returned;
-
-    for (;;)
+    if (WaitForSingleObject(Modem->TxResume, QC_REQUEST_TIMEOUT_MS) != WAIT_OBJECT_0)
     {
-        ZeroMemory(Event, sizeof(Event));
-        if (!QcIoctl(Modem->Ipc, QC_IOCTL_TX_EVENT, NULL, 0, Event, sizeof(Event), &Returned))
-            return FALSE;
-
-        if (Event[0] == QC_TX_EVENT_RESUME)
-            return TRUE;
+        QcTrace("router never resumed transmit\n");
+        return FALSE;
     }
+
+    return !Modem->Stopping;
 }
 
 /* Sends one framed message to a destination port */
@@ -261,9 +349,14 @@ QcSendTo(
     for (;;)
     {
         ResetEvent(Overlapped.hEvent);
+        ResetEvent(Modem->TxResume);
         Ok = WriteFile(Modem->Ipc, Frame, 8 + Length, NULL, &Overlapped);
         Ok = QcOverlapped(Modem->Ipc, Ok, &Overlapped, &Written);
-        if (Ok || GetLastError() != ERROR_BUSY || !QcWaitTxResume(Modem))
+        if (Ok || GetLastError() != ERROR_BUSY)
+            break;
+
+        QcTrace("router busy, waiting to resume transmit\n");
+        if (!QcWaitTxResume(Modem))
             break;
     }
     LeaveCriticalSection(&Modem->SendLock);
@@ -296,7 +389,7 @@ QcServiceFromAddr(
 
 /* Hands a response to the waiting request that matches server and transaction */
 static
-VOID
+BOOL
 QcCompletePending(
     _In_ PQC_MODEM Modem,
     _In_ const QC_ADDR *Src,
@@ -305,6 +398,7 @@ QcCompletePending(
     _In_ ULONG Length)
 {
     PLIST_ENTRY Entry;
+    BOOL Found = FALSE;
 
     EnterCriticalSection(&Modem->PendingLock);
     for (Entry = Modem->Pending.Flink; Entry != &Modem->Pending; Entry = Entry->Flink)
@@ -312,6 +406,7 @@ QcCompletePending(
         PQC_PENDING Pending = CONTAINING_RECORD(Entry, QC_PENDING, Link);
 
         if (Pending->Got ||
+            Pending->Aborted ||
             Pending->Transaction != Transaction ||
             Pending->Server.Node != Src->Node ||
             Pending->Server.Port != Src->Port)
@@ -324,9 +419,175 @@ QcCompletePending(
             memcpy(Pending->Response, Message, Pending->ResponseLen);
         Pending->Got = TRUE;
         SetEvent(Pending->Done);
+        Found = TRUE;
         break;
     }
     LeaveCriticalSection(&Modem->PendingLock);
+
+    return Found;
+}
+
+/* Fails every request still waiting on Server, or on any server when Server is NULL */
+static
+VOID
+QcAbortPending(
+    _In_ PQC_MODEM Modem,
+    _In_opt_ const QC_ADDR *Server)
+{
+    PLIST_ENTRY Entry;
+
+    EnterCriticalSection(&Modem->PendingLock);
+    for (Entry = Modem->Pending.Flink; Entry != &Modem->Pending; Entry = Entry->Flink)
+    {
+        PQC_PENDING Pending = CONTAINING_RECORD(Entry, QC_PENDING, Link);
+
+        if (Pending->Got || Pending->Aborted)
+            continue;
+        if (Server && (Pending->Server.Node != Server->Node || Pending->Server.Port != Server->Port))
+            continue;
+
+        QcTrace("aborting msg 0x%04X txn %u, its server went away\n", Pending->MessageId, Pending->Transaction);
+        Pending->Aborted = TRUE;
+        SetEvent(Pending->Done);
+    }
+    LeaveCriticalSection(&Modem->PendingLock);
+}
+
+/* The modem went away under us, forget every service and every cached state */
+static
+VOID
+QcModemLost(
+    _In_ PQC_MODEM Modem)
+{
+    QC_SVC i;
+
+    QcTrace("ssr: modem services removed, the modem is restarting\n");
+
+    EnterCriticalSection(&Modem->ServiceLock);
+    for (i = 0; i < QcSvcCount; i++)
+    {
+        Modem->Services[i].Ready = FALSE;
+        Modem->Services[i].Configured = FALSE;
+    }
+    LeaveCriticalSection(&Modem->ServiceLock);
+
+    QcAbortPending(Modem, NULL);
+
+    QcDmsModemLost(Modem);
+    QcNasModemLost(Modem);
+    QcUimModemLost(Modem);
+    QcVoiceModemLost(Modem);
+
+    InterlockedExchange(&Modem->Restarted, 1);
+    QcTrace("ssr: state reset, waiting for the services to return\n");
+}
+
+static
+VOID
+QcServerEvent(
+    _In_ PQC_MODEM Modem,
+    _In_ const QC_ROUTER_EVENT *Event)
+{
+    QC_SVC i, Which = QcSvcCount;
+
+    if (Event->Event == QC_ROUTER_EVENT_NEW_SERVER)
+    {
+        for (i = 0; i < QcSvcCount; i++)
+        {
+            if (QcServiceIds[i] == Event->ServiceId && QcServiceVersions[i] == (Event->Instance & 0xFF))
+                Which = i;
+        }
+
+        if (Which == QcSvcCount)
+            return;
+
+        QcTrace("router: %s server up at %lu:%lu\n", QcServiceNames[Which], Event->Addr.Node, Event->Addr.Port);
+        QcKickSetup(Modem);
+        return;
+    }
+
+    EnterCriticalSection(&Modem->ServiceLock);
+    for (i = 0; i < QcSvcCount; i++)
+    {
+        if (Modem->Services[i].Ready &&
+            Modem->Services[i].ServiceId == Event->ServiceId &&
+            Modem->Services[i].Addr.Node == Event->Addr.Node &&
+            Modem->Services[i].Addr.Port == Event->Addr.Port)
+        {
+            Which = i;
+            Modem->Services[i].Ready = FALSE;
+            Modem->Services[i].Configured = FALSE;
+        }
+    }
+    LeaveCriticalSection(&Modem->ServiceLock);
+
+    if (Which == QcSvcCount)
+        return;
+
+    QcTrace("router: %s server at %lu:%lu removed\n", QcServiceNames[Which], Event->Addr.Node, Event->Addr.Port);
+    QcAbortPending(Modem, &Event->Addr);
+
+    /* Losing a core service means the modem itself restarted */
+    if (Which != QcSvcWds && InterlockedExchange(&Modem->ModemUp, 0) != 0)
+        QcModemLost(Modem);
+
+    QcKickSetup(Modem);
+}
+
+/* Keeps one event read outstanding on the router port for the life of the modem */
+static
+DWORD
+WINAPI
+QcEventThread(
+    _In_ LPVOID Parameter)
+{
+    PQC_MODEM Modem = Parameter;
+    QC_ROUTER_EVENT Event;
+    OVERLAPPED Overlapped;
+    DWORD Returned;
+    BOOL Ok;
+
+    ZeroMemory(&Overlapped, sizeof(Overlapped));
+    Overlapped.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!Overlapped.hEvent)
+        return 0;
+
+    while (!Modem->Stopping)
+    {
+        ZeroMemory(&Event, sizeof(Event));
+        ResetEvent(Overlapped.hEvent);
+        Ok = DeviceIoControl(Modem->Ipc, QC_IOCTL_TX_EVENT, NULL, 0, &Event, sizeof(Event), NULL, &Overlapped);
+        if (!QcOverlapped(Modem->Ipc, Ok, &Overlapped, &Returned))
+        {
+            if (!Modem->Stopping)
+                QcTrace("router event read failed (%lu), event thread exits\n", GetLastError());
+            break;
+        }
+
+        if (Modem->Stopping)
+            break;
+
+        switch (Event.Event)
+        {
+            case QC_ROUTER_EVENT_RESUME_TX:
+                SetEvent(Modem->TxResume);
+                break;
+
+            case QC_ROUTER_EVENT_NEW_SERVER:
+            case QC_ROUTER_EVENT_DEL_SERVER:
+                QcServerEvent(Modem, &Event);
+                break;
+
+            default:
+                QcTrace("router event %lu ignored\n", Event.Event);
+                break;
+        }
+    }
+
+    /* Nobody waits for transmit any more */
+    SetEvent(Modem->TxResume);
+    CloseHandle(Overlapped.hEvent);
+    return 0;
 }
 
 static
@@ -372,13 +633,20 @@ QcReceiveThread(
         Length = Read - 8;
 
         if (!QmiMessageValid(Buffer + 8, Length))
+        {
+            QcTrace("malformed message from %lu:%lu, %lu bytes, dropped\n", Src.Node, Src.Port, Length);
             continue;
+        }
 
         Header = (const QMI_HEADER *)(Buffer + 8);
 
         if (Header->Type == QMI_TYPE_RESPONSE)
         {
-            QcCompletePending(Modem, &Src, Header->TransactionId, Buffer + 8, Length);
+            if (!QcCompletePending(Modem, &Src, Header->TransactionId, Buffer + 8, Length))
+            {
+                QcTrace("late response from %lu:%lu msg 0x%04X txn %u dropped\n",
+                        Src.Node, Src.Port, Header->MessageId, Header->TransactionId);
+            }
             continue;
         }
 
@@ -388,10 +656,19 @@ QcReceiveThread(
             Which = QcServiceFromAddr(Modem, &Src);
             LeaveCriticalSection(&Modem->ServiceLock);
 
-            if (Which != QcSvcCount)
-                QcIndication(Modem, Which, Header->MessageId, Buffer + 8, Length);
+            if (Which == QcSvcCount)
+            {
+                QcTrace("ind from unknown port %lu:%lu msg 0x%04X dropped\n", Src.Node, Src.Port, Header->MessageId);
+                continue;
+            }
+
+            QcTrace("ind %s 0x%04X len %u\n", QcServiceNames[Which], Header->MessageId, Header->Length);
+            QcIndication(Modem, Which, Header->MessageId, Buffer + 8, Length);
         }
     }
+
+    if (!Modem->Stopping)
+        QcTrace("router read failed (%lu), receive thread exits\n", GetLastError());
 
 Exit:
     if (Event)
@@ -415,12 +692,16 @@ QcQmiRequest(
     QC_PENDING Pending;
     QC_ADDR Server;
     QMI_RESULT Result;
+    HRESULT hr;
     DWORD Wait;
 
     *ResponseLen = 0;
 
     if (!QcServiceEnsure(Modem, Which))
-        return RIL_E_RADIONOTAVAILABLE;
+    {
+        QcTrace("-> %s 0x%04X not sent, service not available\n", QcServiceNames[Which], Header->MessageId);
+        return RIL_E_RADIONOTPRESENT;
+    }
 
     EnterCriticalSection(&Modem->ServiceLock);
     Server = Modem->Services[Which].Addr;
@@ -444,13 +725,18 @@ QcQmiRequest(
     InsertTailList(&Modem->Pending, &Pending.Link);
     LeaveCriticalSection(&Modem->PendingLock);
 
+    QcTrace("-> %s 0x%04X txn %u len %u\n", QcServiceNames[Which], Pending.MessageId,
+            Pending.Transaction, Header->Length);
+
     if (!QcSendTo(Modem, &Server, Message, MessageLength))
     {
+        QcTrace("-> %s 0x%04X txn %u send failed (%lu)\n", QcServiceNames[Which], Pending.MessageId,
+                Pending.Transaction, GetLastError());
         EnterCriticalSection(&Modem->PendingLock);
         RemoveEntryList(&Pending.Link);
         LeaveCriticalSection(&Modem->PendingLock);
         CloseHandle(Pending.Done);
-        return RIL_E_RADIONOTAVAILABLE;
+        return RIL_E_RADIONOTPRESENT;
     }
 
     Wait = WaitForSingleObject(Pending.Done, QC_REQUEST_TIMEOUT_MS);
@@ -460,15 +746,37 @@ QcQmiRequest(
     LeaveCriticalSection(&Modem->PendingLock);
     CloseHandle(Pending.Done);
 
+    if (Pending.Aborted)
+    {
+        QcTrace("<- %s 0x%04X txn %u aborted, the modem went away\n", QcServiceNames[Which],
+                Pending.MessageId, Pending.Transaction);
+        return RIL_E_RADIONOTPRESENT;
+    }
+
     if (Wait != WAIT_OBJECT_0 || !Pending.Got)
+    {
+        QcTrace("<- %s 0x%04X txn %u timed out after %u ms\n", QcServiceNames[Which],
+                Pending.MessageId, Pending.Transaction, QC_REQUEST_TIMEOUT_MS);
         return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+    }
 
     *ResponseLen = Pending.ResponseLen;
 
-    if (QmiGetResult(Response, Pending.ResponseLen, &Result) && Result.Result != QMI_RESULT_SUCCESS)
-        return RIL_ERROR(0x80 | (Result.Error & 0x7F));
+    if (!QmiGetResult(Response, Pending.ResponseLen, &Result))
+    {
+        QcTrace("<- %s 0x%04X txn %u len %lu, no result record\n", QcServiceNames[Which],
+                Pending.MessageId, Pending.Transaction, Pending.ResponseLen);
+        return S_OK;
+    }
 
-    return S_OK;
+    QcTrace("<- %s 0x%04X txn %u result %u error 0x%x\n", QcServiceNames[Which],
+            Pending.MessageId, Pending.Transaction, Result.Result, Result.Error);
+
+    if (Result.Result == QMI_RESULT_SUCCESS)
+        return S_OK;
+
+    hr = QcMapQmiError(Result.Error);
+    return SUCCEEDED(hr) ? E_FAIL : hr;
 }
 
 HRESULT
@@ -494,6 +802,18 @@ QcIndication(
 {
     switch (Which)
     {
+        case QcSvcDms:
+            QcDmsIndication(Modem, MessageId, Message, Length);
+            break;
+
+        case QcSvcNas:
+            QcNasIndication(Modem, MessageId, Message, Length);
+            break;
+
+        case QcSvcUim:
+            QcUimIndication(Modem, MessageId, Message, Length);
+            break;
+
         case QcSvcVoice:
             QcVoiceIndication(Modem, MessageId, Message, Length);
             break;
@@ -503,6 +823,7 @@ QcIndication(
             break;
 
         default:
+            QcTrace("ind %s 0x%04X not handled\n", QcServiceNames[Which], MessageId);
             break;
     }
 }
@@ -512,5 +833,6 @@ QcIpcStartReceive(
     _In_ PQC_MODEM Modem)
 {
     Modem->RxThread = CreateThread(NULL, 0, QcReceiveThread, Modem, 0, NULL);
-    return Modem->RxThread != NULL;
+    Modem->EventThread = CreateThread(NULL, 0, QcEventThread, Modem, 0, NULL);
+    return Modem->RxThread != NULL && Modem->EventThread != NULL;
 }
