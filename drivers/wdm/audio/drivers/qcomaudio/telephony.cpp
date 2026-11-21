@@ -10,7 +10,8 @@
  * filter it reads the call state, turns the call path on and off, holds it,
  * moves it between providers and mutes the uplink. On the topology filter it
  * picks the render and capture endpoints the call uses and its volume. One
- * modem means one provider and one call path, so the state lives here.
+ * modem means one provider and one call path, so the state lives here. The
+ * lock is a kernel mutex since the call path talks to the dsp at PASSIVE_LEVEL.
  */
 
 #include "precomp.h"
@@ -19,7 +20,7 @@
 
 typedef struct _QCA_CALL
 {
-    FAST_MUTEX Lock;
+    KMUTEX Lock;
     TELEPHONY_CALLTYPE CallType;
     TELEPHONY_CALLSTATE CallState;
     TELEPHONY_CALLSTATE StateBeforeChange;
@@ -42,24 +43,34 @@ TelephonyInitialize(VOID)
     PAGED_CODE();
 
     RtlZeroMemory(&QcaCall, sizeof(QcaCall));
-    ExInitializeFastMutex(&QcaCall.Lock);
+    KeInitializeMutex(&QcaCall.Lock, 0);
     QcaCall.CallType = TELEPHONY_CALLTYPE_CIRCUITSWITCHED;
     QcaCall.CallState = TELEPHONY_CALLSTATE_DISABLED;
     QcaCall.Volume = QCA_VOLUME_MAX;
 }
 
-/* Starts the call audio of the modem on the dsp, toward the chosen endpoints */
+/* Starts the call audio of the modem on the dsp, toward the board call ports */
 static
 NTSTATUS
 TelephonyStartPath(
     _In_ TELEPHONY_CALLTYPE CallType)
 {
+    NTSTATUS Status;
+
     PAGED_CODE();
 
-    /* The voice session on the dsp and the earpiece and microphone codec are
-       not driven yet, so a call cannot carry audio */
-    QCA_LOG("call audio for call type %u not available: no dsp voice session\n", CallType);
-    return STATUS_NOT_SUPPORTED;
+    /* Only the modem's circuit switched voice session is driven so far */
+    if (CallType != TELEPHONY_CALLTYPE_CIRCUITSWITCHED)
+    {
+        QCA_LOG("call audio for call type %u not available\n", CallType);
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    QcQ6VoiceSetTxMute(QcaCall.MuteTx ? TRUE : FALSE, 0);
+    Status = QcQ6VoiceStart();
+    if (!NT_SUCCESS(Status))
+        QCA_LOG("dsp voice session did not start 0x%08lx\n", Status);
+    return Status;
 }
 
 static
@@ -67,6 +78,8 @@ VOID
 TelephonyStopPath(VOID)
 {
     PAGED_CODE();
+
+    QcQ6VoiceStop();
 }
 
 NTSTATUS
@@ -109,7 +122,7 @@ WavePropertyTelephony(PPCPROPERTY_REQUEST Request)
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    ExAcquireFastMutex(&QcaCall.Lock);
+    KeWaitForSingleObject(&QcaCall.Lock, Executive, KernelMode, FALSE, NULL);
 
     if (Request->Verb & KSPROPERTY_TYPE_GET)
     {
@@ -227,6 +240,7 @@ WavePropertyTelephony(PPCPROPERTY_REQUEST Request)
 
             case KSPROPERTY_TELEPHONY_MUTE_TX:
                 QcaCall.MuteTx = *(PBOOL)Request->Value ? TRUE : FALSE;
+                Status = QcQ6VoiceSetTxMute(QcaCall.MuteTx ? TRUE : FALSE, 0);
                 break;
 
             default:
@@ -239,7 +253,7 @@ WavePropertyTelephony(PPCPROPERTY_REQUEST Request)
         Status = STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    ExReleaseFastMutex(&QcaCall.Lock);
+    KeReleaseMutex(&QcaCall.Lock, FALSE);
     return Status;
 }
 
@@ -274,7 +288,7 @@ TopoPropertyTelephony(PPCPROPERTY_REQUEST Request)
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    ExAcquireFastMutex(&QcaCall.Lock);
+    KeWaitForSingleObject(&QcaCall.Lock, Executive, KernelMode, FALSE, NULL);
 
     if (Request->PropertyItem->Id == KSPROPERTY_TELEPHONY_ENDPOINTIDPAIR)
     {
@@ -338,7 +352,7 @@ TopoPropertyTelephony(PPCPROPERTY_REQUEST Request)
         }
     }
 
-    ExReleaseFastMutex(&QcaCall.Lock);
+    KeReleaseMutex(&QcaCall.Lock, FALSE);
     return Status;
 }
 

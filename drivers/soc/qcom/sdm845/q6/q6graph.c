@@ -14,8 +14,10 @@
  * (memory map, open, route, media format, run). The buffer is fed to the dsp
  * one period at a time and each period is handed back on its write done.
  *
- * The backend always runs 48 kHz, 16 bit, two slots on SD1; the ASM and the
- * matrix convert whatever rate and channel count the stream uses.
+ * The backend always runs 48 kHz, 16 bit, two slots; the ASM and the matrix
+ * convert whatever rate and channel count the stream uses. The voice path uses
+ * the same quaternary MI2S ports, so each port, the shared bit clock and the
+ * amp are counted and only the first user starts them.
  */
 
 #include <ntddk.h>
@@ -40,10 +42,10 @@
 #define AFE_MODULE_CLOCK_SET            0x0001028FUL
 #define AFE_PARAM_ID_CLOCK_SET          0x00010290UL
 #define AFE_PORT_ID_QUAT_MI2S_RX        0x1006
+#define AFE_PORT_ID_QUAT_MI2S_TX        0x1007
 
 /* I2S port config values */
 #define Q6_I2S_CONFIG_VERSION           1
-#define Q6_I2S_LINE_SD1                 2
 #define Q6_I2S_STEREO                   1
 #define Q6_I2S_WS_INTERNAL              1
 
@@ -83,6 +85,7 @@
 #define Q6_STREAM                       1
 #define Q6_PCM_MAX_CHANNELS             8
 #define Q6_CMD_TIMEOUT_MS               1000
+#define Q6_LINK_COUNT                   2
 
 /* Channel map codes */
 #define Q6_CHANNEL_FL                   1
@@ -236,6 +239,14 @@ C_ASSERT(sizeof(ADM_MATRIX_MAP) == 16);
 C_ASSERT(sizeof(AFE_CLOCK_SET) == 20);
 C_ASSERT(sizeof(AFE_I2S_CFG) == 20);
 
+/* One backend port, the I2S data line the board wires to it and its users */
+typedef struct _Q6_AFE_LINK
+{
+    USHORT PortId;
+    USHORT Line;
+    ULONG Users;
+} Q6_AFE_LINK, *PQ6_AFE_LINK;
+
 typedef struct _Q6_GRAPH
 {
     APR_HANDLE Afe;
@@ -248,9 +259,12 @@ typedef struct _Q6_GRAPH
     ULONG RspOpcode;
     volatile LONG CmdStatus;
 
+    Q6_AFE_LINK Links[Q6_LINK_COUNT];
+    ULONG ClockUsers;
+    ULONG AmpUsers;
+
     USHORT CoppId;
-    BOOLEAN AfeRunning;
-    BOOLEAN ClockOn;
+    BOOLEAN LinkHeld;
     BOOLEAN StreamOpen;
     BOOLEAN AmpOn;
     ULONG MemMapHandle;
@@ -479,9 +493,74 @@ Q6AfeClock(
 }
 
 static
+PQ6_AFE_LINK
+Q6FindLink(
+    _In_ PQ6_GRAPH Graph,
+    _In_ USHORT PortId)
+{
+    ULONG i;
+
+    for (i = 0; i < Q6_LINK_COUNT; i++)
+    {
+        if (Graph->Links[i].PortId == PortId)
+            return &Graph->Links[i];
+    }
+    return NULL;
+}
+
+/* Rx and Tx share the interface bit clock, the first user turns it on */
+static
 NTSTATUS
-Q6AfeStart(
+Q6AfeClockGet(
     _In_ PQ6_GRAPH Graph)
+{
+    NTSTATUS Status;
+
+    if (Graph->ClockUsers++)
+        return STATUS_SUCCESS;
+
+    Status = Q6AfeClock(Graph, TRUE);
+    if (!NT_SUCCESS(Status))
+    {
+        QC_LOG("afe quaternary mi2s bit clock failed 0x%08lx", Status);
+        Graph->ClockUsers = 0;
+    }
+    return Status;
+}
+
+static
+VOID
+Q6AfeClockPut(
+    _In_ PQ6_GRAPH Graph)
+{
+    if (!Graph->ClockUsers)
+        return;
+
+    Graph->ClockUsers -= 1;
+    if (!Graph->ClockUsers)
+        Q6AfeClock(Graph, FALSE);
+}
+
+static
+VOID
+Q6AfeDeviceStop(
+    _In_ PQ6_GRAPH Graph,
+    _In_ USHORT PortId)
+{
+    AFE_DEVICE_START Stop;
+
+    RtlZeroMemory(&Stop, sizeof(Stop));
+    Stop.PortId = PortId;
+    Q6GraphCall(Graph, Graph->Afe, APR_SVC_AFE, 0, 0,
+                AFE_PORT_CMD_DEVICE_STOP, 0, PortId, &Stop, sizeof(Stop));
+}
+
+/* Clocks the interface, configures the I2S line of the port and starts it once */
+static
+NTSTATUS
+Q6AfeLinkGet(
+    _In_ PQ6_GRAPH Graph,
+    _In_ USHORT PortId)
 {
     struct
     {
@@ -490,51 +569,114 @@ Q6AfeStart(
         AFE_I2S_CFG Cfg;
     } SetParam;
     AFE_DEVICE_START Start;
+    PQ6_AFE_LINK Link;
     NTSTATUS Status;
 
-    Status = Q6AfeClock(Graph, TRUE);
-    if (!NT_SUCCESS(Status))
+    Link = Q6FindLink(Graph, PortId);
+    if (!Link || !Link->Line)
     {
-        QC_LOG("afe quaternary mi2s bit clock failed 0x%08lx", Status);
-        return Status;
+        QC_LOG("afe port 0x%x has no board line", PortId);
+        return STATUS_NOT_SUPPORTED;
     }
-    Graph->ClockOn = TRUE;
+
+    if (Link->Users)
+    {
+        Link->Users++;
+        return STATUS_SUCCESS;
+    }
+
+    Status = Q6AfeClockGet(Graph);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     RtlZeroMemory(&SetParam, sizeof(SetParam));
-    SetParam.Param.PortId = AFE_PORT_ID_QUAT_MI2S_RX;
+    SetParam.Param.PortId = PortId;
     SetParam.Param.PayloadSize = sizeof(SetParam.Data) + sizeof(SetParam.Cfg);
     SetParam.Data.ModuleId = AFE_MODULE_AUDIO_DEV_INTERFACE;
     SetParam.Data.ParamId = AFE_PARAM_ID_I2S_CONFIG;
     SetParam.Data.ParamSize = sizeof(SetParam.Cfg);
     SetParam.Cfg.MinorVersion = Q6_I2S_CONFIG_VERSION;
     SetParam.Cfg.BitWidth = Q6_BACKEND_BITS;
-    SetParam.Cfg.ChannelMode = Q6_I2S_LINE_SD1;
+    SetParam.Cfg.ChannelMode = Link->Line;
     SetParam.Cfg.MonoStereo = Q6_I2S_STEREO;
     SetParam.Cfg.WsSource = Q6_I2S_WS_INTERNAL;
     SetParam.Cfg.SampleRate = Q6_BACKEND_RATE;
 
     Status = Q6GraphCall(Graph, Graph->Afe, APR_SVC_AFE, 0, 0,
-                         AFE_PORT_CMD_SET_PARAM_V2, 0, AFE_PORT_ID_QUAT_MI2S_RX,
+                         AFE_PORT_CMD_SET_PARAM_V2, 0, PortId,
                          &SetParam, sizeof(SetParam));
     if (!NT_SUCCESS(Status))
     {
-        QC_LOG("afe mi2s set-param failed 0x%08lx", Status);
+        QC_LOG("afe port 0x%x i2s set-param failed 0x%08lx", PortId, Status);
+        Q6AfeClockPut(Graph);
         return Status;
     }
 
     RtlZeroMemory(&Start, sizeof(Start));
-    Start.PortId = AFE_PORT_ID_QUAT_MI2S_RX;
+    Start.PortId = PortId;
     Status = Q6GraphCall(Graph, Graph->Afe, APR_SVC_AFE, 0, 0,
-                         AFE_PORT_CMD_DEVICE_START, 0, AFE_PORT_ID_QUAT_MI2S_RX,
+                         AFE_PORT_CMD_DEVICE_START, 0, PortId,
                          &Start, sizeof(Start));
     if (!NT_SUCCESS(Status))
     {
-        QC_LOG("afe device start failed 0x%08lx", Status);
+        QC_LOG("afe port 0x%x start failed 0x%08lx", PortId, Status);
+        Q6AfeClockPut(Graph);
         return Status;
     }
 
-    Graph->AfeRunning = TRUE;
+    Link->Users = 1;
+    QC_LOG("afe port 0x%x running on line 0x%x", PortId, Link->Line);
     return STATUS_SUCCESS;
+}
+
+static
+VOID
+Q6AfeLinkPut(
+    _In_ PQ6_GRAPH Graph,
+    _In_ USHORT PortId)
+{
+    PQ6_AFE_LINK Link = Q6FindLink(Graph, PortId);
+
+    if (!Link || !Link->Users)
+        return;
+
+    Link->Users -= 1;
+    if (Link->Users)
+        return;
+
+    Q6AfeDeviceStop(Graph, PortId);
+    Q6AfeClockPut(Graph);
+    QC_LOG("afe port 0x%x stopped", PortId);
+}
+
+/* The amp hangs off the speaker port and goes on once that port clocks */
+static
+VOID
+Q6AmpGet(
+    _In_ PQ6_GRAPH Graph)
+{
+    NTSTATUS Status;
+
+    if (Graph->AmpUsers++)
+        return;
+
+    /* A failed start leaves the amp off; the stop at the last user is then a no-op */
+    Status = QcAmpStart(Q6_BACKEND_RATE, Q6_BACKEND_BITS, Q6_BACKEND_CHANNELS);
+    if (!NT_SUCCESS(Status))
+        QC_LOG("speaker amp start failed 0x%08lx", Status);
+}
+
+static
+VOID
+Q6AmpPut(
+    _In_ PQ6_GRAPH Graph)
+{
+    if (!Graph->AmpUsers)
+        return;
+
+    Graph->AmpUsers -= 1;
+    if (!Graph->AmpUsers)
+        QcAmpStop();
 }
 
 static
@@ -690,11 +832,9 @@ VOID
 Q6GraphTeardown(
     _In_ PQ6_GRAPH Graph)
 {
-    AFE_DEVICE_START Stop;
-
     if (Graph->AmpOn)
     {
-        QcAmpStop();
+        Q6AmpPut(Graph);
         Graph->AmpOn = FALSE;
     }
 
@@ -716,25 +856,18 @@ Q6GraphTeardown(
         Graph->CoppId = 0;
     }
 
-    if (Graph->AfeRunning)
+    if (Graph->LinkHeld)
     {
-        RtlZeroMemory(&Stop, sizeof(Stop));
-        Stop.PortId = AFE_PORT_ID_QUAT_MI2S_RX;
-        Q6GraphCall(Graph, Graph->Afe, APR_SVC_AFE, 0, 0,
-                    AFE_PORT_CMD_DEVICE_STOP, 0, AFE_PORT_ID_QUAT_MI2S_RX, &Stop, sizeof(Stop));
-        Graph->AfeRunning = FALSE;
-    }
-
-    if (Graph->ClockOn)
-    {
-        Q6AfeClock(Graph, FALSE);
-        Graph->ClockOn = FALSE;
+        Q6AfeLinkPut(Graph, AFE_PORT_ID_QUAT_MI2S_RX);
+        Graph->LinkHeld = FALSE;
     }
 }
 
 VOID
 NTAPI
-QcQ6GraphInit(VOID)
+QcQ6GraphInit(
+    _In_ ULONG RxLine,
+    _In_ ULONG TxLine)
 {
     PQ6_GRAPH Graph = &Q6Graph;
 
@@ -742,6 +875,11 @@ QcQ6GraphInit(VOID)
     KeInitializeEvent(&Graph->Cmd, NotificationEvent, FALSE);
     KeInitializeMutex(&Graph->Serial, 0);
     KeInitializeSpinLock(&Graph->NotifyLock);
+
+    Graph->Links[0].PortId = AFE_PORT_ID_QUAT_MI2S_RX;
+    Graph->Links[0].Line = (USHORT)RxLine;
+    Graph->Links[1].PortId = AFE_PORT_ID_QUAT_MI2S_TX;
+    Graph->Links[1].Line = (USHORT)TxLine;
 
     Graph->Afe = QcAprRegister(APR_DOMAIN_ADSP, APR_SVC_AFE, Q6GraphReceive, Graph);
     Graph->Adm = QcAprRegister(APR_DOMAIN_ADSP, APR_SVC_ADM, Q6GraphReceive, Graph);
@@ -799,9 +937,12 @@ QcQ6PlaybackStart(
     if (!NT_SUCCESS(Status))
         QC_LOG("speaker amp not ready 0x%08lx, the dsp graph still runs", Status);
 
-    Status = Q6AfeStart(Graph);
+    Status = Q6AfeLinkGet(Graph, AFE_PORT_ID_QUAT_MI2S_RX);
     if (NT_SUCCESS(Status))
+    {
+        Graph->LinkHeld = TRUE;
         Status = Q6AsmMapBuffer(Graph);
+    }
     if (NT_SUCCESS(Status))
         Status = Q6AsmOpen(Graph);
     if (NT_SUCCESS(Status))
@@ -821,8 +962,8 @@ QcQ6PlaybackStart(
     for (i = 0; i < Graph->Periods; i++)
         Q6GraphSubmitPeriod(Graph, i);
 
-    if (NT_SUCCESS(QcAmpStart(Q6_BACKEND_RATE, Q6_BACKEND_BITS, Q6_BACKEND_CHANNELS)))
-        Graph->AmpOn = TRUE;
+    Q6AmpGet(Graph);
+    Graph->AmpOn = TRUE;
 
     QC_LOG("q6 playback started: %lu hz, %lu ch, %lu bit, %lu periods of %lu bytes",
            Rate, Channels, Bits, Graph->Periods, PeriodBytes);
@@ -861,4 +1002,57 @@ NTAPI
 QcQ6PlaybackPosition(VOID)
 {
     return (ULONGLONG)Q6Graph.BytesConsumed;
+}
+
+NTSTATUS
+NTAPI
+QcQ6GraphLinkOpen(
+    _In_ USHORT PortId)
+{
+    PQ6_GRAPH Graph = &Q6Graph;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    if (!Graph->Afe || !QcAprIsConnected())
+        return STATUS_DEVICE_NOT_READY;
+
+    KeWaitForSingleObject(&Graph->Serial, Executive, KernelMode, FALSE, NULL);
+
+    if (PortId == AFE_PORT_ID_QUAT_MI2S_RX)
+    {
+        Status = QcAmpPrepare();
+        if (!NT_SUCCESS(Status))
+            QC_LOG("speaker amp not ready 0x%08lx, the port still runs", Status);
+    }
+
+    Status = Q6AfeLinkGet(Graph, PortId);
+    if (NT_SUCCESS(Status) && PortId == AFE_PORT_ID_QUAT_MI2S_RX)
+        Q6AmpGet(Graph);
+
+    KeReleaseMutex(&Graph->Serial, FALSE);
+    return Status;
+}
+
+VOID
+NTAPI
+QcQ6GraphLinkClose(
+    _In_ USHORT PortId)
+{
+    PQ6_GRAPH Graph = &Q6Graph;
+    PQ6_AFE_LINK Link;
+
+    PAGED_CODE();
+
+    KeWaitForSingleObject(&Graph->Serial, Executive, KernelMode, FALSE, NULL);
+
+    Link = Q6FindLink(Graph, PortId);
+    if (Link && Link->Users)
+    {
+        if (PortId == AFE_PORT_ID_QUAT_MI2S_RX)
+            Q6AmpPut(Graph);
+        Q6AfeLinkPut(Graph, PortId);
+    }
+
+    KeReleaseMutex(&Graph->Serial, FALSE);
 }

@@ -13,9 +13,23 @@ typedef VOID
     _In_opt_ PVOID Context,
     _In_ ULONG Period);
 
+/* Lines are the AFE I2S data line masks the board wires to each quaternary MI2S port */
 VOID
 NTAPI
-QcQ6GraphInit(VOID);
+QcQ6GraphInit(
+    _In_ ULONG RxLine,
+    _In_ ULONG TxLine);
+
+/* Starts a backend AFE port for another client, shared with playback by count */
+NTSTATUS
+NTAPI
+QcQ6GraphLinkOpen(
+    _In_ USHORT PortId);
+
+VOID
+NTAPI
+QcQ6GraphLinkClose(
+    _In_ USHORT PortId);
 
 /* Brings up the AFE/ADM/ASM playback graph over the shared pcm buffer */
 NTSTATUS
