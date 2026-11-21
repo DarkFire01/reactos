@@ -17,6 +17,10 @@
 #define PH_PART_TEXT_MAX            160
 #define PH_MAX_PARTS                10
 #define PH_MAX_ASSEMBLIES           8
+#define PH_PART_DATA_MAX            140
+
+/* WAP connectionless push, WDP port for WSP over SMS */
+#define PH_WAP_PUSH_PORT            2948
 
 /* 3GPP TS 23.038 default alphabet */
 static const WCHAR PhGsm7Basic[128] =
@@ -71,6 +75,9 @@ typedef struct _PH_ASSEMBLY
     FILETIME Timestamp;
     BOOL Have[PH_MAX_PARTS];
     WCHAR Text[PH_MAX_PARTS][PH_PART_TEXT_MAX + 1];
+    BOOL Binary;
+    BYTE DataLength[PH_MAX_PARTS];
+    BYTE Data[PH_MAX_PARTS][PH_PART_DATA_MAX];
 } PH_ASSEMBLY, *PPH_ASSEMBLY;
 
 static CRITICAL_SECTION PhSmsLock;
@@ -264,25 +271,63 @@ PhParseConcat(
     return FALSE;
 }
 
-/* Collects one part, fills Message with the full text once the last part is in */
+/* Destination port from the application port addressing element */
 static
 BOOL
-PhAssemblePart(
-    _In_ LPCWSTR Text,
-    _In_ USHORT Reference,
-    _In_ BYTE Total,
-    _In_ BYTE Sequence,
-    _Inout_ PPHONEOM_MESSAGE Message)
+PhParsePort(
+    _In_ const RIL_MESSAGE *Message,
+    _Out_ PUSHORT Port)
 {
-    PPH_ASSEMBLY Assembly = NULL, Oldest = NULL;
-    ULONGLONG Now = GetTickCount64();
-    BOOL Complete = FALSE;
-    DWORD i;
+    const BYTE *Header = Message->u.Deliver.Header;
+    DWORD Length = min(Message->u.Deliver.HeaderLength, RIL_MESSAGE_HEADER_MAX);
+    DWORD Offset = 0;
+    BYTE Id, Size;
 
-    if (Total > PH_MAX_PARTS)
+    if (Length == 0)
         return FALSE;
 
-    EnterCriticalSection(&PhSmsLock);
+    if (Header[0] == Length - 1)
+        Offset = 1;
+
+    while (Offset + 2 <= Length)
+    {
+        Id = Header[Offset];
+        Size = Header[Offset + 1];
+        Offset += 2;
+
+        if (Offset + Size > Length)
+            break;
+
+        /* 8 bit ports, then 16 bit ports, destination first */
+        if (Id == 0x04 && Size == 2)
+        {
+            *Port = Header[Offset];
+            return TRUE;
+        }
+
+        if (Id == 0x05 && Size == 4)
+        {
+            *Port = (USHORT)((Header[Offset] << 8) | Header[Offset + 1]);
+            return TRUE;
+        }
+
+        Offset += Size;
+    }
+
+    return FALSE;
+}
+
+/* The partial message with this key, or a fresh slot that replaces the stalest one */
+static
+PPH_ASSEMBLY
+PhFindAssembly(
+    _In_ USHORT Reference,
+    _In_ BYTE Total,
+    _In_ BOOL Binary,
+    _In_ const PHONEOM_MESSAGE *Message)
+{
+    PPH_ASSEMBLY Assembly = NULL, Oldest = NULL;
+    DWORD i;
 
     for (i = 0; i < PH_MAX_ASSEMBLIES; i++)
     {
@@ -291,6 +336,7 @@ PhAssemblePart(
         if (Entry->InUse &&
             Entry->Reference == Reference &&
             Entry->Total == Total &&
+            Entry->Binary == Binary &&
             !_wcsicmp(Entry->Address, Message->Address))
         {
             Assembly = Entry;
@@ -309,11 +355,35 @@ PhAssemblePart(
         Assembly->InUse = TRUE;
         Assembly->Reference = Reference;
         Assembly->Total = Total;
+        Assembly->Binary = Binary;
         Assembly->Timestamp = Message->Timestamp;
         StringCchCopyW(Assembly->Address, _countof(Assembly->Address), Message->Address);
     }
 
-    Assembly->LastSeen = Now;
+    Assembly->LastSeen = GetTickCount64();
+    return Assembly;
+}
+
+/* Collects one part, fills Message with the full text once the last part is in */
+static
+BOOL
+PhAssemblePart(
+    _In_ LPCWSTR Text,
+    _In_ USHORT Reference,
+    _In_ BYTE Total,
+    _In_ BYTE Sequence,
+    _Inout_ PPHONEOM_MESSAGE Message)
+{
+    PPH_ASSEMBLY Assembly;
+    BOOL Complete = FALSE;
+    DWORD i;
+
+    if (Total > PH_MAX_PARTS)
+        return FALSE;
+
+    EnterCriticalSection(&PhSmsLock);
+
+    Assembly = PhFindAssembly(Reference, Total, FALSE, Message);
     if (!Assembly->Have[Sequence - 1])
     {
         Assembly->Have[Sequence - 1] = TRUE;
@@ -326,6 +396,55 @@ PhAssemblePart(
         Message->Text[0] = UNICODE_NULL;
         for (i = 0; i < Assembly->Total; i++)
             StringCchCatW(Message->Text, _countof(Message->Text), Assembly->Text[i]);
+
+        Message->Timestamp = Assembly->Timestamp;
+        Assembly->InUse = FALSE;
+        Complete = TRUE;
+    }
+
+    LeaveCriticalSection(&PhSmsLock);
+    return Complete;
+}
+
+/* Same as PhAssemblePart for 8 bit user data, Out gets the joined bytes */
+static
+BOOL
+PhAssembleData(
+    _In_reads_bytes_(Size) const BYTE *Data,
+    _In_ DWORD Size,
+    _In_ USHORT Reference,
+    _In_ BYTE Total,
+    _In_ BYTE Sequence,
+    _Inout_ PPHONEOM_MESSAGE Message,
+    _Out_writes_bytes_to_(PH_MAX_PARTS * PH_PART_DATA_MAX, *OutSize) PBYTE Out,
+    _Out_ PDWORD OutSize)
+{
+    PPH_ASSEMBLY Assembly;
+    BOOL Complete = FALSE;
+    DWORD i;
+
+    *OutSize = 0;
+    if (Total > PH_MAX_PARTS)
+        return FALSE;
+
+    EnterCriticalSection(&PhSmsLock);
+
+    Assembly = PhFindAssembly(Reference, Total, TRUE, Message);
+    if (!Assembly->Have[Sequence - 1])
+    {
+        Assembly->Have[Sequence - 1] = TRUE;
+        Assembly->Received++;
+        Assembly->DataLength[Sequence - 1] = (BYTE)min(Size, PH_PART_DATA_MAX);
+        CopyMemory(Assembly->Data[Sequence - 1], Data, Assembly->DataLength[Sequence - 1]);
+    }
+
+    if (Assembly->Received == Assembly->Total)
+    {
+        for (i = 0; i < Assembly->Total; i++)
+        {
+            CopyMemory(Out + *OutSize, Assembly->Data[i], Assembly->DataLength[i]);
+            *OutSize += Assembly->DataLength[i];
+        }
 
         Message->Timestamp = Assembly->Timestamp;
         Assembly->InUse = FALSE;
@@ -362,6 +481,59 @@ PhAckMessage(
         DPRINT1("Message ack %lu failed 0x%lx\n", Notification->AckId, hr);
 }
 
+/* WAP Push for the MMS client, never stored as text */
+static
+VOID
+PhPushReceived(
+    _In_ const RIL_MESSAGE_NOTIFICATION *Notification,
+    _Inout_ PPHONEOM_MESSAGE Stored)
+{
+    const RIL_MESSAGE *Message = &Notification->Message;
+    DWORD Alphabet = RIL_ALPHABET_GSM7;
+    DWORD Length, AckStatus = RIL_MSGACK_OK;
+    PBYTE Joined;
+    USHORT Reference;
+    BYTE Total, Sequence;
+
+    if ((Message->Params & RIL_MSGPARAM_DCS) && (Message->Dcs.Params & RIL_DCSPARAM_ALPHABET))
+        Alphabet = Message->Dcs.Alphabet;
+
+    /* Anything but 8 bit data was already unpacked as text, the bytes are gone */
+    if (Alphabet != RIL_ALPHABET_8BIT || !(Message->Params & RIL_MSGPARAM_BODY))
+    {
+        DPRINT1("WAP push from %S dropped: body arrived with alphabet %lu, not 8 bit data\n", Stored->Address, Alphabet);
+        PhAckMessage(Notification, RIL_MSGACK_OK);
+        return;
+    }
+
+    Length = min(Message->u.Deliver.BodyLength, RIL_MESSAGE_BODY_MAX);
+
+    if (PhParseConcat(Message, &Reference, &Total, &Sequence) && Total > 1)
+    {
+        Joined = HeapAlloc(GetProcessHeap(), 0, PH_MAX_PARTS * PH_PART_DATA_MAX);
+        if (!Joined)
+        {
+            PhAckMessage(Notification, RIL_MSGACK_MEMORYFULL);
+            return;
+        }
+
+        DPRINT1("WAP push part %u of %u, reference %u, %lu bytes\n", Sequence, Total, Reference, Length);
+        if (PhAssembleData(Message->u.Deliver.Body, Length, Reference, Total, Sequence, Stored, Joined, &Length) &&
+            !PhMmsPushReceived(Joined, Length, Stored->Address, &Stored->Timestamp))
+        {
+            AckStatus = RIL_MSGACK_MEMORYFULL;
+        }
+
+        HeapFree(GetProcessHeap(), 0, Joined);
+    }
+    else if (!PhMmsPushReceived(Message->u.Deliver.Body, Length, Stored->Address, &Stored->Timestamp))
+    {
+        AckStatus = RIL_MSGACK_MEMORYFULL;
+    }
+
+    PhAckMessage(Notification, AckStatus);
+}
+
 VOID
 PhSmsReceived(
     _In_reads_bytes_(Size) const VOID *Data,
@@ -371,7 +543,7 @@ PhSmsReceived(
     const RIL_MESSAGE *Message;
     PPHONEOM_MESSAGE Stored;
     WCHAR Part[PH_PART_TEXT_MAX * 2 + 1];
-    USHORT Reference;
+    USHORT Reference, Port;
     BYTE Total, Sequence;
     DWORD AckStatus = RIL_MSGACK_OK;
     SYSTEMTIME Utc;
@@ -411,6 +583,13 @@ PhSmsReceived(
     Utc = Message->u.Deliver.Timestamp;
     if (!(Message->Params & RIL_MSGPARAM_TIMESTAMP) || !SystemTimeToFileTime(&Utc, &Stored->Timestamp))
         GetSystemTimeAsFileTime(&Stored->Timestamp);
+
+    if ((Message->Params & RIL_MSGPARAM_HEADER) && PhParsePort(Message, &Port) && Port == PH_WAP_PUSH_PORT)
+    {
+        PhPushReceived(Notification, Stored);
+        HeapFree(GetProcessHeap(), 0, Stored);
+        return;
+    }
 
     PhDecodeBody(Message, Part, _countof(Part));
 
