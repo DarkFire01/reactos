@@ -45,18 +45,39 @@ typedef struct _RIL_NOTIFICATION_RECORD
     ULONG Code;
 } RIL_NOTIFICATION_RECORD, *PRIL_NOTIFICATION_RECORD;
 
+/* Client to broker, the broker answers it without involving the host */
+typedef struct _RIL_ENABLE_RECORD
+{
+    RIL_COMMAND_RECORD Header;
+    ULONG Count;
+    ULONG Codes[ANYSIZE_ARRAY];
+} RIL_ENABLE_RECORD, *PRIL_ENABLE_RECORD;
+
 #include <poppack.h>
 
 C_ASSERT(sizeof(RIL_COMMAND_RECORD) == 16);
 C_ASSERT(sizeof(RIL_RESPONSE_RECORD) == 20);
 C_ASSERT(sizeof(RIL_NOTIFICATION_RECORD) == 8);
+C_ASSERT(FIELD_OFFSET(RIL_ENABLE_RECORD, Codes) == 20);
+
+/* Command number the broker consumes itself */
+#define RIL_RECORD_ENABLE_COMMAND   3
+
+/* RIL_RESPONSE_RECORD.ResultType of a successful command */
+#define RIL_RECORD_RESULT_OK        1
+
+/* Notification codes a client can enable, the broker keeps one flag per code */
+#define RIL_RECORD_NOTIFY_FIRST     0x10000000
+#define RIL_RECORD_NOTIFY_LAST      0x10000138
+#define RIL_RECORD_NOTIFY_COUNT     (RIL_RECORD_NOTIFY_LAST - RIL_RECORD_NOTIFY_FIRST + 1)
 
 /* Largest record either side accepts */
 #define RIL_RECORD_MAX_LENGTH       0x3BE4
 
 /*
  * Host side of the broker. The host opens \\.\MSRil<N>\Host, the clients open
- * the GUID_DEVINTERFACE_RIL_CLIENT interface of the same device.
+ * the GUID_DEVINTERFACE_RIL_CLIENT interface of the same device, which is
+ * enabled only while a host is attached.
  */
 #define MSRIL_HOST_FILE_NAME        L"\\Host"
 
@@ -90,3 +111,6 @@ typedef struct _MSRIL_HOST_DELIVERY
     ULONG ClientId;
     ULONG DataLength;
 } MSRIL_HOST_DELIVERY, *PMSRIL_HOST_DELIVERY;
+
+/* Delivery ClientId that sends a notification record to every client that enabled its code */
+#define MSRIL_CLIENT_BROADCAST      0
