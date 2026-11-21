@@ -497,9 +497,40 @@ QcSetupThread(
             QcTrace("setup: core modem services configured%s\n", Missing ? ", others still missing" : "");
             if (InterlockedExchange(&Modem->Restarted, 0) != 0)
             {
+                DWORD Reset = RIL_MODEMRESET_COMPLETED;
+
                 QcTrace("ssr: services back, restoring the requested equipment state\n");
-                QcDmsRestore(Modem);
+                Modem->Dms.RestoreTries = QC_RESTORE_RETRY;
+                QcNotifyAll(Modem, RIL_NOTIFY_MODEMRESETSTATE, &Reset, sizeof(Reset));
             }
+        }
+
+        /* A modem that just restarted may refuse the mode change for a moment */
+        if (Modem->Dms.RestoreTries && Modem->ModemUp)
+        {
+            if (QcDmsRestore(Modem))
+            {
+                Modem->Dms.RestoreTries = 0;
+            }
+            else if (Modem->Dms.RestoreTries > 1)
+            {
+                Modem->Dms.RestoreTries -= 1;
+                Missing = TRUE;
+            }
+            else
+            {
+                QcTrace("ssr: the modem never took the requested equipment state back\n");
+                Modem->Dms.RestoreTries = 0;
+            }
+        }
+
+        /* The IMS PDN is started once the data service shows up */
+        if (Modem->Ims.PdnPending && Modem->ModemUp)
+        {
+            if (QcServiceEnsure(Modem, QcSvcWds))
+                QcImsStartPdn(Modem);
+            else
+                Missing = TRUE;
         }
 
         EnterCriticalSection(&Modem->StateLock);
@@ -556,6 +587,8 @@ QcModemCreate(VOID)
     /* The modem object lives for the process, a failed open keeps it around unused */
     if (!QcIpcOpen(Modem))
         return NULL;
+
+    QcWdsReset();
 
     QcIpcStartReceive(Modem);
     Modem->Worker = CreateThread(NULL, 0, QcWorkerThread, Modem, 0, NULL);
