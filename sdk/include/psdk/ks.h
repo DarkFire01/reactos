@@ -5003,6 +5003,49 @@ KsDeviceRegisterAdapterObject(
   _In_ ULONG MaxMappingByteCount,
   _In_ ULONG MappingTableStride);
 
+typedef enum {
+  KSDEVICE_THERMAL_STATE_LOW,
+  KSDEVICE_THERMAL_STATE_HIGH
+} KSDEVICE_THERMAL_STATE;
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+typedef
+void
+(*PFNKSDEVICETHERMALACTIVECOOLING)(
+  _In_ PKSDEVICE KsDevice,
+  _In_ BOOLEAN Engaged,
+  _Out_ KSDEVICE_THERMAL_STATE *DeviceThermalState);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+typedef
+void
+(*PFNKSDEVICETHERMALPASSIVECOOLING)(
+  _In_ PKSDEVICE KsDevice,
+  _In_ ULONG Percentage,
+  _Out_ KSDEVICE_THERMAL_STATE *DeviceThermalState);
+
+typedef struct _KSDEVICE_THERMAL_DISPATCH {
+  PFNKSDEVICETHERMALACTIVECOOLING ActiveCooling;
+  PFNKSDEVICETHERMALPASSIVECOOLING PassiveCooling;
+} KSDEVICE_THERMAL_DISPATCH, *PKSDEVICE_THERMAL_DISPATCH;
+
+KSDDKAPI
+NTSTATUS
+NTAPI
+KsDeviceRegisterThermalDispatch(
+  _In_ PKSDEVICE KsDevice,
+  _In_ PKSDEVICE_THERMAL_DISPATCH KsDeviceThermalDispatch);
+
+_Must_inspect_result_
+_IRQL_requires_max_(PASSIVE_LEVEL)
+KSDDKAPI
+NTSTATUS
+NTAPI
+KsReleaseCachedMdl(
+  _In_ REFGUID Guid,
+  _In_ PMDL MdlAddr,
+  _In_ HANDLE ReleaseContext);
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 KSDDKAPI
 ULONG
