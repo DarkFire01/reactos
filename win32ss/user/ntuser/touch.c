@@ -75,6 +75,11 @@ typedef struct _TOUCH_INPUT_OBJECT
 static TOUCH_CONTACT gTouchContacts[TOUCH_MAX_CONTACTS];
 static DWORD gNextTouchId = 1;
 
+/* Where and when the last promoted finger went down, for double taps */
+static POINT gLastTapPoint;
+static ULONG gLastTapTime;
+static BOOLEAN gHaveLastTap;
+
 /**
  * @brief Finds the finger collections of a touch screen and their X and Y ranges.
  */
@@ -302,13 +307,35 @@ TouchPromotePrimary(
     MOUSEINPUT Input;
     LONG Width = UserGetSystemMetrics(SM_CXSCREEN);
     LONG Height = UserGetSystemMetrics(SM_CYSCREEN);
+    POINT Point = Contact->Point;
+    LONG Slack;
+    ULONG Now;
 
     if (Width <= 0 || Height <= 0)
         return;
 
+    /* A finger never lands twice within the mouse double click box, a second tap close to
+       the first and in time goes down where the first did so it reads as a double click */
+    if (Contact->Flags & TOUCHEVENTF_DOWN)
+    {
+        Now = EngGetTickCount32();
+        Slack = max(UserGetSystemMetrics(SM_CXDOUBLECLK), Width / 24);
+        if (gHaveLastTap &&
+            Now - gLastTapTime < (ULONG)gspv.iDblClickTime &&
+            abs(Point.x - gLastTapPoint.x) < Slack &&
+            abs(Point.y - gLastTapPoint.y) < Slack)
+        {
+            Point = gLastTapPoint;
+        }
+
+        gLastTapPoint = Point;
+        gLastTapTime = Now;
+        gHaveLastTap = TRUE;
+    }
+
     RtlZeroMemory(&Input, sizeof(Input));
-    Input.dx = (LONG)((((LONGLONG)Contact->Point.x << 16) + Width - 1) / Width);
-    Input.dy = (LONG)((((LONGLONG)Contact->Point.y << 16) + Height - 1) / Height);
+    Input.dx = (LONG)((((LONGLONG)Point.x << 16) + Width - 1) / Width);
+    Input.dy = (LONG)((((LONGLONG)Point.y << 16) + Height - 1) / Height);
     Input.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
     Input.dwExtraInfo = TOUCH_PROMOTED_EXTRA_INFO;
 
