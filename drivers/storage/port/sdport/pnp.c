@@ -254,7 +254,10 @@ SdPortStartDevice(
 
     SdPortQueryBusInterface(FdoExtension);
 
-    Translated = IoStack->Parameters.StartDevice.AllocatedResourcesTranslated;
+    /* The platform may hold the controller's clocks off until a driver asks for them */
+    SdPortRegisterPoFx(FdoExtension);
+
+    Translated =IoStack->Parameters.StartDevice.AllocatedResourcesTranslated;
     if (Translated != NULL && Translated->Count != 0)
     {
         PCM_PARTIAL_RESOURCE_LIST List = &Translated->List[0].PartialResourceList;
@@ -395,6 +398,7 @@ SdPortFdoPnp(
                 IoDisconnectInterruptEx(&Disconnect);
                 FdoExtension->InterruptObject = NULL;
             }
+            SdPortUnregisterPoFx(FdoExtension);
             IoSkipCurrentIrpStackLocation(Irp);
             Status = IoCallDriver(FdoExtension->LowerDevice, Irp);
             IoDetachDevice(FdoExtension->LowerDevice);
