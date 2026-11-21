@@ -11,6 +11,9 @@
 #define QCRIL_NAS_INDICATION_REGISTER   0x0003
 #define QCRIL_NAS_SERVING_SYSTEM_IND    0x0024
 #define QCRIL_NAS_SYS_SEL_PREF          0x0034
+#define QCRIL_NAS_OPERATOR_NAME_IND     0x003A
+#define QCRIL_NAS_TLV_OPNAME_SPN        0x10
+#define QCRIL_NAS_TLV_OPNAME_PLMN       0x13
 #define QCRIL_NAS_BIND_SUBSCRIPTION     0x0045
 #define QCRIL_NAS_DUAL_STANDBY_PREF_IND 0x0047
 #define QCRIL_NAS_NETWORK_TIME_IND      0x004C
@@ -497,6 +500,66 @@ QcNasPlmnName(
     QcNasPublishReg(Modem, &Net, TRUE);
 }
 
+/* SIM service provider name and PLMN name; the SPN names the operator until the network does */
+static
+VOID
+QcNasOperatorNameData(
+    _In_ PQC_MODEM Modem,
+    _In_reads_bytes_(Length) const VOID *Message,
+    _In_ ULONG Length)
+{
+    RIL_NETWORK_INFO Net;
+    CHAR Spn[RIL_INFO_OPERATOR];
+    CHAR Plmn[RIL_INFO_OPERATOR];
+    const UCHAR *Bytes;
+    const VOID *Value;
+    USHORT ValueLen;
+    ULONG Count, i, Written;
+    UCHAR Condition = 0;
+
+    Spn[0] = '\0';
+    Plmn[0] = '\0';
+
+    /* Display condition, length, then the name unpacked one character per byte */
+    if (QmiFindTlv(Message, Length, QCRIL_NAS_TLV_OPNAME_SPN, &Value, &ValueLen) && ValueLen >= 2)
+    {
+        Bytes = Value;
+        Condition = Bytes[0];
+        Count = min((ULONG)Bytes[1], (ULONG)ValueLen - 2);
+        for (i = 0, Written = 0; i < Count && Written + 1 < sizeof(Spn); i++)
+        {
+            if (Bytes[2 + i] == 0xFF || Bytes[2 + i] == 0)
+                break;
+            Spn[Written++] = (Bytes[2 + i] >= 0x20 && Bytes[2 + i] < 0x7F) ? (CHAR)Bytes[2 + i] : '?';
+        }
+        Spn[Written] = '\0';
+    }
+
+    if (QmiFindTlv(Message, Length, QCRIL_NAS_TLV_OPNAME_PLMN, &Value, &ValueLen) && ValueLen >= 1)
+    {
+        Bytes = Value;
+        Count = min((ULONG)Bytes[0], (ULONG)ValueLen - 1);
+        Count = min(Count, (ULONG)sizeof(Plmn) - 1);
+        memcpy(Plmn, Bytes + 1, Count);
+        Plmn[Count] = '\0';
+    }
+
+    QcTrace("operator name data: spn '%s' (display condition %u), plmn name '%s'\n", Spn, Condition, Plmn);
+
+    if (!Spn[0])
+        return;
+
+    EnterCriticalSection(&Modem->StateLock);
+    Net = Modem->Nas.Net;
+    LeaveCriticalSection(&Modem->StateLock);
+
+    if (Net.Operator[0])
+        return;
+
+    memcpy(Net.Operator, Spn, sizeof(Net.Operator));
+    QcNasPublishReg(Modem, &Net, TRUE);
+}
+
 static
 VOID
 QcNasNetworkReject(
@@ -727,6 +790,10 @@ QcNasIndication(
 
         case QCRIL_NAS_CURRENT_PLMN_NAME_IND:
             QcNasPlmnName(Modem, Message, Length);
+            break;
+
+        case QCRIL_NAS_OPERATOR_NAME_IND:
+            QcNasOperatorNameData(Modem, Message, Length);
             break;
 
         case QCRIL_NAS_SYS_SEL_PREF:
