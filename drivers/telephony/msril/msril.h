@@ -85,4 +85,7 @@ typedef struct _MSRIL_EXTENSION
     PMSRIL_FILE Host;
     LIST_ENTRY Clients;
     ULONG NextClientId;
+
+    /* The network sends its time once per registration, a later client gets this copy */
+    PMSRIL_RECORD LastNitz;
 } MSRIL_EXTENSION, *PMSRIL_EXTENSION;

@@ -11,6 +11,9 @@
 #define NDEBUG
 #include <debug.h>
 
+/* RIL_NOTIFY_NITZ, rilcmd.h is user mode only */
+#define MSRIL_NOTIFY_NITZ       (RIL_RECORD_NOTIFY_FIRST | 0x115)
+
 /* Bit N set means \Device\MSRil<N + 1> exists */
 static LONG MsRilInstanceMask;
 
@@ -640,9 +643,10 @@ MsRilEnableNotifications(
 {
     PRIL_RESPONSE_RECORD Response;
     LIST_ENTRY CompleteList;
-    PMSRIL_RECORD Record;
+    PMSRIL_RECORD Record, Nitz = NULL;
     NTSTATUS Status = STATUS_SUCCESS;
     KIRQL OldIrql;
+    BOOLEAN WantsNitz = FALSE;
     ULONG i;
 
     if (Length < FIELD_OFFSET(RIL_ENABLE_RECORD, Codes) ||
@@ -662,6 +666,8 @@ MsRilEnableNotifications(
                     File->ClientId, Request->Codes[i]);
             return STATUS_INVALID_PARAMETER;
         }
+        if (Request->Codes[i] == MSRIL_NOTIFY_NITZ)
+            WantsNitz = TRUE;
     }
 
     Record = MsRilAllocateRecord(sizeof(*Response));
@@ -687,6 +693,17 @@ MsRilEnableNotifications(
 
         MsRilQueueToClient(File, Record, &CompleteList);
         Record = NULL;
+
+        /* The answer goes first, then the network time the client missed */
+        if (WantsNitz && Extension->LastNitz)
+        {
+            Nitz = MsRilAllocateRecord(Extension->LastNitz->Length);
+            if (Nitz)
+            {
+                RtlCopyMemory(Nitz->Data, Extension->LastNitz->Data, Extension->LastNitz->Length);
+                MsRilQueueToClient(File, Nitz, &CompleteList);
+            }
+        }
     }
     KeReleaseSpinLock(&Extension->Lock, OldIrql);
     MsRilCompleteList(&CompleteList);
@@ -817,7 +834,7 @@ MsRilHostDeliver(
     ULONG InputLength = Stack->Parameters.DeviceIoControl.InputBufferLength;
     PMSRIL_HOST_DELIVERY Delivery = Irp->AssociatedIrp.SystemBuffer;
     LIST_ENTRY CompleteList;
-    PMSRIL_RECORD Record;
+    PMSRIL_RECORD Record, Stale = NULL;
     PMSRIL_FILE Client;
     NTSTATUS Status = STATUS_SUCCESS;
     KIRQL OldIrql;
@@ -848,6 +865,14 @@ MsRilHostDeliver(
     if (Delivery->ClientId == MSRIL_CLIENT_BROADCAST)
     {
         MsRilBroadcast(Extension, Record, &CompleteList);
+
+        /* The broadcast copies the record, so this one can be kept as is */
+        if (((PRIL_NOTIFICATION_RECORD)Record->Data)->Code == MSRIL_NOTIFY_NITZ)
+        {
+            Stale = Extension->LastNitz;
+            Extension->LastNitz = Record;
+            Record = NULL;
+        }
     }
     else
     {
@@ -868,6 +893,8 @@ MsRilHostDeliver(
 
     if (Record)
         ExFreePoolWithTag(Record, TAG_MSRIL);
+    if (Stale)
+        ExFreePoolWithTag(Stale, TAG_MSRIL);
 
     return Status;
 }
@@ -935,6 +962,7 @@ MsRilFlushAll(
 {
     LIST_ENTRY CompleteList;
     PLIST_ENTRY Entry;
+    PMSRIL_RECORD Nitz;
     KIRQL OldIrql;
 
     InitializeListHead(&CompleteList);
@@ -945,8 +973,13 @@ MsRilFlushAll(
 
     for (Entry = Extension->Clients.Flink; Entry != &Extension->Clients; Entry = Entry->Flink)
         MsRilFlushIrps(CONTAINING_RECORD(Entry, MSRIL_FILE, Link), STATUS_NO_SUCH_DEVICE, &CompleteList);
+    Nitz = Extension->LastNitz;
+    Extension->LastNitz = NULL;
     KeReleaseSpinLock(&Extension->Lock, OldIrql);
     MsRilCompleteList(&CompleteList);
+
+    if (Nitz)
+        ExFreePoolWithTag(Nitz, TAG_MSRIL);
 }
 
 static
