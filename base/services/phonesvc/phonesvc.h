@@ -190,6 +190,22 @@ PhAudioSetMute(
     _In_ BOOL Mute);
 
 /* info.c */
+#define PH_MMS_URL_CHARS            512
+#define PH_MMS_FIELD_CHARS          256
+
+/* MMSC access, read from the data key */
+typedef struct _PH_MMS_CONFIG
+{
+    WCHAR Url[PH_MMS_URL_CHARS];
+    WCHAR Proxy[PH_MMS_FIELD_CHARS];
+    WCHAR UserAgent[PH_MMS_FIELD_CHARS];
+    WCHAR Profile[PH_MMS_FIELD_CHARS];
+} PH_MMS_CONFIG, *PPH_MMS_CONFIG;
+
+VOID
+PhGetMmsConfig(
+    _Out_ PPH_MMS_CONFIG Config);
+
 HRESULT
 PhGetDeviceInfo(
     _Out_ PPHONEOM_DEVICE_INFO Info);
