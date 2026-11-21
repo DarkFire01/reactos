@@ -311,7 +311,7 @@ PhDispatch(
             break;
 
         case PhoneRequestConnectData:
-            hr = PhPayloadDword(Header, &Value) ? PhConnectData(Value != 0, &DataStatus) : E_INVALIDARG;
+            hr = PhPayloadDword(Header, &Value) ? PhConnectData(Value, &DataStatus) : E_INVALIDARG;
             if (SUCCEEDED(hr))
             {
                 Reply = &DataStatus;

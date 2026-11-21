@@ -194,7 +194,7 @@ PhSetDataConfig(
 
 HRESULT
 PhConnectData(
-    _In_ BOOL Connect,
+    _In_ DWORD Op,
     _Out_ PPHONEOM_DATA_STATUS Status);
 
 /* pipe.c */

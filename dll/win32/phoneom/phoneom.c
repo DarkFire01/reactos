@@ -808,7 +808,7 @@ PhoneOmConnectData(
     _Out_opt_ PPHONEOM_DATA_STATUS Status)
 {
     PHONEOM_DATA_STATUS Local;
-    DWORD Value = Connect ? 1 : 0;
+    DWORD Value = Connect ? PHONEOM_DATA_CONNECT : PHONEOM_DATA_DISCONNECT;
     DWORD Returned;
     HRESULT hr;
 
@@ -816,4 +816,19 @@ PhoneOmConnectData(
     if (SUCCEEDED(hr) && Status)
         *Status = Local;
     return hr;
+}
+
+HRESULT
+WINAPI
+PhoneOmGetDataStatus(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_DATA_STATUS Status)
+{
+    DWORD Value = PHONEOM_DATA_QUERY;
+    DWORD Returned;
+
+    if (!Status)
+        return E_POINTER;
+    ZeroMemory(Status, sizeof(*Status));
+    return PhOmTransact(Phone, PhoneRequestConnectData, &Value, sizeof(Value), Status, sizeof(*Status), &Returned);
 }

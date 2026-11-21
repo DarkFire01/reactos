@@ -239,7 +239,7 @@ PhSetDataConfig(
 
 HRESULT
 PhConnectData(
-    _In_ BOOL Connect,
+    _In_ DWORD Op,
     _Out_ PPHONEOM_DATA_STATUS Status)
 {
     PHONEOM_DATA_CONFIG Config;
@@ -256,7 +256,12 @@ PhConnectData(
 
     ZeroMemory(&Request, sizeof(Request));
     Request.Size = sizeof(Request);
-    Request.Op = Connect ? RIL_DATA_OP_CONNECT : RIL_DATA_OP_DISCONNECT;
+    if (Op == PHONEOM_DATA_CONNECT)
+        Request.Op = RIL_DATA_OP_CONNECT;
+    else if (Op == PHONEOM_DATA_DISCONNECT)
+        Request.Op = RIL_DATA_OP_DISCONNECT;
+    else
+        Request.Op = RIL_DATA_OP_STATUS;
     Request.AuthType = Config.AuthType;
     PhNarrow(Request.Apn, sizeof(Request.Apn), Config.Apn);
     PhNarrow(Request.Username, sizeof(Request.Username), Config.Username);

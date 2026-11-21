@@ -103,6 +103,11 @@ typedef enum _PHONEOM_AUDIO_ROUTE
 #define PHONEOM_RAT_TDSCDMA         5
 #define PHONEOM_RAT_EVDO            6
 
+/* PhoneRequestConnectData operation */
+#define PHONEOM_DATA_DISCONNECT     0
+#define PHONEOM_DATA_CONNECT        1
+#define PHONEOM_DATA_QUERY          2
+
 /* PHONEOM_DATA_CONFIG.AuthType */
 #define PHONEOM_AUTH_NONE           0
 #define PHONEOM_AUTH_PAP            1
@@ -313,6 +318,12 @@ PhoneOmConnectData(
     _In_ HPHONEOM Phone,
     _In_ BOOL Connect,
     _Out_opt_ PPHONEOM_DATA_STATUS Status);
+
+HRESULT
+WINAPI
+PhoneOmGetDataStatus(
+    _In_ HPHONEOM Phone,
+    _Out_ PPHONEOM_DATA_STATUS Status);
 
 #ifdef __cplusplus
 }

@@ -470,7 +470,7 @@ PtRefreshData(VOID)
 {
     PHONEOM_DATA_STATUS Status;
 
-    if (!PtPhone || FAILED(PhoneOmConnectData(PtPhone, FALSE, &Status)))
+    if (!PtPhone || FAILED(PhoneOmGetDataStatus(PtPhone, &Status)))
     {
         SetDlgItemTextW(PtWindow, IDC_DATA_STATUS, L"Data status unknown");
         return;
