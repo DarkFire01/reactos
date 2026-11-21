@@ -69,6 +69,9 @@ typedef struct _SDPORT_FDO_EXTENSION
     BOOLEAN PollActive;
     KSPIN_LOCK PollLock;
     LONG PollOutstanding;
+
+    /* Power framework registration, through which the platform keeps the controller's clocks and supplies on */
+    POHANDLE PoFxHandle;
 } SDPORT_FDO_EXTENSION, *PSDPORT_FDO_EXTENSION;
 
 struct _SDPORT_SLOT_EXTENSION
@@ -182,6 +185,16 @@ SdPortInitializeCard(
     _In_ PSDPORT_SLOT_EXTENSION Slot);
 
 /* power.c */
+VOID
+NTAPI
+SdPortRegisterPoFx(
+    _Inout_ PSDPORT_FDO_EXTENSION FdoExtension);
+
+VOID
+NTAPI
+SdPortUnregisterPoFx(
+    _Inout_ PSDPORT_FDO_EXTENSION FdoExtension);
+
 NTSTATUS
 NTAPI
 SdPortDispatchPower(
