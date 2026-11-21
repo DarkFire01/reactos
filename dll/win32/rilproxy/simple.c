@@ -1200,7 +1200,7 @@ RIL_DeletePhonebookEntry(
     _In_ DWORD Arg1,
     _In_ DWORD Arg2,
     _In_ DWORD Arg3,
-    _In_reads_bytes_(264) const VOID *Arg4)
+    _In_reads_bytes_opt_(264) const VOID *Arg4)
 {
     BYTE Block[296];
 
@@ -1208,9 +1208,11 @@ RIL_DeletePhonebookEntry(
     *(PDWORD)&Block[16] = Arg1;
     *(PDWORD)&Block[20] = Arg2;
     *(PDWORD)&Block[24] = Arg3;
-    *(PDWORD)&Block[28] = 0;
-    *(PDWORD)&Block[28] = 1;
-    CopyMemory(&Block[32], Arg4, 264);
+    if (Arg4)
+    {
+        *(PDWORD)&Block[28] = TRUE;
+        CopyMemory(&Block[32], Arg4, 264);
+    }
     return RilpSend(hRil, RilCmdDeletePhonebookEntry, Context, Block, sizeof(Block));
 }
 
