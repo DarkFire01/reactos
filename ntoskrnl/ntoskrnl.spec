@@ -1997,6 +1997,7 @@
 @ stdcall MmGetPhysicalMemoryRangesEx(ptr)
 @ stdcall ObIsKernelHandle(ptr)
 @ stdcall ObReferenceObjectByHandleWithTag(ptr long ptr long long ptr ptr)
+@ stdcall PcwAddInstance(ptr ptr long long ptr)
 @ stdcall PcwCloseInstance(ptr)
 @ stdcall PcwCreateInstance(ptr ptr ptr long ptr)
 @ stdcall PcwRegister(ptr ptr)
