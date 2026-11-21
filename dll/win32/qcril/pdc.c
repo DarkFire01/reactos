@@ -39,8 +39,6 @@
 #define QCRIL_PDC_SOFTWARE              1
 #define QCRIL_PDC_CHUNK                 1024
 #define QCRIL_PDC_TIMEOUT_MS            10000
-#define QCRIL_DMS_UIM_GET_IMSI          0x0043
-#define QCRIL_DMS_TLV_STRING            0x01
 
 #define QCRIL_CARRIER_KEY   L"SYSTEM\\CurrentControlSet\\Services\\RILAdaptation\\Parameters\\CarrierConfigs"
 
@@ -420,12 +418,13 @@ QcPdcSetup(
             return;
     }
 
-    /* The configuration follows the card, so nothing happens until its IMSI reads */
-    Imsi[0] = '\0';
-    QcDmsReadString(Modem, QCRIL_DMS_UIM_GET_IMSI, QCRIL_DMS_TLV_STRING, Imsi, sizeof(Imsi));
-    if (!Imsi[0])
+    /* The configuration follows the card, so nothing happens until its IMSI reads.
+       The device management IMSI request is not supported here, the card file is read */
+    hr = QcUimReadImsi(Modem, Imsi, sizeof(Imsi));
+    if (FAILED(hr))
     {
-        QcTrace("pdc: card not readable yet, the carrier configuration waits\n");
+        if (hr != E_PENDING)
+            QcTrace("pdc: reading the card IMSI failed 0x%08lx\n", hr);
         return;
     }
 

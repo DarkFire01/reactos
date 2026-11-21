@@ -771,3 +771,37 @@ QcUimIndication(
     QcUimUpdate(Modem, Value, ValueLen);
     QcKickSetup(Modem);
 }
+
+/* The IMSI of the ready GW application, from its EF IMSI; E_PENDING until the card is ready */
+HRESULT
+QcUimReadImsi(
+    _In_ PQC_MODEM Modem,
+    _Out_writes_z_(OutSize) PSTR Out,
+    _In_ ULONG OutSize)
+{
+    QC_UIM_STATE State;
+    const QC_UIM_APP *App;
+    UCHAR Ef[64];
+    ULONG EfLen;
+    UCHAR Slot;
+    HRESULT hr;
+
+    Out[0] = '\0';
+    if (!QcServiceEnsure(Modem, QcSvcUim))
+        return RIL_E_RADIONOTPRESENT;
+
+    EnterCriticalSection(&Modem->StateLock);
+    State = Modem->Uim;
+    LeaveCriticalSection(&Modem->StateLock);
+
+    App = State.Valid ? QcUimFindGwApp(&State, &Slot) : NULL;
+    if (!App || App->State != QCRIL_UIM_APP_READY)
+        return E_PENDING;
+
+    hr = QcUimReadFile(Modem, QCRIL_EF_IMSI, App->Type == QCRIL_UIM_APP_USIM, 0, Ef, sizeof(Ef), &EfLen);
+    if (FAILED(hr))
+        return hr;
+
+    QcUimDecodeImsi(Ef, EfLen, Out, OutSize);
+    return Out[0] ? S_OK : E_FAIL;
+}
