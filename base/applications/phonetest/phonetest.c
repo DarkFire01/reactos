@@ -7,6 +7,7 @@
 
 #include "phonetest.h"
 #include <telephony/phoneom.h>
+#include <telephony/rilinfo.h>
 
 /* Dark theme shared with the mobile shell */
 #define PT_BG                       RGB(0x12, 0x12, 0x14)
@@ -64,12 +65,7 @@ static const LPCWSTR PtSimNames[] =
 
 static const LPCWSTR PtRegNames[] =
 {
-    L"not registered", L"home", L"searching", L"denied", L"unknown", L"roaming"
-};
-
-static const LPCWSTR PtRatNames[] =
-{
-    L"none", L"GSM", L"UMTS", L"LTE", L"CDMA", L"TD-SCDMA", L"EV-DO"
+    L"unknown", L"not registered", L"home", L"searching", L"denied", L"roaming", L"roaming (domestic)"
 };
 
 static const LPCWSTR PtPageHeadings[] =
@@ -357,6 +353,25 @@ PtName(
     return (Index < Count) ? Table[Index] : L"?";
 }
 
+/* The system type is a bit, one per radio technology */
+static
+LPCWSTR
+PtRatName(
+    _In_ DWORD Rat)
+{
+    switch (Rat)
+    {
+        case RIL_RAT_NONE: return L"none";
+        case RIL_RAT_CDMA: return L"CDMA";
+        case RIL_RAT_EVDO: return L"EV-DO";
+        case RIL_RAT_GSM: return L"GSM";
+        case RIL_RAT_UMTS: return L"UMTS";
+        case RIL_RAT_LTE: return L"LTE";
+        case RIL_RAT_TDSCDMA: return L"TD-SCDMA";
+        default: return L"?";
+    }
+}
+
 static
 VOID
 PtRefreshStatus(VOID)
@@ -381,7 +396,7 @@ PtRefreshStatus(VOID)
                          Network.Operator[0] ? Network.Operator : L"No service",
                          PtName(PtRegNames, _countof(PtRegNames), Network.RegState),
                          Network.Roaming ? L" (roaming)" : L"",
-                         PtName(PtRatNames, _countof(PtRatNames), Network.Rat),
+                         PtRatName(Network.Rat),
                          Network.SignalDbm, Network.SignalBars,
                          Network.Mcc, Network.Mnc);
         StringCchCatW(PtStatusText, _countof(PtStatusText), Line);
