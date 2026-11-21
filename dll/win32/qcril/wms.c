@@ -77,6 +77,33 @@ QcBcd(
     return (UCHAR)((Byte & 0x0F) * 10 + (Byte >> 4));
 }
 
+/* The service centre stamps its local time and its offset from UTC, keep the UTC time */
+static
+VOID
+QcSctsToUtc(
+    _Inout_ SYSTEMTIME *Time,
+    _In_ UCHAR Zone)
+{
+    LONGLONG Quarters;
+    ULARGE_INTEGER Value;
+    FILETIME File;
+
+    /* Quarter hours in swapped BCD, bit 3 of the first digit is the sign */
+    Quarters = (Zone & 0x07) * 10 + (Zone >> 4);
+    if (Zone & 0x08)
+        Quarters = -Quarters;
+
+    if (!Quarters || !SystemTimeToFileTime(Time, &File))
+        return;
+
+    Value.LowPart = File.dwLowDateTime;
+    Value.HighPart = File.dwHighDateTime;
+    Value.QuadPart -= Quarters * 15 * 60 * 10000000LL;
+    File.dwLowDateTime = Value.LowPart;
+    File.dwHighDateTime = Value.HighPart;
+    FileTimeToSystemTime(&File, Time);
+}
+
 /* Packs 7 bit codes into octets, returns the octet count */
 static
 ULONG
@@ -386,6 +413,7 @@ QcParseDeliverPdu(
         Time->wHour = QcBcd(Pdu[Offset + 3]);
         Time->wMinute = QcBcd(Pdu[Offset + 4]);
         Time->wSecond = QcBcd(Pdu[Offset + 5]);
+        QcSctsToUtc(Time, Pdu[Offset + 6]);
         Message->Params |= RIL_MSGPARAM_TIMESTAMP;
         Offset += 7;
     }
