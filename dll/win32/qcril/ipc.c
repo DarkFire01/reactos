@@ -688,6 +688,21 @@ QcQmiRequest(
     _In_ ULONG ResponseCap,
     _Out_ PULONG ResponseLen)
 {
+    return QcQmiRequestWait(Modem, Which, Message, MessageLength, Response, ResponseCap,
+                            ResponseLen, QC_REQUEST_TIMEOUT_MS);
+}
+
+HRESULT
+QcQmiRequestWait(
+    _In_ PQC_MODEM Modem,
+    _In_ QC_SVC Which,
+    _Inout_updates_bytes_(MessageLength) PVOID Message,
+    _In_ ULONG MessageLength,
+    _Out_writes_bytes_to_(ResponseCap, *ResponseLen) PVOID Response,
+    _In_ ULONG ResponseCap,
+    _Out_ PULONG ResponseLen,
+    _In_ DWORD TimeoutMs)
+{
     PQMI_HEADER Header = Message;
     QC_PENDING Pending;
     QC_ADDR Server;
@@ -739,7 +754,7 @@ QcQmiRequest(
         return RIL_E_RADIONOTPRESENT;
     }
 
-    Wait = WaitForSingleObject(Pending.Done, QC_REQUEST_TIMEOUT_MS);
+    Wait = WaitForSingleObject(Pending.Done, TimeoutMs);
 
     EnterCriticalSection(&Modem->PendingLock);
     RemoveEntryList(&Pending.Link);
@@ -755,8 +770,8 @@ QcQmiRequest(
 
     if (Wait != WAIT_OBJECT_0 || !Pending.Got)
     {
-        QcTrace("<- %s 0x%04X txn %u timed out after %u ms\n", QcServiceNames[Which],
-                Pending.MessageId, Pending.Transaction, QC_REQUEST_TIMEOUT_MS);
+        QcTrace("<- %s 0x%04X txn %u timed out after %lu ms\n", QcServiceNames[Which],
+                Pending.MessageId, Pending.Transaction, TimeoutMs);
         return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
     }
 

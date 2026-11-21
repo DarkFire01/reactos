@@ -418,7 +418,8 @@ QcVoiceDial(
         return E_FAIL;
     Length = QmiEncodeEnd(&Encoder);
 
-    hr = QcQmiRequest(Modem, QcSvcVoice, Message, Length, Response, sizeof(Response), &ResponseLen);
+    hr = QcQmiRequestWait(Modem, QcSvcVoice, Message, Length, Response, sizeof(Response),
+                          &ResponseLen, QC_CALL_SETUP_TIMEOUT_MS);
     if (FAILED(hr))
         return ResponseLen ? QcVoiceDialError(QcQmiError(Response, ResponseLen), hr) : hr;
 
