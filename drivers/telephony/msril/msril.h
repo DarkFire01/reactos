@@ -13,14 +13,24 @@
 
 #define TAG_MSRIL               'liRM'
 
-/* Records a client may hold before deliveries to it start failing */
-#define MSRIL_MAX_CLIENT_QUEUE  512
+/* Bytes a client may have queued before the broker gives up on it */
+#define MSRIL_CLIENT_BUDGET     0x100000
+
+/* Broker devices are numbered MSRil1 to MSRil32 */
+#define MSRIL_MAX_INSTANCES     32
 
 typedef enum _MSRIL_FILE_ROLE
 {
     MsRilRoleClient,
     MsRilRoleHost
 } MSRIL_FILE_ROLE;
+
+typedef enum _MSRIL_CLIENT_STATE
+{
+    MsRilClientLive,
+    MsRilClientDisconnected,
+    MsRilClientOverBudget
+} MSRIL_CLIENT_STATE;
 
 typedef struct _MSRIL_RECORD
 {
@@ -36,16 +46,21 @@ typedef struct _MSRIL_FILE
     LIST_ENTRY Link;
     ULONG ClientId;
     ULONG ProcessId;
-
-    /* Client: the host that served it went away */
-    BOOLEAN Orphaned;
+    MSRIL_CLIENT_STATE State;
 
     /* Client: records waiting to be read. Host: events waiting to be fetched. */
     LIST_ENTRY Records;
     ULONG RecordCount;
+    ULONG QueuedBytes;
 
     /* Client: pending reads. Host: pending event fetches. */
     LIST_ENTRY Irps;
+
+    /* Client: close event for the host, allocated up front so cleanup cannot fail */
+    PMSRIL_RECORD Closed;
+
+    /* Client: one flag per notification code it enabled */
+    UCHAR Enabled[RIL_RECORD_NOTIFY_COUNT];
 } MSRIL_FILE, *PMSRIL_FILE;
 
 typedef struct _MSRIL_EXTENSION
@@ -56,8 +71,13 @@ typedef struct _MSRIL_EXTENSION
     ULONG Instance;
     UNICODE_STRING LinkName;
     WCHAR LinkNameBuffer[32];
+    LONG OpenHandles;
+
+    /* Serializes interface state changes, which must run at PASSIVE_LEVEL */
+    KEVENT InterfaceLock;
     UNICODE_STRING InterfaceName;
     BOOLEAN InterfaceEnabled;
+    BOOLEAN Started;
     BOOLEAN Removed;
 
     /* Guards everything below and the per-file lists */

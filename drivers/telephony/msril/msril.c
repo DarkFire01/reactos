@@ -11,8 +11,8 @@
 #define NDEBUG
 #include <debug.h>
 
-static LONG MsRilInstanceCount;
-static PDEVICE_OBJECT MsRilControlDevice;
+/* Bit N set means \Device\MSRil<N + 1> exists */
+static LONG MsRilInstanceMask;
 
 DRIVER_INITIALIZE DriverEntry;
 static DRIVER_ADD_DEVICE MsRilAddDevice;
@@ -63,7 +63,7 @@ MsRilAllocateRecord(
 {
     PMSRIL_RECORD Record;
 
-    Record = ExAllocatePoolWithTag(NonPagedPool,
+    Record = ExAllocatePoolWithTag(NonPagedPoolNx,
                                    FIELD_OFFSET(MSRIL_RECORD, Data) + DataLength,
                                    TAG_MSRIL);
     if (!Record)
@@ -88,6 +88,7 @@ MsRilFreeRecords(
         ExFreePoolWithTag(Record, TAG_MSRIL);
     }
     File->RecordCount = 0;
+    File->QueuedBytes = 0;
 }
 
 /* Caller holds the device lock */
@@ -149,14 +150,15 @@ MsRilCancel(
     MsRilCompleteIrp(Irp, STATUS_CANCELLED, 0);
 }
 
-/* Fails every queued IRP of a file. Caller holds the device lock. */
+/* Fails every queued IRP of a file and returns how many. Caller holds the device lock. */
 static
-VOID
+ULONG
 MsRilFlushIrps(
     _In_ PMSRIL_FILE File,
     _In_ NTSTATUS Status,
     _Inout_ PLIST_ENTRY CompleteList)
 {
+    ULONG Count = 0;
     PIRP Irp;
 
     while ((Irp = MsRilPopIrp(File)) != NULL)
@@ -164,7 +166,10 @@ MsRilFlushIrps(
         Irp->IoStatus.Status = Status;
         Irp->IoStatus.Information = 0;
         InsertTailList(CompleteList, &Irp->Tail.Overlay.ListEntry);
+        Count++;
     }
+
+    return Count;
 }
 
 /* Tries to satisfy a client read from its queue. Caller holds the device lock. */
@@ -178,14 +183,7 @@ MsRilFillClientRead(
     PMSRIL_RECORD Record;
 
     if (IsListEmpty(&File->Records))
-    {
-        if (!File->Orphaned)
-            return FALSE;
-
-        Irp->IoStatus.Status = STATUS_DEVICE_NOT_READY;
-        Irp->IoStatus.Information = 0;
-        return TRUE;
-    }
+        return FALSE;
 
     Record = CONTAINING_RECORD(File->Records.Flink, MSRIL_RECORD, Link);
     if (Stack->Parameters.Read.Length < Record->Length)
@@ -202,6 +200,7 @@ MsRilFillClientRead(
 
     RemoveEntryList(&Record->Link);
     File->RecordCount--;
+    File->QueuedBytes -= Record->Length;
     ExFreePoolWithTag(Record, TAG_MSRIL);
     return TRUE;
 }
@@ -237,6 +236,7 @@ MsRilFillHostFetch(
 
     RemoveEntryList(&Record->Link);
     Host->RecordCount--;
+    Host->QueuedBytes -= Record->Length;
     ExFreePoolWithTag(Record, TAG_MSRIL);
     return TRUE;
 }
@@ -254,6 +254,7 @@ MsRilPostRecord(
 
     InsertTailList(&File->Records, &Record->Link);
     File->RecordCount++;
+    File->QueuedBytes += Record->Length;
 
     while (!IsListEmpty(&File->Records) && (Irp = MsRilPopIrp(File)) != NULL)
     {
@@ -267,22 +268,82 @@ MsRilPostRecord(
     }
 }
 
+/* Cuts a client off: pending reads fail, queued records go. Caller holds the device lock. */
 static
 VOID
-MsRilSetInterface(
-    _In_ PMSRIL_EXTENSION Extension,
-    _In_ BOOLEAN Enable)
+MsRilKillClient(
+    _In_ PMSRIL_FILE Client,
+    _In_ MSRIL_CLIENT_STATE State,
+    _Inout_ PLIST_ENTRY CompleteList)
 {
-    NTSTATUS Status;
+    ULONG Cancelled;
 
-    if (!Extension->InterfaceName.Buffer || Extension->InterfaceEnabled == Enable)
+    Client->State = State;
+    Cancelled = MsRilFlushIrps(Client, STATUS_CANCELLED, CompleteList);
+    if (Cancelled || Client->RecordCount)
+    {
+        DPRINT1("msril: client %lu cancelled %lu read(s), dropped %lu record(s)\n",
+                Client->ClientId, Cancelled, Client->RecordCount);
+    }
+    MsRilFreeRecords(Client);
+}
+
+/* Hands a record to a client, takes ownership of it. Caller holds the device lock. */
+static
+VOID
+MsRilQueueToClient(
+    _In_ PMSRIL_FILE Client,
+    _In_ PMSRIL_RECORD Record,
+    _Inout_ PLIST_ENTRY CompleteList)
+{
+    if (Client->State != MsRilClientLive)
+    {
+        ExFreePoolWithTag(Record, TAG_MSRIL);
         return;
+    }
 
-    Status = IoSetDeviceInterfaceState(&Extension->InterfaceName, Enable);
-    if (NT_SUCCESS(Status))
-        Extension->InterfaceEnabled = Enable;
-    else
-        DPRINT1("IoSetDeviceInterfaceState(%u) failed 0x%lx\n", Enable, Status);
+    MsRilPostRecord(Client, Record, CompleteList);
+    if (Client->QueuedBytes > MSRIL_CLIENT_BUDGET)
+    {
+        DPRINT1("msril: client %lu (pid %lu) has %lu bytes unread, cutting it off\n",
+                Client->ClientId, Client->ProcessId, Client->QueuedBytes);
+        MsRilKillClient(Client, MsRilClientOverBudget, CompleteList);
+    }
+}
+
+/* Brings the client interface in line with the host and PnP state. Runs at PASSIVE_LEVEL. */
+static
+VOID
+MsRilUpdateInterface(
+    _In_ PMSRIL_EXTENSION Extension)
+{
+    BOOLEAN Wanted;
+    NTSTATUS Status;
+    KIRQL OldIrql;
+
+    KeWaitForSingleObject(&Extension->InterfaceLock, Executive, KernelMode, FALSE, NULL);
+
+    KeAcquireSpinLock(&Extension->Lock, &OldIrql);
+    Wanted = Extension->Host && Extension->Started && !Extension->Removed;
+    KeReleaseSpinLock(&Extension->Lock, OldIrql);
+
+    if (Extension->InterfaceName.Buffer && Extension->InterfaceEnabled != Wanted)
+    {
+        Status = IoSetDeviceInterfaceState(&Extension->InterfaceName, Wanted);
+        if (NT_SUCCESS(Status))
+        {
+            Extension->InterfaceEnabled = Wanted;
+            DPRINT1("msril: MSRil%lu client interface %s\n",
+                    Extension->Instance, Wanted ? "enabled" : "disabled");
+        }
+        else
+        {
+            DPRINT1("msril: MSRil%lu interface state %u failed 0x%lx\n",
+                    Extension->Instance, Wanted, Status);
+        }
+    }
+
+    KeSetEvent(&Extension->InterfaceLock, IO_NO_INCREMENT, FALSE);
 }
 
 static
@@ -302,6 +363,16 @@ MsRilFindClient(
     }
 
     return NULL;
+}
+
+static
+VOID
+MsRilFreeFile(
+    _In_ PMSRIL_FILE File)
+{
+    if (File->Closed)
+        ExFreePoolWithTag(File->Closed, TAG_MSRIL);
+    ExFreePoolWithTag(File, TAG_MSRIL);
 }
 
 static
@@ -333,16 +404,19 @@ MsRilCreate(
     if (IsHost && Irp->RequestorMode != KernelMode &&
         !SeSinglePrivilegeCheck(RtlConvertLongToLuid(SE_TCB_PRIVILEGE), Irp->RequestorMode))
     {
+        DPRINT1("msril: host open from pid %lu refused, no TCB privilege\n",
+                HandleToUlong(PsGetCurrentProcessId()));
         return MsRilCompleteIrp(Irp, STATUS_PRIVILEGE_NOT_HELD, 0);
     }
 
-    File = ExAllocatePoolWithTag(NonPagedPool, sizeof(*File), TAG_MSRIL);
+    File = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(*File), TAG_MSRIL);
     if (!File)
         return MsRilCompleteIrp(Irp, STATUS_INSUFFICIENT_RESOURCES, 0);
 
     RtlZeroMemory(File, sizeof(*File));
     File->Role = IsHost ? MsRilRoleHost : MsRilRoleClient;
     File->ProcessId = HandleToUlong(PsGetCurrentProcessId());
+    File->State = MsRilClientLive;
     InitializeListHead(&File->Link);
     InitializeListHead(&File->Records);
     InitializeListHead(&File->Irps);
@@ -350,9 +424,12 @@ MsRilCreate(
     if (!IsHost)
     {
         Opened = MsRilAllocateRecord(0);
-        if (!Opened)
+        File->Closed = MsRilAllocateRecord(0);
+        if (!Opened || !File->Closed)
         {
-            ExFreePoolWithTag(File, TAG_MSRIL);
+            if (Opened)
+                ExFreePoolWithTag(Opened, TAG_MSRIL);
+            MsRilFreeFile(File);
             return MsRilCompleteIrp(Irp, STATUS_INSUFFICIENT_RESOURCES, 0);
         }
     }
@@ -368,14 +445,14 @@ MsRilCreate(
     }
     else if (!Extension->Host)
     {
-        Status = STATUS_DEVICE_NOT_READY;
+        Status = STATUS_INVALID_DEVICE_STATE;
     }
     else
     {
         do
         {
             File->ClientId = ++Extension->NextClientId;
-        } while (File->ClientId == 0 || MsRilFindClient(Extension, File->ClientId));
+        } while (File->ClientId == MSRIL_CLIENT_BROADCAST || MsRilFindClient(Extension, File->ClientId));
 
         InsertTailList(&Extension->Clients, &File->Link);
 
@@ -393,13 +470,24 @@ MsRilCreate(
 
     if (!NT_SUCCESS(Status))
     {
-        ExFreePoolWithTag(File, TAG_MSRIL);
+        DPRINT1("msril: %s open from pid %lu failed 0x%lx\n",
+                IsHost ? "host" : "client", File->ProcessId, Status);
+        MsRilFreeFile(File);
         return MsRilCompleteIrp(Irp, Status, 0);
     }
 
     FileObject->FsContext = File;
+    InterlockedIncrement(&Extension->OpenHandles);
+
     if (IsHost)
-        MsRilSetInterface(Extension, TRUE);
+    {
+        DPRINT1("msril: host attached to MSRil%lu (pid %lu)\n", Extension->Instance, File->ProcessId);
+        MsRilUpdateInterface(Extension);
+    }
+    else
+    {
+        DPRINT1("msril: client %lu opened (pid %lu)\n", File->ClientId, File->ProcessId);
+    }
 
     return MsRilCompleteIrp(Irp, STATUS_SUCCESS, FILE_OPENED);
 }
@@ -413,16 +501,14 @@ MsRilCleanup(
 {
     PMSRIL_EXTENSION Extension = DeviceObject->DeviceExtension;
     PMSRIL_FILE File = IoGetCurrentIrpStackLocation(Irp)->FileObject->FsContext;
-    PMSRIL_RECORD Closed;
     LIST_ENTRY CompleteList;
     PLIST_ENTRY Entry;
     PMSRIL_FILE Client;
+    ULONG Orphaned = 0;
     KIRQL OldIrql;
 
     if (!File)
         return MsRilCompleteIrp(Irp, STATUS_SUCCESS, 0);
-
-    Closed = (File->Role == MsRilRoleClient) ? MsRilAllocateRecord(0) : NULL;
 
     InitializeListHead(&CompleteList);
     KeAcquireSpinLock(&Extension->Lock, &OldIrql);
@@ -433,15 +519,14 @@ MsRilCleanup(
     {
         Extension->Host = NULL;
 
-        /* Every client served by this host is cut off, they reconnect to the next one */
+        /* Every client served by this host is dead, they reconnect to the next one */
         while (!IsListEmpty(&Extension->Clients))
         {
             Entry = RemoveHeadList(&Extension->Clients);
             InitializeListHead(Entry);
             Client = CONTAINING_RECORD(Entry, MSRIL_FILE, Link);
-            Client->Orphaned = TRUE;
-            if (IsListEmpty(&Client->Records))
-                MsRilFlushIrps(Client, STATUS_DEVICE_NOT_READY, &CompleteList);
+            MsRilKillClient(Client, MsRilClientDisconnected, &CompleteList);
+            Orphaned++;
         }
     }
     else
@@ -450,26 +535,30 @@ MsRilCleanup(
         {
             RemoveEntryList(&File->Link);
             InitializeListHead(&File->Link);
-        }
 
-        if (!File->Orphaned && Extension->Host && Closed)
-        {
-            Closed->Event.EventType = MsRilClientClosed;
-            Closed->Event.ClientId = File->ClientId;
-            Closed->Event.ProcessId = File->ProcessId;
-            MsRilPostRecord(Extension->Host, Closed, &CompleteList);
-            Closed = NULL;
+            File->Closed->Event.EventType = MsRilClientClosed;
+            File->Closed->Event.ClientId = File->ClientId;
+            File->Closed->Event.ProcessId = File->ProcessId;
+            MsRilPostRecord(Extension->Host, File->Closed, &CompleteList);
+            File->Closed = NULL;
         }
-        File->Orphaned = TRUE;
+        File->State = MsRilClientDisconnected;
     }
     KeReleaseSpinLock(&Extension->Lock, OldIrql);
     MsRilCompleteList(&CompleteList);
 
-    if (Closed)
-        ExFreePoolWithTag(Closed, TAG_MSRIL);
+    InterlockedDecrement(&Extension->OpenHandles);
 
     if (File->Role == MsRilRoleHost)
-        MsRilSetInterface(Extension, FALSE);
+    {
+        DPRINT1("msril: host detached from MSRil%lu (pid %lu), %lu client(s) cut off\n",
+                Extension->Instance, File->ProcessId, Orphaned);
+        MsRilUpdateInterface(Extension);
+    }
+    else
+    {
+        DPRINT1("msril: client %lu closed (pid %lu)\n", File->ClientId, File->ProcessId);
+    }
 
     return MsRilCompleteIrp(Irp, STATUS_SUCCESS, 0);
 }
@@ -487,7 +576,7 @@ MsRilClose(
 
     if (FileObject->FsContext)
     {
-        ExFreePoolWithTag(FileObject->FsContext, TAG_MSRIL);
+        MsRilFreeFile(FileObject->FsContext);
         FileObject->FsContext = NULL;
     }
 
@@ -502,14 +591,27 @@ MsRilRead(
     _Inout_ PIRP Irp)
 {
     PMSRIL_EXTENSION Extension = DeviceObject->DeviceExtension;
-    PMSRIL_FILE File = IoGetCurrentIrpStackLocation(Irp)->FileObject->FsContext;
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    PMSRIL_FILE File = Stack->FileObject->FsContext;
     NTSTATUS Status;
     KIRQL OldIrql;
 
     if (!File || File->Role != MsRilRoleClient)
         return MsRilCompleteIrp(Irp, STATUS_INVALID_DEVICE_REQUEST, 0);
 
+    if (Extension->Removed)
+        return MsRilCompleteIrp(Irp, STATUS_NO_SUCH_DEVICE, 0);
+
+    if (Stack->Parameters.Read.Length == 0)
+        return MsRilCompleteIrp(Irp, STATUS_SUCCESS, 0);
+
     KeAcquireSpinLock(&Extension->Lock, &OldIrql);
+    if (File->State != MsRilClientLive)
+    {
+        KeReleaseSpinLock(&Extension->Lock, OldIrql);
+        return MsRilCompleteIrp(Irp, STATUS_CANCELLED, 0);
+    }
+
     if (MsRilFillClientRead(File, Irp))
     {
         KeReleaseSpinLock(&Extension->Lock, OldIrql);
@@ -527,6 +629,77 @@ MsRilRead(
     return Status;
 }
 
+/* Applies an enable record to the client and answers it like the host would */
+static
+NTSTATUS
+MsRilEnableNotifications(
+    _In_ PMSRIL_EXTENSION Extension,
+    _In_ PMSRIL_FILE File,
+    _In_reads_bytes_(Length) const RIL_ENABLE_RECORD *Request,
+    _In_ ULONG Length)
+{
+    PRIL_RESPONSE_RECORD Response;
+    LIST_ENTRY CompleteList;
+    PMSRIL_RECORD Record;
+    NTSTATUS Status = STATUS_SUCCESS;
+    KIRQL OldIrql;
+    ULONG i;
+
+    if (Length < FIELD_OFFSET(RIL_ENABLE_RECORD, Codes) ||
+        Request->Count != (Length - FIELD_OFFSET(RIL_ENABLE_RECORD, Codes)) / sizeof(ULONG) ||
+        (Length - FIELD_OFFSET(RIL_ENABLE_RECORD, Codes)) % sizeof(ULONG) != 0)
+    {
+        DPRINT1("msril: client %lu enable record of %lu bytes does not match its count\n",
+                File->ClientId, Length);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    for (i = 0; i < Request->Count; i++)
+    {
+        if (Request->Codes[i] < RIL_RECORD_NOTIFY_FIRST || Request->Codes[i] > RIL_RECORD_NOTIFY_LAST)
+        {
+            DPRINT1("msril: client %lu asked for unknown notification 0x%lx\n",
+                    File->ClientId, Request->Codes[i]);
+            return STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    Record = MsRilAllocateRecord(sizeof(*Response));
+    if (!Record)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Response = (PRIL_RESPONSE_RECORD)Record->Data;
+    Response->Type = RIL_RECORD_RESPONSE;
+    Response->ResultType = RIL_RECORD_RESULT_OK;
+    Response->Command = Request->Header.Command;
+    Response->Context = Request->Header.Context;
+
+    InitializeListHead(&CompleteList);
+    KeAcquireSpinLock(&Extension->Lock, &OldIrql);
+    if (File->State != MsRilClientLive || !Extension->Host)
+    {
+        Status = STATUS_CANCELLED;
+    }
+    else
+    {
+        for (i = 0; i < Request->Count; i++)
+            File->Enabled[Request->Codes[i] - RIL_RECORD_NOTIFY_FIRST] = TRUE;
+
+        MsRilQueueToClient(File, Record, &CompleteList);
+        Record = NULL;
+    }
+    KeReleaseSpinLock(&Extension->Lock, OldIrql);
+    MsRilCompleteList(&CompleteList);
+
+    if (Record)
+        ExFreePoolWithTag(Record, TAG_MSRIL);
+
+    if (NT_SUCCESS(Status))
+        DPRINT1("msril: client %lu enabled %lu notification code(s)\n", File->ClientId, Request->Count);
+
+    return Status;
+}
+
 static
 NTSTATUS
 NTAPI
@@ -538,6 +711,7 @@ MsRilWrite(
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     PMSRIL_FILE File = Stack->FileObject->FsContext;
     ULONG Length = Stack->Parameters.Write.Length;
+    PRIL_COMMAND_RECORD Header = Irp->AssociatedIrp.SystemBuffer;
     LIST_ENTRY CompleteList;
     PMSRIL_RECORD Record;
     NTSTATUS Status = STATUS_SUCCESS;
@@ -546,23 +720,43 @@ MsRilWrite(
     if (!File || File->Role != MsRilRoleClient)
         return MsRilCompleteIrp(Irp, STATUS_INVALID_DEVICE_REQUEST, 0);
 
-    if (Length < sizeof(RIL_COMMAND_RECORD) || Length > RIL_RECORD_MAX_LENGTH)
-        return MsRilCompleteIrp(Irp, STATUS_INVALID_BUFFER_SIZE, 0);
+    if (Extension->Removed)
+        return MsRilCompleteIrp(Irp, STATUS_NO_SUCH_DEVICE, 0);
+
+    if (Length == 0)
+        return MsRilCompleteIrp(Irp, STATUS_SUCCESS, 0);
+
+    if (Length < sizeof(RIL_COMMAND_RECORD) || Length > RIL_RECORD_MAX_LENGTH ||
+        Header->Type != RIL_RECORD_COMMAND)
+    {
+        DPRINT1("msril: client %lu wrote a bad record (%lu bytes)\n", File->ClientId, Length);
+        return MsRilCompleteIrp(Irp, STATUS_INVALID_PARAMETER, 0);
+    }
+
+    if (File->State != MsRilClientLive)
+        return MsRilCompleteIrp(Irp, STATUS_CANCELLED, 0);
+
+    /* Notification selection lives in the broker, the host never sees it */
+    if (Header->Command == RIL_RECORD_ENABLE_COMMAND)
+    {
+        Status = MsRilEnableNotifications(Extension, File, (PRIL_ENABLE_RECORD)Header, Length);
+        return MsRilCompleteIrp(Irp, Status, NT_SUCCESS(Status) ? Length : 0);
+    }
 
     Record = MsRilAllocateRecord(Length);
     if (!Record)
         return MsRilCompleteIrp(Irp, STATUS_INSUFFICIENT_RESOURCES, 0);
 
-    RtlCopyMemory(Record->Data, Irp->AssociatedIrp.SystemBuffer, Length);
+    RtlCopyMemory(Record->Data, Header, Length);
     Record->Event.EventType = MsRilClientRecord;
     Record->Event.ClientId = File->ClientId;
     Record->Event.ProcessId = File->ProcessId;
 
     InitializeListHead(&CompleteList);
     KeAcquireSpinLock(&Extension->Lock, &OldIrql);
-    if (File->Orphaned || !Extension->Host)
+    if (File->State != MsRilClientLive || !Extension->Host)
     {
-        Status = STATUS_DEVICE_NOT_READY;
+        Status = STATUS_CANCELLED;
     }
     else
     {
@@ -576,6 +770,41 @@ MsRilWrite(
         ExFreePoolWithTag(Record, TAG_MSRIL);
 
     return MsRilCompleteIrp(Irp, Status, NT_SUCCESS(Status) ? Length : 0);
+}
+
+/* Copies a notification to every live client that enabled its code. Caller holds the device lock. */
+static
+VOID
+MsRilBroadcast(
+    _In_ PMSRIL_EXTENSION Extension,
+    _In_ PMSRIL_RECORD Source,
+    _Inout_ PLIST_ENTRY CompleteList)
+{
+    ULONG Code = ((PRIL_NOTIFICATION_RECORD)Source->Data)->Code;
+    PLIST_ENTRY Entry, Next;
+    PMSRIL_RECORD Copy;
+    PMSRIL_FILE Client;
+
+    if (Code < RIL_RECORD_NOTIFY_FIRST || Code > RIL_RECORD_NOTIFY_LAST)
+        return;
+
+    for (Entry = Extension->Clients.Flink; Entry != &Extension->Clients; Entry = Next)
+    {
+        Next = Entry->Flink;
+        Client = CONTAINING_RECORD(Entry, MSRIL_FILE, Link);
+        if (Client->State != MsRilClientLive || !Client->Enabled[Code - RIL_RECORD_NOTIFY_FIRST])
+            continue;
+
+        Copy = MsRilAllocateRecord(Source->Length);
+        if (!Copy)
+        {
+            DPRINT1("msril: no memory for notification 0x%lx to client %lu\n", Code, Client->ClientId);
+            continue;
+        }
+
+        RtlCopyMemory(Copy->Data, Source->Data, Source->Length);
+        MsRilQueueToClient(Client, Copy, CompleteList);
+    }
 }
 
 static
@@ -601,6 +830,13 @@ MsRilHostDeliver(
         return STATUS_INVALID_PARAMETER;
     }
 
+    if (Delivery->ClientId == MSRIL_CLIENT_BROADCAST &&
+        (Delivery->DataLength < sizeof(RIL_NOTIFICATION_RECORD) ||
+         ((PRIL_NOTIFICATION_RECORD)(Delivery + 1))->Type != RIL_RECORD_NOTIFICATION))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
     Record = MsRilAllocateRecord(Delivery->DataLength);
     if (!Record)
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -609,19 +845,23 @@ MsRilHostDeliver(
 
     InitializeListHead(&CompleteList);
     KeAcquireSpinLock(&Extension->Lock, &OldIrql);
-    Client = MsRilFindClient(Extension, Delivery->ClientId);
-    if (!Client)
+    if (Delivery->ClientId == MSRIL_CLIENT_BROADCAST)
     {
-        Status = STATUS_NOT_FOUND;
-    }
-    else if (Client->RecordCount >= MSRIL_MAX_CLIENT_QUEUE)
-    {
-        Status = STATUS_INSUFFICIENT_RESOURCES;
+        MsRilBroadcast(Extension, Record, &CompleteList);
     }
     else
     {
-        MsRilPostRecord(Client, Record, &CompleteList);
-        Record = NULL;
+        Client = MsRilFindClient(Extension, Delivery->ClientId);
+        if (!Client)
+        {
+            Status = STATUS_NOT_FOUND;
+        }
+        else
+        {
+            /* A client that went over budget silently loses what follows */
+            MsRilQueueToClient(Client, Record, &CompleteList);
+            Record = NULL;
+        }
     }
     KeReleaseSpinLock(&Extension->Lock, OldIrql);
     MsRilCompleteList(&CompleteList);
@@ -656,6 +896,12 @@ MsRilDeviceControl(
                 return MsRilCompleteIrp(Irp, STATUS_BUFFER_TOO_SMALL, 0);
 
             KeAcquireSpinLock(&Extension->Lock, &OldIrql);
+            if (Extension->Removed)
+            {
+                KeReleaseSpinLock(&Extension->Lock, OldIrql);
+                return MsRilCompleteIrp(Irp, STATUS_NO_SUCH_DEVICE, 0);
+            }
+
             if (MsRilFillHostFetch(File, Irp))
             {
                 KeReleaseSpinLock(&Extension->Lock, OldIrql);
@@ -681,6 +927,28 @@ MsRilDeviceControl(
     }
 }
 
+/* Fails the pending IRPs of every open file once the device is going away */
+static
+VOID
+MsRilFlushAll(
+    _In_ PMSRIL_EXTENSION Extension)
+{
+    LIST_ENTRY CompleteList;
+    PLIST_ENTRY Entry;
+    KIRQL OldIrql;
+
+    InitializeListHead(&CompleteList);
+    KeAcquireSpinLock(&Extension->Lock, &OldIrql);
+    Extension->Removed = TRUE;
+    if (Extension->Host)
+        MsRilFlushIrps(Extension->Host, STATUS_NO_SUCH_DEVICE, &CompleteList);
+
+    for (Entry = Extension->Clients.Flink; Entry != &Extension->Clients; Entry = Entry->Flink)
+        MsRilFlushIrps(CONTAINING_RECORD(Entry, MSRIL_FILE, Link), STATUS_NO_SUCH_DEVICE, &CompleteList);
+    KeReleaseSpinLock(&Extension->Lock, OldIrql);
+    MsRilCompleteList(&CompleteList);
+}
+
 static
 NTSTATUS
 NTAPI
@@ -690,9 +958,7 @@ MsRilPnp(
 {
     PMSRIL_EXTENSION Extension = DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
-    BOOLEAN HostAttached;
     NTSTATUS Status;
-    KIRQL OldIrql;
 
     switch (Stack->MinorFunction)
     {
@@ -706,29 +972,39 @@ MsRilPnp(
                                                    &GUID_DEVINTERFACE_RIL_CLIENT,
                                                    NULL,
                                                    &Extension->InterfaceName);
+                if (!NT_SUCCESS(Status))
+                    DPRINT1("msril: MSRil%lu interface registration failed 0x%lx\n", Extension->Instance, Status);
             }
 
             if (NT_SUCCESS(Status))
             {
-                KeAcquireSpinLock(&Extension->Lock, &OldIrql);
-                HostAttached = (Extension->Host != NULL);
-                KeReleaseSpinLock(&Extension->Lock, OldIrql);
-                if (HostAttached)
-                    MsRilSetInterface(Extension, TRUE);
+                Extension->Started = TRUE;
+                MsRilUpdateInterface(Extension);
             }
 
             return MsRilCompleteIrp(Irp, Status, 0);
         }
 
+        case IRP_MN_QUERY_REMOVE_DEVICE:
+            if (Extension->OpenHandles != 0)
+            {
+                DPRINT1("msril: MSRil%lu refused removal, %ld handle(s) open\n",
+                        Extension->Instance, Extension->OpenHandles);
+                return MsRilCompleteIrp(Irp, STATUS_DEVICE_BUSY, 0);
+            }
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            break;
+
         case IRP_MN_SURPRISE_REMOVAL:
-            MsRilSetInterface(Extension, FALSE);
+            MsRilFlushAll(Extension);
+            MsRilUpdateInterface(Extension);
             Irp->IoStatus.Status = STATUS_SUCCESS;
             break;
 
         case IRP_MN_REMOVE_DEVICE:
         {
-            MsRilSetInterface(Extension, FALSE);
-            Extension->Removed = TRUE;
+            MsRilFlushAll(Extension);
+            MsRilUpdateInterface(Extension);
 
             Irp->IoStatus.Status = STATUS_SUCCESS;
             IoSkipCurrentIrpStackLocation(Irp);
@@ -736,12 +1012,12 @@ MsRilPnp(
 
             IoDeleteSymbolicLink(&Extension->LinkName);
             RtlFreeUnicodeString(&Extension->InterfaceName);
+            InterlockedAnd(&MsRilInstanceMask, ~(LONG)(1UL << (Extension->Instance - 1)));
             IoDetachDevice(Extension->Lower);
             IoDeleteDevice(DeviceObject);
             return Status;
         }
 
-        case IRP_MN_QUERY_REMOVE_DEVICE:
         case IRP_MN_CANCEL_REMOVE_DEVICE:
         case IRP_MN_QUERY_STOP_DEVICE:
         case IRP_MN_CANCEL_STOP_DEVICE:
@@ -784,6 +1060,22 @@ MsRilSystemControl(
     return IoCallDriver(Extension->Lower, Irp);
 }
 
+/* Takes the lowest free broker number so a lone broker is always MSRil1 */
+static
+ULONG
+MsRilClaimInstance(VOID)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < MSRIL_MAX_INSTANCES; Index++)
+    {
+        if (!InterlockedBitTestAndSet(&MsRilInstanceMask, Index))
+            return Index + 1;
+    }
+
+    return 0;
+}
+
 static
 NTSTATUS
 NTAPI
@@ -798,7 +1090,9 @@ MsRilAddDevice(
     ULONG Instance;
     NTSTATUS Status;
 
-    Instance = (ULONG)InterlockedIncrement(&MsRilInstanceCount);
+    Instance = MsRilClaimInstance();
+    if (!Instance)
+        return STATUS_TOO_MANY_NAMES;
 
     RtlInitEmptyUnicodeString(&DeviceName, DeviceNameBuffer, sizeof(DeviceNameBuffer));
     RtlUnicodeStringPrintf(&DeviceName, L"\\Device\\MSRil%lu", Instance);
@@ -811,13 +1105,14 @@ MsRilAddDevice(
                             FALSE,
                             &DeviceObject);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto Fail;
 
     Extension = DeviceObject->DeviceExtension;
     RtlZeroMemory(Extension, sizeof(*Extension));
     Extension->Self = DeviceObject;
     Extension->Pdo = PhysicalDeviceObject;
     Extension->Instance = Instance;
+    KeInitializeEvent(&Extension->InterfaceLock, SynchronizationEvent, TRUE);
     KeInitializeSpinLock(&Extension->Lock);
     InitializeListHead(&Extension->Clients);
 
@@ -830,7 +1125,7 @@ MsRilAddDevice(
     if (!NT_SUCCESS(Status))
     {
         IoDeleteDevice(DeviceObject);
-        return Status;
+        goto Fail;
     }
 
     Extension->Lower = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
@@ -838,70 +1133,19 @@ MsRilAddDevice(
     {
         IoDeleteSymbolicLink(&Extension->LinkName);
         IoDeleteDevice(DeviceObject);
-        return STATUS_NO_SUCH_DEVICE;
+        Status = STATUS_NO_SUCH_DEVICE;
+        goto Fail;
     }
 
     DeviceObject->Flags |= DO_BUFFERED_IO | DO_POWER_PAGABLE;
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+    DPRINT1("msril: broker device MSRil%lu created\n", Instance);
     return STATUS_SUCCESS;
-}
 
-/*
- * The broker has no hardware behind it, so it does not depend on a devnode
- * being installed. It comes up as a plain service and creates its own device
- * and dos name, which the RIL host and the clients open directly. The PnP
- * AddDevice path above still works if a devnode is ever bound.
- */
-static
-NTSTATUS
-MsRilCreateControlDevice(
-    _In_ PDRIVER_OBJECT DriverObject)
-{
-    WCHAR DeviceNameBuffer[32];
-    UNICODE_STRING DeviceName;
-    PMSRIL_EXTENSION Extension;
-    PDEVICE_OBJECT DeviceObject;
-    ULONG Instance;
-    NTSTATUS Status;
-
-    Instance = (ULONG)InterlockedIncrement(&MsRilInstanceCount);
-
-    RtlInitEmptyUnicodeString(&DeviceName, DeviceNameBuffer, sizeof(DeviceNameBuffer));
-    RtlUnicodeStringPrintf(&DeviceName, L"\\Device\\MSRil%lu", Instance);
-
-    Status = IoCreateDevice(DriverObject,
-                            sizeof(*Extension),
-                            &DeviceName,
-                            FILE_DEVICE_MSRIL,
-                            FILE_DEVICE_SECURE_OPEN,
-                            FALSE,
-                            &DeviceObject);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    Extension = DeviceObject->DeviceExtension;
-    RtlZeroMemory(Extension, sizeof(*Extension));
-    Extension->Self = DeviceObject;
-    Extension->Instance = Instance;
-    KeInitializeSpinLock(&Extension->Lock);
-    InitializeListHead(&Extension->Clients);
-
-    RtlInitEmptyUnicodeString(&Extension->LinkName,
-                              Extension->LinkNameBuffer,
-                              sizeof(Extension->LinkNameBuffer));
-    RtlUnicodeStringPrintf(&Extension->LinkName, L"\\DosDevices\\MSRil%lu", Instance);
-
-    Status = IoCreateSymbolicLink(&Extension->LinkName, &DeviceName);
-    if (!NT_SUCCESS(Status))
-    {
-        IoDeleteDevice(DeviceObject);
-        return Status;
-    }
-
-    DeviceObject->Flags |= DO_BUFFERED_IO;
-    DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
-    MsRilControlDevice = DeviceObject;
-    return STATUS_SUCCESS;
+Fail:
+    DPRINT1("msril: broker device MSRil%lu failed 0x%lx\n", Instance, Status);
+    InterlockedAnd(&MsRilInstanceMask, ~(LONG)(1UL << (Instance - 1)));
+    return Status;
 }
 
 static
@@ -910,19 +1154,10 @@ NTAPI
 MsRilUnload(
     _In_ PDRIVER_OBJECT DriverObject)
 {
-    PMSRIL_EXTENSION Extension;
-
     UNREFERENCED_PARAMETER(DriverObject);
-
-    if (MsRilControlDevice)
-    {
-        Extension = MsRilControlDevice->DeviceExtension;
-        IoDeleteSymbolicLink(&Extension->LinkName);
-        IoDeleteDevice(MsRilControlDevice);
-        MsRilControlDevice = NULL;
-    }
 }
 
+/* The broker is a PnP function driver, its root devnode comes from the hive or from riladapt */
 NTSTATUS
 NTAPI
 DriverEntry(
@@ -942,9 +1177,6 @@ DriverEntry(
     DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = MsRilSystemControl;
     DriverObject->DriverExtension->AddDevice = MsRilAddDevice;
     DriverObject->DriverUnload = MsRilUnload;
-
-    /* Bring the broker up without waiting for a devnode to be installed */
-    MsRilCreateControlDevice(DriverObject);
 
     return STATUS_SUCCESS;
 }
