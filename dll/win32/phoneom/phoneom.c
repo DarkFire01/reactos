@@ -726,6 +726,73 @@ PhoneOmDeleteMessage(
     return PhOmTransactDword(Phone, PhoneRequestDeleteMessage, MessageId);
 }
 
+HRESULT
+WINAPI
+PhoneOmGetAttachments(
+    _In_ HPHONEOM Phone,
+    _In_ DWORD MessageId,
+    _Out_writes_to_(MaxAttachments, *Count) PPHONEOM_ATTACHMENT Attachments,
+    _In_ DWORD MaxAttachments,
+    _Out_ PDWORD Count)
+{
+    DWORD Returned;
+    HRESULT hr;
+
+    if (!Count || (!Attachments && MaxAttachments))
+        return E_POINTER;
+    *Count = 0;
+
+    hr = PhOmTransact(Phone,
+                      PhoneRequestGetAttachments,
+                      &MessageId,
+                      sizeof(MessageId),
+                      Attachments,
+                      MaxAttachments * sizeof(*Attachments),
+                      &Returned);
+    if (SUCCEEDED(hr))
+        *Count = Returned / sizeof(*Attachments);
+    return hr;
+}
+
+HRESULT
+WINAPI
+PhoneOmSendMms(
+    _In_ HPHONEOM Phone,
+    _In_ LPCWSTR Address,
+    _In_opt_ LPCWSTR Text,
+    _In_opt_ LPCWSTR AttachmentPath,
+    _Out_opt_ PDWORD MessageId)
+{
+    PHONE_REQUEST_MMS *Request;
+    DWORD Id = 0;
+    HRESULT hr;
+
+    if (MessageId)
+        *MessageId = 0;
+
+    if (!Address)
+        return E_POINTER;
+
+    Request = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*Request));
+    if (!Request)
+        return E_OUTOFMEMORY;
+
+    hr = StringCchCopyW(Request->Address, _countof(Request->Address), Address);
+    if (SUCCEEDED(hr) && Text)
+        hr = StringCchCopyW(Request->Text, _countof(Request->Text), Text);
+    if (SUCCEEDED(hr) && AttachmentPath)
+        hr = StringCchCopyW(Request->Path, _countof(Request->Path), AttachmentPath);
+
+    if (SUCCEEDED(hr))
+        hr = PhOmTransact(Phone, PhoneRequestSendMms, Request, sizeof(*Request), &Id, sizeof(Id), NULL);
+
+    HeapFree(GetProcessHeap(), 0, Request);
+
+    if (SUCCEEDED(hr) && MessageId)
+        *MessageId = Id;
+    return hr;
+}
+
 /* Fixed size query reply, fails unless the whole record came back */
 static
 HRESULT
