@@ -351,6 +351,9 @@ typedef struct _SOUND_DEVICE_INSTANCE
     ULONG RTStreamingShadowBufferLength;
     volatile LONG RTStreamingShadowBufferOffset;
 
+    volatile LONG RTStreamingNotifyCount;
+    volatile LONG RTStreamingLastDataNotify;
+
     BOOL ResetInProgress;
     BOOL bPaused;
     BOOL bStarted;
