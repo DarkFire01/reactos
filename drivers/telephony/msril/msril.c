@@ -124,7 +124,7 @@ MsRilPopIrp(
         if (IoSetCancelRoutine(Irp, NULL))
             return Irp;
 
-        /* Being cancelled, let the cancel routine unlink a harmless self pointing entry */
+        /* Being canceled, let the cancel routine unlink a harmless self pointing entry */
         InitializeListHead(Entry);
     }
 
@@ -282,7 +282,7 @@ MsRilKillClient(
     Cancelled = MsRilFlushIrps(Client, STATUS_CANCELLED, CompleteList);
     if (Cancelled || Client->RecordCount)
     {
-        DPRINT1("msril: client %lu cancelled %lu read(s), dropped %lu record(s)\n",
+        DPRINT1("msril: client %lu canceled %lu read(s), dropped %lu record(s)\n",
                 Client->ClientId, Cancelled, Client->RecordCount);
     }
     MsRilFreeRecords(Client);
