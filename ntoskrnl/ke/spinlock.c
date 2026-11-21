@@ -341,8 +341,9 @@ KeTryToAcquireSpinLockAtDpcLevel(IN OUT PKSPIN_LOCK SpinLock)
     /* Make sure that we don't own the lock already */
     if (((KSPIN_LOCK)KeGetCurrentThread() | 1) == *SpinLock)
     {
-        /* We do, bugcheck! */
-        KiSpinLockAlreadyOwned(SpinLock);
+        /* It is taken, by this very holder */
+        KiReportSpinLockReentry(SpinLock);
+        return FALSE;
     }
 #endif
 
