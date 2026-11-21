@@ -123,3 +123,41 @@ PcwCloseInstance(
     if (Instance)
         ExFreePoolWithTag(Instance, TAG_PCW);
 }
+
+/**
+ * @brief Adds an instance while a counter set's callback reports its instances.
+ *
+ * Callbacks only run when a consumer asks for the counters, so there is never
+ * a buffer to collect into and the instance is only checked.
+ *
+ * @param[in] Buffer
+ * The buffer the callback was given.
+ *
+ * @param[in] Name
+ * Name of the instance.
+ *
+ * @param[in] Id
+ * Identifier of the instance.
+ *
+ * @param[in] Count
+ * Number of data blocks.
+ *
+ * @param[in] Data
+ * Data blocks the counters are read from.
+ */
+NTSTATUS
+NTAPI
+PcwAddInstance(
+    _In_ PVOID Buffer,
+    _In_ PCUNICODE_STRING Name,
+    _In_ ULONG Id,
+    _In_ ULONG Count,
+    _In_reads_(Count) PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Id);
+
+    if (!Buffer || !Name || (Count != 0 && !Data))
+        return STATUS_INVALID_PARAMETER;
+
+    return STATUS_SUCCESS;
+}
