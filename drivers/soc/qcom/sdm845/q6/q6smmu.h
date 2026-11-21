@@ -7,9 +7,11 @@
 
 #pragma once
 
-/* Logs the stream entries and context banks in use and whether StreamId is routed */
-VOID
+/* Logs the SMMU routing, then routes StreamId untranslated when Route is set and it has no entry.
+   Returns whether the stream is routed. */
+BOOLEAN
 NTAPI
-QcQ6SmmuSurvey(
+QcQ6SmmuRouteStream(
     _In_ ULONGLONG Base,
-    _In_ USHORT StreamId);
+    _In_ USHORT StreamId,
+    _In_ BOOLEAN Route);
