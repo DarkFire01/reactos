@@ -20,7 +20,7 @@
 #include <telephony/rilapi.h>
 
 #define RIL_INITIAL_READ_SIZE       2048
-#define RIL_RECONNECT_PERIOD_MS     1000
+#define RIL_CONNECT_RETRY_MS        1000
 
 typedef struct _RIL_PENDING
 {
@@ -36,27 +36,52 @@ typedef struct _RIL_CLIENT
     PRIL_NOTIFY_CALLBACK NotifyCallback;
     PVOID Param;
 
-    /* Serializes connect, disconnect and writes */
+    /* One writer at a time, the write OVERLAPPED is shared */
+    CRITICAL_SECTION SendLock;
+
+    /* Guards the device handle, the pending list and the state flags */
     CRITICAL_SECTION DeviceLock;
     HANDLE Device;
+    BOOL Started;
+    BOOL Initialized;
     BOOL ShuttingDown;
-
-    /* Guards the pending list */
-    CRITICAL_SECTION PendingLock;
     LIST_ENTRY Pending;
+    DWORD LastConnectError;
+
+    /* Threadpool callbacks run one at a time */
+    SRWLOCK CallbackLock;
+    HCMNOTIFICATION InterfaceNotify;
+
+    HANDLE InitDoneEvent;
+    HANDLE ShutdownDoneEvent;
+
+    HANDLE ConnectEvent;
+    PTP_WAIT ConnectWait;
+    PTP_TIMER RetryTimer;
+
+    HANDLE DisconnectEvent;
+    PTP_WAIT DisconnectWait;
 
     HANDLE WriteEvent;
     OVERLAPPED WriteOverlapped;
 
     HANDLE ReadEvent;
+    PTP_WAIT ReadWait;
     OVERLAPPED ReadOverlapped;
     BOOL ReadOutstanding;
-    PTP_WAIT ReadWait;
     PBYTE ReadBuffer;
     DWORD ReadBufferSize;
-
-    PTP_TIMER ReconnectTimer;
 } RIL_CLIENT, *PRIL_CLIENT;
+
+VOID
+__cdecl
+RilpTrace(
+    _In_z_ _Printf_format_string_ PCSTR Format,
+    ...);
+
+PCSTR
+RilpCommandName(
+    _In_ DWORD Command);
 
 HRESULT
 RilpCreateClient(
