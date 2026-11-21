@@ -555,9 +555,11 @@ VOID
 QcModemLost(
     _In_ PQC_MODEM Modem)
 {
+    DWORD Reset = RIL_MODEMRESET_STARTED;
     QC_SVC i;
 
     QcTrace("ssr: modem services removed, the modem is restarting\n");
+    QcNotifyAll(Modem, RIL_NOTIFY_MODEMRESETSTATE, &Reset, sizeof(Reset));
 
     EnterCriticalSection(&Modem->ServiceLock);
     for (i = 0; i < QcSvcCount; i++)
@@ -570,10 +572,21 @@ QcModemLost(
 
     QcAbortPending(Modem, NULL);
 
+    /* A carrier configuration step waiting on its indication will not get one */
+    EnterCriticalSection(&Modem->StateLock);
+    if (Modem->Pdc.WaitId && Modem->Pdc.Event)
+    {
+        Modem->Pdc.WaitId = 0;
+        SetEvent(Modem->Pdc.Event);
+    }
+    LeaveCriticalSection(&Modem->StateLock);
+
     QcDmsModemLost(Modem);
     QcNasModemLost(Modem);
     QcUimModemLost(Modem);
     QcVoiceModemLost(Modem);
+    QcWdsModemLost(Modem);
+    QcImsModemLost(Modem);
     QcImsDataModemLost();
 
     InterlockedExchange(&Modem->Restarted, 1);
@@ -643,6 +656,8 @@ QcServerEvent(
     /* Losing a core service means the modem itself restarted */
     if (QC_SVC_IS_CORE(Which) && InterlockedExchange(&Modem->ModemUp, 0) != 0)
         QcModemLost(Modem);
+    else if (Which == QcSvcWds)
+        QcWdsModemLost(Modem);
 
     QcKickSetup(Modem);
 }

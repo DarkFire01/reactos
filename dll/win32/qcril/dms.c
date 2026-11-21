@@ -198,13 +198,20 @@ QcDmsModemLost(
     QcTrace("ssr: equipment state cached as shutdown\n");
 }
 
-/* Puts the modem back in the state a client last asked for, after a restart */
-VOID
+/**
+ * @brief
+ * Puts the modem back in the state a client last asked for, after a restart.
+ *
+ * @return
+ * FALSE when the modem was not ready for it and it should be tried again.
+ */
+BOOL
 QcDmsRestore(
     _In_ PQC_MODEM Modem)
 {
     DWORD State;
     BOOL Shutdown;
+    UCHAR Mode, Wanted;
 
     EnterCriticalSection(&Modem->StateLock);
     State = Modem->Dms.Requested;
@@ -212,10 +219,17 @@ QcDmsRestore(
     LeaveCriticalSection(&Modem->StateLock);
 
     if (Shutdown || State == RIL_EQSTATE_SHUTDOWN)
-        return;
+        return TRUE;
+
+    Wanted = (State == RIL_EQSTATE_FULL) ? QCRIL_DMS_MODE_ONLINE : QCRIL_DMS_MODE_LOW_POWER;
+    if (SUCCEEDED(QcDmsReadMode(Modem, &Mode)) && Mode == Wanted)
+    {
+        QcTrace("ssr: equipment state %lu (%s) already in place\n", State, QcEquipmentName(State));
+        return TRUE;
+    }
 
     QcTrace("ssr: restoring equipment state %lu (%s)\n", State, QcEquipmentName(State));
-    QcDmsWriteMode(Modem, (State == RIL_EQSTATE_FULL) ? QCRIL_DMS_MODE_ONLINE : QCRIL_DMS_MODE_LOW_POWER);
+    return SUCCEEDED(QcDmsWriteMode(Modem, Wanted));
 }
 
 HRESULT

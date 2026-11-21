@@ -215,6 +215,10 @@ C_ASSERT(sizeof(RIL_ERROR_RESULT) == 16);
 #define RIL_RADIO_ABSENT            1
 #define RIL_RADIO_PRESENT           2
 
+/* RIL_NOTIFY_MODEMRESETSTATE payload */
+#define RIL_MODEMRESET_STARTED      1
+#define RIL_MODEMRESET_COMPLETED    2
+
 typedef VOID
 (CALLBACK *PRIL_RESULT_CALLBACK)(
     _In_ HRIL hRil,

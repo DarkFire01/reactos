@@ -54,6 +54,7 @@
 
 /* A single packet data session, serialised through the command worker */
 static DWORD gWdsHandle;
+static BOOL gWdsLinkUp;
 
 #include <pshpack1.h>
 typedef struct _QCRIL_WDS_ENDPOINT
@@ -196,6 +197,7 @@ QcWdsLinkUp(
         return HRESULT_FROM_WIN32(GetLastError());
     }
 
+    gWdsLinkUp = TRUE;
     return S_OK;
 }
 
@@ -208,6 +210,43 @@ QcWdsLinkDown(VOID)
     ZeroMemory(&Link, sizeof(Link));
     Link.Version = RMNET_INTERFACE_VERSION;
     QcRmNetIoctl(IOCTL_RMNET_SET_LINK, &Link, sizeof(Link), NULL, 0);
+    gWdsLinkUp = FALSE;
+}
+
+/* A link the adapter still holds from an earlier host process has no session behind it */
+VOID
+QcWdsReset(VOID)
+{
+    RMNET_QUERY Adapter;
+
+    ZeroMemory(&Adapter, sizeof(Adapter));
+    if (!QcRmNetIoctl(IOCTL_RMNET_QUERY, NULL, 0, &Adapter, sizeof(Adapter)) ||
+        Adapter.State != RMNET_STATE_CONNECTED)
+    {
+        return;
+    }
+
+    QcTrace("data: the data adapter still has a link from before, taking it down\n");
+    QcWdsLinkDown();
+}
+
+/**
+ * @brief
+ * The modem or its data service went away and the packet data call with it.
+ * The adapter reports the media disconnected until a client connects again.
+ */
+VOID
+QcWdsModemLost(
+    _In_ PQC_MODEM Modem)
+{
+    UNREFERENCED_PARAMETER(Modem);
+
+    if (!gWdsHandle && !gWdsLinkUp)
+        return;
+
+    QcTrace("ssr: data session 0x%08lx lost, the data link goes down\n", gWdsHandle);
+    gWdsHandle = 0;
+    QcWdsLinkDown();
 }
 
 /* Packet service status: the modem ended the call, so the adapter loses its address */

@@ -325,7 +325,7 @@ QcImsaSetup(
     BYTE Message[64];
     BYTE Response[512];
     ULONG Length, ResponseLen;
-    UCHAR On = 1, Profile;
+    UCHAR On = 1;
     HRESULT hr;
 
     hr = QcImsBind(Modem, QcSvcImsa, QCRIL_IMSA_BIND, QCRIL_IMSA_TLV_BINDING);
@@ -353,12 +353,43 @@ QcImsaSetup(
     if (SUCCEEDED(hr))
         QcImsLogServices(Modem, Response, ResponseLen, "services");
 
-    /* Registration runs over the IMS PDN, which the modem waits for the host to bring up */
+    /* After a modem restart the data service may trail the IMS ones */
+    if (!QcServiceEnsure(Modem, QcSvcWds))
+    {
+        QcTrace("ims: the ims pdn waits for the data service\n");
+        Modem->Ims.PdnPending = TRUE;
+        return;
+    }
+
+    QcImsStartPdn(Modem);
+}
+
+/* Registration runs over the IMS PDN, which the modem waits for the host to bring up */
+VOID
+QcImsStartPdn(
+    _In_ PQC_MODEM Modem)
+{
+    UCHAR Profile;
+
+    Modem->Ims.PdnPending = FALSE;
+
     Profile = QcImsListProfiles(Modem);
     if (Profile && Modem->Ims.Registration != 2)
         QcImsDataStart(Modem, Profile);
     else if (!Profile)
         QcTrace("ims: no data profile with the ims apn\n");
+}
+
+/* The registration went with the modem, it is set up again once IMS returns */
+VOID
+QcImsModemLost(
+    _In_ PQC_MODEM Modem)
+{
+    EnterCriticalSection(&Modem->StateLock);
+    Modem->Ims.Registration = 0;
+    Modem->Ims.Voice = 0;
+    Modem->Ims.PdnPending = FALSE;
+    LeaveCriticalSection(&Modem->StateLock);
 }
 
 VOID

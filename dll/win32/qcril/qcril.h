@@ -78,6 +78,9 @@ typedef enum _QC_SVC
 /* How long an equipment state change waits for the modem to report it */
 #define QC_EQSTATE_TIMEOUT_MS       15000
 
+/* Attempts, one per setup pass, to put the equipment state back after a restart */
+#define QC_RESTORE_RETRY            20
+
 /* Service resolve retries while the router comes up */
 #define QC_RESOLVE_RETRY            60
 #define QC_RESOLVE_DELAY_MS         500
@@ -171,6 +174,7 @@ typedef struct _QC_DMS_STATE
     HANDLE ChangeEvent;     /* signaled when the event report confirms a change */
     DWORD Awaiting;         /* state SetEquipmentState waits for, zero when nobody waits */
     DWORD Reported;         /* state the event report confirmed for the waiter */
+    ULONG RestoreTries;     /* attempts left to put the requested state back after a restart */
 } QC_DMS_STATE;
 
 /* Network state cache, served to clients and compared before notifying */
@@ -243,6 +247,7 @@ typedef struct _QC_IMS_STATE
 {
     ULONG Registration;     /* 0 not registered, 1 registering, 2 registered, 3 limited */
     ULONG Voice;            /* 0 unavailable, 1 limited, 2 available */
+    BOOL PdnPending;        /* the IMS PDN waits for the data service to come up */
 } QC_IMS_STATE;
 
 /* RIL call id to modem call id, the modem reuses its ids */
@@ -379,7 +384,7 @@ VOID QcIndication(
 /* dms.c */
 VOID QcDmsSetup(_In_ PQC_MODEM Modem);
 VOID QcDmsModemLost(_In_ PQC_MODEM Modem);
-VOID QcDmsRestore(_In_ PQC_MODEM Modem);
+BOOL QcDmsRestore(_In_ PQC_MODEM Modem);
 HRESULT QcDmsSetEquipmentState(_In_ PQC_MODEM Modem, _In_ DWORD State);
 HRESULT QcDmsGetEquipmentState(_In_ PQC_MODEM Modem, _Inout_ PQC_RESP Resp);
 HRESULT QcDmsGetDeviceInfo(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const VOID *In,
@@ -392,6 +397,8 @@ VOID QcDmsIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
 /* ims.c */
 VOID QcImssSetup(_In_ PQC_MODEM Modem);
 VOID QcImsaSetup(_In_ PQC_MODEM Modem);
+VOID QcImsModemLost(_In_ PQC_MODEM Modem);
+VOID QcImsStartPdn(_In_ PQC_MODEM Modem);
 
 /* imsdata.c */
 VOID QcImsDataStart(_In_ PQC_MODEM Modem, _In_ UCHAR Profile);
@@ -424,6 +431,8 @@ VOID QcUimIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                      _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
 
 /* wds.c */
+VOID QcWdsReset(VOID);
+VOID QcWdsModemLost(_In_ PQC_MODEM Modem);
 HRESULT QcWdsData(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const VOID *In,
                   _In_ ULONG InSize, _Inout_ PQC_RESP Resp);
 
