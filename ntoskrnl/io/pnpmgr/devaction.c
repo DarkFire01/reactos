@@ -2505,15 +2505,15 @@ PiDevNodeStateMachine(
     BOOLEAN doProcessAgain;
     PDEVICE_NODE currentNode = RootNode;
     PDEVICE_OBJECT referencedObject;
+    PDEVICE_OBJECT nextObject;
+
+    /* The node being worked on is held by its PDO, so it can be removed yet still be walked from */
+    referencedObject = RootNode->PhysicalDeviceObject;
+    ObReferenceObject(referencedObject);
 
     do
     {
         doProcessAgain = FALSE;
-
-        // The device can be removed during processing, but we still need its Parent and Sibling
-        // links to continue the tree traversal. So keep the link till the and of a cycle
-        referencedObject = currentNode->PhysicalDeviceObject;
-        ObReferenceObject(referencedObject);
 
         // Devices with problems are skipped (unless they are not being removed)
         if (currentNode->Flags & DNF_HAS_PROBLEM &&
@@ -2702,14 +2702,29 @@ skipEnum:
                     /* We already visited the parent and all its children, so keep looking */
                 }
             }
+
+            /* Hold the next node before letting go of the tree; one whose PDO is already
+               being deleted is about to be freed, so the walk starts over from the root */
+            nextObject = currentNode->PhysicalDeviceObject;
+            if (!ObReferenceObjectSafe(nextObject))
+            {
+                DPRINT1("Devnode %p is being deleted, walking the tree again\n", currentNode);
+                currentNode = RootNode;
+                nextObject = RootNode->PhysicalDeviceObject;
+                ObReferenceObject(nextObject);
+            }
             KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
+
+            ObDereferenceObject(referencedObject);
+            referencedObject = nextObject;
         }
-        ObDereferenceObject(referencedObject);
 
         // devices that waited for others to get resources are tried once more
         if (!doProcessAgain && currentNode == RootNode && IopTakeAssignmentRetry())
             doProcessAgain = TRUE;
     } while (doProcessAgain || currentNode != RootNode);
+
+    ObDereferenceObject(referencedObject);
 }
 
 #ifdef DBG
