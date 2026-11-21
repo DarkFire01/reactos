@@ -146,8 +146,9 @@ RmNetIpaSend(
         return FALSE;
     }
 
-    /* IPA routes by client id, which is the mux the modem bound the session to */
-    NET_BUFFER_LIST_MINIPORT_RESERVED(List)[1] = (PVOID)(ULONG_PTR)Adapter->ClientId;
+    /* IPA reads the client id from the first slot and links its queue through the second */
+    NET_BUFFER_LIST_MINIPORT_RESERVED(List)[0] = (PVOID)(ULONG_PTR)Adapter->ClientId;
+    NET_BUFFER_LIST_MINIPORT_RESERVED(List)[1] = NULL;
     List->Scratch = NULL;
     InterlockedIncrement(&Adapter->IpaSendsPending);
 
@@ -338,6 +339,9 @@ RmNetIpaAttach(
     Adapter->IpaRegistered = TRUE;
     DPRINT1("rmnet: IPA client %lu registered, the modem binds the session to mux %lu\n",
             Adapter->ClientId, Adapter->ClientId);
+
+    /* The receive path hands up one IP packet per frame, so IPA must not merge segments */
+    RmNetIpaSetCoalescing(Adapter, FALSE);
     return STATUS_SUCCESS;
 }
 
@@ -390,12 +394,15 @@ RmNetIpaConnect(
 
 VOID
 NTAPI
-RmNetIpaEnableMux(
+RmNetIpaSetCoalescing(
     _In_ PRMNET_ADAPTER Adapter,
     _In_ BOOLEAN Enable)
 {
-    if (Adapter->IpaRegistered && Adapter->Ipa.EnableMux)
-        Adapter->Ipa.EnableMux(Adapter->ClientId, Enable, RMNET_IPA_FAMILY_IPV4);
+    if (!Adapter->IpaRegistered || !Adapter->Ipa.SetCoalescing)
+        return;
+
+    Adapter->Ipa.SetCoalescing(Adapter->ClientId, Enable, RMNET_IPA_FAMILY_IPV4);
+    Adapter->Ipa.SetCoalescing(Adapter->ClientId, Enable, RMNET_IPA_FAMILY_IPV6);
 }
 
 VOID
@@ -416,8 +423,6 @@ RmNetIpaDisconnect(
 
     if (!Adapter->IpaRegistered)
         return;
-
-    RmNetIpaEnableMux(Adapter, FALSE);
 
     /* Sends still with IPA complete into this adapter, wait a little for them */
     Delay.QuadPart = -10 * 10000;
