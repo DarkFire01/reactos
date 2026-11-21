@@ -20,3 +20,4 @@
 @ stdcall PhoneOmGetDataConfig(ptr ptr)
 @ stdcall PhoneOmSetDataConfig(ptr ptr)
 @ stdcall PhoneOmConnectData(ptr long ptr)
+@ stdcall PhoneOmGetDataStatus(ptr ptr)
