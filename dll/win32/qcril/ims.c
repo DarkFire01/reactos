@@ -18,6 +18,8 @@
 /* IMS settings */
 #define QCRIL_IMSS_SET_SERVICES         0x008F
 #define QCRIL_IMSS_GET_SERVICES         0x0090
+#define QCRIL_IMSS_BIND                 0x0098
+#define QCRIL_IMSS_TLV_BINDING          0x01
 #define QCRIL_IMSS_TLV_SET_VOLTE        0x10
 #define QCRIL_IMSS_TLV_SET_IMS          0x18
 #define QCRIL_IMSS_TLV_GET_VOICE        0x11
@@ -29,6 +31,11 @@
 #define QCRIL_IMSA_REGISTER_IND         0x0022
 #define QCRIL_IMSA_REGISTRATION_IND     0x0023
 #define QCRIL_IMSA_SERVICES_IND         0x0024
+#define QCRIL_IMSA_BIND                 0x0033
+#define QCRIL_IMSA_TLV_BINDING          0x10
+
+/* A multi SIM modem answers IMS requests only once the client is bound to a subscription */
+#define QCRIL_IMS_PRIMARY_SUBSCRIPTION  0
 
 static
 PCSTR
@@ -95,6 +102,28 @@ QcImsReadByte(
     return TRUE;
 }
 
+static
+HRESULT
+QcImsBind(
+    _In_ PQC_MODEM Modem,
+    _In_ QC_SVC Service,
+    _In_ USHORT MessageId,
+    _In_ UCHAR Tlv)
+{
+    QMI_ENCODER Encoder;
+    BYTE Message[32];
+    BYTE Response[64];
+    ULONG Length, ResponseLen;
+    ULONG Binding = QCRIL_IMS_PRIMARY_SUBSCRIPTION;
+
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, MessageId);
+    if (!QmiEncodeTlv(&Encoder, Tlv, &Binding, sizeof(Binding)))
+        return E_FAIL;
+    Length = QmiEncodeEnd(&Encoder);
+
+    return QcQmiRequest(Modem, Service, Message, Length, Response, sizeof(Response), &ResponseLen);
+}
+
 /* Registration status, technology and error, from a response or an indication */
 static
 VOID
@@ -156,6 +185,9 @@ QcImssSetup(
     UCHAR Voice, Registration, On = 1;
     HRESULT hr;
 
+    hr = QcImsBind(Modem, QcSvcImss, QCRIL_IMSS_BIND, QCRIL_IMSS_TLV_BINDING);
+    QcTrace("ims: settings bound to the primary subscription: 0x%08lx\n", hr);
+
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_IMSS_GET_SERVICES);
     Length = QmiEncodeEnd(&Encoder);
     hr = QcQmiRequest(Modem, QcSvcImss, Message, Length, Response, sizeof(Response), &ResponseLen);
@@ -194,6 +226,9 @@ QcImsaSetup(
     ULONG Length, ResponseLen;
     UCHAR On = 1;
     HRESULT hr;
+
+    hr = QcImsBind(Modem, QcSvcImsa, QCRIL_IMSA_BIND, QCRIL_IMSA_TLV_BINDING);
+    QcTrace("ims: application bound to the primary subscription: 0x%08lx\n", hr);
 
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_IMSA_REGISTER_IND);
     if (!QmiEncodeTlv(&Encoder, 0x10, &On, sizeof(On)) ||
