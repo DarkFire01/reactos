@@ -160,7 +160,8 @@ QcImsLogServices(
     _In_ ULONG Length,
     _In_ PCSTR Origin)
 {
-    ULONG Sms, Voice, VoiceTech;
+    ULONG Sms, Voice, VoiceTech, Other;
+    UCHAR Tlv;
 
     QcImsReadDword(Message, Length, 0x10, &Sms);
     QcImsReadDword(Message, Length, 0x11, &Voice);
@@ -172,6 +173,13 @@ QcImsLogServices(
 
     QcTrace("ims: %s: voice %s (technology %ld), sms %s\n", Origin,
             QcImsServiceName(Voice), (LONG)VoiceTech, QcImsServiceName(Sms));
+
+    /* The rest are video, UT, video share and similar, named by TLV for the log */
+    for (Tlv = 0x12; Tlv <= 0x1F; Tlv++)
+    {
+        if (Tlv != 0x14 && QcImsReadDword(Message, Length, Tlv, &Other))
+            QcTrace("ims: %s: service tlv 0x%02x is %s (%lu)\n", Origin, Tlv, QcImsServiceName(Other), Other);
+    }
 }
 
 VOID
