@@ -169,7 +169,6 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D07\Devi
 ; Host role children of those controllers, xHCI over the Qualcomm PHY filter
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM24B6&HOST","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0304&HOST","LowerFilters",0x00010000,"QcXhciFilter"
@@ -178,39 +177,26 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0305&HOST","LowerFilters",0x00010000,"QcXhciFilter"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0C8B&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0C8B&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0C8B&HOST","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0C8C&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0C8C&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0C8C&HOST","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0D07&HOST","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0D07&HOST","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\URS#QCOM0D07&HOST","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0CA1","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0CA1","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0CA1","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D08","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D08","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D08","LowerFilters",0x00010000,"qcomxhcif"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D09","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D09","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D09","LowerFilters",0x00010000,"qcomxhcif"
 
-; Qualcomm SDM845 pin, I2C and PMIC bus controllers, then the touch screen and battery on them.
-; The Windows SDM850 drivers own SPMI, GPIO and I2C now (drivers/soc/qcom/sdm845/windows), so these
-; and the drivers that reach that hardware through them stay unbound.
+; Qualcomm SDM845 pin and I2C controllers, then the touch screen on them. The Windows SDM850
+; drivers own GPIO and I2C now (drivers/soc/qcom/sdm845/windows), so these stay unbound.
 ; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","Service",0x00000000,"qcomtlmm"
 ; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 ; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","Service",0x00000000,"qcomgeni"
 ; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","Service",0x00000000,"qcomspmi"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0216","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","Service",0x00000000,"mshidkmdf"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","LowerFilters",0x00010000,"qcomtouch"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","Service",0x00000000,"qcombatt"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","ClassGUID",0x00000000,"{72631E54-78A4-11D0-BCF7-00AA00B7B32A}"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","Service",0x00000000,"qcomtypec"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM02E6","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
 ; The generic buttons device takes its keys from the Qualcomm PMIC GPIO driver
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","Service",0x00000000,"qcompwrkey"
