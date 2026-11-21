@@ -58,6 +58,10 @@ typedef enum _QC_SVC
 /* How long one request waits for its matching response */
 #define QC_REQUEST_TIMEOUT_MS       15000
 
+/* A dial is answered once the network takes the origination, which can run
+   well past a normal request. It stays under the 60 s the phone service waits */
+#define QC_CALL_SETUP_TIMEOUT_MS    45000
+
 /* How long an equipment state change waits for the modem to report it */
 #define QC_EQSTATE_TIMEOUT_MS       15000
 
@@ -299,6 +303,17 @@ HRESULT QcQmiRequest(
     _Out_writes_bytes_to_(ResponseCap, *ResponseLen) PVOID Response,
     _In_ ULONG ResponseCap,
     _Out_ PULONG ResponseLen);
+
+/* QcQmiRequest with its own wait for the response, in milliseconds */
+HRESULT QcQmiRequestWait(
+    _In_ PQC_MODEM Modem,
+    _In_ QC_SVC Which,
+    _Inout_updates_bytes_(MessageLength) PVOID Message,
+    _In_ ULONG MessageLength,
+    _Out_writes_bytes_to_(ResponseCap, *ResponseLen) PVOID Response,
+    _In_ ULONG ResponseCap,
+    _Out_ PULONG ResponseLen,
+    _In_ DWORD TimeoutMs);
 
 /* Sends a request and only checks the QMI result, discarding the payload */
 HRESULT QcQmiCommand(
