@@ -616,6 +616,42 @@ WdmAudOpenSoundDeviceByMMixer(
         return MMSYSERR_ERROR;
 }
 
+/* Waits until the samples handed to the RT buffer have played, or the stream stalls */
+static
+VOID
+WdmAudDrainRTStream(
+    _In_ PSOUND_DEVICE_INSTANCE SoundDeviceInstance)
+{
+    LONG Seen, Now;
+    DWORD Idle = 0;
+
+    if (!SoundDeviceInstance->bStarted || SoundDeviceInstance->ResetInProgress)
+        return;
+
+    Seen = SoundDeviceInstance->RTStreamingNotifyCount;
+    while (Idle < 1000)
+    {
+        /* Data copied at notification N plays out after the other half, by N + 2 */
+        if (SoundDeviceInstance->RTStreamingShadowBufferOffset == 0 &&
+            SoundDeviceInstance->RTStreamingNotifyCount - SoundDeviceInstance->RTStreamingLastDataNotify >= 2)
+        {
+            break;
+        }
+
+        Sleep(5);
+        Now = SoundDeviceInstance->RTStreamingNotifyCount;
+        if (Now != Seen)
+        {
+            Seen = Now;
+            Idle = 0;
+        }
+        else
+        {
+            Idle += 5;
+        }
+    }
+}
+
 MMRESULT
 WdmAudCloseSoundDeviceByMMixer(
     IN  struct _SOUND_DEVICE_INSTANCE* SoundDeviceInstance,
@@ -644,6 +680,10 @@ WdmAudCloseSoundDeviceByMMixer(
     }
     else if (DeviceType == WAVE_IN_DEVICE_TYPE || DeviceType == WAVE_OUT_DEVICE_TYPE)
     {
+        /* Completion comes once samples reach the shadow buffer, so let them play first */
+        if (DeviceType == WAVE_OUT_DEVICE_TYPE && SoundDeviceInstance->RTStreamingEnabled)
+            WdmAudDrainRTStream(SoundDeviceInstance);
+
         /* Make sure the pin is stopped */
         MMixerSetWaveStatus(&MixerContext, SoundDeviceInstance->Handle, KSSTATE_PAUSE);
         MMixerSetWaveStatus(&MixerContext, SoundDeviceInstance->Handle, KSSTATE_ACQUIRE);
@@ -1156,6 +1196,7 @@ RTStreamingThreadProc(
         {
             DWORD Length = SoundDeviceInstance->RTStreamingBufferLength / 2;
             LONG BytesCopied = 0;
+            LONG Notify = InterlockedIncrement(&SoundDeviceInstance->RTStreamingNotifyCount);
             if (DeviceType == WAVE_OUT_DEVICE_TYPE)
             {
                 if (SoundDeviceInstance->RTStreamingShadowBufferOffset)
@@ -1176,6 +1217,8 @@ RTStreamingThreadProc(
                     InterlockedExchangeAdd(&SoundDeviceInstance->RTStreamingBufferBytesWritten, BytesCopied);
                     InterlockedExchangeAdd(&SoundDeviceInstance->RTStreamingBufferOffset, BytesCopied);
                     InterlockedCompareExchange(&SoundDeviceInstance->RTStreamingBufferOffset, 0, SoundDeviceInstance->RTStreamingBufferLength);
+                    if (BytesCopied)
+                        InterlockedExchange(&SoundDeviceInstance->RTStreamingLastDataNotify, Notify);
                 }
                 if (BytesCopied == 0)
                 {
