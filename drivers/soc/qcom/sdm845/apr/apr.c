@@ -119,12 +119,14 @@ static
 VOID
 AprDispatch(
     _In_ PAPR_DEVICE Device,
-    _In_reads_bytes_(Length) const VOID *Packet,
+    _Inout_updates_bytes_(Length) PVOID Packet,
     _In_ ULONG Length)
 {
-    const APR_HEADER *Header = Packet;
+    PAPR_HEADER Header = Packet;
     PQCOM_APR_RECEIVE Receive = NULL;
     PVOID Context = NULL;
+    ULONG HeaderBytes;
+    PUCHAR Bytes;
     KIRQL OldIrql;
     ULONG i;
 
@@ -135,6 +137,17 @@ AprDispatch(
     }
 
     AprTraceRx(Packet, Length);
+
+    /* The DSP may send a longer header; services expect the payload right after the basic one */
+    HeaderBytes = ((Header->HdrField >> 4) & 0xF) * 4;
+    if (HeaderBytes > sizeof(APR_HEADER) && HeaderBytes <= Length)
+    {
+        Bytes = (PUCHAR)Packet;
+        RtlMoveMemory(Bytes + sizeof(APR_HEADER), Bytes + HeaderBytes, Length - HeaderBytes);
+        Length -= HeaderBytes - sizeof(APR_HEADER);
+        Header->HdrField = (USHORT)((Header->HdrField & ~0xF0) | (APR_HDR_SIZE_WORDS << 4));
+        Header->PktSize = (USHORT)Length;
+    }
 
     KeAcquireSpinLock(&Device->Lock, &OldIrql);
     for (i = 0; i < APR_MAX_SERVICES; i++)
