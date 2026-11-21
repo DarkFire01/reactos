@@ -468,10 +468,12 @@ FxLibraryGlobalsQueryRegistrySettings(
     DECLARE_CONST_UNICODE_STRING(path,            WDF_REGISTRY_BASE_PATH);
     DECLARE_CONST_UNICODE_STRING(ifrDisabledName, WDF_GLOBAL_VALUE_IFRDISABLED);
     DECLARE_CONST_UNICODE_STRING(ssDisabledName,  WDF_GLOBAL_VALUE_SLEEPSTUDY_DISABLED);
+    DECLARE_CONST_UNICODE_STRING(directedName,    WDF_GLOBAL_VALUE_DIRECTED_POWER);
 
 
     ULONG ifrDisabled = 0;
     ULONG ssDisabled = 0;
+    ULONG directed = 0;
 
 
     status = FxRegKey::_OpenKey(NULL, &path, &hWdf.m_Key, KEY_READ);
@@ -488,6 +490,15 @@ FxLibraryGlobalsQueryRegistrySettings(
     status = FxRegKey::_QueryULong(hWdf.m_Key, &ssDisabledName, &ssDisabled);
     if ((NT_SUCCESS(status)) && (ssDisabled == 1)) {
         FxLibraryGlobals.SleepStudyDisabled = TRUE;
+    }
+
+    //
+    // Platform wide opt in to directed power transitions for devices that
+    // use a system managed idle timeout and say nothing themselves
+    //
+    status = FxRegKey::_QueryULong(hWdf.m_Key, &directedName, &directed);
+    if ((NT_SUCCESS(status)) && (directed == 1)) {
+        FxLibraryGlobals.WdfDirectedPowerTransitionEnabled = TRUE;
     }
 
 

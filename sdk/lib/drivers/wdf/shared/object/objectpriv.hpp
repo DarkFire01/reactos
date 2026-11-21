@@ -40,6 +40,7 @@ extern "C" {
 #define WDF_GLOBAL_VALUE_IFRDISABLED                L"WdfGlobalLogsDisabled"        // REG_DWORD
 
 #define WDF_GLOBAL_VALUE_SLEEPSTUDY_DISABLED        L"WdfGlobalSleepStudyDisabled"  // REG_DWORD
+#define WDF_GLOBAL_VALUE_DIRECTED_POWER             L"WdfDirectedPowerTransitionEnable" // REG_DWORD
 
 
 
