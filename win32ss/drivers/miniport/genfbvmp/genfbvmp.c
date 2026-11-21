@@ -1444,7 +1444,7 @@ GenFbVmpNotifyPanelPower(
 
     InitializeObjectAttributes(&ObjectAttributes,
                                &CallbackName,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE | OBJ_PERMANENT,
                                NULL,
                                NULL);
     if (!NT_SUCCESS(ExCreateCallback(&Callback, &ObjectAttributes, TRUE, TRUE)))
