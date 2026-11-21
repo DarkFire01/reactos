@@ -188,24 +188,6 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D08","Cl
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D09","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0D09","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
 
-; Qualcomm SDM845 pin and I2C controllers, then the touch screen on them. The Windows SDM850
-; drivers own GPIO and I2C now (drivers/soc/qcom/sdm845/windows), so these stay unbound.
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","Service",0x00000000,"qcomtlmm"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0217","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","Service",0x00000000,"qcomgeni"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0220","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","Service",0x00000000,"mshidkmdf"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0029","LowerFilters",0x00010000,"qcomtouch"
-
-; The generic buttons device takes its keys from the Qualcomm PMIC GPIO driver
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","Service",0x00000000,"qcompwrkey"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0011","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-
-; While QCDX is off the framebuffer runs the panel and this driver sleeps and wakes it
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","Service",0x00000000,"qcompanel"
-HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM027E","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
-
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","Service",0x00000000,"hidusb"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_03","ClassGUID",0x00000000,"{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
 
@@ -2458,8 +2440,6 @@ HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation","ObjectName",0x00000000,"
 HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation","Start",0x00010001,0x00000002
 HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation","Type",0x00010001,0x00000010
 HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters","MSRilInstances",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters\Modems\0","RILPath",0x00020000,"%SystemRoot%\system32\qcril.dll"
-HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters\Modems\0","RILInitIndex",0x00010001,0x00000000
 ; Phone service
 HKLM,"SYSTEM\CurrentControlSet\Services\PhoneSvc","DisplayName",0x00000000,%PHONESVC_SERVICE%
 HKLM,"SYSTEM\CurrentControlSet\Services\PhoneSvc","Description",0x00000000,%PHONESVC_SERVICE_DESCRIPTION%

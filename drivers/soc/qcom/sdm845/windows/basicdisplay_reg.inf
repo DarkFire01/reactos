@@ -1,6 +1,0 @@
-; The Adreno driver owns the display on SDM845, the root enumerated basic display adapter stays
-; off so dxgkrnl cannot pair it with the panel. dxgkrnl waits for BasicRender at session create,
-; so that one stays. The XDDM framebuffer remains the fallback.
-
-[AddReg]
-HKLM,"SYSTEM\CurrentControlSet\Services\BasicDisplay","Start",0x00010001,0x00000004

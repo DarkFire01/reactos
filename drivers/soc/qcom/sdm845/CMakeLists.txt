@@ -1,7 +1,0 @@
-add_subdirectory(apr)
-add_subdirectory(q6)
-add_subdirectory(pwrkey)
-add_subdirectory(panel)
-add_subdirectory(firmware)
-add_subdirectory(windows)
-add_subdirectory(sfr)

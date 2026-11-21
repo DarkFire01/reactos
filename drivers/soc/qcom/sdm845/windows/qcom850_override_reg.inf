@@ -1,5 +1,0 @@
-; Local overrides of the generated registry files, registered after them so these values win
-[AddReg]
-; Keep the apps SMMU powered: qcomq6 reads and routes the ADSP audio stream in it, and a
-; power collapse would hang those reads and drop a route qcsmmu does not know about
-HKLM,"SYSTEM\CurrentControlSet\Services\qcsmmu\Parameters","PowerManaged",0x00010001,0

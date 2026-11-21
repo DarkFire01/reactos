@@ -1,7 +1,0 @@
-@ stdcall DllInitialize(ptr)
-@ stdcall DllUnload()
-@ stdcall QcAmpPrepare()
-@ stdcall QcAmpStart(long long long)
-@ stdcall QcAmpStop()
-@ stdcall QcAmpSetVolume(long)
-@ stdcall QcAmpSetMute(long)
