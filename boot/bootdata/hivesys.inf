@@ -1852,6 +1852,7 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache","AppCompa
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\kernel","ObUnsecureGlobalNames",0x00010000,"netfxcustomerfcounters.1.0","SharedPerfIPCBlock","Cor_Private_IPCBlock","Cor_Public_IPCBlock_"
 
 HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\Ucx\Versions\1\1","Service",0x00000000,"ucx01000"
+HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\NetAdapterCx\Versions\2\1","Service",0x00000000,"NetAdapterCx"
 
 ; WOW Support
 HKLM,"SYSTEM\CurrentControlSet\Control\WOW",,0x00000012
@@ -2010,6 +2011,14 @@ HKLM,"SYSTEM\CurrentControlSet\Services\Ndisuio","ImagePath",0x00020000,"system3
 HKLM,"SYSTEM\CurrentControlSet\Services\Ndisuio","Start",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\Ndisuio","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\Ndisuio","DisplayName",0x00000000,"NDIS Usermode I/O Protocol"
+
+; Network adapter WDF class extension, wdfldr loads it when a NetAdapterCx client binds
+HKLM,"SYSTEM\CurrentControlSet\Services\NetAdapterCx","DependOnService",0x00010000,"ndis"
+HKLM,"SYSTEM\CurrentControlSet\Services\NetAdapterCx","DisplayName",0x00000000,"Network Adapter WDF Class Extension Library"
+HKLM,"SYSTEM\CurrentControlSet\Services\NetAdapterCx","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\NetAdapterCx","ImagePath",0x00020000,"system32\drivers\netadaptercx.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\NetAdapterCx","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\NetAdapterCx","Type",0x00010001,0x00000001
 
 ; NetLogon
 HKLM,"SYSTEM\CurrentControlSet\Services\NetLogon","DisplayName",0x00000000,%NETLOGON_SERVICE%
