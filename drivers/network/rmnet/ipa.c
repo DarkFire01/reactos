@@ -15,6 +15,12 @@ static const GUID RmNetIpaInterfaceGuid =
     { 0x654C90FE, 0x4665, 0x3A98, { 0x9D, 0x43, 0x8A, 0x87, 0x59, 0xB6, 0xC4, 0x04 } };
 
 static HANDLE RmNetIpaHandle;
+
+/* The first packets each way are traced, enough to see where a stalled path stops */
+#define RMNET_TRACE_PACKETS         8
+static volatile LONG RmNetSendTraced;
+static volatile LONG RmNetCompleteTraced;
+static volatile LONG RmNetReceiveTraced;
 static PETHREAD RmNetIpaThread;
 static KEVENT RmNetIpaStop;
 
@@ -49,6 +55,8 @@ RmNetIpaReceive(
             }
 
             Packet = NdisGetDataBuffer(Buffer, Length, Storage, 1, 0);
+            if (Packet && InterlockedIncrement(&RmNetReceiveTraced) <= RMNET_TRACE_PACKETS)
+                DPRINT1("rmnet: IPA rx %lu bytes, version %u protocol %u\n", Length, Packet[0] >> 4, Packet[9]);
             if (Packet)
                 RmNetIndicatePacket(Adapter, Packet, Length);
         }
@@ -77,6 +85,9 @@ RmNetIpaSendComplete(
     {
         Next = NET_BUFFER_LIST_NEXT_NBL(List);
         NET_BUFFER_LIST_NEXT_NBL(List) = NULL;
+
+        if (InterlockedIncrement(&RmNetCompleteTraced) <= RMNET_TRACE_PACKETS)
+            DPRINT1("rmnet: IPA send complete 0x%lx\n", NET_BUFFER_LIST_STATUS(List));
 
         if (NET_BUFFER_LIST_STATUS(List) != NDIS_STATUS_SUCCESS)
             Adapter->DroppedPackets++;
@@ -139,6 +150,16 @@ RmNetIpaSend(
     NET_BUFFER_LIST_MINIPORT_RESERVED(List)[1] = (PVOID)(ULONG_PTR)Adapter->ClientId;
     List->Scratch = NULL;
     InterlockedIncrement(&Adapter->IpaSendsPending);
+
+    if (InterlockedIncrement(&RmNetSendTraced) <= RMNET_TRACE_PACKETS)
+    {
+        DPRINT1("rmnet: IPA tx %lu bytes protocol %u to client %lu at irql %u\n",
+                Length, Packet[9], Adapter->ClientId, KeGetCurrentIrql());
+        Adapter->Ipa.Send(List);
+        DPRINT1("rmnet: IPA tx returned\n");
+        return TRUE;
+    }
+
     Adapter->Ipa.Send(List);
     return TRUE;
 }
