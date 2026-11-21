@@ -443,10 +443,32 @@ QcNasDecodeName(
     if (Length == 0 || Header + 1 + Length > ValueLen)
         return FALSE;
 
+    /* GSM default alphabet. The modem hands it over one character per byte,
+       so only a name with the top bit set somewhere is still packed */
     if (Value[0] == 0)
     {
-        QcNasUnpackName(Value + Header + 1, Length, Out, OutSize);
-        return Out[0] != '\0';
+        for (i = 0; i < Length; i++)
+        {
+            if (Value[Header + 1 + i] & 0x80)
+                break;
+        }
+
+        if (i < Length)
+        {
+            QcNasUnpackName(Value + Header + 1, Length, Out, OutSize);
+            return Out[0] != '\0';
+        }
+
+        for (i = 0; i < Length && Written + 1 < OutSize; i++)
+        {
+            UCHAR Code = Value[Header + 1 + i];
+
+            if (Code == 0)
+                break;
+            Out[Written++] = (Code >= 0x20 && Code < 0x7F) ? (CHAR)Code : '?';
+        }
+        Out[Written] = '\0';
+        return Written != 0;
     }
 
     /* UCS2 little endian, kept to its ASCII part */
