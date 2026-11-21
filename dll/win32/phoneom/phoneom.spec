@@ -14,6 +14,8 @@
 @ stdcall PhoneOmGetMessages(ptr long ptr long ptr)
 @ stdcall PhoneOmMarkMessageRead(ptr long)
 @ stdcall PhoneOmDeleteMessage(ptr long)
+@ stdcall PhoneOmGetAttachments(ptr long ptr long ptr)
+@ stdcall PhoneOmSendMms(ptr wstr wstr wstr ptr)
 @ stdcall PhoneOmGetDeviceInfo(ptr ptr)
 @ stdcall PhoneOmGetSubscriber(ptr ptr)
 @ stdcall PhoneOmGetNetwork(ptr ptr)
