@@ -50,6 +50,9 @@
 #define Q6_APPS_SMMU_BASE           0x15000000UL
 #define Q6_AUDIO_STREAM_ID          0x1821
 
+/* Without these bits above bit 31 the ADSP reads host memory as its own stream 0x1820 */
+#define Q6_AUDIO_SID_MASK           0xF
+
 typedef enum _Q6_VERSION_STATE
 {
     Q6VersionNotAsked,
@@ -319,11 +322,13 @@ Q6CreateControlDevice(
     DECLARE_CONST_UNICODE_STRING(StreamIdName, L"AudioStreamId");
     DECLARE_CONST_UNICODE_STRING(HostBuffersName, L"AllowUnroutedHostBuffers");
     DECLARE_CONST_UNICODE_STRING(RouteName, L"RouteAudioStream");
+    DECLARE_CONST_UNICODE_STRING(SidMaskName, L"AudioStreamSidMask");
     PQ6_DEVICE Device = &Q6Global;
     WDFDEVICE WdfDevice;
     WDFKEY Key = NULL;
     ULONG RxPort, TxPort, RxLine, TxLine;
-    ULONG SmmuBase, StreamId, HostBuffers, Route;
+    ULONG SmmuBase, StreamId, HostBuffers, Route, SidMask;
+    ULONGLONG AddressTag = 0;
     BOOLEAN Routed;
     HANDLE Thread;
     NTSTATUS Status;
@@ -363,12 +368,16 @@ Q6CreateControlDevice(
     StreamId = Q6ReadParameter(Key, &StreamIdName, Q6_AUDIO_STREAM_ID);
     HostBuffers = Q6ReadParameter(Key, &HostBuffersName, 0);
     Route = Q6ReadParameter(Key, &RouteName, 1);
+    SidMask = Q6ReadParameter(Key, &SidMaskName, Q6_AUDIO_SID_MASK);
     if (Key)
         WdfRegistryClose(Key);
 
     /* Host buffer addresses only go to the dsp once its stream reaches memory */
     Routed = QcQ6SmmuRouteStream(SmmuBase, (USHORT)StreamId, Route != 0);
-    QcQ6GraphAllowHostBuffers(Routed || HostBuffers != 0);
+    if (Routed)
+        AddressTag = (ULONGLONG)(StreamId & SidMask) << 32;
+    QC_LOG("q6: host buffer addresses tagged 0x%I64x for stream 0x%lx", AddressTag, StreamId);
+    QcQ6GraphAllowHostBuffers(Routed || HostBuffers != 0, AddressTag);
 
     QC_LOG("board: mi2s lines rx 0x%lx tx 0x%lx, voice ports rx 0x%lx tx 0x%lx",
            RxLine, TxLine, RxPort, TxPort);

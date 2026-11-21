@@ -291,12 +291,17 @@ static Q6_GRAPH Q6Graph;
 /* An ADSP read of a host address with no SMMU route for its stream resets the phone */
 static BOOLEAN Q6GraphHostBuffers;
 
+/* Above bit 31 of a buffer address the ADSP reads the low bits of the SMMU stream to use */
+static ULONGLONG Q6GraphAddressTag;
+
 VOID
 NTAPI
 QcQ6GraphAllowHostBuffers(
-    _In_ BOOLEAN Allow)
+    _In_ BOOLEAN Allow,
+    _In_ ULONGLONG AddressTag)
 {
     Q6GraphHostBuffers = Allow;
+    Q6GraphAddressTag = AddressTag;
 }
 
 static
@@ -308,7 +313,7 @@ Q6GraphSubmitPeriod(
     ASM_WRITE_V2 Write;
     ULONGLONG Addr;
 
-    Addr = (ULONGLONG)Graph->BufferPhys.QuadPart + (ULONGLONG)PeriodIndex * Graph->PeriodBytes;
+    Addr = ((ULONGLONG)Graph->BufferPhys.QuadPart + (ULONGLONG)PeriodIndex * Graph->PeriodBytes) | Q6GraphAddressTag;
 
     RtlZeroMemory(&Write, sizeof(Write));
     Write.BufAddrLsw = (ULONG)(Addr & 0xFFFFFFFF);
@@ -749,7 +754,7 @@ Q6AsmMapBuffer(
     MemMap.MemPoolId = ASM_MEM_POOL_SHMEM8_4K;
     MemMap.NumRegions = 1;
     MemMap.ShmAddrLsw = (ULONG)(Graph->BufferPhys.QuadPart & 0xFFFFFFFF);
-    MemMap.ShmAddrMsw = (ULONG)(Graph->BufferPhys.QuadPart >> 32);
+    MemMap.ShmAddrMsw = (ULONG)(((ULONGLONG)Graph->BufferPhys.QuadPart | Q6GraphAddressTag) >> 32);
     MemMap.MemSizeBytes = (Graph->BufferBytes + 0xFFF) & ~0xFFFUL;
 
     /* The map is a service command: port 0, session and direction in the token */
