@@ -80,6 +80,9 @@ HalInitializeProcessor(
     HalpGicInitializeCpu(ProcessorNumber);
     HalpEarlyTrace("HAL: processor %lu interrupt interface up\n", ProcessorNumber);
 
+    if (ProcessorNumber < MAXIMUM_PROCESSORS)
+        HalpProcessorPcr[ProcessorNumber] = KeGetPcr();
+
     /* Match the priority mask to the IRQL the kernel runs at */
     HalpSetPriorityMask(KeGetPcr()->CurrentIrql);
 

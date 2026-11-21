@@ -110,6 +110,7 @@ HalpInvokeSecondaryIsr(
     PLIST_ENTRY Entry;
     BOOLEAN Handled = FALSE;
     KIRQL OldIrql;
+    ULONG Index;
 
     UNREFERENCED_PARAMETER(ControllerContext);
 
@@ -117,7 +118,16 @@ HalpInvokeSecondaryIsr(
     if (!HalpIsSecondaryGsiv(Gsiv))
         return STATUS_INVALID_PARAMETER;
 
+    /*
+     * The object lives on the processor it was connected on, while a controller served
+     * at PASSIVE_LEVEL calls in from whichever processor runs its thread.
+     */
     Head = *KiInterruptObjectSlot((PKIPCR)KeGetPcr(), Gsiv);
+    for (Index = 0; !Head && Index < MAXIMUM_PROCESSORS; Index++)
+    {
+        if (HalpProcessorPcr[Index])
+            Head = *KiInterruptObjectSlot((PKIPCR)HalpProcessorPcr[Index], Gsiv);
+    }
     if (!Head)
         return STATUS_NOT_FOUND;
 
