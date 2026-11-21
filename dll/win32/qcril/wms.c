@@ -16,6 +16,8 @@
 #define QCRIL_WMS_SET_PRIMARY_CLIENT    0x0045
 #define QCRIL_WMS_INDICATION_REGISTER   0x0047
 #define QCRIL_WMS_BIND_SUBSCRIPTION     0x004C
+#define QCRIL_WMS_SMSC_ADDRESS_IND      0x0046
+#define QCRIL_WMS_SERVICE_READY_IND     0x005D
 
 #define QCRIL_WMS_TLV_RAW_MESSAGE       0x01
 #define QCRIL_WMS_TLV_REPORT_MT         0x10
@@ -654,6 +656,32 @@ QcWmsIndication(
     RIL_MESSAGE_NOTIFICATION *Notification;
     USHORT DataLen;
     ULONG TransactionId;
+
+    /* Which transports can carry messages: 0 none, 1 3GPP, 2 3GPP2, 3 both */
+    if (MessageId == QCRIL_WMS_SERVICE_READY_IND)
+    {
+        if (QmiFindTlv(Message, Length, 0x01, &Value, &ValueLen) && ValueLen >= sizeof(ULONG))
+            QcTrace("sms service ready status %lu\n", *(const ULONG UNALIGNED *)Value);
+        return;
+    }
+
+    /* Address type (three characters), length, then the digits */
+    if (MessageId == QCRIL_WMS_SMSC_ADDRESS_IND)
+    {
+        CHAR Smsc[24];
+        ULONG Count;
+
+        if (QmiFindTlv(Message, Length, 0x01, &Value, &ValueLen) && ValueLen >= 4)
+        {
+            Route = Value;
+            Count = min((ULONG)Route[3], (ULONG)ValueLen - 4);
+            Count = min(Count, (ULONG)sizeof(Smsc) - 1);
+            memcpy(Smsc, Route + 4, Count);
+            Smsc[Count] = '\0';
+            QcTrace("smsc address '%s' type %.3s\n", Smsc, (const CHAR *)Route);
+        }
+        return;
+    }
 
     if (MessageId != QCRIL_WMS_EVENT_REPORT_IND)
     {
