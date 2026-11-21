@@ -330,6 +330,9 @@ WdiFindConnectBss(
     return Found;
 }
 
+/* Room for the connect message and, after it, the BSS entry it wraps */
+#define WDI_CONNECT_BUFFER_LENGTH           (WDI_MAX_BEACON_LENGTH + WDI_MAX_BSS_CONTEXT_LENGTH + 256)
+
 static
 VOID
 NTAPI
@@ -340,9 +343,9 @@ WdiConnectWorker(
     PWDI_ADAPTER Adapter = WorkItemContext;
     PWDI_PORT Port = NULL;
     NDIS_STATUS Status;
-    UCHAR Message[256];
+    PUCHAR Message = NULL;
     UCHAR Parameters[128];
-    UCHAR Entry[64];
+    PUCHAR Entry;
     UCHAR Settings[WDI_CONNECTION_SETTINGS_MAX_LENGTH];
     UCHAR SignalInfo[WDI_SIGNAL_INFO_LENGTH];
     UCHAR ChannelInfo[WDI_CHANNEL_INFO_LENGTH];
@@ -367,11 +370,17 @@ WdiConnectWorker(
         }
     }
 
-    if (Port == NULL)
+    /* The BSS entry carries the whole scan frame, so the message and the
+       entry share one pool buffer */
+    if (Port != NULL)
+        Message = ExAllocatePoolWithTag(NonPagedPool, WDI_CONNECT_BUFFER_LENGTH * 2, WDI_TAG);
+
+    if (Port == NULL || Message == NULL)
     {
         WdiIndicateConnectionComplete(Adapter, DOT11_CONNECTION_STATUS_FAILURE);
         goto Done;
     }
+    Entry = Message + WDI_CONNECT_BUFFER_LENGTH;
 
     /* WDI_TLV_CONNECT_PARAMETERS holds the connection settings, the SSID and
        the auth and cipher lists. A fresh connect to an open network for now,
@@ -428,12 +437,37 @@ WdiConnectWorker(
         EntryLength += WdiTlvPut(Entry + EntryLength, WDI_TLV_BSS_ENTRY_CHANNEL_INFO,
                                  ChannelInfo, sizeof(ChannelInfo));
 
+        /* The frame the scan reported, as the miniport reads the security
+           and rate elements for the association from it */
+        if (Target.BeaconLength != 0)
+        {
+            EntryLength += WdiTlvPut(Entry + EntryLength,
+                                     Target.FrameIsProbe ? WDI_TLV_PROBE_RESPONSE_FRAME : WDI_TLV_BEACON_FRAME,
+                                     Target.Beacon, Target.BeaconLength);
+        }
+
+        if (Target.ContextLength != 0)
+        {
+            EntryLength += WdiTlvPut(Entry + EntryLength, WDI_TLV_BSS_ENTRY_DEVICE_CONTEXT,
+                                     Target.Context, Target.ContextLength);
+        }
+
         MessageLength += WdiTlvPut(Message + MessageLength, WDI_TLV_CONNECT_BSS_ENTRY,
                                    Entry, (UINT16)EntryLength);
     }
 
     DPRINT1("WLAN connecting to a %u byte SSID on port %u, candidate %s\n",
             Adapter->DesiredSsidLength, Port->PortId, HaveTarget ? "found" : "none");
+    if (HaveTarget)
+    {
+        DPRINT1("WLAN target %02x:%02x:%02x:%02x:%02x:%02x ch %u band %u, %s %u bytes%s, context %u bytes, auth %u cipher %u/%u\n",
+                Target.Bssid.Address[0], Target.Bssid.Address[1], Target.Bssid.Address[2],
+                Target.Bssid.Address[3], Target.Bssid.Address[4], Target.Bssid.Address[5],
+                Target.Channel, Target.BandId, Target.FrameIsProbe ? "probe response" : "beacon",
+                Target.BeaconLength, Target.FrameTruncated ? " (truncated)" : "",
+                Target.ContextLength, Adapter->DesiredAuth,
+                Adapter->DesiredUnicastCipher, Adapter->DesiredMulticastCipher);
+    }
 
     Status = WdiSendCommand(Adapter, WDI_TASK_CONNECT, Port->PortId, Message, MessageLength, TRUE, NULL);
 
@@ -444,6 +478,8 @@ WdiConnectWorker(
                                   DOT11_CONNECTION_STATUS_SUCCESS : DOT11_CONNECTION_STATUS_FAILURE);
 
 Done:
+    if (Message != NULL)
+        ExFreePoolWithTag(Message, WDI_TAG);
     Adapter->Connecting = FALSE;
     KeSetEvent(&Adapter->ConnectIdle, IO_NO_INCREMENT, FALSE);
 }

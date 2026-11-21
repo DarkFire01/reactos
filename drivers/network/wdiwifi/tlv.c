@@ -496,6 +496,7 @@ WdiFrameCapture(
 
     RtlCopyMemory(Bss->Beacon, Body, Copy);
     Bss->BeaconLength = (UINT16)Copy;
+    Bss->FrameTruncated = (Copy < Length);
 
     /* The capability field follows the 8 byte timestamp and 2 byte interval */
     if (Length >= WDI_FRAME_BODY_FIXED_LENGTH)
@@ -548,10 +549,23 @@ WdiParseBssEntry(
     /* A probe response first, since a directed probe reveals hidden names,
        then the beacon. Both carry the capability and the security elements */
     if (WdiTlvFind(Entry, Length, WDI_TLV_PROBE_RESPONSE_FRAME, &Value, &ValueLength))
+    {
         WdiFrameCapture(Value, ValueLength, Bss);
+        Bss->FrameIsProbe = TRUE;
+    }
     if ((Bss->SsidLength == 0 || Bss->BeaconLength == 0) &&
         WdiTlvFind(Entry, Length, WDI_TLV_BEACON_FRAME, &Value, &ValueLength))
+    {
         WdiFrameCapture(Value, ValueLength, Bss);
+        Bss->FrameIsProbe = FALSE;
+    }
+
+    if (WdiTlvFind(Entry, Length, WDI_TLV_BSS_ENTRY_DEVICE_CONTEXT, &Value, &ValueLength) &&
+        ValueLength <= sizeof(Bss->Context))
+    {
+        RtlCopyMemory(Bss->Context, Value, ValueLength);
+        Bss->ContextLength = ValueLength;
+    }
 
     return TRUE;
 }
