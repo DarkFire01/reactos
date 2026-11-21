@@ -450,6 +450,9 @@ RIL_Dial(
 {
     BYTE Block[1244];
 
+    if (!Address)
+        return E_INVALIDARG;
+
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Executor;
     CopyMemory(&Block[20], Address, sizeof(*Address));

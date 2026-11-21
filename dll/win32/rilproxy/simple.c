@@ -385,6 +385,9 @@ RIL_WriteMsg(
 {
     BYTE Block[2676];
 
+    if (!Arg2)
+        return E_INVALIDARG;
+
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Arg1;
     CopyMemory(&Block[20], Arg2, 2652);
@@ -431,6 +434,9 @@ RIL_SetCellBroadcastMsgConfig(
     _In_reads_bytes_(1216) const VOID *Arg2)
 {
     BYTE Block[1236];
+
+    if (!Arg2)
+        return E_INVALIDARG;
 
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Arg1;
@@ -497,6 +503,9 @@ RIL_SendMsg(
     _In_ DWORD Arg4)
 {
     BYTE Block[2680];
+
+    if (!Arg3)
+        return E_INVALIDARG;
 
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Arg1;
@@ -576,6 +585,9 @@ RIL_SetSMSC(
 {
     BYTE Block[548];
 
+    if (!Arg2)
+        return E_INVALIDARG;
+
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Arg1;
     CopyMemory(&Block[20], Arg2, 528);
@@ -606,6 +618,9 @@ RIL_Dial_V1(
     _In_ DWORD Arg3)
 {
     BYTE Block[552];
+
+    if (!Arg2)
+        return E_INVALIDARG;
 
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Arg1;
@@ -700,6 +715,9 @@ RIL_AddCallForwarding(
     _In_reads_bytes_(1072) const VOID *Arg3)
 {
     BYTE Block[1096];
+
+    if (!Arg3)
+        return E_INVALIDARG;
 
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Arg1;
@@ -1073,6 +1091,9 @@ RIL_SetTerminalCapability(
 {
     BYTE Block[276];
 
+    if (!Arg1)
+        return E_INVALIDARG;
+
     ZeroMemory(Block, sizeof(Block));
     CopyMemory(&Block[16], Arg1, 260);
     return RilpSend(hRil, RilCmdSetTerminalCapability, Context, Block, sizeof(Block));
@@ -1096,6 +1117,9 @@ RIL_VerifyUiccLock(
 {
     BYTE Block[280];
 
+    if (!Arg1)
+        return E_INVALIDARG;
+
     ZeroMemory(Block, sizeof(Block));
     CopyMemory(&Block[16], Arg1, 264);
     return RilpSend(hRil, RilCmdVerifyUiccLock, Context, Block, sizeof(Block));
@@ -1110,6 +1134,9 @@ RIL_SetUiccLockEnabled(
     _In_ DWORD Arg2)
 {
     BYTE Block[284];
+
+    if (!Arg1)
+        return E_INVALIDARG;
 
     ZeroMemory(Block, sizeof(Block));
     CopyMemory(&Block[16], Arg1, 264);
