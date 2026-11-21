@@ -141,6 +141,7 @@ CONFIGRET
 RpcStatusToCmStatus(
     _In_ RPC_STATUS Status)
 {
+    ERR("PnP RPC call failed with status %lu\n", Status);
     return CR_FAILURE;
 }
 
@@ -4973,7 +4974,7 @@ CM_Get_Device_Interface_List_ExW(
     }
 
     *Buffer = 0;
-    BufferSize = BufferLen;
+    BufferSize = BufferLen * sizeof(WCHAR);
 
     RpcTryExcept
     {
@@ -5104,7 +5105,10 @@ CM_Get_Device_Interface_List_Size_ExW(
     else
     {
         if (!PnpGetLocalHandles(&BindingHandle, NULL))
+        {
+            ERR("No binding to the PnP service\n");
             return CR_FAILURE;
+        }
     }
 
     *pulLen = 0;
@@ -5122,6 +5126,10 @@ CM_Get_Device_Interface_List_Size_ExW(
         ret = RpcStatusToCmStatus(RpcExceptionCode());
     }
     RpcEndExcept;
+
+    /* The service reports the list in bytes */
+    if (ret == CR_SUCCESS)
+        *pulLen /= sizeof(WCHAR);
 
     return ret;
 }
