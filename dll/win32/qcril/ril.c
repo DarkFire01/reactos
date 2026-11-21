@@ -424,6 +424,14 @@ QcSetupService(
             QcPdcSetup(Modem);
             break;
 
+        case QcSvcImss:
+            QcImssSetup(Modem);
+            break;
+
+        case QcSvcImsa:
+            QcImsaSetup(Modem);
+            break;
+
         default:
             break;
     }
@@ -436,9 +444,10 @@ WINAPI
 QcSetupThread(
     _In_ LPVOID Parameter)
 {
-    static const QC_SVC Order[] = { QcSvcDms, QcSvcNas, QcSvcWms, QcSvcVoice, QcSvcUim, QcSvcPdc };
+    static const QC_SVC Order[] = { QcSvcDms, QcSvcNas, QcSvcWms, QcSvcVoice, QcSvcUim, QcSvcPdc,
+                                    QcSvcImss, QcSvcImsa };
     PQC_MODEM Modem = Parameter;
-    BOOL Missing, Configured, Recheck;
+    BOOL Missing, Configured, Recheck, Announced;
     ULONG i;
 
     while (!Modem->Stopping)
@@ -449,8 +458,13 @@ QcSetupThread(
         {
             EnterCriticalSection(&Modem->ServiceLock);
             Configured = Modem->Services[Order[i]].Configured;
+            Announced = Modem->Services[Order[i]].Announced;
             LeaveCriticalSection(&Modem->ServiceLock);
             if (Configured)
+                continue;
+
+            /* Optional services are not polled for, the router announcing them kicks setup */
+            if (QC_SVC_IS_OPTIONAL(Order[i]) && !Announced)
                 continue;
 
             if (!QcServiceEnsure(Modem, Order[i]))
