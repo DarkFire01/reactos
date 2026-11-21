@@ -55,6 +55,10 @@ typedef struct _SERVICE_IMAGE
     DWORD dwProcessId;
     HANDLE hToken;
     HANDLE hProfile;
+
+    /* Wait on the process, so a crash runs the failure actions */
+    HANDLE hProcessWait;
+    HANDLE hWatchProcess;
 } SERVICE_IMAGE, *PSERVICE_IMAGE;
 
 
@@ -70,6 +74,8 @@ typedef struct _SERVICE
     LONG RefCount;
 
     SERVICE_STATUS Status;
+    DWORD dwFailureCount;
+    DWORD dwLastFailure;
     DWORD dwStartType;
     DWORD dwErrorControl;
     DWORD dwTag;
@@ -192,6 +198,12 @@ DWORD ScmReferenceService(PSERVICE lpService);
 DWORD ScmDereferenceService(PSERVICE lpService);
 
 VOID ScmRemoveServiceImage(PSERVICE_IMAGE pServiceImage);
+
+
+/* failure.c */
+
+VOID ScmWatchServiceImage(PSERVICE_IMAGE Image);
+VOID ScmUnwatchServiceImage(PSERVICE_IMAGE Image);
 PSERVICE ScmGetServiceEntryByName(LPCWSTR lpServiceName);
 PSERVICE ScmGetServiceEntryByDisplayName(LPCWSTR lpDisplayName);
 PSERVICE ScmGetServiceEntryByResumeCount(DWORD dwResumeCount);
@@ -270,6 +282,7 @@ VOID ScmQueryServiceLockStatusA(OUT LPQUERY_SERVICE_LOCK_STATUSA lpLockStatus);
 /* rpcserver.c */
 
 VOID ScmStartRpcServer(VOID);
+DWORD WINAPI ScmStopThread(PVOID pParam);
 
 
 /* security.c */
