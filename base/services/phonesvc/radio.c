@@ -7,6 +7,7 @@
 
 #include "phonesvc.h"
 #include <telephony/rilapi.h>
+#include <telephony/rilinfo.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -26,7 +27,13 @@ static const DWORD PhNotificationCodes[] =
     RIL_NOTIFY_CALLMODIFIED,
     RIL_NOTIFY_MESSAGE,
     RIL_NOTIFY_EMERGENCYNUMBERS,
-    RIL_NOTIFY_SUPSERVICEINFO
+    RIL_NOTIFY_SUPSERVICEINFO,
+    RIL_NOTIFY_EQUIPMENTSTATE,
+    RIL_NOTIFY_REGSTATUS,
+    RIL_NOTIFY_SIGNALQUALITY,
+    RIL_NOTIFY_SLOTINFO,
+    RIL_NOTIFY_RINGBACK,
+    RIL_NOTIFY_MODEMRESETSTATE
 };
 
 PPH_REQUEST
@@ -247,12 +254,60 @@ PhRilNotify(
     UNREFERENCED_PARAMETER(hRil);
     UNREFERENCED_PARAMETER(Param);
 
+    DPRINT1("RIL notification 0x%08lx, %lu bytes\n", Code, DataSize);
+
     switch (Code)
     {
+        case RIL_NOTIFY_EQUIPMENTSTATE:
+        {
+            BOOL Powered;
+
+            if (!Data || DataSize < sizeof(DWORD))
+                break;
+
+            /* Only full equipment state has the radio on */
+            Powered = *(const DWORD *)Data == RIL_EQSTATE_FULL;
+            DPRINT1("Equipment state %lu, radio %s\n", *(const DWORD *)Data, Powered ? "on" : "off");
+            if (Powered != PhRadioPowered)
+            {
+                PhRadioPowered = Powered;
+                PhPublishRadio();
+            }
+            break;
+        }
+
+        case RIL_NOTIFY_REGSTATUS:
+            if (Data && DataSize >= FIELD_OFFSET(RIL_NETWORK_INFO, Operator))
+            {
+                const RIL_NETWORK_INFO *Net = Data;
+                DPRINT1("Registration %lu rat 0x%lx mcc %lu mnc %lu roaming %lu\n",
+                        Net->RegState, Net->Rat, Net->Mcc, Net->Mnc, Net->Roaming);
+            }
+            break;
+
+        case RIL_NOTIFY_SIGNALQUALITY:
+            if (Data && DataSize >= sizeof(RIL_SIGNAL_QUALITY))
+            {
+                const RIL_SIGNAL_QUALITY *Signal = Data;
+                DPRINT1("Signal type 0x%lx %ld dBm %lu bars\n", Signal->SystemType, Signal->Strength, Signal->Bars);
+            }
+            break;
+
+        case RIL_NOTIFY_SLOTINFO:
+            if (Data && DataSize >= 4 * sizeof(DWORD))
+                DPRINT1("Slot 0 state %lu\n", ((const DWORD *)Data)[3]);
+            break;
+
+        case RIL_NOTIFY_MODEMRESETSTATE:
+            if (Data && DataSize >= sizeof(DWORD))
+                DPRINT1("Modem reset state %lu\n", *(const DWORD *)Data);
+            break;
+
         case RIL_NOTIFY_RADIOPRESENCE:
             if (!Data || DataSize < sizeof(DWORD))
                 break;
 
+            DPRINT1("Radio presence %lu\n", *(const DWORD *)Data);
             if (*(const DWORD *)Data == RIL_RADIO_PRESENT)
             {
                 PhRadioPresent = TRUE;

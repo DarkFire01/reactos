@@ -60,7 +60,7 @@ static const LPCWSTR PtStateNames[] =
 
 static const LPCWSTR PtSimNames[] =
 {
-    L"absent", L"ready", L"PIN required", L"PUK required", L"error"
+    L"absent", L"ready", L"PIN required", L"PUK required", L"error", L"not ready"
 };
 
 static const LPCWSTR PtRegNames[] =

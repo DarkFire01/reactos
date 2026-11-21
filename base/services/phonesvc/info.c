@@ -65,30 +65,56 @@ PhQuery(
     return S_OK;
 }
 
+/* Reads one device information class, the library answers each as a UTF-16 string */
+static
+HRESULT
+PhGetDeviceString(
+    _In_ DWORD Class,
+    _Out_writes_z_(Chars) PWSTR Out,
+    _In_ DWORD Chars)
+{
+    PH_RIL_RESULT Result;
+    PPH_REQUEST Request;
+    DWORD Copy;
+    HRESULT hr;
+
+    Out[0] = UNICODE_NULL;
+
+    Request = PhBeginRequest();
+    if (!Request)
+        return E_OUTOFMEMORY;
+
+    hr = PhFinishRequest(Request, RIL_GetDeviceInfo(PhRil, Request->Id, PHONE_EXECUTOR, Class), &Result);
+    if (FAILED(hr))
+    {
+        DPRINT1("Device information class %lu failed 0x%lx\n", Class, hr);
+        return hr;
+    }
+
+    Copy = min(Result.DataSize / sizeof(WCHAR), Chars - 1);
+    CopyMemory(Out, Result.Data, Copy * sizeof(WCHAR));
+    Out[Copy] = UNICODE_NULL;
+    return S_OK;
+}
+
 HRESULT
 PhGetDeviceInfo(
     _Out_ PPHONEOM_DEVICE_INFO Info)
 {
-    RIL_DEVICE_INFO Record;
-    PPH_REQUEST Request;
     HRESULT hr;
 
     ZeroMemory(Info, sizeof(*Info));
     if (!PhRil)
         return RIL_E_RADIONOTAVAILABLE;
 
-    Request = PhBeginRequest();
-    if (!Request)
-        return E_OUTOFMEMORY;
-
-    hr = PhQuery(RIL_GetDeviceInfo(PhRil, Request->Id, 0, 0), Request, &Record, sizeof(Record));
+    /* The IMEI is the identity that matters, the rest is best effort */
+    hr = PhGetDeviceString(RIL_DEVICEINFO_SERIALNUMBER, Info->Imei, _countof(Info->Imei));
     if (FAILED(hr))
         return hr;
 
-    PhWiden(Info->Imei, _countof(Info->Imei), Record.Imei);
-    PhWiden(Info->Manufacturer, _countof(Info->Manufacturer), Record.Manufacturer);
-    PhWiden(Info->Model, _countof(Info->Model), Record.Model);
-    PhWiden(Info->Revision, _countof(Info->Revision), Record.Revision);
+    PhGetDeviceString(RIL_DEVICEINFO_MANUFACTURER, Info->Manufacturer, _countof(Info->Manufacturer));
+    PhGetDeviceString(RIL_DEVICEINFO_MODEL, Info->Model, _countof(Info->Model));
+    PhGetDeviceString(RIL_DEVICEINFO_REVISION, Info->Revision, _countof(Info->Revision));
     return S_OK;
 }
 
@@ -112,6 +138,8 @@ PhGetSubscriber(
     if (FAILED(hr))
         return hr;
 
+    DPRINT1("SIM state %lu\n", Record.SimState);
+
     Subscriber->SimState = Record.SimState;
     PhWiden(Subscriber->Imsi, _countof(Subscriber->Imsi), Record.Imsi);
     PhWiden(Subscriber->Number, _countof(Subscriber->Number), Record.Msisdn);
@@ -134,7 +162,7 @@ PhGetNetwork(
     if (!Request)
         return E_OUTOFMEMORY;
 
-    hr = PhQuery(RIL_GetCurrentRegStatus(PhRil, Request->Id, 0), Request, &Record, sizeof(Record));
+    hr = PhQuery(RIL_GetCurrentRegStatus(PhRil, Request->Id, 0), Request, &Record, FIELD_OFFSET(RIL_NETWORK_INFO, Limited));
     if (FAILED(hr))
         return hr;
 
