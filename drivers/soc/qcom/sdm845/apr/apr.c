@@ -81,6 +81,39 @@ static WDFDEVICE AprControlDevice;
 DRIVER_INITIALIZE DriverEntry;
 static EVT_WDF_DRIVER_UNLOAD AprEvtDriverUnload;
 
+/* How many packets each direction traces before only the unusual ones are logged */
+#define APR_TRACE_PACKETS           256
+
+static volatile LONG AprRxTraced;
+static volatile LONG AprTxTraced;
+
+/* One line per packet: header field, routing, token, opcode and the first payload words */
+static
+VOID
+AprTraceRx(
+    _In_reads_bytes_(Length) const VOID *Packet,
+    _In_ ULONG Length)
+{
+    const APR_HEADER *Header = Packet;
+    const ULONG *Words = (const ULONG *)((const UCHAR *)Packet + sizeof(APR_HEADER));
+    ULONG HeaderBytes = ((Header->HdrField >> 4) & 0xF) * 4;
+    ULONG Count = (Length - sizeof(APR_HEADER)) / sizeof(ULONG);
+    ULONG Value[4] = { 0 };
+    ULONG i;
+
+    if (HeaderBytes == sizeof(APR_HEADER) && InterlockedIncrement(&AprRxTraced) > APR_TRACE_PACKETS)
+        return;
+
+    for (i = 0; i < RTL_NUMBER_OF(Value) && i < Count; i++)
+        Value[i] = Words[i];
+
+    QC_LOG("apr rx: field %04x (%lu byte header) size %u len %lu src %u:%u:%u dst %u:%u:%u token %08lx opcode %08lx payload %08lx %08lx %08lx %08lx",
+           Header->HdrField, HeaderBytes, Header->PktSize, Length,
+           Header->SrcDomain, Header->SrcSvc, Header->SrcPort,
+           Header->DestDomain, Header->DestSvc, Header->DestPort,
+           Header->Token, Header->Opcode, Value[0], Value[1], Value[2], Value[3]);
+}
+
 /* Hands a received packet to the service that owns its destination id */
 static
 VOID
@@ -96,7 +129,12 @@ AprDispatch(
     ULONG i;
 
     if (Length < sizeof(APR_HEADER))
+    {
+        QC_LOG("apr rx: runt packet of %lu bytes", Length);
         return;
+    }
+
+    AprTraceRx(Packet, Length);
 
     KeAcquireSpinLock(&Device->Lock, &OldIrql);
     for (i = 0; i < APR_MAX_SERVICES; i++)
@@ -484,6 +522,12 @@ QcAprSendTo(
 
     if (Length && Payload)
         RtlCopyMemory(Packet + sizeof(APR_HEADER), Payload, Length);
+
+    if (InterlockedIncrement(&AprTxTraced) <= APR_TRACE_PACKETS)
+    {
+        QC_LOG("apr tx: svc %lu port %lu from port %lu opcode %08lx token %08lx payload %lu bytes",
+               DestService, DestPort, SrcPort, Opcode, Token, Length);
+    }
 
     /* The packet is freed in the tx done callback once glink is finished with it */
     Result = Device->Glink.Tx(Device->Channel, Packet, Packet, Total, QCOM_GLINK_TX_REQUEST_INTENT);
