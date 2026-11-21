@@ -1,0 +1,9 @@
+; OnePlus 6 audio wiring for qcomq6: the MAX98927 takes quaternary MI2S Rx on SD1 and returns
+; its V/I sense on SD0. Lines are AFE I2S line masks, ports are AFE port ids.
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6\Parameters","QuatMi2sRxLine",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6\Parameters","QuatMi2sTxLine",0x00010001,0x00000001
+; Calls play on the loudspeaker. Tx is quaternary MI2S Tx, not the WCD934x mics on SLIMbus that
+; have no driver yet: it clocks off the same LPASS interface with no codec, so the downlink runs.
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6\Parameters","VoiceRxPort",0x00010001,0x00001006
+HKLM,"SYSTEM\CurrentControlSet\Services\qcomq6\Parameters","VoiceTxPort",0x00010001,0x00001007

@@ -57,6 +57,9 @@ extern "C" NTSTATUS NTAPI QcQ6PlaybackStart(ULONGLONG BufferPhys, ULONG BufferBy
                                             PQCA_PERIOD_DONE PeriodDone, PVOID Context);
 extern "C" VOID NTAPI QcQ6PlaybackStop(VOID);
 extern "C" ULONGLONG NTAPI QcQ6PlaybackPosition(VOID);
+extern "C" NTSTATUS NTAPI QcQ6VoiceStart(VOID);
+extern "C" VOID NTAPI QcQ6VoiceStop(VOID);
+extern "C" NTSTATUS NTAPI QcQ6VoiceSetTxMute(BOOLEAN Mute, ULONG RampMs);
 extern "C" VOID NTAPI QcAmpSetVolume(LONG Level);
 extern "C" VOID NTAPI QcAmpSetMute(BOOLEAN Mute);
 

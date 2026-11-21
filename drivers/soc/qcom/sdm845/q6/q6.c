@@ -11,7 +11,8 @@
  * waits for the APR channel, probes the framework version and then polls the
  * core until it reports the audio services ready. The playback graph (AFE
  * port, ASM session, ADM route) builds on top of this and is driven from the
- * wave miniport.
+ * wave miniport. The voice call path uses the service api versions the core
+ * reports and the board ports from the Parameters key.
  */
 
 #include <ntddk.h>
@@ -23,6 +24,7 @@
 #include <qcom/qcomdbg.h>
 
 #include "q6graph.h"
+#include "q6voice.h"
 
 #define Q6_CORE_PROBE_TRIES         60
 #define Q6_CORE_PROBE_DELAY_MS      500
@@ -37,6 +39,25 @@
 #define AVCS_CMDRSP_GET_STATE       0x0001290DUL
 #define AVCS_STATE_READY            1
 #define APR_BASIC_RSP_RESULT        0x000110E8UL
+#define Q6_DSP_EUNSUPPORTED         3
+#define Q6_MAX_SERVICES             25
+
+/* I2S data line mask the speaker link used before the board key existed */
+#define Q6_DEFAULT_RX_LINE          2
+
+typedef enum _Q6_VERSION_STATE
+{
+    Q6VersionNotAsked,
+    Q6VersionKnown,
+    Q6VersionUnsupported
+} Q6_VERSION_STATE;
+
+typedef struct _Q6_SERVICE_VERSION
+{
+    ULONG ServiceId;
+    ULONG ApiVersion;
+    ULONG BranchVersion;
+} Q6_SERVICE_VERSION;
 
 typedef struct _Q6_DEVICE
 {
@@ -47,6 +68,12 @@ typedef struct _Q6_DEVICE
     volatile LONG Up;
     PKTHREAD Worker;
     volatile LONG Stop;
+
+    /* Serializes core queries between the probe worker and the voice path */
+    KMUTEX AskLock;
+    Q6_VERSION_STATE VersionState;
+    ULONG ServiceCount;
+    Q6_SERVICE_VERSION Services[Q6_MAX_SERVICES];
 } Q6_DEVICE, *PQ6_DEVICE;
 
 static Q6_DEVICE Q6Global;
@@ -83,8 +110,19 @@ Q6CoreReceive(
         if (Hdr->Opcode == AVCS_CMDRSP_GET_FWK_VERSION && Length >= sizeof(APR_HEADER) + 5 * sizeof(ULONG))
         {
             const ULONG *Version = (const ULONG *)((const UCHAR *)Packet + sizeof(APR_HEADER));
+            ULONG Count = Version[4];
+
             QC_LOG("adsp framework %lu.%lu.%lu.%lu, %lu service(s)",
-                   Version[0], Version[1], Version[2], Version[3], Version[4]);
+                   Version[0], Version[1], Version[2], Version[3], Count);
+
+            /* The service table follows the build numbers and the count */
+            if (Count <= Q6_MAX_SERVICES &&
+                Length >= sizeof(APR_HEADER) + 5 * sizeof(ULONG) + Count * sizeof(Q6_SERVICE_VERSION))
+            {
+                RtlCopyMemory(Device->Services, &Version[5], Count * sizeof(Q6_SERVICE_VERSION));
+                Device->ServiceCount = Count;
+                Device->VersionState = Q6VersionKnown;
+            }
         }
         else
         {
@@ -106,11 +144,17 @@ Q6CoreReceive(
     }
     else if (Hdr->Opcode == APR_BASIC_RSP_RESULT)
     {
+        const ULONG *Rsp = (const ULONG *)((const UCHAR *)Packet + sizeof(APR_HEADER));
+
         /* Older firmware rejects these probes; an answer to the state query then means ready */
-        if (Length >= sizeof(APR_HEADER) + sizeof(ULONG) &&
-            *(const ULONG *)((const UCHAR *)Packet + sizeof(APR_HEADER)) == AVCS_CMD_GET_STATE)
-        {
+        if (Length >= sizeof(APR_HEADER) + sizeof(ULONG) && Rsp[0] == AVCS_CMD_GET_STATE)
             InterlockedExchange(&Device->Up, TRUE);
+
+        /* Only an explicit unsupported answer stops later version queries */
+        if (Length >= sizeof(APR_HEADER) + 2 * sizeof(ULONG) &&
+            Rsp[0] == AVCS_CMD_GET_FWK_VERSION && Rsp[1] == Q6_DSP_EUNSUPPORTED)
+        {
+            Device->VersionState = Q6VersionUnsupported;
         }
         InterlockedExchange(&Device->Answered, TRUE);
         KeSetEvent(&Device->Replied, IO_NO_INCREMENT, FALSE);
@@ -163,13 +207,19 @@ Q6Worker(
 
     for (i = 0; i < Q6_CORE_PROBE_TRIES; i++)
     {
+        BOOLEAN Ready;
+
         if (InterlockedCompareExchange(&Device->Stop, 0, 0) != 0)
             return;
 
+        KeWaitForSingleObject(&Device->AskLock, Executive, KernelMode, FALSE, NULL);
         if (!Device->Answered)
             Q6CoreAsk(Device, AVCS_CMD_GET_FWK_VERSION);
 
-        if (Device->Answered && Q6CoreAsk(Device, AVCS_CMD_GET_STATE) && Device->Up)
+        Ready = Device->Answered && Q6CoreAsk(Device, AVCS_CMD_GET_STATE) && Device->Up;
+        KeReleaseMutex(&Device->AskLock, FALSE);
+
+        if (Ready)
         {
             QC_LOG("q6 audio core up after %lu probe(s)", i + 1);
             return;
@@ -181,6 +231,72 @@ Q6Worker(
     QC_LOG("q6: adsp core %s", Device->Answered ? "answers but never reported ready" : "did not answer the probes");
 }
 
+NTSTATUS
+NTAPI
+QcQ6CoreServiceVersion(
+    _In_ ULONG ServiceId,
+    _Out_ PULONG ApiVersion)
+{
+    PQ6_DEVICE Device = &Q6Global;
+    NTSTATUS Status = STATUS_NOT_FOUND;
+    ULONG i;
+
+    PAGED_CODE();
+
+    *ApiVersion = 0;
+    KeWaitForSingleObject(&Device->AskLock, Executive, KernelMode, FALSE, NULL);
+
+    /* A query that timed out earlier is tried again, like the first one */
+    if (Device->VersionState == Q6VersionNotAsked)
+    {
+        if (QcQ6CoreIsUp())
+            Q6CoreAsk(Device, AVCS_CMD_GET_FWK_VERSION);
+        else
+            Status = STATUS_DEVICE_NOT_READY;
+    }
+
+    if (Device->VersionState == Q6VersionKnown)
+    {
+        for (i = 0; i < Device->ServiceCount; i++)
+        {
+            if (Device->Services[i].ServiceId == ServiceId)
+            {
+                *ApiVersion = Device->Services[i].ApiVersion;
+                Status = STATUS_SUCCESS;
+                break;
+            }
+        }
+    }
+    else if (Device->VersionState == Q6VersionUnsupported)
+    {
+        Status = STATUS_NOT_SUPPORTED;
+    }
+    else if (Status == STATUS_NOT_FOUND)
+    {
+        Status = STATUS_IO_TIMEOUT;
+    }
+
+    KeReleaseMutex(&Device->AskLock, FALSE);
+
+    QC_LOG("core service 0x%lx api version %lu: 0x%08lx", ServiceId, *ApiVersion, Status);
+    return Status;
+}
+
+/* Reads one REG_DWORD of the Parameters key, keeping the default when absent */
+static
+ULONG
+Q6ReadParameter(
+    _In_opt_ WDFKEY Key,
+    _In_ PCUNICODE_STRING Name,
+    _In_ ULONG Default)
+{
+    ULONG Value;
+
+    if (Key && NT_SUCCESS(WdfRegistryQueryULong(Key, Name, &Value)))
+        return Value;
+    return Default;
+}
+
 static
 NTSTATUS
 Q6CreateControlDevice(
@@ -190,8 +306,14 @@ Q6CreateControlDevice(
     WDF_OBJECT_ATTRIBUTES Attributes;
     DECLARE_CONST_UNICODE_STRING(DeviceName, L"\\Device\\QcQ6");
     DECLARE_CONST_UNICODE_STRING(Sddl, L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+    DECLARE_CONST_UNICODE_STRING(RxPortName, L"VoiceRxPort");
+    DECLARE_CONST_UNICODE_STRING(TxPortName, L"VoiceTxPort");
+    DECLARE_CONST_UNICODE_STRING(RxLineName, L"QuatMi2sRxLine");
+    DECLARE_CONST_UNICODE_STRING(TxLineName, L"QuatMi2sTxLine");
     PQ6_DEVICE Device = &Q6Global;
     WDFDEVICE WdfDevice;
+    WDFKEY Key = NULL;
+    ULONG RxPort, TxPort, RxLine, TxLine;
     HANDLE Thread;
     NTSTATUS Status;
 
@@ -214,12 +336,27 @@ Q6CreateControlDevice(
     RtlZeroMemory(Device, sizeof(*Device));
     Device->WdfDevice = WdfDevice;
     KeInitializeEvent(&Device->Replied, NotificationEvent, FALSE);
+    KeInitializeMutex(&Device->AskLock, 0);
 
     WdfControlFinishInitializing(WdfDevice);
     Q6ControlDevice = WdfDevice;
 
+    /* Board wiring: which I2S lines carry each MI2S port, which ports a call uses */
+    if (!NT_SUCCESS(WdfDriverOpenParametersRegistryKey(Driver, KEY_READ, WDF_NO_OBJECT_ATTRIBUTES, &Key)))
+        Key = NULL;
+    RxLine = Q6ReadParameter(Key, &RxLineName, Q6_DEFAULT_RX_LINE);
+    TxLine = Q6ReadParameter(Key, &TxLineName, 0);
+    RxPort = Q6ReadParameter(Key, &RxPortName, MAXUSHORT);
+    TxPort = Q6ReadParameter(Key, &TxPortName, MAXUSHORT);
+    if (Key)
+        WdfRegistryClose(Key);
+
+    QC_LOG("board: mi2s lines rx 0x%lx tx 0x%lx, voice ports rx 0x%lx tx 0x%lx",
+           RxLine, TxLine, RxPort, TxPort);
+
     /* Register the AFE/ADM/ASM services so playback can be driven once up */
-    QcQ6GraphInit();
+    QcQ6GraphInit(RxLine, TxLine);
+    QcQ6VoiceInit((USHORT)RxPort, (USHORT)TxPort);
 
     Status = PsCreateSystemThread(&Thread, THREAD_ALL_ACCESS, NULL, NULL, NULL, Q6Worker, Device);
     if (NT_SUCCESS(Status))
