@@ -79,10 +79,12 @@ Q6CoreReceive(
 
     if (Hdr->Opcode == AVCS_CMDRSP_GET_FWK_VERSION || Hdr->Opcode == AVCS_CMDRSP_GET_VERSIONS)
     {
-        if (Length >= sizeof(APR_HEADER) + sizeof(ULONG))
+        /* Build major, minor, branch and subbranch, then the service count */
+        if (Hdr->Opcode == AVCS_CMDRSP_GET_FWK_VERSION && Length >= sizeof(APR_HEADER) + 5 * sizeof(ULONG))
         {
-            ULONG Count = *(const ULONG *)((const UCHAR *)Packet + sizeof(APR_HEADER));
-            QC_LOG("adsp core replied, %lu service(s) reported", Count);
+            const ULONG *Version = (const ULONG *)((const UCHAR *)Packet + sizeof(APR_HEADER));
+            QC_LOG("adsp framework %lu.%lu.%lu.%lu, %lu service(s)",
+                   Version[0], Version[1], Version[2], Version[3], Version[4]);
         }
         else
         {
