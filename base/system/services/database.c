@@ -624,6 +624,8 @@ ScmRemoveServiceImage(PSERVICE_IMAGE pServiceImage)
 
     /* FIXME: Terminate the process */
 
+    ScmUnwatchServiceImage(pServiceImage);
+
     /* Remove the service image from the list */
     RemoveEntryList(&pServiceImage->ImageListEntry);
 
@@ -1947,6 +1949,9 @@ ScmStartUserModeService(PSERVICE Service,
     /* Get the process handle and ID */
     Service->lpImage->hProcess = ProcessInformation.hProcess;
     Service->lpImage->dwProcessId = ProcessInformation.dwProcessId;
+
+    /* A process that ends without reporting a stop runs the failure actions */
+    ScmWatchServiceImage(Service->lpImage);
 
     /* Resume the main thread and close its handle */
     ResumeThread(ProcessInformation.hThread);

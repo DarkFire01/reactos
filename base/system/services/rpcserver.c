@@ -1608,7 +1608,6 @@ ScmIsValidServiceState(DWORD dwCurrentState)
     }
 }
 
-static
 DWORD
 WINAPI
 ScmStopThread(PVOID pParam)
