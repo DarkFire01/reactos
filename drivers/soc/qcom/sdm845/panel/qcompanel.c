@@ -312,7 +312,7 @@ QcPanelStart(
 
     InitializeObjectAttributes(&ObjectAttributes,
                                &CallbackName,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE | OBJ_PERMANENT,
                                NULL,
                                NULL);
     Status = ExCreateCallback(&Device->Callback, &ObjectAttributes, TRUE, TRUE);
