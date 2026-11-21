@@ -9,6 +9,7 @@ add_subdirectory(kdusb)
 
 if(ARCH STREQUAL "arm64")
     add_subdirectory(kddwc)
+    add_subdirectory(kdchipidea)
 endif()
 
 if(_WINKD_)
