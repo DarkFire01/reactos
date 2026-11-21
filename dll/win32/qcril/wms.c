@@ -329,7 +329,8 @@ QcBuildSubmitPdu(
     return Offset;
 }
 
-/* Parses a received SMS-DELIVER PDU into a RIL message */
+/* Parses a received SMS-DELIVER TPDU into a RIL message. The modem's transfer route
+   carries the TPDU alone, with no service center address in front of it. */
 static
 BOOL
 QcParseDeliverPdu(
@@ -349,11 +350,6 @@ QcParseDeliverPdu(
     Message->Params = RIL_MSGPARAM_TYPE | RIL_MSGPARAM_ADDRESS | RIL_MSGPARAM_DCS | RIL_MSGPARAM_BODY;
 
     if (PduLen < 1)
-        return FALSE;
-
-    /* Service center field, skip it */
-    Offset += 1 + Pdu[0];
-    if (Offset + 1 > PduLen)
         return FALSE;
 
     Flags = Pdu[Offset++];
