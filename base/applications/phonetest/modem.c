@@ -111,6 +111,11 @@ static const LPCWSTR PtAppStateNames[] =
     L"PIN blocked", L"illegal", L"ready"
 };
 
+/* The first SIM or USIM application of slot 0, from the last card status read */
+static UCHAR PtUimAid[32];
+static UCHAR PtUimAidLength;
+static UCHAR PtUimAppType;
+
 BOOL
 PtModemIsCommand(
     _In_ UINT Id)
@@ -686,6 +691,9 @@ PtDecodeUim(
     if (MessageId != 0x2F || !PtTlv(Body, Length, 0x10, &Value, &Size) || Size < 9)
         return;
 
+    PtModemLog(L"   primary GW session index 0x%04x", Value[0] | (Value[1] << 8));
+    PtUimAppType = 0;
+
     Slots = Value[8];
     Offset = 9;
     for (Slot = 0; Slot < Slots && Offset + 6 <= Size; Slot++)
@@ -699,6 +707,14 @@ PtDecodeUim(
         for (App = 0; App < Apps && Offset + 7 <= Size; App++)
         {
             ULONG AidLength = Value[Offset + 6];
+
+            if (Slot == 0 && PtUimAppType == 0 && (Value[Offset] == 1 || Value[Offset] == 2) &&
+                AidLength <= sizeof(PtUimAid) && Offset + 7 + AidLength <= Size)
+            {
+                PtUimAppType = Value[Offset];
+                PtUimAidLength = (UCHAR)AidLength;
+                CopyMemory(PtUimAid, &Value[Offset + 7], AidLength);
+            }
 
             PtModemLog(L"   app %lu %s %s, perso %u",
                        App, PtTableName(PtAppTypeNames, _countof(PtAppTypeNames), Value[Offset]),
@@ -789,6 +805,41 @@ PtModemPacket(
 }
 
 /* Reads "svc msg [type:hexbytes ...]", every number in hex */
+/* Opens the primary GSM/UMTS/LTE session on the SIM application the SIM button found */
+static
+VOID
+PtActivateSubscription(VOID)
+{
+    BYTE Tlvs[3 + 2 + 3 + 2 + sizeof(PtUimAid)];
+    ULONG Length;
+
+    if (PtUimAppType == 0)
+    {
+        PtModemLog(L"Activate: no SIM application known yet, reading the card first");
+        PtSend(PT_SVC_UIM, 0x2F, NULL, 0);
+        return;
+    }
+
+    /* Session change: primary GW, activate */
+    Tlvs[0] = 0x01;
+    Tlvs[1] = 2;
+    Tlvs[2] = 0;
+    Tlvs[3] = 0x00;
+    Tlvs[4] = 0x01;
+
+    /* Application: slot 1 and the AID */
+    Tlvs[5] = 0x10;
+    Tlvs[6] = (BYTE)(2 + PtUimAidLength);
+    Tlvs[7] = 0;
+    Tlvs[8] = 0x01;
+    Tlvs[9] = PtUimAidLength;
+    CopyMemory(&Tlvs[10], PtUimAid, PtUimAidLength);
+    Length = 10 + PtUimAidLength;
+
+    PtModemLog(L"Activate: primary subscription on the %s application", PtUimAppType == 2 ? L"USIM" : L"SIM");
+    PtSend(PT_SVC_UIM, 0x38, Tlvs, (USHORT)Length);
+}
+
 static
 VOID
 PtSendRaw(VOID)
@@ -900,6 +951,10 @@ PtModemCommand(
         case IDC_MODEM_IDENTITY:
             PtSend(PT_SVC_DMS, 0x23, NULL, 0);
             PtSend(PT_SVC_DMS, 0x25, NULL, 0);
+            break;
+
+        case IDC_MODEM_ACTIVATE:
+            PtActivateSubscription();
             break;
 
         case IDC_MODEM_SEND:
