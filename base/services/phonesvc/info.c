@@ -14,6 +14,10 @@
 
 #define PH_DATA_KEY L"SYSTEM\\CurrentControlSet\\Services\\PhoneSvc\\Data"
 
+/* Mint Mobile, which shares the internet APN for MMS and has no proxy */
+#define PH_MMS_DEFAULT_URL          L"http://wholesale.mmsmvno.com/mms/wapenc"
+#define PH_MMS_DEFAULT_AGENT        L"ReactOS-MMS/1.0"
+
 static
 VOID
 PhWiden(
@@ -208,6 +212,50 @@ PhGetDataConfig(
     Config->Username[_countof(Config->Username) - 1] = UNICODE_NULL;
     Config->Password[_countof(Config->Password) - 1] = UNICODE_NULL;
     RegCloseKey(Key);
+}
+
+/* Reads one string value, an absent or empty value keeps the default */
+static
+VOID
+PhReadString(
+    _In_opt_ HKEY Key,
+    _In_z_ LPCWSTR Name,
+    _Out_writes_z_(Chars) PWSTR Value,
+    _In_ DWORD Chars,
+    _In_opt_z_ LPCWSTR Default)
+{
+    DWORD Size = (Chars - 1) * sizeof(WCHAR), Type;
+
+    ZeroMemory(Value, Chars * sizeof(WCHAR));
+    if (Key &&
+        RegQueryValueExW(Key, Name, NULL, &Type, (PBYTE)Value, &Size) == ERROR_SUCCESS &&
+        Type == REG_SZ &&
+        Value[0])
+    {
+        return;
+    }
+
+    ZeroMemory(Value, Chars * sizeof(WCHAR));
+    if (Default)
+        StringCchCopyW(Value, Chars, Default);
+}
+
+VOID
+PhGetMmsConfig(
+    _Out_ PPH_MMS_CONFIG Config)
+{
+    HKEY Key;
+
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, PH_DATA_KEY, 0, KEY_READ, &Key) != ERROR_SUCCESS)
+        Key = NULL;
+
+    PhReadString(Key, L"MmsUrl", Config->Url, _countof(Config->Url), PH_MMS_DEFAULT_URL);
+    PhReadString(Key, L"MmsProxy", Config->Proxy, _countof(Config->Proxy), NULL);
+    PhReadString(Key, L"MmsUserAgent", Config->UserAgent, _countof(Config->UserAgent), PH_MMS_DEFAULT_AGENT);
+    PhReadString(Key, L"MmsUaProfile", Config->Profile, _countof(Config->Profile), NULL);
+
+    if (Key)
+        RegCloseKey(Key);
 }
 
 HRESULT
