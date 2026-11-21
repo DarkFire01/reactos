@@ -208,6 +208,7 @@ QcPanelPowerCallback(
 {
     UNREFERENCED_PARAMETER(Argument2);
 
+    QC_LOG("display asks for the panel %s", Argument1 ? "on" : "off");
     QcPanelSetPower(Context, (BOOLEAN)(ULONG_PTR)Argument1);
 }
 

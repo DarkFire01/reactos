@@ -1489,6 +1489,9 @@ GenFbVmpSetPowerState(
             return ERROR_INVALID_PARAMETER;
     }
 
+    DPRINT1("GenFbVmp: power state %lu, output %s\n",
+            VideoPowerControl->PowerState, OutputOff ? "off" : "on");
+
     if (OutputOff != DeviceExtension->OutputOff)
     {
         DeviceExtension->OutputOff = OutputOff;

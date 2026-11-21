@@ -61,6 +61,7 @@ IntHandlePowerEventWorker(
              * The power manager wants the console display on (1) or off (0),
              * a dimmed display (2) stays on until dimming is supported.
              */
+            ERR("Power callout: display state %lu\n", Code);
             EngpSetDisplayPowerState(Code != 0);
             break;
         }
