@@ -174,6 +174,7 @@ PhRadioArrived(
     _Inout_opt_ PVOID Context)
 {
     PPH_REQUEST Request;
+    ULONG Attempt;
     HRESULT hr;
 
     UNREFERENCED_PARAMETER(Instance);
@@ -189,7 +190,18 @@ PhRadioArrived(
     if (FAILED(hr))
         DPRINT1("Enabling notifications failed 0x%lx\n", hr);
 
-    PhSetRadioPower(TRUE);
+    /* The library reports presence before the modem services are up */
+    for (Attempt = 0; Attempt < PHONE_RADIO_ON_ATTEMPTS && PhRadioPresent; Attempt++)
+    {
+        hr = PhSetRadioPower(TRUE);
+        if (hr != RIL_E_RADIONOTAVAILABLE)
+            break;
+
+        Sleep(PHONE_RADIO_ON_RETRY_MS);
+    }
+
+    if (FAILED(hr))
+        DPRINT1("Radio stayed off after %lu attempt(s): 0x%lx\n", Attempt + 1, hr);
 }
 
 typedef struct _PH_NOTIFY_WORK
