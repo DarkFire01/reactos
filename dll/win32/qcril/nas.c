@@ -806,6 +806,57 @@ QcNasGetSignalQuality(
     return S_OK;
 }
 
+/* Universal time, the zone in quarter hours and the daylight saving hours become one NITZ notification */
+static
+VOID
+QcNasNetworkTime(
+    _In_ PQC_MODEM Modem,
+    _In_reads_bytes_(Length) const VOID *Message,
+    _In_ ULONG Length)
+{
+    RIL_NITZ_INFO Nitz;
+    const VOID *Value;
+    const UCHAR *Time;
+    USHORT ValueLen;
+
+    if (!QmiFindTlv(Message, Length, 0x01, &Value, &ValueLen) || ValueLen < 8)
+        return;
+
+    Time = Value;
+    ZeroMemory(&Nitz, sizeof(Nitz));
+    Nitz.Size = sizeof(Nitz);
+    Nitz.NotificationCode = RIL_NOTIFY_NITZ;
+    Nitz.SysTime.wYear = (WORD)(Time[0] | (Time[1] << 8));
+    Nitz.SysTime.wMonth = Time[2];
+    Nitz.SysTime.wDay = Time[3];
+    Nitz.SysTime.wHour = Time[4];
+    Nitz.SysTime.wMinute = Time[5];
+    Nitz.SysTime.wSecond = Time[6];
+
+    /* The modem counts weekdays from Monday */
+    Nitz.SysTime.wDayOfWeek = (WORD)((Time[7] + 1) % 7);
+    Nitz.Params = RIL_NITZPARAM_SYSTEMTIME;
+
+    if (QmiFindTlv(Message, Length, 0x10, &Value, &ValueLen) && ValueLen >= 1)
+    {
+        Nitz.TimeZoneOffsetMinutes = *(const CHAR *)Value * 15;
+        Nitz.Params |= RIL_NITZPARAM_TIMEZONEOFFSET;
+    }
+
+    if (QmiFindTlv(Message, Length, 0x11, &Value, &ValueLen) && ValueLen >= 1)
+    {
+        Nitz.DaylightSavingOffsetMinutes = *(const UCHAR *)Value * 60;
+        Nitz.Params |= RIL_NITZPARAM_DAYLIGHTSAVINGOFFSET;
+    }
+
+    QcTrace("network time %04u-%02u-%02u %02u:%02u:%02u UTC, zone %ld min, daylight saving %ld min\n",
+            Nitz.SysTime.wYear, Nitz.SysTime.wMonth, Nitz.SysTime.wDay, Nitz.SysTime.wHour,
+            Nitz.SysTime.wMinute, Nitz.SysTime.wSecond, Nitz.TimeZoneOffsetMinutes,
+            Nitz.DaylightSavingOffsetMinutes);
+
+    QcNotifyAll(Modem, RIL_NOTIFY_NITZ, &Nitz, sizeof(Nitz));
+}
+
 VOID
 QcNasIndication(
     _In_ PQC_MODEM Modem,
@@ -850,12 +901,7 @@ QcNasIndication(
             break;
 
         case QCRIL_NAS_NETWORK_TIME_IND:
-            if (QmiFindTlv(Message, Length, 0x01, &Value, &ValueLen) && ValueLen >= 8)
-            {
-                const UCHAR *Time = Value;
-                QcTrace("network time %04u-%02u-%02u %02u:%02u:%02u\n", Time[0] | (Time[1] << 8),
-                        Time[2], Time[3], Time[4], Time[5], Time[6]);
-            }
+            QcNasNetworkTime(Modem, Message, Length);
             break;
 
         case QCRIL_NAS_SERVING_SYSTEM_IND:
