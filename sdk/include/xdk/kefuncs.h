@@ -1325,6 +1325,31 @@ ULONGLONG
 NTAPI
 KeQueryUnbiasedInterruptTime(VOID);
 
+_IRQL_requires_max_(HIGH_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+KeQueryAuxiliaryCounterFrequency(
+  _Out_opt_ PULONG64 AuxiliaryCounterFrequency);
+
+_IRQL_requires_max_(HIGH_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+KeConvertAuxiliaryCounterToPerformanceCounter(
+  _In_ ULONG64 AuxiliaryCounterValue,
+  _Out_ PULONG64 PerformanceCounterValue,
+  _Out_opt_ PULONG64 ConversionError);
+
+_IRQL_requires_max_(HIGH_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+KeConvertPerformanceCounterToAuxiliaryCounter(
+  _In_ ULONG64 PerformanceCounterValue,
+  _Out_ PULONG64 AuxiliaryCounterValue,
+  _Out_opt_ PULONG64 ConversionError);
+
 _Must_inspect_result_
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Ret_range_(<=, 0)
