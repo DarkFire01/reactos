@@ -1,0 +1,4 @@
+#define REACTOS_STR_FILE_DESCRIPTION  "GNSS Location Service"
+#define REACTOS_STR_INTERNAL_NAME     "gnsssvc"
+#define REACTOS_STR_ORIGINAL_FILENAME "gnsssvc.exe"
+#include <reactos/version.rc>
