@@ -1,8 +1,0 @@
-add_subdirectory(dbg)
-add_subdirectory(pnp)
-add_subdirectory(geni)
-add_subdirectory(tlmm)
-add_subdirectory(qmi)
-add_subdirectory(remotefs)
-add_subdirectory(tz)
-add_subdirectory(xhcif)
