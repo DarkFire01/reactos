@@ -14,4 +14,5 @@ NTAPI
 QcQ6SmmuRouteStream(
     _In_ ULONGLONG Base,
     _In_ USHORT StreamId,
+    _In_ USHORT Mask,
     _In_ BOOLEAN Route);
