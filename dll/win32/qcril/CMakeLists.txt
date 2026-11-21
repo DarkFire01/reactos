@@ -10,6 +10,7 @@ list(APPEND SOURCE
     ril.c
     dms.c
     nas.c
+    pdc.c
     uim.c
     voice.c
     wds.c

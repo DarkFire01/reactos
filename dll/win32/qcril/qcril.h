@@ -35,6 +35,7 @@ typedef enum _QC_SVC
     QcSvcVoice,
     QcSvcWms,
     QcSvcWds,
+    QcSvcPdc,
     QcSvcCount
 } QC_SVC;
 
@@ -45,6 +46,7 @@ typedef enum _QC_SVC
 #define QC_SERVICE_WMS              5
 #define QC_SERVICE_VOICE            9
 #define QC_SERVICE_UIM              0x0B
+#define QC_SERVICE_PDC              0x24
 
 #define QC_INSTANCE_DEFAULT         0
 
@@ -208,6 +210,21 @@ typedef struct _QC_UIM_STATE
     BOOL Recheck;           /* the setup thread should evaluate provisioning */
 } QC_UIM_STATE;
 
+/* Persistent device config requests, answered through token matched indications */
+#define QC_PDC_MAX_ID               32
+#define QC_PDC_MAX_CONFIGS          16
+
+typedef struct _QC_PDC_STATE
+{
+    HANDLE Event;           /* set when the waited indication lands in Ind */
+    USHORT WaitId;          /* indication message id the caller waits for, zero for none */
+    ULONG WaitToken;
+    ULONG NextToken;
+    BYTE Ind[QC_MESSAGE_MAX];
+    ULONG IndLen;
+    BOOL Switched;          /* a configuration was activated during this run */
+} QC_PDC_STATE;
+
 /* RIL call id to modem call id, the modem reuses its ids */
 #define QC_VOICE_MAX_CALLS          8
 
@@ -265,6 +282,7 @@ struct _QC_MODEM
     QC_DMS_STATE Dms;
     QC_NAS_STATE Nas;
     QC_UIM_STATE Uim;
+    QC_PDC_STATE Pdc;
     QC_CALL Calls[QC_VOICE_MAX_CALLS];
     DWORD NextCallId;
 };
@@ -344,6 +362,11 @@ HRESULT QcDmsGetDeviceInfo(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const 
 HRESULT QcDmsReadString(_In_ PQC_MODEM Modem, _In_ USHORT MessageId, _In_ UCHAR Tlv,
                         _Out_writes_z_(OutSize) PSTR Out, _In_ ULONG OutSize);
 VOID QcDmsIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
+                     _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
+
+/* pdc.c */
+VOID QcPdcSetup(_In_ PQC_MODEM Modem);
+VOID QcPdcIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                      _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
 
 /* nas.c */
