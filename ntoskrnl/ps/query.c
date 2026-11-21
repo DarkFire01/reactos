@@ -201,8 +201,34 @@ PspDumpThreadInfoClassName(
 }
 #endif // #if DBG
 
-/* Windows 8.1 classes that the DDK enumeration does not list */
-#define ProcessHandleTable ((PROCESSINFOCLASS)58)
+/* Windows 8.1 and later classes that the DDK enumeration does not list */
+#define ProcessHandleTable              ((PROCESSINFOCLASS)58)
+#define ProcessTelemetryIdInformation   ((PROCESSINFOCLASS)64)
+#define ProcessSubsystemInformation     ((PROCESSINFOCLASS)75)
+
+/* Fixed part of the ProcessTelemetryIdInformation answer, the strings follow it */
+typedef struct _PSP_TELEMETRY_ID_HEADER
+{
+    ULONG HeaderSize;
+    ULONG ProcessId;
+    ULONG64 ProcessStartKey;
+    ULONG64 CreateTime;
+    ULONG64 CreateInterruptTime;
+    ULONG64 CreateUnbiasedInterruptTime;
+    ULONG64 ProcessSequenceNumber;
+    ULONG64 SessionCreateTime;
+    ULONG SessionId;
+    ULONG BootId;
+    ULONG ImageChecksum;
+    ULONG ImageTimeDateStamp;
+    ULONG UserSidOffset;
+    ULONG ImagePathOffset;
+    ULONG PackageNameOffset;
+    ULONG RelativeAppNameOffset;
+    ULONG CommandLineOffset;
+} PSP_TELEMETRY_ID_HEADER, *PPSP_TELEMETRY_ID_HEADER;
+
+C_ASSERT(sizeof(PSP_TELEMETRY_ID_HEADER) == 96);
 
 /* Handle values gathered for ProcessHandleTable */
 typedef struct _PSP_HANDLE_VALUES
@@ -267,6 +293,204 @@ PspReferenceProcessForQuery(
                                      PreviousMode,
                                      (PVOID*)Process,
                                      NULL);
+}
+
+/**
+ * @brief
+ * Reads the command line and image header stamps out of the process's own address space.
+ *
+ * @param[out] CommandLine
+ * Pool copy of the command line, NULL when there is none. Free with TAG_PS_TELEMETRY_ID.
+ */
+static
+VOID
+NTAPI
+PspCaptureTelemetryImageData(
+    _In_ PEPROCESS Process,
+    _Outptr_result_maybenull_ PWCHAR *CommandLine,
+    _Out_ PUSHORT CommandLineLength,
+    _Out_ PULONG ImageChecksum,
+    _Out_ PULONG ImageTimeDateStamp)
+{
+    PRTL_USER_PROCESS_PARAMETERS Parameters;
+    PIMAGE_NT_HEADERS NtHeaders;
+    UNICODE_STRING Source;
+    KAPC_STATE ApcState;
+    PWCHAR Copy = NULL;
+
+    *CommandLine = NULL;
+    *CommandLineLength = 0;
+    *ImageChecksum = 0;
+    *ImageTimeDateStamp = 0;
+
+    if (!Process->Peb)
+        return;
+
+    KeStackAttachProcess(&Process->Pcb, &ApcState);
+    _SEH2_TRY
+    {
+        Parameters = Process->Peb->ProcessParameters;
+        if (Parameters)
+        {
+            ProbeForRead(Parameters, sizeof(*Parameters), sizeof(ULONG));
+            Source = Parameters->CommandLine;
+
+            /* Before normalization the buffer is an offset from the block */
+            if ((Parameters->Flags & RTL_USER_PROCESS_PARAMETERS_NORMALIZED) == 0 && Source.Buffer)
+                Source.Buffer = (PWCHAR)((ULONG_PTR)Parameters + (ULONG_PTR)Source.Buffer);
+
+            Source.Length &= ~(sizeof(WCHAR) - 1);
+            if (Source.Length && Source.Buffer)
+            {
+                ProbeForRead(Source.Buffer, Source.Length, sizeof(WCHAR));
+                Copy = ExAllocatePoolWithTag(PagedPool, Source.Length, TAG_PS_TELEMETRY_ID);
+                if (Copy)
+                {
+                    RtlCopyMemory(Copy, Source.Buffer, Source.Length);
+                    *CommandLine = Copy;
+                    *CommandLineLength = Source.Length;
+                }
+            }
+        }
+
+        NtHeaders = RtlImageNtHeader(Process->SectionBaseAddress);
+        if (NtHeaders)
+        {
+            *ImageChecksum = NtHeaders->OptionalHeader.CheckSum;
+            *ImageTimeDateStamp = NtHeaders->FileHeader.TimeDateStamp;
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        if (Copy)
+            ExFreePoolWithTag(Copy, TAG_PS_TELEMETRY_ID);
+        *CommandLine = NULL;
+        *CommandLineLength = 0;
+    }
+    _SEH2_END;
+    KeUnstackDetachProcess(&ApcState);
+}
+
+/**
+ * @brief
+ * Answers ProcessTelemetryIdInformation: the fixed header, then the user SID,
+ * image path, package name, relative app name and command line.
+ *
+ * The full size is always reported. A buffer too small for everything gets
+ * the header alone with the string offsets left zero.
+ */
+static
+NTSTATUS
+NTAPI
+PspQueryTelemetryId(
+    _In_ PEPROCESS Process,
+    _Out_writes_bytes_(BufferLength) PVOID Buffer,
+    _In_ ULONG BufferLength,
+    _Out_ PULONG RequiredLength)
+{
+    PSP_TELEMETRY_ID_HEADER Header;
+    PUNICODE_STRING ImageName = NULL;
+    PTOKEN_USER UserInfo = NULL;
+    PACCESS_TOKEN Token;
+    PWCHAR CommandLine = NULL;
+    USHORT CommandLineLength = 0;
+    USHORT ImageNameLength = 0;
+    ULONG SidLength = 0;
+    ULONG Required;
+    PUCHAR Block;
+    PUCHAR Cursor;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    RtlZeroMemory(&Header, sizeof(Header));
+
+    Token = PsReferencePrimaryToken(Process);
+    if (Token)
+    {
+        if (NT_SUCCESS(SeQueryInformationToken(Token, TokenUser, (PVOID *)&UserInfo)))
+            SidLength = RtlLengthSid(UserInfo->User.Sid);
+        PsDereferencePrimaryToken(Token);
+    }
+
+    if (NT_SUCCESS(SeLocateProcessImageName(Process, &ImageName)))
+        ImageNameLength = ImageName->Length;
+
+    /* The address space is only read while the process cannot run down */
+    if (ExAcquireRundownProtection(&Process->RundownProtect))
+    {
+        PspCaptureTelemetryImageData(Process,
+                                     &CommandLine,
+                                     &CommandLineLength,
+                                     &Header.ImageChecksum,
+                                     &Header.ImageTimeDateStamp);
+        ExReleaseRundownProtection(&Process->RundownProtect);
+    }
+
+    /* The image path and the command line each end in a null */
+    Required = sizeof(Header) + SidLength + ImageNameLength + sizeof(WCHAR) +
+               CommandLineLength + sizeof(WCHAR);
+    *RequiredLength = Required;
+
+    Header.HeaderSize = sizeof(Header);
+    Header.ProcessId = HandleToUlong(Process->UniqueProcessId);
+    Header.CreateTime = Process->CreateTime.QuadPart;
+    Header.SessionId = PsGetProcessSessionId(Process);
+    Header.BootId = SharedUserData->BootId;
+
+    Block = ExAllocatePoolWithTag(PagedPool, Required, TAG_PS_TELEMETRY_ID);
+    if (!Block)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Cleanup;
+    }
+    RtlZeroMemory(Block, Required);
+
+    if (BufferLength >= Required)
+    {
+        Cursor = Block + sizeof(Header);
+
+        Header.UserSidOffset = (ULONG)(Cursor - Block);
+        if (SidLength)
+            RtlCopyMemory(Cursor, UserInfo->User.Sid, SidLength);
+        Cursor += SidLength;
+
+        Header.ImagePathOffset = (ULONG)(Cursor - Block);
+        if (ImageNameLength)
+            RtlCopyMemory(Cursor, ImageName->Buffer, ImageNameLength);
+        Cursor += ImageNameLength + sizeof(WCHAR);
+
+        /* No package identity, so both package strings are empty */
+        Header.PackageNameOffset = (ULONG)(Cursor - Block);
+        Header.RelativeAppNameOffset = (ULONG)(Cursor - Block);
+
+        Header.CommandLineOffset = (ULONG)(Cursor - Block);
+        if (CommandLineLength)
+            RtlCopyMemory(Cursor, CommandLine, CommandLineLength);
+    }
+    RtlCopyMemory(Block, &Header, sizeof(Header));
+
+    _SEH2_TRY
+    {
+        if (BufferLength >= sizeof(Header))
+            RtlCopyMemory(Buffer, Block, min(BufferLength, Required));
+        else
+            RtlZeroMemory(Buffer, BufferLength);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    ExFreePoolWithTag(Block, TAG_PS_TELEMETRY_ID);
+
+Cleanup:
+    if (CommandLine)
+        ExFreePoolWithTag(CommandLine, TAG_PS_TELEMETRY_ID);
+    if (ImageName)
+        ExFreePoolWithTag(ImageName, TAG_SEPA);
+    if (UserInfo)
+        ExFreePool(UserInfo);
+    return Status;
 }
 
 /* PUBLIC FUNCTIONS **********************************************************/
@@ -1616,6 +1840,48 @@ NtQueryInformationProcess(
             break;
         }
 #endif
+
+        /* Identity of the process for telemetry correlation */
+        case ProcessTelemetryIdInformation:
+            Status = ObReferenceObjectByHandle(ProcessHandle,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
+                                               PsProcessType,
+                                               PreviousMode,
+                                               (PVOID*)&Process,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            Status = PspQueryTelemetryId(Process,
+                                         ProcessInformation,
+                                         ProcessInformationLength,
+                                         &Length);
+            ObDereferenceObject(Process);
+            break;
+
+        /* There are no pico processes, everything runs under Win32 */
+        case ProcessSubsystemInformation:
+            Status = ObReferenceObjectByHandle(ProcessHandle,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
+                                               PsProcessType,
+                                               PreviousMode,
+                                               (PVOID*)&Process,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            _SEH2_TRY
+            {
+                *(PULONG)ProcessInformation = 0;
+                Length = sizeof(ULONG);
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            ObDereferenceObject(Process);
+            break;
 
         /* Not supported by Server 2003 */
         default:

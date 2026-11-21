@@ -398,6 +398,51 @@ static const INFORMATION_CLASS_INFO PsProcessInfoClass[] =
         ULONG,
         ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE
     ),
+    /* ProcessCheckStackExtentsMode */
+    IQS_NONE,
+    /* ProcessCommandLineInformation */
+    IQS_NONE,
+    /* ProcessProtectionInformation */
+    IQS_NONE,
+
+    // Windows 10
+    /* ProcessMemoryExhaustion */
+    IQS_NONE,
+    /* ProcessFaultInformation */
+    IQS_NONE,
+    /* ProcessTelemetryIdInformation */
+    IQS_NO_TYPE_LENGTH
+    (
+        ULONG,
+        ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE
+    ),
+    /* ProcessCommitReleaseInformation */
+    IQS_NONE,
+    /* ProcessDefaultCpuSetsInformation */
+    IQS_NONE,
+    /* ProcessAllowedCpuSetsInformation */
+    IQS_NONE,
+    /* ProcessSubsystemProcess */
+    IQS_NONE,
+    /* ProcessJobMemoryInformation */
+    IQS_NONE,
+    /* ProcessInPrivate */
+    IQS_NONE,
+    /* ProcessRaiseUMExceptionOnInvalidHandleClose */
+    IQS_NONE,
+    /* ProcessIumChallengeResponse */
+    IQS_NONE,
+    /* ProcessChildProcessInformation */
+    IQS_NONE,
+    /* ProcessHighGraphicsPriorityInformation */
+    IQS_NONE,
+    /* ProcessSubsystemInformation */
+    IQS_SAME
+    (
+        ULONG,
+        ULONG,
+        ICIF_QUERY
+    ),
 };
 
 //
