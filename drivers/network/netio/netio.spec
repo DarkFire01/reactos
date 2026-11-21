@@ -1,6 +1,7 @@
 @ stdcall CancelMibChangeNotify2(ptr)
 @ stdcall FreeMibTable(ptr)
 @ stdcall GetIfEntry2(ptr)
+@ stdcall GetIfEntry2Ex(long ptr)
 @ stdcall GetUnicastIpAddressEntry(ptr)
 @ stdcall GetUnicastIpAddressTable(long ptr)
 @ stdcall NetioInitializeWorkQueue(ptr ptr ptr ptr)
