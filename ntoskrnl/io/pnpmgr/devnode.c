@@ -18,6 +18,10 @@
 PDEVICE_NODE IopRootDeviceNode;
 KSPIN_LOCK IopDeviceTreeLock;
 
+/* The node the state machine stands on; freeing it waits until the walk moves on */
+PDEVICE_NODE PiWalkDeviceNode;
+BOOLEAN PiWalkDeviceNodeFreed;
+
 LONG IopNumberDeviceNodes;
 
 /* FUNCTIONS *****************************************************************/
@@ -410,6 +414,18 @@ IopFreeDeviceNode(
     }
 
     IoGetDevObjExtension(DeviceNode->PhysicalDeviceObject)->DeviceNode = NULL;
+
+    KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
+    if (DeviceNode == PiWalkDeviceNode)
+    {
+        PiWalkDeviceNodeFreed = TRUE;
+        KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
+        DPRINT1("Devnode %p (PDO %p) freed under the state machine, called from %p\n",
+                DeviceNode, DeviceNode->PhysicalDeviceObject, _ReturnAddress());
+        return STATUS_SUCCESS;
+    }
+    KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
+
     ExFreePoolWithTag(DeviceNode, TAG_IO_DEVNODE);
 
     return STATUS_SUCCESS;
