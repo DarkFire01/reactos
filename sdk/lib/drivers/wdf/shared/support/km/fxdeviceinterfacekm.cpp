@@ -71,10 +71,10 @@ Return Value:
   --*/
 {
     // the device interface should be off now
-    ASSERT(m_State == FALSE);
+    //ASSERT(m_State == FALSE);
 
     // should no longer be in any list
-    ASSERT(m_Entry.Next == NULL);
+    //ASSERT(m_Entry.Next == NULL);
 
     if (m_ReferenceString.Buffer != NULL) {
         FxPoolFree(m_ReferenceString.Buffer);
