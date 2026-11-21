@@ -13,9 +13,14 @@
 #define QCRIL_WMS_RAW_SEND              0x0020
 #define QCRIL_WMS_SET_ROUTES            0x0032
 #define QCRIL_WMS_SEND_ACK              0x0037
+#define QCRIL_WMS_SET_PRIMARY_CLIENT    0x0045
+#define QCRIL_WMS_INDICATION_REGISTER   0x0047
+#define QCRIL_WMS_BIND_SUBSCRIPTION     0x004C
 
 #define QCRIL_WMS_TLV_RAW_MESSAGE       0x01
 #define QCRIL_WMS_TLV_REPORT_MT         0x10
+#define QCRIL_WMS_TLV_REPORT_MWI        0x12
+#define QCRIL_WMS_TLV_MT_MESSAGE        0x10
 #define QCRIL_WMS_TLV_ROUTE_LIST        0x01
 #define QCRIL_WMS_TLV_TRANSFER_ROUTE    0x11
 #define QCRIL_WMS_TLV_ACK_INFO          0x01
@@ -27,21 +32,40 @@
 #define QCRIL_RP_MEMORY_EXCEEDED        0x16
 #define QCRIL_RP_PROTOCOL_ERROR         0x6F
 #define QCRIL_TP_MEMORY_EXCEEDED        0xD3
-#define QCRIL_TP_UNSPECIFIED            0xFF
+#define QCRIL_TP_UNSPECIFIED            0xB0
 
 /* wms_message_format_enum_v01, GSM/WCDMA point to point */
 #define QCRIL_WMS_FORMAT_GW_PP          0x06
 
-/* wms_receipt_action, transfer the message to the client without storing it */
+/* wms_receipt_action and storage of the routes */
+#define QCRIL_WMS_ACTION_STORE_NOTIFY   0x01
 #define QCRIL_WMS_ACTION_TRANSFER_ONLY  0x02
+#define QCRIL_WMS_ROUTE_STORAGE_UIM     0x00
 #define QCRIL_WMS_ROUTE_STORAGE_NONE    0xFF
 
-#define QCRIL_EXECUTOR                  0
+/* wms_message_class_enum_v01, NONE and CDMA follow the GSM classes */
+#define QCRIL_WMS_CLASS_SIM             0x02
+#define QCRIL_WMS_CLASS_COUNT           6
 
-/* SMS-SUBMIT first octet: MTI submit, relative validity period */
-#define QCRIL_TP_SUBMIT                 0x11
-#define QCRIL_TP_VP_RELATIVE            0xAA
+#define QCRIL_EXECUTOR                  QC_EXECUTOR
+
+/* SMS-SUBMIT first octet and the defaults of its fields */
+#define QCRIL_TP_SUBMIT                 0x01
+#define QCRIL_TP_REJECT_DUPS            0x04
+#define QCRIL_TP_VPF_NONE               0x00
+#define QCRIL_TP_VPF_ENHANCED           0x08
+#define QCRIL_TP_VPF_RELATIVE           0x10
+#define QCRIL_TP_VPF_ABSOLUTE           0x18
+#define QCRIL_TP_STATUS_REPORT          0x20
 #define QCRIL_TP_UDHI                   0x40
+#define QCRIL_TP_REPLY_PATH             0x80
+#define QCRIL_TP_VP_DEFAULT             0xAA
+
+/* RIL_MESSAGE.u.Submit.ValidityFormat */
+#define QCRIL_VP_NONE                   0
+#define QCRIL_VP_RELATIVE               1
+#define QCRIL_VP_ENHANCED               2
+#define QCRIL_VP_ABSOLUTE               3
 
 static
 UCHAR
@@ -109,7 +133,7 @@ QcGsm7Unpack(
     }
 }
 
-/* Encodes a dialled number as a TP address, returns total bytes written */
+/* Encodes a dialed number as a TP address, returns total bytes written */
 static
 ULONG
 QcEncodeAddress(
@@ -196,7 +220,7 @@ QcBuildSubmitPdu(
     _In_ ULONG OutMax)
 {
     ULONG Offset = 0, AddrLen, i;
-    UCHAR Type;
+    UCHAR Type, First, Vpf;
     DWORD Alphabet = RIL_ALPHABET_GSM7;
 
     if (OutMax < 16)
@@ -207,8 +231,48 @@ QcBuildSubmitPdu(
 
     Type = (Message->Address.dwType == RILADDRESSTYPE_INTERNATIONAL) ? 0x91 : 0x81;
 
-    Pdu[Offset++] = 0x00;            /* use the default service centre */
-    Pdu[Offset++] = QCRIL_TP_SUBMIT;
+    /* The service center the message names, the default one otherwise */
+    if ((Message->Params & RIL_MSGPARAM_SERVICECENTER) && Message->ServiceCenter.wszAddress[0])
+    {
+        UCHAR CenterType = (Message->ServiceCenter.dwType == RILADDRESSTYPE_INTERNATIONAL ||
+                            Message->ServiceCenter.wszAddress[0] == L'+') ? 0x91 : 0x81;
+
+        AddrLen = QcEncodeAddress(Message->ServiceCenter.wszAddress, CenterType, Pdu, OutMax);
+        if (AddrLen == 0)
+            return 0;
+
+        /* The center length counts octets after itself, not digits */
+        Pdu[0] = (BYTE)(AddrLen - 1);
+        Offset = AddrLen;
+    }
+    else
+    {
+        Pdu[Offset++] = 0x00;
+    }
+
+    First = QCRIL_TP_SUBMIT;
+    if (Message->Params & RIL_MSGPARAM_FLAGS)
+    {
+        if (Message->Flags & RIL_MSGFLAG_REPLYPATH)
+            First |= QCRIL_TP_REPLY_PATH;
+        if (Message->Flags & RIL_MSGFLAG_STATUSREPORT)
+            First |= QCRIL_TP_STATUS_REPORT;
+        if (Message->Flags & RIL_MSGFLAG_REJECTDUPS)
+            First |= QCRIL_TP_REJECT_DUPS;
+    }
+
+    switch (Message->u.Submit.ValidityFormat)
+    {
+        case QCRIL_VP_NONE: Vpf = QCRIL_TP_VPF_NONE; break;
+        case QCRIL_VP_ENHANCED: Vpf = QCRIL_TP_VPF_ENHANCED; break;
+        case QCRIL_VP_ABSOLUTE: Vpf = QCRIL_TP_VPF_ABSOLUTE; break;
+        default: Vpf = QCRIL_TP_VPF_RELATIVE; break;
+    }
+
+    if (OutMax < Offset + 3)
+        return 0;
+
+    Pdu[Offset++] = First | Vpf;
     Pdu[Offset++] = 0x00;            /* message reference */
 
     AddrLen = QcEncodeAddress(Message->Address.wszAddress, Type, Pdu + Offset, OutMax - Offset);
@@ -216,12 +280,21 @@ QcBuildSubmitPdu(
         return 0;
     Offset += AddrLen;
 
-    if (Offset + 3 > OutMax)
+    if (Offset + 2 + 7 > OutMax)
         return 0;
 
-    Pdu[Offset++] = 0x00;            /* protocol id */
+    Pdu[Offset++] = (Message->Params & RIL_MSGPARAM_PROTOCOLID) ? (BYTE)Message->ProtocolId : 0x00;
     Pdu[Offset++] = (Alphabet == RIL_ALPHABET_UCS2) ? 0x08 : 0x00;  /* data coding */
-    Pdu[Offset++] = QCRIL_TP_VP_RELATIVE;
+
+    if (Vpf == QCRIL_TP_VPF_RELATIVE)
+    {
+        Pdu[Offset++] = Message->u.Submit.Validity[0] ? Message->u.Submit.Validity[0] : QCRIL_TP_VP_DEFAULT;
+    }
+    else if (Vpf != QCRIL_TP_VPF_NONE)
+    {
+        memcpy(Pdu + Offset, Message->u.Submit.Validity, 7);
+        Offset += 7;
+    }
 
     if (Alphabet == RIL_ALPHABET_UCS2)
     {
@@ -276,7 +349,7 @@ QcParseDeliverPdu(
     if (PduLen < 1)
         return FALSE;
 
-    /* Service centre field, skip it */
+    /* Service center field, skip it */
     Offset += 1 + Pdu[0];
     if (Offset + 1 > PduLen)
         return FALSE;
@@ -429,6 +502,7 @@ QcWmsSend(
         return E_FAIL;
     Length = QmiEncodeEnd(&Encoder);
 
+    QcTrace("sms submit: pdu %lu bytes, first octet 0x%02x\n", PduLen, Pdu[1 + Pdu[0]]);
     hr = QcQmiRequest(Modem, QcSvcWms, Request, Length, Response, sizeof(Response), &ResponseLen);
     if (FAILED(hr))
         return hr;
@@ -459,6 +533,7 @@ QcWmsAck(
     BYTE AckInfo[6];
     BYTE Failure[2];
     ULONG Length, ResponseLen;
+    DWORD Transaction;
     UCHAR OverIms;
     BOOL Success;
 
@@ -468,8 +543,14 @@ QcWmsAck(
     Success = (Args[4] == RIL_MSGACK_OK);
     OverIms = Args[6] ? 1 : 0;
 
+    /* Ack ids are the modem transaction plus one so zero never names a message */
+    if (Args[3] == 0)
+        return E_INVALIDARG;
+    Transaction = Args[3] - 1;
+    QcTrace("sms ack: transaction %lu status %lu over ims %u\n", Transaction, Args[4], OverIms);
+
     /* ack_information: transaction id u32, protocol u8, success u8 */
-    memcpy(AckInfo, &Args[3], sizeof(DWORD));
+    memcpy(AckInfo, &Transaction, sizeof(DWORD));
     AckInfo[4] = QCRIL_WMS_PROTOCOL_3GPP;
     AckInfo[5] = Success ? 1 : 0;
 
@@ -493,35 +574,71 @@ QcWmsAck(
 }
 
 VOID
-QcWmsConfigureRoutes(
+QcWmsSetup(
     _In_ PQC_MODEM Modem)
 {
+    static const UCHAR Classes[QCRIL_WMS_CLASS_COUNT] = { 0, 1, 2, 3, 4, 5 };
     QMI_ENCODER Encoder;
-    BYTE Message[64];
-    BYTE Route[6];
-    USHORT Count = 1;
-    UCHAR Enable = 1;
-    ULONG Length;
+    BYTE Message[96];
+    BYTE Routes[2 + QCRIL_WMS_CLASS_COUNT * 4];
+    USHORT Count = QCRIL_WMS_CLASS_COUNT;
+    UCHAR One = 1, Primary = 0;
+    ULONG Length, i;
+    HRESULT hr;
 
-    if (!QcServiceEnsure(Modem, QcSvcWms))
-        return;
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WMS_BIND_SUBSCRIPTION);
+    QmiEncodeTlv(&Encoder, 0x01, &Primary, sizeof(Primary));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcQmiCommand(Modem, QcSvcWms, Message, Length);
+    QcTrace("wms: bind subscription 0x%08lx\n", hr);
 
-    /* One tuple: point to point, any class, do not store, transfer to us */
-    memcpy(Route, &Count, sizeof(Count));
-    Route[2] = 0x00;                             /* message type point to point */
-    Route[3] = 0x04;                             /* message class none */
-    Route[4] = QCRIL_WMS_ROUTE_STORAGE_NONE;
-    Route[5] = QCRIL_WMS_ACTION_TRANSFER_ONLY;
+    /* Class 2 is stored on the card and announced, everything else comes straight to us */
+    memcpy(Routes, &Count, sizeof(Count));
+    for (i = 0; i < QCRIL_WMS_CLASS_COUNT; i++)
+    {
+        PUCHAR Tuple = &Routes[2 + i * 4];
+
+        Tuple[0] = 0x00;
+        Tuple[1] = Classes[i];
+        if (Classes[i] == QCRIL_WMS_CLASS_SIM)
+        {
+            Tuple[2] = QCRIL_WMS_ROUTE_STORAGE_UIM;
+            Tuple[3] = QCRIL_WMS_ACTION_STORE_NOTIFY;
+        }
+        else
+        {
+            Tuple[2] = QCRIL_WMS_ROUTE_STORAGE_NONE;
+            Tuple[3] = QCRIL_WMS_ACTION_TRANSFER_ONLY;
+        }
+    }
 
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WMS_SET_ROUTES);
-    QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_ROUTE_LIST, Route, sizeof(Route));
+    QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_ROUTE_LIST, Routes, sizeof(Routes));
     Length = QmiEncodeEnd(&Encoder);
-    QcQmiCommand(Modem, QcSvcWms, Message, Length);
+    hr = QcQmiCommand(Modem, QcSvcWms, Message, Length);
+    QcTrace("wms: routes 0x%08lx\n", hr);
 
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WMS_SET_EVENT_REPORT);
-    QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_REPORT_MT, &Enable, sizeof(Enable));
+    QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_REPORT_MT, &One, sizeof(One));
+    QmiEncodeTlv(&Encoder, QCRIL_WMS_TLV_REPORT_MWI, &One, sizeof(One));
     Length = QmiEncodeEnd(&Encoder);
-    QcQmiCommand(Modem, QcSvcWms, Message, Length);
+    hr = QcQmiCommand(Modem, QcSvcWms, Message, Length);
+    QcTrace("wms: event report 0x%08lx\n", hr);
+
+    /* Another client may own the primary role already, that is not fatal */
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WMS_SET_PRIMARY_CLIENT);
+    QmiEncodeTlv(&Encoder, 0x01, &One, sizeof(One));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcQmiCommand(Modem, QcSvcWms, Message, Length);
+    QcTrace("wms: primary client 0x%08lx\n", hr);
+
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WMS_INDICATION_REGISTER);
+    QmiEncodeTlv(&Encoder, 0x10, &One, sizeof(One));
+    QmiEncodeTlv(&Encoder, 0x13, &One, sizeof(One));
+    QmiEncodeTlv(&Encoder, 0x15, &One, sizeof(One));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcQmiCommand(Modem, QcSvcWms, Message, Length);
+    QcTrace("wms: indication registration 0x%08lx\n", hr);
 }
 
 VOID
@@ -539,7 +656,16 @@ QcWmsIndication(
     ULONG TransactionId;
 
     if (MessageId != QCRIL_WMS_EVENT_REPORT_IND)
+    {
+        QcTrace("ind WMS 0x%04X not handled\n", MessageId);
         return;
+    }
+
+    if (QmiFindTlv(Message, Length, QCRIL_WMS_TLV_MT_MESSAGE, &Value, &ValueLen) && ValueLen >= 5)
+    {
+        Route = Value;
+        QcTrace("sms stored: storage %u index %lu\n", Route[0], Route[1] | (Route[2] << 8) | (Route[3] << 16) | ((ULONG)Route[4] << 24));
+    }
 
     /* Only the direct transfer route carries the message bytes */
     if (!QmiFindTlv(Message, Length, QCRIL_WMS_TLV_TRANSFER_ROUTE, &Value, &ValueLen) || ValueLen < 8)
@@ -550,7 +676,12 @@ QcWmsIndication(
     memcpy(&TransactionId, Route + 1, sizeof(TransactionId));
     memcpy(&DataLen, Route + 6, sizeof(DataLen));
     if (Route[5] != QCRIL_WMS_FORMAT_GW_PP || (ULONG)8 + DataLen > ValueLen)
+    {
+        QcTrace("sms: format %u, %u bytes, not a GSM point to point message\n", Route[5], DataLen);
         return;
+    }
+
+    QcTrace("sms arrived: transaction %lu ack %u, %u bytes\n", TransactionId, Route[0], DataLen);
 
     Notification = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*Notification));
     if (!Notification)
@@ -558,11 +689,13 @@ QcWmsIndication(
 
     Notification->Size = sizeof(*Notification);
     Notification->Executor = QCRIL_EXECUTOR;
-    Notification->AckId = TransactionId;
+    Notification->AckId = TransactionId + 1;
     Notification->OverIms = 0;
 
     if (QcParseDeliverPdu(Route + 8, DataLen, &Notification->Message))
         QcNotifyAll(Modem, RIL_NOTIFY_MESSAGE, Notification, sizeof(*Notification));
+    else
+        QcTrace("sms: deliver pdu did not parse\n");
 
     HeapFree(GetProcessHeap(), 0, Notification);
 }
