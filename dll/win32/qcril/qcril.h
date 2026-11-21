@@ -372,3 +372,5 @@ HRESULT QcWmsSend(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const VOID *In,
 HRESULT QcWmsAck(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const VOID *In, _In_ ULONG InSize);
 VOID QcWmsIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                      _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
+VOID QcWdsIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
+                     _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
