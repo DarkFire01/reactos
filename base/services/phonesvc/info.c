@@ -18,6 +18,18 @@
 #define PH_MMS_DEFAULT_URL          L"http://wholesale.mmsmvno.com/mms/wapenc"
 #define PH_MMS_DEFAULT_AGENT        L"ReactOS-MMS/1.0"
 
+/* After a modem restart the session waits for the network to take the device back */
+#define PH_DATA_RESTORE_ATTEMPTS    60
+#define PH_DATA_RESTORE_RETRY_MS    2000
+
+volatile LONG PhModemResets;
+volatile LONG PhModemResetting;
+
+/* The last connect or disconnect a client asked for, and whether a restart took the session */
+static volatile LONG PhDataSessionUp;
+static volatile LONG PhDataRestore;
+static volatile LONG PhDataDisconnects;
+
 static
 VOID
 PhWiden(
@@ -319,11 +331,113 @@ PhConnectData(
     if (!RilRequest)
         return E_OUTOFMEMORY;
 
+    /* A disconnect also cancels bringing the session back after a modem restart */
+    if (Op == PHONEOM_DATA_DISCONNECT)
+    {
+        InterlockedExchange(&PhDataSessionUp, FALSE);
+        InterlockedExchange(&PhDataRestore, FALSE);
+        InterlockedIncrement(&PhDataDisconnects);
+    }
+
     hr = PhQuery(RIL_DevSpecific(PhRil, RilRequest->Id, (const BYTE *)&Request, sizeof(Request)),
                  RilRequest, &Record, sizeof(Record));
     if (FAILED(hr))
         return hr;
 
+    if (Op == PHONEOM_DATA_CONNECT && Record.Connected)
+        InterlockedExchange(&PhDataSessionUp, TRUE);
+
     Status->Connected = Record.Connected;
     return S_OK;
+}
+
+/* The modem is restarting, the session it carried is gone */
+VOID
+PhDataModemLost(VOID)
+{
+    InterlockedIncrement(&PhModemResets);
+    InterlockedExchange(&PhModemResetting, TRUE);
+
+    if (InterlockedExchange(&PhDataSessionUp, FALSE))
+    {
+        DPRINT1("Modem reset took the data session, it comes back with the modem\n");
+        InterlockedExchange(&PhDataRestore, TRUE);
+    }
+}
+
+static
+BOOL
+PhDataRegistered(VOID)
+{
+    PHONEOM_NETWORK Network;
+
+    if (FAILED(PhGetNetwork(&Network)))
+        return FALSE;
+
+    return Network.RegState == RIL_REG_HOME ||
+           Network.RegState == RIL_REG_ROAMING ||
+           Network.RegState == RIL_REG_ROAMING_DOMESTIC;
+}
+
+/**
+ * @brief
+ * Runs on a pool thread once the modem is back from a restart. Brings the data
+ * session up again when it was up or the user keeps data on, then lets the MMS
+ * jobs the restart interrupted run again.
+ */
+VOID
+CALLBACK
+PhDataModemBack(
+    _Inout_ PTP_CALLBACK_INSTANCE Instance,
+    _Inout_opt_ PVOID Context)
+{
+    PHONEOM_DATA_CONFIG Config;
+    PHONEOM_DATA_STATUS Status;
+    LONG Resets = PhModemResets;
+    LONG Disconnects = PhDataDisconnects;
+    BOOL Restore;
+    ULONG Attempt;
+    HRESULT hr;
+
+    UNREFERENCED_PARAMETER(Instance);
+    UNREFERENCED_PARAMETER(Context);
+
+    Restore = InterlockedExchange(&PhDataRestore, FALSE);
+
+    for (Attempt = 0; Attempt < PH_DATA_RESTORE_ATTEMPTS; Attempt++)
+    {
+        /* A newer restart has its own worker, a disconnect means the session is not wanted */
+        if (PhModemResets != Resets)
+            return;
+        if (PhDataDisconnects != Disconnects)
+            break;
+
+        PhGetDataConfig(&Config);
+        if (!Config.Enabled && !Restore)
+            break;
+
+        if (PhDataRegistered())
+        {
+            hr = PhConnectData(PHONEOM_DATA_CONNECT, &Status);
+            if (SUCCEEDED(hr) && Status.Connected)
+            {
+                DPRINT1("Data session back after the modem reset, attempt %lu\n", Attempt + 1);
+                break;
+            }
+
+            DPRINT1("Data session after the modem reset: connect 0x%lx, connected %lu\n", hr, Status.Connected);
+        }
+
+        if (WaitForSingleObject(PhStopEvent, PH_DATA_RESTORE_RETRY_MS) == WAIT_OBJECT_0)
+            return;
+    }
+
+    if (Attempt == PH_DATA_RESTORE_ATTEMPTS)
+        DPRINT1("Data session did not come back after the modem reset\n");
+
+    if (PhModemResets != Resets)
+        return;
+
+    InterlockedExchange(&PhModemResetting, FALSE);
+    PhMmsResume();
 }
