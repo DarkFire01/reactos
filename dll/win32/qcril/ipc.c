@@ -266,6 +266,90 @@ QcIpcClose(
     }
 }
 
+/* A router port of its own, for a second client of a service the main port already uses */
+BOOL
+QcIpcOpenPort(
+    _Out_ PHANDLE Port)
+{
+    DWORD Returned;
+    HANDLE Handle;
+
+    *Port = INVALID_HANDLE_VALUE;
+    Handle = CreateFileW(QC_IPC_DEVICE,
+                         GENERIC_READ | GENERIC_WRITE,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE,
+                         NULL,
+                         OPEN_EXISTING,
+                         FILE_FLAG_OVERLAPPED,
+                         NULL);
+    if (Handle == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    if (!QcIoctl(Handle, QC_IOCTL_PORT_OPEN, NULL, 0, NULL, 0, &Returned))
+    {
+        CloseHandle(Handle);
+        return FALSE;
+    }
+
+    *Port = Handle;
+    return TRUE;
+}
+
+VOID
+QcIpcClosePort(
+    _In_ HANDLE Port)
+{
+    DWORD Returned;
+
+    if (Port == INVALID_HANDLE_VALUE)
+        return;
+
+    QcIoctl(Port, QC_IOCTL_PORT_CLOSE, NULL, 0, NULL, 0, &Returned);
+    CloseHandle(Port);
+}
+
+/* One framed message on an extra port, a busy router is retried for a short while */
+BOOL
+QcIpcSendOn(
+    _In_ HANDLE Port,
+    _In_ const QC_ADDR *Dest,
+    _In_reads_bytes_(Length) const VOID *Message,
+    _In_ ULONG Length)
+{
+    OVERLAPPED Overlapped;
+    PUCHAR Frame;
+    DWORD Written;
+    ULONG Attempt;
+    BOOL Ok = FALSE;
+
+    Frame = HeapAlloc(GetProcessHeap(), 0, 8 + Length);
+    if (!Frame)
+        return FALSE;
+
+    ((PULONG)Frame)[0] = Dest->Node;
+    ((PULONG)Frame)[1] = Dest->Port;
+    memcpy(Frame + 8, Message, Length);
+
+    ZeroMemory(&Overlapped, sizeof(Overlapped));
+    Overlapped.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (Overlapped.hEvent)
+    {
+        for (Attempt = 0; Attempt < 20; Attempt++)
+        {
+            ResetEvent(Overlapped.hEvent);
+            Ok = WriteFile(Port, Frame, 8 + Length, NULL, &Overlapped);
+            Ok = QcOverlapped(Port, Ok, &Overlapped, &Written);
+            if (Ok || GetLastError() != ERROR_BUSY)
+                break;
+            Sleep(50);
+        }
+        CloseHandle(Overlapped.hEvent);
+    }
+
+    HeapFree(GetProcessHeap(), 0, Frame);
+    return Ok;
+}
+
 BOOL
 QcServiceEnsure(
     _In_ PQC_MODEM Modem,
@@ -490,6 +574,7 @@ QcModemLost(
     QcNasModemLost(Modem);
     QcUimModemLost(Modem);
     QcVoiceModemLost(Modem);
+    QcImsDataModemLost();
 
     InterlockedExchange(&Modem->Restarted, 1);
     QcTrace("ssr: state reset, waiting for the services to return\n");

@@ -145,9 +145,9 @@ QcImsPdpName(
     }
 }
 
-/* Logs every 3GPP data profile the carrier configuration carries */
+/* Logs every 3GPP data profile the carrier configuration carries, returns the IMS one or zero */
 static
-VOID
+UCHAR
 QcImsListProfiles(
     _In_ PQC_MODEM Modem)
 {
@@ -159,11 +159,11 @@ QcImsListProfiles(
     CHAR Name[64], Apn[104];
     ULONG Length, ListLen, SettingsLen;
     USHORT ValueLen;
-    UCHAR Type = QCRIL_WDS_PROFILE_3GPP, Key[2], Count, NameLen, Pdp, i;
+    UCHAR Type = QCRIL_WDS_PROFILE_3GPP, Key[2], Count, NameLen, Pdp, i, Ims = 0;
     HRESULT hr;
 
     if (!QcServiceEnsure(Modem, QcSvcWds))
-        return;
+        return 0;
 
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_GET_PROFILE_LIST);
     QmiEncodeTlv(&Encoder, 0x10, &Type, sizeof(Type));
@@ -172,7 +172,7 @@ QcImsListProfiles(
     if (FAILED(hr) || !QmiFindTlv(List, ListLen, 0x01, &Value, &ValueLen) || ValueLen < 1)
     {
         QcTrace("ims: reading the data profiles failed 0x%08lx\n", hr);
-        return;
+        return 0;
     }
 
     Entry = Value;
@@ -210,7 +210,11 @@ QcImsListProfiles(
             Pdp = *(const UCHAR *)Value;
 
         QcTrace("ims: profile %u '%s' apn '%s' %s\n", Key[1], Name, Apn, QcImsPdpName(Pdp));
+        if (!Ims && !_stricmp(Apn, "ims"))
+            Ims = Key[1];
     }
+
+    return Ims;
 }
 
 /* Registration status, technology and error, from a response or an indication */
@@ -321,7 +325,7 @@ QcImsaSetup(
     BYTE Message[64];
     BYTE Response[512];
     ULONG Length, ResponseLen;
-    UCHAR On = 1;
+    UCHAR On = 1, Profile;
     HRESULT hr;
 
     hr = QcImsBind(Modem, QcSvcImsa, QCRIL_IMSA_BIND, QCRIL_IMSA_TLV_BINDING);
@@ -349,7 +353,12 @@ QcImsaSetup(
     if (SUCCEEDED(hr))
         QcImsLogServices(Modem, Response, ResponseLen, "services");
 
-    QcImsListProfiles(Modem);
+    /* Registration runs over the IMS PDN, which the modem waits for the host to bring up */
+    Profile = QcImsListProfiles(Modem);
+    if (Profile && Modem->Ims.Registration != 2)
+        QcImsDataStart(Modem, Profile);
+    else if (!Profile)
+        QcTrace("ims: no data profile with the ims apn\n");
 }
 
 VOID
