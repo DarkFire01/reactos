@@ -87,12 +87,17 @@ CMiniportWaveQcom::NewStream(PMINIPORTWAVERTSTREAM *OutStream, PPORTWAVERTSTREAM
 {
     PAGED_CODE();
 
+    QCA_LOG("new stream on pin %lu%s\n", Pin, Capture ? " (capture)" : "");
+
     if (Capture || Pin != PIN_WAVE_RENDER_SINK)
         return STATUS_INVALID_PARAMETER;
 
     /* The dsp graph carries one playback session */
     if (StreamCount)
+    {
+        QCA_LOG("stream rejected, a playback session is already open\n");
         return STATUS_DEVICE_BUSY;
+    }
 
     CMiniportWaveQcomStream *Stream = new(NonPagedPool) CMiniportWaveQcomStream(NULL);
     if (!Stream)
@@ -200,6 +205,8 @@ CMiniportWaveQcomStream::SetFormat(PKSDATAFORMAT Format)
         Wfx->wBitsPerSample != 16 ||
         Wfx->nSamplesPerSec < QCA_MIN_RATE || Wfx->nSamplesPerSec > QCA_MAX_RATE)
     {
+        QCA_LOG("format rejected: %lu Hz %u ch %u bit, tag 0x%x\n",
+                Wfx->nSamplesPerSec, Wfx->nChannels, Wfx->wBitsPerSample, Wfx->wFormatTag);
         return STATUS_INVALID_PARAMETER;
     }
 
