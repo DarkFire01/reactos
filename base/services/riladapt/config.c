@@ -9,9 +9,6 @@
 #include <newdev.h>
 #include <strsafe.h>
 
-#define NDEBUG
-#include <debug.h>
-
 #define RIL_BROKER_INF              L"telephony.inf"
 #define RIL_BROKER_WAIT_MS          10000
 #define RIL_OEM_SETTINGS_KEY        L"Software\\Qualcomm\\RIL"
@@ -194,11 +191,25 @@ RilFindModems(
     _Out_writes_to_(MaxModems, return) PRIL_MODEM_CONFIG Configs,
     _In_ DWORD MaxModems)
 {
-    DWORD Found;
+    DWORD Found, Watchdog = RILADAPT_WATCHDOG_DEFAULT, Hold = RILADAPT_HOLD_DEFAULT, i;
+    HKEY Key;
 
     Found = RilFindInterfaceModems(Configs, MaxModems);
     if (Found == 0)
         Found = RilFindRegistryModems(Configs, MaxModems);
+
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, RILADAPT_PARAMETERS_KEY, 0, KEY_READ, &Key) == ERROR_SUCCESS)
+    {
+        Watchdog = RilReadDword(Key, L"WatchdogTimeout", RILADAPT_WATCHDOG_DEFAULT);
+        Hold = RilReadDword(Key, L"MessageHoldTimeout", RILADAPT_HOLD_DEFAULT);
+        RegCloseKey(Key);
+    }
+
+    for (i = 0; i < Found; i++)
+    {
+        Configs[i].WatchdogTimeout = Watchdog;
+        Configs[i].MessageHoldTimeout = Hold;
+    }
 
     return Found;
 }
@@ -329,10 +340,18 @@ RilEnsureBrokerDevice(
     if (RilBrokerExists(Config))
         return TRUE;
 
-    if (!RilHardwareIdPresent(Config->BrokerId) && !RilCreateBrokerDevnode(Config->BrokerId))
+    if (RilHardwareIdPresent(Config->BrokerId))
     {
-        DPRINT1("Could not install the broker for %S\n", Config->BrokerId);
-        return FALSE;
+        RilLog("broker devnode %S present, waiting for %S\n", Config->BrokerId, RilBrokerDosName(Config));
+    }
+    else
+    {
+        RilLog("creating broker devnode %S\n", Config->BrokerId);
+        if (!RilCreateBrokerDevnode(Config->BrokerId))
+        {
+            RilLog("could not install the broker for %S (%lu)\n", Config->BrokerId, GetLastError());
+            return FALSE;
+        }
     }
 
     for (Waited = 0; Waited < RIL_BROKER_WAIT_MS; Waited += 250)
@@ -342,6 +361,7 @@ RilEnsureBrokerDevice(
         Sleep(250);
     }
 
+    RilLog("broker %S did not appear\n", RilBrokerDosName(Config));
     return FALSE;
 }
 

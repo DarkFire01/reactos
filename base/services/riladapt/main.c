@@ -9,14 +9,62 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#define NDEBUG
-#include <debug.h>
+/* Exit code of a fatal error, the service control manager restarts the service */
+#define RILADAPT_FATAL_EXIT_CODE    3
 
 static SERVICE_STATUS_HANDLE StatusHandle;
 static SERVICE_STATUS Status;
 static HANDLE StopEvent;
 static RIL_MODEM Modems[RILADAPT_MAX_MODEMS];
 static DWORD ModemCount;
+
+static
+VOID
+RilWriteLog(
+    _In_z_ PCSTR Prefix,
+    _In_z_ PCSTR Format,
+    _In_ va_list Args)
+{
+    CHAR Line[512];
+    int Used;
+
+    Used = _snprintf(Line, sizeof(Line) - 1, "[riladapt] %s", Prefix);
+    if (Used < 0)
+        Used = 0;
+    _vsnprintf(Line + Used, sizeof(Line) - 1 - Used, Format, Args);
+    Line[sizeof(Line) - 1] = '\0';
+    OutputDebugStringA(Line);
+}
+
+VOID
+__cdecl
+RilLog(
+    _In_z_ _Printf_format_string_ PCSTR Format,
+    ...)
+{
+    va_list Args;
+
+    va_start(Args, Format);
+    RilWriteLog("", Format, Args);
+    va_end(Args);
+}
+
+DECLSPEC_NORETURN
+VOID
+__cdecl
+RilFatal(
+    _In_z_ _Printf_format_string_ PCSTR Format,
+    ...)
+{
+    va_list Args;
+
+    va_start(Args, Format);
+    RilWriteLog("fatal: ", Format, Args);
+    va_end(Args);
+
+    TerminateProcess(GetCurrentProcess(), RILADAPT_FATAL_EXIT_CODE);
+    ExitProcess(RILADAPT_FATAL_EXIT_CODE);
+}
 
 static
 VOID
@@ -29,14 +77,16 @@ RilReportStatus(
     Status.dwCurrentState = State;
     Status.dwWin32ExitCode = ExitCode;
     Status.dwWaitHint = WaitHint;
-    Status.dwControlsAccepted = (State == SERVICE_RUNNING) ? SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN : 0;
+    Status.dwControlsAccepted = (State == SERVICE_START_PENDING) ? 0 : SERVICE_ACCEPT_STOP;
 
     if (State == SERVICE_RUNNING || State == SERVICE_STOPPED)
         Status.dwCheckPoint = 0;
     else
         Status.dwCheckPoint++;
 
-    SetServiceStatus(StatusHandle, &Status);
+    RilLog("service state %lu\n", State);
+    if (!SetServiceStatus(StatusHandle, &Status))
+        RilFatal("SetServiceStatus(%lu) failed %lu\n", State, GetLastError());
 }
 
 /* rilproxy reports this many modems to its callers */
@@ -73,9 +123,10 @@ RilServiceControl(
     switch (Control)
     {
         case SERVICE_CONTROL_STOP:
-        case SERVICE_CONTROL_SHUTDOWN:
-            RilReportStatus(SERVICE_STOP_PENDING, NO_ERROR, 5000);
-            SetEvent(StopEvent);
+            RilLog("stop requested\n");
+            RilReportStatus(SERVICE_STOP_PENDING, NO_ERROR, 60000);
+            if (!SetEvent(StopEvent))
+                RilFatal("cannot signal the stop event (%lu)\n", GetLastError());
             return NO_ERROR;
 
         case SERVICE_CONTROL_INTERROGATE:
@@ -87,22 +138,6 @@ RilServiceControl(
     }
 }
 
-static
-VOID
-RilLog(
-    _In_ PCSTR Format,
-    ...)
-{
-    CHAR Line[256];
-    va_list Args;
-
-    va_start(Args, Format);
-    _vsnprintf(Line, sizeof(Line) - 1, Format, Args);
-    va_end(Args);
-    Line[sizeof(Line) - 1] = '\0';
-    OutputDebugStringA(Line);
-}
-
 VOID
 WINAPI
 RilServiceMain(
@@ -110,60 +145,48 @@ RilServiceMain(
     _In_ LPWSTR *Argv)
 {
     RIL_MODEM_CONFIG Configs[RILADAPT_MAX_MODEMS];
-    DWORD Found, i, Error;
+    DWORD Found, i;
 
     UNREFERENCED_PARAMETER(Argc);
     UNREFERENCED_PARAMETER(Argv);
 
-    OutputDebugStringA("[riladapt] service main entry\n");
+    RilLog("service main entry\n");
 
     StatusHandle = RegisterServiceCtrlHandlerExW(RILADAPT_SERVICE_NAME, RilServiceControl, NULL);
     if (!StatusHandle)
+    {
+        RilLog("RegisterServiceCtrlHandlerExW failed %lu\n", GetLastError());
         return;
+    }
 
-    RilReportStatus(SERVICE_START_PENDING, NO_ERROR, 30000);
+    RilReportStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
 
-    StopEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    StopEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
     if (!StopEvent)
     {
+        RilLog("cannot create the stop event (%lu)\n", GetLastError());
         RilReportStatus(SERVICE_STOPPED, GetLastError(), 0);
         return;
     }
 
+    /* Running is reported before the modems come up, a failure on the way is fatal */
+    RilReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
     RilPublishInstanceCount(0);
 
     Found = RilFindModems(Configs, _countof(Configs));
-    RilLog("[riladapt] found %lu modem config(s)\n", Found);
+    RilLog("found %lu modem config(s)\n", Found);
     for (i = 0; i < Found; i++)
     {
-        RilLog("[riladapt] starting modem %lu (%S)\n", i, Configs[i].LibraryPath);
-        CopyMemory(&Modems[ModemCount].Config, &Configs[i], sizeof(Configs[i]));
-        Error = RilStartModem(&Modems[ModemCount], StopEvent);
-        RilLog("[riladapt] modem %lu start -> %lu\n", i, Error);
-        if (Error != ERROR_SUCCESS)
-        {
-            DPRINT1("Modem %lu failed to start (%lu)\n", i, Error);
-            RilStopModem(&Modems[ModemCount]);
-            ZeroMemory(&Modems[ModemCount], sizeof(Modems[ModemCount]));
-            continue;
-        }
-
+        RilLog("modem %lu: starting %S, watchdog %lu s, message hold %lu s\n",
+               i, Configs[i].LibraryPath, Configs[i].WatchdogTimeout, Configs[i].MessageHoldTimeout);
+        CopyMemory(&Modems[i].Config, &Configs[i], sizeof(Configs[i]));
+        Modems[i].Index = i;
+        RilStartModem(&Modems[i]);
         ModemCount++;
-        RilReportStatus(SERVICE_START_PENDING, NO_ERROR, 30000);
     }
 
-    /* A device without a cellular radio has nothing to host */
-    if (ModemCount == 0)
-    {
-        RilLog("[riladapt] no modems started, stopping\n");
-        CloseHandle(StopEvent);
-        RilReportStatus(SERVICE_STOPPED, NO_ERROR, 0);
-        return;
-    }
-
-    RilLog("[riladapt] running with %lu modem(s)\n", ModemCount);
+    RilLog("running with %lu modem(s)\n", ModemCount);
     RilPublishInstanceCount(ModemCount);
-    RilReportStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
     WaitForSingleObject(StopEvent, INFINITE);
 
@@ -173,6 +196,9 @@ RilServiceMain(
     RilPublishInstanceCount(0);
     CloseHandle(StopEvent);
     RilReportStatus(SERVICE_STOPPED, NO_ERROR, 0);
+
+    /* The libraries are never unloaded, ending the process is the clean way out */
+    TerminateProcess(GetCurrentProcess(), 0);
 }
 
 int
