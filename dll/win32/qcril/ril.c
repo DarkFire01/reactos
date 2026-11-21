@@ -461,14 +461,16 @@ QcSetupThread(
 
             QcSetupService(Modem, Order[i]);
 
-            EnterCriticalSection(&Modem->ServiceLock);
-            Modem->Services[Order[i]].Configured = Modem->Services[Order[i]].Ready;
-            Configured = Modem->Services[Order[i]].Configured;
-            LeaveCriticalSection(&Modem->ServiceLock);
-
             /* The carrier configuration waits on the card, so it is tried again shortly */
-            if (Order[i] == QcSvcPdc && !Configured)
+            EnterCriticalSection(&Modem->ServiceLock);
+            Configured = Modem->Services[Order[i]].Ready;
+            if (Order[i] == QcSvcPdc && !Modem->Pdc.Done)
+            {
+                Configured = FALSE;
                 Missing = TRUE;
+            }
+            Modem->Services[Order[i]].Configured = Configured;
+            LeaveCriticalSection(&Modem->ServiceLock);
         }
 
         /* The modem counts as up once its core services are, the rest may trail */
