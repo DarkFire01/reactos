@@ -8,6 +8,37 @@ HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr","Start",0x00010001,0x0000000
 HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","Service",0x00000000,"qcbattmngr"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM0264","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; OnePlus 6 profile over the 850 MTP tables in the DSDT: 3300 mAh at 3.85 V, 4.35 V float, 1.8 A
+; charge, JEITA 0/10/45/55 C. Capacities are in mWh as BATTERY_INFORMATION wants them.
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\BatteryInfo","DesignCapacity",0x00010001,12705
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\BatteryInfo","FullChargeCapacity",0x00010001,12705
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\BatteryInfo","DefaultAlert1",0x00010001,635
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\BatteryInfo","DefaultAlert2",0x00010001,1143
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","SelectJeitaConfig",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","TempHyst",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","FloatVoltage",0x00010001,4350
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","FullChargeCurrent",0x00010001,1800
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","HardColdLimit",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","SoftColdLimit",0x00010001,10
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","SoftHotLimit",0x00010001,45
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","HardHotLimit",0x00010001,55
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","HotSoftLimitFVC",0x00010001,105
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","ColdSoftLimitFVC",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","HotSoftLimitCCC",0x00010001,1000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Jeita","ColdSoftLimitCCC",0x00010001,1000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Platform","NominalBatteryVoltage",0x00010001,3850
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Platform","LowBatteryVoltage",0x00010001,3400
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Platform","VCutOff",0x00010001,3300
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\Platform","iTerm",0x00010001,200
+; OnePlus ships with HVDCP off; zeroing all three also drops the charger id capability
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\PropChargers","HVDCPChargerCurrent",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\PropChargers","HVDCPV3ChargerCurrent",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\PropChargers","IWallChargerCurrent",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\ParallelCharging","FeatureEnable",0x00010001,0
+; The pack id resistor is unknown, an out of range reading must not stop charging
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\BattErrorHandle","InvalidStateAction",0x00010001,0
+; Nothing reports the charging source yet, so program the charger with the fixed 900 mA input limit
+HKLM,"SYSTEM\CurrentControlSet\Services\qcbattmngr\WDF","ListentoBattC",0x00010001,0
 
 HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","DisplayName",0x00000000,"Qualcomm Fuel Gauge Battery Current Limiter"
 HKLM,"SYSTEM\CurrentControlSet\Services\qcfgbcl","ErrorControl",0x00010001,0x00000001
