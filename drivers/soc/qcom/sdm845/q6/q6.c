@@ -53,6 +53,10 @@
 /* Without these bits above bit 31 the ADSP reads host memory as its own stream 0x1820 */
 #define Q6_AUDIO_SID_MASK           0xF
 
+/* The IORT gives the IP accelerator streams 0x720 to 0x722 */
+#define Q6_IPA_STREAM_ID            0x720
+#define Q6_IPA_STREAM_MASK          0x3
+
 typedef enum _Q6_VERSION_STATE
 {
     Q6VersionNotAsked,
@@ -323,11 +327,13 @@ Q6CreateControlDevice(
     DECLARE_CONST_UNICODE_STRING(HostBuffersName, L"AllowUnroutedHostBuffers");
     DECLARE_CONST_UNICODE_STRING(RouteName, L"RouteAudioStream");
     DECLARE_CONST_UNICODE_STRING(SidMaskName, L"AudioStreamSidMask");
+    DECLARE_CONST_UNICODE_STRING(IpaStreamName, L"IpaStreamId");
+    DECLARE_CONST_UNICODE_STRING(IpaMaskName, L"IpaStreamMask");
     PQ6_DEVICE Device = &Q6Global;
     WDFDEVICE WdfDevice;
     WDFKEY Key = NULL;
     ULONG RxPort, TxPort, RxLine, TxLine;
-    ULONG SmmuBase, StreamId, HostBuffers, Route, SidMask;
+    ULONG SmmuBase, StreamId, HostBuffers, Route, SidMask, IpaStream, IpaMask;
     ULONGLONG AddressTag = 0;
     BOOLEAN Routed;
     HANDLE Thread;
@@ -369,11 +375,18 @@ Q6CreateControlDevice(
     HostBuffers = Q6ReadParameter(Key, &HostBuffersName, 0);
     Route = Q6ReadParameter(Key, &RouteName, 1);
     SidMask = Q6ReadParameter(Key, &SidMaskName, Q6_AUDIO_SID_MASK);
+    IpaStream = Q6ReadParameter(Key, &IpaStreamName, Q6_IPA_STREAM_ID);
+    IpaMask = Q6ReadParameter(Key, &IpaMaskName, Q6_IPA_STREAM_MASK);
     if (Key)
         WdfRegistryClose(Key);
 
     /* Host buffer addresses only go to the dsp once its stream reaches memory */
-    Routed = QcQ6SmmuRouteStream(SmmuBase, (USHORT)StreamId, Route != 0);
+    Routed = QcQ6SmmuRouteStream(SmmuBase, (USHORT)StreamId, 0, Route != 0);
+
+    /* The IP accelerator reads and writes packet buffers on its own streams. No SMMU
+       driver here routes them yet, so they get the same untranslated route */
+    if (IpaStream <= 0x7FFF)
+        QcQ6SmmuRouteStream(SmmuBase, (USHORT)IpaStream, (USHORT)IpaMask, Route != 0);
     if (Routed)
         AddressTag = (ULONGLONG)(StreamId & SidMask) << 32;
     QC_LOG("q6: host buffer addresses tagged 0x%I64x for stream 0x%lx", AddressTag, StreamId);

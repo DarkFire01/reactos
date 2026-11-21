@@ -69,26 +69,28 @@ Q6sRoute(
     _In_ ULONG Page,
     _In_ ULONG Entry,
     _In_ ULONG Bank,
-    _In_ USHORT StreamId)
+    _In_ USHORT StreamId,
+    _In_ USHORT Mask)
 {
     ULONG Cbar, Sctlr, S2cr, Smr;
+    ULONG Want = Q6S_SMR_VALID | ((ULONG)Mask << 16) | StreamId;
 
     WRITE_REGISTER_ULONG(&Gr1[Q6S_CBAR(Bank) / 4], Q6S_CBAR_S1_ONLY);
     WRITE_REGISTER_ULONG(&Cb[(Bank * Page + Q6S_CB_SCTLR) / 4], 0);
     WRITE_REGISTER_ULONG(&Gr0[Q6S_S2CR(Entry) / 4], Bank);
-    WRITE_REGISTER_ULONG(&Gr0[Q6S_SMR(Entry) / 4], Q6S_SMR_VALID | StreamId);
+    WRITE_REGISTER_ULONG(&Gr0[Q6S_SMR(Entry) / 4], Want);
 
     Cbar = READ_REGISTER_ULONG(&Gr1[Q6S_CBAR(Bank) / 4]);
     Sctlr = READ_REGISTER_ULONG(&Cb[(Bank * Page + Q6S_CB_SCTLR) / 4]);
     S2cr = READ_REGISTER_ULONG(&Gr0[Q6S_S2CR(Entry) / 4]);
     Smr = READ_REGISTER_ULONG(&Gr0[Q6S_SMR(Entry) / 4]);
 
-    QC_LOG("smmu: routed stream 0x%04x through entry %lu to bank %lu: cbar 0x%08lx sctlr 0x%08lx s2cr 0x%08lx smr 0x%08lx",
-           StreamId, Entry, Bank, Cbar, Sctlr, S2cr, Smr);
+    QC_LOG("smmu: routed stream 0x%04x mask 0x%04x through entry %lu to bank %lu: cbar 0x%08lx sctlr 0x%08lx s2cr 0x%08lx smr 0x%08lx",
+           StreamId, Mask, Entry, Bank, Cbar, Sctlr, S2cr, Smr);
 
     return Q6S_CBAR_TYPE(Cbar) == 1 && !(Sctlr & Q6S_SCTLR_M) &&
            Q6S_S2CR_TYPE(S2cr) == 0 && Q6S_S2CR_CBNDX(S2cr) == Bank &&
-           Smr == (Q6S_SMR_VALID | StreamId);
+           Smr == Want;
 }
 
 BOOLEAN
@@ -96,6 +98,7 @@ NTAPI
 QcQ6SmmuRouteStream(
     _In_ ULONGLONG Base,
     _In_ USHORT StreamId,
+    _In_ USHORT Mask,
     _In_ BOOLEAN Route)
 {
     PULONG Gr0, Gr1, Cb;
@@ -169,7 +172,7 @@ QcQ6SmmuRouteStream(
         }
     }
 
-    QC_LOG("smmu: audio stream 0x%04x %s, free entry %ld, free bank %ld", StreamId,
+    QC_LOG("smmu: stream 0x%04x %s, free entry %ld, free bank %ld", StreamId,
            Matched ? "is matched by an entry above" : "has no stream entry",
            (LONG)FreeEntry, (LONG)FreeBank);
 
@@ -180,16 +183,16 @@ QcQ6SmmuRouteStream(
     }
     else if (!Route)
     {
-        QC_LOG("smmu: routing the audio stream is turned off");
+        QC_LOG("smmu: routing stream 0x%04x is turned off", StreamId);
     }
     else if (FreeEntry == MAXULONG || FreeBank == MAXULONG || !Gr1 || !Cb)
     {
-        QC_LOG("smmu: no free stream entry or context bank for the audio stream");
+        QC_LOG("smmu: no free stream entry or context bank for stream 0x%04x", StreamId);
     }
     else
     {
-        Routed = Q6sRoute(Gr0, Gr1, Cb, Page, FreeEntry, FreeBank, StreamId);
-        QC_LOG("smmu: audio stream route %s", Routed ? "in place" : "did not take, the registers read back different");
+        Routed = Q6sRoute(Gr0, Gr1, Cb, Page, FreeEntry, FreeBank, StreamId, Mask);
+        QC_LOG("smmu: stream 0x%04x route %s", StreamId, Routed ? "in place" : "did not take, the registers read back different");
     }
 
     if (Cb)
