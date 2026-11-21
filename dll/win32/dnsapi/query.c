@@ -533,7 +533,7 @@ DnsQuery_W(LPCWSTR Name,
     RpcExcept(EXCEPTION_EXECUTE_HANDLER)
     {
         Status = RpcExceptionCode();
-        DPRINT("Exception returned %lu\n", Status);
+        DPRINT1("DnsQuery_W(%S): the resolver call raised %lu\n", Name, Status);
     }
     RpcEndExcept;
 
@@ -786,6 +786,7 @@ Query_Main(LPCWSTR Name,
         if (!adns_numservers(astate))
         {
             /* There are no servers to query so bail out */
+            DPRINT1("Query_Main(%S): no DNS servers configured\n", Name);
             adns_finish(astate);
             RtlFreeHeap(RtlGetProcessHeap(), 0, AnsiName);
             return ERROR_FILE_NOT_FOUND;

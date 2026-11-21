@@ -165,6 +165,8 @@ R_ResolverQuery(
     }
 
     DPRINT("R_ResolverQuery result %ld %ld\n", Status, *dwRecords);
+    if (Status != ERROR_SUCCESS)
+        DPRINT1("Resolver query for %S type %u failed %ld\n", pszName, wType, Status);
 
     return Status;
 }
