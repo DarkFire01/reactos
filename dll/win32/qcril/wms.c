@@ -721,9 +721,24 @@ QcWmsIndication(
     Notification->OverIms = 0;
 
     if (QcParseDeliverPdu(Route + 8, DataLen, &Notification->Message))
+    {
         QcNotifyAll(Modem, RIL_NOTIFY_MESSAGE, Notification, sizeof(*Notification));
+    }
     else
-        QcTrace("sms: deliver pdu did not parse\n");
+    {
+        static const CHAR Digits[] = "0123456789abcdef";
+        CHAR Hex[3 * 64 + 1];
+        ULONG i, Shown = min((ULONG)DataLen, 64UL);
+
+        for (i = 0; i < Shown; i++)
+        {
+            Hex[i * 3] = Digits[Route[8 + i] >> 4];
+            Hex[i * 3 + 1] = Digits[Route[8 + i] & 0x0F];
+            Hex[i * 3 + 2] = ' ';
+        }
+        Hex[Shown * 3] = '\0';
+        QcTrace("sms: deliver pdu did not parse, %u bytes: %s\n", DataLen, Hex);
+    }
 
     HeapFree(GetProcessHeap(), 0, Notification);
 }
