@@ -77,3 +77,18 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE103
 HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}\Connection","Name",0x00000000,"Wi-Fi"
 HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}\Connection","PnpInstanceID",0x00000000,"QCMS\VEN_QCOM&DEV_02E5&SUBSYS_MTP00850\3&7e537d43&0"
 HKLM,"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}\{9997C03B-6E15-4FF0-91D5-21BD1FEDF43A}\Connection","ShowIcon",0x00010001,1
+
+; The modem asks for the WLAN PD image on the Android firmware paths before the Windows one;
+; serving them as well lets the first request find it
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\_SB_AMSS\Device Parameters\Mappings\TFTP\415054003ab8749e72ec126a8df0b99c71c48e8d4a0d9fd4dfa85e909dad238e","Remote",0x00000000,"\rfs\msm\mpss\readonly\vendor\firmware_mnt\image\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\_SB_AMSS\Device Parameters\Mappings\TFTP\415054003ab8749e72ec126a8df0b99c71c48e8d4a0d9fd4dfa85e909dad238e","Local",0x00000000,"\SystemRoot\System32\drivers\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\_SB_AMSS\Device Parameters\Mappings\TFTP\5c55dda9974d7de8cf05cd811b713391d4849d7af6faa717e7d730dee3e8917e","Remote",0x00000000,"\rfs\msm\mpss\readonly\vendor\firmware\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\_SB_AMSS\Device Parameters\Mappings\TFTP\5c55dda9974d7de8cf05cd811b713391d4849d7af6faa717e7d730dee3e8917e","Local",0x00000000,"\SystemRoot\System32\drivers\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\2&ccb86d17&_SB_AMSS\Device Parameters\Mappings\TFTP\415054003ab8749e72ec126a8df0b99c71c48e8d4a0d9fd4dfa85e909dad238e","Remote",0x00000000,"\rfs\msm\mpss\readonly\vendor\firmware_mnt\image\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\2&ccb86d17&_SB_AMSS\Device Parameters\Mappings\TFTP\415054003ab8749e72ec126a8df0b99c71c48e8d4a0d9fd4dfa85e909dad238e","Local",0x00000000,"\SystemRoot\System32\drivers\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\2&ccb86d17&_SB_AMSS\Device Parameters\Mappings\TFTP\5c55dda9974d7de8cf05cd811b713391d4849d7af6faa717e7d730dee3e8917e","Remote",0x00000000,"\rfs\msm\mpss\readonly\vendor\firmware\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Enum\ACPI\QCOM023E\2&ccb86d17&_SB_AMSS\Device Parameters\Mappings\TFTP\5c55dda9974d7de8cf05cd811b713391d4849d7af6faa717e7d730dee3e8917e","Local",0x00000000,"\SystemRoot\System32\drivers\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\415054003ab8749e72ec126a8df0b99c71c48e8d4a0d9fd4dfa85e909dad238e","Remote",0x00000000,"\rfs\msm\mpss\readonly\vendor\firmware_mnt\image\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\415054003ab8749e72ec126a8df0b99c71c48e8d4a0d9fd4dfa85e909dad238e","Local",0x00000000,"\SystemRoot\System32\drivers\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\5c55dda9974d7de8cf05cd811b713391d4849d7af6faa717e7d730dee3e8917e","Remote",0x00000000,"\rfs\msm\mpss\readonly\vendor\firmware\wlanmdsp.mbn"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\5c55dda9974d7de8cf05cd811b713391d4849d7af6faa717e7d730dee3e8917e","Local",0x00000000,"\SystemRoot\System32\drivers\wlanmdsp.mbn"
