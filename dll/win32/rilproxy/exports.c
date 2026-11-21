@@ -297,6 +297,8 @@ RIL_SetPreferredOperatorList(
 
     if (!RilpBlockSize(24, Count, RIL_OPERATOR_ENTRY_SIZE, &Size))
         return E_INVALIDARG;
+    if (Count && !Operators)
+        return E_INVALIDARG;
 
     Block = RilpAllocBlock(Size);
     if (!Block)
@@ -304,7 +306,7 @@ RIL_SetPreferredOperatorList(
 
     *(PDWORD)&Block[16] = Executor;
     *(PDWORD)&Block[20] = Count;
-    if (Count && Operators)
+    if (Count)
         CopyMemory(&Block[24], Operators, Size - 24);
 
     return RilpSendBlockAndFree(hRil, RilCmdSetPreferredOperatorList, Context, Block, Size);
@@ -756,9 +758,13 @@ RIL_SetExecutorFocus(
 {
     BYTE Block[28];
 
+    /* Windows hands these to the CRT invalid parameter handler */
+    if (Count && (!Executors || Count > 2))
+        return E_INVALIDARG;
+
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Count;
-    if (Count && Executors && Count <= 2)
+    if (Count)
         CopyMemory(&Block[20], Executors, Count * sizeof(DWORD));
 
     return RilpSend(hRil, RilCmdSetExecutorFocus, Context, Block, sizeof(Block));
@@ -845,15 +851,14 @@ RIL_OpenUiccLogicalChannel(
 {
     BYTE Block[64];
 
-    if (!Aid)
+    if (!Aid || AidLength > 32)
         return E_INVALIDARG;
 
     ZeroMemory(Block, sizeof(Block));
     *(PDWORD)&Block[16] = Executor;
     *(PDWORD)&Block[20] = Application;
     *(PDWORD)&Block[24] = AidLength;
-    if (AidLength <= 32)
-        CopyMemory(&Block[28], Aid, AidLength);
+    CopyMemory(&Block[28], Aid, AidLength);
     *(PDWORD)&Block[60] = Flags;
 
     return RilpSend(hRil, RilCmdOpenUiccLogicalChannel, Context, Block, sizeof(Block));
