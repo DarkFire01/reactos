@@ -33,6 +33,24 @@
 #define SFR_ENTRY_CANARY            0xA5A5
 #define SFR_ENTRY_HEADER_SIZE       16
 
+/* SPMI arbiter, read through this EE's observer channels */
+#define SFR_SPMI_CORE_BASE          0x0C440000ULL
+#define SFR_SPMI_CORE_LENGTH        0x1100
+#define SFR_SPMI_OBS_BASE           0x0E600000ULL
+#define SFR_SPMI_OBS_CHANNEL        0x80
+#define SFR_SPMI_FEATURES           0x0004
+#define SFR_SPMI_APID_MAP           0x0900
+#define SFR_SPMI_CMD                0x00
+#define SFR_SPMI_STATUS             0x08
+#define SFR_SPMI_RDATA0             0x18
+#define SFR_SPMI_STATUS_DONE        0x1
+#define SFR_SPMI_STATUS_ERRORS      0xE
+#define SFR_SPMI_OP_READ            1
+
+/* Power on block of each PMIC, the reasons hold for the boot that is running */
+#define SFR_PON_BASE                0x0800
+static const UCHAR SfrPonRegisters[] = { 0x08, 0x0A, 0x0B, 0xC7, 0xC8, 0xC9, 0xCA };
+
 typedef struct _SFR_SOURCE
 {
     ULONG Item;
@@ -182,6 +200,88 @@ SfrCheck(
     DbgPrint("[qcomsfr] %s failure reason: %s\n", Source->Name, Text);
 }
 
+/* Reads one PMIC register on the observer channel of the peripheral that holds it */
+static
+BOOLEAN
+SfrReadPmic(
+    _In_ PUCHAR Core,
+    _In_ ULONG Peripherals,
+    _In_ UCHAR Sid,
+    _In_ USHORT Address,
+    _Out_ PUCHAR Value)
+{
+    PHYSICAL_ADDRESS Base;
+    PUCHAR Channel;
+    ULONG Ppid = ((ULONG)Sid << 8) | (Address >> 8);
+    ULONG Apid, Status = 0, Spin;
+    BOOLEAN Done = FALSE;
+
+    for (Apid = 0; Apid < Peripherals; Apid++)
+    {
+        if (((READ_REGISTER_ULONG((PULONG)(Core + SFR_SPMI_APID_MAP + Apid * 4)) >> 8) & 0xFFF) == Ppid)
+            break;
+    }
+    if (Apid == Peripherals)
+        return FALSE;
+
+    Base.QuadPart = SFR_SPMI_OBS_BASE + Apid * SFR_SPMI_OBS_CHANNEL;
+    Channel = MmMapIoSpace(Base, SFR_SPMI_OBS_CHANNEL, MmNonCached);
+    if (!Channel)
+        return FALSE;
+
+    WRITE_REGISTER_ULONG((PULONG)(Channel + SFR_SPMI_CMD), (SFR_SPMI_OP_READ << 27) | ((ULONG)(Address & 0xFF) << 4));
+    for (Spin = 1000; Spin; Spin--)
+    {
+        Status = READ_REGISTER_ULONG((PULONG)(Channel + SFR_SPMI_STATUS));
+        if (Status & SFR_SPMI_STATUS_DONE)
+            break;
+        KeStallExecutionProcessor(1);
+    }
+
+    if (Spin && !(Status & SFR_SPMI_STATUS_ERRORS))
+    {
+        *Value = (UCHAR)READ_REGISTER_ULONG((PULONG)(Channel + SFR_SPMI_RDATA0));
+        Done = TRUE;
+    }
+
+    MmUnmapIoSpace(Channel, SFR_SPMI_OBS_CHANNEL);
+    return Done;
+}
+
+/* Why the board came up: hard reset, warm reset, power off and fault reasons */
+static
+VOID
+SfrPrintPowerOnReasons(VOID)
+{
+    static const UCHAR Sids[] = { 0, 2 };
+    PHYSICAL_ADDRESS Base;
+    PUCHAR Core;
+    ULONG Peripherals, Index, Sid;
+    UCHAR Values[RTL_NUMBER_OF(SfrPonRegisters)];
+
+    Base.QuadPart = SFR_SPMI_CORE_BASE;
+    Core = MmMapIoSpace(Base, SFR_SPMI_CORE_LENGTH, MmNonCached);
+    if (!Core)
+        return;
+
+    Peripherals = min(READ_REGISTER_ULONG((PULONG)(Core + SFR_SPMI_FEATURES)) & 0x3FF,
+                      (SFR_SPMI_CORE_LENGTH - SFR_SPMI_APID_MAP) / 4);
+
+    for (Sid = 0; Sid < RTL_NUMBER_OF(Sids); Sid++)
+    {
+        for (Index = 0; Index < RTL_NUMBER_OF(SfrPonRegisters); Index++)
+        {
+            if (!SfrReadPmic(Core, Peripherals, Sids[Sid], SFR_PON_BASE + SfrPonRegisters[Index], &Values[Index]))
+                Values[Index] = 0xEE;
+        }
+
+        DbgPrint("[qcomsfr] PMIC sid %u PON reason %02x, warm reset %02x %02x, off %02x, fault %02x %02x, S3 reset %02x\n",
+                 Sids[Sid], Values[0], Values[1], Values[2], Values[3], Values[4], Values[5], Values[6]);
+    }
+
+    MmUnmapIoSpace(Core, SFR_SPMI_CORE_LENGTH);
+}
+
 static
 VOID
 NTAPI
@@ -196,6 +296,7 @@ SfrThread(
 
     Version = SfrRead32(SFR_VERSION_OFFSET + SFR_VERSION_BOOT_INDEX * sizeof(ULONG)) >> 16;
     DbgPrint("[qcomsfr] shared memory version %lu, watching the failure reasons\n", Version);
+    SfrPrintPowerOnReasons();
 
     Delay.QuadPart = -(LONGLONG)SFR_POLL_MS * 10000;
     for (;;)
