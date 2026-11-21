@@ -429,6 +429,9 @@ QcPdcSetup(
         return;
     }
 
+    /* Everything past the card read is a final outcome for this modem start */
+    Modem->Pdc.Done = TRUE;
+
     Type = QCRIL_PDC_SOFTWARE;
     Body[0] = QCRIL_PDC_TLV_TYPE;
     Body[1] = sizeof(Type);
@@ -470,10 +473,6 @@ QcPdcSetup(
     QcTrace("pdc: %lu software config(s) loaded\n", LoadedCount);
     for (i = 0; i < LoadedCount; i++)
         QcPdcLogInfo(Modem, &Loaded[i]);
-
-    EnterCriticalSection(&Modem->ServiceLock);
-    Modem->Services[QcSvcPdc].Ready = TRUE;
-    LeaveCriticalSection(&Modem->ServiceLock);
 
     if (!QcPdcCarrierFile(Imsi, Path, RTL_NUMBER_OF(Path)))
     {

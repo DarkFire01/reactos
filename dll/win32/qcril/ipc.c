@@ -472,6 +472,7 @@ QcModemLost(
         Modem->Services[i].Ready = FALSE;
         Modem->Services[i].Configured = FALSE;
     }
+    Modem->Pdc.Done = FALSE;
     LeaveCriticalSection(&Modem->ServiceLock);
 
     QcAbortPending(Modem, NULL);

@@ -223,6 +223,7 @@ typedef struct _QC_PDC_STATE
     BYTE Ind[QC_MESSAGE_MAX];
     ULONG IndLen;
     BOOL Switched;          /* a configuration was activated during this run */
+    BOOL Done;              /* the card was read and the configuration handled, until a modem restart */
 } QC_PDC_STATE;
 
 /* RIL call id to modem call id, the modem reuses its ids */
