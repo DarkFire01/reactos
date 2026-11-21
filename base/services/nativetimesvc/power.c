@@ -30,6 +30,8 @@ NtWakeDevice(
     Request.Version = POWER_ACTIVATOR_REQUEST_VERSION;
     Request.Action = PowerActivatorWake;
 
+    /* Power requests that carry input need the shutdown privilege enabled, the token has it off */
+    NtEnablePrivilege(SE_SHUTDOWN_NAME);
     Status = NtPowerInformation(PowerInformationInternal, &Request, sizeof(Request), NULL, 0);
     if (NT_SUCCESS(Status) && Status != STATUS_ALREADY_COMPLETE)
         DPRINT1("Woke the device from standby for %s\n", Reason);
