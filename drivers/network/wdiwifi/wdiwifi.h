@@ -137,9 +137,12 @@ typedef struct _WDI_REQUEST
 #define WDI_REQUEST_COMPLETED               1
 #define WDI_REQUEST_ABANDONED               2
 
-/* Most of a beacon or probe response body a scan keeps for a network, enough
-   for the SSID and the security elements */
-#define WDI_MAX_BEACON_LENGTH               512
+/* The beacon or probe response body a scan keeps for a network. A connect
+   hands it back whole, so the miniport can build the association from it */
+#define WDI_MAX_BEACON_LENGTH               1024
+
+/* The miniport's own context for a scanned network, returned on connect */
+#define WDI_MAX_BSS_CONTEXT_LENGTH          64
 
 /* Timestamp, beacon interval and capability precede the IEs in a body */
 #define WDI_FRAME_BODY_FIXED_LENGTH         12
@@ -156,6 +159,10 @@ typedef struct _WDI_BSS
     UINT32 BandId;
     UINT16 Capability;
     UINT16 BeaconLength;
+    BOOLEAN FrameIsProbe;
+    BOOLEAN FrameTruncated;
+    UINT16 ContextLength;
+    UCHAR Context[WDI_MAX_BSS_CONTEXT_LENGTH];
     UCHAR Beacon[WDI_MAX_BEACON_LENGTH];
 } WDI_BSS, *PWDI_BSS;
 
