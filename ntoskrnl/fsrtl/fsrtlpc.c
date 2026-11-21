@@ -215,3 +215,16 @@ FsRtlAllocateResource(VOID)
                                    FSRTL_MAX_RESOURCES];
 }
 
+
+/**
+ * @brief Tells whether the applications that run on a volume at startup, like autochk, are done.
+ * @return TRUE, nothing runs on the volumes before drivers can ask.
+ */
+BOOLEAN
+NTAPI
+FsRtlAreVolumeStartupApplicationsComplete(VOID)
+{
+    PAGED_CODE();
+
+    return TRUE;
+}
