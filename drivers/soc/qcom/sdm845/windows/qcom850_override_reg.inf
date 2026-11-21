@@ -3,8 +3,5 @@
 ; Keep the apps SMMU powered: qcomq6 reads and routes the ADSP audio stream in it, and a
 ; power collapse would hang those reads and drop a route qcsmmu does not know about
 HKLM,"SYSTEM\CurrentControlSet\Services\qcsmmu\Parameters","PowerManaged",0x00010001,0
-; Wi-Fi off for now: a failed scan restarts wlan_pd, and the ack the modem waits for never
-; comes, so the modem crashes and restarts in a loop
-HKLM,"SYSTEM\CurrentControlSet\Services\qcwlan","Start",0x00010001,0x00000004
 ; Connected standby directs KMDF devices with a system managed idle timeout to low power
 HKLM,"SYSTEM\CurrentControlSet\Control\Wdf","WdfDirectedPowerTransitionEnable",0x00010001,1
