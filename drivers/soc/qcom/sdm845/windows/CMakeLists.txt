@@ -4,7 +4,7 @@
 add_registry_inf(qcom850_reg.inf)
 add_registry_inf(trustedrt_reg.inf)
 add_registry_inf(qcxhcifilter_reg.inf)
-# DIAG: off while the SIM and modem are tested add_registry_inf(qcwlan_reg.inf)
+add_registry_inf(qcwlan_reg.inf)
 add_registry_inf(qcbattery_reg.inf)
 add_registry_inf(qcmcfg_reg.inf)
 add_registry_inf(basicdisplay_reg.inf)
