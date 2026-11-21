@@ -490,6 +490,8 @@ UacpiNtMergeChildRelations(
             Pdo->HeldBack = TRUE;
             continue;
         }
+        if (Pdo->HeldBack)
+            DPRINT1("uACPI-NT: %s is no longer held back, reporting it\n", Pdo->Name);
         Pdo->HeldBack = FALSE;
 
         for (Index = 0; Index < ExistingCount; Index++)

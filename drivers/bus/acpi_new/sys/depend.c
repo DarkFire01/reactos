@@ -159,6 +159,9 @@ UacpiNtReleaseDependents(
         if (!Pdo->HeldBack)
             continue;
 
+        if (!UacpiNtPdoDependenciesMet(Fdo, Pdo))
+            continue;
+
         Bus = NULL;
         if (Pdo->ScopeNode == Sb || Pdo->ScopeNode == Tz)
         {
@@ -188,6 +191,9 @@ UacpiNtReleaseDependents(
             ObReferenceObject(Bus);
             Buses[Count++] = Bus;
         }
+
+        DPRINT1("uACPI-NT: %s can start now, %s\n", Pdo->Name,
+                Bus ? "enumerating its bus again" : "its bus is already queued or was not found");
     }
 
     ExReleaseFastMutex(&Fdo->ChildLock);
