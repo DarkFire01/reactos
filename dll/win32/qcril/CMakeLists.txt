@@ -12,6 +12,7 @@ list(APPEND SOURCE
     nas.c
     pdc.c
     ims.c
+    imsdata.c
     uim.c
     voice.c
     wds.c

@@ -324,6 +324,10 @@ VOID QcRespWide(_Inout_ PQC_RESP Resp, _In_z_ PCSTR Text);
 BOOL QcIpcOpen(_In_ PQC_MODEM Modem);
 BOOL QcIpcStartReceive(_In_ PQC_MODEM Modem);
 VOID QcIpcClose(_In_ PQC_MODEM Modem);
+BOOL QcIpcOpenPort(_Out_ PHANDLE Port);
+VOID QcIpcClosePort(_In_ HANDLE Port);
+BOOL QcIpcSendOn(_In_ HANDLE Port, _In_ const QC_ADDR *Dest,
+                 _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
 BOOL QcServiceEnsure(_In_ PQC_MODEM Modem, _In_ QC_SVC Which);
 PCSTR QcServiceName(_In_ QC_SVC Which);
 HRESULT QcMapQmiError(_In_ USHORT Error);
@@ -388,6 +392,10 @@ VOID QcDmsIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
 /* ims.c */
 VOID QcImssSetup(_In_ PQC_MODEM Modem);
 VOID QcImsaSetup(_In_ PQC_MODEM Modem);
+
+/* imsdata.c */
+VOID QcImsDataStart(_In_ PQC_MODEM Modem, _In_ UCHAR Profile);
+VOID QcImsDataModemLost(VOID);
 VOID QcImsaIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                       _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
 
