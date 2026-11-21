@@ -258,6 +258,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ob/obwait.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/pofx/comp.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/pofx/device.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/po/pofx/directed.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/pofx/fxapi.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/pofx/plugin.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/ppm/cpustat.c

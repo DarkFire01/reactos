@@ -208,6 +208,7 @@ PopInitPoFxManager(VOID)
     /* Initialize the global list of PoFx-registered devices and its lock */
     InitializeListHead(&PopFxDeviceList);
     KeInitializeSpinLock(&PopFxDeviceLock);
+    PopFxInitializeDirected();
 
     /* Initialize the global list of Platform Extension Plug-ins and its lock */
     InitializeListHead(&PopFxPluginList);

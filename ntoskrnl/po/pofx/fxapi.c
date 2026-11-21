@@ -71,6 +71,10 @@ PopFxNextAction(
     if (Component->IdleConditionPending || Component->DriverStatePending || Component->PepStatePending)
         return PopFxActionNone;
 
+    /* A device under a directed transition owns its power, components wait for the power up */
+    if (Device->DirectedState != POP_FX_DIRECTED_NONE)
+        return PopFxActionNone;
+
     if (Component->ActiveCount > 0)
     {
         if (Component->Active)
@@ -187,6 +191,12 @@ PopFxDeviceIdleTimerDpc(
         return;
     }
     Device->IdleTimerArmed = FALSE;
+
+    if (Device->DirectedState != POP_FX_DIRECTED_NONE)
+    {
+        KeReleaseSpinLockFromDpcLevel(&Device->Lock);
+        return;
+    }
 
     for (Index = 0; Index < Device->ComponentCount; Index++)
     {
@@ -673,6 +683,7 @@ PoFxRegisterDevice(
     KeInitializeSpinLock(&FxDevice->Lock);
     KeInitializeTimerEx(&FxDevice->IdleTimer, NotificationTimer);
     KeInitializeDpc(&FxDevice->IdleDpc, PopFxDeviceIdleTimerDpc, FxDevice);
+    KeInitializeEvent(&FxDevice->DirectedEvent, NotificationEvent, FALSE);
 
     if (DeviceV1->Version == PO_FX_VERSION_V1)
     {
@@ -827,9 +838,12 @@ PoFxUnregisterDevice(
     KeCancelTimer(&FxDevice->IdleTimer);
     KeFlushQueuedDpcs();
 
+    /* A directed pass holds pointers to registered devices until it ends */
+    KeAcquireGuardedMutex(&PopFxDirectedLock);
     KeAcquireInStackQueuedSpinLock(&PopFxDeviceLock, &LockHandle);
     RemoveEntryList(&FxDevice->Link);
     KeReleaseInStackQueuedSpinLock(&LockHandle);
+    KeReleaseGuardedMutex(&PopFxDirectedLock);
 
     if (FxDevice->Plugin)
     {
@@ -1126,15 +1140,29 @@ PoFxCompleteDevicePowerNotRequired(
 
 /**
  * @brief Tells PoFx a device finished the directed power down it was asked for.
- *
- * @remarks Directed transitions are never started, so there is nothing to complete.
  */
 VOID
 NTAPI
 PoFxCompleteDirectedPowerDown(
     _In_ POHANDLE Handle)
 {
-    POFXTRACE(POFX_DEVICE_DEBUG, "No directed power down is in flight on %p\n", Handle);
+    PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
+    KIRQL OldIrql;
+
+    if (!FxDevice)
+        return;
+
+    KeAcquireSpinLock(&FxDevice->Lock, &OldIrql);
+    if (FxDevice->DirectedState == POP_FX_DIRECTED_DOWN_PENDING)
+    {
+        FxDevice->DirectedState = POP_FX_DIRECTED_DOWN;
+        KeSetEvent(&FxDevice->DirectedEvent, IO_NO_INCREMENT, FALSE);
+    }
+    else
+    {
+        DPRINT1("PoFx %wZ completed a directed power down it was not asked for\n", &FxDevice->DeviceId);
+    }
+    KeReleaseSpinLock(&FxDevice->Lock, OldIrql);
 }
 
 /**
@@ -1175,6 +1203,13 @@ PoFxReportDevicePoweredOn(
     KeAcquireSpinLock(&FxDevice->Lock, &OldIrql);
     FxDevice->PoweredOnPending = FALSE;
     FxDevice->PowerRequired = TRUE;
+
+    /* Reporting power is how a directed power up completes */
+    if (FxDevice->DirectedState == POP_FX_DIRECTED_UP_PENDING)
+    {
+        FxDevice->DirectedState = POP_FX_DIRECTED_NONE;
+        KeSetEvent(&FxDevice->DirectedEvent, IO_NO_INCREMENT, FALSE);
+    }
     KeReleaseSpinLock(&FxDevice->Lock, OldIrql);
 
     PopFxKickAllComponents(FxDevice);

@@ -28,6 +28,9 @@ BOOLEAN PopAoAcInStandby = FALSE;
 /* Desktop apps get this long with the display off to finish what they were doing */
 #define POP_AOAC_FREEZE_DELAY_MS    30000
 
+/* Devices are directed to low power once the display has been off this long */
+#define POP_AOAC_DIRECTED_DELAY_MS  5000
+
 /* A desktop process moderated for the standby, the class it had and whether it is frozen */
 typedef struct _POP_AOAC_THROTTLED
 {
@@ -376,6 +379,8 @@ PopAoAcEnterStandby(VOID)
 
     /* The processors drop to their lowest performance while the display is off */
     PpmConnectedStandby(TRUE);
+
+    PopFxScheduleDirectedPowerDown(POP_AOAC_DIRECTED_DELAY_MS);
 }
 
 /* Apps run again before win32k sends them the display on messages */
@@ -399,6 +404,8 @@ PopAoAcLeaveStandby(VOID)
     PopAoAcRestoreProcesses();
     ExReleaseFastMutex(&PopAoAcLock);
 
+    /* Devices come back before the display does, the panel and touch may be among them */
+    PopFxDirectedPowerUp();
     PpmConnectedStandby(FALSE);
 
     Params.EventNumber = PsW32DisplayState;

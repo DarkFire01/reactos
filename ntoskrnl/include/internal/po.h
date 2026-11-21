@@ -1855,6 +1855,21 @@ NTSTATUS
 NTAPI
 PopAoAcWake(VOID);
 
+/* pofx/directed.c */
+CODE_SEG("INIT")
+VOID
+NTAPI
+PopFxInitializeDirected(VOID);
+
+VOID
+NTAPI
+PopFxScheduleDirectedPowerDown(
+    _In_ ULONG DelayMs);
+
+VOID
+NTAPI
+PopFxDirectedPowerUp(VOID);
+
 NTSTATUS
 NTAPI
 PopAoAcSleep(VOID);
@@ -2430,6 +2445,7 @@ extern KSPIN_LOCK PopFxDeviceLock;
 extern LIST_ENTRY PopFxPluginList;
 extern KGUARDED_MUTEX PopFxPluginLock;
 extern ULONG PopFxTraceLevel;
+extern KGUARDED_MUTEX PopFxDirectedLock;
 
 /* Power Manager Thermal Request constructs */
 extern POBJECT_TYPE PoThermalRequestObjectType;

@@ -41,6 +41,12 @@
 /* The device registered with only the directed power callbacks */
 #define POP_FX_DEVICE_DIRECTED_ONLY                     0x40
 
+/* POP_FX_DEVICE.DirectedState */
+#define POP_FX_DIRECTED_NONE                            0
+#define POP_FX_DIRECTED_DOWN_PENDING                    1
+#define POP_FX_DIRECTED_DOWN                            2
+#define POP_FX_DIRECTED_UP_PENDING                      3
+
 /* No F-state transition is in flight */
 #define POP_FX_NO_TRANSITION                            MAXULONG
 
@@ -133,6 +139,10 @@ typedef struct _POP_FX_DEVICE
     PPO_FX_DIRECTED_POWER_UP_CALLBACK DirectedPowerUpCallback;
     PPO_FX_DIRECTED_POWER_DOWN_CALLBACK DirectedPowerDownCallback;
     ULONG DirectedFxTimeout;
+
+    /* While not NONE the driver gets no runtime idle callbacks */
+    UCHAR DirectedState;
+    KEVENT DirectedEvent;
     PVOID DriverContext;
 
     BOOLEAN Started;
