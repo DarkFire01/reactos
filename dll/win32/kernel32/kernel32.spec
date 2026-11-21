@@ -1287,6 +1287,7 @@
 @ stdcall VirtualAllocEx(long ptr long long long)
 @ stub -version=0x600+ VirtualAllocExNuma
 @ stdcall VirtualFree(ptr long long)
+@ stdcall -version=0xA00+ VirtualAlloc2(ptr ptr long long long ptr long)
 @ stdcall VirtualFreeEx(long ptr long long)
 @ stdcall VirtualLock(ptr long)
 @ stdcall VirtualProtect(ptr long long ptr)
