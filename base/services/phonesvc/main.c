@@ -94,6 +94,7 @@ PhServiceMain(
     PhSmsInitialize();
     PhAudioInitialize();
     PhStoreInitialize();
+    PhMmsInitialize();
     DPRINT1("Message store ready\n");
 
     if (!PhPipeStart())
@@ -113,6 +114,7 @@ PhServiceMain(
 
     WaitForSingleObject(PhStopEvent, INFINITE);
 
+    PhMmsStop();
     PhRadioStop();
     PhPipeStop();
     PhAudioUninitialize();

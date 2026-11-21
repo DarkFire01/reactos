@@ -231,6 +231,38 @@ PhConnectData(
     _In_ DWORD Op,
     _Out_ PPHONEOM_DATA_STATUS Status);
 
+/* mms.c */
+VOID
+PhMmsInitialize(VOID);
+
+VOID
+PhMmsStop(VOID);
+
+BOOL
+PhMmsPushReceived(
+    _In_reads_bytes_(Size) const BYTE *Data,
+    _In_ DWORD Size,
+    _In_z_ LPCWSTR Origin,
+    _In_ const FILETIME *Received);
+
+HRESULT
+PhMmsSend(
+    _In_z_ LPCWSTR Address,
+    _In_z_ LPCWSTR Text,
+    _In_z_ LPCWSTR Path,
+    _Out_ PDWORD MessageId);
+
+/* mmsnet.c */
+HRESULT
+PhMmsHttpRequest(
+    _In_ const PH_MMS_CONFIG *Config,
+    _In_z_ LPCWSTR Url,
+    _In_reads_bytes_opt_(BodySize) const BYTE *Body,
+    _In_ DWORD BodySize,
+    _Outptr_result_bytebuffer_(*ResponseSize) PBYTE *Response,
+    _Out_ PDWORD ResponseSize,
+    _Out_ PDWORD HttpStatus);
+
 /* pipe.c */
 BOOL
 PhPipeStart(VOID);
