@@ -40,7 +40,9 @@ typedef enum _PHONE_PIPE_REQUEST
     PhoneRequestGetNetwork,
     PhoneRequestGetDataConfig,
     PhoneRequestSetDataConfig,
-    PhoneRequestConnectData
+    PhoneRequestConnectData,
+    PhoneRequestGetAttachments,
+    PhoneRequestSendMms
 } PHONE_PIPE_REQUEST;
 
 /* Every pipe message starts with this, the payload follows */
@@ -70,3 +72,10 @@ typedef struct _PHONE_REQUEST_RANGE
     DWORD FirstId;
     DWORD MaxCount;
 } PHONE_REQUEST_RANGE;
+
+typedef struct _PHONE_REQUEST_MMS
+{
+    WCHAR Address[PHONEOM_MAX_NUMBER];
+    WCHAR Text[PHONEOM_MAX_TEXT];
+    WCHAR Path[PHONEOM_MAX_PATH];
+} PHONE_REQUEST_MMS;
