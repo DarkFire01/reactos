@@ -12,6 +12,28 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Power requests that carry input need the shutdown privilege enabled, the token has it off */
+static
+BOOL
+PhEnableShutdownPrivilege(VOID)
+{
+    TOKEN_PRIVILEGES Privileges;
+    HANDLE Token;
+    BOOL Result;
+
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &Token))
+        return FALSE;
+
+    Privileges.PrivilegeCount = 1;
+    Privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    Result = LookupPrivilegeValueW(NULL, SE_SHUTDOWN_NAME, &Privileges.Privileges[0].Luid) &&
+             AdjustTokenPrivileges(Token, FALSE, &Privileges, 0, NULL, NULL) &&
+             GetLastError() == ERROR_SUCCESS;
+
+    CloseHandle(Token);
+    return Result;
+}
+
 /**
  * @brief
  * Brings the display back on as if the power button had been pressed.
@@ -31,6 +53,7 @@ PhWakeDevice(
     Request.Version = POWER_ACTIVATOR_REQUEST_VERSION;
     Request.Action = PowerActivatorWake;
 
+    PhEnableShutdownPrivilege();
     Status = NtPowerInformation(PowerInformationInternal, &Request, sizeof(Request), NULL, 0);
     if (NT_SUCCESS(Status) && Status != STATUS_ALREADY_COMPLETE)
         DPRINT1("Woke the device from standby for %s\n", Reason);
