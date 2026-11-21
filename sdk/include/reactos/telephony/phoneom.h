@@ -48,6 +48,13 @@ typedef struct _PHONEOM_CALL
 #define PHONEOM_MESSAGE_READ        0x00000002
 #define PHONEOM_MESSAGE_FAILED      0x00000004
 #define PHONEOM_MESSAGE_SENT        0x00000008
+/* Multimedia message, Text holds its subject and text parts */
+#define PHONEOM_MESSAGE_MMS         0x00000010
+/* PhoneOmGetAttachments lists media files for this message */
+#define PHONEOM_MESSAGE_ATTACHMENTS 0x00000020
+
+#define PHONEOM_MAX_ATTACHMENTS     16
+#define PHONEOM_MAX_PATH            260
 
 typedef struct _PHONEOM_MESSAGE
 {
@@ -57,6 +64,14 @@ typedef struct _PHONEOM_MESSAGE
     WCHAR Address[PHONEOM_MAX_NUMBER];
     WCHAR Text[PHONEOM_MAX_TEXT];
 } PHONEOM_MESSAGE, *PPHONEOM_MESSAGE;
+
+/* One file of a multimedia message, readable by the caller */
+typedef struct _PHONEOM_ATTACHMENT
+{
+    DWORD Size;
+    DWORD Reserved;
+    WCHAR Path[PHONEOM_MAX_PATH];
+} PHONEOM_ATTACHMENT, *PPHONEOM_ATTACHMENT;
 
 typedef struct _PHONEOM_RADIO
 {
@@ -281,6 +296,25 @@ WINAPI
 PhoneOmDeleteMessage(
     _In_ HPHONEOM Phone,
     _In_ DWORD MessageId);
+
+HRESULT
+WINAPI
+PhoneOmGetAttachments(
+    _In_ HPHONEOM Phone,
+    _In_ DWORD MessageId,
+    _Out_writes_to_(MaxAttachments, *Count) PPHONEOM_ATTACHMENT Attachments,
+    _In_ DWORD MaxAttachments,
+    _Out_ PDWORD Count);
+
+/* Queues a multimedia message, the status event reports the outcome */
+HRESULT
+WINAPI
+PhoneOmSendMms(
+    _In_ HPHONEOM Phone,
+    _In_ LPCWSTR Address,
+    _In_opt_ LPCWSTR Text,
+    _In_opt_ LPCWSTR AttachmentPath,
+    _Out_opt_ PDWORD MessageId);
 
 HRESULT
 WINAPI
