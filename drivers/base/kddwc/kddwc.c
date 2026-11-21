@@ -223,12 +223,13 @@ KdpReceiveByte(
 {
     ULONG64 Start = KdDwcMicroseconds();
 
+    /* With no debugger holding the port every packet would sit out its retries for nothing */
     do
     {
         KdDwcPump();
         if (KdDwcTakeInput(OutByte))
             return KDP_PACKET_RECEIVED;
-    } while (KdDwcMicroseconds() - Start < KDDWC_RECEIVE_TIMEOUT_US);
+    } while (KdDwcIsHostListening() && KdDwcMicroseconds() - Start < KDDWC_RECEIVE_TIMEOUT_US);
 
     return KDP_PACKET_TIMEOUT;
 }
@@ -419,11 +420,18 @@ KdDebuggerInitialize0(
     KdDwcTrace("host %s\n", KdDwcIsConfigured() ? "configured the port" : "has not configured the port yet");
     KdDwcBootPrint = NULL;
 
+#ifndef _WINKD_
     /* Queued for the host, so a memory corruption report can be matched against it */
     KdDwcDmaRange(&DmaBase, &DmaBytes);
     _snprintf(Line, sizeof(Line), "kddwc: DMA block 0x%I64x to 0x%I64x\n", DmaBase, DmaBase + DmaBytes - 1);
     Line[sizeof(Line) - 1] = ANSI_NULL;
     KdTransportPrint(Line, (ULONG)strlen(Line));
+#else
+    /* WinDbg owns the stream, so nothing but protocol packets may go out on it */
+    UNREFERENCED_PARAMETER(DmaBase);
+    UNREFERENCED_PARAMETER(DmaBytes);
+    UNREFERENCED_PARAMETER(Line);
+#endif
     return STATUS_SUCCESS;
 }
 

@@ -1,6 +1,11 @@
 
 spec2def(kddwc.dll kddwc.spec ADD_IMPORTLIB)
 
+# Under the KD protocol the port carries packets only
+if(_WINKD_)
+    add_definitions(-D_WINKD_)
+endif()
+
 list(APPEND SOURCE
     dwc3.c
     kddwc.c
