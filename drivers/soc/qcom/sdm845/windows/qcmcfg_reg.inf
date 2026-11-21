@@ -958,3 +958,8 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Devi
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\550cebe40a5ba43f1d6a97b6e0edb2f603ac187efc094db1a2c8c40e09ca8af4","Local",0x00000000,"\SystemRoot\System32\drivers\MCFG\MCFG.158"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\d2ee6708f5c8029aad4f360b051ed119be4e179e8fb6b64db4f0e63dbb137ae1","Remote",0x00000000,"\rfs\msm\mpss\readonly\firmware\image\modem_pr\mcfg\configs\mcfg_sw\oem_sw.txt"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM023E\Device Parameters\Mappings\TFTP\d2ee6708f5c8029aad4f360b051ed119be4e179e8fb6b64db4f0e63dbb137ae1","Local",0x00000000,"\SystemRoot\System32\drivers\MCFG\MCFG.159"
+
+; Carrier configuration qcril activates through PDC, by the SIM home network (MCC+MNC)
+; T-Mobile and its MVNOs (Mint uses 310240) run the T-Mobile commercial MBN
+HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters\CarrierConfigs","310240",0x00020000,"%SystemRoot%\System32\drivers\MCFG\MCFG.129"
+HKLM,"SYSTEM\CurrentControlSet\Services\RILAdaptation\Parameters\CarrierConfigs","310260",0x00020000,"%SystemRoot%\System32\drivers\MCFG\MCFG.129"
