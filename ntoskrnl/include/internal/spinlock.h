@@ -12,6 +12,25 @@ NTAPI
 Kii386SpinOnSpinLock(PKSPIN_LOCK SpinLock, ULONG Flags);
 #endif
 
+#if DBG
+/* Bugchecks for a spin lock its holder takes again, the return addresses past the acquire routine go in parameters 2 to 4 */
+DECLSPEC_NORETURN
+FORCEINLINE
+VOID
+KiSpinLockAlreadyOwned(
+    _In_ PKSPIN_LOCK SpinLock)
+{
+    PVOID Callers[4] = { NULL };
+
+    RtlWalkFrameChain(Callers, RTL_NUMBER_OF(Callers), 0);
+    KeBugCheckEx(SPIN_LOCK_ALREADY_OWNED,
+                 (ULONG_PTR)SpinLock,
+                 (ULONG_PTR)Callers[1],
+                 (ULONG_PTR)Callers[2],
+                 (ULONG_PTR)Callers[3]);
+}
+#endif
+
 //
 // Spinlock Acquisition at IRQL >= DISPATCH_LEVEL
 //
@@ -31,7 +50,7 @@ KxAcquireSpinLock(
     if (((KSPIN_LOCK)KeGetCurrentThread() | 1) == *SpinLock)
     {
         /* We do, bugcheck! */
-        KeBugCheckEx(SPIN_LOCK_ALREADY_OWNED, (ULONG_PTR)SpinLock, (ULONG_PTR)_ReturnAddress(), 0, 0);
+        KiSpinLockAlreadyOwned(SpinLock);
     }
 #endif
 
