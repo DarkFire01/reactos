@@ -6,10 +6,12 @@ list(APPEND SOURCE
     calls.c
     info.c
     main.c
+    mmspdu.c
     pipe.c
     radio.c
     sms.c
     store.c
+    mmspdu.h
     phonesvc.h)
 
 add_executable(phonesvc ${SOURCE} phonesvc.rc)
