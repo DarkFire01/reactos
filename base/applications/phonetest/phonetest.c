@@ -102,7 +102,7 @@ static const UINT PtModemControls[] =
     IDC_MODEM_STATUS, IDC_MODEM_SERVICES, IDC_MODEM_MODE, IDC_MODEM_ONLINE,
     IDC_MODEM_LOW_POWER, IDC_MODEM_OFFLINE, IDC_MODEM_RESET, IDC_MODEM_SIGNAL,
     IDC_MODEM_SERVING, IDC_MODEM_SIM, IDC_MODEM_IDENTITY, IDC_MODEM_RAW,
-    IDC_MODEM_SEND, IDC_MODEM_CLEAR, IDC_MODEM_LOG
+    IDC_MODEM_SEND, IDC_MODEM_CLEAR, IDC_MODEM_ACTIVATE, IDC_MODEM_LOG
 };
 
 static
@@ -837,6 +837,7 @@ PtCreateControls(
     PtControl(Window, L"EDIT", L"2 2d", WS_TABSTOP | ES_AUTOHSCROLL, IDC_MODEM_RAW, PtFont);
     PtButton(Window, L"Send", WS_TABSTOP, IDC_MODEM_SEND);
     PtButton(Window, L"Clear", WS_TABSTOP, IDC_MODEM_CLEAR);
+    PtButton(Window, L"Activate SIM", WS_TABSTOP, IDC_MODEM_ACTIVATE);
     PtControl(Window, L"LISTBOX", NULL, WS_VSCROLL | WS_HSCROLL | LBS_NOINTEGRALHEIGHT, IDC_MODEM_LOG, PtSmallFont);
     SendDlgItemMessageW(Window, IDC_MODEM_LOG, LB_SETHORIZONTALEXTENT, 2400, 0);
 
@@ -1000,6 +1001,8 @@ PtLayoutModem(
     PtMove(Window, IDC_MODEM_RAW, Left, Y, Width - 2 * (Quarter + PT_GAP), PT_ROW);
     PtMove(Window, IDC_MODEM_SEND, Left + Width - 2 * Quarter - PT_GAP, Y, Quarter, PT_ROW);
     PtMove(Window, IDC_MODEM_CLEAR, Left + Width - Quarter, Y, Quarter, PT_ROW);
+    Y += PT_ROW + PT_GAP;
+    PtMove(Window, IDC_MODEM_ACTIVATE, Left, Y, Width, PT_ROW);
     Y += PT_ROW + PT_GAP;
 
     LogH = Area->bottom - Y;
