@@ -271,7 +271,7 @@ QcImsLogServices(
     for (Tlv = 0x12; Tlv <= 0x1F; Tlv++)
     {
         if (Tlv != 0x14 && QcImsReadDword(Message, Length, Tlv, &Other))
-            QcTrace("ims: %s: service tlv 0x%02x is %s (%lu)\n", Origin, Tlv, QcImsServiceName(Other), Other);
+            QcTrace("ims: %s: tlv 0x%02x value %lu\n", Origin, Tlv, Other);
     }
 }
 

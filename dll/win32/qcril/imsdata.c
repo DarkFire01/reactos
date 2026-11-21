@@ -23,6 +23,14 @@
 #define QCRIL_WDS_TLV_END_REASON        0x10
 #define QCRIL_WDS_TLV_VERBOSE_END       0x11
 #define QCRIL_WDS_IP_V6                 6
+#define QCRIL_WDS_SET_IP_FAMILY         0x004D
+#define QCRIL_WDS_BIND_MUX_DATA_PORT    0x00A2
+
+/* The embedded IPA endpoint the internet session uses, on a mux of its own; the
+   internet session takes the IPA client id, the first mux */
+#define QC_IMS_DATA_ENDPOINT            4
+#define QC_IMS_DATA_INTERFACE           0
+#define QC_IMS_DATA_MUX                 2
 
 /* Bringing a PDN up can take as long as the network makes it */
 #define QC_IMS_DATA_START_TIMEOUT_MS    60000
@@ -186,11 +194,28 @@ QcImsDataWorker(
     const VOID *Value;
     ULONG Length;
     USHORT ValueLen;
-    UCHAR Family = QCRIL_WDS_IP_V6;
+    UCHAR Family = QCRIL_WDS_IP_V6, Mux = QC_IMS_DATA_MUX;
+    ULONG Endpoint[2];
     DWORD Handle = 0;
     HRESULT hr;
 
     UNREFERENCED_PARAMETER(Parameter);
+
+    /* Like the internet session the client needs its family and a data port before it starts */
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_SET_IP_FAMILY);
+    QmiEncodeTlv(&Encoder, 0x01, &Family, sizeof(Family));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcImsDataRequest(Message, Length, QC_REQUEST_TIMEOUT_MS);
+    QcTrace("ims data: ipv6 family preference 0x%08lx\n", hr);
+
+    Endpoint[0] = QC_IMS_DATA_ENDPOINT;
+    Endpoint[1] = QC_IMS_DATA_INTERFACE;
+    QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_BIND_MUX_DATA_PORT);
+    QmiEncodeTlv(&Encoder, 0x10, Endpoint, sizeof(Endpoint));
+    QmiEncodeTlv(&Encoder, 0x11, &Mux, sizeof(Mux));
+    Length = QmiEncodeEnd(&Encoder);
+    hr = QcImsDataRequest(Message, Length, QC_REQUEST_TIMEOUT_MS);
+    QcTrace("ims data: bind to endpoint %lu interface %lu mux %u: 0x%08lx\n", Endpoint[0], Endpoint[1], Mux, hr);
 
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_START_NETWORK);
     QmiEncodeTlv(&Encoder, QCRIL_WDS_TLV_PROFILE_3GPP, &QcImsData.Profile, sizeof(QcImsData.Profile));
