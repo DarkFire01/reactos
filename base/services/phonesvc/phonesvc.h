@@ -146,6 +146,23 @@ BOOL
 PhStoreDelete(
     _In_ DWORD MessageId);
 
+BOOL
+PhStoreGetAttachmentFolder(
+    _In_ DWORD MessageId,
+    _In_ BOOL Create,
+    _Out_writes_z_(Count) PWSTR Path,
+    _In_ DWORD Count);
+
+VOID
+PhStoreRemoveAttachments(
+    _In_ DWORD MessageId);
+
+DWORD
+PhStoreGetAttachments(
+    _In_ DWORD MessageId,
+    _Out_writes_to_(MaxAttachments, return) PPHONEOM_ATTACHMENT Attachments,
+    _In_ DWORD MaxAttachments);
+
 DWORD
 PhStoreEnumerate(
     _In_ DWORD FirstId,
