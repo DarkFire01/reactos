@@ -110,6 +110,9 @@ typedef struct
     ULONG MaxMappingsByteCount;
     ULONG MappingTableStride;
 
+    /* The device's cooling callbacks, for a thermal manager that asks for them */
+    KSDEVICE_THERMAL_DISPATCH ThermalDispatch;
+
 }KSIDEVICE_HEADER, *PKSIDEVICE_HEADER;
 
 typedef struct

@@ -1894,6 +1894,46 @@ KsDeviceRegisterAdapterObject(
 
 }
 
+/**
+ * @brief Registers a device's passive and active cooling callbacks.
+ * @return STATUS_INVALID_PARAMETER without a dispatch, STATUS_SUCCESS otherwise.
+ */
+KSDDKAPI
+NTSTATUS
+NTAPI
+KsDeviceRegisterThermalDispatch(
+    _In_ PKSDEVICE KsDevice,
+    _In_ PKSDEVICE_THERMAL_DISPATCH KsDeviceThermalDispatch)
+{
+    PKSIDEVICE_HEADER DeviceHeader;
+
+    if (KsDevice == NULL || KsDeviceThermalDispatch == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    DeviceHeader = CONTAINING_RECORD(KsDevice, KSIDEVICE_HEADER, KsDevice);
+    DeviceHeader->ThermalDispatch = *KsDeviceThermalDispatch;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Gives back an MDL from the cache a frame source was handed.
+ * @return STATUS_INVALID_PARAMETER, this KS hands out no cached MDLs, so none can come back.
+ */
+KSDDKAPI
+NTSTATUS
+NTAPI
+KsReleaseCachedMdl(
+    _In_ REFGUID Guid,
+    _In_ PMDL MdlAddr,
+    _In_ HANDLE ReleaseContext)
+{
+    UNREFERENCED_PARAMETER(Guid);
+    UNREFERENCED_PARAMETER(MdlAddr);
+    UNREFERENCED_PARAMETER(ReleaseContext);
+
+    return STATUS_INVALID_PARAMETER;
+}
+
 
 /*
     @implemented
