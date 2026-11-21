@@ -919,6 +919,15 @@ function(create_registry_hives)
         COMMAND native-mkhive -h:SYSTEM,SOFTWARE,DEFAULT,SAM,SECURITY -d:${CMAKE_BINARY_DIR}/boot/bootdata ${_livecd_inf_files}
         DEPENDS native-mkhive ${_livecd_inf_files})
 
+    # The hive sources go on the boot media beside registry.inf, so a servicing tool
+    # can build the hives again with more registry INFs after them
+    list(REMOVE_ITEM _livecd_inf_files ${_registry_inf})
+    add_cd_file(
+        FILE ${_livecd_inf_files} ${CMAKE_SOURCE_DIR}/boot/bootdata/setupreg.inf
+        DESTINATION reactos/hives
+        NO_CAB FOR bootcd)
+    list(INSERT _livecd_inf_files 0 ${_registry_inf})
+
     add_custom_target(livecd_hives
         DEPENDS ${CMAKE_BINARY_DIR}/boot/bootdata/system
                 ${CMAKE_BINARY_DIR}/boot/bootdata/software
