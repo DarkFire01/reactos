@@ -53,9 +53,10 @@
 /* Without these bits above bit 31 the ADSP reads host memory as its own stream 0x1820 */
 #define Q6_AUDIO_SID_MASK           0xF
 
-/* The IP accelerator streams, one exact entry each: the hypervisor drops a masked one */
-#define Q6_IPA_STREAM_ID            0x720
-#define Q6_IPA_STREAM_ID2           0x722
+/* The IP accelerator streams 0x720 and 0x722 are left to qcipa: with our entries in
+   place it never loads its firmware. The registry can still set them for a test */
+#define Q6_IPA_STREAM_ID            MAXULONG
+#define Q6_IPA_STREAM_ID2           MAXULONG
 
 typedef enum _Q6_VERSION_STATE
 {
