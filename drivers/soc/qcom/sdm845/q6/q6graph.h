@@ -31,6 +31,12 @@ NTAPI
 QcQ6GraphLinkClose(
     _In_ USHORT PortId);
 
+/* Whether the ADSP may be handed host buffer addresses, which needs its SMMU stream routed */
+VOID
+NTAPI
+QcQ6GraphAllowHostBuffers(
+    _In_ BOOLEAN Allow);
+
 /* Brings up the AFE/ADM/ASM playback graph over the shared pcm buffer */
 NTSTATUS
 NTAPI
