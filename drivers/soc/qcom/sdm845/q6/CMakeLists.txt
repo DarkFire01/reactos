@@ -10,6 +10,7 @@ add_library(qcomq6 MODULE
     q6.c
     q6graph.c
     q6voice.c
+    q6smmu.c
     qcomq6.rc
     ${CMAKE_CURRENT_BINARY_DIR}/qcomq6.def)
 

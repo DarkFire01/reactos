@@ -288,6 +288,17 @@ typedef struct _Q6_GRAPH
 
 static Q6_GRAPH Q6Graph;
 
+/* An ADSP read of a host address with no SMMU route for its stream resets the phone */
+static BOOLEAN Q6GraphHostBuffers;
+
+VOID
+NTAPI
+QcQ6GraphAllowHostBuffers(
+    _In_ BOOLEAN Allow)
+{
+    Q6GraphHostBuffers = Allow;
+}
+
 static
 VOID
 Q6GraphSubmitPeriod(
@@ -910,6 +921,12 @@ QcQ6PlaybackStart(
         return STATUS_INVALID_PARAMETER;
     if (!Channels || Channels > 2 || Bits != 16)
         return STATUS_NOT_SUPPORTED;
+
+    if (!Q6GraphHostBuffers)
+    {
+        QC_LOG("q6: playback refused, the adsp has no smmu route to host buffers yet");
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
 
     KeWaitForSingleObject(&Graph->Serial, Executive, KernelMode, FALSE, NULL);
     if (InterlockedCompareExchange(&Graph->Running, 0, 0))

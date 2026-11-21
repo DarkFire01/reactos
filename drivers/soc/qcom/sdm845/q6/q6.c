@@ -24,6 +24,7 @@
 #include <qcom/qcomdbg.h>
 
 #include "q6graph.h"
+#include "q6smmu.h"
 #include "q6voice.h"
 
 #define Q6_CORE_PROBE_TRIES         60
@@ -44,6 +45,10 @@
 
 /* I2S data line mask the speaker link used before the board key existed */
 #define Q6_DEFAULT_RX_LINE          2
+
+/* SDM845 apps SMMU, and the stream id the IORT gives the ADSP audio memory client */
+#define Q6_APPS_SMMU_BASE           0x15000000UL
+#define Q6_AUDIO_STREAM_ID          0x1821
 
 typedef enum _Q6_VERSION_STATE
 {
@@ -310,10 +315,14 @@ Q6CreateControlDevice(
     DECLARE_CONST_UNICODE_STRING(TxPortName, L"VoiceTxPort");
     DECLARE_CONST_UNICODE_STRING(RxLineName, L"QuatMi2sRxLine");
     DECLARE_CONST_UNICODE_STRING(TxLineName, L"QuatMi2sTxLine");
+    DECLARE_CONST_UNICODE_STRING(SmmuBaseName, L"AudioSmmuBase");
+    DECLARE_CONST_UNICODE_STRING(StreamIdName, L"AudioStreamId");
+    DECLARE_CONST_UNICODE_STRING(HostBuffersName, L"AllowUnroutedHostBuffers");
     PQ6_DEVICE Device = &Q6Global;
     WDFDEVICE WdfDevice;
     WDFKEY Key = NULL;
     ULONG RxPort, TxPort, RxLine, TxLine;
+    ULONG SmmuBase, StreamId, HostBuffers;
     HANDLE Thread;
     NTSTATUS Status;
 
@@ -348,8 +357,15 @@ Q6CreateControlDevice(
     TxLine = Q6ReadParameter(Key, &TxLineName, 0);
     RxPort = Q6ReadParameter(Key, &RxPortName, MAXUSHORT);
     TxPort = Q6ReadParameter(Key, &TxPortName, MAXUSHORT);
+    SmmuBase = Q6ReadParameter(Key, &SmmuBaseName, Q6_APPS_SMMU_BASE);
+    StreamId = Q6ReadParameter(Key, &StreamIdName, Q6_AUDIO_STREAM_ID);
+    HostBuffers = Q6ReadParameter(Key, &HostBuffersName, 0);
     if (Key)
         WdfRegistryClose(Key);
+
+    /* Read only: what the SMMU routes today, to pick an entry for the audio stream */
+    QcQ6SmmuSurvey(SmmuBase, (USHORT)StreamId);
+    QcQ6GraphAllowHostBuffers(HostBuffers != 0);
 
     QC_LOG("board: mi2s lines rx 0x%lx tx 0x%lx, voice ports rx 0x%lx tx 0x%lx",
            RxLine, TxLine, RxPort, TxPort);
