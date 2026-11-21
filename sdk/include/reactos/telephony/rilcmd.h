@@ -349,10 +349,12 @@ C_ASSERT(sizeof(RIL_CALL_RECORD) == 2340);
 /* WMRil packs the call list with a 2336 byte stride, the last DWORD of each entry but the final one is clobbered */
 #define RIL_CALLLIST_STRIDE         2336
 
-/* Host interface of the OEM RIL library */
+/* Host interface of the OEM RIL library. One RIL_Open(Driver, 0, 0) per modem serves every client. */
+#define RIL_HOST_VERSION            1
+
 typedef DWORD (WINAPI *PFN_RIL_VERSION)(DWORD MinVersion, DWORD MaxVersion);
 typedef DWORD (WINAPI *PFN_RIL_INIT)(DWORD Index);
-typedef DWORD (WINAPI *PFN_RIL_OPEN)(DWORD Driver);
+typedef DWORD (WINAPI *PFN_RIL_OPEN)(DWORD Driver, DWORD Access, DWORD Share);
 typedef BOOL (WINAPI *PFN_RIL_CLOSE)(DWORD Client);
 typedef BOOL (WINAPI *PFN_RIL_IOCONTROL)(DWORD Client,
                                          DWORD Code,
@@ -362,7 +364,7 @@ typedef BOOL (WINAPI *PFN_RIL_IOCONTROL)(DWORD Client,
                                          DWORD OutSize,
                                          PDWORD ActualOut);
 
-/* RilCmdGetNextNotification output header, version 1 and version 2 of the host interface */
+/* RilCmdGetNextNotification output header. A Code without the notification bit is the result type for CommandId. */
 typedef struct _RIL_HOST_QUEUED_V1
 {
     DWORD Size;
@@ -372,6 +374,7 @@ typedef struct _RIL_HOST_QUEUED_V1
     DWORD DataSize;
 } RIL_HOST_QUEUED_V1, *PRIL_HOST_QUEUED_V1;
 
+/* Not negotiated by the host, kept for libraries that still build it */
 typedef struct _RIL_HOST_QUEUED_V2
 {
     DWORD Size;
