@@ -96,6 +96,9 @@ static const PCSTR QcServiceNames[QcSvcCount] =
     "IMSA"
 };
 
+/* Unused services already logged, one bit per service id */
+static UCHAR QcServicesSeen[64];
+
 PCSTR
 QcServiceName(
     _In_ QC_SVC Which)
@@ -510,11 +513,12 @@ QcServerEvent(
 
         if (Which == QcSvcCount)
         {
-            /* An IMS server on another interface version would otherwise go unnoticed */
-            if (Event->ServiceId == QC_SERVICE_IMSS || Event->ServiceId == QC_SERVICE_IMSP ||
-                Event->ServiceId == QC_SERVICE_IMSA)
+            /* Every other server the modem offers, once each, to see what it can do */
+            if (Event->ServiceId < 8 * sizeof(QcServicesSeen) &&
+                !(QcServicesSeen[Event->ServiceId / 8] & (1 << (Event->ServiceId % 8))))
             {
-                QcTrace("router: ims service 0x%lx instance 0x%lx up at %lu:%lu, not matched\n",
+                QcServicesSeen[Event->ServiceId / 8] |= (UCHAR)(1 << (Event->ServiceId % 8));
+                QcTrace("router: unused service 0x%lx instance 0x%lx up at %lu:%lu\n",
                         Event->ServiceId, Event->Instance, Event->Addr.Node, Event->Addr.Port);
             }
             return;
