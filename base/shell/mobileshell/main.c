@@ -11,7 +11,7 @@ HINSTANCE MsInstance;
 HWND MsLauncherWindow;
 HWND MsBarWindow;
 
-#define MS_TILE_COUNT       6
+#define MS_TILE_COUNT       7
 #define MS_TILE_FIRST_ID    1000
 #define MS_EXPLORER_ID      1100
 #define MS_CLOCK_TIMER      1
@@ -30,6 +30,7 @@ static MS_TILE MsTiles[MS_TILE_COUNT] =
     { IDS_DEVICE_MANAGER, L"devmgmt.exe", NULL, NULL },
     { IDS_PHONE_TEST, L"phonetest.exe", NULL, NULL },
     { IDS_MESSAGES, L"messages.exe", NULL, NULL },
+    { IDS_CLOCK, L"clock.exe", NULL, NULL },
     { IDS_SETTINGS, L"settings.exe", NULL, NULL },
     { IDS_BROWSER, L"webbrowser.exe", NULL, NULL },
     { IDS_COMMAND_PROMPT, L"cmd.exe", NULL, NULL },
@@ -823,10 +824,10 @@ wWinMain(
     MsScreenHeight = GetSystemMetrics(SM_CYSCREEN);
     MsBarHeight = max(48, min(MsScreenWidth, MsScreenHeight) / 7);
 
-    /* Two tiles across a portrait screen, three across a landscape one */
+    /* Two tiles across a portrait screen, small enough for four rows above the bar */
     MsTileSize = (MsScreenWidth > MsScreenHeight) ?
                  min(MsScreenWidth * 6 / 25, (MsScreenHeight - MsBarHeight) / 2) :
-                 MsScreenWidth * 13 / 32;
+                 min(MsScreenWidth * 13 / 32, (MsScreenHeight - MsBarHeight) * 2 / 11);
 
     if (!MsRegisterClasses())
         return 1;
