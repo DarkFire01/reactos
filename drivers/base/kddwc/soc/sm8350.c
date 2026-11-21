@@ -11,54 +11,61 @@
 #define SM8350_HSPHY_BASE               0x088E3000ULL
 
 /* Clock controller offsets */
+#define SM8350_GPLL0_MODE               0x00000
+#define SM8350_APCS_GPLL_VOTE           0x52018
+#define SM8350_APCS_GPLL0_VOTE          0x00000001
+#define SM8350_USB30_PRIM_BCR           0xF000
 #define SM8350_USB30_PRIM_GDSCR         0xF004
+#define SM8350_USB30_MASTER_CMD_RCGR    0xF020
+#define SM8350_USB30_MOCK_UTMI_CMD_RCGR 0xF038
+#define SM8350_USB30_MOCK_UTMI_POSTDIV  0xF050
+#define SM8350_CFG_NOC_USB3_CBCR        0xF07C
 #define SM8350_USB30_MASTER_CBCR        0xF010
+#define SM8350_AGGRE_USB3_CBCR          0xF080
 #define SM8350_USB30_SLEEP_CBCR         0xF018
 #define SM8350_USB30_MOCK_UTMI_CBCR     0xF01C
-#define SM8350_CFG_NOC_USB3_CBCR        0xF07C
-#define SM8350_AGGRE_USB3_CBCR          0xF080
 #define SM8350_QUSB2PHY_PRIM_BCR        0x12000
 
+/* GPLL0 main divided by 3 for a 200 MHz master, the crystal undivided for mock UTMI */
+#define SM8350_MASTER_200MHZ            0x105
+#define SM8350_MOCK_UTMI_19_2MHZ        0x001
+
+/* Branches the controller and its path to memory need, in the order they are enabled */
 static const ULONG Sm8350Branches[] =
 {
+    SM8350_CFG_NOC_USB3_CBCR,
     SM8350_USB30_MASTER_CBCR,
+    SM8350_AGGRE_USB3_CBCR,
     SM8350_USB30_SLEEP_CBCR,
     SM8350_USB30_MOCK_UTMI_CBCR
 };
 
-/* Voted branches, enabled through the vote register and only checked here */
-static const ULONG Sm8350BusBranches[] =
+static const KDDWC_CLOCK_PLAN Sm8350Clocks =
 {
-    SM8350_CFG_NOC_USB3_CBCR,
-    SM8350_AGGRE_USB3_CBCR
+    KDDWC_GCC_BASE,
+    SM8350_GPLL0_MODE,
+    SM8350_APCS_GPLL_VOTE,
+    SM8350_APCS_GPLL0_VOTE,
+    SM8350_USB30_PRIM_GDSCR,
+    SM8350_USB30_MASTER_CMD_RCGR,
+    SM8350_MASTER_200MHZ,
+    SM8350_USB30_MOCK_UTMI_CMD_RCGR,
+    SM8350_MOCK_UTMI_19_2MHZ,
+    SM8350_USB30_MOCK_UTMI_POSTDIV,
+    SM8350_USB30_PRIM_BCR,
+    Sm8350Branches,
+    RTL_NUMBER_OF(Sm8350Branches)
 };
 
+/* Firmware can leave the roots parked on the crystal and the branches off at exit */
 static
 BOOLEAN
 NTAPI
 Sm8350PowerUp(
     _In_ const KDDWC_PLATFORM* Platform)
 {
-    ULONG i;
-
     UNREFERENCED_PARAMETER(Platform);
-
-    if (!KdDwcPowerDomainOn(KDDWC_GCC_BASE + SM8350_USB30_PRIM_GDSCR))
-        return FALSE;
-
-    for (i = 0; i < RTL_NUMBER_OF(Sm8350Branches); i++)
-    {
-        if (!KdDwcClockOn(KDDWC_GCC_BASE + Sm8350Branches[i]))
-            return FALSE;
-    }
-
-    for (i = 0; i < RTL_NUMBER_OF(Sm8350BusBranches); i++)
-    {
-        if (!KdDwcVotedClockIsOn(KDDWC_GCC_BASE + Sm8350BusBranches[i]))
-            return FALSE;
-    }
-
-    return TRUE;
+    return KdDwcRunClockPlan(&Sm8350Clocks);
 }
 
 /* Runs after the core has stopped suspending its PHY, as the core driver orders it */
@@ -89,6 +96,14 @@ static const KDDWC_BUS_NODE Sm8350BusNodes[] =
     KDDWC_REGISTER_NODE("CN1", 4, 1)
 };
 
+/* The supplies of the high speed PHY on the HDK and the MTP */
+static const KDDWC_SUPPLY Sm8350Supplies[] =
+{
+    { "ldob5", 880 },
+    { "ldoc1", 1800 },
+    { "ldob2", 3072 }
+};
+
 static const KDDWC_RPMH Sm8350Rpmh =
 {
     0x18220000ULL,
@@ -98,11 +113,10 @@ static const KDDWC_RPMH Sm8350Rpmh =
     KDDWC_CMD_DB_BYTES,
     Sm8350BusNodes,
     RTL_NUMBER_OF(Sm8350BusNodes),
-    NULL,
-    0
+    Sm8350Supplies,
+    RTL_NUMBER_OF(Sm8350Supplies)
 };
 
-/* Reads only the clock controller, so it can run whatever state the controller is in */
 static
 BOOLEAN
 NTAPI
@@ -110,13 +124,13 @@ Sm8350IsPowered(
     _In_ const KDDWC_PLATFORM* Platform)
 {
     UNREFERENCED_PARAMETER(Platform);
-    return KdDwcClocksRunning(KDDWC_GCC_BASE, SM8350_USB30_PRIM_GDSCR, Sm8350Branches, RTL_NUMBER_OF(Sm8350Branches));
+    return KdDwcClockPlanRunning(&Sm8350Clocks);
 }
 
 const KDDWC_PLATFORM KdDwcPlatformSm8350 =
 {
     "SM8350",
-    { "SM8350", "SDM8350", NULL, NULL },
+    { "SM8350", "SDM8350", NULL, NULL, NULL },
     SM8350_CORE_BASE,
     Sm8350PowerUp,
     0,

@@ -74,6 +74,46 @@ typedef struct _KDDWC_SUPPLY
     ULONG Millivolts;
 } KDDWC_SUPPLY;
 
+/** How a SoC brings its controller's clocks up, offsets relative to the clock controller. */
+typedef struct _KDDWC_CLOCK_PLAN
+{
+    ULONG64 GccBase;
+
+    /* GPLL0 mode register, and the application processor's vote register and bit, 0 vote for none */
+    ULONG Gpll0Mode;
+    ULONG Gpll0Vote;
+    ULONG Gpll0VoteBit;
+
+    ULONG PowerDomain;
+
+    /* Roots and the source and divider they get, 0 for a root left as firmware set it */
+    ULONG MasterRcgr;
+    ULONG MasterConfig;
+    ULONG MockUtmiRcgr;
+    ULONG MockUtmiConfig;
+
+    /* Divider after the mock UTMI root, set to divide by one, 0 for none */
+    ULONG MockUtmiPostDiv;
+
+    /* Block reset pulsed while the branches are off, 0 for none */
+    ULONG Bcr;
+
+    /* Branches with their enable bit in their own register, in the order they are enabled */
+    const ULONG* Branches;
+    ULONG BranchCount;
+} KDDWC_CLOCK_PLAN;
+
+/** QUSB2 transmit current trim programmed in a fuse. */
+typedef struct _KDDWC_QUSB2_TRIM
+{
+    ULONG64 Fuse;
+    UCHAR Shift;
+    UCHAR Mask;
+
+    /* The PHY register whose high nibble takes the trim */
+    USHORT Tune;
+} KDDWC_QUSB2_TRIM;
+
 /** Where a version 7 SPMI arbiter is, for PMIC peripherals on the USB path. */
 typedef struct _KDDWC_SPMI
 {
@@ -472,7 +512,17 @@ KdDwcStartQusb2(
     _In_ ULONG Count,
     _In_reads_opt_(TuningCount) const KDDWC_REG_MODIFY* Tuning,
     _In_ ULONG TuningCount,
-    _In_ ULONG64 TrimFuse);
+    _In_opt_ const KDDWC_QUSB2_TRIM* Trim);
+
+BOOLEAN
+NTAPI
+KdDwcRunClockPlan(
+    _In_ const KDDWC_CLOCK_PLAN* Plan);
+
+BOOLEAN
+NTAPI
+KdDwcClockPlanRunning(
+    _In_ const KDDWC_CLOCK_PLAN* Plan);
 
 BOOLEAN
 NTAPI

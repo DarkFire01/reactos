@@ -28,11 +28,11 @@
 #define QUSB2_PLL_STATUS_CORE_READY     0x01
 #define QUSB2_POWERDOWN                 0x0210
 #define QUSB2_POWERDOWN_POWER_DOWN      0x01
-#define QUSB2_TUNE1                     0x0240
 #define QUSB2_TUNE1_HSTX_MASK           0xF0
 #define QUSB2_TUNE1_HSTX_SHIFT          4
-#define QUSB2_TRIM_SHIFT                1
-#define QUSB2_TRIM_MASK                 0x0F
+
+/* Mock UTMI post divider field, 0 divides by one */
+#define GCC_POSTDIV_MASK                0x0000000F
 
 /* Synopsys 7 nm and 5 nm high speed PHY */
 #define SNPS_UTMI_CTRL0                 0x3C
@@ -498,6 +498,64 @@ KdDwcPulseReset(
     KdDwcTrace("reset 0x%I64x released\n", Bcr);
 }
 
+/**
+ * @brief Brings a controller's clocks up the way the clock driver does after firmware let them go.
+ *
+ * GPLL0 is voted on, the power domain turned on, the roots set to their rates,
+ * the block reset while its branches are still off, then each branch enabled.
+ */
+BOOLEAN
+NTAPI
+KdDwcRunClockPlan(
+    _In_ const KDDWC_CLOCK_PLAN* Plan)
+{
+    PUCHAR Register;
+    ULONG i;
+
+    if (Plan->Gpll0Vote != 0 &&
+        !KdDwcPllOn(Plan->GccBase + Plan->Gpll0Mode, Plan->GccBase + Plan->Gpll0Vote, Plan->Gpll0VoteBit))
+    {
+        return FALSE;
+    }
+
+    if (!KdDwcPowerDomainOn(Plan->GccBase + Plan->PowerDomain))
+        return FALSE;
+
+    if (Plan->MasterRcgr != 0 && !KdDwcConfigureRoot(Plan->GccBase + Plan->MasterRcgr, Plan->MasterConfig))
+        return FALSE;
+
+    if (Plan->MockUtmiRcgr != 0 && !KdDwcConfigureRoot(Plan->GccBase + Plan->MockUtmiRcgr, Plan->MockUtmiConfig))
+        return FALSE;
+
+    if (Plan->MockUtmiPostDiv != 0)
+    {
+        Register = KdDwcMapRegister(Plan->GccBase + Plan->MockUtmiPostDiv);
+        if (Register == NULL)
+            return FALSE;
+        KdDwcModify(Register, 0, GCC_POSTDIV_MASK, 0);
+    }
+
+    if (Plan->Bcr != 0)
+        KdDwcPulseReset(Plan->GccBase + Plan->Bcr);
+
+    for (i = 0; i < Plan->BranchCount; i++)
+    {
+        if (!KdDwcClockOn(Plan->GccBase + Plan->Branches[i]))
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+/* Reads only the clock controller, so it can run whatever state the controller is in */
+BOOLEAN
+NTAPI
+KdDwcClockPlanRunning(
+    _In_ const KDDWC_CLOCK_PLAN* Plan)
+{
+    return KdDwcClocksRunning(Plan->GccBase, Plan->PowerDomain, Plan->Branches, Plan->BranchCount);
+}
+
 /* QUSB2 PHY ******************************************************************/
 
 BOOLEAN
@@ -540,8 +598,8 @@ KdDwcQusb2IsRunning(
  * @param[in] TuningCount
  * Number of tuning changes.
  *
- * @param[in] TrimFuse
- * Physical address of the fuse byte that holds the transmit current trim, 0 for none.
+ * @param[in] Trim
+ * Where the fused transmit current trim is and which register takes it, NULL for none.
  */
 BOOLEAN
 NTAPI
@@ -553,11 +611,11 @@ KdDwcStartQusb2(
     _In_ ULONG Count,
     _In_reads_opt_(TuningCount) const KDDWC_REG_MODIFY* Tuning,
     _In_ ULONG TuningCount,
-    _In_ ULONG64 TrimFuse)
+    _In_opt_ const KDDWC_QUSB2_TRIM* Trim)
 {
     PUCHAR Base = KdDwcMapRegister(Phy);
     PUCHAR Fuse;
-    ULONG Trim;
+    ULONG Value;
     ULONG i;
 
     if (Base == NULL)
@@ -575,13 +633,13 @@ KdDwcStartQusb2(
         KdDwcModify(Base, Tuning[i].Offset, Tuning[i].Clear, Tuning[i].Set);
 
     /* The factory trim wins over the board's transmit current when it was programmed */
-    Fuse = (TrimFuse != 0) ? KdDwcMapRegister(TrimFuse) : NULL;
+    Fuse = (Trim != NULL) ? KdDwcMapRegister(Trim->Fuse) : NULL;
     if (Fuse != NULL)
     {
-        Trim = (READ_REGISTER_UCHAR(Fuse) >> QUSB2_TRIM_SHIFT) & QUSB2_TRIM_MASK;
-        KdDwcTrace("QUSB2 transmit trim fuse %lu\n", Trim);
-        if (Trim != 0)
-            KdDwcModify(Base, QUSB2_TUNE1, QUSB2_TUNE1_HSTX_MASK, Trim << QUSB2_TUNE1_HSTX_SHIFT);
+        Value = (READ_REGISTER_UCHAR(Fuse) >> Trim->Shift) & Trim->Mask;
+        KdDwcTrace("QUSB2 transmit trim fuse %lu\n", Value);
+        if (Value != 0)
+            KdDwcModify(Base, Trim->Tune, QUSB2_TUNE1_HSTX_MASK, Value << QUSB2_TUNE1_HSTX_SHIFT);
     }
 
     KdDwcTrace("QUSB2 programmed, powering up\n");
