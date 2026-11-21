@@ -1,13 +1,14 @@
 remove_definitions(-D_WIN32_WINNT=0x502)
 
 add_definitions(
-    -D_WIN32_WINNT=0x602
-    -DNTDDI_VERSION=0x06020000)
+    -D_WIN32_WINNT=0xA00
+    -DNTDDI_VERSION=0x0A000000)
 
 add_library(qcomaudio MODULE
     adapter.cpp
     wave.cpp
     topo.cpp
+    telephony.cpp
     guid.cpp
     qcomaudio.rc)
 
