@@ -7,13 +7,15 @@
 
 #include "phonesvc.h"
 #include "mmspdu.h"
+#include <iphlpapi.h>
 
 #define NDEBUG
 #include <debug.h>
 
 #define PH_MMS_ATTEMPTS             3
 #define PH_MMS_RETRY_MS             10000
-#define PH_MMS_DATA_SETTLE_MS       3000
+#define PH_MMS_NETWORK_WAIT_MS      30000
+#define PH_MMS_NETWORK_POLL_MS      500
 #define PH_MMS_STOP_WAIT_MS         5000
 #define PH_MMS_RECENT               16
 #define PH_MMS_MAX_SEND_FILE        (1024 * 1024)
@@ -135,6 +137,72 @@ PhMmsPause(
     return WaitForSingleObject(PhStopEvent, Milliseconds) == WAIT_OBJECT_0;
 }
 
+/* TRUE once an adapter has an address and a gateway and the resolver has a server */
+static
+BOOL
+PhMmsNetworkReady(VOID)
+{
+    PIP_ADAPTER_INFO Adapters, Adapter;
+    PFIXED_INFO Params;
+    ULONG Size = 0;
+    BOOL Routed = FALSE, Named = FALSE;
+
+    if (GetAdaptersInfo(NULL, &Size) != ERROR_BUFFER_OVERFLOW || !Size)
+        return FALSE;
+    Adapters = HeapAlloc(GetProcessHeap(), 0, Size);
+    if (!Adapters)
+        return FALSE;
+    if (GetAdaptersInfo(Adapters, &Size) == NO_ERROR)
+    {
+        for (Adapter = Adapters; Adapter && !Routed; Adapter = Adapter->Next)
+        {
+            Routed = strcmp(Adapter->IpAddressList.IpAddress.String, "0.0.0.0") != 0 &&
+                     Adapter->GatewayList.IpAddress.String[0] &&
+                     strcmp(Adapter->GatewayList.IpAddress.String, "0.0.0.0") != 0;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, Adapters);
+    if (!Routed)
+        return FALSE;
+
+    Size = 0;
+    if (GetNetworkParams(NULL, &Size) != ERROR_BUFFER_OVERFLOW || !Size)
+        return FALSE;
+    Params = HeapAlloc(GetProcessHeap(), 0, Size);
+    if (!Params)
+        return FALSE;
+    if (GetNetworkParams(Params, &Size) == NO_ERROR)
+    {
+        Named = Params->DnsServerList.IpAddress.String[0] &&
+                strcmp(Params->DnsServerList.IpAddress.String, "0.0.0.0") != 0;
+    }
+    HeapFree(GetProcessHeap(), 0, Params);
+    return Named;
+}
+
+/* TCP/IP and DHCP may still be coming up on a fresh boot, so wait for them */
+static
+BOOL
+PhMmsWaitForNetwork(VOID)
+{
+    DWORD Waited;
+
+    for (Waited = 0; Waited < PH_MMS_NETWORK_WAIT_MS; Waited += PH_MMS_NETWORK_POLL_MS)
+    {
+        if (PhMmsNetworkReady())
+        {
+            if (Waited)
+                DPRINT1("MMS data: network ready after %lu ms\n", Waited);
+            return TRUE;
+        }
+        if (PhMmsPause(PH_MMS_NETWORK_POLL_MS))
+            return FALSE;
+    }
+
+    DPRINT1("MMS data: no address or DNS server after %lu ms, trying anyway\n", Waited);
+    return TRUE;
+}
+
 static
 BOOL
 PhMmsBringUpData(
@@ -147,7 +215,7 @@ PhMmsBringUpData(
 
     hr = PhConnectData(PHONEOM_DATA_QUERY, &Status);
     if (SUCCEEDED(hr) && Status.Connected)
-        return TRUE;
+        return PhMmsWaitForNetwork();
 
     DPRINT1("MMS data: session is down, connecting\n");
     hr = PhConnectData(PHONEOM_DATA_CONNECT, &Status);
@@ -157,9 +225,8 @@ PhMmsBringUpData(
         return FALSE;
     }
 
-    /* Give the adapter a moment to get its address and routes */
     *Raised = TRUE;
-    return !PhMmsPause(PH_MMS_DATA_SETTLE_MS);
+    return PhMmsWaitForNetwork();
 }
 
 /* Drops a session we raised ourselves unless the user keeps data on */
