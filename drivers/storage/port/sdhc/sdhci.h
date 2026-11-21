@@ -22,6 +22,8 @@
 #define SDHCI_BUFFER_DATA_PORT     0x20
 #define SDHCI_PRESENT_STATE        0x24
 #define SDHCI_HOST_CONTROL1        0x28
+#define SDHCI_CTRL_CD_TEST_LEVEL   0x40
+#define SDHCI_CTRL_CD_SIGNAL_SELECT 0x80
 #define SDHCI_POWER_CONTROL        0x29
 #define SDHCI_BLOCK_GAP_CONTROL    0x2A
 #define SDHCI_CLOCK_CONTROL        0x2C
@@ -111,6 +113,9 @@ typedef struct _SDHCI_EXTENSION
     ULONG DataRemaining;
     BOOLEAN DataRead;
     BOOLEAN CrashdumpMode;
+
+    /* The slot's card detect is not wired to the controller, a card is taken as present */
+    BOOLEAN ForceCardPresent;
     ULONG BaseClockKhz;
     UCHAR SpecVersion;
 } SDHCI_EXTENSION, *PSDHCI_EXTENSION;
