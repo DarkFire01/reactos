@@ -105,6 +105,25 @@ typedef struct _RIL_SIGNAL_QUALITY
 
 C_ASSERT(sizeof(RIL_SIGNAL_QUALITY) == 28);
 
+/* RIL_NITZ_INFO.Params */
+#define RIL_NITZPARAM_SYSTEMTIME            0x00000001
+#define RIL_NITZPARAM_TIMEZONEOFFSET        0x00000002
+#define RIL_NITZPARAM_DAYLIGHTSAVINGOFFSET  0x00000004
+
+/* Network time, the Windows RIL layout. The zone offset is local minus UTC with daylight
+   saving included, the daylight saving part is reported on its own as well. */
+typedef struct _RIL_NITZ_INFO
+{
+    DWORD Size;
+    DWORD Params;
+    DWORD NotificationCode;
+    LONG TimeZoneOffsetMinutes;
+    LONG DaylightSavingOffsetMinutes;
+    SYSTEMTIME SysTime;
+} RIL_NITZ_INFO, *PRIL_NITZ_INFO;
+
+C_ASSERT(sizeof(RIL_NITZ_INFO) == 36);
+
 /* RIL_GetDeviceInfo classes, each answered as one UTF-16 string */
 #define RIL_DEVICEINFO_MANUFACTURER 1
 #define RIL_DEVICEINFO_MODEL        2
