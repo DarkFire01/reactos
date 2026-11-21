@@ -318,11 +318,13 @@ Q6CreateControlDevice(
     DECLARE_CONST_UNICODE_STRING(SmmuBaseName, L"AudioSmmuBase");
     DECLARE_CONST_UNICODE_STRING(StreamIdName, L"AudioStreamId");
     DECLARE_CONST_UNICODE_STRING(HostBuffersName, L"AllowUnroutedHostBuffers");
+    DECLARE_CONST_UNICODE_STRING(RouteName, L"RouteAudioStream");
     PQ6_DEVICE Device = &Q6Global;
     WDFDEVICE WdfDevice;
     WDFKEY Key = NULL;
     ULONG RxPort, TxPort, RxLine, TxLine;
-    ULONG SmmuBase, StreamId, HostBuffers;
+    ULONG SmmuBase, StreamId, HostBuffers, Route;
+    BOOLEAN Routed;
     HANDLE Thread;
     NTSTATUS Status;
 
@@ -360,12 +362,13 @@ Q6CreateControlDevice(
     SmmuBase = Q6ReadParameter(Key, &SmmuBaseName, Q6_APPS_SMMU_BASE);
     StreamId = Q6ReadParameter(Key, &StreamIdName, Q6_AUDIO_STREAM_ID);
     HostBuffers = Q6ReadParameter(Key, &HostBuffersName, 0);
+    Route = Q6ReadParameter(Key, &RouteName, 1);
     if (Key)
         WdfRegistryClose(Key);
 
-    /* Read only: what the SMMU routes today, to pick an entry for the audio stream */
-    QcQ6SmmuSurvey(SmmuBase, (USHORT)StreamId);
-    QcQ6GraphAllowHostBuffers(HostBuffers != 0);
+    /* Host buffer addresses only go to the dsp once its stream reaches memory */
+    Routed = QcQ6SmmuRouteStream(SmmuBase, (USHORT)StreamId, Route != 0);
+    QcQ6GraphAllowHostBuffers(Routed || HostBuffers != 0);
 
     QC_LOG("board: mi2s lines rx 0x%lx tx 0x%lx, voice ports rx 0x%lx tx 0x%lx",
            RxLine, TxLine, RxPort, TxPort);
