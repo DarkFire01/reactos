@@ -83,7 +83,18 @@ SdhciReset(
             /* RESET_ALL clears the interrupt enable registers, so reinstate
                them or the status bits never latch. */
             if (Mask & SDHCI_RESET_ALL)
+            {
                 SdhciEnableInterrupts(Extension);
+
+                /* A card detect wired elsewhere leaves the line idle, so the test level reports the card instead */
+                if (Extension->ForceCardPresent)
+                {
+                    SdhciWriteUchar(Extension,
+                                    SDHCI_HOST_CONTROL1,
+                                    SdhciReadUchar(Extension, SDHCI_HOST_CONTROL1) |
+                                    SDHCI_CTRL_CD_TEST_LEVEL | SDHCI_CTRL_CD_SIGNAL_SELECT);
+                }
+            }
             return STATUS_SUCCESS;
         }
 
@@ -303,6 +314,9 @@ SdhciGetCardDetectState(
     _In_ PVOID Extension)
 {
     PSDHCI_EXTENSION Ext = Extension;
+
+    if (Ext->ForceCardPresent)
+        return TRUE;
 
     return (SdhciReadUlong(Ext, SDHCI_PRESENT_STATE) & SDHCI_STATE_CARD_INSERTED) ? TRUE : FALSE;
 }
