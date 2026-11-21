@@ -474,6 +474,26 @@ QcNasPlmnName(
     USHORT ValueLen;
     BOOL Have = FALSE;
 
+    /* The raw records, until every network's encoding is known to decode right */
+    if (QmiFindTlv(Message, Length, QCRIL_NAS_TLV_PLMN_LONG, &Value, &ValueLen) && ValueLen >= 4)
+    {
+        const UCHAR *Raw = Value;
+        QcTrace("plmn long name: encoding %u ci %u spare %u length %u bytes %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                Raw[0], Raw[1], Raw[2], Raw[3],
+                ValueLen > 4 ? Raw[4] : 0, ValueLen > 5 ? Raw[5] : 0, ValueLen > 6 ? Raw[6] : 0,
+                ValueLen > 7 ? Raw[7] : 0, ValueLen > 8 ? Raw[8] : 0, ValueLen > 9 ? Raw[9] : 0,
+                ValueLen > 10 ? Raw[10] : 0, ValueLen > 11 ? Raw[11] : 0);
+    }
+    if (QmiFindTlv(Message, Length, QCRIL_NAS_TLV_PLMN_SHORT, &Value, &ValueLen) && ValueLen >= 4)
+    {
+        const UCHAR *Raw = Value;
+        QcTrace("plmn short name: encoding %u ci %u spare %u length %u bytes %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                Raw[0], Raw[1], Raw[2], Raw[3],
+                ValueLen > 4 ? Raw[4] : 0, ValueLen > 5 ? Raw[5] : 0, ValueLen > 6 ? Raw[6] : 0,
+                ValueLen > 7 ? Raw[7] : 0, ValueLen > 8 ? Raw[8] : 0, ValueLen > 9 ? Raw[9] : 0,
+                ValueLen > 10 ? Raw[10] : 0, ValueLen > 11 ? Raw[11] : 0);
+    }
+
     if (QmiFindTlv(Message, Length, QCRIL_NAS_TLV_PLMN_LONG, &Value, &ValueLen))
         Have = QcNasDecodeName(Value, ValueLen, 3, Name, sizeof(Name));
     if (!Have && QmiFindTlv(Message, Length, QCRIL_NAS_TLV_PLMN_SHORT, &Value, &ValueLen))
