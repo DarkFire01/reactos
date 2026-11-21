@@ -1,0 +1,5 @@
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION    "ReactOS Kernel Debugger ChipIdea USB Transport"
+#define REACTOS_STR_INTERNAL_NAME       "kdchipidea"
+#define REACTOS_STR_ORIGINAL_FILENAME   "kdchipidea.dll"
+#include <reactos/version.rc>
