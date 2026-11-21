@@ -727,8 +727,14 @@ RilpReadSignaled(
             Keep = RilpGrowReadBufferLocked(Client);
             goto Done;
 
-        case ERROR_NOT_READY:
         case ERROR_OPERATION_ABORTED:
+            /* Our own close clears the handle first, so this is the issuing pool thread exiting */
+            Client->ReadOutstanding = FALSE;
+            RilpTrace("client %lu: read cancelled by its thread exiting, reissuing\n", Client->Index);
+            Keep = RilpIssueReadLocked(Client);
+            goto Done;
+
+        case ERROR_NOT_READY:
         case ERROR_CANCELLED:
             Client->ReadOutstanding = FALSE;
             RilpTrace("client %lu: read from the broker ended with %lu\n", Client->Index, Error);
