@@ -117,7 +117,13 @@ typedef enum _MIB_IF_TABLE_LEVEL {
     MibIfTableNormalWithoutStatistics
 } MIB_IF_TABLE_LEVEL, *PMIB_IF_TABLE_LEVEL;
 
+typedef enum _MIB_IF_ENTRY_LEVEL {
+    MibIfEntryNormal = 0,
+    MibIfEntryNormalWithoutStatistics = 2
+} MIB_IF_ENTRY_LEVEL, *PMIB_IF_ENTRY_LEVEL;
+
 NETIOAPI_API GetIfEntry2(IN OUT PMIB_IF_ROW2 Row);
+NETIOAPI_API GetIfEntry2Ex(IN MIB_IF_ENTRY_LEVEL Level, IN OUT PMIB_IF_ROW2 Row);
 NETIOAPI_API GetIfTable2(OUT PMIB_IF_TABLE2 *Table);
 NETIOAPI_API GetIfTable2Ex(IN MIB_IF_TABLE_LEVEL Level, OUT PMIB_IF_TABLE2 *Table);
 

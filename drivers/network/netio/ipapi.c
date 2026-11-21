@@ -518,6 +518,35 @@ GetIfEntry2(
     return Status;
 }
 
+/**
+ * @brief Reads one interface's row, with or without its traffic statistics.
+ *
+ * @param[in] Level
+ * MibIfEntryNormal for the whole row, MibIfEntryNormalWithoutStatistics to leave the counters zero.
+ */
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NETIOAPI_API
+GetIfEntry2Ex(
+    _In_ MIB_IF_ENTRY_LEVEL Level,
+    _Inout_ PMIB_IF_ROW2 Row)
+{
+    NTSTATUS Status;
+
+    if (Level != MibIfEntryNormal && Level != MibIfEntryNormalWithoutStatistics)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = GetIfEntry2(Row);
+    if (!NT_SUCCESS(Status) || Level == MibIfEntryNormal)
+        return Status;
+
+    Row->InOctets = Row->InUcastPkts = Row->InNUcastPkts = Row->InDiscards = 0;
+    Row->InErrors = Row->InUnknownProtos = Row->InUcastOctets = Row->InMulticastOctets = 0;
+    Row->InBroadcastOctets = Row->OutOctets = Row->OutUcastPkts = Row->OutNUcastPkts = 0;
+    Row->OutDiscards = Row->OutErrors = Row->OutUcastOctets = Row->OutMulticastOctets = 0;
+    Row->OutBroadcastOctets = Row->OutQLen = 0;
+    return STATUS_SUCCESS;
+}
+
 static
 BOOLEAN
 NetiopAddressListed(
