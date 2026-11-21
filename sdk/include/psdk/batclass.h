@@ -351,6 +351,35 @@ NTAPI
 BatteryClassStatusNotify(
   _In_ PVOID ClassData);
 
+typedef enum BATTERY_CHARGING_STATE {
+  BatteryNoPowerSupply = 0,
+  BatteryInadequatePowerSupply = 1,
+  BatteryAdequatePowerSupply = 2
+} BATTERY_CHARGING_STATE;
+
+typedef struct _BATTERY_NON_CATASTROPHIC_EVENT {
+  ULONG BatteryChargeLimitState : 1;
+  ULONG BatteryChargingState : 2;
+  ULONG Reserved : 29;
+} BATTERY_NON_CATASTROPHIC_EVENT, *PBATTERY_NON_CATASTROPHIC_EVENT;
+
+typedef struct _BATTERY_MINIPORT_UPDATE_DATA {
+  ULONG Version;
+  BATTERY_NON_CATASTROPHIC_EVENT NotifyEvent;
+} BATTERY_MINIPORT_UPDATE_DATA, *PBATTERY_MINIPORT_UPDATE_DATA;
+
+#define BATTERY_MINIPORT_UPDATE_DATA_VER_1 0x00000001
+#define BATTERY_MINIPORT_UPDATE_DATA_VER_2 0x00000002
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Check_return_
+BCLASSAPI
+NTSTATUS
+NTAPI
+BatteryClassUpdateData(
+  _In_ PVOID ClassData,
+  _In_ PBATTERY_MINIPORT_UPDATE_DATA UpdateData);
+
 #if (NTDDI_VERSION >= NTDDI_WINXP)
 
 _IRQL_requires_max_(PASSIVE_LEVEL)

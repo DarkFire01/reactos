@@ -4,3 +4,4 @@
 @ stdcall BatteryClassStatusNotify(ptr)
 @ stdcall BatteryClassSystemControl(ptr ptr ptr ptr ptr)
 @ stdcall BatteryClassUnload(ptr)
+@ stdcall BatteryClassUpdateData(ptr ptr)
