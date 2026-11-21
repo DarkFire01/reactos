@@ -409,6 +409,7 @@ VOID QcUimSetup(_In_ PQC_MODEM Modem);
 VOID QcUimModemLost(_In_ PQC_MODEM Modem);
 VOID QcUimEvaluate(_In_ PQC_MODEM Modem);
 HRESULT QcUimGetSubscriber(_In_ PQC_MODEM Modem, _Inout_ PQC_RESP Resp);
+HRESULT QcUimReadImsi(_In_ PQC_MODEM Modem, _Out_writes_z_(OutSize) PSTR Out, _In_ ULONG OutSize);
 HRESULT QcUimSetExecutorConfig(_In_ PQC_MODEM Modem, _In_reads_bytes_(InSize) const VOID *In,
                                _In_ ULONG InSize);
 VOID QcUimIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
