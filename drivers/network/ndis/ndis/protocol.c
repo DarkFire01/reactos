@@ -683,6 +683,7 @@ NdisRegisterProtocol(
 {
   PPROTOCOL_BINDING Protocol;
   NTSTATUS NtStatus;
+  NDIS_STATUS BindStatus;
   UINT MinSize;
   PNET_PNP_EVENT PnPEvent;
 
@@ -751,7 +752,11 @@ NdisRegisterProtocol(
 
   *NdisProtocolHandle = Protocol;
 
-  ndisBindMiniportsToProtocol(Status, Protocol);
+  /* A bind that fails or pends concerns that adapter only, the protocol stays registered */
+  ndisBindMiniportsToProtocol(&BindStatus, Protocol);
+  if (BindStatus != NDIS_STATUS_SUCCESS)
+      NDIS_DbgPrint(MIN_TRACE, ("Binding the last adapter returned 0x%x\n", BindStatus));
+  *Status = NDIS_STATUS_SUCCESS;
 
   /* Should we only send this if ndisBindMiniportsToProtocol succeeds? */
   PnPEvent = ProSetupPnPEvent(NetEventBindsComplete, NULL, 0);
@@ -770,13 +775,7 @@ NdisRegisterProtocol(
       ExFreePool(PnPEvent);
   }
 
-  if (*Status == NDIS_STATUS_SUCCESS) {
-      ExInterlockedInsertTailList(&ProtocolListHead, &Protocol->ListEntry, &ProtocolListLock);
-  } else {
-      NDIS_DbgPrint(MIN_TRACE, ("Binding failed (%x)\n", *Status));
-      ExFreePool(Protocol);
-      *NdisProtocolHandle = NULL;
-  }
+  ExInterlockedInsertTailList(&ProtocolListHead, &Protocol->ListEntry, &ProtocolListLock);
 }
 
 /*
