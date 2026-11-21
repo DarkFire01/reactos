@@ -1567,6 +1567,7 @@
 @ stdcall VerifyVersionInfoA(long long double)
 @ stdcall VerifyVersionInfoW(long long double)
 @ stdcall VirtualAlloc(ptr long long long)
+@ stdcall -version=0xA00+ VirtualAlloc2(ptr ptr long long long ptr long)
 @ stdcall VirtualAllocEx(long ptr long long long)
 @ stub -version=0x600+ VirtualAllocExNuma
 @ stdcall VirtualFree(ptr long long)

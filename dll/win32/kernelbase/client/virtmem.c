@@ -75,6 +75,126 @@ VirtualAlloc(IN LPVOID lpAddress,
                           flProtect);
 }
 
+/* The first free range inside [Lowest, Highest] that holds Size bytes at Alignment */
+static
+LPVOID
+VirtualAllocInRange(
+    _In_ HANDLE Process,
+    _In_ ULONG_PTR Lowest,
+    _In_ ULONG_PTR Highest,
+    _In_ SIZE_T Alignment,
+    _In_ SIZE_T Size,
+    _In_ ULONG AllocationType,
+    _In_ ULONG PageProtection)
+{
+    MEMORY_BASIC_INFORMATION Region;
+    ULONG_PTR Candidate = Lowest;
+    PVOID Address;
+    SIZE_T Length;
+    NTSTATUS Status = STATUS_NO_MEMORY;
+
+    while (Candidate <= Highest)
+    {
+        Candidate = (Candidate + Alignment - 1) & ~(Alignment - 1);
+        if (Candidate < Lowest || Candidate + Size - 1 > Highest || Candidate + Size < Candidate)
+            break;
+
+        if (!VirtualQueryEx(Process, (LPCVOID)Candidate, &Region, sizeof(Region)))
+            break;
+
+        if (Region.State == MEM_FREE &&
+            Candidate + Size <= (ULONG_PTR)Region.BaseAddress + Region.RegionSize)
+        {
+            Address = (PVOID)Candidate;
+            Length = Size;
+            Status = NtAllocateVirtualMemory(Process, &Address, 0, &Length, AllocationType, PageProtection);
+            if (NT_SUCCESS(Status))
+                return Address;
+            if (Status != STATUS_CONFLICTING_ADDRESSES)
+                break;
+        }
+
+        Candidate = (ULONG_PTR)Region.BaseAddress + Region.RegionSize;
+        if (Candidate == 0)
+            break;
+    }
+
+    BaseSetLastNTError(Status);
+    return NULL;
+}
+
+/*
+ * @implemented
+ */
+PVOID
+WINAPI
+VirtualAlloc2(
+    _In_opt_ HANDLE Process,
+    _In_opt_ PVOID BaseAddress,
+    _In_ SIZE_T Size,
+    _In_ ULONG AllocationType,
+    _In_ ULONG PageProtection,
+    _Inout_updates_opt_(ParameterCount) MEM_EXTENDED_PARAMETER *ExtendedParameters,
+    _In_ ULONG ParameterCount)
+{
+    PMEM_ADDRESS_REQUIREMENTS Requirements = NULL;
+    ULONG_PTR Lowest, Highest;
+    SIZE_T Granularity, Alignment;
+    ULONG Index;
+
+    if (Process == NULL)
+        Process = GetCurrentProcess();
+
+    if (ParameterCount && ExtendedParameters == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+
+    for (Index = 0; Index < ParameterCount; Index++)
+    {
+        switch (ExtendedParameters[Index].Type)
+        {
+            case MemExtendedParameterAddressRequirements:
+                Requirements = ExtendedParameters[Index].Pointer;
+                break;
+
+            /* One node, every allocation already comes from it */
+            case MemExtendedParameterNumaNode:
+                break;
+
+            default:
+                SetLastError(ERROR_NOT_SUPPORTED);
+                return NULL;
+        }
+    }
+
+    if (Requirements == NULL ||
+        (Requirements->LowestStartingAddress == NULL &&
+         Requirements->HighestEndingAddress == NULL &&
+         Requirements->Alignment == 0))
+    {
+        return VirtualAllocEx(Process, BaseAddress, Size, AllocationType, PageProtection);
+    }
+
+    /* An address of one's own and requirements on where to put it contradict each other */
+    Granularity = BaseStaticServerData->SysInfo.AllocationGranularity;
+    Alignment = Requirements->Alignment ? Requirements->Alignment : Granularity;
+    if (BaseAddress != NULL || Size == 0 || (Alignment & (Alignment - 1)) != 0 || Alignment < Granularity)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+
+    Lowest = max((ULONG_PTR)Requirements->LowestStartingAddress, (ULONG_PTR)Granularity);
+    Highest = Requirements->HighestEndingAddress ?
+              (ULONG_PTR)Requirements->HighestEndingAddress :
+              BaseStaticServerData->SysInfo.MaximumUserModeAddress;
+    Size = (Size + BaseStaticServerData->SysInfo.PageSize - 1) & ~((SIZE_T)BaseStaticServerData->SysInfo.PageSize - 1);
+
+    return VirtualAllocInRange(Process, Lowest, Highest, Alignment, Size, AllocationType, PageProtection);
+}
+
 /*
  * @implemented
  */
