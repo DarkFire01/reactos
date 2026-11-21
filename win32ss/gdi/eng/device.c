@@ -1779,11 +1779,8 @@ EngpSetDisplayPowerState(
                                    NULL,
                                    0,
                                    &BytesReturned);
-        if (Error != ERROR_SUCCESS)
-        {
-            TRACE("Display '%S' did not take power state %lu (error %lu)\n",
-                  pGraphicsDevice->szNtDeviceName, PowerManagement.PowerState, Error);
-        }
+        ERR("Display '%S' power state %lu: error %lu\n",
+            pGraphicsDevice->szNtDeviceName, PowerManagement.PowerState, Error);
     }
     EngReleaseSemaphore(ghsemGraphicsDeviceList);
 }
