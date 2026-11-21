@@ -299,7 +299,6 @@ RmNetIpaAttach(
     Status = RmNetIpaQueryInterface(Adapter);
     if (!NT_SUCCESS(Status) || !Adapter->Ipa.Send || !Adapter->Ipa.Return)
     {
-        DPRINT1("rmnet: IPA has no client interface 0x%lx\n", Status);
         RmNetIpaClose(Adapter);
         return NT_SUCCESS(Status) ? STATUS_NOT_SUPPORTED : Status;
     }
@@ -331,7 +330,7 @@ RmNetIpaAttachThread(
     PRMNET_ADAPTER Adapter = Context;
     LARGE_INTEGER Delay;
     NTSTATUS Status;
-    ULONG Attempt = 0;
+    NTSTATUS LastStatus = STATUS_SUCCESS;
 
     Delay.QuadPart = -(LONGLONG)RMNET_IPA_RETRY_MS * 10000;
     for (;;)
@@ -339,8 +338,11 @@ RmNetIpaAttachThread(
         Status = RmNetIpaAttach(Adapter);
         if (NT_SUCCESS(Status))
             break;
-        if (Attempt++ == 0)
+
+        /* Missing device first, then no client interface until the modem wakes IPA */
+        if (Status != LastStatus)
             DPRINT1("rmnet: IPA not ready (0x%lx), retrying every %u ms\n", Status, RMNET_IPA_RETRY_MS);
+        LastStatus = Status;
         if (KeWaitForSingleObject(&RmNetIpaStop, Executive, KernelMode, FALSE, &Delay) == STATUS_SUCCESS)
             break;
     }
