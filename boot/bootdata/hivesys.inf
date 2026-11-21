@@ -1900,8 +1900,14 @@ HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ImagePath",0x00020000,"system32
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Type",0x00010001,0x00000001
 
-; RIL broker driver. System start so it creates its broker device at boot
-; without depending on a devnode install; the RIL host and clients open it.
+; RIL broker driver, bound to the root devnode below. riladapt creates the
+; same devnode through telephony.inf when the hive does not carry it.
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\MSRIL\0000","HardwareID",0x00010000,"MODEM\MSRIL"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\MSRIL\0000","Service",0x00000000,"msril"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\MSRIL\0000","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\MSRIL\0000","Class",0x00000000,"System"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\MSRIL\0000","DeviceDesc",0x00000000,"Radio Interface Layer Broker"
+HKLM,"SYSTEM\CurrentControlSet\Enum\Root\MSRIL\0000","ConfigFlags",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\msril","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\msril","ImagePath",0x00020000,"system32\drivers\msril.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\msril","Start",0x00010001,0x00000001
