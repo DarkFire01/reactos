@@ -2492,6 +2492,15 @@ HKLM,"SYSTEM\CurrentControlSet\Services\NativeTimeSvc","ObjectName",0x00000000,"
 HKLM,"SYSTEM\CurrentControlSet\Services\NativeTimeSvc","Start",0x00010001,0x00000002
 HKLM,"SYSTEM\CurrentControlSet\Services\NativeTimeSvc","Type",0x00010001,0x00000010
 
+; GNSS location service
+HKLM,"SYSTEM\CurrentControlSet\Services\GnssSvc","DisplayName",0x00000000,%GNSSSVC_SERVICE%
+HKLM,"SYSTEM\CurrentControlSet\Services\GnssSvc","Description",0x00000000,%GNSSSVC_SERVICE_DESCRIPTION%
+HKLM,"SYSTEM\CurrentControlSet\Services\GnssSvc","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\GnssSvc","ImagePath",0x00020000,"%SystemRoot%\system32\gnsssvc.exe"
+HKLM,"SYSTEM\CurrentControlSet\Services\GnssSvc","ObjectName",0x00000000,"LocalSystem"
+HKLM,"SYSTEM\CurrentControlSet\Services\GnssSvc","Start",0x00010001,0x00000002
+HKLM,"SYSTEM\CurrentControlSet\Services\GnssSvc","Type",0x00010001,0x00000010
+
 ; Power service
 HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","DisplayName",0x00000000,%POWERSVC_SERVICE%
 HKLM,"SYSTEM\CurrentControlSet\Services\PowerSvc","Description",0x00000000,%POWERSVC_SERVICE_DESCRIPTION%
@@ -2795,6 +2804,8 @@ PHONESVC_SERVICE="Phone Service"
 PHONESVC_SERVICE_DESCRIPTION="Manages voice calls and text messages over the cellular radio"
 NATIVETIMESVC_SERVICE="Native Time Service"
 NATIVETIMESVC_SERVICE_DESCRIPTION="Keeps the clock and time zone from the cellular network and wakes the device for alarms and timers"
+GNSSSVC_SERVICE="GNSS Location Service"
+GNSSSVC_SERVICE_DESCRIPTION="Reads satellite position fixes from the modem location engine and shares them with applications"
 POWERSVC_SERVICE="Power"
 POWERSVC_SERVICE_DESCRIPTION="Applies the active power plan to the system and to drivers"
 
