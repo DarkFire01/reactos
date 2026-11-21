@@ -14,6 +14,63 @@
 /* RIL_NOTIFY_NITZ, rilcmd.h is user mode only */
 #define MSRIL_NOTIFY_NITZ       (RIL_RECORD_NOTIFY_FIRST | 0x115)
 
+/* The RIL_NITZ_INFO payload after the notification header, rilinfo.h is user mode only */
+typedef struct _MSRIL_NITZ
+{
+    RIL_NOTIFICATION_RECORD Header;
+    ULONG Size;
+    ULONG Params;
+    ULONG NotificationCode;
+    LONG TimeZoneOffsetMinutes;
+    LONG DaylightSavingOffsetMinutes;
+    USHORT Year;
+    USHORT Month;
+    USHORT DayOfWeek;
+    USHORT Day;
+    USHORT Hour;
+    USHORT Minute;
+    USHORT Second;
+    USHORT Milliseconds;
+} MSRIL_NITZ, *PMSRIL_NITZ;
+
+/* Moves a cached network time forward by how long it waited for the client */
+static
+VOID
+MsRilAgeNitz(
+    _Inout_ PMSRIL_RECORD Record,
+    _In_ ULONGLONG Arrived)
+{
+    PMSRIL_NITZ Nitz = (PMSRIL_NITZ)Record->Data;
+    TIME_FIELDS Fields;
+    LARGE_INTEGER Time;
+
+    if (Record->Length < sizeof(*Nitz))
+        return;
+
+    Fields.Year = (CSHORT)Nitz->Year;
+    Fields.Month = (CSHORT)Nitz->Month;
+    Fields.Day = (CSHORT)Nitz->Day;
+    Fields.Hour = (CSHORT)Nitz->Hour;
+    Fields.Minute = (CSHORT)Nitz->Minute;
+    Fields.Second = (CSHORT)Nitz->Second;
+    Fields.Milliseconds = (CSHORT)Nitz->Milliseconds;
+    Fields.Weekday = 0;
+    if (!RtlTimeFieldsToTime(&Fields, &Time))
+        return;
+
+    Time.QuadPart += KeQueryInterruptTime() - Arrived;
+    RtlTimeToTimeFields(&Time, &Fields);
+
+    Nitz->Year = (USHORT)Fields.Year;
+    Nitz->Month = (USHORT)Fields.Month;
+    Nitz->DayOfWeek = (USHORT)Fields.Weekday;
+    Nitz->Day = (USHORT)Fields.Day;
+    Nitz->Hour = (USHORT)Fields.Hour;
+    Nitz->Minute = (USHORT)Fields.Minute;
+    Nitz->Second = (USHORT)Fields.Second;
+    Nitz->Milliseconds = (USHORT)Fields.Milliseconds;
+}
+
 /* Bit N set means \Device\MSRil<N + 1> exists */
 static LONG MsRilInstanceMask;
 
@@ -701,6 +758,7 @@ MsRilEnableNotifications(
             if (Nitz)
             {
                 RtlCopyMemory(Nitz->Data, Extension->LastNitz->Data, Extension->LastNitz->Length);
+                MsRilAgeNitz(Nitz, Extension->LastNitzTime);
                 MsRilQueueToClient(File, Nitz, &CompleteList);
             }
         }
@@ -871,6 +929,7 @@ MsRilHostDeliver(
         {
             Stale = Extension->LastNitz;
             Extension->LastNitz = Record;
+            Extension->LastNitzTime = KeQueryInterruptTime();
             Record = NULL;
         }
     }
