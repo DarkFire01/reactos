@@ -434,7 +434,6 @@ PspQueryTelemetryId(
     Header.ProcessId = HandleToUlong(Process->UniqueProcessId);
     Header.CreateTime = Process->CreateTime.QuadPart;
     Header.SessionId = PsGetProcessSessionId(Process);
-    Header.BootId = SharedUserData->BootId;
 
     Block = ExAllocatePoolWithTag(PagedPool, Required, TAG_PS_TELEMETRY_ID);
     if (!Block)
