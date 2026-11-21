@@ -161,6 +161,9 @@ extern ULONG64 HalpTimerFrequency;
 /* MPIDR of each logical processor, by processor number */
 extern ULONG64 HalpProcessorMpidr[MAXIMUM_PROCESSORS];
 
+/* Each started processor's PCR, by processor number */
+extern PKPCR HalpProcessorPcr[MAXIMUM_PROCESSORS];
+
 /* Enabled processors in MADT order, the boot processor is one of them */
 extern ULONG64 HalpMadtMpidr[MAXIMUM_PROCESSORS];
 extern ULONG HalpMadtCount;
