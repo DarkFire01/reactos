@@ -2683,6 +2683,12 @@ skipEnum:
                     /* All children processed -- go sideways */
                     if (currentNode->Sibling != NULL)
                     {
+                        if (currentNode->Sibling->Parent != currentNode->Parent)
+                        {
+                            DPRINT1("Devnode %p (%wZ, state %u) has sibling %p whose parent is %p, not %p\n",
+                                    currentNode, &currentNode->InstancePath, currentNode->State,
+                                    currentNode->Sibling, currentNode->Sibling->Parent, currentNode->Parent);
+                        }
                         ASSERT(currentNode->Sibling->Parent == currentNode->Parent);
                         currentNode = currentNode->Sibling;
                         break;
