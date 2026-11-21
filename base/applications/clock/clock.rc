@@ -1,0 +1,11 @@
+#include <windef.h>
+#include <winuser.h>
+
+#include "resource.h"
+
+#define REACTOS_STR_FILE_DESCRIPTION  "ReactOS Clock"
+#define REACTOS_STR_INTERNAL_NAME     "clock"
+#define REACTOS_STR_ORIGINAL_FILENAME "clock.exe"
+#include <reactos/version.rc>
+
+IDI_CLOCK ICON "../../../dll/cpl/timedate/resources/applet.ico"
