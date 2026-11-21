@@ -491,7 +491,7 @@ MsLauncherProc(
                                                (HMENU)(UINT_PTR)MS_EXPLORER_ID,
                                                MsInstance,
                                                NULL);
-            MsBatteryPresent = MsBatteryRead(&MsBatteryPercent, &MsBatteryCharging);
+            MsBatteryStart(Window);
             SetTimer(Window, MS_CLOCK_TIMER, 1000, NULL);
             return 0;
 
@@ -531,12 +531,24 @@ MsLauncherProc(
             {
                 RECT Client, Header;
 
-                MsBatteryPresent = MsBatteryRead(&MsBatteryPercent, &MsBatteryCharging);
                 GetClientRect(Window, &Client);
                 Header = MsTitleRect(&Client);
                 InvalidateRect(Window, &Header, FALSE);
             }
             return 0;
+
+        case WM_MS_BATTERY:
+        {
+            RECT Client, Header;
+
+            MsBatteryPresent = MS_BATTERY_PRESENT(WParam);
+            MsBatteryCharging = MS_BATTERY_CHARGING(WParam);
+            MsBatteryPercent = MS_BATTERY_PERCENT(WParam);
+            GetClientRect(Window, &Client);
+            Header = MsTitleRect(&Client);
+            InvalidateRect(Window, &Header, FALSE);
+            return 0;
+        }
 
         /* The shell stays up for as long as the session does */
         case WM_CLOSE:
@@ -669,6 +681,10 @@ MsBarProc(
         case WM_MS_BUTTON:
             if (MsButtonsHandle(Window, WParam, LParam))
                 InvalidateRect(Window, NULL, FALSE);
+            return 0;
+
+        case WM_MS_VOLUME:
+            InvalidateRect(Window, NULL, FALSE);
             return 0;
 
         /* Taps must leave the focus with the window being typed into */

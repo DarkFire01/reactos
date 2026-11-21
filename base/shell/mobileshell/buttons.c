@@ -19,6 +19,17 @@ static BOOL MsVolumeKnown;
 static BOOL MsVolumeShown;
 static BOOL MsVolumeNoDevice;
 
+/* Steps the volume worker still has to apply, up is positive */
+static volatile LONG MsVolumePendingSteps;
+static HANDLE MsVolumeWake;
+static HWND MsVolumeBar;
+
+static
+DWORD
+WINAPI
+MsVolumeThread(
+    _In_ LPVOID Parameter);
+
 /* The buttons device shows up once its driver starts, so keep trying to open it */
 static
 DWORD
@@ -61,6 +72,22 @@ MsButtonsStart(
 
     if (Thread)
         CloseHandle(Thread);
+
+    MsVolumeBar = Notify;
+    MsVolumeWake = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (!MsVolumeWake)
+        return;
+
+    Thread = CreateThread(NULL, 0, MsVolumeThread, NULL, 0, NULL);
+    if (Thread)
+    {
+        CloseHandle(Thread);
+    }
+    else
+    {
+        CloseHandle(MsVolumeWake);
+        MsVolumeWake = NULL;
+    }
 }
 
 /* Steps the first output device, the one the wave mapper plays on */
@@ -94,6 +121,31 @@ MsVolumeStep(
     MsVolumeKnown = TRUE;
 }
 
+/* The wave mapper may block while the audio stack is missing, so the level changes away from the bar */
+static
+DWORD
+WINAPI
+MsVolumeThread(
+    _In_ LPVOID Parameter)
+{
+    LONG Steps;
+
+    UNREFERENCED_PARAMETER(Parameter);
+
+    for (;;)
+    {
+        WaitForSingleObject(MsVolumeWake, INFINITE);
+
+        Steps = InterlockedExchange(&MsVolumePendingSteps, 0);
+        for (; Steps > 0; Steps--)
+            MsVolumeStep(TRUE);
+        for (; Steps < 0; Steps++)
+            MsVolumeStep(FALSE);
+
+        PostMessageW(MsVolumeBar, WM_MS_VOLUME, 0, 0);
+    }
+}
+
 /* Returns TRUE when the bar has something new to show */
 BOOL
 NTAPI
@@ -116,7 +168,15 @@ MsButtonsHandle(
     keybd_event(Up ? VK_VOLUME_UP : VK_VOLUME_DOWN, 0, 0, 0);
     keybd_event(Up ? VK_VOLUME_UP : VK_VOLUME_DOWN, 0, KEYEVENTF_KEYUP, 0);
 
-    MsVolumeStep(Up);
+    if (MsVolumeWake)
+    {
+        InterlockedAdd(&MsVolumePendingSteps, Up ? 1 : -1);
+        SetEvent(MsVolumeWake);
+    }
+    else
+    {
+        MsVolumeNoDevice = TRUE;
+    }
     MsVolumeShown = TRUE;
     SetTimer(Bar, MS_VOLUME_TIMER, MS_VOLUME_SHOW_MS, NULL);
     return TRUE;
