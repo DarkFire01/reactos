@@ -36,6 +36,9 @@ static PPH_STORE_RECORD PhRecords;
 static DWORD PhRecordCount;
 static DWORD PhRecordCapacity;
 
+/* The folder that holds messages.dat, empty when the store is not persistent */
+static WCHAR PhStoreFolder[MAX_PATH];
+
 static
 BOOL
 PhStoreWriteAt(
@@ -164,6 +167,7 @@ PhStoreOpenFile(VOID)
     if (FAILED(StringCchCatW(Path, _countof(Path), L"\\Phone")))
         return FALSE;
     CreateDirectoryW(Path, NULL);
+    StringCchCopyW(PhStoreFolder, _countof(PhStoreFolder), Path);
 
     if (FAILED(StringCchCatW(Path, _countof(Path), L"\\messages.dat")))
         return FALSE;
@@ -217,6 +221,7 @@ PhStoreInitialize(VOID)
     if (!PhStoreOpenFile())
     {
         DPRINT1("Message store is not persistent (%lu)\n", GetLastError());
+        PhStoreFolder[0] = UNICODE_NULL;
         if (PhStoreFile != INVALID_HANDLE_VALUE)
         {
             CloseHandle(PhStoreFile);
@@ -294,9 +299,159 @@ PhStoreUpdateFlags(
 }
 
 BOOL
+PhStoreGetAttachmentFolder(
+    _In_ DWORD MessageId,
+    _In_ BOOL Create,
+    _Out_writes_z_(Count) PWSTR Path,
+    _In_ DWORD Count)
+{
+    DWORD Attributes;
+
+    Path[0] = UNICODE_NULL;
+    if (!PhStoreFolder[0])
+        return FALSE;
+
+    if (FAILED(StringCchPrintfW(Path, Count, L"%s\\Attachments", PhStoreFolder)))
+        return FALSE;
+    if (Create)
+        CreateDirectoryW(Path, NULL);
+
+    if (FAILED(StringCchPrintfW(Path, Count, L"%s\\Attachments\\%lu", PhStoreFolder, MessageId)))
+        return FALSE;
+    if (Create)
+        CreateDirectoryW(Path, NULL);
+
+    Attributes = GetFileAttributesW(Path);
+    return Attributes != INVALID_FILE_ATTRIBUTES && (Attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+/* Called for every file in the attachment folder of a message, FALSE stops the walk */
+typedef BOOL
+(*PPH_ATTACHMENT_VISIT)(
+    _In_z_ LPCWSTR Path,
+    _In_ const WIN32_FIND_DATAW *Find,
+    _Inout_opt_ PVOID Context);
+
+static
+VOID
+PhStoreWalkAttachments(
+    _In_ DWORD MessageId,
+    _In_ PPH_ATTACHMENT_VISIT Visit,
+    _Inout_opt_ PVOID Context)
+{
+    WCHAR Folder[MAX_PATH], Path[MAX_PATH];
+    WIN32_FIND_DATAW Find;
+    HANDLE Search;
+
+    if (!PhStoreGetAttachmentFolder(MessageId, FALSE, Folder, _countof(Folder)))
+        return;
+
+    if (FAILED(StringCchPrintfW(Path, _countof(Path), L"%s\\*", Folder)))
+        return;
+
+    Search = FindFirstFileW(Path, &Find);
+    if (Search == INVALID_HANDLE_VALUE)
+        return;
+
+    do
+    {
+        if (Find.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            continue;
+
+        if (SUCCEEDED(StringCchPrintfW(Path, _countof(Path), L"%s\\%s", Folder, Find.cFileName)) &&
+            !Visit(Path, &Find, Context))
+        {
+            break;
+        }
+    } while (FindNextFileW(Search, &Find));
+
+    FindClose(Search);
+}
+
+static
+BOOL
+PhStoreDeleteVisit(
+    _In_z_ LPCWSTR Path,
+    _In_ const WIN32_FIND_DATAW *Find,
+    _Inout_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Find);
+    UNREFERENCED_PARAMETER(Context);
+
+    if (!DeleteFileW(Path))
+        DPRINT1("Deleting attachment %S failed (%lu)\n", Path, GetLastError());
+    return TRUE;
+}
+
+typedef struct _PH_ATTACHMENT_LIST
+{
+    PPHONEOM_ATTACHMENT Entries;
+    DWORD Max;
+    DWORD Count;
+} PH_ATTACHMENT_LIST, *PPH_ATTACHMENT_LIST;
+
+/* Keeps the list sorted by path, the file names start with the part order */
+static
+BOOL
+PhStoreListVisit(
+    _In_z_ LPCWSTR Path,
+    _In_ const WIN32_FIND_DATAW *Find,
+    _Inout_opt_ PVOID Context)
+{
+    PPH_ATTACHMENT_LIST List = Context;
+    DWORD i;
+
+    if (!List || List->Count >= List->Max)
+        return FALSE;
+
+    i = List->Count;
+    while (i > 0 && _wcsicmp(List->Entries[i - 1].Path, Path) > 0)
+    {
+        List->Entries[i] = List->Entries[i - 1];
+        i--;
+    }
+
+    ZeroMemory(&List->Entries[i], sizeof(List->Entries[i]));
+    List->Entries[i].Size = Find->nFileSizeLow;
+    StringCchCopyW(List->Entries[i].Path, _countof(List->Entries[i].Path), Path);
+    List->Count++;
+    return TRUE;
+}
+
+DWORD
+PhStoreGetAttachments(
+    _In_ DWORD MessageId,
+    _Out_writes_to_(MaxAttachments, return) PPHONEOM_ATTACHMENT Attachments,
+    _In_ DWORD MaxAttachments)
+{
+    PH_ATTACHMENT_LIST List;
+
+    List.Entries = Attachments;
+    List.Max = MaxAttachments;
+    List.Count = 0;
+    PhStoreWalkAttachments(MessageId, PhStoreListVisit, &List);
+    return List.Count;
+}
+
+/* Removes the attachment folder of a message and everything in it */
+VOID
+PhStoreRemoveAttachments(
+    _In_ DWORD MessageId)
+{
+    WCHAR Folder[MAX_PATH];
+
+    if (!PhStoreGetAttachmentFolder(MessageId, FALSE, Folder, _countof(Folder)))
+        return;
+
+    PhStoreWalkAttachments(MessageId, PhStoreDeleteVisit, NULL);
+    RemoveDirectoryW(Folder);
+}
+
+BOOL
 PhStoreDelete(
     _In_ DWORD MessageId)
 {
+    DWORD Flags = 0;
     LONG Slot;
 
     EnterCriticalSection(&PhStoreLock);
@@ -304,11 +459,16 @@ PhStoreDelete(
     Slot = PhStoreFind(MessageId);
     if (Slot >= 0)
     {
+        Flags = PhRecords[Slot].Message.Flags;
         ZeroMemory(&PhRecords[Slot], sizeof(PhRecords[Slot]));
         PhStoreFlushRecord(Slot);
     }
 
     LeaveCriticalSection(&PhStoreLock);
+
+    if (Flags & PHONEOM_MESSAGE_MMS)
+        PhStoreRemoveAttachments(MessageId);
+
     return Slot >= 0;
 }
 
