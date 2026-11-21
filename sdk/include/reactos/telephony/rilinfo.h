@@ -46,6 +46,7 @@
 #define RIL_SIM_PIN                 2
 #define RIL_SIM_PUK                 3
 #define RIL_SIM_ERROR               4
+#define RIL_SIM_NOT_READY           5
 
 #include <pshpack4.h>
 
@@ -77,7 +78,39 @@ typedef struct _RIL_NETWORK_INFO
     DWORD Mnc;
     DWORD Roaming;
     CHAR Operator[RIL_INFO_OPERATOR];
+    DWORD Limited;
+    DWORD RejectCause;
+    DWORD Lac;
+    DWORD CellId;
 } RIL_NETWORK_INFO, *PRIL_NETWORK_INFO;
+
+/* RIL_SIGNAL_QUALITY.Params */
+#define RIL_SQPARAM_EXECUTOR        0x00000001
+#define RIL_SQPARAM_SYSTEMTYPE      0x00000002
+#define RIL_SQPARAM_BARS            0x00000004
+#define RIL_SQPARAM_STRENGTH        0x00000008
+#define RIL_SQPARAM_SECONDARY       0x00000010
+
+/* Signal quality of one system type, the Windows RIL layout. Strength and Secondary are dBm or dB. */
+typedef struct _RIL_SIGNAL_QUALITY
+{
+    DWORD Size;
+    DWORD Params;
+    DWORD Executor;
+    DWORD SystemType;
+    DWORD Bars;
+    LONG Strength;
+    LONG Secondary;
+} RIL_SIGNAL_QUALITY, *PRIL_SIGNAL_QUALITY;
+
+C_ASSERT(sizeof(RIL_SIGNAL_QUALITY) == 28);
+
+/* RIL_GetDeviceInfo classes, each answered as one UTF-16 string */
+#define RIL_DEVICEINFO_MANUFACTURER 1
+#define RIL_DEVICEINFO_MODEL        2
+#define RIL_DEVICEINFO_REVISION     3
+#define RIL_DEVICEINFO_SERIALNUMBER 4
+#define RIL_DEVICEINFO_SERIALNUMBER_CDMA 5
 
 /* Data request operations carried over the device specific command */
 #define RIL_DATA_OP_STATUS          0

@@ -84,6 +84,7 @@ typedef enum _PHONEOM_AUDIO_ROUTE
 #define PHONEOM_SIM_PIN             2
 #define PHONEOM_SIM_PUK             3
 #define PHONEOM_SIM_ERROR           4
+#define PHONEOM_SIM_NOT_READY       5
 
 /* PHONEOM_NETWORK.RegState */
 #define PHONEOM_REG_NONE            0
