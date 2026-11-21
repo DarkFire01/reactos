@@ -28,9 +28,12 @@ PVOID __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 /* Wave render nodes */
 #define NODE_WAVE_DAC               0
 
-/* Topology filter pins */
+/* Topology filter pins. The microphone pin and its capture side exist for the
+   call endpoint pair; the earpiece joins once its codec is driven */
 #define PIN_TOPO_WAVE_IN            0
 #define PIN_TOPO_SPEAKER            1
+#define PIN_TOPO_MICROPHONE         2
+#define PIN_TOPO_CAPTURE_OUT        3
 
 /* Topology nodes */
 #define NODE_TOPO_VOLUME            0
@@ -65,6 +68,13 @@ NTSTATUS NTAPI CreateMiniportTopologyQcom(PUNKNOWN *Unknown, REFCLSID, PUNKNOWN 
 
 NTSTATUS NTAPI TopoPropertyVolume(PPCPROPERTY_REQUEST Request);
 NTSTATUS NTAPI TopoPropertyMute(PPCPROPERTY_REQUEST Request);
+
+/* Cellular call audio, KSPROPSETID_TelephonyControl on the wave filter and
+   KSPROPSETID_TelephonyTopology on the topology filter */
+NTSTATUS NTAPI WavePropertyTelephony(PPCPROPERTY_REQUEST Request);
+VOID NTAPI TelephonyInitialize(VOID);
+NTSTATUS TopoBasicSupport(PPCPROPERTY_REQUEST Request, ULONG VariantType, BOOLEAN Ranged);
+NTSTATUS NTAPI TopoPropertyTelephony(PPCPROPERTY_REQUEST Request);
 
 class CMiniportWaveQcomStream;
 

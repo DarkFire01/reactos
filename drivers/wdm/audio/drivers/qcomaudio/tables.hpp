@@ -107,10 +107,28 @@ static PCCONNECTION_DESCRIPTOR WaveMiniportConnections[] =
     { NODE_WAVE_DAC,   0,                      PCFILTER_NODE,  PIN_WAVE_RENDER_SOURCE }
 };
 
+static PCPROPERTY_ITEM WaveFilterProperties[] =
+{
+    { &KSPROPSETID_TelephonyControl, KSPROPERTY_TELEPHONY_PROVIDERID,
+      PCPROPERTY_ITEM_FLAG_GET, WavePropertyTelephony },
+    { &KSPROPSETID_TelephonyControl, KSPROPERTY_TELEPHONY_CALLINFO,
+      PCPROPERTY_ITEM_FLAG_GET, WavePropertyTelephony },
+    { &KSPROPSETID_TelephonyControl, KSPROPERTY_TELEPHONY_CALLCONTROL,
+      PCPROPERTY_ITEM_FLAG_SET, WavePropertyTelephony },
+    { &KSPROPSETID_TelephonyControl, KSPROPERTY_TELEPHONY_PROVIDERCHANGE,
+      PCPROPERTY_ITEM_FLAG_SET, WavePropertyTelephony },
+    { &KSPROPSETID_TelephonyControl, KSPROPERTY_TELEPHONY_CALLHOLD,
+      PCPROPERTY_ITEM_FLAG_SET, WavePropertyTelephony },
+    { &KSPROPSETID_TelephonyControl, KSPROPERTY_TELEPHONY_MUTE_TX,
+      PCPROPERTY_ITEM_FLAG_GET | PCPROPERTY_ITEM_FLAG_SET, WavePropertyTelephony }
+};
+
+DEFINE_PCAUTOMATION_TABLE_PROP(WaveFilterAutomation, WaveFilterProperties);
+
 static PCFILTER_DESCRIPTOR WaveMiniportFilterDescriptor =
 {
     0,
-    NULL,
+    &WaveFilterAutomation,
     sizeof(PCPIN_DESCRIPTOR),
     SIZEOF_ARRAY(WaveMiniportPins),
     WaveMiniportPins,
@@ -174,8 +192,48 @@ static PCPIN_DESCRIPTOR TopoMiniportPins[] =
             NULL,
             {0}
         }
+    },
+    // PIN_TOPO_MICROPHONE
+    {
+        0, 0, 0,
+        NULL,
+        {
+            0, NULL, 0, NULL,
+            SIZEOF_ARRAY(TopoBridgeRangePtr),
+            TopoBridgeRangePtr,
+            KSPIN_DATAFLOW_IN,
+            KSPIN_COMMUNICATION_NONE,
+            &KSNODETYPE_MICROPHONE,
+            NULL,
+            {0}
+        }
+    },
+    // PIN_TOPO_CAPTURE_OUT
+    {
+        0, 0, 0,
+        NULL,
+        {
+            0, NULL, 0, NULL,
+            SIZEOF_ARRAY(TopoBridgeRangePtr),
+            TopoBridgeRangePtr,
+            KSPIN_DATAFLOW_OUT,
+            KSPIN_COMMUNICATION_NONE,
+            &KSCATEGORY_AUDIO,
+            NULL,
+            {0}
+        }
     }
 };
+
+static PCPROPERTY_ITEM TopoFilterProperties[] =
+{
+    { &KSPROPSETID_TelephonyTopology, KSPROPERTY_TELEPHONY_ENDPOINTIDPAIR,
+      PCPROPERTY_ITEM_FLAG_GET | PCPROPERTY_ITEM_FLAG_SET, TopoPropertyTelephony },
+    { &KSPROPSETID_TelephonyTopology, KSPROPERTY_TELEPHONY_VOLUME,
+      PCPROPERTY_ITEM_FLAG_GET | PCPROPERTY_ITEM_FLAG_SET | PCPROPERTY_ITEM_FLAG_BASICSUPPORT, TopoPropertyTelephony }
+};
+
+DEFINE_PCAUTOMATION_TABLE_PROP(TopoFilterAutomation, TopoFilterProperties);
 
 static PCPROPERTY_ITEM TopoVolumeProperties[] =
 {
@@ -212,13 +270,14 @@ static PCCONNECTION_DESCRIPTOR TopoMiniportConnections[] =
 {
     { PCFILTER_NODE,    PIN_TOPO_WAVE_IN,   NODE_TOPO_VOLUME,   1                },
     { NODE_TOPO_VOLUME, 0,                  NODE_TOPO_MUTE,     1                },
-    { NODE_TOPO_MUTE,   0,                  PCFILTER_NODE,      PIN_TOPO_SPEAKER }
+    { NODE_TOPO_MUTE,   0,                  PCFILTER_NODE,      PIN_TOPO_SPEAKER },
+    { PCFILTER_NODE,    PIN_TOPO_MICROPHONE, PCFILTER_NODE,     PIN_TOPO_CAPTURE_OUT }
 };
 
 static PCFILTER_DESCRIPTOR TopoMiniportFilterDescriptor =
 {
     0,
-    NULL,
+    &TopoFilterAutomation,
     sizeof(PCPIN_DESCRIPTOR),
     SIZEOF_ARRAY(TopoMiniportPins),
     TopoMiniportPins,

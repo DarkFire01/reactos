@@ -89,7 +89,6 @@ TopoChannelValid(
 }
 
 /* Fills the basic support answer: access flags, then the type, then an optional range */
-static
 NTSTATUS
 TopoBasicSupport(
     _In_ PPCPROPERTY_REQUEST Request,

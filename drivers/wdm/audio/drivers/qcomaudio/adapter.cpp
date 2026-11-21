@@ -58,6 +58,8 @@ StartDevice(PDEVICE_OBJECT DeviceObject, PIRP Irp, PRESOURCELIST ResourceList)
     PUNKNOWN UnknownTopology = NULL;
     NTSTATUS Status;
 
+    TelephonyInitialize();
+
     Status = InstallSubdevice(DeviceObject, Irp, L"Topology", CLSID_PortTopology,
                               CreateMiniportTopologyQcom, NULL, &UnknownTopology);
     if (!NT_SUCCESS(Status))
