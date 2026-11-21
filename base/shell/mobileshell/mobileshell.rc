@@ -18,6 +18,7 @@ BEGIN
     IDS_MESSAGES             "Messages"
     IDS_SETTINGS             "Settings"
     IDS_BROWSER              "Browser"
+    IDS_CLOCK                "Clock"
     IDS_COMMAND_PROMPT       "Command Prompt"
     IDS_KEYBOARD             "Keyboard"
     IDS_EXPLORER             "Explorer"

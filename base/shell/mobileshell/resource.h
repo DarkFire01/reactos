@@ -10,3 +10,4 @@
 #define IDS_MESSAGES                110
 #define IDS_SETTINGS                111
 #define IDS_BROWSER                 112
+#define IDS_CLOCK                   113
