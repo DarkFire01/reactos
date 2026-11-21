@@ -17,6 +17,9 @@
 /* Looking for a battery again only every so many reads while none answers */
 #define MS_BATTERY_RETRY_READS  10
 
+/* How often the level is read again */
+#define MS_BATTERY_POLL_MS      1000
+
 static HANDLE MsBatteryDevice = INVALID_HANDLE_VALUE;
 static ULONG MsBatteryRetry;
 
@@ -123,6 +126,7 @@ MsBatteryQuery(
  * @return
  * FALSE when the device reports no battery at all.
  */
+static
 BOOL
 NTAPI
 MsBatteryRead(
@@ -175,4 +179,47 @@ MsBatteryRead(
     }
 
     return FALSE;
+}
+
+/* The lookups go to the PnP manager and the battery drivers, which may not answer, so they stay off the UI thread */
+static
+DWORD
+WINAPI
+MsBatteryThread(
+    _In_ LPVOID Parameter)
+{
+    HWND Notify = Parameter;
+    WPARAM Last = (WPARAM)-1;
+    WPARAM Packed;
+    ULONG Percent;
+    BOOL Charging;
+    BOOL Present;
+
+    for (;;)
+    {
+        Present = MsBatteryRead(&Percent, &Charging);
+        Packed = MS_BATTERY_PACK(Present, Charging, Percent);
+        if (Packed != Last)
+        {
+            PostMessageW(Notify, WM_MS_BATTERY, Packed, 0);
+            Last = Packed;
+        }
+
+        Sleep(MS_BATTERY_POLL_MS);
+    }
+}
+
+/**
+ * @brief
+ * Starts polling the battery, readings arrive as WM_MS_BATTERY when they change.
+ */
+VOID
+NTAPI
+MsBatteryStart(
+    _In_ HWND Notify)
+{
+    HANDLE Thread = CreateThread(NULL, 0, MsBatteryThread, Notify, 0, NULL);
+
+    if (Thread)
+        CloseHandle(Thread);
 }

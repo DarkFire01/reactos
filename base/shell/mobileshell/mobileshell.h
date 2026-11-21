@@ -39,6 +39,18 @@
 #define WM_MS_BUTTON            (WM_APP + 1)
 #define MS_VOLUME_TIMER         3
 
+/* A new battery reading for the launcher, see MsBatteryUnpack */
+#define WM_MS_BATTERY           (WM_APP + 2)
+
+/* The volume worker changed the level, so the bar repaints */
+#define WM_MS_VOLUME            (WM_APP + 3)
+
+#define MS_BATTERY_PACK(Present, Charging, Percent) \
+    ((WPARAM)(((Present) ? 0x200 : 0) | ((Charging) ? 0x100 : 0) | ((Percent) & 0xFF)))
+#define MS_BATTERY_PRESENT(Packed)  (((Packed) & 0x200) != 0)
+#define MS_BATTERY_CHARGING(Packed) (((Packed) & 0x100) != 0)
+#define MS_BATTERY_PERCENT(Packed)  ((ULONG)((Packed) & 0xFF))
+
 extern HINSTANCE MsInstance;
 extern HWND MsLauncherWindow;
 extern HWND MsBarWindow;
@@ -63,11 +75,10 @@ NTAPI
 MsUpdateWorkArea(VOID);
 
 /* battery.c */
-BOOL
+VOID
 NTAPI
-MsBatteryRead(
-    _Out_ PULONG Percent,
-    _Out_ PBOOL Charging);
+MsBatteryStart(
+    _In_ HWND Notify);
 
 /* buttons.c */
 VOID
