@@ -145,6 +145,7 @@ PhDispatch(
     PHONEOM_RADIO Radio;
     PHONE_REQUEST_DIAL *Dial;
     PHONE_REQUEST_MESSAGE *Message;
+    PHONE_REQUEST_MMS *Mms;
     PHONE_REQUEST_RANGE Range;
     PHONEOM_DEVICE_INFO DeviceInfo;
     PHONEOM_SUBSCRIBER Subscriber;
@@ -317,6 +318,39 @@ PhDispatch(
                 Reply = &DataStatus;
                 ReplySize = sizeof(DataStatus);
             }
+            break;
+
+        case PhoneRequestGetAttachments:
+            if (!PhPayloadDword(Header, &Value))
+            {
+                hr = E_INVALIDARG;
+                break;
+            }
+
+            Reply = HeapAlloc(GetProcessHeap(), 0, PHONEOM_MAX_ATTACHMENTS * sizeof(PHONEOM_ATTACHMENT));
+            if (!Reply)
+            {
+                hr = E_OUTOFMEMORY;
+                break;
+            }
+            ReplyHeap = TRUE;
+            ReplySize = PhStoreGetAttachments(Value, Reply, PHONEOM_MAX_ATTACHMENTS) * sizeof(PHONEOM_ATTACHMENT);
+            break;
+
+        case PhoneRequestSendMms:
+            if (Header->DataSize < sizeof(*Mms))
+            {
+                hr = E_INVALIDARG;
+                break;
+            }
+
+            Mms = (PHONE_REQUEST_MMS *)Payload;
+            Mms->Address[_countof(Mms->Address) - 1] = UNICODE_NULL;
+            Mms->Text[_countof(Mms->Text) - 1] = UNICODE_NULL;
+            Mms->Path[_countof(Mms->Path) - 1] = UNICODE_NULL;
+            hr = PhMmsSend(Mms->Address, Mms->Text, Mms->Path, &Result);
+            Reply = &Result;
+            ReplySize = sizeof(Result);
             break;
 
         default:
