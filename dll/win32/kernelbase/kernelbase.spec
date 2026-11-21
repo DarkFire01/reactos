@@ -165,8 +165,10 @@
 @ stdcall ConnectNamedPipe(long ptr)
 @ stdcall -version=0x502-0x600 -arch=x86_64 ConsoleIMERoutine(ptr)
 @ stdcall ContinueDebugEvent(long long long)
+@ stdcall -version=0xA00+ ConvertAuxiliaryCounterToPerformanceCounter(int64 ptr ptr)
 @ stdcall ConvertDefaultLocale(long)
 @ stdcall ConvertFiberToThread()
+@ stdcall -version=0xA00+ ConvertPerformanceCounterToAuxiliaryCounter(int64 ptr ptr)
 @ stdcall ConvertThreadToFiber(ptr)
 @ stdcall ConvertThreadToFiberEx(ptr long)
 @ stdcall ConvertToAutoInheritPrivateObjectSecurity(ptr ptr ptr ptr long ptr)
@@ -1238,6 +1240,7 @@
 @ stdcall QISearch(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ QueryActCtxSettingsW(long ptr wstr wstr ptr long ptr)
 @ stdcall QueryActCtxW(long ptr ptr long ptr long ptr)
+@ stdcall -version=0xA00+ QueryAuxiliaryCounterFrequency(ptr)
 @ stdcall QueryDepthSList(ptr) ntdll.RtlQueryDepthSList
 @ stdcall QueryDosDeviceW(wstr ptr long)
 @ stdcall QueryFullProcessImageNameA(ptr long ptr ptr)
