@@ -396,8 +396,14 @@ QcParseDeliverPdu(
     Udl = Pdu[Offset++];
     Ud = Pdu + Offset;
 
-    if ((Dcs & 0xC0) == 0)
-        Alphabet = (Dcs >> 2) & 0x03;   /* 0 GSM7, 1 8 bit, 2 UCS2 */
+    /* 3GPP 23.038: 0 GSM7, 1 8 bit, 2 UCS2. Groups 00xx and 01xx carry the alphabet in bits 2-3,
+       1111 picks 8 bit with bit 2, 1110 is UCS2 waiting indication, the rest is GSM7 */
+    if ((Dcs & 0x80) == 0)
+        Alphabet = (Dcs >> 2) & 0x03;
+    else if ((Dcs & 0xF0) == 0xF0)
+        Alphabet = (Dcs & 0x04) ? 1 : 0;
+    else if ((Dcs & 0xF0) == 0xE0)
+        Alphabet = 2;
     else
         Alphabet = 0;
 
