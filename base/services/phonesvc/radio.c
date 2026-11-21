@@ -299,8 +299,21 @@ PhRilNotify(
             break;
 
         case RIL_NOTIFY_MODEMRESETSTATE:
-            if (Data && DataSize >= sizeof(DWORD))
-                DPRINT1("Modem reset state %lu\n", *(const DWORD *)Data);
+            if (!Data || DataSize < sizeof(DWORD))
+                break;
+
+            DPRINT1("Modem reset state %lu\n", *(const DWORD *)Data);
+            if (*(const DWORD *)Data == RIL_MODEMRESET_STARTED)
+            {
+                /* Calls and the data session do not survive the restart */
+                PhCallsReset();
+                PhAudioCallActive(FALSE, FALSE);
+                PhDataModemLost();
+            }
+            else if (*(const DWORD *)Data == RIL_MODEMRESET_COMPLETED)
+            {
+                TrySubmitThreadpoolCallback(PhDataModemBack, NULL, NULL);
+            }
             break;
 
         case RIL_NOTIFY_RADIOPRESENCE:

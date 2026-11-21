@@ -236,12 +236,28 @@ PhConnectData(
     _In_ DWORD Op,
     _Out_ PPHONEOM_DATA_STATUS Status);
 
+/* Bumped when the modem starts a restart, set until the data session is dealt with */
+extern volatile LONG PhModemResets;
+extern volatile LONG PhModemResetting;
+
+VOID
+PhDataModemLost(VOID);
+
+VOID
+CALLBACK
+PhDataModemBack(
+    _Inout_ PTP_CALLBACK_INSTANCE Instance,
+    _Inout_opt_ PVOID Context);
+
 /* mms.c */
 VOID
 PhMmsInitialize(VOID);
 
 VOID
 PhMmsStop(VOID);
+
+VOID
+PhMmsResume(VOID);
 
 BOOL
 PhMmsPushReceived(

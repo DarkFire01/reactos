@@ -22,6 +22,9 @@
 #define PH_MMS_FILE_NAME_CHARS      48
 #define PH_MMS_ACK_MAX              (PH_MMS_TEXT_MAX + 16)
 
+/* Runs of a job a modem restart may cut short before it counts as failed */
+#define PH_MMS_RESET_RETRIES        2
+
 typedef enum _PH_MMS_JOB_KIND
 {
     PhMmsJobPush = 1,
@@ -34,6 +37,7 @@ typedef struct _PH_MMS_JOB
     LIST_ENTRY Link;
     DWORD Kind;
     DWORD MessageId;
+    DWORD Retries;
     FILETIME Received;
     WCHAR Address[PHONEOM_MAX_NUMBER];
     WCHAR Path[PHONEOM_MAX_PATH];
@@ -75,6 +79,7 @@ static const PH_MMS_EXTENSION PhMmsExtensions[] =
 
 static CRITICAL_SECTION PhMmsLock;
 static LIST_ENTRY PhMmsQueue;
+static LIST_ENTRY PhMmsDeferred;
 static HANDLE PhMmsWake;
 static HANDLE PhMmsThread;
 
@@ -135,6 +140,15 @@ PhMmsPause(
     _In_ DWORD Milliseconds)
 {
     return WaitForSingleObject(PhStopEvent, Milliseconds) == WAIT_OBJECT_0;
+}
+
+/* TRUE when a modem restart began since Resets was read, or is still going on */
+static
+BOOL
+PhMmsLostToReset(
+    _In_ LONG Resets)
+{
+    return PhModemResetting || PhModemResets != Resets;
 }
 
 /* TRUE once an adapter has an address and a gateway and the resolver has a server */
@@ -604,7 +618,8 @@ VOID
 PhMmsRetrieve(
     _In_ const PH_MMS_HEADERS *Notification,
     _In_ const PH_MMS_JOB *Job,
-    _Inout_ PPH_MMS_SEEN Seen)
+    _Inout_ PPH_MMS_SEEN Seen,
+    _Out_ PBOOL Retry)
 {
     WCHAR Url[PH_MMS_URL_MAX];
     PPH_MMS_CONFIG Config = NULL;
@@ -612,8 +627,11 @@ PhMmsRetrieve(
     PBYTE Response = NULL;
     DWORD ResponseSize = 0, Status = 0;
     PCSTR Failure;
-    BOOL Raised = FALSE, Done = FALSE;
+    BOOL Raised = FALSE, Done = FALSE, DataFailed = FALSE;
+    LONG Resets = PhModemResets;
     HRESULT hr;
+
+    *Retry = FALSE;
 
     Config = HeapAlloc(GetProcessHeap(), 0, sizeof(*Config));
     Retrieved = HeapAlloc(GetProcessHeap(), 0, sizeof(*Retrieved));
@@ -633,6 +651,7 @@ PhMmsRetrieve(
     if (!PhMmsBringUpData(&Raised))
     {
         DPRINT1("MMS fetch failed: no data session\n");
+        DataFailed = TRUE;
         goto Exit;
     }
 
@@ -641,6 +660,7 @@ PhMmsRetrieve(
     if (FAILED(hr))
     {
         DPRINT1("MMS fetch failed: GET 0x%lx\n", hr);
+        DataFailed = TRUE;
         goto Exit;
     }
 
@@ -678,7 +698,11 @@ PhMmsRetrieve(
     PhMmsAcknowledge(Config, Notification);
 
 Exit:
-    if (!Done && !Seen->Placeholder)
+    /* The modem restarted under the transfer, the fetch runs again once it is back */
+    if (!Done && DataFailed && Job->Retries < PH_MMS_RESET_RETRIES && PhMmsLostToReset(Resets))
+        *Retry = TRUE;
+
+    if (!Done && !*Retry && !Seen->Placeholder)
     {
         PhMmsStorePlaceholder(Notification, Job);
         Seen->Placeholder = TRUE;
@@ -694,8 +718,9 @@ Exit:
         HeapFree(GetProcessHeap(), 0, Config);
 }
 
+/* Returns TRUE when the job should run again after a modem restart */
 static
-VOID
+BOOL
 PhMmsHandlePush(
     _In_ const PH_MMS_JOB *Job)
 {
@@ -706,24 +731,25 @@ PhMmsHandlePush(
     const BYTE *Body;
     DWORD BodySize;
     PCSTR Failure;
+    BOOL Retry = FALSE;
 
     if (!PhWspDecodePush(Job->Data, Job->Size, Type, _countof(Type), &Body, &BodySize, &Failure))
     {
         DPRINT1("MMS push decode failed: %s\n", Failure);
-        return;
+        return FALSE;
     }
 
     if (!PhMmsIsType(Type, "application/vnd.wap.mms-message"))
     {
         DPRINT1("MMS push decode: content type %s is not an MMS PDU, ignored\n", Type);
-        return;
+        return FALSE;
     }
 
     Notification = HeapAlloc(GetProcessHeap(), 0, sizeof(*Notification));
     if (!Notification)
     {
         DPRINT1("MMS notification decode failed: out of memory\n");
-        return;
+        return FALSE;
     }
 
     if (!PhMmsDecodeHeaders(Body, BodySize, Notification, &Failure))
@@ -769,10 +795,11 @@ PhMmsHandlePush(
         goto Exit;
     }
 
-    PhMmsRetrieve(Notification, Job, Seen);
+    PhMmsRetrieve(Notification, Job, Seen, &Retry);
 
 Exit:
     HeapFree(GetProcessHeap(), 0, Notification);
+    return Retry;
 }
 
 static
@@ -848,8 +875,9 @@ PhMmsTypeFromPath(
     return "application/octet-stream";
 }
 
+/* Returns TRUE when the job should run again after a modem restart */
 static
-VOID
+BOOL
 PhMmsHandleSend(
     _In_ const PH_MMS_JOB *Job)
 {
@@ -861,7 +889,8 @@ PhMmsHandleSend(
     DWORD FileSize = 0, PartCount = 0, Size, ResponseSize = 0, Status = 0, Out = 0, i;
     LPCWSTR Base;
     PCSTR Failure;
-    BOOL Raised = FALSE, Sent = FALSE;
+    BOOL Raised = FALSE, Sent = FALSE, DataFailed = FALSE, Retry = FALSE;
+    LONG Resets = PhModemResets;
     HRESULT hr;
 
     /* Dialable characters only, the relay wants a bare number */
@@ -927,6 +956,7 @@ PhMmsHandleSend(
     if (!PhMmsBringUpData(&Raised))
     {
         DPRINT1("MMS send failed: no data session\n");
+        DataFailed = TRUE;
         goto Exit;
     }
 
@@ -935,6 +965,7 @@ PhMmsHandleSend(
     if (FAILED(hr))
     {
         DPRINT1("MMS send failed: POST 0x%lx\n", hr);
+        DataFailed = TRUE;
         goto Exit;
     }
 
@@ -962,7 +993,12 @@ PhMmsHandleSend(
 
 Exit:
     PhMmsReleaseData(Raised);
-    PhMmsFinishSend(Job->MessageId, Sent);
+
+    /* The message stays in flight while the modem restarts under it */
+    if (!Sent && DataFailed && Job->Retries < PH_MMS_RESET_RETRIES && PhMmsLostToReset(Resets))
+        Retry = TRUE;
+    else
+        PhMmsFinishSend(Job->MessageId, Sent);
 
     if (Response)
         HeapFree(GetProcessHeap(), 0, Response);
@@ -974,6 +1010,7 @@ Exit:
         HeapFree(GetProcessHeap(), 0, Pdu);
     if (File)
         HeapFree(GetProcessHeap(), 0, File);
+    return Retry;
 }
 
 static
@@ -985,6 +1022,7 @@ PhMmsWorker(
     HANDLE Waits[2];
     PLIST_ENTRY Entry;
     PPH_MMS_JOB Job;
+    BOOL Retry, Hold;
 
     UNREFERENCED_PARAMETER(Parameter);
 
@@ -1004,10 +1042,26 @@ PhMmsWorker(
 
             Job = CONTAINING_RECORD(Entry, PH_MMS_JOB, Link);
             if (Job->Kind == PhMmsJobPush)
-                PhMmsHandlePush(Job);
+                Retry = PhMmsHandlePush(Job);
             else
-                PhMmsHandleSend(Job);
-            HeapFree(GetProcessHeap(), 0, Job);
+                Retry = PhMmsHandleSend(Job);
+
+            if (Retry)
+            {
+                /* Held until the modem is back, or run again now if it already is */
+                Job->Retries++;
+                EnterCriticalSection(&PhMmsLock);
+                Hold = PhModemResetting;
+                DPRINT1("MMS %s job cut off by a modem reset, retry %lu %s\n",
+                        (Job->Kind == PhMmsJobPush) ? "fetch" : "send", Job->Retries,
+                        Hold ? "waits for the modem" : "runs now");
+                InsertTailList(Hold ? &PhMmsDeferred : &PhMmsQueue, &Job->Link);
+                LeaveCriticalSection(&PhMmsLock);
+            }
+            else
+            {
+                HeapFree(GetProcessHeap(), 0, Job);
+            }
 
             if (WaitForSingleObject(PhStopEvent, 0) == WAIT_OBJECT_0)
                 return 0;
@@ -1188,6 +1242,7 @@ PhMmsInitialize(VOID)
 {
     InitializeCriticalSection(&PhMmsLock);
     InitializeListHead(&PhMmsQueue);
+    InitializeListHead(&PhMmsDeferred);
 
     PhMmsWake = CreateEventW(NULL, FALSE, FALSE, NULL);
     if (PhMmsWake)
@@ -1195,6 +1250,30 @@ PhMmsInitialize(VOID)
 
     if (!PhMmsThread)
         DPRINT1("MMS worker did not start (%lu), picture messages are unavailable\n", GetLastError());
+}
+
+/* The modem is back from a restart, the jobs it cut off run again */
+VOID
+PhMmsResume(VOID)
+{
+    ULONG Count = 0;
+
+    if (!PhMmsThread)
+        return;
+
+    EnterCriticalSection(&PhMmsLock);
+    while (!IsListEmpty(&PhMmsDeferred))
+    {
+        InsertTailList(&PhMmsQueue, RemoveHeadList(&PhMmsDeferred));
+        Count++;
+    }
+    LeaveCriticalSection(&PhMmsLock);
+
+    if (!Count)
+        return;
+
+    DPRINT1("MMS: %lu job(s) held over the modem reset run again\n", Count);
+    SetEvent(PhMmsWake);
 }
 
 /* PhStopEvent must already be set */
