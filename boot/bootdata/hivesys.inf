@@ -142,9 +142,9 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_080501","Cl
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#VEN_1B36&DEV_0007","Service",0x00000000,"sdhc"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#VEN_1B36&DEV_0007","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
-; Qualcomm SD host controller, off while the Windows Qualcomm drivers own the hardware
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","Service",0x00000000,"qcsdhc"
-; HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2451","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+; Qualcomm SD card slot, card detect on a GPIO
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2466","Service",0x00000000,"qcsdhc"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM2466","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
 
 ; Qualcomm DWC3 dual-role controllers, started as host so USB boot media is reachable
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#QCOM24B6","Service",0x00000000,"urssynopsys"
@@ -2137,11 +2137,11 @@ HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\sdhc","Type",0x00010001,0x00000001
 
 ; Qualcomm SD host controller miniport
-; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ErrorControl",0x00010001,0x00000001
-; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Group",0x00000000,"System Bus Extender"
-; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ImagePath",0x00020000,"system32\drivers\qcsdhc.sys"
-; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Start",0x00010001,0x00000000
-; HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","ImagePath",0x00020000,"system32\drivers\qcsdhc.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\qcsdhc","Type",0x00010001,0x00000001
 
 ; USB composite generic parent
 HKLM,"SYSTEM\CurrentControlSet\Services\usbccgp","ErrorControl",0x00010001,0x00000001
