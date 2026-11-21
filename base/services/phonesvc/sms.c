@@ -616,7 +616,10 @@ PhSmsReceived(
     PhAckMessage(Notification, AckStatus);
 
     if (AckStatus == RIL_MSGACK_OK)
+    {
+        PhWakeDevice("a text message");
         PhBroadcast(PhoneEventMessage, Stored, sizeof(*Stored));
+    }
 
     HeapFree(GetProcessHeap(), 0, Stored);
 }

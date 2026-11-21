@@ -519,6 +519,7 @@ PhMmsStoreRetrieved(
     if (PhMmsSaveParts(Id, Parts, Count) != 0)
         PhStoreUpdateFlags(Id, PHONEOM_MESSAGE_ATTACHMENTS, 0, Message);
 
+    PhWakeDevice("a picture message");
     PhBroadcast(PhoneEventMessage, Message, sizeof(*Message));
     DPRINT1("MMS stored as message %lu from %S\n", Id, Message->Address);
     Ok = TRUE;
@@ -560,7 +561,10 @@ PhMmsStorePlaceholder(
     }
 
     if (PhStoreAdd(Message) != 0)
+    {
+        PhWakeDevice("a picture message");
         PhBroadcast(PhoneEventMessage, Message, sizeof(*Message));
+    }
 
     HeapFree(GetProcessHeap(), 0, Message);
 }
