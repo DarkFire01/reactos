@@ -477,16 +477,25 @@ IopGetInterfaceDeviceList(PPLUGPLAY_CONTROL_INTERFACE_DEVICE_LIST_DATA DeviceLis
     Status = IopCaptureUnicodeString(&DeviceInstance, &StackList.DeviceInstance);
     if (NT_SUCCESS(Status))
     {
-        /* Get the device object */
-        DeviceObject = IopGetDeviceObjectFromDeviceInstance(&DeviceInstance);
+        /* An empty instance asks for the interfaces of every device */
+        if (DeviceInstance.Length != 0)
+        {
+            DeviceObject = IopGetDeviceObjectFromDeviceInstance(&DeviceInstance);
+            if (DeviceObject == NULL)
+                Status = STATUS_NO_SUCH_DEVICE;
+        }
         if (DeviceInstance.Buffer != NULL)
         {
             ExFreePool(DeviceInstance.Buffer);
         }
     }
 
+    if (!NT_SUCCESS(Status))
+        return Status;
+
     Status = IoGetDeviceInterfaces(&FilterGuid, DeviceObject, StackList.Flags, &SymbolicLinkList);
-    ObDereferenceObject(DeviceObject);
+    if (DeviceObject != NULL)
+        ObDereferenceObject(DeviceObject);
 
     if (!NT_SUCCESS(Status))
     {
