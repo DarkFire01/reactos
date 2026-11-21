@@ -13,6 +13,7 @@
 #define QC_FILE_DEVICE_NETWORK      0x00000012
 #define QC_IOCTL_TX_EVENT           CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define QC_IOCTL_FIND_SERVERS       CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define QC_IOCTL_REGISTER_SERVER    CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define QC_IOCTL_PORT_OPEN          CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x807, METHOD_NEITHER, FILE_ANY_ACCESS)
 #define QC_IOCTL_PORT_CLOSE         CTL_CODE(QC_FILE_DEVICE_NETWORK, 0x808, METHOD_NEITHER, FILE_ANY_ACCESS)
 
@@ -308,6 +309,26 @@ QcIpcClosePort(
     CloseHandle(Port);
 }
 
+/**
+ * @brief Announces a service this port serves, the remote processors can then look it up.
+ *
+ * @param[in] Instance
+ * The IDL major version in the low byte, the instance above it.
+ */
+BOOL
+QcIpcRegisterServer(
+    _In_ HANDLE Port,
+    _In_ ULONG ServiceId,
+    _In_ ULONG Instance)
+{
+    ULONG Server[2];
+    DWORD Returned;
+
+    Server[0] = ServiceId;
+    Server[1] = Instance;
+    return QcIoctl(Port, QC_IOCTL_REGISTER_SERVER, Server, sizeof(Server), NULL, 0, &Returned);
+}
+
 /* One framed message on an extra port, a busy router is retried for a short while */
 BOOL
 QcIpcSendOn(
@@ -588,6 +609,7 @@ QcModemLost(
     QcWdsModemLost(Modem);
     QcImsModemLost(Modem);
     QcImsDataModemLost();
+    QcDcmModemLost();
 
     InterlockedExchange(&Modem->Restarted, 1);
     QcTrace("ssr: state reset, waiting for the services to return\n");

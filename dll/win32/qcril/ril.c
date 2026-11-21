@@ -87,7 +87,11 @@ VOID
 QcEnsureInitLock(VOID)
 {
     if (InterlockedCompareExchange(&gInitLockReady, 1, 0) == 0)
+    {
         InitializeCriticalSection(&gInitLock);
+        QcImsDataInitialize();
+        QcDcmInitialize();
+    }
 }
 
 static
