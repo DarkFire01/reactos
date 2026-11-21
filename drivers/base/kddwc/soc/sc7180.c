@@ -11,6 +11,10 @@
 #define SC7180_QUSB2_BASE               0x088E3000ULL
 
 /* Clock controller offsets */
+#define SC7180_GPLL0_MODE               0x00000
+#define SC7180_APCS_GPLL_VOTE           0x52010
+#define SC7180_APCS_GPLL0_VOTE          0x00000001
+#define SC7180_USB30_PRIM_BCR           0xF000
 #define SC7180_USB30_PRIM_GDSCR         0xF004
 #define SC7180_USB30_MASTER_CBCR        0xF010
 #define SC7180_USB30_SLEEP_CBCR         0xF014
@@ -18,7 +22,16 @@
 #define SC7180_CFG_NOC_USB3_CBCR        0x502C
 #define SC7180_AHB2PHY_CBCR             0x6A004
 #define SC7180_AGGRE_USB3_CBCR          0x8201C
+#define SC7180_USB30_MASTER_CMD_RCGR    0xF01C
+#define SC7180_USB30_MOCK_UTMI_CMD_RCGR 0xF034
 #define SC7180_QUSB2PHY_PRIM_BCR        0x26000
+
+/* GPLL0 main divided by 3 for a 200 MHz master, the crystal undivided for mock UTMI */
+#define SC7180_MASTER_200MHZ            0x105
+#define SC7180_MOCK_UTMI_19_2MHZ        0x001
+
+/* Fuse whose bits 3:1 hold the factory transmit current trim */
+#define SC7180_QUSB2_TRIM_FUSE          0x0078425BULL
 
 /* Held powered down, clamped and with the supply trim off while programmed */
 #define SC7180_QUSB2_HOLD               0x23
@@ -32,6 +45,27 @@ static const KDDWC_REG_WRITE Sc7180Qusb2Setup[] =
     { 0x248, 0xCA }, { 0x24C, 0x04 }, { 0x250, 0x03 }, { 0x23C, 0x00 }
 };
 
+/*
+ * Tuning every SC7180 board uses: impedance offset 8, bias control 0x22,
+ * charge pump 3, 15 percent pre-emphasis held for half a bit, no disconnect trim.
+ */
+static const KDDWC_REG_MODIFY Sc7180Qusb2Tuning[] =
+{
+    { 0x220, 0x3F, 0x08 },
+    { 0x198, 0x3F, 0x22 },
+    { 0x23C, 0x30, 0x30 },
+    { 0x240, 0x07, 0x07 },
+    { 0x244, 0x03, 0x00 }
+};
+
+static const KDDWC_QUSB2_TRIM Sc7180Qusb2Trim =
+{
+    SC7180_QUSB2_TRIM_FUSE,
+    1,
+    0x07,
+    0x240
+};
+
 static const ULONG Sc7180Branches[] =
 {
     SC7180_CFG_NOC_USB3_CBCR,
@@ -42,6 +76,23 @@ static const ULONG Sc7180Branches[] =
     SC7180_AHB2PHY_CBCR
 };
 
+static const KDDWC_CLOCK_PLAN Sc7180Clocks =
+{
+    KDDWC_GCC_BASE,
+    SC7180_GPLL0_MODE,
+    SC7180_APCS_GPLL_VOTE,
+    SC7180_APCS_GPLL0_VOTE,
+    SC7180_USB30_PRIM_GDSCR,
+    SC7180_USB30_MASTER_CMD_RCGR,
+    SC7180_MASTER_200MHZ,
+    SC7180_USB30_MOCK_UTMI_CMD_RCGR,
+    SC7180_MOCK_UTMI_19_2MHZ,
+    0,
+    SC7180_USB30_PRIM_BCR,
+    Sc7180Branches,
+    RTL_NUMBER_OF(Sc7180Branches)
+};
+
 /* Firmware runs this controller in device mode, so its PHY is only set up again when it is down */
 static
 BOOLEAN
@@ -49,20 +100,8 @@ NTAPI
 Sc7180PowerUp(
     _In_ const KDDWC_PLATFORM* Platform)
 {
-    ULONG i;
-
     UNREFERENCED_PARAMETER(Platform);
-
-    if (!KdDwcPowerDomainOn(KDDWC_GCC_BASE + SC7180_USB30_PRIM_GDSCR))
-        return FALSE;
-
-    for (i = 0; i < RTL_NUMBER_OF(Sc7180Branches); i++)
-    {
-        if (!KdDwcClockOn(KDDWC_GCC_BASE + Sc7180Branches[i]))
-            return FALSE;
-    }
-
-    return TRUE;
+    return KdDwcRunClockPlan(&Sc7180Clocks);
 }
 
 /* Runs after the core has stopped suspending its PHY, as the core driver orders it */
@@ -82,9 +121,9 @@ Sc7180StartPhy(
                            SC7180_QUSB2_HOLD,
                            Sc7180Qusb2Setup,
                            RTL_NUMBER_OF(Sc7180Qusb2Setup),
-                           NULL,
-                           0,
-                           0);
+                           Sc7180Qusb2Tuning,
+                           RTL_NUMBER_OF(Sc7180Qusb2Tuning),
+                           &Sc7180Qusb2Trim);
 }
 
 /* Buses from the controller to memory and from the processor to its registers */
@@ -101,6 +140,14 @@ static const KDDWC_BUS_NODE Sc7180BusNodes[] =
     KDDWC_REGISTER_NODE("CN0", 4, 1)
 };
 
+/* The supplies of the high speed PHY on Trogdor, the IDP and the Aspire 1 */
+static const KDDWC_SUPPLY Sc7180Supplies[] =
+{
+    { "ldoa4", 880 },
+    { "ldoa11", 1800 },
+    { "ldoa17", 3088 }
+};
+
 static const KDDWC_RPMH Sc7180Rpmh =
 {
     0x18220000ULL,
@@ -110,8 +157,12 @@ static const KDDWC_RPMH Sc7180Rpmh =
     KDDWC_CMD_DB_BYTES,
     Sc7180BusNodes,
     RTL_NUMBER_OF(Sc7180BusNodes),
-    NULL,
-    0
+    Sc7180Supplies,
+    RTL_NUMBER_OF(Sc7180Supplies),
+
+    /* A 200 MHz master needs the logic rail at its nominal level */
+    "cx.lvl",
+    KDDWC_RAIL_NOMINAL
 };
 
 /* Reads only the clock controller, so it can run whatever state the controller is in */
@@ -122,13 +173,13 @@ Sc7180IsPowered(
     _In_ const KDDWC_PLATFORM* Platform)
 {
     UNREFERENCED_PARAMETER(Platform);
-    return KdDwcClocksRunning(KDDWC_GCC_BASE, SC7180_USB30_PRIM_GDSCR, Sc7180Branches, RTL_NUMBER_OF(Sc7180Branches));
+    return KdDwcClockPlanRunning(&Sc7180Clocks);
 }
 
 const KDDWC_PLATFORM KdDwcPlatformSc7180 =
 {
     "SC7180",
-    { "SC7180", "SDM7180", NULL, NULL },
+    { "SC7180", "SDM7180", NULL, NULL, NULL },
     SC7180_CORE_BASE,
     Sc7180PowerUp,
     0,

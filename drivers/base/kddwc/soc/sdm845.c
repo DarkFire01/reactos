@@ -48,6 +48,14 @@ static const KDDWC_REG_MODIFY Sdm845Qusb2Tuning[] =
     { 0x240, 0xF7, 0x45 }
 };
 
+static const KDDWC_QUSB2_TRIM Sdm845Qusb2Trim =
+{
+    SDM845_QUSB2_TRIM_FUSE,
+    1,
+    0x0F,
+    0x240
+};
+
 static const KDDWC_REG_WRITE Sdm845Qusb2Setup[] =
 {
     { 0x004, 0x03 }, { 0x18C, 0x7C }, { 0x02C, 0x80 }, { 0x184, 0x0A },
@@ -125,7 +133,7 @@ Sdm845StartPhy(
                            RTL_NUMBER_OF(Sdm845Qusb2Setup),
                            Sdm845Qusb2Tuning,
                            RTL_NUMBER_OF(Sdm845Qusb2Tuning),
-                           SDM845_QUSB2_TRIM_FUSE);
+                           &Sdm845Qusb2Trim);
 }
 
 /* Buses from the controller to memory and from the processor to its registers */
