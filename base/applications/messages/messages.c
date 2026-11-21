@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <strsafe.h>
 #include <wchar.h>
+#include <objbase.h>
+#include <commdlg.h>
+#include <gdiplus.h>
 
 #include <telephony/phoneom.h>
 
@@ -28,6 +31,7 @@
 #define MG_SUBTEXT                  RGB(0x9A, 0x9B, 0xA3)
 #define MG_FIELD                    RGB(0x1A, 0x1A, 0x1E)
 #define MG_FAILED                   RGB(0xC8, 0x3C, 0x3C)
+#define MG_TILE_ARGB                0xFF24252A
 
 /* Touch sized layout in pixels, the top row stays clear of the camera cutout */
 #define MG_MARGIN                   28
@@ -38,6 +42,9 @@
 #define MG_ITEM_H                   132
 #define MG_BUBBLE_PAD               20
 #define MG_BUBBLE_WIDTH_PERCENT     72
+#define MG_THUMB_MAX_H              120
+#define MG_ATTACH_LINE_H            34
+#define MG_ITEM_MAX_H               255
 
 enum
 {
@@ -50,7 +57,9 @@ enum
     IDC_COMPOSE,
     IDC_SEND,
     IDC_DELETE,
-    IDC_STATUS
+    IDC_STATUS,
+    IDC_ATTACH,
+    IDC_VIEWER
 };
 
 typedef struct _MG_EVENT
@@ -84,6 +93,24 @@ static DWORD MgMessageCount;
 static DWORD MgMessageCapacity;
 static PMG_THREAD MgThreads;
 static DWORD MgThreadCount;
+
+/* Attachments of one multimedia message, loaded the first time it is drawn */
+typedef struct _MG_MEDIA
+{
+    DWORD MessageId;
+    DWORD Count;
+    HBITMAP Thumb;
+    SIZE ThumbSize;
+    WCHAR Picture[PHONEOM_MAX_PATH];
+    WCHAR Summary[128];
+} MG_MEDIA, *PMG_MEDIA;
+
+static PMG_MEDIA MgMedia;
+static DWORD MgMediaCount;
+static DWORD MgMediaCapacity;
+static ULONG_PTR MgGdiplusToken;
+static WNDPROC MgThreadListProc;
+static WCHAR MgAttachPath[PHONEOM_MAX_PATH];
 
 /* The conversation on screen, empty while the list is shown */
 static BOOL MgInThread;
@@ -174,6 +201,182 @@ MgFormatTime(
         return;
 
     StringCchPrintfW(Text, Count, L"%u/%u %02u:%02u", System.wMonth, System.wDay, System.wHour, System.wMinute);
+}
+
+static
+BOOL
+MgIsPicture(
+    _In_z_ LPCWSTR Path)
+{
+    static const LPCWSTR Extensions[] = { L".jpg", L".jpeg", L".png", L".gif", L".bmp" };
+    LPCWSTR Dot = wcsrchr(Path, L'.');
+    DWORD i;
+
+    for (i = 0; Dot && i < _countof(Extensions); i++)
+    {
+        if (!_wcsicmp(Dot, Extensions[i]))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+/* Scales a picture file to fit the box, keeping its aspect */
+static
+HBITMAP
+MgLoadPicture(
+    _In_z_ LPCWSTR Path,
+    _In_ int MaxWidth,
+    _In_ int MaxHeight,
+    _Out_ SIZE *Size)
+{
+    GpBitmap *Bitmap = NULL;
+    GpImage *Scaled = NULL;
+    HBITMAP Result = NULL;
+    UINT Width = 0, Height = 0;
+
+    Size->cx = Size->cy = 0;
+    if (!MgGdiplusToken || MaxWidth <= 0 || MaxHeight <= 0)
+        return NULL;
+
+    if (GdipCreateBitmapFromFile(Path, &Bitmap) != Ok)
+        return NULL;
+
+    GdipGetImageWidth((GpImage *)Bitmap, &Width);
+    GdipGetImageHeight((GpImage *)Bitmap, &Height);
+    if (Width && Height)
+    {
+        Size->cx = MaxWidth;
+        Size->cy = (LONG)((ULONGLONG)Height * MaxWidth / Width);
+        if (Size->cy > MaxHeight)
+        {
+            Size->cy = MaxHeight;
+            Size->cx = (LONG)((ULONGLONG)Width * MaxHeight / Height);
+        }
+        Size->cx = max(Size->cx, 1);
+        Size->cy = max(Size->cy, 1);
+
+        if (GdipGetImageThumbnail((GpImage *)Bitmap, Size->cx, Size->cy, &Scaled, NULL, NULL) == Ok)
+        {
+            GdipCreateHBITMAPFromBitmap((GpBitmap *)Scaled, &Result, MG_TILE_ARGB);
+            GdipDisposeImage(Scaled);
+        }
+    }
+
+    GdipDisposeImage((GpImage *)Bitmap);
+    if (!Result)
+        Size->cx = Size->cy = 0;
+    return Result;
+}
+
+static
+LPCWSTR
+MgFileName(
+    _In_z_ LPCWSTR Path)
+{
+    LPCWSTR Slash = wcsrchr(Path, L'\\');
+    LPCWSTR Name = Slash ? Slash + 1 : Path;
+
+    /* The service prefixes the part order */
+    if (wcslen(Name) > 3 && iswdigit(Name[0]) && iswdigit(Name[1]) && Name[2] == L'_')
+        Name += 3;
+    return Name;
+}
+
+/* Media for a message with attachments, NULL for anything else */
+static
+PMG_MEDIA
+MgGetMedia(
+    _In_ const PHONEOM_MESSAGE *Message)
+{
+    PHONEOM_ATTACHMENT *Files;
+    PMG_MEDIA Media;
+    DWORD Count = 0, i;
+
+    if (!(Message->Flags & PHONEOM_MESSAGE_ATTACHMENTS))
+        return NULL;
+
+    for (i = 0; i < MgMediaCount; i++)
+    {
+        if (MgMedia[i].MessageId == Message->MessageId)
+            return &MgMedia[i];
+    }
+
+    if (!MgPhone)
+        return NULL;
+
+    if (MgMediaCount == MgMediaCapacity)
+    {
+        DWORD Capacity = MgMediaCapacity ? MgMediaCapacity * 2 : 16;
+        PVOID Grown;
+
+        Grown = MgMedia ? HeapReAlloc(GetProcessHeap(), 0, MgMedia, Capacity * sizeof(*MgMedia))
+                        : HeapAlloc(GetProcessHeap(), 0, Capacity * sizeof(*MgMedia));
+        if (!Grown)
+            return NULL;
+
+        MgMedia = Grown;
+        MgMediaCapacity = Capacity;
+    }
+
+    Files = HeapAlloc(GetProcessHeap(), 0, PHONEOM_MAX_ATTACHMENTS * sizeof(*Files));
+    if (!Files)
+        return NULL;
+
+    if (FAILED(PhoneOmGetAttachments(MgPhone, Message->MessageId, Files, PHONEOM_MAX_ATTACHMENTS, &Count)))
+        Count = 0;
+
+    Media = &MgMedia[MgMediaCount++];
+    ZeroMemory(Media, sizeof(*Media));
+    Media->MessageId = Message->MessageId;
+
+    for (i = 0; i < Count; i++)
+    {
+        LPCWSTR Dot = wcsrchr(Files[i].Path, L'.');
+
+        /* The layout file is not something to show */
+        if (Dot && !_wcsicmp(Dot, L".smil"))
+            continue;
+
+        if (!Media->Picture[0] && MgIsPicture(Files[i].Path))
+            StringCchCopyW(Media->Picture, _countof(Media->Picture), Files[i].Path);
+
+        if (Media->Summary[0])
+            StringCchCatW(Media->Summary, _countof(Media->Summary), L", ");
+        StringCchCatW(Media->Summary, _countof(Media->Summary), MgFileName(Files[i].Path));
+        Media->Count++;
+    }
+
+    HeapFree(GetProcessHeap(), 0, Files);
+    return Media;
+}
+
+static
+VOID
+MgFreeMedia(VOID)
+{
+    DWORD i;
+
+    for (i = 0; i < MgMediaCount; i++)
+    {
+        if (MgMedia[i].Thumb)
+            DeleteObject(MgMedia[i].Thumb);
+    }
+
+    HeapFree(GetProcessHeap(), 0, MgMedia);
+    MgMedia = NULL;
+    MgMediaCount = MgMediaCapacity = 0;
+}
+
+/* Text for the conversation list, a picture message may have none */
+static
+LPCWSTR
+MgPreviewText(
+    _In_ const PHONEOM_MESSAGE *Message)
+{
+    if (Message->Text[0] || !(Message->Flags & PHONEOM_MESSAGE_MMS))
+        return Message->Text;
+    return L"Picture message";
 }
 
 static
@@ -390,16 +593,21 @@ MgLayout(VOID);
 
 static
 VOID
+MgHidePicture(VOID);
+
+static
+VOID
 MgShowView(
     _In_ BOOL Thread,
     _In_ BOOL ComposeNew)
 {
     static const UINT ListIds[] = { IDC_LIST, IDC_NEW, IDC_EXIT };
-    static const UINT ThreadIds[] = { IDC_BACK, IDC_THREAD, IDC_COMPOSE, IDC_SEND, IDC_DELETE };
+    static const UINT ThreadIds[] = { IDC_BACK, IDC_THREAD, IDC_COMPOSE, IDC_SEND, IDC_DELETE, IDC_ATTACH };
     DWORD i;
 
     MgInThread = Thread;
     MgComposingNew = ComposeNew;
+    MgHidePicture();
 
     for (i = 0; i < _countof(ListIds); i++)
         ShowWindow(GetDlgItem(MgWindow, ListIds[i]), Thread ? SW_HIDE : SW_SHOW);
@@ -526,6 +734,111 @@ MgHandleEvent(
 
 static
 VOID
+MgHidePicture(VOID)
+{
+    HWND Viewer = GetDlgItem(MgWindow, IDC_VIEWER);
+    HBITMAP Old;
+
+    ShowWindow(Viewer, SW_HIDE);
+    Old = (HBITMAP)SendMessageW(Viewer, STM_SETIMAGE, IMAGE_BITMAP, 0);
+    if (Old)
+        DeleteObject(Old);
+}
+
+/* Full view of a picture over the conversation, a tap closes it */
+static
+VOID
+MgShowPicture(
+    _In_z_ LPCWSTR Path)
+{
+    HWND Viewer = GetDlgItem(MgWindow, IDC_VIEWER);
+    HWND Thread = GetDlgItem(MgWindow, IDC_THREAD);
+    HBITMAP Bitmap, Old;
+    RECT Area;
+    SIZE Size;
+
+    GetWindowRect(Thread, &Area);
+    MapWindowPoints(NULL, MgWindow, (LPPOINT)&Area, 2);
+
+    Bitmap = MgLoadPicture(Path, Area.right - Area.left, Area.bottom - Area.top, &Size);
+    if (!Bitmap)
+    {
+        MgSetStatus(L"Cannot show %s", MgFileName(Path));
+        return;
+    }
+
+    Old = (HBITMAP)SendMessageW(Viewer, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)Bitmap);
+    if (Old)
+        DeleteObject(Old);
+
+    SetWindowPos(Viewer, HWND_TOP, Area.left, Area.top, Area.right - Area.left, Area.bottom - Area.top, SWP_SHOWWINDOW);
+    MgSetStatus(L"%s, tap to close", MgFileName(Path));
+}
+
+/* Taps on a picture message open the picture */
+static
+LRESULT
+CALLBACK
+MgThreadListWndProc(
+    _In_ HWND Window,
+    _In_ UINT Message,
+    _In_ WPARAM wParam,
+    _In_ LPARAM lParam)
+{
+    if (Message == WM_LBUTTONUP)
+    {
+        LRESULT Hit = CallWindowProcW(MgThreadListProc, Window, LB_ITEMFROMPOINT, 0, lParam);
+        LRESULT Data;
+        PMG_MEDIA Media;
+
+        if (HIWORD(Hit) == 0)
+        {
+            Data = CallWindowProcW(MgThreadListProc, Window, LB_GETITEMDATA, LOWORD(Hit), 0);
+            if (Data != LB_ERR && (DWORD)Data < MgMessageCount)
+            {
+                Media = MgGetMedia(&MgMessages[Data]);
+                if (Media && Media->Picture[0])
+                    MgShowPicture(Media->Picture);
+            }
+        }
+    }
+
+    return CallWindowProcW(MgThreadListProc, Window, Message, wParam, lParam);
+}
+
+static
+VOID
+MgPickAttachment(VOID)
+{
+    OPENFILENAMEW Dialog;
+    WCHAR Path[PHONEOM_MAX_PATH] = L"";
+
+    /* A second tap drops the picture */
+    if (MgAttachPath[0])
+    {
+        MgAttachPath[0] = UNICODE_NULL;
+        SetDlgItemTextW(MgWindow, IDC_ATTACH, L"Picture");
+        MgSetStatus(L"Picture removed");
+        return;
+    }
+
+    ZeroMemory(&Dialog, sizeof(Dialog));
+    Dialog.lStructSize = sizeof(Dialog);
+    Dialog.hwndOwner = MgWindow;
+    Dialog.lpstrFilter = L"Pictures\0*.jpg;*.jpeg;*.png;*.gif\0All files\0*.*\0";
+    Dialog.lpstrFile = Path;
+    Dialog.nMaxFile = _countof(Path);
+    Dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetOpenFileNameW(&Dialog))
+        return;
+
+    StringCchCopyW(MgAttachPath, _countof(MgAttachPath), Path);
+    SetDlgItemTextW(MgWindow, IDC_ATTACH, L"Remove");
+    MgSetStatus(L"Picture attached: %s", MgFileName(Path));
+}
+
+static
+VOID
 MgSend(VOID)
 {
     WCHAR Text[PHONEOM_MAX_TEXT];
@@ -537,7 +850,7 @@ MgSend(VOID)
         GetDlgItemTextW(MgWindow, IDC_TO, MgAddress, _countof(MgAddress));
     GetDlgItemTextW(MgWindow, IDC_COMPOSE, Text, _countof(Text));
 
-    if (!MgAddress[0] || !Text[0])
+    if (!MgAddress[0] || (!Text[0] && !MgAttachPath[0]))
     {
         MgSetStatus(L"Enter a number and a message");
         return;
@@ -549,7 +862,10 @@ MgSend(VOID)
         return;
     }
 
-    hr = PhoneOmSendMessage(MgPhone, MgAddress, Text, &Id);
+    if (MgAttachPath[0])
+        hr = PhoneOmSendMms(MgPhone, MgAddress, Text, MgAttachPath, &Id);
+    else
+        hr = PhoneOmSendMessage(MgPhone, MgAddress, Text, &Id);
     if (FAILED(hr))
     {
         MgSetStatus(L"Send failed 0x%08lx", hr);
@@ -559,6 +875,8 @@ MgSend(VOID)
     /* Shown right away as sending, the status event updates it */
     ZeroMemory(&Message, sizeof(Message));
     Message.MessageId = Id;
+    if (MgAttachPath[0])
+        Message.Flags = PHONEOM_MESSAGE_MMS | PHONEOM_MESSAGE_ATTACHMENTS;
     GetSystemTimeAsFileTime(&Message.Timestamp);
     StringCchCopyW(Message.Address, _countof(Message.Address), MgAddress);
     StringCchCopyW(Message.Text, _countof(Message.Text), Text);
@@ -566,6 +884,8 @@ MgSend(VOID)
 
     SetDlgItemTextW(MgWindow, IDC_COMPOSE, L"");
     MgSetStatus(L"Sending to %s", MgAddress);
+    MgAttachPath[0] = UNICODE_NULL;
+    SetDlgItemTextW(MgWindow, IDC_ATTACH, L"Picture");
 
     if (MgComposingNew)
         MgShowView(TRUE, FALSE);
@@ -660,7 +980,7 @@ MgDrawConversation(
 
     Text.top = Text.bottom;
     Text.bottom = Card.bottom - MG_BUBBLE_PAD / 2;
-    DrawTextW(Item->hDC, Last->Text, -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+    DrawTextW(Item->hDC, MgPreviewText(Last), -1, &Text, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 
 /* The bubble rectangle of one message, inside the given row of the thread */
@@ -676,6 +996,7 @@ MgBubbleRect(
     int MaxText = Width * MG_BUBBLE_WIDTH_PERCENT / 100 - 2 * MG_BUBBLE_PAD;
     RECT Measure = { 0, 0, MaxText, 0 };
     HGDIOBJ Old = SelectObject(Dc, MgFont);
+    PMG_MEDIA Media = MgGetMedia(Message);
     int Footer;
 
     DrawTextW(Dc, Message->Text[0] ? Message->Text : L" ", -1, &Measure,
@@ -683,6 +1004,19 @@ MgBubbleRect(
     SelectObject(Dc, Old);
 
     Footer = 34;
+    if (Media && Media->Count)
+    {
+        /* The thumbnail and the file names sit between the text and the time */
+        if (Media->Picture[0] && !Media->Thumb)
+            Media->Thumb = MgLoadPicture(Media->Picture, MaxText, MG_THUMB_MAX_H, &Media->ThumbSize);
+
+        Footer += MG_ATTACH_LINE_H + (Media->Thumb ? Media->ThumbSize.cy + MG_GAP / 2 : 0);
+        Measure.right = max(Measure.right, Media->ThumbSize.cx);
+
+        /* Keep the bubble inside what a variable height list item can hold */
+        if (Measure.bottom + 2 * MG_BUBBLE_PAD + Footer + MG_GAP > MG_ITEM_MAX_H)
+            Measure.bottom = max(MG_ITEM_MAX_H - 2 * MG_BUBBLE_PAD - Footer - MG_GAP, 0);
+    }
     Bubble->top = MG_GAP / 2;
     Bubble->bottom = Bubble->top + Measure.bottom + 2 * MG_BUBBLE_PAD + Footer;
     if (Message->Flags & PHONEOM_MESSAGE_INCOMING)
@@ -727,7 +1061,54 @@ MgMeasureBubble(
     MgBubbleRect(Dc, &MgMessages[Item->itemData], Client.right, &Bubble, &Text);
     ReleaseDC(Thread, Dc);
 
-    Item->itemHeight = min(Bubble.bottom + MG_GAP / 2, 255);
+    Item->itemHeight = min(Bubble.bottom + MG_GAP / 2, MG_ITEM_MAX_H);
+}
+
+/* Thumbnail and file names below the text of a picture message */
+static
+VOID
+MgDrawMedia(
+    _In_ HDC Dc,
+    _In_ const PHONEOM_MESSAGE *Message,
+    _In_ const RECT *Text)
+{
+    PMG_MEDIA Media = MgGetMedia(Message);
+    WCHAR Line[160];
+    RECT Rect;
+    HDC Memory;
+    HGDIOBJ Old;
+
+    if (!Media)
+        return;
+
+    Rect.left = Text->left;
+    Rect.right = Text->right + MG_BUBBLE_PAD;
+    Rect.top = Text->bottom;
+
+    if (Media->Thumb)
+    {
+        Memory = CreateCompatibleDC(Dc);
+        if (Memory)
+        {
+            Old = SelectObject(Memory, Media->Thumb);
+            BitBlt(Dc, Rect.left, Rect.top + MG_GAP / 2, Media->ThumbSize.cx, Media->ThumbSize.cy, Memory, 0, 0, SRCCOPY);
+            SelectObject(Memory, Old);
+            DeleteDC(Memory);
+        }
+        Rect.top += Media->ThumbSize.cy + MG_GAP / 2;
+    }
+
+    if (Media->Count == 0)
+        StringCchCopyW(Line, _countof(Line), L"Attachment not available");
+    else if (Media->Count == 1)
+        StringCchPrintfW(Line, _countof(Line), L"Attachment: %s", Media->Summary);
+    else
+        StringCchPrintfW(Line, _countof(Line), L"%lu attachments: %s", Media->Count, Media->Summary);
+
+    Rect.bottom = Rect.top + MG_ATTACH_LINE_H;
+    SelectObject(Dc, MgSmallFont);
+    SetTextColor(Dc, (Message->Flags & PHONEOM_MESSAGE_INCOMING) ? MG_SUBTEXT : MG_TEXT);
+    DrawTextW(Dc, Line, -1, &Rect, DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 
 static
@@ -762,7 +1143,8 @@ MgDrawBubble(
     SetBkMode(Item->hDC, TRANSPARENT);
     SetTextColor(Item->hDC, MG_TEXT);
     SelectObject(Item->hDC, MgFont);
-    DrawTextW(Item->hDC, Message->Text, -1, &Text, DT_WORDBREAK | DT_NOPREFIX | DT_EDITCONTROL);
+    DrawTextW(Item->hDC, Message->Text, -1, &Text, DT_WORDBREAK | DT_NOPREFIX | DT_EDITCONTROL | DT_END_ELLIPSIS);
+    MgDrawMedia(Item->hDC, Message, &Text);
 
     if (!(Message->Flags & PHONEOM_MESSAGE_INCOMING))
     {
@@ -831,10 +1213,13 @@ MgCreateControls(VOID)
     MgControl(L"EDIT", NULL, WS_TABSTOP | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, IDC_COMPOSE, MgFont);
     MgControl(L"BUTTON", L"Send", WS_TABSTOP | BS_OWNERDRAW, IDC_SEND, MgButtonFont);
     MgControl(L"BUTTON", L"Delete", WS_TABSTOP | BS_OWNERDRAW, IDC_DELETE, MgButtonFont);
+    MgControl(L"BUTTON", L"Picture", WS_TABSTOP | BS_OWNERDRAW, IDC_ATTACH, MgButtonFont);
+    MgControl(L"STATIC", NULL, SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY, IDC_VIEWER, MgFont);
 
     MgControl(L"STATIC", L"", WS_VISIBLE | SS_CENTERIMAGE | SS_ENDELLIPSIS, IDC_STATUS, MgSmallFont);
 
     SendDlgItemMessageW(MgWindow, IDC_LIST, LB_SETITEMHEIGHT, 0, MG_ITEM_H);
+    MgThreadListProc = (WNDPROC)SetWindowLongPtrW(GetDlgItem(MgWindow, IDC_THREAD), GWLP_WNDPROC, (LONG_PTR)MgThreadListWndProc);
     SendDlgItemMessageW(MgWindow, IDC_COMPOSE, EM_LIMITTEXT, PHONEOM_MAX_TEXT - 1, 0);
     SendDlgItemMessageW(MgWindow, IDC_TO, EM_LIMITTEXT, PHONEOM_MAX_NUMBER - 1, 0);
 }
@@ -889,7 +1274,8 @@ MgLayout(VOID)
     }
 
     MgMove(IDC_COMPOSE, Left, Bottom - 2 * MG_ROW, Width - Third - MG_GAP, 2 * MG_ROW);
-    MgMove(IDC_SEND, Left + Width - Third, Bottom - 2 * MG_ROW, Third, 2 * MG_ROW);
+    MgMove(IDC_ATTACH, Left + Width - Third, Bottom - 2 * MG_ROW, Third, MG_ROW - MG_GAP / 2);
+    MgMove(IDC_SEND, Left + Width - Third, Bottom - MG_ROW + MG_GAP / 2, Third, MG_ROW - MG_GAP / 2);
     Bottom -= 2 * MG_ROW + MG_GAP;
     MgMove(IDC_THREAD, Left, Top, Width, max(Bottom - Top, MG_ROW));
 }
@@ -1025,7 +1411,19 @@ MgWndProc(
                     break;
 
                 case IDC_BACK:
-                    MgShowView(FALSE, FALSE);
+                    if (IsWindowVisible(GetDlgItem(Window, IDC_VIEWER)))
+                        MgHidePicture();
+                    else
+                        MgShowView(FALSE, FALSE);
+                    break;
+
+                case IDC_VIEWER:
+                    if (HIWORD(wParam) == STN_CLICKED)
+                        MgHidePicture();
+                    break;
+
+                case IDC_ATTACH:
+                    MgPickAttachment();
                     break;
 
                 case IDC_SEND:
@@ -1069,6 +1467,7 @@ wWinMain(
     _In_ LPWSTR lpCmdLine,
     _In_ int nShowCmd)
 {
+    struct GdiplusStartupInput GdiplusInput;
     WNDCLASSEXW Class;
     HWND Window;
     MSG Msg;
@@ -1078,6 +1477,13 @@ wWinMain(
     UNREFERENCED_PARAMETER(nShowCmd);
 
     MgInstance = hInstance;
+
+    /* Without GDI+ picture messages still show their file names */
+    ZeroMemory(&GdiplusInput, sizeof(GdiplusInput));
+    GdiplusInput.GdiplusVersion = 1;
+    if (GdiplusStartup(&MgGdiplusToken, &GdiplusInput, NULL) != Ok)
+        MgGdiplusToken = 0;
+
     MgFont = MgMakeFont(36, FW_NORMAL);
     MgSmallFont = MgMakeFont(26, FW_NORMAL);
     MgHeadFont = MgMakeFont(48, FW_SEMIBOLD);
@@ -1125,6 +1531,9 @@ wWinMain(
 
     HeapFree(GetProcessHeap(), 0, MgMessages);
     HeapFree(GetProcessHeap(), 0, MgThreads);
+    MgFreeMedia();
+    if (MgGdiplusToken)
+        GdiplusShutdown(MgGdiplusToken);
     DeleteObject(MgBgBrush);
     DeleteObject(MgFieldBrush);
     return (int)Msg.wParam;
