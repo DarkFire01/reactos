@@ -270,14 +270,18 @@ PopBatteryIrpCompletion(
                     PopNotifyPowerSettingChange(&GUID_BATTERY_PERCENTAGE_REMAINING);
                 }
 
+                /* Only a change of state or charge is worth a report, the status is read every few seconds */
+#if DBG
+                if (PopBattery->Status.PowerState != BattStatus.PowerState ||
+                    PopBattery->Status.Capacity != BattStatus.Capacity)
+                {
+                    PopReportBatteryStatus(&BattStatus);
+                }
+#endif
+
                 /* Copy the currently queried battery status */
                 RtlCopyMemory(&PopBattery->Status, &BattStatus, sizeof(BattStatus));
                 PopFreePool(Irp->AssociatedIrp.SystemBuffer, TAG_PO_BATTERY_IO_DATA);
-
-                /* Report to the debugger the battery status */
-#if DBG
-                PopReportBatteryStatus(&PopBattery->Status);
-#endif
                 break;
             }
 
@@ -853,7 +857,7 @@ PopCompositeBatteryHandler(
         case POP_CB_QUERY_STATUS_MODE:
         {
             /* Setup the appropriate lengths to query battery status */
-            DPRINT1("Querying battery status in progress (Mode -> POP_CB_QUERY_STATUS_MODE)\n");
+            DPRINT("Querying battery status in progress (Mode -> POP_CB_QUERY_STATUS_MODE)\n");
             InputBufferLength = sizeof(BATTERY_WAIT_STATUS);
             OutputBufferLength = sizeof(BATTERY_STATUS);
 
@@ -869,7 +873,7 @@ PopCompositeBatteryHandler(
         case POP_CB_QUERY_BATTERY_ESTIMATION_TIME_MODE:
         {
             /* Setup the appropriate lengths to query the battery estimation time */
-            DPRINT1("Querying battery estimation time in progress (Mode -> POP_CB_QUERY_BATTERY_ESTIMATION_TIME_MODE)\n");
+            DPRINT("Querying battery estimation time in progress (Mode -> POP_CB_QUERY_BATTERY_ESTIMATION_TIME_MODE)\n");
             InputBufferLength = sizeof(BATTERY_QUERY_INFORMATION);
             OutputBufferLength = sizeof(ULONG);
 
