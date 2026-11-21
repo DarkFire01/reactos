@@ -95,8 +95,8 @@ VOID
 
 typedef
 VOID
-(NTAPI *PRMNET_IPA_ENABLE_MUX)(
-    _In_ ULONG MuxId,
+(NTAPI *PRMNET_IPA_SET_COALESCING)(
+    _In_ ULONG ClientId,
     _In_ BOOLEAN Enable,
     _In_ ULONG Family);
 
@@ -108,7 +108,7 @@ typedef struct _RMNET_IPA_INTERFACE
     PRMNET_IPA_START Start;
     PRMNET_IPA_QUERY_CLIENT QueryClient;
     PRMNET_IPA_DEREGISTER Deregister;
-    PRMNET_IPA_ENABLE_MUX EnableMux;
+    PRMNET_IPA_SET_COALESCING SetCoalescing;
 } RMNET_IPA_INTERFACE, *PRMNET_IPA_INTERFACE;
 
 C_ASSERT(sizeof(RMNET_IPA_INTERFACE) == 80);
@@ -162,7 +162,7 @@ RmNetIpaDisconnect(
 
 VOID
 NTAPI
-RmNetIpaEnableMux(
+RmNetIpaSetCoalescing(
     _In_ PRMNET_ADAPTER Adapter,
     _In_ BOOLEAN Enable);
 

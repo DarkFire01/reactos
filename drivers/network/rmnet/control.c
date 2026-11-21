@@ -73,7 +73,6 @@ RmNetSetLink(
         if (!Adapter->Link.Mtu || Adapter->Link.Mtu > RMNET_MAX_MTU)
             Adapter->Link.Mtu = RMNET_DEFAULT_MTU;
 
-        RmNetIpaEnableMux(Adapter, TRUE);
         Adapter->Connected = TRUE;
         DPRINT1("rmnet: data session up, %u.%u.%u.%u via %u.%u.%u.%u, MTU %lu\n",
                 ((PUCHAR)&Link->Address)[0], ((PUCHAR)&Link->Address)[1],
@@ -85,7 +84,6 @@ RmNetSetLink(
     else
     {
         Adapter->Connected = FALSE;
-        RmNetIpaEnableMux(Adapter, FALSE);
         DPRINT1("rmnet: data session down\n");
     }
 
