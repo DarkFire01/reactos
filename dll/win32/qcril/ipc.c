@@ -63,7 +63,8 @@ static const ULONG QcServiceIds[QcSvcCount] =
     QC_SERVICE_UIM,
     QC_SERVICE_VOICE,
     QC_SERVICE_WMS,
-    QC_SERVICE_WDS
+    QC_SERVICE_WDS,
+    QC_SERVICE_PDC
 };
 
 /* Interface major version each service registers with, part of its router name */
@@ -73,6 +74,7 @@ static const UCHAR QcServiceVersions[QcSvcCount] =
     1,
     1,
     2,
+    1,
     1,
     1
 };
@@ -84,7 +86,8 @@ static const PCSTR QcServiceNames[QcSvcCount] =
     "UIM",
     "VOICE",
     "WMS",
-    "WDS"
+    "WDS",
+    "PDC"
 };
 
 PCSTR
@@ -839,6 +842,10 @@ QcIndication(
 
         case QcSvcWds:
             QcWdsIndication(Modem, MessageId, Message, Length);
+            break;
+
+        case QcSvcPdc:
+            QcPdcIndication(Modem, MessageId, Message, Length);
             break;
 
         default:

@@ -420,6 +420,10 @@ QcSetupService(
             QcUimSetup(Modem);
             break;
 
+        case QcSvcPdc:
+            QcPdcSetup(Modem);
+            break;
+
         default:
             break;
     }
@@ -432,7 +436,7 @@ WINAPI
 QcSetupThread(
     _In_ LPVOID Parameter)
 {
-    static const QC_SVC Order[] = { QcSvcDms, QcSvcNas, QcSvcWms, QcSvcVoice, QcSvcUim };
+    static const QC_SVC Order[] = { QcSvcDms, QcSvcNas, QcSvcWms, QcSvcVoice, QcSvcUim, QcSvcPdc };
     PQC_MODEM Modem = Parameter;
     BOOL Missing, Configured, Recheck;
     ULONG i;
@@ -459,7 +463,12 @@ QcSetupThread(
 
             EnterCriticalSection(&Modem->ServiceLock);
             Modem->Services[Order[i]].Configured = Modem->Services[Order[i]].Ready;
+            Configured = Modem->Services[Order[i]].Configured;
             LeaveCriticalSection(&Modem->ServiceLock);
+
+            /* The carrier configuration waits on the card, so it is tried again shortly */
+            if (Order[i] == QcSvcPdc && !Configured)
+                Missing = TRUE;
         }
 
         /* The modem counts as up once its core services are, the rest may trail */
