@@ -403,6 +403,7 @@ VOID QcImsStartPdn(_In_ PQC_MODEM Modem);
 /* imsdata.c */
 VOID QcImsDataStart(_In_ PQC_MODEM Modem, _In_ UCHAR Profile);
 VOID QcImsDataModemLost(VOID);
+BOOL QcWdsDataPath(_Out_ PULONG EndpointType, _Out_ PULONG InterfaceId, _Out_ PULONG MuxId);
 VOID QcImsaIndication(_In_ PQC_MODEM Modem, _In_ USHORT MessageId,
                       _In_reads_bytes_(Length) const VOID *Message, _In_ ULONG Length);
 

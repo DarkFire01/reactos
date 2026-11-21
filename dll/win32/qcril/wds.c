@@ -78,13 +78,46 @@ QcRmNetIoctl(
     DWORD Returned;
     BOOL Ok;
 
-    Device = CreateFileW(RMNET_CONTROL_DEVICE, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    /* Shared, the IMS session polls the adapter while the internet session may be using it */
+    Device = CreateFileW(RMNET_CONTROL_DEVICE,
+                         GENERIC_READ | GENERIC_WRITE,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE,
+                         NULL,
+                         OPEN_EXISTING,
+                         0,
+                         NULL);
     if (Device == INVALID_HANDLE_VALUE)
         return FALSE;
 
     Ok = DeviceIoControl(Device, Code, In, InSize, Out, OutSize, &Returned, NULL);
     CloseHandle(Device);
     return Ok;
+}
+
+/**
+ * @brief Reports the IPA endpoint a session can bind to once the adapter has registered with IPA.
+ *
+ * @return FALSE while IPA is not ready or the adapter is missing.
+ */
+BOOL
+QcWdsDataPath(
+    _Out_ PULONG EndpointType,
+    _Out_ PULONG InterfaceId,
+    _Out_ PULONG MuxId)
+{
+    RMNET_QUERY Adapter;
+
+    ZeroMemory(&Adapter, sizeof(Adapter));
+    if (!QcRmNetIoctl(IOCTL_RMNET_QUERY, NULL, 0, &Adapter, sizeof(Adapter)) ||
+        Adapter.State == RMNET_STATE_NO_IPA)
+    {
+        return FALSE;
+    }
+
+    *EndpointType = Adapter.EndpointType;
+    *InterfaceId = Adapter.InterfaceId;
+    *MuxId = Adapter.MuxId;
+    return TRUE;
 }
 
 static
