@@ -26,21 +26,25 @@
 #define QCRIL_WDS_SET_IP_FAMILY         0x004D
 #define QCRIL_WDS_BIND_MUX_DATA_PORT    0x00A2
 
-/* The embedded IPA endpoint the internet session uses, on a mux of its own; the
-   internet session takes the IPA client id, the first mux */
-#define QC_IMS_DATA_ENDPOINT            4
-#define QC_IMS_DATA_INTERFACE           0
+/* The IMS session sits on the IPA endpoint of the internet session, on a mux of its own */
 #define QC_IMS_DATA_MUX                 2
 
 /* Bringing a PDN up can take as long as the network makes it */
 #define QC_IMS_DATA_START_TIMEOUT_MS    60000
 
+/* The bind fails until IPA is up and the start until the network has attached */
+#define QC_IMS_DATA_POLL_MS             2000
+#define QC_IMS_DATA_RETRY_MS            30000
+#define QC_IMS_DATA_ATTEMPTS            10
+
 typedef struct _QC_IMS_DATA
 {
+    PQC_MODEM Modem;
     HANDLE Port;
     HANDLE Reader;
     HANDLE Worker;
     HANDLE ResponseEvent;
+    HANDLE StopEvent;
     QC_ADDR Wds;
     USHORT WaitTransaction;
     USHORT NextTransaction;
@@ -183,11 +187,53 @@ QcImsDataRequest(
     return S_OK;
 }
 
+/* Waits on the stop event, FALSE once the modem is gone */
 static
-DWORD
-WINAPI
-QcImsDataWorker(
-    _In_ LPVOID Parameter)
+BOOL
+QcImsDataSleep(
+    _In_ DWORD WaitMs)
+{
+    return WaitForSingleObject(QcImsData.StopEvent, WaitMs) == WAIT_TIMEOUT;
+}
+
+/* The bind needs the adapter registered with IPA, the start an attached network */
+static
+BOOL
+QcImsDataReady(
+    _Out_ PULONG Endpoint)
+{
+    PQC_MODEM Modem = QcImsData.Modem;
+    ULONG HostMux;
+    DWORD RegState;
+
+    if (!QcWdsDataPath(&Endpoint[0], &Endpoint[1], &HostMux))
+        return FALSE;
+
+    EnterCriticalSection(&Modem->StateLock);
+    RegState = Modem->Nas.Net.RegState;
+    LeaveCriticalSection(&Modem->StateLock);
+
+    return RegState == RIL_REG_HOME || RegState == RIL_REG_ROAMING || RegState == RIL_REG_ROAMING_DOMESTIC;
+}
+
+static
+BOOL
+QcImsDataRegistered(VOID)
+{
+    PQC_MODEM Modem = QcImsData.Modem;
+    ULONG Registration;
+
+    EnterCriticalSection(&Modem->StateLock);
+    Registration = Modem->Ims.Registration;
+    LeaveCriticalSection(&Modem->StateLock);
+
+    return Registration == 2;
+}
+
+static
+HRESULT
+QcImsDataAttempt(
+    _In_reads_(2) const ULONG *Endpoint)
 {
     QMI_ENCODER Encoder;
     BYTE Message[64];
@@ -195,11 +241,8 @@ QcImsDataWorker(
     ULONG Length;
     USHORT ValueLen;
     UCHAR Family = QCRIL_WDS_IP_V6, Mux = QC_IMS_DATA_MUX;
-    ULONG Endpoint[2];
     DWORD Handle = 0;
     HRESULT hr;
-
-    UNREFERENCED_PARAMETER(Parameter);
 
     /* Like the internet session the client needs its family and a data port before it starts */
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_SET_IP_FAMILY);
@@ -208,14 +251,14 @@ QcImsDataWorker(
     hr = QcImsDataRequest(Message, Length, QC_REQUEST_TIMEOUT_MS);
     QcTrace("ims data: ipv6 family preference 0x%08lx\n", hr);
 
-    Endpoint[0] = QC_IMS_DATA_ENDPOINT;
-    Endpoint[1] = QC_IMS_DATA_INTERFACE;
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_BIND_MUX_DATA_PORT);
-    QmiEncodeTlv(&Encoder, 0x10, Endpoint, sizeof(Endpoint));
+    QmiEncodeTlv(&Encoder, 0x10, Endpoint, 2 * sizeof(*Endpoint));
     QmiEncodeTlv(&Encoder, 0x11, &Mux, sizeof(Mux));
     Length = QmiEncodeEnd(&Encoder);
     hr = QcImsDataRequest(Message, Length, QC_REQUEST_TIMEOUT_MS);
     QcTrace("ims data: bind to endpoint %lu interface %lu mux %u: 0x%08lx\n", Endpoint[0], Endpoint[1], Mux, hr);
+    if (FAILED(hr))
+        return hr;
 
     QmiEncodeBegin(&Encoder, Message, sizeof(Message), QMI_TYPE_REQUEST, 0, QCRIL_WDS_START_NETWORK);
     QmiEncodeTlv(&Encoder, QCRIL_WDS_TLV_PROFILE_3GPP, &QcImsData.Profile, sizeof(QcImsData.Profile));
@@ -239,6 +282,42 @@ QcImsDataWorker(
         QcTrace("ims data: start failed 0x%08lx\n", hr);
     }
 
+    return hr;
+}
+
+static
+DWORD
+WINAPI
+QcImsDataWorker(
+    _In_ LPVOID Parameter)
+{
+    ULONG Endpoint[2], Attempt;
+    BOOL Logged = FALSE;
+
+    UNREFERENCED_PARAMETER(Parameter);
+
+    for (Attempt = 1; Attempt <= QC_IMS_DATA_ATTEMPTS; Attempt++)
+    {
+        while (!QcImsDataReady(Endpoint))
+        {
+            if (!Logged)
+                QcTrace("ims data: waiting for the network and the IPA data path\n");
+            Logged = TRUE;
+
+            if (!QcImsDataSleep(QC_IMS_DATA_POLL_MS))
+                return 0;
+        }
+
+        if (QcImsDataRegistered() || SUCCEEDED(QcImsDataAttempt(Endpoint)))
+            return 0;
+
+        QcTrace("ims data: attempt %lu of %lu failed, next one in %lu s\n",
+                Attempt, (ULONG)QC_IMS_DATA_ATTEMPTS, (ULONG)(QC_IMS_DATA_RETRY_MS / 1000));
+        if (!QcImsDataSleep(QC_IMS_DATA_RETRY_MS))
+            return 0;
+    }
+
+    QcTrace("ims data: giving up on the IMS PDN\n");
     return 0;
 }
 
@@ -261,11 +340,16 @@ QcImsDataStart(
     QcImsData.Wds = Modem->Services[QcSvcWds].Addr;
     LeaveCriticalSection(&Modem->ServiceLock);
 
+    QcImsData.Modem = Modem;
     QcImsData.Profile = Profile;
     if (!QcImsData.ResponseEvent)
         QcImsData.ResponseEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (!QcImsData.StopEvent)
+        QcImsData.StopEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (QcImsData.StopEvent)
+        ResetEvent(QcImsData.StopEvent);
 
-    if (!QcImsData.ResponseEvent || !QcIpcOpenPort(&QcImsData.Port))
+    if (!QcImsData.ResponseEvent || !QcImsData.StopEvent || !QcIpcOpenPort(&QcImsData.Port))
     {
         QcTrace("ims data: no router port for the IMS client (%lu)\n", GetLastError());
         InterlockedExchange(&QcImsData.Active, 0);
@@ -285,6 +369,7 @@ QcImsDataModemLost(VOID)
     if (!InterlockedExchange(&QcImsData.Active, 0))
         return;
 
+    SetEvent(QcImsData.StopEvent);
     QcIpcClosePort(QcImsData.Port);
     QcImsData.Port = INVALID_HANDLE_VALUE;
     SetEvent(QcImsData.ResponseEvent);
