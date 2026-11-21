@@ -57,6 +57,26 @@
 #define SNPS_REFCLK_CTRL                0xA0
 #define SNPS_REFCLK_CTRL_SEL_HIGH       0x02
 
+/* Synopsys eUSB2 PHY, beyond what it shares with the 7 nm one */
+#define EUSB2_COMMON0_PHY_ENABLE        0x01
+#define EUSB2_COMMON0_SIDDQ_SEL         0x02
+#define EUSB2_COMMON0_RETENABLEN        0x08
+#define EUSB2_PLL_CTRL1                 0x58
+#define EUSB2_PLL_CTRL2                 0x5C
+#define EUSB2_PLL_CTRL3                 0x60
+#define EUSB2_PLL_CTRL4                 0x68
+#define EUSB2_PLL_CTRL5                 0x6C
+#define EUSB2_PLL_CTRL6                 0x70
+#define EUSB2_TX_CTRL8                  0x78
+#define EUSB2_TX_CTRL9                  0x7C
+#define EUSB2_HS_CTRL2_VBUS_DET_EXT_SEL 0x10
+#define EUSB2_CMN_CTRL0                 0x98
+#define EUSB2_CMN_CTRL0_TESTBURNIN      0x40
+#define EUSB2_FSEL_SEL                  0xB8
+#define EUSB2_FSEL_SEL_REGISTER         0x01
+#define EUSB2_APB_COMMAND               0x130
+#define EUSB2_APB_COMMAND_LOGIC_RESET   0x04
+
 #define KDDWC_CLOCK_TIMEOUT_US          10000
 #define KDDWC_DOMAIN_TIMEOUT_US         100000
 
@@ -363,6 +383,42 @@ KdDwcClockOn(
 }
 
 /**
+ * @brief Votes a clock branch on through the application processor's vote register and waits for it to run.
+ *
+ * @param[in] Vote
+ * Physical address of the vote register.
+ *
+ * @param[in] VoteBit
+ * The branch's bit in it.
+ *
+ * @param[in] Cbcr
+ * Physical address of the branch's own register, which reports whether it runs.
+ */
+BOOLEAN
+NTAPI
+KdDwcVoteClockOn(
+    _In_ ULONG64 Vote,
+    _In_ ULONG VoteBit,
+    _In_ ULONG64 Cbcr)
+{
+    PUCHAR VoteRegister = KdDwcMapRegister(Vote);
+    PUCHAR Register = KdDwcMapRegister(Cbcr);
+
+    if (VoteRegister == NULL || Register == NULL)
+        return FALSE;
+
+    KdDwcTrace("voted clock 0x%I64x is 0x%lx\n", Cbcr, KdDwcRead(Register, 0));
+    KdDwcModify(VoteRegister, 0, 0, VoteBit);
+    if (!KdDwcWaitFor(Register, 0, GCC_CBCR_CLK_OFF, 0, KDDWC_CLOCK_TIMEOUT_US))
+    {
+        KdDwcTrace("voted clock 0x%I64x stayed off\n", Cbcr);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
  * @brief Reports whether a voted clock branch runs. Its enable bit is in a vote register, so it is not written.
  */
 BOOLEAN
@@ -597,4 +653,80 @@ KdDwcStartSnpsHs(
     KdDwcStall(100);
 
     return TRUE;
+}
+
+/* SYNOPSYS EUSB2 PHY *********************************************************/
+
+/*
+ * Set up with the common block held in power on reset: register selected
+ * 19.2 MHz reference, PLL loop settings, external VBUS detection and the
+ * reference transmit tuning. Applied in order.
+ */
+static const KDDWC_REG_MODIFY KdDwcEusb2Setup[] =
+{
+    { SNPS_CFG0, 0, SNPS_CFG0_CMN_CTRL_OVERRIDE },
+    { SNPS_UTMI_CTRL5, 0, SNPS_UTMI_CTRL5_POR },
+    { SNPS_COMMON0, 0, EUSB2_COMMON0_PHY_ENABLE | EUSB2_COMMON0_RETENABLEN },
+    { EUSB2_APB_COMMAND, 0, EUSB2_APB_COMMAND_LOGIC_RESET },
+    { EUSB2_CMN_CTRL0, EUSB2_CMN_CTRL0_TESTBURNIN, 0 },
+    { EUSB2_FSEL_SEL, 0, EUSB2_FSEL_SEL_REGISTER },
+    { SNPS_COMMON0, SNPS_COMMON0_FSEL_MASK, 0 },
+    { EUSB2_PLL_CTRL2, 0xFF, 0x90 },
+    { EUSB2_PLL_CTRL3, 0xFF, 0x01 },
+    { EUSB2_PLL_CTRL1, 0xFE, 0x00 },
+    { EUSB2_PLL_CTRL4, 0xFF, 0x21 },
+    { EUSB2_PLL_CTRL5, 0xDF, 0x50 },
+    { EUSB2_PLL_CTRL6, 0x07, 0x00 },
+    { SNPS_CTRL2, 0, EUSB2_HS_CTRL2_VBUS_DET_EXT_SEL },
+    { EUSB2_TX_CTRL9, 0x7F, 0x48 },
+    { EUSB2_TX_CTRL8, 0xF8, 0x18 },
+    { SNPS_CTRL2, 0, SNPS_CTRL2_SUSPEND_N_SEL | SNPS_CTRL2_SUSPEND_N },
+    { SNPS_UTMI_CTRL0, 0, SNPS_UTMI_CTRL0_SLEEPM }
+};
+
+/* Power up, then the UTMI side and the core take it over again */
+static const KDDWC_REG_MODIFY KdDwcEusb2Release[] =
+{
+    { SNPS_COMMON0, 0, EUSB2_COMMON0_SIDDQ_SEL },
+    { SNPS_COMMON0, SNPS_COMMON0_SIDDQ, 0 },
+    { SNPS_UTMI_CTRL5, SNPS_UTMI_CTRL5_POR, 0 },
+    { SNPS_CTRL2, SNPS_CTRL2_SUSPEND_N_SEL, 0 },
+    { SNPS_CFG0, SNPS_CFG0_CMN_CTRL_OVERRIDE, 0 }
+};
+
+/**
+ * @brief Resets the Synopsys eUSB2 PHY and programs it for a 19.2 MHz reference.
+ *
+ * Its repeater must be up before the reset, and VBUS comes from the glue
+ * override like on the 7 nm PHY.
+ *
+ * @param[in] Phy
+ * Physical base of the PHY.
+ *
+ * @param[in] PhyBcr
+ * Its block reset in the clock controller.
+ */
+BOOLEAN
+NTAPI
+KdDwcStartEusb2(
+    _In_ ULONG64 Phy,
+    _In_ ULONG64 PhyBcr)
+{
+    PUCHAR Base = KdDwcMapRegister(Phy);
+    ULONG i;
+
+    if (Base == NULL)
+        return FALSE;
+
+    KdDwcPulseReset(PhyBcr);
+
+    for (i = 0; i < RTL_NUMBER_OF(KdDwcEusb2Setup); i++)
+        KdDwcModify(Base, KdDwcEusb2Setup[i].Offset, KdDwcEusb2Setup[i].Clear, KdDwcEusb2Setup[i].Set);
+
+    for (i = 0; i < RTL_NUMBER_OF(KdDwcEusb2Release); i++)
+        KdDwcModify(Base, KdDwcEusb2Release[i].Offset, KdDwcEusb2Release[i].Clear, KdDwcEusb2Release[i].Set);
+
+    KdDwcStall(100);
+    KdDwcTrace("eUSB2 PHY common 0x%lx UTMI 0x%lx\n", KdDwcRead(Base, SNPS_COMMON0), KdDwcRead(Base, SNPS_UTMI_CTRL5));
+    return KdDwcSnpsHsIsRunning(Phy);
 }

@@ -522,6 +522,15 @@ KdDwcVoteSupplies(
         Commands[0].Wait = Commands[1].Wait = Commands[2].Wait = TRUE;
 
         KdDwcTrace("supply %s at 0x%lx, %lu mV\n", Rpmh->Supplies[i].Name, Address, Rpmh->Supplies[i].Millivolts);
+
+        /* A clock buffer is only switched on */
+        if (Rpmh->Supplies[i].Millivolts == 0)
+        {
+            if (!KdDwcRpmhSend(&Commands[2], 1))
+                Ok = FALSE;
+            continue;
+        }
+
         if (!KdDwcRpmhSend(Commands, RTL_NUMBER_OF(Commands)))
             Ok = FALSE;
     }

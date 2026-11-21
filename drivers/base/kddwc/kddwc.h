@@ -64,13 +64,26 @@ typedef struct _KDDWC_BUS_NODE
     ULONG EnableMask;
 } KDDWC_BUS_NODE;
 
-/** A PMIC regulator behind the high speed PHY, voted through RPMh. */
+/** A PMIC regulator or clock buffer behind the high speed PHY, voted through RPMh. */
 typedef struct _KDDWC_SUPPLY
 {
-    /* Command DB name, such as ldoa12 */
+    /* Command DB name, such as ldoa12 or clka6 */
     PCSTR Name;
+
+    /* 0 for a clock buffer, which is only switched on */
     ULONG Millivolts;
 } KDDWC_SUPPLY;
+
+/** Where a version 7 SPMI arbiter is, for PMIC peripherals on the USB path. */
+typedef struct _KDDWC_SPMI
+{
+    ULONG64 CoreBase;
+    ULONG64 ChannelBase;
+    ULONG64 ObserverBase;
+
+    /* Ownership table of each of the two buses */
+    ULONG64 BusConfigBase[2];
+} KDDWC_SPMI;
 
 /** How the debugger votes the controller's buses and supplies when firmware dropped them. */
 typedef struct _KDDWC_RPMH
@@ -124,7 +137,7 @@ struct _KDDWC_PLATFORM
     PCSTR Name;
 
     /* OEM table IDs of the ACPI tables firmware on this SoC reports */
-    PCSTR AcpiIds[4];
+    PCSTR AcpiIds[5];
 
     /* Physical base of the DWC3 controller that faces the USB-C port */
     ULONG64 CoreBase;
@@ -487,6 +500,19 @@ KdDwcStartSnpsHs(
 
 BOOLEAN
 NTAPI
+KdDwcVoteClockOn(
+    _In_ ULONG64 Vote,
+    _In_ ULONG VoteBit,
+    _In_ ULONG64 Cbcr);
+
+BOOLEAN
+NTAPI
+KdDwcStartEusb2(
+    _In_ ULONG64 Phy,
+    _In_ ULONG64 PhyBcr);
+
+BOOLEAN
+NTAPI
 KdDwcClocksRunning(
     _In_ ULONG64 Gcc,
     _In_ ULONG PowerDomain,
@@ -498,6 +524,35 @@ BOOLEAN
 NTAPI
 KdDwcVoteRpmh(
     _In_ const KDDWC_RPMH* Rpmh);
+
+/* spmi.c */
+BOOLEAN
+NTAPI
+KdDwcSpmiWrite(
+    _In_ const KDDWC_SPMI* Spmi,
+    _In_ ULONG Bus,
+    _In_ UCHAR Sid,
+    _In_ USHORT Address,
+    _In_ UCHAR Value);
+
+BOOLEAN
+NTAPI
+KdDwcSpmiRead(
+    _In_ const KDDWC_SPMI* Spmi,
+    _In_ ULONG Bus,
+    _In_ UCHAR Sid,
+    _In_ USHORT Address,
+    _Out_ PUCHAR Value);
+
+BOOLEAN
+NTAPI
+KdDwcStartEusb2Repeater(
+    _In_ const KDDWC_SPMI* Spmi,
+    _In_ ULONG Bus,
+    _In_ UCHAR Sid,
+    _In_ USHORT Base,
+    _In_reads_(Count) const KDDWC_REG_WRITE* Tuning,
+    _In_ ULONG Count);
 
 VOID
 NTAPI
