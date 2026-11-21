@@ -243,7 +243,10 @@ WlanQueryOid(
         Error = GetLastError();
         /* An overflow reports, past the header, the buffer size to retry with */
         if (Error == ERROR_MORE_DATA && Got > FIELD_OFFSET(NDISUIO_QUERY_OID, Data))
+        {
             *Returned = Got - FIELD_OFFSET(NDISUIO_QUERY_OID, Data);
+            RtlCopyMemory(Data, Query->Data, min(*Returned, Length));
+        }
     }
 
     HeapFree(GetProcessHeap(), 0, Query);
