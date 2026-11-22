@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Device Manager: devices by class with problem flags, and one device's status and driver. -->
+<Uix Name="Devices" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+
+  <Element Name="PageList" Layout="Stack" Height="*">
+    <Text Content="DEVICE MANAGER" Font="@BaseFont" Padding="12,12,12,4"/>
+
+    <!-- Pivot: every device, or only the ones with a problem -->
+    <Element Layout="Row" Height="44" Padding="12,0,12,0" Font="@Pivot">
+      <Element Command="filter:all" Momentary="true" Margin="0,0,20,0">
+        <Text Content="all" Foreground="{TabAll}" TextVAlign="Center"/>
+      </Element>
+      <Element Command="filter:problems" Momentary="true">
+        <Text Content="{ProblemsLabel}" Foreground="{TabProblems}" TextVAlign="Center"/>
+      </Element>
+    </Element>
+
+    <Element Layout="Row" Height="32" Margin="12,8,12,8" BorderBrush="@FieldBorder" BorderThickness="2" Background="@FieldFill">
+      <Element Width="*" Command="search.focus" Padding="8,0,8,0">
+        <Text Name="SearchHint" Content="Search devices" Foreground="@AppSubText"/>
+        <Text Content="{SearchText}"/>
+      </Element>
+      <Element Width="36" Command="search.clear" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE711;" Font="@Glyph16" TextAlign="Center" Foreground="@AppSubText"/>
+      </Element>
+    </Element>
+
+    <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack"
+             ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="DeviceList" Layout="Stack">
+        <Element Name="d{Item.Id}" Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11"
+                 Command="open:{Item.Id}" HoldCommand="hold:{Item.Id}" Selectable="true"
+                 SelectedBackground="@ListPressed">
+          <Element Width="@AppIcon" Background="{Item.Fill}" Foreground="@TileText" Margin="0,0,12,0">
+            <Text Content="{Item.Glyph}" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Layout="Stack" Width="*" VAlign="Center">
+            <Text Content="{Item.Name}"/>
+            <Text Content="{Item.Detail}" Font="@Caption" Foreground="{Item.DetailBrush}"/>
+          </Element>
+        </Element>
+      </Repeater>
+      <Text Name="ListEmpty" Content="{EmptyText}" TextAlign="Center" Wrap="true" Margin="12,24,12,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+  </Element>
+
+  <Element Name="PageDevice" Layout="Stack" Height="*" Visible="false">
+    <Text Content="DEVICE MANAGER" Font="@BaseFont" Padding="12,12,12,4"/>
+    <Element Layout="Row" Padding="12,4,12,12">
+      <Element Width="@AppIcon" Height="@AppIcon" Background="{DevFill}" Foreground="@TileText" Margin="0,0,12,0" VAlign="Top">
+        <Text Content="{DevGlyph}" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Text Content="{DevName}" Font="@Subtitle" Wrap="true" Width="*"/>
+    </Element>
+
+    <Element Scroll="true" Height="*" Layout="Stack" Padding="12,0,12,8"
+             ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Text Content="Device status" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevStatus}" Foreground="{DevStatusBrush}" Wrap="true" Margin="0,2,0,12"/>
+      <Text Content="Type" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevClass}" Wrap="true" Margin="0,2,0,12"/>
+      <Text Content="Manufacturer" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevMfg}" Wrap="true" Margin="0,2,0,12"/>
+      <Text Content="Location" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevLocation}" Wrap="true" Margin="0,2,0,12"/>
+      <Text Content="Driver" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevDriver}" Wrap="true" Margin="0,2,0,12"/>
+      <Text Content="Service" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevService}" Wrap="true" Margin="0,2,0,12"/>
+      <Text Content="Hardware ID" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevHardwareId}" Wrap="true" Margin="0,2,0,12"/>
+      <Text Content="Device instance path" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{DevInstance}" Wrap="true" Margin="0,2,0,12"/>
+    </Element>
+  </Element>
+
+</Uix>

@@ -85,6 +85,8 @@ mobileshell_app(mobcalc apps/calculator/calculator.cpp)
 mobileshell_app(mobmarkup apps/markupapp/markupapp.cpp)
 mobileshell_app(moboffice apps/office/office.cpp)
 mobileshell_app(mobfiles apps/files/files.cpp)
+mobileshell_app(mobdevices apps/devices/devices.cpp)
+add_importlibs(mobdevices cfgmgr32 setupapi)
 
 # Configuration and skins keep their layout under MobileShell
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/shell.xml DESTINATION ${MOBILESHELL_DESTINATION} FOR all)
