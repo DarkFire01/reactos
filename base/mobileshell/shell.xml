@@ -40,7 +40,7 @@
     <App Id="Calendar" Exe="mobcalendar.exe" Markup="apps\calendar.uix" Title="Calendar"/>
     <App Id="Calculator" Exe="mobcalc.exe" Markup="apps\calculator.uix" Title="Calculator"/>
     <App Id="DeviceManager" Exe="mobdevices.exe" Markup="apps\devices.uix" Title="Device Manager"/>
-    <App Id="TaskManager" Exe="mobtaskmgr.exe" Markup="apps	askmgr.uix" Title="Task Manager"/>
+    <App Id="TaskManager" Exe="mobtaskmgr.exe" Markup="apps\taskmgr.uix" Title="Task Manager"/>
     <App Id="Programs" Exe="mobmarkup.exe" Markup="apps\programs.uix" Title="Programs"/>
     <App Id="Help" Exe="mobmarkup.exe" Markup="apps\help.uix" Title="Getting Started"/>
     <!-- Same app rendered at base resolution and scaled up by the compositor -->
