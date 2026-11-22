@@ -859,6 +859,9 @@ StorPortExtendedFunction(
                 break;
             }
 
+            /* A positive due time is absolute, the value is relative to now */
+            TimerDueTime.QuadPart = -TimerDueTime.QuadPart;
+
             /* Initialize the DPC, context and set timer accordingly */
             TimerEntry->HwDeviceExtension = HwDeviceExtension;
             TimerEntry->TimerCallback = TimerCallback;
@@ -1735,6 +1738,9 @@ StorPortNotification(
                 if (!NT_SUCCESS(MultiplyResult)) {
                     break;
                 }
+
+                /* A positive due time is absolute, the value is relative to now */
+                TimerDueTime.QuadPart = -TimerDueTime.QuadPart;
 
                 FdoExtension->TimerCallback = TimerRoutine;
                 KeSetTimer(&FdoExtension->Timer, TimerDueTime, &FdoExtension->TimerDpc);
