@@ -159,6 +159,8 @@ CUixScene::Build(
         Element->Kind = UixKindText;
     else if (Node.Name == L"Image")
         Element->Kind = UixKindImage;
+    else if (Node.Name == L"Graph")
+        Element->Kind = UixKindGraph;
     else
         Element->Kind = UixKindElement;
 
@@ -194,7 +196,7 @@ CUixScene::Build(
     {
         for (const UIX_XML_NODE &Child : Node.Children)
         {
-            if (Child.Name == L"Element" || Child.Name == L"Text" || Child.Name == L"Image")
+            if (Child.Name == L"Element" || Child.Name == L"Text" || Child.Name == L"Image" || Child.Name == L"Graph")
             {
                 Element->Template = std::make_shared<UIX_XML_NODE>(Child);
                 break;
@@ -205,7 +207,8 @@ CUixScene::Build(
 
     for (const UIX_XML_NODE &Child : Node.Children)
     {
-        if (Child.Name == L"Element" || Child.Name == L"Text" || Child.Name == L"Image" || Child.Name == L"Repeater")
+        if (Child.Name == L"Element" || Child.Name == L"Text" || Child.Name == L"Image" ||
+            Child.Name == L"Graph" || Child.Name == L"Repeater")
             Element->Children.push_back(Build(Child, Element));
     }
     return Element;
@@ -2011,6 +2014,96 @@ CUixScene::FillBackground(
         Target->FillRectangle(&Rect, Paint.Get());
 }
 
+/**
+ * @brief Draws a history graph: a grid, the area under the samples and a line through them.
+ *
+ * Values is a comma separated list, oldest first, between 0 and Maximum. The newest sample sits
+ * on the right edge and Points samples span the width, so a short history fills from the right.
+ */
+VOID
+CUixScene::DrawGraphElement(
+    _In_ ID2D1DeviceContext *Context,
+    _In_ PUIX_ELEMENT Element,
+    _In_ const D2D1_RECT_F &Rect)
+{
+    ID2D1RenderTarget *Target = static_cast<ID2D1RenderTarget *>(Context);
+    UixPtr<ID2D1SolidColorBrush> Line;
+    UixPtr<ID2D1SolidColorBrush> Area;
+    UixPtr<ID2D1SolidColorBrush> Grid;
+    std::vector<FLOAT> Samples;
+    std::wstring Text = Value(Element, L"Values", FALSE);
+    D2D1_COLOR_F Color = UixD2D::Color(0.0f, 0.0f, 0.0f);
+    FLOAT Width = Rect.right - Rect.left;
+    FLOAT Height = Rect.bottom - Rect.top;
+    FLOAT Maximum = m_Engine->ResolveNumber(Value(Element, L"Maximum", FALSE), 100.0f);
+    ULONG Points = static_cast<ULONG>(m_Engine->ResolveNumber(Value(Element, L"Points", FALSE), 60.0f));
+    ULONG Rows = static_cast<ULONG>(m_Engine->ResolveNumber(Value(Element, L"GridRows", FALSE), 4.0f));
+    ULONG Columns = static_cast<ULONG>(m_Engine->ResolveNumber(Value(Element, L"GridColumns", FALSE), 6.0f));
+    PCWSTR Cursor = Text.c_str();
+    PWSTR End;
+    FLOAT Step;
+    ULONG First;
+    ULONG Index;
+
+    if (Width < 2.0f || Height < 2.0f || Points < 2 || Maximum <= 0.0f)
+        return;
+
+    while (*Cursor)
+    {
+        FLOAT Sample = static_cast<FLOAT>(wcstod(Cursor, &End));
+
+        if (End == Cursor)
+            break;
+        Samples.push_back(min(max(Sample / Maximum, 0.0f), 1.0f));
+        Cursor = (*End == L',') ? End + 1 : End;
+    }
+    if (Samples.size() > Points)
+        Samples.erase(Samples.begin(), Samples.end() - Points);
+
+    if (m_Engine->ResolveColor(Value(Element, L"GridBrush", FALSE), &Color) &&
+        SUCCEEDED(Target->CreateSolidColorBrush(&Color, NULL, Grid.Put())))
+    {
+        for (Index = 1; Index < Rows; Index++)
+        {
+            FLOAT Y = floorf(Rect.top + Height * Index / Rows);
+            D2D1_RECT_F Bar = UixD2D::Rect(Rect.left, Y, Rect.right, Y + 1.0f);
+
+            Target->FillRectangle(&Bar, Grid.Get());
+        }
+        for (Index = 1; Index < Columns; Index++)
+        {
+            FLOAT X = floorf(Rect.left + Width * Index / Columns);
+            D2D1_RECT_F Bar = UixD2D::Rect(X, Rect.top, X + 1.0f, Rect.bottom);
+
+            Target->FillRectangle(&Bar, Grid.Get());
+        }
+    }
+
+    if (Samples.size() < 2 || !m_Engine->ResolveColor(Value(Element, L"Stroke", FALSE), &Color) ||
+        FAILED(Target->CreateSolidColorBrush(&Color, NULL, Line.Put())))
+    {
+        return;
+    }
+
+    Color.a *= m_Engine->ResolveNumber(Value(Element, L"FillOpacity", FALSE), 0.2f);
+    if (FAILED(Target->CreateSolidColorBrush(&Color, NULL, Area.Put())))
+        return;
+
+    Step = Width / (Points - 1);
+    First = Points - static_cast<ULONG>(Samples.size());
+    for (Index = 0; Index + 1 < Samples.size(); Index++)
+    {
+        FLOAT X0 = Rect.left + Step * (First + Index);
+        FLOAT X1 = X0 + Step;
+        FLOAT Y0 = Rect.bottom - Height * Samples[Index];
+        FLOAT Y1 = Rect.bottom - Height * Samples[Index + 1];
+        D2D1_RECT_F Column = UixD2D::Rect(X0, (Y0 + Y1) / 2.0f, X1, Rect.bottom);
+
+        Target->FillRectangle(&Column, Area.Get());
+        Target->DrawLine(UixD2D::Point(X0, Y0), UixD2D::Point(X1, Y1), Line.Get(), 1.0f, NULL);
+    }
+}
+
 VOID
 CUixScene::DrawTextElement(
     _In_ ID2D1DeviceContext *Context,
@@ -2191,6 +2284,8 @@ CUixScene::Draw(
         DrawTextElement(Context, Element, Inner);
     else if (Element->Kind == UixKindImage)
         DrawImageElement(Context, Element, Inner);
+    else if (Element->Kind == UixKindGraph)
+        DrawGraphElement(Context, Element, Inner);
 
     if (!Element->Scroll)
     {
