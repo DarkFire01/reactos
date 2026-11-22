@@ -51,7 +51,8 @@
         <Element Name="m{Item.Id}" Layout="Stack" Padding="{Item.Pad}"
                  Command="bubble:{Item.Id}" HoldCommand="bubblehold:{Item.Id}" Selectable="true">
           <Element Layout="Stack" HAlign="{Item.Side}" CornerRadius="2" Background="{Item.Fill}" Foreground="{Item.Ink}" Padding="10,7,10,7">
-            <Text Content="{Item.Text}" Wrap="true"/>
+            <Image Source="{Item.Picture}" Width="{Item.PictureWidth}" Height="{Item.PictureHeight}" Stretch="Fill"/>
+            <Text Content="{Item.Text}" Wrap="true" Collapse="true"/>
           </Element>
           <Text Content="{Item.Detail}" HAlign="{Item.Side}" Font="@Caption" Foreground="{Item.Note}" Margin="2,3,2,0" Collapse="true"/>
         </Element>

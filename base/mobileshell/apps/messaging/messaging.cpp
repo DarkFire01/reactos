@@ -9,13 +9,16 @@
 #include <shellapi.h>
 #include <strsafe.h>
 #include <telephony/phoneom.h>
+#include <wincodec.h>
 #include <algorithm>
+#include <map>
 
 /*
  * Markup contract (messaging.uix):
  *   Elements: PageThreads, PageThread, ServiceDown, ThreadsEmpty, ThreadEmpty, ToRow, ToHint, ComposeHint
  *   Repeaters: ThreadList (Id, Initial, Name, Time, Preview, Tone)
- *              MessageList (Id, Text, Detail, Side, Pad, Fill, Ink, Note)
+ *              MessageList (Id, Text, Detail, Side, Pad, Fill, Ink, Note, Picture, PictureWidth,
+ *                           PictureHeight)
  *   Scrollers: ThreadsScroll, MessageScroll
  *   Bindings: ServiceText, ThreadName, ThreadNumber, ToText, ToFill, ComposeText, ComposeFill,
  *             ComposeCount, SendTone
@@ -26,6 +29,8 @@
 #define OUTBOX_ID_BASE      0xF0000000UL
 #define LINK_PERIOD_MS      5000
 #define LINK_PAGE           16
+#define PICTURE_MAX_WIDTH   220.0f
+#define PICTURE_MAX_HEIGHT  280.0f
 
 typedef struct _SMS_ITEM
 {
@@ -34,7 +39,18 @@ typedef struct _SMS_ITEM
     FILETIME Time;
     std::wstring Address;
     std::wstring Text;
+    std::wstring Picture;
+    UINT PictureWidth = 0;
+    UINT PictureHeight = 0;
 } SMS_ITEM;
+
+/* First picture of a multimedia message and its pixel size, empty when it has none */
+typedef struct _SMS_PICTURE
+{
+    std::wstring Path;
+    UINT Width = 0;
+    UINT Height = 0;
+} SMS_PICTURE;
 
 typedef struct _SMS_SNAPSHOT
 {
@@ -168,6 +184,85 @@ private:
     typedef HRESULT (WINAPI *PFN_SEND)(HPHONEOM, LPCWSTR, LPCWSTR, PDWORD);
     typedef HRESULT (WINAPI *PFN_LIST)(HPHONEOM, DWORD, PPHONEOM_MESSAGE, DWORD, PDWORD);
     typedef HRESULT (WINAPI *PFN_ID)(HPHONEOM, DWORD);
+    typedef HRESULT (WINAPI *PFN_ATTACHMENTS)(HPHONEOM, DWORD, PPHONEOM_ATTACHMENT, DWORD, PDWORD);
+
+    static
+    BOOL
+    IsPicture(
+        _In_z_ PCWSTR Path)
+    {
+        static PCWSTR const Extensions[] = { L".jpg", L".jpeg", L".png", L".gif", L".bmp" };
+        PCWSTR Dot = wcsrchr(Path, L'.');
+
+        if (!Dot)
+            return FALSE;
+        for (PCWSTR Extension : Extensions)
+        {
+            if (!_wcsicmp(Dot, Extension))
+                return TRUE;
+        }
+        return FALSE;
+    }
+
+    /* Reads only the frame header, the bubble needs the aspect before the engine decodes it */
+    VOID
+    MeasurePicture(
+        _Inout_ SMS_PICTURE &Picture)
+    {
+        IWICBitmapDecoder *Decoder = NULL;
+        IWICBitmapFrameDecode *Frame = NULL;
+
+        if (!m_Imaging &&
+            FAILED(CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER,
+                                    IID_PPV_ARGS(&m_Imaging))))
+        {
+            return;
+        }
+
+        if (SUCCEEDED(m_Imaging->CreateDecoderFromFilename(Picture.Path.c_str(), NULL, GENERIC_READ,
+                                                           WICDecodeMetadataCacheOnDemand, &Decoder)) &&
+            SUCCEEDED(Decoder->GetFrame(0, &Frame)))
+        {
+            Frame->GetSize(&Picture.Width, &Picture.Height);
+        }
+
+        if (Frame)
+            Frame->Release();
+        if (Decoder)
+            Decoder->Release();
+    }
+
+    /* Looks a message's picture up once, the service never changes the attachments of a stored message */
+    const SMS_PICTURE &
+    PictureFor(
+        _In_ DWORD MessageId)
+    {
+        auto Found = m_Pictures.find(MessageId);
+        PHONEOM_ATTACHMENT *Files;
+        DWORD Count = 0;
+        SMS_PICTURE Picture;
+
+        if (Found != m_Pictures.end())
+            return Found->second;
+
+        Files = new PHONEOM_ATTACHMENT[PHONEOM_MAX_ATTACHMENTS];
+        if (m_Attachments && SUCCEEDED(m_Attachments(m_Phone, MessageId, Files, PHONEOM_MAX_ATTACHMENTS, &Count)))
+        {
+            for (DWORD Index = 0; Index < Count && Index < PHONEOM_MAX_ATTACHMENTS; Index++)
+            {
+                Files[Index].Path[PHONEOM_MAX_PATH - 1] = UNICODE_NULL;
+                if (!IsPicture(Files[Index].Path))
+                    continue;
+
+                Picture.Path = Files[Index].Path;
+                MeasurePicture(Picture);
+                break;
+            }
+        }
+        delete[] Files;
+
+        return m_Pictures[MessageId] = Picture;
+    }
 
     static
     VOID
@@ -208,6 +303,7 @@ private:
         m_List = reinterpret_cast<PFN_LIST>(GetProcAddress(m_Module, "PhoneOmGetMessages"));
         m_MarkRead = reinterpret_cast<PFN_ID>(GetProcAddress(m_Module, "PhoneOmMarkMessageRead"));
         m_Delete = reinterpret_cast<PFN_ID>(GetProcAddress(m_Module, "PhoneOmDeleteMessage"));
+        m_Attachments = reinterpret_cast<PFN_ATTACHMENTS>(GetProcAddress(m_Module, "PhoneOmGetAttachments"));
 
         if (!m_Open || !m_Close || !m_Send || !m_List || !m_MarkRead || !m_Delete)
         {
@@ -299,6 +395,14 @@ private:
                     Item.Time = Page[Index].Timestamp;
                     Item.Address = Page[Index].Address;
                     Item.Text = Page[Index].Text;
+                    if (Item.Flags & PHONEOM_MESSAGE_ATTACHMENTS)
+                    {
+                        const SMS_PICTURE &Picture = PictureFor(Item.Id);
+
+                        Item.Picture = Picture.Path;
+                        Item.PictureWidth = Picture.Width;
+                        Item.PictureHeight = Picture.Height;
+                    }
                     Next.Items.push_back(Item);
                 }
 
@@ -326,6 +430,7 @@ private:
     {
         CSmsLink *This = static_cast<CSmsLink *>(Parameter);
         HANDLE Events[2] = { This->m_StopEvent, This->m_KickEvent };
+        HRESULT ComStatus = CoInitializeEx(NULL, COINIT_MULTITHREADED);
 
         do
         {
@@ -338,6 +443,12 @@ private:
         if (This->m_Module)
             FreeLibrary(This->m_Module);
         This->m_Module = NULL;
+        if (This->m_Imaging)
+            This->m_Imaging->Release();
+        This->m_Imaging = NULL;
+        This->m_Pictures.clear();
+        if (SUCCEEDED(ComStatus))
+            CoUninitialize();
         return 0;
     }
 
@@ -359,6 +470,9 @@ private:
     PFN_LIST m_List = NULL;
     PFN_ID m_MarkRead = NULL;
     PFN_ID m_Delete = NULL;
+    PFN_ATTACHMENTS m_Attachments = NULL;
+    IWICImagingFactory *m_Imaging = NULL;
+    std::map<DWORD, SMS_PICTURE> m_Pictures;
 };
 
 typedef struct _SMS_THREAD
@@ -716,6 +830,9 @@ CMessagingApp::RefreshThreads(VOID)
         std::wstring Initial;
         std::wstring Glyph;
 
+        if (Preview.empty() && !Last.Picture.empty())
+            Preview = L"Picture";
+
         std::replace(Preview.begin(), Preview.end(), L'\n', L' ');
         if (Last.Flags & PHONEOM_MESSAGE_FAILED)
             Preview = L"Not sent: " + Preview;
@@ -755,7 +872,8 @@ VOID
 CMessagingApp::RefreshThread(
     _In_ BOOL ScrollToEnd)
 {
-    static PCWSTR const Fields[] = { L"Id", L"Text", L"Detail", L"Side", L"Pad", L"Fill", L"Ink", L"Note" };
+    static PCWSTR const Fields[] = { L"Id", L"Text", L"Detail", L"Side", L"Pad", L"Fill", L"Ink", L"Note",
+                                     L"Picture", L"PictureWidth", L"PictureHeight" };
     std::vector<std::wstring> Storage;
     std::vector<PCWSTR> Values;
     LONG Thread = FindThread(NumberKey(m_Address));
@@ -769,6 +887,9 @@ CMessagingApp::RefreshThread(
             const SMS_ITEM &Message = m_Snapshot.Items[Item];
             BOOL Incoming = (Message.Flags & PHONEOM_MESSAGE_INCOMING) != 0;
             std::wstring Detail;
+            FLOAT Fit = 0.0f;
+            WCHAR Width[16];
+            WCHAR Height[16];
 
             if (Message.Id >= OUTBOX_ID_BASE || (!Incoming && !(Message.Flags & (PHONEOM_MESSAGE_SENT | PHONEOM_MESSAGE_FAILED))))
                 Detail = L"Sending...";
@@ -786,6 +907,18 @@ CMessagingApp::RefreshThread(
             Storage.push_back(Incoming ? L"@ChromeMediumLow" : L"@Accent");
             Storage.push_back(Incoming ? L"@AppText" : L"@BaseWhite");
             Storage.push_back((Message.Flags & PHONEOM_MESSAGE_FAILED) ? L"@AccentText" : L"@AppSubText");
+
+            /* The picture keeps its aspect inside the bubble and never grows past its own size */
+            if (Message.PictureWidth && Message.PictureHeight)
+            {
+                Fit = min(PICTURE_MAX_WIDTH / Message.PictureWidth, PICTURE_MAX_HEIGHT / Message.PictureHeight);
+                Fit = min(Fit, 1.0f);
+            }
+            StringCchPrintfW(Width, ARRAYSIZE(Width), L"%.0f", Message.PictureWidth * Fit);
+            StringCchPrintfW(Height, ARRAYSIZE(Height), L"%.0f", Message.PictureHeight * Fit);
+            Storage.push_back(Fit > 0.0f ? L"file:" + Message.Picture : std::wstring());
+            Storage.push_back(Width);
+            Storage.push_back(Height);
             Count++;
         }
     }
