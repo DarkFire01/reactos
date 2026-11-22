@@ -19,6 +19,8 @@
   <Font Name="MenuFont" Family="Segoe UI, Source Sans Pro" Size="15"/>
   <Font Name="KeyFont" Family="Segoe UI, Source Sans Pro" Size="20"/>
   <Font Name="KeySmall" Family="Segoe UI, Source Sans Pro" Size="15"/>
+  <!-- FingerKB FontSizeFeedback, 22.67 view px -->
+  <Font Name="KeyFeedbackFont" Family="Segoe UI, Source Sans Pro" Size="22.67"/>
   <Font Name="DocFont" Family="Segoe UI, Source Sans Pro" Size="15"/>
   <Font Name="SlideTitleFont" Family="Segoe UI, Source Sans Pro" Size="34" Weight="300"/>
   <Font Name="SlideFont" Family="Segoe UI, Source Sans Pro" Size="20"/>

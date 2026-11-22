@@ -119,6 +119,10 @@ public:
     virtual VOID STDMETHODCALLTYPE ScrollTo(
         _In_z_ PCWSTR Element,
         _In_ FLOAT Offset) = 0;
+
+    /* Bounds of the pressed or selected element, FALSE when there is none */
+    virtual BOOL STDMETHODCALLTYPE GetSelectedRect(
+        _Out_ PUIX_RECT Rect) = 0;
 };
 
 class IUixEngine

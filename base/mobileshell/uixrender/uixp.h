@@ -331,6 +331,9 @@ public:
         _In_z_ PCWSTR Element,
         _In_ FLOAT Offset) override;
 
+    BOOL STDMETHODCALLTYPE GetSelectedRect(
+        _Out_ PUIX_RECT Rect) override;
+
     /* Engine side */
     HRESULT
     RenderLayers(VOID);
