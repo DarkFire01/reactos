@@ -137,7 +137,8 @@ typedef enum _UIX_KIND
 {
     UixKindElement,
     UixKindText,
-    UixKindImage
+    UixKindImage,
+    UixKindGraph
 } UIX_KIND;
 
 typedef enum _UIX_LAYOUT
@@ -493,6 +494,12 @@ private:
 
     VOID
     DrawImageElement(
+        _In_ ID2D1DeviceContext *Context,
+        _In_ PUIX_ELEMENT Element,
+        _In_ const D2D1_RECT_F &Rect);
+
+    VOID
+    DrawGraphElement(
         _In_ ID2D1DeviceContext *Context,
         _In_ PUIX_ELEMENT Element,
         _In_ const D2D1_RECT_F &Rect);
