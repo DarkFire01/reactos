@@ -641,6 +641,7 @@ KiRecordRealTimeDrop(
     }
 #else
     UNREFERENCED_PARAMETER(Frame);
+    UNREFERENCED_PARAMETER(Count);
     RtlCaptureStackBackTrace(0, RTL_NUMBER_OF(Drop->Frames), Drop->Frames, NULL);
 #endif
 }
