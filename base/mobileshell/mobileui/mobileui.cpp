@@ -419,6 +419,7 @@ private:
     std::vector<ULONG> m_Recent;
     BOOL m_StatusOpen = FALSE;
     CCellMonitor m_Cell;
+    LONG m_SeenIncoming = 0;
     BOOL m_PopupOpen = FALSE;
     ULONG m_PopupApp = 0;
     std::vector<NOTE> m_Notes;
@@ -690,6 +691,13 @@ CMobileUI::Tick(VOID)
 
     RefreshOwner();
     RefreshStatus();
+
+    /* A call that starts ringing brings Phone up wherever the user is */
+    if (m_Cell.IncomingSequence() != m_SeenIncoming)
+    {
+        m_SeenIncoming = m_Cell.IncomingSequence();
+        Launch(L"Phone", NULL);
+    }
 
     m_Host->RequestFrame();
 }
