@@ -59,6 +59,9 @@ public:
         _In_ IShellComponent *Component,
         _In_ ULONG Code,
         _In_opt_ PVOID Data) = 0;
+
+    /* The shell window, native app windows are stacked right below it */
+    virtual HWND STDMETHODCALLTYPE GetWindow(VOID) = 0;
 };
 
 class IShellComponent
