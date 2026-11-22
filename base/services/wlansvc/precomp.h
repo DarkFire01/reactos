@@ -53,6 +53,16 @@ WlanScan(
     _In_ const GUID *InterfaceGuid);
 
 DWORD
+WlanSetRadio(
+    _In_ const GUID *InterfaceGuid,
+    _In_ BOOL On);
+
+DWORD
+WlanQueryRadio(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ PBOOL On);
+
+DWORD
 WlanGetBssList(
     _In_ const GUID *InterfaceGuid,
     _Outptr_result_maybenull_ struct _WLAN_DOT11_BYTE_ARRAY **BssList);
