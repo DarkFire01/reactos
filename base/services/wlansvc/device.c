@@ -20,6 +20,7 @@
    types come from wlansvc_s.h through precomp.h. */
 #define OID_DOT11_NDIS_START                        0x0D010300
 #define OID_DOT11_CURRENT_OPERATION_MODE            (OID_DOT11_NDIS_START + 8)
+#define OID_DOT11_NIC_POWER_STATE                   (OID_DOT11_NDIS_START + 17)
 #define OID_DOT11_SCAN_REQUEST                      (OID_DOT11_NDIS_START + 11)
 #define OID_DOT11_ENUM_BSS_LIST \
     ((0x0E000000U) | (0x01U << 16) | (0x01U << 8) | 0x79)
@@ -288,6 +289,69 @@ WlanScan(
         Sleep(WLAN_SCAN_SETTLE_MS);
 
     return Error;
+}
+
+/**
+ * @brief
+ * Switches the adapter's software radio on or off.
+ */
+DWORD
+WlanSetRadio(
+    _In_ const GUID *InterfaceGuid,
+    _In_ BOOL On)
+{
+    HANDLE Interface;
+    BOOLEAN Power = On ? TRUE : FALSE;
+    DWORD Error;
+
+    EnterCriticalSection(&WlanDeviceLock);
+
+    Interface = WlanOpenInterface(InterfaceGuid);
+    if (Interface == NULL)
+    {
+        LeaveCriticalSection(&WlanDeviceLock);
+        return ERROR_BAD_UNIT;
+    }
+
+    Error = WlanSetOid(Interface, OID_DOT11_NIC_POWER_STATE, &Power, sizeof(Power));
+    CloseHandle(Interface);
+    LeaveCriticalSection(&WlanDeviceLock);
+    return Error;
+}
+
+/**
+ * @brief
+ * Reads the adapter's software radio state. A driver that does not answer is taken as on.
+ */
+DWORD
+WlanQueryRadio(
+    _In_ const GUID *InterfaceGuid,
+    _Out_ PBOOL On)
+{
+    HANDLE Interface;
+    BOOLEAN Power = TRUE;
+    ULONG Returned;
+
+    *On = TRUE;
+
+    EnterCriticalSection(&WlanDeviceLock);
+
+    Interface = WlanOpenInterface(InterfaceGuid);
+    if (Interface == NULL)
+    {
+        LeaveCriticalSection(&WlanDeviceLock);
+        return ERROR_BAD_UNIT;
+    }
+
+    if (WlanQueryOid(Interface, OID_DOT11_NIC_POWER_STATE, &Power, sizeof(Power), &Returned) == ERROR_SUCCESS &&
+        Returned >= sizeof(Power))
+    {
+        *On = Power ? TRUE : FALSE;
+    }
+
+    CloseHandle(Interface);
+    LeaveCriticalSection(&WlanDeviceLock);
+    return ERROR_SUCCESS;
 }
 
 /* WlanGetBssList with the device lock held by the caller */

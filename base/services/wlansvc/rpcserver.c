@@ -170,8 +170,29 @@ DWORD _RpcSetInterface(
     DWORD dwDataSize,
     LPBYTE pData)
 {
-    UNIMPLEMENTED;
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    PWLAN_PHY_RADIO_STATE Radio;
+
+    if (WlanSvcGetHandleEntry(hClientHandle) == NULL)
+        return ERROR_INVALID_HANDLE;
+
+    if (pInterfaceGuid == NULL || pData == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    /* Only the software radio switch is settable, as one PHY state */
+    if (OpCode != wlan_intf_opcode_radio_state)
+        return ERROR_NOT_SUPPORTED;
+
+    if (dwDataSize < sizeof(*Radio))
+        return ERROR_INVALID_PARAMETER;
+
+    Radio = (PWLAN_PHY_RADIO_STATE)pData;
+    if (Radio->dot11SoftwareRadioState != dot11_radio_state_on &&
+        Radio->dot11SoftwareRadioState != dot11_radio_state_off)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    return WlanSetRadio(pInterfaceGuid, Radio->dot11SoftwareRadioState == dot11_radio_state_on);
 }
 
 DWORD _RpcQueryInterface(
@@ -206,6 +227,11 @@ DWORD _RpcQueryInterface(
             Size = sizeof(WLAN_CONNECTION_ATTRIBUTES);
             break;
 
+        case wlan_intf_opcode_radio_state:
+            Size = sizeof(WLAN_RADIO_STATE);
+            *pWlanOpcodeValueType = wlan_opcode_value_type_set_by_user;
+            break;
+
         default:
             return ERROR_NOT_SUPPORTED;
     }
@@ -215,9 +241,26 @@ DWORD _RpcQueryInterface(
         return ERROR_NOT_ENOUGH_MEMORY;
 
     if (OpCode == wlan_intf_opcode_interface_state)
+    {
         Error = WlanQueryInterfaceState(pInterfaceGuid, Data);
+    }
+    else if (OpCode == wlan_intf_opcode_radio_state)
+    {
+        PWLAN_RADIO_STATE Radio = Data;
+        BOOL On;
+
+        /* One PHY; the hardware switch is not readable here, so it is reported on */
+        Error = WlanQueryRadio(pInterfaceGuid, &On);
+        RtlZeroMemory(Radio, sizeof(*Radio));
+        Radio->dwNumberOfPhys = 1;
+        Radio->PhyRadioState[0].dwPhyIndex = 0;
+        Radio->PhyRadioState[0].dot11SoftwareRadioState = On ? dot11_radio_state_on : dot11_radio_state_off;
+        Radio->PhyRadioState[0].dot11HardwareRadioState = dot11_radio_state_on;
+    }
     else
+    {
         Error = WlanQueryConnection(pInterfaceGuid, Data);
+    }
 
     if (Error != ERROR_SUCCESS)
     {

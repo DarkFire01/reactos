@@ -316,6 +316,36 @@ WlanQueryInterface(IN HANDLE hClientHandle,
 
 DWORD
 WINAPI
+WlanSetInterface(IN HANDLE hClientHandle,
+                 IN const GUID *pInterfaceGuid,
+                 IN WLAN_INTF_OPCODE OpCode,
+                 IN DWORD dwDataSize,
+                 IN const PVOID pData,
+                 PVOID pReserved)
+{
+    DWORD dwResult;
+
+    if ((pReserved != NULL) || (pInterfaceGuid == NULL) || (hClientHandle == NULL) ||
+        (pData == NULL) || (dwDataSize == 0))
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    RpcTryExcept
+    {
+        dwResult = _RpcSetInterface(hClientHandle, pInterfaceGuid, (DWORD)OpCode, dwDataSize, (LPBYTE)pData);
+    }
+    RpcExcept(EXCEPTION_EXECUTE_HANDLER)
+    {
+        dwResult = WlanRpcStatusToWinError(RpcExceptionCode());
+    }
+    RpcEndExcept;
+
+    return dwResult;
+}
+
+DWORD
+WINAPI
 WlanGetInterfaceCapability(IN HANDLE hClientHandle,
                            IN const GUID *pInterfaceGuid,
                            PVOID pReserved,
