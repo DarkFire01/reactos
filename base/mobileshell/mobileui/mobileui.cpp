@@ -341,6 +341,9 @@ private:
         _In_ PMOBILE_APP App,
         _In_ BOOL Reveal);
 
+    BOOL
+    UpdateAppRect(VOID);
+
     VOID
     ActivateApp(
         _In_ PMOBILE_APP App);
@@ -434,6 +437,8 @@ private:
     BOOL m_MenuOpen;
     ULONG m_NextAppId;
     POINTER_TARGET m_PointerTarget;
+    /* AppHost from the skin, and the part of it apps get, above the keyboard while it is open */
+    UIX_RECT m_HostRect;
     UIX_RECT m_AppRect;
 };
 
@@ -447,6 +452,7 @@ CMobileUI::Initialize(
     HRESULT Status;
 
     m_Host = Host;
+    ZeroMemory(&m_HostRect, sizeof(m_HostRect));
     ZeroMemory(&m_AppRect, sizeof(m_AppRect));
 
     Status = m_Host->GetSession()->CreateEndpoint(OnMessage, this, &m_Endpoint);
@@ -639,14 +645,15 @@ CMobileUI::Layout(VOID)
     if (m_Home)
     {
         m_Home->Layout(Width, Height);
-        if (!m_Home->GetElementRect(L"AppHost", &m_AppRect))
-            m_AppRect = { 0.0f, 0.0f, Width, Height };
+        if (!m_Home->GetElementRect(L"AppHost", &m_HostRect))
+            m_HostRect = { 0.0f, 0.0f, Width, Height };
     }
     for (IUixScene *Scene : { m_Menu.Get(), m_Sip.Get(), m_Notify.Get(), m_Popup.Get(), m_Hold.Get(), m_StatusPanel.Get(), m_Switcher.Get() })
     {
         if (Scene)
             Scene->Layout(Width, Height);
     }
+    UpdateAppRect();
 
     for (PMOBILE_APP App : m_Apps)
         ActivateApp(App);
@@ -1569,7 +1576,40 @@ CMobileUI::ShowSip(
     m_Sip->SetVisible(L"SipRoot", Show);
     if (!Show)
         HideSipFeedback();
+
+    /* Apps resize to the space above the keyboard, as on W10M, so it never covers what is typed into */
+    if (UpdateAppRect())
+    {
+        for (PMOBILE_APP App : m_Apps)
+            ActivateApp(App);
+    }
     m_Host->RequestFrame();
+}
+
+/**
+ * @brief Works out the app area: AppHost, cut off at the top of the keyboard while it is open.
+ *
+ * @return TRUE when the area changed.
+ */
+BOOL
+CMobileUI::UpdateAppRect(VOID)
+{
+    UIX_RECT Rect = m_HostRect;
+    UIX_RECT Keyboard;
+
+    if (m_SipOpen && m_Sip && m_Sip->GetElementRect(L"SipPanel", &Keyboard) &&
+        Keyboard.Top > Rect.Top && Keyboard.Top < Rect.Bottom)
+    {
+        Rect.Bottom = Keyboard.Top;
+    }
+
+    if (Rect.Left == m_AppRect.Left && Rect.Top == m_AppRect.Top &&
+        Rect.Right == m_AppRect.Right && Rect.Bottom == m_AppRect.Bottom)
+    {
+        return FALSE;
+    }
+    m_AppRect = Rect;
+    return TRUE;
 }
 
 static PCWSTR const g_SipPlain = L"1234567890-=[];',./`\\";
