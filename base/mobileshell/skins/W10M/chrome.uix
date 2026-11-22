@@ -2,9 +2,9 @@
 <!-- Status bar, app bar and navigation bar, owned by ShellChrome. Soft keys are app bar buttons; Back does ok and X. -->
 <Uix Name="Chrome" Foreground="@TitleText" Font="@ClockFont" BatteryFillWidth="11">
 
-  <!-- Tapping the status bar opens the action center -->
+  <!-- Tapping the status bar or pulling down from it opens the action center -->
   <Element Name="StatusBar" Layer="true" VAlign="Top" Height="@TrayHeight" Background="@StatusBar" Layout="Row"
-           Command="status" Momentary="true" Padding="12,0,0,0">
+           Command="status" Momentary="true" SwipeDown="status" Padding="12,0,0,0">
     <!-- Tray icons are 16x16 boxes centered in the bar; their ink, the battery and the clock baseline share one bottom line -->
     <!-- Cellular signal, or Wi-Fi quality on a device without a radio; a cross over it means no SIM -->
     <Element Name="CellBars" Width="16" Height="16" VAlign="Center" Margin="0,0,2,0">
