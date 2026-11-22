@@ -12,6 +12,10 @@
   <Element Name="Start" Layer="true" Margin="0,@TrayHeight,0,@NavBarHeight" Scroll="true" SwipeLeft="start"
            ScrollBarWidth="0" Layout="Stack">
     <Element Layout="Tiles" Columns="4" Gap="@TileGap" Padding="7,7,7,7">
+      <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Phone" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
+        <Text Content="&#xE717;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
+        <Text Content="Phone" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>
+      </Element>
       <Element Span="2,2" Background="@TileFill" Foreground="@TileText" Command="launch:Contacts" Selectable="true" Momentary="true" SelectedBackground="@TilePressed">
         <Text Content="&#xE716;" Font="@TileGlyph" TextAlign="Center" TextVAlign="Center"/>
         <Text Content="People" Font="@TileLabel" VAlign="Bottom" Margin="8,0,8,6"/>

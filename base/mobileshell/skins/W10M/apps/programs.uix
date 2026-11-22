@@ -81,6 +81,12 @@
       </Element>
       <Text Content="Office Mobile" Width="*" TextVAlign="Center"/>
     </Element>
+    <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Phone" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+      <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+        <Text Content="&#xE717;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Text Content="Phone" Width="*" TextVAlign="Center"/>
+    </Element>
     <Element Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11" Command="launch:Pictures" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
       <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
         <Text Content="&#xE91B;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>

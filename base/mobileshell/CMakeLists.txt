@@ -90,6 +90,7 @@ mobileshell_app(mobfiles apps/files/files.cpp)
 mobileshell_app(mobdevices apps/devices/devices.cpp)
 add_importlibs(mobdevices cfgmgr32 setupapi)
 mobileshell_app(mobtaskmgr apps/taskmgr/taskmgr.cpp)
+mobileshell_app(mobphone apps/phone/phone.cpp)
 
 # Configuration and skins keep their layout under MobileShell
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/shell.xml DESTINATION ${MOBILESHELL_DESTINATION} FOR all)

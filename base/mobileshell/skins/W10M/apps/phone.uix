@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phone: call history, dial pad and the in-call screen. Keys are key:<c>, hold 0 for +. -->
+<Uix Name="Phone" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+
+  <Element Name="PageHistory" Layout="Stack" Height="*">
+    <Text Content="PHONE" Font="@BaseFont" Padding="12,12,12,4"/>
+    <Text Content="history" Font="@TitleText" Padding="12,0,12,8"/>
+    <Text Name="ServiceDown" Content="{ServiceText}" Font="@Caption" Foreground="@AccentText" Wrap="true" Margin="12,0,12,8" Visible="false"/>
+
+    <Element Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="HistoryList" Layout="Stack">
+        <Element Name="h{Item.Id}" Layout="Row" Height="64" Padding="12,8,12,8" Command="call:{Item.Id}"
+                 Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+          <Element Width="40" Height="40" VAlign="Center" Margin="0,0,12,0">
+            <Text Content="{Item.Glyph}" Font="@Glyph20" Foreground="{Item.Tone}" TextAlign="Center" TextVAlign="Center"/>
+          </Element>
+          <Element Layout="Stack" Width="*" VAlign="Center">
+            <Text Content="{Item.Name}"/>
+            <Text Content="{Item.Detail}" Font="@Caption" Foreground="{Item.Tone}"/>
+          </Element>
+        </Element>
+      </Repeater>
+      <Text Name="HistoryEmpty" Content="No calls yet. Tap Keypad to make one." TextAlign="Center" Wrap="true" Margin="12,24,12,0" Foreground="@AppSubText" Visible="false"/>
+    </Element>
+
+    <Element Layout="Row" Height="56" Background="@ChromeMediumLow">
+      <Element Width="*" Command="pad" Momentary="true" Selectable="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE75F;" Font="@Glyph20" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="contacts" Momentary="true" Selectable="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE77B;" Font="@Glyph20" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+  </Element>
+
+  <Element Name="PageDial" Layout="Stack" Height="*" Visible="false" Font="@CalcKeyFont">
+    <Element Layout="Overlay" Height="96" Padding="12,0,12,8">
+      <Text Name="DialHint" Content="Enter a number" Font="@Subtitle" Foreground="@AppSubText" TextAlign="Center" TextVAlign="Bottom"/>
+      <Text Content="{DialText}" Font="@SubHeader" TextAlign="Center" TextVAlign="Bottom"/>
+    </Element>
+
+    <Element Layout="Stack" Height="*" Padding="1">
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:1" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="1" TextAlign="Center"/>
+            <Text Content="&#xE77C;" Font="@Glyph12" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Width="*" Command="key:2" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="2" TextAlign="Center"/>
+            <Text Content="ABC" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Width="*" Command="key:3" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="3" TextAlign="Center"/>
+            <Text Content="DEF" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:4" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="4" TextAlign="Center"/>
+            <Text Content="GHI" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Width="*" Command="key:5" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="5" TextAlign="Center"/>
+            <Text Content="JKL" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Width="*" Command="key:6" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="6" TextAlign="Center"/>
+            <Text Content="MNO" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:7" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="7" TextAlign="Center"/>
+            <Text Content="PQRS" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Width="*" Command="key:8" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="8" TextAlign="Center"/>
+            <Text Content="TUV" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Width="*" Command="key:9" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="9" TextAlign="Center"/>
+            <Text Content="WXYZ" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:*" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Text Content="*" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Element Width="*" Command="key:0" HoldCommand="key:+" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Element Layout="Stack" VAlign="Center">
+            <Text Content="0" TextAlign="Center"/>
+            <Text Content="+" Font="@Caption" Foreground="@AppSubText" TextAlign="Center"/>
+          </Element>
+        </Element>
+        <Element Width="*" Command="key:#" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed" SelectedForeground="@ItemSelectedText">
+          <Text Content="#" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+      </Element>
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="history" Margin="1" Momentary="true" Selectable="true" SelectedBackground="@ListPressed">
+          <Text Content="&#xE81C;" Font="@Glyph20" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Element Width="*" Command="dial" Margin="1" Background="@Accent" Foreground="@BaseWhite" Momentary="true" Selectable="true" SelectedBackground="@CalcKeyPressed">
+          <Text Content="&#xE717;" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+        <Element Width="*" Command="back" HoldCommand="back" Margin="1" Momentary="true" Selectable="true" SelectedBackground="@ListPressed">
+          <Text Content="&#xE750;" Font="@Glyph20" TextAlign="Center" TextVAlign="Center"/>
+        </Element>
+      </Element>
+    </Element>
+  </Element>
+
+  <Element Name="PageCall" Layout="Stack" Height="*" Visible="false">
+    <Element Layout="Stack" Padding="12,24,12,12">
+      <Text Content="{CallState}" Font="@BaseFont" Foreground="@AccentText"/>
+      <Text Content="{CallName}" Font="@SubHeader" Wrap="true"/>
+      <Text Content="{CallNumber}" Font="@Subtitle" Foreground="@AppSubText" Collapse="true"/>
+      <Text Content="{PadText}" Font="@Subtitle" Collapse="true" Margin="0,8,0,0"/>
+    </Element>
+
+    <Element Height="*"/>
+
+    <Element Name="InCallPad" Layout="Stack" Height="200" Padding="12,0,12,8" Font="@CalcKeyFont" Visible="false">
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:1" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="1" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:2" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="2" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:3" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="3" TextAlign="Center" TextVAlign="Center"/></Element>
+      </Element>
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:4" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="4" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:5" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="5" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:6" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="6" TextAlign="Center" TextVAlign="Center"/></Element>
+      </Element>
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:7" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="7" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:8" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="8" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:9" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="9" TextAlign="Center" TextVAlign="Center"/></Element>
+      </Element>
+      <Element Layout="Row" Height="*">
+        <Element Width="*" Command="key:*" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="*" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:0" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="0" TextAlign="Center" TextVAlign="Center"/></Element>
+        <Element Width="*" Command="key:#" Margin="1" Background="@CalcKey" Momentary="true" SelectedBackground="@CalcKeyPressed"><Text Content="#" TextAlign="Center" TextVAlign="Center"/></Element>
+      </Element>
+    </Element>
+
+    <Element Name="CallButtons" Layout="Stack" Padding="12,0,12,12">
+      <Element Layout="Row" Height="72">
+        <Element Width="*" Command="mute" Margin="2" Background="{MuteFill}" Foreground="{MuteInk}" Momentary="true" Layout="Stack">
+          <Text Content="&#xE720;" Font="@Glyph20" TextAlign="Center" Margin="0,12,0,4"/>
+          <Text Content="mute" Font="@Caption" TextAlign="Center"/>
+        </Element>
+        <Element Width="*" Command="speaker" Margin="2" Background="{SpeakerFill}" Foreground="{SpeakerInk}" Momentary="true" Layout="Stack">
+          <Text Content="&#xE767;" Font="@Glyph20" TextAlign="Center" Margin="0,12,0,4"/>
+          <Text Content="speaker" Font="@Caption" TextAlign="Center"/>
+        </Element>
+        <Element Width="*" Command="keypad" Margin="2" Background="{KeypadFill}" Foreground="{KeypadInk}" Momentary="true" Layout="Stack">
+          <Text Content="&#xE75F;" Font="@Glyph20" TextAlign="Center" Margin="0,12,0,4"/>
+          <Text Content="keypad" Font="@Caption" TextAlign="Center"/>
+        </Element>
+        <Element Width="*" Command="hold" Margin="2" Background="{HoldFill}" Foreground="{HoldInk}" Momentary="true" Layout="Stack">
+          <Text Content="&#xE769;" Font="@Glyph20" TextAlign="Center" Margin="0,12,0,4"/>
+          <Text Content="hold" Font="@Caption" TextAlign="Center"/>
+        </Element>
+      </Element>
+      <Element Height="56" Command="end" Margin="2,8,2,0" Background="@CallEnd" Foreground="@BaseWhite" Momentary="true" Selectable="true" SelectedBackground="@CallEndPressed">
+        <Text Content="end call" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+
+    <Element Name="IncomingButtons" Layout="Row" Height="64" Padding="12,0,12,16" Visible="false">
+      <Element Width="*" Command="answer" Margin="2" Background="@Accent" Foreground="@BaseWhite" Momentary="true" Selectable="true" SelectedBackground="@CalcKeyPressed">
+        <Text Content="answer" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Width="*" Command="ignore" Margin="2" Background="@CallEnd" Foreground="@BaseWhite" Momentary="true" Selectable="true" SelectedBackground="@CallEndPressed">
+        <Text Content="ignore" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+  </Element>
+
+</Uix>
