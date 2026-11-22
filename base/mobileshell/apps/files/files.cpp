@@ -100,6 +100,9 @@ Handler(
         return L"Sheets";
     if (Type == L"slides")
         return L"Slides";
+    /* Programs run as themselves, the shell hosts their window in the app area */
+    if (Type == L"exe")
+        return L"Native";
     return NULL;
 }
 
