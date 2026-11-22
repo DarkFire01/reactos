@@ -39,18 +39,26 @@
              ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
       <Text Content="CPU" Font="@Caption" Foreground="@AppSubText"/>
       <Text Content="{CpuText}" Font="@SubHeader"/>
-      <Element Layout="Row" Height="8" Margin="0,4,0,4">
-        <Element Width="{CpuUsed}*" Background="@Accent"/>
-        <Element Width="{CpuFree}*" Background="@BaseLow"/>
-      </Element>
-      <Text Content="{CpuDetail}" Font="@Caption" Foreground="@AppSubText" Margin="0,0,0,16"/>
+      <Text Content="% utilization over 60 seconds" Font="@Caption" Foreground="@AppSubText" Margin="0,4,0,2"/>
+      <Graph Height="96" Values="{CpuHistory}" Points="60" Stroke="@Accent" FillOpacity="0.25"
+             GridBrush="@BaseLow" GridRows="4" GridColumns="6" BorderBrush="@BaseMidLow" BorderThickness="1"/>
+      <Text Content="{CpuDetail}" Font="@Caption" Foreground="@AppSubText" Margin="0,4,0,12"/>
+
+      <!-- One graph per logical processor, as Task Manager's logical processors view -->
+      <Text Content="Logical processors" Font="@Caption" Foreground="@AppSubText" Margin="0,0,0,4"/>
+      <Repeater Name="CoreGraphs" Layout="Wrap" Margin="0,0,0,12">
+        <Element Layout="Stack" Width="144" Margin="0,0,8,8">
+          <Text Content="{Item.Label}" Font="@Caption" Foreground="@AppSubText" Margin="0,0,0,2"/>
+          <Graph Height="56" Values="{Item.Values}" Points="60" Stroke="@Accent" FillOpacity="0.25"
+                 GridBrush="@BaseLow" GridRows="2" GridColumns="3" BorderBrush="@BaseMidLow" BorderThickness="1"/>
+        </Element>
+      </Repeater>
 
       <Text Content="Memory" Font="@Caption" Foreground="@AppSubText"/>
       <Text Content="{MemText}" Font="@SubHeader"/>
-      <Element Layout="Row" Height="8" Margin="0,4,0,4">
-        <Element Width="{MemUsed}*" Background="@Accent"/>
-        <Element Width="{MemFree}*" Background="@BaseLow"/>
-      </Element>
+      <Text Content="Memory usage over 60 seconds" Font="@Caption" Foreground="@AppSubText" Margin="0,4,0,2"/>
+      <Graph Height="72" Values="{MemHistory}" Points="60" Stroke="#B146C2" FillOpacity="0.25"
+             GridBrush="@BaseLow" GridRows="4" GridColumns="6" BorderBrush="@BaseMidLow" BorderThickness="1"/>
       <Text Content="{MemDetail}" Font="@Caption" Foreground="@AppSubText" Margin="0,0,0,16"/>
 
       <Element Layout="Row" Height="44">
