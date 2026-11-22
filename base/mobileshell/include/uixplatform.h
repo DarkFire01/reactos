@@ -24,6 +24,14 @@ DCompositionCreateDevice(
     _In_opt_ IDXGIDevice *DxgiDevice,
     _In_ REFIID Iid,
     _Outptr_ VOID **Device);
+
+EXTERN_C
+HRESULT
+WINAPI
+DCompositionCreateDevice2(
+    _In_opt_ IUnknown *RenderingDevice,
+    _In_ REFIID Iid,
+    _Outptr_ VOID **Device);
 #else
 #include <dcomp.h>
 #endif
