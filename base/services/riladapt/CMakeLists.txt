@@ -11,6 +11,6 @@ list(APPEND SOURCE
 add_executable(riladapt ${SOURCE} riladapt.rc)
 target_link_libraries(riladapt uuid)
 set_module_type(riladapt win32cui UNICODE)
-add_importlibs(riladapt setupapi advapi32 advapi32_vista kernel32_vista msvcrt kernel32 ntdll)
+add_importlibs(riladapt cfgmgr32 setupapi advapi32 msvcrt kernel32 ntdll)
 add_pch(riladapt riladapt.h SOURCE)
 add_cd_file(TARGET riladapt DESTINATION reactos/system32 FOR all)

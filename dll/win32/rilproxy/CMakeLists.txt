@@ -18,6 +18,6 @@ add_library(rilproxy MODULE
 
 set_module_type(rilproxy win32dll UNICODE)
 target_link_libraries(rilproxy uuid)
-add_importlibs(rilproxy setupapi advapi32 kernel32_vista msvcrt kernel32 ntdll)
+add_importlibs(rilproxy cfgmgr32 setupapi advapi32 msvcrt kernel32 ntdll)
 add_pch(rilproxy rilproxy.h SOURCE)
 add_cd_file(TARGET rilproxy DESTINATION reactos/system32 FOR all)
