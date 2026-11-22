@@ -97,7 +97,7 @@ HalStartNextProcessor(
     if (HalpStartedProcessorCount == HalpApicInfoTable.ProcessorCount)
         return FALSE;
 
-    if (HalpStartedProcessorCount >= 2)
+    if (HalpStartedProcessorCount >= MAXIMUM_PROCESSORS)
         return FALSE;
 
 
