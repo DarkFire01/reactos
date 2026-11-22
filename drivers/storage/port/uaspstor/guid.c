@@ -9,6 +9,5 @@
 #include <initguid.h>
 #include <usb.h>
 #include <usbdlib.h>
-#include <drivers/usb/usbdexinternal.h>
 
 /* No code here, the definitions above are the whole point of the file */
