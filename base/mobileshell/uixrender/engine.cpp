@@ -100,7 +100,9 @@ CUixEngine::Startup(
         return S_OK;
 
     m_Window = Window;
-    Status = DCompositionCreateDevice(Dxgi.Get(), __uuidof(IDCompositionDevice), m_Composition.PutVoid());
+    /* The newer entry point gives a device that also answers for IDCompositionDesktopDevice,
+       which the shared visual of a native app window needs */
+    Status = DCompositionCreateDevice2(Dxgi.Get(), __uuidof(IDCompositionDevice), m_Composition.PutVoid());
     if (FAILED(Status))
         return Status;
 
