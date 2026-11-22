@@ -111,6 +111,11 @@ public:
         _In_ ULONG Code,
         _In_opt_ PVOID Data) override;
 
+    HWND STDMETHODCALLTYPE GetWindow(VOID) override
+    {
+        return m_Window;
+    }
+
     /* Command line */
     std::wstring m_Script;
     std::wstring m_InitialTheme;

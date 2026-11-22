@@ -8,6 +8,7 @@
 #include <devstatus.h>
 #include <cellstatus.h>
 #include <records.h>
+#include <dwmapi.h>
 #include <shellcomp.h>
 #include <shellmsg.h>
 #include <appwire.h>
@@ -62,6 +63,11 @@ SameNumber(
 #define MOBILE_UI_APP_EXITED  2
 #define MOBILE_UI_APP_CONNECTED 3
 #define MOBILE_UI_SIP_FEEDBACK_OFF 4
+#define MOBILE_UI_NATIVE_WINDOW 5
+
+/* How long a native program gets to put up its main window */
+#define NATIVE_WINDOW_WAIT_MS 15000
+#define NATIVE_WINDOW_POLL_MS 100
 
 /* FingerKB portrait key press feedback: size against the keyboard, border, lift and linger */
 #define SIP_FEEDBACK_WIDTH  0.12f
@@ -113,6 +119,14 @@ typedef struct _MOBILE_APP
     FLOAT ShownX;
     FLOAT ShownY;
     FLOAT ShownZoom;
+
+    /* A plain Win32 program: its window sits under the shell and DWM shares it into Visual */
+    BOOL Native;
+    HWND Window;
+    HWND PointerWindow;
+    HWND FocusWindow;
+    HTHUMBNAIL Thumbnail;
+    UixPtr<IDCompositionVisual> SharedVisual;
 } MOBILE_APP, *PMOBILE_APP;
 
 typedef struct _MOBILE_APP_POST
@@ -122,6 +136,16 @@ typedef struct _MOBILE_APP_POST
 } MOBILE_APP_POST, *PMOBILE_APP_POST;
 
 class CMobileUI;
+
+/* Waits for a native program's window, then for the program to exit */
+typedef struct _MOBILE_NATIVE_WATCH
+{
+    CMobileUI *Owner;
+    IShellHost *Host;
+    ULONG AppId;
+    HANDLE Process;
+    HANDLE Job;
+} MOBILE_NATIVE_WATCH, *PMOBILE_NATIVE_WATCH;
 
 typedef struct _MOBILE_READER
 {
@@ -364,6 +388,32 @@ private:
     Launch(
         _In_z_ PCWSTR Id,
         _In_opt_z_ PCWSTR Document = NULL);
+
+    BOOL
+    LaunchNative(
+        _In_z_ PCWSTR Path);
+
+    static
+    DWORD
+    WINAPI
+    NativeWatchThread(
+        _In_ PVOID Parameter);
+
+    VOID
+    AttachNative(
+        _In_ PMOBILE_APP App,
+        _In_ HWND Window);
+
+    VOID
+    PlaceNative(
+        _In_ PMOBILE_APP App);
+
+    VOID
+    NativePointer(
+        _In_ PMOBILE_APP App,
+        _In_ UIX_POINTER Kind,
+        _In_ FLOAT X,
+        _In_ FLOAT Y);
 
     VOID
     ShowApp(
@@ -1096,6 +1146,12 @@ CMobileUI::Command(
         if (!Launch(Command + 7))
             PostNote(Command + 7, L"@NotInstalled");
     }
+    else if (_wcsnicmp(Command, L"run:", 4) == 0 && Command[4])
+    {
+        ShowMenu(FALSE);
+        ShowStatus(FALSE);
+        LaunchNative(Command + 4);
+    }
     else if (_wcsicmp(Command, L"softkey.left") == 0)
     {
         SoftKey(ShellSoftKeyLeft);
@@ -1249,6 +1305,12 @@ CMobileUI::PointerEvent(
             break;
 
         case PointerApp:
+            if (m_Active && m_Active->Native)
+            {
+                NativePointer(m_Active, Kind, X, Y);
+                Handled = TRUE;
+                break;
+            }
             ZeroMemory(&Message, sizeof(Message));
             Message.Id = AppMsgPointer;
             Message.Int[0] = Kind;
@@ -1940,6 +2002,15 @@ CMobileUI::SendChar(
     if (!m_Active)
         return;
 
+    if (m_Active->Native)
+    {
+        HWND Target = m_Active->FocusWindow ? m_Active->FocusWindow : m_Active->Window;
+
+        if (Target)
+            PostMessageW(Target, WM_CHAR, Char, 1);
+        return;
+    }
+
     ZeroMemory(&Message, sizeof(Message));
     Message.Id = AppMsgChar;
     Message.Int[0] = Char;
@@ -1954,6 +2025,19 @@ CMobileUI::SendKey(
 
     if (!m_Active)
         return;
+
+    if (m_Active->Native)
+    {
+        HWND Target = m_Active->FocusWindow ? m_Active->FocusWindow : m_Active->Window;
+        UINT Scan = MapVirtualKeyW(VirtualKey, MAPVK_VK_TO_VSC);
+
+        if (Target)
+        {
+            PostMessageW(Target, WM_KEYDOWN, VirtualKey, 1 | (Scan << 16));
+            PostMessageW(Target, WM_KEYUP, VirtualKey, 1 | (Scan << 16) | (3UL << 30));
+        }
+        return;
+    }
 
     ZeroMemory(&Message, sizeof(Message));
     Message.Id = AppMsgKey;
@@ -2047,6 +2131,10 @@ CMobileUI::Launch(
     WCHAR SkinDirectory[MAX_PATH];
     WCHAR Markup[MAX_PATH];
     std::wstring CommandLine;
+
+    /* A program handed over by File Explorer runs as itself, hosted in the app area */
+    if (_wcsicmp(Id, L"Native") == 0)
+        return Document && Document[0] && LaunchNative(Document);
 
     App = FindAppByDef(Id);
     if (App)
@@ -2153,6 +2241,414 @@ CMobileUI::Launch(
     m_Apps.push_back(App);
     ShowApp(App);
     return TRUE;
+}
+
+typedef struct _NATIVE_FIND
+{
+    DWORD ProcessId;
+    HANDLE Job;
+    HWND Found;
+} NATIVE_FIND, *PNATIVE_FIND;
+
+typedef
+HRESULT
+(WINAPI *PFN_SHARED_THUMBNAIL_VISUAL)(
+    _In_ HWND Destination,
+    _In_ HWND Source,
+    _In_ DWORD Flags,
+    _In_ DWM_THUMBNAIL_PROPERTIES *Properties,
+    _In_ VOID *Device,
+    _Outptr_ VOID **Visual,
+    _Out_ HTHUMBNAIL *Thumbnail);
+
+typedef
+HRESULT
+(WINAPI *PFN_UPDATE_THUMBNAIL)(
+    _In_ HTHUMBNAIL Thumbnail,
+    _In_ const DWM_THUMBNAIL_PROPERTIES *Properties);
+
+/* The program's own top level window, or one from a process it started into the job */
+static
+BOOL
+CALLBACK
+NativeFindProc(
+    _In_ HWND Window,
+    _In_ LPARAM Parameter)
+{
+    PNATIVE_FIND Find = reinterpret_cast<PNATIVE_FIND>(Parameter);
+    DWORD ProcessId = 0;
+    HANDLE Process;
+    BOOL InJob = FALSE;
+
+    if (!IsWindowVisible(Window) || GetWindow(Window, GW_OWNER))
+        return TRUE;
+
+    GetWindowThreadProcessId(Window, &ProcessId);
+    if (ProcessId != Find->ProcessId)
+    {
+        if (!Find->Job)
+            return TRUE;
+
+        Process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, ProcessId);
+        if (!Process)
+            return TRUE;
+        IsProcessInJob(Process, Find->Job, &InJob);
+        CloseHandle(Process);
+        if (!InJob)
+            return TRUE;
+    }
+
+    Find->Found = Window;
+    return FALSE;
+}
+
+static
+VOID
+NativeThumbnailProperties(
+    _In_ HWND Window,
+    _Out_ DWM_THUMBNAIL_PROPERTIES *Properties)
+{
+    RECT Frame;
+
+    GetWindowRect(Window, &Frame);
+    ZeroMemory(Properties, sizeof(*Properties));
+    Properties->dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_RECTSOURCE | DWM_TNP_VISIBLE | DWM_TNP_OPACITY |
+                          DWM_TNP_SOURCECLIENTAREAONLY;
+    Properties->rcSource.right = Frame.right - Frame.left;
+    Properties->rcSource.bottom = Frame.bottom - Frame.top;
+    Properties->rcDestination = Properties->rcSource;
+    Properties->fVisible = TRUE;
+    Properties->opacity = 255;
+    Properties->fSourceClientAreaOnly = FALSE;
+}
+
+/**
+ * @brief Runs a plain Win32 program and hosts its main window in the app area.
+ *
+ * @param[in] Path
+ * Full path of the program.
+ *
+ * @return TRUE when the program started.
+ */
+BOOL
+CMobileUI::LaunchNative(
+    _In_z_ PCWSTR Path)
+{
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION Limits;
+    UixPtr<IDCompositionDevice> Device;
+    STARTUPINFOW Startup;
+    PROCESS_INFORMATION Process;
+    PMOBILE_NATIVE_WATCH Watch;
+    PMOBILE_APP App;
+    std::wstring Directory = Path;
+    std::wstring CommandLine;
+    std::wstring Title;
+    SIZE_T Slash;
+
+    for (PMOBILE_APP Running : m_Apps)
+    {
+        if (Running->Native && _wcsicmp(Running->Def.Exe.c_str(), Path) == 0)
+        {
+            ShowApp(Running);
+            return TRUE;
+        }
+    }
+
+    Slash = Directory.find_last_of(L"\\/");
+    Title = (Slash == std::wstring::npos) ? Directory : Directory.substr(Slash + 1);
+    if (Title.size() > 4 && _wcsicmp(Title.c_str() + Title.size() - 4, L".exe") == 0)
+        Title.resize(Title.size() - 4);
+    if (Slash == std::wstring::npos)
+        Directory.clear();
+    else
+        Directory.resize(Slash);
+
+    App = new MOBILE_APP();
+    App->Id = m_NextAppId++;
+    App->Def.Id = L"Native";
+    App->Def.Exe = Path;
+    App->Def.Title = Title;
+    App->Native = TRUE;
+    App->Pipe = INVALID_HANDLE_VALUE;
+    App->CloseKind = ShellCloseX;
+    StringCchCopyW(App->Title, ARRAYSIZE(App->Title), Title.c_str());
+
+    if (FAILED(m_Host->GetEngine()->GetCompositionDevice(Device.Put())) ||
+        FAILED(Device->CreateVisual(App->Visual.Put())) ||
+        FAILED(m_AppLayer->AddVisual(App->Visual.Get(), FALSE, NULL)))
+    {
+        delete App;
+        return FALSE;
+    }
+
+    /* Only kill on close: UI limits would cut the program off from windows the shell owns */
+    App->Job = CreateJobObjectW(NULL, NULL);
+    if (App->Job)
+    {
+        ZeroMemory(&Limits, sizeof(Limits));
+        Limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(App->Job, JobObjectExtendedLimitInformation, &Limits, sizeof(Limits));
+    }
+
+    CommandLine = L"\"" + std::wstring(Path) + L"\"";
+    ZeroMemory(&Startup, sizeof(Startup));
+    Startup.cb = sizeof(Startup);
+    if (!CreateProcessW(Path, &CommandLine[0], NULL, NULL, FALSE, CREATE_SUSPENDED, NULL,
+                        Directory.empty() ? NULL : Directory.c_str(), &Startup, &Process))
+    {
+        m_Apps.push_back(App);
+        CloseApp(App);
+        PostNote(Title.c_str(), L"The program couldn't start.");
+        return FALSE;
+    }
+
+    if (App->Job)
+        AssignProcessToJobObject(App->Job, Process.hProcess);
+    App->Process = Process.hProcess;
+    App->ProcessId = Process.dwProcessId;
+
+    Watch = new MOBILE_NATIVE_WATCH();
+    ZeroMemory(Watch, sizeof(*Watch));
+    Watch->Owner = this;
+    Watch->Host = m_Host;
+    Watch->AppId = App->Id;
+    DuplicateHandle(GetCurrentProcess(), Process.hProcess, GetCurrentProcess(), &Watch->Process,
+                    SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, 0);
+    if (App->Job)
+        DuplicateHandle(GetCurrentProcess(), App->Job, GetCurrentProcess(), &Watch->Job, JOB_OBJECT_QUERY, FALSE, 0);
+
+    App->Thread = CreateThread(NULL, 0, NativeWatchThread, Watch, 0, NULL);
+    if (!App->Thread)
+    {
+        if (Watch->Process)
+            CloseHandle(Watch->Process);
+        if (Watch->Job)
+            CloseHandle(Watch->Job);
+        delete Watch;
+    }
+
+    ResumeThread(Process.hThread);
+    CloseHandle(Process.hThread);
+
+    m_Apps.push_back(App);
+    ShowApp(App);
+    return TRUE;
+}
+
+DWORD
+WINAPI
+CMobileUI::NativeWatchThread(
+    _In_ PVOID Parameter)
+{
+    PMOBILE_NATIVE_WATCH Watch = static_cast<PMOBILE_NATIVE_WATCH>(Parameter);
+    PMOBILE_APP_POST Post;
+    NATIVE_FIND Find;
+    ULONGLONG Deadline;
+    HANDLE Owner = NULL;
+    DWORD OwnerId = 0;
+
+    WaitForInputIdle(Watch->Process, NATIVE_WINDOW_WAIT_MS);
+
+    Find.ProcessId = GetProcessId(Watch->Process);
+    Find.Job = Watch->Job;
+    Find.Found = NULL;
+    Deadline = GetTickCount64() + NATIVE_WINDOW_WAIT_MS;
+    while (!Find.Found && GetTickCount64() < Deadline)
+    {
+        EnumWindows(NativeFindProc, reinterpret_cast<LPARAM>(&Find));
+        if (!Find.Found)
+            Sleep(NATIVE_WINDOW_POLL_MS);
+    }
+
+    if (Find.Found)
+    {
+        Post = new MOBILE_APP_POST();
+        ZeroMemory(Post, sizeof(*Post));
+        Post->AppId = Watch->AppId;
+        Post->Message.Int[0] = static_cast<LONG>(reinterpret_cast<ULONG_PTR>(Find.Found));
+        if (!Watch->Host->PostUiMessage(Watch->Owner, MOBILE_UI_NATIVE_WINDOW, Post))
+            delete Post;
+
+        /* A launcher may hand its window to a child, the app lives as long as the window's process */
+        GetWindowThreadProcessId(Find.Found, &OwnerId);
+        if (OwnerId != Find.ProcessId)
+            Owner = OpenProcess(SYNCHRONIZE, FALSE, OwnerId);
+    }
+
+    WaitForSingleObject(Owner ? Owner : Watch->Process, INFINITE);
+
+    Post = new MOBILE_APP_POST();
+    ZeroMemory(Post, sizeof(*Post));
+    Post->AppId = Watch->AppId;
+    if (!Watch->Host->PostUiMessage(Watch->Owner, MOBILE_UI_APP_EXITED, Post))
+        delete Post;
+
+    if (Owner)
+        CloseHandle(Owner);
+    if (Watch->Job)
+        CloseHandle(Watch->Job);
+    CloseHandle(Watch->Process);
+    delete Watch;
+    return 0;
+}
+
+VOID
+CMobileUI::AttachNative(
+    _In_ PMOBILE_APP App,
+    _In_ HWND Window)
+{
+    PFN_SHARED_THUMBNAIL_VISUAL CreateShared;
+    DWM_THUMBNAIL_PROPERTIES Properties;
+    UixPtr<IDCompositionDevice> Device;
+    UixPtr<IUnknown> Desktop;
+    WCHAR Title[APP_TEXT_MAX];
+    WCHAR Log[128];
+    LONG_PTR Style;
+    HRESULT Status;
+    HMODULE Dwm;
+
+    if (App->Window || !IsWindow(Window))
+        return;
+
+    App->Window = Window;
+    if (GetWindowTextW(Window, Title, ARRAYSIZE(Title)) > 0)
+        StringCchCopyW(App->Title, ARRAYSIZE(App->Title), Title);
+
+    /* The shell chrome stands in for the caption and frame */
+    Style = GetWindowLongPtrW(Window, GWL_STYLE);
+    SetWindowLongPtrW(Window, GWL_STYLE, Style & ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX));
+    Style = GetWindowLongPtrW(Window, GWL_EXSTYLE);
+    Style &= ~(WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME);
+    SetWindowLongPtrW(Window, GWL_EXSTYLE, Style | WS_EX_TOOLWINDOW);
+    PlaceNative(App);
+
+    /* DWM shares the live window into our tree through this unnamed export, as Task View does */
+    Dwm = LoadLibraryW(L"dwmapi.dll");
+    CreateShared = Dwm ? reinterpret_cast<PFN_SHARED_THUMBNAIL_VISUAL>(GetProcAddress(Dwm, MAKEINTRESOURCEA(147))) : NULL;
+    if (!CreateShared)
+        Status = E_NOTIMPL;
+    else if (SUCCEEDED(Status = m_Host->GetEngine()->GetCompositionDevice(Device.Put())) &&
+             SUCCEEDED(Status = Device->QueryInterface(__uuidof(IDCompositionDesktopDevice), Desktop.PutVoid())))
+    {
+        NativeThumbnailProperties(Window, &Properties);
+        Status = CreateShared(m_Host->GetWindow(), Window, 2, &Properties, Desktop.Get(),
+                              App->SharedVisual.PutVoid(), &App->Thumbnail);
+        if (SUCCEEDED(Status))
+            Status = App->Visual->AddVisual(App->SharedVisual.Get(), FALSE, NULL);
+    }
+
+    StringCchPrintfW(Log, ARRAYSIZE(Log), L"MobileUI: hosting window %p, shared visual 0x%08lx\n", Window, Status);
+    OutputDebugStringW(Log);
+
+    /* Without a shared visual the window itself is shown, so it goes on top while active */
+    PlaceNative(App);
+    UpdateChrome();
+    m_Host->RequestFrame();
+}
+
+VOID
+CMobileUI::PlaceNative(
+    _In_ PMOBILE_APP App)
+{
+    FLOAT Scale = m_Host->GetEngine()->GetScale();
+    HWND Host = m_Host->GetWindow();
+    PFN_UPDATE_THUMBNAIL Update;
+    DWM_THUMBNAIL_PROPERTIES Properties;
+    POINT Origin = { 0, 0 };
+    HWND After;
+
+    if (!App->Window || !Host)
+        return;
+
+    /* Under the shell window it keeps drawing for the shared visual and never shows itself */
+    After = (App->SharedVisual || !App->Shown) ? Host : HWND_TOP;
+    ClientToScreen(Host, &Origin);
+    SetWindowPos(App->Window, After,
+                 Origin.x + lroundf(m_AppRect.Left * Scale), Origin.y + lroundf(m_AppRect.Top * Scale),
+                 lroundf((m_AppRect.Right - m_AppRect.Left) * Scale), lroundf((m_AppRect.Bottom - m_AppRect.Top) * Scale),
+                 SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+    if (App->Thumbnail)
+    {
+        Update = reinterpret_cast<PFN_UPDATE_THUMBNAIL>(
+            GetProcAddress(GetModuleHandleW(L"dwmapi.dll"), "DwmUpdateThumbnailProperties"));
+        if (Update)
+        {
+            NativeThumbnailProperties(App->Window, &Properties);
+            Update(App->Thumbnail, &Properties);
+        }
+    }
+}
+
+/* Taps go to the deepest enabled child under the finger, which also takes typed keys afterwards */
+VOID
+CMobileUI::NativePointer(
+    _In_ PMOBILE_APP App,
+    _In_ UIX_POINTER Kind,
+    _In_ FLOAT X,
+    _In_ FLOAT Y)
+{
+    FLOAT Scale = m_Host->GetEngine()->GetScale();
+    POINT Screen;
+    POINT Local;
+    RECT Frame;
+    HWND Target;
+    HWND Child;
+
+    if (!App->Window)
+        return;
+
+    GetWindowRect(App->Window, &Frame);
+    Screen.x = Frame.left + lroundf((X - m_AppRect.Left) * Scale);
+    Screen.y = Frame.top + lroundf((Y - m_AppRect.Top) * Scale);
+
+    if (Kind == UixPointerDown)
+    {
+        Target = App->Window;
+        for (;;)
+        {
+            Local = Screen;
+            ScreenToClient(Target, &Local);
+            Child = ChildWindowFromPointEx(Target, Local, CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT);
+            if (!Child || Child == Target)
+                break;
+            Target = Child;
+        }
+        App->PointerWindow = Target;
+        App->FocusWindow = Target;
+    }
+
+    Target = App->PointerWindow;
+    if (!Target)
+        return;
+
+    Local = Screen;
+    ScreenToClient(Target, &Local);
+
+    switch (Kind)
+    {
+        case UixPointerDown:
+            PostMessageW(Target, WM_MOUSEMOVE, 0, MAKELPARAM(Local.x, Local.y));
+            PostMessageW(Target, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(Local.x, Local.y));
+            break;
+
+        case UixPointerMove:
+            PostMessageW(Target, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(Local.x, Local.y));
+            break;
+
+        case UixPointerHold:
+            /* Press and hold is the right click */
+            PostMessageW(Target, WM_LBUTTONUP, 0, MAKELPARAM(Local.x, Local.y));
+            PostMessageW(Target, WM_RBUTTONDOWN, MK_RBUTTON, MAKELPARAM(Local.x, Local.y));
+            PostMessageW(Target, WM_RBUTTONUP, 0, MAKELPARAM(Local.x, Local.y));
+            App->PointerWindow = NULL;
+            break;
+
+        default:
+            PostMessageW(Target, WM_LBUTTONUP, 0, MAKELPARAM(Local.x, Local.y));
+            App->PointerWindow = NULL;
+            break;
+    }
 }
 
 DWORD
@@ -2263,6 +2759,13 @@ CMobileUI::ActivateApp(
     FLOAT Height = m_AppRect.Bottom - m_AppRect.Top;
     FLOAT RenderScale = App->Def.Legacy ? 1.0f : Scale;
 
+    if (App->Native)
+    {
+        PlaceNative(App);
+        PlaceApp(App, FALSE);
+        return;
+    }
+
     ZeroMemory(&Message, sizeof(Message));
     Message.Id = AppMsgActivate;
     Message.Int[0] = lroundf(Width * RenderScale);
@@ -2292,6 +2795,9 @@ CMobileUI::PlaceApp(
 
     if (!App->Visual)
         return;
+
+    if (App->Native)
+        PlaceNative(App);
 
     if (!App->Shown)
     {
@@ -2357,6 +2863,21 @@ CMobileUI::CloseApp(
     _In_ PMOBILE_APP App)
 {
     APP_MESSAGE Message;
+
+    if (App->Native && App->Window)
+    {
+        PostMessageW(App->Window, WM_CLOSE, 0, 0);
+        if (App->Thumbnail)
+        {
+            typedef HRESULT (WINAPI *PFN_UNREGISTER)(HTHUMBNAIL);
+            PFN_UNREGISTER Unregister = reinterpret_cast<PFN_UNREGISTER>(
+                GetProcAddress(GetModuleHandleW(L"dwmapi.dll"), "DwmUnregisterThumbnail"));
+
+            if (Unregister)
+                Unregister(App->Thumbnail);
+            App->Thumbnail = NULL;
+        }
+    }
 
     /* Ask nicely first, WriteApp refuses once Closing is set */
     if (App->Process)
@@ -2892,6 +3413,8 @@ CMobileUI::UiMessage(
             AppMessage(App, &Post->Message);
         else if (Code == MOBILE_UI_APP_CONNECTED)
             ActivateApp(App);
+        else if (Code == MOBILE_UI_NATIVE_WINDOW)
+            AttachNative(App, reinterpret_cast<HWND>(static_cast<ULONG_PTR>(Post->Message.Int[0])));
         else if (Code == MOBILE_UI_APP_EXITED && !App->Closing)
             CloseApp(App);
     }
