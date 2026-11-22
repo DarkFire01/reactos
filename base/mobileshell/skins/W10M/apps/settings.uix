@@ -64,6 +64,13 @@
           <Text Content="Device information" Font="@Caption" Foreground="@AppSubText"/>
         </Element>
       </Element>
+      <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="launch:DeviceManager" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+        <Text Content="&#xE772;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
+        <Element Layout="Stack" Width="*" VAlign="Center">
+          <Text Content="Device Manager"/>
+          <Text Content="Devices, drivers and problems" Font="@Caption" Foreground="@AppSubText"/>
+        </Element>
+      </Element>
       <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="open:Backlight" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
         <Text Content="&#xE706;" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
         <Element Layout="Stack" Width="*" VAlign="Center">
