@@ -7,7 +7,7 @@
 
     <Element Name="StatusPanel" Layer="true" Y="@TrayHeight" VAlign="Top" Layout="Stack"
              Background="@PanelBackground" Foreground="@BaseHigh" Font="@Body"
-             Reveal="0,-120,0.3,0" SwipeLeft="status.close" SwipeRight="status.close">
+             Reveal="0,-120,0.3,0" SwipeLeft="status.close" SwipeRight="status.close" SwipeUp="status.close">
 
       <!-- Quick actions: 60 high, 4 apart, icon top left, caption bottom left -->
       <Element Layout="Row" Height="60" Margin="4,20,4,4" Font="@Caption">
