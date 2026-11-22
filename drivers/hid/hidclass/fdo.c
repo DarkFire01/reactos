@@ -389,6 +389,61 @@ HidClassFDO_GetDescriptors(
 }
 
 
+/**
+ * @brief Registers the HID stack with the power framework, so the platform plug-in sees its D-states.
+ *
+ * @remarks The class driver owns this registration, filters below it do not register the PDO.
+ */
+static
+VOID
+HidClassFDO_RegisterPoFx(
+    _Inout_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension)
+{
+    PO_FX_COMPONENT_IDLE_STATE IdleState;
+    PO_FX_DEVICE_V1 Device;
+    POHANDLE Handle;
+    NTSTATUS Status;
+
+    if (FDODeviceExtension->PoFxHandle)
+        return;
+
+    RtlZeroMemory(&IdleState, sizeof(IdleState));
+    RtlZeroMemory(&Device, sizeof(Device));
+    Device.Version = PO_FX_VERSION_V1;
+    Device.ComponentCount = 1;
+    Device.Components[0].IdleStateCount = 1;
+    Device.Components[0].IdleStates = &IdleState;
+    Device.DeviceContext = FDODeviceExtension;
+
+    Status = PoFxRegisterDevice(FDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject,
+                                (PPO_FX_DEVICE)&Device,
+                                &Handle);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("[HIDCLASS] PoFx registration failed %x\n", Status);
+        return;
+    }
+
+    FDODeviceExtension->PoFxHandle = Handle;
+    PoFxStartDevicePowerManagement(Handle);
+
+    /* Without selective suspend the stack stays active while it is started */
+    PoFxActivateComponent(Handle, 0, PO_FX_FLAG_BLOCKING);
+}
+
+static
+VOID
+HidClassFDO_UnregisterPoFx(
+    _Inout_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension)
+{
+    if (!FDODeviceExtension->PoFxHandle)
+        return;
+
+    PoFxIdleComponent(FDODeviceExtension->PoFxHandle, 0, PO_FX_FLAG_BLOCKING);
+    PoFxUnregisterDevice(FDODeviceExtension->PoFxHandle);
+    FDODeviceExtension->PoFxHandle = NULL;
+}
+
 NTSTATUS
 HidClassFDO_StartDevice(
     IN PDEVICE_OBJECT DeviceObject,
@@ -453,6 +508,8 @@ HidClassFDO_StartDevice(
         return Status;
     }
 
+    HidClassFDO_RegisterPoFx(FDODeviceExtension);
+
     //
     // complete request
     //
@@ -478,6 +535,7 @@ HidClassFDO_RemoveDevice(
     ASSERT(FDODeviceExtension->Common.IsFDO);
 
     /* FIXME cleanup */
+    HidClassFDO_UnregisterPoFx(FDODeviceExtension);
 
     //
     // dispatch to minidriver
