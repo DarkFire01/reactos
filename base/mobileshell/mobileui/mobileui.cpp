@@ -7,6 +7,7 @@
 #define SHELLCOMP_EXPORTS
 #include <devstatus.h>
 #include <cellstatus.h>
+#include <records.h>
 #include <shellcomp.h>
 #include <shellmsg.h>
 #include <appwire.h>
@@ -16,6 +17,36 @@
 #include <math.h>
 #include <string>
 #include <vector>
+
+/* Numbers match on their last ten digits, so +1 425... and 425... are one person */
+static
+BOOL
+SameNumber(
+    _In_z_ PCWSTR Left,
+    _In_z_ PCWSTR Right)
+{
+    WCHAR Digits[2][16];
+    PCWSTR Sources[2] = { Left, Right };
+
+    for (ULONG Side = 0; Side < 2; Side++)
+    {
+        ULONG Length = 0;
+
+        for (PCWSTR Char = Sources[Side]; *Char; Char++)
+        {
+            if (*Char < L'0' || *Char > L'9')
+                continue;
+            if (Length == 10)
+            {
+                MoveMemory(&Digits[Side][0], &Digits[Side][1], 9 * sizeof(WCHAR));
+                Length = 9;
+            }
+            Digits[Side][Length++] = *Char;
+        }
+        Digits[Side][Length] = UNICODE_NULL;
+    }
+    return Digits[0][0] && wcscmp(Digits[0], Digits[1]) == 0;
+}
 
 /*
  * Skin contract:
@@ -178,6 +209,8 @@ private:
     {
         std::wstring Title;
         std::wstring Body;
+        /* Opened when the note is tapped, empty keeps the note for later instead */
+        std::wstring AppId;
     } NOTE;
 
     HRESULT
@@ -203,7 +236,11 @@ private:
     VOID
     PostNote(
         _In_z_ PCWSTR Title,
-        _In_z_ PCWSTR Body);
+        _In_z_ PCWSTR Body,
+        _In_opt_z_ PCWSTR AppId = NULL);
+
+    VOID
+    PostMessageNotes(VOID);
 
     VOID
     ShowNote(
@@ -692,6 +729,8 @@ CMobileUI::Tick(VOID)
     RefreshOwner();
     RefreshStatus();
 
+    PostMessageNotes();
+
     /* A call that starts ringing brings Phone up wherever the user is */
     if (m_Cell.IncomingSequence() != m_SeenIncoming)
     {
@@ -947,7 +986,17 @@ CMobileUI::Command(
     }
     else if (_wcsicmp(Command, L"notify.hide") == 0)
     {
-        ShowNote(FALSE);
+        if (!m_Notes.empty() && !m_Notes.front().AppId.empty())
+        {
+            std::wstring AppId = m_Notes.front().AppId;
+
+            DismissNote();
+            Launch(AppId.c_str(), NULL);
+        }
+        else
+        {
+            ShowNote(FALSE);
+        }
     }
     else if (_wcsicmp(Command, L"notify.show") == 0)
     {
@@ -1398,14 +1447,54 @@ CMobileUI::ClosePopup(
 VOID
 CMobileUI::PostNote(
     _In_z_ PCWSTR Title,
-    _In_z_ PCWSTR Body)
+    _In_z_ PCWSTR Body,
+    _In_opt_z_ PCWSTR AppId)
 {
     NOTE Note;
 
     Note.Title = Title;
     Note.Body = Body;
+    if (AppId)
+        Note.AppId = AppId;
     m_Notes.push_back(Note);
     ShowNote(TRUE);
+}
+
+/* New messages get a note with the sender's name, unless Messaging is already in front */
+VOID
+CMobileUI::PostMessageNotes(VOID)
+{
+    CELL_MESSAGE Messages[CELL_MESSAGE_QUEUE];
+    std::vector<APP_RECORD> Contacts;
+    ULONG Count = m_Cell.TakeMessages(Messages, ARRAYSIZE(Messages));
+    BOOL Loaded = FALSE;
+
+    for (ULONG Index = 0; Index < Count; Index++)
+    {
+        std::wstring Sender = Messages[Index].Address;
+        std::wstring Body = Messages[Index].Preview;
+
+        if (m_Active && !m_SwitcherOpen && _wcsicmp(m_Active->Def.Id.c_str(), L"Messaging") == 0)
+            continue;
+
+        if (!Loaded)
+        {
+            LoadRecords(L"contacts.txt", Contacts);
+            Loaded = TRUE;
+        }
+        for (const APP_RECORD &Record : Contacts)
+        {
+            if (Record.size() >= 2 && !Record[0].empty() && SameNumber(Record[1].c_str(), Messages[Index].Address))
+            {
+                Sender = Record[0];
+                break;
+            }
+        }
+
+        if (Body.empty())
+            Body = Messages[Index].Picture ? L"Picture message" : L"New message";
+        PostNote(Sender.empty() ? L"Messaging" : Sender.c_str(), Body.c_str(), L"Messaging");
+    }
 }
 
 VOID

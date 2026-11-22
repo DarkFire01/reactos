@@ -58,7 +58,7 @@ spec2def(mobileui.dll mobileui/mobileui.spec)
 add_library(mobileui MODULE mobileui/mobileui.cpp ${CMAKE_CURRENT_BINARY_DIR}/mobileui.def)
 set_module_type(mobileui win32dll UNICODE)
 mobileshell_cpp(mobileui)
-add_importlibs(mobileui xmllite shlwapi advapi32 iphlpapi ws2_32 ole32 user32 msvcrt kernel32 ntdll)
+add_importlibs(mobileui xmllite shlwapi shell32 advapi32 iphlpapi ws2_32 ole32 user32 msvcrt kernel32 ntdll)
 add_cd_file(TARGET mobileui DESTINATION ${MOBILESHELL_DESTINATION} FOR all)
 
 # Host

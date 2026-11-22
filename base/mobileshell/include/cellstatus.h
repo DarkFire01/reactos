@@ -32,6 +32,18 @@ typedef struct _CELL_STATUS
     PHONEOM_DATA_STATUS DataStatus;
 } CELL_STATUS, *PCELL_STATUS;
 
+#define CELL_MESSAGE_QUEUE      8
+#define CELL_MESSAGE_PREVIEW    96
+
+/* A message that just arrived, enough for a notification */
+typedef struct _CELL_MESSAGE
+{
+    DWORD MessageId;
+    BOOL Picture;
+    WCHAR Address[PHONEOM_MAX_NUMBER];
+    WCHAR Preview[CELL_MESSAGE_PREVIEW];
+} CELL_MESSAGE, *PCELL_MESSAGE;
+
 typedef VOID
 (CALLBACK *PCELL_NOTIFY)(
     _In_opt_ PVOID Context);
@@ -170,6 +182,22 @@ public:
         return m_IncomingSequence;
     }
 
+    /* Moves the messages that arrived since the last call into Messages, oldest first */
+    ULONG
+    TakeMessages(
+        _Out_writes_to_(Max, return) PCELL_MESSAGE Messages,
+        _In_ ULONG Max)
+    {
+        ULONG Count;
+
+        AcquireSRWLockExclusive(&m_Lock);
+        Count = min(m_MessageCount, Max);
+        CopyMemory(Messages, m_Messages, Count * sizeof(*Messages));
+        m_MessageCount = 0;
+        ReleaseSRWLockExclusive(&m_Lock);
+        return Count;
+    }
+
     /* Saves the settings, then brings the data connection up or down to match Enabled */
     VOID
     SetDataConfig(
@@ -219,11 +247,64 @@ private:
             }
         }
 
+        if (Event == PhoneEventMessage && Data && DataSize >= sizeof(PHONEOM_MESSAGE))
+            This->QueueMessage(static_cast<const PHONEOM_MESSAGE *>(Data));
+
         /* The session is closed on the monitor thread, never from its own callback */
         if (Event == PhoneEventDisconnected)
             InterlockedExchange(&This->m_Lost, TRUE);
         if (Event == PhoneEventRadio || Event == PhoneEventDisconnected)
             This->Refresh();
+    }
+
+    /* A picture message is announced again once it is downloaded, the id keeps it to one note */
+    VOID
+    QueueMessage(
+        _In_ const PHONEOM_MESSAGE *Message)
+    {
+        PCELL_MESSAGE Entry;
+        SIZE_T Length;
+
+        if (!(Message->Flags & PHONEOM_MESSAGE_INCOMING))
+            return;
+
+        AcquireSRWLockExclusive(&m_Lock);
+        for (ULONG Index = 0; Index < ARRAYSIZE(m_RecentIds); Index++)
+        {
+            if (m_RecentIds[Index] == Message->MessageId)
+            {
+                ReleaseSRWLockExclusive(&m_Lock);
+                return;
+            }
+        }
+        m_RecentIds[m_RecentNext++ % ARRAYSIZE(m_RecentIds)] = Message->MessageId;
+
+        if (m_MessageCount == CELL_MESSAGE_QUEUE)
+        {
+            MoveMemory(&m_Messages[0], &m_Messages[1], (CELL_MESSAGE_QUEUE - 1) * sizeof(m_Messages[0]));
+            m_MessageCount--;
+        }
+
+        Entry = &m_Messages[m_MessageCount++];
+        ZeroMemory(Entry, sizeof(*Entry));
+        Entry->MessageId = Message->MessageId;
+        Entry->Picture = (Message->Flags & PHONEOM_MESSAGE_MMS) != 0;
+        CopyMemory(Entry->Address, Message->Address, sizeof(Entry->Address) - sizeof(WCHAR));
+
+        /* First line only, trimmed with an ellipsis */
+        Length = 0;
+        while (Length < PHONEOM_MAX_TEXT && Message->Text[Length] && Message->Text[Length] != L'\n')
+            Length++;
+        if (Length >= CELL_MESSAGE_PREVIEW - 1)
+        {
+            CopyMemory(Entry->Preview, Message->Text, (CELL_MESSAGE_PREVIEW - 2) * sizeof(WCHAR));
+            Entry->Preview[CELL_MESSAGE_PREVIEW - 2] = L'\x2026';
+        }
+        else
+        {
+            CopyMemory(Entry->Preview, Message->Text, Length * sizeof(WCHAR));
+        }
+        ReleaseSRWLockExclusive(&m_Lock);
     }
 
     BOOL
@@ -367,6 +448,10 @@ private:
     PVOID m_Context = NULL;
     volatile LONG m_Lost = FALSE;
     volatile LONG m_IncomingSequence = 0;
+    CELL_MESSAGE m_Messages[CELL_MESSAGE_QUEUE] = {};
+    ULONG m_MessageCount = 0;
+    DWORD m_RecentIds[16] = {};
+    ULONG m_RecentNext = 0;
     volatile LONG m_RingingCall = 0;
 
     CELL_STATUS m_Status = {};
