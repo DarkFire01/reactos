@@ -778,11 +778,21 @@ KiArm64InterruptDispatch(
             Entry = &Interrupt->InterruptListEntry;
             do
             {
+                KIRQL ServiceIrql = Irql;
+
                 Interrupt = CONTAINING_RECORD(Entry, KINTERRUPT, InterruptListEntry);
                 Interrupt->TrapFrame = TrapFrame;
+
+                /* A lock shared with other interrupts is only safe at the highest of their levels */
+                if (Interrupt->SynchronizeIrql > Irql)
+                    ServiceIrql = KfRaiseIrql(Interrupt->SynchronizeIrql);
+
                 KeAcquireSpinLockAtDpcLevel(Interrupt->ActualLock);
                 Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
                 KeReleaseSpinLockFromDpcLevel(Interrupt->ActualLock);
+
+                if (Interrupt->SynchronizeIrql > Irql)
+                    KeLowerIrql(ServiceIrql);
                 Entry = Entry->Flink;
             } while (Entry != &((PKINTERRUPT)*KiInterruptObjectSlot(Pcr, Vector))->InterruptListEntry);
             break;
