@@ -166,6 +166,12 @@ KeQueryTickCount(_Out_ PLARGE_INTEGER TickCount)
 }
 
 #ifndef _M_AMD64
+#ifdef _M_ARM64
+/* The headers read these inline like Windows does, the exports stay for older modules */
+#undef KeQuerySystemTime
+#undef KeQueryInterruptTime
+#endif
+
 /*
  * @implemented
  */

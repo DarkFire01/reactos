@@ -157,7 +157,7 @@ KeQueryActiveProcessors(VOID);
 $endif (_WDMDDK_ || _NTDDK_)
 
 $if (_WDMDDK_)
-#if !defined(_M_AMD64)
+#if !defined(_M_AMD64) && !defined(_M_ARM64)
 NTKERNELAPI
 ULONGLONG
 NTAPI
@@ -168,7 +168,7 @@ VOID
 NTAPI
 KeQuerySystemTime(
   _Out_ PLARGE_INTEGER CurrentTime);
-#endif /* !_M_AMD64 */
+#endif /* !_M_AMD64 && !_M_ARM64 */
 
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 _IRQL_requires_max_(HIGH_LEVEL)
