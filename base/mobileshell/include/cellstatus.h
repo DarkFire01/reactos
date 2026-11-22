@@ -163,6 +163,13 @@ public:
         Refresh();
     }
 
+    /* Goes up by one for every call that starts ringing, the shell brings Phone up when it moves */
+    LONG
+    IncomingSequence(VOID) const
+    {
+        return m_IncomingSequence;
+    }
+
     /* Saves the settings, then brings the data connection up or down to match Enabled */
     VOID
     SetDataConfig(
@@ -196,8 +203,21 @@ private:
         CCellMonitor *This = static_cast<CCellMonitor *>(Context);
 
         UNREFERENCED_PARAMETER(Phone);
-        UNREFERENCED_PARAMETER(Data);
-        UNREFERENCED_PARAMETER(DataSize);
+
+        if (Event == PhoneEventCall && Data && DataSize >= sizeof(PHONEOM_CALL))
+        {
+            const PHONEOM_CALL *Call = static_cast<const PHONEOM_CALL *>(Data);
+
+            if (Call->State == PhoneCallIncoming &&
+                InterlockedExchange(&This->m_RingingCall, static_cast<LONG>(Call->CallId)) != static_cast<LONG>(Call->CallId))
+            {
+                InterlockedIncrement(&This->m_IncomingSequence);
+            }
+            else if (Call->State != PhoneCallIncoming)
+            {
+                InterlockedCompareExchange(&This->m_RingingCall, 0, static_cast<LONG>(Call->CallId));
+            }
+        }
 
         /* The session is closed on the monitor thread, never from its own callback */
         if (Event == PhoneEventDisconnected)
@@ -346,6 +366,8 @@ private:
     PCELL_NOTIFY m_Notify = NULL;
     PVOID m_Context = NULL;
     volatile LONG m_Lost = FALSE;
+    volatile LONG m_IncomingSequence = 0;
+    volatile LONG m_RingingCall = 0;
 
     CELL_STATUS m_Status = {};
     LONG m_PendingRadio = -1;
