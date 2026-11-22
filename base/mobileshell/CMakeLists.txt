@@ -78,6 +78,7 @@ function(mobileshell_app _target _source)
 endfunction()
 
 mobileshell_app(mobsettings apps/settings/settings.cpp)
+add_importlibs(mobsettings wlanapi)
 mobileshell_app(mobcontacts apps/contacts/contacts.cpp)
 mobileshell_app(mobmessaging apps/messaging/messaging.cpp)
 mobileshell_app(mobcalendar apps/calendar/calendar.cpp)
