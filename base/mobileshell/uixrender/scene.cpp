@@ -1191,6 +1191,19 @@ CUixScene::MoveSelection(
     return TRUE;
 }
 
+BOOL
+STDMETHODCALLTYPE
+CUixScene::GetSelectedRect(
+    _Out_ PUIX_RECT Rect)
+{
+    if (!m_Selected)
+        return FALSE;
+
+    Update();
+    *Rect = m_Selected->Rect;
+    return TRUE;
+}
+
 PCWSTR
 STDMETHODCALLTYPE
 CUixScene::GetSelectedCommand(VOID)
@@ -1454,6 +1467,20 @@ CUixScene::PointerEvent(
                     ScrollBy(m_Scroller, m_LastY - Y);
                 m_LastY = Y;
                 return TRUE;
+            }
+
+            /* Under PressFollows the press slides to the element under the finger, as on a keyboard */
+            if (m_Pressed && !Contains(m_Pressed->Rect, X, Y) &&
+                ParseBool(Value(m_Pressed, L"PressFollows", TRUE).c_str(), FALSE))
+            {
+                Hit = HitTest(m_Root, X, Y);
+                if (Hit && Hit != m_Pressed)
+                {
+                    MarkLayerDirty(m_Selected);
+                    m_Pressed = Hit;
+                    m_Selected = Hit;
+                    MarkLayerDirty(Hit);
+                }
             }
             return m_Pressed != NULL;
 

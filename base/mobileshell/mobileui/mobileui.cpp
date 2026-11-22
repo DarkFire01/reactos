@@ -30,6 +30,14 @@
 #define MOBILE_UI_APP_MESSAGE 1
 #define MOBILE_UI_APP_EXITED  2
 #define MOBILE_UI_APP_CONNECTED 3
+#define MOBILE_UI_SIP_FEEDBACK_OFF 4
+
+/* FingerKB portrait key press feedback: size against the keyboard, border, lift and linger */
+#define SIP_FEEDBACK_WIDTH  0.12f
+#define SIP_FEEDBACK_HEIGHT 0.26785f
+#define SIP_FEEDBACK_BORDER 2.0f
+#define SIP_FEEDBACK_ABOVE  0.98f
+#define SIP_FEEDBACK_LINGER_MS 75
 
 /* ReactOS does not know the remote client flag; the client PID check still guards the pipe */
 #ifdef __REACTOS__
@@ -223,9 +231,28 @@ private:
     VOID
     UpdateSipKeys(VOID);
 
+    WCHAR
+    SipCharFor(
+        _In_ WCHAR Char) const;
+
     VOID
     SipCommand(
         _In_z_ PCWSTR Command);
+
+    VOID
+    UpdateSipFeedback(
+        _In_ UIX_POINTER Kind);
+
+    VOID
+    HideSipFeedback(VOID);
+
+    static
+    VOID
+    CALLBACK
+    SipFeedbackTimer(
+        _Inout_ PTP_CALLBACK_INSTANCE Instance,
+        _Inout_opt_ PVOID Context,
+        _Inout_ PTP_TIMER Timer);
 
     VOID
     SendChar(
@@ -394,6 +421,10 @@ private:
     std::vector<NOTE> m_Notes;
     BOOL m_NoteShown = FALSE;
     BOOL m_SipOpen = FALSE;
+    BOOL m_SipFeedbackShown = FALSE;
+    ULONG m_SipFeedbackSerial = 0;
+    ULONG m_SipFeedbackPending = 0;
+    PTP_TIMER m_SipFeedbackTimer = NULL;
     BOOL m_Shift = FALSE;
     BOOL m_Caps = FALSE;
     BOOL m_Symbols = FALSE;
@@ -1177,6 +1208,10 @@ CMobileUI::PointerEvent(
             break;
     }
 
+    /* The press that picked the keyboard as target was already handed to it above */
+    if (Target == PointerSip)
+        UpdateSipFeedback(Kind);
+
     if (Kind == UixPointerUp || Kind == UixPointerCancel)
         m_PointerTarget = PointerNone;
     if (!Handled && Kind == UixPointerDown)
@@ -1532,6 +1567,8 @@ CMobileUI::ShowSip(
 
     m_SipOpen = Show;
     m_Sip->SetVisible(L"SipRoot", Show);
+    if (!Show)
+        HideSipFeedback();
     m_Host->RequestFrame();
 }
 
@@ -1572,25 +1609,136 @@ CMobileUI::UpdateSipKeys(VOID)
     m_Sip->SetVisible(L"SipSymbols", m_Symbols);
 }
 
+/* The character a key types now, the same one its label shows */
+WCHAR
+CMobileUI::SipCharFor(
+    _In_ WCHAR Char) const
+{
+    PCWSTR Found;
+
+    if (iswalpha(Char))
+        return (m_Shift != m_Caps) ? towupper(Char) : towlower(Char);
+    if (m_Shift && (Found = wcschr(g_SipPlain, Char)) != NULL)
+        return g_SipShifted[Found - g_SipPlain];
+    return Char;
+}
+
+/**
+ * @brief Shows the pressed character above the finger, as the FingerKB key press feedback does.
+ *
+ * Character keys get the bubble, other keys only their pressed fill. It follows the finger from
+ * key to key and lingers briefly after release.
+ */
+VOID
+CMobileUI::UpdateSipFeedback(
+    _In_ UIX_POINTER Kind)
+{
+    WCHAR Label[2] = { 0, 0 };
+    WCHAR Number[32];
+    UIX_RECT Panel;
+    UIX_RECT Key;
+    PCWSTR Command;
+    FLOAT Width;
+    FLOAT Height;
+    FLOAT Left;
+    FLOAT Bottom;
+    LARGE_INTEGER Due;
+    FILETIME DueTime;
+
+    if (!m_Sip || Kind == UixPointerHold)
+        return;
+
+    if (Kind == UixPointerUp || Kind == UixPointerCancel)
+    {
+        if (!m_SipFeedbackShown)
+            return;
+
+        if (!m_SipFeedbackTimer)
+            m_SipFeedbackTimer = CreateThreadpoolTimer(SipFeedbackTimer, this, NULL);
+        if (!m_SipFeedbackTimer)
+        {
+            HideSipFeedback();
+            return;
+        }
+
+        m_SipFeedbackPending = m_SipFeedbackSerial;
+        Due.QuadPart = -(LONGLONG)SIP_FEEDBACK_LINGER_MS * 10000;
+        DueTime.dwLowDateTime = Due.LowPart;
+        DueTime.dwHighDateTime = (DWORD)Due.HighPart;
+        SetThreadpoolTimer(m_SipFeedbackTimer, &DueTime, 0, 0);
+        return;
+    }
+
+    Command = m_Sip->GetSelectedCommand();
+    if (!Command || _wcsnicmp(Command, L"sip.char:", 9) != 0 || !Command[9] ||
+        !m_Sip->GetSelectedRect(&Key) || !m_Sip->GetElementRect(L"SipPanel", &Panel))
+    {
+        HideSipFeedback();
+        return;
+    }
+
+    /* Centered over the key, kept on the keyboard, its bottom nearly a key height above the key's */
+    Width = (Panel.Right - Panel.Left) * SIP_FEEDBACK_WIDTH + 2.0f * SIP_FEEDBACK_BORDER;
+    Height = (Panel.Bottom - Panel.Top) * SIP_FEEDBACK_HEIGHT + 2.0f * SIP_FEEDBACK_BORDER;
+    Left = (Key.Left + Key.Right - Width) / 2.0f;
+    Left = max(Panel.Left, min(Left, Panel.Right - Width));
+    Bottom = Key.Bottom - (Key.Bottom - Key.Top) * SIP_FEEDBACK_ABOVE;
+
+    /* A new press outlives the linger of the last one */
+    m_SipFeedbackSerial++;
+
+    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.2f", Left);
+    m_Sip->SetBinding(L"FbX", Number);
+    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.2f", Bottom - Height);
+    m_Sip->SetBinding(L"FbY", Number);
+    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.2f", Width);
+    m_Sip->SetBinding(L"FbW", Number);
+    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.2f", Height);
+    m_Sip->SetBinding(L"FbH", Number);
+    Label[0] = SipCharFor(Command[9]);
+    m_Sip->SetBinding(L"FbText", Label);
+
+    if (!m_SipFeedbackShown)
+    {
+        m_Sip->SetVisible(L"SipFeedback", TRUE);
+        m_SipFeedbackShown = TRUE;
+    }
+}
+
+VOID
+CMobileUI::HideSipFeedback(VOID)
+{
+    m_SipFeedbackSerial++;
+    if (!m_Sip || !m_SipFeedbackShown)
+        return;
+
+    m_Sip->SetVisible(L"SipFeedback", FALSE);
+    m_SipFeedbackShown = FALSE;
+    m_Host->RequestFrame();
+}
+
+VOID
+CALLBACK
+CMobileUI::SipFeedbackTimer(
+    _Inout_ PTP_CALLBACK_INSTANCE Instance,
+    _Inout_opt_ PVOID Context,
+    _Inout_ PTP_TIMER Timer)
+{
+    CMobileUI *This = static_cast<CMobileUI *>(Context);
+
+    UNREFERENCED_PARAMETER(Instance);
+    UNREFERENCED_PARAMETER(Timer);
+
+    This->m_Host->PostUiMessage(This, MOBILE_UI_SIP_FEEDBACK_OFF, (PVOID)(ULONG_PTR)This->m_SipFeedbackPending);
+}
+
 VOID
 CMobileUI::SipCommand(
     _In_z_ PCWSTR Command)
 {
-    PCWSTR Found;
-    WCHAR Char;
-
     if (_wcsnicmp(Command, L"char:", 5) == 0 && Command[5])
     {
-        Char = Command[5];
-        if (iswalpha(Char))
-        {
-            Char = (m_Shift != m_Caps) ? towupper(Char) : towlower(Char);
-        }
-        else if (m_Shift && (Found = wcschr(g_SipPlain, Char)) != NULL)
-        {
-            Char = g_SipShifted[Found - g_SipPlain];
-        }
-        SendChar(Char);
+        SendChar(SipCharFor(Command[5]));
         m_Shift = FALSE;
     }
     else if (_wcsicmp(Command, L"shift") == 0)
@@ -2589,6 +2737,14 @@ CMobileUI::UiMessage(
     PMOBILE_APP_POST Post = static_cast<PMOBILE_APP_POST>(Data);
     PMOBILE_APP App;
 
+    /* The linger ran out; a press since then has a newer serial and keeps its bubble */
+    if (Code == MOBILE_UI_SIP_FEEDBACK_OFF)
+    {
+        if ((ULONG)(ULONG_PTR)Data == m_SipFeedbackSerial)
+            HideSipFeedback();
+        return;
+    }
+
     if (!Post)
         return;
 
@@ -2613,6 +2769,13 @@ CMobileUI::Shutdown(VOID)
         CloseApp(m_Apps.back());
 
     m_Cell.Stop();
+    if (m_SipFeedbackTimer)
+    {
+        SetThreadpoolTimer(m_SipFeedbackTimer, NULL, 0, 0);
+        WaitForThreadpoolTimerCallbacks(m_SipFeedbackTimer, TRUE);
+        CloseThreadpoolTimer(m_SipFeedbackTimer);
+        m_SipFeedbackTimer = NULL;
+    }
     m_Sip.Reset();
     m_Notify.Reset();
     m_Popup.Reset();

@@ -3,7 +3,8 @@
 <Uix Name="Sip">
   <Element Name="SipRoot" Visible="false">
     <Element Name="SipPanel" Layer="true" VAlign="Bottom" Margin="0,0,0,@NavBarHeight" HeightRatio="0.7" Padding="2"
-             Background="@SipBackground" Foreground="@SipText" Font="@KeyFont" Reveal="0,60,0.2">
+             Background="@SipBackground" Foreground="@SipText" Font="@KeyFont" Reveal="0,60,0.2"
+             PressFollows="true">
       <Element Name="SipLetters" Layout="Stack">
         <Element Layout="Row" Height="*" Padding="0">
           <Element Width="*" Margin="2" Command="sip.char:q" Background="@SipKey" Momentary="true" SelectedBackground="@SipKeyPressed" SelectedForeground="@SipKeyPressedText">
@@ -225,6 +226,13 @@
           </Element>
         </Element>
       </Element>
+    </Element>
+
+    <!-- Key press feedback: the pressed character above the finger, placed by MobileUI -->
+    <Element Name="SipFeedback" Layer="true" Visible="false" HAlign="Left" VAlign="Top"
+             X="{FbX}" Y="{FbY}" Width="{FbW}" Height="{FbH}" Padding="2"
+             Background="@SipKeyPressed" Foreground="@SipKeyPressedText" Font="@KeyFeedbackFont">
+      <Text Content="{FbText}" TextAlign="Center" TextVAlign="Center"/>
     </Element>
   </Element>
 </Uix>
