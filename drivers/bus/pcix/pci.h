@@ -346,6 +346,7 @@ typedef struct _PCI_FDO_EXTENSION
     BOOLEAN MaxSubordinateBus;
     BUS_HANDLER *BusHandler;
     BOOLEAN BaseBus;
+    USHORT Segment;
     BOOLEAN Fake;
     BOOLEAN ChildDelete;
     BOOLEAN Scanned;
@@ -368,7 +369,6 @@ typedef struct _PCI_FDO_EXTENSION
     LONG BusHackFlags;
     LONG PciPmeInterfaceCount;
     PCI_ROOT_BUS_HARDWARE_CAPABILITY RootBusHardwareCapability;
-    USHORT Segment;
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_FUNCTION_RESOURCES
@@ -1418,9 +1418,15 @@ PciProgramGrantedInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension,
     _In_opt_ PCM_RESOURCE_LIST ResourceList);
 
+USHORT
+NTAPI
+PciQueryRootSegment(
+    _In_ PPCI_FDO_EXTENSION FdoExtension);
+
 BOOLEAN
 NTAPI
 PciEcamReadWriteConfig(
+    _In_ USHORT Segment,
     _In_ ULONG Bus,
     _In_ PCI_SLOT_NUMBER Slot,
     _Inout_updates_bytes_(Length) PVOID Buffer,
