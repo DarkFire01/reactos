@@ -12,18 +12,69 @@
 #include <algorithm>
 #include <map>
 
+/* Per processor times from NtQuerySystemInformation, laid out as winternl.h documents them */
+#define TASK_PROCESSOR_TIMES_CLASS 8
+
+typedef struct _TASK_PROCESSOR_TIMES
+{
+    LARGE_INTEGER IdleTime;
+    LARGE_INTEGER KernelTime;
+    LARGE_INTEGER UserTime;
+    LARGE_INTEGER Reserved1[2];
+    ULONG Reserved2;
+} TASK_PROCESSOR_TIMES;
+
+extern "C"
+LONG
+NTAPI
+NtQuerySystemInformation(
+    _In_ ULONG InformationClass,
+    _Out_writes_bytes_(Length) PVOID Information,
+    _In_ ULONG Length,
+    _Out_opt_ PULONG ReturnLength);
+
 /*
  * Markup contract (taskmgr.uix):
- *   Elements: PageMain, PageProcess, TabProcessList, TabPerformance, ListScroll; repeater ProcessList
- *             (fields Id, Name, Detail, Cpu, Glyph)
- *   Bindings: TabProcesses, TabPerformance, ProcessSummary, CpuText, CpuUsed, CpuFree, CpuDetail,
- *             MemText, MemUsed, MemFree, MemDetail, PerfProcesses, PerfThreads, PerfHandles,
+ *   Elements: PageMain, PageProcess, TabProcessList, TabPerformance, ListScroll; repeaters ProcessList
+ *             (fields Id, Name, Detail, Cpu, Glyph) and CoreGraphs (fields Label, Values)
+ *   Bindings: TabProcesses, TabPerformance, ProcessSummary, CpuText, CpuHistory, CpuDetail,
+ *             MemText, MemHistory, MemDetail, PerfProcesses, PerfThreads, PerfHandles,
  *             PerfCommit, PerfUptime, ProcName, ProcGlyph, ProcGone, ProcCpu, ProcMemory, ProcId,
  *             ProcCounts, ProcPriority, ProcParent, ProcPath
  *   Commands: tab:processes, tab:performance, open:<Pid>, hold:<Pid>
  */
 
 #define TASKMGR_INTERVAL_MS 1000
+#define TASKMGR_HISTORY 60
+
+/* Keeps the newest TASKMGR_HISTORY samples */
+static
+VOID
+PushSample(
+    _Inout_ std::vector<FLOAT> &History,
+    _In_ FLOAT Sample)
+{
+    History.push_back(Sample);
+    if (History.size() > TASKMGR_HISTORY)
+        History.erase(History.begin());
+}
+
+/* A history as the Graph element's Values list */
+static
+std::wstring
+JoinSamples(
+    _In_ const std::vector<FLOAT> &History)
+{
+    std::wstring Text;
+    WCHAR Number[16];
+
+    for (FLOAT Sample : History)
+    {
+        StringCchPrintfW(Number, ARRAYSIZE(Number), Text.empty() ? L"%.1f" : L",%.1f", Sample);
+        Text += Number;
+    }
+    return Text;
+}
 
 typedef struct _PROCESS
 {
@@ -157,6 +208,9 @@ private:
     Sample(VOID);
 
     VOID
+    SampleCores(VOID);
+
+    VOID
     ShowPage(
         _In_ TASK_PAGE Page);
 
@@ -183,6 +237,10 @@ private:
 
     std::vector<PROCESS> m_Processes;
     std::map<DWORD, std::pair<ULONGLONG, ULONGLONG>> m_LastCpu;
+    std::vector<std::pair<ULONGLONG, ULONGLONG>> m_CoreLast;
+    std::vector<std::vector<FLOAT>> m_CoreHistory;
+    std::vector<FLOAT> m_CpuHistory;
+    std::vector<FLOAT> m_MemHistory;
     PTP_TIMER m_Timer = NULL;
     ULONGLONG m_LastIdle = 0;
     ULONGLONG m_LastBusy = 0;
@@ -294,6 +352,14 @@ CTaskManagerApp::Sample(VOID)
 
     m_Memory.dwLength = sizeof(m_Memory);
     GlobalMemoryStatusEx(&m_Memory);
+
+    /* The first sample is only a baseline for the CPU shares */
+    if (Total)
+    {
+        PushSample(m_CpuHistory, m_SystemCpu);
+        PushSample(m_MemHistory, static_cast<FLOAT>(m_Memory.dwMemoryLoad));
+    }
+    SampleCores();
     m_Performance.cb = sizeof(m_Performance);
     GetPerformanceInfo(&m_Performance, sizeof(m_Performance));
 
@@ -355,6 +421,57 @@ CTaskManagerApp::Sample(VOID)
     }
     CloseHandle(Snapshot);
     m_LastCpu.swap(Cpu);
+}
+
+/**
+ * @brief Samples every logical processor's busy share since the last sample.
+ *
+ * Kernel time includes idle time, so busy is kernel plus user minus idle.
+ */
+VOID
+CTaskManagerApp::SampleCores(VOID)
+{
+    std::vector<TASK_PROCESSOR_TIMES> Cores;
+    SYSTEM_INFO System;
+    ULONG Length = 0;
+    SIZE_T Index;
+
+    GetSystemInfo(&System);
+    Cores.resize(System.dwNumberOfProcessors);
+    if (Cores.empty() ||
+        NtQuerySystemInformation(TASK_PROCESSOR_TIMES_CLASS, Cores.data(),
+                                 static_cast<ULONG>(Cores.size() * sizeof(Cores[0])), &Length) < 0)
+    {
+        return;
+    }
+    Cores.resize(Length / sizeof(Cores[0]));
+
+    if (m_CoreLast.size() != Cores.size())
+    {
+        m_CoreLast.assign(Cores.size(), { 0, 0 });
+        m_CoreHistory.assign(Cores.size(), std::vector<FLOAT>());
+    }
+
+    for (Index = 0; Index < Cores.size(); Index++)
+    {
+        ULONGLONG Idle = Cores[Index].IdleTime.QuadPart;
+        ULONGLONG Total = Cores[Index].KernelTime.QuadPart + Cores[Index].UserTime.QuadPart;
+        std::pair<ULONGLONG, ULONGLONG> &Last = m_CoreLast[Index];
+
+        if (Last.second && Total > Last.second)
+        {
+            ULONGLONG Elapsed = Total - Last.second;
+            ULONGLONG Rest = min(Elapsed, Idle - Last.first);
+
+            PushSample(m_CoreHistory[Index], 100.0f * (Elapsed - Rest) / Elapsed);
+        }
+        else if (Last.second)
+        {
+            /* No time passed on this processor, it sat idle */
+            PushSample(m_CoreHistory[Index], 0.0f);
+        }
+        Last = { Idle, Total };
+    }
 }
 
 const PROCESS *
@@ -455,24 +572,34 @@ CTaskManagerApp::RefreshPerformance(VOID)
     ULONGLONG Seconds = GetTickCount64() / 1000;
     SYSTEM_INFO System;
     WCHAR Text[96];
-    WCHAR Number[32];
+
+    static PCWSTR const CoreFields[] = { L"Label", L"Values" };
+    std::vector<std::wstring> Storage;
+    std::vector<PCWSTR> Values;
 
     StringCchPrintfW(Text, ARRAYSIZE(Text), L"%.0f%%", m_SystemCpu);
     Scene()->SetBinding(L"CpuText", Text);
-    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.3f", max(m_SystemCpu, 0.001f));
-    Scene()->SetBinding(L"CpuUsed", Number);
-    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.3f", max(100.0f - m_SystemCpu, 0.001f));
-    Scene()->SetBinding(L"CpuFree", Number);
+    Scene()->SetBinding(L"CpuHistory", JoinSamples(m_CpuHistory).c_str());
+
+    for (SIZE_T Index = 0; Index < m_CoreHistory.size(); Index++)
+    {
+        const std::vector<FLOAT> &History = m_CoreHistory[Index];
+
+        StringCchPrintfW(Text, ARRAYSIZE(Text), L"CPU %lu, %.0f%%", static_cast<ULONG>(Index),
+                         History.empty() ? 0.0f : History.back());
+        Storage.push_back(Text);
+        Storage.push_back(JoinSamples(History));
+    }
+    for (const std::wstring &Value : Storage)
+        Values.push_back(Value.c_str());
+    Scene()->SetItems(L"CoreGraphs", static_cast<ULONG>(m_CoreHistory.size()), ARRAYSIZE(CoreFields), CoreFields, Values.data());
     GetSystemInfo(&System);
     StringCchPrintfW(Text, ARRAYSIZE(Text), L"%lu logical processors", System.dwNumberOfProcessors);
     Scene()->SetBinding(L"CpuDetail", Text);
 
     StringCchPrintfW(Text, ARRAYSIZE(Text), L"%lu%%", m_Memory.dwMemoryLoad);
     Scene()->SetBinding(L"MemText", Text);
-    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.3f", max(static_cast<FLOAT>(Used), 1.0f));
-    Scene()->SetBinding(L"MemUsed", Number);
-    StringCchPrintfW(Number, ARRAYSIZE(Number), L"%.3f", max(static_cast<FLOAT>(m_Memory.ullAvailPhys), 1.0f));
-    Scene()->SetBinding(L"MemFree", Number);
+    Scene()->SetBinding(L"MemHistory", JoinSamples(m_MemHistory).c_str());
     Scene()->SetBinding(L"MemDetail", (FormatBytes(Used) + L" in use of " + FormatBytes(m_Memory.ullTotalPhys) +
                                        L", " + FormatBytes(m_Memory.ullAvailPhys) + L" available").c_str());
 
