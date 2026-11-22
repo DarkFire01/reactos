@@ -7,3 +7,4 @@ HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Type",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Tag",0x00010001,0x00000023
 HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor\Parameters","BusType",0x00010001,0x00000007
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor\Parameters","IoTimeoutValue",0x00010001,0x0000000F

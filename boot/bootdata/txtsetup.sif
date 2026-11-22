@@ -128,6 +128,7 @@ ucx01000.sys = 1,,,,,,x,4,,,,1,4
 urscx01000.sys  = 1,,,,,,x,4,,,,1,4
 urssynopsys.sys = 1,,,,,,x,4,,,,1,4
 usbstor.sys  = 1,,,,,,x,4,,,,1,4
+uaspstor.sys = 1,,,,,,x,4,,,,1,4
 kbdhid.sys   = 1,,,,,,,4,,,,1,4
 kbdclass.sys = 1,,,,,,x,4,,,,1,4
 l_intl.nls   = 1,,,,,,,2,,,,1,2
@@ -258,6 +259,7 @@ PCI\CC_0C0310 = usbohci
 PCI\CC_0C0320 = usbehci
 USB\Class_08&SubClass_06&Prot_50 = usbstor
 USB\Class_08&SubClass_05&Prot_50 = usbstor
+USB\Class_08&SubClass_06&Prot_62 = uaspstor,{4D36E97B-E325-11CE-BFC1-08002BE10318}
 HID_DEVICE_SYSTEM_KEYBOARD = kbdhid,{4D36E96B-E325-11CE-BFC1-08002BE10318}
 USB\COMPOSITE = usbccgp
 GenDisk = disk,{4D36E967-E325-11CE-BFC1-08002BE10318}
@@ -282,6 +284,7 @@ usbhub = usbhub.sys
 usbccgp = usbccgp.sys
 hidusb = hidusb.sys
 usbstor = usbstor.sys
+uaspstor = uaspstor.sys
 
 [Keyboard.Load]
 kbdhid = kbdhid.sys

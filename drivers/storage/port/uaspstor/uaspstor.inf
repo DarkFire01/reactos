@@ -1,0 +1,53 @@
+; UASPSTOR.INF
+
+; Installation file for USB Attached SCSI devices
+
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = SCSIAdapter
+ClassGUID  = {4D36E97B-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 09/18/2026,1.00.0.0
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%GenericMfg% = GenericMfg
+
+[GenericMfg]
+%UasDevice.DeviceDesc% = UASPStor_Inst,USB\Class_08&SubClass_06&Prot_62
+
+;----------------------- USB ATTACHED SCSI DRIVER -----------------------
+
+[UASPStor_Inst.NT]
+CopyFiles = UASPStor_CopyFiles.NT
+
+[UASPStor_CopyFiles.NT]
+uaspstor.sys
+
+[UASPStor_Inst.NT.Services]
+AddService = uaspstor, 0x00000002, uaspstor_Service_Inst
+
+[uaspstor_Service_Inst]
+ServiceType   = 1
+StartType     = 0
+ErrorControl  = 1
+ServiceBinary = %12%\uaspstor.sys
+LoadOrderGroup = SCSI Miniport
+AddReg        = uaspstor_Service_AddReg
+
+[uaspstor_Service_AddReg]
+HKR,"Parameters","BusType",0x00010001,0x00000007
+HKR,"Parameters","IoTimeoutValue",0x00010001,0x0000000F
+
+;-------------------------------- STRINGS -------------------------------
+
+[Strings]
+; Non-localizable
+ReactOS = "ReactOS Project"
+
+; Localizable
+GenericMfg = "(Generic USB devices)"
+UasDevice.DeviceDesc = "USB Attached SCSI (UAS) Mass Storage Device"
