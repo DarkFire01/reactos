@@ -53,6 +53,22 @@
 /* How long to wait for a synchronous USB request during startup */
 #define UASP_USB_TIMEOUT_MS 5000
 
+/* How often the command watchdog runs, in microseconds as storport counts them */
+#define UASP_WATCHDOG_PERIOD_US 1000000
+
+/* Timeout for a command the class layer sent without one, in seconds */
+#define UASP_DEFAULT_TIMEOUT_S  10
+
+/* How long recovery waits for cancelled commands to answer */
+#define UASP_DRAIN_TIMEOUT_MS   5000
+
+/* What a recovery work item has been asked to do */
+typedef enum _UASP_RECOVERY_KIND
+{
+    UaspRecoverLun = 0,
+    UaspRecoverBus
+} UASP_RECOVERY_KIND;
+
 /* The transfers one command is built out of */
 typedef enum _UASP_TRANSFER_KIND
 {
@@ -115,6 +131,9 @@ typedef struct _UASP_REQUEST
 
     /* Set while the tag is handed out */
     BOOLEAN Busy;
+
+    /* Watchdog seconds left before the command counts as hung, 0 when not timed */
+    ULONG SecondsLeft;
 
     /* What the class layer is told once every transfer has answered */
     UCHAR SrbStatus;
@@ -195,6 +214,15 @@ typedef struct _UASP_ADAPTER_EXTENSION
     /* Set while the device is being taken away */
     BOOLEAN Removing;
 
+    /* Nonzero while a reset is in progress, only one runs at a time */
+    LONG Recovering;
+
+    /* Work items queued against this adapter that have not finished */
+    LONG WorkCount;
+
+    /* Set while the command watchdog is armed */
+    BOOLEAN WatchdogArmed;
+
     /* Memory the information units were carved out of */
     PVOID IuBuffer;
     ULONG IuBufferSize;
@@ -249,6 +277,12 @@ UaspGetDescriptor(
     _Outptr_result_maybenull_ PVOID *Descriptor);
 
 NTSTATUS
+UaspSendInternalIoctl(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG IoControlCode,
+    _In_opt_ PVOID Argument1);
+
+NTSTATUS
 UaspResetPipe(
     _In_ PUASP_ADAPTER_EXTENSION Adapter,
     _In_ USBD_PIPE_HANDLE Pipe);
@@ -286,6 +320,43 @@ UaspReleaseRequest(
 
 VOID
 UaspFreezeQueue(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter);
+
+VOID
+UaspThawQueue(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter);
+
+PUASP_REQUEST
+UaspAcquireInternalRequest(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter);
+
+ULONG
+UaspBusyRequestCount(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter);
+
+/* uasrecov.c */
+
+BOOLEAN
+UaspScheduleRecovery(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter,
+    _In_ UASP_RECOVERY_KIND Kind,
+    _In_opt_ PVOID Srb);
+
+BOOLEAN
+UaspDrainRequests(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG TimeoutMs);
+
+VOID
+UaspWaitForWork(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter);
+
+VOID
+UaspStartWatchdog(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter);
+
+VOID
+UaspStopWatchdog(
     _In_ PUASP_ADAPTER_EXTENSION Adapter);
 
 /* uasio.c */

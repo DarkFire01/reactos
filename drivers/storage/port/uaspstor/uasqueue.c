@@ -190,9 +190,65 @@ UaspReleaseRequest(
     KeAcquireSpinLock(&Adapter->QueueLock, &OldIrql);
 
     Request->Srb = NULL;
+    Request->SecondsLeft = 0;
     Request->Busy = FALSE;
 
     KeReleaseSpinLock(&Adapter->QueueLock, OldIrql);
+}
+
+/**
+ * @brief Takes a free tag while the queue is frozen, for commands recovery sends itself.
+ */
+PUASP_REQUEST
+UaspAcquireInternalRequest(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter)
+{
+    PUASP_REQUEST Request = NULL;
+    KIRQL OldIrql;
+    USHORT Index;
+
+    KeAcquireSpinLock(&Adapter->QueueLock, &OldIrql);
+
+    for (Index = 0; Index < Adapter->RequestCount; Index++)
+    {
+        if (!Adapter->Requests[Index].Busy)
+        {
+            Request = &Adapter->Requests[Index];
+            Request->Busy = TRUE;
+            break;
+        }
+    }
+
+    KeReleaseSpinLock(&Adapter->QueueLock, OldIrql);
+
+    return Request;
+}
+
+/**
+ * @brief Counts the tags still handed out.
+ */
+ULONG
+UaspBusyRequestCount(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter)
+{
+    KIRQL OldIrql;
+    ULONG Count = 0;
+    USHORT Index;
+
+    if (Adapter->Requests == NULL)
+        return 0;
+
+    KeAcquireSpinLock(&Adapter->QueueLock, &OldIrql);
+
+    for (Index = 0; Index < Adapter->RequestCount; Index++)
+    {
+        if (Adapter->Requests[Index].Busy)
+            Count++;
+    }
+
+    KeReleaseSpinLock(&Adapter->QueueLock, OldIrql);
+
+    return Count;
 }
 
 /**
@@ -210,5 +266,20 @@ UaspFreezeQueue(
 
     KeAcquireSpinLock(&Adapter->QueueLock, &OldIrql);
     Adapter->QueueState = UaspQueueStopped;
+    KeReleaseSpinLock(&Adapter->QueueLock, OldIrql);
+}
+
+/**
+ * @brief Hands out tags again, unless the device is gone or never started.
+ */
+VOID
+UaspThawQueue(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter)
+{
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&Adapter->QueueLock, &OldIrql);
+    if (Adapter->Started && !Adapter->Removing)
+        Adapter->QueueState = UaspQueueRunning;
     KeReleaseSpinLock(&Adapter->QueueLock, OldIrql);
 }

@@ -111,6 +111,65 @@ UaspSendUrbSynchronously(
 }
 
 /**
+ * @brief Sends an internal USB IOCTL that carries one argument and waits for it.
+ */
+NTSTATUS
+UaspSendInternalIoctl(
+    _In_ PUASP_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG IoControlCode,
+    _In_opt_ PVOID Argument1)
+{
+    PIO_STACK_LOCATION IoStack;
+    LARGE_INTEGER Timeout;
+    KEVENT Event;
+    NTSTATUS Status;
+    PIRP Irp;
+
+    ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+
+    Irp = IoAllocateIrp(Adapter->LowerDeviceObject->StackSize, FALSE);
+    if (Irp == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+
+    IoStack = IoGetNextIrpStackLocation(Irp);
+    IoStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
+    IoStack->Parameters.DeviceIoControl.IoControlCode = IoControlCode;
+    IoStack->Parameters.Others.Argument1 = Argument1;
+
+    IoSetCompletionRoutine(Irp, UaspSynchronousCompletion, &Event, TRUE, TRUE, TRUE);
+
+    Status = IoCallDriver(Adapter->LowerDeviceObject, Irp);
+    if (Status == STATUS_PENDING)
+    {
+        Timeout.QuadPart = -10000LL * UASP_USB_TIMEOUT_MS;
+
+        Status = KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, &Timeout);
+        if (Status == STATUS_TIMEOUT)
+        {
+            IoCancelIrp(Irp);
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+            Status = STATUS_IO_TIMEOUT;
+        }
+        else
+        {
+            Status = Irp->IoStatus.Status;
+        }
+    }
+    else
+    {
+        Status = Irp->IoStatus.Status;
+    }
+
+    IoFreeIrp(Irp);
+
+    return Status;
+}
+
+/**
  * @brief Reads one descriptor from the device into freshly allocated memory.
  *
  * The caller owns the buffer that comes back and frees it with the driver
@@ -211,8 +270,12 @@ UaspResetPipeWorker(
         return;
 
     if (!Work->Adapter->Removing)
+    {
+        DPRINT1("Clearing the halt on pipe %p\n", Work->Pipe);
         UaspResetPipe(Work->Adapter, Work->Pipe);
+    }
 
+    InterlockedDecrement(&Work->Adapter->WorkCount);
     IoFreeWorkItem(Work->WorkItem);
     ExFreePoolWithTag(Work, TAG_UASP);
 }
@@ -247,6 +310,7 @@ UaspQueuePipeReset(
     Work->Adapter = Adapter;
     Work->Pipe = Pipe;
 
+    InterlockedIncrement(&Adapter->WorkCount);
     IoQueueWorkItem(Work->WorkItem, UaspResetPipeWorker, DelayedWorkQueue, Work);
 }
 

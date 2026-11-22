@@ -162,8 +162,17 @@ UaspStartIo(
         case SRB_FUNCTION_RESET_BUS:
         case SRB_FUNCTION_RESET_DEVICE:
         case SRB_FUNCTION_RESET_LOGICAL_UNIT:
-            /* FIXME: Recover the device rather than just saying we did */
-            UaspCompleteSrb(Adapter, Srb, SRB_STATUS_SUCCESS);
+            DPRINT1("Reset request %u for LUN %u\n", Function, SrbGetLun(Srb));
+
+            /* The work item completes the request once the reset is over */
+            if (!UaspScheduleRecovery(Adapter,
+                                      (Function == SRB_FUNCTION_RESET_BUS) ? UaspRecoverBus : UaspRecoverLun,
+                                      Srb))
+            {
+                UaspCompleteSrb(Adapter,
+                                Srb,
+                                Adapter->Removing ? SRB_STATUS_NO_DEVICE : SRB_STATUS_BUSY);
+            }
             break;
 
         default:
@@ -181,11 +190,15 @@ UaspResetBus(
     _In_ PVOID DeviceExtension,
     _In_ ULONG PathId)
 {
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PUASP_ADAPTER_EXTENSION Adapter = DeviceExtension;
+
     UNREFERENCED_PARAMETER(PathId);
 
-    /* FIXME: Reset the device and fail everything that was in flight */
-    DPRINT1("UaspResetBus()\n");
+    DPRINT1("UaspResetBus(%p), %lu command(s) in flight\n",
+            DeviceExtension, UaspBusyRequestCount(Adapter));
+
+    /* Cancelled commands complete themselves as aborted once the work item runs */
+    UaspScheduleRecovery(Adapter, UaspRecoverBus, NULL);
 
     return TRUE;
 }

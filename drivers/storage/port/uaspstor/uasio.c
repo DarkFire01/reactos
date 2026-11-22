@@ -69,6 +69,34 @@ UaspFailRequest(
 }
 
 /**
+ * @brief Logs a command that did not succeed, with its sense data when there is some.
+ */
+static
+VOID
+UaspLogFailure(
+    _In_ PUASP_REQUEST Request,
+    _In_ UCHAR SrbStatus)
+{
+    PVOID Srb = Request->Srb;
+    PCDB Cdb = SrbGetCdb(Srb);
+    PUCHAR Sense = SrbGetSenseInfoBuffer(Srb);
+    UCHAR Opcode = (Cdb != NULL) ? Cdb->CDB6GENERIC.OperationCode : 0;
+
+    if ((SrbStatus & SRB_STATUS_AUTOSENSE_VALID) && Sense != NULL &&
+        SrbGetSenseInfoBufferLength(Srb) >= 14)
+    {
+        DPRINT1("Tag %u opcode 0x%02x failed, SRB 0x%02x SCSI 0x%02x sense %x/%02x/%02x\n",
+                Request->Tag, Opcode, SrbStatus, SrbGetScsiStatus(Srb),
+                Sense[2] & 0x0F, Sense[12], Sense[13]);
+    }
+    else
+    {
+        DPRINT1("Tag %u opcode 0x%02x failed, SRB 0x%02x, %lu of %lu bytes\n",
+                Request->Tag, Opcode, SrbStatus, Request->DataTransferred, Request->DataLength);
+    }
+}
+
+/**
  * @brief Retires one transfer, and the request with it when it was the last.
  */
 static
@@ -85,6 +113,11 @@ UaspFinishTransfer(
 
     Srb = Request->Srb;
     SrbStatus = Request->SrbStatus;
+
+    if (SRB_STATUS(SrbStatus) != SRB_STATUS_SUCCESS)
+        UaspLogFailure(Request, SrbStatus);
+    else
+        DPRINT("Tag %u done, %lu bytes\n", Request->Tag, Request->DataTransferred);
 
     if (Request->HasData)
         SrbSetDataTransferLength(Srb, Request->DataTransferred);
@@ -265,8 +298,8 @@ UaspSubmitCommand(
      */
     Command->Lun[1] = SrbGetLun(Srb);
 
-    if (CdbLength > sizeof(Command->Cdb))
-        CdbLength = sizeof(Command->Cdb);
+    /* UaspIssueCommand refuses anything longer */
+    ASSERT(CdbLength <= sizeof(Command->Cdb));
 
     if (Cdb != NULL && CdbLength != 0)
         RtlCopyMemory(Command->Cdb, Cdb, CdbLength);
@@ -576,15 +609,29 @@ UaspIssueCommand(
 {
     PUASP_REQUEST Request;
     ULONG SrbFlags;
+    ULONG Timeout;
+    PCDB Cdb;
+
+    /* The command unit has room for 16 bytes, longer ones need its additional CDB part */
+    if (SrbGetCdbLength(Srb) > RTL_FIELD_SIZE(UAS_COMMAND_IU, Cdb))
+    {
+        DPRINT1("CDB of %u bytes is longer than this driver sends\n", SrbGetCdbLength(Srb));
+        UaspCompleteSrb(Adapter, Srb, SRB_STATUS_INVALID_REQUEST);
+        return;
+    }
 
     Request = UaspAcquireRequest(Adapter);
     if (Request == NULL)
     {
+        DPRINT("No free tag, the request goes back busy\n");
         UaspCompleteSrb(Adapter, Srb, SRB_STATUS_BUSY);
         return;
     }
 
     SrbFlags = SrbGetSrbFlags(Srb);
+
+    Timeout = SrbGetTimeOutValue(Srb);
+    Request->SecondsLeft = (Timeout != 0) ? Timeout : UASP_DEFAULT_TIMEOUT_S;
 
     Request->Srb = Srb;
     Request->SrbStatus = SRB_STATUS_ERROR;
@@ -600,6 +647,14 @@ UaspIssueCommand(
         UaspCompleteSrb(Adapter, Srb, SRB_STATUS_ERROR);
         return;
     }
+
+    Cdb = SrbGetCdb(Srb);
+    DPRINT("Tag %u LUN %u opcode 0x%02x, %lu bytes %s\n",
+           Request->Tag,
+           SrbGetLun(Srb),
+           (Cdb != NULL) ? Cdb->CDB6GENERIC.OperationCode : 0,
+           Request->DataLength,
+           !Request->HasData ? "no data" : (Request->DataIn ? "in" : "out"));
 
     /*
      * The command itself and the answer to it. With streams the data stage

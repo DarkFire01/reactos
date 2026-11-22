@@ -555,6 +555,8 @@ UaspStartDevice(
     Adapter->QueueState = UaspQueueRunning;
     Adapter->Started = TRUE;
 
+    UaspStartWatchdog(Adapter);
+
     DPRINT1("UAS device ready, %u command(s) at a time\n", Adapter->RequestCount);
 
     return STATUS_SUCCESS;
@@ -567,10 +569,32 @@ VOID
 UaspStopDevice(
     _In_ PUASP_ADAPTER_EXTENSION Adapter)
 {
+    BOOLEAN Drained;
+
+    DPRINT1("Stopping the UAS device, %lu command(s) in flight\n", UaspBusyRequestCount(Adapter));
+
     Adapter->Removing = TRUE;
 
     UaspFreezeQueue(Adapter);
-    UaspDeleteRequests(Adapter);
+    UaspStopWatchdog(Adapter);
+
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL)
+    {
+        Drained = UaspDrainRequests(Adapter, UASP_DRAIN_TIMEOUT_MS);
+        UaspWaitForWork(Adapter);
+        KeFlushQueuedDpcs();
+    }
+    else
+    {
+        Drained = (UaspBusyRequestCount(Adapter) == 0);
+    }
+
+    /* A transfer still owns its packet, so freeing it now would be worse than the leak */
+    if (Drained)
+        UaspDeleteRequests(Adapter);
+    else
+        DPRINT1("%lu command(s) never answered, leaving their requests allocated\n",
+                UaspBusyRequestCount(Adapter));
 
     if (Adapter->UsbdHandle != NULL)
     {

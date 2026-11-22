@@ -12,6 +12,7 @@ list(APPEND SOURCE
     uasdev.c
     uasio.c
     uasqueue.c
+    uasrecov.c
     uasurb.c
     uaspstor.c)
 
