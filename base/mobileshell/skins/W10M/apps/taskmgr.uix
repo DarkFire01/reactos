@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Task Manager: running processes with CPU and memory, system performance, one process's details. -->
+<Uix Name="TaskManager" Background="@AppBackground" Layout="Stack" Foreground="@AppText" Font="@Default">
+
+  <Element Name="PageMain" Layout="Stack" Height="*">
+    <Text Content="TASK MANAGER" Font="@BaseFont" Padding="12,12,12,4"/>
+
+    <Element Layout="Row" Height="44" Padding="12,0,12,0" Font="@Pivot">
+      <Element Command="tab:processes" Momentary="true" Margin="0,0,20,0">
+        <Text Content="processes" Foreground="{TabProcesses}" TextVAlign="Center"/>
+      </Element>
+      <Element Command="tab:performance" Momentary="true">
+        <Text Content="performance" Foreground="{TabPerformance}" TextVAlign="Center"/>
+      </Element>
+    </Element>
+
+    <Element Name="TabProcessList" Layout="Stack" Height="*">
+      <Text Content="{ProcessSummary}" Font="@Caption" Foreground="@AppSubText" Padding="12,4,12,4"/>
+      <Element Name="ListScroll" Scroll="true" Height="*" Layout="Stack"
+               ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+        <Repeater Name="ProcessList" Layout="Stack">
+          <Element Name="p{Item.Id}" Layout="Row" Height="@IconItemHeight" Padding="12,10,12,11"
+                   Command="open:{Item.Id}" HoldCommand="hold:{Item.Id}" Selectable="true"
+                   SelectedBackground="@ListPressed">
+            <Element Width="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0">
+              <Text Content="{Item.Glyph}" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
+            </Element>
+            <Element Layout="Stack" Width="*" VAlign="Center">
+              <Text Content="{Item.Name}"/>
+              <Text Content="{Item.Detail}" Font="@Caption" Foreground="@AppSubText"/>
+            </Element>
+            <Text Content="{Item.Cpu}" Width="48" TextAlign="Right" TextVAlign="Center" Foreground="@AccentText"/>
+          </Element>
+        </Repeater>
+      </Element>
+    </Element>
+
+    <Element Name="TabPerformance" Scroll="true" Layout="Stack" Height="*" Padding="12,8,12,8" Visible="false"
+             ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Text Content="CPU" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{CpuText}" Font="@SubHeader"/>
+      <Element Layout="Row" Height="8" Margin="0,4,0,4">
+        <Element Width="{CpuUsed}*" Background="@Accent"/>
+        <Element Width="{CpuFree}*" Background="@BaseLow"/>
+      </Element>
+      <Text Content="{CpuDetail}" Font="@Caption" Foreground="@AppSubText" Margin="0,0,0,16"/>
+
+      <Text Content="Memory" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{MemText}" Font="@SubHeader"/>
+      <Element Layout="Row" Height="8" Margin="0,4,0,4">
+        <Element Width="{MemUsed}*" Background="@Accent"/>
+        <Element Width="{MemFree}*" Background="@BaseLow"/>
+      </Element>
+      <Text Content="{MemDetail}" Font="@Caption" Foreground="@AppSubText" Margin="0,0,0,16"/>
+
+      <Element Layout="Row" Height="44">
+        <Text Content="Processes" Width="*" TextVAlign="Center"/>
+        <Text Content="{PerfProcesses}" TextVAlign="Center"/>
+      </Element>
+      <Element Layout="Row" Height="44">
+        <Text Content="Threads" Width="*" TextVAlign="Center"/>
+        <Text Content="{PerfThreads}" TextVAlign="Center"/>
+      </Element>
+      <Element Layout="Row" Height="44">
+        <Text Content="Handles" Width="*" TextVAlign="Center"/>
+        <Text Content="{PerfHandles}" TextVAlign="Center"/>
+      </Element>
+      <Element Layout="Row" Height="44">
+        <Text Content="Committed" Width="*" TextVAlign="Center"/>
+        <Text Content="{PerfCommit}" TextVAlign="Center"/>
+      </Element>
+      <Element Layout="Row" Height="44">
+        <Text Content="Up time" Width="*" TextVAlign="Center"/>
+        <Text Content="{PerfUptime}" TextVAlign="Center"/>
+      </Element>
+    </Element>
+  </Element>
+
+  <Element Name="PageProcess" Layout="Stack" Height="*" Visible="false">
+    <Text Content="TASK MANAGER" Font="@BaseFont" Padding="12,12,12,4"/>
+    <Element Layout="Row" Padding="12,4,12,12">
+      <Element Width="@AppIcon" Height="@AppIcon" Background="@TileFill" Foreground="@TileText" Margin="0,0,12,0" VAlign="Top">
+        <Text Content="{ProcGlyph}" Font="@Glyph24" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Text Content="{ProcName}" Font="@Subtitle" Wrap="true" Width="*"/>
+    </Element>
+
+    <Element Scroll="true" Height="*" Layout="Stack" Padding="12,0,12,8"
+             ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Text Content="{ProcGone}" Foreground="@AppSubText" Wrap="true" Margin="0,0,0,8"/>
+      <Text Content="CPU" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{ProcCpu}" Margin="0,2,0,12"/>
+      <Text Content="Memory (working set, private)" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{ProcMemory}" Margin="0,2,0,12"/>
+      <Text Content="Process ID" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{ProcId}" Margin="0,2,0,12"/>
+      <Text Content="Threads and handles" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{ProcCounts}" Margin="0,2,0,12"/>
+      <Text Content="Priority" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{ProcPriority}" Margin="0,2,0,12"/>
+      <Text Content="Started by" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{ProcParent}" Margin="0,2,0,12"/>
+      <Text Content="Image path" Font="@Caption" Foreground="@AppSubText"/>
+      <Text Content="{ProcPath}" Wrap="true" Margin="0,2,0,12"/>
+    </Element>
+  </Element>
+
+</Uix>
