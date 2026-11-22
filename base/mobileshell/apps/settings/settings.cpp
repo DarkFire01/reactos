@@ -13,12 +13,18 @@
 #include <tlhelp32.h>
 #include <psapi.h>
 #include "sysinfo.h"
+#include "wifi.h"
 
 /*
  * Markup contract (settings.uix):
  *   Pages: PagePersonal, PageSystem, PageConnections, PageInfo, PageOwner, PageSounds,
  *          PageToday, PageDetail, PageAbout; element Tabs
- *   Optional pages: PageCellular, PageApn, PageAirplane; without them the same state shows in PageInfo
+ *   Optional pages: PageCellular, PageApn, PageAirplane, PageWifi, PageWifiJoin; without them the same
+ *                   state shows in PageInfo
+ *   Wi-Fi: repeater WifiNetworks (Id, Name, Detail, Glyph); elements JoinPasswordBlock, JoinConnect,
+ *          JoinDisconnect, JoinForget, WifiKnobOff/On; bindings WifiTrack, WifiBorder, WifiSwitch,
+ *          WifiState, JoinName, JoinDetail, JoinPassword, JoinFill, ShowFill, JoinStatus; commands
+ *          wifi.toggle, wifi.net:<n>, wifi.password, wifi.show, wifi.connect, wifi.disconnect, wifi.forget
  *   Repeaters: InfoRows, AboutRows and CellRows (Label, Value), Themes (Name, Fill, Command)
  *   Bindings: TabPersonal/System/Connections, InfoTitle, DetailTitle, Owner0..4, OwnerFill0..4,
  *             SoundVolume, SoundDevice, MuteLabel, Vol1..Vol10, AboutProduct, AboutEdition,
@@ -48,7 +54,9 @@ typedef enum _SETTINGS_PAGE
     PageAbout,
     PageCellular,
     PageApn,
-    PageAirplane
+    PageAirplane,
+    PageWifi,
+    PageWifiJoin
 } SETTINGS_PAGE;
 
 typedef struct _INFO_ROW
@@ -139,6 +147,18 @@ private:
 
     VOID
     SaveApn(VOID);
+
+    VOID
+    RefreshWifi(
+        _In_ BOOL Scan);
+
+    VOID
+    RefreshJoin(VOID);
+
+    VOID
+    WifiCommand(
+        _In_z_ PCWSTR Command);
+
     VOID
     ShowTab(
         _In_ ULONG Tab);
@@ -205,6 +225,12 @@ private:
     BOOL m_ApnLoaded = FALSE;
     /* A skin without PageCellular shows the cellular state on the info page */
     BOOL m_InfoCellular = FALSE;
+
+    CWifi m_Wifi;
+    std::vector<WIFI_NETWORK> m_Networks;
+    WIFI_NETWORK m_Join;
+    std::wstring m_Password;
+    BOOL m_ShowPassword = FALSE;
 };
 
 static
@@ -460,10 +486,213 @@ CSettingsApp::SaveApn(VOID)
     m_Cell.SetDataConfig(&Config);
 }
 
+/* Wi-Fi bars for a signal quality, from Segoe MDL2's Wifi1 to Wifi */
+static
+PCWSTR
+WifiGlyph(
+    _In_ ULONG Quality)
+{
+    if (Quality >= 75)
+        return L"\xE701";
+    if (Quality >= 50)
+        return L"\xE874";
+    if (Quality >= 25)
+        return L"\xE873";
+    return L"\xE872";
+}
+
+static
+std::wstring
+WifiDetail(
+    _In_ const WIFI_NETWORK &Network)
+{
+    std::wstring Text;
+
+    if (Network.Connected)
+        Text = L"Connected";
+    else if (Network.Saved)
+        Text = L"Saved";
+    if (!Network.Supported)
+        Text += (Text.empty() ? L"" : L", ") + std::wstring(L"Security not supported");
+    else
+        Text += (Text.empty() ? L"" : L", ") + std::wstring(Network.Secured ? L"Secured" : L"Open");
+    return Text;
+}
+
+/**
+ * @brief Shows the radio switch and the networks in range, scanning first when asked.
+ */
+VOID
+CSettingsApp::RefreshWifi(
+    _In_ BOOL Scan)
+{
+    static PCWSTR const Fields[] = { L"Id", L"Name", L"Detail", L"Glyph" };
+    std::vector<std::wstring> Storage;
+    std::vector<PCWSTR> Values;
+    std::wstring State;
+    WCHAR Id[16];
+    BOOL Adapter = m_Wifi.Open();
+    BOOL Radio = Adapter && m_Wifi.RadioOn();
+
+    SetSwitch(L"Wifi", Radio, Adapter);
+    m_Networks.clear();
+
+    if (!Adapter)
+    {
+        State = L"No Wi-Fi adapter was found.";
+    }
+    else if (!Radio)
+    {
+        State = L"Turn on Wi-Fi to see the networks in range.";
+    }
+    else
+    {
+        if (Scan)
+            m_Wifi.Scan();
+        m_Wifi.Networks(m_Networks);
+
+        State = m_Networks.empty() ? L"Searching for networks..." : L"Not connected";
+        for (const WIFI_NETWORK &Network : m_Networks)
+        {
+            if (Network.Connected)
+            {
+                State = L"Connected to " + Network.Ssid;
+                break;
+            }
+        }
+    }
+    Scene()->SetBinding(L"WifiState", State.c_str());
+
+    for (SIZE_T Index = 0; Index < m_Networks.size(); Index++)
+    {
+        StringCchPrintfW(Id, ARRAYSIZE(Id), L"%lu", static_cast<ULONG>(Index));
+        Storage.push_back(Id);
+        Storage.push_back(m_Networks[Index].Ssid);
+        Storage.push_back(WifiDetail(m_Networks[Index]));
+        Storage.push_back(WifiGlyph(m_Networks[Index].Quality));
+    }
+    for (const std::wstring &Value : Storage)
+        Values.push_back(Value.c_str());
+    Scene()->SetItems(L"WifiNetworks", static_cast<ULONG>(m_Networks.size()), ARRAYSIZE(Fields), Fields, Values.data());
+}
+
+VOID
+CSettingsApp::RefreshJoin(VOID)
+{
+    BOOL NeedsPassword = m_Join.Secured && !m_Join.Saved && !m_Join.Connected;
+    std::wstring Text;
+    WCHAR Detail[96];
+
+    Scene()->SetBinding(L"JoinName", m_Join.Ssid.c_str());
+    StringCchPrintfW(Detail, ARRAYSIZE(Detail), L"%s, signal %lu%%", WifiDetail(m_Join).c_str(), m_Join.Quality);
+    Scene()->SetBinding(L"JoinDetail", Detail);
+
+    Text = m_ShowPassword ? m_Password : std::wstring(m_Password.size(), L'\x2022');
+    Scene()->SetBinding(L"JoinPassword", (Text + L"|").c_str());
+    Scene()->SetBinding(L"JoinFill", L"@FieldActive");
+    Scene()->SetBinding(L"ShowFill", m_ShowPassword ? L"@Accent" : L"@Transparent");
+
+    Scene()->SetVisible(L"JoinPasswordBlock", NeedsPassword);
+    Scene()->SetVisible(L"JoinConnect", !m_Join.Connected && m_Join.Supported);
+    Scene()->SetVisible(L"JoinDisconnect", m_Join.Connected);
+    Scene()->SetVisible(L"JoinForget", m_Join.Saved);
+    SetChrome(m_Join.Ssid.c_str(), m_Join.Connected ? L"Disconnect" : (m_Join.Supported ? L"Connect" : L""), L"", ShellCloseOk);
+}
+
+VOID
+CSettingsApp::WifiCommand(
+    _In_z_ PCWSTR Command)
+{
+    WCHAR Text[128];
+    DWORD Error;
+
+    if (_wcsicmp(Command, L"toggle") == 0)
+    {
+        BOOL On = !m_Wifi.RadioOn();
+
+        Error = m_Wifi.SetRadio(On);
+        RefreshWifi(On);
+        if (Error != ERROR_SUCCESS)
+        {
+            StringCchPrintfW(Text, ARRAYSIZE(Text), L"Could not turn Wi-Fi %s, error %lu.", On ? L"on" : L"off", Error);
+            Scene()->SetBinding(L"WifiState", Text);
+        }
+        Request(L"status.refresh");
+    }
+    else if (_wcsnicmp(Command, L"net:", 4) == 0)
+    {
+        SIZE_T Index = wcstoul(Command + 4, NULL, 10);
+
+        if (Index >= m_Networks.size())
+            return;
+        m_Join = m_Networks[Index];
+        m_Password.clear();
+        m_ShowPassword = FALSE;
+        Scene()->SetBinding(L"JoinStatus", L"");
+        ShowPage(PageWifiJoin, m_Join.Ssid.c_str());
+        RefreshJoin();
+        if (m_Join.Secured && !m_Join.Saved && !m_Join.Connected)
+            ShowInputPanel(TRUE);
+    }
+    else if (_wcsicmp(Command, L"password") == 0)
+    {
+        ShowInputPanel(TRUE);
+    }
+    else if (_wcsicmp(Command, L"show") == 0)
+    {
+        m_ShowPassword = !m_ShowPassword;
+        RefreshJoin();
+    }
+    else if (_wcsicmp(Command, L"connect") == 0)
+    {
+        if (m_Join.Secured && !m_Join.Saved && m_Password.size() < 8)
+        {
+            Scene()->SetBinding(L"JoinStatus", L"Enter the network security key, at least 8 characters.");
+            return;
+        }
+
+        Scene()->SetBinding(L"JoinStatus", L"Connecting...");
+        Present();
+        Error = m_Wifi.Connect(m_Join, m_Password);
+        RtlSecureZeroMemory(&m_Password[0], m_Password.size() * sizeof(WCHAR));
+        m_Password.clear();
+        if (Error != ERROR_SUCCESS)
+        {
+            StringCchPrintfW(Text, ARRAYSIZE(Text), L"Could not connect, error %lu.", Error);
+            Scene()->SetBinding(L"JoinStatus", Text);
+            RefreshJoin();
+            return;
+        }
+        ShowInputPanel(FALSE);
+        ShowPage(PageWifi, L"Wi-Fi");
+        RefreshWifi(FALSE);
+        Request(L"status.refresh");
+    }
+    else if (_wcsicmp(Command, L"disconnect") == 0 || _wcsicmp(Command, L"forget") == 0)
+    {
+        BOOL Forget = (_wcsicmp(Command, L"forget") == 0);
+
+        Error = Forget ? m_Wifi.Forget(m_Join) : m_Wifi.Disconnect();
+        if (Error != ERROR_SUCCESS)
+        {
+            StringCchPrintfW(Text, ARRAYSIZE(Text), L"Could not %s, error %lu.", Forget ? L"forget the network" : L"disconnect", Error);
+            Scene()->SetBinding(L"JoinStatus", Text);
+            return;
+        }
+        ShowPage(PageWifi, L"Wi-Fi");
+        RefreshWifi(FALSE);
+        Request(L"status.refresh");
+    }
+}
+
 VOID
 CSettingsApp::OnWake(VOID)
 {
     RefreshCellular();
+
+    /* The cell monitor's tick also brings in networks that a scan found since */
+    if (m_Page == PageWifi)
+        RefreshWifi(FALSE);
 }
 
 VOID
@@ -498,7 +727,7 @@ CSettingsApp::ShowPage(
     _In_z_ PCWSTR Title)
 {
     static PCWSTR const Pages[] = { L"PageInfo", L"PageOwner", L"PageSounds", L"PageToday", L"PageDetail", L"PageAbout",
-                                    L"PageCellular", L"PageApn", L"PageAirplane" };
+                                    L"PageCellular", L"PageApn", L"PageAirplane", L"PageWifi", L"PageWifiJoin" };
     WCHAR Name[32];
 
     m_Page = Page;
@@ -520,7 +749,7 @@ CSettingsApp::ShowPage(
         SetChrome(Title, L"Done", L"", ShellCloseOk);
     else if (Page == PageApn)
         SetChrome(Title, L"Save", L"", ShellCloseOk);
-    else if (Page == PageCellular)
+    else if (Page == PageCellular || Page == PageWifi)
         SetChrome(Title, L"Refresh", L"", ShellCloseOk);
     else
         SetChrome(Title, L"", L"", ShellCloseOk);
@@ -1137,6 +1366,11 @@ CSettingsApp::Open(
         ShowPage(PageAirplane, L"Airplane mode");
         m_Cell.Refresh();
     }
+    else if (_wcsicmp(Page, L"WiFi") == 0 && HasPage(L"PageWifi"))
+    {
+        ShowPage(PageWifi, L"Wi-Fi");
+        RefreshWifi(TRUE);
+    }
     else if (_wcsicmp(Page, L"WiFi") == 0 || _wcsicmp(Page, L"Connections") == 0 || _wcsicmp(Page, L"Wireless") == 0)
     {
         InfoNetwork(Rows);
@@ -1246,6 +1480,10 @@ CSettingsApp::OnCommand(
         m_ApnAuth = (m_ApnAuth + 1) % (PHONEOM_AUTH_CHAP + 1);
         RefreshApn();
     }
+    else if (_wcsnicmp(Command, L"wifi.", 5) == 0)
+    {
+        WifiCommand(Command + 5);
+    }
     else if (_wcsnicmp(Command, L"theme:", 6) == 0)
     {
         /* The shell switches the theme and sends it back to every app, this one included */
@@ -1272,6 +1510,19 @@ CSettingsApp::OnSoftKey(
         Scene()->SetBinding(L"DataState", L"Refreshing...");
         m_Cell.Refresh();
     }
+    else if (m_Page == PageWifi && Key == ShellSoftKeyLeft)
+    {
+        Scene()->SetBinding(L"WifiState", L"Searching for networks...");
+        Present();
+        RefreshWifi(TRUE);
+    }
+    else if (m_Page == PageWifiJoin && Key == ShellSoftKeyLeft)
+    {
+        if (m_Join.Connected)
+            WifiCommand(L"disconnect");
+        else if (m_Join.Supported)
+            WifiCommand(L"connect");
+    }
 }
 
 VOID
@@ -1294,6 +1545,17 @@ CSettingsApp::OnCloseButton(VOID)
         return;
     }
 
+    /* A network's page belongs to the Wi-Fi list, ok goes back there */
+    if (m_Page == PageWifiJoin)
+    {
+        RtlSecureZeroMemory(&m_Password[0], m_Password.size() * sizeof(WCHAR));
+        m_Password.clear();
+        ShowInputPanel(FALSE);
+        ShowPage(PageWifi, L"Wi-Fi");
+        RefreshWifi(FALSE);
+        return;
+    }
+
     /* ok backs out of a page to its tab, or closes when the page was opened directly */
     if (m_Page == PageTabs || m_Direct)
         RequestClose();
@@ -1307,6 +1569,15 @@ CSettingsApp::OnChar(
 {
     if (Char < 0x20)
         return;
+
+    /* WPA passphrases are 8 to 63 characters */
+    if (m_Page == PageWifiJoin)
+    {
+        if (m_Password.size() < 63)
+            m_Password += Char;
+        RefreshJoin();
+        return;
+    }
 
     if (m_Page == PageApn)
     {
@@ -1336,6 +1607,20 @@ CSettingsApp::OnKey(
         else if (VirtualKey == VK_UP)
             m_Field = (m_Field + OWNER_FIELDS - 1) % OWNER_FIELDS;
         RefreshOwner();
+        Present();
+        return;
+    }
+    if (m_Page == PageWifiJoin && (VirtualKey == VK_BACK || VirtualKey == VK_RETURN))
+    {
+        if (VirtualKey == VK_RETURN)
+        {
+            WifiCommand(L"connect");
+        }
+        else if (!m_Password.empty())
+        {
+            m_Password.pop_back();
+            RefreshJoin();
+        }
         Present();
         return;
     }

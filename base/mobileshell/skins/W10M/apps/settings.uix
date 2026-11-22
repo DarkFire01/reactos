@@ -329,6 +329,61 @@
     <Text Content="{AirState}" Font="@Caption" Foreground="@AppSubText" Wrap="true" Padding="12,4,12,0"/>
   </Element>
 
+  <!-- Wi-Fi: the radio switch and the networks in range; tapping one opens it -->
+  <Element Name="PageWifi" Layout="Stack" Height="*" Visible="false">
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="12,12,12,0"/>
+    <Text Content="Wi-Fi" Font="@TitleText" Padding="12,2,12,8"/>
+    <Text Content="Wi-Fi networking" Padding="12,0,12,0"/>
+    <Element Layout="Row" Height="44" Padding="12,0,12,0" Command="wifi.toggle" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+      <Element Width="44" Height="20" VAlign="Center" Background="{WifiTrack}" BorderBrush="{WifiBorder}" BorderThickness="2" Margin="0,0,12,0">
+        <Element Name="WifiKnobOff" Width="10" Height="10" HAlign="Left" VAlign="Center" Margin="3,0,0,0" Background="@AppText"/>
+        <Element Name="WifiKnobOn" Width="10" Height="10" HAlign="Right" VAlign="Center" Margin="0,0,3,0" Background="@BaseWhite" Visible="false"/>
+      </Element>
+      <Text Content="{WifiSwitch}" Width="*" TextVAlign="Center"/>
+    </Element>
+    <Text Content="{WifiState}" Font="@Caption" Foreground="@AppSubText" Wrap="true" Padding="12,0,12,8"/>
+    <Element Name="WifiScroll" Scroll="true" Height="*" Layout="Stack" ScrollBarBrush="@Transparent" ScrollThumbBrush="@ScrollThumb" ScrollBarWidth="3">
+      <Repeater Name="WifiNetworks" Layout="Stack">
+        <Element Layout="Row" Height="@SettingsCellHeight" Padding="12,0,12,0" Command="wifi.net:{Item.Id}" Selectable="true" Momentary="true" SelectedBackground="@ListPressed">
+          <Text Content="{Item.Glyph}" Font="@ListGlyph" Foreground="@AccentText" Width="40"/>
+          <Element Layout="Stack" Width="*" VAlign="Center">
+            <Text Content="{Item.Name}"/>
+            <Text Content="{Item.Detail}" Font="@Caption" Foreground="@AppSubText"/>
+          </Element>
+        </Element>
+      </Repeater>
+    </Element>
+  </Element>
+
+  <!-- One network: password for a new secured one, connect, disconnect, forget -->
+  <Element Name="PageWifiJoin" Layout="Stack" Height="*" Padding="12,0,12,4" Visible="false">
+    <Text Content="SETTINGS" Font="@BaseFont" Padding="0,12,0,0"/>
+    <Text Content="{JoinName}" Font="@TitleText" Margin="0,2,0,4"/>
+    <Text Content="{JoinDetail}" Font="@Caption" Foreground="@AppSubText" Wrap="true" Margin="0,0,0,12"/>
+    <Element Name="JoinPasswordBlock" Layout="Stack">
+      <Text Content="Password" Font="@Caption" Foreground="@AppSubText"/>
+      <Element Height="32" Command="wifi.password" Background="@FieldFill" BorderBrush="{JoinFill}" BorderThickness="2" Padding="10,0,10,0" Margin="0,4,0,8">
+        <Text Content="{JoinPassword}"/>
+      </Element>
+      <Element Layout="Row" Height="36" Command="wifi.show" Momentary="true" SelectedBackground="@ListPressed" Margin="0,0,0,8">
+        <Element Width="20" Height="20" VAlign="Center" BorderBrush="@AppText" BorderThickness="2" Background="{ShowFill}" Margin="0,0,10,0"/>
+        <Text Content="Show password" Width="*" TextVAlign="Center"/>
+      </Element>
+    </Element>
+    <Element Layout="Row" Height="36" Margin="0,4,0,8">
+      <Element Name="JoinConnect" Command="wifi.connect" Momentary="true" Background="@ButtonFace" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText" Padding="20,0,20,0" Margin="0,0,8,0">
+        <Text Content="Connect" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Name="JoinDisconnect" Command="wifi.disconnect" Momentary="true" Background="@ButtonFace" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText" Padding="20,0,20,0" Margin="0,0,8,0">
+        <Text Content="Disconnect" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+      <Element Name="JoinForget" Command="wifi.forget" Momentary="true" Background="@ButtonFace" SelectedBackground="@ItemSelected" SelectedForeground="@ItemSelectedText" Padding="20,0,20,0">
+        <Text Content="Forget" TextAlign="Center" TextVAlign="Center"/>
+      </Element>
+    </Element>
+    <Text Content="{JoinStatus}" Font="@Caption" Foreground="@AppSubText" Wrap="true"/>
+  </Element>
+
   <Element Name="PageDetail" Layout="Stack" Height="*" Padding="12,0,12,8" Visible="false">
     <Text Content="SETTINGS" Font="@BaseFont" Padding="0,12,0,0"/>
     <Text Content="{DetailTitle}" Font="@TitleText" Margin="0,2,0,12"/>
