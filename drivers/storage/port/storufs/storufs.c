@@ -489,13 +489,17 @@ DriverEntry(
     InitData.AddressTypeFlags = ADDRESS_TYPE_FLAG_BTL8;
     InitData.FeatureSupport = STOR_FEATURE_DEVICE_NAME_NO_SUFFIX;
 
-    /* Register for a PCI UFSHCI controller and for an ACPI enumerated one,
-       which StorPort reports under the Internal interface. */
+    /* Register for a PCI UFSHCI controller and for an ACPI enumerated one, which
+       ReactOS reports under the Internal interface and Windows under ACPIBus. */
     InitData.AdapterInterfaceType = PCIBus;
     PciStatus = StorPortInitialize(DriverObject, RegistryPath, &InitData, NULL);
 
     InitData.AdapterInterfaceType = Internal;
     AcpiStatus = StorPortInitialize(DriverObject, RegistryPath, &InitData, NULL);
+
+    InitData.AdapterInterfaceType = ACPIBus;
+    if (NT_SUCCESS(StorPortInitialize(DriverObject, RegistryPath, &InitData, NULL)))
+        AcpiStatus = STATUS_SUCCESS;
 
     return NT_SUCCESS(PciStatus) ? PciStatus : AcpiStatus;
 }
