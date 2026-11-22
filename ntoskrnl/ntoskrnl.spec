@@ -628,7 +628,7 @@
 @ stdcall KeFindConfigurationEntry(ptr long long ptr)
 @ stdcall KeFindConfigurationNextEntry(ptr long long ptr ptr)
 @ stdcall KeFlushEntireTb(long long)
-@ stdcall -arch=arm,arm64 KeFlushIoBuffers(ptr long long)
+@ stdcall -arch=x86_64,arm,arm64 KeFlushIoBuffers(ptr long long)
 @ stdcall KeFlushQueuedDpcs()
 @ stdcall KeGenericCallDpc(ptr ptr)
 @ stdcall KeGetCurrentProcessorNumberEx(ptr)
@@ -658,7 +658,7 @@
 @ stdcall KeInitializeMutex(ptr long)
 @ stdcall KeInitializeQueue(ptr long)
 @ stdcall KeInitializeSemaphore(ptr long long)
-@ stdcall -arch=i386,arm,arm64 KeInitializeSpinLock(ptr) _KeInitializeSpinLock
+@ stdcall -arch=i386,x86_64,arm,arm64 KeInitializeSpinLock(ptr) _KeInitializeSpinLock
 @ stdcall KeInitializeThreadedDpc(ptr ptr ptr)
 @ stdcall KeInitializeTimer(ptr)
 @ stdcall KeInitializeTimerEx(ptr long)
@@ -671,7 +671,7 @@
 @ stdcall KeInvalidateAllCaches()
 @ stdcall KeIpiGenericCall(ptr ptr)
 @ stdcall KeIsAttachedProcess()
-@ stdcall -arch=i386,arm,arm64 KeIsExecutingDpc()
+@ stdcall -arch=i386,x86_64,arm,arm64 KeIsExecutingDpc()
 @ stdcall KeIsWaitListEmpty(ptr)
 ;@ cdecl -arch=x86_64 KeLastBranchMSR()
 @ stdcall KeLeaveCriticalRegion() _KeLeaveCriticalRegion
