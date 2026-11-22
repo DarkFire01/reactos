@@ -85,6 +85,9 @@ typedef struct
     /* The minidriver reported the device gone, its collections are hidden */
     BOOLEAN NotPresent;
 
+    /* The power framework registration of the HID stack, owned by the FDO */
+    POHANDLE PoFxHandle;
+
 } HIDCLASS_FDO_EXTENSION, *PHIDCLASS_FDO_EXTENSION;
 
 typedef struct
