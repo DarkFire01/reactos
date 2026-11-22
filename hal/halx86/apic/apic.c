@@ -416,7 +416,7 @@ ApicInitializeLocalApic(
     /* Read the version and save it globally */
     if (Cpu == 0) ApicVersion = ApicRead(APIC_VER);
 
-    /* Set the mode to flat (max 8 CPUs supported!) */
+    /* Flat mode, only used for destinations when there are at most 8 processors */
     ApicWrite(APIC_DFR, APIC_DF_Flat);
 
     /* Set logical apic ID */
@@ -555,8 +555,8 @@ HalpAllocateSystemInterrupt(
 
     /* Setup a redirection entry */
     ReDirReg.Vector = Vector;
-    ReDirReg.MessageType = APIC_MT_LowestPriority;
-    ReDirReg.DestinationMode = APIC_DM_Logical;
+    ReDirReg.MessageType = APIC_MT_Fixed;
+    ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.DeliveryStatus = 0;
     ReDirReg.Polarity = 0;
     ReDirReg.RemoteIRR = 0;

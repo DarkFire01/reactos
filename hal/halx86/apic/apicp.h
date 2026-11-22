@@ -133,7 +133,8 @@ typedef enum _APIC_REGISTER
 #define MSR_APIC_BASE 0x0000001B
 #define IOAPIC_PHYS_BASE 0xFEC00000
 #define APIC_CLOCK_INDEX 8
-#define ApicLogicalId(Cpu) ((UCHAR)(1<< Cpu))
+/* Flat logical IDs have one bit per processor, processors past 8 get none and are reached physically */
+#define ApicLogicalId(Cpu) ((UCHAR)(((Cpu) < 8) ? (1 << (Cpu)) : 0))
 
 /* The following definitions are based on AMD documentation.
    They differ slightly in Intel documentation. */
