@@ -37,7 +37,9 @@ NTAPI
 MiDbgTranslatePhysicalAddress(IN ULONG64 PhysicalAddress,
                               IN ULONG Flags)
 {
+    MI_PFN_CACHE_ATTRIBUTE CacheAttribute;
     PFN_NUMBER Pfn;
+    PMMPFN Pfn1;
     MMPTE TempPte;
     PVOID MappingBaseAddress;
 
@@ -51,19 +53,7 @@ MiDbgTranslatePhysicalAddress(IN ULONG64 PhysicalAddress,
         return NULL;
     }
 
-    /* FIXME: No support for cache flags yet */
-    if ((Flags & (MMDBG_COPY_CACHED |
-                  MMDBG_COPY_UNCACHED |
-                  MMDBG_COPY_WRITE_COMBINED)) != 0)
-    {
-        /* Fail */
-        KdpDprintf("MiDbgTranslatePhysicalAddress: Cache flags not yet supported. "
-                   "Flags: 0x%lx\n",
-                   Flags & (MMDBG_COPY_CACHED |
-                            MMDBG_COPY_UNCACHED |
-                            MMDBG_COPY_WRITE_COMBINED));
-        return NULL;
-    }
+    UNREFERENCED_PARAMETER(Flags);
 
     /* Save the base address of our mapping page */
     MappingBaseAddress = MiPteToAddress(MmDebugPte);
@@ -73,20 +63,25 @@ MiDbgTranslatePhysicalAddress(IN ULONG64 PhysicalAddress,
 
     /* Convert physical address to PFN */
     Pfn = (PFN_NUMBER)(PhysicalAddress >> PAGE_SHIFT);
+    TempPte.u.Hard.PageFrameNumber = Pfn;
 
-    /* Check if this could be an I/O mapping */
-    if (!MiGetPfnEntry(Pfn))
+    /* RAM keeps the attribute its owner mapped it with, device space is never cached */
+    Pfn1 = MiGetPfnEntry(Pfn);
+    CacheAttribute = Pfn1 ? (MI_PFN_CACHE_ATTRIBUTE)Pfn1->u3.e1.CacheAttribute : MiNonCached;
+
+    switch (CacheAttribute)
     {
-        /* FIXME: We don't support this yet */
-        KdpDprintf("MiDbgTranslatePhysicalAddress: I/O Space not yet supported. "
-                   "PFN: 0x%I64x\n",
-                   (ULONG64)Pfn);
-        return NULL;
-    }
-    else
-    {
-        /* Set the PFN in the PTE */
-        TempPte.u.Hard.PageFrameNumber = Pfn;
+        case MiNonCached:
+            MI_MAKE_PTE_NON_CACHED(&TempPte);
+            break;
+
+        case MiWriteCombined:
+            MI_MAKE_PTE_WRITE_COMBINE(&TempPte);
+            break;
+
+        default:
+            MI_MAKE_PTE_CACHED(&TempPte);
+            break;
     }
 
     /* Map the PTE and invalidate its TLB entry */
