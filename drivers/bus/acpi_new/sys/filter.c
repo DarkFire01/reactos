@@ -596,8 +596,22 @@ UacpiNtFilterPnp(
         case IRP_MN_DEVICE_USAGE_NOTIFICATION:
             return UacpiNtFilterUsageNotification(Filter, Irp);
 
+        /* PnP asks this once the whole stack started, the point where dependents may start */
+        case IRP_MN_QUERY_PNP_DEVICE_STATE:
+            if (!Filter->StackStarted)
+            {
+                Filter->StackStarted = TRUE;
+                UacpiNtReleaseDependents(Filter->Fdo);
+            }
+            return UacpiNtForwardAndForget(Filter->LowerDevice, Irp);
+
+        case IRP_MN_STOP_DEVICE:
+            Filter->StackStarted = FALSE;
+            return UacpiNtForwardAndForget(Filter->LowerDevice, Irp);
+
         /* The device is gone, fail the pending wait and drop the GPE now */
         case IRP_MN_SURPRISE_REMOVAL:
+            Filter->StackStarted = FALSE;
             UacpiNtWakeTeardown(&Filter->Wake);
             Irp->IoStatus.Status = STATUS_SUCCESS;
             return UacpiNtForwardAndForget(Filter->LowerDevice, Irp);

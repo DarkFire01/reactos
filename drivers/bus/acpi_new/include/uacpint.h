@@ -222,7 +222,7 @@ typedef enum _UACPINT_CCA_STATE
     UacpiNtCcaNotCoherent
 } UACPINT_CCA_STATE;
 
-#define UACPINT_MAX_DEPENDS 8
+#define UACPINT_MAX_DEPENDS 16
 
 typedef struct _UACPINT_PDO
 {
@@ -234,6 +234,7 @@ typedef struct _UACPINT_PDO
     BOOLEAN                 Present;
     BOOLEAN                 Reported;
     BOOLEAN                 Started;
+    BOOLEAN                 StackStarted;      ///< the whole stack started, dependents may follow
     BOOLEAN                 HasAdr;
     BOOLEAN                 IsThermalZone;
     BOOLEAN                 IsProcessor;       ///< legacy Processor() object
@@ -317,6 +318,7 @@ typedef struct _UACPINT_FLT
     uacpi_namespace_node   *Node;
     PDEVICE_OBJECT          ForeignPdo;
     PDEVICE_OBJECT          LowerDevice;
+    BOOLEAN                 StackStarted;      ///< the whole stack started, dependents may follow
     LONG                    PagingCount;
     LONG                    HibernationCount;
     LONG                    DumpCount;

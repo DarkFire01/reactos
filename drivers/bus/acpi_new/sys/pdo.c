@@ -362,7 +362,6 @@ UacpiNtPdoPnp(
         case IRP_MN_START_DEVICE:
             Pdo->Started = TRUE;
             UacpiNtDriversStartDevice(Pdo);
-            UacpiNtReleaseDependents(Pdo->Parent);
 
             /* Connection() descriptors reparse through the resource hub */
             UacpiNtRegisterBiosNameForPdo(Pdo);
@@ -375,18 +374,24 @@ UacpiNtPdoPnp(
             break;
 
         case IRP_MN_STOP_DEVICE:
+            Pdo->StackStarted = FALSE;
+            Status = STATUS_SUCCESS;
+            break;
+
         case IRP_MN_CANCEL_STOP_DEVICE:
         case IRP_MN_CANCEL_REMOVE_DEVICE:
             Status = STATUS_SUCCESS;
             break;
 
         case IRP_MN_SURPRISE_REMOVAL:
+            Pdo->StackStarted = FALSE;
             UacpiNtWakeTeardown(&Pdo->Wake);
             UacpiNtDriversRemoveDevice(Pdo);
             Status = STATUS_SUCCESS;
             break;
 
         case IRP_MN_REMOVE_DEVICE:
+            Pdo->StackStarted = FALSE;
             UacpiNtWakeTeardown(&Pdo->Wake);
             UacpiNtDriversRemoveDevice(Pdo);
             UacpiNtResArbiterTeardown(Pdo);
@@ -419,6 +424,13 @@ UacpiNtPdoPnp(
         case IRP_MN_QUERY_PNP_DEVICE_STATE:
             Irp->IoStatus.Information = UacpiNtPdoDeviceState(Pdo);
             Status = STATUS_SUCCESS;
+
+            /* PnP asks this once the whole stack started, the point where dependents may start */
+            if (Pdo->Started && !Pdo->StackStarted)
+            {
+                Pdo->StackStarted = TRUE;
+                UacpiNtReleaseDependents(Pdo->Parent);
+            }
             break;
 
         case IRP_MN_QUERY_DEVICE_TEXT:
