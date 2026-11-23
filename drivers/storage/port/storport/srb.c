@@ -752,11 +752,9 @@ PortScheduleComingRequestsOnCompletion(
                   PdoExtension->OutstandingRequestMax);
         ++FdoExtension->FlowControl.OutstandingRequestCount;
 
-        /* FIXME: should be false. Allocate resource if it is determined required */
-        if (RequestReference->Srb->SrbExtension == NULL)
-        {
-            __debugbreak();
-        }
+        /* The extension was set up when the request came in, and a miniport may ask for none */
+        NT_ASSERT((RequestReference->Srb->SrbExtension != NULL) ||
+                  (FdoExtension->Miniport.PortConfig.SrbExtensionSize == 0));
 
         /* Call the start routine */
         PortPdoIssueRequest(PdoExtension, RequestReference);
