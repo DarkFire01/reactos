@@ -293,6 +293,9 @@ typedef struct _PCI_MESSAGE_INFO
 {
     PCI_MESSAGE_TYPE Type;
     USHORT GrantedCount;
+    BOOLEAN LineGranted;
+    BOOLEAN MessagesGranted;
+    ULONG GrantedMessageCount;
     PCI_MSI_CAP_INFO MsiCap;
     PCI_MSIX_CAP_INFO MsiXCap;
 } PCI_MESSAGE_INFO, *PPCI_MESSAGE_INFO;
@@ -1417,6 +1420,16 @@ NTAPI
 PciProgramGrantedInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension,
     _In_opt_ PCM_RESOURCE_LIST ResourceList);
+
+VOID
+NTAPI
+PciReprogramGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
+VOID
+NTAPI
+PciRevokeGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
 
 USHORT
 NTAPI

@@ -507,20 +507,30 @@ PciGetMessageAddressAndData(
     return STATUS_SUCCESS;
 }
 
+/* Sets or clears the wired line mask, also in the command word written back after every D0 */
 static
 VOID
 NTAPI
-PciClearInterruptDisable(
-    _In_ PPCI_PDO_EXTENSION PdoExtension)
+PciSetInterruptDisable(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ BOOLEAN Disable)
 {
     USHORT Command;
-    PAGED_CODE();
 
     PciReadDeviceConfig(PdoExtension,
                         &Command,
                         FIELD_OFFSET(PCI_COMMON_HEADER, Command),
                         sizeof(Command));
-    Command &= ~PCI_DISABLE_LEVEL_INTERRUPT;
+    if (Disable)
+    {
+        Command |= PCI_DISABLE_LEVEL_INTERRUPT;
+        PdoExtension->CommandEnables |= PCI_DISABLE_LEVEL_INTERRUPT;
+    }
+    else
+    {
+        Command &= ~PCI_DISABLE_LEVEL_INTERRUPT;
+        PdoExtension->CommandEnables &= ~PCI_DISABLE_LEVEL_INTERRUPT;
+    }
     PciWriteDeviceConfig(PdoExtension,
                          &Command,
                          FIELD_OFFSET(PCI_COMMON_HEADER, Command),
@@ -604,7 +614,7 @@ PciProgramMsi(
 
     /* Some functions only raise messages with the legacy interrupt disable bit clear */
     if (PdoExtension->HackFlags & PCI_HACK_CLEAR_INT_DISABLE_FOR_MSI)
-        PciClearInterruptDisable(PdoExtension);
+        PciSetInterruptDisable(PdoExtension, FALSE);
 
     PdoExtension->MessageInfo.GrantedCount = (USHORT)Enabled;
     DPRINT("PCI: MSI enabled on %p, %lu message(s) at 0x%08lx data 0x%lx\n",
@@ -713,7 +723,7 @@ PciProgramMsiX(
                          sizeof(Control));
 
     if (PdoExtension->HackFlags & PCI_HACK_CLEAR_INT_DISABLE_FOR_MSI)
-        PciClearInterruptDisable(PdoExtension);
+        PciSetInterruptDisable(PdoExtension, FALSE);
 
     PdoExtension->MessageInfo.GrantedCount = (USHORT)Count;
     DPRINT("PCI: MSI-X enabled on %p, %lu message(s)\n", PdoExtension, Count);
@@ -922,18 +932,75 @@ PciProgramGrantedInterrupt(
     PAGED_CODE();
 
     /* The grant can differ on every start, so nothing enabled before it is kept */
-    PciDisableMessageInterrupt(PdoExtension);
+    PciRevokeGrantedInterrupt(PdoExtension);
 
     Interrupt = PciFindInterruptResource(ResourceList, &Messages);
     if (!Interrupt)
         return STATUS_SUCCESS;
 
     if (Interrupt->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+    {
+        PdoExtension->MessageInfo.MessagesGranted = TRUE;
+        PdoExtension->MessageInfo.GrantedMessageCount = Messages;
         return PciProgramMessageInterrupt(PdoExtension, Messages);
+    }
 
     /* A wired line only fires with the interrupt disable bit clear */
-    PciClearInterruptDisable(PdoExtension);
+    PdoExtension->MessageInfo.LineGranted = TRUE;
+    PciSetInterruptDisable(PdoExtension, FALSE);
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Programs the granted interrupt again after the function came back to D0,
+ * which can lose MSI, MSI-X and the line mask along with the rest of its configuration.
+ *
+ * @param[in,out] PdoExtension
+ * The PDO extension of the function.
+ */
+VOID
+NTAPI
+PciReprogramGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    NTSTATUS Status;
+    PAGED_CODE();
+
+    if (PdoExtension->MessageInfo.MessagesGranted)
+    {
+        PciDisableMessageInterrupt(PdoExtension);
+        PciSetInterruptDisable(PdoExtension, TRUE);
+        Status = PciProgramMessageInterrupt(PdoExtension, PdoExtension->MessageInfo.GrantedMessageCount);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("PCI: messages of %p not restored after D0 (0x%lx)\n", PdoExtension, Status);
+    }
+    else if (PdoExtension->MessageInfo.LineGranted)
+    {
+        PciSetInterruptDisable(PdoExtension, FALSE);
+    }
+}
+
+/**
+ * @brief
+ * Takes the granted interrupt away, so a stopped or removed function raises nothing.
+ *
+ * @param[in,out] PdoExtension
+ * The PDO extension of the function.
+ */
+VOID
+NTAPI
+PciRevokeGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    PAGED_CODE();
+
+    PdoExtension->MessageInfo.LineGranted = FALSE;
+    PdoExtension->MessageInfo.MessagesGranted = FALSE;
+    PdoExtension->MessageInfo.GrantedMessageCount = 0;
+
+    PciDisableMessageInterrupt(PdoExtension);
+    PciSetInterruptDisable(PdoExtension, TRUE);
 }
 
 /* EOF */

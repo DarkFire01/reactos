@@ -588,6 +588,8 @@ PciPdoEnterDevicePowerState(
 
     if (PciPdoCanPowerDown(DeviceExtension, DeviceState))
     {
+        /* The grant is kept, D0 programs it again */
+        PciDisableMessageInterrupt(DeviceExtension);
         PciPdoTurnOff(DeviceExtension, FALSE);
 
         Status = PciSetPowerManagedDevicePowerState(DeviceExtension, DeviceState, FALSE);
@@ -674,7 +676,10 @@ PciPdoIrpRemoveDevice(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
 
     if (PciPdoIsPresent(DeviceExtension))
+    {
+        PciRevokeGrantedInterrupt(DeviceExtension);
         PciPdoTurnOff(DeviceExtension, TRUE);
+    }
 
     /* A remove without a query still has to take a started function out of that state */
     if ((DeviceExtension->DeviceState == PciStarted) &&
@@ -727,6 +732,7 @@ PciPdoIrpStopDevice(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
 
     /* The device is losing its resources, so it must stop using them first */
+    PciRevokeGrantedInterrupt(DeviceExtension);
     PciPdoTurnOff(DeviceExtension, FALSE);
 
     /* The query stop that has to come first already began the transition */
@@ -1091,7 +1097,10 @@ PciPdoIrpSurpriseRemoval(IN PIRP Irp,
 
     /* This also comes after a failed start, with the function still in its slot */
     if (PciPdoIsPresent(DeviceExtension))
+    {
+        PciRevokeGrantedInterrupt(DeviceExtension);
         PciPdoTurnOff(DeviceExtension, TRUE);
+    }
 
     if (DeviceExtension->ReportedMissing)
     {

@@ -195,6 +195,10 @@ PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
         {
             /* Leaving D3 may reset the function, so write its configuration again */
             Status = PciSetResources(DeviceExtension, FALSE, FALSE);
+
+            /* A reset also lost the MSI or MSI-X programming and the line mask */
+            if (NT_SUCCESS(Status) && KeGetCurrentIrql() == PASSIVE_LEVEL)
+                PciReprogramGrantedInterrupt(DeviceExtension);
         }
     }
 
