@@ -1282,7 +1282,15 @@ HalpGetDmaAdapter(IN PVOID Context,
 
     AdapterObject = HalGetAdapter(DeviceDescription, NumberOfMapRegisters);
     if (!AdapterObject)
+    {
+        DPRINT1("No DMA adapter for version %lu, master %u, 64 bit %u, bus %d, length 0x%lx\n",
+                DeviceDescription->Version,
+                DeviceDescription->Master,
+                DeviceDescription->Dma64BitAddresses,
+                DeviceDescription->InterfaceType,
+                DeviceDescription->MaximumLength);
         return NULL;
+    }
 
 #ifdef _M_ARM64
     /* The shared ISA channel objects keep the platform answer */
