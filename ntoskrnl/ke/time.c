@@ -79,6 +79,9 @@ KeUpdateSystemTime(IN PKTRAP_FRAME TrapFrame,
     /* Check for timer expiration */
     KiCheckForTimerExpiration(Prcb, TrapFrame, InterruptTime);
 
+    /* Let processor power management start its periodic check */
+    PpmCheckClockTick(InterruptTime.QuadPart);
+
     /* Update the tick offset */
     OldTickOffset = InterlockedExchangeAdd(&KiTickOffset, -(LONG)Increment);
 

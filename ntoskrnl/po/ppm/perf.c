@@ -472,60 +472,396 @@ PpmConnectedStandby(
     }
 }
 
+/* DRIVER INTERFACE ***********************************************************/
+
+static PVOID PpmEnergyEstimationRoutine;
+static PVOID PpmEnergySnapRoutine;
+
 /**
- * @brief
- * DPC routine that fires periodically to sample processor performance state
- * and adjust throttling accordingly.
+ * @brief Installs the feedback counters of a new domain member, runs on the member.
  *
- * @param[in] Dpc
- * The DPC object associated with this performance timer.
+ * @param[in] Context
+ * The PPM_FEEDBACK_TYPES sources of this processor, NULL for absent types.
+ */
+static
+VOID
+NTAPI
+PpmInstallFeedback(
+    _In_ PPPM_PROCESSOR Processor,
+    _In_opt_ PVOID Context)
+{
+    PPPM_FEEDBACK_SOURCE *Sources = (PPPM_FEEDBACK_SOURCE *)Context;
+    BOOLEAN Enabled;
+    ULONG Type;
+
+    /* Whatever ran so far is charged to the counters already installed */
+    PpmAccrueActiveTime(Processor, PpmQueryCounter());
+    PpmFoldFeedback(Processor, FALSE, FALSE, FALSE);
+
+    Enabled = KeDisableInterrupts();
+    PpmLockFeedback(Processor);
+    for (Type = 0; Type < PPM_FEEDBACK_TYPES; Type++)
+    {
+        if (!Sources[Type])
+            continue;
+
+        /* A new counter starts out at 100 percent of the time it did not see */
+        Processor->Counters[Type] = Sources[Type];
+        Processor->ScaledTime[Type] = 100 * Processor->UnscaledTime;
+        PpmReadFeedbackSource(Sources[Type], TRUE);
+    }
+
+    if (Processor->Counters[PPM_FEEDBACK_PERFORMANCE])
+        Processor->KernelTimesIndex = PPM_FEEDBACK_PERFORMANCE;
+    else if (Processor->Counters[PPM_FEEDBACK_FREQUENCY])
+        Processor->KernelTimesIndex = PPM_FEEDBACK_FREQUENCY;
+
+    PpmUnlockFeedback(Processor);
+    KeRestoreInterrupts(Enabled);
+}
+
+/**
+ * @brief Registers one performance domain of a processor driver.
  *
- * @param[in] DeferredContext
- * A pointer to the PKPRCB (Processor Control Block) for the target processor.
- *
- * @param[in] SystemArgument1
- * Unused.
- *
- * @param[in] SystemArgument2
- * Unused.
- *
- * @remarks
- * A full implementation would evaluate the current processor idle time vs.
- * busy time, look up the appropriate P-state in the processor's performance
- * state table, and request a frequency/voltage transition if needed. This
- * requires HAL/ACPI _PSS support which is not yet available. For now the
- * routine only updates the performance accounting timestamps so that the
- * system does not accumulate stale data.
+ * @return STATUS_INVALID_PARAMETER for bad counters or processors, which includes
+ * processors that already belong to a domain.
+ */
+static
+NTSTATUS
+NTAPI
+PpmRegisterPerfStates(
+    _In_ PPPM_PERF_DOMAIN_REGISTRATION Registration)
+{
+    PPPM_FEEDBACK_SOURCE Sources[PPM_FEEDBACK_TYPES];
+    ULONG FirstCounter[PPM_FEEDBACK_TYPES];
+    PPPM_FEEDBACK_COUNTER Counter;
+    PPPM_PERF_CONSTRAINT Constraint;
+    PPPM_FEEDBACK_SOURCE Source;
+    PPPM_DRIVER_DOMAIN Domain;
+    PPPM_PROCESSOR Processor;
+    ULONG Index, Type, Number, Count, TypeCount = 0, Master = MAXULONG;
+    KAFFINITY Members = 0;
+    SIZE_T Size;
+
+    PAGED_CODE();
+
+    if (Registration->Version != PPM_DRIVER_INTERFACE_VERSION)
+        return STATUS_REVISION_MISMATCH;
+
+    Count = Registration->ProcessorCount;
+    if (!Count || !Registration->PerfSelectionHandler || !Registration->PerfControlHandler)
+        return STATUS_INVALID_PARAMETER;
+
+    PpmAcquirePolicyLock();
+
+    /* Only the first counter of each type is used */
+    for (Type = 0; Type < PPM_FEEDBACK_TYPES; Type++)
+        FirstCounter[Type] = MAXULONG;
+
+    for (Index = 0; Index < Registration->FeedbackCounterCount; Index++)
+    {
+        Type = Registration->FeedbackCounters[Index].Type;
+        if (Type >= PPM_FEEDBACK_TYPES)
+            goto Invalid;
+
+        if (FirstCounter[Type] == MAXULONG)
+        {
+            FirstCounter[Type] = Index;
+            TypeCount++;
+        }
+    }
+
+    if (FirstCounter[PPM_FEEDBACK_FREQUENCY] == MAXULONG &&
+        FirstCounter[PPM_FEEDBACK_PERFORMANCE] == MAXULONG)
+    {
+        goto Invalid;
+    }
+
+    for (Index = 0; Index < Count; Index++)
+    {
+        Number = PpmProcessorIndex(&Registration->Processors[Index].Number);
+        if (Number == INVALID_PROCESSOR_INDEX ||
+            PpmProcessors[Number].Domain ||
+            (Members & AFFINITY_MASK(Number)))
+        {
+            goto Invalid;
+        }
+
+        Members |= AFFINITY_MASK(Number);
+        Master = min(Master, Number);
+    }
+
+    Size = sizeof(*Domain) + Count * sizeof(*Constraint) + Count * TypeCount * sizeof(*Source);
+    Domain = ExAllocatePoolZero(NonPagedPoolNx, Size, TAG_PPM_PERF);
+    if (!Domain)
+    {
+        PpmReleasePolicyLock();
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Domain->Constraints = (PPPM_PERF_CONSTRAINT)(Domain + 1);
+    Source = (PPPM_FEEDBACK_SOURCE)(Domain->Constraints + Count);
+
+    Domain->Members = Members;
+    Domain->Master = Master;
+    Domain->ProcessorCount = Count;
+    Domain->SelectionHandler = Registration->PerfSelectionHandler;
+    Domain->ControlHandler = Registration->PerfControlHandler;
+    Domain->BoostPolicyHandler = Registration->BoostPolicyHandler;
+    Domain->BoostModeHandler = Registration->BoostModeHandler;
+    Domain->EnergyPerfPreferenceHandler = Registration->EnergyPerfPreferenceHandler;
+    Domain->TimeWindowHandler = Registration->TimeWindowHandler;
+    Domain->GlobalContext = Registration->GlobalContext;
+    Domain->NominalFrequency = Registration->NominalFrequency;
+    Domain->MaxPercent = Registration->MaxPerfPercent;
+    Domain->MinPerfPercent = Registration->MinPerfPercent;
+    Domain->MinThrottlePercent = Registration->MinThrottlePercent;
+    Domain->Coordination = Registration->Coordination;
+    Domain->HardPlatformCap = Registration->HardPlatformCap;
+    Domain->AffinitizeControl = Registration->AffinitizeControl;
+    Domain->AutonomousMode = Registration->AutonomousMode;
+    Domain->SelectedPercent = 100;
+    Domain->DesiredPercent = 0;
+    Domain->PerfChangeTime = PpmQueryCounter();
+
+    for (Index = 0; Index < Count; Index++)
+    {
+        Number = PpmProcessorIndex(&Registration->Processors[Index].Number);
+        Constraint = &Domain->Constraints[Index];
+        Constraint->Processor = Number;
+        Constraint->PerfContext = Registration->Processors[Index].PerfContext;
+        Constraint->PlatformCap = Registration->Processors[Index].PlatformCap;
+        Constraint->ThermalCap = Registration->Processors[Index].ThermalCap;
+        Constraint->LimitReasons = Registration->Processors[Index].LimitReasons;
+        Constraint->TargetPercent = 100;
+        Constraint->SelectedPercent = 100;
+        Constraint->LatestFrequencyPercent = 100;
+        Constraint->FrequencySensitivity = 100;
+
+        Processor = &PpmProcessors[Number];
+        Processor->Domain = Domain;
+        Processor->Constraint = Constraint;
+
+        /* The contexts of processor i start at i * FeedbackCounterCount */
+        RtlZeroMemory(Sources, sizeof(Sources));
+        for (Type = 0; Type < PPM_FEEDBACK_TYPES; Type++)
+        {
+            if (FirstCounter[Type] == MAXULONG)
+                continue;
+
+            Counter = &Registration->FeedbackCounters[FirstCounter[Type]];
+            Source->InstantaneousRead = Counter->InstantaneousRead;
+            Source->Affinitized = Counter->Affinitized;
+            Source->Differential = Counter->Differential;
+            if (Registration->CounterContexts)
+            {
+                Source->Context = Registration->CounterContexts[Index * Registration->FeedbackCounterCount +
+                                                                FirstCounter[Type]];
+            }
+
+            Sources[Type] = Source++;
+        }
+
+        PpmRunOnProcessor(Number, PpmInstallFeedback, Sources);
+    }
+
+    PpmCheckPeriodFloor = max(PpmCheckPeriodFloor, Registration->MinimumPerfCheckPeriod);
+    PpmCalculateMinMax(Domain);
+
+    InsertTailList(&PpmDriverDomainList, &Domain->Link);
+    PpmDriverDomainCount++;
+    PpmPerfRegistered |= Members;
+    PpmDomainsToUpdate |= AFFINITY_MASK(Master);
+
+    PpmRunOnProcessors(Members, PpmApplyBoostPolicy, NULL);
+    if (PpmPolicy.EnergyPerfPreferenceSet)
+        PpmRunOnProcessors(Members, PpmApplyEnergyPerfPreference, NULL);
+
+    DPRINT1("PPM: driver perf domain, %lu processors from %lu, %lu MHz nominal, %lu-%lu%% (throttle %lu%%), coordination 0x%x\n",
+            Count, Master, Domain->NominalFrequency, Domain->MinPerfPercent, Domain->MaxPercent,
+            Domain->MinThrottlePercent, Domain->Coordination);
+
+    /* New members start their utilization history now, then the first state is programmed */
+    PpmRunOnProcessors(Members, PpmResetUtility, NULL);
+    PpmCheckReInitialize();
+    PpmRunPerfSequence(PpmStepForceDomains);
+    return STATUS_SUCCESS;
+
+Invalid:
+    PpmReleasePolicyLock();
+    return STATUS_INVALID_PARAMETER;
+}
+
+/**
+ * @brief Changes the highest performance of the domains whose master is targeted.
+ */
+static
+VOID
+NTAPI
+PpmUpdatePerfStates(
+    _In_ PPPM_PERF_DOMAIN_UPDATE Update)
+{
+    PPPM_DRIVER_DOMAIN Domain;
+    PLIST_ENTRY Entry;
+
+    PAGED_CODE();
+
+    if (Update->Version != PPM_DRIVER_INTERFACE_VERSION)
+        return;
+
+    PpmAcquirePolicyLock();
+    for (Entry = PpmDriverDomainList.Flink; Entry != &PpmDriverDomainList; Entry = Entry->Flink)
+    {
+        Domain = CONTAINING_RECORD(Entry, PPM_DRIVER_DOMAIN, Link);
+        if (!(Update->TargetProcessors & AFFINITY_MASK(Domain->Master)))
+            continue;
+
+        Domain->MaxPercent = Update->MaxPerfPercent;
+        PpmDomainsToUpdate |= AFFINITY_MASK(Domain->Master);
+    }
+
+    PpmRunPerfSequence(PpmStepAsyncApplyDomains);
+}
+
+/**
+ * @brief Records new platform and thermal caps of a processor and reapplies its domain.
+ */
+static
+NTSTATUS
+NTAPI
+PpmRegisterPerfCap(
+    _In_ PPPM_PROCESSOR_CAP Cap)
+{
+    PPPM_PERF_CONSTRAINT Constraint;
+    PPPM_PROCESSOR Processor;
+    ULONG Number;
+
+    PAGED_CODE();
+
+    if (Cap->Version != PPM_DRIVER_INTERFACE_VERSION)
+        return STATUS_REVISION_MISMATCH;
+
+    Number = PpmProcessorIndex(&Cap->ProcessorNumber);
+    if (Number == INVALID_PROCESSOR_INDEX)
+        return STATUS_INVALID_PARAMETER;
+
+    PpmAcquirePolicyLock();
+
+    Processor = &PpmProcessors[Number];
+    Constraint = Processor->Constraint;
+    if (!Constraint)
+    {
+        PpmReleasePolicyLock();
+        return STATUS_SUCCESS;
+    }
+
+    if (Constraint->PlatformCap != Cap->PlatformCap)
+    {
+        DPRINT("PPM: processor %lu platform cap %lu%%\n", Number, Cap->PlatformCap);
+        Constraint->PlatformCap = Cap->PlatformCap;
+    }
+
+    if (Constraint->ThermalCap != Cap->ThermalCap)
+    {
+        DPRINT("PPM: processor %lu thermal cap %lu%%\n", Number, Cap->ThermalCap);
+        Constraint->ThermalCap = Cap->ThermalCap;
+    }
+
+    Constraint->LimitReasons = Cap->LimitReasons;
+    PpmDomainsToUpdate |= AFFINITY_MASK(Processor->Domain->Master);
+    PpmRunPerfSequence(PpmStepAsyncApplyDomains);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Takes the energy estimation routines of the driver, nothing consumes them yet.
+ */
+static
+VOID
+NTAPI
+PpmRegisterEnergyEstimation(
+    _In_opt_ PVOID ComputeEnergy,
+    _In_opt_ PVOID SnapEnergyCounters)
+{
+    PpmEnergyEstimationRoutine = ComputeEnergy;
+    PpmEnergySnapRoutine = SnapEnergyCounters;
+}
+
+static const PPM_DRIVER_INTERFACE_TABLE PpmDriverInterface =
+{
+    PPM_DRIVER_INTERFACE_VERSION,
+    PpmRegisterPerfStates,
+    PpmUpdatePerfStates,
+    PpmRegisterPerfCap,
+    PpmRegisterIdleStates,
+    PpmRegisterIdleDomains,
+    PpmRegisterEnergyEstimation
+};
+
+/**
+ * @brief Hands the boost policy and mode to the driver, runs on the member processor.
  */
 VOID
 NTAPI
-PpmPerfIdleDpcRoutine(
-    _In_ PKDPC Dpc,
-    _In_ PVOID DeferredContext,
-    _In_ PVOID SystemArgument1,
-    _In_ PVOID SystemArgument2)
+PpmApplyBoostPolicy(
+    _In_ PPPM_PROCESSOR Processor,
+    _In_opt_ PVOID Context)
 {
-    PKPRCB Prcb = (PKPRCB)DeferredContext;
+    PPPM_DRIVER_DOMAIN Domain = Processor->Domain;
 
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(SystemArgument1);
-    UNREFERENCED_PARAMETER(SystemArgument2);
+    UNREFERENCED_PARAMETER(Context);
 
-    if (Prcb == NULL)
-    {
+    if (!Domain)
         return;
-    }
 
-    /*
-     * Record the current performance timer tick. A complete performance
-     * governor would compare KernelTime, UserTime and IdleTime over successive
-     * samples to determine utilization, then walk the _PSS P-state table and
-     * issue an ACPI _PPC/_PCT write to adjust the processor frequency/voltage.
-     *
-     * FIXME: Implement P-state evaluation and transition once HAL exposes
-     * processor performance controls via HalSetSystemInformation.
-     */
-    Prcb->PowerState.LastSysTime = KeQueryInterruptTime();
+    if (Domain->BoostPolicyHandler)
+        Domain->BoostPolicyHandler(Processor->Constraint->PerfContext, PpmPolicy.PerfBoostPolicy);
+    if (Domain->BoostModeHandler)
+        Domain->BoostModeHandler(Processor->Constraint->PerfContext, PpmPolicy.PerfBoostMode);
+}
+
+/**
+ * @brief Hands the energy performance preference to the driver, runs on the member processor.
+ */
+VOID
+NTAPI
+PpmApplyEnergyPerfPreference(
+    _In_ PPPM_PROCESSOR Processor,
+    _In_opt_ PVOID Context)
+{
+    PPPM_DRIVER_DOMAIN Domain = Processor->Domain;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    if (Domain && Domain->EnergyPerfPreferenceHandler)
+        Domain->EnergyPerfPreferenceHandler(Processor->Constraint->PerfContext, PpmPolicy.EnergyPerfPreference);
+}
+
+/**
+ * @brief Answers the ProcessorStateHandler query with the processor driver table.
+ *
+ * @return STATUS_ACCESS_DENIED for user mode callers.
+ */
+NTSTATUS
+NTAPI
+PpmQueryDriverInterface(
+    _In_opt_ PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_opt_(OutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _In_ KPROCESSOR_MODE PreviousMode)
+{
+    if (PreviousMode != KernelMode)
+        return STATUS_ACCESS_DENIED;
+
+    if (InputBuffer || InputBufferLength || !OutputBuffer)
+        return STATUS_INVALID_PARAMETER;
+
+    if (OutputBufferLength < sizeof(PpmDriverInterface))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    RtlCopyMemory(OutputBuffer, &PpmDriverInterface, sizeof(PpmDriverInterface));
+    return STATUS_SUCCESS;
 }
 
 /* EOF */

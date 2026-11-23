@@ -666,8 +666,12 @@ NtPowerInformation(
            OutputBuffer, OutputBufferLength);
 #endif
 
-    /* Bail out if the caller is doing something special and has no required privilege */
+    /* Processor drivers fetch the kernel table from kernel mode only */
     PreviousMode = ExGetPreviousMode();
+    if (PowerInformationLevel == ProcessorStateHandler)
+        return PpmQueryDriverInterface(InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength, PreviousMode);
+
+    /* Bail out if the caller is doing something special and has no required privilege */
     if (!PopIsCallerPrivileged(PowerInformationLevel, InputBuffer, PreviousMode))
     {
         DPRINT1("The caller has no required privilege for this operation, bail out\n");
@@ -1006,7 +1010,7 @@ NtPowerInformation(
         case ProcessorInformation:
         {
             PPROCESSOR_POWER_INFORMATION ProcessorInfo = (PPROCESSOR_POWER_INFORMATION)OutputBuffer;
-            PKPRCB Prcb;
+            PROCESSOR_POWER_INFORMATION Entry;
             ULONG Index;
 
             if (InputBuffer)
@@ -1015,8 +1019,9 @@ NtPowerInformation(
                 goto Quit;
             }
 
-            /* One entry per processor, like Windows */
-            if (OutputBufferLength < KeNumberProcessors * sizeof(*ProcessorInfo))
+            /* One entry per processor of the group, at most 64 of them */
+            if ((ULONG)KeNumberProcessors > 64 ||
+                OutputBufferLength < KeNumberProcessors * sizeof(*ProcessorInfo))
             {
                 Status = STATUS_BUFFER_TOO_SMALL;
                 goto Quit;
@@ -1026,14 +1031,8 @@ NtPowerInformation(
             {
                 for (Index = 0; Index < (ULONG)KeNumberProcessors; Index++)
                 {
-                    /* No performance states are managed, so every processor runs at its rated speed */
-                    Prcb = KiProcessorBlock[Index];
-                    ProcessorInfo[Index].Number = Index;
-                    ProcessorInfo[Index].MaxMhz = Prcb->MHz;
-                    ProcessorInfo[Index].CurrentMhz = Prcb->MHz;
-                    ProcessorInfo[Index].MhzLimit = Prcb->MHz;
-                    ProcessorInfo[Index].MaxIdleState = 0;
-                    ProcessorInfo[Index].CurrentIdleState = 0;
+                    PpmQueryProcessorPowerInformation(Index, &Entry);
+                    ProcessorInfo[Index] = Entry;
                 }
 
                 Status = STATUS_SUCCESS;

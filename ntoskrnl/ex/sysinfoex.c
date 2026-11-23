@@ -817,11 +817,13 @@ ExpQueryExtendedSystemProcessorPerformanceDistribution( // 100
     _In_ ULONG SystemInformationLength,
     _Out_opt_ PULONG ReturnLength)
 {
-    NTSTATUS Status;
-    USHORT GroupNumber;
-    ULONG ProcessorCount;
-    ULONG PerfDistInfoLength;
+    PSYSTEM_PROCESSOR_PERFORMANCE_STATE_DISTRIBUTION Distribution;
     PSYSTEM_PROCESSOR_PERFORMANCE_DISTRIBUTION PerfDistInfo;
+    UCHAR StateCounts[MAXIMUM_PROCESSORS];
+    ULONG ProcessorCount, PerfDistInfoLength, Offset, Shift, Index;
+    ULONG64 ActiveTime, ScaledTime, Busy;
+    USHORT GroupNumber;
+    NTSTATUS Status;
 
     /* Get the group number from the input buffer */
     Status = CaptureGroupNumber(InputBuffer, InputBufferLength, &GroupNumber);
@@ -836,23 +838,25 @@ ExpQueryExtendedSystemProcessorPerformanceDistribution( // 100
         return Status;
     }
 
-    if (GroupNumber != 0)
+    /* There is only group 0, which is also the group of every caller */
+    if (GroupNumber != 0 && GroupNumber != ALL_PROCESSOR_GROUPS)
     {
         return STATUS_INVALID_PARAMETER;
     }
 
-    // FIXME: We don't support processor groups yet
     ProcessorCount = KeNumberProcessors;
 
-    /* Calculate the header size (1 offset (ULONG) per processor) */
-    ULONG HeaderSize = FIELD_OFFSET(SYSTEM_PROCESSOR_PERFORMANCE_DISTRIBUTION, Offsets[ProcessorCount]);
-
-    /* The header is followed by the state distributions for each processor. These are dynamically
-       sized structures, depending on the number of supported P-states. They must be 8-byte aligned. */
-    ULONG StartOffset = ALIGN_UP_BY(HeaderSize, sizeof(ULONG64));
-    ULONG StateCount = 2; // FIXME: We only support C0 and C1 for now, so 2 states
-    ULONG DistributionSize = FIELD_OFFSET(SYSTEM_PROCESSOR_PERFORMANCE_STATE_DISTRIBUTION, States[StateCount]);
-    PerfDistInfoLength = StartOffset + ProcessorCount * DistributionSize;
+    /* Processors with a driver performance domain report two weighted states, the others none */
+    Offset = ALIGN_UP_BY(FIELD_OFFSET(SYSTEM_PROCESSOR_PERFORMANCE_DISTRIBUTION, Offsets[ProcessorCount]),
+                         sizeof(ULONG64));
+    for (Index = 0; Index < ProcessorCount; Index++)
+    {
+        StateCounts[Index] = PpmProcessors[Index].Constraint ? 2 : 0;
+        Offset += ALIGN_UP_BY(FIELD_OFFSET(SYSTEM_PROCESSOR_PERFORMANCE_STATE_DISTRIBUTION,
+                                           States[StateCounts[Index]]),
+                              sizeof(ULONG64));
+    }
+    PerfDistInfoLength = Offset;
 
     /* If the buffer is too small, only return the required size */
     if (SystemInformationLength < PerfDistInfoLength)
@@ -860,49 +864,59 @@ ExpQueryExtendedSystemProcessorPerformanceDistribution( // 100
         return ReturnRequiredLength(ReturnLength, PerfDistInfoLength);
     }
 
+    PerfDistInfo = ExAllocatePoolZero(NonPagedPoolNx, PerfDistInfoLength, TAG_PPM_PERF);
+    if (!PerfDistInfo)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Weighing state 0 at 0 percent and state 1 at 255 gives the average delivered performance */
+    Shift = PpmQueryDistributionShift();
+    PerfDistInfo->ProcessorCount = ProcessorCount;
+    Offset = ALIGN_UP_BY(FIELD_OFFSET(SYSTEM_PROCESSOR_PERFORMANCE_DISTRIBUTION, Offsets[ProcessorCount]),
+                         sizeof(ULONG64));
+    for (Index = 0; Index < ProcessorCount; Index++)
+    {
+        Distribution = (PSYSTEM_PROCESSOR_PERFORMANCE_STATE_DISTRIBUTION)((PUCHAR)PerfDistInfo + Offset);
+        PerfDistInfo->Offsets[Index] = Offset;
+        Distribution->ProcessorNumber = Index;
+
+        if (StateCounts[Index] && PpmQueryPerformanceDistribution(Index, &ActiveTime, &ScaledTime))
+        {
+            Busy = 255 * ActiveTime;
+            Distribution->StateCount = 2;
+            Distribution->States[0].Hits = ((Busy > ScaledTime) ? Busy - ScaledTime : 0) >> Shift;
+            Distribution->States[0].PercentFrequency = 0;
+            Distribution->States[1].Hits = ScaledTime >> Shift;
+            Distribution->States[1].PercentFrequency = 255;
+        }
+
+        Offset += ALIGN_UP_BY(FIELD_OFFSET(SYSTEM_PROCESSOR_PERFORMANCE_STATE_DISTRIBUTION,
+                                           States[StateCounts[Index]]),
+                              sizeof(ULONG64));
+    }
+
     _SEH2_TRY
     {
         if (ExGetPreviousMode() != KernelMode)
         {
-            ProbeForWrite(ReturnLength, sizeof(ULONG), sizeof(ULONG));
+            if (ReturnLength)
+                ProbeForWrite(ReturnLength, sizeof(ULONG), sizeof(ULONG));
             ProbeForWrite(SystemInformation, PerfDistInfoLength, sizeof(ULONG64));
         }
 
-        /* Loop all processors and fill in the data */
-        ULONG CurrentOffset = StartOffset;
-        PerfDistInfo = (PSYSTEM_PROCESSOR_PERFORMANCE_DISTRIBUTION)SystemInformation;
-        for (ULONG i = 0; i < ProcessorCount; i++)
-        {
-            PKPRCB Prcb = KiProcessorBlock[i];
-            PSYSTEM_PROCESSOR_PERFORMANCE_STATE_DISTRIBUTION Distribution =
-                (PSYSTEM_PROCESSOR_PERFORMANCE_STATE_DISTRIBUTION)((PUCHAR)SystemInformation + CurrentOffset);
-            PerfDistInfo->Offsets[i] = CurrentOffset;
-            CurrentOffset += DistributionSize;
-
-            ULONG C1Time = Prcb->IdleThread->KernelTime;
-            ULONG C0Time = Prcb->KernelTime + Prcb->UserTime - C1Time;
-            ULONG TotalTime = C0Time + C1Time;
-
-            /* Fill in the distribution */
-            Distribution->ProcessorNumber = (USHORT)i;
-            Distribution->StateCount = StateCount;
-            Distribution->States[0].Hits = C0Time; // C0
-            Distribution->States[0].PercentFrequency = 100 * C0Time / TotalTime;
-            Distribution->States[1].Hits = C1Time; // C1
-            Distribution->States[1].PercentFrequency = 100 * C1Time / TotalTime;
-        }
-
-        /* Make sure our calculation was right */
-        ASSERT(CurrentOffset == PerfDistInfoLength);
-        *ReturnLength = PerfDistInfoLength;
+        RtlCopyMemory(SystemInformation, PerfDistInfo, PerfDistInfoLength);
+        if (ReturnLength)
+            *ReturnLength = PerfDistInfoLength;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        return _SEH2_GetExceptionCode();
+        Status = _SEH2_GetExceptionCode();
     }
     _SEH2_END;
 
-    return STATUS_SUCCESS;
+    ExFreePoolWithTag(PerfDistInfo, TAG_PPM_PERF);
+    return Status;
 }
 
 static

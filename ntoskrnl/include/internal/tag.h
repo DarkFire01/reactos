@@ -155,6 +155,8 @@
 #define TAG_PO_THERMAL_REQUEST                    'qRoP'
 #define TAG_PO_THERMAL_COOLING_INTERFACE          'iCoP'
 #define TAG_PO_SLEEP_DISABLE                      'dSoP'
+#define TAG_PPM_PERF                              'pMpP'
+#define TAG_PPM_IDLE                              'iMpP'
 
 /* Process Manager Tags */
 #define TAG_CIDOBJECT           'ODIC'

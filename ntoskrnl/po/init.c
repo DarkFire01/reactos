@@ -705,6 +705,9 @@ PopInitSystemPhase1(VOID)
     /* The boot devices are up, the plug-in can now build the processors' performance tables */
     PpmPepAllowRegistration();
 
+    /* Default idle states, the processor power policy and the boot performance override */
+    PpmInitialize(FALSE);
+
     return TRUE;
 }
 
@@ -777,10 +780,8 @@ PoInitializePrcb(
     Prcb->PowerState.CurrentThrottleIndex = 0;
     Prcb->PowerState.IdleFunction = PpmIdle;
 
-    /* Register the performance routine for this processor and the timer */
-    KeInitializeDpc(&Prcb->PowerState.PerfDpc, PpmPerfIdleDpcRoutine, Prcb);
-    KeSetTargetProcessorDpc(&Prcb->PowerState.PerfDpc, Prcb->Number);
-    KeInitializeTimerEx(&Prcb->PowerState.PerfTimer, SynchronizationTimer);
+    /* Set up the processor power management block of this processor */
+    PpmInitializeProcessor(Prcb);
 }
 
 /* EOF */
