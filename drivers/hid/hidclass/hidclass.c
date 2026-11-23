@@ -420,7 +420,7 @@ HidClass_ReadCompleteIrp(
     //
     // copy result
     //
-    if (Irp->IoStatus.Information)
+    if (Irp->IoStatus.Information && IrpContext->OriginalIrp->MdlAddress != NULL)
     {
         //
         // get address
@@ -736,6 +736,7 @@ HidClass_Read(
     PIRP NewIrp;
     PHIDCLASS_IRP_CONTEXT NewIrpContext;
     PHIDCLASS_COMMON_DEVICE_EXTENSION CommonDeviceExtension;
+    PHIDP_COLLECTION_DESC CollectionDescription;
 
     //
     // get current stack location
@@ -774,6 +775,31 @@ HidClass_Read(
         Irp->IoStatus.Status = STATUS_CANCELLED;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_CANCELLED;
+    }
+
+    /* The buffer has to hold a whole input report of the collection */
+    CollectionDescription = HidClassPDO_GetCollectionDescription(&Context->DeviceExtension->Common.DeviceDescription,
+                                                                 Context->DeviceExtension->CollectionNumber);
+    if (CollectionDescription == NULL ||
+        IoStack->Parameters.Read.Length < CollectionDescription->InputLength)
+    {
+        DPRINT1("[HIDCLASS] Read of %lu bytes is shorter than the input report\n",
+                IoStack->Parameters.Read.Length);
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = STATUS_INVALID_BUFFER_SIZE;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    /* The report is copied out through the MDL the I/O manager built for the read */
+    if (Irp->MdlAddress == NULL ||
+        MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority) == NULL)
+    {
+        DPRINT1("[HIDCLASS] Read has no buffer that can be mapped\n");
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = STATUS_INVALID_USER_BUFFER;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_INVALID_USER_BUFFER;
     }
 
     //
