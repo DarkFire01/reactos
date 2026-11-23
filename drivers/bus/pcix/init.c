@@ -910,6 +910,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
         KeInitializeEvent(&PciGlobalLock, SynchronizationEvent, TRUE);
         KeInitializeEvent(&PciBusLock, SynchronizationEvent, TRUE);
         KeInitializeEvent(&PciLegacyDescriptionLock, SynchronizationEvent, TRUE);
+        KeInitializeEvent(&PciExternalConfigLock, SynchronizationEvent, TRUE);
 
         /* Open the control set key */
         Result = PciOpenKey(L"\\Registry\\Machine\\System\\CurrentControlSet",

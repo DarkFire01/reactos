@@ -17,7 +17,134 @@
 
 BOOLEAN PciAssignBusNumbers;
 
+/* Stages driver accesses below DISPATCH_LEVEL, whose buffers may be pageable */
+static UCHAR PciExternalConfigBuffer[PCI_EXTENDED_CONFIG_LENGTH];
+KEVENT PciExternalConfigLock;
+
 /* FUNCTIONS ******************************************************************/
+
+static
+ULONG
+NTAPI
+PciExternalConfigLimit(
+    _In_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    return PdoExtension->IsExtendedConfigReachable ? PCI_EXTENDED_CONFIG_LENGTH :
+                                                     PCI_LEGACY_CONFIG_LENGTH;
+}
+
+static
+BOOLEAN
+NTAPI
+PciExternalCoversLine(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    ULONG Line = FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine);
+
+    return (PdoExtension->InterruptPin != 0) && (Line >= Offset) && (Line < Offset + Length);
+}
+
+/**
+ * @brief
+ * Reads configuration space for a driver. The driver sees the interrupt
+ * line it was assigned instead of the one in the register.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INVALID_DEVICE_REQUEST when the range is past
+ * the configuration space the function has.
+ */
+NTSTATUS
+NTAPI
+PciExternalReadDeviceConfig(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    PUCHAR Data;
+    BOOLEAN Staged;
+
+    if ((Offset + Length < Offset) || (Offset + Length > PciExternalConfigLimit(PdoExtension)))
+        return STATUS_INVALID_DEVICE_REQUEST;
+
+    Staged = (KeGetCurrentIrql() < DISPATCH_LEVEL);
+    if (Staged)
+    {
+        KeEnterCriticalRegion();
+        KeWaitForSingleObject(&PciExternalConfigLock, Executive, KernelMode, FALSE, NULL);
+        Data = &PciExternalConfigBuffer[Offset];
+    }
+    else
+    {
+        Data = Buffer;
+    }
+
+    PciReadDeviceConfig(PdoExtension, Data, Offset, Length);
+
+    if (PciExternalCoversLine(PdoExtension, Offset, Length))
+        Data[FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine) - Offset] = PdoExtension->AdjustedInterruptLine;
+
+    if (Staged)
+    {
+        RtlCopyMemory(Buffer, Data, Length);
+        KeSetEvent(&PciExternalConfigLock, IO_NO_INCREMENT, FALSE);
+        KeLeaveCriticalRegion();
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Writes configuration space for a driver. The interrupt line register
+ * keeps its firmware value whatever the driver writes there.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INVALID_DEVICE_REQUEST when the range is past
+ * the configuration space the function has.
+ */
+NTSTATUS
+NTAPI
+PciExternalWriteDeviceConfig(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    PUCHAR Data;
+    BOOLEAN Staged;
+
+    if ((Offset + Length < Offset) || (Offset + Length > PciExternalConfigLimit(PdoExtension)))
+        return STATUS_INVALID_DEVICE_REQUEST;
+
+    Staged = (KeGetCurrentIrql() < DISPATCH_LEVEL);
+    if (Staged)
+    {
+        KeEnterCriticalRegion();
+        KeWaitForSingleObject(&PciExternalConfigLock, Executive, KernelMode, FALSE, NULL);
+        Data = &PciExternalConfigBuffer[Offset];
+        RtlCopyMemory(Data, Buffer, Length);
+    }
+    else
+    {
+        Data = Buffer;
+    }
+
+    if (PciExternalCoversLine(PdoExtension, Offset, Length))
+        Data[FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine) - Offset] = PdoExtension->RawInterruptLine;
+
+    PciWriteDeviceConfig(PdoExtension, Data, Offset, Length);
+
+    if (Staged)
+    {
+        KeSetEvent(&PciExternalConfigLock, IO_NO_INCREMENT, FALSE);
+        KeLeaveCriticalRegion();
+    }
+
+    return STATUS_SUCCESS;
+}
 
 UCHAR
 NTAPI

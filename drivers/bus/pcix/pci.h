@@ -1475,6 +1475,22 @@ PciReadDeviceConfig(
     IN ULONG Length
 );
 
+NTSTATUS
+NTAPI
+PciExternalReadDeviceConfig(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
+NTSTATUS
+NTAPI
+PciExternalWriteDeviceConfig(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
 UCHAR
 NTAPI
 PciGetAdjustedInterruptLine(
@@ -2242,6 +2258,7 @@ PciFreeLegacyDeviceCache(VOID);
 //
 extern SINGLE_LIST_ENTRY PciFdoExtensionListHead;
 extern KEVENT PciGlobalLock;
+extern KEVENT PciExternalConfigLock;
 extern PPCI_INTERFACE PciInterfaces[];
 extern BOOLEAN PciEcamVerified;
 extern PCI_INTERFACE ArbiterInterfaceBusNumber;
