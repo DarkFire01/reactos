@@ -1,0 +1,62 @@
+; Intel LPSS GPIO host controllers
+
+[Version]
+Signature="$Windows NT$"
+Class=System
+ClassGUID={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%ReactOS%
+DriverVer=11/22/2026,1.0
+
+[SourceDisksFiles]
+ialpss2i_gpio.sys = 3426
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%IntelMfg%=Intel
+
+[Intel]
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT344B
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT345D
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT3451
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT34BB
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT3450
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT3455
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT34C3
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT34C5
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INT34C6
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC1055
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC1056
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC1057
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC1085
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC1082
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC1083
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC1084
+%IntelGpio.DeviceDesc%=IntelGpio_Inst,ACPI\INTC105E
+
+[IntelGpio_Inst.NT]
+CopyFiles=IntelGpio_CopyFiles
+
+[IntelGpio_CopyFiles]
+ialpss2i_gpio.sys
+
+[IntelGpio_Inst.NT.Services]
+AddService=ialpss2i_gpio,0x00000002,IntelGpio_Service
+
+[IntelGpio_Service]
+DisplayName    = %IntelGpio.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\ialpss2i_gpio.sys
+LoadOrderGroup = Extended Base
+
+[Strings]
+ReactOS="ReactOS Project"
+IntelMfg="Intel"
+IntelGpio.DeviceDesc="Intel Serial IO GPIO Host Controller"
+IntelGpio.ServiceDesc="Intel Serial IO GPIO Driver"
