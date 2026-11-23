@@ -706,6 +706,32 @@ StorPortDeviceReady(
 }
 
 
+/**
+ * @brief Finds the interrupt object, and so the lock, of one message interrupt of the adapter.
+ */
+static
+ULONG
+StorpGetMessageInterrupt(
+    _In_opt_ PVOID HwDeviceExtension,
+    _In_ ULONG MessageId,
+    _Out_ PKINTERRUPT *Interrupt)
+{
+    PFDO_DEVICE_EXTENSION FdoExtension;
+
+    if (HwDeviceExtension == NULL)
+        return STOR_STATUS_INVALID_PARAMETER;
+
+    FdoExtension = StorpGetMiniportFdo(HwDeviceExtension);
+    if (!FdoExtension->MessageInterrupts)
+        return STOR_STATUS_INVALID_DEVICE_REQUEST;
+
+    if (MessageId >= FdoExtension->MessageInfo->MessageCount)
+        return STOR_STATUS_INVALID_PARAMETER;
+
+    *Interrupt = FdoExtension->MessageInfo->MessageInfo[MessageId].InterruptObject;
+    return STOR_STATUS_SUCCESS;
+}
+
 /*
  * @unimplemented
  */
@@ -876,6 +902,30 @@ StorPortExtendedFunction(
             break;
         }
 
+        case ExtFunctionAcquireMSISpinLock:
+        {
+            ULONG MessageId = va_arg(va, ULONG);
+            PULONG OldIrql = va_arg(va, PULONG);
+            PKINTERRUPT Interrupt;
+
+            Status = StorpGetMessageInterrupt(HwDeviceExtension, MessageId, &Interrupt);
+            if (Status == STOR_STATUS_SUCCESS)
+                *OldIrql = KeAcquireInterruptSpinLock(Interrupt);
+            break;
+        }
+
+        case ExtFunctionReleaseMSISpinLock:
+        {
+            ULONG MessageId = va_arg(va, ULONG);
+            ULONG OldIrql = va_arg(va, ULONG);
+            PKINTERRUPT Interrupt;
+
+            Status = StorpGetMessageInterrupt(HwDeviceExtension, MessageId, &Interrupt);
+            if (Status == STOR_STATUS_SUCCESS)
+                KeReleaseInterruptSpinLock(Interrupt, (KIRQL)OldIrql);
+            break;
+        }
+
         case ExtFunctionGetMessageInterruptInformation:
         {
             /* Describe one of the message interrupts connected for the adapter */
@@ -1031,8 +1081,8 @@ StorPortExtendedFunction(
 
         default:
         {
-            UNIMPLEMENTED;
-            // __debugbreak();
+            DPRINT1("StorPortExtendedFunction: function %d is not supported\n", FunctionCode);
+            break;
         }
     }
 
