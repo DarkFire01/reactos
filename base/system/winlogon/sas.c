@@ -71,6 +71,12 @@ NotifyDwmLogon(
     PDWMP_NOTIFY_USER_LOGON pDwmpNotifyUserLogon;
     HRESULT hr;
 
+#ifdef _M_AMD64
+    /* Not started on amd64 for now, dwm.exe can still be run by hand */
+    UNREFERENCED_PARAMETER(Session);
+    return;
+#endif
+
     if (!hDwmInit)
         hDwmInit = LoadLibraryW(L"dwminit.dll");
     if (!hDwmInit)
