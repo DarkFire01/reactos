@@ -567,7 +567,14 @@ UacpiNtTranslateResources(
         Status = UacpiNtIrqLibResolveVector(Gsiv, &Vector, &Irql, &Affinity, &Polarity, &Mode);
     }
 
-    /* acpi.sys leaves an unassigned descriptor alone, failing it fails the device */
+    /* A message run that got no vectors cannot be connected, handing it on raw only hides that */
+    if ((Source->Flags & CM_RESOURCE_INTERRUPT_MESSAGE) && (!NT_SUCCESS(Status) || Irql == PASSIVE_LEVEL))
+    {
+        DPRINT1("irqTrans: message GSIV 0x%lx x%lu got no vectors (0x%lx)\n", Gsiv, Count, Status);
+        return NT_SUCCESS(Status) ? STATUS_UNSUCCESSFUL : Status;
+    }
+
+    /* acpi.sys leaves an unassigned line descriptor alone, failing it fails the device */
     if (!NT_SUCCESS(Status) || Irql == PASSIVE_LEVEL)
     {
         DPRINT("irqTrans: GSIV 0x%lx x%lu has no vector yet\n", Gsiv, Count);
