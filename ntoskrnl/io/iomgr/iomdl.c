@@ -32,17 +32,13 @@ IoAllocateMdl(IN PVOID VirtualAddress,
     /* Make sure we got a valid length */
     ASSERT(Length != 0);
 
-    /* Fail if allocation is over 2GB */
-    if (Length & 0x80000000) return NULL;
-
     /* Calculate the number of pages for the allocation */
     Size = ADDRESS_AND_SIZE_TO_SPAN_PAGES(VirtualAddress, Length);
     if (Size > 23)
     {
-        /* This is bigger then our fixed-size MDLs. Calculate real size */
+        /* Bigger than our fixed-size MDLs, the 16-bit Size field just wraps like on Windows */
         Size *= sizeof(PFN_NUMBER);
         Size += sizeof(MDL);
-        if (Size > MAXUSHORT) return NULL;
     }
     else
     {
