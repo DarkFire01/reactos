@@ -726,6 +726,8 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
 
     if (Mdl == NULL)
         DPRINT1("MmAllocatePagesForMdlEx: no pages for 0x%Ix bytes with flags 0x%lx\n", TotalBytes, Flags);
+    else if (Mdl->ByteCount < TotalBytes)
+        DPRINT1("MmAllocatePagesForMdlEx: 0x%lx of 0x%Ix bytes with flags 0x%lx\n", Mdl->ByteCount, TotalBytes, Flags);
 
     return Mdl;
 }

@@ -445,7 +445,11 @@ MiAllocateContiguousMemory(IN SIZE_T NumberOfBytes,
     // According to MSDN, the system won't try anything else if you're higher
     // than APC level.
     //
-    if (KeGetCurrentIrql() > APC_LEVEL) return NULL;
+    if (KeGetCurrentIrql() > APC_LEVEL)
+    {
+        DPRINT1("No contiguous run of %Iu pages at IRQL %u\n", SizeInPages, KeGetCurrentIrql());
+        return NULL;
+    }
 
     //
     // Otherwise, we'll go try to find some
@@ -457,7 +461,8 @@ MiAllocateContiguousMemory(IN SIZE_T NumberOfBytes,
                                          CacheType);
     if (!BaseAddress)
     {
-        DPRINT1("Unable to allocate contiguous memory for %d bytes (%d pages), out of memory!\n", NumberOfBytes, SizeInPages);
+        DPRINT1("Unable to allocate contiguous memory for 0x%Ix bytes in PFNs 0x%Ix-0x%Ix, boundary 0x%Ix, cache %d\n",
+                NumberOfBytes, LowestAcceptablePfn, HighestAcceptablePfn, BoundaryPfn, CacheType);
     }
     return BaseAddress;
 }
@@ -612,7 +617,12 @@ MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
     //
     // Validate the PFN bounds
     //
-    if (LowestPfn > HighestPfn) return NULL;
+    if (LowestPfn > HighestPfn)
+    {
+        DPRINT1("Contiguous range 0x%I64x-0x%I64x is empty\n",
+                LowestAcceptableAddress.QuadPart, HighestAcceptableAddress.QuadPart);
+        return NULL;
+    }
 
     //
     // Let the contiguous memory allocator handle it

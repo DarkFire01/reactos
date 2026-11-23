@@ -57,7 +57,11 @@ MmAllocateNonCachedMemory(IN SIZE_T NumberOfBytes)
                                 NumberOfBytes,
                                 CacheAttribute,
                                 0);
-    if (!Mdl) return NULL;
+    if (!Mdl)
+    {
+        DPRINT1("MmAllocateNonCachedMemory: no pages for 0x%Ix bytes\n", NumberOfBytes);
+        return NULL;
+    }
 
     //
     // Get the MDL VA and check how many pages we got (could be partial)
@@ -70,6 +74,7 @@ MmAllocateNonCachedMemory(IN SIZE_T NumberOfBytes)
         // Unlike MDLs, partial isn't okay for a noncached allocation, so fail
         //
         ASSERT(PageCount > MdlPageCount);
+        DPRINT1("MmAllocateNonCachedMemory: %lu of %lu pages\n", MdlPageCount, PageCount);
         MmFreePagesFromMdl(Mdl);
         ExFreePoolWithTag(Mdl, TAG_MDL);
         return NULL;

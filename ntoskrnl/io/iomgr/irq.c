@@ -1242,6 +1242,7 @@ IoConnectInterruptEx(
     _Inout_ PIO_CONNECT_INTERRUPT_PARAMETERS Parameters)
 {
     PIO_CONNECT_INTERRUPT_MESSAGE_BASED_PARAMETERS MessageBased = &Parameters->MessageBased;
+    PIO_INTERRUPT_MESSAGE_INFO MessageTable;
     NTSTATUS Status;
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL)
@@ -1258,13 +1259,19 @@ IoConnectInterruptEx(
             return IopConnectFullySpecifiedInterrupt(Parameters, Parameters->FullySpecified.Group);
 
         case CONNECT_LINE_BASED:
-            return IopConnectLineInterrupts(Parameters->LineBased.PhysicalDeviceObject,
-                                            Parameters->LineBased.InterruptObject,
-                                            Parameters->LineBased.ServiceRoutine,
-                                            Parameters->LineBased.ServiceContext,
-                                            Parameters->LineBased.SpinLock,
-                                            Parameters->LineBased.SynchronizeIrql,
-                                            Parameters->LineBased.FloatingSave);
+            Status = IopConnectLineInterrupts(Parameters->LineBased.PhysicalDeviceObject,
+                                              Parameters->LineBased.InterruptObject,
+                                              Parameters->LineBased.ServiceRoutine,
+                                              Parameters->LineBased.ServiceContext,
+                                              Parameters->LineBased.SpinLock,
+                                              Parameters->LineBased.SynchronizeIrql,
+                                              Parameters->LineBased.FloatingSave);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("IoConnectInterruptEx: line interrupt for PDO %p failed 0x%lx\n",
+                        Parameters->LineBased.PhysicalDeviceObject, Status);
+            }
+            return Status;
 
         case CONNECT_MESSAGE_BASED:
         case CONNECT_MESSAGE_BASED_PASSIVE:
@@ -1285,7 +1292,17 @@ IoConnectInterruptEx(
                                          MessageBased->SynchronizeIrql,
                                          MessageBased->FloatingSave);
     if (NT_SUCCESS(Status))
+    {
+        MessageTable = *MessageBased->ConnectionContext.InterruptMessageTable;
+        DPRINT1("IoConnectInterruptEx: PDO %p has %lu messages from vector 0x%lx\n",
+                MessageBased->PhysicalDeviceObject,
+                MessageTable->MessageCount,
+                MessageTable->MessageInfo[0].Vector);
         return Status;
+    }
+
+    DPRINT1("IoConnectInterruptEx: messages for PDO %p failed 0x%lx\n",
+            MessageBased->PhysicalDeviceObject, Status);
 
     if (MessageBased->FallBackServiceRoutine == NULL)
         return STATUS_NOT_SUPPORTED;
@@ -1299,6 +1316,8 @@ IoConnectInterruptEx(
                                       MessageBased->SynchronizeIrql,
                                       MessageBased->FloatingSave);
     Parameters->Version = CONNECT_LINE_BASED;
+    DPRINT1("IoConnectInterruptEx: line fallback for PDO %p returned 0x%lx\n",
+            MessageBased->PhysicalDeviceObject, Status);
 
     return Status;
 }
