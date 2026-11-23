@@ -771,8 +771,11 @@ FUNC KiUnexpectedInterrupt
     call KeBugCheckWithTf
     jmp $
 #endif
-    /* Only device vectors, from PRIMARY_VECTOR_BASE up, are in service at the local APIC */
+    /* The stub pushed the vector minus 128, sign extended */
     mov rax, [rbp + KTRAP_FRAME_ErrorCode]
+    add rax, 128
+
+    /* Only device vectors, from PRIMARY_VECTOR_BASE up, are in service at the local APIC */
     cmp rax, HEX(30)
     jb KiUnexpectedInterruptReturn
 
