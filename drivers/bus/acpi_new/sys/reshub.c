@@ -394,11 +394,12 @@ UacpiNtTranslateConnectionDescriptor(
     return Status;
 }
 
-/* Every started PDO is offered to the hub as a possible connection provider */
+/* Every started device with a namespace node is offered to the hub as a possible connection provider */
 VOID
 NTAPI
-UacpiNtRegisterBiosNameForPdo(
-    _In_ PUACPINT_PDO Pdo)
+UacpiNtRegisterBiosName(
+    _In_opt_ uacpi_namespace_node *Node,
+    _In_opt_ PDEVICE_OBJECT DeviceObject)
 {
     const uacpi_char *AbsolutePath;
     UNICODE_STRING PathUnicode;
@@ -408,7 +409,7 @@ UacpiNtRegisterBiosNameForPdo(
 
     PAGED_CODE();
 
-    if (!Pdo || !Pdo->Node || !Pdo->Shared.Self)
+    if (!Node || !DeviceObject)
         return;
 
     ExAcquireFastMutex(&HubInterfaceLock);
@@ -418,7 +419,7 @@ UacpiNtRegisterBiosNameForPdo(
     if (!Bound)
         return;
 
-    AbsolutePath = uacpi_namespace_node_generate_absolute_path(Pdo->Node);
+    AbsolutePath = uacpi_namespace_node_generate_absolute_path(Node);
     if (!AbsolutePath)
         return;
 
@@ -429,9 +430,18 @@ UacpiNtRegisterBiosNameForPdo(
     if (!NT_SUCCESS(Status))
         return;
 
-    Status = UacpiNtAddBiosNameDeviceAssociation(&PathUnicode, Pdo->Shared.Self);
+    Status = UacpiNtAddBiosNameDeviceAssociation(&PathUnicode, DeviceObject);
     if (NT_SUCCESS(Status))
-        DPRINT("uACPI-NT: %wZ registered with the hub as %p\n", &PathUnicode, Pdo->Shared.Self);
+        DPRINT("uACPI-NT: %wZ registered with the hub as %p\n", &PathUnicode, DeviceObject);
 
     RtlFreeUnicodeString(&PathUnicode);
+}
+
+VOID
+NTAPI
+UacpiNtRegisterBiosNameForPdo(
+    _In_ PUACPINT_PDO Pdo)
+{
+    if (Pdo)
+        UacpiNtRegisterBiosName(Pdo->Node, Pdo->Shared.Self);
 }

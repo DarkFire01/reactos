@@ -563,6 +563,12 @@ UacpiNtAddBiosNameDeviceAssociation(
 
 VOID
 NTAPI
+UacpiNtRegisterBiosName(
+    _In_opt_ uacpi_namespace_node *Node,
+    _In_opt_ PDEVICE_OBJECT DeviceObject);
+
+VOID
+NTAPI
 UacpiNtRegisterBiosNameForPdo(
     _In_ PUACPINT_PDO Pdo);
 

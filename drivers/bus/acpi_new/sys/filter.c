@@ -600,6 +600,9 @@ UacpiNtFilterPnp(
         case IRP_MN_QUERY_PNP_DEVICE_STATE:
             if (!Filter->StackStarted)
             {
+                /* A PCI controller can serve Connection() descriptors too, so the hub learns it before its dependents start */
+                UacpiNtRegisterBiosName(Filter->Node, Filter->ForeignPdo);
+
                 Filter->StackStarted = TRUE;
                 UacpiNtReleaseDependents(Filter->Fdo);
             }
