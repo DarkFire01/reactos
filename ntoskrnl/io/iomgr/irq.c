@@ -47,6 +47,16 @@ IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
 
     /* Get the affinity */
     Affinity = ProcessorEnableMask & KeActiveProcessors;
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+    /* A secondary line is dispatched from whichever processor runs its controller, one object serves it */
+    if (KiIsSecondaryVector(Vector))
+    {
+        Affinity &= ~(Affinity - 1);
+        ProcessorEnableMask = Affinity;
+    }
+#endif
+
     while (Affinity)
     {
         /* Increase count */
@@ -404,11 +414,19 @@ IopPassiveInterruptStub(
 
     UNREFERENCED_PARAMETER(Interrupt);
 
-    /* A secondary line is masked at its controller by the one that dispatches it */
-    if (!Passive->Masked && !IopIsSecondaryVector(VectorData))
+    if (!Passive->Masked)
     {
-        HalDisableSystemInterrupt(VectorData->Vector, VectorData->Irql);
-        Passive->Masked = TRUE;
+        /* A secondary line is masked at its pin, the controller's own line keeps serving the others */
+        if (IopIsSecondaryVector(VectorData))
+        {
+            if (HalMaskInterrupt && NT_SUCCESS(HalMaskInterrupt(VectorData->ControllerInput.Gsiv, 0)))
+                Passive->Masked = TRUE;
+        }
+        else
+        {
+            HalDisableSystemInterrupt(VectorData->Vector, VectorData->Irql);
+            Passive->Masked = TRUE;
+        }
     }
 
     KeInsertQueueDpc(&Passive->Dpc, NULL, NULL);
@@ -460,7 +478,10 @@ IopPassiveInterruptWorker(
         if (Passive->Masked)
         {
             Passive->Masked = FALSE;
-            HalEnableSystemInterrupt(VectorData->Vector, VectorData->Irql, VectorData->Mode);
+            if (IopIsSecondaryVector(VectorData))
+                HalUnmaskInterrupt(VectorData->ControllerInput.Gsiv, 0);
+            else
+                HalEnableSystemInterrupt(VectorData->Vector, VectorData->Irql, VectorData->Mode);
         }
     }
 

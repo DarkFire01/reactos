@@ -84,6 +84,10 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
     PKINTERRUPT ConnectedInterrupt;
     KIRQL OldIrql;
 
+    /* A secondary controller line has no IDT entry */
+    if (KiIsSecondaryVector(Interrupt->Vector))
+        return KiConnectSecondaryInterrupt(Interrupt);
+
     /* Validate the vector */
     if ((Interrupt->Vector < PRIMARY_VECTOR_BASE) ||
         (Interrupt->Vector > MAXIMUM_IDTVECTOR))
@@ -168,6 +172,9 @@ KeDisconnectInterrupt(IN PKINTERRUPT Interrupt)
     PVOID VectorHandler, UnexpectedHandler;
     PKINTERRUPT VectorFirstInterrupt, NextInterrupt;
     PLIST_ENTRY HandlerHead;
+
+    if (KiIsSecondaryVector(Interrupt->Vector))
+        return KiDisconnectSecondaryInterrupt(Interrupt);
 
     /* Set the system affinity and acquire the dispatcher lock */
     KeSetSystemAffinityThread(1ULL << Interrupt->Number);

@@ -613,6 +613,7 @@
 @ stdcall KeCapturePersistentThreadState(ptr ptr long ptr ptr ptr ptr ptr)
 @ stdcall KeClearEvent(ptr)
 @ stdcall KeConnectInterrupt(ptr)
+@ stdcall -arch=i386,x86_64 KeDispatchSecondaryInterrupt(long long)
 @ stdcall KeConvertAuxiliaryCounterToPerformanceCounter(int64 ptr ptr)
 @ stdcall KeConvertPerformanceCounterToAuxiliaryCounter(int64 ptr ptr)
 @ stdcall KeDelayExecutionThread(long long ptr)
@@ -657,6 +658,7 @@
 @ stdcall KeInitializeMutant(ptr long)
 @ stdcall KeInitializeMutex(ptr long)
 @ stdcall KeInitializeQueue(ptr long)
+@ stdcall -arch=i386,x86_64 KeInitializeSecondaryInterruptServices(ptr)
 @ stdcall KeInitializeSemaphore(ptr long long)
 @ stdcall -arch=i386,x86_64,arm,arm64 KeInitializeSpinLock(ptr) _KeInitializeSpinLock
 @ stdcall KeInitializeThreadedDpc(ptr ptr ptr)

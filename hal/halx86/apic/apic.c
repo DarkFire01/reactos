@@ -1394,6 +1394,14 @@ HalEnableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+
+    /* A secondary line is armed at its controller, its vector is past the IDT */
+    if (HalIsInterruptTypeSecondary &&
+        HalIsInterruptTypeSecondary(VectorData->Type, VectorData->ControllerInput.Gsiv))
+    {
+        return HalpEnableSecondaryLine(VectorData);
+    }
+
     Vector = VectorData->Vector;
     if (Vector > 0xFF)
     {
@@ -1503,6 +1511,13 @@ HalDisableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+
+    if (HalIsInterruptTypeSecondary &&
+        HalIsInterruptTypeSecondary(VectorData->Type, VectorData->ControllerInput.Gsiv))
+    {
+        return HalpDisableSecondaryLine(VectorData);
+    }
+
     Vector = VectorData->Vector;
     if (Vector > 0xFF)
     {

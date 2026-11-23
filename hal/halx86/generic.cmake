@@ -13,6 +13,7 @@ list(APPEND HAL_GENERIC_SOURCE
     generic/nmi.c
     generic/pic.c
     generic/reboot.c
+    generic/secint.c
     generic/sysinfo.c
     generic/usage.c
     generic/x86bios.c)

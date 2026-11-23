@@ -293,6 +293,26 @@ KeSignalCallDpcSynchronize(
     _In_ PVOID SystemArgument2
 );
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+//
+// Secondary Interrupt Controller Functions
+//
+NTKERNELAPI
+NTSTATUS
+NTAPI
+KeInitializeSecondaryInterruptServices(
+    _In_opt_ PVOID HalExports
+);
+
+NTKERNELAPI
+BOOLEAN
+NTAPI
+KeDispatchSecondaryInterrupt(
+    _In_ ULONG Vector,
+    _In_ ULONG Flags
+);
+#endif
+
 //
 // ARC Configuration Functions. Only enabled if you have ARC support.
 //

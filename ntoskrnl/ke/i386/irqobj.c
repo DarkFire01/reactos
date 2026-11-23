@@ -399,6 +399,10 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
     ULONG Vector;
     DISPATCH_INFO Dispatch;
 
+    /* A secondary controller line has no IDT entry */
+    if (KiIsSecondaryVector(Interrupt->Vector))
+        return KiConnectSecondaryInterrupt(Interrupt);
+
     /* Get data from interrupt */
     Number = Interrupt->Number;
     Vector = Interrupt->Vector;
@@ -502,6 +506,9 @@ KeDisconnectInterrupt(IN PKINTERRUPT Interrupt)
     DISPATCH_INFO Dispatch;
     PKINTERRUPT NextInterrupt;
     BOOLEAN State;
+
+    if (KiIsSecondaryVector(Interrupt->Vector))
+        return KiDisconnectSecondaryInterrupt(Interrupt);
 
     /* Set the affinity */
     KeSetSystemAffinityThread(1 << Interrupt->Number);

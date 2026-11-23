@@ -184,6 +184,25 @@ KeReadyThread(
     IN PKTHREAD Thread
 );
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+/* Secondary controller lines get vectors past the IDT, from 256 on */
+#define KI_SECONDARY_VECTOR_FIRST   256
+#define KI_SECONDARY_VECTOR_COUNT   256
+#define KiIsSecondaryVector(Vector) \
+    (((Vector) >= KI_SECONDARY_VECTOR_FIRST) && \
+     ((Vector) - KI_SECONDARY_VECTOR_FIRST < KI_SECONDARY_VECTOR_COUNT))
+
+BOOLEAN
+NTAPI
+KiConnectSecondaryInterrupt(
+    _Inout_ PKINTERRUPT Interrupt);
+
+BOOLEAN
+NTAPI
+KiDisconnectSecondaryInterrupt(
+    _Inout_ PKINTERRUPT Interrupt);
+#endif
+
 BOOLEAN
 NTAPI
 KeSetDisableBoostThread(

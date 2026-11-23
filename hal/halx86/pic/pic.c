@@ -1317,6 +1317,13 @@ HalEnableInterrupt(
         return STATUS_NOT_SUPPORTED;
     }
 
+    /* A secondary line is armed at its controller, its vector is past the IDT */
+    if (HalIsInterruptTypeSecondary &&
+        HalIsInterruptTypeSecondary(VectorData->Type, VectorData->ControllerInput.Gsiv))
+    {
+        return HalpEnableSecondaryLine(VectorData);
+    }
+
     if ((VectorData->ControllerInput.Gsiv >= 16) ||
         (VectorData->Vector != HalpIrqToVector((UCHAR)VectorData->ControllerInput.Gsiv)) ||
         (VectorData->Irql != HalpVectorToIrql((UCHAR)VectorData->Vector)))
@@ -1351,6 +1358,12 @@ HalDisableInterrupt(
     if (VectorData->Type != InterruptTypeControllerInput)
     {
         return STATUS_NOT_SUPPORTED;
+    }
+
+    if (HalIsInterruptTypeSecondary &&
+        HalIsInterruptTypeSecondary(VectorData->Type, VectorData->ControllerInput.Gsiv))
+    {
+        return HalpDisableSecondaryLine(VectorData);
     }
 
     if ((VectorData->ControllerInput.Gsiv >= 16) ||

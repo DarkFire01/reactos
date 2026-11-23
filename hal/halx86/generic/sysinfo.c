@@ -150,6 +150,10 @@ HaliQuerySystemInformation(IN HAL_QUERY_INFORMATION_CLASS InformationClass,
         {
             return HaliQueryProcessorBrandString((PCHAR)Buffer, BufferSize, ReturnedLength);
         }
+        case HalSecondaryInterruptInformation:
+        {
+            return HalpQuerySecondaryInformation(Buffer, BufferSize, ReturnedLength);
+        }
         REPORT_THIS_CASE(HalHypervisorInformation);
         REPORT_THIS_CASE(HalPlatformTimerInformation);
         REPORT_THIS_CASE(HalAcpiAuditInformation);
@@ -166,6 +170,9 @@ HaliSetSystemInformation(IN HAL_SET_INFORMATION_CLASS InformationClass,
                          IN ULONG BufferSize,
                          IN OUT PVOID Buffer)
 {
+    if (InformationClass == HalRegisterSecondaryInterruptInterface)
+        return HalpRegisterSecondaryProvider(Buffer, BufferSize);
+
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }

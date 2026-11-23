@@ -152,6 +152,9 @@ HalInitSystem(
         HalResetDisplay = HalpBiosDisplayReset;
         HalHaltSystem = HaliHaltSystem;
 
+        /* GPIO blocks and other secondary controllers find their GSIV range here */
+        HalpInitializeSecondaryInterrupts();
+
         /* Setup I/O space */
         HalpDefaultIoSpace.Next = HalpAddressUsageList;
         HalpAddressUsageList = &HalpDefaultIoSpace;
