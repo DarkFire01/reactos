@@ -753,7 +753,7 @@
 @ stdcall GetTempPathA(long ptr)
 @ stdcall GetTempPathW(long ptr)
 @ stdcall GetThreadContext(long ptr)
-@ stdcall GetThreadDescription(long ptr)
+@ stdcall -version=0xA00+ GetThreadDescription(ptr ptr)
 @ stdcall -version=0x600+ GetThreadErrorMode()
 @ stdcall GetThreadGroupAffinity(long ptr)
 @ stdcall GetThreadIOPendingFlag(long ptr)
@@ -1729,7 +1729,7 @@
 # @ stub VerifyPackageRelativeApplicationId
 # @ stub VerifyScripts
 @ stdcall -version=0xA00+ VirtualAlloc2(ptr ptr long long long ptr long)
-@ stdcall -stub -version=0xA00+ VirtualAlloc2FromApp(long ptr long long long ptr long)
+@ stdcall -version=0xA00+ VirtualAlloc2FromApp(ptr ptr long long long ptr long)
 @ stdcall VirtualAlloc(ptr long long long)
 @ stdcall VirtualAllocEx(long ptr long long long)
 @ stdcall -stub VirtualAllocExNuma(long ptr long long long long)

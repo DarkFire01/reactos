@@ -195,6 +195,29 @@ VirtualAlloc2(
     return VirtualAllocInRange(Process, Lowest, Highest, Alignment, Size, AllocationType, PageProtection);
 }
 
+/**
+ * @brief VirtualAlloc2 for app code, which may not ask for executable pages.
+ */
+PVOID
+WINAPI
+VirtualAlloc2FromApp(
+    _In_opt_ HANDLE Process,
+    _In_opt_ PVOID BaseAddress,
+    _In_ SIZE_T Size,
+    _In_ ULONG AllocationType,
+    _In_ ULONG PageProtection,
+    _Inout_updates_opt_(ParameterCount) MEM_EXTENDED_PARAMETER *ExtendedParameters,
+    _In_ ULONG ParameterCount)
+{
+    if (PageProtection & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+
+    return VirtualAlloc2(Process, BaseAddress, Size, AllocationType, PageProtection, ExtendedParameters, ParameterCount);
+}
+
 /*
  * @implemented
  */

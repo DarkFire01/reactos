@@ -557,6 +557,7 @@
 @ stdcall -version=0xA00+ GetSystemWow64Directory2W(ptr long long)
 @ stdcall -version=0xA00+ GetTempPath2A(long ptr)
 @ stdcall -version=0xA00+ GetTempPath2W(long ptr)
+@ stdcall -version=0xA00+ GetThreadDescription(ptr ptr)
 @ stdcall -version=0x601+ GetThreadIdealProcessorEx(ptr ptr)
 @ stdcall GetThreadInformation(long long ptr long)
 @ stdcall -version=0x601+ GetXStateFeaturesMask(ptr ptr)
@@ -1571,6 +1572,7 @@
 @ stdcall VerifyVersionInfoW(long long double)
 @ stdcall VirtualAlloc(ptr long long long)
 @ stdcall -version=0xA00+ VirtualAlloc2(ptr ptr long long long ptr long)
+@ stdcall -version=0xA00+ VirtualAlloc2FromApp(ptr ptr long long long ptr long)
 @ stdcall VirtualAllocEx(long ptr long long long)
 @ stub -version=0x600+ VirtualAllocExNuma
 @ stdcall VirtualFree(ptr long long)
