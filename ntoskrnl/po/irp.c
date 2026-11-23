@@ -205,6 +205,9 @@ PopTranslateDriverIrpPowerAction(
  * The type of power state, provided by the caller. This can be
  * either a device state or system state.
  *
+ * @param[in] SystemState
+ * The system state a system power IRP moves to. Ignored for device IRPs.
+ *
  * @return
  * Returns the system power state context which describes the
  * context of the system's current state.
@@ -215,7 +218,8 @@ PopTranslateDriverIrpPowerAction(
 static
 SYSTEM_POWER_STATE_CONTEXT
 PopBuildSystemPowerStateContext(
-    _In_ POWER_STATE_TYPE Type)
+    _In_ POWER_STATE_TYPE Type,
+    _In_ SYSTEM_POWER_STATE SystemState)
 {
     SYSTEM_POWER_STATE_CONTEXT StateContext;
 
@@ -240,8 +244,10 @@ PopBuildSystemPowerStateContext(
     }
     else
     {
-        /* I do not implement that yet */
-        ASSERT(FALSE);
+        /* A system transition always leaves S0 here, hibernate paths are not split out yet */
+        StateContext.TargetSystemState = SystemState;
+        StateContext.EffectiveSystemState = SystemState;
+        StateContext.CurrentSystemState = PowerSystemWorking;
     }
 
     return StateContext;
@@ -1821,7 +1827,7 @@ PopRequestPowerIrp(
         Stack->Parameters.Power.ShutdownType = PopTranslateDriverIrpPowerAction(&PopAction, FALSE);
 
         /* Fill in system power state context for the IRP */
-        Stack->Parameters.Power.SystemPowerStateContext = PopBuildSystemPowerStateContext(DevicePowerState);
+        Stack->Parameters.Power.SystemPowerStateContext = PopBuildSystemPowerStateContext(DevicePowerState, PowerSystemWorking);
     }
 
     /* Give the power IRP to the caller if asked */
@@ -1930,7 +1936,7 @@ PopRequestSystemPowerIrp(
     Stack->Parameters.Power.State = PowerState;
     Stack->Parameters.Power.SystemContext = 0;
     Stack->Parameters.Power.ShutdownType = ShutdownType;
-    Stack->Parameters.Power.SystemPowerStateContext = PopBuildSystemPowerStateContext(SystemPowerState);
+    Stack->Parameters.Power.SystemPowerStateContext = PopBuildSystemPowerStateContext(SystemPowerState, SystemState);
 
     IoSetCompletionRoutine(PwrIrp,
                            PopRequestPowerIrpCompletion,
