@@ -746,8 +746,8 @@ UacpiNtApicAllocateVector(
 }
 
 /*
- * Consecutive entries free on every processor, aligned to Count when it is
- * a power of two. Caller holds UacpiNtIrqLibLock.
+ * Consecutive entries free on every processor, aligned to the power of two at or
+ * above Count. Caller holds UacpiNtIrqLibLock.
  */
 static
 NTSTATUS
@@ -766,7 +766,8 @@ UacpiNtApicAllocateVectorRange(
     if (!UacpiNtProcessorIdtCount)
         return STATUS_UNSUCCESSFUL;
 
-    Alignment = (Count & (Count - 1)) ? 1 : Count;
+    /* MSI ORs the message number into the data, so the base has to be aligned to the run */
+    for (Alignment = 1; Alignment < Count; Alignment <<= 1);
     Candidate = (UACPINT_DEVICE_VECTOR_FIRST + Alignment - 1) & ~(Alignment - 1);
 
     for (; Candidate + Count - 1 <= UACPINT_DEVICE_VECTOR_LAST; Candidate += Alignment)
