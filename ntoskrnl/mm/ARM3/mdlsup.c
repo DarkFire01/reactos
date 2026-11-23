@@ -501,6 +501,106 @@ MmAllocatePagesForMdl(IN PHYSICAL_ADDRESS LowAddress,
                                  0);
 }
 
+/**
+ * @brief Fills an MDL with physically contiguous runs of ChunkPages pages, each aligned to its size.
+ *
+ * @return The MDL, possibly short of TotalBytes when memory ran out, or NULL when not one run was found.
+ */
+static
+PMDL
+MiAllocateChunksForMdl(
+    _In_ PFN_NUMBER LowPage,
+    _In_ PFN_NUMBER HighPage,
+    _In_ PFN_NUMBER ChunkPages,
+    _In_ BOOLEAN AlignChunks,
+    _In_ SIZE_T TotalBytes,
+    _In_ MEMORY_CACHING_TYPE CacheType,
+    _In_ ULONG Flags)
+{
+    PFN_NUMBER PageCount, PagesFound = 0, RunPages, Base, Page, NextLow;
+    PPFN_NUMBER MdlPage;
+    PMMPFN Pfn1;
+    KIRQL OldIrql;
+    PMDL Mdl;
+
+    PageCount = (PFN_NUMBER)ADDRESS_AND_SIZE_TO_SPAN_PAGES(0, TotalBytes);
+    if (PageCount == 0 || ChunkPages == 0)
+        return NULL;
+
+    Mdl = MmCreateMdl(NULL, NULL, PageCount << PAGE_SHIFT);
+    if (!Mdl)
+        return NULL;
+
+    MdlPage = (PPFN_NUMBER)(Mdl + 1);
+    NextLow = LowPage;
+
+    while (PagesFound < PageCount)
+    {
+        /* The last run only takes what is left */
+        RunPages = min(ChunkPages, PageCount - PagesFound);
+
+        /* Pick up after the previous run, the range below it is mostly taken */
+        Base = MiFindContiguousPages(NextLow,
+                                     HighPage,
+                                     AlignChunks ? ChunkPages : 0,
+                                     RunPages,
+                                     CacheType);
+        if (Base == 0 && NextLow != LowPage)
+        {
+            Base = MiFindContiguousPages(LowPage,
+                                         HighPage,
+                                         AlignChunks ? ChunkPages : 0,
+                                         RunPages,
+                                         CacheType);
+        }
+
+        if (Base == 0)
+            break;
+
+        NextLow = Base + RunPages;
+
+        /* The run comes back as a contiguous allocation, it is handed out as MDL pages */
+        OldIrql = MiAcquirePfnLock();
+        for (Page = Base; Page < Base + RunPages; Page++)
+        {
+            Pfn1 = MiGetPfnEntry(Page);
+            MI_SET_USAGE(MI_USAGE_MDL);
+            MI_SET_PROCESS2("Kernel");
+            Pfn1->PteAddress = NULL;
+            MI_SET_PFN_DELETED(Pfn1);
+            Pfn1->u4.PteFrame = 0x1FFEDCB;
+            Pfn1->u3.e1.StartOfAllocation = 1;
+            Pfn1->u3.e1.EndOfAllocation = 1;
+            Pfn1->u4.VerifierAllocation = 0;
+            *MdlPage++ = Page;
+        }
+        MiReleasePfnLock(OldIrql);
+
+        PagesFound += RunPages;
+    }
+
+    if (PagesFound == 0)
+    {
+        ExFreePoolWithTag(Mdl, TAG_MDL);
+        return NULL;
+    }
+
+    Mdl->ByteCount = (ULONG)(PagesFound << PAGE_SHIFT);
+    if (PagesFound != PageCount)
+        *MdlPage = LIST_HEAD;
+
+    /* A run's previous contents are unknown, so it is cleared unless the caller said not to */
+    if (!(Flags & MM_DONT_ZERO_ALLOCATION))
+    {
+        for (MdlPage = (PPFN_NUMBER)(Mdl + 1); MdlPage < (PPFN_NUMBER)(Mdl + 1) + PagesFound; MdlPage++)
+            MiZeroPhysicalPage(*MdlPage);
+    }
+
+    Mdl->Process = NULL;
+    Mdl->MdlFlags |= MDL_PAGES_LOCKED;
+    return Mdl;
+}
+
 /*
  * @implemented
  */
@@ -514,6 +614,7 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
                         IN ULONG Flags)
 {
     MI_PFN_CACHE_ATTRIBUTE CacheAttribute;
+    PFN_NUMBER LowPage, HighPage, ChunkPages;
     PMDL Mdl;
 
     //
@@ -537,25 +638,78 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
     //
     // Only these flags are allowed
     //
-    if (Flags & ~(MM_DONT_ZERO_ALLOCATION |
-                  MM_ALLOCATE_FROM_LOCAL_NODE_ONLY |
-                  MM_ALLOCATE_FULLY_REQUIRED))
+    /* Every flag up to the fast large pages one, 0x40 */
+    if (Flags & ~0x7F)
     {
-        //
-        // Silently fail
-        //
+        DPRINT1("MmAllocatePagesForMdlEx: flags 0x%lx are not supported\n", Flags);
         return NULL;
     }
 
-    //
-    // Call the internal routine
-    //
-    Mdl = MiAllocatePagesForMdl(LowAddress,
-                                HighAddress,
-                                SkipBytes,
-                                TotalBytes,
-                                CacheAttribute,
-                                Flags);
+    LowPage = (PFN_NUMBER)(LowAddress.QuadPart >> PAGE_SHIFT);
+    HighPage = (PFN_NUMBER)(HighAddress.QuadPart >> PAGE_SHIFT);
+    if (HighPage > MmHighestPhysicalPage)
+        HighPage = MmHighestPhysicalPage;
+
+    if (Flags & MM_ALLOCATE_REQUIRE_CONTIGUOUS_CHUNKS)
+    {
+        if (SkipBytes.QuadPart == 0)
+        {
+            /* No chunk size means the whole allocation is one run, and all of it */
+            Flags |= MM_ALLOCATE_FULLY_REQUIRED;
+            Mdl = MiAllocateChunksForMdl(LowPage, HighPage,
+                                         (PFN_NUMBER)ADDRESS_AND_SIZE_TO_SPAN_PAGES(0, TotalBytes),
+                                         FALSE, TotalBytes,
+                                         (CacheType > MmWriteCombined) ? MmCached : CacheType, Flags);
+        }
+        else
+        {
+            /* Otherwise SkipBytes is the chunk size, a power of two that divides the total */
+            if ((SkipBytes.QuadPart & (SkipBytes.QuadPart - 1)) ||
+                SkipBytes.QuadPart < PAGE_SIZE ||
+                (TotalBytes % SkipBytes.LowPart))
+            {
+                DPRINT1("MmAllocatePagesForMdlEx: chunk size 0x%I64x for 0x%Ix bytes is invalid\n",
+                        SkipBytes.QuadPart, TotalBytes);
+                return NULL;
+            }
+
+            ChunkPages = (PFN_NUMBER)(SkipBytes.QuadPart >> PAGE_SHIFT);
+            Mdl = MiAllocateChunksForMdl(LowPage, HighPage, ChunkPages, TRUE, TotalBytes,
+                                         (CacheType > MmWriteCombined) ? MmCached : CacheType, Flags);
+        }
+    }
+    else
+    {
+        Mdl = NULL;
+
+        /* One run when there is one, scattered pages otherwise */
+        if (Flags & MM_ALLOCATE_PREFER_CONTIGUOUS)
+        {
+            Mdl = MiAllocateChunksForMdl(LowPage, HighPage,
+                                         (PFN_NUMBER)ADDRESS_AND_SIZE_TO_SPAN_PAGES(0, TotalBytes),
+                                         FALSE, TotalBytes,
+                                         (CacheType > MmWriteCombined) ? MmCached : CacheType, Flags);
+            if (Mdl && Mdl->ByteCount < TotalBytes)
+            {
+                MmFreePagesFromMdl(Mdl);
+                ExFreePool(Mdl);
+                Mdl = NULL;
+            }
+        }
+
+        //
+        // Call the internal routine
+        //
+        if (!Mdl)
+        {
+            Mdl = MiAllocatePagesForMdl(LowAddress,
+                                        HighAddress,
+                                        SkipBytes,
+                                        TotalBytes,
+                                        CacheAttribute,
+                                        Flags);
+        }
+    }
 
     //
     // A caller that asked for all of it does not want part of it
@@ -564,10 +718,14 @@ MmAllocatePagesForMdlEx(IN PHYSICAL_ADDRESS LowAddress,
         (Flags & MM_ALLOCATE_FULLY_REQUIRED) &&
         (Mdl->ByteCount < TotalBytes))
     {
+        DPRINT1("MmAllocatePagesForMdlEx: 0x%Ix of 0x%Ix bytes with flags 0x%lx, failing\n", (SIZE_T)Mdl->ByteCount, TotalBytes, Flags);
         MmFreePagesFromMdl(Mdl);
         ExFreePool(Mdl);
         return NULL;
     }
+
+    if (Mdl == NULL)
+        DPRINT1("MmAllocatePagesForMdlEx: no pages for 0x%Ix bytes with flags 0x%lx\n", TotalBytes, Flags);
 
     return Mdl;
 }
