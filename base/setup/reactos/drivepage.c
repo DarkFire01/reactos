@@ -1644,6 +1644,122 @@ DoDeletePartition(
 }
 
 
+/**
+ * @brief Makes sure a UEFI installation will have an EFI system partition, asking first.
+ *
+ * With none on any disk, it offers to create one at the start of the selected free
+ * space and moves the selection to what is left. With one already there it names the
+ * partition the boot loader goes on. Nothing happens on BIOS, and unattended setup
+ * creates the partition without asking.
+ *
+ * @param[in] ConfirmExisting
+ * Whether an existing EFI system partition is shown to the user before it is used.
+ *
+ * @return FALSE when the user declined or the partition could not be created.
+ */
+static BOOLEAN
+PrepareEfiSystemPartition(
+    _In_ PSETUPDATA pSetupData,
+    _In_ HWND hwndDlg,
+    _In_ HWND hList,
+    _Inout_ HTLITEM* phItem,
+    _Inout_ PPARTITEM* pPartItem,
+    _In_ BOOLEAN ConfirmExisting)
+{
+    PPARTENTRY PartEntry = (*pPartItem)->PartEntry;
+    PPARTENTRY Esp;
+    HTLITEM hNextItem = NULL;
+
+    if (!IsUefiBoot())
+        return TRUE;
+
+    Esp = FindEfiSystemPartition(pSetupData->PartitionList, PartEntry->DiskEntry);
+
+    if (Esp && IsEfiSystemPartition(Esp))
+    {
+        if (!ConfirmExisting || pSetupData->bUnattend)
+            return TRUE;
+
+        return DisplayMessage(hwndDlg, MB_ICONINFORMATION | MB_OKCANCEL,
+                              L"EFI system partition",
+                              L"ReactOS will put its boot loader on partition %lu of disk %lu,\n"
+                              L"the EFI system partition (%I64u MB).\n"
+                              L"\nClick on OK to use it."
+                              L"\nClick on CANCEL to go back to the partitions list.",
+                              Esp->PartitionNumber,
+                              Esp->DiskEntry->DiskNumber,
+                              RoundingDivide(GetPartEntrySizeInBytes(Esp), MB)) == IDOK;
+    }
+
+    /* An existing partition is being installed to, so the system partition goes elsewhere */
+    if (PartEntry->IsPartitioned)
+    {
+        if (!ConfirmExisting || pSetupData->bUnattend)
+            return TRUE;
+
+        if (Esp)
+        {
+            return DisplayMessage(hwndDlg, MB_ICONINFORMATION | MB_OKCANCEL,
+                                  L"EFI system partition",
+                                  L"No disk has an EFI system partition yet. Setup will create\n"
+                                  L"a 100 MB one in the unpartitioned space of disk %lu.\n"
+                                  L"\nClick on OK to continue."
+                                  L"\nClick on CANCEL to go back to the partitions list.",
+                                  Esp->DiskEntry->DiskNumber) == IDOK;
+        }
+
+        return DisplayMessage(hwndDlg, MB_ICONWARNING | MB_OKCANCEL,
+                              L"EFI system partition",
+                              L"No disk has an EFI system partition, and there is no\n"
+                              L"unpartitioned space of 100 MB to create one in.\n"
+                              L"The computer may not be able to start ReactOS.\n"
+                              L"\nClick on OK to continue anyway."
+                              L"\nClick on CANCEL to go back to the partitions list.") == IDOK;
+    }
+
+    /* None anywhere yet, so it comes out of the front of the selected free space */
+    if (GetPartEntrySizeInBytes(PartEntry) <= EFI_SYSTEM_PARTITION_SIZE)
+    {
+        DisplayMessage(hwndDlg, MB_ICONERROR | MB_OK, NULL,
+                       L"This computer starts through UEFI and needs an EFI system partition,\n"
+                       L"but the selected space is too small to hold one and the installation.");
+        return FALSE;
+    }
+
+    if (!pSetupData->bUnattend &&
+        DisplayMessage(hwndDlg, MB_ICONQUESTION | MB_YESNO,
+                       L"EFI system partition",
+                       L"This computer starts through UEFI and needs an EFI system partition,\n"
+                       L"which none of the disks have yet.\n"
+                       L"\nCreate a 100 MB EFI system partition at the start of the selected space?") != IDYES)
+    {
+        return FALSE;
+    }
+
+    if (!DoCreatePartition(hList, pSetupData->PartitionList,
+                           phItem, pPartItem,
+                           EFI_SYSTEM_PARTITION_SIZE, PARTITION_SYSTEM, &hNextItem) ||
+        !hNextItem)
+    {
+        DisplayError(GetParent(hwndDlg),
+                     IDS_ERROR_CREATE_PARTITION_TITLE,
+                     IDS_ERROR_CREATE_PARTITION);
+        return FALSE;
+    }
+
+    /* Carry on in what is left of the region */
+    *phItem = hNextItem;
+    *pPartItem = GetItemPartition(hList, hNextItem);
+    if (!*pPartItem)
+    {
+        ASSERT(FALSE);
+        return FALSE;
+    }
+    TreeList_SelectItem(hList, hNextItem);
+
+    return TRUE;
+}
+
 static BOOLEAN
 SelectInstallPartition(
     _In_ PSETUPDATA pSetupData,
@@ -1696,50 +1812,50 @@ SelectInstallPartition(
             return FALSE; // Fail
     }
 
-    /* If this is an empty region, auto-create the partition if conditions are OK */
+    /* The system partition is settled before the installation takes any space */
+    if (!PrepareEfiSystemPartition(pSetupData, hwndDlg, hList, &hItem, &PartItem, TRUE))
+        return FALSE; // Fail
+    PartEntry = PartItem->PartEntry;
+
+    /* An empty region gets the install partition, sized by the user unless unattended */
     if (!PartEntry->IsPartitioned)
     {
         ULONGLONG SizeBytes = 0ULL;
-        ULONGLONG Reserved;
         ULONG Error;
 
-        /*
-         * Whatever the firmware needs for itself has to stay free, so the
-         * region is taken whole only when nothing has to be held back.
-         */
-        Reserved = GetSystemPartitionReserve(pSetupData->PartitionList, PartEntry);
-        if (Reserved != 0ULL)
+        if (!pSetupData->bUnattend)
         {
-            HTLITEM hNextItem = NULL;
+            PARTCREATE_CTX PartCreateCtx = {0};
+            ULONG MaxSizeMB;
 
-            if (GetPartEntrySizeInBytes(PartEntry) <= Reserved)
+            MaxSizeMB = (ULONG)RoundingDivide(GetPartEntrySizeInBytes(PartEntry), MB);
+
+            PartCreateCtx.PartItem = PartItem;
+            PartCreateCtx.MaxSizeMB = MaxSizeMB;
+
+            /* The installation needs a file system, so 'Do not format' is not offered */
+            PartCreateCtx.ForceFormat = TRUE;
+
+            if (DialogBoxParamW(pSetupData->hInstance,
+                                MAKEINTRESOURCEW(IDD_PARTITION),
+                                hwndDlg,
+                                PartitionDlgProc,
+                                (LPARAM)&PartCreateCtx) != IDOK)
+            {
+                return FALSE; // Fail
+            }
+
+            if (PartCreateCtx.MBRExtPart)
             {
                 DisplayMessage(hwndDlg, MB_ICONERROR | MB_OK, NULL,
-                               L"Could not create a partition on the selected disk region.");
+                               L"ReactOS cannot be installed on an extended partition.\n"
+                               L"Create the extended partition first, then select space inside it.");
                 return FALSE; // Fail
             }
 
-            /* Lay it down at the front of the region, ahead of the installation */
-            if (!DoCreatePartition(hList, pSetupData->PartitionList,
-                                   &hItem, &PartItem,
-                                   Reserved, PARTITION_SYSTEM, &hNextItem) ||
-                !hNextItem)
-            {
-                DisplayError(GetParent(hwndDlg),
-                             IDS_ERROR_CREATE_PARTITION_TITLE,
-                             IDS_ERROR_CREATE_PARTITION);
-                return FALSE; // Fail
-            }
-
-            /* Carry on in what is left of the region */
-            hItem = hNextItem;
-            PartItem = GetItemPartition(hList, hItem);
-            if (!PartItem)
-            {
-                ASSERT(FALSE);
-                return FALSE; // Fail
-            }
-            PartEntry = PartItem->PartEntry;
+            /* The whole region is asked for with 0, as the rounded MB size may miss the end */
+            if (PartCreateCtx.PartSizeMB < MaxSizeMB)
+                SizeBytes = (ULONGLONG)PartCreateCtx.PartSizeMB * MB;
         }
 
         Error = PartitionCreateChecks(PartEntry, SizeBytes, 0);
@@ -1751,8 +1867,7 @@ SelectInstallPartition(
             return FALSE; // Fail
         }
 
-        /* Automatically create the partition on the whole empty space;
-         * it will be formatted later with default parameters */
+        /* Create the install partition, formatted later as chosen above or by default */
         if (!DoCreatePartition(hList, pSetupData->PartitionList,
                                &hItem, &PartItem,
                                SizeBytes, 0, NULL))
@@ -1897,7 +2012,6 @@ DriveDlgProc(
                 PPARTENTRY PartEntry;
                 ULONGLONG PartSize;
                 ULONGLONG MaxPartSize;
-                ULONGLONG Reserved;
                 ULONG MaxSizeMB;
                 INT_PTR ret;
                 PARTCREATE_CTX PartCreateCtx = {0};
@@ -1920,25 +2034,16 @@ DriveDlgProc(
                 }
                 ASSERT(!PartEntry->Volume);
 
+                /* On UEFI with no EFI system partition anywhere, offer one first */
+                if (!PrepareEfiSystemPartition(pSetupData, hwndDlg, hList, &hItem, &PartItem, FALSE))
+                    break;
+                PartEntry = PartItem->PartEntry;
+
                 /* Get the partition info stored in the TreeList */
                 PartCreateCtx.PartItem = PartItem;
 
                 /* Retrieve the maximum size in MB (rounded up) the partition can have */
                 MaxPartSize = GetPartEntrySizeInBytes(PartEntry);
-
-                /*
-                 * Whatever the firmware needs for itself is not on offer, or the
-                 * installation would be left with nowhere to put its loader.
-                 */
-                Reserved = GetSystemPartitionReserve(pSetupData->PartitionList, PartEntry);
-                if (MaxPartSize <= Reserved)
-                {
-                    DisplayError(GetParent(hwndDlg),
-                                 IDS_ERROR_CREATE_PARTITION_TITLE,
-                                 IDS_ERROR_CREATE_PARTITION);
-                    break;
-                }
-                MaxPartSize -= Reserved;
 
                 MaxSizeMB = (ULONG)RoundingDivide(MaxPartSize, MB);
                 PartCreateCtx.MaxSizeMB = MaxSizeMB;
