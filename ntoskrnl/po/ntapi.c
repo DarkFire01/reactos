@@ -563,6 +563,46 @@ NtInitiatePowerAction(
 }
 
 /**
+ * @brief Answers the PlatformRole query, the FADT preferred profile or a guess from the batteries.
+ */
+static
+NTSTATUS
+PopQueryPlatformRole(
+    _In_opt_ PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_opt_(OutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _In_ KPROCESSOR_MODE PreviousMode)
+{
+    POWER_PLATFORM_ROLE Role;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    if ((InputBuffer && InputBufferLength) || !OutputBuffer || !OutputBufferLength)
+        return STATUS_INVALID_PARAMETER;
+
+    if (OutputBufferLength < sizeof(ULONG))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Role = PopPlatformRole;
+    if (Role == PlatformRoleUnspecified)
+        Role = PopCapabilities.SystemBatteriesPresent ? PlatformRoleMobile : PlatformRoleDesktop;
+
+    _SEH2_TRY
+    {
+        if (PreviousMode != KernelMode)
+            ProbeForWrite(OutputBuffer, sizeof(ULONG), sizeof(UCHAR));
+        *(PULONG)OutputBuffer = Role;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
+}
+
+/**
  * @brief
  * Queries information from the Power Manager or sets new information.
  *
@@ -630,6 +670,10 @@ NtPowerInformation(
         DPRINT1("The caller has no required privilege for this operation, bail out\n");
         return STATUS_PRIVILEGE_NOT_HELD;
     }
+
+    /* Its buffer rules differ from the generic ones below */
+    if (PowerInformationLevel == PlatformRole)
+        return PopQueryPlatformRole(InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength, PreviousMode);
 
     /* Probe the parameters depending on whether the caller queries or sets something */
     if (InputBuffer)

@@ -2463,6 +2463,7 @@ extern POBJECT_TYPE PoThermalRequestObjectType;
 extern BOOLEAN PopSimulate;
 extern BOOLEAN PopAcpiPresent;
 extern BOOLEAN PopAoAcPresent;
+extern POWER_PLATFORM_ROLE PopPlatformRole;
 extern BOOLEAN PopAoAcInStandby;
 extern WORK_QUEUE_ITEM PopUnlockMemoryWorkItem;
 extern KEVENT PopUnlockMemoryCompleteEvent;

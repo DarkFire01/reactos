@@ -19,6 +19,7 @@
 /* GLOBALS ********************************************************************/
 
 BOOLEAN PopAoAcPresent = FALSE;
+POWER_PLATFORM_ROLE PopPlatformRole = PlatformRoleUnspecified;
 
 /* The console display is off and the platform idles in connected standby */
 BOOLEAN PopAoAcInStandby = FALSE;
@@ -104,6 +105,16 @@ PopInitializeAoAc(
         return;
 
     Fadt = KdGetAcpiTablePhase0(LoaderBlock, FADT_SIGNATURE);
+
+    /* The preferred PM profile is the platform role, from FADT revision 3 on */
+    if (Fadt &&
+        Fadt->Header.Revision >= 3 &&
+        Fadt->Header.Length >= RTL_SIZEOF_THROUGH_FIELD(FADT, pm_profile) &&
+        Fadt->pm_profile < PlatformRoleMaximum)
+    {
+        PopPlatformRole = (POWER_PLATFORM_ROLE)Fadt->pm_profile;
+    }
+
     if (!Fadt ||
         Fadt->Header.Revision < POP_FADT_REVISION_LOW_POWER_S0 ||
         Fadt->Header.Length < RTL_SIZEOF_THROUGH_FIELD(FADT, flags))
