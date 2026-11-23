@@ -898,7 +898,7 @@ ExpLoadBootSymbols(
             RtlInitString(&ImageName, NameBuffer);
             DbgLoadImageSymbols(&ImageName,
                                 LdrEntry->DllBase,
-                                (ULONG_PTR)PsGetCurrentProcessId());
+                                (ULONG_PTR)-1);
         }
 
 #ifdef CONFIG_SMP

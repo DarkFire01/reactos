@@ -456,7 +456,7 @@ KdInitSystem(
                 RtlInitString(&ImageName, NameBuffer);
                 DbgLoadImageSymbols(&ImageName,
                                     LdrEntry->DllBase,
-                                    (ULONG_PTR)PsGetCurrentProcessId());
+                                    (ULONG_PTR)-1);
             }
 
             /* Check for incoming break-in and break on symbol load
