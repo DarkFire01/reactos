@@ -142,8 +142,15 @@ KdpSysReadBusData(
     _In_ ULONG Length,
     _Out_ PULONG ActualLength)
 {
-    UNIMPLEMENTED;
-    return STATUS_UNSUCCESSFUL;
+    /* The HAL knows every bus type, PCI configuration space above all */
+    *ActualLength = HalGetBusDataByOffset(BusDataType,
+                                          BusNumber,
+                                          SlotNumber,
+                                          Buffer,
+                                          Offset,
+                                          Length);
+
+    return (*ActualLength != 0) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
 NTSTATUS
@@ -157,8 +164,14 @@ KdpSysWriteBusData(
     _In_ ULONG Length,
     _Out_ PULONG ActualLength)
 {
-    UNIMPLEMENTED;
-    return STATUS_UNSUCCESSFUL;
+    *ActualLength = HalSetBusDataByOffset(BusDataType,
+                                          BusNumber,
+                                          SlotNumber,
+                                          Buffer,
+                                          Offset,
+                                          Length);
+
+    return (*ActualLength != 0) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
 NTSTATUS
