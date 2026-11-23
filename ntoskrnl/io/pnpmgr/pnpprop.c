@@ -124,6 +124,7 @@ static const PIP_BUILTIN_PROPERTY PipDeviceBuiltins[] =
     { &DEVPKEY_Device_UINumber,       DEVPROP_TYPE_UINT32,      PipSourceKeyValue,         PIP_PROP_READ_ONLY,       REGSTR_VAL_UI_NUMBER,            REG_DWORD },
     { &DEVPKEY_Device_UpperFilters,   DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,         0,                        REGSTR_VAL_UPPERFILTERS,         REG_MULTI_SZ },
     { &DEVPKEY_Device_LowerFilters,   DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,         0,                        REGSTR_VAL_LOWERFILTERS,         REG_MULTI_SZ },
+    { &DEVPKEY_Device_DebuggerSafe,   DEVPROP_TYPE_UINT32,      PipSourceKeyValue,         0,                        L"DebuggerSafe",                 REG_DWORD },
 
     { &DEVPKEY_NAME,                  DEVPROP_TYPE_STRING,      PipSourceDeviceNode,       PIP_PROP_READ_ONLY,       NULL, PipFieldName },
     { &DEVPKEY_Device_InstanceId,     DEVPROP_TYPE_STRING,      PipSourceDeviceNode,       PIP_PROP_READ_ONLY,       NULL, PipFieldInstanceId },

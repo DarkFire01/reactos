@@ -246,6 +246,32 @@ IopCopyCriticalDeviceFilters(
 }
 
 /**
+ * @brief
+ * Carries the opt in of a critical device's driver to share a function with the kernel debugger over to the device instance.
+ */
+static
+VOID
+NTAPI
+IopCopyCriticalDeviceDebuggerSafe(
+    _In_ HANDLE DatabaseEntryKey,
+    _In_ HANDLE InstanceKey)
+{
+    UNICODE_STRING ValueName = RTL_CONSTANT_STRING(L"DebuggerSafe");
+    UCHAR Buffer[FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) + sizeof(ULONG)];
+    PKEY_VALUE_PARTIAL_INFORMATION Info = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
+    ULONG Length;
+    NTSTATUS Status;
+
+    Status = ZwQueryValueKey(DatabaseEntryKey, &ValueName, KeyValuePartialInformation, Info, sizeof(Buffer), &Length);
+    if (!NT_SUCCESS(Status) || Info->Type != REG_DWORD || Info->DataLength != sizeof(ULONG))
+        return;
+
+    Status = ZwSetValueKey(InstanceKey, &ValueName, 0, REG_DWORD, Info->Data, sizeof(ULONG));
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Failed to set DebuggerSafe for a critical device (Status 0x%08lx)\n", Status);
+}
+
+/**
  * Names a critical device from its database entry, since the INF that would
  * otherwise describe it does not run until well after the device is started.
  */
@@ -615,6 +641,7 @@ IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
                     IopCopyCriticalDeviceFilters(ChildKeyHandle, InstanceKey);
                     IopCopyCriticalDeviceDescription(ChildKeyHandle, InstanceKey);
                     IopCopyCriticalDeviceParameters(ChildKeyHandle, InstanceKey);
+                    IopCopyCriticalDeviceDebuggerSafe(ChildKeyHandle, InstanceKey);
 
                     ExFreePool(OriginalIdBuffer);
                     ExFreePool(PartialInfo);

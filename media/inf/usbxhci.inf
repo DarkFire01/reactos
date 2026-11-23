@@ -67,7 +67,7 @@ USBXHCI.SYS
 
 [Generic.AddProperty]
 ; DEVPKEY_Device_DebuggerSafe, DEVPROP_TYPE_UINT32
-{a45c254e-df1c-4efd-8020-67d146a850e0},39,7,,1
+{540b947e-8b40-45bc-a8a2-6a0b894cbda2},12,7,,1
 
 [UCX.AddService]
 DisplayName    = "USB Controller Extension"
