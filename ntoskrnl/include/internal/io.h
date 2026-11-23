@@ -243,10 +243,12 @@ typedef struct _FILE_OBJECT_EXTENSION
  * IopIsValidPhysicalDeviceObject(
  *   IN PDEVICE_OBJECT PhysicalDeviceObject);
  */
+/* A PDO keeps its device node after surprise removal, only legacy resource nodes are not PDOs */
 #define IopIsValidPhysicalDeviceObject(PhysicalDeviceObject)                                                            \
-        (((PEXTENDED_DEVOBJ_EXTENSION)PhysicalDeviceObject) &&                                                          \
-        (((PEXTENDED_DEVOBJ_EXTENSION)PhysicalDeviceObject->DeviceObjectExtension)->DeviceNode) &&                      \
-        (((PEXTENDED_DEVOBJ_EXTENSION)PhysicalDeviceObject->DeviceObjectExtension)->DeviceNode->Flags & DNF_ENUMERATED))
+        ((PhysicalDeviceObject) &&                                                                                      \
+        (((PEXTENDED_DEVOBJ_EXTENSION)(PhysicalDeviceObject)->DeviceObjectExtension)->DeviceNode) &&                    \
+        !(((PEXTENDED_DEVOBJ_EXTENSION)(PhysicalDeviceObject)->DeviceObjectExtension)->DeviceNode->Flags &              \
+          DNF_LEGACY_RESOURCE_DEVICENODE))
 
 //
 // Device List Operations
