@@ -67,10 +67,10 @@ HidI2cEvaluateDsm(
     Argument = ACPI_METHOD_NEXT_ARGUMENT(Argument);
     ACPI_METHOD_SET_ARGUMENT_INTEGER(Argument, Function);
 
-    /* Neither function takes data, but the fourth argument is an empty package */
+    /* Neither function takes data, so the fourth argument is a package with no elements at all */
     Argument = ACPI_METHOD_NEXT_ARGUMENT(Argument);
-    ACPI_METHOD_SET_ARGUMENT_INTEGER(Argument, 0);
     Argument->Type = ACPI_METHOD_ARGUMENT_PACKAGE;
+    Argument->DataLength = 0;
 
     RtlZeroMemory(Output, sizeof(*Output));
     WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&InputMemory, Input, sizeof(*Input));
