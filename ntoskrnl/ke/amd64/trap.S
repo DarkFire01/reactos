@@ -771,7 +771,19 @@ FUNC KiUnexpectedInterrupt
     call KeBugCheckWithTf
     jmp $
 #endif
-    /* Return */
+    /* Only device vectors, from PRIMARY_VECTOR_BASE up, are in service at the local APIC */
+    mov rax, [rbp + KTRAP_FRAME_ErrorCode]
+    cmp rax, HEX(30)
+    jb KiUnexpectedInterruptReturn
+
+    /* Run at the vector's IRQL and retire it, or it blocks every vector below it */
+    shr rax, 4
+    mov cr8, rax
+    mov dword ptr [APIC_EOI], 0
+    movzx rax, byte ptr [rbp + KTRAP_FRAME_PreviousIrql]
+    mov cr8, rax
+
+KiUnexpectedInterruptReturn:
     ExitTrap TF_SAVE_ALL
 ENDFUNC
 
