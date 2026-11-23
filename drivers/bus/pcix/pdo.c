@@ -153,6 +153,50 @@ PciPdoIrpQueryPower(IN PIRP Irp,
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Logs the interrupts a device was given, so line versus message grants show in the log.
+ */
+static
+VOID
+PciLogGrantedInterrupts(
+    _In_opt_ PCM_RESOURCE_LIST Raw,
+    _In_opt_ PCM_RESOURCE_LIST Translated)
+{
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR RawDescriptor, Descriptor;
+    ULONG Index, Count;
+
+    if (Raw == NULL || Translated == NULL || Raw->Count == 0 || Translated->Count == 0)
+    {
+        DPRINT1("PCIX -   no interrupt\n");
+        return;
+    }
+
+    Count = min(Raw->List[0].PartialResourceList.Count, Translated->List[0].PartialResourceList.Count);
+    for (Index = 0; Index < Count; Index++)
+    {
+        RawDescriptor = &Raw->List[0].PartialResourceList.PartialDescriptors[Index];
+        Descriptor = &Translated->List[0].PartialResourceList.PartialDescriptors[Index];
+        if (Descriptor->Type != CmResourceTypeInterrupt)
+            continue;
+
+        if (Descriptor->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+        {
+            DPRINT1("PCIX -   message interrupt, %u message(s), vector 0x%lx level %lu\n",
+                    RawDescriptor->u.MessageInterrupt.Raw.MessageCount,
+                    Descriptor->u.MessageInterrupt.Translated.Vector,
+                    Descriptor->u.MessageInterrupt.Translated.Level);
+        }
+        else
+        {
+            DPRINT1("PCIX -   line interrupt %lu, vector 0x%lx level %lu, %s\n",
+                    RawDescriptor->u.Interrupt.Vector,
+                    Descriptor->u.Interrupt.Vector,
+                    Descriptor->u.Interrupt.Level,
+                    (Descriptor->Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? "edge" : "level");
+        }
+    }
+}
+
 NTSTATUS
 NTAPI
 PciPdoIrpStartDevice(IN PIRP Irp,
@@ -218,6 +262,9 @@ PciPdoIrpStartDevice(IN PIRP Irp,
                     DeviceExtension->Resources->Current[i].u.Generic.Length);
         }
     }
+
+    PciLogGrantedInterrupts(IoStackLocation->Parameters.StartDevice.AllocatedResources,
+                            IoStackLocation->Parameters.StartDevice.AllocatedResourcesTranslated);
 
     if (Changed)
     {
