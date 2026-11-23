@@ -23,8 +23,8 @@
 #define EXPORT NTAPI
 #endif
 
-/* NDIS 6.50, the oldest a WDI miniport registers with */
-#define NDIS_VERSION 0x00060032
+/* NDIS 6.82, the oldest runtime current Intel WDI miniports accept */
+#define NDIS_VERSION 0x00060052
 
 #define NDIS_TAG 'SIDN' // "NDIS"
 
