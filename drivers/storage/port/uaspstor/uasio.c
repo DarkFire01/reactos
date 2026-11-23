@@ -114,10 +114,16 @@ UaspFinishTransfer(
     Srb = Request->Srb;
     SrbStatus = Request->SrbStatus;
 
-    if (SRB_STATUS(SrbStatus) != SRB_STATUS_SUCCESS)
-        UaspLogFailure(Request, SrbStatus);
+    /* A short transfer is reported as an overrun and is normal, the class layer asks for more than it gets */
+    if (SRB_STATUS(SrbStatus) == SRB_STATUS_SUCCESS ||
+        (SRB_STATUS(SrbStatus) == SRB_STATUS_DATA_OVERRUN && Request->DataTransferred < Request->DataLength))
+    {
+        DPRINT("Tag %u done, %lu of %lu bytes\n", Request->Tag, Request->DataTransferred, Request->DataLength);
+    }
     else
-        DPRINT("Tag %u done, %lu bytes\n", Request->Tag, Request->DataTransferred);
+    {
+        UaspLogFailure(Request, SrbStatus);
+    }
 
     if (Request->HasData)
         SrbSetDataTransferLength(Srb, Request->DataTransferred);
