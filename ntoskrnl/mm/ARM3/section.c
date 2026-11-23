@@ -3951,7 +3951,16 @@ NtCreateSection(OUT PHANDLE SectionHandle,
                              AllocationAttributes,
                              FileHandle,
                              NULL);
-    if (!NT_SUCCESS(Status)) return Status;
+    if (!NT_SUCCESS(Status))
+    {
+        /* Drivers mapping firmware and data files get no other trace of a failure */
+        if (PreviousMode == KernelMode)
+        {
+            DPRINT1("Kernel section of 0x%I64x bytes, file %p, attributes 0x%lx failed 0x%lx\n",
+                    MaximumSize->QuadPart, FileHandle, AllocationAttributes, Status);
+        }
+        return Status;
+    }
 
     /* FIXME: Should zero last page for a file mapping */
 
@@ -4224,6 +4233,12 @@ NtMapViewOfSection(
                                 InheritDisposition,
                                 AllocationType,
                                 Win32Protect);
+
+    if (!NT_SUCCESS(Status) && PreviousMode == KernelMode)
+    {
+        DPRINT1("Kernel view of 0x%Ix bytes at offset 0x%I64x, protect 0x%lx failed 0x%lx\n",
+                SafeViewSize, SafeSectionOffset.QuadPart, Win32Protect, Status);
+    }
 
     /* Return data only on success */
     if (NT_SUCCESS(Status))
