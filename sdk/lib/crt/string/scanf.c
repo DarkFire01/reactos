@@ -109,6 +109,14 @@ static int wchar2digit(wchar_t c, int base) {
 #undef SECURE
 #include "scanf.h"
 
+/* vsnscanf_s_l */
+#undef WIDE_SCANF
+#undef CONSOLE
+#define STRING 1
+#define STRING_LEN 1
+#define SECURE 1
+#include "scanf.h"
+
 /* vsnwscanf_l */
 #define WIDE_SCANF 1
 #undef CONSOLE
@@ -308,6 +316,24 @@ int CDECL _snscanf(const char *input, size_t length, const char *format, ...)
 
     __ms_va_start(valist, format);
     res = vsnscanf_l(input, length, format, NULL, valist);
+    __ms_va_end(valist);
+    return res;
+}
+
+/*********************************************************************
+ *		_snscanf_s (MSVCRT.@)
+ */
+int CDECL _snscanf_s(const char *input, size_t length, const char *format, ...)
+{
+    __ms_va_list valist;
+    int res;
+
+    /* Windows fails a missing format with -1 instead of reading through it */
+    if (!format)
+        return -1;
+
+    __ms_va_start(valist, format);
+    res = vsnscanf_s_l(input, length, format, NULL, valist);
     __ms_va_end(valist);
     return res;
 }

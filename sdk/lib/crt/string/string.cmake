@@ -1,10 +1,17 @@
 
 list(APPEND LIBCNTPR_STRING_SOURCE
+    string/_makepath_s.c
     string/_splitpath.c
+    string/_splitpath_s.c
     string/_stricmp_nt.c
     string/_strlwr_nt.c
     string/_strnicmp_nt.c
+    string/_strnset_s.c
     string/_strupr_nt.c
+    string/_ultoa_s.c
+    string/_ultow_s.c
+    string/_wcsnset_s.c
+    string/_wmakepath_s.c
     string/_wsplitpath.c
     string/_wsplitpath_s.c
     string/atoi.c

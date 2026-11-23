@@ -1,0 +1,88 @@
+/*
+ * PROJECT:     ReactOS C runtime library
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     _strnset_s and _strset_s for the kernel runtime
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#include <string.h>
+#include <errno.h>
+
+/**
+ * @brief
+ * Sets at most Count characters of a string in a buffer of known size to one value.
+ *
+ * @param[in,out] String
+ * The buffer, holding a terminated string.
+ *
+ * @param[in] StringSize
+ * Its size, in characters.
+ *
+ * @param[in] Value
+ * The character to store.
+ *
+ * @param[in] Count
+ * How many characters to set at most.
+ *
+ * @return
+ * Zero on success. EINVAL for a missing buffer or one the string does not end
+ * in, the latter with an empty string left behind.
+ */
+errno_t
+__cdecl
+_strnset_s(
+    _Inout_updates_z_(StringSize) char *String,
+    _In_ size_t StringSize,
+    _In_ int Value,
+    _In_ size_t Count)
+{
+    size_t Index;
+
+    if (String == NULL)
+        return (Count == 0 && StringSize == 0) ? 0 : EINVAL;
+
+    if (StringSize == 0)
+        return EINVAL;
+
+    /* The terminator has to sit inside the buffer, even past the characters that change */
+    for (Index = 0; String[Index] != '\0'; Index++)
+    {
+        if (Index == StringSize - 1)
+        {
+            String[0] = '\0';
+            return EINVAL;
+        }
+
+        if (Index < Count)
+            String[Index] = (char)Value;
+    }
+
+    return 0;
+}
+
+/**
+ * @brief
+ * Sets every character of a string in a buffer of known size to one value.
+ *
+ * @param[in,out] String
+ * The buffer, holding a terminated string.
+ *
+ * @param[in] StringSize
+ * Its size, in characters.
+ *
+ * @param[in] Value
+ * The character to store.
+ *
+ * @return
+ * Zero on success. EINVAL for a missing buffer or one the string does not end
+ * in, the latter with an empty string left behind.
+ */
+errno_t
+__cdecl
+_strset_s(
+    _Inout_updates_z_(StringSize) char *String,
+    _In_ size_t StringSize,
+    _In_ int Value)
+{
+    return _strnset_s(String, StringSize, Value, (size_t)-1);
+}

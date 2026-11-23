@@ -44,6 +44,7 @@ _tsplitpath_x(
 #endif
 {
     const _TCHAR *src, *dir_start, *file_start = 0, *ext_start = 0;
+    _TCHAR *out;
     size_t count;
 #if !IS_SECAPI
     const size_t drive_size = INT_MAX, dir_size = INT_MAX,
@@ -51,13 +52,18 @@ _tsplitpath_x(
 #endif
 
 #if IS_SECAPI
-    /* Validate parameters */
+    /* Validate parameters, a size without its buffer is as bad as a buffer without a size */
     if (MSVCRT_CHECK_PMT((path == NULL) ||
-                         ((drive != NULL) && (drive_size == 0)) ||
-                         ((dir != NULL) &&  (dir_size == 0)) ||
-                         ((fname != NULL) && (fname_size == 0)) ||
-                         ((ext != NULL) && (ext_size == 0))))
+                         ((drive != NULL) != (drive_size != 0)) ||
+                         ((dir != NULL) != (dir_size != 0)) ||
+                         ((fname != NULL) != (fname_size != 0)) ||
+                         ((ext != NULL) != (ext_size != 0))))
     {
+        /* Every output that is usable still comes back empty */
+        if (drive && drive_size) drive[0] = '\0';
+        if (dir && dir_size) dir[0] = '\0';
+        if (fname && fname_size) fname[0] = '\0';
+        if (ext && ext_size) ext[0] = '\0';
 #ifndef _LIBCNT_
         errno = EINVAL;
 #endif
@@ -90,7 +96,12 @@ _tsplitpath_x(
         (path[2] == '?') && (path[3] == '\\')) path += 4;
 #endif
 
+#if IS_SECAPI
+    /* An empty path splits into empty parts */
+    if (path[0] == '\0') return 0;
+#else
     if (path[0] == '\0') return _FAILURE;
+#endif
 
     /* Check if we have a drive letter (only 1 char supported) */
     if (path[1] == ':')
@@ -141,44 +152,55 @@ _tsplitpath_x(
     if (!ext_start || (ext_start < file_start))
         ext_start = path;
 
-#if IS_SECAPI
-    /* A part that does not fit fails the call and leaves every output empty */
-    if ((dir && (size_t)(file_start - dir_start) >= dir_size) ||
-        (fname && (size_t)(ext_start - file_start) >= fname_size) ||
-        (ext && (size_t)(path - ext_start) >= ext_size))
-    {
-        if (drive) drive[0] = '\0';
-#ifndef _LIBCNT_
-        errno = ERANGE;
-#endif
-        return ERANGE;
-    }
-#endif
-
+    /* Parts are stored in order, the first one that does not fit empties them all */
     if (dir)
     {
+#if IS_SECAPI
+        if ((size_t)(file_start - dir_start) >= dir_size) goto TooSmall;
+#endif
         src = dir_start;
+        out = dir;
         count = dir_size - 1;
-        while ((src < file_start) && count--) *dir++ = *src++;
-        *dir = '\0';
+        while ((src < file_start) && count--) *out++ = *src++;
+        *out = '\0';
     }
 
     if (fname)
     {
+#if IS_SECAPI
+        if ((size_t)(ext_start - file_start) >= fname_size) goto TooSmall;
+#endif
         src = file_start;
+        out = fname;
         count = fname_size - 1;
-        while (src < ext_start && count--) *fname++ = *src++;
-        *fname = '\0';
+        while (src < ext_start && count--) *out++ = *src++;
+        *out = '\0';
     }
 
     if (ext)
     {
+#if IS_SECAPI
+        if ((size_t)(path - ext_start) >= ext_size) goto TooSmall;
+#endif
         src = ext_start;
+        out = ext;
         count = ext_size - 1;
-        while (*src != '\0' && count--) *ext++ = *src++;
-        *ext = '\0';
+        while (*src != '\0' && count--) *out++ = *src++;
+        *out = '\0';
     }
 
     return _SUCCESS;
+
+#if IS_SECAPI
+TooSmall:
+    if (drive) drive[0] = '\0';
+    if (dir) dir[0] = '\0';
+    if (fname) fname[0] = '\0';
+    if (ext) ext[0] = '\0';
+#ifndef _LIBCNT_
+    errno = ERANGE;
+#endif
+    return ERANGE;
+#endif
 }
 
