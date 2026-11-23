@@ -465,6 +465,11 @@ UacpiNtGetProcessorInfo(
 
 BOOLEAN
 NTAPI
+UacpiNtIsProcessorDevice(
+    _In_ uacpi_namespace_node *Node);
+
+BOOLEAN
+NTAPI
 UacpiNtHidIsPciRoot(
     _In_z_ const char *Hid);
 

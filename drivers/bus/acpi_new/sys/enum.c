@@ -168,6 +168,18 @@ UacpiNtGetProcessorInfo(
 
     RtlZeroMemory(Info, sizeof(*Info));
 
+    /* A Device(ACPI0007) has no processor block, its _UID is what the MADT names it by */
+    if (UacpiNtIsProcessorDevice(Node))
+    {
+        uacpi_u64 Uid;
+
+        if (uacpi_unlikely_error(uacpi_eval_simple_integer(Node, "_UID", &Uid)) || Uid > MAXUCHAR)
+            return FALSE;
+
+        Info->id = (uacpi_u8)Uid;
+        return TRUE;
+    }
+
     UacpiStatus = uacpi_eval_simple_typed(Node, NULL, UACPI_OBJECT_PROCESSOR_BIT, &Object);
     if (uacpi_unlikely_error(UacpiStatus) || !Object)
         return FALSE;
@@ -175,6 +187,21 @@ UacpiNtGetProcessorInfo(
     UacpiStatus = uacpi_object_get_processor_info(Object, Info);
     uacpi_object_unref(Object);
     return uacpi_likely_success(UacpiStatus);
+}
+
+/* Firmware declares processors either as Processor() objects or as these devices */
+BOOLEAN
+NTAPI
+UacpiNtIsProcessorDevice(
+    _In_ uacpi_namespace_node *Node)
+{
+    uacpi_object_type Type;
+    CHAR Hid[16];
+
+    if (uacpi_unlikely_error(uacpi_namespace_node_type(Node, &Type)) || Type != UACPI_OBJECT_DEVICE)
+        return FALSE;
+
+    return UacpiNtNodeReadHid(Node, Hid, sizeof(Hid)) && (_stricmp(Hid, "ACPI0007") == 0);
 }
 
 BOOLEAN
@@ -285,8 +312,8 @@ UacpiNtGetOrCreatePdo(
 
     /* acpi.sys builds no processor device without an ID string */
     if (!ThermalZone &&
-        uacpi_likely_success(uacpi_namespace_node_type(Node, &Type)) &&
-        Type == UACPI_OBJECT_PROCESSOR)
+        ((uacpi_likely_success(uacpi_namespace_node_type(Node, &Type)) && Type == UACPI_OBJECT_PROCESSOR) ||
+         UacpiNtIsProcessorDevice(Node)))
     {
         if (UacpiNtProcessorString[0] == ANSI_NULL)
             return NULL;
