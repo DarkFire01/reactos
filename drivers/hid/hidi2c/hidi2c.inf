@@ -1,0 +1,65 @@
+; HID over I2C devices
+
+[Version]
+Signature="$Windows NT$"
+Class=HIDClass
+ClassGUID={745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
+Provider=%ReactOS%
+DriverVer=11/22/2026,1.0
+
+[SourceDisksFiles]
+hidi2c.sys    = 3426
+mshidkmdf.sys = 3426
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%GenericMfg%=Generic
+
+[Generic]
+%HidI2c.DeviceDesc%=HidI2c_Inst,ACPI\PNP0C50
+%HidI2c.DeviceDesc%=HidI2c_Inst,ACPI\ACPI0C50
+
+[HidI2c_Inst.NT]
+CopyFiles=HidI2c_CopyFiles
+
+[HidI2c_CopyFiles]
+hidi2c.sys
+mshidkmdf.sys
+
+[HidI2c_Inst.NT.HW]
+AddReg=HidI2c_Filter_AddReg
+
+[HidI2c_Filter_AddReg]
+HKR,,"LowerFilters",0x00010000,"hidi2c"
+
+[HidI2c_Inst.NT.Services]
+AddService=mshidkmdf,0x00000002,MsHidKmdf_Service
+AddService=hidi2c,,HidI2c_Service
+
+[MsHidKmdf_Service]
+DisplayName    = %MsHidKmdf.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\mshidkmdf.sys
+LoadOrderGroup = Extended Base
+
+[HidI2c_Service]
+DisplayName    = %HidI2c.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\hidi2c.sys
+LoadOrderGroup = Extended Base
+
+[Strings]
+ReactOS="ReactOS Project"
+GenericMfg="(Standard system devices)"
+HidI2c.DeviceDesc="I2C HID Device"
+HidI2c.ServiceDesc="HID over I2C Miniport Driver"
+MsHidKmdf.ServiceDesc="Pass-through HID to KMDF Filter Driver"

@@ -1,0 +1,15 @@
+; HID over I2C miniport, below mshidkmdf
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\hidi2c","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\hidi2c","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\hidi2c","ImagePath",0x00020000,"system32\drivers\hidi2c.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\hidi2c","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\hidi2c","Type",0x00010001,0x00000001
+
+; Critical devices, so I2C touchpads and keyboards start at boot without an INF install
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#PNP0C50","Service",0x00000000,"mshidkmdf"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#PNP0C50","LowerFilters",0x00010000,"hidi2c"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#PNP0C50","ClassGUID",0x00000000,"{745A17A0-74D3-11D0-B6FE-00A0C90F57DA}"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0C50","Service",0x00000000,"mshidkmdf"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0C50","LowerFilters",0x00010000,"hidi2c"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#ACPI0C50","ClassGUID",0x00000000,"{745A17A0-74D3-11D0-B6FE-00A0C90F57DA}"
