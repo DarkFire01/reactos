@@ -35,68 +35,69 @@ HKR, , Icon,           0, "-28"
 %CyrixProcessor.DeviceDesc% = Processr_Inst,ACPI\CyrixInstead_-_x86
 
 [Intel]
-%IntelProcessor.DeviceDesc%       = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_1
-%IntelProcessor.DeviceDesc%       = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_2
-%IntelProcessor.DeviceDesc%       = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_3
-%IntelMMXProcessor.DeviceDesc%    = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_4
-%IntelMMXProcessor.DeviceDesc%    = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_7
-%IntelMMXProcessor.DeviceDesc%    = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_8
-%IntelPROProcessor.DeviceDesc%    = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_1
-%IntelP2Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_3
-%IntelP2Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_5
-%IntelP2Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_6
-%IntelP3Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_7
-%IntelP3Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_8
-%IntelMProcessor.DeviceDesc%      = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_9
-%IntelP3Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_10
-%IntelP3Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_11
-%IntelMProcessor.DeviceDesc%      = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_13
-%IntelCoreProcessor.DeviceDesc%   = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_14
-%IntelCoreProcessor.DeviceDesc%   = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_15
-%IntelCoreProcessor.DeviceDesc%   = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_22
-%IntelCoreProcessor.DeviceDesc%   = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_23
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_26
-%IntelAtomProcessor.DeviceDesc%   = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_28
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_30
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_37
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_125
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_126
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_140
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_141
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_142
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_151
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_154
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_158
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_165
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_166
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_167
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_170
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_173
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_183
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_186
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_189
-%IntelCoreiXProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_191
-%IntelP4Processor.DeviceDesc%     = Processr_Inst,ACPI\GenuineIntel_-_x86_Family_15
-%IntelProcessor.DeviceDesc%       = Processr_Inst,ACPI\GenuineIntel_-_x86
+%IntelProcessor.DeviceDesc%       = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_1
+%IntelProcessor.DeviceDesc%       = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_2
+%IntelProcessor.DeviceDesc%       = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_3
+%IntelMMXProcessor.DeviceDesc%    = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_4
+%IntelMMXProcessor.DeviceDesc%    = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_7
+%IntelMMXProcessor.DeviceDesc%    = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_5_model_8
+%IntelPROProcessor.DeviceDesc%    = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_1
+%IntelP2Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_3
+%IntelP2Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_5
+%IntelP2Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_6
+%IntelP3Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_7
+%IntelP3Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_8
+%IntelMProcessor.DeviceDesc%      = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_9
+%IntelP3Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_10
+%IntelP3Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_11
+%IntelMProcessor.DeviceDesc%      = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_13
+%IntelCoreProcessor.DeviceDesc%   = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_14
+%IntelCoreProcessor.DeviceDesc%   = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_15
+%IntelCoreProcessor.DeviceDesc%   = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_22
+%IntelCoreProcessor.DeviceDesc%   = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_23
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_26
+%IntelAtomProcessor.DeviceDesc%   = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_28
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_30
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_37
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_125
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_126
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_140
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_141
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_142
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_151
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_154
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_158
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_165
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_166
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_167
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_170
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_173
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_183
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_186
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_189
+%IntelCoreiXProcessor.DeviceDesc% = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_6_Model_191
+%IntelP4Processor.DeviceDesc%     = IntelPPM_Inst,ACPI\GenuineIntel_-_x86_Family_15
+%IntelProcessor.DeviceDesc%       = IntelPPM_Inst,ACPI\GenuineIntel_-_x86
 
 [Intel.NTAMD64]
-%IntelProcessor.DeviceDesc%       = Processr_Inst,ACPI\GenuineIntel_-_EM64T
+%IntelProcessor.DeviceDesc%       = IntelPPM_Inst,ACPI\GenuineIntel_-_EM64T
+%IntelProcessor.DeviceDesc%       = IntelPPM_Inst,ACPI\GenuineIntel_-_Intel64
 
 [AMD]
-%AMDK6Processor.DeviceDesc%   = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_7
-%AMDK62Processor.DeviceDesc%  = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_8
-%AMDK63Processor.DeviceDesc%  = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_9
-%AMDK63Processor.DeviceDesc%  = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_10
-%AMDK63Processor.DeviceDesc%  = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_13
-%AMDK7Processor.DeviceDesc%   = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_6
-%AMDK8Processor.DeviceDesc%   = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_15
-%AMDPHENProcessor.DeviceDesc% = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_16
-%AMDQProcessor.DeviceDesc%    = Processr_Inst,ACPI\AuthenticAMD_-_x86_Family_17
-%AMDProcessor.DeviceDesc%     = Processr_Inst,ACPI\AuthenticAMD_-_x86
+%AMDK6Processor.DeviceDesc%   = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_7
+%AMDK62Processor.DeviceDesc%  = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_8
+%AMDK63Processor.DeviceDesc%  = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_9
+%AMDK63Processor.DeviceDesc%  = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_10
+%AMDK63Processor.DeviceDesc%  = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_5_Model_13
+%AMDK7Processor.DeviceDesc%   = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_6
+%AMDK8Processor.DeviceDesc%   = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_15
+%AMDPHENProcessor.DeviceDesc% = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_16
+%AMDQProcessor.DeviceDesc%    = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86_Family_17
+%AMDProcessor.DeviceDesc%     = AmdPPM_Inst,ACPI\AuthenticAMD_-_x86
 
 [AMD.NTAMD64]
-%AMDK8Processor.DeviceDesc%   = Processr_Inst,ACPI\AuthenticAMD_-_AMD64_Family_15
-%AMDProcessor.DeviceDesc%     = Processr_Inst,ACPI\AuthenticAMD_-_AMD64
+%AMDK8Processor.DeviceDesc%   = AmdPPM_Inst,ACPI\AuthenticAMD_-_AMD64_Family_15
+%AMDProcessor.DeviceDesc%     = AmdPPM_Inst,ACPI\AuthenticAMD_-_AMD64
 
 [Transmeta]
 %TransmetaProcessor.DeviceDesc% = Processr_Inst,ACPI\GenuineTMx86_-_x86
@@ -134,6 +135,46 @@ ErrorControl   = 1
 ServiceBinary  = %12%\processr.sys
 LoadOrderGroup = Extended Base
 
+;---------------------------- IntelPPM Driver ---------------------------
+
+[IntelPPM_Inst.NT]
+CopyFiles = IntelPPM_Inst.CopyFiles.NT
+AddReg = Processr_Inst.AddReg.NT
+
+[IntelPPM_Inst.CopyFiles.NT]
+intelppm.sys
+
+[IntelPPM_Inst.NT.Services]
+AddService = intelppm, 0x00000002, IntelPPM_Service_Inst
+
+[IntelPPM_Service_Inst]
+DisplayName    = %IntelPPM.ServiceDesc%
+ServiceType    = 1
+StartType      = 1
+ErrorControl   = 1
+ServiceBinary  = %12%\intelppm.sys
+LoadOrderGroup = Extended Base
+
+;----------------------------- AmdPPM Driver ----------------------------
+
+[AmdPPM_Inst.NT]
+CopyFiles = AmdPPM_Inst.CopyFiles.NT
+AddReg = Processr_Inst.AddReg.NT
+
+[AmdPPM_Inst.CopyFiles.NT]
+amdppm.sys
+
+[AmdPPM_Inst.NT.Services]
+AddService = amdppm, 0x00000002, AmdPPM_Service_Inst
+
+[AmdPPM_Service_Inst]
+DisplayName    = %AmdPPM.ServiceDesc%
+ServiceType    = 1
+StartType      = 1
+ErrorControl   = 1
+ServiceBinary  = %12%mdppm.sys
+LoadOrderGroup = Extended Base
+
 ;-------------------------------- STRINGS -------------------------------
 
 [Strings]
@@ -151,6 +192,8 @@ ProcessorClassName = "Processors"
 
 Processor.DeviceDesc = "Processor"
 Processor.ServiceDesc = "Processor driver"
+IntelPPM.ServiceDesc = "Intel Processor Driver"
+AmdPPM.ServiceDesc = "AMD Processor Driver"
 CyrixProcessor.DeviceDesc = "Cyrix 6x86 Processor"
 IntelProcessor.DeviceDesc = "Intel Pentium Processor"
 IntelMMXProcessor.DeviceDesc = "Intel Pentium MMX Processor"
