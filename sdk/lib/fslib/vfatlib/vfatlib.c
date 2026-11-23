@@ -245,14 +245,14 @@ VfatFormat(
             /* FAT16 partition (partition size < 512MB) */
             FatType = FAT_16;
         }
-        else if (PartitionInfo.PartitionLength.QuadPart <= (32LL * 1024LL * 1024LL * 1024LL))
+        else if ((ULONGLONG)PartitionInfo.PartitionLength.QuadPart / DiskGeometry.BytesPerSector <= MAXULONG)
         {
-            /* FAT32 partition (partition size < 32GB) */
+            /* FAT32 partition, up to what its 32 bit sector count can describe */
             FatType = FAT_32;
         }
         else
         {
-            DPRINT1("The partition ist too large (> 32 GB) for the FAT file system!\n");
+            DPRINT1("The partition is larger than a FAT32 volume can describe\n");
             NtClose(FileHandle);
             return FALSE;
         }
