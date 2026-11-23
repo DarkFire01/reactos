@@ -1310,6 +1310,16 @@ AddPartitionToDisk(
         return;
     }
 
+    /* On GPT nothing may start inside the header and entry array, such an entry is damage */
+    if (IsGpt && DiskEntry->LayoutBuffer &&
+        (DiskEntry->LayoutBuffer->Gpt.StartingUsableOffset.QuadPart != 0) &&
+        (PartitionInfo->StartingOffset.QuadPart < DiskEntry->LayoutBuffer->Gpt.StartingUsableOffset.QuadPart))
+    {
+        DPRINT1("Partition %lu of disk %lu starts at %I64d, inside the GPT, ignoring it\n",
+                PartitionIndex, DiskNumber, PartitionInfo->StartingOffset.QuadPart);
+        return;
+    }
+
     PartEntry = RtlAllocateHeap(ProcessHeap,
                                 HEAP_ZERO_MEMORY,
                                 sizeof(PARTENTRY));
@@ -3046,12 +3056,20 @@ UpdateGPTDiskLayout(
         Index++;
     }
 
-    /* Everything past the last partition names nothing */
+    /*
+     * Everything past the last partition names nothing. An entry left over from
+     * an MBR layout has no offset or length but its bytes overlay the type GUID,
+     * so it is wiped as well, or it would be written out as a partition.
+     */
     for (; Index < DiskEntry->LayoutBuffer->PartitionCount; Index++)
     {
         PartitionInfo = GetLayoutEntry(DiskEntry, Index);
-        if (!IsEmptyLayoutEntry(PartitionInfo))
+        if (!IsEmptyLayoutEntry(PartitionInfo) ||
+            (PartitionInfo->PartitionStyle != PARTITION_STYLE_GPT) ||
+            !IsEqualGUID(&PartitionInfo->Gpt.PartitionType, &PARTITION_ENTRY_UNUSED_GUID))
+        {
             WipeLayoutEntry(DiskEntry, PartitionInfo);
+        }
     }
 }
 
@@ -3748,6 +3766,10 @@ DeletePartition(
         if (FreeRegion)
             *FreeRegion = PartEntry;
     }
+
+    /* A merged region inherits the old starts, which on GPT must stay clear of the table */
+    if (IsGPTDisk(DiskEntry))
+        ClampFreeRegions(DiskEntry);
 
     UpdateDiskLayout(DiskEntry);
     AssignDriveLetters(List);
