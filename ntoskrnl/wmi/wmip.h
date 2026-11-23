@@ -16,6 +16,8 @@ typedef struct _WMIP_GUID_OBJECT
     GUID Guid;
     PIRP Irp;
     LIST_ENTRY IrpLink;
+    WMI_NOTIFICATION_CALLBACK NotificationCallback;
+    PVOID NotificationContext;
 } WMIP_GUID_OBJECT, *PWMIP_GUID_OBJECT;
 
 

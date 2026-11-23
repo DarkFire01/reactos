@@ -453,7 +453,8 @@ EtwpPrintEvent(
 {
     const UCHAR *Bytes;
     CHAR Hex[3 * 16 + 1];
-    ULONG Index;
+    ULONG Index, Field;
+    ULONG64 Value;
 
     for (Index = 0; Data && Index < DataCount && Index < 2; Index++)
     {
@@ -475,23 +476,37 @@ EtwpPrintEvent(
         }
     }
 
-    /* A manifest event, only its identity and first bytes mean anything here */
-    Hex[0] = ANSI_NULL;
-    if (Data && DataCount && Data[0].Ptr)
-    {
-        Bytes = (const UCHAR *)(ULONG_PTR)Data[0].Ptr;
-        for (Index = 0; Index < Data[0].Size && Index < 16; Index++)
-            RtlStringCbPrintfA(Hex + Index * 3, sizeof(Hex) - Index * 3, "%02x ", Bytes[Index]);
-    }
-
-    DbgPrint("ETW %s{%08lx-%04x-%04x} event %u L%u: %s\n",
+    DbgPrint("ETW %s{%08lx-%04x-%04x} event %u L%u:\n",
              Provider->Name,
              Provider->ProviderId.Data1,
              Provider->ProviderId.Data2,
              Provider->ProviderId.Data3,
              EventDescriptor->Id,
-             EventDescriptor->Level,
-             Hex);
+             EventDescriptor->Level);
+
+    /* A manifest event has one descriptor per template field, small ones are shown as numbers */
+    for (Field = 0; Data && Field < DataCount && Field < 12; Field++)
+    {
+        Bytes = (const UCHAR *)(ULONG_PTR)Data[Field].Ptr;
+        if (!Bytes || !Data[Field].Size)
+        {
+            DbgPrint("    [%lu] empty\n", Field);
+            continue;
+        }
+
+        if (Data[Field].Size <= sizeof(ULONG64))
+        {
+            Value = 0;
+            RtlCopyMemory(&Value, Bytes, Data[Field].Size);
+            DbgPrint("    [%lu] 0x%I64x (%lu bytes)\n", Field, Value, Data[Field].Size);
+            continue;
+        }
+
+        Hex[0] = ANSI_NULL;
+        for (Index = 0; Index < Data[Field].Size && Index < 16; Index++)
+            RtlStringCbPrintfA(Hex + Index * 3, sizeof(Hex) - Index * 3, "%02x ", Bytes[Index]);
+        DbgPrint("    [%lu] %s(%lu bytes)\n", Field, Hex, Data[Field].Size);
+    }
 }
 
 _IRQL_requires_max_(HIGH_LEVEL)

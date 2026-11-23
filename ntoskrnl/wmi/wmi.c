@@ -239,7 +239,8 @@ IoWMIQueryAllData(
     }
     else
     {
-        Status = STATUS_NOT_SUPPORTED;
+        /* No data provider ever registers a block here, so none is found */
+        Status = STATUS_WMI_GUID_NOT_FOUND;
     }
 
     ObDereferenceObject(DataBlockObject);
@@ -257,8 +258,8 @@ IoWMIQueryAllDataMultiple(IN PVOID *DataBlockObjectList,
                           IN OUT ULONG *InOutBufferSize,
                           OUT PVOID OutBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    /* No data provider ever registers a block here, so none is found */
+    return STATUS_WMI_GUID_NOT_FOUND;
 }
 
 /*
@@ -271,8 +272,8 @@ IoWMIQuerySingleInstance(IN PVOID DataBlockObject,
                          IN OUT ULONG *InOutBufferSize,
                          OUT PVOID OutBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    /* No data provider ever registers a block here, so none is found */
+    return STATUS_WMI_GUID_NOT_FOUND;
 }
 
 /*
@@ -286,8 +287,8 @@ IoWMIQuerySingleInstanceMultiple(IN PVOID *DataBlockObjectList,
                                  IN OUT ULONG *InOutBufferSize,
                                  OUT PVOID OutBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    /* No data provider ever registers a block here, so none is found */
+    return STATUS_WMI_GUID_NOT_FOUND;
 }
 
 /*
@@ -301,8 +302,8 @@ IoWMISetSingleInstance(IN PVOID DataBlockObject,
                        IN ULONG ValueBufferSize,
                        IN PVOID ValueBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    /* No data provider ever registers a block here, so none is found */
+    return STATUS_WMI_GUID_NOT_FOUND;
 }
 
 /*
@@ -317,8 +318,8 @@ IoWMISetSingleItem(IN PVOID DataBlockObject,
                    IN ULONG ValueBufferSize,
                    IN PVOID ValueBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    /* No data provider ever registers a block here, so none is found */
+    return STATUS_WMI_GUID_NOT_FOUND;
 }
 
 /*
@@ -333,21 +334,31 @@ IoWMIExecuteMethod(IN PVOID DataBlockObject,
                    IN OUT PULONG OutBufferSize,
                    IN OUT PUCHAR InOutBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    /* No data provider ever registers a block here, so none is found */
+    return STATUS_WMI_GUID_NOT_FOUND;
 }
 
-/*
- * @unimplemented
+static KSPIN_LOCK WmipNotificationLock;
+
+/**
+ * @brief Records the routine that receives the events of an opened WMI data block.
  */
 NTSTATUS
 NTAPI
-IoWMISetNotificationCallback(IN PVOID Object,
-                             IN WMI_NOTIFICATION_CALLBACK Callback,
-                             IN PVOID Context)
+IoWMISetNotificationCallback(
+    _Inout_ PVOID Object,
+    _In_ WMI_NOTIFICATION_CALLBACK Callback,
+    _In_opt_ PVOID Context)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    PWMIP_GUID_OBJECT GuidObject = Object;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&WmipNotificationLock, &OldIrql);
+    GuidObject->NotificationCallback = Callback;
+    GuidObject->NotificationContext = Context;
+    KeReleaseSpinLock(&WmipNotificationLock, OldIrql);
+
+    return STATUS_SUCCESS;
 }
 
 /*
