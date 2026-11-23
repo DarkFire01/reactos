@@ -554,6 +554,20 @@ ExpQueryExtendedSystemWatchdogTimerInformation( // 72
     return STATUS_SUCCESS;
 }
 
+/* Every processor shares one package where the topology is not read */
+static
+KAFFINITY
+ExpProcessorPackageSet(
+    _In_ PKPRCB Prcb)
+{
+#if defined(_M_IX86) || defined(_M_AMD64)
+    return Prcb->PackageProcessorSet;
+#else
+    UNREFERENCED_PARAMETER(Prcb);
+    return KeActiveProcessors;
+#endif
+}
+
 static __inline BOOLEAN IsPowerOf2(IN ULONG Number)
 {
     if (Number == 0)
@@ -622,7 +636,7 @@ ExpCopyLogicalProcessorInformationProcessorCore(
     if ((LogProcInfo != NULL) && (EntryIndex < MaxEntries))
     {
         LogProcInfo[EntryIndex].Relationship = RelationProcessorPackage;
-        LogProcInfo[EntryIndex].ProcessorMask = KeActiveProcessors;
+        LogProcInfo[EntryIndex].ProcessorMask = ExpProcessorPackageSet(KiProcessorBlock[0]);
         LogProcInfo[EntryIndex].ProcessorCore.Flags = 0;
     }
 
@@ -901,10 +915,11 @@ ExpQueryExtendedSystemLogicalProcessorAndGroupInformation( // 107
     _Out_opt_ PULONG ReturnLength)
 {
     LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType;
-    PKPRCB Prcb0;
+    PKPRCB Prcb0, Prcb;
     ULONG ProcessorCount;
-    ULONG LogsPerCore;
     ULONG PhysicalCoreCount;
+    ULONG PackageCount;
+    ULONG Last;
     ULONG ValidCacheCount;
     ULONG_PTR AllProcessorsMask;
     ULONG RequiredLength;
@@ -988,12 +1003,18 @@ ExpQueryExtendedSystemLogicalProcessorAndGroupInformation( // 107
     /* Get topology information from the first PRCB */
     Prcb0 = KiProcessorBlock[0];
     ProcessorCount = KeNumberProcessors;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-    LogsPerCore = max(1, (ULONG)Prcb0->LogicalProcessorsPerCore);
-#else
-    LogsPerCore = max(1, (ULONG)Prcb0->LogicalProcessorsPerPhysicalProcessor);
-#endif
-    PhysicalCoreCount = (ProcessorCount + LogsPerCore - 1) / LogsPerCore;
+
+    /* The highest numbered processor of a core or package stands for it */
+    PhysicalCoreCount = 0;
+    PackageCount = 0;
+    for (i = 0; i < ProcessorCount; i++)
+    {
+        Prcb = KiProcessorBlock[i];
+        if (BitScanReverseAffinity(&Last, Prcb->MultiThreadProcessorSet) && Last == i)
+            PhysicalCoreCount++;
+        if (BitScanReverseAffinity(&Last, ExpProcessorPackageSet(Prcb)) && Last == i)
+            PackageCount++;
+    }
 
     /* Count valid cache levels */
     ValidCacheCount = 0;
@@ -1014,7 +1035,7 @@ ExpQueryExtendedSystemLogicalProcessorAndGroupInformation( // 107
         case RelationProcessorCore:    RequiredLength = ProcessorEntrySize * PhysicalCoreCount; break;
         case RelationNumaNode:         RequiredLength = NumaEntrySize * 1;                      break;
         case RelationCache:            RequiredLength = CacheEntrySize * ValidCacheCount;        break;
-        case RelationProcessorPackage: RequiredLength = ProcessorEntrySize * 1;                 break;
+        case RelationProcessorPackage: RequiredLength = ProcessorEntrySize * PackageCount;      break;
         case RelationGroup:            RequiredLength = GroupEntrySize * 1;                     break;
         default: ASSERT(FALSE);        RequiredLength = 0;                                      break;
     }
@@ -1038,24 +1059,21 @@ ExpQueryExtendedSystemLogicalProcessorAndGroupInformation( // 107
             case RelationProcessorCore:
             {
                 /* One entry per physical core with its logical processor affinity mask */
-                for (i = 0; i < PhysicalCoreCount; i++)
+                for (i = 0; i < ProcessorCount; i++)
                 {
-                    ULONG FirstLogProc, j;
-                    ULONG_PTR CoreMask;
+                    ULONG_PTR CoreMask = KiProcessorBlock[i]->MultiThreadProcessorSet;
+
+                    if (!BitScanReverseAffinity(&Last, CoreMask) || Last != i)
+                        continue;
 
                     if (WrittenLength + ProcessorEntrySize > SystemInformationLength)
                         break;
-
-                    FirstLogProc = i * LogsPerCore;
-                    CoreMask = 0;
-                    for (j = 0; j < LogsPerCore && (FirstLogProc + j) < ProcessorCount; j++)
-                        CoreMask |= (ULONG_PTR)1 << (FirstLogProc + j);
 
                     RtlZeroMemory(Info, ProcessorEntrySize);
                     Info->Relationship = RelationProcessorCore;
                     Info->Size = ProcessorEntrySize;
                     /* Bit 0 (LTP_PC_SMT) set when multiple logical processors share the core */
-                    Info->Processor.Flags = (LogsPerCore > 1) ? 1 : 0;
+                    Info->Processor.Flags = (CoreMask != KiProcessorBlock[i]->SetMember) ? LTP_PC_SMT : 0;
                     Info->Processor.EfficiencyClass = 0;
                     Info->Processor.GroupCount = 1;
                     Info->Processor.GroupMask[0].Group = 0;
@@ -1120,9 +1138,17 @@ ExpQueryExtendedSystemLogicalProcessorAndGroupInformation( // 107
 
             case RelationProcessorPackage:
             {
-                /* Single entry for the physical package containing all processors */
-                if (WrittenLength + ProcessorEntrySize <= SystemInformationLength)
+                /* One entry per physical package */
+                for (i = 0; i < ProcessorCount; i++)
                 {
+                    ULONG_PTR PackageMask = ExpProcessorPackageSet(KiProcessorBlock[i]);
+
+                    if (!BitScanReverseAffinity(&Last, PackageMask) || Last != i)
+                        continue;
+
+                    if (WrittenLength + ProcessorEntrySize > SystemInformationLength)
+                        break;
+
                     RtlZeroMemory(Info, ProcessorEntrySize);
                     Info->Relationship = RelationProcessorPackage;
                     Info->Size = ProcessorEntrySize;
@@ -1130,7 +1156,7 @@ ExpQueryExtendedSystemLogicalProcessorAndGroupInformation( // 107
                     Info->Processor.EfficiencyClass = 0;
                     Info->Processor.GroupCount = 1;
                     Info->Processor.GroupMask[0].Group = 0;
-                    Info->Processor.GroupMask[0].Mask = AllProcessorsMask;
+                    Info->Processor.GroupMask[0].Mask = PackageMask;
 
                     Info = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)
                            ((PUCHAR)Info + ProcessorEntrySize);

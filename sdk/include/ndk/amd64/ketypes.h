@@ -964,6 +964,12 @@ typedef struct _KPRCB
     // On Win 8.1+ the FeatureBits field is extended to 64 bits
     ULONG FeatureBitsHigh;
 #endif
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
+    // Vista and later keep the topology in these fields
+    UCHAR CoresPerPhysicalProcessor;
+    UCHAR LogicalProcessorsPerCore;
+    UINT64 PackageProcessorSet;
+#endif
 #endif
 } KPRCB, *PKPRCB;
 

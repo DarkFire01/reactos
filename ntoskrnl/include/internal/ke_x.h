@@ -1748,6 +1748,33 @@ KiClockTicksTo100ns(IN ULONG ClockTicks)
     return ((ULONG64)ClockTicks * KeMaximumIncrement);
 }
 
+/**
+ * @brief Marks a processor idle, and its whole core once every sibling is idle too.
+ */
+FORCEINLINE
+VOID
+KiSetProcessorIdle(
+    _In_ PKPRCB Prcb)
+{
+    KAFFINITY CoreSet = Prcb->MultiThreadProcessorSet;
+
+    InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
+    if ((*(volatile KAFFINITY *)&KiIdleSummary & CoreSet) == CoreSet)
+        InterlockedOrAffinity((volatile LONG_PTR *)&KiIdleSMTSummary, (LONG_PTR)CoreSet);
+}
+
+/**
+ * @brief Marks a processor busy, which takes its core out of the fully idle set.
+ */
+FORCEINLINE
+VOID
+KiClearProcessorIdle(
+    _In_ PKPRCB Prcb)
+{
+    InterlockedBitTestAndResetAffinity(&KiIdleSummary, Prcb->Number);
+    InterlockedAndAffinity((volatile LONG_PTR *)&KiIdleSMTSummary, ~(LONG_PTR)Prcb->MultiThreadProcessorSet);
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

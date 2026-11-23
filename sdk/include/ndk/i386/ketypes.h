@@ -820,6 +820,9 @@ typedef struct _KPRCB
     // The following fields are only present on Vista and later
     CACHE_DESCRIPTOR Cache[5];
     ULONG CacheCount;
+    UCHAR CoresPerPhysicalProcessor;
+    UCHAR LogicalProcessorsPerCore;
+    ULONG PackageProcessorSet;
 #endif
 
 } KPRCB, *PKPRCB;

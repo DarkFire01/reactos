@@ -505,6 +505,9 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     Prcb->ParentNode = KeNodeBlock[0];
     Prcb->ParentNode->ProcessorMask |= Prcb->SetMember;
 
+    /* Find the core and package siblings started before this CPU */
+    KiSetProcessorTopology(Prcb);
+
     /* Check if this is the Boot CPU */
     if (!Number)
     {
@@ -516,9 +519,6 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         if (Prcb->CpuID) KeProcessorRevision = Prcb->CpuStep;
         KeI386FxsrPresent = (KeFeatureBits & KF_FXSR) ? TRUE : FALSE;
         KeI386XMMIPresent = (KeFeatureBits & KF_XMMI) ? TRUE : FALSE;
-
-        /* Set the current MP Master KPRCB to the Boot PRCB */
-        Prcb->MultiThreadSetMaster = Prcb;
 
         /* Lower to APC_LEVEL */
         KeLowerIrql(APC_LEVEL);
@@ -642,7 +642,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
     /* If there's no thread scheduled, put this CPU in the Idle summary */
     KiAcquirePrcbLock(Prcb);
-    if (!Prcb->NextThread) KiIdleSummary |= 1 << Number;
+    if (!Prcb->NextThread) KiSetProcessorIdle(Prcb);
     KiReleasePrcbLock(Prcb);
 
     /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */

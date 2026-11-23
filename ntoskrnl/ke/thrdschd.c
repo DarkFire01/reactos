@@ -126,7 +126,21 @@ KiSelectNextProcessor(
     IdleSet = PreferredSet & KiIdleSummary;
     if (IdleSet != 0)
     {
-        PreferredSet = IdleSet;
+        if (IdleSet & AFFINITY_MASK(Thread->IdealProcessor))
+            return Thread->IdealProcessor;
+
+        /* A core with every sibling idle runs the thread without sharing its execution units */
+        if (IdleSet & KiIdleSMTSummary)
+            IdleSet &= KiIdleSMTSummary;
+
+        /* The processor it last ran on may still hold its cache lines */
+        if (IdleSet & AFFINITY_MASK(Thread->NextProcessor))
+            return Thread->NextProcessor;
+
+        if (IdleSet & AFFINITY_MASK(KeGetCurrentProcessorNumber()))
+            return KeGetCurrentProcessorNumber();
+
+        return KeFindNextRightSetAffinity(Thread->IdealProcessor, IdleSet);
     }
 
     /* Check if we can use the ideal processor */

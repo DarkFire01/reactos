@@ -143,6 +143,7 @@ extern LIST_ENTRY KiProcessInSwapListHead, KiProcessOutSwapListHead;
 extern LIST_ENTRY KiStackInSwapListHead;
 extern KEVENT KiSwapEvent;
 extern KAFFINITY KiIdleSummary;
+extern KAFFINITY KiIdleSMTSummary;
 extern PVOID KeUserApcDispatcher;
 extern PVOID KeUserCallbackDispatcher;
 extern PVOID KeUserExceptionDispatcher;
@@ -191,6 +192,13 @@ KeReadyThread(
 #define KiIsSecondaryVector(Vector) \
     (((Vector) >= KI_SECONDARY_VECTOR_FIRST) && \
      ((Vector) - KI_SECONDARY_VECTOR_FIRST < KI_SECONDARY_VECTOR_COUNT))
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+VOID
+NTAPI
+KiSetProcessorTopology(
+    _Inout_ PKPRCB Prcb);
+#endif
 
 BOOLEAN
 NTAPI

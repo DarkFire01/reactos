@@ -263,7 +263,7 @@ KiIdleLoop(VOID)
     PKTHREAD OldThread, NewThread;
 
     /* This processor is going idle */
-    InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
+    KiSetProcessorIdle(Prcb);
 
     /* Now loop forever */
     while (TRUE)
@@ -320,15 +320,13 @@ KiIdleLoop(VOID)
             /* Nothing to do if the idle thread was selected */
             if (NewThread != OldThread)
             {
-                InterlockedBitTestAndResetAffinity(&KiIdleSummary,
-                                                   Prcb->Number);
+                KiClearProcessorIdle(Prcb);
 
                 /* Switch away from the idle thread */
                 KiSwapContext(APC_LEVEL, OldThread);
 
                 /* Back in the idle loop */
-                InterlockedBitTestAndSetAffinity(&KiIdleSummary,
-                                                 Prcb->Number);
+                KiSetProcessorIdle(Prcb);
             }
             else
             {

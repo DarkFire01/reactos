@@ -748,9 +748,8 @@ KiReserveRelationRecord(
  * STATUS_UNSUCCESSFUL when nothing matched.
  *
  * @remarks
- * ReactOS does not read the processor topology, so every processor is its own
- * core, all of them share one package, and each cache belongs to the processor
- * that reported it.
+ * Caches carry no sharing masks, so each one belongs to the processor that
+ * reported it.
  */
 NTSTATUS
 NTAPI
@@ -797,7 +796,11 @@ KeQueryLogicalProcessorRelationship(
 
         if (All || RelationshipType == RelationProcessorPackage)
         {
+#if defined(_M_IX86) || defined(_M_AMD64)
+            Mask = Prcb->PackageProcessorSet;
+#else
             Mask = KeActiveProcessors;
+#endif
             if (ProcessorNumber != NULL || !(PackagesSeen & Mask))
             {
                 PackagesSeen |= Mask;

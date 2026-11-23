@@ -160,6 +160,9 @@ KiSystemStartupBootStack(VOID)
     /* Get cache line information for this CPU */
     KiGetCacheInformation();
 
+    /* Find the core and package siblings started before this CPU */
+    KiSetProcessorTopology(Prcb);
+
     /* Initialize spinlocks and DPC data */
     KiInitSpinLocks(Prcb, Prcb->Number);
 
@@ -198,7 +201,7 @@ KiSystemStartupBootStack(VOID)
     /* If there's no thread scheduled, put this CPU in the Idle summary */
     KiAcquirePrcbLock(Prcb);
     if (!Prcb->NextThread)
-        InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
+        KiSetProcessorIdle(Prcb);
     KiReleasePrcbLock(Prcb);
 
     /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */
@@ -235,9 +238,6 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
     /* Initialize 8/16 bit SList support */
     RtlpUse16ByteSLists = (KeFeatureBits & KF_CMPXCHG16B) ? TRUE : FALSE;
-
-    /* Set the current MP Master KPRCB to the Boot PRCB */
-    Prcb->MultiThreadSetMaster = Prcb;
 
     /* Initialize Bugcheck Callback data */
     InitializeListHead(&KeBugcheckCallbackListHead);

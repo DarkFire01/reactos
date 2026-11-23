@@ -2942,82 +2942,105 @@ QSI_DEF(SystemObjectSecurityMode)
     return STATUS_SUCCESS;
 }
 
+/* Reserves one record, the needed length grows whether or not it fits */
+static
+PSYSTEM_LOGICAL_PROCESSOR_INFORMATION
+ExpReserveLogicalProcessorRecord(
+    _Inout_ PSYSTEM_LOGICAL_PROCESSOR_INFORMATION *Cursor,
+    _In_ ULONG Size,
+    _Inout_ PULONG DataSize,
+    _Inout_ PNTSTATUS Status)
+{
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Record;
+
+    *DataSize += sizeof(*Record);
+    if (*DataSize > Size)
+    {
+        *Status = STATUS_INFO_LENGTH_MISMATCH;
+        return NULL;
+    }
+
+    Record = (*Cursor)++;
+    RtlZeroMemory(Record, sizeof(*Record));
+    return Record;
+}
+
+/* The highest numbered processor of a set speaks for all of it */
+static
+BOOLEAN
+ExpIsLastOfSet(
+    _In_ PKPRCB Prcb,
+    _In_ KAFFINITY Set)
+{
+    ULONG Last;
+
+    if (!BitScanReverseAffinity(&Last, Set))
+        return FALSE;
+
+    return (Last == Prcb->Number);
+}
+
 /* Class 73 - Logical processor information */
 QSI_DEF(SystemLogicalProcessorInformation)
 {
-    LONG i;
-    PKPRCB Prcb;
-    KAFFINITY CurrentProc;
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Cursor = Buffer, Record;
     NTSTATUS Status = STATUS_SUCCESS;
-    ULONG DataSize = 0, ProcessorFlags;
-    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION CurrentInfo;
+    ULONG DataSize = 0, Index, CacheIndex;
+    KAFFINITY CoreSet;
+    PKPRCB Prcb;
 
-    /* First, browse active processors, thanks to the map */
-    i = 0;
-    CurrentInfo = Buffer;
-    CurrentProc = KeActiveProcessors;
-    do
+    for (Index = 0; Index < (ULONG)KeNumberProcessors; Index++)
     {
-        /* If current processor is active and is main in case of HT/MC, return it */
-        Prcb = KiProcessorBlock[i];
-        if ((CurrentProc & 1) &&
-            Prcb == Prcb->MultiThreadSetMaster)
+        Prcb = KiProcessorBlock[Index];
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+        if (ExpIsLastOfSet(Prcb, Prcb->PackageProcessorSet))
         {
-            /* Assume processor can do HT or multicore */
-            ProcessorFlags = 1;
-
-            /* If set is the same for PRCB and multithread, then
-             * actually, the processor is single core
-             */
-            if (Prcb->SetMember == Prcb->MultiThreadProcessorSet)
+            Record = ExpReserveLogicalProcessorRecord(&Cursor, Size, &DataSize, &Status);
+            if (Record != NULL)
             {
-                ProcessorFlags = 0;
+                Record->ProcessorMask = Prcb->PackageProcessorSet;
+                Record->Relationship = RelationProcessorPackage;
             }
+        }
+#endif
 
-            /* Check we have enough room to return */
-            DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
-            if (DataSize > Size)
+        CoreSet = Prcb->MultiThreadProcessorSet;
+        if (ExpIsLastOfSet(Prcb, CoreSet))
+        {
+            Record = ExpReserveLogicalProcessorRecord(&Cursor, Size, &DataSize, &Status);
+            if (Record != NULL)
             {
-                Status = STATUS_INFO_LENGTH_MISMATCH;
-            }
-            else
-            {
-                /* Zero output and return */
-                RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-                CurrentInfo->ProcessorMask = Prcb->MultiThreadProcessorSet;
-
-                /* Processor core needs 1 if HT/MC is supported */
-                CurrentInfo->Relationship = RelationProcessorCore;
-                CurrentInfo->ProcessorCore.Flags = ProcessorFlags;
-                ++CurrentInfo;
+                Record->ProcessorMask = CoreSet;
+                Record->Relationship = RelationProcessorCore;
+                Record->ProcessorCore.Flags = (CoreSet != Prcb->SetMember) ? LTP_PC_SMT : 0;
             }
         }
 
-        /* Move to the next proc */
-        CurrentProc >>= 1;
-        ++i;
-    /* Loop while there's someone in the bitmask */
-    } while (CurrentProc != 0);
-
-    /* Now, return the NUMA nodes */
-    for (i = 0; i < KeNumberNodes; ++i)
-    {
-        /* Check we have enough room to return */
-        DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
-        if (DataSize > Size)
+        /* No sharing masks are kept, so each processor reports its own caches */
+        for (CacheIndex = 0; CacheIndex < min(Prcb->CacheCount, ARRAYSIZE(Prcb->Cache)); CacheIndex++)
         {
-            Status = STATUS_INFO_LENGTH_MISMATCH;
+            Record = ExpReserveLogicalProcessorRecord(&Cursor, Size, &DataSize, &Status);
+            if (Record != NULL)
+            {
+                Record->ProcessorMask = Prcb->SetMember;
+                Record->Relationship = RelationCache;
+                Record->Cache = Prcb->Cache[CacheIndex];
+            }
         }
-        else
-        {
-            /* Zero output and return */
-            RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-            CurrentInfo->ProcessorMask = KeActiveProcessors;
+    }
 
-            /* NUMA node needs its ID */
-            CurrentInfo->Relationship = RelationNumaNode;
-            CurrentInfo->NumaNode.NodeNumber = i;
-            ++CurrentInfo;
+    for (Index = 0; Index < KeNumberNodes; Index++)
+    {
+        if (KeNodeBlock[Index]->ProcessorMask == 0)
+            continue;
+
+        Record = ExpReserveLogicalProcessorRecord(&Cursor, Size, &DataSize, &Status);
+        if (Record != NULL)
+        {
+            Record->ProcessorMask = KeNodeBlock[Index]->ProcessorMask;
+            Record->Relationship = RelationNumaNode;
+            Record->NumaNode.NodeNumber = Index;
         }
     }
 
