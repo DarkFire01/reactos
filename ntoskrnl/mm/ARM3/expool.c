@@ -2051,12 +2051,13 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
             // This flag requests printing failures, and can also further specify
             // breaking on failures
             //
-            if (ExpPoolFlags & EXP_POOL_FLAG_DBGPRINT_ON_FAILURE)
+            DPRINT1("EX: ExAllocatePool (%Iu, 0x%x) returning NULL\n",
+                    NumberOfBytes,
+                    OriginalType);
+            if ((ExpPoolFlags & EXP_POOL_FLAG_DBGPRINT_ON_FAILURE) &&
+                (ExpPoolFlags & EXP_POOL_FLAG_CRASH_ON_FAILURE))
             {
-                DPRINT1("EX: ExAllocatePool (%lu, 0x%x) returning NULL\n",
-                        NumberOfBytes,
-                        OriginalType);
-                if (ExpPoolFlags & EXP_POOL_FLAG_CRASH_ON_FAILURE) DbgBreakPoint();
+                DbgBreakPoint();
             }
 
             //
@@ -2400,12 +2401,13 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
         // This flag requests printing failures, and can also further specify
         // breaking on failures
         //
-        if (ExpPoolFlags & EXP_POOL_FLAG_DBGPRINT_ON_FAILURE)
+        DPRINT1("EX: ExAllocatePool (%Iu, 0x%x) returning NULL\n",
+                NumberOfBytes,
+                OriginalType);
+        if ((ExpPoolFlags & EXP_POOL_FLAG_DBGPRINT_ON_FAILURE) &&
+            (ExpPoolFlags & EXP_POOL_FLAG_CRASH_ON_FAILURE))
         {
-            DPRINT1("EX: ExAllocatePool (%lu, 0x%x) returning NULL\n",
-                    NumberOfBytes,
-                    OriginalType);
-            if (ExpPoolFlags & EXP_POOL_FLAG_CRASH_ON_FAILURE) DbgBreakPoint();
+            DbgBreakPoint();
         }
 
         //

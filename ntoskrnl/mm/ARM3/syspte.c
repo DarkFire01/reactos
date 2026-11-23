@@ -137,6 +137,7 @@ MiReserveAlignedSystemPtes(IN ULONG NumberOfPtes,
         // Release the System PTE lock and return failure
         //
         KeReleaseQueuedSpinLock(LockQueueSystemSpaceLock, OldIrql);
+        DPRINT1("No run of %lu system PTEs left in pool %d\n", NumberOfPtes, SystemPtePoolType);
         return NULL;
     }
 
