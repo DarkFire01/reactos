@@ -219,8 +219,8 @@ CmpDoCreateChild(IN PHHIVE Hive,
     PCM_KEY_NODE KeyNode;
     PCELL_DATA CellData;
     ULONG StorageType;
-    PCM_KEY_CONTROL_BLOCK Kcb;
-    PSECURITY_DESCRIPTOR NewDescriptor;
+    PCM_KEY_CONTROL_BLOCK Kcb = NULL;
+    PSECURITY_DESCRIPTOR NewDescriptor = NULL;
 
     /* Get the storage type */
     StorageType = Stable;
@@ -384,9 +384,19 @@ Quickie:
     /* Check if we got here because of failure */
     if (!NT_SUCCESS(Status))
     {
-        /* Free any cells we might've allocated */
-        if (ParseContext->Class.Length > 0) HvFreeCell(Hive, ClassCell);
-        HvFreeCell(Hive, *KeyCell);
+        /* A KCB linked to the key body goes away with it */
+        if (Kcb)
+        {
+            Kcb->Delete = TRUE;
+            CmpRemoveKeyControlBlock(Kcb);
+            ObDereferenceObjectDeferDelete(*Object);
+        }
+
+        /* Free only the cells that were allocated */
+        if (ClassCell != HCELL_NIL)
+            HvFreeCell(Hive, ClassCell);
+        if (*KeyCell != HCELL_NIL)
+            HvFreeCell(Hive, *KeyCell);
     }
 
     /* Return status */
