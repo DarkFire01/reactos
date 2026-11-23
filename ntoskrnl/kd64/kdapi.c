@@ -1427,20 +1427,15 @@ SendPacket:
                 break;
 
             case DbgKdQuerySpecialCallsApi:
-            case DbgKdSetSpecialCallApi:
-            case DbgKdClearSpecialCallsApi:
+            case DbgKdGetInternalBreakPointApi:
 
-                /* TODO */
-                KdpDprintf("Special Call support is unimplemented!\n");
                 KdpNotSupported(&ManipulateState);
                 break;
 
+            /* Like Windows these go unanswered, so the host does wt and ta by stepping itself */
+            case DbgKdSetSpecialCallApi:
+            case DbgKdClearSpecialCallsApi:
             case DbgKdSetInternalBreakPointApi:
-            case DbgKdGetInternalBreakPointApi:
-
-                /* TODO */
-                KdpDprintf("Internal Breakpoint support is unimplemented!\n");
-                KdpNotSupported(&ManipulateState);
                 break;
 
             case DbgKdReadIoSpaceExtendedApi:
