@@ -1853,6 +1853,98 @@ PopRequestPowerIrp(
 
 /**
  * @brief
+ * Sends a system power IRP (an S-IRP) to the stack a device object belongs to.
+ * Each power policy owner answers it by requesting the device power state the
+ * system state maps to, before completing it.
+ *
+ * @param[in] DeviceObject
+ * The physical device object of the stack.
+ *
+ * @param[in] SystemState
+ * The system power state the system is entering.
+ *
+ * @param[in] ShutdownType
+ * The power action that drives the transition, such as a reset or a power off.
+ *
+ * @param[in] CompletionFunction
+ * Called once the stack has completed the IRP.
+ *
+ * @return
+ * STATUS_PENDING once queued, or the failure to allocate it.
+ */
+NTSTATUS
+NTAPI
+PopRequestSystemPowerIrp(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ SYSTEM_POWER_STATE SystemState,
+    _In_ POWER_ACTION ShutdownType,
+    _In_opt_ PREQUEST_POWER_COMPLETE CompletionFunction,
+    _In_opt_ __drv_aliasesMem PVOID Context)
+{
+    NTSTATUS Status;
+    PIRP PwrIrp;
+    PPOP_IRP_DATA IrpData;
+    PIO_STACK_LOCATION Stack;
+    POWER_STATE PowerState;
+
+    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+
+    PowerState.SystemState = SystemState;
+    Status = PopAllocatePowerIrp(DeviceObject,
+                                 FALSE,
+                                 IRP_MN_SET_POWER,
+                                 PowerState,
+                                 &IrpData);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to allocate a system power IRP for DO (0x%p)\n", DeviceObject);
+        return Status;
+    }
+
+    IrpData->NotifyPEP = FALSE;
+    IrpData->SystemTransition = TRUE;
+    IrpData->Device.CallerCompletion = CompletionFunction;
+    IrpData->Device.CallerContext = Context;
+    IrpData->Device.CallerDevice = DeviceObject;
+
+    PwrIrp = IrpData->Irp;
+    PwrIrp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+    PwrIrp->IoStatus.Information = 0;
+    IoSetNextIrpStackLocation(PwrIrp);
+
+    /* Same bookkeeping location as a device request, see PopRequestPowerIrp */
+    Stack = IoGetNextIrpStackLocation(PwrIrp);
+    Stack->Parameters.Others.Argument1 = DeviceObject;
+    Stack->Parameters.Others.Argument2 = (PVOID)(ULONG_PTR)IRP_MN_SET_POWER;
+    Stack->Parameters.Others.Argument3 = (PVOID)(ULONG_PTR)SystemState;
+    Stack->Parameters.Others.Argument4 = Context;
+    Stack->DeviceObject = IrpData->TargetDevice;
+    IoSetNextIrpStackLocation(PwrIrp);
+
+    Stack = IoGetNextIrpStackLocation(PwrIrp);
+    Stack->MajorFunction = IRP_MJ_POWER;
+    Stack->MinorFunction = IRP_MN_SET_POWER;
+
+    IrpData->PowerStateType = SystemPowerState;
+    Stack->Parameters.Power.Type = SystemPowerState;
+    Stack->Parameters.Power.State = PowerState;
+    Stack->Parameters.Power.SystemContext = 0;
+    Stack->Parameters.Power.ShutdownType = ShutdownType;
+    Stack->Parameters.Power.SystemPowerStateContext = PopBuildSystemPowerStateContext(SystemPowerState);
+
+    IoSetCompletionRoutine(PwrIrp,
+                           PopRequestPowerIrpCompletion,
+                           CompletionFunction,
+                           TRUE,
+                           TRUE,
+                           TRUE);
+
+    PopQueuePowerIrp(IrpData);
+    return STATUS_PENDING;
+}
+
+/**
+ * @brief
  * Forwards a power IRP to the device. It's called by the I/O manager
  * when it finds that the IRP in question is a power one that needs
  * to be handled by the Power Manager subsystem.

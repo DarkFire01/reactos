@@ -2102,6 +2102,15 @@ PopRequestPowerIrp(
     _Outptr_opt_ PIRP *Irp);
 
 NTSTATUS
+NTAPI
+PopRequestSystemPowerIrp(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ SYSTEM_POWER_STATE SystemState,
+    _In_ POWER_ACTION ShutdownType,
+    _In_opt_ PREQUEST_POWER_COMPLETE CompletionFunction,
+    _In_opt_ __drv_aliasesMem PVOID Context);
+
+NTSTATUS
 FASTCALL
 PoHandlePowerIrp(
     _In_ PIRP Irp);

@@ -263,6 +263,146 @@ PopShutdownSystem(
     KeBugCheckEx(INTERNAL_POWER_ERROR, 5, 0, 0, 0);
 }
 
+/* Longest a device stack may take to answer the shutdown power IRP */
+#define POP_SHUTDOWN_IRP_TIMEOUT_MS 10000
+
+#define TAG_PO_SHUTDOWN_WAIT 'wSoP'
+
+typedef struct _POP_SHUTDOWN_IRP_WAIT
+{
+    KEVENT Event;
+    NTSTATUS Status;
+} POP_SHUTDOWN_IRP_WAIT, *PPOP_SHUTDOWN_IRP_WAIT;
+
+static
+VOID
+NTAPI
+PopShutdownIrpComplete(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ UCHAR MinorFunction,
+    _In_ POWER_STATE PowerState,
+    _In_opt_ PVOID Context,
+    _In_ PIO_STATUS_BLOCK IoStatus)
+{
+    PPOP_SHUTDOWN_IRP_WAIT Wait = Context;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(MinorFunction);
+    UNREFERENCED_PARAMETER(PowerState);
+
+    Wait->Status = IoStatus->Status;
+    KeSetEvent(&Wait->Event, IO_NO_INCREMENT, FALSE);
+}
+
+/**
+ * @brief
+ * Sends the shutdown system power IRP to one device stack and waits for it,
+ * giving up on a stack that does not answer in time.
+ */
+static
+VOID
+PopShutdownDevice(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ POWER_ACTION Action)
+{
+    PPOP_SHUTDOWN_IRP_WAIT Wait;
+    LARGE_INTEGER Timeout;
+    NTSTATUS Status;
+
+    /* Only a started stack has a driver to answer it */
+    if ((DeviceNode->State != DeviceNodeStarted) || !DeviceNode->PhysicalDeviceObject)
+        return;
+
+    Wait = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Wait), TAG_PO_SHUTDOWN_WAIT);
+    if (!Wait)
+        return;
+
+    KeInitializeEvent(&Wait->Event, NotificationEvent, FALSE);
+    Wait->Status = STATUS_PENDING;
+
+    Status = PopRequestSystemPowerIrp(DeviceNode->PhysicalDeviceObject,
+                                      PowerSystemShutdown,
+                                      Action,
+                                      PopShutdownIrpComplete,
+                                      Wait);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("No shutdown power IRP for %wZ (Status 0x%lx)\n", &DeviceNode->InstancePath, Status);
+        ExFreePoolWithTag(Wait, TAG_PO_SHUTDOWN_WAIT);
+        return;
+    }
+
+    Timeout.QuadPart = -10000LL * POP_SHUTDOWN_IRP_TIMEOUT_MS;
+    if (KeWaitForSingleObject(&Wait->Event, Executive, KernelMode, FALSE, &Timeout) == STATUS_TIMEOUT)
+    {
+        /* The completion may still come and write to the wait block, so it stays allocated */
+        DPRINT1("%wZ did not answer the shutdown power IRP, going on without it\n",
+                &DeviceNode->InstancePath);
+        return;
+    }
+
+    if (!NT_SUCCESS(Wait->Status) && (Wait->Status != STATUS_NOT_SUPPORTED))
+    {
+        DPRINT1("%wZ answered the shutdown power IRP with 0x%lx\n",
+                &DeviceNode->InstancePath, Wait->Status);
+    }
+
+    ExFreePoolWithTag(Wait, TAG_PO_SHUTDOWN_WAIT);
+}
+
+/**
+ * @brief
+ * Sends the shutdown system power IRP to every device, each one after all of
+ * its children, so a bus only powers down once the devices on it have.
+ */
+static
+VOID
+PopShutdownDevices(
+    _In_ POWER_ACTION Action)
+{
+    PDEVICE_NODE DeviceNode = IopRootDeviceNode;
+    PDEVICE_NODE Next;
+    PDEVICE_OBJECT Pdo;
+
+    if (!DeviceNode)
+        return;
+
+    while (DeviceNode->Child)
+        DeviceNode = DeviceNode->Child;
+
+    for (;;)
+    {
+        /* The next node is picked first, the IRP may change the tree around this one */
+        if (DeviceNode == IopRootDeviceNode)
+        {
+            Next = NULL;
+        }
+        else if (DeviceNode->Sibling)
+        {
+            Next = DeviceNode->Sibling;
+            while (Next->Child)
+                Next = Next->Child;
+        }
+        else
+        {
+            Next = DeviceNode->Parent;
+        }
+
+        Pdo = DeviceNode->PhysicalDeviceObject;
+        if (Pdo)
+        {
+            ObReferenceObject(Pdo);
+            PopShutdownDevice(DeviceNode, Action);
+            ObDereferenceObject(Pdo);
+        }
+
+        if (!Next)
+            break;
+
+        DeviceNode = Next;
+    }
+}
+
 /* PUBLIC FUNCTIONS ***********************************************************/
 
 /**
@@ -361,50 +501,12 @@ PopGracefulShutdown(
     IoShutdownSystem(1);
 
     /*
-     * Broadcast the system power IRP (IRP_MN_SET_POWER, PowerSystemShutdown / S5)
-     * to all devices in the system. This is the power-manager-specific shutdown
-     * notification, distinct from the regular IRP_MJ_SHUTDOWN sent by IoShutdownSystem.
-     * Devices use this IRP to transition their hardware to the lowest power state (D3)
-     * before the system is physically powered off.
-     *
-     * The broadcast walks the device notification order (PO_DEVICE_NOTIFY_ORDER):
-     * - Leaf devices (e.g. user peripherals) receive the IRP first so they can park
-     *   heads, flush write buffers and cut power to sub-components.
-     * - Bus and filter drivers receive the IRP last so the bus remains active long
-     *   enough for child devices to complete their transitions.
-     *
-     * NOTE: A fully-ordered broadcast requires the POP_DEVICE_SYS_STATE infrastructure
-     * (device notification order lists, per-device IRP tracking, abort signalling) to
-     * be completely wired up.  That infrastructure is not yet fully implemented in
-     * ReactOS, so we perform a best-effort broadcast via the system power device node,
-     * which is sufficient for orderly shutdown on single-stack machines.
+     * Every device gets the shutdown system power IRP, leaves first, so drivers
+     * take their hardware to D3 before the reset or power off. The one for the
+     * paging path goes out here too, after the last write above.
      */
-    if (PopSystemPowerDeviceNode != NULL &&
-        PopSystemPowerDeviceNode->PhysicalDeviceObject != NULL)
-    {
-        POWER_STATE ShutdownState;
-        NTSTATUS IrpStatus;
-
-        ShutdownState.SystemState = PowerSystemShutdown;
-
-        DPRINT1("Broadcasting system power IRP (PowerSystemShutdown) to devices\n");
-        IrpStatus = PopRequestPowerIrp(PopSystemPowerDeviceNode->PhysicalDeviceObject,
-                                       IRP_MN_SET_POWER,
-                                       ShutdownState,
-                                       FALSE,
-                                       FALSE,
-                                       NULL,
-                                       NULL,
-                                       NULL);
-        if (!NT_SUCCESS(IrpStatus) && IrpStatus != STATUS_PENDING)
-        {
-            DPRINT1("System power IRP broadcast returned 0x%lx\n", IrpStatus);
-        }
-    }
-    else
-    {
-        DPRINT1("No system power device node registered; skipping power IRP broadcast\n");
-    }
+    DPRINT1("Sending the shutdown power IRP to every device\n");
+    PopShutdownDevices(PopAction.Action);
 
     /* Shutdown the Object Manager */
     if (PopShutdownCleanly)
