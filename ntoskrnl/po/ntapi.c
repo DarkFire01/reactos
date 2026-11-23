@@ -16,6 +16,9 @@
 WORK_QUEUE_ITEM PopUnlockMemoryWorkItem;
 KEVENT PopUnlockMemoryCompleteEvent;
 
+/* Set under the power policy lock once a shutdown has been handed to PopGracefulShutdown */
+static BOOLEAN PopShutdownDispatched;
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 /**
@@ -1513,6 +1516,15 @@ NtSetSystemPowerState(
 
     /* Lock the entire power policy manager and make our action global */
     PopAcquirePowerPolicyLock();
+
+    /* A shutdown already on its way owns PopAction, a power button pressed meanwhile must not run a second one */
+    if (PopShutdownDispatched)
+    {
+        DPRINT1("Power action %u ignored, the system is already shutting down\n", SystemAction);
+        Status = STATUS_SYSTEM_SHUTDOWN;
+        goto Exit;
+    }
+
     PopAction = Action;
 
     /* Process action requests */
@@ -1554,6 +1566,8 @@ NtSetSystemPowerState(
         PopAction.IrpMinor = IRP_MN_SET_POWER;
         if (PopAction.Shutdown)
         {
+            PopShutdownDispatched = TRUE;
+
             /* If we are not running in the system context then queue the shutdown worker */
             if (PsGetCurrentProcess() != PsInitialSystemProcess)
             {
