@@ -8,6 +8,7 @@ list(APPEND HAL_ACPI_SOURCE
     acpi/madt.c
     acpi/acpidisp.c
     acpi/mmconfig.c
+    acpi/dmar.c
     acpi/irqtrans.c
     legacy/bus/pcibus.c)
 

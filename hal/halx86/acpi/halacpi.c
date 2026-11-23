@@ -985,6 +985,9 @@ HalpInitializePciBus(VOID)
     /* Tell the resource arbiters where the configuration windows are */
     HalpPublishMmConfigRanges();
 
+    /* Devices DMA to physical addresses, so no remapping the firmware left on may stay */
+    HalpQuiesceDmaRemapping();
+
     /* Set the NMI crash flag */
     HalpGetNMICrashFlag();
 }

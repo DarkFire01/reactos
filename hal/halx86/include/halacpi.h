@@ -67,6 +67,12 @@ HalpPublishMmConfigRanges(
     VOID
 );
 
+/* acpi/dmar.c */
+CODE_SEG("INIT")
+VOID
+NTAPI
+HalpQuiesceDmaRemapping(VOID);
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
