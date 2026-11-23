@@ -316,10 +316,8 @@ MouHid_ReadCompletion(
     /* get device extension */
     DeviceExtension = Context;
 
-    if (Irp->IoStatus.Status == STATUS_PRIVILEGE_NOT_HELD ||
-        Irp->IoStatus.Status == STATUS_DEVICE_NOT_CONNECTED ||
-        Irp->IoStatus.Status == STATUS_CANCELLED ||
-        DeviceExtension->StopReadReport)
+    /* Any failed read ends the read cycle, a later open starts a new one */
+    if (!NT_SUCCESS(Irp->IoStatus.Status) || DeviceExtension->StopReadReport)
     {
         /* failed to read or should be stopped*/
         DPRINT1("[MOUHID] ReadCompletion terminating read Status %x\n", Irp->IoStatus.Status);
@@ -332,6 +330,13 @@ MouHid_ReadCompletion(
 
         /* signal completion event */
         KeSetEvent(&DeviceExtension->ReadCompletionEvent, 0, 0);
+        return STATUS_MORE_PROCESSING_REQUIRED;
+    }
+
+    /* An informational status carries no report, just ask for the next one */
+    if (Irp->IoStatus.Status != STATUS_SUCCESS)
+    {
+        MouHid_InitiateRead(DeviceExtension);
         return STATUS_MORE_PROCESSING_REQUIRED;
     }
 
@@ -1061,10 +1066,9 @@ MouHid_Pnp(
 
     switch (IoStack->MinorFunction)
     {
+    /* The read loop may still be running, so the parse data stays until removal */
     case IRP_MN_STOP_DEVICE:
     case IRP_MN_SURPRISE_REMOVAL:
-        /* free resources */
-        MouHid_FreeResources(DeviceObject);
     case IRP_MN_CANCEL_REMOVE_DEVICE:
     case IRP_MN_QUERY_STOP_DEVICE:
     case IRP_MN_CANCEL_STOP_DEVICE:
@@ -1081,11 +1085,13 @@ MouHid_Pnp(
     case IRP_MN_REMOVE_DEVICE:
         /* FIXME synchronization */
 
-        /* request stop */
-        DeviceExtension->StopReadReport = TRUE;
-
-        /* cancel irp */
-        IoCancelIrp(DeviceExtension->Irp);
+        /* Stop the read loop and wait for it before its buffers go away */
+        if (DeviceExtension->ReadReportActive)
+        {
+            DeviceExtension->StopReadReport = TRUE;
+            IoCancelIrp(DeviceExtension->Irp);
+            KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
+        }
 
         /* free resources */
         MouHid_FreeResources(DeviceObject);
@@ -1098,9 +1104,6 @@ MouHid_Pnp(
 
         /* dispatch to lower device */
         Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-
-        /* wait for completion of stop event */
-        KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
 
         /* free irp */
         IoFreeIrp(DeviceExtension->Irp);
@@ -1141,9 +1144,12 @@ MouHid_Pnp(
             return Status;
         }
 
-        /* lets start the device */
-        Status = MouHid_StartDevice(DeviceObject);
-        DPRINT("MouHid_StartDevice %x\n", Status);
+        /* A restart after a stop keeps what the first start set up */
+        if (DeviceExtension->PreparsedData == NULL)
+        {
+            Status = MouHid_StartDevice(DeviceObject);
+            DPRINT("MouHid_StartDevice %x\n", Status);
+        }
 
         /* complete request */
         Irp->IoStatus.Status = Status;
