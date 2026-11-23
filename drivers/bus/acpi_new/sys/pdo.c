@@ -82,7 +82,7 @@ NTAPI
 UacpiNtPdoIsRawDevice(
     _In_ PUACPINT_PDO Pdo)
 {
-    static PCSTR RawHids[] =
+    static const uacpi_char *const RawIds[] =
     {
         "ACPI0004",                    /* module container */
         "ACPI0010",                    /* processor container */
@@ -93,17 +93,22 @@ UacpiNtPdoIsRawDevice(
         "PNP0C0C", "PNP0C0D", "PNP0C0E",
         "PNP0C32",                     /* application launch button */
         "PNP0D80", "TOS6200",
+        UACPI_NULL
     };
     ULONG Index;
 
     if (Pdo->ButtonCaps || Pdo->IsThermalZone)
         return TRUE;
 
-    for (Index = 0; Index < RTL_NUMBER_OF(RawHids); Index++)
+    for (Index = 0; RawIds[Index]; Index++)
     {
-        if (!_stricmp(Pdo->Hid, RawHids[Index]))
+        if (!_stricmp(Pdo->Hid, RawIds[Index]))
             return TRUE;
     }
+
+    /* A _CID match counts too, so a vendor PEP like INT33A1 (CID PNP0D80) starts and its dependents follow */
+    if (Pdo->Node && (uacpi_device_matches_pnp_id(Pdo->Node, RawIds) == UACPI_TRUE))
+        return TRUE;
 
     return FALSE;
 }
