@@ -499,6 +499,226 @@ BOOL WINAPI UserHandleGrantAccess(HANDLE handle, HANDLE job, BOOL grant)
 }
 #endif
 
+#ifdef __REACTOS__
+
+/* powrprof imports user32, so it is loaded when first needed */
+
+#define USER_DEVICE_NOTIFY_CALLBACK 2
+
+typedef ULONG (CALLBACK *USER_POWER_CALLBACK)(PVOID Context, ULONG Type, PVOID Setting);
+
+typedef struct _USER_POWER_RECIPIENT
+{
+    USER_POWER_CALLBACK Callback;
+    PVOID Context;
+} USER_POWER_RECIPIENT;
+
+typedef DWORD (WINAPI *USER_POWER_SETTING_REGISTER)(LPCGUID, DWORD, HANDLE, PHPOWERNOTIFY);
+typedef DWORD (WINAPI *USER_POWER_SUSPEND_REGISTER)(DWORD, HANDLE, PHPOWERNOTIFY);
+typedef DWORD (WINAPI *USER_POWER_UNREGISTER)(HPOWERNOTIFY);
+typedef LONG (WINAPI *USER_POWER_INFORMATION)(POWER_INFORMATION_LEVEL, PVOID, ULONG, PVOID, ULONG);
+
+/* What the kernel reports for the PlatformInformation level */
+typedef struct _USER_POWER_PLATFORM
+{
+    BOOLEAN AoAc;
+} USER_POWER_PLATFORM;
+
+static
+FARPROC
+UserGetPowrProfProc(
+    _In_ LPCSTR Name)
+{
+    static HMODULE PowrProf;
+    HMODULE Module;
+
+    if (!PowrProf)
+    {
+        Module = LoadLibraryW(L"powrprof.dll");
+        if (!Module)
+            return NULL;
+
+        /* Another thread may have loaded it as well, keep one reference */
+        if (InterlockedCompareExchangePointer((PVOID *)&PowrProf, Module, NULL))
+            FreeLibrary(Module);
+    }
+
+    return GetProcAddress(PowrProf, Name);
+}
+
+static
+ULONG
+CALLBACK
+UserPowerSettingCallback(
+    _In_opt_ PVOID Context,
+    _In_ ULONG Type,
+    _In_ PVOID Setting)
+{
+    UNREFERENCED_PARAMETER(Type);
+
+    SendMessageW((HWND)Context, WM_POWERBROADCAST, PBT_POWERSETTINGCHANGE, (LPARAM)Setting);
+    return 0;
+}
+
+/* Without connected standby the window manager sends these messages itself */
+static
+ULONG
+CALLBACK
+UserSuspendResumeCallback(
+    _In_opt_ PVOID Context,
+    _In_ ULONG Type,
+    _In_ PVOID Setting)
+{
+    static LONG Platform = -1;
+    USER_POWER_PLATFORM Information;
+    USER_POWER_INFORMATION Query;
+    DWORD_PTR Result;
+
+    if (Platform < 0)
+    {
+        Query = (USER_POWER_INFORMATION)UserGetPowrProfProc("CallNtPowerInformation");
+        Information.AoAc = FALSE;
+        if (Query)
+            Query(PlatformInformation, NULL, 0, &Information, sizeof(Information));
+        Platform = Information.AoAc ? 1 : 0;
+    }
+
+    if (Platform)
+        SendMessageTimeoutW((HWND)Context, WM_POWERBROADCAST, Type, (LPARAM)Setting, SMTO_NORMAL, 20000, &Result);
+
+    return 0;
+}
+
+/**********************************************************************
+ * RegisterPowerSettingNotification [USER32.@]
+ *
+ * A window gets PBT_POWERSETTINGCHANGE messages, any other recipient is
+ * handed to powrprof as is.
+ */
+HPOWERNOTIFY
+WINAPI
+RegisterPowerSettingNotification(
+    _In_ HANDLE hRecipient,
+    _In_ LPCGUID PowerSettingGuid,
+    _In_ DWORD Flags)
+{
+    USER_POWER_SETTING_REGISTER Register;
+    USER_POWER_RECIPIENT Window;
+    HPOWERNOTIFY Handle = NULL;
+    HANDLE Recipient = hRecipient;
+    DWORD Error;
+
+    Register = (USER_POWER_SETTING_REGISTER)UserGetPowrProfProc("PowerSettingRegisterNotification");
+    if (!Register)
+        return NULL;
+
+    if (Flags == DEVICE_NOTIFY_WINDOW_HANDLE)
+    {
+        Window.Callback = UserPowerSettingCallback;
+        Window.Context = hRecipient;
+        Recipient = &Window;
+        Flags = USER_DEVICE_NOTIFY_CALLBACK;
+    }
+
+    Error = Register(PowerSettingGuid, Flags, Recipient, &Handle);
+    if (Error != ERROR_SUCCESS)
+    {
+        SetLastError(Error);
+        return NULL;
+    }
+
+    return Handle;
+}
+
+/**********************************************************************
+ * UnregisterPowerSettingNotification [USER32.@]
+ */
+BOOL
+WINAPI
+UnregisterPowerSettingNotification(
+    _In_ HPOWERNOTIFY Handle)
+{
+    USER_POWER_UNREGISTER Unregister;
+    DWORD Error;
+
+    Unregister = (USER_POWER_UNREGISTER)UserGetPowrProfProc("PowerSettingUnregisterNotification");
+    if (!Unregister)
+        return FALSE;
+
+    Error = Unregister(Handle);
+    if (Error != ERROR_SUCCESS)
+    {
+        SetLastError(Error);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**********************************************************************
+ * RegisterSuspendResumeNotification (USER32.@)
+ */
+HPOWERNOTIFY
+WINAPI
+RegisterSuspendResumeNotification(
+    _In_ HANDLE hRecipient,
+    _In_ DWORD Flags)
+{
+    USER_POWER_SUSPEND_REGISTER Register;
+    USER_POWER_RECIPIENT Window;
+    HPOWERNOTIFY Handle = NULL;
+    HANDLE Recipient = hRecipient;
+    DWORD Error;
+
+    Register = (USER_POWER_SUSPEND_REGISTER)UserGetPowrProfProc("PowerRegisterSuspendResumeNotification");
+    if (!Register)
+        return NULL;
+
+    if (Flags == DEVICE_NOTIFY_WINDOW_HANDLE)
+    {
+        Window.Callback = UserSuspendResumeCallback;
+        Window.Context = hRecipient;
+        Recipient = &Window;
+        Flags = USER_DEVICE_NOTIFY_CALLBACK;
+    }
+
+    Error = Register(Flags, Recipient, &Handle);
+    if (Error != ERROR_SUCCESS)
+    {
+        SetLastError(Error);
+        return NULL;
+    }
+
+    return Handle;
+}
+
+/**********************************************************************
+ * UnregisterSuspendResumeNotification (USER32.@)
+ */
+BOOL
+WINAPI
+UnregisterSuspendResumeNotification(
+    _In_ HPOWERNOTIFY Handle)
+{
+    USER_POWER_UNREGISTER Unregister;
+    DWORD Error;
+
+    Unregister = (USER_POWER_UNREGISTER)UserGetPowrProfProc("PowerUnregisterSuspendResumeNotification");
+    if (!Unregister)
+        return FALSE;
+
+    Error = Unregister(Handle);
+    if (Error != ERROR_SUCCESS)
+    {
+        SetLastError(Error);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+#else
+
 /**********************************************************************
  * RegisterPowerSettingNotification [USER32.@]
  */
@@ -534,6 +754,8 @@ BOOL WINAPI UnregisterSuspendResumeNotification(HPOWERNOTIFY handle)
     FIXME("%p: stub.\n", handle);
     return TRUE;
 }
+
+#endif /* __REACTOS__ */
 
 /**********************************************************************
  * IsWindowRedirectedForPrint [USER32.@]
