@@ -1215,7 +1215,9 @@ PopQueuePowerIrp(
      * if it still has to complete a power IRP and it inquires another power IRP, the
      * newly request IRP will be put in queue.
      */
-    if (PopIsDoProcessingPowerIrp(PolicyDeviceOwner))
+    /* System and device IRPs are serialized apart, a policy owner sends its D-IRP while the S-IRP is held */
+    if (PdoDevObjExts->PowerFlags & ((StateType == DevicePowerState) ? POP_DOE_DEVICE_IRP_ACTIVE
+                                                                       : POP_DOE_SYSTEM_IRP_ACTIVE))
     {
         PopAddIrpToQueue(IrpData);
         PdoDevObjExts->PowerFlags |= POP_DOE_PENDING_PROCESS;
