@@ -217,6 +217,8 @@ static
 NTSTATUS
 IopCreateDeviceInstancePath(
     _In_ PDEVICE_NODE DeviceNode,
+    _In_ BOOLEAN ForceParentPrefix,
+    _Out_ PBOOLEAN ParentPrefixed,
     _Out_ PUNICODE_STRING InstancePath)
 {
     IO_STATUS_BLOCK IoStatusBlock;
@@ -285,7 +287,8 @@ IopCreateDeviceInstancePath(
         return STATUS_PLUGPLAY_NO_DEVICE;
     }
 
-    if (!DeviceCapabilities.UniqueID)
+    *ParentPrefixed = ForceParentPrefix || !DeviceCapabilities.UniqueID;
+    if (*ParentPrefixed)
     {
         /* Device has not a unique ID. We need to prepend parent bus unique identifier */
         DPRINT("Instance ID is not unique\n");
@@ -1294,6 +1297,9 @@ PiInitializeDevNode(
     BOOLEAN IsBootConfigQueried;
     UNICODE_STRING InstancePathU;
     PDEVICE_OBJECT OldDeviceObject;
+    PDEVICE_NODE OldDeviceNode;
+    BOOLEAN ForceParentPrefix;
+    BOOLEAN ParentPrefixed;
 
     DPRINT("PiProcessNewDevNode(%p)\n", DeviceNode);
     DPRINT("PDO 0x%p\n", DeviceNode->PhysicalDeviceObject);
@@ -1303,31 +1309,44 @@ PiInitializeDevNode(
      * return STATUS_SUCCESS.
      */
 
-    Status = IopCreateDeviceInstancePath(DeviceNode, &InstancePathU);
-    if (!NT_SUCCESS(Status))
+    ForceParentPrefix = FALSE;
+    for (;;)
     {
-        if (Status != STATUS_PLUGPLAY_NO_DEVICE)
+        Status = IopCreateDeviceInstancePath(DeviceNode, ForceParentPrefix, &ParentPrefixed, &InstancePathU);
+        if (!NT_SUCCESS(Status))
         {
-            DPRINT1("IopCreateDeviceInstancePath() failed with status 0x%lx\n", Status);
+            if (Status != STATUS_PLUGPLAY_NO_DEVICE)
+            {
+                DPRINT1("IopCreateDeviceInstancePath() failed with status 0x%lx\n", Status);
+            }
+            return Status;
         }
-        return Status;
-    }
 
-    /* Verify that this is not a duplicate */
-    OldDeviceObject = IopGetDeviceObjectFromDeviceInstance(&InstancePathU);
-    if (OldDeviceObject != NULL)
-    {
-        PDEVICE_NODE OldDeviceNode = IopGetDeviceNode(OldDeviceObject);
+        /* Verify that this is not a duplicate */
+        OldDeviceObject = IopGetDeviceObjectFromDeviceInstance(&InstancePathU);
+        if (!OldDeviceObject)
+            break;
 
+        OldDeviceNode = IopGetDeviceNode(OldDeviceObject);
         DPRINT1("Duplicate device instance '%wZ'\n", &InstancePathU);
         DPRINT1("Current instance parent: '%wZ'\n", &DeviceNode->Parent->InstancePath);
         DPRINT1("Old instance parent: '%wZ'\n", &OldDeviceNode->Parent->InstancePath);
 
-        KeBugCheckEx(PNP_DETECTED_FATAL_ERROR,
-                     0x01,
-                     (ULONG_PTR)DeviceNode->PhysicalDeviceObject,
-                     (ULONG_PTR)OldDeviceObject,
-                     0);
+        /* Only an ID that is already parent qualified is a real collision */
+        if (ParentPrefixed)
+        {
+            KeBugCheckEx(PNP_DETECTED_FATAL_ERROR,
+                         0x01,
+                         (ULONG_PTR)DeviceNode->PhysicalDeviceObject,
+                         (ULONG_PTR)OldDeviceObject,
+                         0);
+        }
+
+        /* A bus that claimed a unique ID twice gets the parent qualified form instead */
+        ObDereferenceObject(OldDeviceObject);
+        RtlFreeUnicodeString(&InstancePathU);
+        PiSetDevNodeProblem(DeviceNode, CM_PROB_DUPLICATE_DEVICE);
+        ForceParentPrefix = TRUE;
     }
 
     DeviceNode->InstancePath = InstancePathU;
