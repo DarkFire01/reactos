@@ -204,6 +204,37 @@ static UINT16 HDACommandAddr(UINT32 cmd) {
 	return (cmd >> 28) & 0xF;
 }
 
+/**
+ * @brief Detaches transfers that will not be waited for from the response queues.
+ * Their slots stay queued, so the responses still owed to them are used up in order.
+ *
+ * @remarks The interrupt lock must be held.
+ */
+VOID
+NTAPI
+HDAAbandonTransfersLocked(
+	_In_ PFDO_CONTEXT fdoCtx,
+	_In_ ULONG Count,
+	_In_reads_(Count) PHDAUDIO_CODEC_TRANSFER CodecTransfer)
+{
+	for (ULONG i = 0; i < Count; i++)
+	{
+		PHDAUDIO_CODEC_TRANSFER transfer = &CodecTransfer[i];
+		UINT16 addr = HDACommandAddr(transfer->Output.Command);
+		PHDAC_CODEC_XFER codecXfer = &fdoCtx->rirb.xfer[addr];
+		LONG pending = fdoCtx->rirb.cmds[addr];
+
+		for (LONG slot = 0; slot < pending && slot < HDA_MAX_CORB_ENTRIES; slot++)
+		{
+			if (codecXfer->xfer[slot] == transfer)
+			{
+				codecXfer->xfer[slot] = NULL;
+				break;
+			}
+		}
+	}
+}
+
 NTSTATUS SendHDACmds(PFDO_CONTEXT fdoCtx, ULONG count, PHDAUDIO_CODEC_TRANSFER CodecTransfer) {
 	WdfInterruptAcquireLock(fdoCtx->Interrupt);
 	for (ULONG i = 0; i < count; i++) {
@@ -218,6 +249,7 @@ NTSTATUS SendHDACmds(PFDO_CONTEXT fdoCtx, ULONG count, PHDAUDIO_CODEC_TRANSFER C
 			//Something wrong, controller likely went to sleep
 			SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_IOCTL,
 				"%s: device not found\n", __func__);
+			HDAAbandonTransfersLocked(fdoCtx, i, CodecTransfer);
 			WdfInterruptReleaseLock(fdoCtx->Interrupt);
 			return STATUS_DEVICE_DOES_NOT_EXIST;
 		}
@@ -230,12 +262,22 @@ NTSTATUS SendHDACmds(PFDO_CONTEXT fdoCtx, ULONG count, PHDAUDIO_CODEC_TRANSFER C
 			//Oops it's full
 			SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_IOCTL,
 				"%s: device busy\n", __func__);
+			HDAAbandonTransfersLocked(fdoCtx, i, CodecTransfer);
 			WdfInterruptReleaseLock(fdoCtx->Interrupt);
 			return STATUS_RETRY;
 		}
 
-		LONG oldVal = InterlockedIncrement(&fdoCtx->rirb.cmds[addr]);
-		fdoCtx->rirb.xfer[addr].xfer[oldVal - 1] = transfer;
+		/* The response queue is only changed under the interrupt lock */
+		LONG pending = fdoCtx->rirb.cmds[addr];
+		if (pending < 0 || pending >= HDA_MAX_CORB_ENTRIES) {
+			SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_IOCTL,
+				"%s: %ld responses pending on 0x%x\n", __func__, pending, addr);
+			HDAAbandonTransfersLocked(fdoCtx, i, CodecTransfer);
+			WdfInterruptReleaseLock(fdoCtx->Interrupt);
+			return STATUS_RETRY;
+		}
+		fdoCtx->rirb.xfer[addr].xfer[pending] = transfer;
+		fdoCtx->rirb.cmds[addr] = pending + 1;
 
 		fdoCtx->corb.buf[wp] = transfer->Output.Command;
 
@@ -270,15 +312,17 @@ NTSTATUS RunSingleHDACmd(PFDO_CONTEXT fdoCtx, ULONG val, ULONG* res) {
 
 static void HDAFlushRIRB(PFDO_CONTEXT fdoCtx) {
 	UINT16 wp, addr;
+	ULONG answered = 0;
+
+	/* Senders queue transfers under the interrupt lock, so responses are matched under it too */
+	WdfInterruptAcquireLock(fdoCtx->Interrupt);
 
 	wp = hda_read16(fdoCtx, RIRBWP);
-	if (wp == 0xffff) {
-		//Invalid WP
+	if (wp == 0xffff || wp == fdoCtx->rirb.wp) {
+		//Invalid or unchanged WP
+		WdfInterruptReleaseLock(fdoCtx->Interrupt);
 		return;
 	}
-
-	if (wp == fdoCtx->rirb.wp)
-		return;
 	fdoCtx->rirb.wp = wp;
 
 	while (fdoCtx->rirb.rp != wp) {
@@ -312,36 +356,48 @@ static void HDAFlushRIRB(PFDO_CONTEXT fdoCtx) {
 			UINT Tag = response.Unsolicited.Tag;
 			CODEC_UNSOLICITED_CALLBACK callback = codec->unsolitCallbacks[Tag];
 			if (callback.inUse && callback.Routine) {
+				/* Codec drivers expect DISPATCH_LEVEL, not the interrupt lock */
+				WdfInterruptReleaseLock(fdoCtx->Interrupt);
 				callback.Routine(response, callback.Context);
+				WdfInterruptAcquireLock(fdoCtx->Interrupt);
 			}
 		}
-		else if (InterlockedAdd(&fdoCtx->rirb.cmds[addr], 0)) {
+		else if (fdoCtx->rirb.cmds[addr] > 0) {
 			PHDAC_CODEC_XFER codecXfer = &fdoCtx->rirb.xfer[addr];
-			if (codecXfer->xfer[0]) {
-				codecXfer->xfer[0]->Input.SDataIn = addr;
-				codecXfer->xfer[0]->Input.Response = rirb.response;
-				codecXfer->xfer[0]->Input.IsValid = 1;
+			PHDAUDIO_CODEC_TRANSFER transfer = codecXfer->xfer[0];
+			if (transfer) {
+				transfer->Input.SDataIn = addr;
+				transfer->Input.Response = rirb.response;
+				/* The waiter polls IsValid, so the response must land first */
+				KeMemoryBarrier();
+				transfer->Input.IsValid = 1;
 
-				SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_IOCTL,
-					"Got response on 0x%x for 0x%x: 0x%x\n", addr, codecXfer->xfer[0]->Output.Command, rirb.response);
+				SklHdAudBusPrint(DEBUG_LEVEL_VERBOSE, DBG_IOCTL,
+					"Got response on 0x%x for 0x%x: 0x%x\n", addr, transfer->Output.Command, rirb.response);
 			}
 			else {
-				SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_IOCTL,
-					"Got response 0x%x but no xfer!\n", rirb.response);
+				SklHdAudBusPrint(DEBUG_LEVEL_VERBOSE, DBG_IOCTL,
+					"Response 0x%x on 0x%x was owed to an abandoned transfer\n", rirb.response, addr);
 			}
-			
+
 			RtlMoveMemory(&codecXfer->xfer[0], &codecXfer->xfer[1], sizeof(PHDAUDIO_CODEC_TRANSFER) * (HDA_MAX_CORB_ENTRIES - 1));
 			codecXfer->xfer[HDA_MAX_CORB_ENTRIES - 1] = NULL;
-			if (!InterlockedDecrement(&fdoCtx->rirb.cmds[addr])) {
-				SklHdAudBusPrint(DEBUG_LEVEL_VERBOSE, DBG_IOCTL, "Empty queue for 0x%x\n", addr);
-				KeSetEvent(&fdoCtx->rirb.xferEvent[addr], IO_NO_INCREMENT, FALSE);
-			}
+			fdoCtx->rirb.cmds[addr]--;
+			answered |= 1 << addr;
 		}
 		else {
 			SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_IOCTL,
 				"Unexpected unsolicited response from address %d %x\n", addr,
 				rirb.response);
 		}
+	}
+
+	WdfInterruptReleaseLock(fdoCtx->Interrupt);
+
+	/* Waiters check their own transfers, so every response wakes them */
+	for (addr = 0; addr < HDA_MAX_CODECS; addr++) {
+		if (answered & (1 << addr))
+			KeSetEvent(&fdoCtx->rirb.xferEvent[addr], IO_NO_INCREMENT, FALSE);
 	}
 }
 

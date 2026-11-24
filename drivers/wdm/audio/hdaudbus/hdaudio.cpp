@@ -11,24 +11,40 @@ NTSTATUS HDA_WaitForTransfer(
 
 	SklHdAudBusPrint(DEBUG_LEVEL_VERBOSE, DBG_IOCTL, "%s called (Count: %d)!\n", __func__, Count);
 
-	LARGE_INTEGER Timeout;
-	Timeout.QuadPart = -10LL * 1000LL * 1000LL * (LONGLONG)Count;
-	status = KeWaitForSingleObject(&fdoCtx->rirb.xferEvent[codecAddr], Executive, KernelMode, FALSE, &Timeout);
-	KeClearEvent(&fdoCtx->rirb.xferEvent[codecAddr]);
+	/* One second per verb, checked in short slices since other waiters share the event */
+	LARGE_INTEGER Deadline, Now, Slice;
+	KeQueryTickCount(&Now);
+	Deadline.QuadPart = Now.QuadPart + ((10LL * 1000LL * 1000LL * (LONGLONG)Count) / KeQueryTimeIncrement()) + 1;
+	Slice.QuadPart = -10LL * 1000LL * 10LL;
 
-	SklHdAudBusPrint(DEBUG_LEVEL_VERBOSE, DBG_IOCTL, "%s wait status: 0x%x!\n", __func__, status);
+	ULONG TransferredCount;
+	for (;;) {
+		KeClearEvent(&fdoCtx->rirb.xferEvent[codecAddr]);
 
-	ULONG TransferredCount = 0;
-	for (ULONG i = 0; i < Count; i++) {
-		if (CodecTransfer[i].Input.IsValid) {
-			TransferredCount++;
+		TransferredCount = 0;
+		KeMemoryBarrier();
+		for (ULONG i = 0; i < Count; i++) {
+			if (((volatile HDAUDIO_CODEC_RESPONSE*)&CodecTransfer[i].Input)->IsValid) {
+				TransferredCount++;
+			}
 		}
+		if (TransferredCount == Count)
+			break;
+
+		KeQueryTickCount(&Now);
+		if (Now.QuadPart >= Deadline.QuadPart)
+			break;
+
+		KeWaitForSingleObject(&fdoCtx->rirb.xferEvent[codecAddr], Executive, KernelMode, FALSE, &Slice);
 	}
 
 	if (TransferredCount < Count) {
-		InterlockedAdd(&fdoCtx->rirb.cmds[codecAddr], TransferredCount - Count);
+		/* The late responses still arrive in order, so the slots stay and only the transfers go */
+		WdfInterruptAcquireLock(fdoCtx->Interrupt);
+		HDAAbandonTransfersLocked(fdoCtx, Count, CodecTransfer);
+		WdfInterruptReleaseLock(fdoCtx->Interrupt);
 
-		SklHdAudBusPrint(DEBUG_LEVEL_VERBOSE, DBG_IOCTL, "%s timeout (Count: %d, transferred %d)!\n", __func__, Count, TransferredCount);
+		SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_IOCTL, "%s timeout (Count: %d, transferred %d)!\n", __func__, Count, TransferredCount);
 		status = STATUS_IO_TIMEOUT;
 		goto out;
 	}
