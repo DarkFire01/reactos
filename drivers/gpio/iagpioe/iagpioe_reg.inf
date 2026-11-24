@@ -1,0 +1,11 @@
+; Intel Cherryview GPIO controller
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\iagpioe","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\iagpioe","Group",0x00000000,"Extended Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\iagpioe","ImagePath",0x00020000,"system32\drivers\iagpioe.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\iagpioe","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\iagpioe","Type",0x00010001,0x00000001
+
+; Critical device, so the controller starts at boot without an INF install
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#INT33FF","Service",0x00000000,"iagpioe"
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\ACPI#INT33FF","ClassGUID",0x00000000,"{4D36E97D-E325-11CE-BFC1-08002BE10318}"

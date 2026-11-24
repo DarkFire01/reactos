@@ -1,0 +1,46 @@
+; Intel Cherryview and Braswell GPIO controllers
+
+[Version]
+Signature="$Windows NT$"
+Class=System
+ClassGUID={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%ReactOS%
+DriverVer=11/23/2026,1.0
+
+[SourceDisksFiles]
+iagpioe.sys = 3426
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%IntelMfg%=Intel
+
+[Intel]
+%ChvGpio.DeviceDesc%=ChvGpio_Inst,ACPI\INT33FF
+
+[ChvGpio_Inst.NT]
+CopyFiles=ChvGpio_CopyFiles
+
+[ChvGpio_CopyFiles]
+iagpioe.sys
+
+[ChvGpio_Inst.NT.Services]
+AddService=iagpioe,0x00000002,ChvGpio_Service
+
+[ChvGpio_Service]
+DisplayName    = %ChvGpio.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\iagpioe.sys
+LoadOrderGroup = Extended Base
+
+[Strings]
+ReactOS="ReactOS Project"
+IntelMfg="Intel"
+ChvGpio.DeviceDesc="Intel Serial IO GPIO Controller"
+ChvGpio.ServiceDesc="Intel Cherryview GPIO Controller Driver"
