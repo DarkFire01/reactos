@@ -199,10 +199,13 @@ typedef struct _DL_MODALITY_PATH
 } DL_MODALITY_PATH, *PDL_MODALITY_PATH;
 
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, AdapterLuid) == 0x10);
+/* Past the signal pixel rate these are the x64 offsets */
+#ifdef _WIN64
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, CloneGroupId) == 0xB8);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, StatusApply) == 0xC0);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, DevMode) == 0xE0);
 C_ASSERT(sizeof(DL_MODALITY_PATH) == 0x110);
+#endif
 #else
 typedef struct _DL_MODALITY_PATH
 {
@@ -257,6 +260,7 @@ C_ASSERT(sizeof(DL_MODALITY_PATH) == 196);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.TotalSize) == 0x24);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.ActiveSize) == 0x2C);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.VSyncFreq) == 0x34);
+#ifdef _WIN64
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.ScanLineOrdering) == 0x50);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetOutputTechnology) == 0x58);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, SourcePrimSurfSize) == 0x60);
@@ -264,6 +268,7 @@ C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, Rotation) == 0x84);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, ScalingToApply) == 0x88);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, ScalingIntent) == 0x8C);
 C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, Position) == 0x90);
+#endif
 #endif
 
 /* The paths follow the header directly */
@@ -324,8 +329,10 @@ typedef struct _DL_CDS_REQUEST
 
 /* dxgkrnl's CDS_JOURNAL::_PreVerify reads the DEVMODE pointer at 0x20 */
 C_ASSERT(sizeof(D3DKMDT_VIDEO_OUTPUT_TECHNOLOGY) == sizeof(ULONG));
+#ifdef _WIN64
 C_ASSERT(FIELD_OFFSET(DL_CDS_REQUEST, pDevMode) == 0x20);
 C_ASSERT(sizeof(DL_CDS_REQUEST) == 0x28);
+#endif
 
 #define DL_CDS_TRY_CLOSEST          0x00000002
 #define DL_CDS_VALIDATE_ONLY        0x00000004

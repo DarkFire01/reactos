@@ -2990,6 +2990,12 @@ NtDCompositionGetConnectionBatch(
     _In_opt_ PVOID Context,
     _Out_ PVOID* ListHead);
 
+struct _DCOMP_FRAME_INFO;
+struct _DCOMP_FRAME_CONFIRM;
+struct _DCOMP_FRAME_STATS;
+struct _DCOMP_TARGET_ID;
+struct _DCOMP_TARGET_STATS;
+
 NTSTATUS
 NTAPI
 NtDCompositionBeginFrame(
@@ -3821,7 +3827,11 @@ NtUserYieldTask(VOID);
 
 #include "userdpi.h"
 
+#ifdef _WIN64
 C_ASSERT(sizeof(CLIENTINFO) <= USER_CLIENTINFO_VIRTUAL_DPI_SLOT * sizeof(ULONG_PTR));
+#else
+C_ASSERT(FIELD_OFFSET(CLIENTINFO, Win32ClientInfo3) + 25 * sizeof(ULONG) == USER_CLIENTINFO_VIRTUAL_DPI_SLOT * sizeof(ULONG_PTR));
+#endif
 
 #define NOPARAM_ROUTINE_ISCONSOLEMODE             0xffff0001
 #define ONEPARAM_ROUTINE_ENABLEPROCWNDGHSTING     0xfffe000d

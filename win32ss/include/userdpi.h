@@ -32,7 +32,12 @@
  * The last slot of the TEB's Win32ClientInfo, past CLIENTINFO so gdi32 can read it too:
  * USER_VIRTUAL_DPI while the DWM stretches the thread's windows, else 0.
  */
+#ifdef _WIN64
 #define USER_CLIENTINFO_VIRTUAL_DPI_SLOT        61
+#else
+/* The x86 CLIENTINFO fills the array, so this is its last unused Win32ClientInfo3 entry */
+#define USER_CLIENTINFO_VIRTUAL_DPI_SLOT        60
+#endif
 #define UserGetThreadVirtualDpi() ((UINT)NtCurrentTeb()->Win32ClientInfo[USER_CLIENTINFO_VIRTUAL_DPI_SLOT])
 
 #ifdef SM_CXSCREEN

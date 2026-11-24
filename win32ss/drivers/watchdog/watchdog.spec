@@ -7,7 +7,7 @@
 @ stdcall DMgrReleaseGdiViewId(long long)
 @ stdcall DMgrWriteDeviceCountToRegistry()
 @ stdcall SMgrGdiCallout(ptr long long ptr ptr ptr)
-@ stdcall SMgrNotifySessionChange(long)
+@ stdcall SMgrNotifySessionChange(long ptr)
 @ stdcall SMgrRegisterGdiCallout(ptr)
 @ stdcall WdAllocateDeferredWatchdog(ptr ptr long)
 @ stdcall WdAllocateWatchdog(ptr ptr long)
