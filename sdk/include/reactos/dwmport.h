@@ -447,7 +447,76 @@ typedef struct _DWM_WINDOW_ATTRIBUTE_REQUEST
     ULONG Value;
 } DWM_WINDOW_ATTRIBUTE_REQUEST, *PDWM_WINDOW_ATTRIBUTE_REQUEST;
 
+/*
+ * Ours: Windows.Graphics.Capture. A capture is kept per connection; when the connection closes the
+ * DWM stops it. Frames go into the buffers DWM_CAPTURE_SHARED names, and Event is set after each.
+ */
+#define DWM_API_START_CAPTURE       0x40000083
+#define DWM_API_STOP_CAPTURE        0x40000084
+#define DWM_API_CAPTURE_DISCONNECT  0x40000085  /* dwmredir to udwm: Connection closed */
+
+typedef struct _DWM_CAPTURE_REQUEST
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    LONG Result;
+    ULONG64 Window;             /* a top level window, or 0 */
+    ULONG64 Monitor;            /* or a monitor */
+    ULONG64 Section;            /* start: the sender's handles, which the DWM duplicates */
+    ULONG64 Event;
+    ULONG64 Connection;         /* filled in by the DWM */
+    ULONG Capture;              /* out on a start, in on a stop */
+    ULONG Reserved;
+    SIZE Size;                  /* out: what is captured now */
+} DWM_CAPTURE_REQUEST, *PDWM_CAPTURE_REQUEST;
+
 #include <poppack.h>
+
+/* What a capture buffer is doing; the generation in the high bits says which set of buffers it is in */
+#define DWM_CAPTURE_MAX_BUFFERS     16
+#define DWM_CAPTURE_SLOT_FREE       0   /* the DWM may draw into it */
+#define DWM_CAPTURE_SLOT_DRAWING    1
+#define DWM_CAPTURE_SLOT_READY      2   /* holds a frame nobody took yet */
+#define DWM_CAPTURE_SLOT_TAKEN      3   /* the client holds the frame */
+
+#define DWM_CAPTURE_GENERATION_MASK         0x0FFFFFFF
+#define DWM_CAPTURE_SLOT(Generation, Kind)  ((LONG)((((ULONG)(Generation) & DWM_CAPTURE_GENERATION_MASK) << 4) | (Kind)))
+#define DWM_CAPTURE_SLOT_KIND(State)        ((ULONG)(State) & 0xF)
+
+/* DWM_CAPTURE_SHARED flags */
+#define DWM_CAPTURE_CURSOR          0x00000001  /* the pointer is drawn into the frames */
+
+typedef struct _DWM_CAPTURE_SLOT
+{
+    volatile LONG State;
+    ULONG ContentWidth;         /* what was drawn, which may be larger or smaller than the buffer */
+    ULONG ContentHeight;
+    ULONG Reserved;
+    ULONG64 Texture;            /* global share handle of the client's buffer */
+    LONG64 Frame;               /* the frame number it holds */
+    LONG64 Time;                /* QueryPerformanceCounter when it was composed */
+} DWM_CAPTURE_SLOT, *PDWM_CAPTURE_SLOT;
+
+/*
+ * The section a capture shares with the DWM. Generation is odd while the client replaces its
+ * buffers; every slot of a set carries the set's generation.
+ */
+typedef struct _DWM_CAPTURE_SHARED
+{
+    volatile LONG Generation;
+    volatile LONG Closed;       /* the DWM sets it once the window or monitor is gone */
+    volatile LONG Flags;        /* DWM_CAPTURE_* */
+    ULONG Count;
+    ULONG Width;
+    ULONG Height;
+    ULONG Format;               /* DXGI_FORMAT of every buffer */
+    ULONG Reserved;
+    volatile LONG64 Frames;     /* frames composed so far */
+    DWM_CAPTURE_SLOT Slots[DWM_CAPTURE_MAX_BUFFERS];
+} DWM_CAPTURE_SHARED, *PDWM_CAPTURE_SHARED;
+
+C_ASSERT(sizeof(DWM_CAPTURE_SLOT) == 40);
+C_ASSERT(FIELD_OFFSET(DWM_CAPTURE_SHARED, Frames) == 32);
 
 #define DWM_PORT_DATA_SIZE(Type) ((ULONG)(sizeof(Type) - sizeof(PORT_MESSAGE)))
 
@@ -470,6 +539,7 @@ C_ASSERT(FIELD_OFFSET(DWM_VIS_RGN_UPDATE, Rects) - sizeof(PORT_MESSAGE) == 0x1C)
 C_ASSERT(sizeof(DWM_VIS_RGN_UPDATE) <= PORT_MAXIMUM_MESSAGE_LENGTH);
 C_ASSERT(sizeof(DWM_UPDATE_THUMBNAIL_REQUEST) <= PORT_MAXIMUM_MESSAGE_LENGTH);
 C_ASSERT(sizeof(DWM_ICONIC_BITMAP_REQUEST) <= PORT_MAXIMUM_MESSAGE_LENGTH);
+C_ASSERT(sizeof(DWM_CAPTURE_REQUEST) <= PORT_MAXIMUM_MESSAGE_LENGTH);
 
 /* NtGdiHLSurfGetInformation classes */
 #define HLSURF_INFO_SURFACE_DATA    3

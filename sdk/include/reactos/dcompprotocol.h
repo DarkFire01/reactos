@@ -302,6 +302,7 @@ typedef struct _DCOMP_CMD_REMOVE_CHILD
 /* Ours: a visual's clip by a geometry */
 #define DCOMP_RESOURCE_GEOMETRIC_CLIP               255
 #define DCOMP_RESOURCE_VISUAL_CAPTURE               267 /* ours: CompositionGraphicsDevice.CaptureAsync */
+#define DCOMP_RESOURCE_CAPTURE_STREAM               268 /* ours, DWM only: Windows.Graphics.Capture frames */
 
 /* Property ids below 1000 are Windows'; 1000 and up are ours */
 
@@ -519,6 +520,18 @@ typedef struct _DCOMP_ANIMATION_CLOCK
 #define DCOMP_VISUAL_CAPTURE_VISUAL     0       /* reference: visual */
 #define DCOMP_VISUAL_CAPTURE_SURFACE    1       /* reference: composition surface bitmap */
 #define DCOMP_VISUAL_CAPTURE_SECTION    2       /* reference: shared section */
+
+/*
+ * Capture stream properties: a window's root drawn in its own space, or a monitor's composed
+ * output, into the buffers a DWM_CAPTURE_SHARED section names. Handles are the compositor's own.
+ */
+#define DCOMP_CAPTURE_STREAM_VISUAL     1000    /* reference: the window's root */
+#define DCOMP_CAPTURE_STREAM_SIZE       1001    /* buffer: SIZE of the window */
+#define DCOMP_CAPTURE_STREAM_MONITOR    1002    /* integer: HMONITOR, in place of a visual */
+#define DCOMP_CAPTURE_STREAM_SECTION    1003    /* handle: section holding DWM_CAPTURE_SHARED; the stream closes it */
+#define DCOMP_CAPTURE_STREAM_EVENT      1004    /* handle: event set after each frame; the stream closes it */
+#define DCOMP_CAPTURE_STREAM_PAUSED     1005    /* integer: nothing to show, such as a minimized window */
+#define DCOMP_CAPTURE_STREAM_CLOSED     1006    /* integer: what was captured is gone */
 
 typedef struct _DCOMP_SURFACE_DESC
 {
