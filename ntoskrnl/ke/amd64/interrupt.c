@@ -146,6 +146,8 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
             (ConnectedInterrupt->ShareVector == 0) ||
             (Interrupt->Mode != ConnectedInterrupt->Mode))
         {
+            DPRINT1("Vector 0x%lx on processor %u is held by handler %p, sharing refused\n",
+                    Interrupt->Vector, Interrupt->Number, CurrentHandler);
             goto Cleanup;
         }
 
