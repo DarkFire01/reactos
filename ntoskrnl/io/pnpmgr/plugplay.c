@@ -927,9 +927,12 @@ IopGetDeviceNodeStatus(
     if (DeviceNode->Parent == IopRootDeviceNode)
         Output |= DN_ROOT_ENUMERATED;
 
-    // FIXME: review for deleted and removed states
-    if (DeviceNode->State >= DeviceNodeDriversAdded)
+    /* A removed device no longer has its drivers */
+    if (DeviceNode->State >= DeviceNodeDriversAdded &&
+        DeviceNode->State <= DeviceNodeQueryRemoved)
+    {
         Output |= DN_DRIVER_LOADED;
+    }
 
     if (PiIsDevNodeStarted(DeviceNode))
         Output |= DN_STARTED;
@@ -1319,6 +1322,9 @@ PiControlQueryRemoveDevice(
     PDEVICE_OBJECT DeviceObject;
     NTSTATUS Status;
     UNICODE_STRING DeviceInstance;
+    UNICODE_STRING VetoName;
+    PNP_VETO_TYPE VetoType;
+    ULONG NameLength, Copy;
 
     Status = IopCaptureUnicodeString(&DeviceInstance, &ControlData->DeviceInstance);
     if (!NT_SUCCESS(Status))
@@ -1336,11 +1342,36 @@ PiControlQueryRemoveDevice(
         return STATUS_NO_SUCH_DEVICE;
     }
 
-    UNIMPLEMENTED;
-    Status = STATUS_NOT_IMPLEMENTED;
-
+    Status = PiQueryAndRemoveDevice(DeviceObject, &VetoType, &VetoName);
     ObDereferenceObject(DeviceObject);
 
+    if (Status == STATUS_PLUGPLAY_QUERY_VETOED)
+    {
+        DPRINT1("Query remove vetoed, type %u, by '%wZ'\n", VetoType, &VetoName);
+
+        _SEH2_TRY
+        {
+            ControlData->VetoType = VetoType;
+
+            NameLength = ControlData->NameLength;
+            if (ControlData->VetoName != NULL && NameLength != 0)
+            {
+                ProbeForWrite(ControlData->VetoName, NameLength * sizeof(WCHAR), sizeof(WCHAR));
+
+                Copy = min(NameLength - 1, VetoName.Length / sizeof(WCHAR));
+                if (Copy != 0)
+                    RtlCopyMemory(ControlData->VetoName, VetoName.Buffer, Copy * sizeof(WCHAR));
+                ControlData->VetoName[Copy] = UNICODE_NULL;
+            }
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+
+    RtlFreeUnicodeString(&VetoName);
     return Status;
 }
 

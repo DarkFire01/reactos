@@ -134,7 +134,7 @@ SdStorInquiry(
 
     RtlZeroMemory(Inquiry, sizeof(INQUIRYDATA));
     Inquiry->DeviceType = DIRECT_ACCESS_DEVICE;
-    Inquiry->RemovableMedia = 1;
+    Inquiry->RemovableMedia = (Card->Flags & SDSTOR_CARD_MMC) ? 0 : 1;
     Inquiry->Versions = 2;
     Inquiry->ResponseDataFormat = 2;
     Inquiry->AdditionalLength = sizeof(INQUIRYDATA) - RTL_SIZEOF_THROUGH_FIELD(INQUIRYDATA, AdditionalLength);
@@ -565,7 +565,7 @@ SdStorQueryProperty(
         Device->Version = sizeof(STORAGE_DEVICE_DESCRIPTOR);
         Device->Size = TotalLength;
         Device->DeviceType = DIRECT_ACCESS_DEVICE;
-        Device->RemovableMedia = TRUE;
+        Device->RemovableMedia = (Card->Flags & SDSTOR_CARD_MMC) ? FALSE : TRUE;
         Device->CommandQueueing = FALSE;
         Device->BusType = BusTypeSd;
         Device->VendorIdOffset = sizeof(STORAGE_DEVICE_DESCRIPTOR) - sizeof(UCHAR);

@@ -261,6 +261,81 @@ SdStorPdoQueryId(
     return STATUS_SUCCESS;
 }
 
+/* Append a space padded identity field and a separator when the field is not blank. */
+static
+VOID
+SdStorAppendField(
+    _Inout_updates_z_(TextSize) PCHAR Text,
+    _In_ SIZE_T TextSize,
+    _In_reads_(FieldSize) const UCHAR *Field,
+    _In_ ULONG FieldSize)
+{
+    SIZE_T Used;
+    ULONG Length = FieldSize;
+
+    while (Length > 0 && (Field[Length - 1] == ' ' || Field[Length - 1] == '\0'))
+        Length--;
+
+    if (Length == 0)
+        return;
+
+    if (!NT_SUCCESS(RtlStringCbLengthA(Text, TextSize, &Used)))
+        return;
+
+    if (Used + Length + 2 > TextSize)
+        return;
+
+    RtlCopyMemory(Text + Used, Field, Length);
+    Text[Used + Length] = ' ';
+    Text[Used + Length + 1] = '\0';
+}
+
+static
+NTSTATUS
+SdStorPdoQueryDeviceText(
+    _In_ PSDSTOR_PDO_EXTENSION PdoExtension,
+    _In_ PIRP Irp)
+{
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PSDSTOR_CARD_DATA Card = &PdoExtension->FdoExtension->Card;
+    CHAR Text[64];
+    PWSTR Buffer;
+    NTSTATUS Status;
+
+    if (IoStack->Parameters.QueryDeviceText.DeviceTextType != DeviceTextDescription &&
+        IoStack->Parameters.QueryDeviceText.DeviceTextType != DeviceTextLocationInformation)
+    {
+        return Irp->IoStatus.Status;
+    }
+
+    Buffer = ExAllocatePoolWithTag(PagedPool, sizeof(Text) * sizeof(WCHAR), SDSTOR_POOL_TAG);
+    if (Buffer == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    if (IoStack->Parameters.QueryDeviceText.DeviceTextType == DeviceTextDescription)
+    {
+        /* "<vendor> <product> SD Card" or "... MMC Card", blank fields skipped */
+        Text[0] = '\0';
+        SdStorAppendField(Text, sizeof(Text), Card->VendorId, sizeof(Card->VendorId));
+        SdStorAppendField(Text, sizeof(Text), Card->ProductId, sizeof(Card->ProductId));
+        RtlStringCbCatA(Text, sizeof(Text), (Card->Flags & SDSTOR_CARD_MMC) ? "MMC Card" : "SD Card");
+        Status = RtlStringCchPrintfW(Buffer, sizeof(Text), L"%hs", Text);
+    }
+    else
+    {
+        Status = RtlStringCchPrintfW(Buffer, sizeof(Text), L"Bus Number %u, Target Id %u, LUN %u", 1, 2, 0);
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Buffer, SDSTOR_POOL_TAG);
+        return Status;
+    }
+
+    Irp->IoStatus.Information = (ULONG_PTR)Buffer;
+    return STATUS_SUCCESS;
+}
+
 static
 NTSTATUS
 SdStorPdoPnp(
@@ -281,9 +356,13 @@ SdStorPdoPnp(
             Status = SdStorPdoQueryId(PdoExtension, Irp);
             break;
 
+        case IRP_MN_QUERY_DEVICE_TEXT:
+            Status = SdStorPdoQueryDeviceText(PdoExtension, Irp);
+            break;
+
         case IRP_MN_QUERY_CAPABILITIES:
             Capabilities = IoStack->Parameters.DeviceCapabilities.Capabilities;
-            Capabilities->Removable = TRUE;
+            Capabilities->Removable = !(PdoExtension->FdoExtension->Card.Flags & SDSTOR_CARD_MMC);
             Capabilities->SurpriseRemovalOK = TRUE;
             Capabilities->SilentInstall = TRUE;
             Capabilities->RawDeviceOK = TRUE;

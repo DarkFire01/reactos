@@ -80,6 +80,26 @@ SdPortGetProperty(
     PSDPORT_INITIALIZATION_DATA InitData = Slot->FdoExtension->InitData;
     ULONG Value = 0;
 
+    /* Card registers are meaningless until identification finished */
+    switch (Request->Data.Property.PropertyId)
+    {
+        case SdPropertyCid:
+        case SdPropertyCsd:
+        case SdPropertyHighCapacity:
+        case SdPropertyRca:
+        case SdPropertyCardType:
+        case SdPropertyExtCsd:
+            if (!Slot->CardInitialized)
+            {
+                Request->Status = STATUS_NO_MEDIA_IN_DEVICE;
+                return STATUS_NO_MEDIA_IN_DEVICE;
+            }
+            break;
+
+        default:
+            break;
+    }
+
     switch (Request->Data.Property.PropertyId)
     {
         case SdPropertySlotCount:
@@ -123,6 +143,29 @@ SdPortGetProperty(
         case SdPropertyRca:
             Value = Slot->Rca;
             break;
+
+        case SdPropertyCardType:
+            Value = Slot->CardType;
+            break;
+
+        case SdPropertyExtCsd:
+            if (!Slot->ExtCsdValid)
+            {
+                Request->Status = STATUS_NOT_SUPPORTED;
+                return STATUS_NOT_SUPPORTED;
+            }
+
+            if (Request->Data.Property.OutputBuffer == NULL ||
+                Request->Data.Property.OutputBufferLength < sizeof(Slot->ExtCsd))
+            {
+                Request->Status = STATUS_BUFFER_TOO_SMALL;
+                return STATUS_BUFFER_TOO_SMALL;
+            }
+
+            RtlCopyMemory(Request->Data.Property.OutputBuffer, Slot->ExtCsd, sizeof(Slot->ExtCsd));
+            Request->BytesTransferred = sizeof(Slot->ExtCsd);
+            Request->Status = STATUS_SUCCESS;
+            return STATUS_SUCCESS;
 
         case SdPropertyCid:
         case SdPropertyCsd:

@@ -5676,6 +5676,60 @@ StopDevice(
 #endif
 }
 
+/**
+ * @brief
+ * Restarts a device so it runs the drivers now set up for it. A device that
+ * refuses to stop is flagged DI_NEEDRESTART and changes over on the next boot.
+ */
+static
+BOOL
+RestartDevice(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData)
+{
+    struct DeviceInfoSet *set = (struct DeviceInfoSet *)DeviceInfoSet;
+    struct DeviceInfo *deviceInfo = (struct DeviceInfo *)DeviceInfoData->Reserved;
+    WCHAR VetoName[MAX_PATH];
+    PNP_VETO_TYPE VetoType;
+    ULONG Status, Problem;
+    CONFIGRET cr;
+
+    cr = CM_Get_DevNode_Status_Ex(&Status, &Problem, deviceInfo->dnDevInst, 0, set->hMachine);
+    if (cr == CR_SUCCESS && (Status & (DN_STARTED | DN_DRIVER_LOADED)))
+    {
+        VetoName[0] = UNICODE_NULL;
+        cr = CM_Query_And_Remove_SubTree_ExW(deviceInfo->dnDevInst,
+                                             &VetoType,
+                                             VetoName,
+                                             ARRAYSIZE(VetoName),
+                                             CM_REMOVE_NO_RESTART,
+                                             set->hMachine);
+        if (cr != CR_SUCCESS)
+        {
+            ERR("Device could not be stopped (cr 0x%lx), veto type %u by %s\n",
+                cr, VetoType, debugstr_w(VetoName));
+
+            deviceInfo->InstallParams.Flags |= DI_NEEDRESTART;
+            CM_Set_DevNode_Problem_Ex(deviceInfo->dnDevInst,
+                                      CM_PROB_NEED_RESTART,
+                                      CM_SET_DEVNODE_PROBLEM_OVERRIDE,
+                                      set->hMachine);
+            return TRUE;
+        }
+    }
+
+    cr = CM_Setup_DevNode_Ex(deviceInfo->dnDevInst, CM_SETUP_DEVNODE_READY, set->hMachine);
+    if (cr != CR_SUCCESS)
+        ERR("Device could not be restarted (cr 0x%lx)\n", cr);
+
+    /* A driver that asked for a reboot while starting gets one */
+    cr = CM_Get_DevNode_Status_Ex(&Status, &Problem, deviceInfo->dnDevInst, 0, set->hMachine);
+    if (cr == CR_SUCCESS && (Status & DN_NEED_RESTART))
+        deviceInfo->InstallParams.Flags |= DI_NEEDREBOOT;
+
+    return TRUE;
+}
+
 /***********************************************************************
  *		SetupDiChangeState (SETUPAPI.@)
  */
@@ -5781,7 +5835,7 @@ SetupDiChangeState(
         }
         case DICS_PROPCHANGE:
         {
-            ret = ResetDevice(DeviceInfoSet, DeviceInfoData);
+            ret = RestartDevice(DeviceInfoSet, DeviceInfoData);
             break;
         }
         default:
@@ -6288,9 +6342,9 @@ SetupDiInstallDevice(
        goto cleanup;
     }
 
-    /* Start the device */
+    /* Start the device, or restart it when it already runs other drivers */
     if (!RebootRequired && !(InstallParams.Flags & (DI_NEEDRESTART | DI_NEEDREBOOT | DI_DONOTCALLCONFIGMG)))
-        ret = ResetDevice(DeviceInfoSet, DeviceInfoData);
+        ret = RestartDevice(DeviceInfoSet, DeviceInfoData);
     else
         ret = TRUE;
 
@@ -6755,8 +6809,6 @@ SetupDiRestartDevices(
     PSP_DEVINFO_DATA DeviceInfoData)
 {
     struct DeviceInfoSet *set = (struct DeviceInfoSet *)DeviceInfoSet;
-    struct DeviceInfo *devInfo;
-    CONFIGRET cr;
 
     TRACE("%s(%p %p)\n", __FUNCTION__, DeviceInfoSet, DeviceInfoData);
 
@@ -6778,16 +6830,7 @@ SetupDiRestartDevices(
         return FALSE;
     }
 
-    devInfo = (struct DeviceInfo *)DeviceInfoData->Reserved;
-
-    cr = CM_Enable_DevNode_Ex(devInfo->dnDevInst, 0, set->hMachine);
-    if (cr != CR_SUCCESS)
-    {
-        SetLastError(GetErrorCodeFromCrCode(cr));
-        return FALSE;
-    }
-
-    return TRUE;
+    return RestartDevice(DeviceInfoSet, DeviceInfoData);
 }
 
 /***********************************************************************

@@ -152,6 +152,51 @@ SdhciSetClock(
     return STATUS_SUCCESS;
 }
 
+/* Use the requested bus voltage when the slot offers it, else the highest one it does offer. */
+static
+UCHAR
+SdhciSelectPower(
+    _In_ PSDHCI_EXTENSION Extension,
+    _In_ ULONG Voltage)
+{
+    ULONG Caps = SdhciReadUlong(Extension, SDHCI_CAPABILITIES);
+    ULONG Supported = Caps & (SDHCI_CAN_VDD_330 | SDHCI_CAN_VDD_300 | SDHCI_CAN_VDD_180);
+
+    if (Voltage >= 33 && (Supported == 0 || (Supported & SDHCI_CAN_VDD_330)))
+        return SDHCI_POWER_33;
+
+    if (Voltage >= 30 && (Supported == 0 || (Supported & SDHCI_CAN_VDD_300)))
+        return SDHCI_POWER_30;
+
+    if (Supported == 0 || (Supported & SDHCI_CAN_VDD_180))
+        return SDHCI_POWER_18;
+
+    if (Supported & SDHCI_CAN_VDD_330)
+        return SDHCI_POWER_33;
+
+    return SDHCI_POWER_30;
+}
+
+/* A 1.8V only embedded slot also needs its I/O pads switched to 1.8V signaling. */
+static
+VOID
+SdhciSetSignaling18(
+    _In_ PSDHCI_EXTENSION Extension,
+    _In_ BOOLEAN Enable)
+{
+    USHORT Control;
+
+    if (Extension->SpecVersion < SDHCI_SPEC_300)
+        return;
+
+    Control = SdhciReadUshort(Extension, SDHCI_HOST_CONTROL2);
+    if (Enable)
+        Control |= SDHCI_CTRL2_SIGNALING_18;
+    else
+        Control &= ~SDHCI_CTRL2_SIGNALING_18;
+    SdhciWriteUshort(Extension, SDHCI_HOST_CONTROL2, Control);
+}
+
 NTSTATUS
 NTAPI
 SdhciGetSlotCount(
@@ -273,13 +318,9 @@ SdhciIssueBusOperation(
 
         case SdSetVoltage:
             SdhciWriteUchar(Ext, SDHCI_POWER_CONTROL, 0);
-            if (BusOperation->Parameters.Voltage >= 33)
-                Power = SDHCI_POWER_33;
-            else if (BusOperation->Parameters.Voltage >= 30)
-                Power = SDHCI_POWER_30;
-            else
-                Power = SDHCI_POWER_18;
+            Power = SdhciSelectPower(Ext, BusOperation->Parameters.Voltage);
             SdhciWriteUchar(Ext, SDHCI_POWER_CONTROL, Power | SDHCI_POWER_ON);
+            SdhciSetSignaling18(Ext, (Power == SDHCI_POWER_18));
             return STATUS_SUCCESS;
 
         case SdSetBusWidth:
@@ -424,15 +465,21 @@ SdhciIssueRequest(
     USHORT TransferMode = 0;
     USHORT CommandValue;
     BOOLEAN HasData;
+    BOOLEAN UsesDat;
 
     HasData = (Command->TransferType != SdTransferTypeNone &&
                Command->TransferType != SdTransferTypeCommandOnly);
+
+    /* Commands with busy signaling also need DAT0 released by the previous one */
+    UsesDat = HasData ||
+              Command->ResponseType == SdResponseTypeR1B ||
+              Command->ResponseType == SdResponseTypeR5B;
 
     for (Timeout = 0; Timeout < 100000; Timeout++)
     {
         ULONG State = SdhciReadUlong(Ext, SDHCI_PRESENT_STATE);
         if (!(State & SDHCI_STATE_CMD_INHIBIT) &&
-            (!HasData || !(State & SDHCI_STATE_DAT_INHIBIT)))
+            (!UsesDat || !(State & SDHCI_STATE_DAT_INHIBIT)))
         {
             break;
         }
@@ -614,6 +661,11 @@ SdhciRequestDpc(
     if (HasData && (Events & SDHCI_INT_XFER_COMPLETE))
     {
         SdhciDrainPio(Ext);
+
+        /* A late busy end from an earlier R1b command also raises transfer complete */
+        if (Ext->DataRemaining != 0)
+            return;
+
         Ext->CurrentRequest = NULL;
         Request->BytesTransferred = Request->Data.Command.BlockCount * Request->Data.Command.BlockSize;
         SdPortCompleteRequest(Request, STATUS_SUCCESS);

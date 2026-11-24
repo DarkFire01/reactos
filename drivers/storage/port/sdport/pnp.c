@@ -465,6 +465,31 @@ SdPortPdoQueryId(
 
 static
 NTSTATUS
+SdPortPdoQueryDeviceText(
+    _In_ PSDPORT_SLOT_EXTENSION Slot,
+    _In_ PIRP Irp)
+{
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PCWSTR Text;
+
+    if (IoStack->Parameters.QueryDeviceText.DeviceTextType != DeviceTextDescription)
+        return Irp->IoStatus.Status;
+
+    if (!Slot->CardInitialized)
+        return Irp->IoStatus.Status;
+
+    Text = (Slot->CardType == SdCardTypeMmc) ? L"MMC Memory Card" : L"SD Memory Card";
+
+    Irp->IoStatus.Information =
+        (ULONG_PTR)SdPortDuplicateMultiSz(Text, (ULONG)(wcslen(Text) + 1) * sizeof(WCHAR));
+    if (Irp->IoStatus.Information == 0)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
 SdPortPdoPnp(
     _In_ PSDPORT_SLOT_EXTENSION Slot,
     _In_ PIRP Irp)
@@ -484,9 +509,15 @@ SdPortPdoPnp(
             Status = SdPortPdoQueryId(Slot, Irp);
             break;
 
+        case IRP_MN_QUERY_DEVICE_TEXT:
+            Status = SdPortPdoQueryDeviceText(Slot, Irp);
+            break;
+
         case IRP_MN_QUERY_CAPABILITIES:
             Capabilities = IoStack->Parameters.DeviceCapabilities.Capabilities;
-            Capabilities->Removable = TRUE;
+
+            /* An MMC device behind the slot is soldered down */
+            Capabilities->Removable = (Slot->CardType != SdCardTypeMmc);
             Capabilities->SurpriseRemovalOK = TRUE;
             Capabilities->EjectSupported = FALSE;
             Capabilities->Address = Slot->SlotNumber;

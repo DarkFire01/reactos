@@ -98,8 +98,13 @@ struct _SDPORT_SLOT_EXTENSION
     USHORT Rca;
     BOOLEAN HighCapacity;
     BOOLEAN CardInitialized;
+    SDPORT_CARD_TYPE CardType;
     UCHAR Cid[16];
     UCHAR Csd[16];
+
+    /* Extended CSD captured during MMC bring up, valid for spec version 4 and later */
+    BOOLEAN ExtCsdValid;
+    UCHAR ExtCsd[SDPORT_EXT_CSD_LENGTH];
     IO_REMOVE_LOCK RemoveLock;
     SDPORT_DEVICE_STATE State;
     KSPIN_LOCK QueueLock;

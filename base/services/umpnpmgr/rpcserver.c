@@ -146,6 +146,9 @@ NtStatusToCrError(NTSTATUS Status)
         case STATUS_OBJECT_NAME_NOT_FOUND:
             return CR_NO_SUCH_VALUE;
 
+        case STATUS_PLUGPLAY_QUERY_VETOED:
+            return CR_REMOVE_VETOED;
+
         default:
             return CR_FAILURE;
     }
@@ -4289,11 +4292,13 @@ PNP_QueryRemove(
                          pszDeviceID);
     PlugPlayData.VetoName = pszVetoName;
     PlugPlayData.NameLength = ulNameLength;
-//    PlugPlayData.Flags =
+    PlugPlayData.Flags = ulFlags;
 
     Status = NtPlugPlayControl(PlugPlayControlQueryAndRemoveDevice,
                                &PlugPlayData,
                                sizeof(PlugPlayData));
+    if (Status == STATUS_PLUGPLAY_QUERY_VETOED && pVetoType != NULL)
+        *pVetoType = PlugPlayData.VetoType;
     if (!NT_SUCCESS(Status))
         ret = NtStatusToCrError(Status);
 
@@ -4337,11 +4342,13 @@ PNP_RequestDeviceEject(
                          pszDeviceID);
     PlugPlayData.VetoName = pszVetoName;
     PlugPlayData.NameLength = ulNameLength;
-//    PlugPlayData.Flags =
+    PlugPlayData.Flags = ulFlags;
 
     Status = NtPlugPlayControl(PlugPlayControlQueryAndRemoveDevice,
                                &PlugPlayData,
                                sizeof(PlugPlayData));
+    if (Status == STATUS_PLUGPLAY_QUERY_VETOED && pVetoType != NULL)
+        *pVetoType = PlugPlayData.VetoType;
     if (!NT_SUCCESS(Status))
         ret = NtStatusToCrError(Status);
 

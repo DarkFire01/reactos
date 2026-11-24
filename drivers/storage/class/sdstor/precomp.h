@@ -34,6 +34,7 @@ typedef struct _SDSTOR_CARD_DATA
 {
     ULONG Flags;
     USHORT Rca;
+    UCHAR SpecVersion;
     ULONG BlockLength;
     ULONGLONG BlockCount;
     ULONGLONG CapacityBytes;

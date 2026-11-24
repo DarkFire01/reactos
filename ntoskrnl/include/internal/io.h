@@ -570,6 +570,7 @@ typedef enum _DEVICE_ACTION
     PiActionStartDevice,
     PiActionQueryState,
     PiActionAssignResources,
+    PiActionQueryRemoveDevice,
 } DEVICE_ACTION;
 
 //
@@ -1682,6 +1683,12 @@ NTSTATUS
 PiPerformSyncDeviceAction(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_ DEVICE_ACTION Action);
+
+NTSTATUS
+PiQueryAndRemoveDevice(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Out_ PPNP_VETO_TYPE VetoType,
+    _Out_ PUNICODE_STRING VetoName);
 
 //
 // PnP notifications

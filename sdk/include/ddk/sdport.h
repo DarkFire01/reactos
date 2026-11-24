@@ -48,8 +48,21 @@ typedef enum _SDPORT_PROPERTY
     SdPropertyCid = 17,
     SdPropertyCsd = 18,
     SdPropertyHighCapacity = 19,
-    SdPropertyRca = 20
+    SdPropertyRca = 20,
+    SdPropertyCardType = 21,
+    SdPropertyExtCsd = 22
 } SDPORT_PROPERTY;
+
+/* Memory card family reported through SdPropertyCardType. */
+typedef enum _SDPORT_CARD_TYPE
+{
+    SdCardTypeUnknown = 0,
+    SdCardTypeSdMemory = 1,
+    SdCardTypeMmc = 2
+} SDPORT_CARD_TYPE;
+
+/* Size of the MMC extended CSD register returned through SdPropertyExtCsd. */
+#define SDPORT_EXT_CSD_LENGTH 512
 
 typedef enum _SDPORT_BUS_OPERATION_TYPE
 {

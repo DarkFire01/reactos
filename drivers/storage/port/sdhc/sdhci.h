@@ -82,6 +82,17 @@
 #define SDHCI_CTRL1_HIGH_SPEED     0x04
 #define SDHCI_CTRL1_DATA_8BIT      0x20
 
+/* Host Control 2 bits. */
+#define SDHCI_CTRL2_SIGNALING_18   0x0008
+
+/* Capabilities voltage support bits. */
+#define SDHCI_CAN_VDD_330          0x01000000
+#define SDHCI_CAN_VDD_300          0x02000000
+#define SDHCI_CAN_VDD_180          0x04000000
+
+/* Host Version specification number for 3.00. */
+#define SDHCI_SPEC_300             2
+
 /* Transfer Mode bits. */
 #define SDHCI_TRANSFER_DMA_EN      0x0001
 #define SDHCI_TRANSFER_BLKCNT_EN   0x0002

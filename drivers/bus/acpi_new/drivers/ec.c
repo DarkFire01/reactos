@@ -20,8 +20,10 @@
 #define UACPINT_EC_STATUS_SCI_EVT   0x20
 
 #define UACPINT_EC_SPACE_SIZE       256
-#define UACPINT_EC_TIMEOUT_US       10000
+#define UACPINT_EC_TIMEOUT_US       500000
 #define UACPINT_EC_POLL_US          10
+#define UACPINT_EC_SPIN_US          1000
+#define UACPINT_EC_SLEEP_US         1000
 
 /* Callers built for acpi.sys hand in 16 bytes on 32 bit and 32 on 64 bit */
 C_ASSERT(sizeof(UACPINT_EC_QUERY_REGISTRATION) == (sizeof(PVOID) == 8 ? 32 : 16));
@@ -77,6 +79,7 @@ UacpiNtEcWaitStatus(
     _In_ UCHAR Mask,
     _In_ UCHAR Expected)
 {
+    LARGE_INTEGER Interval;
     ULONG Elapsed = 0;
 
     while ((UacpiNtEcReadStatus(Ec) & Mask) != Expected)
@@ -84,8 +87,18 @@ UacpiNtEcWaitStatus(
         if (Elapsed >= UACPINT_EC_TIMEOUT_US)
             return FALSE;
 
-        KeStallExecutionProcessor(UACPINT_EC_POLL_US);
-        Elapsed += UACPINT_EC_POLL_US;
+        /* Most steps finish within microseconds, a busy EC can take many milliseconds */
+        if (Elapsed < UACPINT_EC_SPIN_US)
+        {
+            KeStallExecutionProcessor(UACPINT_EC_POLL_US);
+            Elapsed += UACPINT_EC_POLL_US;
+        }
+        else
+        {
+            Interval.QuadPart = -10LL * UACPINT_EC_SLEEP_US;
+            KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+            Elapsed += UACPINT_EC_SLEEP_US;
+        }
     }
 
     return TRUE;
