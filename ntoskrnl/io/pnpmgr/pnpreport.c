@@ -28,12 +28,6 @@ typedef struct _INTERNAL_WORK_QUEUE_ITEM
 #define IOP_ROOT_DEVICE_PREFIX      L"ROOT\\"
 #define IOP_ROOT_DEVICE_ID_CHARS    200
 
-/* The basic display driver, the fallback adapter for a display without its own driver */
-#define IOP_BASIC_DISPLAY           L"BasicDisplay"
-
-/* The basic display adapter is a display adapter from the start, before its INF is processed */
-#define IOP_DISPLAY_CLASS_GUID      L"{4d36e968-e325-11ce-bfc1-08002be10318}"
-
 NTSTATUS
 IopSetDeviceInstanceData(HANDLE InstanceKey,
                          PDEVICE_NODE DeviceNode);
@@ -455,7 +449,6 @@ IoReportRootDevice(
     _In_ PDRIVER_OBJECT DriverObject)
 {
     UNICODE_STRING EnumName = RTL_CONSTANT_STRING(ENUM_ROOT);
-    UNICODE_STRING BasicDisplay = RTL_CONSTANT_STRING(IOP_BASIC_DISPLAY);
     UNICODE_STRING ValueName;
     UNICODE_STRING InstancePath;
     PUNICODE_STRING ServiceName = &DriverObject->DriverExtension->ServiceKeyName;
@@ -537,19 +530,6 @@ IoReportRootDevice(
                            ServiceName->Length + sizeof(UNICODE_NULL));
     if (!NT_SUCCESS(Status))
         goto Undo;
-
-    if (RtlEqualUnicodeString(ServiceName, &BasicDisplay, TRUE))
-    {
-        RtlInitUnicodeString(&ValueName, REGSTR_VAL_CLASSGUID);
-        Status = ZwSetValueKey(InstanceKey,
-                               &ValueName,
-                               0,
-                               REG_SZ,
-                               IOP_DISPLAY_CLASS_GUID,
-                               sizeof(IOP_DISPLAY_CLASS_GUID));
-        if (!NT_SUCCESS(Status))
-            goto Undo;
-    }
 
     DriverObject->Flags |= DRVO_ROOT_DEVICE_REPORTED;
     IoInvalidateDeviceRelations(IopRootDeviceNode->PhysicalDeviceObject, BusRelations);
