@@ -666,7 +666,12 @@ static const INFORMATION_CLASS_INFO PsThreadInfoClass[] =
     /* ThreadWow64Context */
     IQS_NONE,
     /* ThreadGroupInformation */
-    IQS_NONE,
+    IQS_SAME
+    (
+        GROUP_AFFINITY,
+        ULONG_PTR,
+        ICIF_QUERY
+    ),
     /* ThreadUmsInformation */
     IQS_NONE,
     /* ThreadCounterProfiling */
