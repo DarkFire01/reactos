@@ -31,6 +31,7 @@
 #include <ndk/rtlfuncs.h>
 #include <ndk/setypes.h>
 #include <powrprof.h>
+#include <winsvc_undoc.h>
 #include <wine/debug.h>
 #include <wine/unicode.h>
 
@@ -3819,8 +3820,7 @@ PwrpFreeRetiredNotifies(
  * @brief Hands an event to the recipient of a registration.
  *
  * @remarks
- * Services would get SERVICE_CONTROL_POWEREVENT through the service control
- * manager, which cannot carry power events to a service yet.
+ * Services get it as SERVICE_CONTROL_POWEREVENT through the service control manager.
  */
 static VOID
 PwrpSendEvent(
@@ -3828,10 +3828,17 @@ PwrpSendEvent(
     _In_ ULONG Type,
     _In_opt_ PPOWERBROADCAST_SETTING Setting)
 {
+    DWORD Error;
+
     if (Notify->Flags == DEVICE_NOTIFY_CALLBACK)
+    {
         Notify->Callback(Notify->Context, Type, Setting);
-    else
-        TRACE("Power event 0x%lx for service %p dropped\n", Type, Notify->ServiceHandle);
+        return;
+    }
+
+    Error = I_ScSendPnPMessage(Notify->ServiceHandle, SERVICE_CONTROL_POWEREVENT, Type, Setting);
+    if (Error != ERROR_SUCCESS)
+        TRACE("Power event 0x%lx for service %p not delivered, %lu\n", Type, Notify->ServiceHandle, Error);
 }
 
 static VOID
