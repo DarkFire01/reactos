@@ -148,14 +148,14 @@
 148 stdcall -noname VkKeyScanWrapW(long) user32.VkKeyScanW
 149 stdcall -noname WinHelpWrapW(long wstr long long) user32.WinHelpW
 150 stdcall -noname wvsprintfWrapW(ptr wstr ptr) user32.wvsprintfW
-151 stdcall -noname StrCmpNCA(str ptr long) kernelbase_ros.StrCmpNCA
-152 stdcall -noname StrCmpNCW(wstr wstr long) kernelbase_ros.StrCmpNCW
-153 stdcall -noname StrCmpNICA(long long long) kernelbase_ros.StrCmpNICA
-154 stdcall -noname StrCmpNICW(wstr wstr long) kernelbase_ros.StrCmpNICW
-155 stdcall -ordinal StrCmpCA(str str) kernelbase_ros.StrCmpCA
-156 stdcall -ordinal StrCmpCW(wstr wstr) kernelbase_ros.StrCmpCW
-157 stdcall -ordinal StrCmpICA(str str) kernelbase_ros.StrCmpICA
-158 stdcall -ordinal StrCmpICW(wstr wstr) kernelbase_ros.StrCmpICW
+151 stdcall -noname StrCmpNCA(str ptr long) kernel32.StrCmpNCA
+152 stdcall -noname StrCmpNCW(wstr wstr long) kernel32.StrCmpNCW
+153 stdcall -noname StrCmpNICA(long long long) kernel32.StrCmpNICA
+154 stdcall -noname StrCmpNICW(wstr wstr long) kernel32.StrCmpNICW
+155 stdcall -ordinal StrCmpCA(str str) kernel32.StrCmpCA
+156 stdcall -ordinal StrCmpCW(wstr wstr) kernel32.StrCmpCW
+157 stdcall -ordinal StrCmpICA(str str) kernel32.StrCmpICA
+158 stdcall -ordinal StrCmpICW(wstr wstr) kernel32.StrCmpICW
 159 stdcall -noname CompareStringAltW(long long wstr long wstr long) kernel32.CompareStringW
 160 stdcall -noname SHAboutInfoA(ptr long)
 161 stdcall -noname SHAboutInfoW(ptr long)
@@ -396,8 +396,8 @@
 396 stub -noname MLHtmlHelpA
 397 stub -noname MLWinHelpW
 398 stub -noname MLHtmlHelpW
-399 stdcall -noname StrCpyNXA(ptr str long) kernelbase_ros.StrCpyNXA
-400 stdcall -noname StrCpyNXW(ptr wstr long) kernelbase_ros.StrCpyNXW
+399 stdcall -noname StrCpyNXA(ptr str long) kernel32.StrCpyNXA
+400 stdcall -noname StrCpyNXW(ptr wstr long) kernel32.StrCpyNXW
 401 stdcall -noname PageSetupDlgWrapW(ptr)
 402 stdcall -noname PrintDlgWrapW(ptr)
 403 stdcall -noname GetOpenFileNameWrapW(ptr)
@@ -459,7 +459,7 @@
 459 stdcall -noname SHExpandEnvironmentStringsA(str ptr long) kernel32.ExpandEnvironmentStringsA
 460 stdcall -noname SHExpandEnvironmentStringsW(wstr ptr long) kernel32.ExpandEnvironmentStringsW
 461 stdcall -noname SHGetAppCompatFlags(long)
-462 stdcall -noname UrlFixupW(wstr wstr long) kernelbase_ros.UrlFixupW
+462 stdcall -noname UrlFixupW(wstr wstr long) kernel32.UrlFixupW
 463 stdcall -noname SHExpandEnvironmentStringsForUserA(ptr str ptr long) userenv.ExpandEnvironmentStringsForUserA
 464 stdcall -noname SHExpandEnvironmentStringsForUserW(ptr wstr ptr long) userenv.ExpandEnvironmentStringsForUserW
 465 stdcall -noname PathUnExpandEnvStringsForUserA(ptr str ptr long)
@@ -772,31 +772,31 @@
 @ stdcall SHSkipJunction(ptr ptr)
 @ stdcall SHStrDupA(str ptr)
 @ stdcall SHStrDupW(wstr ptr)
-@ stdcall StrCSpnA(str str) kernelbase_ros.StrCSpnA
-@ stdcall StrCSpnIA(str str) kernelbase_ros.StrCSpnIA
-@ stdcall StrCSpnIW(wstr wstr) kernelbase_ros.StrCSpnIW
-@ stdcall StrCSpnW(wstr wstr) kernelbase_ros.StrCSpnW
-@ stdcall StrCatBuffA(str str long) kernelbase_ros.StrCatBuffA
-@ stdcall StrCatBuffW(wstr wstr long) kernelbase_ros.StrCatBuffW
-@ stdcall StrCatChainW (ptr long long wstr) kernelbase_ros.StrCatChainW
+@ stdcall StrCSpnA(str str) kernel32.StrCSpnA
+@ stdcall StrCSpnIA(str str) kernel32.StrCSpnIA
+@ stdcall StrCSpnIW(wstr wstr) kernel32.StrCSpnIW
+@ stdcall StrCSpnW(wstr wstr) kernel32.StrCSpnW
+@ stdcall StrCatBuffA(str str long) kernel32.StrCatBuffA
+@ stdcall StrCatBuffW(wstr wstr long) kernel32.StrCatBuffW
+@ stdcall StrCatChainW (ptr long long wstr) kernel32.StrCatChainW
 @ stdcall StrCatW(ptr wstr)
-@ stdcall StrChrA(str long) kernelbase_ros.StrChrA
-@ stdcall StrChrIA(str long) kernelbase_ros.StrChrIA
-@ stdcall StrChrIW(wstr long) kernelbase_ros.StrChrIW
+@ stdcall StrChrA(str long) kernel32.StrChrA
+@ stdcall StrChrIA(str long) kernel32.StrChrIA
+@ stdcall StrChrIW(wstr long) kernel32.StrChrIW
 @ stub StrChrNIW
-@ stdcall StrChrNW(wstr long long) kernelbase_ros.StrChrNW
-@ stdcall StrChrW(wstr long) kernelbase_ros.StrChrW
-@ stdcall StrCmpIW(wstr wstr) kernelbase_ros.StrCmpIW
-@ stdcall StrCmpLogicalW(wstr wstr) kernelbase_ros.StrCmpLogicalW
-@ stdcall StrCmpNA(str str long) kernelbase_ros.StrCmpNA
-@ stdcall StrCmpNIA(str str long) kernelbase_ros.StrCmpNIA
-@ stdcall StrCmpNIW(wstr wstr long) kernelbase_ros.StrCmpNIW
-@ stdcall StrCmpNW(wstr wstr long) kernelbase_ros.StrCmpNW
-@ stdcall StrCmpW(wstr wstr) kernelbase_ros.StrCmpW
-@ stdcall StrCpyNW(ptr wstr long) kernelbase_ros.StrCpyNW
+@ stdcall StrChrNW(wstr long long) kernel32.StrChrNW
+@ stdcall StrChrW(wstr long) kernel32.StrChrW
+@ stdcall StrCmpIW(wstr wstr) kernel32.StrCmpIW
+@ stdcall StrCmpLogicalW(wstr wstr) kernel32.StrCmpLogicalW
+@ stdcall StrCmpNA(str str long) kernel32.StrCmpNA
+@ stdcall StrCmpNIA(str str long) kernel32.StrCmpNIA
+@ stdcall StrCmpNIW(wstr wstr long) kernel32.StrCmpNIW
+@ stdcall StrCmpNW(wstr wstr long) kernel32.StrCmpNW
+@ stdcall StrCmpW(wstr wstr) kernel32.StrCmpW
+@ stdcall StrCpyNW(ptr wstr long) kernel32.StrCpyNW
 @ stdcall StrCpyW(ptr wstr)
-@ stdcall StrDupA(str) kernelbase_ros.StrDupA
-@ stdcall StrDupW(wstr) kernelbase_ros.StrDupW
+@ stdcall StrDupA(str) kernel32.StrDupA
+@ stdcall StrDupW(wstr) kernel32.StrDupW
 @ stdcall StrFormatByteSize64A(int64 ptr long)
 @ stdcall StrFormatByteSizeA(long ptr long)
 @ stdcall -version=0x600+ StrFormatByteSizeEx(int64 long ptr long)
@@ -809,61 +809,61 @@
 @ stdcall StrIsIntlEqualW(long wstr wstr long)
 @ stdcall StrNCatA(str str long)
 @ stdcall StrNCatW(wstr wstr long)
-@ stdcall StrPBrkA(str str) kernelbase_ros.StrPBrkA
-@ stdcall StrPBrkW(wstr wstr) kernelbase_ros.StrPBrkW
-@ stdcall StrRChrA(str str long) kernelbase_ros.StrRChrA
-@ stdcall StrRChrIA(str str long) kernelbase_ros.StrRChrIA
-@ stdcall StrRChrIW(wstr wstr long) kernelbase_ros.StrRChrIW
-@ stdcall StrRChrW(wstr wstr long) kernelbase_ros.StrRChrW
-@ stdcall StrRStrIA(str str str) kernelbase_ros.StrRStrIA
-@ stdcall StrRStrIW(wstr wstr wstr) kernelbase_ros.StrRStrIW
+@ stdcall StrPBrkA(str str) kernel32.StrPBrkA
+@ stdcall StrPBrkW(wstr wstr) kernel32.StrPBrkW
+@ stdcall StrRChrA(str str long) kernel32.StrRChrA
+@ stdcall StrRChrIA(str str long) kernel32.StrRChrIA
+@ stdcall StrRChrIW(wstr wstr long) kernel32.StrRChrIW
+@ stdcall StrRChrW(wstr wstr long) kernel32.StrRChrW
+@ stdcall StrRStrIA(str str str) kernel32.StrRStrIA
+@ stdcall StrRStrIW(wstr wstr wstr) kernel32.StrRStrIW
 @ stdcall StrRetToBSTR(ptr ptr ptr)
 @ stdcall StrRetToBufA(ptr ptr ptr long)
 @ stdcall StrRetToBufW(ptr ptr ptr long)
 @ stdcall StrRetToStrA(ptr ptr ptr)
 @ stdcall StrRetToStrW(ptr ptr ptr)
-@ stdcall StrSpnA(str str) kernelbase_ros.StrSpnA
-@ stdcall StrSpnW(wstr wstr) kernelbase_ros.StrSpnW
-@ stdcall StrStrA(str str) kernelbase_ros.StrStrA
-@ stdcall StrStrIA(str str) kernelbase_ros.StrStrIA
-@ stdcall StrStrIW(wstr wstr) kernelbase_ros.StrStrIW
-@ stdcall StrStrNIW(wstr wstr long) kernelbase_ros.StrStrNIW
-@ stdcall StrStrNW(wstr wstr long) kernelbase_ros.StrStrNW
-@ stdcall StrStrW(wstr wstr) kernelbase_ros.StrStrW
-@ stdcall StrToInt64ExA(str long ptr) kernelbase_ros.StrToInt64ExA
-@ stdcall StrToInt64ExW(wstr long ptr) kernelbase_ros.StrToInt64ExW
-@ stdcall StrToIntA(str) kernelbase_ros.StrToIntA
-@ stdcall StrToIntExA(str long ptr) kernelbase_ros.StrToIntExA
-@ stdcall StrToIntExW(wstr long ptr) kernelbase_ros.StrToIntExW
-@ stdcall StrToIntW(wstr) kernelbase_ros.StrToIntW
-@ stdcall StrTrimA(str str) kernelbase_ros.StrTrimA
-@ stdcall StrTrimW(wstr wstr) kernelbase_ros.StrTrimW
-@ stdcall UrlApplySchemeA(str ptr ptr long) kernelbase_ros.UrlApplySchemeA
-@ stdcall UrlApplySchemeW(wstr ptr ptr long) kernelbase_ros.UrlApplySchemeW
-@ stdcall UrlCanonicalizeA(str ptr ptr long) kernelbase_ros.UrlCanonicalizeA
-@ stdcall UrlCanonicalizeW(wstr ptr ptr long) kernelbase_ros.UrlCanonicalizeW
-@ stdcall UrlCombineA(str str ptr ptr long) kernelbase_ros.UrlCombineA
-@ stdcall UrlCombineW(wstr wstr ptr ptr long) kernelbase_ros.UrlCombineW
-@ stdcall UrlCompareA(str str long) kernelbase_ros.UrlCompareA
-@ stdcall UrlCompareW(wstr wstr long) kernelbase_ros.UrlCompareW
-@ stdcall UrlCreateFromPathA(str ptr ptr long) kernelbase_ros.UrlCreateFromPathA
-@ stdcall UrlCreateFromPathW(wstr ptr ptr long) kernelbase_ros.UrlCreateFromPathW
-@ stdcall UrlEscapeA(str ptr ptr long) kernelbase_ros.UrlEscapeA
-@ stdcall UrlEscapeW(wstr ptr ptr long) kernelbase_ros.UrlEscapeW
-@ stdcall UrlGetLocationA(str) kernelbase_ros.UrlGetLocationA
-@ stdcall UrlGetLocationW(wstr) kernelbase_ros.UrlGetLocationW
-@ stdcall UrlGetPartA(str ptr ptr long long) kernelbase_ros.UrlGetPartA
-@ stdcall UrlGetPartW(wstr ptr ptr long long) kernelbase_ros.UrlGetPartW
-@ stdcall UrlHashA(str ptr long) kernelbase_ros.UrlHashA
-@ stdcall UrlHashW(wstr ptr long) kernelbase_ros.UrlHashW
-@ stdcall UrlIsA(str long) kernelbase_ros.UrlIsA
-@ stdcall UrlIsNoHistoryA(str) kernelbase_ros.UrlIsNoHistoryA
-@ stdcall UrlIsNoHistoryW(wstr) kernelbase_ros.UrlIsNoHistoryW
-@ stdcall UrlIsOpaqueA(str) kernelbase_ros.UrlIsOpaqueA
-@ stdcall UrlIsOpaqueW(wstr) kernelbase_ros.UrlIsOpaqueW
-@ stdcall UrlIsW(wstr long) kernelbase_ros.UrlIsW
-@ stdcall UrlUnescapeA(str ptr ptr long) kernelbase_ros.UrlUnescapeA
-@ stdcall UrlUnescapeW(wstr ptr ptr long) kernelbase_ros.UrlUnescapeW
+@ stdcall StrSpnA(str str) kernel32.StrSpnA
+@ stdcall StrSpnW(wstr wstr) kernel32.StrSpnW
+@ stdcall StrStrA(str str) kernel32.StrStrA
+@ stdcall StrStrIA(str str) kernel32.StrStrIA
+@ stdcall StrStrIW(wstr wstr) kernel32.StrStrIW
+@ stdcall StrStrNIW(wstr wstr long) kernel32.StrStrNIW
+@ stdcall StrStrNW(wstr wstr long) kernel32.StrStrNW
+@ stdcall StrStrW(wstr wstr) kernel32.StrStrW
+@ stdcall StrToInt64ExA(str long ptr) kernel32.StrToInt64ExA
+@ stdcall StrToInt64ExW(wstr long ptr) kernel32.StrToInt64ExW
+@ stdcall StrToIntA(str) kernel32.StrToIntA
+@ stdcall StrToIntExA(str long ptr) kernel32.StrToIntExA
+@ stdcall StrToIntExW(wstr long ptr) kernel32.StrToIntExW
+@ stdcall StrToIntW(wstr) kernel32.StrToIntW
+@ stdcall StrTrimA(str str) kernel32.StrTrimA
+@ stdcall StrTrimW(wstr wstr) kernel32.StrTrimW
+@ stdcall UrlApplySchemeA(str ptr ptr long) kernel32.UrlApplySchemeA
+@ stdcall UrlApplySchemeW(wstr ptr ptr long) kernel32.UrlApplySchemeW
+@ stdcall UrlCanonicalizeA(str ptr ptr long) kernel32.UrlCanonicalizeA
+@ stdcall UrlCanonicalizeW(wstr ptr ptr long) kernel32.UrlCanonicalizeW
+@ stdcall UrlCombineA(str str ptr ptr long) kernel32.UrlCombineA
+@ stdcall UrlCombineW(wstr wstr ptr ptr long) kernel32.UrlCombineW
+@ stdcall UrlCompareA(str str long) kernel32.UrlCompareA
+@ stdcall UrlCompareW(wstr wstr long) kernel32.UrlCompareW
+@ stdcall UrlCreateFromPathA(str ptr ptr long) kernel32.UrlCreateFromPathA
+@ stdcall UrlCreateFromPathW(wstr ptr ptr long) kernel32.UrlCreateFromPathW
+@ stdcall UrlEscapeA(str ptr ptr long) kernel32.UrlEscapeA
+@ stdcall UrlEscapeW(wstr ptr ptr long) kernel32.UrlEscapeW
+@ stdcall UrlGetLocationA(str) kernel32.UrlGetLocationA
+@ stdcall UrlGetLocationW(wstr) kernel32.UrlGetLocationW
+@ stdcall UrlGetPartA(str ptr ptr long long) kernel32.UrlGetPartA
+@ stdcall UrlGetPartW(wstr ptr ptr long long) kernel32.UrlGetPartW
+@ stdcall UrlHashA(str ptr long) kernel32.UrlHashA
+@ stdcall UrlHashW(wstr ptr long) kernel32.UrlHashW
+@ stdcall UrlIsA(str long) kernel32.UrlIsA
+@ stdcall UrlIsNoHistoryA(str) kernel32.UrlIsNoHistoryA
+@ stdcall UrlIsNoHistoryW(wstr) kernel32.UrlIsNoHistoryW
+@ stdcall UrlIsOpaqueA(str) kernel32.UrlIsOpaqueA
+@ stdcall UrlIsOpaqueW(wstr) kernel32.UrlIsOpaqueW
+@ stdcall UrlIsW(wstr long) kernel32.UrlIsW
+@ stdcall UrlUnescapeA(str ptr ptr long) kernel32.UrlUnescapeA
+@ stdcall UrlUnescapeW(wstr ptr ptr long) kernel32.UrlUnescapeW
 @ varargs wnsprintfA(ptr long str)
 @ varargs wnsprintfW(ptr long wstr)
 @ stdcall wvnsprintfA(ptr long str ptr)
