@@ -1300,13 +1300,14 @@ UacpiNtAcpiDeviceControl(
     }
 }
 
-/* APIC ID of the MADT entry whose ACPI processor UID matches ProcessorId */
+/* APIC ID and flags of the MADT entry whose ACPI processor UID matches ProcessorId */
 static
 BOOLEAN
 NTAPI
-UacpiNtFindInitialApicId(
+UacpiNtFindMadtProcessor(
     _In_ uacpi_u8 ProcessorId,
-    _Out_ PULONG ApicId)
+    _Out_ PULONG ApicId,
+    _Out_opt_ PULONG Flags)
 {
     struct acpi_madt_x2apic *X2Apic;
     struct acpi_madt_lapic *LocalApic;
@@ -1339,6 +1340,8 @@ UacpiNtFindInitialApicId(
             if (LocalApic->uid == ProcessorId)
             {
                 *ApicId = LocalApic->id;
+                if (Flags)
+                    *Flags = LocalApic->flags;
                 Found = TRUE;
             }
         }
@@ -1349,6 +1352,8 @@ UacpiNtFindInitialApicId(
             if (X2Apic->uid == ProcessorId)
             {
                 *ApicId = X2Apic->id;
+                if (Flags)
+                    *Flags = X2Apic->flags;
                 Found = TRUE;
             }
         }
@@ -1358,6 +1363,36 @@ UacpiNtFindInitialApicId(
 
     uacpi_table_unref(&Table);
     return Found;
+}
+
+/**
+ * @brief
+ * Tells whether a processor object can ever run. Its MADT entry has to be
+ * enabled or online capable, otherwise the processor gets no device.
+ *
+ * @return
+ * TRUE as well when there is no MADT or the processor ID cannot be read.
+ */
+BOOLEAN
+NTAPI
+UacpiNtProcessorIsUsable(
+    _In_ uacpi_namespace_node *Node)
+{
+    uacpi_processor_info Info;
+    uacpi_table Table;
+    ULONG ApicId, Flags;
+
+    if (uacpi_unlikely_error(uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &Table)) || !Table.ptr)
+        return TRUE;
+    uacpi_table_unref(&Table);
+
+    if (!UacpiNtGetProcessorInfo(Node, &Info))
+        return TRUE;
+
+    if (!UacpiNtFindMadtProcessor(Info.id, &ApicId, &Flags))
+        return FALSE;
+
+    return (Flags & (ACPI_PIC_ENABLED | ACPI_PIC_ONLINE_CAPABLE)) != 0;
 }
 
 /* The CPU driver issues this at START to learn which processor it is */
@@ -1416,7 +1451,7 @@ UacpiNtProcessorObjInfo(
 
     ApicId = 0xFFFFFFFF;
     if (HaveInfo)
-        UacpiNtFindInitialApicId((uacpi_u8)Info->ProcessorId, &ApicId);
+        UacpiNtFindMadtProcessor((uacpi_u8)Info->ProcessorId, &ApicId, NULL);
     Info->ApicId = ApicId;
 
     *Disposition = UacpiNtCompleteIrp(Irp, STATUS_SUCCESS, sizeof(*Info));

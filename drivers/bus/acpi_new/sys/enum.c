@@ -317,6 +317,11 @@ UacpiNtGetOrCreatePdo(
     {
         if (UacpiNtProcessorString[0] == ANSI_NULL)
             return NULL;
+
+        /* A processor the MADT says can never run gets no device */
+        if (!UacpiNtProcessorIsUsable(Node))
+            return NULL;
+
         Processor = TRUE;
     }
 
