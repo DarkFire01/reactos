@@ -695,6 +695,9 @@ IntEngSetPointerShape(
     else
         ppdev->flFlags &= ~PDEV_HARDWARE_POINTER;
 
+    /* What GDI draws itself never reaches a screen the DWM composes */
+    IntDwmSetSoftwareCursor(bSoftwarePointer);
+
     return ulResult;
 }
 

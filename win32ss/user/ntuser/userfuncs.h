@@ -235,6 +235,11 @@ BOOLEAN
 FASTCALL
 IntDwmIsKernelStarted(VOID);
 
+VOID
+FASTCALL
+IntDwmSetSoftwareCursor(
+    _In_ BOOLEAN Software);
+
 /************************* sprite.c *************************/
 
 PWND
