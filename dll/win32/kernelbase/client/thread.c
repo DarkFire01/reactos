@@ -744,7 +744,6 @@ SetThreadGroupAffinity(IN HANDLE hThread,
 {
     DWORD_PTR OldMask;
 
-    STUB; // FIXME: Real group support
     if (!GroupAffinity || GroupAffinity->Group != THEONLYGROUP)
     {
         SetLastError(ERROR_INVALID_PARAMETER);
