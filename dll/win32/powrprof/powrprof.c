@@ -25,6 +25,7 @@
 #include <winbase.h>
 #include <winreg.h>
 #include <winuser.h>
+#include <winsvc.h>
 #define NTOS_MODE_USER
 #include <ndk/pofuncs.h>
 #include <ndk/rtlfuncs.h>
@@ -731,19 +732,6 @@ IsPwrSuspendAllowed(VOID)
     return IS_PWR_SUSPEND_ALLOWED(&PowerCaps);
 }
 
-DWORD WINAPI
-PowerGetActiveScheme(HKEY UserRootPowerKey, GUID **polguid)
-{
-   FIXME("(%p,%p) stub!\n", UserRootPowerKey, polguid);
-   return ERROR_CALL_NOT_IMPLEMENTED;
-}
-
-DWORD WINAPI PowerSetActiveScheme(HKEY UserRootPowerKey, const GUID *polguid)
-{
-   FIXME("(%p,%s) stub!\n", UserRootPowerKey, wine_dbgstr_guid(polguid));
-   return ERROR_SUCCESS;
-}
-
 POWER_PLATFORM_ROLE WINAPI PowerDeterminePlatformRole(void)
 {
    FIXME("stub\n");
@@ -754,40 +742,6 @@ POWER_PLATFORM_ROLE WINAPI PowerDeterminePlatformRoleEx(ULONG version)
 {
     FIXME("%lu stub.\n", version);
     return PlatformRoleDesktop;
-}
-
-DWORD WINAPI PowerEnumerate(HKEY key, const GUID *scheme, const GUID *subgroup, POWER_DATA_ACCESSOR flags,
-                        ULONG index, UCHAR *buffer, DWORD *buffer_size)
-{
-   FIXME("(%p,%s,%s,%d,%ld,%p,%p) stub!\n", key, debugstr_guid(scheme), debugstr_guid(subgroup),
-                flags, index, buffer, buffer_size);
-   return ERROR_CALL_NOT_IMPLEMENTED;
-}
-
-DWORD WINAPI PowerRegisterSuspendResumeNotification(DWORD flags, HANDLE recipient, PHPOWERNOTIFY handle)
-{
-    FIXME("(0x%08lx,%p,%p) stub!\n", flags, recipient, handle);
-    *handle = (HPOWERNOTIFY)0xdeadbeef;
-    return ERROR_SUCCESS;
-}
-
-DWORD WINAPI PowerUnregisterSuspendResumeNotification(HPOWERNOTIFY handle)
-{
-    FIXME("(%p) stub!\n", handle);
-    return ERROR_SUCCESS;
-}
-
-DWORD WINAPI PowerSettingRegisterNotification(const GUID *setting, DWORD flags, HANDLE recipient, PHPOWERNOTIFY handle)
-{
-    FIXME("(%s,0x%08lx,%p,%p) stub!\n", debugstr_guid(setting), flags, recipient, handle);
-    *handle = (PHPOWERNOTIFY)0xdeadbeef;
-    return ERROR_SUCCESS;
-}
-
-DWORD WINAPI PowerSettingUnregisterNotification(HPOWERNOTIFY handle)
-{
-    FIXME("(%p) stub!\n", handle);
-    return ERROR_SUCCESS;
 }
 
 BOOLEAN WINAPI
@@ -3214,6 +3168,947 @@ PowerUnregisterFromEffectivePowerModeNotifications(
     return S_OK;
 }
 
+/* Power schemes and their enumeration */
+
+static const WCHAR szActivePowerScheme[] = L"ActivePowerScheme";
+
+static const GUID PwrpActiveSchemeSetting =
+    {0x31f9f286, 0x5084, 0x42fe, {0xb7, 0x20, 0x2b, 0x02, 0x64, 0x99, 0x37, 0x63}};
+static const GUID PwrpPersonalitySetting =
+    {0x245d8541, 0x3943, 0x4422, {0xb0, 0x25, 0x13, 0xa7, 0x84, 0xf6, 0x79, 0xb7}};
+
+/* 1 while the system is in connected standby and 0 while it is not */
+static const GUID PwrpStandbyStateSetting =
+    {0x307bcc77, 0xe09b, 0x43ce, {0x8d, 0x97, 0x46, 0x75, 0x6f, 0xfb, 0x04, 0xa7}};
+
+#define PWRP_ANY_KEY        0
+#define PWRP_SUBGROUP_KEY   1
+#define PWRP_SETTING_KEY    2
+
+static BOOLEAN
+PwrpKeyNameToGuid(
+    _In_ PCWSTR Name,
+    _Out_ GUID *Guid)
+{
+    WCHAR Braced[PWRP_GUID_CCH + 2];
+    UNICODE_STRING String;
+
+    if (wcslen(Name) != PWRP_GUID_CCH - 1)
+        return FALSE;
+
+    swprintf(Braced, L"{%s}", Name);
+    RtlInitUnicodeString(&String, Braced);
+    return NT_SUCCESS(RtlGUIDFromString(&String, Guid));
+}
+
+/* A key that holds scheme defaults is a setting, any other key is a subgroup */
+static BOOLEAN
+PwrpIsSettingKey(
+    _In_ HKEY Parent,
+    _In_ PCWSTR Name)
+{
+    WCHAR Path[MAX_PATH];
+    HKEY Key;
+
+    swprintf(Path, L"%s\\%s", Name, szDefaultSchemeValues);
+    if (RegOpenKeyExW(Parent, Path, 0, KEY_READ, &Key) != ERROR_SUCCESS)
+        return FALSE;
+
+    RegCloseKey(Key);
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Finds the subkey named by a GUID at position *Index among the subkeys of
+ * the requested kind.
+ *
+ * @return
+ * ERROR_NO_MORE_ITEMS when there are fewer, *Index is then lowered by the
+ * number of keys that matched.
+ */
+static LONG
+PwrpEnumGuidKey(
+    _In_ HKEY Key,
+    _In_ ULONG Kind,
+    _Inout_ PULONG Index,
+    _Out_ GUID *Guid)
+{
+    WCHAR Name[MAX_PATH];
+    DWORD Position, NameLength;
+    BOOLEAN IsSetting;
+    LONG Error;
+
+    for (Position = 0; ; Position++)
+    {
+        NameLength = _countof(Name);
+        Error = RegEnumKeyExW(Key, Position, Name, &NameLength, NULL, NULL, NULL, NULL);
+        if (Error == ERROR_NO_MORE_ITEMS)
+            return Error;
+        if (Error != ERROR_SUCCESS || !PwrpKeyNameToGuid(Name, Guid))
+            continue;
+
+        if (Kind != PWRP_ANY_KEY)
+        {
+            IsSetting = PwrpIsSettingKey(Key, Name);
+            if (IsSetting != (Kind == PWRP_SETTING_KEY))
+                continue;
+        }
+
+        if (*Index == 0)
+            return ERROR_SUCCESS;
+        (*Index)--;
+    }
+}
+
+/**
+ * @brief
+ * Finds a setting of a subgroup. Settings of no subgroup are the ones right
+ * under PowerSettings followed by those in the no subgroup key.
+ */
+static LONG
+PwrpEnumSetting(
+    _In_ HKEY SettingsKey,
+    _In_opt_ const GUID *SubGroup,
+    _In_ ULONG Index,
+    _Out_ GUID *Guid)
+{
+    HKEY GroupKey;
+    LONG Error;
+
+    if (SubGroup && !IsEqualGUID(SubGroup, &PwrpNoSubGroup))
+    {
+        Error = PwrpOpenGuidKey(SettingsKey, SubGroup, FALSE, KEY_READ, &GroupKey);
+        if (Error != ERROR_SUCCESS)
+            return Error;
+
+        Error = PwrpEnumGuidKey(GroupKey, PWRP_ANY_KEY, &Index, Guid);
+        RegCloseKey(GroupKey);
+        return Error;
+    }
+
+    Error = PwrpEnumGuidKey(SettingsKey, PWRP_SETTING_KEY, &Index, Guid);
+    if (Error != ERROR_NO_MORE_ITEMS)
+        return Error;
+
+    if (PwrpOpenGuidKey(SettingsKey, &PwrpNoSubGroup, FALSE, KEY_READ, &GroupKey) != ERROR_SUCCESS)
+        return ERROR_NO_MORE_ITEMS;
+
+    Error = PwrpEnumGuidKey(GroupKey, PWRP_ANY_KEY, &Index, Guid);
+    RegCloseKey(GroupKey);
+    return Error;
+}
+
+/**
+ * @brief
+ * Enumerates the power schemes, the subgroups or the settings of a subgroup.
+ * Subgroups and settings are the same for every scheme.
+ *
+ * @return
+ * ERROR_NO_MORE_ITEMS past the last element. A NULL buffer only reports
+ * the size and a short buffer fails with ERROR_MORE_DATA.
+ */
+DWORD
+WINAPI
+PowerEnumerate(
+    _In_opt_ HKEY RootPowerKey,
+    _In_opt_ const GUID *SchemeGuid,
+    _In_opt_ const GUID *SubGroupOfPowerSettingsGuid,
+    _In_ POWER_DATA_ACCESSOR AccessFlags,
+    _In_ ULONG Index,
+    _Out_writes_bytes_opt_(*BufferSize) UCHAR *Buffer,
+    _Inout_ DWORD *BufferSize)
+{
+    PCWSTR RootName;
+    GUID Guid;
+    HKEY Key;
+    LONG Error;
+
+    UNREFERENCED_PARAMETER(RootPowerKey);
+    UNREFERENCED_PARAMETER(SchemeGuid);
+
+    if (!BufferSize)
+        return ERROR_INVALID_PARAMETER;
+
+    switch (AccessFlags)
+    {
+        case ACCESS_SCHEME:
+            RootName = szPowerSchemesKey;
+            break;
+
+        case ACCESS_SUBGROUP:
+        case ACCESS_INDIVIDUAL_SETTING:
+            RootName = szPowerSettingsKey;
+            break;
+
+        default:
+            return ERROR_INVALID_PARAMETER;
+    }
+
+    Error = RegOpenKeyExW(HKEY_LOCAL_MACHINE, RootName, 0, KEY_READ, &Key);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    if (AccessFlags == ACCESS_SCHEME)
+        Error = PwrpEnumGuidKey(Key, PWRP_ANY_KEY, &Index, &Guid);
+    else if (AccessFlags == ACCESS_SUBGROUP)
+        Error = PwrpEnumGuidKey(Key, PWRP_SUBGROUP_KEY, &Index, &Guid);
+    else
+        Error = PwrpEnumSetting(Key, SubGroupOfPowerSettingsGuid, Index, &Guid);
+
+    RegCloseKey(Key);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    return PwrpCopyOut(&Guid, sizeof(Guid), Buffer, BufferSize);
+}
+
+static LONG
+PwrpReadActiveScheme(
+    _Out_ GUID *Scheme)
+{
+    WCHAR Name[MAX_PATH];
+    DWORD Size = sizeof(Name);
+    LONG Error;
+
+    Error = RegGetValueW(HKEY_LOCAL_MACHINE,
+                         szPowerSchemesKey,
+                         szActivePowerScheme,
+                         RRF_RT_REG_SZ,
+                         NULL,
+                         Name,
+                         &Size);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    return PwrpKeyNameToGuid(Name, Scheme) ? ERROR_SUCCESS : ERROR_INVALID_DATA;
+}
+
+/* Schemes made from one of the stock schemes take their personality, any other is balanced */
+static const GUID *
+PwrpSchemePersonality(
+    _In_ const GUID *Scheme)
+{
+    if (IsEqualGUID(Scheme, &PwrpHighPerformanceScheme) || IsEqualGUID(Scheme, &PwrpPowerSaverScheme))
+        return Scheme;
+
+    return &PwrpBalancedScheme;
+}
+
+static VOID
+PwrpPushValue(
+    _In_ const GUID *Setting,
+    _In_ SYSTEM_POWER_CONDITION Condition,
+    _In_reads_bytes_(Length) const VOID *Data,
+    _In_ ULONG Length)
+{
+    PSET_POWER_SETTING_VALUE Request;
+    ULONG Size = FIELD_OFFSET(SET_POWER_SETTING_VALUE, Data) + Length;
+    NTSTATUS Status;
+
+    Request = HeapAlloc(GetProcessHeap(), 0, Size);
+    if (!Request)
+        return;
+
+    Request->Version = POWER_SETTING_VALUE_VERSION;
+    Request->Guid = *Setting;
+    Request->PowerCondition = Condition;
+    Request->DataLength = Length;
+    CopyMemory(Request->Data, Data, Length);
+
+    Status = NtPowerInformation(SetPowerSettingValue, Request, Size, NULL, 0);
+    if (!NT_SUCCESS(Status))
+        TRACE("Setting %s was refused 0x%lx\n", debugstr_guid(Setting), Status);
+
+    HeapFree(GetProcessHeap(), 0, Request);
+}
+
+/* Short-term batteries run on the DC values of the scheme */
+static VOID
+PwrpPushSchemeSetting(
+    _In_ const GUID *Scheme,
+    _In_ const GUID *SubGroup,
+    _In_ const GUID *Setting)
+{
+    UCHAR Data[sizeof(GUID)];
+    DWORD Size;
+    ULONG Type;
+
+    Size = sizeof(Data);
+    if (PwrpReadSchemeValue(Scheme, SubGroup, Setting, TRUE, &Type, Data, &Size) == ERROR_SUCCESS && Size)
+        PwrpPushValue(Setting, PoAc, Data, Size);
+
+    Size = sizeof(Data);
+    if (PwrpReadSchemeValue(Scheme, SubGroup, Setting, FALSE, &Type, Data, &Size) == ERROR_SUCCESS && Size)
+    {
+        PwrpPushValue(Setting, PoDc, Data, Size);
+        PwrpPushValue(Setting, PoHot, Data, Size);
+    }
+}
+
+/**
+ * @brief
+ * Hands a scheme to the kernel: its identity and personality and, when
+ * asked for, the value of every setting.
+ *
+ * @remarks
+ * The kernel only takes values from holders of the shutdown privilege and
+ * ignores values that did not change, so this is safe to repeat.
+ */
+static VOID
+PwrpPushScheme(
+    _In_ const GUID *Scheme,
+    _In_ BOOLEAN AllSettings)
+{
+    SYSTEM_POWER_CONDITION Condition;
+    const GUID *Personality;
+    ULONG GroupIndex, SettingIndex;
+    GUID SubGroup, Setting;
+    BOOLEAN WasEnabled;
+    HKEY SettingsKey;
+
+    if (!NT_SUCCESS(RtlAdjustPrivilege(SE_SHUTDOWN_PRIVILEGE, TRUE, FALSE, &WasEnabled)))
+        return;
+
+    Personality = PwrpSchemePersonality(Scheme);
+    for (Condition = PoAc; Condition < PoConditionMaximum; Condition++)
+    {
+        PwrpPushValue(&PwrpActiveSchemeSetting, Condition, Scheme, sizeof(*Scheme));
+        PwrpPushValue(&PwrpPersonalitySetting, Condition, Personality, sizeof(*Personality));
+    }
+
+    if (AllSettings &&
+        RegOpenKeyExW(HKEY_LOCAL_MACHINE, szPowerSettingsKey, 0, KEY_READ, &SettingsKey) == ERROR_SUCCESS)
+    {
+        for (SettingIndex = 0; PwrpEnumSetting(SettingsKey, NULL, SettingIndex, &Setting) == ERROR_SUCCESS; SettingIndex++)
+            PwrpPushSchemeSetting(Scheme, &PwrpNoSubGroup, &Setting);
+
+        for (GroupIndex = 0; ; GroupIndex++)
+        {
+            SettingIndex = GroupIndex;
+            if (PwrpEnumGuidKey(SettingsKey, PWRP_SUBGROUP_KEY, &SettingIndex, &SubGroup) != ERROR_SUCCESS)
+                break;
+
+            /* The no subgroup key was handled with the settings right under PowerSettings */
+            if (IsEqualGUID(&SubGroup, &PwrpNoSubGroup))
+                continue;
+
+            for (SettingIndex = 0; PwrpEnumSetting(SettingsKey, &SubGroup, SettingIndex, &Setting) == ERROR_SUCCESS; SettingIndex++)
+                PwrpPushSchemeSetting(Scheme, &SubGroup, &Setting);
+        }
+
+        RegCloseKey(SettingsKey);
+    }
+
+    if (!WasEnabled)
+        RtlAdjustPrivilege(SE_SHUTDOWN_PRIVILEGE, FALSE, FALSE, &WasEnabled);
+}
+
+/**
+ * @brief Returns the active power scheme.
+ *
+ * @param[out] ActivePolicyGuid
+ * Receives the scheme, the caller frees it with LocalFree.
+ */
+DWORD
+WINAPI
+PowerGetActiveScheme(
+    _In_opt_ HKEY UserRootPowerKey,
+    _Outptr_ GUID **ActivePolicyGuid)
+{
+    GUID Scheme, *Result;
+    LONG Error;
+
+    UNREFERENCED_PARAMETER(UserRootPowerKey);
+
+    if (!ActivePolicyGuid)
+        return ERROR_INVALID_PARAMETER;
+
+    Error = PwrpReadActiveScheme(&Scheme);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    Result = LocalAlloc(LMEM_FIXED, sizeof(*Result));
+    if (!Result)
+        return ERROR_NOT_ENOUGH_MEMORY;
+
+    *Result = Scheme;
+    *ActivePolicyGuid = Result;
+    return ERROR_SUCCESS;
+}
+
+/**
+ * @brief
+ * Makes a scheme the active one and hands its values to the kernel, so the
+ * kernel policy and the setting notifications follow it.
+ */
+DWORD
+WINAPI
+PowerSetActiveScheme(
+    _In_opt_ HKEY UserRootPowerKey,
+    _In_opt_ const GUID *SchemeGuid)
+{
+    WCHAR Name[PWRP_GUID_CCH];
+    HKEY SchemesKey, SchemeKey;
+    LONG Error;
+
+    UNREFERENCED_PARAMETER(UserRootPowerKey);
+
+    if (!SchemeGuid)
+        return ERROR_INVALID_PARAMETER;
+
+    Error = PowerSettingAccessCheck(ACCESS_ACTIVE_SCHEME, SchemeGuid);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    Error = RegOpenKeyExW(HKEY_LOCAL_MACHINE, szPowerSchemesKey, 0, KEY_READ | KEY_SET_VALUE, &SchemesKey);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    Error = PwrpOpenGuidKey(SchemesKey, SchemeGuid, FALSE, KEY_READ, &SchemeKey);
+    if (Error == ERROR_SUCCESS)
+    {
+        RegCloseKey(SchemeKey);
+
+        PwrpGuidToKeyName(SchemeGuid, Name);
+        Error = RegSetValueExW(SchemesKey,
+                               szActivePowerScheme,
+                               0,
+                               REG_SZ,
+                               (const BYTE *)Name,
+                               sizeof(Name));
+    }
+    RegCloseKey(SchemesKey);
+
+    if (Error == ERROR_SUCCESS)
+        PwrpPushScheme(SchemeGuid, TRUE);
+
+    return Error;
+}
+
+/* Gives the copy of a scheme the values the source scheme has, its own or the defaults */
+static VOID
+PwrpCopySchemeValues(
+    _In_ const GUID *Source,
+    _In_ const GUID *Destination)
+{
+    ULONG GroupIndex, SettingIndex;
+    GUID SubGroup, Setting;
+    HKEY SettingsKey;
+    DWORD Value, Size;
+
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, szPowerSettingsKey, 0, KEY_READ, &SettingsKey) != ERROR_SUCCESS)
+        return;
+
+    for (GroupIndex = 0; ; GroupIndex++)
+    {
+        SettingIndex = GroupIndex;
+        if (PwrpEnumGuidKey(SettingsKey, PWRP_SUBGROUP_KEY, &SettingIndex, &SubGroup) != ERROR_SUCCESS)
+            break;
+
+        for (SettingIndex = 0; PwrpEnumSetting(SettingsKey, &SubGroup, SettingIndex, &Setting) == ERROR_SUCCESS; SettingIndex++)
+        {
+            Size = sizeof(Value);
+            if (PwrpReadSchemeValue(Source, &SubGroup, &Setting, TRUE, NULL, (PUCHAR)&Value, &Size) == ERROR_SUCCESS &&
+                Size == sizeof(Value))
+            {
+                PwrpWriteSchemeValue(Destination, &SubGroup, &Setting, TRUE, Value);
+            }
+
+            Size = sizeof(Value);
+            if (PwrpReadSchemeValue(Source, &SubGroup, &Setting, FALSE, NULL, (PUCHAR)&Value, &Size) == ERROR_SUCCESS &&
+                Size == sizeof(Value))
+            {
+                PwrpWriteSchemeValue(Destination, &SubGroup, &Setting, FALSE, Value);
+            }
+        }
+    }
+
+    RegCloseKey(SettingsKey);
+}
+
+/**
+ * @brief
+ * Copies a scheme to a new one with the same values.
+ *
+ * @param[in,out] DestinationSchemeGuid
+ * The GUID of the new scheme. When it points to NULL a GUID is made up and
+ * returned in memory the caller frees with LocalFree.
+ *
+ * @return
+ * ERROR_ALREADY_EXISTS when the new scheme exists.
+ */
+DWORD
+WINAPI
+PowerDuplicateScheme(
+    _In_opt_ HKEY RootPowerKey,
+    _In_ const GUID *SourceSchemeGuid,
+    _Inout_ GUID **DestinationSchemeGuid)
+{
+    WCHAR SourceName[PWRP_GUID_CCH], DestinationName[PWRP_GUID_CCH];
+    HKEY SchemesKey, SourceKey, DestinationKey;
+    GUID *Allocated = NULL, Destination;
+    DWORD Disposition;
+    LONG Error;
+
+    UNREFERENCED_PARAMETER(RootPowerKey);
+
+    if (!SourceSchemeGuid || !DestinationSchemeGuid)
+        return ERROR_INVALID_PARAMETER;
+
+    Error = PowerSettingAccessCheck(ACCESS_CREATE_SCHEME, NULL);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    if (*DestinationSchemeGuid)
+    {
+        Destination = **DestinationSchemeGuid;
+    }
+    else
+    {
+        /* A random GUID of version 4 */
+        if (!RtlGenRandom(&Destination, sizeof(Destination)))
+            return ERROR_GEN_FAILURE;
+        Destination.Data3 = (Destination.Data3 & 0x0fff) | 0x4000;
+        Destination.Data4[0] = (Destination.Data4[0] & 0x3f) | 0x80;
+    }
+
+    Error = RegOpenKeyExW(HKEY_LOCAL_MACHINE, szPowerSchemesKey, 0, KEY_READ | KEY_WRITE, &SchemesKey);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    PwrpGuidToKeyName(SourceSchemeGuid, SourceName);
+    PwrpGuidToKeyName(&Destination, DestinationName);
+
+    Error = RegOpenKeyExW(SchemesKey, SourceName, 0, KEY_READ, &SourceKey);
+    if (Error != ERROR_SUCCESS)
+        goto Quit;
+
+    Error = RegCreateKeyExW(SchemesKey, DestinationName, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &DestinationKey, &Disposition);
+    if (Error == ERROR_SUCCESS)
+    {
+        if (Disposition == REG_OPENED_EXISTING_KEY)
+            Error = ERROR_ALREADY_EXISTS;
+        else
+            Error = RegCopyTreeW(SourceKey, NULL, DestinationKey);
+        RegCloseKey(DestinationKey);
+
+        if (Error != ERROR_SUCCESS && Disposition != REG_OPENED_EXISTING_KEY)
+            PwrpDeleteKeyTree(SchemesKey, DestinationName);
+    }
+    RegCloseKey(SourceKey);
+
+    if (Error != ERROR_SUCCESS)
+        goto Quit;
+
+    PwrpCopySchemeValues(SourceSchemeGuid, &Destination);
+
+    if (!*DestinationSchemeGuid)
+    {
+        Allocated = LocalAlloc(LMEM_FIXED, sizeof(*Allocated));
+        if (!Allocated)
+        {
+            PwrpDeleteKeyTree(SchemesKey, DestinationName);
+            Error = ERROR_NOT_ENOUGH_MEMORY;
+            goto Quit;
+        }
+
+        *Allocated = Destination;
+        *DestinationSchemeGuid = Allocated;
+    }
+
+Quit:
+    RegCloseKey(SchemesKey);
+    return Error;
+}
+
+/**
+ * @brief Deletes a power scheme.
+ *
+ * @return ERROR_ACCESS_DENIED for the active scheme.
+ */
+DWORD
+WINAPI
+PowerDeleteScheme(
+    _In_opt_ HKEY RootPowerKey,
+    _In_ const GUID *SchemeGuid)
+{
+    WCHAR Name[PWRP_GUID_CCH];
+    HKEY SchemesKey;
+    GUID Active;
+    LONG Error;
+
+    UNREFERENCED_PARAMETER(RootPowerKey);
+
+    if (!SchemeGuid)
+        return ERROR_INVALID_PARAMETER;
+
+    Error = PowerSettingAccessCheck(ACCESS_SCHEME, SchemeGuid);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    if (PwrpReadActiveScheme(&Active) == ERROR_SUCCESS && IsEqualGUID(&Active, SchemeGuid))
+        return ERROR_ACCESS_DENIED;
+
+    Error = RegOpenKeyExW(HKEY_LOCAL_MACHINE, szPowerSchemesKey, 0, KEY_READ | KEY_WRITE, &SchemesKey);
+    if (Error != ERROR_SUCCESS)
+        return Error;
+
+    PwrpGuidToKeyName(SchemeGuid, Name);
+    Error = PwrpDeleteKeyTree(SchemesKey, Name);
+    RegCloseKey(SchemesKey);
+    return Error;
+}
+
+/* Power setting and suspend resume notifications */
+
+#define PWRP_NOTIFY_SETTING         0
+#define PWRP_NOTIFY_SUSPEND_RESUME  1
+
+typedef struct _PWRP_NOTIFY
+{
+    LIST_ENTRY Link;
+    ULONG Kind;
+    GUID SettingGuid;
+    DWORD Flags;
+    PDEVICE_NOTIFY_CALLBACK_ROUTINE Callback;
+    PVOID Context;
+    SERVICE_STATUS_HANDLE ServiceHandle;
+    PVOID Subscription;
+    LONG InStandby;
+    BOOLEAN Removed;
+    BOOLEAN Retired;
+} PWRP_NOTIFY, *PPWRP_NOTIFY;
+
+/* What the kernel takes to name the notification of a setting */
+typedef struct _PWRP_SETTING_NAME_REQUEST
+{
+    GUID SettingGuid;
+    ULONG SessionId;
+} PWRP_SETTING_NAME_REQUEST;
+
+/*
+ * The notifications all arrive on the one delivery thread of ntdll. Once its
+ * subscription is gone a registration can only be in the callback running
+ * now, so a retired registration is freed when any other one is called.
+ */
+static CRITICAL_SECTION PwrpNotifyLock;
+static LIST_ENTRY PwrpRetiredNotifies = { &PwrpRetiredNotifies, &PwrpRetiredNotifies };
+
+/* Caller holds the notification lock */
+static VOID
+PwrpFreeRetiredNotifies(
+    _In_ PPWRP_NOTIFY Current)
+{
+    PLIST_ENTRY Link, Next;
+    PPWRP_NOTIFY Notify;
+
+    for (Link = PwrpRetiredNotifies.Flink; Link != &PwrpRetiredNotifies; Link = Next)
+    {
+        Next = Link->Flink;
+        Notify = CONTAINING_RECORD(Link, PWRP_NOTIFY, Link);
+        if (Notify == Current)
+            continue;
+
+        RemoveEntryList(&Notify->Link);
+        HeapFree(GetProcessHeap(), 0, Notify);
+    }
+}
+
+/**
+ * @brief Hands an event to the recipient of a registration.
+ *
+ * @remarks
+ * Services would get SERVICE_CONTROL_POWEREVENT through the service control
+ * manager, which cannot carry power events to a service yet.
+ */
+static VOID
+PwrpSendEvent(
+    _In_ PPWRP_NOTIFY Notify,
+    _In_ ULONG Type,
+    _In_opt_ PPOWERBROADCAST_SETTING Setting)
+{
+    if (Notify->Flags == DEVICE_NOTIFY_CALLBACK)
+        Notify->Callback(Notify->Context, Type, Setting);
+    else
+        TRACE("Power event 0x%lx for service %p dropped\n", Type, Notify->ServiceHandle);
+}
+
+static VOID
+PwrpDeliverSetting(
+    _In_ PPWRP_NOTIFY Notify,
+    _In_reads_bytes_(Length) const VOID *Buffer,
+    _In_ ULONG Length)
+{
+    PPOWERBROADCAST_SETTING Setting;
+
+    Setting = HeapAlloc(GetProcessHeap(), 0, FIELD_OFFSET(POWERBROADCAST_SETTING, Data) + max(Length, sizeof(ULONG)));
+    if (!Setting)
+        return;
+
+    Setting->PowerSetting = Notify->SettingGuid;
+    Setting->DataLength = Length;
+    CopyMemory(Setting->Data, Buffer, Length);
+
+    PwrpSendEvent(Notify, PBT_POWERSETTINGCHANGE, Setting);
+    HeapFree(GetProcessHeap(), 0, Setting);
+}
+
+/* The first value only tells where the system stands, the changes after it are the events */
+static VOID
+PwrpDeliverSuspendResume(
+    _In_ PPWRP_NOTIFY Notify,
+    _In_reads_bytes_(Length) const VOID *Buffer,
+    _In_ ULONG Length)
+{
+    LONG Previous, InStandby;
+
+    if (Length < sizeof(ULONG))
+        return;
+
+    InStandby = (*(const ULONG *)Buffer != 0);
+    Previous = Notify->InStandby;
+    Notify->InStandby = InStandby;
+    if (Previous < 0 || Previous == InStandby)
+        return;
+
+    if (InStandby)
+    {
+        PwrpSendEvent(Notify, PBT_APMSUSPEND, NULL);
+    }
+    else
+    {
+        PwrpSendEvent(Notify, PBT_APMRESUMEAUTOMATIC, NULL);
+        PwrpSendEvent(Notify, PBT_APMRESUMESUSPEND, NULL);
+    }
+}
+
+static NTSTATUS
+NTAPI
+PwrpNotifyCallback(
+    _In_ WNF_STATE_NAME StateName,
+    _In_ WNF_CHANGE_STAMP ChangeStamp,
+    _In_opt_ PWNF_TYPE_ID TypeId,
+    _In_opt_ PVOID CallbackContext,
+    _In_reads_bytes_opt_(Length) const VOID *Buffer,
+    _In_ ULONG Length)
+{
+    PPWRP_NOTIFY Notify = CallbackContext;
+    BOOLEAN Removed;
+
+    UNREFERENCED_PARAMETER(StateName);
+    UNREFERENCED_PARAMETER(ChangeStamp);
+    UNREFERENCED_PARAMETER(TypeId);
+
+    EnterCriticalSection(&PwrpNotifyLock);
+    PwrpFreeRetiredNotifies(Notify);
+    Removed = Notify->Removed;
+    LeaveCriticalSection(&PwrpNotifyLock);
+
+    if (!Removed && Buffer)
+    {
+        if (Notify->Kind == PWRP_NOTIFY_SETTING)
+            PwrpDeliverSetting(Notify, Buffer, Length);
+        else
+            PwrpDeliverSuspendResume(Notify, Buffer, Length);
+    }
+
+    EnterCriticalSection(&PwrpNotifyLock);
+    if (Notify->Retired)
+    {
+        RemoveEntryList(&Notify->Link);
+        HeapFree(GetProcessHeap(), 0, Notify);
+    }
+    LeaveCriticalSection(&PwrpNotifyLock);
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Subscribes a registration to the notification name the kernel publishes
+ * the setting under. The current value, if there is one, arrives right away.
+ */
+static DWORD
+PwrpRegisterNotify(
+    _In_ ULONG Kind,
+    _In_ const GUID *SettingGuid,
+    _In_ DWORD Flags,
+    _In_ HANDLE Recipient,
+    _Out_ PHPOWERNOTIFY RegistrationHandle)
+{
+    PDEVICE_NOTIFY_SUBSCRIBE_PARAMETERS Parameters;
+    PWRP_SETTING_NAME_REQUEST Request;
+    WNF_STATE_NAME StateName;
+    PPWRP_NOTIFY Notify;
+    NTSTATUS Status;
+    DWORD SessionId;
+    GUID Active;
+
+    if (!RegistrationHandle || !Recipient)
+        return ERROR_INVALID_PARAMETER;
+
+    *RegistrationHandle = NULL;
+    if (Flags != DEVICE_NOTIFY_CALLBACK && Flags != DEVICE_NOTIFY_SERVICE_HANDLE)
+        return ERROR_INVALID_PARAMETER;
+
+    Notify = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*Notify));
+    if (!Notify)
+        return ERROR_NOT_ENOUGH_MEMORY;
+
+    Notify->Kind = Kind;
+    Notify->SettingGuid = *SettingGuid;
+    Notify->Flags = Flags;
+    Notify->InStandby = -1;
+    InitializeListHead(&Notify->Link);
+
+    if (Flags == DEVICE_NOTIFY_CALLBACK)
+    {
+        Parameters = Recipient;
+        Notify->Callback = Parameters->Callback;
+        Notify->Context = Parameters->Context;
+        if (!Notify->Callback)
+        {
+            HeapFree(GetProcessHeap(), 0, Notify);
+            return ERROR_INVALID_PARAMETER;
+        }
+    }
+    else
+    {
+        Notify->ServiceHandle = (SERVICE_STATUS_HANDLE)Recipient;
+    }
+
+    /* Nothing else hands the scheme identity to the kernel, make sure it has one to tell */
+    if ((IsEqualGUID(SettingGuid, &PwrpActiveSchemeSetting) || IsEqualGUID(SettingGuid, &PwrpPersonalitySetting)) &&
+        PwrpReadActiveScheme(&Active) == ERROR_SUCCESS)
+    {
+        PwrpPushScheme(&Active, FALSE);
+    }
+
+    if (!ProcessIdToSessionId(GetCurrentProcessId(), &SessionId))
+        SessionId = 0;
+
+    Request.SettingGuid = *SettingGuid;
+    Request.SessionId = SessionId;
+    Status = NtPowerInformation(PowerSettingNotificationName,
+                                &Request,
+                                sizeof(Request),
+                                &StateName,
+                                sizeof(StateName));
+    if (NT_SUCCESS(Status))
+    {
+        Status = RtlSubscribeWnfStateChangeNotification(&Notify->Subscription,
+                                                        StateName,
+                                                        0,
+                                                        PwrpNotifyCallback,
+                                                        Notify,
+                                                        NULL,
+                                                        0);
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        HeapFree(GetProcessHeap(), 0, Notify);
+        return RtlNtStatusToDosError(Status);
+    }
+
+    *RegistrationHandle = Notify;
+    return ERROR_SUCCESS;
+}
+
+/**
+ * @brief
+ * Ends a registration. A callback running for it right now is not waited
+ * for, so a window procedure can unregister while a notification is sent to it.
+ */
+static DWORD
+PwrpUnregisterNotify(
+    _In_ ULONG Kind,
+    _In_ HPOWERNOTIFY RegistrationHandle)
+{
+    PPWRP_NOTIFY Notify = RegistrationHandle;
+    PVOID Subscription;
+
+    if (!Notify)
+        return ERROR_INVALID_PARAMETER;
+
+    EnterCriticalSection(&PwrpNotifyLock);
+    if (Notify->Removed || Notify->Kind != Kind)
+    {
+        LeaveCriticalSection(&PwrpNotifyLock);
+        return ERROR_INVALID_HANDLE;
+    }
+    Notify->Removed = TRUE;
+    Subscription = Notify->Subscription;
+    LeaveCriticalSection(&PwrpNotifyLock);
+
+    /* No callback starts for it once this returns, only then may it be retired */
+    RtlUnsubscribeWnfStateChangeNotification(Subscription);
+
+    EnterCriticalSection(&PwrpNotifyLock);
+    Notify->Retired = TRUE;
+    InsertTailList(&PwrpRetiredNotifies, &Notify->Link);
+    LeaveCriticalSection(&PwrpNotifyLock);
+
+    return ERROR_SUCCESS;
+}
+
+/**
+ * @brief
+ * Registers for changes of a power setting. The recipient gets
+ * PBT_POWERSETTINGCHANGE with the new value, and the current value right
+ * after registering.
+ *
+ * @param[in] Flags
+ * DEVICE_NOTIFY_CALLBACK with DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS as the
+ * recipient, or DEVICE_NOTIFY_SERVICE_HANDLE with a service status handle.
+ */
+DWORD
+WINAPI
+PowerSettingRegisterNotification(
+    _In_ LPCGUID SettingGuid,
+    _In_ DWORD Flags,
+    _In_ HANDLE Recipient,
+    _Out_ PHPOWERNOTIFY RegistrationHandle)
+{
+    if (!SettingGuid)
+        return ERROR_INVALID_PARAMETER;
+
+    return PwrpRegisterNotify(PWRP_NOTIFY_SETTING, SettingGuid, Flags, Recipient, RegistrationHandle);
+}
+
+DWORD
+WINAPI
+PowerSettingUnregisterNotification(
+    _Inout_ HPOWERNOTIFY RegistrationHandle)
+{
+    return PwrpUnregisterNotify(PWRP_NOTIFY_SETTING, RegistrationHandle);
+}
+
+/**
+ * @brief
+ * Registers for suspend and resume. The recipient gets PBT_APMSUSPEND when
+ * the system goes to sleep, PBT_APMRESUMEAUTOMATIC and PBT_APMRESUMESUSPEND
+ * when it wakes up.
+ */
+DWORD
+WINAPI
+PowerRegisterSuspendResumeNotification(
+    _In_ DWORD Flags,
+    _In_ HANDLE Recipient,
+    _Out_ PHPOWERNOTIFY RegistrationHandle)
+{
+    return PwrpRegisterNotify(PWRP_NOTIFY_SUSPEND_RESUME, &PwrpStandbyStateSetting, Flags, Recipient, RegistrationHandle);
+}
+
+DWORD
+WINAPI
+PowerUnregisterSuspendResumeNotification(
+    _Inout_ HPOWERNOTIFY RegistrationHandle)
+{
+    return PwrpUnregisterNotify(PWRP_NOTIFY_SUSPEND_RESUME, RegistrationHandle);
+}
+
 BOOL WINAPI
 DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
@@ -3225,6 +4120,7 @@ DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
             LONG Err;
 
             DisableThreadLibraryCalls(hinstDLL);
+            InitializeCriticalSection(&PwrpNotifyLock);
 
             Err = RegOpenKeyExW(HKEY_LOCAL_MACHINE, szPowerCfgSubKey, 0, KEY_READ, &hKey);
 

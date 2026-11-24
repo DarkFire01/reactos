@@ -347,3 +347,19 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\e73a048d-bf27-4f12-97
 HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\e73a048d-bf27-4f12-9731-8b2076e8891f\bcded951-187b-4d05-bccc-f7e51960c258\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e","DCSettingIndex",0x00010001,1
 HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\e73a048d-bf27-4f12-9731-8b2076e8891f\d8742dcb-3e6a-4b3c-b3fe-374623cdcf06\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e","ACSettingIndex",0x00010001,0
 HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\e73a048d-bf27-4f12-9731-8b2076e8891f\d8742dcb-3e6a-4b3c-b3fe-374623cdcf06\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e","DCSettingIndex",0x00010001,0
+
+; The stock power schemes, settings a scheme has no defaults for use the balanced ones
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\381b4222-f694-41f0-9685-ff5bb260df2e","FriendlyName",0x00000000,"Balanced"
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\381b4222-f694-41f0-9685-ff5bb260df2e","Description",0x00000000,"Automatically balances performance with energy consumption on capable hardware."
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c","FriendlyName",0x00000000,"High performance"
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c","Description",0x00000000,"Favors performance, but may use more energy."
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\a1841308-3541-4fab-bc81-f71556f20b4a","FriendlyName",0x00000000,"Power saver"
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\a1841308-3541-4fab-bc81-f71556f20b4a","Description",0x00000000,"Saves energy by reducing your computer's performance where possible."
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\893dee8e-2bef-41e0-89c6-b55d0929964c\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c","ACSettingIndex",0x00010001,100
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\893dee8e-2bef-41e0-89c6-b55d0929964c\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c","DCSettingIndex",0x00010001,100
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\893dee8e-2bef-41e0-89c6-b55d0929964c\DefaultPowerSchemeValues\a1841308-3541-4fab-bc81-f71556f20b4a","ACSettingIndex",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\893dee8e-2bef-41e0-89c6-b55d0929964c\DefaultPowerSchemeValues\a1841308-3541-4fab-bc81-f71556f20b4a","DCSettingIndex",0x00010001,5
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\501a4d13-42af-4429-9fd1-a8218c268e20\ee12f906-d277-404b-b6da-e5fa1a576df5\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c","ACSettingIndex",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\501a4d13-42af-4429-9fd1-a8218c268e20\ee12f906-d277-404b-b6da-e5fa1a576df5\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c","DCSettingIndex",0x00010001,0
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\501a4d13-42af-4429-9fd1-a8218c268e20\ee12f906-d277-404b-b6da-e5fa1a576df5\DefaultPowerSchemeValues\a1841308-3541-4fab-bc81-f71556f20b4a","ACSettingIndex",0x00010001,2
+HKLM,"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\501a4d13-42af-4429-9fd1-a8218c268e20\ee12f906-d277-404b-b6da-e5fa1a576df5\DefaultPowerSchemeValues\a1841308-3541-4fab-bc81-f71556f20b4a","DCSettingIndex",0x00010001,2

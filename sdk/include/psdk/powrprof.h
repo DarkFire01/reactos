@@ -161,6 +161,23 @@ typedef BOOLEAN (CALLBACK* PWRSCHEMESENUMPROC)(UINT, DWORD, LPWSTR, DWORD, LPWST
 typedef PVOID HPOWERNOTIFY, *PHPOWERNOTIFY;
 #endif
 
+#define DEVICE_NOTIFY_CALLBACK 2
+
+typedef
+ULONG
+CALLBACK
+DEVICE_NOTIFY_CALLBACK_ROUTINE(
+    _In_opt_ PVOID Context,
+    _In_ ULONG Type,
+    _In_ PVOID Setting);
+typedef DEVICE_NOTIFY_CALLBACK_ROUTINE *PDEVICE_NOTIFY_CALLBACK_ROUTINE;
+
+typedef struct _DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS
+{
+    PDEVICE_NOTIFY_CALLBACK_ROUTINE Callback;
+    PVOID Context;
+} DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS, *PDEVICE_NOTIFY_SUBSCRIBE_PARAMETERS;
+
 NTSTATUS WINAPI CallNtPowerInformation(POWER_INFORMATION_LEVEL, PVOID, ULONG, PVOID, ULONG);
 BOOLEAN WINAPI CanUserWritePwrScheme(VOID);
 BOOLEAN WINAPI DeletePwrScheme(UINT);
@@ -473,6 +490,19 @@ PowerCreatePossibleSetting(
 
 /* Power scheme */
 POWER_PLATFORM_ROLE WINAPI PowerDeterminePlatformRole(void);
+
+DWORD
+WINAPI
+PowerDuplicateScheme(
+    _In_opt_ HKEY RootPowerKey,
+    _In_ const GUID *SourceSchemeGuid,
+    _Inout_ GUID **DestinationSchemeGuid);
+
+DWORD
+WINAPI
+PowerDeleteScheme(
+    _In_opt_ HKEY RootPowerKey,
+    _In_ const GUID *SchemeGuid);
 
 #ifdef __cplusplus
 }

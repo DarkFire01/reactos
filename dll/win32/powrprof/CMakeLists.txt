@@ -12,6 +12,8 @@ if(MSVC)
 endif()
 
 set_module_type(powrprof win32dll UNICODE)
+remove_definitions(-D_WIN32_WINNT=0x502)
+add_definitions(-D_WIN32_WINNT=0x600)
 target_compile_definitions(powrprof PRIVATE _CRT_NON_CONFORMING_SWPRINTFS)
 target_link_libraries(powrprof wine)
 add_importlibs(powrprof advapi32 user32 comctl32 msvcrt kernel32 ntdll)
