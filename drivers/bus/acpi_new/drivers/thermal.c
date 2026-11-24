@@ -1159,8 +1159,9 @@ UacpiNtThermalQueryWmiDataBlock(
     if (GuidIndex != 0)
         return WmiCompleteRequest(DeviceObject, Irp, STATUS_WMI_GUID_NOT_FOUND, 0, IO_NO_INCREMENT);
 
+    /* WMI needs the size we want to grow the caller's buffer */
     if (BufferAvail < sizeof(*Data) || !InstanceLengthArray || !Buffer)
-        return WmiCompleteRequest(DeviceObject, Irp, STATUS_BUFFER_TOO_SMALL, 0, IO_NO_INCREMENT);
+        return WmiCompleteRequest(DeviceObject, Irp, STATUS_BUFFER_TOO_SMALL, sizeof(*Data), IO_NO_INCREMENT);
 
     /* A fresh evaluation for each query, independent of the IOCTL worker */
     Data = (PUACPINT_THERMAL_WMI)Buffer;
