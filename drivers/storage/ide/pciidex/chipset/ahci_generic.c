@@ -617,6 +617,17 @@ AhciMatchController(
         return TRUE;
     }
 
+    /*
+     * Intel RAID mode keeps the AHCI register set behind BAR5, so disks outside
+     * a RAID volume work as on plain AHCI. Parts without that BAR fall back to IDE.
+     */
+    if ((Controller->Pci.VendorID == PCI_VEN_INTEL) &&
+        (Controller->Pci.BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
+        (Controller->Pci.SubClass == PCI_SUBCLASS_MSC_RAID_CTLR))
+    {
+        return TRUE;
+    }
+
     return FALSE;
 }
 
