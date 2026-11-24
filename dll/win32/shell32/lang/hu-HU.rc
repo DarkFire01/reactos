@@ -1078,4 +1078,5 @@ BEGIN
     IDS_SWITCH_USER_DESC "Lehetővé teszi hogy egy másik felhasználó bejelentkezzen, miközben az Ön programjai és fájljai nyitva maradnak.\r\n\r\n(A felhasználóváltás a Windows logó gomb + L gyorsbillentyűvel is működik.)"
     IDS_LOG_OFF_TITLE "Kijelentkezés"
     IDS_SWITCH_USER_TITLE "Felhasználóváltás"
+    IDS_NETADDRESS_INVALID "The network address is not valid."
 END

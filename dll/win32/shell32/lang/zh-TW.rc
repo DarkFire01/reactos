@@ -1089,4 +1089,5 @@ BEGIN
     IDS_SWITCH_USER_DESC "允許其他使用者登入到系統上，同時保持您的程式和檔案開啟。\r\n\r\n（您亦可使用 Windows 鍵 + L 來切換使用者。）"
     IDS_LOG_OFF_TITLE "登出"
     IDS_SWITCH_USER_TITLE "切換使用者"
+    IDS_NETADDRESS_INVALID "The network address is not valid."
 END

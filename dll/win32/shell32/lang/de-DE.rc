@@ -1080,4 +1080,5 @@ BEGIN
     IDS_SWITCH_USER_DESC "Ermöglicht es einem anderen Benutzer sich anzumelden, während Ihre Programme und Dateien geöffnet bleiben.\r\n\r\n(Sie können Benutzer auch mittels des Drückens von Windows + L wechseln.)"
     IDS_LOG_OFF_TITLE "Abmelden"
     IDS_SWITCH_USER_TITLE "Benutzer wechseln"
+    IDS_NETADDRESS_INVALID "The network address is not valid."
 END

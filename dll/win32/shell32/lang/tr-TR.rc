@@ -1089,4 +1089,5 @@ BEGIN
     IDS_SWITCH_USER_DESC "Programlarınız ve dosyalarınız açıkken başka bir kullanıcının oturum açmasına izin verir. \r\n\r\n (Windows tuşu + L'ye basarak da kullanıcılar arasında geçiş yapabilirsiniz.)"
     IDS_LOG_OFF_TITLE "Oturumu Kapat"
     IDS_SWITCH_USER_TITLE "Kullanıcı Değiştir"
+    IDS_NETADDRESS_INVALID "The network address is not valid."
 END

@@ -1088,4 +1088,5 @@ BEGIN
     IDS_SWITCH_USER_DESC "Permite que outro utilizador inicie sessão enquanto seus programas e ficheiros permanecem abertos.\r\n\r\n(Também pode mudar de utilizador, pressionando a tecla do logotipo do Windows + L.)"
     IDS_LOG_OFF_TITLE "Terminar a sessão"
     IDS_SWITCH_USER_TITLE "Mudar de utilizador"
+    IDS_NETADDRESS_INVALID "The network address is not valid."
 END

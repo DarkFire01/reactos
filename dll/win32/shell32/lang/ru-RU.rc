@@ -1088,4 +1088,5 @@ BEGIN
     IDS_SWITCH_USER_DESC "Позволяет другому пользователю войти в систему, оставляя открытыми ваши приложения и файлы.\r\n\r\n(Можно также выполнить переключение пользователей, нажав сочетание клавиш Windows + L.)"
     IDS_LOG_OFF_TITLE "Выход"
     IDS_SWITCH_USER_TITLE "Сменить пользователя"
+    IDS_NETADDRESS_INVALID "The network address is not valid."
 END

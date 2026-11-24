@@ -903,6 +903,27 @@ WINAPI
 SHQueryUserNotificationState(
   _Out_ QUERY_USER_NOTIFICATION_STATE *pquns);
 
+#define WC_NETADDRESS L"msctls_netaddress"
+
+BOOL WINAPI InitNetworkAddressControl(void);
+
+#define NCM_GETADDRESS      (WM_USER + 1)
+#define NCM_SETALLOWTYPE    (WM_USER + 2)
+#define NCM_GETALLOWTYPE    (WM_USER + 3)
+#define NCM_DISPLAYERRORTIP (WM_USER + 4)
+
+typedef struct tagNC_ADDRESS
+{
+  struct NET_ADDRESS_INFO_ *pAddrInfo;
+  USHORT PortNumber;
+  BYTE PrefixLength;
+} NC_ADDRESS, *PNC_ADDRESS;
+
+#define NetAddr_GetAddress(hwnd, pv) (HRESULT)SNDMSG(hwnd, NCM_GETADDRESS, 0, (LPARAM)(pv))
+#define NetAddr_SetAllowType(hwnd, t) (HRESULT)SNDMSG(hwnd, NCM_SETALLOWTYPE, (WPARAM)(t), 0)
+#define NetAddr_GetAllowType(hwnd) (DWORD)SNDMSG(hwnd, NCM_GETALLOWTYPE, 0, 0)
+#define NetAddr_DisplayErrorTip(hwnd) (HRESULT)SNDMSG(hwnd, NCM_DISPLAYERRORTIP, 0, 0)
+
 #endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
 
 #if !defined(_WIN64)

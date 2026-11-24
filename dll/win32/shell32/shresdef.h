@@ -387,6 +387,8 @@
 #define IDS_LOG_OFF_TITLE                           35010
 #define IDS_SWITCH_USER_TITLE                       35011
 
+#define IDS_NETADDRESS_INVALID                      32496
+
 /* Pin verbs; each unpin string follows its pin string */
 #define IDS_PIN_TO_STARTMENU                        5381
 #define IDS_UNPIN_FROM_STARTMENU                    5382

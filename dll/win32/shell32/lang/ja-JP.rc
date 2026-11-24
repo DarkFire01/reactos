@@ -1076,4 +1076,5 @@ BEGIN
     IDS_SWITCH_USER_DESC "プログラムとファイルを開いたまま、別のユーザーがログオンできるようにします。\r\n\r\n(Win+L を押して、ユーザーを切り替えることもできます)"
     IDS_LOG_OFF_TITLE "ログオフ"
     IDS_SWITCH_USER_TITLE "ユーザー切り替え"
+    IDS_NETADDRESS_INVALID "The network address is not valid."
 END

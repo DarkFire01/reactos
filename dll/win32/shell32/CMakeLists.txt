@@ -85,6 +85,7 @@ list(APPEND SOURCE
     CShellTaskScheduler.h
     CBrowserProgressAggregator.cpp
     hiddenid.cpp
+    netaddr.cpp
     hiddenid.h
     pinning/CAppResolver.cpp
     pinning/CAppResolver.h
