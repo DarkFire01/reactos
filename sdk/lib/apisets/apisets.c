@@ -17,34 +17,6 @@ WORD PrefixSize = sizeof(L"api-") - sizeof(WCHAR);
 WORD ExtensionSize = sizeof(L".dll") - sizeof(WCHAR);
 
 
-/* Drops the trailing "-<revision>" so all revisions of a contract compare equal */
-static
-VOID
-ApisetStripRevision(
-    _Inout_ PUNICODE_STRING Name)
-{
-    USHORT Chars = Name->Length / sizeof(WCHAR);
-
-    while (Chars > 0 && Name->Buffer[Chars - 1] != L'-')
-        Chars--;
-
-    if (Chars > 1)
-        Name->Length = (Chars - 1) * sizeof(WCHAR);
-}
-
-static
-BOOLEAN
-ApisetSameContract(
-    _In_ PCUNICODE_STRING Contract,
-    _In_ LONG Index)
-{
-    UNICODE_STRING Entry = g_Apisets[Index].Name;
-
-    ApisetStripRevision(&Entry);
-    return RtlEqualUnicodeString(Contract, &Entry, TRUE);
-}
-
-
 // The official prototype according to the Windows kit 8.1 is:
 //NTSTATUS
 //ApiSetResolveToHost (
@@ -86,43 +58,24 @@ ApiSetResolveToHost(
     if (!_wcsnicmp(Extension, L".dll", ExtensionSize / sizeof(WCHAR)))
         Tmp.Length -= ExtensionSize;
 
-    /* Like Windows, every revision of a contract resolves to the same host */
-    ApisetStripRevision(&Tmp);
-
+    // Binary search the apisets
+    // Ideally we should use bsearch here, but that drags in another dependency and we do not want that here.
     LONG UBnd = g_ApisetsCount - 1;
     LONG LBnd = 0;
     while (LBnd <= UBnd)
     {
         LONG Index = (UBnd - LBnd) / 2 + LBnd;
-        UNICODE_STRING Entry = g_Apisets[Index].Name;
-        LONG First, Last, Probe;
 
-        ApisetStripRevision(&Entry);
-        LONG result = RtlCompareUnicodeString(&Tmp, &Entry, TRUE);
+        LONG result = RtlCompareUnicodeString(&Tmp, &g_Apisets[Index].Name, TRUE);
         if (result == 0)
         {
-            /* Revisions of one contract are adjacent, find the span */
-            First = Index;
-            while (First > 0 && ApisetSameContract(&Tmp, First - 1))
-                First--;
-
-            Last = Index;
-            while (Last + 1 < g_ApisetsCount && ApisetSameContract(&Tmp, Last + 1))
-                Last++;
-
-            /* The newest revision present in the requested OS version wins */
-            for (Probe = Last; Probe >= First; Probe--)
+            // Check if this version is included
+           // if (g_Apisets[Index].dwOsVersions & ApisetVersion)
             {
-                /* A set stays present in every version after the one it appeared in */
-                if (g_Apisets[Probe].dwOsVersions & (ApisetVersion | (ApisetVersion - 1)))
-                {
-                    *Resolved = TRUE;
-                    *Output = g_Apisets[Probe].Target;
-                    return STATUS_SUCCESS;
-                }
+                // Return a static string (does not have to be freed)
+                *Resolved = TRUE;
+                *Output = g_Apisets[Index].Target;
             }
-
-            *Resolved = FALSE;
             return STATUS_SUCCESS;
         }
         else if (result < 0)
