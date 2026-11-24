@@ -600,6 +600,25 @@ DlpOpenDxgkrnl(VOID)
                                     &gpDxgkFileObject, &gpDxgkDeviceObject);
 }
 
+/** @brief Is the device the root device the basic display driver reports for the boot display? */
+static BOOLEAN
+DlpIsBasicDisplayRoot(
+    _In_ PDEVICE_OBJECT Pdo)
+{
+    static const WCHAR szBasicDisplayId[] = L"ROOT\\BasicDisplay";
+    WCHAR szHardwareId[ARRAYSIZE(szBasicDisplayId) + 1];
+    ULONG cbHardwareId;
+    NTSTATUS Status;
+
+    /* The list is the one ID and its terminator, anything longer is another device */
+    Status = IoGetDeviceProperty(Pdo, DevicePropertyHardwareID, sizeof(szHardwareId),
+                                 szHardwareId, &cbHardwareId);
+    if (!NT_SUCCESS(Status) || (cbHardwareId < sizeof(szBasicDisplayId)))
+        return FALSE;
+
+    return (_wcsicmp(szHardwareId, szBasicDisplayId) == 0);
+}
+
 /** @brief Is one of the driver's video function devices on a display class device? */
 static BOOLEAN
 DlpDriverDrivesDisplay(
@@ -609,6 +628,7 @@ DlpDriverDrivesDisplay(
     WCHAR szClass[ARRAYSIZE(szDisplayClass)];
     PDEVICE_OBJECT DeviceObject, Pdo;
     ULONG cbClass;
+    BOOLEAN bDisplay;
     NTSTATUS Status;
 
     for (DeviceObject = DriverObject->DeviceObject;
@@ -627,9 +647,11 @@ DlpDriverDrivesDisplay(
         }
 
         Status = IoGetDeviceProperty(Pdo, DevicePropertyClassGuid, sizeof(szClass), szClass, &cbClass);
+        bDisplay = (NT_SUCCESS(Status) && (_wcsicmp(szClass, szDisplayClass) == 0)) ||
+                   DlpIsBasicDisplayRoot(Pdo);
         ObDereferenceObject(Pdo);
 
-        if (NT_SUCCESS(Status) && (_wcsicmp(szClass, szDisplayClass) == 0))
+        if (bDisplay)
             return TRUE;
     }
 
