@@ -384,6 +384,7 @@ UacpiNtPdoPnp(
             break;
 
         case IRP_MN_SURPRISE_REMOVAL:
+            UacpiNtGpioRegionDeviceState(Pdo->Node, FALSE);
             Pdo->StackStarted = FALSE;
             UacpiNtWakeTeardown(&Pdo->Wake);
             UacpiNtDriversRemoveDevice(Pdo);
@@ -391,6 +392,7 @@ UacpiNtPdoPnp(
             break;
 
         case IRP_MN_REMOVE_DEVICE:
+            UacpiNtGpioRegionDeviceState(Pdo->Node, FALSE);
             Pdo->StackStarted = FALSE;
             UacpiNtWakeTeardown(&Pdo->Wake);
             UacpiNtDriversRemoveDevice(Pdo);
@@ -429,6 +431,7 @@ UacpiNtPdoPnp(
             if (Pdo->Started && !Pdo->StackStarted)
             {
                 Pdo->StackStarted = TRUE;
+                UacpiNtGpioRegionDeviceState(Pdo->Node, TRUE);
                 UacpiNtReleaseDependents(Pdo->Parent);
             }
             break;

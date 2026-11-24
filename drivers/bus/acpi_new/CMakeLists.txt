@@ -64,6 +64,7 @@ list(APPEND SOURCE
      sys/reshub.c
      sys/resource.c
      sys/serialbus.c
+     sys/gpioregion.c
      sys/sleep.c
      uacpi-host/uacpi_host.c
      uacpi-host/uacpi_isr.c)

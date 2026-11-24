@@ -631,6 +631,18 @@ VOID
 NTAPI
 UacpiNtSerialBusInit(VOID);
 
+/* gpioregion.c */
+
+VOID
+NTAPI
+UacpiNtGpioRegionInit(VOID);
+
+VOID
+NTAPI
+UacpiNtGpioRegionDeviceState(
+    _In_opt_ uacpi_namespace_node *Node,
+    _In_ BOOLEAN Running);
+
 VOID
 NTAPI
 UacpiNtRouteNotify(

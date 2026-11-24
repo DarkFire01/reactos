@@ -144,6 +144,9 @@ UacpiNtBringUpInterpreter(
         return STATUS_UNSUCCESSFUL;
     }
 
+    /* GPIO regions must have their handler before they exist, so no _REG runs early */
+    UacpiNtGpioRegionInit();
+
     /* Loads the DSDT and SSDTs, the SCI is recorded here */
     UacpiStatus = uacpi_namespace_load();
     if (uacpi_unlikely_error(UacpiStatus))

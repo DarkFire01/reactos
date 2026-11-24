@@ -281,6 +281,8 @@ UacpiNtFilterRemoveDevice(
     PDEVICE_OBJECT Self = Filter->Shared.Self;
     NTSTATUS Status;
 
+    UacpiNtGpioRegionDeviceState(Filter->Node, FALSE);
+
     /* Fail a pending WAIT_WAKE and disarm before the extension goes away */
     UacpiNtWakeTeardown(&Filter->Wake);
 
@@ -604,6 +606,7 @@ UacpiNtFilterPnp(
                 UacpiNtRegisterBiosName(Filter->Node, Filter->ForeignPdo);
 
                 Filter->StackStarted = TRUE;
+                UacpiNtGpioRegionDeviceState(Filter->Node, TRUE);
                 UacpiNtReleaseDependents(Filter->Fdo);
             }
             return UacpiNtForwardAndForget(Filter->LowerDevice, Irp);
@@ -614,6 +617,7 @@ UacpiNtFilterPnp(
 
         /* The device is gone, fail the pending wait and drop the GPE now */
         case IRP_MN_SURPRISE_REMOVAL:
+            UacpiNtGpioRegionDeviceState(Filter->Node, FALSE);
             Filter->StackStarted = FALSE;
             UacpiNtWakeTeardown(&Filter->Wake);
             Irp->IoStatus.Status = STATUS_SUCCESS;
