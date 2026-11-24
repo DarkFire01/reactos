@@ -13,13 +13,6 @@
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
-static VOID
-HalpWriteResetCommand(VOID)
-{
-    /* Generate RESET signal via keyboard controller */
-    WRITE_PORT_UCHAR((PUCHAR)0x64, 0xFE);
-};
-
 DECLSPEC_NORETURN
 VOID
 HalpReboot(VOID)

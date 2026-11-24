@@ -612,6 +612,10 @@ HalpBuildAddressMap(
     VOID
 );
 
+VOID
+NTAPI
+HalpWriteResetCommand(VOID);
+
 CODE_SEG("INIT")
 VOID
 NTAPI

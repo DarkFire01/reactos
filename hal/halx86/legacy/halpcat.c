@@ -43,6 +43,14 @@ HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     return STATUS_SUCCESS;
 }
 
+VOID
+NTAPI
+HalpWriteResetCommand(VOID)
+{
+    /* Generate RESET signal via keyboard controller */
+    WRITE_PORT_UCHAR((PUCHAR)0x64, 0xFE);
+}
+
 CODE_SEG("INIT")
 VOID
 NTAPI

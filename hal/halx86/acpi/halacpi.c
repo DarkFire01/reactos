@@ -1019,6 +1019,66 @@ HalpBuildAddressMap(VOID)
     /* ACPI is magic baby */
 }
 
+/* FADT flag and boot architecture bit the reset path looks at */
+#define HALP_FADT_RESET_REGISTER_SUPPORTED  0x00000400
+#define HALP_FADT_BOOT_ARCH_8042            0x0002
+
+/**
+ * @brief
+ * Resets the machine through the FADT reset register when the firmware
+ * provides one, then through the keyboard controller when the platform has one.
+ */
+VOID
+NTAPI
+HalpWriteResetCommand(VOID)
+{
+    PGEN_ADDR ResetRegister = &HalpFixedAcpiDescTable.reset_reg;
+    PCI_SLOT_NUMBER Slot;
+    PUCHAR Mapping;
+
+    if ((HalpFixedAcpiDescTable.Header.Revision > 1) &&
+        (HalpFixedAcpiDescTable.flags & HALP_FADT_RESET_REGISTER_SUPPORTED) &&
+        (ResetRegister->Address.QuadPart != 0))
+    {
+        switch (ResetRegister->AddressSpaceID)
+        {
+            case 0:
+                Mapping = HalpMapPhysicalMemory64(ResetRegister->Address, 1);
+                if (Mapping)
+                    WRITE_REGISTER_UCHAR(Mapping, HalpFixedAcpiDescTable.reset_val);
+                break;
+
+            case 1:
+                WRITE_PORT_UCHAR((PUCHAR)(ULONG_PTR)ResetRegister->Address.LowPart,
+                                 HalpFixedAcpiDescTable.reset_val);
+                break;
+
+            case 2:
+                /* Device in the high dword, function and offset in the low one */
+                Slot.u.AsULONG = 0;
+                Slot.u.bits.DeviceNumber = ResetRegister->Address.HighPart & 0x1F;
+                Slot.u.bits.FunctionNumber = (ResetRegister->Address.LowPart >> 16) & 0x7;
+                HalSetBusDataByOffset(PCIConfiguration,
+                                      (ULONG)ResetRegister->Address.HighPart >> 16,
+                                      Slot.u.AsULONG,
+                                      &HalpFixedAcpiDescTable.reset_val,
+                                      ResetRegister->Address.LowPart & 0xFFFF,
+                                      sizeof(UCHAR));
+                break;
+        }
+
+        KeStallExecutionProcessor(500);
+    }
+
+    /* Before revision 5 the FADT cannot say that the keyboard controller is missing */
+    if ((HalpFixedAcpiDescTable.Header.Revision < 5) ||
+        (HalpFixedAcpiDescTable.boot_arch & HALP_FADT_BOOT_ARCH_8042))
+    {
+        WRITE_PORT_UCHAR((PUCHAR)0x64, 0xFE);
+        KeStallExecutionProcessor(5000);
+    }
+}
+
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
