@@ -18,6 +18,6 @@ list(APPEND SOURCE
 add_library(advapi32_vista MODULE ${SOURCE} advapi32_vista.rc)
 set_module_type(advapi32_vista win32dll ENTRYPOINT DllMain 12)
 target_link_libraries(advapi32_vista wine ${PSEH_LIB})
-add_importlibs(advapi32_vista advapi32 kernel32 ntdll)
+add_importlibs(advapi32_vista advapi32 kernelbase ntdll)
 add_dependencies(advapi32_vista psdk advapi32)
 add_cd_file(TARGET advapi32_vista DESTINATION reactos/system32 FOR all)

@@ -16,7 +16,7 @@ add_library(dxva2 MODULE
 
 set_module_type(dxva2 win32dll)
 target_link_libraries(dxva2 wine uuid)
-add_importlibs(dxva2 ole32 user32 kernel32_vista msvcrt kernel32 ntdll)
+add_importlibs(dxva2 ole32 user32 msvcrt kernelbase ntdll)
 add_dependencies(dxva2 wineheaders psdk)
 add_cd_file(TARGET dxva2 DESTINATION reactos/system32 FOR all)
 set_wine_module(dxva2)

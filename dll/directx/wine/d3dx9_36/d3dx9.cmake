@@ -50,7 +50,7 @@ function(add_d3dx9_target VERSION)
     target_link_libraries(${_target} wine dxguid uuid oldnames)
     add_importlibs(${_target}
         d3d9 d3dcompiler_47 d3dxof ole32 gdi32 user32 usp10
-        kernel32_vista msvcrt kernel32 ntdll)
+        msvcrt kernelbase ntdll)
     add_delay_importlibs(${_target} windowscodecs)
     add_dependencies(${_target} wineheaders d3d_idl_headers)
     add_cd_file(TARGET ${_target} DESTINATION reactos/system32 FOR all)

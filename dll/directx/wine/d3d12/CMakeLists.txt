@@ -14,7 +14,7 @@ add_library(d3d12 MODULE
 
 set_module_type(d3d12 win32dll)
 target_link_libraries(d3d12 wine vkd3d dxguid dx10guid uuid)
-add_importlibs(d3d12 dxgi d3dwine gdi32 user32 msvcrt kernel32_vista kernel32 ntdll)
+add_importlibs(d3d12 dxgi d3dwine gdi32 user32 msvcrt kernelbase ntdll)
 add_dependencies(d3d12 wineheaders d3d_idl_headers)
 if(NOT EXISTS ${WINE_DIRECTX_SLIPSTREAM}/d3d12.dll)
     add_cd_file(TARGET d3d12 DESTINATION reactos/system32 FOR all)

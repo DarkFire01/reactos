@@ -20,6 +20,6 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
 endif()
 
 target_link_libraries(dwrite_winetest winetestlib uuid dxguid)
-add_importlibs(dwrite_winetest ole32 gdi32 kernel32_vista dwrite user32 msvcrt kernel32 ntdll)
+add_importlibs(dwrite_winetest ole32 gdi32 dwrite user32 msvcrt kernelbase ntdll)
 set_module_type(dwrite_winetest win32cui)
 add_rostests_file(TARGET dwrite_winetest)
