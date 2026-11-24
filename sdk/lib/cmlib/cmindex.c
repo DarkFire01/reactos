@@ -1527,28 +1527,26 @@ CmpAddSubKey(IN PHHIVE Hive,
     KeyNode = (PCM_KEY_NODE)HvGetCell(Hive, Parent);
     if (!KeyNode)
     {
-        /* Not handled */
-        ASSERT(FALSE);
+        if (IsCompressed) Hive->Free(Name.Buffer, 0);
+        return FALSE;
     }
 
     /* Find out the type of the cell, and check if this is the first subkey */
     Type = HvGetCellType(Child);
     if (!KeyNode->SubKeyCounts[Type])
     {
-        /* Allocate a fast leaf */
+        /* Allocate a fast leaf, a full hive fails the add */
         IndexCell = HvAllocateCell(Hive, sizeof(CM_KEY_FAST_INDEX), Type, HCELL_NIL);
         if (IndexCell == HCELL_NIL)
-        {
-            /* Not handled */
-            ASSERT(FALSE);
-        }
+            goto Fail;
 
         /* Get the leaf cell */
         Index = (PCM_KEY_INDEX)HvGetCell(Hive, IndexCell);
         if (!Index)
         {
-            /* Shouldn't happen */
-            ASSERT(FALSE);
+            HvFreeCell(Hive, IndexCell);
+            IndexCell = HCELL_NIL;
+            goto Fail;
         }
 
         /* Now check what kind of hive we're dealing with */
@@ -1577,10 +1575,7 @@ CmpAddSubKey(IN PHHIVE Hive,
         /* We already have an index, get it */
         Index = (PCM_KEY_INDEX)HvGetCell(Hive, KeyNode->SubKeyLists[Type]);
         if (!Index)
-        {
-            /* Not handled */
-            ASSERT(FALSE);
-        }
+            goto Fail;
 
         /* Remember to release the cell later */
         CellToRelease = KeyNode->SubKeyLists[Type];
@@ -1616,17 +1611,15 @@ CmpAddSubKey(IN PHHIVE Hive,
                                       Type,
                                       HCELL_NIL);
             if (IndexCell == HCELL_NIL)
-            {
-                /* Not handled */
-                ASSERT(FALSE);
-            }
+                goto Fail;
 
             /* Get the index cell */
             Index = (PCM_KEY_INDEX)HvGetCell(Hive, IndexCell);
             if (!Index)
             {
-                /* Shouldn't happen */
-                ASSERT(FALSE);
+                HvFreeCell(Hive, IndexCell);
+                IndexCell = HCELL_NIL;
+                goto Fail;
             }
 
             /* Mark the index as a root, and set the index cell */
@@ -1650,19 +1643,13 @@ CmpAddSubKey(IN PHHIVE Hive,
          */
         LeafCell = CmpSelectLeaf(Hive, KeyNode, &Name, Type, &RootPointer);
         if (LeafCell == HCELL_NIL)
-        {
-            /* Not handled */
-            ASSERT(FALSE);
-        }
+            goto Fail;
     }
 
     /* Add our leaf cell */
     LeafCell = CmpAddToLeaf(Hive, LeafCell, Child, &Name);
     if (LeafCell == HCELL_NIL)
-    {
-        /* Not handled */
-        ASSERT(FALSE);
-    }
+        goto Fail;
 
     /* Update the key counts */
     KeyNode->SubKeyCounts[Type]++;
@@ -1687,6 +1674,14 @@ CmpAddSubKey(IN PHHIVE Hive,
     if (CellToRelease != HCELL_NIL) HvReleaseCell(Hive, CellToRelease);
     HvReleaseCell(Hive, Parent);
     return TRUE;
+
+Fail:
+    /* The hive could not grow, the indexes keep what they had */
+    if (IsCompressed) Hive->Free(Name.Buffer, 0);
+    if (IndexCell != HCELL_NIL) HvReleaseCell(Hive, IndexCell);
+    if (CellToRelease != HCELL_NIL) HvReleaseCell(Hive, CellToRelease);
+    HvReleaseCell(Hive, Parent);
+    return FALSE;
 }
 
 BOOLEAN

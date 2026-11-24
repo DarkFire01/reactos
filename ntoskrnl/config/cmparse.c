@@ -1059,15 +1059,22 @@ CmpCreateLinkNode(IN PHHIVE Hive,
             goto Exit;
         }
 
-        /* Now add the subkey */
-        if (!CmpAddSubKey(Hive, Cell, LinkCell))
-        {
-            /* Failure! We don't handle this yet! */
-            ASSERT(FALSE);
-        }
-
         /* Get the key body */
         KeyBody = (PCM_KEY_BODY)*Object;
+
+        /* Now add the subkey, a full hive takes the new link back out */
+        if (!CmpAddSubKey(Hive, Cell, LinkCell))
+        {
+            HvReleaseCell(Hive, Cell);
+            CmpFreeKeyByCell(Hive, LinkCell, FALSE);
+
+            KeyBody->KeyControlBlock->Delete = TRUE;
+            CmpRemoveKeyControlBlock(KeyBody->KeyControlBlock);
+
+            ObDereferenceObjectDeferDelete(*Object);
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Exit;
+        }
 
         /* Clean up information on this subkey */
         CmpCleanUpSubKeyInfo(KeyBody->KeyControlBlock->ParentKcb);
