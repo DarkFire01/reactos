@@ -1453,6 +1453,9 @@ Phase1InitializationDiscard(IN PVOID Context)
     InbvDriverInitialize(LoaderBlock, IDB_MAX_RESOURCES);
     DPRINT1("TMPDBG after InbvDriverInitialize\n");
 
+    /* Display drivers ask for the boot framebuffer from AddDevice, so record it before any driver loads */
+    ExpInitializeBootGraphicsInformation();
+
     /* Check if GUI boot is enabled */
     if (!NoGuiBoot)
     {
@@ -2056,9 +2059,6 @@ Phase1InitializationDiscard(IN PVOID Context)
 
     /* Initialize the Process Manager at Phase 1 */
     if (!PsInitSystem(LoaderBlock)) KeBugCheck(PROCESS1_INITIALIZATION_FAILED);
-
-    /* The boot framebuffer description only lives in the loader block */
-    ExpInitializeBootGraphicsInformation();
 
     /* Make sure nobody touches the loader block again */
     if (LoaderBlock == KeLoaderBlock) KeLoaderBlock = NULL;
