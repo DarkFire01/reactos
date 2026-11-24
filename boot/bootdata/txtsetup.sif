@@ -42,6 +42,8 @@ _1 = %cdname%,%cdtagfile%,,""
 6 = Fonts
 7 = bin
 8 = Globalization\ICU
+9 = system32\DriverStore
+10 = system32\DriverStore\FileRepository
 
 [DiskSpaceRequirements]
 ; Required free system partition disk space in MB
