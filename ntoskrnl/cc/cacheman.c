@@ -16,6 +16,8 @@
 
 BOOLEAN CcPfEnablePrefetcher;
 PFSN_PREFETCHER_GLOBALS CcPfGlobals;
+
+extern SIZE_T MmSystemViewSize;
 MM_SYSTEMSIZE CcCapturedSystemSize;
 
 static ULONG BugCheckFileId = 0x4 << 16;
@@ -80,6 +82,9 @@ CcInitializeCacheManager(VOID)
             CcDirtyPageThreshold = MmNumberOfPhysicalPages / 8;
             break;
     }
+
+    /* Dirty views cannot be recycled, so they may take no more than half of the system view space */
+    CcDirtyPageThreshold = min(CcDirtyPageThreshold, (ULONG)((MmSystemViewSize / PAGE_SIZE) / 2));
 
     /* Allocate a work item for all our threads */
     for (Thread = 0; Thread < CcNumberWorkerThreads; ++Thread)
