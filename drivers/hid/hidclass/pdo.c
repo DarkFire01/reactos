@@ -146,7 +146,7 @@ HidClassPDO_AppendInterfaceNumber(
             *p2 = *Name;
 
         if (InterfaceNumber > 0)
-            p2 += _swprintf(p2, L"&Col%02x", InterfaceNumber);
+            p2 += _swprintf(p2, L"&Col%02X", InterfaceNumber);
 
         *p2++ = UNICODE_NULL;
         if (!MultiString)
@@ -156,6 +156,18 @@ HidClassPDO_AppendInterfaceNumber(
 
     ExFreePool(HardwareIds);
     return Buffer;
+}
+
+/* Only a device with several top level collections tells them apart in its IDs */
+static
+ULONG
+HidClassPDO_IdCollection(
+    _In_ PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension)
+{
+    if (PDODeviceExtension->Common.DeviceDescription.CollectionDescLength > 1)
+        return PDODeviceExtension->CollectionNumber;
+
+    return 0;
 }
 
 NTSTATUS
@@ -192,7 +204,7 @@ HidClassPDO_HandleQueryDeviceId(
     //
     // get buffer
     //
-    Irp->IoStatus.Information = (ULONG_PTR)HidClassPDO_AppendInterfaceNumber((PWSTR)Irp->IoStatus.Information, PDODeviceExtension->CollectionNumber, FALSE);
+    Irp->IoStatus.Information = (ULONG_PTR)HidClassPDO_AppendInterfaceNumber((PWSTR)Irp->IoStatus.Information, HidClassPDO_IdCollection(PDODeviceExtension), FALSE);
     if (!Irp->IoStatus.Information)
         return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -241,7 +253,7 @@ HidClassPDO_HandleQueryHardwareId(
     //
     // append collection number (if required)
     //
-    BusIds = HidClassPDO_AppendInterfaceNumber((PWSTR)Irp->IoStatus.Information, PDODeviceExtension->CollectionNumber, TRUE);
+    BusIds = HidClassPDO_AppendInterfaceNumber((PWSTR)Irp->IoStatus.Information, HidClassPDO_IdCollection(PDODeviceExtension), TRUE);
     Irp->IoStatus.Information = 0;
     if (!BusIds)
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -584,7 +596,7 @@ HidClassPDO_PnP(
                 //
                 // now register the device interface
                 //
-                Status = IoRegisterDeviceInterface(PDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject,
+                Status = IoRegisterDeviceInterface(DeviceObject,
                                                    &GUID_DEVINTERFACE_HID,
                                                    NULL,
                                                    &PDODeviceExtension->DeviceInterface);
