@@ -14,6 +14,7 @@ extern BOOL RegInitialize(VOID);
 extern BOOL RegCleanup(VOID);
 extern VOID UnloadNtMarta(VOID);
 extern VOID CloseKsecDdHandle(VOID);
+extern VOID WmipInitializeNotifications(VOID);
 
 BOOL
 WINAPI
@@ -27,6 +28,7 @@ DllMain(
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(hinstDll);
             RegInitialize();
+            WmipInitializeNotifications();
             break;
 
         case DLL_PROCESS_DETACH:

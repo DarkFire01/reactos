@@ -841,19 +841,19 @@
 # @ stub WmiConvertTimestamp
 @ stub WmiDevInstToInstanceNameA
 @ stub WmiDevInstToInstanceNameW
-@ stub WmiEnumerateGuids
-@ stdcall -stub WmiExecuteMethodA(long str long long ptr ptr ptr)
-@ stdcall -stub WmiExecuteMethodW(long wstr long long ptr ptr ptr)
-@ stub WmiFileHandleToInstanceNameA
-@ stub WmiFileHandleToInstanceNameW
-@ stdcall -stub WmiFreeBuffer(ptr)
+@ stdcall WmiEnumerateGuids(ptr ptr)
+@ stdcall WmiExecuteMethodA(ptr str long long ptr ptr ptr)
+@ stdcall WmiExecuteMethodW(ptr wstr long long ptr ptr ptr)
+@ stdcall WmiFileHandleToInstanceNameA(ptr ptr ptr ptr)
+@ stdcall WmiFileHandleToInstanceNameW(ptr ptr ptr ptr)
+@ stdcall WmiFreeBuffer(ptr)
 # @ stub WmiGetFirstTraceOffset
 # @ stub WmiGetNextEvent
 # @ stub WmiGetTraceHeader
-@ stdcall -stub WmiMofEnumerateResourcesA(long ptr ptr)
-@ stdcall -stub WmiMofEnumerateResourcesW(long ptr ptr)
-@ stdcall -stub WmiNotificationRegistrationA(ptr long ptr long long)
-@ stdcall -stub WmiNotificationRegistrationW(ptr long ptr long long)
+@ stdcall WmiMofEnumerateResourcesA(ptr ptr ptr)
+@ stdcall WmiMofEnumerateResourcesW(ptr ptr ptr)
+@ stdcall WmiNotificationRegistrationA(ptr long ptr ptr long)
+@ stdcall WmiNotificationRegistrationW(ptr long ptr ptr long)
 @ stdcall WmiOpenBlock(ptr long ptr)
 # @ stub WmiOpenTraceWithCursor
 # @ stub WmiParseTraceEvent
@@ -861,16 +861,16 @@
 # @ stub WmiQueryAllDataMultipleA
 # @ stub WmiQueryAllDataMultipleW
 @ stdcall WmiQueryAllDataW(ptr ptr ptr)
-@ stdcall -stub WmiQueryGuidInformation(long ptr)
+@ stdcall WmiQueryGuidInformation(ptr ptr)
 @ stdcall WmiQuerySingleInstanceA(ptr str ptr ptr)
 # @ stub WmiQuerySingleInstanceMultipleA
 # @ stub WmiQuerySingleInstanceMultipleW
 @ stdcall WmiQuerySingleInstanceW(ptr wstr ptr ptr)
 # @ stub WmiReceiveNotificationsA
 # @ stub WmiReceiveNotificationsW
-@ stdcall -stub WmiSetSingleInstanceA(long str long long ptr)
-@ stdcall -stub WmiSetSingleInstanceW(long wstr long long ptr)
-@ stdcall -stub WmiSetSingleItemA(long str long long long ptr)
-@ stdcall -stub WmiSetSingleItemW(long wstr long long long ptr)
+@ stdcall WmiSetSingleInstanceA(ptr str long long ptr)
+@ stdcall WmiSetSingleInstanceW(ptr wstr long long ptr)
+@ stdcall WmiSetSingleItemA(ptr str long long long ptr)
+@ stdcall WmiSetSingleItemW(ptr wstr long long long ptr)
 # @ stub Wow64Win32ApiEntry
 @ stdcall WriteEncryptedFileRaw(ptr ptr ptr)
