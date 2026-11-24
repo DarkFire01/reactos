@@ -918,6 +918,7 @@ DxgkEngIsRemoteConnection(
     return FALSE;
 }
 
+/* Redirection surfaces are GDI bitmaps with no D3D surface behind them, so there is no handle to give */
 static
 VOID
 APIENTRY
@@ -933,6 +934,7 @@ DxgkEngGetRedirBitmapSharedHandle(
         *phSurface = NULL;
 }
 
+/* Only follows a GPU copy into a D3D redirection surface; a blt through GDI reports its dirty area itself */
 static
 VOID
 APIENTRY
@@ -946,17 +948,32 @@ DxgkEngAddRedirBitmapD3DDirtyRgn(
     UNREFERENCED_PARAMETER(pPresentInfo);
 }
 
+/* A present into a window DC adds to the bounds the DC accumulates, like GDI drawing does; prcl is in surface coordinates */
 static
 VOID
 APIENTRY
 DxgkEngAccumD3DPresentBounds(
     _In_ HDC hdc,
-    _In_ PVOID prcl)
+    _In_ const RECTL *prcl)
 {
-    UNIMPLEMENTED_ONCE;
+    RECTL rclBounds;
+    PDC pdc;
 
-    UNREFERENCED_PARAMETER(hdc);
-    UNREFERENCED_PARAMETER(prcl);
+    if (prcl == NULL)
+        return;
+
+    rclBounds = *prcl;
+    if (RECTL_bIsEmptyRect(&rclBounds))
+        return;
+
+    pdc = DC_LockDc(hdc);
+    if (pdc == NULL)
+        return;
+
+    if (pdc->fs & (DC_ACCUM_APP | DC_ACCUM_WMGR))
+        IntUpdateBoundsRect(pdc, &rclBounds);
+
+    DC_UnlockDc(pdc);
 }
 
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_1607
@@ -1085,7 +1102,17 @@ DxgkEngQuerySwapChainBindingStatus(
 }
 #endif
 
-/* No window is redirected without a compositor */
+/**
+ * @brief Where the surface a redirected window DC draws into sits on the desktop.
+ *
+ * DxgkEngGetClientRect gives such a DC's rectangle relative to its top level window, so dxgkrnl
+ * adds this to it to find the window on the screen.
+ *
+ * @param hdc The window DC.
+ * @param ppt Receives the screen position of the redirected top level window.
+ *
+ * @return TRUE for a DC that draws into a redirection surface, FALSE for one that draws to the screen.
+ */
 static
 BOOL
 APIENTRY
@@ -1093,12 +1120,39 @@ DxgkEngGetRedirectedWindowOrigin(
     _In_ HDC hdc,
     _Out_ PPOINT ppt)
 {
-    UNREFERENCED_PARAMETER(hdc);
+    HWND hwnd;
+    PWND pWnd;
+    PWND pRedirected;
+    BOOL bLocked = FALSE;
+    BOOL bResult = FALSE;
 
-    if (ppt != NULL)
-        RtlZeroMemory(ppt, sizeof(*ppt));
+    if (ppt == NULL)
+        return FALSE;
+    RtlZeroMemory(ppt, sizeof(*ppt));
 
-    return FALSE;
+    if (!DxgkEngIsRedirectionDC(hdc))
+        return FALSE;
+
+    if (!UserIsEntered())
+    {
+        UserEnterShared();
+        bLocked = TRUE;
+    }
+
+    hwnd = IntWindowFromDC(hdc);
+    pWnd = (hwnd != NULL) ? UserGetWindowObject(hwnd) : NULL;
+    pRedirected = (pWnd != NULL) ? IntDwmGetRedirectedWindow(pWnd, NULL) : NULL;
+    if (pRedirected != NULL)
+    {
+        ppt->x = pRedirected->rcWindow.left;
+        ppt->y = pRedirected->rcWindow.top;
+        bResult = TRUE;
+    }
+
+    if (bLocked)
+        UserLeave();
+
+    return bResult;
 }
 
 /**
