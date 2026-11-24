@@ -52,6 +52,7 @@ HKR, , Icon,           0, "-27"
 %*PNP0C15.DeviceDesc% = NO_DRV,*PNP0C15
 
 %SWENUM.DeviceDesc%   = SWENUM_Inst, ROOT\SWENUM
+%COMPOSITE_BATTERY.DeviceDesc% = CompositeBattery_Inst, COMPOSITE_BATTERY
 %ACPI\FixedButton.DeviceDesc% = NO_DRV,ACPI\FixedButton
 %ISAPNP\ReadDataPort.DeviceDesc% = NO_DRV,ISAPNP\ReadDataPort
 %PCI\CC_0500.DeviceDesc% = NO_DRV,PCI\CC_0500
@@ -126,6 +127,23 @@ StartType      = 0
 ErrorControl   = 3
 ServiceBinary  = %12%\swenum.sys
 LoadOrderGroup = Boot Bus Extender
+
+;------------------------- COMPOSITE BATTERY ----------------------------
+
+[CompositeBattery_Inst.NT]
+CopyFiles = CompositeBattery_CopyFiles.NT
+
+[CompositeBattery_CopyFiles.NT]
+compbatt.sys
+
+[CompositeBattery_Inst.NT.Services]
+AddService = compbatt, 0x00000002, CompositeBattery_Service_Inst
+
+[CompositeBattery_Service_Inst]
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\compbatt.sys
 
 ;-------------------------- PCI-ISA BUS DRIVER --------------------------
 
@@ -219,6 +237,7 @@ GenericMfg = "(Generic system devices)"
 *PNP0C15.DeviceDesc = "Docking Station"
 
 SWENUM.DeviceDesc  = "Plug & Play Software Bus Enumerator"
+COMPOSITE_BATTERY.DeviceDesc = "Composite Battery"
 ACPI\FixedButton.DeviceDesc = "ACPI fixed feature button"
 ISAPNP\ReadDataPort.DeviceDesc = "ISAPNP read data port"
 PCI\CC_0500.DeviceDesc = "Standard PCI RAM controller"
