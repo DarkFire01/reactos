@@ -68,7 +68,7 @@ list(APPEND SOURCE
      uacpi-host/uacpi_host.c
      uacpi-host/uacpi_isr.c)
 
-spec2def(acpi.sys acpi.spec)
+spec2def(acpi.sys acpi.spec ADD_IMPORTLIB)
 
 add_library(acpi MODULE
             ${SOURCE}
