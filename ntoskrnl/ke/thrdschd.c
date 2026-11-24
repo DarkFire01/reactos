@@ -116,22 +116,24 @@ ULONG
 KiSelectNextProcessor(
     _In_ PKTHREAD Thread)
 {
-    KAFFINITY PreferredSet, IdleSet;
+    KAFFINITY PreferredSet, IdleSet, IdleCoreSet;
     ULONG Processor;
 
     /* Start with the affinity */
     PreferredSet = Thread->Affinity;
 
     /* If we have matching idle processors, use them */
-    IdleSet = PreferredSet & KiIdleSummary;
+    IdleSet = PreferredSet & *(volatile KAFFINITY *)&KiIdleSummary;
     if (IdleSet != 0)
     {
         if (IdleSet & AFFINITY_MASK(Thread->IdealProcessor))
             return Thread->IdealProcessor;
 
-        /* A core with every sibling idle runs the thread without sharing its execution units */
-        if (IdleSet & KiIdleSMTSummary)
-            IdleSet &= KiIdleSMTSummary;
+        /* A core with every sibling idle runs the thread without sharing its execution units.
+           Other processors change the summary without a lock, so it is read once */
+        IdleCoreSet = IdleSet & *(volatile KAFFINITY *)&KiIdleSMTSummary;
+        if (IdleCoreSet != 0)
+            IdleSet = IdleCoreSet;
 
         /* The processor it last ran on may still hold its cache lines */
         if (IdleSet & AFFINITY_MASK(Thread->NextProcessor))
