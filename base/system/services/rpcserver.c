@@ -6723,6 +6723,8 @@ RI_ScSendPnPMessage(
 {
     PSCM_CONTROL_PACKET ControlPacket;
     DWORD PacketSize;
+    DWORD NameSize;
+    DWORD EventOffset;
     PSERVICE pService;
     ULONG_PTR Ptr;
     DWORD dwControlsAccepted, dwCurrentState;
@@ -6774,9 +6776,10 @@ RI_ScSendPnPMessage(
             return ERROR_INVALID_SERVICE_CONTROL;
     }
 
-    /* Calculate the total size of the control packet:
-     * initial structure, event type and event data */
-    PacketSize = sizeof(SCM_CONTROL_PACKET) + sizeof(DWORD) + dwEventSize;
+    /* The dispatcher finds the service by name, the event type and data follow it */
+    NameSize = (DWORD)((wcslen(pService->lpServiceName) + 1) * sizeof(WCHAR));
+    EventOffset = ALIGN_UP(sizeof(SCM_CONTROL_PACKET) + NameSize, DWORD);
+    PacketSize = EventOffset + sizeof(DWORD) + dwEventSize;
 
     /* Allocate the control packet */
     ControlPacket = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, PacketSize);
@@ -6785,9 +6788,16 @@ RI_ScSendPnPMessage(
 
     ControlPacket->dwSize = PacketSize;
     ControlPacket->dwControl = dwControl;
+    ControlPacket->hServiceStatus = (SERVICE_STATUS_HANDLE)hServiceStatus;
+
+    ControlPacket->dwServiceNameOffset = sizeof(SCM_CONTROL_PACKET);
+    RtlCopyMemory((PUCHAR)ControlPacket + ControlPacket->dwServiceNameOffset,
+                  pService->lpServiceName,
+                  NameSize);
 
     /* Copy the event type and event data into the control packet */
-    Ptr = ((ULONG_PTR)ControlPacket + sizeof(SCM_CONTROL_PACKET));
+    ControlPacket->dwArgumentsOffset = EventOffset;
+    Ptr = (ULONG_PTR)ControlPacket + EventOffset;
     RtlCopyMemory((PULONG)Ptr, &dwEventType, sizeof(dwEventType));
     if (dwEventSize != 0)
     {

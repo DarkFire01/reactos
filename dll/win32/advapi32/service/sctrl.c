@@ -632,10 +632,17 @@ ScControlService(PACTIVE_SERVICE lpService,
     }
     else if (lpService->HandlerFunctionEx)
     {
-        if (dwControl == SERVICE_CONTROL_DEVICEEVENT)
+        /* Controls sent with an event carry its type and data at the arguments offset */
+        if (((dwControl == SERVICE_CONTROL_DEVICEEVENT) ||
+             (dwControl == SERVICE_CONTROL_HARDWAREPROFILECHANGE) ||
+             (dwControl == SERVICE_CONTROL_POWEREVENT) ||
+             (dwControl == SERVICE_CONTROL_SESSIONCHANGE)) &&
+            ControlPacket->dwArgumentsOffset &&
+            (ControlPacket->dwArgumentsOffset + sizeof(DWORD) <= ControlPacket->dwSize))
         {
-            dwEventType = *(LPDWORD)((ULONG_PTR)ControlPacket + sizeof(SCM_CONTROL_PACKET));
-            pEventData = (PVOID)((ULONG_PTR)ControlPacket + sizeof(SCM_CONTROL_PACKET) + sizeof(DWORD));
+            dwEventType = *(LPDWORD)((ULONG_PTR)ControlPacket + ControlPacket->dwArgumentsOffset);
+            if (ControlPacket->dwArgumentsOffset + sizeof(DWORD) < ControlPacket->dwSize)
+                pEventData = (PVOID)((ULONG_PTR)ControlPacket + ControlPacket->dwArgumentsOffset + sizeof(DWORD));
         }
 
         _SEH2_TRY

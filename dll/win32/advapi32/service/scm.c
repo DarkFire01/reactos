@@ -1622,9 +1622,39 @@ EnumServicesStatusExW(SC_HANDLE hSCManager,
  *
  * Undocumented
  *
- * @unimplemented
+ * @implemented
  */
-BOOL
+/* Each control carries its own kind of event data, its size comes from the data itself */
+static
+DWORD
+ScPnPEventDataSize(
+    _In_ DWORD dwControlCode,
+    _In_ DWORD dwEventType,
+    _In_opt_ PVOID pEventData)
+{
+    if (!pEventData)
+        return 0;
+
+    switch (dwControlCode)
+    {
+        case SERVICE_CONTROL_DEVICEEVENT:
+            return ((PDEV_BROADCAST_HDR)pEventData)->dbch_size;
+
+        case SERVICE_CONTROL_POWEREVENT:
+            if (dwEventType != PBT_POWERSETTINGCHANGE)
+                return 0;
+            return FIELD_OFFSET(POWERBROADCAST_SETTING, Data) +
+                   ((PPOWERBROADCAST_SETTING)pEventData)->DataLength;
+
+        case SERVICE_CONTROL_SESSIONCHANGE:
+            return sizeof(WTSSESSION_NOTIFICATION);
+
+        default:
+            return 0;
+    }
+}
+
+DWORD
 WINAPI
 I_ScSendPnPMessage(
     _In_ SERVICE_STATUS_HANDLE hServiceStatus,
@@ -1632,27 +1662,30 @@ I_ScSendPnPMessage(
     _In_ DWORD dwEventType,
     _In_ PVOID pEventData)
 {
-    BOOL bResult;
+    BYTE NoData = 0;
+    DWORD EventSize;
+    DWORD dwError;
 
     TRACE("I_ScSendPnPMessage(%p %lu %lu %p)\n",
           hServiceStatus, dwControlCode, dwEventType, pEventData);
 
+    EventSize = ScPnPEventDataSize(dwControlCode, dwEventType, pEventData);
+
     RpcTryExcept
     {
-        bResult = RI_ScSendPnPMessage((RPC_SERVICE_STATUS_HANDLE)hServiceStatus,
+        dwError = RI_ScSendPnPMessage((RPC_SERVICE_STATUS_HANDLE)hServiceStatus,
                                        dwControlCode,
                                        dwEventType,
-                                       ((PDEV_BROADCAST_HDR)pEventData)->dbch_size,
-                                       pEventData);
+                                       EventSize,
+                                       EventSize ? (LPBYTE)pEventData : &NoData);
     }
     RpcExcept(EXCEPTION_EXECUTE_HANDLER)
     {
-        SetLastError(ScmRpcStatusToWinError(RpcExceptionCode()));
-        bResult = FALSE;
+        dwError = ScmRpcStatusToWinError(RpcExceptionCode());
     }
     RpcEndExcept;
 
-    return bResult;
+    return dwError;
 }
 
 
