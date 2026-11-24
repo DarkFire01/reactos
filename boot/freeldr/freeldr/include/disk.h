@@ -64,6 +64,9 @@ extern SIZE_T DiskReadBufferSize;
 /* ARC path of the boot drive and partition */
 extern CCHAR FrLdrBootPath[MAX_PATH];
 
+/* CM_SERVICE_*_BOOT_LOAD flags matching the boot device */
+extern ULONG FrLdrBootLoadFlags;
+
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -132,3 +135,4 @@ ULONG LoadBootDeviceDriver(VOID);
 PCCHAR FrLdrGetBootPath(VOID);
 UCHAR FrldrGetBootDrive(VOID);
 ULONG FrldrGetBootPartition(VOID);
+ULONG FrLdrGetBootLoadFlags(VOID);

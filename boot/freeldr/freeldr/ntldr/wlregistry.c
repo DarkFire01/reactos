@@ -582,11 +582,23 @@ WinLdrScanRegistry(
     IN OUT PLIST_ENTRY BootDriverListHead)
 {
     BOOLEAN Success;
+    ULONG BootLoadFlags;
+    PCSTR BootDeviceType;
 
-    /* Find all boot drivers */
+    BootLoadFlags = FrLdrGetBootLoadFlags();
+    if (BootLoadFlags & (CM_SERVICE_USB_DISK_BOOT_LOAD | CM_SERVICE_USB3_DISK_BOOT_LOAD))
+        BootDeviceType = "USB";
+    else if (BootLoadFlags & CM_SERVICE_SD_DISK_BOOT_LOAD)
+        BootDeviceType = "SD";
+    else
+        BootDeviceType = "other";
+    TRACE("Boot device type: %s (BootFlags 0x%lx)\n", BootDeviceType, BootLoadFlags);
+
+    /* Find all boot drivers, plus the ones whose BootFlags match the boot device */
     Success = CmpFindDrivers(SystemHive,
                              HKEY_TO_HCI(CurrentControlSetKey),
                              BootLoad,
+                             BootLoadFlags,
                              BootFileSystem,
                              BootDriverListHead);
     if (!Success)

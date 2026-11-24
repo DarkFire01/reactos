@@ -836,6 +836,15 @@ typedef struct {
     UINT16                          VlanId;
 } VLAN_DEVICE_PATH;
 
+///
+/// SD (Secure Digital) Device Path SubType.
+///
+#define MSG_SD_DP                 0x1A
+typedef struct {
+    EFI_DEVICE_PATH_PROTOCOL        Header;
+    UINT8                           SlotNumber;
+} SD_DEVICE_PATH;
+
 //
 // Media Device Path
 //

@@ -1797,7 +1797,7 @@ MachInit(const char *CmdLine)
     MachVtbl.DiskGetDriveGeometry = PcDiskGetDriveGeometry;
     MachVtbl.DiskGetCacheableBlockCount = PcDiskGetCacheableBlockCount;
     MachVtbl.GetTime = PcGetTime;
-    MachVtbl.InitializeBootDevices = PcInitializeBootDevices;
+    MachVtbl.InitializeBootDevices = PcDiskInitializeBootDevices;
     MachVtbl.HwDetect = PcHwDetect;
     MachVtbl.HwIdle = PcHwIdle;
 

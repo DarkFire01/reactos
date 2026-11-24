@@ -96,6 +96,7 @@
 @ cdecl DriveMapGetBiosDriveNumber()
 @ cdecl FrldrGetBootDrive()
 @ cdecl FrldrGetBootPartition()
+@ cdecl FrLdrGetBootLoadFlags()
 @ cdecl FrLdrGetBootPath()
 @ cdecl FsGetServiceName()
 @ cdecl FsOpenFile() # Why not ArcOpen?

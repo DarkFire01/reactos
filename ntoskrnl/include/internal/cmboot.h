@@ -55,6 +55,7 @@ CmpFindDrivers(
     _In_ PHHIVE Hive,
     _In_ HCELL_INDEX ControlSet,
     _In_ SERVICE_LOAD_TYPE LoadType,
+    _In_ ULONG BootLoadFlags,
     _In_opt_ PCWSTR BootFileSystem,
     _Inout_ PLIST_ENTRY DriverListHead);
 

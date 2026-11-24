@@ -90,6 +90,24 @@ typedef struct _EXTENDED_GEOMETRY
     ULONG       PDPTE;
 } EXTENDED_GEOMETRY, *PEXTENDED_GEOMETRY;
 
+/*
+ * Extended disk geometry followed by the EDD 3.0 device path information
+ * (Int13 / AH=48h)
+ */
+typedef struct _EXTENDED_GEOMETRY_EDD3
+{
+    EXTENDED_GEOMETRY Geometry;     // 00h
+    USHORT      DevicePathKey;      // 1Eh - BEDDh when the device path information is present
+    UCHAR       DevicePathLength;   // 20h - Length of the device path information
+    UCHAR       Reserved1[3];       // 21h
+    CHAR        HostBus[4];         // 24h - "ISA" or "PCI", padded with spaces
+    CHAR        Interface[8];       // 28h - "ATA", "SCSI", "USB", ... padded with spaces
+    UCHAR       InterfacePath[8];   // 30h
+    UCHAR       DevicePath[16];     // 38h
+    UCHAR       Reserved2;          // 48h
+    UCHAR       Checksum;           // 49h
+} EXTENDED_GEOMETRY_EDD3, *PEXTENDED_GEOMETRY_EDD3;
+
 #include <poppack.h>
 
 typedef struct _PC_DISK_DRIVE
@@ -309,7 +327,7 @@ DiskGetExtendedDriveParameters(
      * machines using PhoenixBIOS 4.0 Release 6.0 fail to correctly handle
      * this function if Ptr->Flags is not 0 on entry.
      */
-    RtlZeroMemory(Ptr, sizeof(*Ptr)); // BufferSize;
+    RtlZeroMemory(Ptr, BufferSize);
     Ptr->Size = BufferSize;
 
     /*
@@ -848,6 +866,68 @@ PcDiskGetCacheableBlockCount(UCHAR DriveNumber)
         return 64;
     else
         return DiskDrive->Geometry.SectorsPerTrack;
+}
+
+/**
+ * @brief
+ * Tells which CM_SERVICE_*_BOOT_LOAD flags match the interface
+ * a BIOS drive is attached to, from its EDD 3.0 device path.
+ *
+ * @return
+ * The matching flags, 0 when the BIOS does not report the interface.
+ **/
+static
+ULONG
+PcDiskGetBootLoadFlags(
+    _In_ UCHAR DriveNumber)
+{
+    EXTENDED_GEOMETRY_EDD3 Params;
+    PPC_DISK_DRIVE DiskDrive;
+
+    DiskDrive = PcDiskDriveNumberToDrive(DriveNumber);
+    if (!DiskDrive)
+        return 0;
+
+    RtlZeroMemory(&Params, sizeof(Params));
+    if (!DiskGetExtendedDriveParameters(DriveNumber, DiskDrive, &Params, sizeof(Params)))
+        return 0;
+
+    /* EDD 1.x and 2.x BIOSes stop before the device path */
+    if ((Params.Geometry.Size < FIELD_OFFSET(EXTENDED_GEOMETRY_EDD3, InterfacePath)) ||
+        (Params.DevicePathKey != 0xBEDD))
+    {
+        TRACE("Drive 0x%x: no EDD 3.0 device path\n", DriveNumber);
+        return 0;
+    }
+
+    TRACE("Drive 0x%x: EDD interface '%.8s' on '%.4s'\n",
+          DriveNumber, Params.Interface, Params.HostBus);
+
+    if (RtlEqualMemory(Params.Interface, "USB", 3) &&
+        ((Params.Interface[3] == ' ') || (Params.Interface[3] == ANSI_NULL)))
+    {
+        return (CM_SERVICE_USB_DISK_BOOT_LOAD | CM_SERVICE_USB3_DISK_BOOT_LOAD);
+    }
+
+    return 0;
+}
+
+/**
+ * @brief
+ * Initializes the boot devices, then records the CM_SERVICE_*_BOOT_LOAD
+ * flags of the hard disk the BIOS started us from.
+ **/
+BOOLEAN
+PcDiskInitializeBootDevices(VOID)
+{
+    if (!PcInitializeBootDevices())
+        return FALSE;
+
+    /* Floppies, CD-ROMs, the ramdisk and PXE have no EDD device path to check */
+    if (strstr(FrLdrBootPath, "rdisk(") != NULL)
+        FrLdrBootLoadFlags = PcDiskGetBootLoadFlags(FrldrBootDrive);
+
+    return TRUE;
 }
 
 /* EOF */

@@ -1986,7 +1986,7 @@ CmGetSystemDriverList(VOID)
     if (ControlCell == HCELL_NIL) goto EndPath;
 
     /* Find all system drivers */
-    Success = CmpFindDrivers(Hive, ControlCell, SystemLoad, NULL, &DriverList);
+    Success = CmpFindDrivers(Hive, ControlCell, SystemLoad, 0, NULL, &DriverList);
     if (!Success) goto EndPath;
 
     /* Sort by group/tag */

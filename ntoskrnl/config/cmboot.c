@@ -648,6 +648,86 @@ CmpIsLoadType(
 
 /**
  * @brief
+ * Reads a REG_DWORD value of a driver's service key.
+ *
+ * @return
+ * TRUE if the value exists and is a REG_DWORD, FALSE if not.
+ **/
+CODE_SEG("INIT")
+static
+BOOLEAN
+CmpQueryDriverDword(
+    _In_ PHHIVE Hive,
+    _In_ HCELL_INDEX Cell,
+    _In_ PCWSTR ValueName,
+    _Out_ PULONG Data)
+{
+    PCM_KEY_NODE Node;
+    PCM_KEY_VALUE Value;
+    UNICODE_STRING Name;
+    HCELL_INDEX ValueCell;
+    ULONG Length;
+    PULONG Buffer;
+
+    ASSERT(Hive->ReleaseCellRoutine == NULL);
+
+    Node = (PCM_KEY_NODE)HvGetCell(Hive, Cell);
+    if (!Node)
+        return FALSE;
+
+    RtlInitUnicodeString(&Name, ValueName);
+    ValueCell = CmpFindValueByName(Hive, Node, &Name);
+    if (ValueCell == HCELL_NIL)
+        return FALSE;
+
+    Value = (PCM_KEY_VALUE)HvGetCell(Hive, ValueCell);
+    if (!Value || Value->Type != REG_DWORD)
+        return FALSE;
+
+    Buffer = (PULONG)CmpValueToData(Hive, Value, &Length);
+    if (!Buffer || Length < sizeof(*Buffer))
+        return FALSE;
+
+    *Data = *Buffer;
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Checks whether a driver that is not boot start still loads at boot,
+ * because its BootFlags match the type of the boot device.
+ *
+ * @param[in]   BootLoadFlags
+ * CM_SERVICE_*_BOOT_LOAD flags describing the boot device.
+ *
+ * @return
+ * TRUE if the driver is enabled and its BootFlags share a bit with BootLoadFlags.
+ **/
+CODE_SEG("INIT")
+static
+BOOLEAN
+CmpIsBootFlagsDriver(
+    _In_ PHHIVE Hive,
+    _In_ HCELL_INDEX Cell,
+    _In_ ULONG BootLoadFlags)
+{
+    ULONG Start;
+    ULONG BootFlags;
+
+    if (!BootLoadFlags)
+        return FALSE;
+
+    if (!CmpQueryDriverDword(Hive, Cell, L"Start", &Start) || Start == DisableLoad)
+        return FALSE;
+
+    if (!CmpQueryDriverDword(Hive, Cell, L"BootFlags", &BootFlags))
+        return FALSE;
+
+    return ((BootFlags & BootLoadFlags) != 0);
+}
+
+/**
+ * @brief
  * Enumerates all drivers within the given control set and load type,
  * present in the "Services" sub-key, and inserts them into the driver list.
  *
@@ -659,6 +739,10 @@ CmpIsLoadType(
  *
  * @param[in]   LoadType
  * The load type the driver should match.
+ *
+ * @param[in]   BootLoadFlags
+ * CM_SERVICE_*_BOOT_LOAD flags of the boot device. With BootLoad, enabled
+ * drivers whose BootFlags match are inserted as well. Zero for none.
  *
  * @param[in]   BootFileSystem
  * Optional name of the boot file system, for which to insert
@@ -678,9 +762,11 @@ CmpFindDrivers(
     _In_ PHHIVE Hive,
     _In_ HCELL_INDEX ControlSet,
     _In_ SERVICE_LOAD_TYPE LoadType,
+    _In_ ULONG BootLoadFlags,
     _In_opt_ PCWSTR BootFileSystem,
     _Inout_ PLIST_ENTRY DriverListHead)
 {
+    BOOLEAN IsMatch, IsBootFlagsDriver;
     HCELL_INDEX ServicesCell, ControlCell, GroupOrderCell, DriverCell;
     HCELL_INDEX SafeBootCell = HCELL_NIL;
     ULONG i;
@@ -750,9 +836,17 @@ CmpFindDrivers(
     DriverCell = CmpFindSubKeyByNumber(Hive, ServicesNode, i);
     while (DriverCell != HCELL_NIL)
     {
+        /* A boot driver can also come from BootFlags matching the boot device */
+        IsBootFlagsDriver = FALSE;
+        IsMatch = CmpIsLoadType(Hive, DriverCell, LoadType);
+        if (!IsMatch && LoadType == BootLoad)
+        {
+            IsBootFlagsDriver = CmpIsBootFlagsDriver(Hive, DriverCell, BootLoadFlags);
+            IsMatch = IsBootFlagsDriver;
+        }
+
         /* Make sure it's a driver of this start type AND is "safe" to load */
-        if (CmpIsLoadType(Hive, DriverCell, LoadType) &&
-            CmpIsSafe(Hive, SafeBootCell, DriverCell))
+        if (IsMatch && CmpIsSafe(Hive, SafeBootCell, DriverCell))
         {
             /* Add it to the list */
             if (!CmpAddDriverToList(Hive,
@@ -762,6 +856,14 @@ CmpFindDrivers(
                                     DriverListHead))
             {
                 CMTRACE(CM_BOOT_DEBUG, "  Failed to add boot driver\n");
+            }
+            else if (IsBootFlagsDriver)
+            {
+                CMTRACE(CM_BOOT_DEBUG, "Adding '%wZ' for its BootFlags (boot device 0x%lx)\n",
+                        &CONTAINING_RECORD(DriverListHead->Flink,
+                                           BOOT_DRIVER_NODE,
+                                           ListEntry.Link)->Name,
+                        BootLoadFlags);
             }
         }
 

@@ -1151,6 +1151,48 @@ UefiSetBootpath(VOID)
     return TRUE;
 }
 
+/**
+ * @brief
+ * Tells which CM_SERVICE_*_BOOT_LOAD flags match the bus
+ * the boot volume is reached through, from its device path.
+ **/
+static
+ULONG
+UefiGetBootLoadFlags(VOID)
+{
+    EFI_GUID DevicePathGuid = EFI_DEVICE_PATH_PROTOCOL_GUID;
+    EFI_DEVICE_PATH_PROTOCOL *Node;
+    EFI_STATUS Status;
+
+    Status = GlobalSystemTable->BootServices->HandleProtocol(handles[UefiBootRootIndex],
+                                                             &DevicePathGuid,
+                                                             (VOID**)&Node);
+    if (EFI_ERROR(Status) || !Node)
+        return 0;
+
+    for (; !IsDevicePathEnd(Node); Node = NextDevicePathNode(Node))
+    {
+        if (DevicePathNodeLength(Node) < sizeof(*Node))
+            break;
+
+        if (DevicePathType(Node) != MESSAGING_DEVICE_PATH)
+            continue;
+
+        switch (DevicePathSubType(Node))
+        {
+            case MSG_USB_DP:
+            case MSG_USB_CLASS_DP:
+            case MSG_USB_WWID_DP:
+                return (CM_SERVICE_USB_DISK_BOOT_LOAD | CM_SERVICE_USB3_DISK_BOOT_LOAD);
+
+            case MSG_SD_DP:
+                return CM_SERVICE_SD_DISK_BOOT_LOAD;
+        }
+    }
+
+    return 0;
+}
+
 BOOLEAN
 UefiInitializeBootDevices(VOID)
 {
@@ -1182,6 +1224,8 @@ UefiInitializeBootDevices(VOID)
         ERR("Failed to set boot path\n");
         return FALSE;
     }
+
+    FrLdrBootLoadFlags = UefiGetBootLoadFlags();
 
     /* Handle CD-ROM boot device registration */
     ArcDriveIndex = PublicBootArcDisk;

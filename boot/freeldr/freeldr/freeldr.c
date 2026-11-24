@@ -28,6 +28,9 @@ DBG_DEFAULT_CHANNEL(WARNING);
 
 CCHAR FrLdrBootPath[MAX_PATH] = "";
 
+/* CM_SERVICE_*_BOOT_LOAD flags matching the boot device, set by the firmware support code */
+ULONG FrLdrBootLoadFlags = 0;
+
 /* FUNCTIONS ******************************************************************/
 
 static
@@ -207,4 +210,9 @@ UCHAR FrldrGetBootDrive(VOID)
 ULONG FrldrGetBootPartition(VOID)
 {
     return FrldrBootPartition;
+}
+
+ULONG FrLdrGetBootLoadFlags(VOID)
+{
+    return FrLdrBootLoadFlags;
 }
