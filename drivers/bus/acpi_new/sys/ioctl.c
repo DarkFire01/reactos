@@ -756,6 +756,8 @@ UacpiNtEvaluate(
                                         IoStack->Parameters.DeviceIoControl.InputBufferLength,
                                         Path,
                                         &Args);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("EVAL on %s rejected, input not usable 0x%lx\n", TraceName, Status);
     }
 
     if (NT_SUCCESS(Status))
