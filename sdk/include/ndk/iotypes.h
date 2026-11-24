@@ -514,6 +514,12 @@ typedef enum _FSINFOCLASS
     FileFsFullSizeInformation,
     FileFsObjectIdInformation,
     FileFsDriverPathInformation,
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
+    FileFsVolumeFlagsInformation,
+#endif
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
+    FileFsSectorSizeInformation,
+#endif
     FileFsMaximumInformation
 } FS_INFORMATION_CLASS, *PFS_INFORMATION_CLASS;
 
@@ -673,7 +679,15 @@ typedef struct _FILE_INTERNAL_INFORMATION
 
 typedef struct _FILE_RENAME_INFORMATION
 {
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1) || defined(__REACTOS__)
+    union
+    {
+        BOOLEAN ReplaceIfExists;
+        ULONG Flags;
+    };
+#else
     BOOLEAN ReplaceIfExists;
+#endif
     HANDLE  RootDirectory;
     ULONG FileNameLength;
     WCHAR FileName[1];

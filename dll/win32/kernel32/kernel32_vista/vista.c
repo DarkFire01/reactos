@@ -550,20 +550,118 @@ GetFileBandwidthReservation(IN HANDLE hFile,
 }
 
 
-/*
- * @unimplemented
+/**
+ * @brief
+ * Opens an existing file or directory by its file ID or object ID on the
+ * volume that hVolumeHint resides on.
+ *
+ * @remarks
+ * lpSecurityAttributes is reserved and ignored, the handle is never inheritable.
  */
 HANDLE
 WINAPI
-OpenFileById(IN HANDLE hFile,
-             IN LPFILE_ID_DESCRIPTOR lpFileID,
-             IN DWORD dwDesiredAccess,
-             IN DWORD dwShareMode,
-             IN LPSECURITY_ATTRIBUTES lpSecurityAttributes  OPTIONAL,
-             IN DWORD dwFlags)
+OpenFileById(
+    _In_ HANDLE hVolumeHint,
+    _In_ LPFILE_ID_DESCRIPTOR lpFileId,
+    _In_ DWORD dwDesiredAccess,
+    _In_ DWORD dwShareMode,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+    _In_ DWORD dwFlagsAndAttributes)
 {
-    UNIMPLEMENTED;
-    return INVALID_HANDLE_VALUE;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    IO_STATUS_BLOCK IoStatusBlock;
+    ACCESS_MASK DesiredAccess;
+    UNICODE_STRING FileIdName;
+    ULONG CreateOptions;
+    HANDLE FileHandle;
+    NTSTATUS Status;
+
+    UNREFERENCED_PARAMETER(lpSecurityAttributes);
+
+    if (!lpFileId || lpFileId->dwSize < sizeof(*lpFileId))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    /* The file system takes the raw identifier as the name, relative to the volume */
+    switch (lpFileId->Type)
+    {
+        case FileIdType:
+            FileIdName.Length = sizeof(lpFileId->FileId);
+            break;
+
+        case ObjectIdType:
+        case ExtendedFileIdType:
+            /* Both are 16 bytes and share the offset of the ObjectId member */
+            FileIdName.Length = sizeof(lpFileId->ObjectId);
+            break;
+
+        default:
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return INVALID_HANDLE_VALUE;
+    }
+
+    FileIdName.MaximumLength = FileIdName.Length;
+    FileIdName.Buffer = (PWSTR)&lpFileId->FileId;
+
+    DesiredAccess = dwDesiredAccess | SYNCHRONIZE | FILE_READ_ATTRIBUTES;
+    CreateOptions = FILE_OPEN_BY_FILE_ID;
+
+    if (!(dwFlagsAndAttributes & FILE_FLAG_OVERLAPPED))
+        CreateOptions |= FILE_SYNCHRONOUS_IO_NONALERT;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_WRITE_THROUGH)
+        CreateOptions |= FILE_WRITE_THROUGH;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_NO_BUFFERING)
+        CreateOptions |= FILE_NO_INTERMEDIATE_BUFFERING;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_RANDOM_ACCESS)
+        CreateOptions |= FILE_RANDOM_ACCESS;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_SEQUENTIAL_SCAN)
+        CreateOptions |= FILE_SEQUENTIAL_ONLY;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_BACKUP_SEMANTICS)
+        CreateOptions |= FILE_OPEN_FOR_BACKUP_INTENT;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_OPEN_REPARSE_POINT)
+        CreateOptions |= FILE_OPEN_REPARSE_POINT;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_OPEN_NO_RECALL)
+        CreateOptions |= FILE_OPEN_NO_RECALL;
+
+    if (dwFlagsAndAttributes & FILE_FLAG_DELETE_ON_CLOSE)
+    {
+        CreateOptions |= FILE_DELETE_ON_CLOSE;
+        DesiredAccess |= DELETE;
+    }
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &FileIdName,
+                               OBJ_CASE_INSENSITIVE,
+                               hVolumeHint,
+                               NULL);
+
+    Status = NtCreateFile(&FileHandle,
+                          DesiredAccess,
+                          &ObjectAttributes,
+                          &IoStatusBlock,
+                          NULL,
+                          0,
+                          dwShareMode,
+                          FILE_OPEN,
+                          CreateOptions,
+                          NULL,
+                          0);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    return FileHandle;
 }
 
 

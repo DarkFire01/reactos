@@ -17,13 +17,15 @@
  *
  * @remarks
  * A name starting with ':' renames a stream and is passed through unchanged.
+ * FileRenameInformationEx takes the Flags member instead of ReplaceIfExists.
  */
 static
 BOOL
 BasepSetFileRenameInfo(
     _In_ HANDLE FileHandle,
     _In_reads_bytes_(Size) PFILE_RENAME_INFO Info,
-    _In_ DWORD Size)
+    _In_ DWORD Size,
+    _In_ FILE_INFORMATION_CLASS NtClass)
 {
     UNICODE_STRING NtName = { 0 };
     PFILE_RENAME_INFORMATION Rename;
@@ -84,12 +86,16 @@ BasepSetFileRenameInfo(
         return FALSE;
     }
 
-    Rename->ReplaceIfExists = Info->ReplaceIfExists;
+    if (NtClass == FileRenameInformationEx)
+        Rename->Flags = Info->Flags;
+    else
+        Rename->ReplaceIfExists = Info->ReplaceIfExists;
+
     Rename->RootDirectory = Info->RootDirectory;
     Rename->FileNameLength = Name.Length;
     RtlCopyMemory(Rename->FileName, Name.Buffer, Name.Length);
 
-    Status = NtSetInformationFile(FileHandle, &IoStatusBlock, Rename, RenameSize, FileRenameInformation);
+    Status = NtSetInformationFile(FileHandle, &IoStatusBlock, Rename, RenameSize, NtClass);
 
     RtlFreeHeap(RtlGetProcessHeap(), 0, Rename);
     RtlFreeUnicodeString(&NtName);
@@ -105,8 +111,8 @@ BasepSetFileRenameInfo(
 
 /**
  * @brief
- * Changes the basic, rename, disposition, allocation, end of file or I/O
- * priority information of a file.
+ * Changes the basic, rename, disposition, allocation, end of file, I/O
+ * priority or case sensitivity information of a file.
  *
  * @return
  * FALSE with ERROR_BAD_LENGTH when the buffer is too small for the class,
@@ -133,11 +139,19 @@ SetFileInformationByHandle(
             break;
 
         case FileRenameInfo:
-            return BasepSetFileRenameInfo(hFile, lpFileInformation, dwBufferSize);
+            return BasepSetFileRenameInfo(hFile, lpFileInformation, dwBufferSize, FileRenameInformation);
+
+        case FileRenameInfoEx:
+            return BasepSetFileRenameInfo(hFile, lpFileInformation, dwBufferSize, FileRenameInformationEx);
 
         case FileDispositionInfo:
             NtClass = FileDispositionInformation;
             MinimumSize = sizeof(FILE_DISPOSITION_INFO);
+            break;
+
+        case FileDispositionInfoEx:
+            NtClass = FileDispositionInformationEx;
+            MinimumSize = sizeof(FILE_DISPOSITION_INFO_EX);
             break;
 
         case FileAllocationInfo:
@@ -153,6 +167,11 @@ SetFileInformationByHandle(
         case FileIoPriorityHintInfo:
             NtClass = FileIoPriorityHintInformation;
             MinimumSize = sizeof(FILE_IO_PRIORITY_HINT_INFO);
+            break;
+
+        case FileCaseSensitiveInfo:
+            NtClass = FileCaseSensitiveInformation;
+            MinimumSize = sizeof(FILE_CASE_SENSITIVE_INFO);
             break;
 
         default:

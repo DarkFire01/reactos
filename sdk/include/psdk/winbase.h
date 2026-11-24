@@ -829,8 +829,21 @@ typedef struct _FILE_END_OF_FILE_INFO {
     LARGE_INTEGER EndOfFile;
 } FILE_END_OF_FILE_INFO, *PFILE_END_OF_FILE_INFO;
 
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1) || defined(__REACTOS__)
+#define FILE_RENAME_FLAG_REPLACE_IF_EXISTS              0x00000001
+#define FILE_RENAME_FLAG_POSIX_SEMANTICS                0x00000002
+#define FILE_RENAME_FLAG_SUPPRESS_PIN_STATE_INHERITANCE 0x00000004
+#endif
+
 typedef struct _FILE_RENAME_INFO {
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1) || defined(__REACTOS__)
+    union {
+        BOOLEAN ReplaceIfExists;
+        DWORD Flags;
+    } DUMMYUNIONNAME;
+#else
     BOOLEAN ReplaceIfExists;
+#endif
     HANDLE RootDirectory;
     DWORD FileNameLength;
     WCHAR FileName[1];
@@ -866,6 +879,61 @@ typedef struct _FILE_REMOTE_PROTOCOL_INFO {
         ULONG Reserved[16];
     } ProtocolSpecificReserved;
 } FILE_REMOTE_PROTOCOL_INFO, *PFILE_REMOTE_PROTOCOL_INFO;
+
+typedef struct _FILE_STREAM_INFO {
+    DWORD NextEntryOffset;
+    DWORD StreamNameLength;
+    LARGE_INTEGER StreamSize;
+    LARGE_INTEGER StreamAllocationSize;
+    WCHAR StreamName[1];
+} FILE_STREAM_INFO, *PFILE_STREAM_INFO;
+
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
+
+#define STORAGE_INFO_FLAGS_ALIGNED_DEVICE              0x00000001
+#define STORAGE_INFO_FLAGS_PARTITION_ALIGNED_ON_DEVICE 0x00000002
+#define STORAGE_INFO_OFFSET_UNKNOWN                    0xffffffff
+
+typedef struct _FILE_STORAGE_INFO {
+    ULONG LogicalBytesPerSector;
+    ULONG PhysicalBytesPerSectorForAtomicity;
+    ULONG PhysicalBytesPerSectorForPerformance;
+    ULONG FileSystemEffectivePhysicalBytesPerSectorForAtomicity;
+    ULONG Flags;
+    ULONG ByteOffsetForSectorAlignment;
+    ULONG ByteOffsetForPartitionAlignment;
+} FILE_STORAGE_INFO, *PFILE_STORAGE_INFO;
+
+typedef struct _FILE_ALIGNMENT_INFO {
+    ULONG AlignmentRequirement;
+} FILE_ALIGNMENT_INFO, *PFILE_ALIGNMENT_INFO;
+
+#endif
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1) || defined(__REACTOS__)
+
+#define FILE_DISPOSITION_FLAG_DO_NOT_DELETE             0x00000000
+#define FILE_DISPOSITION_FLAG_DELETE                    0x00000001
+#define FILE_DISPOSITION_FLAG_POSIX_SEMANTICS           0x00000002
+#define FILE_DISPOSITION_FLAG_FORCE_IMAGE_SECTION_CHECK 0x00000004
+#define FILE_DISPOSITION_FLAG_ON_CLOSE                  0x00000008
+#define FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE 0x00000010
+
+typedef struct _FILE_DISPOSITION_INFO_EX {
+    DWORD Flags;
+} FILE_DISPOSITION_INFO_EX, *PFILE_DISPOSITION_INFO_EX;
+
+#endif
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS4) || defined(__REACTOS__)
+
+#define FILE_CS_FLAG_CASE_SENSITIVE_DIR 0x00000001
+
+typedef struct _FILE_CASE_SENSITIVE_INFO {
+    ULONG Flags;
+} FILE_CASE_SENSITIVE_INFO, *PFILE_CASE_SENSITIVE_INFO;
+
+#endif
 
 #endif
 
