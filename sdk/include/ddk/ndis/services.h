@@ -438,6 +438,42 @@ NdisGetProcessorInformationEx(
     _Out_writes_bytes_to_opt_(*Size, *Size) PNDIS_SYSTEM_PROCESSOR_INFO_EX SystemProcessorInfo,
     _Inout_ PSIZE_T Size);
 
+/* The NDIS 6.0 compatible form, limited to processor group 0 */
+
+typedef struct _NDIS_PROCESSOR_INFO
+{
+    ULONG CpuNumber;
+    ULONG PhysicalPackageId;
+    ULONG CoreId;
+    ULONG HyperThreadID;
+} NDIS_PROCESSOR_INFO, *PNDIS_PROCESSOR_INFO;
+
+#define NDIS_SYSTEM_PROCESSOR_INFO_REVISION_1                        1
+
+typedef struct _NDIS_SYSTEM_PROCESSOR_INFO
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    NDIS_PROCESSOR_VENDOR ProcessorVendor;
+    ULONG NumPhysicalPackages;
+    ULONG NumCores;
+    ULONG NumCoresPerPhysicalPackage;
+    ULONG MaxHyperThreadingCpusPerCore;
+    ULONG RssBaseCpu;
+    ULONG RssCpuCount;
+    _Out_writes_(MAXIMUM_PROC_PER_GROUP) PUCHAR RssProcessors;
+    NDIS_PROCESSOR_INFO CpuInfo[MAXIMUM_PROC_PER_GROUP];
+} NDIS_SYSTEM_PROCESSOR_INFO, *PNDIS_SYSTEM_PROCESSOR_INFO;
+
+#define NDIS_SIZEOF_SYSTEM_PROCESSOR_INFO_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_SYSTEM_PROCESSOR_INFO, CpuInfo)
+
+_IRQL_requires_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisGetProcessorInformation(
+    _Inout_ PNDIS_SYSTEM_PROCESSOR_INFO SystemProcessorInfo);
+
 #ifdef __cplusplus
 }
 #endif
