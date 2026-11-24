@@ -258,19 +258,18 @@ WmipOpenGuidObject(
     return Status;
 }
 
+/**
+ * @brief Extracts the GUID from a \WmiGuid\ object name.
+ */
 NTSTATUS
 NTAPI
-WmipOpenGuidObjectByName(
+WmipGuidFromObjectName(
     _In_ POBJECT_ATTRIBUTES ObjectAttributes,
-    _In_ ACCESS_MASK DesiredAccess,
-    _In_ KPROCESSOR_MODE AccessMode,
-    _Out_ PHANDLE OutGuidObjectHandle,
-    _Outptr_ PVOID *OutGuidObject)
+    _Out_ PGUID Guid)
 {
     static UNICODE_STRING Prefix = RTL_CONSTANT_STRING(L"\\WmiGuid\\");
     UNICODE_STRING GuidString;
     NTSTATUS Status;
-    GUID Guid;
     PAGED_CODE();
 
     /* Check if we have the expected prefix */
@@ -287,12 +286,31 @@ WmipOpenGuidObjectByName(
     GuidString.Length -= Prefix.Length;
 
     /* Convert the string into a GUID structure */
-    Status = WmipGUIDFromString(&GuidString, &Guid);
+    Status = WmipGUIDFromString(&GuidString, Guid);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WMI: Invalid uuid format for guid '%wZ'\n", &GuidString);
-        return Status;
     }
+
+    return Status;
+}
+
+NTSTATUS
+NTAPI
+WmipOpenGuidObjectByName(
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ KPROCESSOR_MODE AccessMode,
+    _Out_ PHANDLE OutGuidObjectHandle,
+    _Outptr_ PVOID *OutGuidObject)
+{
+    NTSTATUS Status;
+    GUID Guid;
+    PAGED_CODE();
+
+    Status = WmipGuidFromObjectName(ObjectAttributes, &Guid);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     return WmipOpenGuidObject(&Guid,
                               DesiredAccess,

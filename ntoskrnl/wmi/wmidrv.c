@@ -157,7 +157,7 @@ WmipCaptureGuidObjectAttributes(
 
         /* Fix pointers */
         CapturedObjectName->Buffer = ObjectNameBuffer;
-        GuidObjectAttributes->ObjectName = CapturedObjectName;
+        CapuredObjectAttributes->ObjectName = CapturedObjectName;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -362,75 +362,194 @@ WmipReceiveNotifications(
     return Status;
 }
 
-typedef struct _WMI_OPEN_GUID_FOR_EVENTS
-{
-    POBJECT_ATTRIBUTES ObjectAttributes;
-    ACCESS_MASK DesiredAccess;
-    ULONG Unknown08;
-    ULONG Unknown0C;
-} WMI_OPEN_GUID_FOR_EVENTS, *PWMI_OPEN_GUID_FOR_EVENTS;
-
-typedef struct _WMIP_RESULT2
-{
-    ULONG Unknown00;
-    ULONG Unknown04;
-    HANDLE Handle;
-    ULONG Unknown0C;
-} WMIP_RESULT2, *PWMIP_RESULT2;
-
+/**
+ * @brief Handles IOCTL_WMI_OPEN_GUID, IOCTL_WMI_OPEN_GUID_FOR_QUERYSET and IOCTL_WMI_OPEN_GUID_FOR_EVENTS.
+ *
+ * Opening for query and set fails with STATUS_WMI_GUID_NOT_FOUND unless a provider serves the GUID.
+ */
 static
 NTSTATUS
-WmipOpenGuidForEvents(
-    PVOID Buffer,
-    ULONG InputLength,
-    PULONG OutputLength)
+WmipOpenGuidBlock(
+    _In_ ULONG IoControlCode,
+    _Inout_ PVOID Buffer,
+    _In_ ULONG InputLength,
+    _Inout_ PULONG OutputLength)
 {
-    PWMI_OPEN_GUID_FOR_EVENTS OpenGuidForEvents = Buffer;
-    PWMIP_RESULT2 Result = (PWMIP_RESULT2)Buffer;
+    PWMIOPENGUIDBLOCK OpenBlock = Buffer;
     OBJECT_ATTRIBUTES LocalObjectAttributes;
     UNICODE_STRING LocalObjectName;
-    WCHAR LocalObjectNameBuffer[45 + 1];
+    WCHAR LocalObjectNameBuffer[WMI_GUID_OBJECT_NAME_LENGTH + 1];
     KPROCESSOR_MODE PreviousMode;
+    ACCESS_MASK DesiredAccess;
     HANDLE GuidObjectHandle;
     PVOID GuidObject;
     NTSTATUS Status;
+    GUID Guid;
 
-    if ((InputLength != sizeof(WMI_OPEN_GUID_FOR_EVENTS)) ||
-        (*OutputLength != sizeof(WMIP_RESULT2)))
-    {
+    if ((InputLength != sizeof(*OpenBlock)) || (*OutputLength != sizeof(*OpenBlock)))
         return STATUS_UNSUCCESSFUL;
-    }
 
-    /* Capture object attributes */
+    /* The output overlaps the input, take what is needed first */
+    DesiredAccess = OpenBlock->DesiredAccess;
     PreviousMode = ExGetPreviousMode();
-    Status = WmipCaptureGuidObjectAttributes(OpenGuidForEvents->ObjectAttributes,
+    Status = WmipCaptureGuidObjectAttributes(OpenBlock->ObjectAttributes,
                                              &LocalObjectAttributes,
                                              &LocalObjectName,
                                              LocalObjectNameBuffer,
                                              PreviousMode);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("ProbeAndCaptureGuidObjectAttributes failed: 0x%lx\n", Status);
+        DPRINT1("WmipCaptureGuidObjectAttributes failed: 0x%lx\n", Status);
         return Status;
     }
 
-    /* Open a new GUID object */
-    Status = WmipOpenGuidObjectByName(&LocalObjectAttributes,
-                                      OpenGuidForEvents->DesiredAccess,
-                                      PreviousMode,
-                                      &GuidObjectHandle,
-                                      &GuidObject);
+    if (LocalObjectAttributes.SecurityDescriptor || LocalObjectAttributes.SecurityQualityOfService)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = WmipGuidFromObjectName(&LocalObjectAttributes, &Guid);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if ((IoControlCode == IOCTL_WMI_OPEN_GUID_FOR_QUERYSET) && !WmipIsQuerySetGuid(&Guid))
+        return STATUS_WMI_GUID_NOT_FOUND;
+
+    Status = WmipOpenGuidObject(&Guid,
+                                DesiredAccess,
+                                PreviousMode,
+                                &GuidObjectHandle,
+                                &GuidObject);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("WmipOpenGuidObjectByName failed: 0x%lx\n", Status);
+        DPRINT1("WmipOpenGuidObject failed: 0x%lx\n", Status);
         return Status;
     }
-
-    Result->Handle = GuidObjectHandle;
 
     ObDereferenceObject(GuidObject);
 
+    OpenBlock->Handle64 = 0;
+    OpenBlock->Handle = GuidObjectHandle;
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Handles IOCTL_WMI_QUERY_ALL_DATA, the input is a bare WNODE_HEADER naming the opened block.
+ */
+static
+NTSTATUS
+WmipQueryAllDataIoctl(
+    _Inout_ PVOID Buffer,
+    _In_ ULONG InputLength,
+    _Inout_ PULONG OutputLength)
+{
+    PWNODE_ALL_DATA Wnode = Buffer;
+    PWMIP_GUID_OBJECT GuidObject;
+    ULONG ReturnSize;
+    NTSTATUS Status;
+
+    if (*OutputLength < WMIP_MIN_ALL_DATA_SIZE)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if ((InputLength < sizeof(WNODE_HEADER)) ||
+        (Wnode->WnodeHeader.BufferSize != InputLength) ||
+        !(Wnode->WnodeHeader.Flags & WNODE_FLAG_ALL_DATA) ||
+        (Wnode->WnodeHeader.Flags & ~(WNODE_FLAG_ALL_DATA | WNODE_FLAG_STATIC_INSTANCE_NAMES)))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    Status = ObReferenceObjectByHandle(Wnode->WnodeHeader.KernelHandle,
+                                       WMIGUID_QUERY,
+                                       WmipGuidObjectType,
+                                       ExGetPreviousMode(),
+                                       (PVOID *)&GuidObject,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = WmipQueryAllData(GuidObject, Wnode, *OutputLength, &ReturnSize);
+    ObDereferenceObject(GuidObject);
+
+    if (NT_SUCCESS(Status))
+        *OutputLength = ReturnSize;
+
+    return Status;
+}
+
+/* Bounds of the instance name and data offset of an incoming WNODE_SINGLE_INSTANCE query. */
+static
+NTSTATUS
+WmipProbeSingleInstance(
+    _In_ PWNODE_SINGLE_INSTANCE Wnode,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength)
+{
+    ULONG HeaderSize = FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData);
+    ULONG NameOffset, NameEnd, DataOffset;
+
+    if ((InputLength < HeaderSize) || (OutputLength < HeaderSize))
+        return STATUS_UNSUCCESSFUL;
+
+    if ((Wnode->WnodeHeader.BufferSize != InputLength) ||
+        !(Wnode->WnodeHeader.Flags & WNODE_FLAG_SINGLE_INSTANCE) ||
+        (Wnode->WnodeHeader.Flags & ~(WNODE_FLAG_SINGLE_INSTANCE | WNODE_FLAG_STATIC_INSTANCE_NAMES)))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    NameOffset = Wnode->OffsetInstanceName;
+    if ((NameOffset < HeaderSize) || (NameOffset & 1) || (NameOffset > InputLength - sizeof(USHORT)))
+        return STATUS_UNSUCCESSFUL;
+
+    NameEnd = NameOffset + sizeof(USHORT) + *(PUSHORT)((PUCHAR)Wnode + NameOffset);
+    if ((NameEnd > InputLength) || (NameEnd > OutputLength))
+        return STATUS_UNSUCCESSFUL;
+
+    /* The provider writes its data at DataBlockOffset, past the name */
+    DataOffset = Wnode->DataBlockOffset;
+    if ((DataOffset < NameEnd) || (DataOffset & 7) || (DataOffset > OutputLength))
+        return STATUS_UNSUCCESSFUL;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Handles IOCTL_WMI_QUERY_SINGLE_INSTANCE.
+ */
+static
+NTSTATUS
+WmipQuerySingleInstanceIoctl(
+    _Inout_ PVOID Buffer,
+    _In_ ULONG InputLength,
+    _Inout_ PULONG OutputLength)
+{
+    PWNODE_SINGLE_INSTANCE Wnode = Buffer;
+    PWMIP_GUID_OBJECT GuidObject;
+    ULONG ReturnSize;
+    NTSTATUS Status;
+
+    if (*OutputLength < sizeof(WNODE_TOO_SMALL))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Status = WmipProbeSingleInstance(Wnode, InputLength, *OutputLength);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = ObReferenceObjectByHandle(Wnode->WnodeHeader.KernelHandle,
+                                       WMIGUID_QUERY,
+                                       WmipGuidObjectType,
+                                       ExGetPreviousMode(),
+                                       (PVOID *)&GuidObject,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = WmipQuerySingleInstance(GuidObject, Wnode, *OutputLength, &ReturnSize);
+    ObDereferenceObject(GuidObject);
+
+    if (NT_SUCCESS(Status))
+        *OutputLength = ReturnSize;
+
+    return Status;
 }
 
 static
@@ -501,9 +620,23 @@ WmipIoControl(
             break;
         }
 
+        case IOCTL_WMI_OPEN_GUID:
+        case IOCTL_WMI_OPEN_GUID_FOR_QUERYSET:
         case IOCTL_WMI_OPEN_GUID_FOR_EVENTS:
         {
-            Status = WmipOpenGuidForEvents(Buffer, InputLength, &OutputLength);
+            Status = WmipOpenGuidBlock(IoControlCode, Buffer, InputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_QUERY_ALL_DATA:
+        {
+            Status = WmipQueryAllDataIoctl(Buffer, InputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_QUERY_SINGLE_INSTANCE:
+        {
+            Status = WmipQuerySingleInstanceIoctl(Buffer, InputLength, &OutputLength);
             break;
         }
 
