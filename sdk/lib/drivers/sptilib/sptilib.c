@@ -166,6 +166,7 @@ CODE_SEG("PAGE")
 NTSTATUS
 SptiCallDriver(
     _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP OriginalIrp,
     _In_ PPASSTHROUGH_IRP_CONTEXT IrpContext)
 {
     PIRP Irp = IrpContext->Irp;
@@ -174,7 +175,8 @@ SptiCallDriver(
 
     PAGED_CODE();
 
-    SptiInitializeOutputBuffer(Irp);
+    /* The caller's buffer gets cleared, the IRP built here has no current stack location yet */
+    SptiInitializeOutputBuffer(OriginalIrp);
 
     // TODO: Send the IRP in an asynchronous way (do not block the user app thread)
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
@@ -843,7 +845,7 @@ SptiHandleAtaPassthru(
     if (!NT_SUCCESS(Status))
         goto Cleanup;
 
-    Status = SptiCallDriver(DeviceObject, IrpContext);
+    Status = SptiCallDriver(DeviceObject, Irp, IrpContext);
 
     Srb = &IrpContext->Srb;
 
@@ -945,7 +947,7 @@ SptiHandleScsiPassthru(
     if (!NT_SUCCESS(Status))
         goto Cleanup;
 
-    Status = SptiCallDriver(DeviceObject, IrpContext);
+    Status = SptiCallDriver(DeviceObject, Irp, IrpContext);
 
     Srb = &IrpContext->Srb;
 
