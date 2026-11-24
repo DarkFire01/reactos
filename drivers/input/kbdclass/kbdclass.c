@@ -1,1189 +1,1023 @@
 /*
- * COPYRIGHT:       See COPYING in the top level directory
- * PROJECT:         ReactOS Keyboard class driver
- * FILE:            drivers/kbdclass/kbdclass.c
- * PURPOSE:         Keyboard class driver
- *
- * PROGRAMMERS:     Hervé Poussineau (hpoussin@reactos.org)
+ * PROJECT:     ReactOS Keyboard Class Driver
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Driver entry, configuration and class device creation
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 #include "kbdclass.h"
 
-#include <stdio.h>
-#include <kbdmou.h>
-#include <hidclass.h>
-#include <poclass.h>
-#include <pseh/pseh2.h>
+#define NDEBUG
 #include <debug.h>
 
-static DRIVER_UNLOAD DriverUnload;
-static DRIVER_DISPATCH ClassCreate;
-static DRIVER_DISPATCH ClassClose;
-static DRIVER_DISPATCH ClassCleanup;
-static DRIVER_DISPATCH ClassRead;
-static DRIVER_DISPATCH ClassDeviceControl;
-static DRIVER_DISPATCH ClassPower;
-static DRIVER_ADD_DEVICE ClassAddDevice;
-static DRIVER_STARTIO ClassStartIo;
-static DRIVER_CANCEL ClassCancelRoutine;
-static NTSTATUS
-HandleReadIrp(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PREAD_DATA ReadData,
-    IN PIRP Irp OPTIONAL);
+KBDCLASS_GLOBALS KbdClassGlobals;
+const UCHAR KbdClassTrustedOpen = 0;
 
-static VOID NTAPI
-DriverUnload(IN PDRIVER_OBJECT DriverObject)
+DRIVER_INITIALIZE DriverEntry;
+static DRIVER_ADD_DEVICE KbdClassAddDevice;
+static IO_COMPLETION_ROUTINE KbdClassSyncComplete;
+static RTL_QUERY_REGISTRY_ROUTINE KbdClassCountPortValue;
+
+/* HELPERS ********************************************************************/
+
+/**
+ * @brief Writes an event log entry with optional ULONG dump data.
+ */
+VOID
+NTAPI
+KbdClassLogError(
+    _In_ PVOID IoObject,
+    _In_ NTSTATUS ErrorCode,
+    _In_ ULONG UniqueErrorValue,
+    _In_ NTSTATUS FinalStatus,
+    _In_ ULONG DumpCount,
+    _In_reads_opt_(DumpCount) PULONG DumpData,
+    _In_ UCHAR MajorFunction)
 {
-    // nothing to do here yet
+    PIO_ERROR_LOG_PACKET Entry;
+    ULONG EntrySize;
+    ULONG Index;
+
+    EntrySize = sizeof(IO_ERROR_LOG_PACKET) + DumpCount * sizeof(ULONG);
+    if (EntrySize > ERROR_LOG_MAXIMUM_SIZE)
+        return;
+
+    Entry = IoAllocateErrorLogEntry(IoObject, (UCHAR)EntrySize);
+    if (!Entry)
+        return;
+
+    Entry->MajorFunctionCode = MajorFunction;
+    Entry->RetryCount = 0;
+    Entry->DumpDataSize = (USHORT)(DumpCount * sizeof(ULONG));
+    Entry->ErrorCode = ErrorCode;
+    Entry->UniqueErrorValue = UniqueErrorValue;
+    Entry->FinalStatus = FinalStatus;
+    Entry->SequenceNumber = 0;
+    Entry->IoControlCode = 0;
+
+    for (Index = 0; Index < DumpCount; Index++)
+        Entry->DumpData[Index] = DumpData[Index];
+
+    IoWriteErrorLogEntry(Entry);
 }
 
-static NTSTATUS NTAPI
-ClassCreate(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
+static
+NTSTATUS
+NTAPI
+KbdClassSyncComplete(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_opt_ PVOID Context)
 {
-    TRACE_(CLASS_NAME, "IRP_MJ_CREATE\n");
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
 
-    if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-        return ForwardIrpAndForget(DeviceObject, Irp);
-
-    /* FIXME: open all associated Port devices */
-    Irp->IoStatus.Status = STATUS_SUCCESS;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    KeSetEvent((PKEVENT)Context, IO_NO_INCREMENT, FALSE);
+    return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-static NTSTATUS NTAPI
-ClassClose(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
+/**
+ * @brief Sends an IRP down and waits until the lower driver hands it back.
+ */
+NTSTATUS
+NTAPI
+KbdClassSendIrpSynchronously(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ BOOLEAN CopyStack)
 {
-    TRACE_(CLASS_NAME, "IRP_MJ_CLOSE\n");
+    KEVENT Event;
 
-    if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-        return ForwardIrpAndForget(DeviceObject, Irp);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
-    /* FIXME: close all associated Port devices */
-    Irp->IoStatus.Status = STATUS_SUCCESS;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    if (CopyStack)
+        IoCopyCurrentIrpStackLocationToNext(Irp);
+
+    IoSetCompletionRoutine(Irp, KbdClassSyncComplete, &Event, TRUE, TRUE, TRUE);
+    IoCallDriver(DeviceObject, Irp);
+    KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+
+    return Irp->IoStatus.Status;
 }
 
-static NTSTATUS NTAPI
-ClassCleanup(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
+static
+NTSTATUS
+KbdClassOpenParametersKey(
+    _In_ ACCESS_MASK DesiredAccess,
+    _Out_ PHANDLE KeyHandle)
 {
-    TRACE_(CLASS_NAME, "IRP_MJ_CLEANUP\n");
+    UNICODE_STRING SubKey = RTL_CONSTANT_STRING(L"Parameters");
+    OBJECT_ATTRIBUTES Attributes;
+    HANDLE ServiceKey;
+    NTSTATUS Status;
 
-    if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-        return ForwardIrpAndForget(DeviceObject, Irp);
+    *KeyHandle = NULL;
 
-    /* FIXME: cleanup all associated Port devices */
-    Irp->IoStatus.Status = STATUS_SUCCESS;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    InitializeObjectAttributes(&Attributes,
+                               &KbdClassGlobals.RegistryPath,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               NULL,
+                               NULL);
+    Status = ZwOpenKey(&ServiceKey, KEY_READ, &Attributes);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    InitializeObjectAttributes(&Attributes,
+                               &SubKey,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               ServiceKey,
+                               NULL);
+    Status = ZwOpenKey(KeyHandle, DesiredAccess, &Attributes);
+    ZwClose(ServiceKey);
+
+    return Status;
 }
 
-static NTSTATUS NTAPI
-ClassRead(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
+/**
+ * @brief Reads a value of at most four bytes, whatever its registry type.
+ */
+NTSTATUS
+NTAPI
+KbdClassQueryRegistryUlong(
+    _In_ HANDLE KeyHandle,
+    _In_ PCWSTR ValueName,
+    _Out_ PULONG Value)
 {
-    PCOMMON_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-    PREAD_DATA ReadData;
+    ULONG Buffer[(sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 2 * sizeof(ULONG)) / sizeof(ULONG)];
+    PKEY_VALUE_PARTIAL_INFORMATION Info = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
+    UNICODE_STRING Name;
+    ULONG ResultLength;
+    NTSTATUS Status;
 
-    TRACE_(CLASS_NAME, "IRP_MJ_READ\n");
+    *Value = 0;
+    RtlInitUnicodeString(&Name, ValueName);
 
-    if (IoGetCurrentIrpStackLocation(Irp)->Parameters.Read.Length < sizeof(KEYBOARD_INPUT_DATA))
-    {
-        Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
-        Irp->IoStatus.Information = 0;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    Status = ZwQueryValueKey(KeyHandle,
+                             &Name,
+                             KeyValuePartialInformation,
+                             Info,
+                             sizeof(Buffer),
+                             &ResultLength);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
+    if (Info->DataLength > sizeof(*Value))
         return STATUS_BUFFER_TOO_SMALL;
-    }
 
-    if (DeviceExtension->IsClassDO)
-    {
-        ReadData = ((PCLASS_DEVICE_EXTENSION)DeviceExtension)->ReadData;
-    }
-    else
-    {
-        PPORT_DEVICE_EXTENSION Port = (PPORT_DEVICE_EXTENSION)DeviceExtension;
-        PCLASS_DEVICE_EXTENSION Class = (PCLASS_DEVICE_EXTENSION)Port->ClassDO->DeviceExtension;
-        ReadData = Class->ReadData;
-    }
-
-    return HandleReadIrp(DeviceObject, ReadData, Irp);
+    RtlCopyMemory(Value, Info->Data, Info->DataLength);
+    return STATUS_SUCCESS;
 }
 
-static NTSTATUS NTAPI
-ClassDeviceControl(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
+/* CONFIGURATION **************************************************************/
+
+static
+VOID
+KbdClassReadConfiguration(VOID)
 {
-    NTSTATUS Status = STATUS_NOT_SUPPORTED;
-
-    TRACE_(CLASS_NAME, "IRP_MJ_DEVICE_CONTROL\n");
-
-    switch (IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.IoControlCode)
-    {
-        case IOCTL_KEYBOARD_QUERY_ATTRIBUTES:
-        case IOCTL_KEYBOARD_QUERY_INDICATOR_TRANSLATION:
-        case IOCTL_KEYBOARD_QUERY_INDICATORS:
-        case IOCTL_KEYBOARD_QUERY_TYPEMATIC:
-        {
-            if (((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-            {
-                /* FIXME: We hope that all devices will return the same result.
-                 * Ask only the first one */
-                PLIST_ENTRY Head = &((PCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->ListHead;
-                if (Head->Flink != Head)
-                {
-                    /* We have at least one device */
-                    PPORT_DEVICE_EXTENSION DevExt = CONTAINING_RECORD(Head->Flink, PORT_DEVICE_EXTENSION, ListEntry);
-                    DeviceObject = DevExt->DeviceObject;
-                }
-                else
-                    DeviceObject = NULL;
-            }
-            if (DeviceObject)
-            {
-                IoCopyCurrentIrpStackLocationToNext(Irp);
-                IoGetNextIrpStackLocation(Irp)->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-                return IoCallDriver(DeviceObject, Irp);
-            }
-            break;
-        }
-        case IOCTL_KEYBOARD_SET_INDICATORS:
-        case IOCTL_KEYBOARD_SET_TYPEMATIC: /* not in MSDN, would seem logical */
-        {
-            if (((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-            {
-                /* Send it to all associated Port devices */
-                PLIST_ENTRY Head = &((PCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->ListHead;
-                PLIST_ENTRY Entry = Head->Flink;
-                Status = STATUS_SUCCESS;
-                while (Entry != Head)
-                {
-                    PPORT_DEVICE_EXTENSION DevExt = CONTAINING_RECORD(Entry, PORT_DEVICE_EXTENSION, ListEntry);
-
-                    IoGetCurrentIrpStackLocation(Irp)->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-
-                    if (IoForwardIrpSynchronously(DevExt->LowerDevice, Irp))
-                    {
-                        if (!NT_SUCCESS(Irp->IoStatus.Status))
-                        {
-                            Status = Irp->IoStatus.Status;
-                        }
-                    }
-                    else
-                    {
-                        Status = STATUS_UNSUCCESSFUL;
-                    }
-
-                    Entry = Entry->Flink;
-                }
-            }
-            else
-            {
-                PPORT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-                IoCopyCurrentIrpStackLocationToNext(Irp);
-                IoGetNextIrpStackLocation(Irp)->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-                return IoCallDriver(DeviceExtension->LowerDevice, Irp);
-            }
-            break;
-        }
-        /* Every IOCTL HID, except IOCTL_HID_GET_INPUT_REPORT/IOCTL_HID_SET_OUTPUT_REPORT */
-        case IOCTL_GET_PHYSICAL_DESCRIPTOR:
-        case IOCTL_HID_FLUSH_QUEUE:
-        case IOCTL_HID_GET_COLLECTION_DESCRIPTOR:
-        case IOCTL_HID_GET_COLLECTION_INFORMATION:
-        case IOCTL_HID_GET_FEATURE:
-        case IOCTL_HID_GET_HARDWARE_ID:
-        case IOCTL_HID_GET_INDEXED_STRING:
-        case IOCTL_HID_GET_MANUFACTURER_STRING:
-        case IOCTL_GET_NUM_DEVICE_INPUT_BUFFERS:
-        case IOCTL_HID_GET_POLL_FREQUENCY_MSEC:
-        case IOCTL_HID_GET_PRODUCT_STRING:
-        case IOCTL_HID_GET_SERIALNUMBER_STRING:
-        case IOCTL_HID_SET_FEATURE:
-        case IOCTL_SET_NUM_DEVICE_INPUT_BUFFERS:
-        case IOCTL_HID_SET_POLL_FREQUENCY_MSEC:
-        case IOCTL_HID_GET_DRIVER_CONFIG:
-        case IOCTL_HID_SET_DRIVER_CONFIG:
-        case IOCTL_HID_GET_MS_GENRE_DESCRIPTOR:
-        /* IOCTL used by Power Manager */
-        case IOCTL_GET_SYS_BUTTON_CAPS:
-        case IOCTL_GET_SYS_BUTTON_EVENT:
-        {
-            PPORT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-            if (!DeviceExtension->Common.IsClassDO)
-            {
-                IoSkipCurrentIrpStackLocation(Irp);
-                return IoCallDriver(DeviceExtension->LowerDevice, Irp);
-            }
-            break;
-        }
-        default:
-            WARN_(CLASS_NAME, "IRP_MJ_DEVICE_CONTROL / unknown I/O control code 0x%lx\n",
-                IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.IoControlCode);
-            ASSERT(FALSE);
-            break;
-    }
-
-    Irp->IoStatus.Status = Status;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-    return Status;
-}
-
-static NTSTATUS NTAPI
-ClassPower(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    NTSTATUS Status;
-    PPORT_DEVICE_EXTENSION DeviceExtension;
-
-    DeviceExtension = DeviceObject->DeviceExtension;
-    if (!DeviceExtension->Common.IsClassDO)
-    {
-        /* Forward port DO IRPs to lower device */
-        PoStartNextPowerIrp(Irp);
-        IoSkipCurrentIrpStackLocation(Irp);
-        return PoCallDriver(DeviceExtension->LowerDevice, Irp);
-    }
-
-    switch (IoGetCurrentIrpStackLocation(Irp)->MinorFunction)
-    {
-        case IRP_MN_SET_POWER:
-        case IRP_MN_QUERY_POWER:
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            break;
-    }
-    Status = Irp->IoStatus.Status;
-    PoStartNextPowerIrp(Irp);
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return Status;
-}
-
-static NTSTATUS
-ReadRegistryEntries(
-    IN PUNICODE_STRING RegistryPath,
-    IN PCLASS_DRIVER_EXTENSION DriverExtension)
-{
-    UNICODE_STRING ParametersRegistryKey;
-    RTL_QUERY_REGISTRY_TABLE Parameters[4];
+    RTL_QUERY_REGISTRY_TABLE Table[6];
+    ULONG QueueEntries = KBDCLASS_DEFAULT_QUEUE_ENTRIES;
+    ULONG ConnectMultiplePorts = KBDCLASS_DEFAULT_CONNECT_MULTIPLE;
+    ULONG DwordType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
+    ULONG StringType = (REG_SZ << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_SZ;
+    HANDLE KeyHandle;
     NTSTATUS Status;
 
-    ULONG DefaultConnectMultiplePorts = 1;
-    ULONG DefaultDataQueueSize = 0x64;
-    PCWSTR DefaultDeviceBaseName = L"KeyboardClass";
+    KbdClassGlobals.PortsServiced = KBDCLASS_DEFAULT_PORTS_SERVICED;
+    KbdClassGlobals.SendOutputToAllPorts = 0;
+    KbdClassGlobals.BaseClassName.Length = 0;
+    RtlAppendUnicodeToString(&KbdClassGlobals.BaseClassName, KBDCLASS_DEFAULT_BASE_NAME);
 
-    ParametersRegistryKey.Length = 0;
-    ParametersRegistryKey.MaximumLength = RegistryPath->Length + sizeof(L"\\Parameters") + sizeof(UNICODE_NULL);
-    ParametersRegistryKey.Buffer = ExAllocatePoolWithTag(PagedPool, ParametersRegistryKey.MaximumLength, CLASS_TAG);
-    if (!ParametersRegistryKey.Buffer)
-    {
-        WARN_(CLASS_NAME, "ExAllocatePoolWithTag() failed\n");
-        return STATUS_NO_MEMORY;
-    }
-    RtlCopyUnicodeString(&ParametersRegistryKey, RegistryPath);
-    RtlAppendUnicodeToString(&ParametersRegistryKey, L"\\Parameters");
-    ParametersRegistryKey.Buffer[ParametersRegistryKey.Length / sizeof(WCHAR)] = UNICODE_NULL;
-
-    RtlZeroMemory(Parameters, sizeof(Parameters));
-
-    Parameters[0].Flags = RTL_QUERY_REGISTRY_DIRECT;
-    Parameters[0].Name = L"ConnectMultiplePorts";
-    Parameters[0].EntryContext = &DriverExtension->ConnectMultiplePorts;
-    Parameters[0].DefaultType = REG_DWORD;
-    Parameters[0].DefaultData = &DefaultConnectMultiplePorts;
-    Parameters[0].DefaultLength = sizeof(ULONG);
-
-    Parameters[1].Flags = RTL_QUERY_REGISTRY_DIRECT;
-    Parameters[1].Name = L"KeyboardDataQueueSize";
-    Parameters[1].EntryContext = &DriverExtension->DataQueueSize;
-    Parameters[1].DefaultType = REG_DWORD;
-    Parameters[1].DefaultData = &DefaultDataQueueSize;
-    Parameters[1].DefaultLength = sizeof(ULONG);
-
-    Parameters[2].Flags = RTL_QUERY_REGISTRY_DIRECT;
-    Parameters[2].Name = L"KeyboardDeviceBaseName";
-    Parameters[2].EntryContext = &DriverExtension->DeviceBaseName;
-    Parameters[2].DefaultType = REG_SZ;
-    Parameters[2].DefaultData = (PVOID)DefaultDeviceBaseName;
-    Parameters[2].DefaultLength = 0;
-
-    Status = RtlQueryRegistryValues(
-        RTL_REGISTRY_ABSOLUTE | RTL_REGISTRY_OPTIONAL,
-        ParametersRegistryKey.Buffer,
-        Parameters,
-        NULL,
-        NULL);
-
+    Status = KbdClassOpenParametersKey(KEY_READ, &KeyHandle);
     if (NT_SUCCESS(Status))
     {
-        /* Check values */
-        if (DriverExtension->ConnectMultiplePorts != 0
-            && DriverExtension->ConnectMultiplePorts != 1)
-        {
-            DriverExtension->ConnectMultiplePorts = DefaultConnectMultiplePorts;
-        }
-        if (DriverExtension->DataQueueSize == 0)
-        {
-            DriverExtension->DataQueueSize = DefaultDataQueueSize;
-        }
-    }
-    else if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
-    {
-        /* Registry path doesn't exist. Set defaults */
-        DriverExtension->ConnectMultiplePorts = DefaultConnectMultiplePorts;
-        DriverExtension->DataQueueSize = DefaultDataQueueSize;
-        if (RtlCreateUnicodeString(&DriverExtension->DeviceBaseName, DefaultDeviceBaseName))
-            Status = STATUS_SUCCESS;
-        else
-            Status = STATUS_NO_MEMORY;
+        RtlZeroMemory(Table, sizeof(Table));
+
+        Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[0].Name = L"KeyboardDataQueueSize";
+        Table[0].EntryContext = &QueueEntries;
+        Table[0].DefaultType = DwordType;
+
+        Table[1].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[1].Name = L"MaximumPortsServiced";
+        Table[1].EntryContext = &KbdClassGlobals.PortsServiced;
+        Table[1].DefaultType = DwordType;
+
+        Table[2].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[2].Name = L"KeyboardDeviceBaseName";
+        Table[2].EntryContext = &KbdClassGlobals.BaseClassName;
+        Table[2].DefaultType = StringType;
+
+        Table[3].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[3].Name = L"ConnectMultiplePorts";
+        Table[3].EntryContext = &ConnectMultiplePorts;
+        Table[3].DefaultType = DwordType;
+
+        Table[4].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[4].Name = L"SendOutputToAllPorts";
+        Table[4].EntryContext = &KbdClassGlobals.SendOutputToAllPorts;
+        Table[4].DefaultType = DwordType;
+
+        Status = RtlQueryRegistryValues(RTL_REGISTRY_HANDLE | RTL_REGISTRY_OPTIONAL,
+                                        (PCWSTR)KeyHandle,
+                                        Table,
+                                        NULL,
+                                        NULL);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("Reading kbdclass parameters failed 0x%08lx\n", Status);
+
+        ZwClose(KeyHandle);
     }
 
-    ExFreePoolWithTag(ParametersRegistryKey.Buffer, CLASS_TAG);
-    return Status;
+    if (QueueEntries == 0)
+        QueueEntries = KBDCLASS_DEFAULT_QUEUE_ENTRIES;
+
+    if (QueueEntries > MAXULONG / sizeof(KEYBOARD_INPUT_DATA))
+        QueueEntries = KBDCLASS_DEFAULT_QUEUE_ENTRIES;
+
+    KbdClassGlobals.QueueBytes = QueueEntries * sizeof(KEYBOARD_INPUT_DATA);
+
+    /* The registry value names the opposite of what the driver tracks */
+    KbdClassGlobals.ConnectOneClassToOnePort = (ConnectMultiplePorts == 0);
 }
 
-static NTSTATUS
-CreateClassDeviceObject(
-    IN PDRIVER_OBJECT DriverObject,
-    OUT PDEVICE_OBJECT *ClassDO OPTIONAL)
+/* CLASS DEVICE OBJECTS *******************************************************/
+
+static
+NTSTATUS
+KbdClassCreateNamedDevice(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ BOOLEAN Legacy,
+    _Out_ PDEVICE_OBJECT *DeviceObject,
+    _Out_ PUNICODE_STRING DeviceName)
 {
-    PCLASS_DRIVER_EXTENSION DriverExtension;
-    ULONG DeviceId = 0;
-    ULONG PrefixLength;
-    UNICODE_STRING DeviceNameU;
-    PWSTR DeviceIdW = NULL; /* Pointer into DeviceNameU.Buffer */
-    PDEVICE_OBJECT Fdo;
-    PCLASS_DEVICE_EXTENSION DeviceExtension;
+    PCWSTR Format = L"\\Device\\%wZ%u";
+    UNICODE_STRING Name;
+    ULONG DumpData;
     NTSTATUS Status;
 
-    TRACE_(CLASS_NAME, "CreateClassDeviceObject(0x%p)\n", DriverObject);
+    *DeviceObject = NULL;
+    RtlZeroMemory(DeviceName, sizeof(*DeviceName));
 
-    /* Create new device object */
-    DriverExtension = IoGetDriverObjectExtension(DriverObject, DriverObject);
-    DeviceNameU.Length = 0;
-    DeviceNameU.MaximumLength =
-        (USHORT)wcslen(L"\\Device\\") * sizeof(WCHAR) /* "\Device\" */
-        + DriverExtension->DeviceBaseName.Length /* "KeyboardClass" */
-        + 4 * sizeof(WCHAR)                      /* Id between 0 and 9999 */
-        + sizeof(UNICODE_NULL);                  /* Final NULL char */
-    DeviceNameU.Buffer = ExAllocatePoolWithTag(PagedPool, DeviceNameU.MaximumLength, CLASS_TAG);
-    if (!DeviceNameU.Buffer)
+    /* Room for the prefix, up to six digits and the terminator */
+    Name.Length = 0;
+    Name.MaximumLength = KbdClassGlobals.BaseClassName.Length +
+                         sizeof(L"\\Device\\") + 6 * sizeof(WCHAR);
+
+    if (Legacy && KbdClassGlobals.ConnectOneClassToOnePort)
     {
-        WARN_(CLASS_NAME, "ExAllocatePoolWithTag() failed\n");
-        return STATUS_NO_MEMORY;
+        Format = L"\\Device\\%wZLegacy%u";
+        Name.MaximumLength += sizeof(L"Legacy");
     }
-    Status = RtlAppendUnicodeToString(&DeviceNameU, L"\\Device\\");
+
+    Name.Buffer = ExAllocatePool2(POOL_FLAG_PAGED, Name.MaximumLength, KBDCLASS_TAG);
+    if (!Name.Buffer)
+    {
+        DumpData = Name.MaximumLength;
+        KbdClassLogError(DriverObject,
+                         KBDCLASS_LOG_INSUFFICIENT_RESOURCES,
+                         KBDCLASS_ERRID_CREATE_DEVICE,
+                         STATUS_UNSUCCESSFUL,
+                         1,
+                         &DumpData,
+                         0);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    do
+    {
+        Status = RtlUnicodeStringPrintf(&Name,
+                                        Format,
+                                        &KbdClassGlobals.BaseClassName,
+                                        KbdClassGlobals.NextDeviceNumber++);
+        if (!NT_SUCCESS(Status))
+            break;
+
+        Status = IoCreateDevice(DriverObject,
+                                sizeof(KBDCLASS_DEVICE_EXTENSION),
+                                &Name,
+                                FILE_DEVICE_KEYBOARD,
+                                0,
+                                FALSE,
+                                DeviceObject);
+    } while (Status == STATUS_OBJECT_NAME_COLLISION);
+
     if (!NT_SUCCESS(Status))
     {
-        WARN_(CLASS_NAME, "RtlAppendUnicodeToString() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-    Status = RtlAppendUnicodeStringToString(&DeviceNameU, &DriverExtension->DeviceBaseName);
-    if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "RtlAppendUnicodeStringToString() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-    PrefixLength = DeviceNameU.MaximumLength - 4 * sizeof(WCHAR) - sizeof(UNICODE_NULL);
-    DeviceIdW = &DeviceNameU.Buffer[PrefixLength / sizeof(WCHAR)];
-    while (DeviceId < 9999)
-    {
-        DeviceNameU.Length = (USHORT)(PrefixLength + _swprintf(DeviceIdW, L"%lu", DeviceId) * sizeof(WCHAR));
-        Status = IoCreateDevice(
-            DriverObject,
-            sizeof(CLASS_DEVICE_EXTENSION),
-            &DeviceNameU,
-            FILE_DEVICE_KEYBOARD,
-            FILE_DEVICE_SECURE_OPEN,
-            FALSE,
-            &Fdo);
-        if (NT_SUCCESS(Status))
-            goto cleanup;
-        else if (Status != STATUS_OBJECT_NAME_COLLISION)
-        {
-            WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08lx\n", Status);
-            goto cleanup;
-        }
-        DeviceId++;
-    }
-    WARN_(CLASS_NAME, "Too many devices starting with '\\Device\\%wZ'\n", &DriverExtension->DeviceBaseName);
-    Status = STATUS_TOO_MANY_NAMES;
-cleanup:
-    if (!NT_SUCCESS(Status))
-    {
-        ExFreePoolWithTag(DeviceNameU.Buffer, CLASS_TAG);
+        DumpData = Name.MaximumLength;
+        KbdClassLogError(DriverObject,
+                         KBDCLASS_LOG_DEVICE_CREATE_FAILED,
+                         KBDCLASS_ERRID_CREATE_DEVICE,
+                         Status,
+                         1,
+                         &DumpData,
+                         0);
+        ExFreePoolWithTag(Name.Buffer, KBDCLASS_TAG);
         return Status;
     }
 
-    DeviceExtension = (PCLASS_DEVICE_EXTENSION)Fdo->DeviceExtension;
-    RtlZeroMemory(DeviceExtension, sizeof(CLASS_DEVICE_EXTENSION));
-    DeviceExtension->Common.IsClassDO = TRUE;
-    DeviceExtension->DriverExtension = DriverExtension;
-    InitializeListHead(&DeviceExtension->ListHead);
-    KeInitializeSpinLock(&DeviceExtension->ListSpinLock);
-    DeviceExtension->ReadData = ExAllocatePoolZero(NonPagedPool, sizeof(READ_DATA), CLASS_TAG);
-    if (!DeviceExtension->ReadData)
+    if (Name.MaximumLength < Name.Length + sizeof(UNICODE_NULL))
     {
-        ExFreePoolWithTag(DeviceNameU.Buffer, CLASS_TAG);
-        return STATUS_NO_MEMORY;
+        IoDeleteDevice(*DeviceObject);
+        *DeviceObject = NULL;
+        ExFreePoolWithTag(Name.Buffer, KBDCLASS_TAG);
+        return STATUS_UNSUCCESSFUL;
     }
-    KeInitializeSpinLock(&DeviceExtension->ReadData->SpinLock);
-    DeviceExtension->ReadData->PortData = ExAllocatePoolWithTag(NonPagedPool, DeviceExtension->DriverExtension->DataQueueSize * sizeof(KEYBOARD_INPUT_DATA), CLASS_TAG);
-    if (!DeviceExtension->ReadData->PortData)
-    {
-        ExFreePoolWithTag(DeviceNameU.Buffer, CLASS_TAG);
-        ExFreePoolWithTag(DeviceExtension->ReadData, CLASS_TAG);
-        return STATUS_NO_MEMORY;
-    }
-    DeviceExtension->DeviceName = DeviceNameU.Buffer;
-    Fdo->Flags |= DO_POWER_PAGABLE;
-    Fdo->Flags |= DO_BUFFERED_IO; /* FIXME: Why is it needed for 1st stage setup? */
-    Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
-    /* Add entry entry to HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP\[DeviceBaseName] */
-    RtlWriteRegistryValue(
-        RTL_REGISTRY_DEVICEMAP,
-        DriverExtension->DeviceBaseName.Buffer,
-        DeviceExtension->DeviceName,
-        REG_SZ,
-        DriverExtension->RegistryPath.Buffer,
-        DriverExtension->RegistryPath.MaximumLength);
-
-    if (ClassDO)
-        *ClassDO = Fdo;
-
+    Name.Buffer[Name.Length / sizeof(WCHAR)] = UNICODE_NULL;
+    *DeviceName = Name;
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS
-FillEntries(
-    IN PDEVICE_OBJECT ClassDeviceObject,
-    IN PKEYBOARD_INPUT_DATA Source,
-    OUT PKEYBOARD_INPUT_DATA Destination,
-    IN SIZE_T NumberOfEntries)
+/**
+ * @brief Creates a class device object and its input queue.
+ *
+ * The device is named after KeyboardDeviceBaseName unless the grand master
+ * exists, in which case every further device is unnamed.
+ */
+static
+NTSTATUS
+KbdClassCreateClassObject(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ BOOLEAN Legacy,
+    _Out_ PDEVICE_OBJECT *ClassDeviceObject,
+    _Outptr_result_maybenull_ PWSTR *FullDeviceName)
 {
-    NTSTATUS Status = STATUS_SUCCESS;
+    PKBDCLASS_DEVICE_EXTENSION DeviceExtension;
+    PDEVICE_OBJECT DeviceObject = NULL;
+    UNICODE_STRING Name = {0};
+    BOOLEAN HaveGrandMaster;
+    ULONG DumpData;
+    NTSTATUS Status;
 
-    if (!Destination)
-        return STATUS_UNSUCCESSFUL;
+    *ClassDeviceObject = NULL;
+    *FullDeviceName = NULL;
 
-    if (ClassDeviceObject->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO))
+    ExAcquireFastMutex(&KbdClassGlobals.Mutex);
+    HaveGrandMaster = (KbdClassGlobals.GrandMaster != NULL);
+    ExReleaseFastMutex(&KbdClassGlobals.Mutex);
+
+    if (HaveGrandMaster)
     {
-        RtlCopyMemory(
-            Destination,
-            Source,
-            NumberOfEntries * sizeof(KEYBOARD_INPUT_DATA));
+        Status = IoCreateDevice(DriverObject,
+                                sizeof(KBDCLASS_DEVICE_EXTENSION),
+                                NULL,
+                                FILE_DEVICE_KEYBOARD,
+                                0,
+                                FALSE,
+                                &DeviceObject);
+        if (!NT_SUCCESS(Status))
+        {
+            DumpData = 0;
+            KbdClassLogError(DriverObject,
+                             KBDCLASS_LOG_DEVICE_CREATE_FAILED,
+                             KBDCLASS_ERRID_CREATE_DEVICE,
+                             Status,
+                             1,
+                             &DumpData,
+                             0);
+            return Status;
+        }
     }
     else
     {
-        _SEH2_TRY
-        {
-            RtlCopyMemory(
-                Destination,
-                Source,
-                NumberOfEntries * sizeof(KEYBOARD_INPUT_DATA));
-        }
-        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-        {
-            Status = _SEH2_GetExceptionCode();
-        }
-        _SEH2_END;
+        Status = KbdClassCreateNamedDevice(DriverObject, Legacy, &DeviceObject, &Name);
+        if (!NT_SUCCESS(Status))
+            return Status;
     }
 
-    return Status;
-}
+    DeviceObject->Flags |= DO_BUFFERED_IO;
 
-static BOOLEAN NTAPI
-ClassCallback(
-    IN PDEVICE_OBJECT ClassDeviceObject,
-    IN OUT PKEYBOARD_INPUT_DATA DataStart,
-    IN PKEYBOARD_INPUT_DATA DataEnd,
-    IN OUT PULONG ConsumedCount)
-{
-    PCLASS_DEVICE_EXTENSION ClassDeviceExtension = ClassDeviceObject->DeviceExtension;
-    KIRQL OldIrql;
-    SIZE_T InputCount = DataEnd - DataStart;
-    SIZE_T ReadSize;
+    DeviceExtension = DeviceObject->DeviceExtension;
+    RtlZeroMemory(DeviceExtension, sizeof(*DeviceExtension));
+    DeviceExtension->Self = DeviceObject;
+    DeviceExtension->QueueLength = KbdClassGlobals.QueueBytes;
 
-    TRACE_(CLASS_NAME, "ClassCallback()\n");
+    IoInitializeRemoveLock(&DeviceExtension->RemoveLock, KBDCLASS_TAG, 0, 0);
+    KeInitializeSpinLock(&DeviceExtension->QueueLock);
+    KeInitializeSpinLock(&DeviceExtension->WaitWakeLock);
+    InitializeListHead(&DeviceExtension->ReadQueue);
+    InitializeListHead(&DeviceExtension->LegacyLink);
 
-    ASSERT(ClassDeviceExtension->Common.IsClassDO);
-
-    if (InputCount > 0)
+    DeviceExtension->QueueBase = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                                 DeviceExtension->QueueLength,
+                                                 KBDCLASS_TAG);
+    if (!DeviceExtension->QueueBase)
     {
-        KeAcquireSpinLock(&ClassDeviceExtension->ReadData->SpinLock, &OldIrql);
-        if (ClassDeviceExtension->ReadData->InputCount + InputCount > ClassDeviceExtension->DriverExtension->DataQueueSize)
-        {
-            /*
-             * We're exceeding the buffer, and data will be thrown away...
-             * FIXME: What could we do, as we are at DISPATCH_LEVEL?
-             */
-            ReadSize = ClassDeviceExtension->DriverExtension->DataQueueSize - ClassDeviceExtension->ReadData->InputCount;
-        }
-        else
-            ReadSize = InputCount;
-
-        /*
-         * Move the input data from the port data queue to our class data
-         * queue.
-         */
-        RtlCopyMemory(
-            &ClassDeviceExtension->ReadData->PortData[ClassDeviceExtension->ReadData->InputCount],
-            (PCHAR)DataStart,
-            sizeof(KEYBOARD_INPUT_DATA) * ReadSize);
-
-        /* Move the counter up */
-        ClassDeviceExtension->ReadData->InputCount += ReadSize;
-
-        (*ConsumedCount) += (ULONG)ReadSize;
-
-        KeReleaseSpinLock(&ClassDeviceExtension->ReadData->SpinLock, OldIrql);
-
-        /* Complete pending IRP (if any) */
-        HandleReadIrp(ClassDeviceObject, ClassDeviceExtension->ReadData, NULL);
+        KbdClassLogError(DeviceObject,
+                         KBDCLASS_LOG_NO_QUEUE_BUFFER,
+                         KBDCLASS_ERRID_QUEUE_BUFFER,
+                         STATUS_INSUFFICIENT_RESOURCES,
+                         0,
+                         NULL,
+                         0);
+        IoDeleteDevice(DeviceObject);
+        if (Name.Buffer)
+            ExFreePoolWithTag(Name.Buffer, KBDCLASS_TAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    TRACE_(CLASS_NAME, "Leaving ClassCallback()\n");
-    return TRUE;
+    KbdClassResetQueue(DeviceExtension);
+
+    *ClassDeviceObject = DeviceObject;
+    *FullDeviceName = Name.Buffer;
+    return STATUS_SUCCESS;
 }
 
-/* Send IOCTL_INTERNAL_*_CONNECT to port */
-static NTSTATUS
-ConnectPortDriver(
-    IN PDEVICE_OBJECT PortDO,
-    IN PDEVICE_OBJECT ClassDO)
+static
+VOID
+KbdClassDeleteClassObject(
+    _In_ PKBDCLASS_DEVICE_EXTENSION DeviceExtension)
 {
+    if (DeviceExtension->QueueBase)
+    {
+        ExFreePoolWithTag(DeviceExtension->QueueBase, KBDCLASS_TAG);
+        DeviceExtension->QueueBase = NULL;
+    }
+
+    IoDeleteDevice(DeviceExtension->Self);
+}
+
+/* PORT CONNECTION ************************************************************/
+
+/**
+ * @brief Hands the class device and service callback to the port.
+ */
+static
+NTSTATUS
+KbdClassSendConnect(
+    _In_ PKBDCLASS_DEVICE_EXTENSION DeviceExtension)
+{
+    CONNECT_DATA ConnectData;
+    IO_STATUS_BLOCK IoStatus;
     KEVENT Event;
     PIRP Irp;
-    IO_STATUS_BLOCK IoStatus;
-    CONNECT_DATA ConnectData;
     NTSTATUS Status;
-
-    TRACE_(CLASS_NAME, "Connecting PortDO %p to ClassDO %p\n", PortDO, ClassDO);
 
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
-    ConnectData.ClassDeviceObject = ClassDO;
-    ConnectData.ClassService      = ClassCallback;
+    ConnectData.ClassDeviceObject = DeviceExtension->ClassDevice;
+    ConnectData.ClassService = (PVOID)KbdClassServiceCallback;
 
-    Irp = IoBuildDeviceIoControlRequest(
-        IOCTL_INTERNAL_KEYBOARD_CONNECT,
-        PortDO,
-        &ConnectData, sizeof(CONNECT_DATA),
-        NULL, 0,
-        TRUE, &Event, &IoStatus);
+    Irp = IoBuildDeviceIoControlRequest(IOCTL_INTERNAL_KEYBOARD_CONNECT,
+                                        DeviceExtension->TopPort,
+                                        &ConnectData,
+                                        sizeof(ConnectData),
+                                        NULL,
+                                        0,
+                                        TRUE,
+                                        &Event,
+                                        &IoStatus);
     if (!Irp)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Status = IoCallDriver(PortDO, Irp);
-
+    Status = IoCallDriver(DeviceExtension->TopPort, Irp);
     if (Status == STATUS_PENDING)
-        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
-    else
-        IoStatus.Status = Status;
-
-    if (NT_SUCCESS(IoStatus.Status))
     {
-        ObReferenceObject(PortDO);
-        ExInterlockedInsertTailList(
-            &((PCLASS_DEVICE_EXTENSION)ClassDO->DeviceExtension)->ListHead,
-            &((PPORT_DEVICE_EXTENSION)PortDO->DeviceExtension)->ListEntry,
-            &((PCLASS_DEVICE_EXTENSION)ClassDO->DeviceExtension)->ListSpinLock);
-        if (ClassDO->StackSize <= PortDO->StackSize)
-        {
-            /* Increase the stack size, in case we have to
-             * forward some IRPs to the port device object
-             */
-            ClassDO->StackSize = PortDO->StackSize + 1;
-        }
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = IoStatus.Status;
     }
 
-    return IoStatus.Status;
-}
-
-/* Send IOCTL_INTERNAL_*_DISCONNECT to port + destroy the Port DO */
-static VOID
-DestroyPortDriver(
-    IN PDEVICE_OBJECT PortDO)
-{
-    PPORT_DEVICE_EXTENSION DeviceExtension;
-    PCLASS_DEVICE_EXTENSION ClassDeviceExtension;
-    PCLASS_DRIVER_EXTENSION DriverExtension;
-    KEVENT Event;
-    PIRP Irp;
-    IO_STATUS_BLOCK IoStatus;
-    KIRQL OldIrql;
-    NTSTATUS Status;
-
-    TRACE_(CLASS_NAME, "Destroying PortDO %p\n", PortDO);
-
-    DeviceExtension = (PPORT_DEVICE_EXTENSION)PortDO->DeviceExtension;
-    ClassDeviceExtension = DeviceExtension->ClassDO->DeviceExtension;
-    DriverExtension = IoGetDriverObjectExtension(PortDO->DriverObject, PortDO->DriverObject);
-
-    /* Send IOCTL_INTERNAL_*_DISCONNECT */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
-    Irp = IoBuildDeviceIoControlRequest(
-        IOCTL_INTERNAL_KEYBOARD_DISCONNECT,
-        PortDO,
-        NULL, 0,
-        NULL, 0,
-        TRUE, &Event, &IoStatus);
-    if (Irp)
-    {
-        Status = IoCallDriver(PortDO, Irp);
-        if (Status == STATUS_PENDING)
-            KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
-    }
-
-    /* Remove from ClassDeviceExtension->ListHead list */
-    KeAcquireSpinLock(&ClassDeviceExtension->ListSpinLock, &OldIrql);
-    RemoveEntryList(&DeviceExtension->ListEntry);
-    KeReleaseSpinLock(&ClassDeviceExtension->ListSpinLock, OldIrql);
-
-    /* Remove entry from HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP\[DeviceBaseName] */
-    RtlDeleteRegistryValue(
-        RTL_REGISTRY_DEVICEMAP,
-        DriverExtension->DeviceBaseName.Buffer,
-        ClassDeviceExtension->DeviceName);
-
-    if (DeviceExtension->LowerDevice)
-        IoDetachDevice(DeviceExtension->LowerDevice);
-    ObDereferenceObject(PortDO);
-
-    if (!DriverExtension->ConnectMultiplePorts && DeviceExtension->ClassDO)
-    {
-        ExFreePoolWithTag(ClassDeviceExtension->ReadData->PortData, CLASS_TAG);
-        ExFreePoolWithTag(ClassDeviceExtension->ReadData, CLASS_TAG);
-        ExFreePoolWithTag((PVOID)ClassDeviceExtension->DeviceName, CLASS_TAG);
-        IoDeleteDevice(DeviceExtension->ClassDO);
-    }
-
-    IoDeleteDevice(PortDO);
-}
-
-static NTSTATUS NTAPI
-ClassAddDevice(
-    IN PDRIVER_OBJECT DriverObject,
-    IN PDEVICE_OBJECT Pdo)
-{
-    PCLASS_DRIVER_EXTENSION DriverExtension;
-    PDEVICE_OBJECT Fdo = NULL;
-    PPORT_DEVICE_EXTENSION DeviceExtension = NULL;
-    NTSTATUS Status;
-
-    TRACE_(CLASS_NAME, "ClassAddDevice called. Pdo = 0x%p\n", Pdo);
-
-    DriverExtension = IoGetDriverObjectExtension(DriverObject, DriverObject);
-
-    if (Pdo == NULL)
-        /* We may get a NULL Pdo at the first call as we're a legacy driver. Ignore it */
-        return STATUS_SUCCESS;
-
-    /* Create new device object */
-    Status = IoCreateDevice(
-        DriverObject,
-        sizeof(PORT_DEVICE_EXTENSION),
-        NULL,
-        Pdo->DeviceType,
-        Pdo->Characteristics & FILE_DEVICE_SECURE_OPEN ? FILE_DEVICE_SECURE_OPEN : 0,
-        FALSE,
-        &Fdo);
-    if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-    IoSetStartIoAttributes(Fdo, TRUE, TRUE);
-
-    DeviceExtension = (PPORT_DEVICE_EXTENSION)Fdo->DeviceExtension;
-    RtlZeroMemory(DeviceExtension, sizeof(PORT_DEVICE_EXTENSION));
-    DeviceExtension->Common.IsClassDO = FALSE;
-    DeviceExtension->DeviceObject = Fdo;
-    DeviceExtension->PnpState = dsStopped;
-    Status = IoAttachDeviceToDeviceStackSafe(Fdo, Pdo, &DeviceExtension->LowerDevice);
-    if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "IoAttachDeviceToDeviceStackSafe() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-    if (DeviceExtension->LowerDevice->Flags & DO_POWER_PAGABLE)
-        Fdo->Flags |= DO_POWER_PAGABLE;
-    if (DeviceExtension->LowerDevice->Flags & DO_BUFFERED_IO)
-        Fdo->Flags |= DO_BUFFERED_IO;
-    if (DeviceExtension->LowerDevice->Flags & DO_DIRECT_IO)
-        Fdo->Flags |= DO_DIRECT_IO;
-
-    if (DriverExtension->ConnectMultiplePorts)
-        DeviceExtension->ClassDO = DriverExtension->MainClassDeviceObject;
-    else
-    {
-        /* We need a new class device object for this Fdo */
-        Status = CreateClassDeviceObject(
-            DriverObject,
-            &DeviceExtension->ClassDO);
-        if (!NT_SUCCESS(Status))
-        {
-            WARN_(CLASS_NAME, "CreateClassDeviceObject() failed with status 0x%08lx\n", Status);
-            goto cleanup;
-        }
-    }
-    Status = ConnectPortDriver(Fdo, DeviceExtension->ClassDO);
-    if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "ConnectPortDriver() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-    Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
-
-    /* Register interface ; ignore the error (if any) as having
-     * a registered interface is not so important... */
-    Status = IoRegisterDeviceInterface(
-        Pdo,
-        &GUID_DEVINTERFACE_KEYBOARD,
-        NULL,
-        &DeviceExtension->InterfaceName);
-    if (!NT_SUCCESS(Status))
-        DeviceExtension->InterfaceName.Length = 0;
-
-    return STATUS_SUCCESS;
-
-cleanup:
-    if (Fdo)
-        DestroyPortDriver(Fdo);
     return Status;
 }
 
-static VOID NTAPI
-ClassCancelRoutine(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PCOMMON_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-    PREAD_DATA ReadData;
-    KIRQL OldIrql;
-    BOOLEAN wasQueued = FALSE;
-
-    TRACE_(CLASS_NAME, "ClassCancelRoutine(DeviceObject %p, Irp %p)\n", DeviceObject, Irp);
-
-    if (DeviceExtension->IsClassDO)
-    {
-        ReadData = ((PCLASS_DEVICE_EXTENSION)DeviceExtension)->ReadData;
-    }
-    else
-    {
-        PPORT_DEVICE_EXTENSION Port = (PPORT_DEVICE_EXTENSION)DeviceExtension;
-        PCLASS_DEVICE_EXTENSION Class = (PCLASS_DEVICE_EXTENSION)Port->ClassDO->DeviceExtension;
-        ReadData = Class->ReadData;
-    }
-
-    IoReleaseCancelSpinLock(Irp->CancelIrql);
-
-    KeAcquireSpinLock(&ReadData->SpinLock, &OldIrql);
-
-    if (ReadData->PendingIrp == Irp)
-    {
-        ReadData->PendingIrp = NULL;
-        wasQueued = TRUE;
-    }
-    KeReleaseSpinLock(&ReadData->SpinLock, OldIrql);
-
-    if (wasQueued)
-    {
-        Irp->IoStatus.Status = STATUS_CANCELLED;
-        Irp->IoStatus.Information = 0;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    }
-    else
-    {
-        DPRINT1("Cancelled IRP is not pending. Race condition?\n");
-    }
-}
-
-static NTSTATUS
-HandleReadIrp(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PREAD_DATA ReadData,
-    IN PIRP Irp OPTIONAL)
+static
+NTSTATUS
+KbdClassWriteDeviceMap(
+    _In_ PKBDCLASS_DEVICE_EXTENSION DeviceExtension,
+    _In_ PCWSTR FullDeviceName)
 {
     NTSTATUS Status;
-    KIRQL OldIrql;
 
-    TRACE_(CLASS_NAME, "HandleReadIrp(DeviceObject %p, ReadData %p, Irp %p)\n", DeviceObject, ReadData, Irp);
+    Status = RtlWriteRegistryValue(RTL_REGISTRY_DEVICEMAP,
+                                   KbdClassGlobals.BaseClassName.Buffer,
+                                   FullDeviceName,
+                                   REG_SZ,
+                                   KbdClassGlobals.RegistryPath.Buffer,
+                                   KbdClassGlobals.RegistryPath.Length + sizeof(UNICODE_NULL));
+    if (!NT_SUCCESS(Status))
+    {
+        KbdClassLogError(DeviceExtension->Self,
+                         KBDCLASS_LOG_NO_DEVICEMAP_ENTRY,
+                         KBDCLASS_ERRID_DEVICEMAP,
+                         Status,
+                         0,
+                         NULL,
+                         0);
+    }
 
-    if (!Irp)
-        Irp = ReadData->PendingIrp;
-    if (!Irp)
+    return Status;
+}
+
+/**
+ * @brief Adds a port device to the grand master port list.
+ */
+static
+NTSTATUS
+KbdClassJoinGrandMaster(
+    _In_ PKBDCLASS_DEVICE_EXTENSION DeviceExtension,
+    _In_opt_ PFILE_OBJECT File)
+{
+    PKBDCLASS_DEVICE_EXTENSION GrandMaster = KbdClassGlobals.GrandMaster;
+    PKBDCLASS_PORT_ENTRY NewList;
+    PKBDCLASS_PORT_ENTRY Entry;
+    ULONG Index;
+    NTSTATUS Status;
+
+    Status = KbdClassSendConnect(DeviceExtension);
+
+    ExAcquireFastMutex(&KbdClassGlobals.Mutex);
+
+    for (Index = 0; Index < KbdClassGlobals.PortCount; Index++)
+    {
+        if (KbdClassGlobals.PortList[Index].Free)
+            break;
+    }
+
+    if (Index == KbdClassGlobals.PortCount)
+    {
+        NewList = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                  (KbdClassGlobals.PortCount + 1) * sizeof(*NewList),
+                                  KBDCLASS_TAG);
+        if (!NewList)
+        {
+            ExReleaseFastMutex(&KbdClassGlobals.Mutex);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        if (KbdClassGlobals.PortCount)
+        {
+            RtlCopyMemory(NewList,
+                          KbdClassGlobals.PortList,
+                          KbdClassGlobals.PortCount * sizeof(*NewList));
+            ExFreePoolWithTag(KbdClassGlobals.PortList, KBDCLASS_TAG);
+        }
+
+        KbdClassGlobals.PortList = NewList;
+        KbdClassGlobals.PortCount++;
+    }
+
+    Entry = &KbdClassGlobals.PortList[Index];
+    Entry->File = File;
+    Entry->Port = DeviceExtension;
+    Entry->Enabled = FALSE;
+    Entry->Free = FALSE;
+
+    DeviceExtension->UnitId = Index;
+    DeviceExtension->InPortList = TRUE;
+
+    /* IRPs sent to the grand master travel down any of the port stacks */
+    if (GrandMaster->Self->StackSize < DeviceExtension->Self->StackSize)
+        GrandMaster->Self->StackSize = DeviceExtension->Self->StackSize;
+
+    ExReleaseFastMutex(&KbdClassGlobals.Mutex);
+    return Status;
+}
+
+static
+PFILE_OBJECT
+KbdClassLeaveGrandMaster(
+    _In_ PKBDCLASS_DEVICE_EXTENSION DeviceExtension)
+{
+    PKBDCLASS_PORT_ENTRY Entry;
+    PFILE_OBJECT File = NULL;
+
+    ExAcquireFastMutex(&KbdClassGlobals.Mutex);
+
+    if (DeviceExtension->InPortList)
+    {
+        Entry = &KbdClassGlobals.PortList[DeviceExtension->UnitId];
+        File = Entry->File;
+        Entry->File = NULL;
+        Entry->Port = NULL;
+        Entry->Free = TRUE;
+        DeviceExtension->InPortList = FALSE;
+    }
+
+    ExReleaseFastMutex(&KbdClassGlobals.Mutex);
+    return File;
+}
+
+/**
+ * @brief Connects a new class device to its port and publishes it.
+ *
+ * In grand master mode the device joins the shared port list. Otherwise the
+ * device is its own class device and gets a DEVICEMAP\KeyboardClass value.
+ */
+static
+NTSTATUS
+KbdClassAddDeviceEx(
+    _In_ PKBDCLASS_DEVICE_EXTENSION DeviceExtension,
+    _In_opt_ PCWSTR FullDeviceName,
+    _In_opt_ PFILE_OBJECT File)
+{
+    PKBDCLASS_DEVICE_EXTENSION Owner;
+
+    if (KbdClassGlobals.ConnectOneClassToOnePort)
+        Owner = DeviceExtension;
+    else
+        Owner = KbdClassGlobals.GrandMaster;
+
+    DeviceExtension->ClassDevice = Owner->Self;
+
+    if (Owner != DeviceExtension)
+        return KbdClassJoinGrandMaster(DeviceExtension, File);
+
+    /* The connect result does not decide the outcome in this mode */
+    if (DeviceExtension != KbdClassGlobals.GrandMaster)
+        KbdClassSendConnect(DeviceExtension);
+
+    if (!FullDeviceName)
         return STATUS_SUCCESS;
 
-    if (ReadData->InputCount > 0)
+    return KbdClassWriteDeviceMap(DeviceExtension, FullDeviceName);
+}
+
+/* PNP ADD DEVICE *************************************************************/
+
+static
+NTSTATUS
+NTAPI
+KbdClassAddDevice(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject)
+{
+    PKBDCLASS_DEVICE_EXTENSION DeviceExtension;
+    PDEVICE_OBJECT DeviceObject;
+    POWER_STATE PowerState;
+    HANDLE KeyHandle;
+    ULONG AllowDisable;
+    PWSTR FullName;
+    NTSTATUS Status;
+
+    Status = KbdClassCreateClassObject(DriverObject, FALSE, &DeviceObject, &FullName);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    DeviceExtension = DeviceObject->DeviceExtension;
+    DeviceExtension->TopPort = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
+    if (!DeviceExtension->TopPort)
     {
-        SIZE_T NumberOfEntries;
-        PKEYBOARD_INPUT_DATA Destination;
+        KbdClassLogError(DriverObject,
+                         KBDCLASS_LOG_ATTACH_FAILED,
+                         0,
+                         STATUS_DEVICE_NOT_CONNECTED,
+                         0,
+                         NULL,
+                         0);
+        KbdClassDeleteClassObject(DeviceExtension);
+        if (FullName)
+            ExFreePoolWithTag(FullName, KBDCLASS_TAG);
+        return STATUS_DEVICE_NOT_CONNECTED;
+    }
 
-        if (DeviceObject->Flags & DO_BUFFERED_IO)
-            Destination = Irp->AssociatedIrp.SystemBuffer;
-        else if (DeviceObject->Flags & DO_DIRECT_IO)
-            Destination = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-        else
-            Destination = Irp->UserBuffer;
+    DeviceExtension->Pdo = PhysicalDeviceObject;
+    DeviceExtension->PnP = TRUE;
+    DeviceExtension->Started = FALSE;
+    DeviceExtension->DeviceState = PowerDeviceD0;
+    DeviceExtension->SystemState = PowerSystemWorking;
+    DeviceExtension->MinDeviceWake = PowerDeviceUnspecified;
+    DeviceExtension->MinSystemWake = PowerSystemUnspecified;
+    DeviceExtension->WaitWakeEnabled = FALSE;
+    DeviceExtension->WaitWakeIrp = NULL;
+    DeviceExtension->ExtraWaitWakeIrp = NULL;
+    DeviceExtension->WaitWakeCancelled = FALSE;
+    DeviceExtension->WaitWakeRemoveState = KBDCLASS_WW_ARMED;
+    DeviceExtension->LedIrp = NULL;
+    DeviceExtension->LedState = KBDCLASS_LEDS_IDLE;
+    DeviceExtension->AllowDisable = FALSE;
 
-        KeAcquireSpinLock(&ReadData->SpinLock, &OldIrql);
-        NumberOfEntries = MIN(
-            ReadData->InputCount,
-            IoGetCurrentIrpStackLocation(Irp)->Parameters.Read.Length / sizeof(KEYBOARD_INPUT_DATA));
+    PowerState.DeviceState = PowerDeviceD0;
+    PoSetPowerState(DeviceObject, DevicePowerState, PowerState);
 
-        Status = FillEntries(
-            DeviceObject,
-            ReadData->PortData,
-            Destination,
-            NumberOfEntries);
+    if (NT_SUCCESS(KbdClassOpenParametersKey(KEY_READ, &KeyHandle)))
+    {
+        if (NT_SUCCESS(KbdClassQueryRegistryUlong(KeyHandle, L"AllowDisable", &AllowDisable)))
+            DeviceExtension->AllowDisable = (AllowDisable != 0);
+
+        ZwClose(KeyHandle);
+    }
+
+    DeviceObject->Flags |= DO_POWER_PAGABLE;
+    DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+    Status = IoRegisterDeviceInterface(PhysicalDeviceObject,
+                                       &GUID_DEVINTERFACE_KEYBOARD,
+                                       NULL,
+                                       &DeviceExtension->InterfaceName);
+    if (NT_SUCCESS(Status))
+    {
+        Status = KbdClassAddDeviceEx(DeviceExtension, FullName, NULL);
+    }
+    else
+    {
+        IoDetachDevice(DeviceExtension->TopPort);
+        DeviceExtension->TopPort = NULL;
+        KbdClassDeleteClassObject(DeviceExtension);
+    }
+
+    if (FullName)
+        ExFreePoolWithTag(FullName, KBDCLASS_TAG);
+
+    return Status;
+}
+
+/* LEGACY PORTS ***************************************************************/
+
+static
+NTSTATUS
+NTAPI
+KbdClassCountPortValue(
+    _In_ PWSTR ValueName,
+    _In_ ULONG ValueType,
+    _In_ PVOID ValueData,
+    _In_ ULONG ValueLength,
+    _In_opt_ PVOID Context,
+    _In_opt_ PVOID EntryContext)
+{
+    UNREFERENCED_PARAMETER(ValueName);
+    UNREFERENCED_PARAMETER(ValueType);
+    UNREFERENCED_PARAMETER(ValueData);
+    UNREFERENCED_PARAMETER(ValueLength);
+    UNREFERENCED_PARAMETER(EntryContext);
+
+    (*(PULONG)Context)++;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Counts the values under HARDWARE\DEVICEMAP\<PortBaseName>.
+ */
+static
+VOID
+KbdClassCountPorts(
+    _In_ PCUNICODE_STRING PortBaseName,
+    _Out_ PULONG Count)
+{
+    RTL_QUERY_REGISTRY_TABLE Table[2];
+    NTSTATUS Status;
+
+    *Count = 0;
+    RtlZeroMemory(Table, sizeof(Table));
+    Table[0].QueryRoutine = KbdClassCountPortValue;
+
+    Status = RtlQueryRegistryValues(RTL_REGISTRY_DEVICEMAP | RTL_REGISTRY_OPTIONAL,
+                                    PortBaseName->Buffer,
+                                    Table,
+                                    Count,
+                                    NULL);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Counting legacy keyboard ports failed 0x%08lx\n", Status);
+}
+
+/**
+ * @brief Opens \Device\KeyboardPortN devices listed in the device map.
+ *
+ * @param[in,out] NextPort  First port number to try, receives the number
+ *                          after the last one tried.
+ */
+static
+NTSTATUS
+KbdClassAttachLegacyPorts(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ ULONG NoMemoryErrorValue,
+    _Inout_ PULONG NextPort)
+{
+    WCHAR PortBaseBuffer[KBDCLASS_BASE_NAME_CHARS];
+    PKBDCLASS_DEVICE_EXTENSION DeviceExtension;
+    UNICODE_STRING PortBase;
+    UNICODE_STRING PortName;
+    PDEVICE_OBJECT DeviceObject;
+    PFILE_OBJECT File;
+    PWSTR FullName;
+    ULONG PortsListed;
+    ULONG DumpData;
+    ULONG Index;
+    NTSTATUS Status;
+
+    RtlZeroMemory(PortBaseBuffer, sizeof(PortBaseBuffer));
+    PortBase.Buffer = PortBaseBuffer;
+    PortBase.Length = 0;
+    PortBase.MaximumLength = sizeof(PortBaseBuffer);
+
+    /* KeyboardClass becomes KeyboardPort */
+    RtlCopyUnicodeString(&PortBase, &KbdClassGlobals.BaseClassName);
+    if (PortBase.Length >= sizeof(L"Class") - sizeof(UNICODE_NULL))
+        PortBase.Length -= sizeof(L"Class") - sizeof(UNICODE_NULL);
+    else
+        PortBase.Length = 0;
+
+    RtlAppendUnicodeToString(&PortBase, L"Port");
+    if (PortBase.MaximumLength < PortBase.Length + sizeof(UNICODE_NULL))
+        return STATUS_UNSUCCESSFUL;
+
+    PortBase.Buffer[PortBase.Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    PortName.Length = 0;
+    PortName.MaximumLength = PortBase.Length + sizeof(L"\\Device\\") + sizeof(WCHAR);
+    PortName.Buffer = ExAllocatePool2(POOL_FLAG_PAGED, PortName.MaximumLength, KBDCLASS_TAG);
+    if (!PortName.Buffer)
+    {
+        DumpData = PortName.MaximumLength;
+        KbdClassLogError(DriverObject,
+                         KBDCLASS_LOG_INSUFFICIENT_RESOURCES,
+                         NoMemoryErrorValue,
+                         STATUS_UNSUCCESSFUL,
+                         1,
+                         &DumpData,
+                         0);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    RtlAppendUnicodeToString(&PortName, L"\\Device\\");
+    RtlAppendUnicodeStringToString(&PortName, &PortBase);
+    RtlAppendUnicodeToString(&PortName, L"0");
+
+    KbdClassCountPorts(&PortBase, &PortsListed);
+
+    for (Index = *NextPort;
+         Index < KbdClassGlobals.PortsServiced && Index < PortsListed;
+         Index++)
+    {
+        PortName.Buffer[PortName.Length / sizeof(WCHAR) - 1] = (WCHAR)(L'0' + Index);
+
+        Status = KbdClassCreateClassObject(DriverObject, TRUE, &DeviceObject, &FullName);
+        if (!NT_SUCCESS(Status))
+        {
+            KbdClassLogError(DriverObject,
+                             KBDCLASS_LOG_INSUFFICIENT_RESOURCES,
+                             KBDCLASS_ERRID_LEGACY_PORT,
+                             Status,
+                             0,
+                             NULL,
+                             0);
+            continue;
+        }
+
+        DeviceExtension = DeviceObject->DeviceExtension;
+        DeviceExtension->PnP = FALSE;
+
+        Status = IoGetDeviceObjectPointer(&PortName,
+                                          FILE_READ_ATTRIBUTES,
+                                          &File,
+                                          &DeviceExtension->TopPort);
+        if (!NT_SUCCESS(Status))
+        {
+            KbdClassDeleteClassObject(DeviceExtension);
+            if (FullName)
+                ExFreePoolWithTag(FullName, KBDCLASS_TAG);
+            continue;
+        }
+
+        DeviceObject->StackSize = DeviceExtension->TopPort->StackSize + 1;
+        DeviceExtension->LegacyFile = File;
+
+        Status = KbdClassAddDeviceEx(DeviceExtension, FullName, File);
+        DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+        if (FullName)
+            ExFreePoolWithTag(FullName, KBDCLASS_TAG);
 
         if (NT_SUCCESS(Status))
         {
-            if (ReadData->InputCount > NumberOfEntries)
-            {
-                RtlMoveMemory(
-                    &ReadData->PortData[0],
-                    &ReadData->PortData[NumberOfEntries],
-                    (ReadData->InputCount - NumberOfEntries) * sizeof(KEYBOARD_INPUT_DATA));
-            }
-
-            ReadData->InputCount -= NumberOfEntries;
-
-            Irp->IoStatus.Information = NumberOfEntries * sizeof(KEYBOARD_INPUT_DATA);
-        }
-
-        /* Go to next packet and complete this request */
-        Irp->IoStatus.Status = Status;
-
-        (VOID)IoSetCancelRoutine(Irp, NULL);
-        IoCompleteRequest(Irp, IO_KEYBOARD_INCREMENT);
-        ReadData->PendingIrp = NULL;
-        KeReleaseSpinLock(&ReadData->SpinLock, OldIrql);
-
-        return Status;
-    }
-
-    IoAcquireCancelSpinLock(&OldIrql);
-    if (Irp->Cancel)
-    {
-        ReadData->PendingIrp = NULL;
-        Status = STATUS_CANCELLED;
-    }
-    else
-    {
-        IoMarkIrpPending(Irp);
-        ReadData->PendingIrp = Irp;
-        (VOID)IoSetCancelRoutine(Irp, ClassCancelRoutine);
-        Status = STATUS_PENDING;
-    }
-    IoReleaseCancelSpinLock(OldIrql);
-    return Status;
-}
-
-static NTSTATUS NTAPI
-ClassPnp(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PPORT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    IO_STATUS_BLOCK Iosb;
-    NTSTATUS Status;
-
-    switch (IrpSp->MinorFunction)
-    {
-        case IRP_MN_START_DEVICE:
-            if (IoForwardIrpSynchronously(DeviceExtension->LowerDevice, Irp))
-            {
-                Status = Irp->IoStatus.Status;
-            }
-            else
-            {
-                Status = STATUS_UNSUCCESSFUL;
-            }
-
-            if (NT_SUCCESS(Status))
-            {
-                InitializeObjectAttributes(&ObjectAttributes,
-                                           &DeviceExtension->InterfaceName,
-                                           OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                                           NULL,
-                                           NULL);
-
-                Status = ZwOpenFile(&DeviceExtension->FileHandle,
-                                    FILE_READ_DATA,
-                                    &ObjectAttributes,
-                                    &Iosb,
-                                    0,
-                                    0);
-                if (!NT_SUCCESS(Status))
-                    DeviceExtension->FileHandle = NULL;
-            }
-            else
-                DeviceExtension->FileHandle = NULL;
-            if (DeviceExtension->InterfaceName.Length != 0)
-                IoSetDeviceInterfaceState(&DeviceExtension->InterfaceName, TRUE);
-            Irp->IoStatus.Status = Status;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return Status;
-
-        case IRP_MN_STOP_DEVICE:
-            if (DeviceExtension->FileHandle)
-            {
-                ZwClose(DeviceExtension->FileHandle);
-                DeviceExtension->FileHandle = NULL;
-            }
-            Status = STATUS_SUCCESS;
-            break;
-
-        case IRP_MN_REMOVE_DEVICE:
-            if (DeviceExtension->InterfaceName.Length != 0)
-                IoSetDeviceInterfaceState(&DeviceExtension->InterfaceName, FALSE);
-            if (DeviceExtension->FileHandle)
-            {
-                ZwClose(DeviceExtension->FileHandle);
-                DeviceExtension->FileHandle = NULL;
-            }
-            IoSkipCurrentIrpStackLocation(Irp);
-            Status = IoCallDriver(DeviceExtension->LowerDevice, Irp);
-            DestroyPortDriver(DeviceObject);
-            return Status;
-
-        default:
-            Status = Irp->IoStatus.Status;
-            break;
-    }
-
-    Irp->IoStatus.Status = Status;
-    if (NT_SUCCESS(Status) || Status == STATUS_NOT_SUPPORTED)
-    {
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(DeviceExtension->LowerDevice, Irp);
-    }
-    else
-    {
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return Status;
-    }
-}
-
-static VOID NTAPI
-ClassStartIo(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PCLASS_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-
-    TRACE_(CLASS_NAME, "ClassStartIo(DeviceObject %p, Irp %p)\n", DeviceObject, Irp);
-
-    ASSERT(DeviceExtension->Common.IsClassDO);
-
-    HandleReadIrp(DeviceObject, DeviceExtension->ReadData, Irp);
-}
-
-static VOID NTAPI
-SearchForLegacyDrivers(
-    IN PDRIVER_OBJECT DriverObject,
-    IN PVOID Context, /* PCLASS_DRIVER_EXTENSION */
-    IN ULONG Count)
-{
-    UNICODE_STRING DeviceMapKeyU = RTL_CONSTANT_STRING(L"\\REGISTRY\\MACHINE\\HARDWARE\\DEVICEMAP");
-    PCLASS_DRIVER_EXTENSION DriverExtension;
-    UNICODE_STRING PortBaseName = { 0, 0, NULL };
-    PKEY_VALUE_BASIC_INFORMATION KeyValueInformation = NULL;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    HANDLE hDeviceMapKey = (HANDLE)-1;
-    HANDLE hPortKey = (HANDLE)-1;
-    ULONG Index = 0;
-    ULONG Size, ResultLength;
-    NTSTATUS Status;
-
-    TRACE_(CLASS_NAME, "SearchForLegacyDrivers(%p %p %lu)\n",
-        DriverObject, Context, Count);
-
-    if (Count != 1)
-        return;
-    DriverExtension = (PCLASS_DRIVER_EXTENSION)Context;
-
-    /* Create port base name, by replacing Class by Port at the end of the class base name */
-    Status = DuplicateUnicodeString(
-        RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE,
-        &DriverExtension->DeviceBaseName,
-        &PortBaseName);
-    if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "DuplicateUnicodeString() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-    PortBaseName.Length -= (sizeof(L"Class") - sizeof(UNICODE_NULL));
-    RtlAppendUnicodeToString(&PortBaseName, L"Port");
-
-    /* Allocate memory */
-    Size = sizeof(KEY_VALUE_BASIC_INFORMATION) + MAX_PATH;
-    KeyValueInformation = ExAllocatePoolWithTag(PagedPool, Size, CLASS_TAG);
-    if (!KeyValueInformation)
-    {
-        WARN_(CLASS_NAME, "ExAllocatePoolWithTag() failed\n");
-        Status = STATUS_NO_MEMORY;
-        goto cleanup;
-    }
-
-    /* Open HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP */
-    InitializeObjectAttributes(&ObjectAttributes, &DeviceMapKeyU, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-    Status = ZwOpenKey(&hDeviceMapKey, 0, &ObjectAttributes);
-    if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
-    {
-        INFO_(CLASS_NAME, "HKLM\\HARDWARE\\DEVICEMAP is non-existent\n");
-        Status = STATUS_SUCCESS;
-        goto cleanup;
-    }
-    else if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "ZwOpenKey() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-
-    /* Open sub key */
-    InitializeObjectAttributes(&ObjectAttributes, &PortBaseName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, hDeviceMapKey, NULL);
-    Status = ZwOpenKey(&hPortKey, KEY_QUERY_VALUE, &ObjectAttributes);
-    if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
-    {
-        INFO_(CLASS_NAME, "HKLM\\HARDWARE\\DEVICEMAP\\%wZ is non-existent\n", &PortBaseName);
-        Status = STATUS_SUCCESS;
-        goto cleanup;
-    }
-    else if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "ZwOpenKey() failed with status 0x%08lx\n", Status);
-        goto cleanup;
-    }
-
-    /* Read each value name */
-    while (ZwEnumerateValueKey(hPortKey, Index++, KeyValueBasicInformation, KeyValueInformation, Size, &ResultLength) == STATUS_SUCCESS)
-    {
-        UNICODE_STRING PortName;
-        PDEVICE_OBJECT PortDeviceObject = NULL;
-        PFILE_OBJECT FileObject = NULL;
-
-        PortName.Length = PortName.MaximumLength = (USHORT)KeyValueInformation->NameLength;
-        PortName.Buffer = KeyValueInformation->Name;
-
-        /* Open the device object pointer */
-        Status = IoGetDeviceObjectPointer(&PortName, FILE_READ_ATTRIBUTES, &FileObject, &PortDeviceObject);
-        if (!NT_SUCCESS(Status))
-        {
-            WARN_(CLASS_NAME, "IoGetDeviceObjectPointer(%wZ) failed with status 0x%08lx\n", &PortName, Status);
+            InsertTailList(&KbdClassGlobals.LegacyDevices, &DeviceExtension->LegacyLink);
             continue;
         }
-        INFO_(CLASS_NAME, "Legacy driver found\n");
 
-        Status = ClassAddDevice(DriverObject, PortDeviceObject);
-        if (!NT_SUCCESS(Status))
-        {
-            /* FIXME: Log the error */
-            WARN_(CLASS_NAME, "ClassAddDevice() failed with status 0x%08lx\n", Status);
-        }
-
-        ObDereferenceObject(FileObject);
+        KbdClassLeaveGrandMaster(DeviceExtension);
+        ObDereferenceObject(File);
+        KbdClassDeleteClassObject(DeviceExtension);
     }
 
-cleanup:
-    if (KeyValueInformation != NULL)
-        ExFreePoolWithTag(KeyValueInformation, CLASS_TAG);
-    if (hDeviceMapKey != (HANDLE)-1)
-        ZwClose(hDeviceMapKey);
-    if (hPortKey != (HANDLE)-1)
-        ZwClose(hPortKey);
+    *NextPort = Index;
+    ExFreePoolWithTag(PortName.Buffer, KBDCLASS_TAG);
+    return STATUS_SUCCESS;
 }
 
-/*
- * Standard DriverEntry method.
- */
-NTSTATUS NTAPI
-DriverEntry(
-    IN PDRIVER_OBJECT DriverObject,
-    IN PUNICODE_STRING RegistryPath)
+static
+VOID
+NTAPI
+KbdClassFindMorePorts(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ PVOID Context,
+    _In_ ULONG Count)
 {
-    PCLASS_DRIVER_EXTENSION DriverExtension;
+    ULONG NextPort = KbdClassGlobals.LegacyPortsFound;
+
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Count);
+
+    if (NT_SUCCESS(KbdClassAttachLegacyPorts(DriverObject, KBDCLASS_ERRID_LEGACY_PORT, &NextPort)))
+        KbdClassGlobals.LegacyPortsFound = NextPort;
+}
+
+/* DRIVER ENTRY ***************************************************************/
+
+NTSTATUS
+NTAPI
+DriverEntry(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath)
+{
+    PKBDCLASS_DEVICE_EXTENSION DeviceExtension;
+    PDEVICE_OBJECT DeviceObject;
+    PLIST_ENTRY Entry;
+    PWSTR FullName;
+    ULONG NextPort = 0;
+    ULONG DumpData;
     NTSTATUS Status;
 
-    Status = IoAllocateDriverObjectExtension(
-        DriverObject,
-        DriverObject,
-        sizeof(CLASS_DRIVER_EXTENSION),
-        (PVOID*)&DriverExtension);
-    if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "IoAllocateDriverObjectExtension() failed with status 0x%08lx\n", Status);
-        return Status;
-    }
-    RtlZeroMemory(DriverExtension, sizeof(CLASS_DRIVER_EXTENSION));
+    ExInitializeFastMutex(&KbdClassGlobals.Mutex);
+    InitializeListHead(&KbdClassGlobals.LegacyDevices);
 
-    Status = DuplicateUnicodeString(
-        RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE,
-        RegistryPath,
-        &DriverExtension->RegistryPath);
-    if (!NT_SUCCESS(Status))
-    {
-        WARN_(CLASS_NAME, "DuplicateUnicodeString() failed with status 0x%08lx\n", Status);
-        return Status;
-    }
+    KbdClassGlobals.BaseClassName.Buffer = KbdClassGlobals.BaseClassNameBuffer;
+    KbdClassGlobals.BaseClassName.Length = 0;
+    KbdClassGlobals.BaseClassName.MaximumLength = sizeof(KbdClassGlobals.BaseClassNameBuffer) -
+                                                  sizeof(UNICODE_NULL);
 
-    Status = ReadRegistryEntries(RegistryPath, DriverExtension);
-    if (!NT_SUCCESS(Status))
+    KbdClassGlobals.RegistryPath.Length = 0;
+    KbdClassGlobals.RegistryPath.MaximumLength = RegistryPath->Length + sizeof(UNICODE_NULL);
+    KbdClassGlobals.RegistryPath.Buffer = ExAllocatePool2(POOL_FLAG_PAGED,
+                                                          KbdClassGlobals.RegistryPath.MaximumLength,
+                                                          KBDCLASS_TAG);
+    if (!KbdClassGlobals.RegistryPath.Buffer)
     {
-        WARN_(CLASS_NAME, "ReadRegistryEntries() failed with status 0x%08lx\n", Status);
-        return Status;
+        DumpData = KbdClassGlobals.RegistryPath.MaximumLength;
+        KbdClassLogError(DriverObject,
+                         KBDCLASS_LOG_INSUFFICIENT_RESOURCES,
+                         KBDCLASS_ERRID_REGISTRY_PATH,
+                         STATUS_UNSUCCESSFUL,
+                         1,
+                         &DumpData,
+                         0);
+        return STATUS_UNSUCCESSFUL;
     }
 
-    if (DriverExtension->ConnectMultiplePorts == 1)
+    RtlCopyUnicodeString(&KbdClassGlobals.RegistryPath, RegistryPath);
+    KbdClassGlobals.RegistryPath.Buffer[KbdClassGlobals.RegistryPath.Length / sizeof(WCHAR)] =
+        UNICODE_NULL;
+
+    KbdClassReadConfiguration();
+
+    if (!KbdClassGlobals.ConnectOneClassToOnePort)
     {
-        Status = CreateClassDeviceObject(
-            DriverObject,
-            &DriverExtension->MainClassDeviceObject);
+        Status = KbdClassCreateClassObject(DriverObject, TRUE, &DeviceObject, &FullName);
         if (!NT_SUCCESS(Status))
-        {
-            WARN_(CLASS_NAME, "CreateClassDeviceObject() failed with status 0x%08lx\n", Status);
-            return Status;
-        }
+            goto Failure;
+
+        DeviceExtension = DeviceObject->DeviceExtension;
+        DeviceExtension->PnP = FALSE;
+        KbdClassGlobals.GrandMaster = DeviceExtension;
+
+        KbdClassAddDeviceEx(DeviceExtension, FullName, NULL);
+
+        if (FullName)
+            ExFreePoolWithTag(FullName, KBDCLASS_TAG);
+
+        DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
     }
 
-    DriverObject->DriverExtension->AddDevice = ClassAddDevice;
-    DriverObject->DriverUnload = DriverUnload;
+    Status = KbdClassAttachLegacyPorts(DriverObject, KBDCLASS_ERRID_CREATE_DEVICE, &NextPort);
+    if (!NT_SUCCESS(Status))
+        goto Failure;
 
-    DriverObject->MajorFunction[IRP_MJ_CREATE]         = ClassCreate;
-    DriverObject->MajorFunction[IRP_MJ_CLOSE]          = ClassClose;
-    DriverObject->MajorFunction[IRP_MJ_CLEANUP]        = ClassCleanup;
-    DriverObject->MajorFunction[IRP_MJ_READ]           = ClassRead;
-    DriverObject->MajorFunction[IRP_MJ_POWER]          = ClassPower;
-    DriverObject->MajorFunction[IRP_MJ_PNP]            = ClassPnp;
-    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ClassDeviceControl;
-    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = ForwardIrpAndForget;
-    DriverObject->DriverStartIo                        = ClassStartIo;
+    for (Entry = KbdClassGlobals.LegacyDevices.Flink;
+         Entry != &KbdClassGlobals.LegacyDevices;
+         Entry = Entry->Flink)
+    {
+        KbdClassGlobals.LegacyPortsFound++;
+    }
 
-    /* We will detect the legacy devices later */
-    IoRegisterDriverReinitialization(
-        DriverObject,
-        SearchForLegacyDrivers,
-        DriverExtension);
+    IoRegisterDriverReinitialization(DriverObject, KbdClassFindMorePorts, NULL);
+
+    DriverObject->MajorFunction[IRP_MJ_CREATE] = KbdClassCreate;
+    DriverObject->MajorFunction[IRP_MJ_CLOSE] = KbdClassClose;
+    DriverObject->MajorFunction[IRP_MJ_CLEANUP] = KbdClassCleanup;
+    DriverObject->MajorFunction[IRP_MJ_READ] = KbdClassRead;
+    DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = KbdClassFlush;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = KbdClassDeviceControl;
+    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = KbdClassPassThrough;
+    DriverObject->MajorFunction[IRP_MJ_PNP] = KbdClassPnp;
+    DriverObject->MajorFunction[IRP_MJ_POWER] = KbdClassPower;
+    DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = KbdClassSystemControl;
+    DriverObject->DriverExtension->AddDevice = KbdClassAddDevice;
 
     return STATUS_SUCCESS;
+
+Failure:
+    if (KbdClassGlobals.PortList)
+    {
+        ExFreePoolWithTag(KbdClassGlobals.PortList, KBDCLASS_TAG);
+        KbdClassGlobals.PortList = NULL;
+        KbdClassGlobals.PortCount = 0;
+    }
+
+    if (KbdClassGlobals.GrandMaster)
+    {
+        KbdClassDeleteClassObject(KbdClassGlobals.GrandMaster);
+        KbdClassGlobals.GrandMaster = NULL;
+    }
+
+    ExFreePoolWithTag(KbdClassGlobals.RegistryPath.Buffer, KBDCLASS_TAG);
+    KbdClassGlobals.RegistryPath.Buffer = NULL;
+    return Status;
 }
