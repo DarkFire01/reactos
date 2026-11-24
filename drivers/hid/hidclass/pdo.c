@@ -93,45 +93,66 @@ HidClassPDO_GetReportDescriptionByReportID(
     return NULL;
 }
 
+/* "HID\", "&Col" with up to 8 hex digits and the terminator of one ID */
+#define HIDCLASS_ID_EXTRA_CHARS     17
+
+/* The IDs the class adds after the ones taken from the bus */
+#define HIDCLASS_CLASS_ID_CHARS     64
+
 static
-PCWSTR
+PWSTR
 HidClassPDO_AppendInterfaceNumber(
     _In_ PWSTR HardwareIds,
     _In_ ULONG InterfaceNumber,
     _In_ BOOLEAN MultiString)
 {
-    ULONG Size = 0;
-    PWSTR p, p2, Buffer;
+    SIZE_T Size = 1;
+    PWSTR p, p2, Buffer, Name;
+
+    if (!HardwareIds)
+        return NULL;
 
     for (p = HardwareIds; *p; p += wcslen(p) + 1)
     {
-        Size += wcslen(p) + 9;
+        Size += wcslen(p) + HIDCLASS_ID_EXTRA_CHARS;
         if (!MultiString)
             break;
     }
 
     Buffer = p2 = ExAllocatePoolWithTag(NonPagedPool, Size * sizeof(WCHAR), HIDCLASS_TAG);
     if (!Buffer)
-        return NULL;
-
-    for (p = HardwareIds; *p; )
     {
-        RtlCopyMemory(p2, L"HID", 6);
-        p2 += 3;
-        while (*p != L'\\')
-            ++p;
-        for (; *p != UNICODE_NULL; ++p, ++p2)
-            *p2 = *p;
+        ExFreePool(HardwareIds);
+        return NULL;
+    }
+
+    for (p = HardwareIds; *p; p += wcslen(p) + 1)
+    {
+        /* The enumerator becomes HID, an ID without one keeps all of its name */
+        Name = wcschr(p, L'\\');
+        if (!Name)
+        {
+            RtlCopyMemory(p2, L"HID\\", 4 * sizeof(WCHAR));
+            p2 += 4;
+            Name = p;
+        }
+        else
+        {
+            RtlCopyMemory(p2, L"HID", 3 * sizeof(WCHAR));
+            p2 += 3;
+        }
+
+        for (; *Name != UNICODE_NULL; ++Name, ++p2)
+            *p2 = *Name;
+
         if (InterfaceNumber > 0)
             p2 += _swprintf(p2, L"&Col%02x", InterfaceNumber);
+
+        *p2++ = UNICODE_NULL;
         if (!MultiString)
             break;
-        *p2 = UNICODE_NULL;
-        ++p2;
-        ++p;
     }
     *p2 = UNICODE_NULL;
-    ++p2;
 
     ExFreePool(HardwareIds);
     return Buffer;
@@ -172,6 +193,8 @@ HidClassPDO_HandleQueryDeviceId(
     // get buffer
     //
     Irp->IoStatus.Information = (ULONG_PTR)HidClassPDO_AppendInterfaceNumber((PWSTR)Irp->IoStatus.Information, PDODeviceExtension->CollectionNumber, FALSE);
+    if (!Irp->IoStatus.Information)
+        return STATUS_INSUFFICIENT_RESOURCES;
 
     //
     // store result
@@ -186,7 +209,8 @@ HidClassPDO_HandleQueryHardwareId(
 {
     NTSTATUS Status;
     PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
-    WCHAR Buffer[200];
+    PWSTR BusIds;
+    PWSTR Buffer;
     ULONG Offset = 0;
     LPWSTR Ptr;
     PHIDP_COLLECTION_DESC CollectionDescription;
@@ -217,17 +241,38 @@ HidClassPDO_HandleQueryHardwareId(
     //
     // append collection number (if required)
     //
-    Irp->IoStatus.Information = (ULONG_PTR)HidClassPDO_AppendInterfaceNumber((PWSTR)Irp->IoStatus.Information, PDODeviceExtension->CollectionNumber, TRUE);
-    for (Ptr = (PWSTR)Irp->IoStatus.Information; *Ptr; Ptr += wcslen(Ptr) + 1)
+    BusIds = HidClassPDO_AppendInterfaceNumber((PWSTR)Irp->IoStatus.Information, PDODeviceExtension->CollectionNumber, TRUE);
+    Irp->IoStatus.Information = 0;
+    if (!BusIds)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    for (Ptr = BusIds; *Ptr; Ptr += wcslen(Ptr) + 1)
         ;
-    Offset = Ptr - (PCWSTR)Irp->IoStatus.Information;
-    RtlCopyMemory(Buffer, (PCWSTR)Irp->IoStatus.Information, Offset * sizeof(WCHAR));
+    Offset = (ULONG)(Ptr - BusIds);
+
+    /* The class IDs follow the bus ones in the same list */
+    Buffer = ExAllocatePoolWithTag(NonPagedPool,
+                                   (Offset + HIDCLASS_CLASS_ID_CHARS + 1) * sizeof(WCHAR),
+                                   HIDCLASS_TAG);
+    if (!Buffer)
+    {
+        ExFreePoolWithTag(BusIds, HIDCLASS_TAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlCopyMemory(Buffer, BusIds, Offset * sizeof(WCHAR));
+    ExFreePoolWithTag(BusIds, HIDCLASS_TAG);
 
     //
     // get collection description
     //
     CollectionDescription = HidClassPDO_GetCollectionDescription(&PDODeviceExtension->Common.DeviceDescription, PDODeviceExtension->CollectionNumber);
     ASSERT(CollectionDescription);
+    if (!CollectionDescription)
+    {
+        ExFreePoolWithTag(Buffer, HIDCLASS_TAG);
+        return STATUS_UNSUCCESSFUL;
+    }
 
     if (CollectionDescription->UsagePage == HID_USAGE_PAGE_GENERIC)
     {
@@ -281,33 +326,10 @@ HidClassPDO_HandleQueryHardwareId(
     Offset += _swprintf(&Buffer[Offset], L"HID_DEVICE") + 1;
 
     //
-    // free old buffer
-    //
-    ExFreePoolWithTag((PVOID)Irp->IoStatus.Information, 0);
-
-    //
-    // allocate buffer
-    //
-    Ptr = ExAllocatePoolWithTag(NonPagedPool, (Offset + 1) * sizeof(WCHAR), HIDCLASS_TAG);
-    if (!Ptr)
-    {
-        //
-        // no memory
-        //
-        Irp->IoStatus.Information = 0;
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    //
-    // copy buffer
-    //
-    RtlCopyMemory(Ptr, Buffer, Offset * sizeof(WCHAR));
-    Ptr[Offset] = UNICODE_NULL;
-
-    //
     // store result
     //
-    Irp->IoStatus.Information = (ULONG_PTR)Ptr;
+    Buffer[Offset] = UNICODE_NULL;
+    Irp->IoStatus.Information = (ULONG_PTR)Buffer;
     return STATUS_SUCCESS;
 }
 
