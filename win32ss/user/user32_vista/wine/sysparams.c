@@ -288,6 +288,33 @@ BOOL WINAPI GetDisplayAutoRotationPreferences( ORIENTATION_PREFERENCE *orientati
 /***********************************************************************
  *              SetDisplayConfig (USER32.@)
  */
+#ifdef __REACTOS__
+LONG
+NTAPI
+NtUserSetDisplayConfig(
+    _In_ UINT32 NumPathArrayElements,
+    _In_reads_opt_(NumPathArrayElements) DISPLAYCONFIG_PATH_INFO *pPathArray,
+    _In_ UINT32 NumModeInfoArrayElements,
+    _In_reads_opt_(NumModeInfoArrayElements) DISPLAYCONFIG_MODE_INFO *pModeInfoArray,
+    _In_ UINT32 Flags);
+
+/* win32k checks and carries out the request, user32 only turns its status into a Win32 error */
+LONG
+WINAPI
+SetDisplayConfig(
+    _In_ UINT32 numPathArrayElements,
+    _In_reads_opt_(numPathArrayElements) DISPLAYCONFIG_PATH_INFO *pathArray,
+    _In_ UINT32 numModeInfoArrayElements,
+    _In_reads_opt_(numModeInfoArrayElements) DISPLAYCONFIG_MODE_INFO *modeInfoArray,
+    _In_ UINT32 flags)
+{
+    return RtlNtStatusToDosError(NtUserSetDisplayConfig(numPathArrayElements,
+                                                        pathArray,
+                                                        numModeInfoArrayElements,
+                                                        modeInfoArray,
+                                                        flags));
+}
+#else
 LONG WINAPI SetDisplayConfig(UINT32 path_info_count, DISPLAYCONFIG_PATH_INFO *path_info, UINT32 mode_info_count,
         DISPLAYCONFIG_MODE_INFO *mode_info, UINT32 flags)
 {
@@ -296,6 +323,7 @@ LONG WINAPI SetDisplayConfig(UINT32 path_info_count, DISPLAYCONFIG_PATH_INFO *pa
 
     return ERROR_SUCCESS;
 }
+#endif
 
 /**********************************************************************
  *              SetDisplayAutoRotationPreferences (USER32.@)

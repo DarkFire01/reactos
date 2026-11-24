@@ -8,6 +8,7 @@
 
 #include <win32k.h>
 #include <reactos/rddm/rddm_private.h>
+#include "../../gdi/eng/dispcfg.h"
 DBG_DEFAULT_CHANNEL(UserDisplay);
 
 /* DPRINT1 for what bring-up logs need to show in release builds too */
@@ -2161,5 +2162,1229 @@ NtUserDisplayConfigGetDeviceInfo(
     ExFreePoolWithTag(pCapture, USERTAG_DISPLAYCONFIG);
 
     TRACE("NtUserDisplayConfigGetDeviceInfo(%ld) -> 0x%lx\n", Header.Type, Status);
+    return Status;
+}
+
+/* SetDisplayConfig **********************************************************/
+
+/* The most a SetDisplayConfig caller may hand in, as on Windows */
+#define USERP_SDC_MAX_PATHS             1024
+#define USERP_SDC_MAX_MODES             2048
+
+/*
+ * Flags SetDisplayConfig takes beyond the documented ones. The split target index flag marks a
+ * caller with 32 bit source mode indexes but split 16 bit target ones, which win32k turns into a
+ * virtual mode aware request. The presenter view flags are only honored for explorer.exe.
+ */
+#define USERP_SDC_SPLIT_TARGET_INDEX    0x00004000
+#define USERP_SDC_SPLIT_INDEX_MASK      (USERP_SDC_SPLIT_TARGET_INDEX | SDC_VIRTUAL_MODE_AWARE)
+#define USERP_SDC_PRESENTER_ENTER       0x40000000
+#define USERP_SDC_PRESENTER_LEAVE       0x80000000
+#define USERP_SDC_PRESENTER_MASK        (USERP_SDC_PRESENTER_ENTER | USERP_SDC_PRESENTER_LEAVE)
+#define USERP_SDC_LOW_FLAGS             0x0000FFFF
+#define USERP_SDC_TOPOLOGY_MASK         (SDC_USE_DATABASE_CURRENT | SDC_TOPOLOGY_SUPPLIED)
+
+/* The path flags a virtual mode aware caller may set */
+#define USERP_SDC_AWARE_PATH_FLAGS      (DISPLAYCONFIG_PATH_ACTIVE | \
+                                         DISPLAYCONFIG_PATH_PREFERRED_UNSCALED | \
+                                         DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE)
+
+/* How the paths of a request use one entry of its mode array */
+typedef struct _USERP_SDC_MODE_USE
+{
+    LUID AdapterLuid;
+    ULONG Id;
+    ULONG cUses;
+    BOOLEAN bPrimary;           /* a source mode at the desktop origin */
+    BOOLEAN bSecondary;         /* a source mode anywhere else */
+    BOOLEAN bTarget;
+    BOOLEAN bDesktopImage;
+    BOOLEAN bVirtualTopology;   /* a path of the source runs a virtual topology */
+    BOOLEAN bPhysicalTopology;  /* a path of the source does not */
+    BOOLEAN bLastVirtual;       /* the last path that used the entry runs a virtual topology */
+    BOOLEAN bUnscaled;          /* a path of the source asked for DISPLAYCONFIG_PATH_PREFERRED_UNSCALED */
+    BOOLEAN bRotated;           /* a path of the source turns it by 90 or 270 degrees */
+    BOOLEAN bCloneMatched;      /* another source mode of the same clone already counted it */
+} USERP_SDC_MODE_USE, *PUSERP_SDC_MODE_USE;
+
+/** @brief Does the registry turn this kind of display setting change off? */
+static
+BOOLEAN
+UserpIsSettingChangeDisabled(
+    _In_ PCWSTR pszKey)
+{
+    RTL_QUERY_REGISTRY_TABLE QueryTable[2];
+    ULONG DisableAll = 0;
+    ULONG Default = 0;
+
+    RtlZeroMemory(QueryTable, sizeof(QueryTable));
+    QueryTable[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+    QueryTable[0].Name = L"DisableAll";
+    QueryTable[0].EntryContext = &DisableAll;
+    QueryTable[0].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
+    QueryTable[0].DefaultData = &Default;
+    QueryTable[0].DefaultLength = sizeof(Default);
+
+    RtlQueryRegistryValues(RTL_REGISTRY_CONTROL, pszKey, QueryTable, NULL, NULL);
+    return (DisableAll != 0);
+}
+
+/** @brief A 16 bit mode index of a virtual mode aware caller, widened to the 32 bit form. */
+static
+ULONG
+UserpWideModeIndex(
+    _In_ ULONG Index)
+{
+    return (Index == DISPLAYCONFIG_PATH_SOURCE_MODE_IDX_INVALID) ? DISPLAYCONFIG_PATH_MODE_IDX_INVALID : Index;
+}
+
+/** @brief Count one more path on an entry of the mode array. */
+static
+VOID
+UserpUseMode(
+    _Inout_ PUSERP_SDC_MODE_USE pUse,
+    _In_ const DISPLAYCONFIG_MODE_INFO *pMode,
+    _In_ BOOLEAN bVirtualTopology)
+{
+    pUse->cUses++;
+    pUse->AdapterLuid = pMode->adapterId;
+    pUse->Id = pMode->id;
+    pUse->bLastVirtual = bVirtualTopology;
+}
+
+/**
+ * @brief Gives every path of a source the source mode index of none once one active path of it
+ *        names no source mode at all, the way Windows keeps a virtual mode aware clone coherent.
+ */
+static
+VOID
+UserpUnifyCloneSources(
+    _In_ ULONG cPaths,
+    _Inout_updates_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths)
+{
+    ULONG i, j;
+
+    for (i = 0; i < cPaths; i++)
+    {
+        if (!(pPaths[i].flags & DISPLAYCONFIG_PATH_ACTIVE) ||
+            (pPaths[i].sourceInfo.modeInfoIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID))
+        {
+            continue;
+        }
+
+        for (j = 0; j < cPaths; j++)
+        {
+            if ((pPaths[j].sourceInfo.id == pPaths[i].sourceInfo.id) &&
+                RtlEqualLuid(&pPaths[j].sourceInfo.adapterId, &pPaths[i].sourceInfo.adapterId))
+            {
+                pPaths[j].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+            }
+        }
+    }
+}
+
+/**
+ * @brief Checks one path of a supplied display configuration and counts the modes it uses.
+ *
+ * @param bCheckTargets Ask dxgkrnl whether the target exists. FALSE without a WDDM desktop.
+ * @param pbUnplaced Set to TRUE when the path leaves its source position to win32k.
+ */
+static
+NTSTATUS
+UserpValidateSdcPath(
+    _In_ ULONG iPath,
+    _Inout_updates_(iPath + 1) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _Inout_updates_opt_(cModes) PUSERP_SDC_MODE_USE pUses,
+    _In_ BOOLEAN bAware,
+    _In_ BOOLEAN bCheckTargets,
+    _Inout_ PBOOLEAN pbUnplaced)
+{
+    DISPLAYCONFIG_PATH_INFO *pPath = &pPaths[iPath];
+    const DISPLAYCONFIG_MODE_INFO *pSource = NULL;
+    const DISPLAYCONFIG_MODE_INFO *pTarget = NULL;
+    const DISPLAYCONFIG_MODE_INFO *pDesktop = NULL;
+    const DISPLAYCONFIG_DESKTOP_IMAGE_INFO *pImage;
+    PUSERP_SDC_MODE_USE pUse;
+    DISPLAYCONFIG_RATIONAL VSync;
+    BOOLEAN bNoVirtualModes = TRUE;
+    BOOLEAN bNoVirtualTopology = TRUE;
+    ULONG Index, ScanLineOrdering;
+    ULONG i;
+
+    if (bAware && (pPath->flags & ~USERP_SDC_AWARE_PATH_FLAGS))
+        return STATUS_INVALID_PARAMETER_2;
+
+    if (!(pPath->flags & DISPLAYCONFIG_PATH_ACTIVE))
+        return STATUS_SUCCESS;
+
+    if (bCheckTargets &&
+        !NT_SUCCESS(DlGetTargetVirtualization(&pPath->sourceInfo.adapterId,
+                                              pPath->targetInfo.id,
+                                              &bNoVirtualModes,
+                                              &bNoVirtualTopology)))
+    {
+        return STATUS_INVALID_PARAMETER_2;
+    }
+
+    if (bNoVirtualModes && bNoVirtualTopology)
+        pPath->flags &= ~DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE;
+    else
+        pPath->flags |= DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE;
+
+    if ((pPath->flags & DISPLAYCONFIG_PATH_PREFERRED_UNSCALED) && (!bAware || bNoVirtualModes))
+        return STATUS_INVALID_PARAMETER_2;
+
+    /* The source mode */
+    Index = bAware ? UserpWideModeIndex(pPath->sourceInfo.sourceModeInfoIdx) : pPath->sourceInfo.modeInfoIdx;
+    if (Index == DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
+    {
+        if (bAware)
+        {
+            if (pPath->sourceInfo.cloneGroupId == DISPLAYCONFIG_PATH_CLONE_GROUP_INVALID)
+                return STATUS_INVALID_PARAMETER_4;
+
+            /* The first earlier path of the clone group has to agree on how it is driven */
+            for (i = 0; i < iPath; i++)
+            {
+                if (pPaths[i].sourceInfo.cloneGroupId != pPath->sourceInfo.cloneGroupId)
+                    continue;
+
+                if ((pPaths[i].flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) !=
+                    (pPath->flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE))
+                {
+                    return STATUS_INVALID_PARAMETER_4;
+                }
+
+                if (bNoVirtualTopology &&
+                    !RtlEqualLuid(&pPaths[i].sourceInfo.adapterId, &pPath->sourceInfo.adapterId))
+                {
+                    return STATUS_INVALID_PARAMETER_4;
+                }
+                break;
+            }
+        }
+
+        *pbUnplaced = TRUE;
+    }
+    else
+    {
+        if (Index >= cModes)
+            return STATUS_INVALID_PARAMETER_3;
+
+        pSource = &pModes[Index];
+        if (bAware && (pPath->sourceInfo.cloneGroupId != DISPLAYCONFIG_PATH_CLONE_GROUP_INVALID))
+            return STATUS_INVALID_PARAMETER_4;
+
+        if ((pSource->infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE) ||
+            (pSource->id != pPath->sourceInfo.id) ||
+            !RtlEqualLuid(&pSource->adapterId, &pPath->sourceInfo.adapterId))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+
+        /* A desktop source is 32 bits per pixel or no GDI format at all */
+        if ((pSource->sourceMode.pixelFormat == DISPLAYCONFIG_PIXELFORMAT_8BPP) ||
+            (pSource->sourceMode.pixelFormat == DISPLAYCONFIG_PIXELFORMAT_16BPP) ||
+            (pSource->sourceMode.pixelFormat == DISPLAYCONFIG_PIXELFORMAT_24BPP))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+
+        pUse = &pUses[Index];
+        if (bNoVirtualTopology)
+            pUse->bPhysicalTopology = TRUE;
+        else
+            pUse->bVirtualTopology = TRUE;
+
+        if ((pPath->targetInfo.rotation == DISPLAYCONFIG_ROTATION_ROTATE90) ||
+            (pPath->targetInfo.rotation == DISPLAYCONFIG_ROTATION_ROTATE270))
+        {
+            pUse->bRotated = TRUE;
+        }
+
+        UserpUseMode(pUse, pSource, !bNoVirtualTopology);
+
+        if ((pSource->sourceMode.position.x != 0) || (pSource->sourceMode.position.y != 0))
+            pUse->bSecondary = TRUE;
+        else
+            pUse->bPrimary = TRUE;
+
+        if (pPath->flags & DISPLAYCONFIG_PATH_PREFERRED_UNSCALED)
+        {
+            if (pUse->bUnscaled)
+                return STATUS_INVALID_PARAMETER_2;
+            pUse->bUnscaled = TRUE;
+        }
+
+        if (pUse->bVirtualTopology && pUse->bPhysicalTopology)
+            return STATUS_INVALID_PARAMETER_4;
+    }
+
+    /* The target mode, or the refresh rate the path asks for */
+    Index = bAware ? UserpWideModeIndex(pPath->targetInfo.targetModeInfoIdx) : pPath->targetInfo.modeInfoIdx;
+    if (Index == DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
+    {
+        ScanLineOrdering = pPath->targetInfo.scanLineOrdering;
+        VSync = pPath->targetInfo.refreshRate;
+    }
+    else
+    {
+        if (Index >= cModes)
+            return STATUS_INVALID_PARAMETER_3;
+
+        pTarget = &pModes[Index];
+        if ((pTarget->targetMode.targetVideoSignalInfo.pixelRate >> 32) != 0)
+            return STATUS_INVALID_PARAMETER_4;
+
+        if (pSource == NULL)
+            return STATUS_INVALID_PARAMETER_2;
+
+        if ((pTarget->infoType != DISPLAYCONFIG_MODE_INFO_TYPE_TARGET) ||
+            (pTarget->id != pPath->targetInfo.id) ||
+            !RtlEqualLuid(&pTarget->adapterId, &pPath->targetInfo.adapterId))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+
+        ScanLineOrdering = pTarget->targetMode.targetVideoSignalInfo.scanLineOrdering;
+        VSync = pTarget->targetMode.targetVideoSignalInfo.vSyncFreq;
+
+        pUse = &pUses[Index];
+        UserpUseMode(pUse, pTarget, !bNoVirtualTopology);
+        pUse->bTarget = TRUE;
+    }
+
+    /* The desktop image, which only a virtual mode aware caller names */
+    Index = bAware ? UserpWideModeIndex(pPath->targetInfo.desktopModeInfoIdx) : DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+    if (Index != DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
+    {
+        if (Index >= cModes)
+            return STATUS_INVALID_PARAMETER_3;
+
+        pDesktop = &pModes[Index];
+        if ((pDesktop->infoType != DISPLAYCONFIG_MODE_INFO_TYPE_DESKTOP_IMAGE) ||
+            (pDesktop->id != pPath->targetInfo.id) ||
+            !RtlEqualLuid(&pDesktop->adapterId, &pPath->targetInfo.adapterId))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+
+        if ((bNoVirtualModes && bNoVirtualTopology) || (pSource == NULL))
+            return STATUS_INVALID_PARAMETER_2;
+
+        /* The clip is the whole source, the region a part of the path's source surface */
+        pImage = &pDesktop->desktopImageInfo;
+        if ((pImage->DesktopImageClip.left != 0) ||
+            (pImage->DesktopImageClip.top != 0) ||
+            ((ULONG)pImage->DesktopImageClip.right != pSource->sourceMode.width) ||
+            ((ULONG)pImage->DesktopImageClip.bottom != pSource->sourceMode.height))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+
+        if ((pImage->DesktopImageRegion.top >= pImage->DesktopImageRegion.bottom) ||
+            (pImage->DesktopImageRegion.left >= pImage->DesktopImageRegion.right))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+
+        if ((pImage->DesktopImageRegion.top < 0) ||
+            (pImage->DesktopImageRegion.left < 0) ||
+            (pImage->DesktopImageRegion.bottom > pImage->PathSourceSize.y) ||
+            (pImage->DesktopImageRegion.right > pImage->PathSourceSize.x))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+
+        pUse = &pUses[Index];
+        UserpUseMode(pUse, pDesktop, !bNoVirtualTopology);
+        pUse->bDesktopImage = TRUE;
+    }
+
+    /* A virtual mode aware caller names the source mode alone, with a target, or all three */
+    if (bAware && ((pSource != NULL) || (pTarget != NULL) || (pDesktop != NULL)))
+    {
+        if ((pSource == NULL) ||
+            ((pDesktop != NULL) && ((pTarget == NULL) || (bNoVirtualModes && bNoVirtualTopology))))
+        {
+            return STATUS_INVALID_PARAMETER_2;
+        }
+    }
+
+    /* A refresh rate comes with a scan line ordering, none comes without one */
+    if ((VSync.Numerator != 0) && (VSync.Denominator != 0))
+    {
+        if (((LONG)ScanLineOrdering <= (LONG)DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED) ||
+            (ScanLineOrdering > DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_LOWERFIELDFIRST))
+        {
+            return STATUS_INVALID_PARAMETER_4;
+        }
+    }
+    else if ((VSync.Numerator != 0) || (VSync.Denominator != 0) ||
+             (ScanLineOrdering != DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED))
+    {
+        return STATUS_INVALID_PARAMETER_4;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Checks the mode array of a caller that is not virtual mode aware: a target mode serves
+ *        one path, no mode is listed twice and exactly one source sits at the desktop origin.
+ */
+static
+NTSTATUS
+UserpValidateSdcModeUsesLegacy(
+    _In_ ULONG cModes,
+    _In_reads_(cModes) const USERP_SDC_MODE_USE *pUses,
+    _In_ BOOLEAN bUnplaced)
+{
+    ULONG cSources = 0, cPrimaries = 0;
+    ULONG i, j;
+
+    for (i = 0; i < cModes; i++)
+    {
+        if (pUses[i].bPrimary)
+            cPrimaries++;
+        if (pUses[i].bPrimary || pUses[i].bSecondary)
+            cSources++;
+
+        if (pUses[i].bTarget && (pUses[i].cUses > 1))
+            return STATUS_INVALID_PARAMETER_3;
+
+        if (pUses[i].cUses == 0)
+            continue;
+
+        for (j = i + 1; j < cModes; j++)
+        {
+            if ((pUses[j].cUses != 0) &&
+                (pUses[j].Id == pUses[i].Id) &&
+                (pUses[j].bTarget == pUses[i].bTarget) &&
+                RtlEqualLuid(&pUses[j].AdapterLuid, &pUses[i].AdapterLuid))
+            {
+                return STATUS_INVALID_PARAMETER_3;
+            }
+        }
+    }
+
+    /* Without a primary only a path that leaves its position to win32k will do */
+    if ((cSources != 0) && (cPrimaries != 1) && (!bUnplaced || (cPrimaries > 1)))
+        return STATUS_INVALID_PARAMETER_3;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Checks the mode array of a virtual mode aware caller, where the source modes of a clone
+ *        sit at one position and have to agree on what they show.
+ */
+static
+NTSTATUS
+UserpValidateSdcModeUsesAware(
+    _In_ ULONG cModes,
+    _In_reads_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _Inout_updates_(cModes) PUSERP_SDC_MODE_USE pUses,
+    _In_ BOOLEAN bUnplaced)
+{
+    const DISPLAYCONFIG_SOURCE_MODE *pMode, *pOther;
+    PUSERP_SDC_MODE_USE pUse, pClone;
+    ULONG cSources = 0, cPrimaries = 0;
+    BOOLEAN bSameSize;
+    ULONG i, j;
+
+    for (i = 0; i < cModes; i++)
+    {
+        pUse = &pUses[i];
+        if (pUse->cUses == 0)
+            continue;
+
+        if (pUse->bTarget || pUse->bDesktopImage)
+        {
+            if (pUse->cUses > 1)
+                return STATUS_INVALID_PARAMETER_2;
+        }
+        else
+        {
+            if (!pUse->bPrimary && !pUse->bSecondary)
+                return STATUS_INVALID_PARAMETER;
+
+            if (!pUse->bCloneMatched)
+            {
+                cSources++;
+                if (pUse->bPrimary)
+                    cPrimaries++;
+            }
+
+            if (pUse->bVirtualTopology && (pUse->cUses > 1))
+                return STATUS_INVALID_PARAMETER_2;
+        }
+
+        for (j = i + 1; j < cModes; j++)
+        {
+            pClone = &pUses[j];
+            if (pClone->cUses == 0)
+                continue;
+
+            /* The same mode listed twice, which only a physical source mode may be */
+            if ((pClone->Id == pUse->Id) &&
+                RtlEqualLuid(&pClone->AdapterLuid, &pUse->AdapterLuid) &&
+                (pModes[j].infoType == pModes[i].infoType) &&
+                ((pModes[i].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE) || pUse->bLastVirtual))
+            {
+                return STATUS_INVALID_PARAMETER_4;
+            }
+
+            if (pUse->bCloneMatched ||
+                (pModes[i].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE) ||
+                (pModes[j].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE))
+            {
+                continue;
+            }
+
+            pMode = &pModes[i].sourceMode;
+            pOther = &pModes[j].sourceMode;
+            if ((pOther->position.x != pMode->position.x) || (pOther->position.y != pMode->position.y))
+                continue;
+
+            /* Source modes at one position make one clone */
+            if ((pClone->bVirtualTopology != pUse->bVirtualTopology) ||
+                (pClone->bPhysicalTopology != pUse->bPhysicalTopology))
+            {
+                return STATUS_INVALID_PARAMETER_4;
+            }
+
+            if (pClone->cUses > 1)
+                return STATUS_INVALID_PARAMETER_2;
+
+            if (pClone->bRotated == pUse->bRotated)
+                bSameSize = (pOther->width == pMode->width) && (pOther->height == pMode->height);
+            else
+                bSameSize = (pOther->width == pMode->height) && (pOther->height == pMode->width);
+
+            if (!bSameSize || (pOther->pixelFormat != pMode->pixelFormat))
+                return STATUS_INVALID_PARAMETER_4;
+
+            if (pUse->bVirtualTopology)
+            {
+                if (!pUse->bLastVirtual || !pClone->bLastVirtual)
+                    return STATUS_INVALID_PARAMETER_4;
+            }
+            else if (!RtlEqualLuid(&pClone->AdapterLuid, &pUse->AdapterLuid))
+            {
+                return STATUS_INVALID_PARAMETER_4;
+            }
+
+            pClone->bCloneMatched = TRUE;
+        }
+    }
+
+    if ((cSources != 0) && (cPrimaries != 1) && (!bUnplaced || (cPrimaries > 1)))
+        return STATUS_INVALID_PARAMETER_3;
+
+    return STATUS_SUCCESS;
+}
+
+/** @brief Checks a SDC_TOPOLOGY_* request. Only SDC_TOPOLOGY_SUPPLIED takes paths, without modes. */
+static
+NTSTATUS
+UserpValidateSdcTopology(
+    _In_ ULONG cPaths,
+    _In_reads_opt_(cPaths) const DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_opt_ const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags)
+{
+    BOOLEAN bAware = (Flags & SDC_VIRTUAL_MODE_AWARE) != 0;
+    ULONG i;
+
+    if (Flags & (SDC_ALLOW_CHANGES | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_SAVE_TO_DATABASE))
+        return STATUS_INVALID_PARAMETER_5;
+
+    if (pModes != NULL)
+        return STATUS_INVALID_PARAMETER_4;
+
+    if (cModes != 0)
+        return STATUS_INVALID_PARAMETER_3;
+
+    if (!(Flags & SDC_TOPOLOGY_SUPPLIED))
+    {
+        if (pPaths != NULL)
+            return STATUS_INVALID_PARAMETER_2;
+        if (cPaths != 0)
+            return STATUS_INVALID_PARAMETER_1;
+        return STATUS_SUCCESS;
+    }
+
+    if (Flags & SDC_PATH_PERSIST_IF_REQUIRED)
+        return STATUS_INVALID_PARAMETER_5;
+
+    if (pPaths == NULL)
+        return STATUS_INVALID_PARAMETER_2;
+
+    if (cPaths == 0)
+        return STATUS_INVALID_PARAMETER_1;
+
+    /* The database supplies the modes, an aware caller still names the clone group */
+    for (i = 0; i < cPaths; i++)
+    {
+        if (!(pPaths[i].flags & DISPLAYCONFIG_PATH_ACTIVE))
+            continue;
+
+        if (bAware)
+        {
+            if ((pPaths[i].sourceInfo.sourceModeInfoIdx != DISPLAYCONFIG_PATH_SOURCE_MODE_IDX_INVALID) ||
+                (pPaths[i].targetInfo.targetModeInfoIdx != DISPLAYCONFIG_PATH_TARGET_MODE_IDX_INVALID) ||
+                (pPaths[i].targetInfo.desktopModeInfoIdx != DISPLAYCONFIG_PATH_DESKTOP_IMAGE_IDX_INVALID) ||
+                (pPaths[i].sourceInfo.cloneGroupId == DISPLAYCONFIG_PATH_CLONE_GROUP_INVALID))
+            {
+                return STATUS_INVALID_PARAMETER_2;
+            }
+        }
+        else if ((pPaths[i].sourceInfo.modeInfoIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID) ||
+                 (pPaths[i].targetInfo.modeInfoIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID))
+        {
+            return STATUS_INVALID_PARAMETER_2;
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/** @brief Checks a SDC_USE_SUPPLIED_DISPLAY_CONFIG request, its paths, modes and how they fit. */
+static
+NTSTATUS
+UserpValidateSdcSupplied(
+    _In_ ULONG cPaths,
+    _Inout_updates_opt_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags,
+    _In_ BOOLEAN bCheckTargets)
+{
+    BOOLEAN bAware = (Flags & SDC_VIRTUAL_MODE_AWARE) != 0;
+    PUSERP_SDC_MODE_USE pUses = NULL;
+    BOOLEAN bUnplaced = FALSE;
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG i;
+
+    if (!(Flags & SDC_USE_SUPPLIED_DISPLAY_CONFIG) || (Flags & SDC_PATH_PERSIST_IF_REQUIRED))
+        return STATUS_INVALID_PARAMETER_5;
+
+    if (pPaths == NULL)
+        return STATUS_INVALID_PARAMETER_2;
+
+    if (cPaths == 0)
+        return STATUS_INVALID_PARAMETER_1;
+
+    if ((pModes != NULL) != (cModes != 0))
+        return STATUS_INVALID_PARAMETER_3;
+
+    if (bAware)
+        UserpUnifyCloneSources(cPaths, pPaths);
+
+    if (cModes != 0)
+    {
+        pUses = ExAllocatePoolZero(PagedPool, cModes * sizeof(*pUses), USERTAG_DISPLAYCONFIG);
+        if (pUses == NULL)
+            return STATUS_NO_MEMORY;
+    }
+
+    for (i = 0; i < cPaths; i++)
+    {
+        Status = UserpValidateSdcPath(i, pPaths, cModes, pModes, pUses, bAware, bCheckTargets, &bUnplaced);
+        if (!NT_SUCCESS(Status))
+            break;
+    }
+
+    if (NT_SUCCESS(Status) && (cModes != 0))
+    {
+        if (bAware)
+            Status = UserpValidateSdcModeUsesAware(cModes, pModes, pUses, bUnplaced);
+        else
+            Status = UserpValidateSdcModeUsesLegacy(cModes, pUses, bUnplaced);
+    }
+
+    if (pUses != NULL)
+        ExFreePoolWithTag(pUses, USERTAG_DISPLAYCONFIG);
+
+    return Status;
+}
+
+/**
+ * @brief Checks the flags of a SetDisplayConfig request, then its arrays for what the flags ask.
+ *        A STATUS_INVALID_PARAMETER_n code names the offending SetDisplayConfig parameter.
+ */
+static
+NTSTATUS
+UserpValidateSetDisplayConfig(
+    _In_ ULONG cPaths,
+    _Inout_updates_opt_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags,
+    _In_ BOOLEAN bCheckTargets)
+{
+    PCSTR pszProcess;
+
+    if ((Flags & SDC_APPLY) && UserpIsSettingChangeDisabled(L"GraphicsDrivers\\TemporarySettingChanges"))
+        return STATUS_ACCESS_DENIED;
+
+    if ((Flags & SDC_SAVE_TO_DATABASE) && UserpIsSettingChangeDisabled(L"GraphicsDrivers\\PermanentSettingChanges"))
+        return STATUS_ACCESS_DENIED;
+
+    if (Flags & USERP_SDC_PRESENTER_MASK)
+    {
+        /* Only explorer.exe switches presenter view, and with nothing else */
+        pszProcess = PsGetProcessImageFileName(PsGetCurrentProcess());
+        if (((Flags != (USERP_SDC_PRESENTER_ENTER | SDC_APPLY)) &&
+             (Flags != (USERP_SDC_PRESENTER_LEAVE | SDC_APPLY))) ||
+            (pszProcess == NULL) ||
+            (_stricmp(pszProcess, "explorer.exe") != 0))
+        {
+            return STATUS_INVALID_PARAMETER_5;
+        }
+
+        if ((cPaths != 0) || (pPaths != NULL) || (cModes != 0) || (pModes != NULL))
+            return STATUS_INVALID_PARAMETER;
+
+        /* dxgkrnl's presenter view is not reachable from here */
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if (Flags & ~USERP_SDC_LOW_FLAGS)
+        return STATUS_INVALID_PARAMETER_5;
+
+    /* Exactly one of validating and applying */
+    if (((Flags & (SDC_VALIDATE | SDC_APPLY)) == 0) ||
+        ((Flags & (SDC_VALIDATE | SDC_APPLY)) == (SDC_VALIDATE | SDC_APPLY)))
+    {
+        return STATUS_INVALID_PARAMETER_5;
+    }
+
+    if ((Flags & (SDC_NO_OPTIMIZATION | SDC_APPLY)) == SDC_NO_OPTIMIZATION)
+        return STATUS_INVALID_PARAMETER_5;
+
+    if ((Flags & SDC_FORCE_MODE_ENUMERATION) &&
+        ((Flags & (SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG)) != (SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG)))
+    {
+        return STATUS_INVALID_PARAMETER_5;
+    }
+
+    if ((Flags & SDC_ALLOW_PATH_ORDER_CHANGES) && !(Flags & SDC_TOPOLOGY_SUPPLIED))
+        return STATUS_INVALID_PARAMETER_5;
+
+    if (Flags & USERP_SDC_TOPOLOGY_MASK)
+        return UserpValidateSdcTopology(cPaths, pPaths, cModes, pModes, Flags);
+
+    return UserpValidateSdcSupplied(cPaths, pPaths, cModes, pModes, Flags, bCheckTargets);
+}
+
+/**
+ * @brief Turns the 32 bit source mode index of a split target index caller into the virtual mode
+ *        aware form. A path without a source mode, or any path of a supplied topology, becomes its
+ *        own clone group.
+ */
+static
+VOID
+UserpWidenSourceIndexes(
+    _In_ ULONG cPaths,
+    _Inout_updates_opt_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG Flags)
+{
+    ULONG Index;
+    ULONG i;
+
+    for (i = 0; (pPaths != NULL) && (i < cPaths); i++)
+    {
+        Index = pPaths[i].sourceInfo.modeInfoIdx & DISPLAYCONFIG_PATH_SOURCE_MODE_IDX_INVALID;
+        pPaths[i].sourceInfo.sourceModeInfoIdx = Index;
+
+        if ((Index == DISPLAYCONFIG_PATH_SOURCE_MODE_IDX_INVALID) || (Flags & SDC_TOPOLOGY_SUPPLIED))
+            pPaths[i].sourceInfo.cloneGroupId = i;
+        else
+            pPaths[i].sourceInfo.cloneGroupId = DISPLAYCONFIG_PATH_CLONE_GROUP_INVALID;
+
+        pPaths[i].flags &= USERP_SDC_AWARE_PATH_FLAGS;
+    }
+}
+
+/**
+ * @brief Checks the targets of a caller that is not virtual mode aware by their own adapter, and
+ *        makes the paths of a source turn it alike when its target runs virtual modes but no
+ *        virtual topology, as Windows does.
+ */
+static
+NTSTATUS
+UserpCheckSuppliedTargets(
+    _In_ ULONG cPaths,
+    _Inout_updates_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths)
+{
+    BOOLEAN bNoVirtualModes, bNoVirtualTopology;
+    ULONG Rotation;
+    NTSTATUS Status;
+    ULONG i, j;
+
+    for (i = 0; i < cPaths; i++)
+    {
+        Status = DlGetTargetVirtualization(&pPaths[i].targetInfo.adapterId,
+                                           pPaths[i].targetInfo.id,
+                                           &bNoVirtualModes,
+                                           &bNoVirtualTopology);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        if (!bNoVirtualModes || bNoVirtualTopology)
+            continue;
+
+        Rotation = 0;
+        for (j = 0; j < cPaths; j++)
+        {
+            if ((pPaths[j].sourceInfo.id != pPaths[i].sourceInfo.id) ||
+                !RtlEqualLuid(&pPaths[j].sourceInfo.adapterId, &pPaths[i].sourceInfo.adapterId))
+            {
+                continue;
+            }
+
+            if (Rotation == 0)
+                Rotation = pPaths[j].targetInfo.rotation;
+            else
+                pPaths[j].targetInfo.rotation = Rotation;
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/** @brief Does the desktop run on a WDDM source, so its configuration goes through dxgkrnl? */
+static
+BOOLEAN
+UserpIsDesktopOnWddm(VOID)
+{
+    PPDEVOBJ ppdev;
+    BOOLEAN bWddm;
+
+    if (gbBaseVideo)
+        return FALSE;
+
+    ppdev = EngpGetPDEV(NULL);
+    if (ppdev == NULL)
+        return FALSE;
+
+    bWddm = (ppdev->pGraphicsDevice != NULL) && (ppdev->pGraphicsDevice->DxgAdapter != NULL);
+    PDEVOBJ_vRelease(ppdev);
+    return bWddm;
+}
+
+/** @brief Is every display of the desktop enabled, so a configuration can be applied to it? */
+static
+BOOLEAN
+UserpIsDesktopEnabled(VOID)
+{
+    ULONG i;
+
+    if (gpmdev == NULL)
+        return FALSE;
+
+    for (i = 0; i < gpmdev->cDev; i++)
+    {
+        if (gpmdev->dev[i].ppdev->flFlags & PDEV_DISABLED)
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief SetDisplayConfig for a desktop without CCD, the way Windows serves a display that is not
+ *        driven through dxgkrnl: going back to the saved settings is a ChangeDisplaySettings reset
+ *        to the registry modes, anything else is not supported.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+static
+NTSTATUS
+UserpSetDisplayConfigLegacy(
+    _In_ ULONG Flags)
+{
+    LONG lRet;
+
+    if ((Flags & SDC_USE_DATABASE_CURRENT) != SDC_USE_DATABASE_CURRENT)
+        return STATUS_NOT_SUPPORTED;
+
+    /* The registry modes are what the desktop booted with */
+    if (Flags & SDC_VALIDATE)
+        return STATUS_SUCCESS;
+
+    lRet = UserChangeDisplaySettings(NULL, NULL, (Flags & SDC_NO_OPTIMIZATION) ? CDS_RESET : 0, NULL);
+    return (lRet == DISP_CHANGE_SUCCESSFUL) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+}
+
+/**
+ * @brief SetDisplayConfig for a WDDM desktop: dxgkrnl validates or applies the paths, the desktop
+ *        moves onto what it turned on and every window hears of the change.
+ */
+_Requires_exclusive_lock_held_(UserLock)
+static
+NTSTATUS
+UserpSetDisplayConfigWddm(
+    _In_ ULONG cPaths,
+    _Inout_updates_opt_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags)
+{
+    PMDEVOBJ pmdevNew = NULL;
+    PVOID pvOldCursor;
+    BOOLEAN bApplied = FALSE;
+    BOOLEAN bInstalled = FALSE;
+    WORD OrigBC = gpsi->BitCount;
+    NTSTATUS Status;
+
+    if (!(Flags & SDC_APPLY))
+        return DlSetDisplayConfigPaths(cPaths, pPaths, cModes, pModes, Flags, gpmdev, &pmdevNew, &bApplied);
+
+    pvOldCursor = UserSetCursor(NULL, TRUE);
+
+    Status = DlSetDisplayConfigPaths(cPaths, pPaths, cModes, pModes, Flags, gpmdev, &pmdevNew, &bApplied);
+
+    /* An applied configuration that could not be saved still gets its desktop */
+    if (pmdevNew != NULL)
+        bInstalled = NT_SUCCESS(UserpInstallMdev(gpmdev, pmdevNew));
+
+    if (!bInstalled && NT_SUCCESS(Status))
+        Status = STATUS_UNSUCCESSFUL;
+
+    pvOldCursor = UserSetCursor(pvOldCursor, TRUE);
+    ASSERT(pvOldCursor == NULL);
+
+    if (bInstalled)
+    {
+        UserpUpdateDisplayMetrics(gpmdev->ppdevGlobal, 0);
+
+        /* Saving a topology purges dxgkrnl's CDS journal along with it */
+        if (NT_SUCCESS(Status) && (Flags & (USERP_SDC_TOPOLOGY_MASK | SDC_SAVE_TO_DATABASE)))
+            gbCdsJournalPending = FALSE;
+
+        UserpBroadcastDisplayChange(gpmdev->ppdevGlobal, 0, OrigBC);
+        return Status;
+    }
+
+    /* The display runs a configuration the desktop could not follow, the saved one comes back */
+    if (bApplied)
+    {
+        DPRINT1("win32k: SetDisplayConfig left the desktop behind, back to the saved configuration, 0x%lx\n",
+                UserpSetDisplayConfig());
+    }
+
+    return Status;
+}
+
+/** @brief The work of NtUserSetDisplayConfig on kernel copies of the active paths and their modes. */
+_Requires_exclusive_lock_held_(UserLock)
+static
+NTSTATUS
+UserpSetDisplayConfigPaths(
+    _In_ ULONG cPaths,
+    _Inout_updates_opt_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags)
+{
+    PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
+    BOOLEAN bWddm;
+    NTSTATUS Status;
+
+    if ((Flags & USERP_SDC_SPLIT_INDEX_MASK) == USERP_SDC_SPLIT_INDEX_MASK)
+        return STATUS_INVALID_PARAMETER_5;
+
+    if (Flags & USERP_SDC_SPLIT_TARGET_INDEX)
+    {
+        UserpWidenSourceIndexes(cPaths, pPaths, Flags);
+        Flags = (Flags & ~USERP_SDC_SPLIT_TARGET_INDEX) | SDC_VIRTUAL_MODE_AWARE;
+    }
+
+    /* A thread outside every desktop has no say over the display of the input desktop */
+    if ((PsGetCurrentProcess() != gpepCSRSS) &&
+        ((pti == NULL) || (pti->rpdesk == NULL)) &&
+        (gpdeskInputDesktop != NULL))
+    {
+        return STATUS_ACCESS_DENIED;
+    }
+
+    bWddm = UserpIsDesktopOnWddm();
+
+    Status = UserpValidateSetDisplayConfig(cPaths, pPaths, cModes, pModes, Flags, bWddm);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("win32k: SetDisplayConfig flags 0x%lx rejected, 0x%lx\n", Flags, Status);
+        return Status;
+    }
+
+    if (bWddm && !(Flags & SDC_VIRTUAL_MODE_AWARE) && (Flags & SDC_USE_SUPPLIED_DISPLAY_CONFIG) && (pPaths != NULL))
+    {
+        Status = UserpCheckSuppliedTargets(cPaths, pPaths);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    if ((Flags & SDC_APPLY) && !UserpIsDesktopEnabled())
+        return STATUS_UNSUCCESSFUL;
+
+    if (!bWddm)
+        return UserpSetDisplayConfigLegacy(Flags);
+
+    return UserpSetDisplayConfigWddm(cPaths, pPaths, cModes, pModes, Flags);
+}
+
+/**
+ * @brief Narrows what SetDisplayConfig ends with down to the codes its caller may see, every
+ *        other failure becomes STATUS_UNSUCCESSFUL (ERROR_GEN_FAILURE).
+ */
+static
+NTSTATUS
+UserpSetDisplayConfigMapStatus(
+    _In_ NTSTATUS Status)
+{
+    switch (Status)
+    {
+        case STATUS_BUFFER_OVERFLOW:
+            return STATUS_BUFFER_TOO_SMALL;
+
+        /* user32 turns it into ERROR_BAD_CONFIGURATION */
+        case STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED:
+            return (NTSTATUS)HRESULT_FROM_WIN32(ERROR_BAD_CONFIGURATION);
+
+        case STATUS_BUFFER_TOO_SMALL:
+        case STATUS_INVALID_PARAMETER:
+        case STATUS_NO_MEMORY:
+        case STATUS_ACCESS_DENIED:
+        case STATUS_INVALID_PARAMETER_MIX:
+        case STATUS_NOT_SUPPORTED:
+            return Status;
+    }
+
+    if (NT_SUCCESS(Status))
+        return Status;
+
+    if ((Status >= STATUS_INVALID_PARAMETER_1) && (Status <= STATUS_INVALID_PARAMETER_12))
+        return Status;
+
+    return STATUS_UNSUCCESSFUL;
+}
+
+/** @brief Is the index one that names a mode in range? Records the highest one. */
+static
+BOOLEAN
+UserpNoteModeIndex(
+    _In_ ULONG Index,
+    _In_ ULONG Invalid,
+    _In_ ULONG cModes,
+    _Inout_ PULONG pHighest,
+    _Inout_ PBOOLEAN pbAny)
+{
+    if (Index == Invalid)
+        return TRUE;
+
+    if (Index >= cModes)
+        return FALSE;
+
+    if (!*pbAny || (Index > *pHighest))
+        *pHighest = Index;
+    *pbAny = TRUE;
+    return TRUE;
+}
+
+/**
+ * @brief The kernel side of SetDisplayConfig.
+ *
+ * Only the active paths are captured, and of the modes only those up to the highest index an
+ * active path names.
+ *
+ * @return An NTSTATUS that user32 turns into the Win32 error SetDisplayConfig returns.
+ */
+NTSTATUS
+NTAPI
+NtUserSetDisplayConfig(
+    _In_ UINT32 NumPathArrayElements,
+    _In_reads_opt_(NumPathArrayElements) struct DISPLAYCONFIG_PATH_INFO *pPathArray,
+    _In_ UINT32 NumModeInfoArrayElements,
+    _In_reads_opt_(NumModeInfoArrayElements) struct DISPLAYCONFIG_MODE_INFO *pModeInfoArray,
+    _In_ UINT32 Flags)
+{
+    DISPLAYCONFIG_PATH_INFO *pPaths = NULL;
+    DISPLAYCONFIG_MODE_INFO *pModes = NULL;
+    DISPLAYCONFIG_PATH_INFO *pCopy;
+    PTHREADINFO pti;
+    ULONG cActive = 0, cCopied = 0, cModes = 0;
+    ULONG Highest = 0;
+    BOOLEAN bAnyMode = FALSE;
+    BOOLEAN bAware, bSplitTarget, bIndexOk;
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG i;
+
+    UserEnterExclusive();
+
+    if (!gbVideoInitialized)
+    {
+        Status = STATUS_UNSUCCESSFUL;
+        goto Exit;
+    }
+
+    pti = PsGetCurrentThreadWin32Thread();
+    if ((pti != NULL) &&
+        (pti->TIF_flags & TIF_JOBRESTRICTED) &&
+        (pti->ppi->pW32Job != NULL) &&
+        (pti->ppi->pW32Job->UIRestrictions & JOB_OBJECT_UILIMIT_DISPLAYSETTINGS))
+    {
+        Status = STATUS_ACCESS_DENIED;
+        goto Exit;
+    }
+
+    if ((NumPathArrayElements > USERP_SDC_MAX_PATHS) || (NumModeInfoArrayElements > USERP_SDC_MAX_MODES))
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Exit;
+    }
+
+    bAware = (Flags & SDC_VIRTUAL_MODE_AWARE) != 0;
+    bSplitTarget = (Flags & USERP_SDC_SPLIT_INDEX_MASK) != 0;
+
+    _SEH2_TRY
+    {
+        if (NumPathArrayElements != 0)
+        {
+            ProbeForRead(pPathArray, NumPathArrayElements * sizeof(*pPaths), 1);
+
+            for (i = 0; i < NumPathArrayElements; i++)
+            {
+                if (pPathArray[i].flags & DISPLAYCONFIG_PATH_ACTIVE)
+                    cActive++;
+            }
+
+            if (cActive != 0)
+            {
+                pPaths = ExAllocatePoolWithTag(PagedPool, cActive * sizeof(*pPaths), USERTAG_DISPLAYCONFIG);
+                if (pPaths == NULL)
+                {
+                    Status = STATUS_NO_MEMORY;
+                    _SEH2_LEAVE;
+                }
+            }
+
+            if (NumModeInfoArrayElements != 0)
+            {
+                ProbeForRead(pModeInfoArray, NumModeInfoArrayElements * sizeof(*pModes), 1);
+            }
+            else if (pModeInfoArray != NULL)
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                _SEH2_LEAVE;
+            }
+
+            for (i = 0; i < NumPathArrayElements; i++)
+            {
+                if (!(pPathArray[i].flags & DISPLAYCONFIG_PATH_ACTIVE))
+                    continue;
+
+                if (cCopied >= cActive)
+                {
+                    Status = STATUS_INVALID_PARAMETER;
+                    _SEH2_LEAVE;
+                }
+
+                pCopy = &pPaths[cCopied];
+                *pCopy = pPathArray[i];
+
+                /* The caller changed the array under us */
+                if (!(pCopy->flags & DISPLAYCONFIG_PATH_ACTIVE))
+                {
+                    Status = STATUS_ACCESS_DENIED;
+                    _SEH2_LEAVE;
+                }
+
+                if (bAware)
+                {
+                    bIndexOk = UserpNoteModeIndex(pCopy->sourceInfo.sourceModeInfoIdx,
+                                                  DISPLAYCONFIG_PATH_SOURCE_MODE_IDX_INVALID,
+                                                  NumModeInfoArrayElements, &Highest, &bAnyMode);
+                }
+                else
+                {
+                    bIndexOk = UserpNoteModeIndex(pCopy->sourceInfo.modeInfoIdx,
+                                                  DISPLAYCONFIG_PATH_MODE_IDX_INVALID,
+                                                  NumModeInfoArrayElements, &Highest, &bAnyMode);
+                }
+
+                if (bSplitTarget)
+                {
+                    bIndexOk = bIndexOk &&
+                               UserpNoteModeIndex(pCopy->targetInfo.targetModeInfoIdx,
+                                                  DISPLAYCONFIG_PATH_TARGET_MODE_IDX_INVALID,
+                                                  NumModeInfoArrayElements, &Highest, &bAnyMode) &&
+                               UserpNoteModeIndex(pCopy->targetInfo.desktopModeInfoIdx,
+                                                  DISPLAYCONFIG_PATH_DESKTOP_IMAGE_IDX_INVALID,
+                                                  NumModeInfoArrayElements, &Highest, &bAnyMode);
+                }
+                else
+                {
+                    bIndexOk = bIndexOk &&
+                               UserpNoteModeIndex(pCopy->targetInfo.modeInfoIdx,
+                                                  DISPLAYCONFIG_PATH_MODE_IDX_INVALID,
+                                                  NumModeInfoArrayElements, &Highest, &bAnyMode);
+                }
+
+                if (!bIndexOk)
+                {
+                    Status = STATUS_INVALID_PARAMETER;
+                    _SEH2_LEAVE;
+                }
+
+                cCopied++;
+            }
+
+            if (cCopied != cActive)
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                _SEH2_LEAVE;
+            }
+
+            if (bAnyMode)
+            {
+                cModes = Highest + 1;
+                pModes = ExAllocatePoolWithTag(PagedPool, cModes * sizeof(*pModes), USERTAG_DISPLAYCONFIG);
+                if (pModes == NULL)
+                {
+                    Status = STATUS_NO_MEMORY;
+                    _SEH2_LEAVE;
+                }
+
+                RtlCopyMemory(pModes, pModeInfoArray, cModes * sizeof(*pModes));
+            }
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    Status = UserpSetDisplayConfigPaths(cCopied, pPaths, cModes, pModes, Flags);
+    Status = UserpSetDisplayConfigMapStatus(Status);
+
+Exit:
+    UserLeave();
+
+    if (pModes != NULL)
+        ExFreePoolWithTag(pModes, USERTAG_DISPLAYCONFIG);
+    if (pPaths != NULL)
+        ExFreePoolWithTag(pPaths, USERTAG_DISPLAYCONFIG);
+
+    TRACE("NtUserSetDisplayConfig(%u, %u, 0x%x) -> 0x%lx\n",
+          NumPathArrayElements, NumModeInfoArrayElements, Flags, Status);
     return Status;
 }

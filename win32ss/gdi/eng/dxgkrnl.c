@@ -8,6 +8,7 @@
 #include <win32k.h>
 #include <reactos/rddm/rddm_private.h>
 #include "../ntgdi/dxgkfwd.h"
+#include "dispcfg.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -138,16 +139,42 @@ typedef struct _DL_MODALITY_SIGNAL
  * the source runs in, desktop position included, and the apply writes StatusApply. Only the first
  * path of a clone group names the source's mode.
  */
+#if DXGKRNL_TARGET >= DXGKRNL_TARGET_19041
+/*
+ * Up to the clone group both builds keep the 1607 field order below, moved by the wider flags.
+ * The offsets are the ones the boot log's raw path dump and CDS_JOURNAL::_FillPathDescriptor show.
+ */
+#define DL_MODALITY_PATH_PREFIX \
+    ULONG64            Flags; \
+    ULONG64            FixedFlags; \
+    LUID               AdapterLuid; \
+    ULONG              VidPnSourceId; \
+    ULONG              VidPnTargetId; \
+    DL_MODALITY_SIGNAL TargetMode; \
+    ULONG              TargetOutputTechnology; \
+    ULONG              TargetBaseOutputTechnology; \
+    ULONG              SourcePrimSurfSize[2]; \
+    ULONG              SourceVisibleRegionSize[2]; \
+    ULONG              SourceStride; \
+    ULONG              SourcePixelFormat; \
+    ULONG              SourceColorBasis; \
+    ULONG              SourcePixelValueAccessMode; \
+    UCHAR              IsStereo; \
+    UCHAR              VirtualModeSupported; \
+    ULONG              Rotation; \
+    ULONG              ScalingToApply; \
+    ULONG              ScalingIntent; \
+    POINTL             Position; \
+    POINTL             ContentResolution; \
+    POINTL             ContentSizeRecommended; \
+    RECTL              DwmClipBox; \
+    ULONG              CloneGroupId;
+#endif
+
 #if DXGKRNL_TARGET == DXGKRNL_TARGET_WIN11
 typedef struct _DL_MODALITY_PATH
 {
-    ULONG64            Flags;
-    ULONG64            Reserved08;
-    LUID               AdapterLuid;
-    ULONG              VidPnSourceId;
-    ULONG              VidPnTargetId;
-    UCHAR              Reserved20[0x98];
-    ULONG              CloneGroupId;
+    DL_MODALITY_PATH_PREFIX
     UCHAR              ReservedBC[0x3C];
     PDEVMODEW          DevMode;
     UCHAR              Reserved100[0x10];
@@ -163,13 +190,7 @@ C_ASSERT(sizeof(DL_MODALITY_PATH) == 0x128);
 #elif DXGKRNL_TARGET == DXGKRNL_TARGET_19041
 typedef struct _DL_MODALITY_PATH
 {
-    ULONG64            Flags;
-    ULONG64            Reserved08;
-    LUID               AdapterLuid;
-    ULONG              VidPnSourceId;
-    ULONG              VidPnTargetId;
-    UCHAR              Reserved20[0x98];
-    ULONG              CloneGroupId;
+    DL_MODALITY_PATH_PREFIX
     ULONG              ReservedBC;
     LONG               StatusApply;
     UCHAR              ReservedC4[0x1C];
@@ -231,6 +252,19 @@ C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, CloneGroupId) == 180);
 C_ASSERT(sizeof(DL_MODALITY_PATH) == 196);
 #endif
 #endif /* DXGKRNL_TARGET */
+
+#if DXGKRNL_TARGET >= DXGKRNL_TARGET_19041
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.TotalSize) == 0x24);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.ActiveSize) == 0x2C);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.VSyncFreq) == 0x34);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetMode.ScanLineOrdering) == 0x50);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, TargetOutputTechnology) == 0x58);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, SourcePrimSurfSize) == 0x60);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, Rotation) == 0x84);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, ScalingToApply) == 0x88);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, ScalingIntent) == 0x8C);
+C_ASSERT(FIELD_OFFSET(DL_MODALITY_PATH, Position) == 0x90);
+#endif
 
 /* The paths follow the header directly */
 #define DL_MODALITY_PATHS(Modality) \
@@ -1593,6 +1627,16 @@ DlpRecordDisplayConfig(
  * @param pbApplied Receives TRUE once dxgkrnl applied the configuration, so the display runs it
  *        whatever happened to the desktop afterwards.
  */
+static
+NTSTATUS
+DlpApplyFunctionalModality(
+    _Inout_ PD3DKMT_GETPATHSMODALITY Modality,
+    _In_ ULONG ApplyFlags,
+    _In_ BOOLEAN bSaved,
+    _In_opt_ PMDEVOBJ pmdevOld,
+    _Out_opt_ PMDEVOBJ *ppmdevNew,
+    _Out_opt_ PBOOLEAN pbApplied);
+
 static NTSTATUS
 DlpCommitPathsModality(
     _Inout_ PD3DKMT_GETPATHSMODALITY Modality,
@@ -1605,7 +1649,6 @@ DlpCommitPathsModality(
     _Out_opt_ PBOOLEAN pbApplied)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    LONG     lRet;
 
     if (pbApplied != NULL)
         *pbApplied = FALSE;
@@ -1633,6 +1676,28 @@ DlpCommitPathsModality(
 
     if (bValidateOnly)
         return Status;
+
+    return DlpApplyFunctionalModality(Modality, ApplyFlags, bSaved, pmdevOld, ppmdevNew, pbApplied);
+}
+
+/**
+ * @brief Apply paths that Functionalize already gave a mode, tell GDI which sources came on, build
+ *        the desktop from them and finalize.
+ *
+ * @param pbApplied Receives TRUE once dxgkrnl applied the configuration. The caller set it FALSE.
+ */
+static
+NTSTATUS
+DlpApplyFunctionalModality(
+    _Inout_ PD3DKMT_GETPATHSMODALITY Modality,
+    _In_ ULONG ApplyFlags,
+    _In_ BOOLEAN bSaved,
+    _In_opt_ PMDEVOBJ pmdevOld,
+    _Out_opt_ PMDEVOBJ *ppmdevNew,
+    _Out_opt_ PBOOLEAN pbApplied)
+{
+    NTSTATUS Status;
+    LONG     lRet;
 
     DPRINT1("win32k: applying the display configuration, flags 0x%lx\n", ApplyFlags);
 #if DL_DXGK_APPLY_HAS_SCENARIO
@@ -2319,6 +2384,726 @@ DlSetDisplayConfig(
     if (NT_SUCCESS(Status))
         DlpConnectConsoleSession();
 
+    return Status;
+}
+
+/* SetDisplayConfig *********************************************************/
+
+/* What Windows marks on a path it builds from a DISPLAYCONFIG_PATH_INFO */
+#define DL_PATHF_TARGET_VSYNC       0x00000002  /* dropped again when the vsync rate has no denominator */
+#define DL_PATHF_TARGET_REFRESH     0x00000006  /* only the refresh rate and scan line ordering are given */
+#define DL_PATHF_TARGET_TIMING      0x00000087  /* the whole target signal is given */
+#define DL_PATHF_SOURCE_MODE        0x00000100
+#define DL_PATHF_ROTATION           0x00000200
+#define DL_PATHF_SCALING_SET        0x00000400
+#define DL_PATHF_POSITION           0x00000800
+#define DL_PATHF_FROM_CALLER        0x00008000
+#define DL_PATHF_SCALING            0x00010400
+#define DL_PATHF_CONTENT_RESOLUTION 0x00020000
+#define DL_PATHF_CLONE_GROUPED      0x00040000
+#define DL_PATHF_IDS                0x00087000  /* adapter, source and target are given */
+#define DL_PATHF_PINNED_MASK        0x00820987  /* what the caller pins unless SDC_ALLOW_CHANGES */
+
+/* A clone group the caller named, or one of the paths that share a source */
+#define DL_CLONE_GROUP_FROM_CALLER  0xFE500000
+#define DL_CLONE_GROUP_FROM_SOURCE  0xFE510000
+
+/* The scan line ordering and the vsync divider share a ULONG of the signal */
+#define DL_SIGNAL_ORDERING_MASK     0x00000007
+#define DL_SIGNAL_DIVIDER_SHIFT     3
+
+/* The GetPathsModality steps of a SetDisplayConfig request */
+#define DL_MODALITY_SUPPLIED_PATHS  0x00000020  /* look the given paths up in the database */
+#define DL_MODALITY_TARGET_FLAGS    0x00000100  /* fill in the target flags of the given paths */
+#define DL_MODALITY_PATH_ORDER      0x00002000  /* the database may reorder the given paths */
+#define DL_MODALITY_FORCE_ENUM      0x00010000  /* the modes are enumerated again on apply */
+
+#define DL_FUNCTIONALIZE_SDC        0x00008000
+
+/* PersistPathsModality index that only makes the topology the most recent one */
+#define DL_PERSIST_TIMESTAMP        0
+
+/** @brief Has dxgkrnl given win32k the routines a display configuration change takes? */
+static
+BOOLEAN
+DlpIsDisplayConfigReady(VOID)
+{
+    return gbDxgkInitialized &&
+           (gDxgkInterface.pfnDxgkGetPathsModality != NULL) &&
+           (gDxgkInterface.pfnDxgkFunctionalizePathsModality != NULL) &&
+           (gDxgkInterface.pfnDxgkApplyPathsModality != NULL);
+}
+
+/**
+ * @brief Find the path of a modality that drives a target, after turning a virtual topology id of
+ *        QueryDisplayConfig into the actual one.
+ *
+ * @return STATUS_INVALID_PARAMETER when no path drives the target.
+ */
+static
+NTSTATUS
+DlpFindTargetPath(
+    _In_ PD3DKMT_GETPATHSMODALITY Modality,
+    _In_ const LUID *pAdapterLuid,
+    _In_ ULONG TargetId,
+    _Outptr_result_maybenull_ PDL_MODALITY_PATH *ppPath)
+{
+    PDL_MODALITY_PATH Paths = DL_MODALITY_PATHS(Modality);
+    LUID AdapterLuid = *pAdapterLuid;
+    NTSTATUS Status;
+    USHORT i;
+
+    *ppPath = NULL;
+
+    Status = DlConvertDisplayConfigAdapterAndId(&AdapterLuid, &TargetId);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    for (i = 0; i < Modality->PathCount; i++)
+    {
+        if ((Paths[i].VidPnTargetId == TargetId) && RtlEqualLuid(&Paths[i].AdapterLuid, &AdapterLuid))
+        {
+            *ppPath = &Paths[i];
+            return STATUS_SUCCESS;
+        }
+    }
+
+    return STATUS_INVALID_PARAMETER;
+}
+
+NTSTATUS
+NTAPI
+DlGetTargetVirtualization(
+    _In_ const LUID *pAdapterLuid,
+    _In_ ULONG TargetId,
+    _Out_ PBOOLEAN pbVirtualModesDisabled,
+    _Out_ PBOOLEAN pbVirtualTopologiesDisabled)
+{
+    PD3DKMT_GETPATHSMODALITY AllPaths;
+    PDL_MODALITY_PATH Path;
+    NTSTATUS Status;
+
+    *pbVirtualModesDisabled = TRUE;
+    *pbVirtualTopologiesDisabled = TRUE;
+
+    if (!DlpIsDisplayConfigReady())
+        return STATUS_NOT_SUPPORTED;
+
+    /* Every target an adapter has shows up in the paths it can drive */
+    Status = DlpQueryPathsModality(DL_MODALITY_ALL_PATHS, &AllPaths);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = DlpFindTargetPath(AllPaths, pAdapterLuid, TargetId, &Path);
+
+    DlpFreePathsModality(AllPaths);
+    return Status;
+}
+
+/** @brief The DDI scaling of a DISPLAYCONFIG_SCALING, D3DKMDT_VPPS_RESERVED1 for the preferred one. */
+static
+NTSTATUS
+DlpConvertScaling(
+    _In_ ULONG Scaling,
+    _Out_ PULONG pDdiScaling)
+{
+    switch (Scaling)
+    {
+        case DISPLAYCONFIG_SCALING_CENTERED:
+            *pDdiScaling = D3DKMDT_VPPS_CENTERED;
+            return STATUS_SUCCESS;
+
+        case DISPLAYCONFIG_SCALING_STRETCHED:
+            *pDdiScaling = D3DKMDT_VPPS_STRETCHED;
+            return STATUS_SUCCESS;
+
+        /* dxgkrnl takes these from any WDDM 1.1 or later miniport, the only ones it drives */
+        case DISPLAYCONFIG_SCALING_ASPECTRATIOCENTEREDMAX:
+            *pDdiScaling = D3DKMDT_VPPS_ASPECTRATIOCENTEREDMAX;
+            return STATUS_SUCCESS;
+
+        case DISPLAYCONFIG_SCALING_CUSTOM:
+            *pDdiScaling = D3DKMDT_VPPS_CUSTOM;
+            return STATUS_SUCCESS;
+
+        case DISPLAYCONFIG_SCALING_PREFERRED:
+            *pDdiScaling = D3DKMDT_VPPS_RESERVED1;
+            return STATUS_SUCCESS;
+    }
+
+    return STATUS_INVALID_PARAMETER;
+}
+
+/** @brief The D3DDDIFORMAT of a GDI pixel format, FALSE for one GDI cannot draw. */
+static
+BOOLEAN
+DlpConvertPixelFormat(
+    _In_ ULONG PixelFormat,
+    _Out_ PULONG pFormat)
+{
+    switch (PixelFormat)
+    {
+        case DISPLAYCONFIG_PIXELFORMAT_8BPP:
+            *pFormat = D3DDDIFMT_P8;
+            return TRUE;
+
+        case DISPLAYCONFIG_PIXELFORMAT_16BPP:
+            *pFormat = D3DDDIFMT_R5G6B5;
+            return TRUE;
+
+        case DISPLAYCONFIG_PIXELFORMAT_24BPP:
+            *pFormat = D3DDDIFMT_R8G8B8;
+            return TRUE;
+
+        case DISPLAYCONFIG_PIXELFORMAT_32BPP:
+            *pFormat = D3DDDIFMT_A8R8G8B8;
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+/** @brief Copy a target timing into the DDI signal layout dxgkrnl keeps in a path. */
+static
+VOID
+DlpConvertSignal(
+    _In_ const DISPLAYCONFIG_VIDEO_SIGNAL_INFO *pInfo,
+    _Out_ DL_MODALITY_SIGNAL *pSignal)
+{
+    pSignal->VideoStandard = pInfo->AdditionalSignalInfo.videoStandard;
+    pSignal->TotalSize[0] = pInfo->totalSize.cx;
+    pSignal->TotalSize[1] = pInfo->totalSize.cy;
+    pSignal->ActiveSize[0] = pInfo->activeSize.cx;
+    pSignal->ActiveSize[1] = pInfo->activeSize.cy;
+    pSignal->VSyncFreq[0] = pInfo->vSyncFreq.Numerator;
+    pSignal->VSyncFreq[1] = pInfo->vSyncFreq.Denominator;
+    pSignal->HSyncFreq[0] = pInfo->hSyncFreq.Numerator;
+    pSignal->HSyncFreq[1] = pInfo->hSyncFreq.Denominator;
+    pSignal->PixelRate = (SIZE_T)pInfo->pixelRate;
+    pSignal->ScanLineOrdering = (pInfo->scanLineOrdering & DL_SIGNAL_ORDERING_MASK) |
+                                (pInfo->AdditionalSignalInfo.vSyncFreqDivider << DL_SIGNAL_DIVIDER_SHIFT);
+}
+
+/** @brief A 16 bit mode index of a virtual mode aware caller, widened to the 32 bit form. */
+static
+ULONG
+DlpWideModeIndex(
+    _In_ ULONG Index)
+{
+    return (Index == DISPLAYCONFIG_PATH_SOURCE_MODE_IDX_INVALID) ? DISPLAYCONFIG_PATH_MODE_IDX_INVALID : Index;
+}
+
+/**
+ * @brief Fill one path of a modality from an active DISPLAYCONFIG_PATH_INFO and the modes it names.
+ *        An identity scaling becomes the preferred one in the caller's path, as on Windows.
+ *
+ * @param AllPaths The paths the adapters can drive, which give the target's output technology.
+ * @param pbAnyPreferred Set to TRUE when the path asks for the preferred scaling.
+ */
+static
+NTSTATUS
+DlpConvertSuppliedPath(
+    _Inout_ DISPLAYCONFIG_PATH_INFO *pInfo,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags,
+    _In_ PD3DKMT_GETPATHSMODALITY AllPaths,
+    _Out_ PDL_MODALITY_PATH pPath,
+    _Inout_opt_ PBOOLEAN pbAnyPreferred)
+{
+    const DISPLAYCONFIG_MODE_INFO *pSource = NULL;
+    const DISPLAYCONFIG_MODE_INFO *pTarget = NULL;
+    BOOLEAN bAware = (Flags & SDC_VIRTUAL_MODE_AWARE) != 0;
+    PDL_MODALITY_PATH pKnown;
+    ULONG SourceIdx, TargetIdx, DesktopIdx;
+    ULONG Format;
+    LONG Swap;
+    NTSTATUS Status;
+
+    RtlZeroMemory(pPath, sizeof(*pPath));
+
+    Status = DlpFindTargetPath(AllPaths, &pInfo->sourceInfo.adapterId, pInfo->targetInfo.id, &pKnown);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    pPath->TargetOutputTechnology = pKnown->TargetOutputTechnology;
+    pPath->TargetBaseOutputTechnology = pKnown->TargetBaseOutputTechnology;
+    pPath->Flags |= DL_PATHF_FROM_CALLER;
+
+    if (bAware)
+    {
+        SourceIdx = DlpWideModeIndex(pInfo->sourceInfo.sourceModeInfoIdx);
+        TargetIdx = DlpWideModeIndex(pInfo->targetInfo.targetModeInfoIdx);
+        DesktopIdx = DlpWideModeIndex(pInfo->targetInfo.desktopModeInfoIdx);
+    }
+    else
+    {
+        SourceIdx = pInfo->sourceInfo.modeInfoIdx;
+        TargetIdx = pInfo->targetInfo.modeInfoIdx;
+        DesktopIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+    }
+
+    if (SourceIdx == DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
+    {
+        /* A clone that takes its source mode from another path of its group */
+        if (bAware)
+        {
+            pPath->CloneGroupId = DL_CLONE_GROUP_FROM_CALLER | pInfo->sourceInfo.cloneGroupId;
+            pPath->Flags |= DL_PATHF_CLONE_GROUPED;
+        }
+    }
+    else
+    {
+        if ((SourceIdx >= cModes) || (pModes[SourceIdx].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE))
+            return STATUS_INVALID_PARAMETER;
+        pSource = &pModes[SourceIdx];
+    }
+
+    if (TargetIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
+    {
+        if ((TargetIdx >= cModes) || (pModes[TargetIdx].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_TARGET))
+            return STATUS_INVALID_PARAMETER;
+        pTarget = &pModes[TargetIdx];
+    }
+
+    /* A desktop image needs virtual modes, which no target here runs */
+    if (DesktopIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
+        return STATUS_INVALID_PARAMETER;
+
+    if ((pSource == NULL) && (pTarget != NULL))
+        return STATUS_INVALID_PARAMETER;
+
+    pPath->AdapterLuid = pInfo->sourceInfo.adapterId;
+    pPath->VidPnSourceId = pInfo->sourceInfo.id;
+    pPath->VidPnTargetId = pInfo->targetInfo.id;
+    pPath->Flags |= DL_PATHF_IDS;
+
+    if (pTarget != NULL)
+    {
+        DlpConvertSignal(&pTarget->targetMode.targetVideoSignalInfo, &pPath->TargetMode);
+        pPath->Flags |= DL_PATHF_TARGET_TIMING;
+    }
+    else if ((pInfo->targetInfo.refreshRate.Numerator != 0) &&
+             (pInfo->targetInfo.refreshRate.Denominator != 0) &&
+             (pInfo->targetInfo.scanLineOrdering != DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED))
+    {
+        pPath->TargetMode.VSyncFreq[0] = pInfo->targetInfo.refreshRate.Numerator;
+        pPath->TargetMode.VSyncFreq[1] = pInfo->targetInfo.refreshRate.Denominator;
+        pPath->TargetMode.ScanLineOrdering = (pInfo->targetInfo.scanLineOrdering & DL_SIGNAL_ORDERING_MASK) |
+                                             (1 << DL_SIGNAL_DIVIDER_SHIFT);
+        pPath->Flags |= DL_PATHF_TARGET_REFRESH;
+    }
+
+    if ((pPath->Flags & DL_PATHF_TARGET_VSYNC) && (pPath->TargetMode.VSyncFreq[1] == 0))
+        pPath->Flags &= ~DL_PATHF_TARGET_VSYNC;
+
+    if (pSource != NULL)
+    {
+        pPath->ContentResolution.x = pSource->sourceMode.width;
+        pPath->ContentResolution.y = pSource->sourceMode.height;
+        pPath->Position = pSource->sourceMode.position;
+        pPath->Flags |= DL_PATHF_CONTENT_RESOLUTION | DL_PATHF_POSITION;
+
+        /* Without virtual modes the source surface is the content itself */
+        if (!DlpConvertPixelFormat(pSource->sourceMode.pixelFormat, &Format))
+            return STATUS_INVALID_PARAMETER;
+
+        pPath->SourcePrimSurfSize[0] = pSource->sourceMode.width;
+        pPath->SourcePrimSurfSize[1] = pSource->sourceMode.height;
+        pPath->SourceVisibleRegionSize[0] = pSource->sourceMode.width;
+        pPath->SourceVisibleRegionSize[1] = pSource->sourceMode.height;
+        pPath->SourcePixelFormat = Format;
+        pPath->Flags |= DL_PATHF_SOURCE_MODE;
+    }
+
+    /* The DDI rotations have the values of the DISPLAYCONFIG ones, anything else is none */
+    if ((pInfo->targetInfo.rotation >= DISPLAYCONFIG_ROTATION_IDENTITY) &&
+        (pInfo->targetInfo.rotation <= DISPLAYCONFIG_ROTATION_ROTATE270))
+    {
+        pPath->Rotation = pInfo->targetInfo.rotation;
+    }
+    pPath->Flags |= DL_PATHF_ROTATION;
+    pPath->FixedFlags |= DL_PATHF_ROTATION;
+
+    if ((pPath->Flags & DL_PATHF_CONTENT_RESOLUTION) &&
+        ((pPath->Rotation == D3DKMDT_VPPR_ROTATE90) || (pPath->Rotation == D3DKMDT_VPPR_ROTATE270)))
+    {
+        Swap = pPath->ContentResolution.x;
+        pPath->ContentResolution.x = pPath->ContentResolution.y;
+        pPath->ContentResolution.y = Swap;
+    }
+
+    if (pInfo->targetInfo.scaling == DISPLAYCONFIG_SCALING_IDENTITY)
+        pInfo->targetInfo.scaling = DISPLAYCONFIG_SCALING_PREFERRED;
+
+    Status = DlpConvertScaling(pInfo->targetInfo.scaling, &pPath->ScalingIntent);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if ((pPath->ScalingIntent == D3DKMDT_VPPS_RESERVED1) && (pbAnyPreferred != NULL))
+        *pbAnyPreferred = TRUE;
+
+    pPath->ScalingToApply = pPath->ScalingIntent;
+    pPath->Flags |= DL_PATHF_SCALING;
+
+    if (!(Flags & SDC_ALLOW_CHANGES))
+        pPath->FixedFlags |= pPath->Flags & DL_PATHF_PINNED_MASK;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Give the paths that share a source one clone group. A virtual mode aware caller's paths
+ *        share one when they sit at the same desktop position.
+ */
+static
+VOID
+DlpGroupClones(
+    _Inout_ PD3DKMT_GETPATHSMODALITY Modality,
+    _In_ BOOLEAN bAware)
+{
+    PDL_MODALITY_PATH Paths = DL_MODALITY_PATHS(Modality);
+    BOOLEAN bSame;
+    USHORT i, j;
+
+    for (i = 0; i < Modality->PathCount; i++)
+    {
+        if (Paths[i].Flags & DL_PATHF_CLONE_GROUPED)
+            continue;
+
+        for (j = i; j < Modality->PathCount; j++)
+        {
+            if (Paths[j].Flags & DL_PATHF_CLONE_GROUPED)
+                continue;
+
+            if (bAware)
+            {
+                bSame = (Paths[j].Position.x == Paths[i].Position.x) &&
+                        (Paths[j].Position.y == Paths[i].Position.y);
+            }
+            else
+            {
+                bSame = (Paths[j].VidPnSourceId == Paths[i].VidPnSourceId) &&
+                        RtlEqualLuid(&Paths[j].AdapterLuid, &Paths[i].AdapterLuid);
+            }
+
+            if (!bSame)
+                continue;
+
+            Paths[j].CloneGroupId = DL_CLONE_GROUP_FROM_SOURCE | i;
+            Paths[j].Flags |= DL_PATHF_CLONE_GROUPED;
+        }
+    }
+}
+
+/**
+ * @brief Build a modality out of the active paths a SetDisplayConfig caller supplied.
+ *
+ * @param pbAnyPreferred Optional, set to TRUE when a path asks for the preferred scaling.
+ */
+static
+NTSTATUS
+DlpBuildSuppliedModality(
+    _In_ ULONG cPaths,
+    _Inout_updates_opt_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags,
+    _Outptr_result_maybenull_ PD3DKMT_GETPATHSMODALITY *ppModality,
+    _Inout_opt_ PBOOLEAN pbAnyPreferred)
+{
+    PD3DKMT_GETPATHSMODALITY Modality, AllPaths;
+    PDL_MODALITY_PATH Paths;
+    ULONG cActive = 0;
+    USHORT n = 0;
+    NTSTATUS Status;
+    ULONG i;
+
+    *ppModality = NULL;
+
+    for (i = 0; (pPaths != NULL) && (i < cPaths); i++)
+    {
+        if (pPaths[i].flags & DISPLAYCONFIG_PATH_ACTIVE)
+            cActive++;
+    }
+
+    if ((cActive == 0) || (cActive > MAXUSHORT))
+        return STATUS_INVALID_PARAMETER;
+
+    Status = DlpQueryPathsModality(DL_MODALITY_ALL_PATHS, &AllPaths);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Modality = ExAllocatePoolZero(PagedPool,
+                                  DL_MODALITY_HEADER_SIZE + cActive * DL_MODALITY_PATH_SIZE,
+                                  GDITAG_TEMP);
+    if (Modality == NULL)
+    {
+        DlpFreePathsModality(AllPaths);
+        return STATUS_NO_MEMORY;
+    }
+
+    Modality->PathCount = (USHORT)cActive;
+    Modality->PathArraySize = (USHORT)cActive;
+    Paths = DL_MODALITY_PATHS(Modality);
+
+    for (i = 0; i < cPaths; i++)
+    {
+        if (!(pPaths[i].flags & DISPLAYCONFIG_PATH_ACTIVE))
+            continue;
+
+        Status = DlpConvertSuppliedPath(&pPaths[i], cModes, pModes, Flags, AllPaths, &Paths[n], pbAnyPreferred);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("win32k: SetDisplayConfig path %lu does not convert, 0x%lx\n", i, Status);
+            break;
+        }
+        n++;
+    }
+
+    DlpFreePathsModality(AllPaths);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DlpFreePathsModality(Modality);
+        return Status;
+    }
+
+    DlpGroupClones(Modality, (Flags & SDC_VIRTUAL_MODE_AWARE) != 0);
+
+    *ppModality = Modality;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Replace the preferred scaling of the paths with the one the database keeps for this set of
+ *        paths, or the adapter default when the database has none.
+ */
+static
+NTSTATUS
+DlpResolvePreferredScaling(
+    _Inout_ PD3DKMT_GETPATHSMODALITY Modality)
+{
+    PDL_MODALITY_PATH Paths = DL_MODALITY_PATHS(Modality);
+    PD3DKMT_GETPATHSMODALITY Saved;
+    PDL_MODALITY_PATH Match;
+    SIZE_T Size;
+    NTSTATUS Status;
+    USHORT i;
+
+    Size = DL_MODALITY_HEADER_SIZE + Modality->PathArraySize * DL_MODALITY_PATH_SIZE;
+    Saved = ExAllocatePoolWithTag(PagedPool, Size, GDITAG_TEMP);
+    if (Saved == NULL)
+        return STATUS_NO_MEMORY;
+
+    /* dxgkrnl has not touched the modality yet, so a plain copy is a complete one */
+    RtlCopyMemory(Saved, Modality, Size);
+
+    Status = gDxgkInterface.pfnDxgkGetPathsModality(DL_MODALITY_SUPPLIED_PATHS | DL_MODALITY_PERSISTED, Saved, NULL);
+    if (NT_SUCCESS(Status))
+    {
+        if (Saved->PathCount != Modality->PathCount)
+            Status = STATUS_UNSUCCESSFUL;
+
+        for (i = 0; NT_SUCCESS(Status) && (i < Modality->PathCount); i++)
+        {
+            if (Paths[i].ScalingToApply != D3DKMDT_VPPS_RESERVED1)
+                continue;
+
+            Status = DlpFindTargetPath(Saved, &Paths[i].AdapterLuid, Paths[i].VidPnTargetId, &Match);
+            if (!NT_SUCCESS(Status))
+            {
+                Status = STATUS_UNSUCCESSFUL;
+                break;
+            }
+
+            Paths[i].ScalingToApply = Match->ScalingToApply;
+            Paths[i].ScalingIntent = Match->ScalingIntent;
+            Paths[i].Flags |= DL_PATHF_SCALING;
+        }
+    }
+    else
+    {
+        /* dxgkrnl's default for a WDDM 1.1 or later adapter, the only ones it drives */
+        for (i = 0; i < Modality->PathCount; i++)
+        {
+            if (Paths[i].ScalingIntent == D3DKMDT_VPPS_RESERVED1)
+                Paths[i].ScalingIntent = D3DKMDT_VPPS_ASPECTRATIOCENTEREDMAX;
+
+            Paths[i].ScalingToApply = Paths[i].ScalingIntent;
+            Paths[i].Flags |= DL_PATHF_SCALING_SET;
+        }
+        Status = STATUS_SUCCESS;
+    }
+
+    DlpFreePathsModality(Saved);
+    return Status;
+}
+
+/** @brief How many sources the paths turn on, one per clone group. */
+static
+ULONG
+DlpCountSources(
+    _In_ PD3DKMT_GETPATHSMODALITY Modality)
+{
+    ULONG cSources = 0;
+    USHORT i;
+
+    for (i = 0; i < Modality->PathCount; i++)
+    {
+        if (DlpIsFirstPathOfCloneGroup(Modality, i))
+            cSources++;
+    }
+
+    return cSources;
+}
+
+/**
+ * @brief The dxgkrnl side of SetDisplayConfig: build the paths from the database or from the
+ *        caller's arrays, have dxgkrnl pick the modes, then apply and save them as asked.
+ *
+ * @param pPaths The active paths, a kernel copy that the scaling conversion may change.
+ * @param pmdevOld The current desktop.
+ * @param ppmdevNew Receives the desktop built for an applied configuration, which the caller
+ *        installs even when saving it failed afterwards.
+ * @param pbApplied Receives TRUE once dxgkrnl programmed the configuration.
+ *
+ * @return STATUS_FOUND_OUT_OF_SCOPE when the configuration was applied but could not be saved, as
+ *         Windows reports it. STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED when the configuration
+ *         turns on more sources than the desktop can span.
+ */
+NTSTATUS
+NTAPI
+DlSetDisplayConfigPaths(
+    _In_ ULONG cPaths,
+    _Inout_updates_opt_(cPaths) DISPLAYCONFIG_PATH_INFO *pPaths,
+    _In_ ULONG cModes,
+    _In_reads_opt_(cModes) const DISPLAYCONFIG_MODE_INFO *pModes,
+    _In_ ULONG Flags,
+    _In_ PMDEVOBJ pmdevOld,
+    _Out_ PMDEVOBJ *ppmdevNew,
+    _Out_ PBOOLEAN pbApplied)
+{
+    PPROCESSINFO ppi = PsGetCurrentProcessWin32Process();
+    PD3DKMT_GETPATHSMODALITY Modality = NULL;
+    BOOLEAN bAnyPreferred = FALSE;
+    BOOLEAN bPersist, bSaved;
+    ULONG PersistIndex = DL_PERSIST_TIMESTAMP;
+    ULONG GetFlags, MarkFlags = 0;
+    NTSTATUS Status, PersistStatus;
+
+    *ppmdevNew = NULL;
+    *pbApplied = FALSE;
+
+    if (!DlpIsDisplayConfigReady() || (ppi == NULL) || (ppi->DxProcess == NULL))
+        return STATUS_NOT_SUPPORTED;
+
+    DPRINT1("win32k: SetDisplayConfig of %lu path(s) and %lu mode(s), flags 0x%lx\n", cPaths, cModes, Flags);
+
+    if (Flags & SDC_USE_DATABASE_CURRENT)
+    {
+        /* The topology bits are what dxgkrnl looks the saved configuration up by */
+        Status = DlpQueryPathsModality(Flags & SDC_USE_DATABASE_CURRENT, &Modality);
+        bPersist = !(Flags & SDC_VALIDATE);
+        bSaved = TRUE;
+    }
+    else if (Flags & SDC_TOPOLOGY_SUPPLIED)
+    {
+        Status = DlpBuildSuppliedModality(cPaths, pPaths, 0, NULL, Flags, &Modality, NULL);
+        if (NT_SUCCESS(Status))
+        {
+            GetFlags = DL_MODALITY_SUPPLIED_PATHS | DL_MODALITY_PERSISTED;
+            if (Flags & SDC_ALLOW_PATH_ORDER_CHANGES)
+                GetFlags |= DL_MODALITY_PATH_ORDER;
+
+            Status = gDxgkInterface.pfnDxgkGetPathsModality(GetFlags, Modality, NULL);
+        }
+        bPersist = !(Flags & SDC_VALIDATE);
+        bSaved = TRUE;
+    }
+    else
+    {
+        Status = DlpBuildSuppliedModality(cPaths, pPaths, cModes, pModes, Flags, &Modality, &bAnyPreferred);
+        if (NT_SUCCESS(Status) && bAnyPreferred)
+            Status = DlpResolvePreferredScaling(Modality);
+        if (NT_SUCCESS(Status))
+            Status = gDxgkInterface.pfnDxgkGetPathsModality(DL_MODALITY_TARGET_FLAGS, Modality, NULL);
+
+        bPersist = ((Flags & (SDC_SAVE_TO_DATABASE | SDC_VALIDATE)) == SDC_SAVE_TO_DATABASE);
+        PersistIndex = DL_PERSIST_TO_DATABASE;
+        bSaved = bPersist;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("win32k: SetDisplayConfig has no paths to commit, 0x%lx\n", Status);
+        goto Cleanup;
+    }
+
+    DPRINT1("win32k: functionalizing %u path(s), flags 0x%lx\n", Modality->PathCount, DL_FUNCTIONALIZE_SDC);
+    Status = gDxgkInterface.pfnDxgkFunctionalizePathsModality(DL_FUNCTIONALIZE_SDC, Modality);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("win32k: DxgkFunctionalizePathsModality failed 0x%lX\n", Status);
+        goto Cleanup;
+    }
+
+    DlpLogPaths((Flags & SDC_VALIDATE) ? "validated" : "functional", Modality);
+
+    /* The desktop spans a single source */
+    if (DlpCountSources(Modality) > 1)
+    {
+        DPRINT1("win32k: SetDisplayConfig turns on %lu sources, the desktop spans one\n", DlpCountSources(Modality));
+        Status = STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
+        goto Cleanup;
+    }
+
+    if (Flags & SDC_VALIDATE)
+        goto Cleanup;
+
+    /* dxgkrnl marks the modes of the paths so the apply sets them even when they are running */
+    if (Flags & SDC_FORCE_MODE_ENUMERATION)
+        MarkFlags |= DL_MODALITY_FORCE_ENUM;
+    if (Flags & (SDC_NO_OPTIMIZATION | SDC_FORCE_MODE_ENUMERATION))
+        MarkFlags |= DL_MODALITY_NO_OPTIMIZE;
+
+    if (MarkFlags != 0)
+    {
+        Status = gDxgkInterface.pfnDxgkGetPathsModality(MarkFlags, Modality, NULL);
+        if (!NT_SUCCESS(Status))
+            goto Cleanup;
+    }
+
+    Status = DlpApplyFunctionalModality(Modality,
+                                        DL_APPLY_CDS | (MarkFlags & DL_MODALITY_FORCE_ENUM),
+                                        bSaved,
+                                        pmdevOld,
+                                        ppmdevNew,
+                                        pbApplied);
+    if (!NT_SUCCESS(Status))
+    {
+        Status = STATUS_UNSUCCESSFUL;
+        goto Cleanup;
+    }
+
+    if (bPersist)
+    {
+        PersistStatus = STATUS_NOT_SUPPORTED;
+        if (gDxgkInterface.pfnDxgkPersistPathsModality != NULL)
+            PersistStatus = gDxgkInterface.pfnDxgkPersistPathsModality(PersistIndex, Modality);
+
+        if (!NT_SUCCESS(PersistStatus))
+        {
+            DPRINT1("win32k: saving the display configuration failed 0x%lX\n", PersistStatus);
+            Status = STATUS_FOUND_OUT_OF_SCOPE;
+        }
+    }
+
+Cleanup:
+    DPRINT1("win32k: SetDisplayConfig ends with 0x%lx%s\n", Status,
+            *pbApplied ? ", the display runs the new configuration" : "");
+    if (Modality != NULL)
+        DlpFreePathsModality(Modality);
     return Status;
 }
 

@@ -3075,6 +3075,18 @@ NTAPI
 NtUserDisplayConfigGetDeviceInfo(
     _Inout_ struct DISPLAYCONFIG_DEVICE_INFO_HEADER *pPacket);
 
+struct DISPLAYCONFIG_PATH_INFO;
+struct DISPLAYCONFIG_MODE_INFO;
+
+NTSTATUS
+NTAPI
+NtUserSetDisplayConfig(
+    _In_ UINT32 NumPathArrayElements,
+    _In_reads_opt_(NumPathArrayElements) struct DISPLAYCONFIG_PATH_INFO *pPathArray,
+    _In_ UINT32 NumModeInfoArrayElements,
+    _In_reads_opt_(NumModeInfoArrayElements) struct DISPLAYCONFIG_MODE_INFO *pModeInfoArray,
+    _In_ UINT32 Flags);
+
 BOOL
 NTAPI
 NtUserModifyWindowTouchCapability(

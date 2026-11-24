@@ -991,3 +991,4 @@
 @ stdcall NtUserGetTouchInputInfo(ptr long ptr long)
 @ stdcall NtUserCloseTouchInputHandle(ptr)
 @ stdcall NtUserDisplayConfigGetDeviceInfo(ptr)
+@ stdcall NtUserSetDisplayConfig(long ptr long ptr long)
