@@ -992,6 +992,78 @@ NdisICreateClose(
 
 /**
  * @brief
+ * Logs an MSI-X capability: its control word, every vector table entry and the
+ * pending bits, read from the BAR the capability points at.
+ */
+static
+VOID
+MiniLogMsixState(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PPCI_COMMON_CONFIG Config,
+    _In_ UCHAR Offset)
+{
+    PHYSICAL_ADDRESS Address;
+    ULONG TableInfo, PendingInfo;
+    USHORT Control;
+    ULONG Entries, Bar, i;
+    PULONG Table, Pending;
+
+    if (Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context, PCI_WHICHSPACE_CONFIG,
+                                         &Control, Offset + 2, sizeof(Control)) != sizeof(Control) ||
+        Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context, PCI_WHICHSPACE_CONFIG,
+                                         &TableInfo, Offset + 4, sizeof(TableInfo)) != sizeof(TableInfo) ||
+        Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context, PCI_WHICHSPACE_CONFIG,
+                                         &PendingInfo, Offset + 8, sizeof(PendingInfo)) != sizeof(PendingInfo))
+    {
+        return;
+    }
+
+    Entries = (Control & 0x7FF) + 1;
+    NDIS_DbgPrint(MIN_TRACE, ("  MSI-X control %04x (%lu entries, enable %u, function mask %u)\n",
+                              Control, Entries, (Control >> 15) & 1, (Control >> 14) & 1));
+
+    Bar = TableInfo & 7;
+    if (Bar >= PCI_TYPE0_ADDRESSES || (Config->u.type0.BaseAddresses[Bar] & PCI_ADDRESS_IO_SPACE))
+        return;
+
+    Address.QuadPart = Config->u.type0.BaseAddresses[Bar] & ~0xFULL;
+    if (Bar + 1 < PCI_TYPE0_ADDRESSES &&
+        (Config->u.type0.BaseAddresses[Bar] & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT)
+    {
+        Address.HighPart = Config->u.type0.BaseAddresses[Bar + 1];
+    }
+
+    Address.QuadPart += TableInfo & ~7UL;
+    Table = MmMapIoSpace(Address, Entries * 16, MmNonCached);
+    if (Table != NULL)
+    {
+        for (i = 0; i < Entries; i++)
+        {
+            NDIS_DbgPrint(MIN_TRACE, ("  MSI-X %2lu address %08lx%08lx data %08lx control %08lx\n",
+                                      i,
+                                      READ_REGISTER_ULONG(&Table[i * 4 + 1]),
+                                      READ_REGISTER_ULONG(&Table[i * 4]),
+                                      READ_REGISTER_ULONG(&Table[i * 4 + 2]),
+                                      READ_REGISTER_ULONG(&Table[i * 4 + 3])));
+        }
+        MmUnmapIoSpace(Table, Entries * 16);
+    }
+
+    if ((PendingInfo & 7) != Bar)
+        return;
+
+    Address.QuadPart += (PendingInfo & ~7UL) - (TableInfo & ~7UL);
+    Pending = MmMapIoSpace(Address, sizeof(ULONG) * 2, MmNonCached);
+    if (Pending != NULL)
+    {
+        NDIS_DbgPrint(MIN_TRACE, ("  MSI-X pending %08lx%08lx\n",
+                                  READ_REGISTER_ULONG(&Pending[1]), READ_REGISTER_ULONG(&Pending[0])));
+        MmUnmapIoSpace(Pending, sizeof(ULONG) * 2);
+    }
+}
+
+/**
+ * @brief
  * Logs what a PCI adapter looks like after its miniport refused to initialize:
  * its command and status, its BARs, its power state and the memory ranges the
  * miniport was given.
@@ -1052,7 +1124,10 @@ MiniLogPciState(
             {
                 NDIS_DbgPrint(MIN_TRACE, ("  power state D%u\n", PowerControl & 3));
             }
-            break;
+        }
+        else if (Capability[0] == PCI_CAPABILITY_ID_MSIX)
+        {
+            MiniLogMsixState(Adapter, &Config, Next);
         }
 
         Next = Capability[1];

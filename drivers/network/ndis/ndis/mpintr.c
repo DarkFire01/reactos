@@ -124,6 +124,9 @@ CoreQueueIsrDpcs(
         CoreQueueTargetedDpcs(Interrupt, MessageId, TargetProcessors, NULL);
 }
 
+/* The first deliveries are traced, they show whether a device's interrupts arrive at all */
+static LONG CoreTracedInterrupts;
+
 static KSERVICE_ROUTINE CoreLineIsr;
 
 static
@@ -144,11 +147,15 @@ CoreLineIsr(
                                           &QueueDefaultDpc,
                                           &TargetProcessors);
 
+    if (InterlockedIncrement(&CoreTracedInterrupts) <= 16)
+        NDIS_DbgPrint(MIN_TRACE, ("line interrupt for %p, claimed %u\n", Interrupt->Adapter, Claimed));
+
     CoreQueueIsrDpcs(Interrupt, 0, QueueDefaultDpc, TargetProcessors);
     return Claimed;
 }
 
 static KMESSAGE_SERVICE_ROUTINE CoreMessageIsr;
+
 
 static
 BOOLEAN
@@ -169,6 +176,9 @@ CoreMessageIsr(
                                                  MessageId,
                                                  &QueueDefaultDpc,
                                                  &TargetProcessors);
+
+    if (InterlockedIncrement(&CoreTracedInterrupts) <= 32)
+        NDIS_DbgPrint(MIN_TRACE, ("message %lu interrupt for %p, claimed %u\n", MessageId, Interrupt->Adapter, Claimed));
 
     CoreQueueIsrDpcs(Interrupt, MessageId, QueueDefaultDpc, TargetProcessors);
     return Claimed;
