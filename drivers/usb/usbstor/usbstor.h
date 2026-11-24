@@ -329,7 +329,8 @@ USBSTOR_QueueInitialize(
 
 VOID
 USBSTOR_QueueNextRequest(
-    IN PDEVICE_OBJECT DeviceObject);
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ BOOLEAN StartedRequestDone);
 
 VOID
 USBSTOR_QueueTerminateRequest(
