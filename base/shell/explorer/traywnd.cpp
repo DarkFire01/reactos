@@ -226,24 +226,29 @@ public:
             CloseThemeData(m_OrbTheme);
         m_OrbTheme = NULL;
 
-        if (!IsThemeActive())
-            return;
+        /* Not through the button window, that would replace the theme the button itself draws with */
+        HTHEME Theme = NULL;
+        if (IsThemeActive())
+            Theme = OpenThemeData(NULL, L"StartBottom::Button;StartMiddle::Button;StartTop::Button");
 
-        HTHEME Theme = OpenThemeData(m_hWnd, L"StartBottom::Button;StartMiddle::Button;StartTop::Button");
-        if (Theme == NULL)
-            return;
-
-        SIZE Size;
-        if (!IsThemePartDefined(Theme, 0, 0) ||
-            FAILED(GetThemePartSize(Theme, NULL, 0, PBS_NORMAL, NULL, TS_TRUE, &Size)) ||
-            Size.cx <= 0 || Size.cy <= 0)
+        if (Theme != NULL)
         {
-            CloseThemeData(Theme);
-            return;
+            SIZE Size;
+            if (IsThemePartDefined(Theme, 0, 0) &&
+                SUCCEEDED(GetThemePartSize(Theme, NULL, 0, PBS_NORMAL, NULL, TS_TRUE, &Size)) &&
+                Size.cx > 0 && Size.cy > 0)
+            {
+                m_OrbTheme = Theme;
+                m_OrbSize = Size;
+            }
+            else
+            {
+                CloseThemeData(Theme);
+            }
         }
 
-        m_OrbTheme = Theme;
-        m_OrbSize = Size;
+        /* The push button would paint its face over the orb, an owner drawn one leaves it to us */
+        SendMessageW(BM_SETSTYLE, (m_OrbTheme != NULL) ? BS_OWNERDRAW : BS_PUSHBUTTON, TRUE);
     }
 
     VOID UpdateSize()
@@ -343,29 +348,23 @@ public:
         return 0;
     }
 
-    LRESULT OnPaint(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    /* The tray hands over the owner draw requests of the orb button */
+    LRESULT DrawOrb(
+        _In_ const DRAWITEMSTRUCT *pdis)
     {
         if (m_OrbTheme == NULL)
-        {
-            bHandled = FALSE;
-            return 0;
-        }
-
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(&ps);
-        RECT rc;
-        GetClientRect(&rc);
+            return FALSE;
 
         int State = PBS_NORMAL;
-        if (SendMessageW(BM_GETSTATE, 0, 0) & BST_PUSHED)
+        if (pdis->itemState & ODS_SELECTED)
             State = PBS_PRESSED;
         else if (m_bHot)
             State = PBS_HOT;
 
-        DrawThemeParentBackground(m_hWnd, hdc, &rc);
-        DrawThemeBackground(m_OrbTheme, hdc, 0, State, &rc, NULL);
-        EndPaint(&ps);
-        return 0;
+        RECT rc = pdis->rcItem;
+        DrawThemeParentBackground(m_hWnd, pdis->hDC, &rc);
+        DrawThemeBackground(m_OrbTheme, pdis->hDC, 0, State, &rc, NULL);
+        return TRUE;
     }
 
     LRESULT OnEraseBackground(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
@@ -404,15 +403,6 @@ public:
         return 0;
     }
 
-    LRESULT OnSetState(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
-    {
-        /* The button only redraws its own face; the orb has to follow the pushed state */
-        LRESULT Result = DefWindowProc(uMsg, wParam, lParam);
-        if (m_OrbTheme != NULL)
-            Invalidate(FALSE);
-        return Result;
-    }
-
     LRESULT OnThemeChanged(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
     {
         bHandled = FALSE;
@@ -423,11 +413,9 @@ public:
 
     BEGIN_MSG_MAP(CStartButton)
         MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown)
-        MESSAGE_HANDLER(WM_PAINT, OnPaint)
         MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
         MESSAGE_HANDLER(WM_MOUSEMOVE, OnMouseMove)
         MESSAGE_HANDLER(WM_MOUSELEAVE, OnMouseLeave)
-        MESSAGE_HANDLER(BM_SETSTATE, OnSetState)
         MESSAGE_HANDLER(WM_THEMECHANGED, OnThemeChanged)
     END_MSG_MAP()
 };
@@ -2777,6 +2765,19 @@ ChangePos:
         return (LRESULT) GetStockObject(HOLLOW_BRUSH);
     }
 
+    LRESULT OnDrawItem(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+    {
+        const DRAWITEMSTRUCT *pdis = (const DRAWITEMSTRUCT *)lParam;
+
+        if (pdis->hwndItem != m_StartButton.m_hWnd)
+        {
+            bHandled = FALSE;
+            return FALSE;
+        }
+
+        return m_StartButton.DrawOrb(pdis);
+    }
+
     LRESULT OnSysColorChange(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
     {
         return SendMessageW(m_Rebar, uMsg, wParam, lParam);
@@ -3620,6 +3621,7 @@ HandleTrayContextMenu:
             lParam = Msg.lParam;
         }
         MESSAGE_HANDLER(WM_THEMECHANGED, OnThemeChanged)
+        MESSAGE_HANDLER(WM_DRAWITEM, OnDrawItem)
         MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChanged)
         NOTIFY_CODE_HANDLER(RBN_AUTOSIZE, OnRebarAutoSize) // Doesn't quite work ;P
         MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
