@@ -1,1203 +1,487 @@
 /*
  * PROJECT:     ReactOS HID Stack
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/hid/kbdhid/kbdhid.c
- * PURPOSE:     Keyboard HID Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     HID keyboard mapper driver entry, open and close handling
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 #include "kbdhid.h"
 
-/* This structure starts with the same layout as KEYBOARD_INDICATOR_TRANSLATION */
-typedef struct _LOCAL_KEYBOARD_INDICATOR_TRANSLATION {
-    USHORT NumberOfIndicatorKeys;
-    INDICATOR_LIST IndicatorList[3];
-} LOCAL_KEYBOARD_INDICATOR_TRANSLATION, *PLOCAL_KEYBOARD_INDICATOR_TRANSLATION;
+#define NDEBUG
+#include <debug.h>
 
-static LOCAL_KEYBOARD_INDICATOR_TRANSLATION IndicatorTranslation = { 3, {
-    {0x3A, KEYBOARD_CAPS_LOCK_ON},
-    {0x45, KEYBOARD_NUM_LOCK_ON},
-    {0x46, KEYBOARD_SCROLL_LOCK_ON}}};
+KBDHID_GLOBALS KbdHidGlobals;
 
+/* Dump2Key index to set 1 scan code, bit 7 set means the code carries an E0 prefix */
+static const UCHAR KbdHidDumpKeyTable[] =
+{
+    0x00, 0x29, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x7D, 0x0E,
+    0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x00, 0x3A, 0x1E,
+    0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2B, 0x1C, 0x2A, 0x00, 0x2C, 0x2D,
+    0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x73, 0x36, 0x1D, 0x00, 0x38, 0x39, 0xB8, 0x00,
+    0x9D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD2, 0xD3, 0x00, 0x00, 0xCB,
+    0xC7, 0xCF, 0x00, 0xC8, 0xD0, 0xC9, 0xD1, 0x00, 0x00, 0xCD, 0x45, 0x47, 0x4B, 0x4F, 0x00, 0xB5,
+    0x48, 0x4C, 0x50, 0x52, 0x37, 0x49, 0x4D, 0x51, 0x53, 0x4A, 0x4E, 0x00, 0x9C, 0x00, 0x01, 0x00,
+    0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x57, 0x58, 0x00, 0x46, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x7B, 0x79, 0x70
+};
 
+/* Dump2Key index of Print Screen, which is matched by both of its scan codes */
+#define KBDHID_DUMP_KEY_PRINT_SCREEN    124
+#define KBDHID_SCAN_PRINT_SCREEN        0xB7
+#define KBDHID_SCAN_SYSRQ               0x54
+
+static
+NTSTATUS
+KbdHidOpenSubkey(
+    _Out_ PHANDLE KeyHandle,
+    _In_opt_ HANDLE RootHandle,
+    _In_ PUNICODE_STRING Name)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               Name,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               RootHandle,
+                               NULL);
+
+    return ZwOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
+}
+
+static
 VOID
-KbdHid_DispatchInputData(
-    IN PKBDHID_DEVICE_EXTENSION DeviceExtension,
-    IN PKEYBOARD_INPUT_DATA InputData)
+KbdHidReadCrashDumpSettings(
+    _In_ PUNICODE_STRING RegistryPath)
 {
-    KIRQL OldIrql;
-    ULONG InputDataConsumed;
+    static const WCHAR Suffix[] = L"\\Crashdump";
+    RTL_QUERY_REGISTRY_TABLE Table[3];
+    UNICODE_STRING Path;
+    ULONG Modifiers = 0;
+    ULONG Key = 0;
+    ULONG DefaultValue = 0;
+    NTSTATUS Status = STATUS_INSUFFICIENT_RESOURCES;
 
-    if (!DeviceExtension->ClassService)
-        return;
-
-    /* sanity check */
-    ASSERT(DeviceExtension->ClassService);
-    ASSERT(DeviceExtension->ClassDeviceObject);
-
-    /* raise irql */
-    KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
-
-    /* dispatch input data */
-    (*(PSERVICE_CALLBACK_ROUTINE)DeviceExtension->ClassService)(DeviceExtension->ClassDeviceObject, InputData, InputData + 1, &InputDataConsumed);
-
-    /* lower irql to previous level */
-    KeLowerIrql(OldIrql);
-}
-
-BOOLEAN
-NTAPI
-KbdHid_InsertScanCodes(
-    IN PVOID  Context,
-    IN PCHAR  NewScanCodes,
-    IN ULONG  Length)
-{
-    KEYBOARD_INPUT_DATA InputData;
-    ULONG Index;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-    CHAR Prefix = 0;
-
-    /* get device extension */
-    DeviceExtension = Context;
-
-    for(Index = 0; Index < Length; Index++)
+    Path.Length = 0;
+    Path.MaximumLength = RegistryPath->Length + sizeof(Suffix);
+    Path.Buffer = ExAllocatePoolZero(PagedPool, Path.MaximumLength, KBDHID_TAG);
+    if (Path.Buffer != NULL)
     {
-        DPRINT("[KBDHID] ScanCode Index %lu ScanCode %x\n", Index, NewScanCodes[Index] & 0xFF);
+        RtlAppendUnicodeStringToString(&Path, RegistryPath);
+        RtlAppendUnicodeToString(&Path, Suffix);
 
-        /* check if this is E0 or E1 prefix */
-        if (NewScanCodes[Index] == (CHAR)0xE0 || NewScanCodes[Index] == (CHAR)0xE1)
-        {
-            Prefix = NewScanCodes[Index];
-            continue;
-        }
+        RtlZeroMemory(Table, sizeof(Table));
+        Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[0].Name = L"Dump1Keys";
+        Table[0].EntryContext = &Modifiers;
+        Table[0].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
+        Table[0].DefaultData = &DefaultValue;
+        Table[0].DefaultLength = sizeof(DefaultValue);
+        Table[1].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[1].Name = L"Dump2Key";
+        Table[1].EntryContext = &Key;
+        Table[1].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
+        Table[1].DefaultData = &DefaultValue;
+        Table[1].DefaultLength = sizeof(DefaultValue);
 
-        /* init input data */
-        RtlZeroMemory(&InputData, sizeof(KEYBOARD_INPUT_DATA));
-
-        /* use keyboard unit id */
-        InputData.UnitId = DeviceExtension->KeyboardTypematic.UnitId;
-
-        if (NewScanCodes[Index] & 0x80)
-        {
-            /* scan codes with 0x80 flag are a key break */
-            InputData.Flags |= KEY_BREAK;
-        }
-
-        /* set a prefix if needed */
-        if (Prefix)
-        {
-            InputData.Flags |= (Prefix == (CHAR)0xE0 ? KEY_E0 : KEY_E1);
-            Prefix = 0;
-        }
-
-        /* store key code */
-        InputData.MakeCode = NewScanCodes[Index] & 0x7F;
-
-        /* dispatch scan codes */
-        KbdHid_DispatchInputData(Context, &InputData);
+        Status = RtlQueryRegistryValues(RTL_REGISTRY_ABSOLUTE | RTL_REGISTRY_OPTIONAL,
+                                        Path.Buffer,
+                                        Table,
+                                        NULL,
+                                        NULL);
+        ExFreePoolWithTag(Path.Buffer, KBDHID_TAG);
     }
 
-    /* done */
-    return TRUE;
-}
-
-
-NTSTATUS
-NTAPI
-KbdHid_ReadCompletion(
-    IN PDEVICE_OBJECT  DeviceObject,
-    IN PIRP  Irp,
-    IN PVOID  Context)
-{
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-    NTSTATUS Status;
-    ULONG ButtonLength;
-
-    /* get device extension */
-    DeviceExtension = Context;
-
-    /* Any failed read ends the read cycle, a later open starts a new one */
-    if (!NT_SUCCESS(Irp->IoStatus.Status) || DeviceExtension->StopReadReport)
-    {
-        /* failed to read or should be stopped*/
-        DPRINT1("[KBDHID] ReadCompletion terminating read Status %x\n", Irp->IoStatus.Status);
-
-        /* report no longer active */
-        DeviceExtension->ReadReportActive = FALSE;
-
-        /* request stopping of the report cycle */
-        DeviceExtension->StopReadReport = FALSE;
-
-        /* signal completion event */
-        KeSetEvent(&DeviceExtension->ReadCompletionEvent, 0, 0);
-        return STATUS_MORE_PROCESSING_REQUIRED;
-    }
-
-    /* An informational status carries no report, just ask for the next one */
-    if (Irp->IoStatus.Status != STATUS_SUCCESS)
-    {
-        KbdHid_InitiateRead(DeviceExtension);
-        return STATUS_MORE_PROCESSING_REQUIRED;
-    }
-
-    //
-    // print out raw report
-    //
-    ASSERT(DeviceExtension->Capabilities.InputReportByteLength >= 9);
-    DPRINT("[KBDHID] ReadCompletion %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", DeviceExtension->Report[0], DeviceExtension->Report[1], DeviceExtension->Report[2],
-        DeviceExtension->Report[3], DeviceExtension->Report[4], DeviceExtension->Report[5],
-        DeviceExtension->Report[6], DeviceExtension->Report[7], DeviceExtension->Report[8]);
-
-
-    /* get current usages */
-    ButtonLength = DeviceExtension->UsageListLength;
-    Status = HidP_GetUsagesEx(HidP_Input,
-                              HIDP_LINK_COLLECTION_UNSPECIFIED,
-                              DeviceExtension->CurrentUsageList,
-                              &ButtonLength,
-                              DeviceExtension->PreparsedData,
-                              DeviceExtension->Report,
-                              DeviceExtension->Capabilities.InputReportByteLength);
-    ASSERT(Status == HIDP_STATUS_SUCCESS);
-
-    /* FIXME check if needs mapping */
-
-    /* get usage difference */
-    Status = HidP_UsageAndPageListDifference(DeviceExtension->PreviousUsageList,
-                                             DeviceExtension->CurrentUsageList,
-                                             DeviceExtension->BreakUsageList,
-                                             DeviceExtension->MakeUsageList,
-                                             DeviceExtension->UsageListLength);
-    ASSERT(Status == HIDP_STATUS_SUCCESS);
-
-    /* replace previous usage list with current list */
-    RtlMoveMemory(DeviceExtension->PreviousUsageList,
-                  DeviceExtension->CurrentUsageList,
-                  sizeof(USAGE_AND_PAGE) * DeviceExtension->UsageListLength);
-
-    /* translate break usage list */
-    HidP_TranslateUsageAndPagesToI8042ScanCodes(DeviceExtension->BreakUsageList,
-                                                DeviceExtension->UsageListLength,
-                                                HidP_Keyboard_Break,
-                                                &DeviceExtension->ModifierState,
-                                                KbdHid_InsertScanCodes,
-                                                DeviceExtension);
-    ASSERT(Status == HIDP_STATUS_SUCCESS);
-
-    /* translate new usage list */
-    HidP_TranslateUsageAndPagesToI8042ScanCodes(DeviceExtension->MakeUsageList,
-                                                DeviceExtension->UsageListLength,
-                                                HidP_Keyboard_Make,
-                                                &DeviceExtension->ModifierState,
-                                                KbdHid_InsertScanCodes,
-                                                DeviceExtension);
-    ASSERT(Status == HIDP_STATUS_SUCCESS);
-
-    /* re-init read */
-    KbdHid_InitiateRead(DeviceExtension);
-
-    /* stop completion */
-    return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-NTSTATUS
-KbdHid_InitiateRead(
-    IN PKBDHID_DEVICE_EXTENSION DeviceExtension)
-{
-    PIO_STACK_LOCATION IoStack;
-    NTSTATUS Status;
-
-    /* re-use irp */
-    IoReuseIrp(DeviceExtension->Irp, STATUS_SUCCESS);
-
-    /* init irp */
-    DeviceExtension->Irp->MdlAddress = DeviceExtension->ReportMDL;
-
-    /* get next stack location */
-    IoStack = IoGetNextIrpStackLocation(DeviceExtension->Irp);
-
-    /* init stack location */
-    IoStack->Parameters.Read.Length = DeviceExtension->Capabilities.InputReportByteLength;
-    IoStack->Parameters.Read.Key = 0;
-    IoStack->Parameters.Read.ByteOffset.QuadPart = 0LL;
-    IoStack->MajorFunction = IRP_MJ_READ;
-    IoStack->FileObject = DeviceExtension->FileObject;
-
-    /* set completion routine */
-    IoSetCompletionRoutine(DeviceExtension->Irp, KbdHid_ReadCompletion, DeviceExtension, TRUE, TRUE, TRUE);
-
-    /* read is active */
-    DeviceExtension->ReadReportActive = TRUE;
-
-    /* start the read */
-    Status = IoCallDriver(DeviceExtension->NextDeviceObject, DeviceExtension->Irp);
-
-    /* done */
-    return Status;
-}
-
-NTSTATUS
-NTAPI
-KbdHid_CreateCompletion(
-    IN PDEVICE_OBJECT  DeviceObject,
-    IN PIRP  Irp,
-    IN PVOID  Context)
-{
-    KeSetEvent((PKEVENT)Context, 0, FALSE);
-    return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-
-NTSTATUS
-NTAPI
-KbdHid_Create(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PIO_STACK_LOCATION IoStack;
-    NTSTATUS Status;
-    KEVENT Event;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-
-    DPRINT("[KBDHID]: IRP_MJ_CREATE\n");
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* get stack location */
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-
-    /* copy stack location to next */
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-
-    /* init event */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
-
-    /* prepare irp */
-    IoSetCompletionRoutine(Irp, KbdHid_CreateCompletion, &Event, TRUE, TRUE, TRUE);
-
-    /* call lower driver */
-    Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-    if (Status == STATUS_PENDING)
-    {
-        /* request pending */
-        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-    }
-
-    /* check for success */
     if (!NT_SUCCESS(Status))
     {
-        /* failed */
-        Irp->IoStatus.Status = Status;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return Status;
+        Modifiers = 0;
+        Key = 0;
     }
 
-    /* is the driver already in use */
-    if (DeviceExtension->FileObject == NULL)
+    KbdHidGlobals.DumpModifiers = Modifiers;
+    if (Modifiers == 0)
+        return;
+
+    if (Key == KBDHID_DUMP_KEY_PRINT_SCREEN)
     {
-         /* did the caller specify correct attributes */
-         ASSERT(IoStack->Parameters.Create.SecurityContext);
-         if (IoStack->Parameters.Create.SecurityContext->DesiredAccess)
-         {
-             /* store file object */
-             DeviceExtension->FileObject = IoStack->FileObject;
-
-             /* reset event */
-             KeClearEvent(&DeviceExtension->ReadCompletionEvent);
-
-             /* initiating read */
-             Status = KbdHid_InitiateRead(DeviceExtension);
-             DPRINT("[KBDHID] KbdHid_InitiateRead: status %x\n", Status);
-             if (Status == STATUS_PENDING)
-             {
-                 /* report irp is pending */
-                 Status = STATUS_SUCCESS;
-             }
-         }
+        KbdHidGlobals.DumpKey = KBDHID_SCAN_PRINT_SCREEN;
+        KbdHidGlobals.DumpKeyAlt = KBDHID_SCAN_SYSRQ;
     }
-
-    /* complete request */
-    Irp->IoStatus.Status = Status;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return Status;
+    else
+    {
+        KbdHidGlobals.DumpKey = (Key < ARRAYSIZE(KbdHidDumpKeyTable)) ? KbdHidDumpKeyTable[Key] : 0;
+        KbdHidGlobals.DumpKeyAlt = 0;
+    }
 }
 
-
-NTSTATUS
-NTAPI
-KbdHid_Close(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
+static
+VOID
+KbdHidReadServiceParameters(
+    _In_ PUNICODE_STRING RegistryPath)
 {
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
+    UNICODE_STRING ParametersName = RTL_CONSTANT_STRING(L"Parameters");
+    RTL_QUERY_REGISTRY_TABLE Table[4];
+    HANDLE ServiceKey;
+    HANDLE ParametersKey;
+    ULONG BreakOnSysRq = 1;
+    ULONG CrashOnCtrlScroll = 0;
+    ULONG DisableAutoRepeat = 0;
+    ULONG DefaultOn = 1;
+    ULONG DefaultOff = 0;
+    NTSTATUS Status;
 
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    DPRINT("[KBDHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
-
-    /* only the file object that started the report cycle owns it */
-    if (IoGetCurrentIrpStackLocation(Irp)->FileObject == DeviceExtension->FileObject)
+    Status = KbdHidOpenSubkey(&ServiceKey, NULL, RegistryPath);
+    if (!NT_SUCCESS(Status))
     {
-        if (DeviceExtension->ReadReportActive)
-        {
-            /* request stopping of the report cycle */
-            DeviceExtension->StopReadReport = TRUE;
-
-            /* cancel the pending read, its completion signals the event */
-            IoCancelIrp(DeviceExtension->Irp);
-
-            /* wait until the report cycle has stopped */
-            KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
-        }
-
-        /* remove file object */
-        DeviceExtension->FileObject = NULL;
+        DPRINT1("Failed to open the service key 0x%lx\n", Status);
+        return;
     }
 
-    DPRINT("[KBDHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
+    Status = KbdHidOpenSubkey(&ParametersKey, ServiceKey, &ParametersName);
+    ZwClose(ServiceKey);
 
-    /* skip location */
-    IoSkipCurrentIrpStackLocation(Irp);
+    if (NT_SUCCESS(Status))
+    {
+        RtlZeroMemory(Table, sizeof(Table));
+        Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[0].Name = L"BreakOnSysRq";
+        Table[0].EntryContext = &BreakOnSysRq;
+        Table[0].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
+        Table[0].DefaultData = &DefaultOn;
+        Table[0].DefaultLength = sizeof(DefaultOn);
+        Table[1].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[1].Name = L"CrashOnCtrlScroll";
+        Table[1].EntryContext = &CrashOnCtrlScroll;
+        Table[1].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
+        Table[1].DefaultData = &DefaultOff;
+        Table[1].DefaultLength = sizeof(DefaultOff);
+        Table[2].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
+        Table[2].Name = L"DisableAutoRepeat";
+        Table[2].EntryContext = &DisableAutoRepeat;
+        Table[2].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
+        Table[2].DefaultData = &DefaultOff;
+        Table[2].DefaultLength = sizeof(DefaultOff);
 
-    /* pass irp to down the stack */
-    return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
+        Status = RtlQueryRegistryValues(RTL_REGISTRY_HANDLE | RTL_REGISTRY_OPTIONAL,
+                                        (PCWSTR)ParametersKey,
+                                        Table,
+                                        NULL,
+                                        NULL);
+        ZwClose(ParametersKey);
+    }
+    else if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
+    {
+        /* A missing Parameters key means every value takes its default */
+        Status = STATUS_SUCCESS;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to read the service parameters 0x%lx\n", Status);
+        return;
+    }
+
+    KbdHidGlobals.BreakOnSysRq = (BreakOnSysRq != 0);
+
+    if (CrashOnCtrlScroll != 0)
+    {
+        KbdHidGlobals.DumpModifiers = KBDHID_DUMP_RIGHT_CTRL;
+        KbdHidGlobals.DumpKey = KBDHID_SCAN_SCROLL_LOCK;
+        KbdHidGlobals.DumpKeyAlt = 0;
+    }
+    else
+    {
+        KbdHidReadCrashDumpSettings(RegistryPath);
+    }
+
+    KbdHidGlobals.DisableAutoRepeat = (DisableAutoRepeat != 0);
 }
 
 static
 NTSTATUS
 NTAPI
-KbdHid_SetIndicatorsCompletion(
+KbdHidCreateComplete(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_ PIRP Irp,
     _In_ PVOID Context)
 {
-    PIO_STACK_LOCATION IoStack;
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
 
-    DPRINT("KbdHid_SetIndicatorsCompletion()\n");
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-    if (Irp->PendingReturned)
-        IoMarkIrpPending(Irp);
-
-    IoFreeMdl(Irp->MdlAddress);
-    Irp->MdlAddress = IoStack->Parameters.Others.Argument4;
-    ExFreePoolWithTag(Context, KBDHID_TAG);
-    return STATUS_SUCCESS;
-}
-
-static
-NTSTATUS
-KbdHid_SetIndicators(
-    _In_ PKBDHID_DEVICE_EXTENSION DeviceExtension,
-    _In_ PKEYBOARD_INDICATOR_PARAMETERS Indicators,
-    _In_ PIRP Irp)
-{
-    PCHAR Report;
-    USAGE Usage[4];
-    ULONG UsageLength = 0;
-    PIO_STACK_LOCATION IoStack;
-    PMDL ReportMDL;
-    NTSTATUS Status;
-
-    DPRINT("KbdHid_SetIndicators()\n");
-    RtlCopyMemory(&DeviceExtension->KeyboardIndicator,
-                  Indicators,
-                  sizeof(*Indicators));
-
-    if (DeviceExtension->Capabilities.OutputReportByteLength == 0)
-    {
-        /* do nothing, as keyboard has no indicators */
-        Irp->IoStatus.Status = STATUS_SUCCESS;
-        Irp->IoStatus.Information = 0;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_SUCCESS;
-    }
-
-    /* allocate report and MDL */
-    Report = ExAllocatePoolWithTag(NonPagedPool, DeviceExtension->Capabilities.OutputReportByteLength, KBDHID_TAG);
-    if (!Report)
-    {
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        Irp->IoStatus.Information = 0;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    ReportMDL = IoAllocateMdl(Report,
-                              DeviceExtension->Capabilities.OutputReportByteLength,
-                              FALSE,
-                              FALSE,
-                              NULL);
-    if (!ReportMDL)
-    {
-        ExFreePoolWithTag(Report, KBDHID_TAG);
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        Irp->IoStatus.Information = 0;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    MmBuildMdlForNonPagedPool(ReportMDL);
-
-    /* fill report */
-    RtlZeroMemory(Report, DeviceExtension->Capabilities.OutputReportByteLength);
-    if (Indicators->LedFlags & KEYBOARD_SCROLL_LOCK_ON)
-        Usage[UsageLength++] = HID_USAGE_LED_SCROLL_LOCK;
-    if (Indicators->LedFlags & KEYBOARD_NUM_LOCK_ON)
-        Usage[UsageLength++] = HID_USAGE_LED_NUM_LOCK;
-    if (Indicators->LedFlags & KEYBOARD_CAPS_LOCK_ON)
-        Usage[UsageLength++] = HID_USAGE_LED_CAPS_LOCK;
-    if (Indicators->LedFlags & KEYBOARD_KANA_LOCK_ON)
-        Usage[UsageLength++] = HID_USAGE_LED_KANA;
-
-    HidP_SetUsages(HidP_Output,
-                   HID_USAGE_PAGE_LED,
-                   0,
-                   Usage,
-                   &UsageLength,
-                   DeviceExtension->PreparsedData,
-                   Report,
-                   DeviceExtension->Capabilities.OutputReportByteLength);
-
-    /* get current stack location */
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-    IoStack->Parameters.Others.Argument4 = Irp->MdlAddress;
-    Irp->MdlAddress = ReportMDL;
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-
-    /* get next stack location */
-    IoStack = IoGetNextIrpStackLocation(Irp);
-
-    /* init stack location */
-    IoStack->Parameters.Write.Length = DeviceExtension->Capabilities.OutputReportByteLength;
-    IoStack->Parameters.Write.Key = 0;
-    IoStack->Parameters.Write.ByteOffset.QuadPart = 0LL;
-    IoStack->MajorFunction = IRP_MJ_WRITE;
-
-    /* set completion routine */
-    IoSetCompletionRoutine(Irp, KbdHid_SetIndicatorsCompletion, Report, TRUE, TRUE, TRUE);
-
-    /* start the read */
-    Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-
-    return Status;
-}
-
-NTSTATUS
-NTAPI
-KbdHid_InternalDeviceControl(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PIO_STACK_LOCATION IoStack;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-    PCONNECT_DATA Data;
-    PKEYBOARD_ATTRIBUTES Attributes;
-
-    /* get current stack location */
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-
-    DPRINT("[KBDHID] InternalDeviceControl %x\n", IoStack->Parameters.DeviceIoControl.IoControlCode);
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    switch (IoStack->Parameters.DeviceIoControl.IoControlCode)
-    {
-        case IOCTL_KEYBOARD_QUERY_ATTRIBUTES:
-            /* verify output buffer length */
-            if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(KEYBOARD_ATTRIBUTES))
-            {
-                /* invalid request */
-                DPRINT1("[KBDHID] IOCTL_KEYBOARD_QUERY_ATTRIBUTES Buffer too small\n");
-                Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_BUFFER_TOO_SMALL;
-            }
-
-            /* get output buffer */
-            Attributes = Irp->AssociatedIrp.SystemBuffer;
-
-            /* copy attributes */
-            RtlCopyMemory(Attributes,
-                          &DeviceExtension->Attributes,
-                          sizeof(KEYBOARD_ATTRIBUTES));
-
-            /* complete request */
-            Irp->IoStatus.Information = sizeof(KEYBOARD_ATTRIBUTES);
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
-
-        case IOCTL_INTERNAL_KEYBOARD_CONNECT:
-            /* verify input buffer length */
-            if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(CONNECT_DATA))
-            {
-                /* invalid request */
-                Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_INVALID_PARAMETER;
-            }
-
-            /* is it already connected */
-            if (DeviceExtension->ClassService)
-            {
-                /* already connected */
-                Irp->IoStatus.Status = STATUS_SHARING_VIOLATION;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_SHARING_VIOLATION;
-            }
-
-            /* get connect data */
-            Data = IoStack->Parameters.DeviceIoControl.Type3InputBuffer;
-
-            /* store connect details */
-            DeviceExtension->ClassDeviceObject = Data->ClassDeviceObject;
-            DeviceExtension->ClassService = Data->ClassService;
-
-            /* completed successfully */
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
-
-        case IOCTL_INTERNAL_KEYBOARD_DISCONNECT:
-            /* not implemented */
-            Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_IMPLEMENTED;
-
-        case IOCTL_INTERNAL_KEYBOARD_ENABLE:
-            /* not supported */
-            Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_SUPPORTED;
-
-        case IOCTL_INTERNAL_KEYBOARD_DISABLE:
-            /* not supported */
-            Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_SUPPORTED;
-
-        case IOCTL_KEYBOARD_QUERY_INDICATORS:
-            if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(KEYBOARD_INDICATOR_PARAMETERS))
-            {
-                /* buffer too small */
-                Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_BUFFER_TOO_SMALL;
-            }
-
-            /* copy indicators */
-            RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                          &DeviceExtension->KeyboardIndicator,
-                          sizeof(KEYBOARD_INDICATOR_PARAMETERS));
-
-            /* complete request */
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            Irp->IoStatus.Information = sizeof(KEYBOARD_INDICATOR_PARAMETERS);
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
-
-        case IOCTL_KEYBOARD_QUERY_TYPEMATIC:
-            if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(KEYBOARD_TYPEMATIC_PARAMETERS))
-            {
-                /* buffer too small */
-                Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_BUFFER_TOO_SMALL;
-            }
-
-            /* copy indicators */
-            RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                          &DeviceExtension->KeyboardTypematic,
-                          sizeof(KEYBOARD_TYPEMATIC_PARAMETERS));
-
-            /* done */
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            Irp->IoStatus.Information = sizeof(KEYBOARD_TYPEMATIC_PARAMETERS);
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
-
-        case IOCTL_KEYBOARD_SET_INDICATORS:
-            if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(KEYBOARD_INDICATOR_PARAMETERS))
-            {
-                /* invalid parameter */
-                Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_INVALID_PARAMETER;
-            }
-
-            return KbdHid_SetIndicators(DeviceExtension,
-                                        (PKEYBOARD_INDICATOR_PARAMETERS)Irp->AssociatedIrp.SystemBuffer,
-                                        Irp);
-
-        case IOCTL_KEYBOARD_SET_TYPEMATIC:
-            if (IoStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(KEYBOARD_TYPEMATIC_PARAMETERS))
-            {
-                /* invalid parameter */
-                Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_INVALID_PARAMETER;
-            }
-
-            /* copy indicators */
-            RtlCopyMemory(&DeviceExtension->KeyboardTypematic,
-                          Irp->AssociatedIrp.SystemBuffer,
-                          sizeof(KEYBOARD_TYPEMATIC_PARAMETERS));
-
-            /* done */
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            Irp->IoStatus.Information = 0;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
-
-        case IOCTL_KEYBOARD_QUERY_INDICATOR_TRANSLATION:
-            if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION))
-            {
-                /* buffer too small */
-                Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
-                IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_INVALID_PARAMETER;
-            }
-
-            /* copy translations */
-            RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                          &IndicatorTranslation,
-                          sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION));
-
-            /* done */
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            Irp->IoStatus.Information = sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION);
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
-    }
-
-    /* unknown control code */
-    DPRINT1("[KBDHID] Unknown DeviceControl %x\n", IoStack->Parameters.DeviceIoControl.IoControlCode);
-    /* unknown request not supported */
-    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS
-NTAPI
-KbdHid_DeviceControl(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* skip stack location */
-    IoSkipCurrentIrpStackLocation(Irp);
-
-    /* pass and forget */
-    return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-}
-
-NTSTATUS
-NTAPI
-KbdHid_Power(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-
-    DeviceExtension = DeviceObject->DeviceExtension;
-    PoStartNextPowerIrp(Irp);
-    IoSkipCurrentIrpStackLocation(Irp);
-    return PoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-}
-
-NTSTATUS
-NTAPI
-KbdHid_SystemControl(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-
-    DeviceExtension = DeviceObject->DeviceExtension;
-    IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-}
-
-NTSTATUS
-KbdHid_SubmitRequest(
-    PDEVICE_OBJECT DeviceObject,
-    ULONG IoControlCode,
-    ULONG InputBufferSize,
-    PVOID InputBuffer,
-    ULONG OutputBufferSize,
-    PVOID OutputBuffer)
-{
-    KEVENT Event;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-    PIRP Irp;
-    NTSTATUS Status;
-    IO_STATUS_BLOCK IoStatus;
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* init event */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
-
-    /* build request */
-    Irp = IoBuildDeviceIoControlRequest(IoControlCode,
-                                        DeviceExtension->NextDeviceObject,
-                                        InputBuffer,
-                                        InputBufferSize,
-                                        OutputBuffer,
-                                        OutputBufferSize,
-                                        FALSE,
-                                        &Event,
-                                        &IoStatus);
-    if (!Irp)
-    {
-        /* no memory */
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    /* send request */
-    Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-    if (Status == STATUS_PENDING)
-    {
-        /* wait for request to complete */
-        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-        Status = IoStatus.Status;
-    }
-
-    /* done */
-    return Status;
-}
-
-NTSTATUS
-NTAPI
-KbdHid_StartDevice(
-    IN PDEVICE_OBJECT DeviceObject)
-{
-    NTSTATUS Status;
-    ULONG Buttons;
-    HID_COLLECTION_INFORMATION Information;
-    PHIDP_PREPARSED_DATA PreparsedData;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-    PUSAGE_AND_PAGE Buffer;
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* query collection information */
-    Status = KbdHid_SubmitRequest(DeviceObject,
-                                  IOCTL_HID_GET_COLLECTION_INFORMATION,
-                                  0,
-                                  NULL,
-                                  sizeof(HID_COLLECTION_INFORMATION),
-                                  &Information);
-    if (!NT_SUCCESS(Status))
-    {
-        /* failed to query collection information */
-        DPRINT1("[KBDHID] failed to obtain collection information with %x\n", Status);
-        return Status;
-    }
-
-    /* lets allocate space for preparsed data */
-    PreparsedData = ExAllocatePoolWithTag(NonPagedPool, Information.DescriptorSize, KBDHID_TAG);
-    if (!PreparsedData)
-    {
-        /* no memory */
-        DPRINT1("[KBDHID] no memory size %u\n", Information.DescriptorSize);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    /* now obtain the preparsed data */
-    Status = KbdHid_SubmitRequest(DeviceObject,
-                                  IOCTL_HID_GET_COLLECTION_DESCRIPTOR,
-                                  0,
-                                  NULL,
-                                  Information.DescriptorSize,
-                                  PreparsedData);
-    if (!NT_SUCCESS(Status))
-    {
-        /* failed to get preparsed data */
-        DPRINT1("[KBDHID] failed to obtain collection information with %x\n", Status);
-        ExFreePoolWithTag(PreparsedData, KBDHID_TAG);
-        return Status;
-    }
-
-    /* lets get the caps */
-    Status = HidP_GetCaps(PreparsedData, &DeviceExtension->Capabilities);
-    if (Status != HIDP_STATUS_SUCCESS)
-    {
-        /* failed to get capabilities */
-        DPRINT1("[KBDHID] failed to obtain caps with %x\n", Status);
-        ExFreePoolWithTag(PreparsedData, KBDHID_TAG);
-        return Status;
-    }
-
-    DPRINT("[KBDHID] Usage %x UsagePage %x InputReportLength %lu\n",
-           DeviceExtension->Capabilities.Usage,
-           DeviceExtension->Capabilities.UsagePage,
-           DeviceExtension->Capabilities.InputReportByteLength);
-
-    /* init input report */
-    ASSERT(DeviceExtension->Capabilities.InputReportByteLength);
-    DeviceExtension->Report = ExAllocatePoolWithTag(NonPagedPool, DeviceExtension->Capabilities.InputReportByteLength, KBDHID_TAG);
-    ASSERT(DeviceExtension->Report);
-    RtlZeroMemory(DeviceExtension->Report, DeviceExtension->Capabilities.InputReportByteLength);
-
-    /* build mdl */
-    DeviceExtension->ReportMDL = IoAllocateMdl(DeviceExtension->Report,
-                                               DeviceExtension->Capabilities.InputReportByteLength,
-                                               FALSE,
-                                               FALSE,
-                                               NULL);
-    ASSERT(DeviceExtension->ReportMDL);
-
-    /* init mdl */
-    MmBuildMdlForNonPagedPool(DeviceExtension->ReportMDL);
-
-    /* get max number of buttons */
-    Buttons = HidP_MaxUsageListLength(HidP_Input, HID_USAGE_PAGE_KEYBOARD, PreparsedData);
-    DPRINT("[KBDHID] Buttons %lu\n", Buttons);
-    ASSERT(Buttons > 0);
-
-    /* now allocate an array for those buttons */
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, sizeof(USAGE_AND_PAGE) * 4 * Buttons, KBDHID_TAG);
-    if (!Buffer)
-    {
-        /* no memory */
-        ExFreePoolWithTag(PreparsedData, KBDHID_TAG);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    DeviceExtension->UsageListBuffer = Buffer;
-
-    /* init usage lists */
-    RtlZeroMemory(Buffer, sizeof(USAGE_AND_PAGE) * 4 * Buttons);
-    DeviceExtension->CurrentUsageList = Buffer;
-    Buffer += Buttons;
-    DeviceExtension->PreviousUsageList = Buffer;
-    Buffer += Buttons;
-    DeviceExtension->MakeUsageList = Buffer;
-    Buffer += Buttons;
-    DeviceExtension->BreakUsageList = Buffer;
-
-    //
-    // FIMXE: implement device hacks
-    //
-    // UsageMappings
-    // KeyboardTypeOverride
-    // KeyboardSubTypeOverride
-    // KeyboardNumberTotalKeysOverride
-    // KeyboardNumberFunctionKeysOverride
-    // KeyboardNumberIndicatorsOverride
-
-    /* store number of buttons */
-    DeviceExtension->UsageListLength = (USHORT)Buttons;
-
-    /* store preparsed data */
-    DeviceExtension->PreparsedData = PreparsedData;
-
-    /* completed successfully */
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS
-NTAPI
-KbdHid_StartDeviceCompletion(
-    IN PDEVICE_OBJECT  DeviceObject,
-    IN PIRP  Irp,
-    IN PVOID  Context)
-{
-    KeSetEvent((PKEVENT)Context, 0, FALSE);
+    KeSetEvent(Context, IO_NO_INCREMENT, FALSE);
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
+/**
+ * @brief
+ * Forwards an open to the HID collection. The first successful open with
+ * read access after kbdclass has connected starts the read loop on its
+ * file object, which then runs until the last open is closed.
+ */
+static
 NTSTATUS
 NTAPI
-KbdHid_FreeResources(
-    IN PDEVICE_OBJECT DeviceObject)
+KbdHidCreate(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp)
 {
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* free resources */
-    if (DeviceExtension->PreparsedData)
-    {
-        ExFreePoolWithTag(DeviceExtension->PreparsedData, KBDHID_TAG);
-        DeviceExtension->PreparsedData = NULL;
-    }
-
-    if (DeviceExtension->UsageListBuffer)
-    {
-        ExFreePoolWithTag(DeviceExtension->UsageListBuffer, KBDHID_TAG);
-        DeviceExtension->UsageListBuffer = NULL;
-        DeviceExtension->CurrentUsageList = NULL;
-        DeviceExtension->PreviousUsageList = NULL;
-        DeviceExtension->MakeUsageList = NULL;
-        DeviceExtension->BreakUsageList = NULL;
-    }
-
-    if (DeviceExtension->ReportMDL)
-    {
-        IoFreeMdl(DeviceExtension->ReportMDL);
-        DeviceExtension->ReportMDL = NULL;
-    }
-
-    if (DeviceExtension->Report)
-    {
-        ExFreePoolWithTag(DeviceExtension->Report, KBDHID_TAG);
-        DeviceExtension->Report = NULL;
-    }
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS
-NTAPI
-KbdHid_Flush(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PIO_STACK_LOCATION IoStack;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* skip current stack location */
-    IoSkipCurrentIrpStackLocation(Irp);
-
-    /* get next stack location */
-    IoStack = IoGetNextIrpStackLocation(Irp);
-
-    /* change request to hid flush queue request */
-    IoStack->MajorFunction = IRP_MJ_DEVICE_CONTROL;
-    IoStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_HID_FLUSH_QUEUE;
-
-    /* call device */
-    return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-}
-
-NTSTATUS
-NTAPI
-KbdHid_Pnp(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp)
-{
-    PIO_STACK_LOCATION IoStack;
+    static const UNICODE_STRING KbdName = RTL_CONSTANT_STRING(L"\\KBD");
+    PKBDHID_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PFILE_OBJECT FileObject = IoStack->FileObject;
+    PFILE_OBJECT BoundFileObject = NULL;
+    ACCESS_MASK DesiredAccess;
     KEVENT Event;
     NTSTATUS Status;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
 
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
+    DesiredAccess = IoStack->Parameters.Create.SecurityContext->DesiredAccess;
 
-    /* get current irp stack */
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-    DPRINT("[KBDHID] IRP_MJ_PNP Request: %x\n", IoStack->MinorFunction);
-
-    switch (IoStack->MinorFunction)
+    if ((FileObject != NULL) && (FileObject->FileName.Length != 0))
     {
-    /* The read loop may still be running, so the parse data stays until removal */
-    case IRP_MN_STOP_DEVICE:
-    case IRP_MN_SURPRISE_REMOVAL:
-    case IRP_MN_CANCEL_REMOVE_DEVICE:
-    case IRP_MN_QUERY_STOP_DEVICE:
-    case IRP_MN_CANCEL_STOP_DEVICE:
-    case IRP_MN_QUERY_REMOVE_DEVICE:
-        /* indicate success */
-        Irp->IoStatus.Status = STATUS_SUCCESS;
-
-        /* skip irp stack location */
-        IoSkipCurrentIrpStackLocation(Irp);
-
-        /* dispatch to lower device */
-        return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-
-    case IRP_MN_REMOVE_DEVICE:
-        /* Stop the read loop and wait for it before its buffers go away */
-        if (DeviceExtension->ReadReportActive)
-        {
-            DeviceExtension->StopReadReport = TRUE;
-            IoCancelIrp(DeviceExtension->Irp);
-            KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
-        }
-
-        /* free resources */
-        KbdHid_FreeResources(DeviceObject);
-
-        /* indicate success */
-        Irp->IoStatus.Status = STATUS_SUCCESS;
-
-        /* skip irp stack location */
-        IoSkipCurrentIrpStackLocation(Irp);
-
-        /* dispatch to lower device */
-        Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-
-        IoFreeIrp(DeviceExtension->Irp);
-        IoDetachDevice(DeviceExtension->NextDeviceObject);
-        IoDeleteDevice(DeviceObject);
-        return Status;
-
-    case IRP_MN_START_DEVICE:
-        /* init event */
-        KeInitializeEvent(&Event, NotificationEvent, FALSE);
-
-        /* copy stack location */
-        IoCopyCurrentIrpStackLocationToNext (Irp);
-
-        /* set completion routine */
-        IoSetCompletionRoutine(Irp, KbdHid_StartDeviceCompletion, &Event, TRUE, TRUE, TRUE);
-        Irp->IoStatus.Status = 0;
-
-        /* pass request */
-        Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-        if (Status == STATUS_PENDING)
-        {
-            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-            Status = Irp->IoStatus.Status;
-        }
+        Status = STATUS_SUCCESS;
+        if (!RtlEqualUnicodeString(&FileObject->FileName, &KbdName, TRUE))
+            Status = STATUS_ACCESS_DENIED;
+        else if (DesiredAccess & FILE_READ_DATA)
+            Status = STATUS_SHARING_VIOLATION;
 
         if (!NT_SUCCESS(Status))
         {
-            /* failed */
             Irp->IoStatus.Status = Status;
+            Irp->IoStatus.Information = 0;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return Status;
         }
+    }
 
-        /* A restart after a stop keeps what the first start set up */
-        if (DeviceExtension->PreparsedData == NULL)
+    Status = IoAcquireRemoveLock(&DeviceExtension->RemoveLock, Irp);
+    if (!NT_SUCCESS(Status))
+    {
+        Irp->IoStatus.Status = Status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return Status;
+    }
+
+    ExAcquireFastMutex(&DeviceExtension->OpenMutex);
+
+    if (DeviceExtension->ConnectData.ClassService == NULL)
+    {
+        DPRINT1("Open refused, no class driver is connected\n");
+        Status = STATUS_UNSUCCESSFUL;
+    }
+    else
+    {
+        KeInitializeEvent(&Event, NotificationEvent, FALSE);
+        IoCopyCurrentIrpStackLocationToNext(Irp);
+        IoSetCompletionRoutine(Irp, KbdHidCreateComplete, &Event, TRUE, TRUE, TRUE);
+
+        Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+
+        if (NT_SUCCESS(Status))
         {
-            Status = KbdHid_StartDevice(DeviceObject);
-            DPRINT("KbdHid_StartDevice %x\n", Status);
+            Status = Irp->IoStatus.Status;
+            InterlockedIncrement(&DeviceExtension->OpenCount);
+
+            if ((DeviceExtension->ReadFileObject == NULL) && (DesiredAccess & FILE_READ_DATA))
+            {
+                BoundFileObject = FileObject;
+                DeviceExtension->ReadFileObject = FileObject;
+                KeClearEvent(&DeviceExtension->ReadStoppedEvent);
+                InterlockedExchange(&DeviceExtension->ReadState, KbdHidReadIdle);
+
+                /* The read loop holds its own reference until it stops */
+                IoAcquireRemoveLock(&DeviceExtension->RemoveLock, DeviceExtension->ReadIrp);
+                DeviceExtension->ReadIrp->IoStatus.Status = STATUS_SUCCESS;
+
+                Status = KbdHidStartRead(DeviceExtension);
+                if (Status == STATUS_PENDING)
+                    Status = STATUS_SUCCESS;
+                else if (!NT_SUCCESS(Status))
+                    DeviceExtension->ReadFileObject = NULL;
+            }
+        }
+    }
+
+    ExReleaseFastMutex(&DeviceExtension->OpenMutex);
+
+    if (NT_SUCCESS(Status) &&
+        (BoundFileObject != NULL) &&
+        (InterlockedCompareExchange(&DeviceExtension->ExtendedAttributesState,
+                                    KbdHidQueryInProgress,
+                                    KbdHidQueryNotStarted) == KbdHidQueryNotStarted))
+    {
+        /* A device without the extended attributes still opens fine */
+        KbdHidQueryExtendedAttributes(DeviceExtension);
+        Status = STATUS_SUCCESS;
+
+        InterlockedExchange(&DeviceExtension->ExtendedAttributesState, KbdHidQueryDone);
+        KeSetEvent(&DeviceExtension->ExtendedAttributesEvent, IO_NO_INCREMENT, FALSE);
+    }
+
+    Irp->IoStatus.Information = 0;
+    Irp->IoStatus.Status = Status;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    IoReleaseRemoveLock(&DeviceExtension->RemoveLock, Irp);
+    return Status;
+}
+
+/**
+ * @brief
+ * Forwards a close. The last close stops the read loop and the timers.
+ */
+static
+NTSTATUS
+NTAPI
+KbdHidClose(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp)
+{
+    PKBDHID_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    BOOLEAN MustFlushDpcs;
+
+    ExAcquireFastMutex(&DeviceExtension->OpenMutex);
+
+    if (InterlockedDecrement(&DeviceExtension->OpenCount) == 0)
+    {
+        /* Let a read that is being sent reach the lower driver before canceling it */
+        KeWaitForSingleObject(&DeviceExtension->ReadIssueDoneEvent,
+                              Executive,
+                              KernelMode,
+                              FALSE,
+                              NULL);
+
+        if (DeviceExtension->ReadFileObject != NULL)
+        {
+            IoCancelIrp(DeviceExtension->ReadIrp);
+            KeWaitForSingleObject(&DeviceExtension->ReadStoppedEvent,
+                                  Executive,
+                                  KernelMode,
+                                  FALSE,
+                                  NULL);
         }
 
-        /* complete request */
+        MustFlushDpcs = KbdHidCancelAutoRepeat(DeviceExtension);
+        if (KeCancelTimer(&DeviceExtension->RetryTimer))
+            MustFlushDpcs = TRUE;
+
+        if (MustFlushDpcs)
+            KeFlushQueuedDpcs();
+
+        DeviceExtension->ReadFileObject = NULL;
+    }
+
+    ExReleaseFastMutex(&DeviceExtension->OpenMutex);
+
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
+}
+
+/**
+ * @brief
+ * Turns a flush into a flush of the HID class input queue.
+ */
+static
+NTSTATUS
+NTAPI
+KbdHidFlush(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp)
+{
+    PKBDHID_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    PIO_STACK_LOCATION NextStack;
+    NTSTATUS Status;
+
+    Status = IoAcquireRemoveLock(&DeviceExtension->RemoveLock, Irp);
+    if (!NT_SUCCESS(Status))
+    {
         Irp->IoStatus.Status = Status;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-        /* done */
         return Status;
-
-    default:
-        /* skip irp stack location */
-        IoSkipCurrentIrpStackLocation(Irp);
-
-        /* dispatch to lower device */
-        return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
     }
+
+    IoCopyCurrentIrpStackLocationToNext(Irp);
+    NextStack = IoGetNextIrpStackLocation(Irp);
+    NextStack->MajorFunction = IRP_MJ_DEVICE_CONTROL;
+    NextStack->Parameters.DeviceIoControl.OutputBufferLength = 0;
+    NextStack->Parameters.DeviceIoControl.InputBufferLength = 0;
+    NextStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_HID_FLUSH_QUEUE;
+    NextStack->Parameters.DeviceIoControl.Type3InputBuffer = NULL;
+
+    Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
+    IoReleaseRemoveLock(&DeviceExtension->RemoveLock, Irp);
+    return Status;
 }
 
 NTSTATUS
 NTAPI
-KbdHid_AddDevice(
-    IN PDRIVER_OBJECT DriverObject,
-    IN PDEVICE_OBJECT PhysicalDeviceObject)
+KbdHidPassThrough(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp)
 {
+    PKBDHID_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     NTSTATUS Status;
-    PDEVICE_OBJECT DeviceObject, NextDeviceObject;
-    PKBDHID_DEVICE_EXTENSION DeviceExtension;
-    POWER_STATE State;
 
-    /* create device object */
-    Status = IoCreateDevice(DriverObject,
-                            sizeof(KBDHID_DEVICE_EXTENSION),
-                            NULL,
-                            FILE_DEVICE_KEYBOARD,
-                            0,
-                            FALSE,
-                            &DeviceObject);
+    Status = IoAcquireRemoveLock(&DeviceExtension->RemoveLock, Irp);
     if (!NT_SUCCESS(Status))
     {
-        /* failed to create device object */
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Status;
     }
 
-    /* now attach it */
-    NextDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
-    if (!NextDeviceObject)
-    {
-        /* failed to attach */
-        IoDeleteDevice(DeviceObject);
-        return STATUS_DEVICE_NOT_CONNECTED;
-    }
-
-    /* get device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* zero extension */
-    RtlZeroMemory(DeviceExtension, sizeof(KBDHID_DEVICE_EXTENSION));
-
-    /* init device extension */
-    DeviceExtension->NextDeviceObject = NextDeviceObject;
-    KeInitializeEvent(&DeviceExtension->ReadCompletionEvent, NotificationEvent, FALSE);
-
-    /* init keyboard attributes */
-    DeviceExtension->Attributes.KeyboardIdentifier.Type = KEYBOARD_TYPE_UNKNOWN;
-    DeviceExtension->Attributes.KeyboardIdentifier.Subtype = MICROSOFT_KBD_101_TYPE;
-    DeviceExtension->Attributes.NumberOfFunctionKeys = MICROSOFT_KBD_FUNC;
-    DeviceExtension->Attributes.NumberOfIndicators = 3; // caps, num lock, scroll lock
-    DeviceExtension->Attributes.NumberOfKeysTotal = 101;
-    DeviceExtension->Attributes.InputDataQueueLength = 1;
-    DeviceExtension->Attributes.KeyRepeatMinimum.Rate = KEYBOARD_TYPEMATIC_RATE_MINIMUM;
-    DeviceExtension->Attributes.KeyRepeatMinimum.Delay = KEYBOARD_TYPEMATIC_DELAY_MINIMUM;
-    DeviceExtension->Attributes.KeyRepeatMaximum.Rate = KEYBOARD_TYPEMATIC_RATE_DEFAULT;
-    DeviceExtension->Attributes.KeyRepeatMaximum.Delay = KEYBOARD_TYPEMATIC_DELAY_MAXIMUM;
-
-    /* allocate irp */
-    DeviceExtension->Irp = IoAllocateIrp(NextDeviceObject->StackSize, FALSE);
-
-    /* FIXME handle allocation error */
-    ASSERT(DeviceExtension->Irp);
-
-    /* set power state to D0 */
-    State.DeviceState =  PowerDeviceD0;
-    PoSetPowerState(DeviceObject, DevicePowerState, State);
-
-    /* init device object */
-    DeviceObject->Flags |= DO_BUFFERED_IO | DO_POWER_PAGABLE;
-    DeviceObject->Flags  &= ~DO_DEVICE_INITIALIZING;
-
-    /* completed successfully */
-    return STATUS_SUCCESS;
+    IoSkipCurrentIrpStackLocation(Irp);
+    Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
+    IoReleaseRemoveLock(&DeviceExtension->RemoveLock, Irp);
+    return Status;
 }
 
+static
 VOID
 NTAPI
-KbdHid_Unload(
-    IN PDRIVER_OBJECT DriverObject)
+KbdHidUnload(
+    _In_ PDRIVER_OBJECT DriverObject)
 {
-    UNIMPLEMENTED;
-}
+    UNREFERENCED_PARAMETER(DriverObject);
 
+    if (KbdHidGlobals.RegistryPath.Buffer != NULL)
+    {
+        ExFreePoolWithTag(KbdHidGlobals.RegistryPath.Buffer, KBDHID_TAG);
+        KbdHidGlobals.RegistryPath.Buffer = NULL;
+    }
+}
 
 NTSTATUS
 NTAPI
 DriverEntry(
-    IN PDRIVER_OBJECT DriverObject,
-    IN PUNICODE_STRING RegPath)
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath)
 {
-    /* initialize driver object */
-    DriverObject->MajorFunction[IRP_MJ_CREATE] = KbdHid_Create;
-    DriverObject->MajorFunction[IRP_MJ_CLOSE] = KbdHid_Close;
-    DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = KbdHid_Flush;
-    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = KbdHid_DeviceControl;
-    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = KbdHid_InternalDeviceControl;
-    DriverObject->MajorFunction[IRP_MJ_POWER] = KbdHid_Power;
-    DriverObject->MajorFunction[IRP_MJ_PNP] = KbdHid_Pnp;
-    DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = KbdHid_SystemControl;
-    DriverObject->DriverUnload = KbdHid_Unload;
-    DriverObject->DriverExtension->AddDevice = KbdHid_AddDevice;
+    RtlZeroMemory(&KbdHidGlobals, sizeof(KbdHidGlobals));
+    KbdHidGlobals.BreakOnSysRq = TRUE;
 
-    /* done */
+    KbdHidGlobals.RegistryPath.Length = RegistryPath->Length;
+    KbdHidGlobals.RegistryPath.MaximumLength = RegistryPath->Length + sizeof(UNICODE_NULL);
+    KbdHidGlobals.RegistryPath.Buffer = ExAllocatePoolZero(PagedPool,
+                                                           KbdHidGlobals.RegistryPath.MaximumLength,
+                                                           KBDHID_TAG);
+    if (KbdHidGlobals.RegistryPath.Buffer == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlCopyMemory(KbdHidGlobals.RegistryPath.Buffer, RegistryPath->Buffer, RegistryPath->Length);
+
+    KbdHidReadServiceParameters(&KbdHidGlobals.RegistryPath);
+
+    DriverObject->MajorFunction[IRP_MJ_CREATE] = KbdHidCreate;
+    DriverObject->MajorFunction[IRP_MJ_CLOSE] = KbdHidClose;
+    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = KbdHidInternalDeviceControl;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = KbdHidPassThrough;
+    DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = KbdHidFlush;
+    DriverObject->MajorFunction[IRP_MJ_PNP] = KbdHidPnp;
+    DriverObject->MajorFunction[IRP_MJ_POWER] = KbdHidPower;
+    DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = KbdHidSystemControl;
+    DriverObject->DriverUnload = KbdHidUnload;
+    DriverObject->DriverExtension->AddDevice = KbdHidAddDevice;
+
     return STATUS_SUCCESS;
 }
