@@ -5394,7 +5394,7 @@ RtlGetNativeSystemInformation(
     _Out_opt_ PULONG ReturnLength
 );
 
-#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA) || (DLL_EXPORT_VERSION >= _WIN32_WINNT_VISTA)
+#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA) || defined(__REACTOS__)
 
 NTSYSAPI
 VOID

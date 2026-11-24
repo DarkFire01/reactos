@@ -2488,7 +2488,7 @@ RtlSelfRelativeToAbsoluteSD(
 #endif /* (NTDDI_VERSION >= NTDDI_WS03SP1) */
 $endif (_NTIFS_)
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
 
 $if (_WDMDDK_)
 NTSYSAPI
