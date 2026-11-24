@@ -24,13 +24,58 @@ HKR, , Icon,            0, "-1"
 HKR, , Installer32,     0, "desk.cpl,DisplayClassInstaller"
 
 [Manufacturer]
-%StdMfg% = StdMfg
+%StdMfg% = StdMfg,NTamd64,NTarm64
 
 [StdMfg]
 %VGA.DeviceDesc% = VGA_Inst,PCI\CC_0000
 %VGA.DeviceDesc% = VGA_Inst,PCI\CC_0001
 %VGA.DeviceDesc% = VGA_Inst,PCI\CC_0300
 %VGA.DeviceDesc% = VGA_Inst,PCI\CC_0301
+
+; Display controllers without their own driver run on the WDDM basic display driver
+[StdMfg.NTamd64]
+%VGA.DeviceDesc% = VGA_Inst,PCI\CC_0000
+%VGA.DeviceDesc% = VGA_Inst,PCI\CC_0001
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,PCI\CC_0300
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,PCI\CC_0301
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,ACPI\CLS_0003&SUBCLS_0000
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,ACPI\CLS_0003&SUBCLS_0001
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,ACPI\CLS_0003&SUBCLS_0003
+
+[StdMfg.NTarm64]
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,PCI\CC_0300
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,PCI\CC_0301
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,ACPI\CLS_0003&SUBCLS_0000
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,ACPI\CLS_0003&SUBCLS_0001
+%BasicDisplay.DeviceDesc% = BasicDisplay_Inst,ACPI\CLS_0003&SUBCLS_0003
+
+;------------------------- BASIC DISPLAY DRIVER -------------------------
+
+[BasicDisplay_Inst.NT]
+DelReg = BasicDisplay_DelReg
+
+; Settings a previous vendor driver left in the software key
+[BasicDisplay_DelReg]
+HKR,, InstalledDisplayDrivers
+HKR,, UserModeDriverName
+HKR,, UserModeDriverNameWoW
+HKR,, UserModeDriverGUID
+HKR,, OpenGLDriverName
+HKR,, OpenGLDriverNameWoW
+HKR,, OpenGLFlags
+HKR,, OpenGLFlagsWoW
+HKR,, OpenGLVersion
+HKR,, OpenGLVersionWoW
+
+[BasicDisplay_Inst.NT.Services]
+AddService = BasicDisplay, 0x00000002, BasicDisplay_Service_Inst
+
+[BasicDisplay_Service_Inst]
+ServiceType    = 1
+StartType      = 1
+ErrorControl   = 0
+ServiceBinary  = %12%\BasicDisplay.sys
+LoadOrderGroup = Video
 
 ;---------------------------- VGA/VBE DRIVER ----------------------------
 
@@ -66,6 +111,7 @@ DisplayClassName = "Display Adapters"
 
 StdMfg = "(Standard display adapters)"
 VGA.DeviceDesc = "VGA-compatible graphics card"
+BasicDisplay.DeviceDesc = "Basic Display Adapter"
 
 [Strings.0404]
 DisplayClassName = "顯示介面卡"

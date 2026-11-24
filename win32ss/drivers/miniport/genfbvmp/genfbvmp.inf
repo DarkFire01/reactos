@@ -24,7 +24,16 @@ GenericFramebuffer.Miniport = 12  ; system32\drivers
 GenericFramebuffer.Display  = 11  ; system32
 
 [Manufacturer]
-%GenericFramebuffer% = GenericFramebufferMfg
+%GenericFramebuffer% = GenericFramebufferMfg,NTamd64,NTarm64
+
+; The standard display controllers belong to the WDDM basic display driver there
+[GenericFramebufferMfg.NTamd64]
+%GenericFramebuffer.DeviceDesc% = GenericFramebuffer, PCI\CC_0380
+%GenericFramebuffer.DeviceDesc% = GenericFramebuffer, ACPI\CLS_0003&SUBCLS_0080
+
+[GenericFramebufferMfg.NTarm64]
+%GenericFramebuffer.DeviceDesc% = GenericFramebuffer, PCI\CC_0380
+%GenericFramebuffer.DeviceDesc% = GenericFramebuffer, ACPI\CLS_0003&SUBCLS_0080
 
 [GenericFramebufferMfg]
 ; Allow the driver to be loaded on standard display controllers exposed by PCI bus and ACPI

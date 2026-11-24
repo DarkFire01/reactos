@@ -51,3 +51,8 @@ foreach(item ${UTF8_INF_FILES})
 endforeach(item)
 
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/syssetup.inf DESTINATION reactos/inf FOR all)
+
+# The basic display driver only ships for these
+if(ARCH STREQUAL "amd64" OR ARCH STREQUAL "arm64")
+    add_registry_inf(basicdisplay_reg.inf)
+endif()
