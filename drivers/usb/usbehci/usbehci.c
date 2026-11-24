@@ -207,6 +207,15 @@ EHCI_InitializeQH(IN PEHCI_EXTENSION EhciExtension,
 
         if (EndpointProperties->TransferType == USBPORT_TRANSFER_TYPE_CONTROL)
             QH->sqh.HwQH.EndpointParams.ControlEndpointFlag = 1;
+
+        DPRINT1("EHCI: split QH %p, address %u endpoint 0x%x speed %lu type %lu through hub %u port %u\n",
+                QH,
+                EndpointProperties->DeviceAddress,
+                EndpointProperties->EndpointAddress,
+                DeviceSpeed,
+                EndpointProperties->TransferType,
+                EndpointProperties->HubAddr,
+                EndpointProperties->PortNumber);
     }
 
     QH->sqh.HwQH.NextTD = TERMINATE_POINTER;
