@@ -131,6 +131,18 @@ ExRaiseHardError(
 //
 NTSTATUS
 NTAPI
+ZwCreateWnfStateName(
+    _Out_ PULONG64 StateName,
+    _In_ ULONG NameLifetime,
+    _In_ ULONG DataScope,
+    _In_ BOOLEAN PersistData,
+    _In_opt_ PVOID TypeId,
+    _In_ ULONG MaximumStateSize,
+    _In_ PSECURITY_DESCRIPTOR SecurityDescriptor
+);
+
+NTSTATUS
+NTAPI
 ZwUpdateWnfStateData(
     _In_ const VOID *StateName,
     _In_reads_bytes_opt_(Length) const VOID *Buffer,
@@ -1314,6 +1326,45 @@ NTSTATUS
 NTAPI
 ZwWorkerFactoryWorkerReady(
     _In_ HANDLE WorkerFactoryHandle
+);
+
+//
+// Notification Facility System Calls
+//
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtSubscribeWnfStateChange(
+    _In_ PCWNF_STATE_NAME StateName,
+    _In_opt_ WNF_CHANGE_STAMP ChangeStamp,
+    _In_ ULONG EventMask,
+    _Out_opt_ PULONG64 SubscriptionId
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtUnsubscribeWnfStateChange(
+    _In_ PCWNF_STATE_NAME StateName
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtSetWnfProcessNotificationEvent(
+    _In_ HANDLE NotificationEvent
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtGetCompleteWnfStateSubscription(
+    _In_opt_ PWNF_STATE_NAME OldDescriptorStateName,
+    _In_opt_ ULONG64 *OldSubscriptionId,
+    _In_opt_ ULONG OldDescriptorEventMask,
+    _In_opt_ ULONG OldDescriptorStatus,
+    _Out_writes_bytes_(DescriptorSize) PWNF_DELIVERY_DESCRIPTOR NewDeliveryDescriptor,
+    _In_ ULONG DescriptorSize
 );
 
 #ifdef __cplusplus

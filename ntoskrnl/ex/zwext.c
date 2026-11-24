@@ -134,9 +134,15 @@ ZwFlushBuffersFileEx(
     return ZwFlushBuffersFile(FileHandle, IoStatusBlock);
 }
 
+static LONG64 ExpWnfLastSequence;
+
 /**
- * @brief Creates a notification state name.
- * @return STATUS_NOT_IMPLEMENTED, there is no notification facility to name.
+ * @brief
+ * Creates a notification state name. The name carries its lifetime and
+ * scope next to a sequence number nothing else uses.
+ *
+ * @remarks
+ * Names are not secured and keep no type, so the type and descriptor are not used.
  */
 NTSTATUS
 NTAPI
@@ -149,15 +155,26 @@ ZwCreateWnfStateName(
     _In_ ULONG MaximumStateSize,
     _In_ PSECURITY_DESCRIPTOR SecurityDescriptor)
 {
-    UNREFERENCED_PARAMETER(NameLifetime);
-    UNREFERENCED_PARAMETER(DataScope);
-    UNREFERENCED_PARAMETER(PersistData);
+    ULONG64 Sequence;
+
     UNREFERENCED_PARAMETER(TypeId);
-    UNREFERENCED_PARAMETER(MaximumStateSize);
     UNREFERENCED_PARAMETER(SecurityDescriptor);
 
+    if (!StateName)
+        return STATUS_INVALID_PARAMETER;
+
     *StateName = 0;
-    return STATUS_NOT_IMPLEMENTED;
+    if (NameLifetime > WnfTemporaryStateName ||
+        DataScope > WnfDataScopeMachine ||
+        MaximumStateSize > WNF_MAXIMUM_DATA_SIZE)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Sequence = (ULONG64)InterlockedIncrement64(&ExpWnfLastSequence);
+    *StateName = (1ULL | ((ULONG64)NameLifetime << 4) | ((ULONG64)DataScope << 6) |
+                  ((ULONG64)(PersistData ? 1 : 0) << 10) | (Sequence << 11)) ^ WNF_STATE_KEY;
+    return STATUS_SUCCESS;
 }
 
 /**

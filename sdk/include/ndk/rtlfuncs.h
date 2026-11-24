@@ -3004,6 +3004,41 @@ RtlRegisterWait(
 );
 
 //
+// Notification Facility Functions
+//
+typedef
+NTSTATUS
+NTAPI
+WNF_USER_CALLBACK(
+    _In_ WNF_STATE_NAME StateName,
+    _In_ WNF_CHANGE_STAMP ChangeStamp,
+    _In_opt_ PWNF_TYPE_ID TypeId,
+    _In_opt_ PVOID CallbackContext,
+    _In_reads_bytes_opt_(Length) const VOID *Buffer,
+    _In_ ULONG Length);
+typedef WNF_USER_CALLBACK *PWNF_USER_CALLBACK;
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlSubscribeWnfStateChangeNotification(
+    _Outptr_ PVOID *Subscription,
+    _In_ WNF_STATE_NAME StateName,
+    _In_ WNF_CHANGE_STAMP ChangeStamp,
+    _In_ PWNF_USER_CALLBACK Callback,
+    _In_opt_ PVOID CallbackContext,
+    _In_opt_ PCWNF_TYPE_ID TypeId,
+    _In_opt_ ULONG SerializationGroup
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlUnsubscribeWnfStateChangeNotification(
+    _In_ PVOID Subscription
+);
+
+//
 // Environment/Path Functions
 //
 NTSYSAPI

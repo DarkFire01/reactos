@@ -717,4 +717,8 @@
     SVC_(AlertThreadByThreadId, 1)
     SVC_(WaitForAlertByThreadId, 2)
     SVC_(CompareObjects, 2)
+    SVC_(SubscribeWnfStateChange, 4)
+    SVC_(UnsubscribeWnfStateChange, 1)
+    SVC_(SetWnfProcessNotificationEvent, 1)
+    SVC_(GetCompleteWnfStateSubscription, 6)
 #endif

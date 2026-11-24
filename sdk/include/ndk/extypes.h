@@ -2140,6 +2140,63 @@ typedef struct _SYSTEM_PHYSICAL_MEMORY_INFORMATION
 #define VARIABLE_ATTRIBUTE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS    0x00000020
 #define VARIABLE_ATTRIBUTE_APPEND_WRITE                             0x00000040
 
+//
+// Windows Notification Facility
+//
+#ifndef _WNF_STATE_NAME_DEFINED
+#define _WNF_STATE_NAME_DEFINED
+typedef struct _WNF_STATE_NAME
+{
+    ULONG Data[2];
+} WNF_STATE_NAME, *PWNF_STATE_NAME;
+typedef const WNF_STATE_NAME *PCWNF_STATE_NAME;
+#endif
+
+typedef struct _WNF_TYPE_ID
+{
+    GUID TypeId;
+} WNF_TYPE_ID, *PWNF_TYPE_ID;
+typedef const WNF_TYPE_ID *PCWNF_TYPE_ID;
+
+typedef ULONG WNF_CHANGE_STAMP, *PWNF_CHANGE_STAMP;
+
+typedef struct _WNF_DELIVERY_DESCRIPTOR
+{
+    ULONGLONG SubscriptionId;
+    WNF_STATE_NAME StateName;
+    WNF_CHANGE_STAMP ChangeStamp;
+    ULONG StateDataSize;
+    ULONG EventMask;
+    WNF_TYPE_ID TypeId;
+    ULONG StateDataOffset;
+} WNF_DELIVERY_DESCRIPTOR, *PWNF_DELIVERY_DESCRIPTOR;
+
+#define WNF_STATE_KEY                   0x41C64E6DA3BC0074ULL
+#define WNF_MAXIMUM_DATA_SIZE           4096
+
+//
+// Event mask bits of a subscription
+//
+#define WNF_EVENT_DATA_CHANGED          0x00000001
+#define WNF_EVENT_NAME_DESTROYED        0x00000010
+
+typedef enum _WNF_STATE_NAME_LIFETIME
+{
+    WnfWellKnownStateName,
+    WnfPermanentStateName,
+    WnfPersistentStateName,
+    WnfTemporaryStateName
+} WNF_STATE_NAME_LIFETIME;
+
+typedef enum _WNF_DATA_SCOPE
+{
+    WnfDataScopeSystem,
+    WnfDataScopeSession,
+    WnfDataScopeUser,
+    WnfDataScopeProcess,
+    WnfDataScopeMachine
+} WNF_DATA_SCOPE;
+
 #ifdef __cplusplus
 }; // extern "C"
 #endif
