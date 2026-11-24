@@ -73,6 +73,9 @@ struct inf_file
     struct field    *fields;
     int              strings_section; /* index of [Strings] section or -1 if none */
     WCHAR           *filename;        /* filename of the INF */
+#ifdef __REACTOS__
+    WCHAR           *driver_store;    /* driver store folder of the package, DIRID 13 */
+#endif
 };
 
 /* parser definitions */
@@ -298,6 +301,28 @@ static const WCHAR *get_dirid_subst( const struct inf_file *file, int dirid, uns
     const WCHAR *ret;
 
     if (dirid == DIRID_SRCPATH) return get_inf_dir( file, len );
+#ifdef __REACTOS__
+    /* The driver store folder depends on the package the INF belongs to */
+    if (dirid == DIRID_DRIVER_STORE && file->filename)
+    {
+        if (!file->driver_store)
+        {
+            WCHAR dir[MAX_PATH], *copy;
+
+            if (DRVSTORE_GetPackageDirectory( file->filename, dir, ARRAYSIZE(dir) ) &&
+                (copy = HeapAlloc( GetProcessHeap(), 0, (strlenW(dir) + 1) * sizeof(WCHAR) )))
+            {
+                strcpyW( copy, dir );
+                ((struct inf_file *)file)->driver_store = copy;
+            }
+        }
+        if (file->driver_store)
+        {
+            *len = strlenW( file->driver_store );
+            return file->driver_store;
+        }
+    }
+#endif
     ret = DIRID_get_string( dirid );
     if (ret) *len = strlenW(ret);
     return ret;
@@ -900,6 +925,9 @@ static void free_inf_file( struct inf_file *file )
 
     for (i = 0; i < file->nb_sections; i++) HeapFree( GetProcessHeap(), 0, file->sections[i] );
     HeapFree( GetProcessHeap(), 0, file->filename );
+#ifdef __REACTOS__
+    HeapFree( GetProcessHeap(), 0, file->driver_store );
+#endif
     HeapFree( GetProcessHeap(), 0, file->sections );
     HeapFree( GetProcessHeap(), 0, file->fields );
     HeapFree( GetProcessHeap(), 0, file->strings );

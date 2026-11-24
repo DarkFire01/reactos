@@ -291,6 +291,21 @@ extern const WCHAR *PARSER_get_inf_filename( HINF hinf ) DECLSPEC_HIDDEN;
 extern WCHAR *PARSER_get_src_root( HINF hinf ) DECLSPEC_HIDDEN;
 extern WCHAR *PARSER_get_dest_dir( INFCONTEXT *context ) DECLSPEC_HIDDEN;
 
+/* drvstore.c */
+
+BOOL
+WINAPI
+DRVSTORE_GetPackageDirectory(
+    _In_ PCWSTR InfPath,
+    _Out_writes_(cchDir) PWSTR Directory,
+    _In_ DWORD cchDir);
+
+BOOL
+WINAPI
+DRVSTORE_ImportPackage(
+    _In_ PCWSTR SourceInfPath,
+    _In_ PCWSTR PublishedName);
+
 /* support for Ascii queue callback functions */
 
 struct callback_WtoA_context

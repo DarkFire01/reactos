@@ -19,6 +19,7 @@ list(APPEND SOURCE
     dialog.c
     dirid.c
     diskspace.c
+    drvstore.c
     driver.c
     install.c
     interface.c

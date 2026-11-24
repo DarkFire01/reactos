@@ -84,7 +84,7 @@ static const WCHAR *create_system_dirid( int dirid )
         break;
     case DIRID_DRIVERS:
 #ifdef __REACTOS__
-    /* There is no driver store, so its files go beside the drivers that load them */
+    /* Without an INF there is no package to give the driver store folder of */
     case DIRID_DRIVER_STORE:
 #endif
         GetSystemDirectoryW( buffer, MAX_PATH );

@@ -2449,6 +2449,28 @@ static int compare_files( HANDLE file1, HANDLE file2 )
     return 0;
 }
 
+/* Imports the package of an oem inf named by its path, an inf from the inf folder has none */
+static
+VOID
+WINAPI
+ImportOemPackage(
+    _In_ PCWSTR SourceInfFileName,
+    _In_ PCWSTR PublishedName)
+{
+    WCHAR FullPath[MAX_PATH];
+    DWORD Length;
+
+    if (!strchrW(SourceInfFileName, '\\') && !strchrW(SourceInfFileName, '/'))
+        return;
+
+    Length = GetFullPathNameW(SourceInfFileName, ARRAYSIZE(FullPath), FullPath, NULL);
+    if (!Length || Length >= ARRAYSIZE(FullPath))
+        return;
+
+    if (!DRVSTORE_ImportPackage(FullPath, PublishedName))
+        WARN("Cannot import %s into the driver store\n", debugstr_w(FullPath));
+}
+
 /***********************************************************************
  *		SetupCopyOEMInfW  (SETUPAPI.@)
  */
@@ -2618,6 +2640,9 @@ BOOL WINAPI SetupCopyOEMInfW(
         {
             DWORD Size = strlenW(pFileName) + 1;
 
+            /* A package published before the driver store existed gets its folder now */
+            ImportOemPackage(SourceInfFileName, pFileName);
+
             if (RequiredSize)
                 *RequiredSize = Size;
             if (DestinationInfFileNameSize == 0)
@@ -2670,6 +2695,8 @@ BOOL WINAPI SetupCopyOEMInfW(
             TRACE("CopyFileW() failed with error 0x%lx\n", GetLastError());
             goto cleanup;
         }
+
+        ImportOemPackage(SourceInfFileName, pFileName);
 
         len = strlenW(pFullFileName) + 1;
         if (RequiredSize)

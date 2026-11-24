@@ -1439,6 +1439,12 @@ BOOL WINAPI SetupCommitFileQueueW( HWND owner, HSPFILEQ handle, PSP_FILE_CALLBAC
                         if (op_result == FILEOP_ABORT) goto done;
                     }
                 }
+#ifdef __REACTOS__
+                /* A driver store file installed into its own package folder is already there */
+                if (!strcmpiW( op_result == FILEOP_NEWPATH ? newpath : paths.Source, paths.Target ) &&
+                    GetFileAttributesW( paths.Target ) != INVALID_FILE_ATTRIBUTES)
+                    break;
+#endif
                 if (do_file_copyW( op_result == FILEOP_NEWPATH ? newpath : paths.Source,
                                paths.Target, op->style, handler, context )) break;  /* success */
                 /* try to extract it from the cabinet file */

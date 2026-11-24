@@ -6057,11 +6057,29 @@ SetupDiInstallDevice(
             goto cleanup;
     }
     *pSectionName = '\0';
-    Result = SetupInstallFromInfSectionW(InstallParams.hwndParent,
-        SelectedDriver->InfFileDetails->hInf, SectionName,
-        DoAction, hKey, SelectedDriver->InfFileDetails->DirectoryName, SP_COPY_NEWER,
-        SetupDefaultQueueCallbackW, Context,
-        DeviceInfoSet, DeviceInfoData);
+    {
+        /* An imported package installs from its driver store folder, which holds all its files */
+        WCHAR PackageDirectory[MAX_PATH];
+        WCHAR InfPath[MAX_PATH];
+        PCWSTR SourceRoot = SelectedDriver->InfFileDetails->DirectoryName;
+
+        if (SourceRoot &&
+            strlenW(SourceRoot) + strlenW(SelectedDriver->InfFileDetails->FileName) + 2 <= ARRAYSIZE(InfPath) &&
+            strcpyW(InfPath, SourceRoot) &&
+            strcatW(InfPath, BackSlash) &&
+            strcatW(InfPath, SelectedDriver->InfFileDetails->FileName) &&
+            DRVSTORE_GetPackageDirectory(InfPath, PackageDirectory, ARRAYSIZE(PackageDirectory)) &&
+            GetFileAttributesW(PackageDirectory) != INVALID_FILE_ATTRIBUTES)
+        {
+            SourceRoot = PackageDirectory;
+        }
+
+        Result = SetupInstallFromInfSectionW(InstallParams.hwndParent,
+            SelectedDriver->InfFileDetails->hInf, SectionName,
+            DoAction, hKey, SourceRoot, SP_COPY_NEWER,
+            SetupDefaultQueueCallbackW, Context,
+            DeviceInfoSet, DeviceInfoData);
+    }
     if (!Result)
         goto cleanup;
     InstallParams.Flags |= DI_NOFILECOPY;
