@@ -99,6 +99,11 @@ USBPORT_SendSetupPacket(IN PUSBPORT_DEVICE_HANDLE DeviceHandle,
 
             if (USBD_SUCCESS(USBDStatus))
             {
+                PUSBPORT_TRANSFER Transfer = Urb->UrbControlTransfer.hca.Reserved8[0];
+
+                /* A device that never answers fails the command instead of holding its caller */
+                Transfer->TimeOut = USBPORT_COMMAND_TIMEOUT_MS;
+
                 InterlockedIncrement(&DeviceHandle->DeviceHandleLock);
 
                 USBPORT_QueueTransferUrb(Urb);

@@ -1653,8 +1653,7 @@ USBPORT_TimerDpc(IN PRKDPC Dpc,
 
     USBPORT_IsrDpcHandler(FdoDevice, FALSE);
 
-    DPRINT_TIMER("USBPORT_TimerDpc: USBPORT_TimeoutAllEndpoints UNIMPLEMENTED.\n");
-    //USBPORT_TimeoutAllEndpoints(FdoDevice);
+    USBPORT_TimeoutAllEndpoints(FdoDevice);
     DPRINT_TIMER("USBPORT_TimerDpc: USBPORT_CheckIdleEndpoints UNIMPLEMENTED.\n");
     //USBPORT_CheckIdleEndpoints(FdoDevice);
 

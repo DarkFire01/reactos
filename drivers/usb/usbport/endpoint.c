@@ -1816,3 +1816,68 @@ USBPORT_EndpointWorker(IN PUSBPORT_ENDPOINT Endpoint,
     DPRINT_CORE("USBPORT_EndpointWorker: return FALSE\n");
     return FALSE;
 }
+
+/**
+ * @brief Aborts every submitted transfer past its timeout, which then completes with
+ *        USBD_STATUS_TIMEOUT. Runs from the timer DPC.
+ */
+VOID
+NTAPI
+USBPORT_TimeoutAllEndpoints(
+    _In_ PDEVICE_OBJECT FdoDevice)
+{
+    PUSBPORT_DEVICE_EXTENSION FdoExtension = FdoDevice->DeviceExtension;
+    PUSBPORT_ENDPOINT Endpoint;
+    PUSBPORT_TRANSFER Transfer;
+    PLIST_ENTRY EndpointEntry;
+    PLIST_ENTRY TransferEntry;
+    LARGE_INTEGER CurrentTime;
+    BOOLEAN TimedOut = FALSE;
+
+    KeQuerySystemTime(&CurrentTime);
+
+    KeAcquireSpinLockAtDpcLevel(&FdoExtension->EndpointListSpinLock);
+
+    for (EndpointEntry = FdoExtension->EndpointList.Flink;
+         EndpointEntry && EndpointEntry != &FdoExtension->EndpointList;
+         EndpointEntry = EndpointEntry->Flink)
+    {
+        Endpoint = CONTAINING_RECORD(EndpointEntry, USBPORT_ENDPOINT, EndpointLink);
+
+        KeAcquireSpinLockAtDpcLevel(&Endpoint->EndpointSpinLock);
+
+        for (TransferEntry = Endpoint->TransferList.Flink;
+             TransferEntry && TransferEntry != &Endpoint->TransferList;
+             TransferEntry = TransferEntry->Flink)
+        {
+            Transfer = CONTAINING_RECORD(TransferEntry, USBPORT_TRANSFER, TransferLink);
+
+            /* Only transfers given a timeout count, from when the miniport took them */
+            if (!Transfer->TimeOut ||
+                !(Transfer->Flags & TRANSFER_FLAG_SUBMITED) ||
+                (Transfer->Flags & (TRANSFER_FLAG_CANCELED | TRANSFER_FLAG_ABORTED)) ||
+                CurrentTime.QuadPart <= Transfer->Time.QuadPart)
+            {
+                continue;
+            }
+
+            DPRINT1("USBPORT: transfer %p on endpoint %p (address %u, endpoint 0x%x) timed out after %lu ms\n",
+                    Transfer,
+                    Endpoint,
+                    Endpoint->EndpointProperties.DeviceAddress,
+                    Endpoint->EndpointProperties.EndpointAddress,
+                    Transfer->TimeOut);
+
+            Transfer->Flags |= TRANSFER_FLAG_ABORTED | TRANSFER_FLAG_TIMED_OUT;
+            TimedOut = TRUE;
+        }
+
+        KeReleaseSpinLockFromDpcLevel(&Endpoint->EndpointSpinLock);
+    }
+
+    KeReleaseSpinLockFromDpcLevel(&FdoExtension->EndpointListSpinLock);
+
+    /* The endpoint worker aborts them in the miniport and completes them */
+    if (TimedOut)
+        USBPORT_InvalidateEndpointHandler(FdoDevice, NULL, INVALIDATE_ENDPOINT_WORKER_THREAD);
+}

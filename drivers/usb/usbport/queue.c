@@ -763,6 +763,11 @@ USBPORT_FlushCancelList(IN PUSBPORT_ENDPOINT Endpoint)
                 USBPORT_CompleteTransfer(Transfer->Urb,
                                          USBD_STATUS_DEVICE_GONE);
             }
+            else if (Transfer->Flags & TRANSFER_FLAG_TIMED_OUT)
+            {
+                USBPORT_CompleteTransfer(Transfer->Urb,
+                                         USBD_STATUS_TIMEOUT);
+            }
             else
             {
                 USBPORT_CompleteTransfer(Transfer->Urb,
