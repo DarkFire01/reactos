@@ -47,6 +47,13 @@
 
 @ stdcall RtlUnicodeToUTF8N(ptr long ptr wstr long)
 @ stdcall RtlUTF8ToUnicodeN(ptr long ptr str long)
+@ stdcall RtlGetProcessPreferredUILanguages(long ptr ptr ptr)
+@ stdcall RtlInitializeCriticalSectionEx(ptr long long)
+@ stdcall RtlGetUserPreferredUILanguages(long ptr ptr ptr ptr)
+@ stdcall RtlIsNormalizedString(long ptr long ptr)
+@ stdcall RtlIdnToUnicode(long long long long long)
+@ stdcall RtlIdnToAscii(long long long long long)
+@ stdcall RtlIdnToNameprepUnicode(long long long long long)
 
 @ stdcall RtlIsNameInExpression(ptr ptr long ptr)
 
@@ -112,3 +119,4 @@
 @ stdcall EtwEventWriteString(int64 long int64 wstr)
 @ stdcall EtwEventWriteTransfer(int64 ptr ptr ptr long ptr)
 @ stdcall EtwEventWriteEx(int64 ptr int64 long ptr ptr long ptr)
+@ stdcall RtlTryAcquireSRWLockShared(ptr)

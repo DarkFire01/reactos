@@ -13,7 +13,8 @@ include_directories(
 list(APPEND SOURCE
     etw/eventprov.c
     ldr/ldrinit.c
-    ldr/ldrnotify.c)
+    ldr/ldrnotify.c
+    ${CMAKE_CURRENT_BINARY_DIR}/ntdll_vista_stubs.c)
 
 add_library(ntdll_vista_static ${SOURCE})
 target_link_libraries(ntdll_vista_static)
