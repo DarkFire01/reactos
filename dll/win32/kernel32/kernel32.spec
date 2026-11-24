@@ -589,7 +589,7 @@
 @ stdcall -version=0x602+ GetPackagePath(ptr long ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackagePath
 @ stdcall -version=0x603+ GetPackagePathByFullName(wstr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackagePathByFullName
 @ stdcall -version=0x602+ GetPackagesByPackageFamily(wstr ptr ptr ptr ptr) api-ms-win-appmodel-runtime-l1-1-2.GetPackagesByPackageFamily
-@ stdcall -stub -version=0x600+ GetPhysicallyInstalledSystemMemory(ptr)
+@ stdcall -version=0x600+ GetPhysicallyInstalledSystemMemory(ptr)
 @ stdcall GetPriorityClass(long)
 @ stdcall GetPrivateProfileIntA(str str long str)
 @ stdcall GetPrivateProfileIntW(wstr wstr long wstr)
