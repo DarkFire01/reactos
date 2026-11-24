@@ -197,4 +197,8 @@ SaveDesktopSettings(PDESKTOP_DATA pData);
 VOID
 SetDesktopSettings(PDESKTOP_DATA pData);
 
+VOID
+UpdateBasicDisplayDrivers(
+    _In_ PCWSTR ServiceName);
+
 #endif /* _DESK_H */

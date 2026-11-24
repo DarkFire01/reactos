@@ -6,6 +6,7 @@ list(APPEND SOURCE
     advmon.c
     appearance.c
     background.c
+    basicdrv.c
     classinst.c
     desk.c
     desktop.c

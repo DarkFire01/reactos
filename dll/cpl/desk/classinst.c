@@ -246,6 +246,8 @@ DisplayClassInstaller(
 
     /* FIXME: install OpenGLSoftwareSettings section */
 
+    UpdateBasicDisplayDrivers(ServiceName);
+
     /* Reenumerate display devices ; this will rescan for potential new devices */
     DisplayDevice.cb = sizeof(DISPLAY_DEVICE);
     EnumDisplayDevices(NULL, 0, &DisplayDevice, 0);
