@@ -459,6 +459,206 @@ GetSystemFirmwareTable(
                                    SystemFirmwareTable_Get);
 }
 
+/* The raw SMBIOS table GetSystemFirmwareTable returns starts after this header */
+#define K32_RSMB_HEADER_SIZE        8
+
+#define K32_SMBIOS_MEMORY_ARRAY     16
+#define K32_SMBIOS_MEMORY_DEVICE    17
+#define K32_SMBIOS_USE_SYSTEM       3
+
+/**
+ * @brief
+ * Steps past one SMBIOS structure and its string set.
+ *
+ * @return
+ * The next structure, or NULL when the table ends inside this one.
+ */
+static
+PUCHAR
+BaseNextSmbiosStructure(
+    _In_ PUCHAR Structure,
+    _In_ PUCHAR End)
+{
+    PUCHAR Strings;
+
+    Strings = Structure + Structure[1];
+    if (Strings >= End)
+        return NULL;
+
+    /* The string set ends with two zero bytes */
+    while (Strings + 1 < End && (Strings[0] != 0 || Strings[1] != 0))
+        Strings++;
+
+    if (Strings + 1 >= End)
+        return NULL;
+
+    return Strings + 2;
+}
+
+/**
+ * @brief
+ * Checks the formatted part of a structure the memory size is read from.
+ */
+static
+BOOLEAN
+BaseIsSmbiosStructureSane(
+    _In_ PUCHAR Structure,
+    _In_ PUCHAR End)
+{
+    UCHAR Length = Structure[1];
+
+    if (Structure[0] == K32_SMBIOS_MEMORY_ARRAY && Length < 6)
+        return FALSE;
+    if (Structure[0] == K32_SMBIOS_MEMORY_DEVICE && Length < 0x15)
+        return FALSE;
+
+    return (Structure[0] != K32_SMBIOS_MEMORY_ARRAY && Structure[0] != K32_SMBIOS_MEMORY_DEVICE) ||
+           Structure + Length <= End;
+}
+
+/**
+ * @brief
+ * Whether the array a memory device sits in holds system memory.
+ */
+static
+BOOLEAN
+BaseIsSystemMemoryArray(
+    _In_ PUCHAR First,
+    _In_ PUCHAR End,
+    _In_ USHORT Handle)
+{
+    PUCHAR Structure;
+
+    for (Structure = First; Structure && Structure + 4 <= End; Structure = BaseNextSmbiosStructure(Structure, End))
+    {
+        if (Structure[0] == K32_SMBIOS_MEMORY_ARRAY &&
+            *(PUSHORT)(Structure + 2) == Handle &&
+            Structure[5] == K32_SMBIOS_USE_SYSTEM)
+        {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Adds up the memory devices SMBIOS lists in system memory arrays.
+ *
+ * @return
+ * TRUE with the total in kilobytes. FALSE with ERROR_INVALID_DATA when the
+ * table is malformed, a size is unknown, or the total is below what the
+ * system sees.
+ */
+BOOL
+WINAPI
+GetPhysicallyInstalledSystemMemory(
+    _Out_ PULONGLONG TotalMemoryInKilobytes)
+{
+    MEMORYSTATUSEX Status;
+    ULONGLONG Total = 0;
+    BOOLEAN Found = FALSE;
+    BOOLEAN Sane = TRUE;
+    PUCHAR Table, First, End, Structure, Previous;
+    USHORT Size;
+    ULONG Extended;
+    UINT Length;
+    BOOL Result = FALSE;
+
+    if (TotalMemoryInKilobytes == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Length = GetSystemFirmwareTable('RSMB', 0, NULL, 0);
+    if (Length == 0)
+        return FALSE;
+
+    Table = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Length);
+    if (Table == NULL)
+        return FALSE;
+
+    Length = GetSystemFirmwareTable('RSMB', 0, Table, Length);
+    if (Length == 0)
+        goto Exit;
+
+    First = Table + K32_RSMB_HEADER_SIZE;
+    End = Table + Length;
+
+    /* The whole table has to hold together before any of it is believed */
+    Previous = NULL;
+    for (Structure = First; Structure < End; Structure = BaseNextSmbiosStructure(Structure, End))
+    {
+        if (Structure == NULL || Structure + 4 > End || !BaseIsSmbiosStructureSane(Structure, End))
+        {
+            Sane = FALSE;
+            break;
+        }
+        Previous = Structure;
+    }
+
+    if (!Sane || Previous == NULL || Structure != End)
+    {
+        SetLastError(ERROR_INVALID_DATA);
+        goto Exit;
+    }
+
+    for (Structure = First; Structure < End; Structure = BaseNextSmbiosStructure(Structure, End))
+    {
+        if (Structure[0] != K32_SMBIOS_MEMORY_DEVICE ||
+            !BaseIsSystemMemoryArray(First, End, *(PUSHORT)(Structure + 4)))
+        {
+            continue;
+        }
+
+        Size = *(PUSHORT)(Structure + 0x0C);
+        Extended = (Structure[1] >= 0x22) ? *(PULONG)(Structure + 0x1C) : 0;
+
+        /* An unknown size makes the total unknown too */
+        if (Size == 0xFFFF)
+        {
+            Found = FALSE;
+            break;
+        }
+
+        /* An empty socket */
+        if (Size == 0)
+            continue;
+
+        if (Size & 0x8000)
+            Total += Size & 0x7FFF;
+        else if (Size == 0x7FFF && Extended != 0)
+            Total += (ULONGLONG)Extended << 10;
+        else
+            Total += (ULONGLONG)Size << 10;
+
+        Found = TRUE;
+    }
+
+    if (Found && Total != 0)
+    {
+        Status.dwLength = sizeof(Status);
+        if (!GlobalMemoryStatusEx(&Status))
+            goto Exit;
+
+        /* Firmware that reports less than the system already sees is not trusted */
+        if ((Status.ullTotalPhys >> 10) <= Total)
+        {
+            *TotalMemoryInKilobytes = Total;
+            Result = TRUE;
+            goto Exit;
+        }
+    }
+
+    SetLastError(ERROR_INVALID_DATA);
+
+Exit:
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Table);
+    return Result;
+}
+
 /*
  * @unimplemented
  */
