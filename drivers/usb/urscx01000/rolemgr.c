@@ -275,6 +275,7 @@ UrsRoleProcessEvents(
 
 static
 VOID
+NTAPI
 UrsRoleEvtWorkItem(
     _In_ WDFWORKITEM WorkItem)
 {
@@ -288,6 +289,7 @@ UrsRoleEvtWorkItem(
 
 static
 VOID
+NTAPI
 UrsRoleEvtLaunchDpc(
     _In_ WDFDPC Dpc)
 {

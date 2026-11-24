@@ -114,6 +114,7 @@ UacpiNtOpRegionDispatch(
  *         space that is neither predefined nor OEM defined.
  */
 NTSTATUS
+NTAPI
 RegisterOpRegionHandler(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_ ULONG AccessType,
@@ -169,6 +170,7 @@ RegisterOpRegionHandler(
 }
 
 NTSTATUS
+NTAPI
 DeRegisterOpRegionHandler(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_ PVOID OperationRegionObject)

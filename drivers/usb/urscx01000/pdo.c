@@ -169,6 +169,7 @@ UrsPdoAssignIds(
 
 static
 NTSTATUS
+NTAPI
 UrsPdoEvtPrepareHardware(
     _In_ WDFDEVICE Device,
     _In_ WDFCMRESLIST ResourcesRaw,
@@ -184,6 +185,7 @@ UrsPdoEvtPrepareHardware(
 
 static
 NTSTATUS
+NTAPI
 UrsPdoEvtReleaseHardware(
     _In_ WDFDEVICE Device,
     _In_ WDFCMRESLIST ResourcesTranslated)
@@ -197,6 +199,7 @@ UrsPdoEvtReleaseHardware(
 
 static
 VOID
+NTAPI
 UrsPdoEvtSurpriseRemoval(
     _In_ WDFDEVICE Device)
 {
@@ -206,6 +209,7 @@ UrsPdoEvtSurpriseRemoval(
 /* Hands the child the register windows the client picked from the parent */
 static
 NTSTATUS
+NTAPI
 UrsPdoEvtResourceRequirementsQuery(
     _In_ WDFDEVICE Device,
     _In_ WDFIORESREQLIST Requirements)
@@ -277,6 +281,7 @@ UrsPdoCompleteBusInformation(
 
 static
 VOID
+NTAPI
 UrsPdoEvtIoInternalDeviceControl(
     _In_ WDFQUEUE Queue,
     _In_ WDFREQUEST Request,

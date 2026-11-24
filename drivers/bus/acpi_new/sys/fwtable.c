@@ -82,7 +82,7 @@ UacpiNtGetFirmwareTable(
 
 static
 NTSTATUS
-NTAPI
+__cdecl
 UacpiNtFirmwareTableHandler(
     _Inout_ PSYSTEM_FIRMWARE_TABLE_INFORMATION Info)
 {

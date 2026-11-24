@@ -20,6 +20,7 @@ NTSTATUS
                                    PVOID CompletionContext);
 
 NTSTATUS
+NTAPI
 RegisterOpRegionHandler (IN PDEVICE_OBJECT DeviceObject,
                          IN ULONG AccessType,
                          IN ULONG RegionSpace,
@@ -28,6 +29,7 @@ RegisterOpRegionHandler (IN PDEVICE_OBJECT DeviceObject,
                          IN OUT PVOID *OperationRegionObject);
 
 NTSTATUS
+NTAPI
 DeRegisterOpRegionHandler (IN PDEVICE_OBJECT DeviceObject,
                            IN PVOID OperationRegionObject);
 

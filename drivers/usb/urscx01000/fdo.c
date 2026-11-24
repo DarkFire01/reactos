@@ -35,6 +35,7 @@ UrsFdoPurgeResources(
 
 static
 NTSTATUS
+NTAPI
 UrsFdoEvtFilterRemoveResourceRequirements(
     _In_ WDFDEVICE Device,
     _In_ WDFIORESREQLIST Requirements)
@@ -134,6 +135,7 @@ UrsFdoCompletePldList(
 
 static
 VOID
+NTAPI
 UrsFdoEvtIoDeviceControl(
     _In_ WDFQUEUE Queue,
     _In_ WDFREQUEST Request,
@@ -235,6 +237,7 @@ UrsFdoEvtIoDeviceControl(
 /* Takes the role switch requests away from the client's own device control path */
 static
 NTSTATUS
+NTAPI
 UrsFdoEvtWdmDeviceControl(
     _In_ WDFDEVICE Device,
     _In_ UCHAR MajorFunction,

@@ -173,6 +173,7 @@ UrssDisconnectIdPin(
  */
 static
 NTSTATUS
+NTAPI
 UrssEvtPrepareHardware(
     _In_ WDFDEVICE WdfDevice,
     _In_ WDFCMRESLIST ResourcesRaw,
@@ -237,6 +238,7 @@ UrssEvtPrepareHardware(
 
 static
 NTSTATUS
+NTAPI
 UrssEvtReleaseHardware(
     _In_ WDFDEVICE WdfDevice,
     _In_ WDFCMRESLIST ResourcesTranslated)
@@ -261,6 +263,7 @@ UrssEvtReleaseHardware(
 
 static
 NTSTATUS
+NTAPI
 UrssEvtD0Entry(
     _In_ WDFDEVICE WdfDevice,
     _In_ WDF_POWER_DEVICE_STATE PreviousState)
@@ -273,6 +276,7 @@ UrssEvtD0Entry(
 
 static
 NTSTATUS
+NTAPI
 UrssEvtD0Exit(
     _In_ WDFDEVICE WdfDevice,
     _In_ WDF_POWER_DEVICE_STATE TargetState)
@@ -355,6 +359,7 @@ UrssEvtSetRole(
 
 static
 NTSTATUS
+NTAPI
 UrssEvtPostPoFxRegister(
     _In_ WDFDEVICE WdfDevice,
     _In_ POHANDLE PoHandle)
@@ -365,6 +370,7 @@ UrssEvtPostPoFxRegister(
 
 static
 VOID
+NTAPI
 UrssEvtPrePoFxUnregister(
     _In_ WDFDEVICE WdfDevice,
     _In_ POHANDLE PoHandle)
@@ -452,6 +458,7 @@ UrssIsDebuggerController(VOID)
 
 static
 NTSTATUS
+NTAPI
 UrssEvtDeviceAdd(
     _In_ WDFDRIVER Driver,
     _Inout_ PWDFDEVICE_INIT DeviceInit)
@@ -502,6 +509,7 @@ UrssEvtDeviceAdd(
 
 static
 VOID
+NTAPI
 UrssEvtDriverUnload(
     _In_ WDFDRIVER Driver)
 {

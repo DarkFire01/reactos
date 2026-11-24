@@ -74,6 +74,7 @@ HidRegisterMinidriver(
 #if(NTDDI_VERSION>=NTDDI_WINXPSP1)
 
 NTSTATUS
+NTAPI
 HidNotifyPresence(
     IN PDEVICE_OBJECT DeviceObject,
     IN BOOLEAN IsPresent

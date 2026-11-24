@@ -149,6 +149,7 @@ UrsCreateControlDevice(
 
 static
 VOID
+NTAPI
 UrsEvtDriverUnload(
     _In_ WDFDRIVER Driver)
 {
