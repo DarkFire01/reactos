@@ -1658,6 +1658,12 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Initialize all processors */
     if (!HalAllProcessorsStarted()) KeBugCheck(HAL1_INITIALIZATION_FAILED);
 
+    /* User mode reads the processor and group counts from the shared page */
+    SharedUserData->ActiveProcessorCount = KeNumberProcessors;
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+    SharedUserData->ActiveGroupCount = (UCHAR)KeQueryActiveGroupCount();
+#endif
+
 #ifdef CONFIG_SMP
     /* HACK: We should use RtlFindMessage and not only fallback to this */
     MpString = "MultiProcessor Kernel\r\n";

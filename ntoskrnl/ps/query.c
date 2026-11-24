@@ -3614,6 +3614,43 @@ NtQueryInformationThread(
             break;
         }
 
+        /* The thread's affinity within its processor group, which is always group 0 here */
+        case ThreadGroupInformation:
+        {
+            PGROUP_AFFINITY GroupAffinity = (PGROUP_AFFINITY)ThreadInformation;
+
+            Length = sizeof(GROUP_AFFINITY);
+            if (ThreadInformationLength != Length)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            Status = ObReferenceObjectByHandle(ThreadHandle,
+                                               THREAD_QUERY_LIMITED_INFORMATION,
+                                               PsThreadType,
+                                               PreviousMode,
+                                               (PVOID*)&Thread,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            _SEH2_TRY
+            {
+                RtlZeroMemory(GroupAffinity, sizeof(*GroupAffinity));
+                GroupAffinity->Mask = Thread->Tcb.Affinity;
+                GroupAffinity->Group = 0;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            ObDereferenceObject(Thread);
+            break;
+        }
+
         /* Thread time information */
         case ThreadTimes:
         {
