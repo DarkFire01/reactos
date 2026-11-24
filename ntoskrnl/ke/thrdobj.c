@@ -63,8 +63,8 @@ KeQueryBasePriorityThread(IN PKTHREAD Thread)
     /* Lock the thread */
     KiAcquireThreadLock(Thread);
 
-    /* Get the Process */
-    Process = Thread->ApcStatePointer[0]->Process;
+    /* The owning process; the APC state pointers swap under the APC lock while the thread attaches */
+    Process = Thread->Process;
 
     /* Calculate the base increment */
     BaseIncrement = Thread->BasePriority - Process->BasePriority;
