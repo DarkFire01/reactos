@@ -147,7 +147,15 @@ struct async_header
 struct async_query
 {
     struct async_header hdr;
+    enum wbm_namespace ns;
     WCHAR *str;
+};
+
+struct event_subscription
+{
+    struct list entry;
+    IWbemObjectSink *sink;
+    void *cookie;
 };
 
 static void free_async( struct async_header *async )
@@ -197,8 +205,18 @@ struct wbem_services
     LONG refs;
     CRITICAL_SECTION cs;
     WCHAR *namespace;
+    enum wbm_namespace ns;
     struct async_header *async;
+    struct list subscriptions;
 };
+
+static void free_subscription( struct event_subscription *sub, HRESULT status )
+{
+    WmiProvUnsubscribe( sub->cookie );
+    IWbemObjectSink_SetStatus( sub->sink, WBEM_STATUS_COMPLETE, status, NULL, NULL );
+    IWbemObjectSink_Release( sub->sink );
+    heap_free( sub );
+}
 
 static inline struct wbem_services *impl_from_IWbemServices( IWbemServices *iface )
 {
@@ -219,7 +237,15 @@ static ULONG WINAPI wbem_services_Release(
     LONG refs = InterlockedDecrement( &ws->refs );
     if (!refs)
     {
+        struct event_subscription *sub, *next;
+
         TRACE("destroying %p\n", ws);
+
+        LIST_FOR_EACH_ENTRY_SAFE( sub, next, &ws->subscriptions, struct event_subscription, entry )
+        {
+            list_remove( &sub->entry );
+            free_subscription( sub, WBEM_E_CALL_CANCELLED );
+        }
 
         EnterCriticalSection( &ws->cs );
         if (ws->async) SetEvent( ws->async->cancel );
@@ -273,17 +299,15 @@ static HRESULT WINAPI wbem_services_OpenNamespace(
     IWbemServices **ppWorkingNamespace,
     IWbemCallResult **ppResult )
 {
-    static const WCHAR cimv2W[] = {'c','i','m','v','2',0};
-    static const WCHAR defaultW[] = {'d','e','f','a','u','l','t',0};
     struct wbem_services *ws = impl_from_IWbemServices( iface );
 
     TRACE("%p, %s, 0x%08x, %p, %p, %p\n", iface, debugstr_w(strNamespace), lFlags,
           pCtx, ppWorkingNamespace, ppResult);
 
-    if ((wcsicmp( strNamespace, cimv2W ) && wcsicmp( strNamespace, defaultW )) || ws->namespace)
+    if (!strNamespace || ws->namespace || get_namespace_from_string( strNamespace ) == WBEMPROX_NAMESPACE_LAST)
         return WBEM_E_INVALID_NAMESPACE;
 
-    return WbemServices_create( cimv2W, (void **)ppWorkingNamespace );
+    return WbemServices_create( strNamespace, (void **)ppWorkingNamespace );
 }
 
 static HRESULT WINAPI wbem_services_CancelAsyncCall(
@@ -291,6 +315,7 @@ static HRESULT WINAPI wbem_services_CancelAsyncCall(
     IWbemObjectSink *pSink )
 {
     struct wbem_services *services = impl_from_IWbemServices( iface );
+    struct event_subscription *sub;
     struct async_header *async;
 
     TRACE("%p, %p\n", iface, pSink);
@@ -298,6 +323,15 @@ static HRESULT WINAPI wbem_services_CancelAsyncCall(
     if (!pSink) return WBEM_E_INVALID_PARAMETER;
 
     EnterCriticalSection( &services->cs );
+
+    LIST_FOR_EACH_ENTRY( sub, &services->subscriptions, struct event_subscription, entry )
+    {
+        if (sub->sink != pSink) continue;
+        list_remove( &sub->entry );
+        LeaveCriticalSection( &services->cs );
+        free_subscription( sub, WBEM_E_CALL_CANCELLED );
+        return S_OK;
+    }
 
     if (!(async = services->async))
     {
@@ -323,7 +357,18 @@ static HRESULT WINAPI wbem_services_QueryObjectSink(
     return WBEM_E_FAILED;
 }
 
-HRESULT parse_path( const WCHAR *str, struct path **ret )
+enum wbm_namespace get_namespace_from_string( const WCHAR *namespace )
+{
+    static const WCHAR cimv2W[] = {'c','i','m','v','2',0};
+    static const WCHAR defaultW[] = {'d','e','f','a','u','l','t',0};
+    static const WCHAR wmiW[] = {'w','m','i',0};
+
+    if (!wcsicmp( namespace, cimv2W ) || !wcsicmp( namespace, defaultW )) return WBEMPROX_NAMESPACE_CIMV2;
+    if (!wcsicmp( namespace, wmiW )) return WBEMPROX_NAMESPACE_WMI;
+    return WBEMPROX_NAMESPACE_LAST;
+}
+
+HRESULT parse_path( enum wbm_namespace ns, const WCHAR *str, struct path **ret )
 {
     struct path *path;
     const WCHAR *p = str, *q;
@@ -334,6 +379,8 @@ HRESULT parse_path( const WCHAR *str, struct path **ret )
     if (*p == '\\')
     {
         static const WCHAR cimv2W[] = {'R','O','O','T','\\','C','I','M','V','2',0};
+        static const WCHAR wmiW[] = {'R','O','O','T','\\','W','M','I',0};
+        const WCHAR *expected = (ns == WBEMPROX_NAMESPACE_WMI) ? wmiW : cimv2W;
         WCHAR server[MAX_COMPUTERNAME_LENGTH+1];
         DWORD server_len = ARRAY_SIZE(server);
 
@@ -369,7 +416,7 @@ HRESULT parse_path( const WCHAR *str, struct path **ret )
         }
 
         len = p - q;
-        if (len != ARRAY_SIZE(cimv2W) - 1 || _wcsnicmp( q, cimv2W, ARRAY_SIZE(cimv2W) - 1 ))
+        if (len != lstrlenW( expected ) || _wcsnicmp( q, expected, len ))
         {
             heap_free( path );
             return WBEM_E_INVALID_NAMESPACE;
@@ -444,33 +491,43 @@ WCHAR *query_from_path( const struct path *path )
     return query;
 }
 
-static HRESULT create_instance_enum( const struct path *path, IEnumWbemClassObject **iter )
+static HRESULT create_instance_enum( enum wbm_namespace ns, const struct path *path, IEnumWbemClassObject **iter )
 {
     WCHAR *query;
     HRESULT hr;
 
     if (!(query = query_from_path( path ))) return E_OUTOFMEMORY;
-    hr = exec_query( query, iter );
+    hr = exec_query( ns, query, iter );
     heap_free( query );
     return hr;
 }
 
-HRESULT get_object( const WCHAR *object_path, IWbemClassObject **obj )
+HRESULT get_object( enum wbm_namespace ns, const WCHAR *object_path, IWbemClassObject **obj )
 {
     IEnumWbemClassObject *iter;
     struct path *path;
     HRESULT hr;
 
-    hr = parse_path( object_path, &path );
+    hr = parse_path( ns, object_path, &path );
     if (hr != S_OK) return hr;
 
-    hr = create_instance_enum( path, &iter );
+    /* root\wmi hands out real class definitions and reports missing instances */
+    if (ns == WBEMPROX_NAMESPACE_WMI && !path->filter)
+        hr = exec_class_enum( ns, path->class, NULL, 0, &iter );
+    else
+        hr = create_instance_enum( ns, path, &iter );
     if (hr != S_OK)
     {
         free_path( path );
         return hr;
     }
-    hr = create_class_object( path->class, iter, 0, NULL, obj );
+    if (ns == WBEMPROX_NAMESPACE_WMI && IEnumWbemClassObject_Skip( iter, WBEM_INFINITE, 1 ) != WBEM_S_NO_ERROR)
+        hr = WBEM_E_NOT_FOUND;
+    if (hr == S_OK)
+    {
+        IEnumWbemClassObject_Reset( iter );
+        hr = create_class_object( ns, path->class, iter, 0, NULL, obj );
+    }
     IEnumWbemClassObject_Release( iter );
     free_path( path );
     return hr;
@@ -484,15 +541,40 @@ static HRESULT WINAPI wbem_services_GetObject(
     IWbemClassObject **ppObject,
     IWbemCallResult **ppCallResult )
 {
+    struct wbem_services *ws = impl_from_IWbemServices( iface );
+
     TRACE("%p, %s, 0x%08x, %p, %p, %p\n", iface, debugstr_w(strObjectPath), lFlags,
           pCtx, ppObject, ppCallResult);
 
     if (lFlags) FIXME("unsupported flags 0x%08x\n", lFlags);
 
     if (!strObjectPath || !strObjectPath[0])
-        return create_class_object( NULL, NULL, 0, NULL, ppObject );
+        return create_class_object( ws->ns, NULL, NULL, 0, NULL, ppObject );
 
-    return get_object( strObjectPath, ppObject );
+    return get_object( ws->ns, strObjectPath, ppObject );
+}
+
+/* Completes a call on the sink of an async request that was served synchronously */
+static HRESULT complete_async( IWbemObjectSink *sink, IWbemClassObject *obj, IEnumWbemClassObject *iter, HRESULT hr )
+{
+    if (!sink) return WBEM_E_INVALID_PARAMETER;
+
+    if (obj) IWbemObjectSink_Indicate( sink, 1, &obj );
+    if (iter)
+    {
+        for (;;)
+        {
+            IWbemClassObject *next;
+            ULONG count;
+
+            IEnumWbemClassObject_Next( iter, WBEM_INFINITE, 1, &next, &count );
+            if (!count) break;
+            IWbemObjectSink_Indicate( sink, 1, &next );
+            IWbemClassObject_Release( next );
+        }
+    }
+    IWbemObjectSink_SetStatus( sink, WBEM_STATUS_COMPLETE, hr, NULL, NULL );
+    return S_OK;
 }
 
 static HRESULT WINAPI wbem_services_GetObjectAsync(
@@ -502,8 +584,17 @@ static HRESULT WINAPI wbem_services_GetObjectAsync(
     IWbemContext *pCtx,
     IWbemObjectSink *pResponseHandler )
 {
-    FIXME("\n");
-    return WBEM_E_FAILED;
+    IWbemClassObject *obj = NULL;
+    HRESULT hr;
+
+    TRACE("%p, %s, 0x%08x, %p, %p\n", iface, debugstr_w(strObjectPath), lFlags, pCtx, pResponseHandler);
+
+    if (!pResponseHandler) return WBEM_E_INVALID_PARAMETER;
+
+    hr = IWbemServices_GetObject( iface, strObjectPath, lFlags, pCtx, &obj, NULL );
+    complete_async( pResponseHandler, obj, NULL, hr );
+    if (obj) IWbemClassObject_Release( obj );
+    return S_OK;
 }
 
 static HRESULT WINAPI wbem_services_PutClass(
@@ -557,8 +648,12 @@ static HRESULT WINAPI wbem_services_CreateClassEnum(
     IWbemContext *pCtx,
     IEnumWbemClassObject **ppEnum )
 {
-    FIXME("\n");
-    return WBEM_E_FAILED;
+    struct wbem_services *ws = impl_from_IWbemServices( iface );
+
+    TRACE("%p, %s, 0x%08x, %p, %p\n", iface, debugstr_w(strSuperclass), lFlags, pCtx, ppEnum);
+
+    if (!ppEnum) return WBEM_E_INVALID_PARAMETER;
+    return exec_class_enum( ws->ns, NULL, strSuperclass, lFlags, ppEnum );
 }
 
 static HRESULT WINAPI wbem_services_CreateClassEnumAsync(
@@ -568,8 +663,17 @@ static HRESULT WINAPI wbem_services_CreateClassEnumAsync(
     IWbemContext *pCtx,
     IWbemObjectSink *pResponseHandler )
 {
-    FIXME("\n");
-    return WBEM_E_FAILED;
+    IEnumWbemClassObject *iter = NULL;
+    HRESULT hr;
+
+    TRACE("%p, %s, 0x%08x, %p, %p\n", iface, debugstr_w(strSuperclass), lFlags, pCtx, pResponseHandler);
+
+    if (!pResponseHandler) return WBEM_E_INVALID_PARAMETER;
+
+    hr = IWbemServices_CreateClassEnum( iface, strSuperclass, lFlags, pCtx, &iter );
+    complete_async( pResponseHandler, NULL, iter, hr );
+    if (iter) IEnumWbemClassObject_Release( iter );
+    return S_OK;
 }
 
 static HRESULT WINAPI wbem_services_PutInstance(
@@ -579,6 +683,13 @@ static HRESULT WINAPI wbem_services_PutInstance(
     IWbemContext *pCtx,
     IWbemCallResult **ppCallResult )
 {
+    struct wbem_services *ws = impl_from_IWbemServices( iface );
+
+    TRACE("%p, %p, 0x%08x, %p, %p\n", iface, pInst, lFlags, pCtx, ppCallResult);
+
+    if (!pInst) return WBEM_E_INVALID_PARAMETER;
+    if (ws->ns == WBEMPROX_NAMESPACE_WMI) return WmiProvPutInstance( pInst );
+
     FIXME("\n");
     return WBEM_E_FAILED;
 }
@@ -590,8 +701,15 @@ static HRESULT WINAPI wbem_services_PutInstanceAsync(
     IWbemContext *pCtx,
     IWbemObjectSink *pResponseHandler )
 {
-    FIXME("\n");
-    return WBEM_E_FAILED;
+    HRESULT hr;
+
+    TRACE("%p, %p, 0x%08x, %p, %p\n", iface, pInst, lFlags, pCtx, pResponseHandler);
+
+    if (!pResponseHandler) return WBEM_E_INVALID_PARAMETER;
+
+    hr = IWbemServices_PutInstance( iface, pInst, lFlags, pCtx, NULL );
+    complete_async( pResponseHandler, NULL, NULL, hr );
+    return S_OK;
 }
 
 static HRESULT WINAPI wbem_services_DeleteInstance(
@@ -623,6 +741,7 @@ static HRESULT WINAPI wbem_services_CreateInstanceEnum(
     IWbemContext *pCtx,
     IEnumWbemClassObject **ppEnum )
 {
+    struct wbem_services *ws = impl_from_IWbemServices( iface );
     struct path *path;
     HRESULT hr;
 
@@ -630,10 +749,10 @@ static HRESULT WINAPI wbem_services_CreateInstanceEnum(
 
     if (lFlags) FIXME("unsupported flags 0x%08x\n", lFlags);
 
-    hr = parse_path( strClass, &path );
+    hr = parse_path( ws->ns, strClass, &path );
     if (hr != S_OK) return hr;
 
-    hr = create_instance_enum( path, ppEnum );
+    hr = create_instance_enum( ws->ns, path, ppEnum );
     free_path( path );
     return hr;
 }
@@ -645,8 +764,17 @@ static HRESULT WINAPI wbem_services_CreateInstanceEnumAsync(
     IWbemContext *pCtx,
     IWbemObjectSink *pResponseHandler )
 {
-    FIXME("\n");
-    return WBEM_E_FAILED;
+    IEnumWbemClassObject *iter = NULL;
+    HRESULT hr;
+
+    TRACE("%p, %s, 0x%08x, %p, %p\n", iface, debugstr_w(strFilter), lFlags, pCtx, pResponseHandler);
+
+    if (!pResponseHandler) return WBEM_E_INVALID_PARAMETER;
+
+    hr = IWbemServices_CreateInstanceEnum( iface, strFilter, lFlags, pCtx, &iter );
+    complete_async( pResponseHandler, NULL, iter, hr );
+    if (iter) IEnumWbemClassObject_Release( iter );
+    return S_OK;
 }
 
 static HRESULT WINAPI wbem_services_ExecQuery(
@@ -658,13 +786,14 @@ static HRESULT WINAPI wbem_services_ExecQuery(
     IEnumWbemClassObject **ppEnum )
 {
     static const WCHAR wqlW[] = {'W','Q','L',0};
+    struct wbem_services *ws = impl_from_IWbemServices( iface );
 
     TRACE("%p, %s, %s, 0x%08x, %p, %p\n", iface, debugstr_w(strQueryLanguage),
           debugstr_w(strQuery), lFlags, pCtx, ppEnum);
 
     if (!strQueryLanguage || !strQuery || !strQuery[0]) return WBEM_E_INVALID_PARAMETER;
     if (wcsicmp( strQueryLanguage, wqlW )) return WBEM_E_INVALID_QUERY_TYPE;
-    return exec_query( strQuery, ppEnum );
+    return exec_query( ws->ns, strQuery, ppEnum );
 }
 
 static void async_exec_query( struct async_header *hdr )
@@ -675,7 +804,7 @@ static void async_exec_query( struct async_header *hdr )
     ULONG count;
     HRESULT hr;
 
-    hr = exec_query( query->str, &result );
+    hr = exec_query( query->ns, query->str, &result );
     if (hr == S_OK)
     {
         for (;;)
@@ -729,6 +858,7 @@ static HRESULT WINAPI wbem_services_ExecQueryAsync(
         free_async( async );
         goto done;
     }
+    query->ns = services->ns;
     if (!(query->str = heap_strdupW( strQuery )))
     {
         free_async( async );
@@ -756,8 +886,16 @@ static HRESULT WINAPI wbem_services_ExecNotificationQuery(
     IWbemContext *pCtx,
     IEnumWbemClassObject **ppEnum )
 {
-    FIXME("\n");
-    return WBEM_E_FAILED;
+    struct wbem_services *ws = impl_from_IWbemServices( iface );
+
+    TRACE("%p, %s, %s, 0x%08x, %p, %p\n", iface, debugstr_w(strQueryLanguage),
+          debugstr_w(strQuery), lFlags, pCtx, ppEnum);
+
+    if (!strQuery || !ppEnum) return WBEM_E_INVALID_PARAMETER;
+    if (ws->ns == WBEMPROX_NAMESPACE_WMI) return WmiProvCreateEventEnum( strQuery, ppEnum );
+
+    FIXME("event queries are only supported in root\\wmi\n");
+    return WBEM_E_NOT_SUPPORTED;
 }
 
 static HRESULT WINAPI wbem_services_ExecNotificationQueryAsync(
@@ -782,6 +920,26 @@ static HRESULT WINAPI wbem_services_ExecNotificationQueryAsync(
     hr = IWbemObjectSink_QueryInterface( pResponseHandler, &IID_IWbemObjectSink, (void **)&sink );
     if (FAILED(hr)) return hr;
 
+    /* Events of root\wmi come from kernel WMI notifications */
+    if (services->ns == WBEMPROX_NAMESPACE_WMI)
+    {
+        struct event_subscription *sub;
+
+        if (!strQuery) hr = WBEM_E_INVALID_PARAMETER;
+        else if (!(sub = heap_alloc_zero( sizeof(*sub) ))) hr = E_OUTOFMEMORY;
+        else if ((hr = WmiProvSubscribe( strQuery, sink, &sub->cookie )) != S_OK) heap_free( sub );
+        else
+        {
+            sub->sink = sink;
+            IWbemObjectSink_AddRef( sink );
+            EnterCriticalSection( &services->cs );
+            list_add_tail( &services->subscriptions, &sub->entry );
+            LeaveCriticalSection( &services->cs );
+        }
+        IWbemObjectSink_Release( sink );
+        return hr;
+    }
+
     EnterCriticalSection( &services->cs );
 
     if (services->async)
@@ -798,6 +956,7 @@ static HRESULT WINAPI wbem_services_ExecNotificationQueryAsync(
         free_async( async );
         goto done;
     }
+    query->ns = services->ns;
     if (!(query->str = heap_strdupW( strQuery )))
     {
         free_async( async );
@@ -827,11 +986,12 @@ static HRESULT WINAPI wbem_services_ExecMethod(
     IWbemClassObject **ppOutParams,
     IWbemCallResult **ppCallResult )
 {
+    struct wbem_services *ws = impl_from_IWbemServices( iface );
     IEnumWbemClassObject *result = NULL;
     IWbemClassObject *obj = NULL;
     struct query *query = NULL;
     struct path *path;
-    WCHAR *str;
+    WCHAR *str = NULL;
     class_method *func;
     struct table *table;
     HRESULT hr;
@@ -841,18 +1001,24 @@ static HRESULT WINAPI wbem_services_ExecMethod(
 
     if (lFlags) FIXME("flags %08x not supported\n", lFlags);
 
-    if ((hr = parse_path( strObjectPath, &path )) != S_OK) return hr;
+    if (ws->ns == WBEMPROX_NAMESPACE_WMI)
+    {
+        if (!strObjectPath || !strMethodName) return WBEM_E_INVALID_PARAMETER;
+        return WmiProvExecMethod( strObjectPath, strMethodName, pInParams, ppOutParams );
+    }
+
+    if ((hr = parse_path( ws->ns, strObjectPath, &path )) != S_OK) return hr;
     if (!(str = query_from_path( path )))
     {
         hr = E_OUTOFMEMORY;
         goto done;
     }
-    if (!(query = create_query()))
+    if (!(query = create_query( ws->ns )))
     {
         hr = E_OUTOFMEMORY;
         goto done;
     }
-    hr = parse_query( str, &query->view, &query->mem );
+    hr = parse_query( ws->ns, str, &query->view, &query->mem );
     if (hr != S_OK) goto done;
 
     hr = execute_view( query->view );
@@ -862,7 +1028,7 @@ static HRESULT WINAPI wbem_services_ExecMethod(
     if (hr != S_OK) goto done;
 
     table = get_view_table( query->view, 0 );
-    hr = create_class_object( table->name, result, 0, NULL, &obj );
+    hr = create_class_object( ws->ns, table->name, result, 0, NULL, &obj );
     if (hr != S_OK) goto done;
 
     hr = get_method( table, strMethodName, &func );
@@ -888,8 +1054,18 @@ static HRESULT WINAPI wbem_services_ExecMethodAsync(
     IWbemClassObject *pInParams,
     IWbemObjectSink *pResponseHandler )
 {
-    FIXME("\n");
-    return WBEM_E_FAILED;
+    IWbemClassObject *out = NULL;
+    HRESULT hr;
+
+    TRACE("%p, %s, %s, %08x, %p, %p, %p\n", iface, debugstr_w(strObjectPath),
+          debugstr_w(strMethodName), lFlags, pCtx, pInParams, pResponseHandler);
+
+    if (!pResponseHandler) return WBEM_E_INVALID_PARAMETER;
+
+    hr = IWbemServices_ExecMethod( iface, strObjectPath, strMethodName, lFlags, pCtx, pInParams, &out, NULL );
+    complete_async( pResponseHandler, out, NULL, hr );
+    if (out) IWbemClassObject_Release( out );
+    return S_OK;
 }
 
 static const IWbemServicesVtbl wbem_services_vtbl =
@@ -934,7 +1110,17 @@ HRESULT WbemServices_create( const WCHAR *namespace, LPVOID *ppObj )
     ws->IWbemServices_iface.lpVtbl = &wbem_services_vtbl;
     ws->refs      = 1;
     ws->namespace = heap_strdupW( namespace );
+    ws->ns        = namespace ? get_namespace_from_string( namespace ) : WBEMPROX_NAMESPACE_CIMV2;
     ws->async     = NULL;
+    list_init( &ws->subscriptions );
+
+    if (ws->ns == WBEMPROX_NAMESPACE_LAST)
+    {
+        heap_free( ws->namespace );
+        heap_free( ws );
+        return WBEM_E_INVALID_NAMESPACE;
+    }
+    if (ws->ns == WBEMPROX_NAMESPACE_WMI) WmiProvRefresh();
     InitializeCriticalSection( &ws->cs );
     ws->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": wbemprox_services.cs");
 

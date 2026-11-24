@@ -2695,12 +2695,12 @@ static struct association *get_diskdrivetodiskpartition_pairs( UINT *count )
     HRESULT hr;
     UINT i;
 
-    if (!(query = create_query())) return NULL;
-    if ((hr = parse_query( selectW, &query->view, &query->mem )) != S_OK) goto done;
+    if (!(query = create_query( WBEMPROX_NAMESPACE_CIMV2 ))) return NULL;
+    if ((hr = parse_query( WBEMPROX_NAMESPACE_CIMV2, selectW, &query->view, &query->mem )) != S_OK) goto done;
     if ((hr = execute_view( query->view )) != S_OK) goto done;
 
-    if (!(query2 = create_query())) return FALSE;
-    if ((hr = parse_query( select2W, &query2->view, &query2->mem )) != S_OK) goto done;
+    if (!(query2 = create_query( WBEMPROX_NAMESPACE_CIMV2 ))) return FALSE;
+    if ((hr = parse_query( WBEMPROX_NAMESPACE_CIMV2, select2W, &query2->view, &query2->mem )) != S_OK) goto done;
     if ((hr = execute_view( query2->view )) != S_OK) goto done;
 
     if (!(ret = heap_alloc_zero( query->view->result_count * sizeof(*ret) ))) goto done;
@@ -2995,12 +2995,12 @@ static struct association *get_logicaldisktopartition_pairs( UINT *count )
     HRESULT hr;
     UINT i;
 
-    if (!(query = create_query())) return NULL;
-    if ((hr = parse_query( selectW, &query->view, &query->mem )) != S_OK) goto done;
+    if (!(query = create_query( WBEMPROX_NAMESPACE_CIMV2 ))) return NULL;
+    if ((hr = parse_query( WBEMPROX_NAMESPACE_CIMV2, selectW, &query->view, &query->mem )) != S_OK) goto done;
     if ((hr = execute_view( query->view )) != S_OK) goto done;
 
-    if (!(query2 = create_query())) return FALSE;
-    if ((hr = parse_query( select2W, &query2->view, &query2->mem )) != S_OK) goto done;
+    if (!(query2 = create_query( WBEMPROX_NAMESPACE_CIMV2 ))) return FALSE;
+    if ((hr = parse_query( WBEMPROX_NAMESPACE_CIMV2, select2W, &query2->view, &query2->mem )) != S_OK) goto done;
     if ((hr = execute_view( query2->view )) != S_OK) goto done;
 
     if (!(ret = heap_alloc_zero( query->view->result_count * sizeof(*ret) ))) goto done;
@@ -4606,8 +4606,11 @@ static struct table builtin_classes[] =
 void init_table_list( void )
 {
     static struct list tables = LIST_INIT( tables );
+    static struct list wmi_tables = LIST_INIT( wmi_tables );
     UINT i;
 
     for (i = 0; i < ARRAY_SIZE(builtin_classes); i++) list_add_tail( &tables, &builtin_classes[i].entry );
-    table_list = &tables;
+    table_list[WBEMPROX_NAMESPACE_CIMV2] = &tables;
+    /* root\wmi classes are added by the WMI data block provider */
+    table_list[WBEMPROX_NAMESPACE_WMI] = &wmi_tables;
 }

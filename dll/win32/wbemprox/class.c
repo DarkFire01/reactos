@@ -130,7 +130,7 @@ static HRESULT WINAPI enum_class_object_Next(
     if (ec->index >= view->result_count) return WBEM_S_FALSE;
 
     table = get_view_table( view, ec->index );
-    hr = create_class_object( table->name, iface, ec->index, NULL, apObjects );
+    hr = create_class_object( ec->query->ns, table->name, iface, ec->index, NULL, apObjects );
     if (hr != S_OK) return hr;
 
     ec->index++;
@@ -245,8 +245,35 @@ void destroy_array( struct array *array, CIMTYPE type )
     {
         for (i = 0; i < array->count; i++) heap_free( *(WCHAR **)((char *)array->ptr + i * array->elem_size) );
     }
+    else if (type == CIM_OBJECT)
+    {
+        for (i = 0; i < array->count; i++)
+        {
+            IUnknown *obj = *(IUnknown **)((char *)array->ptr + i * array->elem_size);
+            if (obj) IUnknown_Release( obj );
+        }
+    }
     heap_free( array->ptr );
     heap_free( array );
+}
+
+static LONGLONG get_field_value( const struct field *field )
+{
+    CIMTYPE type = field->type & COL_TYPE_MASK;
+
+    if (type & CIM_FLAG_ARRAY) return (INT_PTR)field->u.aval;
+    if (type == CIM_STRING || type == CIM_DATETIME || type == CIM_REFERENCE) return (INT_PTR)field->u.sval;
+    return field->u.ival;
+}
+
+static void free_field( struct field *field )
+{
+    CIMTYPE type = field->type & COL_TYPE_MASK;
+
+    if (type & CIM_FLAG_ARRAY) destroy_array( field->u.aval, type & CIM_TYPE_MASK );
+    else if (type == CIM_STRING || type == CIM_DATETIME || type == CIM_REFERENCE) heap_free( field->u.sval );
+    else if (type == CIM_OBJECT && field->u.ival) IUnknown_Release( (IUnknown *)(INT_PTR)field->u.ival );
+    field->u.ival = 0;
 }
 
 static void destroy_record( struct record *record )
@@ -255,14 +282,7 @@ static void destroy_record( struct record *record )
 
     if (!record) return;
     release_table( record->table );
-    for (i = 0; i < record->count; i++)
-    {
-        if (record->fields[i].type == CIM_STRING ||
-            record->fields[i].type == CIM_DATETIME ||
-            record->fields[i].type == CIM_REFERENCE) heap_free( record->fields[i].u.sval );
-        else if (record->fields[i].type & CIM_FLAG_ARRAY)
-            destroy_array( record->fields[i].u.aval, record->fields[i].type & CIM_TYPE_MASK );
-    }
+    for (i = 0; i < record->count; i++) free_field( &record->fields[i] );
     heap_free( record->fields );
     heap_free( record );
 }
@@ -271,6 +291,7 @@ struct class_object
 {
     IWbemClassObject IWbemClassObject_iface;
     LONG refs;
+    enum wbm_namespace ns;
     WCHAR *name;
     IEnumWbemClassObject *iter;
     UINT index;
@@ -344,40 +365,16 @@ static HRESULT WINAPI class_object_GetQualifierSet(
 
     TRACE("%p, %p\n", iface, ppQualSet);
 
-    return WbemQualifierSet_create( co->name, NULL, (void **)ppQualSet );
+    return WbemQualifierSet_create( co->ns, co->name, NULL, (void **)ppQualSet );
 }
 
 static HRESULT record_get_value( const struct record *record, UINT index, VARIANT *var, CIMTYPE *type )
 {
-    VARTYPE vartype = to_vartype( record->fields[index].type & CIM_TYPE_MASK );
+    CIMTYPE fieldtype = record->fields[index].type & COL_TYPE_MASK;
 
-    if (type) *type = record->fields[index].type;
-
-    if (record->fields[index].type & CIM_FLAG_ARRAY)
-    {
-        V_VT( var ) = vartype | VT_ARRAY;
-        V_ARRAY( var ) = to_safearray( record->fields[index].u.aval, record->fields[index].type & CIM_TYPE_MASK );
-        return S_OK;
-    }
-    switch (record->fields[index].type)
-    {
-    case CIM_STRING:
-    case CIM_DATETIME:
-    case CIM_REFERENCE:
-        V_BSTR( var ) = SysAllocString( record->fields[index].u.sval );
-        break;
-    case CIM_SINT32:
-        V_I4( var ) = record->fields[index].u.ival;
-        break;
-    case CIM_UINT32:
-        V_UI4( var ) = record->fields[index].u.ival;
-        break;
-    default:
-        FIXME("unhandled type %u\n", record->fields[index].type);
-        return WBEM_E_INVALID_PARAMETER;
-    }
-    V_VT( var ) = vartype;
-    return S_OK;
+    if (type) *type = fieldtype;
+    if (!var) return S_OK;
+    return value_to_variant( fieldtype, get_field_value( &record->fields[index] ), var );
 }
 
 static HRESULT WINAPI class_object_Get(
@@ -395,9 +392,19 @@ static HRESULT WINAPI class_object_Get(
 
     if (co->record)
     {
+        static const WCHAR classW[] = {'_','_','C','L','A','S','S',0};
         UINT index;
         HRESULT hr;
 
+        if (co->name && wszName && !wcsicmp( wszName, classW ))
+        {
+            if (pType) *pType = CIM_STRING;
+            if (plFlavor) *plFlavor = WBEM_FLAVOR_ORIGIN_SYSTEM;
+            if (!pVal) return S_OK;
+            V_VT( pVal ) = VT_BSTR;
+            V_BSTR( pVal ) = SysAllocString( co->name );
+            return S_OK;
+        }
         if ((hr = get_column_index( co->record->table, wszName, &index )) != S_OK) return hr;
         return record_get_value( co->record, index, pVal, pType );
     }
@@ -406,36 +413,18 @@ static HRESULT WINAPI class_object_Get(
 
 static HRESULT record_set_value( struct record *record, UINT index, VARIANT *var )
 {
+    struct field *field = &record->fields[index];
+    CIMTYPE type = field->type & COL_TYPE_MASK;
     LONGLONG val;
-    CIMTYPE type;
     HRESULT hr;
 
-    if ((hr = to_longlong( var, &val, &type )) != S_OK) return hr;
-    if (type != record->fields[index].type) return WBEM_E_TYPE_MISMATCH;
+    if ((hr = variant_to_value( var, type, &val )) != S_OK) return hr;
+    free_field( field );
 
-    if (type & CIM_FLAG_ARRAY)
-    {
-        record->fields[index].u.aval = (struct array *)(INT_PTR)val;
-        return S_OK;
-    }
-    switch (type)
-    {
-    case CIM_STRING:
-    case CIM_DATETIME:
-    case CIM_REFERENCE:
-        record->fields[index].u.sval = (WCHAR *)(INT_PTR)val;
-        return S_OK;
-    case CIM_SINT16:
-    case CIM_UINT16:
-    case CIM_SINT32:
-    case CIM_UINT32:
-        record->fields[index].u.ival = val;
-        return S_OK;
-    default:
-        FIXME("unhandled type %u\n", type);
-        break;
-    }
-    return WBEM_E_INVALID_PARAMETER;
+    if (type & CIM_FLAG_ARRAY) field->u.aval = (struct array *)(INT_PTR)val;
+    else if (type == CIM_STRING || type == CIM_DATETIME || type == CIM_REFERENCE) field->u.sval = (WCHAR *)(INT_PTR)val;
+    else field->u.ival = val;
+    return S_OK;
 }
 
 static HRESULT WINAPI class_object_Put(
@@ -492,6 +481,33 @@ static HRESULT WINAPI class_object_GetNames(
     if (wszQualifierName || pQualifierVal)
         FIXME("qualifier not supported\n");
 
+    if (co->record)
+    {
+        const struct table *table = co->record->table;
+        SAFEARRAY *sa;
+        LONG count = 0;
+        UINT i;
+
+        if (lFlags == WBEM_FLAG_SYSTEM_ONLY) table = NULL;
+        for (i = 0; table && i < table->num_cols; i++) if (!is_method( table, i )) count++;
+        if (!(sa = SafeArrayCreateVector( VT_BSTR, 0, count ))) return E_OUTOFMEMORY;
+        for (i = 0, count = 0; table && i < table->num_cols; i++)
+        {
+            BSTR str;
+
+            if (is_method( table, i )) continue;
+            if (!(str = SysAllocString( table->columns[i].name )) || SafeArrayPutElement( sa, &count, str ) != S_OK)
+            {
+                SysFreeString( str );
+                SafeArrayDestroy( sa );
+                return E_OUTOFMEMORY;
+            }
+            SysFreeString( str );
+            count++;
+        }
+        *pNames = sa;
+        return S_OK;
+    }
     return get_properties( ec->query->view, co->index, lFlags, pNames );
 }
 
@@ -518,14 +534,40 @@ static HRESULT WINAPI class_object_Next(
     LONG *plFlavor )
 {
     struct class_object *obj = impl_from_IWbemClassObject( iface );
-    struct enum_class_object *iter = impl_from_IEnumWbemClassObject( obj->iter );
-    struct view *view = iter->query->view;
-    struct table *table = get_view_table( view, obj->index );
+    struct enum_class_object *iter;
+    struct view *view;
+    struct table *table;
     BSTR prop;
     HRESULT hr;
     UINT i;
 
     TRACE("%p, %08x, %p, %p, %p, %p\n", iface, lFlags, strName, pVal, pType, plFlavor);
+
+    /* Spawned instances keep their values in a record */
+    if (obj->record)
+    {
+        table = obj->record->table;
+        for (i = obj->index_property; i < table->num_cols; i++)
+        {
+            if (is_method( table, i )) continue;
+            if (!(prop = SysAllocString( table->columns[i].name ))) return E_OUTOFMEMORY;
+            if (plFlavor) *plFlavor = 0;
+            if ((hr = record_get_value( obj->record, i, pVal, pType )) != S_OK)
+            {
+                SysFreeString( prop );
+                return hr;
+            }
+            obj->index_property = i + 1;
+            if (strName) *strName = prop;
+            else SysFreeString( prop );
+            return S_OK;
+        }
+        return WBEM_S_NO_MORE_DATA;
+    }
+
+    iter = impl_from_IEnumWbemClassObject( obj->iter );
+    view = iter->query->view;
+    table = get_view_table( view, obj->index );
 
     for (i = obj->index_property; i < table->num_cols; i++)
     {
@@ -567,7 +609,7 @@ static HRESULT WINAPI class_object_GetPropertyQualifierSet(
 
     TRACE("%p, %s, %p\n", iface, debugstr_w(wszProperty), ppQualSet);
 
-    return WbemQualifierSet_create( co->name, wszProperty, (void **)ppQualSet );
+    return WbemQualifierSet_create( co->ns, co->name, wszProperty, (void **)ppQualSet );
 }
 
 static HRESULT WINAPI class_object_Clone(
@@ -642,6 +684,16 @@ static HRESULT WINAPI class_object_GetObjectText(
 
     if (lFlags) FIXME("flags %08x not implemented\n", lFlags);
 
+    if (view->type == VIEW_TYPE_CLASSES)
+    {
+        static const WCHAR fmtW[] = {'\n','c','l','a','s','s',' ','%','s','\n','{','\n','}',';','\n',0};
+        const WCHAR *name = get_view_table( view, co->index )->name;
+
+        if (!(text = SysAllocStringLen( NULL, lstrlenW( name ) + ARRAY_SIZE(fmtW) ))) return E_OUTOFMEMORY;
+        swprintf( text, fmtW, name );
+        *pstrObjectText = text;
+        return S_OK;
+    }
     if (!(text = get_object_text( view, co->index ))) return E_OUTOFMEMORY;
     *pstrObjectText = text;
     return S_OK;
@@ -670,7 +722,7 @@ static HRESULT WINAPI class_object_SpawnInstance(
 
     if (!(record = create_record( table ))) return E_OUTOFMEMORY;
 
-    return create_class_object( co->name, NULL, 0, record, ppNewInstance );
+    return create_class_object( co->ns, co->name, NULL, 0, record, ppNewInstance );
 }
 
 static HRESULT WINAPI class_object_CompareTo(
@@ -695,8 +747,19 @@ static HRESULT WINAPI class_object_InheritsFrom(
     IWbemClassObject *iface,
     LPCWSTR strAncestor )
 {
-    FIXME("%p, %s\n", iface, debugstr_w(strAncestor));
-    return E_NOTIMPL;
+    struct class_object *co = impl_from_IWbemClassObject( iface );
+    const WCHAR *parent;
+
+    TRACE("%p, %s\n", iface, debugstr_w(strAncestor));
+
+    if (!strAncestor) return WBEM_E_INVALID_PARAMETER;
+    if (co->ns != WBEMPROX_NAMESPACE_WMI || !co->name) return WBEM_S_FALSE;
+
+    for (parent = WmiProvGetSuperclass( co->name ); parent; parent = WmiProvGetSuperclass( parent ))
+    {
+        if (!wcsicmp( parent, strAncestor )) return WBEM_S_NO_ERROR;
+    }
+    return WBEM_S_FALSE;
 }
 
 static UINT count_instances( IEnumWbemClassObject *iter )
@@ -782,7 +845,7 @@ error:
     return hr;
 }
 
-static HRESULT create_signature_table( IEnumWbemClassObject *iter, WCHAR *name )
+static HRESULT create_signature_table( enum wbm_namespace ns, IEnumWbemClassObject *iter, WCHAR *name )
 {
     HRESULT hr;
     struct table *table;
@@ -799,7 +862,7 @@ static HRESULT create_signature_table( IEnumWbemClassObject *iter, WCHAR *name )
         heap_free( row );
         return E_OUTOFMEMORY;
     }
-    if (!add_table( table )) free_table( table ); /* already exists */
+    if (!add_table( ns, table )) free_table( table ); /* already exists */
     return S_OK;
 }
 
@@ -816,7 +879,7 @@ static WCHAR *build_signature_table_name( const WCHAR *class, const WCHAR *metho
     return _wcsupr( ret );
 }
 
-HRESULT create_signature( const WCHAR *class, const WCHAR *method, enum param_direction dir,
+HRESULT create_signature( enum wbm_namespace ns, const WCHAR *class, const WCHAR *method, enum param_direction dir,
                           IWbemClassObject **sig )
 {
     static const WCHAR selectW[] =
@@ -836,7 +899,7 @@ HRESULT create_signature( const WCHAR *class, const WCHAR *method, enum param_di
     if (!(query = heap_alloc( len * sizeof(WCHAR) ))) return E_OUTOFMEMORY;
     swprintf( query, selectW, class, method, dir >= 0 ? geW : leW );
 
-    hr = exec_query( query, &iter );
+    hr = exec_query( ns, query, &iter );
     heap_free( query );
     if (hr != S_OK) return hr;
 
@@ -852,10 +915,10 @@ HRESULT create_signature( const WCHAR *class, const WCHAR *method, enum param_di
         IEnumWbemClassObject_Release( iter );
         return E_OUTOFMEMORY;
     }
-    hr = create_signature_table( iter, name );
+    hr = create_signature_table( ns, iter, name );
     IEnumWbemClassObject_Release( iter );
     if (hr == S_OK)
-        hr = get_object( name, sig );
+        hr = get_object( ns, name, sig );
 
     heap_free( name );
     return hr;
@@ -874,10 +937,10 @@ static HRESULT WINAPI class_object_GetMethod(
 
     TRACE("%p, %s, %08x, %p, %p\n", iface, debugstr_w(wszName), lFlags, ppInSignature, ppOutSignature);
 
-    hr = create_signature( co->name, wszName, PARAM_IN, &in );
+    hr = create_signature( co->ns, co->name, wszName, PARAM_IN, &in );
     if (hr != S_OK) return hr;
 
-    hr = create_signature( co->name, wszName, PARAM_OUT, &out );
+    hr = create_signature( co->ns, co->name, wszName, PARAM_OUT, &out );
     if (hr == S_OK)
     {
         if (ppInSignature) *ppInSignature = in;
@@ -885,7 +948,7 @@ static HRESULT WINAPI class_object_GetMethod(
         if (ppOutSignature) *ppOutSignature = out;
         else if (out) IWbemClassObject_Release( out );
     }
-    else IWbemClassObject_Release( in );
+    else if (in) IWbemClassObject_Release( in );
     return hr;
 }
 
@@ -935,15 +998,15 @@ static HRESULT WINAPI class_object_NextMethod(
 
     TRACE("%p, %08x, %p, %p, %p\n", iface, lFlags, pstrName, ppInSignature, ppOutSignature);
 
-    if (!(method = get_method_name( co->name, co->index_method ))) return WBEM_S_NO_MORE_DATA;
+    if (!(method = get_method_name( co->ns, co->name, co->index_method ))) return WBEM_S_NO_MORE_DATA;
 
-    hr = create_signature( co->name, method, PARAM_IN, ppInSignature );
+    hr = create_signature( co->ns, co->name, method, PARAM_IN, ppInSignature );
     if (hr != S_OK)
     {
         SysFreeString( method );
         return hr;
     }
-    hr = create_signature( co->name, method, PARAM_OUT, ppOutSignature );
+    hr = create_signature( co->ns, co->name, method, PARAM_OUT, ppOutSignature );
     if (hr != S_OK)
     {
         SysFreeString( method );
@@ -974,6 +1037,13 @@ static HRESULT WINAPI class_object_GetMethodQualifierSet(
     LPCWSTR wszMethod,
     IWbemQualifierSet **ppQualSet)
 {
+    struct class_object *co = impl_from_IWbemClassObject( iface );
+
+    TRACE("%p, %s, %p\n", iface, debugstr_w(wszMethod), ppQualSet);
+
+    if (co->ns == WBEMPROX_NAMESPACE_WMI && co->name && wszMethod)
+        return WmiProvCreateQualifierSet( co->name, wszMethod, ppQualSet );
+
     FIXME("%p, %s, %p\n", iface, debugstr_w(wszMethod), ppQualSet);
     return E_NOTIMPL;
 }
@@ -1018,7 +1088,7 @@ static const IWbemClassObjectVtbl class_object_vtbl =
     class_object_GetMethodOrigin
 };
 
-HRESULT create_class_object( const WCHAR *name, IEnumWbemClassObject *iter, UINT index,
+HRESULT create_class_object( enum wbm_namespace ns, const WCHAR *name, IEnumWbemClassObject *iter, UINT index,
                              struct record *record, IWbemClassObject **obj )
 {
     struct class_object *co;
@@ -1030,6 +1100,7 @@ HRESULT create_class_object( const WCHAR *name, IEnumWbemClassObject *iter, UINT
 
     co->IWbemClassObject_iface.lpVtbl = &class_object_vtbl;
     co->refs  = 1;
+    co->ns    = ns;
     if (!name) co->name = NULL;
     else if (!(co->name = heap_strdupW( name )))
     {

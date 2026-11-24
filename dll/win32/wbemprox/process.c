@@ -70,7 +70,7 @@ HRESULT process_get_owner( IWbemClassObject *obj, IWbemClassObject *in, IWbemCla
 
     TRACE("%p, %p, %p\n", obj, in, out);
 
-    hr = create_signature( class_processW, method_getownerW, PARAM_OUT, &sig );
+    hr = create_signature( WBEMPROX_NAMESPACE_CIMV2, class_processW, method_getownerW, PARAM_OUT, &sig );
     if (hr != S_OK) return hr;
 
     if (out)

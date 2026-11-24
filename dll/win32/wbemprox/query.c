@@ -32,6 +32,11 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(wbemprox);
 
+/* WBEM_QUERY_FLAG_TYPE, missing from wbemcli.idl */
+#ifndef WBEM_FLAG_SHALLOW
+#define WBEM_FLAG_SHALLOW 1
+#endif
+
 static HRESULT append_table( struct view *view, struct table *table )
 {
     struct table **tmp;
@@ -41,12 +46,59 @@ static HRESULT append_table( struct view *view, struct table *table )
     return S_OK;
 }
 
-HRESULT create_view( enum view_type type, const WCHAR *path, const struct keyword *keywordlist, const WCHAR *class,
-                     const struct property *proplist, const struct expr *cond, struct view **ret )
+static BOOL is_class_table( const struct table *table )
 {
+    return table->name[0] != '_' || table->name[1] != '_';
+}
+
+/* Adds the classes of a namespace that pass the superclass filter to a class view */
+static HRESULT append_class_tables( struct view *view, const WCHAR *class, const WCHAR *superclass, LONG flags )
+{
+    struct table *table;
+    HRESULT hr;
+
+    LIST_FOR_EACH_ENTRY( table, table_list[view->ns], struct table, entry )
+    {
+        const WCHAR *parent;
+
+        if (!class && !is_class_table( table )) continue;
+        if (class && wcsicmp( table->name, class )) continue;
+
+        if (!class && superclass && superclass[0])
+        {
+            parent = (view->ns == WBEMPROX_NAMESPACE_WMI) ? WmiProvGetSuperclass( table->name ) : NULL;
+            if (flags & WBEM_FLAG_SHALLOW)
+            {
+                if (!parent || wcsicmp( parent, superclass )) continue;
+            }
+            else
+            {
+                while (parent && wcsicmp( parent, superclass )) parent = WmiProvGetSuperclass( parent );
+                if (!parent) continue;
+            }
+        }
+        else if (!class && (flags & WBEM_FLAG_SHALLOW) && view->ns == WBEMPROX_NAMESPACE_WMI)
+        {
+            if (WmiProvGetSuperclass( table->name )) continue;
+        }
+
+        if ((hr = append_table( view, addref_table( table ) )) != S_OK)
+        {
+            release_table( table );
+            return hr;
+        }
+    }
+    return S_OK;
+}
+
+HRESULT create_view( enum view_type type, enum wbm_namespace ns, const WCHAR *path, const struct keyword *keywordlist,
+                     const WCHAR *class, const struct property *proplist, const struct expr *cond, struct view **ret )
+{
+    static const WCHAR meta_classW[] = {'m','e','t','a','_','c','l','a','s','s',0};
     struct view *view = heap_alloc_zero( sizeof(*view) );
 
     if (!view) return E_OUTOFMEMORY;
+    view->ns = ns;
 
     switch (type)
     {
@@ -57,11 +109,39 @@ HRESULT create_view( enum view_type type, const WCHAR *path, const struct keywor
 
     case VIEW_TYPE_SELECT:
     {
-        struct table *table = grab_table( class );
+        struct table *table;
         HRESULT hr;
+
+        if (class && !wcsicmp( class, meta_classW ))
+        {
+            type = VIEW_TYPE_CLASSES;
+            if ((hr = append_class_tables( view, NULL, NULL, 0 )) != S_OK)
+            {
+                destroy_view( view );
+                return hr;
+            }
+            view->proplist = proplist;
+            view->cond     = cond;
+            break;
+        }
+
+        table = grab_table( ns, class );
+
+        /* Provider tables are copied so every query owns its rows */
+        if (table && (table->flags & TABLE_FLAG_WMIPROV) && !(table->flags & TABLE_FLAG_DYNAMIC))
+        {
+            struct table *copy = WmiProvCloneTable( table );
+            release_table( table );
+            if (!(table = copy))
+            {
+                heap_free( view );
+                return E_OUTOFMEMORY;
+            }
+        }
 
         if (table && (hr = append_table( view, table )) != S_OK)
         {
+            release_table( table );
             heap_free( view );
             return hr;
         }
@@ -491,13 +571,14 @@ static WCHAR *build_assoc_query( const WCHAR *class, UINT class_len )
     return ret;
 }
 
-static HRESULT create_assoc_enum( const WCHAR *class, UINT class_len, IEnumWbemClassObject **iter )
+static HRESULT create_assoc_enum( enum wbm_namespace ns, const WCHAR *class, UINT class_len,
+                                  IEnumWbemClassObject **iter )
 {
     WCHAR *query;
     HRESULT hr;
 
     if (!(query = build_assoc_query( class, class_len ))) return E_OUTOFMEMORY;
-    hr = exec_query( query, iter );
+    hr = exec_query( ns, query, iter );
     heap_free( query );
     return hr;
 }
@@ -525,13 +606,14 @@ static BSTR build_servername(void)
     return SysAllocString( server );
 }
 
-static BSTR build_namespace(void)
+static BSTR build_namespace( enum wbm_namespace ns )
 {
     static const WCHAR cimv2W[] = {'R','O','O','T','\\','C','I','M','V','2',0};
-    return SysAllocString( cimv2W );
+    static const WCHAR wmiW[] = {'R','O','O','T','\\','W','M','I',0};
+    return SysAllocString( ns == WBEMPROX_NAMESPACE_WMI ? wmiW : cimv2W );
 }
 
-static WCHAR *build_canonical_path( const WCHAR *relpath )
+static WCHAR *build_canonical_path( enum wbm_namespace ns, const WCHAR *relpath )
 {
     static const WCHAR fmtW[] = {'\\','\\','%','s','\\','%','s',':',0};
     BSTR server, namespace;
@@ -539,7 +621,7 @@ static WCHAR *build_canonical_path( const WCHAR *relpath )
     UINT len, i;
 
     if (!(server = build_servername())) return NULL;
-    if (!(namespace = build_namespace()))
+    if (!(namespace = build_namespace( ns )))
     {
         SysFreeString( server );
         return NULL;
@@ -562,7 +644,7 @@ static WCHAR *build_canonical_path( const WCHAR *relpath )
     return ret;
 }
 
-static HRESULT get_antecedent( const WCHAR *assocclass, const WCHAR *dependent, BSTR *ret )
+static HRESULT get_antecedent( enum wbm_namespace ns, const WCHAR *assocclass, const WCHAR *dependent, BSTR *ret )
 {
     static const WCHAR antecedentW[] = {'A','n','t','e','c','e','d','e','n','t',0};
     WCHAR *fullpath, *str;
@@ -572,9 +654,9 @@ static HRESULT get_antecedent( const WCHAR *assocclass, const WCHAR *dependent, 
     ULONG count;
     VARIANT var;
 
-    if (!(fullpath = build_canonical_path( dependent ))) return E_OUTOFMEMORY;
+    if (!(fullpath = build_canonical_path( ns, dependent ))) return E_OUTOFMEMORY;
     if (!(str = build_antecedent_query( assocclass, fullpath ))) goto done;
-    if ((hr = exec_query( str, &iter )) != S_OK) goto done;
+    if ((hr = exec_query( ns, str, &iter )) != S_OK) goto done;
 
     IEnumWbemClassObject_Next( iter, WBEM_INFINITE, 1, &obj, &count );
     if (!count)
@@ -595,13 +677,14 @@ done:
     return hr;
 }
 
-static HRESULT do_query( const WCHAR *str, struct query **ret_query )
+static HRESULT do_query( enum wbm_namespace ns, const WCHAR *str, struct query **ret_query )
 {
     struct query *query;
     HRESULT hr;
 
-    if (!(query = create_query())) return E_OUTOFMEMORY;
-    if ((hr = parse_query( str, &query->view, &query->mem )) != S_OK || (hr = execute_view( query->view )) != S_OK)
+    if (!(query = create_query( ns ))) return E_OUTOFMEMORY;
+    if ((hr = parse_query( ns, str, &query->view, &query->mem )) != S_OK ||
+        (hr = execute_view( query->view )) != S_OK)
     {
         release_query( query );
         return hr;
@@ -610,7 +693,8 @@ static HRESULT do_query( const WCHAR *str, struct query **ret_query )
     return S_OK;
 }
 
-static HRESULT get_antecedent_table( const WCHAR *assocclass, const WCHAR *dependent, struct table **table )
+static HRESULT get_antecedent_table( enum wbm_namespace ns, const WCHAR *assocclass, const WCHAR *dependent,
+                                     struct table **table )
 {
     BSTR antecedent = NULL;
     struct path *path = NULL;
@@ -618,20 +702,20 @@ static HRESULT get_antecedent_table( const WCHAR *assocclass, const WCHAR *depen
     struct query *query = NULL;
     HRESULT hr;
 
-    if ((hr = get_antecedent( assocclass, dependent, &antecedent )) != S_OK) return hr;
+    if ((hr = get_antecedent( ns, assocclass, dependent, &antecedent )) != S_OK) return hr;
     if (!antecedent)
     {
         *table = NULL;
         return S_OK;
     }
-    if ((hr = parse_path( antecedent, &path )) != S_OK) goto done;
+    if ((hr = parse_path( ns, antecedent, &path )) != S_OK) goto done;
     if (!(str = query_from_path( path )))
     {
         hr = E_OUTOFMEMORY;
         goto done;
     }
 
-    if ((hr = do_query( str, &query )) != S_OK) goto done;
+    if ((hr = do_query( ns, str, &query )) != S_OK) goto done;
     if (query->view->table_count) *table = addref_table( query->view->table[0] );
     else *table = NULL;
 
@@ -651,9 +735,9 @@ static HRESULT exec_assoc_view( struct view *view )
     HRESULT hr;
 
     if (view->keywordlist) FIXME( "ignoring keywords\n" );
-    if ((hr = parse_path( view->path, &path )) != S_OK) return hr;
+    if ((hr = parse_path( view->ns, view->path, &path )) != S_OK) return hr;
 
-    if ((hr = create_assoc_enum( path->class, path->class_len, &iter )) != S_OK) goto done;
+    if ((hr = create_assoc_enum( view->ns, path->class, path->class_len, &iter )) != S_OK) goto done;
     for (;;)
     {
         ULONG count;
@@ -671,7 +755,7 @@ static HRESULT exec_assoc_view( struct view *view )
         }
         IWbemClassObject_Release( obj );
 
-        hr = get_antecedent_table( V_BSTR(&var), view->path, &table );
+        hr = get_antecedent_table( view->ns, V_BSTR(&var), view->path, &table );
         VariantClear( &var );
         if (hr != S_OK) goto done;
 
@@ -691,6 +775,133 @@ static HRESULT exec_assoc_view( struct view *view )
 done:
     if (iter) IEnumWbemClassObject_Release( iter );
     free_path( path );
+    return hr;
+}
+
+static HRESULT get_class_propval( const struct table *table, const WCHAR *name, enum wbm_namespace ns,
+                                  const WCHAR **ret )
+{
+    static const WCHAR classW[] = {'_','_','C','L','A','S','S',0};
+    static const WCHAR superclassW[] = {'_','_','S','U','P','E','R','C','L','A','S','S',0};
+    static const WCHAR dynastyW[] = {'_','_','D','Y','N','A','S','T','Y',0};
+    const WCHAR *parent;
+
+    if (!wcsicmp( name, classW ))
+    {
+        *ret = table->name;
+        return S_OK;
+    }
+    parent = (ns == WBEMPROX_NAMESPACE_WMI) ? WmiProvGetSuperclass( table->name ) : NULL;
+    if (!wcsicmp( name, superclassW ))
+    {
+        *ret = parent;
+        return S_OK;
+    }
+    if (!wcsicmp( name, dynastyW ))
+    {
+        *ret = table->name;
+        while (parent)
+        {
+            *ret = parent;
+            parent = WmiProvGetSuperclass( parent );
+        }
+        return S_OK;
+    }
+    return WBEM_E_INVALID_QUERY;
+}
+
+/* Evaluates meta_class conditions, which can only refer to system properties */
+static HRESULT eval_class_cond( const struct view *view, const struct table *table, const struct expr *cond,
+                                LONGLONG *val )
+{
+    const struct complex_expr *expr;
+    const WCHAR *lstr, *rstr;
+    LONGLONG lval, rval;
+    HRESULT hr;
+
+    if (!cond)
+    {
+        *val = 1;
+        return S_OK;
+    }
+    if (cond->type == EXPR_UNARY && cond->u.expr.op == OP_NOT)
+    {
+        if ((hr = eval_class_cond( view, table, cond->u.expr.left, &lval )) != S_OK) return hr;
+        *val = !lval;
+        return S_OK;
+    }
+    if (cond->type != EXPR_COMPLEX) return WBEM_E_INVALID_QUERY;
+
+    expr = &cond->u.expr;
+    if (expr->op == OP_AND || expr->op == OP_OR)
+    {
+        if ((hr = eval_class_cond( view, table, expr->left, &lval )) != S_OK) return hr;
+        if ((hr = eval_class_cond( view, table, expr->right, &rval )) != S_OK) return hr;
+        *val = (expr->op == OP_AND) ? (lval && rval) : (lval || rval);
+        return S_OK;
+    }
+
+    if (expr->left->type == EXPR_PROPVAL && expr->right->type == EXPR_SVAL)
+    {
+        if ((hr = get_class_propval( table, expr->left->u.propval->name, view->ns, &lstr )) != S_OK) return hr;
+        rstr = expr->right->u.sval;
+    }
+    else if (expr->right->type == EXPR_PROPVAL && expr->left->type == EXPR_SVAL)
+    {
+        lstr = expr->left->u.sval;
+        if ((hr = get_class_propval( table, expr->right->u.propval->name, view->ns, &rstr )) != S_OK) return hr;
+    }
+    else return WBEM_E_INVALID_QUERY;
+
+    if (expr->op == OP_EQ || expr->op == OP_NE)
+    {
+        *val = lstr && rstr && !wcsicmp( lstr, rstr );
+        if (expr->op == OP_NE) *val = !*val;
+        return S_OK;
+    }
+    return eval_strcmp( expr->op, lstr, rstr, val );
+}
+
+static HRESULT exec_class_view( struct view *view )
+{
+    UINT i;
+
+    if (!view->table_count) return S_OK;
+    if (!(view->result = heap_alloc( view->table_count * sizeof(UINT) ))) return E_OUTOFMEMORY;
+
+    for (i = 0; i < view->table_count; i++)
+    {
+        LONGLONG val = 0;
+        HRESULT hr;
+
+        if ((hr = eval_class_cond( view, view->table[i], view->cond, &val )) != S_OK) return hr;
+        if (val) view->result[view->result_count++] = i;
+    }
+    return S_OK;
+}
+
+HRESULT exec_class_enum( enum wbm_namespace ns, const WCHAR *class, const WCHAR *superclass, LONG flags,
+                         IEnumWbemClassObject **result )
+{
+    struct query *query;
+    HRESULT hr;
+
+    *result = NULL;
+    if (!(query = create_query( ns ))) return E_OUTOFMEMORY;
+    if (!(query->view = heap_alloc_zero( sizeof(*query->view) )))
+    {
+        release_query( query );
+        return E_OUTOFMEMORY;
+    }
+    query->view->ns   = ns;
+    query->view->type = VIEW_TYPE_CLASSES;
+
+    hr = append_class_tables( query->view, class, superclass, flags );
+    if (hr == S_OK) hr = exec_class_view( query->view );
+    if (hr == S_OK && class && !query->view->result_count) hr = WBEM_E_NOT_FOUND;
+    if (hr == S_OK) hr = EnumWbemClassObject_create( query, (void **)result );
+
+    release_query( query );
     return hr;
 }
 
@@ -746,19 +957,24 @@ HRESULT execute_view( struct view *view )
     case VIEW_TYPE_SELECT:
         return exec_select_view( view );
 
+    case VIEW_TYPE_CLASSES:
+        return exec_class_view( view );
+
     default:
         ERR( "unhandled type %u\n", view->type );
         return E_INVALIDARG;
     }
 }
 
-struct query *create_query(void)
+struct query *create_query( enum wbm_namespace ns )
 {
     struct query *query;
 
     if (!(query = heap_alloc( sizeof(*query) ))) return NULL;
     list_init( &query->mem );
     query->refs = 1;
+    query->ns = ns;
+    query->view = NULL;
     return query;
 }
 
@@ -783,14 +999,14 @@ void release_query( struct query *query )
     if (!InterlockedDecrement( &query->refs )) free_query( query );
 }
 
-HRESULT exec_query( const WCHAR *str, IEnumWbemClassObject **result )
+HRESULT exec_query( enum wbm_namespace ns, const WCHAR *str, IEnumWbemClassObject **result )
 {
     HRESULT hr;
     struct query *query;
 
     *result = NULL;
-    if (!(query = create_query())) return E_OUTOFMEMORY;
-    hr = parse_query( str, &query->view, &query->mem );
+    if (!(query = create_query( ns ))) return E_OUTOFMEMORY;
+    hr = parse_query( ns, str, &query->view, &query->mem );
     if (hr != S_OK) goto done;
     hr = execute_view( query->view );
     if (hr != S_OK) goto done;
@@ -818,7 +1034,28 @@ static BOOL is_system_prop( const WCHAR *name )
     return (name[0] == '_' && name[1] == '_');
 }
 
-static BSTR build_proplist( const struct table *table, UINT row, UINT count, UINT *len )
+/* Object paths in root\wmi escape backslashes and quotes inside key values */
+static BSTR escape_key_value( BSTR value )
+{
+    UINT i, j, extra = 0, len = SysStringLen( value );
+    BSTR ret;
+
+    if (len < 2) return value;
+    for (i = 1; i < len - 1; i++) if (value[i] == '\\' || value[i] == '\"') extra++;
+    if (!extra || !(ret = SysAllocStringLen( NULL, len + extra ))) return value;
+
+    ret[0] = value[0];
+    for (i = 1, j = 1; i < len - 1; i++)
+    {
+        if (value[i] == '\\' || value[i] == '\"') ret[j++] = '\\';
+        ret[j++] = value[i];
+    }
+    ret[j] = value[len - 1];
+    SysFreeString( value );
+    return ret;
+}
+
+static BSTR build_proplist( enum wbm_namespace ns, const struct table *table, UINT row, UINT count, UINT *len )
 {
     static const WCHAR fmtW[] = {'%','s','=','%','s',0};
     UINT i, j, offset;
@@ -833,6 +1070,8 @@ static BSTR build_proplist( const struct table *table, UINT row, UINT count, UIN
         {
             const WCHAR *name = table->columns[i].name;
             values[j] = get_value_bstr( table, row, i );
+            if (ns == WBEMPROX_NAMESPACE_WMI && (table->columns[i].type & COL_TYPE_MASK) == CIM_STRING)
+                values[j] = escape_key_value( values[j] );
             *len += lstrlenW( fmtW ) + lstrlenW( name ) + lstrlenW( values[j] );
             j++;
         }
@@ -878,8 +1117,9 @@ static BSTR build_relpath( const struct view *view, UINT table_index, UINT resul
     if (view->proplist) return NULL;
 
     if (!(class = SysAllocString( view->table[table_index]->name ))) return NULL;
+    if (view->type == VIEW_TYPE_CLASSES) return class;
     if (!(num_keys = count_key_columns( table ))) return class;
-    if (!(proplist = build_proplist( table, row, num_keys, &len ))) goto done;
+    if (!(proplist = build_proplist( view->ns, table, row, num_keys, &len ))) goto done;
 
     len += lstrlenW( fmtW ) + SysStringLen( class );
     if (!(ret = SysAllocStringLen( NULL, len ))) goto done;
@@ -900,7 +1140,7 @@ static BSTR build_path( const struct view *view, UINT table_index, UINT result_i
     if (view->proplist) return NULL;
 
     if (!(server = build_servername())) return NULL;
-    if (!(namespace = build_namespace())) goto done;
+    if (!(namespace = build_namespace( view->ns ))) goto done;
     if (!(relpath = build_relpath( view, table_index, result_index, name ))) goto done;
 
     len = lstrlenW( fmtW ) + SysStringLen( server ) + SysStringLen( namespace ) + SysStringLen( relpath );
@@ -952,8 +1192,49 @@ static HRESULT get_system_propval( const struct view *view, UINT table_index, UI
     static const WCHAR propcountW[] = {'_','_','P','R','O','P','E','R','T','Y','_','C','O','U','N','T',0};
     static const WCHAR relpathW[] = {'_','_','R','E','L','P','A','T','H',0};
     static const WCHAR serverW[] = {'_','_','S','E','R','V','E','R',0};
+    static const WCHAR superclassW[] = {'_','_','S','U','P','E','R','C','L','A','S','S',0};
+    static const WCHAR dynastyW[] = {'_','_','D','Y','N','A','S','T','Y',0};
+    static const WCHAR derivationW[] = {'_','_','D','E','R','I','V','A','T','I','O','N',0};
 
     if (flavor) *flavor = WBEM_FLAVOR_ORIGIN_SYSTEM;
+
+    if (!wcsicmp( name, superclassW ) || !wcsicmp( name, dynastyW ))
+    {
+        const WCHAR *value = NULL;
+
+        get_class_propval( view->table[table_index], name, view->ns, &value );
+        if (ret)
+        {
+            V_VT( ret ) = value ? VT_BSTR : VT_NULL;
+            V_BSTR( ret ) = value ? SysAllocString( value ) : NULL;
+        }
+        if (type) *type = CIM_STRING;
+        return S_OK;
+    }
+    if (!wcsicmp( name, derivationW ))
+    {
+        const WCHAR *parent = NULL;
+        SAFEARRAY *sa;
+        LONG count = 0;
+
+        if (view->ns == WBEMPROX_NAMESPACE_WMI) parent = WmiProvGetSuperclass( view->table[table_index]->name );
+        if (ret)
+        {
+            const WCHAR *iter;
+            for (iter = parent; iter; iter = WmiProvGetSuperclass( iter )) count++;
+            if (!(sa = SafeArrayCreateVector( VT_BSTR, 0, count ))) return E_OUTOFMEMORY;
+            for (count = 0; parent; parent = WmiProvGetSuperclass( parent ), count++)
+            {
+                BSTR str = SysAllocString( parent );
+                SafeArrayPutElement( sa, &count, str );
+                SysFreeString( str );
+            }
+            V_VT( ret ) = VT_BSTR | VT_ARRAY;
+            V_ARRAY( ret ) = sa;
+        }
+        if (type) *type = CIM_STRING | CIM_FLAG_ARRAY;
+        return S_OK;
+    }
 
     if (!wcsicmp( name, classW ))
     {
@@ -970,7 +1251,7 @@ static HRESULT get_system_propval( const struct view *view, UINT table_index, UI
         if (ret)
         {
             V_VT( ret ) = VT_I4;
-            V_I4( ret ) = WBEM_GENUS_INSTANCE; /* FIXME */
+            V_I4( ret ) = (view->type == VIEW_TYPE_CLASSES) ? WBEM_GENUS_CLASS : WBEM_GENUS_INSTANCE;
         }
         if (type) *type = CIM_SINT32;
         return S_OK;
@@ -980,7 +1261,7 @@ static HRESULT get_system_propval( const struct view *view, UINT table_index, UI
         if (ret)
         {
             V_VT( ret ) = VT_BSTR;
-            V_BSTR( ret ) = view->proplist ? NULL : build_namespace();
+            V_BSTR( ret ) = view->proplist ? NULL : build_namespace( view->ns );
         }
         if (type) *type = CIM_STRING;
         return S_OK;
@@ -1051,12 +1332,40 @@ VARTYPE to_vartype( CIMTYPE type )
     case CIM_UINT64:    return VT_UI8;
 
     case CIM_REAL32:    return VT_R4;
+    case CIM_REAL64:    return VT_R8;
+    case CIM_CHAR16:    return VT_I2;
+    case CIM_OBJECT:    return VT_UNKNOWN;
 
     default:
         ERR("unhandled type %u\n", type);
         break;
     }
     return 0;
+}
+
+static LONGLONG get_array_element( const struct array *array, UINT index, CIMTYPE basetype )
+{
+    const void *ptr = (const char *)array->ptr + index * array->elem_size;
+    LONGLONG val = 0;
+
+    switch (basetype)
+    {
+    case CIM_BOOLEAN: return *(const int *)ptr;
+    case CIM_SINT8:   return *(const INT8 *)ptr;
+    case CIM_UINT8:   return *(const UINT8 *)ptr;
+    case CIM_SINT16:  return *(const INT16 *)ptr;
+    case CIM_UINT16:
+    case CIM_CHAR16:  return *(const UINT16 *)ptr;
+    case CIM_SINT32:  return *(const INT32 *)ptr;
+    case CIM_UINT32:  return *(const UINT32 *)ptr;
+    case CIM_STRING:
+    case CIM_DATETIME:
+    case CIM_REFERENCE:
+    case CIM_OBJECT:  return (INT_PTR)*(void * const *)ptr;
+    default:
+        memcpy( &val, ptr, min( array->elem_size, sizeof(val) ) );
+        return val;
+    }
 }
 
 SAFEARRAY *to_safearray( const struct array *array, CIMTYPE basetype )
@@ -1069,10 +1378,12 @@ SAFEARRAY *to_safearray( const struct array *array, CIMTYPE basetype )
 
     for (i = 0; i < array->count; i++)
     {
-        void *ptr = (char *)array->ptr + i * array->elem_size;
+        LONGLONG val = get_array_element( array, i, basetype );
+        HRESULT hr;
+
         if (vartype == VT_BSTR)
         {
-            BSTR str = SysAllocString( *(const WCHAR **)ptr );
+            BSTR str = SysAllocString( (const WCHAR *)(INT_PTR)val );
             if (!str || SafeArrayPutElement( ret, &i, str ) != S_OK)
             {
                 SysFreeString( str );
@@ -1080,8 +1391,21 @@ SAFEARRAY *to_safearray( const struct array *array, CIMTYPE basetype )
                 return NULL;
             }
             SysFreeString( str );
+            continue;
         }
-        else if (SafeArrayPutElement( ret, &i, ptr ) != S_OK)
+        if (vartype == VT_UNKNOWN)
+        {
+            hr = SafeArrayPutElement( ret, &i, (IUnknown *)(INT_PTR)val );
+        }
+        else
+        {
+            VARIANT element;
+
+            V_VT( &element ) = VT_EMPTY;
+            set_variant( vartype, val, NULL, &element );
+            hr = SafeArrayPutElement( ret, &i, &V_I1( &element ) );
+        }
+        if (hr != S_OK)
         {
             SafeArrayDestroy( ret );
             return NULL;
@@ -1101,7 +1425,7 @@ void set_variant( VARTYPE type, LONGLONG val, void *val_ptr, VARIANT *ret )
     switch (type)
     {
     case VT_BOOL:
-        V_BOOL( ret ) = val;
+        V_BOOL( ret ) = val ? VARIANT_TRUE : VARIANT_FALSE;
         break;
     case VT_BSTR:
         V_BSTR( ret ) = val_ptr;
@@ -1124,10 +1448,22 @@ void set_variant( VARTYPE type, LONGLONG val, void *val_ptr, VARIANT *ret )
     case VT_UI4:
         V_UI4( ret ) = val;
         break;
+    case VT_I8:
+        V_I8( ret ) = val;
+        break;
+    case VT_UI8:
+        V_UI8( ret ) = val;
+        break;
     case VT_NULL:
         break;
     case VT_R4:
         V_R4( ret ) = *(FLOAT *)&val;
+        break;
+    case VT_R8:
+        V_R8( ret ) = *(DOUBLE *)&val;
+        break;
+    case VT_UNKNOWN:
+        V_UNKNOWN( ret ) = val_ptr;
         break;
     default:
         ERR("unhandled variant type %u\n", type);
@@ -1151,6 +1487,12 @@ static HRESULT map_view_index( const struct view *view, UINT index, UINT *table_
         *table_index = *result_index = index;
         break;
 
+    case VIEW_TYPE_CLASSES:
+        if (index >= view->result_count) return WBEM_E_NOT_FOUND;
+        *table_index = view->result[index];
+        *result_index = index;
+        break;
+
     default:
         ERR( "unhandled view type %u\n", view->type );
         return WBEM_E_FAILED;
@@ -1168,6 +1510,9 @@ struct table *get_view_table( const struct view *view, UINT index )
     case VIEW_TYPE_ASSOCIATORS:
         return view->table[index];
 
+    case VIEW_TYPE_CLASSES:
+        return view->table[view->result[index]];
+
     default:
         ERR( "unhandled view type %u\n", view->type );
         return NULL;
@@ -1180,8 +1525,6 @@ HRESULT get_propval( const struct view *view, UINT index, const WCHAR *name, VAR
     HRESULT hr;
     UINT column, row, table_index, result_index;
     struct table *table;
-    VARTYPE vartype;
-    void *val_ptr = NULL;
     LONGLONG val;
 
     if ((hr = map_view_index( view, index, &table_index, &result_index )) != S_OK) return hr;
@@ -1193,28 +1536,42 @@ HRESULT get_propval( const struct view *view, UINT index, const WCHAR *name, VAR
     hr = get_column_index( table, name, &column );
     if (hr != S_OK || is_method( table, column )) return WBEM_E_NOT_FOUND;
 
+    if (type) *type = table->columns[column].type & COL_TYPE_MASK;
+    if (flavor) *flavor = 0;
+
+    /* Class definitions carry no values */
+    if (view->type == VIEW_TYPE_CLASSES)
+    {
+        if (ret) V_VT( ret ) = VT_NULL;
+        return S_OK;
+    }
+
     row = view->result[result_index];
     hr = get_value( table, row, column, &val );
     if (hr != S_OK) return hr;
 
-    if (type) *type = table->columns[column].type & COL_TYPE_MASK;
-    if (flavor) *flavor = 0;
-
     if (!ret) return S_OK;
+    return value_to_variant( table->columns[column].type & COL_TYPE_MASK, val, ret );
+}
 
-    vartype = to_vartype( table->columns[column].type & CIM_TYPE_MASK );
-    if (table->columns[column].type & CIM_FLAG_ARRAY)
+HRESULT value_to_variant( CIMTYPE type, LONGLONG val, VARIANT *ret )
+{
+    static const WCHAR fmt_signed64W[] = {'%','I','6','4','d',0};
+    static const WCHAR fmt_unsigned64W[] = {'%','I','6','4','u',0};
+    VARTYPE vartype = to_vartype( type & CIM_TYPE_MASK );
+    void *val_ptr = NULL;
+    WCHAR number[22];
+
+    if (type & CIM_FLAG_ARRAY)
     {
-        CIMTYPE basetype = table->columns[column].type & CIM_TYPE_MASK;
-
-        val_ptr = to_safearray( (const struct array *)(INT_PTR)val, basetype );
+        val_ptr = to_safearray( (const struct array *)(INT_PTR)val, type & CIM_TYPE_MASK );
         if (!val_ptr) vartype = VT_NULL;
         else vartype |= VT_ARRAY;
         set_variant( vartype, val, val_ptr, ret );
         return S_OK;
     }
 
-    switch (table->columns[column].type & COL_TYPE_MASK)
+    switch (type)
     {
     case CIM_STRING:
     case CIM_REFERENCE:
@@ -1227,25 +1584,38 @@ HRESULT get_propval( const struct view *view, UINT index, const WCHAR *name, VAR
         else
             vartype = VT_NULL;
         break;
+    case CIM_OBJECT:
+        if (val)
+        {
+            val_ptr = (IUnknown *)(INT_PTR)val;
+            IUnknown_AddRef( (IUnknown *)val_ptr );
+        }
+        else
+            vartype = VT_NULL;
+        break;
     case CIM_SINT64:
         vartype = VT_BSTR;
-        val_ptr = get_value_bstr( table, row, column );
+        wsprintfW( number, fmt_signed64W, val );
+        val_ptr = SysAllocString( number );
         break;
     case CIM_UINT64:
         vartype = VT_BSTR;
-        val_ptr = get_value_bstr( table, row, column );
+        wsprintfW( number, fmt_unsigned64W, val );
+        val_ptr = SysAllocString( number );
         break;
     case CIM_BOOLEAN:
     case CIM_SINT8:
     case CIM_UINT8:
     case CIM_SINT16:
     case CIM_UINT16:
+    case CIM_CHAR16:
     case CIM_SINT32:
     case CIM_UINT32:
     case CIM_REAL32:
+    case CIM_REAL64:
         break;
     default:
-        ERR("unhandled column type %u\n", table->columns[column].type);
+        ERR("unhandled column type %u\n", type);
         return WBEM_E_FAILED;
     }
 
@@ -1267,6 +1637,10 @@ static CIMTYPE to_cimtype( VARTYPE type )
     case VT_UI4:   return CIM_UINT32;
     case VT_I8:    return CIM_SINT64;
     case VT_UI8:   return CIM_UINT64;
+    case VT_R4:    return CIM_REAL32;
+    case VT_R8:    return CIM_REAL64;
+    case VT_UNKNOWN:
+    case VT_DISPATCH: return CIM_OBJECT;
     default:
         ERR("unhandled type %u\n", type);
         break;
@@ -1372,14 +1746,160 @@ HRESULT to_longlong( VARIANT *var, LONGLONG *val, CIMTYPE *type )
     return S_OK;
 }
 
+static BOOL is_owned_type( CIMTYPE type )
+{
+    if (type & CIM_FLAG_ARRAY) return TRUE;
+    return type == CIM_STRING || type == CIM_DATETIME || type == CIM_REFERENCE || type == CIM_OBJECT;
+}
+
+static void free_value( CIMTYPE type, LONGLONG val )
+{
+    if (!val) return;
+    if (type & CIM_FLAG_ARRAY) destroy_array( (struct array *)(INT_PTR)val, type & CIM_TYPE_MASK );
+    else if (type == CIM_OBJECT) IUnknown_Release( (IUnknown *)(INT_PTR)val );
+    else heap_free( (void *)(INT_PTR)val );
+}
+
+/* Converts a scalar variant to the storage format of a column of the given base type */
+static HRESULT variant_to_scalar( VARIANT *var, CIMTYPE type, LONGLONG *val )
+{
+    VARIANT conv;
+    HRESULT hr;
+
+    *val = 0;
+    if (!var || V_VT( var ) == VT_EMPTY || V_VT( var ) == VT_NULL) return S_OK;
+
+    VariantInit( &conv );
+    switch (type)
+    {
+    case CIM_STRING:
+    case CIM_DATETIME:
+    case CIM_REFERENCE:
+        if ((hr = VariantChangeType( &conv, var, 0, VT_BSTR )) != S_OK) return WBEM_E_TYPE_MISMATCH;
+        *val = (INT_PTR)heap_strdupW( V_BSTR( &conv ) ? V_BSTR( &conv ) : L"" );
+        VariantClear( &conv );
+        return *val ? S_OK : E_OUTOFMEMORY;
+    case CIM_OBJECT:
+        if (V_VT( var ) != VT_UNKNOWN && V_VT( var ) != VT_DISPATCH) return WBEM_E_TYPE_MISMATCH;
+        if (!V_UNKNOWN( var )) return S_OK;
+        IUnknown_AddRef( V_UNKNOWN( var ) );
+        *val = (INT_PTR)V_UNKNOWN( var );
+        return S_OK;
+    case CIM_BOOLEAN:
+        if ((hr = VariantChangeType( &conv, var, 0, VT_BOOL )) != S_OK) return WBEM_E_TYPE_MISMATCH;
+        *val = V_BOOL( &conv ) ? -1 : 0;
+        return S_OK;
+    case CIM_REAL32:
+        if ((hr = VariantChangeType( &conv, var, 0, VT_R4 )) != S_OK) return WBEM_E_TYPE_MISMATCH;
+        memcpy( val, &V_R4( &conv ), sizeof(FLOAT) );
+        return S_OK;
+    case CIM_REAL64:
+        if ((hr = VariantChangeType( &conv, var, 0, VT_R8 )) != S_OK) return WBEM_E_TYPE_MISMATCH;
+        memcpy( val, &V_R8( &conv ), sizeof(DOUBLE) );
+        return S_OK;
+    case CIM_UINT64:
+        if ((hr = VariantChangeType( &conv, var, 0, VT_UI8 )) == S_OK)
+        {
+            *val = V_UI8( &conv );
+            return S_OK;
+        }
+        /* fall through */
+    default:
+        if ((hr = VariantChangeType( &conv, var, 0, VT_I8 )) != S_OK) return WBEM_E_TYPE_MISMATCH;
+        *val = V_I8( &conv );
+        return S_OK;
+    }
+}
+
+static void set_array_element( struct array *array, UINT index, CIMTYPE basetype, LONGLONG val )
+{
+    void *ptr = (char *)array->ptr + index * array->elem_size;
+
+    switch (basetype)
+    {
+    case CIM_BOOLEAN: *(int *)ptr = val; break;
+    case CIM_SINT8:
+    case CIM_UINT8:   *(UINT8 *)ptr = val; break;
+    case CIM_SINT16:
+    case CIM_UINT16:
+    case CIM_CHAR16:  *(UINT16 *)ptr = val; break;
+    case CIM_SINT32:
+    case CIM_UINT32:  *(UINT32 *)ptr = val; break;
+    case CIM_STRING:
+    case CIM_DATETIME:
+    case CIM_REFERENCE:
+    case CIM_OBJECT:  *(void **)ptr = (void *)(INT_PTR)val; break;
+    default:          memcpy( ptr, &val, array->elem_size ); break;
+    }
+}
+
+/* Converts a variant to the storage format of a column, coercing types as WMI does */
+HRESULT variant_to_value( VARIANT *var, CIMTYPE type, LONGLONG *val )
+{
+    CIMTYPE basetype = type & CIM_TYPE_MASK;
+    struct array *array;
+    VARTYPE vartype;
+    LONG i, bound;
+    HRESULT hr;
+
+    if (!(type & CIM_FLAG_ARRAY)) return variant_to_scalar( var, basetype, val );
+
+    *val = 0;
+    if (!var || V_VT( var ) == VT_EMPTY || V_VT( var ) == VT_NULL) return S_OK;
+    if (!(V_VT( var ) & VT_ARRAY) || !V_ARRAY( var )) return WBEM_E_TYPE_MISMATCH;
+    if (SafeArrayGetVartype( V_ARRAY( var ), &vartype ) != S_OK) return WBEM_E_TYPE_MISMATCH;
+    if (SafeArrayGetUBound( V_ARRAY( var ), 1, &bound ) != S_OK) return WBEM_E_TYPE_MISMATCH;
+
+    if (!(array = heap_alloc( sizeof(*array) ))) return E_OUTOFMEMORY;
+    array->count     = bound + 1;
+    array->elem_size = get_type_size( basetype );
+    if (!(array->ptr = heap_alloc_zero( max( array->count, 1 ) * array->elem_size )))
+    {
+        heap_free( array );
+        return E_OUTOFMEMORY;
+    }
+
+    for (i = 0; i < (LONG)array->count; i++)
+    {
+        VARIANT element;
+        LONGLONG elem_val;
+
+        VariantInit( &element );
+        if (vartype == VT_VARIANT)
+            hr = SafeArrayGetElement( V_ARRAY( var ), &i, &element );
+        else
+        {
+            hr = SafeArrayGetElement( V_ARRAY( var ), &i, &V_I1( &element ) );
+            V_VT( &element ) = vartype;
+        }
+        if (hr == S_OK)
+        {
+            hr = variant_to_scalar( &element, basetype, &elem_val );
+            VariantClear( &element );
+        }
+        if (hr != S_OK)
+        {
+            array->count = i;
+            destroy_array( array, basetype );
+            return hr;
+        }
+        set_array_element( array, i, basetype, elem_val );
+    }
+
+    *val = (INT_PTR)array;
+    return S_OK;
+}
+
 HRESULT put_propval( const struct view *view, UINT index, const WCHAR *name, VARIANT *var, CIMTYPE type )
 {
     HRESULT hr;
     UINT row, column, table_index, result_index;
     struct table *table;
-    LONGLONG val;
+    LONGLONG val, old;
+    CIMTYPE coltype;
 
     if ((hr = map_view_index( view, index, &table_index, &result_index )) != S_OK) return hr;
+    if (view->type == VIEW_TYPE_CLASSES) return WBEM_E_FAILED;
 
     table = view->table[table_index];
     hr = get_column_index( table, name, &column );
@@ -1391,11 +1911,19 @@ HRESULT put_propval( const struct view *view, UINT index, const WCHAR *name, VAR
     if (is_method( table, column ) || !(table->columns[column].type & COL_FLAG_DYNAMIC))
         return WBEM_E_FAILED;
 
-    hr = to_longlong( var, &val, &type );
-    if (hr != S_OK) return hr;
-
     row = view->result[result_index];
-    return set_value( table, row, column, val, type );
+    coltype = table->columns[column].type & COL_TYPE_MASK;
+
+    if (view->ns != WBEMPROX_NAMESPACE_WMI)
+    {
+        hr = to_longlong( var, &val, &type );
+        if (hr != S_OK) return hr;
+        return set_value( table, row, column, val, type );
+    }
+
+    if ((hr = variant_to_value( var, coltype, &val )) != S_OK) return hr;
+    if (is_owned_type( coltype ) && get_value( table, row, column, &old ) == S_OK) free_value( coltype, old );
+    return set_value( table, row, column, val, coltype );
 }
 
 HRESULT get_properties( const struct view *view, UINT index, LONG flags, SAFEARRAY **props )

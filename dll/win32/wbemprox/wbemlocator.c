@@ -99,8 +99,6 @@ static BOOL is_local_machine( const WCHAR *server )
 static HRESULT parse_resource( const WCHAR *resource, WCHAR **server, WCHAR **namespace )
 {
     static const WCHAR rootW[] = {'R','O','O','T'};
-    static const WCHAR cimv2W[] = {'C','I','M','V','2',0};
-    static const WCHAR defaultW[] = {'D','E','F','A','U','L','T',0};
     HRESULT hr = WBEM_E_INVALID_NAMESPACE;
     const WCHAR *p, *q;
     unsigned int len;
@@ -139,12 +137,12 @@ static HRESULT parse_resource( const WCHAR *resource, WCHAR **server, WCHAR **na
     }
     q++;
     len = lstrlenW( q );
-    if (wcsicmp( q, cimv2W ) && wcsicmp( q, defaultW ))
+    if (get_namespace_from_string( q ) == WBEMPROX_NAMESPACE_LAST)
         goto done;
     if (!(*namespace = heap_alloc( (len + 1) * sizeof(WCHAR) ))) hr = E_OUTOFMEMORY;
     else
     {
-        memcpy( *namespace, p, len * sizeof(WCHAR) );
+        memcpy( *namespace, q, len * sizeof(WCHAR) );
         (*namespace)[len] = 0;
         hr = S_OK;
     }

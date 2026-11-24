@@ -59,6 +59,7 @@ UINT get_type_size( CIMTYPE type )
         return sizeof(INT8);
     case CIM_SINT16:
     case CIM_UINT16:
+    case CIM_CHAR16:
         return sizeof(INT16);
     case CIM_SINT32:
     case CIM_UINT32:
@@ -70,8 +71,12 @@ UINT get_type_size( CIMTYPE type )
     case CIM_REFERENCE:
     case CIM_STRING:
         return sizeof(WCHAR *);
+    case CIM_OBJECT:
+        return sizeof(IUnknown *);
     case CIM_REAL32:
         return sizeof(FLOAT);
+    case CIM_REAL64:
+        return sizeof(DOUBLE);
     default:
         ERR("unhandled type %u\n", type);
         break;
@@ -91,7 +96,7 @@ static UINT get_column_offset( const struct table *table, UINT column )
     return offset;
 }
 
-static UINT get_row_size( const struct table *table )
+UINT get_row_size( const struct table *table )
 {
     return get_column_offset( table, table->num_cols - 1 ) + get_column_size( table, table->num_cols - 1 );
 }
@@ -120,6 +125,9 @@ HRESULT get_value( const struct table *table, UINT row, UINT column, LONGLONG *v
     case CIM_STRING:
         *val = (INT_PTR)*(const WCHAR **)ptr;
         break;
+    case CIM_OBJECT:
+        *val = (INT_PTR)*(IUnknown **)ptr;
+        break;
     case CIM_SINT8:
         *val = *(const INT8 *)ptr;
         break;
@@ -130,6 +138,7 @@ HRESULT get_value( const struct table *table, UINT row, UINT column, LONGLONG *v
         *val = *(const INT16 *)ptr;
         break;
     case CIM_UINT16:
+    case CIM_CHAR16:
         *val = *(const UINT16 *)ptr;
         break;
     case CIM_SINT32:
@@ -145,7 +154,11 @@ HRESULT get_value( const struct table *table, UINT row, UINT column, LONGLONG *v
         *val = *(const UINT64 *)ptr;
         break;
     case CIM_REAL32:
+        *val = 0;
         memcpy( val, ptr, sizeof(FLOAT) );
+        break;
+    case CIM_REAL64:
+        memcpy( val, ptr, sizeof(DOUBLE) );
         break;
     default:
         ERR("invalid column type %u\n", table->columns[column].type & COL_TYPE_MASK);
@@ -191,15 +204,21 @@ BSTR get_value_bstr( const struct table *table, UINT row, UINT column )
         swprintf( ret, fmt_strW, (const WCHAR *)(INT_PTR)val );
         return ret;
 
+    case CIM_SINT8:
     case CIM_SINT16:
     case CIM_SINT32:
-        swprintf( number, fmt_signedW, val );
+        swprintf( number, fmt_signedW, (INT32)val );
         return SysAllocString( number );
 
+    case CIM_UINT8:
     case CIM_UINT16:
+    case CIM_CHAR16:
     case CIM_UINT32:
-        swprintf( number, fmt_unsignedW, val );
+        swprintf( number, fmt_unsignedW, (UINT32)val );
         return SysAllocString( number );
+
+    case CIM_OBJECT:
+        return NULL;
 
     case CIM_SINT64:
         wsprintfW( number, fmt_signed64W, val );
@@ -228,12 +247,29 @@ HRESULT set_value( const struct table *table, UINT row, UINT column, LONGLONG va
     row_size = get_row_size( table );
     ptr = table->data + row * row_size + col_offset;
 
+    if (type & CIM_FLAG_ARRAY)
+    {
+        *(void **)ptr = (void *)(INT_PTR)val;
+        return S_OK;
+    }
     switch (table->columns[column].type & COL_TYPE_MASK)
     {
     case CIM_DATETIME:
     case CIM_REFERENCE:
     case CIM_STRING:
         *(WCHAR **)ptr = (WCHAR *)(INT_PTR)val;
+        break;
+    case CIM_OBJECT:
+        *(IUnknown **)ptr = (IUnknown *)(INT_PTR)val;
+        break;
+    case CIM_BOOLEAN:
+        *(int *)ptr = val;
+        break;
+    case CIM_REAL32:
+        memcpy( ptr, &val, sizeof(FLOAT) );
+        break;
+    case CIM_REAL64:
+        memcpy( ptr, &val, sizeof(DOUBLE) );
         break;
     case CIM_SINT8:
         *(INT8 *)ptr = val;
@@ -245,6 +281,7 @@ HRESULT set_value( const struct table *table, UINT row, UINT column, LONGLONG va
         *(INT16 *)ptr = val;
         break;
     case CIM_UINT16:
+    case CIM_CHAR16:
         *(UINT16 *)ptr = val;
         break;
     case CIM_SINT32:
@@ -302,6 +339,10 @@ void free_row_values( const struct table *table, UINT row )
         if (type == CIM_STRING || type == CIM_DATETIME || type == CIM_REFERENCE)
         {
             if (get_value( table, row, i, &val ) == S_OK) heap_free( (void *)(INT_PTR)val );
+        }
+        else if (type == CIM_OBJECT)
+        {
+            if (get_value( table, row, i, &val ) == S_OK && val) IUnknown_Release( (IUnknown *)(INT_PTR)val );
         }
         else if (type & CIM_FLAG_ARRAY)
         {
@@ -362,11 +403,13 @@ struct table *addref_table( struct table *table )
     return table;
 }
 
-struct table *grab_table( const WCHAR *name )
+struct table *grab_table( enum wbm_namespace ns, const WCHAR *name )
 {
     struct table *table;
 
-    LIST_FOR_EACH_ENTRY( table, table_list, struct table, entry )
+    if (ns >= WBEMPROX_NAMESPACE_LAST) return NULL;
+
+    LIST_FOR_EACH_ENTRY( table, table_list[ns], struct table, entry )
     {
         if (name && !wcsicmp( table->name, name ))
         {
@@ -397,11 +440,11 @@ struct table *create_table( const WCHAR *name, UINT num_cols, const struct colum
     return table;
 }
 
-BOOL add_table( struct table *table )
+BOOL add_table( enum wbm_namespace ns, struct table *table )
 {
     struct table *iter;
 
-    LIST_FOR_EACH_ENTRY( iter, table_list, struct table, entry )
+    LIST_FOR_EACH_ENTRY( iter, table_list[ns], struct table, entry )
     {
         if (!wcsicmp( iter->name, table->name ))
         {
@@ -409,18 +452,18 @@ BOOL add_table( struct table *table )
             return FALSE;
         }
     }
-    list_add_tail( table_list, &table->entry );
+    list_add_tail( table_list[ns], &table->entry );
     TRACE("added %p\n", table);
     return TRUE;
 }
 
-BSTR get_method_name( const WCHAR *class, UINT index )
+BSTR get_method_name( enum wbm_namespace ns, const WCHAR *class, UINT index )
 {
     struct table *table;
     UINT i, count = 0;
     BSTR ret;
 
-    if (!(table = grab_table( class ))) return NULL;
+    if (!(table = grab_table( ns, class ))) return NULL;
 
     for (i = 0; i < table->num_cols; i++)
     {

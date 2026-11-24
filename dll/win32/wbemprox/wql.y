@@ -38,6 +38,7 @@ struct parser
     HRESULT error;
     struct view **view;
     struct list *mem;
+    enum wbm_namespace ns;
 };
 
 struct string
@@ -92,6 +93,20 @@ static WCHAR *get_string( struct parser *parser, const struct string *str )
         len -= 2;
     }
     if (!(ret = alloc_mem( parser, (len + 1) * sizeof(WCHAR) ))) return NULL;
+
+    /* root\wmi string literals use backslash escapes like Windows */
+    if (parser->ns == WBEMPROX_NAMESPACE_WMI)
+    {
+        int i, j = 0;
+
+        for (i = 0; i < len; i++)
+        {
+            if (p[i] == '\\' && i + 1 < len && (p[i + 1] == '\\' || p[i + 1] == '\"' || p[i + 1] == '\'')) i++;
+            ret[j++] = p[i];
+        }
+        ret[j] = 0;
+        return ret;
+    }
     memcpy( ret, p, len * sizeof(WCHAR) );
     ret[len] = 0;
     return ret;
@@ -289,7 +304,7 @@ associatorsof:
             struct parser *parser = ctx;
             struct view *view;
 
-            hr = create_view( VIEW_TYPE_ASSOCIATORS, $3, NULL, NULL, NULL, NULL, &view );
+            hr = create_view( VIEW_TYPE_ASSOCIATORS, parser->ns, $3, NULL, NULL, NULL, NULL, &view );
             if (hr != S_OK)
                 YYABORT;
 
@@ -301,7 +316,7 @@ associatorsof:
             struct parser *parser = ctx;
             struct view *view;
 
-            hr = create_view( VIEW_TYPE_ASSOCIATORS, $3, $5, NULL, NULL, NULL, &view );
+            hr = create_view( VIEW_TYPE_ASSOCIATORS, parser->ns, $3, $5, NULL, NULL, NULL, &view );
             if (hr != S_OK)
                 YYABORT;
 
@@ -316,7 +331,7 @@ select:
             struct parser *parser = ctx;
             struct view *view;
 
-            hr = create_view( VIEW_TYPE_SELECT, NULL, NULL, $3, NULL, NULL, &view );
+            hr = create_view( VIEW_TYPE_SELECT, parser->ns, NULL, NULL, $3, NULL, NULL, &view );
             if (hr != S_OK)
                 YYABORT;
 
@@ -328,7 +343,7 @@ select:
             struct parser *parser = ctx;
             struct view *view;
 
-            hr = create_view( VIEW_TYPE_SELECT, NULL, NULL, $4, $2, NULL, &view );
+            hr = create_view( VIEW_TYPE_SELECT, parser->ns, NULL, NULL, $4, $2, NULL, &view );
             if (hr != S_OK)
                 YYABORT;
 
@@ -340,7 +355,7 @@ select:
             struct parser *parser = ctx;
             struct view *view;
 
-            hr = create_view( VIEW_TYPE_SELECT, NULL, NULL, $4, $2, $6, &view );
+            hr = create_view( VIEW_TYPE_SELECT, parser->ns, NULL, NULL, $4, $2, $6, &view );
             if (hr != S_OK)
                 YYABORT;
 
@@ -579,7 +594,7 @@ const_val:
 
 %%
 
-HRESULT parse_query( const WCHAR *str, struct view **view, struct list *mem )
+HRESULT parse_query( enum wbm_namespace ns, const WCHAR *str, struct view **view, struct list *mem )
 {
     struct parser parser;
     int ret;
@@ -592,6 +607,7 @@ HRESULT parse_query( const WCHAR *str, struct view **view, struct list *mem )
     parser.error = WBEM_E_INVALID_QUERY;
     parser.view  = view;
     parser.mem   = mem;
+    parser.ns    = ns;
 
     ret = wql_parse( &parser );
     TRACE("wql_parse returned %d\n", ret);
@@ -696,7 +712,7 @@ static int keyword_type( const WCHAR *str, unsigned int len )
     return TK_ID;
 }
 
-static int get_token( const WCHAR *s, int *token )
+static int get_token( const WCHAR *s, int *token, BOOL escapes )
 {
     int i;
 
@@ -779,7 +795,8 @@ static int get_token( const WCHAR *s, int *token )
     case '\'':
         for (i = 1; s[i]; i++)
         {
-            if (s[i] == s[0]) break;
+            if (escapes && s[i] == '\\' && s[i + 1]) i++;
+            else if (s[i] == s[0]) break;
         }
         if (s[i]) i++;
         *token = TK_STRING;
@@ -815,7 +832,7 @@ static int wql_lex( void *p, struct parser *parser )
     {
         parser->idx += parser->len;
         if (!parser->cmd[parser->idx]) return 0;
-        parser->len = get_token( &parser->cmd[parser->idx], &token );
+        parser->len = get_token( &parser->cmd[parser->idx], &token, parser->ns == WBEMPROX_NAMESPACE_WMI );
         if (!parser->len) break;
 
         str->data = &parser->cmd[parser->idx];

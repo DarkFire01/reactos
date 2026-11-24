@@ -7,6 +7,7 @@ include_directories(BEFORE ${REACTOS_SOURCE_DIR}/sdk/include/wine)
 spec2def(wbemprox.dll wbemprox.spec)
 
 list(APPEND SOURCE
+    bmof.c
     builtin.c
     class.c
     main.c
@@ -18,7 +19,10 @@ list(APPEND SOURCE
     service.c
     services.c
     table.c
-    wbemlocator.c)
+    wbemlocator.c
+    wmiblock.c
+    wmiprov.c
+    wmistd.c)
 
 BISON_TARGET(wql wql.y ${CMAKE_CURRENT_BINARY_DIR}/wql.tab.c COMPILE_FLAGS "-p wql_")
 
