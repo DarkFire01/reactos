@@ -357,9 +357,7 @@ FUNC KiDoubleFaultAbort
     /* A zero error code is pushed */
     EnterTrap (TF_HAS_ERROR_CODE OR TF_SAVE_ALL)
 
-    int 3
-
-    /* Bugcheck */
+    /* Bugcheck, a breakpoint here would turn the double fault into an unhandled breakpoint without a debugger */
     Fatal 8 // EXCEPTION_DOUBLE_FAULT
     jmp $
 ENDFUNC
