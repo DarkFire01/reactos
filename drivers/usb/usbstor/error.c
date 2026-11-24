@@ -127,7 +127,7 @@ USBSTOR_ResetDeviceWorkItemRoutine(
     FDODeviceExtension->Flags &= ~USBSTOR_FDO_FLAGS_DEVICE_RESETTING;
     KeReleaseSpinLock(&FDODeviceExtension->CommonLock, OldIrql);
 
-    USBSTOR_QueueNextRequest(FdoDevice);
+    USBSTOR_QueueNextRequest(FdoDevice, TRUE);
 }
 
 VOID

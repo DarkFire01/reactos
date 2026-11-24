@@ -220,7 +220,7 @@ USBSTOR_CSWCompletionRoutine(
 
     // terminate current request
     USBSTOR_QueueTerminateRequest(PDODeviceExtension->LowerDeviceObject, Irp);
-    USBSTOR_QueueNextRequest(PDODeviceExtension->LowerDeviceObject);
+    USBSTOR_QueueNextRequest(PDODeviceExtension->LowerDeviceObject, TRUE);
 
     return STATUS_CONTINUE_COMPLETION;
 

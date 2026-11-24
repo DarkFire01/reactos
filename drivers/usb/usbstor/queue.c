@@ -43,7 +43,7 @@ USBSTOR_CancelIo(
     USBSTOR_QueueTerminateRequest(DeviceObject, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    USBSTOR_QueueNextRequest(DeviceObject);
+    USBSTOR_QueueNextRequest(DeviceObject, FALSE);
 }
 
 VOID
@@ -68,7 +68,7 @@ USBSTOR_Cancel(
     USBSTOR_QueueTerminateRequest(DeviceObject, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    USBSTOR_QueueNextRequest(DeviceObject);
+    USBSTOR_QueueNextRequest(DeviceObject, FALSE);
 }
 
 BOOLEAN
@@ -112,8 +112,7 @@ USBSTOR_QueueAddIrp(
 
     if (SrbProcessing)
     {
-        ASSERT(FDODeviceExtension->ActiveSrb != NULL);
-
+        /* ActiveSrb is NULL between finishing one request and starting the next queued one */
         OldDriverCancel = IoSetCancelRoutine(Irp, USBSTOR_Cancel);
     }
     else
@@ -216,9 +215,15 @@ USBSTOR_QueueTerminateRequest(
     KeReleaseSpinLock(&FDODeviceExtension->IrpListLock, OldLevel);
 }
 
+/**
+ * @brief
+ * Starts the next queued request. StartedRequestDone is TRUE when the caller
+ * finished a request that went through StartIo and so owns the device queue.
+ */
 VOID
 USBSTOR_QueueNextRequest(
-    IN PDEVICE_OBJECT DeviceObject)
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ BOOLEAN StartedRequestDone)
 {
     PFDO_DEVICE_EXTENSION FDODeviceExtension;
     PIRP Irp;
@@ -228,11 +233,19 @@ USBSTOR_QueueNextRequest(
     FDODeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     ASSERT(FDODeviceExtension->Common.IsFDO);
 
-    // check first if there's already a request pending or the queue is frozen
-    if (FDODeviceExtension->ActiveSrb != NULL ||
-        BooleanFlagOn(FDODeviceExtension->Flags, USBSTOR_FDO_FLAGS_IRP_LIST_FREEZE))
+    // check first if the queue is frozen
+    if (BooleanFlagOn(FDODeviceExtension->Flags, USBSTOR_FDO_FLAGS_IRP_LIST_FREEZE))
     {
         // no work to do yet
+        return;
+    }
+
+    /* A request that arrived while the queue was empty already became active and
+       went to IoStartPacket, it only runs once the finished request frees the device queue */
+    if (FDODeviceExtension->ActiveSrb != NULL)
+    {
+        if (StartedRequestDone)
+            IoStartNextPacket(DeviceObject, TRUE);
         return;
     }
 
@@ -327,7 +340,7 @@ USBSTOR_StartIo(
 
         USBSTOR_QueueTerminateRequest(DeviceObject, Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        USBSTOR_QueueNextRequest(DeviceObject);
+        USBSTOR_QueueNextRequest(DeviceObject, TRUE);
         return;
     }
 
@@ -352,7 +365,7 @@ USBSTOR_StartIo(
         Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
         USBSTOR_QueueTerminateRequest(DeviceObject, Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        USBSTOR_QueueNextRequest(DeviceObject);
+        USBSTOR_QueueNextRequest(DeviceObject, TRUE);
         return;
     }
 
