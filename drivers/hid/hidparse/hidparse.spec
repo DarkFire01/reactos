@@ -1,9 +1,13 @@
+@ stdcall -private DllInitialize(ptr)
+@ stdcall -private DllUnload()
 @ stdcall HidP_FreeCollectionDescription(ptr)
+@ stdcall HidP_GetButtonArray(long long long long ptr ptr ptr ptr long)
 @ stdcall HidP_GetButtonCaps(long ptr ptr ptr)
 @ stdcall HidP_GetCaps(ptr ptr)
 @ stdcall HidP_GetCollectionDescription(ptr long long ptr)
+@ stdcall HidP_GetCollectionDescription2(ptr long long ptr)
 @ stdcall HidP_GetData(long ptr ptr ptr ptr long)
-@ stdcall HidP_GetExtendedAttributes(long long ptr ptr long)
+@ stdcall HidP_GetExtendedAttributes(long long ptr ptr ptr)
 @ stdcall HidP_GetLinkCollectionNodes(ptr ptr ptr)
 @ stdcall HidP_GetScaledUsageValue(long long long long ptr ptr ptr long)
 @ stdcall HidP_GetSpecificButtonCaps(long long long long ptr ptr ptr)
@@ -16,6 +20,7 @@
 @ stdcall HidP_InitializeReportForID(long long ptr ptr long)
 @ stdcall HidP_MaxDataListLength(long ptr)
 @ stdcall HidP_MaxUsageListLength(long long ptr)
+@ stdcall HidP_SetButtonArray(long long long long ptr long ptr ptr long)
 @ stdcall HidP_SetData(long ptr ptr ptr ptr long)
 @ stdcall HidP_SetScaledUsageValue(long long long long long ptr ptr long)
 @ stdcall HidP_SetUsageValue(long long long long long ptr ptr long)
@@ -28,26 +33,3 @@
 @ stdcall HidP_UnsetUsages(long long long ptr ptr ptr ptr long)
 @ stdcall HidP_UsageAndPageListDifference(ptr ptr ptr ptr long)
 @ stdcall HidP_UsageListDifference(ptr ptr ptr ptr long)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
