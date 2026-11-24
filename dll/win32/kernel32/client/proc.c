@@ -979,8 +979,12 @@ WORD
 WINAPI
 GetActiveProcessorGroupCount(VOID)
 {
-    STUB; // FIXME: Real group support
-    return 1; // TODO: SharedUserData->ActiveGroupCount?
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+    /* The kernel publishes the count on the shared page */
+    if (SharedUserData->ActiveGroupCount != 0)
+        return SharedUserData->ActiveGroupCount;
+#endif
+    return 1;
 }
 
 /*
@@ -990,7 +994,6 @@ WORD
 WINAPI
 GetMaximumProcessorGroupCount(VOID)
 {
-    STUB; // FIXME: Real group support
     /* Without group support there is the one group and no room for another */
     return 1; // TODO: SharedUserData->MaximumGroupCount?
 }
@@ -1017,7 +1020,6 @@ DWORD
 WINAPI
 GetActiveProcessorCount(IN WORD GroupNumber)
 {
-    STUB; // FIXME: Real group support
     return GetProcessorCountInfo(GroupNumber, FALSE);
 }
 
@@ -1028,7 +1030,6 @@ DWORD
 WINAPI
 GetMaximumProcessorCount(IN WORD GroupNumber)
 {
-    STUB; // FIXME: Real group support
     return GetProcessorCountInfo(GroupNumber, TRUE);
 }
 

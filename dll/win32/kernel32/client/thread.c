@@ -757,22 +757,17 @@ GetThreadGroupAffinity(IN HANDLE hThread,
                        OUT PGROUP_AFFINITY GroupAffinity)
 {
     NTSTATUS Status;
-    THREAD_BASIC_INFORMATION ThreadBasic;
 
-    STUB; // FIXME: Real group support
     Status = NtQueryInformationThread(hThread,
-                                      ThreadBasicInformation,
-                                      &ThreadBasic,
-                                      sizeof(ThreadBasic),
+                                      ThreadGroupInformation,
+                                      GroupAffinity,
+                                      sizeof(*GroupAffinity),
                                       NULL);
     if (!NT_SUCCESS(Status))
     {
         BaseSetLastNTError(Status);
         return FALSE;
     }
-    ZeroMemory(GroupAffinity, sizeof(*GroupAffinity)); // For Reserved
-    GroupAffinity->Mask = ThreadBasic.AffinityMask;
-    GroupAffinity->Group = THEONLYGROUP;
     return TRUE;
 }
 
@@ -787,7 +782,6 @@ SetThreadGroupAffinity(IN HANDLE hThread,
 {
     DWORD_PTR OldMask;
 
-    STUB; // FIXME: Real group support
     if (!GroupAffinity || GroupAffinity->Group != THEONLYGROUP)
     {
         SetLastError(ERROR_INVALID_PARAMETER);
