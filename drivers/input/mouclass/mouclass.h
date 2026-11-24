@@ -1,83 +1,254 @@
-#ifndef _MOUCLASS_PCH_
-#define _MOUCLASS_PCH_
+/*
+ * PROJECT:     ReactOS Mouse Class Driver
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Shared definitions for the mouse class driver
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#pragma once
 
 #include <ntifs.h>
+#include <ntpoapi.h>
 #include <ntddmou.h>
+#include <kbdmou.h>
+#include <wmilib.h>
+#include <wmistr.h>
+#include <wdmguid.h>
 
-#define MAX_PATH 260
+#define MOUCLASS_TAG                    'CuoM'
+#define MOUCLASS_PACKET_SIZE            ((ULONG)sizeof(MOUSE_INPUT_DATA))
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
+/* Registry defaults */
+#define MOUCLASS_DEFAULT_QUEUE_ENTRIES  100
+#define MOUCLASS_DEFAULT_PORTS_SERVICED 1
+#define MOUCLASS_BASE_NAME_CHARS        256
 
-#define CLASS_TAG 'CuoM'
-#define DPFLTR_CLASS_NAME_ID DPFLTR_MOUCLASS_ID
+/* Event log codes, facility 5 */
+#define MOUCLASS_EVT_NO_RESOURCES       ((NTSTATUS)0xC0050001L)
+#define MOUCLASS_EVT_NO_QUEUE_BUFFER    ((NTSTATUS)0xC0050002L)
+#define MOUCLASS_EVT_PORT_OPEN_FAILED   ((NTSTATUS)0xC0050009L)
+#define MOUCLASS_EVT_PORT_CLOSE_FAILED  ((NTSTATUS)0xC005000AL)
+#define MOUCLASS_EVT_NO_DEVICE_OBJECT   ((NTSTATUS)0xC005000DL)
+#define MOUCLASS_EVT_ATTACH_FAILED      ((NTSTATUS)0xC005000FL)
+#define MOUCLASS_EVT_DEVICEMAP_FAILED   ((NTSTATUS)0x80050005L)
+#define MOUCLASS_EVT_WAIT_WAKE_FAILED   ((NTSTATUS)0x8005000EL)
 
-typedef enum
+/* WMI data block indexes */
+#define MOUCLASS_WMI_CLASS_INFO         0
+#define MOUCLASS_WMI_WAKE_ENABLE        1
+
+/* Wait wake versus removal handshake values */
+#define MOUCLASS_WW_IDLE                0
+#define MOUCLASS_WW_REMOVING            1
+#define MOUCLASS_WW_REMOVED             2
+#define MOUCLASS_WW_COMPLETED           3
+
+/* HID request that the HID class uses to suppress input, forwarded as is */
+#define MOUCLASS_HID_SUPPRESS_INPUT     HID_BUFFER_CTL_CODE(154)
+
+typedef struct _MOUCLASS_EXTENSION *PMOUCLASS_EXTENSION;
+
+/* One port served by the shared class device */
+typedef struct _MOUCLASS_PORT
 {
-    dsStopped,
-    dsStarted,
-    dsPaused,
-    dsRemoved,
-    dsSurpriseRemoved
-} PORT_DEVICE_STATE;
+    PFILE_OBJECT FileObject;
+    PMOUCLASS_EXTENSION Port;
+    BOOLEAN Enabled;
+    BOOLEAN Free;
+} MOUCLASS_PORT, *PMOUCLASS_PORT;
 
-typedef struct _READ_DATA
+typedef struct _MOUCLASS_EXTENSION
 {
-    KSPIN_LOCK SpinLock;
-    PIRP PendingIrp;
-    SIZE_T InputCount;
-    PMOUSE_INPUT_DATA PortData;
-} READ_DATA, *PREAD_DATA;
+    PDEVICE_OBJECT Self;
 
-typedef struct _CLASS_DRIVER_EXTENSION
-{
-    UNICODE_STRING RegistryPath;
+    /* Device that clients open and that the port reports to */
+    PDEVICE_OBJECT ClassDevice;
 
-    /* Registry settings */
-    ULONG ConnectMultiplePorts;
-    ULONG DataQueueSize;
-    UNICODE_STRING DeviceBaseName;
-
-    PDEVICE_OBJECT MainClassDeviceObject;
-} CLASS_DRIVER_EXTENSION, *PCLASS_DRIVER_EXTENSION;
-
-typedef struct _COMMON_DEVICE_EXTENSION
-{
-    BOOLEAN IsClassDO;
-} COMMON_DEVICE_EXTENSION, *PCOMMON_DEVICE_EXTENSION;
-
-typedef struct _PORT_DEVICE_EXTENSION
-{
-    COMMON_DEVICE_EXTENSION Common;
-
-    LIST_ENTRY ListEntry;
-    PDEVICE_OBJECT DeviceObject;
-    PORT_DEVICE_STATE PnpState;
     PDEVICE_OBJECT LowerDevice;
-    PDEVICE_OBJECT ClassDO;
-    HANDLE FileHandle;
+    PDEVICE_OBJECT Pdo;
+    IO_REMOVE_LOCK RemoveLock;
+
+    BOOLEAN IsPnp;
+    BOOLEAN IsStarted;
+    BOOLEAN IsSurpriseRemoved;
+    BOOLEAN IsWaitWakeEnabled;
+    BOOLEAN IsWaitWakeCancelling;
+
     UNICODE_STRING InterfaceName;
-} PORT_DEVICE_EXTENSION, *PPORT_DEVICE_EXTENSION;
+    ULONG UnitId;
 
-typedef struct _CLASS_DEVICE_EXTENSION
+    /* Ring of MOUSE_INPUT_DATA, guarded by QueueLock */
+    KSPIN_LOCK QueueLock;
+    LIST_ENTRY ReadQueue;
+    PMOUSE_INPUT_DATA QueueStart;
+    PMOUSE_INPUT_DATA QueueIn;
+    PMOUSE_INPUT_DATA QueueOut;
+    ULONG QueueBytes;
+    ULONG QueueCount;
+
+    /* Power */
+    DEVICE_POWER_STATE DeviceState;
+    SYSTEM_POWER_STATE SystemState;
+    DEVICE_POWER_STATE SystemToDevice[PowerSystemHibernate];
+    DEVICE_POWER_STATE WakeDeviceState;
+    SYSTEM_POWER_STATE WakeSystemState;
+    KSPIN_LOCK WaitWakeLock;
+    PIRP WaitWakeIrp;
+    PIRP ExtraWaitWakeIrp;
+    LONG WaitWakeRemoval;
+
+    WMILIB_CONTEXT WmiLib;
+
+    /* Shared mode only, PnP notification on the port stack */
+    PVOID TargetNotifyHandle;
+
+    /* Legacy ports found through DEVICEMAP */
+    LIST_ENTRY LegacyLink;
+    PFILE_OBJECT LegacyFile;
+} MOUCLASS_EXTENSION;
+
+typedef struct _MOUCLASS_GLOBALS
 {
-    COMMON_DEVICE_EXTENSION Common;
+    /* Shared class device when ConnectMultiplePorts is set */
+    PMOUCLASS_EXTENSION SharedClass;
+    PMOUCLASS_PORT Ports;
+    ULONG PortCount;
+    LONG SharedOpens;
+    FAST_MUTEX Lock;
 
-    PCLASS_DRIVER_EXTENSION DriverExtension;
+    BOOLEAN IsSharedMode;
+    ULONG PortsServiced;
+    ULONG QueueBytes;
+    ULONG NextDeviceNumber;
 
-    LIST_ENTRY ListHead;
-    KSPIN_LOCK ListSpinLock;
-    PREAD_DATA ReadData;
-    LPCWSTR DeviceName;
-} CLASS_DEVICE_EXTENSION, *PCLASS_DEVICE_EXTENSION;
+    ULONG LegacyPortCount;
+    LIST_ENTRY LegacyList;
 
-/* misc.c */
+    UNICODE_STRING RegistryPath;
+    UNICODE_STRING BaseName;
+    WCHAR BaseNameBuffer[MOUCLASS_BASE_NAME_CHARS];
+} MOUCLASS_GLOBALS;
 
-DRIVER_DISPATCH ForwardIrpAndForget;
+/* Work item contexts */
+typedef struct _MOUCLASS_START_CONTEXT
+{
+    PIO_WORKITEM WorkItem;
+    PIRP Irp;
+} MOUCLASS_START_CONTEXT, *PMOUCLASS_START_CONTEXT;
+
+typedef struct _MOUCLASS_WORK_CONTEXT
+{
+    PIO_WORKITEM WorkItem;
+    PMOUCLASS_EXTENSION Extension;
+    BOOLEAN Enable;
+} MOUCLASS_WORK_CONTEXT, *PMOUCLASS_WORK_CONTEXT;
+
+extern MOUCLASS_GLOBALS MouGlobals;
+extern WMIGUIDREGINFO MouWmiGuidList[2];
+
+/* Marks a file object opened by a trusted (TCB) caller */
+#define MOUCLASS_TRUSTED_FILE           ((PVOID)&MouGlobals)
+
+/* mouclass.c */
+
+DRIVER_INITIALIZE DriverEntry;
+DRIVER_ADD_DEVICE MouseAddDevice;
+
+VOID
+NTAPI
+MouseLogError(
+    _In_ PVOID IoObject,
+    _In_ NTSTATUS ErrorCode,
+    _In_ ULONG UniqueId,
+    _In_ NTSTATUS FinalStatus,
+    _In_ ULONG DumpCount,
+    _In_reads_opt_(DumpCount) PULONG DumpData,
+    _In_ UCHAR MajorFunction);
+
+/* dispatch.c */
+
+DRIVER_DISPATCH MouseCreate;
+DRIVER_DISPATCH MouseCleanup;
+DRIVER_DISPATCH MouseClose;
+DRIVER_DISPATCH MouseRead;
+DRIVER_DISPATCH MouseFlush;
+DRIVER_DISPATCH MouseDeviceControl;
+DRIVER_DISPATCH MousePassThrough;
+
+VOID
+NTAPI
+MouseServiceCallback(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PMOUSE_INPUT_DATA InputDataStart,
+    _In_ PMOUSE_INPUT_DATA InputDataEnd,
+    _Inout_ PULONG InputDataConsumed);
+
+VOID
+NTAPI
+MouseResetQueue(
+    _In_ PMOUCLASS_EXTENSION Extension);
+
+VOID
+NTAPI
+MouseCancelQueuedReads(
+    _In_ PMOUCLASS_EXTENSION Extension,
+    _In_opt_ PFILE_OBJECT FileObject);
 
 NTSTATUS
-DuplicateUnicodeString(
-    IN ULONG Flags,
-    IN PCUNICODE_STRING SourceString,
-    OUT PUNICODE_STRING DestinationString);
+NTAPI
+MouseSwitchPort(
+    _In_ BOOLEAN Enable,
+    _In_opt_ PIRP Irp,
+    _In_ PMOUCLASS_EXTENSION Port,
+    _Inout_ PFILE_OBJECT *FileObject);
 
-#endif /* _MOUCLASS_PCH_ */
+NTSTATUS
+NTAPI
+MouseForwardAndWait(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ BOOLEAN CopyStack);
+
+/* pnp.c */
+
+DRIVER_DISPATCH MousePnp;
+
+/* power.c */
+
+DRIVER_DISPATCH MousePower;
+DRIVER_DISPATCH MouseSystemControl;
+
+BOOLEAN
+NTAPI
+MouseCanWake(
+    _In_ PMOUCLASS_EXTENSION Extension);
+
+BOOLEAN
+NTAPI
+MouseIsWaitWakeArmed(
+    _In_ PMOUCLASS_EXTENSION Extension);
+
+BOOLEAN
+NTAPI
+MouseIsWaitWakeEnabled(
+    _In_ PMOUCLASS_EXTENSION Extension);
+
+VOID
+NTAPI
+MouseRequestWaitWake(
+    _In_ PMOUCLASS_EXTENSION Extension);
+
+VOID
+NTAPI
+MouseReadWaitWakeSetting(
+    _In_ PMOUCLASS_EXTENSION Extension);
+
+VOID
+NTAPI
+MouseCancelWaitWakeForRemoval(
+    _In_ PMOUCLASS_EXTENSION Extension);
+
+VOID
+NTAPI
+MouseInitializeWmi(
+    _In_ PMOUCLASS_EXTENSION Extension);
