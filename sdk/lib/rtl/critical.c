@@ -580,7 +580,6 @@ RtlInitializeCriticalSectionEx(
 {
     PRTL_CRITICAL_SECTION_DEBUG CritcalSectionDebugData;
     ULONG AllowedFlags;
-    ULONG OsVersion;
 
     /* Remove lower bits from flags */
     Flags &= RTL_CRITICAL_SECTION_ALL_FLAG_BITS;
@@ -588,16 +587,9 @@ RtlInitializeCriticalSectionEx(
     /* These flags generally allowed */
     AllowedFlags = RTL_CRITICAL_SECTION_FLAG_NO_DEBUG_INFO |
                    RTL_CRITICAL_SECTION_FLAG_DYNAMIC_SPIN |
-                   RTL_CRITICAL_SECTION_FLAG_STATIC_INIT;
-
-    /* Flags for Windows 7+ (CHECKME) */
-    OsVersion = NtCurrentPeb()->OSMajorVersion << 8 |
-                NtCurrentPeb()->OSMinorVersion;
-    if (OsVersion >= _WIN32_WINNT_WIN7)
-    {
-        AllowedFlags |= RTL_CRITICAL_SECTION_FLAG_RESOURCE_TYPE |
-                        RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO;
-    }
+                   RTL_CRITICAL_SECTION_FLAG_STATIC_INIT |
+                   RTL_CRITICAL_SECTION_FLAG_RESOURCE_TYPE |
+                   RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO;
 
     if (Flags & ~AllowedFlags)
     {
