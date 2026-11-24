@@ -1,9 +1,10 @@
-/* DO NOT USE THE PRECOMPILED HEADER FOR THIS FILE! */
+/*
+ * PROJECT:     ReactOS HID Class Driver
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     GUID and property key definitions
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
 
-#include <ntdef.h>
-#include <miniport.h>
+/* This file must not use the precompiled header */
 #include <initguid.h>
-#include <wdmguid.h>
-#include <hidclass.h>
-
-/* NO CODE HERE, THIS IS JUST REQUIRED FOR THE GUID DEFINITIONS */
+#include "precomp.h"
