@@ -394,7 +394,7 @@ MiInsertInSystemSpace(IN PMMSESSION Session,
     {
         /* Out of space, fail */
         Session->BitmapFailures++;
-        DPRINT1("Out of system view space\n");
+        DPRINT("Out of system view space\n");
         KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
         return NULL;
     }
@@ -1283,7 +1283,7 @@ MiMapViewInSystemSpace(
     if (!Base)
     {
         /* Fail */
-        DPRINT1("Out of system space\n");
+        DPRINT("Out of system space\n");
         MiDereferenceControlArea(ControlArea, UserReference);
         return STATUS_NO_MEMORY;
     }
