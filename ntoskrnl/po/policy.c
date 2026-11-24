@@ -178,7 +178,15 @@ PopRemovePolicyDevice(
     {
         /* Grab the target control switch that we are going to remove */
         ControlSwitch = PopGetControlSwitchByDevice(PolicyDeviceObject);
-        ASSERT(ControlSwitch != NULL);
+        if (!ControlSwitch)
+        {
+            /* The arrival never produced a switch, so there is nothing to tear down */
+            DPRINT1("No control switch for removed button %wZ\n", NotificationStructure->SymbolicLinkName);
+            PopFreePool(PolicyWorkItemData, TAG_PO_POLICY_DEVICE_WORKITEM_DATA);
+            ObDereferenceObject(PolicyDeviceObject);
+            return STATUS_NOT_FOUND;
+        }
+
         ControlSwitch->Flags |= POP_CS_CLEANUP;
         PolicyData = ControlSwitch;
         PolicyWorkerRoutine = PopControlSwitchHandler;
