@@ -46,23 +46,6 @@ typedef struct _WMI_UNREGISTER_GUID
     ULONG Unknown1C;
 } WMI_UNREGISTER_GUID, *PWMI_UNREGISTER_GUID;
 
-typedef struct _WMI_GUID_OBJECT_ENTRY
-{
-    HANDLE Handle;
-    ULONG Unknown04;
-} WMI_GUID_OBJECT_ENTRY, *PWMI_GUID_OBJECT_ENTRY;
-
-typedef struct _WMI_NOTIFICATION
-{
-    ULONG NumberOfGuidObjects;
-    ULONG Unknown04;
-    ULONG Unknown08;
-    ULONG Unknown0C;
-    ULONG Unknown10;
-    ULONG Unknown14;
-    WMI_GUID_OBJECT_ENTRY GuidObjects[0];
-} WMI_NOTIFICATION, *PWMI_NOTIFICATION;
-
 typedef struct _WMI_SET_MARK
 {
     ULONG Flags;
@@ -102,7 +85,7 @@ WmiTraceEvent(
     PVOID InputBuffer,
     KPROCESSOR_MODE PreviousMode)
 {
-    UNIMPLEMENTED_DBGBREAK();
+    UNIMPLEMENTED_ONCE;
     return STATUS_SUCCESS;
 }
 
@@ -112,7 +95,7 @@ WmiTraceUserMessage(
     PVOID InputBuffer,
     ULONG InputBufferLength)
 {
-    UNIMPLEMENTED_DBGBREAK();
+    UNIMPLEMENTED_ONCE;
     return STATUS_SUCCESS;
 }
 
@@ -250,117 +233,6 @@ WmipUnregisterGuids(
     return STATUS_SUCCESS;
 }
 
-VOID
-NTAPI
-WmipClearIrpObjectList(
-    _In_ PIRP Irp)
-{
-    PWMIP_IRP_CONTEXT IrpContext;
-    PLIST_ENTRY ListEntry;
-    PWMIP_GUID_OBJECT GuidObject;
-
-    /* Get the IRP context */
-    IrpContext = (PWMIP_IRP_CONTEXT)Irp->Tail.Overlay.DriverContext;
-
-    /* Loop all GUID objects attached to this IRP */
-    for (ListEntry = IrpContext->GuidObjectListHead.Flink;
-         ListEntry != &IrpContext->GuidObjectListHead;
-         ListEntry = ListEntry->Flink)
-    {
-        /* Get the GUID object */
-        GuidObject = CONTAINING_RECORD(ListEntry, WMIP_GUID_OBJECT, IrpLink);
-
-        /* Make sure the IRP matches and clear it */
-        ASSERT(GuidObject->Irp == Irp);
-        GuidObject->Irp = NULL;
-
-        /* Remove the entry */
-        RemoveEntryList(ListEntry);
-    }
-}
-
-VOID
-NTAPI
-WmipNotificationIrpCancel(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP Irp)
-{
-    /* Clear the list */
-    WmipClearIrpObjectList(Irp);
-
-    /* Release the cancel spin lock */
-    IoReleaseCancelSpinLock(Irp->CancelIrql);
-
-    /* Set the status to cancelled and complete the IRP */
-    Irp->IoStatus.Status = STATUS_CANCELLED;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-}
-
-static
-VOID
-WmipInitializeIrpContext(
-    PWMIP_IRP_CONTEXT IrpContext)
-{
-    /* Initialize the list head for GUID objects */
-    InitializeListHead(&IrpContext->GuidObjectListHead);
-}
-
-static
-NTSTATUS
-WmipReceiveNotifications(
-    _Inout_ PIRP Irp,
-    _In_ PVOID Buffer,
-    _In_ ULONG InputLength,
-    _Inout_ PULONG OutputLength)
-{
-    PWMI_NOTIFICATION Notification;
-    PWMIP_IRP_CONTEXT IrpContext;
-    NTSTATUS Status;
-
-    //__debugbreak();
-    if ((InputLength < sizeof(WMI_NOTIFICATION)) || (*OutputLength < 0x38))
-    {
-        return STATUS_INVALID_DEVICE_REQUEST;
-    }
-
-    /// FIXME: For now we don't do any actual work, but simply pretend we are
-    /// waiting for notifications. We won't ever deliver any though.
-    Notification = (PWMI_NOTIFICATION)Buffer;
-    DBG_UNREFERENCED_LOCAL_VARIABLE(Notification);
-
-    // loop all objects
-        // reference the object
-            // on failure, fail the whole request
-
-    // loop all objects
-        // update the irp (synchronization!)
-            // if we had one before complete the old irp with an error
-
-    /* Get the IRP context and initialize it */
-    IrpContext = (PWMIP_IRP_CONTEXT)Irp->Tail.Overlay.DriverContext;
-    WmipInitializeIrpContext(IrpContext);
-
-    // loop all objects
-        // insert the objects into the IRP list
-
-    /* Set our cancel routine for cleanup */
-    IoSetCancelRoutine(Irp, WmipNotificationIrpCancel);
-
-    /* Check if the IRP is already being cancelled */
-    if (Irp->Cancel && IoSetCancelRoutine(Irp, NULL))
-    {
-        Status = STATUS_CANCELLED;
-    }
-    else
-    {
-        /* Mark the IRP as pending */
-        IoMarkIrpPending(Irp);
-        Status = STATUS_PENDING;
-    }
-
-    return Status;
-}
 
 /**
  * @brief Handles IOCTL_WMI_OPEN_GUID, IOCTL_WMI_OPEN_GUID_FOR_QUERYSET and IOCTL_WMI_OPEN_GUID_FOR_EVENTS.
@@ -383,6 +255,7 @@ WmipOpenGuidBlock(
     ACCESS_MASK DesiredAccess;
     HANDLE GuidObjectHandle;
     PVOID GuidObject;
+    ULONG OpenType;
     NTSTATUS Status;
     GUID Guid;
 
@@ -410,7 +283,14 @@ WmipOpenGuidBlock(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    if ((IoControlCode == IOCTL_WMI_OPEN_GUID_FOR_QUERYSET) && !WmipIsQuerySetGuid(&Guid))
+    if (IoControlCode == IOCTL_WMI_OPEN_GUID_FOR_QUERYSET)
+        OpenType = WMIP_OPEN_QUERYSET;
+    else if (IoControlCode == IOCTL_WMI_OPEN_GUID_FOR_EVENTS)
+        OpenType = WMIP_OPEN_EVENTS;
+    else
+        OpenType = WMIP_OPEN_PLAIN;
+
+    if ((OpenType == WMIP_OPEN_QUERYSET) && !WmipIsQuerySetGuid(&Guid))
         return STATUS_WMI_GUID_NOT_FOUND;
 
     Status = WmipOpenGuidObject(&Guid,
@@ -424,7 +304,13 @@ WmipOpenGuidBlock(
         return Status;
     }
 
+    Status = WmipAttachConsumer(GuidObject, OpenType, PreviousMode);
     ObDereferenceObject(GuidObject);
+    if (!NT_SUCCESS(Status))
+    {
+        ObCloseHandle(GuidObjectHandle, PreviousMode);
+        return Status;
+    }
 
     OpenBlock->Handle64 = 0;
     OpenBlock->Handle = GuidObjectHandle;
@@ -475,66 +361,213 @@ WmipQueryAllDataIoctl(
     return Status;
 }
 
-/* Bounds of the instance name and data offset of an incoming WNODE_SINGLE_INSTANCE query. */
+/**
+ * @brief Bounds of the name and data block of a WNODE naming one instance.
+ *
+ * Input data must lie inside the input, a WNODE written back must keep its name and data offset in the output.
+ */
 static
 NTSTATUS
-WmipProbeSingleInstance(
-    _In_ PWNODE_SINGLE_INSTANCE Wnode,
+WmipProbeInstanceWnode(
+    _In_ PWNODE_HEADER Wnode,
+    _In_ ULONG MinimumSize,
+    _In_ ULONG NameOffset,
+    _In_ ULONG DataOffset,
+    _In_ ULONG DataSize,
     _In_ ULONG InputLength,
-    _In_ ULONG OutputLength)
+    _In_ ULONG OutputLength,
+    _In_ BOOLEAN CheckOutput,
+    _In_ BOOLEAN CheckInputData)
 {
-    ULONG HeaderSize = FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData);
-    ULONG NameOffset, NameEnd, DataOffset;
+    ULONG NameEnd;
 
-    if ((InputLength < HeaderSize) || (OutputLength < HeaderSize))
-        return STATUS_UNSUCCESSFUL;
-
-    if ((Wnode->WnodeHeader.BufferSize != InputLength) ||
-        !(Wnode->WnodeHeader.Flags & WNODE_FLAG_SINGLE_INSTANCE) ||
-        (Wnode->WnodeHeader.Flags & ~(WNODE_FLAG_SINGLE_INSTANCE | WNODE_FLAG_STATIC_INSTANCE_NAMES)))
+    /* Requests are routed by name, so one has to be there */
+    if ((InputLength < MinimumSize) || (NameOffset < MinimumSize) || (NameOffset & 1) ||
+        (NameOffset > InputLength - sizeof(USHORT)))
     {
         return STATUS_UNSUCCESSFUL;
     }
 
-    NameOffset = Wnode->OffsetInstanceName;
-    if ((NameOffset < HeaderSize) || (NameOffset & 1) || (NameOffset > InputLength - sizeof(USHORT)))
-        return STATUS_UNSUCCESSFUL;
-
     NameEnd = NameOffset + sizeof(USHORT) + *(PUSHORT)((PUCHAR)Wnode + NameOffset);
-    if ((NameEnd > InputLength) || (NameEnd > OutputLength))
+    if ((NameEnd > InputLength) || (CheckOutput && (NameEnd > OutputLength)))
         return STATUS_UNSUCCESSFUL;
 
-    /* The provider writes its data at DataBlockOffset, past the name */
-    DataOffset = Wnode->DataBlockOffset;
-    if ((DataOffset < NameEnd) || (DataOffset & 7) || (DataOffset > OutputLength))
+    if ((DataOffset && (DataOffset < NameEnd)) || (DataOffset & 7))
+        return STATUS_UNSUCCESSFUL;
+
+    if (CheckInputData && DataOffset && ((DataSize > InputLength) || (DataOffset > InputLength - DataSize)))
+        return STATUS_UNSUCCESSFUL;
+
+    if (CheckOutput && ((OutputLength < MinimumSize) || !DataOffset || (DataOffset > OutputLength)))
         return STATUS_UNSUCCESSFUL;
 
     return STATUS_SUCCESS;
 }
 
 /**
- * @brief Handles IOCTL_WMI_QUERY_SINGLE_INSTANCE.
+ * @brief Validates the WNODE of a single instance query, set, item set or method call.
  */
 static
 NTSTATUS
-WmipQuerySingleInstanceIoctl(
+WmipProbeSingleInstanceRequest(
+    _In_ UCHAR MinorFunction,
+    _In_ PVOID Buffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength)
+{
+    PWNODE_SINGLE_INSTANCE Single = Buffer;
+    PWNODE_SINGLE_ITEM Item = Buffer;
+    PWNODE_METHOD_ITEM Method = Buffer;
+    ULONG Flags, Required, Allowed;
+    NTSTATUS Status;
+
+    if (InputLength < sizeof(WNODE_HEADER))
+        return STATUS_UNSUCCESSFUL;
+
+    switch (MinorFunction)
+    {
+        case IRP_MN_QUERY_SINGLE_INSTANCE:
+            Status = WmipProbeInstanceWnode(&Single->WnodeHeader,
+                                            FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData),
+                                            Single->OffsetInstanceName,
+                                            Single->DataBlockOffset,
+                                            Single->SizeDataBlock,
+                                            InputLength,
+                                            OutputLength,
+                                            TRUE,
+                                            FALSE);
+            Required = WNODE_FLAG_SINGLE_INSTANCE;
+            break;
+
+        case IRP_MN_CHANGE_SINGLE_INSTANCE:
+            Status = WmipProbeInstanceWnode(&Single->WnodeHeader,
+                                            FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData),
+                                            Single->OffsetInstanceName,
+                                            Single->DataBlockOffset,
+                                            Single->SizeDataBlock,
+                                            InputLength,
+                                            OutputLength,
+                                            FALSE,
+                                            TRUE);
+            Required = WNODE_FLAG_SINGLE_INSTANCE;
+            break;
+
+        case IRP_MN_CHANGE_SINGLE_ITEM:
+            Status = WmipProbeInstanceWnode(&Item->WnodeHeader,
+                                            FIELD_OFFSET(WNODE_SINGLE_ITEM, VariableData),
+                                            Item->OffsetInstanceName,
+                                            Item->DataBlockOffset,
+                                            Item->SizeDataItem,
+                                            InputLength,
+                                            OutputLength,
+                                            FALSE,
+                                            TRUE);
+            Required = WNODE_FLAG_SINGLE_ITEM;
+            break;
+
+        case IRP_MN_EXECUTE_METHOD:
+            Status = WmipProbeInstanceWnode(&Method->WnodeHeader,
+                                            FIELD_OFFSET(WNODE_METHOD_ITEM, VariableData),
+                                            Method->OffsetInstanceName,
+                                            Method->DataBlockOffset,
+                                            Method->SizeDataBlock,
+                                            InputLength,
+                                            OutputLength,
+                                            TRUE,
+                                            TRUE);
+            Required = WNODE_FLAG_METHOD_ITEM;
+            break;
+
+        default:
+            return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Only the type flag and static instance names may come from user mode */
+    Flags = Single->WnodeHeader.Flags;
+    Allowed = Required | WNODE_FLAG_STATIC_INSTANCE_NAMES;
+    if (!(Flags & Required) || (Flags & ~Allowed) || (Single->WnodeHeader.BufferSize != InputLength))
+        return STATUS_UNSUCCESSFUL;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Handles the single instance query, set, item set and method call IOCTLs.
+ *
+ * Sets are given the input size and return nothing, queries and methods fill the output.
+ */
+static
+NTSTATUS
+WmipSingleInstanceIoctl(
+    _In_ UCHAR MinorFunction,
     _Inout_ PVOID Buffer,
     _In_ ULONG InputLength,
     _Inout_ PULONG OutputLength)
 {
     PWNODE_SINGLE_INSTANCE Wnode = Buffer;
     PWMIP_GUID_OBJECT GuidObject;
-    ULONG ReturnSize;
+    ACCESS_MASK DesiredAccess;
+    ULONG BufferSize, ReturnSize;
+    BOOLEAN IsSet;
     NTSTATUS Status;
 
-    if (*OutputLength < sizeof(WNODE_TOO_SMALL))
+    IsSet = (MinorFunction == IRP_MN_CHANGE_SINGLE_INSTANCE) || (MinorFunction == IRP_MN_CHANGE_SINGLE_ITEM);
+
+    if ((MinorFunction == IRP_MN_QUERY_SINGLE_INSTANCE) && (*OutputLength < sizeof(WNODE_TOO_SMALL)))
         return STATUS_BUFFER_TOO_SMALL;
 
-    Status = WmipProbeSingleInstance(Wnode, InputLength, *OutputLength);
+    Status = WmipProbeSingleInstanceRequest(MinorFunction, Buffer, InputLength, *OutputLength);
     if (!NT_SUCCESS(Status))
         return Status;
 
+    if (IsSet)
+        DesiredAccess = WMIGUID_SET;
+    else if (MinorFunction == IRP_MN_EXECUTE_METHOD)
+        DesiredAccess = WMIGUID_EXECUTE;
+    else
+        DesiredAccess = WMIGUID_QUERY;
+
     Status = ObReferenceObjectByHandle(Wnode->WnodeHeader.KernelHandle,
+                                       DesiredAccess,
+                                       WmipGuidObjectType,
+                                       ExGetPreviousMode(),
+                                       (PVOID *)&GuidObject,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    BufferSize = IsSet ? InputLength : *OutputLength;
+    Status = WmipSendSingleInstanceRequest(GuidObject, MinorFunction, Wnode, BufferSize, &ReturnSize);
+    ObDereferenceObject(GuidObject);
+
+    if (NT_SUCCESS(Status))
+        *OutputLength = IsSet ? 0 : ReturnSize;
+
+    return Status;
+}
+
+/**
+ * @brief Handles IOCTL_WMI_QUERY_GUID_INFO, telling whether a block is expensive to collect.
+ */
+static
+NTSTATUS
+WmipQueryGuidInfoIoctl(
+    _Inout_ PVOID Buffer,
+    _In_ ULONG InputLength,
+    _Inout_ PULONG OutputLength)
+{
+    PWMI_GUID_INFO_QUERY Query = Buffer;
+    PWMIP_GUID_OBJECT GuidObject;
+    BOOLEAN IsExpensive;
+    NTSTATUS Status;
+
+    if ((InputLength < sizeof(*Query)) || (*OutputLength < sizeof(*Query)))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Status = ObReferenceObjectByHandle(Query->Handle,
                                        WMIGUID_QUERY,
                                        WmipGuidObjectType,
                                        ExGetPreviousMode(),
@@ -543,12 +576,88 @@ WmipQuerySingleInstanceIoctl(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Status = WmipQuerySingleInstance(GuidObject, Wnode, *OutputLength, &ReturnSize);
+    /* Plain opens never learn about the providers of their GUID */
+    if (GuidObject->OpenType == WMIP_OPEN_PLAIN)
+    {
+        Status = STATUS_WMI_GUID_DISCONNECTED;
+    }
+    else
+    {
+        Status = WmipQueryGuidExpense(&GuidObject->Guid, &IsExpensive);
+        Query->IsExpensive = IsExpensive;
+    }
+
     ObDereferenceObject(GuidObject);
 
-    if (NT_SUCCESS(Status))
-        *OutputLength = ReturnSize;
+    *OutputLength = sizeof(*Query);
+    return Status;
+}
 
+/**
+ * @brief Handles IOCTL_WMI_TRANSLATE_FILE_HANDLE, the device instance path and base index of a file's device.
+ *
+ * A short output only gets the size needed in SizeNeeded.
+ */
+static
+NTSTATUS
+WmipTranslateFileHandleIoctl(
+    _Inout_ PVOID Buffer,
+    _In_ ULONG InputLength,
+    _Inout_ PULONG OutputLength)
+{
+    PWMI_FILE_HANDLE_NAME Request = Buffer;
+    PWMIP_GUID_OBJECT GuidObject;
+    KPROCESSOR_MODE PreviousMode;
+    UNICODE_STRING InstancePath;
+    PDEVICE_OBJECT Pdo;
+    ULONG BaseIndex, Needed;
+    NTSTATUS Status;
+
+    if (InputLength != FIELD_OFFSET(WMI_FILE_HANDLE_NAME, InstanceNames))
+        return STATUS_UNSUCCESSFUL;
+
+    PreviousMode = ExGetPreviousMode();
+    Status = WmipGetFilePdo((HANDLE)(ULONG_PTR)Request->FileHandle64, PreviousMode, &Pdo);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = ObReferenceObjectByHandle((HANDLE)(ULONG_PTR)Request->KernelHandle64,
+                                       WMIGUID_QUERY,
+                                       WmipGuidObjectType,
+                                       PreviousMode,
+                                       (PVOID *)&GuidObject,
+                                       NULL);
+    if (NT_SUCCESS(Status))
+    {
+        Status = WmipGetPdoInstanceInfo(&GuidObject->Guid, Pdo, &InstancePath, &BaseIndex);
+        ObDereferenceObject(GuidObject);
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        /* The path is followed by two terminators, user mode appends the index */
+        Needed = FIELD_OFFSET(WMI_FILE_HANDLE_NAME, InstanceNames) + InstancePath.Length + 2 * sizeof(WCHAR);
+        if (*OutputLength >= Needed)
+        {
+            Request->BaseIndex = BaseIndex;
+            Request->InstanceNameLength = InstancePath.Length + 2 * sizeof(WCHAR);
+            RtlCopyMemory(Request->InstanceNames, InstancePath.Buffer, InstancePath.Length);
+            Request->InstanceNames[InstancePath.Length / sizeof(WCHAR)] = UNICODE_NULL;
+            Request->InstanceNames[InstancePath.Length / sizeof(WCHAR) + 1] = UNICODE_NULL;
+            *OutputLength = Needed;
+        }
+        else if (*OutputLength >= sizeof(ULONG))
+        {
+            Request->SizeNeeded = Needed;
+            *OutputLength = sizeof(ULONG);
+        }
+        else
+        {
+            Status = STATUS_UNSUCCESSFUL;
+        }
+    }
+
+    ObDereferenceObject(Pdo);
     return Status;
 }
 
@@ -613,9 +722,10 @@ WmipIoControl(
             break;
         }
 
-        case 0x228168:
+        case IOCTL_WMI_MARK_HANDLE_AS_CLOSED:
         {
-            DPRINT1("IOCTL 0x228168 is unimplemented, ignoring\n");
+            /* Handles are torn down when they are closed, nothing to prepare */
+            OutputLength = 0;
             Status = STATUS_SUCCESS;
             break;
         }
@@ -636,7 +746,79 @@ WmipIoControl(
 
         case IOCTL_WMI_QUERY_SINGLE_INSTANCE:
         {
-            Status = WmipQuerySingleInstanceIoctl(Buffer, InputLength, &OutputLength);
+            Status = WmipSingleInstanceIoctl(IRP_MN_QUERY_SINGLE_INSTANCE, Buffer, InputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_SET_SINGLE_INSTANCE:
+        {
+            Status = WmipSingleInstanceIoctl(IRP_MN_CHANGE_SINGLE_INSTANCE, Buffer, InputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_SET_SINGLE_ITEM:
+        {
+            Status = WmipSingleInstanceIoctl(IRP_MN_CHANGE_SINGLE_ITEM, Buffer, InputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_EXECUTE_METHOD:
+        {
+            Status = WmipSingleInstanceIoctl(IRP_MN_EXECUTE_METHOD, Buffer, InputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_GET_VERSION:
+        {
+            if (OutputLength < sizeof(ULONG))
+            {
+                Status = STATUS_BUFFER_TOO_SMALL;
+                break;
+            }
+
+            *(PULONG)Buffer = WMI_KERNEL_INTERFACE_VERSION;
+            OutputLength = sizeof(ULONG);
+            Status = STATUS_SUCCESS;
+            break;
+        }
+
+        case IOCTL_WMI_ENUMERATE_GUIDS:
+        case IOCTL_WMI_ENUMERATE_GUIDS_AND_PROPERTIES:
+        {
+            if (OutputLength < FIELD_OFFSET(WMI_GUID_LIST, Guids))
+            {
+                Status = STATUS_BUFFER_TOO_SMALL;
+                break;
+            }
+
+            Status = WmipEnumerateGuids(Buffer,
+                                        OutputLength,
+                                        IoControlCode == IOCTL_WMI_ENUMERATE_GUIDS_AND_PROPERTIES,
+                                        &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_QUERY_GUID_INFO:
+        {
+            Status = WmipQueryGuidInfoIoctl(Buffer, InputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_ENUMERATE_MOF_RESOURCES:
+        {
+            if (OutputLength < sizeof(WMI_MOF_LIST))
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                break;
+            }
+
+            Status = WmipEnumerateMofResources(Buffer, OutputLength, &OutputLength);
+            break;
+        }
+
+        case IOCTL_WMI_TRANSLATE_FILE_HANDLE:
+        {
+            Status = WmipTranslateFileHandleIoctl(Buffer, InputLength, &OutputLength);
             break;
         }
 
@@ -655,7 +837,6 @@ WmipIoControl(
         default:
             DPRINT1("Unsupported yet IOCTL: 0x%lx\n", IoControlCode);
             Status = STATUS_INVALID_DEVICE_REQUEST;
-            __debugbreak();
             break;
     }
 
@@ -675,8 +856,14 @@ WmipSystemControl(
   _Inout_  PDEVICE_OBJECT DeviceObject,
   _Inout_  PIRP Irp)
 {
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    NTSTATUS Status;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    /* The WMI device registers no data blocks, requests for it end here untouched */
+    Status = Irp->IoStatus.Status;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return Status;
 }
 
 NTSTATUS
@@ -740,7 +927,7 @@ WmipDockUndockEventCallback(
     _In_ PVOID NotificationStructure,
     _Inout_opt_ PVOID Context)
 {
-    UNIMPLEMENTED_DBGBREAK();
+    UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 

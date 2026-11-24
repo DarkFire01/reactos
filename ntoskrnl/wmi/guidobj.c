@@ -89,12 +89,8 @@ WmipDeleteMethod(
 {
     PWMIP_GUID_OBJECT GuidObject = Object;
 
-    /* Check if the object is attached to an IRP */
-    if (GuidObject->Irp != NULL)
-    {
-        /* This is not supported yet */
-        ASSERT(FALSE);
-    }
+    /* Fails a waiting receive IRP and switches the GUID off for its last consumer */
+    WmipDetachConsumer(GuidObject);
 }
 
 VOID
@@ -206,6 +202,8 @@ WmipCreateGuidObject(
 
     RtlZeroMemory(GuidObject, sizeof(*GuidObject));
     KeInitializeEvent(&GuidObject->Event, NotificationEvent, FALSE);
+    InitializeListHead(&GuidObject->ConsumerLink);
+    InitializeListHead(&GuidObject->IrpLink);
     GuidObject->Guid = *Guid;
 
     *OutGuidObject = GuidObject;

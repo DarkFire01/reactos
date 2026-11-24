@@ -142,6 +142,23 @@ typedef struct tagWNODE_METHOD_ITEM
     UCHAR VariableData[];
 } WNODE_METHOD_ITEM, *PWNODE_METHOD_ITEM;
 
+typedef struct tagWNODE_EVENT_ITEM
+{
+    struct _WNODE_HEADER WnodeHeader;
+} WNODE_EVENT_ITEM, *PWNODE_EVENT_ITEM;
+
+typedef struct tagWNODE_EVENT_REFERENCE
+{
+    struct _WNODE_HEADER WnodeHeader;
+    GUID TargetGuid;
+    ULONG TargetDataBlockSize;
+    union
+    {
+        ULONG TargetInstanceIndex;
+        WCHAR TargetInstanceName[1];
+    };
+} WNODE_EVENT_REFERENCE, *PWNODE_EVENT_REFERENCE;
+
 typedef enum
 {
     WMI_GET_ALL_DATA = 0,

@@ -30,12 +30,21 @@
 /* ALIGN_UP_BY goes through ULONG_PTR, sizes here are summed in 64 bits */
 #define WMIP_ALIGN(Value, Align)    (((ULONGLONG)(Value) + ((Align) - 1)) & ~((ULONGLONG)(Align) - 1))
 
+/* Which switch requests a data block has been sent */
+#define WMIP_BLOCK_EVENTS_ON        0x01
+#define WMIP_BLOCK_COLLECTION_ON    0x02
+
+/* Retries of an event reference whose target grew between two queries */
+#define WMIP_EVENT_REFERENCE_TRIES  2
+
 /* One device that called IoWMIRegistrationControl */
 typedef struct _WMIP_PROVIDER
 {
     LIST_ENTRY ProviderLink;
     LIST_ENTRY BlockListHead;
+    LIST_ENTRY MofListHead;
     PDEVICE_OBJECT DeviceObject;
+    ULONG ProviderId;
     LONG RefCount;
     ULONG IrpCount;
     ULONG Flags;
@@ -59,13 +68,41 @@ typedef struct _WMIP_DATA_BLOCK
     PWSTR BaseName;
     PWSTR *StaticNames;
     ULONG NameSpace;
+    PDEVICE_OBJECT Pdo;
+    UCHAR Control;
 } WMIP_DATA_BLOCK, *PWMIP_DATA_BLOCK;
 
+/* A MOF resource named by some provider, shared by every provider naming it */
+typedef struct _WMIP_MOF_RESOURCE
+{
+    LIST_ENTRY MofLink;
+    LONG RefCount;
+    PWSTR RegistryPath;
+    PWSTR ResourceName;
+} WMIP_MOF_RESOURCE, *PWMIP_MOF_RESOURCE;
+
+typedef struct _WMIP_MOF_REFERENCE
+{
+    LIST_ENTRY ProviderMofLink;
+    PWMIP_MOF_RESOURCE Resource;
+} WMIP_MOF_REFERENCE, *PWMIP_MOF_REFERENCE;
+
 static LIST_ENTRY WmipProviderListHead;
+static LIST_ENTRY WmipMofListHead;
 static FAST_MUTEX WmipProviderLock;
+
+/* Also held while the provider list changes, so ids can be looked up at DISPATCH_LEVEL */
+static KSPIN_LOCK WmipProviderIdLock;
+static ULONG WmipLastProviderId;
 
 static WORKER_THREAD_ROUTINE WmipRegInfoWorker;
 static IO_COMPLETION_ROUTINE WmipIrpCompletion;
+
+static
+VOID
+NTAPI
+WmipControlNewBlocks(
+    _Inout_ PWMIP_PROVIDER Provider);
 
 
 /* FUNCTIONS *****************************************************************/
@@ -76,7 +113,9 @@ WmipInitializeProviders(
     VOID)
 {
     InitializeListHead(&WmipProviderListHead);
+    InitializeListHead(&WmipMofListHead);
     ExInitializeFastMutex(&WmipProviderLock);
+    KeInitializeSpinLock(&WmipProviderIdLock);
 }
 
 static
@@ -100,6 +139,7 @@ WmipDereferenceProvider(
         return;
 
     ASSERT(IsListEmpty(&Provider->BlockListHead));
+    ASSERT(IsListEmpty(&Provider->MofListHead));
     ObDereferenceObject(Provider->DeviceObject);
     ExFreePoolWithTag(Provider, TAG_WMI_PROVIDER);
 }
@@ -502,7 +542,10 @@ WmipCreateDataBlock(
         Block->RegFlags &= ~WMIREG_FLAG_INSTANCE_LIST;
         Block->BaseName = WmipPdoBaseName(Pdo);
         if (Block->BaseName)
+        {
             Block->RegFlags |= WMIREG_FLAG_INSTANCE_BASENAME;
+            Block->Pdo = Pdo;
+        }
     }
 
     if (Block->RegFlags & WMIREG_FLAG_INSTANCE_LIST)
@@ -535,6 +578,128 @@ Fail:
     return NULL;
 }
 
+static
+VOID
+WmipReleaseProviderMofsLocked(
+    _Inout_ PWMIP_PROVIDER Provider)
+{
+    PWMIP_MOF_REFERENCE Reference;
+    PWMIP_MOF_RESOURCE Resource;
+    PLIST_ENTRY Entry;
+
+    while (!IsListEmpty(&Provider->MofListHead))
+    {
+        Entry = RemoveHeadList(&Provider->MofListHead);
+        Reference = CONTAINING_RECORD(Entry, WMIP_MOF_REFERENCE, ProviderMofLink);
+        Resource = Reference->Resource;
+        ExFreePoolWithTag(Reference, TAG_WMI_PROVIDER);
+
+        if (--Resource->RefCount == 0)
+        {
+            RemoveEntryList(&Resource->MofLink);
+            ExFreePoolWithTag(Resource, TAG_WMI_PROVIDER);
+        }
+    }
+}
+
+static
+BOOLEAN
+WmipMofNamesMatch(
+    _In_ PWMIP_MOF_RESOURCE Resource,
+    _In_ PCUNICODE_STRING RegistryPath,
+    _In_ PCUNICODE_STRING ResourceName)
+{
+    UNICODE_STRING Path, Name;
+
+    RtlInitUnicodeString(&Path, Resource->RegistryPath);
+    RtlInitUnicodeString(&Name, Resource->ResourceName);
+    return RtlEqualUnicodeString(&Path, RegistryPath, TRUE) &&
+           RtlEqualUnicodeString(&Name, ResourceName, TRUE);
+}
+
+/* Records the MOF resource of one registration record, once per provider. */
+static
+VOID
+NTAPI
+WmipAddMofResource(
+    _Inout_ PWMIP_PROVIDER Provider,
+    _In_ PCUNICODE_STRING RegistryPath,
+    _In_ PCUNICODE_STRING ResourceName)
+{
+    PWMIP_MOF_RESOURCE Resource = NULL, Fresh;
+    PWMIP_MOF_REFERENCE Reference;
+    PLIST_ENTRY Entry;
+    SIZE_T Size;
+
+    if (!RegistryPath->Length || !ResourceName->Length)
+        return;
+
+    /* Built up front, the lock is a fast mutex and the lists are short */
+    Size = sizeof(*Fresh) + RegistryPath->Length + ResourceName->Length + 2 * sizeof(WCHAR);
+    Fresh = ExAllocatePoolWithTag(PagedPool, Size, TAG_WMI_PROVIDER);
+    Reference = ExAllocatePoolWithTag(PagedPool, sizeof(*Reference), TAG_WMI_PROVIDER);
+    if (!Fresh || !Reference)
+    {
+        if (Fresh)
+            ExFreePoolWithTag(Fresh, TAG_WMI_PROVIDER);
+        if (Reference)
+            ExFreePoolWithTag(Reference, TAG_WMI_PROVIDER);
+        return;
+    }
+
+    Fresh->RefCount = 1;
+    Fresh->RegistryPath = (PWSTR)(Fresh + 1);
+    RtlCopyMemory(Fresh->RegistryPath, RegistryPath->Buffer, RegistryPath->Length);
+    Fresh->RegistryPath[RegistryPath->Length / sizeof(WCHAR)] = UNICODE_NULL;
+    Fresh->ResourceName = Fresh->RegistryPath + RegistryPath->Length / sizeof(WCHAR) + 1;
+    RtlCopyMemory(Fresh->ResourceName, ResourceName->Buffer, ResourceName->Length);
+    Fresh->ResourceName[ResourceName->Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    ExAcquireFastMutex(&WmipProviderLock);
+
+    if (Provider->Flags & WMIP_PROVIDER_REMOVED)
+        goto Done;
+
+    for (Entry = Provider->MofListHead.Flink; Entry != &Provider->MofListHead; Entry = Entry->Flink)
+    {
+        if (WmipMofNamesMatch(CONTAINING_RECORD(Entry, WMIP_MOF_REFERENCE, ProviderMofLink)->Resource,
+                              RegistryPath,
+                              ResourceName))
+        {
+            goto Done;
+        }
+    }
+
+    for (Entry = WmipMofListHead.Flink; Entry != &WmipMofListHead; Entry = Entry->Flink)
+    {
+        if (WmipMofNamesMatch(CONTAINING_RECORD(Entry, WMIP_MOF_RESOURCE, MofLink), RegistryPath, ResourceName))
+        {
+            Resource = CONTAINING_RECORD(Entry, WMIP_MOF_RESOURCE, MofLink);
+            Resource->RefCount++;
+            break;
+        }
+    }
+
+    if (!Resource)
+    {
+        Resource = Fresh;
+        Fresh = NULL;
+        InsertTailList(&WmipMofListHead, &Resource->MofLink);
+    }
+
+    Reference->Resource = Resource;
+    InsertTailList(&Provider->MofListHead, &Reference->ProviderMofLink);
+    Reference = NULL;
+
+Done:
+    ExReleaseFastMutex(&WmipProviderLock);
+
+    if (Fresh)
+        ExFreePoolWithTag(Fresh, TAG_WMI_PROVIDER);
+    if (Reference)
+        ExFreePoolWithTag(Reference, TAG_WMI_PROVIDER);
+}
+
 /**
  * @brief Turns a chain of WMIREGINFO records into unattached data blocks.
  */
@@ -542,15 +707,16 @@ static
 NTSTATUS
 NTAPI
 WmipParseRegInfo(
+    _Inout_ PWMIP_PROVIDER Provider,
     _In_reads_bytes_(InfoSize) PWMIREGINFOW Info,
     _In_ ULONG InfoSize,
     _In_ BOOLEAN Extended,
     _Inout_ PLIST_ENTRY BlockListHead)
 {
     NTSTATUS Status = STATUS_INVALID_PARAMETER;
+    UNICODE_STRING Path, MofName;
     PWMIP_DATA_BLOCK Block;
     PWMIREGGUIDW RegGuid;
-    UNICODE_STRING Name;
     PDEVICE_OBJECT Pdo;
     ULONG Remaining, Index, Next;
 
@@ -560,11 +726,14 @@ WmipParseRegInfo(
         if ((Remaining < (ULONG)FIELD_OFFSET(WMIREGINFOW, WmiRegGuid)) ||
             (Info->BufferSize > Remaining) ||
             (Info->GuidCount > (Remaining - FIELD_OFFSET(WMIREGINFOW, WmiRegGuid)) / sizeof(*RegGuid)) ||
-            !WmipGetRegInfoString(Info, Remaining, Info->RegistryPath, &Name) ||
-            !WmipGetRegInfoString(Info, Remaining, Info->MofResourceName, &Name))
+            !WmipGetRegInfoString(Info, Remaining, Info->RegistryPath, &Path) ||
+            !WmipGetRegInfoString(Info, Remaining, Info->MofResourceName, &MofName))
         {
             break;
         }
+
+        /* Windows lists the service key and resource name as given, user mode finds the image */
+        WmipAddMofResource(Provider, &Path, &MofName);
 
         for (Index = 0; Index < Info->GuidCount; Index++)
         {
@@ -594,6 +763,44 @@ WmipParseRegInfo(
     }
 
     return Status;
+}
+
+/* Blocks sharing a GUID and base name number their instances one after the other. */
+static
+ULONG
+WmipNextBaseIndexLocked(
+    _In_ PWMIP_DATA_BLOCK Block)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    UNICODE_STRING Name, OtherName;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Other;
+    ULONG Next = 0;
+
+    RtlInitUnicodeString(&Name, Block->BaseName);
+    for (ProviderEntry = WmipProviderListHead.Flink;
+         ProviderEntry != &WmipProviderListHead;
+         ProviderEntry = ProviderEntry->Flink)
+    {
+        Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+        for (BlockEntry = Provider->BlockListHead.Flink;
+             BlockEntry != &Provider->BlockListHead;
+             BlockEntry = BlockEntry->Flink)
+        {
+            Other = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+            if (!Other->BaseName || !IsEqualGUID(&Other->Guid, &Block->Guid))
+                continue;
+
+            RtlInitUnicodeString(&OtherName, Other->BaseName);
+            if (RtlEqualUnicodeString(&Name, &OtherName, TRUE) &&
+                (Other->BaseIndex + Other->InstanceCount > Next))
+            {
+                Next = Other->BaseIndex + Other->InstanceCount;
+            }
+        }
+    }
+
+    return Next;
 }
 
 /* A first registration replaces everything, an update merges GUID by GUID. */
@@ -630,6 +837,8 @@ WmipApplyBlocksLocked(
             Existing = CONTAINING_RECORD(Entry, WMIP_DATA_BLOCK, BlockLink);
             if (IsEqualGUID(&Existing->Guid, &Block->Guid))
             {
+                /* The replacement inherits whatever the provider was switched to */
+                Block->Control |= Existing->Control;
                 RemoveEntryList(Entry);
                 InsertTailList(Discard, Entry);
             }
@@ -639,6 +848,13 @@ WmipApplyBlocksLocked(
         {
             InsertTailList(Discard, &Block->BlockLink);
             continue;
+        }
+
+        if (Block->BaseName)
+        {
+            Block->BaseIndex = WmipNextBaseIndexLocked(Block);
+            if (Block->BaseIndex + Block->InstanceCount > WMIP_STATIC_INDEX_LIMIT)
+                Block->BaseIndex = 0;
         }
 
         Block->Provider = Provider;
@@ -696,7 +912,7 @@ WmipRegInfoWorker(
                                   &Extended);
         if (NT_SUCCESS(Status))
         {
-            Status = WmipParseRegInfo(Info, InfoSize, Extended, &NewBlocks);
+            Status = WmipParseRegInfo(Provider, Info, InfoSize, Extended, &NewBlocks);
             ExFreePoolWithTag(Info, TAG_WMI_PROVIDER);
         }
 
@@ -718,6 +934,10 @@ WmipRegInfoWorker(
 
         WmipReleaseBlockList(&NewBlocks);
         WmipReleaseBlockList(&Discard);
+
+        /* Consumers that came first get their requests now */
+        if (NT_SUCCESS(Status))
+            WmipControlNewBlocks(Provider);
     } while (Again);
 
     WmipDereferenceProvider(Provider);
@@ -729,6 +949,7 @@ WmipRegisterProvider(
     _In_ PDEVICE_OBJECT DeviceObject)
 {
     PWMIP_PROVIDER Provider;
+    KIRQL OldIrql;
 
     Provider = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Provider), TAG_WMI_PROVIDER);
     if (!Provider)
@@ -736,6 +957,7 @@ WmipRegisterProvider(
 
     RtlZeroMemory(Provider, sizeof(*Provider));
     InitializeListHead(&Provider->BlockListHead);
+    InitializeListHead(&Provider->MofListHead);
     KeInitializeEvent(&Provider->IrpsDrained, NotificationEvent, FALSE);
     Provider->DeviceObject = DeviceObject;
     Provider->RefCount = 1;
@@ -750,7 +972,17 @@ WmipRegisterProvider(
 
     /* The registration information is fetched from a worker, as Windows does */
     ObReferenceObject(DeviceObject);
+    KeAcquireSpinLock(&WmipProviderIdLock, &OldIrql);
+#ifdef _WIN64
+    /* Zero means not registered, so it is never handed out */
+    if (++WmipLastProviderId == 0)
+        ++WmipLastProviderId;
+    Provider->ProviderId = WmipLastProviderId;
+#else
+    Provider->ProviderId = IoWMIDeviceObjectToProviderId(DeviceObject);
+#endif
     InsertTailList(&WmipProviderListHead, &Provider->ProviderLink);
+    KeReleaseSpinLock(&WmipProviderIdLock, OldIrql);
     WmipQueueRegInfoLocked(Provider);
     ExReleaseFastMutex(&WmipProviderLock);
 
@@ -765,6 +997,7 @@ WmipDeregisterProvider(
     PWMIP_PROVIDER Provider;
     LIST_ENTRY Discard;
     BOOLEAN Wait;
+    KIRQL OldIrql;
 
     InitializeListHead(&Discard);
 
@@ -777,8 +1010,11 @@ WmipDeregisterProvider(
     }
 
     Provider->Flags |= WMIP_PROVIDER_REMOVED;
+    KeAcquireSpinLock(&WmipProviderIdLock, &OldIrql);
     RemoveEntryList(&Provider->ProviderLink);
+    KeReleaseSpinLock(&WmipProviderIdLock, OldIrql);
     WmipMoveBlockListLocked(&Provider->BlockListHead, &Discard);
+    WmipReleaseProviderMofsLocked(Provider);
     Wait = (Provider->IrpCount != 0);
     ExReleaseFastMutex(&WmipProviderLock);
 
@@ -1096,7 +1332,7 @@ WmipQueryAllData(
         Current->WnodeHeader.BufferSize = sizeof(WNODE_HEADER);
         Current->WnodeHeader.Flags = Flags | (StaticNames ? WNODE_FLAG_STATIC_INSTANCE_NAMES : 0);
         Current->WnodeHeader.Guid = GuidObject->Guid;
-        Current->WnodeHeader.ProviderId = IoWMIDeviceObjectToProviderId(Block->Provider->DeviceObject);
+        Current->WnodeHeader.ProviderId = Block->Provider->ProviderId;
         Current->WnodeHeader.Linkage = 0;
 
         Status = WmipSendIrp(Block->Provider,
@@ -1246,15 +1482,35 @@ WmipMatchStaticName(
     return TRUE;
 }
 
+
+C_ASSERT(FIELD_OFFSET(WNODE_SINGLE_ITEM, OffsetInstanceName) == FIELD_OFFSET(WNODE_SINGLE_INSTANCE, OffsetInstanceName));
+C_ASSERT(FIELD_OFFSET(WNODE_SINGLE_ITEM, InstanceIndex) == FIELD_OFFSET(WNODE_SINGLE_INSTANCE, InstanceIndex));
+C_ASSERT(FIELD_OFFSET(WNODE_METHOD_ITEM, OffsetInstanceName) == FIELD_OFFSET(WNODE_SINGLE_INSTANCE, OffsetInstanceName));
+C_ASSERT(FIELD_OFFSET(WNODE_METHOD_ITEM, InstanceIndex) == FIELD_OFFSET(WNODE_SINGLE_INSTANCE, InstanceIndex));
+
+/* What a request ends with when no dynamic name provider claims the instance. */
+static
+NTSTATUS
+WmipUnclaimedInstanceStatus(
+    _In_ UCHAR MinorFunction)
+{
+    if ((MinorFunction == IRP_MN_CHANGE_SINGLE_ITEM) || (MinorFunction == IRP_MN_EXECUTE_METHOD))
+        return STATUS_WMI_ITEMID_NOT_FOUND;
+
+    return STATUS_WMI_INSTANCE_NOT_FOUND;
+}
+
 /**
- * @brief Routes a WNODE_SINGLE_INSTANCE query to the provider that owns the named instance.
+ * @brief Routes a request on one named instance to the provider that owns it.
  *
+ * Queries, sets and method calls all carry the name and index at the WNODE_SINGLE_INSTANCE offsets.
  * Static names are resolved here, dynamic name providers are asked in turn until one claims it.
  */
 NTSTATUS
 NTAPI
-WmipQuerySingleInstance(
+WmipSendSingleInstanceRequest(
     _In_ PWMIP_GUID_OBJECT GuidObject,
+    _In_ UCHAR MinorFunction,
     _Inout_updates_bytes_(BufferSize) PWNODE_SINGLE_INSTANCE Wnode,
     _In_ ULONG BufferSize,
     _Out_ PULONG ReturnSize)
@@ -1267,6 +1523,7 @@ WmipQuerySingleInstance(
     ULONG_PTR Information;
     ULONG Count, Index;
     ULONG Instance = 0;
+    BOOLEAN Dynamic = FALSE;
 
     PAGED_CODE();
 
@@ -1295,11 +1552,11 @@ WmipQuerySingleInstance(
     if (Target)
     {
         Wnode->WnodeHeader.Flags |= WNODE_FLAG_STATIC_INSTANCE_NAMES;
-        Wnode->WnodeHeader.ProviderId = IoWMIDeviceObjectToProviderId(Target->Provider->DeviceObject);
+        Wnode->WnodeHeader.ProviderId = Target->Provider->ProviderId;
         Wnode->InstanceIndex = Instance;
 
         Status = WmipSendIrp(Target->Provider,
-                             IRP_MN_QUERY_SINGLE_INSTANCE,
+                             MinorFunction,
                              &Wnode->WnodeHeader.Guid,
                              BufferSize,
                              Wnode,
@@ -1316,9 +1573,15 @@ WmipQuerySingleInstance(
             if (WmipHasStaticNames(Block))
                 continue;
 
-            Wnode->WnodeHeader.ProviderId = IoWMIDeviceObjectToProviderId(Block->Provider->DeviceObject);
+            if (!Dynamic)
+            {
+                Dynamic = TRUE;
+                Status = WmipUnclaimedInstanceStatus(MinorFunction);
+            }
+
+            Wnode->WnodeHeader.ProviderId = Block->Provider->ProviderId;
             ProviderStatus = WmipSendIrp(Block->Provider,
-                                         IRP_MN_QUERY_SINGLE_INSTANCE,
+                                         MinorFunction,
                                          &Wnode->WnodeHeader.Guid,
                                          BufferSize,
                                          Wnode,
@@ -1342,3 +1605,851 @@ WmipQuerySingleInstance(
 
     return Status;
 }
+
+/* Whether a switch request still has to reach a block, collection only concerns expensive ones. */
+static
+BOOLEAN
+WmipBlockNeedsControl(
+    _In_ PWMIP_DATA_BLOCK Block,
+    _In_ UCHAR MinorFunction)
+{
+    if (Block->RegFlags & WMIREG_FLAG_TRACED_GUID)
+        return FALSE;
+
+    switch (MinorFunction)
+    {
+        case IRP_MN_ENABLE_EVENTS:
+            return !(Block->Control & WMIP_BLOCK_EVENTS_ON);
+
+        case IRP_MN_DISABLE_EVENTS:
+            return (Block->Control & WMIP_BLOCK_EVENTS_ON) != 0;
+
+        case IRP_MN_ENABLE_COLLECTION:
+            return (Block->RegFlags & WMIREG_FLAG_EXPENSIVE) && !(Block->Control & WMIP_BLOCK_COLLECTION_ON);
+
+        case IRP_MN_DISABLE_COLLECTION:
+            return (Block->Control & WMIP_BLOCK_COLLECTION_ON) != 0;
+
+        default:
+            return FALSE;
+    }
+}
+
+static
+VOID
+WmipMarkControl(
+    _Inout_ PWMIP_DATA_BLOCK Block,
+    _In_ UCHAR MinorFunction)
+{
+    switch (MinorFunction)
+    {
+        case IRP_MN_ENABLE_EVENTS:
+            Block->Control |= WMIP_BLOCK_EVENTS_ON;
+            break;
+
+        case IRP_MN_DISABLE_EVENTS:
+            Block->Control &= ~WMIP_BLOCK_EVENTS_ON;
+            break;
+
+        case IRP_MN_ENABLE_COLLECTION:
+            Block->Control |= WMIP_BLOCK_COLLECTION_ON;
+            break;
+
+        case IRP_MN_DISABLE_COLLECTION:
+            Block->Control &= ~WMIP_BLOCK_COLLECTION_ON;
+            break;
+    }
+}
+
+/* The switch requests carry a bare WNODE_HEADER naming the GUID, as Windows sends them. */
+static
+VOID
+WmipSendControlIrp(
+    _In_ PWMIP_DATA_BLOCK Block,
+    _In_ UCHAR MinorFunction)
+{
+    ULONG_PTR Information;
+    WNODE_HEADER Header;
+    NTSTATUS Status;
+
+    RtlZeroMemory(&Header, sizeof(Header));
+    Header.BufferSize = sizeof(Header);
+    Header.Guid = Block->Guid;
+
+    Status = WmipSendIrp(Block->Provider,
+                         MinorFunction,
+                         &Header.Guid,
+                         sizeof(Header),
+                         &Header,
+                         &Information);
+    if (!NT_SUCCESS(Status))
+        DPRINT("WMI: switch request %u for %08lx failed: 0x%lx\n", MinorFunction, Block->Guid.Data1, Status);
+}
+
+/**
+ * @brief Sends an enable or disable request to every block of a GUID not already in that state.
+ *
+ * The caller holds the consumer lock, which keeps opposite requests for one GUID in order.
+ */
+VOID
+NTAPI
+WmipControlGuidLocked(
+    _In_ LPCGUID Guid,
+    _In_ UCHAR MinorFunction)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    PWMIP_DATA_BLOCK *Blocks = NULL;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Block;
+    ULONG Count = 0, Filled = 0, Index;
+    BOOLEAN Collect;
+
+    PAGED_CODE();
+
+    ExAcquireFastMutex(&WmipProviderLock);
+
+    for (Collect = FALSE; ; Collect = TRUE)
+    {
+        for (ProviderEntry = WmipProviderListHead.Flink;
+             ProviderEntry != &WmipProviderListHead;
+             ProviderEntry = ProviderEntry->Flink)
+        {
+            Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+            for (BlockEntry = Provider->BlockListHead.Flink;
+                 BlockEntry != &Provider->BlockListHead;
+                 BlockEntry = BlockEntry->Flink)
+            {
+                Block = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+                if (!IsEqualGUID(&Block->Guid, Guid) || !WmipBlockNeedsControl(Block, MinorFunction))
+                    continue;
+
+                if (!Collect)
+                {
+                    Count++;
+                    continue;
+                }
+
+                WmipMarkControl(Block, MinorFunction);
+                InterlockedIncrement(&Block->RefCount);
+                Blocks[Filled++] = Block;
+            }
+        }
+
+        if (Collect || (Count == 0))
+            break;
+
+        Blocks = ExAllocatePoolWithTag(PagedPool, Count * sizeof(*Blocks), TAG_WMI_PROVIDER);
+        if (!Blocks)
+            break;
+    }
+
+    ExReleaseFastMutex(&WmipProviderLock);
+
+    for (Index = 0; Index < Filled; Index++)
+    {
+        WmipSendControlIrp(Blocks[Index], MinorFunction);
+        WmipDereferenceDataBlock(Blocks[Index]);
+    }
+
+    if (Blocks)
+        ExFreePoolWithTag(Blocks, TAG_WMI_PROVIDER);
+}
+
+/* Blocks registered after their consumers opened them are switched on here. */
+static
+VOID
+NTAPI
+WmipControlNewBlocks(
+    _Inout_ PWMIP_PROVIDER Provider)
+{
+    static const UCHAR Requests[] = { IRP_MN_ENABLE_EVENTS, IRP_MN_ENABLE_COLLECTION };
+    PWMIP_DATA_BLOCK Target, Block;
+    PLIST_ENTRY Entry;
+    UCHAR MinorFunction = 0;
+    ULONG OpenType, Index;
+
+    PAGED_CODE();
+
+    /* Nobody listens during boot, which keeps the registration path free of waits */
+    if (!WmipHasAnyConsumer())
+        return;
+
+    WmipAcquireConsumerLock();
+
+    for (;;)
+    {
+        Target = NULL;
+
+        ExAcquireFastMutex(&WmipProviderLock);
+        if (!(Provider->Flags & WMIP_PROVIDER_REMOVED))
+        {
+            for (Entry = Provider->BlockListHead.Flink;
+                 !Target && (Entry != &Provider->BlockListHead);
+                 Entry = Entry->Flink)
+            {
+                Block = CONTAINING_RECORD(Entry, WMIP_DATA_BLOCK, BlockLink);
+                for (Index = 0; Index < RTL_NUMBER_OF(Requests); Index++)
+                {
+                    OpenType = (Requests[Index] == IRP_MN_ENABLE_EVENTS) ? WMIP_OPEN_EVENTS : WMIP_OPEN_QUERYSET;
+                    if (WmipBlockNeedsControl(Block, Requests[Index]) &&
+                        WmipHasConsumerLocked(&Block->Guid, OpenType))
+                    {
+                        MinorFunction = Requests[Index];
+                        WmipMarkControl(Block, MinorFunction);
+                        InterlockedIncrement(&Block->RefCount);
+                        Target = Block;
+                        break;
+                    }
+                }
+            }
+        }
+        ExReleaseFastMutex(&WmipProviderLock);
+
+        if (!Target)
+            break;
+
+        WmipSendControlIrp(Target, MinorFunction);
+        WmipDereferenceDataBlock(Target);
+    }
+
+    WmipReleaseConsumerLock();
+}
+
+NTSTATUS
+NTAPI
+WmipQueryGuidExpense(
+    _In_ LPCGUID Guid,
+    _Out_ PBOOLEAN IsExpensive)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Block;
+
+    *IsExpensive = FALSE;
+
+    ExAcquireFastMutex(&WmipProviderLock);
+    for (ProviderEntry = WmipProviderListHead.Flink;
+         !*IsExpensive && (ProviderEntry != &WmipProviderListHead);
+         ProviderEntry = ProviderEntry->Flink)
+    {
+        Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+        for (BlockEntry = Provider->BlockListHead.Flink;
+             BlockEntry != &Provider->BlockListHead;
+             BlockEntry = BlockEntry->Flink)
+        {
+            Block = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+            if (IsEqualGUID(&Block->Guid, Guid) && (Block->RegFlags & WMIREG_FLAG_EXPENSIVE))
+            {
+                *IsExpensive = TRUE;
+                break;
+            }
+        }
+    }
+    ExReleaseFastMutex(&WmipProviderLock);
+
+    return STATUS_SUCCESS;
+}
+
+/* True for the first block of its GUID in list order, so every GUID is listed once. */
+static
+BOOLEAN
+WmipIsFirstOfGuidLocked(
+    _In_ PWMIP_DATA_BLOCK Target)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Block;
+
+    for (ProviderEntry = WmipProviderListHead.Flink;
+         ProviderEntry != &WmipProviderListHead;
+         ProviderEntry = ProviderEntry->Flink)
+    {
+        Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+        for (BlockEntry = Provider->BlockListHead.Flink;
+             BlockEntry != &Provider->BlockListHead;
+             BlockEntry = BlockEntry->Flink)
+        {
+            Block = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+            if (Block == Target)
+                return TRUE;
+            if (IsEqualGUID(&Block->Guid, &Target->Guid))
+                return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+static
+VOID
+WmipFillGuidPropertiesLocked(
+    _Inout_ PWMI_GUID_PROPERTIES Properties,
+    _In_ LPCGUID Guid)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Block;
+
+    Properties->GuidType = WMI_GUIDTYPE_DATA;
+
+    for (ProviderEntry = WmipProviderListHead.Flink;
+         ProviderEntry != &WmipProviderListHead;
+         ProviderEntry = ProviderEntry->Flink)
+    {
+        Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+        for (BlockEntry = Provider->BlockListHead.Flink;
+             BlockEntry != &Provider->BlockListHead;
+             BlockEntry = BlockEntry->Flink)
+        {
+            Block = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+            if (!IsEqualGUID(&Block->Guid, Guid))
+                continue;
+
+            if (Block->Control)
+                Properties->IsEnabled = TRUE;
+
+            if ((Block->RegFlags & WMIREG_FLAG_TRACED_GUID) &&
+                (Block->RegFlags & WMIREG_FLAG_TRACE_CONTROL_GUID))
+            {
+                Properties->GuidType = WMI_GUIDTYPE_TRACE;
+                return;
+            }
+
+            if (Block->RegFlags & WMIREG_FLAG_EVENT_ONLY_GUID)
+                Properties->GuidType = WMI_GUIDTYPE_EVENT;
+        }
+    }
+}
+
+/**
+ * @brief Lists every registered GUID once, as many as fit, along with the total count.
+ */
+NTSTATUS
+NTAPI
+WmipEnumerateGuids(
+    _Out_writes_bytes_(BufferSize) PWMI_GUID_LIST GuidList,
+    _In_ ULONG BufferSize,
+    _In_ BOOLEAN WithProperties,
+    _Out_ PULONG ReturnSize)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    PWMI_GUID_PROPERTIES Properties;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Block;
+    ULONG Total = 0, Returned = 0, Room;
+
+    Room = (BufferSize - FIELD_OFFSET(WMI_GUID_LIST, Guids)) / sizeof(*Properties);
+
+    ExAcquireFastMutex(&WmipProviderLock);
+    for (ProviderEntry = WmipProviderListHead.Flink;
+         ProviderEntry != &WmipProviderListHead;
+         ProviderEntry = ProviderEntry->Flink)
+    {
+        Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+        for (BlockEntry = Provider->BlockListHead.Flink;
+             BlockEntry != &Provider->BlockListHead;
+             BlockEntry = BlockEntry->Flink)
+        {
+            Block = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+            if (!WmipIsFirstOfGuidLocked(Block))
+                continue;
+
+            Total++;
+            if (Returned >= Room)
+                continue;
+
+            Properties = &GuidList->Guids[Returned++];
+            RtlZeroMemory(Properties, sizeof(*Properties));
+            Properties->Guid = Block->Guid;
+            if (WithProperties)
+                WmipFillGuidPropertiesLocked(Properties, &Block->Guid);
+        }
+    }
+    ExReleaseFastMutex(&WmipProviderLock);
+
+    GuidList->TotalGuidCount = Total;
+    GuidList->ReturnedGuidCount = Returned;
+    *ReturnSize = FIELD_OFFSET(WMI_GUID_LIST, Guids) + Returned * sizeof(*Properties);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Lists the registry path and resource name of every MOF resource providers reported.
+ *
+ * A buffer too small for the list gets the size needed in Count and a return size of one ULONG.
+ */
+NTSTATUS
+NTAPI
+WmipEnumerateMofResources(
+    _Out_writes_bytes_(BufferSize) PWMI_MOF_LIST MofList,
+    _In_ ULONG BufferSize,
+    _Out_ PULONG ReturnSize)
+{
+    PWMIP_MOF_RESOURCE Resource;
+    PWMI_MOF_ENTRY MofEntry;
+    SIZE_T PathSize, NameSize;
+    ULONGLONG Needed;
+    PLIST_ENTRY Entry;
+    ULONG Count = 0, Offset;
+
+    ExAcquireFastMutex(&WmipProviderLock);
+
+    Needed = FIELD_OFFSET(WMI_MOF_LIST, Entries);
+    for (Entry = WmipMofListHead.Flink; Entry != &WmipMofListHead; Entry = Entry->Flink)
+    {
+        Resource = CONTAINING_RECORD(Entry, WMIP_MOF_RESOURCE, MofLink);
+        Count++;
+        Needed += sizeof(*MofEntry) +
+                  (wcslen(Resource->RegistryPath) + wcslen(Resource->ResourceName) + 2) * sizeof(WCHAR);
+    }
+
+    if (Count == 0)
+    {
+        MofList->Count = 0;
+        *ReturnSize = sizeof(*MofList);
+    }
+    else if (Needed > BufferSize)
+    {
+        MofList->Count = (Needed > MAXULONG) ? MAXULONG : (ULONG)Needed;
+        *ReturnSize = sizeof(ULONG);
+    }
+    else
+    {
+        MofList->Count = Count;
+        MofEntry = MofList->Entries;
+        Offset = FIELD_OFFSET(WMI_MOF_LIST, Entries) + Count * sizeof(*MofEntry);
+
+        for (Entry = WmipMofListHead.Flink; Entry != &WmipMofListHead; Entry = Entry->Flink)
+        {
+            Resource = CONTAINING_RECORD(Entry, WMIP_MOF_RESOURCE, MofLink);
+            PathSize = (wcslen(Resource->RegistryPath) + 1) * sizeof(WCHAR);
+            NameSize = (wcslen(Resource->ResourceName) + 1) * sizeof(WCHAR);
+
+            MofEntry->Flags = 0;
+            MofEntry->RegistryPathOffset = Offset;
+            RtlCopyMemory((PUCHAR)MofList + Offset, Resource->RegistryPath, PathSize);
+            Offset += (ULONG)PathSize;
+
+            MofEntry->ResourceNameOffset = Offset;
+            RtlCopyMemory((PUCHAR)MofList + Offset, Resource->ResourceName, NameSize);
+            Offset += (ULONG)NameSize;
+            MofEntry++;
+        }
+
+        *ReturnSize = Offset;
+    }
+
+    ExReleaseFastMutex(&WmipProviderLock);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Finds the base index of the PDO named instances a GUID has for one device.
+ *
+ * InstancePath points into the device node of Pdo, which the caller keeps referenced.
+ */
+NTSTATUS
+NTAPI
+WmipGetPdoInstanceInfo(
+    _In_ LPCGUID Guid,
+    _In_ PDEVICE_OBJECT Pdo,
+    _Out_ PUNICODE_STRING InstancePath,
+    _Out_ PULONG BaseIndex)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    NTSTATUS Status = STATUS_WMI_INSTANCE_NOT_FOUND;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Block;
+    PDEVICE_NODE DeviceNode;
+    UNICODE_STRING Base;
+
+    RtlZeroMemory(InstancePath, sizeof(*InstancePath));
+    *BaseIndex = 0;
+
+    DeviceNode = IopGetDeviceNode(Pdo);
+    if (!DeviceNode || !DeviceNode->InstancePath.Length)
+        return STATUS_INVALID_DEVICE_REQUEST;
+
+    ExAcquireFastMutex(&WmipProviderLock);
+    for (ProviderEntry = WmipProviderListHead.Flink;
+         !NT_SUCCESS(Status) && (ProviderEntry != &WmipProviderListHead);
+         ProviderEntry = ProviderEntry->Flink)
+    {
+        Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+        for (BlockEntry = Provider->BlockListHead.Flink;
+             BlockEntry != &Provider->BlockListHead;
+             BlockEntry = BlockEntry->Flink)
+        {
+            Block = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+            if (!Block->BaseName || !IsEqualGUID(&Block->Guid, Guid))
+                continue;
+
+            /* PDO base names are the instance path followed by an underscore */
+            RtlInitUnicodeString(&Base, Block->BaseName);
+            if ((Base.Length != DeviceNode->InstancePath.Length + sizeof(WCHAR)) ||
+                (Base.Buffer[Base.Length / sizeof(WCHAR) - 1] != L'_'))
+            {
+                continue;
+            }
+
+            Base.Length -= sizeof(WCHAR);
+            if (RtlEqualUnicodeString(&Base, &DeviceNode->InstancePath, TRUE))
+            {
+                *BaseIndex = Block->BaseIndex;
+                Status = STATUS_SUCCESS;
+                break;
+            }
+        }
+    }
+    ExReleaseFastMutex(&WmipProviderLock);
+
+    if (NT_SUCCESS(Status))
+        *InstancePath = DeviceNode->InstancePath;
+
+    return Status;
+}
+
+/* Bytes the counted static name of one instance takes at most. */
+static
+SIZE_T
+WmipStaticNameSize(
+    _In_ PWMIP_DATA_BLOCK Block,
+    _In_ ULONG Index)
+{
+    if (Block->StaticNames)
+        return sizeof(USHORT) + wcslen(Block->StaticNames[Index]) * sizeof(WCHAR);
+
+    /* Base, then a decimal index of up to seven digits */
+    return sizeof(USHORT) + (wcslen(Block->BaseName) + 7) * sizeof(WCHAR);
+}
+
+/* Writes the counted static name of one instance into room sized by WmipStaticNameSize. */
+static
+ULONG
+WmipPutStaticName(
+    _In_ PWMIP_DATA_BLOCK Block,
+    _In_ ULONG Index,
+    _Out_ PUSHORT Counted)
+{
+    WCHAR IndexBuffer[12];
+    UNICODE_STRING IndexString;
+    SIZE_T NameLength;
+    PCWSTR Name;
+
+    Name = Block->StaticNames ? Block->StaticNames[Index] : Block->BaseName;
+    NameLength = wcslen(Name) * sizeof(WCHAR);
+    RtlCopyMemory(Counted + 1, Name, NameLength);
+
+    if (!Block->StaticNames)
+    {
+        RtlInitEmptyUnicodeString(&IndexString, IndexBuffer, sizeof(IndexBuffer));
+        RtlIntegerToUnicodeString(Block->BaseIndex + Index, 10, &IndexString);
+        RtlCopyMemory((PUCHAR)(Counted + 1) + NameLength, IndexBuffer, IndexString.Length);
+        NameLength += IndexString.Length;
+    }
+
+    *Counted = (USHORT)NameLength;
+    return (ULONG)(sizeof(USHORT) + NameLength);
+}
+
+static
+PWMIP_DATA_BLOCK
+WmipFindEventBlockLocked(
+    _In_ LPCGUID Guid,
+    _In_ ULONG ProviderId)
+{
+    PLIST_ENTRY ProviderEntry, BlockEntry;
+    PWMIP_PROVIDER Provider;
+    PWMIP_DATA_BLOCK Block;
+
+    for (ProviderEntry = WmipProviderListHead.Flink;
+         ProviderEntry != &WmipProviderListHead;
+         ProviderEntry = ProviderEntry->Flink)
+    {
+        Provider = CONTAINING_RECORD(ProviderEntry, WMIP_PROVIDER, ProviderLink);
+        if (Provider->ProviderId != ProviderId)
+            continue;
+
+        for (BlockEntry = Provider->BlockListHead.Flink;
+             BlockEntry != &Provider->BlockListHead;
+             BlockEntry = BlockEntry->Flink)
+        {
+            Block = CONTAINING_RECORD(BlockEntry, WMIP_DATA_BLOCK, BlockLink);
+            if (IsEqualGUID(&Block->Guid, Guid))
+                return Block;
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Gives an event fired by instance index the static names its provider registered.
+ *
+ * Returns a copy with the names behind the data, or the event itself when no names apply.
+ */
+static
+PWNODE_HEADER
+NTAPI
+WmipAddEventNames(
+    _Inout_ PWNODE_HEADER Wnode)
+{
+    PWNODE_SINGLE_INSTANCE Single;
+    PWMIP_DATA_BLOCK Block;
+    PWNODE_HEADER Copy = NULL;
+    ULONGLONG Start = 0, Size;
+    ULONG Index = 0;
+
+    if (!(Wnode->Flags & (WNODE_FLAG_ALL_DATA | WNODE_FLAG_SINGLE_INSTANCE | WNODE_FLAG_SINGLE_ITEM)))
+        return Wnode;
+
+    ExAcquireFastMutex(&WmipProviderLock);
+
+    Block = WmipFindEventBlockLocked(&Wnode->Guid, Wnode->ProviderId);
+    if (Block && WmipHasStaticNames(Block))
+    {
+        if (Wnode->Flags & WNODE_FLAG_ALL_DATA)
+        {
+            Start = WMIP_ALIGN(Wnode->BufferSize, sizeof(ULONG));
+            Size = Start + Block->NameSpace;
+            if ((Wnode->BufferSize >= (ULONG)FIELD_OFFSET(WNODE_ALL_DATA, OffsetInstanceDataAndLength)) &&
+                (Size <= MAXULONG))
+            {
+                Copy = ExAllocatePoolWithTag(NonPagedPool, (SIZE_T)Size, TAG_WMI_PROVIDER);
+            }
+
+            if (Copy)
+            {
+                RtlCopyMemory(Copy, Wnode, Wnode->BufferSize);
+                WmipAppendStaticNames((PWNODE_ALL_DATA)Copy, (ULONG)Size, Block);
+            }
+        }
+        else if (Wnode->BufferSize >= (ULONG)FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData))
+        {
+            Index = ((PWNODE_SINGLE_INSTANCE)Wnode)->InstanceIndex;
+            if (Index < Block->InstanceCount)
+            {
+                Start = WMIP_ALIGN(Wnode->BufferSize, sizeof(USHORT));
+                Size = Start + WmipStaticNameSize(Block, Index);
+                if (Size <= MAXULONG)
+                    Copy = ExAllocatePoolWithTag(NonPagedPool, (SIZE_T)Size, TAG_WMI_PROVIDER);
+            }
+
+            if (Copy)
+            {
+                RtlCopyMemory(Copy, Wnode, Wnode->BufferSize);
+                Single = (PWNODE_SINGLE_INSTANCE)Copy;
+                Single->OffsetInstanceName = (ULONG)Start;
+                Copy->BufferSize = (ULONG)Start + WmipPutStaticName(Block, Index, (PUSHORT)((PUCHAR)Copy + Start));
+                if (Block->Pdo)
+                    Copy->Flags |= WNODE_FLAG_PDO_INSTANCE_NAMES;
+            }
+        }
+    }
+
+    ExReleaseFastMutex(&WmipProviderLock);
+
+    if (Copy)
+        return Copy;
+
+    /* Without names the offsets must not point anywhere */
+    if (Wnode->Flags & WNODE_FLAG_ALL_DATA)
+    {
+        if (Wnode->BufferSize >= FIELD_OFFSET(WNODE_ALL_DATA, OffsetInstanceNameOffsets) + sizeof(ULONG))
+            ((PWNODE_ALL_DATA)Wnode)->OffsetInstanceNameOffsets = 0;
+    }
+    else if (Wnode->BufferSize >= FIELD_OFFSET(WNODE_SINGLE_INSTANCE, OffsetInstanceName) + sizeof(ULONG))
+    {
+        ((PWNODE_SINGLE_INSTANCE)Wnode)->OffsetInstanceName = 0;
+    }
+
+    return Wnode;
+}
+
+static
+PWMIP_PROVIDER
+WmipReferenceProviderById(
+    _In_ ULONG ProviderId)
+{
+    PWMIP_PROVIDER Provider;
+    PLIST_ENTRY Entry;
+
+    ExAcquireFastMutex(&WmipProviderLock);
+    for (Entry = WmipProviderListHead.Flink; Entry != &WmipProviderListHead; Entry = Entry->Flink)
+    {
+        Provider = CONTAINING_RECORD(Entry, WMIP_PROVIDER, ProviderLink);
+        if (Provider->ProviderId == ProviderId)
+        {
+            InterlockedIncrement(&Provider->RefCount);
+            ExReleaseFastMutex(&WmipProviderLock);
+            return Provider;
+        }
+    }
+    ExReleaseFastMutex(&WmipProviderLock);
+
+    return NULL;
+}
+
+/**
+ * @brief Turns a WNODE_EVENT_REFERENCE into the data block instance it points at.
+ *
+ * The provider that fired it is queried for the target, growing the buffer once if it asks.
+ */
+static
+PWNODE_HEADER
+NTAPI
+WmipResolveEventReference(
+    _In_ PWNODE_EVENT_REFERENCE Reference)
+{
+    PWNODE_SINGLE_INSTANCE Query = NULL;
+    PWMIP_PROVIDER Provider;
+    ULONGLONG DataOffset, Size;
+    ULONG_PTR Information;
+    ULONG NameBytes = 0, Needed, Try;
+    BOOLEAN ByIndex;
+    NTSTATUS Status;
+
+    if (Reference->WnodeHeader.BufferSize < FIELD_OFFSET(WNODE_EVENT_REFERENCE, TargetInstanceIndex) + sizeof(ULONG))
+        return NULL;
+
+    /* The name form is a counted string in place of the index */
+    ByIndex = (Reference->WnodeHeader.Flags & WNODE_FLAG_STATIC_INSTANCE_NAMES) != 0;
+    if (!ByIndex)
+    {
+        NameBytes = *(PUSHORT)Reference->TargetInstanceName & ~(sizeof(WCHAR) - 1);
+        if (FIELD_OFFSET(WNODE_EVENT_REFERENCE, TargetInstanceName) + sizeof(USHORT) + NameBytes >
+            Reference->WnodeHeader.BufferSize)
+        {
+            return NULL;
+        }
+    }
+
+    DataOffset = WMIP_ALIGN(FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData) +
+                            (ByIndex ? 0 : sizeof(USHORT) + NameBytes), 8);
+    Size = DataOffset + Reference->TargetDataBlockSize;
+    if (Size > MAXULONG)
+        return NULL;
+
+    Provider = WmipReferenceProviderById(Reference->WnodeHeader.ProviderId);
+    if (!Provider)
+        return NULL;
+
+    for (Try = 0; Try < WMIP_EVENT_REFERENCE_TRIES; Try++)
+    {
+        Query = ExAllocatePoolWithTag(NonPagedPool, (SIZE_T)Size, TAG_WMI_PROVIDER);
+        if (!Query)
+            break;
+
+        RtlZeroMemory(Query, (SIZE_T)Size);
+        Query->WnodeHeader.BufferSize = (ULONG)Size;
+        Query->WnodeHeader.ProviderId = Reference->WnodeHeader.ProviderId;
+        Query->WnodeHeader.Version = Reference->WnodeHeader.Version;
+        Query->WnodeHeader.Guid = Reference->TargetGuid;
+        Query->WnodeHeader.Flags = WNODE_FLAG_SINGLE_INSTANCE |
+                                   (ByIndex ? WNODE_FLAG_STATIC_INSTANCE_NAMES : 0);
+        Query->DataBlockOffset = (ULONG)DataOffset;
+
+        if (ByIndex)
+        {
+            Query->InstanceIndex = Reference->TargetInstanceIndex;
+        }
+        else
+        {
+            Query->OffsetInstanceName = FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData);
+            *(PUSHORT)Query->VariableData = (USHORT)NameBytes;
+            RtlCopyMemory(Query->VariableData + sizeof(USHORT), &Reference->TargetInstanceName[1], NameBytes);
+        }
+
+        Status = WmipSendIrp(Provider,
+                             IRP_MN_QUERY_SINGLE_INSTANCE,
+                             &Query->WnodeHeader.Guid,
+                             (ULONG)Size,
+                             Query,
+                             &Information);
+        if (NT_SUCCESS(Status) && !(Query->WnodeHeader.Flags & WNODE_FLAG_TOO_SMALL))
+        {
+            Query->WnodeHeader.Flags |= (Reference->WnodeHeader.Flags & WNODE_FLAG_SEVERITY_MASK) |
+                                        WNODE_FLAG_EVENT_ITEM;
+            break;
+        }
+
+        Needed = NT_SUCCESS(Status) ? ((PWNODE_TOO_SMALL)Query)->SizeNeeded : 0;
+        ExFreePoolWithTag(Query, TAG_WMI_PROVIDER);
+        Query = NULL;
+
+        if (Needed <= Size)
+            break;
+        Size = Needed;
+    }
+
+    WmipDereferenceProvider(Provider);
+    return (PWNODE_HEADER)Query;
+}
+
+/**
+ * @brief Brings a fired event into the form consumers receive.
+ *
+ * Returns the event itself, a copy to release with WmipFreeEventCopy, or NULL to drop it.
+ */
+PWNODE_HEADER
+NTAPI
+WmipPrepareEvent(
+    _In_ PWNODE_HEADER Wnode)
+{
+    PWNODE_HEADER Resolved = Wnode;
+    PWNODE_HEADER Named;
+
+    PAGED_CODE();
+
+    if (Wnode->Flags & WNODE_FLAG_EVENT_REFERENCE)
+    {
+        Resolved = WmipResolveEventReference((PWNODE_EVENT_REFERENCE)Wnode);
+        if (!Resolved)
+            return NULL;
+    }
+
+    if (!(Resolved->Flags & WNODE_FLAG_STATIC_INSTANCE_NAMES))
+        return Resolved;
+
+    Named = WmipAddEventNames(Resolved);
+    if ((Named != Resolved) && (Resolved != Wnode))
+        WmipFreeEventCopy(Resolved);
+
+    return Named;
+}
+
+VOID
+NTAPI
+WmipFreeEventCopy(
+    _In_ PWNODE_HEADER Wnode)
+{
+    ExFreePoolWithTag(Wnode, TAG_WMI_PROVIDER);
+}
+
+#ifdef _WIN64
+/* Drivers stamp WNODE headers with this, at up to DISPATCH_LEVEL */
+ULONG
+NTAPI
+IoWMIDeviceObjectToProviderId(
+    _In_ PDEVICE_OBJECT DeviceObject)
+{
+    PWMIP_PROVIDER Provider;
+    PLIST_ENTRY Entry;
+    ULONG ProviderId = 0;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&WmipProviderIdLock, &OldIrql);
+    for (Entry = WmipProviderListHead.Flink; Entry != &WmipProviderListHead; Entry = Entry->Flink)
+    {
+        Provider = CONTAINING_RECORD(Entry, WMIP_PROVIDER, ProviderLink);
+        if (Provider->DeviceObject == DeviceObject)
+        {
+            ProviderId = Provider->ProviderId;
+            break;
+        }
+    }
+    KeReleaseSpinLock(&WmipProviderIdLock, OldIrql);
+
+    return ProviderId;
+}
+#endif

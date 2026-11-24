@@ -20,6 +20,18 @@
 #include <debug.h>
 
 #define TAG_WMI_QUERY 'QimW'
+#define TAG_WMI_INSTANCE 'IimW'
+
+/* Next free instance identifier of one GUID, see IoWMIAllocateInstanceIds */
+typedef struct _WMIP_INSTANCE_IDS
+{
+    LIST_ENTRY Link;
+    GUID Guid;
+    ULONG Next;
+} WMIP_INSTANCE_IDS, *PWMIP_INSTANCE_IDS;
+
+static LIST_ENTRY WmipInstanceIdListHead;
+static FAST_MUTEX WmipInstanceIdLock;
 
 typedef PVOID PWMI_LOGGER_INFORMATION; // FIXME
 
@@ -91,6 +103,9 @@ WmiInitialize(
 
     /* Providers may register as soon as the WMI device exists */
     WmipInitializeProviders();
+    WmipInitializeConsumers();
+    InitializeListHead(&WmipInstanceIdListHead);
+    ExInitializeFastMutex(&WmipInstanceIdLock);
 
     /* Initialize the GUID object type */
     Status = WmipInitializeGuidObjectType();
@@ -166,66 +181,217 @@ IoWMIRegistrationControl(
     }
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Hands out instance identifiers that stay unique per GUID until reboot.
  */
 NTSTATUS
 NTAPI
-IoWMIAllocateInstanceIds(IN GUID *Guid,
-                         IN ULONG InstanceCount,
-                         OUT ULONG *FirstInstanceId)
+IoWMIAllocateInstanceIds(
+    _In_ GUID *Guid,
+    _In_ ULONG InstanceCount,
+    _Out_ ULONG *FirstInstanceId)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
+    PWMIP_INSTANCE_IDS Ids = NULL;
+    PLIST_ENTRY Entry;
 
-/*
- * @unimplemented
- */
-NTSTATUS
-NTAPI
-IoWMISuggestInstanceName(IN PDEVICE_OBJECT PhysicalDeviceObject OPTIONAL,
-                         IN PUNICODE_STRING SymbolicLinkName OPTIONAL,
-                         IN BOOLEAN CombineNames,
-                         OUT PUNICODE_STRING SuggestedInstanceName)
-{
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
+    PAGED_CODE();
 
-/*
- * @unimplemented
- */
-NTSTATUS
-NTAPI
-IoWMIWriteEvent(_Inout_ PVOID WnodeEventItem)
-{
-    PWNODE_HEADER Header = WnodeEventItem;
+    if (!WmipServiceDeviceObject)
+        return STATUS_UNSUCCESSFUL;
 
-    if(!Header)
+    ExAcquireFastMutex(&WmipInstanceIdLock);
+
+    for (Entry = WmipInstanceIdListHead.Flink; Entry != &WmipInstanceIdListHead; Entry = Entry->Flink)
     {
-        DPRINT1("Got NULL Item!\n");
-        return STATUS_INVALID_PARAMETER;
+        if (IsEqualGUID(&CONTAINING_RECORD(Entry, WMIP_INSTANCE_IDS, Link)->Guid, Guid))
+        {
+            Ids = CONTAINING_RECORD(Entry, WMIP_INSTANCE_IDS, Link);
+            break;
+        }
     }
 
-    DPRINT1("IoWMIWriteEvent() called for WnodeEventItem %p (Flags = 0x%08lx), returning success\n",
-            WnodeEventItem, Header->Flags);
-
-    if (Header->Flags & WNODE_FLAG_TRACED_GUID)
+    if (Ids)
     {
-        // Never free WnodeEventItem in this case.
-        DPRINT("IoWMIWriteEvent(): Flags has WNODE_FLAG_TRACED_GUID\n");
-        return STATUS_SUCCESS;
+        *FirstInstanceId = Ids->Next;
+        Ids->Next += InstanceCount;
+    }
+    else
+    {
+        Ids = ExAllocatePoolWithTag(PagedPool, sizeof(*Ids), TAG_WMI_INSTANCE);
+        if (!Ids)
+        {
+            ExReleaseFastMutex(&WmipInstanceIdLock);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        Ids->Guid = *Guid;
+        Ids->Next = InstanceCount;
+        InsertTailList(&WmipInstanceIdListHead, &Ids->Link);
+        *FirstInstanceId = 0;
     }
 
-    /* Free the buffer if we are returning success */
-    ExFreePool(WnodeEventItem);
-
+    ExReleaseFastMutex(&WmipInstanceIdLock);
     return STATUS_SUCCESS;
 }
 
-/*
- * @unimplemented
+/* Reads the default value of a device interface key, the interface reference string. */
+static
+NTSTATUS
+WmipQueryInterfaceReference(
+    _In_ PUNICODE_STRING SymbolicLinkName,
+    _Outptr_ PKEY_VALUE_FULL_INFORMATION *OutValue,
+    _Out_ PUNICODE_STRING Reference)
+{
+    UNICODE_STRING DefaultName = RTL_CONSTANT_STRING(L"");
+    PKEY_VALUE_FULL_INFORMATION Value = NULL;
+    ULONG Size = 0;
+    NTSTATUS Status;
+    HANDLE Key;
+
+    *OutValue = NULL;
+    RtlZeroMemory(Reference, sizeof(*Reference));
+
+    Status = IoOpenDeviceInterfaceRegistryKey(SymbolicLinkName, KEY_ALL_ACCESS, &Key);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = ZwQueryValueKey(Key, &DefaultName, KeyValueFullInformation, NULL, 0, &Size);
+    if ((Status == STATUS_BUFFER_OVERFLOW) || (Status == STATUS_BUFFER_TOO_SMALL))
+    {
+        Value = ExAllocatePoolWithTag(PagedPool, Size, TAG_WMI_INSTANCE);
+        if (!Value)
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+        else
+            Status = ZwQueryValueKey(Key, &DefaultName, KeyValueFullInformation, Value, Size, &Size);
+    }
+
+    ZwClose(Key);
+
+    if (!NT_SUCCESS(Status))
+    {
+        if (Value)
+            ExFreePoolWithTag(Value, TAG_WMI_INSTANCE);
+        return Status;
+    }
+
+    /* The data is a string, trailing terminators are not part of the name */
+    Reference->Buffer = (PWCH)((PUCHAR)Value + Value->DataOffset);
+    Size = min(Value->DataLength, MAXUSHORT) & ~(sizeof(WCHAR) - 1);
+    while ((Size >= sizeof(WCHAR)) && (Reference->Buffer[Size / sizeof(WCHAR) - 1] == UNICODE_NULL))
+        Size -= sizeof(WCHAR);
+    Reference->Length = Reference->MaximumLength = (USHORT)Size;
+
+    *OutValue = Value;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Suggests an instance name from the device description, the interface reference or both.
+ *
+ * The caller frees SuggestedInstanceName->Buffer with ExFreePool.
+ */
+NTSTATUS
+NTAPI
+IoWMISuggestInstanceName(
+    _In_opt_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_opt_ PUNICODE_STRING SymbolicLinkName,
+    _In_ BOOLEAN CombineNames,
+    _Out_ PUNICODE_STRING SuggestedInstanceName)
+{
+    NTSTATUS Status = STATUS_INVALID_PARAMETER_MIX;
+    PKEY_VALUE_FULL_INFORMATION Value;
+    UNICODE_STRING Reference;
+    PWSTR Description = NULL;
+    ULONG DescriptionSize = 0;
+    ULONG Size;
+
+    PAGED_CODE();
+
+    if (!WmipServiceDeviceObject)
+        return STATUS_UNSUCCESSFUL;
+
+    RtlZeroMemory(SuggestedInstanceName, sizeof(*SuggestedInstanceName));
+
+    if (PhysicalDeviceObject)
+    {
+        Status = IoGetDeviceProperty(PhysicalDeviceObject,
+                                     DevicePropertyDeviceDescription,
+                                     0,
+                                     NULL,
+                                     &DescriptionSize);
+        if (Status != STATUS_BUFFER_TOO_SMALL)
+            return NT_SUCCESS(Status) ? STATUS_UNSUCCESSFUL : Status;
+
+        if (DescriptionSize > MAXUSHORT)
+            return STATUS_INVALID_PARAMETER;
+
+        Description = ExAllocatePoolWithTag(PagedPool, DescriptionSize, TAG_WMI_INSTANCE);
+        if (!Description)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Status = IoGetDeviceProperty(PhysicalDeviceObject,
+                                     DevicePropertyDeviceDescription,
+                                     DescriptionSize,
+                                     Description,
+                                     &DescriptionSize);
+        if (!NT_SUCCESS(Status) || (DescriptionSize < sizeof(WCHAR)))
+        {
+            ExFreePoolWithTag(Description, TAG_WMI_INSTANCE);
+            return NT_SUCCESS(Status) ? STATUS_UNSUCCESSFUL : Status;
+        }
+    }
+
+    /* The description alone is handed over as it came */
+    if (!SymbolicLinkName)
+    {
+        if (Description)
+        {
+            SuggestedInstanceName->Buffer = Description;
+            SuggestedInstanceName->MaximumLength = (USHORT)DescriptionSize;
+            SuggestedInstanceName->Length = (USHORT)(DescriptionSize - sizeof(WCHAR));
+        }
+        return Status;
+    }
+
+    Status = WmipQueryInterfaceReference(SymbolicLinkName, &Value, &Reference);
+    if (NT_SUCCESS(Status))
+    {
+        Size = Reference.Length + sizeof(UNICODE_NULL);
+        if (CombineNames)
+            Size += DescriptionSize + sizeof(WCHAR);
+
+        SuggestedInstanceName->Buffer = (Size <= MAXUSHORT) ?
+                                        ExAllocatePoolWithTag(PagedPool, Size, TAG_WMI_INSTANCE) : NULL;
+        if (SuggestedInstanceName->Buffer)
+        {
+            SuggestedInstanceName->MaximumLength = (USHORT)Size;
+            if (CombineNames)
+            {
+                if (Description)
+                    RtlAppendUnicodeToString(SuggestedInstanceName, Description);
+                RtlAppendUnicodeToString(SuggestedInstanceName, L"_");
+            }
+            RtlAppendUnicodeStringToString(SuggestedInstanceName, &Reference);
+            SuggestedInstanceName->Buffer[SuggestedInstanceName->Length / sizeof(WCHAR)] = UNICODE_NULL;
+        }
+        else
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        ExFreePoolWithTag(Value, TAG_WMI_INSTANCE);
+    }
+
+    if (Description)
+        ExFreePoolWithTag(Description, TAG_WMI_INSTANCE);
+
+    return Status;
+}
+
+/**
+ * @brief Opens a data block for a driver, the returned object is released with ObDereferenceObject.
+ *
+ * WMIGUID_NOTIFICATION makes an event consumer, WRITE_DAC a plain open, anything else a query open.
  */
 NTSTATUS
 NTAPI
@@ -234,22 +400,47 @@ IoWMIOpenBlock(
     _In_ ULONG DesiredAccess,
     _Out_ PVOID *DataBlockObject)
 {
+    PWMIP_GUID_OBJECT GuidObject;
     HANDLE GuidObjectHandle;
+    ULONG OpenType;
     NTSTATUS Status;
 
-    /* Open the GIOD object */
+    PAGED_CODE();
+
+    *DataBlockObject = NULL;
+
+    if (DesiredAccess & WMIGUID_NOTIFICATION)
+        OpenType = WMIP_OPEN_EVENTS;
+    else if (DesiredAccess & WRITE_DAC)
+        OpenType = WMIP_OPEN_PLAIN;
+    else
+        OpenType = WMIP_OPEN_QUERYSET;
+
+    if ((OpenType == WMIP_OPEN_QUERYSET) && !WmipIsQuerySetGuid(DataBlockGuid))
+        return STATUS_WMI_GUID_NOT_FOUND;
+
     Status = WmipOpenGuidObject(DataBlockGuid,
                                 DesiredAccess,
                                 KernelMode,
                                 &GuidObjectHandle,
-                                DataBlockObject);
+                                (PVOID *)&GuidObject);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WmipOpenGuidObject failed: 0x%lx\n", Status);
         return Status;
     }
 
+    /* Drivers hold the object itself, not a handle */
+    ObCloseHandle(GuidObjectHandle, KernelMode);
 
+    Status = WmipAttachConsumer(GuidObject, OpenType, KernelMode);
+    if (!NT_SUCCESS(Status))
+    {
+        ObDereferenceObject(GuidObject);
+        return Status;
+    }
+
+    *DataBlockObject = GuidObject;
     return STATUS_SUCCESS;
 }
 
@@ -333,18 +524,47 @@ IoWMIQueryAllData(
     return Status;
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Allocates a WNODE for one named instance with room for DataSize bytes behind the name.
+ *
+ * The header up to VariableData is zeroed, the name is in place and the data starts eight byte aligned.
  */
+static
 NTSTATUS
-NTAPI
-IoWMIQueryAllDataMultiple(IN PVOID *DataBlockObjectList,
-                          IN ULONG ObjectCount,
-                          IN OUT ULONG *InOutBufferSize,
-                          OUT PVOID OutBuffer)
+WmipAllocateInstanceWnode(
+    _In_ ULONG HeaderSize,
+    _In_ PCUNICODE_STRING InstanceName,
+    _In_ ULONG DataSize,
+    _Out_ PULONG DataOffset,
+    _Out_ PULONG WnodeSize,
+    _Outptr_ PWNODE_SINGLE_INSTANCE *OutWnode)
 {
-    /* No data provider ever registers a block here, so none is found */
-    return STATUS_WMI_GUID_NOT_FOUND;
+    PWNODE_SINGLE_INSTANCE Wnode;
+    ULONGLONG Offset, Size;
+
+    *OutWnode = NULL;
+
+    if (!InstanceName || !InstanceName->Buffer)
+        return STATUS_INVALID_PARAMETER;
+
+    Offset = ALIGN_UP_BY((ULONGLONG)HeaderSize + sizeof(USHORT) + InstanceName->Length, 8);
+    Size = Offset + DataSize;
+    if (Size > MAXULONG)
+        return STATUS_INVALID_PARAMETER;
+
+    Wnode = ExAllocatePoolWithTag(NonPagedPool, (SIZE_T)Size, TAG_WMI_QUERY);
+    if (!Wnode)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlZeroMemory(Wnode, HeaderSize);
+    Wnode->OffsetInstanceName = HeaderSize;
+    *(PUSHORT)((PUCHAR)Wnode + HeaderSize) = InstanceName->Length;
+    RtlCopyMemory((PUCHAR)Wnode + HeaderSize + sizeof(USHORT), InstanceName->Buffer, InstanceName->Length);
+
+    *DataOffset = (ULONG)Offset;
+    *WnodeSize = (ULONG)Size;
+    *OutWnode = Wnode;
+    return STATUS_SUCCESS;
 }
 
 /**
@@ -394,7 +614,11 @@ IoWMIQuerySingleInstance(
     *(PUSHORT)Wnode->VariableData = InstanceName->Length;
     RtlCopyMemory(Wnode->VariableData + sizeof(USHORT), InstanceName->Buffer, InstanceName->Length);
 
-    Status = WmipQuerySingleInstance(DataBlockObject, Wnode, BufferSize, &ReturnSize);
+    Status = WmipSendSingleInstanceRequest(DataBlockObject,
+                                           IRP_MN_QUERY_SINGLE_INSTANCE,
+                                           Wnode,
+                                           BufferSize,
+                                           &ReturnSize);
     if (NT_SUCCESS(Status))
     {
         if (Wnode->WnodeHeader.Flags & WNODE_FLAG_TOO_SMALL)
@@ -417,115 +641,433 @@ IoWMIQuerySingleInstance(
     return Status;
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Runs one query per data block and chains the results through WNODE_HEADER.Linkage.
+ *
+ * With InstanceNames every block is asked for one instance, otherwise for all its data.
+ * Results that no longer fit only add to the size reported with STATUS_BUFFER_TOO_SMALL.
  */
+static
 NTSTATUS
-NTAPI
-IoWMIQuerySingleInstanceMultiple(IN PVOID *DataBlockObjectList,
-                                 IN PUNICODE_STRING InstanceNames,
-                                 IN ULONG ObjectCount,
-                                 IN OUT ULONG *InOutBufferSize,
-                                 OUT PVOID OutBuffer)
+WmipQueryMultiple(
+    _In_reads_(ObjectCount) PVOID *DataBlockObjectList,
+    _In_reads_opt_(ObjectCount) PUNICODE_STRING InstanceNames,
+    _In_ ULONG ObjectCount,
+    _Inout_ ULONG *InOutBufferSize,
+    _Out_writes_bytes_opt_(*InOutBufferSize) PVOID OutBuffer)
 {
-    /* No data provider ever registers a block here, so none is found */
-    return STATUS_WMI_GUID_NOT_FOUND;
-}
+    PWNODE_HEADER Previous = NULL, Last;
+    PUCHAR Cursor = OutBuffer;
+    BOOLEAN Found = FALSE, TooSmall = FALSE;
+    ULONGLONG Needed = 0, Aligned;
+    ULONG Left, Size, Index;
+    NTSTATUS Status;
+    PVOID Target;
 
-/*
- * @unimplemented
- */
-NTSTATUS
-NTAPI
-IoWMISetSingleInstance(IN PVOID DataBlockObject,
-                       IN PUNICODE_STRING InstanceName,
-                       IN ULONG Version,
-                       IN ULONG ValueBufferSize,
-                       IN PVOID ValueBuffer)
-{
-    /* No data provider ever registers a block here, so none is found */
-    return STATUS_WMI_GUID_NOT_FOUND;
-}
+    PAGED_CODE();
 
-/*
- * @unimplemented
- */
-NTSTATUS
-NTAPI
-IoWMISetSingleItem(IN PVOID DataBlockObject,
-                   IN PUNICODE_STRING InstanceName,
-                   IN ULONG DataItemId,
-                   IN ULONG Version,
-                   IN ULONG ValueBufferSize,
-                   IN PVOID ValueBuffer)
-{
-    /* No data provider ever registers a block here, so none is found */
-    return STATUS_WMI_GUID_NOT_FOUND;
-}
+    Left = OutBuffer ? *InOutBufferSize : 0;
 
-/*
- * @unimplemented
- */
-NTSTATUS
-NTAPI
-IoWMIExecuteMethod(IN PVOID DataBlockObject,
-                   IN PUNICODE_STRING InstanceName,
-                   IN ULONG MethodId,
-                   IN ULONG InBufferSize,
-                   IN OUT PULONG OutBufferSize,
-                   IN OUT PUCHAR InOutBuffer)
-{
-    /* No data provider ever registers a block here, so none is found */
-    return STATUS_WMI_GUID_NOT_FOUND;
-}
+    for (Index = 0; Index < ObjectCount; Index++)
+    {
+        Target = (TooSmall || !Left) ? NULL : Cursor;
+        Size = Target ? Left : 0;
 
-static KSPIN_LOCK WmipNotificationLock;
+        if (InstanceNames)
+            Status = IoWMIQuerySingleInstance(DataBlockObjectList[Index], &InstanceNames[Index], &Size, Target);
+        else
+            Status = IoWMIQueryAllData(DataBlockObjectList[Index], &Size, Target);
+
+        if ((Status != STATUS_BUFFER_TOO_SMALL) && !NT_SUCCESS(Status))
+            continue;
+
+        Found = TRUE;
+        Aligned = ALIGN_UP_BY((ULONGLONG)Size, 8);
+        Needed += Aligned;
+
+        /* From here on the remaining blocks only report their size */
+        if ((Status == STATUS_BUFFER_TOO_SMALL) || !Target)
+        {
+            TooSmall = TRUE;
+            continue;
+        }
+
+        if (Previous)
+            Previous->Linkage = (ULONG)(Cursor - (PUCHAR)Previous);
+
+        /* An all data result can itself be a chain, the next one hangs off its end */
+        Last = (PWNODE_HEADER)Cursor;
+        while (Last->Linkage)
+            Last = (PWNODE_HEADER)((PUCHAR)Last + Last->Linkage);
+        Previous = Last;
+
+        if (Aligned > Left)
+            Aligned = Left;
+        Cursor += (ULONG)Aligned;
+        Left -= (ULONG)Aligned;
+    }
+
+    if (!Found)
+        return STATUS_WMI_GUID_NOT_FOUND;
+
+    *InOutBufferSize = (Needed > MAXULONG) ? MAXULONG : (ULONG)Needed;
+    return TooSmall ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
+}
 
 /**
- * @brief Records the routine that receives the events of an opened WMI data block.
+ * @brief Queries one named instance of each of several data blocks at once.
  */
 NTSTATUS
 NTAPI
-IoWMISetNotificationCallback(
-    _Inout_ PVOID Object,
-    _In_ WMI_NOTIFICATION_CALLBACK Callback,
-    _In_opt_ PVOID Context)
+IoWMIQuerySingleInstanceMultiple(
+    _In_reads_(ObjectCount) PVOID *DataBlockObjectList,
+    _In_reads_(ObjectCount) PUNICODE_STRING InstanceNames,
+    _In_ ULONG ObjectCount,
+    _Inout_ ULONG *InOutBufferSize,
+    _Out_writes_bytes_opt_(*InOutBufferSize) PVOID OutBuffer)
 {
-    PWMIP_GUID_OBJECT GuidObject = Object;
-    KIRQL OldIrql;
+    if (!InstanceNames)
+        return STATUS_INVALID_PARAMETER;
 
-    KeAcquireSpinLock(&WmipNotificationLock, &OldIrql);
-    GuidObject->NotificationCallback = Callback;
-    GuidObject->NotificationContext = Context;
-    KeReleaseSpinLock(&WmipNotificationLock, OldIrql);
-
-    return STATUS_SUCCESS;
+    return WmipQueryMultiple(DataBlockObjectList, InstanceNames, ObjectCount, InOutBufferSize, OutBuffer);
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Queries all data of several data blocks at once.
  */
 NTSTATUS
 NTAPI
-IoWMIHandleToInstanceName(IN PVOID DataBlockObject,
-                          IN HANDLE FileHandle,
-                          OUT PUNICODE_STRING InstanceName)
+IoWMIQueryAllDataMultiple(
+    _In_reads_(ObjectCount) PVOID *DataBlockObjectList,
+    _In_ ULONG ObjectCount,
+    _Inout_ ULONG *InOutBufferSize,
+    _Out_writes_bytes_opt_(*InOutBufferSize) PVOID OutBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    return WmipQueryMultiple(DataBlockObjectList, NULL, ObjectCount, InOutBufferSize, OutBuffer);
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Replaces the data of one named instance for a kernel mode caller.
  */
 NTSTATUS
 NTAPI
-IoWMIDeviceObjectToInstanceName(IN PVOID DataBlockObject,
-                                IN PDEVICE_OBJECT DeviceObject,
-                                OUT PUNICODE_STRING InstanceName)
+IoWMISetSingleInstance(
+    _In_ PVOID DataBlockObject,
+    _In_ PUNICODE_STRING InstanceName,
+    _In_ ULONG Version,
+    _In_ ULONG ValueBufferSize,
+    _In_reads_bytes_(ValueBufferSize) PVOID ValueBuffer)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    PWNODE_SINGLE_INSTANCE Wnode;
+    ULONG DataOffset, WnodeSize, ReturnSize;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = ObReferenceObjectByPointer(DataBlockObject, WMIGUID_SET, WmipGuidObjectType, KernelMode);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = WmipAllocateInstanceWnode(FIELD_OFFSET(WNODE_SINGLE_INSTANCE, VariableData),
+                                       InstanceName,
+                                       ValueBufferSize,
+                                       &DataOffset,
+                                       &WnodeSize,
+                                       &Wnode);
+    if (NT_SUCCESS(Status))
+    {
+        Wnode->WnodeHeader.BufferSize = WnodeSize;
+        Wnode->WnodeHeader.Version = Version;
+        Wnode->WnodeHeader.Flags = WNODE_FLAG_SINGLE_INSTANCE;
+        Wnode->DataBlockOffset = DataOffset;
+        Wnode->SizeDataBlock = ValueBufferSize;
+        RtlCopyMemory((PUCHAR)Wnode + DataOffset, ValueBuffer, ValueBufferSize);
+
+        Status = WmipSendSingleInstanceRequest(DataBlockObject,
+                                               IRP_MN_CHANGE_SINGLE_INSTANCE,
+                                               Wnode,
+                                               WnodeSize,
+                                               &ReturnSize);
+        ExFreePoolWithTag(Wnode, TAG_WMI_QUERY);
+    }
+
+    ObDereferenceObject(DataBlockObject);
+    return Status;
+}
+
+/**
+ * @brief Replaces one data item of one named instance for a kernel mode caller.
+ */
+NTSTATUS
+NTAPI
+IoWMISetSingleItem(
+    _In_ PVOID DataBlockObject,
+    _In_ PUNICODE_STRING InstanceName,
+    _In_ ULONG DataItemId,
+    _In_ ULONG Version,
+    _In_ ULONG ValueBufferSize,
+    _In_reads_bytes_(ValueBufferSize) PVOID ValueBuffer)
+{
+    PWNODE_SINGLE_ITEM Wnode;
+    ULONG DataOffset, WnodeSize, ReturnSize;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = ObReferenceObjectByPointer(DataBlockObject, WMIGUID_SET, WmipGuidObjectType, KernelMode);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = WmipAllocateInstanceWnode(FIELD_OFFSET(WNODE_SINGLE_ITEM, VariableData),
+                                       InstanceName,
+                                       ValueBufferSize,
+                                       &DataOffset,
+                                       &WnodeSize,
+                                       (PWNODE_SINGLE_INSTANCE *)&Wnode);
+    if (NT_SUCCESS(Status))
+    {
+        Wnode->WnodeHeader.BufferSize = WnodeSize;
+        Wnode->WnodeHeader.Version = Version;
+        Wnode->WnodeHeader.Flags = WNODE_FLAG_SINGLE_ITEM;
+        Wnode->ItemId = DataItemId;
+        Wnode->DataBlockOffset = DataOffset;
+        Wnode->SizeDataItem = ValueBufferSize;
+        RtlCopyMemory((PUCHAR)Wnode + DataOffset, ValueBuffer, ValueBufferSize);
+
+        Status = WmipSendSingleInstanceRequest(DataBlockObject,
+                                               IRP_MN_CHANGE_SINGLE_ITEM,
+                                               (PWNODE_SINGLE_INSTANCE)Wnode,
+                                               WnodeSize,
+                                               &ReturnSize);
+        ExFreePoolWithTag(Wnode, TAG_WMI_QUERY);
+    }
+
+    ObDereferenceObject(DataBlockObject);
+    return Status;
+}
+
+/**
+ * @brief Runs a method of one named instance, the output replaces the input in InOutBuffer.
+ *
+ * An output larger than *OutBufferSize fails with STATUS_BUFFER_TOO_SMALL and the size needed.
+ */
+NTSTATUS
+NTAPI
+IoWMIExecuteMethod(
+    _In_ PVOID DataBlockObject,
+    _In_ PUNICODE_STRING InstanceName,
+    _In_ ULONG MethodId,
+    _In_ ULONG InBufferSize,
+    _Inout_ PULONG OutBufferSize,
+    _Inout_updates_bytes_to_opt_(*OutBufferSize, InBufferSize) PUCHAR InOutBuffer)
+{
+    PWNODE_METHOD_ITEM Wnode;
+    ULONG DataOffset, WnodeSize, ReturnSize, Needed;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = ObReferenceObjectByPointer(DataBlockObject, WMIGUID_EXECUTE, WmipGuidObjectType, KernelMode);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = WmipAllocateInstanceWnode(FIELD_OFFSET(WNODE_METHOD_ITEM, VariableData),
+                                       InstanceName,
+                                       max(InBufferSize, *OutBufferSize),
+                                       &DataOffset,
+                                       &WnodeSize,
+                                       (PWNODE_SINGLE_INSTANCE *)&Wnode);
+    if (!NT_SUCCESS(Status))
+    {
+        ObDereferenceObject(DataBlockObject);
+        return Status;
+    }
+
+    Wnode->WnodeHeader.BufferSize = WnodeSize;
+    Wnode->WnodeHeader.Flags = WNODE_FLAG_METHOD_ITEM;
+    Wnode->MethodId = MethodId;
+    Wnode->DataBlockOffset = DataOffset;
+    Wnode->SizeDataBlock = InBufferSize;
+    if (InBufferSize)
+        RtlCopyMemory((PUCHAR)Wnode + DataOffset, InOutBuffer, InBufferSize);
+
+    Status = WmipSendSingleInstanceRequest(DataBlockObject,
+                                           IRP_MN_EXECUTE_METHOD,
+                                           (PWNODE_SINGLE_INSTANCE)Wnode,
+                                           WnodeSize,
+                                           &ReturnSize);
+    if (NT_SUCCESS(Status))
+    {
+        if (Wnode->WnodeHeader.Flags & WNODE_FLAG_TOO_SMALL)
+            Needed = ((PWNODE_TOO_SMALL)Wnode)->SizeNeeded - DataOffset;
+        else
+            Needed = Wnode->SizeDataBlock;
+
+        if ((Wnode->WnodeHeader.Flags & WNODE_FLAG_TOO_SMALL) || (Needed > *OutBufferSize))
+        {
+            *OutBufferSize = (ULONG)ALIGN_UP_BY(Needed, 8);
+            Status = STATUS_BUFFER_TOO_SMALL;
+        }
+        else
+        {
+            *OutBufferSize = Needed;
+            RtlCopyMemory(InOutBuffer, (PUCHAR)Wnode + Wnode->DataBlockOffset, Needed);
+        }
+    }
+
+    ExFreePoolWithTag(Wnode, TAG_WMI_QUERY);
+    ObDereferenceObject(DataBlockObject);
+    return Status;
+}
+
+/**
+ * @brief Finds the device object at the bottom of the stack a file was opened on.
+ *
+ * Asks the stack for its target device relation, the PDO comes back referenced.
+ */
+NTSTATUS
+NTAPI
+WmipGetFilePdo(
+    _In_ HANDLE FileHandle,
+    _In_ KPROCESSOR_MODE AccessMode,
+    _Outptr_ PDEVICE_OBJECT *Pdo)
+{
+    PDEVICE_RELATIONS Relations;
+    PDEVICE_OBJECT TopDevice;
+    PFILE_OBJECT FileObject;
+    PIO_STACK_LOCATION Stack;
+    IO_STATUS_BLOCK IoStatus;
+    NTSTATUS Status;
+    KEVENT Event;
+    PIRP Irp;
+
+    PAGED_CODE();
+
+    *Pdo = NULL;
+
+    Status = ObReferenceObjectByHandle(FileHandle,
+                                       0,
+                                       IoFileObjectType,
+                                       AccessMode,
+                                       (PVOID *)&FileObject,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    TopDevice = IoGetAttachedDeviceReference(IoGetRelatedDeviceObject(FileObject));
+
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, TopDevice, NULL, 0, NULL, &Event, &IoStatus);
+    if (!Irp)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+    }
+    else
+    {
+        Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+        Stack = IoGetNextIrpStackLocation(Irp);
+        Stack->MinorFunction = IRP_MN_QUERY_DEVICE_RELATIONS;
+        Stack->Parameters.QueryDeviceRelations.Type = TargetDeviceRelation;
+        Stack->FileObject = FileObject;
+
+        Status = IoCallDriver(TopDevice, Irp);
+        if (Status == STATUS_PENDING)
+        {
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+            Status = IoStatus.Status;
+        }
+
+        if (NT_SUCCESS(Status))
+        {
+            Relations = (PDEVICE_RELATIONS)IoStatus.Information;
+            if (Relations && Relations->Count)
+                *Pdo = Relations->Objects[0];
+            else
+                Status = STATUS_UNSUCCESSFUL;
+
+            if (Relations)
+                ExFreePool(Relations);
+        }
+    }
+
+    ObDereferenceObject(TopDevice);
+    ObDereferenceObject(FileObject);
+    return Status;
+}
+
+/**
+ * @brief Builds the PDO based instance name a data block uses for the device of a file.
+ */
+NTSTATUS
+NTAPI
+IoWMIHandleToInstanceName(
+    _In_ PVOID DataBlockObject,
+    _In_ HANDLE FileHandle,
+    _Out_ PUNICODE_STRING InstanceName)
+{
+    PDEVICE_OBJECT Pdo;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = WmipGetFilePdo(FileHandle, KernelMode, &Pdo);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = IoWMIDeviceObjectToInstanceName(DataBlockObject, Pdo, InstanceName);
+    ObDereferenceObject(Pdo);
+    return Status;
+}
+
+/**
+ * @brief Builds the PDO based instance name, device instance path and index, a data block uses for a device.
+ *
+ * The caller frees InstanceName->Buffer with ExFreePool.
+ */
+NTSTATUS
+NTAPI
+IoWMIDeviceObjectToInstanceName(
+    _In_ PVOID DataBlockObject,
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Out_ PUNICODE_STRING InstanceName)
+{
+    PWMIP_GUID_OBJECT GuidObject = DataBlockObject;
+    UNICODE_STRING InstancePath, IndexString;
+    WCHAR IndexBuffer[12];
+    PDEVICE_OBJECT Pdo;
+    ULONG BaseIndex, Size;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    RtlZeroMemory(InstanceName, sizeof(*InstanceName));
+
+    Pdo = IoGetDeviceAttachmentBaseRef(DeviceObject);
+    Status = WmipGetPdoInstanceInfo(&GuidObject->Guid, Pdo, &InstancePath, &BaseIndex);
+    if (NT_SUCCESS(Status))
+    {
+        RtlInitEmptyUnicodeString(&IndexString, IndexBuffer, sizeof(IndexBuffer));
+        RtlIntegerToUnicodeString(BaseIndex, 10, &IndexString);
+
+        Size = InstancePath.Length + sizeof(WCHAR) + IndexString.Length + sizeof(UNICODE_NULL);
+        InstanceName->Buffer = (Size <= MAXUSHORT) ?
+                               ExAllocatePoolWithTag(PagedPool, Size, TAG_WMI_INSTANCE) : NULL;
+        if (InstanceName->Buffer)
+        {
+            InstanceName->MaximumLength = (USHORT)Size;
+            RtlAppendUnicodeStringToString(InstanceName, &InstancePath);
+            RtlAppendUnicodeToString(InstanceName, L"_");
+            RtlAppendUnicodeStringToString(InstanceName, &IndexString);
+            InstanceName->Buffer[InstanceName->Length / sizeof(WCHAR)] = UNICODE_NULL;
+        }
+        else
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+        }
+    }
+
+    ObDereferenceObject(Pdo);
+    return Status;
 }
 
 /*
