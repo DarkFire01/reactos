@@ -724,6 +724,9 @@ HalpMapIoApic(
     Unit->InputCount = min(Unit->InputCount, HALP_MAX_INPUTS - InputBase);
     HalpMaxGsi = max(HalpMaxGsi, InputBase + Unit->InputCount);
     HalpIoApicCount++;
+
+    DPRINT1("I/O APIC at 0x%lx serves inputs %lu to %lu\n",
+            PhysicalBase, InputBase, InputBase + Unit->InputCount - 1);
 }
 
 VOID
@@ -1160,6 +1163,8 @@ HalEnableSystemInterrupt(
     {
         /* Message-signaled vectors have nothing to unmask, others are not in use */
         HalpReleaseVectorLock(OldIrql);
+        if (Index != APIC_MSI_VECTOR)
+            DPRINT1("Vector 0x%lx maps to input %u, only %lu exist\n", Vector, Index, HalpMaxGsi);
         return (Index == APIC_MSI_VECTOR);
     }
 
@@ -1172,6 +1177,8 @@ HalEnableSystemInterrupt(
         /* If the vector matches, there is nothing more to do,
            otherwise something is wrong. */
         HalpReleaseVectorLock(OldIrql);
+        if (ReDirReg.Vector != Vector)
+            DPRINT1("Input %u is enabled for vector 0x%x, not 0x%lx\n", Index, ReDirReg.Vector, Vector);
         return (ReDirReg.Vector == Vector);
     }
 
