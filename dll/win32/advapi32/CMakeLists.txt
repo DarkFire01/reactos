@@ -24,6 +24,7 @@ list(APPEND SOURCE
     misc/shutdown.c
     misc/sysfunc.c
     misc/unicode.c
+    misc/wmi.c
     sec/ac.c
     sec/audit.c
     sec/lsa.c

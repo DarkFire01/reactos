@@ -836,7 +836,7 @@
 # @ stub UsePinForEncryptedFilesW
 # @ stub WaitServiceState
 @ stub WdmWmiServiceMain
-@ stdcall -stub WmiCloseBlock(long)
+@ stdcall WmiCloseBlock(ptr)
 # @ stub WmiCloseTraceWithCursor
 # @ stub WmiConvertTimestamp
 @ stub WmiDevInstToInstanceNameA
@@ -854,18 +854,18 @@
 @ stdcall -stub WmiMofEnumerateResourcesW(long ptr ptr)
 @ stdcall -stub WmiNotificationRegistrationA(ptr long ptr long long)
 @ stdcall -stub WmiNotificationRegistrationW(ptr long ptr long long)
-@ stdcall -stub WmiOpenBlock(ptr long ptr)
+@ stdcall WmiOpenBlock(ptr long ptr)
 # @ stub WmiOpenTraceWithCursor
 # @ stub WmiParseTraceEvent
-@ stdcall -stub WmiQueryAllDataA(long ptr ptr)
+@ stdcall WmiQueryAllDataA(ptr ptr ptr)
 # @ stub WmiQueryAllDataMultipleA
 # @ stub WmiQueryAllDataMultipleW
-@ stdcall -stub WmiQueryAllDataW(long ptr ptr)
+@ stdcall WmiQueryAllDataW(ptr ptr ptr)
 @ stdcall -stub WmiQueryGuidInformation(long ptr)
-@ stub WmiQuerySingleInstanceA
+@ stdcall WmiQuerySingleInstanceA(ptr str ptr ptr)
 # @ stub WmiQuerySingleInstanceMultipleA
 # @ stub WmiQuerySingleInstanceMultipleW
-@ stub WmiQuerySingleInstanceW
+@ stdcall WmiQuerySingleInstanceW(ptr wstr ptr ptr)
 # @ stub WmiReceiveNotificationsA
 # @ stub WmiReceiveNotificationsW
 @ stdcall -stub WmiSetSingleInstanceA(long str long long ptr)
