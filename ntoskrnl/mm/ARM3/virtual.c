@@ -3006,7 +3006,22 @@ MiDecommitPages(IN PVOID StartingAddress,
                 // Remove it from the counters, and check if it was valid or not
                 //
                 //Process->NumberOfPrivatePages--;
-                if (PteContents.u.Hard.Valid)
+                if (PteContents.u.Hard.Valid &&
+                    (Vad->u.VadFlags.VadType == VadRotatePhysical) &&
+                    MiIsPteMappingForeignPage(PointerPte, &PteContents))
+                {
+                    KIRQL OldIrql;
+
+                    /* A frame buffer page of a rotate view: only the mapping goes, its owner keeps the page */
+                    OldIrql = MiAcquirePfnLock();
+                    MI_ERASE_PTE(PointerPte);
+                    MiDecrementShareCount(MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber),
+                                          PointerPde->u.Hard.PageFrameNumber);
+                    MI_WRITE_INVALID_PTE(PointerPte, MmDecommittedPte);
+                    KeFlushProcessTb();
+                    MiReleasePfnLock(OldIrql);
+                }
+                else if (PteContents.u.Hard.Valid)
                 {
                     //
                     // It's valid. At this point make sure that it is not a ROS
@@ -7402,11 +7417,10 @@ FindVad:
     {
         //
         // This is the decommit path. You cannot decommit from the following VADs in
-        // Windows, so fail the vall
+        // Windows, so fail the call. Rotate views can be decommitted.
         //
         if ((Vad->u.VadFlags.VadType == VadAwe) ||
-            (Vad->u.VadFlags.VadType == VadLargePages) ||
-            (Vad->u.VadFlags.VadType == VadRotatePhysical))
+            (Vad->u.VadFlags.VadType == VadLargePages))
         {
             DPRINT1("Trying to decommit from invalid VAD: %s at %p, VAD type %lu\n",
                     Process->ImageFileName, PBaseAddress, (ULONG)Vad->u.VadFlags.VadType);
