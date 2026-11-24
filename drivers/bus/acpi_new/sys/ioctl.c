@@ -175,8 +175,9 @@ UacpiNtCountArguments(
     PACPI_METHOD_ARGUMENT Argument = First;
     ULONG ArgumentLength;
 
+    /* Fewer bytes than one argument end the package, hidi2c passes an empty one a ULONG long */
     *Count = 0;
-    while (Length >= (ULONG)FIELD_OFFSET(ACPI_METHOD_ARGUMENT, Data))
+    while (Length >= sizeof(ACPI_METHOD_ARGUMENT))
     {
         ArgumentLength = ACPI_METHOD_ARGUMENT_LENGTH(Argument->DataLength);
         if (ArgumentLength > Length)
