@@ -443,6 +443,33 @@ EtwpPrintTraceLogging(
     DbgPrint("%s\n", Line);
 }
 
+/**
+ * @brief Tells whether a field holds ASCII range UTF-16 text, optionally nul terminated.
+ */
+static
+BOOLEAN
+EtwpIsPrintableUtf16(
+    _In_reads_bytes_(Size) const UCHAR *Bytes,
+    _In_ ULONG Size)
+{
+    const WCHAR *Text = (const WCHAR *)Bytes;
+    ULONG Count, Index;
+
+    if ((Size % sizeof(WCHAR)) || (Size < 2 * sizeof(WCHAR)))
+        return FALSE;
+
+    Count = Size / sizeof(WCHAR);
+    for (Index = 0; Index < Count; Index++)
+    {
+        if (!Text[Index] && (Index == Count - 1))
+            break;
+        if ((Text[Index] < 0x20) || (Text[Index] > 0x7E))
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
 static
 VOID
 EtwpPrintEvent(
@@ -499,6 +526,12 @@ EtwpPrintEvent(
             Value = 0;
             RtlCopyMemory(&Value, Bytes, Data[Field].Size);
             DbgPrint("    [%lu] 0x%I64x (%lu bytes)\n", Field, Value, Data[Field].Size);
+            continue;
+        }
+
+        if (EtwpIsPrintableUtf16(Bytes, Data[Field].Size))
+        {
+            DbgPrint("    [%lu] \"%.*ws\"\n", Field, (INT)(Data[Field].Size / sizeof(WCHAR)), (PCWSTR)Bytes);
             continue;
         }
 
