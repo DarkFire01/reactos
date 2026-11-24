@@ -1877,6 +1877,7 @@ NTAPI
 IopSendRemoveDevice(IN PDEVICE_OBJECT DeviceObject)
 {
     PDEVICE_NODE DeviceNode = IopGetDeviceNode(DeviceObject);
+    BOOLEAN StillPresent;
 
     ASSERT(DeviceNode->State == DeviceNodeAwaitingQueuedRemoval);
 
@@ -1887,10 +1888,15 @@ IopSendRemoveDevice(IN PDEVICE_OBJECT DeviceObject)
     PiIrpSendRemoveCheckVpb(DeviceObject, IRP_MN_REMOVE_DEVICE);
 
     /* Give the resources of the device back to the arbiters */
-    IopFreeDeviceResources(DeviceNode, PiIsDeviceStillPresent(DeviceNode));
+    StillPresent = PiIsDeviceStillPresent(DeviceNode);
+    IopFreeDeviceResources(DeviceNode, StillPresent);
 
     PiSetDevNodeState(DeviceNode, DeviceNodeRemoved);
     PiNotifyTargetDeviceChange(&GUID_TARGET_DEVICE_REMOVE_COMPLETE, DeviceObject, NULL);
+
+    /* A device that is gone leaves the tree now, open handles may keep its PDO well after its parent */
+    if (!StillPresent)
+        PiUnlinkDevNode(DeviceNode);
     LONG_PTR refCount = ObDereferenceObject(DeviceObject);
     if (refCount != 0)
     {
@@ -2535,6 +2541,7 @@ PiDevNodeStateMachine(
     KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
     PiWalkDeviceNode = RootNode;
     PiWalkDeviceNodeFreed = FALSE;
+    PiWalkDeviceNodeUnlinked = FALSE;
     KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
 
     do
@@ -2692,8 +2699,8 @@ PiDevNodeStateMachine(
         }
 
 skipEnum:
-        /* A node freed while it was worked on has nothing left to process */
-        if (PiWalkDeviceNodeFreed)
+        /* A node freed or taken out of the tree while it was worked on has nothing left to process */
+        if (PiWalkDeviceNodeFreed || PiWalkDeviceNodeUnlinked)
             doProcessAgain = FALSE;
 
         if (!doProcessAgain)
@@ -2701,12 +2708,18 @@ skipEnum:
             freedNode = NULL;
             KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
 
-            /* The links of a freed node are stale, so the walk starts over from the root */
+            /* The links of a freed or unlinked node are stale, so the walk starts over from the root */
             if (PiWalkDeviceNodeFreed)
             {
                 DPRINT1("Devnode %p was freed while being walked, walking the tree again\n", currentNode);
                 freedNode = currentNode;
                 PiWalkDeviceNodeFreed = FALSE;
+                PiWalkDeviceNodeUnlinked = FALSE;
+                currentNode = RootNode;
+            }
+            else if (PiWalkDeviceNodeUnlinked)
+            {
+                PiWalkDeviceNodeUnlinked = FALSE;
                 currentNode = RootNode;
             }
             /* If we have a child, simply go down the tree */

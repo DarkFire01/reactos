@@ -894,6 +894,10 @@ VOID
 PiClearDevNodeProblem(
     _In_ PDEVICE_NODE DeviceNode);
 
+VOID
+PiUnlinkDevNode(
+    _In_ PDEVICE_NODE DeviceNode);
+
 NTSTATUS
 IopFreeDeviceNode(
     IN PDEVICE_NODE DeviceNode
@@ -1780,6 +1784,7 @@ extern PDEVICE_NODE IopRootDeviceNode;
 extern KSPIN_LOCK IopDeviceTreeLock;
 extern PDEVICE_NODE PiWalkDeviceNode;
 extern BOOLEAN PiWalkDeviceNodeFreed;
+extern BOOLEAN PiWalkDeviceNodeUnlinked;
 extern ULONG IopTraceLevel;
 extern ULONG IopCaseInsensitive;
 extern GENERAL_LOOKASIDE IopMdlLookasideList;

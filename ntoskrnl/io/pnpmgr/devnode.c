@@ -21,6 +21,7 @@ KSPIN_LOCK IopDeviceTreeLock;
 /* The node the state machine stands on; freeing it waits until the walk moves on */
 PDEVICE_NODE PiWalkDeviceNode;
 BOOLEAN PiWalkDeviceNodeFreed;
+BOOLEAN PiWalkDeviceNodeUnlinked;
 
 LONG IopNumberDeviceNodes;
 
@@ -330,12 +331,57 @@ IopCreateDeviceNode(
 }
 #endif
 
+/**
+ * @brief
+ * Takes a node out of the device tree. The node itself stays until its PDO is deleted.
+ */
+VOID
+PiUnlinkDevNode(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    PDEVICE_NODE PrevSibling = NULL;
+    PDEVICE_NODE Parent;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
+
+    Parent = DeviceNode->Parent;
+    if (!Parent)
+    {
+        KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
+        return;
+    }
+
+    if (Parent->Child != DeviceNode)
+    {
+        PrevSibling = Parent->Child;
+        while (PrevSibling && PrevSibling->Sibling != DeviceNode)
+            PrevSibling = PrevSibling->Sibling;
+    }
+
+    if (Parent->LastChild == DeviceNode)
+        Parent->LastChild = PrevSibling;
+
+    if (Parent->Child == DeviceNode)
+        Parent->Child = DeviceNode->Sibling;
+    else if (PrevSibling)
+        PrevSibling->Sibling = DeviceNode->Sibling;
+
+    DeviceNode->Parent = NULL;
+    DeviceNode->Sibling = NULL;
+
+    /* The state machine standing on this node can no longer follow its links */
+    if (DeviceNode == PiWalkDeviceNode)
+        PiWalkDeviceNodeUnlinked = TRUE;
+
+    KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
+}
+
 NTSTATUS
 IopFreeDeviceNode(
     _In_ PDEVICE_NODE DeviceNode)
 {
     KIRQL OldIrql;
-    PDEVICE_NODE PrevSibling = NULL;
 
     /* A legacy claim ends with the device object it was made for */
     if (DeviceNode->Flags & DNF_LEGACY_RESOURCE_DEVICENODE)
@@ -359,34 +405,8 @@ IopFreeDeviceNode(
         KeReleaseGuardedMutex(&PiNotifyTargetDeviceLock);
     }
 
-    KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
-
-    /* Get previous sibling */
-    if (DeviceNode->Parent && DeviceNode->Parent->Child != DeviceNode)
-    {
-        PrevSibling = DeviceNode->Parent->Child;
-        while (PrevSibling->Sibling != DeviceNode)
-            PrevSibling = PrevSibling->Sibling;
-    }
-
-    /* Unlink from parent if it exists */
-    if (DeviceNode->Parent)
-    {
-        if (DeviceNode->Parent->LastChild == DeviceNode)
-        {
-            DeviceNode->Parent->LastChild = PrevSibling;
-            if (PrevSibling)
-                PrevSibling->Sibling = NULL;
-        }
-        if (DeviceNode->Parent->Child == DeviceNode)
-            DeviceNode->Parent->Child = DeviceNode->Sibling;
-    }
-
-    /* Unlink from sibling list */
-    if (PrevSibling)
-        PrevSibling->Sibling = DeviceNode->Sibling;
-
-    KeReleaseSpinLock(&IopDeviceTreeLock, OldIrql);
+    /* A node whose device went away already left the tree when its removal completed */
+    PiUnlinkDevNode(DeviceNode);
 
     /* A removed bus no longer provides its legacy bus */
     IopUnregisterLegacyBus(DeviceNode);
