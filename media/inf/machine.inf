@@ -44,6 +44,7 @@ HKR, , Icon,           0, "-27"
 %*PNP0C02.DeviceDesc% = NO_DRV,*PNP0C02
 %*PNP0C04.DeviceDesc% = NO_DRV,*PNP0C04
 %*PNP0C08.DeviceDesc% = ACPI_Inst,*PNP0C08
+%*PNP0C09.DeviceDesc% = NO_DRV,*PNP0C09
 %*PNP0C0B.DeviceDesc% = NO_DRV,*PNP0C0B
 %*PNP0C0C.DeviceDesc% = NO_DRV,*PNP0C0C
 %*PNP0C0D.DeviceDesc% = NO_DRV,*PNP0C0D
@@ -229,6 +230,7 @@ GenericMfg = "(Generic system devices)"
 *PNP0C02.DeviceDesc = "Motherboard resources"
 *PNP0C04.DeviceDesc = "Math coprocessor"
 *PNP0C08.DeviceDesc = "ACPI-compliant system"
+*PNP0C09.DeviceDesc = "ACPI-compliant embedded controller"
 *PNP0C0B.DeviceDesc = "ACPI fan"
 *PNP0C0C.DeviceDesc = "ACPI power button device"
 *PNP0C0D.DeviceDesc = "ACPI lid"
