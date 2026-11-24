@@ -76,6 +76,10 @@ InstallDevice(PCWSTR DeviceInstance, BOOL ShowWizard)
 
     DPRINT("InstallDevice(%S, %d)\n", DeviceInstance, ShowWizard);
 
+    /* The root of the device tree has no driver */
+    if (!_wcsicmp(DeviceInstance, L"HTREE\\ROOT\\0"))
+        return TRUE;
+
     ZeroMemory(&ProcessInfo, sizeof(ProcessInfo));
 
     if (RegOpenKeyExW(hEnumKey,
