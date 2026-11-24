@@ -16,11 +16,11 @@
 DEFINE_GUID(HIDI2C_DSM_GUID,
             0x3CDFF6F7, 0x4267, 0x4555, 0xAD, 0x05, 0xB3, 0x0A, 0x3D, 0x89, 0x38, 0xDE);
 
-#define HIDI2C_DSM_REVISION          1
-#define HIDI2C_DSM_QUERY             0
-#define HIDI2C_DSM_DESCRIPTOR        1
+#define HIDI2C_DSM_REVISION   1
+#define HIDI2C_DSM_QUERY      0
+#define HIDI2C_DSM_DESCRIPTOR 1
 
-/* Header, the UUID buffer and three integer sized arguments */
+/* Header, the UUID buffer, two integers and the package, with room to spare */
 #define HIDI2C_DSM_INPUT_SIZE 64
 
 typedef union _HIDI2C_DSM_INPUT
@@ -67,10 +67,11 @@ HidI2cEvaluateDsm(
     Argument = ACPI_METHOD_NEXT_ARGUMENT(Argument);
     ACPI_METHOD_SET_ARGUMENT_INTEGER(Argument, Function);
 
-    /* Neither function takes data, so the fourth argument is a package with no elements at all */
+    /* Neither function takes data; the fourth argument is an empty package one ULONG long */
     Argument = ACPI_METHOD_NEXT_ARGUMENT(Argument);
     Argument->Type = ACPI_METHOD_ARGUMENT_PACKAGE;
-    Argument->DataLength = 0;
+    Argument->DataLength = sizeof(ULONG);
+    Argument->Argument = 0;
 
     RtlZeroMemory(Output, sizeof(*Output));
     WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&InputMemory, Input, sizeof(*Input));
@@ -127,7 +128,8 @@ HidI2cQueryDescriptorRegister(
     if (Result->Type != ACPI_METHOD_ARGUMENT_INTEGER || Result->DataLength == 0)
         return STATUS_UNSUCCESSFUL;
 
-    Context->DescriptorRegister = (USHORT)Result->Argument;
+    /* Only the low byte of the returned integer names the register */
+    Context->DescriptorRegister = Result->Data[0];
     DPRINT("hidi2c: HID descriptor at register 0x%04X\n", Context->DescriptorRegister);
     return STATUS_SUCCESS;
 }

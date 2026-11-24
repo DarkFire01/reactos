@@ -6,6 +6,7 @@
  */
 
 #include "hidi2c.h"
+#include "hidi2c_msg.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -16,34 +17,55 @@ static EVT_WDF_WORKITEM HidI2cEvtIdleWork;
 
 /**
  * @brief
- * Reads or writes a DWORD under the device's hardware key.
+ * Reads a DWORD under the device's hardware key, leaving Value alone if it is absent.
  */
 static
 VOID
 NTAPI
-HidI2cDeviceKeyValue(
+HidI2cQueryDeviceValue(
     _In_ PHIDI2C_DEVICE Context,
-    _In_ BOOLEAN Write,
+    _In_ PCUNICODE_STRING Name,
     _Inout_ PULONG Value)
 {
     WDFKEY Key;
-    NTSTATUS Status;
 
     PAGED_CODE();
 
-    Status = WdfDeviceOpenRegistryKey(Context->Device,
-                                      PLUGPLAY_REGKEY_DEVICE,
-                                      Write ? KEY_SET_VALUE : KEY_QUERY_VALUE,
-                                      WDF_NO_OBJECT_ATTRIBUTES,
-                                      &Key);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(WdfDeviceOpenRegistryKey(Context->Device,
+                                             PLUGPLAY_REGKEY_DEVICE,
+                                             KEY_READ,
+                                             WDF_NO_OBJECT_ATTRIBUTES,
+                                             &Key)))
+    {
         return;
+    }
 
-    if (Write)
-        (VOID)WdfRegistryAssignULong(Key, &HidI2cNoResetWaitValue, *Value);
-    else if (!NT_SUCCESS(WdfRegistryQueryULong(Key, &HidI2cNoResetWaitValue, Value)))
-        *Value = 0;
+    (VOID)WdfRegistryQueryULong(Key, Name, Value);
+    WdfRegistryClose(Key);
+}
 
+static
+VOID
+NTAPI
+HidI2cSetDeviceValue(
+    _In_ PHIDI2C_DEVICE Context,
+    _In_ PCUNICODE_STRING Name,
+    _In_ ULONG Value)
+{
+    WDFKEY Key;
+
+    PAGED_CODE();
+
+    if (!NT_SUCCESS(WdfDeviceOpenRegistryKey(Context->Device,
+                                             PLUGPLAY_REGKEY_DEVICE,
+                                             KEY_WRITE,
+                                             WDF_NO_OBJECT_ATTRIBUTES,
+                                             &Key)))
+    {
+        return;
+    }
+
+    (VOID)WdfRegistryAssignULong(Key, Name, Value);
     WdfRegistryClose(Key);
 }
 
@@ -111,7 +133,10 @@ HidI2cFetchDescriptor(
                                 sizeof(*Descriptor),
                                 HIDI2C_DESCRIPTOR_TIMEOUT);
     if (!NT_SUCCESS(Status))
+    {
+        HidI2cReportProblem(Context, HIDI2C_PROBLEM_DESCRIPTOR_READ);
         return Status;
+    }
 
     if (Descriptor->Length != sizeof(*Descriptor) ||
         Descriptor->Version != 0x0100 ||
@@ -126,6 +151,7 @@ HidI2cFetchDescriptor(
         DPRINT1("hidi2c: HID descriptor rejected, length %u version 0x%04X\n",
                 Descriptor->Length,
                 Descriptor->Version);
+        HidI2cReportProblem(Context, HIDI2C_PROBLEM_DESCRIPTOR_INVALID);
         return STATUS_DEVICE_PROTOCOL_ERROR;
     }
 
@@ -152,7 +178,8 @@ HidI2cFreeInputBuffer(
 
 /**
  * @brief
- * Brings the device to D0. A cold start reads the descriptor and sets up the input path first.
+ * Brings the device to D0. A cold start reads the descriptor and sets up the
+ * input buffer first.
  */
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
@@ -161,7 +188,7 @@ HidI2cInitialize(
     _Inout_ PHIDI2C_DEVICE Context,
     _In_ WDF_POWER_DEVICE_STATE PreviousState)
 {
-    WDF_OBJECT_ATTRIBUTES Attributes;
+    SIZE_T Size;
     NTSTATUS Status;
 
     PAGED_CODE();
@@ -170,38 +197,35 @@ HidI2cInitialize(
     {
         Status = HidI2cFetchDescriptor(Context);
         if (!NT_SUCCESS(Status))
-            return Status;
+            goto Fail;
 
-        Context->InputBuffer = ExAllocatePoolZero(NonPagedPoolNx,
-                                                  Context->Descriptor.MaxInputLength,
-                                                  HIDI2C_POOL_TAG);
+        /*
+         * The ISR accepts a length field up to two bytes past MaxInputLength,
+         * so those two bytes exist and read as zero.
+         */
+        Size = Context->Descriptor.MaxInputLength + sizeof(USHORT);
+        Context->InputBuffer = ExAllocatePoolZero(NonPagedPoolNx, Size, HIDI2C_POOL_TAG);
         if (Context->InputBuffer == NULL)
-            return STATUS_INSUFFICIENT_RESOURCES;
-
-        if (Context->InputRequest == NULL)
         {
-            WDF_OBJECT_ATTRIBUTES_INIT(&Attributes);
-            Attributes.ParentObject = Context->Target;
-
-            Status = WdfRequestCreate(&Attributes, Context->Target, &Context->InputRequest);
-            if (!NT_SUCCESS(Status))
-            {
-                HidI2cFreeInputBuffer(Context);
-                return Status;
-            }
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Fail;
         }
     }
 
     Status = HidI2cSetPower(Context, HIDI2C_POWER_ON);
-    if (!NT_SUCCESS(Status))
-        HidI2cFreeInputBuffer(Context);
+    if (NT_SUCCESS(Status))
+        return STATUS_SUCCESS;
 
+    HidI2cReportProblem(Context, HIDI2C_PROBLEM_SET_POWER);
+
+Fail:
+    HidI2cFreeInputBuffer(Context);
     return Status;
 }
 
 /**
  * @brief
- * Puts the device to sleep, and drops the input path when it goes away for good.
+ * Puts the device to sleep, and drops the input buffer when it goes away for good.
  */
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
@@ -238,7 +262,7 @@ HidI2cReset(
 
     PAGED_CODE();
 
-    HidI2cDeviceKeyValue(Context, FALSE, &NoWait);
+    HidI2cQueryDeviceValue(Context, &HidI2cNoResetWaitValue, &NoWait);
 
     WdfInterruptAcquireLock(Context->Interrupt);
 
@@ -269,93 +293,11 @@ HidI2cEvtResetTimer(
     WDFTIMER Timer)
 {
     PHIDI2C_DEVICE Context = HidI2cGetDevice(WdfTimerGetParentObject(Timer));
-    ULONG NoWait = 1;
 
     DPRINT1("hidi2c: no reset response, releasing the queue\n");
 
     WdfIoQueueStart(Context->DefaultQueue);
-    HidI2cDeviceKeyValue(Context, TRUE, &NoWait);
-}
-
-/**
- * @brief
- * Reads the report the device signalled and hands it to the oldest pending read.
- *
- * Runs at passive level. An empty report answers a reset, ours or the device's own.
- */
-_Use_decl_annotations_
-BOOLEAN
-NTAPI
-HidI2cEvtInterruptIsr(
-    WDFINTERRUPT Interrupt,
-    ULONG MessageId)
-{
-    PHIDI2C_DEVICE Context = HidI2cGetDevice(WdfInterruptGetDevice(Interrupt));
-    WDFREQUEST Request;
-    WDFMEMORY Memory;
-    USHORT Length;
-    NTSTATUS Status;
-
-    UNREFERENCED_PARAMETER(MessageId);
-
-    if (Context->InputBuffer == NULL || Context->Target == NULL)
-        return TRUE;
-
-    RtlZeroMemory(Context->InputBuffer, Context->Descriptor.MaxInputLength);
-
-    Status = HidI2cReadInput(Context);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("hidi2c: input read failed 0x%08lx\n", Status);
-        return TRUE;
-    }
-
-    Length = (USHORT)(Context->InputBuffer[0] | (Context->InputBuffer[1] << 8));
-
-    if (Length == 0)
-    {
-        if (Context->ResetPending)
-        {
-            Context->ResetPending = FALSE;
-            if (WdfTimerStop(Context->ResetTimer, FALSE))
-                WdfIoQueueStart(Context->DefaultQueue);
-            return TRUE;
-        }
-
-        /* The device reset itself, tell whoever asked to hear about it */
-        if (NT_SUCCESS(WdfIoQueueRetrieveNextRequest(Context->ResetNotifyQueue, &Request)))
-            WdfRequestComplete(Request, STATUS_SUCCESS);
-        return TRUE;
-    }
-
-    /* Nothing but the reset answer counts until the reset is done */
-    if (Context->ResetPending)
-        return TRUE;
-
-    if (Length <= sizeof(USHORT) || Length > Context->Descriptor.MaxInputLength)
-    {
-        DPRINT1("hidi2c: input report claims %u bytes\n", Length);
-        return TRUE;
-    }
-
-    /* With no read outstanding the report is dropped */
-    if (!NT_SUCCESS(WdfIoQueueRetrieveNextRequest(Context->ReadQueue, &Request)))
-        return TRUE;
-
-    Status = WdfRequestRetrieveOutputMemory(Request, &Memory);
-    if (NT_SUCCESS(Status))
-    {
-        Status = WdfMemoryCopyFromBuffer(Memory,
-                                         0,
-                                         Context->InputBuffer + sizeof(USHORT),
-                                         Length - sizeof(USHORT));
-    }
-
-    if (NT_SUCCESS(Status))
-        WdfRequestSetInformation(Request, Length - sizeof(USHORT));
-
-    WdfRequestComplete(Request, Status);
-    return TRUE;
+    HidI2cSetDeviceValue(Context, &HidI2cNoResetWaitValue, 1);
 }
 
 static
@@ -368,14 +310,17 @@ HidI2cGetDeviceDescriptor(
     PHID_DESCRIPTOR Descriptor;
     NTSTATUS Status;
 
-    Status = WdfRequestRetrieveOutputBuffer(Request, sizeof(*Descriptor), (PVOID *)&Descriptor, NULL);
+    Status = WdfRequestRetrieveOutputBuffer(Request,
+                                            sizeof(*Descriptor),
+                                            (PVOID *)&Descriptor,
+                                            NULL);
     if (!NT_SUCCESS(Status))
         return Status;
 
-    RtlZeroMemory(Descriptor, sizeof(*Descriptor));
     Descriptor->bLength = sizeof(*Descriptor);
     Descriptor->bDescriptorType = HID_HID_DESCRIPTOR_TYPE;
     Descriptor->bcdHID = 0x0001;
+    Descriptor->bCountry = 0;
     Descriptor->bNumDescriptors = 1;
     Descriptor->DescriptorList[0].bReportType = HID_REPORT_DESCRIPTOR_TYPE;
     Descriptor->DescriptorList[0].wReportLength = Context->Descriptor.ReportDescriptorLength;
@@ -384,6 +329,10 @@ HidI2cGetDeviceDescriptor(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Reads the report descriptor straight into the request's buffer.
+ */
 static
 NTSTATUS
 NTAPI
@@ -391,32 +340,33 @@ HidI2cGetReportDescriptor(
     _In_ PHIDI2C_DEVICE Context,
     _In_ WDFREQUEST Request)
 {
-    ULONG Length = Context->Descriptor.ReportDescriptorLength;
+    USHORT Length = Context->Descriptor.ReportDescriptorLength;
     WDFMEMORY Memory;
-    PUCHAR Buffer;
+    size_t Capacity;
+    PVOID Buffer;
     NTSTATUS Status;
 
     Status = WdfRequestRetrieveOutputMemory(Request, &Memory);
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Buffer = ExAllocatePoolZero(NonPagedPoolNx, Length, HIDI2C_POOL_TAG);
+    Buffer = WdfMemoryGetBuffer(Memory, &Capacity);
     if (Buffer == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
+
+    if (Capacity < Length)
+        return STATUS_INVALID_BUFFER_SIZE;
 
     Status = HidI2cReadRegister(Context,
                                 Context->Descriptor.ReportDescriptorRegister,
                                 Buffer,
                                 Length,
                                 HIDI2C_DEFAULT_TIMEOUT);
-    if (NT_SUCCESS(Status))
-        Status = WdfMemoryCopyFromBuffer(Memory, 0, Buffer, Length);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-    if (NT_SUCCESS(Status))
-        WdfRequestSetInformation(Request, Length);
-
-    ExFreePoolWithTag(Buffer, HIDI2C_POOL_TAG);
-    return Status;
+    WdfRequestSetInformation(Request, Length);
+    return STATUS_SUCCESS;
 }
 
 static
@@ -429,11 +379,13 @@ HidI2cGetDeviceAttributes(
     PHID_DEVICE_ATTRIBUTES Attributes;
     NTSTATUS Status;
 
-    Status = WdfRequestRetrieveOutputBuffer(Request, sizeof(*Attributes), (PVOID *)&Attributes, NULL);
+    Status = WdfRequestRetrieveOutputBuffer(Request,
+                                            sizeof(*Attributes),
+                                            (PVOID *)&Attributes,
+                                            NULL);
     if (!NT_SUCCESS(Status))
         return Status;
 
-    RtlZeroMemory(Attributes, sizeof(*Attributes));
     Attributes->Size = sizeof(*Attributes);
     Attributes->VendorID = Context->Descriptor.VendorId;
     Attributes->ProductID = Context->Descriptor.ProductId;
@@ -445,7 +397,7 @@ HidI2cGetDeviceAttributes(
 
 /**
  * @brief
- * The fixed strings the HID over I2C class reports, as hidi2c on Windows does.
+ * The fixed strings every HID over I2C device reports.
  */
 static
 NTSTATUS
@@ -489,7 +441,8 @@ HidI2cGetString(
  * @brief
  * The transfer packet hidclass hangs off the IRP for report requests.
  *
- * Windows passes the packet size as the buffer length, the in tree hidclass passes zero.
+ * The buffer length hidclass passes must cover the packet itself: the output
+ * length for GET requests, the input length for SET and WRITE.
  */
 static
 PHID_XFER_PACKET
@@ -499,23 +452,25 @@ HidI2cGetPacket(
     _In_ BOOLEAN FromDevice,
     _Out_ PNTSTATUS Status)
 {
-    PIRP Irp = WdfRequestWdmGetIrp(Request);
-    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    WDF_REQUEST_PARAMETERS Parameters;
     PHID_XFER_PACKET Packet;
-    ULONG Length;
+    size_t Length;
+
+    WDF_REQUEST_PARAMETERS_INIT(&Parameters);
+    WdfRequestGetParameters(Request, &Parameters);
 
     if (FromDevice)
-        Length = Stack->Parameters.DeviceIoControl.OutputBufferLength;
+        Length = Parameters.Parameters.DeviceIoControl.OutputBufferLength;
     else
-        Length = Stack->Parameters.DeviceIoControl.InputBufferLength;
+        Length = Parameters.Parameters.DeviceIoControl.InputBufferLength;
 
-    if (Length != 0 && Length < sizeof(*Packet))
+    if (Length < sizeof(*Packet))
     {
         *Status = STATUS_INVALID_BUFFER_SIZE;
         return NULL;
     }
 
-    Packet = Irp->UserBuffer;
+    Packet = WdfRequestWdmGetIrp(Request)->UserBuffer;
     if (Packet == NULL)
     {
         *Status = STATUS_INVALID_PARAMETER;
@@ -540,7 +495,7 @@ HidI2cGetPacket(
  * How many of the three command bytes are used.
  */
 static
-ULONG
+USHORT
 NTAPI
 HidI2cReportCommand(
     _In_ UCHAR Opcode,
@@ -574,44 +529,52 @@ HidI2cGetReport(
     _In_ UCHAR Type)
 {
     PHID_XFER_PACKET Packet;
+    USHORT CommandLength;
     UCHAR Command[3];
-    ULONG CommandLength;
     USHORT Returned;
     PUCHAR Answer;
-    ULONG Size;
+    USHORT Size;
     NTSTATUS Status;
 
     Packet = HidI2cGetPacket(Request, TRUE, &Status);
     if (Packet == NULL)
         return Status;
 
+    if (Type != HIDI2C_REPORT_INPUT && Type != HIDI2C_REPORT_FEATURE)
+        return STATUS_INVALID_PARAMETER;
+
     CommandLength = HidI2cReportCommand(HIDI2C_OP_GET_REPORT, Type, Packet->reportId, Command);
 
-    /* The answer leads with its own length */
-    Size = min(Packet->reportBufferLen + sizeof(USHORT), MAXUSHORT);
+    /* The answer leads with its own length, and the whole of it has to fit a USHORT */
+    if (Packet->reportBufferLen >= MAXUSHORT - sizeof(USHORT))
+        Size = MAXUSHORT;
+    else
+        Size = (USHORT)(Packet->reportBufferLen + sizeof(USHORT));
+
     Answer = ExAllocatePoolZero(NonPagedPoolNx, Size, HIDI2C_POOL_TAG);
     if (Answer == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     Status = HidI2cCommandRead(Context, Command, CommandLength, Answer, Size);
-    if (NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status))
+        goto Exit;
+
+    /* A bare length field is an empty report */
+    Returned = (USHORT)(Answer[0] | (Answer[1] << 8));
+    if (Returned == sizeof(USHORT))
+        goto Exit;
+
+    Returned -= sizeof(USHORT);
+    if (Returned > Packet->reportBufferLen || Returned > Size - sizeof(USHORT))
     {
-        Returned = (USHORT)(Answer[0] | (Answer[1] << 8));
-        if (Returned > sizeof(USHORT))
-        {
-            Returned -= sizeof(USHORT);
-            if (Returned > Packet->reportBufferLen || Returned > Size - sizeof(USHORT))
-            {
-                Status = STATUS_BUFFER_TOO_SMALL;
-            }
-            else
-            {
-                RtlCopyMemory(Packet->reportBuffer, Answer + sizeof(USHORT), Returned);
-                WdfRequestSetInformation(Request, Returned);
-            }
-        }
+        Status = STATUS_BUFFER_TOO_SMALL;
+        goto Exit;
     }
 
+    RtlCopyMemory(Packet->reportBuffer, Answer + sizeof(USHORT), Returned);
+    WdfRequestSetInformation(Request, Returned);
+
+Exit:
     ExFreePoolWithTag(Answer, HIDI2C_POOL_TAG);
     return Status;
 }
@@ -629,8 +592,8 @@ HidI2cSetReport(
     _In_ UCHAR Type)
 {
     PHID_XFER_PACKET Packet;
+    USHORT CommandLength;
     UCHAR Command[3];
-    ULONG CommandLength;
     PUCHAR Data;
     USHORT Size;
     NTSTATUS Status;
@@ -638,6 +601,13 @@ HidI2cSetReport(
     Packet = HidI2cGetPacket(Request, FALSE, &Status);
     if (Packet == NULL)
         return Status;
+
+    if (Type != HIDI2C_REPORT_OUTPUT && Type != HIDI2C_REPORT_FEATURE)
+        return STATUS_INVALID_PARAMETER;
+
+    /* The length field covers itself and has to fit a USHORT */
+    if (Packet->reportBufferLen > MAXUSHORT - sizeof(USHORT))
+        return STATUS_INVALID_PARAMETER;
 
     CommandLength = HidI2cReportCommand(HIDI2C_OP_SET_REPORT, Type, Packet->reportId, Command);
 
@@ -671,14 +641,17 @@ HidI2cWriteReport(
 {
     PHID_XFER_PACKET Packet;
     PUCHAR Data;
-    ULONG Size;
+    USHORT Size;
     NTSTATUS Status;
 
     Packet = HidI2cGetPacket(Request, FALSE, &Status);
     if (Packet == NULL)
         return Status;
 
-    Size = Packet->reportBufferLen + sizeof(USHORT);
+    if (Packet->reportBufferLen > MAXUSHORT - sizeof(USHORT))
+        return STATUS_INVALID_PARAMETER;
+
+    Size = (USHORT)(Packet->reportBufferLen + sizeof(USHORT));
     if (Size > Context->Descriptor.MaxOutputLength)
         return STATUS_INVALID_PARAMETER;
 
@@ -785,6 +758,39 @@ HidI2cCompleteIdleRequest(
 
     if (NT_SUCCESS(WdfIoQueueRetrieveNextRequest(Context->IdleQueue, &Request)))
         WdfRequestComplete(Request, STATUS_SUCCESS);
+}
+
+/**
+ * @brief
+ * Lets a power down go ahead while an idle notification is still with the work item.
+ */
+_Use_decl_annotations_
+VOID
+NTAPI
+HidI2cEvtIoStop(
+    WDFQUEUE Queue,
+    WDFREQUEST Request,
+    ULONG ActionFlags)
+{
+    WDF_REQUEST_PARAMETERS Parameters;
+    ULONG IoControlCode;
+
+    UNREFERENCED_PARAMETER(Queue);
+
+    if (ActionFlags & WdfRequestStopActionPurge)
+        return;
+
+    WDF_REQUEST_PARAMETERS_INIT(&Parameters);
+    WdfRequestGetParameters(Request, &Parameters);
+
+    IoControlCode = Parameters.Parameters.DeviceIoControl.IoControlCode;
+
+    if (Parameters.Type == WdfRequestTypeDeviceControlInternal &&
+        IoControlCode == IOCTL_HID_SEND_IDLE_NOTIFICATION_REQUEST &&
+        (ActionFlags & WdfRequestStopActionSuspend))
+    {
+        WdfRequestStopAcknowledge(Request, FALSE);
+    }
 }
 
 /**

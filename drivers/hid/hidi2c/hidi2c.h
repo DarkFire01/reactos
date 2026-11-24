@@ -15,7 +15,8 @@
 #include <hidport.h>
 #include <hidclass.h>
 
-#define HIDI2C_POOL_TAG 'I2iH'
+/* Shows up as "HidI" in pool dumps */
+#define HIDI2C_POOL_TAG 'IdiH'
 
 #ifndef IOCTL_HID_DEVICERESET_NOTIFICATION
 #define IOCTL_HID_DEVICERESET_NOTIFICATION HID_CTL_CODE(140)
@@ -74,6 +75,17 @@ typedef struct _HIDI2C_DEVICE
     WDFDEVICE Device;
     WDFINTERRUPT Interrupt;
 
+    /* Read requests filled by the ISR wait here for the DPC to complete them */
+    WDFSPINLOCK CompletionLock;
+    BOOLEAN CompletionRunning;
+    BOOLEAN CompletionRerun;
+
+    WDFQUEUE DefaultQueue;
+    WDFQUEUE ReadQueue;
+    WDFQUEUE CompletionQueue;
+    WDFQUEUE IdleQueue;
+    WDFQUEUE ResetNotifyQueue;
+
     LARGE_INTEGER ConnectionId;
     WDFIOTARGET Target;
 
@@ -83,11 +95,6 @@ typedef struct _HIDI2C_DEVICE
 
     USHORT DescriptorRegister;
     HIDI2C_DESCRIPTOR Descriptor;
-
-    WDFQUEUE DefaultQueue;
-    WDFQUEUE ReadQueue;
-    WDFQUEUE ResetNotifyQueue;
-    WDFQUEUE IdleQueue;
 
     WDFTIMER ResetTimer;
     BOOLEAN ResetPending;
@@ -104,6 +111,14 @@ typedef struct _HIDI2C_IDLE_WORK
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(HIDI2C_IDLE_WORK, HidI2cGetIdleWork)
 
+/* driver.c */
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID
+NTAPI
+HidI2cReportProblem(
+    _In_ PHIDI2C_DEVICE Context,
+    _In_ NTSTATUS Problem);
+
 /* acpi.c */
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
@@ -115,13 +130,15 @@ HidI2cQueryDescriptorRegister(
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 NTAPI
-HidI2cOpenTarget(
-    _Inout_ PHIDI2C_DEVICE Context);
+HidI2cSpbInitialize(
+    _Inout_ PHIDI2C_DEVICE Context,
+    _In_ WDFCMRESLIST ResourcesRaw,
+    _In_ WDFCMRESLIST ResourcesTranslated);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID
 NTAPI
-HidI2cCloseTarget(
+HidI2cSpbRelease(
     _Inout_ PHIDI2C_DEVICE Context);
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -149,26 +166,28 @@ NTSTATUS
 NTAPI
 HidI2cCommandRead(
     _In_ PHIDI2C_DEVICE Context,
-    _In_reads_bytes_(CommandLength) const UCHAR *Command,
-    _In_ ULONG CommandLength,
+    _In_reads_bytes_(CommandLength) PUCHAR Command,
+    _In_ USHORT CommandLength,
     _Out_writes_bytes_(Length) PUCHAR Buffer,
-    _In_ ULONG Length);
+    _In_ USHORT Length);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 NTAPI
 HidI2cCommandWrite(
     _In_ PHIDI2C_DEVICE Context,
-    _In_reads_bytes_(CommandLength) const UCHAR *Command,
-    _In_ ULONG CommandLength,
-    _In_reads_bytes_(Length) const UCHAR *Data,
-    _In_ ULONG Length);
+    _In_reads_bytes_(CommandLength) PUCHAR Command,
+    _In_ USHORT CommandLength,
+    _In_reads_bytes_(Length) PUCHAR Data,
+    _In_ USHORT Length);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 NTAPI
 HidI2cReadInput(
-    _In_ PHIDI2C_DEVICE Context);
+    _In_ PHIDI2C_DEVICE Context,
+    _Out_writes_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length);
 
 /* hid.c */
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -197,5 +216,9 @@ HidI2cCompleteIdleRequest(
     _In_ PHIDI2C_DEVICE Context);
 
 EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL HidI2cEvtInternalDeviceControl;
-EVT_WDF_INTERRUPT_ISR HidI2cEvtInterruptIsr;
+EVT_WDF_IO_QUEUE_IO_STOP HidI2cEvtIoStop;
 EVT_WDF_TIMER HidI2cEvtResetTimer;
+
+/* interrupt.c */
+EVT_WDF_INTERRUPT_ISR HidI2cEvtInterruptIsr;
+EVT_WDF_INTERRUPT_DPC HidI2cEvtInterruptDpc;

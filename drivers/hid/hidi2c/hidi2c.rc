@@ -3,3 +3,5 @@
 #define REACTOS_STR_INTERNAL_NAME     "hidi2c"
 #define REACTOS_STR_ORIGINAL_FILENAME "hidi2c.sys"
 #include <reactos/version.rc>
+
+#include <hidi2c_msg.rc>

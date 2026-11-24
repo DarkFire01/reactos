@@ -1,13 +1,17 @@
 
+add_message_headers(UNICODE hidi2c_msg.mc)
+
 list(APPEND SOURCE
     acpi.c
     driver.c
     hid.c
+    interrupt.c
     spb.c
     hidi2c.h)
 
 add_library(hidi2c MODULE ${SOURCE} hidi2c.rc)
 set_module_type(hidi2c kmdfdriver)
+add_dependencies(hidi2c hidi2c_msg)
 
 target_compile_definitions(hidi2c PRIVATE
     WDF_DEVICE_NO_WDMSEC_H _WIN32_WINNT=0x603 NTDDI_VERSION=0x06030000)
