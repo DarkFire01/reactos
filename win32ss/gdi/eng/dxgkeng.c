@@ -249,15 +249,32 @@ DxgkEngGetDC(
     return NULL;
 }
 
+/**
+ * @brief Whether the DC draws into a window's redirection surface instead of the screen.
+ *
+ * dxgkrnl sends windowed presents into such a DC through DxgkEngBltViaGDI, which lands
+ * them in the surface the DWM composes.
+ */
 static
 BOOL
 APIENTRY
 DxgkEngIsRedirectionDC(
     _In_ HDC hdc)
 {
-    UNREFERENCED_PARAMETER(hdc);
+    BOOL bRedirected;
+    PDC pdc;
 
-    return FALSE;
+    if (hdc == NULL)
+        return FALSE;
+
+    pdc = DC_LockDc(hdc);
+    if (pdc == NULL)
+        return FALSE;
+
+    bRedirected = (pdc->fs & DC_REDIRECTION) != 0;
+    DC_UnlockDc(pdc);
+
+    return bRedirected;
 }
 
 static
