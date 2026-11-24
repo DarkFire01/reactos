@@ -1450,6 +1450,7 @@ UserpChangeDisplaySettingsWddm(
         {
             DPRINT1("win32k: '%S' already runs %lux%lu\n", ppdev->pGraphicsDevice->szWinDeviceName,
                     pdm->dmPelsWidth, pdm->dmPelsHeight);
+            UserUpdateFullscreen(flags);
             return DISP_CHANGE_SUCCESSFUL;
         }
     }
