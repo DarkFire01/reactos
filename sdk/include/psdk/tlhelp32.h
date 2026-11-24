@@ -29,27 +29,27 @@ extern "C" {
 #define TH32CS_SNAPALL	(TH32CS_SNAPHEAPLIST|TH32CS_SNAPPROCESS|TH32CS_SNAPTHREAD|TH32CS_SNAPMODULE)
 #define TH32CS_INHERIT	0x80000000
 typedef struct tagHEAPLIST32 {
-	DWORD dwSize;
+	SIZE_T dwSize;
 	DWORD th32ProcessID;
-	DWORD th32HeapID;
+	ULONG_PTR th32HeapID;
 	DWORD dwFlags;
 } HEAPLIST32,*PHEAPLIST32,*LPHEAPLIST32;
 typedef struct tagHEAPENTRY32 {
-	DWORD dwSize;
+	SIZE_T dwSize;
 	HANDLE hHandle;
-	DWORD dwAddress;
-	DWORD dwBlockSize;
+	ULONG_PTR dwAddress;
+	SIZE_T dwBlockSize;
 	DWORD dwFlags;
 	DWORD dwLockCount;
 	DWORD dwResvd;
 	DWORD th32ProcessID;
-	DWORD th32HeapID;
+	ULONG_PTR th32HeapID;
 } HEAPENTRY32,*PHEAPENTRY32,*LPHEAPENTRY32;
 typedef struct tagPROCESSENTRY32W {
 	DWORD dwSize;
 	DWORD cntUsage;
 	DWORD th32ProcessID;
-	DWORD th32DefaultHeapID;
+	ULONG_PTR th32DefaultHeapID;
 	DWORD th32ModuleID;
 	DWORD cntThreads;
 	DWORD th32ParentProcessID;
@@ -61,7 +61,7 @@ typedef struct tagPROCESSENTRY32 {
 	DWORD dwSize;
 	DWORD cntUsage;
 	DWORD th32ProcessID;
-	DWORD th32DefaultHeapID;
+	ULONG_PTR th32DefaultHeapID;
 	DWORD th32ModuleID;
 	DWORD cntThreads;
 	DWORD th32ParentProcessID;
