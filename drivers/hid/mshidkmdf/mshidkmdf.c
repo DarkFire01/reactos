@@ -55,47 +55,11 @@ MsHidKmdfNotifyPresence(
 }
 
 /**
- * @brief Sends IRP_MN_QUERY_INTERFACE for the presence interface down the stack.
- */
-static
-NTSTATUS
-NTAPI
-MsHidKmdfQueryPresenceInterface(
-    _In_ PDEVICE_OBJECT LowerDevice,
-    _Inout_ PHIDKMDF_PRESENCE_INTERFACE Block)
-{
-    PIO_STACK_LOCATION Stack;
-    NTSTATUS Status;
-    PIRP Irp;
-
-    /* One extra location so IoForwardIrpSynchronously has a current one to copy */
-    Irp = IoAllocateIrp(LowerDevice->StackSize + 1, FALSE);
-    if (Irp == NULL)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    IoSetNextIrpStackLocation(Irp);
-    Stack = IoGetCurrentIrpStackLocation(Irp);
-    RtlZeroMemory(Stack, sizeof(*Stack));
-
-    Stack->MajorFunction = IRP_MJ_PNP;
-    Stack->MinorFunction = IRP_MN_QUERY_INTERFACE;
-    Stack->Parameters.QueryInterface.InterfaceType = &GUID_HIDKMDF_PRESENCE_INTERFACE;
-    Stack->Parameters.QueryInterface.Size = sizeof(*Block);
-    Stack->Parameters.QueryInterface.Version = HIDKMDF_PRESENCE_INTERFACE_VERSION;
-    Stack->Parameters.QueryInterface.Interface = &Block->Interface;
-    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
-
-    IoForwardIrpSynchronously(LowerDevice, Irp);
-    Status = Irp->IoStatus.Status;
-    IoFreeIrp(Irp);
-
-    return Status;
-}
-
-/**
- * @brief Publishes our presence callback and binds the interface from below.
+ * @brief
+ * Publishes our presence callback and asks the stack below to bind to it.
  *
- * A stack with no responder still starts; the block is left zeroed.
+ * The block is wiped only when the query was sent and refused. A stack with
+ * no responder still starts.
  */
 static
 NTSTATUS
@@ -105,19 +69,41 @@ MsHidKmdfAddDevice(
     _In_ PDEVICE_OBJECT DeviceObject)
 {
     PHIDKMDF_PRESENCE_INTERFACE Block = MsHidKmdfInterfaceBlock(DeviceObject);
-    NTSTATUS Status;
+    PDEVICE_OBJECT LowerDevice = MsHidKmdfLowerDevice(DeviceObject);
+    PIO_STACK_LOCATION Stack;
+    PIRP Irp;
 
     UNREFERENCED_PARAMETER(DriverObject);
 
     RtlZeroMemory(Block, sizeof(*Block));
-    Block->HidClassDevice = DeviceObject;
-    Block->NotifyPresence = MsHidKmdfNotifyPresence;
-    Block->Interface.Version = HIDKMDF_PRESENCE_INTERFACE_VERSION;
     Block->Interface.Size = sizeof(*Block);
+    Block->Interface.Version = HIDKMDF_PRESENCE_INTERFACE_VERSION;
+    Block->NotifyPresence = MsHidKmdfNotifyPresence;
+    Block->HidClassDevice = DeviceObject;
 
-    Status = MsHidKmdfQueryPresenceInterface(MsHidKmdfLowerDevice(DeviceObject), Block);
-    if (!NT_SUCCESS(Status))
-        RtlZeroMemory(Block, sizeof(*Block));
+    /* One extra location so IoForwardIrpSynchronously has a current one to copy */
+    Irp = IoAllocateIrp(LowerDevice->StackSize + 1, FALSE);
+    if (Irp != NULL)
+    {
+        IoSetNextIrpStackLocation(Irp);
+        Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+
+        Stack = IoGetCurrentIrpStackLocation(Irp);
+        RtlZeroMemory(Stack, sizeof(*Stack));
+        Stack->MajorFunction = IRP_MJ_PNP;
+        Stack->MinorFunction = IRP_MN_QUERY_INTERFACE;
+        Stack->Parameters.QueryInterface.InterfaceType = &GUID_HIDKMDF_PRESENCE_INTERFACE;
+        Stack->Parameters.QueryInterface.Size = sizeof(*Block);
+        Stack->Parameters.QueryInterface.Version = HIDKMDF_PRESENCE_INTERFACE_VERSION;
+        Stack->Parameters.QueryInterface.Interface = &Block->Interface;
+        Stack->Parameters.QueryInterface.InterfaceSpecificData = NULL;
+
+        IoForwardIrpSynchronously(LowerDevice, Irp);
+        if (!NT_SUCCESS(Irp->IoStatus.Status))
+            RtlZeroMemory(Block, sizeof(*Block));
+
+        IoFreeIrp(Irp);
+    }
 
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
     return STATUS_SUCCESS;
@@ -147,7 +133,8 @@ MsHidKmdfDispatchPower(
 }
 
 /**
- * @brief Releases a bound presence interface before removal goes down the stack.
+ * @brief
+ * Releases a bound presence interface before removal goes down the stack.
  */
 static
 NTSTATUS
@@ -162,8 +149,8 @@ MsHidKmdfDispatchPnp(
         return MsHidKmdfDispatchForward(DeviceObject, Irp);
 
     Block = MsHidKmdfInterfaceBlock(DeviceObject);
-    if (Block->Interface.Version == HIDKMDF_PRESENCE_INTERFACE_VERSION &&
-        Block->Interface.Size == sizeof(*Block) &&
+    if (Block->Interface.Size == sizeof(*Block) &&
+        Block->Interface.Version == HIDKMDF_PRESENCE_INTERFACE_VERSION &&
         Block->Interface.InterfaceDereference != NULL)
     {
         Block->Interface.InterfaceDereference(Block->Interface.Context);
@@ -192,18 +179,13 @@ DriverEntry(
     HID_MINIDRIVER_REGISTRATION Registration;
     ULONG Major;
 
-    DriverObject->DriverUnload = MsHidKmdfUnload;
-    DriverObject->DriverExtension->AddDevice = MsHidKmdfAddDevice;
-
     for (Major = 0; Major <= IRP_MJ_MAXIMUM_FUNCTION; Major++)
-    {
-        if (Major == IRP_MJ_PNP)
-            DriverObject->MajorFunction[Major] = MsHidKmdfDispatchPnp;
-        else if (Major == IRP_MJ_POWER)
-            DriverObject->MajorFunction[Major] = MsHidKmdfDispatchPower;
-        else
-            DriverObject->MajorFunction[Major] = MsHidKmdfDispatchForward;
-    }
+        DriverObject->MajorFunction[Major] = MsHidKmdfDispatchForward;
+
+    DriverObject->MajorFunction[IRP_MJ_POWER] = MsHidKmdfDispatchPower;
+    DriverObject->MajorFunction[IRP_MJ_PNP] = MsHidKmdfDispatchPnp;
+    DriverObject->DriverExtension->AddDevice = MsHidKmdfAddDevice;
+    DriverObject->DriverUnload = MsHidKmdfUnload;
 
     RtlZeroMemory(&Registration, sizeof(Registration));
     Registration.Revision = HID_REVISION;
