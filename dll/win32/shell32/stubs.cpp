@@ -767,9 +767,10 @@ DWORD WINAPI CheckStagingArea(VOID)
  */
 EXTERN_C DWORD
 WINAPI
-RunInstallUninstallStubs(VOID)
+RunInstallUninstallStubs(
+    _In_ DWORD dwReserved)
 {
-    FIXME("RunInstallUninstallStubs() stub!\n");
+    FIXME("RunInstallUninstallStubs(0x%lx) stub!\n", dwReserved);
     return 0;
 }
 

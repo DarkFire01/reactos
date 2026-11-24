@@ -116,7 +116,6 @@ Tbsip_Cancel_Commands(
  * @brief Returns the TPM based device identifier, none without a TPM.
  */
 HRESULT
-WINAPI
 GetDeviceIDString(
     _Out_writes_opt_(Size) PWSTR Out,
     _In_ UINT32 Size,

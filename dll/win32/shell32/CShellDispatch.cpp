@@ -196,7 +196,7 @@ HRESULT STDMETHODCALLTYPE CShellDispatch::TileHorizontally()
 
 HRESULT STDMETHODCALLTYPE CShellDispatch::ShutdownWindows()
 {
-    ExitWindowsDialog(NULL);
+    ExitWindowsDialog(NULL, 0);
     return S_OK;
 }
 

@@ -178,6 +178,7 @@ CreateSkipBindCtx(
 }
 
 static HRESULT
+WINAPI
 MapWin32ErrorToSTG(
     _In_ HRESULT hr)
 {

@@ -547,7 +547,7 @@ HRESULT SHCoInitializeAnyApartment(VOID)
     return hr;
 }
 
-EXTERN_C HRESULT
+EXTERN_C HRESULT WINAPI
 SHGetNameAndFlagsW(
     _In_ LPCITEMIDLIST pidl,
     _In_ DWORD dwFlags,

@@ -75,7 +75,7 @@ extern INT    WINAPI FindMRUData(HANDLE hList, LPCVOID lpData, DWORD cbData, LPI
 extern INT    WINAPI EnumMRUListA(HANDLE hList, INT nItemPos, LPVOID lpBuffer, DWORD nBufferSize);
 #endif
 
-EXTERN_C HRESULT SHGetNameAndFlagsW(LPCITEMIDLIST pidl, DWORD Shgdn, LPWSTR pszText, UINT cchBuf, DWORD *pSfgao);
+EXTERN_C HRESULT WINAPI SHGetNameAndFlagsW(LPCITEMIDLIST pidl, DWORD Shgdn, LPWSTR pszText, UINT cchBuf, DWORD *pSfgao);
 
 static HIMAGELIST DAD_himlTrack = NULL;
 static POINT DAD_ptHotspot;

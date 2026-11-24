@@ -38,7 +38,8 @@
 @ stub InitPropVariantFromInt16Vector
 @ stub InitPropVariantFromInt32Vector
 @ stub InitPropVariantFromInt64Vector
-@ stub InitPropVariantFromPropVariantVectorElem
+@ stdcall -stub -arch=i386 InitPropVariantFromPropVariantVectorElem(ptr long ptr)
+@ stub -arch=!i386 InitPropVariantFromPropVariantVectorElem
 @ stub InitPropVariantFromResource
 @ stub InitPropVariantFromStrRet
 @ stub InitPropVariantFromStringAsVector
@@ -98,12 +99,14 @@
 @ stdcall PropVariantCompareEx(ptr ptr long long)
 @ stub PropVariantGetBooleanElem
 @ stub PropVariantGetDoubleElem
-@ stub PropVariantGetElementCount
+@ stdcall -stub -arch=i386 PropVariantGetElementCount(ptr)
+@ stub -arch=!i386 PropVariantGetElementCount
 @ stub PropVariantGetFileTimeElem
 @ stub PropVariantGetInt16Elem
 @ stub PropVariantGetInt32Elem
 @ stub PropVariantGetInt64Elem
-@ stub PropVariantGetStringElem
+@ stdcall -stub -arch=i386 PropVariantGetStringElem(ptr long ptr)
+@ stub -arch=!i386 PropVariantGetStringElem
 @ stub PropVariantGetUInt16Elem
 @ stub PropVariantGetUInt32Elem
 @ stub PropVariantGetUInt64Elem

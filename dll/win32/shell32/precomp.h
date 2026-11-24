@@ -295,7 +295,7 @@ SHGetAttributes(_In_ IShellFolder *psf, _In_ LPCITEMIDLIST pidl, _In_ DWORD dwAt
 HRESULT SHELL_GetIDListTarget(_In_ LPCITEMIDLIST pidl, _Out_ PIDLIST_ABSOLUTE *ppidl);
 HRESULT SHCoInitializeAnyApartment(VOID);
 
-EXTERN_C HRESULT
+EXTERN_C HRESULT WINAPI
 SHGetNameAndFlagsW(
     _In_ LPCITEMIDLIST pidl,
     _In_ DWORD dwFlags,

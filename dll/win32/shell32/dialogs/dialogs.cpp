@@ -1601,12 +1601,12 @@ VOID ExitWindowsDialog_backup(HWND hWndOwner)
  * - Implement the ability to show either the Welcome Screen or the classic dialog boxes based upon the
  *   registry value: SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\LogonType.
  */
-void WINAPI ExitWindowsDialog(HWND hWndOwner)
+void WINAPI ExitWindowsDialog(HWND hWndOwner, DWORD dwFlags)
 {
     typedef DWORD (WINAPI *ShellShFunc)(HWND hWndParent, LPCWSTR pUserName, DWORD dwExcludeOptions);
     HINSTANCE msginaDll = LoadLibraryW(L"msgina.dll");
 
-    TRACE("(%p)\n", hWndOwner);
+    TRACE("(%p, 0x%lx)\n", hWndOwner, dwFlags);
 
     CComPtr<IUnknown> fadeHandler;
     HWND parent;

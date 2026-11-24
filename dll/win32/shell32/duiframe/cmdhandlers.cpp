@@ -187,6 +187,7 @@ GetClassicMenusState(
 
 static
 BOOL
+WINAPI
 IsSearchEnabled(VOID)
 {
     static int s_iSearchEnabled = 0;

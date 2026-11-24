@@ -641,7 +641,7 @@ static HRESULT WINAPI topology_GetNodeCount(IMFTopology *iface, WORD *count)
     if (!count)
         return E_POINTER;
 
-    *count = topology->nodes.count;
+    *count = (WORD)topology->nodes.count;
 
     return S_OK;
 }

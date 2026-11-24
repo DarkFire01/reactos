@@ -597,7 +597,7 @@ public:
         SaveState();
 
         /* Display the ReactOS Shutdown Dialog */
-        ExitWindowsDialog(m_hWnd);
+        ExitWindowsDialog(m_hWnd, 0);
 
         /*
          * If the user presses CTRL+ALT+SHIFT while exiting

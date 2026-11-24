@@ -57,7 +57,7 @@
 57 stdcall -noname PathGetDriveNumber(wstr) PathGetDriveNumberW
 58 stdcall -noname ParseField(str long ptr long) ParseFieldAW # FIXME
 59 stdcall RestartDialog(long wstr long)
-60 stdcall -noname ExitWindowsDialog(long)
+60 stdcall -noname ExitWindowsDialog(ptr long)
 61 stdcall -noname RunFileDlg(long long long wstr wstr long)
 62 stdcall PickIconDlg(long long long long)
 63 stdcall GetFileNameFromBrowse(long long long long wstr wstr wstr)
@@ -402,7 +402,7 @@
 881 stub -noname -version=0x601+ SHEnumClassesOfCategories
 882 stub -noname -version=0x601+ SHWriteClassesOfCategories
 884 stub -noname -version=0x601+ SHDoDragDropWithPreferredEffect
-885 stdcall -noname -version=0x601+ RunInstallUninstallStubs()
+885 stdcall -noname -version=0x601+ RunInstallUninstallStubs(long)
 887 stub -noname -version=0x601+ SHExtCoCreateInstanceCheckCategory
 888 stub -noname -version=0x601+ SHLimitInputEndSubclass
 892 stub -noname -version=0x601+ GetSqmableFileName
