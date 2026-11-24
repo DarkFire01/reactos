@@ -21,6 +21,9 @@ static PPROCESSINFO gppiDwm = NULL;
 static PEPROCESS gpepDwm = NULL;
 static BOOLEAN gbDwmKernelStarted = FALSE;
 
+/* The display has no hardware pointer, so the DWM draws the cursor while it composes */
+static BOOLEAN gbDwmSoftwareCursor = FALSE;
+
 /* Drawing threads send dirty notifications without the user lock, so the port is swapped under this */
 static KSPIN_LOCK gDwmPortLock;
 
@@ -145,6 +148,34 @@ FASTCALL
 IntDwmIsKernelStarted(VOID)
 {
     return gbDwmKernelStarted;
+}
+
+static
+VOID
+IntDwmSendSoftwareCursor(VOID)
+{
+    DWM_SOFTWARE_CURSOR Message;
+
+    RtlZeroMemory(&Message, sizeof(Message));
+    Message.Command = DWM_PORT_SOFTWARE_CURSOR;
+    Message.Enable = gbDwmSoftwareCursor;
+    IntDwmSendMessage(&Message.Header, sizeof(Message));
+}
+
+/**
+ * @brief Records whether GDI draws the pointer itself, which the DWM has to take over while it composes.
+ */
+VOID
+FASTCALL
+IntDwmSetSoftwareCursor(
+    _In_ BOOLEAN Software)
+{
+    if (gbDwmSoftwareCursor == Software)
+        return;
+
+    gbDwmSoftwareCursor = Software;
+    if (gbDwmKernelStarted)
+        IntDwmSendSoftwareCursor();
 }
 
 static
@@ -384,6 +415,7 @@ NtUserDwmKernelStartup(VOID)
 
     /* From here on windows draw into their sprites instead of the screen */
     IntDwmComposeAll();
+    IntDwmSendSoftwareCursor();
     Result = TRUE;
 
 Exit:

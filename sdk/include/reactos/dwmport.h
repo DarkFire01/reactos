@@ -126,6 +126,16 @@ typedef struct _DWM_ZORDER_SPRITE
     ULONG64 InsertAfter;
 } DWM_ZORDER_SPRITE, *PDWM_ZORDER_SPRITE;
 
+/* Whether the DWM draws the cursor, which it does while the display has no hardware pointer */
+#define DWM_PORT_SOFTWARE_CURSOR    0x400000A0
+
+typedef struct _DWM_SOFTWARE_CURSOR
+{
+    PORT_MESSAGE Header;
+    ULONG Command;
+    ULONG Enable;
+} DWM_SOFTWARE_CURSOR, *PDWM_SOFTWARE_CURSOR;
+
 /* Where a top level window's client area and content are; content is what the DWM shows of GDI's drawing */
 #define DWM_PORT_CHILD_MOVE_SIZE    0x40000015
 
