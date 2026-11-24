@@ -1136,13 +1136,6 @@ SearchDriverRecursive(
     return retval;
 }
 
-BOOL
-CheckBestDriver(
-    _In_ PDEVINSTDATA DevInstData,
-    _In_ PCWSTR pszDir)
-{
-    return SearchDriverRecursive(DevInstData, pszDir);
-}
 
 BOOL
 ScanFoldersForDriver(

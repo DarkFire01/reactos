@@ -579,34 +579,21 @@ AutoDriver(HWND Dlg, BOOL Enabled)
     IncludePath(Dlg, Enabled & IsDlgButtonChecked(Dlg, IDC_CHECK_PATH));
 }
 
+/* Any file system folder can be picked, the search runs once the wizard moves on */
 static INT CALLBACK
 BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPARAM lpData)
 {
-    BOOL bValid = FALSE;
+    WCHAR szDir[MAX_PATH];
 
     switch (uMsg)
     {
         case BFFM_INITIALIZED:
-        {
-            PCWSTR pszPath = ((PDEVINSTDATA)lpData)->CustomSearchPath;
-
-            bValid = CheckBestDriver((PDEVINSTDATA)lpData, pszPath);
-            SendMessageW(hwnd, BFFM_SETSELECTION, TRUE, (LPARAM)pszPath);
-            SendMessageW(hwnd, BFFM_ENABLEOK, 0, bValid);
+            SendMessageW(hwnd, BFFM_SETSELECTION, TRUE, (LPARAM)((PDEVINSTDATA)lpData)->CustomSearchPath);
             break;
-        }
 
         case BFFM_SELCHANGED:
-        {
-            WCHAR szDir[MAX_PATH];
-
-            if (SHGetPathFromIDListW((LPITEMIDLIST)lParam, szDir))
-            {
-                bValid = CheckBestDriver((PDEVINSTDATA)lpData, szDir);
-            }
-            PostMessageW(hwnd, BFFM_ENABLEOK, 0, bValid);
+            PostMessageW(hwnd, BFFM_ENABLEOK, 0, SHGetPathFromIDListW((LPITEMIDLIST)lParam, szDir));
             break;
-        }
     }
     return 0;
 }
