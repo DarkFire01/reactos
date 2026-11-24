@@ -44,6 +44,12 @@ static PKTIMER gHidScanTimer;
 static const GUID HidInterfaceGuid =
     { 0x4D1E55B2, 0xF16F, 0x11CF, { 0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30 } };
 
+/* Each keyboard and mouse has its own class device, found through these interfaces */
+static const GUID KeyboardInterfaceGuid =
+    { 0x884B96C3, 0x56EF, 0x11D1, { 0xBC, 0x8C, 0x00, 0xA0, 0xC9, 0x14, 0x05, 0xDD } };
+static const GUID MouseInterfaceGuid =
+    { 0x378DE44C, 0x56EF, 0x11D1, { 0xBC, 0x8C, 0x00, 0xA0, 0xC9, 0x14, 0x05, 0xDD } };
+
 /* HID collections already looked at that are not touch screens */
 typedef struct _HID_SKIPPED_DEVICE
 {
@@ -332,8 +338,8 @@ RITReadApc(
             ERR("Touch read 0x%08lx, %Iu bytes\n", IoStatusBlock->Status, IoStatusBlock->Information);
     }
 
-    /* A failed HID read means the collection went away, the next scan drops it */
-    if (DeviceInfo->DeviceType == RIM_TYPEHID && !NT_SUCCESS(IoStatusBlock->Status))
+    /* A failed read means the device went away, the next scan drops it */
+    if (!NT_SUCCESS(IoStatusBlock->Status))
     {
         DeviceInfo->Status = IoStatusBlock->Status;
         return;
@@ -400,9 +406,10 @@ HidQueryCollection(
 
     RtlZeroMemory(Hid, sizeof(*Hid));
 
+    /* No read access, so a keyboard or mouse mapper below does not take this handle as its reader */
     InitializeObjectAttributes(&ObjectAttributes, Name, OBJ_KERNEL_HANDLE, NULL, NULL);
     Status = ZwOpenFile(&Handle,
-                        GENERIC_READ | SYNCHRONIZE,
+                        FILE_READ_ATTRIBUTES | SYNCHRONIZE,
                         &ObjectAttributes,
                         &Iosb,
                         FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -538,7 +545,39 @@ HidAddTouchDevice(
 }
 
 /**
- * @brief Drops HID devices whose reads failed, then picks up new collections.
+ * @brief Adds every keyboard or mouse class device not read yet.
+ */
+static
+VOID
+ScanClassDevices(
+    _In_ const GUID *InterfaceGuid,
+    _In_ UCHAR DeviceType)
+{
+    UNICODE_STRING Name;
+    PWSTR List;
+    PWSTR Entry;
+    BOOLEAN Known;
+
+    if (!NT_SUCCESS(IoGetDeviceInterfaces(InterfaceGuid, NULL, 0, &List)))
+        return;
+
+    for (Entry = List; *Entry; Entry += wcslen(Entry) + 1)
+    {
+        RtlInitUnicodeString(&Name, Entry);
+
+        AcquireDeviceInfoListMutex();
+        Known = HidIsKnownDevice(&Name);
+        ReleaseDeviceInfoListMutex();
+
+        if (!Known)
+            CreateInputDevice(DeviceType, &Name);
+    }
+
+    ExFreePool(List);
+}
+
+/**
+ * @brief Drops devices whose reads failed, then picks up new keyboards, mice and HID collections.
  */
 static
 VOID
@@ -558,7 +597,7 @@ ScanHidDevices(
     Link = &gpInputDeviceInfo;
     while ((DeviceInfo = *Link) != NULL)
     {
-        if (DeviceInfo->DeviceType != RIM_TYPEHID || NT_SUCCESS(DeviceInfo->Status))
+        if (NT_SUCCESS(DeviceInfo->Status))
         {
             Link = &DeviceInfo->pNextDeviceInfo;
             continue;
@@ -574,8 +613,20 @@ ScanHidDevices(
     {
         DeviceInfo = Dead;
         Dead = DeviceInfo->pNextDeviceInfo;
-        HidFreeDevice(DeviceInfo);
+        if (DeviceInfo->DeviceType == RIM_TYPEHID)
+        {
+            HidFreeDevice(DeviceInfo);
+            continue;
+        }
+
+        if (DeviceInfo->Handle)
+            CloseInputDevice(DeviceInfo);
+        ExFreePoolWithTag(DeviceInfo, USERTAG_PNP);
+        KeSetEvent(gDeviceListChangedEvent, EVENT_INCREMENT, FALSE);
     }
+
+    ScanClassDevices(&KeyboardInterfaceGuid, RIM_TYPEKEYBOARD);
+    ScanClassDevices(&MouseInterfaceGuid, RIM_TYPEMOUSE);
 
     Status = IoGetDeviceInterfaces(&HidInterfaceGuid, NULL, 0, &List);
     if (!NT_SUCCESS(Status))
@@ -624,6 +675,8 @@ ProcessDeviceChanges(
                     TRACE("Keyboard connected!\n");
                     if (!ghKeyboardDevice)
                     {
+                        ghKeyboardDevice = DeviceInfo->Handle;
+
                         // Get and load keyboard attributes.
                         UserInitKeyboard(DeviceInfo->Handle);
                         UserEnterExclusive();
@@ -714,10 +767,6 @@ RawInputThreadMain(VOID)
     KWAIT_BLOCK WaitBlockArray[RTL_NUMBER_OF(WaitObjects)];
     PVOID ShutdownEvent;
     HWINSTA hWinSta;
-    PINPUT_DEVICE_INFO Mouse;
-    PINPUT_DEVICE_INFO Keyboard;
-    UNICODE_STRING LegacyMouseName = RTL_CONSTANT_STRING(L"\\Device\\PointerClass0");
-    UNICODE_STRING LegacyKeyboardName = RTL_CONSTANT_STRING(L"\\Device\\KeyboardClass0");
 
     gDeviceListChangedEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(*gDeviceListChangedEvent), USERTAG_PNP);
     ASSERT(gDeviceListChangedEvent);
@@ -756,17 +805,15 @@ RawInputThreadMain(VOID)
     Status = ExInitializeResourceLite(gpDeviceInfoListMutex);
     ASSERT(NT_SUCCESS(Status));
 
-    Mouse = CreateInputDevice(RIM_TYPEMOUSE, &LegacyMouseName);
-    ASSERT(Mouse);
-    Keyboard = CreateInputDevice(RIM_TYPEKEYBOARD, &LegacyKeyboardName);
-    ASSERT(Keyboard);
 
     UserEnterExclusive();
     StartTheTimers();
     UserLeave();
 
     NT_ASSERT(ghKeyboardDevice == NULL);
-    ghKeyboardDevice = Keyboard->Handle;
+
+    /* Pick up the keyboards and mice already present, the timer catches later ones */
+    ScanHidDevices();
 
     gHidScanTimer = ExAllocatePoolWithTag(NonPagedPool, sizeof(*gHidScanTimer), USERTAG_PNP);
     ASSERT(gHidScanTimer);
