@@ -327,8 +327,8 @@ DeleteObject(HGDIOBJ hObject)
     /* Check if this is a stock object */
     if (GDI_HANDLE_IS_STOCKOBJ(hObject))
     {
-        /* Ignore the attempt to delete a stock object */
-        DPRINT1("Trying to delete system object 0x%p\n", hObject);
+        /* Ignore the attempt to delete a stock object; CreatePen(PS_NULL) alone hands one out */
+        DPRINT("Trying to delete system object 0x%p\n", hObject);
         return TRUE;
     }
 
