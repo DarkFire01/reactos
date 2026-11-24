@@ -114,6 +114,13 @@ UaspFinishTransfer(
     Srb = Request->Srb;
     SrbStatus = Request->SrbStatus;
 
+    /* Only now has the data stage surely reported its length, it may finish after the status */
+    if (SrbStatus == SRB_STATUS_SUCCESS && Request->HasData &&
+        Request->DataTransferred != Request->DataLength)
+    {
+        SrbStatus = SRB_STATUS_DATA_OVERRUN;
+    }
+
     /* A short transfer is reported as an overrun and is normal, the class layer asks for more than it gets */
     if (SRB_STATUS(SrbStatus) == SRB_STATUS_SUCCESS ||
         (SRB_STATUS(SrbStatus) == SRB_STATUS_DATA_OVERRUN && Request->DataTransferred < Request->DataLength))
@@ -497,12 +504,6 @@ UaspStatusTransferDone(
     Received = Urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
 
     SrbStatus = UaspProcessStatusIu(Request, Request->StatusIu, Received);
-
-    if (SrbStatus == SRB_STATUS_SUCCESS && Request->HasData &&
-        Request->DataTransferred != Request->DataLength)
-    {
-        SrbStatus = SRB_STATUS_DATA_OVERRUN;
-    }
 
     Request->SrbStatus = SrbStatus;
 
