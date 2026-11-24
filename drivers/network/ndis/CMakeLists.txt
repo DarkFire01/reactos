@@ -61,5 +61,9 @@ add_library(ndis MODULE
 
 set_module_type(ndis kernelmodedriver)
 add_importlibs(ndis ntoskrnl hal netio)
+if(ARCH STREQUAL "i386")
+    # The x86 kernel does not export memcmp
+    target_link_libraries(ndis memcmp)
+endif()
 add_pch(ndis include/ndissys.h SOURCE)
 add_cd_file(TARGET ndis DESTINATION reactos/system32/drivers FOR all)

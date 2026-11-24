@@ -26,7 +26,8 @@ typedef struct _KSEC_SYMCRYPT_MUTEX
     KIRQL OldIrql;
 } KSEC_SYMCRYPT_MUTEX, *PKSEC_SYMCRYPT_MUTEX;
 
-#ifdef _M_IX86
+/* The save area only exists when SymCrypt builds its x86 code paths */
+#if SYMCRYPT_CPU_X86
 C_ASSERT(sizeof(KFLOATING_SAVE) <= SYMCRYPT_XSTATE_SAVE_SIZE);
 #endif
 

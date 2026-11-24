@@ -26,4 +26,8 @@ add_library(sdport MODULE
 add_pch(sdport precomp.h "${PCH_SKIP_SOURCE}")
 set_module_type(sdport kernelmodedriver)
 add_importlibs(sdport ntoskrnl hal)
+if(ARCH STREQUAL "i386")
+    # The x86 kernel does not export memcmp
+    target_link_libraries(sdport memcmp)
+endif()
 add_cd_file(TARGET sdport DESTINATION reactos/system32/drivers NO_CAB FOR all)

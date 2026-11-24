@@ -15,4 +15,8 @@ list(APPEND SOURCE
 add_library(ppmlib STATIC ${SOURCE})
 add_dependencies(ppmlib bugcodes xdk)
 target_link_libraries(ppmlib wdmguid)
+if(ARCH STREQUAL "i386")
+    # The x86 kernel does not export memcmp
+    target_link_libraries(ppmlib memcmp)
+endif()
 target_include_directories(ppmlib INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
