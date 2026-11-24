@@ -58,4 +58,73 @@ SetFirmwareEnvironmentVariableA(
                                              VARIABLE_ATTRIBUTE_NON_VOLATILE);
 }
 
+/*
+ * @implemented (Wine 13 sep 2008)
+ */
+HANDLE
+WINAPI
+FindFirstVolumeA(IN LPSTR volume,
+                 IN DWORD len)
+{
+    WCHAR *buffer = NULL;
+    HANDLE handle;
+
+    buffer = RtlAllocateHeap( RtlGetProcessHeap(), 0, len * sizeof(WCHAR) );
+
+    if (!buffer)
+    {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    handle = FindFirstVolumeW( buffer, len );
+
+    if (handle != INVALID_HANDLE_VALUE)
+    {
+        if (!WideCharToMultiByte( CP_ACP, 0, buffer, -1, volume, len, NULL, NULL ))
+        {
+            FindVolumeClose( handle );
+            handle = INVALID_HANDLE_VALUE;
+        }
+    }
+    RtlFreeHeap( RtlGetProcessHeap(), 0, buffer );
+    return handle;
+}
+
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetNumaNodeProcessorMask(IN UCHAR Node,
+                         OUT PULONGLONG ProcessorMask)
+{
+    NTSTATUS Status;
+    SYSTEM_NUMA_INFORMATION NumaInformation;
+    ULONG Length;
+
+    /* Query NUMA information */
+    Status = NtQuerySystemInformation(SystemNumaProcessorMap,
+                                      &NumaInformation,
+                                      sizeof(NumaInformation),
+                                      &Length);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* Validate input node number */
+    if (Node > NumaInformation.HighestNodeNumber)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Return mask for that node */
+    *ProcessorMask = NumaInformation.ActiveProcessorsAffinityMask[Node];
+    return TRUE;
+}
+
 /* EOF */

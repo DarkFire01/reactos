@@ -75,4 +75,142 @@ GetVolumePathNameA(IN LPCSTR lpszFileName,
     return Ret;
 }
 
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+FindNextVolumeA(IN HANDLE handle,
+                IN LPSTR volume,
+                IN DWORD len)
+{
+    WCHAR *buffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, len * sizeof(WCHAR));
+    BOOL ret;
+
+    if (!buffer)
+    {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+
+    if ((ret = FindNextVolumeW( handle, buffer, len )))
+    {
+        if (!WideCharToMultiByte( CP_ACP, 0, buffer, -1, volume, len, NULL, NULL )) ret = FALSE;
+    }
+
+    RtlFreeHeap(RtlGetProcessHeap(), 0, buffer);
+    return ret;
+}
+
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetVolumePathNamesForVolumeNameA(IN LPCSTR lpszVolumeName,
+                                 IN LPSTR lpszVolumePathNames,
+                                 IN DWORD cchBufferLength,
+                                 OUT PDWORD lpcchReturnLength)
+{
+    BOOL Ret;
+    NTSTATUS Status;
+    DWORD cchReturnLength;
+    ANSI_STRING VolumePathName;
+    PUNICODE_STRING VolumeNameU;
+    UNICODE_STRING VolumePathNamesU;
+
+    /* Convert volume name to unicode */
+    VolumeNameU = Basep8BitStringToStaticUnicodeString(lpszVolumeName);
+    if (VolumeNameU == NULL)
+    {
+        return FALSE;
+    }
+
+    /* Initialize the strings we'll use later on */
+    VolumePathName.Length = 0;
+    VolumePathName.MaximumLength = cchBufferLength;
+    VolumePathName.Buffer = lpszVolumePathNames;
+
+    VolumePathNamesU.Length = 0;
+    VolumePathNamesU.MaximumLength = sizeof(WCHAR) * cchBufferLength;
+    /* If caller provided a non 0 sized string, allocate a buffer for our unicode string */
+    if (VolumePathNamesU.MaximumLength != 0)
+    {
+        VolumePathNamesU.Buffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, VolumePathNamesU.MaximumLength);
+        if (VolumePathNamesU.Buffer == NULL)
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            return FALSE;
+        }
+    }
+    else
+    {
+        VolumePathNamesU.Buffer = NULL;
+    }
+
+    /* Call the -W implementation */
+    Ret = GetVolumePathNamesForVolumeNameW(VolumeNameU->Buffer, VolumePathNamesU.Buffer,
+                                           cchBufferLength, &cchReturnLength);
+    /* Call succeed, we'll return the total length */
+    if (Ret)
+    {
+        VolumePathNamesU.Length = sizeof(WCHAR) * cchReturnLength;
+    }
+    else
+    {
+        /* Else, if we fail for anything else than too small buffer, quit */
+        if (GetLastError() != ERROR_MORE_DATA)
+        {
+            if (VolumePathNamesU.Buffer != NULL)
+            {
+                RtlFreeHeap(RtlGetProcessHeap(), 0, VolumePathNamesU.Buffer);
+            }
+
+            return FALSE;
+        }
+
+        /* Otherwise, we'll just copy as much as we can */
+        VolumePathNamesU.Length = sizeof(WCHAR) * cchBufferLength;
+    }
+
+    /* Convert our output string back to ANSI */
+    Status = RtlUnicodeStringToAnsiString(&VolumePathName, &VolumePathNamesU, FALSE);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+
+        if (VolumePathNamesU.Buffer != NULL)
+        {
+            RtlFreeHeap(RtlGetProcessHeap(), 0, VolumePathNamesU.Buffer);
+        }
+
+        return FALSE;
+    }
+
+    /* If caller wants return length, two cases... */
+    if (lpcchReturnLength != NULL)
+    {
+        /* We succeed: return the copied length */
+        if (Ret)
+        {
+            *lpcchReturnLength = VolumePathName.Length;
+        }
+        /* We failed, return the size we would have loved having! */
+        else
+        {
+            *lpcchReturnLength = sizeof(WCHAR) * cchReturnLength;
+        }
+    }
+
+    /* Release our buffer if allocated */
+    if (VolumePathNamesU.Buffer != NULL)
+    {
+        RtlFreeHeap(RtlGetProcessHeap(), 0, VolumePathNamesU.Buffer);
+    }
+
+    return Ret;
+}
+
 /* EOF */

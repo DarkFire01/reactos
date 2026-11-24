@@ -17,108 +17,13 @@
 /*
  * @implemented
  */
-DWORD
-WINAPI
-GetVersion(VOID)
-{
-    PPEB Peb = NtCurrentPeb();
-
-    return (DWORD)( ((Peb->OSPlatformId ^ 2) << 30) |
-                     (Peb->OSBuildNumber     << 16) |
-                     (Peb->OSMinorVersion    << 8 ) |
-                      Peb->OSMajorVersion );
-}
-
-/*
- * @implemented
- */
-BOOL
-WINAPI
-GetVersionExW(IN LPOSVERSIONINFOW lpVersionInformation)
-{
-    NTSTATUS Status;
-    LPOSVERSIONINFOEXW lpVersionInformationEx;
-
-    if ((lpVersionInformation->dwOSVersionInfoSize != sizeof(OSVERSIONINFOW)) &&
-        (lpVersionInformation->dwOSVersionInfoSize != sizeof(OSVERSIONINFOEXW)))
-    {
-        SetLastError(ERROR_INSUFFICIENT_BUFFER);
-        return FALSE;
-    }
-
-    Status = RtlGetVersion((PRTL_OSVERSIONINFOW)lpVersionInformation);
-    if (Status == STATUS_SUCCESS)
-    {
-        if (lpVersionInformation->dwOSVersionInfoSize == sizeof(OSVERSIONINFOEXW))
-        {
-            lpVersionInformationEx = (PVOID)lpVersionInformation;
-            lpVersionInformationEx->wReserved = 0;
-        }
-
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
-/*
- * @implemented
- */
-BOOL
-WINAPI
-GetVersionExA(IN LPOSVERSIONINFOA lpVersionInformation)
-{
-    OSVERSIONINFOEXW VersionInformation;
-    LPOSVERSIONINFOEXA lpVersionInformationEx;
-    UNICODE_STRING CsdVersionW;
-    NTSTATUS Status;
-    ANSI_STRING CsdVersionA;
-
-    if ((lpVersionInformation->dwOSVersionInfoSize != sizeof(OSVERSIONINFOA)) &&
-        (lpVersionInformation->dwOSVersionInfoSize != sizeof(OSVERSIONINFOEXA)))
-    {
-        SetLastError(ERROR_INSUFFICIENT_BUFFER);
-        return FALSE;
-    }
-
-    VersionInformation.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXW);
-
-    if (!GetVersionExW((LPOSVERSIONINFOW)&VersionInformation)) return FALSE;
-
-    /* Copy back fields that match both supported structures */
-    lpVersionInformation->dwMajorVersion = VersionInformation.dwMajorVersion;
-    lpVersionInformation->dwMinorVersion = VersionInformation.dwMinorVersion;
-    lpVersionInformation->dwBuildNumber = VersionInformation.dwBuildNumber;
-    lpVersionInformation->dwPlatformId = VersionInformation.dwPlatformId;
-
-    if (lpVersionInformation->dwOSVersionInfoSize == sizeof(OSVERSIONINFOEXA))
-    {
-        lpVersionInformationEx = (PVOID)lpVersionInformation;
-        lpVersionInformationEx->wServicePackMajor = VersionInformation.wServicePackMajor;
-        lpVersionInformationEx->wServicePackMinor = VersionInformation.wServicePackMinor;
-        lpVersionInformationEx->wSuiteMask = VersionInformation.wSuiteMask;
-        lpVersionInformationEx->wProductType = VersionInformation.wProductType;
-        lpVersionInformationEx->wReserved = VersionInformation.wReserved;
-    }
-
-    /* Convert the CSD string */
-    RtlInitEmptyAnsiString(&CsdVersionA,
-                           lpVersionInformation->szCSDVersion,
-                           sizeof(lpVersionInformation->szCSDVersion));
-    RtlInitUnicodeString(&CsdVersionW, VersionInformation.szCSDVersion);
-    Status = RtlUnicodeStringToAnsiString(&CsdVersionA, &CsdVersionW, FALSE);
-    return (NT_SUCCESS(Status));
-}
-
-/*
- * @implemented
- */
 BOOL
 WINAPI
 VerifyVersionInfoW(IN LPOSVERSIONINFOEXW lpVersionInformation,
                    IN DWORD dwTypeMask,
                    IN DWORDLONG dwlConditionMask)
 {
+    return TRUE; // MIkhail Tyukin remove
     NTSTATUS Status;
 
     Status = RtlVerifyVersionInfo((PRTL_OSVERSIONINFOEXW)lpVersionInformation,

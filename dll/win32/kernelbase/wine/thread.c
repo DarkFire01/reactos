@@ -54,6 +54,7 @@ static DWORD rtlmode_to_win32mode( DWORD rtlmode )
 }
 
 
+#ifndef __REACTOS__
 /***************************************************************************
  *           CreateRemoteThread   (kernelbase.@)
  */
@@ -63,6 +64,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThread( HANDLE process, SECURITY_ATT
 {
     return CreateRemoteThreadEx( process, sa, stack, start, param, flags, NULL, id );
 }
+#endif
 
 
 /***************************************************************************
@@ -103,6 +105,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThreadEx( HANDLE process, SECURITY_A
     return handle;
 }
 
+#ifndef __REACTOS__
 
 /***********************************************************************
  *           CreateThread   (kernelbase.@)
@@ -123,6 +126,7 @@ void WINAPI DECLSPEC_HOTPATCH FreeLibraryAndExitThread( HINSTANCE module, DWORD 
     FreeLibrary( module );
     RtlExitUserThread( exit_code );
 }
+#endif
 
 
 /***********************************************************************
@@ -135,6 +139,7 @@ void WINAPI DECLSPEC_HOTPATCH GetCurrentThreadStackLimits( ULONG_PTR *low, ULONG
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *           GetCurrentThread   (kernelbase.@)
  */
@@ -195,6 +200,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetThreadContext( HANDLE thread, CONTEXT *context 
 {
     return set_ntstatus( NtGetContextThread( thread, context ));
 }
+#endif
 
 
 /***********************************************************************
@@ -221,6 +227,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetThreadGroupAffinity( HANDLE thread, GROUP_AFFIN
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *	     GetThreadIOPendingFlag   (kernelbase.@)
  */
@@ -242,8 +249,10 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetThreadId( HANDLE thread )
         return 0;
     return HandleToULong( tbi.ClientId.UniqueThread );
 }
+#endif
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *           GetThreadIdealProcessorEx   (kernelbase.@)
  */
@@ -467,6 +476,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH GetThreadDescription( HANDLE thread, WCHAR **de
 
     return HRESULT_FROM_NT(status);
 }
+#endif
 
 /***********************************************************************
  *           SetThreadErrorMode   (kernelbase.@)
@@ -492,6 +502,7 @@ BOOL WINAPI SetThreadErrorMode( DWORD mode, DWORD *old )
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *           SetThreadGroupAffinity   (kernelbase.@)
  */
@@ -516,6 +527,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH SetThreadIdealProcessor( HANDLE thread, DWORD pro
     SetLastError( RtlNtStatusToDosError( status ));
     return ~0u;
 }
+#endif
 
 
 /***********************************************************************
@@ -529,6 +541,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetThreadIdealProcessorEx( HANDLE thread, PROCESSO
     return FALSE;
 }
 
+#ifndef __REACTOS__
 
 /**********************************************************************
  *	SetThreadLocale   (kernelbase.@)
@@ -600,6 +613,7 @@ LANGID WINAPI DECLSPEC_HOTPATCH SetThreadUILanguage( LANGID langid )
     if (!langid) langid = GetThreadUILanguage();
     return langid;
 }
+#endif
 
 
 /**********************************************************************
@@ -621,6 +635,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetThreadInformation( HANDLE thread, THREAD_INFORM
 }
 
 
+#ifndef __REACTOS__
 /**********************************************************************
  *           SuspendThread   (kernelbase.@)
  */
@@ -761,6 +776,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH TlsSetValue( DWORD index, LPVOID value )
     return TRUE;
 }
 
+#endif
 
 /***********************************************************************
  *           Wow64GetThreadContext   (kernelbase.@)
@@ -795,6 +811,7 @@ BOOL WINAPI Wow64SetThreadContext( HANDLE handle, const WOW64_CONTEXT *context)
 /***********************************************************************
  * Fibers
  ***********************************************************************/
+#ifndef __REACTOS__
 
 
 struct fiber_actctx
@@ -1233,6 +1250,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH FlsSetValue( DWORD index, PVOID data )
 {
     return set_ntstatus( RtlFlsSetValue( index, data ));
 }
+#endif
 
 
 /***********************************************************************
@@ -1342,6 +1360,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH TrySubmitThreadpoolCallback( PTP_SIMPLE_CALLBACK c
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *           QueueUserWorkItem   (kernelbase.@)
  */
@@ -1349,6 +1368,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH QueueUserWorkItem( LPTHREAD_START_ROUTINE func, PV
 {
     return set_ntstatus( RtlQueueWorkItem( func, context, flags ));
 }
+#endif
 
 /***********************************************************************
  *           SetThreadpoolStackInformation   (kernelbase.@)

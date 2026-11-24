@@ -357,7 +357,7 @@
 @ stdcall -import GetSecurityDescriptorControl (ptr ptr ptr)
 @ stdcall -import GetSecurityDescriptorDacl (ptr ptr ptr ptr)
 @ stdcall -import GetSecurityDescriptorGroup(ptr ptr ptr)
-@ stdcall -import -stub GetSecurityDescriptorLength(ptr)
+@ stdcall -import GetSecurityDescriptorLength(ptr)
 @ stdcall -import GetSecurityDescriptorOwner(ptr ptr ptr)
 # @ stub GetSecurityDescriptorRMControl
 @ stdcall -import GetSecurityDescriptorSacl (ptr ptr ptr ptr)

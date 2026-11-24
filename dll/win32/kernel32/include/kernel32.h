@@ -11,6 +11,7 @@
 #define comm                    205
 #define profile                 206
 #define nls                     207
+#define tape                    208
 
 
 #if DBG
@@ -105,8 +106,6 @@ typedef struct _BASEP_ACTCTX_BLOCK
 #define BASEP_GET_MODULE_HANDLE_EX_PARAMETER_VALIDATION_SUCCESS  2
 #define BASEP_GET_MODULE_HANDLE_EX_PARAMETER_VALIDATION_CONTINUE 3
 
-extern PBASE_STATIC_SERVER_DATA BaseStaticServerData;
-
 typedef
 DWORD
 (*WaitForInputIdleType)(
@@ -153,6 +152,18 @@ extern BOOLEAN BaseRunningInServerProcess;
 VOID
 NTAPI
 BaseDllInitializeMemoryManager(VOID);
+
+/* not compatible with windows, copied from wine */
+struct kernelbase_global_data
+{
+    struct mem_entry *mem_entries;
+    struct mem_entry *mem_entries_end;
+};
+
+void *WINAPI KernelBaseGetGlobalData(void);
+
+extern struct kernelbase_global_data *kernelbase_global_data;
+extern SYSTEM_INFO SystemInfo;
 
 PTEB GetTeb(VOID);
 
@@ -255,55 +266,6 @@ PVOID
 WINAPI
 BasepIsRealtimeAllowed(IN BOOLEAN Keep);
 
-PVOID
-WINAPI
-BasepFindProcThreadAttribute(
-    _In_opt_ LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
-    _In_ DWORD_PTR Attribute,
-    _Out_opt_ PSIZE_T pSize);
-
-NTSTATUS
-WINAPI
-BasepCreateAppContainerToken(
-    _In_opt_ HANDLE BaseToken,
-    _In_ PSECURITY_CAPABILITIES Capabilities,
-    _Out_ PHANDLE NewToken);
-
-NTSTATUS
-WINAPI
-BasepCreateTokenObjectSecurity(
-    _In_ HANDLE Token,
-    _Out_ PSECURITY_DESCRIPTOR *SecurityDescriptor);
-
-NTSTATUS
-WINAPI
-BasepCreateAppContainerEnvironment(
-    _In_opt_ HANDLE UserToken,
-    _In_ PSID PackageSid,
-    _In_opt_ PWSTR Environment,
-    _Out_ PWSTR *NewEnvironment);
-
-/* Process attribute naming the package a new process runs as */
-#define BASEP_ATTRIBUTE_PACKAGE_FULL_NAME   (8 | PROC_THREAD_ATTRIBUTE_INPUT)
-
-/* PEB BitField: IsPackagedProcess */
-#define BASEP_PEB_PACKAGED_PROCESS          0x10
-
-DWORD
-WINAPI
-BasepGetPackageDllPath(
-    _In_opt_ HANDLE UserToken,
-    _In_opt_ PCWSTR PackageFullName,
-    _Outptr_result_maybenull_ PWSTR *DllPath);
-
-BOOLEAN
-WINAPI
-BasepIsPackagedProcess(VOID);
-
-BOOLEAN
-WINAPI
-BasepPackageAllowsUserDirectories(VOID);
-
 VOID
 WINAPI
 BasepAnsiStringToHeapUnicodeString(IN LPCSTR AnsiString,
@@ -349,12 +311,6 @@ extern HANDLE BaseNamedObjectDirectory;
 HANDLE
 WINAPI
 BasepGetNamedObjectDirectory(VOID);
-
-NTSTATUS
-WINAPI
-BasepMapFile(IN LPCWSTR lpApplicationName,
-             OUT PHANDLE hSection,
-             OUT PUNICODE_STRING ApplicationName);
 
 PCODEPAGE_ENTRY FASTCALL
 IntGetCodePageEntry(UINT CodePage);
@@ -406,12 +362,6 @@ InitCommandLines(VOID);
 DWORD
 WINAPI
 BaseSetLastNTError(IN NTSTATUS Status);
-
-VOID
-NTAPI
-BasepLocateExeLdrEntry(IN PLDR_DATA_TABLE_ENTRY Entry,
-                       IN PVOID Context,
-                       OUT BOOLEAN *StopEnumeration);
 
 typedef NTSTATUS
 (NTAPI *PBASEP_APPCERT_PLUGIN_FUNC)(

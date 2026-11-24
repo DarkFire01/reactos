@@ -75,4 +75,71 @@ OpenMutexA(IN DWORD dwDesiredAccess,
     ConvertOpenWin32AnsiObjectApiToUnicodeApi(Mutex, dwDesiredAccess, bInheritHandle, lpName);
 }
 
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+UnregisterWait(IN HANDLE WaitHandle)
+{
+    NTSTATUS Status;
+
+    /* Check for invalid handle */
+    if (!WaitHandle)
+    {
+        /* Fail */
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    /* Deregister the wait and check status */
+    Status = RtlDeregisterWaitEx(WaitHandle, NULL);
+    if (!(NT_SUCCESS(Status)) || (Status == STATUS_PENDING))
+    {
+        /* Failure or non-blocking call */
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* All good */
+    return TRUE;
+}
+
+HANDLE
+WINAPI
+DECLSPEC_HOTPATCH
+CreateSemaphoreExA(IN LPSECURITY_ATTRIBUTES lpSemaphoreAttributes OPTIONAL,
+                   IN LONG lInitialCount,
+                   IN LONG lMaximumCount,
+                   IN LPCSTR lpName  OPTIONAL,
+                   IN DWORD dwFlags OPTIONAL,
+                   IN DWORD dwDesiredAccess OPTIONAL)
+{
+    ConvertAnsiToUnicodePrologue
+
+    if (!lpName)
+    {
+        return CreateSemaphoreExW(lpSemaphoreAttributes,
+                                  lInitialCount,
+                                  lMaximumCount,
+                                  NULL,
+                                  dwFlags,
+                                  dwDesiredAccess);
+    }
+
+    ConvertAnsiToUnicodeBody(lpName)
+
+    if (NT_SUCCESS(Status))
+    {
+        return CreateSemaphoreExW(lpSemaphoreAttributes,
+                                  lInitialCount,
+                                  lMaximumCount,
+                                  UnicodeCache->Buffer,
+                                  dwFlags,
+                                  dwDesiredAccess);
+    }
+
+    ConvertAnsiToUnicodeEpilogue
+}
+
 /* EOF */

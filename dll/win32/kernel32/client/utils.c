@@ -10,7 +10,6 @@
 /* INCLUDES ******************************************************************/
 
 #include <k32.h>
-#include <ndk/sefuncs.h>
 #ifdef _M_IX86
 #include "i386/ketypes.h"
 #elif defined _M_AMD64
@@ -60,205 +59,11 @@ BasepAnsiStringToUnicodeSize(IN PANSI_STRING String)
     return RtlAnsiStringToUnicodeSize(String);
 }
 
-/*
- * Opens the named object directory of an app container, the one kernel32 made
- * for it under \Sessions\<n>\AppContainerNamedObjects. A child container lives
- * inside its parent's directory, named by its last four sub-authorities.
- */
-static
-NTSTATUS
-BasepOpenAppContainerNamedObjects(
-    _In_ HANDLE Token,
-    _Out_ PHANDLE DirectoryHandle)
-{
-    ULONG Buffer[(sizeof(TOKEN_APPCONTAINER_INFORMATION) + SECURITY_MAX_SID_SIZE) / sizeof(ULONG)];
-    PTOKEN_APPCONTAINER_INFORMATION Container = (PTOKEN_APPCONTAINER_INFORMATION)Buffer;
-    APPCONTAINER_SID_TYPE SidType;
-    UNICODE_STRING Name, SidString = {0};
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    WCHAR Path[MAX_PATH], RootPath[64];
-    HANDLE Root;
-    PSID ParentSid;
-    ULONG SessionId, Length;
-    NTSTATUS Status;
-
-    Status = NtQueryInformationToken(Token, TokenSessionId, &SessionId, sizeof(SessionId), &Length);
-    if (NT_SUCCESS(Status))
-        Status = NtQueryInformationToken(Token, TokenAppContainerSid, Container, sizeof(Buffer), &Length);
-    if (NT_SUCCESS(Status))
-        Status = RtlGetAppContainerSidType(Container->TokenAppContainer, &SidType);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    if (SidType == ParentAppContainerSidType)
-    {
-        Status = RtlConvertSidToUnicodeString(&SidString, Container->TokenAppContainer, TRUE);
-        if (NT_SUCCESS(Status))
-            Status = RtlStringCchPrintfW(Path, _countof(Path), L"%wZ", &SidString);
-    }
-    else
-    {
-        Status = RtlGetAppContainerParent(Container->TokenAppContainer, &ParentSid);
-        if (!NT_SUCCESS(Status))
-            return Status;
-
-        Status = RtlConvertSidToUnicodeString(&SidString, ParentSid, TRUE);
-        RtlFreeSid(ParentSid);
-        if (NT_SUCCESS(Status))
-        {
-            Status = RtlStringCchPrintfW(Path, _countof(Path), L"%wZ\\%lu-%lu-%lu-%lu", &SidString,
-                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 8),
-                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 9),
-                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 10),
-                                         *RtlSubAuthoritySid(Container->TokenAppContainer, 11));
-        }
-    }
-    RtlFreeUnicodeString(&SidString);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    /* The container root is only passed through, the container's own directory is used */
-    Status = RtlStringCchPrintfW(RootPath, _countof(RootPath),
-                                 L"\\Sessions\\%lu\\AppContainerNamedObjects", SessionId);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    RtlInitUnicodeString(&Name, RootPath);
-    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE, NULL, NULL);
-    Status = NtOpenDirectoryObject(&Root, DIRECTORY_TRAVERSE, &ObjectAttributes);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    RtlInitUnicodeString(&Name, Path);
-    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE, Root, NULL);
-    Status = NtOpenDirectoryObject(DirectoryHandle,
-                                   DIRECTORY_QUERY |
-                                   DIRECTORY_TRAVERSE |
-                                   DIRECTORY_CREATE_OBJECT |
-                                   DIRECTORY_CREATE_SUBDIRECTORY,
-                                   &ObjectAttributes);
-    NtClose(Root);
-    return Status;
-}
-
-NTSTATUS
+// TODO: Mikhail Tyukin move to PSDK
+extern NTSTATUS
 WINAPI
 BaseGetNamedObjectDirectory(
-    _Out_ PHANDLE DirectoryHandle)
-{
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    NTSTATUS Status;
-    HANDLE DirHandle, BnoHandle, Token, NewToken, ProcessToken;
-    ULONG IsAppContainer = 0, Length;
-
-    *DirectoryHandle = BaseNamedObjectDirectory;
-
-    if (BaseNamedObjectDirectory)
-    {
-        return STATUS_SUCCESS;
-    }
-
-    if (NtCurrentTeb()->IsImpersonating)
-    {
-        Status = NtOpenThreadToken(NtCurrentThread(),
-                                   TOKEN_IMPERSONATE,
-                                   TRUE,
-                                   &Token);
-        if (!NT_SUCCESS(Status))
-        {
-            return Status;
-        }
-
-        NewToken = NULL;
-        Status = NtSetInformationThread(NtCurrentThread(),
-                                        ThreadImpersonationToken,
-                                        &NewToken,
-                                        sizeof(HANDLE));
-        if (!NT_SUCCESS (Status))
-        {
-            NtClose(Token);
-            return Status;
-        }
-    }
-    else
-    {
-        Token = NULL;
-    }
-
-    RtlAcquirePebLock();
-    if (BaseNamedObjectDirectory) goto Quickie;
-
-    /* An app container keeps its named objects in a directory of its own */
-    if (NT_SUCCESS(NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &ProcessToken)))
-    {
-        Status = NtQueryInformationToken(ProcessToken, TokenIsAppContainer, &IsAppContainer,
-                                         sizeof(IsAppContainer), &Length);
-        if (NT_SUCCESS(Status) && IsAppContainer)
-        {
-            Status = BasepOpenAppContainerNamedObjects(ProcessToken, &BnoHandle);
-            NtClose(ProcessToken);
-            if (NT_SUCCESS(Status)) BaseNamedObjectDirectory = BnoHandle;
-            goto Quickie;
-        }
-        NtClose(ProcessToken);
-    }
-
-    InitializeObjectAttributes(&ObjectAttributes,
-                               &BaseStaticServerData->NamedObjectDirectory,
-                               OBJ_CASE_INSENSITIVE,
-                               NULL,
-                               NULL);
-
-    Status = NtOpenDirectoryObject(&BnoHandle,
-                                   DIRECTORY_QUERY |
-                                   DIRECTORY_TRAVERSE |
-                                   DIRECTORY_CREATE_OBJECT |
-                                   DIRECTORY_CREATE_SUBDIRECTORY,
-                                   &ObjectAttributes);
-    if (!NT_SUCCESS(Status))
-    {
-        Status = NtOpenDirectoryObject(&DirHandle,
-                                       DIRECTORY_TRAVERSE,
-                                       &ObjectAttributes);
-
-        if (NT_SUCCESS(Status))
-        {
-            InitializeObjectAttributes(&ObjectAttributes,
-                                       (PUNICODE_STRING)&Restricted,
-                                       OBJ_CASE_INSENSITIVE,
-                                       DirHandle,
-                                       NULL);
-
-            Status = NtOpenDirectoryObject(&BnoHandle,
-                                           DIRECTORY_QUERY |
-                                           DIRECTORY_TRAVERSE |
-                                           DIRECTORY_CREATE_OBJECT |
-                                           DIRECTORY_CREATE_SUBDIRECTORY,
-                                           &ObjectAttributes);
-            NtClose(DirHandle);
-
-        }
-    }
-
-    if (NT_SUCCESS(Status)) BaseNamedObjectDirectory = BnoHandle;
-
-Quickie:
-
-    RtlReleasePebLock();
-
-    if (Token)
-    {
-        NtSetInformationThread(NtCurrentThread(),
-                               ThreadImpersonationToken,
-                               &Token,
-                               sizeof(Token));
-
-        NtClose(Token);
-    }
-
-    *DirectoryHandle = BaseNamedObjectDirectory;
-    return STATUS_SUCCESS;
-}
+    _Out_ PHANDLE DirectoryHandle);
 
 HANDLE
 WINAPI
@@ -274,35 +79,6 @@ BasepGetNamedObjectDirectory(VOID)
     }
 
     return DirectoryHandle;
-}
-
-VOID
-NTAPI
-BasepLocateExeLdrEntry(IN PLDR_DATA_TABLE_ENTRY Entry,
-                       IN PVOID Context,
-                       OUT BOOLEAN *StopEnumeration)
-{
-    /* Make sure we get Entry, Context and valid StopEnumeration pointer */
-    ASSERT(Entry);
-    ASSERT(Context);
-    ASSERT(StopEnumeration);
-
-    /* If entry is already found - signal to stop */
-    if (BasepExeLdrEntry)
-    {
-        *StopEnumeration = TRUE;
-        return;
-    }
-
-    /* Otherwise keep enumerating until we find a match */
-    if (Entry->DllBase == Context)
-    {
-        /* It matches, so remember the ldr entry */
-        BasepExeLdrEntry = Entry;
-
-        /* And stop enumeration */
-        *StopEnumeration = TRUE;
-    }
 }
 
 /*
@@ -422,388 +198,6 @@ BaseFormatTimeOut(OUT PLARGE_INTEGER Timeout,
 }
 
 /*
- * Converts lpSecurityAttributes + Object Name into ObjectAttributes.
- */
-POBJECT_ATTRIBUTES
-WINAPI
-BaseFormatObjectAttributes(OUT POBJECT_ATTRIBUTES ObjectAttributes,
-                           IN PSECURITY_ATTRIBUTES SecurityAttributes OPTIONAL,
-                           IN PUNICODE_STRING ObjectName)
-{
-    ULONG Attributes;
-    HANDLE RootDirectory;
-    PVOID SecurityDescriptor;
-    DPRINT("BaseFormatObjectAttributes. Security: %p, Name: %p\n",
-            SecurityAttributes, ObjectName);
-
-    /* Get the attributes if present */
-    if (SecurityAttributes)
-    {
-        Attributes = SecurityAttributes->bInheritHandle ? OBJ_INHERIT : 0;
-        SecurityDescriptor = SecurityAttributes->lpSecurityDescriptor;
-    }
-    else
-    {
-        if (!ObjectName) return NULL;
-        Attributes = 0;
-        SecurityDescriptor = NULL;
-    }
-
-    if (ObjectName)
-    {
-        Attributes |= OBJ_OPENIF;
-        RootDirectory = BasepGetNamedObjectDirectory();
-    }
-    else
-    {
-        RootDirectory = NULL;
-    }
-
-    /* Create the Object Attributes */
-    InitializeObjectAttributes(ObjectAttributes,
-                               ObjectName,
-                               Attributes,
-                               RootDirectory,
-                               SecurityDescriptor);
-    DPRINT("Attributes: %lx, RootDirectory: %p, SecurityDescriptor: %p\n",
-            Attributes, RootDirectory, SecurityDescriptor);
-    return ObjectAttributes;
-}
-
-/*
- * Creates a stack for a thread or fiber.
- * NOTE: Adapted from sdk/lib/rtl/thread.c:RtlpCreateUserStack().
- */
-NTSTATUS
-WINAPI
-BaseCreateStack(
-    _In_ HANDLE hProcess,
-    _In_opt_ SIZE_T StackCommit,
-    _In_opt_ SIZE_T StackReserve,
-    _Out_ PINITIAL_TEB InitialTeb)
-{
-    NTSTATUS Status;
-    PIMAGE_NT_HEADERS Headers;
-    ULONG_PTR Stack;
-    BOOLEAN UseGuard;
-    ULONG PageSize, AllocationGranularity, Dummy;
-    SIZE_T MinimumStackCommit, GuardPageSize;
-
-    DPRINT("BaseCreateStack(hProcess: 0x%p, Max: 0x%lx, Current: 0x%lx)\n",
-            hProcess, StackReserve, StackCommit);
-
-    /* Read page size */
-    PageSize = BaseStaticServerData->SysInfo.PageSize;
-    AllocationGranularity = BaseStaticServerData->SysInfo.AllocationGranularity;
-
-    /* Get the Image Headers */
-    Headers = RtlImageNtHeader(NtCurrentPeb()->ImageBaseAddress);
-    if (!Headers) return STATUS_INVALID_IMAGE_FORMAT;
-
-    if (StackReserve == 0)
-        StackReserve = Headers->OptionalHeader.SizeOfStackReserve;
-
-    if (StackCommit == 0)
-    {
-        StackCommit = Headers->OptionalHeader.SizeOfStackCommit;
-    }
-    /* Check if the commit is higher than the reserve */
-    else if (StackCommit >= StackReserve)
-    {
-        /* Grow the reserve beyond the commit, up to 1MB alignment */
-        StackReserve = ROUND_UP(StackCommit, 1024 * 1024);
-    }
-
-    /* Align everything to Page Size */
-    StackCommit = ROUND_UP(StackCommit, PageSize);
-    StackReserve = ROUND_UP(StackReserve, AllocationGranularity);
-
-    MinimumStackCommit = NtCurrentPeb()->MinimumStackCommit;
-    if ((MinimumStackCommit != 0) && (StackCommit < MinimumStackCommit))
-    {
-        StackCommit = MinimumStackCommit;
-    }
-
-    /* Check if the commit is higher than the reserve */
-    if (StackCommit >= StackReserve)
-    {
-        /* Grow the reserve beyond the commit, up to 1MB alignment */
-        StackReserve = ROUND_UP(StackCommit, 1024 * 1024);
-    }
-
-    /* Align everything to Page Size */
-    StackCommit = ROUND_UP(StackCommit, PageSize);
-    StackReserve = ROUND_UP(StackReserve, AllocationGranularity);
-
-    /* Reserve memory for the stack */
-    Stack = 0;
-    Status = NtAllocateVirtualMemory(hProcess,
-                                     (PVOID*)&Stack,
-                                     0,
-                                     &StackReserve,
-                                     MEM_RESERVE,
-                                     PAGE_READWRITE);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failure to reserve stack: %lx\n", Status);
-        return Status;
-    }
-
-    /* Now set up some basic Initial TEB Parameters */
-    InitialTeb->AllocatedStackBase = (PVOID)Stack;
-    InitialTeb->StackBase = (PVOID)(Stack + StackReserve);
-    InitialTeb->PreviousStackBase = NULL;
-    InitialTeb->PreviousStackLimit = NULL;
-
-    /* Update the stack position */
-    Stack += StackReserve - StackCommit;
-
-    /* Check if we can add a guard page */
-    if (StackReserve >= StackCommit + PageSize)
-    {
-        Stack -= PageSize;
-        StackCommit += PageSize;
-        UseGuard = TRUE;
-    }
-    else
-    {
-        UseGuard = FALSE;
-    }
-
-    /* Allocate memory for the stack */
-    Status = NtAllocateVirtualMemory(hProcess,
-                                     (PVOID*)&Stack,
-                                     0,
-                                     &StackCommit,
-                                     MEM_COMMIT,
-                                     PAGE_READWRITE);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failure to allocate stack\n");
-        GuardPageSize = 0;
-        NtFreeVirtualMemory(hProcess, (PVOID*)&Stack, &GuardPageSize, MEM_RELEASE);
-        return Status;
-    }
-
-    /* Now set the current Stack Limit */
-    InitialTeb->StackLimit = (PVOID)Stack;
-
-    /* Create a guard page if needed */
-    if (UseGuard)
-    {
-        GuardPageSize = PageSize;
-        Status = NtProtectVirtualMemory(hProcess,
-                                        (PVOID*)&Stack,
-                                        &GuardPageSize,
-                                        PAGE_GUARD | PAGE_READWRITE,
-                                        &Dummy);
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("Failure to set guard page\n");
-            return Status;
-        }
-
-        /* Update the Stack Limit keeping in mind the Guard Page */
-        InitialTeb->StackLimit = (PVOID)((ULONG_PTR)InitialTeb->StackLimit +
-                                         GuardPageSize);
-    }
-
-    /* We are done! */
-    return STATUS_SUCCESS;
-}
-
-/*
- * NOTE: Adapted from sdk/lib/rtl/thread.c:RtlpFreeUserStack().
- */
-VOID
-WINAPI
-BaseFreeThreadStack(
-    _In_ HANDLE hProcess,
-    _In_ PINITIAL_TEB InitialTeb)
-{
-    SIZE_T Dummy = 0;
-
-    /* Free the Stack */
-    NtFreeVirtualMemory(hProcess,
-                        &InitialTeb->AllocatedStackBase,
-                        &Dummy,
-                        MEM_RELEASE);
-}
-
-/*
- * Creates the Initial Context for a Thread or Fiber
- */
-VOID
-WINAPI
-BaseInitializeContext(IN PCONTEXT Context,
-                      IN PVOID Parameter,
-                      IN PVOID StartAddress,
-                      IN PVOID StackAddress,
-                      IN ULONG ContextType)
-{
-#ifdef _M_IX86
-    ULONG ContextFlags;
-    DPRINT("BaseInitializeContext: %p\n", Context);
-
-    /* Setup the Initial Win32 Thread Context */
-    Context->Eax = (ULONG)StartAddress;
-    Context->Ebx = (ULONG)Parameter;
-    Context->Esp = (ULONG)StackAddress;
-    /* The other registers are undefined */
-
-    /* Setup the Segments */
-    Context->SegFs = KGDT_R3_TEB;
-    Context->SegEs = KGDT_R3_DATA;
-    Context->SegDs = KGDT_R3_DATA;
-    Context->SegCs = KGDT_R3_CODE;
-    Context->SegSs = KGDT_R3_DATA;
-    Context->SegGs = 0;
-
-    /* Set the Context Flags */
-    ContextFlags = Context->ContextFlags;
-    Context->ContextFlags = CONTEXT_FULL;
-
-    /* Give it some room for the Parameter */
-    Context->Esp -= sizeof(PVOID);
-
-    /* Set the EFLAGS */
-    Context->EFlags = 0x3000; /* IOPL 3 */
-
-    /* What kind of context is being created? */
-    if (ContextType == 1)
-    {
-        /* For Threads */
-        Context->Eip = (ULONG)BaseThreadStartupThunk;
-    }
-    else if (ContextType == 2)
-    {
-        /* This is a fiber: make space for the return address */
-        Context->Esp -= sizeof(PVOID);
-        *((PVOID*)Context->Esp) = BaseFiberStartup;
-
-        /* Is FPU state required? */
-        Context->ContextFlags |= ContextFlags;
-        if ((ContextFlags & CONTEXT_FLOATING_POINT) == CONTEXT_FLOATING_POINT)
-        {
-            /* Set an initial state */
-            Context->FloatSave.ControlWord = 0x27F;
-            Context->FloatSave.StatusWord = 0;
-            Context->FloatSave.TagWord = 0xFFFF;
-            Context->FloatSave.ErrorOffset = 0;
-            Context->FloatSave.ErrorSelector = 0;
-            Context->FloatSave.DataOffset = 0;
-            Context->FloatSave.DataSelector = 0;
-            if (SharedUserData->ProcessorFeatures[PF_XMMI_INSTRUCTIONS_AVAILABLE])
-                Context->Dr6 = 0x1F80;
-        }
-    }
-    else
-    {
-        /* For first thread in a Process */
-        Context->Eip = (ULONG)BaseProcessStartThunk;
-    }
-
-#elif defined(_M_AMD64)
-    DPRINT("BaseInitializeContext: %p\n", Context);
-    ASSERT(((ULONG_PTR)StackAddress & 15) == 0);
-
-    RtlZeroMemory(Context, sizeof(*Context));
-
-    /* Setup the Initial Win32 Thread Context */
-    Context->Rcx = (ULONG_PTR)StartAddress;
-    Context->Rdx = (ULONG_PTR)Parameter;
-    Context->Rsp = (ULONG_PTR)StackAddress;
-
-    /* Setup the Segments */
-    Context->SegGs = KGDT64_R3_DATA | RPL_MASK;
-    Context->SegEs = KGDT64_R3_DATA | RPL_MASK;
-    Context->SegDs = KGDT64_R3_DATA | RPL_MASK;
-    Context->SegCs = KGDT64_R3_CODE | RPL_MASK;
-    Context->SegSs = KGDT64_R3_DATA | RPL_MASK;
-    Context->SegFs = KGDT64_R3_CMTEB | RPL_MASK;
-
-    /* Set the EFLAGS */
-    Context->EFlags = 0x3000 | EFLAGS_INTERRUPT_MASK; /* IOPL 3 */
-
-    /* Set MXCSR */
-    Context->MxCsr = INITIAL_MXCSR;
-
-    if (ContextType == 1)      /* For Threads */
-    {
-        Context->Rip = (ULONG_PTR)BaseThreadStartup;
-    }
-    else if (ContextType == 2) /* For Fibers */
-    {
-        Context->Rip = (ULONG_PTR)BaseFiberStartup;
-    }
-    else                       /* For first thread in a Process */
-    {
-        Context->Rip = (ULONG_PTR)BaseProcessStartup;
-    }
-
-    /* Set the Context Flags */
-    Context->ContextFlags = CONTEXT_FULL;
-#elif defined(_M_ARM)
-    DPRINT("BaseInitializeContext: %p\n", Context);
-
-    // FIXME: check if this is correct!
-    /* Setup the Initial Win32 Thread Context */
-    Context->R0 = (ULONG_PTR)StartAddress;
-    Context->R1 = (ULONG_PTR)Parameter;
-    Context->Sp = (ULONG_PTR)StackAddress;
-
-    if (ContextType == 1)      /* For Threads */
-    {
-        Context->Pc = (ULONG_PTR)BaseThreadStartupThunk;
-    }
-    else if (ContextType == 2) /* For Fibers */
-    {
-        Context->Pc = (ULONG_PTR)BaseFiberStartup;
-    }
-    else                       /* For first thread in a Process */
-    {
-        Context->Pc = (ULONG_PTR)BaseProcessStartThunk;
-    }
-
-    /* Set the Context Flags */
-    Context->ContextFlags = CONTEXT_FULL;
-
-    /* Give it some room for the Parameter */
-    Context->Sp -= sizeof(PVOID);
-#elif defined(_M_ARM64)
-    DPRINT("BaseInitializeContext: %p\n", Context);
-    ASSERT(((ULONG_PTR)StackAddress & 15) == 0);
-
-    RtlZeroMemory(Context, sizeof(*Context));
-
-    /* Setup the Initial Win32 Thread Context */
-    Context->X0 = (ULONG_PTR)StartAddress;
-    Context->X1 = (ULONG_PTR)Parameter;
-    Context->Sp = (ULONG_PTR)StackAddress;
-
-    if (ContextType == 1)      /* For Threads */
-    {
-        Context->Pc = (ULONG_PTR)BaseThreadStartup;
-    }
-    else if (ContextType == 2) /* For Fibers */
-    {
-        Context->Pc = (ULONG_PTR)BaseFiberStartup;
-    }
-    else                       /* For first thread in a Process */
-    {
-        Context->Pc = (ULONG_PTR)BaseProcessStartup;
-    }
-
-    /* Set the Context Flags */
-    Context->ContextFlags = CONTEXT_FULL;
-#else
-#warning Unknown architecture
-    UNIMPLEMENTED;
-    DbgBreakPoint();
-#endif
-}
-
-/*
  * Checks if the privilege for Real-Time Priority is there
  * Beware about this function behavior:
  * - In case Keep is set to FALSE, then the function will only check
@@ -829,81 +223,6 @@ BasepIsRealtimeAllowed(IN BOOLEAN Keep)
     }
 
     return State;
-}
-
-/*
- * Maps an image file into a section
- */
-NTSTATUS
-WINAPI
-BasepMapFile(IN LPCWSTR lpApplicationName,
-             OUT PHANDLE hSection,
-             OUT PUNICODE_STRING ApplicationName)
-{
-    RTL_RELATIVE_NAME_U RelativeName;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    NTSTATUS Status;
-    HANDLE hFile = NULL;
-    IO_STATUS_BLOCK IoStatusBlock;
-
-    DPRINT("BasepMapFile\n");
-
-    /* Zero out the Relative Directory */
-    RelativeName.ContainingDirectory = NULL;
-
-    /* Find the application name */
-    if (!RtlDosPathNameToNtPathName_U(lpApplicationName,
-                                      ApplicationName,
-                                      NULL,
-                                      &RelativeName))
-    {
-        return STATUS_OBJECT_PATH_NOT_FOUND;
-    }
-
-    DPRINT("ApplicationName %wZ\n", ApplicationName);
-    DPRINT("RelativeName %wZ\n", &RelativeName.RelativeName);
-
-    /* Did we get a relative name? */
-    if (RelativeName.RelativeName.Length)
-    {
-        ApplicationName = &RelativeName.RelativeName;
-    }
-
-    /* Initialize the Object Attributes */
-    InitializeObjectAttributes(&ObjectAttributes,
-                               ApplicationName,
-                               OBJ_CASE_INSENSITIVE,
-                               RelativeName.ContainingDirectory,
-                               NULL);
-
-    /* Try to open the executable */
-    Status = NtOpenFile(&hFile,
-                        SYNCHRONIZE | FILE_EXECUTE | FILE_READ_DATA,
-                        &ObjectAttributes,
-                        &IoStatusBlock,
-                        FILE_SHARE_DELETE | FILE_SHARE_READ,
-                        FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE);
-    RtlReleaseRelativeName(&RelativeName);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to open file\n");
-        BaseSetLastNTError(Status);
-        return Status;
-    }
-
-    /* Create a section for this file */
-    Status = NtCreateSection(hSection,
-                             SECTION_ALL_ACCESS,
-                             NULL,
-                             NULL,
-                             PAGE_EXECUTE,
-                             SEC_IMAGE,
-                             hFile);
-    NtClose(hFile);
-
-    /* Return status */
-    DPRINT("Section: %p for file: %p\n", *hSection, hFile);
-    return Status;
 }
 
 /*
@@ -1103,4 +422,346 @@ BasepCheckWinSaferRestrictions(IN HANDLE UserToken,
 
     /* Return the status */
     return Status;
+}
+
+/*
+ * @implemented
+ */
+VOID
+WINAPI
+BasepFreeAppCompatData(IN PVOID AppCompatData,
+                       IN PVOID AppCompatSxsData)
+{
+    /* Free the input pointers if present */
+    if (AppCompatData) RtlFreeHeap(RtlGetProcessHeap(), 0, AppCompatData);
+    if (AppCompatSxsData) RtlFreeHeap(RtlGetProcessHeap(), 0, AppCompatSxsData);
+}
+
+// Note for myself, me and I Mikhail Tyukin: Move this to a header
+NTSYSAPI NTSTATUS  WINAPI NtSetInformationDebugObject(HANDLE,DEBUGOBJECTINFOCLASS,PVOID,ULONG,ULONG*);
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+DebugSetProcessKillOnExit(IN BOOL KillOnExit)
+{
+    HANDLE Handle;
+    NTSTATUS Status;
+    ULONG State;
+
+    /* Get the debug object */
+    Handle = DbgUiGetThreadDebugObject();
+    if (!Handle)
+    {
+        /* Fail */
+        BaseSetLastNTError(STATUS_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    /* Now set the kill-on-exit state */
+    State = KillOnExit != 0;
+    Status = NtSetInformationDebugObject(Handle,
+                                         DebugObjectKillProcessOnExitInformation,
+                                         &State,
+                                         sizeof(State),
+                                         NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        /* Fail */
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* Success */
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+WTSGetActiveConsoleSessionId(VOID)
+{
+    return SharedUserData->ActiveConsoleId;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+SetComPlusPackageInstallStatus(IN ULONG ComPlusPackage)
+{
+    NTSTATUS Status;
+
+    DPRINT("(0x%X)\n", ComPlusPackage);
+
+    if (ComPlusPackage & ~1)
+    {
+        DPRINT1("0x%lX\n", ComPlusPackage);
+        BaseSetLastNTError(STATUS_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Status = NtSetSystemInformation(SystemComPlusPackage, &ComPlusPackage, sizeof(ComPlusPackage));
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("0x%lX\n", Status);
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+GetHandleContext(IN HANDLE Handle)
+{
+    /* This is Windows behavior, not a ReactOS Stub */
+    DbgPrintEx(0, 0, "Unsupported API - kernel32!GetHandleContext() called\n");
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+CreateSocketHandle(VOID)
+{
+    /* This is Windows behavior, not a ReactOS Stub */
+    DbgPrintEx(0, 0, "Unsupported API - kernel32!CreateSocketHandle() called\n");
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+SetHandleContext(IN HANDLE Handle,
+                 IN DWORD Context)
+{
+    /* This is Windows behavior, not a ReactOS Stub */
+    DbgPrintEx(0, 0, "Unsupported API - kernel32!SetHandleContext() called\n");
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+#define THEONLYGROUP 0 // Fake support for a single group
+
+static DWORD
+GetProcessorCountInfo(IN WORD GroupNumber, IN BOOL Maximum)
+{
+    SYSTEM_INFO info;
+
+    // TODO: SharedUserData->ActiveProcessorCount for ALL_PROCESSOR_GROUPS?
+    if (GroupNumber != ALL_PROCESSOR_GROUPS && GroupNumber != THEONLYGROUP)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+    GetNativeSystemInfo(&info);
+    return info.dwNumberOfProcessors;
+}
+
+/*
+ * @implemented
+ */
+WORD
+WINAPI
+GetActiveProcessorGroupCount(VOID)
+{
+    STUB; // FIXME: Real group support
+    return 1; // TODO: SharedUserData->ActiveGroupCount?
+}
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+GetActiveProcessorCount(IN WORD GroupNumber)
+{
+    STUB; // FIXME: Real group support
+    return GetProcessorCountInfo(GroupNumber, FALSE);
+}
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+GetMaximumProcessorCount(IN WORD GroupNumber)
+{
+    STUB; // FIXME: Real group support
+    return GetProcessorCountInfo(GroupNumber, TRUE);
+}
+
+WORD
+WINAPI
+GetMaximumProcessorGroupCount()
+{
+    STUB;  // FIXME: Real group support
+    return 1;
+}
+
+#define FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE CTL_CODE(FILE_DEVICE_NAMED_PIPE, 12, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+static inline BOOL set_ntstatus( NTSTATUS status )
+{
+    if (status) SetLastError( RtlNtStatusToDosError( status ));
+    return !status;
+}
+
+/***********************************************************************
+ *           GetNamedPipeClientProcessId  (KERNEL32.@)
+ */
+BOOL WINAPI GetNamedPipeClientProcessId( HANDLE pipe, ULONG *id )
+{
+    IO_STATUS_BLOCK iosb;
+
+    return set_ntstatus( NtFsControlFile( pipe, NULL, NULL, NULL, &iosb,
+                                          FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE, (void *)"ClientProcessId",
+                                          sizeof("ClientProcessId"), id, sizeof(*id) ));
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+MoveFileW(IN LPCWSTR lpExistingFileName,
+          IN LPCWSTR lpNewFileName)
+{
+    return MoveFileWithProgressW(lpExistingFileName,
+                                 lpNewFileName,
+                                 NULL,
+                                 NULL,
+                                 MOVEFILE_COPY_ALLOWED);
+}
+
+
+
+/*
+ * @implemented
+ */
+HANDLE
+NTAPI
+OpenFileMappingA(IN DWORD dwDesiredAccess,
+                 IN BOOL bInheritHandle,
+                 IN LPCSTR lpName)
+{
+    ConvertOpenWin32AnsiObjectApiToUnicodeApi(FileMapping, dwDesiredAccess, bInheritHandle, lpName);
+}
+
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+DebugBreakProcess(IN HANDLE Process)
+{
+    NTSTATUS Status;
+
+    /* Send the breakin request */
+    Status = DbgUiIssueRemoteBreakin(Process);
+    if (!NT_SUCCESS(Status))
+    {
+        /* Failure */
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* Success */
+    return TRUE;
+}
+
+extern BOOLEAN
+WINAPI
+CreateSymbolicLinkW(IN LPCWSTR lpSymlinkFileName,
+                    IN LPCWSTR lpTargetFileName,
+                    IN DWORD dwFlags); // Mikhail Tyukin move to PSDK
+
+/*
+ * @implemented
+ */
+BOOLEAN
+NTAPI
+CreateSymbolicLinkA(IN LPCSTR lpSymlinkFileName,
+                    IN LPCSTR lpTargetFileName,
+                    IN DWORD dwFlags)
+{
+    PWCHAR SymlinkW, TargetW;
+    BOOLEAN Ret;
+
+    if(!lpSymlinkFileName || !lpTargetFileName)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (!(SymlinkW = FilenameA2W(lpSymlinkFileName, FALSE)))
+        return FALSE;
+
+    if (!(TargetW = FilenameA2W(lpTargetFileName, TRUE)))
+        return FALSE;
+
+    Ret = CreateSymbolicLinkW(SymlinkW,
+                              TargetW,
+                              dwFlags);
+
+    RtlFreeHeap(RtlGetProcessHeap(), 0, SymlinkW);
+    RtlFreeHeap(RtlGetProcessHeap(), 0, TargetW);
+
+    return Ret;
+}
+
+/*
+ * @implemented
+ */
+DWORD_PTR
+WINAPI
+SetThreadAffinityMask(IN HANDLE hThread,
+                      IN DWORD_PTR dwThreadAffinityMask)
+{
+    THREAD_BASIC_INFORMATION ThreadBasic;
+    KAFFINITY AffinityMask;
+    NTSTATUS Status;
+
+    AffinityMask = (KAFFINITY)dwThreadAffinityMask;
+
+    Status = NtQueryInformationThread(hThread,
+                                      ThreadBasicInformation,
+                                      &ThreadBasic,
+                                      sizeof(THREAD_BASIC_INFORMATION),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return 0;
+    }
+
+    Status = NtSetInformationThread(hThread,
+                                    ThreadAffinityMask,
+                                    &AffinityMask,
+                                    sizeof(KAFFINITY));
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        ThreadBasic.AffinityMask = 0;
+    }
+
+    return ThreadBasic.AffinityMask;
 }

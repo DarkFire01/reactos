@@ -14,68 +14,11 @@ import json
 REDIRECT_HOSTS = {
     'kernelbase.dll': 'kernel32.dll',
     'kernel.appcore.dll': 'kernel32.dll',
+    'combase.dll': 'ole32.dll',
     'ucrtbase.dll': 'msvcrt.dll',
+    'shcore.dll': 'shell32.dll',
     'winmmbase.dll': 'winmm.dll',
-    'sechost.dll': 'advapi32.dll',
     'gdi32full.dll': 'gdi32.dll'
-}
-
-# Apisets whose functions live in a different ReactOS dll than the rest of their Windows host
-REDIRECT_APISETS = {
-    'api-ms-win-core-registry-l1-': 'advapi32.dll',
-    'api-ms-win-eventing-classicprovider-l1-': 'advapi32.dll',
-    'api-ms-win-eventing-provider-l1-': 'advapi32.dll'
-}
-
-# Windows keeps most of these in kernelbase.dll, and REDIRECT_HOSTS above
-# sends the whole of kernelbase to kernel32. That is right for the bulk of
-# it and wrong for the sets below, because ReactOS did not consolidate the
-# same way: security and registry live in advapi32, the version resource
-# calls live in version.dll, PathCch lives in kernelbase_ros.dll and the
-# character classing calls live in user32. Sent to kernel32 they resolve to
-# a DLL that does not export them, and an application importing one at load
-# time simply does not start - mozglue.dll pulls AddAccessAllowedAce and
-# RegOpenKeyExW in through these, so Firefox does not start.
-#
-# Keyed on the apiset name without the .dll, lowercased. Wins over
-# REDIRECT_HOSTS.
-SET_HOSTS = {
-    # The package APIs live in kernel.appcore.dll, and kernel32 forwards to them through these
-    'api-ms-win-appmodel-identity-l1-1-0': 'kernel.appcore.dll',
-    'api-ms-win-appmodel-identity-l1-2-0': 'kernel.appcore.dll',
-    'api-ms-win-appmodel-runtime-internal-l1-1-0': 'kernel.appcore.dll',
-    'api-ms-win-appmodel-runtime-internal-l1-1-7': 'kernel.appcore.dll',
-    'api-ms-win-appmodel-runtime-l1-1-0': 'kernel.appcore.dll',
-    'api-ms-win-appmodel-runtime-l1-1-1': 'kernel.appcore.dll',
-    'api-ms-win-appmodel-runtime-l1-1-2': 'kernel.appcore.dll',
-    'api-ms-win-appmodel-runtime-l1-1-3': 'kernel.appcore.dll',
-    'api-ms-win-core-localregistry-l1-1-0': 'advapi32.dll',
-    'api-ms-win-core-path-l1-1-0': 'kernelbase_ros.dll',
-    'api-ms-win-core-registry-l1-1-0': 'advapi32.dll',
-    'api-ms-win-core-registry-l1-1-1': 'advapi32.dll',
-    'api-ms-win-core-registry-l1-1-2': 'advapi32.dll',
-    'api-ms-win-core-string-l2-1-0': 'user32.dll',
-    'api-ms-win-core-string-l2-1-1': 'user32.dll',
-    'api-ms-win-core-stringansi-l1-1-0': 'user32.dll',
-    'api-ms-win-core-version-l1-1-0': 'version.dll',
-    'api-ms-win-core-version-l1-1-1': 'version.dll',
-    'api-ms-win-eventing-classicprovider-l1-1-0': 'advapi32.dll',
-    'api-ms-win-security-base-l1-1-0': 'advapi32.dll',
-    'api-ms-win-security-base-l1-1-1': 'advapi32.dll',
-    'api-ms-win-security-base-l1-2-0': 'advapi32.dll',
-    'api-ms-win-security-base-l1-2-2': 'advapi32.dll',
-}
-
-# Sets later Windows 10 releases added, or revisions skipped between two of the schemas the
-# table is built from.
-# Applications built with a recent SDK import them, so they get the host of the set they extend.
-EXTRA_SETS = {
-    'api-ms-win-core-file-l2-1-2': 'kernelbase.dll',
-    'api-ms-win-core-libraryloader-l1-2-1': 'kernelbase.dll',
-    'api-ms-win-core-registry-l1-1-1': 'kernelbase.dll',
-    'api-ms-win-eventing-tdh-l1-1-0': 'tdh.dll',
-    'api-ms-win-service-core-l1-1-3': 'sechost.dll',
-    'ext-ms-win-shell32-shellfolders-l1-1-0': 'shell32.dll',
 }
 
 OUTPUT_HEADER = """/*
@@ -134,17 +77,9 @@ class Apiset:
         else:
             # Check to see if there is any dll we want to swap (kernelbase -> kernel32)
             replace = REDIRECT_HOSTS.get(host.lower(), None)
-            for apiset_prefix, apiset_host in REDIRECT_APISETS.items():
-                if name.lower().startswith(apiset_prefix):
-                    replace = apiset_host
             if replace:
                 postfix = ' // ' + host
                 host = replace
-            # A per-set override wins: see SET_HOSTS
-            override = SET_HOSTS.get(name.lower(), None)
-            if override:
-                postfix = ' // ' + self.host
-                host = override
         return f'    {prefix}{{ RTL_CONSTANT_STRING(L"{name}"), RTL_CONSTANT_STRING(L"{host}"), {version_str} }},{postfix}'
 
 
@@ -174,11 +109,6 @@ class CombinedSchemas:
                 apiset = self._apisets[lowername]
             apiset.add_version(schema.version)
 
-    def add_extra(self, name, host):
-        if name not in self._apisets:
-            self._apisets[name] = Apiset(name + '.dll', host)
-            self._apisets[name].add_version('APISET_WIN10')
-
     def generate(self, output):
         for key in sorted(self._apisets):
             apiset = self._apisets[key]
@@ -193,9 +123,6 @@ def process_apisetschemas(input_dir: Path, output_file):
         # Skip Win11 for now
         if schema.version != 'APISET_WIN11':
             schemas.add(schema)
-
-    for name, host in EXTRA_SETS.items():
-        schemas.add_extra(name, host)
 
     output_file.write(OUTPUT_HEADER.encode('utf-8'))
     schemas.generate(output_file)

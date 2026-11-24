@@ -39,9 +39,21 @@ endif()
 
 list(APPEND SOURCE_STATIC
     #console.c #looks like ReactOS console.c is nothing like wine.
+    debug.c
+    file.c
+    loader.c
     locale.c
+    main.c
+    memory.c
     path.c
+    process.c
+    registry.c
+    security.c
     string.c
+    sync.c
+    thread.c
+    version.c #mostly Version.dll
+    volume.c
     )
 
 add_library(kernelbase_static ${SOURCE_STATIC})
