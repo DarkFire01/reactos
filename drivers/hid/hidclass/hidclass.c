@@ -1084,6 +1084,9 @@ HidClass_DeviceControl(
         }
         case IOCTL_HID_GET_COLLECTION_DESCRIPTOR:
         {
+            NTSTATUS Status;
+            ULONG Length;
+
             //
             // get collection description
             //
@@ -1091,32 +1094,41 @@ HidClass_DeviceControl(
                                                                          PDODeviceExtension->CollectionNumber);
             ASSERT(CollectionDescription);
 
-            //
-            // check if output buffer is big enough
-            //
-            if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < CollectionDescription->PreparsedDataLength)
+            /* METHOD_NEITHER, so the output is the caller's raw buffer */
+            if (!Irp->UserBuffer)
             {
-                //
-                // invalid buffer size
-                //
-                Irp->IoStatus.Status = STATUS_INVALID_BUFFER_SIZE;
+                Irp->IoStatus.Information = 0;
+                Irp->IoStatus.Status = STATUS_INVALID_USER_BUFFER;
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
-                return STATUS_INVALID_BUFFER_SIZE;
+                return STATUS_INVALID_USER_BUFFER;
             }
 
-            //
-            // copy result
-            //
-            ASSERT(Irp->UserBuffer);
-            RtlCopyMemory(Irp->UserBuffer, CollectionDescription->PreparsedData, CollectionDescription->PreparsedDataLength);
+            /* A short buffer receives what fits and the full size is reported */
+            Length = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
+            Status = STATUS_SUCCESS;
+            if (Length < CollectionDescription->PreparsedDataLength)
+                Status = STATUS_INVALID_BUFFER_SIZE;
+            else
+                Length = CollectionDescription->PreparsedDataLength;
 
-            //
-            // complete request
-            //
-            Irp->IoStatus.Information = CollectionDescription->PreparsedDataLength;
-            Irp->IoStatus.Status = STATUS_SUCCESS;
+            _SEH2_TRY
+            {
+                if (Irp->RequestorMode != KernelMode)
+                    ProbeForWrite(Irp->UserBuffer, IoStack->Parameters.DeviceIoControl.OutputBufferLength, sizeof(UCHAR));
+
+                RtlCopyMemory(Irp->UserBuffer, CollectionDescription->PreparsedData, Length);
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            Irp->IoStatus.Information = NT_SUCCESS(Status) || (Status == STATUS_INVALID_BUFFER_SIZE) ?
+                                        CollectionDescription->PreparsedDataLength : 0;
+            Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
+            return Status;
         }
         case IOCTL_HID_GET_FEATURE:
         {
