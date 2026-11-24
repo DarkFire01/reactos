@@ -22,6 +22,20 @@ FAST_MUTEX PopPowerSettingLock;
 LIST_ENTRY PopSettingValueList;
 FAST_MUTEX PopSettingValueLock;
 
+/* Notification names handed to user mode, each publishes the value of one setting */
+typedef struct _POP_SETTING_WNF_NAME
+{
+    LIST_ENTRY Link;
+    GUID SettingGuid;
+    ULONGLONG StateName;
+    ULONG LastLength;
+    PUCHAR LastValue;
+} POP_SETTING_WNF_NAME, *PPOP_SETTING_WNF_NAME;
+
+static LIST_ENTRY PopSettingWnfNames = { &PopSettingWnfNames, &PopSettingWnfNames };
+static volatile LONG PopSettingWnfNameCount;
+FAST_MUTEX PopSettingWnfLock;
+
 /* Connected standby state settings the graphics kernel listens to */
 const GUID PopIdleResiliencySettingGuid =
     {0x307bcc77, 0xe09b, 0x43ce, {0x8d, 0x97, 0x46, 0x75, 0x6f, 0xfb, 0x04, 0xa7}};
@@ -198,6 +212,70 @@ PopExecutePowerSettingCallback(
     PopAlertCallbackReturned(SettingCallback);
 }
 
+/* The power condition whose values the setting callbacks get */
+static
+SYSTEM_POWER_CONDITION
+PopCurrentPowerCondition(VOID)
+{
+    /* Short-term batteries such as a UPS count as their own condition */
+    if (PopCapabilities.BatteriesAreShortTerm)
+        return PoHot;
+
+    return (PopDefaultPowerPolicy == &PopAcPowerPolicy) ? PoAc : PoDc;
+}
+
+/**
+ * @brief Reads whether the lid of a portable machine is open.
+ *
+ * @return FALSE when the machine has no lid.
+ */
+static
+BOOLEAN
+PopQueryLidState(
+    _Out_ PULONG LidIsOpen)
+{
+    PPOP_CONTROL_SWITCH ControlSwitch;
+    BOOLEAN LidFound = FALSE;
+    PLIST_ENTRY Entry;
+
+    PAGED_CODE();
+
+    PopAcquirePowerPolicyLock();
+    for (Entry = PopControlSwitches.Flink;
+         Entry != &PopControlSwitches;
+         Entry = Entry->Flink)
+    {
+        ControlSwitch = CONTAINING_RECORD(Entry, POP_CONTROL_SWITCH, Link);
+        if (ControlSwitch->SwitchType == SwitchLid)
+        {
+            *LidIsOpen = ControlSwitch->Switch.Lid.Opened;
+            LidFound = TRUE;
+            break;
+        }
+    }
+    PopReleasePowerPolicyLock();
+
+    return LidFound;
+}
+
+/* A machine running from AC, or one whose battery reports no capacity, counts as full */
+static
+ULONG
+PopQueryBatteryRemaining(VOID)
+{
+    ULONG CurrentCapacity, MaxCapacity;
+
+    if (PopDefaultPowerPolicy == &PopAcPowerPolicy || !PopBattery)
+        return 100;
+
+    CurrentCapacity = PopBattery->Status.Capacity;
+    MaxCapacity = PopBattery->BattInfo.FullChargedCapacity;
+    if (!MaxCapacity || CurrentCapacity > MaxCapacity)
+        return 100;
+
+    return (ULONG)((100ULL * CurrentCapacity + MaxCapacity / 2) / MaxCapacity);
+}
+
 /**
  * @brief
  * Main worker thread for the GUID_ACDC_POWER_SOURCE power setting.
@@ -224,25 +302,7 @@ PopPowerSourceSettingWorker(
     /* Sanity check: the following worker can only work with the right GUID callbacks */
     ASSERT(IsEqualGUID(&SettingCallback->SettingGuid, &GUID_ACDC_POWER_SOURCE) == TRUE);
 
-    /*
-     * Determine how is this system actually powered up. It can either be
-     * powered up by short-term batteries such as a UPS, in this case we have
-     * to explicitly check for that against the reported system capabilities.
-     * Otherwise just check the default system power policy the Power Manager
-     * has currently enforced.
-     */
-    if (PopCapabilities.BatteriesAreShortTerm)
-    {
-        PowerCondition = PoHot;
-    }
-    else if (PopDefaultPowerPolicy == &PopAcPowerPolicy)
-    {
-        PowerCondition = PoAc;
-    }
-    else // PopDefaultPowerPolicy == &PopDcPowerPolicy
-    {
-        PowerCondition = PoDc;
-    }
+    PowerCondition = PopCurrentPowerCondition();
 
     /* Execute the callback now */
     PopExecutePowerSettingCallback(SettingCallback, &PowerCondition, sizeof(SYSTEM_POWER_CONDITION));
@@ -293,9 +353,6 @@ PopLidStateChangeSettingWorker(
     _In_ PVOID StartContext)
 {
     ULONG LidIsOpen;
-    PLIST_ENTRY Entry;
-    PPOP_CONTROL_SWITCH ControlSwitch;
-    BOOLEAN LidFound = FALSE;
     PPOP_POWER_SETTING_CALLBACK SettingCallback = (PPOP_POWER_SETTING_CALLBACK)StartContext;
 
     PAGED_CODE();
@@ -305,29 +362,10 @@ PopLidStateChangeSettingWorker(
     /* Sanity check: the following worker can only work with the right GUID callbacks */
     ASSERT(IsEqualGUID(&SettingCallback->SettingGuid, &GUID_LIDSWITCH_STATE_CHANGE) == TRUE);
 
-    /*
-     * Acquire the policy lock here as we are going to loop inside the
-     * list of control switches and look for the exact switch that is
-     * a lid.
-     */
-    PopAcquirePowerPolicyLock();
-    for (Entry = PopControlSwitches.Flink;
-         Entry != &PopControlSwitches;
-         Entry = Entry->Flink)
-    {
-        ControlSwitch = CONTAINING_RECORD(Entry, POP_CONTROL_SWITCH, Link);
-        if (ControlSwitch->SwitchType == SwitchLid)
-        {
-            LidFound = TRUE;
-            break;
-        }
-    }
-
     /* Do not execute the driver's callback if no lid was found on this system */
-    if (!LidFound)
+    if (!PopQueryLidState(&LidIsOpen))
     {
         DPRINT("No lid found, the driver's callback won't be called\n");
-        PopReleasePowerPolicyLock();
         PopPowerSettingClearAttribute(SettingCallback, POP_PSC_GETTING_NOTIFIED);
 
         /* The registration waits for this worker to be done, callback or not */
@@ -335,10 +373,6 @@ PopLidStateChangeSettingWorker(
         PsTerminateSystemThread(STATUS_SUCCESS);
         return;
     }
-
-    /* Cache the lid's status and prepare to give it to the driver's callback */
-    LidIsOpen = ControlSwitch->Switch.Lid.Opened;
-    PopReleasePowerPolicyLock();
 
     /* Execute the callback now */
     PopExecutePowerSettingCallback(SettingCallback, &LidIsOpen, sizeof(ULONG));
@@ -360,7 +394,7 @@ NTAPI
 PopBatteryRemainingSettingWorker(
     _In_ PVOID StartContext)
 {
-    ULONG CapacityRemaining, CurrentCapacity, MaxCapacity;
+    ULONG CapacityRemaining;
     PPOP_POWER_SETTING_CALLBACK SettingCallback = (PPOP_POWER_SETTING_CALLBACK)StartContext;
 
     PAGED_CODE();
@@ -370,50 +404,11 @@ PopBatteryRemainingSettingWorker(
     /* Sanity check: the following worker can only work with the right GUID callbacks */
     ASSERT(IsEqualGUID(&SettingCallback->SettingGuid, &GUID_BATTERY_PERCENTAGE_REMAINING) == TRUE);
 
-    /*
-     * The system is either powered up by AC source or their battery is
-     * fully charged and it takes power from the AC source instead.
-     * In such case assume the capacity remaining is 100%.
-     */
-    if (PopDefaultPowerPolicy == &PopAcPowerPolicy)
-    {
-        CapacityRemaining = 100;
-    }
-    else
-    {
-        /* The system is powered by batteries (aka DC source), figure out the remaining capacity */
-        CurrentCapacity = PopBattery->Status.Capacity;
-        MaxCapacity = PopBattery->BattInfo.FullChargedCapacity;
-
-        /*
-         * Compute the exact percentage of remaining battery capacity only if the
-         * current capacity at the time of reading is below the reported maximum
-         * capacity of the battery. Otherwise return 100%.
-         */
-        if (CurrentCapacity <= MaxCapacity)
-        {
-            CapacityRemaining = (ULONG)((100 * CurrentCapacity + MaxCapacity / 2) / MaxCapacity);
-        }
-        else
-        {
-            CapacityRemaining = 100;
-        }
-    }
+    CapacityRemaining = PopQueryBatteryRemaining();
 
     /* Execute the callback now */
     PopExecutePowerSettingCallback(SettingCallback, &CapacityRemaining, sizeof(ULONG));
     PsTerminateSystemThread(STATUS_SUCCESS);
-}
-
-/* The power condition whose values the setting callbacks get */
-static
-SYSTEM_POWER_CONDITION
-PopCurrentPowerCondition(VOID)
-{
-    if (PopCapabilities.BatteriesAreShortTerm)
-        return PoHot;
-
-    return (PopDefaultPowerPolicy == &PopAcPowerPolicy) ? PoAc : PoDc;
 }
 
 /* Must be called with the value lock held */
@@ -648,6 +643,172 @@ PopStandbyStateSettingWorker(
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
+/**
+ * @brief
+ * Copies out the value a setting has right now, the live state for settings
+ * the Power Manager tracks itself and the scheme value for all others.
+ *
+ * @return
+ * STATUS_NOT_FOUND when the setting has no value yet.
+ */
+static
+NTSTATUS
+PopQueryCurrentSettingValue(
+    _In_ LPCGUID SettingGuid,
+    _Out_writes_bytes_to_(BufferLength, *DataLength) PVOID Buffer,
+    _In_ ULONG BufferLength,
+    _Out_ PULONG DataLength)
+{
+    PKSTART_ROUTINE Helper = PopGetPowerSettingHelper(SettingGuid);
+    ULONG Value;
+
+    PAGED_CODE();
+
+    if (Helper == PopPowerSourceSettingWorker)
+        Value = PopCurrentPowerCondition();
+    else if (Helper == PopDisplayStateSettingWorker)
+        Value = PopAoAcInStandby ? 0 : 1;
+    else if (Helper == PopStandbyStateSettingWorker)
+        Value = PopAoAcInStandby ? 1 : 0;
+    else if (Helper == PopBatteryRemainingSettingWorker)
+        Value = PopQueryBatteryRemaining();
+    else if (Helper == PopLidStateChangeSettingWorker)
+    {
+        if (!PopQueryLidState(&Value))
+        {
+            *DataLength = 0;
+            return STATUS_NOT_FOUND;
+        }
+    }
+    else
+        return PopQuerySettingValue(SettingGuid, Buffer, BufferLength, DataLength);
+
+    *DataLength = sizeof(Value);
+    if (BufferLength < sizeof(Value))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    RtlCopyMemory(Buffer, &Value, sizeof(Value));
+    return STATUS_SUCCESS;
+}
+
+/* Must be called with the notification name lock held */
+static
+PPOP_SETTING_WNF_NAME
+PopFindSettingWnfName(
+    _In_ LPCGUID SettingGuid)
+{
+    PPOP_SETTING_WNF_NAME Name;
+    PLIST_ENTRY Entry;
+
+    for (Entry = PopSettingWnfNames.Flink; Entry != &PopSettingWnfNames; Entry = Entry->Flink)
+    {
+        Name = CONTAINING_RECORD(Entry, POP_SETTING_WNF_NAME, Link);
+        if (IsEqualGUID(&Name->SettingGuid, SettingGuid))
+            return Name;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Publishes the current value of a setting under its notification name.
+ * The same value is not published twice in a row.
+ *
+ * @remarks
+ * Must be called with the notification name lock held.
+ */
+static
+VOID
+PopPublishSettingWnfName(
+    _Inout_ PPOP_SETTING_WNF_NAME Name)
+{
+    UCHAR Small[sizeof(GUID)];
+    PUCHAR Value = Small, Copy;
+    ULONG Length;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = PopQueryCurrentSettingValue(&Name->SettingGuid, Small, sizeof(Small), &Length);
+    if (Status == STATUS_BUFFER_TOO_SMALL)
+    {
+        Value = ExAllocatePoolWithTag(PagedPool, Length, TAG_PO_POWER_SETTING_VALUE);
+        Status = Value ? PopQueryCurrentSettingValue(&Name->SettingGuid, Value, Length, &Length)
+                       : STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (!NT_SUCCESS(Status) || Length == 0 || Length > WNF_MAXIMUM_DATA_SIZE)
+        goto Quit;
+
+    if (Name->LastValue &&
+        Name->LastLength == Length &&
+        RtlCompareMemory(Name->LastValue, Value, Length) == Length)
+    {
+        goto Quit;
+    }
+
+    Copy = ExAllocatePoolWithTag(PagedPool, Length, TAG_PO_POWER_SETTING_VALUE);
+    if (!Copy)
+        goto Quit;
+    RtlCopyMemory(Copy, Value, Length);
+
+    Status = ZwUpdateWnfStateData(&Name->StateName, Value, Length, NULL, NULL, 0, FALSE);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Publishing a power setting failed (Status 0x%lx)\n", Status);
+        ExFreePoolWithTag(Copy, TAG_PO_POWER_SETTING_VALUE);
+        goto Quit;
+    }
+
+    if (Name->LastValue)
+        ExFreePoolWithTag(Name->LastValue, TAG_PO_POWER_SETTING_VALUE);
+    Name->LastValue = Copy;
+    Name->LastLength = Length;
+
+Quit:
+    if (Value && Value != Small)
+        ExFreePoolWithTag(Value, TAG_PO_POWER_SETTING_VALUE);
+}
+
+/* Settings nobody asked a notification name for are skipped */
+static
+VOID
+PopPublishSettingNotification(
+    _In_ LPCGUID SettingGuid)
+{
+    PPOP_SETTING_WNF_NAME Name;
+
+    PAGED_CODE();
+
+    if (!PopSettingWnfNameCount)
+        return;
+
+    ExAcquireFastMutex(&PopSettingWnfLock);
+    Name = PopFindSettingWnfName(SettingGuid);
+    if (Name)
+        PopPublishSettingWnfName(Name);
+    ExReleaseFastMutex(&PopSettingWnfLock);
+}
+
+/* A power source change can change the value of every setting with a notification name */
+static
+VOID
+PopPublishAllSettingNotifications(VOID)
+{
+    PLIST_ENTRY Entry;
+
+    PAGED_CODE();
+
+    if (!PopSettingWnfNameCount)
+        return;
+
+    ExAcquireFastMutex(&PopSettingWnfLock);
+    for (Entry = PopSettingWnfNames.Flink; Entry != &PopSettingWnfNames; Entry = Entry->Flink)
+        PopPublishSettingWnfName(CONTAINING_RECORD(Entry, POP_SETTING_WNF_NAME, Link));
+    ExReleaseFastMutex(&PopSettingWnfLock);
+}
+
 /* A power source change reaches the scheme settings whose AC and DC values differ */
 static
 VOID
@@ -730,6 +891,12 @@ PopDeployPowerSettingWorkers(
                   &NotifyBlock->NotifySettingGuid,
                   sizeof(GUID));
     PopFreePool(NotifyBlock, TAG_PO_POWER_SETTING_NOTIFY_BLOCK);
+
+    /* User mode learns about the change through the notification name of the setting */
+    if (IsEqualGUID(&SettingGuid, &GUID_ACDC_POWER_SOURCE))
+        PopPublishAllSettingNotifications();
+    else
+        PopPublishSettingNotification(&SettingGuid);
 
     /* Iterate over the list of registered setting callbacks and look for those we must notify */
     PopAcquirePowerSettingLock();
@@ -956,10 +1123,10 @@ PopNotifyPowerSettingChange(
     PPOP_POWER_SETTING_NOTIFY_BLOCK NotifyBlock;
 
     /*
-     * There's no active power setting callback occuring. It's pointless to
-     * bother the master worker to deploy power setting workers.
+     * There's no active power setting callback occuring and user mode has no
+     * notification name to publish to. It's pointless to bother the master worker.
      */
-    if (PopPowerSettingCallbacksCount == 0)
+    if (PopPowerSettingCallbacksCount == 0 && PopSettingWnfNameCount == 0)
     {
         ASSERT(IsListEmpty(&PopPowerSettingCallbacksList));
         return;
@@ -999,6 +1166,64 @@ PopNotifyPowerSettingChange(
                          PopDeployPowerSettingWorkers,
                          NotifyBlock);
     ExQueueWorkItem(&NotifyBlock->NotifyWorkItem, CriticalWorkQueue);
+}
+
+/**
+ * @brief
+ * Returns the notification name user mode subscribes to for changes of a
+ * setting. The data published under it is the current value of the setting.
+ *
+ * @remarks
+ * A new name gets the current value right away, if the setting has one, so
+ * the first subscriber is told about it without waiting for a change.
+ */
+NTSTATUS
+NTAPI
+PopGetSettingNotificationName(
+    _In_ LPCGUID SettingGuid,
+    _Out_ PULONGLONG StateName)
+{
+    PPOP_SETTING_WNF_NAME Name;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    PAGED_CODE();
+
+    ExAcquireFastMutex(&PopSettingWnfLock);
+
+    Name = PopFindSettingWnfName(SettingGuid);
+    if (!Name)
+    {
+        Name = ExAllocatePoolZero(PagedPool, sizeof(*Name), TAG_PO_POWER_SETTING_VALUE);
+        if (!Name)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Quit;
+        }
+
+        Status = ZwCreateWnfStateName(&Name->StateName,
+                                      WnfTemporaryStateName,
+                                      WnfDataScopeMachine,
+                                      FALSE,
+                                      NULL,
+                                      WNF_MAXIMUM_DATA_SIZE,
+                                      NULL);
+        if (!NT_SUCCESS(Status))
+        {
+            ExFreePoolWithTag(Name, TAG_PO_POWER_SETTING_VALUE);
+            goto Quit;
+        }
+
+        Name->SettingGuid = *SettingGuid;
+        InsertTailList(&PopSettingWnfNames, &Name->Link);
+        InterlockedIncrement(&PopSettingWnfNameCount);
+        PopPublishSettingWnfName(Name);
+    }
+
+    *StateName = Name->StateName;
+
+Quit:
+    ExReleaseFastMutex(&PopSettingWnfLock);
+    return Status;
 }
 
 /* EOF */

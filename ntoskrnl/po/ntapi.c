@@ -607,6 +607,68 @@ PopQueryPlatformRole(
 
 /**
  * @brief
+ * Answers the PowerSettingNotificationName query. The input is the setting
+ * GUID followed by a session ID, the output the notification state name.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED for the name of all settings at once, which needs no input.
+ */
+static
+NTSTATUS
+PopQuerySettingNotificationName(
+    _In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_opt_(OutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _In_ KPROCESSOR_MODE PreviousMode)
+{
+    ULONGLONG StateName;
+    GUID SettingGuid;
+    NTSTATUS Status;
+
+    if (!OutputBuffer || OutputBufferLength != sizeof(StateName))
+        return STATUS_INVALID_PARAMETER;
+
+    if (!InputBuffer)
+        return STATUS_NOT_SUPPORTED;
+
+    if (InputBufferLength != sizeof(GUID) + sizeof(ULONG))
+        return STATUS_INVALID_PARAMETER;
+
+    _SEH2_TRY
+    {
+        if (PreviousMode != KernelMode)
+            ProbeForRead(InputBuffer, InputBufferLength, sizeof(ULONG));
+        RtlCopyMemory(&SettingGuid, InputBuffer, sizeof(SettingGuid));
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        _SEH2_YIELD(return _SEH2_GetExceptionCode());
+    }
+    _SEH2_END;
+
+    /* There is one session, every setting is the same for all of them */
+    Status = PopGetSettingNotificationName(&SettingGuid, &StateName);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    _SEH2_TRY
+    {
+        if (PreviousMode != KernelMode)
+            ProbeForWrite(OutputBuffer, sizeof(StateName), sizeof(ULONG));
+        RtlCopyMemory(OutputBuffer, &StateName, sizeof(StateName));
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
+}
+
+/**
+ * @brief
  * Queries information from the Power Manager or sets new information.
  *
  * @param[in] PowerInformationLevel
@@ -670,6 +732,10 @@ NtPowerInformation(
     PreviousMode = ExGetPreviousMode();
     if (PowerInformationLevel == ProcessorStateHandler)
         return PpmQueryDriverInterface(InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength, PreviousMode);
+
+    /* Takes an input but changes nothing, so no privilege is needed */
+    if (PowerInformationLevel == PowerSettingNotificationName)
+        return PopQuerySettingNotificationName(InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength, PreviousMode);
 
     /* Bail out if the caller is doing something special and has no required privilege */
     if (!PopIsCallerPrivileged(PowerInformationLevel, InputBuffer, PreviousMode))

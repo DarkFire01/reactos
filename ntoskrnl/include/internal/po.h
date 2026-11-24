@@ -2323,6 +2323,12 @@ PopSetPowerSettingValue(
     _In_ ULONG DataLength,
     _In_reads_bytes_(DataLength) PVOID Data);
 
+NTSTATUS
+NTAPI
+PopGetSettingNotificationName(
+    _In_ LPCGUID SettingGuid,
+    _Out_ PULONGLONG StateName);
+
 PKSTART_ROUTINE
 NTAPI
 PopGetPowerSettingHelper(
@@ -2445,6 +2451,7 @@ extern PKTHREAD PopPowerSettingOwnerLockThread;
 extern POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[];
 extern LIST_ENTRY PopSettingValueList;
 extern FAST_MUTEX PopSettingValueLock;
+extern FAST_MUTEX PopSettingWnfLock;
 extern const GUID PopIdleResiliencySettingGuid;
 extern const GUID PopLowPowerPhaseSettingGuid;
 

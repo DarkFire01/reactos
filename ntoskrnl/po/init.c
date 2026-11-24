@@ -145,6 +145,9 @@ PopInitPowerSettingCallbacks(VOID)
     InitializeListHead(&PopSettingValueList);
     ExInitializeFastMutex(&PopSettingValueLock);
 
+    /* User mode asks for notification names of settings to watch them */
+    ExInitializeFastMutex(&PopSettingWnfLock);
+
     /*
      * Setup the power setting callbacks counter. The Power Manager will
      * increment this counter as device drivers register new callbacks.
