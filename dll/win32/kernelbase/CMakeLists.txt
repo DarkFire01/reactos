@@ -41,6 +41,7 @@ list(APPEND SOURCE
     client/except.c
     client/fiber.c
     client/firmware.c
+    client/GetFileInformationByHandleEx.c
     client/GetFinalPathNameByHandle.c
     client/handle.c
     client/heapmem.c

@@ -3095,6 +3095,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetFileInformationByHandle( HANDLE file, BY_HANDLE
 
 
 #endif
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *	GetFileInformationByHandleEx   (kernelbase.@)
  */
@@ -3180,6 +3181,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetFileInformationByHandleEx( HANDLE handle, FILE_
     }
     return set_ntstatus( status );
 }
+#endif
 
 #ifndef __REACTOS__
 
@@ -3694,6 +3696,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetEndOfFile( HANDLE file )
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *	SetFileInformationByHandle   (kernelbase.@)
  */
@@ -3770,6 +3773,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetFileInformationByHandle( HANDLE file, FILE_INFO
     }
     return set_ntstatus( status );
 }
+#endif
 
 
 #ifndef __REACTOS__
