@@ -1125,6 +1125,60 @@ NdisGetProcessorInformationEx(
     return NDIS_STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Describes the processors of group 0 the way NDIS 6.0 drivers expect, with
+ * the same topology NdisGetProcessorInformationEx reports. Every one of them
+ * takes receive side scaling work.
+ *
+ * @param[in,out] SystemProcessorInfo
+ * Header.Size says how much there is; RssProcessors, when set, receives the
+ * numbers of the RSS processors.
+ *
+ * @return
+ * NDIS_STATUS_SUCCESS or NDIS_STATUS_BUFFER_TOO_SHORT.
+ */
+_Use_decl_annotations_
+NDIS_STATUS
+NTAPI
+NdisGetProcessorInformation(
+    PNDIS_SYSTEM_PROCESSOR_INFO SystemProcessorInfo)
+{
+    ULONG Count = KeQueryActiveProcessorCountEx(0);
+    ULONG i;
+
+    PAGED_CODE();
+
+    if (SystemProcessorInfo->Header.Size < NDIS_SIZEOF_SYSTEM_PROCESSOR_INFO_REVISION_1)
+        return NDIS_STATUS_BUFFER_TOO_SHORT;
+
+    Count = min(Count, MAXIMUM_PROC_PER_GROUP);
+
+    SystemProcessorInfo->Flags = 0;
+    SystemProcessorInfo->ProcessorVendor = NdisProcessorVendorUnknown;
+    SystemProcessorInfo->NumPhysicalPackages = 1;
+    SystemProcessorInfo->NumCores = Count;
+    SystemProcessorInfo->NumCoresPerPhysicalPackage = Count;
+    SystemProcessorInfo->MaxHyperThreadingCpusPerCore = 1;
+    SystemProcessorInfo->RssBaseCpu = 0;
+    SystemProcessorInfo->RssCpuCount = Count;
+
+    if (SystemProcessorInfo->RssProcessors != NULL)
+    {
+        for (i = 0; i < Count; i++)
+            SystemProcessorInfo->RssProcessors[i] = (UCHAR)i;
+    }
+
+    RtlZeroMemory(SystemProcessorInfo->CpuInfo, sizeof(SystemProcessorInfo->CpuInfo));
+    for (i = 0; i < Count; i++)
+    {
+        SystemProcessorInfo->CpuInfo[i].CpuNumber = i;
+        SystemProcessorInfo->CpuInfo[i].CoreId = i;
+    }
+
+    return NDIS_STATUS_SUCCESS;
+}
+
 /* Optional handlers */
 
 /**

@@ -153,6 +153,7 @@
  @ stdcall NdisGetPoolFromNetBufferList(ptr)
  @ stdcall NdisGetPoolFromPacket(ptr)
  @ stdcall NdisGetProcessObjectCompartmentId(ptr)
+ @ stdcall NdisGetProcessorInformation(ptr)
  @ stdcall NdisGetProcessorInformationEx(ptr ptr ptr)
  @ stdcall NdisGetReceivedPacket(ptr ptr)
  @ stdcall NdisGetRoutineAddress(ptr)
