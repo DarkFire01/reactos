@@ -1813,6 +1813,10 @@ MiBuildPagedPool(VOID)
 #ifdef _WIN64
     /* There is room for a larger paged pool, scale it with the memory size */
     Size *= ((MmNumberOfPhysicalPages * PAGE_SIZE) / _1GB);
+
+    /* Its pages are only committed as it grows, so let it reach the size of memory, up to 4 GB */
+    if (Size < min((SIZE_T)MmNumberOfPhysicalPages * PAGE_SIZE, 4ULL * _1GB))
+        Size = min((SIZE_T)MmNumberOfPhysicalPages * PAGE_SIZE, 4ULL * _1GB);
 #endif
 
 #ifdef _WIN64
