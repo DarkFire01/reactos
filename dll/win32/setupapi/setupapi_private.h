@@ -291,6 +291,16 @@ extern const WCHAR *PARSER_get_inf_filename( HINF hinf ) DECLSPEC_HIDDEN;
 extern WCHAR *PARSER_get_src_root( HINF hinf ) DECLSPEC_HIDDEN;
 extern WCHAR *PARSER_get_dest_dir( INFCONTEXT *context ) DECLSPEC_HIDDEN;
 
+/* devinst.c */
+
+BOOL
+WINAPI
+SETUPAPI_GetNextModelsSection(
+    _In_ PINFCONTEXT Context,
+    _In_ PCWSTR CurrentSection,
+    _Out_writes_(cchSection) PWSTR NextSection,
+    _In_ DWORD cchSection);
+
 /* drvstore.c */
 
 BOOL

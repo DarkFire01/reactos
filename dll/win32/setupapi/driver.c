@@ -820,6 +820,8 @@ SetupDiBuildDriverInfoList(
             {
                 INFCONTEXT ContextManufacturer, ContextDevice;
                 GUID ClassGuid;
+                WCHAR NextSection[LINE_LEN + 1];
+                BOOL ManufacturerMatched;
 
                 strcpyW(pFullFilename, filename);
                 TRACE("Opening file %s\n", debugstr_w(FullInfFileName));
@@ -881,6 +883,7 @@ SetupDiBuildDriverInfoList(
                             ManufacturerName, RequiredSize,
                             &RequiredSize);
                     }
+                    ManufacturerMatched = FALSE;
                     /* Get manufacturer section name */
                     Result = SetupGetStringFieldW(
                         &ContextManufacturer,
@@ -899,6 +902,7 @@ SetupDiBuildDriverInfoList(
                             Result = SetupFindFirstLineW(currentInfFileDetails->hInf, ManufacturerSection, NULL, &ContextDevice);
                         }
                     }
+NextModelsSection:
                     while (Result)
                     {
                         if (DriverType == SPDIT_CLASSDRIVER)
@@ -919,6 +923,7 @@ SetupDiBuildDriverInfoList(
                             {
                                 break;
                             }
+                            ManufacturerMatched = TRUE;
                         }
                         else /* DriverType = SPDIT_COMPATDRIVER */
                         {
@@ -976,6 +981,7 @@ SetupDiBuildDriverInfoList(
                                                 DriverDate, DriverVersion,
                                                 DriverRank  + (i == 2 ? 0 : 0x1000 + i - 3));
                                             DriverAlreadyAdded = TRUE;
+                                            ManufacturerMatched = TRUE;
                                         }
                                     }
                                 }
@@ -998,6 +1004,7 @@ SetupDiBuildDriverInfoList(
                                                 DriverDate, DriverVersion,
                                                 DriverRank + (i == 2 ? 0x2000 : 0x3000 + i - 3));
                                             DriverAlreadyAdded = TRUE;
+                                            ManufacturerMatched = TRUE;
                                         }
                                     }
                                 }
@@ -1005,6 +1012,17 @@ SetupDiBuildDriverInfoList(
                             }
                         }
                         Result = SetupFindNextLine(&ContextDevice, &ContextDevice);
+                    }
+
+                    /* A package for older Windows can leave the newest decoration empty */
+                    if (!ManufacturerMatched &&
+                        SETUPAPI_GetNextModelsSection(&ContextManufacturer, ManufacturerSection,
+                                                      NextSection, ARRAYSIZE(NextSection)))
+                    {
+                        TRACE("No match in %s, trying %s\n", debugstr_w(ManufacturerSection), debugstr_w(NextSection));
+                        strcpyW(ManufacturerSection, NextSection);
+                        Result = SetupFindFirstLineW(currentInfFileDetails->hInf, ManufacturerSection, NULL, &ContextDevice);
+                        goto NextModelsSection;
                     }
 
                     HeapFree(GetProcessHeap(), 0, ManufacturerName);

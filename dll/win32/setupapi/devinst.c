@@ -805,6 +805,102 @@ SetupDiGetActualModelsSectionA(
     return ret;
 }
 
+/* Orders two section scores, lower ones are better */
+static
+INT
+WINAPI
+CompareSectionScores(
+    _In_reads_(5) const DWORD *Left,
+    _In_reads_(5) const DWORD *Right)
+{
+    DWORD i;
+
+    for (i = 0; i < 5; i++)
+    {
+        if (Left[i] != Right[i])
+            return (Left[i] < Right[i]) ? -1 : 1;
+    }
+
+    return 0;
+}
+
+/**
+ * @brief The models section of a manufacturer line ranked right after the given one.
+ *
+ * @remarks A package for older Windows lists its devices under the older decorations and
+ *          leaves the newest one empty to refuse that version, so a device the best section
+ *          does not list is looked for one rank down.
+ */
+BOOL
+WINAPI
+SETUPAPI_GetNextModelsSection(
+    _In_ PINFCONTEXT Context,
+    _In_ PCWSTR CurrentSection,
+    _Out_writes_(cchSection) PWSTR NextSection,
+    _In_ DWORD cchSection)
+{
+    SP_ALTPLATFORM_INFO Platform;
+    SYSTEM_INFO SystemInfo;
+    WCHAR Base[LINE_LEN + 1];
+    WCHAR Candidate[LINE_LEN + 2];
+    DWORD Current[5], Best[5], Scores[5];
+    DWORD FieldCount, i;
+    SIZE_T BaseLength;
+    BOOL Found = FALSE;
+
+    GetSystemInfo(&SystemInfo);
+    Platform.cbSize = sizeof(Platform);
+    Platform.Platform = OsVersionInfo.dwPlatformId;
+    Platform.MajorVersion = OsVersionInfo.dwMajorVersion;
+    Platform.MinorVersion = OsVersionInfo.dwMinorVersion;
+    Platform.ProcessorArchitecture = SystemInfo.wProcessorArchitecture;
+    Platform.Reserved = 0;
+
+    if (!SetupGetStringFieldW(Context, 1, Base, ARRAYSIZE(Base), NULL))
+        return FALSE;
+
+    /* The current section is the base name followed by its decoration */
+    BaseLength = strlenW(Base);
+    if (strncmpiW(CurrentSection, Base, BaseLength) || CurrentSection[BaseLength] != '.' ||
+        !CheckSectionValid(&CurrentSection[BaseLength], &Platform,
+                           OsVersionInfo.wProductType, OsVersionInfo.wSuiteMask,
+                           &Current[0], &Current[1], &Current[2], &Current[3], &Current[4]))
+    {
+        return FALSE;
+    }
+
+    FieldCount = SetupGetFieldCount(Context);
+    for (i = 2; i <= FieldCount; i++)
+    {
+        if (!SetupGetStringFieldW(Context, i, &Candidate[1], ARRAYSIZE(Candidate) - 1, NULL) ||
+            !Candidate[1])
+        {
+            continue;
+        }
+
+        Candidate[0] = '.';
+        if (Candidate[1] == '.')
+            memmove(Candidate, &Candidate[1], (strlenW(&Candidate[1]) + 1) * sizeof(WCHAR));
+
+        if (!CheckSectionValid(Candidate, &Platform,
+                               OsVersionInfo.wProductType, OsVersionInfo.wSuiteMask,
+                               &Scores[0], &Scores[1], &Scores[2], &Scores[3], &Scores[4]) ||
+            CompareSectionScores(Scores, Current) <= 0 ||
+            (Found && CompareSectionScores(Scores, Best) >= 0) ||
+            BaseLength + strlenW(Candidate) >= cchSection)
+        {
+            continue;
+        }
+
+        strcpyW(NextSection, Base);
+        strcatW(NextSection, Candidate);
+        memcpy(Best, Scores, sizeof(Best));
+        Found = TRUE;
+    }
+
+    return Found;
+}
+
 BOOL
 CreateDeviceInfo(
     IN struct DeviceInfoSet *list,
