@@ -361,6 +361,8 @@ typedef struct _DWM_SHARED_SURFACE_REQUEST
     ULONG Flags;
     ULONG64 Surface;            /* out: global share handle of the surface */
     ULONG64 UpdateId;           /* out on a get, in on an update */
+    ULONG HasUpdateRect;        /* in on an update: UpdateRect is set, otherwise the whole surface changed */
+    RECT UpdateRect;            /* surface coordinates */
 } DWM_SHARED_SURFACE_REQUEST, *PDWM_SHARED_SURFACE_REQUEST;
 
 /* A thumbnail is named by the id its process gave it; the DWM keys it by that process too */
