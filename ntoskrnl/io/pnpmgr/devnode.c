@@ -24,6 +24,8 @@ BOOLEAN PiWalkDeviceNodeFreed;
 
 LONG IopNumberDeviceNodes;
 
+extern KGUARDED_MUTEX PiNotifyTargetDeviceLock;
+
 /* FUNCTIONS *****************************************************************/
 
 PDEVICE_NODE
@@ -347,8 +349,15 @@ IopFreeDeviceNode(
     ASSERT(DeviceNode->Child == NULL);
     /* This is the only state where we are allowed to remove the node */
     ASSERT(DeviceNode->State == DeviceNodeRemoved);
-    /* No notifications should be registered for this device */
-    ASSERT(IsListEmpty(&DeviceNode->TargetDeviceNotify));
+    /* Registrations still open for the device stay linked to each other, not to the freed node */
+    if (!IsListEmpty(&DeviceNode->TargetDeviceNotify))
+    {
+        DPRINT1("Freeing %wZ with target device notifications still registered\n", &DeviceNode->InstancePath);
+        KeAcquireGuardedMutex(&PiNotifyTargetDeviceLock);
+        RemoveEntryList(&DeviceNode->TargetDeviceNotify);
+        InitializeListHead(&DeviceNode->TargetDeviceNotify);
+        KeReleaseGuardedMutex(&PiNotifyTargetDeviceLock);
+    }
 
     KeAcquireSpinLock(&IopDeviceTreeLock, &OldIrql);
 

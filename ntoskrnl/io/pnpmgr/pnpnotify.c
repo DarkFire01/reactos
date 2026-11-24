@@ -80,8 +80,9 @@ PiDereferencePnpNotifyEntry(
         RemoveEntryList(&Entry->PnpNotifyList);
         if (Entry->EventCategory == EventCategoryTargetDeviceChange)
         {
-            // IopGetRelatedTargetDevice referenced the device upon the notification registration
-            ObDereferenceObject(Entry->DeviceObject);
+            // IopGetRelatedTargetDevice referenced the device upon the notification registration.
+            // The notify lock is held here, so a last reference is dropped outside of it
+            ObDereferenceObjectDeferDelete(Entry->DeviceObject);
         }
 
         /* A synchronous unregister is waiting for in flight callbacks to drain */
