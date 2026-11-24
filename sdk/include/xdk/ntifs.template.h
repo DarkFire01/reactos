@@ -635,6 +635,11 @@ NtCreateSection(
 #endif
 /* Unprototyped stubs: C accepts them beside the real declarations, C++ does not */
 #ifndef __cplusplus
+#if defined(_MSC_VER) && defined(_M_IX86)
+/* Taking the address of an unprototyped stdcall stub warns on x86 */
+#pragma warning(push)
+#pragma warning(disable:4276)
+#endif
 // Stubs
 NTSYSCALLAPI NTSTATUS NTAPI NtThawRegistry();
 NTSYSCALLAPI NTSTATUS NTAPI NtThawTransactions();
@@ -782,6 +787,9 @@ NTSYSCALLAPI NTSTATUS NTAPI NtInitializeEnclave();
 NTSYSCALLAPI NTSTATUS NTAPI NtLoadEnclaveData();
 NTSYSCALLAPI NTSTATUS NTAPI NtRevertContainerImpersonation();
 NTSYSCALLAPI NTSTATUS NTAPI NtSetCachedSigningLevel();
+#if defined(_MSC_VER) && defined(_M_IX86)
+#pragma warning(pop)
+#endif
 #endif
 
 #define COMPRESSION_FORMAT_NONE         (0x0000)

@@ -577,7 +577,10 @@ IopConnectPassiveVector(
                           0,
                           FALSE);
     KeInitializeEvent(&Passive->PassiveLock, SynchronizationEvent, TRUE);
+#ifdef _WIN64
+    /* The x86 KINTERRUPT has no Reserved field, so its interrupt lock stays a spinlock */
     Passive->Interrupt.Reserved = &Passive->PassiveLock;
+#endif
 
     Status = PsCreateSystemThread(&ThreadHandle, THREAD_ALL_ACCESS, NULL, NULL, NULL,
                                   IopPassiveInterruptWorker, Passive);

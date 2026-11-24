@@ -82,6 +82,7 @@
 
 /* Easy accessing PFN in PTE */
 #define PFN_FROM_PTE(v) ((v)->u.Hard.PageFrameNumber)
+#define PFN_FROM_PDE(v) ((v)->u.Hard.PageFrameNumber)
 
 /* Macros for portable PTE modification */
 #define MI_MAKE_DIRTY_PAGE(x)      ((x)->u.Hard.Dirty = 1)

@@ -77,6 +77,7 @@ KiDetectProcessorTopology(
     INT Regs[4];
     ULONG MaxLeaf, MaxExtendedLeaf, Version, Count, PackageThreads, SubLeaf, LevelType;
     ULONG Cores = 1, Threads = 1, ApicId, GroupSize;
+    CPU_VENDORS Vendor;
 
     __cpuid(Regs, 0);
     MaxLeaf = (ULONG)Regs[0];
@@ -88,7 +89,14 @@ KiDetectProcessorTopology(
     Count = ((ULONG)Regs[1] >> 16) & 0xFF;
     ApicId = (ULONG)Regs[1] >> 24;
 
-    if (Prcb->CpuVendor == CPU_INTEL || Prcb->CpuVendor == CPU_VIA)
+#ifdef _M_IX86
+    /* The x86 PRCB only keeps the vendor string */
+    Vendor = KiIdentifyCpuVendor(Prcb->VendorString);
+#else
+    Vendor = Prcb->CpuVendor;
+#endif
+
+    if (Vendor == CPU_INTEL || Vendor == CPU_VIA)
     {
         if (MaxLeaf >= KI_CPUID_EXTENDED_TOPOLOGY)
             __cpuidex(Regs, KI_CPUID_EXTENDED_TOPOLOGY, 0);
@@ -123,7 +131,7 @@ KiDetectProcessorTopology(
                 Threads = max(1, (1UL << KiTopologyFieldWidth(Count)) / Cores);
         }
     }
-    else if (Prcb->CpuVendor == CPU_AMD && MaxExtendedLeaf >= KI_CPUID_ADDRESS_SIZES)
+    else if (Vendor == CPU_AMD && MaxExtendedLeaf >= KI_CPUID_ADDRESS_SIZES)
     {
         /* This first counts every thread of the package */
         __cpuid(Regs, KI_CPUID_ADDRESS_SIZES);

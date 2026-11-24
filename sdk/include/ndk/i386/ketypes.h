@@ -581,6 +581,20 @@ typedef struct _KPRCB
 #if (NTDDI_VERSION >= NTDDI_LONGHORN)
     ULONG CFlushSize;
     UCHAR PrcbPad0[88];
+#elif defined(__REACTOS__)
+    union
+    {
+        UCHAR PrcbPad0[92];
+        /* Vista and later fields, kept in the pad so the PCR still fits in one page */
+        struct
+        {
+            CACHE_DESCRIPTOR Cache[5];
+            ULONG CacheCount;
+            UCHAR CoresPerPhysicalProcessor;
+            UCHAR LogicalProcessorsPerCore;
+            ULONG PackageProcessorSet;
+        };
+    };
 #else
     UCHAR PrcbPad0[92];
 #endif
@@ -814,15 +828,6 @@ typedef struct _KPRCB
     // On Win 10+ the FeatureBits field is extended to 64 bits
     ULONG FeatureBitsHigh;
 #endif
-#endif
-
-#if defined(__REACTOS__) && (NTDDI_VERSION < NTDDI_LONGHORN)
-    // The following fields are only present on Vista and later
-    CACHE_DESCRIPTOR Cache[5];
-    ULONG CacheCount;
-    UCHAR CoresPerPhysicalProcessor;
-    UCHAR LogicalProcessorsPerCore;
-    ULONG PackageProcessorSet;
 #endif
 
 } KPRCB, *PKPRCB;

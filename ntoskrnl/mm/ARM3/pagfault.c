@@ -2420,9 +2420,14 @@ UserFault:
     {
         if (MI_IS_PAGE_LARGE(PointerPde))
         {
+#if (_MI_PAGING_LEVELS >= 3)
             DPRINT1("User fault at %p in %p: PDE %p = 0x%I64x, PPE %p = 0x%I64x\n",
                     Address, CurrentProcess, PointerPde, (ULONG64)PointerPde->u.Long,
                     PointerPpe, (ULONG64)PointerPpe->u.Long);
+#else
+            DPRINT1("User fault at %p in %p: PDE %p = 0x%I64x\n",
+                    Address, CurrentProcess, PointerPde, (ULONG64)PointerPde->u.Long);
+#endif
         }
 
         /* Not yet implemented in ReactOS */

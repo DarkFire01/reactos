@@ -693,7 +693,6 @@
 @ stdcall KeQueryGroupAffinity(long)
 @ stdcall -arch=i386,arm,arm64 KeQueryInterruptTime()
 @ stdcall -version=0x602+ KeQueryDpcWatchdogInformation(ptr)
-@ stdcall -arch=i386,arm KeQueryInterruptTime()
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
 @ stdcall KeQueryMaximumGroupCount()
@@ -1369,6 +1368,7 @@
 @ stdcall RtlOemStringToUnicodeSize(ptr) RtlxOemStringToUnicodeSize
 @ stdcall RtlOemStringToUnicodeString(ptr ptr long)
 @ stdcall RtlOemToUnicodeN(wstr long ptr ptr long)
+@ stdcall -arch=i386 RtlPcToFileHeader(ptr ptr)
 @ cdecl -arch=x86_64,arm64 RtlPcToFileHeader(ptr ptr)
 @ stdcall RtlPinAtomInAtomTable(ptr ptr)
 @ fastcall RtlPrefetchMemoryNonTemporal(ptr long)

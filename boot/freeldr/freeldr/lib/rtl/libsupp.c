@@ -84,3 +84,18 @@ RtlImageNtHeaderEx(
     return RtlpImageNtHeaderEx(Flags, Base, Size, OutHeaders);
 }
 
+#ifdef _M_IX86
+/* The loader has no stack bounds to walk an EBP chain safely, so it reports no callers */
+ULONG
+NTAPI
+RtlWalkFrameChain(
+    _Out_writes_to_(Count, return) PVOID *Callers,
+    _In_ ULONG Count,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(Callers);
+    UNREFERENCED_PARAMETER(Count);
+    UNREFERENCED_PARAMETER(Flags);
+    return 0;
+}
+#endif

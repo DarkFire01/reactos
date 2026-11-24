@@ -18,6 +18,7 @@ list(APPEND HAL_XBOX_SOURCE
     generic/misc.c
     generic/nmi.c
     generic/pic.c
+    generic/secint.c
     generic/sysinfo.c
     generic/usage.c
     generic/bios.c

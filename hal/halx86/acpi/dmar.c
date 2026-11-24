@@ -79,7 +79,7 @@ C_ASSERT(sizeof(DMAR_HARDWARE_UNIT) == 16);
 static
 BOOLEAN
 HalpWaitVtdStatus(
-    _In_ volatile ULONG *Register,
+    _In_ PULONG Register,
     _In_ ULONG Mask,
     _In_ ULONG Expected)
 {

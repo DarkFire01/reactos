@@ -544,7 +544,10 @@ typedef struct _PNP_WATCH_WD_ENTRY
     ULONG_PTR Values[5];
 } PNP_WATCH_WD_ENTRY, *PPNP_WATCH_WD_ENTRY;
 
+/* The ring offsets and record layout are from the x64 build */
+#ifdef _WIN64
 C_ASSERT(sizeof(PNP_WATCH_WD_ENTRY) == 64);
+#endif
 
 /* Each ring is described by its records, their count and the next write index */
 typedef struct _PNP_WATCH_WD_RING
@@ -576,6 +579,11 @@ PnpWatchDumpWatchdogLog(VOID)
     ULONG Capacity, Written, i, r;
     PLIST_ENTRY Entry;
     PUCHAR Base;
+
+#ifndef _WIN64
+    DbgPrint("PNPWATCH: the watchdog.sys log is only read on x64\n");
+    return;
+#endif
 
     KeEnterCriticalRegion();
     ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
