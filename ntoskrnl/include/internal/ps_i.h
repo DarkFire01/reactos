@@ -560,7 +560,7 @@ static const INFORMATION_CLASS_INFO PsThreadInfoClass[] =
     /* ThreadIdealProcessor */
     IQS_SAME
     (
-        ULONG_PTR,
+        ULONG,
         ULONG,
         ICIF_SET
     ),

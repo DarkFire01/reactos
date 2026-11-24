@@ -3142,10 +3142,10 @@ NtSetInformationThread(
 
         case ThreadIdealProcessor:
         {
-            ULONG_PTR IdealProcessor;
+            ULONG IdealProcessor;
 
             /* Check buffer length */
-            if (ThreadInformationLength != sizeof(ULONG_PTR))
+            if (ThreadInformationLength != sizeof(IdealProcessor))
             {
                 Status = STATUS_INFO_LENGTH_MISMATCH;
                 break;
@@ -3154,8 +3154,8 @@ NtSetInformationThread(
             /* Use SEH for capture */
             _SEH2_TRY
             {
-                /* Get the priority */
-                IdealProcessor = *(PULONG_PTR)ThreadInformation;
+                /* Get the ideal processor */
+                IdealProcessor = *(PULONG)ThreadInformation;
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
