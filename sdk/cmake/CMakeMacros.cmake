@@ -461,7 +461,8 @@ endif()
     # Write the LiveImage file list
     get_property(_filelist GLOBAL PROPERTY LIVECD_FILE_LIST)
     string(REPLACE ";" "\n" _filelist "${_filelist}")
-    file(APPEND ${REACTOS_BINARY_DIR}/boot/livecd.cmake.lst "${_filelist}")
+    # End with a newline, so a list appended twice still splits into valid entries
+    file(APPEND ${REACTOS_BINARY_DIR}/boot/livecd.cmake.lst "${_filelist}\n")
     unset(_filelist)
     file(GENERATE
          OUTPUT ${REACTOS_BINARY_DIR}/boot/livecd.$<CONFIG>.lst
