@@ -7,9 +7,12 @@
 
 #include "wine/debug.h"
 
+#include "rpcproxy.h"
+
 #include "rpc_binding.h"
 #include "rpc_message.h"
 #include "ndr_stubless.h"
+#include "cpsf.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(rpc);
 
@@ -188,3 +191,49 @@ RpcBindingUnbind(
 
     return RPC_S_OK;
 }
+
+#ifdef _WIN64
+
+static const GUID NdrpDceSyntaxGuid =
+    {0x8a885d04, 0x1ceb, 0x11c9, {0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60}};
+static const GUID NdrpNdr64SyntaxGuid =
+    {0x71710533, 0xbeba, 0x4937, {0x83, 0x19, 0xb5, 0xdb, 0xef, 0x9c, 0xcc, 0x36}};
+
+/**
+ * @brief Interpreter stub entry used by stubs built for both DCE and NDR64.
+ * DCE messages go to NdrStubCall2. NDR64 is never negotiated here.
+ */
+LONG
+WINAPI
+NdrStubCall3(
+    _In_opt_ struct IRpcStubBuffer *pThis,
+    _In_opt_ struct IRpcChannelBuffer *pChannel,
+    _Inout_ PRPC_MESSAGE pRpcMsg,
+    _Out_ DWORD *pdwStubPhase)
+{
+    const MIDL_SERVER_INFO *ServerInfo;
+    ULONG_PTR Index;
+
+    if (!pRpcMsg->TransferSyntax ||
+        IsEqualGUID(&pRpcMsg->TransferSyntax->SyntaxGUID, &NdrpDceSyntaxGuid))
+        return NdrStubCall2(pThis, pChannel, pRpcMsg, pdwStubPhase);
+
+    if (pThis)
+        ServerInfo = CStdStubBuffer_GetServerInfo(pThis);
+    else
+        ServerInfo = ((PRPC_SERVER_INTERFACE)pRpcMsg->RpcInterfaceInformation)->InterpreterInfo;
+
+    for (Index = 0; ServerInfo && Index < ServerInfo->nCount; Index++)
+    {
+        if (IsEqualGUID(&ServerInfo->pSyntaxInfo[Index].TransferSyntax.SyntaxGUID,
+                        &NdrpNdr64SyntaxGuid))
+        {
+            FIXME("NDR64 stub interpreter not implemented\n");
+            break;
+        }
+    }
+
+    return HRESULT_FROM_WIN32(RPC_S_UNSUPPORTED_TRANS_SYN);
+}
+
+#endif /* _WIN64 */

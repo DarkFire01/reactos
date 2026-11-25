@@ -61,7 +61,13 @@ DWORD RPCRT4_GetHeaderSize(const RpcPktHdr *Header)
     sizeof(Header->request), 0, sizeof(Header->response),
     sizeof(Header->fault), 0, 0, 0, 0, 0, 0, 0, sizeof(Header->bind),
     sizeof(Header->bind_ack), sizeof(Header->bind_nack),
+#ifdef __REACTOS__
+    /* co_cancel and orphaned carry only the common header */
+    0, 0, sizeof(Header->auth3), 0, sizeof(Header->common),
+    sizeof(Header->common), sizeof(Header->http)
+#else
     0, 0, sizeof(Header->auth3), 0, 0, 0, sizeof(Header->http)
+#endif
   };
   ULONG ret = 0;
 
@@ -1315,6 +1321,11 @@ static RPC_STATUS RPCRT4_default_receive_fragment(RpcConnection *Connection, Rpc
   memcpy(*Header, &common_hdr, sizeof(common_hdr));
 
   /* read the rest of packet header */
+#ifdef __REACTOS__
+  /* co_cancel and orphaned have nothing past the common header */
+  dwRead = 0;
+  if (hdr_length > sizeof(common_hdr))
+#endif
   dwRead = rpcrt4_conn_read(Connection, &(*Header)->common + 1, hdr_length - sizeof(common_hdr));
   if (dwRead != hdr_length - sizeof(common_hdr)) {
     WARN("bad header length, %ld bytes, hdr_length %ld\n", dwRead, hdr_length);

@@ -36,6 +36,7 @@ list(APPEND SOURCE
     rpc_epmap.c
     rpc_ifgroup.c
     rpc_message.c
+    rpc_notify.c
     rpcrt4_main.c
     rpc_server.c
     rpc_transport.c

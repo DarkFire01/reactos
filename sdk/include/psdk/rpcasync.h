@@ -166,6 +166,15 @@ typedef struct _RPC_ASYNC_STATE
 
 #define RpcAsyncGetCallHandle(async) (((PRPC_ASYNC_STATE)async)->RuntimeInfo)
 
+typedef enum _RPC_NOTIFICATIONS
+{
+    RpcNotificationCallNone = 0,
+    RpcNotificationClientDisconnect = 1,
+    RpcNotificationCallCancel = 2
+} RPC_NOTIFICATIONS;
+
+#define RpcNotificationCallStatusChange RpcNotificationClientDisconnect
+
 #ifdef __RPC_WIN64__
 # include <poppack.h>
 #endif
@@ -194,6 +203,8 @@ RPCRTAPI RPC_STATUS RPC_ENTRY RpcGetAuthorizationContextForClient(RPC_BINDING_HA
 RPCRTAPI RPC_STATUS RPC_ENTRY RpcFreeAuthorizationContext(PVOID*);
 RPCRTAPI RPC_STATUS RPC_ENTRY RpcSsContextLockExclusive(RPC_BINDING_HANDLE,PVOID);
 RPCRTAPI RPC_STATUS RPC_ENTRY RpcSsContextLockShared(RPC_BINDING_HANDLE,PVOID);
+RPCRTAPI RPC_STATUS RPC_ENTRY RpcServerSubscribeForNotification(RPC_BINDING_HANDLE,RPC_NOTIFICATIONS,RPC_NOTIFICATION_TYPES,RPC_ASYNC_NOTIFICATION_INFO*);
+RPCRTAPI RPC_STATUS RPC_ENTRY RpcServerUnsubscribeForNotification(RPC_BINDING_HANDLE,RPC_NOTIFICATIONS,ULONG*);
 
 RPCRTAPI RPC_STATUS RPC_ENTRY I_RpcAsyncSetHandle(PRPC_MESSAGE,PRPC_ASYNC_STATE);
 RPCRTAPI RPC_STATUS RPC_ENTRY I_RpcAsyncAbortCall(PRPC_ASYNC_STATE,ULONG);

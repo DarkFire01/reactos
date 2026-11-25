@@ -309,6 +309,7 @@
 @ stdcall NdrSimpleTypeMarshall(ptr ptr long)
 @ stdcall NdrSimpleTypeUnmarshall(ptr ptr long)
 @ stdcall NdrStubCall2(ptr ptr ptr ptr)
+@ stdcall -arch=win64 NdrStubCall3(ptr ptr ptr ptr)
 @ stdcall NdrStubCall(ptr ptr ptr ptr)
 @ stdcall NdrStubForwardingFunction(ptr ptr ptr ptr)
 @ stdcall NdrStubGetBuffer(ptr ptr ptr)
@@ -466,9 +467,11 @@
 @ stdcall RpcServerRegisterIf3(ptr ptr ptr long long long ptr ptr)
 @ stdcall RpcServerRegisterIf(ptr ptr ptr)
 @ stdcall RpcServerRegisterIfEx(ptr ptr ptr long long ptr)
+@ stdcall RpcServerSubscribeForNotification(ptr long long ptr)
 @ stub RpcServerTestCancel
 @ stdcall RpcServerUnregisterIf(ptr ptr long)
 @ stdcall RpcServerUnregisterIfEx(ptr ptr long)
+@ stdcall RpcServerUnsubscribeForNotification(ptr long ptr)
 @ stub RpcServerUseAllProtseqs
 @ stub RpcServerUseAllProtseqsEx
 @ stub RpcServerUseAllProtseqsIf

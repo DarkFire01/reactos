@@ -43,6 +43,9 @@
 #include "rpc_defs.h"
 #include "ncastatus.h"
 #include "secext.h"
+#ifdef __REACTOS__
+#include "rpc_notify.h"
+#endif
 
 WINE_DEFAULT_DEBUG_CHANNEL(rpc);
 
@@ -370,6 +373,9 @@ static RPC_STATUS process_request_packet(RpcConnection *conn, RpcPktRequestHdr *
   UUID *object_uuid;
   NDR_SCONTEXT context_handle;
   void *buf = msg->Buffer;
+#ifdef __REACTOS__
+  RPCP_CALL_NOTIFY call_notify;
+#endif
 
   /* fail if the connection isn't bound with an interface */
   if (UuidIsNil(&conn->ActiveInterface.SyntaxGUID, &status)) {
@@ -432,6 +438,9 @@ static RPC_STATUS process_request_packet(RpcConnection *conn, RpcPktRequestHdr *
   exception = FALSE;
 
   /* dispatch */
+#ifdef __REACTOS__
+  RpcpCallNotifyBegin(&call_notify, msg->Handle);
+#endif
   RPCRT4_SetThreadCurrentCallHandle(msg->Handle);
   __TRY {
     if (func) func(msg);
@@ -446,6 +455,9 @@ static RPC_STATUS process_request_packet(RpcConnection *conn, RpcPktRequestHdr *
                                        RPC2NCA_STATUS(status));
   } __ENDTRY
     RPCRT4_SetThreadCurrentCallHandle(NULL);
+#ifdef __REACTOS__
+  RpcpCallNotifyEnd(&call_notify);
+#endif
 
   /* release any unmarshalled context handles */
   while ((context_handle = RPCRT4_PopThreadContextHandle()) != NULL)
@@ -562,6 +574,10 @@ static DWORD CALLBACK RPCRT4_io_thread(LPVOID the_arg)
     if (status != RPC_S_OK) {
       WARN("receive failed with error %lx\n", status);
       free(msg);
+#ifdef __REACTOS__
+      /* the client is gone, tell calls still running on this connection */
+      RpcpCallNotifySignal(conn->server_binding, RpcNotificationClientDisconnect);
+#endif
       break;
     }
 
@@ -604,6 +620,12 @@ static DWORD CALLBACK RPCRT4_io_thread(LPVOID the_arg)
       status = process_auth3_packet(conn, &hdr->common, msg, auth_data,
                                     auth_length);
       break;
+#ifdef __REACTOS__
+    case PKT_CO_CANCEL:
+      TRACE("got cancel packet\n");
+      RpcpCallNotifySignal(conn->server_binding, RpcNotificationCallCancel);
+      break;
+#endif
     default:
       FIXME("unhandled packet type %u\n", hdr->common.ptype);
       break;
