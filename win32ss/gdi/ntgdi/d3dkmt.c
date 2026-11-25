@@ -194,6 +194,8 @@ typedef struct _DL_QUERYREGISTRY_NAME
     ULONG QueryType;
     ULONG QueryFlags;
     WCHAR ValueName[MAX_PATH];
+    ULONG ValueType;
+    ULONG PhysicalAdapterIndex;
 } DL_QUERYREGISTRY_NAME;
 
 #define DL_KMTQAITYPE_QUERYREGISTRY 48
@@ -207,20 +209,28 @@ DxgkpTraceQueryRegistryFailure(
     static volatile LONG Count = 0;
     D3DKMT_QUERYADAPTERINFO Query;
     DL_QUERYREGISTRY_NAME Name;
+    ULONG Captured;
 
     if (!DxgkpCaptureForTrace(&Query, pQuery, sizeof(Query)) ||
         (Query.Type != DL_KMTQAITYPE_QUERYREGISTRY) ||
         (Query.pPrivateDriverData == NULL) ||
-        (Query.PrivateDriverDataSize < sizeof(Name)) ||
-        (InterlockedIncrement(&Count) > 64) ||
-        !DxgkpCaptureForTrace(&Name, Query.pPrivateDriverData, sizeof(Name)))
+        (Query.PrivateDriverDataSize < FIELD_OFFSET(DL_QUERYREGISTRY_NAME, ValueType)) ||
+        (InterlockedIncrement(&Count) > 64))
     {
         return;
     }
 
+    /* A short buffer is itself a reason dxgkrnl refuses, so the fields it lacks read as zero */
+    RtlZeroMemory(&Name, sizeof(Name));
+    Captured = min(Query.PrivateDriverDataSize, (ULONG)sizeof(Name));
+    if (!DxgkpCaptureForTrace(&Name, Query.pPrivateDriverData, Captured))
+        return;
+
     Name.ValueName[MAX_PATH - 1] = UNICODE_NULL;
-    DPRINT1("win32k: QueryAdapterInfo(QUERYREGISTRY type %lu, '%S') -> 0x%lX in %s\n",
-            Name.QueryType, Name.ValueName, Status, PsGetProcessImageFileName(PsGetCurrentProcess()));
+    DPRINT1("win32k: QueryAdapterInfo(QUERYREGISTRY type %lu flags 0x%lX, '%S', value type %lu, physical adapter %lu, "
+            "%lu bytes, adapter 0x%X) -> 0x%lX in %s\n",
+            Name.QueryType, Name.QueryFlags, Name.ValueName, Name.ValueType, Name.PhysicalAdapterIndex,
+            Query.PrivateDriverDataSize, Query.hAdapter, Status, PsGetProcessImageFileName(PsGetCurrentProcess()));
 }
 
 /**
