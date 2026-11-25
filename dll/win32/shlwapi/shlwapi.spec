@@ -148,14 +148,14 @@
 148 stdcall -noname VkKeyScanWrapW(long) user32.VkKeyScanW
 149 stdcall -noname WinHelpWrapW(long wstr long long) user32.WinHelpW
 150 stdcall -noname wvsprintfWrapW(ptr wstr ptr) user32.wvsprintfW
-151 stdcall -noname StrCmpNCA(str ptr long) kernel32.StrCmpNCA
-152 stdcall -noname StrCmpNCW(wstr wstr long) kernel32.StrCmpNCW
-153 stdcall -noname StrCmpNICA(long long long) kernel32.StrCmpNICA
-154 stdcall -noname StrCmpNICW(wstr wstr long) kernel32.StrCmpNICW
-155 stdcall -ordinal StrCmpCA(str str) kernel32.StrCmpCA
-156 stdcall -ordinal StrCmpCW(wstr wstr) kernel32.StrCmpCW
-157 stdcall -ordinal StrCmpICA(str str) kernel32.StrCmpICA
-158 stdcall -ordinal StrCmpICW(wstr wstr) kernel32.StrCmpICW
+151 stdcall -noname StrCmpNCA(str ptr long) kernelbase.StrCmpNCA
+152 stdcall -noname StrCmpNCW(wstr wstr long) kernelbase.StrCmpNCW
+153 stdcall -noname StrCmpNICA(long long long) kernelbase.StrCmpNICA
+154 stdcall -noname StrCmpNICW(wstr wstr long) kernelbase.StrCmpNICW
+155 stdcall -ordinal StrCmpCA(str str) kernelbase.StrCmpCA
+156 stdcall -ordinal StrCmpCW(wstr wstr) kernelbase.StrCmpCW
+157 stdcall -ordinal StrCmpICA(str str) kernelbase.StrCmpICA
+158 stdcall -ordinal StrCmpICW(wstr wstr) kernelbase.StrCmpICW
 159 stdcall -noname CompareStringAltW(long long wstr long wstr long) kernel32.CompareStringW
 160 stdcall -noname SHAboutInfoA(ptr long)
 161 stdcall -noname SHAboutInfoW(ptr long)
@@ -396,8 +396,8 @@
 396 stub -noname MLHtmlHelpA
 397 stub -noname MLWinHelpW
 398 stub -noname MLHtmlHelpW
-399 stdcall -noname StrCpyNXA(ptr str long) kernel32.StrCpyNXA
-400 stdcall -noname StrCpyNXW(ptr wstr long) kernel32.StrCpyNXW
+399 stdcall -noname StrCpyNXA(ptr str long) kernelbase.StrCpyNXA
+400 stdcall -noname StrCpyNXW(ptr wstr long) kernelbase.StrCpyNXW
 401 stdcall -noname PageSetupDlgWrapW(ptr)
 402 stdcall -noname PrintDlgWrapW(ptr)
 403 stdcall -noname GetOpenFileNameWrapW(ptr)
@@ -459,7 +459,7 @@
 459 stdcall -noname SHExpandEnvironmentStringsA(str ptr long) kernel32.ExpandEnvironmentStringsA
 460 stdcall -noname SHExpandEnvironmentStringsW(wstr ptr long) kernel32.ExpandEnvironmentStringsW
 461 stdcall -noname SHGetAppCompatFlags(long)
-462 stdcall -noname UrlFixupW(wstr wstr long) kernel32.UrlFixupW
+462 stdcall -noname UrlFixupW(wstr wstr long) kernelbase.UrlFixupW
 463 stdcall -noname SHExpandEnvironmentStringsForUserA(ptr str ptr long) userenv.ExpandEnvironmentStringsForUserA
 464 stdcall -noname SHExpandEnvironmentStringsForUserW(ptr wstr ptr long) userenv.ExpandEnvironmentStringsForUserW
 465 stdcall -noname PathUnExpandEnvStringsForUserA(ptr str ptr long)
