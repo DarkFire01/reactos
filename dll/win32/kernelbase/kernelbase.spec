@@ -1038,7 +1038,7 @@
 # @ stub OpenPackageInfoByFullNameForUser
 # @ stub OpenPrivateNamespaceW
 @ stdcall OpenProcess(long long long)
-@ stdcall OpenProcessToken(long long ptr) advapi32.OpenProcessToken
+@ stdcall OpenProcessToken(long long ptr)
 @ stub OpenRegKey
 @ stdcall OpenSemaphoreW(long long wstr)
 # @ stub OpenState
