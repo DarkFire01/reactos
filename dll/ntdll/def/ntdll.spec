@@ -731,7 +731,7 @@
 @ stdcall RtlCopyLuidAndAttributesArray(long ptr ptr)
 @ stdcall RtlCopyMappedMemory(ptr ptr long)
 @ cdecl -version=0x600+ -arch=x86_64 RtlCopyMemory(ptr ptr long) memmove
-@ stdcall -version=0x600+ -arch=x86_64 RtlCopyMemoryNonTemporal(ptr ptr long)
+@ stdcall -stub -version=0x600+ -arch=x86_64 RtlCopyMemoryNonTemporal(ptr ptr long)
 @ stdcall RtlCopyMemoryStreamTo(ptr ptr int64 ptr ptr)
 @ stdcall RtlCopyOutOfProcessMemoryStreamTo(ptr ptr int64 ptr ptr) RtlCopyMemoryStreamTo
 @ stdcall RtlCopySecurityDescriptor(ptr ptr)
@@ -1328,9 +1328,9 @@
 @ stdcall -stub -version=0x600+ RtlWow64CallFunction64()
 @ stdcall RtlWow64EnableFsRedirection(long)
 @ stdcall RtlWow64EnableFsRedirectionEx(long ptr)
-@ stdcall -version=0x600+ -arch=x86_64 RtlWow64GetThreadContext(ptr ptr)
+@ stdcall -stub -version=0x600+ -arch=x86_64 RtlWow64GetThreadContext(ptr ptr)
 @ stdcall -stub -version=0x600+ -arch=x86_64 RtlWow64LogMessageInEventLogger(long long long)
-@ stdcall -version=0x600+ -arch=x86_64 RtlWow64SetThreadContext(long long)
+@ stdcall -stub -version=0x600+ -arch=x86_64 RtlWow64SetThreadContext(long long)
 @ stdcall -stub -version=0x600+ -arch=x86_64 RtlWow64SuspendThread(long long)
 @ stdcall RtlWriteMemoryStream(ptr ptr long ptr)
 @ stdcall RtlWriteRegistryValue(long ptr ptr long ptr long)

@@ -8,6 +8,8 @@
 /* We need NT6+ Ex definitions */
 #undef NTDDI_VERSION
 #define NTDDI_VERSION NTDDI_VISTA
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
 #include <ndk/exfuncs.h>
 
 #include "k32.h"
