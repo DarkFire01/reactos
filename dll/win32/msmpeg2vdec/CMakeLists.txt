@@ -18,7 +18,7 @@ remove_definitions(-D_CRT_NON_CONFORMING_SWPRINTFS)
 add_library(msmpeg2vdec MODULE ${SOURCE})
 set_module_type(msmpeg2vdec win32dll ENTRYPOINT 0)
 add_idl_reg_scripts(msmpeg2vdec registry msmpeg2vdec.idl)
-add_importlibs(msmpeg2vdec msdmo ole32 oleaut32 mf mfplat user32 ucrtbase kernel32 kernel32_vista ntdll)
+add_importlibs(msmpeg2vdec msdmo ole32 oleaut32 mf mfplat user32 ucrtbase kernel32 kernelbase ntdll)
 target_link_libraries(msmpeg2vdec mfuuid dmoguids dxguid uuid strmiids wmcodecdspuuid wine_dll_canunload)
 add_cd_file(TARGET msmpeg2vdec DESTINATION reactos/system32 FOR all)
 set_wine_module_FIXME(msmpeg2vdec) # CORE-5743: ???

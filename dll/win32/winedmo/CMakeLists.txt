@@ -20,6 +20,6 @@ remove_definitions(-D_CRT_NON_CONFORMING_SWPRINTFS)
 add_library(winedmo MODULE ${SOURCE})
 set_module_type(winedmo win32dll)
 target_link_libraries(winedmo wine uuid dmoguids mfuuid dxguid strmbase strmiids wine_dll_register)
-add_importlibs(winedmo rtworkq bcrypt shlwapi propsys advapi32 user32 ole32 oleaut32 d3d9 ucrtbase msvcrt kernel32 kernel32_vista kernelbase_ros ntdll)
+add_importlibs(winedmo rtworkq bcrypt shlwapi propsys advapi32 user32 ole32 oleaut32 d3d9 ucrtbase msvcrt kernel32 kernelbase ntdll)
 add_cd_file(TARGET winedmo DESTINATION reactos/system32 FOR all)
 set_wine_module_FIXME(winedmo) # CORE-5743: ???

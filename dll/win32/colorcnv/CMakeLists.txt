@@ -17,7 +17,7 @@ remove_definitions(-D_CRT_NON_CONFORMING_SWPRINTFS)
 add_library(colorcnv MODULE ${SOURCE})
 set_module_type(colorcnv win32dll ENTRYPOINT 0)
 add_idl_reg_scripts(colorcnv registry colorcnv.idl)
-add_importlibs(colorcnv msdmo ole32 oleaut32 mf mfplat user32 ucrtbase kernel32 kernel32_vista ntdll)
+add_importlibs(colorcnv msdmo ole32 oleaut32 mf mfplat user32 ucrtbase kernel32 kernelbase ntdll)
 target_link_libraries(colorcnv mfuuid dmoguids dxguid uuid strmiids wmcodecdspuuid wine_dll_canunload)
 add_cd_file(TARGET colorcnv DESTINATION reactos/system32 FOR all)
 set_wine_module_FIXME(colorcnv) # CORE-5743: ???

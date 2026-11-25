@@ -17,6 +17,6 @@ add_library(mfsrcsnk MODULE ${SOURCE})
 set_module_type(mfsrcsnk win32dll)
 add_idl_reg_scripts(mfsrcsnk registry mfsrcsnk.idl)
 target_link_libraries(mfsrcsnk wine wine_dll_canunload uuid dmoguids mfuuid dxguid strmbase strmiids oldnames wine_dll_register)
-add_importlibs(mfsrcsnk mf mfplat winedmo bcrypt shlwapi propsys advapi32 user32 ole32 oleaut32 d3d9 msvcrt kernel32 kernel32_vista kernelbase_ros ntdll)
+add_importlibs(mfsrcsnk mf mfplat winedmo bcrypt shlwapi propsys advapi32 user32 ole32 oleaut32 d3d9 msvcrt kernel32 kernelbase ntdll)
 add_cd_file(TARGET mfsrcsnk DESTINATION reactos/system32 FOR all)
 set_wine_module_FIXME(mfsrcsnk) # CORE-5743: ???

@@ -12,5 +12,5 @@ list(APPEND SOURCE
 
 add_executable(gnsssvc ${SOURCE} gnsssvc.rc)
 set_module_type(gnsssvc win32cui UNICODE)
-add_importlibs(gnsssvc advapi32 kernel32_vista msvcrt kernel32 ntdll)
+add_importlibs(gnsssvc advapi32 kernelbase msvcrt kernel32 ntdll)
 add_cd_file(TARGET gnsssvc DESTINATION reactos/system32 FOR all)

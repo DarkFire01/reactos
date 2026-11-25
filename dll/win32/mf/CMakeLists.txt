@@ -29,6 +29,6 @@ endif()
 set_module_type(mf win32dll)
 add_idl_reg_scripts(mf registry mf.idl)
 target_link_libraries(mf wine uuid dmoguids mfuuid dxguid strmbase strmiids oldnames wine_dll_register wine_dll_canunload)
-add_importlibs(mf mfplat evr propsys urlmon advapi32 user32 ole32 oleaut32 d3d9 msvcrt kernel32 kernelbase_ros ntdll)
+add_importlibs(mf mfplat evr propsys urlmon advapi32 user32 ole32 oleaut32 d3d9 msvcrt kernel32 kernelbase ntdll)
 add_cd_file(TARGET mf DESTINATION reactos/system32 FOR all)
 set_wine_module_FIXME(mf) # CORE-5743: ???

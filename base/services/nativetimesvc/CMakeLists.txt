@@ -11,5 +11,5 @@ list(APPEND SOURCE
 
 add_executable(nativetimesvc ${SOURCE} nativetimesvc.rc)
 set_module_type(nativetimesvc win32cui UNICODE)
-add_importlibs(nativetimesvc rilproxy advapi32 kernel32_vista msvcrt kernel32 ntdll)
+add_importlibs(nativetimesvc rilproxy advapi32 kernelbase msvcrt kernel32 ntdll)
 add_cd_file(TARGET nativetimesvc DESTINATION reactos/system32 FOR all)
