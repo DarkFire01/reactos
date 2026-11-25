@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 ReactOS Contributors
  */
 
-#include "k32_vista.h"
+#include <k32.h>
 
 #include <ndk/rtlfuncs.h>
 #include <ndk/psfuncs.h>

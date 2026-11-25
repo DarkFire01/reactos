@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "k32_vista.h"
+#include <k32.h>
 
 /* Laid out like the CONTEXT_EX that follows a context carrying CONTEXT_XSTATE */
 typedef struct _BASEP_CONTEXT_CHUNK

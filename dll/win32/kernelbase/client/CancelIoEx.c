@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "k32_vista.h"
+#include <k32.h>
 
 /**
  * @brief Requests cancellation of I/O issued by any thread of the process on a handle.

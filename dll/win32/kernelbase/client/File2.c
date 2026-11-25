@@ -9,7 +9,7 @@
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x602
 
-#include "k32_vista.h"
+#include <k32.h>
 #include <fileapi.h>
 
 #define BASEP_COPYFILE2_VALID_FLAGS (COPY_FILE_FAIL_IF_EXISTS | \

@@ -5,7 +5,7 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "k32_vista.h"
+#include <k32.h>
 
 #include <ndk/rtlfuncs.h>
 #include <ndk/iofuncs.h>

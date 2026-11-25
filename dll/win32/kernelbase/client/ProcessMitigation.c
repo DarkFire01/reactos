@@ -24,7 +24,7 @@
  * NtSetInformationProcess either.
  */
 
-#include "k32_vista.h"
+#include <k32.h>
 
 #include <ndk/psfuncs.h>
 
