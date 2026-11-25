@@ -2860,6 +2860,146 @@ skipEnum:
     ObDereferenceObject(referencedObject);
 }
 
+/* Problems that user mode is allowed to place on or take off a device */
+static
+BOOLEAN
+NTAPI
+PiIsUserSettableProblem(
+    _In_ ULONG Problem)
+{
+    switch (Problem)
+    {
+        case CM_PROB_NOT_CONFIGURED:
+        case CM_PROB_FAILED_START:
+        case CM_PROB_NEED_RESTART:
+        case CM_PROB_REINSTALL:
+        case CM_PROB_REGISTRY:
+        case CM_PROB_WILL_BE_REMOVED:
+        case CM_PROB_DISABLED:
+        case CM_PROB_FAILED_INSTALL:
+        case CM_PROB_FAILED_ADD:
+        case CM_PROB_DISABLED_SERVICE:
+        case CM_PROB_FAILED_DRIVER_ENTRY:
+        case CM_PROB_DRIVER_FAILED_PRIOR_UNLOAD:
+        case CM_PROB_DRIVER_FAILED_LOAD:
+        case CM_PROB_DRIVER_SERVICE_KEY_INVALID:
+        case CM_PROB_LEGACY_SERVICE_NO_DEVICES:
+        case CM_PROB_FAILED_POST_START:
+        case CM_PROB_HALTED:
+        case CM_PROB_DRIVER_BLOCKED:
+        case CM_PROB_WAITING_ON_DEPENDENCY:
+        case CM_PROB_UNSIGNED_DRIVER:
+            return TRUE;
+
+        default:
+            return FALSE;
+    }
+}
+
+static
+NTSTATUS
+NTAPI
+PiSetDevNodeStatus(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PPI_DEVICE_STATUS_CHANGE Change)
+{
+    ULONG NewFlags = 0;
+    ULONG NewUserFlags = 0;
+    BOOLEAN Stopped;
+
+    if (DeviceNode->State == DeviceNodeDeletePendingCloses ||
+        DeviceNode->State == DeviceNodeDeleted)
+    {
+        return STATUS_DELETE_PENDING;
+    }
+
+    if (Change->DeviceStatus & DN_WILL_BE_REMOVED)
+        NewUserFlags |= DNUF_WILL_BE_REMOVED;
+    if (Change->DeviceStatus & DN_NEED_RESTART)
+        NewUserFlags |= DNUF_NEED_RESTART;
+    if (Change->DeviceStatus & DN_PRIVATE_PROBLEM)
+        NewFlags |= DNF_HAS_PRIVATE_PROBLEM;
+    if (Change->DeviceStatus & DN_HAS_PROBLEM)
+        NewFlags |= DNF_HAS_PROBLEM;
+
+    Stopped = (DeviceNode->State == DeviceNodeInitialized ||
+               DeviceNode->State == DeviceNodeRemoved);
+
+    /* A device that is still running only gets marked for a restart */
+    if (Change->DeviceProblem == CM_PROB_NEED_RESTART)
+    {
+        NewUserFlags |= DNUF_NEED_RESTART;
+        if (!Stopped)
+            NewFlags &= ~DNF_HAS_PROBLEM;
+    }
+
+    if (NewFlags & (DNF_HAS_PROBLEM | DNF_HAS_PRIVATE_PROBLEM))
+    {
+        if (!Stopped)
+            return STATUS_INVALID_PARAMETER_2;
+
+        if (!(NewFlags & DNF_HAS_PRIVATE_PROBLEM) &&
+            (Change->DeviceProblem >= NUM_CM_PROB_V5 ||
+             !PiIsUserSettableProblem(Change->DeviceProblem)))
+        {
+            return STATUS_INVALID_PARAMETER_2;
+        }
+
+        DeviceNode->Problem = Change->DeviceProblem;
+    }
+
+    DeviceNode->Flags |= NewFlags;
+    DeviceNode->UserFlags |= NewUserFlags;
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NTAPI
+PiClearDevNodeStatus(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    switch (DeviceNode->State)
+    {
+        case DeviceNodeDeletePendingCloses:
+        case DeviceNodeDeleted:
+            return STATUS_DELETE_PENDING;
+
+        case DeviceNodeUninitialized:
+        case DeviceNodeInitialized:
+        case DeviceNodeRemoved:
+            break;
+
+        default:
+            return STATUS_SUCCESS;
+    }
+
+    if (!(DeviceNode->Flags & (DNF_HAS_PROBLEM | DNF_HAS_PRIVATE_PROBLEM)))
+        return STATUS_SUCCESS;
+
+    if (!PiIsUserSettableProblem(DeviceNode->Problem))
+        return STATUS_INVALID_PARAMETER_2;
+
+    DeviceNode->Flags &= ~DNF_HAS_PRIVATE_PROBLEM;
+    PiClearDevNodeProblem(DeviceNode);
+
+    if (DeviceNode->State == DeviceNodeUninitialized)
+        return STATUS_SUCCESS;
+
+    /* Bring the device back up now that nothing holds it down */
+    if (DeviceNode->State == DeviceNodeRemoved &&
+        DeviceNode->Parent != NULL &&
+        PiIsDeviceStillPresent(DeviceNode))
+    {
+        PiSetDevNodeState(DeviceNode, DeviceNodeInitialized);
+    }
+
+    if (DeviceNode->State == DeviceNodeInitialized)
+        PiDevNodeStateMachine(DeviceNode);
+
+    return STATUS_SUCCESS;
+}
+
 #ifdef DBG
 static
 PCSTR
@@ -2884,6 +3024,10 @@ ActionToStr(
             return "PiActionAssignResources";
         case PiActionQueryRemoveDevice:
             return "PiActionQueryRemoveDevice";
+        case PiActionSetDeviceStatus:
+            return "PiActionSetDeviceStatus";
+        case PiActionClearDeviceStatus:
+            return "PiActionClearDeviceStatus";
         default:
             return "(request unknown)";
     }
@@ -2993,6 +3137,14 @@ PipDeviceActionWorker(
 
             case PiActionQueryRemoveDevice:
                 status = PiQueryRemoveDevNode(deviceNode, Request->Context);
+                break;
+
+            case PiActionSetDeviceStatus:
+                status = PiSetDevNodeStatus(deviceNode, Request->Context);
+                break;
+
+            case PiActionClearDeviceStatus:
+                status = PiClearDevNodeStatus(deviceNode);
                 break;
 
             case PiActionQueryState:
@@ -3162,5 +3314,28 @@ PiQueryAndRemoveDevice(
 
     *VetoType = Result.VetoType;
     *VetoName = Result.VetoName;
+    return Status;
+}
+
+/**
+ * @brief
+ * Sets or clears the user mode problem and status of a device on the action queue.
+ */
+NTSTATUS
+PiChangeDeviceStatus(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ DEVICE_ACTION Action,
+    _In_opt_ PPI_DEVICE_STATUS_CHANGE Change)
+{
+    KEVENT Finished;
+    NTSTATUS Status;
+
+    ASSERT(Action == PiActionSetDeviceStatus || Action == PiActionClearDeviceStatus);
+    ASSERT(Action != PiActionSetDeviceStatus || Change != NULL);
+
+    KeInitializeEvent(&Finished, SynchronizationEvent, FALSE);
+    PiQueueDeviceActionWithContext(DeviceObject, Action, Change, &Finished, &Status);
+    KeWaitForSingleObject(&Finished, Executive, KernelMode, FALSE, NULL);
+
     return Status;
 }

@@ -940,6 +940,9 @@ IopGetDeviceNodeStatus(
     if (DeviceNode->UserFlags & DNUF_WILL_BE_REMOVED)
         Output |= DN_WILL_BE_REMOVED;
 
+    if (DeviceNode->UserFlags & DNUF_NEED_RESTART)
+        Output |= DN_NEED_RESTART;
+
     if (DeviceNode->Flags & DNF_HAS_PROBLEM)
         Output |= DN_HAS_PROBLEM;
 
@@ -975,6 +978,7 @@ IopDeviceStatus(PPLUGPLAY_CONTROL_STATUS_DATA StatusData)
     ULONG Operation = 0;
     ULONG DeviceStatus = 0;
     ULONG DeviceProblem = 0;
+    PI_DEVICE_STATUS_CHANGE Change;
     UNICODE_STRING DeviceInstance;
     NTSTATUS Status;
 
@@ -1029,11 +1033,19 @@ IopDeviceStatus(PPLUGPLAY_CONTROL_STATUS_DATA StatusData)
             break;
 
         case PNP_SET_DEVICE_STATUS:
-            DPRINT1("Set status data is NOT SUPPORTED\n");
-            break;
-
         case PNP_CLEAR_DEVICE_STATUS:
-            DPRINT1("FIXME: Clear status data!\n");
+            if (DeviceNode == IopRootDeviceNode)
+            {
+                Status = STATUS_NO_SUCH_DEVICE;
+                break;
+            }
+
+            Change.DeviceStatus = DeviceStatus;
+            Change.DeviceProblem = DeviceProblem;
+            Status = PiChangeDeviceStatus(DeviceObject,
+                                          (Operation == PNP_SET_DEVICE_STATUS) ?
+                                              PiActionSetDeviceStatus : PiActionClearDeviceStatus,
+                                          &Change);
             break;
     }
 

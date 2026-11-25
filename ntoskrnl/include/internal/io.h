@@ -571,7 +571,15 @@ typedef enum _DEVICE_ACTION
     PiActionQueryState,
     PiActionAssignResources,
     PiActionQueryRemoveDevice,
+    PiActionSetDeviceStatus,
+    PiActionClearDeviceStatus,
 } DEVICE_ACTION;
+
+typedef struct _PI_DEVICE_STATUS_CHANGE
+{
+    ULONG DeviceStatus;
+    ULONG DeviceProblem;
+} PI_DEVICE_STATUS_CHANGE, *PPI_DEVICE_STATUS_CHANGE;
 
 //
 // Resource code
@@ -1689,6 +1697,12 @@ PiQueryAndRemoveDevice(
     _In_ PDEVICE_OBJECT DeviceObject,
     _Out_ PPNP_VETO_TYPE VetoType,
     _Out_ PUNICODE_STRING VetoName);
+
+NTSTATUS
+PiChangeDeviceStatus(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ DEVICE_ACTION Action,
+    _In_opt_ PPI_DEVICE_STATUS_CHANGE Change);
 
 //
 // PnP notifications
