@@ -610,6 +610,7 @@ done:
     return ret;
 }
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *	CopyFile2   (kernelbase.@)
  */
@@ -617,6 +618,7 @@ HRESULT WINAPI CopyFile2( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTE
 {
     return copy_file(source, dest, params) ? S_OK : HRESULT_FROM_WIN32(GetLastError());
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -710,6 +712,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateDirectoryExW( LPCWSTR template, LPCWSTR path
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /*************************************************************************
  *	CreateFile2   (kernelbase.@)
  */
@@ -751,6 +754,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateFile2( LPCWSTR name, DWORD access, DWORD s
 
     return CreateFileW( name, access, sharing, sa, creation, flags | attributes, template );
 }
+#endif
 
 #ifndef __REACTOS__
 
@@ -3021,6 +3025,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CancelIo( HANDLE handle )
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *	CancelIoEx   (kernelbase.@)
  */
@@ -3034,6 +3039,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CancelIoEx( HANDLE handle, LPOVERLAPPED overlapped
     return set_ntstatus( NtCancelIoFileEx( handle, (PIO_STATUS_BLOCK)overlapped, &io ) );
 #endif
 }
+#endif
 
 
 #ifndef __REACTOS__

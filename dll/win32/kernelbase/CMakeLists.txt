@@ -27,7 +27,6 @@ list(APPEND SOURCE
     client/SetFileInformationByHandle.c
     client/XState.c
     client/File2.c
-    client/CancelIoEx.c
     client/shared_utils.c
     client/file/fileutils.c
     client/actctx.c
@@ -121,6 +120,9 @@ add_library(${KERNELBASE_NAME} MODULE
 set_module_type(${KERNELBASE_NAME} win32dll ENTRYPOINT DllMain 12)
 target_link_libraries(${KERNELBASE_NAME} win32_registry psapi_static kernelbase_static wine chkstk)
 add_importlibs(${KERNELBASE_NAME} ntdll ntdll_vista)
+# The app model calls live in kernel.appcore, kernelbase forwards to them like kernel32 does
+generate_import_lib(kernelbase_appmodel kernel.appcore.dll ../kernel32/appmodel_forwards.spec "" "")
+target_link_libraries(${KERNELBASE_NAME} kernelbase_appmodel)
 add_dependencies(${KERNELBASE_NAME} psdk errcodes)
 add_cd_file(TARGET ${KERNELBASE_NAME} DESTINATION reactos/system32 FOR all)
 

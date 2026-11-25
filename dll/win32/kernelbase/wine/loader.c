@@ -575,6 +575,7 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/loader.c */
 /***********************************************************************
  *      LoadPackagedLibrary    (kernelbase.@)
  */
@@ -584,6 +585,7 @@ HMODULE WINAPI /* DECLSPEC_HOTPATCH */ LoadPackagedLibrary( LPCWSTR name, DWORD 
     SetLastError( APPMODEL_ERROR_NO_PACKAGE );
     return NULL;
 }
+#endif
 
 
 /***********************************************************************

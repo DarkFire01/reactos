@@ -487,7 +487,7 @@
 @ stdcall -version=0x600+ GetCurrencyFormatEx(wstr long wstr ptr ptr long)
 @ stdcall GetCurrencyFormatW(long long wstr ptr ptr long)
 @ stdcall GetCurrentActCtx(ptr)
-@ stdcall -version=0x602+ GetCurrentApplicationUserModelId(ptr ptr)
+@ stdcall -version=0x602+ GetCurrentApplicationUserModelId(ptr ptr) kernel.appcore.GetCurrentApplicationUserModelId
 @ stdcall GetCurrentConsoleFont(long long ptr)
 @ stdcall -version=0x600+ GetCurrentConsoleFontEx(long long ptr)
 @ stdcall GetCurrentDirectoryA(long ptr)

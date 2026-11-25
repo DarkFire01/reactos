@@ -435,6 +435,7 @@ LPVOID WINAPI DECLSPEC_HOTPATCH VirtualAllocEx( HANDLE process, void *addr, SIZE
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *             VirtualAlloc2   (kernelbase.@)
  */
@@ -453,6 +454,7 @@ LPVOID WINAPI DECLSPEC_HOTPATCH VirtualAlloc2( HANDLE process, void *addr, SIZE_
 #endif
     return ret;
 }
+#endif
 
 static BOOL is_exec_prot( DWORD protect )
 {
@@ -1515,6 +1517,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetLogicalProcessorInformation( SYSTEM_LOGICAL_PRO
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           GetLogicalProcessorInformationEx   (kernelbase.@)
  */
@@ -1537,6 +1540,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetLogicalProcessorInformationEx( LOGICAL_PROCESSO
     if (status == STATUS_INFO_LENGTH_MISMATCH) status = STATUS_BUFFER_TOO_SMALL;
     return set_ntstatus( status );
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -1715,6 +1719,7 @@ BOOL WINAPI CopyContext( CONTEXT *dst, DWORD context_flags, CONTEXT *src )
 
 #if defined(__x86_64__)
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *             GetEnabledXStateFeatures   (kernelbase.@)
  */
@@ -1723,7 +1728,9 @@ DWORD64 WINAPI GetEnabledXStateFeatures(void)
     TRACE( "\n" );
     return RtlGetEnabledExtendedFeatures( ~(ULONG64)0 );
 }
+#endif
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           LocateXStateFeature   (kernelbase.@)
  */
@@ -1749,6 +1756,7 @@ void * WINAPI LocateXStateFeature( CONTEXT *context, DWORD feature_id, DWORD *le
 
     return &context->FltSave;
 }
+#endif
 
 /***********************************************************************
  *           SetXStateFeaturesMask (kernelbase.@)
@@ -1768,6 +1776,7 @@ BOOL WINAPI SetXStateFeaturesMask( CONTEXT *context, DWORD64 feature_mask )
     return TRUE;
 }
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           GetXStateFeaturesMask (kernelbase.@)
  */
@@ -1784,6 +1793,7 @@ BOOL WINAPI GetXStateFeaturesMask( CONTEXT *context, DWORD64 *feature_mask )
 
     return TRUE;
 }
+#endif
 
 #elif defined(__i386__)
 
