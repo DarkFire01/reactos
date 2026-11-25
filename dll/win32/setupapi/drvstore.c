@@ -476,3 +476,486 @@ DRVSTORE_ImportPackage(
     TRACE("Imported %s as %s\n", debugstr_w(SourceInfPath), debugstr_w(PackageId));
     return TRUE;
 }
+
+/* Where an inf sits as far as the driver store is concerned */
+typedef enum _DRVSTORE_INF_LOCATION
+{
+    DrvStoreInfElsewhere,
+    DrvStoreInfInInfDirectory,
+    DrvStoreInfInRepository
+} DRVSTORE_INF_LOCATION;
+
+/* A bare file name means the inf folder, anything else is a path */
+static
+BOOL
+WINAPI
+DrvStoreResolveInf(
+    _In_ PCWSTR FileName,
+    _Out_writes_(cchPath) PWSTR Path,
+    _In_ DWORD cchPath)
+{
+    WCHAR Combined[MAX_PATH];
+    UINT Length;
+
+    if (!strchrW(FileName, '\\') && !strchrW(FileName, '/'))
+    {
+        Length = GetSystemWindowsDirectoryW(Combined, ARRAYSIZE(Combined));
+        if (!Length || Length >= ARRAYSIZE(Combined) ||
+            FAILED(StringCchCatW(Combined, ARRAYSIZE(Combined), L"\\inf\\")) ||
+            FAILED(StringCchCatW(Combined, ARRAYSIZE(Combined), FileName)))
+        {
+            return FALSE;
+        }
+
+        FileName = Combined;
+    }
+
+    Length = GetFullPathNameW(FileName, cchPath, Path, NULL);
+    return (Length && Length < cchPath);
+}
+
+static
+DRVSTORE_INF_LOCATION
+WINAPI
+DrvStoreClassifyInf(
+    _In_ PCWSTR FullPath)
+{
+    WCHAR Directory[MAX_PATH];
+    PCWSTR Name, Rest;
+    SIZE_T cchDirectory;
+    UINT Length;
+
+    Name = strrchrW(FullPath, '\\');
+    if (!Name)
+        return DrvStoreInfElsewhere;
+
+    /* <repository>\<package>\<inf> */
+    if (DrvStoreGetRepository(Directory, ARRAYSIZE(Directory)))
+    {
+        cchDirectory = strlenW(Directory);
+        if (!strncmpiW(FullPath, Directory, cchDirectory) && FullPath[cchDirectory] == '\\')
+        {
+            Rest = strchrW(FullPath + cchDirectory + 1, '\\');
+            if (Rest && Rest == Name && Rest > FullPath + cchDirectory + 1)
+                return DrvStoreInfInRepository;
+        }
+    }
+
+    Length = GetSystemWindowsDirectoryW(Directory, ARRAYSIZE(Directory));
+    if (!Length || Length >= ARRAYSIZE(Directory) ||
+        FAILED(StringCchCatW(Directory, ARRAYSIZE(Directory), L"\\inf")))
+    {
+        return DrvStoreInfElsewhere;
+    }
+
+    cchDirectory = strlenW(Directory);
+    if ((SIZE_T)(Name - FullPath) == cchDirectory && !strncmpiW(FullPath, Directory, cchDirectory))
+        return DrvStoreInfInInfDirectory;
+
+    return DrvStoreInfElsewhere;
+}
+
+static
+BOOL
+WINAPI
+DrvStoreQueryPackageValue(
+    _In_ PCWSTR PackageId,
+    _In_opt_ PCWSTR ValueName,
+    _Out_writes_(cchValue) PWSTR Value,
+    _In_ DWORD cchValue)
+{
+    WCHAR KeyName[MAX_PATH];
+    DWORD cbData = (cchValue - 1) * sizeof(WCHAR);
+    DWORD Type;
+    HKEY hKey;
+    LONG rc;
+
+    if (FAILED(StringCchPrintfW(KeyName, ARRAYSIZE(KeyName), L"%s\\%s", DRVSTORE_PACKAGES_KEY, PackageId)))
+        return FALSE;
+
+    rc = RegOpenKeyExW(HKEY_LOCAL_MACHINE, KeyName, 0, KEY_QUERY_VALUE, &hKey);
+    if (rc != ERROR_SUCCESS)
+        return FALSE;
+
+    rc = RegQueryValueExW(hKey, ValueName, NULL, &Type, (PBYTE)Value, &cbData);
+    RegCloseKey(hKey);
+
+    if (rc != ERROR_SUCCESS || Type != REG_SZ || cbData < sizeof(WCHAR))
+        return FALSE;
+
+    Value[cbData / sizeof(WCHAR)] = UNICODE_NULL;
+    return TRUE;
+}
+
+/* Hands a string back the way the inf location functions do */
+static
+BOOL
+WINAPI
+DrvStoreReturnString(
+    _In_ PCWSTR String,
+    _Out_writes_opt_(ReturnBufferSize) PWSTR ReturnBuffer,
+    _In_ DWORD ReturnBufferSize,
+    _Out_opt_ PDWORD RequiredSize)
+{
+    DWORD Size = (DWORD)strlenW(String) + 1;
+
+    if (RequiredSize)
+        *RequiredSize = Size;
+
+    if (!ReturnBuffer || ReturnBufferSize < Size)
+    {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    memcpy(ReturnBuffer, String, Size * sizeof(WCHAR));
+    return TRUE;
+}
+
+/***********************************************************************
+ *      SetupGetInfDriverStoreLocationW  (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupGetInfDriverStoreLocationW(
+    _In_ PCWSTR FileName,
+    _In_opt_ PSP_ALTPLATFORM_INFO AlternatePlatformInfo,
+    _In_opt_ PCWSTR LocaleName,
+    _Out_writes_(ReturnBufferSize) PWSTR ReturnBuffer,
+    _In_ DWORD ReturnBufferSize,
+    _Out_opt_ PDWORD RequiredSize)
+{
+    WCHAR FullPath[MAX_PATH];
+    WCHAR PackageId[MAX_PATH];
+    WCHAR InfName[MAX_PATH];
+    WCHAR Location[MAX_PATH];
+
+    TRACE("%s %p %s %p %lu %p\n", debugstr_w(FileName), AlternatePlatformInfo, debugstr_w(LocaleName),
+          ReturnBuffer, ReturnBufferSize, RequiredSize);
+
+    if (!FileName || (!ReturnBuffer && ReturnBufferSize))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (AlternatePlatformInfo)
+        FIXME("Alternate platform %p ignored\n", AlternatePlatformInfo);
+
+    if (!DrvStoreResolveInf(FileName, FullPath, ARRAYSIZE(FullPath)))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    switch (DrvStoreClassifyInf(FullPath))
+    {
+        case DrvStoreInfInRepository:
+            if (GetFileAttributesW(FullPath) == INVALID_FILE_ATTRIBUTES)
+                return FALSE;
+
+            return DrvStoreReturnString(FullPath, ReturnBuffer, ReturnBufferSize, RequiredSize);
+
+        case DrvStoreInfInInfDirectory:
+            if (GetFileAttributesW(FullPath) == INVALID_FILE_ATTRIBUTES)
+            {
+                SetLastError(ERROR_FILE_NOT_FOUND);
+                return FALSE;
+            }
+
+            /* Only a published oem inf was imported into the store */
+            if (!DrvStoreGetPublishedPackage(strrchrW(FullPath, '\\') + 1, PackageId, ARRAYSIZE(PackageId)) ||
+                !DrvStoreQueryPackageValue(PackageId, L"InfName", InfName, ARRAYSIZE(InfName)) ||
+                !DrvStoreGetRepository(Location, ARRAYSIZE(Location)) ||
+                FAILED(StringCchPrintfW(Location + strlenW(Location),
+                                        ARRAYSIZE(Location) - strlenW(Location),
+                                        L"\\%s\\%s",
+                                        PackageId,
+                                        InfName)) ||
+                GetFileAttributesW(Location) == INVALID_FILE_ATTRIBUTES)
+            {
+                break;
+            }
+
+            return DrvStoreReturnString(Location, ReturnBuffer, ReturnBufferSize, RequiredSize);
+
+        default:
+            break;
+    }
+
+    SetLastError(ERROR_NOT_FOUND);
+    return FALSE;
+}
+
+/***********************************************************************
+ *      SetupGetInfPublishedNameW  (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupGetInfPublishedNameW(
+    _In_ PCWSTR DriverStoreLocation,
+    _Out_writes_(ReturnBufferSize) PWSTR ReturnBuffer,
+    _In_ DWORD ReturnBufferSize,
+    _Out_opt_ PDWORD RequiredSize)
+{
+    WCHAR FullPath[MAX_PATH];
+    WCHAR PublishedName[MAX_PATH];
+    PWSTR Name, Package;
+
+    TRACE("%s %p %lu %p\n", debugstr_w(DriverStoreLocation), ReturnBuffer, ReturnBufferSize, RequiredSize);
+
+    if (!DriverStoreLocation ||
+        !DrvStoreResolveInf(DriverStoreLocation, FullPath, ARRAYSIZE(FullPath)))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Name = strrchrW(FullPath, '\\');
+
+    switch (DrvStoreClassifyInf(FullPath))
+    {
+        case DrvStoreInfInRepository:
+            if (GetFileAttributesW(FullPath) == INVALID_FILE_ATTRIBUTES)
+            {
+                SetLastError(ERROR_PATH_NOT_FOUND);
+                return FALSE;
+            }
+
+            /* The package folder names the package the published copy came from */
+            *Name = UNICODE_NULL;
+            Package = strrchrW(FullPath, '\\') + 1;
+            if (!DrvStoreQueryPackageValue(Package, NULL, PublishedName, ARRAYSIZE(PublishedName)))
+            {
+                SetLastError(ERROR_NOT_FOUND);
+                return FALSE;
+            }
+            break;
+
+        case DrvStoreInfInInfDirectory:
+            if (GetFileAttributesW(FullPath) == INVALID_FILE_ATTRIBUTES)
+            {
+                SetLastError(ERROR_FILE_NOT_FOUND);
+                return FALSE;
+            }
+
+            if (FAILED(StringCchCopyW(PublishedName, ARRAYSIZE(PublishedName), Name + 1)))
+            {
+                SetLastError(ERROR_INVALID_PARAMETER);
+                return FALSE;
+            }
+            break;
+
+        default:
+            SetLastError(ERROR_NOT_FOUND);
+            return FALSE;
+    }
+
+    /* Unlike the store location, no buffer at all is a bad parameter */
+    if (!ReturnBuffer || !ReturnBufferSize)
+    {
+        if (RequiredSize)
+            *RequiredSize = (DWORD)strlenW(PublishedName) + 1;
+
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    return DrvStoreReturnString(PublishedName, ReturnBuffer, ReturnBufferSize, RequiredSize);
+}
+
+/* Converts a wide string result of the inf location functions for their ANSI forms */
+static
+BOOL
+WINAPI
+DrvStoreReturnStringA(
+    _In_ PCWSTR String,
+    _Out_writes_opt_(ReturnBufferSize) PSTR ReturnBuffer,
+    _In_ DWORD ReturnBufferSize,
+    _Out_opt_ PDWORD RequiredSize)
+{
+    int Size;
+
+    Size = WideCharToMultiByte(CP_ACP, 0, String, -1, NULL, 0, NULL, NULL);
+    if (!Size)
+        return FALSE;
+
+    if (RequiredSize)
+        *RequiredSize = Size;
+
+    if (!ReturnBuffer || ReturnBufferSize < (DWORD)Size)
+    {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    return WideCharToMultiByte(CP_ACP, 0, String, -1, ReturnBuffer, ReturnBufferSize, NULL, NULL) != 0;
+}
+
+/***********************************************************************
+ *      SetupGetInfDriverStoreLocationA  (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupGetInfDriverStoreLocationA(
+    _In_ PCSTR FileName,
+    _In_opt_ PSP_ALTPLATFORM_INFO AlternatePlatformInfo,
+    _In_opt_ PCSTR LocaleName,
+    _Out_writes_(ReturnBufferSize) PSTR ReturnBuffer,
+    _In_ DWORD ReturnBufferSize,
+    _Out_opt_ PDWORD RequiredSize)
+{
+    WCHAR Location[MAX_PATH];
+    PWSTR FileNameW = NULL;
+    PWSTR LocaleNameW = NULL;
+    BOOL Result = FALSE;
+
+    if (!FileName || (!ReturnBuffer && ReturnBufferSize))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    FileNameW = pSetupMultiByteToUnicode(FileName, CP_ACP);
+    if (!FileNameW)
+        goto Quit;
+
+    if (LocaleName)
+    {
+        LocaleNameW = pSetupMultiByteToUnicode(LocaleName, CP_ACP);
+        if (!LocaleNameW)
+            goto Quit;
+    }
+
+    if (SetupGetInfDriverStoreLocationW(FileNameW, AlternatePlatformInfo, LocaleNameW, Location, ARRAYSIZE(Location), NULL))
+        Result = DrvStoreReturnStringA(Location, ReturnBuffer, ReturnBufferSize, RequiredSize);
+
+Quit:
+    MyFree(LocaleNameW);
+    MyFree(FileNameW);
+    return Result;
+}
+
+/***********************************************************************
+ *      SetupGetInfPublishedNameA  (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupGetInfPublishedNameA(
+    _In_ PCSTR DriverStoreLocation,
+    _Out_writes_(ReturnBufferSize) PSTR ReturnBuffer,
+    _In_ DWORD ReturnBufferSize,
+    _Out_opt_ PDWORD RequiredSize)
+{
+    WCHAR PublishedName[MAX_PATH];
+    PWSTR LocationW;
+    BOOL Result = FALSE;
+    DWORD Error;
+
+    if (!DriverStoreLocation)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    LocationW = pSetupMultiByteToUnicode(DriverStoreLocation, CP_ACP);
+    if (!LocationW)
+        return FALSE;
+
+    if (SetupGetInfPublishedNameW(LocationW, PublishedName, ARRAYSIZE(PublishedName), NULL))
+    {
+        if (!ReturnBuffer || !ReturnBufferSize)
+        {
+            if (RequiredSize)
+                *RequiredSize = WideCharToMultiByte(CP_ACP, 0, PublishedName, -1, NULL, 0, NULL, NULL);
+
+            SetLastError(ERROR_INVALID_PARAMETER);
+        }
+        else
+        {
+            Result = DrvStoreReturnStringA(PublishedName, ReturnBuffer, ReturnBufferSize, RequiredSize);
+        }
+    }
+
+    Error = GetLastError();
+    MyFree(LocationW);
+    SetLastError(Error);
+    return Result;
+}
+
+/* Deletes a package folder and everything below it */
+static
+VOID
+WINAPI
+DrvStoreDeleteTree(
+    _In_ PCWSTR Directory)
+{
+    WIN32_FIND_DATAW FindData;
+    WCHAR Path[MAX_PATH];
+    HANDLE hFind;
+
+    if (FAILED(StringCchPrintfW(Path, ARRAYSIZE(Path), L"%s\\*", Directory)))
+        return;
+
+    hFind = FindFirstFileW(Path, &FindData);
+    if (hFind != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            if (!strcmpW(FindData.cFileName, L".") || !strcmpW(FindData.cFileName, L".."))
+                continue;
+
+            if (FAILED(StringCchPrintfW(Path, ARRAYSIZE(Path), L"%s\\%s", Directory, FindData.cFileName)))
+                continue;
+
+            if (FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                DrvStoreDeleteTree(Path);
+            }
+            else
+            {
+                SetFileAttributesW(Path, FILE_ATTRIBUTE_NORMAL);
+                if (!DeleteFileW(Path))
+                    WARN("Cannot delete %s, error %lu\n", debugstr_w(Path), GetLastError());
+            }
+        } while (FindNextFileW(hFind, &FindData));
+
+        FindClose(hFind);
+    }
+
+    RemoveDirectoryW(Directory);
+}
+
+/**
+ * @brief Removes the package an oem inf was imported as from the driver store.
+ *
+ * @param[in] PublishedName
+ * The oem inf name the package is published as in the inf folder.
+ */
+VOID
+WINAPI
+DRVSTORE_RemovePackage(
+    _In_ PCWSTR PublishedName)
+{
+    WCHAR PackageId[MAX_PATH];
+    WCHAR Path[MAX_PATH];
+
+    if (DrvStoreGetPublishedPackage(PublishedName, PackageId, ARRAYSIZE(PackageId)))
+    {
+        if (DrvStoreGetRepository(Path, ARRAYSIZE(Path)) &&
+            SUCCEEDED(StringCchCatW(Path, ARRAYSIZE(Path), L"\\")) &&
+            SUCCEEDED(StringCchCatW(Path, ARRAYSIZE(Path), PackageId)))
+        {
+            DrvStoreDeleteTree(Path);
+        }
+
+        /* Both records only hold values */
+        if (SUCCEEDED(StringCchPrintfW(Path, ARRAYSIZE(Path), L"%s\\%s", DRVSTORE_PACKAGES_KEY, PackageId)))
+            RegDeleteKeyW(HKEY_LOCAL_MACHINE, Path);
+
+        TRACE("Removed %s from the driver store\n", debugstr_w(PackageId));
+    }
+
+    if (SUCCEEDED(StringCchPrintfW(Path, ARRAYSIZE(Path), L"%s\\%s", DRVSTORE_INF_FILES_KEY, PublishedName)))
+        RegDeleteKeyW(HKEY_LOCAL_MACHINE, Path);
+}

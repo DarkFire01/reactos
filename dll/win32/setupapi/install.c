@@ -2502,11 +2502,6 @@ BOOL WINAPI SetupCopyOEMInfW(
     }
     else if (!DestinationInfFileName && DestinationInfFileNameSize > 0)
         SetLastError(ERROR_INVALID_PARAMETER);
-    else if (CopyStyle & SP_COPY_OEMINF_CATALOG_ONLY)
-    {
-        FIXME("CopyStyle 0x%x not supported\n", SP_COPY_OEMINF_CATALOG_ONLY);
-        SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    }
     else
     {
         HANDLE hSearch = INVALID_HANDLE_VALUE;
@@ -2615,6 +2610,8 @@ BOOL WINAPI SetupCopyOEMInfW(
                         NULL, OPEN_EXISTING, 0, NULL);
                     if (hDestFile != INVALID_HANDLE_VALUE)
                     {
+                        /* Every candidate is compared from the start of the source */
+                        SetFilePointer(hSourceFile, 0, NULL, FILE_BEGIN);
                         if (GetFileSizeEx(hDestFile, &DestFileSize)
                          && DestFileSize.QuadPart == SourceFileSize.QuadPart
                          && !compare_files(hSourceFile, hDestFile))
@@ -2623,6 +2620,7 @@ BOOL WINAPI SetupCopyOEMInfW(
                                 debugstr_w(SourceInfFileName), debugstr_w(pFileName));
                             AlreadyExists = TRUE;
                         }
+                        CloseHandle(hDestFile);
                     }
                 } while (!AlreadyExists && FindNextFileW(hSearch, &FindFileData));
             }
@@ -2630,30 +2628,65 @@ BOOL WINAPI SetupCopyOEMInfW(
             hSearch = INVALID_HANDLE_VALUE;
         }
 
-        if (!AlreadyExists && CopyStyle & SP_COPY_REPLACEONLY)
+        if (!AlreadyExists && (CopyStyle & SP_COPY_OEMINF_CATALOG_ONLY))
         {
-            /* FIXME: set DestinationInfFileName, RequiredSize, DestinationInfFileNameComponent */
+            /* Only the catalog was asked for and no published inf can be named */
+            if (RequiredSize)
+                *RequiredSize = 0;
+            if (DestinationInfFileName && DestinationInfFileNameSize)
+                *DestinationInfFileName = UNICODE_NULL;
+            if (DestinationInfFileNameComponent)
+                *DestinationInfFileNameComponent = NULL;
+            ret = TRUE;
+            goto cleanup;
+        }
+        else if (!AlreadyExists && CopyStyle & SP_COPY_REPLACEONLY)
+        {
             SetLastError(ERROR_FILE_NOT_FOUND);
             goto cleanup;
         }
-        else if (AlreadyExists && (CopyStyle & SP_COPY_NOOVERWRITE))
+        else if (AlreadyExists)
         {
-            DWORD Size = strlenW(pFileName) + 1;
+            DWORD Size = strlenW(pFullFileName) + 1;
 
             /* A package published before the driver store existed gets its folder now */
-            ImportOemPackage(SourceInfFileName, pFileName);
+            if (!(CopyStyle & SP_COPY_OEMINF_CATALOG_ONLY))
+                ImportOemPackage(SourceInfFileName, pFileName);
 
+            /* The identical inf already published is reported instead of a new copy */
             if (RequiredSize)
                 *RequiredSize = Size;
-            if (DestinationInfFileNameSize == 0)
-                SetLastError(ERROR_FILE_EXISTS);
-            else if (DestinationInfFileNameSize < Size)
-                SetLastError(ERROR_INSUFFICIENT_BUFFER);
-            else
+            if (DestinationInfFileName && DestinationInfFileNameSize)
+            {
+                if (DestinationInfFileNameSize < Size)
+                {
+                    SetLastError(ERROR_INSUFFICIENT_BUFFER);
+                    goto cleanup;
+                }
+
+                strcpyW(DestinationInfFileName, pFullFileName);
+                if (DestinationInfFileNameComponent)
+                    *DestinationInfFileNameComponent = &DestinationInfFileName[pFileName - pFullFileName];
+            }
+
+            if (CopyStyle & SP_COPY_NOOVERWRITE)
             {
                 SetLastError(ERROR_FILE_EXISTS);
-                strcpyW(DestinationInfFileName, pFileName);
+                goto cleanup;
             }
+
+            if (CopyStyle & SP_COPY_DELETESOURCE)
+            {
+                CloseHandle(hSourceFile);
+                hSourceFile = INVALID_HANDLE_VALUE;
+                if (!DeleteFileW(SourceInfFileName))
+                {
+                    TRACE("DeleteFileW() failed with error 0x%lx\n", GetLastError());
+                    goto cleanup;
+                }
+            }
+
+            ret = TRUE;
             goto cleanup;
         }
 

@@ -481,14 +481,14 @@
 @ stdcall SetupGetFileCompressionInfoW(wstr ptr ptr ptr ptr)
 @ stdcall SetupGetFileQueueCount(long long ptr)
 @ stdcall SetupGetFileQueueFlags(long ptr)
-@ stub -version=0x600+ SetupGetInfDriverStoreLocationA
-@ stub -version=0x600+ SetupGetInfDriverStoreLocationW
+@ stdcall -version=0x600+ SetupGetInfDriverStoreLocationA(str ptr str ptr long ptr)
+@ stdcall -version=0x600+ SetupGetInfDriverStoreLocationW(wstr ptr wstr ptr long ptr)
 @ stdcall SetupGetInfFileListA(str long str long ptr)
 @ stdcall SetupGetInfFileListW(wstr long wstr long ptr)
 @ stdcall SetupGetInfInformationA(ptr long ptr long ptr)
 @ stdcall SetupGetInfInformationW(ptr long ptr long ptr)
-@ stub -version=0x600+ SetupGetInfPublishedNameA
-@ stub -version=0x600+ SetupGetInfPublishedNameW
+@ stdcall -version=0x600+ SetupGetInfPublishedNameA(str ptr long ptr)
+@ stdcall -version=0x600+ SetupGetInfPublishedNameW(wstr ptr long ptr)
 @ stub SetupGetInfSections
 @ stdcall SetupGetIntField(ptr long ptr)
 @ stdcall SetupGetLineByIndexA(long str long ptr)

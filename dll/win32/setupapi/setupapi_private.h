@@ -316,6 +316,11 @@ DRVSTORE_ImportPackage(
     _In_ PCWSTR SourceInfPath,
     _In_ PCWSTR PublishedName);
 
+VOID
+WINAPI
+DRVSTORE_RemovePackage(
+    _In_ PCWSTR PublishedName);
+
 /* support for Ascii queue callback functions */
 
 struct callback_WtoA_context

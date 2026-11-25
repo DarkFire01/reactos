@@ -6705,6 +6705,11 @@ HKEY WINAPI SetupDiOpenDevRegKey(
     }
     if (RootKey != set->HKLM)
         RegCloseKey(RootKey);
+
+    /* Windows reports a device or driver key that is not there this way */
+    if (key == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_NOT_FOUND)
+        SetLastError(ERROR_KEY_DOES_NOT_EXIST);
+
     return key;
 }
 

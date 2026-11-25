@@ -293,7 +293,7 @@ InstallNetDevice(
 #else
     hKey = SetupDiOpenDevRegKey(DeviceInfoSet, DeviceInfoData, DICS_FLAG_GLOBAL, 0, DIREG_DRV, KEY_ALL_ACCESS);
 #endif
-    if (hKey == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_NOT_FOUND)
+    if (hKey == INVALID_HANDLE_VALUE && GetLastError() == ERROR_KEY_DOES_NOT_EXIST)
         hKey = SetupDiCreateDevRegKeyW(DeviceInfoSet, DeviceInfoData, DICS_FLAG_GLOBAL, 0, DIREG_DRV, NULL, NULL);
     if (hKey == INVALID_HANDLE_VALUE)
     {
