@@ -324,7 +324,7 @@ SetAutoDaylight(
 {
     LONG lError;
     HKEY hKey;
-    DWORD dwDisabled = TRUE;
+    DWORD dwDisabled = !EnableAutoDaylightTime;
 
     lError = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
                            L"SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation",
@@ -334,7 +334,6 @@ SetAutoDaylight(
     if (lError != ERROR_SUCCESS)
         return;
 
-    /* Auto-Daylight disabled: set the value to TRUE */
     RegSetValueExW(hKey,
                     L"DynamicDaylightTimeDisabled",
                     0,
