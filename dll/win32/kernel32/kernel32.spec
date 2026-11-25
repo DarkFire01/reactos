@@ -1232,6 +1232,7 @@
 @ stdcall RtlZeroMemory(ptr long) ntdll.RtlZeroMemory
 @ stdcall -version=0xA00+ SetProcessValidCallTargets(ptr ptr long long ptr)
 @ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll_vista.TpSetTimerEx
+@ stdcall -version=0xA00+ SetThreadSelectedCpuSets(ptr ptr long)
 @ stdcall -version=0x601+ SetThreadToken(ptr ptr) advapi32.SetThreadToken
 @ stdcall SHExpandEnvironmentStringsA(str ptr long) ExpandEnvironmentStringsA
 @ stdcall SHExpandEnvironmentStringsW(wstr ptr long) ExpandEnvironmentStringsW
