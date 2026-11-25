@@ -3210,11 +3210,9 @@ QSI_DEF(SystemProcessorIdleCycleTimeInformation)
     PKPRCB Prcb;
 
     *ReqSize = KeNumberProcessors * sizeof(*Info);
+    /* Callers usually ask for the size first, so a short buffer is not worth a message */
     if (Size < *ReqSize)
-    {
-        DPRINT1("Buffer too small for SystemProcessorIdleCycleTimeInformation\n");
         return STATUS_BUFFER_TOO_SMALL;
-    }
 
     for (ProcessorIndex = 0; ProcessorIndex < KeNumberProcessors; ++ProcessorIndex)
     {

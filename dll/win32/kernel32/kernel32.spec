@@ -979,7 +979,7 @@
 @ stdcall QueryDosDeviceW(wstr ptr long)
 @ stdcall -version=0x600+ QueryFullProcessImageNameA(ptr long ptr ptr)
 @ stdcall -version=0x600+ QueryFullProcessImageNameW(ptr long ptr ptr)
-@ stub -version=0x600+ QueryIdleProcessorCycleTime
+@ stdcall -version=0x600+ QueryIdleProcessorCycleTime(ptr ptr)
 @ stdcall QueryInformationJobObject(long long ptr long ptr)
 @ stdcall QueryMemoryResourceNotification(ptr ptr)
 @ stdcall QueryPerformanceCounter(ptr)
