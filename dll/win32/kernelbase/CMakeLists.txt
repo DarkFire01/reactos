@@ -123,6 +123,10 @@ add_importlibs(${KERNELBASE_NAME} ntdll ntdll_vista)
 # The app model calls live in kernel.appcore, kernelbase forwards to them like kernel32 does
 generate_import_lib(kernelbase_appmodel kernel.appcore.dll ../kernel32/appmodel_forwards.spec "" "")
 target_link_libraries(${KERNELBASE_NAME} kernelbase_appmodel)
+# Calls that still live in kernel32 or advapi32 are forwarded there, and MS LINK needs import libraries for them
+generate_import_lib(kernelbase_kernel32 kernel32.dll kernel32_forwards.spec "" "")
+generate_import_lib(kernelbase_advapi32 advapi32.dll ../kernel32/advapi32_forwards.spec "" "")
+target_link_libraries(${KERNELBASE_NAME} kernelbase_kernel32 kernelbase_advapi32)
 add_dependencies(${KERNELBASE_NAME} psdk errcodes)
 add_cd_file(TARGET ${KERNELBASE_NAME} DESTINATION reactos/system32 FOR all)
 

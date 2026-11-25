@@ -25,7 +25,7 @@
 @ stdcall AddMandatoryAce(ptr long long long ptr)
 @ stdcall AddRefActCtx(ptr)
 # @ stub AddResourceAttributeAce
-@ stdcall -stub -version=0x600+ AddSIDToBoundaryDescriptor(ptr ptr)
+@ stdcall AddSIDToBoundaryDescriptor(ptr ptr) kernel32.AddSIDToBoundaryDescriptor
 # @ stub AddScopedPolicyIDAce
 @ stdcall AddVectoredContinueHandler(long ptr) ntdll.RtlAddVectoredContinueHandler
 @ stdcall AddVectoredExceptionHandler(long ptr) ntdll.RtlAddVectoredExceptionHandler
@@ -35,7 +35,7 @@
 @ stdcall AllocateAndInitializeSid(ptr long long long long long long long long long ptr)
 @ stdcall AllocateLocallyUniqueId(ptr)
 @ stdcall AllocateUserPhysicalPages(long ptr ptr)
-@ stdcall -stub AllocateUserPhysicalPagesNuma(long ptr ptr long)
+@ stdcall AllocateUserPhysicalPagesNuma(ptr ptr ptr long) kernel32.AllocateUserPhysicalPagesNuma
 # @ stub AppContainerDeriveSidFromMoniker
 # @ stub AppContainerFreeMemory
 # @ stub AppContainerLookupDisplayNameMrtReference
@@ -139,7 +139,7 @@
 @ stdcall ClearCommError(long ptr ptr)
 # @ stub CloseGlobalizationUserSettingsKey
 @ stdcall CloseHandle(long)
-@ stdcall -stub -version=0x600+ ClosePrivateNamespace(ptr long)
+@ stdcall ClosePrivateNamespace(ptr long) kernel32.ClosePrivateNamespace
 # @ stub ClosePackageInfo
 # @ stub ClosePrivateNamespace
 @ stdcall -stub -version=0xA00+ ClosePseudoConsole(ptr)
@@ -210,14 +210,14 @@
 @ stdcall CreateMutexW(ptr long wstr)
 @ stdcall CreateNamedPipeW(wstr long long long long long long ptr)
 @ stdcall CreatePipe(ptr ptr ptr long)
-@ stdcall -stub -version=0x600+ CreatePrivateNamespaceW(ptr ptr wstr)
+@ stdcall CreatePrivateNamespaceW(ptr ptr wstr) kernel32.CreatePrivateNamespaceW
 # @ stub CreatePrivateNamespaceW
 @ stdcall CreatePrivateObjectSecurity(ptr ptr ptr long long ptr)
 @ stdcall CreatePrivateObjectSecurityEx(ptr ptr ptr ptr long long long ptr)
 @ stdcall CreatePrivateObjectSecurityWithMultipleInheritance(ptr ptr ptr ptr long long long long ptr)
 @ stdcall CreateProcessA(str str ptr ptr long long ptr str ptr ptr)
-@ stdcall -stub CreateProcessAsUserA(long str str ptr ptr long long ptr str ptr ptr)
-@ stdcall -stub CreateProcessAsUserW(long wstr wstr ptr ptr long long ptr wstr ptr ptr)
+@ stdcall CreateProcessAsUserA(long str str ptr ptr long long ptr str ptr ptr) advapi32.CreateProcessAsUserA
+@ stdcall CreateProcessAsUserW(long wstr wstr ptr ptr long long ptr wstr ptr ptr) advapi32.CreateProcessAsUserW
 @ stdcall CreateProcessInternalA(long str str ptr ptr long long ptr str ptr ptr ptr)
 @ stdcall CreateProcessInternalW(long wstr wstr ptr ptr long long ptr wstr ptr ptr ptr)
 @ stdcall CreateProcessW(wstr wstr ptr ptr long long ptr wstr ptr ptr)
@@ -268,6 +268,7 @@
 # @ stub DeleteStateContainer
 # @ stub DeleteStateContainerValue
 # @ stub DeleteSynchronizationBarrier
+@ stdcall DeleteTimerQueue(long) kernel32.DeleteTimerQueue
 @ stdcall DeleteTimerQueueEx(long long)
 @ stdcall DeleteTimerQueueTimer(long long long)
 @ stdcall DeleteVolumeMountPointW(wstr)
@@ -317,6 +318,7 @@
 @ stdcall EnumProcesses(ptr long ptr)
 @ stdcall EnumResourceLanguagesExA(long str str ptr long long long)
 @ stdcall EnumResourceLanguagesExW(long wstr wstr ptr long long long)
+@ stdcall EnumResourceNamesA(long str ptr long) kernel32.EnumResourceNamesA
 @ stdcall EnumResourceNamesExA(long str ptr long long long)
 @ stdcall EnumResourceNamesExW(long wstr ptr long long long)
 @ stdcall EnumResourceNamesW(long wstr ptr long)
@@ -453,10 +455,10 @@
 @ stdcall GetComputerNameExA(long ptr ptr)
 @ stdcall GetComputerNameExW(long ptr ptr)
 @ stdcall GetConsoleAliasA(str ptr long str)
-#@ stub GetConsoleAliasExesA
+@ stdcall GetConsoleAliasExesA(str long) kernel32.GetConsoleAliasExesA
 @ stdcall GetConsoleAliasExesLengthA()
 @ stdcall GetConsoleAliasExesLengthW()
-#@ stub GetConsoleAliasExesW
+@ stdcall GetConsoleAliasExesW(wstr long) kernel32.GetConsoleAliasExesW
 @ stdcall GetConsoleAliasW(wstr ptr long wstr)
 @ stdcall GetConsoleAliasesA(str long str)
 @ stdcall GetConsoleAliasesLengthA(str)
@@ -505,7 +507,7 @@
 @ stdcall -norelay GetCurrentProcess()
 @ stdcall -norelay GetCurrentProcessId() 
 @ stdcall GetCurrentProcessorNumber() ntdll.NtGetCurrentProcessorNumber
-@ stdcall -stub GetCurrentProcessorNumberEx(ptr) ;ntdll.RtlGetCurrentProcessorNumberEx
+@ stdcall GetCurrentProcessorNumberEx(ptr) kernel32.GetCurrentProcessorNumberEx
 # @ stub GetCurrentTargetPlatformContext
 @ stdcall -norelay GetCurrentThread() 
 @ stdcall -norelay GetCurrentThreadId()
@@ -677,6 +679,7 @@
 @ stdcall GetProcessShutdownParameters(ptr ptr)
 @ stdcall GetProcessTimes(long ptr ptr ptr ptr)
 @ stdcall GetProcessVersion(long)
+@ stdcall GetProcessWorkingSetSize(long ptr ptr) kernel32.GetProcessWorkingSetSize
 @ stdcall GetProcessWorkingSetSizeEx(long ptr ptr ptr)
 # @ stub GetProcessorSystemCycleTime
 @ stdcall GetProductInfo(long long long long ptr)
@@ -809,8 +812,14 @@
 @ stdcall GetWsChangesEx(long ptr ptr)
 @ stdcall -version=0x601+ GetXStateFeaturesMask(ptr ptr)
 @ stdcall GlobalAlloc(long long)
+@ stdcall GlobalFlags(long) kernel32.GlobalFlags
 @ stdcall GlobalFree(long)
+@ stdcall GlobalHandle(ptr) kernel32.GlobalHandle
+@ stdcall GlobalLock(long) kernel32.GlobalLock
 @ stdcall GlobalMemoryStatusEx(ptr)
+@ stdcall GlobalReAlloc(long long long) kernel32.GlobalReAlloc
+@ stdcall GlobalSize(long) kernel32.GlobalSize
+@ stdcall GlobalUnlock(long) kernel32.GlobalUnlock
 # @ stub GuardCheckLongJumpTarget
 # @ stub HasPolicyForegroundProcessingCompletedInternal
 @ stdcall HashData(ptr long ptr long)
@@ -979,9 +988,11 @@
 @ stdcall LoadStringW(long long ptr long)
 @ stdcall LocalAlloc(long long)
 @ stdcall LocalFileTimeToFileTime(ptr ptr)
+@ stdcall LocalFlags(long) kernel32.LocalFlags
 @ stdcall LocalFree(long)
 @ stdcall LocalLock(long)
 @ stdcall LocalReAlloc(long long long)
+@ stdcall LocalSize(long) kernel32.LocalSize
 @ stdcall LocalUnlock(long)
 @ stdcall LocaleNameToLCID(wstr long)
 @ stdcall -version=0x601+ LocateXStateFeature(ptr long ptr)
@@ -1224,10 +1235,10 @@
 # @ stub PsmIsChildKey
 # @ stub PsmIsDynamicKey
 # @ stub PsmIsValidKey
-@ stdcall -stub PssCaptureSnapshot(ptr long long ptr)
+@ stdcall PssCaptureSnapshot(ptr long long ptr) kernel32.PssCaptureSnapshot
 # @ stub PssDuplicateSnapshot
-@ stdcall -stub PssFreeSnapshot(ptr ptr)
-@ stdcall -stub PssQuerySnapshot(ptr long ptr long)
+@ stdcall PssFreeSnapshot(ptr ptr) kernel32.PssFreeSnapshot
+@ stdcall PssQuerySnapshot(ptr long ptr long) kernel32.PssQuerySnapshot
 # @ stub PssWalkMarkerCreate
 # @ stub PssWalkMarkerFree
 # @ stub PssWalkMarkerGetPosition
@@ -1401,6 +1412,7 @@
 @ stdcall ResumeThread(long)
 @ stdcall RevertToSelf()
 # @ stub RsopLoggingEnabledInternal
+@ stdcall SetProcessWorkingSetSize(long long long) kernel32.SetProcessWorkingSetSize
 # @ stub SHCoCreateInstance
 @ stdcall SHExpandEnvironmentStringsA(str ptr long) ExpandEnvironmentStringsA
 @ stdcall SHExpandEnvironmentStringsW(wstr ptr long) ExpandEnvironmentStringsW
