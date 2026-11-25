@@ -1089,6 +1089,30 @@ QueryProcessCycleTime(
     return TRUE;
 }
 
+/**
+ * @brief
+ * Gets the cycles each processor's idle thread has used.
+ * Without a buffer it only reports the size needed.
+ */
+BOOL
+WINAPI
+QueryIdleProcessorCycleTime(
+    _Inout_ PULONG BufferLength,
+    _Out_writes_bytes_opt_(*BufferLength) PULONG64 ProcessorIdleCycleTime)
+{
+    NTSTATUS Status;
+
+    Status = NtQuerySystemInformation(SystemProcessorIdleCycleTimeInformation,
+                                      ProcessorIdleCycleTime,
+                                      *BufferLength,
+                                      BufferLength);
+    if (NT_SUCCESS(Status) || ProcessorIdleCycleTime == NULL)
+        return TRUE;
+
+    BaseSetLastNTError(Status);
+    return FALSE;
+}
+
 /*
  * @implemented
  */

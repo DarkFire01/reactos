@@ -1246,7 +1246,7 @@
 @ stdcall QueryFullProcessImageNameA(ptr long ptr ptr)
 @ stdcall QueryFullProcessImageNameW(ptr long ptr ptr)
 @ stdcall QueryIoRingCapabilities(ptr)
-@ stdcall QueryIdleProcessorCycleTime(ptr ptr)
+@ stdcall -version=0x600+ QueryIdleProcessorCycleTime(ptr ptr)
 @ stdcall QueryIdleProcessorCycleTimeEx(long ptr ptr)
 @ stdcall -version=0xA00+ QueryInterruptTime(ptr)
 @ stdcall -version=0xA00+ QueryInterruptTimePrecise(ptr)
