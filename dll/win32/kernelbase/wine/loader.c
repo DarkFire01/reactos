@@ -186,6 +186,7 @@ static HMODULE load_library( const UNICODE_STRING *libname, DWORD flags )
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/loader.c */
 /****************************************************************************
  *	AddDllDirectory   (kernelbase.@)
  */
@@ -198,6 +199,7 @@ DLL_DIRECTORY_COOKIE WINAPI DECLSPEC_HOTPATCH AddDllDirectory( const WCHAR *dir 
     if (!set_ntstatus( LdrAddDllDirectory( &str, &cookie ))) return NULL;
     return cookie;
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -593,6 +595,7 @@ void WINAPI LoadAppInitDlls(void)
 }
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/loader.c */
 /****************************************************************************
  *	RemoveDllDirectory   (kernelbase.@)
  */
@@ -600,8 +603,10 @@ BOOL WINAPI DECLSPEC_HOTPATCH RemoveDllDirectory( DLL_DIRECTORY_COOKIE cookie )
 {
     return set_ntstatus( LdrRemoveDllDirectory( cookie ));
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/loader.c */
 /*************************************************************************
  *	SetDefaultDllDirectories   (kernelbase.@)
  */
@@ -609,6 +614,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetDefaultDllDirectories( DWORD flags )
 {
     return set_ntstatus( LdrSetDefaultDllDirectories( flags ));
 }
+#endif
 
 
 /***********************************************************************
