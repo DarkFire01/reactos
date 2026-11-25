@@ -315,24 +315,18 @@ NdisAllocateIoWorkItem(
     NDIS_HANDLE NdisObjectHandle)
 {
     PLOGICAL_ADAPTER Adapter = CoreAdapterFromHandle(NdisObjectHandle);
-    PDEVICE_OBJECT DeviceObject = NULL;
-    PDRIVER_OBJECT DriverObject;
+    PVOID IoObject;
     PCORE_IO_WORKITEM WorkItem;
 
+    /* A driver handle has no device during DriverEntry, so the driver object backs the item */
     if (Adapter != NULL)
-    {
-        DeviceObject = Adapter->NdisMiniportBlock.DeviceObject;
-    }
+        IoObject = Adapter->NdisMiniportBlock.DeviceObject;
     else
-    {
-        DriverObject = CoreDriverObjectFromHandle(NdisObjectHandle);
-        if (DriverObject != NULL)
-            DeviceObject = DriverObject->DeviceObject;
-    }
+        IoObject = CoreDriverObjectFromHandle(NdisObjectHandle);
 
-    if (DeviceObject == NULL)
+    if (IoObject == NULL)
     {
-        NDIS_DbgPrint(MIN_TRACE, ("No device object behind handle %p for a work item.\n", NdisObjectHandle));
+        NDIS_DbgPrint(MIN_TRACE, ("No I/O object behind handle %p for a work item.\n", NdisObjectHandle));
         return NULL;
     }
 
@@ -343,7 +337,7 @@ NdisAllocateIoWorkItem(
     RtlZeroMemory(WorkItem, sizeof(*WorkItem));
     WorkItem->NdisObjectHandle = NdisObjectHandle;
 
-    WorkItem->IoWorkItem = IoAllocateWorkItem(DeviceObject);
+    WorkItem->IoWorkItem = IoAllocateWorkItem(IoObject);
     if (WorkItem->IoWorkItem == NULL)
     {
         ExFreePoolWithTag(WorkItem, NDIS_TAG);
