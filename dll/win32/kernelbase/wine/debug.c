@@ -413,6 +413,7 @@ __ASM_GLOBAL_IMPORT(RaiseException)
 #endif
 #endif
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /*******************************************************************
  *           RaiseFailFastException  (kernelbase.@)
  */
@@ -421,6 +422,7 @@ void WINAPI DECLSPEC_HOTPATCH RaiseFailFastException( EXCEPTION_RECORD *record, 
     FIXME( "(%p, %p, %ld) stub\n", record, context, flags );
     TerminateProcess( GetCurrentProcess(), STATUS_FAIL_FAST_EXCEPTION );
 }
+#endif
 
 #ifndef __REACTOS__
 /***********************************************************************
@@ -773,6 +775,7 @@ LONG WINAPI UnhandledExceptionFilter( EXCEPTION_POINTERS *epointers )
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerGetFlags   (kernelbase.@)
  */
@@ -781,8 +784,10 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerGetFlags( HANDLE process, DWORD *flags
     FIXME( "(%p, %p) stub\n", process, flags );
     return E_NOTIMPL;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerRegisterFile   (kernelbase.@)
  */
@@ -792,8 +797,10 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerRegisterFile( const WCHAR *file, WER_R
     FIXME( "(%s, %d, %ld) stub\n", debugstr_w(file), type, flags );
     return E_NOTIMPL;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerRegisterMemoryBlock   (kernelbase.@)
  */
@@ -802,8 +809,10 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerRegisterMemoryBlock( void *block, DWOR
     FIXME( "(%p %ld) stub\n", block, size );
     return E_NOTIMPL;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerRegisterRuntimeExceptionModule   (kernelbase.@)
  */
@@ -812,8 +821,10 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerRegisterRuntimeExceptionModule( const 
     FIXME( "(%s, %p) stub\n", debugstr_w(dll), context );
     return S_OK;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerSetFlags   (kernelbase.@)
  */
@@ -822,8 +833,10 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerSetFlags( DWORD flags )
     FIXME("(%ld) stub\n", flags);
     return S_OK;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerUnregisterFile   (kernelbase.@)
  */
@@ -832,8 +845,10 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerUnregisterFile( const WCHAR *file )
     FIXME( "(%s) stub\n", debugstr_w(file) );
     return E_NOTIMPL;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerUnregisterMemoryBlock   (kernelbase.@)
  */
@@ -842,8 +857,10 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerUnregisterMemoryBlock( void *block )
     FIXME( "(%p) stub\n", block );
     return E_NOTIMPL;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *         WerUnregisterRuntimeExceptionModule   (kernelbase.@)
  */
@@ -852,6 +869,7 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerUnregisterRuntimeExceptionModule( cons
     FIXME( "(%s, %p) stub\n", debugstr_w(dll), context );
     return S_OK;
 }
+#endif
 
 
 #ifndef __REACTOS__

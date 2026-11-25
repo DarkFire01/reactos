@@ -252,6 +252,7 @@ void WINAPI DECLSPEC_HOTPATCH QueryInterruptTimePrecise( ULONGLONG *time )
 }
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           QueryUnbiasedInterruptTimePrecise  (kernelbase.@)
  */
@@ -262,8 +263,10 @@ void WINAPI DECLSPEC_HOTPATCH QueryUnbiasedInterruptTimePrecise( ULONGLONG *time
 
     RtlQueryUnbiasedInterruptTime( time );
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           QueryIdleProcessorCycleTime  (kernelbase.@)
  */
@@ -275,6 +278,7 @@ BOOL WINAPI QueryIdleProcessorCycleTime( ULONG *size, ULONG64 *times )
     if (!*size || !status) *size = ret_size;
     return TRUE;
 }
+#endif
 
 
 /***********************************************************************
@@ -515,6 +519,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH WaitForDebugEventEx( DEBUG_EVENT *event, DWORD tim
 }
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           WaitOnAddress   (kernelbase.@)
  */
@@ -529,6 +534,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH WaitOnAddress( volatile void *addr, void *cmp, SIZ
     }
     return set_ntstatus( RtlWaitOnAddress( (const void *)addr, cmp, size, NULL ));
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -566,6 +572,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateEventW( SECURITY_ATTRIBUTES *sa, BOOL manu
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           CreateEventExA    (kernelbase.@)
  */
@@ -583,8 +590,10 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateEventExA( SECURITY_ATTRIBUTES *sa, LPCSTR 
     }
     return CreateEventExW( sa, buffer, flags, access );
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           CreateEventExW    (kernelbase.@)
  */
@@ -619,6 +628,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateEventExW( SECURITY_ATTRIBUTES *sa, LPCWSTR
         SetLastError( RtlNtStatusToDosError(status) );
     return ret;
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -708,6 +718,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateMutexW( SECURITY_ATTRIBUTES *sa, BOOL owne
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           CreateMutexExA   (kernelbase.@)
  */
@@ -728,8 +739,10 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateMutexExA( SECURITY_ATTRIBUTES *sa, LPCSTR 
     }
     return CreateMutexExW( sa, NtCurrentTeb()->StaticUnicodeString.Buffer, flags, access );
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           CreateMutexExW   (kernelbase.@)
  */
@@ -750,6 +763,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateMutexExW( SECURITY_ATTRIBUTES *sa, LPCWSTR
         SetLastError( RtlNtStatusToDosError(status) );
     return ret;
 }
+#endif
 
 
 
@@ -861,6 +875,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateWaitableTimerW( SECURITY_ATTRIBUTES *sa, B
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           CreateWaitableTimerExW    (kernelbase.@)
  */
@@ -882,6 +897,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateWaitableTimerExW( SECURITY_ATTRIBUTES *sa,
         SetLastError( RtlNtStatusToDosError(status) );
     return handle;
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -916,6 +932,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetWaitableTimer( HANDLE handle, const LARGE_INTEG
 
 
 #endif
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           SetWaitableTimerEx    (kernelbase.@)
  */
@@ -929,6 +946,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetWaitableTimerEx( HANDLE handle, const LARGE_INT
 
     return SetWaitableTimer( handle, when, period, callback, arg, FALSE );
 }
+#endif
 
 
 #ifndef __REACTOS__

@@ -67,6 +67,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThread( HANDLE process, SECURITY_ATT
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***************************************************************************
  *           CreateRemoteThreadEx   (kernelbase.@)
  */
@@ -104,6 +105,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThreadEx( HANDLE process, SECURITY_A
     }
     return handle;
 }
+#endif
 
 #ifndef __REACTOS__
 
@@ -203,6 +205,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetThreadContext( HANDLE thread, CONTEXT *context 
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           GetThreadErrorMode   (kernelbase.@)
  */
@@ -210,6 +213,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetThreadErrorMode(void)
 {
     return rtlmode_to_win32mode( RtlGetThreadErrorMode() );
 }
+#endif
 
 
 /***********************************************************************
@@ -478,6 +482,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH GetThreadDescription( HANDLE thread, WCHAR **de
 }
 #endif
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           SetThreadErrorMode   (kernelbase.@)
  */
@@ -500,6 +505,7 @@ BOOL WINAPI SetThreadErrorMode( DWORD mode, DWORD *old )
     if (!status && old) *old = rtlmode_to_win32mode( *old );
     return set_ntstatus( status );
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -616,6 +622,7 @@ LANGID WINAPI DECLSPEC_HOTPATCH SetThreadUILanguage( LANGID langid )
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /**********************************************************************
  *            SetThreadInformation   (kernelbase.@)
  */
@@ -633,6 +640,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetThreadInformation( HANDLE thread, THREAD_INFORM
             return FALSE;
     }
 }
+#endif
 
 
 #ifndef __REACTOS__

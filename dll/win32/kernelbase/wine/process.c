@@ -731,6 +731,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessW( const WCHAR *app_name, WCHAR *cmd_
     ProcessInformationClassMax
 } PROCESS_INFORMATION_CLASS;*/
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /**********************************************************************
  *           SetProcessInformation   (kernelbase.@)
  */
@@ -749,6 +750,7 @@ BOOL WINAPI SetProcessInformation( HANDLE process, PROCESS_INFORMATION_CLASS inf
             return FALSE;
     }
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -937,6 +939,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetProcessId( HANDLE process )
 #endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /**********************************************************************
  *           GetProcessMitigationPolicy   (kernelbase.@)
  */
@@ -946,6 +949,7 @@ BOOL WINAPI /* DECLSPEC_HOTPATCH */ GetProcessMitigationPolicy( HANDLE process, 
     FIXME( "(%p, %u, %p, %Iu): stub\n", process, policy, buffer, length );
     return TRUE;
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -1085,6 +1089,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsWow64Process( HANDLE process, PBOOL wow64 )
     return set_ntstatus( status );
 }
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /*********************************************************************
  *           GetProcessInformation   (kernelbase.@)
  */
@@ -1135,6 +1140,7 @@ BOOL WINAPI GetProcessInformation( HANDLE process, PROCESS_INFORMATION_CLASS inf
 
     return FALSE;
 }
+#endif
 #ifndef __REACTOS__
 
 
@@ -1313,6 +1319,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetProcessGroupAffinity( HANDLE process, const GRO
 }
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /**********************************************************************
  *           SetProcessMitigationPolicy   (kernelbase.@)
  */
@@ -1322,6 +1329,7 @@ BOOL WINAPI /* DECLSPEC_HOTPATCH */ SetProcessMitigationPolicy( PROCESS_MITIGATI
     FIXME( "(%d, %p, %Iu): stub\n", policy, buffer, length );
     return TRUE;
 }
+#endif
 
 
 #ifndef __REACTOS__
@@ -1827,6 +1835,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetEnvironmentVariableW( LPCWSTR name, LPCWSTR val
  * Process/thread attribute lists
  ***********************************************************************/
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           InitializeProcThreadAttributeList   (kernelbase.@)
  */
@@ -1852,6 +1861,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH InitializeProcThreadAttributeList( struct _PROC_TH
     *size = needed;
     return ret;
 }
+#endif
 
 
 static inline DWORD validate_proc_thread_attribute( DWORD_PTR attr, SIZE_T size )
@@ -1894,6 +1904,7 @@ static inline DWORD validate_proc_thread_attribute( DWORD_PTR attr, SIZE_T size 
 }
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           UpdateProcThreadAttribute   (kernelbase.@)
  */
@@ -1932,8 +1943,10 @@ BOOL WINAPI DECLSPEC_HOTPATCH UpdateProcThreadAttribute( struct _PROC_THREAD_ATT
     list->count++;
     return TRUE;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *           DeleteProcThreadAttributeList   (kernelbase.@)
  */
@@ -1941,8 +1954,10 @@ void WINAPI DECLSPEC_HOTPATCH DeleteProcThreadAttributeList( struct _PROC_THREAD
 {
     return;
 }
+#endif
 
 
+#ifndef __REACTOS__ /* ReactOS has its own in client/ */
 /***********************************************************************
  *              CompareObjectHandles   (kernelbase.@)
  */
@@ -1955,3 +1970,4 @@ BOOL WINAPI DECLSPEC_HOTPATCH CompareObjectHandles( HANDLE first, HANDLE second 
     return FALSE;
 #endif
 }
+#endif
