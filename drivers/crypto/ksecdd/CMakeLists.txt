@@ -6,21 +6,17 @@ include_directories(
 
 list(APPEND SOURCE
     ksecdd.c
-    bcrypt.c
-    bcryptkey.c
     dispatch.c
     crypt.c
-    entropy.c
     random.c
-    scenv.c
     stubs.c
     ksecdd.rc
     ${CMAKE_CURRENT_BINARY_DIR}/ksecdd.def)
 
 add_library(ksecdd MODULE ${SOURCE})
-target_link_libraries(ksecdd cryptlib pseh symcrypt)
+target_link_libraries(ksecdd cryptlib pseh)
 set_module_type(ksecdd kernelmodedriver)
-add_importlibs(ksecdd ntoskrnl hal)
+add_importlibs(ksecdd cng ntoskrnl hal)
 if(ARCH STREQUAL "i386")
     # The x86 kernel does not export memcmp
     target_link_libraries(ksecdd memcmp)

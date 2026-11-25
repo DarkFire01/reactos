@@ -1,5 +1,5 @@
 /*
- * PROJECT:     ReactOS Kernel Security Support Provider Interface Driver
+ * PROJECT:     ReactOS Kernel Cryptography Next Generation
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Kernel mode environment and callbacks for the SymCrypt library
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
@@ -7,37 +7,34 @@
 
 /* INCLUDES *******************************************************************/
 
-#include "ksecdd.h"
-#include <symcrypt.h>
+#include "cngp.h"
 #include <sc_lib.h>
 
 #include <debug.h>
 
 /* DEFINES ********************************************************************/
 
-#define TAG_KSEC_SYMCRYPT       'yScK'
-
 /* Bug check Windows raises when its crypto library hits an internal error */
-#define KSEC_CRYPTO_LIBRARY_BUGCHECK    0x00000171
+#define CNG_CRYPTO_LIBRARY_BUGCHECK    0x00000171
 
-typedef struct _KSEC_SYMCRYPT_MUTEX
+typedef struct _CNG_SYMCRYPT_MUTEX
 {
     KSPIN_LOCK Lock;
     KIRQL OldIrql;
-} KSEC_SYMCRYPT_MUTEX, *PKSEC_SYMCRYPT_MUTEX;
+} CNG_SYMCRYPT_MUTEX, *PCNG_SYMCRYPT_MUTEX;
 
 /* The save area only exists when SymCrypt builds its x86 code paths */
 #if SYMCRYPT_CPU_X86
 C_ASSERT(sizeof(KFLOATING_SAVE) <= SYMCRYPT_XSTATE_SAVE_SIZE);
 #endif
 
-SYMCRYPT_ENVIRONMENT_DEFS(KsecKernel);
+SYMCRYPT_ENVIRONMENT_DEFS(CngKernel);
 
 /* ENVIRONMENT ****************************************************************/
 
 SYMCRYPT_CPU_FEATURES
 SYMCRYPT_CALL
-SymCryptCpuFeaturesNeverPresentEnvKsecKernel(void)
+SymCryptCpuFeaturesNeverPresentEnvCngKernel(void)
 {
     return 0;
 }
@@ -48,7 +45,7 @@ SymCryptCpuFeaturesNeverPresentEnvKsecKernel(void)
  */
 VOID
 SYMCRYPT_CALL
-SymCryptInitEnvKsecKernel(
+SymCryptInitEnvCngKernel(
     _In_ UINT32 version)
 {
     if (g_SymCryptFlags & SYMCRYPT_FLAG_LIB_INITIALIZED)
@@ -71,18 +68,18 @@ SymCryptInitEnvKsecKernel(
 _Analysis_noreturn_
 VOID
 SYMCRYPT_CALL
-SymCryptFatalEnvKsecKernel(
+SymCryptFatalEnvCngKernel(
     _In_ UINT32 fatalCode)
 {
     SymCryptFatalIntercept(fatalCode);
-    KeBugCheckEx(KSEC_CRYPTO_LIBRARY_BUGCHECK, fatalCode, 0, 0, 0);
+    KeBugCheckEx(CNG_CRYPTO_LIBRARY_BUGCHECK, fatalCode, 0, 0, 0);
 }
 
 #if SYMCRYPT_CPU_AMD64 | SYMCRYPT_CPU_X86
 
 SYMCRYPT_ERROR
 SYMCRYPT_CALL
-SymCryptSaveXmmEnvKsecKernel(
+SymCryptSaveXmmEnvCngKernel(
     _Out_ PSYMCRYPT_EXTENDED_SAVE_DATA pSaveArea)
 {
 #ifdef _M_IX86
@@ -97,7 +94,7 @@ SymCryptSaveXmmEnvKsecKernel(
 
 VOID
 SYMCRYPT_CALL
-SymCryptRestoreXmmEnvKsecKernel(
+SymCryptRestoreXmmEnvCngKernel(
     _Inout_ PSYMCRYPT_EXTENDED_SAVE_DATA pSaveArea)
 {
 #ifdef _M_IX86
@@ -109,7 +106,7 @@ SymCryptRestoreXmmEnvKsecKernel(
 
 SYMCRYPT_ERROR
 SYMCRYPT_CALL
-SymCryptSaveYmmEnvKsecKernel(
+SymCryptSaveYmmEnvCngKernel(
     _Out_ PSYMCRYPT_EXTENDED_SAVE_DATA pSaveArea)
 {
     UNREFERENCED_PARAMETER(pSaveArea);
@@ -119,7 +116,7 @@ SymCryptSaveYmmEnvKsecKernel(
 
 VOID
 SYMCRYPT_CALL
-SymCryptRestoreYmmEnvKsecKernel(
+SymCryptRestoreYmmEnvCngKernel(
     _Inout_ PSYMCRYPT_EXTENDED_SAVE_DATA pSaveArea)
 {
     UNREFERENCED_PARAMETER(pSaveArea);
@@ -127,7 +124,7 @@ SymCryptRestoreYmmEnvKsecKernel(
 
 VOID
 SYMCRYPT_CALL
-SymCryptCpuidExFuncEnvKsecKernel(
+SymCryptCpuidExFuncEnvCngKernel(
     int cpuInfo[4],
     int function_id,
     int subfunction_id)
@@ -139,7 +136,7 @@ SymCryptCpuidExFuncEnvKsecKernel(
 
 VOID
 SYMCRYPT_CALL
-SymCryptTestInjectErrorEnvKsecKernel(
+SymCryptTestInjectErrorEnvCngKernel(
     PBYTE pbBuf,
     SIZE_T cbBuf)
 {
@@ -159,7 +156,7 @@ SymCryptCallbackAlloc(
 
     Block = ExAllocatePoolWithTag(NonPagedPool,
                                   nBytes + SYMCRYPT_ASYM_ALIGN_VALUE + sizeof(PVOID),
-                                  TAG_KSEC_SYMCRYPT);
+                                  TAG_CNG_SYMCRYPT);
     if (Block == NULL)
         return NULL;
 
@@ -175,7 +172,7 @@ SymCryptCallbackFree(
     PVOID pMem)
 {
     if (pMem != NULL)
-        ExFreePoolWithTag(((PVOID *)pMem)[-1], TAG_KSEC_SYMCRYPT);
+        ExFreePoolWithTag(((PVOID *)pMem)[-1], TAG_CNG_SYMCRYPT);
 }
 
 SYMCRYPT_ERROR
@@ -184,16 +181,16 @@ SymCryptCallbackRandom(
     PBYTE pbBuffer,
     SIZE_T cbBuffer)
 {
-    return NT_SUCCESS(KsecGenerateRandom(pbBuffer, cbBuffer)) ? SYMCRYPT_NO_ERROR : SYMCRYPT_EXTERNAL_FAILURE;
+    return NT_SUCCESS(CngGenerateRandom(pbBuffer, cbBuffer)) ? SYMCRYPT_NO_ERROR : SYMCRYPT_EXTERNAL_FAILURE;
 }
 
 PVOID
 SYMCRYPT_CALL
 SymCryptCallbackAllocateMutexFastInproc(void)
 {
-    PKSEC_SYMCRYPT_MUTEX Mutex;
+    PCNG_SYMCRYPT_MUTEX Mutex;
 
-    Mutex = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Mutex), TAG_KSEC_SYMCRYPT);
+    Mutex = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Mutex), TAG_CNG_SYMCRYPT);
     if (Mutex != NULL)
         KeInitializeSpinLock(&Mutex->Lock);
 
@@ -205,7 +202,7 @@ SYMCRYPT_CALL
 SymCryptCallbackFreeMutexFastInproc(
     PVOID pMutex)
 {
-    ExFreePoolWithTag(pMutex, TAG_KSEC_SYMCRYPT);
+    ExFreePoolWithTag(pMutex, TAG_CNG_SYMCRYPT);
 }
 
 VOID
@@ -213,7 +210,7 @@ SYMCRYPT_CALL
 SymCryptCallbackAcquireMutexFastInproc(
     PVOID pMutex)
 {
-    PKSEC_SYMCRYPT_MUTEX Mutex = pMutex;
+    PCNG_SYMCRYPT_MUTEX Mutex = pMutex;
     KIRQL OldIrql;
 
     KeAcquireSpinLock(&Mutex->Lock, &OldIrql);
@@ -225,7 +222,7 @@ SYMCRYPT_CALL
 SymCryptCallbackReleaseMutexFastInproc(
     PVOID pMutex)
 {
-    PKSEC_SYMCRYPT_MUTEX Mutex = pMutex;
+    PCNG_SYMCRYPT_MUTEX Mutex = pMutex;
 
     KeReleaseSpinLock(&Mutex->Lock, Mutex->OldIrql);
 }

@@ -1,5 +1,5 @@
 /*
- * PROJECT:     ReactOS Kernel Security Support Provider Interface Driver
+ * PROJECT:     ReactOS Kernel Cryptography Next Generation
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Hardware entropy sources feeding the kernel random number generator
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
@@ -7,29 +7,29 @@
 
 /* INCLUDES *******************************************************************/
 
-#include "ksecdd.h"
+#include "cngp.h"
 
 #define NDEBUG
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
 
-#define KSEC_ENTROPY_TAG 'nEsK'
+#define CNG_ENTROPY_TAG 'nECK'
 
 typedef
 VOID
-(NTAPI *PKSEC_ENTROPY_CALLBACK)(
+(NTAPI *PCNG_ENTROPY_CALLBACK)(
     _In_ PVOID SourceHandle,
     _In_opt_ PVOID Context);
 
-typedef struct _KSEC_ENTROPY_SOURCE
+typedef struct _CNG_ENTROPY_SOURCE
 {
     ULONG Type;
-    PKSEC_ENTROPY_CALLBACK Callback;
+    PCNG_ENTROPY_CALLBACK Callback;
     PVOID Context;
     WORK_QUEUE_ITEM WorkItem;
     KEVENT Idle;
-} KSEC_ENTROPY_SOURCE, *PKSEC_ENTROPY_SOURCE;
+} CNG_ENTROPY_SOURCE, *PCNG_ENTROPY_SOURCE;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -39,10 +39,10 @@ typedef struct _KSEC_ENTROPY_SOURCE
 static
 VOID
 NTAPI
-KsecEntropyWorker(
+CngEntropyWorker(
     _In_ PVOID Parameter)
 {
-    PKSEC_ENTROPY_SOURCE Source = Parameter;
+    PCNG_ENTROPY_SOURCE Source = Parameter;
 
     Source->Callback(Source, Source->Context);
     KeSetEvent(&Source->Idle, IO_NO_INCREMENT, FALSE);
@@ -61,18 +61,18 @@ EntropyRegisterSource(
     _In_ ULONG SourceType,
     _In_opt_ PCWSTR SourceName)
 {
-    PKSEC_ENTROPY_SOURCE Source;
+    PCNG_ENTROPY_SOURCE Source;
 
     if (!SourceHandle)
         return STATUS_INVALID_PARAMETER;
 
-    Source = ExAllocatePoolZero(NonPagedPool, sizeof(*Source), KSEC_ENTROPY_TAG);
+    Source = ExAllocatePoolZero(NonPagedPool, sizeof(*Source), CNG_ENTROPY_TAG);
     if (!Source)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     Source->Type = SourceType;
     KeInitializeEvent(&Source->Idle, NotificationEvent, TRUE);
-    ExInitializeWorkItem(&Source->WorkItem, KsecEntropyWorker, Source);
+    ExInitializeWorkItem(&Source->WorkItem, CngEntropyWorker, Source);
 
     DPRINT1("Entropy source %p registered, type %lu, %S\n", Source, SourceType, SourceName ? SourceName : L"");
     *SourceHandle = Source;
@@ -88,10 +88,10 @@ NTSTATUS
 NTAPI
 EntropyRegisterCallback(
     _In_ PVOID SourceHandle,
-    _In_ PKSEC_ENTROPY_CALLBACK Callback,
+    _In_ PCNG_ENTROPY_CALLBACK Callback,
     _In_opt_ PVOID Context)
 {
-    PKSEC_ENTROPY_SOURCE Source = SourceHandle;
+    PCNG_ENTROPY_SOURCE Source = SourceHandle;
 
     if (!Source || !Callback || Source->Callback)
         return STATUS_INVALID_PARAMETER;
@@ -120,7 +120,7 @@ EntropyProvideData(
     if (!SourceHandle || !Data || !Length)
         return STATUS_INVALID_PARAMETER;
 
-    KsecMixEntropy(Data, Length);
+    CngMixEntropy(Data, Length);
     return STATUS_SUCCESS;
 }
 
@@ -132,12 +132,12 @@ NTAPI
 EntropyUnregisterSource(
     _In_ PVOID SourceHandle)
 {
-    PKSEC_ENTROPY_SOURCE Source = SourceHandle;
+    PCNG_ENTROPY_SOURCE Source = SourceHandle;
 
     if (!Source)
         return STATUS_INVALID_PARAMETER;
 
     KeWaitForSingleObject(&Source->Idle, Executive, KernelMode, FALSE, NULL);
-    ExFreePoolWithTag(Source, KSEC_ENTROPY_TAG);
+    ExFreePoolWithTag(Source, CNG_ENTROPY_TAG);
     return STATUS_SUCCESS;
 }

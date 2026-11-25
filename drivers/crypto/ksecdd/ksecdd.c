@@ -53,7 +53,6 @@ DriverEntry(
 
     /* Initialize */
     KsecInitializeEncryptionSupport();
-    KsecInitializeCng();
 
     return STATUS_SUCCESS;
 }

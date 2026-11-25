@@ -1,22 +1,50 @@
-@ stdcall BCryptCloseAlgorithmProvider(ptr long) ksecdd.BCryptCloseAlgorithmProvider
-@ stdcall BCryptCreateHash(ptr ptr ptr long ptr long long) ksecdd.BCryptCreateHash
-@ stdcall BCryptDecrypt(ptr ptr long ptr ptr long ptr long ptr long) ksecdd.BCryptDecrypt
-@ stdcall BCryptDestroyHash(ptr) ksecdd.BCryptDestroyHash
-@ stdcall BCryptDestroyKey(ptr) ksecdd.BCryptDestroyKey
-@ stdcall BCryptEncrypt(ptr ptr long ptr ptr long ptr long ptr long) ksecdd.BCryptEncrypt
-@ stdcall BCryptExportKey(ptr ptr wstr ptr long ptr long) ksecdd.BCryptExportKey
-@ stdcall BCryptFinalizeKeyPair(ptr long) ksecdd.BCryptFinalizeKeyPair
-@ stdcall BCryptFinishHash(ptr ptr long long) ksecdd.BCryptFinishHash
-@ stdcall BCryptGenerateKeyPair(ptr ptr long long) ksecdd.BCryptGenerateKeyPair
-@ stdcall BCryptGenerateSymmetricKey(ptr ptr ptr long ptr long long) ksecdd.BCryptGenerateSymmetricKey
-@ stdcall BCryptGenRandom(ptr ptr long long) ksecdd.BCryptGenRandom
-@ stdcall BCryptGetProperty(ptr wstr ptr long ptr long) ksecdd.BCryptGetProperty
-@ stdcall BCryptHashData(ptr ptr long long) ksecdd.BCryptHashData
-@ stdcall BCryptImportKeyPair(ptr ptr wstr ptr ptr long long) ksecdd.BCryptImportKeyPair
-@ stdcall BCryptOpenAlgorithmProvider(ptr wstr wstr long) ksecdd.BCryptOpenAlgorithmProvider
-@ stdcall BCryptSetProperty(ptr wstr ptr long long) ksecdd.BCryptSetProperty
-@ stdcall BCryptVerifySignature(ptr ptr ptr long ptr long long) ksecdd.BCryptVerifySignature
-@ stdcall EntropyProvideData(ptr ptr long long) ksecdd.EntropyProvideData
-@ stdcall EntropyRegisterCallback(ptr ptr ptr) ksecdd.EntropyRegisterCallback
-@ stdcall EntropyRegisterSource(ptr long ptr) ksecdd.EntropyRegisterSource
-@ stdcall EntropyUnregisterSource(ptr) ksecdd.EntropyUnregisterSource
+@ stdcall BCryptAddContextFunctionProvider(long wstr long wstr wstr long)
+@ stdcall BCryptCloseAlgorithmProvider(ptr long)
+@ stdcall BCryptCreateHash(ptr ptr ptr long ptr long long)
+@ stdcall BCryptCreateMultiHash(ptr ptr long ptr long ptr long long)
+@ stdcall BCryptDecapsulate(ptr ptr long ptr long ptr long)
+@ stdcall BCryptDecrypt(ptr ptr long ptr ptr long ptr long ptr long)
+@ stdcall BCryptDeriveKey(ptr wstr ptr ptr long ptr long)
+@ stdcall BCryptDeriveKeyCapi(ptr ptr ptr long long)
+@ stdcall BCryptDeriveKeyPBKDF2(ptr ptr long ptr long int64 ptr long long)
+@ stdcall BCryptDestroyHash(ptr)
+@ stdcall BCryptDestroyKey(ptr)
+@ stdcall BCryptDestroySecret(ptr)
+@ stdcall BCryptDuplicateHash(ptr ptr ptr long long)
+@ stdcall BCryptDuplicateKey(ptr ptr ptr long long)
+@ stdcall BCryptEncapsulate(ptr ptr long ptr ptr long ptr long)
+@ stdcall BCryptEncrypt(ptr ptr long ptr ptr long ptr long ptr long)
+@ stdcall BCryptEnumAlgorithms(long ptr ptr long)
+@ stdcall BCryptEnumProviders(wstr ptr ptr long)
+@ stdcall BCryptExportKey(ptr ptr wstr ptr long ptr long)
+@ stdcall BCryptFinalizeKeyPair(ptr long)
+@ stdcall BCryptFinishHash(ptr ptr long long)
+@ stdcall BCryptFreeBuffer(ptr)
+@ stdcall BCryptGenRandom(ptr ptr long long)
+@ stdcall BCryptGenerateKeyPair(ptr ptr long long)
+@ stdcall BCryptGenerateSymmetricKey(ptr ptr ptr long ptr long long)
+@ stdcall BCryptGetFipsAlgorithmMode(ptr)
+@ stdcall BCryptGetProperty(ptr wstr ptr long ptr long)
+@ stdcall BCryptHash(ptr ptr long ptr long ptr long)
+@ stdcall BCryptHashData(ptr ptr long long)
+@ stdcall BCryptImportKey(ptr ptr wstr ptr ptr long ptr long long)
+@ stdcall BCryptImportKeyPair(ptr ptr wstr ptr ptr long long)
+@ stdcall BCryptKeyDerivation(ptr ptr ptr long ptr long)
+@ stdcall BCryptOpenAlgorithmProvider(ptr wstr wstr long)
+@ stdcall BCryptProcessMultiOperations(ptr long ptr long long)
+@ stdcall BCryptRegisterConfigChangeNotify(ptr)
+@ stdcall BCryptRegisterProvider(wstr long ptr)
+@ stdcall BCryptResolveProviders(wstr long wstr wstr long long ptr ptr)
+@ stdcall BCryptSecretAgreement(ptr ptr ptr long)
+@ stdcall BCryptSetProperty(ptr wstr ptr long long)
+@ stdcall BCryptSignHash(ptr ptr ptr long ptr long ptr long)
+@ stdcall BCryptUnregisterConfigChangeNotify(ptr)
+@ stdcall BCryptUnregisterProvider(wstr)
+@ stdcall BCryptVerifySignature(ptr ptr ptr long ptr long long)
+@ stdcall CngGetFipsAlgorithmMode()
+@ stdcall -private DllInitialize(ptr)
+@ stdcall EntropyProvideData(ptr ptr long long)
+@ stdcall EntropyRegisterCallback(ptr ptr ptr)
+@ stdcall EntropyRegisterSource(ptr long ptr)
+@ stdcall EntropyUnregisterSource(ptr)
+@ stdcall SystemPrng(ptr long)

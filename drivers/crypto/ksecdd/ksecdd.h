@@ -96,20 +96,11 @@ KsecGenRandom(
     PVOID Buffer,
     SIZE_T Length);
 
-VOID
+/* cng.sys holds the system random number generator */
+BOOLEAN
 NTAPI
-KsecInitializeCng(VOID);
-
-NTSTATUS
-NTAPI
-KsecGenerateRandom(
-    _Out_writes_bytes_(Length) PVOID Buffer,
-    _In_ SIZE_T Length);
-
-VOID
-NTAPI
-KsecMixEntropy(
-    _In_reads_bytes_(Length) const VOID *Data,
+SystemPrng(
+    _Out_writes_bytes_(Length) PUCHAR Buffer,
     _In_ SIZE_T Length);
 
 VOID

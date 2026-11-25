@@ -124,7 +124,7 @@ KsecDeviceControl(
 
         case IOCTL_KSEC_RANDOM_FILL_BUFFER:
 
-            Status = KsecGenRandom(Buffer, *OutputLength);
+            Status = SystemPrng(Buffer, *OutputLength) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
             break;
 
         case IOCTL_KSEC_ENCRYPT_SAME_PROCESS:
