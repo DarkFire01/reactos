@@ -465,6 +465,26 @@ IsThisARootDirectory(
     IN PUNICODE_STRING NtPathName
 );
 
+/* Implemented in kernelbase, declared here since kernel32 builds for NT 5.2 */
+HANDLE
+WINAPI
+CreateWaitableTimerExW(
+    _In_opt_ LPSECURITY_ATTRIBUTES lpTimerAttributes,
+    _In_opt_ LPCWSTR lpTimerName,
+    _In_ DWORD dwFlags,
+    _In_ DWORD dwDesiredAccess);
+
+HANDLE
+WINAPI
+CreateFileMappingNumaW(
+    _In_ HANDLE hFile,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+    _In_ DWORD flProtect,
+    _In_ DWORD dwMaximumSizeHigh,
+    _In_ DWORD dwMaximumSizeLow,
+    _In_opt_ LPCWSTR lpName,
+    _In_ DWORD nndPreferred);
+
 /* FIXME: This is EXPORTED! It should go in an external kernel32.h header */
 VOID
 WINAPI

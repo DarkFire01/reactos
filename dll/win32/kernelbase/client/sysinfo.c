@@ -317,16 +317,28 @@ GetNumaNodeProcessorMaskEx(
     _In_ USHORT Node,
     _Out_ PGROUP_AFFINITY ProcessorMask)
 {
-    ULONGLONG Mask;
+    SYSTEM_NUMA_INFORMATION NumaInformation;
+    NTSTATUS Status;
+    ULONG Length;
 
-    if (Node > MAXUCHAR || !GetNumaNodeProcessorMask((UCHAR)Node, &Mask))
+    Status = NtQuerySystemInformation(SystemNumaProcessorMap,
+                                      &NumaInformation,
+                                      sizeof(NumaInformation),
+                                      &Length);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    if (Node > NumaInformation.HighestNodeNumber)
     {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
     }
 
     RtlZeroMemory(ProcessorMask, sizeof(*ProcessorMask));
-    ProcessorMask->Mask = (KAFFINITY)Mask;
+    ProcessorMask->Mask = (KAFFINITY)NumaInformation.ActiveProcessorsAffinityMask[Node];
     ProcessorMask->Group = 0;
     return TRUE;
 }

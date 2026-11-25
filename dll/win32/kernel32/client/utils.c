@@ -621,14 +621,6 @@ GetMaximumProcessorCount(IN WORD GroupNumber)
     return GetProcessorCountInfo(GroupNumber, TRUE);
 }
 
-WORD
-WINAPI
-GetMaximumProcessorGroupCount()
-{
-    STUB;  // FIXME: Real group support
-    return 1;
-}
-
 #define FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE CTL_CODE(FILE_DEVICE_NAMED_PIPE, 12, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 static inline BOOL set_ntstatus( NTSTATUS status )
