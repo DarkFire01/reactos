@@ -179,30 +179,6 @@ typedef enum _PROCESS_INFORMATION_CLASS
 #define PROCESS_MACHINE_ATTRIBUTE_NATIVE_OS        0x00000004
 #define PROCESS_MACHINE_ATTRIBUTE_WOW64_CONTAINER  0x00000008
 
-typedef enum _PROCESS_MITIGATION_POLICY
-{
-    ProcessDEPPolicy,
-    ProcessASLRPolicy,
-    ProcessDynamicCodePolicy,
-    ProcessStrictHandleCheckPolicy,
-    ProcessSystemCallDisablePolicy,
-    ProcessMitigationOptionsMask,
-    ProcessExtensionPointDisablePolicy,
-    ProcessControlFlowGuardPolicy,
-    ProcessSignaturePolicy,
-    ProcessFontDisablePolicy,
-    ProcessImageLoadPolicy,
-    ProcessSystemCallFilterPolicy,
-    ProcessPayloadRestrictionPolicy,
-    ProcessChildProcessPolicy,
-    ProcessSideChannelIsolationPolicy,
-    ProcessUserShadowStackPolicy,
-    ProcessRedirectionTrustPolicy,
-    ProcessUserPointerAuthPolicy,
-    ProcessSEHOPPolicy,
-    MaxProcessMitigationPolicy
-} PROCESS_MITIGATION_POLICY, *PPROCESS_MITIGATION_POLICY;
-
 typedef struct _PROCESS_MITIGATION_ASLR_POLICY
 {
     union
