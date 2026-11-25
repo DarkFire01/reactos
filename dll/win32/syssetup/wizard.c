@@ -417,10 +417,11 @@ typedef struct _PRODUCT_OPTION_DATA
 
 static const PRODUCT_OPTION_DATA s_ProductOptionData[INSTALLATION_TYPE_MAX] =
 {
-    { L"Terminal Server\0", L"ServerNT", 0, 0x200, 0 },
-    { L"\0", L"WinNT", 1, 0x300, 1 },
-    { L"Terminal Server\0", L"ServerNT", 0, 0x200, 0 }
-    // { L"Terminal Server\0", L"ServerNT", 0, 0x200, 0 }
+    /* No service pack on any type, as Windows 10 and later report none */
+    { L"Terminal Server\0", L"ServerNT", 0, 0, 0 },
+    { L"\0", L"WinNT", 1, 0, 1 },
+    { L"Terminal Server\0", L"ServerNT", 0, 0, 0 }
+    // { L"Terminal Server\0", L"ServerNT", 0, 0, 0 }
 };
 
 static const WCHAR* InstallationTypes[INSTALLATION_TYPE_MAX] =

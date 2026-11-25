@@ -57,7 +57,7 @@ LocaleID = 409
 ; 1 - ReactOS Workstation
 ; 2 - ReactOS Server Core
 ; 3 - ReactOS Nano Server (Reserved)
-InstallationType = 0
+InstallationType = 1
 
 ;[GuiUnattended]
 ; Run a program early in 2nd-stage setup.
