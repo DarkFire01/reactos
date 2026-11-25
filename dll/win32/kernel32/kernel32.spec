@@ -1202,6 +1202,7 @@
 @ stdcall -version=0x600+ SetThreadPreferredUILanguages(long wstr ptr)
 @ stdcall SetThreadPriority(long long)
 @ stdcall SetThreadPriorityBoost(long long)
+@ stdcall -version=0xA00+ SetThreadSelectedCpuSets(ptr ptr long)
 @ stdcall SetThreadStackGuarantee(ptr)
 @ stdcall -version=0x601+ SetThreadToken(ptr ptr) advapi32.SetThreadToken
 @ stdcall SetThreadUILanguage(long)

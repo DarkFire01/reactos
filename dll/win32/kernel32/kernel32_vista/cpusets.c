@@ -109,4 +109,54 @@ GetSystemCpuSetInformation(
     return TRUE;
 }
 
+/*
+ * @implemented
+ *
+ * CPU sets are only a scheduling preference, and the scheduler here has none to
+ * honor, so a valid selection is accepted without changing where the thread runs.
+ */
+BOOL
+WINAPI
+SetThreadSelectedCpuSets(
+    _In_ HANDLE Thread,
+    _In_reads_opt_(CpuSetIdCount) const ULONG *CpuSetIds,
+    _In_ ULONG CpuSetIdCount)
+{
+    SYSTEM_INFO SystemInfo;
+    ULONG Count, Index;
+
+    if (Thread == NULL)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    /* An empty list clears the selection */
+    if (CpuSetIdCount == 0)
+        return TRUE;
+
+    if (CpuSetIds == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    GetSystemInfo(&SystemInfo);
+    Count = SystemInfo.dwNumberOfProcessors;
+    if (Count == 0)
+        Count = 1;
+
+    for (Index = 0; Index < CpuSetIdCount; Index++)
+    {
+        if (CpuSetIds[Index] < CPU_SET_ID_BASE ||
+            CpuSetIds[Index] >= CPU_SET_ID_BASE + Count)
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
 /* EOF */
