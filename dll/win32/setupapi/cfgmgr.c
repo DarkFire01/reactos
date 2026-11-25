@@ -7412,6 +7412,12 @@ CM_Query_And_Remove_SubTree_ExW(
     if (lpDevInst == NULL)
         return CR_INVALID_DEVNODE;
 
+    /* The outputs are marshalled in as well, so they must hold valid values */
+    if (pVetoType != NULL)
+        *pVetoType = PNP_VetoTypeUnknown;
+    if (pszVetoName != NULL && ulNameLength != 0)
+        *pszVetoName = UNICODE_NULL;
+
     RpcTryExcept
     {
         ret = PNP_QueryRemove(BindingHandle,
@@ -8293,6 +8299,12 @@ CM_Request_Device_Eject_ExW(
     lpDevInst = pSetupStringTableStringFromId(StringTable, dnDevInst);
     if (lpDevInst == NULL)
         return CR_INVALID_DEVNODE;
+
+    /* The outputs are marshalled in as well, so they must hold valid values */
+    if (pVetoType != NULL)
+        *pVetoType = PNP_VetoTypeUnknown;
+    if (pszVetoName != NULL && ulNameLength != 0)
+        *pszVetoName = UNICODE_NULL;
 
     RpcTryExcept
     {

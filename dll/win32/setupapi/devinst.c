@@ -5690,7 +5690,7 @@ RestartDevice(
     struct DeviceInfoSet *set = (struct DeviceInfoSet *)DeviceInfoSet;
     struct DeviceInfo *deviceInfo = (struct DeviceInfo *)DeviceInfoData->Reserved;
     WCHAR VetoName[MAX_PATH];
-    PNP_VETO_TYPE VetoType;
+    PNP_VETO_TYPE VetoType = PNP_VetoTypeUnknown;
     ULONG Status, Problem;
     CONFIGRET cr;
 
