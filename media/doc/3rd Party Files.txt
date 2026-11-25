@@ -319,6 +319,12 @@ Used Version: git commit 045831e
 License: MIT (https://spdx.org/licenses/MIT.html)
 URL: https://github.com/microsoft/libdxg
 
+Title: Khronos OpenCL Headers
+Path: sdk/include/psdk/CL
+Used Version: v2023.12.14
+License: Apache-2.0 (https://spdx.org/licenses/Apache-2.0.html)
+URL: https://github.com/KhronosGroup/OpenCL-Headers
+
 Title: WpfGfx
 Path: win32ss/dwm/milcore
 Used Version: aa4abb88d4daf54717d3b576234289c214035ae9
