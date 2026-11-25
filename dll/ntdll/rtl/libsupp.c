@@ -1428,17 +1428,20 @@ RtlQueryUnbiasedInterruptTime(ULONGLONG *Time)
     }
 
     const volatile KSYSTEM_TIME *InterruptTime = &SharedUserData->InterruptTime;
+    ULONGLONG Bias;
     ULONG High, Low;
 
-    // Read High1Time and LowPart until High2Time matches High1Time for atomicity
+    /* Reread until the bias and both high parts describe the same update */
     do
     {
+        Bias = SharedUserData->InterruptTimeBias;
         High = InterruptTime->High1Time;
         Low  = InterruptTime->LowPart;
     }
-    while (High != InterruptTime->High2Time);
+    while (High != InterruptTime->High2Time || Bias != SharedUserData->InterruptTimeBias);
 
-    *Time = ((ULONGLONG)High << 32) | Low;
+    /* The bias is the time spent asleep, which unbiased time leaves out */
+    *Time = (((ULONGLONG)High << 32) | Low) - Bias;
     return TRUE;
 }
 
