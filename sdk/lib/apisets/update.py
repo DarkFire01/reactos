@@ -12,7 +12,6 @@ import json
 
 # These are modules we do not have, so redirect them to ones we do have.
 REDIRECT_HOSTS = {
-    'kernelbase.dll': 'kernel32.dll',
     'kernel.appcore.dll': 'kernel32.dll',
     'ucrtbase.dll': 'msvcrt.dll',
     'winmmbase.dll': 'winmm.dll',
@@ -27,18 +26,9 @@ REDIRECT_APISETS = {
     'api-ms-win-eventing-provider-l1-': 'advapi32.dll'
 }
 
-# Windows keeps most of these in kernelbase.dll, and REDIRECT_HOSTS above
-# sends the whole of kernelbase to kernel32. That is right for the bulk of
-# it and wrong for the sets below, because ReactOS did not consolidate the
-# same way: security and registry live in advapi32, the version resource
-# calls live in version.dll, PathCch lives in kernelbase_ros.dll and the
-# character classing calls live in user32. Sent to kernel32 they resolve to
-# a DLL that does not export them, and an application importing one at load
-# time simply does not start - mozglue.dll pulls AddAccessAllowedAce and
-# RegOpenKeyExW in through these, so Firefox does not start.
-#
-# Keyed on the apiset name without the .dll, lowercased. Wins over
-# REDIRECT_HOSTS.
+# Sets whose functions ReactOS keeps outside their Windows host: security and registry
+# in advapi32, the version calls in version.dll and character classing in user32.
+# Keyed on the apiset name without the .dll, lowercased. Wins over REDIRECT_HOSTS.
 SET_HOSTS = {
     # The package APIs live in kernel.appcore.dll, and kernel32 forwards to them through these
     'api-ms-win-appmodel-identity-l1-1-0': 'kernel.appcore.dll',
@@ -50,7 +40,6 @@ SET_HOSTS = {
     'api-ms-win-appmodel-runtime-l1-1-2': 'kernel.appcore.dll',
     'api-ms-win-appmodel-runtime-l1-1-3': 'kernel.appcore.dll',
     'api-ms-win-core-localregistry-l1-1-0': 'advapi32.dll',
-    'api-ms-win-core-path-l1-1-0': 'kernelbase_ros.dll',
     'api-ms-win-core-registry-l1-1-0': 'advapi32.dll',
     'api-ms-win-core-registry-l1-1-1': 'advapi32.dll',
     'api-ms-win-core-registry-l1-1-2': 'advapi32.dll',
