@@ -156,7 +156,7 @@ static UINT64 get_arg( int nr, struct format_message_args *args_data, BOOL is64 
 }
 
 #ifdef __REACTOS__
-int __cdecl _snwprintf_s(
+static int __cdecl rtl_snwprintf_s(
     WCHAR *buffer, size_t size, size_t count,
     const WCHAR *format, ...)
 {
@@ -247,7 +247,7 @@ static NTSTATUS add_format( WCHAR **buffer, WCHAR *end, const WCHAR **src, int i
     }
     else return STATUS_INVALID_PARAMETER;
 
-    len = _snwprintf_s( *buffer, end - *buffer, end - *buffer - 1, fmt,
+    len = rtl_snwprintf_s( *buffer, end - *buffer, end - *buffer - 1, fmt,
                         args[0], args[1], args[2], args[3], args[4] );
     if (len == -1) return STATUS_BUFFER_OVERFLOW;
     *buffer += len;
